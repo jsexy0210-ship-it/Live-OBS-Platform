@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>관리자 계정 비활성화 확인</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app c24" data-theme="light" style="width: 960px; min-height: 560px; padding: 24px; box-sizing: border-box; display: flex; gap: 24px; align-items: flex-start; justify-content: center">
+<div class="cfm" style="max-width: none; width: 880px"><div class="h">이운영 계정을 비활성화하시겠습니까?<button class="x" type="button" aria-label="닫기">×</button></div><div class="bd">즉시 로그아웃되고 로그인이 막힙니다. 이 계정이 남긴 승인 · 정지 · 공지 기록은 로그 추적에 그대로 보존됩니다. 관리자 계정은 삭제되지 않습니다.<div class="note cau" style="width: 100%"><b>담당 중인 항목 3건</b> (가입 심사 2 · PG 장애 1)이 미배정으로 돌아갑니다</div><table class="ft"><colgroup><col style="width: 150px"><col></colgroup><tr><th>사유 <span class="rq">*</span></th><td><input class="i w-f" type="text" value="" placeholder="로그 추적"></td></tr><tr><th>담당 항목 이관 (선택)</th><td><label class="ck"><input type="radio" name="mv" checked>미배정으로 두기</label><label class="ck"><input type="radio" name="mv">김운영에게 이관</label></td></tr><tr><th>확인</th><td><label class="ck"><input type="checkbox" name="r">대표 비밀번호로 확인했습니다</label></td></tr></table></div><div class="f"><button class="b pri neg" type="button">비활성화</button><button class="b " type="button">취소</button></div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":960,"height":560}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

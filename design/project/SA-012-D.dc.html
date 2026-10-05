@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>상품 삭제 확인</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app c24" data-theme="light" style="width: 960px; min-height: 560px; padding: 24px; box-sizing: border-box; display: flex; gap: 24px; align-items: flex-start; justify-content: center">
+<div class="cfm" style="max-width: none; width: 880px"><div class="h">「스타라이트 부스터 박스」를 삭제하시겠습니까?<button class="x" type="button" aria-label="닫기">×</button></div><div class="bd">쇼핑몰과 주문대기에서 즉시 사라집니다. 지난 주문 214건의 기록은 유지되지만 상품 페이지는 복구할 수 없습니다.<div class="note cau" style="width: 100%"><b>주문대기에 이 상품 주문 4건이 있습니다.</b> 삭제 전에 완료 또는 취소 처리해 주십시오 · 그 전까지 삭제 버튼은 비활성입니다</div><div style="margin-top: 8px"><div class="col" style="gap: 4px; align-items: flex-start"><label class="ck"><input type="radio" name="dl" checked>숨김으로 전환 (권장)</label><span class="hint">쇼핑몰에서만 사라지고 언제든 다시 보이게 할 수 있습니다</span><label class="ck"><input type="radio" name="dl">완전 삭제</label><span class="hint">되돌릴 수 없습니다 · 상품명을 입력해 확인합니다</span></div></div></div><div class="f"><button class="b pri" type="button">숨김으로 전환</button><button class="b neg" type="button" disabled>완전 삭제</button><button class="b " type="button">취소</button></div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":960,"height":560}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

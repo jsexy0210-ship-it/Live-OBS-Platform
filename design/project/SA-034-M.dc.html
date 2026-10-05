@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>실지급 켜기 · 끄기 확인</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app c24" data-theme="light" style="width: 1440px; min-height: 640px; padding: 24px; box-sizing: border-box; display: flex; gap: 24px; align-items: flex-start; justify-content: center">
+<div class="cfm" style="max-width: none; width: 660px"><div class="h">적립금 실지급을 켜시겠습니까?<button class="x" type="button" aria-label="닫기">×</button></div><div class="bd">지급 대기 <b>37건 · 412,500원</b>이 즉시 회원 잔액에 반영되어 바로 사용할 수 있게 됩니다. 되돌리려면 회수 처리가 필요합니다.<div style="margin-top: 8px" class="col" style="gap: 4px; align-items: flex-start"><label class="ck"><input type="checkbox" name="r">대기분 일괄 지급 금액을 확인했습니다</label><label class="ck"><input type="checkbox" name="r">이후 개봉 완료마다 실제 지급되는 것을 이해했습니다</label></div><table class="ft"><colgroup><col style="width: 150px"><col></colgroup><tr><th>확인 <span class="rq">*</span></th><td><input class="i w-m" type="text" value="" placeholder="실지급"><span class="hint">확인을 위해 「실지급」을 입력해 주십시오</span></td></tr></table><span class="hint">실행자 · 시각이 로그 추적과 플랫폼 운영 현황에 기록됩니다</span></div><div class="f"><button class="b pri" type="button">실지급 켜기</button><button class="b " type="button">취소</button></div></div><div class="cfm" style="max-width: none; width: 660px"><div class="h">적립금 실지급을 끄시겠습니까?<button class="x" type="button" aria-label="닫기">×</button></div><div class="bd">지금부터 발생하는 적립은 「대기」로만 기록됩니다. 이미 지급된 회원 잔액 <b>8,412,300원</b>은 그대로 유지되고 사용도 가능합니다.<table class="ft"><colgroup><col style="width: 150px"><col></colgroup><tr><th>사유 (선택)</th><td><input class="i w-f" type="text" value="" placeholder="로그 추적에 남습니다"></td></tr><tr><th>함께</th><td><label class="ck"><input type="checkbox" name="r">쇼핑몰 주문서의 「적립금 사용」도 함께 숨기기</label></td></tr></table></div><div class="f"><button class="b pri neg" type="button">실지급 끄기</button><button class="b " type="button">취소</button></div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":640}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

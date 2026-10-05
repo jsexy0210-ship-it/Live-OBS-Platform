@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { PARTNERS_AREA } from "./components/public/maintenanceCopy";
 import { IMPERSONATION_COOKIE, impersonationRequestAllowed, isImpersonationPublicPath } from "./lib/server/auth/impersonation";
 import { prisma } from "./lib/server/db";
 import { cachedMaintenance, isActive, maintenanceTarget, maintenanceNotice } from "./lib/server/maintenance/service";
@@ -21,7 +22,8 @@ export async function proxy(req: NextRequest) {
       { status: 503, headers: { "Cache-Control": "no-store", "Retry-After": "300" } },
     );
   }
-  return NextResponse.rewrite(new URL("/maintenance", req.url));
+  // 파트너스 관리자(/seller)에서 보이는 점검 화면은 관리자 말투(합니다체)라 구역을 알려 준다. 주소는 그대로이고 구매자 쇼핑몰은 해요체.
+  return NextResponse.rewrite(new URL(/^\/seller(\/|$)/.test(path) ? `/maintenance?area=${PARTNERS_AREA}` : "/maintenance", req.url));
 }
 
 export const config = {

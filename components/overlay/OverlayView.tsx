@@ -3,7 +3,7 @@
 import "../../styles/overlay.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { WidgetView } from "./WidgetView";
-import type { LiveData, OrderEvent, Widget } from "./layout";
+import type { EventCardData, LiveData, OrderEvent, RankingRow, Widget } from "./layout";
 
 // OBS 오버레이(OV-001 세로 1080×1920 · OV-002 가로 1920×1080, 배경 투명). 위젯 배치는 판매자가 편집기(SA-051)에서 정한 레이아웃(GET /api/overlay/{token}/layout)대로 그린다.
 // 상태: GET /api/overlay/{token}/state. 실시간 채널(stream, SSE)의 version이 바뀌면 다시 읽고, 끊겨도 15초마다 version을 확인한다.
@@ -20,6 +20,8 @@ type State = {
   hits?: { id: string; cardName: string; nickname: string }[];
   shop?: { name: string; url: string | null };
   orderEvents?: OrderEvent[];
+  eventCard?: EventCardData | null;
+  purchaseRanking?: RankingRow[];
 };
 // 신규 주문 알림: 위젯(variant)마다 지금 보여 주는 주문과 끝나는 시각
 type Shown = { event: OrderEvent; until: number };
@@ -187,7 +189,7 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
   }, [W, H]);
 
   const state = view.kind === "ok" ? view.state : null;
-  const data: LiveData | null = state ? { live: state.live, opening: state.opening, waiting: state.waiting, hits: state.hits ?? [], freshHitIds: Object.keys(freshHits).filter((id) => freshHits[id]! > now), shop: state.shop ?? null, alert: null } : null;
+  const data: LiveData | null = state ? { live: state.live, opening: state.opening, waiting: state.waiting, hits: state.hits ?? [], eventCard: state.eventCard ?? null, purchaseRanking: state.purchaseRanking ?? [], freshHitIds: Object.keys(freshHits).filter((id) => freshHits[id]! > now), shop: state.shop ?? null, alert: null } : null;
   // 주문이 없는 현재 주문 카드·방송이 아닐 때의 주문대기는 그리지 않는다(이전 화면과 같음). 신규 주문 알림·쇼핑몰 정보는 보낼 데이터가 없다
   const shown = (layout?.widgets ?? []).filter(
     (w) =>

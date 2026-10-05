@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>디자인 시스템 배지 표 탭 · 참고 · 구 체계</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app" data-theme="light" style="width: 1600px; height: 1200px; padding: 56px; display: flex; flex-direction: column; gap: 20px">
+ <div class="col" style="gap: 6px">
+ <span class="t-l1 fw6 c-alt">공통 디자인 시스템 · 참고 · 구 체계 (정본은 DS6 카페24식 틀과 공통 스타일 · 2026-10-05 UI 현대화 토큰)</span>
+ <h1 class="t-t2">배지 · 표 · 탭 · 칩 · 페이지 이동 · 드롭다운</h1>
+ </div>
+ <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; flex: 1">
+ <div class="col" style="gap: 20px">
+ <div class="card col" style="padding: 24px; gap: 14px">
+ <span class="t-hl1">상태 배지 — 전 화면 동일 매핑</span>
+ <table class="tbl" style="font-size: 13px">
+ <thead><tr><th>배지</th><th>쓰이는 곳</th><th>큰 크기</th></tr></thead>
+ <tbody>
+ <tr><td><span class="bdg b-wait">대기</span></td><td>주문대기 주문 · 적립금 원장 대기 · 승인 대기 · CI 대기</td><td><span class="bdg bdg-lg b-wait">대기</span></td></tr>
+ <tr><td><span class="bdg b-open">개봉 중</span></td><td>지금 개봉 중인 주문(한 번에 하나) · 방송 중 파트너스</td><td><span class="bdg bdg-lg b-open">개봉 중</span></td></tr>
+ <tr><td><span class="bdg b-done">완료</span></td><td>개봉 완료 · 결제 완료 · 지급 성공 · 승인됨</td><td><span class="bdg bdg-lg b-done">완료</span></td></tr>
+ <tr><td><span class="bdg b-cancel">취소</span></td><td>주문 취소 · 환불됨 · 구독 해지 · 반려</td><td><span class="bdg bdg-lg b-cancel">취소</span></td></tr>
+ <tr><td><span class="bdg b-fail">실패</span></td><td>결제 실패 · 지급 실패 · PG 오류 · 연결 끊김</td><td><span class="bdg bdg-lg b-fail">실패</span></td></tr>
+ <tr><td><span class="bdg b-warn">연체</span> <span class="bdg b-warn">주의</span></td><td>구독료 연체 · 재고 부족 · 실지급 켜짐</td><td><span class="bdg bdg-lg b-warn">연체</span></td></tr>
+ <tr><td><span class="bdg b-info">체험 중</span> <span class="bdg b-info">신규</span></td><td>체험 · 신규 가입 · 안내성 라벨</td><td><span class="bdg bdg-lg b-info">체험 중</span></td></tr>
+ <tr><td><span class="bdg b-live">LIVE</span> <span class="bdg b-master">마스터</span> <span class="bdg b-gray nodot">비노출</span></td><td>방송 중 · 마스터 관리자 · 비활성/숨김 항목</td><td><span class="bdg bdg-lg b-live">LIVE</span></td></tr>
+ </tbody>
+ </table>
+ </div>
+ <div class="card col" style="padding: 24px; gap: 14px">
+ <span class="t-hl1">탭 · 세그먼트 · 칩 · 페이지 이동</span>
+ <div class="tabs"><a class="tab on" href="#t">기본정보</a><a class="tab" href="#t">쇼핑몰</a><a class="tab" href="#t">구독<span class="cnt">2</span></a><a class="tab" href="#t">PG 연결</a><a class="tab is-focus" href="#t" style="border-radius: 6px">포커스</a></div>
+ <div class="row" style="gap: 16px; flex-wrap: wrap">
+ <div class="seg"><button type="button" class="on">전체</button><button type="button">대기</button><button type="button">개봉 중</button><button type="button">완료</button></div>
+ <div class="seg"><button type="button">라이트</button><button type="button" class="on">다크</button></div>
+ </div>
+ <div class="row" style="gap: 8px; flex-wrap: wrap">
+ <button class="chip on" type="button">전체</button><button class="chip" type="button">카드</button><button class="chip" type="button">무통장</button><button class="chip" type="button">이번 달 <span class="x">×</span></button><button class="chip is-focus" type="button">포커스</button><button class="chip" type="button" disabled style="color: var(--wds-label-disable)">비활성</button>
+ </div>
+ <div class="pg"><a href="#p">‹</a><a href="#p" class="on">1</a><a href="#p">2</a><a href="#p">3</a><span>…</span><a href="#p">24</a><a href="#p">› 상세</a><span class="t-l2 c-alt" style="margin-left: 12px">총 472건 · 20개씩</span></div>
+ </div>
+ </div>
+ <div class="col" style="gap: 20px">
+ <div class="card col" style="overflow: hidden">
+ <div class="row between" style="padding: 16px 20px"><span class="t-hl1">표 — 선택 · 정렬 · 행 상태</span><span class="t-l2 c-alt">머리 13/20 · 600 · 회색 바탕 · 행 48 (compact 40) · 열 제목 · 데이터 모두 가운데 · 글 열(상품명 · 코드 · 제목 · 설명 · 메모 · 옵션명 · 주소 · 긴 글 · 쿠폰 · 혜택 · 카드 · 방송 제목 · 권한 · 회원명+부가정보 복합)만 왼쪽 · 이름 · 닉네임 · 파트너스 · 쇼핑몰 같은 짧은 단일 값은 가운데 · 우측 정렬 0건 · tabular 숫자 · 선 1px (2026-10-05 · 관리자 표 기준 · 구매자 표는 기존 값 왼쪽 유지)</span></div>
+ <table class="tbl">
+ <thead><tr><th style="width: 44px"><input class="cbx" type="checkbox" aria-label="전체 선택"></th><th>접수 시각 ↓</th><th>닉네임</th><th>상품</th><th class="r">금액</th><th>상태</th><th style="width: 56px"></th></tr></thead>
+ <tbody>
+ <tr class="sel"><td><input class="cbx" type="checkbox" checked aria-label="선택"></td><td class="num">14:12</td><td>별빛사냥꾼</td><td class="ell">스타라이트 부스터 박스 36팩</td><td class="r num">189,000원</td><td><span class="bdg b-open">개봉 중</span></td><td><button class="icon-btn" type="button" aria-label="더보기" style="width: 32px; height: 32px">⋯</button></td></tr>
+ <tr><td><input class="cbx" type="checkbox" aria-label="선택"></td><td class="num">14:11</td><td>카드왕</td><td class="ell">드래곤 소울 부스터 ×3</td><td class="r num">45,000원</td><td><span class="bdg b-wait">대기</span></td><td><button class="icon-btn" type="button" aria-label="더보기" style="width: 32px; height: 32px">⋯</button></td></tr>
+ <tr><td><input class="cbx" type="checkbox" aria-label="선택"></td><td class="num">14:10</td><td>민트컨디션</td><td class="ell">문라이트 컬렉션 박스</td><td class="r num">132,000원</td><td><span class="bdg b-done">완료</span></td><td><button class="icon-btn" type="button" aria-label="더보기" style="width: 32px; height: 32px">⋯</button></td></tr>
+ <tr class="faded"><td><input class="cbx" type="checkbox" aria-label="선택"></td><td class="num">14:09</td><td>초보수집가</td><td class="ell">크리스탈 팩 ×1</td><td class="r num">7,000원</td><td><span class="bdg b-cancel">취소</span></td><td><button class="icon-btn" type="button" aria-label="더보기" style="width: 32px; height: 32px">⋯</button></td></tr>
+ <tr><td><input class="cbx" type="checkbox" aria-label="선택"></td><td class="num">14:08</td><td>레인보우</td><td class="ell">스타라이트 부스터 박스 36팩</td><td class="r num">189,000원</td><td><span class="bdg b-fail">실패</span></td><td><button class="icon-btn" type="button" aria-label="더보기" style="width: 32px; height: 32px">⋯</button></td></tr>
+ </tbody>
+ </table>
+ <div class="row between" style="padding: 12px 20px; background: var(--wds-background-normal-alternative)"><span class="t-l2 fw6">1건 선택됨</span><div class="row" style="gap: 8px"><button class="btn btn-sm btn-out" type="button">내보내기</button><button class="btn btn-sm btn-neg" type="button">선택 취소</button></div></div>
+ </div>
+ <div class="card col" style="padding: 24px; gap: 14px">
+ <span class="t-hl1">드롭다운 · 메뉴</span>
+ <div class="row" style="gap: 20px; align-items: flex-start">
+ <div class="col" style="gap: 8px"><span class="t-c1 c-alt">행 작업 메뉴</span>
+ <div class="menu"><span class="menu-h">14:12</span><a href="#m">주문 상세 보기</a><button type="button">완료 처리</button><button type="button">메모 추가</button><hr class="divider" style="margin: 4px 0"><button type="button" class="neg">주문 취소</button><button type="button" class="dis">환불 (권한 없음)</button></div>
+ </div>
+ <div class="col" style="gap: 8px"><span class="t-c1 c-alt">선택 드롭다운 열림</span>
+ <div class="col" style="gap: 6px; width: 220px"><input class="inp is-focus" type="text" value="전체 상태" readonly aria-label="상태 선택">
+ <div class="menu"><button type="button" class="on">전체 상태</button><button type="button"><span class="bdg b-wait">대기</span></button><button type="button"><span class="bdg b-open">개봉 중</span></button><button type="button"><span class="bdg b-done">완료</span></button><button type="button"><span class="bdg b-cancel">취소</span></button></div>
+ </div>
+ </div>
+ <div class="col" style="gap: 8px"><span class="t-c1 c-alt">계정 메뉴</span>
+ <div class="menu" style="min-width: 220px"><span class="menu-h">카드숍 별빛 · 파트너스</span><a href="#m">내 계정</a><a href="#m">다크 모드 전환</a><a href="#m">도움말</a><hr class="divider" style="margin: 4px 0"><button type="button" class="neg">로그아웃</button></div>
+ </div>
+ </div>
+ </div>
+ </div>
+ </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1600,"height":1200}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { GlobalSearch, NotificationBell } from "../../../../components/admin-ui/GnbTools";
 import { useWholeDateClick } from "../../../../components/admin-ui/useWholeDateClick";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState } from "react";
@@ -82,9 +83,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
   const utilities = (
     <>
-      <a className="util-i off" aria-disabled="true" title="준비 중입니다">
+      <Link className="util-i" href="/admin/notifications" onClick={() => setNavOpen(false)}>
         알림 센터
-      </a>
+      </Link>
       <a className="util-i off" aria-disabled="true" title="준비 중입니다">
         내 계정
       </a>
@@ -119,6 +120,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             <span className="gnb-shop ell" title={me.email}>
               {me.name} · {ROLE_LABEL[me.role]}
             </span>
+            <GlobalSearch scope="admin" />
+            <NotificationBell scope="admin" allHref="/admin/notifications" />
             <span className="util-desk">{utilities}</span>
           </div>
         </header>

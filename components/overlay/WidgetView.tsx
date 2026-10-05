@@ -161,6 +161,51 @@ export function WidgetView({ widget: wd, data, now, editing }: { widget: Widget;
       );
       break;
     }
+    case "EVENT_CARD": {
+      const e = data.eventCard;
+      if (!e) break;
+      body = (
+        <>
+          <span className="ow-h">{title ?? "이벤트 할인"}</span>
+          <span className="ow-ev-name">{e.productName}</span>
+          <span className="ow-ev-price">
+            {e.discountRate !== null && <b className="ow-ev-rate">{e.discountRate}%</b>}
+            <b className="ow-ev-now">{e.discountedPrice.toLocaleString("ko-KR")}원</b>
+            <s className="ow-ev-was">{e.price.toLocaleString("ko-KR")}원</s>
+          </span>
+          <span className="ow-ev-meta">
+            {e.badge && <span className="ow-grade">{e.badge === "오늘 마감" ? "오늘 마감이에요" : e.badge}</span>}
+            {e.remainingLabel && <span>{e.remainingLabel}</span>}
+            {e.moreCount > 0 && <span>{e.moreCount}개 더 있어요</span>}
+          </span>
+        </>
+      );
+      break;
+    }
+    case "PURCHASE_RANKING": {
+      const list = (data.purchaseRanking ?? []).slice(0, rows);
+      body = (
+        <>
+          <span className="ow-h">{title ?? "구매 랭킹"}</span>
+          {list.length === 0 ? (
+            <span className="ow-empty">아직 구매한 분이 없어요</span>
+          ) : (
+            <ol className="ow-list">
+              {list.map((r, i) => (
+                <li key={`${r.rank}:${r.nickname}:${i}`} className="ow-row">
+                  <span className="ow-no">{r.rank}</span>
+                  <span className="ow-tx">
+                    <span className="ow-nm2">{r.nickname}</span>
+                    <span className="ow-pd2">{r.quantity}개</span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </>
+      );
+      break;
+    }
     case "NEW_ORDER_ALERT": {
       const ev = data.alert;
       const v = ev ? { FIRST: "첫 주문", REPEAT: "재주문", VIP: "VIP" }[ev.kind] : "";
@@ -182,6 +227,7 @@ export function WidgetView({ widget: wd, data, now, editing }: { widget: Widget;
     }
   }
   // 방송 화면에서는 내용이 없는 공지·쇼핑몰 정보 띠를 그리지 않는다(편집기에서는 자리 표시로 보인다)
+  if (!editing && ((wd.type === "EVENT_CARD" && !data.eventCard) || (wd.type === "PURCHASE_RANKING" && (data.purchaseRanking?.length ?? 0) === 0))) return null;
   if (!editing && ((wd.type === "NOTICE" && !str(p, "text")) || (wd.type === "SHOP_INFO" && !data.shop?.url && !str(p, "format")))) return null;
   return (
     <section className={cls} style={style as CSSProperties} aria-label={wd.type} data-widget={wd.type} data-testid={editing ? undefined : TEST_IDS[wd.type]}>
