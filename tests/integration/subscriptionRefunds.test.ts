@@ -76,7 +76,7 @@ describe("시스템 환불 요청", () => {
 });
 
 describe("권한·직접 요청", () => {
-  it("보기는 모든 역할, 요청·승인·반려는 최고관리자·운영만(CS·조회 전용 403). 로그인이 없으면 401", async () => {
+  it("보기는 모든 역할, 요청·반려는 최고관리자·운영만(CS·조회 전용 403), 승인은 최고관리자만(운영도 403). 로그인이 없으면 401", async () => {
     const { payment } = await paidPayment();
     const ops = await adminCookie("OPERATIONS");
     for (const role of ["CS", "READ_ONLY"] as const) {
@@ -94,8 +94,12 @@ describe("권한·직접 요청", () => {
       expect((await approve(a.cookie, id, { expectedVersion: 0 })).status).toBe(403);
       expect((await reject(a.cookie, id, { note: "x", expectedVersion: 0 })).status).toBe(403);
     }
+    expect((await approve(ops.cookie, id, { expectedVersion: 0 })).status).toBe(403);
+    expect((await db.subscriptionRefund.findUniqueOrThrow({ where: { id } })).status).toBe("REQUESTED");
+    expect((await reject(ops.cookie, id, { note: "운영 반려", expectedVersion: 0 })).body.refund).toMatchObject({ status: "REJECTED" });
     expect((await json(await listRoute(req("/api/admin/subscription-refunds", "")))).status).toBe(401);
     expect(await db.auditLog.count({ where: { action: "subscription.refund.request", targetId: id, actorId: ops.id } })).toBe(1);
+    expect(await db.auditLog.count({ where: { action: "subscription.refund.approve", targetId: id } })).toBe(0);
   });
 
   it("금액·사유·청구 상태를 검사하고, 같은 청구에 진행 중인 요청이 있으면 409. 반려된 뒤에는 다시 요청할 수 있다", async () => {
@@ -159,6 +163,19 @@ describe("승인·반려", () => {
     const done = await approve(su.cookie, id, { expectedVersion: 3 });
     expect(done.body.refund).toMatchObject({ status: "REFUNDED", failureReason: null });
     expect(pg().cancels.filter((c) => c.refundId === id)).toHaveLength(1);
+  });
+
+  it("실패한 환불이 있는 청구에 새 요청을 만든 뒤 옛 요청을 다시 승인하면 409 already_requested(취소 요청 없음)", async () => {
+    const su = await adminCookie("SUPER_ADMIN");
+    const { payment } = await paidPayment();
+    const oldId = (await create(su.cookie, { paymentId: payment.id, amount: 10_000, reason: "x" })).body.refund.id;
+    pg().rejectNextCancel = "temporary_error";
+    expect((await approve(su.cookie, oldId, { expectedVersion: 0 })).body.refund).toMatchObject({ status: "FAILED", version: 2 });
+    expect((await create(su.cookie, { paymentId: payment.id, amount: 10_000, reason: "새 요청" })).status).toBe(201);
+    const before = pg().cancels.length;
+    expect(await approve(su.cookie, oldId, { expectedVersion: 2 })).toMatchObject({ status: 409, body: { error: "already_requested" } });
+    expect(pg().cancels.length).toBe(before);
+    expect((await db.subscriptionRefund.findUniqueOrThrow({ where: { id: oldId } })).status).toBe("FAILED");
   });
 
   it("같은 version으로 동시에 두 번 승인하면 하나만 된다(취소도 한 번)", async () => {
