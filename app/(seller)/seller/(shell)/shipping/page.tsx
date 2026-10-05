@@ -12,7 +12,7 @@ import { sendInBatches } from "../../../../../components/seller/shipping/sendInB
 import { COURIERS, isCourier, type Courier } from "../../../../../lib/server/orders/shipping";
 import "../../../../../styles/seller-shipping.css";
 
-// SA-027 배송 처리(GET·POST /api/seller/shipments, POST …/deliver, 주문·배송 권한).
+// SA-025 배송 처리(GET·POST /api/seller/shipments, POST …/deliver, 주문·배송 권한).
 // 발송 대기: 택배사를 고르고 송장번호를 적어 여러 건을 한 번에 저장 → 배송 중으로 옮겨 간다.
 // 배송 중: 골라서 배송 완료 처리. 배송 완료: 조회만. 묶음 처리는 주문별로 성공·실패가 따로 온다(부분 성공).
 // 받는 분 정보는 개인정보 열람 권한이 있을 때만 응답에 온다.
@@ -245,7 +245,7 @@ export default function ShippingPage() {
                               <input className="cbx" type="checkbox" aria-label={`주문 ${r.orderNo} 선택`} checked={picked.has(r.orderId)} onChange={() => toggle(r.orderId)} />
                             </td>
                           )}
-                          <td>
+                          <td className="col-text">
                             <div className="col" style={{ gap: 2 }}>
                               <Link className="fw6" href={`/seller/orders/${r.orderId}`}>
                                 {r.buyer.broadcastNickname ?? "닉네임 없음"}
@@ -258,7 +258,7 @@ export default function ShippingPage() {
                               </span>
                             </div>
                           </td>
-                          <td className="ship-rcpt">
+                          <td className="ship-rcpt col-text">
                             <Recipient a={r.shippingAddress} />
                           </td>
                           <td>

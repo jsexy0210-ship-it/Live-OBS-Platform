@@ -10,6 +10,7 @@ const password = randomBytes(12).toString("base64url");
 const run = randomBytes(4).toString("hex");
 const superEmail = `plan-super-${run}@example.com`;
 const csEmail = `plan-cs-${run}@example.com`;
+const opsEmail = `plan-ops-${run}@example.com`;
 let db: PrismaClient;
 
 test.beforeAll(async () => {
@@ -19,6 +20,7 @@ test.beforeAll(async () => {
     data: [
       { email: superEmail, passwordHash, name: "대표", role: "SUPER_ADMIN" },
       { email: csEmail, passwordHash, name: "상담", role: "CS" },
+      { email: opsEmail, passwordHash, name: "운영", role: "OPERATIONS" },
     ],
   });
 });
@@ -43,9 +45,12 @@ test("CS는 요금제별 월 제공량을 보기만 한다(이름으로, 변경 
   await expect(row(page, "오버레이 전용")).toBeVisible();
   await expect(page.locator("main")).not.toContainText("OVERLAY_ONLY");
   await expect(page.getByRole("button", { name: "제공량 변경" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "가격 변경" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "체험 한도 변경" })).toHaveCount(0);
+  await expect(row(page, "쇼핑몰 통합").locator("td").nth(1)).toHaveText(/\d원$/);
   await expect(page.getByRole("columnheader", { name: "작업" })).toHaveCount(0);
   const align = await page.locator(".tbl td").first().evaluate((el) => getComputedStyle(el).textAlign);
-  expect(["left", "start"]).toContain(align);
+  expect(align).toBe("center"); // 표 정렬 새 규칙(2026-10-05): 글 열(.col-text)이 아니면 데이터는 가운데
 });
 
 test("최고관리자: 월 제공량을 바로 바꾸고, 적용 예정으로 걸면 현재 값은 그대로이며, 잘못된 값은 막는다", async ({ page }) => {
@@ -57,7 +62,7 @@ test("최고관리자: 월 제공량을 바로 바꾸고, 적용 예정으로 �
   await dialog.getByLabel("월 거래 메일 제공량").fill("250");
   await dialog.getByRole("button", { name: "저장" }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(row(page, "쇼핑몰 통합").locator("td").nth(1)).toHaveText("250통");
+  await expect(row(page, "쇼핑몰 통합").locator("td").nth(7)).toHaveText("250통");
   expect((await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "INTEGRATED" } })).mailMonthlyQuota).toBe(250);
 
   const future = new Date(Date.now() + 3 * 86_400_000 + 9 * 3_600_000).toISOString().slice(0, 16);
@@ -67,9 +72,60 @@ test("최고관리자: 월 제공량을 바로 바꾸고, 적용 예정으로 �
   await dialog.getByRole("button", { name: "저장" }).click();
   await expect(dialog).toHaveCount(0);
   const r = row(page, "쇼핑몰 통합");
-  await expect(r.locator("td").nth(1)).toHaveText("250통");
-  await expect(r.locator("td").nth(2)).toHaveText("400통");
-  await expect(r.locator("td").nth(3)).not.toHaveText("-");
+  await expect(r.locator("td").nth(7)).toHaveText("250통");
+  await expect(r.locator("td").nth(8)).toHaveText("400통");
+  await expect(r.locator("td").nth(9)).not.toHaveText("-");
   const saved = await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "INTEGRATED" } });
   expect([saved.mailMonthlyQuota, saved.nextMailQuota]).toEqual([250, 400]);
+});
+
+test("최고관리자: 가격 변경은 전·후 금액과 30일 안내를 보여 주고 한 번 더 확인한 뒤 저장한다", async ({ page }) => {
+  const before = await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "INTEGRATED" } });
+  try {
+    await open(page, superEmail);
+    await row(page, "쇼핑몰 통합").getByRole("button", { name: "가격 변경" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toContainText("기존 구독자는 30일 뒤 첫 결제부터 적용됩니다");
+    await dialog.getByLabel("판매가").fill(String(before.listPrice + 1));
+    await expect(dialog.getByRole("button", { name: "저장" })).toBeDisabled();
+    const newList = before.listPrice + 1000;
+    const newSale = before.salePrice + 500;
+    await dialog.getByLabel("정가").fill(String(newList));
+    await dialog.getByLabel("판매가").fill(String(newSale));
+    await expect(dialog.getByTestId("price-diff")).toContainText(`${before.listPrice.toLocaleString("ko-KR")}원 → ${newList.toLocaleString("ko-KR")}원`);
+    await dialog.getByRole("button", { name: "저장" }).click();
+    await expect(dialog.getByRole("alert")).toContainText("위 금액으로 바꾸시겠습니까?");
+    expect((await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "INTEGRATED" } })).salePrice).toBe(before.salePrice);
+    await dialog.getByRole("button", { name: "가격 변경 확정" }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(row(page, "쇼핑몰 통합").locator("td").nth(2)).toHaveText(`${newSale.toLocaleString("ko-KR")}원`);
+    const saved = await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "INTEGRATED" } });
+    expect([saved.listPrice, saved.salePrice]).toEqual([newList, newSale]);
+  } finally {
+    await db.subscriptionPlan.update({ where: { code: "INTEGRATED" }, data: { listPrice: before.listPrice, salePrice: before.salePrice } });
+  }
+});
+
+test("운영 담당: 체험 한도만 바꿀 수 있고(가격·제공량 버튼 없음), 저장하면 목록과 DB에 반영된다", async ({ page }) => {
+  const before = await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "OVERLAY_ONLY" } });
+  try {
+    await open(page, opsEmail);
+    await expect(page.getByRole("button", { name: "가격 변경" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "제공량 변경" })).toHaveCount(0);
+    await row(page, "오버레이 전용").getByRole("button", { name: "체험 한도 변경" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("저장 용량").fill("10000001");
+    await expect(dialog.getByRole("button", { name: "저장" })).toBeDisabled();
+    await dialog.getByLabel("알림톡·문자").fill("120");
+    await dialog.getByLabel("구매자 본인확인").fill("60");
+    await dialog.getByLabel("저장 용량").fill("2048");
+    await dialog.getByRole("button", { name: "저장" }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(row(page, "오버레이 전용").locator("td").nth(4)).toHaveText("120건");
+    await expect(row(page, "오버레이 전용").locator("td").nth(6)).toHaveText("2,048MB");
+    const saved = await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "OVERLAY_ONLY" } });
+    expect([saved.trialMessageLimit, saved.trialIdentityLimit, saved.trialStorageMb]).toEqual([120, 60, 2048]);
+  } finally {
+    await db.subscriptionPlan.update({ where: { code: "OVERLAY_ONLY" }, data: { trialMessageLimit: before.trialMessageLimit, trialIdentityLimit: before.trialIdentityLimit, trialStorageMb: before.trialStorageMb } });
+  }
 });

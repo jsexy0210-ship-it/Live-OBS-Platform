@@ -1,6 +1,11 @@
 /* SA-044 회원 등급 */
+.mg-sum{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
+.mg-sum>div{display:flex;flex-direction:column;gap:4px;padding:14px 16px}
 .mg-grid{display:grid;grid-template-columns:minmax(0,1.4fr) 140px 90px 130px 72px;gap:10px 12px;align-items:center;padding:10px 16px;box-shadow:inset 0 -1px 0 var(--wds-line-normal-alternative)}
 .mg-grid.mg-head{color:var(--wds-label-alternative);font-size:13px}
+.mg-opts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 .mg-adj{display:grid;grid-template-columns:minmax(0,1fr) 160px auto auto;gap:10px;align-items:center;padding:10px 16px;box-shadow:inset 0 -1px 0 var(--wds-line-normal-alternative)}
+.mg-adj-more{grid-column:1 / -1;display:grid;grid-template-columns:160px minmax(0,1fr);gap:8px 10px;align-items:center}
+.mg-adj-more>span{grid-column:1 / -1}
 .mg-log{display:flex;justify-content:space-between;gap:12px;padding:10px 16px;box-shadow:inset 0 -1px 0 var(--wds-line-normal-alternative)}
-@media (max-width:767px){.mg-grid{grid-template-columns:minmax(0,1fr) 120px}.mg-grid>.mg-hide-m{display:none}.mg-adj{grid-template-columns:minmax(0,1fr) auto}}
+@media (max-width:767px){.mg-sum,.mg-opts{grid-template-columns:repeat(2,minmax(0,1fr))}.mg-grid{grid-template-columns:minmax(0,1fr) 120px}.mg-grid>.mg-hide-m{display:none}.mg-adj{grid-template-columns:minmax(0,1fr) auto}.mg-adj-more{grid-template-columns:minmax(0,1fr)}}

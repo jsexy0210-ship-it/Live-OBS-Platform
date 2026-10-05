@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { FormRow, FormSection, PageHead } from "../../../../../../components/admin-ui";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { FormRow, FormSection, Modal, PageHead } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
@@ -9,7 +9,7 @@ import { parseAmount, won } from "../../../../../../components/seller/format";
 import { MESSAGE_FEE_NOTICE } from "../../../../../../components/seller/messageFeeNotice";
 
 // SA-081 발송 충전(대표자 전용). API: GET·PUT /api/seller/message-balance, POST …/consent, GET …/ledger.
-// 카드 충전·유료 잔액 환불 API는 아직 없어 충전·환불 버튼은 눌러도 되지 않게 잠가 둔다(돈이 움직이는 일은 하지 않는다).
+// 충전: POST …/charges(구독 결제 카드). 금액은 비워 두고 시작하며 확인 창을 거친다. 충전 스위치가 꺼져 있으면 잠근다. 유료 잔액 환불 API는 아직 없다.
 // 비용 안내 문구는 docs/terms/SELLER_MESSAGE_FEE_NOTICE.md 서식 그대로(components/seller/messageFeeNotice.ts).
 
 type Channel = "MAIL_TRANSACTIONAL" | "MAIL_BULK" | "SMS" | "LMS" | "ALIMTALK" | "IDENTITY_VERIFICATION" | "DELIVERY_TRACKING";
@@ -40,6 +40,9 @@ type Entry = {
 type Ledger = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; entries: Entry[]; next: string | null };
 
 const MAX_THRESHOLD = 10_000_000;
+const CHARGE_MIN = 1_000;
+const CHARGE_MAX = 1_000_000;
+const CHARGE_UNIT = 1_000;
 const TBD = "[확정 전]";
 const CHANNEL: Record<Channel, string> = {
   MAIL_TRANSACTIONAL: "거래 메일(제공량 초과분)",
@@ -67,6 +70,12 @@ export default function MessageBalancePage() {
   const [failure, setFailure] = useState<string | null>(null);
   const [showError, setShowError] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [amount, setAmount] = useState("");
+  const [amountError, setAmountError] = useState<string | null>(null);
+  const [confirmAmount, setConfirmAmount] = useState<number | null>(null);
+  const [pending, setPending] = useState(false);
+  // 같은 금액의 확인 중(202) 결제는 같은 키로 다시 보내 결과를 확인한다. 결과가 정해지면 키를 버린다.
+  const attempt = useRef<{ amount: number; key: string } | null>(null);
 
   const load = useCallback(async () => {
     const r = await api<Balance>("/api/seller/message-balance");
@@ -178,6 +187,46 @@ export default function MessageBalancePage() {
     await load();
   };
 
+  const openCharge = () => {
+    const n = parseAmount(amount);
+    const bad = n === null || n < CHARGE_MIN || n > CHARGE_MAX || n % CHARGE_UNIT !== 0;
+    setFailure(null);
+    if (bad) return setAmountError("충전 금액은 1,000원에서 100만 원 사이, 1,000원 단위로 입력해 주십시오");
+    setAmountError(null);
+    setConfirmAmount(n);
+  };
+  const charge = async () => {
+    if (confirmAmount === null) return;
+    if (attempt.current?.amount !== confirmAmount) attempt.current = { amount: confirmAmount, key: crypto.randomUUID() };
+    setBusy(true);
+    const r = await api<{ charge: { status: "PAID" | "PENDING" | "FAILED" } }>("/api/seller/message-balance/charges", {
+      method: "POST",
+      body: { amount: confirmAmount, idempotencyKey: attempt.current.key },
+    });
+    setBusy(false);
+    if (r.ok && r.status === 202) {
+      setPending(true);
+      setConfirmAmount(null);
+      return setFailure("결제 결과를 확인하고 있습니다. 잠시 뒤 「충전하기」를 다시 눌러 같은 금액으로 결과를 확인해 주십시오");
+    }
+    if (r.ok) {
+      attempt.current = null;
+      setPending(false);
+      setConfirmAmount(null);
+      setAmount("");
+      setToast(`${won(confirmAmount)}을 충전했습니다`);
+      await Promise.all([load(), loadLedger()]);
+      return;
+    }
+    setConfirmAmount(null);
+    if (r.status === 402) {
+      attempt.current = null;
+      setPending(false);
+    }
+    if (r.status === 409 && r.error === "consent_required") await load();
+    setFailure(failMessage(r, "admin", "충전하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
+  };
+
   const upcoming = b.prices.filter((p) => p.next);
 
   return (
@@ -252,7 +301,7 @@ export default function MessageBalancePage() {
                         <tr key={k}>
                           <td>{k}</td>
                           <td>{cost}</td>
-                          <td>{basis}</td>
+                          <td className="col-text">{basis}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -271,8 +320,25 @@ export default function MessageBalancePage() {
         <div style={{ marginTop: 32 }}>
           <FormSection title="충전">
             <FormRow label="충전 금액" help="선불 · 충전 잔액에서만 차감합니다">
-              <input className="inp num" type="text" inputMode="numeric" value="0" readOnly disabled aria-label="충전 금액" style={{ width: 160 }} />
+              <input
+                className={`inp num${amountError ? " is-error" : ""}`}
+                type="text"
+                inputMode="numeric"
+                placeholder="0"
+                value={amount}
+                disabled={!b.chargingEnabled || !consented || busy}
+                readOnly={pending}
+                onChange={(e) => {
+                  setAmount(e.target.value);
+                  setAmountError(null);
+                }}
+                aria-label="충전 금액"
+                aria-invalid={!!amountError}
+                data-testid="charge-amount"
+                style={{ width: 160 }}
+              />
               <span className="t-l2 c-alt">원</span>
+              {amountError && <span className="err" role="alert">{amountError}</span>}
             </FormRow>
             <FormRow
               label="잔액 부족 알림 기준"
@@ -317,12 +383,12 @@ export default function MessageBalancePage() {
             </FormRow>
           </FormSection>
           <div className="row" style={{ justifyContent: "center", marginTop: 16 }}>
-            <button className="btn btn-lg" type="button" disabled data-testid="charge-button">
+            <button className="btn btn-lg" type="button" disabled={!b.chargingEnabled || !consented || busy} onClick={openCharge} data-testid="charge-button">
               충전하기
             </button>
           </div>
           <p className="help" style={{ textAlign: "center" }}>
-            {!b.chargingEnabled ? "충전 기능 준비 중" : consented ? "카드 충전은 준비 중입니다" : "동의에 체크하면 충전할 수 있습니다"}
+            {!b.chargingEnabled ? "충전 기능 준비 중" : consented ? "구독 결제 카드로 충전합니다 · 누르면 확인 창이 열립니다" : "동의에 체크하면 충전할 수 있습니다"}
           </p>
         </div>
 
@@ -376,7 +442,7 @@ export default function MessageBalancePage() {
                                 {TYPE[e.type]}
                                 {STATUS[e.status] ? ` · ${STATUS[e.status]}` : ""}
                               </td>
-                              <td>{[e.channel ? CHANNEL[e.channel] : null, e.reason].filter(Boolean).join(" · ") || "-"}</td>
+                              <td className="col-text">{[e.channel ? CHANNEL[e.channel] : null, e.reason].filter(Boolean).join(" · ") || "-"}</td>
                               <td className="num">{e.quantity === null ? "-" : `${e.quantity.toLocaleString("ko-KR")}건`}</td>
                               <td className="num">{signed(e.paidAmount)}</td>
                               <td className="num">{signed(e.freeAmount)}</td>
@@ -401,6 +467,26 @@ export default function MessageBalancePage() {
           </p>
         </div>
       </main>
+      {confirmAmount !== null && (
+        <Modal labelId="charge-title" busy={busy} busyText="결제 중입니다. 끝날 때까지 닫을 수 없습니다." onClose={() => setConfirmAmount(null)}>
+          <div className="modal-h">
+            <h2 className="modal-t" id="charge-title">
+              {won(confirmAmount)}을 충전하시겠습니까?
+            </h2>
+          </div>
+          <div className="modal-b">
+            <p className="t-l2">구독 결제에 등록한 카드로 바로 결제됩니다. 충전한 금액은 발송 비용 안내의 단가대로만 차감됩니다.</p>
+          </div>
+          <div className="modal-f">
+            <button className="btn btn-out" type="button" disabled={busy} onClick={() => setConfirmAmount(null)}>
+              취소
+            </button>
+            <button className="btn" type="button" disabled={busy} onClick={() => void charge()} data-testid="charge-confirm">
+              {busy ? "결제 중" : "충전"}
+            </button>
+          </div>
+        </Modal>
+      )}
       {toast && <Toast text={toast} onDone={() => setToast(null)} />}
     </>
   );

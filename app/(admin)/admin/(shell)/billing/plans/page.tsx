@@ -6,25 +6,29 @@ import { PageHead } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
-import { MAIL_QUOTA_MAX_UI, type MessageSettings, type PlanQuota } from "../../../_components/messageFees";
-import { dayTime } from "../../../_components/partners";
+import { MAIL_QUOTA_MAX_UI, type AdminPlan } from "../../../_components/messageFees";
+import { dayTime, won } from "../../../_components/partners";
+import { PlanPriceDialog } from "../../../_components/PlanPriceDialog";
+import { PlanTrialDialog } from "../../../_components/PlanTrialDialog";
 import { ValueDialog } from "../../../_components/ValueDialog";
 
-// MA-021 요금제 목록 중 월 거래 메일 제공량(MA-022). 데이터는 GET /api/admin/message-settings의 plans(모든 마스터 역할), 바꾸기는 최고관리자만.
-// 가격·체험 한도·체험 일수는 마스터 쪽 요금제 목록 API(가격 포함)가 없어 아직 이 화면에 없다.
-type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; plans: PlanQuota[] };
+// MA-021 요금제 목록·MA-022 가격·체험 한도·월 거래 메일 제공량. 데이터는 GET /api/admin/plans(모든 마스터 역할).
+// 바꾸기: 가격·제공량은 최고관리자만(billing.price), 체험 한도는 최고관리자·운영 담당(billing.manage).
+type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; plans: AdminPlan[] };
+type Dialog = { kind: "price" | "trial" | "quota"; plan: AdminPlan };
 
 export default function PlansPage() {
   const { me } = useAdmin();
   const canEdit = adminCan(me.role, "billing.price");
+  const canTrial = adminCan(me.role, "billing.manage");
   const [state, setState] = useState<Load>({ kind: "loading" });
-  const [dialog, setDialog] = useState<PlanQuota | null>(null);
+  const [dialog, setDialog] = useState<Dialog | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const reqId = useRef(0);
   const load = useCallback(async () => {
     const id = ++reqId.current;
-    const r = await adminApi<MessageSettings>("/api/admin/message-settings");
+    const r = await adminApi<{ plans: AdminPlan[] }>("/api/admin/plans");
     if (id !== reqId.current) return;
     setState(r.ok ? { kind: "ok", plans: r.data.plans } : { kind: "error" });
   }, []);
@@ -49,24 +53,50 @@ export default function PlansPage() {
                   <thead>
                     <tr>
                       <th>요금제</th>
+                      <th>정가</th>
+                      <th>판매가</th>
+                      <th>체험 일수</th>
+                      <th>체험 알림톡·문자</th>
+                      <th>체험 본인확인</th>
+                      <th>체험 저장 용량</th>
                       <th>월 거래 메일 제공량</th>
                       <th>변경 후 제공량</th>
                       <th>적용 예정일</th>
-                      {canEdit && <th>작업</th>}
+                      {(canEdit || canTrial) && <th>작업</th>}
                     </tr>
                   </thead>
                   <tbody>
                     {state.plans.map((p) => (
                       <tr key={p.code} data-testid="plan-row">
                         <td className="fw6">{p.name}</td>
+                        <td className="num">{won(p.listPrice)}</td>
+                        <td className="num">{won(p.salePrice)}</td>
+                        <td className="num">{p.trialDays}일</td>
+                        <td className="num">{p.trialMessageLimit.toLocaleString("ko-KR")}건</td>
+                        <td className="num">{p.trialIdentityLimit.toLocaleString("ko-KR")}건</td>
+                        <td className="num">{p.trialStorageMb.toLocaleString("ko-KR")}MB</td>
                         <td className="num">{p.mailMonthlyQuota.toLocaleString("ko-KR")}통</td>
                         <td className="num">{p.next ? `${p.next.mailMonthlyQuota.toLocaleString("ko-KR")}통` : "-"}</td>
                         <td className="num">{p.next ? dayTime(p.next.effectiveAt) : "-"}</td>
-                        {canEdit && (
+                        {(canEdit || canTrial) && (
                           <td>
-                            <button className="btn btn-sm btn-out" type="button" onClick={() => setDialog(p)}>
-                              제공량 변경
-                            </button>
+                            <div className="row" style={{ gap: 8 }}>
+                              {canEdit && (
+                                <button className="btn btn-sm btn-out" type="button" onClick={() => setDialog({ kind: "price", plan: p })}>
+                                  가격 변경
+                                </button>
+                              )}
+                              {canTrial && (
+                                <button className="btn btn-sm btn-out" type="button" onClick={() => setDialog({ kind: "trial", plan: p })}>
+                                  체험 한도 변경
+                                </button>
+                              )}
+                              {canEdit && (
+                                <button className="btn btn-sm btn-out" type="button" onClick={() => setDialog({ kind: "quota", plan: p })}>
+                                  제공량 변경
+                                </button>
+                              )}
+                            </div>
                           </td>
                         )}
                       </tr>
@@ -78,14 +108,36 @@ export default function PlansPage() {
         </div>
         <p className="t-c1 c-alt">월 제공량은 한국 시간 기준 한 달 단위이고 남아도 다음 달로 넘어가지 않습니다. 제공량을 넘는 메일은 파트너스의 발송 잔액에서 차감됩니다.</p>
       </main>
-      {dialog && (
+      {dialog?.kind === "price" && (
+        <PlanPriceDialog
+          plan={dialog.plan}
+          onClose={() => setDialog(null)}
+          onDone={() => {
+            setDialog(null);
+            setToast("가격을 저장했습니다.");
+            void load();
+          }}
+        />
+      )}
+      {dialog?.kind === "trial" && (
+        <PlanTrialDialog
+          plan={dialog.plan}
+          onClose={() => setDialog(null)}
+          onDone={() => {
+            setDialog(null);
+            setToast("체험 한도를 저장했습니다.");
+            void load();
+          }}
+        />
+      )}
+      {dialog?.kind === "quota" && (
         <ValueDialog
-          title={`${dialog.name} 월 제공량 변경`}
+          title={`${dialog.plan.name} 월 제공량 변경`}
           label="월 거래 메일 제공량"
           unit="통"
-          current={dialog.mailMonthlyQuota}
+          current={dialog.plan.mailMonthlyQuota}
           max={MAIL_QUOTA_MAX_UI}
-          path={`/api/admin/plans/${dialog.code}/mail-quota`}
+          path={`/api/admin/plans/${dialog.plan.code}/mail-quota`}
           field="monthlyQuota"
           onClose={() => setDialog(null)}
           onDone={() => {

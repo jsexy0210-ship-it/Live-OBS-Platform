@@ -153,7 +153,7 @@ export default function StaffPage() {
                   </thead>
                   <tbody>
                     <tr>
-                      <td>
+                      <td className="col-text">
                         <span className="fw6">{me.user.name} (나)</span>
                         <div className="t-c1 c-alt">{me.user.email}</div>
                       </td>
@@ -170,14 +170,14 @@ export default function StaffPage() {
                       const off = s.status !== "ACTIVE";
                       return (
                         <tr key={s.id} className={off ? "faded" : undefined} data-testid="staff-row">
-                          <td>
+                          <td className="col-text">
                             <span className="fw6">{s.name}</span>
                             <div className="t-c1 c-alt">{s.email}</div>
                             <div className="t-c1 c-alt">
                               {s.phone ? phoneText(s.phone) : "휴대폰 미등록"} · {s.identityLinked ? "본인확인 연결됨" : "본인확인 전"}
                             </div>
                           </td>
-                          <td>
+                          <td className="col-text">
                             <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
                               {s.permissions.length === 0 ? (
                                 <span className="t-c1 c-alt">켜진 권한 없음</span>

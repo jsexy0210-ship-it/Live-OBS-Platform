@@ -23,7 +23,7 @@ export const ADMIN_MENU: AdminGroup[] = [
       { label: "요금제", href: "/admin/billing/plans", ready: true },
       { label: "구독 현황", href: "/admin/billing/subscriptions", ready: true },
       { label: "청구·결제 내역", href: "/admin/billing/invoices", ready: true },
-      { label: "환불 요청", href: "/admin/billing/refunds" },
+      { label: "환불 요청", href: "/admin/billing/refunds", ready: true },
     ],
   },
   {
@@ -38,9 +38,9 @@ export const ADMIN_MENU: AdminGroup[] = [
     key: "ops",
     label: "운영",
     items: [
-      { label: "실시간 방송", href: "/admin/ops/live" },
-      { label: "주문·오버레이 접속", href: "/admin/ops/access" },
-      { label: "적립금 실지급 파트너스", href: "/admin/ops/rewards" },
+      { label: "실시간 방송", href: "/admin/ops/live", ready: true },
+      { label: "주문·오버레이 접속", href: "/admin/ops/access", ready: true },
+      { label: "적립금 실지급 파트너스", href: "/admin/ops/rewards", ready: true },
       { label: "실시간 감시", href: "/admin/ops/monitor", perm: "system.manage", ready: true },
       { label: "자동 연결 작업", href: "/admin/ops/jobs" },
     ],

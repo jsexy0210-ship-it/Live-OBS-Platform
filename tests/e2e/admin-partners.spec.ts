@@ -82,7 +82,7 @@ test("최고관리자: 검색·상태 필터로 찾고, 이용 정지는 사유�
   expect((await db.seller.findUniqueOrThrow({ where: { id: idA } })).status).toBe("ACTIVE");
 });
 
-test("상세: 기본 정보·대표자·사업자·구독·최근 30일 주문이 보이고, 값은 왼쪽 정렬이다(표 열 제목 가운데 정렬은 공통 CSS 몫)", async ({ page }) => {
+test("상세: 기본 정보·대표자·사업자·구독·최근 30일 주문이 보이고, 상세 값(dl)은 왼쪽, 표 데이터는 가운데 정렬이다", async ({ page }) => {
   await login(page, emails.super);
   await search(page, slugA);
   await page.getByRole("link", { name: nameA }).click();
@@ -100,7 +100,7 @@ test("상세: 기본 정보·대표자·사업자·구독·최근 30일 주문�
   const align = (sel: string) => page.locator(sel).first().evaluate((el) => getComputedStyle(el).textAlign);
   expect(["left", "start"]).toContain(await align("dl.kv dd"));
   await page.goto("/admin/partners");
-  expect(["left", "start"]).toContain(await align(".tbl td"));
+  expect(await align(".tbl td")).toBe("center"); // 표 정렬 새 규칙(2026-10-05): 글 열(.col-text)이 아니면 데이터는 가운데
   await page.goto("/admin/partners/applications"); // 상세 [sellerId]가 아니라 가입 신청 목록(MA-013)
   await expect(page.getByRole("heading", { name: "가입 신청" })).toBeVisible();
 });

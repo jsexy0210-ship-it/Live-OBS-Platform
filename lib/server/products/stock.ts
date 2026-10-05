@@ -31,7 +31,7 @@ export async function restoreOrderStock(
       stockRestoredAt: null,
       ...(input.itemIds ? { id: { in: input.itemIds } } : {}),
     },
-    orderBy: { createdAt: "asc" },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   });
   const restored: string[] = [];
   for (const item of items) {

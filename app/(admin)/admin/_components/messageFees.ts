@@ -3,6 +3,21 @@
 export type MessageChannel = "MAIL_TRANSACTIONAL" | "MAIL_BULK" | "SMS" | "LMS" | "ALIMTALK" | "IDENTITY_VERIFICATION" | "DELIVERY_TRACKING";
 export type ChannelPrice = { channel: MessageChannel; unitPrice: number; next: { unitPrice: number; effectiveAt: string } | null };
 export type PlanQuota = { code: string; name: string; mailMonthlyQuota: number; next: { mailMonthlyQuota: number; effectiveAt: string } | null };
+export type AdminPlan = {
+  code: string;
+  name: string;
+  listPrice: number;
+  salePrice: number;
+  trialDays: number;
+  trialMessageLimit: number;
+  trialIdentityLimit: number;
+  trialStorageMb: number;
+  mailMonthlyQuota: number;
+  next: { mailMonthlyQuota: number; effectiveAt: string } | null;
+};
+// 서버(updatePlanPrice·updateTrialLimits)와 같은 상한
+export const PRICE_MAX = 100_000_000;
+export const TRIAL_LIMIT_MAX = 10_000_000;
 export type MessageSettings = {
   chargingEnabled: boolean;
   platformDailyLimit: number;

@@ -71,8 +71,13 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/coupons": "STORE_OPERATIONS",
   "seller/member-grades": "STORE_OPERATIONS",
   "seller/member-grades/[gradeId]": "STORE_OPERATIONS",
+  "seller/member-grades/recalc": "STORE_OPERATIONS",
   "seller/member-grades/members/[memberId]": "STORE_OPERATIONS",
   "seller/returns": "ORDER_FOLLOWUP",
+  "seller/refund-requests": "ORDER_FOLLOWUP",
+  "seller/refund-requests/[id]": "ORDER_FOLLOWUP",
+  "seller/refund-requests/[id]/approve": "ORDER_FOLLOWUP",
+  "seller/refund-requests/[id]/reject": "ORDER_FOLLOWUP",
   "seller/returns/[id]": "ORDER_FOLLOWUP",
   "seller/returns/[id]/accept": "ORDER_FOLLOWUP",
   "seller/returns/[id]/reject": "ORDER_FOLLOWUP",
@@ -135,6 +140,12 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/notices": "STORE_OPERATIONS",
   "seller/platform-notices": "BILLING", // 플랫폼 공지(SA-111·112): 잠김·정지 중에도 본다
   "seller/platform-notices/[noticeId]": "BILLING",
+  "seller/assistant": "BILLING", // 도우미(SA-140): 사용법 질문, 잠김·정지 중에도 쓴다(비용은 플랫폼 월 한도·하루 한도가 막음)
+  "seller/platform-inquiries": "BILLING", // 플랫폼 문의(SA-113·114·115): 잠김·정지 중에도 쓴다
+  "seller/platform-inquiries/[inquiryId]": "BILLING",
+  "seller/platform-inquiries/[inquiryId]/messages": "BILLING",
+  "seller/platform-inquiries/images": "BILLING",
+  "seller/platform-inquiries/images/[imageId]": "BILLING",
   "seller/notices/[noticeId]": "STORE_OPERATIONS",
   "seller/notices/faq-order": "STORE_OPERATIONS",
   "seller/shop-content/banners": "STORE_OPERATIONS",
@@ -189,6 +200,8 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/categories": "STORE_OPERATIONS", // 카테고리 메뉴(SA-015)
   "shop/[slug]/shop-content/logo": "STORE_OPERATIONS", // 쇼핑몰 로고(없으면 404, 화면은 첫 글자)
   "shop/[slug]/returns": "STORE_OPERATIONS", // 교환·반품 신청(POST는 shopOpen으로 막고, GET 내 신청 조회는 잠긴 쇼핑몰에서도 열림)
+  "shop/[slug]/refund-requests": "STORE_OPERATIONS", // 환불 요청(반품 신청과 같음: POST는 shopOpen으로 막음)
+  "shop/[slug]/refund-requests/[id]/cancel": "STORE_OPERATIONS",
   "shop/[slug]/returns/[id]/cancel": "STORE_OPERATIONS",
   "shop/[slug]/returns/[id]/ship-back": "STORE_OPERATIONS",
   "shop/[slug]/returns/images": "STORE_OPERATIONS",

@@ -481,11 +481,11 @@ export default function BroadcastDashboardPage() {
                           <tr key={w.id}>
                             <td className="num">{i + 1}</td>
                             <td className="num">{kstTime(w.receivedAt)}</td>
-                            <td>
+                            <td className="col-text">
                               <ItemText item={w} />
                             </td>
                             {chatOn && (
-                              <td className="t-c1" data-testid="bc-chat-cell">
+                              <td className="t-c1 col-text" data-testid="bc-chat-cell">
                                 {chatText(chat.get(w.nicknameSnapshot))}
                               </td>
                             )}
@@ -539,7 +539,7 @@ export default function BroadcastDashboardPage() {
                           return (
                             <tr key={d.id}>
                               <td className="num">{d.doneAt ? kstTime(d.doneAt) : "-"}</td>
-                              <td>
+                              <td className="col-text">
                                 <ItemText item={d} />
                               </td>
                               <td>

@@ -15,6 +15,7 @@ import { revokeReviewRewardsForOrder, type ReviewRewardRevoke } from "../product
 import { requestPaymentCancel } from "../payments/service";
 import { returnRewardForOrder, rewardReturnAmount } from "../payments/rewardUse";
 import { computeRefundStep, earnRevokeStep, itemValue, type RefundCalcItem } from "../payments/refundCalc";
+import { settleRefundRequestsOnRefund } from "../payments/refundRequestHooks";
 
 type Tx = Prisma.TransactionClient;
 
@@ -407,7 +408,7 @@ async function markPaidIfPending(tx: Tx, sellerId: string, orderId: string, data
 async function loadPendingOrder(tx: Tx, sellerId: string, orderId: string) {
   const order = await tx.order.findFirst({
     where: { id: orderId, sellerId },
-    include: { items: { orderBy: { createdAt: "asc" } }, buyerMember: { include: { grade: true } }, couponRedemption: { select: { itemDiscounts: true } } },
+    include: { items: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] }, buyerMember: { include: { grade: true } }, couponRedemption: { select: { itemDiscounts: true } } },
   });
   if (!order) throw new Rejected("not_found");
   if (order.status !== "PENDING_PAYMENT") throw new Rejected("invalid_transition");
@@ -536,7 +537,7 @@ const isQueued = (q: Pick<QueueItem, "status"> | undefined) => !!q && (q.status 
 export type RefundSelection = { orderItemId: string; quantity: number }[];
 
 const refundOrderInclude = {
-  items: { orderBy: { createdAt: "asc" as const } },
+  items: { orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }] },
   queueItems: true,
   shipment: { select: { status: true } },
   couponRedemption: { select: { benefit: true, itemDiscounts: true } },
@@ -708,7 +709,17 @@ export async function refundOrder(
   db: PrismaClient,
   ctx: TenantContext,
   orderId: string,
-  opts: { reason?: string; expectedLiveVersion: number; confirmOpened?: boolean; fault?: RefundFault; expectedRefundAmount?: number; items?: RefundSelection; now?: Date },
+  opts: {
+    reason?: string;
+    expectedLiveVersion: number;
+    confirmOpened?: boolean;
+    fault?: RefundFault;
+    expectedRefundAmount?: number;
+    items?: RefundSelection;
+    // 구매자 환불 요청 승인(payments/refundRequest.ts): 그 요청이 진행 중이어야 하고, 같은 트랜잭션에서 승인으로 닫는다
+    refundRequestId?: string;
+    now?: Date;
+  },
 ): Promise<QueueResult<RefundOutcome>> {
   requireSellerPermission(ctx, "ORDER_SHIPPING");
   if (!opts.reason?.trim()) return { ok: false, reason: "reason_required" };
@@ -772,6 +783,17 @@ export async function refundOrder(
         createdAt: now,
       },
     });
+    // 구매자 환불 요청: 승인으로 한 환불이면 그 요청을, 남은 품목을 모두 돌려준 환불이면 진행 중인 요청을 승인으로 닫는다
+    const settled = await settleRefundRequestsOnRefund(tx, {
+      sellerId: ctx.sellerId,
+      orderId,
+      refundId: refund.id,
+      isFinal,
+      requestId: opts.refundRequestId,
+      now,
+      actor: { actorType: ctx.actorType, actorId: ctx.actorId },
+    });
+    if (!settled) throw new Rejected("invalid_transition");
     for (const l of plan.step.lines) await tx.orderItem.update({ where: { id: l.orderItemId }, data: { refundedQuantity: { increment: l.quantity } } });
     await tx.order.update({
       where: { id: orderId },

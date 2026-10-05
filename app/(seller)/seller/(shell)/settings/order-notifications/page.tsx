@@ -97,7 +97,7 @@ export default function OrderNotificationsPage() {
                 {MAILS.map(([k, v]) => (
                   <tr key={k}>
                     <td>{k}</td>
-                    <td>{v}</td>
+                    <td className="col-text">{v}</td>
                   </tr>
                 ))}
               </tbody>

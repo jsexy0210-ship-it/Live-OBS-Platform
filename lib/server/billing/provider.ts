@@ -7,6 +7,9 @@ export type ChargeResult = { ok: true; paymentId: string; receiptUrl: string | n
 export type PaymentLookup = { status: "PAID"; paymentId: string; receiptUrl: string | null } | { status: "FAILED"; reason: string } | { status: "NOT_FOUND" };
 
 export type ChargeInput = { billingKey: string; customerKey: string; amount: number; orderId: string; orderName: string };
+// 결제 취소(환불). refundId는 우리 환불 id다. 같은 refundId로 다시 요청해도 한 번만 취소되게 PG에 넘긴다.
+export type CancelInput = { paymentId: string; amount: number; refundId: string; reason: string };
+export type CancelResult = { ok: true; cancelId: string } | { ok: false; reason: string };
 
 export interface BillingProvider {
   readonly name: string;
@@ -15,6 +18,8 @@ export interface BillingProvider {
   // 빌링키로 결제한다. orderId는 우리 청구 id다. 같은 orderId로 다시 요청해도 한 번만 결제되게 PG에 넘긴다.
   charge(input: ChargeInput): Promise<ChargeResult>;
   getPayment(orderId: string): Promise<PaymentLookup>;
+  // 결제를 (부분) 취소한다. 실제 업체를 붙이기 전까지 쓰는 공급자는 가짜뿐이라 돈은 오가지 않는다.
+  cancelPayment(input: CancelInput): Promise<CancelResult>;
 }
 
 // 테스트 서버 모드(오래 도는 서버)에서 가짜 결제 공급자가 메모리에 들고 있는 결제 결과·결제 기록 개수 상한.
@@ -28,6 +33,10 @@ export class FakeBillingProvider implements BillingProvider {
   private declined = new Set<string>();
   private results = new Map<string, PaymentLookup>();
   readonly charges: { orderId: string; amount: number; billingKey: string }[] = [];
+  readonly cancels: { refundId: string; paymentId: string; amount: number }[] = [];
+  private cancelResults = new Map<string, CancelResult>();
+  // 테스트용: 다음 취소 요청을 거절할지(사유)
+  rejectNextCancel: string | null = null;
   // 테스트용: 다음 결제 요청을 어떻게 망가뜨릴지(결제 전 타임아웃 / 결제 후 응답 유실)
   failNext: "timeout_before_charge" | "timeout_after_charge" | null = null;
 
@@ -90,5 +99,17 @@ export class FakeBillingProvider implements BillingProvider {
 
   async getPayment(orderId: string): Promise<PaymentLookup> {
     return this.results.get(orderId) ?? { status: "NOT_FOUND" };
+  }
+
+  async cancelPayment(input: CancelInput): Promise<CancelResult> {
+    const prev = this.cancelResults.get(input.refundId);
+    if (prev?.ok) return prev;
+    const reject = this.rejectNextCancel;
+    this.rejectNextCancel = null;
+    const result: CancelResult = reject ? { ok: false, reason: reject } : { ok: true, cancelId: `fake-cancel-${input.refundId}` };
+    if (result.ok) this.cancels.push({ refundId: input.refundId, paymentId: input.paymentId, amount: input.amount });
+    this.cancelResults.set(input.refundId, result);
+    if (this.bounded && this.cancelResults.size > FAKE_BILLING_RESULTS_KEEP) this.cancelResults.delete(this.cancelResults.keys().next().value!);
+    return result;
   }
 }

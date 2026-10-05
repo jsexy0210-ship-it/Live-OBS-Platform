@@ -1,6 +1,5 @@
 "use client";
 
-import "../../../../../../styles/seller-orders.css";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Modal, PageHead } from "../../../../../../components/admin-ui";
@@ -210,8 +209,8 @@ export default function CategoriesPage() {
             </div>
           )}
           {state.kind === "ok" && tree.length > 0 && (
-            <div className="ord-scroll">
-              <table className="tbl ord-tbl">
+            <div className="au-lt-wrap">
+              <table className="tbl">
                 <thead>
                   <tr>
                     <th>이름</th>
@@ -226,7 +225,7 @@ export default function CategoriesPage() {
                     const kids = sortBy(p.children, p.id);
                     return [
                       <tr key={p.id} data-testid="category-row" data-level="1">
-                        <td>
+                        <td className="col-text">
                           <b>{p.name}</b> <span className="t-c1 c-alt">대분류 · 하위 {p.children.length}</span>
                           {!p.visible && <span className="bdg b-gray nodot" style={{ marginLeft: 6 }}>숨김</span>}
                         </td>
@@ -253,7 +252,7 @@ export default function CategoriesPage() {
                       </tr>,
                       ...kids.map((c, ci) => (
                         <tr key={c.id} data-testid="category-row" data-level="2">
-                          <td style={{ paddingLeft: 32 }}>
+                          <td className="col-text" style={{ paddingLeft: 32 }}>
                             └ {c.name}
                             {!c.visible && <span className="bdg b-gray nodot" style={{ marginLeft: 6 }}>숨김</span>}
                           </td>

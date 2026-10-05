@@ -60,7 +60,7 @@ export async function startPayment(
   if (!(await shopOpenForPayment(db, input.sellerId))) return { ok: false, reason: "shop_unavailable" };
   const order = await db.order.findFirst({
     where: { id: input.orderId, sellerId: input.sellerId, buyerMemberId: input.buyerMemberId, legalHoldAt: null },
-    include: { items: { orderBy: { createdAt: "asc" } }, couponRedemption: { select: { discountAmount: true } } },
+    include: { items: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] }, couponRedemption: { select: { discountAmount: true } } },
   });
   if (!order) return { ok: false, reason: "not_found" };
   if (await db.payment.findFirst({ where: { orderId: order.id, status: { in: ["APPROVING", "PAID", "PARTIAL_CANCELLED"] } }, select: { id: true } }))
