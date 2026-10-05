@@ -32,7 +32,7 @@ export type ShopProduct = {
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 const QTY_MAX = 99;
 
-export default function ProductDetail({ slug, loggedIn, product: p }: { slug: string; loggedIn: boolean; product: ShopProduct }) {
+export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }: { slug: string; loggedIn: boolean; product: ShopProduct; crumb?: { id: string; name: string }[] }) {
   const base = `/shop/${encodeURIComponent(slug)}`;
   const api = `/api/shop/${encodeURIComponent(slug)}`;
   const router = useRouter();
@@ -117,6 +117,17 @@ export default function ProductDetail({ slug, loggedIn, product: p }: { slug: st
 
   return (
     <article className="pd" aria-label={p.name}>
+      {crumb.length > 0 && (
+        <nav className="pd-crumb" aria-label="상품 경로">
+          <Link href={`${base}/products`}>전체 상품</Link>
+          {crumb.map((c) => (
+            <span key={c.id}>
+              {" › "}
+              <Link href={`${base}/products?category=${c.id}`}>{c.name}</Link>
+            </span>
+          ))}
+        </nav>
+      )}
       <div className="pd-top">
         <div className="pd-gallery">
           <div className="pd-hero">
