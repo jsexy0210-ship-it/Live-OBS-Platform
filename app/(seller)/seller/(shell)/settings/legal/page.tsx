@@ -75,8 +75,8 @@ function LegalPanel({ kind, label, slug, editable, visible }: { kind: Kind; labe
   }, [dirty]);
 
   const length = [...body].length;
-  const bodyError = length > BODY_MAX ? `본문은 ${BODY_MAX.toLocaleString("ko-KR")}자까지 입력할 수 있습니다` : published && !body.trim() ? "게시하려면 본문을 입력해 주십시오" : null;
-  const dateError = published && !date ? "게시하려면 시행일을 입력해 주십시오" : null;
+  const bodyError = length > BODY_MAX ? `본문은 ${BODY_MAX.toLocaleString("ko-KR")}자까지 입력할 수 있습니다` : published && !body.trim() ? "공개하려면 본문을 써 주십시오" : null;
+  const dateError = published && !date ? "공개하려면 시작하는 날을 정해 주십시오" : null;
 
   const save = async () => {
     if (!saved || saving) return;
@@ -89,12 +89,12 @@ function LegalPanel({ kind, label, slug, editable, visible }: { kind: Kind; labe
     setSaving(false);
     if (!r.ok) {
       if (r.error === "version_conflict") setConflict(true);
-      return setFailure(failMessage(r, "admin", "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
+      return setFailure(failMessage(r, "admin", "저장하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주십시오"));
     }
     apply(r.data.doc);
     setShowError(false);
     setState({ kind: "ok", saved: r.data.doc });
-    setToast(r.data.doc.isPublished ? `${label}을 저장했습니다 · 구매자 화면에 게시 중` : `${label}을 저장했습니다 · 게시 전`);
+    setToast(r.data.doc.isPublished ? `${label}을 저장했습니다 · 구매자 화면에 공개 중` : `${label}을 저장했습니다 · 아직 공개 안 함`);
   };
 
   if (state.kind !== "ok") {
@@ -128,23 +128,23 @@ function LegalPanel({ kind, label, slug, editable, visible }: { kind: Kind; labe
           </div>
         )}
         <FormSection title={label}>
-          <FormRow label="구매자 화면" help="입력한 내용이 구매자 쇼핑몰 바닥글 링크에 그대로 표시됩니다 · 저장한 뒤에 반영">
+          <FormRow label="구매자 화면" help="구매자 쇼핑몰 맨 아래 링크에 쓴 글이 그대로 보입니다 · 저장해야 바뀝니다">
             <div className="row" style={{ gap: 12, flexWrap: "wrap", alignItems: "center" }}>
               <span className="t-l2" data-testid={`legal-status-${kind}`}>
-                {saved?.isPublished && saved.effectiveOn ? `게시 중 · 시행일 ${korDate(saved.effectiveOn)}` : "게시 전 · 구매자에게는 준비 중으로 표시"}
+                {saved?.isPublished && saved.effectiveOn ? `공개 중 · 시작하는 날 ${korDate(saved.effectiveOn)}` : "아직 공개 안 함 · 구매자에게는 「준비 중」으로 보입니다"}
               </span>
               <a className="btn btn-sm btn-out" href={`/shop/${slug}/${kind}`} target="_blank" rel="noreferrer">
                 구매자 화면 보기
               </a>
             </div>
           </FormRow>
-          <FormRow label="시행일" help="게시하려면 필요합니다">
+          <FormRow label="시작하는 날" help="공개하려면 필요합니다">
             <div className="col" style={{ gap: 4 }}>
-              <input className={`inp${showError && dateError ? " is-error" : ""}`} type="date" aria-label={`${label} 시행일`} aria-invalid={showError && !!dateError} readOnly={!editable} value={date} onChange={(e) => setDate(e.target.value)} />
+              <input className={`inp${showError && dateError ? " is-error" : ""}`} type="date" aria-label={`${label} 시작하는 날`} aria-invalid={showError && !!dateError} readOnly={!editable} value={date} onChange={(e) => setDate(e.target.value)} />
               {showError && dateError && <span className="err" role="alert">{dateError}</span>}
             </div>
           </FormRow>
-          <FormRow label="본문" help="글자 그대로 표시됩니다 · 표·서식은 지원하지 않습니다">
+          <FormRow label="본문" help="쓴 글이 그대로 보입니다 · 표나 글자 꾸미기는 쓸 수 없습니다">
             <div className="col" style={{ gap: 4, width: "100%", maxWidth: 820 }}>
               <textarea
                 className={`inp${showError && bodyError ? " is-error" : ""}`}
@@ -165,8 +165,8 @@ function LegalPanel({ kind, label, slug, editable, visible }: { kind: Kind; labe
               )}
             </div>
           </FormRow>
-          <FormRow label="구매자에게 게시" help={published ? "저장하면 구매자 화면에 바로 표시됩니다" : "꺼 두면 구매자에게는 준비 중으로 보입니다 · 기본 꺼짐"}>
-            <button className={`sw${published ? " on" : ""}`} type="button" role="switch" aria-checked={published} aria-label={`${label} 구매자에게 게시`} disabled={!editable} onClick={() => setPublished((v) => !v)} />
+          <FormRow label="구매자에게 공개" help={published ? "저장하면 구매자 화면에 바로 보입니다" : "꺼 두면 구매자에게는 「준비 중」으로 보입니다 · 기본 꺼짐"}>
+            <button className={`sw${published ? " on" : ""}`} type="button" role="switch" aria-checked={published} aria-label={`${label} 구매자에게 공개`} disabled={!editable} onClick={() => setPublished((v) => !v)} />
           </FormRow>
         </FormSection>
       </fieldset>
@@ -190,8 +190,8 @@ type NoticeLoad = { kind: "loading" } | { kind: "error"; status: number } | { ki
 type Form = Omit<Notice, "version">;
 const ESCROW_CHOICES: { key: Escrow; label: string }[] = [
   { key: "none", label: "가입하지 않음" },
-  { key: "escrow", label: "에스크로" },
-  { key: "insurance", label: "소비자피해보상보험" },
+  { key: "escrow", label: "에스크로(결제 대금을 맡아 주는 서비스)" },
+  { key: "insurance", label: "소비자 피해 보상 보험" },
 ];
 const PHONE = /^[0-9+\-() ]{5,30}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -216,7 +216,7 @@ function validate(f: Form): Partial<Record<keyof Form, string>> {
   if (n(f.csHours) > HOURS_MAX) e.csHours = `운영시간은 ${HOURS_MAX}자까지 입력할 수 있습니다`;
   if (f.escrowKind !== "none" && !f.escrowProvider.trim()) e.escrowProvider = "가입한 업체 이름을 입력해 주십시오";
   if (n(f.escrowProvider) > PROVIDER_MAX) e.escrowProvider = `업체 이름은 ${PROVIDER_MAX}자까지 입력할 수 있습니다`;
-  if (f.escrowUrl.trim() && (f.escrowUrl.trim().length > URL_MAX || !httpsOk(f.escrowUrl))) e.escrowUrl = "확인 주소는 https로 시작하는 주소만 입력할 수 있습니다";
+  if (f.escrowUrl.trim() && (f.escrowUrl.trim().length > URL_MAX || !httpsOk(f.escrowUrl))) e.escrowUrl = "확인 주소는 https://로 시작하는 주소만 쓸 수 있습니다";
   if (n(f.minorNotice) > MINOR_MAX) e.minorNotice = `미성년자 구매 안내는 ${MINOR_MAX.toLocaleString("ko-KR")}자까지 입력할 수 있습니다`;
   return e;
 }
@@ -266,7 +266,7 @@ function NoticePanel({ editable, visible }: { editable: boolean; visible: boolea
     setSaving(false);
     if (!r.ok) {
       if (r.error === "version_conflict") setConflict(true);
-      return setFailure(failMessage(r, "admin", "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
+      return setFailure(failMessage(r, "admin", "저장하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주십시오"));
     }
     setForm(pick(r.data.notice));
     setShowError(false);
@@ -324,7 +324,7 @@ function NoticePanel({ editable, visible }: { editable: boolean; visible: boolea
           </div>
         )}
         <FormSection title="사업자 정보">
-          <FormRow label="입점 신청 정보" help="입점 신청 때 받아 확인한 값입니다 · 여기서는 바꿀 수 없습니다">
+          <FormRow label="처음 신청할 때 받은 정보" help="처음 신청할 때 받아 확인한 값입니다 · 여기서는 바꿀 수 없습니다">
             <dl className="legal-biz" data-testid="legal-biz">
               <div><dt>상호</dt><dd>{biz.companyName ?? "-"}</dd></div>
               <div><dt>대표자</dt><dd>{biz.representativeName ?? "-"}</dd></div>
@@ -339,15 +339,15 @@ function NoticePanel({ editable, visible }: { editable: boolean; visible: boolea
             {field("csPhone", "고객센터 전화", { placeholder: "예: 1588-1234" })}
             {field("csEmail", "이메일", { type: "email" })}
             {field("csHours", "운영시간", { placeholder: "예: 평일 10:00~17:00" })}
-            <FormRow label="호스팅 제공" help="ONQ가 자동으로 표시합니다">
+            <FormRow label="쇼핑몰 제공" help="쇼핑몰 맨 아래에 플랫폼 이름이 자동으로 나옵니다">
               <span className="t-l2">ONQ</span>
             </FormRow>
           </FormSection>
         </div>
         <div style={{ marginTop: 32 }}>
-          <FormSection title="구매안전서비스">
+          <FormSection title="결제 안전 서비스">
             <FormRow label="가입 종류" help="가입한 경우에만 선택합니다 · 가입 정보는 입력한 그대로 표시됩니다">
-              <div className="seg" role="radiogroup" aria-label="구매안전서비스 가입 종류">
+              <div className="seg" role="radiogroup" aria-label="결제 안전 서비스 가입 종류">
                 {ESCROW_CHOICES.map((c) => (
                   <button key={c.key} type="button" role="radio" aria-checked={form.escrowKind === c.key} className={form.escrowKind === c.key ? "on" : ""} disabled={!editable} onClick={() => set({ escrowKind: c.key })}>
                     {c.label}
