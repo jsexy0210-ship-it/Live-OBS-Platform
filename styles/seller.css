@@ -295,6 +295,33 @@ body {
   height: 96px;
   vertical-align: top;
 }
+/* 상품 목록 열 폭(화면 파일에 inline 폭을 두지 않는다). 이미지 칸은 썸네일 64 + 안쪽 여백 */
+.p-w-chk {
+  width: 36px;
+}
+.p-w-img {
+  width: 96px;
+}
+.p-w-date,
+.p-w-stock {
+  width: 80px;
+}
+.p-w-act {
+  width: 96px; /* 표 안 버튼 64 + 좌우 안쪽 여백 */
+}
+.p-w-price {
+  width: 120px;
+}
+.p-w-flag {
+  width: 70px;
+}
+.p-w-state {
+  width: 100px;
+}
+.p-more {
+  padding: 12px 20px;
+  min-height: 56px;
+}
 .p-cards {
   display: none;
   list-style: none;

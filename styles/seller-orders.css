@@ -32,6 +32,18 @@
 .ord-menu-i:hover {
   background: var(--wds-fill-normal);
 }
+.ord-menu-f {
+  gap: 8px;
+  padding: 4px;
+  justify-content: center;
+}
+.ord-w-act {
+  width: 120px;
+}
+.ord-more {
+  padding: 12px 20px;
+  justify-content: center;
+}
 .ord-scroll {
   overflow-x: auto;
 }
@@ -126,4 +138,16 @@
   .ord-detail .kv {
     grid-template-columns: 96px 1fr;
   }
+}
+
+/* SA-026 입금 확인 */
+.dep-w-chk {
+  width: 36px;
+}
+.dep-w-act {
+  width: 110px;
+}
+.dep-more {
+  padding: 12px 20px;
+  justify-content: center;
 }

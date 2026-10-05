@@ -23,6 +23,8 @@ type State = {
 };
 // 신규 주문 알림: 위젯(variant)마다 지금 보여 주는 주문과 끝나는 시각
 type Shown = { event: OrderEvent; until: number };
+// 새 HIT 카드를 강조하는 시간
+const HIT_FRESH_MS = 8_000;
 type Layout = { aspect: string; version: number; widgets: Widget[] };
 type View = { kind: "loading" } | { kind: "gone" } | { kind: "offline" } | { kind: "ok"; state: State; offline: boolean };
 
@@ -41,6 +43,8 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
   const [layout, setLayout] = useState<Layout | null>(null);
   const [shownAlerts, setShownAlerts] = useState<Record<string, Shown>>({});
   const seenEvents = useRef<Set<string> | null>(null);
+  const seenHits = useRef<Set<string> | null>(null);
+  const [freshHits, setFreshHits] = useState<Record<string, number>>({});
   const layoutRef = useRef<Layout | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const W = landscape ? 1920 : 1080;
@@ -80,6 +84,16 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
     isOffline.current = false;
     errorReload.current.gap = ERROR_RELOAD_MIN_MS;
     setView({ kind: "ok", state, offline: false });
+    // 새 HIT 카드 강조: 처음 읽을 때 이미 있던 카드는 강조하지 않는다
+    const hitIds = (state.hits ?? []).map((h) => h.id);
+    if (seenHits.current === null) seenHits.current = new Set(hitIds);
+    else {
+      const added = hitIds.filter((id) => !seenHits.current!.has(id));
+      if (added.length > 0) {
+        added.forEach((id) => seenHits.current!.add(id));
+        setFreshHits((cur) => ({ ...cur, ...Object.fromEntries(added.map((id) => [id, Date.now() + HIT_FRESH_MS])) }));
+      }
+    }
     // 신규 주문 알림
     const events = state.orderEvents ?? [];
     if (seenEvents.current === null) {
@@ -173,7 +187,7 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
   }, [W, H]);
 
   const state = view.kind === "ok" ? view.state : null;
-  const data: LiveData | null = state ? { live: state.live, opening: state.opening, waiting: state.waiting, hits: state.hits ?? [], shop: state.shop ?? null, alert: null } : null;
+  const data: LiveData | null = state ? { live: state.live, opening: state.opening, waiting: state.waiting, hits: state.hits ?? [], freshHitIds: Object.keys(freshHits).filter((id) => freshHits[id]! > now), shop: state.shop ?? null, alert: null } : null;
   // 주문이 없는 현재 주문 카드·방송이 아닐 때의 주문대기는 그리지 않는다(이전 화면과 같음). 신규 주문 알림·쇼핑몰 정보는 보낼 데이터가 없다
   const shown = (layout?.widgets ?? []).filter(
     (w) =>
