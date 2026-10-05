@@ -28,7 +28,8 @@ export interface PaymentGateway {
   // 승인 응답을 못 받았을 때(타임아웃) 결제를 거두는 망 취소
   netCancel(orderId: string): Promise<PgResult<null>>;
   // 웹훅 본문 서명 확인. 통과해도 본문 값을 그대로 믿지 않고 getPayment로 다시 확인한다.
-  verifyWebhook(body: unknown): { tid: string } | null;
+  // status: 웹훅 종류(서명이 맞은 본문의 status, 기록용). 결제 판단에는 쓰지 않는다.
+  verifyWebhook(body: unknown): { tid: string; status?: string } | null;
 }
 
 // 시험용 가짜 PG. 메모리에만 있고 돈은 움직이지 않는다. failNext로 타임아웃·거절을 흉내 낸다.
@@ -112,8 +113,8 @@ export class FakePaymentGateway implements PaymentGateway {
     return { kind: "ok", value: null };
   }
 
-  verifyWebhook(body: unknown): { tid: string } | null {
-    const b = body as { tid?: unknown; signature?: unknown };
-    return typeof b?.tid === "string" && b.signature === `fake-hook:${b.tid}` ? { tid: b.tid } : null;
+  verifyWebhook(body: unknown): { tid: string; status?: string } | null {
+    const b = body as { tid?: unknown; signature?: unknown; status?: unknown };
+    return typeof b?.tid === "string" && b.signature === `fake-hook:${b.tid}` ? { tid: b.tid, ...(typeof b.status === "string" ? { status: b.status } : {}) } : null;
   }
 }
