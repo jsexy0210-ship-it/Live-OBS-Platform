@@ -1,5 +1,6 @@
 import type { OrderStatus, Prisma, PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
+import { orderNoLabel, parseOrderNoLabel } from "./orderNoLabel";
 import { notFound } from "../authz/errors";
 import { canViewCustomerPii, requireSellerRead, type TenantContext } from "../tenant/context";
 
@@ -23,7 +24,7 @@ export async function getOrder(db: PrismaClient, ctx: TenantContext, orderId: st
 
   const { buyerMember, shippingAddress, ...orderRest } = order;
   // 품목마다 보낼 수량(수량 − 부분 환불한 수량). 화면은 refundedQuantity로 「부분 환불 n개」를 보여 준다.
-  const rest = { ...orderRest, items: order.items.map((i) => ({ ...i, shipQuantity: i.quantity - i.refundedQuantity })) };
+  const rest = { ...orderRest, orderNoLabel: orderNoLabel(order.createdAt, order.orderNo), items: order.items.map((i) => ({ ...i, shipQuantity: i.quantity - i.refundedQuantity })) };
   if (!canViewCustomerPii(ctx)) {
     // 배송지도 개인정보라 도서산간 여부(배송비 근거)만 남긴다
     return {
@@ -149,6 +150,9 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
       { buyerMember: { broadcastNickname: { contains: q, mode: "insensitive" } } },
     ];
     if (/^\d{1,9}$/.test(q)) or.push({ orderNo: Number(q) });
+    // 사람이 읽는 주문번호(20261005-0004): 그날(KST)에 만든 그 번호의 주문
+    const label = parseOrderNoLabel(q);
+    if (label) or.push({ orderNo: label.orderNo, createdAt: { gte: label.from, lt: label.to } });
     if (searchesPii) or.push({ shippingAddress: { recipientName: { contains: q, mode: "insensitive" } } });
     and.push({ OR: or });
   }
@@ -194,6 +198,7 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
     orders: page.map((o) => ({
       id: o.id,
       orderNo: o.orderNo,
+      orderNoLabel: orderNoLabel(o.createdAt, o.orderNo),
       status: o.status,
       createdAt: o.createdAt,
       paidAt: o.paidAt,

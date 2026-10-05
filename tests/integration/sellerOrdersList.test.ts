@@ -67,6 +67,7 @@ describe("판매자 주문 목록 GET /api/seller/orders", () => {
     expect(row).toEqual({
       id: order.id,
       orderNo: order.orderNo,
+      orderNoLabel: expect.stringMatching(new RegExp(`^\\d{8}-${String(order.orderNo).padStart(4, "0")}$`)),
       status: "PAID",
       createdAt: order.createdAt.toISOString(),
       paidAt: order.paidAt!.toISOString(),
