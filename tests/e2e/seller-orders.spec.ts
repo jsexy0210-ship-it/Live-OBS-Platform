@@ -48,7 +48,7 @@ test("주문 목록: 20건씩 보이고 「주문 더 불러오기」로 나머�
   await expect(rows(page)).toHaveCount(20);
   await expect(page.getByText("20건 넘게")).toBeVisible();
   // 메뉴 「주문」이 이 화면을 가리킨다
-  await expect(page.getByRole("link", { name: "주문", exact: true })).toHaveAttribute("href", "/seller/orders");
+  await expect(page.getByLabel("주 메뉴").getByRole("link", { name: "주문", exact: true })).toHaveAttribute("href", "/seller/orders");
   await shot(page, "SA-021");
   const next = listResponse(page, "cursor=");
   await page.getByRole("button", { name: "주문 더 불러오기" }).click();
