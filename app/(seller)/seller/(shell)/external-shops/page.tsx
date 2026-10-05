@@ -133,7 +133,7 @@ export default function ExternalShopsPage() {
                 </div>
               ) : (
                 <section className="card">
-                  <div style={{ overflowX: "auto" }}>
+                  <div className="au-lt-wrap">
                     <table className="tbl">
                       <thead><tr><th>쇼핑몰</th><th>상태</th><th>마지막 이벤트</th><th>연결일</th><th>관리</th></tr></thead>
                       <tbody>
