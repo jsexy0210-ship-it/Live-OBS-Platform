@@ -1305,20 +1305,20 @@ body {
 .au-ft-help {
   margin: var(--ui-sp-4) 0 0;
 }
-/* 검색 상자는 dense(40px): 같은 줄의 입력·선택·버튼이 한 높이. 바깥 1px 선 + 모서리 8(표 컨테이너).
+/* 검색 상자는 dense(40px): 같은 줄의 입력·선택·버튼이 한 높이. 바깥 1px 선 + 모서리 12(바깥 상자는 모두 카드 토큰, MASTER 2026-10-05).
    안쪽 표형 폼의 위 굵은 선은 지워 바깥 선과 겹치지 않게 한다 */
 .au-sb {
   background: var(--cs-surface);
   box-shadow: inset 0 0 0 1px var(--cs-line);
-  border-radius: var(--ui-r-table);
+  border-radius: var(--ui-r-card);
 }
 .au-sb .au-ft {
   border-top: 0;
   background: transparent;
 }
-/* 모서리 8px 안쪽으로 회색 머리칸 모서리를 맞춘다(넘침을 숨기지 않고) */
+/* 모서리 12px 안쪽으로 회색 머리칸 모서리를 맞춘다(넘침을 숨기지 않고) */
 .au-sb .au-ft > tbody > tr:first-child > th {
-  border-top-left-radius: var(--ui-r-table);
+  border-top-left-radius: var(--ui-r-card);
 }
 .au-sb .au-ft-v {
   min-height: var(--ui-h-dense);
@@ -1394,7 +1394,7 @@ body {
     border-bottom: 0;
   }
   .au-sb .au-ft > tbody > tr:first-child > th {
-    border-top-right-radius: var(--ui-r-table);
+    border-top-right-radius: var(--ui-r-card);
   }
   .au-ft > tbody > tr > td {
     padding: var(--ui-sp-8) var(--ui-sp-12) var(--ui-sp-12);
