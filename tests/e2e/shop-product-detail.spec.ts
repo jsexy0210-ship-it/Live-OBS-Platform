@@ -43,7 +43,7 @@ test("PC: 목록에서 상세로 → 옵션·수량·합계, 수량 한도 안�
   await expect(page.getByText("상세 정보가 아직 없어요.")).toBeVisible();
   if (SHOT) await page.screenshot({ path: "tests/e2e/screenshots/SH-003-detail-1440.png" });
   // 비회원: 장바구니·바로 구매·찜은 로그인 안내 창
-  await page.getByRole("button", { name: "장바구니", exact: true }).click();
+  await page.getByRole("button", { name: "장바구니에 담기", exact: true }).click();
   const dlg = page.getByRole("dialog", { name: "로그인이 필요해요" });
   await expect(dlg).toBeVisible();
   await expect(dlg.getByRole("link", { name: "로그인" })).toHaveAttribute("href", /\/login\?next=.*products/);
@@ -73,7 +73,7 @@ test.describe.serial("로그인 구매자", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await open(page, "스타라이트 부스터 박스");
     await page.getByRole("button", { name: "수량 늘리기" }).click();
-    await page.getByRole("button", { name: "장바구니", exact: true }).click();
+    await page.getByRole("button", { name: "장바구니에 담기", exact: true }).click();
     await expect(page.getByRole("status")).toContainText("장바구니에 담았어요");
     await expect(page.locator(".shop-hics").getByRole("link", { name: /장바구니 \(1개\)/ })).toBeVisible();
     await page.getByRole("link", { name: "장바구니 보기" }).click();
@@ -89,7 +89,7 @@ test.describe.serial("로그인 구매자", () => {
     await page.getByRole("button", { name: "찜 빼기" }).click();
     await expect(page.getByRole("button", { name: "찜하기" })).toBeVisible();
     // 바로 구매
-    await page.getByRole("button", { name: "구매하기" }).click();
+    await page.getByRole("button", { name: "바로 주문하기" }).click();
     await expect(page).toHaveURL(/\/checkout\?ids=/);
     await expect(page.getByRole("heading", { name: "주문서", level: 1 })).toBeVisible();
   });
@@ -100,7 +100,7 @@ test("품절: 띠·「품절됐어요」 버튼, 옵션 일부 품절은 그 옵
   await open(page, "드래곤 소울 부스터");
   await expect(page.locator(".pd-hero .pc-out")).toBeVisible();
   await expect(page.getByRole("button", { name: "품절됐어요" })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "구매하기" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "바로 주문하기" })).toHaveCount(0);
   const before = await setOptionStockInDb(SLUG, "스타라이트 부스터 박스", "낱개 1팩", 0);
   try {
     await open(page, "스타라이트 부스터 박스");
@@ -108,7 +108,7 @@ test("품절: 띠·「품절됐어요」 버튼, 옵션 일부 품절은 그 옵
     const sold = page.getByLabel("옵션").locator("option", { hasText: "낱개 1팩 · 품절" });
     await expect(sold).toBeDisabled();
     await expect(page.getByLabel("옵션").locator("option:checked")).toContainText("1박스"); // 기본은 살 수 있는 첫 옵션
-    await expect(page.getByRole("button", { name: "구매하기" })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "바로 주문하기" })).toBeEnabled();
   } finally {
     await setOptionStockInDb(SLUG, "스타라이트 부스터 박스", "낱개 1팩", before);
   }

@@ -27,7 +27,7 @@ export const CART_MESSAGES = {
   invalid_cart_item: "담을 상품과 수량을 다시 확인해 주세요",
   cart_item_not_found: "장바구니에서 상품을 찾을 수 없어요",
   product_unavailable: "지금은 살 수 없는 상품이에요",
-  out_of_stock: "재고가 부족해요",
+  out_of_stock: "남은 수량이 모자라요. 수량을 줄이거나 장바구니를 확인해 주세요",
   quantity_limit: `한 상품은 ${MAX_LINE_QUANTITY}개까지 담을 수 있어요`,
   cart_full: `장바구니에는 ${MAX_CART_ITEMS}개 상품까지 담을 수 있어요`,
   checkout_empty: "주문할 상품을 골라 주세요",

@@ -48,7 +48,7 @@ test("주문 목록: 20건씩 보이고 「주문 더 불러오기」로 나머�
   await expect(rows(page)).toHaveCount(20);
   await expect(page.getByText("20건 넘게")).toBeVisible();
   // 메뉴 「주문」이 이 화면을 가리킨다
-  await expect(page.getByRole("link", { name: "주문", exact: true })).toHaveAttribute("href", "/seller/orders");
+  await expect(page.getByLabel("주 메뉴").getByRole("link", { name: "주문", exact: true })).toHaveAttribute("href", "/seller/orders");
   await shot(page, "SA-021");
   const next = listResponse(page, "cursor=");
   await page.getByRole("button", { name: "주문 더 불러오기" }).click();
@@ -284,7 +284,7 @@ test("주문·배송 권한이 없는 직원은 메뉴에 주문이 없고, 주�
   await login(page, "demo-staff@example.com", "/seller/products");
   await expect(page.getByRole("link", { name: "주문", exact: true })).toHaveCount(0);
   await page.goto("/seller/orders");
-  await expect(page.getByText("이 기능은 권한이 필요합니다")).toBeVisible();
+  await expect(page.getByText("이 계정은 이 일을 할 수 없습니다")).toBeVisible();
   await expect(page.getByText("필요한 권한: 주문·배송")).toBeVisible();
 });
 
@@ -309,8 +309,8 @@ test("환불 모달: 결제 수단이 카드면 「카드 승인 취소」를 �
   await dialog.getByRole("button", { name: /환불 실행/ }).click();
   await expect(dialog.getByRole("alert")).toHaveText("환불하지 못했습니다. 결제는 그대로입니다. 잠시 후 다시 시도해 주십시오.");
   await dialog.getByRole("button", { name: "다시 시도" }).click();
-  await expect(dialog.getByRole("alert")).toContainText("이 기능은 권한이 필요합니다");
-  await expect(dialog.getByRole("alert")).toContainText("대표자에게 요청해 주십시오 · 필요한 권한: 주문·배송");
+  await expect(dialog.getByRole("alert")).toContainText("이 계정은 이 일을 할 수 없습니다");
+  await expect(dialog.getByRole("alert")).toContainText("대표자에게 허용해 달라고 요청해 주십시오 · 필요한 권한: 주문·배송");
   await dialog.getByRole("button", { name: /환불 실행/ }).click();
   await expect(page.getByText("2,000원 환불을 완료했습니다")).toBeVisible();
   expect(calls).toBe(3);

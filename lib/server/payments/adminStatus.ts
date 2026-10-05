@@ -5,6 +5,7 @@ import { forbidden } from "../authz/errors";
 import { adminCan } from "../authz/permissions";
 import { dbNow } from "../billing/subscription";
 import { kstDayStart } from "../orders/read";
+import { SANDBOX_PARTIAL_CANCEL_MESSAGE } from "./messages";
 import { paymentGateway } from "./registry";
 
 // 마스터 관리자 결제 조회(MASTER 배정 2026-10-05): MA-031 PG 연결 상태, MA-032 구독료 수납 현황. 조회만 한다. 모든 마스터 역할(platform.read).
@@ -47,6 +48,7 @@ const FAILURE_MESSAGES: Record<string, string> = {
   nicepay_3053: "확인할 수 없는 해외 카드입니다",
   nicepay_3057: "인증할 수 없는 카드입니다",
   nicepay_3095: "카드사에서 승인을 거절했습니다(한도 초과·정지 카드 등)",
+  nicepay_U128: SANDBOX_PARTIAL_CANCEL_MESSAGE,
 };
 
 export function paymentFailureMessage(code: string | null): string | null {
