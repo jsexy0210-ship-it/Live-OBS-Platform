@@ -181,7 +181,9 @@ select.inp[multiple]{padding-right:var(--ui-sp-12);background-image:none}
 .tbl td>.row{justify-content:center}.tbl td>.col{align-items:center}
 .tbl td:is(.col-text,.col-product,.col-title,.col-desc,.col-description,.col-address)>.row{justify-content:flex-start}.tbl td:is(.col-text,.col-product,.col-title,.col-desc,.col-description,.col-address)>.col{align-items:flex-start}
 /* 관리 열: 버튼 묶음을 칸 가운데, 사이 8px */
-.cell-actions{display:flex;justify-content:center;align-items:center;gap:var(--ui-sp-8);flex-wrap:wrap}
+/* (대표님 지시 2026-10-06, DS-PANEL ⑤ .acts2) 버튼은 한 줄·가운데·간격 8px. 줄바꿈·겹침 없음. 버튼이 칸에 바로 둘 이상이면 .acts2 없이도 같은 규칙 */
+.cell-actions,.acts2{display:flex;justify-content:center;align-items:center;gap:var(--ui-sp-8);flex-wrap:nowrap}
+.tbl td:has(>.btn~.btn){white-space:nowrap}.tbl td>.btn~.btn{margin-left:var(--ui-sp-8)}.tbl td>.btn{vertical-align:middle}
 .tbl td.num,.tbl td.r{white-space:nowrap}.tbl tr.sel td{background:var(--info-bg)}.tbl tr.faded td{color:var(--wds-label-assistive)}
 .tbl-compact td{padding:var(--ui-sp-8) var(--ui-sp-12);height:var(--ui-row-compact)}
 .kv{display:grid;grid-template-columns:140px 1fr;gap:var(--ui-sp-12) var(--ui-sp-16);font-size:var(--ui-fs-body)}.kv>dt{color:var(--wds-label-alternative);margin:0}.kv>dd{margin:0}
