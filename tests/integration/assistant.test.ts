@@ -7,7 +7,7 @@ import { loginSeller } from "../../lib/server/auth/login";
 import { createAdminSession } from "../../lib/server/auth/session";
 import { prisma } from "../../lib/server/db";
 import { askAssistant, ASSISTANT_MESSAGES, scrubQuestion } from "../../lib/server/assistant/service";
-import type { GeminiGenerate } from "../../lib/server/assistant/gemini";
+import { GeminiError, type GeminiGenerate } from "../../lib/server/assistant/gemini";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createAdmin, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
@@ -140,14 +140,32 @@ describe("호출·원장·가림", () => {
     for (const q of ["", "  ", "가".repeat(301), 5]) expect(await askAssistant(db, s.ctx, { question: q }, { apiKey: KEY, generate: ok() })).toEqual({ ok: false, reason: "invalid_question" });
   });
 
-  it("호출이 실패하면 먼저 잡은 예상 비용을 돌려주고 ERROR로 남긴다", async () => {
+  it("Gemini가 처리하지 않았음이 확실한 실패(4xx)면 먼저 잡은 예상 비용을 돌려주고 ERROR로 남긴다", async () => {
     const s = await shop();
     await configure();
     await addDoc();
-    const r = await askAssistant(db, s.ctx, Q, { apiKey: KEY, generate: async () => Promise.reject(new Error("boom")) });
+    const r = await askAssistant(db, s.ctx, Q, { apiKey: KEY, generate: async () => Promise.reject(new GeminiError("gemini_http_400", true)) });
     expect(r).toEqual({ ok: false, reason: "upstream_error" });
     expect(await used()).toBe(0);
     expect(await db.assistantLedger.findFirstOrThrow()).toMatchObject({ status: "ERROR", costMilliWon: 0 });
+  });
+
+  it("시간 초과·끊김·5xx·해석 실패는 이미 과금됐을 수 있어 예상 비용을 그대로 남긴다", async () => {
+    const s = await shop();
+    await configure();
+    await addDoc();
+    const errs = [new DOMException("timeout", "TimeoutError"), new Error("fetch failed"), new GeminiError("gemini_http_503", false), new GeminiError("gemini_no_usage", false)];
+    let prev = 0;
+    for (const e of errs) {
+      expect(await askAssistant(db, s.ctx, Q, { apiKey: KEY, generate: async () => Promise.reject(e) })).toEqual({ ok: false, reason: "upstream_error" });
+      const now = await used();
+      expect(now).toBeGreaterThan(prev);
+      prev = now;
+    }
+    const rows = await db.assistantLedger.findMany();
+    expect(rows).toHaveLength(4);
+    expect(rows.every((r) => r.status === "ERROR" && r.costMilliWon > 0)).toBe(true);
+    expect(rows.reduce((n, r) => n + r.costMilliWon, 0)).toBe(prev);
   });
 });
 

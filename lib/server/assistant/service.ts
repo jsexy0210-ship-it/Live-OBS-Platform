@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { TenantContext } from "../tenant/context";
-import { assistantApiKey, geminiGenerate, MODEL_NAME, type GeminiGenerate } from "./gemini";
+import { assistantApiKey, GeminiError, geminiGenerate, MODEL_NAME, type GeminiGenerate } from "./gemini";
 
 // 파트너스 도우미(SA-140). 플랫폼 사용법 질문·답변 전용(대표님 2026-10-02·05).
 // - 답변 근거는 마스터 관리자가 게시한 공개 자료(AssistantDoc)뿐이다. 파트너스·구매자 데이터·주문·세션 정보는 모델로 보내지 않고,
@@ -168,11 +168,13 @@ export async function askAssistant(db: PrismaClient, ctx: TenantContext, input: 
   let out;
   try {
     out = await generate({ apiKey, model: settings.model, system, question, maxOutputTokens: MAX_OUTPUT_TOKENS });
-  } catch {
-    // 호출이 실패하면 먼저 잡아 둔 예상 비용을 돌려준다(과금 없음). 오류 내용·키는 남기지 않는다.
+  } catch (e) {
+    // Gemini가 처리하지 않았음이 확실한 실패(4xx)만 예상 비용을 돌려준다. 시간 초과·끊김·5xx·해석 실패는 이미 과금됐을 수 있어
+    // 예상 비용을 그대로 남기고 원장에 ERROR + 예상 비용으로 기록한다(한도 우회 방지). 오류 내용·키는 남기지 않는다.
+    const refund = e instanceof GeminiError && e.refundable;
     await db.$transaction(async (tx) => {
-      await adjustUsage(tx, period.month, -estMilli);
-      await log({ status: "ERROR" }, tx);
+      if (refund) await adjustUsage(tx, period.month, -estMilli);
+      await log({ status: "ERROR", costMilliWon: refund ? 0 : estMilli }, tx);
     });
     return { ok: false, reason: "upstream_error" };
   }
