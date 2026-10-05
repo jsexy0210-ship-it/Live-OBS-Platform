@@ -141,6 +141,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/notices": "STORE_OPERATIONS",
   "seller/platform-notices": "BILLING", // 플랫폼 공지(SA-111·112): 잠김·정지 중에도 본다
   "seller/platform-notices/[noticeId]": "BILLING",
+  "seller/assistant": "BILLING", // 도우미(SA-140): 사용법 질문, 잠김·정지 중에도 쓴다(비용은 플랫폼 월 한도·하루 한도가 막음)
   "seller/platform-inquiries": "BILLING", // 플랫폼 문의(SA-113·114·115): 잠김·정지 중에도 쓴다
   "seller/platform-inquiries/[inquiryId]": "BILLING",
   "seller/platform-inquiries/[inquiryId]/messages": "BILLING",
