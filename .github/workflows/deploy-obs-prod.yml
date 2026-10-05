@@ -1,0 +1,188 @@
+# 운영 서버(obs-web-prod) 배포. 절차·서버 준비: docs/DEPLOY.md 「운영 배포」
+# - 수동 실행(workflow_dispatch)만. PR·push·예약 실행 없음.
+# - main 브랜치와 이 저장소일 때만 job이 돈다. 환경 production의 Required reviewer(대표님) 승인 뒤에 시작한다.
+# - 운영 VM의 self-hosted runner(라벨 obs-prod, 테스트 러너 obs-kakao와 다름)가 main을 받아 VM에서 이미지를 빌드·기동한다.
+# - 비밀값은 운영 서버의 /opt/obs/.env에만 있다. 이 워크플로는 비밀값을 .env로 옮기지 않고(테스트와 다름), 이 파일과 로그에 넣지 않는다.
+name: Deploy obs-prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_sha:
+        description: "배포할 main 커밋 SHA(전체 40자). 실행 시점의 main과 다르면 멈춰요."
+        required: true
+        type: string
+      confirm_phrase:
+        description: "운영 배포를 확인하는 문구 DEPLOY-PROD 를 그대로 입력해요."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  checks: read
+
+concurrency:
+  group: deploy-obs-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to obs-prod
+    if: github.ref == 'refs/heads/main' && github.repository == 'jsexy0210-ship-it/Live-OBS-Platform'
+    runs-on: [self-hosted, obs-prod]
+    environment: production
+    timeout-minutes: 60
+    env:
+      ENV_FILE: /opt/obs/.env
+      BACKUP_DIR: /opt/obs/backups
+      CONFIRM_SHA: ${{ inputs.confirm_sha }}
+      CONFIRM_PHRASE: ${{ inputs.confirm_phrase }}
+    steps:
+      - name: Check target commit and server
+        run: |
+          set -euo pipefail
+          [ "$CONFIRM_PHRASE" = "DEPLOY-PROD" ] || { echo "확인 문구가 DEPLOY-PROD 와 달라요. 운영 배포를 멈춰요."; exit 1; }
+          printf '%s' "$CONFIRM_SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "커밋 SHA는 전체 40자 소문자 16진수로 입력해 주세요."; exit 1; }
+          [ "$CONFIRM_SHA" = "$GITHUB_SHA" ] || { echo "입력한 SHA($CONFIRM_SHA)가 실행 시점의 main($GITHUB_SHA)과 달라요."; exit 1; }
+          echo "배포 커밋: $GITHUB_SHA"
+          test -f "$ENV_FILE" || { echo "$ENV_FILE 이 없어요(docs/DEPLOY.md 「운영 배포」)."; exit 1; }
+          # 운영 서버 표시와 테스트 전용 값 금지. 이 검사에 걸리면 .env를 서버에서 고쳐야 해요.
+          grep -Eqx 'OBS_ENVIRONMENT=prod' "$ENV_FILE" || { echo ".env에 OBS_ENVIRONMENT=prod 가 없어요. 운영 서버가 아닌 것 같아 멈춰요."; exit 1; }
+          if grep -Eq '^[[:space:]]*(export[[:space:]]+)?OBS_TEST_MODE[[:space:]]*=[[:space:]]*1' "$ENV_FILE" || grep -Eqx 'OBS_ENVIRONMENT=test' "$ENV_FILE"; then
+            echo ".env에 테스트 서버 값(OBS_TEST_MODE=1 또는 OBS_ENVIRONMENT=test)이 있어요. 운영에서는 쓰지 않아요."; exit 1
+          fi
+          for v in POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB IDENTITY_HASH_KEY BILLING_KEY_SECRET OBS_SITE_ADDRESS; do
+            grep -Eq "^[[:space:]]*(export[[:space:]]+)?${v}=.+" "$ENV_FILE" || { echo ".env에 ${v} 값이 없어요."; exit 1; }
+          done
+
+      # 이 커밋의 CI(Typecheck and build, Unit and integration tests)가 모두 성공했을 때만 배포한다.
+      - name: Require green CI on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          json="$(curl -fsS --max-time 30 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100")"
+          for name in "Typecheck and build" "Unit and integration tests"; do
+            concl="$(printf '%s' "$json" | python3 -c 'import json,sys; n=sys.argv[1]; d=json.load(sys.stdin); r=[c for c in d.get("check_runs",[]) if c.get("name")==n]; print(r[0].get("conclusion") or "pending" if r else "missing")' "$name")"
+            echo "CI '$name': $concl"
+            [ "$concl" = success ] || { echo "이 커밋의 CI '$name'이(가) 성공이 아니에요($concl). 운영 배포를 멈춰요."; exit 1; }
+          done
+
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Check disk space
+        env:
+          OBS_MIN_FREE_GB: "10"
+        run: scripts/ops/disk-cleanup.sh --check
+
+      - name: Mark deploying (monitor)
+        env:
+          MARK_KEY: workflow-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          if ! command -v flock >/dev/null 2>&1; then
+            echo "::warning::flock이 없어 배포 진행 표시를 건너뛰어요. 배포 중 감시가 장애로 알릴 수 있어요."
+          elif ! scripts/ops/deploy-mark.sh on "$MARK_KEY" "deploy-obs-prod ${GITHUB_SHA:0:7}"; then
+            echo "::warning::배포 진행 표시를 켜지 못했어요. 배포 중 감시가 장애로 알릴 수 있어요."
+          fi
+
+      # 지금 있는 DB를 그대로 깨워 백업하고, 파일이 읽히는지(pg_restore --list)까지 확인한다. 하나라도 실패하면 배포하지 않는다.
+      - name: Backup DB before deploy (verified)
+        id: backup
+        run: |
+          set -euo pipefail
+          mkdir -p "$BACKUP_DIR"
+          db="$(docker ps -aq --filter label=com.docker.compose.project=obs-web --filter label=com.docker.compose.service=obs-web-db | head -n1)"
+          if [ -n "$db" ]; then
+            docker start "$db" >/dev/null
+            for i in $(seq 1 30); do
+              docker exec "$db" sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' >/dev/null 2>&1 && break
+              [ "$i" -eq 30 ] && { echo "DB가 준비되지 않아 백업하지 못했어요. 배포를 멈춰요."; exit 1; }
+              sleep 2
+            done
+            f="$BACKUP_DIR/obs-$(TZ=Asia/Seoul date +%Y%m%d-%H%M%S)-before-${GITHUB_SHA:0:7}.dump"
+            if ! docker exec "$db" sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$f.part"; then
+              rm -f "$f.part"; echo "백업에 실패해 배포를 멈춰요."; exit 1
+            fi
+            [ -s "$f.part" ] || { rm -f "$f.part"; echo "백업 파일이 비어 있어 배포를 멈춰요."; exit 1; }
+            if ! docker exec -i "$db" pg_restore --list < "$f.part" > /dev/null; then
+              rm -f "$f.part"; echo "백업 파일을 읽을 수 없어 배포를 멈춰요."; exit 1
+            fi
+            chmod 600 "$f.part"
+            mv "$f.part" "$f"
+            echo "백업(검증됨): $(basename "$f")"
+          elif docker volume inspect obs-web_obs-web-pgdata >/dev/null 2>&1; then
+            echo "DB 볼륨은 있는데 DB 컨테이너가 없어요. docs/DEPLOY.md 「백업·복구」로 수동 백업한 뒤 다시 실행해 주세요."
+            exit 1
+          else
+            echo "DB 볼륨이 아직 없어 백업을 건너뛰어요(첫 배포)."
+          fi
+
+      # compose 의존 순서: DB → 마이그레이션(한 번 실행) → 앱. 마이그레이션이 실패하면 앱은 바뀌지 않는다.
+      - name: Build and start
+        env:
+          APP_VERSION: ${{ github.sha }}
+          OBS_ENV_FILE: /opt/obs/.env
+        run: |
+          set -euo pipefail
+          docker compose -p obs-web -f deploy/docker-compose.yml --env-file "$ENV_FILE" up -d --build --wait --wait-timeout 900
+
+      - name: Health check
+        id: health
+        run: |
+          set -euo pipefail
+          addr="$(sed -n 's/^[[:space:]]*\(export[[:space:]]\+\)\?OBS_SITE_ADDRESS[[:space:]]*=[[:space:]]*//p' "$ENV_FILE" | tail -n1)"
+          if [ "${addr#:}" != "$addr" ]; then
+            url="http://127.0.0.1${addr}/api/health"; extra=""
+          else
+            url="https://${addr}/api/health"; extra="--resolve ${addr}:443:127.0.0.1"
+          fi
+          for i in $(seq 1 36); do
+            # shellcheck disable=SC2086
+            body="$(curl -fsS --max-time 5 $extra "$url" || true)"
+            if printf '%s' "$body" | grep -q "\"version\":\"$GITHUB_SHA\"" && printf '%s' "$body" | grep -q '"db":"ok"'; then
+              if printf '%s' "$body" | grep -q '"testMode":true'; then echo "운영 서버가 테스트 모드로 응답해요. 실패로 처리해요."; exit 1; fi
+              echo "health ok: $body"; break
+            fi
+            if [ "$i" -eq 36 ]; then echo "health 실패: ${body:-응답 없음}"; exit 1; fi
+            sleep 5
+          done
+
+      # 헬스 체크가 실패하면 앱만 직전 배포 버전으로 되돌린다(DB는 그대로. DB 복구는 사람이 승인한 뒤 db-restore.sh).
+      - name: Roll back app on health failure
+        if: failure() && steps.health.outcome == 'failure'
+        run: |
+          echo "::error::헬스 체크 실패로 앱을 직전 버전으로 되돌려요(DB는 그대로)."
+          scripts/ops/rollback-app.sh || echo "::error::자동 되돌리기에 실패했어요. 서버에서 scripts/ops/rollback-app.sh 를 직접 실행해야 해요(docs/DEPLOY.md 「롤백」)."
+
+      - name: Record deploy
+        if: success()
+        run: |
+          set -euo pipefail
+          line="$(TZ=Asia/Seoul date '+%F %T KST') sha=$GITHUB_SHA run=$GITHUB_RUN_ID actor=$GITHUB_ACTOR"
+          echo "$line" >> /opt/obs/deploy-history.log
+          { echo "### obs-prod 배포 완료"; echo; echo "- 커밋: \`$GITHUB_SHA\`"; echo "- 시각: $(TZ=Asia/Seoul date '+%F %T') KST"; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Clean up disk
+        if: success()
+        continue-on-error: true
+        run: scripts/ops/disk-cleanup.sh --apply
+
+      - name: Show status on failure
+        if: failure()
+        run: |
+          docker compose -p obs-web -f deploy/docker-compose.yml --env-file "$ENV_FILE" ps || true
+          docker compose -p obs-web -f deploy/docker-compose.yml --env-file "$ENV_FILE" logs --tail 80 obs-web-migrate obs-web-app || true
+
+      - name: Unmark deploying (monitor)
+        if: always()
+        env:
+          MARK_KEY: workflow-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          if command -v flock >/dev/null 2>&1 && [ -x scripts/ops/deploy-mark.sh ]; then
+            scripts/ops/deploy-mark.sh off "$MARK_KEY" || echo "::warning::배포 진행 표시를 끄지 못했어요. 표시는 만료 시각(기본 1시간)에 저절로 풀려요."
+          fi
