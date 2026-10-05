@@ -364,7 +364,7 @@ export default function CategoriesPage() {
           </div>
           <div className="modal-f">
             <button className="btn btn-out" type="button" onClick={() => setRemove(null)} disabled={busy}>
-              아니요
+              취소
             </button>
             <button className="btn btn-neg" type="button" onClick={() => void confirmRemove()} disabled={busy}>
               {busy ? "삭제 중" : "삭제"}
