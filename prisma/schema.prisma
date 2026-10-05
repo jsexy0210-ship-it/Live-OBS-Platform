@@ -367,6 +367,7 @@ model BuyerMember {
   sessions             BuyerSession[]
   orders               Order[]
   purchaseRestrictions BuyerPurchaseRestriction[]
+  memo                 MemberMemo?
   hitCards             HitCard[]
   rewardLedger         RewardLedger[]
   rewardBalances       RewardBalance[]
@@ -1628,6 +1629,8 @@ model BuyerPurchaseRestriction {
   sellerId      String    @db.Uuid
   buyerMemberId String    @db.Uuid
   reason        String
+  // 파트너스가 직접 건 제한(reason=MANUAL)의 사유 메모(200자). 자동 제한은 비어 있다.
+  note          String?
   startsAt      DateTime  @db.Timestamptz(3)
   endsAt        DateTime  @db.Timestamptz(3)
   liftedAt      DateTime? @db.Timestamptz(3)
@@ -1637,6 +1640,23 @@ model BuyerPurchaseRestriction {
   buyerMember BuyerMember @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
 
   @@index([sellerId, buyerMemberId, startsAt])
+}
+
+// 파트너스가 회원 상세(SA-042)에 적는 회원 메모. 회원마다 1건(덮어쓰기), 작성자·수정 시각을 남긴다.
+// 자유 입력이라 개인정보가 섞일 수 있어 탈퇴 때 지운다(buyers/memberData.ts). 로그 추적에는 본문을 남기지 않고 글자 수만 남긴다.
+model MemberMemo {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String    @db.Uuid
+  buyerMemberId String    @db.Uuid
+  body          String
+  // 마지막으로 쓴 사람(파트너스 직원·대표자 id). 마스터 대리 조회는 쓰기를 못 하므로 직원만 들어간다.
+  updatedById   String?   @db.Uuid
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @default(now()) @db.Timestamptz(3)
+
+  buyerMember BuyerMember @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
+
+  @@unique([sellerId, buyerMemberId])
 }
 
 // 주문 알림 발송 기록(중복 발송 방지). 주문·종류마다 1행. 보내기 전에 PENDING으로 먼저 잡고(claim), 보낸 뒤 SENT·FAILED로 바꾼다.
