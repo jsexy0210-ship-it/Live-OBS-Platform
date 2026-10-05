@@ -81,7 +81,7 @@ describe("입금 계좌", () => {
     const ok = await putAccountRoute(jsonReq("/api/seller/payments/bank-account", "PUT", cookie, { ...ACCOUNT, bankName: "  국민은행 " }));
     expect(await ok.json()).toEqual({ account: ACCOUNT });
     expect(await (await getAccountRoute(jsonReq("/api/seller/payments/bank-account", "GET", cookie))).json()).toEqual({ account: ACCOUNT });
-    const log = await db.auditLog.findFirstOrThrow({ where: { action: "seller.bank_account.update", sellerId: s.seller.id } });
+    const log = await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "seller.bank_account.update", sellerId: s.seller.id } });
     expect(JSON.stringify(log)).not.toContain("789012");
     expect(log.after).toMatchObject({ accountNumber: "****9012" });
   });

@@ -80,7 +80,7 @@ describe("테스트 서버 시험 데이터 명령(scripts/seed-obs-test.mjs)", 
     const options = await db.productOption.findMany({ where: { sellerId: shop.id } });
     expect(options).toHaveLength(4);
     for (const o of options) {
-      const moves = await db.stockMovement.findMany({ where: { optionId: o.id } });
+      const moves = await db.stockMovement.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { optionId: o.id } });
       expect(moves.map((m) => [m.reason, m.note, m.delta, m.actorId])).toEqual([["MANUAL", "처음 재고", o.stock, shop.users[0].id]]);
       expect(moves[0].stockAfter).toBe(o.stock);
     }
@@ -115,7 +115,7 @@ describe("테스트 서버 시험 데이터 명령(scripts/seed-obs-test.mjs)", 
     const r = seed({ OBS_TEST_MODE: "1", ...ADMIN });
     expect(r.code).toBe(0);
     expect(r.out).not.toContain("9876");
-    expect(await db.platformAdmin.findMany({ select: { email: true, name: true, role: true, status: true } })).toEqual([
+    expect(await db.platformAdmin.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { email: true, name: true, role: true, status: true } })).toEqual([
       { email: "master", name: "최고관리자", role: "SUPER_ADMIN", status: "ACTIVE" },
     ]);
     expect((await adminLogin()).ok).toBe(true);
@@ -253,7 +253,7 @@ describe("테스트 서버 모드: 바뀐 본인확인 흐름(아이디 찾기·
     const { verificationId } = await s.json();
     expect((await linkConfirmRoute(post("/api/seller/me/identity/confirm", { verificationId, code: "000000" }, flow))).status).toBe(200);
     expect((await linkRoute(post("/api/seller/me/identity/link", { verificationId }, `${session}; ${flow}`))).status).toBe(200);
-    expect((await db.sellerUser.findFirstOrThrow({ where: { email: "staff@example.com" } })).identityCiHash).not.toBeNull();
+    expect((await db.sellerUser.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { email: "staff@example.com" } })).identityCiHash).not.toBeNull();
   });
 
   it("파트너스 가입: 인증번호 000000으로 신청하고, 응답을 잃은 뒤 본인확인 유효 시간이 지나 다시 보내도 같은 신청(resumed)을 받는다", async () => {
@@ -339,7 +339,7 @@ describe("테스트 서버 모드: 운영 빌드에서 구독 결제 우회", ()
 
     const paid = await cardRoute(post("/api/seller/subscription/card", { authKey: "test-card" }, cookie));
     expect(paid.status).toBe(200);
-    const payment = await db.subscriptionPayment.findFirstOrThrow({ where: { sellerId: seller.id } });
+    const payment = await db.subscriptionPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: seller.id } });
     expect(payment).toMatchObject({ status: "PAID", amount: 179000 });
     expect(payment.providerPaymentId).toMatch(/^fake-pay-/);
     expect(await sellerFeatures(db, seller.id)).toEqual(["OVERLAY", "EXTERNAL_INTEGRATION", "STORE_OPERATIONS"]);

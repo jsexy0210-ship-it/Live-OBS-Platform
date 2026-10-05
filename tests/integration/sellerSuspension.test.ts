@@ -126,6 +126,6 @@ describe("이용 정지 중 「신규만 막기」", () => {
     expect(await db.subscriptionPayment.count({ where: { sellerId: s.seller.id } })).toBe(0);
     expect((await s.unsuspend()).status).toBe(200);
     await renewDueSubscriptions(db, new FakeBillingProvider());
-    expect(await db.subscriptionPayment.findMany({ where: { sellerId: s.seller.id }, select: { status: true } })).toEqual([{ status: "PAID" }]);
+    expect(await db.subscriptionPayment.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id }, select: { status: true } })).toEqual([{ status: "PAID" }]);
   });
 });

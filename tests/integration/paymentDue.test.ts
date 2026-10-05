@@ -141,7 +141,7 @@ describe("미입금 자동 취소", () => {
     expect(await db.order.findUniqueOrThrow({ where: { id: overdue } })).toMatchObject({ status: "CANCELLED", cancelledAt: expect.any(Date), autoCancelledAt: expect.any(Date) });
     expect(await db.order.findUniqueOrThrow({ where: { id: notYet } })).toMatchObject({ status: "PENDING_PAYMENT", autoCancelledAt: null });
     expect(await db.order.findUniqueOrThrow({ where: { id: paid } })).toMatchObject({ status: "PAID", autoCancelledAt: null });
-    expect(await db.orderStatusHistory.findFirstOrThrow({ where: { orderId: overdue, toStatus: "CANCELLED" } })).toMatchObject({ actorType: "SYSTEM", reason: "payment_overdue" });
+    expect(await db.orderStatusHistory.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { orderId: overdue, toStatus: "CANCELLED" } })).toMatchObject({ actorType: "SYSTEM", reason: "payment_overdue" });
     expect(await db.auditLog.count({ where: { action: "order.auto_cancel", targetId: overdue } })).toBe(1);
     expect((await db.productOption.findUniqueOrThrow({ where: { id: s.option.id } })).stock).toBe(stockBefore);
     expect(await cancelOverdueOrders(db)).toEqual({ cancelled: [], restricted: [], failed: [] });
@@ -246,7 +246,7 @@ describe("자동 구매 제한", () => {
     const broadcaster = await createSellerUser(s.seller.id, "BROADCASTER");
     expect((await lift(await sellerCookie(broadcaster.email))).status).toBe(403);
     expect((await lift(c)).status).toBe(200);
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.purchase_restriction.lift", targetId: s.buyer.id } })).toMatchObject({ reason: "입금 확인" });
+    expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "buyer.purchase_restriction.lift", targetId: s.buyer.id } })).toMatchObject({ reason: "입금 확인" });
     const again = await lift(c);
     expect(again.status).toBe(404);
     expect(await again.json()).toEqual({ error: "no_restriction", message: ORDER_ERROR_MESSAGES_FORMAL.no_restriction });
@@ -255,7 +255,7 @@ describe("자동 구매 제한", () => {
     for (let i = 0; i < 2; i++) await makeOverdue(await s.order());
     expect((await cancelOverdueOrders(db)).restricted).toEqual([]);
     expect(await s.place()).toMatchObject({ ok: true });
-    await makeOverdue((await db.order.findFirstOrThrow({ where: { buyerMemberId: s.buyer.id, status: "PENDING_PAYMENT" } })).id);
+    await makeOverdue((await db.order.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { buyerMemberId: s.buyer.id, status: "PENDING_PAYMENT" } })).id);
     expect((await cancelOverdueOrders(db)).restricted).toHaveLength(1);
     expect(await s.place()).toMatchObject({ ok: false, reason: "purchase_restricted" });
     // 다른 판매자는 이 구매자 제한을 풀 수 없다
@@ -313,7 +313,7 @@ describe("검수 후속(#82)", () => {
     }
     expect(await db.buyerPurchaseRestriction.count({ where: { liftedAt: null } })).toBe(1);
     expect((await lift(JSON.stringify({ reason: "입금 확인\n통화함" }))).status).toBe(200);
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.purchase_restriction.lift" } })).toMatchObject({ reason: "입금 확인\n통화함" });
+    expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "buyer.purchase_restriction.lift" } })).toMatchObject({ reason: "입금 확인\n통화함" });
     await restrict();
     expect((await lift(JSON.stringify({ reason: "가".repeat(200) }))).status).toBe(200);
     await restrict();

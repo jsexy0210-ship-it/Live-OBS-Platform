@@ -257,13 +257,13 @@ describe("신규 가입(이전 뒤)", () => {
     const i = await legacySeller(null);
     await db.seller.update({ where: { id: i.seller.id }, data: { planId: plans.INTEGRATED.id } });
     expect(await registerCardAndPay(db, provider, i.ctx, { authKey: "auth" })).toMatchObject({ ok: true, charged: true });
-    expect(await db.subscriptionPayment.findMany({ where: { sellerId: i.seller.id }, select: { amount: true } })).toEqual([{ amount: 179000 }]);
+    expect(await db.subscriptionPayment.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: i.seller.id }, select: { amount: true } })).toEqual([{ amount: 179000 }]);
 
     const o = await legacySeller(at(7));
     await db.seller.update({ where: { id: o.seller.id }, data: { planId: plans.OVERLAY_ONLY.id } });
     expect(await registerCardAndPay(db, provider, o.ctx, { authKey: "auth" })).toMatchObject({ ok: true, charged: false });
     await renewDueSubscriptions(db, provider, { now: at(7) });
-    expect(await db.subscriptionPayment.findMany({ where: { sellerId: o.seller.id }, select: { amount: true } })).toEqual([{ amount: 69000 }]);
+    expect(await db.subscriptionPayment.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: o.seller.id }, select: { amount: true } })).toEqual([{ amount: 69000 }]);
     expect(await db.sellerSubscription.count({ where: { planId: plans.STANDARD.id } })).toBe(0);
   });
 });
@@ -367,7 +367,7 @@ describe("런칭 할인 사용 백필(20261004155000)", () => {
     for (const sql of LAUNCH_BACKFILL) await db.$executeRawUnsafe(sql);
     expect(await state()).toEqual(once);
 
-    const p = await db.subscriptionPayment.findFirstOrThrow({ where: { sellerId: pending } });
+    const p = await db.subscriptionPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: pending } });
     await settlePayment(db, p.id, { ok: true, paymentId: "pg-1", receiptUrl: null }, { actorType: "SYSTEM", actorId: null, now: t(0) });
     expect(await usedAt(pending)).toEqual(t(0));
   });

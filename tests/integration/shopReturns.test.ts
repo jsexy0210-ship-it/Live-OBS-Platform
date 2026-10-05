@@ -266,7 +266,7 @@ describe("재고", () => {
     expect(await shipExchange(db, s.ctx, req.id, { courier: "CJ", trackingNumber: "123456789012" })).toMatchObject({ ok: true, request: { status: "COMPLETED", exchangeTrackingNumber: "123456789012" } });
     expect(await stock(s.oa.id)).toBe(at - 2);
     expect(await stock(s.ob.id)).toBe(4);
-    expect(await db.stockMovement.findFirstOrThrow({ where: { reason: "EXCHANGE" } })).toMatchObject({ optionId: s.oa.id, delta: -2, orderId: id });
+    expect(await db.stockMovement.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { reason: "EXCHANGE" } })).toMatchObject({ optionId: s.oa.id, delta: -2, orderId: id });
     expect(await shipExchange(db, s.ctx, req.id, { courier: "CJ", trackingNumber: "123456789012" })).toEqual({ ok: false, reason: "invalid_transition" });
     // 완료한 교환 뒤에는 같은 주문에 다시 신청할 수 있다
     expect(await s.exch(id, [b.id])).toMatchObject({ status: "REQUESTED", kind: "EXCHANGE" });
