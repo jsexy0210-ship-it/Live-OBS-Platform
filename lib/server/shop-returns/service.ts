@@ -114,7 +114,7 @@ async function openedOrderItemIds(db: Db, sellerId: string, orderId: string): Pr
 }
 
 const viewInclude = {
-  items: { select: { orderItemId: true, quantity: true, orderItem: { select: { productNameSnapshot: true, optionNameSnapshot: true } } }, orderBy: { id: "asc" } },
+  items: { select: { orderItemId: true, quantity: true, orderItem: { select: { productNameSnapshot: true, optionNameSnapshot: true, quantity: true } } }, orderBy: { id: "asc" } },
   images: { select: { id: true, width: true, height: true }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
 } satisfies Prisma.ReturnRequestInclude;
 
@@ -150,7 +150,9 @@ function view(r: Row) {
     completedAt: r.completedAt,
     rejectedAt: r.rejectedAt,
     cancelledAt: r.cancelledAt,
-    items: r.items.map((i) => ({ orderItemId: i.orderItemId, quantity: i.quantity, productName: i.orderItem.productNameSnapshot, optionName: i.orderItem.optionNameSnapshot })),
+    items: r.items.map((i) => ({ orderItemId: i.orderItemId, quantity: i.quantity, orderQuantity: i.orderItem.quantity, productName: i.orderItem.productNameSnapshot, optionName: i.orderItem.optionNameSnapshot })),
+    // 일부 수량만 반품하는 품목이 있는 신청(재고 자동 복구 대상이 아니다)
+    partialQuantity: r.items.some((i) => i.quantity < i.orderItem.quantity),
     images: r.images,
   };
 }
@@ -217,6 +219,7 @@ export async function buyerReturnContext(db: PrismaClient, scope: BuyerScope, or
     canRequest: blocked === null,
     blocked,
     // 신청 기한(배송 완료 뒤 7일). 지났어도 불량·오배송·설명과 다름 사유는 받는다(windowOpen=false면 단순 변심·기타는 막힌다)
+    refunds: (await orderRefundHistory(db, scope.sellerId, orderId)).map(({ seq, createdAt, refundAmount, returnFeeDeducted, rewardReturn, items }) => ({ seq, createdAt, refundAmount, returnFeeDeducted, rewardReturn, items })),
     deadline: returnDeadline(deliveredAt),
     windowOpen: withinReturnWindow(deliveredAt, new Date(), "CHANGE_OF_MIND"),
     needsRefundAccount: order.paymentMethod === "BANK_TRANSFER",
@@ -246,7 +249,15 @@ export async function createReturn(db: PrismaClient, scope: BuyerScope, orderId:
       const orderItems = (await tx.orderItem.findMany({ where: { sellerId: scope.sellerId, orderId }, select: { id: true, quantity: true, refundedQuantity: true } }))
         .filter((i) => i.refundedQuantity < i.quantity)
         .map((i) => ({ id: i.id, quantity: i.quantity - i.refundedQuantity }));
-      const picked = input.kind === "RETURN" ? orderItems : orderItems.filter((i) => input.orderItemIds!.includes(i.id));
+      let picked: { id: string; quantity: number }[];
+      if (input.kind === "RETURN" && input.returnItems) {
+        // 부분 반품: 고른 품목이 남은 수량 안에 있어야 한다
+        const left = new Map(orderItems.map((i) => [i.id, i.quantity]));
+        if (input.returnItems.some((i) => (left.get(i.orderItemId) ?? 0) < i.quantity)) return { ok: false as const, reason: "invalid_items" as const };
+        picked = input.returnItems.map((i) => ({ id: i.orderItemId, quantity: i.quantity }));
+      } else {
+        picked = input.kind === "RETURN" ? orderItems : orderItems.filter((i) => input.orderItemIds!.includes(i.id));
+      }
       if (picked.length === 0 || (input.kind === "EXCHANGE" && picked.length !== input.orderItemIds!.length)) return { ok: false as const, reason: "invalid_items" as const };
       // 개봉한 상품은 단순 변심으로 신청할 수 없다. 교환은 고른 품목 중 하나라도, 반품은 모든 품목이 개봉이면 막는다(일부만 개봉한 반품은 개봉분을 뺀 금액으로 환불).
       if (input.reason === "CHANGE_OF_MIND") {
@@ -396,19 +407,44 @@ export async function getSellerReturn(db: PrismaClient, ctx: TenantContext, id: 
   });
   if (!r) return null;
   const refundable = r.kind === "RETURN" && (r.status === "ACCEPTED" || r.status === "RECEIVED");
-  // 교환에서 환불로 바뀐 신청은 신청한 품목만 환불한다
-  const preview = refundable ? await previewRefundSelection(db, ctx, r.orderId, r.convertedFromExchange ? requestSelection(r.items) : undefined) : null;
+  // 환불은 신청한 품목·수량만(부분 반품, 교환에서 전환한 환불 포함)
+  const preview = refundable ? await previewRefundSelection(db, ctx, r.orderId, requestSelection(r.items)) : null;
+  const refunds = await orderRefundHistory(db, ctx.sellerId, r.orderId);
   return {
     ...view(r),
     // 무통장 환불 계좌(환불·종료 뒤 비워진다). 파트너스만 본다
     refundAccount: r.refundAccountNumber ? { bankName: r.refundBankName, accountHolder: r.refundAccountHolder, accountNumber: r.refundAccountNumber } : null,
     paymentMethod: r.order.paymentMethod,
+    refunds,
     orderNo: r.order.orderNo,
     nickname: r.order.broadcastNicknameSnapshot,
     order: { status: r.order.status, totalAmount: r.order.totalAmount, shippingFee: r.order.shippingFee, purchaseConfirmed: r.order.purchaseConfirmedAt !== null, shipment: r.order.shipment },
     refundPreview: preview?.ok ? preview.value : null,
     queueVersion: refundable ? await getRefundVersion(db, ctx) : null,
   };
+}
+
+// 이 주문에서 지금까지 한 환불(부분 환불 포함) 내역. 품목은 그때 기록한 수량·이름.
+async function orderRefundHistory(db: Db, sellerId: string, orderId: string) {
+  const [refunds, items] = await Promise.all([
+    db.orderRefund.findMany({ where: { sellerId, orderId }, orderBy: { seq: "asc" } }),
+    db.orderItem.findMany({ where: { sellerId, orderId }, select: { id: true, productNameSnapshot: true, optionNameSnapshot: true } }),
+  ]);
+  const name = new Map(items.map((i) => [i.id, i]));
+  return refunds.map((r) => ({
+    seq: r.seq,
+    createdAt: r.createdAt,
+    refundAmount: r.refundAmount,
+    shippingRefunded: r.shippingRefunded,
+    returnFeeDeducted: r.returnFeeDeducted,
+    rewardReturn: r.rewardReturn,
+    isFinal: r.isFinal,
+    items: (Array.isArray(r.items) ? (r.items as { orderItemId: string; quantity: number }[]) : []).map((l) => ({
+      quantity: l.quantity,
+      productName: name.get(l.orderItemId)?.productNameSnapshot ?? "",
+      optionName: name.get(l.orderItemId)?.optionNameSnapshot ?? "",
+    })),
+  }));
 }
 
 const requestSelection = (items: { orderItemId: string; quantity: number }[]): RefundSelection => items.map((i) => ({ orderItemId: i.orderItemId, quantity: i.quantity }));
@@ -484,8 +520,10 @@ export async function inspectReturn(db: PrismaClient, ctx: TenantContext, id: st
     if (cur.restocked && result !== "OK") return { ok: false, reason: "inspection_locked" };
     let restockedItems = 0;
     if (result === "OK" && body.restock === true && !cur.restocked) {
-      const items = await tx.returnRequestItem.findMany({ where: { sellerId: ctx.sellerId, returnRequestId: r.id }, select: { orderItemId: true } });
-      const restored = await restoreOrderStock(tx, { sellerId: ctx.sellerId, orderId: r.orderId, reason: "REFUND", now, actor: { actorType: ctx.actorType as ActorType, actorId: ctx.actorId }, itemIds: items.map((i) => i.orderItemId) });
+      // 재고 복구(products/stock.ts)는 품목의 주문 수량 전체를 되돌린다. 일부 수량만 반품한 품목은 되돌리지 않는다(파트너스가 재고 조정에서 직접 맞춘다).
+      const items = await tx.returnRequestItem.findMany({ where: { sellerId: ctx.sellerId, returnRequestId: r.id }, select: { orderItemId: true, quantity: true, orderItem: { select: { quantity: true } } } });
+      const whole = items.filter((i) => i.quantity === i.orderItem.quantity);
+      const restored = whole.length === 0 ? [] : await restoreOrderStock(tx, { sellerId: ctx.sellerId, orderId: r.orderId, reason: "REFUND", now, actor: { actorType: ctx.actorType as ActorType, actorId: ctx.actorId }, itemIds: whole.map((i) => i.orderItemId) });
       restockedItems = restored.length;
     }
     await tx.returnRequest.update({ where: { id: r.id }, data: { inspectionResult: result, inspectionNote: note, inspectedAt: now, updatedAt: now, ...(restockedItems > 0 ? { restocked: true } : {}) } });
@@ -579,7 +617,7 @@ export async function refundReturn(
   if (r.inspectionResult !== "OK") return { ok: false as const, reason: "inspection_not_ok" as const };
   if (r.order.paymentMethod === "BANK_TRANSFER" && !r.refundAccountNumber) return { ok: false as const, reason: "refund_account_required" as const };
   const out = await refundOrder(db, ctx, r.orderId, {
-    ...(r.convertedFromExchange ? { items: requestSelection(r.items) } : {}),
+    items: requestSelection(r.items),
     reason: "반품 환불",
     expectedLiveVersion: body.expectedVersion,
     confirmOpened: body.confirmOpened === true,

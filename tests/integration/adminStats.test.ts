@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { GET as ordersRoute } from "../../app/api/admin/stats/orders/route";
+import { GET as growthRoute } from "../../app/api/admin/stats/growth/route";
 import { GET as subsRoute } from "../../app/api/admin/stats/subscriptions/route";
 import { loginSeller } from "../../lib/server/auth/login";
 import { createAdminSession } from "../../lib/server/auth/session";
@@ -106,5 +107,50 @@ describe("월별 구독 매출·수납 결과 GET /api/admin/stats/subscriptions
     if (!login.ok) throw new Error(login.reason);
     expect((await get("subscriptions?from=2026-09-01&to=2026-10-31", `lo_seller=${login.token}`, subsRoute)).status).toBe(401);
     expect((await get("subscriptions?from=2026-09-01&to=2026-10-31", undefined, subsRoute)).status).toBe(401);
+  });
+});
+
+describe("신규 파트너스·방송 수 추이 GET /api/admin/stats/growth", () => {
+  it("가입 신청·승인·시작한 방송·방송한 파트너스 수를 일별로 세고(0 채움) 전기와 비교한다", async () => {
+    const a = (await createSeller()).seller;
+    const b = (await createSeller()).seller;
+    const c = (await createSeller()).seller;
+    const old = (await createSeller()).seller;
+    const at = (iso: string) => new Date(iso);
+    // 이번 기간 10/1~10/3(KST). a: 10/1 가입·10/2 승인, b: 10/3 가입(미승인), c: 전기(9/29) 가입·이번 기간 10/1 승인, old: 기간 밖
+    await db.seller.update({ where: { id: a.id }, data: { createdAt: at("2026-10-01T03:00:00Z"), approvedAt: at("2026-10-02T03:00:00Z") } });
+    await db.seller.update({ where: { id: b.id }, data: { createdAt: at("2026-10-03T03:00:00Z"), approvedAt: null } });
+    await db.seller.update({ where: { id: c.id }, data: { createdAt: at("2026-09-29T03:00:00Z"), approvedAt: at("2026-10-01T05:00:00Z") } });
+    await db.seller.update({ where: { id: old.id }, data: { createdAt: at("2026-08-01T03:00:00Z"), approvedAt: at("2026-08-02T03:00:00Z") } });
+    const live = (sellerId: string, startedAt: string) => db.broadcastSession.create({ data: { sellerId, status: "ENDED", startedAt: at(startedAt), endedAt: at(startedAt) } });
+    await live(a.id, "2026-10-01T03:00:00Z");
+    await live(a.id, "2026-10-01T05:00:00Z"); // 같은 파트너스 같은 날 2번
+    await live(b.id, "2026-10-03T03:00:00Z");
+    await live(a.id, "2026-09-29T03:00:00Z"); // 전기
+    await live(a.id, "2026-10-04T03:00:00Z"); // 기간 밖
+
+    const res = await get("growth?from=2026-10-01&to=2026-10-03", await adminCookie(), growthRoute);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.current).toEqual({ signups: 2, approved: 2, broadcasts: 3, broadcasters: 2 });
+    expect(body.previous).toEqual({ signups: 1, approved: 0, broadcasts: 1, broadcasters: 1 });
+    expect(body.series).toEqual([
+      { bucket: "2026-10-01", signups: 1, approved: 1, broadcasts: 2, broadcasters: 1 },
+      { bucket: "2026-10-02", signups: 0, approved: 1, broadcasts: 0, broadcasters: 0 },
+      { bucket: "2026-10-03", signups: 1, approved: 0, broadcasts: 1, broadcasters: 1 },
+    ]);
+  });
+
+  it("마스터 관리자 전 역할이 보고, 잘못된 기간은 400, 파트너스 세션·무로그인은 401", async () => {
+    for (const role of ["SUPER_ADMIN", "OPERATIONS", "CS", "READ_ONLY"] as const) {
+      expect((await get("growth?from=2026-10-01&to=2026-10-07", await adminCookie(role), growthRoute)).status, role).toBe(200);
+    }
+    expect((await get("growth", await adminCookie(), growthRoute)).status).toBe(400);
+    const { seller } = await createSeller();
+    const owner = await createSellerUser(seller.id, "OWNER");
+    const login = await loginSeller(db, { email: owner.email, password: PASSWORD }, {});
+    if (!login.ok) throw new Error(login.reason);
+    expect((await get("growth?from=2026-10-01&to=2026-10-07", `lo_seller=${login.token}`, growthRoute)).status).toBe(401);
+    expect((await get("growth?from=2026-10-01&to=2026-10-07", undefined, growthRoute)).status).toBe(401);
   });
 });

@@ -3,6 +3,7 @@ import { dbNow } from "../billing/subscription";
 import { shopOpen } from "../buyers/signup";
 import { getShippingPolicy } from "../orders/shipping";
 import type { RewardRates } from "../rewards/earn";
+import { expandSearchTerm, productIdsByTerm, recordSearchTerm } from "../shop-search/service";
 import { cleanText } from "../text/clean";
 import { publicDetailBlocks } from "./detail";
 import { eventOf, isEventActive, orderUnitPrice } from "./event";
@@ -83,12 +84,14 @@ export async function shopProductList(
     categoryIds = await visibleCategoryIds(db, shop.id, q.categoryId);
     if (!categoryIds) return { ok: false, reason: "not_found" };
   }
+  // 검색어는 판매자 유사어 묶음으로 넓히고, 상품 이름 또는 검색 태그에 들어 있으면 찾는다(shop-search, % _ 는 글자 그대로)
+  const matchedIds = term ? await productIdsByTerm(db, shop.id, await expandSearchTerm(db, shop.id, term)) : null;
   const rows = await db.product.findMany({
     where: {
       sellerId: shop.id,
       deletedAt: null,
       status: { in: [...VISIBLE] },
-      ...(term ? { name: { contains: term, mode: "insensitive" as const } } : {}),
+      ...(matchedIds ? { id: { in: matchedIds } } : {}),
       ...(categoryIds ? { categories: { some: { categoryId: { in: categoryIds } } } } : {}),
     },
     select: {
@@ -153,6 +156,8 @@ export async function shopProductList(
   };
   cards.sort(only === "best" ? (a, b) => sold.get(b.p.id)! - sold.get(a.p.id)! || lastSold.get(b.p.id)! - lastSold.get(a.p.id)! || byId(a, b) : cmp[sort]);
   const arranged = arrange(cards, await displayOptions(db, shop.id), await liveProductIds(db, shop.id), (c) => c.p.id);
+  // 인기 검색어: 구매자가 직접 한 검색(홈 진열 제외)의 첫 쪽 결과가 있을 때만 센다
+  if (term && !only && page === 1 && arranged.length > 0) await recordSearchTerm(db, shop.id, term);
   const slice = arranged.slice((page - 1) * limit, page * limit);
   const thumbs = await thumbnails(db, shop.id, shop.slug, slice.map((c) => c.p.id));
   const extras = await cardExtras(db, shop.id, slice.map((c) => ({ id: c.p.id, shown: c.shown })), now);

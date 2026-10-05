@@ -38,6 +38,9 @@ test.describe.serial("SH-022-R 교환·반품 신청 · SA-029 교환·반품 �
     await expect(dlg.getByLabel("직접 보낼게요")).toBeChecked();
     await expect(dlg.getByText("환불받을 계좌")).toHaveCount(0);
     await dlg.getByLabel("택배 수거를 원해요").check();
+    // 반품은 돌려보낼 상품과 수량을 고른다(처음에는 전부)
+    await expect(dlg.getByText("돌려보낼 상품", { exact: true })).toBeVisible();
+    await expect(dlg.getByRole("combobox", { name: /수량$/ }).first()).toHaveValue("1");
     await page.screenshot({ path: `${SHOT}/sh022r-form-390.png`, fullPage: true });
     // 사유를 고르기 전에는 신청할 수 없고, 「기타」는 자세한 사유가 있어야 한다
     await expect(dlg.getByRole("button", { name: "신청하기" })).toBeDisabled();
@@ -124,5 +127,7 @@ test.describe.serial("SH-022-R 교환·반품 신청 · SA-029 교환·반품 �
     await buyerLogin(page, baseURL!);
     await page.goto(`/shop/${SLUG}/orders/${orderId}`);
     await expect(page.getByRole("region", { name: "교환 · 반품" }).getByTestId("return-item").first()).toContainText("환불이 끝났어요");
+    await expect(page.getByTestId("refund-history")).toContainText("환불 내역");
+    await expect(page.getByTestId("refund-history")).toContainText("환불");
   });
 });

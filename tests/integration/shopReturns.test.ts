@@ -672,3 +672,59 @@ describe("교환·반품 v2: 기한·개봉·수거·검수·교환 재고 없�
     expect(ra.id).toBeTruthy();
   });
 });
+
+describe("부분 반품·환불 내역", () => {
+  it("품목·수량을 골라 반품 신청하고(남은 수량 안에서만), 환불은 신청 품목만 하며 주문은 결제 완료로 남는다", async () => {
+    const s = await shop();
+    const id = await s.delivered();
+    // 대기 중인 주문대기가 있으면 일부 수량 환불이 막힌다(queued_item_partial). 주문대기 없는 주문으로 만든다.
+    await db.queueItem.deleteMany({ where: { orderId: id } });
+    const its = await s.items(id);
+    const pack = its.find((i) => i.productNameSnapshot === "부스터 팩")!; // 5,000 × 2
+    const bad = async (items: unknown) => ((await createReturn(db, s.scope, id, { orderId: id, kind: "RETURN", reason: "DEFECTIVE", items })) as { reason?: string }).reason;
+    expect(await bad([])).toBe("invalid_items");
+    expect(await bad([{ orderItemId: pack.id, quantity: 3 }])).toBe("invalid_items");
+    expect(await bad([{ orderItemId: pack.id, quantity: 0 }])).toBe("invalid_items");
+    expect(await bad([{ orderItemId: pack.id, quantity: 1 }, { orderItemId: pack.id, quantity: 1 }])).toBe("invalid_items");
+    expect(await bad([{ orderItemId: "00000000-0000-4000-8000-000000000000", quantity: 1 }])).toBe("invalid_items");
+    expect(await db.returnRequest.count()).toBe(0);
+    const r = await createReturn(db, s.scope, id, { orderId: id, kind: "RETURN", reason: "DEFECTIVE", items: [{ orderItemId: pack.id, quantity: 1 }] });
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.request.items).toMatchObject([{ orderItemId: pack.id, quantity: 1, orderQuantity: 2 }]);
+    await proceedToReceived(s, r.request.id);
+    const p = await getSellerReturn(db, s.ctx, r.request.id);
+    expect(p?.partialQuantity).toBe(true);
+    expect(p?.refundPreview?.byFault.SELLER).toMatchObject({ itemsAmount: 5000 });
+    const done = await refundReturn(db, s.ctx, r.request.id, { expectedVersion: p!.queueVersion!, expectedRefundAmount: p!.refundPreview!.byFault.SELLER.refundAmount });
+    expect(done).toMatchObject({ ok: true, request: { status: "COMPLETED", refundAmount: p!.refundPreview!.byFault.SELLER.refundAmount } });
+    expect(await db.order.findUniqueOrThrow({ where: { id } })).toMatchObject({ status: "PAID" });
+    expect((await db.orderItem.findUniqueOrThrow({ where: { id: pack.id } })).refundedQuantity).toBe(1);
+    // 환불 내역: 파트너스 상세와 구매자 화면 모두 한 건, 품목·수량이 보인다
+    const after = await getSellerReturn(db, s.ctx, r.request.id);
+    expect(after?.refunds).toMatchObject([{ seq: 1, isFinal: false, items: [{ quantity: 1, productName: "부스터 팩" }] }]);
+    const ctx = await buyerReturnContext(db, s.scope, id);
+    expect(ctx?.refunds).toMatchObject([{ seq: 1, items: [{ quantity: 1, productName: "부스터 팩" }] }]);
+    expect(JSON.stringify(ctx?.refunds)).not.toContain("actorId");
+    // 닫혔으니 남은 수량(팩 1 + 슬리브 1)으로 다시 신청할 수 있고, 남은 수량을 넘으면 거절
+    expect(ctx).toMatchObject({ canRequest: true });
+    expect(ctx?.items.map((i) => i.quantity).sort()).toEqual([1, 1]);
+    expect(await createReturn(db, s.scope, id, { orderId: id, kind: "RETURN", reason: "DEFECTIVE", items: [{ orderItemId: pack.id, quantity: 2 }] })).toEqual({ ok: false, reason: "invalid_items" });
+    expect(await createReturn(db, s.scope, id, { orderId: id, kind: "RETURN", reason: "DEFECTIVE" })).toMatchObject({ ok: true });
+  });
+
+  it("일부 수량만 반품한 품목은 검수 재고 되돌리기를 하지 않고, 전체 수량 품목만 되돌린다", async () => {
+    const s = await shop();
+    const id = await s.delivered();
+    const its = await s.items(id);
+    const pack = its.find((i) => i.productNameSnapshot === "부스터 팩")!;
+    const sleeve = its.find((i) => i.productNameSnapshot === "슬리브")!;
+    const at = [await stock(s.oa.id), await stock(s.ob.id)];
+    const r = await createReturn(db, s.scope, id, { orderId: id, kind: "RETURN", reason: "DEFECTIVE", items: [{ orderItemId: pack.id, quantity: 1 }, { orderItemId: sleeve.id, quantity: 1 }] });
+    if (!r.ok) throw new Error(r.reason);
+    await acceptReturn(db, s.ctx, r.request.id, {});
+    await receiveReturn(db, s.ctx, r.request.id, {});
+    expect(await inspectReturn(db, s.ctx, r.request.id, { result: "OK", restock: true })).toMatchObject({ ok: true, request: { restocked: true } });
+    // 슬리브(전체 수량 1)만 되돌아가고 팩(2개 중 1개)은 그대로
+    expect([await stock(s.oa.id), await stock(s.ob.id)]).toEqual([at[0], at[1] + 1]);
+  });
+});
