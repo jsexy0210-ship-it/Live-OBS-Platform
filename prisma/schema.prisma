@@ -374,7 +374,7 @@ model BuyerMember {
   cartItems            CartItem[]
   wishItems            WishItem[]
   returnRequests       ReturnRequest[]
-  refundRequests        RefundRequest[]
+  refundRequests       RefundRequest[]
   returnRequestImages  ReturnRequestImage[]
   gradeOverrides       MemberGradeOverride[]
   gradeHistory         MemberGradeHistory[]
