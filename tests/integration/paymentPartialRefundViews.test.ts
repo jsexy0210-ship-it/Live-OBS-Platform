@@ -73,7 +73,8 @@ const shipmentRow = async (s: Awaited<ReturnType<typeof setup>>) => {
 describe("부분 환불 뒤 수량 표시", () => {
   it("출고 목록·주문 목록 요약은 다 돌려준 품목을 빼고, 남은 품목이 없으면(주문 환불) 출고 목록에서 사라진다", async () => {
     const s = await setup();
-    expect((await shipmentRow(s))?.itemSummary).toEqual({ firstProductName: "박스", otherCount: 1, refundedQuantity: 0 });
+    // 두 품목은 같은 시각에 만들어져 첫 상품은 id 순서로 정해진다(어느 쪽이든 외 1건)
+    expect((await shipmentRow(s))?.itemSummary).toEqual({ firstProductName: expect.stringMatching(/^(박스|팩)$/), otherCount: 1, refundedQuantity: 0 });
     await s.refund([{ orderItemId: s.boxItem.id, quantity: 1 }]);
     expect((await shipmentRow(s))?.itemSummary).toEqual({ firstProductName: "팩", otherCount: 0, refundedQuantity: 1 });
     await s.refund([{ orderItemId: s.packItem.id, quantity: 1 }]);
@@ -86,7 +87,7 @@ describe("부분 환불 뒤 수량 표시", () => {
     // 전부 환불된 주문의 목록 요약은 모든 품목으로 보여 준다
     const after = await listSellerOrders(db, s.ctx, {});
     if (!after.ok) throw new Error("list");
-    expect(after.orders.find((o) => o.id === s.order.id)?.itemSummary).toEqual({ firstProductName: "박스", otherCount: 1, refundedQuantity: 4 });
+    expect(after.orders.find((o) => o.id === s.order.id)?.itemSummary).toEqual({ firstProductName: expect.stringMatching(/^(박스|팩)$/), otherCount: 1, refundedQuantity: 4 });
   });
 
   it("파트너스 주문 상세는 품목마다 환불한 수량과 보낼 수량, 구매자 주문 상세는 환불한 수량을 준다", async () => {
