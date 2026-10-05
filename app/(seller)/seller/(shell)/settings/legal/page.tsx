@@ -345,9 +345,9 @@ function NoticePanel({ editable, visible }: { editable: boolean; visible: boolea
           </FormSection>
         </div>
         <div style={{ marginTop: 32 }}>
-          <FormSection title="결제 안전 서비스">
+          <FormSection title="구매 안전 서비스">
             <FormRow label="가입 종류" help="가입한 경우에만 선택합니다 · 가입 정보는 입력한 그대로 표시됩니다">
-              <div className="seg" role="radiogroup" aria-label="결제 안전 서비스 가입 종류">
+              <div className="seg" role="radiogroup" aria-label="구매 안전 서비스 가입 종류">
                 {ESCROW_CHOICES.map((c) => (
                   <button key={c.key} type="button" role="radio" aria-checked={form.escrowKind === c.key} className={form.escrowKind === c.key ? "on" : ""} disabled={!editable} onClick={() => set({ escrowKind: c.key })}>
                     {c.label}
