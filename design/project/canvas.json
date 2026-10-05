@@ -3,7 +3,7 @@
   "attachments": {},
   "boards": {
     "AU-001.dc.html": {
-      "h": 737,
+      "h": 810,
       "is_interactive": true,
       "page": "p06",
       "title": "AU-001 마스터 관리자 로그인 (카페24식 카드)",
@@ -21,7 +21,7 @@
       "y": 0
     },
     "AU-002.dc.html": {
-      "h": 1478,
+      "h": 1500,
       "is_interactive": true,
       "page": "p06",
       "title": "AU-002 파트너스 로그인 (카페24식 카드 · 대표자 · 직원 탭)",
@@ -30,7 +30,7 @@
       "y": 0
     },
     "AU-003.dc.html": {
-      "h": 2152,
+      "h": 2400,
       "is_interactive": true,
       "page": "p06",
       "title": "AU-003 아이디/비밀번호 찾기 · 비밀번호 (카페24식 · 휴대폰 본인확인 블록)",
@@ -39,7 +39,7 @@
       "y": 0
     },
     "AU-004.dc.html": {
-      "h": 777,
+      "h": 850,
       "is_interactive": true,
       "page": "p06",
       "title": "AU-004 비밀번호 재설정 (카페24식 카드)",
@@ -48,7 +48,7 @@
       "y": 2508
     },
     "AU-005.dc.html": {
-      "h": 1080,
+      "h": 1090,
       "is_interactive": true,
       "page": "p06",
       "title": "AU-005 파트너스 승인 대기 안내 (개발 맞춤 · /seller/pending · 합니다체)",
@@ -66,7 +66,7 @@
       "y": 2508
     },
     "AU-007.dc.html": {
-      "h": 960,
+      "h": 980,
       "is_interactive": true,
       "page": "p06",
       "title": "AU-007 세션 만료 (개발 맞춤 · 로그인 ?reason=expired 안내)",
@@ -84,7 +84,7 @@
       "y": 4179
     },
     "AU-009.dc.html": {
-      "h": 992,
+      "h": 1020,
       "is_interactive": true,
       "page": "p06",
       "title": "AU-009 페이지 없음 (카페24식 카드)",
@@ -110,7 +110,7 @@
       "y": 0
     },
     "AU-011.dc.html": {
-      "h": 2430,
+      "h": 2620,
       "is_interactive": true,
       "page": "p06",
       "title": "AU-011 아이디/비밀번호 찾기 · 아이디 (카페24식 · 휴대폰 본인확인 블록)",
@@ -119,7 +119,7 @@
       "y": 0
     },
     "AU-012.dc.html": {
-      "h": 1878,
+      "h": 1950,
       "is_interactive": true,
       "page": "p06",
       "title": "AU-012 직원 첫 로그인 · 계정 연결 (카페24식 · 휴대폰 본인확인 블록)",
