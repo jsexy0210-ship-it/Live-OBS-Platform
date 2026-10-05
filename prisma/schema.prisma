@@ -3177,3 +3177,12 @@ model AssistantLedger {
   @@index([status, createdAt(sort: Desc)])
   @@index([month])
 }
+
+// ───────────── 알림 센터(MA-002 · SA-130) ─────────────
+
+// 파트너스 계정이 알림 센터를 마지막으로 본 시각. 알림은 공지·문의에서 바로 만들어 주고 따로 쌓지 않는다.
+// 공지 알림은 이 시각 이후 게시분이 안 읽음이다(문의 답변은 문의를 열면 읽음). 계정마다 한 줄.
+model SellerNotificationSeen {
+  sellerUserId String   @id @db.Uuid
+  seenAt       DateTime @db.Timestamptz(3)
+}
