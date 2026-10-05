@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-// UX 감사 P1 구매자: UX-07 로그인 replace · UX-12 없는 상품 안내 · J-3 내 정보 허브 · UX-10 주문 탭 보존
+// UX 감사 P1 구매자: UX-07 로그인 replace · UX-12 없는 상품 안내 · J-3 내 정보 허브
 const SLUG = "demo-shop";
 const LOGIN = "demo-buyer1@example.com";
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
@@ -30,7 +30,7 @@ test("로그인 뒤 뒤로 가기로 로그인 화면에 돌아오지 않고, �
   await expect(page).toHaveURL(new RegExp(`/shop/${SLUG}$`));
 });
 
-test("내 정보는 허브로 그룹별 링크를 보이고, 주문 탭은 주소에 남는다", async ({ page }) => {
+test("내 정보는 허브로 그룹별 링크를 보인다", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 800 });
   await page.request.post(`/api/shop/${SLUG}/auth/login`, { data: { loginId: LOGIN, password: PASSWORD }, headers: { origin: "http://localhost:3100" } });
   await page.goto(`/shop/${SLUG}/me`);
@@ -39,11 +39,7 @@ test("내 정보는 허브로 그룹별 링크를 보이고, 주문 탭은 주�
   }
   await page.locator("main").getByRole("link", { name: "주문 내역" }).click();
   await expect(page).toHaveURL(/\/orders$/);
-  await page.getByRole("tab", { name: /취소/ }).click();
-  await expect(page).toHaveURL(/\/orders\?tab=cancel$/);
-  await page.reload();
-  await expect(page.getByRole("tab", { name: /취소/ })).toHaveAttribute("aria-selected", "true");
-  const nav = page.getByRole("navigation", { name: "내 정보 메뉴" });
+});
   const box = await nav.boundingBox();
   expect(box!.height).toBeLessThan(80);
 });

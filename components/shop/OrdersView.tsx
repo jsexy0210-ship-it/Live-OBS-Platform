@@ -57,19 +57,7 @@ export default function OrdersView({ slug }: { slug: string }) {
   const base = `/shop/${encodeURIComponent(slug)}`;
   const api = `/api/shop/${encodeURIComponent(slug)}/orders`;
   const [view, setView] = useState<View>({ kind: "loading" });
-  const [tab, setTabState] = useState<Tab>("all");
-  // 선택한 탭을 주소(?tab=)에 남겨 새로고침·뒤로 가기 뒤에도 유지한다
-  useEffect(() => {
-    const t = new URLSearchParams(window.location.search).get("tab");
-    if (TABS.some((x) => x.key === t)) setTabState(t as Tab);
-  }, []);
-  const setTab = (t: Tab) => {
-    setTabState(t);
-    const u = new URL(window.location.href);
-    if (t === "all") u.searchParams.delete("tab");
-    else u.searchParams.set("tab", t);
-    window.history.replaceState(null, "", u.pathname + u.search);
-  };
+  const [tab, setTab] = useState<Tab>("all");
   const [more, setMore] = useState(false);
   const [moreError, setMoreError] = useState(false);
 
