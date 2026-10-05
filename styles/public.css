@@ -56,3 +56,17 @@
   .pf-foot{padding:28px 20px}
 }
 body:has(.pf){margin:0}
+.pf-nav a[aria-current="page"]{color:var(--wds-label-normal);font-weight:700}
+.pf-feat-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--ui-sp-16);margin-top:var(--ui-sp-32)}
+.pf-feat{display:flex;flex-direction:column;gap:var(--ui-sp-12);padding:var(--ui-sp-24)}
+.pf-feat p{margin:0;line-height:1.6}
+.pf-feat ul,.pf-check{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:var(--ui-sp-4);font-size:var(--ui-fs-body)}
+.pf-plans-wide{max-width:980px}
+.pf-plans-wide .pf-plan{flex:1;min-width:280px;gap:var(--ui-sp-12)}
+.pf-brand{color:var(--brand)}
+.pf-faq-wide{max-width:900px;margin-top:var(--ui-sp-32)}
+.pf-faq-search{display:flex;flex-direction:column;gap:var(--ui-sp-4);max-width:520px;margin:var(--ui-sp-16) 0}
+.pf-chips{display:flex;flex-wrap:wrap;gap:var(--ui-sp-8)}
+.pf-ask{display:flex;flex-direction:column;align-items:flex-start;gap:var(--ui-sp-4);padding:var(--ui-sp-24);margin-top:var(--ui-sp-32);max-width:900px}
+.pf-ask .btn{margin-top:var(--ui-sp-8)}
+@media (max-width:900px){.pf-feat-list{grid-template-columns:1fr}}
