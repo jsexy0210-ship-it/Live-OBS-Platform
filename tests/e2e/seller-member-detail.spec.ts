@@ -80,3 +80,82 @@ test("구매 제한: 막혀 있으면 사유·기간이 보이고, 풀면 제한
   const left = await withDb((db, sellerId, buyerMemberId) => db.buyerPurchaseRestriction.count({ where: { sellerId, buyerMemberId, liftedAt: null, endsAt: { gt: new Date() } } }));
   expect(left).toBe(0);
 });
+
+test("회원 메모: 저장하면 다시 열어도 남고, 비우고 저장하면 지워진다(개인정보 안내가 보인다)", async ({ page }) => {
+  const id = await openDetail(page);
+  await withDb((db) => db.memberMemo.deleteMany({ where: { buyerMemberId: id } }));
+  await page.reload();
+  const box = page.getByLabel("메모", { exact: true });
+  const save = page.getByRole("button", { name: "메모 저장" });
+  await expect(page.getByText(/개인정보는 적지 마십시오/)).toBeVisible();
+  await expect(save).toBeDisabled();
+  await box.fill("방송 단골. 선물 포장 요청이 많음");
+  await save.click();
+  await expect(page.getByText("메모를 저장했습니다")).toBeVisible();
+  await expect(page.getByTestId("member-memo-meta")).toContainText("대표자");
+  await page.reload();
+  await expect(box).toHaveValue("방송 단골. 선물 포장 요청이 많음");
+  await box.fill("");
+  await save.click();
+  await expect(page.getByText("메모를 지웠습니다")).toBeVisible();
+  const left = await withDb((db) => db.memberMemo.count({ where: { buyerMemberId: id } }));
+  expect(left).toBe(0);
+});
+
+test("직접 제한: 기간·사유로 걸면 직접 제한으로 보이고 주문이 막히며, 풀 수 있다", async ({ page }) => {
+  await withDb(async (db, sellerId, buyerMemberId) => {
+    await db.buyerPurchaseRestriction.updateMany({ where: { sellerId, buyerMemberId, liftedAt: null }, data: { endsAt: new Date(Date.now() - 1000) } });
+  });
+  await openDetail(page);
+  await expect(page.getByTestId("restriction-none")).toBeVisible();
+  await page.getByRole("button", { name: "직접 제한" }).click();
+  const dialog = page.getByRole("dialog", { name: /주문을 막으시겠습니까/ });
+  await expect(dialog).toContainText("미입금 자동 취소 횟수를 새로 셉니다");
+  const run = dialog.getByRole("button", { name: "제한 걸기" });
+  await dialog.getByLabel("제한 기간(일)").fill("0");
+  await expect(run).toBeDisabled();
+  await dialog.getByLabel("제한 기간(일)").fill("7");
+  await dialog.getByLabel("사유").fill("반복 허위 주문");
+  await run.click();
+  await expect(page.getByText("구매 제한을 걸었습니다")).toBeVisible();
+  const info = page.getByTestId("restriction-info");
+  await expect(info).toContainText("직접 제한");
+  await expect(info).toContainText("반복 허위 주문");
+  const row = await withDb((db, sellerId, buyerMemberId) => db.buyerPurchaseRestriction.findFirstOrThrow({ where: { sellerId, buyerMemberId, liftedAt: null, endsAt: { gt: new Date() } } }));
+  expect(row.reason).toBe("MANUAL");
+  // 풀기
+  await page.getByRole("button", { name: "제한 풀기" }).click();
+  await page.getByRole("dialog", { name: /구매 제한을 푸시겠습니까/ }).getByRole("button", { name: "제한 풀기" }).click();
+  await expect(page.getByTestId("restriction-none")).toBeVisible();
+});
+
+test("주문·적립금 내역: 이 회원의 것만 보이고, 주문 행에서 주문 상세로 간다", async ({ page }) => {
+  const id = await withDb(async (db, sellerId, memberId) => {
+    await db.rewardLedger.deleteMany({ where: { sellerId, buyerMemberId: memberId, idempotencyKey: { startsWith: "e2e-detail-" } } });
+    await db.rewardLedger.create({ data: { sellerId, buyerMemberId: memberId, type: "EARN", amount: 1234, status: "SUCCEEDED", testMode: true, idempotencyKey: "e2e-detail-1" } });
+    return memberId;
+  });
+  await openDetail(page);
+  const orders = page.getByTestId("member-order-row");
+  await expect(orders.first()).toBeVisible();
+  // 주문 목록 API가 이 회원으로만 걸러 오는지(다른 회원 주문이 섞이지 않는지)
+  const res = await page.request.get(`/api/seller/orders?memberId=${id}&limit=50`);
+  const body = (await res.json()) as { orders: { id: string; buyer: { id: string } }[] };
+  expect(body.orders.length).toBeGreaterThan(0);
+  expect(body.orders.every((o) => o.buyer.id === id)).toBe(true);
+  expect(await orders.count()).toBe(Math.min(body.orders.length, 10));
+  const reward = page.getByTestId("member-reward-row").filter({ hasText: "+1,234원" });
+  await expect(reward).toHaveCount(1);
+  await expect(reward).toContainText("적립");
+  await orders.first().getByRole("link", { name: "상세" }).click();
+  await expect(page).toHaveURL(/\/seller\/orders\/[0-9a-f-]{36}$/);
+  await withDb((db, sellerId, memberId) => db.rewardLedger.deleteMany({ where: { sellerId, buyerMemberId: memberId, idempotencyKey: "e2e-detail-1" } }));
+});
+
+test("주문 권한이 없어 주문 목록 API가 막히면 주문 칸은 안내만 보이고 나머지는 그대로다", async ({ page }) => {
+  await page.route(/\/api\/seller\/orders\?memberId=/, (route) => route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: "forbidden" }) }));
+  await openDetail(page);
+  await expect(page.getByText("주문 목록은 주문 · 배송 권한이 있어야 볼 수 있습니다")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "회원 메모" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "적립금 내역" })).toBeVisible();
+});

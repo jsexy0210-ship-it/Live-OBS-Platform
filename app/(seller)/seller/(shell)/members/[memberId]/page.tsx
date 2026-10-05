@@ -8,12 +8,15 @@ import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
 import { won } from "../../../../../../components/seller/format";
+import { MemberMemo } from "../../../../../../components/seller/members/MemberMemo";
+import { MemberOrders } from "../../../../../../components/seller/members/MemberOrders";
+import { MemberRewards } from "../../../../../../components/seller/members/MemberRewards";
 import { MemberGradeAdjust } from "../../../../../../components/seller/members/MemberGradeAdjust";
 import { MemberRestriction } from "../../../../../../components/seller/members/MemberRestriction";
 import { MEMBER_STATUS, memberDay, phoneText, type MemberDetail } from "../../../../../../components/seller/members/types";
 
-// SA-042 회원 상세 중 지금 API가 주는 것(등급·상태·주문 수·누적 결제·적립금 잔액) + 등급 직접 조정 + 구매 제한 현황·풀기. GET /api/seller/members/{id}, 회원·적립금 권한.
-// 주문 목록·회원 메모·회원별 적립금 내역은 API가 생기면 붙인다.
+// SA-042 회원 상세: 등급·상태·주문 수·누적 결제·적립금 잔액 + 등급 직접 조정 + 구매 제한(현황·직접 걸기·풀기) + 회원 메모 + 주문 목록 + 적립금 내역.
+// GET /api/seller/members/{id}, 회원·적립금 권한. 주문 목록은 주문·배송 권한이 없으면 안내만 보인다.
 export default function MemberDetailPage() {
   const { memberId } = useParams<{ memberId: string }>();
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; member: MemberDetail }>({ kind: "loading" });
@@ -117,6 +120,9 @@ export default function MemberDetailPage() {
               }}
             />
             <MemberRestriction memberId={m.id} onChanged={(text) => setToast(text)} />
+            <MemberMemo memberId={m.id} onSaved={(text) => setToast(text)} />
+            <MemberOrders memberId={m.id} />
+            <MemberRewards memberId={m.id} />
           </div>
         )}
       </main>
