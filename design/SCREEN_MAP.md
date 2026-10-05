@@ -26,8 +26,8 @@
 
 | 상태 | 수 |
 |---|---|
-| FINAL | 29 |
-| DRAFT | 149 |
+| FINAL | 32 |
+| DRAFT | 146 |
 | BLOCKED | 0 |
 | MISSING | 14 |
 | SUPERSEDED | 1 |
@@ -83,7 +83,7 @@
 | MA-021 | 요금제 목록 | /admin/billing/plans | design/project/MA-021.dc.html | MA-021.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: MA-021-P |
 | MA-022 | 요금제 등록·수정 | /admin/billing/plans (등록·수정) | design/project/MA-022.dc.html | MA-022.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: MA-022-D, MA-022-E |
 | MA-023 | 구독 현황 | /admin/billing/subscriptions | design/project/MA-023.dc.html | MA-023.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| MA-024 | 청구·결제 내역 | /admin/billing/invoices | design/project/MA-024.dc.html | MA-024.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
+| MA-024 | 청구·결제 내역 | /admin/billing/invoices | design/project/MA-024.dc.html | MA-024.dc.html | FINAL | v267 (1791211931-f082) | 2026-10-06 00:12 KST | 현대화 기준 충족(v267): 「불러온 n건」 머리 · 청구 열 글 열 왼쪽 · 「항목」 가운데 · 상태 5종 |
 | MA-025 | 청구 상세 | /admin/billing/invoices/[paymentId] | design/project/MA-025.dc.html | MA-025.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | MA-026 | 환불 요청 목록 | /admin/billing/refunds | design/project/MA-026.dc.html | MA-026.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | MA-027 | 환불 처리 | /admin/billing/refunds/[refundId] | design/project/MA-027.dc.html | MA-027.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
@@ -138,7 +138,7 @@
 | SA-015 | 카테고리 관리 | /seller/products/categories | design/project/SA-015.dc.html | SA-015.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-016 | 상품 진열 | /seller/products/display | design/project/SA-016.dc.html | SA-016.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-017 | 재입고 알림 | /seller/products/restock-alerts | design/project/SA-017.dc.html | SA-017.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-018 | 엑셀 일괄 등록·내보내기 | — (PR #462 작업 중) | design/project/SA-018.dc.html | SA-018.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
+| SA-018 | 엑셀 일괄 등록·내보내기 | — (PR #462 작업 중) | design/project/SA-018.dc.html | SA-018.dc.html | FINAL | v267 (1791211931-f082) | 2026-10-06 00:12 KST | 현대화 기준 충족(v267): 글 열 제목 왼쪽 · 행동 줄 flex 8px · 내보내기 관리 열 버튼 40 통일 · 되돌리기 danger 단독 · 로딩·오류 상태 추가(9종) |
 | SA-020 | 주문(메뉴 그룹) | — | — | 메뉴 그룹 ID(화면 아님) | MISSING | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | IA 그룹 헤더 · 보드 대상 아님 |
 | SA-021 | 주문 목록 | /seller/orders | design/project/SA-021-OPS.dc.html | SA-021-OPS.dc.html | FINAL | v266 (1791211729-2b33) | 2026-10-06 00:05 KST | ADMIN_OPS_UX P1 · SA-021 정본 · 변형: SA-021, SA-021-PRE, SA-021-S (SA-021 = SUPERSEDED) · v258 부분 환불 표기(결제 칸 배지 · 금액 아래 환불 줄) · v259 주문번호 보조 표시(접수 시각 아래) · 현대화 기준 확인(v266): 글 열 제목 왼쪽(th.l) · 관리 열 가운데 8px · 버튼 폭 토큰 · Select 공통 화살표 · 상태 변형 7종 · SA-021(1차)도 같은 기준 |
 | SA-022 | 주문 상세 | /seller/orders/[orderId] | design/project/SA-022.dc.html | SA-022.dc.html | FINAL | v266 (1791211729-2b33) | 2026-10-06 00:05 KST | 현대화 기준 충족(v266): 썸네일 64×64 · 글 열 제목 왼쪽 · 버튼 위계(목록·취소 환불 2차 · 송장 입력 1차) · 상태 변형 11종 · 모달 X 44px · v259 상단 주문번호 + 복사 버튼 · 복사 토스트 상태 |
@@ -212,7 +212,7 @@
 | SH-004 | 장바구니 | /shop/[slug]/cart | design/project/SH-004-IA.dc.html | SH-004-IA.dc.html | FINAL | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | 현대화 기준 충족(c24/sh24 토큰 · 2026-10-05 이후 작성·갱신) · 변형: SH-004-PC-IA, SH-004, SH-004-E, SH-004-PC (SH-004, SH-004-PC = SUPERSEDED) |
 | SH-005 | 주문서 | /shop/[slug]/checkout | design/project/SH-005-IA.dc.html | SH-005-IA.dc.html | FINAL | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | 현대화 기준 충족(c24/sh24 토큰 · 2026-10-05 이후 작성·갱신) · 변형: SH-005-PC-IA, SH-005, SH-005-E, SH-005-PC, SH-005-R, SH-005-R-PC (SH-005, SH-005-PC, SH-005-R-PC = SUPERSEDED) |
 | SH-006 | 결제 진행 | /shop/[slug]/checkout (결제 단계) | design/project/SH-006.dc.html | SH-006.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: SH-006-PC |
-| SH-007 | 주문 완료 | /shop/[slug]/orders/[orderId] (완료) | design/project/SH-007.dc.html | SH-007.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: SH-007-PC |
+| SH-007 | 주문 완료 | /shop/[slug]/orders/[orderId] (완료) | design/project/SH-007.dc.html | SH-007.dc.html | FINAL | v267 (1791211931-f082) | 2026-10-06 00:12 KST | 현대화 기준 충족(v267): 주문번호 날짜-순번(20261002-0412) 휴대폰·PC 모두 표시 · 안내 한 줄 · 버튼 사이 8px · 변형 SH-007-PC · 변형: SH-007-PC |
 | SH-008 | 결제 실패 | /shop/[slug]/checkout (실패) | design/project/SH-008.dc.html | SH-008.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: SH-008-PC |
 | SH-009 | 미성년자 구매 제한 안내 | — | design/project/SH-009.dc.html | SH-009.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: SH-009-PC |
 | SH-010 | 로그인 | /shop/[slug]/login | design/project/SH-010.dc.html | SH-010.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: SH-010-PC |
