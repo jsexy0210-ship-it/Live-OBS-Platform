@@ -44,8 +44,8 @@ export function NoPermission({ need }: { need: string }) {
   return (
     <div className="st" style={{ boxShadow: "none" }}>
       <LockIcon />
-      <span className="t">이 기능은 권한이 필요합니다</span>
-      <span className="s">대표자에게 요청해 주십시오 · 필요한 권한: {need}</span>
+      <span className="t">이 계정은 이 일을 할 수 없습니다</span>
+      <span className="s">대표자에게 허용해 달라고 요청해 주십시오 · 필요한 권한: {need}</span>
     </div>
   );
 }

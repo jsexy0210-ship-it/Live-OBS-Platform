@@ -56,10 +56,10 @@ test("파트너스: 주소 확인 → 결제 동의 5개 → 결제 → 진행 �
   await expect(page.getByTestId("automation-pay")).toHaveCount(0);
   // 지원 밖 쇼핑몰은 결제 전에 막는다
   await page.getByTestId("automation-url").fill("https://unknown-shop.example.com");
-  await page.getByRole("button", { name: "확인하기" }).click();
+  await page.getByRole("button", { name: "연결 가능한지 확인하기" }).click();
   await expect(page.getByTestId("automation-unsupported")).toContainText("아직 자동 연결할 수 없는 쇼핑몰입니다");
   await page.getByTestId("automation-url").fill(SHOP);
-  await page.getByRole("button", { name: "확인하기" }).click();
+  await page.getByRole("button", { name: "연결 가능한지 확인하기" }).click();
   await expect(page.getByTestId("automation-ok")).toBeVisible();
   await page.screenshot({ path: "tests/e2e/screenshots/automation-sa150-1440.png", fullPage: true });
   await page.getByTestId("automation-pay").click();
@@ -85,19 +85,19 @@ test("파트너스: 주소 확인 → 결제 동의 5개 → 결제 → 진행 �
   // 고객 확인 대기: 할 일이 보이고 이어서 진행하기로 다시 대기열에 들어간다
   await db.automationJob.update({ where: { id: job.id }, data: { status: "NEEDS_CUSTOMER", customerAction: "TWO_FACTOR", actionDeadlineAt: new Date(Date.now() + 3600_000) } });
   await page.goto(`/seller/automation/${job.id}`);
-  await expect(page.getByTestId("job-action")).toContainText("2단계 인증을 완료해 주십시오");
+  await expect(page.getByTestId("job-action")).toContainText("문자 인증을 마쳐 주십시오");
   await page.screenshot({ path: "tests/e2e/screenshots/automation-sa152-1440.png", fullPage: true });
   await page.getByRole("button", { name: "이어서 진행하기" }).click();
   await expect.poll(async () => (await db.automationJob.findUniqueOrThrow({ where: { id: job.id } })).status).toBe("QUEUED");
   // 취소 확인(시작 전)
-  await page.getByRole("button", { name: "연결 취소하기" }).click();
+  await page.getByRole("button", { name: "자동 설정 그만두기" }).click();
   await expect(page.getByTestId("cancel-confirm")).toContainText("아직 연결을 시작하지 않았습니다");
-  await page.getByRole("button", { name: "계속 진행" }).click();
+  await page.getByRole("button", { name: "계속 진행하기" }).click();
   await expect(page.getByTestId("cancel-confirm")).toHaveCount(0);
   // 완료는 작동 확인 증거가 있어야 보인다(없으면 진행 화면으로 안내)
   await db.automationJob.update({ where: { id: job.id }, data: { status: "SUCCEEDED", verifiedAt: new Date(), finishedAt: new Date() } });
   await page.goto(`/seller/automation/${job.id}/done`);
-  await expect(page.getByTestId("done-ok")).toContainText("작동 확인");
+  await expect(page.getByTestId("done-ok")).toContainText("화면에 나오는 것까지 확인했습니다");
   await page.screenshot({ path: "tests/e2e/screenshots/automation-sa153-1440.png", fullPage: true });
 });
 

@@ -46,6 +46,7 @@ export function OverlayHome() {
         <>
           <section className="card pad-l" aria-label="오늘 처리할 일" data-testid="oh-todo">
             <h2 className="t-t3">오늘 처리할 일</h2>
+            <p className="t-c1 c-alt">주문대기: 방송 중 들어온 주문을 순서대로 모아 둔 목록입니다.</p>
             <div className="bc-sum-g">
               <Tile label="주문대기" value={waiting === null ? "-" : `${waiting.toLocaleString("ko-KR")}건`} href="/seller/broadcast" />
               <Tile label="방송 상태" value={queue ? (onAir ? "방송 중" : "방송 전") : "-"} href="/seller/broadcast" />
@@ -58,7 +59,7 @@ export function OverlayHome() {
               <Tile label="주문" value={sum ? `${sum.summary.orders.toLocaleString("ko-KR")}건` : "-"} />
               <Tile label="매출" value={sum ? won(sum.summary.sales) : "-"} />
               <Tile label="완료 / 취소" value={sum ? `${sum.summary.completed} / ${sum.summary.cancelled}` : "-"} />
-              <Tile label="HIT" value={sum ? `${sum.summary.hits}장` : "-"} />
+              <Tile label="HIT 카드" value={sum ? `${sum.summary.hits}장` : "-"} />
             </div>
           </section>
         </>
@@ -74,12 +75,12 @@ export function OverlayHome() {
           )}
           {can("OVERLAY_EDIT") && (
             <Link className="btn btn-out" href="/seller/overlay">
-              오버레이 편집기
+              방송 화면 꾸미기
             </Link>
           )}
           {run && (
             <Link className="btn btn-out" href="/seller/youtube">
-              유튜브 연결
+              유튜브 이어 두기
             </Link>
           )}
         </div>
@@ -109,12 +110,12 @@ export function OverlayHome() {
         )}
       </section>
 
-      <section className="card pad-l" aria-label="스토어 기능 안내" data-testid="oh-upgrade">
-        <h2 className="t-t3">스토어 기능</h2>
-        <p className="t-l2 c-alt">상품·주문·고객·쿠폰은 통합 구독에서 사용할 수 있습니다. 지금 이용 중인 외부 쇼핑몰은 그대로 연동됩니다.</p>
+      <section className="card pad-l" aria-label="쇼핑몰 기능 안내" data-testid="oh-upgrade">
+        <h2 className="t-t3">쇼핑몰 기능</h2>
+        <p className="t-l2 c-alt">상품·주문·고객·쿠폰은 쇼핑몰까지 쓰는 이용권(통합 구독)에서 쓸 수 있습니다. 지금 쓰는 다른 쇼핑몰은 계속 이어서 쓸 수 있습니다.</p>
         <div>
           <Link className="btn btn-out" href="/seller/subscription">
-            구독 보기
+            이용권 보기
           </Link>
         </div>
       </section>
