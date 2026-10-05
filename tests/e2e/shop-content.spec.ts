@@ -294,7 +294,7 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
     const status = await page.evaluate(async () => (await fetch("/api/seller/shop-content/popups", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "TEXT", title: "x", body: "y" }) })).status);
     expect(status).toBe(403);
     await page.screenshot({ path: `${SHOT}/SA-064-staff-readonly-1440.png` });
-    await page.getByRole("link", { name: "이벤트 팝업", exact: true }).click();
+    await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "이벤트 팝업", exact: true }).click();
     await expect(page.getByTestId("popup-row")).toHaveCount(3);
     await expect(page.getByRole("button", { name: "팝업 추가" })).toHaveCount(0);
   });
