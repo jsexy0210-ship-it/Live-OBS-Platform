@@ -1,0 +1,171 @@
+"use client";
+
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ListHead, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
+import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
+import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
+import { api, failMessage } from "../../../../../components/seller/api";
+import { won } from "../../../../../components/seller/format";
+import { kstDate, kstDuration, type BroadcastSummary } from "../../../../../components/seller/broadcast/history";
+
+// SA-054 방송 이력. 방송 시작일(KST) 기간으로 검색하고, 한 줄을 누르면 방송 상세(SA-055)로 간다.
+// API: GET /api/seller/broadcast/history?from=&to=&cursor=(시작 최신순 50개)
+// 시안의 이번 달 요약·레이아웃 검색·내보내기는 서버에 자료·API가 없어 두지 않았다.
+
+type Item = { id: string; title: string | null; status: "live" | "ended"; startedAt: string; endedAt: string | null; summary: BroadcastSummary };
+type Page = { items: Item[]; nextCursor: string | null };
+type Load = { kind: "loading" } | { kind: "error"; status: number; error: string } | { kind: "ok"; items: Item[]; next: string | null };
+type Filter = { from: string; to: string };
+
+const EMPTY: Filter = { from: "", to: "" };
+const query = (f: Filter, cursor?: string | null) => {
+  const q = new URLSearchParams();
+  if (f.from) q.set("from", f.from);
+  if (f.to) q.set("to", f.to);
+  if (cursor) q.set("cursor", cursor);
+  const s = q.toString();
+  return `/api/seller/broadcast/history${s ? `?${s}` : ""}`;
+};
+
+export default function BroadcastHistoryPage() {
+  const { can } = useSeller();
+  const allowed = can("BROADCAST_RUN");
+  const [state, setState] = useState<Load>({ kind: "loading" });
+  const [draft, setDraft] = useState<Filter>(EMPTY);
+  const [applied, setApplied] = useState<Filter>(EMPTY);
+  const [more, setMore] = useState(false);
+  const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
+  // 조건이 바뀌면 마지막으로 보낸 조건의 응답만 반영한다
+  const seq = useRef(0);
+
+  const load = useCallback(async (f: Filter) => {
+    const n = ++seq.current;
+    setState({ kind: "loading" });
+    const r = await api<Page>(query(f));
+    if (n !== seq.current) return;
+    setState(r.ok ? { kind: "ok", items: r.data.items, next: r.data.nextCursor } : { kind: "error", status: r.status, error: r.error });
+  }, []);
+  useEffect(() => {
+    if (allowed) void load(applied);
+  }, [allowed, applied, load]);
+
+  const loadMore = async () => {
+    if (state.kind !== "ok" || !state.next) return;
+    const n = seq.current;
+    setMore(true);
+    const r = await api<Page>(query(applied, state.next));
+    setMore(false);
+    if (n !== seq.current) return;
+    if (!r.ok) return setToast({ text: failMessage(r, "admin"), neg: true });
+    setState({ kind: "ok", items: [...state.items, ...r.data.items.filter((c) => !state.items.some((o) => o.id === c.id))], next: r.data.nextCursor });
+  };
+
+  const search = () => {
+    if (draft.from && draft.to && draft.from > draft.to) return setToast({ text: "조회 기간의 시작일이 끝일보다 늦습니다", neg: true });
+    setApplied({ ...draft });
+  };
+  const reset = () => {
+    setDraft(EMPTY);
+    setApplied(EMPTY);
+  };
+  const items = state.kind === "ok" ? state.items : [];
+
+  return (
+    <>
+      <Topbar crumb="방송 › 방송 이력" />
+      <main className="main">
+        <PageHead title="방송 이력" />
+        {!allowed ? (
+          <div className="card">
+            <NoPermission need="방송 진행" />
+          </div>
+        ) : (
+          <>
+            <SearchBox onSearch={search} onReset={reset} busy={state.kind === "loading"}>
+              <SearchRow label="기간">
+                <input className="inp" type="date" aria-label="시작일" value={draft.from} onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
+                <span aria-hidden="true"> ~ </span>
+                <input className="inp" type="date" aria-label="종료일" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
+              </SearchRow>
+            </SearchBox>
+
+            <div className="card">
+              {state.kind === "loading" && <LoadingRows rows={4} />}
+              {state.kind === "error" &&
+                (state.status === 402 ? (
+                  <Locked />
+                ) : state.status === 403 && state.error === "plan_feature_required" ? (
+                  <div className="st" style={{ boxShadow: "none" }}>
+                    <span className="t">현재 플랜에서 제공하지 않는 기능입니다</span>
+                  </div>
+                ) : state.status === 403 ? (
+                  <NoPermission need="방송 진행" />
+                ) : (
+                  <ErrorState title="방송 이력을 불러오지 못했습니다" onRetry={() => void load(applied)} />
+                ))}
+              {state.kind === "ok" && (
+                <>
+                  <ListHead total={items.length} loaded />
+                  {items.length === 0 ? (
+                    <div className="st" style={{ boxShadow: "none" }} data-testid="bh-empty">
+                      <span className="t">{applied.from || applied.to ? "조건에 맞는 방송이 없습니다" : "아직 방송 기록이 없습니다"}</span>
+                      <Link className="btn btn-sm" href="/seller/broadcast">
+                        방송 대시보드
+                      </Link>
+                    </div>
+                  ) : (
+                    <div className="au-lt-wrap">
+                      <table className="tbl">
+                        <thead>
+                          <tr>
+                            <th>일시</th>
+                            <th>제목</th>
+                            <th>시간</th>
+                            <th>주문</th>
+                            <th>완료 / 취소</th>
+                            <th>HIT</th>
+                            <th>매출</th>
+                            <th>상태</th>
+                          </tr>
+                        </thead>
+                        <tbody data-testid="bh-list">
+                          {items.map((b) => (
+                            <tr key={b.id}>
+                              <td className="num">{kstDate(b.startedAt)}</td>
+                              <td className="col-title">
+                                <Link href={`/seller/broadcasts/${b.id}`} className="fw6" data-testid="bh-link">
+                                  {b.title || "제목 없는 방송"}
+                                </Link>
+                              </td>
+                              <td className="num">{kstDuration(b.startedAt, b.endedAt)}</td>
+                              <td className="num">{b.summary.orders.toLocaleString("ko-KR")}</td>
+                              <td className="num">
+                                {b.summary.completed} / {b.summary.cancelled}
+                              </td>
+                              <td className="num">{b.summary.hits}</td>
+                              <td className="num">{won(b.summary.sales)}</td>
+                              <td>{b.status === "live" ? <span className="bdg b-live">진행 중</span> : <span className="bdg b-done">종료</span>}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  {state.next && (
+                    <div className="row" style={{ justifyContent: "center", padding: 12 }}>
+                      <button className="btn btn-out" type="button" disabled={more} onClick={() => void loadMore()}>
+                        더 보기
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </>
+        )}
+      </main>
+      {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
+    </>
+  );
+}

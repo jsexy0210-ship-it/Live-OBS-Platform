@@ -83,6 +83,10 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/returns/[id]/reject": "ORDER_FOLLOWUP",
   "seller/returns/[id]/receive": "ORDER_FOLLOWUP",
   "seller/returns/[id]/exchange": "ORDER_FOLLOWUP",
+  "seller/returns/[id]/inspect": "ORDER_FOLLOWUP",
+  "seller/returns/[id]/reject-inspected": "ORDER_FOLLOWUP",
+  "seller/returns/[id]/hold": "ORDER_FOLLOWUP",
+  "seller/returns/[id]/convert": "ORDER_FOLLOWUP",
   "seller/returns/[id]/refund": "ORDER_FOLLOWUP",
   "seller/returns/images/[imageId]": "ORDER_FOLLOWUP",
   "seller/reviews": "STORE_OPERATIONS",
@@ -113,6 +117,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/stream": "OVERLAY",
   "seller/member-policy": "STORE_OPERATIONS",
   "seller/order-policy": "STORE_OPERATIONS",
+  "seller/order-notification-policy": "STORE_OPERATIONS",
   "seller/payments/bank-account": "STORE_OPERATIONS", // 무통장 입금 계좌
   "seller/payments/deposits": "ORDER_FOLLOWUP", // 입금 대기 목록(잠금 중에도 이미 받은 주문 처리)
   "seller/payments/deposits/confirm": "ORDER_FOLLOWUP", // 입금 확인
@@ -145,6 +150,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/notices": "STORE_OPERATIONS",
   "seller/platform-notices": "BILLING", // 플랫폼 공지(SA-111·112): 잠김·정지 중에도 본다
   "seller/platform-notices/[noticeId]": "BILLING",
+  "seller/notifications": "BILLING", // 알림 센터(SA-130): 잠김·정지 중에도 본다
+  "seller/notifications/read": "BILLING",
   "seller/assistant": "BILLING", // 도우미(SA-140): 사용법 질문, 잠김·정지 중에도 쓴다(비용은 플랫폼 월 한도·하루 한도가 막음)
   "seller/platform-inquiries": "BILLING", // 플랫폼 문의(SA-113·114·115): 잠김·정지 중에도 쓴다
   "seller/platform-inquiries/[inquiryId]": "BILLING",

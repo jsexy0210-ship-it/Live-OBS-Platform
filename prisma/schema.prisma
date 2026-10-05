@@ -126,6 +126,7 @@ model Seller {
   overlayTemplates         OverlayTemplate[]
   mailDeliveries           MailDelivery[]
   memberPolicy             SellerMemberPolicy?
+  orderNotificationPolicy  SellerOrderNotificationPolicy?
   rejoinBlocks             BuyerRejoinBlock[]
   purchaseRestrictions     BuyerPurchaseRestriction[]
   shippingPolicy           SellerShippingPolicy?
@@ -1695,6 +1696,18 @@ model SellerMemberPolicy {
   seller Seller @relation(fields: [sellerId], references: [id])
 }
 
+// 주문자 메일 켜기·끄기(SA-080). 거래 메일 4종(주문 완료·발송·배송 완료·취소·환불), 기본은 모두 켬. 행이 없으면 모두 켠 것으로 본다.
+model SellerOrderNotificationPolicy {
+  sellerId             String   @id @db.Uuid
+  orderCompleteEnabled Boolean  @default(true)
+  shippedEnabled       Boolean  @default(true)
+  deliveredEnabled     Boolean  @default(true)
+  cancelRefundEnabled  Boolean  @default(true)
+  updatedAt            DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+}
+
 // 재가입 제한 목적으로만 남기는 탈퇴 회원의 본인확인 식별값 해시. 이름·휴대폰 등 다른 정보는 두지 않는다.
 // 재가입 제한이 켜진 쇼핑몰에서 탈퇴할 때만 만들고, expiresAt이 지나거나 판매자가 제한을 끄면 지운다(buyers/rejoin.ts).
 model BuyerRejoinBlock {
@@ -2235,6 +2248,20 @@ enum ReturnStatus {
   CANCELLED
 }
 
+// 수거 방법(접수할 때 판매자가 정함): 택배사 수거 접수 / 구매자 직접 발송 / 수거 없음(폐기·사진 확인)
+enum ReturnPickup {
+  COURIER
+  BUYER_SHIP
+  NONE
+}
+
+// 검수 결과(회수 완료 뒤 판매자가 입력). 이상 없음일 때만 바로 환불·교환 발송, 그 밖은 반송·거절을 고른다.
+enum ReturnInspection {
+  OK
+  USED_DAMAGED
+  MISSING_PARTS
+}
+
 enum ReturnReason {
   CHANGE_OF_MIND
   DEFECTIVE
@@ -2267,6 +2294,16 @@ model ReturnRequest {
   exchangeTrackingNumber String?
   // 반품 환불 결과(환불한 금액)
   refundAmount           Int?
+  // v2: 수거 방법, 검수 결과, 교환 재고 없음 처리(재입고 뒤 발송 보류·환불 전환), 무통장 주문 환불 계좌(환불·종료 뒤 비운다)
+  pickupMethod           ReturnPickup @default(BUYER_SHIP)
+  inspectionResult       ReturnInspection?
+  inspectionNote         String?
+  inspectedAt            DateTime?    @db.Timestamptz(3)
+  exchangeHeldAt         DateTime?    @db.Timestamptz(3)
+  convertedFromExchange  Boolean      @default(false)
+  refundBankName         String?
+  refundAccountHolder    String?
+  refundAccountNumber    String?
   acceptedAt             DateTime?    @db.Timestamptz(3)
   receivedAt             DateTime?    @db.Timestamptz(3)
   completedAt            DateTime?    @db.Timestamptz(3)
@@ -3232,4 +3269,13 @@ model BuyerInquiryImage {
   @@unique([sellerId, id])
   @@index([sellerId, inquiryId])
   @@index([sellerId, buyerMemberId, inquiryId, createdAt])
+}
+
+// ───────────── 알림 센터(MA-002 · SA-130) ─────────────
+
+// 파트너스 계정이 알림 센터를 마지막으로 본 시각. 알림은 공지·문의에서 바로 만들어 주고 따로 쌓지 않는다.
+// 공지 알림은 이 시각 이후 게시분이 안 읽음이다(문의 답변은 문의를 열면 읽음). 계정마다 한 줄.
+model SellerNotificationSeen {
+  sellerUserId String   @id @db.Uuid
+  seenAt       DateTime @db.Timestamptz(3)
 }
