@@ -72,7 +72,10 @@ test("쿠폰 받기 줄·버튼 순서·공유(주소 복사)", async ({ page, b
   await expect(row.getByText("쿠폰을 받았어요")).toBeVisible();
 
   const names = await page.locator(".pd-actions button").allInnerTexts();
-  expect(names.map((n) => n.trim())).toEqual(["장바구니", "♡", "공유", "구매하기"]);
+  expect(names.map((n) => n.trim())).toEqual(["♡", "공유", "장바구니에 담기", "바로 주문하기"]);
+  // PC는 장바구니에 담기 · 찜 · 공유 · 바로 주문하기 순서로 보인다(보드 SH-003-PC-IA)
+  const xs = await page.locator(".pd-actions button").evaluateAll((els) => els.map((e) => ({ t: (e.textContent ?? "").trim(), x: e.getBoundingClientRect().left })));
+  expect(xs.sort((a, b) => a.x - b.x).map((e) => e.t)).toEqual(["장바구니에 담기", "♡", "공유", "바로 주문하기"]);
   await page.getByRole("button", { name: "공유" }).click();
   await expect(page.getByText("상품 주소를 복사했어요")).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(`/products/${id}`);
@@ -88,4 +91,41 @@ test("최근 본 상품: 다른 상품을 본 뒤 상세에 보이고, 지금 �
   await expect(recent.getByRole("link", { name: "탑로더 25장", exact: true })).toBeVisible();
   await expect(recent.getByRole("link", { name: "스타라이트 부스터 박스", exact: true })).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: "상품 상세 메뉴" })).toBeVisible();
+});
+
+test("휴대폰 390: 찜 · 공유 · 장바구니에 담기 · 바로 주문하기가 한 줄에 들어가고 가로 스크롤이 없다(보드 SH-003-IA)", async ({ page, baseURL }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await login(page, baseURL!);
+  const id = await productIdOf(page, "탑로더 25장");
+  await page.goto(`/shop/${SLUG}/products/${id}`);
+  const boxes = await page.locator(".pd-actions button").evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return { t: (e.textContent ?? "").trim(), x: r.left, y: r.top, w: r.width, h: r.height, sw: e.scrollWidth, cw: e.clientWidth }; }));
+  expect(boxes.map((b) => b.t)).toEqual(["♡", "공유", "장바구니에 담기", "바로 주문하기"]);
+  expect(new Set(boxes.map((b) => Math.round(b.y))).size).toBe(1); // 한 줄
+  expect([...boxes].sort((a, b) => a.x - b.x).map((b) => b.t)).toEqual(["♡", "공유", "장바구니에 담기", "바로 주문하기"]);
+  expect(Math.round(boxes[0].w)).toBe(44);
+  expect(Math.round(boxes[1].w)).toBe(44);
+  for (const b of boxes) expect(b.sw).toBeLessThanOrEqual(b.cw + 1); // 글자가 칸을 넘치지 않는다
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  // 화면 아래 고정 바: 아래 탭 대신 보이고, 화면 맨 아래에 붙는다(스크롤해도 그대로)
+  const bar = page.locator(".pd-actions");
+  expect(await bar.evaluate((el) => getComputedStyle(el).position)).toBe("fixed");
+  await expect(page.getByRole("navigation", { name: "바로 가기" })).toBeHidden();
+  await page.mouse.wheel(0, 1500);
+  const rect = await bar.evaluate((el) => { const r = el.getBoundingClientRect(); return { bottom: r.bottom, left: r.left, right: r.right, vh: window.innerHeight, vw: window.innerWidth }; });
+  expect(Math.round(rect.bottom)).toBe(rect.vh);
+  expect(Math.round(rect.left)).toBe(0);
+  expect(Math.round(rect.right)).toBe(rect.vw);
+  if (process.env.E2E_SCREENSHOTS === "1") await page.screenshot({ path: "tests/e2e/screenshots/SH-003-pd-bar-390.png" });
+});
+
+test("PC·태블릿: 하단 바는 고정되지 않고 상품 정보 아래에 있다", async ({ page, baseURL }) => {
+  await login(page, baseURL!);
+  const id = await productIdOf(page, "탑로더 25장");
+  for (const [w, name] of [[1024, "1024"], [1440, "1440"]] as const) {
+    await page.setViewportSize({ width: w, height: 900 });
+    await page.goto(`/shop/${SLUG}/products/${id}`);
+    expect(await page.locator(".pd-actions").evaluate((el) => getComputedStyle(el).position)).not.toBe("fixed");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    if (process.env.E2E_SCREENSHOTS === "1") await page.screenshot({ path: `tests/e2e/screenshots/SH-003-pd-bar-${name}.png` });
+  }
 });
