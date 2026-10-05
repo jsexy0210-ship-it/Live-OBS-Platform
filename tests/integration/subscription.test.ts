@@ -714,6 +714,8 @@ describe("MASTER 재검수 3차 재현", () => {
     await reconcileStalePayments(db, pg, { staleMs: 0, now: new Date(end.getTime() + 2 * DAY) });
     expect(await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub.id } })).toMatchObject({ status: "CANCELED", currentPeriodEnd: end });
     expect(await db.auditLog.count({ where: { sellerId: seller.id, action: "subscription.refund_required" } })).toBe(1);
+    // 마스터 관리자 환불 요청(MA-026)으로도 남는다
+    expect(await db.subscriptionRefund.count({ where: { sellerId: seller.id, source: "SYSTEM", status: "REQUESTED" } })).toBe(1);
   });
 
   it("2: 해지 예약 기간이 끝난 뒤 예약 실행보다 먼저 다시 구독하면, 기간은 지난 기간 끝이 아니라 결제한 시각부터다", async () => {
