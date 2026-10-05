@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { adminApi } from "../../../_components/api";
+import { useListFilters } from "../../../_components/useListFilters";
+import { useScrollRestore } from "../../../../../../lib/client/navigation";
 import { AdminTopbar } from "../../../_components/AdminShell";
 import { day, dayTime, won } from "../../../_components/partners";
 import { PAYMENT_KIND, PAYMENT_STATUS, planLabel, type PaymentKind, type PaymentRow, type PaymentStatus } from "../../../_components/payments";
@@ -25,10 +26,8 @@ function query(f: Filters, cursor?: string) {
 }
 
 function Invoices() {
-  const sellerId = useSearchParams().get("sellerId") ?? "";
-  const empty: Filters = { status: "", kind: "", from: "", to: "", sellerId };
-  const [draft, setDraft] = useState<Filters>(empty);
-  const [applied, setApplied] = useState<Filters>(empty);
+  const empty: Filters = { status: "", kind: "", from: "", to: "", sellerId: "" };
+  const { applied, draft, setDraft, apply } = useListFilters<Filters>(empty);
   const [rangeError, setRangeError] = useState(false);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [more, setMore] = useState(false);
@@ -45,21 +44,19 @@ function Invoices() {
     setState(r.ok ? { kind: "ok", items: r.data.payments, next: r.data.nextCursor } : { kind: "error" });
   }, []);
   useEffect(() => void load(applied), [applied, load]);
+  useScrollRestore("admin-invoices", state.kind === "ok");
 
   const search = () => {
     if (draft.from && draft.to && draft.from > draft.to) return setRangeError(true);
     setRangeError(false);
-    setApplied(draft);
+    apply(draft);
   };
   const reset = () => {
     setRangeError(false);
-    setDraft(empty);
-    setApplied(empty);
+    apply({ ...empty, sellerId: applied.sellerId });
   };
   const clearSeller = () => {
-    const next = { ...applied, sellerId: "" };
-    setDraft({ ...draft, sellerId: "" });
-    setApplied(next);
+    apply({ ...applied, sellerId: "" });
   };
 
   const loadMore = async () => {

@@ -11,6 +11,7 @@ import { adminApi, failMessage } from "../../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../../_components/AdminShell";
 import { INQUIRY_CATEGORY, INQUIRY_STATUS, REPLY_MAX, type InquiryDetail } from "../../../../_components/inquiries";
 import { dayTime } from "../../../../_components/partners";
+import { useSmartBack } from "../../../../../../../lib/client/navigation";
 
 // MA-052 문의 상세·답변(GET /api/admin/platform-inquiries/{id}, 답변·종료는 최고관리자·CS = support.manage, 나머지 역할은 보기만).
 // 답변하면 「답변 완료」, 종료하면 파트너스는 더 쓸 수 없다. 그 사이 추가 문의가 달리면(409 version_conflict) 최신 대화를 다시 읽고 쓰던 답변은 남긴다.
@@ -61,6 +62,7 @@ function CloseModal({ inquiry, onClose, onDone, onStale }: { inquiry: InquiryDet
 }
 
 export default function InquiryDetailPage() {
+  const back = useSmartBack("/admin/support/inquiries");
   const { inquiryId } = useParams<{ inquiryId: string }>();
   const { me } = useAdmin();
   const canReply = adminCan(me.role, "support.manage");
@@ -107,9 +109,7 @@ export default function InquiryDetailPage() {
         <PageHead
           title={inq ? inq.title : "문의 상세"}
           actions={
-            <Link className="btn btn-out" href="/admin/support/inquiries">
-              목록
-            </Link>
+            <button className="btn btn-out" type="button" onClick={back}>목록</button>
           }
         />
         {!inq ? (

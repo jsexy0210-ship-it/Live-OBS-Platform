@@ -11,6 +11,7 @@ import { adminApi, failMessage } from "../../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../../_components/AdminShell";
 import { SELLER_STATUS, day, dayTime, reasonLabel, text, type ReviewRow, type SellerDetail } from "../../../../_components/partners";
 import { MAX_REASON } from "../../../../_components/SuspendDialog";
+import { useSmartBack } from "../../../../../../../lib/client/navigation";
 
 // MA-014 가입 신청 상세: 신청 내용(GET /api/admin/sellers/{id})과 확인 필요 항목(GET …/review)을 보고 승인·반려한다.
 // 승인·반려는 최고관리자·운영만 보인다. 반려는 사유 필수(1~200자). 이미 처리됐으면(409) 최신 상태로 다시 읽는다.
@@ -89,6 +90,7 @@ function RejectDialog({ id, shopName, onClose, onDone, onStale }: { id: string; 
 }
 
 export default function ApplicationDetailPage() {
+  const back = useSmartBack("/admin/partners/applications");
   const { sellerId } = useParams<{ sellerId: string }>();
   const { me } = useAdmin();
   const canModerate = adminCan(me.role, "seller.moderate");
@@ -149,9 +151,7 @@ export default function ApplicationDetailPage() {
                   </button>
                 </>
               )}
-              <Link className="btn btn-out" href="/admin/partners/applications">
-                가입 신청 목록
-              </Link>
+              <button className="btn btn-out" type="button" onClick={back}>가입 신청 목록</button>
             </>
           }
         />

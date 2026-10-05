@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { ListHead, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
+import { useScrollRestore } from "../../../../../../lib/client/navigation";
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar } from "../../../_components/AdminShell";
 import { SELLER_STATUS, dayTime, type SellerStatus } from "../../../_components/partners";
+import { useListFilters } from "../../../_components/useListFilters";
 
 // MA-031 PG 연결 상태(GET /api/admin/pg-status, 모든 마스터 역할, 조회만). 키 값은 받지 않고 설정 여부만 본다.
 // 실패 문구(lastFailureMessage)는 서버가 준 그대로 보여 준다. 50건씩 이어서 불러온다.
@@ -29,9 +31,10 @@ const qs = (q: string, cursor?: string) => {
   return p.toString();
 };
 
-export default function PgStatusPage() {
-  const [draft, setDraft] = useState("");
-  const [applied, setApplied] = useState("");
+function PgStatusPageInner() {
+  const { applied: url, draft: d, setDraft, apply } = useListFilters({ q: "" });
+  const applied = url.q;
+  const draft = d.q;
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [more, setMore] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -45,6 +48,7 @@ export default function PgStatusPage() {
     setState(r.ok ? { kind: "ok", gateway: r.data.gateway, items: r.data.sellers, next: r.data.nextCursor } : { kind: "error" });
   }, []);
   useEffect(() => void load(applied), [applied, load]);
+  useScrollRestore("admin-pg", state.kind === "ok");
 
   const loadMore = async () => {
     if (state.kind !== "ok" || !state.next) return;
@@ -83,9 +87,9 @@ export default function PgStatusPage() {
               )}
             </div>
           )}
-          <SearchBox onSearch={() => setApplied(draft.trim())} onReset={() => { setDraft(""); setApplied(""); }} busy={state.kind === "loading"}>
+          <SearchBox onSearch={() => apply({ q: draft.trim() })} onReset={() => apply({ q: "" })} busy={state.kind === "loading"}>
             <SearchRow label="파트너스">
-              <input className="inp" aria-label="쇼핑몰 이름 또는 주소" placeholder="쇼핑몰 이름·주소" value={draft} onChange={(e) => setDraft(e.target.value)} />
+              <input className="inp" aria-label="쇼핑몰 이름 또는 주소" placeholder="쇼핑몰 이름·주소" value={draft} onChange={(e) => setDraft({ q: e.target.value })} />
             </SearchRow>
           </SearchBox>
           <div className="card">
@@ -153,5 +157,13 @@ export default function PgStatusPage() {
       </main>
       {toast && <Toast text={toast} neg onDone={() => setToast(null)} />}
     </>
+  );
+}
+
+export default function PgStatusPage() {
+  return (
+    <Suspense fallback={null}>
+      <PgStatusPageInner />
+    </Suspense>
   );
 }

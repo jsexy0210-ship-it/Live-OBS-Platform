@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { ListHead, PageHead } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
+import { useScrollRestore, useUrlState } from "../../../../../../lib/client/navigation";
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar } from "../../../_components/AdminShell";
 import { INQUIRY_CATEGORY, INQUIRY_STATUS, INQUIRY_TABS, type InquiryCounts, type InquiryRow, type InquiryStatus } from "../../../_components/inquiries";
@@ -16,8 +16,11 @@ type Page = { items: InquiryRow[]; counts: InquiryCounts; nextCursor: string | n
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; items: InquiryRow[]; counts: InquiryCounts; next: string | null };
 
 function Inquiries() {
-  const sellerId = useSearchParams().get("sellerId") ?? "";
-  const [tab, setTab] = useState<InquiryStatus | "">("OPEN");
+  // 상태 탭·파트너스 지정은 주소 쿼리가 기준이다(상세 → Back에서 그대로 돌아온다). 없는 상태 값은 기본 탭으로 본다.
+  const [f, setF] = useUrlState({ status: "OPEN", sellerId: "" });
+  const sellerId = f.sellerId;
+  const tab = (INQUIRY_TABS as string[]).includes(f.status) ? (f.status as InquiryStatus | "") : "OPEN";
+  const setTab = (t: InquiryStatus | "") => setF({ status: t });
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [more, setMore] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -44,6 +47,7 @@ function Inquiries() {
     [qs],
   );
   useEffect(() => void load(tab), [tab, load]);
+  useScrollRestore("admin-inquiries", state.kind === "ok");
 
   const loadMore = async () => {
     if (state.kind !== "ok" || !state.next) return;
