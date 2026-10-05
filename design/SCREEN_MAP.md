@@ -27,11 +27,13 @@
 
 | 상태 | 수 |
 |---|---|
-| FINAL | 35 |
-| DRAFT | 143 |
+| FINAL | 114 |
+| DRAFT | 68 |
+| FINAL | 73 |
+| DRAFT | 110 |
 | BLOCKED | 0 |
 | MISSING | 14 |
-| SUPERSEDED | 1 |
+| SUPERSEDED | 2 |
 
 소스 파일: `design/project/` 362개 (보드 339장 · canvas.json · ds/wds 2 · lop.css · ov.css · ibgen 17 · fonts/WantedSans-OFL.txt)
 
@@ -56,16 +58,20 @@
 
 | ID | 화면 | Product Route | Design Source | Entry | Status | Artifact Version | 마지막 동기화(KST) | 비고 |
 |---|---|---|---|---|---|---|---|---|
-| PF-001 | 서비스 소개(랜딩) | /about | design/project/PF-001.dc.html | PF-001.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 · 변형: PF-001-M |
-| PF-002 | 기능 안내 | /features | design/project/PF-002.dc.html | PF-002.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 |
-| PF-003 | 요금 안내 | /pricing | design/project/PF-003.dc.html | PF-003.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 |
-| PF-004 | 자주 묻는 질문 | /faq | design/project/PF-004.dc.html | PF-004.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 |
-| PF-005 | 공지사항 목록 | /notices | design/project/PF-005.dc.html | PF-005.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 |
-| PF-006 | 공지 상세 | /notices/[noticeId] | design/project/PF-006.dc.html | PF-006.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 |
-| PF-007 | 판매자 가입 신청 | /seller/signup | design/project/PF-007-2.dc.html | PF-007-2.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 · 변형: PF-007-3 |
-| PF-007-1 | 가입 신청 · 약관 동의 | /seller/signup (약관 단계) | design/project/PF-007-1.dc.html | PF-007-1.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 |
-| PF-008 | 이용약관(플랫폼) | /terms | design/project/PF-008.dc.html | PF-008.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 |
-| PF-009 | 개인정보처리방침(플랫폼) | /privacy | design/project/PF-009.dc.html | PF-009.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 |
+| PF-001 | 서비스 소개(랜딩) | /about | design/project/PF-001.dc.html | PF-001.dc.html | FINAL | v297 (1791239220-fcb0) | 2026-10-06 07:27 KST | FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) · 결제 구조 문구 「ONQ 결제 연결로 한 번에」(플랫폼 결제대행사 키 하나 결정, 2026-10-05) · 방송 화면 · 인기 카드 용어 |
+| PF-002 | 기능 안내 | /features | design/project/PF-002.dc.html | PF-002.dc.html | FINAL | v297 (1791239220-fcb0) | 2026-10-06 07:27 KST | FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) |
+| PF-003 | 요금 안내 | /pricing | design/project/PF-003.dc.html | PF-003.dc.html | FINAL | v297 (1791239220-fcb0) | 2026-10-06 07:27 KST | FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) · 방송 화면 용어(「오버레이 전용」 이용권명 유지) |
+| PF-004 | 자주 묻는 질문 | /faq | design/project/PF-004.dc.html | PF-004.dc.html | FINAL | v297 (1791239220-fcb0) | 2026-10-06 07:27 KST | FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) |
+| PF-005 | 공지사항 목록 | /notices | design/project/PF-005.dc.html | PF-005.dc.html | FINAL | v297 (1791239220-fcb0) | 2026-10-06 07:27 KST | FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) |
+| PF-006 | 공지 상세 | /notices/[noticeId] | design/project/PF-006.dc.html | PF-006.dc.html | FINAL | v297 (1791239220-fcb0) | 2026-10-06 07:27 KST | FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) · 작성자 「ONQ 운영팀」 |
+| PF-007 | 판매자 가입 신청 | /seller/signup | design/project/PF-007-2.dc.html | PF-007-2.dc.html | FINAL | v297 (1791239220-fcb0) | 2026-10-06 07:27 KST | FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) |
+| PF-007-1 | 가입 신청 · 약관 동의 | /seller/signup (약관 단계) | design/project/PF-007-1.dc.html | PF-007-1.dc.html | FINAL | v297 (1791239220-fcb0) | 2026-10-06 07:27 KST | FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) |
+| PF-007-2 | 가입 신청 2/5 · 대표자 본인확인 | /seller/signup/verify | design/project/PF-007-2.dc.html | PF-007-2.dc.html | FINAL | v306 (1791243074-c01b) | 2026-10-06 08:31 KST | IdentityCheck 공통(이름 · 생년월일 · 성별 · 내외국인 · 통신사 · 휴대폰번호 · 약관 · 인증번호 문자 받기) · 완료 전 「다음」 비활성 · 변형: 인증번호 입력 · 완료 · 번호 틀림 · 입력 오류 · 오늘 한도 · 테스트 모드 · 이미 신청한 대표자 · 이미 운영 중인 쇼핑몰(차단) · 주소로 바로 들어옴 · 공개 화면 해요체 · 진행 단계 표시(n/5) · 「이전 단계」는 입력값 유지 · 새로고침·뒤로 가기에도 입력값 유지(비밀번호 제외) 안내 · 휴대폰 390 변형 포함 |
+| PF-007-3 | 가입 신청 3/5 · 가입 정보 | /seller/signup/account | design/project/PF-007-3.dc.html | PF-007-3.dc.html | FINAL | v306 (1791243074-c01b) | 2026-10-06 08:31 KST | 이메일 · 비밀번호 · 쇼핑몰 이름 · 쇼핑몰 주소(slug) · 주로 파는 것 · 방송 채널(선택) · 「지금 운영 중인 쇼핑몰이 있나요?」 있어요=방송 화면만 쓰기(오버레이 전용 · 4단계 건너뜀) / 없어요=쇼핑몰까지 쓰기 · 변형: 입력 오류 · 주소 확인 · 있어요 선택 시 「신청하기」 · 신청 중 · 공개 화면 해요체 · 진행 단계 표시(n/5) · 「이전 단계」는 입력값 유지 · 새로고침·뒤로 가기에도 입력값 유지(비밀번호 제외) 안내 · 휴대폰 390 변형 포함 |
+| PF-007-4 | 가입 신청 4/5 · 사업자 정보 | /seller/signup/business | design/project/PF-007-4.dc.html | PF-007-4.dc.html | FINAL | v306 (1791243074-c01b) | 2026-10-06 08:31 KST | 상호 · 사업자등록번호 조회 · 개업일 · 통신판매업 신고번호 · 연락처 · 사업장 주소 · 사업자등록증 · [이전 단계][신청하기] · 변형: 입력 오류 · 국세청 휴업/불일치/조회 중 · 통신판매업 조회 3종 · 같은 사업자번호 중복 · 신청 중/실패 · 방송 화면만 쓰기(건너뜀) · 공개 화면 해요체 · 진행 단계 표시(n/5) · 「이전 단계」는 입력값 유지 · 새로고침·뒤로 가기에도 입력값 유지(비밀번호 제외) 안내 · 휴대폰 390 변형 포함 |
+| PF-007-5 | 가입 신청 5/5 · 신청 완료 · 승인 대기 | /seller/signup/done | design/project/PF-007-5.dc.html | PF-007-5.dc.html | FINAL | v306 (1791243074-c01b) | 2026-10-06 08:31 KST | 신청을 받았어요 + 승인되면 시작 순서(시작하기 6단계) · 변형: 바로 승인됨(가입을 마쳤어요 · 로그인하기) · 확인 필요(승인 대기 · 로그인 불가) · 신청 뒤 다시 들어옴 · 공개 화면 해요체 · 진행 단계 표시(n/5) · 「이전 단계」는 입력값 유지 · 새로고침·뒤로 가기에도 입력값 유지(비밀번호 제외) 안내 · 휴대폰 390 변형 포함 |
+| PF-008 | 이용약관(플랫폼) | /terms | design/project/PF-008.dc.html | PF-008.dc.html | FINAL | v297 (1791239220-fcb0) | 2026-10-06 07:27 KST | FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) |
+| PF-009 | 개인정보처리방침(플랫폼) | /privacy | design/project/PF-009.dc.html | PF-009.dc.html | FINAL | v297 (1791239220-fcb0) | 2026-10-06 07:27 KST | FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) |
 
 ## MA 마스터 관리자
 
@@ -125,15 +131,15 @@
 | ID | 화면 | Product Route | Design Source | Entry | Status | Artifact Version | 마지막 동기화(KST) | 비고 |
 |---|---|---|---|---|---|---|---|---|
 | SA-001 | 방송 대시보드 | /seller/broadcast | design/project/SA-001.dc.html | SA-001.dc.html | FINAL | v292 (1791219414-c487) | 2026-10-06 01:58 KST | FINAL 재확인(2026-10-06 파트너스 묶음) · 현대화 규칙(쉬운 말 · 일시 2026.10.06 · 날짜 칸 .dt · 확인 창 [취소][실행] · 셸 재동기화) · 방송 화면 용어 · 확인 창 버튼 순서 |
-| SA-002 | 파트너스 홈 | /seller | design/project/SA-002-IA.dc.html | SA-002-IA.dc.html | FINAL | v287 (1791217739-ca0d) | 2026-10-06 02:08 KST | 현대화 기준 충족(c24/sh24 토큰 · 2026-10-05 이후 작성·갱신) · 변형: SA-002 (SA-002 = SUPERSEDED) |
+| SA-002 | 파트너스 홈 | /seller | design/project/SA-002-IA.dc.html | SA-002-IA.dc.html | FINAL | v300 (1791239970-91e4) | 2026-10-06 07:39 KST | 현대화 기준 충족(c24/sh24 토큰 · 2026-10-05 이후 작성·갱신) · 변형: SA-002 (SA-002 = SUPERSEDED) · 쉬운 말 반영(#655): 처리할 일 항목 「입금 확인 필요」 등 · 지표 「결제된 매출」「주문 1건당 평균 금액」「취소·환불 건수」 |
 | SA-002-O | 오버레이 전용 홈 | /seller (오버레이 전용) | design/project/SA-002-O.dc.html | SA-002-O.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-003 | 시작하기 | /seller/onboarding | design/project/SA-003.dc.html | SA-003.dc.html | FINAL | v292 (1791219414-c487) | 2026-10-06 01:58 KST | FINAL 재확인(2026-10-06 파트너스 묶음) · 현대화 규칙(쉬운 말 · 일시 2026.10.06 · 날짜 칸 .dt · 확인 창 [취소][실행] · 셸 재동기화) |
-| SA-004 | 온보딩 | /seller/onboarding | design/project/SA-004.dc.html | SA-004.dc.html | FINAL | v292 (1791219414-c487) | 2026-10-06 01:58 KST | FINAL 재확인(2026-10-06 파트너스 묶음) · 현대화 규칙(쉬운 말 · 일시 2026.10.06 · 날짜 칸 .dt · 확인 창 [취소][실행] · 셸 재동기화) |
+| SA-003 | 시작하기 | /seller/onboarding | design/project/SA-003.dc.html | SA-003.dc.html | FINAL | v302 (1791240973-f773) | 2026-10-06 07:56 KST | v302 MASTER 판정(2026-10-06): 구현 흐름 정본 — 맨 위 「쇼핑몰까지 쓰기 / 방송 화면만 쓰기」 갈래 선택(SA-004 흡수) · 단계 6(이용권 결제 · 쇼핑몰 정보 입력 · 상품 등록 · 주문 규칙 · 방송 화면 꾸미기 · 방송 화면 주소 복사) / 방송 화면만 3(다른 쇼핑몰 이어 쓰기 · 꾸미기 · 주소 복사) · 상태 3종(완료 · 지금 할 차례 · 기다리는 중) · 버튼 「다시 보기 / …으로」 · 진행률 · 「지금 상태」 · 도우미 열기 유지 · 변형: 방송 화면만 쓰기(체험) · 갈래 바꾸기 실패 · 닫음 토스트 |
+| SA-004 | 온보딩(SA-003에 흡수) | /seller/onboarding | design/project/SA-004.dc.html | SA-004.dc.html | SUPERSEDED | v302 (1791240973-f773) | 2026-10-06 07:56 KST | v302 SA-003에 흡수(MASTER 판정 2026-10-06): 쇼핑몰 여부는 가입 신청 때 정해지고 로그인 뒤에는 SA-003 맨 위 선택 칸에서 바꿈 · 주소 확인 · 연동 인증은 SA-006 · 대신 연결은 SA-150 · 보드는 안내만 남김 |
 | SA-005 | 쇼핑몰 통합 전환 | — | design/project/SA-005.dc.html | SA-005.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-006 | 외부 쇼핑몰 연동 | /seller/external-shops | design/project/SA-006.dc.html | SA-006.dc.html | FINAL | v289 (1791218119-0fe3) | 2026-10-06 02:26 KST | FINAL(통합 「외부 채널 연결」 탭 「외부 쇼핑몰」 · 해제 확인 창 · 일시 표기 · 상태 8종) · 현대화 기준 충족 |
+| SA-006 | 외부 쇼핑몰 연동 | /seller/external-shops | design/project/SA-006.dc.html | SA-006.dc.html | FINAL | v302 (1791240973-f773) | 2026-10-06 07:56 KST | v302 상태를 서버 실제 값 3종(이어짐 · 다시 이어야 함 · 끊는 중→끊어짐)으로 · 「결제 잠금으로 멈춤」 행 · 변형 제거(서버에 생기면 추가) · 열 「마지막으로 받은 주문 알림」 · 버튼 「해제 다시 요청하기」 「이 주소로 연결 시작하기」 · 해제 확인 창 [유지][연결 해제] · 「쇼핑몰 추가 연결」 변형 · 마지막 이벤트 열 유지(보드 정본) |
 | SA-010 | 상품(메뉴 그룹) | — | — | 메뉴 그룹 ID(화면 아님) | MISSING | 1791213911-1437 | 2026-10-06 00:27 KST | IA 그룹 헤더 · 보드 대상 아님 |
 | SA-011 | 상품 목록 | /seller/products | design/project/SA-011.dc.html | SA-011.dc.html | FINAL | v287 (1791217739-ca0d) | 2026-10-06 02:08 KST | DS-PANEL 목록 패널 구조 적용(v243) · 변형: SA-011-DK, SA-011-M, SA-011-PRE, SA-011-S · 현대화 기준 재확인(v270): 관리 열 가로 flex 가운데 8px(열 190) · 상품명 제목 왼쪽 · 썸네일 64 |
-| SA-012 | 상품 등록·수정 | /seller/products/new · [productId] | design/project/SA-012.dc.html | SA-012.dc.html | FINAL | v287 (1791217739-ca0d) | 2026-10-06 02:08 KST | 현대화 기준 충족(v270): 폼 표 안 버튼 40(입력과 같은 줄) · 표 안 보조 행동만 32 · 아이콘 버튼 정사각 32 · 하단 고정 행동 줄 · 상태 12종 · 변형: SA-012-D, SA-012-DK, SA-012-E |
+| SA-012 | 상품 등록·수정 | /seller/products/new · [productId] | design/project/SA-012.dc.html | SA-012.dc.html | FINAL | v301 (1791240487-94ff) | 2026-10-06 07:48 KST | v301: 낡은 변형 「이미지 한도(체험 중 3장 · 구독 시 10장)」 삭제(이미지는 상품당 최대 5장, 「이미지 5장 다 참」 변형 유지). 현대화 기준 충족(v270): 폼 표 안 버튼 40(입력과 같은 줄) · 표 안 보조 행동만 32 · 아이콘 버튼 정사각 32 · 하단 고정 행동 줄 · 상태 12종 · 변형: SA-012-D, SA-012-DK, SA-012-E |
 | SA-013 | 상품 상세 미리보기 | (상품 목록 미리보기) | design/project/SA-013.dc.html | SA-013.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-014 | 재고 일괄 수정 | /seller/products/stock | design/project/SA-014.dc.html | SA-014.dc.html | FINAL | v290 (1791218258-c278) | 2026-10-06 02:33 KST | FINAL(통합 「재고」 탭 「재고 수정」(제목 통일) · 적용 확인 창 [취소][실행] · 일시 표기 · 상태 11종) · 현대화 기준 충족 |
 | SA-015 | 카테고리 관리 | /seller/products/categories | design/project/SA-015.dc.html | SA-015.dc.html | FINAL | v290 (1791218258-c278) | 2026-10-06 02:33 KST | FINAL(통합 「분류 · 진열」 탭 「카테고리」 · 미리보기 「인기 카드」 · 삭제 확인 창 · 상태 12종) · 현대화 기준 충족 |
@@ -190,18 +196,18 @@
 | SA-090 | 구독·결제 | /seller/subscription | design/project/SA-090.dc.html | SA-090.dc.html | FINAL | v292 (1791219414-c487) | 2026-10-06 01:58 KST | FINAL 재확인(2026-10-06 파트너스 묶음) · 현대화 규칙(쉬운 말 · 일시 2026.10.06 · 날짜 칸 .dt · 확인 창 [취소][실행] · 셸 재동기화) |
 | SA-100 | 직원 계정·권한 | /seller/staff | design/project/SA-100.dc.html | SA-100.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: SA-100-D, SA-100-M |
 | SA-110 | 공지·문의(메뉴 그룹) | — | — | 메뉴 그룹 ID(화면 아님) | MISSING | 1791213911-1437 | 2026-10-06 00:27 KST | IA 그룹 헤더 · 보드 대상 아님 |
-| SA-111 | 공지사항 목록 | /seller/notices | design/project/SA-111.dc.html | SA-111.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-112 | 공지 상세 | /seller/notices/[id] | design/project/SA-112.dc.html | SA-112.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-113 | 내 문의 목록 | /seller/inquiries | design/project/SA-113.dc.html | SA-113.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-114 | 문의 작성 | /seller/inquiries/new | design/project/SA-114.dc.html | SA-114.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-115 | 문의 상세·답변 | /seller/inquiries/[id] | design/project/SA-115.dc.html | SA-115.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
+| SA-111 | 공지사항 목록 | /seller/notices | design/project/SA-111.dc.html | SA-111.dc.html | FINAL | v302 (1791240973-f773) | 2026-10-06 07:56 KST | v302 보드 정본(MASTER 판정): 페이지 방식 20개 · 열 「올린 날」 · 「맨 위 고정」 배지 · 쉬운 말(방송 화면 · 결제 연결) · 날짜 2026.10.02 |
+| SA-112 | 공지 상세 | /seller/notices/[id] | design/project/SA-112.dc.html | SA-112.dc.html | FINAL | v302 (1791240973-f773) | 2026-10-06 07:56 KST | v302 보드 정본: 「내 방송 일정과 겹칩니까?」 제거(근거 없는 기능) · ONQ 운영팀 · 「올림」 · 삭제 안내문 구현 문구 |
+| SA-113 | 내 문의 목록 | /seller/inquiries | design/project/SA-113.dc.html | SA-113.dc.html | FINAL | v302 (1791240973-f773) | 2026-10-06 07:56 KST | v302 보드 정본: 열 「문의 종류 · 마지막 글」 · 「새 답변」 배지 · 빈 상태 「보낸 문의가 없습니다」 · 쉬운 말 · 날짜 2026.10.02 |
+| SA-114 | 문의 작성 | /seller/inquiries/new | design/project/SA-114.dc.html | SA-114.dc.html | FINAL | v302 (1791240973-f773) | 2026-10-06 07:56 KST | v302 보드 정본: 「문의 종류」 「문의 내용」 「첨부 사진」 「문의 보내기」 · 「ONQ 운영팀에 문의하기」 · 나가기 확인 변형 추가 · 쉬운 말 · 날짜 |
+| SA-115 | 문의 상세·답변 | /seller/inquiries/[id] | design/project/SA-115.dc.html | SA-115.dc.html | FINAL | v302 (1791240973-f773) | 2026-10-06 07:56 KST | v302 보드 정본: 「추가 문의 보내기」 「사진 첨부」 · 상태 「보냄」 · 종료 안내 구현 문구 · ONQ 운영팀 · 쉬운 말 · 날짜 |
 | SA-120 | 내 계정 | — | design/project/SA-120.dc.html | SA-120.dc.html | FINAL | v287 (1791217739-ca0d) | 2026-10-06 02:08 KST | 현대화 기준 충족(v271) · MASTER 결정 A(정본 2열 표형 구조, 구현 #623 fc28633과 일치): 프로필 표(이름 저장) · 비밀번호 표(현재·새 8자 이상·확인 칸, 변경 시 항상 다른 기기 로그아웃) · 후속(서버 API 없음): 연락처 · 알림 수신 · 로그인 기기 · 세션은 상태 변형에만 · 상태 8종 |
 | SA-130 | 알림 센터 | /seller/notifications | design/project/SA-130.dc.html | SA-130.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-140 | 도우미 | /seller/assistant | design/project/SA-140.dc.html | SA-140.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-150 | 자동 연결 안내 | /seller/automation | design/project/SA-150.dc.html | SA-150.dc.html | FINAL | v289 (1791218119-0fe3) | 2026-10-06 02:26 KST | FINAL(통합 「외부 채널 연결」 탭 「자동 연결」 · 「오버레이」→「방송 화면」 · 상태 6종) · 현대화 기준 충족 |
-| SA-151 | 자동 연결 결제 | /seller/automation/pay | design/project/SA-151.dc.html | SA-151.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-152 | 자동 연결 진행 | /seller/automation/[jobId] | design/project/SA-152.dc.html | SA-152.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-153 | 자동 연결 완료 | /seller/automation/[jobId]/done | design/project/SA-153.dc.html | SA-153.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
+| SA-150 | 자동 연결 안내 | /seller/automation | design/project/SA-150.dc.html | SA-150.dc.html | FINAL | v302 (1791240973-f773) | 2026-10-06 07:56 KST | v302 보드 정본: 금액 설정값 「N원」 · 버튼 「연결 가능한지 확인하기」 「N원 결제하고 자동 설정 시작하기」 「직접 설정하러 가기」 · 「직접 하셔야 하는 일」 · 환불 · 다시 설치의 30일 무료 · 재설치 요금은 보류(가격 결정 대표님 몫) · 흐름 띠 · 결제 요약 카드 유지 |
+| SA-151 | 자동 연결 결제 | /seller/automation/pay | design/project/SA-151.dc.html | SA-151.dc.html | FINAL | v302 (1791240973-f773) | 2026-10-06 07:56 KST | v302 보드 정본: 금액 「N원」(설정값) · 「다른 카드로 결제」 유지 · 「이전 화면으로」 · 재설치 조건 보류 표기 |
+| SA-152 | 자동 연결 진행 | /seller/automation/[jobId] | design/project/SA-152.dc.html | SA-152.dc.html | FINAL | v302 (1791240973-f773) | 2026-10-06 07:56 KST | v302 보드 정본: 「자동 설정 그만두기」 「직접 설정하러 가기」 · 환불 금액 「결제한 금액(N원)」 · 「잠시 멈추기」 · 작업 기록 시각표 유지 · 쉬운 말(방송 화면 넣기) · 날짜 |
+| SA-153 | 자동 연결 완료 | /seller/automation/[jobId]/done | design/project/SA-153.dc.html | SA-153.dc.html | FINAL | v302 (1791240973-f773) | 2026-10-06 07:56 KST | v302 보드 정본: 「방송 화면」 「방송 화면 꾸미기」 · 「무료 재설치 (보류)」 · 변형 「완료 뒤 연결 끊김 · 30일 안」 「재설치 결제 진입」은 보류 표시(가격 결정 전 구현 금지) · 날짜 |
 
 ## SH 구매자 쇼핑몰
 
@@ -212,17 +218,17 @@
 | SH-003 | 상품 상세 | /shop/[slug]/products/[productId] | design/project/SH-003-IA.dc.html | SH-003-IA.dc.html | FINAL | v284 (1791217340-eeda) | 2026-10-06 01:52 KST | FINAL 재확인(현대화 기준 충족): 휴대폰 위 바 56 · ← 44 아이콘(DS-NAV) · 하단 바 「장바구니에 담기」「바로 주문하기」(찜 · 공유 44) · 일시 2026.10.01 표기 · 품절 |
 | SH-004 | 장바구니 | /shop/[slug]/cart | design/project/SH-004-IA.dc.html | SH-004-IA.dc.html | FINAL | v284 (1791217340-eeda) | 2026-10-06 01:52 KST | FINAL 재확인(현대화 기준 충족): 휴대폰 위 바 56 · ← 44 아이콘(DS-NAV) · 쉬운 말(#644) 반영 확인 |
 | SH-005 | 주문서 | /shop/[slug]/checkout | design/project/SH-005-IA.dc.html | SH-005-IA.dc.html | FINAL | v284 (1791217340-eeda) | 2026-10-06 01:52 KST | FINAL 재확인(현대화 기준 충족): 휴대폰 위 바 56 · ← 44 아이콘(DS-NAV) · 쉬운 말(#644: 보호자 · 금액을 한 번 더 확인해요) · 쿠폰 기한 2026.10.15 표기 |
-| SH-006 | 결제 진행 | /shop/[slug]/checkout (결제 단계) | design/project/SH-006.dc.html | SH-006.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: SH-006-PC |
+| SH-006 | 결제 진행 | /shop/[slug]/checkout (결제 단계) | design/project/SH-006.dc.html | SH-006.dc.html | FINAL | v298 (1791239414-fa20) | 2026-10-06 07:30 KST | FINAL 재확인(2026-10-06 구매자 묶음) · 해요체 · ← 44 · 방송 화면 용어 · PC 변형(SH-006-PC) 동일 확인 |
 | SH-007 | 주문 완료 | /shop/[slug]/orders/[orderId] (완료) | design/project/SH-007.dc.html | SH-007.dc.html | FINAL | v287 (1791217739-ca0d) | 2026-10-06 02:08 KST | 현대화 기준 충족(v267): 주문번호 날짜-순번(20261002-0412) 휴대폰·PC 모두 표시 · 안내 한 줄 · 버튼 사이 8px · 변형 SH-007-PC · 변형: SH-007-PC |
-| SH-008 | 결제 실패 | /shop/[slug]/checkout (실패) | design/project/SH-008.dc.html | SH-008.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: SH-008-PC |
+| SH-008 | 결제 실패 | /shop/[slug]/checkout (실패) | design/project/SH-008.dc.html | SH-008.dc.html | FINAL | v298 (1791239414-fa20) | 2026-10-06 07:30 KST | FINAL 재확인(2026-10-06 구매자 묶음) · 해요체 · ← 44 · 방송 화면 용어 · PC 변형(SH-008-PC) 동일 확인 |
 | SH-009 | 미성년자 구매 제한 안내 | — | design/project/SH-009.dc.html | SH-009.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: SH-009-PC |
-| SH-010 | 로그인 | /shop/[slug]/login | design/project/SH-010.dc.html | SH-010.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: SH-010-PC |
+| SH-010 | 로그인 | /shop/[slug]/login | design/project/SH-010.dc.html | SH-010.dc.html | FINAL | v298 (1791239414-fa20) | 2026-10-06 07:30 KST | FINAL 재확인(2026-10-06 구매자 묶음) · 해요체 · ← 44 · 방송 화면 용어 · 대표님 확정 「회원만 주문」: 「비회원으로 주문하기」 버튼·비회원 안내 상태 제거(PC 변형 동일) · 「로그인 유지」 체크박스 기본 꺼짐 |
 | SH-011 | 회원가입 | /shop/[slug]/signup | design/project/SH-011.dc.html | SH-011.dc.html | FINAL | v287 (1791217739-ca0d) | 2026-10-06 02:08 KST | 현대화 기준 충족(c24/sh24 토큰 · 2026-10-05 이후 작성·갱신) · 변형: SH-011-PC |
-| SH-012 | 비밀번호 찾기 | — | design/project/SH-012.dc.html | SH-012.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: SH-012-PC |
+| SH-012 | 비밀번호 찾기 | — | design/project/SH-012.dc.html | SH-012.dc.html | FINAL | v298 (1791239414-fa20) | 2026-10-06 07:30 KST | FINAL 재확인(2026-10-06 구매자 묶음) · 해요체 · ← 44 · 방송 화면 용어 · PC 변형(SH-012-PC) 동일 확인 |
 | SH-020 | 마이페이지 | /shop/[slug]/me | design/project/SH-020-IA.dc.html | SH-020-IA.dc.html | FINAL | 1791213911-1437 | 2026-10-06 00:27 KST | 현대화 기준 충족(c24/sh24 토큰 · 2026-10-05 이후 작성·갱신) · 변형: SH-020-PC-IA, SH-020, SH-020-PC (SH-020, SH-020-PC = SUPERSEDED) |
 | SH-021 | 주문 내역 | /shop/[slug]/orders | design/project/SH-021-IA.dc.html | SH-021-IA.dc.html | FINAL | v287 (1791217739-ca0d) | 2026-10-06 02:08 KST | 현대화 기준 충족(c24/sh24 토큰 · 2026-10-05 이후 작성·갱신) · 변형: SH-021, SH-021-PC (SH-021, SH-021-PC = SUPERSEDED) |
 | SH-022 | 주문 상세 | /shop/[slug]/orders/[orderId] | design/project/SH-022-IA.dc.html | SH-022-IA.dc.html | FINAL | v287 (1791217739-ca0d) | 2026-10-06 02:08 KST | 현대화 기준 충족(c24/sh24 토큰 · 2026-10-05 이후 작성·갱신) · 변형: SH-022, SH-022-M, SH-022-PC (SH-022, SH-022-PC = SUPERSEDED) |
-| SH-022-R | 교환·반품 요청 시트 | /shop/[slug]/orders/[orderId] (시트) | design/project/SH-022-R.dc.html | SH-022-R.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
+| SH-022-R | 교환·반품 요청 시트 | /shop/[slug]/orders/[orderId] (시트) | design/project/SH-022-R.dc.html | SH-022-R.dc.html | FINAL | v299 (1791239687-96b7) | 2026-10-06 07:35 KST | FINAL(2026-10-06 MASTER 큐 ①): 구매자 교환 · 반품 요청 시트를 구현(components/shop/returns/ReturnSection) 기준으로 새로 그림 — 종류(반품/교환) · 돌려보낼/교환할 상품 · 사유(기간·포장 뜯음 규칙) · 보내는 방법 · 환불받을 계좌 · 자세한 사유 · 사진 5장 · 상태 12종(접수 · 송장 입력 · 수거 · 확인 · 교환 발송 · 환불 완료 · 재고 없어 환불 전환 · 거둠 · 기간 지남 · 오류) · 사유 주체 「구매자 사정/파트너스 사정」 배송비 안내. 기존 환불 요청 시트 보드는 변형 SH-022-RF.dc.html(FINAL, 같은 버전)로 이름 정리 |
 | SH-023 | 내 적립금 | — | design/project/SH-023-IA.dc.html | SH-023-IA.dc.html | FINAL | v287 (1791217739-ca0d) | 2026-10-06 02:08 KST | 현대화 기준 충족(c24/sh24 토큰 · 2026-10-05 이후 작성·갱신) · 변형: SH-023, SH-023-PC (SH-023, SH-023-PC = SUPERSEDED) |
 | SH-024 | 회원정보 수정 | — | design/project/SH-024-IA.dc.html | SH-024-IA.dc.html | FINAL | v287 (1791217739-ca0d) | 2026-10-06 02:08 KST | 현대화 기준 충족(c24/sh24 토큰 · 2026-10-05 이후 작성·갱신) · 변형: SH-024, SH-024-PC (SH-024, SH-024-PC = SUPERSEDED) |
 | SH-025 | 알림 설정 | /shop/[slug]/me/notifications | design/project/SH-025-IA.dc.html | SH-025-IA.dc.html | FINAL | v287 (1791217739-ca0d) | 2026-10-06 02:08 KST | 현대화 기준 충족(c24/sh24 토큰 · 2026-10-05 이후 작성·갱신) · 변형: SH-025, SH-025-PC (SH-025, SH-025-PC = SUPERSEDED) |
