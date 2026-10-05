@@ -123,6 +123,19 @@ test.describe.serial("적립금 사용", () => {
     await expect(page).toHaveURL(/\/orders\/[0-9a-f-]+\?done=1$/);
   });
 
+  test("판매자가 적립금 사용을 꺼 두면 주문서에 적립금 영역·요약 줄이 처음부터 없다", async ({ page, baseURL }) => {
+    await setRewardUseInDb(SLUG, LOGIN, false, 32_400);
+    try {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await openCheckout(page, baseURL!);
+      await expect(page.getByRole("region", { name: "적립금" })).toHaveCount(0);
+      await expect(page.getByRole("complementary", { name: "주문 금액" }).locator(".cart-row", { hasText: "적립금 사용" })).toHaveCount(0);
+      await page.screenshot({ path: "tests/e2e/screenshots/SH-005-reward-hidden-1440.png", fullPage: true });
+    } finally {
+      await setRewardUseInDb(SLUG, LOGIN, true, 32_400);
+    }
+  });
+
   test("휴대폰 390: 적립금 칸 가로 스크롤 없음", async ({ page, baseURL }) => {
     await setRewardUseInDb(SLUG, LOGIN, true, 32_400);
     await page.setViewportSize({ width: 390, height: 844 });
