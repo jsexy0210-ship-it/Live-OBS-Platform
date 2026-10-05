@@ -11,9 +11,9 @@ test.beforeAll(() => {
 });
 
 async function login(page: Page, email: string) {
-  await page.goto("/seller/login");
+  await page.goto("/seller/login?next=%2Fseller%2Fyoutube");
   await submitSellerLogin(page, email, PASSWORD);
-  await page.waitForURL(/\/seller(\/|$)/);
+  await expect(page).toHaveURL(/\/seller\/youtube$/);
 }
 
 test("오버레이 전용 대표자: /seller가 오버레이 홈으로 열리고 업무·성과·방송·스토어 안내가 보인다", async ({ page }) => {
