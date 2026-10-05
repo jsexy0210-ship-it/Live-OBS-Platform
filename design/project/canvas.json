@@ -1187,28 +1187,28 @@
       "y": 3720
     },
     "PF-007-1.dc.html": {
-      "h": 648,
+      "h": 1630,
       "is_interactive": true,
       "page": "p05",
-      "title": "PF-007-1 가입 신청 — 약관 동의",
+      "title": "PF-007-1 가입 신청 1/5 — 약관 동의",
       "w": 1440,
       "x": 0,
       "y": 5840
     },
     "PF-007-2.dc.html": {
-      "h": 2870,
+      "h": 3160,
       "is_interactive": true,
       "page": "p05",
-      "title": "PF-007-2 가입 신청 — 정보 입력",
+      "title": "PF-007-2 가입 신청 2/5 — 대표자 본인확인",
       "w": 1440,
       "x": 1520,
       "y": 5840
     },
     "PF-007-3.dc.html": {
-      "h": 865,
+      "h": 3080,
       "is_interactive": true,
       "page": "p05",
-      "title": "PF-007-3 가입 신청 — 완료 · 승인 대기",
+      "title": "PF-007-3 가입 신청 3/5 — 가입 정보(계정 · 쇼핑몰 · 쇼핑몰 여부)",
       "w": 1440,
       "x": 3040,
       "y": 5840
@@ -3003,6 +3003,24 @@
       "w": 1280,
       "x": 23600,
       "y": 108800
+    },
+    "PF-007-4.dc.html": {
+      "h": 3470,
+      "is_interactive": true,
+      "page": "p05",
+      "title": "PF-007-4 가입 신청 4/5 — 사업자 정보",
+      "w": 1440,
+      "x": 0,
+      "y": 8900
+    },
+    "PF-007-5.dc.html": {
+      "h": 2590,
+      "is_interactive": true,
+      "page": "p05",
+      "title": "PF-007-5 가입 신청 5/5 — 신청 완료 · 승인 대기",
+      "w": 1440,
+      "x": 1520,
+      "y": 8900
     }
   },
   "createdOnFiles": {
@@ -4087,7 +4105,9 @@
     "DS-CONFIRM.dc.html",
     "DS-NAV.dc.html",
     "DS-TYPE-SCALE.dc.html",
-    "DS-DATEPICKER.dc.html"
+    "DS-DATEPICKER.dc.html",
+    "PF-007-4.dc.html",
+    "PF-007-5.dc.html"
   ],
   "pages": [
     {
