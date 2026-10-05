@@ -605,7 +605,7 @@ describe("탈퇴 회원 법정 보관 분리", () => {
     // 탈퇴 전: 회원 서비스(주문 내역 등)를 위해 끝난 주문도 판매자·구매자 조회에 그대로 있다
     const activeList = await listSellerOrders(db, sctx, {});
     expect(activeList.ok && activeList.orders.map((o) => o.id)).toEqual(expect.arrayContaining([cancelled.id, refunded.id, confirmed.id]));
-    const activeMine = await listBuyerOrders(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id });
+    const activeMine = await listBuyerOrders(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id }, { from: "2026-01-01", to: "2026-12-31" });
     expect(activeMine.ok && activeMine.value.orders.map((o) => o.id)).toEqual(expect.arrayContaining([cancelled.id, refunded.id, confirmed.id]));
 
     const before = Date.now();
@@ -629,7 +629,7 @@ describe("탈퇴 회원 법정 보관 분리", () => {
     await expect(getOrder(db, sctx, refunded.id)).rejects.toMatchObject({ status: 404 });
     expect((await getOrder(db, sctx, toRefund.id)).id).toBe(toRefund.id);
     expect(await getBuyerOrder(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id }, refunded.id)).toBeNull();
-    const mine = await listBuyerOrders(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id });
+    const mine = await listBuyerOrders(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id }, { from: "2026-01-01", to: "2026-12-31" });
     expect(mine.ok && mine.value.orders.map((o) => o.id).sort()).toEqual([toRefund.id, toConfirm.id].sort());
 
     // 구매 확정 전에 탈퇴한 주문은 환불·자동 구매 확정 때 분리한다
