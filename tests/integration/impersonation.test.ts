@@ -82,6 +82,8 @@ describe("대리 조회 시작 POST /api/admin/sellers/{id}/impersonate", () => 
     expect((await ordersRoute(req("/api/seller/orders", `lo_imp=${first.imp}`))).status).toBe(401);
     expect((await ordersRoute(req("/api/seller/orders", `lo_imp=${second.imp}`))).status).toBe(200);
     expect(await db.adminImpersonationSession.count({ where: { endedAt: null } })).toBe(1);
+    const replaced = await db.auditLog.findMany({ where: { action: "admin.impersonate.end", sellerId: a.seller.id } });
+    expect(replaced.map((l) => (l.after as { cause: string }).cause)).toEqual(["replaced"]);
   });
 });
 
@@ -114,14 +116,24 @@ describe("대리 조회 중 파트너스 API", () => {
     const cookie = `lo_imp=${imp}`;
     expect((await json(await activeRoute(req("/api/admin/impersonation", su.cookie)))).body.active).toMatchObject({ sellerId: a.seller.id, reason: "고객 문의 확인" });
     expect((await ordersRoute(req("/api/seller/orders", cookie))).status).toBe(200);
-    expect(await json(await endRoute(req("/api/admin/impersonation", su.cookie, "DELETE")))).toMatchObject({ status: 200, body: { ok: true, ended: 1 } });
+    const endRes = await endRoute(req("/api/admin/impersonation", su.cookie, "DELETE"));
+    expect(await json(endRes.clone())).toMatchObject({ status: 200, body: { ok: true, ended: 1 } });
+    // 관리자 끝내기 응답이 /api/seller 경로의 lo_imp를 직접 만료시킨다(HttpOnly라 화면이 못 지움)
+    const clear = endRes.headers.get("set-cookie") ?? "";
+    expect(clear).toMatch(/lo_imp=;/);
+    expect(clear).toMatch(/Path=\/api\/seller/i);
+    expect(clear).toMatch(/Max-Age=0/i);
     expect((await ordersRoute(req("/api/seller/orders", cookie))).status).toBe(401);
     expect((await json(await activeRoute(req("/api/admin/impersonation", su.cookie)))).body.active).toBeNull();
-    expect(await db.auditLog.count({ where: { action: "admin.impersonate.end", sellerId: a.seller.id } })).toBe(1);
+    const endLogs = () => db.auditLog.findMany({ where: { action: "admin.impersonate.end", sellerId: a.seller.id }, orderBy: { createdAt: "asc" } });
+    expect((await endLogs()).map((l) => (l.after as { cause: string }).cause)).toEqual(["manual"]);
 
     const s2 = await start(su.cookie, a.seller.id);
     await db.adminImpersonationSession.updateMany({ where: { endedAt: null }, data: { expiresAt: new Date(Date.now() - 1000) } });
     expect((await ordersRoute(req("/api/seller/orders", `lo_imp=${s2.imp}`))).status).toBe(401);
+    expect((await ordersRoute(req("/api/seller/orders", `lo_imp=${s2.imp}`))).status).toBe(401);
+    // 만료는 처음 알아챈 때 한 번만 로그 추적에 남는다
+    expect((await endLogs()).map((l) => (l.after as { cause: string }).cause)).toEqual(["manual", "expired"]);
 
     const s3 = await start(su.cookie, a.seller.id);
     await db.platformAdmin.update({ where: { id: su.id }, data: { status: "SUSPENDED" } });

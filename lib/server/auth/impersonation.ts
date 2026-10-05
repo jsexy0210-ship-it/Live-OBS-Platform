@@ -1,4 +1,4 @@
-import type { PrismaClient, Seller } from "@prisma/client";
+import type { Prisma, PrismaClient, Seller } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { forbidden, notFound } from "../authz/errors";
 import { adminCan } from "../authz/permissions";
@@ -9,7 +9,7 @@ import { generateToken, hashToken } from "./token";
 // 마스터 대리 조회(MA-016): 마스터 관리자가 사유를 적고 파트너스 화면을 읽기 전용으로 본다.
 // - 권한은 seller.impersonate(최고관리자·운영·CS, 조회 전용 역할은 불가). 사유는 1~200자 필수.
 // - 별도 세션(AdminImpersonationSession, 30분)이고 쿠키 lo_imp(경로 /api/seller)로만 온다. 토큰은 「imp.」로 시작해 파트너스 세션과 구분한다.
-// - 열 때 admin.impersonate.view, 끝낼 때 admin.impersonate.end를 로그 추적에 남긴다. 한 관리자에게 열린 세션은 하나만(새로 열면 앞의 것을 끝낸다).
+// - 열 때 admin.impersonate.view, 끝낼 때 admin.impersonate.end(after.cause: manual·replaced·expired)를 로그 추적에 남긴다. 만료는 처음 알아챈 때(쓰던 요청·내 세션 조회·다시 열기·끝내기)에 한 번 남긴다. 한 관리자에게 열린 세션은 하나만(새로 열면 앞의 것을 끝낸다).
 // - 읽기 전용은 두 겹이다: ① proxy가 조회 허용 경로(IMPERSONATION_API_PREFIXES) 밖과 GET·HEAD 아닌 요청을 막는다(경로를 하나씩 믿지 않는 안전망).
 //   ② 가드가 돌려주는 컨텍스트는 readOnly이고 대표자·직원 권한이 없어, 조회 권한 표(IMPERSONATION_READ_ACTIONS) 밖은 모두 거부된다.
 // - 열린 동안 관리자 계정이 정지되거나 권한을 잃으면, 파트너스 쇼핑몰이 운영·정지 상태가 아니면 바로 막힌다.
@@ -31,6 +31,31 @@ export function impersonationRequestAllowed(method: string, pathname: string): b
 type Meta = { ip?: string | null; userAgent?: string | null };
 export type ImpersonationRejection = "reason_required" | "seller_not_viewable";
 
+type EndCause = "manual" | "replaced" | "expired";
+type Db = PrismaClient | Prisma.TransactionClient;
+// 열린 세션을 끝내고 로그 추적(admin.impersonate.end, after.cause)을 한 번만 남긴다. 같은 세션을 동시에 끝내도 먼저 끝낸 쪽만 기록한다.
+async function closeSessions(db: Db, where: Prisma.AdminImpersonationSessionWhereInput, cause: EndCause, now: Date, meta: Meta = {}) {
+  const open = await db.adminImpersonationSession.findMany({ where: { ...where, endedAt: null }, select: { id: true, adminId: true, sellerId: true, expiresAt: true } });
+  let ended = 0;
+  for (const s of open) {
+    const r = await db.adminImpersonationSession.updateMany({ where: { id: s.id, endedAt: null }, data: { endedAt: cause === "expired" ? s.expiresAt : now } });
+    if (r.count !== 1) continue;
+    ended++;
+    await writeAudit(db, {
+      actorType: "PLATFORM_ADMIN",
+      actorId: s.adminId,
+      sellerId: s.sellerId,
+      action: "admin.impersonate.end",
+      targetType: "Seller",
+      targetId: s.sellerId,
+      after: { cause },
+      ip: cause === "manual" ? meta.ip : null,
+      userAgent: cause === "manual" ? meta.userAgent : null,
+    });
+  }
+  return ended;
+}
+
 export async function startImpersonation(db: PrismaClient, admin: AdminSessionContext, sellerId: string, rawReason: unknown, meta: Meta = {}, now = new Date()) {
   if (!adminCan(admin.admin.role, "seller.impersonate")) throw forbidden();
   const reason = cleanText(rawReason, REASON_MAX, "memo");
@@ -41,7 +66,8 @@ export async function startImpersonation(db: PrismaClient, admin: AdminSessionCo
   const token = IMPERSONATION_PREFIX + generateToken();
   const expiresAt = new Date(now.getTime() + IMPERSONATION_TTL_MS);
   await db.$transaction(async (tx) => {
-    await tx.adminImpersonationSession.updateMany({ where: { adminId: admin.admin.id, endedAt: null }, data: { endedAt: now } });
+    await closeSessions(tx, { adminId: admin.admin.id, expiresAt: { lte: now } }, "expired", now);
+    await closeSessions(tx, { adminId: admin.admin.id }, "replaced", now);
     await tx.adminImpersonationSession.create({
       data: { adminId: admin.admin.id, sellerId, tokenHash: hashToken(token), reason, ip: meta.ip ?? null, userAgent: meta.userAgent ?? null, expiresAt, createdAt: now },
     });
@@ -52,17 +78,15 @@ export async function startImpersonation(db: PrismaClient, admin: AdminSessionCo
 
 // 이 관리자에게 열린 대리 조회를 모두 끝낸다(쿠키가 /api/seller로만 가서 관리자 쪽은 쿠키 없이 관리자 신원으로 끝낸다)
 export async function endImpersonation(db: PrismaClient, admin: AdminSessionContext, meta: Meta = {}, now = new Date()) {
-  const open = await db.adminImpersonationSession.findMany({ where: { adminId: admin.admin.id, endedAt: null, expiresAt: { gt: now } }, select: { id: true, sellerId: true } });
-  await db.$transaction(async (tx) => {
-    await tx.adminImpersonationSession.updateMany({ where: { adminId: admin.admin.id, endedAt: null }, data: { endedAt: now } });
-    for (const s of open) {
-      await writeAudit(tx, { actorType: "PLATFORM_ADMIN", actorId: admin.admin.id, sellerId: s.sellerId, action: "admin.impersonate.end", targetType: "Seller", targetId: s.sellerId, ip: meta.ip, userAgent: meta.userAgent });
-    }
+  const ended = await db.$transaction(async (tx) => {
+    await closeSessions(tx, { adminId: admin.admin.id, expiresAt: { lte: now } }, "expired", now);
+    return closeSessions(tx, { adminId: admin.admin.id }, "manual", now, meta);
   });
-  return { ended: open.length };
+  return { ended };
 }
 
 export async function activeImpersonation(db: PrismaClient, admin: AdminSessionContext, now = new Date()) {
+  await closeSessions(db, { adminId: admin.admin.id, expiresAt: { lte: now } }, "expired", now);
   const s = await db.adminImpersonationSession.findFirst({
     where: { adminId: admin.admin.id, endedAt: null, expiresAt: { gt: now } },
     orderBy: { createdAt: "desc" },
@@ -78,7 +102,11 @@ export type ImpersonationContext = { sessionId: string; adminId: string; adminNa
 export async function resolveImpersonation(db: PrismaClient, token: string | undefined, now = new Date()): Promise<ImpersonationContext | null> {
   if (!isImpersonationToken(token)) return null;
   const s = await db.adminImpersonationSession.findUnique({ where: { tokenHash: hashToken(token) } });
-  if (!s || s.endedAt || s.expiresAt <= now) return null;
+  if (!s || s.endedAt) return null;
+  if (s.expiresAt <= now) {
+    await closeSessions(db, { id: s.id }, "expired", now);
+    return null;
+  }
   const [admin, seller] = await Promise.all([db.platformAdmin.findUnique({ where: { id: s.adminId } }), db.seller.findUnique({ where: { id: s.sellerId } })]);
   if (!admin || admin.status !== "ACTIVE" || !adminCan(admin.role, "seller.impersonate")) return null;
   if (!seller || (seller.status !== "ACTIVE" && seller.status !== "SUSPENDED")) return null;
