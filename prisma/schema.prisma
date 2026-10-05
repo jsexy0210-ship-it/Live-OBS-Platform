@@ -3395,6 +3395,14 @@ model PlatformInquiry {
   sellerReadAt          DateTime?               @db.Timestamptz(3)
   closedAt              DateTime?               @db.Timestamptz(3)
   closedByAdminId       String?                 @db.Uuid
+  // 파트너스가 「해결됐습니다 · 종료」로 닫은 계정(마스터가 닫으면 closedByAdminId)
+  closedBySellerUserId  String?                 @db.Uuid
+  // 문의 작성 때 고른 관련 주문·방송(같은 쇼핑몰만, 선택). 지워지는 일이 없는 기록이라 관계 없이 id만 둔다.
+  relatedOrderId        String?                 @db.Uuid
+  relatedBroadcastId    String?                 @db.Uuid
+  // 「답변이 도움이 됐습니까?」 평가(true 도움됨 · false 아니요). 문의 전체에 한 번만, 마스터 답변이 있은 뒤.
+  helpful               Boolean?
+  helpfulAt             DateTime?               @db.Timestamptz(3)
   version               Int                     @default(0)
   createdAt             DateTime                @default(now()) @db.Timestamptz(3)
 
