@@ -76,6 +76,7 @@ const KST_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 export type SellerOrderListQuery = {
   status?: string[];
   q?: string | null;
+  memberId?: string | null;
   from?: string | null;
   to?: string | null;
   cursor?: string | null;
@@ -122,9 +123,11 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
   if (query.cursor && !cursor) return { ok: false as const };
   const q = query.q?.trim() ?? "";
   if (q.length > 50) return { ok: false as const };
+  if (query.memberId && !UUID_RE.test(query.memberId)) return { ok: false as const };
 
   const searchesPii = q !== "" && canViewCustomerPii(ctx);
   const and: Prisma.OrderWhereInput[] = [{ sellerId: ctx.sellerId, legalHoldAt: null }];
+  if (query.memberId) and.push({ buyerMemberId: query.memberId });
   if (statuses.length) and.push({ status: { in: statuses as OrderStatus[] } });
   if (from) and.push({ createdAt: { gte: from } });
   if (toStart) and.push({ createdAt: { lt: new Date(toStart.getTime() + 24 * 3600_000) } });
