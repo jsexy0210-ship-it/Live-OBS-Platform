@@ -57,13 +57,21 @@ const row = (page: Page, key: string) => page.getByTestId("application-row").fil
 
 test("운영: 이상 없음은 목록에서 한 번에 승인되고(처리한 행만 바뀜), 확인 필요는 사유를 본 뒤에만 승인된다", async ({ page }) => {
   await login(page, emails.ops);
-  await page.goto("/admin/partners/applications");
+  await page.goto(`/admin/partners/applications?field=shop&q=${run}`); // 20건씩 보이므로 이 시험이 만든 신청만 검색한다
   await expect(row(page, "A")).toContainText("확인할 것 없음");
   await expect(row(page, "A").getByRole("button", { name: "승인" })).toBeVisible();
   await expect(row(page, "B")).toContainText("확인 필요 1");
-  await expect(row(page, "B")).toContainText("휴업·폐업 사업자");
+  await expect(row(page, "B")).toContainText("사업자 상태가 휴업 또는 폐업입니다");
   await expect(row(page, "B").getByRole("button", { name: "승인", exact: true })).toHaveCount(0);
   await page.screenshot({ path: "tests/e2e/screenshots/admin-applications-1440.png" });
+  for (const w of [1024, 390]) {
+    await page.setViewportSize({ width: w, height: 900 });
+    await page.reload();
+    await expect(row(page, "A")).toBeVisible();
+    await page.screenshot({ path: `tests/e2e/screenshots/admin-applications-${w}.png` });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.reload();
 
   await row(page, "A").getByRole("button", { name: "승인", exact: true }).click();
   await expect(page.getByText(`${name("A")} 가입을 승인했습니다.`)).toBeVisible();
@@ -73,7 +81,7 @@ test("운영: 이상 없음은 목록에서 한 번에 승인되고(처리한 �
 
   await row(page, "B").getByRole("button", { name: "확인할 내용 보기" }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByTestId("review-reasons")).toContainText("휴업·폐업 사업자");
+  await expect(dialog.getByTestId("review-reasons")).toContainText("사업자 상태가 휴업 또는 폐업입니다");
   expect((await db.seller.findUniqueOrThrow({ where: { id: ids.B } })).status).toBe("PENDING");
   await dialog.getByRole("button", { name: "확인했습니다. 승인" }).click();
   await expect(row(page, "B")).toContainText("승인됨");
@@ -82,7 +90,7 @@ test("운영: 이상 없음은 목록에서 한 번에 승인되고(처리한 �
 
 test("반려는 사유를 고르는 작은 창에서 한 번에 끝나고, 칩 필터는 주소에 남는다", async ({ page }) => {
   await login(page, emails.ops);
-  await page.goto("/admin/partners/applications");
+  await page.goto(`/admin/partners/applications?field=shop&q=${run}`); // 20건씩 보이므로 이 시험이 만든 신청만 검색한다
   await page.getByRole("button", { name: /^확인 필요/ }).click();
   await expect(page).toHaveURL(/tab=review/);
   await page.reload();
@@ -105,7 +113,7 @@ test("반려는 사유를 고르는 작은 창에서 한 번에 끝나고, 칩 �
 
 test("조회 전용: 처리 버튼 없이 상세만 보인다", async ({ page }) => {
   await login(page, emails.ro);
-  await page.goto("/admin/partners/applications");
+  await page.goto(`/admin/partners/applications?field=shop&q=${run}`); // 20건씩 보이므로 이 시험이 만든 신청만 검색한다
   const d = row(page, "D");
   await expect(d).toBeVisible();
   await expect(d.getByRole("button")).toHaveCount(0);

@@ -70,7 +70,7 @@ function waited(r: App): { label: string; hot: boolean } {
   const base = h < 1 ? "1시간 안" : h < 24 ? `${h}시간 전` : `승인 대기 ${Math.floor(h / 24)}일째`;
   return { label: r.over48h ? `${base} · 48시간 초과` : base, hot: r.over48h };
 }
-const hours = (v: number | null) => (v === null ? "-" : `${v}시간`);
+const hours = (v: number | null) => (v === null ? "-" : `${Math.round(v * 10) / 10}시간`);
 
 function SupplementDialog({ row, onClose, onDone, onStale }: { row: Row; onClose: () => void; onDone: () => void; onStale: () => void }) {
   const [reason, setReason] = useState("");
@@ -281,7 +281,7 @@ function Applications() {
         <PageHead title="가입 신청" />
         <div className="col" style={{ gap: 16 }}>
           {k && (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 12 }} data-testid="application-kpi">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }} data-testid="application-kpi">
               {kpiCard("가입 신청 중", `${k.pending}`, `이상 없음 ${k.clear} · 확인 필요 ${k.needsReview} · 보완 요청 ${k.supplement}`)}
               {kpiCard("48시간 초과", `${k.over48h}`, undefined, k.over48h > 0)}
               {kpiCard("오늘 접수", `${k.receivedToday}`)}
@@ -394,9 +394,11 @@ function Applications() {
                               <Link className="fw6" href={`/admin/partners/applications/${r.id}`}>
                                 {r.shopName}
                               </Link>
-                              <span className="t-c1 c-alt" style={{ display: "block" }}>
-                                {r.applicantName} · {r.applicantEmail}
-                              </span>
+                              {(r.applicantName || r.applicantEmail) && (
+                                <span className="t-c1 c-alt" style={{ display: "block" }}>
+                                  {[r.applicantName, r.applicantEmail].filter(Boolean).join(" · ")}
+                                </span>
+                              )}
                             </td>
                             <td className="col-text">{text(r.businessNumber)}</td>
                             <td className="col-text">{text(r.industry)}</td>
