@@ -1084,3 +1084,7 @@ select.inp{cursor:pointer}
 .c24 .bk:hover{background:#f2f4f6}.c24 .bk:focus-visible{outline:2px solid #1a56db;outline-offset:1px}
 .c24 .ph2 .bk{margin-right:0}
 .c24.mob .bk,.c24 .mph .bk{width:44px;height:44px;border:0}
+/* 2026-10-06 구매자 휴대폰 위 고정 바 56 · ← 44 (DS-NAV 확정 규격) */
+.sh24.m .mh.sub{height:56px}
+.sh24.m .mh .mi.bk{width:44px;height:44px;margin-left:-10px;color:var(--ink)}
+.sh24.m .mh .mi.bk svg{width:20px;height:20px}

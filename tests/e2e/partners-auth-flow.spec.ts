@@ -37,7 +37,7 @@ async function fillIdentity(page: Page, name: string, phone = "01012345678") {
   await page.getByRole("button", { name: "남", exact: true }).click();
   await page.getByLabel("통신사").selectOption("SKT");
   await page.getByLabel("휴대폰번호", { exact: true }).fill(phone);
-  await page.getByLabel(signupScreen(page) ? "본인확인 약관에 모두 동의해요" : "본인확인 약관에 모두 동의합니다").check();
+  await page.getByLabel(signupScreen(page) ? "본인확인 이용 약관에 모두 동의해요" : "본인확인 이용 약관에 모두 동의합니다").check();
 }
 // 가입 신청(PF-007)은 공개 화면이라 해요체, 비밀번호·아이디 찾기는 관리자 인증 화면이라 합니다체
 const signupScreen = (page: Page) => new URL(page.url()).pathname.startsWith("/seller/signup");
@@ -52,18 +52,18 @@ const randomPhone = () => `010${String(Math.floor(Math.random() * 1e8)).padStart
 // 인증번호 받기 → (틀린 번호 한 번) → 000000 확인
 async function verify(page: Page, wrongFirst = false, startPath = "/api/seller-signup/verification") {
   const started = page.waitForRequest((r) => r.url().endsWith(startPath) && r.method() === "POST");
-  await page.getByRole("button", { name: "인증번호 받기" }).click();
+  await page.getByRole("button", { name: "인증번호 문자 받기" }).click();
   // 본인확인 대행사에 보내는 기기 구분: 768px 이상이면 PC(구매자 가입과 같은 기준)
   const body = (await started).postDataJSON() as { device?: string; person?: { device?: string } };
   expect(body.device ?? body.person?.device).toBe((page.viewportSize()?.width ?? 0) >= 768 ? "PC" : "MOBILE");
   await expect(page.getByText(codeSentText(page))).toBeVisible();
   if (wrongFirst) {
     await page.getByLabel("인증번호").fill("111111");
-    await page.getByRole("button", { name: "확인", exact: true }).click();
+    await page.getByRole("button", { name: "인증번호 확인하기", exact: true }).click();
     await expect(page.getByText("인증번호가 맞지 않아요. 다시 확인해 주세요")).toBeVisible();
   }
   await page.getByLabel("인증번호").fill("000000");
-  await page.getByRole("button", { name: "확인", exact: true }).click();
+  await page.getByRole("button", { name: "인증번호 확인하기", exact: true }).click();
 }
 
 type Account = { email: string; password: string; slug: string; name: string };
@@ -83,7 +83,7 @@ async function signup(page: Page, opts: { mailOrderNumber: string; wrongFirst?: 
       if (r.url().endsWith("/api/seller-signup/verification") && r.method() === "POST") starts += 1;
     };
     page.on("request", count);
-    const send = page.getByRole("button", { name: "인증번호 받기" });
+    const send = page.getByRole("button", { name: "인증번호 문자 받기" });
     await expect(send).toBeDisabled();
     await page.getByLabel("파트너스 이용약관 (필수)").check();
     await expect(send).toBeDisabled();
@@ -173,9 +173,9 @@ test("파트너스 가입 신청 → 바로 승인 → 로그인 → 비밀번�
     },
     { times: 1 },
   );
-  await page.getByRole("button", { name: "다시 확인", exact: true }).click();
+  await page.getByRole("button", { name: "결과 다시 확인하기", exact: true }).click();
   await expect(page.locator("#pa-notice")).toContainText("연결이 끊겼습니다");
-  await page.getByRole("button", { name: "다시 확인", exact: true }).click();
+  await page.getByRole("button", { name: "결과 다시 확인하기", exact: true }).click();
   await expect(page.getByRole("heading", { name: "새 비밀번호 설정" })).toBeVisible();
   await expect(page.getByText(`${a.email} · 휴대폰 본인확인 완료`)).toBeVisible();
   await expect(page.getByLabel("새 비밀번호", { exact: true })).toBeFocused();
@@ -228,10 +228,10 @@ async function dropFirstStart(page: Page, path: string) {
 }
 
 async function retryAfterDrop(page: Page, sent: { key: string; id?: string }[]) {
-  await page.getByRole("button", { name: "인증번호 받기" }).click();
+  await page.getByRole("button", { name: "인증번호 문자 받기" }).click();
   await expect.poll(() => sent.length).toBe(1);
   await expect(page.getByLabel("인증번호")).toHaveCount(0);
-  await page.getByRole("button", { name: "인증번호 받기" }).click();
+  await page.getByRole("button", { name: "인증번호 문자 받기" }).click();
   await expect(page.getByText(codeSentText(page))).toBeVisible();
   expect(sent).toHaveLength(2);
   expect(sent[0].key).toMatch(/^[0-9a-f-]{36}$/);
@@ -239,7 +239,7 @@ async function retryAfterDrop(page: Page, sent: { key: string; id?: string }[]) 
   expect(sent[0].id).toBeTruthy();
   expect(sent[1].id).toBe(sent[0].id);
   await page.getByLabel("인증번호").fill("000000");
-  await page.getByRole("button", { name: "확인", exact: true }).click();
+  await page.getByRole("button", { name: "인증번호 확인하기", exact: true }).click();
 }
 
 test("본인확인 시작 응답을 잃고 다시 누르면 같은 attemptKey로 보내 같은 본인확인으로 이어 간다(가입 신청·비밀번호 찾기)", async ({ page }) => {
@@ -281,7 +281,7 @@ test("가입 신청: 인증번호 받기 요청을 보내는 동안에는 약관
     },
     { times: 1 },
   );
-  await page.getByRole("button", { name: "인증번호 받기" }).click();
+  await page.getByRole("button", { name: "인증번호 문자 받기" }).click();
   const all = page.getByLabel("필수 약관에 모두 동의해요");
   await expect(all).toBeDisabled();
   await all.click({ force: true });
@@ -312,7 +312,7 @@ test("가입 신청: 화면의 약관 버전이 서버와 다르면 문자를 �
   const refused = page.waitForResponse((r) => r.url().endsWith("/api/seller-signup/verification") && r.request().method() === "POST");
   // 거절되면 화면 데이터를 새로 받아 서버의 지금 약관 버전으로 바꾼다(열어 둔 예전 화면이 같은 버전을 계속 보내지 않게)
   const refreshed = page.waitForRequest((r) => new URL(r.url()).pathname === "/seller/signup" && r.headers()["rsc"] === "1");
-  await page.getByRole("button", { name: "인증번호 받기" }).click();
+  await page.getByRole("button", { name: "인증번호 문자 받기" }).click();
   expect((await stale).postDataJSON()).toMatchObject({ termsVersion: "2026-01-01.v0", privacyVersion: "2026-01-01.v0" });
   const refusedRes = await refused;
   expect(refusedRes.status()).toBe(409);
@@ -324,7 +324,7 @@ test("가입 신청: 화면의 약관 버전이 서버와 다르면 문자를 �
   await expect(page.locator("#su-terms-err")).toHaveText("약관이 바뀌었어요. 다시 확인해 주세요");
   await expect(page.getByLabel("필수 약관에 모두 동의해요")).not.toBeChecked();
   await expect(page.getByLabel("필수 약관에 모두 동의해요")).toBeFocused();
-  await expect(page.getByRole("button", { name: "인증번호 받기" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "인증번호 문자 받기" })).toBeDisabled();
   await expect(page.getByText("인증번호를 보냈어요", { exact: false })).toHaveCount(0);
   await shot(page, "PF-007-1-outdated");
   // 다시 동의하면 서버의 지금 버전으로 보내 본인확인을 이어 간다
@@ -344,7 +344,7 @@ test("통신판매업 신고번호를 확인하지 못하면 승인 대기로 �
   await signup(page, { mailOrderNumber: "신고번호없음", openedOn: "20261004" });
   await expect(page.getByRole("heading", { name: "신청을 받았어요" })).toBeVisible();
   await expect(page.getByText("통신판매업 신고번호를 확인하지 못했어요")).toBeVisible();
-  await expect(page.getByText("승인 전에는 로그인할 수 없어요.")).toBeVisible();
+  await expect(page.getByText("그 전에는 로그인할 수 없어요.")).toBeVisible();
   await shot(page, "PF-007-3-review");
 });
 
@@ -357,12 +357,12 @@ test("비밀번호 찾기: 대표자가 아니거나 정보가 맞지 않으면 
   // 휴대폰 폭에서는 MOBILE로 보낸다
   await page.setViewportSize({ width: 390, height: 844 });
   const started = page.waitForRequest((r) => r.url().endsWith("/api/seller/password-reset/start"));
-  await page.getByRole("button", { name: "인증번호 받기" }).click();
+  await page.getByRole("button", { name: "인증번호 문자 받기" }).click();
   expect(((await started).postDataJSON() as { person: { device: string } }).person.device).toBe("MOBILE");
   // 인증번호를 보낸 뒤에는 그 요청에 쓴 이메일·쇼핑몰 주소를 바꿀 수 없고, 「정보 다시 입력」이면 다시 바꿀 수 있다
   await expect(page.getByLabel("이메일")).toBeDisabled();
   await expect(page.getByLabel("쇼핑몰 주소")).toBeDisabled();
-  await page.getByRole("button", { name: "정보 다시 입력" }).click();
+  await page.getByRole("button", { name: "정보 다시 쓰기" }).click();
   await expect(page.getByLabel("이메일")).toBeEnabled();
   await expect(page.getByLabel("쇼핑몰 주소")).toBeEnabled();
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -372,11 +372,11 @@ test("비밀번호 찾기: 대표자가 아니거나 정보가 맞지 않으면 
   const notice = page.locator("#pa-notice");
   await expect(notice).toHaveAttribute("role", "alert");
   await expect(notice).toContainText("비밀번호를 변경할 수 없습니다");
-  await expect(notice).toContainText("이메일 · 쇼핑몰 주소와 대표자 본인인지 확인해 주십시오.");
+  await expect(notice).toContainText("입력한 이메일과 쇼핑몰 주소가 맞는지, 대표자 본인 명의의 휴대폰인지 확인해 주십시오.");
   await expect(notice).toBeFocused();
   // 본인확인 칸은 비워지고 다시 받을 수 있다
   await expect(page.getByLabel("이름", { exact: true })).toHaveValue("");
-  await expect(page.getByRole("button", { name: "인증번호 받기" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "인증번호 문자 받기" })).toBeVisible();
   await shot(page, "AU-003-not-allowed");
 });
 
@@ -443,7 +443,7 @@ test("아이디 찾기(대표자): 본인확인하면 가입한 이메일과 쇼
   await expect(page.locator("#pa-notice")).toContainText("잠시 후 다시 시도해 주십시오");
   await expect(page.locator("#idv-name")).toHaveValue(a.name);
   await shot(page, "AU-011-retry");
-  await page.getByRole("button", { name: "다시 확인", exact: true }).click();
+  await page.getByRole("button", { name: "결과 다시 확인하기", exact: true }).click();
   expect(((await started).postDataJSON() as { accountType: string }).accountType).toBe("owner");
   await expect(page.getByRole("heading", { name: "가입한 계정을 찾았습니다" })).toBeVisible();
   const row = page.getByTestId("fi-account");
@@ -460,10 +460,10 @@ test("아이디 찾기(대표자): 본인확인하면 가입한 이메일과 쇼
     const res = await route.fetch();
     return resetCalls === 1 ? route.abort("connectionreset") : route.fulfill({ response: res });
   });
-  await page.getByRole("button", { name: "선택한 계정 비밀번호 변경" }).click();
+  await page.getByRole("button", { name: "선택한 계정의 비밀번호 바꾸기" }).click();
   await expect(page.locator("#pa-notice")).toContainText("연결이 끊겼습니다");
   await expect(page.getByTestId("fi-account")).toHaveCount(1);
-  await page.getByRole("button", { name: "선택한 계정 비밀번호 변경" }).click();
+  await page.getByRole("button", { name: "선택한 계정의 비밀번호 바꾸기" }).click();
   await expect(page.getByRole("heading", { name: "새 비밀번호 설정" })).toBeVisible();
   expect(resetCalls).toBe(2);
   await page.unroute((u) => u.pathname === "/api/seller/find-id/reset");
@@ -492,7 +492,7 @@ test("아이디 찾기(대표자): 본인확인하면 가입한 이메일과 쇼
   await proxied;
   await expect(page.locator("#pw-notice")).toContainText("비밀번호가 변경되었을 수 있습니다.");
   await page.getByRole("button", { name: "비밀번호 변경", exact: true }).click();
-  await expect(page.locator("#pw-maybe")).toContainText("비밀번호가 이미 변경되었을 수 있습니다.");
+  await expect(page.locator("#pw-maybe")).toContainText("비밀번호가 바뀌었는지 확인하지 못했습니다.");
   await expect(page.getByLabel("인증번호")).toHaveCount(0);
   expect(completeCalls).toBe(3);
   await page.unroute((u) => u.pathname === "/api/seller/password-reset/complete");
@@ -521,7 +521,7 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   // 연결 전 직원은 로그인할 때마다 연결 안내로 간다(개발 서버는 가짜 본인확인이라 available: true) → 나중에 할게요면 원래 가려던 화면으로
   await login(page, "직원", s.email, s.password);
   await expect(page).toHaveURL(/\/seller\/identity-link\?next=/);
-  await expect(page.getByRole("heading", { name: "본인확인으로 계정 연결" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "휴대폰 확인으로 내 계정 확인하기" })).toBeVisible();
   await expect(page.getByTestId("il-account")).toContainText(s.email);
   await expect(page.getByTestId("il-account")).toContainText(s.name);
   await expect(page.getByTestId("il-account")).toContainText(`휴대폰 끝자리 ${s.phone.slice(-4)}`);
@@ -555,10 +555,10 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   await expect(page).toHaveURL(/\/seller\/identity-link\?next=/);
   await fillIdentity(page, `박${letters(uniq())}`, s.phone);
   const mismatch = page.waitForResponse((r) => r.url().endsWith("/api/seller/me/identity/start"));
-  await page.getByRole("button", { name: "인증번호 받기" }).click();
+  await page.getByRole("button", { name: "인증번호 문자 받기" }).click();
   expect((await mismatch).status()).toBe(409);
-  await expect(page.locator("#il-state")).toContainText("대표자가 등록한 직원 정보와 맞지 않습니다.");
-  await expect(page.locator("#il-state")).toContainText("대표자에게 정보 수정을 요청해 주십시오");
+  await expect(page.locator("#il-state")).toContainText("대표자가 등록한 정보와 다릅니다.");
+  await expect(page.locator("#il-state")).toContainText("대표자에게 정보를 고쳐 달라고 요청해 주십시오");
   await shot(page, "AU-012-mismatch");
   await page.getByRole("button", { name: "나중에 하기" }).click();
   await expect(page).toHaveURL(/\/seller\/products$/);
@@ -581,9 +581,9 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   });
   await retryAfterDrop(page, linkSent);
   await page.unroute((u) => u.pathname === "/api/seller/me/identity/start");
-  await expect(page.locator("#pa-notice")).toContainText("연결 결과를 확인하지 못했습니다. 다시 눌러 주십시오");
+  await expect(page.locator("#pa-notice")).toContainText("확인하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주십시오");
   await expect(page.locator("#idv-name")).toHaveValue(s.name);
-  await page.getByRole("button", { name: "다시 확인", exact: true }).click();
+  await page.getByRole("button", { name: "결과 다시 확인하기", exact: true }).click();
   await expect(page.getByRole("heading", { name: "계정을 연결했습니다" })).toBeVisible();
   expect(linkCalls).toBe(2);
   await page.unroute((u) => u.pathname === "/api/seller/me/identity/link");
@@ -650,6 +650,6 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.setViewportSize({ width: 1440, height: 900 });
   await shot(page, "AU-012-relink");
-  await page.getByRole("button", { name: "본인확인 재시도" }).click();
+  await page.getByRole("button", { name: "휴대폰 확인 다시 하기" }).click();
   await expect(page.getByLabel("휴대폰번호", { exact: true })).toBeVisible();
 });

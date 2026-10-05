@@ -136,6 +136,8 @@ export async function buyerRefundRequestContext(db: PrismaClient, scope: BuyerSc
   const order = await db.order.findFirst({
     where: { id: orderId, ...scope, legalHoldAt: null },
     select: {
+      orderNo: true,
+      createdAt: true,
       status: true,
       purchaseConfirmedAt: true,
       shipment: { select: { id: true } },
@@ -147,6 +149,7 @@ export async function buyerRefundRequestContext(db: PrismaClient, scope: BuyerSc
   const active = requests.some((r) => r.status === "REQUESTED");
   const blocked = !(await shopOpen(db, scope.sellerId)) ? "shop_unavailable" : !refundable(order, order.shipment !== null) ? "not_refundable" : active ? "active_exists" : null;
   return {
+    orderNoLabel: orderNoLabel(order.createdAt, order.orderNo),
     canRequest: blocked === null,
     blocked,
     items: order.items

@@ -8,9 +8,9 @@ export const PAYMENT_MESSAGES: Record<StartRejection | "payment_not_ready" | "in
   shop_unavailable: "지금은 쇼핑몰을 이용할 수 없어요",
   not_found: "주문을 찾을 수 없어요",
   order_not_payable: "결제할 수 없는 주문이에요. 주문 상태를 확인해 주세요",
-  already_paid: "이미 결제했거나 결제가 진행 중인 주문이에요",
+  already_paid: "이미 결제한 주문이에요. 주문 내역에서 확인해 주세요",
   amount_mismatch: "주문 금액이 바뀌었어요. 주문을 다시 해 주세요",
-  invalid_request: "요청을 다시 확인해 주세요",
+  invalid_request: "입력한 내용이 맞지 않아요. 화면을 새로 열고 다시 해 주세요",
 };
 
 export const paymentErrorBody = (reason: keyof typeof PAYMENT_MESSAGES) => ({ error: reason, message: PAYMENT_MESSAGES[reason] });
@@ -47,3 +47,7 @@ export const SHIPPING_PREVIEW_MESSAGES: Record<ShippingPreviewRejection, string>
   invalid_address: "우편번호와 주소를 확인해 주세요",
   product_unavailable: "지금 살 수 없는 상품이 있어요",
 };
+
+// 나이스페이 결과 코드 U128: 샌드박스(시험 결제 환경)는 부분 취소를 제공하지 않는다(공식 매뉴얼 nicepayments/nicepay-manual common/code.md).
+// 파트너스·마스터 화면 문구(합니다체). 운영(실가맹점)에서는 부분 취소가 된다.
+export const SANDBOX_PARTIAL_CANCEL_MESSAGE = "시험 결제 환경은 부분 취소를 지원하지 않습니다. 운영 환경에서는 가능합니다.";

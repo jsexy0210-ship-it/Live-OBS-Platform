@@ -58,7 +58,7 @@ export const BUYER_INQUIRY_MESSAGES: Record<BuyerInquiryFailure, string> = {
   empty_file: "사진 파일이 비어 있어요",
   file_too_large: "사진은 5MB 이하로 올려 주세요",
   unsupported_image: "JPG, PNG, WEBP 사진만 올릴 수 있어요",
-  wrong_image_size: "사진 크기를 확인해 주세요",
+  wrong_image_size: "사진 가로·세로가 맞지 않아요. 가로·세로 100~4,000px 사진으로 올려 주세요",
   png_16bit: "이 PNG 사진은 올릴 수 없어요. 다른 사진을 골라 주세요",
   png_too_large: "사진이 너무 커요. 크기를 줄여 주세요",
 };

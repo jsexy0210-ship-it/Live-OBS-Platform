@@ -136,7 +136,7 @@ test("CS: 목록·상세는 볼 수 있지만 이용 정지·해제 버튼은 �
   await search(page, slugA);
   await expect(page.getByTestId("partner-row")).toHaveCount(1);
   await expect(page.getByRole("button", { name: /이용 정지|정지 해제/ })).toHaveCount(0);
-  await expect(page.getByRole("columnheader", { name: "작업" })).toHaveCount(0);
+  await expect(page.locator("th", { hasText: "관리" })).toHaveCount(1);
   await page.getByRole("link", { name: nameA }).click();
   await expect(page.getByRole("heading", { name: nameA, level: 1 })).toBeVisible();
   await expect(page.getByRole("button", { name: /이용 정지|정지 해제/ })).toHaveCount(0);

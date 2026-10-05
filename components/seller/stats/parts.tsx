@@ -8,16 +8,16 @@ export const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 export const count = (n: number) => `${n.toLocaleString("ko-KR")}건`;
 export const pct = (r: number | null) => (r === null ? "—" : `${(r * 100).toFixed(1)}%`);
 
-// 직전 기간 대비. 직전 값이 0이면 비율 대신 「직전 기간 0」으로 둔다. lowerIsBetter: 취소·환불처럼 줄면 좋은 값.
+// 직전 기간 대비. 직전 값이 0이면 비율 대신 「바로 앞 기간 0」으로 둔다. lowerIsBetter: 취소·환불처럼 줄면 좋은 값.
 function Delta({ now, prev, fmt, lowerIsBetter }: { now: number | null; prev: number | null; fmt: (n: number) => string; lowerIsBetter?: boolean }) {
-  if (now === null || prev === null) return <span className="d">직전 기간 —</span>;
-  if (prev === 0) return <span className="d">직전 기간 {fmt(0)}</span>;
+  if (now === null || prev === null) return <span className="d">바로 앞 기간 —</span>;
+  if (prev === 0) return <span className="d">바로 앞 기간 {fmt(0)}</span>;
   const r = (now - prev) / Math.abs(prev);
-  if (r === 0) return <span className="d">직전 기간과 같음</span>;
+  if (r === 0) return <span className="d">바로 앞 기간과 같습니다</span>;
   const good = lowerIsBetter ? r < 0 : r > 0;
   return (
     <span className="d">
-      직전 기간 대비{" "}
+      바로 앞 기간보다{" "}
       <b className={good ? "sts-up" : "sts-down"}>
         {r > 0 ? "▲" : "▼"} {Math.abs(r * 100).toFixed(1)}%
       </b>
