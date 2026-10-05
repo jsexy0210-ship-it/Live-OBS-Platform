@@ -3021,3 +3021,18 @@ model PlatformInquiryImage {
   @@index([sellerId, messageId])
   @@index([sellerId, sellerUserId, messageId, createdAt])
 }
+
+// ───────────── 점검 모드(MA-083 · AU-010) ─────────────
+
+// 플랫폼 점검 상태. 한 줄만 둔다(id = 1, 마이그레이션 CHECK). 켜져 있고 시작 시각이 지났으면(없으면 바로) 점검 중.
+// 종료 예정 시각은 안내용이다(지나도 저절로 끄지 않음). version은 다른 창 덮어쓰기 막기.
+model PlatformMaintenance {
+  id               Int       @id @default(1)
+  enabled          Boolean   @default(false)
+  message          String    @default("")
+  startsAt         DateTime? @db.Timestamptz(3)
+  endsAt           DateTime? @db.Timestamptz(3)
+  version          Int       @default(0)
+  updatedByAdminId String?   @db.Uuid
+  updatedAt        DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
+}
