@@ -73,6 +73,7 @@ export const ADMIN_MENU: AdminGroup[] = [
       { label: "도우미 설정", href: "/admin/settings/assistant", perm: "system.manage" },
       { label: "발송 단가", href: "/admin/settings/messages", perm: "system.manage", ready: true },
       // 설정(MA-080대)은 최고관리자만(MASTER 결정 2026-10-04). 서버 조회 API는 platform.read지만 메뉴·주소는 막는다
+      { label: "외부 서비스 연동", href: "/admin/settings/vendors", perm: "vendor.manage", ready: true },
       { label: "파비콘·공유 카드", href: "/admin/settings/branding", perm: "system.manage", ready: true },
     ],
   },
