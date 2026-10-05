@@ -254,7 +254,7 @@ export default function OrderDetailPage() {
                   </thead>
                   <tbody>
                     {[...o.history].reverse().map((e, i) => (
-                      <tr key={i}>
+                      <tr key={i} data-testid="history-row">
                         <td className="num">{fullTime(e.at)}</td>
                         <td>{historyLabel(e)}</td>
                         <td>{historyActor(e.actor)}</td>
