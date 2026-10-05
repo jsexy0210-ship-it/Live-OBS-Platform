@@ -69,7 +69,7 @@ describe("주문할 때 적립금 사용", () => {
     if (!r.ok) return;
     expect(await db.order.findUniqueOrThrow({ where: { id: r.orderId } })).toMatchObject({ rewardUsedAmount: 3000, totalAmount: 5000 });
     expect(await balanceOf(s.seller.id, s.buyer.id)).toBe(7000);
-    expect(await db.rewardLedger.findMany({ where: { orderId: r.orderId } })).toEqual([
+    expect(await db.rewardLedger.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { orderId: r.orderId } })).toEqual([
       expect.objectContaining({ type: "USE", amount: -3000, status: "SUCCEEDED", idempotencyKey: `use:${r.orderId}` }),
     ]);
     const p = await startPayment(db, new FakePaymentGateway(), { sellerId: s.seller.id, buyerMemberId: s.buyer.id, orderId: r.orderId });
@@ -80,6 +80,7 @@ describe("주문할 때 적립금 사용", () => {
     const s = await shop({ balance: 4000 });
     for (const v of [999, 1005, -1000, "1000"]) expect(await s.order(v), String(v)).toEqual({ ok: false, reason: "invalid_reward_use" });
     expect(await s.order(5010)).toEqual({ ok: false, reason: "reward_use_over_limit" }); // 상품 5,000원 초과(배송비에 쓸 수 없음)
+    expect(await s.order(100000)).toEqual({ ok: false, reason: "reward_use_over_limit" }); // 결제 금액이 음수가 될 만큼 넘어도 500이 아니라 한도 초과
     expect(await s.order(4010)).toEqual({ ok: false, reason: "reward_balance_insufficient" });
     expect(await db.order.count()).toBe(0);
     expect(await balanceOf(s.seller.id, s.buyer.id)).toBe(4000);
@@ -166,7 +167,7 @@ describe("쓴 적립금 반환", () => {
     expect(r.totalAmount).toBe(11990);
     await markOrderPaid(db, { sellerId: s.seller.id, orderId: r.orderId, paymentMethod: "CARD" });
     // 7,000원 품목은 개봉을 마쳐 구매자가 갖는다 → 5,000원 품목만 돌아온다
-    const opened = await db.orderItem.findFirstOrThrow({ where: { orderId: r.orderId, optionId: option2.id } });
+    const opened = await db.orderItem.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { orderId: r.orderId, optionId: option2.id } });
     await db.queueItem.updateMany({ where: { orderItemId: opened.id }, data: { status: "DONE", openingStartedAt: new Date() } });
     expect(await shipOrder(db, s.ctx, r.orderId, { courier: "CJ", trackingNumber: "123456789012" })).toMatchObject({ ok: true });
     const before = await balanceOf(s.seller.id, s.buyer.id);
@@ -188,6 +189,6 @@ describe("쓴 적립금 반환", () => {
     expect(rr.value.refundAmount).toBe(5000 - 1250 - fee);
     // 불변식: 현금 환불 + 적립금 반환 = 돌아오는 상품 금액 − 반품 배송비
     expect(rr.value.refundAmount + 1250).toBe(5000 - fee);
-    expect(await db.rewardLedger.findFirstOrThrow({ where: { idempotencyKey: `use_return:${r.orderId}` } })).toMatchObject({ amount: 1250, status: "SUCCEEDED" });
+    expect(await db.rewardLedger.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { idempotencyKey: `use_return:${r.orderId}` } })).toMatchObject({ amount: 1250, status: "SUCCEEDED" });
   });
 });

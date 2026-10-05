@@ -46,7 +46,7 @@ const MENU: Group[] = [
     label: "주문",
     items: [
       { label: "전체 주문", href: "/seller/orders", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
-      { label: "입금 확인", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
+      { label: "입금 확인", href: "/seller/orders/deposits", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
       { label: "교환 · 반품", href: "/seller/returns", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
       { label: "배송", href: "/seller/shipping", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
       { label: "송장 발급", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
@@ -111,6 +111,7 @@ const MENU: Group[] = [
       { label: "검색 노출", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
       { label: "결제(PG) 연결", perm: "OWNER", plan: "STORE_OPERATIONS" },
       { label: "주문자 알림", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
+      { label: "발송 충전", href: "/seller/settings/message-balance", perm: "OWNER", plan: "ANY" },
       { label: "직원 계정", href: "/seller/staff", perm: "OWNER", plan: "ANY" },
       { label: "구독 · 결제", href: "/seller/subscription", perm: "OWNER" },
       { label: "쇼핑몰 통합 전환", perm: "OWNER" },

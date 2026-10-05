@@ -31,7 +31,7 @@ describe("직원 관리 (대표자 전용)", () => {
     expect(r.ok).toBe(true);
     const staffCtx = await ctxOf("new@staff.com", "staff-pass-1");
     expect(staffCtx).toMatchObject({ isOwner: false, permissions: ["BROADCAST_RUN", "OVERLAY_EDIT"] });
-    const log = await db.auditLog.findFirstOrThrow({ where: { action: "seller.staff.create" } });
+    const log = await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "seller.staff.create" } });
     expect(log).toMatchObject({ actorId: owner.id, sellerId: seller.id });
     expect(log.after).toMatchObject({ email: "new@staff.com", permissions: ["BROADCAST_RUN", "OVERLAY_EDIT"] });
     expect(JSON.stringify(log.after)).not.toContain("staff-pass-1");
@@ -65,7 +65,7 @@ describe("직원 관리 (대표자 전용)", () => {
       value: { permissions: ["BROADCAST_RUN", "SALES_VIEW"] },
     });
     expect((await ctxOf(staff.email)).permissions).toEqual(["BROADCAST_RUN", "SALES_VIEW"]);
-    const log = await db.auditLog.findFirstOrThrow({ where: { action: "seller.staff.permissions" } });
+    const log = await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "seller.staff.permissions" } });
     expect(log).toMatchObject({ actorId: ownerCtx.actorId, targetId: staff.id });
     expect(log.before).toEqual({ permissions: ["BROADCAST_RUN", "OVERLAY_EDIT"] });
     expect(log.after).toEqual({ permissions: ["BROADCAST_RUN", "SALES_VIEW"] });
@@ -130,7 +130,7 @@ describe("구매자 개인정보 (CUSTOMER_PII_VIEW)", () => {
 
     const shown = await getOrder(db, await ctxOf(withPii.email), order.id);
     expect(shown.buyer).toMatchObject({ name: buyer.name, phone: "01055556666" });
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "customer.pii.view" } })).toMatchObject({ actorId: withPii.id, targetId: order.id });
+    expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "customer.pii.view" } })).toMatchObject({ actorId: withPii.id, targetId: order.id });
   });
 
   it("주문 권한이 없으면 403 (방송 진행만 있는 직원)", async () => {

@@ -36,7 +36,13 @@ type Summary = {
   broadcast: { id: string; title: string | null; status: "live" | "ended"; startedAt: string; endedAt: string | null } | null;
   summary: { orders: number; paidOrders: number; sales: number; completed: number; cancelled: number; hits: number };
 };
-type Modal = { kind: "end"; sessionId: string } | { kind: "cancel"; item: QueueItem } | { kind: "timer"; item: QueueItem } | null;
+// 유튜브 채팅 수집(GET /api/seller/youtube · …/live/chat-matches · PUT …/live/chat). 보조 정보라 못 읽으면 토글·「채팅」 열을 숨긴다(표시만, 주문·순서·개봉에 영향 없음)
+type Yt = { configured: boolean; live: { chatEnabled: boolean } | null; chatNotice: string };
+type ChatMatch = { matched: boolean; lastChatAt: string | null };
+type Matches = { orders: { nickname: string; matched: boolean; lastChatAt: string | null }[] };
+const CHAT_POLL_MS = 30_000;
+
+type Modal = { kind: "chat-on" } | { kind: "end"; sessionId: string } | { kind: "cancel"; item: QueueItem } | { kind: "timer"; item: QueueItem } | null;
 
 const POLL_MS = 15_000;
 
@@ -55,6 +61,28 @@ export default function BroadcastDashboardPage() {
   const [now, setNow] = useState(() => Date.now());
   const [sum, setSum] = useState<Summary | null>(null);
   const sumSeq = useRef(0);
+  const [yt, setYt] = useState<Yt | null>(null);
+  const [chat, setChat] = useState<Map<string, ChatMatch>>(new Map());
+  const ytSeq = useRef(0);
+  const [chatBusy, setChatBusy] = useState(false);
+  // 나중에 보낸 읽기의 응답만 반영한다. 실패하면 이전 값을 지워 틀린 표시를 남기지 않는다
+  const loadYoutube = useCallback(async () => {
+    const n = ++ytSeq.current;
+    const r = await api<Yt>("/api/seller/youtube");
+    if (n !== ytSeq.current) return;
+    if (!r.ok || !r.data.configured) {
+      setYt(null);
+      return setChat(new Map());
+    }
+    let map = new Map<string, ChatMatch>();
+    if (r.data.live?.chatEnabled) {
+      const m = await api<Matches>("/api/seller/youtube/live/chat-matches");
+      if (n !== ytSeq.current) return;
+      if (m.ok) for (const o of m.data.orders) if (o.matched || !map.has(o.nickname)) map.set(o.nickname, { matched: o.matched || map.get(o.nickname)?.matched === true, lastChatAt: o.lastChatAt });
+    }
+    setYt(r.data);
+    setChat(map);
+  }, []);
 
   // 다시 읽기 반영 규칙(latestResponse.ts): 나중에 보낸 요청의 성공만 반영하고, 실패가 앞선 성공을 버리지 않는다
   const reads = useLatestResponse();
@@ -92,7 +120,8 @@ export default function BroadcastDashboardPage() {
     void api<Summary>("/api/seller/broadcast/summary").then((s) => {
       if (n === sumSeq.current) setSum(s.ok ? s.data : null);
     });
-  }, [reads, applySnap]);
+    void loadYoutube();
+  }, [reads, applySnap, loadYoutube]);
 
   // 처음 읽기 + 실시간 채널 + 15초 확인
   useEffect(() => {
@@ -121,6 +150,23 @@ export default function BroadcastDashboardPage() {
       clearInterval(poll);
     };
   }, [allowed, load]);
+
+  // 채팅 수집 중에는 채팅이 계속 들어오므로 주문대기 version과 상관없이 주기적으로 다시 읽는다
+  const chatOn = !!yt?.live?.chatEnabled;
+  useEffect(() => {
+    if (!allowed || !chatOn) return;
+    const t = setInterval(() => void loadYoutube(), CHAT_POLL_MS);
+    return () => clearInterval(t);
+  }, [allowed, chatOn, loadYoutube]);
+
+  const setChatEnabled = async (enabled: boolean) => {
+    setChatBusy(true);
+    const r = await api<{ chatEnabled: boolean }>("/api/seller/youtube/live/chat", { method: "PUT", body: { enabled } });
+    setChatBusy(false);
+    setModal(null);
+    setToast(r.ok ? { text: enabled ? "채팅 수집을 켰습니다" : "채팅 수집을 껐습니다" } : { text: failMessage(r, "admin"), neg: true });
+    await loadYoutube();
+  };
 
   // 타이머·되돌리기 표시용 시계
   useEffect(() => {
@@ -330,6 +376,32 @@ export default function BroadcastDashboardPage() {
                     </button>
                   </form>
                 )}
+                {yt && (
+                  <div className="row bc-chat" style={{ gap: 8, flexWrap: "wrap" }} data-testid="bc-chat-bar">
+                    {yt.live ? (
+                      <>
+                        <label className="row" style={{ gap: 6 }}>
+                          <input
+                            type="checkbox"
+                            data-testid="bc-chat-toggle"
+                            checked={yt.live.chatEnabled}
+                            disabled={chatBusy}
+                            onChange={(e) => (e.target.checked ? setModal({ kind: "chat-on" }) : void setChatEnabled(false))}
+                          />
+                          유튜브 채팅 수집
+                        </label>
+                        <span className="t-c1 c-alt">{yt.live.chatEnabled ? "켬 · 주문대기에 채팅 확인 여부를 표시만 합니다" : "끔 · 기본은 끔입니다"}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="t-c1 c-alt">유튜브 방송을 연결하면 채팅을 모을 수 있습니다</span>
+                        <Link className="btn btn-sm btn-out" href="/seller/youtube">
+                          유튜브 연결
+                        </Link>
+                      </>
+                    )}
+                  </div>
+                )}
               </section>
 
               {/* 개봉 중 */}
@@ -378,6 +450,11 @@ export default function BroadcastDashboardPage() {
                           <th style={{ width: 48 }}>순서</th>
                           <th style={{ width: 80 }}>접수</th>
                           <th>구매자 · 상품</th>
+                          {chatOn && (
+                            <th style={{ width: 150 }} data-testid="bc-chat-head">
+                              채팅
+                            </th>
+                          )}
                           <th style={{ width: 70 }}>타이머</th>
                           <th style={{ width: 240 }}>관리</th>
                         </tr>
@@ -390,6 +467,11 @@ export default function BroadcastDashboardPage() {
                             <td>
                               <ItemText item={w} />
                             </td>
+                            {chatOn && (
+                              <td className="t-c1" data-testid="bc-chat-cell">
+                                {chatText(chat.get(w.nicknameSnapshot))}
+                              </td>
+                            )}
                             <td className="num">{w.timerSeconds > 0 ? clock(w.timerSeconds) : "-"}</td>
                             <td>
                               <span className="row bc-acts">
@@ -508,10 +590,38 @@ export default function BroadcastDashboardPage() {
         />
       )}
       {modal?.kind === "cancel" && <CancelItemModal item={modal.item} busy={busy} blocked={stale} onClose={() => setModal(null)} onConfirm={(reason) => void cancel(modal.item, reason)} />}
+      {modal?.kind === "chat-on" && yt && (
+        <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="bc-chat-title">
+          <div className="modal">
+            <div className="modal-h">
+              <h2 className="t-h2" id="bc-chat-title">
+                유튜브 채팅 수집을 켜시겠습니까?
+              </h2>
+              <span className="t-l2 c-alt" data-testid="bc-chat-notice">
+                {yt.chatNotice}
+              </span>
+            </div>
+            <div className="modal-f">
+              <button className="btn btn-out" type="button" disabled={chatBusy} onClick={() => setModal(null)}>
+                닫기
+              </button>
+              <button className="btn" type="button" disabled={chatBusy} onClick={() => void setChatEnabled(true)}>
+                켜기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {modal?.kind === "timer" && <TimerModal item={modal.item} busy={busy} blocked={stale} onClose={() => setModal(null)} onConfirm={(s) => void setTimer(modal.item, s)} />}
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
     </>
   );
+}
+
+// 서버는 방송 시간 안에 들어온 주문만 채팅과 맞춰 본다. 그 밖(방송 전 주문)은 확인 대상이 아니라 「-」로 두어 「채팅 없음」으로 오해하지 않게 한다
+function chatText(c: ChatMatch | undefined): string {
+  if (!c) return "-";
+  return c.matched ? `채팅 확인됨${c.lastChatAt ? ` · 마지막 ${kstTime(c.lastChatAt)}` : ""}` : "채팅 없음";
 }
 
 function SumTile({ label, value }: { label: string; value: string }) {

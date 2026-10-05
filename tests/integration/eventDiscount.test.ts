@@ -78,7 +78,7 @@ describe("이벤트 할인 주문 금액", () => {
     // 끝난 뒤(종료 시각이 지남)
     await db.product.update({ where: { id: s.productId }, data: { eventStartsAt: new Date(Date.now() - 3 * HOUR), eventEndsAt: new Date(Date.now() - HOUR) } });
     expect((await s.order(s.base)).items[0].unitPrice).toBe(10000);
-    expect((await db.orderItem.findFirstOrThrow({ where: { orderId: during.id } })).unitPrice).toBe(7000);
+    expect((await db.orderItem.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { orderId: during.id } })).unitPrice).toBe(7000);
     // 끄면 정가, 기록 남김
     await db.product.update({ where: { id: s.productId }, data: { eventStartsAt: new Date(Date.now() - HOUR), eventEndsAt: new Date(Date.now() + HOUR) } });
     expect((await del(s.cookie, s.productId)).status).toBe(200);

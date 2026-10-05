@@ -16,6 +16,10 @@
 | 개발 전담 (화면) (3) | `session_01BwVsBQrQRL49RsUn9ejKYw` | (2)를 교체(Sonnet, 2026-10-04 대표님 지시 속도). 소유는 아래 (2)·(이전) 줄과 같음. 2026-10-04 KST MASTER 생성 |
 | 화면-방송 (2) | `session_01LEN2yPC22mYAT7r16f4RJ6` | 화면-방송(`session_01EUscVzBZ5i68jWQHwNpus7`) 교체(Sonnet). 방송 화면 SA-001 계열·SA-051~055, 오버레이 OV-001·002, #212·#213. 2026-10-04 KST MASTER 생성 |
 | 화면-설정 (2) | `session_014yzgBefSGaxVp7o6eBETzb` | 화면-설정(`session_01BEoFcXM4wkW8BLX8c54YBJ`) 교체(Sonnet). #210 → #216 → #218 → #220. 2026-10-04 KST MASTER 생성 |
+| 레이아웃 전담 (3) · UI 현대화 | `session_015hHqzBD92PvX1wauiYmjyK` | 레이아웃 전담 (2) 교체(대화 41%). 대표님 지시 「전체 UI 현대화 및 디자인 시스템 통합」(2026-10-05): 공통 토큰·공통 컴포넌트·셸·모달 기반 → 대표 화면 → 관리자 전체 → 구매자·편집기 전체. 공통 파일 소유. 다른 세션 소유 화면은 파일 목록을 MASTER에 보내 잠금 회신을 받은 뒤 고친다. 화면별 적용 표 `docs/UI_STATUS.md`. 2026-10-05 KST MASTER 생성 |
+| 화면-마스터 | `session_01JMzttsfKDXeXncJrX2VsLG` | 마스터 관리자 기능 화면(배정 `docs/SCREEN_STATUS.md`). 브랜딩 전담 (2) 소유 `app/(admin)/**` 중 해당 화면 경로만 인수(브랜딩·로그인·요금제 화면 제외, AdminShell은 레이아웃 전담). 2026-10-05 KST MASTER 생성 |
+| 화면-공개 | `session_01HfJMUwycvTKgmVctvRpGjH` | 플랫폼 소개·공개 PF 화면(`/`는 로그인 유지, 랜딩은 `/about`), 공통 404(AU-009)·점검 중(AU-010). 소유 `app/(public)/**`, `components/public/**`. 2026-10-05 KST MASTER 생성 |
+| 화면-파트너스 운영 | `session_017i9HrY4Z9if193ZLQfJQbp` | 파트너스 상품·주문·배송·문의 화면(SA-015~018·024·026~028·046·047). 새 경로와 전용 컴포넌트만 소유. 2026-10-05 KST MASTER 생성 |
 | 레이아웃 전담 (2) | `session_01MYKP5ZFqrNQk2QsYPyGu7j` | 아래 레이아웃 전담 교체(Sonnet). 소유에 `AdminShell.tsx` 포함(마스터 관리자 카페24식 셸). 2026-10-04 KST MASTER 생성 |
 | 구매자 쇼핑몰 전담 (2) | `session_01KEhmqBBhjTGfGfHyRzEFcy` | 구매자 쇼핑몰 전담(`session_01CAXDQrc5A28LdKYCwt7eGg`) 교체(Sonnet). 대표님 지시 카페24식 쇼핑몰(`docs/DESIGN_PROMPT.md` SH). 소유: `app/(shop)/**`, `components/shop/ShopFrame.tsx`·ShopLogo·ShopState, 새 구매자 쇼핑몰 컴포넌트, `styles/shop.css`(HomeBanner·EventPopup·CouponBox와 ShopFrame 팝업·로고 줄 제외). 2026-10-04 KST MASTER 생성 |
 | 브랜딩 전담 (2) | `session_01DKz4PdvKKdvcsgoBF1MJBU` | 아래 브랜딩 전담 교체(Sonnet). `AdminShell.tsx`는 레이아웃 전담으로 넘어감. 2026-10-04 KST MASTER 생성 |
@@ -136,6 +140,20 @@
 - 기반 (5) 인계 대기열 완료(2026-10-05 확인): 환불·탈퇴 교착 반례 시험은 #245, 요금제별 금액·차액 미리보기 API는 #247·#250으로 이미 main에 있음
 - 기반 규칙: 응답 message 말투는 `lib/server/text/tone.ts`·`messageTone.test.ts`로 검사, 가격 계산은 `chargeFor` 한 곳, `customer.pii.view`는 0건 조회여도 기록, 한 시험 안에서 `resetDb` 반복 금지(`it.each` 사용)
 - 미확인: 카카오톡·다음 공유 미리보기(#199 `htmlLimitedBots`) 테스트 서버 실확인
+
+## 마이그레이션 번호 범위 (2026-10-05 MASTER)
+
+main의 마지막 번호(20261004320000) 뒤로 세션별 범위를 나눈다. 범위 안에서 1000씩 올린다.
+
+| 세션 | 범위 |
+|---|---|
+| 기반-상품 | 20261005010000~019000 |
+| 기반 (5) | 20261005020000~029000 |
+| 기반-결제 | 20261005030000~039000 |
+| 기반-설정 | 20261005040000~049000 |
+| 기반-유튜브 | 20261005050000~059000 |
+| 기반-쇼핑몰 | 20261005060000~069000 |
+| 쇼핑몰 운영 | 20261005070000~079000 |
 
 ## 화면 구현 시 지킬 것
 

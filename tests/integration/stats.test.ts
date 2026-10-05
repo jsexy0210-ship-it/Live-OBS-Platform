@@ -70,7 +70,7 @@ async function shop() {
     const items = [];
     for (const [list, unit, qty, productId] of o.items ?? []) {
       const pid = productId ?? product.id;
-      const opt = pid === product.id ? option : await db.productOption.findFirstOrThrow({ where: { productId: pid } });
+      const opt = pid === product.id ? option : await db.productOption.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { productId: pid } });
       items.push(await db.orderItem.create({
         data: {
           sellerId: seller.id,
@@ -563,7 +563,7 @@ describe("한 응답의 집계는 같은 시점의 데이터로 맞는다", () =
     const late = await s.newProduct("늦게 팔린 상품");
     const o = await s.order({ createdAt: "2026-10-02T03:00:00Z", items: [[5000, 5000, 1]] });
     const sellLate = async () => {
-      const opt = await db.productOption.findFirstOrThrow({ where: { productId: late.id } });
+      const opt = await db.productOption.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { productId: late.id } });
       const order = await db.order.create({
         data: { sellerId: s.seller.id, orderNo: 8888, buyerMemberId: o.buyerMemberId, broadcastNicknameSnapshot: "닉", status: "PAID", totalAmount: 1000, createdAt: new Date("2026-10-03T03:00:00Z"), paidAt: new Date("2026-10-03T03:00:00Z") },
       });

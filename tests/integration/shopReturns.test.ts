@@ -266,10 +266,27 @@ describe("재고", () => {
     expect(await shipExchange(db, s.ctx, req.id, { courier: "CJ", trackingNumber: "123456789012" })).toMatchObject({ ok: true, request: { status: "COMPLETED", exchangeTrackingNumber: "123456789012" } });
     expect(await stock(s.oa.id)).toBe(at - 2);
     expect(await stock(s.ob.id)).toBe(4);
-    expect(await db.stockMovement.findFirstOrThrow({ where: { reason: "EXCHANGE" } })).toMatchObject({ optionId: s.oa.id, delta: -2, orderId: id });
+    expect(await db.stockMovement.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { reason: "EXCHANGE" } })).toMatchObject({ optionId: s.oa.id, delta: -2, orderId: id });
     expect(await shipExchange(db, s.ctx, req.id, { courier: "CJ", trackingNumber: "123456789012" })).toEqual({ ok: false, reason: "invalid_transition" });
     // 완료한 교환 뒤에는 같은 주문에 다시 신청할 수 있다
     expect(await s.exch(id, [b.id])).toMatchObject({ status: "REQUESTED", kind: "EXCHANGE" });
+  });
+
+  it("교환 발송 뒤 같은 주문을 반품으로 회수하면 교환으로 나간 재고를 다시 되돌릴 수 있다(회수 때 한 번 되돌린 품목도)", async () => {
+    const s = await shop();
+    const id = await s.delivered();
+    const a = (await s.items(id)).find((i) => i.optionId === s.oa.id)!;
+    const start = await stock(s.oa.id);
+    const ex = await s.exch(id, [a.id]);
+    await proceedToReceived(s, ex.id, true); // 회수 때 재고를 되돌림(+2)
+    expect(await stock(s.oa.id)).toBe(start + 2);
+    expect(await shipExchange(db, s.ctx, ex.id, { courier: "CJ", trackingNumber: "123456789012" })).toMatchObject({ ok: true }); // 교환 발송(-2)
+    expect(await stock(s.oa.id)).toBe(start);
+    // 이어서 반품 신청 → 회수 완료에서 재고 되돌리기: 교환으로 나간 만큼 다시 +2
+    const ret = await s.ret(id);
+    await proceedToReceived(s, ret.id, true);
+    expect(await stock(s.oa.id)).toBe(start + 2);
+    expect(await stock(s.ob.id)).toBe(5); // 슬리브(교환하지 않은 품목)는 반품 회수로 +1: 주문 때 4 → 5
   });
 
   it("반품 신청에는 교환 발송을 못 하고, 교환 신청에는 반품 환불을 못 한다", async () => {
