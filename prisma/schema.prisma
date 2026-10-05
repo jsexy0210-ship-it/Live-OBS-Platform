@@ -544,6 +544,8 @@ model Product {
   eventStartsAt      DateTime?          @db.Timestamptz(3)
   eventEndsAt        DateTime?          @db.Timestamptz(3)
   sortOrder          Int                @default(0)
+  // 검색 태그(상품 이름 밖 키워드, 최대 10개·각 20자). 쇼핑몰 검색과 자동완성이 이름과 함께 본다.
+  searchTags         String[]           @default([])
   // 상품 코드 번호(카페24식 자동 상품 코드, MASTER 결정 2026-10-04). 판매자별 1부터 순번, 화면·API는 「P」 + 7자리(P0000001).
   // 넣을 때 0(기본)이면 DB 트리거(product_assign_code_no)가 ProductCodeCounter로 다음 번호를 매긴다. 지운 상품 번호도 다시 쓰지 않는다.
   codeNo             Int                @default(0)
@@ -3440,4 +3442,25 @@ model BuyerInquiryImage {
 model SellerNotificationSeen {
   sellerUserId String   @id @db.Uuid
   seenAt       DateTime @db.Timestamptz(3)
+}
+
+// ───────────── 쇼핑몰 검색(유사어·인기 검색어, 기반-쇼핑몰) ─────────────
+// 유사어 묶음: 묶음 안 단어는 서로 같은 뜻으로 검색한다(예: 포켓몬·pokemon). 판매자마다 최대 50묶음, 묶음당 2~10단어.
+model ShopSearchSynonym {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId  String   @db.Uuid
+  words     String[]
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([sellerId])
+}
+
+// 인기 검색어 자체 집계(KST 날짜·단어별 횟수, 개인 식별 정보 없음, 무료). 8일이 지난 행은 집계할 때 지운다.
+model ShopSearchTerm {
+  sellerId String   @db.Uuid
+  day      DateTime @db.Date
+  term     String
+  count    Int      @default(1)
+
+  @@id([sellerId, day, term])
 }
