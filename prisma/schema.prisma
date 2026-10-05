@@ -2027,6 +2027,8 @@ model ProductCategory {
   sellerId   String   @db.Uuid
   productId  String   @db.Uuid
   categoryId String   @db.Uuid
+  // 카테고리 안 진열 순서(SA-016 카테고리별 진열). 새로 지정하면 맨 뒤.
+  sortOrder  Int      @default(0)
   createdAt  DateTime @default(now()) @db.Timestamptz(3)
 
   product  Product      @relation(fields: [sellerId, productId], references: [sellerId, id])
@@ -2248,13 +2250,22 @@ enum ShopDisplayKind {
   RECOMMENDED
   NEW
   CATEGORY
+  // 확장(MASTER 배정 2026-10-05): 방송 상품 자동(지금 방송에서 주문된 상품), 베스트(결제 완료 판매량), 할인 중(이벤트 할인), 명예의 전당(HIT 카드가 나온 상품)
+  LIVE
+  BEST
+  SALE
+  HALL_OF_FAME
 }
 
 // 쇼핑몰별 진열 설정 1행: 구매자 상품 목록의 기본 정렬(new·recommended·popular·low·high)
 model ShopDisplaySetting {
-  sellerId  String   @id @db.Uuid
-  listSort  String   @default("new")
-  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+  sellerId    String   @id @db.Uuid
+  listSort    String   @default("new")
+  // 진열 옵션(구매자 목록·홈 진열 모두): 품절 맨 뒤로, 품절 숨기기, 방송 상품 앞으로(자동 정렬 목록만)
+  soldOutLast Boolean  @default(false)
+  hideSoldOut Boolean  @default(false)
+  liveFirst   Boolean  @default(false)
+  updatedAt   DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 }
 
 // 홈 진열 영역(켜기·끄기·순서). 추천·신상품은 쇼핑몰마다 하나씩, 카테고리 영역은 카테고리를 가리킨다(카테고리를 지우면 함께 지움).
@@ -2644,6 +2655,43 @@ model OverlayTemplate {
   seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
 
   @@index([sellerId, createdAt])
+}
+
+// ───────────── 플랫폼 공지(MA-053·054 작성 · SA-111·112 파트너스 · PF-005·006 공개) ─────────────
+
+enum PlatformNoticeCategory {
+  MAINTENANCE
+  POLICY
+  FEATURE
+  GENERAL
+}
+
+// 보는 곳: 파트너스 관리자만 · 공개 공지만 · 둘 다
+enum PlatformNoticeAudience {
+  PARTNERS
+  PUBLIC
+  ALL
+}
+
+// 마스터 관리자가 쓰는 플랫폼 공지. publishedAt이 null이면 임시 저장(어디에도 안 보임). 지우면 deletedAt(목록·조회에서 빠짐).
+// 작성·수정 관리자는 id만 남긴다(로그 추적에 전후가 남음). version은 다른 창 덮어쓰기 막기.
+model PlatformNotice {
+  id               String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title            String
+  body             String
+  category         PlatformNoticeCategory
+  audience         PlatformNoticeAudience
+  isPinned         Boolean                @default(false)
+  publishedAt      DateTime?              @db.Timestamptz(3)
+  version          Int                    @default(0)
+  createdByAdminId String                 @db.Uuid
+  updatedByAdminId String                 @db.Uuid
+  createdAt        DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime               @default(now()) @updatedAt @db.Timestamptz(3)
+  deletedAt        DateTime?              @db.Timestamptz(3)
+
+  @@index([publishedAt(sort: Desc), id(sort: Desc)])
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
 }
 
 // 파트너스 유튜브 설정(SA-057). 행이 없으면 기본값. 채팅 수집 기본값은 새로 연결하는 방송에 적용한다(기본 꺼짐).

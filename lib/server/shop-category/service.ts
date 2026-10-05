@@ -2,6 +2,8 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { notFound } from "../authz/errors";
 import { shopOpen } from "../buyers/signup";
+import { productCode } from "../products/manage";
+import { thumbnailUrls } from "../products/images";
 import { cleanText } from "../text/clean";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 
@@ -212,7 +214,11 @@ export async function setProductCategories(db: PrismaClient, ctx: TenantContext,
     if ((await tx.shopCategory.count({ where: { sellerId: ctx.sellerId, id: { in: ids } } })) !== ids.length) return fail("invalid_category");
     const before = (await tx.productCategory.findMany({ where: { sellerId: ctx.sellerId, productId }, select: { categoryId: true } })).map((r) => r.categoryId);
     await tx.productCategory.deleteMany({ where: { sellerId: ctx.sellerId, productId, categoryId: { notIn: ids } } });
-    await tx.productCategory.createMany({ data: ids.map((categoryId) => ({ sellerId: ctx.sellerId, productId, categoryId })), skipDuplicates: true });
+    // 새로 지정한 카테고리에서는 맨 뒤(카테고리 안 진열 순서)
+    for (const categoryId of ids.filter((id) => !before.includes(id))) {
+      const last = await tx.productCategory.aggregate({ where: { sellerId: ctx.sellerId, categoryId }, _max: { sortOrder: true } });
+      await tx.productCategory.create({ data: { sellerId: ctx.sellerId, productId, categoryId, sortOrder: (last._max.sortOrder ?? -1) + 1 } });
+    }
     await writeAudit(tx, {
       actorType: ctx.actorType,
       actorId: ctx.actorId,
@@ -241,4 +247,56 @@ export async function publicCategories(db: PrismaClient, slug: string): Promise<
   return rows
     .filter((r) => !r.parentId)
     .map((p) => ({ id: p.id, name: p.name, children: rows.filter((c) => c.parentId === p.id).map(({ id, name }) => ({ id, name })) }));
+}
+
+// 카테고리 안 진열 순서(SA-016). 이 카테고리에 직접 지정한 지우지 않은 상품, 순서대로.
+export async function listCategoryProducts(db: PrismaClient, ctx: TenantContext, categoryId: string) {
+  requireSellerRead(ctx, "PRODUCT_MANAGE");
+  if (!(await db.shopCategory.findFirst({ where: { id: categoryId, sellerId: ctx.sellerId }, select: { id: true } }))) throw notFound();
+  return categoryProducts(db, ctx.sellerId, categoryId);
+}
+
+async function categoryProducts(db: PrismaClient | Tx, sellerId: string, categoryId: string) {
+  const links = await db.productCategory.findMany({
+    where: { sellerId, categoryId, product: { deletedAt: null } },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { productId: "asc" }],
+    select: { productId: true, product: { select: { codeNo: true, name: true, status: true } } },
+  });
+  const thumbs = await thumbnailUrls(db, sellerId, links.map((l) => l.productId));
+  return links.map((l, i) => ({
+    productId: l.productId,
+    code: productCode(l.product.codeNo),
+    name: l.product.name,
+    status: l.product.status,
+    sortOrder: i,
+    thumbnailUrl: thumbs.get(l.productId) ?? null,
+  }));
+}
+
+// 본문 { productIds: [이 카테고리에 지정한 지우지 않은 상품 전부, 새 순서] }. 목록이 지금과 다르면 거부(invalid_category_order).
+export async function reorderCategoryProducts(db: PrismaClient, ctx: TenantContext, categoryId: string, raw: unknown) {
+  requireSellerPermission(ctx, "PRODUCT_MANAGE");
+  const b = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const ids = Array.isArray(b.productIds) && b.productIds.every(isUuid) ? (b.productIds as string[]).map((v) => v.toLowerCase()) : null;
+  return db.$transaction(async (tx) => {
+    await lockSellerCategories(tx, ctx.sellerId);
+    if (!(await tx.shopCategory.findFirst({ where: { id: categoryId, sellerId: ctx.sellerId }, select: { id: true } }))) throw notFound();
+    const current = await tx.productCategory.findMany({ where: { sellerId: ctx.sellerId, categoryId, product: { deletedAt: null } }, select: { productId: true } });
+    if (!ids || new Set(ids).size !== ids.length || ids.length !== current.length || !current.every((c) => ids.includes(c.productId))) {
+      return fail("invalid_category_order");
+    }
+    for (const [i, productId] of ids.entries()) {
+      await tx.productCategory.update({ where: { productId_categoryId: { productId, categoryId } }, data: { sortOrder: i } });
+    }
+    await writeAudit(tx, {
+      actorType: ctx.actorType,
+      actorId: ctx.actorId,
+      sellerId: ctx.sellerId,
+      action: "shop_category.product_order",
+      targetType: "ShopCategory",
+      targetId: categoryId,
+      after: { productIds: ids },
+    });
+    return { ok: true as const, value: await categoryProducts(tx, ctx.sellerId, categoryId) };
+  });
 }
