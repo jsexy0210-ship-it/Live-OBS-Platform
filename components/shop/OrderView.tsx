@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import OrderPay from "./OrderPay";
+import RefundRequestSection from "./returns/RefundRequestSection";
 import ReturnSection from "./returns/ReturnSection";
 import { call } from "./reviewShared";
 import { trackingUrl } from "./trackingLink";
@@ -20,7 +21,8 @@ type Order = {
   createdAt: string;
   paymentDueAt: string | null;
   couponRedemption: { discountAmount: number; restoredAt: string | null; coupon: { name: string } } | null;
-  items: { productNameSnapshot: string; optionNameSnapshot: string; unitPrice: number; quantity: number }[];
+  refundAmount: number | null;
+  items: { productNameSnapshot: string; optionNameSnapshot: string; unitPrice: number; quantity: number; refundedQuantity?: number }[];
   shipment: { courier: string; courierName: string; trackingNumber: string; status: "READY" | "IN_TRANSIT" | "DELIVERED"; shippedAt: string; deliveredAt: string | null } | null;
   shippingAddress: { recipientName: string; phone: string; zipCode: string; address1: string; address2: string | null; memo: string | null } | null;
 };
@@ -47,6 +49,7 @@ export default function OrderView({ slug, orderId }: { slug: string; orderId: st
   const done = sp.get("done") === "1";
   const payNote = PAY_NOTE[sp.get("payment") ?? ""];
   const [view, setView] = useState<View>({ kind: "loading" });
+  const [tick, setTick] = useState(0); // 환불 요청을 하거나 철회하면 주문을 다시 읽는다
 
   useEffect(() => {
     let live = true;
@@ -57,7 +60,7 @@ export default function OrderView({ slug, orderId }: { slug: string; orderId: st
     return () => {
       live = false;
     };
-  }, [slug, orderId]);
+  }, [slug, orderId, tick]);
 
   const wrap = (body: React.ReactNode, title = "주문 상세") => (
     <div className="shop-wrap cart-wrap">
@@ -146,6 +149,7 @@ export default function OrderView({ slug, orderId }: { slug: string; orderId: st
                 <b>{i.productNameSnapshot}</b>
                 <span className="cart-opt">
                   {i.optionNameSnapshot} × {i.quantity}
+                  {(i.refundedQuantity ?? 0) > 0 ? ` · 환불 ${i.refundedQuantity}개` : ""}
                 </span>
               </div>
               <b>{won(i.unitPrice * i.quantity)}</b>
@@ -216,7 +220,14 @@ export default function OrderView({ slug, orderId }: { slug: string; orderId: st
           <span>결제 금액</span>
           <b>{won(o.totalAmount)}</b>
         </div>
+        {(o.refundAmount ?? 0) > 0 && (
+          <div className="cart-row">
+            <span>환불 금액</span>
+            <span>{won(o.refundAmount!)}</span>
+          </div>
+        )}
       </section>
+      {(o.status === "PAID" || o.status === "REFUNDED") && <RefundRequestSection slug={slug} orderId={o.id} onChanged={() => setTick((t) => t + 1)} />}
       {(o.status === "PAID" || o.status === "REFUNDED") && <ReturnSection slug={slug} orderId={o.id} />}
       <div className="cart-tools">
         <Link className="btn btn-sm btn-out" href={`${base}/products`}>
