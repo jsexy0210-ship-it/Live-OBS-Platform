@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 import { announceCount } from "./pdEvents";
 import { call } from "./reviewShared";
@@ -98,8 +99,7 @@ export default function ProductReviews({ slug, productId }: { slug: string; prod
                 {r.images.length > 0 && (
                   <p className="pd-rv-imgs">
                     {r.images.map((i) => (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img key={i.id} src={i.url} width={80} height={80} alt="리뷰 사진" loading="lazy" />
+                      <Image key={i.id} src={i.url} width={i.width} height={i.height} alt="리뷰 사진" unoptimized />
                     ))}
                   </p>
                 )}

@@ -8,6 +8,7 @@ import ProductReviews from "./ProductReviews";
 import RecentProducts from "./RecentProducts";
 import RecommendedProducts from "./RecommendedProducts";
 import ShopBack from "./ShopBack";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -180,16 +181,14 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
       <div className="pd-top">
         <div className="pd-gallery">
           <div className="pd-hero">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            {hero && <img src={hero.url} alt={p.name} />}
+            {hero && <Image src={hero.url} alt={p.name} width={hero.width} height={hero.height} unoptimized priority />}
             {p.soldOut && <span className="pc-out" role="img" aria-label="품절">SOLD OUT</span>}
           </div>
           {p.images.length > 1 && (
             <div className="pd-thumbs" role="group" aria-label="상품 사진">
               {p.images.map((im, i) => (
                 <button key={im.id} type="button" aria-label={`사진 ${i + 1}`} aria-current={i === photo ? "true" : undefined} onClick={() => setPhoto(i)}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={im.url} alt="" />
+                  <Image src={im.url} alt="" width={im.width} height={im.height} unoptimized />
                 </button>
               ))}
             </div>
@@ -335,8 +334,7 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
                 {b.text}
               </p>
             ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img key={i} className="pd-dimg" src={b.url} width={b.width} height={b.height} alt="" loading="lazy" />
+              <Image key={i} className="pd-dimg" src={b.url} width={b.width} height={b.height} alt="" unoptimized />
             ),
           )
         )}
