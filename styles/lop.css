@@ -67,8 +67,7 @@
 /* 버튼 */
 /* 버튼 크기: 기본 default(44) · .btn-dense(40) · .btn-sm compact(32, PC 표 안 보조만) · .btn-lg touch(48) · .btn-xl 방송 핵심(56 이상). 휴대폰 폭에서는 아래 미디어 쿼리 */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--ui-sp-8);height:auto;min-height:var(--ui-h-default);padding:0 var(--ui-sp-16);border-radius:var(--ui-r-control);border:0;cursor:pointer;white-space:nowrap;
-  font:600 var(--ui-fs-body)/var(--ui-lh-body) inherit;font-family:inherit;letter-spacing:0;background:var(--brand);color:var(--brand-ink);text-decoration:none;
-  transition:background-color var(--ui-dur) var(--ui-ease),box-shadow var(--ui-dur) var(--ui-ease),color var(--ui-dur) var(--ui-ease)}
+  font:600 var(--ui-fs-body)/var(--ui-lh-body) inherit;font-family:inherit;letter-spacing:0;background:var(--brand);color:var(--brand-ink);text-decoration:none}
 .app a.btn,.app a.btn:hover{color:var(--brand-ink)}
 .btn-dense{min-height:var(--ui-h-dense)}
 .btn-sm{min-height:var(--ui-h-compact);padding:0 var(--ui-sp-12);font-size:var(--ui-fs-dense);line-height:var(--ui-lh-dense)}
@@ -94,7 +93,7 @@
 .req::after{content:" *";color:var(--neg-text)}
 /* 입력·선택·검색: 기본 default(44) · .inp-sm dense(40). 휴대폰 폭에서는 touch(48)·16px */
 .inp{display:block;width:100%;height:auto;min-height:var(--ui-h-default);padding:0 var(--ui-sp-12);border-radius:var(--ui-r-control);border:0;font:400 var(--ui-fs-body)/var(--ui-lh-body) inherit;font-family:inherit;
-  color:var(--wds-label-normal);background:var(--surface);box-shadow:inset 0 0 0 1px var(--ui-line-input);transition:box-shadow var(--ui-dur) var(--ui-ease)}
+  color:var(--wds-label-normal);background:var(--surface);box-shadow:inset 0 0 0 1px var(--ui-line-input)}
 .inp:hover:not(:disabled):not([readonly]){box-shadow:inset 0 0 0 1px var(--wds-label-alternative)}
 .inp:focus,.inp.is-focus{outline:none;box-shadow:inset 0 0 0 var(--ui-focus-w) var(--ui-focus)}
 .inp[readonly]{background:var(--wds-fill-alternative)}

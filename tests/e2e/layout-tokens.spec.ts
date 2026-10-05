@@ -26,11 +26,22 @@ async function boxes(page: Page, sel: string): Promise<Box[]> {
 async function noSideScroll(page: Page) {
   const { sw, cw } = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }));
   expect(sw).toBeLessThanOrEqual(cw);
+  // 페이지가 안 넘쳐도 상자 안에서 잘리는 것(검색 상자 입력이 오른쪽 밖으로 나감, 항목명이 한 글자씩 쪼개짐)도 넘침이다
+  const clipped = await page.evaluate(() =>
+    [...document.querySelectorAll(".au-sb")].flatMap((box) => {
+      const r = box.getBoundingClientRect();
+      const out = [...box.querySelectorAll("input,select,button,th")].filter((e) => e.getBoundingClientRect().right > r.right + 1).map((e) => e.outerHTML.slice(0, 60));
+      const thin = [...box.querySelectorAll("th")].filter((th) => th.getBoundingClientRect().width < 48).map((th) => `좁은 항목명: ${th.textContent}`);
+      return [...out, ...thin];
+    }),
+  );
+  expect(clipped).toEqual([]);
 }
 
 for (const [width, inputH, inputFs, btnMin] of [
   [1440, 44, "14px", 44],
   [390, 48, "16px", 48],
+  [360, 48, "16px", 48],
 ] as const) {
   test(`로그인 화면 입력·버튼 규격 ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
