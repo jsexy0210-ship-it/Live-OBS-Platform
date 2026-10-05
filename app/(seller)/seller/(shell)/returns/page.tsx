@@ -60,7 +60,7 @@ const DEFAULT_FAULT: Record<Reason, Fault | null> = { CHANGE_OF_MIND: "BUYER", D
 const STATUS: Record<Status, { label: string; cls: string }> = {
   REQUESTED: { label: "접수", cls: "b-pending" },
   ACCEPTED: { label: "수거 중", cls: "b-info" },
-  RECEIVED: { label: "검수 중", cls: "b-info" },
+  RECEIVED: { label: "상품 확인 중", cls: "b-info" },
   COMPLETED: { label: "완료", cls: "b-done" },
   REJECTED: { label: "거절", cls: "b-gray nodot" },
   CANCELLED: { label: "철회", cls: "b-gray nodot" },
@@ -75,7 +75,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "all", label: "전체" },
   { key: "REQUESTED", label: "접수" },
   { key: "ACCEPTED", label: "수거 중" },
-  { key: "RECEIVED", label: "검수 중" },
+  { key: "RECEIVED", label: "상품 확인 중" },
   { key: "closed", label: "완료 · 거절" },
 ];
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
@@ -113,7 +113,7 @@ export default function ReturnsPage() {
         <div className="ph">
           <div className="col" style={{ gap: 6 }}>
             <h1 className="t-t3">교환 · 반품</h1>
-            <span className="t-l2 c-alt">구매자 교환 · 반품 신청 확인 · 접수 · 수거 · 검수 · 환불 · 교환 발송</span>
+            <span className="t-l2 c-alt">구매자가 신청한 교환·반품을 처리하는 화면입니다. 접수 → 수거 → 상품 확인 → 환불 또는 교환 상품 발송 순서로 진행합니다.</span>
           </div>
         </div>
         <section className="card" style={{ overflow: "hidden" }}>
@@ -128,7 +128,7 @@ export default function ReturnsPage() {
                   <span className="t-c1 c-alt">24시간 안 승인 · 거절 권장</span>
                 </div>
                 <div className="rt-sum-c">
-                  <span className="t-c1 c-alt">수거 · 검수 중</span>
+                  <span className="t-c1 c-alt">수거 · 확인 중</span>
                   <b className="t-t3 num">{data.summary.inProgress}건</b>
                 </div>
                 <div className="rt-sum-c">
@@ -189,7 +189,7 @@ export default function ReturnsPage() {
           </div>
         )}
         {data && <span className="t-c1 c-alt">요청 가능 기간은 배송 완료 뒤 7일 안(불량 · 오배송은 기간과 상관없이 접수) · 개봉한 상품은 단순 변심으로 신청할 수 없음 · 처음 낸 배송비가 0원이면 반품 배송비를 왕복으로 뺍니다</span>}
-        {data && <span className="t-c1 c-alt">승인 · 거절 · 검수 · 환불 · 교환 발송은 로그 추적에 남음 · 진행 중인 신청이 있는 주문은 자동 구매 확정에서 제외</span>}
+        {data && <span className="t-c1 c-alt">승인 · 거절 · 상품 확인 · 환불 · 교환 발송은 로그 추적에 남음 · 진행 중인 신청이 있는 주문은 자동 구매 확정에서 제외</span>}
       </main>
       {openId && (
         <ReturnDetail
@@ -272,7 +272,7 @@ function ReturnDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
               <span className="c-alt">상태</span>
               <span>
                 <span className={`bdg ${STATUS[d.status].cls}`}>{STATUS[d.status].label}</span>
-                {d.fault ? ` · ${d.fault === "BUYER" ? "구매자 사정" : "판매자 사정"}` : ""}
+                {d.fault ? ` · ${d.fault === "BUYER" ? "구매자 사정" : "파트너스 사정"}` : ""}
               </span>
               <span className="c-alt">신청 구매자</span>
               <span>{d.nickname}</span>
@@ -310,7 +310,7 @@ function ReturnDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
               )}
               {d.inspectionResult && (
                 <>
-                  <span className="c-alt">검수 결과</span>
+                  <span className="c-alt">상품 확인 결과</span>
                   <span data-testid="rt-inspection">
                     {INSPECTION[d.inspectionResult]}
                     {d.inspectionNote ? ` · ${d.inspectionNote}` : ""}
@@ -365,7 +365,7 @@ function ReturnDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
             )}
             {d.partialQuantity && (
               <div className="msg msg-info" role="status">
-                <span>일부 수량만 반품하는 품목은 재고를 자동으로 되돌리지 않습니다. 재고 조정에서 직접 맞춰 주십시오.</span>
+                <span>일부 수량만 반품하는 품목은 재고를 자동으로 되돌리지 않습니다. 재고 관리에서 직접 맞춰 주십시오.</span>
               </div>
             )}
             {d.paymentMethod === "BANK_TRANSFER" && d.kind === "RETURN" && d.status !== "COMPLETED" && d.status !== "REJECTED" && d.status !== "CANCELLED" && (
@@ -394,7 +394,7 @@ function ReturnDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
                   <select id="rt-fault" className="inp" value={fault} onChange={(e) => setFault(e.target.value as Fault | "")}>
                     <option value="">선택</option>
                     <option value="BUYER">구매자 사정 (반품 배송비 차감)</option>
-                    <option value="SELLER">판매자 사정 (불량 · 오배송)</option>
+                    <option value="SELLER">파트너스 사정 (불량 · 오배송)</option>
                   </select>
                 </div>
                 <div className="fld">
@@ -430,7 +430,7 @@ function ReturnDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
             {canEdit && d.status === "RECEIVED" && (
               <div className="col" style={{ gap: 10 }} data-testid="rt-inspect">
                 <div className="fld">
-                  <label htmlFor="rt-insp">검수 결과 입력</label>
+                  <label htmlFor="rt-insp">상품 확인 결과 입력</label>
                   <select id="rt-insp" className="inp" value={inspResult} onChange={(e) => setInspResult(e.target.value as Inspection)}>
                     {(Object.keys(INSPECTION) as Inspection[]).map((k) => (
                       <option key={k} value={k}>
@@ -440,7 +440,7 @@ function ReturnDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
                   </select>
                 </div>
                 <div className="fld">
-                  <label htmlFor="rt-insp-note">검수 메모</label>
+                  <label htmlFor="rt-insp-note">확인 메모</label>
                   <input id="rt-insp-note" className="inp" maxLength={200} value={inspNote} onChange={(e) => setInspNote(e.target.value)} placeholder="예: 봉인 훼손 확인" />
                 </div>
                 {inspResult === "OK" && !d.restocked && (
@@ -451,7 +451,7 @@ function ReturnDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
                 )}
                 {d.inspectionResult && d.inspectionResult !== "OK" && (
                   <div className="msg msg-neg" role="alert">
-                    <span>검수에서 문제가 확인되었습니다. 환불 · 교환은 진행할 수 없고 반송 · 거절로 처리해 주십시오. 사유는 구매자에게 전달됩니다.</span>
+                    <span>상품 확인에서 문제가 확인되었습니다. 환불 · 교환은 진행할 수 없고 반송 · 거절로 처리해 주십시오. 사유는 구매자에게 전달됩니다.</span>
                   </div>
                 )}
                 {returning && (
@@ -543,8 +543,8 @@ function ReturnDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
             </button>
           )}
           {canEdit && d?.status === "RECEIVED" && (
-            <button className="btn btn-out" type="button" disabled={busy} onClick={() => void act("inspect", { result: inspResult, note: inspNote, restock }, "검수 결과를 저장했습니다")}>
-              검수 결과 저장
+            <button className="btn btn-out" type="button" disabled={busy} onClick={() => void act("inspect", { result: inspResult, note: inspNote, restock }, "상품 확인 결과를 저장했습니다")}>
+              상품 확인 결과 저장
             </button>
           )}
           {canEdit && d?.status === "RECEIVED" && d.inspectionResult && d.inspectionResult !== "OK" &&
