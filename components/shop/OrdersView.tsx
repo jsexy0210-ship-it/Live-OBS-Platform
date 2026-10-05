@@ -15,6 +15,7 @@ import "./Orders.css";
 type Order = {
   id: string;
   orderNo: number;
+  orderNoLabel: string;
   status: "PENDING_PAYMENT" | "PAID" | "CANCELLED" | "REFUNDED";
   totalAmount: number;
   createdAt: string;
@@ -139,7 +140,7 @@ export default function OrdersView({ slug }: { slug: string }) {
                   <tr key={o.id}>
                     <td className="ol-date" data-label="주문일 · 번호">
                       <b>{kst(o.createdAt)}</b>
-                      <Link href={`${base}/orders/${o.id}`}>{o.orderNo}</Link>
+                      <Link href={`${base}/orders/${o.id}`}>{o.orderNoLabel}</Link>
                     </td>
                     <td className="ol-items" data-label="상품 정보">
                       <ul>
