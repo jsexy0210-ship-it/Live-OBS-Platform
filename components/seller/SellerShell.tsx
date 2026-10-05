@@ -167,9 +167,11 @@ function visibleMenu(me: Me): Group[] {
     }),
   })).filter((g) => g.items.length > 0);
 }
-// 로그인 뒤 갈 화면: 기본 화면(href)이 요금제에 없으면 만든 메뉴 중 지금 열리는 첫 메뉴(없으면 기본 화면 그대로)
+// 로그인 뒤 갈 화면: 기본 화면(href)이 요금제·권한에 없으면 만든 메뉴 중 지금 열리는 첫 메뉴.
+// 열 수 있는 메뉴가 하나도 없으면 기본 화면 그대로(UX-06)
 export function landingFor(me: Me, href: string): string {
-  if (menuAllows(me, routePlan(href))) return href;
+  const perm = routeNav(href)?.item.perm;
+  if (menuAllows(me, routePlan(href)) && (!perm || canFor(me, perm))) return href;
   return visibleMenu(me).flatMap((g) => g.items).find((n) => !!n.href)?.href ?? href;
 }
 
