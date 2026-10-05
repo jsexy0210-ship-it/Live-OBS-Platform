@@ -284,9 +284,13 @@ describe("판매자 주문 목록 GET /api/seller/orders", () => {
     expect(bRows).toHaveLength(1);
     expect(bRows[0].refundRequest).toEqual({ pendingCount: 1 });
     // 필터·커서를 써도 같은 값이 나온다
+    // 발송 전 준비(READY)는 발송 전이다: shipped=false, shipment.state=none, shipped=false 필터에 들어간다
+    expect(rows[ready.id].shipped).toBe(false);
+    expect(rows[transit.id].shipped).toBe(true);
     expect((await list(a.cookie, "?status=PAID&shipped=true")).body.orders.map((o: { id: string; shipment: { state: string } }) => [o.id, o.shipment.state]).sort()).toEqual(
-      [[delivered.id, "delivered"], [ready.id, "none"], [transit.id, "in_transit"]].sort(),
+      [[delivered.id, "delivered"], [transit.id, "in_transit"]].sort(),
     );
+    expect((await list(a.cookie, "?status=PAID&shipped=false")).body.orders.map((o: { id: string }) => o.id)).toContain(ready.id);
   });
 
   it("행에 환불 현황(refundedAmount·refundedQuantity·remainingAmount)을 담는다: 환불 없음·부분 환불·전액 환불·옛 전액 환불, 다른 판매자 주문은 섞이지 않는다", async () => {
