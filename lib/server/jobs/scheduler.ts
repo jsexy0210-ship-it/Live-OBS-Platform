@@ -9,6 +9,7 @@ import { reconcileOrders } from "../external/reconcile";
 import { externalProvider } from "../external/provider";
 import { MESSAGE_JOB_NAME, runMessageJobs } from "../messaging/jobs";
 import { purgeFunnelDaily, purgeFunnelSeen } from "../stats/funnel";
+import { recoverStuckBulkCommits } from "../shop-bulk-io/recover";
 import { recalcMonthlyGrades } from "../shop-member-grades/service";
 import { processDueMemberMessages } from "../shop-member-messages/service";
 import { markInstanceRetired, purgeOldOpsEvents, purgeRetiredHeartbeats, recordHeartbeat, registerInstance } from "../ops/metrics";
@@ -51,6 +52,8 @@ export const SCHEDULED_JOBS: ScheduledJob[] = [
   { name: "product_funnel_seen.purge_old", run: (tx, now) => purgeFunnelSeen(tx, now) },
   { name: "product_funnel_daily.purge_old", run: (tx, now) => purgeFunnelDaily(tx, now) },
   // 회원 대상 발송: 시각이 된 예약을 기록으로 바꾼다(shop-member-messages, 실제 발송 채널은 아직 없음)
+  // 일괄 상품 등록 확정이 서버 중단으로 10분 넘게 COMMITTING에 머문 작업을 마감한다(shop-bulk-io/recover.ts)
+  { name: "bulk_job.recover_stuck_commit", run: (_tx, now) => recoverStuckBulkCommits(prisma, now) },
   { name: "member_message.record_due", run: (_tx, now) => processDueMemberMessages(prisma, now) },
 ];
 
