@@ -2478,6 +2478,14 @@ enum MessageChannel {
   IDENTITY_VERIFICATION
   // 배송 자동 조회(배송 완료 자동 처리를 켠 경우)
   DELIVERY_TRACKING
+  // 송장번호 발급 API(실제 건당 비용이 드는 경우)
+  INVOICE_ISSUE
+  // 송장 라벨 생성 API
+  INVOICE_LABEL
+  // 현금영수증 발급 API
+  CASH_RECEIPT
+  // 전자세금계산서 발급 API
+  TAX_INVOICE
 }
 
 enum MessageLedgerType {

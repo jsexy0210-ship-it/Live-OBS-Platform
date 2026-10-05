@@ -259,7 +259,8 @@ describe("파트너스 발송 충전 API", () => {
     expect(g.status).toBe(200);
     const view = await g.json();
     expect(view).toMatchObject({ paidBalance: 30, freeBalance: 10, total: 40, lowBalanceThreshold: 0, lowBalance: false, chargingEnabled: true, noticeVersion: MESSAGE_FEE_NOTICE_VERSION, consent: null, mail: { quota: 50, sent: 0 } });
-    expect(view.prices).toHaveLength(7);
+    expect(view.prices).toHaveLength(11);
+    expect(view.prices.map((p: { channel: string }) => p.channel)).toEqual(expect.arrayContaining(["INVOICE_ISSUE", "INVOICE_LABEL", "CASH_RECEIPT", "TAX_INVOICE"]));
     expect(view.prices).toEqual(expect.arrayContaining([{ channel: "SMS", unitPrice: 20, next: null }, { channel: "IDENTITY_VERIFICATION", unitPrice: 0, next: null }]));
 
     const t = await put(cookie, { lowBalanceThreshold: 50 });
@@ -332,7 +333,7 @@ describe("마스터 관리자 발송 설정 API", () => {
     const view = await (await get(ro.cookie)).json();
     expect(view).toMatchObject({ chargingEnabled: true, platformDailyLimit: 100, platformMonthlyLimit: 3000, usage: { today: { used: 0, limit: 100 }, thisMonth: { used: 0, limit: 3000 } } });
     expect(view.plans).toEqual(expect.arrayContaining([{ code: "INTEGRATED", name: "쇼핑몰 통합", mailMonthlyQuota: 100, next: null }]));
-    expect(view.prices).toHaveLength(7);
+    expect(view.prices).toHaveLength(11);
 
     expect((await put(ops.cookie, { chargingEnabled: true })).status).toBe(403);
     expect((await put(ro.cookie, { platformDailyLimit: 10 })).status).toBe(403);
