@@ -16,23 +16,23 @@
 |---|---|
 | AU | 12 |
 | PF | 10 |
-| MA | 46 |
-| SA | 76 |
+| MA | 48 |
+| SA | 78 |
 | SH | 29 |
 | OV | 8 |
 | EM | 6 |
 | OG | 2 |
-| 합계 | 189 |
+| 합계 | 193 |
 
 | 상태 | 수 |
 |---|---|
-| FINAL | 27 |
-| DRAFT | 147 |
-| BLOCKED | 1 |
-| MISSING | 13 |
+| FINAL | 28 |
+| DRAFT | 150 |
+| BLOCKED | 0 |
+| MISSING | 14 |
 | SUPERSEDED | 1 |
 
-소스 파일: `design/project/` 363개 (보드 340장 · canvas.json · ds/wds 2 · lop.css · ov.css · ibgen 17 · fonts/WantedSans-OFL.txt)
+소스 파일: `design/project/` 362개 (보드 339장 · canvas.json · ds/wds 2 · lop.css · ov.css · ibgen 17 · fonts/WantedSans-OFL.txt)
 
 ## AU 공통 인증
 
@@ -112,6 +112,8 @@
 | MA-083 | 점검 모드 | /admin/settings/maintenance | design/project/MA-083.dc.html | MA-083.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: MA-083-M |
 | MA-084 | 도우미 설정 | /admin/settings/assistant | design/project/MA-084.dc.html | MA-084.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | MA-085 | 파비콘·공유 카드 | /admin/settings/branding | design/project/MA-085.dc.html | MA-085.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: MA-085-M |
+| MA-086 | 발송 단가 | /admin/settings/messages | design/project/MA-086.dc.html | MA-086.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · docs/IA.md 등재(#599) |
+| MA-087 | 외부 서비스 연동 | — | design/project/MA-087.dc.html | MA-087.dc.html | FINAL | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | 업체 로고 v243 규격(PNG·256KB) · 관리자 화면 경로 미정 · docs/IA.md 등재(#599) |
 | MA-090 | 내 계정 | — | design/project/MA-090.dc.html | MA-090.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | MA-100 | 실시간 감시 | /admin/ops/monitor | design/project/MA-100.dc.html | MA-100.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | MA-110 | 자동 연결 작업 목록 | /admin/ops/automation | design/project/MA-110.dc.html | MA-110.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
@@ -158,11 +160,11 @@
 | SA-042 | 회원 상세 | /seller/members/[memberId] | design/project/SA-042.dc.html | SA-042.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-043 | 구매 제한 | /seller/purchase-restrictions | design/project/SA-043.dc.html | SA-043.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-044 | 회원 등급 | /seller/member-grades | design/project/SA-044.dc.html | SA-044.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-045 | 구매자 문의(메뉴 그룹) — 보드 SA-045는 회원 알림 발송(ID 충돌) | — | design/project/SA-045.dc.html | SA-045.dc.html | BLOCKED | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | DESIGN_DECISION_REQUIRED: IA SA-045는 「구매자 문의」 그룹 ID인데 보드 SA-045는 회원 알림 발송(IA SA-049) — ID 정리 필요 |
+| SA-045 | 구매자 문의 | — | — | — | MISSING | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | 메뉴 그룹(화면 아님) · 옛 보드 SA-045(회원 알림 발송)는 SA-049로 이동(MASTER 결정 2026-10-05), 캔버스의 인덱스 밖 고아 파일 SA-045.dc.html은 복사하지 않음 |
 | SA-046 | 문의 목록 | /seller/buyer-inquiries | design/project/SA-046.dc.html | SA-046.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-047 | 문의 상세·답변 | /seller/buyer-inquiries (상세) | design/project/SA-047.dc.html | SA-047.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-048 | 상품 리뷰 | /seller/reviews | design/project/SA-048.dc.html | SA-048.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-049 | 회원 알림 발송 | /seller/member-messages | design/project/SA-049.dc.html | SA-049.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
+| SA-049 | 회원 알림 발송 | /seller/member-messages | design/project/SA-049.dc.html | SA-049.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · SA-045에서 이동한 보드 |
 | SA-050 | 방송·오버레이(메뉴 그룹) | — | — | 메뉴 그룹 ID(화면 아님) | MISSING | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | IA 그룹 헤더 · 보드 대상 아님 |
 | SA-051 | 오버레이 편집기 | /seller/overlay (편집기) | design/project/SA-051.dc.html | SA-051.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: SA-051-B, SA-051-C, SA-051-D, SA-051-P |
 | SA-052 | 오버레이 URL | /seller/overlay | design/project/SA-052.dc.html | SA-052.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
@@ -180,8 +182,10 @@
 | SA-066 | 쇼핑몰 공지·자주 묻는 질문 | /seller/settings/shop-notices | design/project/SA-066.dc.html | SA-066.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-067 | 검색 노출 | /seller/settings/seo | design/project/SA-067.dc.html | SA-067.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-068 | 회원 정책 | /seller/settings/member | design/project/SA-068.dc.html | SA-068.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-070 | 결제(PG) 연결 | (폐지) | — | — | SUPERSEDED | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | 플랫폼 결제대행사 키 하나 결정(2026-10-05 MASTER)으로 폐지 · 보드 SA-070 · SA-070-B 삭제됨(v255) · docs/IA.md 갱신 필요 |
+| SA-070 | 결제(PG) 연결 | (폐지) | — | — | SUPERSEDED | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | 플랫폼 결제대행사 키 하나 결정(2026-10-05 MASTER)으로 폐지 · 보드 SA-070 · SA-070-B 삭제됨(v255) · docs/IA.md 폐지 표시(#599) |
 | SA-080 | 주문자 알림 설정 | /seller/settings/order-notifications | design/project/SA-080.dc.html | SA-080.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
+| SA-081 | 발송·이용 충전 | /seller/settings/message-balance | design/project/SA-081.dc.html | SA-081.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 비용 정본 docs/COST_POLICY.md · docs/IA.md 등재(#599) |
+| SA-082 | 배송 자동화 | — | design/project/SA-082.dc.html | SA-082.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 경로 미정(/seller/automation은 자동 연결 화면) · docs/IA.md 등재(#599) |
 | SA-090 | 구독·결제 | /seller/subscription | design/project/SA-090.dc.html | SA-090.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: SA-090-M |
 | SA-100 | 직원 계정·권한 | /seller/staff | design/project/SA-100.dc.html | SA-100.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: SA-100-D, SA-100-M |
 | SA-110 | 공지·문의(메뉴 그룹) | — | — | 메뉴 그룹 ID(화면 아님) | MISSING | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | IA 그룹 헤더 · 보드 대상 아님 |
@@ -275,11 +279,6 @@
 | ScreenList | 화면 목록 보드 | DRAFT · 정본은 이 SCREEN_MAP |
 | SH-T · SH-T-PC | 파트너스별 테마 구조 비교 | DRAFT |
 | OV-008 | 오버레이 위젯 해부·효과 | DRAFT |
-| MA-086 | 마스터 설정 보드(IA.md 미등재) | DRAFT · docs/IA.md 등재 필요 |
-| MA-087 | 외부 서비스 연동(업체 로고, IA.md 미등재) | FINAL(v243 규격 PNG·256KB) · docs/IA.md 등재 필요 |
-| SA-081 | 발송·이용 충전(IA.md 미등재 · docs/COST_POLICY.md) | DRAFT · docs/IA.md 등재 필요 |
-| SA-082 | 배송 자동화(IA.md 미등재) | DRAFT · docs/IA.md 등재 필요 |
-| SA-045 (보드) | 보드 SA-045 = 회원 알림 발송(IA SA-049) · canvas.json 인덱스에서 빠져 있음(파일은 캔버스에 있음) | BLOCKED: DESIGN_DECISION_REQUIRED — ID 정리 후 인덱스 복원 |
 
 ## 공통 컴포넌트 → 실제 소스 위치
 

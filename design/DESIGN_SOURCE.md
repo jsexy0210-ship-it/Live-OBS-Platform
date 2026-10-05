@@ -7,7 +7,7 @@
 | 동기화 시각 | 2026-10-05 22:20 KST |
 | 디자인 전담 세션 | 디자인 전담 (4) `session_01QUUqmD2DDwArxHsUqMyA7Y` (`HANDOFF.md` 세션 표) |
 | Git 경로 | `design/project/` (캔버스 `project/`와 1:1, 파일명·상대 경로 보존) |
-| 소스 파일 수 | 363 (보드 340장 · canvas.json · ds/wds 2 · lop.css · ov.css · ibgen 17 · fonts/WantedSans-OFL.txt) |
+| 소스 파일 수 | 362 (보드 339장 · canvas.json · ds/wds 2 · lop.css · ov.css · ibgen 17 · fonts/WantedSans-OFL.txt) |
 
 ## 정본 우선순위
 
@@ -28,6 +28,7 @@
 
 ## 예외
 
+- **고아 파일**: 캔버스의 `project/SA-045.dc.html`(옛 틀의 회원 알림 발송 보드)은 `canvas.json` 인덱스 밖이고 SA-049로 이동된 보드가 따로 있어 복사하지 않았다(MASTER 결정 2026-10-05). 캔버스 쪽 파일 삭제는 MASTER에 요청.
 - **서체**: 캔버스의 `project/fonts/WantedSansVariable.woff2`(1.2MB)는 복사하지 않았다. 저장소에 이미 있는 `public/fonts/wanted-sans/split/WantedSansVariable.split.*.woff2`(92개 unicode-range 분할, `styles/wanted-sans.css`)가 같은 서체(Wanted Sans Variable, SIL OFL 1.1)다. 디자인 `lop.css`·`ov.css`의 `@font-face`는 `fonts/WantedSansVariable.woff2`를 가리키므로 저장소 안에서 정적으로 열면 시스템 서체로 대체된다.
 - **런타임**: 보드가 참조하는 `./support.js`와 캔버스의 `artifact-type/**` · `index.html` · `SKILL.md` · 루트의 `*.dc.html`은 Artifact 유형 소유라 이관 대상이 아니다. 따라서 Build는 NOT_APPLICABLE이다.
 - **업로드 이미지**(`/_blob/…`): 2026-10-05 기준 보드가 참조하는 블롭이 없다(스크립트 검사 0건). 생기면 `design/project/` 안에 받아 두고 경로 대응을 여기에 적는다.
