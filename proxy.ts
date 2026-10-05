@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { IMPERSONATION_COOKIE, impersonationRequestAllowed } from "./lib/server/auth/impersonation";
+import { IMPERSONATION_COOKIE, impersonationRequestAllowed, isImpersonationPublicPath } from "./lib/server/auth/impersonation";
 import { prisma } from "./lib/server/db";
 import { cachedMaintenance, isActive, maintenanceTarget, maintenanceNotice } from "./lib/server/maintenance/service";
 
@@ -8,7 +8,7 @@ import { cachedMaintenance, isActive, maintenanceTarget, maintenanceNotice } fro
 export async function proxy(req: NextRequest) {
   // 마스터 대리 조회(MA-016) 쿠키가 붙은 파트너스 API 요청은 조회 허용 경로의 GET·HEAD만 통과한다(나머지는 403, 경로를 하나씩 믿지 않는 안전망)
   const path = req.nextUrl.pathname;
-  if (path.startsWith("/api/seller/") && req.cookies.has(IMPERSONATION_COOKIE) && !impersonationRequestAllowed(req.method, path)) {
+  if (path.startsWith("/api/seller/") && req.cookies.has(IMPERSONATION_COOKIE) && !isImpersonationPublicPath(path) && !impersonationRequestAllowed(req.method, path)) {
     return NextResponse.json({ error: "impersonation_read_only" }, { status: 403, headers: { "Cache-Control": "no-store" } });
   }
   const target = maintenanceTarget(req.nextUrl.pathname);
