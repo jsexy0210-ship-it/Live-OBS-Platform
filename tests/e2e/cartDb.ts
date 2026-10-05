@@ -84,3 +84,56 @@ export async function orderNicknameInDb(orderId: string) {
     await db.$disconnect();
   }
 }
+
+// 적립금 사용 e2e: 판매자의 적립금 사용 스위치와 구매자 잔액을 정하고, 이전 값을 돌려준다(끝에 restoreRewardUse로 되돌림)
+export type RewardSnapshot = { policy: { livePayoutEnabled: boolean } | null; balance: number | null };
+export async function setRewardUseInDb(slug: string, loginId: string, enabled: boolean, balance: number): Promise<RewardSnapshot> {
+  const db = open();
+  try {
+    const seller = await db.seller.findUniqueOrThrow({ where: { slug } });
+    const buyer = await db.buyerMember.findFirstOrThrow({ where: { sellerId: seller.id, loginId, deletedAt: null } });
+    const prevPolicy = await db.rewardPolicy.findUnique({ where: { sellerId: seller.id }, select: { livePayoutEnabled: true } });
+    const prevBalance = await db.rewardBalance.findUnique({ where: { sellerId_buyerMemberId: { sellerId: seller.id, buyerMemberId: buyer.id } }, select: { balance: true } });
+    await db.rewardPolicy.upsert({ where: { sellerId: seller.id }, create: { sellerId: seller.id, livePayoutEnabled: enabled }, update: { livePayoutEnabled: enabled } });
+    await db.rewardBalance.upsert({
+      where: { sellerId_buyerMemberId: { sellerId: seller.id, buyerMemberId: buyer.id } },
+      create: { sellerId: seller.id, buyerMemberId: buyer.id, balance },
+      update: { balance },
+    });
+    return { policy: prevPolicy, balance: prevBalance?.balance ?? null };
+  } finally {
+    await db.$disconnect();
+  }
+}
+export async function restoreRewardUse(slug: string, loginId: string, prev: RewardSnapshot) {
+  const db = open();
+  try {
+    const seller = await db.seller.findUniqueOrThrow({ where: { slug } });
+    const buyer = await db.buyerMember.findFirstOrThrow({ where: { sellerId: seller.id, loginId, deletedAt: null } });
+    if (prev.policy) await db.rewardPolicy.update({ where: { sellerId: seller.id }, data: { livePayoutEnabled: prev.policy.livePayoutEnabled } });
+    else await db.rewardPolicy.deleteMany({ where: { sellerId: seller.id } });
+    const key = { sellerId_buyerMemberId: { sellerId: seller.id, buyerMemberId: buyer.id } };
+    if (prev.balance === null) await db.rewardBalance.deleteMany({ where: { sellerId: seller.id, buyerMemberId: buyer.id } });
+    else await db.rewardBalance.update({ where: key, data: { balance: prev.balance } });
+  } finally {
+    await db.$disconnect();
+  }
+}
+export async function orderRewardInDb(orderId: string) {
+  const db = open();
+  try {
+    return await db.order.findFirstOrThrow({ where: { id: orderId }, select: { rewardUsedAmount: true, totalAmount: true } });
+  } finally {
+    await db.$disconnect();
+  }
+}
+export async function rewardBalanceInDb(slug: string, loginId: string) {
+  const db = open();
+  try {
+    const seller = await db.seller.findUniqueOrThrow({ where: { slug } });
+    const buyer = await db.buyerMember.findFirstOrThrow({ where: { sellerId: seller.id, loginId, deletedAt: null } });
+    return (await db.rewardBalance.findUnique({ where: { sellerId_buyerMemberId: { sellerId: seller.id, buyerMemberId: buyer.id } }, select: { balance: true } }))?.balance ?? 0;
+  } finally {
+    await db.$disconnect();
+  }
+}
