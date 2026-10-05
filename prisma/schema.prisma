@@ -382,6 +382,7 @@ model BuyerMember {
   restockAlerts        RestockAlert[]
   returnRequests       ReturnRequest[]
   refundRequests       RefundRequest[]
+  receiptRequests      OrderReceiptRequest[]
   returnRequestImages  ReturnRequestImage[]
   gradeOverrides       MemberGradeOverride[]
   gradeHistory         MemberGradeHistory[]
@@ -1083,6 +1084,7 @@ model Order {
   payments         Payment[]
   refunds          OrderRefund[]
   refundRequests   RefundRequest[]
+  receiptRequests  OrderReceiptRequest[]
 
   @@unique([sellerId, id])
   @@unique([sellerId, orderNo])
@@ -3026,6 +3028,70 @@ model RefundRequest {
   @@index([sellerId, status, createdAt])
   @@index([sellerId, orderId])
   @@index([sellerId, buyerMemberId, createdAt])
+}
+
+// 현금영수증·세금계산서 신청과 발행 이력(SA-024 · SH-005·SH-022, MASTER 배정 2026-10-05, lib/server/receipts/service.ts).
+// 무통장·계좌이체 주문에 구매자가 신청하고, 파트너스(RECEIPT_TAX)가 상태를 본다. 외부 발급 연동은 아직 없어 발행은 PENDING으로 남는다(발행 업체 결정 전).
+// 주문당 진행 중(철회하지 않은) 신청은 1건(마이그레이션 SQL 부분 유니크).
+enum ReceiptKind {
+  CASH_RECEIPT_INCOME
+  CASH_RECEIPT_EXPENSE
+  TAX_INVOICE
+}
+
+enum ReceiptIssueStatus {
+  PENDING
+  // 충전금 잔액이 모자라 발급을 미룸(주문은 그대로, 충전하거나 파트너스가 다시 시도하면 대기로)
+  ON_HOLD
+  ISSUED
+  FAILED
+  CANCELLED
+}
+
+model OrderReceiptRequest {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String      @db.Uuid
+  orderId       String      @db.Uuid
+  buyerMemberId String      @db.Uuid
+  kind          ReceiptKind
+  // 휴대폰·사업자등록번호(숫자). 원문은 저장하지 않고 AES-256-GCM으로 봉인해 두며(판매자 id를 AAD로 묶음), 화면에는 뒤 4자리만 보인다.
+  identitySealed String
+  identityLast4  String
+  // 세금계산서: { companyName, representative, email }. 사업자등록번호는 identity를 쓴다.
+  taxInfo        Json?
+  withdrawnAt    DateTime?   @db.Timestamptz(3)
+  createdAt      DateTime    @default(now()) @db.Timestamptz(3)
+
+  order       Order          @relation(fields: [sellerId, orderId], references: [sellerId, id])
+  buyerMember BuyerMember    @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
+  issues      ReceiptIssue[]
+
+  @@unique([sellerId, id])
+  @@index([sellerId, createdAt])
+  @@index([sellerId, orderId])
+}
+
+model ReceiptIssue {
+  id         String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId   String             @db.Uuid
+  requestId  String             @db.Uuid
+  status     ReceiptIssueStatus @default(PENDING)
+  amount     Int
+  // 외부 발급 건당비를 파트너스 「발송·이용 충전금」에서 차감하는 발급인지(docs/COST_POLICY.md). 차감 연동은 발행 업체 결정 뒤.
+  chargeable Boolean            @default(true)
+  attempts   Int                @default(0)
+  failureCode String?
+  // 발행 업체가 준 문서 번호(연동 뒤)
+  providerKey String?
+  issuedAt    DateTime?         @db.Timestamptz(3)
+  cancelledAt DateTime?         @db.Timestamptz(3)
+  createdAt   DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime          @updatedAt @db.Timestamptz(3)
+
+  request OrderReceiptRequest @relation(fields: [sellerId, requestId], references: [sellerId, id])
+
+  @@index([sellerId, status, createdAt])
+  @@index([sellerId, requestId])
 }
 
 // ───────────── 플랫폼 문의(파트너스 → 플랫폼, SA-113·114·115 · 마스터 MA-051·052) ─────────────

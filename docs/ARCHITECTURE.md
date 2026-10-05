@@ -441,7 +441,7 @@ PG 연결 정보, 구매자 문의·공지, 알림 발송 기록, 도우미 자�
 
 아래는 스키마를 다시 만들지 않도록 자리만 정해 둔다(이번에 테이블은 만들지 않음, 모두 추가 테이블·추가 컬럼으로 붙인다).
 
-- 현금영수증·세금계산서: 주문별 신청 정보(`OrderReceiptRequest`)와 발행 레코드(`ReceiptIssue`: 종류, 상태 `PENDING | ISSUED | FAILED | CANCELLED`, 연동 결과 키).
+- 현금영수증·세금계산서(SA-024, `lib/server/receipts/service.ts`): 주문별 신청(`OrderReceiptRequest`: 종류 `CASH_RECEIPT_INCOME | CASH_RECEIPT_EXPENSE | TAX_INVOICE`, 번호는 AES-256-GCM 봉인·뒤 4자리만 노출, 세금계산서 사업자 정보, 철회 시각, 주문당 철회 안 한 신청 1건)과 발행 이력(`ReceiptIssue`: 상태 `PENDING | ISSUED | FAILED | CANCELLED`, 금액, 시도 횟수, 실패 코드, 업체 문서 번호). 무통장·계좌이체 주문(입금 전·결제 완료)만 신청하고 카드는 매출전표로 대신한다. 구매자 `GET·POST /api/shop/[slug]/receipt-requests`(`?orderId`)·`POST …/[id]/withdraw`(발행 전만), 파트너스(RECEIPT_TAX) `GET /api/seller/receipt-requests`·`POST …/[id]/retry`(실패 → 대기). **외부 발급 연동은 아직 없다**(발행 업체·명의 결정 전): 신청하면 대기로 남고, 환불 때 발행 취소도 연동 뒤에 붙인다.
 - 배송: 즉시 발송은 4.10에서 만들었다. 보관(`STORAGE`)·합배송은 출시 후 1차.
 - 무통장 입금: 4.11에서 만들었다.
 - 법정 동의 기록: 회원 가입 시 약관·처리방침 버전과 마케팅 동의 시각·철회 시각(`MemberConsent`). 주문 단위 「개봉하면 취소·환불 불가」 결제 전 동의를 기록한다(`OrderConsent`: 주문, 동의 시각, 고지 문구 버전. 대표님 결정 2026-10-02, 개봉 전 취소 규칙은 그대로). 구매자 「내 차례 N건 전」 알림도 두지 않는다(주문·결제·발송 알림만).
