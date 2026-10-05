@@ -3787,3 +3787,30 @@ model ExternalOrder {
   @@unique([connectionId, externalOrderId])
   @@index([sellerId, receivedAt])
 }
+
+// ───────────── 전환 단계 통계(상품 상세 → 장바구니 → 주문 → 결제, 대표님 결정 2026-10-05 A안) ─────────────
+// 로그인한 구매자 회원의 상품 상세 조회·장바구니 담기만 일(KST) 단위로 센다(비회원·익명 쿠키 기록 없음). 주문·결제는 기존 주문 표에서 계산한다.
+// 같은 회원이 같은 상품을 같은 날 여러 번 보거나 담아도 한 번만 센다. 어느 회원인지는 일 단위 HMAC 값으로만 두고(원문 식별자 없음), 8일 뒤 지운다.
+// 일 집계는 400일 보관한다. 정리 작업은 jobs/scheduler.ts. 서비스는 lib/server/stats/funnel.ts(기록 실패가 구매자 화면을 막지 않는다).
+model ProductFunnelDaily {
+  sellerId  String   @db.Uuid
+  productId String   @db.Uuid
+  day       DateTime @db.Date
+  views     Int      @default(0)
+  cartAdds  Int      @default(0)
+
+  @@id([sellerId, productId, day])
+  @@index([sellerId, day])
+}
+
+// 중복 제거용 임시 표. kind: V(상품 상세 조회) · C(장바구니 담기). viewerHash = HMAC(서버 비밀키, 일|쇼핑몰|회원).
+model ProductFunnelSeen {
+  sellerId   String   @db.Uuid
+  productId  String   @db.Uuid
+  day        DateTime @db.Date
+  kind       String   @db.Char(1)
+  viewerHash String
+
+  @@id([sellerId, productId, day, kind, viewerHash])
+  @@index([day])
+}
