@@ -361,7 +361,7 @@ export async function listSellerReturns(db: PrismaClient, ctx: TenantContext, q:
   };
 }
 
-// 요약 카드(SA-029): 접수 대기, 수거·검수 중, 이번 달(KST) 완료 반품·교환, 최근 30일 반품률(반품 신청 ÷ 배송 완료 주문)
+// 요약 카드(SA-029): 접수 대기, 수거·검수 중, 이번 달(KST) 완료 반품·교환, 최근 30일 반품률(철회·거절을 뺀 반품 신청 ÷ 배송 완료 주문)
 async function returnSummary(db: PrismaClient, sellerId: string) {
   const [row] = await db.$queryRaw<{ requested: bigint; inProgress: bigint; doneReturn: bigint; doneExchange: bigint; returns30: bigint; delivered30: bigint }[]>`
     SELECT
@@ -371,7 +371,7 @@ async function returnSummary(db: PrismaClient, sellerId: string) {
          AND date_trunc('month', "completedAt" AT TIME ZONE 'Asia/Seoul') = date_trunc('month', now() AT TIME ZONE 'Asia/Seoul')) AS "doneReturn",
       (SELECT count(*) FROM "ReturnRequest" WHERE "sellerId" = ${sellerId}::uuid AND "status" = 'COMPLETED' AND "kind" = 'EXCHANGE'
          AND date_trunc('month', "completedAt" AT TIME ZONE 'Asia/Seoul') = date_trunc('month', now() AT TIME ZONE 'Asia/Seoul')) AS "doneExchange",
-      (SELECT count(*) FROM "ReturnRequest" WHERE "sellerId" = ${sellerId}::uuid AND "kind" = 'RETURN' AND "convertedFromExchange" = false AND "createdAt" >= now() - interval '30 days') AS "returns30",
+      (SELECT count(*) FROM "ReturnRequest" WHERE "sellerId" = ${sellerId}::uuid AND "kind" = 'RETURN' AND "convertedFromExchange" = false AND "status" NOT IN ('CANCELLED', 'REJECTED') AND "createdAt" >= now() - interval '30 days') AS "returns30",
       (SELECT count(*) FROM "Shipment" WHERE "sellerId" = ${sellerId}::uuid AND "status" = 'DELIVERED' AND "deliveredAt" >= now() - interval '30 days') AS "delivered30"`;
   const delivered = Number(row.delivered30);
   return {
