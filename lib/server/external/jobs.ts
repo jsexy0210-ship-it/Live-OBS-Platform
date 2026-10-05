@@ -82,7 +82,7 @@ export async function refreshDueTokens(db: PrismaClient, provider: ExternalShopP
   });
   let n = 0;
   for (const c of due) {
-    if (Date.now() - started > budgetMs) break;
+    if (Date.now() - started >= budgetMs) break;
     if ((await sellerAccessFor(db, c.sellerId)) === "expired") continue;
     const r = await refreshConnection(db, provider, c.id, now, "job");
     if (r === "refreshed") await recordExternalCost(db, { provider: EXTERNAL_PROVIDER, purpose: "oauth_refresh", costWon: 0 });

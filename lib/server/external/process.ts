@@ -74,7 +74,7 @@ export async function processWebhookEvents(
     processed++;
   };
   for (const ev of events) {
-    if (Date.now() - started > (opts.budgetMs ?? DEFAULT_BUDGET_MS)) {
+    if (Date.now() - started >= (opts.budgetMs ?? DEFAULT_BUDGET_MS)) {
       deferred++;
       continue;
     }
