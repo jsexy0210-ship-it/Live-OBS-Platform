@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { deleteBuyerOrdersSince, resetCartInDb } from "./cartDb";
+import { okConfirm } from "./shopConfirm";
 
 // 보드 SH-005-IA 맞춤: 영역 순서(닉네임 → 배송지 → 주문 상품 → 쿠폰 → 적립금 → 결제 수단), 배송 메모 고르기, 결제 수단을 주문서에서 골라 주문 상세로 이어 가기.
 const SLUG = "demo-shop";
@@ -41,6 +42,7 @@ test("영역 순서·배송 메모 고르기·결제 수단(무통장)을 고르
   await page.getByRole("radio", { name: "무통장 입금" }).check();
   await page.getByRole("checkbox", { name: /\(필수\)/ }).check();
   await page.getByRole("button", { name: "주문하기" }).click();
+  await okConfirm(page, "주문하기");
   await expect(page).toHaveURL(/\/orders\/[^/?]+\?done=1&pay=bank$/);
   await expect(page.getByRole("radio", { name: /무통장 입금/ })).toBeChecked();
 });

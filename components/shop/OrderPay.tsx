@@ -2,6 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
+import { useConfirm } from "../admin-ui/ConfirmDialog";
 import { call } from "./reviewShared";
 
 // SH-007 결제(주문 상세의 결제 대기 주문): 결제 수단(카드·무통장 입금) → 「n원 결제하기」.
@@ -34,6 +35,7 @@ function loadSdk(): Promise<Nice> {
 }
 
 export default function OrderPay({ slug, orderId, amount, dueAt }: { slug: string; orderId: string; amount: number; dueAt: string | null }) {
+  const { confirm } = useConfirm();
   const api = `/api/shop/${encodeURIComponent(slug)}/payments`;
   // 주문서에서 고른 결제 수단(?pay=card|bank)을 미리 골라 둔다
   const [method, setMethod] = useState<"card" | "bank">(useSearchParams().get("pay") === "bank" ? "bank" : "card");
@@ -41,6 +43,18 @@ export default function OrderPay({ slug, orderId, amount, dueAt }: { slug: strin
   const [error, setError] = useState<string | null>(null);
   const [bank, setBank] = useState<Bank | null>(null);
   const [due, setDue] = useState(dueAt);
+
+  // 결제 시작·무통장 입금 선택은 되돌리기 어려워 확인 창을 거친다(이미 받은 입금 안내를 다시 보는 것은 바로)
+  async function askPay() {
+    if (busy) return;
+    if (method === "bank" && bank) return void pay();
+    const ok = await confirm(
+      method === "bank"
+        ? { tone: "shop", title: "무통장 입금으로 할까요?", body: "입금 계좌가 나와요. 기한 안에 입금하지 않으면 주문이 자동으로 취소돼요.", confirmLabel: "입금 안내 받기" }
+        : { tone: "shop", title: `${won(amount)}을 결제할까요?`, body: "카드 결제 창이 열려요. 결제하면 주문이 접수돼요.", confirmLabel: "결제하기" },
+    );
+    if (ok) void pay();
+  }
 
   async function pay() {
     if (busy) return;
@@ -126,7 +140,7 @@ export default function OrderPay({ slug, orderId, amount, dueAt }: { slug: strin
           {error}
         </p>
       )}
-      <button className="btn btn-lg btn-block" type="button" disabled={busy} aria-busy={busy} onClick={() => void pay()}>
+      <button className="btn btn-lg btn-block" type="button" disabled={busy} aria-busy={busy} onClick={() => void askPay()}>
         {method === "bank" ? (bank ? "입금 안내 다시 보기" : "무통장 입금 안내 받기") : `${won(amount)} 결제하기`}
       </button>
       {method === "bank" && <p className="cart-hint">입금하면 판매자가 확인한 뒤 주문 상태가 결제 완료로 바뀌어요.</p>}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useConfirm } from "../../admin-ui/ConfirmDialog";
 import ShopModal from "../ShopModal";
 import { call, md } from "../reviewShared";
 import "./returns.css";
@@ -24,6 +25,7 @@ const STATUS_TEXT: Record<Status, string> = { REQUESTED: "취소 요청", APPROV
 const TEXT_MAX = 500;
 
 export default function RefundRequestSection({ slug, orderId, onChanged }: { slug: string; orderId: string; onChanged?: () => void }) {
+  const { confirm } = useConfirm();
   const base = `/api/shop/${encodeURIComponent(slug)}/refund-requests`;
   const [ctx, setCtx] = useState<Ctx | null>(null);
   const [form, setForm] = useState(false);
@@ -40,6 +42,8 @@ export default function RefundRequestSection({ slug, orderId, onChanged }: { slu
 
   async function withdraw(id: string) {
     if (busy) return;
+    const ok = await confirm({ tone: "shop", title: "취소 요청을 거둘까요?", body: "주문은 그대로 이어져요. 다시 취소하려면 새로 요청해야 해요.", confirmLabel: "요청 거두기", cancelLabel: "아니요" });
+    if (!ok) return;
     setBusy(true);
     setMsg(null);
     const r = await call(`${base}/${id}/cancel`, { method: "POST" });

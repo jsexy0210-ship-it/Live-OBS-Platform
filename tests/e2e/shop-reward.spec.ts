@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { deleteBuyerOrdersSince, orderRewardInDb, resetCartInDb, restoreRewardUse, rewardBalanceInDb, setRewardUseInDb, type RewardSnapshot } from "./cartDb";
+import { okConfirm } from "./shopConfirm";
 
 // 주문서 적립금 사용(운영 빌드 + 데모 시드). 판매자 적립금 사용을 켜고 데모 구매자 잔액을 32,400원으로 정해 두고, 끝에 되돌린다.
 const SLUG = "demo-shop";
@@ -71,6 +72,7 @@ test.describe.serial("적립금 사용", () => {
     await expect(sum.locator(".cart-row", { hasText: "최종 결제 금액" }).locator("b")).toHaveText(`${(fee).toLocaleString("ko-KR")}원`);
     await page.screenshot({ path: "tests/e2e/screenshots/SH-005-reward-1440.png", fullPage: true });
     await page.getByRole("button", { name: "주문하기" }).click();
+    await okConfirm(page, "주문하기");
     await expect(page).toHaveURL(/\/orders\/[0-9a-f-]+\?done=1&pay=card$/);
     const orderId = page.url().match(/\/orders\/([0-9a-f-]+)\?done=1/)![1];
     expect(await orderRewardInDb(orderId)).toEqual({ rewardUsedAmount: 6000, totalAmount: fee });
@@ -104,6 +106,7 @@ test.describe.serial("적립금 사용", () => {
     await box.getByLabel("사용할 적립금").fill("2000");
     await setRewardUseInDb(SLUG, LOGIN, true, 0); // 화면을 연 뒤 잔액이 바뀜
     await page.getByRole("button", { name: "주문하기" }).click();
+    await okConfirm(page, "주문하기");
     await expect(box.getByRole("alert")).toHaveText("적립금이 부족해요");
     await expect(page).toHaveURL(/\/checkout\?ids=/);
     await setRewardUseInDb(SLUG, LOGIN, true, 32_400);
@@ -111,15 +114,18 @@ test.describe.serial("적립금 사용", () => {
     await page.route("**/api/shop/*/orders", (route) => route.request().method() === "POST" ? route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ error: "reward_use_over_limit", message: "적립금은 상품 금액까지만 쓸 수 있어요. 배송비에는 쓸 수 없어요" }) }) : route.continue());
     await box.getByLabel("사용할 적립금").fill("2000");
     await page.getByRole("button", { name: "주문하기" }).click();
+    await okConfirm(page, "주문하기");
     await expect(box.getByRole("alert")).toHaveText("적립금은 상품 금액까지만 쓸 수 있어요. 배송비에는 쓸 수 없어요");
     await page.unroute("**/api/shop/*/orders");
     // 판매자가 적립금 사용을 꺼 둔 경우: 서버 거절 → 영역이 사라지고 안내, 적립금 없이 주문할 수 있다
     await setRewardUseInDb(SLUG, LOGIN, false, 32_400);
     await page.getByRole("button", { name: "주문하기" }).click();
+    await okConfirm(page, "주문하기");
     await expect(page.locator(".cart-msg.is-err")).toHaveText("이 쇼핑몰은 지금 적립금을 쓸 수 없어요"); // 서버 문구 그대로
     await expect(page.getByRole("region", { name: "적립금" })).toHaveCount(0);
     await page.screenshot({ path: "tests/e2e/screenshots/SH-005-reward-off-1440.png", fullPage: true });
     await page.getByRole("button", { name: "주문하기" }).click();
+    await okConfirm(page, "주문하기");
     await expect(page).toHaveURL(/\/orders\/[0-9a-f-]+\?done=1&pay=card$/);
   });
 

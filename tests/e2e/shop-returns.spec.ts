@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { clearReturnsInDb, deliveredOrderInDb, orderStatusInDb } from "./returnDb";
 import { submitSellerLogin } from "./sellerLogin";
+import { okConfirm } from "./shopConfirm";
 
 // SH-022-R 교환 · 반품 신청(구매자), SA-029 교환 · 반품(파트너스). 운영 빌드 + 데모 시드(demo-owner·demo-buyer1, 비밀번호 E2E_PASSWORD).
 // 시작·끝에 이 시험이 만든 주문과 신청을 테스트 DB에서 지운다.
@@ -49,6 +50,7 @@ test.describe.serial("SH-022-R 교환·반품 신청 · SA-029 교환·반품 �
     await dlg.getByLabel("자세한 사유").fill("마음에 들지 않아요");
     await expect(dlg.getByRole("button", { name: "신청하기" })).toBeEnabled();
     await dlg.getByRole("button", { name: "신청하기" }).click();
+    await okConfirm(page, "신청하기");
     await expect(page.getByText("신청했어요. 판매자가 확인하면 알려 드릴게요")).toBeVisible();
     const item = section.getByTestId("return-item");
     await expect(item).toContainText("반품 · 기타");
@@ -57,6 +59,7 @@ test.describe.serial("SH-022-R 교환·반품 신청 · SA-029 교환·반품 �
     await page.screenshot({ path: `${SHOT}/sh022r-requested-390.png`, fullPage: true });
     // 철회하면 다시 신청할 수 있다
     await item.getByRole("button", { name: "신청 거두기" }).click();
+    await okConfirm(page, "신청 거두기");
     await expect(section.getByTestId("return-item").first()).toContainText("신청을 거뒀어요");
     await expect(section.getByRole("button", { name: "교환 · 반품 신청" })).toBeVisible();
     await section.getByRole("button", { name: "교환 · 반품 신청" }).click();
@@ -65,6 +68,7 @@ test.describe.serial("SH-022-R 교환·반품 신청 · SA-029 교환·반품 �
     await again.getByLabel("택배 수거를 원해요").check();
     await again.getByLabel("자세한 사유").fill("박스가 찢어져 왔어요");
     await again.getByRole("button", { name: "신청하기" }).click();
+    await okConfirm(page, "신청하기");
     await expect(section.getByTestId("return-item").first()).toContainText("신청했어요");
   });
 
