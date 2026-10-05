@@ -216,6 +216,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/stats/overview": "STORE_OPERATIONS",
   "seller/stats/products": "STORE_OPERATIONS",
   "seller/stats/stockout": "STORE_OPERATIONS",
+  "seller/stats/wishlist": "STORE_OPERATIONS",
   "seller/stats/sales": "STORE_OPERATIONS",
 };
 
