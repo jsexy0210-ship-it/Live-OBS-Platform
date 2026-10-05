@@ -29,6 +29,8 @@ export async function activateSeller(db: Db, sellerId: string, adminId: string |
 // 판매자 가입 승인(마스터). 「확인 필요」에 올라온 쇼핑몰을 대표님이 직접 승인한다.
 export async function approveSeller(db: PrismaClient, admin: AdminSessionContext, sellerId: string, meta: Meta = {}) {
   if (!adminCan(admin.admin.role, "seller.moderate")) throw forbidden();
+  // 승인하면 걸린 항목이 지워지므로 되돌리기(applications.ts undoApproval)를 위해 승인 전 값을 로그 추적에 남긴다
+  const before = await db.seller.findUnique({ where: { id: sellerId }, select: { reviewReasons: true } });
   const row = await activateSeller(db, sellerId, admin.admin.id);
   if (!row) {
     const exists = await db.seller.findUnique({ where: { id: sellerId }, select: { id: true } });
@@ -41,11 +43,15 @@ export async function approveSeller(db: PrismaClient, admin: AdminSessionContext
     action: "admin.seller.approve",
     targetType: "Seller",
     targetId: sellerId,
+    before: { status: "PENDING", reviewReasons: before?.reviewReasons ?? [] },
     after: { status: "ACTIVE", trialEndsAt: row.trialEndsAt },
     ip: meta.ip,
     userAgent: meta.userAgent,
   });
-  return { ok: true as const, approvedAt: row.approvedAt, trialEndsAt: row.trialEndsAt };
+  // 보완 요청 중이던 신청이면 보완 요청을 푼다(기한 자동 반려 대상에서 빠진다)
+  await db.sellerApplicationReview.updateMany({ where: { sellerId, supplementRequestedAt: { not: null }, supplementResolvedAt: null }, data: { supplementResolvedAt: row.approvedAt } });
+  // undoableUntil: 이 시각까지 승인을 되돌릴 수 있다(10초)
+  return { ok: true as const, approvedAt: row.approvedAt, trialEndsAt: row.trialEndsAt, undoableUntil: new Date(row.approvedAt.getTime() + 10_000) };
 }
 
 // 가입 반려(마스터). 승인 대기 쇼핑몰만, 사유 필수. 반려되면 같은 대표자가 다시 신청할 수 있다(1인 1쇼핑몰 규칙에서 제외).
@@ -73,6 +79,7 @@ export async function rejectSeller(db: PrismaClient, admin: AdminSessionContext,
     ip: meta.ip,
     userAgent: meta.userAgent,
   });
+  await db.sellerApplicationReview.updateMany({ where: { sellerId, supplementRequestedAt: { not: null }, supplementResolvedAt: null }, data: { supplementResolvedAt: await dbNow(db) } });
   return { ok: true as const };
 }
 

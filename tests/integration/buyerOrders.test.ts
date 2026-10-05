@@ -106,7 +106,10 @@ describe("구매자 주문 조회", () => {
     const id = await s.order(s.a.id);
     await db.product.update({ where: { id: s.product.id }, data: { name: "새 이름", price: 9999 } });
     const body = await (await detail(s.seller.slug, id, await cookie(s.seller.id, s.a.loginId))).json();
-    expect(body.items).toEqual([{ productNameSnapshot: "부스터 팩", optionNameSnapshot: "1박스", unitPrice: 6000, quantity: 1, refundedQuantity: 0 }]);
+    // 스냅숏 값은 그대로, 다시 담기용 상품·옵션 id와 사진·대기열(아직 결제 전이라 없음)이 붙는다(SH-022)
+    expect(body.items).toEqual([
+      { productNameSnapshot: "부스터 팩", optionNameSnapshot: "1박스", unitPrice: 6000, quantity: 1, refundedQuantity: 0, productId: s.product.id, optionId: expect.any(String), imageUrl: null, queue: null },
+    ]);
   });
 
   it("잠긴 쇼핑몰이어도 기존 주문 목록·상세는 열리고, 새 주문만 402", async () => {
