@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { PageHead } from "../../../../../components/admin-ui";
+import { PageHead, useConfirm } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
-import { ErrorState, LoadingRows, Toast } from "../../../../../components/seller/States";
+import { ErrorState, LoadingRows } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
 
 // SA-003 시작하기 · SA-004 온보딩(파트너스 관리자). 가입 때 정해진 갈래(쇼핑몰 통합 / 오버레이 전용)의 단계를 체크리스트로 보이고, 나갔다 돌아와도 첫 미완료 단계에서 이어 하게 한다.
@@ -36,8 +36,7 @@ export default function OnboardingPage() {
   const { can } = useSeller();
   const canClose = can("SHOP_SETTINGS");
   const [state, setState] = useState<Load>({ kind: "loading" });
-  const [busy, setBusy] = useState(false);
-  const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
+  const { confirm } = useConfirm();
 
   const load = useCallback(async () => {
     const r = await api<Data>("/api/seller/onboarding");
@@ -48,11 +47,17 @@ export default function OnboardingPage() {
   }, [load]);
 
   const act = async (action: "dismiss" | "reopen") => {
-    setBusy(true);
-    const r = await api("/api/seller/onboarding", { method: "POST", body: { action } });
-    setBusy(false);
-    if (!r.ok) return setToast({ text: r.message ?? "안내를 바꾸지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주십시오", neg: true });
-    await load();
+    const dismiss = action === "dismiss";
+    const ok = await confirm({
+      title: dismiss ? "시작하기 안내를 숨기시겠습니까?" : "시작하기 안내를 다시 보이시겠습니까?",
+      body: dismiss ? "홈에서 시작하기 안내가 사라집니다. 이 화면에서 다시 열 수 있습니다." : "홈에 시작하기 안내가 다시 나타납니다.",
+      confirmLabel: dismiss ? "숨기기" : "다시 보이기",
+      run: async () => {
+        const r = await api("/api/seller/onboarding", { method: "POST", body: { action } });
+        return r.ok ? undefined : (r.message ?? "안내를 바꾸지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주십시오");
+      },
+    });
+    if (ok) await load();
   };
 
   const d = state.kind === "ok" ? state.data : null;
@@ -115,7 +120,7 @@ export default function OnboardingPage() {
               <div className="msg msg-info" role="status">
                 <span>시작하기를 닫았습니다. 필요하면 다시 열 수 있습니다.</span>
                 {canClose && (
-                  <button className="btn btn-sm" type="button" disabled={busy} onClick={() => void act("reopen")}>
+                  <button className="btn btn-sm" type="button" onClick={() => void act("reopen")}>
                     다시 보이기
                   </button>
                 )}
@@ -147,7 +152,7 @@ export default function OnboardingPage() {
 
             {!d.dismissed && canClose && (
               <div className="row">
-                <button className="btn btn-sm btn-text" type="button" disabled={busy} onClick={() => void act("dismiss")}>
+                <button className="btn btn-sm btn-text" type="button" onClick={() => void act("dismiss")}>
                   안내 숨기기
                 </button>
               </div>
@@ -155,7 +160,6 @@ export default function OnboardingPage() {
           </div>
         )}
       </main>
-      {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
     </>
   );
 }
