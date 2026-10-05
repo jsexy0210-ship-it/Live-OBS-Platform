@@ -65,6 +65,8 @@ const PRODUCT_FAILURE_MESSAGES: Record<ProductFailure, string> = {
   too_many_options: `옵션은 상품마다 ${MAX_OPTIONS_PER_PRODUCT}개까지 등록할 수 있습니다`,
   no_sellable_option: "판매중 상품에는 옵션이 한 개 이상 필요합니다",
   stock_conflict: "재고가 바뀌어 등록하지 못했습니다",
+  price_conflict: "판매가가 바뀌어 등록하지 못했습니다",
+  status_conflict: "판매 상태가 바뀌어 등록하지 못했습니다",
   event_price_too_low: "가격을 확인해 주십시오",
 };
 

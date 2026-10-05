@@ -14,14 +14,14 @@ type Conn = { id: string; shopKey: string; status: Status; connectedAt: string; 
 type Data = { enabled: boolean; canManage: boolean; connections: Conn[] };
 
 const TAG: Record<Status, { label: string; cls: string }> = {
-  CONNECTED: { label: "연결됨", cls: "b-done" },
-  REAUTH_REQUIRED: { label: "다시 연결 필요", cls: "b-warn" },
-  DISCONNECT_PENDING: { label: "해제 대기", cls: "b-wait" },
-  DISCONNECTED: { label: "해제됨", cls: "b-gray" },
+  CONNECTED: { label: "이어짐", cls: "b-done" },
+  REAUTH_REQUIRED: { label: "다시 이어야 함", cls: "b-warn" },
+  DISCONNECT_PENDING: { label: "끊는 중", cls: "b-wait" },
+  DISCONNECTED: { label: "끊어짐", cls: "b-gray" },
 };
 const HELP: Record<Status, string> = {
-  CONNECTED: "주문 이벤트를 받고 있습니다",
-  REAUTH_REQUIRED: "권한이 끊겨 이벤트가 멈췄습니다 · 다시 연결하면 바로 이어집니다",
+  CONNECTED: "이어진 쇼핑몰의 주문이 들어오고 있습니다",
+  REAUTH_REQUIRED: "허용이 풀려 주문 알림이 멈췄습니다 · 다시 이으면 바로 이어집니다",
   DISCONNECT_PENDING: "연결을 끊고 있습니다 · 쇼핑몰 응답을 기다리는 중 · 주문은 받지 않습니다",
   DISCONNECTED: "",
 };
@@ -62,7 +62,7 @@ export default function ExternalShopsPage() {
     // 인증 뒤 돌아온 결과 알림(주소에서는 곧바로 지운다)
     const q = new URLSearchParams(window.location.search);
     if (q.get("connected")) setToast({ text: "쇼핑몰을 연결했습니다" });
-    else if (q.get("error")) setToast({ text: RESULT_ERROR[q.get("error")!] ?? "연결하지 못했습니다. 다시 시도해 주십시오", neg: true });
+    else if (q.get("error")) setToast({ text: RESULT_ERROR[q.get("error")!] ?? "연결하지 못했습니다. 입력한 쇼핑몰 주소가 맞는지 확인한 뒤 다시 눌러 주십시오", neg: true });
     if (q.has("connected") || q.has("error")) window.history.replaceState(null, "", window.location.pathname);
   }, [load]);
 
@@ -98,7 +98,7 @@ export default function ExternalShopsPage() {
           actions={
             d?.canManage && d.enabled ? (
               <button className="btn" type="button" onClick={() => setAdding((v) => !v)} aria-expanded={adding}>
-                쇼핑몰 추가 연결
+                쇼핑몰 더 이어 두기
               </button>
             ) : undefined
           }
@@ -118,7 +118,7 @@ export default function ExternalShopsPage() {
                   <label htmlFor="ext-url"><b>쇼핑몰 주소</b></label>
                   <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
                     <input id="ext-url" className="inp" style={{ minWidth: 320 }} type="text" inputMode="url" placeholder="운영 중인 쇼핑몰 주소" value={url} onChange={(e) => { setUrl(e.target.value); setProblem(null); }} />
-                    <button className="btn" type="button" disabled={busy || !url.trim()} onClick={() => void begin({ shopUrl: url.trim() })}>확인하기</button>
+                    <button className="btn" type="button" disabled={busy || !url.trim()} onClick={() => void begin({ shopUrl: url.trim() })}>이 주소로 연결 시작하기</button>
                   </div>
                   <span className="t-c1 c-alt">주소로 연결할 수 있는지 자동으로 확인합니다 · 연결할 수 있으면 관리자 로그인과 앱 설치 승인으로 이어집니다</span>
                   {problem && <div className="msg msg-neg" role="alert" data-testid="external-problem"><span>{problem}</span></div>}
@@ -135,7 +135,7 @@ export default function ExternalShopsPage() {
                 <section className="card">
                   <div className="au-lt-wrap">
                     <table className="tbl">
-                      <thead><tr><th>쇼핑몰</th><th>상태</th><th>마지막 이벤트</th><th>연결일</th><th>관리</th></tr></thead>
+                      <thead><tr><th>쇼핑몰</th><th>상태</th><th>마지막으로 받은 주문 알림</th><th>연결일</th><th>관리</th></tr></thead>
                       <tbody>
                         {d.connections.map((c) => (
                           <tr key={c.id} data-testid="external-row">
@@ -145,7 +145,7 @@ export default function ExternalShopsPage() {
                             <td style={{ whiteSpace: "nowrap" }}>{date(c.connectedAt)}</td>
                             <td>
                               {d.canManage && d.enabled && c.status === "REAUTH_REQUIRED" && <button className="btn btn-sm" type="button" disabled={busy} onClick={() => void begin({ connectionId: c.id })}>다시 연결</button>}{" "}
-                              {d.canManage && c.status === "DISCONNECT_PENDING" && <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => void disconnect(c)}>다시 시도</button>}
+                              {d.canManage && c.status === "DISCONNECT_PENDING" && <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => void disconnect(c)}>해제 다시 요청하기</button>}
                               {d.canManage && (c.status === "CONNECTED" || c.status === "REAUTH_REQUIRED") && <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => setConfirm(c)}>연결 해제</button>}
                             </td>
                           </tr>

@@ -70,7 +70,7 @@ export default function NoticesPage() {
                   <tr>
                     <th style={{ width: 90 }}>분류</th>
                     <th>제목</th>
-                    <th style={{ width: 160 }}>게시일</th>
+                    <th style={{ width: 160 }}>올린 날</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -80,7 +80,7 @@ export default function NoticesPage() {
                         <span className={`bdg ${NOTICE_CATEGORY[n.category].cls}`}>{NOTICE_CATEGORY[n.category].label}</span>
                       </td>
                       <td className="col-text ell">
-                        {n.isPinned && <span className="bdg b-info nodot">고정</span>}{" "}
+                        {n.isPinned && <span className="bdg b-info nodot">맨 위 고정</span>}{" "}
                         <Link href={`/seller/notices/${n.id}`} className="fw6">
                           {n.title}
                         </Link>
@@ -95,7 +95,7 @@ export default function NoticesPage() {
           {state.kind === "ok" && state.next && (
             <div className="row" style={{ padding: "12px 20px", justifyContent: "center" }}>
               <button className={`btn btn-sm btn-out${more ? " is-loading" : ""}`} type="button" disabled={more} onClick={() => void loadMore()}>
-                더 불러오기
+                더 보기
               </button>
             </div>
           )}
