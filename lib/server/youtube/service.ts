@@ -49,7 +49,15 @@ export async function connectChannel(db: PrismaClient, ctx: TenantContext, clien
     if (!info) throw new Rejected("channel_not_found");
     const data = { channelId: info.channelId, title: info.title, uploadsPlaylistId: info.uploadsPlaylistId, connectedAt: now, checkedAt: null };
     const before = await db.youtubeChannelLink.findUnique({ where: { sellerId: ctx.sellerId }, select: { channelId: true } });
-    await db.youtubeChannelLink.upsert({ where: { sellerId: ctx.sellerId }, create: { sellerId: ctx.sellerId, ...data }, update: data });
+    // 다른 채널로 바꾸면 이전 채널의 방송 연결(채팅 수집 포함)을 해제한다. 방송 중이면 바꾸지 않는다(다른 채널 채팅이 주문에 섞이지 않게).
+    const changed = !!before && before.channelId !== info.channelId;
+    await db.$transaction(async (tx) => {
+      if (changed) {
+        await tx.youtubeLiveLink.updateMany({ where: { sellerId: ctx.sellerId, status: "UPCOMING" }, data: { status: "UNLINKED" } });
+        if (await tx.youtubeLiveLink.findFirst({ where: { sellerId: ctx.sellerId, status: "LIVE" }, select: { id: true } })) throw new Rejected("live_in_progress");
+      }
+      await tx.youtubeChannelLink.upsert({ where: { sellerId: ctx.sellerId }, create: { sellerId: ctx.sellerId, ...data }, update: data });
+    });
     await writeAudit(db, {
       actorType: ctx.actorType,
       actorId: ctx.actorId,
