@@ -1,3 +1,4 @@
+import { formatDate, formatDateTime } from "../../../../lib/client/format";
 // 파트너스(seller) 목록·상세 응답과 표시 문구(GET /api/admin/sellers, …/{id}, MA-011·012). 코드·DB 이름은 seller 그대로 둔다.
 export type SellerStatus = "PENDING" | "ACTIVE" | "SUSPENDED" | "REJECTED" | "CLOSED";
 export type SubscriptionStatus = "ACTIVE" | "PAST_DUE" | "CANCELED";
@@ -101,14 +102,9 @@ export const PLAN_FILTER = [
   { code: "STANDARD", label: "월 구독" },
 ] as const;
 
-export const day = (iso: string | null) =>
-  iso ? new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso)) : "-";
-export const dayTime = (iso: string | null) =>
-  iso
-    ? new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso))
-    : "-";
-// 가입일 표시: 2026.10.06 (새 날짜 표기 규칙, 한국 시간)
-export const dotDay = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }).replaceAll("-", ".") : "-");
+// 일시·날짜는 공용 서식(lib/client/format.ts, 「2026.10.05 22:25」)을 쓴다. 값이 없으면 「-」
+export const day = (iso: string | null) => formatDate(iso, "-");
+export const dayTime = (iso: string | null) => formatDateTime(iso, "-");
 // 한국 시간 기준 오늘(YYYY-MM-DD)에서 며칠·몇 달 전 날짜
 export function kstDate(daysAgo = 0, monthsAgo = 0): string {
   const [y, m, d] = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }).split("-").map(Number);

@@ -1,3 +1,4 @@
+import { formatDateTime } from "../../../lib/client/format";
 // 자동 연결(SA-150~153) 공통 값. 서버 응답 모양은 lib/server/automation/jobs.ts JobView와 같다. 화면 문구는 파트너스 관리자 말투(명사형 버튼·합니다체).
 export type JobStatus = "AWAITING_PAYMENT" | "QUEUED" | "RUNNING" | "NEEDS_CUSTOMER" | "VERIFYING" | "SUCCEEDED" | "FAILED" | "CANCELED" | "CLEANUP_NEEDED";
 export type PaymentStatus = "PENDING" | "PAID" | "FAILED" | "REFUND_PENDING" | "REFUNDED";
@@ -48,5 +49,4 @@ const ERROR_TEXT: Record<string, string> = {
   canceled: "취소했습니다",
 };
 export const errorText = (code: string | null) => (code ? (ERROR_TEXT[code] ?? "자동 연결을 끝내지 못했습니다. 「자동 연결 다시 하기」를 누르거나 직접 설정을 이용해 주십시오") : "");
-export const stamp = (iso: string) =>
-  new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
+export const stamp = (iso: string) => formatDateTime(iso);

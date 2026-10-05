@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ListHead, PageHead } from "../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
+import { SmartBackButton } from "../../../../../../components/seller/SmartBackButton";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { won } from "../../../../../../components/seller/format";
@@ -98,10 +99,7 @@ export default function BroadcastDetailPage() {
                   방송 대시보드로
                 </Link>
               )}
-              <Link className="btn btn-out" href="/seller/broadcasts">
-                목록
-              </Link>
-            </>
+              </>
           }
         />
 
@@ -120,13 +118,11 @@ export default function BroadcastDetailPage() {
             ) : state.status === 404 ? (
               <div className="st" style={{ boxShadow: "none" }} data-testid="bd-notfound">
                 <span className="t">방송을 찾을 수 없습니다</span>
-                <Link className="btn btn-sm" href="/seller/broadcasts">
-                  방송 이력
-                </Link>
+                <SmartBackButton fallback="/seller/broadcasts" className="btn btn-sm">방송 이력</SmartBackButton>
               </div>
             ) : state.status === 403 && state.error === "plan_feature_required" ? (
               <div className="st" style={{ boxShadow: "none" }}>
-                <span className="t">현재 플랜에서 제공하지 않는 기능입니다</span>
+                <span className="t">지금 이용 중인 이용권에는 이 기능이 없습니다. 구독 화면에서 이용권을 바꾸면 사용할 수 있습니다</span>
               </div>
             ) : state.status === 403 ? (
               <NoPermission need="방송 진행" />
@@ -167,7 +163,7 @@ export default function BroadcastDetailPage() {
                 </table>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }} data-testid="bd-summary">
                   <Tile label="주문" value={`${d.summary.orders.toLocaleString("ko-KR")}건`} />
-                  <Tile label="완료 / 취소" value={`${d.summary.completed} / ${d.summary.cancelled}`} />
+                  <Tile label="완료 / 뺀 주문" value={`${d.summary.completed} / ${d.summary.cancelled}`} />
                   <Tile label="매출" value={won(d.summary.sales)} />
                   <Tile label="HIT" value={`${d.summary.hits}장`} />
                 </div>
@@ -179,7 +175,7 @@ export default function BroadcastDetailPage() {
                 </h2>
                 {d.hits.length === 0 ? (
                   <span className="t-l2 c-alt" data-testid="bd-hit-empty">
-                    이 방송에서 등록한 HIT 카드가 없습니다
+                    이 방송에서 기록한 HIT 카드가 없습니다
                   </span>
                 ) : (
                   <div className="au-lt-wrap">
@@ -266,7 +262,7 @@ export default function BroadcastDetailPage() {
                 ) : (
                   d.orders.length < d.summary.orders && (
                     <span className="t-c1 c-alt" data-testid="bd-detached-note">
-                      탈퇴 등으로 분리 보관된 주문은 목록에 보이지 않아, 위 주문 수보다 적게 보일 수 있습니다.
+                      탈퇴한 구매자의 주문은 목록에 보이지 않아 위 주문 수보다 적게 보일 수 있습니다.
                     </span>
                   )
                 )}
@@ -275,7 +271,7 @@ export default function BroadcastDetailPage() {
               {(d.externalOrders?.length ?? 0) > 0 && (
                 <section className="card pad col" style={{ gap: 12 }} aria-labelledby="bd-ext-h" data-testid="bd-external">
                   <h2 className="t-hl1" id="bd-ext-h">
-                    외부 주문 <span className="c-alt fw5">{d.externalOrders!.length}건</span>
+                    다른 쇼핑몰 주문 <span className="c-alt fw5">{d.externalOrders!.length}건</span>
                   </h2>
                   <div className="au-lt-wrap">
                     <table className="tbl">
@@ -307,7 +303,7 @@ export default function BroadcastDetailPage() {
                       </tbody>
                     </table>
                   </div>
-                  <span className="t-c1 c-alt">외부 쇼핑몰 주문은 금액·결제 정보를 가져오지 않아 이 표에 보이지 않습니다.</span>
+                  <span className="t-c1 c-alt">다른 쇼핑몰에서 들어온 주문은 금액과 결제 내용을 알 수 없어 이 표에 보이지 않습니다.</span>
                 </section>
               )}
             </>

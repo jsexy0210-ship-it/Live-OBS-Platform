@@ -48,7 +48,7 @@ test("주문 목록: 20건씩 보이고 「주문 더 불러오기」로 나머�
   await expect(rows(page)).toHaveCount(20);
   await expect(page.getByText("20건 넘게")).toBeVisible();
   // 메뉴 「주문」이 이 화면을 가리킨다
-  await expect(page.getByRole("link", { name: "주문", exact: true })).toHaveAttribute("href", "/seller/orders");
+  await expect(page.getByLabel("주 메뉴").getByRole("link", { name: "주문", exact: true })).toHaveAttribute("href", "/seller/orders");
   await shot(page, "SA-021");
   const next = listResponse(page, "cursor=");
   await page.getByRole("button", { name: "주문 더 불러오기" }).click();
@@ -121,7 +121,7 @@ test("주문 상세: 상품·결제·구매자·배송을 보여 주고, 없는 
 
   await page.goto("/seller/orders/00000000-0000-4000-8000-000000000000");
   await expect(page.getByText("주문을 찾을 수 없습니다")).toBeVisible();
-  await expect(page.getByRole("link", { name: "주문 목록으로" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "주문 목록으로" })).toBeVisible();
 });
 
 test("환불 모달: 사유 주체를 고르지 않으면 환불할 수 없고, 구매자 사정을 고르면 fault=BUYER로 보낸다", async ({ page }) => {

@@ -27,7 +27,7 @@ async function openAs(page: Page, email: string) {
 }
 
 const save = (page: Page) => page.getByRole("button", { name: "저장", exact: true }).last().click();
-const saved = (page: Page) => expect(page.getByText("배송비 정책을 저장했습니다 · 다음 주문부터 적용됩니다").first()).toBeVisible();
+const saved = (page: Page) => expect(page.getByText("배송 설정을 저장했습니다 · 다음 주문부터").first()).toBeVisible();
 // 저장이 실제로 끝날 때까지(PUT 응답) 기다린다. 앞서 띄운 같은 알림이 남아 있어도 다음 단계로 먼저 넘어가지 않게
 async function saveOk(page: Page) {
   await Promise.all([page.waitForResponse((r) => r.request().method() === "PUT" && r.url().includes("/api/seller/shipping-policy") && r.ok()), save(page)]);
@@ -39,7 +39,7 @@ test("일정 금액 이상 무료로 바꾸면 저장되고 주문서 미리보�
   await page.getByRole("radio", { name: "일정 금액 이상 무료" }).check();
   await page.getByLabel("배송비", { exact: true }).fill("3,500");
   await page.getByLabel("무료 배송 기준").fill("50000");
-  await page.getByLabel("제주·도서산간 추가 배송비").fill("4000");
+  await page.getByLabel("제주 · 도서산간 추가 배송비").fill("4000");
   await expect(page.getByTestId("fee-preview")).toHaveText("배송비 3,500원 · 50,000원 이상 무료");
   await saveOk(page);
   await shot(page, "SA-061-shipping");
@@ -48,7 +48,7 @@ test("일정 금액 이상 무료로 바꾸면 저장되고 주문서 미리보�
   await expect(page.getByRole("radio", { name: "일정 금액 이상 무료" })).toBeChecked();
   await expect(page.getByLabel("배송비", { exact: true })).toHaveValue("3500");
   await expect(page.getByLabel("무료 배송 기준")).toHaveValue("50000");
-  await expect(page.getByLabel("제주·도서산간 추가 배송비")).toHaveValue("4000");
+  await expect(page.getByLabel("제주 · 도서산간 추가 배송비")).toHaveValue("4000");
 });
 
 test("무료·고정으로 바꿔도 저장되고, 잘못된 금액은 막는다", async ({ page }) => {
@@ -69,7 +69,7 @@ test("무료·고정으로 바꿔도 저장되고, 잘못된 금액은 막는다
 
   // 기본값으로 되돌려 둔다
   await page.getByLabel("배송비", { exact: true }).fill("3000");
-  await page.getByLabel("제주·도서산간 추가 배송비").fill("3000");
+  await page.getByLabel("제주 · 도서산간 추가 배송비").fill("3000");
   await saveOk(page);
   await page.reload();
   await expect(page.getByRole("radio", { name: "고정" })).toBeChecked();
@@ -99,7 +99,7 @@ test("무료로 바꿨다가 되돌리면 이전에 넣은 배송비·무료 기
 
 test("1440에서 도움말이 단어 중간에서 끊기지 않는다", async ({ page }) => {
   await openAs(page, "demo-owner@example.com");
-  const help = page.getByText("제주와 그 밖의 도서지역에 같은 금액이 붙습니다", { exact: false });
+  const help = page.getByText("우편번호로 자동 판별하고 금액은 하나로 같습니다", { exact: false });
   await expect(help).toBeVisible();
   expect(await help.evaluate((el) => getComputedStyle(el).wordBreak)).toBe("keep-all");
 });
@@ -109,7 +109,7 @@ test("로그인이 풀린 뒤 다른 설정 탭으로 가면 로그인으로 보
   // 첫 화면 데이터를 다 받은 뒤 로그인을 끊는다
   await expect(page.getByTestId("fee-preview")).toBeVisible();
   await page.context().clearCookies();
-  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "주문 설정" }).click();
+  await page.getByRole("link", { name: "주문 설정", exact: true }).first().click();
   await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fsettings%2Forder&reason=expired$/);
 });
 
@@ -123,8 +123,8 @@ test("반품 · 교환 배송비: 기본 3,000원 · 6,000원, 바꾸면 저장�
   await openAs(page, "demo-owner@example.com");
   const ret = page.getByLabel("반품 배송비 (편도)");
   const exc = page.getByLabel("교환 배송비 (왕복)");
-  await expect(page.getByText("무료 배송 주문(배송비 0원)은 반품 배송비 × 2를 뺍니다.")).toBeVisible();
-  await expect(page.getByText("도서산간 추가 배송비를 낸 주문은 한 번만 뺍니다.", { exact: false })).toBeVisible();
+  await expect(page.getByText("무료 배송 주문(배송비 0원)은 반품 배송비 × 2를 뺍니다")).toBeVisible();
+  await expect(page.getByText("도서산간 추가 배송비를 낸 주문은 한 번만 뺍니다", { exact: false })).toBeVisible();
   // 「알아 두세요」도 같은 환불 규칙으로 안내한다
   await expect(page.getByText("발송 뒤 상품 불량 · 오배송이면 상품값과 처음 낸 배송비를 돌려주고, 단순 변심이면 반품 배송비를 빼고 돌려줍니다.", { exact: false })).toBeVisible();
   // 교환 배송비는 아직 쓰이는 곳이 없어 「교환 접수가 열리면 적용돼요」로 안내한다
@@ -182,18 +182,18 @@ test("받는 방법·발송 기한·기본 택배사: 바로 받기만 켜져 �
   const methods = page.getByTestId("receive-methods");
   await expect(methods.getByLabel("바로 받기")).toBeChecked();
   await expect(methods.getByLabel("바로 받기")).toBeDisabled();
-  await expect(methods.getByLabel("보관 후 받기 (준비 중)")).toBeDisabled();
-  await expect(methods.getByLabel("보관 후 받기 (준비 중)")).not.toBeChecked();
-  const before = { days: await page.getByLabel("발송 기한").inputValue(), courier: await page.locator("#default-courier").inputValue() };
+  await expect(methods.getByLabel("보관하기 · 합배송 (곧 열립니다)")).toBeDisabled();
+  await expect(methods.getByLabel("보관하기 · 합배송 (곧 열립니다)")).not.toBeChecked();
+  const before = { days: await page.getByLabel("발송까지 걸리는 기간").inputValue(), courier: await page.locator("#default-courier").inputValue() };
 
   // 범위 밖은 저장하지 않고 이유를 보인다
   for (const bad of ["0", "31", "abc", ""]) {
-    await page.getByLabel("발송 기한").fill(bad);
+    await page.getByLabel("발송까지 걸리는 기간").fill(bad);
     await save(page);
-    await expect(page.getByText(bad === "" ? "발송 기한을 입력해 주십시오" : bad === "abc" ? "숫자만 입력해 주십시오" : "1일에서 30일 사이로 입력해 주십시오").first()).toBeVisible();
+    await expect(page.getByText(bad === "" ? "발송까지 걸리는 기간을 적어 주십시오" : bad === "abc" ? "숫자만 입력해 주십시오" : "1일에서 30일 사이로 입력해 주십시오").first()).toBeVisible();
   }
 
-  await page.getByLabel("발송 기한").fill("7");
+  await page.getByLabel("발송까지 걸리는 기간").fill("7");
   await page.locator("#default-courier").selectOption("CJ");
   const put = page.waitForResponse((r) => r.request().method() === "PUT" && r.url().includes("/api/seller/shipping-policy"));
   await save(page);
@@ -203,12 +203,12 @@ test("받는 방법·발송 기한·기본 택배사: 바로 받기만 켜져 �
   await saved(page);
 
   await page.reload();
-  await expect(page.getByLabel("발송 기한")).toHaveValue("7");
+  await expect(page.getByLabel("발송까지 걸리는 기간")).toHaveValue("7");
   await expect(page.locator("#default-courier")).toHaveValue("CJ");
 
   // 택배사를 정하지 않음으로 되돌리면 null로 저장되고, 처음 값으로 복원한다
   await page.locator("#default-courier").selectOption("");
-  await page.getByLabel("발송 기한").fill(before.days);
+  await page.getByLabel("발송까지 걸리는 기간").fill(before.days);
   const clear = page.waitForResponse((r) => r.request().method() === "PUT" && r.url().includes("/api/seller/shipping-policy"));
   await save(page);
   expect((await clear).request().postDataJSON()).toMatchObject({ defaultCourier: null, dispatchDeadlineDays: Number(before.days) });

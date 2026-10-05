@@ -15,6 +15,16 @@ export type QuickUndo = () => Promise<boolean>;
 export type QuickDone = (p: Pick<Product, "id" | "status" | "options"> & { price?: number }, text?: string, undo?: QuickUndo) => void;
 export type QuickFail = (text: string) => void;
 
+// 되돌리기가 실패했을 때: 그사이 다른 사람이 먼저 바꿨으면(409) 되돌리지 않고 지금 값으로 한 줄을 갱신한 뒤 알린다
+async function undoFailed(back: { status: number; error?: string; message?: string }, product: Product, conflict: "price_conflict" | "status_conflict", onDone: QuickDone, onFail: QuickFail) {
+  if (back.error === conflict) {
+    const fresh = await api<Product>(`/api/seller/products/${product.id}`);
+    if (fresh.ok) onDone(fresh.data);
+    return onFail(`다른 사람이 먼저 바꿔서 되돌리지 않았습니다. 「${product.name}」의 지금 ${conflict === "price_conflict" ? "판매가" : "판매 상태"}를 확인해 주십시오`);
+  }
+  onFail(failMessage(back, "admin", "되돌리지 못했습니다. 상품 수정에서 확인해 주십시오"));
+}
+
 const STATUS_CHOICES: { key: ProductStatus; label: string }[] = [
   { key: "ON_SALE", label: "판매 중" },
   { key: "SOLD_OUT", label: "품절" },
@@ -33,9 +43,10 @@ export function QuickStatus({ product, onDone, onFail }: { product: Product; onD
     if (!r.ok) return onFail(failMessage(r, "admin", "판매 상태를 바꾸지 못했습니다. 원래 상태로 되돌렸습니다"));
     const prev = product.status;
     onDone(r.data, `「${product.name}」 판매 상태를 ${STATUS_CHOICES.find((c) => c.key === status)?.label ?? ""}(으)로 바꿨습니다`, async () => {
-      const back = await api<Product>(`/api/seller/products/${product.id}`, { method: "PATCH", body: { status: prev } });
+      // 바꾼 뒤의 상태(expectedStatus)를 함께 보낸다: 그사이 다른 사람이 또 바꿨으면 서버가 막는다(status_conflict)
+      const back = await api<Product>(`/api/seller/products/${product.id}`, { method: "PATCH", body: { status: prev, expectedStatus: status } });
       if (back.ok) onDone(back.data, `「${product.name}」 판매 상태를 되돌렸습니다`);
-      else onFail(failMessage(back, "admin", "되돌리지 못했습니다. 상품 수정에서 확인해 주십시오"));
+      else await undoFailed(back, product, "status_conflict", onDone, onFail);
       return back.ok;
     });
   };
@@ -147,9 +158,10 @@ export function QuickPrice({ product, onDone, onFail }: { product: Product; onDo
     }
     const before = product.price;
     onDone(r.data, `「${product.name}」 판매가를 ${next.toLocaleString("ko-KR")}원으로 바꿨습니다`, async () => {
-      const back = await api<Product>(`/api/seller/products/${product.id}`, { method: "PATCH", body: { price: before } });
+      // 바꾼 뒤의 판매가(expectedPrice)를 함께 보낸다: 그사이 다른 사람이 또 바꿨으면 서버가 막는다(price_conflict)
+      const back = await api<Product>(`/api/seller/products/${product.id}`, { method: "PATCH", body: { price: before, expectedPrice: next } });
       if (back.ok) onDone(back.data, `「${product.name}」 판매가를 되돌렸습니다`);
-      else onFail(failMessage(back, "admin", "되돌리지 못했습니다. 상품 수정에서 확인해 주십시오"));
+      else await undoFailed(back, product, "price_conflict", onDone, onFail);
       return back.ok;
     });
   };

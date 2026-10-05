@@ -8,6 +8,7 @@ import { PageHead } from "../../admin-ui";
 import { Topbar, planAllows, useSeller } from "../SellerShell";
 import { LoadingRows } from "../States";
 import { api } from "../api";
+import { useUrlState } from "../../../lib/client/navigation";
 
 // SA-056 통계 화면 공통 틀: 통계 탭 · 기간 선택(오늘·7일·1개월·이번 달·직접 선택, 기본 1개월) · 묶음 단위 · 상태(로딩·데이터 없음·오류·권한 없음).
 // 날짜는 KST 기준. 서버가 최대 366일까지 받는다(lib/server/stats/range.ts).
@@ -56,8 +57,28 @@ export function useStats<T>(path: string, p: Period) {
   return { state, reload: load };
 }
 
-export function usePeriod() {
-  return useState<Period>(() => presetPeriod("30d", "day"));
+// 기간·묶음 단위·비교는 주소 쿼리가 기준이다(통계 하위 화면 → ← 에서 그대로 돌아온다, docs/IA.md Back 규칙 3항)
+const PRESETS: Preset[] = ["today", "7d", "30d", "month"];
+const UNITS: Unit[] = ["day", "week", "month"];
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+export function usePeriod(): readonly [Period, (p: Period) => void] {
+  const [q, set] = useUrlState({ preset: "30d", from: "", to: "", unit: "day", compare: "1" });
+  const unit = (UNITS as string[]).includes(q.unit) ? (q.unit as Unit) : "day";
+  const compare = q.compare !== "0";
+  const fromUrl: Period =
+    q.preset === "custom" && DATE.test(q.from) && DATE.test(q.to) && q.from <= q.to
+      ? { preset: "custom", from: q.from, to: q.to, unit, compare }
+      : presetPeriod((PRESETS as string[]).includes(q.preset) ? (q.preset as Preset) : "30d", unit, compare);
+  // 주소가 바뀌기 전에도 선택이 바로 보이도록 고른 값을 잠시 들고, 주소가 따라오면(뒤로 가기 등 바깥 변경 포함) 주소 값으로 돌아간다
+  const [picked, setPicked] = useState<Period | null>(null);
+  const urlKey = `${q.preset}|${q.from}|${q.to}|${q.unit}|${q.compare}`;
+  useEffect(() => setPicked(null), [urlKey]);
+  const period = picked ?? fromUrl;
+  const setPeriod = (p: Period) => {
+    setPicked(p);
+    set({ preset: p.preset, from: p.preset === "custom" ? p.from : "", to: p.preset === "custom" ? p.to : "", unit: p.unit, compare: p.compare ? "1" : "0" });
+  };
+  return [period, setPeriod] as const;
 }
 
 export function StatsFrame({ title, heading, sub, period, setPeriod, onDownload, download, units = true, comparable, children }: {

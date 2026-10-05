@@ -10,7 +10,7 @@ import { MAX_SEARCH_LENGTH } from "../../../../../components/seller/format";
 import { adminApi } from "../../_components/api";
 import { AdminTopbar, useAdmin } from "../../_components/AdminShell";
 import { ImpersonateDialog } from "../../_components/ImpersonateDialog";
-import { DISPLAY_STATUS, PLAN_FILTER, ago, dotDay, kstDate, type DisplayStatus, type SellerListRow, type SellerListSummary, type SellerStatus } from "../../_components/partners";
+import { DISPLAY_STATUS, PLAN_FILTER, ago, day, kstDate, type DisplayStatus, type SellerListRow, type SellerListSummary, type SellerStatus } from "../../_components/partners";
 import { SuspendDialog } from "../../_components/SuspendDialog";
 import { useListFilters } from "../../_components/useListFilters";
 import { useScrollRestore } from "../../../../../lib/client/navigation";
@@ -323,7 +323,7 @@ function PartnerList() {
                             <td>{s.live ? <span className="bdg b-live">방송 중</span> : "—"}</td>
                             <td className="num">{s.ordersThisMonth.toLocaleString("ko-KR")}</td>
                             <td className="num">{overlayOnly ? "—" : s.memberCount.toLocaleString("ko-KR")}</td>
-                            <td className="num">{dotDay(s.createdAt)}</td>
+                            <td className="num">{day(s.createdAt)}</td>
                             <td>{ago(s.lastActivityAt)}</td>
                             <td>
                               <span className="row" style={{ gap: 6, justifyContent: "center" }}>
