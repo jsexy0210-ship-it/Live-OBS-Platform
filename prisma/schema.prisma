@@ -126,6 +126,7 @@ model Seller {
   overlayTemplates         OverlayTemplate[]
   mailDeliveries           MailDelivery[]
   memberPolicy             SellerMemberPolicy?
+  shopSeo                  ShopSeo?
   orderNotificationPolicy  SellerOrderNotificationPolicy?
   rejoinBlocks             BuyerRejoinBlock[]
   purchaseRestrictions     BuyerPurchaseRestriction[]
@@ -1687,6 +1688,22 @@ model SellerMemberPolicy {
   rejoinRestrictionEnabled Boolean  @default(false)
   rejoinRestrictionDays    Int      @default(30)
   updatedAt                DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+}
+
+// 쇼핑몰 검색 노출 설정(SA-067). 행이 없으면 기본값(검색 노출·사이트맵 켬, 나머지 비움). 상품별 규칙의 {상품명}·{쇼핑몰}은 공개 화면이 채운다.
+model ShopSeo {
+  sellerId                   String   @id @db.Uuid
+  searchTitle                String?
+  searchDescription          String?
+  indexingEnabled            Boolean  @default(true)
+  sitemapEnabled             Boolean  @default(true)
+  productTitleTemplate       String?
+  productDescriptionTemplate String?
+  googleVerification         String?
+  naverVerification          String?
+  updatedAt                  DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])
 }
