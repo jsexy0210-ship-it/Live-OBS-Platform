@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { GET as liveGet } from "../../app/api/admin/ops/live-broadcasts/route";
 import { GET as payoutGet } from "../../app/api/admin/ops/live-payout-sellers/route";
 import { GET as monitorGet } from "../../app/api/admin/ops/monitor/route";
+import { GET as plansGet } from "../../app/api/admin/plans/route";
 import { GET as activityGet } from "../../app/api/admin/ops/seller-activity/route";
 import { createAdminSession } from "../../lib/server/auth/session";
 import { ACTIVITY_PAGE_SIZE } from "../../lib/server/admin/ops";
@@ -241,5 +242,38 @@ describe("실시간 감시(MA-100)", () => {
     ]);
     expect(r.body.autoActions.map((x: { action: string }) => x.action)).toEqual(["order.auto_cancel"]);
     expect(r.body.incidents).toEqual([{ source: "watch", key: "health", severity: "critical", message: "응답 없음", occurredAt: expect.any(String) }]);
+  });
+});
+
+describe("요금제 목록(MA-021·022)", () => {
+  it("모든 역할이 본다. 메일 제공량은 적용 예정일이 지나면 새 값, 아직이면 next. 파트너스 세션으로는 401", async () => {
+    const future = new Date(Date.now() + 86_400_000);
+    await db.subscriptionPlan.update({ where: { code: "OVERLAY_ONLY" }, data: { mailMonthlyQuota: 100, nextMailQuota: 300, nextMailQuotaAt: future, trialMessageLimit: 50 } });
+    await db.subscriptionPlan.update({ where: { code: "INTEGRATED" }, data: { mailMonthlyQuota: 100, nextMailQuota: 500, nextMailQuotaAt: new Date(Date.now() - 1000) } });
+    for (const role of ["SUPER_ADMIN", "OPERATIONS", "CS", "READ_ONLY"] as const) {
+      expect((await get(plansGet, "/api/admin/plans", await adminCookie(role))).status).toBe(200);
+    }
+    const r = await get(plansGet, "/api/admin/plans", await adminCookie());
+    expect(r.body.plans.map((p: { code: string }) => p.code)).toEqual(["INTEGRATED", "OVERLAY_ONLY", "STANDARD"]);
+    const by = Object.fromEntries(r.body.plans.map((p: { code: string }) => [p.code, p]));
+    expect(by.OVERLAY_ONLY).toMatchObject({
+      name: "오버레이 전용",
+      listPrice: 99000,
+      salePrice: 69000,
+      trialDays: 7,
+      trialMessageLimit: 50,
+      trialIdentityLimit: 50,
+      trialStorageMb: 1024,
+      mailMonthlyQuota: 100,
+      next: { mailMonthlyQuota: 300, effectiveAt: future.toISOString() },
+    });
+    expect(by.INTEGRATED).toMatchObject({ mailMonthlyQuota: 500, next: null });
+    const s = await shop();
+    const owner = await db.sellerUser.findFirstOrThrow({ where: { sellerId: s.seller.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+    const { loginSeller } = await import("../../lib/server/auth/login");
+    const { PASSWORD } = await import("./helpers");
+    const login = await loginSeller(db, { email: owner.email, password: PASSWORD }, {});
+    if (!login.ok) throw new Error(login.reason);
+    expect((await get(plansGet, "/api/admin/plans", `lo_seller=${login.token}`)).status).toBe(401);
   });
 });
