@@ -106,6 +106,8 @@ describe("승인: 서명·금액 검증, 두 번 승인 금지", () => {
     expect(r).toEqual({ ok: true, outcome: "paid", sellerId: s.seller.id, orderId: o.id });
     expect(await orderOf(o.id)).toMatchObject({ status: "PAID", paymentMethod: "CARD", pgProvider: "fake", pgTxId: `fake-tid-${p.paymentId}` });
     expect(await paymentOf(p.paymentId)).toMatchObject({ status: "PAID", pgTid: `fake-tid-${p.paymentId}` });
+    // 승인 응답의 카드 요약(카드사·끝 4자리·할부)이 결제에 남는다(구매자 주문 상세 표시용, 번호 전체는 없음)
+    expect(await paymentOf(p.paymentId)).toMatchObject({ cardName: "시험카드", cardLast4: "1234", cardInstallment: 0 });
     expect(await db.queueItem.count({ where: { orderId: o.id } })).toBe(1);
     expect(await db.auditLog.count({ where: { action: "payment.approved", targetId: o.id } })).toBe(1);
   });

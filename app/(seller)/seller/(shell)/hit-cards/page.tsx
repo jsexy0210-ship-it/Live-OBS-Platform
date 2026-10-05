@@ -84,7 +84,7 @@ export default function HitCardsPage() {
 
   const invalidRange = draft.from !== "" && draft.to !== "" && draft.from > draft.to;
   const search = () => {
-    if (invalidRange) return setToast({ text: "조회 기간의 시작일이 끝일보다 늦습니다", neg: true });
+    if (invalidRange) return setToast({ text: "시작일을 끝일보다 앞 날짜로 바꿔 주십시오", neg: true });
     setApplied({ ...draft });
   };
   const reset = () => {
@@ -99,7 +99,7 @@ export default function HitCardsPage() {
     // 이미 지워진 카드(404)는 목록만 다시 맞춘다
     if (!r.ok && r.status !== 404) return setToast({ text: failMessage(r, "admin"), neg: true });
     setModal(null);
-    setToast({ text: "HIT 카드를 해제했습니다" });
+    setToast({ text: "HIT 카드를 지웠습니다" });
     void load(applied);
   };
 
@@ -115,7 +115,7 @@ export default function HitCardsPage() {
           actions={
             allowed && (
               <button className="btn" type="button" onClick={() => setModal({ kind: "add" })}>
-                HIT 카드 등록
+                HIT 카드 기록하기
               </button>
             )
           }
@@ -142,7 +142,7 @@ export default function HitCardsPage() {
                   <Locked />
                 ) : state.status === 403 && state.error === "plan_feature_required" ? (
                   <div className="st" style={{ boxShadow: "none" }}>
-                    <span className="t">현재 플랜에서 제공하지 않는 기능입니다</span>
+                    <span className="t">지금 이용 중인 이용권에는 이 기능이 없습니다. 구독 화면에서 이용권을 바꾸면 사용할 수 있습니다</span>
                   </div>
                 ) : state.status === 403 ? (
                   <NoPermission need="방송 진행" />
@@ -155,7 +155,7 @@ export default function HitCardsPage() {
                   {items.length === 0 ? (
                     <div className="st" style={{ boxShadow: "none" }} data-testid="hit-empty">
                       <span className="t">{applied.from || applied.to ? "조건에 맞는 HIT 카드가 없습니다" : "아직 HIT 카드가 없습니다"}</span>
-                      <span className="t-c1 c-alt">방송 중 「HIT 카드 등록」으로 추가해 주십시오</span>
+                      <span className="t-c1 c-alt">방송 대시보드에서 「HIT 카드 기록하기」로 추가해 주십시오</span>
                     </div>
                   ) : (
                     <div className="au-lt-wrap">
@@ -185,7 +185,7 @@ export default function HitCardsPage() {
                               <td className="ell col-text">{c.broadcast ? c.broadcast.title || "제목 없는 방송" : "-"}</td>
                               <td>
                                 <button className="btn btn-sm btn-out" type="button" onClick={() => setModal({ kind: "delete", card: c })}>
-                                  해제
+                                  카드 지우기
                                 </button>
                               </td>
                             </tr>
@@ -214,7 +214,7 @@ export default function HitCardsPage() {
           onClose={() => setModal(null)}
           onDone={() => {
             setModal(null);
-            setToast({ text: "HIT 카드를 등록했습니다" });
+            setToast({ text: "HIT 카드를 기록했습니다" });
             void load(applied);
           }}
         />
@@ -223,19 +223,19 @@ export default function HitCardsPage() {
         <Modal labelId="hit-del-title" busy={busy} onClose={() => setModal(null)}>
           <div className="modal-h">
             <h2 className="modal-t" id="hit-del-title">
-              HIT 카드를 해제하시겠습니까?
+              이 HIT 카드를 지우시겠습니까?
             </h2>
             <span className="t-l2 c-alt">
               {modal.card.nickname} · {modal.card.cardName}
             </span>
           </div>
-          <span className="t-l2">오버레이에서도 바로 사라집니다.</span>
+          <span className="t-l2">방송 화면에서도 바로 사라집니다. 지운 카드는 되살릴 수 없습니다.</span>
           <div className="modal-f">
             <button className="btn btn-out" type="button" disabled={busy} onClick={() => setModal(null)}>
               취소
             </button>
             <button className="btn btn-neg" type="button" disabled={busy} onClick={() => void remove(modal.card)}>
-              해제
+              카드 지우기
             </button>
           </div>
         </Modal>

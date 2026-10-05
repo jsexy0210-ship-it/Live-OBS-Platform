@@ -6,7 +6,7 @@ export function SourceBadge({ source }: { source?: OrderSource | null }) {
   if (source !== "EXTERNAL") return null;
   return (
     <span className="bdg b-info" data-testid="source-badge">
-      외부 주문
+      다른 쇼핑몰 주문
     </span>
   );
 }
