@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { refundableOrderIdInDb } from "./rewardDb";
 import { submitSellerLogin } from "./sellerLogin";
 
 // SA-021 주문 목록 · SA-022 주문 상세 · SA-023 환불 모달. dev-seed의 데모 주문 27건(결제 대기·완료·발송·환불됨·취소, 개봉한 상품이 있는 발송 주문 2건)으로 확인한다.
@@ -131,7 +132,7 @@ test("환불 모달: 사유 주체를 고르지 않으면 환불할 수 없고, 
     body = route.request().postDataJSON();
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ refundAmount: 1000, version: 1 }) });
   });
-  await page.getByRole("link", { name: "환불 처리" }).first().click();
+  await page.goto(`/seller/orders/${await refundableOrderIdInDb("demo-shop", "CARD")}?refund=1`);
   const dialog = page.getByRole("dialog", { name: "취소 · 환불 처리" });
   await expect(dialog).toBeVisible();
   const run = dialog.getByRole("button", { name: /환불 실행/ });
@@ -296,8 +297,8 @@ test("환불 모달: 결제 수단이 카드면 「카드 승인 취소」를 �
     if (calls === 2) return route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: "forbidden" }) });
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ refundAmount: 2000, version: 1 }) });
   });
-  // 카드 결제 주문(데모 주문의 최근 결제 완료 건)
-  await page.getByRole("link", { name: "환불 처리" }).first().click();
+  // 카드 결제 주문(발송 전·개봉 전 최근 건 — 앞선 시험이 남긴 주문에 좌우되지 않게 DB에서 고른다)
+  await page.goto(`/seller/orders/${await refundableOrderIdInDb("demo-shop", "CARD")}?refund=1`);
   const dialog = page.getByRole("dialog", { name: "취소 · 환불 처리" });
   await expect(dialog.locator(".refund-opt.on").first()).toContainText("카드 승인 취소");
   await dialog.getByRole("radio", { name: /파트너스 사정/ }).check();
