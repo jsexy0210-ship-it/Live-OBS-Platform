@@ -7,6 +7,7 @@ import { Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
 import { StateBox, errorText, kstText, stateKind } from "../banners/_shared/ui";
 import "./member-grades.css";
+import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
 
 // SA-044 회원 등급(파트너스 관리자, 회원 › 회원 등급). 등급 이름 · 승급 기준 금액, 산정 기준(기간 · 주기 · 강등), 지금 재산정, 회원 직접 조정(고정: 기간 · 사유), 최근 변경.
 // 조회와 변경은 대표자 · 회원/적립금(MEMBER_POINTS) 권한 직원. 적립률은 적립 정책에서 정하고 여기서는 보기만 한다. API: /api/seller/member-grades.
@@ -543,7 +544,7 @@ function MemberAdjust({ grades, onDone }: { grades: Grade[]; onDone: (text: stri
           </button>
           {pick[m.id]?.lock && (
             <div className="mg-adj-more">
-              <input className="inp inp-sm" type="date" aria-label={`${m.broadcastNickname} 고정 종료일`} value={pick[m.id].until} onChange={(e) => set(m.id, { until: e.target.value })} />
+              <DatePicker className="dt-sm" aria-label={`${m.broadcastNickname} 고정 종료일`} value={pick[m.id].until} onChange={(v) => set(m.id, { until: v })} />
               <input className="inp inp-sm" aria-label={`${m.broadcastNickname} 고정 사유`} placeholder="사유 (예: 방송 단골)" maxLength={100} value={pick[m.id].reason} onChange={(e) => set(m.id, { reason: e.target.value })} />
               <span className="t-c1 c-alt">종료일을 비우면 직접 풀 때까지 고정됩니다</span>
             </div>

@@ -20,7 +20,8 @@ test("대표자: 메뉴에서 들어가 HIT 카드를 등록하고, 기간으로
   const card = `e2e-card-${Date.now()}`;
   await login(page, "demo-owner@example.com", "/seller/products");
   await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "방송", exact: true }).click();
-  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "HIT 카드 이력" }).click();
+  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "방송 기록" }).click();
+  await page.getByRole("navigation", { name: "화면 탭" }).getByRole("link", { name: "HIT 카드" }).click();
   await expect(page).toHaveURL(/\/seller\/hit-cards$/);
 
   // 등록: 대상 주문이 없으면 「직접 입력」(닉네임을 적음). 필수 칸이 비면 등록 버튼이 꺼져 있다
@@ -61,6 +62,6 @@ test("대표자: 메뉴에서 들어가 HIT 카드를 등록하고, 기간으로
 test("방송 진행 권한이 없는 직원: 메뉴가 없고 주소로 들어와도 화면이 없다", async ({ page }) => {
   await login(page, "demo-none@example.com", "/seller/hit-cards");
   await expect(page.getByText("필요한 권한: 방송 진행")).toBeVisible();
-  await expect(page.getByRole("link", { name: "HIT 카드 이력" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "방송 기록" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "HIT 카드 등록" })).toHaveCount(0);
 });

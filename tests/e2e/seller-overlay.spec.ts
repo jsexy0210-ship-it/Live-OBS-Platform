@@ -42,7 +42,7 @@ test("대표자: 메뉴에서 들어가 주소를 발급·복사하면 실제 �
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await login(page, "demo-owner@example.com", "/seller/products");
   await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "방송", exact: true }).click();
-  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "오버레이 편집기" }).click();
+  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "방송 화면 꾸미기" }).click();
   await expect(page).toHaveURL(/\/seller\/overlay$/);
   await expect(page.getByTestId("ove")).toBeVisible();
   await expect(page.getByTestId("ovu-urls")).toHaveCount(0);
@@ -97,7 +97,7 @@ test("발급 결과가 불분명하면 주소를 보이지 않고 이전 주소�
 test("오버레이 편집 권한이 없는 직원: 메뉴가 없고 주소로 들어와도 화면이 없다", async ({ page }) => {
   await login(page, "demo-none@example.com", "/seller/overlay");
   await expect(page.getByText("필요한 권한: 오버레이 편집")).toBeVisible();
-  await expect(page.getByRole("link", { name: "오버레이 편집기" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "방송 화면 꾸미기" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "주소 발급" })).toHaveCount(0);
 });
 

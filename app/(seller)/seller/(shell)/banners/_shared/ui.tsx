@@ -6,6 +6,7 @@ import { useRef, useState } from "react";
 import { normalizeLink, resolveLink } from "../../../../../../lib/server/shop-content/link";
 import "./shop-content.css";
 import { formatDateTime } from "../../../../../../lib/client/format";
+import { DateTimePicker } from "../../../../../../components/admin-ui/DatePicker";
 
 // 홈 배너 관리(SA-064)·이벤트 팝업 관리(SA-065)가 함께 쓰는 화면 조각. 파트너스 관리자 문구는 명사형·합니다체(2026-10-04 대표님 지시).
 
@@ -46,9 +47,9 @@ export function PeriodFields({ startsAt, endsAt, onChange, disabled }: { startsA
     <div className="fld">
       <span className="lbl">게시 기간 (KST)</span>
       <div className="sc-period">
-        <input className="inp" type="datetime-local" aria-label="시작 시각" value={startsAt} disabled={disabled} onChange={(e) => onChange({ startsAt: e.target.value, endsAt })} />
+        <DateTimePicker aria-label="시작 시각" value={startsAt} disabled={disabled} onChange={(v) => onChange({ startsAt: v, endsAt })} />
         <span className="c-alt">~</span>
-        <input className="inp" type="datetime-local" aria-label="종료 시각" value={endsAt} disabled={disabled} onChange={(e) => onChange({ startsAt, endsAt: e.target.value })} />
+        <DateTimePicker aria-label="종료 시각" value={endsAt} disabled={disabled} onChange={(v) => onChange({ startsAt, endsAt: v })} />
       </div>
       {bad ? <span className="err">종료 시각은 시작 시각보다 늦어야 합니다</span> : <span className="help">비우면 바로 게시 · 종료를 비우면 상시 · 서버 시각 기준 자동 게시·숨김</span>}
     </div>

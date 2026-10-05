@@ -1,6 +1,7 @@
 import { expect, request, test, type Page } from "@playwright/test";
 import { jpeg, png } from "../unit/shopContentFixtures";
 import { submitSellerLogin } from "./sellerLogin";
+import { fillDateTime } from "./dateInput";
 
 // SA-064 홈 배너 관리·SA-065 이벤트 팝업 관리(파트너스 관리자, 설정 › 배너 · 팝업)와 구매자 쇼핑몰 홈 표시.
 // 실행 시작·끝에 데모 쇼핑몰의 배너·팝업을 모두 지운다.
@@ -66,7 +67,7 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
   test("SA-064 대표자: 배너 추가(PNG만·링크 검사·미리보기) → 예약·PC만 배너 → 끌어서 순서 변경", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await ownerOpen(page, "/seller/banners");
-    await expect(page.getByRole("link", { name: "배너 · 팝업" })).toHaveClass(/on/);
+    await expect(page.getByRole("link", { name: "홈 배너" })).toHaveClass(/on/);
     await expect(page.getByRole("link", { name: "홈 배너", exact: true })).toHaveAttribute("aria-current", "page");
     await expect(page.getByText("등록한 배너가 없습니다")).toBeVisible();
 
@@ -102,7 +103,7 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
     await d2.getByLabel("제목 (대체 텍스트)").fill("주말 브레이크 안내");
     await d2.getByLabel("PC 이미지", { exact: true }).setInputFiles(file("pc2.png", await canvasPng(page, 1920, 600, "#e8382d", "주말 브레이크")));
     await expect(d2.getByText("1920 × 600px · PNG")).toBeVisible();
-    await d2.getByLabel("시작 시각").fill(kstLocal(3600_000));
+    await fillDateTime(d2, "시작 시각", kstLocal(3600_000));
     await d2.getByRole("button", { name: "저장" }).click();
     // 세 번째: PC만
     await page.getByRole("button", { name: "배너 추가" }).first().click();
@@ -282,7 +283,7 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
     await page.goto("/seller/login?next=%2Fseller%2Fbanners");
     await submitSellerLogin(page, "demo-staff@example.com", PASSWORD);
     await expect(page).toHaveURL(/\/seller\/banners$/);
-    await expect(page.getByRole("link", { name: "배너 · 팝업" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "홈 배너" })).toBeVisible();
     await expect(page.getByText("목록만 볼 수 있습니다. 배너 추가 · 수정은 대표자나 쇼핑몰 설정 권한이 있는 직원에게 요청해 주십시오.")).toBeVisible();
     await expect(page.getByTestId("banner-row")).toHaveCount(3);
     await expect(page.getByRole("button", { name: "배너 추가" })).toHaveCount(0);

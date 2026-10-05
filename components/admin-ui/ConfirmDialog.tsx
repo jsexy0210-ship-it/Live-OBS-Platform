@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Modal } from "./Modal";
-import { confirmButtonWidth, retypeMatches } from "./confirmUtil";
+import { confirmButtonWidth, retypeMatches, type RetypeMode } from "./confirmUtil";
 
 // 공통 확인 창(DS-CONFIRM 정본, 대표님 지시 2026-10-06): 서버에 쓰는 모든 행동(저장·삭제·변경·상태 변경·일괄 처리) 앞에 띄운다. 읽기·이동·필터는 띄우지 않는다.
 // 구성: 제목 한 줄(관리자 「~하시겠습니까?」·구매자 「~할까요?」) → 본문 1~2줄(바뀌는 대상·결과·건너뛰는 것) → [취소][실행 이름]. 실행 이름은 「확인」이 아니라 행동 그대로(저장·삭제·5건 변경·환불).
@@ -28,7 +28,8 @@ export type ConfirmOptions = {
   confirmLabel: string;
   cancelLabel?: string;
   danger?: boolean;
-  retype?: { expected: string; label?: string };
+  // mode: amount(기본, 쉼표·「원」 무시) · text(이름, 공백만 무시)
+  retype?: { expected: string; label?: string; mode?: RetypeMode };
   tone?: "admin" | "shop";
   run?: () => Promise<void | string>;
   allowReadOnly?: boolean;
@@ -55,7 +56,7 @@ export function ConfirmDialog({ opts, onResult }: { opts: ConfirmOptions; onResu
   );
   const cancelLabel = opts.cancelLabel ?? t.cancel;
   const width = confirmButtonWidth(cancelLabel, opts.confirmLabel);
-  const ready = !opts.retype || retypeMatches(typed, opts.retype.expected);
+  const ready = !opts.retype || retypeMatches(typed, opts.retype.expected, opts.retype.mode);
 
   const go = async () => {
     if (busy || !ready) return;

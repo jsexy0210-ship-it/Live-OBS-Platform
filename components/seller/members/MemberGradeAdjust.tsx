@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { DatePicker } from "../../../components/admin-ui/DatePicker";
 
 // SA-042 회원 상세의 등급 직접 조정(SA-044 수동 조정과 같은 API). 등급을 고르고, 「고정」이면 종료일(없으면 직접 풀 때까지)까지 자동 재산정에서 뺀다.
 // API: GET /api/seller/member-grades(등급 목록), PUT /api/seller/member-grades/members/{id} { gradeId, lock, until?, reason? }. 활동 회원만(409 member_not_active).
@@ -73,7 +74,7 @@ export function MemberGradeAdjust({ memberId, currentGradeId, active, onDone }: 
             <>
               <div className="fld">
                 <label htmlFor="mg-until">고정 종료일</label>
-                <input id="mg-until" className="inp" type="date" value={until} disabled={busy} onChange={(e) => setUntil(e.target.value)} />
+                <DatePicker id="mg-until" value={until} disabled={busy} onChange={(v) => setUntil(v)} />
                 <span className="help">비우면 직접 풀 때까지 고정됩니다</span>
               </div>
               <div className="fld">

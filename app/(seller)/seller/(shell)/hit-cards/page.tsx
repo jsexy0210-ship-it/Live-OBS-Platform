@@ -9,6 +9,7 @@ import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../.
 import { api, failMessage } from "../../../../../components/seller/api";
 import { SourceBadge } from "../../../../../components/seller/broadcast/SourceBadge";
 import { kstTime } from "../../../../../components/seller/broadcast/queue";
+import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
 
 // SA-053 HIT 카드 이력(방송 중 등록한 당첨 카드). 조회·등록·해제.
 // API: GET /api/seller/hit-cards?from=&to=&cursor=(KST 날짜, 최신순 50개) · POST /api/seller/hit-cards { cardName, note?, nickname } · DELETE /api/seller/hit-cards/{id}
@@ -128,9 +129,9 @@ export default function HitCardsPage() {
           <>
             <SearchBox onSearch={search} onReset={reset} busy={state.kind === "loading"}>
               <SearchRow label="기간">
-                <input className="inp" type="date" aria-label="시작일" value={draft.from} onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
+                <DatePicker aria-label="시작일" value={draft.from} onChange={(v) => setDraft({ ...draft, from: v })} />
                 <span aria-hidden="true"> ~ </span>
-                <input className="inp" type="date" aria-label="종료일" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
+                <DatePicker aria-label="종료일" value={draft.to} onChange={(v) => setDraft({ ...draft, to: v })} />
               </SearchRow>
             </SearchBox>
 

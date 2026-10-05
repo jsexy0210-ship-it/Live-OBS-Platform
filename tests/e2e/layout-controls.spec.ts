@@ -45,27 +45,39 @@ test("Select: 공통 화살표가 오른쪽 테두리에서 14px 안쪽·세로 
   }
 });
 
-test("날짜 칸: 글자·빈 곳 어디를 눌러도 달력을 한 번 연다(showPicker 1회), 직접 입력은 그대로", async ({ page }) => {
+test("날짜 칸(공통 DatePicker): 글자·빈 곳·아이콘 어디를 눌러도 달력이 열리고, 하나 고르면 닫히며, 직접 입력·Esc는 값을 지키고, 칸은 「2026.10.01」로 보인다", async ({ page }) => {
   await adminLogin(page);
-  await page.addInitScript(() => {
-    const w = window as unknown as { __pickerCalls: number };
-    w.__pickerCalls = 0;
-    HTMLInputElement.prototype.showPicker = function () {
-      w.__pickerCalls++;
-    };
-  });
   await page.goto("/admin/logs");
-  const date = page.locator('.main input[type="date"]').first();
+  const date = page.getByLabel("기록 시작일");
   await expect(date).toBeVisible();
+  await expect(date).toHaveAttribute("placeholder", "날짜 선택");
   const box = (await date.boundingBox())!;
-  for (const x of [box.x + 12, box.x + box.width / 2]) {
-    await page.evaluate(() => ((window as unknown as { __pickerCalls: number }).__pickerCalls = 0));
+  const cal = page.getByRole("dialog", { name: "기록 시작일" });
+  // 글자 쪽·가운데·오른쪽 아이콘 쪽 어디를 눌러도 한 번 열린다
+  for (const x of [box.x + 12, box.x + box.width / 2, box.x + box.width - 16]) {
     await page.mouse.click(x, box.y + box.height / 2);
-    expect(await page.evaluate(() => (window as unknown as { __pickerCalls: number }).__pickerCalls)).toBe(1);
+    await expect(cal).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(cal).toHaveCount(0);
   }
-  // 직접 입력(키보드)은 막지 않는다
+  // 직접 입력: 「2026-10-01」도 「2026.10.01」로 읽어 보여 준다. Esc는 값을 지킨다
   await date.fill("2026-10-01");
-  await expect(date).toHaveValue("2026-10-01");
+  await date.blur();
+  await expect(date).toHaveValue("2026.10.01");
+  await date.click();
+  await expect(cal).toBeVisible();
+  await expect(cal.getByRole("button", { name: "2026.10.01", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("Escape");
+  await expect(date).toHaveValue("2026.10.01");
+  // 달력에서 하루를 고르면 바로 닫히고 값이 들어간다
+  await date.click();
+  await cal.getByRole("button", { name: "2026.10.15", exact: true }).click();
+  await expect(cal).toHaveCount(0);
+  await expect(date).toHaveValue("2026.10.15");
+  // 초기화는 비운다(칸은 「날짜 선택」으로 돌아간다)
+  await date.click();
+  await cal.getByRole("button", { name: "초기화" }).click();
+  await expect(date).toHaveValue("");
 });
 
 test("검색 영역: 바깥 테두리·모서리 12는 그대로, CTA 앞 마지막 가로선·CTA 줄 선은 없고 「검색」「초기화」는 40×80", async ({ page }) => {
