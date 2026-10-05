@@ -10,6 +10,7 @@ import { restoreOrderStock } from "../products/stock";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { ACTIVE_STATUSES, CLEAR_ACCOUNT, courierName, DEFAULT_FAULT, INSPECTION_NOTE_MAX, isUuid, parseFault, parseInspection, parseNewReturn, parsePickup, parseRejectReason, parseTracking, returnDeadline, TRANSITIONS, withinReturnWindow, type ReturnRejection } from "./rules";
 import { returnImageStore } from "./store";
+import { orderNoLabel } from "../orders/orderNoLabel";
 
 // 교환·반품(SA-029 파트너스 · SH-022-R 구매자, 2026-10-04 대표님 지시).
 // - 구매자: 배송 완료 뒤 구매 확정 전인 결제 완료 주문에 신청한다. 반품은 주문 전체, 교환은 품목 단위(품목의 수량 전체). 주문당 진행 중인 신청은 1건(DB 부분 유니크 인덱스).
@@ -370,7 +371,7 @@ export async function listSellerReturns(db: PrismaClient, ctx: TenantContext, q:
   const where = { sellerId: ctx.sellerId, ...(status ? { status } : {}), ...(kind ? { kind } : {}), ...after } satisfies Prisma.ReturnRequestWhereInput;
   const rows = await db.returnRequest.findMany({
     where,
-    include: { ...viewInclude, order: { select: { orderNo: true, broadcastNicknameSnapshot: true } } },
+    include: { ...viewInclude, order: { select: { orderNo: true, createdAt: true, broadcastNicknameSnapshot: true } } },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: PAGE + 1,
   });
@@ -379,7 +380,7 @@ export async function listSellerReturns(db: PrismaClient, ctx: TenantContext, q:
   const summary = await returnSummary(db, ctx.sellerId);
   return {
     summary,
-    returns: page.map((r) => ({ ...view(r), orderNo: r.order.orderNo, nickname: r.order.broadcastNicknameSnapshot })),
+    returns: page.map((r) => ({ ...view(r), orderNo: r.order.orderNo, orderNoLabel: orderNoLabel(r.order.createdAt, r.order.orderNo), nickname: r.order.broadcastNicknameSnapshot })),
     nextCursor: rows.length > PAGE ? page[page.length - 1].id : null,
     counts: Object.fromEntries(counts.map((c) => [c.status, c._count._all])) as Partial<Record<ReturnStatus, number>>,
   };
@@ -414,7 +415,7 @@ export async function getSellerReturn(db: PrismaClient, ctx: TenantContext, id: 
   if (!isUuid(id)) return null;
   const r = await db.returnRequest.findFirst({
     where: { id, sellerId: ctx.sellerId },
-    include: { ...viewInclude, order: { select: { orderNo: true, status: true, totalAmount: true, shippingFee: true, paymentMethod: true, broadcastNicknameSnapshot: true, purchaseConfirmedAt: true, shipment: { select: { courier: true, trackingNumber: true, deliveredAt: true } } } } },
+    include: { ...viewInclude, order: { select: { orderNo: true, createdAt: true, status: true, totalAmount: true, shippingFee: true, paymentMethod: true, broadcastNicknameSnapshot: true, purchaseConfirmedAt: true, shipment: { select: { courier: true, trackingNumber: true, deliveredAt: true } } } } },
   });
   if (!r) return null;
   const refundable = r.kind === "RETURN" && (r.status === "ACCEPTED" || r.status === "RECEIVED");
@@ -428,6 +429,7 @@ export async function getSellerReturn(db: PrismaClient, ctx: TenantContext, id: 
     paymentMethod: r.order.paymentMethod,
     refunds,
     orderNo: r.order.orderNo,
+    orderNoLabel: orderNoLabel(r.order.createdAt, r.order.orderNo),
     nickname: r.order.broadcastNicknameSnapshot,
     order: { status: r.order.status, totalAmount: r.order.totalAmount, shippingFee: r.order.shippingFee, purchaseConfirmed: r.order.purchaseConfirmedAt !== null, shipment: r.order.shipment },
     refundPreview: preview?.ok ? preview.value : null,

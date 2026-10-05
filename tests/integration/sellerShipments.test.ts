@@ -89,7 +89,7 @@ describe("배송 처리 목록 GET /api/seller/shipments", () => {
     expect(sent.body.results).toEqual([{ orderId: o.id, ok: true, mode: "shipped", previous: null, shipment: expect.objectContaining({ courier: "CJ", trackingNumber: "123456789012", status: "IN_TRANSIT" }) }]);
     expect((await list(s.cookie)).body.shipments).toEqual([]);
     const transit = (await list(s.cookie, "?tab=in_transit&q=123456789012")).body.shipments;
-    expect(transit).toMatchObject([{ orderId: o.id, orderNo: o.orderNo, shipment: { courier: "CJ", trackingNumber: "123456789012", status: "IN_TRANSIT" } }]);
+    expect(transit).toMatchObject([{ orderId: o.id, orderNo: o.orderNo, orderNoLabel: expect.stringMatching(/^\d{8}-\d{4,}$/), shipment: { courier: "CJ", trackingNumber: "123456789012", status: "IN_TRANSIT" } }]);
     expect(ids((await list(s.cookie, `?tab=in_transit&q=${o.orderNo}`)).body)).toEqual([o.id]);
 
     const done = await deliver(s.cookie, [o.id]);

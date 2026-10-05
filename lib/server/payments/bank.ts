@@ -4,6 +4,7 @@ import { lockSellerOrders } from "../orders/overdue";
 import { markOrderPaid } from "../queue/service";
 import { canViewCustomerPii, requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { payableAmount, shopOpenForPayment } from "./service";
+import { orderNoLabel } from "../orders/orderNoLabel";
 
 // 무통장 입금(기반-결제 2단계): 판매자 입금 계좌, 구매자 무통장 선택·안내, 판매자 입금 대기 목록·입금 확인(SA-026).
 // - 입금 기한은 주문할 때 정한 값(Order.paymentDueAt)을 그대로 안내한다. 무통장을 다시 골라도 늘어나지 않는다.
@@ -106,6 +107,7 @@ export async function chooseBankTransfer(
 export type DepositRow = {
   orderId: string;
   orderNo: number;
+  orderNoLabel: string;
   amount: number;
   nickname: string;
   depositorName?: string;
@@ -150,6 +152,7 @@ export async function listPendingDeposits(db: PrismaClient, ctx: TenantContext, 
   const deposits: DepositRow[] = rows.map((o) => ({
     orderId: o.id,
     orderNo: o.orderNo,
+    orderNoLabel: orderNoLabel(o.createdAt, o.orderNo),
     amount: o.totalAmount,
     nickname: o.broadcastNicknameSnapshot,
     ...(pii ? { depositorName: o.buyerMember.name } : {}),

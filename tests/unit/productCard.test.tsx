@@ -23,7 +23,7 @@ describe("ProductCard", () => {
       expect(h).not.toContain("pc-rating");
     }
   });
-  it("품절 상품은 SOLD OUT 띠가 보인다", () => {
-    expect(html({ soldOut: true })).toContain("SOLD OUT");
+  it("품절 상품은 「품절」 띠가 보인다", () => {
+    expect(html({ soldOut: true })).toContain(">품절<");
   });
 });

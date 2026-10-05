@@ -53,7 +53,7 @@ export default function MessagePricesPage() {
     const r = await putSettings({ chargingEnabled: !d.chargingEnabled });
     if (r.ok) {
       setConfirmSwitch(false);
-      setToast({ text: r.data.chargingEnabled ? "충전을 켰습니다." : "충전을 껐습니다." });
+      setToast({ text: r.data.chargingEnabled ? "파트너스 선불 충전 사용을 켰습니다." : "파트너스 선불 충전 사용을 껐습니다." });
       void load();
     } else setSwitchError(r.message ?? (r.status === 403 ? "최고관리자만 바꿀 수 있습니다." : "바꾸지 못했습니다. 잠시 후 다시 시도해 주십시오."));
   };
@@ -63,7 +63,7 @@ export default function MessagePricesPage() {
     setLimitError(null);
     const day = Number(limits.day);
     const month = Number(limits.month);
-    if (!Number.isInteger(day) || !Number.isInteger(month) || day < 0 || month < 0 || limits.day.trim() === "" || limits.month.trim() === "") return setLimitError("한도는 0 이상의 정수로 입력해 주십시오.");
+    if (!Number.isInteger(day) || !Number.isInteger(month) || day < 0 || month < 0 || limits.day.trim() === "" || limits.month.trim() === "") return setLimitError("한도는 0 이상의 숫자로 입력해 주십시오.");
     const r = await putSettings({ platformDailyLimit: day, platformMonthlyLimit: month });
     if (r.ok) {
       setToast({ text: "저장했습니다." });
@@ -85,7 +85,7 @@ export default function MessagePricesPage() {
           <div className="col" style={{ gap: 20 }}>
             <section className="card pad-l col" style={{ gap: 14 }} aria-labelledby="msg-charging">
               <h2 className="t-hl1" id="msg-charging">
-                충전
+                파트너스 선불 충전 사용
               </h2>
               <div className="row" style={{ gap: 12 }}>
                 <span className={`bdg ${d.chargingEnabled ? "b-done" : "b-gray"}`} data-testid="charging-state">
@@ -93,7 +93,7 @@ export default function MessagePricesPage() {
                 </span>
                 {canEdit && (
                   <button className="btn btn-out" type="button" onClick={() => { setSwitchError(null); setConfirmSwitch(true); }}>
-                    {d.chargingEnabled ? "충전 끄기" : "충전 켜기"}
+                    {d.chargingEnabled ? "선불 충전 사용 끄기" : "선불 충전 사용 켜기"}
                   </button>
                 )}
               </div>
@@ -102,13 +102,13 @@ export default function MessagePricesPage() {
 
             <section className="card pad-l col" style={{ gap: 14 }} aria-labelledby="msg-prices">
               <h2 className="t-hl1" id="msg-prices">
-                채널별 단가
+                종류별 1건 요금
               </h2>
               <div style={{ overflowX: "auto" }}>
                 <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                   <thead>
                     <tr>
-                      <th>채널</th>
+                      <th>종류</th>
                       <th>현재 단가</th>
                       <th>변경 후 단가</th>
                       <th>적용 예정일</th>
@@ -125,7 +125,7 @@ export default function MessagePricesPage() {
                         {canEdit && (
                           <td>
                             <button className="btn btn-sm btn-out" type="button" onClick={() => setPriceDialog(p)}>
-                              변경
+                              요금 변경
                             </button>
                           </td>
                         )}
@@ -138,7 +138,7 @@ export default function MessagePricesPage() {
 
             <section className="card pad-l col" style={{ gap: 14 }} aria-labelledby="msg-limits">
               <h2 className="t-hl1" id="msg-limits">
-                플랫폼 메일 무료 한도
+                서비스 전체 무료 메일 한도
               </h2>
               <dl className="kv">
                 <dt>오늘 사용</dt>
@@ -204,7 +204,7 @@ export default function MessagePricesPage() {
           <>
             <div className="modal-h">
               <h2 className="modal-t" id="charging-title">
-                {d.chargingEnabled ? "충전을 끄시겠습니까?" : "충전을 켜시겠습니까?"}
+                {d.chargingEnabled ? "선불 충전 사용을 끄시겠습니까?" : "선불 충전 사용을 켜시겠습니까?"}
               </h2>
               <span className="t-l2 c-alt">
                 {d.chargingEnabled ? "꺼지면 파트너스의 발송 비용을 잔액에서 차감하지 않습니다." : "켜지면 지금부터 파트너스의 발송 비용이 선불 잔액에서 차감됩니다."}
@@ -222,7 +222,7 @@ export default function MessagePricesPage() {
                 취소
               </button>
               <button className="btn" type="button" onClick={() => void toggleCharging()} disabled={busy}>
-                {busy ? "처리 중" : d.chargingEnabled ? "충전 끄기" : "충전 켜기"}
+                {busy ? "처리 중" : d.chargingEnabled ? "선불 충전 사용 끄기" : "선불 충전 사용 켜기"}
               </button>
             </div>
           </>

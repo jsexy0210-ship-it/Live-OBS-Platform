@@ -904,6 +904,10 @@ select.inp{cursor:pointer}
 .c24 .plist .lt td .sub{font-size:13px;line-height:18px;margin-top:8px}
 .c24 .cfm .f{gap:8px}.c24 .cfm .f .b{min-width:var(--btn-w-md)}
 .c24 .b.neg{min-width:inherit}
+/* 2026-10-06 공통 확인 창 DS-CONFIRM: 위험 실행 버튼은 채운 위험 색 · 구매자 위험 버튼 · 확인 창 버튼 사이 8 */
+.c24 .b.neg.pri{background:#c0262c;border-color:#c0262c;color:#fff}
+.sh24 .btn.neg{color:#c0262c;border-color:#e3a7a9}.sh24 .btn.neg.p{background:#c0262c;border-color:#c0262c;color:#fff}
+.sh24 .cfm .f{gap:8px}
 .c24 .seg>button{height:40px}
 .c24 .col>.b+.b{margin-left:0}
 /* ===== 규격 확정본 반영 (PR #433 docs/DESIGN_PROMPT.md · 레이아웃 전담 (3) 2026-10-05) · 전/모바일 비교 보드 제외 ===== */
@@ -1070,3 +1074,7 @@ select.inp{cursor:pointer}
 /* 2026-10-05 현대화 기준: 글 열(.l)은 제목도 왼쪽 · 관리자 목록 썸네일 64×64 모서리 8 · 썸네일 행 88 */
 .c24 .lt th.l,.c24 .st .lt th.l{text-align:left !important}
 .c24 .lt .th{width:64px;height:64px;border-radius:8px;margin:8px 0;object-fit:cover}
+.c24 .ph2 .acts{gap:8px}
+/* 관리 열 버튼 묶음: 가운데 · 사이 8 · 폭 토큰 — 폼 표 안 버튼은 입력과 같은 40 */
+.c24 .acts2{display:flex;gap:8px;justify-content:center;flex-wrap:nowrap}.c24 .acts2 .b.sm{min-width:var(--btn-w-xs);padding:0 10px}
+.c24 .ft td .b:not(.sm):not(.lg){height:var(--ui-h-dense)}

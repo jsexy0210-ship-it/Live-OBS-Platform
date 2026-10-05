@@ -41,27 +41,27 @@ async function open(page: Page, email: string) {
 
 test("CS도 잔액을 본다: 합계·유료·무상·부족 표시, 값 왼쪽 정렬, 무상 지급 버튼은 없다", async ({ page }) => {
   await open(page, csEmail);
-  await expect(page.getByRole("heading", { name: "발송 잔액", level: 2 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "메일·문자 충전 잔액", level: 2 })).toBeVisible();
   await expect(page.getByTestId("balance-total")).toContainText("5,300원");
   await expect(page.getByTestId("balance-total")).toContainText("잔액 부족");
   await expect(page.getByTestId("balance-paid")).toHaveText("5,000원");
   await expect(page.getByTestId("balance-free")).toHaveText("300원");
   await expect(page.getByTestId("balance-mail")).toContainText("0통");
-  await expect(page.getByRole("button", { name: "무상 지급" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "무료로 넣어 주기" })).toHaveCount(0);
   const align = await page.getByTestId("balance-paid").evaluate((el) => getComputedStyle(el).textAlign);
   expect(["left", "start"]).toContain(align);
 });
 
 test("최고관리자 무상 지급: 입력 검사, 지급이 잔액·DB에 반영되고, 응답이 끊겨 다시 보내도 한 번만 지급된다", async ({ page }) => {
   await open(page, superEmail);
-  await page.getByRole("button", { name: "무상 지급" }).click();
+  await page.getByRole("button", { name: "무료로 넣어 주기" }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByRole("button", { name: "지급" })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "잔액 넣기" })).toBeDisabled();
   await dialog.getByLabel("금액").fill("10000001");
   await dialog.getByLabel("사유").fill("시험 지급");
-  await expect(dialog.getByRole("button", { name: "지급" })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "잔액 넣기" })).toBeDisabled();
   await dialog.getByLabel("금액").fill("1000");
-  await expect(dialog.getByRole("button", { name: "지급" })).toBeEnabled();
+  await expect(dialog.getByRole("button", { name: "잔액 넣기" })).toBeEnabled();
 
   // 서버는 지급을 마쳤는데 응답만 끊긴 경우: 같은 창에서 다시 보내면 같은 요청 키라 한 번만 지급된다
   let first = true;
@@ -72,20 +72,20 @@ test("최고관리자 무상 지급: 입력 검사, 지급이 잔액·DB에 반�
       await route.abort("failed");
     } else await route.continue();
   });
-  await dialog.getByRole("button", { name: "지급" }).click();
+  await dialog.getByRole("button", { name: "잔액 넣기" }).click();
   await expect(dialog.getByRole("alert")).toHaveText("연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오.");
   expect((await db.sellerMessageBalance.findUniqueOrThrow({ where: { sellerId } })).freeBalance).toBe(1300);
-  await dialog.getByRole("button", { name: "지급" }).click();
+  await dialog.getByRole("button", { name: "잔액 넣기" }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(page.getByText("이미 지급된 요청입니다.")).toBeVisible();
+  await expect(page.getByText("같은 요청이 이미 처리되어 다시 넣지 않았습니다.")).toBeVisible();
   await expect(page.getByTestId("balance-free")).toHaveText("1,300원");
   expect((await db.sellerMessageBalance.findUniqueOrThrow({ where: { sellerId } })).freeBalance).toBe(1300);
 
   // 새 창은 새 요청 키라 따로 지급된다
-  await page.getByRole("button", { name: "무상 지급" }).click();
+  await page.getByRole("button", { name: "무료로 넣어 주기" }).click();
   await dialog.getByLabel("금액").fill("200");
   await dialog.getByLabel("사유").fill("추가 시험");
-  await dialog.getByRole("button", { name: "지급" }).click();
+  await dialog.getByRole("button", { name: "잔액 넣기" }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByTestId("balance-free")).toHaveText("1,500원");
   await expect(page.getByTestId("balance-total")).toContainText("6,500원");

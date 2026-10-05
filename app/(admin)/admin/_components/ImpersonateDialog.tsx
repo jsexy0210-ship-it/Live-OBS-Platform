@@ -33,11 +33,11 @@ export function ImpersonateDialog({ seller, onClose, onDone }: { seller: { id: s
       r.error === "reason_required"
         ? "사유를 1자 이상 200자 이하로 입력해 주십시오."
         : r.error === "seller_not_viewable"
-          ? "이 파트너스는 지금 대리 조회할 수 없습니다."
+          ? "이 파트너스 화면은 지금 대신 볼 수 없습니다."
           : r.status === 404
             ? "파트너스를 찾을 수 없습니다."
             : r.status === 403
-              ? "대리 조회는 최고관리자·운영·CS만 할 수 있습니다."
+              ? "대신 보기는 최고관리자·운영·고객 지원 담당만 할 수 있습니다."
               : (r.message ?? failMessage(r, "시작하지 못했습니다. 잠시 후 다시 시도해 주십시오.")),
     );
   };
@@ -48,7 +48,7 @@ export function ImpersonateDialog({ seller, onClose, onDone }: { seller: { id: s
         <>
           <div className="modal-h">
             <h2 className="modal-t" id="impersonate-title">
-              대리 조회를 시작하시겠습니까?
+              이 파트너스 화면을 대신 보시겠습니까?
             </h2>
             <span className="t-l2 c-alt">{seller.shopName}의 파트너스 화면을 30분 동안 읽기 전용으로 봅니다. 사유는 로그 추적에 남습니다.</span>
           </div>
@@ -71,7 +71,7 @@ export function ImpersonateDialog({ seller, onClose, onDone }: { seller: { id: s
               취소
             </button>
             <button className="btn" type="button" onClick={() => void submit()} disabled={busy || invalid}>
-              {busy ? "처리 중" : "대리 조회"}
+              {busy ? "처리 중" : "대신 보기 시작"}
             </button>
           </div>
         </>

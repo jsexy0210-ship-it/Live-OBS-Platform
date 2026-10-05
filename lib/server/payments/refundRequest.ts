@@ -7,6 +7,7 @@ import { REASONS, REASON_LABEL, REASON_TEXT_MAX, REJECT_REASON_MAX } from "../sh
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { cleanText } from "../text/clean";
 import { parseRefundSelection } from "./refundSelection";
+import { orderNoLabel } from "../orders/orderNoLabel";
 
 // 구매자 환불 요청(SA-023 · SH-022 취소 요청, MASTER 배정 2026-10-05).
 // - 구매자: 결제 완료·발송 전·구매 확정 전 주문에 사유와 함께 요청한다(품목·수량을 고르거나, 고르지 않으면 남은 품목 전부). 주문당 진행 중인 요청은 1건(DB 부분 유니크).
@@ -226,14 +227,14 @@ export async function listSellerRefundRequests(db: PrismaClient, ctx: TenantCont
   }
   const rows = await db.refundRequest.findMany({
     where: { sellerId: ctx.sellerId, order: { legalHoldAt: null }, ...(status ? { status } : {}), ...after },
-    select: { ...viewSelect, order: { select: { orderNo: true, broadcastNicknameSnapshot: true, totalAmount: true } } },
+    select: { ...viewSelect, order: { select: { orderNo: true, createdAt: true, broadcastNicknameSnapshot: true, totalAmount: true } } },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: PAGE + 1,
   });
   const page = rows.slice(0, PAGE);
   const counts = await db.refundRequest.groupBy({ by: ["status"], where: { sellerId: ctx.sellerId, order: { legalHoldAt: null } }, _count: { _all: true } });
   return {
-    requests: page.map(({ order, ...r }) => ({ ...view(r), orderNo: order.orderNo, nickname: order.broadcastNicknameSnapshot, totalAmount: order.totalAmount })),
+    requests: page.map(({ order, ...r }) => ({ ...view(r), orderNo: order.orderNo, orderNoLabel: orderNoLabel(order.createdAt, order.orderNo), nickname: order.broadcastNicknameSnapshot, totalAmount: order.totalAmount })),
     nextCursor: rows.length > PAGE ? page[page.length - 1].id : null,
     counts: Object.fromEntries(counts.map((c) => [c.status, c._count._all])) as Partial<Record<RefundRequestStatus, number>>,
   };
@@ -245,7 +246,7 @@ export async function getSellerRefundRequest(db: PrismaClient, ctx: TenantContex
   if (!isUuid(id)) return null;
   const r = await db.refundRequest.findFirst({
     where: { id, sellerId: ctx.sellerId, order: { legalHoldAt: null } },
-    select: { ...viewSelect, order: { select: { orderNo: true, status: true, totalAmount: true, broadcastNicknameSnapshot: true } } },
+    select: { ...viewSelect, order: { select: { orderNo: true, createdAt: true, status: true, totalAmount: true, broadcastNicknameSnapshot: true } } },
   });
   if (!r) return null;
   const { order, ...rest } = r;
@@ -260,6 +261,7 @@ export async function getSellerRefundRequest(db: PrismaClient, ctx: TenantContex
   return {
     ...v,
     orderNo: order.orderNo,
+    orderNoLabel: orderNoLabel(order.createdAt, order.orderNo),
     nickname: order.broadcastNicknameSnapshot,
     order: { status: order.status, totalAmount: order.totalAmount },
     refundPreview,

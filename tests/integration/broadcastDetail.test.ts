@@ -63,7 +63,7 @@ describe("방송 상세", () => {
         [a.order.id, "PAID", at(start, 15).toISOString()],
         [expect.any(String), "CANCELLED", null],
       ]);
-      expect(r.body.orders[0]).toMatchObject({ nickname: "닉네임", totalAmount: 5000, items: [{ productName: "부스터 팩", optionName: "1팩", quantity: 1, unitPrice: 5000 }] });
+      expect(r.body.orders[0]).toMatchObject({ orderNoLabel: expect.stringMatching(/^\d{8}-\d{4,}$/), nickname: "닉네임", totalAmount: 5000, items: [{ productName: "부스터 팩", optionName: "1팩", quantity: 1, unitPrice: 5000 }] });
       expect(r.body.hits.map((h: { cardName: string }) => h.cardName)).toEqual(["리자몽"]);
       expect(r.body.nextCursor).toBeNull();
     }

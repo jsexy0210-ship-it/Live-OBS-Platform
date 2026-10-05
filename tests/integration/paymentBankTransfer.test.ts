@@ -145,7 +145,7 @@ describe("판매자 입금 대기·입금 확인", () => {
     if (!r.ok) throw new Error();
     expect(r.value.total).toBe(3);
     expect(r.value.deposits.map((d) => d.orderId)).toEqual([sooner.id, later.id, noDue.id]);
-    expect(r.value.deposits[0]).toMatchObject({ amount: 13000, nickname: "닉", depositorName: s.buyer.name });
+    expect(r.value.deposits[0]).toMatchObject({ orderNoLabel: expect.stringMatching(/^\d{8}-\d{4,}$/), amount: 13000, nickname: "닉", depositorName: s.buyer.name });
     expect(await db.auditLog.count({ where: { action: "customer.pii.view", reason: "pending_deposits" } })).toBe(1);
 
     const noPii: TenantContext = { ...s.ctx, isOwner: false, permissions: ["ORDER_SHIPPING"] };

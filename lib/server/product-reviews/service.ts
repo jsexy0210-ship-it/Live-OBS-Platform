@@ -25,6 +25,7 @@ import {
   type ReviewRejection,
 } from "./rules";
 import { cleanText } from "../text/clean";
+import { orderNoLabel } from "../orders/orderNoLabel";
 
 // 상품 리뷰(SA-048 리뷰 관리 · SH-029 리뷰 쓰기, 2026-10-04 대표님 지시, MASTER 결정 A~F).
 // - 구매자: 배송 완료된 주문 상품마다 1번(쇼핑몰 설정 기간 안, 기본 30일). 7일 안에 고치고, 언제든 지울 수 있다(숨긴 리뷰는 고치지 못함). 쓰기 경로(올리기·고치기·지우기·사진·신고)는 모두 쇼핑몰 이용 가능 검사(shopOpen)를 거친다.
@@ -205,7 +206,7 @@ export async function listSellerReviews(db: PrismaClient, ctx: TenantContext, q:
       include: {
         product: { select: { name: true } },
         buyerMember: { select: { status: true, grade: { select: { displayName: true } } } },
-        order: { select: { status: true } },
+        order: { select: { status: true, orderNo: true, createdAt: true } },
         _count: { select: { images: true, reports: { where: { resolvedAt: null, withdrawnAt: null } } } },
       },
     }),
@@ -227,6 +228,7 @@ export async function listSellerReviews(db: PrismaClient, ctx: TenantContext, q:
       id: r.id,
       productId: r.productId,
       productName: r.product.name,
+      orderNoLabel: orderNoLabel(r.order.createdAt, r.order.orderNo),
       author: r.authorNickname,
       grade: r.buyerMember.status === "WITHDRAWN" ? null : r.buyerMember.grade.displayName,
       rating: r.rating,
@@ -280,6 +282,7 @@ export async function getSellerReview(db: PrismaClient, ctx: TenantContext, id: 
     productName: r.product.name,
     optionName: r.orderItem.optionNameSnapshot,
     quantity: r.orderItem.quantity,
+    orderNoLabel: orderNoLabel(r.order.createdAt, r.order.orderNo),
     author: r.authorNickname,
     rating: r.rating,
     body: r.body,
@@ -530,6 +533,7 @@ export async function myReviews(db: PrismaClient, scope: BuyerScope, slug: strin
       productName: i.productNameSnapshot,
       optionName: i.optionNameSnapshot,
       quantity: i.quantity,
+      orderNoLabel: orderNoLabel(i.order.createdAt, i.order.orderNo),
       orderedAt: i.order.createdAt,
       deliveredAt: i.order.shipment?.deliveredAt ?? null,
       writableUntil: i.order.shipment?.deliveredAt ? new Date(i.order.shipment.deliveredAt.getTime() + policy.writableDays * DAY) : null,
@@ -548,7 +552,7 @@ export async function writableItem(db: PrismaClient, scope: BuyerScope, orderIte
   const policy = await policyOf(db, scope.sellerId);
   const [i] = await writableItems(db, scope, now, policy.writableDays, { orderItemId });
   return i
-    ? { orderItemId: i.id, productName: i.productNameSnapshot, optionName: i.optionNameSnapshot, quantity: i.quantity, orderedAt: i.order.createdAt, deliveredAt: i.order.shipment?.deliveredAt ?? null, reward: { text: policy.rewardText, photo: policy.rewardPhoto } }
+    ? { orderItemId: i.id, productName: i.productNameSnapshot, optionName: i.optionNameSnapshot, quantity: i.quantity, orderNoLabel: orderNoLabel(i.order.createdAt, i.order.orderNo), orderedAt: i.order.createdAt, deliveredAt: i.order.shipment?.deliveredAt ?? null, reward: { text: policy.rewardText, photo: policy.rewardPhoto } }
     : null;
 }
 

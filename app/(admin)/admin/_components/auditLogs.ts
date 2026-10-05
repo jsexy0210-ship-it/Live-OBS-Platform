@@ -102,7 +102,7 @@ const KEY: Record<string, string> = {
   price: "가격",
 };
 export const keyLabel = (k: string) => KEY[k] ?? k;
-const STATUS_VALUE: Record<string, string> = { ACTIVE: "이용 중", SUSPENDED: "정지", PENDING: "승인 대기", REJECTED: "반려", CLOSED: "종료" };
+const STATUS_VALUE: Record<string, string> = { ACTIVE: "이용 중", SUSPENDED: "정지", PENDING: "가입 신청 중", REJECTED: "반려", CLOSED: "종료" };
 export function valueText(k: string, v: unknown): string {
   if (v === null || v === undefined || v === "") return "-";
   if (k === "role" && typeof v === "string") return ROLE_LABEL[v as AdminRoleCode] ?? v;

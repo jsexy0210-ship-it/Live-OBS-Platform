@@ -52,7 +52,7 @@ test("장바구니 → 주문서(검사·동의) → 주문(결제 대기) → �
   await page.getByRole("button", { name: "주문하기" }).click();
   await expect(page.getByText("받는 분 이름을 적어 주세요")).toBeVisible();
   await expect(page.getByText("우편번호 5자리를 적어 주세요")).toBeVisible();
-  await expect(page.getByText("주문 내용 확인에 동의해 주세요")).toBeVisible();
+  await expect(page.getByText("‘주문 내용을 확인했어요’에 체크해 주세요")).toBeVisible();
   await expect(page).toHaveURL(/\/checkout\?ids=/);
 
   await page.getByLabel("받는 분").fill("김별빛");
@@ -84,7 +84,7 @@ test("장바구니 → 주문서(검사·동의) → 주문(결제 대기) → �
   await expect(page.locator(".shop-util-who")).toHaveText(`${memberNick} 님`); // 회원 닉네임은 그대로
   await expect(page.locator(".shop-hics .shop-badge")).toHaveText("1"); // 품절 줄 하나만 남아 머리 배지도 따라간다
   await expect(page.getByRole("status")).toContainText("주문이 접수됐어요");
-  await expect(page.getByText("결제 대기").first()).toBeVisible();
+  await expect(page.getByText("결제 전").first()).toBeVisible();
   await expect(page.getByRole("region", { name: /주문 상품/ })).toContainText("스타라이트 부스터 박스");
   await expect(page.getByRole("region", { name: "배송지" })).toContainText("서울 강남구 테스트로 12");
   await page.screenshot({ path: "tests/e2e/screenshots/SH-007-order-done-1440.png", fullPage: true });
