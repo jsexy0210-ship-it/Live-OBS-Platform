@@ -18,7 +18,7 @@ import { confirmButtonWidth, retypeMatches } from "./confirmUtil";
 //   const ok = await confirm({ title: "「스타라이트 부스터 박스」를 숨김으로 바꾸시겠습니까?", body: "…", confirmLabel: "숨김으로 변경", run: async () => (await api(...)).ok ? undefined : "숨기지 못했습니다" });
 //   // 3) 매우 위험: retype / 위험: danger
 //   confirm({ title: "24,000원을 환불하시겠습니까?", body: "…환불 금액을 다시 입력해 주십시오", confirmLabel: "환불", danger: true, retype: { expected: "24000", label: "환불 금액" }, run })
-// 대리 조회(me.readOnly) 중에는 confirm이 열리지 않고 「대리 조회 중에는 바꿀 수 없습니다」 안내만 보이며 false를 돌려준다. 화면은 readOnly로 실행 버튼을 비활성할 수 있다.
+// 대신 보기(대리 조회, me.readOnly) 중에는 confirm이 열리지 않고 「대신 보기 중에는 바꿀 수 없습니다」 안내만 보이며 false를 돌려준다. 화면은 readOnly로 실행 버튼을 비활성할 수 있다.
 // 대리 조회에서도 되는 행동(대리 조회 끝내기 등)은 allowReadOnly: true.
 // 스타일: styles/lop.css (.ui-modal-bg · .modal · .modal-h · .modal-f · .modal-x)
 
@@ -35,7 +35,7 @@ export type ConfirmOptions = {
 };
 
 const TEXT = {
-  admin: { cancel: "취소", running: "처리 중", failed: "처리하지 못했습니다. 잠시 후 다시 시도해 주십시오", retypeHint: "다시 입력해 주십시오", roTitle: "대리 조회 중에는 바꿀 수 없습니다", roBody: "읽기 전용으로 보는 중입니다. 변경은 파트너스 본인이 합니다.", close: "닫기" },
+  admin: { cancel: "취소", running: "처리 중", failed: "처리하지 못했습니다. 잠시 후 다시 시도해 주십시오", retypeHint: "다시 입력해 주십시오", roTitle: "대신 보기 중에는 바꿀 수 없습니다", roBody: "읽기 전용으로 보는 중입니다. 변경은 파트너스 본인이 합니다.", close: "닫기" },
   shop: { cancel: "취소", running: "처리 중", failed: "처리하지 못했어요. 잠시 뒤 다시 시도해 주세요", retypeHint: "다시 입력해 주세요", roTitle: "지금은 바꿀 수 없어요", roBody: "읽기 전용으로 보는 중이에요.", close: "닫기" },
 } as const;
 
