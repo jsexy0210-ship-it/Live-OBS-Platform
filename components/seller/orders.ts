@@ -1,4 +1,5 @@
 // 판매자 주문 화면(SA-021 목록 · SA-022 상세 · SA-023 환불) 공통 타입과 표시 규칙.
+import type { OrderHistoryEvent } from "../../lib/server/orders/history";
 export type OrderStatus = "PENDING_PAYMENT" | "PAID" | "CANCELLED" | "REFUNDED";
 
 // GET /api/seller/orders 한 줄. 받는 분 이름·연락처는 목록에 없다.
@@ -18,6 +19,8 @@ export type OrderRow = {
 export type OrderItem = { id: string; productNameSnapshot: string; optionNameSnapshot: string; unitPrice: number; quantity: number };
 
 // GET /api/seller/orders/{id}. 고객 정보 보기 권한이 없으면 buyer는 닉네임만, shippingAddress는 도서산간 여부만 온다.
+// 상태 이력(시각 오름차순). 서버가 항상 준다
+export type { OrderHistoryEvent };
 export type OrderDetail = {
   id: string;
   orderNo: number;
@@ -44,6 +47,7 @@ export type OrderDetail = {
   // 결제 완료 주문만 온다. 사유 주체별 실제 환불액(서버 계산), 개봉한 상품, 이 사유로 환불할 수 없는지(blocked)
   refundPreview: RefundPreview | null;
   // 쓴 쿠폰과 할인 금액(전체 취소로 되돌렸으면 restoredAt). 쿠폰을 쓰지 않았으면 null
+  history?: OrderHistoryEvent[];
   couponRedemption: { benefit: "AMOUNT" | "RATE" | "FREE_SHIPPING"; discountAmount: number; restoredAt: string | null; coupon: { id: string; name: string } } | null;
 };
 

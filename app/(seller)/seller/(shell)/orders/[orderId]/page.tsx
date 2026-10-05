@@ -4,6 +4,7 @@ import "../../../../../../styles/seller-orders.css";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import OrderHistory from "../../../../../../components/seller/OrderHistory";
 import RefundModal from "../../../../../../components/seller/RefundModal";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { LoadingRows, NoPermission, Toast } from "../../../../../../components/seller/States";
@@ -240,6 +241,7 @@ export default function OrderDetailPage() {
             </section>
           </div>
         </div>
+        <OrderHistory history={o.history ?? []} />
       </main>
       {refundOpen && (
         <RefundModal
