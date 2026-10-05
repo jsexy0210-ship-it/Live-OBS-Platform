@@ -21,6 +21,8 @@ export async function POST(req: Request) {
       return noStore(new NextResponse("bad_request", { status: 400 }));
     }
     const r = Object.fromEntries(FIELDS.map((k) => [k, String(form.get(k) ?? "").slice(0, 300)])) as AuthResult;
+    // 인증 결과 수신 로그(콘솔): 어떤 필드가 왔는지(이름만)와 코드·문구. 값이 비어 있거나 모르는 필드가 오는 문제를 진단한다. 카드·개인정보 값은 남기지 않는다.
+    if (r.authResultCode !== "0000") console.warn("[payments] return received", JSON.stringify({ fields: [...new Set(form.keys())].slice(0, 30), code: r.authResultCode.slice(0, 20), message: (r.authResultMsg ?? "").slice(0, 100) }));
     const out = await confirmAuthResult(prisma, gw, r);
     if (!out.ok) return noStore(new NextResponse(out.reason, { status: out.reason === "not_found" ? 404 : 400 }));
     const seller = await prisma.seller.findUniqueOrThrow({ where: { id: out.sellerId }, select: { slug: true } });

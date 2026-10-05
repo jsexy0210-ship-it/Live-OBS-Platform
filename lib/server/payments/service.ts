@@ -75,6 +75,7 @@ export async function startPayment(
 // message: PG가 준 거절 문구(진단용 기록, 카드·개인정보 아님)
 async function fail(db: PrismaClient | Tx, p: Payment, code: string, from: ("READY" | "APPROVING")[] = ["READY", "APPROVING"], message?: string) {
   const moved = await db.payment.updateMany({ where: { id: p.id, status: { in: from } }, data: { status: "FAILED", failureCode: code.slice(0, 60) } });
+  if (moved.count === 1) console.warn("[payments] failed", JSON.stringify({ paymentId: p.id, code: code.slice(0, 60), ...(message ? { message } : {}) }));
   if (moved.count === 1)
     await writeAudit(db, { ...SYSTEM, sellerId: p.sellerId, action: "payment.failed", targetType: "Order", targetId: p.orderId, after: { paymentId: p.id, code, ...(message ? { message } : {}) } });
 }
@@ -100,6 +101,8 @@ export async function confirmAuthResult(db: PrismaClient, gw: PaymentGateway, r:
 }
 
 async function auditAuthFailure(db: PrismaClient, p: Payment, r: AuthResult) {
+  // 서버 콘솔 로그에도 남긴다(코드·문구·결제 id만, 카드·개인정보 아님). 로그 추적 기록이 실패해도 원인이 남는다.
+  console.warn("[payments] auth failed", JSON.stringify({ paymentId: p.id, code: r.authResultCode.slice(0, 20), message: (r.authResultMsg ?? "").slice(0, 100) }));
   try {
     const seen = await db.auditLog.findFirst({ where: { action: "payment.auth_failed", targetId: p.orderId, after: { path: ["paymentId"], equals: p.id } }, select: { id: true } });
     if (seen) return;
