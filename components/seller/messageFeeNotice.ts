@@ -6,7 +6,7 @@ export type NoticeSection = { n: number; title: string; items: string[] };
 export const MESSAGE_FEE_NOTICE: NoticeSection[] = [
   {
     "n": 1,
-    "title": "무엇이 무료이고 무엇이 유료인가요",
+    "title": "무료·유료 항목",
     "items": [
       "표시한 단가는 부가가치세 `{{포함/별도}}` 금액입니다.",
       "파트너스 가입, 직원 연결, 파트너스 아이디·비밀번호 찾기의 본인인증은 플랫폼이 부담합니다. 남용을 막기 위해 하루 횟수를 제한합니다.",
