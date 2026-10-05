@@ -186,9 +186,10 @@ test("자동 배송 완료·자동 구매 확정: 기본 7일, 기간을 바꾸�
   await expect(page.getByLabel("자동 구매 확정 기간")).toHaveValue("7");
   await expect(page.getByTestId("delivery-preview")).toContainText("배송 중 7일이 지나면 배송 완료로 바뀝니다 · 배송 완료 7일 뒤 자동으로 구매 확정됩니다");
   await shot(page, "SA-063-delivery");
-  // 켜면 송장 조회 비용이 발송 충전 잔액에서 차감된다고 알리고, 끄면 비용이 없다고 알린다(단가는 발송 충전 API, 정해지기 전에는 「[확정 전]」)
+  // 켜면 송장 조회 비용이 발송 충전 잔액에서 차감된다고 알리고, 끄면 비용이 없다고 알린다(단가는 발송 충전 API, 정해지기 전에는 「단가 확정 전 금액이」)
   await expect(page.getByTestId("tracking-fee")).toContainText("켜면 송장 1건 조회당");
-  await expect(page.getByTestId("tracking-fee")).toContainText("발송 충전 잔액에서 차감됩니다");
+  await expect(page.getByTestId("tracking-fee")).toContainText("단가 확정 전 금액이 발송 충전 잔액에서 차감됩니다");
+  await expect(page.getByTestId("tracking-fee")).not.toContainText("[확정 전]");
   await page.getByRole("switch", { name: "배송 중 일정 기간이 지나면 자동으로 배송 완료" }).click();
   await expect(page.getByTestId("tracking-fee")).toContainText("택배사 조회 페이지 링크만 보여 드리며 비용이 없습니다");
   await page.getByRole("switch", { name: "배송 중 일정 기간이 지나면 자동으로 배송 완료" }).click();
