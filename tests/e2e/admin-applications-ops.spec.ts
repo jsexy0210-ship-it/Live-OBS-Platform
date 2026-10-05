@@ -60,7 +60,7 @@ test("운영: 이상 없음은 목록에서 한 번에 승인되고(처리한 �
   await page.goto("/admin/partners/applications");
   await expect(row(page, "A")).toContainText("확인할 것 없음");
   await expect(row(page, "A").getByRole("button", { name: "승인" })).toBeVisible();
-  await expect(row(page, "B")).toContainText("확인할 것 1건");
+  await expect(row(page, "B")).toContainText("확인 필요 1");
   await expect(row(page, "B")).toContainText("휴업·폐업 사업자");
   await expect(row(page, "B").getByRole("button", { name: "승인", exact: true })).toHaveCount(0);
   await page.screenshot({ path: "tests/e2e/screenshots/admin-applications-1440.png" });
@@ -83,10 +83,10 @@ test("운영: 이상 없음은 목록에서 한 번에 승인되고(처리한 �
 test("반려는 사유를 고르는 작은 창에서 한 번에 끝나고, 칩 필터는 주소에 남는다", async ({ page }) => {
   await login(page, emails.ops);
   await page.goto("/admin/partners/applications");
-  await page.getByRole("button", { name: /^확인할 것 있음/ }).click();
-  await expect(page).toHaveURL(/filter=review/);
+  await page.getByRole("button", { name: /^확인 필요/ }).click();
+  await expect(page).toHaveURL(/tab=review/);
   await page.reload();
-  await expect(page.getByRole("button", { name: /^확인할 것 있음/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: /^확인 필요/ })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: /^전체/ }).click();
 
   await row(page, "C").getByRole("button", { name: "반려", exact: true }).click();
