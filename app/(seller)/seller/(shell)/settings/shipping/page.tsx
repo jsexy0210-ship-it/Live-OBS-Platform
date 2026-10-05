@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { FormFoot, FormRow, FormSection, PageHead } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
@@ -7,7 +8,7 @@ import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../.
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { parseAmount, won } from "../../../../../../components/seller/format";
 
-// SA-061 배송비 정책. API가 받는 항목: 배송비 방식·배송비·무료 기준·제주·도서산간 추가 배송비·반품·교환 배송비,
+// SA-061 배송 설정(주문 · 배송 설정 › 배송비 정책 탭). API가 받는 항목: 배송비 방식·배송비·무료 기준·제주·도서산간 추가 배송비·반품·교환 배송비,
 // 받는 방법(지금은 「바로 받기」만, 「보관 후 받기」는 준비 중)·발송 기한(1~30일)·기본 택배사(선택).
 // 제주와 그 밖의 도서지역을 나눈 금액은 API가 생기면 붙인다.
 
@@ -24,7 +25,7 @@ type Policy = {
   defaultCourier: string | null;
 };
 type Extras = { couriers: Record<string, string>; maxDays: number; planned: string[] };
-const METHOD_LABEL: Record<string, string> = { IMMEDIATE: "바로 받기", STORAGE: "보관 후 받기" };
+const METHOD_LABEL: Record<string, string> = { IMMEDIATE: "바로 받기", STORAGE: "보관하기 · 합배송" };
 type Mode = "free" | "fixed" | "threshold";
 
 const MAX_FEE = 100_000;
@@ -48,7 +49,7 @@ function feeError(v: string, max: number, min = 0): string | null {
 }
 
 function deadlineError(v: string, max: number): string | null {
-  if (v.trim() === "") return "발송 기한을 입력해 주십시오";
+  if (v.trim() === "") return "발송까지 걸리는 기간을 적어 주십시오";
   const n = parseAmount(v);
   if (n === null) return "숫자만 입력해 주십시오";
   return n < 1 || n > max ? `1일에서 ${max}일 사이로 입력해 주십시오` : null;
@@ -152,11 +153,11 @@ export default function ShippingSettingsPage() {
     setFailure(null);
     const r = await api<{ policy: Policy }>("/api/seller/shipping-policy", { method: "PUT", body: candidate });
     setSaving(false);
-    if (!r.ok) return setFailure(failMessage(r, "admin", "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
+    if (!r.ok) return setFailure(failMessage(r, "admin", "저장하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주십시오"));
     apply(r.data.policy);
     setState({ kind: "ok", saved: r.data.policy });
     setShowErrors(false);
-    setToast("배송비 정책을 저장했습니다 · 다음 주문부터 적용됩니다");
+    setToast("배송 설정을 저장했습니다 · 다음 주문부터");
   };
 
   const shown = showErrors ? errors : { fee: null, freeOver: null, remote: null, returnFee: null, exchangeFee: null, deadline: null };
@@ -197,9 +198,9 @@ export default function ShippingSettingsPage() {
 
   return (
     <>
-      <Topbar crumb="설정 › 쇼핑몰 설정 › 배송비 정책" />
+      <Topbar crumb="설정 › 주문 · 배송 설정 › 배송 설정" />
       <main className="main">
-        <PageHead title="배송비 정책" />
+        <PageHead title="배송 설정" />
 
         {state.kind !== "ok" ? (
           <div className="card">
@@ -210,7 +211,7 @@ export default function ShippingSettingsPage() {
               ) : state.status === 402 ? (
                 <Locked />
               ) : (
-                <ErrorState title="배송비 정책을 불러오지 못했습니다" onRetry={() => void load()} />
+                <ErrorState title="배송 설정을 불러오지 못했습니다" onRetry={() => void load()} />
               ))}
           </div>
         ) : (
@@ -229,36 +230,39 @@ export default function ShippingSettingsPage() {
                   </span>
                 </div>
               )}
-              <FormSection title="배송비 방식">
-                <FormRow label="배송비 방식" help={modeInfo.desc}>
-                  <div className="row" role="radiogroup" aria-label="배송비 방식" style={{ gap: 24, flexWrap: "wrap" }}>
+              <FormSection title="배송비">
+                <FormRow label="배송비 방식" required>
+                  <div role="radiogroup" aria-label="배송비 방식" style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
                     {MODES.map((m) => (
-                      <label key={m.key} className="chk">
-                        <input className="rdo" type="radio" name="fee-mode" checked={mode === m.key} onChange={() => setMode(m.key)} aria-label={m.title} />
-                        {m.title}
-                      </label>
+                      <div key={m.key}>
+                        <label className="chk">
+                          <input className="rdo" type="radio" name="fee-mode" checked={mode === m.key} onChange={() => setMode(m.key)} aria-label={m.title} />
+                          {m.title}
+                        </label>
+                        <p className="help">{m.desc}</p>
+                      </div>
                     ))}
                   </div>
                 </FormRow>
                 {mode !== "free" && (
-                  <FormRow label="배송비" htmlFor="fee">
+                  <FormRow label="배송비" required htmlFor="fee" help="고정 · 일정 금액 이상 무료에서 받는 금액">
                     {amountInput("fee", fee, setFee, shown.fee)}
                   </FormRow>
                 )}
                 {mode === "threshold" && (
-                  <FormRow label="무료 배송 기준" htmlFor="free-over" help="이상 주문이면 배송비 0원">
+                  <FormRow label="무료 배송 기준" required htmlFor="free-over">
                     {amountInput("free-over", freeOver, setFreeOver, shown.freeOver)}
+                    <span className="t-l2 c-alt">이상 주문이면 배송비 0원</span>
                   </FormRow>
                 )}
-              </FormSection>
-
-              <FormSection title="제주·도서산간 추가 배송비">
                 <FormRow
-                  label="제주·도서산간 추가 배송비"
+                  label="제주 · 도서산간 추가 배송비"
                   htmlFor="remote"
                   help={
                     <>
-                      기본 3,000원 · 제주와 그 밖의 도서지역에 같은 금액이 붙습니다. <b>무료 배송이어도 붙습니다.</b> 우편번호로 자동 판별하고, 주문서와 주문 완료 화면에 「도서산간 추가」 줄로 따로 표시됩니다.
+                      기본 3,000원 · 0원으로 적으면 추가 배송비를 받지 않습니다 · 무료 배송이어도 붙습니다
+                      <br />
+                      우편번호로 자동 판별하고 금액은 하나로 같습니다 · 주문서와 주문 완료 화면에 「도서산간 추가」 줄로 따로 보입니다
                     </>
                   }
                 >
@@ -266,25 +270,31 @@ export default function ShippingSettingsPage() {
                 </FormRow>
               </FormSection>
 
-              <FormSection title="반품 · 교환 배송비">
+              <FormSection title="반품 · 교환 배송비" actions={<span className="t-l2 c-alt">단순 변심일 때만 받습니다 · 상품 불량 · 오배송은 파트너스 부담</span>}>
                 <FormRow label="반품 배송비 (편도)" htmlFor="return-fee" help="기본 3,000원">
                   {amountInput("return-fee", returnFee, setReturnFee, shown.returnFee)}
                 </FormRow>
                 <FormRow label="교환 배송비 (왕복)" htmlFor="exchange-fee" help="기본 6,000원 · 교환 접수가 열리면 적용됩니다">
                   {amountInput("exchange-fee", exchangeFee, setExchangeFee, shown.exchangeFee)}
                 </FormRow>
+                <FormRow
+                  label="안내"
+                  help={
+                    <>
+                      반품하면 처음 낸 배송비는 돌려주지 않고 반품 배송비를 빼고 환불합니다
+                      <br />
+                      {/* 서버는 주문의 배송비가 0원일 때만 두 배로 뺀다(도서산간 추가비가 붙으면 0원이 아님, queue/service computeRefund) */}
+                      무료 배송 주문(배송비 0원)은 반품 배송비 × 2를 뺍니다 · 도서산간 추가 배송비를 낸 주문은 한 번만 뺍니다
+                    </>
+                  }
+                >
+                  {null}
+                </FormRow>
               </FormSection>
-              <div className="msg msg-info t-l2" role="note" style={{ marginTop: 16 }}>
-                <span>
-                  단순 변심일 때만 받습니다. 상품 불량 · 오배송은 파트너스가 부담합니다. 반품하면 처음 낸 배송비는 돌려주지 않고 반품 배송비를 빼고 환불합니다.{" "}
-                  {/* 서버는 주문의 배송비가 0원일 때만 두 배로 뺀다(도서산간 추가비가 붙으면 0원이 아님, queue/service computeRefund) */}
-                  <b>무료 배송 주문(배송비 0원)은 반품 배송비 × 2를 뺍니다.</b> 도서산간 추가 배송비를 낸 주문은 한 번만 뺍니다. 교환 배송비는 교환 접수가 열리면 적용됩니다.
-                </span>
-              </div>
 
-              <FormSection title="받는 방법 · 발송">
-                <FormRow label="받는 방법" help="구매자가 상품을 받는 방법입니다 · 「보관 후 받기」는 준비 중입니다">
-                  <div className="row" style={{ gap: 24, flexWrap: "wrap" }} data-testid="receive-methods">
+              <FormSection title="받는 방법 · 발송 안내">
+                <FormRow label="받는 방법" help="개봉이 끝나면 포장해서 보냅니다 · 지금은 이 방법만 열려 있습니다">
+                  <div data-testid="receive-methods" style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-start" }}>
                     {(saved?.receiveMethods ?? []).map((m) => (
                       <label key={m} className="chk">
                         <input type="checkbox" checked disabled aria-label={METHOD_LABEL[m] ?? m} />
@@ -292,14 +302,17 @@ export default function ShippingSettingsPage() {
                       </label>
                     ))}
                     {extras.planned.map((m) => (
-                      <label key={m} className="chk">
-                        <input type="checkbox" checked={false} disabled aria-label={`${METHOD_LABEL[m] ?? m} (준비 중)`} />
-                        {METHOD_LABEL[m] ?? m} <span className="t-c1 c-alt">준비 중</span>
-                      </label>
+                      <div key={m}>
+                        <label className="chk c-alt">
+                          <input type="checkbox" checked={false} disabled aria-label={`${METHOD_LABEL[m] ?? m} (곧 열립니다)`} />
+                          {METHOD_LABEL[m] ?? m} <span className="t-c1">곧 열립니다</span>
+                        </label>
+                        <p className="help">개봉한 카드를 모아 두었다가 한 번에 보냅니다 · 보관 기한 · 보관 중 안내는 열릴 때 설정합니다</p>
+                      </div>
                     ))}
                   </div>
                 </FormRow>
-                <FormRow label="발송 기한" htmlFor="dispatch-days" help={shown.deadline ? <span className="err">{shown.deadline}</span> : `결제 후 이 기간 안에 발송합니다 · 1일에서 ${extras.maxDays}일`}>
+                <FormRow label="발송까지 걸리는 기간" required htmlFor="dispatch-days" help={shown.deadline ? <span className="err">{shown.deadline}</span> : `주문서에 「개봉이 끝나면 ${deadline.trim() || "N"}일 안에 보내요」로 보입니다`}>
                   <input
                     id="dispatch-days"
                     className={`inp num${shown.deadline ? " is-error" : ""}`}
@@ -312,9 +325,9 @@ export default function ShippingSettingsPage() {
                   />
                   <span className="t-l2 c-alt">일</span>
                 </FormRow>
-                <FormRow label="기본 택배사" htmlFor="default-courier" help="송장을 입력할 때 먼저 선택되어 있습니다 · 정하지 않아도 됩니다">
+                <FormRow label="기본 택배사" htmlFor="default-courier" help="배송 화면에서 송장 입력할 때 미리 골라집니다">
                   <select id="default-courier" className="inp" value={courier} onChange={(e) => setCourier(e.target.value)} style={{ width: 200 }}>
-                    <option value="">선택 안 함</option>
+                    <option value="">택배사 선택</option>
                     {Object.entries(extras.couriers).map(([code, name]) => (
                       <option key={code} value={code}>
                         {name}
@@ -324,35 +337,86 @@ export default function ShippingSettingsPage() {
                 </FormRow>
               </FormSection>
 
-              <FormSection title="주문서 미리보기">
-                <FormRow label="배송">
-                  <span className="num" data-testid="fee-preview">
-                    {summary ?? "금액을 입력하면 여기에 표시됩니다"}
-                  </span>
-                </FormRow>
-                <FormRow label="도서산간 추가">
-                  <span className="num c-alt" data-testid="remote-preview">
-                    {remoteNum !== null && !errors.remote ? (remoteNum === 0 ? "받지 않음" : `+${won(remoteNum)} · 해당 주소만`) : "—"}
-                  </span>
-                </FormRow>
-                <FormRow label="반품 · 교환 안내">
-                  <span data-testid="return-preview">
-                    「
-                    {returnNum !== null && exchangeNum !== null && !errors.returnFee && !errors.exchangeFee
-                      ? `단순 변심 반품 배송비 ${won(returnNum)} · 교환 ${won(exchangeNum)}`
-                      : "금액을 입력하면 여기에 표시됩니다"}
-                    」
-                  </span>
-                </FormRow>
-              </FormSection>
-              <p className="help" style={{ marginTop: 16 }}>
-                배송비는 결제 금액에 합산됩니다. 발송 전에 환불하면 배송비까지 모두 돌려줍니다. 발송 뒤 상품 불량 · 오배송이면 상품값과 처음 낸 배송비를 돌려주고, 단순 변심이면 반품 배송비를 빼고 돌려줍니다. 이미 받은 주문의 배송비는 바뀌지 않습니다.
-              </p>
+              <div className="au-two" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 24, marginTop: 24 }}>
+                <FormSection title="주문서에 이렇게 보입니다">
+                  <div className="card" style={{ padding: "8px 12px" }}>
+                    <div>
+                      <b>바로 받기</b> <span className="t-l2 c-alt">· 개봉이 끝나면 {deadline.trim() || "N"}일 안에 보내요{summary ? ` · ${summary.replace("배송비 무료", "배송비 0원")}` : ""}</span>
+                    </div>
+                    {extras.planned.length > 0 && (
+                      <div className="c-alt" style={{ margin: "4px 0 8px" }}>
+                        보관하기 <span className="t-c1">곧 열려요</span> <span className="t-l2">· 개봉한 카드를 모아 두었다가 한 번에 받아요</span>
+                      </div>
+                    )}
+                    <table className="tbl">
+                      <thead>
+                        <tr>
+                          <th scope="col">항목</th>
+                          <th scope="col" style={{ width: 200, textAlign: "right" }}>금액</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td className="col-text">상품</td>
+                          <td style={{ textAlign: "right" }}>330,000원</td>
+                        </tr>
+                        <tr>
+                          <td className="col-text">이벤트 할인</td>
+                          <td style={{ textAlign: "right" }}>−19,800원</td>
+                        </tr>
+                        <tr>
+                          <td className="col-text">배송</td>
+                          <td style={{ textAlign: "right" }}>
+                            <span className="num" data-testid="fee-preview">
+                              {summary ?? "금액을 입력하면 여기에 표시됩니다"}
+                            </span>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="col-text">도서산간 추가</td>
+                          <td style={{ textAlign: "right" }}>
+                            <span className="num c-alt" data-testid="remote-preview">
+                              {remoteNum !== null && !errors.remote ? (remoteNum === 0 ? "받지 않음" : `+${won(remoteNum)} · 해당 주소만`) : "—"}
+                            </span>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                    <p className="help">제주 주소면 「도서산간 추가 +3,000원」 줄이 붙습니다</p>
+                  </div>
+                </FormSection>
+                <FormSection title="반품 · 교환은 이렇게 보입니다">
+                  <div className="card" style={{ padding: "8px 12px" }}>
+                    반품 · 교환 안내:{" "}
+                    <span data-testid="return-preview">
+                      「
+                      {returnNum !== null && exchangeNum !== null && !errors.returnFee && !errors.exchangeFee
+                        ? `단순 변심 반품 배송비 ${won(returnNum)} · 교환 ${won(exchangeNum)}`
+                        : "금액을 입력하면 여기에 표시됩니다"}
+                      」
+                    </span>
+                    <p className="help">주문서 · 주문 상세 · 환불 안내에 같이 보입니다</p>
+                  </div>
+                  <div className="msg msg-info t-l2" role="note" style={{ marginTop: 16 }}>
+                    <span>
+                      <b>알아 두십시오</b>
+                      <br />
+                      배송비는 결제 금액에 합산됩니다. 발송 전에 환불하면 배송비까지 모두 돌려줍니다. 발송 뒤 상품 불량 · 오배송이면 상품값과 처음 낸 배송비를 돌려주고, 단순 변심이면 반품 배송비를 빼고 돌려줍니다. 이미 받은 주문의 배송비는 바뀌지 않습니다.
+                    </span>
+                  </div>
+                </FormSection>
+              </div>
             </fieldset>
             <FormFoot>
               <button className="btn btn-lg" type="submit" disabled={saving || !dirty}>
                 {saving ? "저장 중" : "저장"}
               </button>
+              <button className="btn btn-lg btn-out" type="button" disabled={saving || !dirty} onClick={() => saved && (apply(saved), setShowErrors(false), setFailure(null))}>
+                취소
+              </button>
+              <Link className="btn btn-lg btn-out" href="/seller/shipping">
+                배송 화면
+              </Link>
             </FormFoot>
           </form>
         )}
