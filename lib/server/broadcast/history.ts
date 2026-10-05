@@ -1,4 +1,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
+import type { AdminSessionContext } from "../auth/session";
+import { forbidden } from "../authz/errors";
+import { adminCan } from "../authz/permissions";
 import { requireSellerRead, type TenantContext } from "../tenant/context";
 import { aggregateBroadcasts } from "./summary";
 
@@ -17,21 +20,34 @@ function kstStart(v: string): Date | null {
   return !Number.isNaN(d.getTime()) && new Date(d.getTime() + 9 * 3_600_000).toISOString().slice(0, 10) === v ? d : null;
 }
 
-export async function broadcastHistory(db: PrismaClient, ctx: TenantContext, q: { from?: string | null; to?: string | null; cursor?: string | null }) {
+type HistoryQuery = { from?: string | null; to?: string | null; cursor?: string | null };
+
+export async function broadcastHistory(db: PrismaClient, ctx: TenantContext, q: HistoryQuery) {
   requireSellerRead(ctx, "BROADCAST_RUN");
+  return listBroadcastHistory(db, ctx.sellerId, q);
+}
+
+// 마스터 관리자 파트너스 상세(MA-012)의 방송 이력. 마스터 관리자 전 역할(platform.read)이 파트너스 하나의 이력을 같은 모양으로 본다. 없는 파트너스는 not_found.
+export async function adminSellerBroadcastHistory(db: PrismaClient, admin: AdminSessionContext, sellerId: string, q: HistoryQuery) {
+  if (!adminCan(admin.admin.role, "platform.read")) throw forbidden();
+  if (!isUuid(sellerId) || !(await db.seller.findUnique({ where: { id: sellerId }, select: { id: true } }))) return { ok: false as const, reason: "not_found" as const };
+  return listBroadcastHistory(db, sellerId, q);
+}
+
+async function listBroadcastHistory(db: PrismaClient, sellerId: string, q: HistoryQuery) {
   const from = q.from ? kstStart(q.from) : null;
   const to = q.to ? kstStart(q.to) : null;
   if ((q.from && !from) || (q.to && !to) || (from && to && from > to)) return { ok: false as const, reason: "invalid_range" as const };
-  const where: Prisma.BroadcastSessionWhereInput = { sellerId: ctx.sellerId };
+  const where: Prisma.BroadcastSessionWhereInput = { sellerId };
   if (from || to) where.startedAt = { ...(from ? { gte: from } : {}), ...(to ? { lt: new Date(to.getTime() + 86_400_000) } : {}) };
-  const at = isUuid(q.cursor) ? await db.broadcastSession.findFirst({ where: { id: q.cursor, sellerId: ctx.sellerId }, select: { id: true, startedAt: true } }) : null;
+  const at = isUuid(q.cursor) ? await db.broadcastSession.findFirst({ where: { id: q.cursor, sellerId }, select: { id: true, startedAt: true } }) : null;
   const rows = await db.broadcastSession.findMany({
     where: at ? { AND: [where, { OR: [{ startedAt: { lt: at.startedAt } }, { startedAt: at.startedAt, id: { lt: at.id } }] }] } : where,
     orderBy: [{ startedAt: "desc" }, { id: "desc" }],
     take: HISTORY_PAGE + 1,
   });
   const page = rows.slice(0, HISTORY_PAGE);
-  const agg = await aggregateBroadcasts(db, ctx.sellerId, page.map((b) => b.id));
+  const agg = await aggregateBroadcasts(db, sellerId, page.map((b) => b.id));
   return {
     ok: true as const,
     value: {
