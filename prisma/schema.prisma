@@ -160,6 +160,10 @@ model Seller {
   wishItems                WishItem[]
   shopNotices              ShopNotice[]
   returnRequests           ReturnRequest[]
+  memberGradePolicy        MemberGradePolicy?
+  memberGradeOverrides     MemberGradeOverride[]
+  memberGradeHistory       MemberGradeHistory[]
+  memberGradeRuns          MemberGradeRun[]
   returnRequestItems       ReturnRequestItem[]
   returnRequestImages      ReturnRequestImage[]
   bankAccount              SellerBankAccount?
@@ -298,6 +302,8 @@ model MemberGrade {
   displayName String
   sortOrder   Int
   systemKey   GradeSystemKey?
+  // 자동 재산정 승급 기준: 최근 6개월 결제 금액이 이 값 이상이면 이 등급 이상(member-grades). 기본 등급은 항상 0.
+  minAmount   Int             @default(0)
   createdAt   DateTime        @default(now()) @db.Timestamptz(3)
 
   seller  Seller        @relation(fields: [sellerId], references: [id])
@@ -366,6 +372,8 @@ model BuyerMember {
   wishItems            WishItem[]
   returnRequests       ReturnRequest[]
   returnRequestImages  ReturnRequestImage[]
+  gradeOverrides       MemberGradeOverride[]
+  gradeHistory         MemberGradeHistory[]
 
   @@unique([sellerId, id])
   @@index([sellerId, gradeId])
@@ -1060,6 +1068,7 @@ model Order {
   productReviews   ProductReview[]
   returnRequests   ReturnRequest[]
   payments         Payment[]
+  refunds          OrderRefund[]
 
   @@unique([sellerId, id])
   @@unique([sellerId, orderNo])
@@ -1087,6 +1096,8 @@ model OrderItem {
   // 이 품목의 재고를 뺀 시각(주문 때 또는 결제 때)과 되돌린 시각. 두 번 빼거나 두 번 되돌리지 않게 품목마다 남긴다.
   stockDeductedAt     DateTime? @db.Timestamptz(3)
   stockRestoredAt     DateTime? @db.Timestamptz(3)
+  // 환불한 수량(부분 환불, queue/service.ts refundOrder). 0 이상 quantity 이하(DB CHECK).
+  refundedQuantity    Int       @default(0)
 
   seller     Seller        @relation(fields: [sellerId], references: [id])
   order      Order         @relation(fields: [sellerId, orderId], references: [sellerId, id])
@@ -1305,11 +1316,13 @@ model RewardBalance {
 // ───────────── 오버레이·감사 로그 ─────────────
 
 model OverlayToken {
-  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId  String    @db.Uuid
-  tokenHash String    @unique
-  createdAt DateTime  @default(now()) @db.Timestamptz(3)
-  revokedAt DateTime? @db.Timestamptz(3)
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId   String    @db.Uuid
+  tokenHash  String    @unique
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  revokedAt  DateTime? @db.Timestamptz(3)
+  // 오버레이 주소로 마지막 접속한 시각(1분에 한 번만 갱신, 마스터 관리자 운영 현황 MA-041·042)
+  lastSeenAt DateTime? @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])
 
@@ -2759,4 +2772,99 @@ model SubscriptionRefund {
 
   @@index([status, createdAt])
   @@index([sellerId, createdAt])
+}
+
+// 환불 1건(부분 환불 포함, queue/service.ts refundOrder). 한 주문에 여러 번 생길 수 있고 seq는 주문 안 순번(1부터).
+// 마지막 환불(isFinal)에서 주문이 환불(REFUNDED)로 바뀐다. 금액은 이 환불분만(주문 합계는 Order.refundAmount 등).
+model OrderRefund {
+  id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId          String       @db.Uuid
+  orderId           String       @db.Uuid
+  seq               Int
+  fault             RefundFault?
+  reason            String
+  // [{ orderItemId, quantity, amount }]: 이번에 돌려받는 품목·수량과 품목 금액(쿠폰 배분 뺀 값, 구매자 사정 개봉 품목은 0)
+  items             Json
+  itemsAmount       Int
+  shippingRefunded  Int
+  refundAmount      Int
+  returnFeeDeducted Int
+  rewardReturn      Int
+  // 주문 적립 회수액과 방식(ledger: 회수 원장, manual: 수동 확인, pending: 아직 기록 전 적립 예정액에서 뺌)
+  rewardRevoke      Int
+  rewardRevokeKind  String?
+  isFinal           Boolean
+  actorType         ActorType
+  actorId           String?      @db.Uuid
+  createdAt         DateTime     @db.Timestamptz(3)
+
+  order Order @relation(fields: [sellerId, orderId], references: [sellerId, id])
+
+  @@unique([sellerId, id])
+  @@unique([orderId, seq])
+  @@index([sellerId, orderId])
+}
+
+// ───────────── 회원 등급 자동 재산정(member-grades, SA-044) ─────────────
+
+enum MemberGradeChangeReason {
+  AUTO_UP
+  AUTO_DOWN
+  MANUAL
+}
+
+// 쇼핑몰별 설정(없으면 꺼짐): 켜면 매월 1일(KST)에 최근 6개월 결제 금액으로 회원 등급을 다시 정한다.
+model MemberGradePolicy {
+  sellerId    String   @id @db.Uuid
+  autoEnabled Boolean  @default(false)
+  updatedAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+}
+
+// 파트너스가 직접 정해 「고정」한 회원: 자동 재산정에서 건너뛴다.
+model MemberGradeOverride {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String   @db.Uuid
+  buyerMemberId String   @unique @db.Uuid
+  staffId       String?  @db.Uuid
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  seller      Seller      @relation(fields: [sellerId], references: [id])
+  buyerMember BuyerMember @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
+
+  @@index([sellerId])
+}
+
+// 등급 변경 기록. 등급 이름은 변경 당시 값을 남긴다(등급을 지우거나 이름을 바꿔도 기록은 그대로).
+model MemberGradeHistory {
+  id            String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String                  @db.Uuid
+  buyerMemberId String                  @db.Uuid
+  fromName      String
+  toName        String
+  reason        MemberGradeChangeReason
+  // 자동 재산정이면 기준이 된 최근 6개월 결제 금액
+  amount        Int?
+  staffId       String?                 @db.Uuid
+  createdAt     DateTime                @default(now()) @db.Timestamptz(3)
+
+  seller      Seller      @relation(fields: [sellerId], references: [id])
+  buyerMember BuyerMember @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
+
+  @@index([sellerId, createdAt(sort: Desc)])
+  @@index([sellerId, buyerMemberId])
+}
+
+// 월 1회 재산정 실행 기록(쇼핑몰 × 월). 같은 달에 두 번 돌지 않게 한다.
+model MemberGradeRun {
+  sellerId  String   @db.Uuid
+  monthKey  String
+  promoted  Int      @default(0)
+  demoted   Int      @default(0)
+  ranAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+
+  @@id([sellerId, monthKey])
 }

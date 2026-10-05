@@ -182,8 +182,12 @@ export async function chatStatus(db: PrismaClient, ctx: TenantContext, now = new
   requireSellerRead(ctx, "BROADCAST_RUN");
   const select = { id: true, videoId: true, broadcastSessionId: true, status: true, chatEnabled: true, liveChatId: true, chatStopReason: true, chatLastPolledAt: true } as const;
   const link =
-    (await db.youtubeLiveLink.findFirst({ where: { sellerId: ctx.sellerId, status: { in: ["UPCOMING", "LIVE"] } }, select })) ??
-    (await db.youtubeLiveLink.findFirst({ where: { sellerId: ctx.sellerId }, orderBy: { createdAt: "desc" }, select }));
+    // 진행 중 연결은 판매자당 1개(부분 유니크 인덱스)지만, 순서를 정해 둔다: LIVE 우선(enum 순서 UPCOMING<LIVE), 최근 연결, id
+    (await db.youtubeLiveLink.findFirst({
+      where: { sellerId: ctx.sellerId, status: { in: ["UPCOMING", "LIVE"] } },
+      orderBy: [{ status: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+      select,
+    })) ?? (await db.youtubeLiveLink.findFirst({ where: { sellerId: ctx.sellerId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select }));
   if (!link) return { link: null, state: null, reason: null, lastCollectedAt: null };
   const day = quotaDay(now);
   const [seller, all] = await Promise.all([

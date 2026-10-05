@@ -68,7 +68,7 @@ describe("구매자 주문 조회", () => {
       status: "PAID",
       totalAmount: 15000,
       shippingFee: 3000,
-      items: [{ productNameSnapshot: "부스터 팩", optionNameSnapshot: "1박스", unitPrice: 6000, quantity: 2 }],
+      items: [{ productNameSnapshot: "부스터 팩", optionNameSnapshot: "1박스", unitPrice: 6000, quantity: 2, refundedQuantity: 0 }],
       shipment: { courier: "CJ", courierName: "CJ대한통운", trackingNumber: "123456789012", status: "IN_TRANSIT" },
     });
     expect(body.orders[0]).toMatchObject({ status: "PENDING_PAYMENT", shipment: null });
@@ -106,7 +106,7 @@ describe("구매자 주문 조회", () => {
     const id = await s.order(s.a.id);
     await db.product.update({ where: { id: s.product.id }, data: { name: "새 이름", price: 9999 } });
     const body = await (await detail(s.seller.slug, id, await cookie(s.seller.id, s.a.loginId))).json();
-    expect(body.items).toEqual([{ productNameSnapshot: "부스터 팩", optionNameSnapshot: "1박스", unitPrice: 6000, quantity: 1 }]);
+    expect(body.items).toEqual([{ productNameSnapshot: "부스터 팩", optionNameSnapshot: "1박스", unitPrice: 6000, quantity: 1, refundedQuantity: 0 }]);
   });
 
   it("잠긴 쇼핑몰이어도 기존 주문 목록·상세는 열리고, 새 주문만 402", async () => {

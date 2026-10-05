@@ -29,7 +29,8 @@ export async function aggregateBroadcasts(db: Db, sellerId: string, ids: string[
         count(o.id)::int AS orders,
         count(o.id) FILTER (WHERE o."paidAt" IS NOT NULL)::int AS paid_orders,
         coalesce(sum(o."totalAmount"::bigint) FILTER (WHERE o."paidAt" IS NOT NULL), 0)
-          - coalesce(sum(coalesce(o."refundAmount", o."totalAmount")::bigint) FILTER (WHERE o."paidAt" IS NOT NULL AND o.status = 'REFUNDED'), 0) AS sales,
+          -- 환불액: 환불된 주문은 돌려준 금액(옛 주문은 결제액), 결제 완료로 남은 부분 환불 주문은 지금까지 돌려준 금액
+          - coalesce(sum((CASE WHEN o.status = 'REFUNDED' THEN coalesce(o."refundAmount", o."totalAmount") ELSE coalesce(o."refundAmount", 0) END)::bigint) FILTER (WHERE o."paidAt" IS NOT NULL), 0) AS sales,
         count(o.id) FILTER (WHERE o.status IN ('CANCELLED', 'REFUNDED'))::int AS cancelled
       FROM b LEFT JOIN "Order" o ON o."sellerId" = ${sellerId}::uuid AND o."createdAt" >= b.s AND o."createdAt" <= b.e
       GROUP BY b.id

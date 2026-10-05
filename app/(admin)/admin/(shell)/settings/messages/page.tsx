@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
 import { PageHead } from "../../../../../../components/admin-ui";
+import { Modal } from "../../../../../../components/admin-ui/Modal";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
@@ -198,10 +199,11 @@ export default function MessagePricesPage() {
         />
       )}
       {confirmSwitch && d && (
-        <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="charging-title">
-          <div className="modal">
+        <Modal labelId="charging-title" busy={busy} onClose={() => setConfirmSwitch(false)}>
+          {(requestClose) => (
+          <>
             <div className="modal-h">
-              <h2 className="t-h2" id="charging-title">
+              <h2 className="modal-t" id="charging-title">
                 {d.chargingEnabled ? "충전을 끄시겠습니까?" : "충전을 켜시겠습니까?"}
               </h2>
               <span className="t-l2 c-alt">
@@ -209,22 +211,23 @@ export default function MessagePricesPage() {
               </span>
             </div>
             {switchError && (
-              <div style={{ padding: "0 24px" }}>
+              <div>
                 <span className="err" role="alert">
                   {switchError}
                 </span>
               </div>
             )}
             <div className="modal-f">
-              <button className="btn btn-out" type="button" onClick={() => setConfirmSwitch(false)} disabled={busy}>
+              <button className="btn btn-out" type="button" onClick={requestClose} disabled={busy}>
                 취소
               </button>
               <button className="btn" type="button" onClick={() => void toggleCharging()} disabled={busy}>
                 {busy ? "처리 중" : d.chargingEnabled ? "충전 끄기" : "충전 켜기"}
               </button>
             </div>
-          </div>
-        </div>
+          </>
+          )}
+        </Modal>
       )}
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
     </>

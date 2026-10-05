@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { adminCan } from "../../../../lib/server/authz/permissions";
 import { textLength } from "../../../../lib/server/text/clean";
 import { ErrorState, LoadingRows, Toast } from "../../../../components/seller/States";
+import { Modal } from "../../../../components/admin-ui/Modal";
 import { adminApi } from "./api";
 import { useAdmin } from "./AdminShell";
 
@@ -45,15 +46,16 @@ function GrantDialog({ sellerId, onClose, onDone }: { sellerId: string; onClose:
   };
 
   return (
-    <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="grant-title">
-      <form className="modal" onSubmit={submit} noValidate>
+    <Modal labelId="grant-title" busy={busy} dirty={amount !== "" || reason !== ""} onClose={onClose}>
+      {(requestClose) => (
+      <form className="col" style={{ gap: 16 }} onSubmit={submit} noValidate>
         <div className="modal-h">
-          <h2 className="t-h2" id="grant-title">
+          <h2 className="modal-t" id="grant-title">
             무상 잔액 지급
           </h2>
           <span className="t-l2 c-alt">이벤트·보상용으로 지급하며 환불 대상이 아닙니다. 유료 잔액보다 나중에 차감됩니다.</span>
         </div>
-        <div className="col" style={{ gap: 14, padding: "0 24px" }}>
+        <div className="col" style={{ gap: 14, }}>
           <div className="fld">
             <label htmlFor="grant-amount">금액</label>
             <div className="row" style={{ gap: 8 }}>
@@ -76,7 +78,7 @@ function GrantDialog({ sellerId, onClose, onDone }: { sellerId: string; onClose:
           )}
         </div>
         <div className="modal-f">
-          <button className="btn btn-out" type="button" onClick={onClose} disabled={busy}>
+          <button className="btn btn-out" type="button" onClick={requestClose} disabled={busy}>
             취소
           </button>
           <button className="btn" type="submit" disabled={!valid || busy}>
@@ -84,7 +86,8 @@ function GrantDialog({ sellerId, onClose, onDone }: { sellerId: string; onClose:
           </button>
         </div>
       </form>
-    </div>
+      )}
+    </Modal>
   );
 }
 
