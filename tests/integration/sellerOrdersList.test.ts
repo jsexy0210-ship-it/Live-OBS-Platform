@@ -74,6 +74,7 @@ describe("판매자 주문 목록 GET /api/seller/orders", () => {
       buyer: { id: s.buyer.id, broadcastNickname: s.buyer.broadcastNickname },
       totalAmount: 5000,
       refundedAmount: 0,
+      rewardReturned: 0,
       refundedQuantity: 0,
       remainingAmount: 5000,
       paymentMethod: order.paymentMethod,
@@ -284,9 +285,13 @@ describe("판매자 주문 목록 GET /api/seller/orders", () => {
     expect(bRows).toHaveLength(1);
     expect(bRows[0].refundRequest).toEqual({ pendingCount: 1 });
     // 필터·커서를 써도 같은 값이 나온다
+    // 발송 전 준비(READY)는 발송 전이다: shipped=false, shipment.state=none, shipped=false 필터에 들어간다
+    expect(rows[ready.id].shipped).toBe(false);
+    expect(rows[transit.id].shipped).toBe(true);
     expect((await list(a.cookie, "?status=PAID&shipped=true")).body.orders.map((o: { id: string; shipment: { state: string } }) => [o.id, o.shipment.state]).sort()).toEqual(
-      [[delivered.id, "delivered"], [ready.id, "none"], [transit.id, "in_transit"]].sort(),
+      [[delivered.id, "delivered"], [transit.id, "in_transit"]].sort(),
     );
+    expect((await list(a.cookie, "?status=PAID&shipped=false")).body.orders.map((o: { id: string }) => o.id)).toContain(ready.id);
   });
 
   it("행에 환불 현황(refundedAmount·refundedQuantity·remainingAmount)을 담는다: 환불 없음·부분 환불·전액 환불·옛 전액 환불, 다른 판매자 주문은 섞이지 않는다", async () => {
@@ -305,6 +310,13 @@ describe("판매자 주문 목록 GET /api/seller/orders", () => {
     // 시험 주문 4: 23,000원 중 5,000원 부분 환불(5개)
     await db.order.update({ where: { id: partial.id }, data: { totalAmount: 23000, refundAmount: 5000 } });
     await item(partial.id, 23, 5);
+    // 부분 환불 5,000원(현금)과 함께 적립금 2,000원을 돌려줌(환불 2건 합산): 남은 금액은 현금·적립금 반환을 모두 뺀다
+    const refundRow = (seq: number, refundAmount: number, rewardReturn: number) =>
+      db.orderRefund.create({
+        data: { sellerId: a.seller.id, orderId: partial.id, seq, reason: "시험", items: [], itemsAmount: refundAmount + rewardReturn, shippingRefunded: 0, refundAmount, returnFeeDeducted: 0, rewardReturn, rewardRevoke: 0, isFinal: false, actorType: "SELLER_USER", createdAt: new Date() },
+      });
+    await refundRow(1, 3000, 1500);
+    await refundRow(2, 2000, 500);
     await db.order.update({ where: { id: full.id }, data: { totalAmount: 10000, refundAmount: 9000 } }); // 반품 배송비 1,000원을 뺀 환불
     await item(full.id, 10, 10);
     await db.order.update({ where: { id: legacy.id }, data: { totalAmount: 7000, refundAmount: null } });
@@ -313,8 +325,8 @@ describe("판매자 주문 목록 GET /api/seller/orders", () => {
     await db.order.update({ where: { id: other.id }, data: { refundAmount: 100 } });
 
     const rows = Object.fromEntries((await list(a.cookie)).body.orders.map((o: { id: string }) => [o.id, o]));
-    expect(rows[none.id]).toMatchObject({ refundedAmount: 0, refundedQuantity: 0, remainingAmount: 10000 });
-    expect(rows[partial.id]).toMatchObject({ status: "PAID", totalAmount: 23000, refundedAmount: 5000, refundedQuantity: 5, remainingAmount: 18000 });
+    expect(rows[none.id]).toMatchObject({ refundedAmount: 0, rewardReturned: 0, refundedQuantity: 0, remainingAmount: 10000 });
+    expect(rows[partial.id]).toMatchObject({ status: "PAID", totalAmount: 23000, refundedAmount: 5000, rewardReturned: 2000, refundedQuantity: 5, remainingAmount: 16000 });
     expect(rows[full.id]).toMatchObject({ status: "REFUNDED", refundedAmount: 9000, refundedQuantity: 10, remainingAmount: 1000 });
     expect(rows[legacy.id]).toMatchObject({ status: "REFUNDED", refundedAmount: 7000, refundedQuantity: 7, remainingAmount: 0 });
     expect(rows[cancelled.id]).toMatchObject({ refundedAmount: 0, refundedQuantity: 0, remainingAmount: 10000 });

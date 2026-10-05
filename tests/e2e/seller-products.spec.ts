@@ -298,7 +298,7 @@ test("권한이 하나도 없는 직원에게는 권한이 필요한 메뉴가 �
   // 로그인 직후에는 막힌 상품 목록이 아니라 열 수 있는 첫 메뉴(상품 리뷰)로 간다(UX-06). 상품 목록은 주소로 들어오면 권한 안내
   await expect(page).toHaveURL(/\/seller\/reviews$/);
   await page.goto("/seller/products");
-  await expect(page.getByText("이 기능은 권한이 필요합니다")).toBeVisible();
+  await expect(page.getByText("이 계정은 이 일을 할 수 없습니다")).toBeVisible();
   const side = page.getByRole("complementary", { name: "파트너스 메뉴" });
   for (const hidden of ["방송 대시보드", "상품", "주문", "입금 확인", "배송", "영수증 · 세금계산서", "적립금", "회원 목록", "구매 제한", "구매자 문의", "오버레이 편집기", "HIT 카드 이력", "방송 이력", "결제(PG) 연결", "주문자 알림", "구독 · 결제", "직원 계정"]) {
     await expect(side.getByText(hidden, { exact: true })).toHaveCount(0);
@@ -307,7 +307,7 @@ test("권한이 하나도 없는 직원에게는 권한이 필요한 메뉴가 �
   // 「쇼핑몰 설정」은 모든 직원이 볼 수 있는 탭(쇼핑몰 정보)이 있어 보인다(MASTER 결정 2026-10-04)
   // 대분류는 상단 메뉴(GNB), 공지·도우미·내 계정은 상단 오른쪽 유틸에 있다
   const gnb = page.getByRole("navigation", { name: "주 메뉴" });
-  await expect(gnb.locator(".gnb-i")).toHaveText(["홈", "고객", "스토어", "설정"]);
+  await expect(gnb.locator(".gnb-i")).toHaveText(["홈", "고객", "마케팅", "설정"]);
   for (const shown of ["공지 · 문의", "도우미", "내 계정"]) {
     await expect(page.locator(".gnb").getByText(shown, { exact: true })).toBeVisible();
   }
@@ -319,7 +319,7 @@ test("상품 권한이 없는 직원은 권한 안내를 본다", async ({ page 
   await submitSellerLogin(page, VIEWER, PASSWORD);
   await expect(page).toHaveURL(/\/seller\/orders$/);
   await page.goto("/seller/products");
-  await expect(page.getByText("이 기능은 권한이 필요합니다")).toBeVisible();
+  await expect(page.getByText("이 계정은 이 일을 할 수 없습니다")).toBeVisible();
   await expect(page.getByRole("link", { name: "상품 등록" })).toHaveCount(0);
   // 권한이 없는 메뉴는 숨기고, 가진 권한(배송)과 대표자 전용 메뉴 구분을 따른다
   const side = page.getByRole("complementary", { name: "파트너스 메뉴" });

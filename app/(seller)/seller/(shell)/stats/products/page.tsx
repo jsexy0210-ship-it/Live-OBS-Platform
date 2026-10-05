@@ -86,7 +86,7 @@ export default function ProductStatsPage() {
           <div className="card sts-scroll">
             <div className="sts-h">
               <span className="fw6">안 팔린 상품</span>
-              <span className="t-c1 c-alt">임시 저장 상품 제외 · {data.unsoldCount > data.unsold.length ? `먼저 등록한 ${data.unsold.length}개 표시` : `${data.unsoldCount}개`}</span>
+              <span className="t-c1 c-alt">임시 저장 상품은 빼고 센 값입니다 · {data.unsoldCount > data.unsold.length ? `먼저 등록한 ${data.unsold.length}개 표시` : `${data.unsoldCount}개`}</span>
             </div>
             {data.unsold.length === 0 ? (
               <div className="st" style={{ boxShadow: "none", minHeight: 120 }}>
@@ -104,7 +104,7 @@ export default function ProductStatsPage() {
                   {data.unsold.map((p) => (
                     <tr key={p.productId}>
                       <td>{p.name}</td>
-                      <td className="c-alt">{STATUS[p.status] ?? p.status}</td>
+                      <td className="c-alt">{STATUS[p.status] ?? "확인 필요"}</td>
                     </tr>
                   ))}
                 </tbody>
