@@ -7,6 +7,7 @@ import type { TenantContext } from "../tenant/context";
 import { Rejected, callYoutube, discoverLive, liveStatusOf } from "./call";
 import { VIDEOS_PER_CALL, type VideoInfo, type YoutubeClient } from "./client";
 import { QUOTA_WARN_RATIO, quotaUsage } from "./quota";
+import { chatDefaultFor } from "./settings";
 
 // 유튜브 방송 상태 동기화(worker.ts가 60초마다, 한 인스턴스만). 방송(BroadcastSession) 시작·종료는 queue/service의
 // startBroadcast·endBroadcast를 시스템 행위자로 부른다(수동 시작·종료는 그대로). 판매자별로 그 판매자 연결만 다룬다.
@@ -103,7 +104,14 @@ export async function syncYoutube(db: PrismaClient, client: YoutubeClient, now =
         const v = await discoverLive(db, client, channel, now);
         if (!v) continue;
         const link = await db.youtubeLiveLink.create({
-          data: { sellerId: channel.sellerId, videoId: v.videoId, title: v.title, scheduledStartAt: v.scheduledStartAt, checkedAt: now },
+          data: {
+            sellerId: channel.sellerId,
+            videoId: v.videoId,
+            title: v.title,
+            scheduledStartAt: v.scheduledStartAt,
+            checkedAt: now,
+            chatEnabled: await chatDefaultFor(db, channel.sellerId),
+          },
         });
         report.discovered++;
         await applyVideoState(db, link, v, now);
