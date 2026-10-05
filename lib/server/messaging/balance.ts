@@ -9,7 +9,9 @@ import { dbNow } from "../billing/subscription";
 // - 같은 요청 키(idempotencyKey)는 되돌린 것을 빼고 한 번만 차감한다(서식 3-3). 알림톡이 실패해 문자로 대신 보내면 알림톡 차감을
 //   되돌린 뒤 같은 키로 문자를 잡아, 최종 성공 채널 한 건만 남는다(서식 3-2).
 // - 잔액 행을 FOR UPDATE로 잡고 판단·기록하므로 동시에 차감해도 잔액을 넘지 않는다. 다른 잠금보다 뒤에 잡는다(메일은 mail_quota 다음).
-// - 충전(CHARGE)·환불(REFUND) 실행은 아직 없다(구독 카드 결제 테스트 모드 연결은 후속, 충전 스위치 기본 꺼짐).
+// - 충전 기능 스위치(PlatformMessageSetting.chargingEnabled, 기본 꺼짐)가 꺼진 동안은 단가와 상관없이 차감하지 않고 charging_disabled
+//   (서식 값·법률 검토 전 기능 꺼짐). 메일은 제공량을 넘으면 보내지 않는다.
+// - 충전은 messaging/charge.ts(구독 카드 결제, 테스트 모드 공급자만). 환불(REFUND) 실행은 아직 없다(수수료율 서식 값 필요).
 
 type Db = PrismaClient | Prisma.TransactionClient;
 type Tx = Prisma.TransactionClient;
@@ -45,14 +47,16 @@ export async function channelPrices(db: Db, now: Date) {
 }
 
 // 잔액 행을 만들고(없으면) 잠근다
-async function lockBalance(tx: Tx, sellerId: string) {
+export async function lockBalance(tx: Tx, sellerId: string) {
   await tx.$executeRaw`INSERT INTO "SellerMessageBalance" ("sellerId", "updatedAt") VALUES (${sellerId}::uuid, now()) ON CONFLICT ("sellerId") DO NOTHING`;
   const [row] = await tx.$queryRaw<{ paidBalance: number; freeBalance: number }[]>`
     SELECT "paidBalance", "freeBalance" FROM "SellerMessageBalance" WHERE "sellerId" = ${sellerId}::uuid FOR UPDATE`;
   return row;
 }
 
-export type DebitResult = { ok: true; ledgerId: string; amount: number; existing: boolean } | { ok: false; reason: "insufficient_balance"; amount: number };
+export type DebitResult =
+  | { ok: true; ledgerId: string; amount: number; existing: boolean }
+  | { ok: false; reason: "insufficient_balance" | "charging_disabled"; amount: number };
 
 // 차감 잡기(트랜잭션 안에서). 같은 키로 살아 있는 차감이 있으면 새로 잡지 않고 그것을 돌려준다(existing).
 export async function reserveDebit(
@@ -72,6 +76,7 @@ export async function reserveDebit(
   const now = input.now ?? (await dbNow(tx));
   const unitPrice = await channelPrice(tx, input.channel, now);
   const amount = unitPrice * quantity;
+  if (!(await messageSettings(tx)).chargingEnabled) return { ok: false, reason: "charging_disabled", amount };
   if (balance.paidBalance + balance.freeBalance < amount) return { ok: false, reason: "insufficient_balance", amount };
   const paid = Math.min(balance.paidBalance, amount);
   const free = amount - paid;

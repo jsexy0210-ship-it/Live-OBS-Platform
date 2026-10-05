@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { FormRow, FormSection, PageHead } from "../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../../components/seller/States";
 import { api, apiUpload } from "../../../../../../components/seller/api";
@@ -51,7 +52,10 @@ export default function ShopInfoPage() {
     setBusy(false);
     if (!r.ok) {
       if (r.status === 401) return;
-      return setError(r.message ?? (r.status === 0 ? "연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오" : r.status === 403 ? "변경 권한이 없습니다" : "로고를 올리지 못했습니다"));
+      return setError(
+        r.message ??
+          (r.status === 0 ? "연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오" : r.status === 403 ? "변경 권한이 없습니다" : "로고를 올리지 못했습니다"),
+      );
     }
     setState({ kind: "ok", logo: r.data.logo });
     setToast("로고를 바꿨습니다 · 쇼핑몰에 바로 반영");
@@ -78,12 +82,7 @@ export default function ShopInfoPage() {
     <>
       <Topbar crumb="설정 › 쇼핑몰 설정 › 쇼핑몰 정보" />
       <main className="main">
-        <div className="ph">
-          <div className="col" style={{ gap: 6 }}>
-            <h1 className="t-t3">쇼핑몰 정보</h1>
-            <span className="t-l2 c-alt">구매자 쇼핑몰 맨 위에 보이는 로고 · 올리면 바로 반영</span>
-          </div>
-        </div>
+        <PageHead title="쇼핑몰 정보" />
         {state.kind === "loading" && (
           <div className="card st" style={{ boxShadow: "none" }} aria-busy="true">
             <span className="spin" />
@@ -107,85 +106,94 @@ export default function ShopInfoPage() {
           </div>
         )}
         {state.kind === "ok" && (
-          <div className="form-grid">
-            <section className="card pad col" style={{ gap: 14 }}>
-              <h2 className="t-hl2">로고</h2>
-              {!editable && (
-                <div className="msg msg-info" role="status">
-                  <span>보기만 할 수 있습니다. 로고 변경은 대표자나 쇼핑몰 설정 권한이 있는 직원에게 요청해 주십시오.</span>
-                </div>
-              )}
-              <div className="row" style={{ gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
-                <div
-                  className={`si-logo${over ? " is-over" : ""}${editable ? " is-editable" : ""}`}
-                  role={editable ? "button" : undefined}
-                  tabIndex={editable ? 0 : -1}
-                  aria-label={editable ? (logo ? "로고 바꾸기" : "로고 올리기") : "로고"}
-                  aria-busy={busy}
-                  data-testid="logo-box"
-                  onClick={pick}
-                  onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), pick())}
-                  onDragOver={(e) => {
-                    if (!editable) return;
-                    e.preventDefault();
-                    setOver(true);
-                  }}
-                  onDragLeave={() => setOver(false)}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    setOver(false);
-                    const f = e.dataTransfer.files?.[0];
-                    if (f && editable && !busy) void upload(f);
-                  }}
-                >
-                  {logo ? <img src={logo.url} alt="쇼핑몰 로고" /> : <span className="si-letter">{letter}</span>}
-                  {editable && !logo && <span className="si-hint t-c1">{busy ? "올리는 중" : "눌러서 올리기"}</span>}
-                </div>
-                <div className="col" style={{ gap: 8, minWidth: 0, flex: 1 }}>
-                  <span className="t-l2">{logo ? `${logo.size} × ${logo.size}px · PNG · ${mb(logo.byteSize)}` : "로고 없음 · 쇼핑몰 이름 첫 글자로 표시"}</span>
-                  <span className="help">8비트 PNG · 2MB 이하 · 정사각형 512 × 512px 이상(1440px까지) · 끌어다 놓아도 됨</span>
-                  {editable && (
-                    <div className="row" style={{ gap: 6 }}>
-                      <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={pick}>
-                        {busy ? "올리는 중" : logo ? "바꾸기" : "올리기"}
-                      </button>
-                      {logo && (
-                        <button className="btn btn-sm btn-text" type="button" style={{ color: "var(--neg-text)" }} disabled={busy} onClick={() => void remove()}>
-                          지우기
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  {error && (
-                    <span className="err" role="alert">
-                      {error}
+          <>
+            {!editable && (
+              <div className="msg msg-info" role="status">
+                <span>보기만 할 수 있습니다. 로고 변경은 대표자나 쇼핑몰 설정 권한이 있는 직원에게 요청해 주십시오.</span>
+              </div>
+            )}
+            <FormSection title="로고">
+              <FormRow label="로고" help="구매자 쇼핑몰 맨 위에 보이는 로고 · 올리면 바로 반영">
+                <div className="row" style={{ gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+                  <div
+                    className={`si-logo${over ? " is-over" : ""}${editable ? " is-editable" : ""}`}
+                    role={editable ? "button" : undefined}
+                    tabIndex={editable ? 0 : -1}
+                    aria-label={editable ? (logo ? "로고 바꾸기" : "로고 올리기") : "로고"}
+                    aria-busy={busy}
+                    data-testid="logo-box"
+                    onClick={pick}
+                    onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), pick())}
+                    onDragOver={(e) => {
+                      if (!editable) return;
+                      e.preventDefault();
+                      setOver(true);
+                    }}
+                    onDragLeave={() => setOver(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setOver(false);
+                      const f = e.dataTransfer.files?.[0];
+                      if (f && editable && !busy) void upload(f);
+                    }}
+                  >
+                    {logo ? <img src={logo.url} alt="쇼핑몰 로고" /> : <span className="si-letter">{letter}</span>}
+                    {editable && !logo && <span className="si-hint t-c1">{busy ? "올리는 중" : "눌러서 올리기"}</span>}
+                  </div>
+                  <div className="col" style={{ gap: 8, minWidth: 0, flex: "1 1 200px" }}>
+                    <span className="t-l2">
+                      {logo ? `${logo.size} × ${logo.size}px · PNG · ${mb(logo.byteSize)}` : "로고 없음 · 쇼핑몰 이름 첫 글자로 표시"}
                     </span>
-                  )}
+                    <span className="help">8비트 PNG · 2MB 이하 · 정사각형 512 × 512px 이상(1440px까지) · 끌어다 놓아도 됨</span>
+                    {editable && (
+                      <div className="row" style={{ gap: 6 }}>
+                        <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={pick}>
+                          {busy ? "올리는 중" : logo ? "바꾸기" : "올리기"}
+                        </button>
+                        {logo && (
+                          <button
+                            className="btn btn-sm btn-text"
+                            type="button"
+                            style={{ color: "var(--neg-text)" }}
+                            disabled={busy}
+                            onClick={() => void remove()}
+                          >
+                            지우기
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {error && (
+                      <span className="err" role="alert">
+                        {error}
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    ref={input}
+                    type="file"
+                    accept="image/png"
+                    hidden
+                    aria-label="로고 파일"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) void upload(f);
+                    }}
+                  />
                 </div>
-                <input
-                  ref={input}
-                  type="file"
-                  accept="image/png"
-                  hidden
-                  aria-label="로고 파일"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) void upload(f);
-                  }}
-                />
-              </div>
-            </section>
-            <aside className="col aside-sticky" style={{ gap: 16 }}>
-              <div className="card pad col" style={{ gap: 10 }}>
-                <span className="t-hl2">구매자 화면 미리보기</span>
-                <div className="si-preview" data-testid="logo-preview">
-                  {logo ? <img src={logo.url} alt="" /> : <span className="si-mini-letter">{letter}</span>}
-                  <b>{me.shop.name}</b>
-                </div>
-                <span className="t-c1 c-alt">쇼핑몰 모든 화면 맨 위에 이렇게 표시됩니다</span>
-              </div>
-            </aside>
-          </div>
+              </FormRow>
+            </FormSection>
+            <div style={{ marginTop: 32 }}>
+              <FormSection title="구매자 화면 미리보기">
+                <FormRow label="쇼핑몰 맨 위" help="쇼핑몰 모든 화면 맨 위에 이렇게 표시됩니다">
+                  <div className="si-preview" data-testid="logo-preview">
+                    {logo ? <img src={logo.url} alt="" /> : <span className="si-mini-letter">{letter}</span>}
+                    <b>{me.shop.name}</b>
+                  </div>
+                </FormRow>
+              </FormSection>
+            </div>
+          </>
         )}
       </main>
       {toast && <Toast text={toast} onDone={() => setToast(null)} />}

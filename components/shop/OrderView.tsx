@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import OrderPay from "./OrderPay";
+import ReturnSection from "./returns/ReturnSection";
 import { call } from "./reviewShared";
+import { trackingUrl } from "./trackingLink";
 import "./Cart.css";
 import "./Checkout.css";
 
@@ -18,11 +21,19 @@ type Order = {
   paymentDueAt: string | null;
   couponRedemption: { discountAmount: number; restoredAt: string | null; coupon: { name: string } } | null;
   items: { productNameSnapshot: string; optionNameSnapshot: string; unitPrice: number; quantity: number }[];
+  shipment: { courier: string; courierName: string; trackingNumber: string; status: "READY" | "IN_TRANSIT" | "DELIVERED"; shippedAt: string; deliveredAt: string | null } | null;
   shippingAddress: { recipientName: string; phone: string; zipCode: string; address1: string; address2: string | null; memo: string | null } | null;
 };
 type View = { kind: "loading" } | { kind: "login" } | { kind: "missing" } | { kind: "error" } | { kind: "ok"; order: Order };
 
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
+const SHIP = { READY: "배송 준비 중", IN_TRANSIT: "배송 중", DELIVERED: "배송 완료" } as const;
+const PAY_NOTE: Record<string, { ok: boolean; text: string }> = {
+  paid: { ok: true, text: "결제가 끝났어요." },
+  failed: { ok: false, text: "결제하지 못했어요. 다시 시도해 주세요." },
+  pending: { ok: true, text: "결제를 확인하고 있어요. 잠시 뒤 주문 상태가 바뀌어요." },
+  cancelled: { ok: false, text: "주문이 이미 취소돼 결제 금액을 돌려 드렸어요." },
+};
 const STATUS = { PENDING_PAYMENT: "결제 대기", PAID: "결제 완료", CANCELLED: "취소됨", REFUNDED: "환불됨" } as const;
 // KST 날짜·시각(서버 값은 UTC ISO)
 const kst = (iso: string) => {
@@ -32,7 +43,9 @@ const kst = (iso: string) => {
 
 export default function OrderView({ slug, orderId }: { slug: string; orderId: string }) {
   const base = `/shop/${encodeURIComponent(slug)}`;
-  const done = useSearchParams().get("done") === "1";
+  const sp = useSearchParams();
+  const done = sp.get("done") === "1";
+  const payNote = PAY_NOTE[sp.get("payment") ?? ""];
   const [view, setView] = useState<View>({ kind: "loading" });
 
   useEffect(() => {
@@ -88,7 +101,12 @@ export default function OrderView({ slug, orderId }: { slug: string; orderId: st
     <div className="co-main">
       {done && (
         <p className="cart-msg" role="status">
-          <b>주문이 접수됐어요.</b> {o.status === "PENDING_PAYMENT" ? "지금은 결제 대기 상태예요. 결제 방법은 곧 열려요." : ""}
+          <b>주문이 접수됐어요.</b> {o.status === "PENDING_PAYMENT" ? "아래에서 결제 수단을 골라 결제해 주세요." : ""}
+        </p>
+      )}
+      {payNote && (
+        <p className={payNote.ok ? "cart-msg" : "cart-msg is-err"} role="status">
+          {payNote.text}
         </p>
       )}
       <section className="co-box" aria-labelledby="od-info">
@@ -114,6 +132,7 @@ export default function OrderView({ slug, orderId }: { slug: string; orderId: st
           )}
         </dl>
       </section>
+      {o.status === "PENDING_PAYMENT" && <OrderPay slug={slug} orderId={o.id} amount={o.totalAmount} dueAt={o.paymentDueAt} />}
       <section className="co-box" aria-labelledby="od-items">
         <h2 id="od-items">
           주문 상품 <span>{o.items.length}개</span>
@@ -132,6 +151,30 @@ export default function OrderView({ slug, orderId }: { slug: string; orderId: st
           ))}
         </ul>
       </section>
+      {o.shipment && (
+        <section className="co-box" aria-labelledby="od-ship">
+          <h2 id="od-ship">배송</h2>
+          <dl className="od-dl">
+            <div>
+              <dt>배송 상태</dt>
+              <dd>{SHIP[o.shipment.status]}</dd>
+            </div>
+            <div>
+              <dt>택배사</dt>
+              <dd>{o.shipment.courierName}</dd>
+            </div>
+            <div>
+              <dt>송장번호</dt>
+              <dd>{o.shipment.trackingNumber}</dd>
+            </div>
+          </dl>
+          {trackingUrl(o.shipment.courier, o.shipment.trackingNumber) && (
+            <a className="btn btn-sm btn-out" href={trackingUrl(o.shipment.courier, o.shipment.trackingNumber)!} target="_blank" rel="noopener noreferrer">
+              배송 조회
+            </a>
+          )}
+        </section>
+      )}
       {o.shippingAddress && (
         <section className="co-box" aria-labelledby="od-addr">
           <h2 id="od-addr">배송지</h2>
@@ -166,6 +209,7 @@ export default function OrderView({ slug, orderId }: { slug: string; orderId: st
           <b>{won(o.totalAmount)}</b>
         </div>
       </section>
+      {(o.status === "PAID" || o.status === "REFUNDED") && <ReturnSection slug={slug} orderId={o.id} />}
       <div className="cart-tools">
         <Link className="btn btn-sm btn-out" href={`${base}/products`}>
           계속 쇼핑하기

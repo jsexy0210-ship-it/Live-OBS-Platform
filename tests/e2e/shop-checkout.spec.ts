@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { deleteBuyerOrdersSince, resetCartInDb } from "./cartDb";
+import { deleteBuyerOrdersSince, orderNicknameInDb, resetCartInDb } from "./cartDb";
 
 // SH-005 주문서 · SH-007 주문 완료(운영 빌드 + 데모 시드). 데모 구매자(demo-buyer1@example.com)로 장바구니 → 주문서 → 주문(결제 대기)까지.
 // 결제(PG·무통장)·적립금·배송비 미리보기는 서버 API가 아직 없어 이 시험 범위 밖이다. 시험이 만든 주문과 장바구니는 끝에 지운다.
@@ -44,7 +44,7 @@ test("장바구니 → 주문서(검사·동의) → 주문(결제 대기) → �
   await expect(page.getByRole("region", { name: /주문 상품/ }).getByText("스타라이트 부스터 박스")).toBeVisible();
   await expect(page.getByRole("region", { name: /주문 상품/ })).not.toContainText("드래곤 소울 부스터"); // 품절 줄은 빠진다
   const subtotal = ((await (await page.request.get(`/api/shop/${SLUG}/cart`)).json()) as { items: { status: string; lineTotal: number }[] }).items.filter((l) => l.status === "available").reduce((s, l) => s + l.lineTotal, 0);
-  await expect(page.getByRole("complementary", { name: "주문 금액" }).locator(".cart-row b")).toHaveText(`${subtotal.toLocaleString("ko-KR")}원`);
+  await expect(page.getByRole("complementary", { name: "주문 금액" }).locator(".cart-row b").first()).toHaveText(`${subtotal.toLocaleString("ko-KR")}원`);
   await page.screenshot({ path: "tests/e2e/screenshots/SH-005-checkout-1440.png", fullPage: true });
 
   // 빈 칸·동의 안 함이면 오류가 보이고 주문은 만들어지지 않는다
@@ -60,11 +60,28 @@ test("장바구니 → 주문서(검사·동의) → 주문(결제 대기) → �
   await page.getByLabel("우편번호").fill("06234");
   await page.getByLabel("주소", { exact: true }).fill("서울 강남구 테스트로 12");
   await page.getByLabel("상세 주소").fill("101동 1001호");
+  // 배송비 미리보기: 우편번호·주소가 정해지면 서버 계산값(상품 금액 + 배송비)이 보이고, 제주·도서산간이면 표시가 붙는다
+  const sum = page.getByRole("complementary", { name: "주문 금액" });
+  await expect(sum.locator(".cart-row", { hasText: "배송비" })).toContainText("원");
+  const fee = Number((await sum.locator(".cart-row", { hasText: "배송비" }).innerText()).replace(/[^0-9]/g, "").replace(/^$/, "0"));
+  await expect(sum.locator(".cart-row", { hasText: "결제 예정 금액" }).locator("b")).toHaveText(`${(subtotal + fee).toLocaleString("ko-KR")}원`);
+  await page.getByLabel("우편번호").fill("63000");
+  await page.getByLabel("주소", { exact: true }).fill("제주특별자치도 제주시 테스트로 1");
+  await expect(sum.locator(".cart-row", { hasText: "배송비" })).toContainText("제주·도서산간 포함");
+  await page.getByLabel("우편번호").fill("06234");
+  await page.getByLabel("주소", { exact: true }).fill("서울 강남구 테스트로 12");
+  await expect(sum.locator(".cart-row", { hasText: "배송비" })).not.toContainText("제주");
+  // 방송 닉네임: 기본값은 회원 방송 닉네임, 이 주문만 바꿀 수 있다(회원 닉네임은 그대로)
+  const memberNick = ((await page.locator(".shop-util-who").innerText()) as string).replace(/ 님$/, "");
+  await expect(page.getByLabel("이 주문의 닉네임")).toHaveValue(memberNick);
+  await page.getByLabel("이 주문의 닉네임").fill("시험닉");
   await page.getByRole("checkbox", { name: /\(필수\)/ }).check();
   await page.getByRole("button", { name: "주문하기" }).click();
 
   await expect(page).toHaveURL(/\/orders\/[0-9a-f-]+\?done=1$/);
   await expect(page.getByRole("heading", { name: "주문 완료", level: 1 })).toBeVisible();
+  expect(await orderNicknameInDb(page.url().match(/\/orders\/([0-9a-f-]+)\?done=1/)![1])).toBe("시험닉");
+  await expect(page.locator(".shop-util-who")).toHaveText(`${memberNick} 님`); // 회원 닉네임은 그대로
   await expect(page.locator(".shop-hics .shop-badge")).toHaveText("1"); // 품절 줄 하나만 남아 머리 배지도 따라간다
   await expect(page.getByRole("status")).toContainText("주문이 접수됐어요");
   await expect(page.getByText("결제 대기").first()).toBeVisible();

@@ -61,3 +61,26 @@ export async function resetWishlistInDb(slug: string, loginId: string, productNa
     await db.$disconnect();
   }
 }
+
+// 상품 상세 e2e: 옵션 재고를 바꾸고 이전 값을 돌려준다(옵션 일부 품절 시험용)
+export async function setOptionStockInDb(slug: string, productName: string, optionName: string, stock: number) {
+  const db = open();
+  try {
+    const seller = await db.seller.findUniqueOrThrow({ where: { slug } });
+    const option = await db.productOption.findFirstOrThrow({ where: { sellerId: seller.id, deletedAt: null, name: optionName, product: { name: productName, deletedAt: null } } });
+    await db.productOption.update({ where: { id: option.id }, data: { stock } });
+    return option.stock;
+  } finally {
+    await db.$disconnect();
+  }
+}
+
+// 주문 닉네임 e2e: 주문에 남은 방송 닉네임 스냅숏을 읽는다
+export async function orderNicknameInDb(orderId: string) {
+  const db = open();
+  try {
+    return (await db.order.findFirstOrThrow({ where: { id: orderId }, select: { broadcastNicknameSnapshot: true } })).broadcastNicknameSnapshot;
+  } finally {
+    await db.$disconnect();
+  }
+}

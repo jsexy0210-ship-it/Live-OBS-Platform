@@ -1,5 +1,8 @@
 import type { PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
+import { MAX_NICKNAME_LENGTH } from "../buyers/signup";
+import { cleanText } from "../text/clean";
+import { parseRewardUse, rewardUseLimit, useRewardForOrder, type RewardUseFailure } from "../payments/rewardUse";
 import { recordOrderAddress } from "../buyers/addresses";
 import { eventOf, orderUnitPrice } from "../products/event";
 import { sellerHasFeature } from "../billing/features";
@@ -34,6 +37,8 @@ export type CreateOrderInput = {
   shippingAddress: unknown;
   saveAddress?: unknown;
   couponId?: unknown;
+  // 이 주문에만 쓰는 방송 닉네임(선택, 1~20자). 비우면 회원 방송 닉네임. 회원 닉네임 자체는 바꾸지 않는다(MASTER 결정 2026-10-05).
+  orderNickname?: unknown;
   meta?: { ip?: string | null; userAgent?: string | null };
 };
 
@@ -45,7 +50,9 @@ export type CreateOrderFailure =
   | "product_unavailable" // 판매 중이 아님·없는 옵션·다른 쇼핑몰 옵션
   | "out_of_stock"
   | "reward_use_not_supported"
+  | RewardUseFailure // 적립금 사용(payments/rewardUse.ts): 금액 형식·판매자 사용 불가·한도 초과·잔액 부족
   | "invalid_shipping_address"
+  | "invalid_order_nickname" // 주문 닉네임이 1~20자가 아니거나 쓸 수 없는 글자
   | "invalid_amount" // 단가 1원 미만(음수 추가금 등)·합계가 정수 범위를 넘음
   | "purchase_restricted" // 미입금 자동 취소가 쌓여 주문이 막힌 구매자(overdue.ts)
   | OrderCouponFailure // 쿠폰을 쓸 수 없음·적용 상품 없음·최소 주문 금액 미달(shop-coupons)
@@ -73,6 +80,14 @@ function parseItems(raw: unknown): Line[] | null {
   return lines;
 }
 
+// 주문 닉네임: 없거나 빈 값(공백만 포함)이면 null(회원 닉네임 사용), 가입 닉네임과 같은 글자 검사(앞뒤 공백 제거·제어문자 등 금지, 20자)를 통과하면 그 값, 아니면 false.
+export function parseOrderNickname(raw: unknown): string | null | false {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== "string") return false;
+  if (raw.trim() === "") return null;
+  return cleanText(raw, MAX_NICKNAME_LENGTH) ?? false;
+}
+
 export async function createOrder(db: PrismaClient, input: CreateOrderInput): Promise<CreateOrderResult> {
   // 판매자: 운영 중이고 잠기지 않았고 스토어 운영 기능 권한이 있어야 한다(이용 판단은 DB 시계, ARCHITECTURE 4.8.0)
   const seller = await db.seller.findUnique({ where: { id: input.sellerId }, select: { status: true } });
@@ -86,16 +101,21 @@ export async function createOrder(db: PrismaClient, input: CreateOrderInput): Pr
   }
   if (input.consent?.agreed !== true) return { ok: false, reason: "consent_required" };
   if (input.consent.noticeVersion !== OPENED_NO_REFUND_CONSENT.version) return { ok: false, reason: "consent_outdated" };
-  if (input.rewardUseAmount !== undefined && input.rewardUseAmount !== 0) return { ok: false, reason: "reward_use_not_supported" };
+  // 적립금 사용(대표님 결정 2026-10-05): 1,000원 이상 10원 단위. 판매자 사용 가능 여부·한도·잔액은 주문 잠금 아래에서 본다.
+  const rewardUse = parseRewardUse(input.rewardUseAmount);
+  if (rewardUse === null) return { ok: false, reason: "invalid_reward_use" };
   const lines = parseItems(input.items);
   if (!lines) return { ok: false, reason: "invalid_items" };
   const address = parseShippingAddress(input.shippingAddress);
   if (!address) return { ok: false, reason: "invalid_shipping_address" };
   if (input.saveAddress !== undefined && typeof input.saveAddress !== "boolean") return { ok: false, reason: "invalid_shipping_address" };
+  const orderNickname = parseOrderNickname(input.orderNickname);
+  if (orderNickname === false) return { ok: false, reason: "invalid_order_nickname" };
 
   try {
-    return await createInTransaction(db, input, lines, address);
+    return await createInTransaction(db, input, lines, address, orderNickname, rewardUse);
   } catch (e) {
+    if (e instanceof RewardUseRejected) return { ok: false, reason: e.reason };
     if (e instanceof OutOfStockAtOrder) return { ok: false, reason: "out_of_stock" };
     if (e instanceof CouponTaken) return { ok: false, reason: "coupon_unavailable" };
     throw e;
@@ -103,12 +123,19 @@ export async function createOrder(db: PrismaClient, input: CreateOrderInput): Pr
 }
 
 class OutOfStockAtOrder extends Error {}
+class RewardUseRejected extends Error {
+  constructor(readonly reason: RewardUseFailure) {
+    super(reason);
+  }
+}
 
 async function createInTransaction(
   db: PrismaClient,
   input: CreateOrderInput,
   lines: Line[],
   address: NonNullable<ReturnType<typeof parseShippingAddress>>,
+  orderNickname: string | null,
+  rewardUse: number,
 ): Promise<CreateOrderResult> {
   return db.$transaction(async (tx) => {
     // 같은 판매자의 주문 번호를 한 줄로 매긴다
@@ -141,7 +168,7 @@ async function createInTransaction(
       if (o.stock < l.quantity) return { ok: false as const, reason: "out_of_stock" as const };
     }
 
-    // 금액은 서버 값으로만: 단가 = 상품 가격 + 옵션 추가금(이벤트 할인 기간이면 할인 뒤 단가), 합계 = 단가 × 수량 + 배송비. 적립금 사용 없음.
+    // 금액은 서버 값으로만: 단가 = 상품 가격 + 옵션 추가금(이벤트 할인 기간이면 할인 뒤 단가), 합계 = 단가 × 수량 + 배송비 − 쿠폰 − 적립금.
     // 단가가 1원 미만이거나 합계가 저장 범위(INT4)를 넘으면 주문을 만들지 않는다(500 대신 invalid_amount).
     const priced = lines.map((l) => {
       const o = byId.get(l.optionId)!;
@@ -164,7 +191,9 @@ async function createInTransaction(
       shippingFee,
     });
     if (!coupon.ok) return { ok: false as const, reason: coupon.reason };
-    const totalAmount = itemsSubtotal + shippingFee - (coupon.applied?.discountAmount ?? 0);
+    const couponDiscount = coupon.applied?.discountAmount ?? 0;
+    const rewardLimit = rewardUseLimit({ itemsSubtotal, shippingFee, couponDiscount, couponIsShipping: coupon.applied?.benefit === "FREE_SHIPPING" });
+    const totalAmount = itemsSubtotal + shippingFee - couponDiscount - rewardUse;
     if (!Number.isSafeInteger(totalAmount) || totalAmount > INT4_MAX) return { ok: false as const, reason: "invalid_amount" as const };
 
     // 입금 기한: 주문 시각 + 판매자 설정(기본 사용·10일). 자동 취소를 끈 쇼핑몰은 기한을 두지 않는다. 이미 만든 주문은 설정을 바꿔도 그대로다.
@@ -178,16 +207,19 @@ async function createInTransaction(
         orderNo,
         buyerMemberId: member.id,
         status: "PENDING_PAYMENT",
-        broadcastNicknameSnapshot: member.broadcastNickname,
+        broadcastNicknameSnapshot: orderNickname ?? member.broadcastNickname,
         totalAmount,
         shippingFee,
         returnFeeSnapshot: policy.returnFee,
         fulfillmentType: "IMMEDIATE",
-        rewardUsedAmount: 0,
+        rewardUsedAmount: 0, // 적립금을 쓰면 아래 useRewardForOrder가 잔액을 뺀 뒤 기록한다
         createdAt: now,
         paymentDueAt,
       },
     });
+    // 적립금 사용: 주문 잠금 → 회원(위 FOR SHARE) → 잔액 행 순서. 안 되면 이 트랜잭션 전체를 되돌린다(주문 없음).
+    const rewardFailure = await useRewardForOrder(tx, { sellerId: input.sellerId, buyerMemberId: member.id, orderId: order.id, amount: rewardUse, limit: rewardLimit, now });
+    if (rewardFailure) throw new RewardUseRejected(rewardFailure);
     if (coupon.applied) await useOrderCoupon(tx, { sellerId: input.sellerId, buyerMemberId: member.id, orderId: order.id, applied: coupon.applied, now });
     await tx.orderShippingAddress.create({ data: { sellerId: input.sellerId, orderId: order.id, ...address, isRemote } });
     await recordOrderAddress(tx, { sellerId: input.sellerId, buyerMemberId: member.id }, address, input.saveAddress !== false, now);

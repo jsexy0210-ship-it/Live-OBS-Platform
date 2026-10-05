@@ -7,11 +7,13 @@ import { earnQuote } from "../rewards/earn";
 import { createPendingRewardLedger } from "../rewards/ledger";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { restoreOrderStock } from "../products/stock";
+import { closeReturnsOnRefund } from "../shop-returns/hooks";
 import { checkTransition, isCompletePermutation, isValidTimer, type QueueAction, type QueueRejection } from "./rules";
 import { refreshOrderRetention } from "../buyers/legalHold";
 import { chargedShippingFee, itemCouponDiscount, restoreOrderCoupon } from "../shop-coupons/service";
 import { revokeReviewRewardsForOrder, type ReviewRewardRevoke } from "../product-reviews/service";
 import { requestPaymentCancel } from "../payments/service";
+import { returnRewardForOrder, rewardReturnAmount } from "../payments/rewardUse";
 
 type Tx = Prisma.TransactionClient;
 
@@ -453,6 +455,8 @@ export async function cancelPendingOrderInTx(
   const restocked = await restoreOrderStock(tx, { sellerId: o.sellerId, orderId: o.orderId, reason: "CANCEL", now: o.now, actor: { actorType: o.actorType, actorId: o.actorId } });
   // 쓴 쿠폰은 전체 취소라 되돌린다(shop-coupons)
   await restoreOrderCoupon(tx, { sellerId: o.sellerId, orderId: o.orderId, now: o.now, reason: o.reason });
+  // 쓴 적립금은 전부 돌려준다(payments/rewardUse.ts, 대표님 결정 2026-10-05)
+  await returnRewardForOrder(tx, { sellerId: o.sellerId, orderId: o.orderId, now: o.now, reason: o.reason });
   await writeAudit(tx, {
     actorType: o.actorType,
     actorId: o.actorId,
@@ -491,7 +495,8 @@ export type RefundOutcome = {
 //   처음 배송비가 0원(무료 배송)이었으면 왕복(편도 × 2)으로 뺀다. 돌려줄 상품이 없으면 빼지 않는다. 0원 아래로 내려가지 않는다.
 // - 개봉한 상품은 구매자 사정이면 환불하지 않는다(OPENED_NO_REFUND 동의). 판매자 사정이면 판매자가 확인(confirmOpened)하고 돌려준다.
 // - 돈으로 돌려주는 환불액은 실제 결제액(totalAmount, 적립금 사용액을 이미 뺀 금액)을 넘지 않는다.
-//   쓴 적립금을 되돌리는 규칙은 아직 없다(PRODUCT_SCOPE 「적립금 사용(결제 차감) 방식」 미정). 지금은 주문에서 적립금을 쓸 수 없다.
+// - 쓴 적립금(rewardUsed)은 돌아오는 상품 금액 비율만큼 적립금으로 돌려주고(payments/rewardUse.ts rewardReturnAmount, 10원 단위 내림),
+//   그만큼 현금에서 뺀다: 현금 + 적립금 반환 = 돌아오는 상품(+배송비) − 반품 배송비(대표님 결정 2026-10-05, 검수 #346).
 export function computeRefund(input: {
   // couponDiscount: 그 품목에 배분된 쿠폰 할인(shop-coupons). 품목 환불액 = 단가 × 수량 − 배분액
   items: { unitPrice: number; quantity: number; opened: boolean; couponDiscount?: number }[];
@@ -500,14 +505,18 @@ export function computeRefund(input: {
   shipped: boolean;
   fault: RefundFault | null;
   returnFee: number;
-}): { refundAmount: number; returnFeeDeducted: number } {
+  rewardUsed?: number;
+}): { refundAmount: number; returnFeeDeducted: number; rewardReturn: number } {
   const buyerFault = input.fault === "BUYER";
-  const items = input.items.reduce((sum, i) => sum + (buyerFault && i.opened ? 0 : i.unitPrice * i.quantity - (i.couponDiscount ?? 0)), 0);
+  const value = (i: (typeof input.items)[number]) => i.unitPrice * i.quantity - (i.couponDiscount ?? 0);
+  const items = input.items.reduce((sum, i) => sum + (buyerFault && i.opened ? 0 : value(i)), 0);
+  const ordered = input.items.reduce((sum, i) => sum + value(i), 0);
+  const rewardReturn = rewardReturnAmount({ rewardUsedAmount: input.rewardUsed ?? 0, items: { refunded: items, ordered } });
   const shipping = !input.shipped || input.fault === "SELLER" ? input.shippingFee : 0;
   const fee = input.shipped && buyerFault && items > 0 ? input.returnFee * (input.shippingFee === 0 ? 2 : 1) : 0;
-  const gross = Math.min(items + shipping, input.totalAmount);
-  const returnFeeDeducted = Math.min(fee, Math.max(0, gross));
-  return { refundAmount: Math.max(0, gross - returnFeeDeducted), returnFeeDeducted };
+  const gross = Math.max(0, Math.min(items + shipping - rewardReturn, input.totalAmount));
+  const returnFeeDeducted = Math.min(fee, gross);
+  return { refundAmount: gross - returnFeeDeducted, returnFeeDeducted, rewardReturn };
 }
 
 // 개봉을 시작했거나 마친 주문대기 품목(환불·재고 복구에서 「개봉한 상품」)
@@ -520,7 +529,8 @@ export type RefundPreview = {
   chargedShippingFee: number;
   openedItems: { orderItemId: string; amount: number }[];
   // 사유 주체별 환불액. blocked: 이 사유 주체로는 환불할 수 없다(refundOrder가 opened_items_unshipped로 막는다)
-  byFault: Record<RefundFault, { refundAmount: number; returnFeeDeducted: number; blocked: boolean }>;
+  // rewardReturn: 함께 돌려주는 적립금(현금 환불액에는 들어 있지 않음)
+  byFault: Record<RefundFault, { refundAmount: number; returnFeeDeducted: number; rewardReturn: number; blocked: boolean }>;
 };
 
 // 환불 미리보기(계산만, 상태 변경 없음). refundOrder와 같은 개봉 판정·반품 배송비·computeRefund를 쓴다.
@@ -543,7 +553,7 @@ export async function previewRefund(db: PrismaClient, ctx: TenantContext, orderI
   const returnFee = order.returnFeeSnapshot ?? (await getShippingPolicy(db, ctx.sellerId)).returnFee;
   const byFault = {} as RefundPreview["byFault"];
   for (const fault of ["BUYER", "SELLER"] as const) {
-    const r = computeRefund({ items, shippingFee: chargedShippingFee(order), totalAmount: order.totalAmount, shipped, fault, returnFee });
+    const r = computeRefund({ items, shippingFee: chargedShippingFee(order), totalAmount: order.totalAmount, shipped, fault, returnFee, rewardUsed: order.rewardUsedAmount });
     byFault[fault] = { ...r, blocked: fault === "BUYER" && !shipped && items.some((i) => i.opened) };
   }
   return {
@@ -599,7 +609,7 @@ export async function refundOrder(
     // (부분 환불 구조가 생길 때까지 임시, MASTER 결정 2026-10-03). 판매자 사정은 전액 환불.
     if (!shippedBeforeRefund && openedItemCount > 0 && refundFault === "BUYER") throw new Rejected("opened_items_unshipped");
     const returnFee = order.returnFeeSnapshot ?? (await getShippingPolicy(tx, ctx.sellerId)).returnFee;
-    const { refundAmount, returnFeeDeducted } = computeRefund({
+    const { refundAmount, returnFeeDeducted, rewardReturn } = computeRefund({
       items: order.items.map((i) => ({
         unitPrice: i.unitPrice,
         quantity: i.quantity,
@@ -612,12 +622,15 @@ export async function refundOrder(
       shipped: shippedBeforeRefund,
       fault: refundFault,
       returnFee,
+      rewardUsed: order.rewardUsedAmount,
     });
     // 화면에서 확인받은 금액과 다르면(그사이 발송·개봉 등) 아무것도 바꾸지 않고 되돌린다
     if (opts.expectedRefundAmount !== undefined && opts.expectedRefundAmount !== refundAmount) throw new Rejected("refund_amount_changed");
     await tx.order.update({ where: { id: orderId }, data: { refundAmount, refundFault, returnFeeDeducted } });
     // 카드 결제 주문이면 환불액만큼 PG 취소 요청을 같은 트랜잭션에 남긴다(PG 호출은 커밋 뒤, payments/service.ts)
     await requestPaymentCancel(tx, { sellerId: ctx.sellerId, orderId, amount: refundAmount, reason, idempotencyKey: `refund:${orderId}` });
+    // 쓴 적립금 반환(payments/rewardUse.ts): computeRefund가 정한 금액(현금 환불액에서 이미 뺀 몫)
+    await returnRewardForOrder(tx, { sellerId: ctx.sellerId, orderId, amount: rewardReturn, now, reason });
     // 결제 금액 전부를 돌려주면 전체 취소로 보고 쓴 쿠폰을 되돌린다. 일부만 돌려주면 되돌리지 않는다(MASTER 2026-10-04).
     // 개봉한 품목을 구매자 사정으로 남기는 환불은 금액이 결제 금액과 같아도 전체 취소가 아니다(Codex 4176403238).
     const keepsItems = refundFault === "BUYER" && openedItemCount > 0;
@@ -676,6 +689,8 @@ export async function refundOrder(
     }
     // 이 주문의 상품 리뷰 적립도 같은 회수 방식으로 회수한다(주문 잠금 뒤 회원 → 리뷰 → 원장, product-reviews/service.ts)
     const reviewRewardRevoke = await revokeReviewRewardsForOrder(tx, ctx.sellerId, orderId, now);
+    // 이 주문의 진행 중인 교환·반품 신청을 닫는다(shop-returns: 반품 회수 완료분은 완료, 그 밖은 철회)
+    await closeReturnsOnRefund(tx, { sellerId: ctx.sellerId, orderId, refundAmount, now, actor: { actorType: ctx.actorType, actorId: ctx.actorId } });
     await writeAudit(tx, {
       actorType: ctx.actorType,
       actorId: ctx.actorId,

@@ -22,7 +22,7 @@ export const CANCEL_RETRY_AFTER_MS = 60_000;
 
 export type StartRejection = "shop_unavailable" | "not_found" | "order_not_payable" | "already_paid" | "amount_mismatch";
 export type StartResult =
-  | { ok: true; paymentId: string; clientId: string; method: "card"; orderId: string; amount: number; goodsName: string }
+  | { ok: true; paymentId: string; clientId: string; method: "card"; orderId: string; amount: number; goodsName: string; paymentDueAt: Date | null }
   | { ok: false; reason: StartRejection };
 
 export type ConfirmOutcome = "paid" | "failed" | "pending" | "cancelled";
@@ -44,6 +44,12 @@ export function goodsNameOf(items: { productNameSnapshot: string }[]) {
   return name + suffix;
 }
 
+// 주문 생성과 같은 조건: 운영 중이고 잠기지 않았고 스토어 운영 기능 권한이 있어야 결제(카드·무통장 선택)할 수 있다
+export async function shopOpenForPayment(db: PrismaClient, sellerId: string): Promise<boolean> {
+  const seller = await db.seller.findUnique({ where: { id: sellerId }, select: { status: true } });
+  return !!seller && seller.status === "ACTIVE" && (await sellerAccessFor(db, sellerId)) !== "expired" && (await sellerHasFeature(db, sellerId, "STORE_OPERATIONS"));
+}
+
 export async function startPayment(
   db: PrismaClient,
   gw: PaymentGateway,
@@ -51,10 +57,7 @@ export async function startPayment(
 ): Promise<StartResult> {
   if (!UUID.test(input.orderId)) return { ok: false, reason: "not_found" };
   const now = input.now ?? new Date();
-  // 주문 생성과 같은 조건: 운영 중이고 잠기지 않았고 스토어 운영 기능 권한이 있어야 결제할 수 있다
-  const seller = await db.seller.findUnique({ where: { id: input.sellerId }, select: { status: true } });
-  if (!seller || seller.status !== "ACTIVE" || (await sellerAccessFor(db, input.sellerId)) === "expired" || !(await sellerHasFeature(db, input.sellerId, "STORE_OPERATIONS")))
-    return { ok: false, reason: "shop_unavailable" };
+  if (!(await shopOpenForPayment(db, input.sellerId))) return { ok: false, reason: "shop_unavailable" };
   const order = await db.order.findFirst({
     where: { id: input.orderId, sellerId: input.sellerId, buyerMemberId: input.buyerMemberId, legalHoldAt: null },
     include: { items: { orderBy: { createdAt: "asc" } }, couponRedemption: { select: { discountAmount: true } } },
@@ -66,7 +69,7 @@ export async function startPayment(
   const amount = payableAmount(order);
   if (amount < 1 || amount !== order.totalAmount) return { ok: false, reason: "amount_mismatch" };
   const payment = await db.payment.create({ data: { sellerId: order.sellerId, orderId: order.id, provider: gw.name, method: "CARD", amount } });
-  return { ok: true, paymentId: payment.id, clientId: gw.clientId, method: "card", orderId: payment.id, amount, goodsName: goodsNameOf(order.items) };
+  return { ok: true, paymentId: payment.id, clientId: gw.clientId, method: "card", orderId: payment.id, amount, goodsName: goodsNameOf(order.items), paymentDueAt: order.paymentDueAt };
 }
 
 async function fail(db: PrismaClient | Tx, p: Payment, code: string, from: ("READY" | "APPROVING")[] = ["READY", "APPROVING"]) {
@@ -172,7 +175,7 @@ async function applyPgPayment(db: PrismaClient, gw: PaymentGateway, p: Payment, 
 // 주문이 그사이 취소됐으면 결제를 전액 취소한다.
 export async function settleOrder(db: PrismaClient, gw: PaymentGateway, p: Payment): Promise<ConfirmOutcome> {
   if (p.status !== "PAID") return outcomeOf(p);
-  let order = await db.order.findUniqueOrThrow({ where: { id: p.orderId }, select: { status: true, pgTxId: true } });
+  let order = await db.order.findUniqueOrThrow({ where: { id: p.orderId }, select: { status: true, pgTxId: true, paymentMethod: true } });
   if (order.status === "PENDING_PAYMENT") {
     const r = await markOrderPaid(db, { sellerId: p.sellerId, orderId: p.orderId, paymentMethod: "CARD" });
     if (r.ok) {
@@ -180,8 +183,14 @@ export async function settleOrder(db: PrismaClient, gw: PaymentGateway, p: Payme
       return "paid";
     }
     // 그사이 상태가 바뀌었다(자동 취소 등). 다시 읽어 판단하고, 그래도 결제 대기면 다음 확정(정기 실행·웹훅)에 맡긴다.
-    order = await db.order.findUniqueOrThrow({ where: { id: p.orderId }, select: { status: true, pgTxId: true } });
+    order = await db.order.findUniqueOrThrow({ where: { id: p.orderId }, select: { status: true, pgTxId: true, paymentMethod: true } });
     if (order.status === "PENDING_PAYMENT") throw new Error(`order_settle_failed:${r.reason}`);
+  }
+  // 주문이 이 카드 결제로 결제된 것이 아니다(그사이 판매자가 무통장 입금을 확인함): 카드 결제는 전액 돌려준다(이중 결제 방지).
+  const paidByThis = order.paymentMethod === "CARD" && (order.pgTxId === null || order.pgTxId === p.pgTid);
+  if ((order.status === "PAID" || order.status === "REFUNDED") && !paidByThis) {
+    await requestCancelAndRun(db, gw, p, p.amount, "paid_by_other");
+    return "cancelled";
   }
   if (order.status === "PAID" || order.status === "REFUNDED") {
     if (order.status === "PAID" && !order.pgTxId) await db.order.updateMany({ where: { id: p.orderId, pgTxId: null }, data: { pgProvider: p.provider, pgTxId: p.pgTid } });
