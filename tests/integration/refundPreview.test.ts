@@ -84,7 +84,7 @@ describe("주문 상세의 환불 미리보기", () => {
     // 돌려줄 상품은 4,000원 × 2. 처음 배송비는 돌려주지 않고 반품 배송비를 뺀다
     expect(p.byFault.BUYER.refundAmount).toBe(8000 - p.byFault.BUYER.returnFeeDeducted);
     expect(p.byFault.BUYER.returnFeeDeducted).toBeGreaterThan(0);
-    expect(p.byFault.SELLER).toEqual({ refundAmount: order.totalAmount, returnFeeDeducted: 0, blocked: false });
+    expect(p.byFault.SELLER).toEqual({ refundAmount: order.totalAmount, returnFeeDeducted: 0, rewardReturn: 0, blocked: false });
     const r = await refund(orderId, cookie, d.queueVersion, "BUYER", p.byFault.BUYER.refundAmount);
     expect(r.status).toBe(200);
     expect(r.body.refundAmount).toBe(p.byFault.BUYER.refundAmount);
@@ -103,7 +103,7 @@ describe("주문 상세의 환불 미리보기", () => {
   it("모든 상품을 개봉했으면 구매자 사정 환불액은 0원이다", async () => {
     const { orderId, cookie } = await setup({ opened: ["A", "B"], shipped: true });
     const p = (await detail(orderId, cookie)).refundPreview!;
-    expect(p.byFault.BUYER).toEqual({ refundAmount: 0, returnFeeDeducted: 0, blocked: false });
+    expect(p.byFault.BUYER).toEqual({ refundAmount: 0, returnFeeDeducted: 0, rewardReturn: 0, blocked: false });
     expect(p.openedItems).toHaveLength(2);
   });
 
