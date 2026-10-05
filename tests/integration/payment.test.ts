@@ -442,6 +442,43 @@ describe("경로", () => {
     const bad = await webhookRoute(new Request(`${origin}/api/payments/nicepay/webhook`, { method: "POST", body: JSON.stringify({ tid, signature: "x" }) }));
     expect(bad.status).toBe(401);
   });
+
+  it("웹훅 수신 결과는 로그 추적에 남는다: 성공(tid·종류·일치·결제 상태), 모르는 tid, 서명 불일치(본문 값 없음·분당 상한), 처리 오류(오류 이름만)", async () => {
+    const s = await buyerShop();
+    setPaymentGatewayForTest(s.gw);
+    const started = await (await startReq(s.seller.slug, s.cookie, { orderId: s.o.id })).json();
+    await confirmAuthResult(db, s.gw, s.gw.authorize(started.orderId, 13000));
+    const url = `${origin}/api/payments/nicepay/webhook`;
+    const send = (body: unknown) => webhookRoute(new Request(url, { method: "POST", body: JSON.stringify(body) }));
+    const tid = `fake-tid-${started.paymentId}`;
+    expect((await send({ tid, signature: `fake-hook:${tid}`, status: "paid", cardNo: "1234-5678" })).status).toBe(200);
+    expect((await send({ tid: "unknown-tid", signature: "fake-hook:unknown-tid" })).status).toBe(200);
+    const received = await db.auditLog.findMany({ where: { action: "payment.webhook_received" }, orderBy: { createdAt: "asc" } });
+    expect(received).toHaveLength(2);
+    expect(received[0]).toMatchObject({ actorType: "SYSTEM", sellerId: s.seller.id, targetType: "Order", targetId: s.o.id, after: { tid, kind: "paid", matched: true, paymentStatus: "PAID" } });
+    expect(received[1]).toMatchObject({ sellerId: null, targetId: null, after: { tid: "unknown-tid", kind: null, matched: false, paymentStatus: null } });
+    // 본문의 다른 값(카드 번호 등)은 기록하지 않는다
+    expect(JSON.stringify(received)).not.toContain("1234-5678");
+
+    // 서명 불일치: 본문 값(tid 등)은 기록하지 않고, 분당 10건까지만 남긴다
+    for (let i = 0; i < 12; i++) expect((await send({ tid: `evil-${i}`, signature: "x" })).status).toBe(401);
+    const rejected = await db.auditLog.findMany({ where: { action: "payment.webhook_rejected" } });
+    expect(rejected).toHaveLength(10);
+    expect(rejected[0]).toMatchObject({ actorType: "SYSTEM", sellerId: null, after: { reason: "invalid_signature" } });
+    expect(JSON.stringify(rejected)).not.toContain("evil-");
+
+    // 처리 중 오류: 500을 돌려 재전송을 받고, 오류 이름만 남긴다(메시지 없음)
+    const boom = new FakePaymentGateway();
+    boom.verifyWebhook = () => {
+      throw new TypeError("secret detail");
+    };
+    setPaymentGatewayForTest(boom);
+    expect((await send({ tid, signature: "x" })).status).toBe(500);
+    const failed = await db.auditLog.findMany({ where: { action: "payment.webhook_failed" } });
+    expect(failed).toHaveLength(1);
+    expect(failed[0].after).toEqual({ error: "TypeError" });
+    expect(JSON.stringify(failed)).not.toContain("secret detail");
+  });
 });
 
 describe("커밋 뒤 처리(worker)", () => {

@@ -117,9 +117,10 @@ export class NicepaySandboxGateway implements PaymentGateway {
     return r.kind === "ok" ? { kind: "ok", value: null } : r;
   }
 
-  verifyWebhook(body: unknown): { tid: string } | null {
+  verifyWebhook(body: unknown): { tid: string; status?: string } | null {
     if (!body || typeof body !== "object") return null;
     const b = body as Record<string, unknown>;
-    return this.validSignature(b) ? { tid: b.tid as string } : null;
+    if (!this.validSignature(b)) return null;
+    return { tid: b.tid as string, ...(STATUSES.includes(b.status as PgStatus) ? { status: b.status as string } : {}) };
   }
 }

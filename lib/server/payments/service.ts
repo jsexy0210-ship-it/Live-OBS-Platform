@@ -248,12 +248,44 @@ export async function reconcilePayment(db: PrismaClient, gw: PaymentGateway, pay
   return "pending";
 }
 
-// 웹훅: 서명이 맞으면 tid로 우리 결제를 찾아 PG 조회로 확정한다(본문 값은 믿지 않는다). 모르는 tid는 무시한다.
+// 웹훅 수신 기록(로그 추적, MASTER 2026-10-05). 결제 번호(tid)·웹훅 종류·우리 결제와 맞았는지·처리 뒤 결제 상태만 남기고 본문·카드·개인정보는 남기지 않는다.
+// 서명이 틀린 요청은 누구나 보낼 수 있어 분당 개수를 막아 두고(WEBHOOK_REJECT_AUDIT_PER_MIN) 본문 값은 기록하지 않는다. 기록 실패는 웹훅 응답을 막지 않는다.
+const WEBHOOK_REJECT_AUDIT_PER_MIN = 10;
+async function auditWebhookSafely(db: PrismaClient, e: Parameters<typeof writeAudit>[1]) {
+  try {
+    await writeAudit(db, e);
+  } catch {
+    // 기록 실패로 PG에 오류를 돌려 재전송을 부르지 않는다
+  }
+}
+
+// 처리 중 오류(route에서 부름): 오류 이름만 남긴다(메시지·본문 없음).
+export async function auditWebhookFailure(db: PrismaClient, error: unknown) {
+  await auditWebhookSafely(db, { ...SYSTEM, action: "payment.webhook_failed", after: { error: error instanceof Error ? error.name : "error" } });
+}
+
+// 웹훅: 서명이 맞으면 tid로 우리 결제를 찾아 PG 조회로 확정한다(본문 값은 믿지 않는다). 모르는 tid는 무시한다. 수신 결과는 로그 추적에 남긴다.
 export async function handleWebhook(db: PrismaClient, gw: PaymentGateway, body: unknown): Promise<"ok" | "invalid_signature"> {
   const v = gw.verifyWebhook(body);
-  if (!v) return "invalid_signature";
-  const p = await db.payment.findUnique({ where: { pgTid: v.tid }, select: { id: true, provider: true } });
-  if (p && p.provider === gw.name) await reconcilePayment(db, gw, p.id);
+  if (!v) {
+    const since = new Date(Date.now() - 60_000);
+    if ((await db.auditLog.count({ where: { action: "payment.webhook_rejected", createdAt: { gte: since } } })) < WEBHOOK_REJECT_AUDIT_PER_MIN) {
+      await auditWebhookSafely(db, { ...SYSTEM, action: "payment.webhook_rejected", after: { reason: "invalid_signature" } });
+    }
+    return "invalid_signature";
+  }
+  const p = await db.payment.findUnique({ where: { pgTid: v.tid }, select: { id: true, provider: true, sellerId: true, orderId: true } });
+  const matched = !!p && p.provider === gw.name;
+  if (p && matched) await reconcilePayment(db, gw, p.id);
+  const now = matched ? await db.payment.findUnique({ where: { id: p!.id }, select: { status: true } }) : null;
+  await auditWebhookSafely(db, {
+    ...SYSTEM,
+    sellerId: matched ? p!.sellerId : null,
+    action: "payment.webhook_received",
+    targetType: matched ? "Order" : undefined,
+    targetId: matched ? p!.orderId : undefined,
+    after: { tid: v.tid, kind: v.status ?? null, matched, paymentStatus: now?.status ?? null },
+  });
   return "ok";
 }
 
