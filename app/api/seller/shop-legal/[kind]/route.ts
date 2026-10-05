@@ -21,6 +21,7 @@ export async function GET(req: Request, { params }: Ctx) {
 }
 
 // 저장. 본문: { body(6만 자, 텍스트), effectiveOn?(YYYY-MM-DD), isPublished?(게시하려면 본문·시행일 필요), expectedVersion }
+// version은 본문·시행일이 실제로 바뀐 때만 오른다(같은 내용 재저장·재게시·게시 여부만 바꾼 저장은 그대로). expectedVersion 비교는 그대로.
 // 200 { doc } · 400 invalid_body·invalid_date·publish_incomplete · 409 version_conflict(+currentVersion)
 export const PUT = mutation(async (req: Request, { params }: Ctx) => {
   const kind = parseKind((await params).kind);
