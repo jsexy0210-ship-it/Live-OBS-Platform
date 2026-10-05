@@ -5,22 +5,28 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { PageHead } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
-import { ErrorState, LoadingRows, NoPermission } from "../../../../../../components/seller/States";
+import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
 import { won } from "../../../../../../components/seller/format";
+import { MemberGradeAdjust } from "../../../../../../components/seller/members/MemberGradeAdjust";
+import { MemberRestriction } from "../../../../../../components/seller/members/MemberRestriction";
 import { MEMBER_STATUS, memberDay, phoneText, type MemberDetail } from "../../../../../../components/seller/members/types";
 
-// SA-042 회원 상세 중 지금 API가 주는 것(등급·상태·주문 수·누적 결제·적립금 잔액). GET /api/seller/members/{id}, 회원·적립금 권한.
-// 주문 목록·회원 메모·등급 수동 조정·적립금 지급은 API가 생기면 붙인다.
+// SA-042 회원 상세 중 지금 API가 주는 것(등급·상태·주문 수·누적 결제·적립금 잔액) + 등급 직접 조정 + 구매 제한 현황·풀기. GET /api/seller/members/{id}, 회원·적립금 권한.
+// 주문 목록·회원 메모·회원별 적립금 내역은 API가 생기면 붙인다.
 export default function MemberDetailPage() {
   const { memberId } = useParams<{ memberId: string }>();
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; member: MemberDetail }>({ kind: "loading" });
+  const [toast, setToast] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setState({ kind: "loading" });
-    const r = await api<{ member: MemberDetail }>(`/api/seller/members/${encodeURIComponent(memberId)}`);
-    setState(r.ok ? { kind: "ok", member: r.data.member } : { kind: "error", status: r.status });
-  }, [memberId]);
+  const load = useCallback(
+    async (quiet = false) => {
+      if (!quiet) setState({ kind: "loading" });
+      const r = await api<{ member: MemberDetail }>(`/api/seller/members/${encodeURIComponent(memberId)}`);
+      setState(r.ok ? { kind: "ok", member: r.data.member } : { kind: "error", status: r.status });
+    },
+    [memberId],
+  );
   useEffect(() => void load(), [load]);
 
   const m = state.kind === "ok" ? state.member : null;
@@ -101,9 +107,20 @@ export default function MemberDetailPage() {
               </dl>
               {m.name === undefined && <span className="t-c1 c-alt">이름 · 휴대폰은 개인정보 열람 권한이 있어야 볼 수 있습니다.</span>}
             </section>
+            <MemberGradeAdjust
+              memberId={m.id}
+              currentGradeId={m.grade?.id ?? null}
+              active={m.status === "ACTIVE"}
+              onDone={async (text) => {
+                setToast(text);
+                await load(true);
+              }}
+            />
+            <MemberRestriction memberId={m.id} onChanged={(text) => setToast(text)} />
           </div>
         )}
       </main>
+      {toast && <Toast text={toast} onDone={() => setToast(null)} />}
     </>
   );
 }
