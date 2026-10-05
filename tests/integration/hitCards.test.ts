@@ -56,7 +56,7 @@ describe("HIT 카드", () => {
     const before = (await db.seller.findUniqueOrThrow({ where: { id: s.seller.id } })).liveVersion;
     const r = await create(s.runner, { cardName: "리자몽 SAR", note: "첫 히트", queueItemId: q.id });
     expect(r.status).toBe(201);
-    expect(r.body.card).toMatchObject({ cardName: "리자몽 SAR", note: "첫 히트", nickname: "피카츄팬", broadcast: { id: live.id, title: "오늘 방송" }, order: { id: q.orderId, orderNo: q.order!.orderNo, productLabel: "부스터 팩" } });
+    expect(r.body.card).toMatchObject({ cardName: "리자몽 SAR", note: "첫 히트", nickname: "피카츄팬", broadcast: { id: live.id, title: "오늘 방송" }, order: { id: q.orderId, orderNo: q.order!.orderNo, orderNoLabel: expect.stringMatching(/^\d{8}-\d{4,}$/), productLabel: "부스터 팩" } });
     const row = await db.hitCard.findUniqueOrThrow({ where: { id: r.body.card.id } });
     expect([row.buyerMemberId, row.queueItemId, row.createdByUserId]).toEqual([s.buyer.id, q.id, expect.any(String)]);
     expect((await db.seller.findUniqueOrThrow({ where: { id: s.seller.id } })).liveVersion).toBe(before + 1);
