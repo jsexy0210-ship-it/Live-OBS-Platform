@@ -9,6 +9,7 @@ import { adminApi, failMessage } from "../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
 import { effectiveAtIso } from "../../../_components/messageFees";
 import { dayTime } from "../../../_components/partners";
+import { DateTimePicker } from "../../../../../../components/admin-ui/DatePicker";
 
 // MA-083 점검 모드(GET·PUT /api/admin/settings/maintenance). 보기는 모든 마스터 역할, 켜기·끄기·바꾸기는 최고관리자만(system.manage).
 // 켜면 파트너스 관리자·쇼핑몰·가입 신청이 막힌다(마스터 관리자·오버레이는 열림, 반영까지 최대 5초). 종료 시각은 안내용이라 지나도 저절로 꺼지지 않는다.
@@ -136,12 +137,12 @@ export default function MaintenancePage() {
               <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
                 <div className="fld">
                   <label htmlFor="mt-start">시작 시각</label>
-                  <input id="mt-start" className="inp" type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} disabled={!canEdit || busy} />
+                  <DateTimePicker id="mt-start" aria-label="시작 시각" value={startsAt} onChange={(v) => setStartsAt(v)} disabled={!canEdit || busy} />
                   <span className="t-c1 c-alt">비워 두면 켜는 즉시 시작합니다.</span>
                 </div>
                 <div className="fld">
                   <label htmlFor="mt-end">종료 예정 시각</label>
-                  <input id="mt-end" className="inp" type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} disabled={!canEdit || busy} />
+                  <DateTimePicker id="mt-end" aria-label="종료 예정 시각" value={endsAt} onChange={(v) => setEndsAt(v)} disabled={!canEdit || busy} />
                   <span className="t-c1 c-alt">안내용입니다. 지나도 저절로 꺼지지 않습니다.</span>
                 </div>
               </div>

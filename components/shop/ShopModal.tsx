@@ -26,7 +26,8 @@ export default function ShopModal({ title, onClose, busy = false, children, foot
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null;
     closeRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !busyRef.current && onCloseRef.current();
+    // 위에 공통 확인 창이 떠 있으면 그 창이 Esc를 먼저 처리(preventDefault)하므로, 아래 모달은 닫지 않는다
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !e.defaultPrevented && !busyRef.current && onCloseRef.current();
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("keydown", onKey);

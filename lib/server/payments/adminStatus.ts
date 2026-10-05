@@ -83,34 +83,34 @@ export async function adminPgStatus(db: PrismaClient, admin: AdminSessionContext
   const now = await dbNow(db);
   const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
+  // 요청마다 Payment·PaymentCancel 전체를 GROUP BY하지 않는다(검수 지적, #709와 같은 방식): 쇼핑몰마다 인덱스로 마지막 성공·실패를 한 줄씩 찾고,
+  // 24시간 실패 수는 기간(updatedAt)으로 제한하며, 취소는 드문 상태(요청·실패)만 읽는다.
+  // 쓰는 인덱스: Payment(sellerId, approvedAt)·(sellerId, status, updatedAt)·(status, updatedAt)·(sellerId, orderId), PaymentCancel(status, lastTriedAt).
   const [[g], rows] = await Promise.all([
     db.$queryRaw<{ lastSuccessAt: Date | null; lastFailureAt: Date | null; lastFailureCode: string | null }[]>`
-      SELECT max("approvedAt") AS "lastSuccessAt",
-        max("updatedAt") FILTER (WHERE "status" = 'FAILED') AS "lastFailureAt",
-        (SELECT "failureCode" FROM "Payment" WHERE "status" = 'FAILED' ORDER BY "updatedAt" DESC, "id" DESC LIMIT 1) AS "lastFailureCode"
-      FROM "Payment"`,
+      SELECT
+        (SELECT max(t."lastOk") FROM (SELECT (SELECT p."approvedAt" FROM "Payment" p WHERE p."sellerId" = se."id" AND p."approvedAt" IS NOT NULL ORDER BY p."approvedAt" DESC LIMIT 1) AS "lastOk" FROM "Seller" se) t) AS "lastSuccessAt",
+        f."updatedAt" AS "lastFailureAt", f."failureCode" AS "lastFailureCode"
+      FROM (SELECT 1) one
+      LEFT JOIN LATERAL (SELECT "updatedAt", "failureCode" FROM "Payment" WHERE "status" = 'FAILED' ORDER BY "updatedAt" DESC, "id" DESC LIMIT 1) f ON TRUE`,
     db.$queryRaw<SellerRow[]>`
-      WITH p AS (
-        SELECT "sellerId",
-          max("approvedAt") AS "lastSuccessAt",
-          max("updatedAt") FILTER (WHERE "status" = 'FAILED') AS "lastFailureAt",
-          count(*) FILTER (WHERE "status" = 'FAILED' AND "updatedAt" > ${new Date(now.getTime() - DAY_MS)})::int AS "failures24h"
-        FROM "Payment" GROUP BY "sellerId"
-      ),
-      c AS (
+      WITH c AS (
         SELECT "sellerId",
           count(*) FILTER (WHERE "status" = 'REQUESTED')::int AS "cancelsPending",
           count(*) FILTER (WHERE "status" = 'FAILED')::int AS "cancelsFailed"
-        FROM "PaymentCancel" GROUP BY "sellerId"
+        FROM "PaymentCancel" WHERE "status" IN ('REQUESTED', 'FAILED') GROUP BY "sellerId"
       )
       SELECT se."id" AS "sellerId", se."slug", se."shopName", se."status"::text AS "status",
-        p."lastSuccessAt", p."lastFailureAt", p."failures24h",
-        (SELECT "failureCode" FROM "Payment" x WHERE x."sellerId" = se."id" AND x."status" = 'FAILED' ORDER BY x."updatedAt" DESC, x."id" DESC LIMIT 1) AS "lastFailureCode",
+        ok."lastOk" AS "lastSuccessAt", fl."lastFail" AS "lastFailureAt", fl."code" AS "lastFailureCode", f24."n" AS "failures24h",
         coalesce(c."cancelsPending", 0) AS "cancelsPending", coalesce(c."cancelsFailed", 0) AS "cancelsFailed"
-      FROM p JOIN "Seller" se ON se."id" = p."sellerId"
-      LEFT JOIN c ON c."sellerId" = p."sellerId"
-      WHERE ${q === "" ? Prisma.sql`TRUE` : Prisma.sql`(se."shopName" ILIKE ${like} OR se."slug" ILIKE ${like})`}
-      ORDER BY p."lastFailureAt" DESC NULLS LAST, p."lastSuccessAt" DESC NULLS LAST, se."id"
+      FROM "Seller" se
+      LEFT JOIN LATERAL (SELECT p."approvedAt" AS "lastOk" FROM "Payment" p WHERE p."sellerId" = se."id" AND p."approvedAt" IS NOT NULL ORDER BY p."approvedAt" DESC LIMIT 1) ok ON TRUE
+      LEFT JOIN LATERAL (SELECT p."updatedAt" AS "lastFail", p."failureCode" AS "code" FROM "Payment" p WHERE p."sellerId" = se."id" AND p."status" = 'FAILED' ORDER BY p."updatedAt" DESC, p."id" DESC LIMIT 1) fl ON TRUE
+      LEFT JOIN LATERAL (SELECT count(*)::int AS "n" FROM "Payment" p WHERE p."sellerId" = se."id" AND p."status" = 'FAILED' AND p."updatedAt" > ${new Date(now.getTime() - DAY_MS)}) f24 ON TRUE
+      LEFT JOIN c ON c."sellerId" = se."id"
+      WHERE EXISTS (SELECT 1 FROM "Payment" x WHERE x."sellerId" = se."id")
+        AND ${q === "" ? Prisma.sql`TRUE` : Prisma.sql`(se."shopName" ILIKE ${like} OR se."slug" ILIKE ${like})`}
+      ORDER BY fl."lastFail" DESC NULLS LAST, ok."lastOk" DESC NULLS LAST, se."id"
       OFFSET ${offset} LIMIT ${take + 1}`,
   ]);
   const page = rows.slice(0, take);

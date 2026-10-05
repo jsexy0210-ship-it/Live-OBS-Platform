@@ -9,6 +9,7 @@ import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../.
 import { api, failMessage } from "../../../../../components/seller/api";
 import { won } from "../../../../../components/seller/format";
 import { kstDate, kstDuration, type BroadcastSummary } from "../../../../../components/seller/broadcast/history";
+import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
 
 // SA-054 방송 이력. 방송 시작일(KST) 기간으로 검색하고, 한 줄을 누르면 방송 상세(SA-055)로 간다.
 // API: GET /api/seller/broadcast/history?from=&to=&cursor=(시작 최신순 50개)
@@ -89,9 +90,9 @@ export default function BroadcastHistoryPage() {
           <>
             <SearchBox onSearch={search} onReset={reset} busy={state.kind === "loading"}>
               <SearchRow label="기간">
-                <input className="inp" type="date" aria-label="시작일" value={draft.from} onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
+                <DatePicker aria-label="시작일" value={draft.from} onChange={(v) => setDraft({ ...draft, from: v })} />
                 <span aria-hidden="true"> ~ </span>
-                <input className="inp" type="date" aria-label="종료일" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
+                <DatePicker aria-label="종료일" value={draft.to} onChange={(v) => setDraft({ ...draft, to: v })} />
               </SearchRow>
             </SearchBox>
 

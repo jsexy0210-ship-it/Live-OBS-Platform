@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { randomBytes } from "node:crypto";
 import { hashPassword } from "../../lib/server/auth/password";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
+import { fillDateTime } from "./dateInput";
 
 // 마스터 관리자 요금제의 월 거래 메일 제공량(MA-021·022). 계정은 폐기용 테스트 DB(이름이 _test로 끝남)에 실행마다 새로 만든다.
 // CS는 보기만, 최고관리자는 바꿀 수 있다(바로·적용 예정).
@@ -68,7 +69,7 @@ test("최고관리자: 월 제공량을 바로 바꾸고, 적용 예정으로 �
   const future = new Date(Date.now() + 3 * 86_400_000 + 9 * 3_600_000).toISOString().slice(0, 16);
   await row(page, "쇼핑몰 통합").getByRole("button", { name: "월 무료 메일 수량 변경" }).click();
   await dialog.getByLabel("월 주문·배송 안내 메일 무료 수량").fill("400");
-  await dialog.getByLabel("바뀌는 시각").fill(future);
+  await fillDateTime(dialog, "바뀌는 시각", future);
   await dialog.getByRole("button", { name: "저장" }).click();
   await expect(dialog).toHaveCount(0);
   const r = row(page, "쇼핑몰 통합");

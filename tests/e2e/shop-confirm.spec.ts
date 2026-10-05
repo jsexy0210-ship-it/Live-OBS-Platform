@@ -91,3 +91,40 @@ test("PC 1440: 확인 창 증거", async ({ page, baseURL }) => {
   await expect(page.getByRole("dialog", { name: "주문할까요?" })).toBeVisible();
   if (process.env.E2E_SCREENSHOTS === "1") await page.screenshot({ path: "tests/e2e/screenshots/SH-005-confirm-1440.png" });
 });
+
+test("장바구니 삭제·로그아웃은 확인 창을 거치고, 취소하면 아무것도 바뀌지 않는다", async ({ page, baseURL }) => {
+  await resetCartInDb(SLUG, LOGIN, [{ productName: "탑로더 25장", quantity: 1 }]);
+  const r = await page.request.post(`/api/shop/${SLUG}/auth/login`, { data: { loginId: LOGIN, password: PASSWORD }, headers: { origin: baseURL! } });
+  expect(r.status()).toBe(200);
+  let deletes = 0;
+  let logouts = 0;
+  await page.route("**/api/shop/*/cart/**", (route) => {
+    if (route.request().method() === "DELETE") deletes += 1;
+    return route.continue();
+  });
+  await page.route("**/api/shop/*/auth/logout", (route) => {
+    logouts += 1;
+    return route.continue();
+  });
+  await page.goto(`/shop/${SLUG}/cart`);
+  const rows = page.locator(".cart-tbl tbody tr");
+  await expect(rows).toHaveCount(1);
+  await rows.first().getByRole("button", { name: "삭제" }).click();
+  const dlg = page.getByRole("dialog", { name: "이 상품을 뺄까요?" });
+  await expect(dlg).toContainText("장바구니에서만 빠져요.");
+  await dlg.getByRole("button", { name: "취소" }).click();
+  await expect(rows).toHaveCount(1);
+  expect(deletes).toBe(0);
+
+  await page.locator(".shop-util").getByRole("button", { name: "로그아웃" }).click();
+  const out = page.getByRole("dialog", { name: "로그아웃할까요?" });
+  await expect(out).toContainText("장바구니와 찜은 그대로 남아요");
+  await out.getByRole("button", { name: "취소" }).click();
+  expect(logouts).toBe(0);
+  await expect(page.locator(".shop-util").getByRole("link", { name: "내 정보" })).toBeVisible();
+
+  await rows.first().getByRole("button", { name: "삭제" }).click();
+  await okConfirm(page, "빼기");
+  await expect(page.getByRole("heading", { name: "장바구니가 비어 있어요" })).toBeVisible();
+  expect(deletes).toBe(1);
+});

@@ -41,6 +41,9 @@ export type OrderPolicy = {
   autoDeliverDays: number;
   autoConfirmEnabled: boolean;
   autoConfirmDays: number;
+  // 입금 기한 알림(기본 켜짐), 배송 자동 조회(기본 꺼짐, 켜면 건당 발송·이용 충전금 차감)
+  dueReminderEnabled: boolean;
+  autoTrackingEnabled: boolean;
 };
 export const DEFAULT_AUTO_DAYS = 7;
 export const MAX_AUTO_DAYS = 30;
@@ -62,6 +65,8 @@ export async function getOrderPolicy(db: Db, sellerId: string): Promise<OrderPol
         autoDeliverDays: p.autoDeliverDays,
         autoConfirmEnabled: p.autoConfirmEnabled,
         autoConfirmDays: p.autoConfirmDays,
+        dueReminderEnabled: p.dueReminderEnabled,
+        autoTrackingEnabled: p.autoTrackingEnabled,
       }
     : {
         autoCancelEnabled: true,
@@ -75,6 +80,8 @@ export async function getOrderPolicy(db: Db, sellerId: string): Promise<OrderPol
         autoDeliverDays: DEFAULT_AUTO_DAYS,
         autoConfirmEnabled: true,
         autoConfirmDays: DEFAULT_AUTO_DAYS,
+        dueReminderEnabled: true,
+        autoTrackingEnabled: false,
       };
 }
 
@@ -235,6 +242,7 @@ export async function listPaymentDueSoon(db: PrismaClient, opts: { now?: Date } 
   const rows = await db.$queryRaw<{ id: string; sellerId: string; buyerMemberId: string; orderNo: number; createdAt: Date; totalAmount: number; paymentDueAt: Date }[]>`
     SELECT "id", "sellerId", "buyerMemberId", "orderNo", "createdAt", "totalAmount", "paymentDueAt" FROM "Order"
     WHERE "status" = 'PENDING_PAYMENT' AND "paymentDueAt" > ${now}
+      AND COALESCE((SELECT p."dueReminderEnabled" FROM "SellerOrderPolicy" p WHERE p."sellerId" = "Order"."sellerId"), true)
       AND "paymentDueAt" - CASE WHEN "paymentDueAt" - "createdAt" > INTERVAL '1 day' THEN INTERVAL '1 day' ELSE INTERVAL '1 hour' END <= ${now}
     ORDER BY "paymentDueAt" ASC`;
   // 안내 문구에 쓰는 주문번호는 화면과 같은 orderNoLabel(「20261005-0004」)이다.
@@ -311,6 +319,8 @@ export async function updateOrderPolicy(db: PrismaClient, ctx: TenantContext, ra
     (b.restockOnCancel !== undefined && typeof b.restockOnCancel !== "boolean") ||
     (b.autoDeliverEnabled !== undefined && typeof b.autoDeliverEnabled !== "boolean") ||
     (b.autoConfirmEnabled !== undefined && typeof b.autoConfirmEnabled !== "boolean") ||
+    (b.dueReminderEnabled !== undefined && typeof b.dueReminderEnabled !== "boolean") ||
+    (b.autoTrackingEnabled !== undefined && typeof b.autoTrackingEnabled !== "boolean") ||
     (b.autoDeliverDays !== undefined && !isAutoDays(b.autoDeliverDays)) ||
     (b.autoConfirmDays !== undefined && !isAutoDays(b.autoConfirmDays))
   ) {
@@ -331,6 +341,8 @@ export async function updateOrderPolicy(db: PrismaClient, ctx: TenantContext, ra
       autoDeliverDays: isAutoDays(b.autoDeliverDays) ? b.autoDeliverDays : current.autoDeliverDays,
       autoConfirmEnabled: typeof b.autoConfirmEnabled === "boolean" ? b.autoConfirmEnabled : current.autoConfirmEnabled,
       autoConfirmDays: isAutoDays(b.autoConfirmDays) ? b.autoConfirmDays : current.autoConfirmDays,
+      dueReminderEnabled: typeof b.dueReminderEnabled === "boolean" ? b.dueReminderEnabled : current.dueReminderEnabled,
+      autoTrackingEnabled: typeof b.autoTrackingEnabled === "boolean" ? b.autoTrackingEnabled : current.autoTrackingEnabled,
     };
     const { unpaidRestrictionEnabledAt: _u, paidCancelRestrictionEnabledAt: _p, ...before } = current;
     // 꺼져 있다가 켜면 켠 시각을 남긴다(그 뒤의 횟수만 센다). 끄더라도 이미 걸린 제한은 그대로 둔다.

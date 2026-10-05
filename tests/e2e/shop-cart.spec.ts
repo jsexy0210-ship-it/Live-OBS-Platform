@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { resetCartInDb } from "./cartDb";
+import { okConfirm } from "./shopConfirm";
 
 // SH-004 장바구니(운영 빌드 + 데모 시드). 데모 구매자(demo-buyer1@example.com, 비밀번호 E2E_PASSWORD)의 장바구니를 시작·끝에 비운다.
 // 데모 상품: 스타라이트 부스터 박스·문라이트 컬렉션 박스(판매 중), 드래곤 소울 부스터(품절).
@@ -76,21 +77,23 @@ test.describe.serial("로그인 구매자", () => {
     await expect(first.locator(".cart-qty span")).toHaveText("2");
 
     await page.locator(".cart-tbl tbody tr", { hasText: "문라이트 컬렉션 박스" }).getByRole("button", { name: "삭제" }).click();
+    await okConfirm(page, "빼기");
     await expect(page.getByRole("status")).toContainText("장바구니에서 뺐어요");
     await expect(page.locator(".cart-tbl tbody tr")).toHaveCount(2);
     await page.getByRole("button", { name: "되돌리기" }).click();
     await expect(page.locator(".cart-tbl tbody tr")).toHaveCount(3);
 
     await page.getByRole("button", { name: "선택 삭제" }).click();
-    const dlg = page.getByRole("dialog", { name: "2개를 지울까요?" });
+    const dlg = page.getByRole("dialog", { name: "선택한 상품 2개를 뺄까요?" });
     await expect(dlg).toContainText("장바구니에서만 빠져요.");
-    await dlg.getByRole("button", { name: "닫기" }).click();
+    await dlg.getByRole("button", { name: "취소" }).click();
     await expect(dlg).toBeHidden();
     await expect(page.locator(".cart-tbl tbody tr")).toHaveCount(3);
     await page.getByRole("button", { name: "선택 삭제" }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "지우기" }).click();
+    await okConfirm(page, "빼기");
     await expect(page.locator(".cart-tbl tbody tr")).toHaveCount(1);
     await page.getByRole("button", { name: "품절 상품 삭제" }).click();
+    await okConfirm(page, "빼기");
     await expect(page.getByRole("heading", { name: "장바구니가 비어 있어요" })).toBeVisible();
     await expect(page.getByRole("link", { name: "상품 보러 가기" })).toHaveAttribute("href", `/shop/${SLUG}/products`);
   });
@@ -105,6 +108,7 @@ test.describe.serial("로그인 구매자", () => {
     await expect(page.getByRole("link", { name: `장바구니 (${count}개)` })).toBeVisible();
     await page.goto(`/shop/${SLUG}/cart`);
     await page.locator(".cart-tbl tbody tr", { hasText: "문라이트 컬렉션 박스" }).getByRole("button", { name: "삭제" }).click();
+    await okConfirm(page, "빼기");
     await expect(badge).toHaveText(String(count - 1));
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(page.locator(".shop-tabbar .shop-badge")).toHaveText(String(count - 1));
