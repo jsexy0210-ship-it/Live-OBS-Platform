@@ -20,6 +20,21 @@ export async function allowRewardUseInDb(slug: string, loginId: string, balance:
   }
 }
 
+// 무통장 입금 안내에는 파트너스 입금 계좌가 있어야 한다(없으면 bank_account_missing 409). 이미 있으면 그대로 둔다.
+export async function ensureBankAccountInDb(slug: string) {
+  const db = open();
+  try {
+    const seller = await db.seller.findUniqueOrThrow({ where: { slug } });
+    await db.sellerBankAccount.upsert({
+      where: { sellerId: seller.id },
+      create: { sellerId: seller.id, bankName: "시험은행", accountNumber: "123-456-789012", accountHolder: "별빛" },
+      update: {},
+    });
+  } finally {
+    await db.$disconnect();
+  }
+}
+
 export async function rewardBalanceInDb(slug: string, loginId: string): Promise<number> {
   const db = open();
   try {
