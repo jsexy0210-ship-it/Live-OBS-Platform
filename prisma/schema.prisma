@@ -612,6 +612,8 @@ model ProductImage {
   // GALLERY: 상품 사진(10장, 첫 장이 대표), DETAIL: 상세 페이지 블록에 쓰는 사진(30장, ProductDetail.blocks가 가리킴)
   kind        ProductImageKind @default(GALLERY)
   sortOrder   Int              @default(0)
+  // 썸네일로 지정한 사진(GALLERY, 상품마다 하나, 부분 유니크 인덱스는 마이그레이션 SQL). 지정이 없으면 첫 번째 사진이 썸네일이다.
+  thumbnail   Boolean          @default(false)
   createdAt   DateTime         @default(now()) @db.Timestamptz(3)
 
   seller  Seller  @relation(fields: [sellerId], references: [id])
@@ -1567,6 +1569,9 @@ model SubscriptionPayment {
   refunds      SubscriptionRefund[]
 
   @@index([sellerId, createdAt])
+  // 마스터 청구·결제 내역(MA-024)의 기간 조회와 구독별 최신 청구 판정
+  @@index([createdAt])
+  @@index([subscriptionId, createdAt])
 }
 
 // 주문 단위 결제 전 동의(대표님 결정 2026-10-02): 「개봉하면 취소·환불이 안 돼요」. 동의하지 않으면 주문을 만들지 않는다.
@@ -2393,6 +2398,8 @@ model BulkJob {
   actorType         ActorType
   actorId           String?       @db.Uuid
   createdAt         DateTime      @default(now()) @db.Timestamptz(3)
+  // 확정을 시작한 시각(COMMITTING). 서버가 중간에 끊겨 멈춘 작업을 찾는 기준(shop-bulk-io/recover.ts). 옛 기록은 비어 있고 createdAt을 쓴다.
+  committingAt      DateTime?     @db.Timestamptz(3)
   committedAt       DateTime?     @db.Timestamptz(3)
   undoUntil         DateTime?     @db.Timestamptz(3)
   undoneAt          DateTime?     @db.Timestamptz(3)
@@ -2413,6 +2420,8 @@ model ProductDetail {
   productId String   @id @db.Uuid
   sellerId  String   @db.Uuid
   blocks    Json
+  // 에디터로 쓴 상세 설명(저장 때 서버가 허용한 태그·속성만 남긴 HTML, products/detailHtml.ts). 있으면 blocks보다 먼저 보여 준다(blocks는 예전 글·사진 블록).
+  html      String?
   updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
   product Product @relation(fields: [sellerId, productId], references: [sellerId, id])
