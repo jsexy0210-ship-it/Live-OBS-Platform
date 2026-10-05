@@ -65,11 +65,17 @@ test("적립금을 쓴 주문의 환불 창: 현금 환불과 적립금 반환�
   await page.goto(`/seller/orders/${orderId}`);
   await page.getByRole("button", { name: "취소 · 환불" }).click();
   const dlg = page.getByRole("dialog", { name: "취소 · 환불 처리" });
+  // 공통 모달: 오른쪽 위 X와 Esc로 닫히고, 다시 열 수 있다
+  await expect(dlg.getByRole("button", { name: "닫기" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dlg).toHaveCount(0);
+  await page.getByRole("button", { name: "취소 · 환불" }).click();
+  await expect(dlg).toBeVisible();
   const paid = Number((await dlg.locator("dt", { hasText: "결제 금액" }).locator("+ dd").innerText()).replace(/[^0-9]/g, ""));
   // 사유 주체를 고르기 전: 발송 전 전체 취소는 두 사유 주체의 금액이 같아 바로 보인다
   await expect(dlg.getByTestId("refund-reward")).toHaveText("1,000원 · 적립금으로 반환");
   await expect(dlg.getByTestId("refund-amount")).toHaveText(`${paid.toLocaleString("ko-KR")}원`);
-  await expect(dlg).toContainText("현금 환불 = 취소 상품 금액 − 적립금 반환");
+  await expect(dlg).toContainText("쓴 적립금은 구매자에게 적립금으로 돌려줍니다");
   await dlg.getByRole("radio", { name: /파트너스 사정/ }).check();
   await expect(dlg.getByTestId("refund-reward")).toHaveText("1,000원 · 적립금으로 반환");
   await dlg.getByLabel("처리 사유").selectOption("품절 · 재고 없음");
