@@ -54,7 +54,7 @@ export default function AutomationDonePage() {
             </div>
             <section className="card pad col" style={{ gap: 6 }}>
               <b>끝난 뒤 확인할 것</b>
-              <span className="t-l2 c-alt">방송 프로그램(OBS)에서 「ONQ 주문대기」가 켜져 있는지 확인해 주십시오. 쇼핑몰에서 앱 허용을 바꾸면 연결이 끊길 수 있습니다. 방송 화면의 색과 위치는 「방송 화면 꾸미기」에서 바꿉니다</span>
+              <span className="t-l2 c-alt">방송 프로그램(OBS)에서 「ONQ 주문대기」(방송 중 들어온 주문 목록 화면)가 켜져 있는지 확인해 주십시오. 쇼핑몰에서 앱 허용을 바꾸면 연결이 끊길 수 있습니다. 방송 화면의 색과 위치는 「방송 화면 꾸미기」에서 바꿉니다</span>
               <span className="t-l2 c-alt">완료 뒤 {FREE_RECONNECT_DAYS}일 동안 같은 쇼핑몰 · 같은 PC는 무료로 재설치해 드립니다</span>
             </section>
             <div className="row" style={{ gap: 8 }}>

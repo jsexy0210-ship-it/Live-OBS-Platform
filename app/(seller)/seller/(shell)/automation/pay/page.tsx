@@ -19,7 +19,7 @@ const CHECKS = [
 ];
 const REASON: Record<string, string> = {
   shop_not_supported: "아직 자동 연결할 수 없는 쇼핑몰입니다. 직접 설정으로 연결해 주십시오 · 결제되지 않았습니다",
-  card_required: "결제 카드가 없습니다. 「구독 · 결제」에서 카드를 등록한 뒤 다시 와 주십시오",
+  card_required: "결제 카드가 없습니다. 「이용권 · 결제」에서 카드를 등록한 뒤 다시 와 주십시오",
   job_in_progress: "이미 진행 중인 자동 연결이 있어 다시 결제하지 않았습니다",
   payment_failed: "결제되지 않았습니다. 카드사에서 승인을 거절했을 수 있습니다 · 카드를 확인한 뒤 다시 시도해 주십시오",
   consent_outdated: "안내 내용이 바뀌었습니다. 새로 고친 뒤 다시 확인해 주십시오",
@@ -68,8 +68,8 @@ function Pay() {
           <div className="msg msg-info" role="note"><span>결제가 확인된 뒤에 작업을 시작합니다</span></div>
           <FormSection title="결제 수단">
             <FormRow label="카드" required>
-              <span data-testid="pay-card">{card === undefined ? "확인 중" : card ? `결제 카드: 구독에 등록한 카드 · ${card}` : "등록된 카드가 없습니다"}</span>
-              <span className="t-c1 c-alt">구독에 등록한 카드로 결제합니다</span>
+              <span data-testid="pay-card">{card === undefined ? "확인 중" : card ? `결제 카드: 이용권에 등록한 카드 · ${card}` : "등록된 카드가 없습니다"}</span>
+              <span className="t-c1 c-alt">이용권에 등록한 카드로 결제합니다</span>
             </FormRow>
           </FormSection>
           <section className="au-fs">

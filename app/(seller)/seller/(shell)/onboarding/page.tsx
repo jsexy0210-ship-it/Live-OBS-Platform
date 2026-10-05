@@ -16,7 +16,7 @@ type Data = { track: "INTEGRATED" | "OVERLAY_ONLY" | null; planCode: string | nu
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; data: Data };
 
 const STEP: Record<string, { title: string; desc: string; go: string }> = {
-  subscription: { title: "구독 결제", desc: "구독료를 결제하면 쇼핑몰과 방송 기능을 쓸 수 있습니다.", go: "구독 · 결제로" },
+  subscription: { title: "이용권 결제", desc: "이용권 요금을 결제하면 쇼핑몰과 방송 기능을 쓸 수 있습니다.", go: "구독 · 결제로" },
   shop_info: { title: "쇼핑몰 정보 입력", desc: "구매자에게 보이는 공유 문구를 입력합니다.", go: "쇼핑몰 정보로" },
   products: { title: "상품 등록", desc: "판매할 상품을 한 개 이상 등록합니다.", go: "상품 등록으로" },
   order_policy: { title: "주문 규칙", desc: "입금해야 하는 시간과 자동 취소 같은 주문 규칙을 저장합니다.", go: "주문 설정으로" },
