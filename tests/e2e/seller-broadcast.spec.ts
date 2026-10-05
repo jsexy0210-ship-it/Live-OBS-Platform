@@ -383,7 +383,21 @@ test("방송 대시보드 대기 표: 1440·1024·390폭에서 조작 버튼이 
   await expect(waitingNames(page)).toHaveText([A, B, C]);
   for (const width of [1440, 1024, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
-    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+    await page.waitForTimeout(600); // 메뉴 서랍이 접히는 전환이 끝난 뒤 잰다
+    // 화면 전체는 가로로 밀리지 않는다: 문서 너비 = 화면 너비, 가로 스크롤 위치 0, 본문이 왼쪽으로 나가지 않음(좁은 폭의 메뉴 서랍은 화면 밖에 접혀 있다)
+    const doc = () =>
+      page.evaluate(() => {
+        const de = document.documentElement;
+        const lnb = document.querySelector('aside[aria-label="파트너스 메뉴"]')?.getBoundingClientRect();
+        return { sw: de.scrollWidth, cw: de.clientWidth, sx: window.scrollX, main: document.querySelector("main")!.getBoundingClientRect().left, h1: document.querySelector("h1")!.getBoundingClientRect().left, lnbRight: lnb ? lnb.right : null, narrow: window.innerWidth < 1024 };
+      });
+    const before = await doc();
+    expect(before.sw).toBe(width);
+    expect(before.cw).toBe(width);
+    expect(before.sx).toBe(0);
+    expect(before.main).toBeGreaterThanOrEqual(0);
+    expect(before.h1).toBeGreaterThanOrEqual(0);
+    if (before.narrow && before.lnbRight !== null) expect(before.lnbRight).toBeLessThanOrEqual(0);
     const wrap = page.locator("section[aria-labelledby=bc-waiting-h] .au-lt-wrap");
     const m = await wrap.evaluate((el) => ({ client: el.clientWidth, scroll: el.scrollWidth }));
     // 넓은 폭에서는 표 전체가 보이고, 좁은 폭에서는 카드 안에서만 스크롤된다
@@ -398,6 +412,8 @@ test("방송 대시보드 대기 표: 1440·1024·390폭에서 조작 버튼이 
     expect(btn!.x).toBeGreaterThanOrEqual(box!.x);
     expect(btn!.x + btn!.width).toBeLessThanOrEqual(box!.x + box!.width + 1);
     await wrap.evaluate((el) => (el.scrollLeft = 0));
+    // 표를 끝까지 밀었다 돌아온 뒤에도 화면 전체는 그대로다
+    expect(await doc()).toEqual(before);
     if (SHOTS) await page.screenshot({ path: `tests/e2e/screenshots/SA-001-plain-${width}.png`, fullPage: true });
   }
 });
