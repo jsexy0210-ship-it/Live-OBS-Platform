@@ -126,6 +126,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/display/sections": "STORE_OPERATIONS",
   "seller/display/recommended": "STORE_OPERATIONS",
   "seller/display/settings": "STORE_OPERATIONS",
+  "seller/restock-alerts": "STORE_OPERATIONS",
   "seller/products/[productId]/images/order": "STORE_OPERATIONS",
   "seller/products/[productId]/images/[imageId]": "STORE_OPERATIONS",
   "seller/products/[productId]/event": "STORE_OPERATIONS",
@@ -233,6 +234,8 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/cart/count": "OPEN", // 머리 배지 개수
   "shop/[slug]/wishlist": "STORE_OPERATIONS", // 찜: 찜하기(POST)는 shopOpen으로 막음, 목록은 열림
   "shop/[slug]/wishlist/[productId]": "OPEN", // 찜 빼기
+  "shop/[slug]/restock-alerts": "STORE_OPERATIONS", // 재입고 알림: 신청(POST)은 shopOpen으로 막음, 목록은 열림
+  "shop/[slug]/restock-alerts/[productId]": "OPEN", // 신청 취소
   "shop/[slug]/notices": "STORE_OPERATIONS", // 쇼핑몰 공지(운영 중이 아니면 404)
   "shop/[slug]/notices/[noticeId]": "STORE_OPERATIONS",
   "shop/[slug]/faqs": "STORE_OPERATIONS",
