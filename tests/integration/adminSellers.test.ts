@@ -126,7 +126,7 @@ describe("이용 정지·해제 POST /api/admin/sellers/{id}/suspend·unsuspend"
     // 이미 받은 주문을 처리하도록 세션·로그인은 살린다(막는 것은 가드, 아래 「정지 중 신규만 막기」)
     expect(await resolveSellerSession(db, login.token)).not.toBeNull();
     expect(await loginSeller(db, { email: owner.email, password: PASSWORD }, {})).toMatchObject({ ok: true });
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "admin.seller.suspend", targetId: seller.id } })).toMatchObject({
+    expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "admin.seller.suspend", targetId: seller.id } })).toMatchObject({
       actorType: "PLATFORM_ADMIN",
       actorId: adminId,
       reason: "이용약관 위반",

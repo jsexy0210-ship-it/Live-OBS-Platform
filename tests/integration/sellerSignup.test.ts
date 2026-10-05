@@ -152,7 +152,7 @@ describe("자동 점검 통과 → 자동 승인", () => {
       mailOrderStatus: "NORMAL",
     });
     expect(await db.memberGrade.count({ where: { sellerId: seller.id } })).toBe(5);
-    const owner = await db.sellerUser.findFirstOrThrow({ where: { sellerId: seller.id } });
+    const owner = await db.sellerUser.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: seller.id } });
     expect(owner).toMatchObject({ isOwner: true, name: "김대표", email: f.email });
     expect((await loginSeller(db, { email: f.email, password: f.password }, {})).ok).toBe(true);
     const actions = (await db.auditLog.findMany({ where: { sellerId: seller.id }, orderBy: { createdAt: "asc" } })).map((a) => a.action);
@@ -178,7 +178,7 @@ describe("자동 점검에 걸림 → 「확인 필요」", () => {
     expect(await db.seller.count({ where: { status: "PENDING" } })).toBe(4);
 
     // 승인 대기 판매자는 로그인할 수 없다
-    const owner = await db.sellerUser.findFirstOrThrow({ where: { seller: { id: (closed as { sellerId: string }).sellerId } } });
+    const owner = await db.sellerUser.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { seller: { id: (closed as { sellerId: string }).sellerId } } });
     expect(await loginSeller(db, { email: owner.email, password: "seller-pass-1" }, {})).toEqual({ ok: false, reason: "seller_pending" });
   });
 
@@ -564,11 +564,11 @@ describe("가입 필수 동의(PF-007-1)", () => {
       ),
     );
     expect(res.status).toBe(200);
-    const owner = await db.sellerUser.findFirstOrThrow({ where: { email: "consent-owner@example.com" } });
+    const owner = await db.sellerUser.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { email: "consent-owner@example.com" } });
     const consent = owner.signupConsent as Record<string, string>;
     expect(consent).toMatchObject({ termsVersion: SELLER_SIGNUP_CONSENT.termsVersion, privacyVersion: SELLER_SIGNUP_CONSENT.privacyVersion });
     expect(Number.isNaN(Date.parse(consent.agreedAt))).toBe(false);
-    const audit = await db.auditLog.findFirstOrThrow({ where: { action: "seller.apply", actorId: owner.id } });
+    const audit = await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "seller.apply", actorId: owner.id } });
     expect((audit.after as { consent: unknown }).consent).toEqual(consent);
   });
 

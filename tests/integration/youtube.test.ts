@@ -175,11 +175,11 @@ describe("방송 자동 시작·종료", () => {
 
     yt.goLive(VID_A);
     await syncYoutube(db, yt.client, NOW);
-    const link = await db.youtubeLiveLink.findFirstOrThrow({ where: { sellerId: s.seller.id } });
+    const link = await db.youtubeLiveLink.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id } });
     expect(link).toMatchObject({ status: "LIVE", autoStarted: true, liveChatId: "chat-" + VID_A });
     const session = await db.broadcastSession.findUniqueOrThrow({ where: { id: link.broadcastSessionId! } });
     expect(session.status).toBe("LIVE");
-    const audit = await db.auditLog.findFirstOrThrow({ where: { sellerId: s.seller.id, action: "broadcast.start" } });
+    const audit = await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id, action: "broadcast.start" } });
     expect(audit).toMatchObject({ actorType: "SYSTEM", actorId: null });
 
     // 방송 대시보드 요약에도 지금 방송으로 잡힌다
@@ -216,7 +216,7 @@ describe("방송 자동 시작·종료", () => {
     yt.goLive(VID_A);
     await syncYoutube(db, yt.client, NOW);
     expect(await db.broadcastSession.count({ where: { sellerId: s.seller.id } })).toBe(0);
-    expect((await db.youtubeLiveLink.findFirstOrThrow({ where: { sellerId: s.seller.id } })).status).toBe("LIVE");
+    expect((await db.youtubeLiveLink.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id } })).status).toBe("LIVE");
   });
 
   it("다른 판매자의 방송은 건드리지 않는다", async () => {
@@ -290,7 +290,7 @@ async function liveShop() {
   yt.video(VID_A, CH_A);
   yt.goLive(VID_A);
   await connectLive(db, s.ctx, yt.client, VID_A, NOW);
-  const link = await db.youtubeLiveLink.findFirstOrThrow({ where: { sellerId: s.seller.id } });
+  const link = await db.youtubeLiveLink.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id } });
   return { ...s, yt, link, cookie: await cookieOf(s.owner.email) };
 }
 
@@ -402,7 +402,7 @@ describe("채팅 수집", () => {
 
 describe("채팅 닉네임 매칭", () => {
   async function order(sellerId: string, nickname: string, createdAt: Date) {
-    const grade = await db.memberGrade.findFirstOrThrow({ where: { sellerId } });
+    const grade = await db.memberGrade.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId } });
     const buyer = await createBuyer(sellerId, grade.id);
     const last = await db.order.aggregate({ where: { sellerId }, _max: { orderNo: true } });
     return db.order.create({ data: { sellerId, orderNo: (last._max.orderNo ?? 0) + 1, buyerMemberId: buyer.id, broadcastNicknameSnapshot: nickname, totalAmount: 1000, createdAt } });

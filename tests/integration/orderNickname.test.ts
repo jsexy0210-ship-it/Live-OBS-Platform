@@ -38,7 +38,7 @@ describe("주문 닉네임", () => {
     expect((await db.buyerMember.findUniqueOrThrow({ where: { id: s.buyer.id } })).broadcastNickname).toBe(s.buyer.broadcastNickname);
     const paid = await markOrderPaid(db, { sellerId: s.seller.id, orderId: r.orderId, paymentMethod: "CARD" });
     expect(paid.ok).toBe(true);
-    expect((await db.queueItem.findFirstOrThrow({ where: { orderId: r.orderId } })).nicknameSnapshot).toBe("라이브왕");
+    expect((await db.queueItem.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { orderId: r.orderId } })).nicknameSnapshot).toBe("라이브왕");
   });
 
   it("없거나 비우면(공백만 포함) 회원 방송 닉네임", async () => {

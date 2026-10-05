@@ -180,7 +180,7 @@ describe("만들기·수정·중지·삭제", () => {
     expect(dup.res.status).toBe(409);
     expect(dup.body.error).toBe("code_taken");
     expect((await makeCoupon(other, { issueMethod: "CODE", code: "STARNIGHT" })).res.status).toBe(201);
-    const first = await db.coupon.findFirstOrThrow({ where: { sellerId: s.seller.id } });
+    const first = await db.coupon.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id } });
     const { id: _id, createdAt: _c, updatedAt: _u, ...copy } = first;
     await expect(db.coupon.create({ data: copy })).rejects.toThrow();
   });
@@ -382,7 +382,7 @@ describe("받기(내려받기·코드)", () => {
     expect((await redeem(s, "LIVE2026", s.b2)).status).toBe(429);
     expect(await db.auditLog.count({ where: { action: "buyer_coupon.code_failed", actorId: s.buyer2.id } })).toBe(CODE_ATTEMPT_LIMIT);
     // 거래 무관 행동이라 3개월 보관 기한이 붙는다
-    const row = await db.auditLog.findFirstOrThrow({ where: { action: "buyer_coupon.code", actorId: s.buyer.id } });
+    const row = await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "buyer_coupon.code", actorId: s.buyer.id } });
     expect(row.retainUntil).not.toBeNull();
   });
 
@@ -552,7 +552,7 @@ describe("품목별 할인 배분·적립 기준·0원 거절(MASTER 2026-10-04 
     const red = await db.couponRedemption.findUniqueOrThrow({ where: { orderId: o.orderId } });
     expect(red.itemDiscounts).toEqual({ [a.id]: 5000, [b.id]: 5000 });
     expect((await markOrderPaid(db, { sellerId: s.seller.id, orderId: o.orderId, paymentMethod: "CARD" })).ok).toBe(true);
-    const itemA = await db.orderItem.findFirstOrThrow({ where: { orderId: o.orderId, optionId: a.id } });
+    const itemA = await db.orderItem.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { orderId: o.orderId, optionId: a.id } });
     await db.queueItem.updateMany({ where: { orderItemId: itemA.id }, data: { openingStartedAt: new Date(), status: "DONE" } });
     await db.shipment.create({ data: { sellerId: s.seller.id, orderId: o.orderId, courier: "CJ", trackingNumber: "123456789012", shippedAt: new Date() } });
     const preview = await previewRefund(db, s.ctx, o.orderId);
@@ -680,7 +680,7 @@ describe("취소·환불·탈퇴", () => {
     const left = await db.buyerCoupon.findMany({ where: { buyerMemberId: s.buyer.id } });
     expect(left.map((x) => [x.couponId, x.status])).toEqual([[used.id, "ISSUED"]]);
     expect((await db.couponRedemption.findUniqueOrThrow({ where: { orderId: o.orderId } })).restoredAt).not.toBeNull();
-    const audit = await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: s.buyer.id } });
+    const audit = await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "buyer.withdraw", actorId: s.buyer.id } });
     expect((audit.after as { deletedCoupons: number }).deletedCoupons).toBe(1);
   });
 });
@@ -710,7 +710,7 @@ describe("직접 지급", () => {
     expect((await grantPost(json("/x", "POST", s.owner, { gradeIds: [s.grade.id] }), p({ couponId: dl.id }))).status).toBe(400);
     const other = await shop();
     expect((await grantPost(json("/x", "POST", s.owner, { gradeIds: [other.grade.id] }), p({ couponId: c.id }))).status).toBe(400);
-    const audit = await db.auditLog.findFirstOrThrow({ where: { action: "coupon.grant", targetId: c.id } });
+    const audit = await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "coupon.grant", targetId: c.id } });
     expect(audit.after).toMatchObject({ granted: 2, skipped: 0 });
   });
 });

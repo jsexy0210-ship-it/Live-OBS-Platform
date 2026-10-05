@@ -75,8 +75,8 @@ describe("입금 기한 알림 「보냈음」 기록", () => {
       await markNotificationFailed(db, again[0], "provider timeout");
     }
     expect(await claimPaymentDueSoon(db)).toEqual([]);
-    expect(await db.orderNotification.findFirstOrThrow({ where: { orderId: sent.id } })).toMatchObject({ status: "SENT", sentAt: expect.any(Date) });
-    expect(await db.orderNotification.findFirstOrThrow({ where: { orderId: flaky.id } })).toMatchObject({ status: "FAILED", attempts: MAX_NOTIFICATION_ATTEMPTS, failureReason: "provider timeout" });
+    expect(await db.orderNotification.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { orderId: sent.id } })).toMatchObject({ status: "SENT", sentAt: expect.any(Date) });
+    expect(await db.orderNotification.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { orderId: flaky.id } })).toMatchObject({ status: "FAILED", attempts: MAX_NOTIFICATION_ATTEMPTS, failureReason: "provider timeout" });
   });
 
   it("잡아 둔 채 10분 넘게 멈춘 기록은 다시 잡고, 그 안이면 잡지 않는다. 그사이 입금된 주문은 다시 잡지 않는다", async () => {

@@ -367,7 +367,7 @@ describe("런칭 할인 사용 백필(20261004155000)", () => {
     for (const sql of LAUNCH_BACKFILL) await db.$executeRawUnsafe(sql);
     expect(await state()).toEqual(once);
 
-    const p = await db.subscriptionPayment.findFirstOrThrow({ where: { sellerId: pending } });
+    const p = await db.subscriptionPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: pending } });
     await settlePayment(db, p.id, { ok: true, paymentId: "pg-1", receiptUrl: null }, { actorType: "SYSTEM", actorId: null, now: t(0) });
     expect(await usedAt(pending)).toEqual(t(0));
   });

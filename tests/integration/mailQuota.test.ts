@@ -114,7 +114,7 @@ describe("거래 메일 제공량과 잔액 차감", () => {
     await setBalance(s.seller.id, 5, 5);
     expect((await send(s.seller.id, fakeSender({ fail: true }).sender)).status).toBe("FAILED");
     expect(await balance(s.seller.id)).toEqual([5, 5]);
-    expect((await db.sellerMessageLedger.findFirstOrThrow({ where: { sellerId: s.seller.id } })).status).toBe("REVERSED");
+    expect((await db.sellerMessageLedger.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id } })).status).toBe("REVERSED");
     expect((await send(s.seller.id, fakeSender().sender)).status).toBe("SENT");
     expect(await balance(s.seller.id)).toEqual([0, 0]);
     expect(await sellerMailUsage(db, s.seller.id)).toMatchObject({ sent: 1, failed: 1 });
@@ -127,7 +127,7 @@ describe("거래 메일 제공량과 잔액 차감", () => {
     const f = fakeSender();
     expect(await send(s.seller.id, f.sender, true)).toMatchObject({ status: "SENT", charged: true });
     expect(await balance(s.seller.id)).toEqual([7, 0]);
-    expect((await db.sellerMessageLedger.findFirstOrThrow({ where: { sellerId: s.seller.id } })).channel).toBe("MAIL_BULK");
+    expect((await db.sellerMessageLedger.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id } })).channel).toBe("MAIL_BULK");
     expect(await send(s.seller.id, f.sender)).toMatchObject({ status: "SENT", charged: false });
     expect(await sellerMailUsage(db, s.seller.id)).toMatchObject({ freeSent: 1, chargedSent: 1 });
   });
@@ -135,7 +135,7 @@ describe("거래 메일 제공량과 잔액 차감", () => {
   it("단가 기본 0원이면 제공량을 넘어도 0원 차감 기록으로 보낸다", async () => {
     const s = await shop(0);
     expect(await send(s.seller.id, fakeSender().sender)).toMatchObject({ status: "SENT", charged: true });
-    expect(await db.sellerMessageLedger.findFirstOrThrow({ where: { sellerId: s.seller.id } })).toMatchObject({ status: "SUCCEEDED", paidAmount: 0, freeAmount: 0, unitPrice: 0 });
+    expect(await db.sellerMessageLedger.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id } })).toMatchObject({ status: "SUCCEEDED", paidAmount: 0, freeAmount: 0, unitPrice: 0 });
   });
 
   it("달은 KST 기준이다: 10월 31일 23:59 KST까지는 10월, 11월 1일 0시 KST부터 새 제공량", async () => {
@@ -265,7 +265,7 @@ describe("파트너스 발송 충전 API", () => {
     const t = await put(cookie, { lowBalanceThreshold: 50 });
     expect(t.status).toBe(200);
     expect(await t.json()).toMatchObject({ lowBalanceThreshold: 50, lowBalance: true });
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "seller.message_balance.threshold_update" } })).toMatchObject({ actorId: s.owner.id, before: { lowBalanceThreshold: 0 }, after: { lowBalanceThreshold: 50 } });
+    expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "seller.message_balance.threshold_update" } })).toMatchObject({ actorId: s.owner.id, before: { lowBalanceThreshold: 0 }, after: { lowBalanceThreshold: 50 } });
     for (const body of [{}, { lowBalanceThreshold: -1 }, { lowBalanceThreshold: "5" }, { lowBalanceThreshold: 10_000_001 }]) expect((await put(cookie, body)).status).toBe(400);
 
     const bad = await consent(cookie, { version: "old" });
@@ -338,7 +338,7 @@ describe("마스터 관리자 발송 설정 API", () => {
     expect((await put(ro.cookie, { platformDailyLimit: 10 })).status).toBe(403);
     const ok = await put(su.cookie, { platformDailyLimit: 90 });
     expect(await ok.json()).toMatchObject({ chargingEnabled: true, platformDailyLimit: 90 });
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "admin.message_settings.update" } })).toMatchObject({ actorId: su.id, before: { platformDailyLimit: 100 }, after: { platformDailyLimit: 90 } });
+    expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "admin.message_settings.update" } })).toMatchObject({ actorId: su.id, before: { platformDailyLimit: 100 }, after: { platformDailyLimit: 90 } });
     for (const body of [{}, { chargingEnabled: "true" }, { platformDailyLimit: -1 }]) expect((await put(su.cookie, body)).status).toBe(400);
 
     const s = await shop(1);
@@ -391,7 +391,7 @@ describe("마스터 관리자 발송 설정 API", () => {
     const r2 = await grant(su.cookie, s.seller.id, body);
     expect(r2.status).toBe(200);
     expect(await r2.json()).toMatchObject({ existing: true, balance: { freeBalance: 5000 } });
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "admin.message_balance.grant" } })).toMatchObject({ actorId: su.id, sellerId: s.seller.id, reason: "출시 이벤트", after: { freeAmount: 5000 } });
+    expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "admin.message_balance.grant" } })).toMatchObject({ actorId: su.id, sellerId: s.seller.id, reason: "출시 이벤트", after: { freeAmount: 5000 } });
     for (const b of [{ ...body, amount: 0 }, { ...body, reason: "" }, { ...body, idempotencyKey: "" }, { ...body, amount: 10_000_001 }]) expect((await grant(su.cookie, s.seller.id, b)).status).toBe(400);
     expect((await grant(su.cookie, "00000000-0000-4000-8000-000000000000", body)).status).toBe(404);
     const v = await sellerBalance(ro.cookie, s.seller.id);

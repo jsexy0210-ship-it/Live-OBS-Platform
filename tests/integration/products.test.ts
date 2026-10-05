@@ -58,7 +58,7 @@ describe("상품 등록·가격 검증", () => {
     const s = await seller();
     const p = await made(s.ctx);
     expect(p).toMatchObject({ name: "부스터 팩", price: 5000, status: "ON_SALE", options: [{ name: "1박스", priceDelta: 1000, stock: 10, sku: null }] });
-    expect(await db.stockMovement.findFirstOrThrow({ where: { optionId: p.options[0].id } })).toMatchObject({ delta: 10, reason: "MANUAL" });
+    expect(await db.stockMovement.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { optionId: p.options[0].id } })).toMatchObject({ delta: 10, reason: "MANUAL" });
     expect(await db.auditLog.count({ where: { action: "product.create", targetId: p.id } })).toBe(1);
     expect(await createProduct(db, s.ctx, { name: "초안", price: 1000 })).toMatchObject({ ok: true, value: { status: "DRAFT", options: [] } });
   });
@@ -374,7 +374,7 @@ describe("재고 변경", () => {
     expect((await db.productOption.findUniqueOrThrow({ where: { id: optionId } })).stock).toBe(7);
     expect(await updateOption(db, s.ctx, p.id, optionId, { stock: 20, expectedStock: 7 })).toMatchObject({ ok: true, value: { options: [{ stock: 20 }] } });
     // 「변경 후」 일괄 적용도 사유와 함께 남긴다(MASTER 후속), 등록 때 재고는 「처음 재고」
-    expect(await db.stockMovement.findFirstOrThrow({ where: { optionId, reason: "MANUAL", delta: 13 } })).toMatchObject({ note: "재고 일괄 수정" });
+    expect(await db.stockMovement.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { optionId, reason: "MANUAL", delta: 13 } })).toMatchObject({ note: "재고 일괄 수정" });
     expect(await db.stockMovement.count({ where: { optionId, reason: "MANUAL", note: null } })).toBe(0);
     for (const body of [{ stock: 5 }, { stock: -1, expectedStock: 20 }, { stock: 1.5, expectedStock: 20 }, {}]) {
       expect(await updateOption(db, s.ctx, p.id, optionId, body), JSON.stringify(body)).toEqual({ ok: false, reason: "invalid_option" });
