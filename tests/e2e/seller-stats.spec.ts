@@ -38,7 +38,7 @@ test("주문 통계: 기간·단위를 바꾸면 다시 집계하고, 화면 숫
   await login(page, "demo-owner@example.com", "/seller/stats/orders");
   await first;
   await expect(page.getByRole("heading", { name: "통계 · 주문" })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "분석", exact: true })).toHaveAttribute("href", "/seller/stats");
+  await expect(page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "통계", exact: true })).toHaveAttribute("href", "/seller/stats");
 
   const r30 = statsResponse(page, "orders");
   await page.getByRole("button", { name: "30일", exact: true }).click();
@@ -102,7 +102,7 @@ test("매출 통계: 매출 구성·결제 수단별을 API 값으로 보여 준
 
 test("통계 권한이 없는 직원은 메뉴가 없고, 주소로 들어와도 권한 안내를 본다", async ({ page }) => {
   await login(page, "demo-viewer@example.com", "/seller/orders");
-  await expect(page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "분석", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "통계", exact: true })).toHaveCount(0);
   const r = statsResponse(page, "orders");
   await page.goto("/seller/stats/orders");
   expect((await r).status()).toBe(403);

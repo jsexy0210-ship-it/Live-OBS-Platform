@@ -31,7 +31,7 @@ describe("구매자 로그인 실패 문구", () => {
     await db.buyerMember.update({ where: { id: m.id }, data: { status: "DORMANT" } });
     const dormant = await buyer(seller.slug, { loginId: m.loginId, password: PASSWORD });
     expect(dormant.status).toBe(403);
-    expect(await dormant.json()).toEqual({ error: "dormant", message: "오래 쓰지 않아 쉬고 있는 계정이에요. 본인 확인 뒤 다시 쓸 수 있어요" });
+    expect(await dormant.json()).toEqual({ error: "dormant", message: "오래 쓰지 않아 쉬고 있는 계정이에요. 쇼핑몰에 문의하면 다시 쓸 수 있어요" });
 
 
     await db.seller.update({ where: { id: seller.id }, data: { status: "SUSPENDED" } });
