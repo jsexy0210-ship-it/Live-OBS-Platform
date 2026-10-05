@@ -5,7 +5,9 @@ import { notFound, redirect } from "next/navigation";
 import { COOKIE_NAMES } from "../../../../../lib/server/auth/policy";
 import { resolveBuyerSession } from "../../../../../lib/server/auth/session";
 import { myGroups } from "../../../../../components/shop/myGroups";
+import GradeCard from "../../../../../components/shop/member-grades/GradeCard";
 import { prisma } from "../../../../../lib/server/db";
+import { buyerGradeStatus } from "../../../../../lib/server/shop-member-grades/benefits";
 
 export const dynamic = "force-dynamic";
 
@@ -30,11 +32,13 @@ export default async function ShopMyPage({ params }: Params) {
   const session = await resolveBuyerSession(prisma, (await cookies()).get(COOKIE_NAMES.buyer)?.value, shop.id);
   if (!session) redirect(`${base}/login?next=${encodeURIComponent(`${base}/me`)}`);
   const groups = myGroups(base);
+  const grade = await buyerGradeStatus(prisma, { sellerId: shop.id, buyerMemberId: session.member.id });
   return (
     <>
       <section className="card shop-card col shop-my">
         <h1 className="t-h1">내 정보</h1>
         <p className="t-l1 c-alt">{session.member.name}님, 반가워요.</p>
+        {grade && <GradeCard status={grade} />}
         {groups.map((g) => (
           <nav key={g.title} aria-label={g.title} className="shop-my-list">
             <p className="shop-my-g">{g.title}</p>
