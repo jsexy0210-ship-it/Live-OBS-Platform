@@ -57,7 +57,12 @@ export function newWidget(slot: Slot, aspect: Aspect, widgets: Widget[]): Widget
 }
 
 // 편집기 미리보기용 예시 데이터(OverlayView는 실제 데이터를 넣는다)
+export type OrderEvent = { id: string; kind: "FIRST" | "REPEAT" | "VIP"; nickname: string; productLabel: string; quantity: number; moreItems: number; occurredAt: string };
 export type LiveData = {
+  // 쇼핑몰 정보 위젯용(공개 state의 shop)
+  shop?: { name: string; url: string | null } | null;
+  // 신규 주문 알림 위젯이 지금 보여 줄 주문(없으면 위젯을 그리지 않는다)
+  alert?: OrderEvent | null;
   opening: { nickname: string; gradeSnapshot: string | null; productLabel: string; quantity: number; timerSeconds?: number | null; openingStartedAt?: string | null } | null;
   waiting: { id: string; nickname: string; productLabel: string; quantity: number }[];
   hits: { id: string; nickname: string; cardName: string }[];
@@ -65,6 +70,8 @@ export type LiveData = {
 };
 export const SAMPLE_DATA: LiveData = {
   live: true,
+  shop: { name: "카드숍 별빛", url: "https://example.com/shop/starlight" },
+  alert: { id: "sample", kind: "VIP", nickname: "별빛하늘", productLabel: "프리미엄 박스", quantity: 2, moreItems: 0, occurredAt: "2026-01-01T00:00:00.000Z" },
   opening: { nickname: "별빛하늘", gradeSnapshot: "VIP", productLabel: "프리미엄 박스", quantity: 2, timerSeconds: 90, openingStartedAt: null },
   waiting: [
     { id: "s1", nickname: "달콤곰", productLabel: "스타터 팩", quantity: 1 },
