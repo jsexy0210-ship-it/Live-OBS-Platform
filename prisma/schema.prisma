@@ -69,6 +69,8 @@ model Seller {
   id                       String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   slug                     String       @unique
   shopName                 String
+  // 한 줄 소개(SA-060, 40자). 쇼핑몰 홈·공유 설명 기본값. 비어 있으면 null.
+  shopTagline              String?
   // 공유 미리보기(og:title·og:description) 제목·설명. 비어 있으면 쇼핑몰 이름(제목)·없음(설명). 파트너스 쇼핑몰 설정(SHOP_SETTINGS)에서 바꾼다.
   shareTitle               String?
   shareDescription         String?
@@ -612,6 +614,8 @@ model ProductImage {
   // GALLERY: 상품 사진(10장, 첫 장이 대표), DETAIL: 상세 페이지 블록에 쓰는 사진(30장, ProductDetail.blocks가 가리킴)
   kind        ProductImageKind @default(GALLERY)
   sortOrder   Int              @default(0)
+  // 썸네일로 지정한 사진(GALLERY, 상품마다 하나, 부분 유니크 인덱스는 마이그레이션 SQL). 지정이 없으면 첫 번째 사진이 썸네일이다.
+  thumbnail   Boolean          @default(false)
   createdAt   DateTime         @default(now()) @db.Timestamptz(3)
 
   seller  Seller  @relation(fields: [sellerId], references: [id])
@@ -1567,6 +1571,9 @@ model SubscriptionPayment {
   refunds      SubscriptionRefund[]
 
   @@index([sellerId, createdAt])
+  // 마스터 청구·결제 내역(MA-024)의 기간 조회와 구독별 최신 청구 판정
+  @@index([createdAt])
+  @@index([subscriptionId, createdAt])
 }
 
 // 주문 단위 결제 전 동의(대표님 결정 2026-10-02): 「개봉하면 취소·환불이 안 돼요」. 동의하지 않으면 주문을 만들지 않는다.
@@ -2393,6 +2400,8 @@ model BulkJob {
   actorType         ActorType
   actorId           String?       @db.Uuid
   createdAt         DateTime      @default(now()) @db.Timestamptz(3)
+  // 확정을 시작한 시각(COMMITTING). 서버가 중간에 끊겨 멈춘 작업을 찾는 기준(shop-bulk-io/recover.ts). 옛 기록은 비어 있고 createdAt을 쓴다.
+  committingAt      DateTime?     @db.Timestamptz(3)
   committedAt       DateTime?     @db.Timestamptz(3)
   undoUntil         DateTime?     @db.Timestamptz(3)
   undoneAt          DateTime?     @db.Timestamptz(3)
@@ -2413,6 +2422,8 @@ model ProductDetail {
   productId String   @id @db.Uuid
   sellerId  String   @db.Uuid
   blocks    Json
+  // 에디터로 쓴 상세 설명(저장 때 서버가 허용한 태그·속성만 남긴 HTML, products/detailHtml.ts). 있으면 blocks보다 먼저 보여 준다(blocks는 예전 글·사진 블록).
+  html      String?
   updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
   product Product @relation(fields: [sellerId, productId], references: [sellerId, id])
@@ -3908,4 +3919,19 @@ model ShopLegalNotice {
   updatedAt      DateTime       @default(now()) @updatedAt @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])
+}
+
+// ───────────── 파트너스 가입 신청 심사 상태(MA-013) ─────────────
+// 가입 신청(Seller PENDING)의 보완 요청·재촉 메일 기록. 신청마다 한 줄(보완 요청을 처음 보낼 때 만든다). 「확인 필요」·「이상 없음」은 reviewReasons에서 계산한다.
+// 보완 요청 중 = supplementRequestedAt이 있고 supplementResolvedAt이 없음. 기한(supplementDueAt)이 지나면 정기 작업이 자동 반려한다.
+model SellerApplicationReview {
+  sellerId              String    @id @db.Uuid
+  supplementReason      String?
+  supplementRequestedAt DateTime? @db.Timestamptz(3)
+  supplementDueAt       DateTime? @db.Timestamptz(3)
+  supplementResolvedAt  DateTime? @db.Timestamptz(3)
+  supplementByAdminId   String?   @db.Uuid
+  reminderCount         Int       @default(0)
+  lastReminderAt        DateTime? @db.Timestamptz(3)
+  updatedAt             DateTime  @updatedAt @db.Timestamptz(3)
 }

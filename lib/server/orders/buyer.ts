@@ -207,7 +207,8 @@ export async function listBuyerOrders(
 }
 
 // 상세: 목록 항목 + 본인 배송지 + 결제 수단·카드 요약 + 받는 방법 + 현금영수증 신청 + 품목별 사진·옵션 id·대기열(순번·개봉 상태).
-// 모든 조회에 쇼핑몰·본인이 걸려 있다. 카드는 카드사 이름·끝 4자리·할부 개월만(번호 전체·유효기간·결제사 거래 번호는 없음).
+// 모든 조회에 쇼핑몰·본인이 걸려 있다. 대기열은 내 품목의 상태·내 앞 대기 수만 주고 다른 구매자 정보는 주지 않는다(loadItemExtras).
+// 카드는 카드사 이름·끝 4자리·할부 개월만(번호 전체·유효기간·결제사 거래 번호는 없음).
 export async function getBuyerOrder(db: PrismaClient, scope: { sellerId: string; buyerMemberId: string }, orderId: string) {
   if (!UUID.test(orderId)) return null;
   const o = await db.order.findFirst({
