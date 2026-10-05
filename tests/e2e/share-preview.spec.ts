@@ -28,7 +28,7 @@ const meta = (page: Page, key: string) => page.locator(`meta[property="${key}"],
 test("대표자: 공유 미리보기 제목·설명을 저장하면 쇼핑몰 페이지의 공유 정보에 쓰이고, 비우면 쇼핑몰 이름으로 돌아간다", async ({ page }) => {
   await loginSeller(page, "demo-owner@example.com", PASSWORD, "/seller/settings/share");
   await expect(page).toHaveURL(/\/seller\/settings\/share$/);
-  await expect(page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "공유 설정" })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "쇼핑몰 정보" })).toHaveAttribute("aria-current", "page");
   // 비어 있으면 미리보기 제목은 쇼핑몰 이름이다
   const card = page.getByTestId("sp-card");
   await expect(card).toContainText("카드숍 별빛");
@@ -152,8 +152,9 @@ test("쇼핑몰 설정 화면에는 탭 줄이 없고, 왼쪽 메뉴로 각 설�
   await expect(page.getByRole("navigation", { name: "쇼핑몰 설정" })).toHaveCount(0);
   await expect(page.locator(".settings-tabs")).toHaveCount(0);
   const lnb = page.getByRole("complementary", { name: "파트너스 메뉴" });
-  await expect(lnb.getByRole("link", { name: "공유 설정" })).toHaveAttribute("aria-current", "page");
-  for (const [name, path] of [["쇼핑몰 정보", "shop"], ["주문 설정", "order"], ["배송 설정", "shipping"], ["회원 정책", "member"], ["공유 설정", "share"]] as const) {
+  // 공유 설정은 「쇼핑몰 정보」 메뉴 안에 들어가 있다
+  await expect(lnb.getByRole("link", { name: "쇼핑몰 정보" })).toHaveAttribute("aria-current", "page");
+  for (const [name, path] of [["주문 · 배송 설정", "order"], ["약관 · 회원 정책", "legal"], ["검색 노출", "seo"], ["쇼핑몰 정보", "shop"]] as const) {
     await lnb.getByRole("link", { name }).click();
     await expect(page).toHaveURL(new RegExp(`/seller/settings/${path}$`));
     await expect(page.getByRole("navigation", { name: "쇼핑몰 설정" })).toHaveCount(0);

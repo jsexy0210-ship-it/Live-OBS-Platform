@@ -25,7 +25,7 @@ test("연결 전: 연결 안 됨, 잘못된 채널 주소는 서버 안내를 �
   await resetYoutube();
   await login(page, "demo-owner@example.com", "/seller/products");
   await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "방송", exact: true }).click();
-  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "유튜브 연결" }).click();
+  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "외부 채널 연결" }).click();
   await expect(page).toHaveURL(/\/seller\/youtube$/);
   await expect(page.getByTestId("yt-status")).toContainText("연결 안 됨");
   await expect(page.getByTestId("yt-chat-toggle")).toHaveCount(0);

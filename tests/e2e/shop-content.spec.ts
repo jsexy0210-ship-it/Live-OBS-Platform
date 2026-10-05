@@ -66,8 +66,8 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
   test("SA-064 대표자: 배너 추가(PNG만·링크 검사·미리보기) → 예약·PC만 배너 → 끌어서 순서 변경", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await ownerOpen(page, "/seller/banners");
-    await expect(page.getByRole("link", { name: "배너 · 팝업" })).toHaveClass(/on/);
-    await expect(page.getByRole("link", { name: "홈 배너", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "홈 배너", exact: true })).toHaveClass(/on/);
+    await expect(page.getByRole("navigation", { name: "배너 · 팝업" }).getByRole("link", { name: "홈 배너", exact: true })).toHaveAttribute("aria-current", "page");
     await expect(page.getByText("등록한 배너가 없습니다")).toBeVisible();
 
     await page.getByRole("button", { name: "배너 추가" }).first().click();
@@ -156,7 +156,7 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
   test("SA-065 대표자: 이미지 팝업(전체 페이지·7일 보지 않기)과 상단 띠 추가, 복제", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await ownerOpen(page, "/seller/banners/popups");
-    await expect(page.getByRole("link", { name: "이벤트 팝업", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("navigation", { name: "배너 · 팝업" }).getByRole("link", { name: "이벤트 팝업", exact: true })).toHaveAttribute("aria-current", "page");
     await page.getByRole("button", { name: "팝업 추가" }).first().click();
     const dialog = page.getByRole("dialog", { name: "팝업 추가" });
     // 이미지 팝업은 이미지가 있어야 저장된다
@@ -282,7 +282,7 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
     await page.goto("/seller/login?next=%2Fseller%2Fbanners");
     await submitSellerLogin(page, "demo-staff@example.com", PASSWORD);
     await expect(page).toHaveURL(/\/seller\/banners$/);
-    await expect(page.getByRole("link", { name: "배너 · 팝업" })).toBeVisible();
+    await expect(page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "홈 배너", exact: true })).toBeVisible();
     await expect(page.getByText("목록만 볼 수 있습니다. 배너 추가 · 수정은 대표자나 쇼핑몰 설정 권한이 있는 직원에게 요청해 주십시오.")).toBeVisible();
     await expect(page.getByTestId("banner-row")).toHaveCount(3);
     await expect(page.getByRole("button", { name: "배너 추가" })).toHaveCount(0);
@@ -293,7 +293,7 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
     const status = await page.evaluate(async () => (await fetch("/api/seller/shop-content/popups", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "TEXT", title: "x", body: "y" }) })).status);
     expect(status).toBe(403);
     await page.screenshot({ path: `${SHOT}/SA-064-staff-readonly-1440.png` });
-    await page.getByRole("link", { name: "이벤트 팝업", exact: true }).click();
+    await page.getByRole("navigation", { name: "배너 · 팝업" }).getByRole("link", { name: "이벤트 팝업", exact: true }).click();
     await expect(page.getByTestId("popup-row")).toHaveCount(3);
     await expect(page.getByRole("button", { name: "팝업 추가" })).toHaveCount(0);
   });

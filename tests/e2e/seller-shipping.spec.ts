@@ -27,7 +27,7 @@ test("대표자: 송장 저장 → 배송 중 → 배송 완료로 옮겨 가고
   await page.goto("/seller/login?next=%2Fseller%2Fshipping");
   await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
   await expect(page).toHaveURL(/\/seller\/shipping$/);
-  await expect(page.getByRole("link", { name: "배송", exact: true })).toHaveAttribute("href", "/seller/shipping");
+  await expect(page.getByRole("link", { name: "배송 · 송장", exact: true })).toHaveAttribute("href", "/seller/shipping");
 
   const rows = page.getByTestId("shipment-row");
   await expect(rows.first()).toBeVisible();

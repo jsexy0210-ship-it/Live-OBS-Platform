@@ -77,7 +77,7 @@ test.describe.serial("SH-022-R 교환·반품 신청 · SA-029 교환·반품 �
     await page.goto(`/seller/login?next=${encodeURIComponent("/seller/returns")}`);
     await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
     await expect(page).toHaveURL(/\/seller\/returns$/);
-    await expect(page.getByRole("link", { name: "교환 · 반품" })).toHaveClass(/on/);
+    await expect(page.getByRole("link", { name: "취소 · 교환 · 반품" })).toHaveClass(/on/);
     const sum = page.getByTestId("rt-summary");
     await expect(sum).toContainText("접수 (처리 필요)");
     await expect(sum).toContainText("반품률 (30일)");

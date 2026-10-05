@@ -24,7 +24,7 @@ test("대표자: 정보성 발송 기록 → 상세, 광고성 시간 밖 예약
   await page.goto(`/seller/login?next=${encodeURIComponent("/seller/member-messages")}`);
   await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
   await expect(page).toHaveURL(/\/seller\/member-messages$/);
-  await expect(page.getByRole("link", { name: "회원 알림 발송" })).toHaveClass(/on/);
+  await expect(page.getByRole("link", { name: "회원에게 알림 보내기" })).toHaveClass(/on/);
   await expect(page.getByTestId("mm-summary")).toContainText("혜택 · 소식 동의");
   await expect(page.getByText("실제 발송 채널(알림톡 · 문자 · 메일)이 아직 연결되지 않아 발송 기록만 남습니다")).toBeVisible();
   await expect(page.getByText("발송 내역이 없습니다")).toBeVisible();
@@ -79,5 +79,5 @@ test("대표자: 정보성 발송 기록 → 상세, 광고성 시간 밖 예약
 test("직원: 회원 · 적립금 권한이 없으면 메뉴가 보이지 않는다", async ({ page }) => {
   await page.goto(`/seller/login?next=${encodeURIComponent("/seller/member-messages")}`);
   await submitSellerLogin(page, "demo-none@example.com", PASSWORD);
-  await expect(page.getByRole("link", { name: "회원 알림 발송" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "회원에게 알림 보내기" })).toHaveCount(0);
 });

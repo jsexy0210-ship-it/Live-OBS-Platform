@@ -328,7 +328,7 @@ test("상품 권한이 없는 직원은 권한 안내를 본다", async ({ page 
   await shot(page, "SA-011-no-permission");
   // 「배송」은 상단 대분류 「주문」 아래 왼쪽 메뉴에 있다
   await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "주문", exact: true }).click();
-  await expect(side.getByText("배송", { exact: true })).toBeVisible();
+  await expect(side.getByText("배송 · 송장", { exact: true })).toBeVisible();
 });
 
 test("휴대폰 폭(390)에서는 메뉴가 서랍으로 열리고 상품이 카드로 보인다", async ({ page }) => {

@@ -57,7 +57,7 @@ test.afterAll(reset);
 test("충전 기능이 꺼져 있으면 준비 중 안내를 보이고 충전·동의가 잠긴다. 잔액·제공량·비용 안내는 볼 수 있다", async ({ page }) => {
   await reset();
   await open(page);
-  await expect(page.getByRole("link", { name: "발송·이용 충전", exact: true })).toHaveAttribute("href", "/seller/settings/message-balance");
+  await expect(page.getByRole("link", { name: "충전금", exact: true })).toHaveAttribute("href", "/seller/settings/message-balance");
   await expect(page.getByTestId("charging-off")).toContainText("충전 기능을 준비하고 있습니다");
   await expect(page.getByTestId("paid-balance")).toHaveText("0원");
   await expect(page.getByTestId("free-balance")).toHaveText("0원");
