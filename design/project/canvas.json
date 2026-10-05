@@ -2433,7 +2433,7 @@
       "y": 26360
     },
     "SH-006.dc.html": {
-      "h": 894,
+      "h": 920,
       "is_interactive": true,
       "page": "p04",
       "title": "SH-006 결제 진행 (휴대폰)",
@@ -2469,7 +2469,7 @@
       "y": 26360
     },
     "SH-008.dc.html": {
-      "h": 894,
+      "h": 920,
       "is_interactive": true,
       "page": "p04",
       "title": "SH-008 결제 실패 (휴대폰)",
@@ -2496,7 +2496,7 @@
       "y": 27680
     },
     "SH-010-PC.dc.html": {
-      "h": 1100,
+      "h": 1450,
       "is_interactive": true,
       "page": "p04",
       "title": "SH-010-PC 로그인 (PC)",
@@ -2505,7 +2505,7 @@
       "y": 29920
     },
     "SH-010.dc.html": {
-      "h": 1011,
+      "h": 1200,
       "is_interactive": true,
       "page": "p04",
       "title": "SH-010 쇼핑몰 로그인 (휴대폰)",
@@ -2541,7 +2541,7 @@
       "y": 35900
     },
     "SH-012.dc.html": {
-      "h": 1000,
+      "h": 1090,
       "is_interactive": true,
       "page": "p04",
       "title": "SH-012 쇼핑몰 비밀번호 찾기 (휴대폰)",
@@ -2635,7 +2635,7 @@
       "y": 44620
     },
     "SH-022-R.dc.html": {
-      "h": 1435,
+      "h": 1680,
       "is_interactive": true,
       "page": "p04",
       "title": "SH-022-R 주문 상세 · 환불 요청 (휴대폰)",
