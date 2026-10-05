@@ -56,16 +56,16 @@
 
 | ID | 화면 | Product Route | Design Source | Entry | Status | Artifact Version | 마지막 동기화(KST) | 비고 |
 |---|---|---|---|---|---|---|---|---|
-| PF-001 | 서비스 소개(랜딩) | /about | design/project/PF-001.dc.html | PF-001.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 · 변형: PF-001-M |
-| PF-002 | 기능 안내 | /features | design/project/PF-002.dc.html | PF-002.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 |
-| PF-003 | 요금 안내 | /pricing | design/project/PF-003.dc.html | PF-003.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 |
-| PF-004 | 자주 묻는 질문 | /faq | design/project/PF-004.dc.html | PF-004.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 |
-| PF-005 | 공지사항 목록 | /notices | design/project/PF-005.dc.html | PF-005.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 |
-| PF-006 | 공지 상세 | /notices/[noticeId] | design/project/PF-006.dc.html | PF-006.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 |
-| PF-007 | 판매자 가입 신청 | /seller/signup | design/project/PF-007-2.dc.html | PF-007-2.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 · 변형: PF-007-3 |
-| PF-007-1 | 가입 신청 · 약관 동의 | /seller/signup (약관 단계) | design/project/PF-007-1.dc.html | PF-007-1.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 |
-| PF-008 | 이용약관(플랫폼) | /terms | design/project/PF-008.dc.html | PF-008.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 |
-| PF-009 | 개인정보처리방침(플랫폼) | /privacy | design/project/PF-009.dc.html | PF-009.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 |
+| PF-001 | 서비스 소개(랜딩) | /about | design/project/PF-001.dc.html | PF-001.dc.html | FINAL | v297 (1791239220-fcb0) | 2026-10-06 07:27 KST | FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) · 결제 구조 문구 「ONQ 결제 연결로 한 번에」(플랫폼 결제대행사 키 하나 결정, 2026-10-05) · 방송 화면 · 인기 카드 용어 |
+| PF-002 | 기능 안내 | /features | design/project/PF-002.dc.html | PF-002.dc.html | FINAL | v297 (1791239220-fcb0) | 2026-10-06 07:27 KST | FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) |
+| PF-003 | 요금 안내 | /pricing | design/project/PF-003.dc.html | PF-003.dc.html | FINAL | v297 (1791239220-fcb0) | 2026-10-06 07:27 KST | FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) · 방송 화면 용어(「오버레이 전용」 이용권명 유지) |
+| PF-004 | 자주 묻는 질문 | /faq | design/project/PF-004.dc.html | PF-004.dc.html | FINAL | v297 (1791239220-fcb0) | 2026-10-06 07:27 KST | FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) |
+| PF-005 | 공지사항 목록 | /notices | design/project/PF-005.dc.html | PF-005.dc.html | FINAL | v297 (1791239220-fcb0) | 2026-10-06 07:27 KST | FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) |
+| PF-006 | 공지 상세 | /notices/[noticeId] | design/project/PF-006.dc.html | PF-006.dc.html | FINAL | v297 (1791239220-fcb0) | 2026-10-06 07:27 KST | FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) · 작성자 「ONQ 운영팀」 |
+| PF-007 | 판매자 가입 신청 | /seller/signup | design/project/PF-007-2.dc.html | PF-007-2.dc.html | FINAL | v297 (1791239220-fcb0) | 2026-10-06 07:27 KST | FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) |
+| PF-007-1 | 가입 신청 · 약관 동의 | /seller/signup (약관 단계) | design/project/PF-007-1.dc.html | PF-007-1.dc.html | FINAL | v297 (1791239220-fcb0) | 2026-10-06 07:27 KST | FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) |
+| PF-008 | 이용약관(플랫폼) | /terms | design/project/PF-008.dc.html | PF-008.dc.html | FINAL | v297 (1791239220-fcb0) | 2026-10-06 07:27 KST | FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) |
+| PF-009 | 개인정보처리방침(플랫폼) | /privacy | design/project/PF-009.dc.html | PF-009.dc.html | FINAL | v297 (1791239220-fcb0) | 2026-10-06 07:27 KST | FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) |
 
 ## MA 마스터 관리자
 
