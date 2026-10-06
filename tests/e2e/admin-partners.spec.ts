@@ -28,6 +28,13 @@ test.beforeAll(async () => {
     data: { slug: slugA, shopName: nameA, status: "ACTIVE", approvedAt: new Date(), planId: plan?.id, businessInfo: { companyName: "시험상사", businessNumber: "123-45-67890", representativeName: "홍길동" } },
   });
   idA = a.id;
+  // 머리 값(승인자·담당 CS·답변 대기 문의·메모 수) 시험용: 승인한 최고관리자, 담당이 정해진 열린 문의 1건, 메모 1건
+  const su = await db.platformAdmin.findUniqueOrThrow({ where: { email: emails.super } });
+  const cs = await db.platformAdmin.findUniqueOrThrow({ where: { email: emails.cs } });
+  await db.seller.update({ where: { id: a.id }, data: { approvedByAdminId: su.id } });
+  const owner = await db.sellerUser.create({ data: { sellerId: a.id, email: `pt-owner-${run}@example.com`, passwordHash, name: "대표", isOwner: true } });
+  await db.platformInquiry.create({ data: { sellerId: a.id, createdBySellerUserId: owner.id, category: "OTHER", title: `상세 문의 ${run}`, lastMessageAt: new Date(), assignedAdminId: cs.id } });
+  await db.sellerAdminNote.create({ data: { sellerId: a.id, body: `머리 시험 메모 ${run}`, authorId: su.id, authorName: "대표" } });
   const overlay = await db.subscriptionPlan.findFirst({ where: { code: "OVERLAY_ONLY" } });
   if (plan) await db.sellerSubscription.create({ data: { sellerId: a.id, planId: plan.id, pendingPlanId: overlay?.id, currentPeriodEnd: new Date(Date.now() + 20 * 86_400_000) } });
   await db.seller.create({ data: { slug: slugB, shopName: `대기몰 ${run}`, status: "PENDING", planId: plan?.id } });
@@ -177,4 +184,20 @@ test("목록: 요약 칩 건수가 서버 값과 같고, 칩·정렬·쪽 크기
 
   await page.getByTestId("partner-row").first().getByRole("button", { name: "이 파트너스 화면 대신 보기" }).click();
   await expect(page.getByRole("dialog")).toContainText("대신 보시겠습니까");
+});
+
+test("상세 머리: 승인자·담당 CS가 메타 줄에, 답변 대기 문의 건수·메모 수가 버튼·탭에 보이고 눌러 이동한다", async ({ page }) => {
+  await login(page, emails.super);
+  await page.goto(`/admin/partners/${idA}`);
+  const badges = page.getByTestId("partner-badges");
+  await expect(badges).toContainText("승인 대표");
+  await expect(badges).toContainText("담당 CS 상담");
+  const inq = page.getByRole("link", { name: "문의 1건" });
+  await expect(inq).toHaveAttribute("href", `/admin/support/inquiries?sellerId=${idA}`);
+  await expect(page.getByRole("button", { name: "메모 1", exact: true })).toBeVisible(); // 탭 이름에 건수
+  await page.getByRole("button", { name: "메모", exact: true }).first().click();
+  await expect(page).toHaveURL(/tab=notes/);
+  await expect(page.getByTestId("tab-notes")).toContainText(`머리 시험 메모 ${run}`);
+  await page.getByRole("link", { name: "문의 1건" }).click();
+  await expect(page).toHaveURL(new RegExp(`/admin/support/inquiries\\?.*sellerId=${idA}`));
 });

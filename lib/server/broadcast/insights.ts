@@ -29,6 +29,11 @@ export async function broadcastInsights(db: Db, sellerId: string, id: string, st
       SELECT coalesce(q."openingStartedAt", q."cancelledAt", q."doneAt", b.e), -1 FROM "QueueItem" q, b WHERE q."sellerId" = ${sellerId}::uuid AND q."receivedAt" >= b.s AND q."receivedAt" <= b.e
     )
     SELECT max(r)::int AS max FROM (SELECT sum(d) OVER (ORDER BY t, d ROWS UNBOUNDED PRECEDING) AS r FROM ev) x`;
+  // 타이머 설정: 방송 중 들어온 주문대기 항목에 걸린 타이머(초) 가운데 가장 많이 쓴 값(없거나 0이면 null)
+  const [timer] = await db.$queryRaw<{ t: number | null }[]>`
+    SELECT q."timerSeconds" AS t FROM "QueueItem" q JOIN "BroadcastSession" b ON b.id = ${id}::uuid
+    WHERE q."sellerId" = ${sellerId}::uuid AND b."sellerId" = ${sellerId}::uuid AND q."timerSeconds" > 0 AND q."receivedAt" >= b."startedAt" AND q."receivedAt" <= coalesce(b."endedAt", now())
+    GROUP BY q."timerSeconds" ORDER BY count(*) DESC, q."timerSeconds" DESC LIMIT 1`;
   const end = endedAt ?? new Date();
   const first = Math.floor(startedAt.getTime() / BUCKET_MS);
   const last = Math.max(first, Math.floor(end.getTime() / BUCKET_MS));
@@ -40,7 +45,7 @@ export async function broadcastInsights(db: Db, sellerId: string, id: string, st
   const counts = new Map(rows.map((r) => [Number(r.b), num(r.n)]));
   const hourly: { at: Date; orders: number }[] = [];
   for (let k = first; k <= last; k++) hourly.push({ at: new Date(k * BUCKET_MS), orders: counts.get(k) ?? 0 });
-  return { avgOpenSeconds: open?.avg == null ? null : Math.round(open.avg), maxWaiting: wait?.max == null ? 0 : Math.max(0, num(wait.max)), hourly };
+  return { avgOpenSeconds: open?.avg == null ? null : Math.round(open.avg), maxWaiting: wait?.max == null ? 0 : Math.max(0, num(wait.max)), timerSeconds: timer?.t ?? null, hourly };
 }
 
 // 방송 메모 저장(방송당 한 칸). 방송 진행(BROADCAST_RUN) 권한, 대리 조회 불가. 빈 글자는 지우기. 다른 판매자 방송은 404.
