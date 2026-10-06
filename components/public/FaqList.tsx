@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 
 // 질문·답은 디자인 PF-001·002·003·004 문구에서 가져온 것만 쓴다.
 export const FAQ_ITEMS: { cat: string; q: string; a: string }[] = [
-  { cat: "시작하기", q: "가입 심사는 얼마나 걸리나요?", a: "자동 점검을 통과하면 바로 승인돼요. 보완이 필요하면 안내해 드려요." },
+  { cat: "시작하기", q: "가입 심사는 얼마나 걸리나요?", a: "자동 점검(대표자 휴대폰 본인확인 · 사업자 상태 · 쇼핑몰 1개 규칙)을 통과하면 바로 승인돼요. 확인이 더 필요하면 보완 요청 메일을 보내 드리고, 보완하면 다시 점검해요." },
   { cat: "방송 · 방송 화면", q: "OBS 말고 다른 방송 프로그램도 되나요?", a: "브라우저 소스를 넣을 수 있는 프로그램이면 돼요. 세로 1080×1920, 가로 1920×1080 크기로 맞춰 두었어요." },
   { cat: "방송 · 방송 화면", q: "세로 방송에서 방송 화면이 채팅에 가려요.", a: "유튜브 채팅이 가리는 영역을 피해 위쪽에만 패널을 둬요. 템플릿은 세로 9:16과 가로 16:9 중 골라요." },
   { cat: "방송 · 방송 화면", q: "구매자 실명이 방송에 나가나요?", a: "방송 화면에는 구매자가 정한 방송 닉네임과 상품이 떠요." },
@@ -14,7 +14,8 @@ export const FAQ_ITEMS: { cat: string; q: string; a: string }[] = [
   { cat: "쇼핑몰 · 주문", q: "내 도메인을 쓸 수 있나요?", a: "기본 주소를 바로 받고, 내 도메인도 연결할 수 있어요." },
 ];
 
-const CATS = ["전체", ...Array.from(new Set(FAQ_ITEMS.map((f) => f.cat)))];
+// 정본 PF-004 분류 순서
+const CATS = ["전체", "시작하기", "방송 · 방송 화면", "쇼핑몰 · 주문", "적립금", "결제 · 요금", "계정 · 권한"];
 
 export function FaqList() {
   const [cat, setCat] = useState("전체");
@@ -26,10 +27,13 @@ export function FaqList() {
   return (
     <>
       <div className="pf-faq-search">
-        <label className="t-l2" htmlFor="faq-q">
-          질문 검색
-        </label>
-        <input id="faq-q" className="inp" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="궁금한 것을 검색해요" />
+        <span className="pf-search-ico" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" />
+            <path d="M20 20l-4-4" />
+          </svg>
+        </span>
+        <input id="faq-q" className="inp" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="궁금한 것을 검색해요" aria-label="질문 검색" />
       </div>
       <div className="pf-chips" role="group" aria-label="분류">
         {CATS.map((c) => (
@@ -38,14 +42,14 @@ export function FaqList() {
           </button>
         ))}
       </div>
-      <div className="pf-faq pf-faq-wide">
+      <div className="pf-faq pf-faq-wide pf-faq-mk">
         {rows.length === 0 ? (
           <p className="t-b2 c-alt" role="status">
             맞는 질문이 없어요. 다른 말로 검색해 보세요.
           </p>
         ) : (
-          rows.map((f) => (
-            <details key={f.q}>
+          rows.map((f, i) => (
+            <details key={f.q} open={i === 0 && cat === "전체" && !q ? true : undefined}>
               <summary className="t-hl2">{f.q}</summary>
               <p className="t-b2 c-neu">{f.a}</p>
             </details>

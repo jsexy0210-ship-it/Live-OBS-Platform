@@ -221,6 +221,9 @@ model Seller {
   externalShopConnections  ExternalShopConnection[]
   receiptIssuer            SellerReceiptIssuer?
   receiptSetting           SellerReceiptSetting?
+  shipmentInvoices         ShipmentInvoice[]
+  shipmentInvoiceOrders    ShipmentInvoiceOrder[]
+  shipmentInvoiceEvents    ShipmentInvoiceEvent[]
   externalOrders ExternalOrder[]
 }
 
@@ -444,6 +447,7 @@ model BuyerMember {
   productReviewReports ProductReviewReport[]
   cartItems            CartItem[]
   wishItems            WishItem[]
+  notificationPrefs    BuyerNotificationPref[]
   restockAlerts        RestockAlert[]
   returnRequests       ReturnRequest[]
   refundRequests       RefundRequest[]
@@ -1079,6 +1083,9 @@ model ProductReview {
   buyerMemberId  String               @db.Uuid
   // 작성할 때 방송 닉네임. 탈퇴하면 「탈퇴 회원」으로 바꾼다(리뷰는 남김).
   authorNickname String
+  // 작성자가 고른 공개 옵션(SH-029): 닉네임 공개(끄면 공개 화면엔 「구매자」), 개봉 결과 함께 보여 주기
+  showNickname      Boolean              @default(true)
+  showOpeningResult Boolean              @default(false)
   rating         Int
   body           String
   status         ProductReviewStatus  @default(VISIBLE)
@@ -1226,6 +1233,7 @@ model Order {
   items            OrderItem[]
   consents         OrderConsent[]
   shippingAddress  OrderShippingAddress?
+  invoiceLink      ShipmentInvoiceOrder?
   shipment         Shipment?
   statusHistory    OrderStatusHistory[]
   stockMovements   StockMovement[]
@@ -1826,6 +1834,86 @@ model Shipment {
   @@unique([sellerId, orderId])
 }
 
+// 송장(SA-027 송장 발급 · SA-028 출력·추적). 상자 하나에 송장 하나, 합배송이면 주문 여러 건이 한 송장에 묶인다(ShipmentInvoiceOrder).
+// 배송 접수 업체가 정해지기 전이라 모의 발급이다(mock=true, lib/server/invoices/provider.ts의 어댑터 자리). 모의 송장은 주문 상태·배송 레코드(Shipment)·구매자 안내를 바꾸지 않는다.
+// FAILED = 아직 번호가 없는 상태(발급 중이거나 업체 응답 실패, failureCode). 번호가 있으면 ISSUED → PRINTED(출력) → PICKED_UP(집하) → DELIVERED(배송 완료).
+enum InvoiceStatus {
+  FAILED
+  ISSUED
+  PRINTED
+  PICKED_UP
+  DELIVERED
+}
+
+enum InvoiceEventKind {
+  ISSUED
+  PRINTED
+  PICKUP_REQUESTED
+  PICKED_UP
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+}
+
+model ShipmentInvoice {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId       String        @db.Uuid
+  courier        String
+  trackingNumber String?
+  status         InvoiceStatus @default(FAILED)
+  mock           Boolean       @default(true)
+  attempts       Int           @default(1)
+  failureCode    String?
+  issuedAt       DateTime?     @db.Timestamptz(3)
+  printedAt      DateTime?     @db.Timestamptz(3)
+  printFormat    String?
+  pickedUpAt     DateTime?     @db.Timestamptz(3)
+  deliveredAt    DateTime?     @db.Timestamptz(3)
+  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime      @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller                 @relation(fields: [sellerId], references: [id])
+  orders ShipmentInvoiceOrder[]
+  events ShipmentInvoiceEvent[]
+
+  @@unique([sellerId, id])
+  @@index([sellerId, status, createdAt])
+}
+
+// 주문은 하나의 송장에만 묶인다(orderId 유니크). 발급이 실패한 송장도 주문을 잡고 있다가 다시 발급한다.
+model ShipmentInvoiceOrder {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId  String   @db.Uuid
+  invoiceId String   @db.Uuid
+  orderId   String   @unique @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  seller  Seller          @relation(fields: [sellerId], references: [id])
+  invoice ShipmentInvoice @relation(fields: [sellerId, invoiceId], references: [sellerId, id])
+  order   Order           @relation(fields: [sellerId, orderId], references: [sellerId, id])
+
+  @@unique([sellerId, orderId])
+  @@index([sellerId, invoiceId])
+}
+
+// 추적 상세의 한 줄(시각·상태·처리·비고). 종류마다 송장당 1행(유니크). source = SELLER(쇼핑몰) | CARRIER(택배사).
+model ShipmentInvoiceEvent {
+  id        String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId  String           @db.Uuid
+  invoiceId String           @db.Uuid
+  kind      InvoiceEventKind
+  at        DateTime         @db.Timestamptz(3)
+  source    String
+  note      String?
+  createdAt DateTime         @default(now()) @db.Timestamptz(3)
+
+  seller  Seller          @relation(fields: [sellerId], references: [id])
+  invoice ShipmentInvoice @relation(fields: [sellerId, invoiceId], references: [sellerId, id])
+
+  @@unique([invoiceId, kind])
+  @@index([sellerId, invoiceId, at])
+}
+
 // 판매자 주문 정책(판매자당 1행, 없으면 기본값). PRODUCT_SCOPE 「무통장 입금·구매 제한 기본값」.
 model SellerOrderPolicy {
   sellerId                       String    @id @db.Uuid
@@ -1854,6 +1942,8 @@ model SellerOrderPolicy {
   paidCancelRestrictionEnabledAt DateTime? @db.Timestamptz(3)
   // 판매자별 단조 시계(orders/overdue.ts sellerEventClock)가 마지막으로 찍은 시각. 주문 생성 잠금 아래에서만 바꾼다.
   lastEventClockAt               DateTime? @db.Timestamptz(3)
+  // 파트너스가 「주문 정책」을 실제로 저장한 시각(없으면 쇼핑몰 생성 때 기본값으로 만든 행이거나 시계만 찍은 행). 온보딩 「설정 완료」 판정에 쓴다.
+  savedAt                        DateTime? @db.Timestamptz(3)
   updatedAt                      DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])
@@ -2254,6 +2344,8 @@ model AutomationJob {
   // 진행 중인 단계 순번(0부터). 단계 목록은 lib/server/automation/steps.ts
   stepIndex               Int                       @default(0)
   customerAction          AutomationCustomerAction?
+  // 「고객 확인 필요」 할 일 목록(SA-152)에서 고객이 「완료」로 표시한 줄. 이어 하기(재개)로 대기열에 돌아가면 비운다. 작업자 진행에는 영향이 없다(표시용).
+  customerActionsDone     AutomationCustomerAction[] @default([])
   // 고객 행동 대기 마감. 지나면 FAILED(customer_action_timeout)
   actionDeadlineAt        DateTime?                 @db.Timestamptz(3)
   attempts                Int                       @default(0)
@@ -2522,6 +2614,23 @@ model WishItem {
   @@unique([buyerMemberId, productId])
   @@index([sellerId, buyerMemberId, createdAt])
   @@index([sellerId, productId])
+}
+
+// 구매자 알림 설정(SH-025). 끌 수 있는 칸만 저장하고, 줄이 없으면 켬이 기본이다. kind·channel 값은 buyers/notificationPrefs.ts와 마이그레이션 CHECK가 같다.
+// 혜택·이벤트 줄은 여기 저장하지 않고 마케팅 수신 동의(BuyerMember.marketingConsentAt)가 그 값이다.
+model BuyerNotificationPref {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String   @db.Uuid
+  buyerMemberId String   @db.Uuid
+  kind          String
+  channel       String
+  enabled       Boolean
+  updatedAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  member BuyerMember @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
+
+  @@unique([buyerMemberId, kind, channel])
+  @@index([sellerId, buyerMemberId])
 }
 
 // 재입고 알림 신청(SA-017·SH). 회원당 상품 하나에 한 줄. WAITING(품절 기다림) → QUEUED(재고가 들어와 발송 대기, 야간이면 아침 8시 KST로 미룸) → SENT(발송 기록만, 실제 발송은 아직 없음). 다시 신청하면 WAITING으로 돌아간다(shop-restock-alerts/service.ts).

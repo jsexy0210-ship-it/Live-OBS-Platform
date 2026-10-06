@@ -34,9 +34,9 @@ test.describe.serial("로그인 구매자", () => {
     await page.goto(`/shop/${SLUG}`);
     await page.locator(".shop-hics").getByRole("link", { name: "찜" }).click();
     await expect(page).toHaveURL(new RegExp(`/shop/${SLUG}/wishlist$`));
-    await expect(page.getByRole("heading", { name: "찜", level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "찜 · 최근 본 상품", level: 1 })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "내 정보 메뉴" }).getByRole("link", { name: "찜" })).toHaveAttribute("aria-current", "page");
-    await expect(page.getByRole("heading", { name: /^찜 3$/ })).toBeVisible();
+    await expect(page.getByRole("tab", { name: /^찜\s?3$/ })).toBeVisible();
     const cards = page.getByRole("list", { name: "찜한 상품" }).locator(".pc");
     await expect(cards).toHaveCount(3);
     await expect(cards.filter({ hasText: "드래곤 소울 부스터" }).locator(".pc-out")).toHaveText("품절");

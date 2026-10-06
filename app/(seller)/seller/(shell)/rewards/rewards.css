@@ -1,0 +1,21 @@
+/* SA-031 적립 정책(정본 v322): 구역 사이 간격 32, 구역 제목 옆 안내, 「회수 · 사용 조건」 4열 표 */
+.rw-form .au-fs {
+  margin-bottom: 32px;
+}
+.rw-form .au-fs-h {
+  justify-content: flex-start;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.rw-form .au-fs-t {
+  white-space: nowrap;
+}
+.rw-ft4 > tbody > tr > td.rw-rt {
+  border-right: 1px solid var(--cs-line);
+}
+@media (max-width: 767px) {
+  .rw-ft4 > tbody > tr > td.rw-rt {
+    border-right: 0;
+  }
+}

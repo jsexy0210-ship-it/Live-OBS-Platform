@@ -12,6 +12,8 @@ test.beforeAll(() => {
 const login = async (page: Page, email = "demo-owner@example.com") => {
   await page.goto("/seller/login");
   await submitSellerLogin(page, email, PASSWORD);
+  await expect(page).toHaveURL(/\/seller$/);
+  await page.goto("/seller/products");
   await expect(page).toHaveURL(/\/seller\/products$/);
 };
 type Made = { id: string; optionId: string | null };

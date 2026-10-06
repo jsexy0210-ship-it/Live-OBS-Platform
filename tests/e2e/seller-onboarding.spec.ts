@@ -78,10 +78,12 @@ test("오버레이 전용: 외부 쇼핑몰 연동·오버레이 설정·주소 
 
   // 오버레이 편집기에서 주소를 발급해 복사하면 서버에 「주소 복사」가 남는다
   await page.goto("/seller/overlay/address");
-  await page.getByRole("button", { name: /^주소 (새로 )?만들기$/ }).click();
-  await page.getByRole("dialog").getByRole("button", { name: /^주소 (새로 )?만들기$/ }).click();
-  await expect(page.getByTestId("ovu-urls")).toBeVisible();
-  await page.getByRole("button", { name: "주소 복사" }).first().click();
+  await page.getByRole("button", { name: /^(주소 만들기|재발급)$/ }).click();
+  const sure = page.getByRole("dialog").getByRole("checkbox", { name: "확인했습니다" });
+  if (await sure.count()) await sure.check();
+  await page.getByRole("dialog").getByRole("button", { name: /^(주소 만들기|재발급)$/ }).click();
+  await expect(page.getByLabel("세로형 1080×1920 (9:16) 주소")).toHaveValue(/\/overlay\//);
+  await page.getByRole("button", { name: "복사" }).first().click();
   await expect(page.getByText("주소를 복사했습니다")).toBeVisible();
   await expect.poll(async () => (await apiState(page)).steps.find((x) => x.key === "overlay_url")!.done).toBe(true);
 
