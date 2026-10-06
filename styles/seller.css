@@ -1835,6 +1835,15 @@ body {
 .au-lt-wrap > .tbl > :is(tbody, tfoot):last-child > tr:last-child > :is(th, td) {
   border-bottom: 0;
 }
+/* 카드로 바꾼 표는 각 행이 프레임을 가지므로 모바일 외곽선을 중복하지 않는다. */
+@media (max-width: 767px) {
+  .au-lt-wrap:has(> .tbl[data-card-table]) {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    overflow: visible;
+  }
+}
 .au-pg {
   padding: var(--ui-sp-12);
 }
