@@ -277,8 +277,8 @@
 
 | ID | 화면 | Product Route | Design Source | Entry | Status | Artifact Version | 마지막 동기화(KST) | 비고 |
 |---|---|---|---|---|---|---|---|---|
-| OG-001 | 공유 카드 · 마스터 관리자 | (공유 카드 이미지) | design/project/OG-001.dc.html | OG-001.dc.html | FINAL | v321 (1791251122-229f) | 2026-10-06 10:55 KST | v321 FINAL(묶음 3) 전용 기준 확인(공통 틀 밖, MASTER 결정 ①+②): 1200×630 · 원티드 산스 · 마스터 관리자 공유 카드. 변경 없음. 구현 app/api/admin/branding/[target]/og-image. 이전 비고: 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 |
-| OG-002 | 공유 카드 · 파트너스 관리자 | (공유 카드 이미지) | design/project/OG-002.dc.html | OG-002.dc.html | FINAL | v321 (1791251122-229f) | 2026-10-06 10:55 KST | v321 FINAL(묶음 3) 전용 기준 확인(공통 틀 밖, MASTER 결정 ①+②): 1200×630 · 파트너스 관리자 공유 카드. 변경 없음. 이전 비고: 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 |
+| OG-001 | 공유 카드 · 마스터 관리자 | (공유 카드 이미지) | design/project/OG-001.dc.html | OG-001.dc.html | FINAL | v321 (1791251122-229f) | 2026-10-06 10:55 KST | v321 FINAL: 1200×630 · Wanted Sans · 틸 그라데이션 · Q 심볼 · 마스터 관리자 제목 · 부제 · 플랫폼 주소 · OnAirCue. 생성 `app/api/branding/admin/og` 및 저장 전 미리보기 `card-preview?target=admin`; 업로드 PNG는 기존 `og-image` 경로 사용. |
+| OG-002 | 공유 카드 · 파트너스 관리자 | (공유 카드 이미지) | design/project/OG-002.dc.html | OG-002.dc.html | FINAL | v321 (1791251122-229f) | 2026-10-06 10:55 KST | v321 FINAL: 1200×630 · Wanted Sans · 보라 그라데이션 · Q 심볼 · 파트너스 관리자 제목 · 부제 · 플랫폼 주소 · OnAirCue. 생성 `app/api/branding/seller/og` 및 저장 전 미리보기 `card-preview?target=seller`; 업로드 PNG는 기존 `og-image` 경로 사용. |
 
 ## IA 밖 보드 · 공통 시스템 보드
 
