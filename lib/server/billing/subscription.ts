@@ -1,12 +1,14 @@
 import { Prisma, type ActorType, type PrismaClient, type SellerSubscription, type SubscriptionPayment, type SubscriptionPlan } from "@prisma/client";
 import { policyValue } from "../admin/platformPolicy";
 import { writeAudit } from "../audit/log";
+import { effectiveMailQuota } from "../mail/quota";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { addMonthsKst, canCancelSubscription, cardRegistrationCharges, isEndedSubscription, lockedSince, nextPeriodEnd, sellerAccess, type SellerAccess } from "./access";
 
 // 판정 함수는 화면과 함께 쓰려고 access.ts(순수 모듈)에 있다. 기존 import 경로를 위해 다시 내보낸다.
 export { isEndedSubscription };
 import type { BillingProvider, ChargeResult } from "./provider";
+import { BILLING_ROWS_VIEW_LIMIT, listBillingRows, scheduledBillingRow } from "./billingRows";
 import { assertBillingSecret, openBillingKey, sealBillingKey } from "./secret";
 
 // 플랫폼 구독(판매자 → 플랫폼). 카드 자동결제(빌링키)만 쓰고 금액은 요금제의 판매가(부가세 포함)다.
@@ -126,6 +128,14 @@ export async function getSubscriptionView(db: PrismaClient, ctx: TenantContext, 
   const shownPlan = sub?.plan ?? plan;
   // 하위 변경이 예약돼 있으면 다음 결제는 그 플랜 금액이다(ONQ 1-C-2)
   const nextPlan = sub?.pendingPlan && !sub.cancelAtPeriodEnd ? sub.pendingPlan : shownPlan;
+  const next = shownPlan
+    ? sub && !isEndedSubscription(sub, at)
+      ? nextPlan === shownPlan
+        ? await chargeFor(db, shownPlan, sub, sub.nextChargeAt ?? at)
+        : await chargeFor(db, nextPlan!, withoutLegacy(sub), sub.nextChargeAt ?? at)
+      : await chargeFor(db, shownPlan, { subscribedAt: at, legacyPrice: null, legacyPriceNoticeSentAt: null, regularPrice: !!seller.launchDiscountUsedAt }, at)
+    : null;
+  const scheduled = scheduledBillingRow(sub, next?.amount ?? null, at);
   return {
     access: sellerAccess({ trialEndsAt: seller.trialEndsAt, subscription: sub }, at),
     trialEndsAt: seller.trialEndsAt,
@@ -135,13 +145,10 @@ export async function getSubscriptionView(db: PrismaClient, ctx: TenantContext, 
           name: shownPlan.name,
           listPrice: shownPlan.listPrice,
           salePrice: shownPlan.salePrice,
-          nextAmount:
-            sub && !isEndedSubscription(sub, at)
-              ? nextPlan === shownPlan
-                ? (await chargeFor(db, shownPlan, sub, sub.nextChargeAt ?? at)).amount
-                : (await chargeFor(db, nextPlan!, withoutLegacy(sub), sub.nextChargeAt ?? at)).amount
-              : (await chargeFor(db, shownPlan, { subscribedAt: at, legacyPrice: null, legacyPriceNoticeSentAt: null, regularPrice: !!seller.launchDiscountUsedAt }, at))
-                  .amount,
+          nextAmount: next!.amount,
+          // 월 무료 메일 통수(플랜 적용값)와 런칭 할인가 여부. 할인 종료일은 정해진 값이 아직 없어 endsAt은 null이다(종료 정책이 생기면 채운다)
+          mailMonthlyQuota: effectiveMailQuota(shownPlan, at),
+          launchDiscount: { active: next!.launchDiscount, endsAt: null },
         }
       : null,
     subscription: sub
@@ -156,6 +163,10 @@ export async function getSubscriptionView(db: PrismaClient, ctx: TenantContext, 
           retryCount: sub.retryCount,
           // 다음 결제일에 바뀔 플랜(하위 변경 예약). 없으면 null
           pendingPlanCode: sub.pendingPlan?.code ?? null,
+          // 구독 시작 시각, 청구 주기 「매월 N일」(기준일의 한국 시간 일), 체험을 거쳐 시작했는지(체험이 있던 판매자)
+          subscribedAt: sub.subscribedAt,
+          billingDay: new Date((sub.billingAnchorAt ?? sub.subscribedAt).getTime() + 9 * 3_600_000).getUTCDate(),
+          startedFromTrial: seller.trialEndsAt !== null,
         }
       : null,
     payments: payments.map((p) => ({
@@ -168,6 +179,8 @@ export async function getSubscriptionView(db: PrismaClient, ctx: TenantContext, 
       receiptUrl: p.receiptUrl,
       createdAt: p.createdAt,
     })),
+    // 청구 내역 표(SA-090): 다음 결제 예정 1건 + 구독료·차액·발송·이용 충전을 시간순으로 합친 행(payments는 위 그대로)
+    billingRows: [...(scheduled ? [scheduled] : []), ...(await listBillingRows(db, ctx.sellerId, BILLING_ROWS_VIEW_LIMIT))].slice(0, BILLING_ROWS_VIEW_LIMIT),
   };
 }
 
