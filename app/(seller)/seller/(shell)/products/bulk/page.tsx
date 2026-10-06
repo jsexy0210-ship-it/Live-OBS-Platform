@@ -65,6 +65,7 @@ export default function BulkPage() {
   const [over, setOver] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
+  const [section, setSection] = useState<"register" | "export" | "history">("register");
 
   const loadJobs = useCallback(async () => {
     const r = await api<{ jobs: Job[] }>("/api/seller/bulk-io/jobs");
@@ -150,6 +151,29 @@ export default function BulkPage() {
           }
         />
         <input ref={input} type="file" accept=".csv,text/csv" hidden aria-label="CSV 파일 선택" onChange={(e) => void upload(e.target.files?.[0])} />
+        <nav className="rtabs" aria-label="구역" data-testid="bulk-tabs">
+          {(
+            [
+              ["register", "상품 일괄 등록 · 수정"],
+              ["export", "내보내기"],
+              ["history", "처리 이력"],
+            ] as const
+          ).map(([k, label]) => (
+            <a
+              key={k}
+              href={`#bulk-${k}`}
+              className={section === k ? "on" : ""}
+              aria-current={section === k ? "true" : undefined}
+              onClick={(e) => {
+                e.preventDefault();
+                setSection(k);
+                document.getElementById(`bulk-${k}`)?.scrollIntoView({ block: "start", behavior: "smooth" });
+              }}
+            >
+              {label}
+            </a>
+          ))}
+        </nav>
         {!canEdit && (
           <div className="msg msg-info" role="status">
             <span>처리 이력만 볼 수 있습니다. 일괄 등록과 내려받기는 「상품 관리」 권한이 있는 계정만 할 수 있습니다.</span>
@@ -164,6 +188,7 @@ export default function BulkPage() {
           </div>
         )}
 
+        <div id="bulk-register" />
         {canEdit && !preview && (
           <div
             className="card"
@@ -291,7 +316,9 @@ export default function BulkPage() {
           </section>
         )}
 
-        <div className="sc-sec-t">내보내기</div>
+        <div className="sc-sec-t" id="bulk-export">
+          내보내기
+        </div>
         <div className="au-lt-wrap">
           <table className="tbl">
             <thead>
@@ -363,7 +390,9 @@ export default function BulkPage() {
             </table>
           </div>
           <div>
-            <div className="sc-sec-t">처리 이력</div>
+            <div className="sc-sec-t" id="bulk-history">
+              처리 이력
+            </div>
             {jobs.kind === "loading" && <LoadingRows rows={3} />}
             {jobs.kind === "error" &&
               (jobs.status === 403 ? <NoPermission need="상품 관리" /> : jobs.status === 402 ? <Locked /> : <ErrorState title="처리 이력을 불러오지 못했습니다" onRetry={() => void loadJobs()} />)}
