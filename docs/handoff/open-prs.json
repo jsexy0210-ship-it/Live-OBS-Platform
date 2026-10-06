@@ -1,0 +1,198 @@
+{
+  "openCount": 24,
+  "totalPages": 1,
+  "results": [
+    {
+      "number": 1008,
+      "title": "design(project): 묶음 23 v345 휴대폰(390) 보드 3단계 완료 SA-002-M 홈 · SA-012-M 상품 보기",
+      "state": "REPO_PULL_REQUEST_STATE_OPEN",
+      "isDraft": true,
+      "headSha": "ef97c601fae4d236564236e1ffeabda662ae5894",
+      "permalink": "https://github.com/jsexy0210-ship-it/Live-OBS-Platform/pull/1008"
+    },
+    {
+      "number": 1007,
+      "title": "fix(seller): SA-152 자동 연결 진행을 정본 v302에 맞춤 — 잠시 멈추기 · 할 일 표 · 작업 기록 · 대기 순번",
+      "state": "REPO_PULL_REQUEST_STATE_OPEN",
+      "isDraft": true,
+      "headSha": "6cf73961f97bca84c8c88a1301649753a5a85564",
+      "permalink": "https://github.com/jsexy0210-ship-it/Live-OBS-Platform/pull/1007"
+    },
+    {
+      "number": 1006,
+      "title": "feat(admin): MA-082 알림 채널 설정 서버 — 채널 4종·이벤트별 라우팅 10행·테스트 보내기·기본값 복원·발신 프로필 읽기",
+      "state": "REPO_PULL_REQUEST_STATE_OPEN",
+      "isDraft": null,
+      "headSha": "917c291f2e1bda043865a34518bfa2601281951b",
+      "permalink": "https://github.com/jsexy0210-ship-it/Live-OBS-Platform/pull/1006"
+    },
+    {
+      "number": 1005,
+      "title": "design(project): 묶음 22 v344 휴대폰(390) 보드 3단계 문의 · 계정 SA-113-M · SA-114-M · SA-120-M",
+      "state": "REPO_PULL_REQUEST_STATE_OPEN",
+      "isDraft": true,
+      "headSha": "8939c56507e7bbaf4beb5e4d8f3fe7316f621b25",
+      "permalink": "https://github.com/jsexy0210-ship-it/Live-OBS-Platform/pull/1005"
+    },
+    {
+      "number": 1004,
+      "title": "design(project): 묶음 21 v343 휴대폰(390) 보드 2단계 SA-052-M · SA-053-M",
+      "state": "REPO_PULL_REQUEST_STATE_OPEN",
+      "isDraft": true,
+      "headSha": "01da409678ea562126e65c024faa5041bddd8f99",
+      "permalink": "https://github.com/jsexy0210-ship-it/Live-OBS-Platform/pull/1004"
+    },
+    {
+      "number": 1003,
+      "title": "test(e2e): 야간 실패 5건 보정 — 환불 모달 개봉 확인·적립 정책 초기화·원장 선택자",
+      "state": "REPO_PULL_REQUEST_STATE_OPEN",
+      "isDraft": null,
+      "headSha": "60c71f5bbbe3a36bb6e4246eeb9684a01d8e008f",
+      "permalink": "https://github.com/jsexy0210-ship-it/Live-OBS-Platform/pull/1003"
+    },
+    {
+      "number": 1002,
+      "title": "design(system): 묶음 20 v342 인증 카드 승인 현대화 수치 lop.css 공통 반영 (AU-001~012) + AU-003 · AU-010 높이 정정",
+      "state": "REPO_PULL_REQUEST_STATE_OPEN",
+      "isDraft": true,
+      "headSha": "dd2e46b1378dc12abac0252f95b6ae1904e4f544",
+      "permalink": "https://github.com/jsexy0210-ship-it/Live-OBS-Platform/pull/1002"
+    },
+    {
+      "number": 1001,
+      "title": "fix(admin): MA-088 세션·보안 설정 정본 정렬 + MA-031·088 렌더 증거",
+      "state": "REPO_PULL_REQUEST_STATE_OPEN",
+      "isDraft": null,
+      "headSha": "4f720097e6667f79c6720e87ef4f76600f37eca2",
+      "permalink": "https://github.com/jsexy0210-ship-it/Live-OBS-Platform/pull/1001"
+    },
+    {
+      "number": 1000,
+      "title": "feat(bulk-io): SA-018 서버 ① 내보내기 이력·처리자 이름·주문/회원 내보내기",
+      "state": "REPO_PULL_REQUEST_STATE_OPEN",
+      "isDraft": null,
+      "headSha": "4ba076dbb4ddbf0b0953ac2fc8d17a0464d9d1e6",
+      "permalink": "https://github.com/jsexy0210-ship-it/Live-OBS-Platform/pull/1000"
+    },
+    {
+      "number": 999,
+      "title": "fix(shop): SH-010 로그인 PC 구조 · SH-021 주문 내역 탭·날짜 직접 입력 정본 맞춤",
+      "state": "REPO_PULL_REQUEST_STATE_OPEN",
+      "isDraft": null,
+      "headSha": "56eff3d5ae5e1c91b7fc5b4c6d467418eed3dbb7",
+      "permalink": "https://github.com/jsexy0210-ship-it/Live-OBS-Platform/pull/999"
+    },
+    {
+      "number": 998,
+      "title": "feat(seller): 방송 상세 정본 구조로 재구성 — 정보 표 4칸·2열·상태 배지·주문 표·메모 표 (SA-055 v311)",
+      "state": "REPO_PULL_REQUEST_STATE_OPEN",
+      "isDraft": null,
+      "headSha": "1db55f1693f2244d6bf9c22d841f191cb5b407ba",
+      "permalink": "https://github.com/jsexy0210-ship-it/Live-OBS-Platform/pull/998"
+    },
+    {
+      "number": 997,
+      "title": "fix(public): PF-003 질문 4항 정본 문구 · AU-002 파트너스 로그인 문구 정본 맞춤",
+      "state": "REPO_PULL_REQUEST_STATE_OPEN",
+      "isDraft": null,
+      "headSha": "190c045622c817cd2f03444265970575493694f2",
+      "permalink": "https://github.com/jsexy0210-ship-it/Live-OBS-Platform/pull/997"
+    },
+    {
+      "number": 996,
+      "title": "feat(admin): MA-012 기본정보 탭 정본 2열 구조",
+      "state": "REPO_PULL_REQUEST_STATE_OPEN",
+      "isDraft": null,
+      "headSha": "78770bcaec6544ebf60d5605ca8d64b9cdd693cc",
+      "permalink": "https://github.com/jsexy0210-ship-it/Live-OBS-Platform/pull/996"
+    },
+    {
+      "number": 995,
+      "title": "design(project): 묶음 19 v341 SH-011-2 성별 · 내 · 외국인 세그먼트 + UI_STATUS SH-011 · SH-020 판정",
+      "state": "REPO_PULL_REQUEST_STATE_OPEN",
+      "isDraft": true,
+      "headSha": "85efa0c9441c498932d35cddeddb31516cef8fe7",
+      "permalink": "https://github.com/jsexy0210-ship-it/Live-OBS-Platform/pull/995"
+    },
+    {
+      "number": 993,
+      "title": "feat(seller): SA-027 송장 발급 · SA-028 출력·추적 화면",
+      "state": "REPO_PULL_REQUEST_STATE_OPEN",
+      "isDraft": null,
+      "headSha": "d016352d7195b0f2bf8d8499efe2d05ef60a5ecd",
+      "permalink": "https://github.com/jsexy0210-ship-it/Live-OBS-Platform/pull/993"
+    },
+    {
+      "number": 992,
+      "title": "fix(seller): SA-090 구독·결제 구조를 정본 v328에 맞춤 + SA-100·067·081 placeholder",
+      "state": "REPO_PULL_REQUEST_STATE_OPEN",
+      "isDraft": null,
+      "headSha": "55b6d43c2b149dd4cef606501fdf5e6ed5fe6151",
+      "permalink": "https://github.com/jsexy0210-ship-it/Live-OBS-Platform/pull/992"
+    },
+    {
+      "number": 990,
+      "title": "feat(seller): SA-021 전체 주문 목록 정본(SA-021-OPS v287) 구조 맞춤 — 부분 일치",
+      "state": "REPO_PULL_REQUEST_STATE_OPEN",
+      "isDraft": null,
+      "headSha": "daf1bc0bb808ee37cfcbb870b866bced2bb193ac",
+      "permalink": "https://github.com/jsexy0210-ship-it/Live-OBS-Platform/pull/990"
+    },
+    {
+      "number": 989,
+      "title": "feat(ui): 로그아웃은 반드시 확인 창을 거친다 — 공통 LogoutButton",
+      "state": "REPO_PULL_REQUEST_STATE_OPEN",
+      "isDraft": null,
+      "headSha": "8ff7232375108bf35fa5e997ea2ae8352afa4f6a",
+      "permalink": "https://github.com/jsexy0210-ship-it/Live-OBS-Platform/pull/989"
+    },
+    {
+      "number": 988,
+      "title": "feat(seller): SA-060·031·114 placeholder를 정본 v336 문구로 맞춤",
+      "state": "REPO_PULL_REQUEST_STATE_OPEN",
+      "isDraft": null,
+      "headSha": "d02bef1549def2418eee37b8288da634ce6313f0",
+      "permalink": "https://github.com/jsexy0210-ship-it/Live-OBS-Platform/pull/988"
+    },
+    {
+      "number": 986,
+      "title": "design(project): 묶음 18 v340 휴대폰(390) 보드 1단계 SA-021·022·023·025-M + SA-060 한 줄 소개 40자",
+      "state": "REPO_PULL_REQUEST_STATE_OPEN",
+      "isDraft": true,
+      "headSha": "c083b7c68595dcc69356a23dec6fda37f186378c",
+      "permalink": "https://github.com/jsexy0210-ship-it/Live-OBS-Platform/pull/986"
+    },
+    {
+      "number": 983,
+      "title": "design: 캔버스 v331~v339 디자인 정본 일괄 반영 (보드 353장 · SH-011-1~4 신규)",
+      "state": "REPO_PULL_REQUEST_STATE_OPEN",
+      "isDraft": null,
+      "headSha": "85155c4a7f1c90228f12b9cd664ba867341b563e",
+      "permalink": "https://github.com/jsexy0210-ship-it/Live-OBS-Platform/pull/983"
+    },
+    {
+      "number": 978,
+      "title": "design(project): 묶음 17 — MA-032 유예 전환 열 삭제 · MA-023 상태 체크 · MA-041 강제 종료 · MA-051 도움됨 + SCREEN_MAP MA-082 경로 (MASTER 승인, v339)",
+      "state": "REPO_PULL_REQUEST_STATE_OPEN",
+      "isDraft": null,
+      "headSha": "5f86c14263335aafbe6904774aa990f47e8ade1d",
+      "permalink": "https://github.com/jsexy0210-ship-it/Live-OBS-Platform/pull/978"
+    },
+    {
+      "number": 974,
+      "title": "design(project): 묶음 16 — PF-004 승인 답변(자동 점검 통과 시 바로 승인) · PF-008 이용약관 12조 + 부칙 구조 (PF·AU #968 정본 확인, v338)",
+      "state": "REPO_PULL_REQUEST_STATE_OPEN",
+      "isDraft": null,
+      "headSha": "38af4865b9cc2c8719b0cd3e692a8ed385a97536",
+      "permalink": "https://github.com/jsexy0210-ship-it/Live-OBS-Platform/pull/974"
+    },
+    {
+      "number": 572,
+      "title": "ci: 배포 때 외부 쇼핑몰 연동 Secret을 테스트 서버 .env에 반영",
+      "state": "REPO_PULL_REQUEST_STATE_OPEN",
+      "isDraft": null,
+      "headSha": "294be79def2a6d0ebe4fd913be9207baba6431e3",
+      "permalink": "https://github.com/jsexy0210-ship-it/Live-OBS-Platform/pull/572"
+    }
+  ]
+}

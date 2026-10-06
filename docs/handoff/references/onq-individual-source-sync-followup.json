@@ -1,0 +1,2284 @@
+{
+  "base": "4a06ba9016dae9784774329c1e253ecc92b0c9d3",
+  "commonSourceDone": [
+    "design/project/DS-PANEL.dc.html",
+    "design/project/DS-ROW-ACTION.dc.html",
+    "design/project/SA-021-OPS.dc.html",
+    "design/project/SA-026.dc.html"
+  ],
+  "canonicalPolicyOnlyUntilIndividualSourceSync": true,
+  "items": [
+    {
+      "route": "/admin",
+      "app": "app/(admin)/admin/(shell)/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "MA-001",
+          "name": "통합 대시보드",
+          "route": "/admin",
+          "source": "design/project/MA-001-IA.dc.html",
+          "status": "FINAL",
+          "version": "v308 (1791244117-7b5d)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/login",
+      "app": "app/(admin)/admin/login/page.tsx",
+      "hasPageHead": false,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "AU-001",
+          "name": "마스터 관리자 로그인",
+          "route": "/admin/login",
+          "source": "design/project/AU-001.dc.html",
+          "status": "FINAL",
+          "version": "v296 (1791239078-7381)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/notifications",
+      "app": "app/(admin)/admin/(shell)/notifications/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "MA-002",
+          "name": "알림 센터",
+          "route": "/admin/notifications",
+          "source": "design/project/MA-002.dc.html",
+          "status": "FINAL",
+          "version": "v291 (1791219075-ad9b)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/accounts",
+      "app": "app/(admin)/admin/(shell)/accounts/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "MA-061",
+          "name": "관리자 계정 목록",
+          "route": "/admin/accounts",
+          "source": "design/project/MA-061.dc.html",
+          "status": "FINAL",
+          "version": "v325 (1791260546-49e4)",
+          "openPRs": []
+        },
+        {
+          "id": "MA-062",
+          "name": "계정 추가·수정",
+          "route": "/admin/accounts (다이얼로그)",
+          "source": "design/project/MA-062.dc.html",
+          "status": "FINAL",
+          "version": "v291 (1791219075-ad9b)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/logs",
+      "app": "app/(admin)/admin/(shell)/logs/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "MA-070",
+          "name": "로그 추적",
+          "route": "/admin/logs",
+          "source": "design/project/MA-070.dc.html",
+          "status": "FINAL",
+          "version": "v325 (1791260546-49e4)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/[...slug]",
+      "app": "app/(admin)/admin/(shell)/[...slug]/page.tsx",
+      "hasPageHead": false,
+      "hasListGrid": false,
+      "sourceMatches": [],
+      "needsManualMap": true,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/partners",
+      "app": "app/(admin)/admin/(shell)/partners/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "MA-011",
+          "name": "파트너스 목록",
+          "route": "/admin/partners",
+          "source": "design/project/MA-011.dc.html",
+          "status": "FINAL",
+          "version": "v287 (1791217739-ca0d)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/account",
+      "app": "app/(admin)/admin/(shell)/account/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [],
+      "needsManualMap": true,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/ops/live",
+      "app": "app/(admin)/admin/(shell)/ops/live/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "MA-041",
+          "name": "실시간 방송 중 파트너스",
+          "route": "/admin/ops/live",
+          "source": "design/project/MA-041.dc.html",
+          "status": "FINAL",
+          "version": "v324 (1791260007-b92f)",
+          "openPRs": [
+            1008,
+            1005,
+            1004,
+            1002,
+            995,
+            986,
+            983,
+            978
+          ]
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/ops/access",
+      "app": "app/(admin)/admin/(shell)/ops/access/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "MA-042",
+          "name": "주문·오버레이 접속 현황",
+          "route": "/admin/ops/access",
+          "source": "design/project/MA-042.dc.html",
+          "status": "FINAL",
+          "version": "v324 (1791260007-b92f)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/ops/infra",
+      "app": "app/(admin)/admin/(shell)/ops/infra/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "MA-120",
+          "name": "인프라 · 비용",
+          "route": "/admin/ops/infra",
+          "source": "design/project/MA-120.dc.html",
+          "status": "FINAL",
+          "version": "v308 (1791244117-7b5d)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/ops/automation",
+      "app": "app/(admin)/admin/(shell)/ops/automation/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "MA-110",
+          "name": "자동 연결 작업 목록",
+          "route": "/admin/ops/automation",
+          "source": "design/project/MA-110.dc.html",
+          "status": "FINAL",
+          "version": "v307 (1791243912-69d4)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/ops/rewards",
+      "app": "app/(admin)/admin/(shell)/ops/rewards/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "MA-043",
+          "name": "적립금 실지급 파트너스",
+          "route": "/admin/ops/rewards",
+          "source": "design/project/MA-043.dc.html",
+          "status": "FINAL",
+          "version": "v291 (1791219075-ad9b)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/ops/monitor",
+      "app": "app/(admin)/admin/(shell)/ops/monitor/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "MA-100",
+          "name": "실시간 감시",
+          "route": "/admin/ops/monitor",
+          "source": "design/project/MA-100.dc.html",
+          "status": "FINAL",
+          "version": "v335 (1791267899-c636)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/ops/automation/[jobId]",
+      "app": "app/(admin)/admin/(shell)/ops/automation/[jobId]/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "MA-111",
+          "name": "자동 연결 작업 상세",
+          "route": "/admin/ops/automation/[jobId]",
+          "source": "design/project/MA-111.dc.html",
+          "status": "FINAL",
+          "version": "v307 (1791243912-69d4)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/settlement/pg",
+      "app": "app/(admin)/admin/(shell)/settlement/pg/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "MA-031",
+          "name": "PG 연결 상태",
+          "route": "/admin/settlement/pg",
+          "source": "design/project/MA-031.dc.html",
+          "status": "FINAL",
+          "version": "v329 (1791265128-d8ae)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/settlement/collection",
+      "app": "app/(admin)/admin/(shell)/settlement/collection/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "MA-032",
+          "name": "구독료 수납 현황",
+          "route": "/admin/settlement/collection",
+          "source": "design/project/MA-032.dc.html",
+          "status": "FINAL",
+          "version": "v295 (1791238855-8cd0)",
+          "openPRs": [
+            1008,
+            1005,
+            1004,
+            1002,
+            995,
+            986,
+            983,
+            978
+          ]
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/accounts/roles",
+      "app": "app/(admin)/admin/(shell)/accounts/roles/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "MA-063",
+          "name": "역할별 권한 표",
+          "route": "/admin/accounts/roles",
+          "source": "design/project/MA-063.dc.html",
+          "status": "FINAL",
+          "version": "v329 (1791265128-d8ae)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/billing/invoices",
+      "app": "app/(admin)/admin/(shell)/billing/invoices/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "MA-024",
+          "name": "청구·결제 내역",
+          "route": "/admin/billing/invoices",
+          "source": "design/project/MA-024.dc.html",
+          "status": "FINAL",
+          "version": "v317 (1791249725-8d06)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/billing/subscriptions",
+      "app": "app/(admin)/admin/(shell)/billing/subscriptions/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "MA-023",
+          "name": "구독 현황",
+          "route": "/admin/billing/subscriptions",
+          "source": "design/project/MA-023.dc.html",
+          "status": "FINAL",
+          "version": "v291 (1791219075-ad9b)",
+          "openPRs": [
+            1008,
+            1005,
+            1004,
+            1002,
+            995,
+            986,
+            983,
+            978
+          ]
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/billing/plans",
+      "app": "app/(admin)/admin/(shell)/billing/plans/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "MA-021",
+          "name": "요금제 목록",
+          "route": "/admin/billing/plans",
+          "source": "design/project/MA-021.dc.html",
+          "status": "FINAL",
+          "version": "v328 (1791263193-35d2)",
+          "openPRs": []
+        },
+        {
+          "id": "MA-022",
+          "name": "요금제 등록·수정",
+          "route": "/admin/billing/plans (등록·수정)",
+          "source": "design/project/MA-022.dc.html",
+          "status": "FINAL",
+          "version": "v291 (1791219075-ad9b)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/billing/refunds",
+      "app": "app/(admin)/admin/(shell)/billing/refunds/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "MA-026",
+          "name": "환불 요청 목록",
+          "route": "/admin/billing/refunds",
+          "source": "design/project/MA-026.dc.html",
+          "status": "FINAL",
+          "version": "v325 (1791260546-49e4)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/billing/invoices/[paymentId]",
+      "app": "app/(admin)/admin/(shell)/billing/invoices/[paymentId]/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "MA-025",
+          "name": "청구 상세",
+          "route": "/admin/billing/invoices/[paymentId]",
+          "source": "design/project/MA-025.dc.html",
+          "status": "FINAL",
+          "version": "v291 (1791219075-ad9b)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/billing/refunds/[refundId]",
+      "app": "app/(admin)/admin/(shell)/billing/refunds/[refundId]/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "MA-027",
+          "name": "환불 처리",
+          "route": "/admin/billing/refunds/[refundId]",
+          "source": "design/project/MA-027.dc.html",
+          "status": "FINAL",
+          "version": "v327 (1791261622-9faf)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/logs/[logId]",
+      "app": "app/(admin)/admin/(shell)/logs/[logId]/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "MA-071",
+          "name": "로그 추적 상세",
+          "route": "/admin/logs/[logId]",
+          "source": "design/project/MA-071.dc.html",
+          "status": "FINAL",
+          "version": "v295 (1791238855-8cd0)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/settings/platform-business",
+      "app": "app/(admin)/admin/(shell)/settings/platform-business/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "MA-088",
+          "name": "플랫폼 정보",
+          "route": "/admin/settings/platform-business",
+          "source": "design/project/MA-088.dc.html",
+          "status": "FINAL",
+          "version": "v329 (1791265128-d8ae)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/settings/policy",
+      "app": "app/(admin)/admin/(shell)/settings/policy/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [],
+      "needsManualMap": true,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/settings/vendors",
+      "app": "app/(admin)/admin/(shell)/settings/vendors/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [],
+      "needsManualMap": true,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/settings/branding",
+      "app": "app/(admin)/admin/(shell)/settings/branding/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "MA-085",
+          "name": "파비콘·공유 카드",
+          "route": "/admin/settings/branding",
+          "source": "design/project/MA-085.dc.html",
+          "status": "FINAL",
+          "version": "v325 (1791260546-49e4)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/settings/maintenance",
+      "app": "app/(admin)/admin/(shell)/settings/maintenance/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "MA-083",
+          "name": "점검 모드",
+          "route": "/admin/settings/maintenance",
+          "source": "design/project/MA-083.dc.html",
+          "status": "FINAL",
+          "version": "v329 (1791265128-d8ae)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/settings/assistant",
+      "app": "app/(admin)/admin/(shell)/settings/assistant/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "MA-084",
+          "name": "도우미 설정",
+          "route": "/admin/settings/assistant",
+          "source": "design/project/MA-084.dc.html",
+          "status": "FINAL",
+          "version": "v329 (1791265128-d8ae)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/settings/messages",
+      "app": "app/(admin)/admin/(shell)/settings/messages/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "MA-082",
+          "name": "알림 채널 설정",
+          "route": "/admin/settings/messages",
+          "source": "design/project/MA-082.dc.html",
+          "status": "FINAL",
+          "version": "v325 (1791260546-49e4)",
+          "openPRs": []
+        },
+        {
+          "id": "MA-086",
+          "name": "발송 단가",
+          "route": "/admin/settings/messages",
+          "source": "design/project/MA-086.dc.html",
+          "status": "FINAL",
+          "version": "v325 (1791260546-49e4)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/partners/[sellerId]",
+      "app": "app/(admin)/admin/(shell)/partners/[sellerId]/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "MA-012",
+          "name": "파트너스 상세",
+          "route": "/admin/partners/[sellerId]",
+          "source": "design/project/MA-012-1.dc.html",
+          "status": "FINAL",
+          "version": "v330 (1791265879-89a7)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/partners/applications",
+      "app": "app/(admin)/admin/(shell)/partners/applications/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "MA-013",
+          "name": "가입 신청 목록",
+          "route": "/admin/partners/applications",
+          "source": "design/project/MA-013-OPS.dc.html",
+          "status": "FINAL",
+          "version": "v287 (1791217739-ca0d)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/partners/applications/[sellerId]",
+      "app": "app/(admin)/admin/(shell)/partners/applications/[sellerId]/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "MA-014",
+          "name": "가입 신청 상세",
+          "route": "/admin/partners/applications/[sellerId]",
+          "source": "design/project/MA-014.dc.html",
+          "status": "FINAL",
+          "version": "v291 (1791219075-ad9b)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/support/assistant",
+      "app": "app/(admin)/admin/(shell)/support/assistant/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "MA-055",
+          "name": "도우미 답변 자료",
+          "route": "/admin/support/assistant",
+          "source": "design/project/MA-055.dc.html",
+          "status": "FINAL",
+          "version": "v295 (1791238855-8cd0)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/support/inquiries",
+      "app": "app/(admin)/admin/(shell)/support/inquiries/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "MA-051",
+          "name": "파트너스 문의 목록",
+          "route": "/admin/support/inquiries",
+          "source": "design/project/MA-051.dc.html",
+          "status": "FINAL",
+          "version": "v329 (1791265128-d8ae)",
+          "openPRs": [
+            1008,
+            1005,
+            1004,
+            1002,
+            995,
+            986,
+            983,
+            978
+          ]
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/support/notices",
+      "app": "app/(admin)/admin/(shell)/support/notices/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "MA-053",
+          "name": "공지사항 목록",
+          "route": "/admin/support/notices",
+          "source": "design/project/MA-053.dc.html",
+          "status": "FINAL",
+          "version": "v295 (1791238855-8cd0)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/support/inquiries/[inquiryId]",
+      "app": "app/(admin)/admin/(shell)/support/inquiries/[inquiryId]/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "MA-052",
+          "name": "문의 상세·답변",
+          "route": "/admin/support/inquiries/[inquiryId]",
+          "source": "design/project/MA-052.dc.html",
+          "status": "FINAL",
+          "version": "v329 (1791265128-d8ae)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/support/notices/[noticeId]",
+      "app": "app/(admin)/admin/(shell)/support/notices/[noticeId]/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [],
+      "needsManualMap": true,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/admin/support/notices/new",
+      "app": "app/(admin)/admin/(shell)/support/notices/new/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [],
+      "needsManualMap": true,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/password-reset",
+      "app": "app/(seller)/seller/password-reset/page.tsx",
+      "hasPageHead": false,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "AU-003",
+          "name": "비밀번호 찾기",
+          "route": "/seller/password-reset",
+          "source": "design/project/AU-003.dc.html",
+          "status": "FINAL",
+          "version": "v296 (1791239078-7381)",
+          "openPRs": []
+        },
+        {
+          "id": "AU-004",
+          "name": "새 비밀번호 입력",
+          "route": "/seller/password-reset (새 비밀번호)",
+          "source": "design/project/AU-004.dc.html",
+          "status": "FINAL",
+          "version": "v296 (1791239078-7381)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/pending",
+      "app": "app/(seller)/seller/pending/page.tsx",
+      "hasPageHead": false,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "AU-005",
+          "name": "승인 대기 안내",
+          "route": "/seller/pending",
+          "source": "design/project/AU-005.dc.html",
+          "status": "FINAL",
+          "version": "v296 (1791239078-7381)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/identity-link",
+      "app": "app/(seller)/seller/identity-link/page.tsx",
+      "hasPageHead": false,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "AU-012",
+          "name": "직원 첫 로그인 · 계정 연결",
+          "route": "/seller/identity-link",
+          "source": "design/project/AU-012.dc.html",
+          "status": "FINAL",
+          "version": "v296 (1791239078-7381)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/[...slug]",
+      "app": "app/(seller)/seller/[...slug]/page.tsx",
+      "hasPageHead": false,
+      "hasListGrid": false,
+      "sourceMatches": [],
+      "needsManualMap": true,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/find-id",
+      "app": "app/(seller)/seller/find-id/page.tsx",
+      "hasPageHead": false,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "AU-011",
+          "name": "아이디 찾기",
+          "route": "/seller/find-id",
+          "source": "design/project/AU-011.dc.html",
+          "status": "FINAL",
+          "version": "v296 (1791239078-7381)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller",
+      "app": "app/(seller)/seller/(shell)/page.tsx",
+      "hasPageHead": false,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "SA-002",
+          "name": "파트너스 홈",
+          "route": "/seller",
+          "source": "design/project/SA-002-IA.dc.html",
+          "status": "FINAL",
+          "version": "v300 (1791239970-91e4)",
+          "openPRs": []
+        },
+        {
+          "id": "SA-002-O",
+          "name": "오버레이 전용 홈",
+          "route": "/seller (오버레이 전용)",
+          "source": "design/project/SA-002-O.dc.html",
+          "status": "FINAL",
+          "version": "v320 (1791250467-d56b)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/login",
+      "app": "app/(seller)/seller/login/page.tsx",
+      "hasPageHead": false,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "AU-002",
+          "name": "파트너스 관리자 로그인",
+          "route": "/seller/login",
+          "source": "design/project/AU-002.dc.html",
+          "status": "FINAL",
+          "version": "v296 (1791239078-7381)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/home-overlay",
+      "app": "app/(seller)/seller/(shell)/home-overlay/page.tsx",
+      "hasPageHead": false,
+      "hasListGrid": false,
+      "sourceMatches": [],
+      "needsManualMap": true,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/banners",
+      "app": "app/(seller)/seller/(shell)/banners/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-064",
+          "name": "홈 배너",
+          "route": "/seller/banners",
+          "source": "design/project/SA-064.dc.html",
+          "status": "FINAL",
+          "version": "v336 (1791268289-8313)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/hit-cards",
+      "app": "app/(seller)/seller/(shell)/hit-cards/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-053",
+          "name": "HIT 카드 기록",
+          "route": "/seller/hit-cards",
+          "source": "design/project/SA-053.dc.html",
+          "status": "FINAL",
+          "version": "v312 (1791246297-cc12)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/automation",
+      "app": "app/(seller)/seller/(shell)/automation/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "SA-150",
+          "name": "자동 연결 안내",
+          "route": "/seller/automation",
+          "source": "design/project/SA-150.dc.html",
+          "status": "FINAL",
+          "version": "v317 (1791249725-8d06)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/member-messages",
+      "app": "app/(seller)/seller/(shell)/member-messages/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "SA-049",
+          "name": "회원 알림 발송",
+          "route": "/seller/member-messages",
+          "source": "design/project/SA-049.dc.html",
+          "status": "FINAL",
+          "version": "v337 (1791268534-05ab)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/notifications",
+      "app": "app/(seller)/seller/(shell)/notifications/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-130",
+          "name": "알림 센터",
+          "route": "/seller/notifications",
+          "source": "design/project/SA-130.dc.html",
+          "status": "FINAL",
+          "version": "v328 (1791263193-35d2)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/members",
+      "app": "app/(seller)/seller/(shell)/members/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-041",
+          "name": "회원 목록",
+          "route": "/seller/members",
+          "source": "design/project/SA-041.dc.html",
+          "status": "FINAL",
+          "version": "v286 (1791217504-7bca)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/stats",
+      "app": "app/(seller)/seller/(shell)/stats/page.tsx",
+      "hasPageHead": false,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-056",
+          "name": "통계",
+          "route": "/seller/stats (+ orders·sales·products·members·broadcasts)",
+          "source": "design/project/SA-056.dc.html",
+          "status": "FINAL",
+          "version": "v336 (1791268289-8313)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/orders",
+      "app": "app/(seller)/seller/(shell)/orders/page.tsx",
+      "hasPageHead": false,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-021",
+          "name": "주문 목록",
+          "route": "/seller/orders",
+          "source": "design/project/SA-021-OPS.dc.html",
+          "status": "FINAL",
+          "version": "v287 (1791217739-ca0d)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/youtube",
+      "app": "app/(seller)/seller/(shell)/youtube/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "SA-057",
+          "name": "유튜브 연결",
+          "route": "/seller/youtube",
+          "source": "design/project/SA-057.dc.html",
+          "status": "FINAL",
+          "version": "v336 (1791268289-8313)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/overlay",
+      "app": "app/(seller)/seller/(shell)/overlay/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "SA-051",
+          "name": "오버레이 편집기",
+          "route": "/seller/overlay (편집기)",
+          "source": "design/project/SA-051.dc.html",
+          "status": "FINAL",
+          "version": "v336 (1791268289-8313)",
+          "openPRs": []
+        },
+        {
+          "id": "SA-052",
+          "name": "오버레이 URL",
+          "route": "/seller/overlay",
+          "source": "design/project/SA-052.dc.html",
+          "status": "FINAL",
+          "version": "v336 (1791268289-8313)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/suspended",
+      "app": "app/(seller)/seller/(shell)/suspended/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "AU-006",
+          "name": "이용 정지 안내",
+          "route": "/seller/suspended",
+          "source": "design/project/AU-006.dc.html",
+          "status": "FINAL",
+          "version": "v296 (1791239078-7381)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/shipping",
+      "app": "app/(seller)/seller/(shell)/shipping/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "SA-025",
+          "name": "배송",
+          "route": "/seller/shipping",
+          "source": "design/project/SA-025.dc.html",
+          "status": "FINAL",
+          "version": "v336 (1791268289-8313)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/external-shops",
+      "app": "app/(seller)/seller/(shell)/external-shops/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-006",
+          "name": "외부 쇼핑몰 연동",
+          "route": "/seller/external-shops",
+          "source": "design/project/SA-006.dc.html",
+          "status": "FINAL",
+          "version": "v302 (1791240973-f773)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/purchase-restrictions",
+      "app": "app/(seller)/seller/(shell)/purchase-restrictions/page.tsx",
+      "hasPageHead": false,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-043",
+          "name": "구매 제한",
+          "route": "/seller/purchase-restrictions",
+          "source": "design/project/SA-043.dc.html",
+          "status": "FINAL",
+          "version": "v292 (1791219414-c487)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/subscription",
+      "app": "app/(seller)/seller/(shell)/subscription/page.tsx",
+      "hasPageHead": false,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "SA-090",
+          "name": "구독·결제",
+          "route": "/seller/subscription",
+          "source": "design/project/SA-090.dc.html",
+          "status": "FINAL",
+          "version": "v328 (1791263193-35d2)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/broadcasts",
+      "app": "app/(seller)/seller/(shell)/broadcasts/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-054",
+          "name": "방송 이력",
+          "route": "/seller/broadcasts",
+          "source": "design/project/SA-054.dc.html",
+          "status": "FINAL",
+          "version": "v324 (1791260007-b92f)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/onboarding",
+      "app": "app/(seller)/seller/(shell)/onboarding/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "SA-003",
+          "name": "시작하기",
+          "route": "/seller/onboarding",
+          "source": "design/project/SA-003.dc.html",
+          "status": "FINAL",
+          "version": "v302 (1791240973-f773)",
+          "openPRs": []
+        },
+        {
+          "id": "SA-004",
+          "name": "온보딩(SA-003에 흡수)",
+          "route": "/seller/onboarding",
+          "source": "design/project/SA-004.dc.html",
+          "status": "SUPERSEDED",
+          "version": "v302 (1791240973-f773)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/assistant",
+      "app": "app/(seller)/seller/(shell)/assistant/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "SA-140",
+          "name": "도우미",
+          "route": "/seller/assistant",
+          "source": "design/project/SA-140.dc.html",
+          "status": "FINAL",
+          "version": "v316 (1791249109-2097)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/returns",
+      "app": "app/(seller)/seller/(shell)/returns/page.tsx",
+      "hasPageHead": false,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "SA-029",
+          "name": "교환·반품",
+          "route": "/seller/returns",
+          "source": "design/project/SA-029.dc.html",
+          "status": "FINAL",
+          "version": "v316 (1791249109-2097)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/buyer-inquiries",
+      "app": "app/(seller)/seller/(shell)/buyer-inquiries/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-046",
+          "name": "문의 목록",
+          "route": "/seller/buyer-inquiries",
+          "source": "design/project/SA-046.dc.html",
+          "status": "FINAL",
+          "version": "v290 (1791218258-c278)",
+          "openPRs": []
+        },
+        {
+          "id": "SA-047",
+          "name": "문의 상세·답변",
+          "route": "/seller/buyer-inquiries (상세)",
+          "source": "design/project/SA-047.dc.html",
+          "status": "FINAL",
+          "version": "v337 (1791268534-05ab)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/account",
+      "app": "app/(seller)/seller/(shell)/account/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [],
+      "needsManualMap": true,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/rewards",
+      "app": "app/(seller)/seller/(shell)/rewards/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-031",
+          "name": "적립 정책",
+          "route": "/seller/rewards",
+          "source": "design/project/SA-031.dc.html",
+          "status": "FINAL",
+          "version": "v336 (1791268289-8313)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/coupons",
+      "app": "app/(seller)/seller/(shell)/coupons/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-035",
+          "name": "쿠폰",
+          "route": "/seller/coupons",
+          "source": "design/project/SA-035.dc.html",
+          "status": "FINAL",
+          "version": "v336 (1791268289-8313)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/products",
+      "app": "app/(seller)/seller/(shell)/products/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-011",
+          "name": "상품 목록",
+          "route": "/seller/products",
+          "source": "design/project/SA-011.dc.html",
+          "status": "FINAL",
+          "version": "v336 (1791268289-8313)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/broadcast",
+      "app": "app/(seller)/seller/(shell)/broadcast/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-001",
+          "name": "방송 대시보드",
+          "route": "/seller/broadcast",
+          "source": "design/project/SA-001.dc.html",
+          "status": "FINAL",
+          "version": "v336 (1791268289-8313)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/staff",
+      "app": "app/(seller)/seller/(shell)/staff/page.tsx",
+      "hasPageHead": false,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-100",
+          "name": "직원 계정·권한",
+          "route": "/seller/staff",
+          "source": "design/project/SA-100.dc.html",
+          "status": "FINAL",
+          "version": "v336 (1791268289-8313)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/reviews",
+      "app": "app/(seller)/seller/(shell)/reviews/page.tsx",
+      "hasPageHead": false,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "SA-048",
+          "name": "상품 리뷰",
+          "route": "/seller/reviews",
+          "source": "design/project/SA-048.dc.html",
+          "status": "FINAL",
+          "version": "v337 (1791268534-05ab)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/inquiries",
+      "app": "app/(seller)/seller/(shell)/inquiries/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-113",
+          "name": "내 문의 목록",
+          "route": "/seller/inquiries",
+          "source": "design/project/SA-113.dc.html",
+          "status": "FINAL",
+          "version": "v310 (1791244939-8b87)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/member-grades",
+      "app": "app/(seller)/seller/(shell)/member-grades/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "SA-044",
+          "name": "회원 등급",
+          "route": "/seller/member-grades",
+          "source": "design/project/SA-044.dc.html",
+          "status": "FINAL",
+          "version": "v336 (1791268289-8313)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/notices",
+      "app": "app/(seller)/seller/(shell)/notices/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-111",
+          "name": "공지사항 목록",
+          "route": "/seller/notices",
+          "source": "design/project/SA-111.dc.html",
+          "status": "FINAL",
+          "version": "v302 (1791240973-f773)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/banners/popups",
+      "app": "app/(seller)/seller/(shell)/banners/popups/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-065",
+          "name": "이벤트 팝업",
+          "route": "/seller/banners/popups",
+          "source": "design/project/SA-065.dc.html",
+          "status": "FINAL",
+          "version": "v337 (1791268534-05ab)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/automation/pay",
+      "app": "app/(seller)/seller/(shell)/automation/pay/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-151",
+          "name": "자동 연결 결제",
+          "route": "/seller/automation/pay",
+          "source": "design/project/SA-151.dc.html",
+          "status": "FINAL",
+          "version": "v302 (1791240973-f773)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/automation/[jobId]",
+      "app": "app/(seller)/seller/(shell)/automation/[jobId]/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "SA-152",
+          "name": "자동 연결 진행",
+          "route": "/seller/automation/[jobId]",
+          "source": "design/project/SA-152.dc.html",
+          "status": "FINAL",
+          "version": "v302 (1791240973-f773)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/automation/[jobId]/done",
+      "app": "app/(seller)/seller/(shell)/automation/[jobId]/done/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "SA-153",
+          "name": "자동 연결 완료",
+          "route": "/seller/automation/[jobId]/done",
+          "source": "design/project/SA-153.dc.html",
+          "status": "FINAL",
+          "version": "v302 (1791240973-f773)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/members/[memberId]",
+      "app": "app/(seller)/seller/(shell)/members/[memberId]/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "SA-042",
+          "name": "회원 상세",
+          "route": "/seller/members/[memberId]",
+          "source": "design/project/SA-042.dc.html",
+          "status": "FINAL",
+          "version": "v292 (1791219414-c487)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/stats/members",
+      "app": "app/(seller)/seller/(shell)/stats/members/page.tsx",
+      "hasPageHead": false,
+      "hasListGrid": true,
+      "sourceMatches": [],
+      "needsManualMap": true,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/stats/orders",
+      "app": "app/(seller)/seller/(shell)/stats/orders/page.tsx",
+      "hasPageHead": false,
+      "hasListGrid": true,
+      "sourceMatches": [],
+      "needsManualMap": true,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/stats/broadcasts",
+      "app": "app/(seller)/seller/(shell)/stats/broadcasts/page.tsx",
+      "hasPageHead": false,
+      "hasListGrid": true,
+      "sourceMatches": [],
+      "needsManualMap": true,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/stats/sales",
+      "app": "app/(seller)/seller/(shell)/stats/sales/page.tsx",
+      "hasPageHead": false,
+      "hasListGrid": true,
+      "sourceMatches": [],
+      "needsManualMap": true,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/stats/products",
+      "app": "app/(seller)/seller/(shell)/stats/products/page.tsx",
+      "hasPageHead": false,
+      "hasListGrid": true,
+      "sourceMatches": [],
+      "needsManualMap": true,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/orders/deposits",
+      "app": "app/(seller)/seller/(shell)/orders/deposits/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-026",
+          "name": "입금 확인",
+          "route": "/seller/orders/deposits",
+          "source": "design/project/SA-026.dc.html",
+          "status": "FINAL",
+          "version": "v336 (1791268289-8313)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/orders/[orderId]",
+      "app": "app/(seller)/seller/(shell)/orders/[orderId]/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-022",
+          "name": "주문 상세",
+          "route": "/seller/orders/[orderId]",
+          "source": "design/project/SA-022.dc.html",
+          "status": "FINAL",
+          "version": "v337 (1791268534-05ab)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/orders/receipts",
+      "app": "app/(seller)/seller/(shell)/orders/receipts/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [],
+      "needsManualMap": true,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/orders/refund-requests",
+      "app": "app/(seller)/seller/(shell)/orders/refund-requests/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-023",
+          "name": "취소·환불 처리",
+          "route": "/seller/orders/refund-requests",
+          "source": "design/project/SA-023.dc.html",
+          "status": "FINAL",
+          "version": "v316 (1791249109-2097)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/overlay/address",
+      "app": "app/(seller)/seller/(shell)/overlay/address/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [],
+      "needsManualMap": true,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/broadcasts/[broadcastId]",
+      "app": "app/(seller)/seller/(shell)/broadcasts/[broadcastId]/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-055",
+          "name": "방송 상세",
+          "route": "/seller/broadcasts/[broadcastId]",
+          "source": "design/project/SA-055.dc.html",
+          "status": "FINAL",
+          "version": "v337 (1791268534-05ab)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/settings/shop",
+      "app": "app/(seller)/seller/(shell)/settings/shop/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "SA-060",
+          "name": "쇼핑몰 정보",
+          "route": "/seller/settings/shop",
+          "source": "design/project/SA-060.dc.html",
+          "status": "FINAL",
+          "version": "v337 (1791268534-05ab)",
+          "openPRs": [
+            1008,
+            1005,
+            1004,
+            1002,
+            995,
+            986
+          ]
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/settings/shop-notices",
+      "app": "app/(seller)/seller/(shell)/settings/shop-notices/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-066",
+          "name": "쇼핑몰 공지·자주 묻는 질문",
+          "route": "/seller/settings/shop-notices",
+          "source": "design/project/SA-066.dc.html",
+          "status": "FINAL",
+          "version": "v337 (1791268534-05ab)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/settings/order-notifications",
+      "app": "app/(seller)/seller/(shell)/settings/order-notifications/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-080",
+          "name": "주문자 알림 설정",
+          "route": "/seller/settings/order-notifications",
+          "source": "design/project/SA-080.dc.html",
+          "status": "FINAL",
+          "version": "v337 (1791268534-05ab)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/settings/member",
+      "app": "app/(seller)/seller/(shell)/settings/member/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "SA-068",
+          "name": "회원 정책",
+          "route": "/seller/settings/member",
+          "source": "design/project/SA-068.dc.html",
+          "status": "FINAL",
+          "version": "v328 (1791263193-35d2)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/settings/legal",
+      "app": "app/(seller)/seller/(shell)/settings/legal/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "SA-062",
+          "name": "법정 고지·약관",
+          "route": "/seller/settings/legal",
+          "source": "design/project/SA-062.dc.html",
+          "status": "FINAL",
+          "version": "v337 (1791268534-05ab)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/settings/shipping",
+      "app": "app/(seller)/seller/(shell)/settings/shipping/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-061",
+          "name": "배송비 정책",
+          "route": "/seller/settings/shipping",
+          "source": "design/project/SA-061.dc.html",
+          "status": "FINAL",
+          "version": "v336 (1791268289-8313)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/settings/order",
+      "app": "app/(seller)/seller/(shell)/settings/order/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "SA-063",
+          "name": "주문 설정",
+          "route": "/seller/settings/order",
+          "source": "design/project/SA-063.dc.html",
+          "status": "FINAL",
+          "version": "v336 (1791268289-8313)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/settings/seo",
+      "app": "app/(seller)/seller/(shell)/settings/seo/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "SA-067",
+          "name": "검색 노출",
+          "route": "/seller/settings/seo",
+          "source": "design/project/SA-067.dc.html",
+          "status": "FINAL",
+          "version": "v337 (1791268534-05ab)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/settings/message-balance",
+      "app": "app/(seller)/seller/(shell)/settings/message-balance/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-081",
+          "name": "발송·이용 충전",
+          "route": "/seller/settings/message-balance",
+          "source": "design/project/SA-081.dc.html",
+          "status": "FINAL",
+          "version": "v336 (1791268289-8313)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/rewards/ledger",
+      "app": "app/(seller)/seller/(shell)/rewards/ledger/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-032",
+          "name": "지급·회수 원장",
+          "route": "/seller/rewards/ledger",
+          "source": "design/project/SA-032.dc.html",
+          "status": "FINAL",
+          "version": "v288 (1791217961-0a6c)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/rewards/live-payout",
+      "app": "app/(seller)/seller/(shell)/rewards/live-payout/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-034",
+          "name": "실지급 스위치",
+          "route": "/seller/rewards/live-payout",
+          "source": "design/project/SA-034.dc.html",
+          "status": "FINAL",
+          "version": "v324 (1791260007-b92f)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/rewards/balances",
+      "app": "app/(seller)/seller/(shell)/rewards/balances/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-033",
+          "name": "회원별 잔액",
+          "route": "/seller/rewards/balances",
+          "source": "design/project/SA-033.dc.html",
+          "status": "FINAL",
+          "version": "v336 (1791268289-8313)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/products/bulk",
+      "app": "app/(seller)/seller/(shell)/products/bulk/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [],
+      "needsManualMap": true,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/products/categories",
+      "app": "app/(seller)/seller/(shell)/products/categories/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-015",
+          "name": "카테고리 관리",
+          "route": "/seller/products/categories",
+          "source": "design/project/SA-015.dc.html",
+          "status": "FINAL",
+          "version": "v336 (1791268289-8313)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/products/[productId]",
+      "app": "app/(seller)/seller/(shell)/products/[productId]/page.tsx",
+      "hasPageHead": false,
+      "hasListGrid": false,
+      "sourceMatches": [],
+      "needsManualMap": true,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/products/display",
+      "app": "app/(seller)/seller/(shell)/products/display/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "SA-016",
+          "name": "상품 진열",
+          "route": "/seller/products/display",
+          "source": "design/project/SA-016.dc.html",
+          "status": "FINAL",
+          "version": "v290 (1791218258-c278)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/products/stock",
+      "app": "app/(seller)/seller/(shell)/products/stock/page.tsx",
+      "hasPageHead": false,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-014",
+          "name": "재고 일괄 수정",
+          "route": "/seller/products/stock",
+          "source": "design/project/SA-014.dc.html",
+          "status": "FINAL",
+          "version": "v336 (1791268289-8313)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/products/new",
+      "app": "app/(seller)/seller/(shell)/products/new/page.tsx",
+      "hasPageHead": false,
+      "hasListGrid": false,
+      "sourceMatches": [],
+      "needsManualMap": true,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/products/search-synonyms",
+      "app": "app/(seller)/seller/(shell)/products/search-synonyms/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [],
+      "needsManualMap": true,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/products/restock-alerts",
+      "app": "app/(seller)/seller/(shell)/products/restock-alerts/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-017",
+          "name": "재입고 알림",
+          "route": "/seller/products/restock-alerts",
+          "source": "design/project/SA-017.dc.html",
+          "status": "FINAL",
+          "version": "v337 (1791268534-05ab)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/products/[productId]/preview",
+      "app": "app/(seller)/seller/(shell)/products/[productId]/preview/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [],
+      "needsManualMap": true,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/inquiries/[id]",
+      "app": "app/(seller)/seller/(shell)/inquiries/[id]/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-115",
+          "name": "문의 상세·답변",
+          "route": "/seller/inquiries/[id]",
+          "source": "design/project/SA-115.dc.html",
+          "status": "FINAL",
+          "version": "v337 (1791268534-05ab)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/inquiries/new",
+      "app": "app/(seller)/seller/(shell)/inquiries/new/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": false,
+      "sourceMatches": [
+        {
+          "id": "SA-114",
+          "name": "문의 작성",
+          "route": "/seller/inquiries/new",
+          "source": "design/project/SA-114.dc.html",
+          "status": "FINAL",
+          "version": "v337 (1791268534-05ab)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    },
+    {
+      "route": "/seller/notices/[id]",
+      "app": "app/(seller)/seller/(shell)/notices/[id]/page.tsx",
+      "hasPageHead": true,
+      "hasListGrid": true,
+      "sourceMatches": [
+        {
+          "id": "SA-112",
+          "name": "공지 상세",
+          "route": "/seller/notices/[id]",
+          "source": "design/project/SA-112.dc.html",
+          "status": "FINAL",
+          "version": "v302 (1791240973-f773)",
+          "openPRs": []
+        }
+      ],
+      "needsManualMap": false,
+      "nextAction": "개별 실제 HTML 제목 안내/표 그리드 구조 동기화; openPRs가 있으면 현재 소유자와 stack/보존 merge"
+    }
+  ],
+  "uniqueFollowupSources": [
+    "design/project/AU-001.dc.html",
+    "design/project/AU-002.dc.html",
+    "design/project/AU-003.dc.html",
+    "design/project/AU-004.dc.html",
+    "design/project/AU-005.dc.html",
+    "design/project/AU-006.dc.html",
+    "design/project/AU-011.dc.html",
+    "design/project/AU-012.dc.html",
+    "design/project/MA-001-IA.dc.html",
+    "design/project/MA-002.dc.html",
+    "design/project/MA-011.dc.html",
+    "design/project/MA-012-1.dc.html",
+    "design/project/MA-013-OPS.dc.html",
+    "design/project/MA-014.dc.html",
+    "design/project/MA-021.dc.html",
+    "design/project/MA-022.dc.html",
+    "design/project/MA-023.dc.html",
+    "design/project/MA-024.dc.html",
+    "design/project/MA-025.dc.html",
+    "design/project/MA-026.dc.html",
+    "design/project/MA-027.dc.html",
+    "design/project/MA-031.dc.html",
+    "design/project/MA-032.dc.html",
+    "design/project/MA-041.dc.html",
+    "design/project/MA-042.dc.html",
+    "design/project/MA-043.dc.html",
+    "design/project/MA-051.dc.html",
+    "design/project/MA-052.dc.html",
+    "design/project/MA-053.dc.html",
+    "design/project/MA-055.dc.html",
+    "design/project/MA-061.dc.html",
+    "design/project/MA-062.dc.html",
+    "design/project/MA-063.dc.html",
+    "design/project/MA-070.dc.html",
+    "design/project/MA-071.dc.html",
+    "design/project/MA-082.dc.html",
+    "design/project/MA-083.dc.html",
+    "design/project/MA-084.dc.html",
+    "design/project/MA-085.dc.html",
+    "design/project/MA-086.dc.html",
+    "design/project/MA-088.dc.html",
+    "design/project/MA-100.dc.html",
+    "design/project/MA-110.dc.html",
+    "design/project/MA-111.dc.html",
+    "design/project/MA-120.dc.html",
+    "design/project/SA-001.dc.html",
+    "design/project/SA-002-IA.dc.html",
+    "design/project/SA-002-O.dc.html",
+    "design/project/SA-003.dc.html",
+    "design/project/SA-004.dc.html",
+    "design/project/SA-006.dc.html",
+    "design/project/SA-011.dc.html",
+    "design/project/SA-014.dc.html",
+    "design/project/SA-015.dc.html",
+    "design/project/SA-016.dc.html",
+    "design/project/SA-017.dc.html",
+    "design/project/SA-022.dc.html",
+    "design/project/SA-023.dc.html",
+    "design/project/SA-025.dc.html",
+    "design/project/SA-029.dc.html",
+    "design/project/SA-031.dc.html",
+    "design/project/SA-032.dc.html",
+    "design/project/SA-033.dc.html",
+    "design/project/SA-034.dc.html",
+    "design/project/SA-035.dc.html",
+    "design/project/SA-041.dc.html",
+    "design/project/SA-042.dc.html",
+    "design/project/SA-043.dc.html",
+    "design/project/SA-044.dc.html",
+    "design/project/SA-046.dc.html",
+    "design/project/SA-047.dc.html",
+    "design/project/SA-048.dc.html",
+    "design/project/SA-049.dc.html",
+    "design/project/SA-051.dc.html",
+    "design/project/SA-052.dc.html",
+    "design/project/SA-053.dc.html",
+    "design/project/SA-054.dc.html",
+    "design/project/SA-055.dc.html",
+    "design/project/SA-056.dc.html",
+    "design/project/SA-057.dc.html",
+    "design/project/SA-060.dc.html",
+    "design/project/SA-061.dc.html",
+    "design/project/SA-062.dc.html",
+    "design/project/SA-063.dc.html",
+    "design/project/SA-064.dc.html",
+    "design/project/SA-065.dc.html",
+    "design/project/SA-066.dc.html",
+    "design/project/SA-067.dc.html",
+    "design/project/SA-068.dc.html",
+    "design/project/SA-080.dc.html",
+    "design/project/SA-081.dc.html",
+    "design/project/SA-090.dc.html",
+    "design/project/SA-100.dc.html",
+    "design/project/SA-111.dc.html",
+    "design/project/SA-112.dc.html",
+    "design/project/SA-113.dc.html",
+    "design/project/SA-114.dc.html",
+    "design/project/SA-115.dc.html",
+    "design/project/SA-130.dc.html",
+    "design/project/SA-140.dc.html",
+    "design/project/SA-150.dc.html",
+    "design/project/SA-151.dc.html",
+    "design/project/SA-152.dc.html",
+    "design/project/SA-153.dc.html"
+  ]
+}

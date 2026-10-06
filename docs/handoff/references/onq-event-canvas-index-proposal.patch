@@ -1,0 +1,58 @@
+--- a/design/project/canvas.json
++++ b/design/project/canvas.json
+@@ -3090,6 +3090,42 @@
+       "w": 800,
+       "x": 4400,
+       "y": 34080
++    },
++    "SA-001-EVENT.dc.html": {
++      "h": 3670,
++      "is_interactive": true,
++      "page": "p02",
++      "title": "SA-001-EVENT 이벤트 1.0 DRAFT / PROPOSED (EVT-1.0-r1)",
++      "w": 1440,
++      "x": 0,
++      "y": 72883
++    },
++    "SA-058.dc.html": {
++      "h": 4200,
++      "is_interactive": true,
++      "page": "p02",
++      "title": "SA-058 이벤트 1.0 DRAFT / PROPOSED (EVT-1.0-r1)",
++      "w": 1440,
++      "x": 0,
++      "y": 76673
++    },
++    "SH-042.dc.html": {
++      "h": 1300,
++      "is_interactive": true,
++      "page": "p04",
++      "title": "SH-042 이벤트 1.0 DRAFT / PROPOSED (EVT-1.0-r1)",
++      "w": 390,
++      "x": 0,
++      "y": 108800
++    },
++    "OV-009.dc.html": {
++      "h": 1500,
++      "is_interactive": true,
++      "page": "p01",
++      "title": "OV-009 이벤트 1.0 DRAFT / PROPOSED (EVT-1.0-r1)",
++      "w": 1920,
++      "x": 0,
++      "y": 10820
+     }
+   },
+   "createdOnFiles": {
+@@ -4184,7 +4220,11 @@
+     "DS-TABLE-CARD.dc.html",
+     "PF-007-4.dc.html",
+     "PF-007-5.dc.html",
+-    "MA-120.dc.html"
++    "MA-120.dc.html",
++    "SA-001-EVENT.dc.html",
++    "SA-058.dc.html",
++    "SH-042.dc.html",
++    "OV-009.dc.html"
+   ],
+   "pages": [
+     {

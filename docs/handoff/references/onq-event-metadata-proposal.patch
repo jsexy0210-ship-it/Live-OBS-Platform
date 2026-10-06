@@ -1,0 +1,37 @@
+--- a/design/SCREEN_MAP.md
++++ b/design/SCREEN_MAP.md
+@@ -329,3 +329,14 @@
+ 
+ - Build: **NOT_APPLICABLE** — 보드(`*.dc.html`)는 Claude Design 캔버스의 런타임(`support.js` · `artifact-type/dc-runtime.js`, 유형 소유라 이관 대상 아님) 위에서만 렌더링된다. 저장소에는 빌드 시스템을 두지 않았다(새로 만들지 않음).
+ - 미리보기: 캔버스 링크에서 보드를 연다(README 참고). 로컬 확인은 `lop.css` · `ds/wds/tokens.css`를 같은 상대 경로로 둔 채 Chromium으로 열면 런타임 없이도 정적 마크업은 보인다(`{{…}}` 홀과 `sc-for` 반복은 렌더링되지 않음).
++
++## 이벤트 1.0 신규 제안 소스 (Git-first · FINAL 승격 전)
++
++> EVT-1.0-r1 · 외부 canvas 동기화 아님 · 현재 구현 근거 사용 금지. 기존 menu/OBS 주소 재사용, MASTER 배정에 따른 신규 route 제안.
++> SA-001-EVENT.dc.html은 기존 화면 ID SA-001의 DRAFT event-entry 상태 소스이며 별도 신규 화면/경로가 아닙니다. 기존 SA-001 FINAL source/version은 유지합니다. 새 소스 metadata에도 screen-id=SA-001, variant=SA-001-EVENT로 기록했습니다.
++
++| ID | 화면 | Product Route | Design Source | Entry | Status | Artifact Version | 마지막 동기화(KST) | 비고 |
++|---|---|---|---|---|---|---|---|---|
++| SA-058 | 목록·생성/설정·참여·진행·결과 기록 패널 | /seller/broadcast (이벤트 운영 상태) | design/project/SA-058.dc.html | SA-058.dc.html | DRAFT | EVT-1.0-r1 (Git-first proposal) | 2026-10-06 19:29 KST | 외부 canvas 동기화/FINAL 아님 · IA 등록/검수 후 승격 · event-1-0.source.json |
++| SH-042 | 무점포도 이용하는 공개 참여 상태 | /event/[opaqueToken] | design/project/SH-042.dc.html | SH-042.dc.html | DRAFT | EVT-1.0-r1 (Git-first proposal) | 2026-10-06 19:29 KST | 외부 canvas 동기화/FINAL 아님 · IA 등록/검수 후 승격 · event-1-0.source.json |
++| OV-009 | 기존 OBS 주소에 재사용하는 이벤트 상태·양비율 | /overlay/[token] (event state) | design/project/OV-009.dc.html | OV-009.dc.html | DRAFT | EVT-1.0-r1 (Git-first proposal) | 2026-10-06 19:29 KST | 외부 canvas 동기화/FINAL 아님 · IA 등록/검수 후 승격 · event-1-0.source.json |
+--- a/design/DESIGN_SOURCE.md
++++ b/design/DESIGN_SOURCE.md
+@@ -34,3 +34,9 @@
+ - **업로드 이미지**(`/_blob/…`): 2026-10-05 기준 보드가 참조하는 블롭이 없다(스크립트 검사 0건). 생기면 `design/project/` 안에 받아 두고 경로 대응을 여기에 적는다.
+ - **외부 의존**: Google Fonts 등 외부 CDN 참조 없음(검사 0건). `ibgen/shot_board.mjs.txt`의 `localhost:8000`은 생성 스크립트 기록이다.
+ - **비밀값**: 파일 내용을 검사했다. 사람 이름·번호·이메일은 모두 자리표시자(`[휴대폰 번호]` · `010-0000-0000` · `byulbit@mail.com` 등 가상 값)다.
++
++## 이벤트 1.0 Git-first 제안 소스 (EVT-1.0-r1)
++
++- 2026-10-06 19:25 KST MASTER 배정으로 신규 이벤트 전용 .dc.html 4장과 event-1-0.css/js·source.json·README를 작성했습니다. 외부 Claude 캔버스 도구가 없어 캔버스 버전 v337을 바꾸거나 동기화했다고 주장하지 않습니다. 기존 캔버스 project와의 1:1 규칙에는 이 신규 제안 파일만 임시 예외입니다.
++- 상태는 DRAFT / PROPOSED입니다. UI 구현은 SCREEN_MAP 등록·독립 검수·FINAL 승격 및 디자인 PR 병합 뒤 시작합니다. 자세한 ID/경로/검수/미확정은 design/project/event-1-0.README.md와 event-1-0.source.json을 봅니다.
++- 기존 SA-001 원본은 그대로이고 SA-001-EVENT는 제목 행동 하나만 추가한 bounded variant입니다. GNB/LNB 새 메뉴와 OBS 주소는 추가하지 않습니다.
+--- a/design/CHANGELOG.md
++++ b/design/CHANGELOG.md
+@@ -74,3 +74,5 @@
+ | 2026-10-06 15:24 | v335 (`1791267899-c636`) | 대표님 지시 「쇼핑몰도 회원가입 스텝으로 화면 나눠라」(MASTER (4) 전달): SH-011 회원가입을 단계 화면 4장으로 신설 — SH-011-1 약관 동의 · SH-011-2 휴대폰 본인확인(미연동 「준비 중」 · 재가입 · 14세 미만 · 테스트 서버) · SH-011-3 정보 입력(로그인 기본 정보만 · 배송지 없음) · SH-011-4 가입 완료. PF-007 단계 규격(진행 표시 1/4 · 이전 단계 입력값 유지 · 주소 직접 진입 시 첫 미완료 단계) 재사용, 틀 · 문구는 기존 SH-011 v287에서, 해요체. 옛 SH-011 · SH-011-PC는 SUPERSEDED(보관). docs/IA.md:31 · :236 반영. + MA-100 「안전 규칙」 · 「자동 조치 기록」 · 장애 목록 자동 조치 칸을 실제 동작으로(화면-마스터 B 대조 2026-10-06). 캔버스: SH-011 줄 오른쪽 x 1760 · 2640 · 3520 · 4400, 높이 1510 · 2870 · 1540 · 1040. 생성 스크립트 docs/design-gap/board-sync13/gen-board-sync13.py | design(project): 묶음 13 SH-011 단계 화면 · MA-100 안전 규칙 |
+ | 2026-10-06 15:31 | v336 (`1791268289-8313`) | 대표님 지시 「파트너스 쇼핑몰 가입 시 디폴트 값 지정해놔 · 플레이스홀더도 다 기입해」(MASTER (4) 전달): 파트너스 관리자 보드 56장의 빈 placeholder 277칸에 예시 문구 기입(명사형 · 합니다체, 코드성 · AI 문구 없음). 규칙: 금액 · 수량 · 비율 · 일수 「0」 · 날짜 「날짜 선택」 · 일시 「일시 선택」 · 기간 「기간 선택」 · 색 「#000000」 · 휴대폰 「010-0000-0000」 · 사업자등록번호 「000-00-00000」 · 이메일 「name@example.com」 · 비밀번호 「8자 이상 · 영문과 숫자」 · 이름 · 상호 · 주소 · 송장 · 제목 · 문구 등 라벨별 사전(생성 스크립트 LABEL · OV). 전체 목록 docs/design-gap/board-sync14/placeholders.md(화면 세션이 그대로 반영). 기본값이 들어가는 칸의 「기본값 보이는 상태」는 기반 (8)의 기본값 목록 뒤 후속. 생성 스크립트 docs/design-gap/board-sync14/gen-board-sync14.py | design(project): 묶음 14 파트너스 placeholder 전수 기입 |
+ | 2026-10-06 15:35 | v337 (`1791268534-05ab`) | placeholder 2차(묶음 14 후속): placeholder 속성이 없던 textarea 22 · 입력 2(17장)에 문구 — SA-114 문의 내용 「무슨 일이 있었는지, 언제 생겼는지 적어 주십시오」 · SA-115 「추가로 궁금한 내용을 적어 주십시오」(화면-설정 (4) 제안 채택) · SA-060 이용안내 · 정책(구매자 글이라 해요체 예시) · 답변 · 공지 · 팝업 · 재입고 안내 · 알림톡 6종(변수 안내) · 메모 · 거절 사유 · 약관 본문 · 검색 설명 · SA-012 옵션 줄 · 칸 「0」. 목록 docs/design-gap/board-sync15/placeholders-2.md. 생성 스크립트 docs/design-gap/board-sync15/gen-board-sync15.py | design(project): 묶음 15 placeholder 2차 |
++
++| 2026-10-06 19:25 KST | EVT-1.0-r1 (Git-first DRAFT proposal) | 신규 이벤트 소스 SA-001-EVENT · SA-058 · SH-042 · OV-009 · event CSS/JS/manifest/README. 원본/공용 디자인 변경 없음. 이벤트 전 UX/테스트/결과/지급·guest/채팅 분리·공유 OBS 양비율·주문 알림 공존. 외부 canvas 동기화 아님. FINAL 승격·metadata 안전 병합·UI 구현은 후속 검수 전담. | design(project): 이벤트 1.0 DRAFT 소스 |

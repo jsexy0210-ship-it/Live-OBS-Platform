@@ -1,0 +1,202 @@
+{
+  "capturedAtKst": "2026-10-06 21:23 이후 인계 보존",
+  "main": "4a06ba9016dae9784774329c1e253ecc92b0c9d3",
+  "worktrees": [
+    {
+      "path": "/workspace/Live-OBS-Platform",
+      "branch": "feat/onq-launch-discount-3-months",
+      "localHead": "3219954519973d0bef81b06bd53028c1a4edcec2",
+      "remoteHead": "3219954519973d0bef81b06bd53028c1a4edcec2",
+      "status": [],
+      "archive": []
+    },
+    {
+      "path": "/workspace/Live-OBS-Platform-admin-layout",
+      "branch": "feat/admin-layout-unification",
+      "localHead": "46f6850f7ed72c063d049891f515982a3f0f5bc9",
+      "remoteHead": "4adce25fa1313f1ca8c0b9a2e366ddcf2d088ba9",
+      "status": [],
+      "archive": []
+    },
+    {
+      "path": "/workspace/Live-OBS-Platform-auto-deploy",
+      "branch": "feat/obs-test-auto-deploy",
+      "localHead": "a0ccbf585b79261ad80bfb4c8b37c60578fd0496",
+      "remoteHead": "a0ccbf585b79261ad80bfb4c8b37c60578fd0496",
+      "status": [],
+      "archive": []
+    },
+    {
+      "path": "/workspace/Live-OBS-Platform-datetime-fix",
+      "branch": "feat/datetime-picker-boundaries",
+      "localHead": "501499bb1f3d3e4eae579daaaad82f8a0f8ea0d1",
+      "remoteHead": null,
+      "status": [],
+      "archive": []
+    },
+    {
+      "path": "/workspace/Live-OBS-Platform-datetime-picker",
+      "branch": "feat/common-datetime-picker-modernization",
+      "localHead": "4a06ba9016dae9784774329c1e253ecc92b0c9d3",
+      "remoteHead": null,
+      "status": [
+        " M components/admin-ui/DatePicker.tsx",
+        " M styles/lop.css"
+      ],
+      "archive": [
+        "working-tree/Live-OBS-Platform-datetime-picker/tracked.patch"
+      ]
+    },
+    {
+      "path": "/workspace/Live-OBS-Platform-draw-engine",
+      "branch": "feat/event-draw-engine",
+      "localHead": "2ec66a798ea7c1fe89516ab1187d6a202d49e6d1",
+      "remoteHead": "2ec66a798ea7c1fe89516ab1187d6a202d49e6d1",
+      "status": [],
+      "archive": []
+    },
+    {
+      "path": "/workspace/Live-OBS-Platform-event-core",
+      "branch": "feat/onq-broadcast-event-core",
+      "localHead": "7f914b85501f281319b2d710ecaa044916575931",
+      "remoteHead": "7f914b85501f281319b2d710ecaa044916575931",
+      "status": [],
+      "archive": []
+    },
+    {
+      "path": "/workspace/Live-OBS-Platform-event-design",
+      "branch": "design/event-1-0-canonical",
+      "localHead": "0db70a515483567144dcf8915d1fc7d720af9c30",
+      "remoteHead": "0db70a515483567144dcf8915d1fc7d720af9c30",
+      "status": [],
+      "archive": []
+    },
+    {
+      "path": "/workspace/Live-OBS-Platform-event-entrants",
+      "branch": "feat/onq-event-entrant-modes",
+      "localHead": "3140ff8f3cb8defc728482d33f44fe84235f657e",
+      "remoteHead": "5b191ac3d8f3ab1654ea44c5b26236b73f8b7286",
+      "status": [
+        " M app/api/seller/events/[eventId]/[action]/route.ts",
+        " M lib/server/buyers/memberData.ts",
+        " M lib/server/buyers/withdraw.ts",
+        " M lib/server/events/entryInput.ts",
+        " M lib/server/events/service.ts",
+        " M prisma/schema.prisma",
+        " M tests/integration/eventExecutionSql.test.ts",
+        " M tests/unit/memberData.test.ts",
+        "?? app/api/public/",
+        "?? lib/server/events/entries.ts",
+        "?? prisma/migrations/20261006320000_audience_event_entry_sources/",
+        "?? tests/integration/eventEntryModes.test.ts",
+        "?? tests/integration/eventEntrySourcesSql.test.ts",
+        "?? tests/unit/eventEntryService.test.ts"
+      ],
+      "archive": [
+        "working-tree/Live-OBS-Platform-event-entrants/tracked.patch",
+        "working-tree/Live-OBS-Platform-event-entrants/untracked/app/api/public/events/[eventId]/[action]/route.ts",
+        "working-tree/Live-OBS-Platform-event-entrants/untracked/app/api/public/events/[eventId]/route.ts",
+        "working-tree/Live-OBS-Platform-event-entrants/untracked/lib/server/events/entries.ts",
+        "working-tree/Live-OBS-Platform-event-entrants/untracked/prisma/migrations/20261006320000_audience_event_entry_sources/migration.sql",
+        "working-tree/Live-OBS-Platform-event-entrants/untracked/tests/integration/eventEntryModes.test.ts",
+        "working-tree/Live-OBS-Platform-event-entrants/untracked/tests/integration/eventEntrySourcesSql.test.ts",
+        "working-tree/Live-OBS-Platform-event-entrants/untracked/tests/unit/eventEntryService.test.ts"
+      ]
+    },
+    {
+      "path": "/workspace/Live-OBS-Platform-event-integration",
+      "branch": "feat/onq-event-execution-integration",
+      "localHead": "87e3249b7f3781e5601e971e25e6fac5a1333471",
+      "remoteHead": "e20143702a0029dabb4fb705e50eaff2bff26c44",
+      "status": [],
+      "archive": []
+    },
+    {
+      "path": "/workspace/Live-OBS-Platform-event-redisplay",
+      "branch": "fix/onq-event-redisplay-state",
+      "localHead": "e20143702a0029dabb4fb705e50eaff2bff26c44",
+      "remoteHead": null,
+      "status": [],
+      "archive": []
+    },
+    {
+      "path": "/workspace/Live-OBS-Platform-event-scope",
+      "branch": "docs/live-events-1-0-scope",
+      "localHead": "4b677623f2eab247e7b5cac000ad6bfa34937264",
+      "remoteHead": "4b677623f2eab247e7b5cac000ad6bfa34937264",
+      "status": [],
+      "archive": []
+    },
+    {
+      "path": "/workspace/Live-OBS-Platform-ladder-engine",
+      "branch": "feat/event-ladder-engine",
+      "localHead": "458b1494b43b5911a8a84705c693c87119c3f9b9",
+      "remoteHead": "458b1494b43b5911a8a84705c693c87119c3f9b9",
+      "status": [],
+      "archive": []
+    },
+    {
+      "path": "/workspace/Live-OBS-Platform-list-layout",
+      "branch": "feat/common-list-layout-contract",
+      "localHead": "501499bb1f3d3e4eae579daaaad82f8a0f8ea0d1",
+      "remoteHead": "501499bb1f3d3e4eae579daaaad82f8a0f8ea0d1",
+      "status": [],
+      "archive": []
+    },
+    {
+      "path": "/workspace/Live-OBS-Platform-order-list-ux",
+      "branch": "feat/unified-order-list-ux",
+      "localHead": "236f773e590538dfa2f4575fed2d3e0d9fd74f7e",
+      "remoteHead": "236f773e590538dfa2f4575fed2d3e0d9fd74f7e",
+      "status": [],
+      "archive": []
+    },
+    {
+      "path": "/workspace/Live-OBS-Platform-page-guidance",
+      "branch": "feat/page-guidance-unification",
+      "localHead": "29e8a005d11f973326e51c5203d2fad91f22561c",
+      "remoteHead": "6de969e067852339a4ad2b84e0a2878b27efec80",
+      "status": [],
+      "archive": []
+    },
+    {
+      "path": "/workspace/Live-OBS-Platform-pg-policy",
+      "branch": "docs/direct-pg-policy",
+      "localHead": "04bef8adea2e09878fff3345a1a9ff2a4e9c5463",
+      "remoteHead": "04bef8adea2e09878fff3345a1a9ff2a4e9c5463",
+      "status": [],
+      "archive": []
+    },
+    {
+      "path": "/workspace/Live-OBS-Platform-sa056",
+      "branch": "feat/sa056-hierarchy",
+      "localHead": "df8a2c117c5b065e22009f2a9e837164b329cfdb",
+      "remoteHead": null,
+      "status": [],
+      "archive": []
+    },
+    {
+      "path": "/workspace/Live-OBS-Platform-sidebar-nav",
+      "branch": "feat/navigation-sidebar-unification",
+      "localHead": "d11549bbfc5616959f405711f3e63ac6fe8a39f0",
+      "remoteHead": null,
+      "status": [
+        " M app/(admin)/admin/_components/AdminShell.tsx",
+        " M components/admin-ui/PageHead.tsx",
+        " M components/admin-ui/shellNav.tsx",
+        " M components/seller/SellerShell.tsx",
+        " M styles/seller.css"
+      ],
+      "archive": [
+        "working-tree/Live-OBS-Platform-sidebar-nav/tracked.patch"
+      ]
+    }
+  ],
+  "publishedWipRefs": {
+    "wip/admin-layout-checkpoint-20261006": "46f6850f7ed72c063d049891f515982a3f0f5bc9",
+    "wip/navigation-sidebar-checkpoint-20261006": "d11549bbfc5616959f405711f3e63ac6fe8a39f0",
+    "wip/onq-event-entrants-checkpoint-20261006": "3140ff8f3cb8defc728482d33f44fe84235f657e",
+    "wip/page-guidance-sidebar-panels-20261006": "29e8a005d11f973326e51c5203d2fad91f22561c",
+    "wip/sa056-hierarchy-20261006": "df8a2c117c5b065e22009f2a9e837164b329cfdb"
+  }
+}
