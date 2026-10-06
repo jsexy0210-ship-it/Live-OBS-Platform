@@ -11,6 +11,7 @@ import { useListFilters } from "../../../../(admin)/admin/_components/useListFil
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
 import { SourceBadge } from "../../../../../components/seller/broadcast/SourceBadge";
+import { HIT_GRADES } from "../../../../../components/seller/broadcast/hit";
 import { formatDateTime } from "../../../../../lib/client/format";
 import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
 
@@ -23,6 +24,7 @@ type Card = {
   cardName: string;
   note: string | null;
   nickname: string;
+  grade: string | null;
   broadcast: { id: string; title: string | null } | null;
   order: { id: string; orderNo: string; productLabel: string } | null;
   // 외부 쇼핑몰 주문에서 나온 카드는 order가 없고 source가 "EXTERNAL"(직접 입력 카드는 null)
@@ -31,13 +33,14 @@ type Card = {
 };
 type Page = { items: Card[]; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error"; status: number; error: string } | { kind: "ok"; items: Card[]; next: string | null };
-type Filter = PeriodFilter;
+type Filter = PeriodFilter & { grade?: string };
 
 const query = (f: Filter, cursor?: string | null) => {
   const q = new URLSearchParams();
   const { from, to } = effectiveRange(f);
   if (from) q.set("from", from);
   if (to) q.set("to", to);
+  if (f.grade) q.set("grade", f.grade);
   if (cursor) q.set("cursor", cursor);
   const s = q.toString();
   return `/api/seller/hit-cards${s ? `?${s}` : ""}`;
@@ -49,7 +52,7 @@ export default function HitCardsPage() {
   const [state, setState] = useState<Load>({ kind: "loading" });
   // 조회 조건은 주소(?from=&to=)가 기준이다: 상세 → ← 에서 그대로 돌아온다(docs/IA.md Back 규칙 3항)
   // 기본은 최근 1개월(목록 공통 규칙, lib/client/filterDefaults.ts). 기간을 비우고 검색하면 전체 기간. 서버는 아직 정렬·쪽 크기를 받지 않아 from·to만 보낸다
-  const defaults = listDefaults({});
+  const defaults = listDefaults({ grade: "" });
   const { applied, draft, setDraft, apply, reset } = useListFilters(defaults);
   // 업무 큐 링크(?period=all)로 들어오면 기간 칸은 비워 보인다(전체 기간)
   useEffect(() => {
@@ -90,7 +93,7 @@ export default function HitCardsPage() {
 
   const search = () => {
     if (invalidRange) return setToast({ text: "시작일을 끝일보다 앞 날짜로 바꿔 주십시오", neg: true });
-    apply({ ...applied, from: draft.from, to: draft.to, period: "" });
+    apply({ ...applied, from: draft.from, to: draft.to, grade: draft.grade, period: "" });
   };
 
   const remove = async (card: Card) => {
@@ -134,6 +137,16 @@ export default function HitCardsPage() {
                 <span aria-hidden="true"> ~ </span>
                 <DatePicker aria-label="종료일" value={draft.to} onChange={(v) => setDraft({ ...draft, to: v })} />
               </SearchRow>
+              <SearchRow label="등급">
+                <select className="inp" aria-label="등급" value={draft.grade} onChange={(e) => setDraft({ ...draft, grade: e.target.value })}>
+                  <option value="">전체</option>
+                  {HIT_GRADES.map((g) => (
+                    <option key={g} value={g}>
+                      {g}
+                    </option>
+                  ))}
+                </select>
+              </SearchRow>
             </SearchBox>
 
             <div className="card">
@@ -155,7 +168,7 @@ export default function HitCardsPage() {
                   <ListHead total={items.length} unit={state.next ? "건 이상" : "건"} />
                   {items.length === 0 ? (
                     <div className="st" style={{ boxShadow: "none" }} data-testid="hit-empty">
-                      <span className="t">{applied.period !== "all" && applied.from === defaults.from && applied.to === defaults.to ? "최근 1개월에는 HIT 카드 기록이 없습니다. 기간을 바꿔 다시 찾아 주십시오" : applied.period !== "all" && (applied.from || applied.to) ? "조건에 맞는 HIT 카드가 없습니다" : "아직 HIT 카드가 없습니다"}</span>
+                      <span className="t">{applied.period !== "all" && !applied.grade && applied.from === defaults.from && applied.to === defaults.to ? "최근 1개월에는 HIT 카드 기록이 없습니다. 기간을 바꿔 다시 찾아 주십시오" : applied.grade || (applied.period !== "all" && (applied.from || applied.to)) ? "조건에 맞는 HIT 카드가 없습니다" : "아직 HIT 카드가 없습니다"}</span>
                       <span className="t-c1 c-alt">방송 대시보드에서 「HIT 카드 기록하기」로 추가해 주십시오</span>
                     </div>
                   ) : (
@@ -165,6 +178,7 @@ export default function HitCardsPage() {
                           <tr>
                             <th>카드</th>
                             <th style={{ width: 136 }}>일시</th>
+                            <th style={{ width: 70 }}>등급</th>
                             <th style={{ width: 130 }}>구매자</th>
                             <th style={{ width: 200 }}>주문</th>
                             <th style={{ width: 140 }}>방송</th>
@@ -181,6 +195,7 @@ export default function HitCardsPage() {
                                 </span>
                               </td>
                               <td className="num">{formatDateTime(c.createdAt)}</td>
+                              <td data-testid="hit-grade">{c.grade ?? "-"}</td>
                               <td className="ell">{c.nickname}</td>
                               <td className="ell col-text">{c.order ? `${c.order.orderNo} · ${c.order.productLabel}` : c.source === "EXTERNAL" ? <SourceBadge source={c.source} /> : "-"}</td>
                               <td className="ell col-text">{c.broadcast ? c.broadcast.title || "제목 없는 방송" : "-"}</td>
