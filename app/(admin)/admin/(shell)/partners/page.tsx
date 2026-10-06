@@ -312,7 +312,7 @@ function PartnerList() {
                                   상세
                                 </Link>
                                 {canImpersonate && s.status === "ACTIVE" && (
-                                  <button className="btn btn-sm btn-out btn-level-table" type="button" onClick={() => setViewing(s)}>
+                                  <button className="btn btn-sm btn-out btn-level-table" type="button" aria-label="이 파트너스 화면 대신 보기" onClick={() => setViewing(s)}>
                                     대신 보기
                                   </button>
                                 )}
