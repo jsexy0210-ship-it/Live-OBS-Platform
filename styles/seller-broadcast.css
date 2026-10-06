@@ -303,3 +303,29 @@
 .bd-bar > i {
   flex: 0 0 auto;
 }
+
+/* SA-055 방송 상세: 정보 표 4칸 · 왼쪽 시간대별 | 오른쪽 HIT·연결 로그 2열 */
+.bd-info > tbody > tr > th {
+  width: 150px;
+}
+.bd-info > tbody > tr > td {
+  padding: var(--ui-sp-8) var(--ui-sp-16);
+}
+.bd-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .bd-two {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 700px) {
+  .bd-info > tbody > tr > th,
+  .bd-info > tbody > tr > td {
+    display: block;
+    width: auto;
+  }
+}
