@@ -197,8 +197,7 @@ export default function InvoiceTrackingPage() {
         ))}
 
         <div className="au-list-section">
-          <div className="toolbar" style={{ padding: 16 }}>
-            <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          <ListHead total={items.filter((i) => i.trackingNumber).length} loaded actions={<>
               {canEdit && (
                 <>
                   <select className="inp inp-sm" style={{ width: "auto" }} aria-label="출력 방식" value={format} onChange={(e) => setFormat(e.target.value as typeof format)}>
@@ -218,8 +217,7 @@ export default function InvoiceTrackingPage() {
               <a className="btn btn-sm btn-out" href={`/api/seller/invoices/export${tab.status ? `?status=${tab.status}` : ""}`} download>
                 엑셀 내려받기
               </a>
-            </span>
-          </div>
+            </>} />
 
           {state.kind === "loading" && <LoadingRows rows={5} />}
           {state.kind === "error" && (state.status === 403 ? <NoPermission need="주문·배송" /> : <ErrorState title="송장 목록을 불러오지 못했습니다" onRetry={() => void load(tab.status)} />)}
@@ -230,7 +228,7 @@ export default function InvoiceTrackingPage() {
               </div>
             ) : (
               <>
-<ListHead total={items.filter((i) => i.trackingNumber).length} loaded />
+
 <ListTable>
                 <table className="tbl">
                   <thead>
