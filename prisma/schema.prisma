@@ -146,6 +146,7 @@ model Seller {
   orderPolicy              SellerOrderPolicy?
   messageBalance           SellerMessageBalance?
   messageLedger            SellerMessageLedger[]
+  messageShortages         MessageShortage[]
   messageFeeConsents       SellerMessageFeeConsent[]
   messageCharges           MessageCharge[]
   overlayLayouts           OverlayLayout[]
@@ -2815,6 +2816,30 @@ model SellerMessageBalance {
   updatedAt           DateTime @updatedAt @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+}
+
+// 충전금 부족·충전 기능 꺼짐으로 건너뛴 일(파트너스 알림 센터 「충전금」 알림의 근거). 같은 판매자·채널·사유의 열린 행(resolvedAt 없음)은 1개로 합친다(부분 유니크 인덱스, 마이그레이션 SQL).
+// 충전하거나 이후 같은 채널 차감이 성공하면 resolvedAt을 남겨 알림에서 사라진다. 금액·개인정보 없음.
+enum MessageShortageReason {
+  INSUFFICIENT_BALANCE
+  CHARGING_DISABLED
+}
+
+model MessageShortage {
+  id           String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId     String                @db.Uuid
+  channel      MessageChannel
+  reason       MessageShortageReason
+  // 건너뛴 횟수(같은 사건 키는 한 번만 센다)
+  count        Int                   @default(1)
+  firstAt      DateTime              @db.Timestamptz(3)
+  lastAt       DateTime              @db.Timestamptz(3)
+  lastEventKey String?
+  resolvedAt   DateTime?             @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@index([sellerId, resolvedAt, lastAt(sort: Desc)])
 }
 
 // 비용이 드는 발송·조회 채널(서식 1절)

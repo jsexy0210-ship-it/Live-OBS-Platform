@@ -108,7 +108,10 @@ const requireWrite = (admin: AdminSessionContext) => {
 // MA-026: 환불 요청 목록. ?status=(없으면 전부)&cursor=. 요청 최신 순 50건.
 export async function listSubscriptionRefunds(db: PrismaClient, admin: AdminSessionContext, q: { status?: string | null; cursor?: string | null }) {
   requireRead(admin);
-  if (q.status && !STATUSES.includes(q.status as SubscriptionRefundStatus)) return { ok: false as const, reason: "invalid_status" as const };
+  // 화면 탭 묶음: pending(처리 대기·처리 중·실패), done(환불 완료), rejected(거절). 개별 상태도 그대로 받는다.
+  const GROUPS: Record<string, SubscriptionRefundStatus[]> = { pending: ["REQUESTED", "PROCESSING", "FAILED"], done: ["REFUNDED"], rejected: ["REJECTED"] };
+  const statuses = q.status ? (GROUPS[q.status] ?? (STATUSES.includes(q.status as SubscriptionRefundStatus) ? [q.status as SubscriptionRefundStatus] : null)) : undefined;
+  if (statuses === null) return { ok: false as const, reason: "invalid_status" as const };
   let after: Prisma.SubscriptionRefundWhereInput = {};
   if (q.cursor) {
     const i = q.cursor.lastIndexOf("_");
@@ -118,17 +121,29 @@ export async function listSubscriptionRefunds(db: PrismaClient, admin: AdminSess
     after = { OR: [{ createdAt: { lt: at } }, { createdAt: at, id: { lt: id } }] };
   }
   const rows = await db.subscriptionRefund.findMany({
-    where: { ...(q.status ? { status: q.status as SubscriptionRefundStatus } : {}), ...after },
+    where: { ...(statuses ? { status: { in: statuses } } : {}), ...after },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: REFUND_PAGE_SIZE + 1,
     select: VIEW,
   });
   const page = rows.slice(0, REFUND_PAGE_SIZE);
   const last = page[page.length - 1];
-  const counts = await db.subscriptionRefund.groupBy({ by: ["status"], _count: { _all: true } });
+  const now = await dbNow(db);
+  // 이번 달(KST) 환불 완료 건수·금액, 처리된(환불·거절) 요청의 평균 처리 일수. 담당은 처리한 관리자(없으면 요청한 관리자) 이름
+  const kstNow = new Date(now.getTime() + 9 * 3_600_000);
+  const monthStart = new Date(Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth(), 1) - 9 * 3_600_000);
+  const adminIds = [...new Set(page.flatMap((r) => [r.decidedByAdminId, r.requestedByAdminId]).filter((x): x is string => !!x))];
+  const [counts, month, decided, admins] = await Promise.all([
+    db.subscriptionRefund.groupBy({ by: ["status"], _count: { _all: true } }),
+    db.subscriptionRefund.aggregate({ where: { status: "REFUNDED", refundedAt: { gte: monthStart } }, _count: { _all: true }, _sum: { amount: true } }),
+    db.$queryRaw<{ days: number | null }[]>`SELECT avg(extract(epoch FROM ("decidedAt" - "createdAt")) / 86400)::float8 AS "days" FROM "SubscriptionRefund" WHERE "decidedAt" IS NOT NULL`,
+    adminIds.length ? db.platformAdmin.findMany({ where: { id: { in: adminIds } }, select: { id: true, name: true } }) : Promise.resolve([] as { id: string; name: string }[]),
+  ]);
+  const nameOf = (id: string | null) => (id ? (admins.find((a) => a.id === id)?.name ?? null) : null);
   return {
     ok: true as const,
-    items: page.map(view),
+    items: page.map((r) => ({ ...view(r), assignee: nameOf(r.decidedByAdminId) ?? nameOf(r.requestedByAdminId) })),
+    summary: { monthRefunded: { count: month._count._all, amount: month._sum.amount ?? 0 }, avgProcessDays: decided[0]?.days ?? null },
     counts: Object.fromEntries(STATUSES.map((s) => [s, counts.find((c) => c.status === s)?._count._all ?? 0])),
     nextCursor: rows.length > REFUND_PAGE_SIZE && last ? `${last.createdAt.toISOString()}_${last.id}` : null,
   };
