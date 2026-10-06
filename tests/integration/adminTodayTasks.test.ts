@@ -27,8 +27,10 @@ describe("오늘 처리할 일 GET /api/admin/today-tasks", () => {
     expect(r.status).toBe(200);
     expect(r.headers.get("cache-control")).toBe("no-store");
     const body = await r.json();
-    expect(body.total).toBe(0);
-    expect(body.items.map((i: { key: string }) => i.key)).toEqual(["signupPending", "paymentFailed", "refundRequested", "inquiryOpen", "pgError", "automationFailed", "incidentCritical"]);
+    // 플랫폼 정보(MA-088)가 비어 있으면 그것만 1
+    expect(body.total).toBe(1);
+    expect(counts(body)).toMatchObject({ platformInfoMissing: 1, signupPending: 0, refundRequested: 0 });
+    expect(body.items.map((i: { key: string }) => i.key)).toEqual(["signupPending", "paymentFailed", "refundRequested", "inquiryOpen", "pgError", "automationFailed", "incidentCritical", "platformInfoMissing"]);
     expect(Object.fromEntries(body.items.map((i: { key: string; href: string }) => [i.key, i.href.split("?")[0]]))).toEqual({
       signupPending: "/admin/partners",
       paymentFailed: "/admin/billing/invoices",
@@ -37,6 +39,7 @@ describe("오늘 처리할 일 GET /api/admin/today-tasks", () => {
       pgError: "/admin/settlement/pg",
       automationFailed: "/admin/ops/automation",
       incidentCritical: "/admin/ops/monitor",
+      platformInfoMissing: "/admin/settings/platform-business",
     });
     expect(body.items.find((i: { key: string }) => i.key === "signupPending").href).toBe("/admin/partners?status=PENDING");
     expect(body.items.find((i: { key: string }) => i.key === "refundRequested").href).toBe("/admin/billing/refunds?status=REQUESTED");
@@ -100,9 +103,19 @@ describe("오늘 처리할 일 GET /api/admin/today-tasks", () => {
 
     for (const role of ["SUPER_ADMIN", "OPERATIONS", "CS", "READ_ONLY"] as const) {
       const body = await (await get(await adminCookie(role))).json();
-      expect(counts(body)).toEqual({ signupPending: 2, paymentFailed: 1, refundRequested: 1, inquiryOpen: 2, pgError: 2, automationFailed: 2, incidentCritical: 1 });
-      expect(body.total).toBe(11);
+      expect(counts(body)).toEqual({ signupPending: 2, paymentFailed: 1, refundRequested: 1, inquiryOpen: 2, pgError: 2, automationFailed: 2, incidentCritical: 1, platformInfoMissing: 1 });
+      expect(body.total).toBe(12);
     }
+  });
+
+  it("플랫폼 정보 7칸이 모두 차면 「플랫폼 정보 미입력」은 0, 하나라도 비면 1", async () => {
+    const full = { name: "온큐", representative: "박", businessNumber: "123-45-67890", mailOrderNumber: "2026-서울-1", address: "서울", phone: "1588-0000", email: "a@b.kr" };
+    await db.platformBusinessInfo.upsert({ where: { id: 1 }, create: { id: 1, ...full }, update: full });
+    const cookie = await adminCookie();
+    expect(counts(await (await get(cookie)).json()).platformInfoMissing).toBe(0);
+    await db.platformBusinessInfo.update({ where: { id: 1 }, data: { email: "" } });
+    expect(counts(await (await get(cookie)).json()).platformInfoMissing).toBe(1);
+    await db.platformBusinessInfo.update({ where: { id: 1 }, data: { ...Object.fromEntries(Object.keys(full).map((k) => [k, ""])) } });
   });
 
   it("비로그인과 파트너스 로그인은 401", async () => {

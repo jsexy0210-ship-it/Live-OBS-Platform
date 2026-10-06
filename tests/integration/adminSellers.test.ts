@@ -72,6 +72,23 @@ describe("파트너스 목록 GET /api/admin/sellers", () => {
 });
 
 describe("파트너스 상세 GET /api/admin/sellers/{id}", () => {
+  it("머리 필드: 승인자·담당 CS(닫히지 않은 문의의 담당자)·답변 대기 문의 수·메모 수", async () => {
+    const { cookie } = await adminCookie("READ_ONLY");
+    const approver = await createAdmin("OPERATIONS");
+    const cs = await createAdmin("CS");
+    const { seller } = await createSeller();
+    const owner = await createSellerUser(seller.id, "OWNER", "own@example.com");
+    const base = { sellerId: seller.id, createdBySellerUserId: owner.id, category: "BILLING" as const, title: "문의" };
+    const empty = ((await (await detail(cookie, seller.id)).json()) as { seller: Record<string, unknown> }).seller;
+    expect(empty).toMatchObject({ approvedBy: null, assignedCs: null, inquiryOpenCount: 0, noteCount: 0 });
+    await db.seller.update({ where: { id: seller.id }, data: { approvedByAdminId: approver.id } });
+    await db.platformInquiry.create({ data: { ...base, assignedAdminId: cs.id } });
+    await db.platformInquiry.create({ data: { ...base, status: "CLOSED", assignedAdminId: approver.id } });
+    await db.sellerAdminNote.create({ data: { sellerId: seller.id, body: "메모", authorId: approver.id, authorName: "운영" } });
+    const body = ((await (await detail(cookie, seller.id)).json()) as { seller: Record<string, unknown> }).seller;
+    expect(body).toMatchObject({ approvedBy: { id: approver.id }, assignedCs: { id: cs.id }, inquiryOpenCount: 1, noteCount: 1 });
+  });
+
   it("기본 정보·대표자·구독·최근 30일 주문 요약(결제 금액은 환불액 뺌), 없는 id·형식 오류는 404", async () => {
     const plans = await seedPlans();
     const { cookie } = await adminCookie("CS");

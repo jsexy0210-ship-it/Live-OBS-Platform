@@ -3,7 +3,7 @@
 import "../../../../../../styles/seller-orders.css";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ListHead, Modal, PageHead } from "../../../../../../components/admin-ui";
+import { Modal, PageHead } from "../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
@@ -22,7 +22,8 @@ type Row = {
   id: string;
   orderId: string;
   orderNo: number;
-  nickname: string;
+  orderNoLabel: string;
+  nickname: string | null;
   totalAmount: number;
   status: Status;
   reason: string;
@@ -104,27 +105,34 @@ export default function RefundRequestsPage() {
 
   return (
     <>
-      <Topbar crumb="판매 › 환불 요청" />
+      <Topbar crumb="주문 › 취소 · 교환 · 반품" />
       <main className="main">
         <PageHead
-          title="환불 요청"
+          title="취소 · 환불 요청"
           actions={
             <Link className="btn btn-out" href="/seller/orders">
               전체 주문
             </Link>
           }
         />
-        <span className="t-c1 c-alt">발송 전 주문에서 구매자가 보낸 환불 요청입니다. 승인하면 요청한 상품으로 바로 환불되고, 거절하면 사유가 구매자에게 보입니다.</span>
+        <span className="t-c1 c-alt">발송 전 주문에서 구매자가 보낸 환불 요청입니다. 승인하면 요청한 상품으로 바로 환불되고, 거절하면 사유가 구매자에게 보입니다. 발송 뒤 요청은 「교환 · 반품」 탭에서 처리합니다.</span>
         <div className="card" style={{ overflow: "visible" }}>
-          <div className="tabs" role="tablist" style={{ padding: "0 12px" }}>
+          <div className="row" role="tablist" aria-label="처리 상태" style={{ gap: 8, flexWrap: "wrap", padding: "12px 20px" }}>
             {TABS.map((t) => (
-              <button key={t.key} className={`tab${tab === t.key ? " on" : ""}`} type="button" role="tab" aria-selected={tab === t.key} onClick={() => setTab(t.key)}>
+              <button key={t.key} className={`chip${tab === t.key ? " on" : ""}`} type="button" role="tab" aria-selected={tab === t.key} onClick={() => setTab(t.key)}>
                 {t.label}
-                {(counts[t.key] ?? 0) > 0 && <span className="cnt">{counts[t.key]}</span>}
+                {state.kind === "ok" && <span className="num">{counts[t.key] ?? 0}</span>}
               </button>
             ))}
           </div>
-          {state.kind === "ok" && <ListHead total={counts[tab] ?? rows.length} />}
+          {state.kind === "ok" && (
+            <div className="row" style={{ gap: 8, padding: "12px 20px", boxShadow: "inset 0 -1px 0 var(--wds-line-normal-alternative)" }}>
+              <b className="t-hl2" data-testid="refund-summary">
+                {TABS.find((t) => t.key === tab)?.label} {counts[tab] ?? rows.length}건
+              </b>
+              <span className="t-c1 c-alt">요청 시각 최신순</span>
+            </div>
+          )}
           {state.kind === "loading" && <LoadingRows rows={5} />}
           {state.kind === "error" &&
             (state.status === 403 ? <NoPermission need="주문 · 배송" /> : state.status === 402 ? <Locked /> : <ErrorState title="환불 요청을 불러오지 못했습니다" onRetry={() => void load(tab)} />)}
@@ -132,7 +140,7 @@ export default function RefundRequestsPage() {
             <div className="st" style={{ boxShadow: "none" }}>
               <div className="st-ic">0</div>
               <span className="t">{tab === "REQUESTED" ? "처리할 환불 요청이 없습니다" : "해당하는 환불 요청이 없습니다"}</span>
-              <span className="s">결제 완료 뒤 발송 전의 주문에서 구매자가 요청할 수 있습니다.</span>
+              <span className="s">결제 완료 뒤 발송 전의 주문에서 구매자가 요청할 수 있습니다</span>
             </div>
           )}
           {state.kind === "ok" && rows.length > 0 && (
@@ -140,36 +148,58 @@ export default function RefundRequestsPage() {
               <table className="tbl">
                 <thead>
                   <tr>
-                    <th>요청 시각</th>
-                    <th>구매자</th>
-                    <th>주문</th>
-                    <th>주문 금액</th>
-                    <th>사유</th>
-                    <th>상태</th>
-                    <th style={{ width: 110 }} aria-label="작업" />
+                    <th className="col-text" style={{ textAlign: "left", width: 190 }}>
+                      주문
+                    </th>
+                    <th className="col-text" style={{ textAlign: "left", width: 170 }}>
+                      요청 시각
+                    </th>
+                    <th className="col-text" style={{ textAlign: "left", width: 120 }}>
+                      구매자
+                    </th>
+                    <th style={{ textAlign: "right", width: 110 }}>금액</th>
+                    <th className="col-text" style={{ textAlign: "left" }}>
+                      사유
+                    </th>
+                    <th style={{ width: 90 }}>상태</th>
+                    <th style={{ width: 120 }}>관리</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.id} data-testid="refund-request-row">
-                      <td className="num">{kstText(r.createdAt)}</td>
-                      <td className="fw6">{r.nickname}</td>
-                      <td className="num">{r.orderNo}</td>
-                      <td className="num">{won(r.totalAmount)}</td>
-                      <td className="col-text ell">
-                        {r.reasonLabel}
-                        {r.items ? " · 일부 상품" : ""}
-                      </td>
-                      <td>
-                        <span className={`bdg ${BADGE[r.status].cls}`}>{BADGE[r.status].label}</span>
-                      </td>
-                      <td>
-                        <button className="btn btn-sm" type="button" onClick={() => setOpenId(r.id)}>
-                          {r.status === "REQUESTED" && canEdit ? "처리" : "보기"}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {rows.map((r) => {
+                    const waited = r.status === "REQUESTED" ? Math.floor((Date.now() - new Date(r.createdAt).getTime()) / 86_400_000) : 0;
+                    return (
+                      <tr key={r.id} data-testid="refund-request-row">
+                        <td className="col-text">
+                          <Link href={`/seller/orders/${r.orderId}`} className="num fw6">
+                            {r.orderNoLabel}
+                          </Link>
+                        </td>
+                        <td className="col-text num">
+                          {kstText(r.createdAt)}
+                          {waited >= 1 && <div className="t-c1 c-neg">{waited}일째 기다리는 중</div>}
+                        </td>
+                        <td className="col-text fw6">{r.nickname ?? "탈퇴 회원"}</td>
+                        <td className="num" style={{ textAlign: "right" }}>
+                          {won(r.totalAmount)}
+                        </td>
+                        <td className="col-text ell">
+                          {r.reasonLabel}
+                          {r.items ? " · 일부 상품" : ""}
+                        </td>
+                        <td>
+                          <span className={`bdg ${BADGE[r.status].cls}`}>{BADGE[r.status].label}</span>
+                        </td>
+                        <td>
+                          <div className="acts2">
+                            <button className="btn btn-sm" type="button" onClick={() => setOpenId(r.id)}>
+                              {r.status === "REQUESTED" && canEdit ? "처리" : "보기"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -177,7 +207,7 @@ export default function RefundRequestsPage() {
           {state.kind === "ok" && state.next && (
             <div className="row" style={{ padding: "12px 20px", justifyContent: "center" }}>
               <button className={`btn btn-sm btn-out${more ? " is-loading" : ""}`} type="button" disabled={more} onClick={() => void loadMore()}>
-                더 불러오기
+                더 보기
               </button>
             </div>
           )}
@@ -249,7 +279,7 @@ function RequestDetail({ id, canEdit, onClose, onDone }: { id: string; canEdit: 
       body: { expectedVersion: d.queueVersion, expectedRefundAmount: quote.refundAmount, fault, confirmOpened: hasOpened && openedOk },
     });
     setBusy(false);
-    if (r.ok) return onDone(`${won(quote.refundAmount)} 환불을 승인했습니다`);
+    if (r.ok) return onDone(`환불을 승인했습니다 · ${won(quote.refundAmount)} 환불을 요청했습니다`);
     // 그사이 주문이 바뀌었으면 상세를 다시 읽어 새 금액을 다시 확인받는다
     if (r.error === "conflict" || r.error === "refund_amount_changed") {
       setAgree(false);
@@ -276,7 +306,7 @@ function RequestDetail({ id, canEdit, onClose, onDone }: { id: string; canEdit: 
     <Modal labelId="rr-title" className="modal-lg rr-modal" busy={busy} onClose={onClose}>
       <div className="modal-h">
         <h2 className="modal-t" id="rr-title">
-          {d ? `환불 요청 · 주문 ${d.orderNo}` : "환불 요청"}
+          환불 요청 처리 {d && <span className="t-l2 c-alt fw4">주문 {d.orderNoLabel} · {d.nickname ?? "탈퇴 회원"}</span>}
         </h2>
       </div>
       <div className="col" style={{ gap: 16 }}>
@@ -291,60 +321,27 @@ function RequestDetail({ id, canEdit, onClose, onDone }: { id: string; canEdit: 
         {!d && !loadFailed && <LoadingRows rows={3} />}
         {d && (
           <div className="col" style={{ gap: 16 }}>
-            <div className="rr-kv t-l2">
-              <span className="c-alt">상태</span>
-              <span>
-                <span className={`bdg ${BADGE[d.status].cls}`}>{BADGE[d.status].label}</span>
-              </span>
-              <span className="c-alt">구매자</span>
-              <span>{d.nickname}</span>
-              <span className="c-alt">주문</span>
-              <span>
-                <Link href={`/seller/orders/${d.orderId}`} className="num">
-                  {d.orderNo}
-                </Link>{" "}
-                · <span className="num">{won(d.order.totalAmount)}</span>
-              </span>
-              <span className="c-alt">요청 시각</span>
-              <span className="num">{kstText(d.createdAt)}</span>
-              <span className="c-alt">사유</span>
-              <span>{d.reasonLabel}</span>
-              {d.reasonText && (
-                <>
-                  <span className="c-alt">상세 사유</span>
-                  <span style={{ whiteSpace: "pre-wrap" }}>{d.reasonText}</span>
-                </>
-              )}
-              <span className="c-alt">환불 상품</span>
-              <span className="col" style={{ gap: 2 }}>
-                {picked.length > 0 ? (
-                  picked.map((i) => (
-                    <span key={i.orderItemId}>
-                      {i.productName} · {i.optionName} · {qty(i.orderItemId, i.refundableQuantity)}개{i.opened ? " (개봉)" : ""}
-                    </span>
-                  ))
-                ) : (
-                  <span>{d.items ? `${d.items.length}종 일부 상품` : "남은 상품 전부"}</span>
-                )}
-              </span>
-              {d.rejectReason && (
-                <>
-                  <span className="c-alt">거절 사유</span>
-                  <span style={{ whiteSpace: "pre-wrap" }}>{d.rejectReason}</span>
-                </>
-              )}
-              {d.decidedAt && (
-                <>
-                  <span className="c-alt">처리 시각</span>
-                  <span className="num">{kstText(d.decidedAt)}</span>
-                </>
-              )}
-              {d.cancelledAt && (
-                <>
-                  <span className="c-alt">철회 시각</span>
-                  <span className="num">{kstText(d.cancelledAt)}</span>
-                </>
-              )}
+            <div className="rr-sum">
+              <div>
+                <div className="k">주문</div>
+                <div className="v num">
+                  <Link href={`/seller/orders/${d.orderId}`}>{d.orderNoLabel}</Link>
+                </div>
+              </div>
+              <div>
+                <div className="k">요청 시각</div>
+                <div className="v num">{kstText(d.createdAt)}</div>
+              </div>
+              <div>
+                <div className="k">사유</div>
+                <div className="v">{d.reasonLabel}</div>
+              </div>
+              <div>
+                <div className="k">상태</div>
+                <div className="v">
+                  <span className={`bdg ${BADGE[d.status].cls}`}>{BADGE[d.status].label}</span>
+                </div>
+              </div>
             </div>
 
             {pending && d.previewError && (
@@ -353,71 +350,150 @@ function RequestDetail({ id, canEdit, onClose, onDone }: { id: string; canEdit: 
               </div>
             )}
 
-            {pending && canEdit && preview && !rejecting && (
-              <>
-                <div className="fld">
-                  <span className="lbl" id="rr-fault-label">
-                    누구 사정인지
-                  </span>
-                  <div className="refund-faults" role="radiogroup" aria-labelledby="rr-fault-label">
-                    {FAULTS.map((f) => (
-                      <label key={f.key} className={`refund-opt${fault === f.key ? " on" : ""}`}>
-                        <input
-                          className="rdo"
-                          type="radio"
-                          name="rr-fault"
-                          checked={fault === f.key}
-                          disabled={busy}
-                          onChange={() => {
-                            setFault(f.key);
-                            setAgree(false);
-                          }}
-                        />
-                        <span className="col">
-                          <span className="t-l1 fw6">{f.label}</span>
-                          <span className="t-c1 c-alt">{f.desc}</span>
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                  <span className="help">구매자 사정으로 환불하면 이 구매자의 결제 후 취소 횟수가 1회 늘어납니다. 둘 중 하나를 꼭 골라 주십시오.</span>
-                </div>
-                {quote && (
-                  <div className="col" style={{ gap: 4 }}>
-                    <span className="t-l1 fw6 num" data-testid="rr-cash">
-                      현금 환불 {won(quote.refundAmount)}
-                    </span>
-                    <span className="t-c1 c-alt num" data-testid="rr-reward">
-                      적립금 반환 {won(quote.rewardReturn)}
-                    </span>
-                    {quote.returnFeeDeducted > 0 && <span className="t-c1 c-alt num">반품 배송비 {won(quote.returnFeeDeducted)} 차감</span>}
-                    {quote.blocked && <span className="err">이 사정으로는 환불할 수 없는 주문입니다</span>}
-                  </div>
+            <table className="au-ft">
+              <tbody>
+                {d.reasonText && (
+                  <tr>
+                    <th>상세 사유</th>
+                    <td style={{ whiteSpace: "pre-wrap" }}>{d.reasonText}</td>
+                  </tr>
                 )}
-                {hasOpened && (
-                  <label className="row t-l2" style={{ gap: 8 }}>
-                    <input className="cbx" type="checkbox" checked={openedOk} onChange={(e) => setOpenedOk(e.target.checked)} />
-                    개봉한 상품이 있는 주문임을 확인했습니다
-                  </label>
+                <tr>
+                  <th>환불 상품</th>
+                  <td>
+                    {picked.length > 0 ? (
+                      <table className="tbl">
+                        <thead>
+                          <tr>
+                            <th className="col-text" style={{ textAlign: "left" }}>
+                              환불 상품
+                            </th>
+                            <th style={{ width: 80 }}>수량</th>
+                            <th style={{ width: 110, textAlign: "right" }}>금액</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {picked.map((i) => {
+                            const q = qty(i.orderItemId, i.refundableQuantity);
+                            return (
+                              <tr key={i.orderItemId}>
+                                <td className="col-text">
+                                  {i.productName} · {i.optionName}
+                                  {i.opened ? " (개봉)" : ""}
+                                </td>
+                                <td className="num">{q}</td>
+                                <td className="num" style={{ textAlign: "right" }}>
+                                  {q === i.refundableQuantity ? won(i.refundableAmount) : "—"}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <span>{d.items ? `${d.items.length}종 일부 상품` : "남은 상품 전부"}</span>
+                    )}
+                  </td>
+                </tr>
+                {pending && canEdit && preview && !rejecting && (
+                  <>
+                    <tr>
+                      <th>
+                        <span id="rr-fault-label">사유 주체</span> <span className="sc-rq">*</span>
+                      </th>
+                      <td>
+                        <div className="row" style={{ gap: 16, flexWrap: "wrap" }} role="radiogroup" aria-labelledby="rr-fault-label">
+                          {FAULTS.map((f) => (
+                            <label key={f.key} className="row" style={{ gap: 6 }}>
+                              <input
+                                className="rdo"
+                                type="radio"
+                                name="rr-fault"
+                                checked={fault === f.key}
+                                disabled={busy}
+                                onChange={() => {
+                                  setFault(f.key);
+                                  setAgree(false);
+                                }}
+                              />
+                              <span>
+                                {f.label} <span className="t-c1 c-alt">{f.desc}</span>
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                        <span className="help">구매자 사정만 결제 후 취소 횟수에 포함됩니다 · 선택하지 않으면 환불할 수 없습니다</span>
+                      </td>
+                    </tr>
+                    {quote && (
+                      <tr>
+                        <th>환불 미리보기</th>
+                        <td>
+                          <span className="fw6 num" data-testid="rr-cash">
+                            현금 환불 {won(quote.refundAmount)}
+                          </span>
+                          <span className="t-c1 c-alt num" data-testid="rr-reward">
+                            {" "}
+                            · 적립금 반환 {won(quote.rewardReturn)}
+                          </span>
+                          {quote.returnFeeDeducted > 0 && <span className="t-c1 c-alt num"> · 반품 배송비 {won(quote.returnFeeDeducted)} 차감</span>}
+                          {quote.blocked && <span className="err">이 사유 주체로는 환불할 수 없는 주문입니다 · 다른 사유 주체를 고르거나 거절해 주십시오</span>}
+                        </td>
+                      </tr>
+                    )}
+                    {(hasOpened || (quote && !quote.blocked)) && (
+                      <tr>
+                        <th>확인</th>
+                        <td>
+                          {hasOpened && (
+                            <label className="row t-l2" style={{ gap: 8 }}>
+                              <input className="cbx" type="checkbox" checked={openedOk} onChange={(e) => setOpenedOk(e.target.checked)} />
+                              개봉한 상품이 있는 주문임을 확인했습니다
+                            </label>
+                          )}
+                          {quote && !quote.blocked && (
+                            <label className="row t-l2" style={{ gap: 8 }}>
+                              <input className="cbx" type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
+                              요청한 상품으로 환불하는 것을 확인했습니다
+                            </label>
+                          )}
+                          <span className="help">환불한 뒤에는 되돌릴 수 없습니다</span>
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 )}
-                {quote && !quote.blocked && (
-                  <label className="row t-l2" style={{ gap: 8 }}>
-                    <input className="cbx" type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
-                    위 금액으로 환불합니다. 환불한 뒤에는 되돌릴 수 없습니다.
-                  </label>
+                {pending && canEdit && rejecting && (
+                  <tr>
+                    <th>
+                      <label htmlFor="rr-reject">거절 사유</label> <span className="sc-rq">*</span>
+                    </th>
+                    <td>
+                      <textarea id="rr-reject" className="inp" style={{ height: 88, padding: "10px 12px" }} maxLength={200} value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} />
+                      <span className="help">구매자에게 보입니다 · {rejectReason.length}/200자</span>
+                    </td>
+                  </tr>
                 )}
-              </>
-            )}
-
-            {pending && canEdit && rejecting && (
-              <div className="fld">
-                <label htmlFor="rr-reject" className="req">
-                  거절 사유
-                </label>
-                <textarea id="rr-reject" className="inp" style={{ height: 88, padding: "10px 12px" }} maxLength={200} value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} />
-                <span className="help">구매자에게 보입니다 · {rejectReason.length}/200자</span>
-              </div>
-            )}
+                {d.rejectReason && (
+                  <tr>
+                    <th>거절 사유</th>
+                    <td style={{ whiteSpace: "pre-wrap" }}>{d.rejectReason}</td>
+                  </tr>
+                )}
+                {d.decidedAt && (
+                  <tr>
+                    <th>처리 시각</th>
+                    <td className="num">{kstText(d.decidedAt)}</td>
+                  </tr>
+                )}
+                {d.cancelledAt && (
+                  <tr>
+                    <th>철회 시각</th>
+                    <td className="num">{kstText(d.cancelledAt)}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
 
             {error && (
               <div className="msg msg-neg" role="alert">
@@ -429,7 +505,7 @@ function RequestDetail({ id, canEdit, onClose, onDone }: { id: string; canEdit: 
       </div>
       <div className="modal-f">
         <button className="btn btn-out" type="button" onClick={onClose} disabled={busy}>
-          취소
+          {pending && canEdit ? "취소" : "닫기"}
         </button>
         {pending && canEdit && !rejecting && (
           <>
@@ -444,10 +520,10 @@ function RequestDetail({ id, canEdit, onClose, onDone }: { id: string; canEdit: 
         {pending && canEdit && rejecting && (
           <>
             <button className="btn btn-out" type="button" disabled={busy} onClick={() => setRejecting(false)}>
-              뒤로
+              돌아가기
             </button>
             <button className="btn" type="button" disabled={busy || !rejectReason.trim()} onClick={() => void reject()}>
-              {busy ? "처리 중" : "거절 확정"}
+              {busy ? "처리 중" : "거절 처리"}
             </button>
           </>
         )}

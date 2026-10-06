@@ -19,12 +19,16 @@ import { loginSeller } from "../../lib/server/auth/login";
 import { prisma } from "../../lib/server/db";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { UNUSED_IMAGE_LIMIT } from "../../lib/server/shop-content/image";
+import { POPUP_EVENT_BUDGET, resetPopupEventLimiter } from "../../lib/server/shop-content/popupEventLimit";
 import { visibleShopContent } from "../../lib/server/shop-content/service";
 import { jpeg, png, svg, svgInPng } from "../unit/shopContentFixtures";
 import { PASSWORD, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
 // SA-064 홈 배너·SA-065 이벤트 팝업(2026-10-04 대표님 지시): 권한·테넌트 격리·플랜 권한·기간(DB 시계)·링크·이미지(PNG만)·형태·감사 로그.
-beforeEach(resetDb);
+beforeEach(async () => {
+  resetPopupEventLimiter();
+  await resetDb();
+});
 afterAll(async () => {
   await db.$disconnect();
   await prisma.$disconnect();
@@ -507,5 +511,19 @@ describe("이벤트 팝업 확장(SA-065)", () => {
     // 팝업을 지우면 집계도 함께 지운다
     await db.shopPopup.delete({ where: { id } });
     expect(await db.shopPopupStat.count()).toBe(0);
+  });
+
+  it("집계 과다 호출 제한: 같은 접속이 같은 팝업·종류를 한도 넘게 보내면 429이고 세지 않으며, 다른 종류·다른 팝업은 따로 센다", async () => {
+    const s = await shop();
+    const a = (await popup(s.owner)).body.popup!.id;
+    const b = (await popup(s.owner)).body.popup!.id;
+    for (let i = 0; i < POPUP_EVENT_BUDGET; i++) expect((await event(s.seller.slug, a, "impression")).status).toBe(204);
+    const over = await event(s.seller.slug, a, "impression");
+    expect(over.status).toBe(429);
+    expect(await over.json()).toEqual({ error: "too_many_requests" });
+    expect((await event(s.seller.slug, a, "close")).status).toBe(204);
+    expect((await event(s.seller.slug, b, "impression")).status).toBe(204);
+    const row = await db.shopPopupStat.findFirstOrThrow({ where: { popupId: a } });
+    expect(row).toMatchObject({ impressions: POPUP_EVENT_BUDGET, closes: 1 });
   });
 });

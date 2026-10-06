@@ -11,10 +11,10 @@ const SECTIONS: { title: string; lead: string; points: string[] }[] = [
   {
     title: "주문대기",
     lead: "주문대기는 결제가 끝난 주문이 방송 순서대로 모이는 목록이에요. 방송 중 들어온 주문이 순서대로 줄을 서요. 큰 버튼 하나로 개봉 시작 · 완료 · 취소를 처리하고, 타이머와 HIT 등록도 같은 화면에서 해요.",
-    points: ["한 손 조작 · 단축키", "오픈 타이머 · 연장", "HIT 카드 등록 → 오버레이 연출"],
+    points: ["한 손 조작 · 단축키", "오픈 타이머 · 연장", "HIT 카드 등록 → 방송 화면 연출"],
   },
   {
-    title: "OBS 오버레이",
+    title: "OBS 방송 화면",
     lead: "세로 9:16과 가로 16:9, 기본 템플릿 3종. 브라우저 소스에 넣으면 크기 조정 없이 맞아요. 유튜브 채팅이 가리는 영역을 피해 위쪽에만 패널을 둬요.",
     points: ["현재 주문 카드 · 불꽃 발광 · 흐르는 닉네임", "명예의 전당 · 1위 금색 고정 · 세로 티커", "주문대기 · 공지 배너 · 주소와 시계"],
   },
@@ -35,7 +35,7 @@ export function Features() {
     <PublicFrame active="/features">
       <section className="pf-sec">
         <h1 className="t-d2">기능 안내</h1>
-        <p className="t-b1 c-neu">쇼핑몰 · 방송 주문대기 · 오버레이 · 적립금 · 알림 · 도우미. 한 계정, 한 요금제.</p>
+        <p className="t-b1 c-neu">쇼핑몰 · 방송 주문대기 · 방송 화면 · 적립금 · 알림 · 도우미. 한 계정, 한 요금제.</p>
         <div className="pf-feat-list">
           {SECTIONS.map((s) => (
             <article className="card pf-feat" key={s.title}>
