@@ -25,6 +25,7 @@ async function productIdOf(page: Page, name: string) {
 
 async function expectInfoLayout(page: Page, width: number) {
   await expect(page.locator(".pd-price-summary")).toBeVisible();
+  await expect(page.locator(".pd-coupon-row")).toContainText("세 폭 화면 검수 쿠폰");
   const priceBottom = await page.locator(".pd-price-summary").evaluate((el) => el.getBoundingClientRect().bottom);
   const rows = await page.locator(".pd-form-row").evaluateAll((els) =>
     els.map((el) => {
@@ -116,6 +117,7 @@ test("최근 본 상품: 다른 상품을 본 뒤 상세에 보이고, 지금 �
 });
 
 test("휴대폰 390: 찜 · 공유 · 장바구니에 담기 · 바로 주문하기가 한 줄에 들어가고 가로 스크롤이 없다(보드 SH-003-IA)", async ({ page, baseURL }) => {
+  await createClaimableCouponInDb(SLUG, "세 폭 화면 검수 쿠폰", 2000);
   await page.setViewportSize({ width: 390, height: 844 });
   await login(page, baseURL!);
   const id = await productIdOf(page, "탑로더 25장");
