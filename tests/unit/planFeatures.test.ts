@@ -193,6 +193,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/platform-inquiries/[inquiryId]/close": "BILLING",
   "seller/platform-inquiries/[inquiryId]/rating": "BILLING",
   "seller/platform-inquiries/related-options": "BILLING",
+  "seller/platform-inquiries/draft": "BILLING",
   "seller/platform-inquiries/images": "BILLING",
   "seller/platform-inquiries/images/[imageId]": "BILLING",
   "seller/notices/[noticeId]": "STORE_OPERATIONS",
