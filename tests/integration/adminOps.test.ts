@@ -84,6 +84,8 @@ describe("방송 중 파트너스(MA-041)", () => {
       queue: { waiting: 2, opening: 0, done: 1, cancelled: 1 },
       orders: 3,
       overlay: { hasUrl: true, connected: false, lastSeenAt: null },
+      layoutAspect: null,
+      paymentError: false,
     });
     // 오버레이 주소로 접속하면 접속 중
     expect(await resolveOverlayToken(db, token)).toBe(a.seller.id);

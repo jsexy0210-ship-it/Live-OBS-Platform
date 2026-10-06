@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { GET as policyGet, PATCH as policyPatch } from "../../app/api/admin/settings/policy/route";
 import { POST as supplementRoute } from "../../app/api/admin/sellers/[sellerId]/supplement/route";
-import { createAdminSession } from "../../lib/server/auth/session";
+import { createAdminSession, resolveAdminSession } from "../../lib/server/auth/session";
 import { startImpersonation } from "../../lib/server/auth/impersonation";
 import { policyValue, POLICY_DEFS } from "../../lib/server/admin/platformPolicy";
 import { prisma } from "../../lib/server/db";
@@ -37,7 +37,7 @@ describe("플랫폼 기본 정책 저장", () => {
     expect(item(policy, "bizStatusAutoCheck")).toMatchObject({ kind: "bool", value: true, applied: false });
     expect(item(policy, "maxEarnRatePercent")).toMatchObject({ value: 10, applied: false });
     expect(item(policy, "manualGrantMax")).toMatchObject({ value: 1_000_000, applied: false });
-    expect(item(policy, "adminSessionHours")).toMatchObject({ value: 8, applied: false });
+    expect(item(policy, "adminSessionHours")).toMatchObject({ value: 8, applied: true });
   });
 
   it("최고관리자만 바꾸고(그 밖 403), 바뀐 키만 before/after로 로그 추적에 남는다. 같은 값은 로그 없음", async () => {
@@ -112,5 +112,28 @@ describe("플랫폼 기본 정책 저장", () => {
     await db.seller.update({ where: { id: nodue.id }, data: { status: "PENDING", reviewReasons: ["mail_order_number_invalid"] } });
     await supplementRoute(new Request("http://localhost:3000/x", { method: "POST", headers: { ...H, cookie: su.cookie }, body: JSON.stringify({ reason: "서류가 흐립니다" }) }), { params: Promise.resolve({ sellerId: nodue.id }) });
     expect((await db.sellerApplicationReview.findUniqueOrThrow({ where: { sellerId: nodue.id } })).supplementDueAt).toBeNull();
+  });
+});
+
+describe("관리자 세션 정책 적용(MA-081)", () => {
+  it("최대 유지 시간(adminSessionHours)은 새 로그인부터, 미활동 분(adminIdleMinutes)은 바로 적용된다", async () => {
+    const a = await createAdmin("OPERATIONS");
+    const HOUR = 3_600_000;
+    const t0 = new Date();
+    const s1 = await createAdminSession(db, a.id, { now: t0 });
+    expect(s1.expiresAt.getTime() - t0.getTime()).toBe(8 * HOUR);
+    await db.platformPolicy.create({ data: { key: "adminSessionHours", intValue: 2 } });
+    const s2 = await createAdminSession(db, a.id, { now: t0 });
+    expect(s2.expiresAt.getTime() - t0.getTime()).toBe(2 * HOUR);
+
+    const at = (min: number) => new Date(t0.getTime() + min * 60_000);
+    const s0 = await createAdminSession(db, a.id, { now: t0 });
+    expect(await resolveAdminSession(db, s0.token, at(29))).not.toBeNull();
+    expect(await resolveAdminSession(db, s1.token, at(31))).toBeNull(); // 기본 30분
+    const s3 = await createAdminSession(db, a.id, { now: t0 });
+    await db.platformPolicy.create({ data: { key: "adminIdleMinutes", intValue: 5 } });
+    expect(await resolveAdminSession(db, s3.token, at(6))).toBeNull();
+    const s4 = await createAdminSession(db, a.id, { now: t0 });
+    expect(await resolveAdminSession(db, s4.token, at(4))).not.toBeNull();
   });
 });
