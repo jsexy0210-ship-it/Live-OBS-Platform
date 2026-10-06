@@ -9,5 +9,5 @@ export async function buyerScope(req: Request, slug: string) {
   if (!seller) return { res: NextResponse.json({ error: "not_found" }, { status: 404 }) };
   const session = await resolveBuyerSession(prisma, sessionToken(req, "buyer"), seller.id);
   if (!session) return { res: NextResponse.json({ error: "unauthenticated" }, { status: 401 }) };
-  return { scope: { sellerId: seller.id, buyerMemberId: session.member.id } };
+  return { scope: { sellerId: seller.id, buyerMemberId: session.member.id, sessionId: session.sessionId } };
 }

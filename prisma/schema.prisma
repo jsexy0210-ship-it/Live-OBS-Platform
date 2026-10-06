@@ -401,6 +401,8 @@ model BuyerMember {
   // PASS 생년월일. 미성년자 구매 정책 판정에 쓴다. 탈퇴하면 지운다(null).
   birthDate                   DateTime?         @db.Date
   broadcastNickname           String
+  // 방송 닉네임을 마지막으로 바꾼 시각(회원정보 수정 SH-024, 30일에 1번). 가입 뒤 한 번도 안 바꿨으면 null(바로 바꿀 수 있다).
+  broadcastNicknameChangedAt  DateTime?         @db.Timestamptz(3)
   gradeId                     String            @db.Uuid
   status                      BuyerMemberStatus @default(ACTIVE)
   marketingConsentAt          DateTime?         @db.Timestamptz(3)
