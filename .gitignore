@@ -7,3 +7,6 @@ out
 .env.*
 !.env.example
 *.tsbuildinfo
+
+# Playwright 실행 부산물
+/test-results/
