@@ -323,6 +323,9 @@ describe("자동결제·재시도·해지", () => {
     }
     s = await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub.id } });
     expect(s).toMatchObject({ retryCount: 3, nextChargeAt: null });
+    // MA-032 집계용 감사 기록: 연체 발생은 처음 실패 한 번, 재시도는 연체 뒤 시도 3번
+    expect(await db.auditLog.count({ where: { sellerId: seller.id, action: "subscription.past_due" } })).toBe(1);
+    expect(await db.auditLog.count({ where: { sellerId: seller.id, action: "subscription.payment_retry" } })).toBe(3);
     // 3번 다시 시도한 뒤에는 더 시도하지 않는다
     expect(await renewDueSubscriptions(db, provider, { now: new Date(t0.getTime() + 5 * DAY) })).toMatchObject({ failed: 0, charged: 0 });
     expect(await db.subscriptionPayment.count({ where: { sellerId: seller.id, status: "FAILED" } })).toBe(4);

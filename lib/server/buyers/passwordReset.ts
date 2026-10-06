@@ -4,7 +4,7 @@ import { writeAudit } from "../audit/log";
 import { dbNow } from "../billing/subscription";
 import { normalizeEmail } from "../auth/login";
 import { hashPassword } from "../auth/password";
-import { MIN_PASSWORD_LENGTH } from "../auth/passwordReset";
+import { isAcceptableBuyerPassword } from "./passwordPolicy";
 import { generateToken, hashToken } from "../auth/token";
 import { sendMail, type MailSender } from "../mail/quota";
 
@@ -112,7 +112,7 @@ export async function confirmBuyerPasswordReset(
   input: { sellerId: string; token: string; password: string },
   meta: Meta = {},
 ): Promise<ConfirmResult> {
-  if (typeof input.password !== "string" || input.password.length < MIN_PASSWORD_LENGTH || input.password.length > MAX_PASSWORD_LENGTH) return { ok: false, reason: "weak_password" };
+  if (!isAcceptableBuyerPassword(input.password)) return { ok: false, reason: "weak_password" };
   if (typeof input.token !== "string" || input.token.length === 0 || input.token.length > 200) return { ok: false, reason: "token_invalid" };
   const now = meta.now ?? (await dbNow(db));
   const tokenHash = hashToken(input.token);
