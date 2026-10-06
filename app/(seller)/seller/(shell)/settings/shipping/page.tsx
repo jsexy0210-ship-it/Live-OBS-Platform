@@ -7,6 +7,7 @@ import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { parseAmount, won } from "../../../../../../components/seller/format";
+import { useUnsavedGuard } from "../../../../../../lib/client/navigation";
 
 // SA-061 배송 설정(주문 · 배송 설정 › 배송비 정책 탭). API가 받는 항목: 배송비 방식·배송비·무료 기준·제주·도서산간 추가 배송비·반품·교환 배송비,
 // 받는 방법(지금은 「바로 받기」만, 「보관 후 받기」는 준비 중)·발송 기한(1~30일)·기본 택배사(선택).
@@ -144,6 +145,7 @@ export default function ShippingSettingsPage() {
       candidate.exchangeFee !== saved.exchangeFee ||
       candidate.dispatchDeadlineDays !== saved.dispatchDeadlineDays ||
       candidate.defaultCourier !== saved.defaultCourier);
+  useUnsavedGuard(dirty); // 링크·브라우저 Back·새로고침에 같은 확인(docs/IA.md Back 규칙 7항)
 
   const save = async () => {
     if (!candidate) {

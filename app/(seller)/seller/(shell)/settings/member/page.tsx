@@ -5,6 +5,7 @@ import { FormFoot, FormRow, FormSection, PageHead } from "../../../../../../comp
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
+import { useUnsavedGuard } from "../../../../../../lib/client/navigation";
 
 // SA-068 회원 정책: 재가입 제한(기본 꺼짐). 켜면 탈퇴한 사람이 정한 기간 동안 다시 가입할 수 없다(대표님 결정 2026-10-03).
 // 서버는 1~365일을 받고, 화면은 디자인대로 30·90·180·365일 중에서 고른다. API: GET·PUT /api/seller/member-policy(회원·적립금 권한).
@@ -43,6 +44,7 @@ export default function MemberSettingsPage() {
 
   const saved = state.kind === "ok" ? state.saved : null;
   const dirty = !!saved && (saved.rejoinRestrictionEnabled !== enabled || saved.rejoinRestrictionDays !== days);
+  useUnsavedGuard(dirty); // 링크·브라우저 Back·새로고침에 같은 확인(docs/IA.md Back 규칙 7항)
 
   const save = async () => {
     if (!saved) return;

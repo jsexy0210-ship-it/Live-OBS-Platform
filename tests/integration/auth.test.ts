@@ -1,5 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { loginAdmin, loginBuyer, loginSeller } from "../../lib/server/auth/login";
+import { POST as buyerLoginPost } from "../../app/api/shop/[slug]/auth/login/route";
+import { POST as buyerLogoutPost } from "../../app/api/shop/[slug]/auth/logout/route";
 import { resolveAdminSession, resolveBuyerSession, resolveSellerSession } from "../../lib/server/auth/session";
 import { impersonateSeller, requireAdmin, requireSeller } from "../../lib/server/authz/guards";
 import { getOrder, listOrders } from "../../lib/server/orders/read";
@@ -215,6 +217,53 @@ describe("구매자 로그인 (쇼핑몰별)", () => {
       ok: false,
       reason: "invalid_credentials",
     });
+  });
+});
+
+describe("구매자 로그인 유지", () => {
+  const DAY_MIN = 24 * 60;
+  const H = { "content-type": "application/json", host: "localhost:3000", origin: "http://localhost:3000" };
+  const loginReq = (slug: string, body: unknown) =>
+    buyerLoginPost(new Request(`http://localhost:3000/api/shop/${slug}/auth/login`, { method: "POST", headers: H, body: JSON.stringify(body) }), { params: Promise.resolve({ slug }) });
+
+  it("끄면(기본) 서버 세션이 24시간이고 쿠키는 만료일이 없다. 켜면 30일이고 쿠키에 만료일이 있다", async () => {
+    const { seller, grade } = await createSeller();
+    const m = await createLoginBuyer(seller.id, grade.id);
+    const off = await loginBuyer(db, { sellerId: seller.id, loginId: m.loginId, password: PASSWORD }, { now: t0 });
+    const on = await loginBuyer(db, { sellerId: seller.id, loginId: m.loginId, password: PASSWORD, remember: true }, { now: t0 });
+    if (!off.ok || !on.ok) throw new Error("login failed");
+    expect([off.persistent, on.persistent]).toEqual([false, true]);
+    expect(await resolveBuyerSession(db, off.token, seller.id, at(DAY_MIN - 1))).not.toBeNull();
+    expect(await resolveBuyerSession(db, off.token, seller.id, at(DAY_MIN))).toBeNull();
+    expect(await resolveBuyerSession(db, on.token, seller.id, at(29 * DAY_MIN))).not.toBeNull();
+    expect(await resolveBuyerSession(db, on.token, seller.id, at(30 * DAY_MIN))).toBeNull();
+  });
+
+  it("로그인 API: remember 켜면 쿠키에 만료일, 끄거나 빼면 세션 쿠키. boolean이 아니면 400", async () => {
+    const { seller, grade } = await createSeller();
+    const m = await createLoginBuyer(seller.id, grade.id);
+    const base = { loginId: m.loginId, password: PASSWORD };
+    const kept = await loginReq(seller.slug, { ...base, remember: true });
+    expect(kept.status).toBe(200);
+    expect(kept.headers.get("set-cookie")).toMatch(/lo_buyer=.*expires=/i);
+    for (const body of [base, { ...base, remember: false }]) {
+      const r = await loginReq(seller.slug, body);
+      expect(r.status).toBe(200);
+      const c = r.headers.get("set-cookie") ?? "";
+      expect(c).toContain("lo_buyer=");
+      expect(c).not.toMatch(/expires=|max-age=/i);
+    }
+    for (const bad of ["true", 1, null]) expect((await loginReq(seller.slug, { ...base, remember: bad })).status).toBe(400);
+  });
+
+  it("로그아웃하면 로그인 유지 세션도 바로 무효다", async () => {
+    const { seller, grade } = await createSeller();
+    const m = await createLoginBuyer(seller.id, grade.id);
+    const r = await loginBuyer(db, { sellerId: seller.id, loginId: m.loginId, password: PASSWORD, remember: true }, {});
+    if (!r.ok) throw new Error("login failed");
+    expect(await resolveBuyerSession(db, r.token, seller.id)).not.toBeNull();
+    await buyerLogoutPost(new Request(`http://localhost:3000/api/shop/${seller.slug}/auth/logout`, { method: "POST", headers: { ...H, cookie: `lo_buyer=${r.token}` } }));
+    expect(await resolveBuyerSession(db, r.token, seller.id)).toBeNull();
   });
 });
 

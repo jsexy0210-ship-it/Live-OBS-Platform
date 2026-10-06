@@ -53,7 +53,7 @@ test("대표자: 송장 저장 → 배송 중 → 배송 완료로 옮겨 가고
   const results = (await shippedRes.json()).results as { orderId: string; ok: boolean }[];
   expect(results.find((r) => r.orderId === a.orderId)?.ok).toBe(true);
   expect(results.find((r) => r.orderId === b.orderId)?.ok).toBe(false);
-  await expect(page.getByText("1건 송장 저장 · 1건 실패")).toBeVisible();
+  await expect(page.getByText("1건 송장 저장 · 1건은 처리하지 못했습니다. 빨간 글씨를 확인해 주십시오")).toBeVisible();
   await expect(page.getByLabel(`주문 ${a.orderNo} 송장번호`)).toHaveCount(0);
   await expect(rows.filter({ has: page.getByLabel(`주문 ${b.orderNo} 송장번호`) })).toContainText("송장번호");
   await expect(page.locator(".err[role=alert]")).toHaveCount(1);

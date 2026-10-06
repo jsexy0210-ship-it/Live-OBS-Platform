@@ -131,7 +131,7 @@ export async function loginSeller(
 
 export async function loginBuyer(
   db: PrismaClient,
-  input: { sellerId: string; loginId: string; password: string },
+  input: { sellerId: string; loginId: string; password: string; remember?: boolean },
   meta: SessionMeta,
 ): Promise<LoginResult> {
   const now = meta.now ?? new Date();
@@ -169,7 +169,7 @@ export async function loginBuyer(
       SELECT "id" FROM "BuyerMember" WHERE "id" = ${member.id}::uuid AND "status" = 'ACTIVE' AND "deletedAt" IS NULL FOR NO KEY UPDATE`;
     if (locked.length === 0) return null;
     await tx.buyerMember.update({ where: { id: member.id }, data: { lastLoginAt: now } });
-    return createBuyerSession(tx, input.sellerId, member.id, { ...meta, now });
+    return createBuyerSession(tx, input.sellerId, member.id, { ...meta, now, remember: input.remember });
   });
   if (!session) {
     await audit("auth.buyer.login_failed", member.id, "account_withdrawn");

@@ -7,6 +7,7 @@ import { Topbar, useSeller } from "../../../../../../components/seller/SellerShe
 import { Toast } from "../../../../../../components/seller/States";
 import { api, apiUpload, failMessage } from "../../../../../../components/seller/api";
 import { cleanText, textLength, type TextKind } from "../../../../../../lib/server/text/clean";
+import { useUnsavedGuard } from "../../../../../../lib/client/navigation";
 import "./shop-info.css";
 
 // SA-060 쇼핑몰 정보(파트너스 관리자, 설정 › 쇼핑몰 설정) (a)구역: 운영 상태·이름·한 줄 소개·로고·대표 색상·주소. 파비콘·공유 카드·도메인·사업자 구역은 이어서 붙인다.
@@ -276,6 +277,7 @@ export default function ShopInfoPage() {
   const profileDirty = !!profile && (name.trim() !== profile.shopName || (tagline.trim() || null) !== profile.shopTagline);
   const shareDirty = !!share && ((share.title ?? "") !== shareTitle.trim() || (share.description ?? "") !== shareDesc.trim());
   const dirty = profileDirty || shareDirty;
+  useUnsavedGuard(dirty); // 링크·브라우저 Back·새로고침에 같은 확인(docs/IA.md Back 규칙 7항)
   const previewTitle = cleanText(shareTitle, SHARE_TITLE_MAX, "name") ?? shownName;
   const previewDesc = cleanText(shareDesc, SHARE_DESC_MAX, "memo") ?? (tagline.trim() || "");
   const faviconUrl = favicon?.urls?.["32"] ?? "/branding/onq-32.png";

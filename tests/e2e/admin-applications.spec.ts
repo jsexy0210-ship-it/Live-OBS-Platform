@@ -51,9 +51,9 @@ async function login(page: Page, email: string) {
 
 test("최고관리자: 목록에 확인 필요 항목이 보이고, 상세에서 승인하면 운영 중으로 바뀐다", async ({ page }) => {
   await login(page, emails.super);
-  await page.goto("/admin/partners/applications");
+  await page.goto(`/admin/partners/applications?field=shop&q=${encodeURIComponent(shops.approve)}`); // 20건씩 보이므로 이 신청만 검색해 연다
   const row = page.getByTestId("application-row").filter({ hasText: shops.approve });
-  await expect(row).toContainText("국세청 조회 실패");
+  await expect(row).toContainText("국세청 조회가 잠시 안 됐습니다");
   await row.getByRole("link", { name: "상세" }).click();
   await expect(page).toHaveURL(new RegExp(`/admin/partners/applications/${ids.approve}$`));
   await expect(page.getByRole("heading", { name: "확인할 것" })).toBeVisible();

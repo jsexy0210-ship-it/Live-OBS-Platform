@@ -10,7 +10,8 @@ import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../.
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { won } from "../../../../../../components/seller/format";
 import { SourceBadge } from "../../../../../../components/seller/broadcast/SourceBadge";
-import { kstDate, kstDuration, type BroadcastSummary } from "../../../../../../components/seller/broadcast/history";
+import { kstDuration, type BroadcastSummary } from "../../../../../../components/seller/broadcast/history";
+import { formatDateTime } from "../../../../../../lib/client/format";
 
 // SA-055 방송 상세(방송 이력의 한 건). 요약 · HIT 카드 · 방송 중 들어온 주문(50개씩).
 // API: GET /api/seller/broadcast/{id}?cursor=(다른 판매자 방송은 404). 시안의 시간대별 주문·평균 오픈·연결 로그·메모·리포트 내보내기는 서버에 자료·API가 없어 두지 않았다.
@@ -149,7 +150,7 @@ export default function BroadcastDetailPage() {
                       <th scope="row">일시</th>
                       <td>
                         <div className="au-ft-v">
-                          {kstDate(b.startedAt)} ~ {b.endedAt ? kstDate(b.endedAt) : "진행 중"} · {kstDuration(b.startedAt, b.endedAt)}
+                          {formatDateTime(b.startedAt)} ~ {b.endedAt ? formatDateTime(b.endedAt) : "진행 중"} · {kstDuration(b.startedAt, b.endedAt)}
                         </div>
                       </td>
                     </tr>
@@ -191,7 +192,7 @@ export default function BroadcastDetailPage() {
                       <tbody data-testid="bd-hits">
                         {d.hits.map((h) => (
                           <tr key={h.id}>
-                            <td className="num">{kstDate(h.createdAt)}</td>
+                            <td className="num">{formatDateTime(h.createdAt)}</td>
                             <td className="col-title">
                               <span className="fw6">{h.cardName}</span>
                               {h.note && <div className="t-c1 c-alt">{h.note}</div>}
@@ -231,7 +232,7 @@ export default function BroadcastDetailPage() {
                       <tbody data-testid="bd-orders">
                         {d.orders.map((o) => (
                           <tr key={o.id}>
-                            <td className="num">{kstDate(o.createdAt)}</td>
+                            <td className="num">{formatDateTime(o.createdAt)}</td>
                             <td>{o.nickname}</td>
                             <td className="col-product">
                               {o.items.map((i, k) => (
@@ -245,7 +246,7 @@ export default function BroadcastDetailPage() {
                               {won(o.totalAmount)}
                               {o.refundAmount ? <div className="t-c1 c-alt">환불 {won(o.refundAmount)}</div> : null}
                             </td>
-                            <td className="num">{o.completedAt ? kstDate(o.completedAt) : "-"}</td>
+                            <td className="num">{o.completedAt ? formatDateTime(o.completedAt) : "-"}</td>
                             <td>{STATUS_TEXT[o.status]}</td>
                           </tr>
                         ))}
@@ -286,7 +287,7 @@ export default function BroadcastDetailPage() {
                       <tbody data-testid="bd-external-orders">
                         {d.externalOrders!.map((o) => (
                           <tr key={o.id}>
-                            <td className="num">{kstDate(o.createdAt)}</td>
+                            <td className="num">{formatDateTime(o.createdAt)}</td>
                             <td>
                               {o.nickname} <SourceBadge source="EXTERNAL" />
                             </td>
