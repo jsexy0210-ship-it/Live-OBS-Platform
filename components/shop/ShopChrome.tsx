@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { useConfirm } from "../admin-ui/ConfirmDialog";
+import { LogoutButton } from "../admin-ui/LogoutButton";
 import ShopLogo from "./ShopLogo";
 
 export const CART_COUNT_EVENT = "shop-cart-count";
@@ -33,7 +33,6 @@ const ICON = {
 
 // 구매자 쇼핑몰 머리(띠·로고·검색·장바구니·카테고리)와 휴대폰 카테고리 서랍·아래 고정 바. 「전체 상품」 뒤에 쇼핑몰의 대분류 카테고리를 붙이고, 「전체 카테고리」 버튼이나 머리 줄에 마우스를 올리면(키보드 포커스도) 대분류·소분류 펼침 판이 열린다. 서랍에는 소분류까지 보인다.
 export default function ShopChrome({ slug, shopName, loggedIn, nickname, categories = [], signupOpen = true }: Props) {
-  const { confirm } = useConfirm();
   const base = `/shop/${encodeURIComponent(slug)}`;
   const path = usePathname() ?? "";
   const router = useRouter();
@@ -109,18 +108,17 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname, categor
     return () => window.removeEventListener("keydown", onKey);
   }, [drawer]);
 
+  // 세션을 실제로 끊었을 때만 쇼핑몰 홈으로 보낸다. 실패하면 확인 창 안에 오류를 보이고 다시 시도하게 한다
   async function logout() {
-    if (!(await confirm({ tone: "shop", title: "로그아웃할까요?", body: "이 기기에서 로그아웃돼요.", confirmLabel: "로그아웃" }))) return;
-    await fetch(`/api/shop/${encodeURIComponent(slug)}/auth/logout`, { method: "POST" }).catch(() => null);
-    window.location.assign(base);
+    const r = await fetch(`/api/shop/${encodeURIComponent(slug)}/auth/logout`, { method: "POST" }).catch(() => null);
+    if (r?.ok) window.location.assign(base);
+    return !!r?.ok;
   }
 
   const account = loggedIn ? (
     <>
       <Link href={`${base}/me`}>내 정보</Link>
-      <button type="button" className="shop-linkbtn" onClick={logout}>
-        로그아웃
-      </button>
+      <LogoutButton tone="shop" className="shop-linkbtn" onLogout={logout} />
     </>
   ) : (
     <>
