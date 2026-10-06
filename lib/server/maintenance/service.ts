@@ -67,8 +67,8 @@ export async function cachedMaintenance(db: PrismaClient, nowMs = Date.now()): P
   }
 }
 
-// 점검 중에 막는 경로. 마스터 관리자·오버레이·결제사 알림·정기 작업·상태 확인·공지·요금 정보·브랜딩은 열어 둔다.
-const BLOCKED_API = [/^\/api\/seller(\/|$)/, /^\/api\/seller-signup(\/|$)/, /^\/api\/shop(\/|$)/, /^\/api\/automation\/(purchase|reconnect)(\/|$)/];
+// 점검 중에 막는 경로(자동 연결 「다른 카드로 결제」 결제창 결과 return은 결제사가 부르는 복귀 경로라 열어 둔다). 마스터 관리자·오버레이·결제사 알림·정기 작업·상태 확인·공지·요금 정보·브랜딩은 열어 둔다.
+const BLOCKED_API = [/^\/api\/seller(\/|$)/, /^\/api\/seller-signup(\/|$)/, /^\/api\/shop(\/|$)/, /^\/api\/automation\/(?!purchase\/one-time\/return$)(purchase|reconnect)(\/|$)/];
 const BLOCKED_PAGE = [/^\/seller(\/|$)/, /^\/shop(\/|$)/];
 export function maintenanceTarget(pathname: string): "api" | "page" | null {
   if (BLOCKED_API.some((r) => r.test(pathname))) return "api";

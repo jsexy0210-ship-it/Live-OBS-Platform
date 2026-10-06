@@ -2028,6 +2028,12 @@ enum AutomationPaymentStatus {
   REFUNDED
 }
 
+// 결제 수단. BILLING_KEY = 구독에 등록한 카드(빌링키) 자동결제, ONE_TIME_CARD = 「다른 카드로 결제」(나이스페이 일반 결제창, 이번 한 번만, 카드 저장 안 함)
+enum AutomationPaymentMethod {
+  BILLING_KEY
+  ONE_TIME_CARD
+}
+
 // INITIAL = 처음 자동 연결(110,000원), REINSTALL = 무료 대상이 아닌 재설치(33,000원),
 // RECONNECT_FREE = 완료 뒤 30일 안 같은 쇼핑몰·같은 PC(OBS pairing) 재연결(무료, 결제 없음)
 enum AutomationJobKind {
@@ -2079,6 +2085,11 @@ model AutomationPayment {
   // 오래 미확정인 청구(조회 안 됨)를 마스터 관리자에게 알린 시각(1회만)
   unresolvedAlertedAt    DateTime?               @db.Timestamptz(3)
   providerPaymentId      String?
+  method                 AutomationPaymentMethod @default(BILLING_KEY)
+  // 일반 결제창(ONE_TIME_CARD) 결제의 PG 거래 id와 승인 응답 카드 요약(카드사·끝 4자리). 환불은 이 거래 id로 취소한다. 카드번호 전체는 저장하지 않는다.
+  pgTid                  String?                 @unique
+  cardName               String?
+  cardLast4              String?
   failureReason          String?
   paidAt                 DateTime?               @db.Timestamptz(3)
   refundReason           String?
