@@ -38,7 +38,17 @@ export default function SellerLoginPage() {
     if (p.get("type") === "staff") setTab("staff");
     // 로그인이 풀려 이리로 온 경우(AU-007): 이유를 알려 준다
     if (p.get("reason") === "expired") setNotice({ kind: "info", text: "로그인 시간이 지나 로그아웃되었습니다. 다시 로그인해 주십시오." });
-  }, []);
+    // 이미 로그인한 채 이 화면을 열면 로그인 화면을 보이지 않고 착지 화면으로 보낸다(MASTER 승인 2026-10-06). 만료 안내로 온 경우는 제외
+    if (p.get("reason") !== "expired") {
+      // api() 도우미는 401이면 만료 안내로 보내므로 여기서는 fetch로 조용히 확인한다
+      void fetch("/api/seller/me", { credentials: "same-origin" })
+        .then((r) => (r.ok ? (r.json() as Promise<Me>) : null))
+        .then((me) => {
+          if (me) router.replace(me.suspended ? "/seller/suspended" : landingFor(me, safeNext()));
+        })
+        .catch(() => undefined);
+    }
+  }, [router]);
 
   const ready = email.trim() !== "" && password !== "" && (!needShop || shopSlug.trim() !== "");
   // 찾기 화면은 대표자·직원 공통이고 계정 종류만 넘긴다
@@ -121,15 +131,16 @@ export default function SellerLoginPage() {
   return (
     <div className="login-page">
       <form className="card col login-card" onSubmit={submit} noValidate>
-        <span className="logo login-logo" aria-label="ONQ">
+        <span className="logo login-logo" aria-label="ONQ 파트너스 관리자">
           <span className="logo-sym" />
           <span className="logo-word" />
+          <small>파트너스 관리자</small>
         </span>
         <div className="col login-head">
           <h1 className="t-t3">파트너스 관리자</h1>
           <span className="t-l2 c-alt">라이브 방송과 주문을 한곳에서 관리합니다</span>
         </div>
-        <div className="tabs login-tabs" role="tablist" aria-label="계정 종류">
+        <div className="login-seg" role="tablist" aria-label="계정 종류">
           {TABS.map((t, i) => (
             <button
               key={t.key}
@@ -142,7 +153,7 @@ export default function SellerLoginPage() {
               aria-selected={tab === t.key}
               aria-controls="login-panel"
               tabIndex={tab === t.key ? 0 : -1}
-              className={`tab${tab === t.key ? " on" : ""}`}
+              className={tab === t.key ? "on" : ""}
               disabled={busy}
               onClick={() => choose(t.key)}
               onKeyDown={(e) => onTabKey(e, i)}
