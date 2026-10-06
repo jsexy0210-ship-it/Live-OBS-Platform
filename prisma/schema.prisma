@@ -143,6 +143,7 @@ model Seller {
   memberPolicy             SellerMemberPolicy?
   brandColor               SellerBrandColor?
   favicon                  SellerFavicon?
+  businessLicense          SellerBusinessLicense?
   shopSeo                  ShopSeo?
   orderNotificationPolicy  SellerOrderNotificationPolicy?
   rejoinBlocks             BuyerRejoinBlock[]
@@ -959,6 +960,23 @@ model SellerFavicon {
   updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])
+}
+
+// 파트너스 가입 신청의 사업자등록증 파일(PF-007-4). 비용 없는 DB 저장(파비콘과 같은 방식). JPG·PNG·PDF, 10MB 이하(서버가 파일 앞부분 바이트로 확인).
+// 신청 전에는 본인확인 기록(verificationId)에 묶인 임시 파일이고, 신청을 만들 때 sellerId로 옮긴다(verificationId는 비움).
+// 마스터 조회·내려받기는 최고관리자·운영만이며 열람은 로그 추적에 남긴다. 보관 기간·삭제는 대표님 결정 전이라 지우는 작업을 두지 않는다.
+model SellerBusinessLicense {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  verificationId String?  @unique @db.Uuid
+  sellerId       String?  @unique @db.Uuid
+  fileName       String
+  mimeType       String
+  byteSize       Int
+  sha256         String
+  data           Bytes
+  uploadedAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  seller Seller? @relation(fields: [sellerId], references: [id])
 }
 
 // ───────────── 상품 리뷰 (SA-048 리뷰 관리 · SH-029 리뷰 쓰기, 2026-10-04 대표님 확정 11건 중 2) ─────────────
