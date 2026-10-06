@@ -1753,3 +1753,14 @@ body {
     background: rgb(0 0 0 / 40%);
   }
 }
+/* SH-041 쇼핑몰 잠금 안내: 가운데 카드, 버튼 두 개 나란히 */
+.shop-locked {
+  align-self: center;
+  width: 100%;
+  max-width: 560px;
+  margin-inline: auto;
+}
+.shop-locked-btns {
+  display: flex;
+  gap: 8px;
+}

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import SignupForm from "../../../../../components/shop/SignupForm";
 import ShopState from "../../../../../components/shop/ShopState";
+import ShopLocked from "../../../../../components/shop/ShopLocked";
 import { SIGNUP_CONSENT_VERSIONS, currentConsentDocs } from "../../../../../lib/server/buyers/consent";
 import { rejoinDaysToAgree } from "../../../../../lib/server/buyers/rejoin";
 import { shopOpen } from "../../../../../lib/server/buyers/signup";
@@ -42,7 +43,7 @@ export default async function ShopSignupPage({ params }: Params) {
   return (
     <>
       {!open ? (
-        <ShopState title="지금은 쇼핑몰을 이용할 수 없어요" body="쇼핑몰이 다시 문을 열면 가입할 수 있어요." />
+        <ShopLocked slug={slug} />
       ) : !identityReady ? (
         <ShopState title="본인확인 서비스 준비 중이에요" body="휴대폰 본인확인을 할 수 있게 되면 바로 가입할 수 있어요. 잠시 뒤 다시 와 주세요." />
       ) : (
