@@ -25,3 +25,10 @@ export const INQUIRY_STATUS: Record<InquiryStatus, { label: string; cls: string 
 export const INQUIRY_TITLE_MAX = 100;
 export const INQUIRY_BODY_MAX = 5000;
 export const INQUIRY_IMAGES_MAX = 5;
+
+// 파트너스 화면 상태 이름(SA-113 정본: 접수 · 답변 완료 · 종료). 마스터 관리자 화면은 위 INQUIRY_STATUS를 쓴다.
+export const SELLER_INQUIRY_STATUS: Record<InquiryStatus, { label: string; cls: string }> = {
+  OPEN: { label: "접수", cls: "b-info" },
+  ANSWERED: { label: "답변 완료", cls: "b-pending" },
+  CLOSED: { label: "종료", cls: "b-done" },
+};
