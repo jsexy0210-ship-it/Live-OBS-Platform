@@ -21,10 +21,10 @@ async function event(kind = "RANDOM_DRAW", duplicates = false) {
   await client.query('UPDATE "AudienceEvent" SET status=\'FROZEN\' WHERE id=$1',[eventId]);
   return kind;
 }
-async function round(kind: string, options: { source?: string; reason?: string | null; prior?: string[]; duplicates?: boolean; requestKey?: string } = {}) {
+async function round(kind: string, options: { source?: string; reason?: string | null; prior?: string[]; duplicates?: boolean; requestKey?: string; actorType?: string } = {}) {
   const id = randomUUID();
   const rules = { version: 2, kind, keyword: kind === "ROULETTE_ITEM" ? null : "참가", winnerCount: 1, testMode: true, rewardsEnabled: false, settings: {...settings, ...(options.duplicates === undefined ? {} : { allowDuplicateWinners: options.duplicates })}, previousWinnerIds: options.prior ?? [] };
-  await client.query('INSERT INTO "AudienceEventRound" (id,"sellerId","eventId","roundNumber","requestKey","requestHash","sourceRoundId",reason,"actorType","actorId","rulesSnapshot","entrantIds") VALUES ($1,$2,$3,$4,$5,\'hash\',$6,$7,\'SELLER_USER\',\'operator\',$8,$9)',[id,sellerId,eventId,options.source ? 2 : 1,options.requestKey ?? randomUUID(),options.source ?? null,options.reason ?? null,JSON.stringify(rules),JSON.stringify(entrants)]);
+  await client.query('INSERT INTO "AudienceEventRound" (id,"sellerId","eventId","roundNumber","requestKey","requestHash","sourceRoundId",reason,"actorType","actorId","rulesSnapshot","entrantIds") VALUES ($1,$2,$3,$4,$5,\'hash\',$6,$7,$10,\'operator\',$8,$9)',[id,sellerId,eventId,options.source ? 2 : 1,options.requestKey ?? randomUUID(),options.source ?? null,options.reason ?? null,JSON.stringify(rules),JSON.stringify(entrants),options.actorType ?? "SELLER_USER"]);
   return { id, rules };
 }
 async function result(value: Awaited<ReturnType<typeof round>>) {
@@ -33,8 +33,8 @@ async function result(value: Awaited<ReturnType<typeof round>>) {
   const row = await client.query('INSERT INTO "AudienceEventResult" ("sellerId","roundId","algorithmVersion","winnerEntrantIds","testMode",execution) VALUES ($1,$2,\'test-helper-v1\',$3,true,$4) RETURNING *',[sellerId,value.id,JSON.stringify(ids),JSON.stringify(execution)]);
   return row.rows[0];
 }
-async function publish(roundId: string, requestKey = randomUUID(), participantId?: string) {
-  return client.query('INSERT INTO "AudienceEventPublication" ("sellerId","roundId","requestKey",scope,"participantId","actorType") VALUES ($1,$2,$3,$4,$5,\'SELLER_USER\') RETURNING *',[sellerId,roundId,requestKey,participantId ? "PARTICIPANT" : "ALL",participantId ?? null]);
+async function publish(roundId: string, requestKey = randomUUID(), participantId?: string, actorType = "SELLER_USER") {
+  return client.query('INSERT INTO "AudienceEventPublication" ("sellerId","roundId","requestKey",scope,"participantId","actorType") VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',[sellerId,roundId,requestKey,participantId ? "PARTICIPANT" : "ALL",participantId ?? null,actorType]);
 }
 describe("다회차 실행/공개 migration 실제 PostgreSQL", () => {
   it.each(["RANDOM_DRAW","ROULETTE_PARTICIPANT","ROULETTE_ITEM","LADDER"])("%s frozen 실행을 저장한다", async kind => {
@@ -88,4 +88,16 @@ describe("다회차 실행/공개 migration 실제 PostgreSQL", () => {
     const kind=await event("LADDER"),first=await round(kind);await result(first);
     await expect(publish(first.id,randomUUID(),randomUUID())).rejects.toMatchObject({code:"23514"});
   });
+  it("BUYER 회차 실행 actor는 실제 CHECK가 거부한다", async () => {
+    const kind=await event();await expect(round(kind,{actorType:"BUYER"})).rejects.toMatchObject({code:"23514",constraint:"AudienceEventRound_actor_scope_check"});
+  });
+  it("BUYER 결과 공개 actor는 실제 CHECK가 거부한다", async () => {
+    const kind=await event(),first=await round(kind);await result(first);
+    await expect(publish(first.id,randomUUID(),undefined,"BUYER")).rejects.toMatchObject({code:"23514",constraint:"AudienceEventPublication_actor_scope_check"});
+  });
+  it.each(["SELLER_USER","SYSTEM","PLATFORM_ADMIN"])("%s 회차 실행 actor는 허용한다",async actorType=>{
+    const kind=await event(),first=await round(kind,{actorType});
+    expect((await client.query('SELECT "actorType" FROM "AudienceEventRound" WHERE id=$1',[first.id])).rows[0].actorType).toBe(actorType);
+  });
+
 });
