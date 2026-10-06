@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useConfirm } from "../admin-ui/ConfirmDialog";
 import MyMenu from "./MyMenu";
 import ShopBack from "./ShopBack";
+import { usePostcode } from "../../lib/client/usePostcode";
 import { call } from "./reviewShared";
 import "./Cart.css";
 import "./MyMenu.css";
@@ -36,6 +37,7 @@ export default function AddressesView({ slug }: { slug: string }) {
   const [form, setForm] = useState<Form>(EMPTY);
   const [errors, setErrors] = useState<Partial<Record<keyof Form, string>>>({});
   const [busy, setBusy] = useState(false);
+  const postcode = usePostcode(editing !== null); // 폼을 열 때만 우편번호 서비스를 불러온다
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const load = useCallback(async () => {
@@ -127,6 +129,48 @@ export default function AddressesView({ slug }: { slug: string }) {
     </div>
   );
 
+  // 주소: 「우편번호 찾기」(다음 우편번호, 무료)로 고르면 우편번호·주소가 채워진다. 서비스를 못 불러오면 직접 입력으로 바뀐다.
+  const manual = postcode.state === "failed";
+  const pickAddress = () =>
+    postcode.open((d) => {
+      const baseAddr = d.userSelectedType === "R" ? d.roadAddress : d.jibunAddress;
+      const extra = d.userSelectedType === "R" && d.apartment === "Y" && d.buildingName ? ` (${d.buildingName})` : "";
+      setForm((f) => ({ ...f, zipCode: d.zonecode.replace(/\D/g, "").slice(0, 5), address1: `${baseAddr}${extra}`.slice(0, 200) }));
+      setErrors((e) => ({ ...e, zipCode: undefined, address1: undefined }));
+      document.getElementById("ad-address2")?.focus();
+    });
+  const addressFields = (
+    <>
+      {manual && (
+        <p className="cart-msg is-err" role="status">
+          주소 검색을 열지 못했어요. 우편번호와 주소를 직접 적어 주세요
+        </p>
+      )}
+      <div className="ad-field">
+        <label htmlFor="ad-zipCode">
+          주소<i aria-hidden="true">*</i>
+        </label>
+        <div className="ad-zip">
+          <input id="ad-zipCode" className="inp" inputMode="numeric" maxLength={5} placeholder="우편번호" aria-label="우편번호" readOnly={!manual} value={form.zipCode} aria-invalid={!!errors.zipCode} onChange={(e) => setForm((f) => ({ ...f, zipCode: e.target.value }))} />
+          <button type="button" className="btn btn-out" disabled={postcode.state !== "ready"} onClick={pickAddress}>
+            우편번호 찾기
+          </button>
+        </div>
+        {errors.zipCode && (
+          <span className="err" role="alert">
+            {errors.zipCode}
+          </span>
+        )}
+        <input id="ad-address1" className="inp" maxLength={200} placeholder="기본 주소" aria-label="기본 주소" readOnly={!manual} value={form.address1} aria-invalid={!!errors.address1} onChange={(e) => setForm((f) => ({ ...f, address1: e.target.value }))} />
+        {errors.address1 && (
+          <span className="err" role="alert">
+            {errors.address1}
+          </span>
+        )}
+      </div>
+    </>
+  );
+
   const body =
     view.kind === "loading" ? (
       <p className="shop-empty" aria-busy="true">
@@ -170,8 +214,7 @@ export default function AddressesView({ slug }: { slug: string }) {
                   {field("label", "배송지 이름", false, { placeholder: "예: 집", maxLength: 20 })}
                   {field("recipientName", "받는 분", true, { autoComplete: "name", maxLength: 30 })}
                   {field("phone", "연락처", true, { autoComplete: "tel", inputMode: "tel", maxLength: 13 })}
-                  {field("zipCode", "우편번호", true, { inputMode: "numeric", maxLength: 5, placeholder: "5자리" })}
-                  {field("address1", "주소", true, { autoComplete: "address-line1", maxLength: 200 })}
+                  {addressFields}
                   {field("address2", "상세 주소", false, { autoComplete: "address-line2", maxLength: 100 })}
                   <label className="ad-check">
                     <input type="checkbox" checked={form.isDefault} disabled={a.isDefault} onChange={(e) => setForm((f) => ({ ...f, isDefault: e.target.checked }))} />
@@ -223,8 +266,7 @@ export default function AddressesView({ slug }: { slug: string }) {
             {field("label", "배송지 이름", false, { placeholder: "예: 집", maxLength: 20 })}
             {field("recipientName", "받는 분", true, { autoComplete: "name", maxLength: 30 })}
             {field("phone", "연락처", true, { autoComplete: "tel", inputMode: "tel", maxLength: 13 })}
-            {field("zipCode", "우편번호", true, { inputMode: "numeric", maxLength: 5, placeholder: "5자리" })}
-            {field("address1", "주소", true, { autoComplete: "address-line1", maxLength: 200 })}
+            {addressFields}
             {field("address2", "상세 주소", false, { autoComplete: "address-line2", maxLength: 100 })}
             <label className="ad-check">
               <input type="checkbox" checked={form.isDefault} onChange={(e) => setForm((f) => ({ ...f, isDefault: e.target.checked }))} />

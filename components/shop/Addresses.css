@@ -95,3 +95,18 @@
 .ad-add {
   width: 100%;
 }
+.ad-zip {
+  display: flex;
+  gap: 8px;
+}
+.ad-zip .inp {
+  flex: 1;
+  min-width: 0;
+}
+.ad-zip .btn {
+  flex: none;
+  margin: 0;
+}
+.ad-field .inp[readonly] {
+  background: var(--wds-background-normal-alternative);
+}

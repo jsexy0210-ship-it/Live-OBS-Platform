@@ -17,6 +17,7 @@ async function login(page: Page, baseURL: string) {
   expect(r.status()).toBe(200);
 }
 const cards = (page: Page) => page.locator(".ad-list .ad-card");
+const POSTCODE = "**/postcode.v2.js";
 
 test("비회원: 로그인 안내", async ({ page }) => {
   await page.goto(`/shop/${SLUG}/me/addresses`);
@@ -26,6 +27,7 @@ test("비회원: 로그인 안내", async ({ page }) => {
 });
 
 test("PC: 목록(기본 먼저)·기본 배송지로·수정·삭제 확인·기본 삭제 막힘·추가", async ({ page, baseURL }) => {
+  await page.route(POSTCODE, (route) => route.abort()); // 우편번호 서비스를 못 불러오는 경우: 직접 입력으로 바뀐다
   await resetAddressesInDb(SLUG, LOGIN, 3);
   await login(page, baseURL!);
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -75,8 +77,9 @@ test("PC: 목록(기본 먼저)·기본 배송지로·수정·삭제 확인·기
   await add.getByLabel("배송지 이름").fill("친구 집");
   await add.getByLabel("받는 분").fill("박별");
   await add.getByLabel("연락처").fill("01099998888");
-  await add.getByLabel("우편번호").fill("04524");
-  await add.getByLabel("주소*", { exact: true }).fill("서울 중구 세종대로 110");
+  await expect(add.getByText("주소 검색을 열지 못했어요. 우편번호와 주소를 직접 적어 주세요")).toBeVisible();
+  await add.getByLabel("우편번호", { exact: true }).fill("04524");
+  await add.getByLabel("기본 주소").fill("서울 중구 세종대로 110");
   await add.getByRole("button", { name: "저장" }).click();
   await expect(page.getByText("배송지를 추가했어요")).toBeVisible();
   await expect(cards(page)).toHaveCount(3);
@@ -111,3 +114,30 @@ for (const vp of [
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 }
+
+test("우편번호 찾기: 고르면 우편번호·기본 주소가 채워지고 읽기 전용, 상세 주소는 직접", async ({ page, baseURL }) => {
+  // 다음 우편번호 대신 같은 모양의 가짜 스크립트를 끼워 고르는 흐름만 확인한다(실제 서비스 호출은 로컬에서 못 함)
+  await page.route(POSTCODE, (route) =>
+    route.fulfill({
+      contentType: "application/javascript",
+      body: `window.daum = { Postcode: function (o) { this.open = function () { o.oncomplete({ zonecode: "04524", roadAddress: "서울 중구 세종대로 110", jibunAddress: "서울 중구 태평로1가 31", userSelectedType: "R", apartment: "N" }); }; } };`,
+    }),
+  );
+  await resetAddressesInDb(SLUG, LOGIN, 1);
+  await login(page, baseURL!);
+  await page.goto(`/shop/${SLUG}/me/addresses`);
+  await page.getByRole("button", { name: "새 배송지 추가" }).click();
+  const add = page.getByRole("form", { name: "새 배송지 추가" });
+  const find = add.getByRole("button", { name: "우편번호 찾기" });
+  await expect(find).toBeEnabled();
+  await expect(add.getByLabel("우편번호", { exact: true })).toHaveAttribute("readonly", "");
+  await find.click();
+  await expect(add.getByLabel("우편번호", { exact: true })).toHaveValue("04524");
+  await expect(add.getByLabel("기본 주소")).toHaveValue("서울 중구 세종대로 110");
+  await add.getByLabel("받는 분*").fill("박별");
+  await add.getByLabel("연락처").fill("01099998888");
+  await add.getByLabel("상세 주소").fill("5층");
+  await add.getByRole("button", { name: "저장" }).click();
+  await expect(page.getByText("배송지를 추가했어요")).toBeVisible();
+  await expect(cards(page).filter({ hasText: "서울 중구 세종대로 110, 5층 (04524)" })).toHaveCount(1);
+});
