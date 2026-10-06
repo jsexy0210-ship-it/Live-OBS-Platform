@@ -1,0 +1,92 @@
+/* SA-027 송장 발급 · SA-028 출력·추적: 5단계 띠, 상태 태그, 묶음 요약 표 */
+.inv-steps {
+  display: flex;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--cs-line);
+  background: var(--cs-surface);
+}
+.inv-steps li {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--wds-label-alternative);
+  border-right: 1px solid var(--cs-line);
+}
+.inv-steps li:last-child {
+  border-right: 0;
+}
+.inv-steps li.done {
+  color: var(--wds-primary-normal);
+  font-weight: 600;
+}
+.inv-steps li.now {
+  background: var(--wds-primary-normal);
+  color: #fff;
+  font-weight: 700;
+}
+@media (max-width: 720px) {
+  .inv-steps {
+    overflow-x: auto;
+  }
+  .inv-steps li {
+    flex: none;
+    white-space: nowrap;
+  }
+}
+.inv-tag {
+  display: inline-block;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 20px;
+  background: var(--wds-fill-alternative);
+  color: var(--wds-label-neutral);
+  white-space: nowrap;
+}
+.inv-tag.bl { background: #e6f0ff; color: var(--wds-primary-normal); }
+.inv-tag.r { background: #ffe9e9; color: #c4332b; }
+.inv-tag.y { background: #fff4d6; color: #8a6100; }
+.inv-tag.g { background: #e3f6ea; color: #1b7a43; }
+.inv-sum {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.inv-sum th,
+.inv-sum td {
+  padding: 8px 12px;
+  border: 1px solid var(--cs-line);
+  text-align: left;
+}
+.inv-sum th {
+  width: 150px;
+  background: var(--wds-fill-alternative);
+  font-weight: 600;
+}
+.inv-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--wds-fill-alternative);
+  overflow: hidden;
+}
+.inv-bar i {
+  display: block;
+  height: 100%;
+  background: var(--wds-primary-normal);
+}
+@media (max-width: 720px) {
+  .inv-sum,
+  .inv-sum tbody,
+  .inv-sum tr,
+  .inv-sum th,
+  .inv-sum td {
+    display: block;
+    width: 100%;
+  }
+  .inv-sum th {
+    border-bottom: 0;
+  }
+}

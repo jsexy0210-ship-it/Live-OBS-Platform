@@ -74,8 +74,14 @@ const MENU: Group[] = [
     items: [
       { label: "전체 주문", href: "/seller/orders", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
       { label: "입금 확인", href: "/seller/orders/deposits", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
-      // 송장 발급·출력·추적 화면이 생기면 이 항목의 탭으로 더한다
-      { label: "배송 · 송장", href: "/seller/shipping", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
+      {
+        label: "배송 · 송장",
+        tabs: [
+          { label: "배송 준비", href: "/seller/shipping", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
+          { label: "송장 발급", href: "/seller/shipping/invoices", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
+          { label: "출력 · 추적", href: "/seller/shipping/tracking", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
+        ],
+      },
       {
         label: "취소 · 교환 · 반품",
         tabs: [
