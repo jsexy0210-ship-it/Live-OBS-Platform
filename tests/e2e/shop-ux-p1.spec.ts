@@ -20,7 +20,7 @@ test("없는 상품 주소는 상품 단위 안내와 목록 링크를 보여 �
 test("로그인 뒤 뒤로 가기로 로그인 화면에 돌아오지 않고, 로그인 상태로 로그인 주소를 열면 건너뛴다", async ({ page }) => {
   await page.goto(`/shop/${SLUG}/products`);
   await page.goto(`/shop/${SLUG}/login?next=${encodeURIComponent(`/shop/${SLUG}/me`)}`);
-  await page.getByLabel("아이디(이메일)").fill(LOGIN);
+  await page.getByLabel("이메일").fill(LOGIN);
   await page.getByLabel("비밀번호").fill(PASSWORD);
   await page.getByRole("button", { name: "로그인" }).click();
   await expect(page).toHaveURL(new RegExp(`/shop/${SLUG}/me$`));

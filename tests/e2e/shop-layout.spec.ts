@@ -84,7 +84,7 @@ test.describe("PC 1440", () => {
     test.skip(!PASSWORD, "E2E_PASSWORD가 없으면 데모 구매자로 로그인할 수 없다");
     await page.goto(`/shop/${SLUG}/me`);
     await expect(page).toHaveURL(new RegExp(`/shop/${SLUG}/login\\?next=`));
-    await page.getByLabel("아이디(이메일)").fill("demo-buyer1@example.com");
+    await page.getByLabel("이메일").fill("demo-buyer1@example.com");
     await page.getByLabel("비밀번호").fill("wrong-password");
     await page.locator("form.shop-login").getByRole("button", { name: "로그인" }).click();
     await expect(page.locator("form.shop-login [role=alert]")).toBeVisible();
