@@ -180,13 +180,13 @@ function Form() {
                 </FormRow>
                 <FormRow label="제목" required htmlFor="iq-title">
                   <div className="col" style={{ gap: 4, width: "100%" }}>
-                    <input id="iq-title" className={`inp${err(errors.title) ? " is-error" : ""}`} style={{ width: "100%" }} maxLength={INQUIRY_TITLE_MAX + 5} aria-invalid={!!err(errors.title)} value={title} onChange={(e) => setTitle(e.target.value)} />
+                    <input id="iq-title" placeholder="제목" className={`inp${err(errors.title) ? " is-error" : ""}`} style={{ width: "100%" }} maxLength={INQUIRY_TITLE_MAX + 5} aria-invalid={!!err(errors.title)} value={title} onChange={(e) => setTitle(e.target.value)} />
                     {err(errors.title) ? <span className="err" role="alert">{errors.title}</span> : <span className="t-c1 c-alt num">{[...title].length} / {INQUIRY_TITLE_MAX}</span>}
                   </div>
                 </FormRow>
                 <FormRow label="문의 내용" required htmlFor="iq-body">
                   <div className="col" style={{ gap: 4, width: "100%" }}>
-                    <textarea id="iq-body" className={`inp${err(errors.body) ? " is-error" : ""}`} style={{ width: "100%", height: 200, padding: "10px 12px" }} maxLength={INQUIRY_BODY_MAX} aria-invalid={!!err(errors.body)} value={body} onChange={(e) => setBody(e.target.value)} />
+                    <textarea id="iq-body" placeholder="무슨 일이 있었는지, 언제 생겼는지 적어 주십시오" className={`inp${err(errors.body) ? " is-error" : ""}`} style={{ width: "100%", height: 200, padding: "10px 12px" }} maxLength={INQUIRY_BODY_MAX} aria-invalid={!!err(errors.body)} value={body} onChange={(e) => setBody(e.target.value)} />
                     {err(errors.body) ? <span className="err" role="alert">{errors.body}</span> : <span className="t-c1 c-alt num">{[...body].length} / {INQUIRY_BODY_MAX.toLocaleString("ko-KR")}</span>}
                   </div>
                 </FormRow>
