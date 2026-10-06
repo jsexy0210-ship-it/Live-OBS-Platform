@@ -97,7 +97,7 @@ test("목록 조건은 주소에 남아 새로고침·다른 화면 → Back에�
   await page.getByRole("button", { name: "검색" }).click();
   await expect(page).toHaveURL(/\/seller\/broadcasts\?from=2026-09-01&to=2026-10-01$/);
   await page.reload();
-  await expect(page.getByLabel("시작일")).toHaveValue("2026-09-01");
+  await expect(page.getByLabel("시작일")).toHaveValue("2026.09.01");
 });
 
 test("설정 폼: 바꾼 것이 있으면 메뉴 이동·브라우저 Back에서 묻고, 저장 안 한 채 나가기를 취소하면 머문다", async ({ page }) => {
@@ -111,10 +111,10 @@ test("설정 폼: 바꾼 것이 있으면 메뉴 이동·브라우저 Back에서
     void (answer ? d.accept() : d.dismiss());
   });
   await title.fill(`${await title.inputValue()}수정`);
-  await page.getByRole("link", { name: "주문 설정" }).first().click();
+  await page.getByRole("link", { name: "주문 · 배송 설정" }).first().click();
   await expect.poll(() => seen.length).toBe(1);
   await expect(page).toHaveURL(/\/seller\/settings\/shop$/);
   answer = true;
-  await page.getByRole("link", { name: "주문 설정" }).first().click();
+  await page.getByRole("link", { name: "주문 · 배송 설정" }).first().click();
   await expect(page).toHaveURL(/\/seller\/settings\/order$/);
 });
