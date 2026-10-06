@@ -86,11 +86,12 @@ test("상품 수정: 목록 → 수정 → 취소는 목록 조건으로 돌아�
 
 test("목록 조건은 주소에 남아 새로고침·다른 화면 → Back에서도 유지된다(적립금 원장 상태·방송 이력 기간)", async ({ page }) => {
   await login(page, "/seller/rewards/ledger");
-  await page.getByLabel("처리 상태").selectOption("SUCCEEDED");
+  await page.getByLabel("상태", { exact: true }).selectOption("SUCCEEDED");
   await page.getByRole("button", { name: "검색" }).click();
-  await expect(page).toHaveURL(/\/seller\/rewards\/ledger\?status=SUCCEEDED$/);
+  // 조건은 주소에 남는다(SA-032 개편 뒤에는 기본 기간 from·to도 함께 적힌다)
+  await expect(page).toHaveURL(/\/seller\/rewards\/ledger\?.*status=SUCCEEDED/);
   await page.reload();
-  await expect(page.getByLabel("처리 상태")).toHaveValue("SUCCEEDED");
+  await expect(page.getByLabel("상태", { exact: true })).toHaveValue("SUCCEEDED");
 
   await page.goto("/seller/broadcasts");
   await page.getByLabel("시작일").fill("2026-09-01");
