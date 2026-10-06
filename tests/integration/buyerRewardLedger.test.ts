@@ -60,7 +60,7 @@ describe("구매자 적립금 내역 GET /api/shop/{slug}/me/reward-ledger", () 
     expect(r.body.nextCursor).toBeNull();
     expect(r.body.items.map((i: { amount: number }) => i.amount)).toEqual([70, 500, -100, -300, 100]);
     expect(r.body.items.map((i: { type: string }) => i.type)).toEqual(["earn", "earn", "clawback", "use", "earn"]);
-    expect(r.body.items.map((i: { text: string }) => i.text)).toEqual(["운영 지급", "명예의 전당 1위 보너스", "주문 취소로 회수", "주문에 사용", "개봉 완료 적립 (골드 2%)"]);
+    expect(r.body.items.map((i: { text: string }) => i.text)).toEqual(["운영 조정", "명예의 전당 1위 보너스", "주문 취소로 회수", "주문에 사용", "개봉 완료 적립 (골드 2%)"]);
     expect(r.body.items[4].productSummary).toBe("부스터 팩 외 1");
     expect(r.body.items[1].productSummary).toBeNull();
     expect(Object.keys(r.body.items[0]).sort()).toEqual(["amount", "at", "id", "productSummary", "text", "type"]);

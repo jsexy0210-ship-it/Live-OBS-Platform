@@ -95,19 +95,17 @@ export async function listBuyerRewardLedger(db: PrismaClient, scope: Scope, quer
           text = "명예의 전당 1위 보너스";
           break;
         case "ADJUST_GRANT":
-          text = "운영 지급";
+        case "ADJUST_REVOKE":
+          text = "운영 조정";
           break;
         case "REVOKE":
           text = r.idempotencyKey.startsWith("review_revoke:") ? "리뷰 변경으로 회수" : "주문 취소로 회수";
-          break;
-        case "ADJUST_REVOKE":
-          text = "운영 회수";
           break;
         case "USE":
           text = r.amount > 0 ? "주문 취소로 돌려받음" : "주문에 사용";
           break;
         default:
-          text = `소멸 (${REWARD_EXPIRE_YEARS}년간 적립 없음)`;
+          text = `소멸(${REWARD_EXPIRE_YEARS}년간 적립 없음)`;
       }
       const s = r.order ? summary.get(r.order.id) : null;
       return {
