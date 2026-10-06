@@ -118,6 +118,16 @@ function PartnerDetail() {
                 </button>
               )}
               {s && (
+                <button className="btn btn-out" type="button" onClick={() => setQ({ tab: "notes" })}>
+                  메모
+                </button>
+              )}
+              {s && s.inquiryOpenCount > 0 && (
+                <Link className="btn btn-out" href={`/admin/support/inquiries?sellerId=${s.id}`}>
+                  문의 {s.inquiryOpenCount}건
+                </Link>
+              )}
+              {s && (
                 <Link className="btn btn-out" href={`/admin/billing/invoices?sellerId=${s.id}`}>
                   청구·결제 내역
                 </Link>
@@ -162,13 +172,15 @@ function PartnerDetail() {
               <span className="t-l2 c-alt">
                 쇼핑몰 주소 {s.slug}
                 {s.owner ? ` · 대표 ${s.owner.name}` : ""} · {day(s.createdAt)} 가입
+                {s.approvedAt ? ` · 승인 ${s.approvedBy ? s.approvedBy.name : "자동"}` : ""}
+                {s.assignedCs ? ` · 담당 CS ${s.assignedCs.name}` : ""}
               </span>
             </div>
             <nav className="tabs" aria-label="파트너스 정보 탭" style={{ overflowX: "auto", maxWidth: "100%" }}>
               {PARTNER_TABS.map(([k, label]) => (
                 <button key={k} type="button" className={`tab${tab === k ? " on" : ""}`} aria-pressed={tab === k} onClick={() => setQ({ tab: k })}>
                   {label}
-                  {k === "notes" && row && row.noteCount > 0 ? ` ${row.noteCount}` : ""}
+                  {k === "notes" && s.noteCount > 0 ? ` ${s.noteCount}` : ""}
                   {k === "pg" && row?.pg.status === "ERROR" ? " 오류" : ""}
                 </button>
               ))}
