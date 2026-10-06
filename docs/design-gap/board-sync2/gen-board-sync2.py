@@ -50,7 +50,7 @@ s = (src / 'MA-052.dc.html').read_text()
 s = rep(s, '진단 정보를 확인했습니다. 방송 화면 접속 기록에 15:02부터 재연결 시도가 10회 실패한 기록이 있고, 원인은 파트너스님 OBS 브라우저 소스의 URL이 2026.09.29 재발급 이전 주소로 남아 있기 때문입니다.',
         '진단 정보를 확인했습니다. 방송 화면 마지막 접속이 2026.09.29 14:50이고 그 뒤 접속이 없으며, 방송 화면 주소는 2026.09.29에 다시 만들어졌습니다. 파트너스님 OBS 브라우저 소스의 URL이 이전 주소로 남아 있는 것으로 보입니다.')
 s = rep(s, '<tr><th>방송 화면</th><td><span class="tag r">재연결 실패 10회</span></td></tr><tr><th>주소 재발급</th><td>2026.09.29 재발급 · OBS 미반영 의심</td></tr>',
-        '<tr><th>방송 화면</th><td><span class="tag r">마지막 접속 2026.09.29 14:50</span> 그 뒤 접속 없음</td></tr><tr><th>주소 다시 만듦</th><td>2026.09.29 · OBS 미반영 의심</td></tr>')
+        '<tr><th>방송 화면</th><td>마지막 접속 2026.09.29 14:50<br><span class="tag r">그 뒤 접속 없음</span></td></tr><tr><th>주소 다시 만듦</th><td>2026.09.29 · OBS 미반영 의심</td></tr>')
 old = ('<div class="sec-t">자동 진단</div><table class="lt"><thead><tr><th style="width: 70px">결과</th><th>내용</th></tr></thead><tbody>'
        '<tr><td><span class="tag r">실패</span></td><td class="l">방송 화면 토큰 불일치 (구 토큰 접속 시도)</td></tr>'
        '<tr><td><span class="tag g">정상</span></td><td class="l">실시간 서버 · 파트너스 지역</td></tr>'
