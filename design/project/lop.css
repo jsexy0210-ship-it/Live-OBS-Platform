@@ -1115,7 +1115,9 @@ select.inp{cursor:pointer}
 /* 2026-10-06 승인: 공통 페이지 이동. 기존 버튼·브랜드 토큰을 유지하고 탐색과 번호 그룹만 정렬한다. */
 .app .page-nav{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:12px;padding:12px 0;max-width:100%}
 .app .page-nav .page-arrows,.app .page-nav .page-numbers{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:4px;max-width:100%}
-.app .page-nav .b{min-width:40px;height:40px;padding:0 8px;font-size:14px;flex:none}
+.app .page-nav .b{min-width:40px;height:40px;padding:0 8px;font-size:14px;flex:none;margin:0}
 .app .page-nav .on{background:var(--shop,var(--c24-acc));border-color:var(--shop,var(--c24-acc));color:#fff;font-weight:700}
 .app .page-nav .b:disabled{opacity:.35;cursor:not-allowed}
 @media(max-width:767px){.app .page-nav{gap:8px}.app .page-nav .b{min-width:44px;height:44px}.app .page-nav .page-numbers{order:1;flex-basis:100%}.app .page-nav .mobile-extra{display:none}}
+
+.sh24.m .page-nav{gap:8px}.sh24.m .page-nav .b{min-width:44px;height:44px}.sh24.m .page-nav .page-numbers{order:1;flex-basis:100%}.sh24.m .page-nav .mobile-extra{display:none}
