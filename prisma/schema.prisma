@@ -3383,6 +3383,12 @@ enum PlatformInquiryCategory {
   FEATURE
   BUG
   OTHER
+  BROADCAST
+  PAYMENT_LINK
+  ORDER_REFUND
+  REWARD
+  SUBSCRIPTION_FEE
+  SHOP
 }
 
 // 답변 대기 → (마스터 답변) 답변 완료 → (파트너스 추가 문의) 답변 대기 … 마스터가 종료하면 끝(추가 문의 불가, 새 문의로).
@@ -3422,6 +3428,8 @@ model PlatformInquiry {
   // 「답변이 도움이 됐습니까?」 평가(true 도움됨 · false 아니요). 문의 전체에 한 번만, 마스터 답변이 있은 뒤.
   helpful               Boolean?
   helpfulAt             DateTime?               @db.Timestamptz(3)
+  // 방송 중 장애 등 급한 문의 표시(분류가 아니라 별도 표시)
+  urgent                Boolean                 @default(false)
   version               Int                     @default(0)
   createdAt             DateTime                @default(now()) @db.Timestamptz(3)
 
