@@ -14,6 +14,7 @@ import { recalcMonthlyGrades } from "../shop-member-grades/service";
 import { rejectExpiredSupplements } from "../sellers/applications";
 import { processDueMemberMessages } from "../shop-member-messages/service";
 import { collectInfraSnapshot } from "../ops/infra";
+import { evaluateInfraAlerts } from "../ops/infraAlerts";
 import { markInstanceRetired, purgeOldOpsEvents, purgeRetiredHeartbeats, recordHeartbeat, registerInstance } from "../ops/metrics";
 
 // 앱 안 정기 실행(MASTER 결정 2026-10-03: 외부 cron 대신). instrumentation.ts register(nodejs 런타임)에서 startScheduler를 부른다.
@@ -40,6 +41,8 @@ export const SCHEDULED_JOBS: ScheduledJob[] = [
   { name: "ops_event.purge_old", run: (tx, now) => purgeOldOpsEvents(tx, now) },
   // 서버 자원(디스크·메모리·CPU·DB) 스냅숏 저장, 35일 지난 것 삭제(ops/infra.ts)
   { name: "infra_snapshot.collect", run: (tx, now) => collectInfraSnapshot(tx, now) },
+  // 인프라 기준 초과·한도 정지·외부 연결 만료·인증 오류를 알림 센터에 올린다(최고관리자만, ops/infraAlerts.ts)
+  { name: "infra_alerts.evaluate", run: (tx, now) => evaluateInfraAlerts(tx, now) },
   // 발송 충전 대조·멈춘 예약 정리(messaging/jobs.ts). 이 작업이 최근에 성공해야 충전 기능을 켤 수 있다.
   { name: MESSAGE_JOB_NAME, run: (_tx, now) => runMessageJobs(prisma, now) },
   // 외부 쇼핑몰 연동(external/jobs.ts): 끝난 OAuth 시작 기록 삭제, 웹훅 원본 30일 삭제, 곧 만료되는 토큰 갱신(연동 키가 없으면 갱신은 건너뜀)

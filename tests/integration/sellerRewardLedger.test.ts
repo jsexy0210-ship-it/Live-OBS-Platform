@@ -77,6 +77,20 @@ describe("적립금 원장 GET /api/seller/reward-ledger", () => {
     for (const qs of ["?status=DONE", "?cursor=bad", "?limit=0", "?limit=x"]) expect((await list(s.cookie, qs)).status, qs).toBe(400);
   });
 
+  it("from·to는 한국 날짜 기준 생성일로 거른다(끝 날짜 포함). 하나만 줘도 되고, 잘못된 날짜·from>to는 400", async () => {
+    const s = await shop();
+    const a = await entry(s, { createdAt: new Date("2026-09-30T14:59:59Z") }); // 9/30 23:59 KST
+    const b = await entry(s, { createdAt: new Date("2026-09-30T15:00:00Z") }); // 10/1 00:00 KST
+    const c = await entry(s, { createdAt: new Date("2026-10-01T14:59:59Z") }); // 10/1 23:59 KST
+    const d = await entry(s, { createdAt: new Date("2026-10-01T15:00:00Z") }); // 10/2 00:00 KST
+    expect(ids((await list(s.cookie, "?from=2026-10-01&to=2026-10-01")).body)).toEqual([c.id, b.id]);
+    expect(ids((await list(s.cookie, "?from=2026-10-01")).body)).toEqual([d.id, c.id, b.id]);
+    expect(ids((await list(s.cookie, "?to=2026-09-30")).body)).toEqual([a.id]);
+    expect((await list(s.cookie, "?from=2026-13-40")).status).toBe(400);
+    expect((await list(s.cookie, "?from=10/1")).status).toBe(400);
+    expect((await list(s.cookie, "?from=2026-10-02&to=2026-10-01")).status).toBe(400);
+  });
+
   it("(createdAt, id) 커서로 끝까지 넘기면 같은 시각 줄도 빠짐·겹침 없이 모두 나온다", async () => {
     const s = await shop();
     const at = new Date("2026-10-01T00:00:00Z");

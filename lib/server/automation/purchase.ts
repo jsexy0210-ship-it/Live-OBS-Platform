@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { Prisma, type AutomationJob, type AutomationPayment, type PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
-import type { BillingProvider } from "../billing/provider";
+import type { AuthResult, PaymentGateway, PgCard, PgPayment } from "../payments/gateway";
+import type { BillingProvider, PaymentLookup } from "../billing/provider";
 import { openBillingKey } from "../billing/secret";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
 import {
@@ -87,6 +88,8 @@ type CommitPlan = {
   shopUrlGiven?: boolean;
   // 유료만: 금액
   amount?: number;
+  // 유료만: 결제 수단(기본 구독 카드 빌링키)
+  method?: AutomationPayment["method"];
 };
 
 // 작업 확정(유료 첫 연결·유료 재설치·무료 재연결 공통). 한 트랜잭션에서 순서대로:
@@ -100,7 +103,7 @@ async function commitJob(db: PrismaClient, ctx: TenantContext, plan: CommitPlan)
     const paid = plan.kind !== "RECONNECT_FREE";
     const payment = paid
       ? await tx.automationPayment.create({
-          data: { sellerId: ctx.sellerId, amount: plan.amount!, idempotencyKey: plan.key, requestFingerprint: plan.fingerprint, consentNoticeVersion: AUTOMATION_CONSENT.version, consentAgreedAt: now },
+          data: { sellerId: ctx.sellerId, amount: plan.amount!, method: plan.method ?? "BILLING_KEY", idempotencyKey: plan.key, requestFingerprint: plan.fingerprint, consentNoticeVersion: AUTOMATION_CONSENT.version, consentAgreedAt: now },
         })
       : null;
     let job = await tx.automationJob.create({
@@ -166,7 +169,7 @@ function consentProblem(consent: unknown): "consent_required" | "consent_outdate
 }
 
 // 요청 지문: 같은 Idempotency-Key가 같은 요청(종류·쇼핑몰 주소·재설치 대상)에서 온 재전송인지 가린다.
-export function requestFingerprint(kind: "INITIAL" | "REINSTALL" | "RECONNECT", shopUrl: unknown, target?: { shopKey: string; obsPairingId: string }): string {
+export function requestFingerprint(kind: "INITIAL" | "INITIAL_ONE_TIME" | "REINSTALL" | "RECONNECT", shopUrl: unknown, target?: { shopKey: string; obsPairingId: string }): string {
   const url = typeof shopUrl === "string" ? shopUrl.trim() : "";
   return createHash("sha256")
     .update(JSON.stringify([kind, url, target?.shopKey ?? null, target?.obsPairingId ?? null]))
@@ -194,6 +197,8 @@ type PaidJobInput = {
   // 유료 재설치: 커밋 직전 무료 재연결 판정을 다시 계산할 대상
   reconnectTarget?: ReconnectTarget;
   shopUrlGiven?: boolean;
+  // 「다른 카드로 결제」(일반 결제창): 저장 카드·빌링키를 쓰지 않고, 결제 행·작업 행만 만든 채 결제창 승인을 기다린다
+  oneTime?: boolean;
 };
 
 // 판매자 대표자가 자동 연결을 산다(110,000원). 같은 Idempotency-Key로 다시 오면 처음 결과를 돌려준다(결제·작업을 새로 만들지 않음).
@@ -213,7 +218,7 @@ export async function purchaseAutomation(
   });
 }
 
-async function buyPaidJob(db: PrismaClient, provider: BillingProvider, ctx: TenantContext, input: PaidJobInput): Promise<PurchaseResult> {
+async function buyPaidJob(db: PrismaClient, provider: BillingProvider | null, ctx: TenantContext, input: PaidJobInput): Promise<PurchaseResult> {
   requireSellerPermission(ctx, "SUBSCRIPTION_MANAGE");
   const key = input.idempotencyKey;
   if (typeof key !== "string" || !KEY_RE.test(key)) return { ok: false, reason: "bad_idempotency_key" };
@@ -228,9 +233,15 @@ async function buyPaidJob(db: PrismaClient, provider: BillingProvider, ctx: Tena
   const problem = consentProblem(input.consent);
   if (problem) return { ok: false, reason: problem };
 
-  const sub = await db.sellerSubscription.findUnique({ where: { sellerId: ctx.sellerId }, select: { billingKeyCipher: true } });
-  if (!sub?.billingKeyCipher) return { ok: false, reason: "card_required" };
-  const billingKey = openBillingKey(sub.billingKeyCipher, ctx.sellerId);
+  let billingKey = "";
+  if (input.oneTime) {
+    // 이전에 결제창을 열고 끝내지 않은 이번 한 번 결제(승인 요청 전)는 닫아 열린 작업 칸을 푼다. 늦게 인증이 와도 승인하지 않는다(돈이 움직이지 않음).
+    await abandonOneTimeAttempts(db, ctx.sellerId);
+  } else {
+    const sub = await db.sellerSubscription.findUnique({ where: { sellerId: ctx.sellerId }, select: { billingKeyCipher: true } });
+    if (!sub?.billingKeyCipher) return { ok: false, reason: "card_required" };
+    billingKey = openBillingKey(sub.billingKeyCipher, ctx.sellerId);
+  }
   const amount = input.kind === "INITIAL" ? AUTOMATION_PRICE : REINSTALL_PRICE;
 
   let created: { payment: AutomationPayment; job: AutomationJob };
@@ -245,6 +256,7 @@ async function buyPaidJob(db: PrismaClient, provider: BillingProvider, ctx: Tena
       target: input.reconnectTarget,
       shopUrlGiven: input.shopUrlGiven,
       amount,
+      method: input.oneTime ? "ONE_TIME_CARD" : "BILLING_KEY",
     });
     created = { payment: r.payment!, job: r.job };
   } catch (e) {
@@ -260,6 +272,9 @@ async function buyPaidJob(db: PrismaClient, provider: BillingProvider, ctx: Tena
     return { ok: false, reason: "job_in_progress", jobId: open?.id };
   }
 
+  // 일반 결제창은 브라우저 인증 결과(returnUrl)가 와야 승인한다. 여기서는 만들기만 한다.
+  if (input.oneTime) return view({ ...created.payment, job: created.job }, false);
+  if (!provider) throw new Error("billing_provider_required");
   // 여기서 멈춰도(결제 요청 전) 결제 요청 기록이 비어 있어 대사가 같은 청구 id로 보낸다
   await submitCharge(db, provider, created.payment.id, billingKey, null);
   // 조회도 실패하면 PENDING으로 두고 대사가 다시 묻는다
@@ -367,6 +382,11 @@ export async function verifyAndSettle(
 ): Promise<AutomationPayment["status"]> {
   // 결제 조회도 외부 호출 계약(callPort)을 거친다: 상한을 넘기면 던져(결제는 PENDING 그대로) 대사가 다음 회차에 다시 묻는다
   const found = valueOrThrow(await callPort(() => provider.getPayment(paymentId)));
+  return settleFound(db, paymentId, found, opts);
+}
+
+// PG(또는 결제창 승인)가 알려 준 결과를 결제·작업에 반영한다. 구독 카드(빌링키)·일반 결제창 모두 이 한 곳에서 확정한다.
+async function settleFound(db: PrismaClient, paymentId: string, found: PaymentLookup, opts: { notChargedAfterMs?: number; card?: PgCard } = {}): Promise<AutomationPayment["status"]> {
   return db.$transaction(async (tx) => {
     // 잠금 순서(작업 행 → 결제 행)대로 잡은 뒤의 실제 시각으로 마감을 판단한다(잠금 대기 중 흐른 시간 포함)
     const head = await tx.automationPayment.findUniqueOrThrow({ where: { id: paymentId }, select: { job: { select: { id: true } } } });
@@ -400,7 +420,10 @@ export async function verifyAndSettle(
 
     const claimed = await tx.automationPayment.updateMany({
       where: { id: paymentId, status: "PENDING" },
-      data: status === "PAID" ? { status, paidAt: now, providerPaymentId: found.status === "PAID" ? found.paymentId : null } : { status, failureReason },
+      data:
+        status === "PAID"
+          ? { status, paidAt: now, providerPaymentId: found.status === "PAID" ? found.paymentId : null, ...(opts.card ? { cardName: opts.card.name, cardLast4: opts.card.last4 } : {}) }
+          : { status, failureReason },
     });
     if (claimed.count !== 1) return (await tx.automationPayment.findUniqueOrThrow({ where: { id: paymentId } })).status;
 
@@ -481,7 +504,7 @@ export async function reconcileAutomationPayments(db: PrismaClient, provider: Bi
   const stale = await db.$queryRaw<{ id: string; sellerId: string }[]>`
     WITH picked AS MATERIALIZED (
       SELECT id FROM "AutomationPayment"
-      WHERE status = 'PENDING' AND "createdAt" <= ${cutoff} AND ("lastCheckedAt" IS NULL OR "lastCheckedAt" <= ${cutoff})
+      WHERE status = 'PENDING' AND method = 'BILLING_KEY' AND "createdAt" <= ${cutoff} AND ("lastCheckedAt" IS NULL OR "lastCheckedAt" <= ${cutoff})
       ORDER BY "lastCheckedAt" ASC NULLS FIRST, id ASC
       LIMIT 50
       FOR UPDATE SKIP LOCKED
@@ -505,4 +528,203 @@ export async function reconcileAutomationPayments(db: PrismaClient, provider: Bi
     if (status !== "PENDING") settled++;
   }
   return settled;
+}
+
+// ───── 다른 카드로 결제 (SA-151, 나이스페이 일반 결제창) ─────
+// 저장한 구독 카드(빌링키)를 바꾸지 않고 이번 한 번만 다른 카드로 결제한다. 카드 정보는 PG 결제창에서만 입력되고 우리는 카드사·끝 4자리만 기록한다.
+// 흐름: 시작(결제·작업 행 생성, 결제창 값 반환) → PG 인증 결과(returnUrl) → 서버 승인 → 서버가 결과를 확인한 트랜잭션에서만 작업 QUEUED(구독 카드 경로와 같은 settleFound).
+// 승인 응답을 못 받으면 PENDING으로 두고 대사(reconcileOneTimeAutomationPayments)가 거래 id로 PG에 묻는다.
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SYSTEM = { actorType: "SYSTEM" as const };
+
+export type OneTimeStartResult =
+  | { ok: true; jobId: string; paymentId: string; replayed: boolean; paymentStatus: AutomationPayment["status"]; window: { clientId: string; method: "card"; orderId: string; amount: number; goodsName: string } | null }
+  | { ok: false; reason: Failure; jobId?: string };
+
+export async function startOneTimeCardPurchase(
+  db: PrismaClient,
+  gw: PaymentGateway,
+  ctx: TenantContext,
+  input: { idempotencyKey: unknown; consent: unknown; shopUrl?: unknown },
+): Promise<OneTimeStartResult> {
+  const r = await buyPaidJob(db, null, ctx, {
+    ...input,
+    kind: "INITIAL",
+    oneTime: true,
+    shopHost: shopHostOf(input.shopUrl),
+    fingerprint: requestFingerprint("INITIAL_ONE_TIME", input.shopUrl),
+    resolvePlaybook: () => supportedPlaybookFor(db, input.shopUrl),
+  });
+  if (!r.ok) return r;
+  const p = await db.automationPayment.findFirstOrThrow({ where: { sellerId: ctx.sellerId, job: { is: { id: r.jobId } } } });
+  // 승인 요청이 이미 나간 결제(pgTid)·이미 확정된 결제에는 결제창을 다시 열어 주지 않는다
+  const open = p.status === "PENDING" && !p.pgTid;
+  return {
+    ok: true,
+    jobId: r.jobId,
+    paymentId: p.id,
+    replayed: r.replayed,
+    paymentStatus: p.status,
+    window: open ? { clientId: gw.clientId, method: "card", orderId: p.id, amount: p.amount, goodsName: AUTOMATION_ORDER_NAME } : null,
+  };
+}
+
+// 결제창을 열고 끝내지 않은 시도(승인 요청 전, pgTid 없음)를 실패로 닫고 작업도 닫는다. 승인 요청이 나간 결제는 건드리지 않는다.
+async function abandonOneTimeAttempts(db: PrismaClient, sellerId: string): Promise<void> {
+  const stale = await db.automationPayment.findMany({ where: { sellerId, method: "ONE_TIME_CARD", status: "PENDING", pgTid: null }, select: { id: true } });
+  for (const { id } of stale) await closeUnapproved(db, id, "window_abandoned");
+}
+
+// 승인 요청 전(pgTid 없음)인 결제를 실패로 닫는다. 이미 승인 요청이 나갔거나 확정된 결제는 바꾸지 않는다.
+async function closeUnapproved(db: PrismaClient, paymentId: string, reason: string): Promise<void> {
+  await db.$transaction(async (tx) => {
+    const head = await tx.automationPayment.findUnique({ where: { id: paymentId }, select: { job: { select: { id: true } } } });
+    if (head?.job) await lockJob(tx, head.job.id);
+    const now = await dbNow(tx);
+    const moved = await tx.automationPayment.updateMany({ where: { id: paymentId, method: "ONE_TIME_CARD", status: "PENDING", pgTid: null }, data: { status: "FAILED", failureReason: reason.slice(0, 200) } });
+    if (moved.count !== 1) return;
+    const job = await tx.automationJob.findFirst({ where: { paymentId, status: "AWAITING_PAYMENT" } });
+    if (job) {
+      await tx.automationJob.update({ where: { id: job.id }, data: { status: "FAILED", lastError: "payment_failed", finishedAt: now } });
+      await writeJobEvent(tx, job, "AWAITING_PAYMENT", "FAILED", job.fencingToken, { paymentStatus: "FAILED" });
+    }
+    const p = await tx.automationPayment.findUniqueOrThrow({ where: { id: paymentId }, select: { sellerId: true, amount: true } });
+    await writeAudit(tx, { ...SYSTEM, sellerId: p.sellerId, action: "automation.one_time_payment_failed", targetType: "AutomationPayment", targetId: paymentId, after: { reason, amount: p.amount } });
+  });
+}
+
+export type OneTimeOutcome = "paid" | "failed" | "pending";
+export type OneTimeConfirmResult = { ok: true; outcome: OneTimeOutcome; jobId: string | null; shopHost: string | null } | { ok: false; reason: "not_found" | "invalid_signature" };
+
+const outcomeOfStatus = (s: AutomationPayment["status"]): OneTimeOutcome => (s === "FAILED" ? "failed" : s === "PENDING" ? "pending" : "paid");
+
+// returnUrl로 받은 결제창 인증 결과. 세션 쿠키 없이 PG에서 넘어오므로 서명과 결제 행으로만 판단한다.
+export async function confirmOneTimeAuthResult(db: PrismaClient, gw: PaymentGateway, r: AuthResult): Promise<OneTimeConfirmResult> {
+  if (!UUID.test(r.orderId)) return { ok: false, reason: "not_found" };
+  const p = await db.automationPayment.findFirst({ where: { id: r.orderId, method: "ONE_TIME_CARD" }, include: { job: { select: { id: true, shopHost: true } } } });
+  if (!p) return { ok: false, reason: "not_found" };
+  const done = (outcome: OneTimeOutcome): OneTimeConfirmResult => ({ ok: true, outcome, jobId: p.job?.id ?? null, shopHost: p.job?.shopHost ?? null });
+  // 인증 실패 결과에는 서명이 없다. 서명 없는 값으로 상태를 바꾸지 않는다(결제는 PENDING 그대로, 다음 시도 때 닫힌다). 사유만 로그 추적에 남긴다.
+  if (r.authResultCode !== "0000") {
+    if (p.status === "PENDING" && !p.pgTid) {
+      console.warn("[automation-pay] auth failed", JSON.stringify({ paymentId: p.id, code: r.authResultCode.slice(0, 20), message: (r.authResultMsg ?? "").slice(0, 100) }));
+      await writeAudit(db, { ...SYSTEM, sellerId: p.sellerId, action: "automation.one_time_auth_failed", targetType: "AutomationPayment", targetId: p.id, after: { code: r.authResultCode.slice(0, 20), message: (r.authResultMsg ?? "").slice(0, 100) } }).catch(() => null);
+      return done("failed");
+    }
+    return done(outcomeOfStatus(p.status));
+  }
+  if (!gw.verifyAuthResult(r)) return { ok: false, reason: "invalid_signature" };
+  if (p.status !== "PENDING") return done(outcomeOfStatus(p.status));
+  if (!/^\d+$/.test(r.amount) || Number(r.amount) !== p.amount || !r.tid) {
+    await closeUnapproved(db, p.id, "amount_mismatch");
+    return done("failed");
+  }
+  return done(await approveOneTime(db, gw, p.id, r.tid));
+}
+
+// 승인을 잡고(pgTid 기록) PG에 승인을 요청한다. 같은 인증 결과가 다시 와도 승인은 한 번만 나간다.
+async function approveOneTime(db: PrismaClient, gw: PaymentGateway, paymentId: string, tid: string): Promise<OneTimeOutcome> {
+  const claimed = await db
+    .$transaction(async (tx) => {
+      const head = await tx.automationPayment.findUniqueOrThrow({ where: { id: paymentId }, select: { job: { select: { id: true } } } });
+      if (head.job) await lockJob(tx, head.job.id);
+      const now = await dbNow(tx);
+      const moved = await tx.automationPayment.updateMany({
+        where: { id: paymentId, method: "ONE_TIME_CARD", status: "PENDING", pgTid: null, job: { is: { status: "AWAITING_PAYMENT" } } },
+        data: { pgTid: tid, chargeSubmittedAt: now, chargeFirstSubmittedAt: now },
+      });
+      return moved.count === 1;
+    })
+    .catch((e) => {
+      // 같은 거래 id가 다른 결제에 이미 있다: 이 결제는 승인하지 않는다(인증만 된 거래는 돈이 움직이지 않는다)
+      if (isUniqueViolation(e)) return "duplicate" as const;
+      throw e;
+    });
+  if (claimed === "duplicate") {
+    await closeUnapproved(db, paymentId, "duplicate_payment");
+    return "failed";
+  }
+  const current = await db.automationPayment.findUniqueOrThrow({ where: { id: paymentId } });
+  if (!claimed) return outcomeOfStatus(current.status);
+
+  const res = await gw.approve({ tid, amount: current.amount });
+  if (res.kind === "ok") return applyApproved(db, gw, current, res.value);
+  if (res.kind === "rejected") return outcomeOfStatus(await settleFound(db, paymentId, { status: "FAILED", reason: res.code }));
+  // 승인 응답을 모름: 망 취소로 거둔다. 망 취소 결과도 모르면 PENDING으로 두고 대사가 거래 id로 확정한다.
+  const net = await gw.netCancel(paymentId);
+  if (net.kind === "ok") return outcomeOfStatus(await settleFound(db, paymentId, { status: "FAILED", reason: "approve_timeout" }));
+  return "pending";
+}
+
+// PG가 알려 준 거래를 결제에 반영한다(승인 응답·대사 조회 공통). 확인된 PAID만 작업을 대기열에 넣는다.
+async function applyApproved(db: PrismaClient, gw: PaymentGateway, p: AutomationPayment, pg: PgPayment): Promise<OneTimeOutcome> {
+  if (pg.tid !== p.pgTid || pg.orderId !== p.id) return outcomeOfStatus(await settleFound(db, p.id, { status: "FAILED", reason: "pg_mismatch" }));
+  if (pg.status === "ready") return "pending";
+  if (pg.status !== "paid") return outcomeOfStatus(await settleFound(db, p.id, { status: "FAILED", reason: `pg_${pg.status}` }));
+  if (pg.amount !== p.amount) {
+    // 서명은 맞는데 금액이 다르다: 결제를 인정하지 않고 PG 쪽 결제를 전액 취소한다
+    const c = await gw.cancel({ tid: pg.tid, cancelOrderId: `${p.id}-mismatch`, amount: pg.amount, partial: false, reason: "amount_mismatch" });
+    return outcomeOfStatus(await settleFound(db, p.id, { status: "FAILED", reason: c.kind === "ok" ? "amount_mismatch" : "amount_mismatch_cancel_unconfirmed" }));
+  }
+  const status = await settleFound(db, p.id, { status: "PAID", paymentId: pg.tid, receiptUrl: null }, { card: pg.card });
+  return outcomeOfStatus(status);
+}
+
+// 결과를 못 받은 일반 결제창 결제를 정리한다(작업자 반복에서 부른다). 확정한 건수를 돌려준다.
+// - 승인 요청이 나간 건(pgTid): PG에 거래 id로 묻는다. 결제됨 → 확정, 실패·취소 → 실패, 승인 대기(ready)가 30분 넘으면 망 취소 뒤 실패.
+// - 승인 요청 전(pgTid 없음)인 건: 결제창을 열고 끝내지 않은 것이라 30분이 지나면 실패로 닫는다.
+export async function reconcileOneTimeAutomationPayments(db: PrismaClient, gw: PaymentGateway, opts: { olderThanMs?: number; notChargedAfterMs?: number } = {}): Promise<number> {
+  const now = await dbNow(db);
+  const cutoff = new Date(now.getTime() - (opts.olderThanMs ?? AUTOMATION_LIMITS.reconcileAfterMs));
+  const stale = await db.$queryRaw<{ id: string }[]>`
+    WITH picked AS MATERIALIZED (
+      SELECT id FROM "AutomationPayment"
+      WHERE status = 'PENDING' AND method = 'ONE_TIME_CARD' AND "createdAt" <= ${cutoff} AND ("lastCheckedAt" IS NULL OR "lastCheckedAt" <= ${cutoff})
+      ORDER BY "lastCheckedAt" ASC NULLS FIRST, id ASC
+      LIMIT 50
+      FOR UPDATE SKIP LOCKED
+    )
+    UPDATE "AutomationPayment" p SET "lastCheckedAt" = clock_timestamp()
+    FROM picked WHERE p.id = picked.id
+    RETURNING p.id`;
+  const limit = opts.notChargedAfterMs ?? AUTOMATION_LIMITS.notChargedAfterMs;
+  let settled = 0;
+  for (const { id } of stale) {
+    try {
+      const p = await db.automationPayment.findUniqueOrThrow({ where: { id } });
+      if (p.status !== "PENDING") continue;
+      const age = now.getTime() - (p.chargeFirstSubmittedAt ?? p.createdAt).getTime();
+      let status: AutomationPayment["status"] = "PENDING";
+      if (!p.pgTid) {
+        if (age >= limit) {
+          await closeUnapproved(db, id, "window_abandoned");
+          status = (await db.automationPayment.findUniqueOrThrow({ where: { id } })).status;
+        }
+      } else {
+        const r = await gw.getPayment(p.pgTid);
+        if (r.kind === "ok") {
+          const o = await applyApproved(db, gw, p, r.value);
+          // 승인 대기(ready)로 30분이 지났다: 망 취소로 거두고 실패로 닫는다(늦게 결제되지 않게). 망 취소 결과를 모르면 다음 회차에 다시 한다.
+          if (o === "pending" && r.value.status === "ready" && age >= limit && (await gw.netCancel(id)).kind === "ok") await settleFound(db, id, { status: "FAILED", reason: "approve_timeout" });
+        } else if (r.kind === "rejected" && age >= limit) await settleFound(db, id, { status: "FAILED", reason: r.code });
+        status = (await db.automationPayment.findUniqueOrThrow({ where: { id } })).status;
+      }
+      if (status !== "PENDING") settled++;
+    } catch {
+      // 한 건이 실패해도 나머지는 계속 확인한다(이 건은 다음 회차)
+    }
+  }
+  return settled;
+}
+
+// 웹훅(거래 id)이 일반 결제창 결제에 해당하면 PG에 다시 확인해 반영한다. 해당하지 않으면 false.
+export async function reconcileOneTimeByTid(db: PrismaClient, gw: PaymentGateway, tid: string): Promise<boolean> {
+  const p = await db.automationPayment.findUnique({ where: { pgTid: tid } });
+  if (!p || p.method !== "ONE_TIME_CARD") return false;
+  if (p.status === "PENDING") {
+    const r = await gw.getPayment(tid);
+    if (r.kind === "ok") await applyApproved(db, gw, p, r.value);
+  }
+  return true;
 }

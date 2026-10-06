@@ -27,11 +27,14 @@ async function login(page: Page, email: string) {
 }
 
 async function saveOk(page: Page) {
+  await page.getByRole("button", { name: "저장", exact: true }).last().click();
+  const dialog = page.getByRole("dialog", { name: "적립 정책을 저장하시겠습니까?" });
+  await expect(dialog).toContainText("이미 지급한 적립금은 그대로입니다");
   await Promise.all([
     page.waitForResponse((r) => r.request().method() === "PUT" && r.url().includes("/api/seller/reward-policy") && r.ok()),
-    page.getByRole("button", { name: "저장", exact: true }).last().click(),
+    dialog.getByRole("button", { name: "저장", exact: true }).click(),
   ]);
-  await expect(page.getByText("적립금 지급 시점을 저장했습니다", { exact: false }).first()).toBeVisible();
+  await expect(page.getByText("적립 정책을 저장했습니다", { exact: false }).first()).toBeVisible();
 }
 
 test("적립금 지급 시점: 기본은 배송 완료 후, 결제하면 바로로 바꾸면 저장되고 다시 열어도 그대로다", async ({ page }) => {

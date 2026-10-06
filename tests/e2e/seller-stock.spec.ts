@@ -224,7 +224,7 @@ test("로그인이 풀린 뒤 재고를 바꾸면 로그인으로 보낸다", as
   await sheet.getByLabel("수량").fill("1");
   await sheet.getByRole("radio", { name: "서비스" }).click();
   await sheet.getByRole("button", { name: "1개 빼기" }).click();
-  await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fproducts%2Fstock$/);
+  await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fproducts%2Fstock&reason=expired$/);
 });
 
 test("체크한 옵션에 「+10」처럼 적으면 한꺼번에 더해 적어 준다", async ({ page }) => {
