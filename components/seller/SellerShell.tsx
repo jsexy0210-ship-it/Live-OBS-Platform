@@ -83,7 +83,7 @@ const MENU: Group[] = [
           { label: "교환 · 반품", href: "/seller/returns", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
         ],
       },
-      { label: "영수증 · 세금계산서", perm: "RECEIPT_TAX", plan: "FOLLOWUP" },
+      { label: "영수증 · 세금계산서", href: "/seller/orders/receipts", perm: "RECEIPT_TAX", plan: "FOLLOWUP" },
     ],
   },
   {
