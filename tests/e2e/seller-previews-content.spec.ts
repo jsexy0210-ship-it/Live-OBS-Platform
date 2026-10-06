@@ -73,8 +73,8 @@ test.describe("파트너스 미리보기: 입력 → 즉시 반영", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await ownerOpen(page, "/seller/banners/popups");
     await page.getByRole("button", { name: "팝업 추가" }).first().click();
-    const dialog = page.getByRole("dialog", { name: "팝업 추가" });
-    const pv = dialog.getByTestId("popup-preview");
+    const dialog = page.getByTestId("popup-editor");
+    const pv = page.getByTestId("popup-preview");
 
     // 글 팝업
     await dialog.getByRole("radio", { name: "글 팝업" }).click();
@@ -83,14 +83,15 @@ test.describe("파트너스 미리보기: 입력 → 즉시 반영", () => {
     await expect(pv.getByRole("heading", { name: "추석 배송 안내" })).toBeVisible();
     await expect(pv).toContainText("연휴에는 순서대로 보내요");
     await expect(pv.locator("a.btn")).toHaveCount(0);
-    await dialog.getByLabel("링크").fill("/signup");
+    await dialog.getByLabel("연결", { exact: true }).selectOption("custom");
+    await dialog.getByLabel("연결 주소").fill("/signup");
     await expect(pv.locator("a.btn")).toHaveText("자세히 보기");
     await dialog.getByLabel("버튼 이름").fill("가입하기");
     await expect(pv.locator("a.btn")).toHaveText("가입하기");
     await expect(pv.locator("a.btn")).toHaveAttribute("href", /\/shop\/[^/]+\/signup$/);
-    await dialog.getByLabel("다시 보지 않기").selectOption("7");
+    await dialog.getByRole("radio", { name: "7일 동안 보지 않기" }).click();
     await expect(pv).toContainText("7일 동안 보지 않기");
-    await dialog.getByLabel("다시 보지 않기").selectOption("0");
+    await dialog.getByRole("radio", { name: "닫기만 (매번 표시)" }).click();
     await expect(pv).not.toContainText("보지 않기");
     await pv.locator("a.btn").click();
     await expect(page).toHaveURL(/\/seller\/banners\/popups$/);
