@@ -1,21 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { PageHead, useConfirm } from "../../../../../../components/admin-ui";
+import { DateTimePicker } from "../../../../../../components/admin-ui/DatePicker";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../../components/seller/States";
 import { EventPopupBar, EventPopupCard, type EventPopupItem } from "../../../../../../components/shop/EventPopup";
 import { api } from "../../../../../../components/seller/api";
+import LinkPicker, { linkSummary } from "../_shared/LinkPicker";
 import {
-  ConfirmDelete,
-  ContentTabs,
-  DeviceSeg,
   GripIcon,
   ImagePicker,
-  LinkField,
-  PeriodFields,
   StateBox,
   StatusBadge,
-  StatusSummary,
   devicesText,
   errorText,
   fromKstInput,
@@ -31,8 +28,8 @@ import {
   type ContentStatus,
 } from "../_shared/ui";
 
-// SA-065 이벤트 팝업 관리(파트너스 관리자, 설정 › 배너 · 팝업). 형태(이미지 팝업·글 팝업·상단 띠), 기간, 노출 페이지(홈·전체),
-// 표시 기기, 「보지 않기」(오늘 하루·7일·닫기만), 미리보기, 노출 순서, 복제. 같은 화면에 여러 개가 걸리면 목록 순서대로 하나씩.
+// SA-065 이벤트 팝업 관리(파트너스 관리자, 마케팅 › 이벤트 팝업). 정본 design/project/SA-065.dc.html: 팝업 표(팝업 / 형태 / 노출 페이지 / 기간 / 기기 / 상태 / 관리) →
+// 같은 화면 아래 「팝업 수정」 입력 표 → 미리보기(모바일 홈) + 운영 규칙. 같은 화면에 여러 개가 걸리면 목록 순서대로 하나씩.
 // API: /api/seller/shop-content/popups.
 
 type Kind = "IMAGE" | "TEXT" | "BAR";
@@ -114,12 +111,11 @@ const toDraft = (p: Popup): Draft => ({
 const kindText = (k: Kind) => KINDS.find((x) => x.key === k)!;
 
 export default function PopupsPage() {
-  const { can } = useSeller();
+  const { can, me } = useSeller();
+  const { confirm } = useConfirm();
   const editable = can("SHOP_SETTINGS");
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number; error?: string } | { kind: "ok"; list: Popup[] }>({ kind: "loading" });
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [deleting, setDeleting] = useState<Popup | null>(null);
-  const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
 
   const load = useCallback(async () => {
@@ -141,41 +137,56 @@ export default function PopupsPage() {
     await load();
   });
 
-  const remove = async () => {
-    if (!deleting) return;
-    setBusy(true);
-    const r = await api(`/api/seller/shop-content/popups/${deleting.id}`, { method: "DELETE" });
-    setBusy(false);
-    setDeleting(null);
-    setToast(r.ok ? { text: "팝업을 삭제했습니다" } : { text: errorText(r, "삭제하지 못했습니다"), neg: true });
-    await load();
+  const remove = async (p: Popup) => {
+    await confirm({
+      title: "팝업을 삭제하시겠습니까?",
+      body: `「${p.title}」를 삭제합니다. 쇼핑몰에서 바로 사라지고 되돌릴 수 없습니다.`,
+      confirmLabel: "삭제",
+      danger: true,
+      run: async () => {
+        const r = await api(`/api/seller/shop-content/popups/${p.id}`, { method: "DELETE" });
+        if (!r.ok) return errorText(r, "삭제하지 못했습니다");
+        setDraft((d) => (d?.id === p.id ? null : d));
+        setToast({ text: "팝업을 삭제했습니다" });
+        await load();
+      },
+    });
   };
+
+  const n = (s: ContentStatus) => list.filter((p) => p.status === s).length;
+  const current = draft ? list.find((p) => p.id === draft.id) : undefined;
+  const others = list.filter((p) => p.status === "live" && p.id !== draft?.id);
 
   return (
     <>
-      <Topbar crumb="설정 › 배너 · 팝업 › 이벤트 팝업" />
+      <Topbar crumb="마케팅 › 이벤트 팝업" />
       <main className="main">
-        <ContentTabs active="popups" />
-        <div className="ph">
-          <div className="col" style={{ gap: 6 }}>
-            <h1 className="t-t3">이벤트 팝업 관리</h1>
-            <span className="t-l2 c-alt">쇼핑몰 방문자에게 띄우는 안내 · 이벤트 팝업 · 기간 · 노출 페이지 · 기기 · 「오늘 하루 보지 않기」 제어</span>
+        <PageHead
+          title="이벤트 팝업"
+          actions={
+            state.kind === "ok" && editable ? (
+              <button className="btn" type="button" disabled={list.length >= LIMIT} onClick={() => setDraft(empty)}>
+                팝업 추가
+              </button>
+            ) : undefined
+          }
+        />
+        {state.kind === "ok" && editable && list.length >= LIMIT && (
+          <div className="msg msg-cau" role="status">
+            <span>
+              <b>팝업은 {LIMIT}개까지 등록할 수 있습니다.</b> 종료된 팝업을 삭제하거나 기간을 조정해 주십시오.
+            </span>
           </div>
-          {state.kind === "ok" && editable && (
-            <button className="btn" type="button" disabled={list.length >= LIMIT} onClick={() => setDraft(empty)}>
-              팝업 추가
-            </button>
-          )}
-        </div>
+        )}
         {state.kind === "ok" && !editable && (
           <div className="msg msg-info" role="status">
             <span>목록만 볼 수 있습니다. 팝업 추가 · 수정은 대표자나 쇼핑몰 설정 권한이 있는 직원에게 요청해 주십시오.</span>
           </div>
         )}
-        <section className="card" style={{ overflow: "hidden" }}>
-          {state.kind === "loading" && <StateBox kind="loading" what="팝업" />}
-          {state.kind === "error" && <StateBox kind={stateKind(state.status, state.error)} what="팝업" onRetry={() => void load()} />}
-          {state.kind === "ok" && list.length === 0 && (
+        {state.kind === "loading" && <StateBox kind="loading" what="팝업" />}
+        {state.kind === "error" && <StateBox kind={stateKind(state.status, state.error)} what="팝업" onRetry={() => void load()} />}
+        {state.kind === "ok" && list.length === 0 && (
+          <section className="card" style={{ overflow: "hidden" }}>
             <div className="st" style={{ boxShadow: "none" }}>
               <div className="st-ic">+</div>
               <span className="t">등록한 팝업이 없습니다</span>
@@ -186,120 +197,142 @@ export default function PopupsPage() {
                 </button>
               )}
             </div>
-          )}
-          {state.kind === "ok" && list.length > 0 && <StatusSummary noun="팝업" unit="개" list={list} />}
-          {state.kind === "ok" && list.length > 0 && (
-            <ol className="sc-list" aria-label="팝업 순서" style={{ margin: 0, padding: 0, listStyle: "none" }}>
-              {list.map((p, i) => (
-                <li key={p.id} className="sc-row" {...rowProps(p.id, editable)} data-testid="popup-row">
-                  <span className="sc-grip" title={editable ? "끌어서 순서 변경" : undefined}>
-                    {editable && (
-                      <button type="button" aria-label={`${p.title} 위로`} disabled={i === 0} onClick={() => move(i, i - 1)}>
-                        ▲
-                      </button>
-                    )}
-                    <GripIcon />
-                    {editable && (
-                      <button type="button" aria-label={`${p.title} 아래로`} disabled={i === list.length - 1} onClick={() => move(i, i + 1)}>
-                        ▼
-                      </button>
-                    )}
-                  </span>
-                  {p.image ? <img className="sc-thumb" src={p.image.url} alt="" /> : <span className="sc-thumb t-c1">{kindText(p.kind).label}</span>}
-                  <span className="sc-meta">
-                    <span className="row" style={{ gap: 8 }}>
-                      <StatusBadge status={p.status} />
-                      <span className="t-l1 fw6 ell">{p.title}</span>
-                    </span>
-                    <span className="t-c1 c-alt">
-                      {kindText(p.kind).label} · {kindText(p.kind).desc} · {p.target === "HOME" ? "홈" : "전체 페이지"} · {devicesText(p)}
-                    </span>
-                    <span className="t-c1 c-alt num ell">
-                      {periodText(p.startsAt, p.endsAt)} · {DISMISS.find((d) => d.v === p.dismissDays)?.label}
-                    </span>
-                  </span>
-                  {editable && (
-                    <span className="sc-acts">
-                      <button className="btn btn-sm btn-out" type="button" onClick={() => setDraft(toDraft(p))}>
-                        수정
-                      </button>
-                      <button className="btn btn-sm btn-out" type="button" onClick={() => setDraft({ ...toDraft(p), id: null, title: `${p.title} 복사본`.slice(0, 40), isActive: false })}>
-                        복제
-                      </button>
-                      <button className="btn btn-sm btn-text" type="button" style={{ color: "var(--neg-text)" }} onClick={() => setDeleting(p)}>
-                        삭제
-                      </button>
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ol>
-          )}
-        </section>
-        {state.kind === "ok" && list.length > 0 && <span className="t-c1 c-alt">같은 페이지에는 한 번에 1개씩 표시 · 우선순위는 목록 순서 · 상단 띠는 맨 위 1개만</span>}
+          </section>
+        )}
+        {state.kind === "ok" && list.length > 0 && (
+          <>
+            <div className="sc-ltop">
+              <span className="t-c1 c-alt" data-testid="popup-summary">
+                팝업 {list.length}개{n("live") > 0 && ` · 게시 중 ${n("live")}`}
+                {n("scheduled") > 0 && ` · 예약 ${n("scheduled")}`}
+                {n("hidden") > 0 && ` · 숨김 ${n("hidden")}`}
+                {n("ended") > 0 && ` · 종료 ${n("ended")}`}
+              </span>
+            </div>
+            <div className="sc-tbl-wrap">
+              <table className="tbl sc-tbl">
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: "left" }}>팝업</th>
+                    <th style={{ width: 150 }}>형태</th>
+                    <th style={{ width: 100 }}>노출 페이지</th>
+                    <th style={{ width: 190 }}>기간</th>
+                    <th style={{ width: 90 }}>기기</th>
+                    <th style={{ width: 70 }}>상태</th>
+                    {editable && <th style={{ width: 150 }}>관리</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {list.map((p, i) => (
+                    <tr key={p.id} {...rowProps(p.id, editable)} data-testid="popup-row" className={draft?.id === p.id ? "is-sel" : undefined}>
+                      <td className="col-text">
+                        <span className="sc-ord">
+                          {editable && (
+                            <span className="sc-mv">
+                              <button type="button" aria-label={`${p.title} 위로`} disabled={i === 0} onClick={() => move(i, i - 1)}>
+                                ▲
+                              </button>
+                              <button type="button" aria-label={`${p.title} 아래로`} disabled={i === list.length - 1} onClick={() => move(i, i + 1)}>
+                                ▼
+                              </button>
+                            </span>
+                          )}
+                          <span className="c-alt" aria-hidden="true">
+                            <GripIcon />
+                          </span>
+                          <b className="ell">{p.title}</b>
+                        </span>
+                        <div className="t-c1 c-alt ell">{linkSummary(p.linkUrl)}</div>
+                      </td>
+                      <td>
+                        {kindText(p.kind).label} · {kindText(p.kind).desc}
+                      </td>
+                      <td>{p.target === "HOME" ? "홈" : "전체 페이지"}</td>
+                      <td className="num" style={{ whiteSpace: "nowrap" }}>
+                        {periodText(p.startsAt, p.endsAt)}
+                        <div className="t-c1 c-alt">{DISMISS.find((d) => d.v === p.dismissDays)?.label}</div>
+                      </td>
+                      <td>{devicesText(p)}</td>
+                      <td>
+                        <StatusBadge status={p.status} />
+                      </td>
+                      {editable && (
+                        <td>
+                          <div className="acts2">
+                            <button className="btn btn-sm btn-out" type="button" onClick={() => setDraft(toDraft(p))}>
+                              수정
+                            </button>
+                            <button className="btn btn-sm btn-out" type="button" onClick={() => setDraft({ ...toDraft(p), id: null, title: `${p.title} 복사본`.slice(0, 40), isActive: false })}>
+                              복제
+                            </button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <span className="t-c1 c-alt">같은 페이지에는 한 번에 1개씩 표시 · 우선순위는 목록 순서 · 상단 띠는 맨 위 1개만</span>
+          </>
+        )}
+        {draft && (
+          <PopupEditor
+            key={draft.id ?? "new"}
+            d={draft}
+            setD={setDraft as (fn: (v: Draft) => Draft) => void}
+            status={current?.status ?? null}
+            overlap={draft.isActive && others.length > 0 ? others[0].title : null}
+            onDelete={() => current && void remove(current)}
+            onClose={() => setDraft(null)}
+            onSaved={async (text) => {
+              setDraft(null);
+              setToast({ text });
+              await load();
+            }}
+          />
+        )}
+        {state.kind === "ok" && (
+          <div className="sc-two">
+            <div>
+              <div className="sc-sec-t">미리보기 · 모바일 홈</div>
+              <PreviewFrame className="sc-pv-popup" data-testid="popup-preview" id="popup-preview">
+                {draft ? <PopupPreview d={draft} slug={me.shop.slug} /> : <span className="t-c1 c-alt">팝업을 추가하거나 수정하면 여기에 표시됩니다</span>}
+              </PreviewFrame>
+              <span className="t-c1 c-alt">구매자 화면 문구는 해요체 그대로 표시 · 링크는 눌러도 이동하지 않음</span>
+            </div>
+            <div>
+              <div className="sc-sec-t">운영 규칙</div>
+              <table className="au-ft">
+                <tbody>
+                  <tr>
+                    <th>동시 노출</th>
+                    <td>페이지당 1개 · 목록 순서 우선 · 상단 띠는 맨 위 1개만</td>
+                  </tr>
+                  <tr>
+                    <th>권한</th>
+                    <td>대표자 · 쇼핑몰 설정 권한 직원</td>
+                  </tr>
+                  <tr>
+                    <th>기록</th>
+                    <td>추가 · 수정 · 숨김 · 삭제는 로그 추적에 남습니다</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </main>
-      {draft && (
-        <PopupEditor
-          draft={draft}
-          onClose={() => setDraft(null)}
-          onSaved={async (text) => {
-            setDraft(null);
-            setToast({ text });
-            await load();
-          }}
-        />
-      )}
-      {deleting && (
-        <ConfirmDelete title="팝업을 삭제하시겠습니까?" body={`「${deleting.title}」를 삭제합니다. 쇼핑몰에서 바로 사라지고 되돌릴 수 없습니다.`} busy={busy} onCancel={() => setDeleting(null)} onConfirm={() => void remove()} />
-      )}
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
     </>
   );
 }
 
-function PopupEditor({ draft: initial, onClose, onSaved }: { draft: Draft; onClose: () => void; onSaved: (text: string) => void }) {
-  const { me } = useSeller();
-  const [d, setD] = useState<Draft>(initial);
-  const [device, setDevice] = useState<"pc" | "mobile">("pc");
-  const [saving, setSaving] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
-  const { uploading, onBusy } = useUploading();
-  const set = (patch: Partial<Draft>) => setD((v) => ({ ...v, ...patch }));
-  const ready =
-    d.title.trim() !== "" &&
-    (d.kind !== "IMAGE" || !!d.image) &&
-    (d.kind !== "TEXT" || d.body.trim() !== "") &&
-    linkLooksOk(d.linkUrl) &&
-    !(d.startsAt && d.endsAt && d.startsAt >= d.endsAt);
-
-  const save = async () => {
-    if (uploading || !ready) return;
-    setSaving(true);
-    setFailure(null);
-    const body = {
-      kind: d.kind,
-      title: d.title,
-      body: d.kind === "BAR" ? null : d.body.trim() || null,
-      imageId: d.kind === "IMAGE" ? (d.image?.id ?? null) : null,
-      linkUrl: d.linkUrl.trim() || null,
-      linkLabel: d.kind === "BAR" ? null : d.linkLabel.trim() || null,
-      startsAt: fromKstInput(d.startsAt),
-      endsAt: fromKstInput(d.endsAt),
-      target: d.target,
-      showOnPc: d.showOnPc,
-      showOnMobile: d.showOnMobile,
-      dismissDays: d.dismissDays,
-      isActive: d.isActive,
-    };
-    const r = d.id ? await api(`/api/seller/shop-content/popups/${d.id}`, { method: "PUT", body }) : await api("/api/seller/shop-content/popups", { method: "POST", body });
-    setSaving(false);
-    if (!r.ok) return setFailure(errorText(r, "저장하지 못했습니다. 잠시 뒤 다시 시도해 주십시오"));
-    onSaved(d.id ? "팝업을 저장했습니다" : "팝업을 추가했습니다");
-  };
-
-  const shown = device === "pc" ? d.showOnPc : d.showOnMobile;
-  // 구매자 이벤트 팝업(EventPopup)의 띠·카드를 저장 전 입력값 그대로 그린다. 링크 버튼 문구가 비면 서버가 「자세히 보기」로 저장한다.
-  const link = previewLink(me.shop.slug, d.linkUrl);
+// 구매자 이벤트 팝업(EventPopup)의 띠·카드를 저장 전 입력값 그대로 그린다(모바일). 링크 버튼 문구가 비면 서버가 「자세히 보기」로 저장한다.
+function PopupPreview({ d, slug }: { d: Draft; slug: string }) {
+  const [hide, setHide] = useState(false);
+  if (!d.showOnMobile) return <span className="t-c1 c-alt">모바일에서는 표시하지 않음</span>;
+  const link = previewLink(slug, d.linkUrl);
   const item: EventPopupItem = {
     id: "preview",
     kind: d.kind,
@@ -313,130 +346,235 @@ function PopupEditor({ draft: initial, onClose, onSaved }: { draft: Draft; onClo
     dismissDays: d.dismissDays,
     version: "preview",
   };
-  const [hide, setHide] = useState(false);
+  return d.kind === "BAR" ? <EventPopupBar bar={item} onClose={() => undefined} /> : <EventPopupCard popup={item} hide={hide} onHide={setHide} onClose={() => undefined} />;
+}
+
+function PopupEditor({
+  d,
+  setD,
+  status,
+  overlap,
+  onDelete,
+  onClose,
+  onSaved,
+}: {
+  d: Draft;
+  setD: (fn: (v: Draft) => Draft) => void;
+  status: ContentStatus | null;
+  overlap: string | null;
+  onDelete: () => void;
+  onClose: () => void;
+  onSaved: (text: string) => void;
+}) {
+  const { confirm } = useConfirm();
+  const [failure, setFailure] = useState<string | null>(null);
+  const { uploading, onBusy } = useUploading();
+  const set = (patch: Partial<Draft>) => setD((v) => ({ ...v, ...patch }));
+  const badRange = !!d.startsAt && !!d.endsAt && d.startsAt >= d.endsAt;
+  const ready = d.title.trim() !== "" && (d.kind !== "IMAGE" || !!d.image) && (d.kind !== "TEXT" || d.body.trim() !== "") && linkLooksOk(d.linkUrl) && !badRange;
+
+  const save = async () => {
+    if (uploading || !ready) return;
+    setFailure(null);
+    await confirm({
+      title: d.id ? "팝업을 저장하시겠습니까?" : "팝업을 추가하시겠습니까?",
+      body: "쇼핑몰에 바로 반영됩니다.",
+      confirmLabel: d.id ? "저장" : "추가",
+      run: async () => {
+        const body = {
+          kind: d.kind,
+          title: d.title,
+          body: d.kind === "BAR" ? null : d.body.trim() || null,
+          imageId: d.kind === "IMAGE" ? (d.image?.id ?? null) : null,
+          linkUrl: d.linkUrl.trim() || null,
+          linkLabel: d.kind === "BAR" ? null : d.linkLabel.trim() || null,
+          startsAt: fromKstInput(d.startsAt),
+          endsAt: fromKstInput(d.endsAt),
+          target: d.target,
+          showOnPc: d.showOnPc,
+          showOnMobile: d.showOnMobile,
+          dismissDays: d.dismissDays,
+          isActive: d.isActive,
+        };
+        const r = d.id ? await api(`/api/seller/shop-content/popups/${d.id}`, { method: "PUT", body }) : await api("/api/seller/shop-content/popups", { method: "POST", body });
+        if (!r.ok) return errorText(r, "저장하지 못했습니다. 잠시 뒤 다시 시도해 주십시오");
+        onSaved(d.id ? "팝업을 저장했습니다" : "팝업을 추가했습니다");
+      },
+    });
+  };
 
   return (
-    <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="popup-edit-title">
-      <div className="modal modal-xl sc-modal">
-        <div className="modal-h">
-          <h2 className="t-h2" id="popup-edit-title">
-            {d.id ? "팝업 수정" : "팝업 추가"}
-          </h2>
-        </div>
-        {failure && (
-          <div className="msg msg-neg" role="alert">
-            <span>
-              <b>저장할 수 없습니다.</b> {failure}
-            </span>
-          </div>
+    <section aria-label={d.id ? "팝업 수정" : "팝업 추가"} data-testid="popup-editor">
+      <div className="sc-sec-t">
+        {d.id ? `팝업 수정 · ${d.title || "제목 없음"}` : "팝업 추가"}
+        {status && (
+          <span style={{ marginLeft: 8 }}>
+            <StatusBadge status={status} />
+          </span>
         )}
-        <div className="sc-edit">
-          <div className="col" style={{ gap: 16 }}>
-            <div className="fld">
-              <span className="lbl req" id="popup-kind-label">
-                형태
-              </span>
-              <div className="seg" role="radiogroup" aria-labelledby="popup-kind-label" style={{ alignSelf: "flex-start" }}>
-                {KINDS.map((k) => (
-                  <button key={k.key} type="button" role="radio" aria-checked={d.kind === k.key} className={d.kind === k.key ? "on" : ""} onClick={() => set({ kind: k.key })}>
-                    {k.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {d.kind === "IMAGE" && <ImagePicker onBusy={onBusy} label="이미지" recommend={{ width: 600, height: 600 }} value={d.image} onChange={(v) => set({ image: v })} />}
-            <div className="fld">
-              <label htmlFor="popup-title" className="req">
-                {d.kind === "IMAGE" ? "제목 (대체 텍스트)" : d.kind === "BAR" ? "띠 문구" : "제목"}
-              </label>
-              <input id="popup-title" className="inp" value={d.title} maxLength={40} onChange={(e) => set({ title: e.target.value })} placeholder="예: 10/4 토 20시 스타라이트 브레이크" />
-              <span className="help">구매자에게 보이는 글 · 해요체 · 40자</span>
-            </div>
-            {d.kind !== "BAR" && (
-              <div className="fld">
-                <label htmlFor="popup-body" className={d.kind === "TEXT" ? "req" : undefined}>
-                  내용
-                </label>
-                <textarea id="popup-body" className="inp" style={{ height: 88, padding: "10px 12px" }} value={d.body} maxLength={200} onChange={(e) => set({ body: e.target.value })} />
-                <span className="help">구매자에게 보이는 글 · 해요체 · 200자{d.kind === "IMAGE" ? " · 비우면 이미지만" : ""}</span>
-              </div>
-            )}
-            <LinkField value={d.linkUrl} onChange={(v) => set({ linkUrl: v })} />
-            {d.kind !== "BAR" && d.linkUrl.trim() && (
-              <div className="fld">
-                <label htmlFor="popup-link-label">버튼 이름</label>
-                <input id="popup-link-label" className="inp" value={d.linkLabel} maxLength={20} placeholder="자세히 보기" onChange={(e) => set({ linkLabel: e.target.value })} />
-                <span className="help">비우면 「자세히 보기」</span>
-              </div>
-            )}
-            <PeriodFields startsAt={d.startsAt} endsAt={d.endsAt} onChange={(v) => set(v)} />
-            <div className="sc-two">
-              <div className="fld">
-                <label htmlFor="popup-target">노출 페이지</label>
-                <select id="popup-target" className="inp" value={d.target} onChange={(e) => set({ target: e.target.value as Target })}>
-                  {TARGETS.map((t) => (
-                    <option key={t.key} value={t.key}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="fld">
-                <label htmlFor="popup-dismiss">다시 보지 않기</label>
-                <select id="popup-dismiss" className="inp" value={d.dismissDays} onChange={(e) => set({ dismissDays: Number(e.target.value) })}>
-                  {DISMISS.map((x) => (
-                    <option key={x.v} value={x.v}>
-                      {x.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <DeviceSeg value={d} onChange={(v) => set(v)} />
-            <div className="row between">
-              <span className="col" style={{ gap: 2 }}>
-                <span className="t-l1 fw6" id="popup-active-label">
-                  노출
-                </span>
-                <span className="t-c1 c-alt">끄면 기간과 관계없이 숨김</span>
-              </span>
-              <button className={`sw${d.isActive ? " on" : ""}`} type="button" role="switch" aria-checked={d.isActive} aria-labelledby="popup-active-label" onClick={() => set({ isActive: !d.isActive })} />
-            </div>
-          </div>
-          <div className="sc-preview">
-            <div className="row between">
-              <span className="t-hl2">미리보기</span>
-              <div className="seg" role="radiogroup" aria-label="미리보기 기기">
-                {(["pc", "mobile"] as const).map((k) => (
-                  <button key={k} type="button" role="radio" aria-checked={device === k} className={device === k ? "on" : ""} onClick={() => setDevice(k)}>
-                    {k === "pc" ? "PC" : "모바일"}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className={`sc-preview-stage is-${device}`} data-testid="popup-preview">
-              {!shown ? (
-                <span className="t-c1 c-alt" style={{ alignSelf: "center" }}>
-                  {device === "pc" ? "PC" : "모바일"}에서는 표시하지 않음
-                </span>
-              ) : (
-                <PreviewFrame className={d.kind === "BAR" ? "sc-pv-barwrap" : "sc-pv-popup"}>
-                  {d.kind === "BAR" ? <EventPopupBar bar={item} onClose={() => undefined} /> : <EventPopupCard popup={item} hide={hide} onHide={setHide} onClose={() => undefined} />}
-                </PreviewFrame>
-              )}
-            </div>
-            <span className="help">실제 쇼핑몰에 뜨는 모양으로 표시됩니다 · 링크는 눌러도 이동하지 않음</span>
-          </div>
-        </div>
-        <div className="modal-f">
-          <button className="btn btn-out" type="button" onClick={onClose} disabled={saving}>
-            취소
-          </button>
-          <button className="btn" type="button" onClick={() => void save()} disabled={!ready || saving || uploading}>
-            {saving ? "저장 중" : uploading ? "이미지 올리는 중" : "저장"}
-          </button>
-        </div>
       </div>
-    </div>
+      {failure && (
+        <div className="msg msg-neg" role="alert">
+          <span>{failure}</span>
+        </div>
+      )}
+      {overlap && (
+        <div className="msg msg-info" role="status">
+          <span>같은 페이지에 게시 중인 팝업이 있습니다. 「{overlap}」가 먼저 표시되고, 이 팝업은 그 뒤에 표시됩니다 · 순서를 바꾸려면 목록에서 끌어 주십시오</span>
+        </div>
+      )}
+      <table className="au-ft sc-ft">
+        <tbody>
+          <tr>
+            <th>
+              형태 <span className="sc-rq">*</span>
+            </th>
+            <td>
+              {KINDS.map((k) => (
+                <label key={k.key} className="sc-ck">
+                  <input type="radio" name="popup-kind" checked={d.kind === k.key} onChange={() => set({ kind: k.key })} />
+                  {k.label}
+                </label>
+              ))}
+            </td>
+          </tr>
+          {d.kind === "IMAGE" && (
+            <tr>
+              <th>
+                이미지 <span className="sc-rq">*</span>
+              </th>
+              <td>
+                <ImagePicker
+                  label="이미지"
+                  recommend={{ width: 600, height: 600 }}
+                  value={d.image}
+                  onChange={(v) => set({ image: v })}
+                  onBusy={onBusy}
+                  frame={{ width: 180, height: 180, hint: "칸을 누르거나 파일을 끌어다 놓으면 올라갑니다" }}
+                />
+              </td>
+            </tr>
+          )}
+          <tr>
+            <th>
+              <label htmlFor="popup-title">{d.kind === "IMAGE" ? "제목 (대체 텍스트)" : d.kind === "BAR" ? "띠 문구" : "제목"}</label> <span className="sc-rq">*</span>
+            </th>
+            <td>
+              <input id="popup-title" className="inp" style={{ maxWidth: 360 }} value={d.title} maxLength={40} onChange={(e) => set({ title: e.target.value })} />
+              <span className="help">구매자에게 보이는 글 · 해요체 · 40자</span>
+            </td>
+          </tr>
+          {d.kind !== "BAR" && (
+            <tr>
+              <th>
+                <label htmlFor="popup-body">내용</label> {d.kind === "TEXT" && <span className="sc-rq">*</span>}
+              </th>
+              <td>
+                <textarea id="popup-body" className="inp" style={{ maxWidth: 360, height: 88, padding: "10px 12px" }} value={d.body} maxLength={200} onChange={(e) => set({ body: e.target.value })} />
+                <span className="help">구매자에게 보이는 글 · 해요체 · 200자{d.kind === "IMAGE" ? " · 비우면 이미지만" : ""}</span>
+              </td>
+            </tr>
+          )}
+          <tr>
+            <th>
+              <label htmlFor="banner-link-kind">버튼</label>
+            </th>
+            <td>
+              <LinkPicker value={d.linkUrl} onChange={(v) => set({ linkUrl: v })} />
+            </td>
+          </tr>
+          {d.kind !== "BAR" && d.linkUrl.trim() && (
+            <tr>
+              <th>
+                <label htmlFor="popup-link-label">버튼 이름</label>
+              </th>
+              <td>
+                <input id="popup-link-label" className="inp" style={{ maxWidth: 240 }} value={d.linkLabel} maxLength={20} placeholder="자세히 보기" onChange={(e) => set({ linkLabel: e.target.value })} />
+                <span className="help">비우면 「자세히 보기」</span>
+              </td>
+            </tr>
+          )}
+          <tr>
+            <th>
+              <label htmlFor="popup-target">노출 페이지</label> <span className="sc-rq">*</span>
+            </th>
+            <td>
+              <select id="popup-target" className="inp" style={{ maxWidth: 200 }} value={d.target} onChange={(e) => set({ target: e.target.value as Target })}>
+                {TARGETS.map((t) => (
+                  <option key={t.key} value={t.key}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </td>
+          </tr>
+          <tr>
+            <th>표시 기기</th>
+            <td>
+              {(
+                [
+                  ["PC · 모바일", true, true],
+                  ["PC만", true, false],
+                  ["모바일만", false, true],
+                ] as const
+              ).map(([label, pc, mobile]) => (
+                <label key={label} className="sc-ck">
+                  <input type="radio" name="popup-device" checked={d.showOnPc === pc && d.showOnMobile === mobile} onChange={() => set({ showOnPc: pc, showOnMobile: mobile })} />
+                  {label}
+                </label>
+              ))}
+            </td>
+          </tr>
+          <tr>
+            <th>게시 기간 (KST)</th>
+            <td>
+              <span className="sc-period">
+                <DateTimePicker aria-label="시작 시각" value={d.startsAt} onChange={(v) => set({ startsAt: v })} />
+                <span className="c-alt">~</span>
+                <DateTimePicker aria-label="종료 시각" value={d.endsAt} onChange={(v) => set({ endsAt: v })} />
+              </span>
+              {badRange ? <span className="err">종료 시각은 시작 시각보다 늦어야 합니다</span> : <span className="help">비우면 바로 게시 · 종료를 비우면 상시 · 서버 시각 기준 자동 게시·숨김</span>}
+            </td>
+          </tr>
+          <tr>
+            <th>다시 보지 않기</th>
+            <td>
+              {DISMISS.map((x) => (
+                <label key={x.v} className="sc-ck">
+                  <input type="radio" name="popup-dismiss" checked={d.dismissDays === x.v} onChange={() => set({ dismissDays: x.v })} />
+                  {x.label}
+                </label>
+              ))}
+            </td>
+          </tr>
+          <tr>
+            <th />
+            <td>
+              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                <button className="btn" type="button" onClick={() => void save()} disabled={!ready || uploading}>
+                  {uploading ? "이미지 올리는 중" : "저장"}
+                </button>
+                <button className="btn btn-out" type="button" onClick={() => document.getElementById("popup-preview")?.scrollIntoView({ block: "center" })}>
+                  미리보기
+                </button>
+                <button className="btn btn-out" type="button" aria-pressed={!d.isActive} onClick={() => set({ isActive: !d.isActive })}>
+                  {d.isActive ? "숨기기" : "숨김 해제"}
+                </button>
+                <button className="btn btn-out" type="button" onClick={onClose}>
+                  닫기
+                </button>
+                {d.id && (
+                  <button className="btn btn-neg" type="button" onClick={onDelete}>
+                    팝업 삭제
+                  </button>
+                )}
+              </div>
+              {!d.isActive && <span className="help">숨김 상태로 저장되며 기간과 관계없이 표시되지 않습니다</span>}
+              {!ready && <span className="help">{d.kind === "IMAGE" ? "이미지 · " : ""}제목{d.kind === "TEXT" ? " · 내용" : ""}을 채우면 저장할 수 있습니다</span>}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
   );
 }

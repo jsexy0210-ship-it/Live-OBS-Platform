@@ -49,7 +49,7 @@
 | 인프라 전담 (2) | `session_013HzEF83eiqjaDFkjzVyUxD` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_016ErhcGpbBooDx8a9sYYUmK`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 개발 전담 (기반-결제) (3) | `session_01EendtbgjpxRCCNb1zxheAo` | 2026-10-06 09:52 KST MASTER 생성(Sonnet 5.5). (2)를 컨텍스트 64%로 교체. 첫 작업 SA-151 「다른 카드로 결제」 서버. 역할·소유는 전임 행과 같음 |
 | 개발 전담 (기반-결제) (2) | `session_018dHyuf6MTABkU1qXJgwHVm` | (교체됨 → `session_01EendtbgjpxRCCNb1zxheAo`, 2026-10-06) 2026-10-05 대표님 지시로 `session_012jhVJxoLMffGfwxWvcKJom`를 Sonnet 5.5로 교체. 역할은 전임과 같음 |
-| 도우미 전담 (3) | `session_018HDBKkX75yvKWWPHUTovLB` | 2026-10-06 00:48 KST MASTER 생성(Sonnet 5.5). 전임 (2)를 컨텍스트 77%로 교체. 인계 정본 PR #647 「인계」. 큐: UX 감사 도우미 몫 → 반품·환불 응답 orderNoLabel → shipment READY → refundedAmount 적립금 포함 여부 보고 |
+| 도우미 전담 (3) | `session_018HDBKkX75yvKWWPHUTovLB` | (큐 완료·보관, 2026-10-06 13:08 KST; 후임 미생성 — 보충 안내 메일 EM-102 교체·메일 변형·즉시 발송은 대표님 사업자 정보 입력·값 정의 뒤 새 세션) 2026-10-06 00:48 KST MASTER 생성(Sonnet 5.5). 전임 (2)를 컨텍스트 77%로 교체. 인계 정본 PR #647 「인계」. 큐: UX 감사 도우미 몫 → 반품·환불 응답 orderNoLabel → shipment READY → refundedAmount 적립금 포함 여부 보고 |
 | 도우미 전담 (2) | `session_01179Trx8rmw3gteLPm2YqPm` | (보관, → `session_018HDBKkX75yvKWWPHUTovLB`, 2026-10-06)  2026-10-05 대표님 지시로 `session_01LeAAUEjs1rJTq5gQptRN2S`를 Sonnet 5.5로 교체. 역할은 전임과 같음 |
 | 검수 전담 | `session_01MHJsYfiTFZ8VWkM3xVF7wM` | (교체됨 → `session_017wDPPy8EXzNu5zkAP2uu6R`, 2026-10-05)  모든 PR 독립 검수 · main 병합 · 후속 수정 배정 · 테스트 서버 배포 dispatch(승인은 대표님). 병합 기준은 `CLAUDE.md` 「마스터·전담 세션 운영」. 문서 PR은 만들지 않음. 2026-10-04 KST MASTER 생성 |
 | 개발 전담 (기반) (5) | `session_01N4xJrEzQvUuRHB8QzcQcKE` | (교체됨 → `session_014TjcA8RirjWptikziBwasM`, 2026-10-05)  (4)를 이어받음(2026-10-04). 마스터 관리자 서버 API(파트너스 목록·상세·정지, 구독·청구 조회, 대시보드, 관리자·로그), 이용 정지 「신규만 막기」. 마이그레이션 번호 20261004230000~. 소유는 (4)와 같음 |
