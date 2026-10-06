@@ -402,6 +402,8 @@ export async function settlePayment(
       await tx.sellerSubscription.update({ where: { id: sub.id }, data: { nextChargeAt } });
     } else if (payment.scheduled) {
       if (sub.status !== "PAST_DUE") {
+        // 연체 발생(MA-032 일별 집계가 감사 로그의 날짜별 건수를 쓴다)
+        await writeAudit(tx, { actorType: opts.actorType, actorId: opts.actorId, sellerId: payment.sellerId, action: "subscription.past_due", targetType: "SubscriptionPayment", targetId: payment.id, after: { amount: payment.amount } });
         nextChargeAt = after(now, RETRY_INTERVAL_MS);
         await tx.sellerSubscription.update({ where: { id: sub.id }, data: { status: "PAST_DUE", retryCount: 0, graceUntil: after(now, (await policyValue(tx, "overdueLockDays")) * DAY_MS), nextChargeAt } });
       } else {
@@ -412,6 +414,10 @@ export async function settlePayment(
       }
     } else {
       nextChargeAt = sub.nextChargeAt;
+    }
+    // 연체 중인 구독의 예약 재시도 한 번(성공·실패 모두). MA-032 일별 「재시도」 집계용
+    if (payment.scheduled && sub.status === "PAST_DUE") {
+      await writeAudit(tx, { actorType: opts.actorType, actorId: opts.actorId, sellerId: payment.sellerId, action: "subscription.payment_retry", targetType: "SubscriptionPayment", targetId: payment.id, after: { amount: payment.amount, paid: result.ok } });
     }
     await writeAudit(tx, {
       actorType: opts.actorType,
