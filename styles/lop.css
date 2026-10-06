@@ -540,6 +540,11 @@ select.inp[multiple]{padding-right:var(--ui-sp-12);background-image:none}
     grid-column: 1 / -1;
     white-space: normal;
   }
+  /* 값 칸 안의 버튼(값을 눌러 바로 고치는 칸 등)도 터치 44 */
+  .tbl[data-card-table] td[data-card-role="field"] button,
+  .tbl[data-card-table] td[data-card-role="field"] .btn {
+    min-height: var(--ui-hit-min);
+  }
   .tbl[data-card-table] td[data-empty]::after {
     content: "-";
     color: var(--wds-label-assistive);
