@@ -62,7 +62,10 @@ function elapsedText(o: OrderRow): { text: string; urgent: boolean } {
   if (o.status === "PENDING_PAYMENT" && o.paymentDueAt) {
     const left = new Date(o.paymentDueAt).getTime() - now;
     if (left <= 0) return { text: "입금 기한 지남", urgent: true };
-    const h = Math.max(1, Math.round(left / 3_600_000));
+    const min = Math.ceil(left / 60_000);
+    // 한 시간 안이면 분 단위로(입금 확인 화면과 같은 규칙)
+    if (min < 60) return { text: `입금 기한 ${Math.max(min, 1)}분 남음`, urgent: true };
+    const h = Math.floor(min / 60);
     return { text: h >= 24 ? `입금 기한 ${Math.floor(h / 24)}일 남음` : `입금 기한 ${h}시간 남음`, urgent: h < 6 };
   }
   const ago = Math.max(0, now - new Date(o.createdAt).getTime());
