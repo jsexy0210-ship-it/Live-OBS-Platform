@@ -148,6 +148,7 @@ function PartnerList() {
       <main className="main">
         <PageHead
           title="파트너스 목록"
+          description="검색 조건을 표 밖에 두고, 건수와 일괄 작업을 확인한 뒤 목록을 처리합니다."
           actions={
             <>
               <Link className="btn btn-out" href="/admin/partners/applications">
@@ -179,7 +180,16 @@ function PartnerList() {
           ))}
         </div>
         <SearchBox onSearch={search} onReset={reset} busy={state.kind === "loading"}>
-          <SearchRow label="검색어">
+          <SearchRow
+            label="검색어"
+            label2="상태"
+            children2={[["", "전체"], ...STATES.map((x) => [x, DISPLAY_STATUS[x].label])].map(([v, l]) => (
+              <label key={v} className="chk">
+                <input className="chkbox" type="radio" name="f-state" checked={draft.state === v} onChange={() => setDraft({ ...draft, state: v })} />
+                {l}
+              </label>
+            ))}
+          >
             <select className="inp" aria-label="검색 칸" value={draft.field} onChange={(e) => setDraft({ ...draft, field: e.target.value })}>
               {FIELDS.map(([v, l]) => (
                 <option key={v} value={v}>
@@ -189,15 +199,16 @@ function PartnerList() {
             </select>
             <input className="inp" type="search" aria-label="검색어" placeholder="검색어" maxLength={MAX_SEARCH_LENGTH} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
           </SearchRow>
-          <SearchRow label="상태">
-            {[["", "전체"], ...STATES.map((x) => [x, DISPLAY_STATUS[x].label])].map(([v, l]) => (
+          <SearchRow
+            label="구독"
+            label2="카드 결제 연결"
+            children2={[["", "전체"], ...PG_STATUS.map(([v, l]) => [v, l])].map(([v, l]) => (
               <label key={v} className="chk">
-                <input className="chkbox" type="radio" name="f-state" checked={draft.state === v} onChange={() => setDraft({ ...draft, state: v })} />
+                <input className="chkbox" type="radio" name="f-pg" checked={draft.pg === v} onChange={() => setDraft({ ...draft, pg: v })} />
                 {l}
               </label>
             ))}
-          </SearchRow>
-          <SearchRow label="구독">
+          >
             {[["", "전체"], ...PLAN_FILTER.map((p) => [p.code, p.label])].map(([v, l]) => (
               <label key={v} className="chk">
                 <input className="chkbox" type="radio" name="f-plan" checked={draft.plan === v} onChange={() => setDraft({ ...draft, plan: v })} />
@@ -205,15 +216,16 @@ function PartnerList() {
               </label>
             ))}
           </SearchRow>
-          <SearchRow label="카드 결제 연결">
-            {[["", "전체"], ...PG_STATUS.map(([v, l]) => [v, l])].map(([v, l]) => (
-              <label key={v} className="chk">
-                <input className="chkbox" type="radio" name="f-pg" checked={draft.pg === v} onChange={() => setDraft({ ...draft, pg: v })} />
-                {l}
-              </label>
-            ))}
-          </SearchRow>
-          <SearchRow label="기타">
+          <SearchRow label="기타" label2="최근 활동" children2={(
+            <select className="inp" aria-label="최근 활동" value={draft.active} onChange={(e) => setDraft({ ...draft, active: e.target.value })}>
+              <option value="">전체</option>
+              {ACTIVE.map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          )}>
             {(
               [
                 ["live", "방송 중만"],
@@ -229,16 +241,6 @@ function PartnerList() {
           </SearchRow>
           <SearchRow label="가입일">
             <DateRangePicker className="dt-sm" quick fromLabel="가입일 시작" toLabel="가입일 끝" from={draft.joinedFrom} to={draft.joinedTo} onChange={(r) => setDraft({ ...draft, joinedFrom: r.from, joinedTo: r.to })} />
-          </SearchRow>
-          <SearchRow label="최근 활동">
-            <select className="inp" aria-label="최근 활동" value={draft.active} onChange={(e) => setDraft({ ...draft, active: e.target.value })}>
-              <option value="">전체</option>
-              {ACTIVE.map(([v, l]) => (
-                <option key={v} value={v}>
-                  {l}
-                </option>
-              ))}
-            </select>
           </SearchRow>
         </SearchBox>
 
@@ -334,7 +336,9 @@ function PartnerList() {
                     </tbody>
                   </table>
                 </div>
-                <Pagination page={page} pageCount={Math.ceil(data.total / limit)} onChange={(n) => go({ page: String(n) })} />
+                <div style={{ maxWidth: "100%", overflowX: "auto" }}>
+                  <Pagination page={page} pageCount={Math.ceil(data.total / limit)} onChange={(n) => go({ page: String(n) })} />
+                </div>
               </>
             ))}
         </div>

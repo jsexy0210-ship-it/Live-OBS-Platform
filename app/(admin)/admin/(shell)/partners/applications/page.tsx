@@ -237,7 +237,10 @@ function Applications() {
   const canModerate = adminCan(me.role, "seller.moderate");
   const { applied, draft, setDraft, apply } = useListFilters(EMPTY);
   const tab = CHIPS.some(([k]) => k === applied.tab) ? applied.tab : "all";
+  const searchFilterKey = JSON.stringify([applied.q, applied.industry, applied.receivedFrom, applied.receivedTo]);
+  const hasSearchFilters = Boolean(applied.q || applied.industry || applied.receivedFrom || applied.receivedTo);
   const [state, setState] = useState<Load>({ kind: "loading" });
+  const [searchOpen, setSearchOpen] = useState(hasSearchFilters);
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -251,6 +254,10 @@ function Applications() {
   const reqId = useRef(0);
   const cursor = cursors[cursors.length - 1];
   const key = JSON.stringify({ ...applied, tab, cursor });
+
+  useEffect(() => {
+    if (hasSearchFilters) setSearchOpen(true);
+  }, [searchFilterKey, hasSearchFilters]);
 
   const load = useCallback(
     async (silent = false) => {
@@ -406,7 +413,7 @@ function Applications() {
     <>
       <AdminTopbar crumb="파트너스 › 가입 신청" />
       <main className="main">
-        <PageHead title="가입 신청" />
+        <PageHead title="가입 신청" description="목록에서 상태를 확인하고, 필요한 행이나 선택한 항목을 바로 처리합니다." />
         <div className="col" style={{ gap: 16 }}>
           {k && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }} data-testid="application-kpi">
@@ -424,34 +431,46 @@ function Applications() {
                 {data && ` ${data.chips[c]}`}
               </button>
             ))}
+            <button
+              type="button"
+              className="btn btn-sm btn-out"
+              aria-expanded={searchOpen}
+              aria-controls="application-search"
+              onClick={() => setSearchOpen((open) => !open)}
+              style={{ marginLeft: "auto" }}
+            >
+              상세 검색{hasSearchFilters ? " · 조건 적용 중" : ""} {searchOpen ? "접기" : "펼치기"}
+            </button>
           </div>
-          <SearchBox onSearch={search} onReset={reset} busy={state.kind === "loading"}>
-            <SearchRow label="접수일">
-              <input className="inp" type="date" aria-label="접수 시작일" value={draft.receivedFrom} onChange={(e) => setDraft({ ...draft, receivedFrom: e.target.value })} />
-              ~
-              <input className="inp" type="date" aria-label="접수 종료일" value={draft.receivedTo} onChange={(e) => setDraft({ ...draft, receivedTo: e.target.value })} />
-            </SearchRow>
-            <SearchRow label="업종">
-              <select className="inp" aria-label="업종" value={draft.industry} onChange={(e) => setDraft({ ...draft, industry: e.target.value })}>
-                <option value="">전체</option>
-                {(data?.industries ?? []).map((i) => (
-                  <option key={i} value={i}>
-                    {i}
-                  </option>
-                ))}
-              </select>
-            </SearchRow>
-            <SearchRow label="검색어">
-              <select className="inp" aria-label="검색 칸" value={draft.field} onChange={(e) => setDraft({ ...draft, field: e.target.value })}>
-                {FIELDS.map(([v, l]) => (
-                  <option key={v} value={v}>
-                    {l}
-                  </option>
-                ))}
-              </select>
-              <input className="inp" type="search" aria-label="검색어" placeholder="검색어" maxLength={MAX_SEARCH_LENGTH} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
-            </SearchRow>
-          </SearchBox>
+          <div id="application-search" hidden={!searchOpen}>
+            <SearchBox onSearch={search} onReset={reset} busy={state.kind === "loading"}>
+              <SearchRow label="접수일">
+                <input className="inp" type="date" aria-label="접수 시작일" value={draft.receivedFrom} onChange={(e) => setDraft({ ...draft, receivedFrom: e.target.value })} />
+                ~
+                <input className="inp" type="date" aria-label="접수 종료일" value={draft.receivedTo} onChange={(e) => setDraft({ ...draft, receivedTo: e.target.value })} />
+              </SearchRow>
+              <SearchRow label="업종">
+                <select className="inp" aria-label="업종" value={draft.industry} onChange={(e) => setDraft({ ...draft, industry: e.target.value })}>
+                  <option value="">전체</option>
+                  {(data?.industries ?? []).map((i) => (
+                    <option key={i} value={i}>
+                      {i}
+                    </option>
+                  ))}
+                </select>
+              </SearchRow>
+              <SearchRow label="검색어">
+                <select className="inp" aria-label="검색 칸" value={draft.field} onChange={(e) => setDraft({ ...draft, field: e.target.value })}>
+                  {FIELDS.map(([v, l]) => (
+                    <option key={v} value={v}>
+                      {l}
+                    </option>
+                  ))}
+                </select>
+                <input className="inp" type="search" aria-label="검색어" placeholder="검색어" maxLength={MAX_SEARCH_LENGTH} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
+              </SearchRow>
+            </SearchBox>
+          </div>
           <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
           <div className="card" style={{ flex: "1 1 560px", minWidth: 0 }}>
             {canModerate && picked.size > 0 && (

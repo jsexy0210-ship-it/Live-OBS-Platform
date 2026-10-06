@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import MyMenu from "./MyMenu";
 import ShopBack from "./ShopBack";
 import { call, md } from "./reviewShared";
+import { formatDate } from "../../lib/client/format";
 import "./Cart.css";
 import "./Help.css";
 import "./MyMenu.css";
@@ -24,10 +25,7 @@ const TABS: { key: Tab; label: string }[] = [
 ];
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 const signed = (n: number) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${won(Math.abs(n))}`;
-const kstMd = (iso: string) => {
-  const d = new Date(new Date(iso).getTime() + 9 * 3600_000);
-  return `${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일`;
-};
+const kstMd = (iso: string) => formatDate(iso);
 
 export default function RewardsView({ slug }: { slug: string }) {
   const base = `/shop/${encodeURIComponent(slug)}`;

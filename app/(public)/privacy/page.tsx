@@ -10,8 +10,9 @@ export default function PrivacyPage() {
       <section className="pf-sec pf-doc">
         <article className="pf-doc-body">
           <h1 className="t-t1">개인정보처리방침</h1>
-          <div className="msg msg-info t-l2" role="note" data-testid="privacy-pending">
-            아직 준비 중이에요. 정해지는 대로 이 페이지에서 알려 드려요.
+          <div className="msg msg-info t-l2" role="note" data-testid="privacy-pending" style={{ width: "100%", flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
+            <b>개인정보처리방침을 아직 준비 중이에요</b>
+            <span>준비되면 이 페이지에서 바로 볼 수 있어요. 궁금한 점은 고객센터로 물어봐 주세요.</span>
           </div>
         </article>
       </section>
