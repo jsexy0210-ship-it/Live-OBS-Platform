@@ -1,8 +1,19 @@
 /* SA-048 리뷰 관리 */
 .rv-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
-.rv-row{display:grid;grid-template-columns:minmax(0,1.2fr) 96px minmax(0,2.4fr) 110px auto;gap:12px;align-items:start;padding:14px 16px;box-shadow:inset 0 -1px 0 var(--wds-line-normal-alternative);cursor:pointer}
-.rv-row:hover{background:var(--wds-fill-alternative)}
+.rv-table-scroll{overflow-x:auto}
+.rv-table{width:100%;min-width:760px;border-collapse:collapse;table-layout:fixed;text-align:left}
+.rv-table th,.rv-table td{padding:12px 10px;vertical-align:top;border-bottom:1px solid var(--wds-line-normal-alternative)}
+.rv-table th{font-size:var(--ui-fs-dense);font-weight:600;color:var(--wds-label-neutral);white-space:nowrap}
+.rv-table th:nth-child(1){width:36px}.rv-table th:nth-child(2){width:220px}.rv-table th:nth-child(3){width:100px}.rv-table th:nth-child(5){width:90px}.rv-table th:nth-child(6){width:190px}
+.rv-table tbody tr:hover{background:var(--wds-fill-alternative)}
+.rv-select{width:36px;text-align:center}
+.rv-select input{width:16px;height:16px;margin:0}
+.rv-item,.rv-content{min-width:0}
+.rv-item>.ell,.rv-item>.t-c1,.rv-content>.rv-body,.rv-content>.t-c1{display:block}
+.rv-rating{white-space:nowrap}
 .rv-star{color:#f5a524;letter-spacing:1px;white-space:nowrap}
+.rv-content .t-c1{overflow-wrap:anywhere}
+.rv-actions .btn{white-space:nowrap;padding-inline:8px}
 .rv-body{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .rv-modal{max-height:calc(100vh - 40px);overflow:auto}
 .rv-imgs{display:flex;gap:8px;flex-wrap:wrap}
@@ -10,4 +21,12 @@
 .rv-dist{display:grid;grid-template-columns:32px minmax(0,1fr) 40px;gap:8px;align-items:center}
 .rv-bar{height:8px;border-radius:4px;background:var(--wds-fill-normal);overflow:hidden}
 .rv-bar>span{display:block;height:100%;background:#f5a524}
-@media (max-width:767px){.rv-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.rv-row{grid-template-columns:minmax(0,1fr) auto}.rv-row>.rv-hide-m{display:none}}
+@media (max-width:767px){
+  .rv-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .rv-table{min-width:0;table-layout:auto}
+  .rv-table thead{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  .rv-table tbody{display:block}
+  .rv-table tr{display:grid;grid-template-columns:24px minmax(0,1fr) auto;grid-template-areas:"select item status" "select rating status" "content content content" "actions actions actions";gap:4px 8px;padding:12px;border-bottom:1px solid var(--wds-line-normal-alternative)}
+  .rv-table td{display:block;padding:0;border:0;min-width:0}
+  .rv-select{grid-area:select}.rv-item{grid-area:item}.rv-rating{grid-area:rating}.rv-content{grid-area:content;margin-top:6px}.rv-status{grid-area:status;align-self:start}.rv-actions{grid-area:actions;justify-self:end;margin-top:6px;display:flex;gap:6px}
+}
