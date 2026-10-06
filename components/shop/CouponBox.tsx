@@ -1,8 +1,26 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import MyMenu from "./MyMenu";
 import ShopState from "./ShopState";
+import "./Cart.css";
 import "./CouponBox.css";
+import "./MyMenu.css";
+
+// 내 정보 공통 틀: 제목 + PC 왼쪽 메뉴(찜과 같은 구성, 보드 SH-028-IA)
+function Frame({ slug, children }: { slug: string; children: React.ReactNode }) {
+  return (
+    <div className="shop-wrap cart-wrap">
+      <div className="cart-head">
+        <h1>내 쿠폰함</h1>
+      </div>
+      <div className="my-wrap">
+        <MyMenu slug={slug} />
+        <div>{children}</div>
+      </div>
+    </div>
+  );
+}
 
 // SH-028 내 쿠폰함. 코드 등록(방송 채팅·문자로 받은 코드), 쓸 수 있어요 · 받을 수 있어요 · 지난 쿠폰 탭.
 // 쿠폰은 주문서에서 고르면 서버가 할인 금액을 계산한다(주문당 1장). API: /api/shop/{slug}/coupons.
@@ -128,30 +146,32 @@ export default function CouponBox({ slug }: { slug: string }) {
 
   if (view.kind === "loading") {
     return (
-      <section className="card shop-card" aria-busy="true">
-        <span className="t-l1 c-alt">쿠폰함을 불러오고 있어요</span>
-      </section>
+      <Frame slug={slug}>
+        <section aria-busy="true">
+          <span className="t-l1 c-alt">쿠폰함을 불러오고 있어요</span>
+        </section>
+      </Frame>
     );
   }
   if (view.kind === "login") return <ShopState title="로그인이 필요해요" body="이 쇼핑몰에 로그인하면 쿠폰함을 볼 수 있어요." />;
   if (view.kind === "error") {
     return (
-      <section className="card shop-card col" style={{ gap: 12 }}>
+      <Frame slug={slug}>
+      <section className="col" style={{ gap: 12 }}>
         <span className="t-l1">쿠폰함을 불러오지 못했어요</span>
         <button className="btn btn-sm" type="button" style={{ alignSelf: "flex-start" }} onClick={() => void load()}>
           다시 불러오기
         </button>
       </section>
+      </Frame>
     );
   }
 
   const { box } = view;
   const now = new Date(box.now).getTime();
   return (
-    <section className="card shop-card col cb" aria-labelledby="cb-title">
-      <h1 id="cb-title" className="t-h1">
-        내 쿠폰함
-      </h1>
+    <Frame slug={slug}>
+    <section className="col cb">
       {box.shopOpen && (
         <form
           className="col"
@@ -259,5 +279,6 @@ export default function CouponBox({ slug }: { slug: string }) {
           </ul>
         ))}
     </section>
+    </Frame>
   );
 }
