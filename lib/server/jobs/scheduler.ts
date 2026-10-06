@@ -10,6 +10,7 @@ import { externalProvider } from "../external/provider";
 import { MESSAGE_JOB_NAME, runMessageJobs } from "../messaging/jobs";
 import { purgeFunnelDaily, purgeFunnelSeen } from "../stats/funnel";
 import { recoverStuckBulkCommits } from "../shop-bulk-io/recover";
+import { settleAllLiveSellers } from "../rewards/settle";
 import { recalcMonthlyGrades } from "../shop-member-grades/service";
 import { rejectExpiredSupplements } from "../sellers/applications";
 import { sendDecisionMails } from "../sellers/decisionMails";
@@ -56,6 +57,8 @@ export const SCHEDULED_JOBS: ScheduledJob[] = [
   { name: "external_webhook_event.process", run: async (_tx, now) => (await processWebhookEvents(prisma, externalProvider(), { now })).processed },
   // 회원 등급 자동 재산정: 켠 쇼핑몰만, 쇼핑몰마다 달(KST)에 한 번(shop-member-grades)
   { name: "member_grade.recalc_monthly", run: (_tx, now) => recalcMonthlyGrades(prisma, now) },
+  // 실제 지급이 켜진 쇼핑몰의 대기 적립 원장 지급 처리(rewards/settle.ts, 회원 단위 트랜잭션·멱등)
+  { name: "reward.settle_pending", run: (_tx, now) => settleAllLiveSellers(prisma, now) },
   // 전환 단계 통계: 중복 제거 표 8일·일 집계 400일 지난 것 삭제(stats/funnel.ts)
   { name: "product_funnel_seen.purge_old", run: (tx, now) => purgeFunnelSeen(tx, now) },
   { name: "product_funnel_daily.purge_old", run: (tx, now) => purgeFunnelDaily(tx, now) },
