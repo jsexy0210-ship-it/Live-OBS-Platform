@@ -33,7 +33,6 @@ export default function MyInquiriesView({ slug }: { slug: string }) {
   const [view, setView] = useState<View>({ kind: "loading" });
   const [tab, setTab] = useState<Tab>("all");
   const [openId, setOpenId] = useState<string | null>(null);
-  const [writing, setWriting] = useState(false);
   const [done, setDone] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -83,9 +82,6 @@ export default function MyInquiriesView({ slug }: { slug: string }) {
               </button>
             ))}
           </div>
-          <button type="button" className="btn btn-sm" onClick={() => { setDone(null); setWriting(true); }}>
-            문의하기
-          </button>
         </div>
         {done && (
           <p className="cart-msg" role="status">
@@ -137,7 +133,7 @@ export default function MyInquiriesView({ slug }: { slug: string }) {
                       )}
                     </td>
                     <td>
-                      <span className={`mi-chip${answered ? " is-done" : ""}`}>{answered ? "답변 완료" : "답변 대기"}</span>
+                      <span className={`bdg ${answered ? "b-done" : "b-wait"}`}>{answered ? "답변 완료" : "답변 대기"}</span>
                     </td>
                     <td className="c-date">{md(i.createdAt)}</td>
                   </tr>
@@ -146,6 +142,14 @@ export default function MyInquiriesView({ slug }: { slug: string }) {
             </tbody>
           </table>
         )}
+        <WriteForm
+          api={api}
+          confirmAsk={confirm}
+          onSaved={() => {
+            setDone("문의를 등록했어요 · 답변은 알림톡으로 알려 드려요");
+            void load();
+          }}
+        />
       </>
     );
 
@@ -159,30 +163,18 @@ export default function MyInquiriesView({ slug }: { slug: string }) {
         <MyMenu slug={slug} />
         <div>{body}</div>
       </div>
-      {writing && (
-        <WriteForm
-          api={api}
-          confirmAsk={confirm}
-          onClose={() => setWriting(false)}
-          onSaved={() => {
-            setWriting(false);
-            setDone("문의를 등록했어요 · 답변은 알림톡으로 알려 드려요");
-            void load();
-          }}
-        />
-      )}
     </div>
   );
 }
 
 type Product = { id: string; name: string };
-function WriteForm({ api, confirmAsk, onClose, onSaved }: { api: string; confirmAsk: ReturnType<typeof useConfirm>["confirm"]; onClose: () => void; onSaved: () => void }) {
+function WriteForm({ api, confirmAsk, onSaved }: { api: string; confirmAsk: ReturnType<typeof useConfirm>["confirm"]; onSaved: () => void }) {
   const [kind, setKind] = useState<"PRODUCT" | "GENERAL">("PRODUCT");
   const [products, setProducts] = useState<Product[] | null>(null);
   const [productId, setProductId] = useState("");
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
-  const [priv, setPriv] = useState(false);
+  const [priv, setPriv] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [errs, setErrs] = useState<{ title?: string; text?: string; product?: string }>({});
@@ -212,80 +204,100 @@ function WriteForm({ api, confirmAsk, onClose, onSaved }: { api: string; confirm
     setErr(null);
     const r = await call(`${api}/inquiries`, { method: "POST", body: { kind, ...(kind === "PRODUCT" ? { productId } : {}), title: title.trim(), body: text.trim(), isPrivate: priv } });
     setBusy(false);
-    if (r.ok) onSaved();
-    else setErr(r.message ?? "문의를 등록하지 못했어요. 잠시 뒤 다시 해 주세요");
+    if (!r.ok) return setErr(r.message ?? "문의를 등록하지 못했어요. 잠시 뒤 다시 해 주세요");
+    setTitle("");
+    setText("");
+    setProductId("");
+    onSaved();
   }
 
   return (
-    <div className="shop-modal-bg" role="presentation" onClick={() => !busy && onClose()}>
-      <form className="shop-modal mi-form" role="dialog" aria-modal="true" aria-label="문의하기" onClick={(e) => e.stopPropagation()} onSubmit={submit} noValidate>
-        <div className="shop-modal-head">
-          <h2>문의하기</h2>
+    <form className="mi-box" onSubmit={submit} noValidate aria-labelledby="mi-form-h">
+      <h2 id="mi-form-h">문의하기</h2>
+      <div className="mi-rows">
+        <div className="mi-row">
+          <span className="mi-th" id="mi-kind-l">
+            종류
+          </span>
+          <div className="mi-td mi-radios" role="radiogroup" aria-labelledby="mi-kind-l">
+            <label className="chk">
+              <input type="radio" name="mi-kind" checked={kind === "PRODUCT"} onChange={() => setKind("PRODUCT")} />
+              상품 문의
+            </label>
+            <label className="chk">
+              <input type="radio" name="mi-kind" checked={kind === "GENERAL"} onChange={() => setKind("GENERAL")} />
+              1:1 문의 (주문 · 배송 · 기타)
+            </label>
+          </div>
         </div>
-        <fieldset className="mi-kind">
-          <legend>종류</legend>
-          <label className="chk">
-            <input type="radio" name="mi-kind" checked={kind === "PRODUCT"} onChange={() => setKind("PRODUCT")} />
-            상품 문의
-          </label>
-          <label className="chk">
-            <input type="radio" name="mi-kind" checked={kind === "GENERAL"} onChange={() => setKind("GENERAL")} />
-            1:1 문의 (주문 · 배송 · 기타)
-          </label>
-        </fieldset>
         {kind === "PRODUCT" && (
-          <div className="mi-field">
-            <label htmlFor="mi-product">대상</label>
-            <select id="mi-product" className="inp" value={productId} aria-invalid={!!errs.product} onChange={(e) => setProductId(e.target.value)}>
-              <option value="">{products === null ? "상품을 불러오고 있어요" : "상품을 골라 주세요"}</option>
-              {(products ?? []).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-            {errs.product && <span className="err" role="alert">{errs.product}</span>}
+          <div className="mi-row">
+            <label className="mi-th" htmlFor="mi-product">
+              대상
+            </label>
+            <div className="mi-td">
+              <select id="mi-product" className="inp" value={productId} aria-invalid={!!errs.product} onChange={(e) => setProductId(e.target.value)}>
+                <option value="">{products === null ? "상품을 불러오고 있어요" : "상품을 골라 주세요"}</option>
+                {(products ?? []).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+              {errs.product && (
+                <span className="mi-err" role="alert">
+                  {errs.product}
+                </span>
+              )}
+            </div>
           </div>
         )}
-        <div className="mi-field">
-          <label htmlFor="mi-title">
+        <div className="mi-row">
+          <label className="mi-th" htmlFor="mi-title">
             제목<i aria-hidden="true">*</i>
           </label>
-          <input id="mi-title" className="inp" maxLength={TITLE_MAX} value={title} aria-invalid={!!errs.title} onChange={(e) => setTitle(e.target.value)} />
-          {errs.title && <span className="err" role="alert">{errs.title}</span>}
+          <div className="mi-td">
+            <input id="mi-title" className="inp" maxLength={TITLE_MAX} placeholder="제목을 적어 주세요" value={title} aria-invalid={!!errs.title} onChange={(e) => setTitle(e.target.value)} />
+            {errs.title && (
+              <span className="mi-err" role="alert">
+                {errs.title}
+              </span>
+            )}
+          </div>
         </div>
-        <div className="mi-field">
-          <label htmlFor="mi-body">
+        <div className="mi-row">
+          <label className="mi-th" htmlFor="mi-body">
             내용<i aria-hidden="true">*</i>
           </label>
-          <textarea id="mi-body" className="inp" rows={6} maxLength={BODY_MAX} value={text} aria-invalid={!!errs.text} onChange={(e) => setText(e.target.value)} />
-          {errs.text && <span className="err" role="alert">{errs.text}</span>}
+          <div className="mi-td">
+            <textarea id="mi-body" className="inp" rows={5} maxLength={BODY_MAX} placeholder="궁금한 점을 적어 주세요 · 개인정보는 적지 마세요" value={text} aria-invalid={!!errs.text} onChange={(e) => setText(e.target.value)} />
+            {errs.text && (
+              <span className="mi-err" role="alert">
+                {errs.text}
+              </span>
+            )}
+          </div>
         </div>
-        <fieldset className="mi-kind">
-          <legend>공개</legend>
-          <label className="chk">
-            <input type="radio" name="mi-priv" checked={!priv} onChange={() => setPriv(false)} />
-            공개
-          </label>
-          <label className="chk">
-            <input type="radio" name="mi-priv" checked={priv} onChange={() => setPriv(true)} />
-            비공개 (작성자와 판매자만 봐요)
-          </label>
-        </fieldset>
-        {err && (
-          <p className="cart-msg is-err" role="alert">
-            {err}
-          </p>
-        )}
-        <div className="mi-actions">
-          <button type="button" className="btn btn-out" disabled={busy} onClick={onClose}>
-            취소
-          </button>
-          <button type="submit" className="btn" disabled={busy} aria-busy={busy}>
-            {busy ? "등록하고 있어요" : "문의 등록"}
-          </button>
+        <div className="mi-row">
+          <span className="mi-th">공개</span>
+          <div className="mi-td">
+            <label className="chk">
+              <input type="checkbox" checked={priv} onChange={(e) => setPriv(e.target.checked)} />
+              비공개 (작성자와 판매자만 봐요)
+            </label>
+          </div>
         </div>
-      </form>
-    </div>
+      </div>
+      {err && (
+        <p className="cart-msg is-err" role="alert">
+          {err}
+        </p>
+      )}
+      <div className="mi-actions">
+        <button type="submit" className="btn" disabled={busy} aria-busy={busy}>
+          {busy ? "등록하고 있어요" : "문의 등록"}
+        </button>
+      </div>
+    </form>
   );
 }

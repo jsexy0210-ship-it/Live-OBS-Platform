@@ -47,8 +47,8 @@ test("PC: 탭 개수·표·답변 보기·비공개 표시, 문의하기(검사 
   await tabs.getByRole("tab", { name: /^전체/ }).click();
 
   // 문의하기: 빈 칸 검사 → 1:1 문의 등록
-  await page.getByRole("button", { name: "문의하기" }).click();
-  const form = page.getByRole("dialog", { name: "문의하기" });
+  const form = page.locator("form.mi-box");
+  await expect(form.getByRole("heading", { name: "문의하기" })).toBeVisible();
   await form.getByRole("button", { name: "문의 등록" }).click();
   await expect(form.getByText("문의할 상품을 골라 주세요")).toBeVisible();
   await expect(form.getByText("제목을 적어 주세요")).toBeVisible();
@@ -56,7 +56,7 @@ test("PC: 탭 개수·표·답변 보기·비공개 표시, 문의하기(검사 
   await form.getByLabel("1:1 문의 (주문 · 배송 · 기타)").check();
   await form.getByLabel(/^제목/).fill("문의e2e-새 문의");
   await form.getByLabel(/^내용/).fill("배송지를 바꾸고 싶어요");
-  await form.getByLabel("비공개 (작성자와 판매자만 봐요)").check();
+  await expect(form.getByLabel("비공개 (작성자와 판매자만 봐요)")).toBeChecked(); // 보드: 처음부터 비공개
   await form.getByRole("button", { name: "문의 등록" }).click();
   await okConfirm(page, "등록하기");
   await expect(page.getByText("문의를 등록했어요 · 답변은 알림톡으로 알려 드려요")).toBeVisible();
@@ -86,10 +86,7 @@ for (const vp of [
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.mouse.move(0, 0);
     await page.waitForTimeout(500);
-    await page.screenshot({ path: `tests/e2e/screenshots/SH-026-inquiries-${vp.name}.png` });
-    await page.getByRole("button", { name: "문의하기" }).click();
-    await expect(page.getByRole("dialog", { name: "문의하기" })).toBeVisible();
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await page.screenshot({ path: `tests/e2e/screenshots/SH-026-inquiry-form-${vp.name}.png` });
+    await expect(page.locator("form.mi-box")).toBeVisible();
+    await page.screenshot({ path: `tests/e2e/screenshots/SH-026-inquiries-${vp.name}.png`, fullPage: true });
   });
 }
