@@ -12,7 +12,8 @@ type Db = PrismaClient | Prisma.TransactionClient;
 
 export const INFRA_SNAPSHOT_RETENTION_DAYS = 35;
 // 신호 기준(마스터 관리자 홈 「오늘 처리할 일」·알림에 올릴 때 쓴다)
-export const INFRA_THRESHOLDS = { diskPct: 80, memPct: 90, dbConnPct: 80, backupMaxAgeHours: 36 } as const;
+// 디스크·메모리·CPU·DB 연결은 80% 경고, 90% 위험(MA-120 정본). 백업은 36시간 경고, 72시간 위험.
+export const INFRA_THRESHOLDS = { warnPct: 80, criticalPct: 90, backupMaxAgeHours: 36 } as const;
 
 export type InfraMeasure = {
   takenAt: Date;
@@ -108,20 +109,24 @@ export async function collectInfraSnapshot(db: Db, now: Date): Promise<number> {
   return 1;
 }
 
-export type InfraSignal = { key: "disk" | "memory" | "dbConnections" | "backupStale"; level: "warning" | "critical"; value: number; threshold: number };
+export type InfraSignal = { key: "disk" | "memory" | "cpu" | "dbConnections" | "backupStale"; level: "warning" | "critical"; value: number; threshold: number };
 
 const pct = (used: number | null, total: number | null) => (used !== null && total ? Math.round((used / total) * 1000) / 10 : null);
 
-// 기준 초과 신호: 디스크 80%·메모리 90%·DB 연결 80%·마지막 백업 36시간 초과. critical은 기준 +10%p(백업은 기준의 2배) 이상.
+// CPU 사용률 = 1분 부하 ÷ 코어 수(%)
+const cpuPct = (m: Pick<InfraMeasure, "load1" | "cpuCount">) => (m.load1 !== null && m.cpuCount ? Math.round((m.load1 / m.cpuCount) * 1000) / 10 : null);
+
+// 기준 초과 신호: 디스크·메모리·CPU·DB 연결 80% 경고·90% 위험, 마지막 백업 36시간 경고·72시간 위험.
 export function infraSignals(m: InfraMeasure): InfraSignal[] {
   const out: InfraSignal[] = [];
   const check = (key: InfraSignal["key"], value: number | null, threshold: number, criticalAt: number) => {
     if (value !== null && value >= threshold) out.push({ key, level: value >= criticalAt ? "critical" : "warning", value, threshold });
   };
   const t = INFRA_THRESHOLDS;
-  check("disk", pct(m.diskUsedBytes, m.diskTotalBytes), t.diskPct, Math.min(t.diskPct + 10, 100));
-  check("memory", pct(m.memUsedBytes, m.memTotalBytes), t.memPct, Math.min(t.memPct + 5, 100));
-  check("dbConnections", pct(m.dbConnections, m.dbMaxConnections), t.dbConnPct, Math.min(t.dbConnPct + 10, 100));
+  check("disk", pct(m.diskUsedBytes, m.diskTotalBytes), t.warnPct, t.criticalPct);
+  check("memory", pct(m.memUsedBytes, m.memTotalBytes), t.warnPct, t.criticalPct);
+  check("cpu", cpuPct(m), t.warnPct, t.criticalPct);
+  check("dbConnections", pct(m.dbConnections, m.dbMaxConnections), t.warnPct, t.criticalPct);
   if (m.backupLastAt) {
     const ageH = Math.round(((m.takenAt.getTime() - m.backupLastAt.getTime()) / 3_600_000) * 10) / 10;
     check("backupStale", ageH, t.backupMaxAgeHours, t.backupMaxAgeHours * 2);
@@ -142,7 +147,7 @@ export async function infraStatus(db: PrismaClient, opts: { now?: Date; snapshot
     instance: v.instance,
     disk: { totalBytes: v.diskTotalBytes, usedBytes: v.diskUsedBytes, usedPct: pct(v.diskUsedBytes, v.diskTotalBytes) },
     memory: { totalBytes: v.memTotalBytes, usedBytes: v.memUsedBytes, usedPct: pct(v.memUsedBytes, v.memTotalBytes) },
-    cpu: { count: v.cpuCount, load1: v.load1 },
+    cpu: { count: v.cpuCount, load1: v.load1, usedPct: cpuPct(v) },
     db: { sizeBytes: v.dbSizeBytes, connections: v.dbConnections, maxConnections: v.dbMaxConnections, connectionsPct: pct(v.dbConnections, v.dbMaxConnections) },
     backup: { lastAt: iso(v.backupLastAt), count: v.backupCount, totalBytes: v.backupBytes },
   });
