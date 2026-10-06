@@ -377,7 +377,7 @@ function NewMessage({ onDone }: { onDone: (text: string) => void | Promise<void>
   const [error, setError] = useState<{ text: string; suggestedAt?: string } | null>(null);
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
-  useUnsavedGuard(!!title.trim() || !!body.trim());
+  const releaseDraftGuard = useUnsavedGuard(!!title.trim() || !!body.trim());
 
   useEffect(() => {
     void api<{ grades: Grade[] }>("/api/seller/member-grades").then((r) => r.ok && setGrades(r.data.grades));
@@ -428,6 +428,7 @@ function NewMessage({ onDone }: { onDone: (text: string) => void | Promise<void>
     setBusy(false);
     setConfirm(false);
     if (!r.ok) return setError({ text: errorText(r, "저장하지 못했습니다. 잠시 뒤 다시 시도해 주십시오"), suggestedAt: (r.body?.suggestedAt as string | undefined) });
+    await releaseDraftGuard();
     setTitle("");
     setBody("");
     await onDone(r.data.message.status === "SCHEDULED" ? (r.data.rescheduled ? `광고성 시간이 아니라 ${kstText(r.data.message.scheduledAt ?? "").slice(5, 16)}에 예약했습니다` : "예약했습니다") : `${r.data.message.recipientCount}명 발송을 기록했습니다 · 실제 발송 전`);

@@ -159,3 +159,24 @@ test("새 발송 draft는 취소한 이동과 패널 전환에서 보존", async
   await page.locator(".lnb").getByRole("link", { name: "새 발송", exact: true }).click();
   await expect(title).toHaveValue("저장 전 초안");
 });
+
+test("발송 성공 뒤 Back은 빈 새 발송 대신 원래 이전 페이지로 돌아간다", async ({ page }) => {
+  await fixture(page);
+  await page.route("**/api/seller/member-messages/preview", (route) => route.fulfill({ json: { matched: 1, consented: 1, noConsent: 0, dailyCapped: 0, finalCount: 1, sendAt: "2026-10-06T00:00:00Z", immediate: true, rescheduled: false, renderedBody: "검수 문구", longMessage: false } }));
+  await page.route("**/api/seller/member-messages", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    await route.fulfill({ json: { message: { status: "RECORDED", recipientCount: 1 }, rescheduled: false } });
+  });
+  await page.goto("/seller/settings/legal");
+  await expect(page.locator(".lnb").getByRole("link", { name: "이용약관", exact: true })).toBeVisible();
+  await page.goto("/seller/member-messages?section=new");
+  const form = page.getByTestId("mm-new");
+  await form.locator('input[maxlength="40"]').fill("성공 기록");
+  await form.locator("textarea").fill("검수 문구");
+  await form.getByRole("button", { name: "보내기 (기록)", exact: true }).click();
+  await page.getByRole("button", { name: "기록", exact: true }).click();
+  await expect(page).toHaveURL(/\/seller\/member-messages$/);
+  await expect(form).toBeHidden();
+  await page.goBack();
+  await expect(page).toHaveURL(/\/seller\/settings\/legal$/);
+});
