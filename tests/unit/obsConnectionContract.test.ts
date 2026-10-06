@@ -23,13 +23,45 @@ const paid = (): ObsServerRecords => ({ ...records(), planCode: "OVERLAY_ONLY", 
 } });
 const command = (overrides: Partial<ObsCommand> = {}): ObsCommand => ({ id, sellerId: ctx.sellerId, deviceId: "device-a", generation: 1, epoch: 3, expiresAt: future(10_000), action: { type: "obs_add_overlay_source" }, ...overrides });
 const load = (r = records(), actor = ctx) => loadObsAuthority(actor, { read: vi.fn(async () => r) }, "device-a", now, r.install?.job.id);
-const ack = (p: ObsPreparedCommand): ObsAck => ({ sellerId: p.command.sellerId, deviceId: p.command.deviceId, generation: p.command.generation, epoch: p.command.epoch, actionKey: p.actionKey, pairingId: p.pairingId, result: "APPLIED" });
+const ack = (p: ObsPreparedCommand): ObsAck => ({ sellerId: p.command.sellerId, deviceId: p.command.deviceId, generation: p.command.generation, epoch: p.command.epoch, ...(p.scope.jobFence !== null ? { jobFence: p.scope.jobFence } : {}), actionKey: p.actionKey, pairingId: p.pairingId, result: "APPLIED" });
 const fakeSend = (bridge: FakeObsBridge) => async (p: ObsPreparedCommand): Promise<ObsAck | null> => {
   const response = await callPort(signal => bridge.perform(p.scope, p.command.action as { type: "obs_add_overlay_source" }, p.actionKey, p.pairingId, signal));
   return response.ok && response.value.kind === "ok" ? { ...ack(p), pairingId: response.value.pairingId! } : null;
 };
 
 describe("서버 근거와 구독별 OBS 계약 (모의 경계, 실제 인증·PC 연결 아님)", () => {
+  it("기기 epoch와 job fence는 독립이며 이전 job ACK는 UNKNOWN이다", async () => {
+    const r = paid(); r.install!.job.fencingToken = 99;
+    const authority = await load(r);
+    expect(authority.epoch).toBe(3); expect(authority.jobFence).toBe(99);
+    const p = prepareObsCommand(authority, command(), now);
+    expect(p.command.jobFence).toBe(99);
+    expect(obsAckState(p, { ...ack(p), jobFence: 3 })).toBe("UNKNOWN");
+    expect(obsAckState(p, { ...ack(p), jobFence: undefined })).toBe("UNKNOWN");
+    expect(obsAckState(p, ack(p))).toBe("APPLIED");
+    expect(() => prepareObsCommand(authority, command({ jobFence: 3 }), now)).toThrow("obs_scope_mismatch");
+  });
+  it("새 job fence도 UNKNOWN 행동을 무조건 재실행하지 않는다", async () => {
+    const memory = new ObsCommandMemory(); const send = vi.fn(async () => null);
+    const first = prepareObsCommand(await load(paid()), command(), now);
+    expect(await memory.run(first, send, now)).toBe("UNKNOWN");
+    const r = paid(); r.install!.job.fencingToken = 99;
+    const next = prepareObsCommand(await load(r), command({ id: "33333333-3333-4333-8333-333333333333" }), now);
+    expect(next.actionKey).toBe(first.actionKey);
+    expect(await memory.run(next, send, now)).toBe("UNKNOWN"); expect(send).toHaveBeenCalledTimes(1);
+  });
+  it("같은 actionKey의 이전 APPLIED를 새 commandId/fence에서 성공으로 재사용하지 않는다", async () => {
+    const memory = new ObsCommandMemory(); const send = vi.fn(async (p: ObsPreparedCommand) => ack(p));
+    const first = prepareObsCommand(await load(paid()), command(), now);
+    expect(await memory.run(first, send, now)).toBe("APPLIED");
+    const r = paid(); r.install!.job.fencingToken = 4;
+    const next = prepareObsCommand(await load(r), command({ id: "33333333-3333-4333-8333-333333333333" }), now);
+    expect(next.actionKey).toBe(first.actionKey);
+    expect(obsAckState(next, ack(first))).toBe("UNKNOWN");
+    expect(await memory.run(next, send, now)).toBe("UNKNOWN");
+    expect(await memory.run(next, send, now)).toBe("UNKNOWN");
+    expect(send).toHaveBeenCalledTimes(1);
+  });
   it("통합은 실제 첫 PAID 근거로 허용, 오버레이만으로는 자동 연결을 열지 않는다", async () => {
     expect((await load()).jobId).toBeNull();
     await expect(load({ ...records(), planCode: "OVERLAY_ONLY" })).rejects.toThrow("obs_purchase_required");
@@ -61,7 +93,7 @@ describe("서버 근거와 구독별 OBS 계약 (모의 경계, 실제 인증·P
     const mutations: ((r: ObsServerRecords) => void)[] = [
       r => { r.install!.payment.amount = 1; }, r => { r.install!.payment.paidAt = null; },
       r => { r.install!.payment.sellerId = "seller-b"; }, r => { r.install!.job.paymentId = "other"; },
-      r => { r.install!.job.obsPairingId = "pc-other"; }, r => { r.install!.job.fencingToken++; },
+      r => { r.install!.job.obsPairingId = "pc-other"; }, r => { r.install!.job.fencingToken = 0; },
       r => { r.install!.job.cancelRequestedAt = now; }, r => { r.install!.job.connectionRevokedAt = now; },
       r => { r.install!.job.leaseExpiresAt = now; },
     ];
