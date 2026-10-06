@@ -159,7 +159,7 @@ function TodayTasks({ tick }: { tick: number }) {
                 const body = (
                   <>
                     <span className="t-l2 c-alt">{TASK_LABEL[t.key]}</span>
-                    <span className={`t-h2 ${t.count > 0 ? "c-neg" : ""}`}>{n(t.count, unit)}</span>
+                    <span className={`t-h2 ${t.count > 0 && !isInfo ? "c-neg" : ""}`}>{n(t.count, unit)}</span>
                     {isInfo && <span className="t-c1 c-alt">{(t.fields ?? []).map((f) => INFO_FIELD[f] ?? f).join(" · ")} 비어 있음</span>}
                     {isInfo && !canEditInfo && <span className="t-c1 c-alt">최고관리자에게 요청</span>}
                   </>
