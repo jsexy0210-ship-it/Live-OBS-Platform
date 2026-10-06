@@ -723,7 +723,7 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   // 연결한 뒤에는 로그인해도 안내가 뜨지 않는다
   await signOut(page);
   await login(page, "직원", s.email, s.password);
-  await expect(page).toHaveURL(/\/seller\/products$/);
+  await expect(page).toHaveURL(/\/seller$/);
 
   // 아이디 찾기(직원 탭)에서 이 직원 계정이 쇼핑몰 이름과 함께 보인다
   await signOut(page);
@@ -751,12 +751,12 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   await page.getByRole("dialog").getByRole("button", { name: "비밀번호 변경" }).click();
   await expect(page.getByRole("heading", { name: "비밀번호를 변경했습니다" })).toBeVisible();
   await login(page, "직원", s.email, next);
-  await expect(page).toHaveURL(/\/seller\/products$/);
+  await expect(page).toHaveURL(/\/seller$/);
 
   // 대표자가 번호를 바꾸면 연결이 풀리고, 직원이 다음에 로그인하면 「번호가 바뀌어서 본인확인을 다시 해야」 안내가 뜬다
   await signOut(page);
   await login(page, "대표자", a.email, a.password);
-  await expect(page).toHaveURL(/\/seller\/products$/);
+  await expect(page).toHaveURL(/\/seller$/);
   // 직원 계정 화면(SA-100)의 수정 창에서 번호를 바꾼다: 연결된 직원이라 다시 본인확인해야 한다고 알려 준다
   const nextPhone = `011${String(Math.floor(Math.random() * 1e7)).padStart(7, "0")}`;
   await page.goto("/seller/staff");
