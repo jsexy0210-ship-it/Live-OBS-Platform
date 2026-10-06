@@ -27,8 +27,9 @@ import { useTableCards } from "../admin-ui/useTableCards";
 // 하위 메뉴가 모두 숨겨진 대분류는 GNB에서도 숨긴다.
 type PlanNeed = "ANY" | "OVERLAY" | "EXTERNAL_INTEGRATION" | "STORE_OPERATIONS" | "FOLLOWUP";
 type Leaf = { label: string; href?: string; perm?: string; plan?: PlanNeed; alt?: { plan: PlanNeed; href: string } };
-type Item = Leaf & { tabs?: Leaf[]; also?: { href: string; plan?: PlanNeed; perm?: string }[] };
-type Group = { key: string; label: string; items: Item[] };
+type Item = Leaf & { tabs?: Leaf[]; also?: { href: string; plan?: PlanNeed; perm?: string }[]; hidden?: boolean };
+// util: 상단 유틸(공지 · 문의·도우미)로 여는 화면의 묶음. GNB에는 올리지 않고 그 화면에서만 자기 LNB로 보인다(SA-LNB ⑤)
+type Group = { key: string; label: string; items: Item[]; util?: boolean };
 const MENU: Group[] = [
   {
     key: "home",
@@ -187,6 +188,18 @@ const MENU: Group[] = [
       { label: "쇼핑몰 통합 전환", perm: "OWNER" },
     ],
   },
+  {
+    key: "notice",
+    label: "공지 · 문의",
+    util: true,
+    items: [
+      { label: "공지사항", href: "/seller/notices" },
+      { label: "내 문의", href: "/seller/inquiries" },
+      // 알림 센터(SA-130)는 메뉴에 없는 화면: 경로 줄만 「공지 · 문의 › 알림」
+      { label: "알림", href: "/seller/notifications", hidden: true },
+    ],
+  },
+  { key: "assistant", label: "도우미", util: true, items: [{ label: "도우미", href: "/seller/assistant" }] },
 ];
 
 // 항목의 화면들(탭이 없으면 항목 자신 하나)
@@ -239,7 +252,7 @@ function canFor(me: Me, perm: string) {
 }
 // 보이는 메뉴 항목: href는 보이는 첫 화면, tabs는 보이는 화면들(없으면 단일 화면)
 type ShownItem = Item & { shownTabs: Leaf[] };
-type ShownGroup = { key: string; label: string; items: ShownItem[] };
+type ShownGroup = { key: string; label: string; items: ShownItem[]; util?: boolean };
 // 권한·요금제 기능이 없는 메뉴는 숨기고(alt가 열리면 그 화면으로), 안에 메뉴가 하나도 안 남은 대분류도 숨긴다
 function visibleMenu(me: Me): ShownGroup[] {
   return MENU.map((g) => ({
@@ -462,9 +475,10 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   const can = (perm: string) => canFor(me, perm);
   const features = me.features ?? [];
   const menu = visibleMenu(me);
+  const gnbMenu = menu.filter((g) => !g.util);
   const route = routeNav(pathname);
   const active = route && menu.some((g) => g.key === route.group.key) ? route : null;
-  const shown = menu.find((g) => g.key === picked) ?? menu.find((g) => g.key === active?.group.key) ?? menu[0];
+  const shown = menu.find((g) => g.key === picked) ?? menu.find((g) => g.key === active?.group.key) ?? gnbMenu[0];
   const shownGroup = active ? menu.find((g) => g.key === active.group.key) : undefined;
   const shownItem = shownGroup?.items.find((n) => n.label === active?.item.label);
   const loc =
@@ -478,7 +492,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   };
   const blocked = (planBlocked?.path === pathname && planBlocked.visit === currentNavGeneration()) || !menuAllows(me, routePlan(pathname));
   // 안내 화면에서 갈 수 있는 첫 화면(만든 메뉴 중 지금 열리는 것)
-  const nextNav = menu.flatMap((g) => g.items).find((n) => !!n.href && !pathname.startsWith(n.href));
+  const nextNav = gnbMenu.flatMap((g) => g.items).find((n) => !!n.href && !pathname.startsWith(n.href));
 
   const utilities = (
     <>
@@ -517,7 +531,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
             <span className="gnb-sub">파트너스</span>
           </Link>
           <nav className="gnb-nav" aria-label="주 메뉴">
-            {menu.map((g) => {
+            {gnbMenu.map((g) => {
               const first = g.items.find((n) => n.href)?.href;
               const cls = `gnb-i${g.key === shown.key ? " on" : ""}`;
               return first ? (
@@ -551,7 +565,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
             {menu.map((g) => (
               <section key={g.key} className={`lnb-sec${g.key === shown.key ? " on" : ""}`}>
                 <strong className="lnb-h">{g.label}</strong>
-                {g.items.map((n) =>
+                {g.items.filter((n) => !n.hidden).map((n) =>
                   n.href ? (
                     <Link
                       key={n.label}
