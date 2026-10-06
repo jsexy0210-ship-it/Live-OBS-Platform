@@ -88,12 +88,13 @@ test("대표자: 카드 등록·결제, 하위 플랜 변경 예약과 취소, �
   await expect(page.getByTestId("sub-card-label")).toHaveText("테스트카드 1234");
   await expect(page.getByTestId("sub-payment")).toHaveCount(1);
   await expect(page.getByTestId("sub-payment").first()).toContainText("결제 완료");
-  await expect(page.getByText("다음 결제", { exact: true })).toBeVisible();
+  await expect(page.getByText("다음 결제일", { exact: true })).toBeVisible();
   // 상단 이용 상태 띠도 새로 읽어 잠금 안내가 사라진다
   await expect(page.getByText("이용 기간이 끝났습니다")).toHaveCount(0);
 
   // 하위 플랜(오버레이 전용)으로 변경 → 다음 결제일부터 적용 예약
   const overlay = page.getByTestId("sub-plan").filter({ hasText: "오버레이 전용" });
+  await openPlans(page);
   await overlay.getByRole("button", { name: "바꾸기", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("다음 결제일부터 적용됩니다");
   const plan = post(page, "/api/seller/subscription/plan");
@@ -102,6 +103,7 @@ test("대표자: 카드 등록·결제, 하위 플랜 변경 예약과 취소, �
   await expect(page.getByText("「오버레이 전용」으로 바뀝니다").first()).toBeVisible();
   await expect(page.getByRole("note").filter({ hasText: "바뀔 예정" })).toContainText("「오버레이 전용」으로 바뀝니다");
   await page.reload();
+  await openPlans(page);
   await expect(overlay.getByRole("button", { name: "바꾸기 예정" })).toBeDisabled();
   await shot(page, "SA-090-subscription-active");
 
@@ -116,7 +118,7 @@ test("대표자: 카드 등록·결제, 하위 플랜 변경 예약과 취소, �
   await expect(page.getByRole("button", { name: "바꾸기 취소하기" })).toHaveCount(0);
 
   // 해지 → 이번 기간 끝까지 이용, 해지 예정으로 바뀐다
-  await page.getByRole("button", { name: "구독 해지하기", exact: true }).click();
+  await page.getByRole("button", { name: "구독 해지", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("구독을 해지하시겠습니까?");
   const cancel = post(page, "/api/seller/subscription/cancel");
   await page.getByRole("dialog").getByRole("button", { name: "구독 해지하기", exact: true }).click();
@@ -124,8 +126,9 @@ test("대표자: 카드 등록·결제, 하위 플랜 변경 예약과 취소, �
   await expect(page.getByTestId("sub-status")).toHaveText("해지 예정");
   await page.reload();
   await expect(page.getByTestId("sub-status")).toHaveText("해지 예정");
-  await expect(page.getByRole("button", { name: "구독 해지하기", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "구독 해지", exact: true })).toHaveCount(0);
   // 해지 예정이면 플랜을 바꿀 수 없다(예약해도 해지로 끝나 적용되지 않는다)
+  await openPlans(page);
   await expect(overlay.getByRole("button", { name: "바꾸기", exact: true })).toBeDisabled();
   await expect(page.getByText("해지 예정인 구독은 이용권을 바꿀 수 없습니다.")).toBeVisible();
   // 서버도 해지 예정 중 플랜 변경을 거절한다
@@ -158,6 +161,7 @@ test("거절된 카드는 실패로 알리고 카드를 등록한 것처럼 보�
   await expect(page.getByTestId("sub-card-label")).toHaveText("등록된 카드가 없습니다");
   await expect(page.getByTestId("sub-status")).toHaveText("이용 기간 끝");
   // 결제한 기간이 없으면 하위 변경은 「다음 결제일부터」가 아니라 바로 적용·결제 없음으로 안내한다(서버 planChange와 같은 기준)
+  await openPlans(page);
   await page.getByTestId("sub-plan").filter({ hasText: "오버레이 전용" }).getByRole("button", { name: "바꾸기", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("바로 적용됩니다. 결제는 없습니다.");
   await page.getByRole("dialog").getByRole("button", { name: "취소" }).click();
@@ -190,17 +194,18 @@ test("유예가 끝난 결제 실패 구독: 상위 변경은 지금 결제된�
   });
   await ownerOpens(page);
   await expect(page.getByTestId("sub-status")).toHaveText("이용 기간 끝");
+  await openPlans(page);
   await page.getByTestId("sub-plan").filter({ hasText: "쇼핑몰 통합" }).getByRole("button", { name: "바꾸기", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("밀린 이번 기간 요금과 남은 기간 차액을 등록한 카드로 바로 결제합니다.");
   await page.getByRole("dialog").getByRole("button", { name: "취소" }).click();
 
   // 이용 기간이 끝났어도 해지는 열려 있다(서버 cancelSubscription이 받는 상태)
-  await page.getByRole("button", { name: "구독 해지하기", exact: true }).click();
+  await page.getByRole("button", { name: "구독 해지", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("바로 해지되고 더 이상 결제되지 않습니다.");
   const cancel = post(page, "/api/seller/subscription/cancel");
   await page.getByRole("dialog").getByRole("button", { name: "구독 해지하기", exact: true }).click();
   expect((await cancel).status()).toBe(200);
-  await expect(page.getByRole("button", { name: "구독 해지하기", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "구독 해지", exact: true })).toHaveCount(0);
   const status = await withDb((db, sellerId) => db.sellerSubscription.findUniqueOrThrow({ where: { sellerId }, select: { status: true } }));
   expect(status.status).toBe("CANCELED");
 });
@@ -221,7 +226,7 @@ test("카드를 등록한 체험을 해지하면 체험 끝 날짜까지 해지 
   await expect(page.getByTestId("sub-payment")).toHaveCount(0);
 
   const endText = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(trialEnd).replace(/\.\s*/g, ".").replace(/\.$/, "");
-  await page.getByRole("button", { name: "구독 해지하기", exact: true }).click();
+  await page.getByRole("button", { name: "구독 해지", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText(`${endText}까지 이용할 수 있고`);
   const cancel = post(page, "/api/seller/subscription/cancel");
   await page.getByRole("dialog").getByRole("button", { name: "구독 해지하기", exact: true }).click();
@@ -250,7 +255,11 @@ const useOverlayPlan = () =>
     const overlay = await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "OVERLAY_ONLY" } });
     await db.seller.update({ where: { id: sellerId }, data: { planId: overlay.id } });
   });
+// 이용권 목록은 머리의 「이용권 바꾸기」를 눌러야 열린다(정본 SA-090). 이미 열려 있으면 다시 누르지 않는다
 const integratedCard = (page: Page) => page.getByTestId("sub-plan").filter({ hasText: "쇼핑몰 통합" });
+const openPlans = async (page: Page) => {
+  if ((await page.getByTestId("sub-plan").count()) === 0) await page.getByRole("button", { name: "이용권 바꾸기", exact: true }).click();
+};
 
 test("결제한 기간 중 상위 변경: 남은 기간 차액을 바로 결제한다고 안내하고, 실제로 차액 결제 1건이 생긴다", async ({ page }) => {
   await resetSubscription();
@@ -260,6 +269,8 @@ test("결제한 기간 중 상위 변경: 남은 기간 차액을 바로 결제�
   await page.getByRole("dialog").getByRole("button", { name: "카드 등록하기" }).click();
   await expect(page.getByTestId("sub-status")).toHaveText("이용 중");
   await expect(page.getByTestId("sub-payment")).toHaveCount(1);
+
+  await openPlans(page);
 
   await integratedCard(page).getByRole("button", { name: "바꾸기", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("남은 이용 기간의 차액을 등록한 카드로 바로 결제합니다.");
@@ -305,6 +316,8 @@ test("확인한 금액과 지금 낼 금액이 달라지면(409 amount_changed) 
     await route.fulfill({ response: res, json: data });
   });
 
+  await openPlans(page);
+
   await integratedCard(page).getByRole("button", { name: "바꾸기", exact: true }).click();
   const quote = page.getByTestId("sub-quote");
   await expect(quote).toContainText("지금 결제 금액");
@@ -331,6 +344,7 @@ test("체험 중 상위 변경: 카드가 없으면 막고, 카드를 등록하�
   await withDb((db, sellerId) => db.seller.update({ where: { id: sellerId }, data: { trialEndsAt: new Date(Date.now() + 5 * 86_400_000) } }));
   await ownerOpens(page);
   await expect(page.getByTestId("sub-status")).toHaveText("체험 중");
+  await openPlans(page);
   await integratedCard(page).getByRole("button", { name: "바꾸기", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("올리려면 결제 카드를 먼저 등록해 주십시오.");
   await expect(page.getByRole("dialog").getByRole("button", { name: "이용권 바꾸기", exact: true })).toBeDisabled();
@@ -340,6 +354,7 @@ test("체험 중 상위 변경: 카드가 없으면 막고, 카드를 등록하�
   await page.getByRole("button", { name: "카드 등록하기" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "카드 등록하기" }).click();
   await expect(page.getByText("결제 카드를 등록했습니다")).toBeVisible();
+  await openPlans(page);
   await integratedCard(page).getByRole("button", { name: "바꾸기", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("새 이용권 요금을 등록한 카드로 바로 결제하고, 오늘부터 새 이용 기간이 시작됩니다.");
   const plan = post(page, "/api/seller/subscription/plan");
