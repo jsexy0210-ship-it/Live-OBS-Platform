@@ -74,10 +74,10 @@ wr('SH-022-IA.dc.html', s)
 # ── SA-001: 파트너스 공통 띠(체험 · 결제 실패 · 이용 종료) 정본 — 구현 SellerShell AccessBanner 자리(경로 줄 · 제목 아래, 탭 위)
 s = rd('SA-001.dc.html')
 band = lambda cls, b, t: f'<div class="note {cls}" style="margin: 16px 24px 0; display: flex; flex-wrap: wrap; gap: 2px 12px; align-items: center"><b>{b}</b><span>{t}</span></div>'
-frame = lambda inner: f'<div style="width: 100%; background: #fff; border: 1px solid var(--c24-line); padding-bottom: 16px"><div class="pathbar">방송 › 방송 대시보드</div><div class="ph2" style="margin: 0"><h1>방송 대시보드</h1><span class="path">방송 › 방송 대시보드</span></div>{inner}</div>'
+frame = lambda inner: f'<div style="width: 100%; background: #fff; border: 1px solid var(--c24-line); padding-bottom: 16px"><div class="pathbar">방송 › 방송 대시보드</div>{inner}<div class="ph2" style="margin: 16px 0 0"><h1>방송 대시보드</h1><span class="path">방송 › 방송 대시보드</span></div></div>'
 s = rep(s, END,
     '<div class="st"><span class="st-tag">공통 띠 · 체험 중 (모든 파트너스 화면)</span>' + COL + frame(band('inf', '체험이 14일 남았습니다', '체험이 끝나기 전에 구독하면 그대로 이어서 사용할 수 있습니다')) +
-    '<span class="hint">자리: 경로 줄 · 화면 제목 바로 아래, 탭 줄 위 · 본문과 같은 좌우 여백(24px, 휴대폰 16px) · 위 여백 16(휴대폰 12) · 파란 안내(note inf) · 버튼 없음(구독은 설정 › 이용권) · 체험 중인 모든 파트너스 화면에 같은 자리 · 마지막 날은 「체험이 오늘 끝납니다」 · 끝나는 날을 아직 못 받았으면 「체험 중입니다」</span></div></div>'
+    '<span class="hint">자리: 경로 줄 바로 아래 · 화면 제목 위(구현 SellerShell 과 같은 자리) · 본문과 같은 좌우 여백(24px, 휴대폰 16px) · 위 여백 16(휴대폰 12) · 파란 안내(note inf) · 버튼 없음(구독은 설정 › 이용권) · 체험 중인 모든 파트너스 화면에 같은 자리 · 마지막 날은 「체험이 오늘 끝납니다」 · 끝나는 날을 아직 못 받았으면 「체험 중입니다」</span></div></div>'
     '<div class="st"><span class="st-tag">공통 띠 · 결제 실패 · 이용 종료</span>' + COL + frame(band('cau', '구독료 결제가 되지 않았습니다', '결제 카드를 확인해 주십시오. 며칠 안에 결제되지 않으면 새 판매가 중지됩니다') + band('neg', '이용 기간이 끝났습니다', '지금은 상품 등록 · 수정과 새 판매가 중지되어 있습니다. 구독하면 바로 다시 사용할 수 있습니다')) +
     '<span class="hint">같은 자리 · 한 번에 하나만 · 결제 실패는 노란 주의(note cau), 이용 종료는 빨간 경고(note neg) · 직원에게는 「대표자에게 구독을 요청해 주십시오」</span></div></div>' + END)
 wr('SA-001.dc.html', s)
