@@ -3991,3 +3991,11 @@ model InfraSnapshot {
 
   @@index([takenAt])
 }
+
+// 플랫폼 기본 정책(MA-081). 키별 정수 값(불리언 0/1). 행이 없으면 코드 기본값(현재 동작과 같음). 최고관리자만 바꾸고 변경은 로그 추적에 남긴다.
+model PlatformPolicy {
+  key              String   @id
+  intValue         Int
+  updatedAt        DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+  updatedByAdminId String?  @db.Uuid
+}
