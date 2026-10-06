@@ -53,7 +53,9 @@ test("게시하려면 시행일·본문이 필요하고, 저장하면 구매자 
   await expect(page.getByTestId("legal-save-terms")).toBeDisabled(); // 바뀐 것이 없으면 저장 못 함
 
   // 게시를 켜고 비워 둔 채 저장하면 칸 가까이에 이유가 나온다
-  await page.getByRole("switch", { name: "이용약관 구매자에게 공개" }).click();
+  const publishTerms = page.getByRole("checkbox", { name: "이용약관 구매자에게 공개" });
+  await expect(publishTerms).not.toBeChecked();
+  await publishTerms.check();
   await page.getByTestId("legal-save-terms").click();
   await expect(page.getByText("공개하려면 본문을 써 주십시오")).toBeVisible();
   await expect(page.getByText("공개하려면 시작하는 날을 정해 주십시오")).toBeVisible();
@@ -73,7 +75,7 @@ test("게시하려면 시행일·본문이 필요하고, 저장하면 구매자 
   await expect(buyer.getByRole("heading", { level: 1 })).toHaveText("개인정보처리방침을 준비하고 있어요");
 
   // 게시를 끄고 저장하면 구매자 화면은 다시 준비 중
-  await page.getByRole("switch", { name: "이용약관 구매자에게 공개" }).click();
+  await publishTerms.uncheck();
   await page.getByTestId("legal-save-terms").click();
   await expect(page.getByTestId("legal-status-terms")).toContainText("아직 공개 안 함");
   await buyer.goto(`/shop/${SLUG}/terms`);
