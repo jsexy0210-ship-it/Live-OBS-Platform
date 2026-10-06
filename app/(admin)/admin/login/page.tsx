@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { adminApi, safeAdminNext } from "../_components/api";
+import styles from "./page.module.css";
 
 // 마스터 관리자 로그인(이메일 + 비밀번호, POST /api/admin/auth/login). 파트너스 관리자 로그인 화면과 같은 카드 모양을 쓴다.
 // 실패 문구는 서버가 주는 message를 그대로 쓴다(마스터 관리자는 합니다체, 정본: lib/server/auth/messages.ts).
@@ -63,7 +64,7 @@ export default function AdminLoginPage() {
               </span>
             )}
           </div>
-          <button className={`btn btn-lg btn-block${busy ? " is-loading" : ""}`} type="submit" disabled={!ready || busy}>
+          <button className={`btn btn-lg btn-block${busy ? " is-loading" : ""}${!ready && !busy ? ` ${styles.disabledPrimary}` : ""}`} type="submit" disabled={!ready || busy}>
             {busy ? (
               <>
                 <span className="spin" style={{ width: 18, height: 18 }} />

@@ -36,6 +36,16 @@ for (const width of WIDTHS) {
   });
 }
 
+test("마스터 관리자 로그인 390px: 비활성 버튼 색과 투명도를 정본에 맞춘다", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/admin/login");
+  const button = page.getByRole("button", { name: "로그인", exact: true });
+  await expect(button).toBeDisabled();
+  await expect(button).toHaveCSS("background-color", "rgb(15, 118, 110)");
+  await expect(button).toHaveCSS("color", "rgb(255, 255, 255)");
+  await expect(button).toHaveCSS("opacity", "0.45");
+});
+
 test("키보드만으로 입력·로그인 시도, 실패 문구는 비밀번호 칸 아래에 보이고 버튼 폭은 그대로다", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/admin/login");
