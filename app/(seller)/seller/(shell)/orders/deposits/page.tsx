@@ -149,7 +149,7 @@ export default function DepositsPage() {
         }} busy={state.kind === "loading"}>
           <SearchRow label="기간"><DatePicker aria-label="시작일" value={from} onChange={setFrom} /><span aria-hidden="true"> ~ </span><DatePicker aria-label="종료일" value={to} onChange={setTo} /></SearchRow>
           <SearchRow label="상태"><div className="row" style={{ gap: 12, flexWrap: "wrap" }}>{([["PENDING_PAYMENT", "입금 대기"], ["OVERDUE", "기한 지남"], ["PAID", "입금 확인"], ["AUTO_CANCELLED", "자동 취소"]] as const).map(([value, label]) => <label className="ck" key={value}><input type="checkbox" checked={statuses.includes(value)} onChange={(e) => setStatuses(e.target.checked ? [...statuses, value] : statuses.filter((s) => s !== value))} />{label}</label>)}</div></SearchRow>
-          <SearchRow label="검색"><div className="row" style={{ gap: 8, flexWrap: "wrap" }}><select className="inp" aria-label="검색 기준" value={searchBy} onChange={(e) => setSearchBy(e.target.value as typeof searchBy)}><option value="buyer">구매자</option><option value="amount">금액</option><option value="depositor" disabled={!canSearchDepositor}>입금자명</option></select><input className="inp" aria-label="검색어" value={term} onChange={(e) => setTerm(e.target.value)} placeholder={searchBy === "depositor" && !canSearchDepositor ? "실제 입금자명 미수집 · 검색할 수 없음" : searchBy === "amount" ? "정확한 금액" : "검색어"} disabled={searchBy === "depositor" && !canSearchDepositor} />{searchBy === "depositor" && !canSearchDepositor && <span className="t-c1 c-alt">실제 입금자명을 수집하지 않아 검색할 수 없습니다</span>}</div></SearchRow>
+          <SearchRow label="검색"><div className="row" style={{ gap: 8, flexWrap: "wrap" }}><select className="inp" aria-label="검색 기준" value={searchBy} onChange={(e) => setSearchBy(e.target.value as typeof searchBy)}><option value="buyer">구매자</option><option value="amount">금액</option><option value="depositor" disabled={!canSearchDepositor}>입금자명</option></select><input className="inp" aria-label="검색어" value={term} onChange={(e) => setTerm(e.target.value)} placeholder={searchBy === "depositor" && !canSearchDepositor ? "실제 입금자명 미수집 · 검색할 수 없음" : searchBy === "amount" ? "정확한 금액" : "검색어"} disabled={searchBy === "depositor" && !canSearchDepositor} />{!canSearchDepositor && <span className="t-c1 c-alt">실제 입금자명을 수집하지 않아 검색할 수 없습니다</span>}</div></SearchRow>
         </SearchBox>
 
         <div className="card" style={{ overflow: "visible" }}>
@@ -209,7 +209,7 @@ export default function DepositsPage() {
                           </Link>
                           <div className="t-c1 c-alt num">{formatDateTime(o.createdAt)} 주문</div>
                         </td>
-                        <td>{o.buyerName ? <span>주문자 실명 · {o.buyerName} · 실제 입금자명 미수집</span> : o.depositorNameStatus === "NOT_COLLECTED" || o.depositorNameSource === "BUYER_MEMBER_NAME_LEGACY" || o.depositorName !== undefined ? <span className="t-c1 c-alt">실제 입금자명 미수집</span> : <span className="t-c1 c-alt">확인 정보 없음</span>}</td>
+                        <td><span className="t-c1 c-alt">실제 입금자명 미수집</span></td>
                         <td className="num">{won(o.amount)}</td>
                         <td>{o.paymentMethod === "BANK_TRANSFER" ? "무통장 입금" : o.paymentMethod === "CARD" ? "카드" : "선택 전"}</td>
                         <td className="num dep-due">{o.paymentDueAt ? formatDateTime(o.paymentDueAt) : "-"}</td>
