@@ -11,6 +11,7 @@ import { adminApi } from "../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
 import { DISPLAY_STATUS, SELLER_STATUS, SUBSCRIPTION_STATUS, day, dayTime, text, type SellerDetail, type SellerListRow, type SellerStatus } from "../../../_components/partners";
 import { PartnerOrdersTab, PartnerShopTab, PartnerSubscriptionTab } from "../../../_components/PartnerDetailTabs";
+import { PartnerRewards } from "../../../_components/PartnerRewards";
 import { MessageBalanceSection } from "../../../_components/MessageBalanceSection";
 import { PARTNER_TABS, PartnerActivity, PartnerBroadcasts, PartnerNotes, PartnerPg, type PartnerTab } from "../../../_components/PartnerTabs";
 import { ImpersonateDialog, type ImpersonationStart } from "../../../_components/ImpersonateDialog";
@@ -200,6 +201,7 @@ function PartnerDetail() {
             {tab === "pg" && <PartnerPg sellerId={s.id} slug={s.slug} />}
             {tab === "activity" && <PartnerActivity sellerId={s.id} />}
             {tab === "orders" && <PartnerOrdersTab sellerId={s.id} />}
+            {tab === "rewards" && <PartnerRewards sellerId={s.id} />}
             {tab === "shop" && <PartnerShopTab sellerId={s.id} />}
             {tab === "subscription" && (
               <div className="col" style={{ gap: 20 }}>

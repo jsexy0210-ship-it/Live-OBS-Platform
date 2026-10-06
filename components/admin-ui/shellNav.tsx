@@ -7,7 +7,7 @@ import { createContext, useContext } from "react";
 export type ShellTab = { label: string; href: string; on: boolean };
 export const PARTNER_NAV_ITEMS = [
   ["info", "기본정보"], ["shop", "쇼핑몰"], ["subscription", "구독"], ["pg", "결제 연결"],
-  ["broadcasts", "방송 이력"], ["orders", "주문 현황"], ["notes", "메모"], ["activity", "활동 기록"],
+  ["broadcasts", "방송 이력"], ["orders", "주문 현황"], ["rewards", "적립금 설정"], ["notes", "메모"], ["activity", "활동 기록"],
 ] as const;
 export type PartnerNavIndicators = { sellerId: string; noteCount: number; pgError: boolean };
 export type ShellNav = { backHref: string | null; tabs: ShellTab[]; setPartnerIndicators?: (value: PartnerNavIndicators | null) => void };
