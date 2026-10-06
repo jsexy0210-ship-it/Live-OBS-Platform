@@ -8,7 +8,7 @@ import { ErrorState, LoadingRows, Locked, NoPermission } from "../../../../../..
 import { api } from "../../../../../../components/seller/api";
 import { won } from "../../../../../../components/seller/format";
 
-// SA-080 주문자 알림. 지금은 「이번 달 제공량 사용 현황 · 발송·이용 충전금」 요약만(API: GET /api/seller/message-balance, 대표자 전용).
+// SA-080 알림 설정(주문자 알림). 지금은 「이번 달 제공량 사용 현황 · 발송·이용 충전금」 요약만(API: GET /api/seller/message-balance, 대표자 전용).
 // 발송 채널(알림톡·문자)·이벤트별 문구·메일 종류별 켜기·끄기는 설정 API가 생기면 붙인다.
 
 type Balance = {
@@ -41,13 +41,13 @@ export default function OrderNotificationsPage() {
   if (state.kind !== "ok") {
     return (
       <>
-        <Topbar crumb="설정 › 쇼핑몰 설정 › 주문자 알림" />
+        <Topbar crumb="설정 › 알림 설정" />
         <main className="main">
-          <PageHead title="주문자 알림" />
+          <PageHead title="알림 설정" />
           <div className="card">
             {state.kind === "loading" && <LoadingRows rows={4} />}
             {state.kind === "error" &&
-              (state.status === 403 ? <NoPermission need="대표자" /> : state.status === 402 ? <Locked /> : <ErrorState title="주문자 알림 정보를 불러오지 못했습니다" onRetry={() => void load()} />)}
+              (state.status === 403 ? <NoPermission need="대표자" /> : state.status === 402 ? <Locked /> : <ErrorState title="알림 설정을 불러오지 못했습니다" onRetry={() => void load()} />)}
           </div>
         </main>
       </>
@@ -59,29 +59,29 @@ export default function OrderNotificationsPage() {
 
   return (
     <>
-      <Topbar crumb="설정 › 쇼핑몰 설정 › 주문자 알림" />
+      <Topbar crumb="설정 › 알림 설정" />
       <main className="main">
-        <PageHead title="주문자 알림" />
+        <PageHead title="알림 설정" />
 
         {b.mail.skippedBalance > 0 && (
           <div className="msg msg-neg" role="alert" data-testid="skipped-note" style={{ marginBottom: 16 }}>
             <span>
-              <b>발송·이용 충전금이 부족해 알림 {b.mail.skippedBalance.toLocaleString("ko-KR")}건을 보내지 못했습니다.</b> 주문·배송 처리는 그대로 진행됐습니다. 거래 메일은 제공량이 남아 있으면 잔액과 상관없이 계속 보냅니다.
+              <b>충전금이 모자라 알림 {b.mail.skippedBalance.toLocaleString("ko-KR")}건을 보내지 못했습니다.</b> 주문과 배송은 그대로 처리됐습니다. 충전하려면 「발송·이용 충전」으로 가십시오.
             </span>
           </div>
         )}
         {exhausted && (
           <div className="msg msg-info" role="note" data-testid="exhausted-note" style={{ marginBottom: 16 }}>
-            <span>이번 달 거래 메일 제공량을 다 써서 지금부터는 발송·이용 충전금에서 건당 차감합니다. 잔액 {won(b.total)}</span>
+            <span>이번 달 무료 안내 메일을 다 써서 지금부터는 충전금에서 한 통씩 빠집니다. 남은 충전금 {won(b.total)}</span>
           </div>
         )}
 
         <FormSection title="발송 채널">
-          <FormRow label="이메일" help="거래 메일이라 수신 거부 없이 보냅니다 · 발송 기록은 주문 상세에 남습니다">
-            <span>주문 완료 · 발송 · 배송 완료 · 취소 메일 4종을 구매자 이메일로 보냅니다</span>
+          <FormRow label="이메일" help="주문·배송 안내 메일은 법으로 정해진 안내라 받는 사람이 거부할 수 없습니다 · 보낸 기록은 주문 상세에 남습니다">
+            <span>주문 완료 · 발송 · 배송 완료 · 취소 안내 메일 4종을 구매자 이메일로 보냅니다</span>
           </FormRow>
-          <FormRow label="알림톡 · 문자" help="발신 프로필·발신번호 등록과 이벤트별 문구 설정은 준비 중입니다">
-            <span className="c-alt">준비 중</span>
+          <FormRow label="카카오 알림톡 · 문자" help="보내는 사람 등록과 알림별 문구 설정은 아직 쓸 수 없습니다">
+            <span className="c-alt">아직 쓸 수 없습니다</span>
           </FormRow>
         </FormSection>
         <div style={{ marginTop: 16 }}>
@@ -106,17 +106,17 @@ export default function OrderNotificationsPage() {
         </div>
 
         <div style={{ marginTop: 32 }}>
-          <FormSection title="이번 달 제공량 사용 현황">
+          <FormSection title="이번 달 무료 메일 사용 현황">
             <FormRow
-              label="거래 메일 제공량"
-              help="주문 완료 · 발송 · 배송 완료 · 취소 메일 4종 합계 · 매월 1일 0시에 다시 채워집니다 · 다 쓰면 한 통당 단가만큼 발송·이용 충전금에서 차감합니다"
+              label="매달 무료로 보낼 수 있는 안내 메일"
+              help="주문 완료 · 발송 · 배송 완료 · 취소 메일 4종 합계 · 매월 1일 0시에 다시 채워집니다 · 다 쓰면 한 통당 가격만큼 충전금에서 빠집니다"
             >
               <b className="num" data-testid="quota">
                 {b.mail.sent.toLocaleString("ko-KR")} / {b.mail.quota.toLocaleString("ko-KR")}통
               </b>
-              <span className="t-l2 c-alt">{exhausted ? "제공량 소진" : "여유"}</span>
+              <span className="t-l2 c-alt">{exhausted ? "다 씀" : "여유"}</span>
             </FormRow>
-            <FormRow label="발송·이용 충전금" help="제공량을 넘긴 거래 메일 · 대량 메일 · 문자 · 알림톡은 잔액에서 건당 차감합니다 · 잔액이 부족하면 보내지 않고 미발송으로 남깁니다 · 단가는 발송·이용 충전에서 봅니다">
+            <FormRow label="발송·이용 충전금" help="무료 수를 넘은 안내 메일과 광고 메일 · 문자 · 알림톡은 충전금에서 한 건씩 빠집니다. 충전금이 모자라면 보내지 않고 「보내지 못함」으로 남습니다. 한 건 가격은 「발송·이용 충전」에서 확인합니다">
               <b className="num" data-testid="balance">
                 {won(b.total)}
               </b>
@@ -124,13 +124,13 @@ export default function OrderNotificationsPage() {
                 발송·이용 충전
               </Link>
             </FormRow>
-            <FormRow label="이번 달 차감" help="제공량 초과 거래 메일 기준입니다 · 문자 · 알림톡 · 대량 메일 차감은 사용 내역에서 봅니다">
+            <FormRow label="이번 달 빠진 금액" help="무료 수를 넘은 안내 메일 기준입니다 · 문자 · 알림톡 · 광고 메일은 사용 내역에서 봅니다">
               <span className="num" data-testid="charged">
-                거래 메일 초과 {b.mail.chargedSent.toLocaleString("ko-KR")}통
+                무료 수 초과 메일 {b.mail.chargedSent.toLocaleString("ko-KR")}통
               </span>
             </FormRow>
-            <FormRow label="잔액 부족 알림" help="기준은 발송·이용 충전에서 바꿉니다">
-              <span data-testid="threshold">{b.lowBalanceThreshold > 0 ? `잔액이 ${won(b.lowBalanceThreshold)} 아래로 내려가면 알립니다` : "알리지 않음"}</span>
+            <FormRow label="충전금 부족 알림" help="기준은 「발송·이용 충전」에서 바꿉니다">
+              <span data-testid="threshold">{b.lowBalanceThreshold > 0 ? `충전금이 ${won(b.lowBalanceThreshold)} 아래로 내려가면 알립니다` : "알리지 않음"}</span>
             </FormRow>
           </FormSection>
         </div>
