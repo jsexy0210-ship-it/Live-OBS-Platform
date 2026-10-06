@@ -30,11 +30,13 @@ async function login(page: Page, email: string, next: string) {
 
 const toast = (page: Page) => page.getByRole("status").filter({ has: page.locator(".toast") });
 
+// 이미 발급한 적이 있으면(서버 발급일) 버튼 이름이 「주소 새로 만들기」, 처음이면 「주소 만들기」
+const ISSUE = /^주소 (새로 )?만들기$/;
 async function issueVia(page: Page, button: string) {
-  await page.getByRole("button", { name: button }).click();
+  await page.getByRole("button", { name: ISSUE }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog).toContainText(button === "주소 새로 만들기" ? "기존 주소는 바로 쓸 수 없게 됩니다" : "이전에 만든 주소가 있으면 바로 쓸 수 없게 됩니다");
-  await dialog.getByRole("button", { name: button, exact: true }).click();
+  await expect(dialog).toContainText(button === "주소 새로 만들기" ? "기존 주소는 바로 쓸 수 없게 됩니다" : /바로 쓸 수 없게 됩니다/);
+  await dialog.getByRole("button", { name: ISSUE }).click();
   await expect(dialog).toHaveCount(0);
 }
 
@@ -55,7 +57,7 @@ test("대표자: 메뉴에서 들어가 주소를 발급·복사하면 실제 �
   await shot(page, "SA-052-empty");
 
   // 확인 창에서 닫으면 발급하지 않는다
-  await page.getByRole("button", { name: "주소 만들기" }).click();
+  await page.getByRole("button", { name: ISSUE }).click();
   await page.getByRole("dialog").getByRole("button", { name: "취소" }).click();
   await expect(page.getByTestId("ovu-urls")).toHaveCount(0);
 
@@ -110,7 +112,7 @@ test("오버레이 편집 권한이 없는 직원: 메뉴가 없고 주소로 �
   await login(page, "demo-none@example.com", "/seller/overlay");
   await expect(page.getByText("필요한 권한: 오버레이 편집")).toBeVisible();
   await expect(page.getByRole("link", { name: "방송 화면 꾸미기" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "주소 만들기" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: ISSUE })).toHaveCount(0);
 });
 
 test("이미 주소를 보던 중 재발급 결과가 불분명하면 이전 주소도 지운다(서버가 이미 끊었을 수 있음)", async ({ page }) => {

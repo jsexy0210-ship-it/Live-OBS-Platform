@@ -304,7 +304,7 @@ export default function OverlayPage() {
         )}
       </main>
 
-      {confirm && <IssueConfirm again={issued !== null} busy={busy} onClose={() => setConfirm(false)} onConfirm={() => void issue()} />}
+      {confirm && <IssueConfirm again={issued !== null || info?.issuedAt != null} busy={busy} onClose={() => setConfirm(false)} onConfirm={() => void issue()} />}
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
     </>
   );
