@@ -1,0 +1,112 @@
+/* SH-026 내 문의 */
+.mi-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.mi-tabs {
+  margin: 0;
+}
+.mi-tbl td {
+  vertical-align: top;
+}
+.mi-target {
+  display: block;
+  font-size: 13px;
+  color: var(--wds-label-alternative);
+}
+.mi-title {
+  display: block;
+  font-weight: 600;
+}
+.mi-open {
+  margin-top: 4px;
+}
+.mi-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--wds-background-normal-alternative);
+  font-size: 12px;
+  color: var(--wds-label-alternative);
+  white-space: nowrap;
+}
+.mi-chip.is-done {
+  color: var(--brand);
+}
+.mi-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 12px;
+  border-radius: var(--shop-r);
+  background: var(--wds-background-normal-alternative);
+  font-size: 14px;
+}
+.mi-q,
+.mi-a p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.mi-a {
+  padding-top: 8px;
+  border-top: 1px solid var(--wds-line-solid-neutral);
+}
+.mi-a span {
+  font-size: 12px;
+  color: var(--wds-label-alternative);
+}
+.mi-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.mi-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mi-field label {
+  font-size: 13px;
+  font-weight: 700;
+}
+.mi-field label i {
+  margin-left: 2px;
+  font-style: normal;
+  color: var(--wds-status-negative);
+}
+.mi-field .err {
+  font-size: 13px;
+  color: var(--wds-status-negative);
+}
+.mi-kind {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.mi-kind legend {
+  margin-bottom: 4px;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+.mi-kind .chk {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.mi-actions {
+  display: flex;
+  gap: 8px;
+}
+.mi-actions .btn {
+  flex: 1;
+}
