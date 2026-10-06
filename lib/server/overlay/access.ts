@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { requireSellerRead, type TenantContext } from "../tenant/context";
 import { hashToken } from "../auth/token";
 import { openStreamCount } from "../realtime/sse";
+import { liveBroadcastState } from "../broadcast/stale";
 import { OVERLAY_ONLINE_MS } from "./token";
 
 // 방송 화면 주소 정보(SA-052): 발급일·마지막 접속·연결됨 상태·접속 기록·재발급 이력. 토큰 원문·해시는 돌려주지 않는다(발급 때 한 번만 보여 주는 현행 유지).
@@ -44,7 +45,7 @@ export async function overlayAddressInfo(db: PrismaClient, ctx: TenantContext, n
     db.overlayToken.findFirst({ where: { sellerId: ctx.sellerId, revokedAt: null }, select: { id: true, tokenHash: true, createdAt: true, lastSeenAt: true } }),
     db.overlayToken.findMany({ where: { sellerId: ctx.sellerId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: ACCESS_LIST, select: { id: true, createdAt: true, issuedByName: true } }),
     db.overlayAccess.findMany({ where: { sellerId: ctx.sellerId }, orderBy: [{ at: "desc" }, { id: "desc" }], take: ACCESS_LIST, select: { id: true, tokenId: true, at: true, client: true, isObs: true, layout: true } }),
-    db.broadcastSession.findFirst({ where: { sellerId: ctx.sellerId, status: "LIVE" }, select: { id: true } }),
+    liveBroadcastState(db, ctx.sellerId, now),
   ]);
   const earliest = await db.overlayToken.findFirst({ where: { sellerId: ctx.sellerId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true } });
   const online = !!current?.lastSeenAt && now.getTime() - current.lastSeenAt.getTime() < OVERLAY_ONLINE_MS;
@@ -56,8 +57,10 @@ export async function overlayAddressInfo(db: PrismaClient, ctx: TenantContext, n
     lastClient: latest ? (latest.isObs ? "OBS" : latest.client.split(" · ")[0]) : null,
     connected: online,
     openSources,
-    // 방송 중이면 재발급할 수 없다(SA-052 「방송 중에는 재발급할 수 없습니다」)
-    live: !!live,
+    // 방송 중이라 재발급할 수 없는지(SA-052 「방송 중에는 재발급할 수 없습니다」). LIVE 방송이 있어도 방송 화면 접속 신호가 5분 넘게 없으면 false(broadcast/stale.ts)
+    live: live.active,
+    // LIVE 상태 방송이 남아 있는지(신호 유무와 무관, 안내용)
+    liveSession: live.live,
     accesses: accesses.map((a, i) => ({
       at: a.at,
       client: a.client,

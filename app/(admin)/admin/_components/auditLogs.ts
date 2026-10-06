@@ -80,6 +80,8 @@ const EXACT: Record<string, string> = {
   "product.delete": "상품 삭제",
   "broadcast.start": "방송 시작",
   "broadcast.end": "방송 종료",
+  "broadcast.auto_end": "방송 자동 종료",
+  "broadcast.force_end": "방송 강제 종료",
   "overlay.token.issue": "오버레이 주소 발급",
 };
 export function actionLabel(action: string): string {
