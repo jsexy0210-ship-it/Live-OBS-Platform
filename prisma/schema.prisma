@@ -4130,12 +4130,39 @@ model AdminImpersonationSession {
   reason    String
   ip        String?
   userAgent String?
+  // 접근 사유 분류·관련 건(문의·알림·신고, 같은 쇼핑몰 건만)·열람 범위. 이전에 열린 세션은 category null, scopes는 그때 열려 있던 범위(주문·회원)로 채웠다.
+  category    ImpersonationCategory?
+  relatedKind ImpersonationRelatedKind?
+  relatedId   String?                  @db.Uuid
+  scopes      ImpersonationScope[]     @default([])
   expiresAt DateTime  @db.Timestamptz(3)
   endedAt   DateTime? @db.Timestamptz(3)
   createdAt DateTime  @default(now()) @db.Timestamptz(3)
 
   @@index([adminId, endedAt])
   @@index([sellerId, createdAt])
+}
+
+enum ImpersonationCategory {
+  INQUIRY
+  INCIDENT
+  FINANCE_CHECK
+  AUDIT
+}
+
+enum ImpersonationRelatedKind {
+  INQUIRY
+  NOTIFICATION
+  REPORT
+}
+
+// 대리 조회로 볼 수 있는 화면 묶음. 범위 밖 파트너스 API는 403 out_of_scope.
+enum ImpersonationScope {
+  BROADCAST
+  OVERLAY
+  ORDERS
+  MEMBERS
+  SETTINGS_PG
 }
 
 // ───────────── 시작하기·온보딩(SA-003 · SA-004) ─────────────
