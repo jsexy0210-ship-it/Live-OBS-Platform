@@ -4,11 +4,11 @@ import "./ProductPreview.css";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { FormRow, FormSection } from "../admin-ui";
-import ProductDetailEditor, { type DetailBlock } from "./ProductDetailEditor";
-import ProductImages, { type SlotImage } from "./ProductImages";
+import ProductDetailEditor, { DETAIL_TEXT_MAX, blocksToHtml, type PendingImages } from "./ProductDetailEditor";
+import ProductImages, { IMAGE_MAX_COUNT, type SlotImage } from "./ProductImages";
 import { Topbar } from "./SellerShell";
 import ProductCategoryPicker, { type CategoryNode } from "./ProductCategoryPicker";
-import { NoImage, Toast } from "./States";
+import { LoadingRows, NoImage, Toast } from "./States";
 import { api, apiUpload, failMessage, type Product, type ProductImageInfo, type ProductOption, type ProductStatus, type StockDeductMode } from "./api";
 import { INT4_MAX, STATUS_LABEL, parseAmount, statusBadge, textLength, won } from "./format";
 import { useUnsavedGuard } from "../../lib/client/navigation";
@@ -155,20 +155,30 @@ export function ProductForm({ initial }: { initial?: Product }) {
   // 지운 서버 이미지는 저장할 때 지운다. 순서는 저장할 때 서버에 맞춘다.
   const [images, setImages] = useState<FormImage[]>(() => (initial?.images ?? []).map((i) => ({ id: i.id, url: i.url, state: "done" as const, server: true })));
   const [removedImages, setRemovedImages] = useState<string[]>([]);
+  // 썸네일로 지정한 이미지 id(null이면 지정 없음 = 첫 번째). 서버에 이미 있는 지정은 serverThumb에 둔다(첫 번째가 썸네일인 건 지정 없음으로 본다)
+  const [thumbId, setThumbId] = useState<string | null>(() => {
+    const list = initial?.images ?? [];
+    const t = list.find((i) => i.isThumbnail);
+    return t && t.id !== list[0]?.id ? t.id : null;
+  });
+  const serverThumb = useRef<string | null>(thumbId);
   const [uploadNote, setUploadNote] = useState<string | null>(null);
-  // 상세 페이지 블록(글·이미지): 이미지 블록의 사진도 저장할 때 올린다(?kind=detail). 지운·바꾼 서버 상세 사진은 저장할 때 서버에서 지운다
-  const [blocks, setBlocks] = useState<DetailBlock[]>([]);
-  const [detailRemoved, setDetailRemoved] = useState<string[]>([]);
-  const detailBase = useRef<string>("[]");
+  // 상세 설명(에디터 HTML): 새로 넣은 사진은 에디터 안에서 브라우저 주소(blob:)로 두었다가 저장할 때 올린다(?kind=detail).
+  // detailInit은 에디터에 처음 넣을 HTML(수정은 서버에서 읽을 때까지 null), detailNow는 지금 HTML, detailBase는 서버와 같은 기준값
+  const [detailInit, setDetailInit] = useState<string | null>(initial ? null : "");
+  const [editorKey, setEditorKey] = useState(0);
+  const [detailNow, setDetailNow] = useState("");
+  const [detailLen, setDetailLen] = useState(0);
+  const [detailNote, setDetailNote] = useState<string | null>(null);
+  const detailBase = useRef<string>("");
+  const pendingImages = useRef<PendingImages>(new Map());
+  // 이미 올린 새 사진(blob: 주소 → 저장 주소): 저장이 중간에 실패해도 다시 저장할 때 같은 사진을 또 올리지 않는다
+  const uploadedDetail = useRef<Map<string, string>>(new Map());
   useEffect(() => {
     if (!initial) return;
-    void api<{ blocks: ({ type: "text"; text: string } | { type: "image"; imageId: string; url: string })[] }>(`/api/seller/products/${initial.id}/detail`).then((r) => {
-      if (!r.ok) return;
-      const list: DetailBlock[] = r.data.blocks.map((b, i) =>
-        b.type === "text" ? { id: `d${i}`, type: "text", text: b.text } : { id: `d${i}`, type: "image", image: { id: b.imageId, url: b.url, state: "done", server: true } as SlotImage },
-      );
-      setBlocks(list);
-      detailBase.current = JSON.stringify(r.data.blocks.map((b) => (b.type === "text" ? { type: "text", text: b.text } : { type: "image", imageId: b.imageId })));
+    void api<{ blocks: ({ type: "text"; text: string } | { type: "image"; imageId: string; url: string })[]; html: string | null }>(`/api/seller/products/${initial.id}/detail`).then((r) => {
+      // 읽지 못해도 빈 에디터로 열면 저장 때 기존 글을 덮어쓰므로, 읽은 뒤에만 연다
+      if (r.ok) setDetailInit(r.data.html ?? blocksToHtml(r.data.blocks));
     });
   }, [initial]);
   const localImage = (f: File): FormImage => ({
@@ -223,12 +233,8 @@ export function ProductForm({ initial }: { initial?: Product }) {
     topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  // 상세 페이지: 서버는 글 1~2000자, 이미지는 올린 사진만 받는다. 비어 있는 블록은 저장 전에 알려 준다
-  const detailError = blocks.some((b) => b.type === "text" && b.text.trim() === "")
-    ? "비어 있는 글 블록이 있습니다. 내용을 입력하거나 블록을 삭제해 주십시오"
-    : blocks.some((b) => b.type === "image" && !b.image)
-      ? "이미지가 없는 이미지 블록이 있습니다. 이미지를 올리거나 블록을 삭제해 주십시오"
-      : null;
+  // 상세 설명: 서버는 글자 20,000자(공백 포함)까지 받는다
+  const detailError = detailLen > DETAIL_TEXT_MAX ? `상세 설명은 글자 ${DETAIL_TEXT_MAX.toLocaleString("ko-KR")}자까지 쓸 수 있습니다(지금 ${detailLen.toLocaleString("ko-KR")}자)` : null;
 
   const checkFirst = (st: ProductStatus) => {
     if (tagError) {
@@ -261,10 +267,12 @@ export function ProductForm({ initial }: { initial?: Product }) {
       const r = await api(`${base}/${id}`, { method: "DELETE" });
       if (!r.ok && r.status !== 404) return { ok: false, message: failMessage(r, "admin", "이미지를 지우지 못했습니다") };
       serverOrder.current = serverOrder.current.filter((x) => x !== id);
+      if (serverThumb.current === id) serverThumb.current = null;
       setRemovedImages((cur) => cur.filter((x) => x !== id));
     }
     let list = images;
     const todo = list.filter((i) => i.file);
+    const uploaded = new Map<string, string>();
     let n = 0;
     for (const img of todo) {
       n += 1;
@@ -281,6 +289,8 @@ export function ProductForm({ initial }: { initial?: Product }) {
       }
       URL.revokeObjectURL(img.url);
       serverOrder.current = [...serverOrder.current, r.data.image.id];
+      uploaded.set(img.id, r.data.image.id);
+      if (thumbId === img.id) setThumbId(r.data.image.id);
       list = list.map((x) => (x.id === img.id ? { id: r.data.image.id, url: r.data.image.url, state: "done" as const, server: true } : x));
       setImages(list);
     }
@@ -291,52 +301,68 @@ export function ProductForm({ initial }: { initial?: Product }) {
       if (!r.ok) return { ok: false, message: failMessage(r, "admin", "이미지 순서를 저장하지 못했습니다") };
     }
     serverOrder.current = want;
+    // 썸네일 지정: 지운 이미지를 가리키면 지정 없음(첫 번째). 새로 올린 이미지는 방금 받은 서버 id로 바꿔 본다
+    const wanted = thumbId ? (list.some((i) => i.id === thumbId && i.server) ? thumbId : (uploaded.get(thumbId) ?? null)) : null;
+    if (wanted !== serverThumb.current) {
+      const r = await api(`${base}/thumbnail`, { method: "PUT", body: { imageId: wanted } });
+      if (!r.ok) return { ok: false, message: failMessage(r, "admin", "썸네일을 저장하지 못했습니다") };
+      serverThumb.current = wanted;
+      setThumbId(wanted);
+    }
     return { ok: true };
   };
 
-  // 상세 페이지를 저장한다: 새 상세 사진 올림(?kind=detail) → 블록 통째로 저장 → 지운·바꾼 상세 사진 삭제. 실패하면 거기서 멈춘다
+  // 상세 설명을 저장한다: 새 사진 올림(?kind=detail) → 에디터 HTML 저장(서버가 허용 밖 코드를 지움) → 더는 안 쓰는 상세 사진 삭제. 실패하면 거기서 멈춘다
   const syncDetail = async (productId: string): Promise<{ ok: true } | { ok: false; message: string }> => {
+    if (detailNow === detailBase.current) return { ok: true };
     const base = `/api/seller/products/${productId}/images`;
-    let list = blocks;
-    const todo = list.filter((b) => b.type === "image" && (b.image as FormImage | null)?.file);
+    let html = detailNow;
+    const blobs = Array.from(new Set(Array.from(html.matchAll(/src="(blob:[^"]+)"/g), (m) => m[1]!)));
     let n = 0;
-    for (const b of todo) {
-      if (b.type !== "image" || !b.image) continue;
-      const img = b.image as FormImage;
+    for (const url of blobs) {
       n += 1;
-      setUploadNote(`상세 이미지 ${todo.length}장 올리는 중 · ${n} / ${todo.length}`);
-      const r = await apiUpload<{ image: ProductImageInfo }>(`${base}?kind=detail`, img.file!);
-      if (!r.ok) {
-        const message = failMessage(r, "admin", "상세 이미지를 올리지 못했습니다");
-        list = list.map((x) => (x.id === b.id && x.type === "image" ? { ...x, image: { ...img, state: "error" as const, error: message } as SlotImage } : x));
-        setBlocks(list);
-        setUploadNote(null);
-        return { ok: false, message };
+      setUploadNote(`상세 이미지 ${blobs.length}장 올리는 중 · ${n} / ${blobs.length}`);
+      if (!uploadedDetail.current.has(url)) {
+        const f = pendingImages.current.get(url);
+        if (!f) {
+          setUploadNote(null);
+          return { ok: false, message: "상세 이미지를 찾지 못했습니다. 이미지를 지우고 다시 넣어 주십시오" };
+        }
+        const r = await apiUpload<{ image: ProductImageInfo }>(`${base}?kind=detail`, f);
+        if (!r.ok) {
+          setUploadNote(null);
+          return { ok: false, message: failMessage(r, "admin", "상세 이미지를 올리지 못했습니다") };
+        }
+        uploadedDetail.current.set(url, `${base}/${r.data.image.id}`);
       }
-      URL.revokeObjectURL(img.url);
-      list = list.map((x) => (x.id === b.id && x.type === "image" ? { ...x, image: { id: r.data.image.id, url: r.data.image.url, state: "done" as const, server: true } as SlotImage } : x));
-      setBlocks(list);
+      html = html.split(`src="${url}"`).join(`src="${uploadedDetail.current.get(url)}"`);
     }
     setUploadNote(null);
-    const payload = list.map((b) => (b.type === "text" ? { type: "text", text: b.text } : { type: "image", imageId: b.image!.id }));
-    if (JSON.stringify(payload) !== detailBase.current) {
-      const r = await api(`/api/seller/products/${productId}/detail`, { method: "PUT", body: { blocks: payload } });
-      if (!r.ok) return { ok: false, message: failMessage(r, "admin", "상세 페이지를 저장하지 못했습니다") };
-      detailBase.current = JSON.stringify(payload);
+    const r = await api<{ html: string | null; images: { id: string }[]; sanitized?: { removedCount: number } }>(`/api/seller/products/${productId}/detail`, { method: "PUT", body: { html } });
+    if (!r.ok) return { ok: false, message: failMessage(r, "admin", "상세 설명을 저장하지 못했습니다") };
+    const used = new Set(Array.from((r.data.html ?? "").matchAll(/\/images\/([0-9a-f-]{36})/gi), (m) => m[1]!.toLowerCase()));
+    for (const img of r.data.images) {
+      if (used.has(img.id.toLowerCase())) continue;
+      const d = await api(`${base}/${img.id}`, { method: "DELETE" });
+      if (!d.ok && d.status !== 404) return { ok: false, message: failMessage(d, "admin", "쓰지 않는 상세 이미지를 지우지 못했습니다") };
     }
-    for (const id of detailRemoved) {
-      const r = await api(`${base}/${id}`, { method: "DELETE" });
-      if (!r.ok && r.status !== 404) return { ok: false, message: failMessage(r, "admin", "상세 이미지를 지우지 못했습니다") };
-      setDetailRemoved((cur) => cur.filter((x) => x !== id));
-    }
+    pendingImages.current.forEach((_, url) => URL.revokeObjectURL(url));
+    pendingImages.current = new Map();
+    uploadedDetail.current = new Map();
+    const removed = r.data.sanitized?.removedCount ?? 0;
+    setDetailNote(removed > 0 ? `허용하지 않는 코드 ${removed}곳을 지우고 저장했습니다. 글 · 이미지 · 표는 그대로입니다.` : null);
+    // 저장된 모습(서버 주소의 사진)으로 에디터를 다시 연다
+    setDetailInit(r.data.html ?? "");
+    setEditorKey((k) => k + 1);
     return { ok: true };
   };
 
   // 저장하지 않은 변경(UX-04): 수정은 서버에서 받은 값(base·옵션 orig·catBase·serverOrder·detailBase)과, 등록은 빈 양식과 비교한다
   const optionsChanged = rows.some((o) => !o.id || (o.orig ? o.name.trim() !== o.orig.name || parseAmount(o.priceDelta) !== o.orig.priceDelta || parseAmount(o.stock) !== o.orig.stock : false));
-  const detailPayload = JSON.stringify(blocks.map((b) => (b.type === "text" ? { type: "text", text: b.text } : { type: "image", imageId: b.image?.id })));
+  const shownThumb = thumbId && images.some((i) => i.id === thumbId) ? thumbId : null;
   const imagesChanged =
     removedImages.length > 0 ||
+    shownThumb !== serverThumb.current ||
     images.some((i) => !i.server) ||
     images.filter((i) => i.server).map((i) => i.id).join() !== serverOrder.current.filter((x) => !removedImages.includes(x)).join();
   const dirtyNow = base
@@ -350,8 +376,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
       removed.length > 0 ||
       JSON.stringify(categoryIds) !== JSON.stringify(catBase) ||
       imagesChanged ||
-      detailPayload !== detailBase.current ||
-      detailRemoved.length > 0
+      detailNow !== detailBase.current
     : name.trim() !== "" ||
       description.trim() !== "" ||
       tags.length > 0 ||
@@ -364,7 +389,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
       rows[0].stock !== "0" ||
       categoryIds.length > 0 ||
       images.length > 0 ||
-      blocks.length > 0;
+      detailNow !== "";
   useUnsavedGuard(dirtyNow && !leaving);
 
   const create = async (st: ProductStatus) => {
@@ -395,7 +420,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
     }
     let imgFailed = false;
     if (images.length > 0) imgFailed = !(await syncImages(r.data.id)).ok;
-    if (!imgFailed && blocks.length > 0) imgFailed = !(await syncDetail(r.data.id)).ok;
+    if (!imgFailed && detailNow !== "") imgFailed = !(await syncDetail(r.data.id)).ok;
     setLeaving(true);
     router.replace(`/seller/products?toast=${catFailed || imgFailed ? "created_partial" : st === "DRAFT" ? "draft" : "created"}`);
   };
@@ -638,16 +663,18 @@ export function ProductForm({ initial }: { initial?: Product }) {
                 {shown.description ? (
                   <span className="err">{shown.description}</span>
                 ) : (
-                  <span className="help">상품 상세 위쪽과 공유 카드에 보입니다 · 자세한 내용은 아래 「상세 페이지」 블록으로</span>
+                  <span className="help">상품 상세 위쪽과 공유 카드에 보입니다 · 자세한 내용은 아래 「상세 설명」에</span>
                 )}
               </div>
             </FormRow>
           </FormSection>
 
-          <FormSection title="이미지" actions={<span className="t-c1 c-alt num">{images.length} / 10</span>}>
+          <FormSection title="이미지" actions={<span className="t-c1 c-alt num">{images.length} / {IMAGE_MAX_COUNT}</span>}>
             <FormRow label="상품 이미지">
               <ProductImages
                 images={images}
+                thumbnailId={shownThumb ?? images[0]?.id ?? null}
+                onThumbnail={(id) => setThumbId(id)}
                 disabled={busy}
                 onAdd={(files) => setImages((cur) => [...cur, ...files.map(localImage)])}
                 onRemove={(id) => {
@@ -676,24 +703,31 @@ export function ProductForm({ initial }: { initial?: Product }) {
             </FormRow>
           </FormSection>
 
-          <FormSection title="상세 페이지">
-            <FormRow label="상세 내용">
-              <ProductDetailEditor
-                blocks={blocks}
-                disabled={busy}
-                onChange={(next) => {
-                  // 지운 서버 상세 사진은 저장할 때 서버에서도 지운다
-                  const keep = new Set(next.flatMap((b) => (b.type === "image" && b.image ? [b.image.id] : [])));
-                  const gone = blocks.flatMap((b) => (b.type === "image" && b.image && (b.image as FormImage).server && !keep.has(b.image.id) ? [b.image.id] : []));
-                  if (gone.length > 0) setDetailRemoved((cur) => [...cur, ...gone]);
-                  setBlocks(next);
-                }}
-                onPickImage={(blockId, file) => {
-                  const old = blocks.find((b) => b.id === blockId);
-                  if (old?.type === "image" && old.image && (old.image as FormImage).server) setDetailRemoved((cur) => [...cur, old.image!.id]);
-                  setBlocks((cur) => cur.map((b) => (b.id === blockId && b.type === "image" ? { ...b, image: localImage(file) } : b)));
-                }}
-              />
+          <FormSection title="상세 설명">
+            <FormRow label="본문" help="구매자 상품 상세 「상세 정보」 탭에 그대로 보입니다 · 글 · 이미지 · 표를 섞어 씁니다">
+              {detailInit === null ? (
+                <LoadingRows rows={3} />
+              ) : (
+                <ProductDetailEditor
+                  key={editorKey}
+                  initialHtml={detailInit}
+                  disabled={busy}
+                  pending={pendingImages}
+                  onReady={(h) => {
+                    detailBase.current = h;
+                    setDetailNow(h);
+                  }}
+                  onChange={(h, n) => {
+                    setDetailNow(h);
+                    setDetailLen(n);
+                  }}
+                />
+              )}
+              {detailNote && (
+                <div className="msg msg-info" role="status" data-testid="detail-sanitized">
+                  <span>{detailNote}</span>
+                </div>
+              )}
               {showErrors && detailError && (
                 <span className="err" role="alert">
                   {detailError}
@@ -836,7 +870,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
         </div>
 
         <aside className="col aside-sticky" style={{ gap: 16 }}>
-          <ProductPreview name={name} description={description} price={priceNum} status={status} rows={rows} image={images.find((i) => i.state !== "error")?.url} />
+          <ProductPreview name={name} description={description} price={priceNum} status={status} rows={rows} image={(images.find((i) => i.id === (shownThumb ?? images[0]?.id) && i.state !== "error") ?? images.find((i) => i.state !== "error"))?.url} />
           <div className="card pad col" style={{ gap: 8 }}>
             <span className="t-hl2">필수 입력 항목</span>
             <span className="t-l2 c-neu">상품명, 판매가, 옵션 이름은 비워 둘 수 없습니다</span>

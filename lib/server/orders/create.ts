@@ -89,11 +89,12 @@ export function parseOrderNickname(raw: unknown): string | null | false {
 }
 
 export async function createOrder(db: PrismaClient, input: CreateOrderInput): Promise<CreateOrderResult> {
-  // 판매자: 운영 중이고 잠기지 않았고 스토어 운영 기능 권한이 있어야 한다(이용 판단은 DB 시계, ARCHITECTURE 4.8.0)
-  const seller = await db.seller.findUnique({ where: { id: input.sellerId }, select: { status: true } });
+  // 판매자: 운영 중(운영 상태 OPEN)이고 잠기지 않았고 스토어 운영 기능 권한이 있어야 한다(이용 판단은 DB 시계, ARCHITECTURE 4.8.0)
+  const seller = await db.seller.findUnique({ where: { id: input.sellerId }, select: { status: true, operatingState: true } });
   if (
     !seller ||
     seller.status !== "ACTIVE" ||
+    seller.operatingState !== "OPEN" ||
     (await sellerAccessFor(db, input.sellerId)) === "expired" ||
     !(await sellerHasFeature(db, input.sellerId, "STORE_OPERATIONS"))
   ) {

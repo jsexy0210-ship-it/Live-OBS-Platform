@@ -44,7 +44,8 @@ export function goodsNameOf(items: { productNameSnapshot: string }[]) {
   return name + suffix;
 }
 
-// 주문 생성과 같은 조건: 운영 중이고 잠기지 않았고 스토어 운영 기능 권한이 있어야 결제(카드·무통장 선택)할 수 있다
+// 이미 만든 결제 대기 주문의 결제 조건: 운영 상태(준비 중·일시 정지)와 상관없이 기존 기한 안에 결제할 수 있다(대표님 결정 2026-10-06).
+// 새 거래(주문 생성·결제 전 배송비 미리보기)는 운영 상태 OPEN이어야 한다. 그 밖에는 주문 생성과 같은 조건: 이용 정지가 아니고 잠기지 않았고 스토어 운영 기능 권한이 있어야 결제(카드·무통장 선택)할 수 있다
 export async function shopOpenForPayment(db: PrismaClient, sellerId: string): Promise<boolean> {
   const seller = await db.seller.findUnique({ where: { id: sellerId }, select: { status: true } });
   return !!seller && seller.status === "ACTIVE" && (await sellerAccessFor(db, sellerId)) !== "expired" && (await sellerHasFeature(db, sellerId, "STORE_OPERATIONS"));
