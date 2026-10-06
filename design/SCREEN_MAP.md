@@ -286,6 +286,7 @@
 | DS-CONFIRM | 공통 확인 창 — 저장·삭제·변경·상태 변경·일괄 처리 앞 다이얼로그(규칙 6항 · 관리자 6종 · 구매자 PC 2종 · 휴대폰 시트 2종, 대표님 지시 2026-10-06 · docs PR #627) | FINAL v272 (1791213148-ad9f) · `design/project/DS-CONFIRM.dc.html` |
 | IA1·IA2·IA3 | 정보구조도 보드(IA1은 v279에서 확정 GNB·LNB로 재생성) | DRAFT · 정본은 docs/IA.md |
 | DS-DATEPICKER | 공통 날짜 선택(네이버식) — 칸 2026.10.05 · 빈 칸 「날짜 선택」/「시작일」~「종료일」 · 달력 아이콘 · 달력 ‹ 2026.10 › · 일 빨강 토 파랑 · 오늘 테두리 · 고른 날 채운 원 · 기간 연한 배경 · [초기화][적용] · 관리자 40 · 구매자 PC · 휴대폰 시트 48 · 검색 필터 기본값(최근 1개월) · 규칙 5(대표님 지시 2026-10-06 · docs PR #631 · #630 · #632) | FINAL v276 (1791214099-aa42) · `design/project/DS-DATEPICKER.dc.html` · lop.css `.i.dt` / `.inp.dt` |
+| DS-TABLE-CARD | 공통 표 모바일 카드(768px 미만) — 표 한 행 = 카드 한 장 · 선택 체크(왼쪽 위 20px · 터치 44) · 제목(첫 열 클릭 제목 15px + 보조 글 12px) · 상태 배지 · 경과(오른쪽 위) · 부가 필드 「라벨:값」 2열(표 열 순서 · 긴 글 wide) · 숫자 · 날짜 왼쪽 정렬 · 빈 값 「-」 · 관리 버튼 주요 2개 44px + 더보기 · 전체 선택 · 아래 고정 일괄 바 48 · 처리 뒤 흐림 · 규칙 11항 · 구조 해부 · 마스터 MA-013 · 파트너스 SA-021 적용 예 · 상태 변형 5(근거 DS-ROW-ACTION ⑧ · docs/ADMIN_OPS_UX.md 10항 · MASTER 배정 2026-10-06) | FINAL v314 (1791248032-de23) · `design/project/DS-TABLE-CARD.dc.html` · 구현은 레이아웃 전담(lop.css `.c24.mob .m-card` 계열 44 맞춤) |
 | DS-NAV | 새 GNB · 메뉴 구조표(제안) — 파트너스 GNB 10→8 · LNB 50→34, 마스터 8→6 · 28→24, 구매자 이름 2곳, 통폐합 전후 대응표 · 원칙 5(대표님 지시 2026-10-05 · docs/IA.md 「GNB·위계 현대화」 PR #637) · 화면 ← 버튼(Back) 규격 6항·시안 5(대표님 지시 「화면 진입 시 Back 기능도 없다」, 경로는 docs/BACK_ROUTES.md) | FINAL v295 (대표님 확정 2026-10-06 「그대로 진행」 v278 · 가운뎃점 띄어쓰기 통일 v295, docs/IA.md 「확정 메뉴 구조」 PR #637) · `design/project/DS-NAV.dc.html` |
 | DS-TYPE-SCALE | 글자 · 버튼 · 간격 · 모서리 · 아이콘 · 표 · 일시 표기 크기 체계 한 장(시각 규격 2026-10-05 + 일시 2026.10.05 22:25) | FINAL v278 (대표님 확정 2026-10-06 「그대로 진행」) · `design/project/DS-TYPE-SCALE.dc.html` |
 | IA1·IA2·IA3 | 정보구조도 보드 | DRAFT · 정본은 docs/IA.md |
@@ -304,6 +305,7 @@
 | SearchBox · ListPanel (검색 패널 3층 · 목록 패널 2층 · 외곽 프레임 완전성) | design/project/DS-PANEL.dc.html · lop.css (`.c24 .box.dense` `.ft` `.sbtn` `.lpanel` `.ltop` `.lt`) |
 | 행 동작 · 칩 · 일괄 고정 줄 · 사이드 패널 · 확인 3단계 (관리자 목록 즉시 처리) | design/project/DS-ROW-ACTION.dc.html · 적용 예 MA-013-OPS.dc.html · SA-021-OPS.dc.html · 정본 규칙 docs/ADMIN_OPS_UX.md |
 | Table | lop.css `.c24 .lt`(목록) · `.ft`(표형 폼) · `.sh24 .tbl`(구매자) |
+| 모바일 카드 목록 (관리자 표 768px 미만 접힘) | **정본 DS-TABLE-CARD** · 적용 예 SA-011-M.dc.html(현행, 44 맞춤 전) · lop.css `.c24.mob .m-cards` `.m-card` `.m-kvs` `.m-kv` `.m-bar` |
 | Button | lop.css `.c24 .b` + `.sm` `.lg` `.pri` `.neg` `.dark` (높이 토큰 `--ui-h-*`, 폭 토큰 `--btn-w-*`) · 구매자 `.sh24 .btn` |
 | Input · Select · DatePicker | lop.css `.c24 .i` + `.w-xs~.w-f` · Select 화살표 · 날짜 전체 클릭 규칙은 docs/DESIGN_PROMPT.md 「규격」 |
 | Modal · 확인 창 | **정본 DS-CONFIRM** · lop.css `.c24 .cfm` `.ovl` · 구매자 `.sh24 .cfm` · 휴대폰 `.sh24.m .sheet .pn` · 위험 실행 `.b.neg.pri` / `.btn.neg.p` · 예시 MA-013-OPS(반려 사유) · SA-021-OPS(환불) |
