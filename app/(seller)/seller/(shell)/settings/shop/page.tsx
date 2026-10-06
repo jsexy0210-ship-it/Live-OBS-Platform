@@ -8,6 +8,7 @@ import { Toast } from "../../../../../../components/seller/States";
 import { api, apiUpload, failMessage } from "../../../../../../components/seller/api";
 import { cleanText, textLength, type TextKind } from "../../../../../../lib/server/text/clean";
 import { useUnsavedGuard } from "../../../../../../lib/client/navigation";
+import { DomainSection } from "./DomainSection";
 import "./shop-info.css";
 
 // SA-060 쇼핑몰 정보(파트너스 관리자, 설정 › 쇼핑몰 설정) (a)구역: 운영 상태·이름·한 줄 소개·로고·대표 색상·주소. 파비콘·공유 카드·도메인·사업자 구역은 이어서 붙인다.
@@ -571,6 +572,7 @@ export default function ShopInfoPage() {
                 </FormSection>
               </div>
             )}
+            {editable && <DomainSection onToast={setToast} />}
             <div style={{ marginTop: 32 }}>
               <FormSection title="구매자 화면 미리보기">
                 <FormRow label="쇼핑몰 맨 위" help="쇼핑몰 모든 화면 맨 위에 이렇게 표시됩니다">
