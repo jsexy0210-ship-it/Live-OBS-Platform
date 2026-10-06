@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { PageHead } from "../../../../../../../components/admin-ui";
+import { PageHead, useConfirm } from "../../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../../components/seller/States";
 import { STEP_LABEL } from "../../../../../../../components/seller/automation/common";
 import { adminApi, failMessage } from "../../../../_components/api";
@@ -46,7 +46,7 @@ export default function AutomationJobDetailPage() {
   const { jobId } = useParams<{ jobId: string }>();
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; d: Detail }>({ kind: "loading" });
   const [note, setNote] = useState("");
-  const [busy, setBusy] = useState(false);
+  const { confirm } = useConfirm();
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
   const load = useCallback(async () => {
     const r = await adminApi<Detail>(`/api/automation/admin/jobs/${jobId}`);
@@ -57,10 +57,16 @@ export default function AutomationJobDetailPage() {
   }, [load]);
 
   const closeCleanup = async () => {
-    setBusy(true);
-    const r = await adminApi<unknown>(`/api/automation/admin/jobs/${jobId}/cleanup`, { method: "POST", json: { note: note.trim() } });
-    setBusy(false);
-    if (!r.ok) return setToast({ text: failMessage(r), neg: true });
+    const ok = await confirm({
+      title: "정리 필요 작업을 닫으시겠습니까?",
+      body: "적은 내용이 기록에 남고 이 작업의 「정리 필요」 표시가 사라집니다",
+      confirmLabel: "닫기",
+      run: async () => {
+        const r = await adminApi<unknown>(`/api/automation/admin/jobs/${jobId}/cleanup`, { method: "POST", json: { note: note.trim() } });
+        return r.ok ? undefined : failMessage(r);
+      },
+    });
+    if (!ok) return;
     setNote("");
     setToast({ text: "정리 필요 작업을 닫았습니다." });
     await load();
@@ -99,7 +105,7 @@ export default function AutomationJobDetailPage() {
               <b>정리 필요</b>
               <span className="t-l2 c-alt">외부 쇼핑몰에 남은 연결과 OBS 설정을 직접 지운 뒤 닫아 주십시오. 닫으면 이 작업은 실패로 끝나고, 결제는 환불 대기로 바뀝니다. 파트너스가 취소한 작업은 「취소」로 닫힙니다.</span>
               <textarea className="inp" rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} placeholder="정리한 내용(필수, 500자까지)" aria-label="정리한 내용" />
-              <div><button className="btn" type="button" disabled={busy || !note.trim()} onClick={() => void closeCleanup()}>정리 완료로 닫기</button></div>
+              <div><button className="btn" type="button" disabled={!note.trim()} onClick={() => void closeCleanup()}>정리 완료로 닫기</button></div>
             </section>
           )}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
