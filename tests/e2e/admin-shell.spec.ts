@@ -76,6 +76,16 @@ test("CS: 최고관리자 전용 메뉴(실시간 감시·설정 대분류=시�
     await expect(page.getByTestId("admin-no-access")).toHaveText("이 화면을 볼 권한이 없습니다");
     await expect(page.getByRole("heading", { name: "파비콘 · 공유 카드" })).toHaveCount(0);
   }
+  // AU-008: 인증 카드 틀(로고·제목·안내·이전 화면). 「권한 요청」은 받는 서버가 없어 버튼을 두지 않는다
+  await page.goto("/admin/logs");
+  await expect(page.getByRole("alert").getByText("권한이 필요하면 최고관리자에게 요청해 주십시오.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "이전 화면" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "권한 요청" })).toHaveCount(0);
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: 800 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: `tests/e2e/screenshots/au-008/forbidden-${width}.png` });
+  }
 });
 
 test("메뉴에 없는 주소는 관리자 404(합니다체·홈으로), 화면 있는 메뉴(파비콘·공유 카드)는 그대로 열린다", async ({ page }) => {

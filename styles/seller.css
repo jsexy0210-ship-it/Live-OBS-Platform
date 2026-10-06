@@ -33,6 +33,12 @@ body {
   padding: var(--ui-sp-32) var(--ui-sp-24);
   gap: var(--ui-gap-field);
 }
+/* 권한 없음(403, AU-008): 셸 본문 가운데에 인증 카드 */
+.forbidden {
+  display: flex;
+  justify-content: center;
+  padding: var(--ui-sp-48) var(--ui-gutter-mobile);
+}
 .app .login-head > h1 {
   font-size: var(--ui-fs-title-admin);
   line-height: var(--ui-lh-title-admin);
