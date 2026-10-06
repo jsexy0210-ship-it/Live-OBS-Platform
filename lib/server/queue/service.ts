@@ -1,5 +1,6 @@
 import { Prisma, type ActorType, type PaymentMethod, type PrismaClient, type QueueItem, type RefundFault } from "@prisma/client";
 import { writeAudit } from "../audit/log";
+import { recordBroadcastBoundary } from "../broadcast/events";
 import { notifySellerChanged } from "../realtime/notify";
 import { lockSellerOrders, maybeRestrict, sellerEventClock } from "../orders/overdue";
 import { getShippingPolicy } from "../orders/shipping";
@@ -198,7 +199,13 @@ export async function startBroadcast(
       if (await tx.broadcastSession.findFirst({ where: { sellerId: ctx.sellerId, status: "LIVE" }, select: { id: true } })) {
         throw new Rejected("already_live");
       }
-      const session = await tx.broadcastSession.create({ data: { sellerId: ctx.sellerId, title: input.title, startedAt: now } });
+      const [shop, user] = await Promise.all([
+        tx.seller.findUnique({ where: { id: ctx.sellerId }, select: { shopName: true } }),
+        ctx.actorType === "SELLER_USER" && ctx.actorId ? tx.sellerUser.findFirst({ where: { id: ctx.actorId, sellerId: ctx.sellerId }, select: { name: true } }) : null,
+      ]);
+      const hostName = [shop?.shopName, user?.name].filter(Boolean).join(" · ") || null;
+      const session = await tx.broadcastSession.create({ data: { sellerId: ctx.sellerId, title: input.title, startedAt: now, hostName } });
+      await recordBroadcastBoundary(tx, ctx.sellerId, session.id, "LIVE_STARTED", now);
       const pending = await tx.queueItem.findMany({
         where: { sellerId: ctx.sellerId, status: "WAITING", broadcastSessionId: null },
         orderBy: [{ position: "asc" }, { receivedAt: "asc" }, { id: "asc" }],
@@ -254,6 +261,7 @@ export async function endBroadcast(
     }
     const carried = { count: remaining.length };
     await tx.broadcastSession.update({ where: { id: live.id }, data: { status: "ENDED", endedAt: now } });
+    await recordBroadcastBoundary(tx, ctx.sellerId, live.id, "ENDED", now, carried.count);
     await writeAudit(tx, {
       actorType: ctx.actorType,
       actorId: ctx.actorType === "SYSTEM" ? null : ctx.actorId,
