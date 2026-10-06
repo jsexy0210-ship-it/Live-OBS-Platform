@@ -99,6 +99,13 @@ test("기간: 기본은 최근 1개월이라 오래된 내역은 안 보이고, 
   await page.goto(`/seller/rewards/ledger?from=${ymd(60)}&to=${ymd(0)}`);
   await expect(rows).toHaveCount(2);
   await expect(page.getByText("+222원")).toBeVisible();
+  // 업무 큐 링크(period=all)는 기간 제한 없이 조회한다
+  const all = page.waitForResponse((r) => r.url().includes("/api/seller/reward-ledger?"));
+  await page.goto("/seller/rewards/ledger?period=all");
+  const allUrl = new URL((await all).url());
+  expect(allUrl.searchParams.get("from")).toBe("");
+  expect(allUrl.searchParams.get("to")).toBe("");
+  await expect(rows).toHaveCount(2);
 });
 
 test("내역이 없으면 안내하고, 20건을 넘으면 「더 보기」로 이어서 불러온다", async ({ page }) => {
