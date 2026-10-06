@@ -16,7 +16,7 @@
 | 검수 전담 (3) | `session_01FX4H9fYuFRUBq4EEXRqeXq` | (교체됨 → `session_01Wjnr6nWyiUkbYMPBmx7CPt`, 2026-10-06)  2026-10-05 23:15 KST MASTER 생성(Sonnet 5.5). `session_017wDPPy8EXzNu5zkAP2uu6R`(검수 전담 (2))를 컨텍스트 78%로 교체. 역할·소유는 전임 행과 같음 |
 | 검수 전담 (2) | `session_017wDPPy8EXzNu5zkAP2uu6R` | (교체됨 → `session_01FX4H9fYuFRUBq4EEXRqeXq`, 2026-10-05)  2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01MHJsYfiTFZ8VWkM3xVF7wM`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 시험 정비 전담 | `session_015cgJKFCqcHLHLSVGPaNKnc` | 2026-10-06 KST MASTER 생성(Sonnet 5.5). CI 스모크 밖 전체 e2e·통합 시험 실패 정비(검증 약화 금지, 제품 결함은 소유 세션에 보고) |
-| 인프라 감시 전담 | `session_01MZdLC1JGqFZQ3U9zdBHZwL` | 2026-10-06 대표님 지시 「모든 인프라 용량, 요금을 마스터에서 실시간으로 확인」. MA-120 인프라·비용 서버(자원 수집기·스냅숏·조회 API #735, 홈 요약·공공 API 만료일·요금 추정 후속). 화면은 화면-마스터 (3). 2026-10-06 KST MASTER 생성(Sonnet 5.5) |
+| 인프라 감시 전담 | `session_01MZdLC1JGqFZQ3U9zdBHZwL` | 2026-10-06 대표님 지시 「모든 인프라 용량, 요금을 마스터에서 실시간으로 확인」. MA-120 인프라·비용 서버: 자원 수집기·스냅숏·조회 API #735, 단가 입력·비용 추정·홈 요약 #743, 외부 연결 만료·상태 #774, 알림 센터 연결 #789 병합 완료. 남은 것: 각 외부 연동의 실제 공급자가 붙을 때 `recordConnectionResult` 한 줄 추가(지금은 도우미만), 2단계 카카오클라우드 청구 조회(API 키 발급 뒤). 화면은 화면-마스터 (3). 2026-10-06 KST MASTER 생성(Sonnet 5.5) |
 | 개발 전담 (기반) (7) | `session_01NtyNfQ2KbvTFRqRvgudJ9n` | 2026-10-06 07:32 KST MASTER 생성(Sonnet 5.5). (6)을 컨텍스트 64%로 교체(인계 #691 댓글). 큐: SA-060 쇼핑몰 정보 API → 쇼핑몰 운영 상태(준비 중·일시 정지 차단) |
 | 개발 전담 (기반) (6) | `session_014TjcA8RirjWptikziBwasM` | (교체됨 → `session_01NtyNfQ2KbvTFRqRvgudJ9n`, 2026-10-06, #691 대응까지)  2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01N4xJrEzQvUuRHB8QzcQcKE`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 개발 전담 (기반-상품) (2) | `session_01Cr44KBNsnx39N7sPjPurpx` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_018WsyHpKDofgW5DEiS4tUoA`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
@@ -230,6 +230,8 @@ main의 마지막 번호(20261004320000) 뒤로 세션별 범위를 나눈다. �
 - 인프라 전담 (2) 세션에 GEMINI_API_KEY 서버 .env 반영 승인 직접 입력(다른 세션 전달 승인은 쓰지 않음)
 - 테스트 서버 마스터 관리자에서 「시험 결제몰」 승인(나이스페이 시험 결제 대기)
 - 클라우드 환경 네트워크 허용 목록에 developers.cafe24.com 추가
+- 인프라 백업 알림(MA-120): 운영·테스트 앱 컨테이너에 백업 폴더(`/opt/obs/backups`) 읽기 전용 마운트와 `OPS_BACKUP_DIR` 설정이 있어야 백업 용량·마지막 백업 시각을 재고 백업 경과 알림이 동작함(배포 구성 변경, 대표님 승인 필요. 없으면 백업 값은 null=못 잼, 알림 없음)
+- 인프라 2단계(실제 청구 금액): 카카오클라우드 청구 조회 API 키 발급(대표님 조치) 뒤 `actual`·`actualSource` 구현
 
 ## 다음 작업
 
