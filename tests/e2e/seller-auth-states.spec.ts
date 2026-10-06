@@ -50,7 +50,7 @@ test("AU-006 이용 정지: 로그인·/seller·막힌 화면 모두 정지 안�
   await expect(page).toHaveURL(/\/seller\/suspended$/);
   // 정지 중에도 공지 · 문의는 열린다
   await page.goto("/seller/notices");
-  await expect(page.getByRole("heading", { level: 1, name: "공지 · 문의" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "공지사항" })).toBeVisible();
 });
 
 test("AU-007 세션 만료: 로그인이 풀린 채 화면을 열면 로그인으로 가고 이유를 알려 주며, 다시 로그인하면 가려던 화면으로 간다", async ({ page }) => {
