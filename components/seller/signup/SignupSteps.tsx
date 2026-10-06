@@ -469,6 +469,50 @@ type BizCheck = {
   mailOrder: { state: "NORMAL" | "NOT_REGISTERED" | "NOT_ACTIVE" | "LOOKUP_FAILED" | "INVALID_NUMBER" } | null;
 };
 const LICENSE_MAX = 10 * 1024 * 1024;
+
+// 사업장 주소 검색: 무료 우편번호 서비스(다음 우편번호, 키 없음)의 검색 창. 스크립트는 4단계에서만 불러온다(MASTER 결정 2026-10-06).
+// 불러오지 못하거나 검색 창을 열지 못하면 우편번호 · 기본 주소 칸이 바로 입력칸으로 바뀐다(정본 PF-007-4 「주소 검색을 열지 못함 · 직접 입력」).
+const POSTCODE_SRC = "https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";
+type PostcodeData = { zonecode: string; roadAddress: string; jibunAddress: string; userSelectedType: "R" | "J"; buildingName?: string; apartment?: "Y" | "N" };
+type DaumGlobal = { Postcode: new (o: { oncomplete: (d: PostcodeData) => void }) => { open: () => void } };
+function usePostcode(enabled: boolean) {
+  const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
+  useEffect(() => {
+    if (!enabled) return;
+    const w = window as unknown as { daum?: DaumGlobal };
+    if (w.daum?.Postcode) return setState("ready");
+    setState("loading");
+    const tag = document.createElement("script");
+    tag.src = POSTCODE_SRC;
+    tag.async = true;
+    // 15초 안에 못 불러오면 직접 입력으로 바꾼다
+    const timer = setTimeout(() => setState((p) => (p === "loading" ? "failed" : p)), 15_000);
+    tag.onload = () => {
+      clearTimeout(timer);
+      setState((window as unknown as { daum?: DaumGlobal }).daum?.Postcode ? "ready" : "failed");
+    };
+    tag.onerror = () => {
+      clearTimeout(timer);
+      setState("failed");
+    };
+    document.head.appendChild(tag);
+    return () => {
+      clearTimeout(timer);
+      tag.onload = null;
+      tag.onerror = null;
+    };
+  }, [enabled]);
+  const open = (onPick: (d: PostcodeData) => void) => {
+    const w = window as unknown as { daum?: DaumGlobal };
+    try {
+      if (!w.daum?.Postcode) throw new Error("postcode_missing");
+      new w.daum.Postcode({ oncomplete: onPick }).open();
+    } catch {
+      setState("failed");
+    }
+  };
+  return { state, open };
+}
 const sizeText = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
 
 export function BusinessStep() {
@@ -483,6 +527,7 @@ export function BusinessStep() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const postcode = usePostcode(f.track !== "OVERLAY_ONLY");
   if (!ok) return <Wait />;
 
   // 방송 화면만 쓰기: 이 단계가 없다. 3단계에서 바로 신청한다
@@ -641,12 +686,59 @@ export function BusinessStep() {
             <label htmlFor="su-address" className="req">
               사업장 주소
             </label>
+            {postcode.state === "failed" && (
+              <div className="msg msg-cau" role="status" style={{ display: "block", width: "100%" }}>
+                주소 검색을 열지 못했어요. 우편번호와 주소를 직접 적어 주세요
+              </div>
+            )}
             <div className="row" style={{ gap: 8 }}>
-              <input id="su-zip" className="inp num" style={{ width: 120 }} inputMode="numeric" maxLength={5} value={f.zip} aria-label="우편번호" placeholder="우편번호" onChange={(e) => set("zip", digits(e.target.value, 5))} />
+              <input
+                id="su-zip"
+                className="inp num"
+                style={{ width: 120, ...(postcode.state === "failed" ? {} : { background: "var(--wds-fill-alternative)" }) }}
+                inputMode="numeric"
+                maxLength={5}
+                value={f.zip}
+                readOnly={postcode.state !== "failed"}
+                aria-label="우편번호"
+                placeholder="우편번호"
+                onChange={(e) => set("zip", digits(e.target.value, 5))}
+              />
+              <button
+                id="su-address-search"
+                className="btn btn-out"
+                type="button"
+                style={{ flex: "none" }}
+                disabled={postcode.state !== "ready"}
+                onClick={() =>
+                  postcode.open((d) => {
+                    const base = d.userSelectedType === "R" ? d.roadAddress : d.jibunAddress;
+                    const extra = d.userSelectedType === "R" && d.apartment === "Y" && d.buildingName ? ` (${d.buildingName})` : "";
+                    set("zip", digits(d.zonecode, 5));
+                    set("address", `${base}${extra}`.slice(0, 150));
+                    focusId("su-addressDetail");
+                  })
+                }
+              >
+                주소 검색
+              </button>
             </div>
-            <input {...inputProps("address")} maxLength={150} aria-label="기본 주소" placeholder="기본 주소" onChange={(e) => set("address", e.target.value)} />
+            <input
+              {...inputProps("address")}
+              style={postcode.state === "failed" ? undefined : { background: "var(--wds-fill-alternative)" }}
+              readOnly={postcode.state !== "failed"}
+              maxLength={150}
+              aria-label="기본 주소"
+              placeholder="기본 주소"
+              onChange={(e) => set("address", e.target.value)}
+            />
             <input id="su-addressDetail" className="inp" maxLength={50} value={f.addressDetail} aria-label="상세 주소" placeholder="상세 주소" onChange={(e) => set("addressDetail", e.target.value)} />
-            {err("address") ?? <span className="help">사업자등록증의 주소와 같아야 해요 · 주소를 직접 입력해 주세요</span>}
+            {err("address") ??
+              (postcode.state === "failed" ? (
+                <span className="help">우편번호 서비스 스크립트를 못 불러오면 우편번호 · 기본 주소 칸이 바로 입력칸으로 바뀌어요 · 다시 시도는 새로고침</span>
+              ) : (
+                <span className="help">사업자등록증의 주소와 같아야 해요 · 「주소 검색」은 무료 우편번호 서비스예요 · 검색 창이 열리지 않으면 우편번호 · 주소를 직접 적을 수 있어요</span>
+              ))}
           </div>
         </div>
         {bizResult && (
@@ -681,11 +773,13 @@ export function BusinessStep() {
           </div>
         )}
         <div className="col" style={{ gap: 6 }}>
-          <span className="lbl">사업자등록증 (선택)</span>
+          <span className="lbl">
+            사업자등록증 <span className="c-alt">(선택)</span>
+          </span>
           <div className="row" style={{ gap: 12, alignItems: "center", padding: 14, borderRadius: 10, border: "2px dashed var(--wds-line-normal-normal)" }}>
             <span className="col" style={{ gap: 2, flex: 1 }}>
               <span className="t-l1 fw6">{license ? `${license.fileName} · ${sizeText(license.byteSize)}` : "올린 파일이 없어요"}</span>
-              <span className="t-c1 c-alt">글자가 또렷하게 보이는 사진이면 돼요 · JPG · PNG · PDF · 10MB 이하</span>
+              <span className="t-c1 c-alt">글자가 또렷하게 보이는 사진이면 돼요 · JPG · PNG · PDF · 지금 안 올리면 심사 때 요청할 수 있어요</span>
             </span>
             <input ref={fileRef} id="su-license" type="file" accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf" hidden onChange={(e) => void upload(e.target.files?.[0])} />
             <button className={`btn btn-sm btn-out${uploading ? " is-loading" : ""}`} type="button" disabled={uploading || !verification} onClick={() => fileRef.current?.click()}>
