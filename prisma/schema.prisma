@@ -65,6 +65,12 @@ enum ShopOperatingState {
   PAUSED
 }
 
+// 쇼핑몰 대표 주소(SA-060): 기본 주소(플랫폼 주소) 또는 소유 확인이 끝난 내 도메인. CUSTOM은 확인된 도메인이 있어야 저장된다.
+enum PrimaryAddressKind {
+  DEFAULT
+  CUSTOM
+}
+
 enum SellerStatus {
   PENDING
   ACTIVE
@@ -79,6 +85,11 @@ model Seller {
   shopName                 String
   // 한 줄 소개(SA-060, 40자). 쇼핑몰 홈·공유 설명 기본값. 비어 있으면 null.
   shopTagline              String?
+  // SA-060 공지·이용안내·대표 주소. 상단 공지(한 줄 60자)·홈 혜택 배너 보이기(기본 보이기)·이용안내/교환/환불 정책 글(1000자)·대표 주소 종류.
+  shopTopNotice            String?
+  homeBenefitBannerVisible Boolean      @default(true)
+  shopUsageGuide           String?
+  primaryAddressKind       PrimaryAddressKind @default(DEFAULT)
   // 쇼핑몰 홈 배너 자동 넘김 간격(초, SA-064). 0=끔(기본), 5, 8.
   homeBannerIntervalSec    Int          @default(0)
   // 공유 미리보기(og:title·og:description) 제목·설명. 비어 있으면 쇼핑몰 이름(제목)·없음(설명). 파트너스 쇼핑몰 설정(SHOP_SETTINGS)에서 바꾼다.
@@ -4020,6 +4031,9 @@ model ShopLegalNotice {
   escrowProvider String         @default("")
   escrowUrl      String         @default("")
   minorNotice    String         @default("")
+  // 쇼핑몰 하단 「카카오톡 문의」 버튼·유튜브 채널 링크(SA-060, https만). 비어 있으면 버튼을 보이지 않는다.
+  kakaoChannelUrl  String       @default("")
+  youtubeChannelUrl String      @default("")
   version        Int            @default(0)
   createdAt      DateTime       @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime       @default(now()) @updatedAt @db.Timestamptz(3)
