@@ -15,7 +15,7 @@ async function event(kind = "RANDOM_DRAW", duplicates = false) {
   await client.query('INSERT INTO "Seller" (id,slug,"shopName") VALUES ($1,$2,$2)', [sellerId, sellerId]);
   await client.query('INSERT INTO "BroadcastSession" (id,"sellerId") VALUES ($1,$2)', [broadcast, sellerId]);
   await client.query('INSERT INTO "YoutubeLiveLink" (id,"sellerId","broadcastSessionId","videoId",title,status,"liveChatId","updatedAt") VALUES ($1,$2,$3,\'video\',\'시험\',\'LIVE\',\'chat\',CURRENT_TIMESTAMP)', [link, sellerId, broadcast]);
-  await client.query('INSERT INTO "AudienceEvent" (id,"sellerId","broadcastSessionId","liveLinkId","liveChatId",kind,title,keyword,rules,"winnerCount","testMode","requestKey","requestHash","noticeAcknowledgedAt","openedAt","closesAt") VALUES ($1,$2,$3,$4,\'chat\',$5,\'시험\',$6,$7,1,true,$8,\'hash\',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP+interval \'1 hour\')', [eventId,sellerId,broadcast,link,kind,kind === "ROULETTE_ITEM" ? null : "참가",JSON.stringify(settings),randomUUID()]);
+  await client.query('INSERT INTO "AudienceEvent" (id,"sellerId","broadcastSessionId","liveLinkId","liveChatId",kind,title,keyword,"entryMethods",rules,"winnerCount","testMode","requestKey","requestHash","noticeAcknowledgedAt","openedAt","closesAt") VALUES ($1,$2,$3,$4,\'chat\',$5,\'시험\',$6,$9,$7,1,true,$8,\'hash\',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP+interval \'1 hour\')', [eventId,sellerId,broadcast,link,kind,kind === "ROULETTE_ITEM" ? null : "참가",JSON.stringify(settings),randomUUID(),kind === "ROULETTE_ITEM" ? [] : ["YOUTUBE_CHAT"]]);
   if (kind === "ROULETTE_ITEM") entrants = [];
   for (let index = 0; index < entrants.length; index++) await client.query('INSERT INTO "AudienceEventEntrant" (id,"sellerId","eventId","authorChannelId","messageId","displayName","publishedAt") VALUES ($1,$2,$3,$4,$5,\'동일 이름\',CURRENT_TIMESTAMP)',[entrants[index],sellerId,eventId,"UC"+String(index).repeat(22),String(index)]);
   await client.query('UPDATE "AudienceEvent" SET status=\'FROZEN\' WHERE id=$1',[eventId]);
@@ -23,7 +23,7 @@ async function event(kind = "RANDOM_DRAW", duplicates = false) {
 }
 async function round(kind: string, options: { source?: string; reason?: string | null; prior?: string[]; duplicates?: boolean; requestKey?: string; actorType?: string } = {}) {
   const id = randomUUID();
-  const rules = { version: 2, kind, keyword: kind === "ROULETTE_ITEM" ? null : "참가", winnerCount: 1, testMode: true, rewardsEnabled: false, settings: {...settings, ...(options.duplicates === undefined ? {} : { allowDuplicateWinners: options.duplicates })}, previousWinnerIds: options.prior ?? [] };
+  const rules = { version: 2, entryMethods: kind === "ROULETTE_ITEM" ? [] : ["YOUTUBE_CHAT"], kind, keyword: kind === "ROULETTE_ITEM" ? null : "참가", winnerCount: 1, testMode: true, rewardsEnabled: false, settings: {...settings, ...(options.duplicates === undefined ? {} : { allowDuplicateWinners: options.duplicates })}, previousWinnerIds: options.prior ?? [] };
   await client.query('INSERT INTO "AudienceEventRound" (id,"sellerId","eventId","roundNumber","requestKey","requestHash","sourceRoundId",reason,"actorType","actorId","rulesSnapshot","entrantIds") VALUES ($1,$2,$3,$4,$5,\'hash\',$6,$7,$10,\'operator\',$8,$9)',[id,sellerId,eventId,options.source ? 2 : 1,options.requestKey ?? randomUUID(),options.source ?? null,options.reason ?? null,JSON.stringify(rules),JSON.stringify(entrants),options.actorType ?? "SELLER_USER"]);
   return { id, rules };
 }

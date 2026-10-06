@@ -7,11 +7,11 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const invalid = (): never => { throw new EventError(400, "invalid_entry_input"); };
 export type ManualEntry = { displayName?: string; buyerMemberId?: string };
 export type EntryBatch = { requestKey: string; method: "DIRECT_INPUT" | "PASTE"; entries: ManualEntry[]; requestHash: string };
-function requestKeyOf(input: unknown): string {
+export function parseEntryRequestKey(input: unknown): string {
   if (typeof input !== "string" || !UUID.test(input)) return invalid();
   return input.toLowerCase();
 }
-function displayNameOf(value: unknown): string {
+export function parseEntryDisplayName(value: unknown): string {
   if (typeof value !== "string") return invalid();
   const name = value.trim();
   if (!name || Array.from(name).length > 100 || /[\u0000-\u001f\u007f]/.test(name)) return invalid();
@@ -19,7 +19,7 @@ function displayNameOf(value: unknown): string {
 }
 function batchOf(requestKey: unknown, method: EntryBatch["method"], entries: ManualEntry[]): EntryBatch {
   if (!entries.length || entries.length > EVENT_ENTRY_BATCH_LIMIT) return invalid();
-  const key = requestKeyOf(requestKey);
+  const key = parseEntryRequestKey(requestKey);
   const memberIds = entries.flatMap(entry => entry.buyerMemberId ? [entry.buyerMemberId] : []);
   if (new Set(memberIds).size !== memberIds.length) return invalid();
   return { requestKey: key, method, entries, requestHash: createHash("sha256").update(JSON.stringify({ method, entries })).digest("hex") };
@@ -35,9 +35,9 @@ export function parseDirectEntries(input: unknown): EntryBatch {
   const entries = value.entries.map(raw => {
     const entry = objectOf(raw);
     if (Object.keys(entry).some(key => !["displayName", "buyerMemberId"].includes(key))) return invalid();
-    const buyerMemberId = entry.buyerMemberId === undefined ? undefined : requestKeyOf(entry.buyerMemberId);
+    const buyerMemberId = entry.buyerMemberId === undefined ? undefined : parseEntryRequestKey(entry.buyerMemberId);
     // 회원 ID만 지정하면 서버가 기존 회원의 방송 닉네임을 읽는다.
-    const displayName = entry.displayName === undefined && buyerMemberId ? undefined : displayNameOf(entry.displayName);
+    const displayName = entry.displayName === undefined && buyerMemberId ? undefined : parseEntryDisplayName(entry.displayName);
     return { ...(displayName === undefined ? {} : { displayName }), ...(buyerMemberId ? { buyerMemberId } : {}) };
   });
   return batchOf(value.requestKey, "DIRECT_INPUT", entries);
@@ -48,5 +48,5 @@ export function parsePastedEntries(input: unknown): EntryBatch {
   if (Object.keys(value).some(key => !["requestKey", "text"].includes(key)) || typeof value.text !== "string" || value.text.length > 8_000) return invalid();
   const lines = value.text.split(/\r\n|\n|\r/).map(line => line.trim()).filter(Boolean);
   if (lines.length > EVENT_ENTRY_BATCH_LIMIT) return invalid();
-  return batchOf(value.requestKey, "PASTE", lines.map(line => ({ displayName: displayNameOf(line) })));
+  return batchOf(value.requestKey, "PASTE", lines.map(line => ({ displayName: parseEntryDisplayName(line) })));
 }

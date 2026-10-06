@@ -457,6 +457,7 @@ model BuyerMember {
   gradeOverrides       MemberGradeOverride[]
   gradeHistory         MemberGradeHistory[]
   memberMessageRecipients MemberMessageRecipient[]
+  eventEntrants           AudienceEventEntrant[]
 
   @@unique([sellerId, id])
   @@index([sellerId, gradeId])
@@ -3242,7 +3243,7 @@ model YoutubeChatMessage {
   publishedAt     DateTime @db.Timestamptz(3)
   createdAt       DateTime @default(now()) @db.Timestamptz(3)
 
-  liveLink YoutubeLiveLink @relation(fields: [sellerId, liveLinkId], references: [sellerId, id])
+  liveLink YoutubeLiveLink? @relation(fields: [sellerId, liveLinkId], references: [sellerId, id], onDelete: Restrict)
 
   @@unique([sellerId, messageId])
   @@index([sellerId, liveLinkId, publishedAt])
@@ -3268,9 +3269,10 @@ model AudienceEvent {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   sellerId String @db.Uuid
   broadcastSessionId String @db.Uuid
-  liveLinkId String @db.Uuid
+  liveLinkId String? @db.Uuid
   liveChatId String?
   kind AudienceEventKind
+  entryMethods AudienceEventEntrySource[] @default([YOUTUBE_CHAT])
   status AudienceEventStatus @default(OPEN)
   title String
   keyword String?
@@ -3289,9 +3291,11 @@ model AudienceEvent {
 
   seller Seller @relation(fields: [sellerId], references: [id])
   broadcast BroadcastSession @relation(fields: [sellerId, broadcastSessionId], references: [sellerId, id])
-  liveLink YoutubeLiveLink @relation(fields: [sellerId, liveLinkId], references: [sellerId, id])
+  liveLink YoutubeLiveLink? @relation(fields: [sellerId, liveLinkId], references: [sellerId, id], onDelete: Restrict)
   entrants AudienceEventEntrant[]
   entryRejections AudienceEventEntryRejection[]
+  entryBatches AudienceEventEntryBatch[]
+  guestSessions AudienceEventGuestSession[]
   rounds AudienceEventRound[]
 
   @@unique([sellerId, id])
@@ -3300,21 +3304,76 @@ model AudienceEvent {
   @@index([sellerId, liveLinkId, status])
 }
 
+enum AudienceEventEntrySource {
+  YOUTUBE_CHAT
+  DIRECT_INPUT
+  PASTE
+  MOBILE
+}
+
 model AudienceEventEntrant {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   sellerId String @db.Uuid
   eventId String @db.Uuid
-  authorChannelId String
-  messageId String
+  source AudienceEventEntrySource @default(YOUTUBE_CHAT)
+  authorChannelId String?
+  messageId String?
+  buyerMemberId String? @db.Uuid
+  guestSessionId String? @db.Uuid
+  batchId String? @db.Uuid
+  rowNumber Int?
+  requestKey String? @db.Uuid
+  requestHash String?
   displayName String
+  entryRulesVersion String?
+  rulesAcknowledgedAt DateTime? @db.Timestamptz(3)
+  anonymizedAt DateTime? @db.Timestamptz(3)
   publishedAt DateTime @db.Timestamptz(3)
   acceptedAt DateTime @default(now()) @db.Timestamptz(3)
 
   event AudienceEvent @relation(fields: [sellerId, eventId], references: [sellerId, id])
+  member BuyerMember? @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Restrict)
+  guestSession AudienceEventGuestSession? @relation(fields: [sellerId, eventId, guestSessionId], references: [sellerId, eventId, id], onDelete: Restrict)
+  batch AudienceEventEntryBatch? @relation(fields: [sellerId, eventId, batchId], references: [sellerId, eventId, id], onDelete: Restrict)
 
   @@unique([sellerId, eventId, authorChannelId])
   @@unique([sellerId, eventId, messageId])
+  @@unique([sellerId, eventId, buyerMemberId])
+  @@unique([sellerId, eventId, guestSessionId])
+  @@unique([sellerId, eventId, requestKey])
+  @@unique([batchId, rowNumber])
   @@index([sellerId, eventId, publishedAt, id])
+}
+
+// 직접입력/붙여넣기 요청의 최소 멱등 영수증. 명단/회원/경품 원장을 복제하지 않는다.
+model AudienceEventEntryBatch {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId String @db.Uuid
+  eventId String @db.Uuid
+  requestKey String @db.Uuid
+  requestHash String?
+  method AudienceEventEntrySource
+  inputCount Int
+  acceptedCount Int @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  event AudienceEvent @relation(fields: [sellerId, eventId], references: [sellerId, id])
+  entrants AudienceEventEntrant[]
+  @@unique([sellerId, eventId, requestKey])
+  @@unique([sellerId, eventId, id])
+}
+
+// 이벤트 안에서만 사용하는 게스트 세션. 토큰 원문·IP·브라우저 정보는 저장하지 않는다.
+model AudienceEventGuestSession {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId String @db.Uuid
+  eventId String @db.Uuid
+  tokenHash String? @unique
+  expiresAt DateTime @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  event AudienceEvent @relation(fields: [sellerId, eventId], references: [sellerId, id])
+  entrants AudienceEventEntrant[]
+  @@unique([sellerId, eventId, id])
+  @@index([sellerId, eventId, createdAt])
 }
 
 // 이벤트당 여러 불변 회차. 결과 재표시는 저장된 회차를 사용하고 재추첨은 원회차/사유를 가진 새 회차다.

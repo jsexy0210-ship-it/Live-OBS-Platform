@@ -10,6 +10,7 @@ import { clearCart, lockBuyerCart } from "../shop-cart/service";
 import { clearRestock, lockBuyerRestock } from "../shop-restock-alerts/service";
 import { clearWish, lockBuyerWish } from "../shop-wish/service";
 import { holdMemberAuditLogs, refreshOrderRetention } from "./legalHold";
+import { anonymizeMemberEventEntries } from "../events/entries";
 import { WITHDRAWN_DISPLAY_NAME } from "./memberData";
 import { purgeExpiredRejoinBlocks, recordRejoinBlock } from "./rejoin";
 import { purgeSignupVerificationsForShop } from "./signup";
@@ -148,6 +149,7 @@ export async function withdrawBuyer(
       },
     });
     if (moved.count !== 1) return "not_found" as const;
+    await anonymizeMemberEventEntries(tx, scope, now);
     const forfeited = await forfeitRewards(tx, scope.sellerId, member.id, now);
     // 본인확인 기록은 행을 지우지 않고 식별 항목만 비운다(미가입 기록 정리와 같은 기준, buyers/signup.ts). 쇼핑몰·상태·요청 시각·요청 IP는
     // 체험 한도(VERIFIED 건수)·같은 IP 하루 횟수 계산에 남긴다(지우면 가입·탈퇴를 되풀이해 유료 문자를 다시 받는 남용, MASTER 결정 2026-10-03).

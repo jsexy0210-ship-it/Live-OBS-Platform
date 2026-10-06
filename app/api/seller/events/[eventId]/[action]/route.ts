@@ -3,6 +3,7 @@ import { AuthError } from "../../../../../../lib/server/authz/errors";
 import { requireSeller } from "../../../../../../lib/server/authz/guards";
 import { prisma } from "../../../../../../lib/server/db";
 import { cancelAudienceEvent, createNextAudienceRound, drawAudienceEvent, freezeAudienceEvent, publishAudienceResult, redisplayAudienceResult } from "../../../../../../lib/server/events/service";
+import { readEventParticipationLink, registerManualEventEntries } from "../../../../../../lib/server/events/entries";
 import { eventMutation } from "../../../../../../lib/server/events/errors";
 import { EventError } from "../../../../../../lib/server/events/errors";
 import { readEventJson } from "../../../../../../lib/server/events/http";
@@ -14,7 +15,12 @@ export const POST = eventMutation(async (req: Request, { params }: { params: Pro
   const { eventId, action } = await params;
   const body = req.body ? await readEventJson(req) : {};
   let value: unknown;
-  if (action === "next-round") value = await createNextAudienceRound(prisma, ctx, eventId, body);
+  if (action === "direct-input" || action === "paste") value = await registerManualEventEntries(prisma, ctx, eventId, action === "paste" ? "PASTE" : "DIRECT_INPUT", body);
+  else if (action === "entry-link") {
+    if (Object.keys(body).length) throw new EventError(400, "invalid_request");
+    value = await readEventParticipationLink(prisma, ctx, eventId);
+  }
+  else if (action === "next-round") value = await createNextAudienceRound(prisma, ctx, eventId, body);
   else if (action === "reveal") value = await publishAudienceResult(prisma, ctx, eventId, body);
   else if (action === "redisplay") value = await redisplayAudienceResult(prisma, ctx, eventId, body); else if (action === "execute") {
     if (Object.keys(body).some(key => key !== "roundId") || typeof body.roundId !== "string") throw new EventError(400, "invalid_request");
