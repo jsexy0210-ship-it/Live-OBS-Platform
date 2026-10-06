@@ -1,0 +1,1094 @@
+[
+  {
+    "route": "/seller/account",
+    "file": "app/(seller)/seller/(shell)/account/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/assistant",
+    "file": "app/(seller)/seller/(shell)/assistant/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-140",
+        "source": "design/project/SA-140.dc.html",
+        "version": "v316 (1791249109-2097)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/automation/[jobId]/done",
+    "file": "app/(seller)/seller/(shell)/automation/[jobId]/done/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-153",
+        "source": "design/project/SA-153.dc.html",
+        "version": "v302 (1791240973-f773)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/automation/[jobId]",
+    "file": "app/(seller)/seller/(shell)/automation/[jobId]/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-152",
+        "source": "design/project/SA-152.dc.html",
+        "version": "v302 (1791240973-f773)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/automation",
+    "file": "app/(seller)/seller/(shell)/automation/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-150",
+        "source": "design/project/SA-150.dc.html",
+        "version": "v317 (1791249725-8d06)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/automation/pay",
+    "file": "app/(seller)/seller/(shell)/automation/pay/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-151",
+        "source": "design/project/SA-151.dc.html",
+        "version": "v302 (1791240973-f773)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/banners",
+    "file": "app/(seller)/seller/(shell)/banners/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-064",
+        "source": "design/project/SA-064.dc.html",
+        "version": "v336 (1791268289-8313)"
+      }
+    ],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/banners/popups",
+    "file": "app/(seller)/seller/(shell)/banners/popups/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-065",
+        "source": "design/project/SA-065.dc.html",
+        "version": "v337 (1791268534-05ab)"
+      }
+    ],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/broadcast",
+    "file": "app/(seller)/seller/(shell)/broadcast/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-001",
+        "source": "design/project/SA-001.dc.html",
+        "version": "v336 (1791268289-8313)"
+      }
+    ],
+    "listTableCount": 2
+  },
+  {
+    "route": "/seller/broadcasts/[broadcastId]",
+    "file": "app/(seller)/seller/(shell)/broadcasts/[broadcastId]/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-055",
+        "source": "design/project/SA-055.dc.html",
+        "version": "v337 (1791268534-05ab)"
+      }
+    ],
+    "listTableCount": 3
+  },
+  {
+    "route": "/seller/broadcasts",
+    "file": "app/(seller)/seller/(shell)/broadcasts/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-054",
+        "source": "design/project/SA-054.dc.html",
+        "version": "v324 (1791260007-b92f)"
+      }
+    ],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/buyer-inquiries",
+    "file": "app/(seller)/seller/(shell)/buyer-inquiries/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-046",
+        "source": "design/project/SA-046.dc.html",
+        "version": "v290 (1791218258-c278)"
+      }
+    ],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/coupons",
+    "file": "app/(seller)/seller/(shell)/coupons/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-035",
+        "source": "design/project/SA-035.dc.html",
+        "version": "v336 (1791268289-8313)"
+      }
+    ],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/external-shops",
+    "file": "app/(seller)/seller/(shell)/external-shops/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-006",
+        "source": "design/project/SA-006.dc.html",
+        "version": "v302 (1791240973-f773)"
+      }
+    ],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/hit-cards",
+    "file": "app/(seller)/seller/(shell)/hit-cards/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-053",
+        "source": "design/project/SA-053.dc.html",
+        "version": "v312 (1791246297-cc12)"
+      }
+    ],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/home-overlay",
+    "file": "app/(seller)/seller/(shell)/home-overlay/page.tsx",
+    "category": "delegated-header",
+    "delegate": "components/seller/home/OverlayHome.tsx",
+    "descriptionPresent": null,
+    "basis": [],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/inquiries/[id]",
+    "file": "app/(seller)/seller/(shell)/inquiries/[id]/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-115",
+        "source": "design/project/SA-115.dc.html",
+        "version": "v337 (1791268534-05ab)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/inquiries/new",
+    "file": "app/(seller)/seller/(shell)/inquiries/new/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-114",
+        "source": "design/project/SA-114.dc.html",
+        "version": "v337 (1791268534-05ab)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/inquiries",
+    "file": "app/(seller)/seller/(shell)/inquiries/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-113",
+        "source": "design/project/SA-113.dc.html",
+        "version": "v310 (1791244939-8b87)"
+      }
+    ],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/member-grades",
+    "file": "app/(seller)/seller/(shell)/member-grades/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-044",
+        "source": "design/project/SA-044.dc.html",
+        "version": "v336 (1791268289-8313)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/member-messages",
+    "file": "app/(seller)/seller/(shell)/member-messages/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-049",
+        "source": "design/project/SA-049.dc.html",
+        "version": "v337 (1791268534-05ab)"
+      }
+    ],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/members/[memberId]",
+    "file": "app/(seller)/seller/(shell)/members/[memberId]/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-042",
+        "source": "design/project/SA-042.dc.html",
+        "version": "v292 (1791219414-c487)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/members",
+    "file": "app/(seller)/seller/(shell)/members/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-041",
+        "source": "design/project/SA-041.dc.html",
+        "version": "v286 (1791217504-7bca)"
+      }
+    ],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/notices/[id]",
+    "file": "app/(seller)/seller/(shell)/notices/[id]/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-112",
+        "source": "design/project/SA-112.dc.html",
+        "version": "v302 (1791240973-f773)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/notices",
+    "file": "app/(seller)/seller/(shell)/notices/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-111",
+        "source": "design/project/SA-111.dc.html",
+        "version": "v302 (1791240973-f773)"
+      }
+    ],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/notifications",
+    "file": "app/(seller)/seller/(shell)/notifications/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-130",
+        "source": "design/project/SA-130.dc.html",
+        "version": "v328 (1791263193-35d2)"
+      }
+    ],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/onboarding",
+    "file": "app/(seller)/seller/(shell)/onboarding/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-003",
+        "source": "design/project/SA-003.dc.html",
+        "version": "v302 (1791240973-f773)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/orders/[orderId]",
+    "file": "app/(seller)/seller/(shell)/orders/[orderId]/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-022",
+        "source": "design/project/SA-022.dc.html",
+        "version": "v337 (1791268534-05ab)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/orders/deposits",
+    "file": "app/(seller)/seller/(shell)/orders/deposits/page.tsx",
+    "category": "draw-owner",
+    "delegate": null,
+    "descriptionPresent": null,
+    "basis": [
+      {
+        "id": "SA-026",
+        "source": "design/project/SA-026.dc.html",
+        "version": "v336 (1791268289-8313)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/orders",
+    "file": "app/(seller)/seller/(shell)/orders/page.tsx",
+    "category": "draw-owner",
+    "delegate": null,
+    "descriptionPresent": null,
+    "basis": [
+      {
+        "id": "SA-021",
+        "source": "design/project/SA-021-OPS.dc.html",
+        "version": "v287 (1791217739-ca0d)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/orders/receipts",
+    "file": "app/(seller)/seller/(shell)/orders/receipts/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/orders/refund-requests",
+    "file": "app/(seller)/seller/(shell)/orders/refund-requests/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-023",
+        "source": "design/project/SA-023.dc.html",
+        "version": "v316 (1791249109-2097)"
+      }
+    ],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/overlay/address",
+    "file": "app/(seller)/seller/(shell)/overlay/address/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [],
+    "listTableCount": 2
+  },
+  {
+    "route": "/seller/overlay",
+    "file": "app/(seller)/seller/(shell)/overlay/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-052",
+        "source": "design/project/SA-052.dc.html",
+        "version": "v336 (1791268289-8313)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller",
+    "file": "app/(seller)/seller/(shell)/page.tsx",
+    "category": "delegated-header",
+    "delegate": "components/seller/home/HomeDashboard.tsx",
+    "descriptionPresent": null,
+    "basis": [
+      {
+        "id": "SA-002",
+        "source": "design/project/SA-002-IA.dc.html",
+        "version": "v300 (1791239970-91e4)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/products/[productId]",
+    "file": "app/(seller)/seller/(shell)/products/[productId]/page.tsx",
+    "category": "delegated-header",
+    "delegate": "components/seller/ProductForm.tsx",
+    "descriptionPresent": null,
+    "basis": [],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/products/[productId]/preview",
+    "file": "app/(seller)/seller/(shell)/products/[productId]/preview/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/products/bulk",
+    "file": "app/(seller)/seller/(shell)/products/bulk/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/products/categories",
+    "file": "app/(seller)/seller/(shell)/products/categories/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-015",
+        "source": "design/project/SA-015.dc.html",
+        "version": "v336 (1791268289-8313)"
+      }
+    ],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/products/display",
+    "file": "app/(seller)/seller/(shell)/products/display/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-016",
+        "source": "design/project/SA-016.dc.html",
+        "version": "v290 (1791218258-c278)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/products/new",
+    "file": "app/(seller)/seller/(shell)/products/new/page.tsx",
+    "category": "delegated-header",
+    "delegate": "components/seller/ProductForm.tsx",
+    "descriptionPresent": null,
+    "basis": [],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/products",
+    "file": "app/(seller)/seller/(shell)/products/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-011",
+        "source": "design/project/SA-011.dc.html",
+        "version": "v336 (1791268289-8313)"
+      }
+    ],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/products/restock-alerts",
+    "file": "app/(seller)/seller/(shell)/products/restock-alerts/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-017",
+        "source": "design/project/SA-017.dc.html",
+        "version": "v337 (1791268534-05ab)"
+      }
+    ],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/products/search-synonyms",
+    "file": "app/(seller)/seller/(shell)/products/search-synonyms/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/products/stock",
+    "file": "app/(seller)/seller/(shell)/products/stock/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-014",
+        "source": "design/project/SA-014.dc.html",
+        "version": "v336 (1791268289-8313)"
+      }
+    ],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/purchase-restrictions",
+    "file": "app/(seller)/seller/(shell)/purchase-restrictions/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-043",
+        "source": "design/project/SA-043.dc.html",
+        "version": "v292 (1791219414-c487)"
+      }
+    ],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/returns",
+    "file": "app/(seller)/seller/(shell)/returns/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-029",
+        "source": "design/project/SA-029.dc.html",
+        "version": "v316 (1791249109-2097)"
+      }
+    ],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/reviews",
+    "file": "app/(seller)/seller/(shell)/reviews/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-048",
+        "source": "design/project/SA-048.dc.html",
+        "version": "v337 (1791268534-05ab)"
+      }
+    ],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/rewards/balances",
+    "file": "app/(seller)/seller/(shell)/rewards/balances/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-033",
+        "source": "design/project/SA-033.dc.html",
+        "version": "v336 (1791268289-8313)"
+      }
+    ],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/rewards/ledger",
+    "file": "app/(seller)/seller/(shell)/rewards/ledger/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-032",
+        "source": "design/project/SA-032.dc.html",
+        "version": "v288 (1791217961-0a6c)"
+      }
+    ],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/rewards/live-payout",
+    "file": "app/(seller)/seller/(shell)/rewards/live-payout/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-034",
+        "source": "design/project/SA-034.dc.html",
+        "version": "v324 (1791260007-b92f)"
+      }
+    ],
+    "listTableCount": 2
+  },
+  {
+    "route": "/seller/rewards",
+    "file": "app/(seller)/seller/(shell)/rewards/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-031",
+        "source": "design/project/SA-031.dc.html",
+        "version": "v336 (1791268289-8313)"
+      }
+    ],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/settings/legal",
+    "file": "app/(seller)/seller/(shell)/settings/legal/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-062",
+        "source": "design/project/SA-062.dc.html",
+        "version": "v337 (1791268534-05ab)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/settings/member",
+    "file": "app/(seller)/seller/(shell)/settings/member/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-068",
+        "source": "design/project/SA-068.dc.html",
+        "version": "v328 (1791263193-35d2)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/settings/message-balance",
+    "file": "app/(seller)/seller/(shell)/settings/message-balance/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-081",
+        "source": "design/project/SA-081.dc.html",
+        "version": "v336 (1791268289-8313)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/settings/order",
+    "file": "app/(seller)/seller/(shell)/settings/order/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-063",
+        "source": "design/project/SA-063.dc.html",
+        "version": "v336 (1791268289-8313)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/settings/order-notifications",
+    "file": "app/(seller)/seller/(shell)/settings/order-notifications/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-080",
+        "source": "design/project/SA-080.dc.html",
+        "version": "v337 (1791268534-05ab)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/settings/seo",
+    "file": "app/(seller)/seller/(shell)/settings/seo/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-067",
+        "source": "design/project/SA-067.dc.html",
+        "version": "v337 (1791268534-05ab)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/settings/shipping",
+    "file": "app/(seller)/seller/(shell)/settings/shipping/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-061",
+        "source": "design/project/SA-061.dc.html",
+        "version": "v336 (1791268289-8313)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/settings/shop",
+    "file": "app/(seller)/seller/(shell)/settings/shop/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-060",
+        "source": "design/project/SA-060.dc.html",
+        "version": "v337 (1791268534-05ab)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/settings/shop-notices",
+    "file": "app/(seller)/seller/(shell)/settings/shop-notices/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-066",
+        "source": "design/project/SA-066.dc.html",
+        "version": "v337 (1791268534-05ab)"
+      }
+    ],
+    "listTableCount": 2
+  },
+  {
+    "route": "/seller/shipping/invoices",
+    "file": "app/(seller)/seller/(shell)/shipping/invoices/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/shipping",
+    "file": "app/(seller)/seller/(shell)/shipping/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-025",
+        "source": "design/project/SA-025.dc.html",
+        "version": "v336 (1791268289-8313)"
+      }
+    ],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/shipping/tracking",
+    "file": "app/(seller)/seller/(shell)/shipping/tracking/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/staff",
+    "file": "app/(seller)/seller/(shell)/staff/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-100",
+        "source": "design/project/SA-100.dc.html",
+        "version": "v336 (1791268289-8313)"
+      }
+    ],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/stats/broadcasts",
+    "file": "app/(seller)/seller/(shell)/stats/broadcasts/page.tsx",
+    "category": "delegated-header",
+    "delegate": "components/seller/stats/StatsFrame.tsx",
+    "descriptionPresent": null,
+    "basis": [],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/stats/members",
+    "file": "app/(seller)/seller/(shell)/stats/members/page.tsx",
+    "category": "delegated-header",
+    "delegate": "components/seller/stats/StatsFrame.tsx",
+    "descriptionPresent": null,
+    "basis": [],
+    "listTableCount": 1
+  },
+  {
+    "route": "/seller/stats/orders",
+    "file": "app/(seller)/seller/(shell)/stats/orders/page.tsx",
+    "category": "delegated-header",
+    "delegate": "components/seller/stats/StatsFrame.tsx",
+    "descriptionPresent": null,
+    "basis": [],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/stats",
+    "file": "app/(seller)/seller/(shell)/stats/page.tsx",
+    "category": "delegated-header",
+    "delegate": "components/seller/stats/StatsFrame.tsx",
+    "descriptionPresent": null,
+    "basis": [],
+    "listTableCount": 3
+  },
+  {
+    "route": "/seller/stats/products",
+    "file": "app/(seller)/seller/(shell)/stats/products/page.tsx",
+    "category": "delegated-header",
+    "delegate": "components/seller/stats/StatsFrame.tsx",
+    "descriptionPresent": null,
+    "basis": [],
+    "listTableCount": 2
+  },
+  {
+    "route": "/seller/stats/sales",
+    "file": "app/(seller)/seller/(shell)/stats/sales/page.tsx",
+    "category": "delegated-header",
+    "delegate": "components/seller/stats/StatsFrame.tsx",
+    "descriptionPresent": null,
+    "basis": [],
+    "listTableCount": 2
+  },
+  {
+    "route": "/seller/subscription",
+    "file": "app/(seller)/seller/(shell)/subscription/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-090",
+        "source": "design/project/SA-090.dc.html",
+        "version": "v328 (1791263193-35d2)"
+      }
+    ],
+    "listTableCount": 2
+  },
+  {
+    "route": "/seller/suspended",
+    "file": "app/(seller)/seller/(shell)/suspended/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "AU-006",
+        "source": "design/project/AU-006.dc.html",
+        "version": "v296 (1791239078-7381)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/youtube",
+    "file": "app/(seller)/seller/(shell)/youtube/page.tsx",
+    "category": "explicit-page-guidance",
+    "delegate": null,
+    "descriptionPresent": true,
+    "basis": [
+      {
+        "id": "SA-057",
+        "source": "design/project/SA-057.dc.html",
+        "version": "v336 (1791268289-8313)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/[...slug]",
+    "file": "app/(seller)/seller/[...slug]/page.tsx",
+    "category": "catchall",
+    "delegate": null,
+    "descriptionPresent": null,
+    "basis": [],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/find-id",
+    "file": "app/(seller)/seller/find-id/page.tsx",
+    "category": "auth-existing-guidance",
+    "delegate": null,
+    "descriptionPresent": null,
+    "basis": [
+      {
+        "id": "AU-011",
+        "source": "design/project/AU-011.dc.html",
+        "version": "v296 (1791239078-7381)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/identity-link",
+    "file": "app/(seller)/seller/identity-link/page.tsx",
+    "category": "auth-existing-guidance",
+    "delegate": null,
+    "descriptionPresent": null,
+    "basis": [
+      {
+        "id": "AU-012",
+        "source": "design/project/AU-012.dc.html",
+        "version": "v296 (1791239078-7381)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/login",
+    "file": "app/(seller)/seller/login/page.tsx",
+    "category": "auth-existing-guidance",
+    "delegate": null,
+    "descriptionPresent": null,
+    "basis": [
+      {
+        "id": "AU-002",
+        "source": "design/project/AU-002.dc.html",
+        "version": "v296 (1791239078-7381)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/password-reset",
+    "file": "app/(seller)/seller/password-reset/page.tsx",
+    "category": "auth-existing-guidance",
+    "delegate": null,
+    "descriptionPresent": null,
+    "basis": [
+      {
+        "id": "AU-003",
+        "source": "design/project/AU-003.dc.html",
+        "version": "v296 (1791239078-7381)"
+      }
+    ],
+    "listTableCount": 0
+  },
+  {
+    "route": "/seller/pending",
+    "file": "app/(seller)/seller/pending/page.tsx",
+    "category": "auth-existing-guidance",
+    "delegate": null,
+    "descriptionPresent": null,
+    "basis": [
+      {
+        "id": "AU-005",
+        "source": "design/project/AU-005.dc.html",
+        "version": "v296 (1791239078-7381)"
+      }
+    ],
+    "listTableCount": 0
+  }
+]

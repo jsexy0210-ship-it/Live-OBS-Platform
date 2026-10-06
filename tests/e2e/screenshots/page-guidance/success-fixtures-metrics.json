@@ -1,0 +1,662 @@
+{
+  "metrics": [
+    {
+      "route": "products",
+      "viewport": 1440,
+      "documentWidth": 1440,
+      "title": "상품 목록",
+      "description": "등록한 상품의 판매 상태와 재고를 확인합니다.",
+      "header": {
+        "x": 224,
+        "y": 120,
+        "width": 1192,
+        "height": 76
+      },
+      "descriptionRect": {
+        "x": 224,
+        "y": 176,
+        "width": 1192,
+        "height": 20
+      },
+      "actions": {
+        "x": 1192,
+        "y": 120,
+        "width": 224,
+        "height": 44
+      },
+      "readOnly": [],
+      "placeholders": [
+        {
+          "label": "상품 검색",
+          "text": "검색어 입력"
+        },
+        {
+          "label": "등록일 시작",
+          "text": "날짜 선택"
+        },
+        {
+          "label": "등록일 끝",
+          "text": "날짜 선택"
+        }
+      ],
+      "frames": [
+        {
+          "rect": {
+            "x": 224,
+            "y": 713,
+            "width": 1192,
+            "height": 144
+          },
+          "border": "1px",
+          "insideCard": false
+        },
+        {
+          "rect": {
+            "x": 225,
+            "y": 714,
+            "width": 1190,
+            "height": 142
+          },
+          "border": "1px",
+          "insideCard": false
+        }
+      ]
+    },
+    {
+      "popupViewport": 1440,
+      "popups": [
+        {
+          "x": 760.5,
+          "right": 1080.5,
+          "top": 500,
+          "bottom": 883
+        }
+      ]
+    },
+    {
+      "route": "products/fixture/preview",
+      "viewport": 1440,
+      "documentWidth": 1440,
+      "title": "상품 상세 미리보기",
+      "description": "상품이 구매자 화면에 어떻게 표시되는지 확인합니다.",
+      "header": {
+        "x": 224,
+        "y": 120,
+        "width": 1192,
+        "height": 76
+      },
+      "descriptionRect": {
+        "x": 224,
+        "y": 176,
+        "width": 1192,
+        "height": 20
+      },
+      "actions": {
+        "x": 1192,
+        "y": 120,
+        "width": 224,
+        "height": 44
+      },
+      "readOnly": [
+        {
+          "value": "http://localhost:3148/shop/fixture/products/fixture",
+          "color": "rgb(107, 112, 122)",
+          "fill": "rgb(107, 112, 122)"
+        }
+      ],
+      "placeholders": [],
+      "frames": []
+    },
+    {
+      "route": "members",
+      "viewport": 1440,
+      "documentWidth": 1440,
+      "title": "회원",
+      "description": "쇼핑몰 회원의 가입 정보와 이용 상태를 확인합니다.",
+      "header": {
+        "x": 224,
+        "y": 120,
+        "width": 1192,
+        "height": 60
+      },
+      "descriptionRect": {
+        "x": 224,
+        "y": 160,
+        "width": 1192,
+        "height": 20
+      },
+      "actions": null,
+      "readOnly": [],
+      "placeholders": [
+        {
+          "label": "회원 검색",
+          "text": "검색어 입력"
+        }
+      ],
+      "frames": [
+        {
+          "rect": {
+            "x": 224,
+            "y": 328,
+            "width": 1192,
+            "height": 90
+          },
+          "border": "1px",
+          "insideCard": false
+        }
+      ]
+    },
+    {
+      "route": "shipping/invoices",
+      "viewport": 1440,
+      "documentWidth": 1440,
+      "title": "송장 발급",
+      "description": "발송할 주문과 주소를 확인하고 송장을 발급합니다.",
+      "header": {
+        "x": 224,
+        "y": 120,
+        "width": 1192,
+        "height": 60
+      },
+      "descriptionRect": {
+        "x": 224,
+        "y": 160,
+        "width": 1192,
+        "height": 20
+      },
+      "actions": null,
+      "readOnly": [],
+      "placeholders": [],
+      "frames": [
+        {
+          "rect": {
+            "x": 224,
+            "y": 444,
+            "width": 1192,
+            "height": 104
+          },
+          "border": "1px",
+          "insideCard": false
+        }
+      ]
+    },
+    {
+      "route": "shipping/tracking",
+      "viewport": 1440,
+      "documentWidth": 1440,
+      "title": "송장 출력 · 추적",
+      "description": "발급한 송장을 출력하고 배송 추적 기록을 확인합니다.",
+      "header": {
+        "x": 224,
+        "y": 120,
+        "width": 1192,
+        "height": 76
+      },
+      "descriptionRect": {
+        "x": 224,
+        "y": 176,
+        "width": 1192,
+        "height": 20
+      },
+      "actions": {
+        "x": 1216,
+        "y": 120,
+        "width": 200,
+        "height": 44
+      },
+      "readOnly": [],
+      "placeholders": [],
+      "frames": [
+        {
+          "rect": {
+            "x": 224,
+            "y": 538,
+            "width": 1192,
+            "height": 100
+          },
+          "border": "1px",
+          "insideCard": false
+        }
+      ]
+    },
+    {
+      "route": "products",
+      "viewport": 1024,
+      "documentWidth": 1024,
+      "title": "상품 목록",
+      "description": "등록한 상품의 판매 상태와 재고를 확인합니다.",
+      "header": {
+        "x": 224,
+        "y": 120,
+        "width": 776,
+        "height": 76
+      },
+      "descriptionRect": {
+        "x": 224,
+        "y": 176,
+        "width": 776,
+        "height": 20
+      },
+      "actions": {
+        "x": 776,
+        "y": 120,
+        "width": 224,
+        "height": 44
+      },
+      "readOnly": [],
+      "placeholders": [
+        {
+          "label": "상품 검색",
+          "text": "검색어 입력"
+        },
+        {
+          "label": "등록일 시작",
+          "text": "날짜 선택"
+        },
+        {
+          "label": "등록일 끝",
+          "text": "날짜 선택"
+        }
+      ],
+      "frames": [
+        {
+          "rect": {
+            "x": 224,
+            "y": 761,
+            "width": 776,
+            "height": 144
+          },
+          "border": "1px",
+          "insideCard": false
+        },
+        {
+          "rect": {
+            "x": 225,
+            "y": 762,
+            "width": 774,
+            "height": 142
+          },
+          "border": "1px",
+          "insideCard": false
+        }
+      ]
+    },
+    {
+      "popupViewport": 1024,
+      "popups": [
+        {
+          "x": 400.5,
+          "right": 720.5,
+          "top": 128,
+          "bottom": 511
+        }
+      ]
+    },
+    {
+      "route": "products/fixture/preview",
+      "viewport": 1024,
+      "documentWidth": 1024,
+      "title": "상품 상세 미리보기",
+      "description": "상품이 구매자 화면에 어떻게 표시되는지 확인합니다.",
+      "header": {
+        "x": 224,
+        "y": 120,
+        "width": 776,
+        "height": 76
+      },
+      "descriptionRect": {
+        "x": 224,
+        "y": 176,
+        "width": 776,
+        "height": 20
+      },
+      "actions": {
+        "x": 776,
+        "y": 120,
+        "width": 224,
+        "height": 44
+      },
+      "readOnly": [
+        {
+          "value": "http://localhost:3148/shop/fixture/products/fixture",
+          "color": "rgb(107, 112, 122)",
+          "fill": "rgb(107, 112, 122)"
+        }
+      ],
+      "placeholders": [],
+      "frames": []
+    },
+    {
+      "route": "members",
+      "viewport": 1024,
+      "documentWidth": 1024,
+      "title": "회원",
+      "description": "쇼핑몰 회원의 가입 정보와 이용 상태를 확인합니다.",
+      "header": {
+        "x": 224,
+        "y": 120,
+        "width": 776,
+        "height": 60
+      },
+      "descriptionRect": {
+        "x": 224,
+        "y": 160,
+        "width": 776,
+        "height": 20
+      },
+      "actions": null,
+      "readOnly": [],
+      "placeholders": [
+        {
+          "label": "회원 검색",
+          "text": "검색어 입력"
+        }
+      ],
+      "frames": [
+        {
+          "rect": {
+            "x": 224,
+            "y": 328,
+            "width": 776,
+            "height": 90
+          },
+          "border": "1px",
+          "insideCard": false
+        }
+      ]
+    },
+    {
+      "route": "shipping/invoices",
+      "viewport": 1024,
+      "documentWidth": 1024,
+      "title": "송장 발급",
+      "description": "발송할 주문과 주소를 확인하고 송장을 발급합니다.",
+      "header": {
+        "x": 224,
+        "y": 120,
+        "width": 776,
+        "height": 60
+      },
+      "descriptionRect": {
+        "x": 224,
+        "y": 160,
+        "width": 776,
+        "height": 20
+      },
+      "actions": null,
+      "readOnly": [],
+      "placeholders": [],
+      "frames": [
+        {
+          "rect": {
+            "x": 224,
+            "y": 444,
+            "width": 776,
+            "height": 104
+          },
+          "border": "1px",
+          "insideCard": false
+        }
+      ]
+    },
+    {
+      "route": "shipping/tracking",
+      "viewport": 1024,
+      "documentWidth": 1024,
+      "title": "송장 출력 · 추적",
+      "description": "발급한 송장을 출력하고 배송 추적 기록을 확인합니다.",
+      "header": {
+        "x": 224,
+        "y": 120,
+        "width": 776,
+        "height": 76
+      },
+      "descriptionRect": {
+        "x": 224,
+        "y": 176,
+        "width": 776,
+        "height": 20
+      },
+      "actions": {
+        "x": 800,
+        "y": 120,
+        "width": 200,
+        "height": 44
+      },
+      "readOnly": [],
+      "placeholders": [],
+      "frames": [
+        {
+          "rect": {
+            "x": 224,
+            "y": 538,
+            "width": 776,
+            "height": 100
+          },
+          "border": "1px",
+          "insideCard": false
+        }
+      ]
+    },
+    {
+      "route": "products",
+      "viewport": 390,
+      "documentWidth": 390,
+      "title": "상품 목록",
+      "description": "등록한 상품의 판매 상태와 재고를 확인합니다.",
+      "header": {
+        "x": 16,
+        "y": 112,
+        "width": 358,
+        "height": 80
+      },
+      "descriptionRect": {
+        "x": 16,
+        "y": 172,
+        "width": 358,
+        "height": 20
+      },
+      "actions": {
+        "x": 150,
+        "y": 112,
+        "width": 224,
+        "height": 48
+      },
+      "readOnly": [],
+      "placeholders": [
+        {
+          "label": "상품 검색",
+          "text": "검색어 입력"
+        },
+        {
+          "label": "등록일 시작",
+          "text": "날짜 선택"
+        },
+        {
+          "label": "등록일 끝",
+          "text": "날짜 선택"
+        }
+      ],
+      "frames": [
+        {
+          "rect": {
+            "x": 16,
+            "y": 1217,
+            "width": 358,
+            "height": 310
+          },
+          "border": "1px",
+          "insideCard": false
+        },
+        {
+          "rect": {
+            "x": 17,
+            "y": 1218,
+            "width": 356,
+            "height": 300
+          },
+          "border": "0px",
+          "insideCard": false
+        }
+      ]
+    },
+    {
+      "popupViewport": 390,
+      "popups": [
+        {
+          "x": 0,
+          "right": 390,
+          "top": 454,
+          "bottom": 900
+        }
+      ]
+    },
+    {
+      "route": "products/fixture/preview",
+      "viewport": 390,
+      "documentWidth": 390,
+      "title": "상품 상세 미리보기",
+      "description": "상품이 구매자 화면에 어떻게 표시되는지 확인합니다.",
+      "header": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "descriptionRect": {
+        "x": 16,
+        "y": 128,
+        "width": 358,
+        "height": 20
+      },
+      "actions": {
+        "x": 150,
+        "y": 172,
+        "width": 224,
+        "height": 48
+      },
+      "readOnly": [
+        {
+          "value": "http://localhost:3148/shop/fixture/products/fixture",
+          "color": "rgb(107, 112, 122)",
+          "fill": "rgb(107, 112, 122)"
+        }
+      ],
+      "placeholders": [],
+      "frames": []
+    },
+    {
+      "route": "members",
+      "viewport": 390,
+      "documentWidth": 390,
+      "title": "회원",
+      "description": "쇼핑몰 회원의 가입 정보와 이용 상태를 확인합니다.",
+      "header": {
+        "x": 16,
+        "y": 112,
+        "width": 358,
+        "height": 60
+      },
+      "descriptionRect": {
+        "x": 16,
+        "y": 152,
+        "width": 358,
+        "height": 20
+      },
+      "actions": null,
+      "readOnly": [],
+      "placeholders": [
+        {
+          "label": "회원 검색",
+          "text": "검색어 입력"
+        }
+      ],
+      "frames": [
+        {
+          "rect": {
+            "x": 16,
+            "y": 364,
+            "width": 358,
+            "height": 108
+          },
+          "border": "0px",
+          "insideCard": false
+        }
+      ]
+    },
+    {
+      "route": "shipping/invoices",
+      "viewport": 390,
+      "documentWidth": 390,
+      "title": "송장 발급",
+      "description": "발송할 주문과 주소를 확인하고 송장을 발급합니다.",
+      "header": {
+        "x": 16,
+        "y": 112,
+        "width": 358,
+        "height": 60
+      },
+      "descriptionRect": {
+        "x": 16,
+        "y": 152,
+        "width": 358,
+        "height": 20
+      },
+      "actions": null,
+      "readOnly": [],
+      "placeholders": [],
+      "frames": [
+        {
+          "rect": {
+            "x": 16,
+            "y": 388,
+            "width": 358,
+            "height": 140
+          },
+          "border": "0px",
+          "insideCard": false
+        }
+      ]
+    },
+    {
+      "route": "shipping/tracking",
+      "viewport": 390,
+      "documentWidth": 390,
+      "title": "송장 출력 · 추적",
+      "description": "발급한 송장을 출력하고 배송 추적 기록을 확인합니다.",
+      "header": {
+        "x": 16,
+        "y": 112,
+        "width": 358,
+        "height": 80
+      },
+      "descriptionRect": {
+        "x": 16,
+        "y": 172,
+        "width": 358,
+        "height": 20
+      },
+      "actions": {
+        "x": 174,
+        "y": 112,
+        "width": 200,
+        "height": 48
+      },
+      "readOnly": [],
+      "placeholders": [],
+      "frames": [
+        {
+          "rect": {
+            "x": 16,
+            "y": 658,
+            "width": 358,
+            "height": 160
+          },
+          "border": "0px",
+          "insideCard": false
+        }
+      ]
+    }
+  ],
+  "errors": []
+}

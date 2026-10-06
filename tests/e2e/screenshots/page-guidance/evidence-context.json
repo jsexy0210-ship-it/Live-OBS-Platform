@@ -1,0 +1,19 @@
+{
+  "sourceSha": "e6f5431bc47e75061e1022a1d22a2e50afe2cd6d",
+  "mainSha": "4a06ba9016dae9784774329c1e253ecc92b0c9d3",
+  "timeKst": "2026-10-06 21:13 KST",
+  "server": "Next 16.3.8 next dev / SCHEDULER_DISABLED=1",
+  "fixtures": "Browser intercepted /api/** only. All values synthetic. No real DB, payment, or provider invocation.",
+  "viewports": [
+    1440,
+    1024,
+    390
+  ],
+  "evidenceOnly": "PNG is rendering evidence; canonical source is design/project FINAL + latest user instruction.",
+  "limits": "Header metrics combine success and 403 states. List success checks cover products/members/shipping invoices/tracking; remaining ListTable routes were not all rendered in success state.",
+  "initialFailures": [
+    "Turbopack rejected out-of-root symlinked node_modules; fixed by real dependency copy.",
+    "Webpack fallback could not resolve optional argon2 WASM; returned to normal Turbopack.",
+    "Initial preview fixture used wrong product response shape; corrected to direct ProductView and all focus renders passed."
+  ]
+}

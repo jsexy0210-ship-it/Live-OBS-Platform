@@ -1,0 +1,647 @@
+{
+  "metrics": [
+    {
+      "route": "products",
+      "viewport": 1440,
+      "documentWidth": 1440,
+      "title": "상품 목록",
+      "description": "등록한 상품의 판매 상태와 재고를 확인합니다.",
+      "header": {
+        "x": 224,
+        "y": 120,
+        "width": 1192,
+        "height": 76
+      },
+      "descriptionRect": {
+        "x": 224,
+        "y": 176,
+        "width": 1192,
+        "height": 20
+      },
+      "actions": {
+        "x": 1192,
+        "y": 120,
+        "width": 224,
+        "height": 44
+      },
+      "frames": [
+        {
+          "rect": {
+            "x": 224,
+            "y": 713,
+            "width": 1192,
+            "height": 144
+          },
+          "border": "1px",
+          "insideCard": false
+        },
+        {
+          "rect": {
+            "x": 225,
+            "y": 714,
+            "width": 1190,
+            "height": 142
+          },
+          "border": "1px",
+          "insideCard": false
+        }
+      ]
+    },
+    {
+      "route": "products/new",
+      "viewport": 1440,
+      "documentWidth": 1440,
+      "title": "상품 등록",
+      "description": "상품의 정보와 이미지, 가격과 재고, 판매 상태를 설정합니다.",
+      "header": {
+        "x": 224,
+        "y": 120,
+        "width": 1192,
+        "height": 64
+      },
+      "descriptionRect": {
+        "x": 224,
+        "y": 164,
+        "width": 1192,
+        "height": 20
+      },
+      "actions": {
+        "x": 1185.3125,
+        "y": 120,
+        "width": 230.6875,
+        "height": 32
+      },
+      "frames": []
+    },
+    {
+      "route": "subscription",
+      "viewport": 1440,
+      "documentWidth": 1440,
+      "title": "구독 · 결제",
+      "description": "이용권과 결제 수단을 관리하고 청구 내역을 확인합니다.",
+      "header": {
+        "x": 224,
+        "y": 120,
+        "width": 1192,
+        "height": 76
+      },
+      "descriptionRect": {
+        "x": 224,
+        "y": 176,
+        "width": 1192,
+        "height": 20
+      },
+      "actions": {
+        "x": 1216,
+        "y": 120,
+        "width": 200,
+        "height": 44
+      },
+      "frames": [
+        {
+          "rect": {
+            "x": 224,
+            "y": 944,
+            "width": 1192,
+            "height": 90
+          },
+          "border": "1px",
+          "insideCard": false
+        },
+        {
+          "rect": {
+            "x": 224,
+            "y": 1142,
+            "width": 1192,
+            "height": 236
+          },
+          "border": "1px",
+          "insideCard": false
+        }
+      ]
+    },
+    {
+      "route": "staff",
+      "viewport": 1440,
+      "documentWidth": 1440,
+      "title": "직원 계정 ",
+      "description": "직원 계정을 직접 만들고, 직원이 할 수 있는 업무를 정합니다. 직원은 파트너스 로그인으로 들어와 허용된 메뉴만 씁니다.",
+      "header": {
+        "x": 224,
+        "y": 120,
+        "width": 1192,
+        "height": 60
+      },
+      "descriptionRect": {
+        "x": 224,
+        "y": 160,
+        "width": 1192,
+        "height": 20
+      },
+      "actions": {
+        "x": 1416,
+        "y": 134,
+        "width": 0,
+        "height": 0
+      },
+      "frames": []
+    },
+    {
+      "route": "rewards/ledger",
+      "viewport": 1440,
+      "documentWidth": 1440,
+      "title": "지급 · 회수 원장",
+      "description": "적립금의 지급·회수 내역과 처리 상태를 확인합니다.",
+      "header": {
+        "x": 224,
+        "y": 120,
+        "width": 1192,
+        "height": 60
+      },
+      "descriptionRect": {
+        "x": 224,
+        "y": 160,
+        "width": 1192,
+        "height": 20
+      },
+      "actions": null,
+      "frames": []
+    },
+    {
+      "route": "stats/sales",
+      "viewport": 1440,
+      "documentWidth": 1440,
+      "title": "통계 · 매출",
+      "description": "주문한 시각(한국 시간) 기준, 결제된 주문의 금액입니다. 결제 대기·취소 주문은 넣지 않습니다.",
+      "header": {
+        "x": 224,
+        "y": 120,
+        "width": 1192,
+        "height": 72
+      },
+      "descriptionRect": {
+        "x": 224,
+        "y": 172,
+        "width": 1192,
+        "height": 20
+      },
+      "actions": null,
+      "frames": []
+    },
+    {
+      "route": "shipping/tracking",
+      "viewport": 1440,
+      "documentWidth": 1440,
+      "title": "송장 출력 · 추적",
+      "description": "발급한 송장을 출력하고 배송 추적 기록을 확인합니다.",
+      "header": {
+        "x": 224,
+        "y": 120,
+        "width": 1192,
+        "height": 76
+      },
+      "descriptionRect": {
+        "x": 224,
+        "y": 176,
+        "width": 1192,
+        "height": 20
+      },
+      "actions": {
+        "x": 1216,
+        "y": 120,
+        "width": 200,
+        "height": 44
+      },
+      "frames": []
+    },
+    {
+      "route": "products",
+      "viewport": 1024,
+      "documentWidth": 1024,
+      "title": "상품 목록",
+      "description": "등록한 상품의 판매 상태와 재고를 확인합니다.",
+      "header": {
+        "x": 224,
+        "y": 120,
+        "width": 776,
+        "height": 76
+      },
+      "descriptionRect": {
+        "x": 224,
+        "y": 176,
+        "width": 776,
+        "height": 20
+      },
+      "actions": {
+        "x": 776,
+        "y": 120,
+        "width": 224,
+        "height": 44
+      },
+      "frames": [
+        {
+          "rect": {
+            "x": 224,
+            "y": 761,
+            "width": 776,
+            "height": 144
+          },
+          "border": "1px",
+          "insideCard": false
+        },
+        {
+          "rect": {
+            "x": 225,
+            "y": 762,
+            "width": 774,
+            "height": 142
+          },
+          "border": "1px",
+          "insideCard": false
+        }
+      ]
+    },
+    {
+      "route": "products/new",
+      "viewport": 1024,
+      "documentWidth": 1024,
+      "title": "상품 등록",
+      "description": "상품의 정보와 이미지, 가격과 재고, 판매 상태를 설정합니다.",
+      "header": {
+        "x": 224,
+        "y": 120,
+        "width": 776,
+        "height": 64
+      },
+      "descriptionRect": {
+        "x": 224,
+        "y": 164,
+        "width": 776,
+        "height": 20
+      },
+      "actions": {
+        "x": 769.3125,
+        "y": 120,
+        "width": 230.6875,
+        "height": 32
+      },
+      "frames": []
+    },
+    {
+      "route": "subscription",
+      "viewport": 1024,
+      "documentWidth": 1024,
+      "title": "구독 · 결제",
+      "description": "이용권과 결제 수단을 관리하고 청구 내역을 확인합니다.",
+      "header": {
+        "x": 224,
+        "y": 120,
+        "width": 776,
+        "height": 76
+      },
+      "descriptionRect": {
+        "x": 224,
+        "y": 176,
+        "width": 776,
+        "height": 20
+      },
+      "actions": {
+        "x": 800,
+        "y": 120,
+        "width": 200,
+        "height": 44
+      },
+      "frames": [
+        {
+          "rect": {
+            "x": 224,
+            "y": 1000,
+            "width": 776,
+            "height": 90
+          },
+          "border": "1px",
+          "insideCard": false
+        },
+        {
+          "rect": {
+            "x": 224,
+            "y": 1214,
+            "width": 776,
+            "height": 236
+          },
+          "border": "1px",
+          "insideCard": false
+        }
+      ]
+    },
+    {
+      "route": "staff",
+      "viewport": 1024,
+      "documentWidth": 1024,
+      "title": "직원 계정 ",
+      "description": "직원 계정을 직접 만들고, 직원이 할 수 있는 업무를 정합니다. 직원은 파트너스 로그인으로 들어와 허용된 메뉴만 씁니다.",
+      "header": {
+        "x": 224,
+        "y": 120,
+        "width": 776,
+        "height": 60
+      },
+      "descriptionRect": {
+        "x": 224,
+        "y": 160,
+        "width": 776,
+        "height": 20
+      },
+      "actions": {
+        "x": 1000,
+        "y": 134,
+        "width": 0,
+        "height": 0
+      },
+      "frames": []
+    },
+    {
+      "route": "rewards/ledger",
+      "viewport": 1024,
+      "documentWidth": 1024,
+      "title": "지급 · 회수 원장",
+      "description": "적립금의 지급·회수 내역과 처리 상태를 확인합니다.",
+      "header": {
+        "x": 224,
+        "y": 120,
+        "width": 776,
+        "height": 60
+      },
+      "descriptionRect": {
+        "x": 224,
+        "y": 160,
+        "width": 776,
+        "height": 20
+      },
+      "actions": null,
+      "frames": []
+    },
+    {
+      "route": "stats/sales",
+      "viewport": 1024,
+      "documentWidth": 1024,
+      "title": "통계 · 매출",
+      "description": "주문한 시각(한국 시간) 기준, 결제된 주문의 금액입니다. 결제 대기·취소 주문은 넣지 않습니다.",
+      "header": {
+        "x": 224,
+        "y": 120,
+        "width": 776,
+        "height": 72
+      },
+      "descriptionRect": {
+        "x": 224,
+        "y": 172,
+        "width": 776,
+        "height": 20
+      },
+      "actions": null,
+      "frames": []
+    },
+    {
+      "route": "shipping/tracking",
+      "viewport": 1024,
+      "documentWidth": 1024,
+      "title": "송장 출력 · 추적",
+      "description": "발급한 송장을 출력하고 배송 추적 기록을 확인합니다.",
+      "header": {
+        "x": 224,
+        "y": 120,
+        "width": 776,
+        "height": 76
+      },
+      "descriptionRect": {
+        "x": 224,
+        "y": 176,
+        "width": 776,
+        "height": 20
+      },
+      "actions": {
+        "x": 800,
+        "y": 120,
+        "width": 200,
+        "height": 44
+      },
+      "frames": []
+    },
+    {
+      "route": "products",
+      "viewport": 390,
+      "documentWidth": 390,
+      "title": "상품 목록",
+      "description": "등록한 상품의 판매 상태와 재고를 확인합니다.",
+      "header": {
+        "x": 16,
+        "y": 112,
+        "width": 358,
+        "height": 80
+      },
+      "descriptionRect": {
+        "x": 16,
+        "y": 172,
+        "width": 358,
+        "height": 20
+      },
+      "actions": {
+        "x": 150,
+        "y": 112,
+        "width": 224,
+        "height": 48
+      },
+      "frames": [
+        {
+          "rect": {
+            "x": 16,
+            "y": 1217,
+            "width": 358,
+            "height": 312
+          },
+          "border": "1px",
+          "insideCard": false
+        },
+        {
+          "rect": {
+            "x": 17,
+            "y": 1218,
+            "width": 356,
+            "height": 310
+          },
+          "border": "1px",
+          "insideCard": false
+        }
+      ]
+    },
+    {
+      "route": "products/new",
+      "viewport": 390,
+      "documentWidth": 390,
+      "title": "상품 등록",
+      "description": "상품의 정보와 이미지, 가격과 재고, 판매 상태를 설정합니다.",
+      "header": {
+        "x": 16,
+        "y": 112,
+        "width": 358,
+        "height": 76
+      },
+      "descriptionRect": {
+        "x": 16,
+        "y": 168,
+        "width": 358,
+        "height": 20
+      },
+      "actions": {
+        "x": 143.3125,
+        "y": 112,
+        "width": 230.6875,
+        "height": 44
+      },
+      "frames": []
+    },
+    {
+      "route": "subscription",
+      "viewport": 390,
+      "documentWidth": 390,
+      "title": "구독 · 결제",
+      "description": "이용권과 결제 수단을 관리하고 청구 내역을 확인합니다.",
+      "header": {
+        "x": 16,
+        "y": 112,
+        "width": 358,
+        "height": 80
+      },
+      "descriptionRect": {
+        "x": 16,
+        "y": 172,
+        "width": 358,
+        "height": 20
+      },
+      "actions": {
+        "x": 174,
+        "y": 112,
+        "width": 200,
+        "height": 48
+      },
+      "frames": [
+        {
+          "rect": {
+            "x": 16,
+            "y": 1538,
+            "width": 358,
+            "height": 134
+          },
+          "border": "1px",
+          "insideCard": false
+        },
+        {
+          "rect": {
+            "x": 16,
+            "y": 1812,
+            "width": 358,
+            "height": 242
+          },
+          "border": "1px",
+          "insideCard": false
+        }
+      ]
+    },
+    {
+      "route": "staff",
+      "viewport": 390,
+      "documentWidth": 390,
+      "title": "직원 계정 ",
+      "description": "직원 계정을 직접 만들고, 직원이 할 수 있는 업무를 정합니다. 직원은 파트너스 로그인으로 들어와 허용된 메뉴만 씁니다.",
+      "header": {
+        "x": 16,
+        "y": 112,
+        "width": 358,
+        "height": 80
+      },
+      "descriptionRect": {
+        "x": 16,
+        "y": 152,
+        "width": 358,
+        "height": 40
+      },
+      "actions": {
+        "x": 374,
+        "y": 126,
+        "width": 0,
+        "height": 0
+      },
+      "frames": []
+    },
+    {
+      "route": "rewards/ledger",
+      "viewport": 390,
+      "documentWidth": 390,
+      "title": "지급 · 회수 원장",
+      "description": "적립금의 지급·회수 내역과 처리 상태를 확인합니다.",
+      "header": {
+        "x": 16,
+        "y": 112,
+        "width": 358,
+        "height": 60
+      },
+      "descriptionRect": {
+        "x": 16,
+        "y": 152,
+        "width": 358,
+        "height": 20
+      },
+      "actions": null,
+      "frames": []
+    },
+    {
+      "route": "stats/sales",
+      "viewport": 390,
+      "documentWidth": 390,
+      "title": "통계 · 매출",
+      "description": "주문한 시각(한국 시간) 기준, 결제된 주문의 금액입니다. 결제 대기·취소 주문은 넣지 않습니다.",
+      "header": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "descriptionRect": {
+        "x": 16,
+        "y": 128,
+        "width": 358,
+        "height": 40
+      },
+      "actions": null,
+      "frames": []
+    },
+    {
+      "route": "shipping/tracking",
+      "viewport": 390,
+      "documentWidth": 390,
+      "title": "송장 출력 · 추적",
+      "description": "발급한 송장을 출력하고 배송 추적 기록을 확인합니다.",
+      "header": {
+        "x": 16,
+        "y": 112,
+        "width": 358,
+        "height": 80
+      },
+      "descriptionRect": {
+        "x": 16,
+        "y": 172,
+        "width": 358,
+        "height": 20
+      },
+      "actions": {
+        "x": 174,
+        "y": 112,
+        "width": 200,
+        "height": 48
+      },
+      "frames": []
+    }
+  ],
+  "errors": []
+}
