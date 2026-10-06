@@ -124,7 +124,7 @@ export default function BroadcastDetailPage() {
           title="방송 상세"
           actions={
             <>
-              <Link className="btn" href="/seller/broadcasts">
+              <Link className="btn btn-out" href="/seller/broadcasts">
                 목록
               </Link>
               {b?.status === "live" && (
@@ -207,7 +207,7 @@ export default function BroadcastDetailPage() {
                       <th scope="row">레이아웃 · 타이머</th>
                       <td>
                         <div className="au-ft-v" data-testid="bd-layout">
-                          {b.layoutAspect ? LAYOUT_LABEL[b.layoutAspect] : "-"} · {b.timerSeconds != null ? `타이머 ${b.timerSeconds}초` : "-"}
+                          {b.layoutAspect || b.timerSeconds != null ? [b.layoutAspect ? LAYOUT_LABEL[b.layoutAspect] : null, b.timerSeconds != null ? `타이머 ${b.timerSeconds}초` : null].filter(Boolean).join(" · ") : "-"}
                         </div>
                       </td>
                     </tr>
