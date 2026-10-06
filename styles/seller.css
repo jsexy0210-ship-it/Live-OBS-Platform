@@ -1507,6 +1507,31 @@ body {
   flex-wrap: wrap;
   min-height: var(--ui-h-default);
 }
+/* 2026-10-06 대표님: 읽기 전용 값은 label-alt 회색, placeholder는 기존 안내 토큰 */
+.app input[readonly],
+.app textarea[readonly] {
+  color: var(--wds-label-alternative);
+  -webkit-text-fill-color: var(--wds-label-alternative);
+}
+.app input::placeholder,
+.app textarea::placeholder {
+  color: var(--wds-label-assistive);
+}
+/* 제목 아래 설명: 기존 본문·텍스트 토큰, 페이지 목적/핵심 안내 한두 문장 */
+.au-ph-description {
+  margin: 0;
+  min-width: 0;
+  max-width: 100%;
+  font-size: var(--ui-fs-body);
+  line-height: var(--ui-lh-body);
+  font-weight: 400;
+  color: var(--wds-label-alternative);
+  overflow-wrap: anywhere;
+}
+.au-ph > .au-ph-description {
+  flex-basis: 100%;
+  order: 1;
+}
 .au-ph-l {
   display: flex;
   align-items: center;
@@ -1594,6 +1619,10 @@ body {
     background: var(--cs-surface);
     box-shadow: inset 0 -1px 0 var(--cs-line);
   }
+  .au-ph.has-bk > .au-ph-description {
+    order: 0;
+    flex-basis: auto;
+  }
   .au-ph.has-bk .bk {
     position: absolute;
     left: var(--ui-sp-4);
@@ -1629,6 +1658,17 @@ body {
   align-items: center;
   gap: var(--ui-gap-btn);
   flex-wrap: wrap;
+}
+.au-ph-act,
+.au-lh-act {
+  margin-left: auto;
+  justify-content: flex-end;
+  min-width: 0;
+  max-width: 100%;
+}
+.au-ph-act > *,
+.au-lh-act > * {
+  max-width: 100%;
 }
 /* 목록 머리 도구 줄(정렬·페이지 크기·일괄 처리)은 Dense 40 하나로 맞춘다: 같은 줄에 32px 버튼(.btn-sm)과 40px Select가 섞이지 않게.
    글자도 일반 버튼과 같은 14px. 휴대폰 폭은 공통 조작 영역(44 이상) 규칙을 따른다 */
@@ -1737,15 +1777,29 @@ body {
   line-height: var(--ui-lh-section);
   font-weight: 600;
 }
+/* 목록은 테두리 없는 영역, 외곽 프레임은 데이터 표만 감싼다. */
+.au-list-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-sp-8);
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: visible;
+}
 .au-lh {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--ui-sp-8);
   flex-wrap: wrap;
-  padding: var(--ui-sp-8) var(--ui-sp-12);
+  min-width: 0;
+  padding: var(--ui-sp-8) 0;
 }
 .au-lh-total {
+  margin-right: auto;
+  flex: none;
   font-size: var(--ui-fs-body);
   color: var(--wds-label-neutral);
 }
@@ -1753,7 +1807,42 @@ body {
   color: var(--cs-accent);
 }
 .au-lt-wrap {
+  min-width: 0;
+  max-width: 100%;
   overflow-x: auto;
+  border: 1px solid var(--cs-line);
+  border-radius: var(--ui-r-card);
+  background: var(--cs-surface);
+}
+.au-lt-wrap:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+.au-lt-wrap > .tbl {
+  margin: 0;
+  border: 0;
+  box-shadow: none;
+}
+.au-lt-wrap > .tbl > thead > tr:first-child > th {
+  border-top: 0;
+}
+.au-lt-wrap > .tbl > :is(thead, tbody, tfoot) > tr > :is(th, td):first-child {
+  border-left: 0;
+}
+.au-lt-wrap > .tbl > :is(thead, tbody, tfoot) > tr > :is(th, td):last-child {
+  border-right: 0;
+}
+.au-lt-wrap > .tbl > :is(tbody, tfoot):last-child > tr:last-child > :is(th, td) {
+  border-bottom: 0;
+}
+/* 카드로 바꾼 표는 각 행이 프레임을 가지므로 모바일 외곽선을 중복하지 않는다. */
+@media (max-width: 767px) {
+  .au-lt-wrap:has(> .tbl[data-card-table]) {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    overflow: visible;
+  }
 }
 .au-pg {
   padding: var(--ui-sp-12);
