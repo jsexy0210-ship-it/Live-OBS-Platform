@@ -123,11 +123,11 @@ describe("적립금 CSV 내려받기", () => {
     const r = await exportRewardBalances(db, s.ctx, {});
     if (!r.ok) throw new Error("export");
     const l = lines(r.csv);
-    expect(l[0]).toBe("회원,잔액,누적 지급,누적 사용,누적 회수,소멸,수동 조정,마지막 변동");
+    expect(l[0]).toBe("회원,등급,잔액,누적 지급,누적 사용,누적 회수,소멸,수동 조정,소멸 예정 금액,소멸 예정일,지급 대기(건),마지막 변동");
     expect(l).toHaveLength(3);
     expect(l.some((x) => x.includes("12345") || x.includes(",99,"))).toBe(false);
     const mine = l.find((x) => x.includes(",850,"))!;
-    expect(mine.split(",").slice(1, 7)).toEqual(["850", "1000", "200", "0", "0", "+50"]);
+    expect(mine.split(",").slice(1, 8)).toEqual(["일반", "850", "1000", "200", "0", "0", "+50"]);
     const q = await exportRewardBalances(db, s.ctx, { q: "별빛" });
     expect(q.ok && lines(q.csv).length).toBe(2);
     expect(await db.auditLog.count({ where: { action: "reward.balances.export", sellerId: s.seller.id } })).toBe(2);

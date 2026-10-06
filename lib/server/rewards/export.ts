@@ -1,7 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { formatCsv, guardText } from "../shop-bulk-io/csv";
-import { listRewardBalances } from "../seller-settings/rewardBalances";
+import { listRewardBalances, type RewardBalanceQuery } from "../seller-settings/rewardBalances";
 import { listRewardLedger, type LedgerKind, type RewardLedgerQuery } from "../seller-settings/rewardLedger";
 import { requireSellerRead, type TenantContext } from "../tenant/context";
 
@@ -83,13 +83,13 @@ export async function exportRewardLedger(db: PrismaClient, ctx: TenantContext, q
   return { ok: true as const, csv, rows: rows.length, truncated };
 }
 
-export async function exportRewardBalances(db: PrismaClient, ctx: TenantContext, query: { q?: string | null }, meta: Meta = {}) {
+export async function exportRewardBalances(db: PrismaClient, ctx: TenantContext, query: Omit<RewardBalanceQuery, "cursor" | "limit">, meta: Meta = {}) {
   requireSellerRead(ctx, "MEMBER_POINTS");
   const rows: Extract<Awaited<ReturnType<typeof listRewardBalances>>, { ok: true }>["balances"] = [];
   let cursor: string | null = null;
   let truncated = false;
   while (true) {
-    const page = await listRewardBalances(db, ctx, { q: query.q ?? null, cursor, limit: String(PAGE) });
+    const page = await listRewardBalances(db, ctx, { ...query, cursor, limit: String(PAGE) });
     if (!page.ok) return { ok: false as const };
     for (const b of page.balances) {
       if (rows.length >= REWARD_EXPORT_MAX) {
@@ -102,8 +102,21 @@ export async function exportRewardBalances(db: PrismaClient, ctx: TenantContext,
     cursor = page.nextCursor;
   }
   const csv = formatCsv([
-    ["회원", "잔액", "누적 지급", "누적 사용", "누적 회수", "소멸", "수동 조정", "마지막 변동"],
-    ...rows.map((b) => [guardText(b.member.broadcastNickname), String(b.balance), String(b.totalEarned), String(b.totalUsed), String(b.totalRevoked), String(b.totalExpired), sign(b.totalAdjusted), kst(b.updatedAt)]),
+    ["회원", "등급", "잔액", "누적 지급", "누적 사용", "누적 회수", "소멸", "수동 조정", "소멸 예정 금액", "소멸 예정일", "지급 대기(건)", "마지막 변동"],
+    ...rows.map((b) => [
+      guardText(b.member.broadcastNickname),
+      guardText(b.grade.name),
+      String(b.balance),
+      String(b.totalEarned),
+      String(b.totalUsed),
+      String(b.totalRevoked),
+      String(b.totalExpired),
+      sign(b.totalAdjusted),
+      b.expiry?.soon ? String(b.expiry.amount) : "",
+      b.expiry?.soon ? kst(b.expiry.expiresAt).slice(0, 10) : "",
+      String(b.pendingCount),
+      kst(b.updatedAt),
+    ]),
   ]);
   await writeAudit(db, {
     actorType: ctx.actorType,
@@ -112,7 +125,7 @@ export async function exportRewardBalances(db: PrismaClient, ctx: TenantContext,
     action: "reward.balances.export",
     targetType: "RewardBalance",
     targetId: ctx.sellerId,
-    after: { rows: rows.length, truncated, filters: query.q ? { q: query.q } : {} },
+    after: { rows: rows.length, truncated, filters: Object.fromEntries(Object.entries(query).filter(([, v]) => v)) },
     ip: meta.ip,
     userAgent: meta.userAgent,
   });

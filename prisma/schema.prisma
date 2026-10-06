@@ -1314,6 +1314,8 @@ model BroadcastSession {
   endedAt   DateTime?       @db.Timestamptz(3)
   // 방송 중 오버레이가 처음 요청한 레이아웃("9x16" 세로형 | "16x9" 가로형, SA-054 「레이아웃」 열). 이 기록 전의 방송·요청이 없던 방송은 null.
   layoutAspect String?
+  // 방송 메모(SA-055, 방송당 한 칸, 최대 1,000자). 비우면 null.
+  memo String?
 
   seller       Seller            @relation(fields: [sellerId], references: [id])
   queueItems   QueueItem[]
