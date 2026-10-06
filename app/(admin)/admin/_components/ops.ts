@@ -28,6 +28,7 @@ export type SellerActivity = {
   slug: string;
   status: "ACTIVE" | "SUSPENDED";
   ordersToday: { created: number; paid: number; paidAmount: number };
+  ordersPeriod: { created: number; paid: number; paidAmount: number };
   live: { startedAt: string } | null;
   overlay: Overlay;
 };
@@ -39,6 +40,16 @@ export type PayoutSeller = {
   enabledAt: string | null;
   earnTiming: "ON_PAYMENT" | "ON_DELIVERY";
   outstanding: { amount: number; members: number };
+  monthTradingAmount: number;
+  balanceRatioPercent: number | null;
+  maxConfiguredRewardRatePercent: number | null;
+  payoutToday: { succeeded: number; failed: number | null; observedFailed: number; uncertainModeFailed: number; undatedFailed: number };
+  manualGrant30DaysAmount: number;
+  signals: {
+    balanceRatio: { thresholdPercent: 25; state: "UNAVAILABLE" | "WARN" | "OK" };
+    payoutFailure: { state: "UNKNOWN" | "WARN" | "OK" };
+    manualConcentration: { state: "NOT_DEFINED" };
+  };
 };
 
 export type Monitor = {

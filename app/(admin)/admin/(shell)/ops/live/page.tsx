@@ -54,7 +54,7 @@ export default function LiveBroadcastsPage() {
     <>
       <AdminTopbar crumb="운영 › 실시간 방송" />
       <main className="main">
-        <PageHead title="실시간 방송" />
+        <PageHead title="실시간 방송" description="방송 중인 파트너스의 주문 현황과 방송 화면·결제 연결 상태를 확인합니다." />
         <div className="col" style={{ gap: 20 }}>
           <div className="row" style={{ justifyContent: "space-between", gap: 12, flexWrap: "wrap" }} role="status" data-testid="live-status">
             <span className="row" style={{ gap: 8 }}>
