@@ -55,7 +55,7 @@ readonly_space_details() {
 }
 
 readonly_buildx_details() {
-  local version data count ref detail attribution
+  local version data count ref detail detail_raw attribution raw
   if ! command -v docker >/dev/null 2>&1 || ! docker buildx version >/dev/null 2>&1; then
     log "Buildx 상세: 미지원 또는 확인 불가"
     log "Build history attribution 및 Build cache ownership: UNKNOWN"
@@ -68,38 +68,63 @@ readonly_buildx_details() {
     log "Build history attribution 및 Build cache ownership: UNKNOWN (필수 조회 지원 확인 불가)"
     return 0
   fi
-  data="$(docker buildx du --format=json 2>/dev/null | jq -cs '[.[] | select(type == "object")]' 2>/dev/null || true)"
-  if [ -z "$data" ]; then log "Build cache 상세: 확인 불가"; else
-    count="$(jq 'length' <<<"$data" 2>/dev/null || echo 0)"
-    log "Build cache records: ${count}개 (ID, 크기, 마지막 사용, 정리 가능, 공유, 변경 가능, 유형)"
-    jq -r '.[0:100][] | [(.ID // "unknown" | tostring | if test("^[A-Za-z0-9_-]{1,80}$") then . else "unknown" end), ((.Size // null) | if type == "number" and . >= 0 then tostring elif type == "string" and test("^[0-9]+$") then . else "unknown" end), (.LastUsedAt // "unknown" | tostring | if test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.+-]+Z?$" ) then . else "unknown" end), (if .Reclaimable == true then "true" elif .Reclaimable == false then "false" else "unknown" end), (if .Shared == true then "true" elif .Shared == false then "false" else "unknown" end), (if .Mutable == true then "true" elif .Mutable == false then "false" else "unknown" end), (.Type // "unknown" | tostring | if test("^[A-Za-z0-9_-]{1,40}$") then . else "unknown" end)] | @tsv' <<<"$data" 2>/dev/null | while IFS=$'\t' read -r id size last reclaimable shared mutable type; do
-      [[ "$id" =~ ^[A-Za-z0-9_-]{1,80}$ ]] || id=unknown
-      log "  cache id=$id size_bytes=$size last_used=$last reclaimable=$reclaimable shared=$shared mutable=$mutable type=$type"
-    done
-    [ "$count" -le 100 ] || log "Build cache 추가 records: 확인 생략(나머지 귀속 미확인)"
+  if raw="$(docker buildx du --format=json 2>/dev/null)"; then
+    if [ -z "$raw" ]; then
+      log "Build cache records: 0개 (성공한 빈 응답)"
+    else
+      data="$(jq -cs 'if all(.[]; type == "object") then . else error("expected objects") end' <<<"$raw" 2>/dev/null || true)"
+      unset raw
+      if [ -z "$data" ]; then
+        log "Build cache 상세: JSON 해석 실패, 확인 불가"
+      else
+        count="$(jq 'length' <<<"$data" 2>/dev/null || echo 0)"
+        log "Build cache records: ${count}개 (ID, 크기, 마지막 사용, 정리 가능, 공유, 변경 가능, 유형)"
+        jq -r '.[0:100][] | [(.ID // "unknown" | tostring | if test("^[A-Za-z0-9_-]{1,80}$") then . else "unknown" end), ((.Size // null) | if type == "number" and . >= 0 then tostring elif type == "string" and test("^[0-9]+$") then . else "unknown" end), (.LastUsedAt // "unknown" | tostring | if test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.+-]+Z?$" ) then . else "unknown" end), (if .Reclaimable == true then "true" elif .Reclaimable == false then "false" else "unknown" end), (if .Shared == true then "true" elif .Shared == false then "false" else "unknown" end), (if .Mutable == true then "true" elif .Mutable == false then "false" else "unknown" end), (.Type // "unknown" | tostring | if test("^[A-Za-z0-9_-]{1,40}$") then . else "unknown" end)] | @tsv' <<<"$data" 2>/dev/null | while IFS=$'\t' read -r id size last reclaimable shared mutable type; do
+          [[ "$id" =~ ^[A-Za-z0-9_-]{1,80}$ ]] || id=unknown
+          log "  cache id=$id size_bytes=$size last_used=$last reclaimable=$reclaimable shared=$shared mutable=$mutable type=$type"
+        done
+        [ "$count" -le 100 ] || log "Build cache 추가 records: 확인 생략(나머지 귀속 미확인)"
+      fi
+    fi
+  else
+    log "Build cache 상세: 명령 실패, 확인 불가"
   fi
   if docker buildx history ls --help >/dev/null 2>&1 && docker buildx history inspect --help >/dev/null 2>&1 && docker buildx history ls --help 2>&1 | grep -q -- '--local'; then
-    data="$(docker buildx history ls --local --format json 2>/dev/null | jq -c 'if type == "array" then . else [] end' 2>/dev/null || true)"
-    if [ -z "$data" ]; then
-      log "Build history: 지원 명령 실행 실패, ONQ 귀속 미확인"
+    if raw="$(docker buildx history ls --local --format json 2>/dev/null)"; then
+      if [ -z "$raw" ]; then
+        log "Build history: 빈 응답, ONQ 귀속 미확인"
+      else
+        data="$(jq -ce 'if type == "array" then . else error("expected array") end' <<<"$raw" 2>/dev/null || true)"
+        unset raw
+        if [ -z "$data" ]; then
+          log "Build history: JSON 해석 실패, ONQ 귀속 미확인"
+        else
+          count="$(jq 'length' <<<"$data" 2>/dev/null || echo 0)"
+          log "Build history: 로컬 저장소 기록 ${count}개, 최대 20개 메타데이터 확인"
+          [ "$count" -gt 0 ] || log "Build attribution: repository=UNKNOWN revision=UNKNOWN context=UNKNOWN (기록 없음)"
+          while IFS= read -r ref; do
+            [[ "$ref" =~ ^[A-Za-z0-9_-]{1,80}$ ]] || continue
+            if detail_raw="$(docker buildx history inspect --format json "$ref" 2>/dev/null)" && [ -n "$detail_raw" ]; then
+              detail="$(jq -c 'if type == "object" then {repository:(.VCSRepository // ""), revision:(.VCSRevision // ""), context:(.Context // "")} else {} end' <<<"$detail_raw" 2>/dev/null || true)"
+            else
+              detail=""
+            fi
+            unset detail_raw
+            [ -n "$detail" ] || detail='{}'
+            attribution="$(jq -r '
+              def onq_repo: ascii_downcase | sub("^ssh://"; "") | sub("^git@github.com/"; "git@github.com:") | sub("\\.git$"; "") | sub("/+$"; "") | . == "https://github.com/jsexy0210-ship-it/live-obs-platform" or . == "http://github.com/jsexy0210-ship-it/live-obs-platform" or . == "git@github.com:jsexy0210-ship-it/live-obs-platform";
+              .repository as $repo | .revision as $rev | .context as $ctx |
+              "repository=" + (if ($repo | type) == "string" and ($repo | onq_repo) then "ONQ" else "UNKNOWN" end) +
+              " revision=" + (if ($rev | type) == "string" and ($rev | test("^[0-9a-fA-F]{40}$")) then ($rev[0:12] | ascii_downcase) else "UNKNOWN" end) +
+              " context=" + (if $ctx == "." then "repo-root" elif ($ctx | type) == "string" and ($ctx | test("^[A-Za-z0-9_./-]{1,120}$")) and (($ctx | split("/")) | index("..")) == null then "workspace" elif ($ctx | type) == "string" and ($ctx | length) > 0 then "other-or-unknown" else "UNKNOWN" end)
+            ' <<<"$detail" 2>/dev/null || echo 'repository=UNKNOWN revision=UNKNOWN context=UNKNOWN')"
+            log "  Build record: $attribution"
+          done < <(jq -r '.[0:20][] | .ID // empty | select(type == "string")' <<<"$data" 2>/dev/null)
+          [ "$count" -le 20 ] || log "Build history 나머지 records: 미확인"
+        fi
+      fi
     else
-      count="$(jq 'length' <<<"$data" 2>/dev/null || echo 0)"
-      log "Build history: 로컬 저장소 기록 ${count}개, 최대 20개 메타데이터 확인"
-      [ "$count" -gt 0 ] || log "Build attribution: repository=UNKNOWN revision=UNKNOWN context=UNKNOWN (기록 없음)"
-      while IFS= read -r ref; do
-        [[ "$ref" =~ ^[A-Za-z0-9_-]{1,80}$ ]] || continue
-        detail="$(docker buildx history inspect --format json "$ref" 2>/dev/null | jq -c 'if type == "object" then {repository:(.VCSRepository // ""), revision:(.VCSRevision // ""), context:(.Context // "")} else {} end' 2>/dev/null || true)"
-        [ -n "$detail" ] || detail='{}'
-        attribution="$(jq -r '
-          def onq_repo: ascii_downcase | sub("^ssh://"; "") | sub("^git@github.com/"; "git@github.com:") | sub("\\.git$"; "") | sub("/+$"; "") | . == "https://github.com/jsexy0210-ship-it/live-obs-platform" or . == "http://github.com/jsexy0210-ship-it/live-obs-platform" or . == "git@github.com:jsexy0210-ship-it/live-obs-platform";
-          .repository as $repo | .revision as $rev | .context as $ctx |
-          "repository=" + (if ($repo | type) == "string" and ($repo | onq_repo) then "ONQ" else "UNKNOWN" end) +
-          " revision=" + (if ($rev | type) == "string" and ($rev | test("^[0-9a-fA-F]{40}$")) then ($rev[0:12] | ascii_downcase) else "UNKNOWN" end) +
-          " context=" + (if $ctx == "." then "repo-root" elif ($ctx | type) == "string" and ($ctx | test("^[A-Za-z0-9_./-]{1,120}$")) and (($ctx | split("/")) | index("..")) == null then "workspace" elif ($ctx | type) == "string" and ($ctx | length) > 0 then "other-or-unknown" else "UNKNOWN" end)
-        ' <<<"$detail" 2>/dev/null || echo 'repository=UNKNOWN revision=UNKNOWN context=UNKNOWN')"
-        log "  Build record: $attribution"
-      done < <(jq -r '.[0:20][] | .ID // empty | select(type == "string")' <<<"$data" 2>/dev/null)
-      [ "$count" -le 20 ] || log "Build history 나머지 records: 미확인"
+      log "Build history: 명령 실패, ONQ 귀속 미확인"
     fi
   else
     log "Build history: history ls --local/inspect 미지원 또는 확인 불가"
