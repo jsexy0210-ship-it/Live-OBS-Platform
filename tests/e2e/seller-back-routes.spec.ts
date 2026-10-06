@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { clearCouponsInDb, createClaimableCouponInDb } from "./couponDb";
 import { submitSellerLogin } from "./sellerLogin";
 
 // 화면-Back 경로표(docs/BACK_ROUTES.md) 파트너스 묶음: 직접 URL 진입 / 목록 → 상세 → ← / 브라우저 Back 각각의 결과(IA Back 규칙 1·3항).
@@ -117,4 +118,19 @@ test("설정 폼: 바꾼 것이 있으면 메뉴 이동·브라우저 Back에서
   answer = true;
   await page.getByRole("link", { name: "주문 설정" }).first().click();
   await expect(page).toHaveURL(/\/seller\/settings\/order$/);
+});
+
+test("쿠폰 상태 탭은 주소(?tab=)에 남아 새로고침해도 유지된다", async ({ page }) => {
+  await createClaimableCouponInDb("demo-shop", "Back 시험 쿠폰", 1000);
+  try {
+    await login(page, "/seller/coupons");
+    await page.getByRole("tab", { name: /^발급 중/ }).click();
+    await expect(page).toHaveURL(/\/seller\/coupons\?tab=live$/);
+    await page.reload();
+    await expect(page.getByRole("tab", { name: /^발급 중/ })).toHaveAttribute("aria-selected", "true");
+    await page.getByRole("tab", { name: /^전체/ }).click();
+    await expect(page).toHaveURL(/\/seller\/coupons$/);
+  } finally {
+    await clearCouponsInDb("demo-shop");
+  }
 });
