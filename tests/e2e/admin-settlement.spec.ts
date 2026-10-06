@@ -44,7 +44,7 @@ test("PG 연결 상태: 게이트웨이 카드와 파트너스 표가 보이고,
   await login(page);
   await page.goto("/admin/settlement/pg");
   await expect(page.getByTestId("pg-gateway")).toContainText("나이스페이");
-  await expect(page.getByTestId("pg-gateway")).toContainText("테스트 결제");
+  await expect(page.getByTestId("pg-gateway")).toContainText("실제 청구가 되지 않습니다");
   await page.getByLabel("쇼핑몰 이름 또는 주소").fill(run);
   await page.getByRole("button", { name: "검색" }).click();
   await expect(page.getByTestId("pg-row")).toHaveCount(1);
