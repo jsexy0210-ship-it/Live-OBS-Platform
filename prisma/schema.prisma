@@ -4012,3 +4012,50 @@ model InfraSnapshot {
 
   @@index([takenAt])
 }
+
+enum AdminAlertSeverity {
+  URGENT
+  WARNING
+  INFO
+}
+
+enum AdminAlertStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+// 마스터 관리자 알림 센터(MA-002) 알림. 다른 기능이 lib/server/admin-alerts/service.ts의 createAdminAlert 한 곳으로 만든다(화면 안 알림만, 외부 발송 없음).
+// 알림 하나를 보는 역할(targetRoles)이 같이 보고, 담당·상태(미처리·처리 중·해결됨)도 모두 같은 값을 본다. 읽음은 관리자마다(AdminAlertRead).
+model AdminAlert {
+  id              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  kind            String
+  severity        AdminAlertSeverity
+  sellerId        String?             @db.Uuid
+  title           String
+  body            String?
+  linkPath        String
+  // 같은 사건이 여러 번 알림으로 쌓이지 않게 부르는 쪽이 정한 키(없으면 중복 검사 없음)
+  dedupeKey       String?             @unique
+  targetRoles     PlatformAdminRole[]
+  status          AdminAlertStatus    @default(OPEN)
+  assignedAdminId String?             @db.Uuid
+  resolvedAt      DateTime?           @db.Timestamptz(3)
+  occurredAt      DateTime            @default(now()) @db.Timestamptz(3)
+  createdAt       DateTime            @default(now()) @db.Timestamptz(3)
+
+  reads AdminAlertRead[]
+
+  @@index([status, occurredAt(sort: Desc), id(sort: Desc)])
+  @@index([occurredAt(sort: Desc), id(sort: Desc)])
+}
+
+model AdminAlertRead {
+  adminId String   @db.Uuid
+  alertId String   @db.Uuid
+  readAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  alert AdminAlert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+
+  @@id([adminId, alertId])
+}
