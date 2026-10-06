@@ -57,6 +57,14 @@ model AdminSession {
 
 // ───────────── 판매자(쇼핑몰)·직원 ─────────────
 
+// 쇼핑몰 운영 상태(SA-060, 대표님 결정 2026-10-05). 파트너스가 바꾼다. 준비 중·일시 정지면 구매자에게 안내 화면만 보이고
+// 주문 조회만 열린다(새 주문·결제·장바구니·가입 등은 shopOpen이 막음). 이용 정지·구독 만료와 별개다.
+enum ShopOperatingState {
+  OPEN
+  PREPARING
+  PAUSED
+}
+
 enum SellerStatus {
   PENDING
   ACTIVE
@@ -75,6 +83,7 @@ model Seller {
   shareTitle               String?
   shareDescription         String?
   status                   SellerStatus @default(PENDING)
+  operatingState           ShopOperatingState @default(OPEN)
   businessInfo             Json?
   approvedAt               DateTime?    @db.Timestamptz(3)
   // 체험하기 종료 시각 = 마스터 승인 시각(DB 시계) + 판매자 플랜의 체험 일수(SubscriptionPlan.trialDays, 오버레이 전용 7일·통합 없음,
@@ -3383,6 +3392,12 @@ enum PlatformInquiryCategory {
   FEATURE
   BUG
   OTHER
+  BROADCAST
+  PAYMENT_LINK
+  ORDER_REFUND
+  REWARD
+  SUBSCRIPTION_FEE
+  SHOP
 }
 
 // 답변 대기 → (마스터 답변) 답변 완료 → (파트너스 추가 문의) 답변 대기 … 마스터가 종료하면 끝(추가 문의 불가, 새 문의로).
@@ -3422,6 +3437,8 @@ model PlatformInquiry {
   // 「답변이 도움이 됐습니까?」 평가(true 도움됨 · false 아니요). 문의 전체에 한 번만, 마스터 답변이 있은 뒤.
   helpful               Boolean?
   helpfulAt             DateTime?               @db.Timestamptz(3)
+  // 방송 중 장애 등 급한 문의 표시(분류가 아니라 별도 표시)
+  urgent                Boolean                 @default(false)
   version               Int                     @default(0)
   createdAt             DateTime                @default(now()) @db.Timestamptz(3)
 

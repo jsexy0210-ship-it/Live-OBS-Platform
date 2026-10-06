@@ -20,14 +20,16 @@ import { cleanText } from "../text/clean";
 type Db = PrismaClient | Prisma.TransactionClient;
 export type AuditMeta = { ip?: string | null; userAgent?: string | null };
 
-export const TITLE_MAX = 100;
+export const TITLE_MAX = 80;
 export const BODY_MAX = 5_000;
 export const IMAGES_PER_MESSAGE = 5;
 export const UNATTACHED_KEEP = 10;
 export const DAILY_LIMIT = 20;
 export const SELLER_PAGE_SIZE = 20;
 export const ADMIN_PAGE_SIZE = 50;
-export const CATEGORIES = ["BILLING", "ACCOUNT", "FEATURE", "BUG", "OTHER"] as const satisfies readonly PlatformInquiryCategory[];
+// SA-114 문의 종류(방송 화면·결제 연결·주문/환불·적립금·구독/요금·쇼핑몰·계정/직원·기타). BILLING·FEATURE·BUG는 예전 문의에만 남아 있어 새로 보낼 수 없고 필터로는 볼 수 있다.
+export const CATEGORIES: readonly PlatformInquiryCategory[] = ["BROADCAST", "PAYMENT_LINK", "ORDER_REFUND", "REWARD", "SUBSCRIPTION_FEE", "SHOP", "ACCOUNT", "OTHER"];
+const FILTER_CATEGORIES: readonly PlatformInquiryCategory[] = [...CATEGORIES, "BILLING", "FEATURE", "BUG"];
 const STATUSES: readonly PlatformInquiryStatus[] = ["OPEN", "ANSWERED", "CLOSED"];
 
 export type PlatformInquiryRejection =
@@ -38,6 +40,7 @@ export type PlatformInquiryRejection =
   | "invalid_notice"
   | "invalid_status"
   | "invalid_related"
+  | "invalid_urgent"
   | "invalid_helpful"
   | "already_rated"
   | "no_reply_yet"
@@ -56,6 +59,7 @@ export const PLATFORM_INQUIRY_MESSAGES: Record<PlatformInquiryRejection, string>
   invalid_notice: "공지를 찾을 수 없습니다",
   invalid_status: "상태를 다시 선택해 주십시오",
   invalid_related: "관련 주문·방송을 다시 선택해 주십시오",
+  invalid_urgent: "긴급 여부를 다시 선택해 주십시오",
   invalid_helpful: "도움이 됐는지 선택해 주십시오",
   already_rated: "이미 평가하셨습니다",
   no_reply_yet: "답변이 오면 평가할 수 있습니다",
@@ -188,13 +192,13 @@ export async function listMyInquiries(db: PrismaClient, ctx: TenantContext, q: {
   const c = parseCursor(q.cursor);
   if (!c.ok) return { ok: false as const, reason: "invalid_cursor" as const };
   if (q.status && !STATUSES.includes(q.status as PlatformInquiryStatus)) return { ok: false as const, reason: "invalid_status" as const };
-  if (q.category && !CATEGORIES.includes(q.category as PlatformInquiryCategory)) return { ok: false as const, reason: "invalid_category" as const };
+  if (q.category && !FILTER_CATEGORIES.includes(q.category as PlatformInquiryCategory)) return { ok: false as const, reason: "invalid_category" as const };
   const mine = sellerWhere(ctx);
   const rows = await db.platformInquiry.findMany({
     where: { ...mine, ...(q.status ? { status: q.status as PlatformInquiryStatus } : {}), ...(q.category ? { category: q.category as PlatformInquiryCategory } : {}), ...c.where },
     orderBy: [{ lastMessageAt: "desc" }, { id: "desc" }],
     take: SELLER_PAGE_SIZE + 1,
-    select: { id: true, category: true, title: true, status: true, createdAt: true, lastMessageAt: true, lastAdminMessageAt: true, sellerReadAt: true, createdBySellerUserId: true },
+    select: { id: true, category: true, title: true, status: true, urgent: true, createdAt: true, lastMessageAt: true, lastAdminMessageAt: true, sellerReadAt: true, createdBySellerUserId: true },
   });
   const page = rows.slice(0, SELLER_PAGE_SIZE);
   const n = await names(db, page.map((r) => r.createdBySellerUserId), []);
@@ -210,12 +214,30 @@ export async function listMyInquiries(db: PrismaClient, ctx: TenantContext, q: {
       ...r,
       authorName: n.user.get(createdBySellerUserId) ?? null,
       lastReplyAt: lastAdminMessageAt,
+      handlerState: handlerStateOf(r.status, lastAdminMessageAt),
       hasNewReply: !!lastAdminMessageAt && (!sellerReadAt || lastAdminMessageAt > sellerReadAt),
     })),
     counts: { all: count("OPEN") + count("ANSWERED") + count("CLOSED"), open: count("OPEN"), answered: count("ANSWERED"), closed: count("CLOSED") },
     newReplyCount: newReplyCount?.n ?? 0,
+    avgFirstReplyMinutes: await avgFirstReplyMinutes(db),
     nextCursor: nextCursor(rows, SELLER_PAGE_SIZE),
   };
+}
+
+// 담당 상태(파트너스 화면용, 마스터 관리자 이름은 내보내지 않는다): 플랫폼 답변이 있으면 ASSIGNED(담당자 배정됨), 없으면 PREPARING(답변 준비 중), 종료면 null.
+function handlerStateOf(status: PlatformInquiryStatus, lastAdminMessageAt: Date | null) {
+  if (status === "CLOSED") return null;
+  return lastAdminMessageAt ? ("ASSIGNED" as const) : ("PREPARING" as const);
+}
+
+// 최근 30일에 접수된 문의의 첫 플랫폼 답변까지 걸린 평균 분(전체 파트너스 기준 안내 문구용). 답변 받은 문의가 없으면 null.
+async function avgFirstReplyMinutes(db: Db) {
+  const [r] = await db.$queryRaw<{ m: number | null }[]>`
+    SELECT ROUND(AVG(EXTRACT(EPOCH FROM (f."at" - i."createdAt")) / 60))::int AS "m"
+    FROM "PlatformInquiry" i
+    JOIN LATERAL (SELECT MIN(m."createdAt") AS "at" FROM "PlatformInquiryMessage" m WHERE m."inquiryId" = i."id" AND m."authorType" = 'ADMIN') f ON f."at" IS NOT NULL
+    WHERE i."createdAt" > now() - interval '30 days'`;
+  return r?.m ?? null;
 }
 
 // 관련 주문·방송(작성 때 고른 것). 같은 쇼핑몰 것만 찾는다. 없으면 null.
@@ -249,7 +271,7 @@ export async function getMyInquiry(db: PrismaClient, ctx: TenantContext, id: str
   const row = await db.platformInquiry.findFirst({
     where: { ...sellerWhere(ctx), id },
     select: {
-      id: true, category: true, title: true, status: true, noticeId: true, createdAt: true, lastMessageAt: true, closedAt: true, createdBySellerUserId: true,
+      id: true, category: true, title: true, status: true, urgent: true, noticeId: true, createdAt: true, lastMessageAt: true, closedAt: true, createdBySellerUserId: true,
       closedBySellerUserId: true, closedByAdminId: true, relatedOrderId: true, relatedBroadcastId: true, helpful: true, helpfulAt: true, lastAdminMessageAt: true,
       messages: { select: MESSAGE_SELECT, orderBy: [{ createdAt: "asc" }, { id: "asc" }] },
     },
@@ -265,6 +287,7 @@ export async function getMyInquiry(db: PrismaClient, ctx: TenantContext, id: str
     notice: await noticeTitle(db, noticeId),
     related: await relatedOf(db, ctx.sellerId, relatedOrderId, relatedBroadcastId),
     closedBy,
+    handlerState: handlerStateOf(row.status, lastAdminMessageAt),
     history: historyOf(messages, row.closedAt, closedBy),
     canClose: row.status !== "CLOSED" && !ctx.readOnly,
     canRate: !!lastAdminMessageAt && row.helpful === null && !ctx.readOnly,
@@ -277,6 +300,8 @@ export async function createInquiry(db: PrismaClient, ctx: TenantContext, raw: u
   requireSellerWrite(ctx);
   const b = obj(raw);
   if (!CATEGORIES.includes(b.category as PlatformInquiryCategory)) return { ok: false as const, reason: "invalid_category" as const };
+  if (b.urgent !== undefined && typeof b.urgent !== "boolean") return { ok: false as const, reason: "invalid_urgent" as const };
+  const urgent = b.urgent === true;
   const title = cleanText(b.title, TITLE_MAX, "memo");
   if (!title) return { ok: false as const, reason: "invalid_title" as const };
   const body = cleanText(b.body, BODY_MAX, "multiline");
@@ -305,12 +330,12 @@ export async function createInquiry(db: PrismaClient, ctx: TenantContext, raw: u
       if (recent >= DAILY_LIMIT) throw new Rejected("too_many_inquiries");
       const now = new Date();
       const inq = await tx.platformInquiry.create({
-        data: { sellerId: ctx.sellerId, createdBySellerUserId: ctx.actorId, category: b.category as PlatformInquiryCategory, title, noticeId, relatedOrderId, relatedBroadcastId, lastMessageAt: now, sellerReadAt: now, createdAt: now },
+        data: { sellerId: ctx.sellerId, createdBySellerUserId: ctx.actorId, category: b.category as PlatformInquiryCategory, title, urgent, noticeId, relatedOrderId, relatedBroadcastId, lastMessageAt: now, sellerReadAt: now, createdAt: now },
         select: { id: true },
       });
       const msg = await tx.platformInquiryMessage.create({ data: { sellerId: ctx.sellerId, inquiryId: inq.id, authorType: "SELLER_USER", sellerUserId: ctx.actorId, body, createdAt: now }, select: { id: true } });
       if (!(await attachImages(tx, ctx, msg.id, imageIds))) throw new Rejected("invalid_images");
-      await sellerAudit(tx, ctx, meta, "platform_inquiry.create", inq.id, { category: b.category, title, noticeId, relatedOrderId, relatedBroadcastId, images: imageIds.length });
+      await sellerAudit(tx, ctx, meta, "platform_inquiry.create", inq.id, { category: b.category, title, urgent, noticeId, relatedOrderId, relatedBroadcastId, images: imageIds.length });
       return inq.id;
     });
     return { ok: true as const, inquiry: (await getMyInquiry(db, ctx, id))! };
@@ -458,6 +483,7 @@ const ADMIN_LIST_SELECT = {
   category: true,
   title: true,
   status: true,
+  urgent: true,
   createdAt: true,
   lastMessageAt: true,
   lastAdminMessageAt: true,

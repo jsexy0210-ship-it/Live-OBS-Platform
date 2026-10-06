@@ -3,7 +3,7 @@
 import "./ProductMedia.css";
 import { useEffect, useRef, useState } from "react";
 
-// 상품 이미지 칸(SA-012): 첫 칸이 대표 이미지(썸네일), 이어서 추가 이미지. 끌어서(또는 ‹ › 버튼으로) 순서를 바꾸고, 올리는 중·실패 상태를 칸마다 보여 준다.
+// 상품 이미지 칸(SA-012 v274): 최대 5장, 그중 하나를 「썸네일로 지정」(지정하지 않으면 첫 번째). 끌어서(또는 ‹ › 버튼으로) 순서를 바꾸고, 올리는 중·실패 상태를 칸마다 보여 준다.
 // 저장·업로드는 부모가 한다(제어형): images를 그리고, 바뀌는 일은 onAdd·onRemove·onRestore·onReorder·onRetry로 알린다.
 export type SlotImage = {
   id: string;
@@ -14,11 +14,11 @@ export type SlotImage = {
   error?: string;
 };
 
-// 서버가 받는 형식(기반-상품 계약: PNG·JPG·WEBP, 장당 5MB, 10장, 가로·세로 100~4000px). 바뀌면 여기와 IMAGE_LABEL만 바꾼다
+// 서버가 받는 형식(기반-상품 계약: PNG·JPG·WEBP, 장당 5MB, 5장, 가로·세로 100~4000px). 바뀌면 여기와 IMAGE_LABEL만 바꾼다
 export const IMAGE_ACCEPT = ["image/png", "image/jpeg", "image/webp"] as const;
 export const IMAGE_LABEL = "PNG · JPG · WEBP";
 export const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
-export const IMAGE_MAX_COUNT = 10;
+export const IMAGE_MAX_COUNT = 5;
 // 지운 자리에 「되돌리기」를 보이는 시간
 export const UNDO_MS = 5000;
 
@@ -29,7 +29,7 @@ export function pickUploadable(files: File[], room: number): { ok: File[]; probl
   for (const f of files) {
     if (!(IMAGE_ACCEPT as readonly string[]).includes(f.type)) problem = `${IMAGE_LABEL}만 올릴 수 있습니다`;
     else if (f.size > IMAGE_MAX_BYTES) problem = "5MB 이하만 올릴 수 있습니다";
-    else if (ok.length >= room) problem = `이미지는 ${IMAGE_MAX_COUNT}장까지 올릴 수 있습니다`;
+    else if (ok.length >= room) problem = `이미지는 ${IMAGE_MAX_COUNT}장까지 올릴 수 있습니다. 더 넣으려면 기존 이미지를 지우거나 바꿔 주십시오.`;
     else ok.push(f);
   }
   return { ok, problem };
@@ -39,6 +39,8 @@ type Ghost = { img: SlotImage; index: number; timer: ReturnType<typeof setTimeou
 
 export default function ProductImages({
   images,
+  thumbnailId,
+  onThumbnail,
   max = IMAGE_MAX_COUNT,
   disabled,
   onAdd,
@@ -48,6 +50,9 @@ export default function ProductImages({
   onRetry,
 }: {
   images: SlotImage[];
+  // 썸네일로 쓰는 이미지(지정하지 않았으면 부모가 첫 번째 id를 준다)
+  thumbnailId: string | null;
+  onThumbnail: (id: string) => void;
   max?: number;
   disabled?: boolean;
   onAdd: (files: File[]) => void;
@@ -128,10 +133,11 @@ export default function ProductImages({
             );
           }
           const { img, i } = cell;
+          const isThumb = img.id === thumbnailId;
           return (
+            <div key={img.id} className="pm-cell">
             <div
-              key={img.id}
-              className={`pm-tile${img.state === "error" ? " is-error" : ""}${dragFrom === i ? " is-drag" : ""}${dropAt === i && dragFrom !== i ? " is-drop" : ""}`}
+              className={`pm-tile${isThumb ? " is-thumb" : ""}${img.state === "error" ? " is-error" : ""}${dragFrom === i ? " is-drag" : ""}${dropAt === i && dragFrom !== i ? " is-drop" : ""}`}
               data-testid="product-image"
               draggable={!disabled && img.state === "done"}
               onDragStart={(e) => {
@@ -156,8 +162,8 @@ export default function ProductImages({
                 setDropAt(null);
               }}
             >
-              {img.state !== "error" && <img src={img.url} alt={i === 0 ? "대표 이미지" : `이미지 ${i + 1}`} draggable={false} />}
-              {i === 0 && <span className="pm-badge">대표</span>}
+              {img.state !== "error" && <img src={img.url} alt={isThumb ? "썸네일" : `이미지 ${i + 1}`} draggable={false} />}
+              <span className={`pm-badge${isThumb ? " is-thumb" : ""}`}>{isThumb ? "썸네일" : i + 1}</span>
               {img.state === "uploading" && (
                 <div className="pm-prog" role="progressbar" aria-label={`이미지 ${i + 1} 올리는 중`} aria-valuenow={img.progress ?? undefined} aria-valuemin={0} aria-valuemax={100}>
                   <i style={{ width: `${img.progress ?? 30}%` }} />
@@ -170,24 +176,27 @@ export default function ProductImages({
                     다시 시도
                   </button>
                 )}
-                <div className="row" style={{ gap: 4 }}>
-                  <button className="btn btn-sm btn-out" type="button" aria-label={`이미지 ${i + 1} 앞으로`} disabled={disabled || i === 0 || img.state !== "done"} onClick={() => onReorder(i, i - 1)}>
+                <div className="pm-bar">
+                  <button className="pm-ib" type="button" aria-label={`이미지 ${i + 1} 앞으로`} disabled={disabled || i === 0 || img.state !== "done"} onClick={() => onReorder(i, i - 1)}>
                     ‹
                   </button>
-                  <button
-                    className="btn btn-sm btn-out"
-                    type="button"
-                    aria-label={`이미지 ${i + 1} 뒤로`}
-                    disabled={disabled || i === images.length - 1 || img.state !== "done"}
-                    onClick={() => onReorder(i, i + 1)}
-                  >
+                  <button className="pm-ib" type="button" aria-label={`이미지 ${i + 1} 뒤로`} disabled={disabled || i === images.length - 1 || img.state !== "done"} onClick={() => onReorder(i, i + 1)}>
                     ›
                   </button>
+                  <button className="pm-ib" type="button" aria-label={`이미지 ${i + 1} 지우기`} disabled={disabled} onClick={() => remove(img, i)}>
+                    ×
+                  </button>
                 </div>
-                <button className="btn btn-sm btn-out" type="button" aria-label={`이미지 ${i + 1} 지우기`} disabled={disabled} onClick={() => remove(img, i)}>
-                  지우기
-                </button>
               </div>
+            </div>
+            {img.state === "done" &&
+              (isThumb ? (
+                <span className="pm-cap is-thumb">대표 이미지</span>
+              ) : (
+                <button className="pm-cap" type="button" disabled={disabled} onClick={() => onThumbnail(img.id)}>
+                  썸네일로 지정
+                </button>
+              ))}
             </div>
           );
         })}
@@ -200,10 +209,15 @@ export default function ProductImages({
               type="button"
               disabled={disabled}
               onClick={() => input.current?.click()}
-              aria-label={n === 1 ? "대표 이미지 올리기" : `이미지 ${n} 올리기`}
+              aria-label={`이미지 ${n} 올리기`}
             >
-              <b aria-hidden="true">+</b>
-              <span>{k === 0 ? (n === 1 ? "대표 이미지" : "추가 이미지") : n}</span>
+              {k === 0 && <b aria-hidden="true">+</b>}
+              <span>{k === 0 ? "이미지 올리기" : n}</span>
+              {k === 0 && (
+                <span className="num">
+                  {images.length + ghosts.length + 1} / {max}
+                </span>
+              )}
             </button>
           );
         })}
@@ -221,7 +235,7 @@ export default function ProductImages({
         />
       </div>
       <span className="help">
-        대표 이미지 1장 + 추가 이미지 {max - 1}장 = 최대 {max}장 · 첫 번째가 대표 이미지(목록 · 공유 카드 · 오버레이) · 끌어서 순서 변경, ‹ › 로도 옮깁니다 · 1:1 비율 권장 · {IMAGE_LABEL} · 장당 5MB
+        이미지는 상품마다 최대 {max}장 · 그중 하나를 「썸네일로 지정」(지정하지 않으면 첫 번째) · 썸네일은 목록 · 카드 · 장바구니 · 주문서 · 방송 오버레이 등 대표 이미지 자리에 모두 쓰입니다 · 끌어서 순서 변경, ‹ › 로도 옮깁니다 · 1:1 비율 권장 · {IMAGE_LABEL} · 장당 5MB
       </span>
       {problem && (
         <span className="err" role="alert">
