@@ -54,8 +54,13 @@ test("분류·상세·브라우저 뒤로 가기가 원래 페이지 상태를 �
   const neighbors = page.getByRole("navigation", { name: "이전·다음 공지" });
   await expect(neighbors.getByRole("link", { name: /이전: E2E-PF-POLICY-06/ })).toHaveAttribute("href", /category=FEATURE&page=2/);
   await expect(neighbors.getByRole("link", { name: /다음: E2E-PF-FEATURE-04/ })).toHaveAttribute("href", /category=FEATURE&page=2/);
+  const longNeighbor = neighbors.getByRole("link", { name: /^다음: E2E-PF-FEATURE-04/ });
+  const neighborTitle = (await longNeighbor.innerText()).replace(/^다음: /, "").replace(/ →$/, "");
+  expect(neighborTitle).toHaveLength(100);
+  expect(neighborTitle).toMatch(/^E2E-PF-FEATURE-04A+$/);
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "390px notice detail overflow").toBe(true);
+  expect(await longNeighbor.evaluate((el) => el.scrollWidth <= el.clientWidth), "390px unbroken neighbor title overflow").toBe(true);
   await page.goBack();
   await expect(page).toHaveURL(/\/notices\?category=FEATURE&page=2$/);
   await expect(page.getByRole("link", { name: "새 기능", exact: true })).toHaveAttribute("aria-current", "true");

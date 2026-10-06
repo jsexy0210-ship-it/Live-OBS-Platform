@@ -49,9 +49,10 @@ export async function seedPublicNoticePagesInDb() {
     const visibleIds: string[] = [];
     for (let i = 0; i < 11; i++) {
       const category = i < 6 ? "FEATURE" : i < 9 ? "POLICY" : "MAINTENANCE";
+      const title = i === 4 ? `${PUBLIC_NOTICE_PREFIX}FEATURE-04${"A".repeat(100 - `${PUBLIC_NOTICE_PREFIX}FEATURE-04`.length)}` : `${PUBLIC_NOTICE_PREFIX}${category}-${String(i).padStart(2, "0")}`;
       const row = await db.platformNotice.create({
         data: {
-          title: `${PUBLIC_NOTICE_PREFIX}${category}-${String(i).padStart(2, "0")}`,
+          title,
           body: `첫 줄 ${i}\n둘째 줄 원문`,
           category,
           audience: "PUBLIC",

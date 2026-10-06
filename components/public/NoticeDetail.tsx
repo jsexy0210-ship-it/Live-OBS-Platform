@@ -18,7 +18,7 @@ export function NoticeDetail({ notice, listHref, listState }: { notice: { title:
           <p className="t-b1 pf-notice-body" data-testid="notice-body">
             {notice.body}
           </p>
-          <nav className="row between" aria-label="이전·다음 공지" data-testid="notice-neighbors" style={{ paddingTop: 24, boxShadow: "inset 0 1px 0 var(--wds-line-normal-alternative)" }}>
+          <nav className="row between pf-notice-neighbors" aria-label="이전·다음 공지" data-testid="notice-neighbors" style={{ paddingTop: 24, boxShadow: "inset 0 1px 0 var(--wds-line-normal-alternative)" }}>
             {notice.next ? (
               <Link className="t-l2" href={noticeDetailHref(notice.next.id, listState)}>
                 ← 이전: {notice.next.title}
