@@ -6,7 +6,7 @@ import { createOrder } from "../../lib/server/orders/create";
 import { markOrderPaid } from "../../lib/server/queue/service";
 import { createLoginBuyer, createSeller, db, resetDb } from "./helpers";
 
-// 구매자 주문 목록(SH-021) 추가 값(MASTER 배정 2026-10-06): 기간(from·to, 기본 최근 1개월), 탭 6개와 탭별 전체 개수, 주문 상품 사진, 개봉(대기열) 상태·앞 대기 수.
+// 구매자 주문 목록(SH-021) 추가 값(MASTER 배정 2026-10-06): 기간(from·to, 기본 최근 3개월), 탭 6개와 탭별 전체 개수, 주문 상품 사진, 개봉(대기열) 상태·앞 대기 수.
 beforeEach(resetDb);
 afterAll(async () => {
   await db.$disconnect();
@@ -28,17 +28,20 @@ async function setup() {
 }
 
 describe("구매자 주문 목록 기간·탭", () => {
-  it("기본은 최근 1개월(오늘 KST ~ 한 달 전 같은 날), range에 돌려주고, from·to로 바꾼다. 자정 직후(KST)에도 같다", async () => {
+  it("기간 없이 부르면 기본은 최근 3개월(오늘 KST ~ 석 달 전 같은 날), range에 돌려주고, from·to로 바꾼다. 자정 직후(KST)에도 같다", async () => {
     const s = await setup();
     const now = new Date("2026-10-05T15:10:00Z"); // KST 2026-10-06 00:10
     const recent = await s.make(s.buyer.id, "PAID", { createdAt: new Date(now.getTime() - 10 * DAY) });
     const old = await s.make(s.buyer.id, "PAID", { createdAt: new Date(now.getTime() - 40 * DAY) });
+    const older = await s.make(s.buyer.id, "PAID", { createdAt: new Date(now.getTime() - 100 * DAY) });
     const r = await listBuyerOrders(db, s.scope, { now });
-    expect(r.ok && r.value.range).toEqual({ from: "2026-09-06", to: "2026-10-06" });
-    expect(r.ok && r.value.orders.map((o) => o.id)).toEqual([recent.id]);
-    expect(r.ok && r.value.counts.all).toBe(1);
-    const wide = await listBuyerOrders(db, s.scope, { from: "2026-08-01", to: "2026-10-06", now });
-    expect(wide.ok && wide.value.orders.map((o) => o.id)).toEqual([recent.id, old.id]);
+    expect(r.ok && r.value.range).toEqual({ from: "2026-07-06", to: "2026-10-06" });
+    // 40일 전은 3개월 안, 100일 전은 밖
+    expect(r.ok && r.value.orders.map((o) => o.id)).toEqual([recent.id, old.id]);
+    expect(r.ok && r.value.counts.all).toBe(2);
+    expect(older.id).not.toBe(old.id);
+    const wide = await listBuyerOrders(db, s.scope, { from: "2026-06-01", to: "2026-10-06", now });
+    expect(wide.ok && wide.value.orders.map((o) => o.id)).toEqual([recent.id, old.id, older.id]);
     // to 날짜 하루 전체가 들어간다(KST 23:59 주문)
     const lateKst = await s.make(s.buyer.id, "PAID", { createdAt: new Date("2026-10-01T14:59:00Z") });
     const day = await listBuyerOrders(db, s.scope, { from: "2026-10-01", to: "2026-10-01", now });

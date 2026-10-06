@@ -212,6 +212,7 @@ model Seller {
   platformInquiries        PlatformInquiry[]
   platformInquiryMessages  PlatformInquiryMessage[]
   platformInquiryImages    PlatformInquiryImage[]
+  platformInquiryFiles     PlatformInquiryFile[]
   externalShopConnections  ExternalShopConnection[]
   receiptIssuer            SellerReceiptIssuer?
   externalOrders ExternalOrder[]
@@ -3518,6 +3519,7 @@ model PlatformInquiryMessage {
   seller  Seller                 @relation(fields: [sellerId], references: [id])
   inquiry PlatformInquiry        @relation(fields: [sellerId, inquiryId], references: [sellerId, id], onDelete: Cascade)
   images  PlatformInquiryImage[]
+  files   PlatformInquiryFile[]
 
   @@unique([sellerId, id])
   @@index([sellerId, inquiryId, createdAt])
@@ -3534,6 +3536,26 @@ model PlatformInquiryImage {
   byteSize     Int
   width        Int
   height       Int
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  seller  Seller                  @relation(fields: [sellerId], references: [id])
+  message PlatformInquiryMessage? @relation(fields: [sellerId, messageId], references: [sellerId, id], onDelete: Cascade)
+
+  @@index([sellerId, messageId])
+  @@index([sellerId, sellerUserId, messageId, createdAt])
+}
+
+// 문의 첨부 파일(사진 외 .txt·.log·.zip, 파트너스만 올림, lib/server/platform-inquiries/files.ts). 사진과 같이 먼저 올리고(messageId 없음) 글을 보낼 때 붙인다. 붙지 않은 파일은 계정당 10개까지 두고 오래된 것부터 지운다.
+model PlatformInquiryFile {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId     String   @db.Uuid
+  sellerUserId String   @db.Uuid
+  messageId    String?  @db.Uuid
+  name         String
+  data         Bytes
+  contentType  String
+  byteSize     Int
   sortOrder    Int      @default(0)
   createdAt    DateTime @default(now()) @db.Timestamptz(3)
 

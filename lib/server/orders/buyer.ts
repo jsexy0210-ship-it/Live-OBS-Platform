@@ -117,17 +117,17 @@ const DAY_MS = 86_400_000;
 export const BUYER_ORDER_RANGE_MAX_DAYS = 366;
 const KST_MS = 9 * 3_600_000;
 const kstToday = (now: Date) => new Date(now.getTime() + KST_MS).toISOString().slice(0, 10);
-// 기본 기간: 오늘(KST)부터 한 달 전 같은 날까지(최근 1개월)
+// 기본 기간: 오늘(KST)부터 석 달 전 같은 날까지(최근 3개월, SH-021 정본. 2026-10-06 MASTER 결정)
 function defaultFrom(to: string) {
   const [y, m, d] = to.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 2, 1));
+  const dt = new Date(Date.UTC(y, m - 4, 1));
   const lastDay = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth() + 1, 0)).getUTCDate();
   dt.setUTCDate(Math.min(d, lastDay));
   return dt.toISOString().slice(0, 10);
 }
 
 // 목록: 최근 주문부터(createdAt 내림, id 내림), keyset 커서. 커서는 본인 주문 id만 받는다.
-// 기간 from·to(KST 날짜, 둘 다 포함, 기본 최근 1개월), 탭 tab(기본 all), counts는 같은 기간의 탭별 전체 개수(탭·커서와 무관).
+// 기간 from·to(KST 날짜, 둘 다 포함, 기본 최근 3개월), 탭 tab(기본 all), counts는 같은 기간의 탭별 전체 개수(탭·커서와 무관).
 export async function listBuyerOrders(
   db: PrismaClient,
   scope: { sellerId: string; buyerMemberId: string },
