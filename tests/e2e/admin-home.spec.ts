@@ -56,7 +56,7 @@ test("오늘 처리할 일: 서버 숫자가 맨 위에 보이고, 누르면 조
   const tasks = page.getByTestId("today-tasks");
   await expect(tasks.getByTestId("today-task-signupPending")).toContainText(`${count("signupPending")}건`);
   await expect(tasks.getByTestId("today-task-inquiryOpen")).toContainText(`${count("inquiryOpen")}건`);
-  await expect(tasks.locator('[data-testid^="today-task-"]')).toHaveCount(7);
+  await expect(tasks.locator('[data-testid^="today-task-"]')).toHaveCount(8);
   await expect(tasks.getByTestId("today-task-inquiryOpen")).toContainText("파트너스 문의");
   await expect(page.getByTestId("today-tasks-at")).toContainText("집계");
   await expect(page.getByTestId("infra-card")).toHaveCount(0); // 인프라 · 비용 카드는 최고관리자에게만 보인다
