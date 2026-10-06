@@ -14,7 +14,8 @@ export const FAQ_ITEMS: { cat: string; q: string; a: string }[] = [
   { cat: "쇼핑몰 · 주문", q: "내 도메인을 쓸 수 있나요?", a: "기본 주소를 바로 받고, 내 도메인도 연결할 수 있어요." },
 ];
 
-const CATS = ["전체", ...Array.from(new Set(FAQ_ITEMS.map((f) => f.cat)))];
+// 정본 PF-004 분류 순서
+const CATS = ["전체", "시작하기", "방송 · 방송 화면", "쇼핑몰 · 주문", "적립금", "결제 · 요금", "계정 · 권한"];
 
 export function FaqList() {
   const [cat, setCat] = useState("전체");
@@ -26,10 +27,13 @@ export function FaqList() {
   return (
     <>
       <div className="pf-faq-search">
-        <label className="t-l2" htmlFor="faq-q">
-          질문 검색
-        </label>
-        <input id="faq-q" className="inp" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="궁금한 것을 검색해요" />
+        <span className="pf-search-ico" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" />
+            <path d="M20 20l-4-4" />
+          </svg>
+        </span>
+        <input id="faq-q" className="inp" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="궁금한 것을 검색해요" aria-label="질문 검색" />
       </div>
       <div className="pf-chips" role="group" aria-label="분류">
         {CATS.map((c) => (
@@ -38,14 +42,14 @@ export function FaqList() {
           </button>
         ))}
       </div>
-      <div className="pf-faq pf-faq-wide">
+      <div className="pf-faq pf-faq-wide pf-faq-mk">
         {rows.length === 0 ? (
           <p className="t-b2 c-alt" role="status">
             맞는 질문이 없어요. 다른 말로 검색해 보세요.
           </p>
         ) : (
-          rows.map((f) => (
-            <details key={f.q}>
+          rows.map((f, i) => (
+            <details key={f.q} open={i === 0 && cat === "전체" && !q ? true : undefined}>
               <summary className="t-hl2">{f.q}</summary>
               <p className="t-b2 c-neu">{f.a}</p>
             </details>
