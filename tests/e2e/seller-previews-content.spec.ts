@@ -37,33 +37,34 @@ test.describe("파트너스 미리보기: 입력 → 즉시 반영", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await ownerOpen(page, "/seller/banners");
     await page.getByRole("button", { name: "배너 추가" }).first().click();
-    const dialog = page.getByRole("dialog", { name: "배너 추가" });
-    const pv = dialog.getByTestId("banner-preview");
+    const ed = page.getByTestId("banner-editor");
+    await ed.getByRole("button", { name: "미리보기" }).click();
+    const pv = ed.getByTestId("banner-preview");
     await expect(pv).toContainText("이미지를 올리면 여기에 표시됩니다");
 
-    await dialog.getByLabel("PC 이미지", { exact: true }).setInputFiles(file("pc.png", await canvasPng(page, 1920, 600, "#5b3df6")));
-    await dialog.getByLabel("제목 (대체 텍스트)").fill("미리보기 제목");
+    await ed.getByLabel("PC 이미지", { exact: true }).setInputFiles(file("pc.png", await canvasPng(page, 1920, 600, "#5b3df6")));
+    await ed.getByLabel("제목 (대체 텍스트)").fill("미리보기 제목");
     await expect(pv.locator("img")).toHaveAttribute("alt", "미리보기 제목");
     await expect(pv.locator("a")).toHaveCount(0);
 
-    await dialog.getByLabel("링크").fill("/products/abc");
+    await ed.getByLabel("연결", { exact: true }).selectOption("custom");
+    await ed.getByLabel("연결 주소").fill("/products/abc");
     await expect(pv.locator("a")).toHaveAttribute("href", /\/shop\/[^/]+\/products\/abc$/);
-    await dialog.getByLabel("링크").fill("https://example.com/event");
+    await ed.getByLabel("연결 주소").fill("https://example.com/event");
     await expect(pv.locator("a")).toHaveAttribute("href", "https://example.com/event");
     await expect(pv.locator("a")).toHaveAttribute("target", "_blank");
     // 미리보기 링크는 눌러도 이동하지 않는다
     await pv.locator("a").click();
     await expect(page).toHaveURL(/\/seller\/banners$/);
-    await expect(dialog).toBeVisible();
+    await expect(ed).toBeVisible();
 
     // 모바일: 모바일 이미지를 올리면 그 이미지, 없으면 PC 이미지
-    await dialog.getByRole("radio", { name: "모바일" }).last().click();
     const pcSrc = await pv.locator("img").getAttribute("src");
-    await dialog.getByLabel("모바일 이미지", { exact: true }).setInputFiles(file("m.png", await canvasPng(page, 750, 750, "#e8382d")));
+    await ed.getByLabel("모바일 이미지", { exact: true }).setInputFiles(file("m.png", await canvasPng(page, 750, 750, "#e8382d")));
     await expect.poll(() => pv.locator("img").getAttribute("src")).not.toBe(pcSrc);
 
-    // 표시 기기를 끄면 그 기기 미리보기는 비운다
-    await dialog.getByRole("radio", { name: "PC만" }).click();
+    // 표시 기기를 PC만으로 하면 모바일 미리보기는 비운다
+    await ed.getByRole("radio", { name: "PC만" }).click();
     await expect(pv).toContainText("모바일에서는 표시하지 않음");
     await expect(pv.locator("img")).toHaveCount(0);
   });

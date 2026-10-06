@@ -18,6 +18,8 @@ export const LINK_LABEL_MAX = 20;
 export const DEFAULT_LINK_LABEL = "자세히 보기";
 // 「보지 않기」 선택지: 0=닫기만(매번 표시), 1=오늘 하루, 7=7일
 export const DISMISS_DAYS = [0, 1, 7] as const;
+// 홈 배너 자동 넘김 간격(초). 0=끔
+export const BANNER_INTERVALS = [0, 5, 8] as const;
 
 export type ContentRejection =
   | "invalid_title"
@@ -30,6 +32,7 @@ export type ContentRejection =
   | "invalid_target"
   | "invalid_kind"
   | "invalid_dismiss"
+  | "invalid_interval"
   | "too_many"
   | "order_conflict";
 
@@ -45,6 +48,7 @@ export const CONTENT_MESSAGES: Record<ContentRejection, string> = {
   invalid_target: "노출 화면을 다시 선택해 주십시오",
   invalid_kind: "팝업 형태를 다시 선택해 주십시오",
   invalid_dismiss: "다시 보지 않기 기간을 다시 선택해 주십시오",
+  invalid_interval: "자동 넘김을 다시 선택해 주십시오",
   too_many: "더 추가할 수 없습니다. 쓰지 않는 항목을 삭제해 주십시오",
   order_conflict: "다른 곳에서 목록이 바뀌었습니다. 새로고침한 뒤 다시 시도해 주십시오",
 };
@@ -189,6 +193,25 @@ export async function listBanners(db: PrismaClient, ctx: TenantContext) {
     db.shopBanner.findMany({ where: { sellerId: ctx.sellerId }, include: bannerInclude, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] }),
   ]);
   return rows.map((r) => bannerView(r as BannerRow, now));
+}
+
+// 홈 배너 자동 넘김 간격(쇼핑몰 설정). 조회는 같은 쇼핑몰 파트너스 계정이면 누구나, 바꾸기는 대표자·SHOP_SETTINGS만.
+export async function getBannerInterval(db: PrismaClient, ctx: TenantContext) {
+  const s = await db.seller.findUnique({ where: { id: ctx.sellerId }, select: { homeBannerIntervalSec: true } });
+  return s?.homeBannerIntervalSec ?? 0;
+}
+
+export async function setBannerInterval(db: PrismaClient, ctx: TenantContext, raw: unknown, meta: AuditMeta = {}) {
+  requireSellerPermission(ctx, "SHOP_SETTINGS");
+  const v = (raw as { intervalSec?: unknown } | null)?.intervalSec;
+  if (typeof v !== "number" || !(BANNER_INTERVALS as readonly number[]).includes(v)) return { ok: false as const, reason: "invalid_interval" as const };
+  return db.$transaction(async (tx) => {
+    await lockSeller(tx, ctx.sellerId);
+    const before = await tx.seller.findUnique({ where: { id: ctx.sellerId }, select: { homeBannerIntervalSec: true } });
+    await tx.seller.update({ where: { id: ctx.sellerId }, data: { homeBannerIntervalSec: v } });
+    await audit(tx, ctx, meta, "shop.banner.interval", "Seller", ctx.sellerId, { intervalSec: before?.homeBannerIntervalSec ?? 0 }, { intervalSec: v });
+    return { ok: true as const, intervalSec: v };
+  });
 }
 
 export async function createBanner(db: PrismaClient, ctx: TenantContext, raw: unknown, meta: AuditMeta = {}) {
@@ -429,7 +452,7 @@ export type ShopPage = "home" | "other";
 // 지금 보여 줄 배너·팝업(운영 중이고 스토어 운영 권한이 있는 쇼핑몰만, 아니면 null). 기간은 DB 시계로 판단한다.
 // 배너는 홈에서만, 팝업은 홈이면 HOME·ALL, 그 밖 화면이면 ALL만. PC·모바일 구분은 화면 너비(768px)로 브라우저가 한다.
 export async function visibleShopContent(db: PrismaClient, slug: string, page: ShopPage) {
-  const shop = await db.seller.findUnique({ where: { slug }, select: { id: true, slug: true } });
+  const shop = await db.seller.findUnique({ where: { slug }, select: { id: true, slug: true, homeBannerIntervalSec: true } });
   if (!shop || !(await shopOpen(db, shop.id))) return null;
   const now = await dbNow(db);
   const [banners, popups] = await Promise.all([
@@ -443,6 +466,7 @@ export async function visibleShopContent(db: PrismaClient, slug: string, page: S
     }),
   ]);
   return {
+    bannerIntervalSec: shop.homeBannerIntervalSec,
     banners: banners.map((b) => ({
       id: b.id,
       title: b.title,
