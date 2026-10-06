@@ -9,6 +9,8 @@ import { infraSignals, measureInfra } from "./infra";
 // 인프라 비용(MA-120, 대표님 지시 2026-10-06). 1단계: 마스터가 입력한 단가 × 우리가 센 사용량 = 「추정」.
 // 2단계(카카오클라우드 청구 조회로 「실제」)는 API 키 발급 뒤라 actual은 항상 null(not_connected)이다.
 
+type Db = PrismaClient | Prisma.TransactionClient;
+
 // 단가 키. 원 단위 정수(결제 수수료율만 % 소수 둘째 자리까지). 입력하지 않은 키는 「단가 없음」으로 추정에서 뺀다.
 export const WON_PRICE_KEYS = ["serverMonthlyWon", "diskMonthlyWon", "publicIpMonthlyWon", "storageWonPerGbMonth", "trafficWonPerGb", "mailWonEach", "smsWonEach", "alimtalkWonEach"] as const;
 export const PRICE_KEYS = [...WON_PRICE_KEYS, "pgFeeRatePct"] as const;
@@ -90,7 +92,11 @@ function monthClock(now: Date) {
 // 한도 기능(월 1만 원: 도우미·외부 API)은 사용액·한도·정지 상태를 limited로 따로 낸다(요금 합계에도 사용액을 넣는다).
 export async function infraCost(db: PrismaClient, admin: AdminSessionContext, opts: { now?: Date } = {}) {
   if (!adminCan(admin.admin.role, "infra.manage")) throw forbidden();
-  const now = opts.now ?? new Date();
+  return computeInfraCost(db, opts.now ?? new Date());
+}
+
+// 권한 확인 없는 계산(정기 실행 알림 판단용). 화면·API는 infraCost로만 부른다.
+export async function computeInfraCost(db: Db, now: Date) {
   const clock = monthClock(now);
   const setting = await db.infraPriceSetting.findUnique({ where: { id: 1 } });
   const prices = readPrices(setting?.prices);
