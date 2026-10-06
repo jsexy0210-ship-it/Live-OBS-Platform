@@ -48,7 +48,7 @@ export default function LivePayoutPage() {
               ))}
             </div>
           )}
-          {state.kind === "ok" && <p className="t-c1 c-alt" style={{ margin: 0 }}>기준 시각 {day(state.at)}. 이번 달 거래액은 이번 달 결제일 기준 순액이며 현재 환불을 반영합니다. 잔액 비율 경고 기준은 25% 초과입니다. 수동 지급액은 성공한 비테스트 양수 조정의 최근 30×24시간 합계입니다. 지급 실패는 모의·날짜 누락 자료가 있으면 합계를 확정할 수 없습니다. 수동 지급 집중도 기준은 정해져 있지 않습니다.</p>}
+          {state.kind === "ok" && <p className="t-c1 c-alt" style={{ margin: 0 }}>기준 시각 {day(state.at)}. 이번 달 거래액은 이번 달 결제일 기준 순액이며 현재 환불을 반영합니다. 잔액 비율 경고 기준은 25% 초과입니다. 수동 지급액은 성공한 비테스트 양수 조정의 최근 30×24시간 합계입니다. 지급 성공·실패는 현재 양수 지급 원장의 처리 결과이며, 반복 시도 전체 횟수는 집계하지 않습니다. 모의·날짜 누락 실패가 있으면 실패 기록 합계는 확인할 수 없습니다. 수동 지급 집중도 기준은 정해져 있지 않습니다.</p>}
           <div className="card">
             {state.kind === "loading" && <LoadingRows rows={4} />}
             {state.kind === "error" && <ErrorState title="실지급 파트너스를 불러오지 못했습니다." onRetry={() => void load()} />}
@@ -72,7 +72,7 @@ export default function LivePayoutPage() {
                           <th>이번 달 결제 순액</th>
                           <th>잔액 비율</th>
                           <th>최대 설정 지급률</th>
-                          <th>오늘 지급 성공 / 실패</th>
+                          <th>오늘 성공 / 실패 기록</th>
                           <th>최근 30일 수동 지급</th>
                           <th>징후</th>
                           <th>관리</th>
@@ -91,9 +91,9 @@ export default function LivePayoutPage() {
                             <td>{won(s.monthTradingAmount)}</td>
                             <td>{s.balanceRatioPercent == null ? "계산 불가" : `${s.balanceRatioPercent.toFixed(1)}%`}</td>
                             <td>{s.maxConfiguredRewardRatePercent == null ? "확인 불가" : `${s.maxConfiguredRewardRatePercent.toFixed(1)}%`}</td>
-                            <td>{s.payoutToday.succeeded}건 성공 / {s.payoutToday.failed == null ? `확인 불가 (관측 실패 ${s.payoutToday.observedFailed}, 모의 ${s.payoutToday.uncertainModeFailed}, 날짜 누락 ${s.payoutToday.undatedFailed})` : `${s.payoutToday.failed}건 실패`}</td>
+                            <td>성공 기록 {s.payoutToday.succeeded}건 / {s.payoutToday.failed == null ? `실패 합계 확인 불가 (관측 ${s.payoutToday.observedFailed}, 모의 ${s.payoutToday.uncertainModeFailed}, 날짜 누락 ${s.payoutToday.undatedFailed})` : `실패 기록 ${s.payoutToday.failed}건`}</td>
                             <td>{won(s.manualGrant30DaysAmount)}</td>
-                            <td>잔액 {s.signals.balanceRatio.state === "WARN" ? "25% 초과" : s.signals.balanceRatio.state === "OK" ? "기준 이내" : "계산 불가"} · 지급 {s.signals.payoutFailure.state === "WARN" ? "실패 기록" : s.signals.payoutFailure.state === "OK" ? "확인된 실패 없음" : "확인 불가"} · 수동 집중도 기준 미정</td>
+                            <td>잔액 {s.signals.balanceRatio.state === "WARN" ? "25% 초과" : s.signals.balanceRatio.state === "OK" ? "기준 이내" : "계산 불가"} · 지급 {s.signals.payoutFailure.state === "WARN" ? "실패 기록 있음" : s.signals.payoutFailure.state === "OK" ? "관측 실패 기록 없음" : "확인 불가"} · 수동 집중도 기준 미정</td>
                             <td>
                               <Link className="btn btn-sm btn-out" href={`/admin/partners/${s.sellerId}`}>
                                 상세
