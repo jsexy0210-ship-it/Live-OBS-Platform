@@ -300,7 +300,7 @@
       "y": 1200
     },
     "MA-001-IA.dc.html": {
-      "h": 3140,
+      "h": 3380,
       "title": "MA-001-IA 마스터 홈 (오늘 처리할 일 · 파트너스·오늘·구독 · 기간별 현황)",
       "w": 1920,
       "x": 7600,
@@ -1928,7 +1928,7 @@
       "y": 17305
     },
     "SA-060.dc.html": {
-      "h": 4200,
+      "h": 4250,
       "is_interactive": true,
       "page": "p02",
       "title": "SA-060 쇼핑몰 정보 (FINAL · 쇼핑몰 정보 · 탭 아이콘 · 공유 카드 · 내 도메인 · 사업자 · 고객센터 · 공지 · 이용안내 · 상태 13종)",
@@ -3011,6 +3011,15 @@
       "w": 800,
       "x": 0,
       "y": 48660
+    },
+    "MA-120.dc.html": {
+      "h": 4060,
+      "is_interactive": true,
+      "page": "p03",
+      "title": "MA-120 인프라 · 비용 (최고관리자 · 조회 전용 · 1분 자동 새로고침)",
+      "w": 1920,
+      "x": 0,
+      "y": 30500
     }
   },
   "createdOnFiles": {
@@ -4096,7 +4105,8 @@
     "DS-NAV.dc.html",
     "DS-TYPE-SCALE.dc.html",
     "DS-DATEPICKER.dc.html",
-    "SH-022-RF.dc.html"
+    "SH-022-RF.dc.html",
+    "MA-120.dc.html"
   ],
   "pages": [
     {

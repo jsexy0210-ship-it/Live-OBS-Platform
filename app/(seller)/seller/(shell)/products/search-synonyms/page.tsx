@@ -127,7 +127,7 @@ export default function SearchSynonymsPage() {
           {state.kind === "ok" && (
             <div className="pad col ss-body">
               <p className="t-l2 c-alt">
-                같은 뜻의 말을 쉼표로 묶어 두면 어느 말로 검색해도 서로의 상품이 나옵니다. 예: 노트북, 랩탑
+                뜻이 같은 말을 쉼표로 적어 두면 구매자가 어느 말로 검색해도 같은 상품이 나옵니다. 예: 노트북, 랩탑
               </p>
               {rows.length === 0 && <p className="t-l2">아직 묶음이 없습니다.</p>}
               {rows.map((r, i) => (

@@ -17,13 +17,14 @@ export function readCookie(req: Request, name: string): string | undefined {
 // 파트너스 API는 마스터 대리 조회 쿠키(lo_imp)가 있으면 그것을 먼저 본다(토큰이 「imp.」로 시작해 가드가 구분한다)
 export const sessionToken = (req: Request, realm: Realm) => (realm === "seller" ? (readCookie(req, IMPERSONATION_COOKIE) ?? readCookie(req, COOKIE_NAMES.seller)) : readCookie(req, COOKIE_NAMES[realm]));
 
-export function setSessionCookie(res: NextResponse, realm: Realm, token: string, expires: Date) {
+// persistent=false면 만료일 없는 세션 쿠키(브라우저를 닫으면 사라짐). 서버 쪽 만료는 세션 행의 expiresAt이 정한다.
+export function setSessionCookie(res: NextResponse, realm: Realm, token: string, expires: Date, persistent = true) {
   res.cookies.set(COOKIE_NAMES[realm], token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    expires,
+    ...(persistent ? { expires } : {}),
   });
 }
 

@@ -39,6 +39,6 @@ export const POST = mutation(async (req: Request, { params }: { params: Promise<
   // 본인확인은 이미 소진되어 재전송에만 쓰이고, 쓸 수 있는 시간(확인 뒤 10분)이 지나면 쓸모가 없다(쿠키는 시작 때 40분).
   // 가입한 아이디·비밀번호로 바로 로그인한다(로그인 실패 감사 등 기존 규칙 그대로)
   const login = await loginBuyer(prisma, { sellerId: seller.id, loginId: raw(body.loginId), password: str(body.password, 400) }, requestMeta(req));
-  if (login.ok) setSessionCookie(res, "buyer", login.token, login.expiresAt);
+  if (login.ok) setSessionCookie(res, "buyer", login.token, login.expiresAt, login.persistent);
   return res;
 });

@@ -300,7 +300,7 @@ export default function StockPage() {
         <div className="ph">
           <div className="col" style={{ gap: 4 }}>
             <h1 className="t-t3">재고 관리</h1>
-            <span className="t-l2 c-alt">옵션마다 변경할 재고를 입력하고 한 번에 적용하거나, 사유와 함께 빼고 더합니다.</span>
+            <span className="t-l2 c-alt">선택 항목마다 바꿀 재고를 적어 한꺼번에 저장하거나, 이유를 적고 재고를 줄이거나 늘립니다.</span>
           </div>
         </div>
         {notice && (
