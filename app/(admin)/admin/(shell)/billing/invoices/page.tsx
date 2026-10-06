@@ -7,6 +7,7 @@ import { PageHead, SearchBox, SearchRow, useConfirm } from "../../../../../../co
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { DatePicker } from "../../../../../../components/admin-ui/DatePicker";
 import { MAX_SEARCH_LENGTH } from "../../../../../../components/seller/format";
+import { listDefaults } from "../../../../../../lib/client/filterDefaults";
 import { formatDate, formatDateTime } from "../../../../../../lib/client/format";
 import { useScrollRestore } from "../../../../../../lib/client/navigation";
 import { adminApi, failMessage } from "../../../_components/api";
@@ -46,8 +47,9 @@ type Summary = {
 };
 type Data = { range: { from: string; to: string }; summary: Summary; items: Item[]; total: number; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; data: Data };
-type Filters = { month: string; from: string; to: string; state: string; plan: string; q: string; failedOnly: string; sellerId: string };
-const EMPTY: Filters = { month: "", from: "", to: "", state: "", plan: "", q: "", failedOnly: "", sellerId: "" };
+// 기간은 이 화면의 월 선택(이전 달·이번 달·기간 지정)이 정본이라 공통 기본 기간(최근 1개월)을 쓰지 않는다. 최신순은 서버 고정, 쪽 크기는 공통 20.
+const EMPTY = listDefaults({ month: "", from: "", to: "", state: "", plan: "", q: "", failedOnly: "", sellerId: "" }, { period: null });
+type Filters = typeof EMPTY;
 const SEARCH_KEYS = ["state", "plan", "q", "failedOnly"] as const;
 
 const STATE: Record<State, { label: string; cls: string }> = {
@@ -108,7 +110,7 @@ function Invoices() {
     async (silent = false) => {
       const id = ++reqId.current;
       if (!silent) setState({ kind: "loading" });
-      const p = params(applied, { limit: "20" });
+      const p = params(applied, { limit: applied.size });
       if (cursor) p.set("cursor", cursor);
       const r = await adminApi<Data>(`/api/admin/billing/invoices?${p}`);
       if (id !== reqId.current) return;
@@ -352,9 +354,11 @@ function Invoices() {
                                 )}
                               </td>
                               <td>
-                                <Link className="btn btn-sm btn-out" href={detail}>
-                                  상세
-                                </Link>
+                                <div className="acts2">
+                                  <Link className="btn btn-sm btn-out" href={detail}>
+                                    상세
+                                  </Link>
+                                </div>
                               </td>
                             </tr>
                           );
