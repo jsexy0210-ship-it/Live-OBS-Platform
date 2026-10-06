@@ -23,6 +23,27 @@ test("비회원: 로그인 안내", async ({ page }) => {
   await expect(page.getByRole("link", { name: "로그인", exact: true }).last()).toHaveAttribute("href", /\/login\?next=/);
 });
 
+test("찜 카드에 할인율·방송 중·마감 배지가 표시된다", async ({ page }) => {
+  await page.route(`**/api/shop/${SLUG}/wishlist`, async (route) => {
+    await route.fulfill({
+      json: {
+        count: 1,
+        items: [{ productId: "product-1", name: "이벤트 상품", price: 9000, listPrice: 10000, status: "on_sale", wishedAt: new Date().toISOString(), isLive: true, eventBadge: "오늘 마감" }],
+      },
+    });
+  });
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.goto(`/shop/${SLUG}/wishlist`);
+    const card = page.getByRole("list", { name: "찜한 상품" }).locator(".pc");
+    await expect(card).toContainText("10%");
+    await expect(card.getByText("방송 중")).toBeVisible();
+    await expect(card.getByText("오늘 마감")).toBeVisible();
+    await expect(card.locator(".pc-photo .pc-live")).toHaveCount(0);
+    await page.screenshot({ path: `tests/e2e/screenshots/SH-034-wishlist-badges-${width}.png`, fullPage: true });
+  }
+});
+
 test.describe.serial("로그인 구매자", () => {
   test.beforeEach(async ({ page, baseURL }) => {
     await resetWishlistInDb(SLUG, LOGIN, ["스타라이트 부스터 박스", "문라이트 컬렉션 박스", "드래곤 소울 부스터"]);
