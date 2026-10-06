@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { GET as pgStatusRoute } from "../../app/api/admin/pg-status/route";
 import { GET as billingRoute } from "../../app/api/admin/subscription-billing/route";
+import { GET as subscriptionsRoute } from "../../app/api/admin/subscriptions/route";
 import { loginSeller } from "../../lib/server/auth/login";
 import { createAdminSession } from "../../lib/server/auth/session";
 import { prisma } from "../../lib/server/db";
@@ -223,14 +224,72 @@ describe("구독료 수납 현황 GET /api/admin/subscription-billing", () => {
     expect(r.status).toBe(200);
     const body = await r.json();
     expect(body.range).toEqual({ from: "2026-10-01", to: "2026-10-02" });
-    expect(body.summary).toEqual({ charged: 4, paid: 2, failed: 1, pending: 1, paidAmount: 268000, failedAmount: 199000, retrying: 1, pastDue: 1, grace: 1 });
+    expect(body.summary).toEqual({ charged: 4, paid: 2, failed: 1, pending: 1, paidAmount: 268000, failedAmount: 199000, retrying: 1, pastDue: 1, grace: 1, pastDueAmount: 199000, locked: 0, retryBySeq: { "2": 0, "3": 0, "4": 0 } });
     expect(body.daily).toEqual([
-      { date: "2026-10-01", charged: 2, paid: 1, failed: 1, paidAmount: 199000 },
-      { date: "2026-10-02", charged: 2, paid: 1, failed: 0, paidAmount: 69000 },
+      { date: "2026-10-01", charged: 2, paid: 1, failed: 1, pending: 0, retried: 0, pastDueStarted: 0, paidAmount: 199000 },
+      { date: "2026-10-02", charged: 2, paid: 1, failed: 0, pending: 1, retried: 0, pastDueStarted: 0, paidAmount: 69000 },
     ]);
     for (const bad of ["?from=2026-10-05&to=2026-10-01", "?from=2025-01-01&to=2026-10-01", "?from=10-01"]) {
       expect((await get(billingRoute, `/api/admin/subscription-billing${bad}`, await adminCookie())).status, bad).toBe(400);
     }
+  });
+
+  it("MA-032 확장: 연체 금액·잠금 건수·재시도 차수별 대기, 날짜별 재시도·연체 발생(감사 로그), 잠금 목록(access=locked)", async () => {
+    const plans = await seedPlans();
+    const DAY = 86_400_000;
+    const mk = async (sub: Record<string, unknown>, seller: { trialEndsAt?: Date | null } = {}) => {
+      const { seller: s } = await createSeller();
+      await db.seller.update({ where: { id: s.id }, data: { approvedAt: new Date("2026-09-01T00:00:00Z"), trialEndsAt: seller.trialEndsAt ?? null, planId: plans.INTEGRATED.id } });
+      return db.sellerSubscription.create({ data: { sellerId: s.id, planId: plans.INTEGRATED.id, subscribedAt: new Date("2026-09-01T00:00:00Z"), currentPeriodEnd: new Date(Date.now() - 10 * DAY), ...sub } });
+    };
+    const failed = (sub: { id: string; sellerId: string }, amount: number, at: string, kind: "PERIOD" | "PRORATION" = "PERIOD") =>
+      db.subscriptionPayment.create({ data: { sellerId: sub.sellerId, subscriptionId: sub.id, amount, status: "FAILED", kind, periodStart: new Date(at), periodEnd: new Date(new Date(at).getTime() + 30 * DAY), createdAt: new Date(at) } });
+    const future = new Date(Date.now() + 3 * DAY);
+    const past = new Date(Date.now() - DAY);
+    const w2 = await mk({ status: "PAST_DUE", retryCount: 0, graceUntil: future, nextChargeAt: future }); // 2차 대기
+    const w3 = await mk({ status: "PAST_DUE", retryCount: 1, graceUntil: future, nextChargeAt: future }); // 3차 대기
+    const w3b = await mk({ status: "PAST_DUE", retryCount: 1, graceUntil: future, nextChargeAt: future });
+    const locked = await mk({ status: "PAST_DUE", retryCount: 3, graceUntil: past, nextChargeAt: null }); // 재시도 끝, 잠김
+    const canceled = await mk({ status: "PAST_DUE", retryCount: 3, graceUntil: past, nextChargeAt: null, cancelAtPeriodEnd: true }); // 해지 예약은 잠금 아님
+    const trial = await mk({ status: "PAST_DUE", retryCount: 3, graceUntil: past, nextChargeAt: null }, { trialEndsAt: future }); // 체험 중은 잠금 아님
+    await mk({ status: "ACTIVE", currentPeriodEnd: future });
+    await failed(w2, 100, "2026-10-01T03:00:00Z");
+    await failed(w2, 150, "2026-10-02T03:00:00Z"); // 마지막 실패 150만 센다
+    await failed(w3, 200, "2026-10-02T03:00:00Z");
+    await failed(w3, 999, "2026-10-03T03:00:00Z", "PRORATION"); // 차액 청구는 연체 금액이 아님
+    await failed(w3b, 300, "2026-10-02T03:00:00Z");
+    await failed(locked, 400, "2026-10-02T03:00:00Z");
+    await failed(canceled, 500, "2026-10-02T03:00:00Z");
+    await failed(trial, 600, "2026-10-02T03:00:00Z");
+    const audit = (sellerId: string, action: string, at: string) => db.auditLog.create({ data: { actorType: "SYSTEM", sellerId, action, createdAt: new Date(at) } });
+    await audit(w2.sellerId, "subscription.past_due", "2026-10-01T03:00:00Z");
+    await audit(w3.sellerId, "subscription.past_due", "2026-10-01T04:00:00Z");
+    await audit(w3.sellerId, "subscription.payment_retry", "2026-10-02T03:00:00Z");
+    await audit(w3.sellerId, "subscription.payment_retry", "2026-10-04T03:00:00Z"); // 청구 없는 날도 줄이 나온다
+    await audit(w3.sellerId, "subscription.payment_retry", "2026-10-09T03:00:00Z"); // 기간 밖
+
+    const r = await get(billingRoute, "/api/admin/subscription-billing?from=2026-10-01&to=2026-10-05", await adminCookie("READ_ONLY"));
+    const body = await r.json();
+    expect(body.summary).toMatchObject({
+      pastDue: 6,
+      // 연체 구독마다 마지막 실패한 기간 청구: 150 + 200 + 300 + 400 + 500 + 600
+      pastDueAmount: 2150,
+      locked: 1,
+      retryBySeq: { "2": 1, "3": 2, "4": 0 },
+    });
+    expect(body.daily).toEqual([
+      { date: "2026-10-01", charged: 1, paid: 0, failed: 1, pending: 0, retried: 0, pastDueStarted: 2, paidAmount: 0 },
+      { date: "2026-10-02", charged: 6, paid: 0, failed: 6, pending: 0, retried: 1, pastDueStarted: 0, paidAmount: 0 },
+      { date: "2026-10-03", charged: 1, paid: 0, failed: 1, pending: 0, retried: 0, pastDueStarted: 0, paidAmount: 0 },
+      { date: "2026-10-04", charged: 0, paid: 0, failed: 0, pending: 0, retried: 1, pastDueStarted: 0, paidAmount: 0 },
+    ]);
+
+    const list = await get(subscriptionsRoute, "/api/admin/subscriptions?access=locked", await adminCookie("READ_ONLY"));
+    expect(list.status).toBe(200);
+    const subs = (await list.json()).subscriptions as { seller: { id: string }; access: string }[];
+    expect(subs.map((x) => x.seller.id)).toEqual([locked.sellerId]);
+    expect(subs[0]?.access).toBe("expired");
+    expect((await get(subscriptionsRoute, "/api/admin/subscriptions?access=nope", await adminCookie())).status).toBe(400);
   });
 });
 

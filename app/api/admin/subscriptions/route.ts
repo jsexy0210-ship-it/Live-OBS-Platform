@@ -4,7 +4,7 @@ import { requireAdmin } from "../../../../lib/server/authz/guards";
 import { prisma } from "../../../../lib/server/db";
 import { errorResponse, sessionToken } from "../../../../lib/server/http/route";
 
-// 마스터 관리자 구독 현황(MA-023). access(trial·paid·charging·grace·expired)·plan·q(쇼핑몰 이름·주소)·cursor·limit. 잘못된 값 400.
+// 마스터 관리자 구독 현황(MA-023). access(trial·paid·charging·grace·expired, 또는 locked = 연체 유예가 끝나 이용이 막힌 건, 이용 상태는 expired)·plan·q(쇼핑몰 이름·주소)·cursor·limit. 잘못된 값 400.
 // { counts: { trial, paid, charging, grace, expired }, subscriptions: [{ seller, access, plan, trialEndsAt, subscription }], nextCursor }
 export async function GET(req: Request) {
   try {
