@@ -106,7 +106,7 @@ export default function WishlistView({ slug }: { slug: string }) {
     ) : (
       <>
         {msgEl}
-        <ul className="pc-grid" aria-label="찜한 상품">
+        <ul className="pc-grid wishlist-grid" aria-label="찜한 상품">
           {items.map((i) => (
             <ProductCard key={i.productId} p={card(i)} href={i.status === "unavailable" ? undefined : `${base}/products/${i.productId}`}>
               {(i.isLive || i.eventBadge) && <p className="wl-badges">{i.isLive && <span className="wl-badge wl-live">방송 중</span>}{i.eventBadge && <span className="wl-badge wl-deadline">{i.eventBadge}</span>}</p>}
@@ -131,7 +131,7 @@ export default function WishlistView({ slug }: { slug: string }) {
     );
 
   return (
-    <div className="shop-wrap cart-wrap">
+    <div className="shop-wrap cart-wrap wishlist-view">
       <div className="cart-head">
         <h1>찜 · 최근 본 상품</h1>
       </div>
