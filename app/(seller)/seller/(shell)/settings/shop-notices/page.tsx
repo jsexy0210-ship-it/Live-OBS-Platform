@@ -254,7 +254,7 @@ export default function ShopNoticesPage() {
             <div className="st" style={{ boxShadow: "none" }}>
               <div className="st-ic">+</div>
               <span className="t">아직 자주 묻는 질문이 없습니다</span>
-              <span className="s">구매자가 자주 묻는 내용을 질문과 답변으로 정리해 두세요</span>
+              <span className="s">구매자가 자주 묻는 내용을 질문과 답변으로 정리해 둘 수 있습니다</span>
               {editable && (
                 <button className="btn btn-sm" type="button" onClick={() => open(empty("faq"))}>
                   질문 추가
