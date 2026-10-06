@@ -162,7 +162,10 @@ function LegalPanel({ kind, label, slug, editable, visible }: { kind: Kind; labe
             </div>
           </FormRow>
           <FormRow label="구매자에게 공개" help={published ? "저장하면 구매자 화면에 바로 보입니다" : "꺼 두면 구매자에게는 「준비 중」으로 보입니다 · 기본 꺼짐"}>
-            <button className={`sw${published ? " on" : ""}`} type="button" role="switch" aria-checked={published} aria-label={`${label} 구매자에게 공개`} disabled={!editable} onClick={() => setPublished((v) => !v)} />
+            <label className="chk">
+              <input className="cbx" type="checkbox" checked={published} aria-label={`${label} 구매자에게 공개`} disabled={!editable} onChange={(e) => setPublished(e.target.checked)} />
+              구매자에게 공개
+            </label>
           </FormRow>
         </FormSection>
       </fieldset>
