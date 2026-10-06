@@ -13,7 +13,7 @@ test("홈: 고정 공지 띠가 공지 상세로 이어진다", async ({ page })
   await page.goto(`/shop/${SLUG}`);
   const band = page.locator(".shop-ntc");
   await expect(band).toContainText("공지");
-  await expect(band).toContainText("2026.10.03 (토) 20시 문라이트 브레이크 방송해요");
+  await expect(band).toContainText("10/3 (토) 20시 문라이트 브레이크 방송해요");
   await band.getByRole("link").click();
   await expect(page).toHaveURL(new RegExp(`/shop/${SLUG}/help/notices/[0-9a-f-]+$`));
   const article = page.locator("article");
@@ -32,6 +32,7 @@ test("고객센터: 공지 표(열 제목·값 왼쪽)·비공개 공지 숨김,
   await expect(page.getByRole("heading", { name: "공지 · 이용안내", level: 1 })).toBeVisible();
   const rows = page.locator(".help-tbl tbody tr");
   await expect(rows).toHaveCount(2);
+  await expect(rows.first().locator(".c-date")).toHaveText(/^\d{4}\.\d{2}\.\d{2}$/);
   await expect(page.getByText("비공개 공지는 보이지 않아요")).toHaveCount(0);
   await expect(rows.first()).toContainText("고정"); // 고정 공지가 먼저
   expect(await page.locator(".help-tbl th").first().evaluate((el) => getComputedStyle(el).textAlign)).toBe("center");
