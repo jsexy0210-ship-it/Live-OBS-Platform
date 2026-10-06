@@ -43,6 +43,8 @@ old = ('<tr><th>함께 보낼 진단 정보 (자동)</th><td><label class="ck"><
 new = ('<tr><th>함께 보낼 진단 정보</th><td><label class="ck"><input type="checkbox" name="r" checked>진단 정보를 함께 보냅니다</label>'
        '<span class="hint">보낼 때 한 번 모읍니다 · 브라우저 · OS · OBS 버전 · 최근 방송 · 방송 화면 마지막 접속 · 앱 버전 · 확인할 수 없는 항목은 「확인 안 됨」으로 갑니다</span></td></tr>')
 s = rep(s, old, new)
+s = rep(s, 'OBS 브라우저 소스 새로고침 → 접속 기록 확인 →', 'OBS 브라우저 소스 새로고침 → 방송 화면 연결 상태 확인 →')
+assert '접속 기록' not in s
 (out / 'SA-114.dc.html').write_text(s)
 
 # ⑤ MA-052 진단 정보: 접속 기록 · 연결 로그 · 결제대행사 응답 코드 · 오버레이 UA 제거, 실제 항목으로
