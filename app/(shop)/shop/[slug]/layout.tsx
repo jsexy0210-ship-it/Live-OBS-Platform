@@ -40,10 +40,10 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 // 없거나 운영 중이 아닌 쇼핑몰은 틀 없이 본문만 둔다(각 화면이 404를 낸다).
 export default async function ShopSlugLayout({ children, params }: { children: React.ReactNode; params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const shop = await prisma.seller.findUnique({ where: { slug: slug.slice(0, 60) }, select: { shopName: true, status: true } });
+  const shop = await prisma.seller.findUnique({ where: { slug: slug.slice(0, 60) }, select: { shopName: true, status: true, operatingState: true } });
   if (!shop || shop.status !== "ACTIVE") return children;
   return (
-    <ShopFrame slug={slug} shopName={shop.shopName}>
+    <ShopFrame slug={slug} shopName={shop.shopName} operatingState={shop.operatingState}>
       {children}
     </ShopFrame>
   );
