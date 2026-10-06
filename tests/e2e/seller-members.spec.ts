@@ -11,7 +11,7 @@ test.beforeAll(() => {
 
 async function shot(page: Page, name: string) {
   if (!SHOTS) return;
-  for (const width of [1440, 390]) {
+  for (const width of [1440, 1024, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(150);
