@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminPayment } from "../../../../../lib/server/admin/billing";
 import { requireAdmin } from "../../../../../lib/server/authz/guards";
 import { prisma } from "../../../../../lib/server/db";
-import { errorResponse, sessionToken } from "../../../../../lib/server/http/route";
+import { errorResponse, noStore, sessionToken } from "../../../../../lib/server/http/route";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -12,9 +12,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ paymentI
     const admin = await requireAdmin(prisma, sessionToken(req, "admin"), "platform.read");
     const { paymentId } = await params;
     const payment = UUID.test(paymentId) ? await getAdminPayment(prisma, admin, paymentId) : null;
-    if (!payment) return NextResponse.json({ error: "not_found" }, { status: 404 });
-    return NextResponse.json({ payment });
+    if (!payment) return noStore(NextResponse.json({ error: "not_found" }, { status: 404 }));
+    return noStore(NextResponse.json({ payment }));
   } catch (e) {
-    return errorResponse(e);
+    return noStore(errorResponse(e));
   }
 }

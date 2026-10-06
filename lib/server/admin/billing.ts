@@ -6,6 +6,7 @@ import type { SellerAccess } from "../billing/access";
 import { dbNow } from "../billing/subscription";
 import { decodeCursor, encodeCursor, kstDayStart } from "../orders/read";
 import { effectiveMailQuota } from "../mail/quota";
+import { invoiceRetryReason, RETRY_MIN_GAP_MS } from "./billingInvoices";
 
 // 마스터 관리자 구독 현황(MA-023)·청구·결제 내역(MA-024)·청구 상세(MA-025). 조회만 한다(결제 실행·환불 없음). platform.read.
 export const ADMIN_BILLING_PAGE_DEFAULT = 50;
@@ -194,12 +195,31 @@ export async function getAdminPayment(db: PrismaClient, admin: AdminSessionConte
       ...PAYMENT_SELECT,
       providerPaymentId: true,
       receiptUrl: true,
-      subscription: { select: { status: true, cardLabel: true, plan: { select: { code: true, name: true } } } },
+      subscriptionId: true,
+      targetPlanId: true,
+      subscription: { select: { status: true, cardLabel: true, cancelAtPeriodEnd: true, billingKeyCipher: true,
+        nextChargeAt: true, graceUntil: true, retryCount: true, seller: { select: { status: true } }, plan: { select: { code: true, name: true } } } },
     },
   });
   if (!p) return null;
-  const { targetPlan, ...rest } = p;
-  return { ...rest, targetPlanCode: targetPlan?.code ?? null };
+  const { targetPlan, subscriptionId, targetPlanId, subscription, ...rest } = p;
+  const [now, latest, attempts] = await Promise.all([
+    dbNow(db),
+    db.subscriptionPayment.findFirst({ where: { sellerId: p.seller.id, subscriptionId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true, createdAt: true } }),
+    db.subscriptionPayment.findMany({
+      where: { sellerId: p.seller.id, subscriptionId, periodStart: p.periodStart, periodEnd: p.periodEnd, kind: p.kind, targetPlanId },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 101,
+      select: { id: true, createdAt: true, status: true, scheduled: true, amount: true, paidAt: true, failureReason: true },
+    }),
+  ]);
+  const retryReason = adminCan(admin.admin.role, "billing.manage") ? invoiceRetryReason(p, latest, subscription, now) : "permission_denied";
+  const { billingKeyCipher, seller, ...safeSubscription } = subscription;
+  return { ...rest, subscription: safeSubscription, targetPlanCode: targetPlan?.code ?? null,
+    canRetry: retryReason === null, retryUnavailableReason: retryReason,
+    canRetryAt: retryReason === "too_soon" && latest ? new Date(latest.createdAt.getTime() + RETRY_MIN_GAP_MS) : null,
+    attemptHistorySource: "SUBSCRIPTION_PERIOD_PAYMENTS" as const, attemptHistoryTruncated: attempts.length > 100,
+    attemptHistory: attempts.slice(0, 100).reverse().map(({ createdAt, ...attempt }) => ({ ...attempt, at: createdAt })),
+  };
 }
 
 // 요금제 목록(MA-021·022, 마스터 관리자 전 역할 조회). 판매가·정가·체험 일수·체험 한도·월 거래 메일 제공량.
