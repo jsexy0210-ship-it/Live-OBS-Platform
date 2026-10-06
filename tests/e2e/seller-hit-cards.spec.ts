@@ -66,3 +66,17 @@ test("방송 진행 권한이 없는 직원: 메뉴가 없고 주소로 들어�
   await expect(page.getByRole("link", { name: "방송 기록" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "HIT 카드 기록하기" })).toHaveCount(0);
 });
+
+// 열 순서(카드 → 일시 → …)·기본 기간 최근 1개월 뒤에도 1440·1024·390폭에서 가로로 넘치지 않는다(캡처는 E2E_SCREENSHOTS=1)
+test("HIT 카드 기록: 1440·1024·390폭에서 가로로 넘치지 않고 기본 기간이 채워져 있다", async ({ page }) => {
+  await login(page, "demo-owner@example.com", "/seller/hit-cards");
+  await expect(page.getByLabel("시작일")).toHaveValue(/^\d{4}\.\d{2}\.\d{2}$/);
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.waitForTimeout(600); // 좁은 폭에서 메뉴 서랍이 접히는 전환이 끝난 뒤 잰다
+    const doc = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, sx: window.scrollX }));
+    expect(doc.sw, `${width}px 문서 너비`).toBe(width);
+    expect(doc.sx).toBe(0);
+    if (SHOTS) await page.screenshot({ path: `tests/e2e/screenshots/SA-053-list-${width}.png`, fullPage: true });
+  }
+});
