@@ -42,11 +42,12 @@ export function idleReference(realm: Realm, lastSeenAt: Date, broadcast?: Broadc
   return lastSeenAt;
 }
 
-export function isSessionActive(realm: Realm, s: SessionTimes, now: Date, broadcast?: BroadcastActivity): boolean {
+// idleMs: 마스터 관리자 정책(MA-081 adminIdleMinutes)처럼 기본 표를 덮어쓸 미활동 허용 시간.
+export function isSessionActive(realm: Realm, s: SessionTimes, now: Date, broadcast?: BroadcastActivity, idleMs?: number): boolean {
   if (s.revokedAt) return false;
   if (now >= s.expiresAt) return false;
   const ref = idleReference(realm, s.lastSeenAt, broadcast);
-  if (ref && now.getTime() - ref.getTime() >= SESSION_POLICY[realm].idleMs) return false;
+  if (ref && now.getTime() - ref.getTime() >= (idleMs ?? SESSION_POLICY[realm].idleMs)) return false;
   return true;
 }
 
@@ -54,7 +55,8 @@ export function isSessionActive(realm: Realm, s: SessionTimes, now: Date, broadc
 // 켜면 SESSION_POLICY.buyer(30일)다.
 export const BUYER_SHORT_SESSION_MS = DAY;
 
-export function sessionExpiry(realm: Realm, now: Date, opts: { short?: boolean } = {}): Date {
-  const ms = realm === "buyer" && opts.short ? BUYER_SHORT_SESSION_MS : SESSION_POLICY[realm].maxMs;
+// maxMs: 마스터 관리자 정책(MA-081 adminSessionHours)처럼 기본 표를 덮어쓸 최대 유지 시간.
+export function sessionExpiry(realm: Realm, now: Date, opts: { short?: boolean; maxMs?: number } = {}): Date {
+  const ms = opts.maxMs ?? (realm === "buyer" && opts.short ? BUYER_SHORT_SESSION_MS : SESSION_POLICY[realm].maxMs);
   return new Date(now.getTime() + ms);
 }
