@@ -148,7 +148,7 @@
     renderParticipants();history();state();
   }
   if ($('.evt-join')) {
-    function joinState(value){all('[data-join-state]').forEach(e=>{e.hidden=e.dataset.joinState!==value;});set('[data-join-tag]',{open:'참여 중',joined:'참여 완료',closed:'마감',countdown:'곧 시작',progress:'진행 중',result:'결과 공개',waiting:'대기',expired:'종료',unavailable:'확인 중'}[value]);}
+    function joinState(value){all('[data-join-state]').forEach(e=>{e.hidden=e.dataset.joinState!==value;});set('[data-join-tag]',{open:'참여 중',joined:'참여 완료',closed:'마감',countdown:'곧 시작',progress:'진행 중',result:'결과 공개',waiting:'대기',expired:'종료',cancelled:'취소',unavailable:'확인 중'}[value]);}
     $('[data-join-form]').addEventListener('submit',e=>{e.preventDefault();const value=$('[data-join-nickname]').value.trim();if(!value){show('[data-join-error]',true);return;}set('[data-joined-nickname]',value);joinState('joined');});
     $('[data-join-review]').addEventListener('change',e=>joinState(e.target.value));
     $('[data-join-review-test]').addEventListener('change',e=>show('[data-join-test]',e.target.checked));
