@@ -9,11 +9,13 @@ export function Faq() {
       <section className="pf-sec">
         <h1 className="t-d2">자주 묻는 질문</h1>
         <FaqList />
-        <div className="card pf-ask">
-          <span className="t-hl2">원하는 답이 없나요?</span>
-          <span className="t-l2 c-alt">로그인한 뒤 파트너스 관리자에서 문의해 주세요.</span>
-          <Link className="btn btn-out" href="/seller/login">
-            로그인
+        <div className="card row between pf-ask">
+          <span className="col" style={{ gap: 2 }}>
+            <span className="t-hl2">원하는 답이 없나요?</span>
+            <span className="t-l2 c-alt">운영팀이 평일 10~18시에 답해요.</span>
+          </span>
+          <Link className="btn" href="/seller/login?next=%2Fseller%2Finquiries%2Fnew">
+            문의하기
           </Link>
         </div>
       </section>
