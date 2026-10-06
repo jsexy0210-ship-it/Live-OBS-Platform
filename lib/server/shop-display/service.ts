@@ -31,7 +31,7 @@ export const MAX_RECOMMENDED = 20;
 export const SECTION_TITLE_MAX = 30;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KINDS: readonly ShopDisplayKind[] = ["RECOMMENDED", "NEW", "CATEGORY", "LIVE", "BEST", "SALE", "HALL_OF_FAME"];
-const DEFAULT_SECTIONS = [
+export const DEFAULT_SECTIONS = [
   { id: null, kind: "RECOMMENDED" as const, categoryId: null, title: "추천 상품", visible: true, itemCount: 8 },
   { id: null, kind: "NEW" as const, categoryId: null, title: "신상품", visible: true, itemCount: 8 },
 ];

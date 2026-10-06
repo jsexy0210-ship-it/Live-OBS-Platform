@@ -127,7 +127,8 @@ describe("쇼핑몰 정보 확장(SA-060 공지·이용안내·대표 주소)", 
     const pub = (slug: string) => publicGet(new Request(`http://localhost:3000/api/shop/${slug}/profile`), { params: Promise.resolve({ slug }) });
     const r = await pub(a.seller.slug);
     expect(r.status).toBe(200);
-    expect(await r.json()).toEqual({ shopName: expect.any(String), shopTagline: "소개", operatingState: "OPEN", topNotice: "공지", homeBenefitBannerVisible: true, usageGuide: "안내", primaryDomain: null });
+    // 적립금 실제 지급이 꺼져 있으면(기본) 파트너스 설정이 켜짐이어도 혜택 배너는 숨긴다
+    expect(await r.json()).toEqual({ shopName: expect.any(String), shopTagline: "소개", operatingState: "OPEN", topNotice: "공지", homeBenefitBannerVisible: false, rewardsEnabled: false, usageGuide: "안내", primaryDomain: null });
     await put({ primaryAddress: "CUSTOM" }, c);
     expect((await (await pub(a.seller.slug)).json()).primaryDomain).toBe("shop.example.com");
     expect((await (await pub(other.seller.slug)).json()).topNotice).toBeNull();
@@ -135,5 +136,21 @@ describe("쇼핑몰 정보 확장(SA-060 공지·이용안내·대표 주소)", 
     await db.seller.update({ where: { id: a.seller.id }, data: { status: "SUSPENDED" } });
     expect((await pub(a.seller.slug)).status).toBe(404);
   });
-});
 
+  it("혜택 배너는 「설정 값 AND 적립금 실제 지급 켜짐」: 실제 지급을 끄면 숨고 다시 켜면 설정 값대로 돌아온다. 파트너스용 응답은 설정 값 그대로", async () => {
+    const a = await createSeller();
+    const c = await cookieOf((await createSellerUser(a.seller.id, "OWNER")).email);
+    const pub = async () => (await (await publicGet(new Request(`http://localhost:3000/api/shop/${a.seller.slug}/profile`), { params: Promise.resolve({ slug: a.seller.slug }) })).json()) as { homeBenefitBannerVisible: boolean; rewardsEnabled: boolean };
+    const setLive = (livePayoutEnabled: boolean) => db.rewardPolicy.upsert({ where: { sellerId: a.seller.id }, create: { sellerId: a.seller.id, livePayoutEnabled }, update: { livePayoutEnabled } });
+    await setLive(true);
+    expect(await pub()).toMatchObject({ homeBenefitBannerVisible: true, rewardsEnabled: true });
+    await setLive(false);
+    expect(await pub()).toMatchObject({ homeBenefitBannerVisible: false, rewardsEnabled: false });
+    expect((await (await get(c)).json()).profile.homeBenefitBannerVisible).toBe(true); // 저장된 설정은 그대로
+    await setLive(true);
+    await put({ homeBenefitBannerVisible: false }, c);
+    expect(await pub()).toMatchObject({ homeBenefitBannerVisible: false, rewardsEnabled: true }); // 파트너스가 끄면 실제 지급이 켜져도 숨김
+    await put({ homeBenefitBannerVisible: true }, c);
+    expect(await pub()).toMatchObject({ homeBenefitBannerVisible: true, rewardsEnabled: true });
+  });
+});
