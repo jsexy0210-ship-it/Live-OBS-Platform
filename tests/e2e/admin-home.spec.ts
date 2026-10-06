@@ -61,6 +61,14 @@ test("오늘 처리할 일: 서버 숫자가 맨 위에 보이고, 누르면 조
   await expect(page.getByTestId("today-tasks-at")).toContainText("집계");
   await expect(page.getByTestId("infra-card")).toHaveCount(0); // 인프라 · 비용 카드는 최고관리자에게만 보인다
   await page.screenshot({ path: "tests/e2e/screenshots/admin-home-1440.png", fullPage: true });
+  for (const w of [1024, 390]) {
+    await page.setViewportSize({ width: w, height: 900 });
+    await page.reload();
+    await expect(page.getByTestId("today-tasks")).toBeVisible();
+    await page.screenshot({ path: `tests/e2e/screenshots/admin-home-${w}.png`, fullPage: true });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.reload();
 
   await tasks.getByTestId("today-task-signupPending").click();
   await expect(page).toHaveURL(/\/admin\/partners\/applications/);
@@ -101,6 +109,15 @@ test("최고관리자: 오늘 처리할 일 아래에 인프라 · 비용 요약
   const at = await card.boundingBox();
   expect(at!.y).toBeGreaterThan(above!.y); // 「오늘 처리할 일」 바로 아래
   await page.screenshot({ path: "tests/e2e/screenshots/admin-home-infra-1440.png", fullPage: true });
+  for (const w of [1024, 390]) {
+    await page.setViewportSize({ width: w, height: 900 });
+    await page.reload();
+    await expect(page.getByTestId("infra-card")).toBeVisible();
+    await expect(page.getByTestId("infra-card-cost")).toBeVisible();
+    await page.screenshot({ path: `tests/e2e/screenshots/admin-home-infra-${w}.png`, fullPage: true });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.reload();
   await card.getByRole("link").click();
   await expect(page).toHaveURL(/\/admin\/ops\/infra$/);
 });
