@@ -1069,6 +1069,9 @@ select.inp{cursor:pointer}
 .c24:not(.pre):not(.mob) .box.dense>.ft tr>th:first-child{border-left:0;border-radius:0}
 .c24:not(.pre):not(.mob) .box.dense>.ft tr:last-child>th,.c24:not(.pre):not(.mob) .box.dense>.ft tr:last-child>td{border-bottom:0}
 .c24:not(.pre):not(.mob) .box.dense>.sbtn{margin:0;padding:16px;border:0;box-shadow:none;background:#f6f7f9;gap:8px}
+/* 2026-10-06 대표님: 읽기 전용 값 회색(label-alt), 간결한 동작형 placeholder */
+.c24 .i[readonly],.c24 .inp[readonly],.sh24 .i[readonly],.sh24 .inp[readonly]{color:var(--wds-label-alternative);-webkit-text-fill-color:var(--wds-label-alternative)}
+.c24 .i::placeholder,.c24 .inp::placeholder,.sh24 .i::placeholder,.sh24 .inp::placeholder{color:var(--wds-label-assistive)}
 /* 2026-10-06 대표님 최신 결정: 검색/건수/작업/페이지 안내는 테두리 밖, 외곽은 표만 */
 .c24:not(.pre):not(.mob) .lpanel{border:0;border-radius:0;overflow:visible;background:transparent;margin-top:0}
 .c24:not(.pre):not(.mob) .lpanel>.ltop{margin:0;padding:8px 0;min-height:0;border:0;background:transparent}
