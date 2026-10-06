@@ -1,7 +1,8 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { shopOpen } from "../buyers/signup";
 import { dbClock } from "../orders/overdue";
-import { eventOf, orderUnitPrice } from "../products/event";
+import { eventOf, eventView, orderUnitPrice } from "../products/event";
+import { liveProductIds } from "../products/shopCatalog";
 
 // 구매자 찜(SH-034, 로그인 회원만). 규칙:
 // - 상품마다 한 줄, 회원당 MAX_WISH_ITEMS개. 이미 찜한 상품을 다시 찜하면 그대로 성공(멱등).
@@ -59,10 +60,13 @@ export async function listWish(db: PrismaClient, s: WishScope) {
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
   });
+  const liveIds = new Set(await liveProductIds(db, s.sellerId));
   const items = rows.map(({ product: p, createdAt }) => {
     const status: WishStatus =
       p.deletedAt || p.status === "DRAFT" || p.status === "HIDDEN" ? "unavailable" : p.status === "SOLD_OUT" || !p.options.some((o) => o.stock > 0) ? "sold_out" : "on_sale";
-    return { productId: p.id, name: p.name, price: orderUnitPrice(p.price, eventOf(p), now), listPrice: p.price, status, wishedAt: createdAt };
+    const event = eventOf(p);
+    const displayEvent = eventView(event, p.price, now);
+    return { productId: p.id, name: p.name, price: orderUnitPrice(p.price, event, now), listPrice: p.price, status, wishedAt: createdAt, isLive: liveIds.has(p.id), eventBadge: displayEvent?.badge ?? null };
   });
   return { items, count: items.length };
 }
