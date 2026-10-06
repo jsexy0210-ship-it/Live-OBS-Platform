@@ -96,7 +96,7 @@
 | 의미 토큰 | `styles/tokens.css` `--ui-*` | 1단계 완료 |
 | 버튼·입력·선택·검색·표·배지·탭·세그먼트·칩·페이지 이동·메뉴·안내·토스트 | `styles/lop.css` | 1단계 완료(크기·모서리·글자·포커스·전환) |
 | 관리자 공통(셸 본문·표·검색 상자·표형 폼·목록 머리) | `styles/seller.css` 공통부, `components/admin-ui/*` | 1단계 완료. `PageHead` 경로 중복 제거, `ListHead`에 「불러온 n건」 |
-| 공통 모달 | `components/admin-ui/Modal.tsx` | 1단계 기반 완료. 화면별 모달 약 23곳 전환은 2~4단계 |
+| 공통 모달 | `components/admin-ui/Modal.tsx` | 1단계 기반 완료. 화면별 모달 약 23곳 전환은 2~4단계. **로그아웃 확인 창(대표님 지시 2026-10-06 「로그아웃 누르면 반드시 컨펌창」)**: 정본 DS-CONFIRM ⑦ v334 — 마스터 · 파트너스 관리자 「로그아웃하시겠습니까?」 · 구매자 「로그아웃할까요?」 · [취소][로그아웃], GNB 유틸 · 휴대폰 서랍 · 내 정보 모든 로그아웃 경유. 구현은 레이아웃 전담(AdminShell · SellerShell · 구매자 셸 · MyMenu) 배정 대기 |
 | 구매자 모달 | `components/shop/ShopModal.tsx` | 모서리·X 크기만 토큰으로 맞춤. 포커스 가둠·배경 스크롤 차단·미저장 확인은 공통 모달로 전환할 때(4단계) |
 | 셸 | `components/seller/SellerShell.tsx`, `app/(admin)/admin/_components/AdminShell.tsx` | 대기(열린 PR이 메뉴 줄을 고치는 중이라 1단계에서 제외) |
 
