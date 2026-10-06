@@ -116,10 +116,13 @@ test("주문 상세: 상품·결제·구매자·배송을 보여 주고, 없는 
   await login(page);
   await page.getByRole("button", { name: /상태: 전체/ }).click();
   await page.getByRole("group", { name: "결제 상태" }).getByLabel("완료").check();
+  const paid = listResponse(page, "status=PAID");
   await page.getByRole("button", { name: "이 상태로 보기" }).click();
+  await paid;
   await expect(rows(page).first()).toBeVisible();
-  const nick = (await rows(page).first().locator("td").nth(1).textContent())!;
-  await rows(page).first().locator("a.ord-link").click();
+  // 구매자 이름과 주소를 한 번에 읽어, 목록이 다시 그려지는 사이 다른 행의 이름이 섞이지 않게 한다
+  const { nick, href } = await rows(page).first().evaluate((tr) => ({ nick: tr.querySelectorAll("td")[1].textContent ?? "", href: tr.querySelector("a.ord-link")!.getAttribute("href")! }));
+  await page.goto(href);
   await expect(page).toHaveURL(/\/seller\/orders\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("heading", { level: 1 })).toContainText(`${nick} · `);
   await expect(page.locator(".bdg-lg").first()).toHaveText("결제 완료");
