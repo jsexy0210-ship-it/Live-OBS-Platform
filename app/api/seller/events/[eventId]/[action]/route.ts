@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { AuthError } from "../../../../../../lib/server/authz/errors";
 import { requireSeller } from "../../../../../../lib/server/authz/guards";
 import { prisma } from "../../../../../../lib/server/db";
-import { cancelAudienceEvent, createNextAudienceRound, drawAudienceEvent, freezeAudienceEvent, publishAudienceResult } from "../../../../../../lib/server/events/service";
+import { cancelAudienceEvent, createNextAudienceRound, drawAudienceEvent, freezeAudienceEvent, publishAudienceResult, redisplayAudienceResult } from "../../../../../../lib/server/events/service";
 import { eventMutation } from "../../../../../../lib/server/events/errors";
 import { EventError } from "../../../../../../lib/server/events/errors";
 import { readEventJson } from "../../../../../../lib/server/events/http";
@@ -15,10 +15,8 @@ export const POST = eventMutation(async (req: Request, { params }: { params: Pro
   const body = req.body ? await readEventJson(req) : {};
   let value: unknown;
   if (action === "next-round") value = await createNextAudienceRound(prisma, ctx, eventId, body);
-  else if (action === "reveal" || action === "redisplay") {
-    if (action === "redisplay" && "participantId" in body) throw new EventError(400, "invalid_request");
-    value = await publishAudienceResult(prisma, ctx, eventId, body);
-  } else if (action === "execute") {
+  else if (action === "reveal") value = await publishAudienceResult(prisma, ctx, eventId, body);
+  else if (action === "redisplay") value = await redisplayAudienceResult(prisma, ctx, eventId, body); else if (action === "execute") {
     if (Object.keys(body).some(key => key !== "roundId") || typeof body.roundId !== "string") throw new EventError(400, "invalid_request");
     value = await drawAudienceEvent(prisma, ctx, eventId, body.roundId);
   } else {

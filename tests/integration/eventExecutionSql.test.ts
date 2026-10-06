@@ -65,7 +65,7 @@ describe("다회차 실행/공개 migration 실제 PostgreSQL", () => {
     const kind=await event(),key=randomUUID(),first=await round(kind,{requestKey:key}),saved=await result(first);
     await expect(round(kind,{source:first.id,reason:"다음",prior:saved.winnerEntrantIds,requestKey:key})).rejects.toMatchObject({code:"23505"});
   });
-  it("재표시는 같은 확정 결과를 보존하며 공개기록만 추가한다", async () => {
+  it("명시적 반복 공개는 같은 확정 결과를 보존하며 공개기록만 추가한다", async () => {
     const kind=await event(),first=await round(kind),saved=await result(first);
     await publish(first.id);await publish(first.id);
     expect((await client.query('SELECT * FROM "AudienceEventResult" WHERE "roundId"=$1',[first.id])).rows).toEqual([saved]);

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { acceptYoutubeEventEntries, cancelAudienceEvent, createAudienceEvent, createNextAudienceRound, drawAudienceEvent, freezeAudienceEvent, previewAudienceEvent, publishAudienceResult, readAudienceEvent } from "../../lib/server/events/service";
+import { acceptYoutubeEventEntries, cancelAudienceEvent, createAudienceEvent, createNextAudienceRound, drawAudienceEvent, freezeAudienceEvent, previewAudienceEvent, publishAudienceResult, readAudienceEvent, redisplayAudienceResult } from "../../lib/server/events/service";
 import type { ChatMessage, YoutubeClient } from "../../lib/server/youtube/client";
 import { collectChats } from "../../lib/server/youtube/chat";
 import { loginSeller } from "../../lib/server/auth/login";
@@ -190,11 +190,16 @@ describe("방송 이벤트 공통 서버", () => {
     expect((await previewAudienceEvent(db,s.ctx,event.id)).frozen).toBe(false);
     expect(await db.audienceEventResult.count()).toBe(0);
     const round=await freezeAudienceEvent(db,s.ctx,event.id), result=await drawAudienceEvent(db,s.ctx,event.id,round.id);
-    const participantId=(round.entrantIds as string[])[0], input={roundId:round.id,requestKey:randomUUID(),participantId};
+    const participantId=(round.entrantIds as string[])[0], input={roundId:round.id,requestKey:randomUUID(),scope:"PARTICIPANT",participantId};
     const published=await Promise.all([publishAudienceResult(db,s.ctx,event.id,input),publishAudienceResult(db,s.ctx,event.id,input)]);
     expect(published[0].publication.id).toBe(published[1].publication.id);
     await expect(publishAudienceResult(db,s.ctx,event.id,{...input,participantId:randomUUID()})).rejects.toMatchObject({code:"idempotency_conflict"});
-    const all=await publishAudienceResult(db,s.ctx,event.id,{roundId:round.id,requestKey:randomUUID()});expect(all.publication.scope).toBe("ALL");
+    const publicationCount=await db.audienceEventPublication.count(), roundCount=await db.audienceEventRound.count();
+    const restored=await redisplayAudienceResult(db,s.ctx,event.id,{roundId:round.id,requestKey:randomUUID()});
+    expect(restored.publicationState).toEqual({all:false,participantIds:[participantId]});expect(restored.result).toEqual(result);
+    expect(await db.audienceEventPublication.count()).toBe(publicationCount);expect(await db.audienceEventRound.count()).toBe(roundCount);
+    expect(await db.audienceEventResult.count()).toBe(1);expect(await db.rewardLedger.count()).toBe(0);expect(await db.coupon.count()).toBe(0);expect(await db.shipment.count()).toBe(0);
+    const all=await publishAudienceResult(db,s.ctx,event.id,{roundId:round.id,requestKey:randomUUID(),scope:"ALL"});expect(all.publication.scope).toBe("ALL");
     expect(all.result).toEqual(result);expect(await db.audienceEventResult.count()).toBe(1);
     expect((await readAudienceEvent(db,s.ctx,event.id)).publications).toHaveLength(2);
     await expect(publishAudienceResult(db,other.ctx,event.id,input)).rejects.toMatchObject({code:"not_found"});

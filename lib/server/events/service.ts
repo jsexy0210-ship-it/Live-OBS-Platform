@@ -207,14 +207,16 @@ export async function createNextAudienceRound(db: PrismaClient, ctx: TenantConte
   });
 }
 
-export type PublicationInput = { roundId?: unknown; requestKey?: unknown; participantId?: unknown };
-// 공개/재표시는 이미 확정된 결과와 공개기록만 사용한다. RNG·지급은 실행하지 않는다.
+export type PublicationInput = { roundId?: unknown; requestKey?: unknown; scope?: unknown; participantId?: unknown };
+// 개별/전체 공개는 명시적인 scope를 받아 공개기록을 추가한다. 재표시는 별도 함수다.
 export async function publishAudienceResult(db: PrismaClient, ctx: TenantContext, id: unknown, input: PublicationInput) {
   requireSellerPermission(ctx, "BROADCAST_RUN"); const eventId = uuid(id);
-  if (Object.keys(input).some(key => !["roundId", "requestKey", "participantId"].includes(key))) reject(400, "invalid_request");
+  if (Object.keys(input).some(key => !["roundId", "requestKey", "scope", "participantId"].includes(key))) reject(400, "invalid_request");
   const roundId = uuid(input.roundId), requestKey = uuid(input.requestKey);
   const participantId = input.participantId === undefined ? null : uuid(input.participantId);
-  const scope = participantId ? "PARTICIPANT" : "ALL";
+  if (input.scope !== "ALL" && input.scope !== "PARTICIPANT") reject(400, "publication_scope_required");
+  const scope = input.scope as "ALL" | "PARTICIPANT";
+  if ((scope === "ALL" && participantId !== null) || (scope === "PARTICIPANT" && participantId === null)) reject(400, "invalid_publication_target");
   return db.$transaction(async tx => {
     const at = await lockSeller(tx, ctx.sellerId);
     await eventOf(tx, ctx.sellerId, eventId);
@@ -235,6 +237,30 @@ export async function publishAudienceResult(db: PrismaClient, ctx: TenantContext
     const publication = await tx.audienceEventPublication.create({ data: { sellerId: ctx.sellerId, roundId, requestKey, scope, participantId, actorType: ctx.actorType, actorId: ctx.actorId } });
     await writeAudit(tx, audit(ctx, eventId, "publish", { roundId, scope, participantId, rewardsEnabled: false }));
     return { publication, result: round!.result, rewardsEnabled: false };
+  });
+}
+
+export type RedisplayInput = { roundId?: unknown; requestKey?: unknown };
+// 재표시는 현재 공개 진행을 복원한다. 공개 범위를 확대하거나 회차/결과를 새로 만들지 않는다.
+export async function redisplayAudienceResult(db: PrismaClient, ctx: TenantContext, id: unknown, input: RedisplayInput) {
+  requireSellerPermission(ctx, "BROADCAST_RUN"); const eventId = uuid(id);
+  if (Object.keys(input).some(key => !["roundId", "requestKey"].includes(key))) reject(400, "invalid_request");
+  const roundId = uuid(input.roundId), requestKey = uuid(input.requestKey);
+  return db.$transaction(async tx => {
+    const at = await lockSeller(tx, ctx.sellerId);
+    await eventOf(tx, ctx.sellerId, eventId);
+    const round = await tx.audienceEventRound.findFirst({ where: { sellerId: ctx.sellerId, eventId, id: roundId }, include: { result: true } });
+    if (!round) reject(404, "not_found");
+    if (!round!.result) reject(409, "confirmed_result_required");
+    const previous = await tx.auditLog.findFirst({ where: { sellerId: ctx.sellerId, action: "audience_event.redisplay", after: { path: ["requestKey"], equals: requestKey } } });
+    if (previous && (previous.targetId !== eventId || (previous.after as { roundId?: string } | null)?.roundId !== roundId)) reject(409, "idempotency_conflict");
+    if (!previous) {
+      await mutationLimit(tx, ctx.sellerId, at);
+      await writeAudit(tx, audit(ctx, eventId, "redisplay", { roundId, requestKey, rewardsEnabled: false }));
+    }
+    const publications = await tx.audienceEventPublication.findMany({ where: { sellerId: ctx.sellerId, roundId }, orderBy: { createdAt: "asc" }, take: 5_000 });
+    const publicationState = { all: publications.some(row => row.scope === "ALL"), participantIds: [...new Set(publications.flatMap(row => row.scope === "PARTICIPANT" && row.participantId ? [row.participantId] : []))] };
+    return { result: round!.result, publicationState, rewardsEnabled: false };
   });
 }
 
