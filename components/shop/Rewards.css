@@ -1,0 +1,105 @@
+/* SH-023 내 적립금 */
+.rw-main {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+.rw-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.rw-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px;
+  border: 1px solid var(--wds-line-solid-neutral);
+  border-radius: var(--shop-r);
+}
+.rw-card span,
+.rw-card small {
+  font-size: 13px;
+  color: var(--wds-label-alternative);
+}
+.rw-card b {
+  font-size: 20px;
+}
+.rw-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0;
+  width: 100%;
+  margin: 0;
+  border-bottom: 0;
+}
+.rw-tabs button {
+  margin-left: -1px;
+  padding: 0 4px;
+  border: 1px solid var(--wds-line-solid-neutral);
+  text-align: center;
+}
+.rw-tabs button[aria-selected="true"] {
+  border-top: 2px solid var(--brand);
+  background: #fff;
+}
+.rw-tbl .c-d {
+  width: 100px;
+  text-align: center;
+}
+.rw-tbl .c-a {
+  width: 120px;
+  text-align: right;
+}
+.rw-tbl td b {
+  display: block;
+}
+.rw-tbl .is-plus {
+  color: var(--brand);
+}
+.rw-sub {
+  display: block;
+  font-size: 13px;
+  color: var(--wds-label-alternative);
+}
+.rw-more {
+  display: block;
+  margin: 12px auto 0;
+}
+@media (max-width: 767px) {
+  .rw-cards {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .cart-tbl.rw-tbl {
+    display: table;
+  }
+  .cart-tbl.rw-tbl thead {
+    display: table-header-group;
+  }
+  .cart-tbl.rw-tbl tbody {
+    display: table-row-group;
+  }
+  .cart-tbl.rw-tbl tr {
+    display: table-row;
+    padding: 0;
+  }
+  .cart-tbl.rw-tbl th,
+  .cart-tbl.rw-tbl td {
+    display: table-cell;
+    padding: 10px 6px;
+    border-bottom: 1px solid var(--wds-line-solid-neutral);
+    font-size: 13px;
+  }
+  .cart-tbl.rw-tbl th {
+    height: 36px;
+    padding: 0 6px;
+  }
+  .rw-tbl .c-d {
+    width: 48px;
+  }
+  .rw-tbl .c-a {
+    width: 88px;
+  }
+}

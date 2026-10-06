@@ -64,12 +64,12 @@ test("최고관리자: 로그인하면 홈으로 들어가고, GNB 6개 대분�
   await expect(lnb(page).locator(".lnb-sec.on .lnb-i")).toHaveText(["요금제", "구독 현황", "청구 · 결제 내역", "구독료 수납", "환불 요청"]);
 });
 
-test("CS: 최고관리자 전용 메뉴(실시간 감시·설정 대분류=시스템·관리자)와 로그 추적이 숨겨지고, 주소로 들어가도 권한 안내만 보인다", async ({ page }) => {
+test("CS: 최고관리자 전용 메뉴(설정 대분류=시스템·관리자)와 로그 추적이 숨겨지고, 주소로 들어가도 권한 안내만 보인다. 실시간 감시는 조회로 보인다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await login(page, emails.cs);
   await gnb(page).getByRole("link", { name: "운영" }).click();
   await expect(lnb(page).getByRole("link", { name: "실시간 방송" })).toBeVisible();
-  await expect(lnb(page).getByRole("link", { name: "실시간 감시" })).toHaveCount(0);
+  await expect(lnb(page).getByRole("link", { name: "실시간 감시" })).toBeVisible();
   await expect(gnb(page).getByRole("link", { name: "설정" })).toHaveCount(0);
   for (const path of ["/admin/logs", "/admin/settings/branding", "/admin/settings/maintenance"]) {
     await page.goto(path);

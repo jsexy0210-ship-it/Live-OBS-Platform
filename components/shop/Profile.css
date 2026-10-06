@@ -1,0 +1,104 @@
+/* SH-024 회원정보 수정 */
+.pf-main {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+.pf-rows {
+  border-top: 1px solid var(--wds-label-normal);
+}
+.pf-row {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  align-items: stretch;
+  gap: 16px;
+  border-bottom: 1px solid var(--wds-line-solid-neutral);
+}
+.pf-th {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  background: var(--wds-fill-alternative);
+  font-size: 14px;
+  font-weight: 700;
+}
+.pf-td {
+  padding: 10px 0;
+}
+.pf-td > .pf-hint {
+  flex-basis: 100%;
+  margin-top: -4px;
+}
+.pf-th i {
+  margin-left: 2px;
+  font-style: normal;
+  color: var(--wds-status-negative);
+}
+.pf-td {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 14px;
+}
+.pf-td.pf-col {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.pf-td .inp {
+  width: 280px;
+  max-width: 100%;
+}
+.pf-td .chk {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pf-hint {
+  font-size: 13px;
+  color: var(--wds-label-alternative);
+}
+.pf-actions {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+}
+.pf-withdraw {
+  margin: 0;
+  text-align: center;
+}
+.pf-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 14px;
+}
+.pf-modal p {
+  margin: 0;
+}
+.pf-modal label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-weight: 700;
+}
+.pf-modal .pf-hint {
+  font-weight: 400;
+}
+@media (max-width: 767px) {
+  .pf-row {
+    grid-template-columns: 96px minmax(0, 1fr);
+    gap: 8px;
+  }
+  .pf-th {
+    padding: 8px;
+  }
+}
+.pf-withdraw .shop-linkbtn {
+  text-decoration: underline;
+  font-size: 13px;
+  color: var(--wds-label-alternative);
+}

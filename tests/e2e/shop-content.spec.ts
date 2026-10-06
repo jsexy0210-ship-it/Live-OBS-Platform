@@ -106,6 +106,8 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
     await page.screenshot({ path: `${SHOT}/SA-064-banner-edit-1440.png` });
     await ed.getByRole("radio", { name: "모바일만" }).click();
     expect(await imageLoaded(page, '[data-testid="banner-preview"] img')).toBe(true);
+    // 저장은 PC · 모바일로 한다(아래 구매자 화면 시험이 PC 슬라이드 2장 · 모바일 슬라이드 1장을 기대한다)
+    await ed.getByRole("radio", { name: "PC · 모바일" }).click();
     await ed.getByRole("button", { name: "저장" }).click();
     await confirmBtn("추가").click();
     await expect(page.getByText("배너를 추가했습니다 · 홈에 바로 반영")).toBeVisible();
@@ -361,7 +363,7 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
     await expect(page.getByRole("button", { name: "배너 추가" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "수정" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "삭제" })).toHaveCount(0);
-    expect(await imageLoaded(page, ".sc-thumb")).toBe(true);
+    expect(await imageLoaded(page, ".sc-thumb-sm")).toBe(true);
     // 화면을 거치지 않고 바꾸려 해도 403
     const status = await page.evaluate(async () => (await fetch("/api/seller/shop-content/popups", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "TEXT", title: "x", body: "y" }) })).status);
     expect(status).toBe(403);

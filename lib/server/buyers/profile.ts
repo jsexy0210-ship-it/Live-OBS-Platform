@@ -1,9 +1,8 @@
 import type { PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { hashPassword, verifyPassword } from "../auth/password";
-import { MIN_PASSWORD_LENGTH } from "../auth/passwordReset";
+import { BUYER_PASSWORD_MAX, isAcceptableBuyerPassword } from "./passwordPolicy";
 import { cleanText } from "../text/clean";
-import { MAX_PASSWORD_LENGTH } from "./passwordReset";
 import { MAX_NICKNAME_LENGTH } from "./signup";
 
 // 구매자 회원정보 수정(SH-024): 내 정보 조회, 방송 닉네임 변경(30일에 1번), 비밀번호 변경(현재 비밀번호 확인).
@@ -18,7 +17,7 @@ export const PROFILE_MESSAGES = {
   invalid_nickname: "방송 닉네임은 20자까지, 쓸 수 있는 글자로 정해 주세요",
   nickname_taken: "이미 쓰고 있는 방송 닉네임이에요. 다른 닉네임으로 정해 주세요",
   nickname_change_limited: "닉네임은 30일에 1번만 바꿀 수 있어요",
-  weak_password: "새 비밀번호는 8자 이상으로 정해 주세요",
+  weak_password: "새 비밀번호는 영문과 숫자를 섞어 8자 이상으로 정해 주세요",
   wrong_password: "현재 비밀번호가 맞지 않아요",
   same_password: "지금 쓰는 비밀번호와 다른 비밀번호로 정해 주세요",
   too_many_attempts: "비밀번호를 여러 번 틀렸어요. 잠시 뒤에 다시 해 주세요",
@@ -118,8 +117,8 @@ function recentFailures(memberId: string, now: number): number[] {
 export async function changeMemberPassword(db: PrismaClient, scope: Scope, raw: unknown, meta: Meta = {}) {
   const b = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const { currentPassword, newPassword } = b;
-  if (typeof newPassword !== "string" || newPassword.length < MIN_PASSWORD_LENGTH || newPassword.length > MAX_PASSWORD_LENGTH) return { ok: false as const, reason: "weak_password" as const };
-  if (typeof currentPassword !== "string" || currentPassword.length === 0 || currentPassword.length > MAX_PASSWORD_LENGTH) return { ok: false as const, reason: "wrong_password" as const };
+  if (!isAcceptableBuyerPassword(newPassword)) return { ok: false as const, reason: "weak_password" as const };
+  if (typeof currentPassword !== "string" || currentPassword.length === 0 || currentPassword.length > BUYER_PASSWORD_MAX) return { ok: false as const, reason: "wrong_password" as const };
   const nowMs = (meta.now ?? new Date()).getTime();
   if (recentFailures(scope.buyerMemberId, nowMs).length >= PASSWORD_CHANGE_FAIL_LIMIT) return { ok: false as const, reason: "too_many_attempts" as const };
   const m = await db.buyerMember.findFirst({ where: { id: scope.buyerMemberId, sellerId: scope.sellerId, deletedAt: null, status: "ACTIVE" }, select: { passwordHash: true } });
