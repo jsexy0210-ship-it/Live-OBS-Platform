@@ -253,3 +253,22 @@ describe("구매자 환불 요청", () => {
     expect(await again.json()).toEqual({ error: "invalid_transition", message: SELLER_REFUND_REQUEST_MESSAGES.invalid_transition });
   });
 });
+
+describe("쇼핑몰 운영 상태와 이미 낸 주문의 환불 요청(대표님 결정 2026-10-06)", () => {
+  it.each(["PREPARING", "PAUSED"] as const)("%s: 이미 낸 주문의 환불 요청 조회·신청·철회는 받는다(새 거래만 막는다)", async (state) => {
+    const s = await setup();
+    await db.seller.update({ where: { id: s.seller.id }, data: { operatingState: state } });
+    expect((await buyerRefundRequestContext(db, s.scope, s.order.id))?.blocked).toBeNull();
+    const r = await request(s);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect((await cancelRefundRequest(db, s.scope, r.request.id)).ok).toBe(true);
+  });
+
+  it("이용 정지 중에는 기존대로 환불 요청이 막힌다", async () => {
+    const s = await setup();
+    await db.seller.update({ where: { id: s.seller.id }, data: { status: "SUSPENDED" } });
+    expect((await buyerRefundRequestContext(db, s.scope, s.order.id))?.blocked).toBe("shop_unavailable");
+    expect(await request(s)).toMatchObject({ ok: false, reason: "shop_unavailable" });
+  });
+});

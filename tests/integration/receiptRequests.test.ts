@@ -208,3 +208,15 @@ describe("현금영수증·세금계산서 신청", () => {
     expect(await wd.json()).toMatchObject({ request: { issue: { status: "CANCELLED" } } });
   });
 });
+
+describe("쇼핑몰 운영 상태와 현금영수증 신청(대표님 결정 2026-10-06)", () => {
+  it("준비 중·일시 정지에서도 이미 낸 주문의 신청은 받고, 이용 정지 중에는 기존대로 막는다", async () => {
+    const s = await setup();
+    await db.seller.update({ where: { id: s.seller.id }, data: { operatingState: "PAUSED" } });
+    expect((await buyerReceiptContext(db, s.scope, s.bankOrder))?.blocked).toBeNull();
+    expect((await createReceiptRequest(db, s.scope, s.bankOrder, { ...income, orderId: s.bankOrder })).ok).toBe(true);
+    await db.seller.update({ where: { id: s.seller.id }, data: { status: "SUSPENDED" } });
+    expect((await buyerReceiptContext(db, s.scope, s.cardOrder))?.blocked).toBe("shop_unavailable");
+  });
+});
+
