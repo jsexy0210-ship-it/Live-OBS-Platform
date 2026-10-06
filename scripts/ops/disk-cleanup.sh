@@ -14,9 +14,11 @@
 set -euo pipefail
 
 MODE=dry
+DETAILS=0
 case "${1:-}" in
   --apply) MODE=apply ;;
   --check) MODE=check ;;
+  --details) DETAILS=1 ;;
   ""|--dry-run) ;;
   *) echo "사용법: disk-cleanup.sh [--check | --apply]   (아무 옵션 없으면 지울 목록만 보여 줘요)" >&2; exit 2 ;;
 esac
@@ -41,6 +43,44 @@ BUILDER_KEEP_H="$(num OBS_BUILDER_KEEP_H 24 1 8760)"
 DIAG_KEEP_DAYS="$(num OBS_DIAG_KEEP_DAYS 14 3 365)"
 
 human() { awk -v b="$1" 'BEGIN { s = "B KB MB GB TB"; split(s, u, " "); i = 1; while (b >= 1024 && i < 5) { b /= 1024; i++ } printf (i == 1 ? "%d%s" : "%.1f%s"), b, u[i] }'; }
+
+# 선택형 읽기 전용 진단. 경로/장치명 및 임의 BuildKit 메타데이터는 출력하지 않는다.
+readonly_space_details() {
+  local label="$1" path="$2" line
+  while [ ! -e "$path" ] && [ "$path" != "/" ]; do path="$(dirname "$path")"; done
+  line="$(df -hP -- "$path" 2>/dev/null | awk 'NR == 2 { print $3, $4, $5 }')"
+  if [ -n "$line" ]; then log "$label 공간(사용/남음/사용률): $line"; else log "$label 공간: 확인 불가"; fi
+  line="$(df -iP -- "$path" 2>/dev/null | awk 'NR == 2 { print $3, $4, $5 }')"
+  if [ -n "$line" ]; then log "$label inode(사용/남음/사용률): $line"; else log "$label inode: 확인 불가"; fi
+}
+
+readonly_buildx_details() {
+  local version data count
+  if ! command -v docker >/dev/null 2>&1 || ! docker buildx version >/dev/null 2>&1; then
+    log "Buildx 상세: 미지원 또는 확인 불가"; return 0
+  fi
+  version="$(docker buildx version 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)"
+  log "Buildx 버전: ${version:-확인 불가}"
+  if ! command -v jq >/dev/null 2>&1 || ! docker buildx du --help >/dev/null 2>&1; then
+    log "Build cache 상세: 미지원 또는 확인 불가"; return 0
+  fi
+  data="$(docker buildx du --format=json 2>/dev/null | jq -c 'if type == "array" then . else [.] end' 2>/dev/null || true)"
+  if [ -z "$data" ]; then log "Build cache 상세: 확인 불가"; else
+    count="$(jq 'length' <<<"$data" 2>/dev/null || echo 0)"
+    log "Build cache records: ${count}개 (ID, 크기, 마지막 사용, 정리 가능, 공유, 변경 가능, 유형)"
+    jq -r '.[0:100][] | [(.ID // "unknown" | tostring | if test("^[A-Za-z0-9_-]{1,80}$") then . else "unknown" end), ((.Size // null) | if type == "number" and . >= 0 then tostring else "unknown" end), (.LastUsedAt // "unknown" | tostring | if test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.+-]+Z?$" ) then . else "unknown" end), (if .Reclaimable == true then "true" elif .Reclaimable == false then "false" else "unknown" end), (if .Shared == true then "true" elif .Shared == false then "false" else "unknown" end), (if .Mutable == true then "true" elif .Mutable == false then "false" else "unknown" end), (.Type // "unknown" | tostring | if test("^[A-Za-z0-9_-]{1,40}$") then . else "unknown" end)] | @tsv' <<<"$data" 2>/dev/null | while IFS=$'\t' read -r id size last reclaimable shared mutable type; do
+      [[ "$id" =~ ^[A-Za-z0-9_-]{1,80}$ ]] || id=unknown
+      log "  cache id=$id size_bytes=$size last_used=$last reclaimable=$reclaimable shared=$shared mutable=$mutable type=$type"
+    done
+    [ "$count" -le 100 ] || log "Build cache 추가 records: 확인 생략(나머지 귀속 미확인)"
+  fi
+  if docker buildx history ls --help >/dev/null 2>&1 && docker buildx history ls --help 2>&1 | grep -q -- '--local'; then
+    log "Build history attribution: repository=UNKNOWN revision=UNKNOWN context=UNKNOWN"
+    log "Build cache ownership: UNKNOWN (cache ID와 build history 연결 근거 없음)"
+  else
+    log "Build history: --local 지원 여부를 확인할 수 없어 미확인"
+  fi
+}
 
 docker_root() {
   local d=""
@@ -96,6 +136,13 @@ if [ "$MODE" = check ]; then
   exit $?
 fi
 
+if [ "$DETAILS" = 1 ]; then
+  log "선택형 읽기 전용 진단 시작"
+  readonly_space_details "Docker 저장소 디스크" "$(docker_root)"
+  readonly_space_details "백업 디스크" "$BACKUP_DIR"
+  readonly_space_details "러너 작업 디스크" "$(runner_root)"
+  readonly_buildx_details
+fi
 say() { if [ "$MODE" = apply ]; then log "$*"; else log "[지울 후보] $*"; fi; }
 total_freed=0
 
