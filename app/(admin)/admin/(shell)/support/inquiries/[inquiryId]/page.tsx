@@ -109,7 +109,7 @@ export default function InquiryDetailPage() {
         <PageHead description="문의 내용과 진단 정보를 확인하고 답변과 처리 이력을 관리합니다."
           title={inq ? inq.title : "문의 상세"}
           actions={
-            <button className="btn btn-out" type="button" onClick={back}>목록</button>
+            <button className="btn btn-out btn-level-secondary" type="button" onClick={back}>목록</button>
           }
         />
         {!inq ? (

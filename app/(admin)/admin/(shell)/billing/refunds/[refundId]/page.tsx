@@ -156,7 +156,7 @@ export default function RefundDetailPage() {
         <PageHead description="환불 요청 내용을 확인합니다. 승인·거절은 최고관리자만 할 수 있습니다."
           title={rf ? `환불 처리 · ${rf.shopName}` : "환불 처리"}
           actions={
-            <Link className="btn btn-out" href="/admin/billing/refunds">
+            <Link className="btn btn-out btn-level-secondary" href="/admin/billing/refunds">
               목록
             </Link>
           }

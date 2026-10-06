@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
+import { PageHead, SearchBox, SearchRow, ListTable, ListHead } from "../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../components/seller/States";
 import { adminApi } from "../../_components/api";
 import { useListFilters } from "../../_components/useListFilters";
@@ -116,7 +116,7 @@ function Logs() {
           </div>
         )}
 
-        <div className="card">
+        <div className="au-list-section">
           {state.kind === "loading" && <LoadingRows rows={5} />}
           {state.kind === "error" && <ErrorState title="로그를 불러오지 못했습니다." onRetry={() => void load(applied)} />}
           {state.kind === "ok" &&
@@ -131,7 +131,9 @@ function Logs() {
               </div>
             ) : (
               <>
-                <div style={{ overflowX: "auto" }}>
+                <>
+                  <ListHead total={items.length} loaded />
+                  <ListTable>
                   <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                     <thead>
                       <tr>
@@ -154,7 +156,7 @@ function Logs() {
                           <td>{l.seller ? <Link href={`/admin/partners/${l.seller.id}`}>{l.seller.shopName}</Link> : "-"}</td>
                           <td className="col-text" style={{ whiteSpace: "normal", maxWidth: 280 }}>{l.reason ?? "-"}</td>
                           <td>
-                            <Link className="btn btn-sm btn-out" href={`/admin/logs/${l.id}`}>
+                            <Link className="btn btn-sm btn-out btn-level-table" href={`/admin/logs/${l.id}`}>
                               보기
                             </Link>
                           </td>
@@ -162,7 +164,8 @@ function Logs() {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </ListTable>
+                </>
                 <div className="row" style={{ justifyContent: "space-between", padding: "12px 16px" }}>
                   <span className="t-c1 c-alt">{state.next ? `${items.length}건 넘게` : `${items.length}건`}</span>
                   {state.next && (

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PageHead, useConfirm } from "../../../../../../components/admin-ui";
+import { PageHead, useConfirm, ListTable, ListHead } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { formatDate, formatDateTime } from "../../../../../../lib/client/format";
 import { adminApi, failMessage } from "../../../_components/api";
@@ -235,12 +235,14 @@ export default function InfraPage() {
               </div>
             </div>
 
-            <section className="card" aria-labelledby="infra-cap">
+            <section className="au-list-section" aria-labelledby="infra-cap">
               <div style={{ padding: "12px 16px" }}>
                 <h2 className="t-hl1" id="infra-cap">용량 · 서버</h2>
                 <span className="t-c1 c-alt">디스크 {data.status.thresholds.warnPct}% · 메모리 {data.status.thresholds.warnPct}% · CPU(1분 부하) {data.status.thresholds.warnPct}% · DB 연결 {data.status.thresholds.warnPct}%를 넘으면 경고, {data.status.thresholds.criticalPct}%를 넘으면 위험</span>
               </div>
-              <div style={{ overflowX: "auto" }}>
+              <>
+                <ListHead total={servers.length} loaded />
+                <ListTable>
                 <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                   <thead>
                     <tr>
@@ -281,7 +283,8 @@ export default function InfraPage() {
                     })}
                   </tbody>
                 </table>
-              </div>
+              </ListTable>
+              </>
             </section>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 24, alignItems: "start" }}>
@@ -305,12 +308,14 @@ export default function InfraPage() {
               </section>
             </div>
 
-            <section className="card" aria-labelledby="infra-conn">
+            <section className="au-list-section" aria-labelledby="infra-conn">
               <div style={{ padding: "12px 16px" }}>
                 <h2 className="t-hl1" id="infra-conn">외부 연결 · 만료 · 상태</h2>
                 <span className="t-c1 c-alt">키 값은 보이지 않습니다 · 만료일은 최고관리자가 발급 화면의 날짜를 적습니다 · 만료 30일 전 · 7일 전 · 인증 오류는 홈 요약 카드와 알림에 올라갑니다</span>
               </div>
-              <div style={{ overflowX: "auto" }}>
+              <>
+                <ListHead total={data.conns.length} loaded />
+                <ListTable>
                 <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                   <thead>
                     <tr>
@@ -339,7 +344,8 @@ export default function InfraPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </ListTable>
+              </>
               <div className="row" style={{ gap: 8, padding: "12px 16px" }}>
                 <button className="btn" type="button" onClick={() => void saveExpiry()} disabled={savingExpiry || data.conns.every((c) => (expiry[c.key] ?? "") === (c.expiresOn ?? ""))}>
                   {savingExpiry ? "저장 중" : "만료일 저장"}
@@ -348,12 +354,14 @@ export default function InfraPage() {
               </div>
             </section>
 
-            <section className="card" aria-labelledby="infra-cost">
+            <section className="au-list-section" aria-labelledby="infra-cost">
               <div style={{ padding: "12px 16px" }}>
                 <h2 className="t-hl1" id="infra-cost">요금 · {data.cost.month}</h2>
                 <span className="t-c1 c-alt">「추정」 = 마스터가 적은 단가 × 우리가 센 사용량 · 「실제」 = 카카오클라우드 청구 조회(API 키 발급 뒤) · 부가세 별도</span>
               </div>
-              <div style={{ overflowX: "auto" }}>
+              <>
+                <ListHead total={data.cost.items.length} loaded />
+                <ListTable>
                 <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                   <thead>
                     <tr>
@@ -400,7 +408,8 @@ export default function InfraPage() {
                     </tr>
                   </tbody>
                 </table>
-              </div>
+              </ListTable>
+              </>
               <div style={{ padding: "12px 16px" }}>
                 <span className="t-c1 c-alt">실제 청구 금액은 카카오클라우드 청구 조회 API를 연결하면 「실제」로 바뀝니다 · API 키 발급은 대표님 조치 · 그 전까지는 한도 기능(도우미 · 자동 연결)을 뺀 전부 추정입니다</span>
               </div>

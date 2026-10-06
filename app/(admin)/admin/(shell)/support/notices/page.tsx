@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
-import { ListHead, Modal, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
+import { ListHead, Modal, PageHead, SearchBox, SearchRow, ListTable } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { MAX_SEARCH_LENGTH } from "../../../../../../components/seller/format";
 import { useScrollRestore, useUrlState } from "../../../../../../lib/client/navigation";
@@ -136,7 +136,7 @@ function NoticeList() {
           title="공지사항"
           actions={
             canEdit && (
-              <Link className="btn" href="/admin/support/notices/new">
+              <Link className="btn btn-level-primary" href="/admin/support/notices/new">
                 공지 작성
               </Link>
             )
@@ -168,7 +168,7 @@ function NoticeList() {
           </SearchRow>
         </SearchBox>
 
-        <div className="card">
+        <div className="au-list-section">
           {state.kind === "loading" && <LoadingRows rows={5} />}
           {state.kind === "error" && <ErrorState title="공지를 불러오지 못했습니다." onRetry={() => void load(applied.status)} />}
           {state.kind === "ok" &&
@@ -190,7 +190,7 @@ function NoticeList() {
             ) : (
               <>
                 <ListHead total={items.length} loaded />
-                <div style={{ overflowX: "auto" }}>
+                <ListTable>
                   <table className="tbl">
                     <thead>
                       <tr>
@@ -226,10 +226,10 @@ function NoticeList() {
                           {canEdit && (
                             <td>
                               <span className="row" style={{ gap: 6 }}>
-                                <Link className="btn btn-sm btn-out" href={`/admin/support/notices/${n.id}`}>
+                                <Link className="btn btn-sm btn-out btn-level-table" href={`/admin/support/notices/${n.id}`}>
                                   수정
                                 </Link>
-                                <button className="btn btn-sm btn-out" type="button" onClick={() => setTarget(n)}>
+                                <button className="btn btn-sm btn-out btn-level-table" type="button" onClick={() => setTarget(n)}>
                                   삭제
                                 </button>
                               </span>
@@ -239,7 +239,7 @@ function NoticeList() {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </ListTable>
                 {state.next && (
                   <div className="row" style={{ justifyContent: "center", padding: "12px 16px" }}>
                     <button className="btn btn-sm btn-out" type="button" onClick={() => void loadMore()} disabled={more}>

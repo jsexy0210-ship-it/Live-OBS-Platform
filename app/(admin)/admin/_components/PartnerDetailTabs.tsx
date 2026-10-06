@@ -1,5 +1,7 @@
 "use client";
 
+import { ListTable, ListHead } from "../../../../components/admin-ui";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { FormRow, FormSection } from "../../../../components/admin-ui/FormTable";
@@ -29,8 +31,8 @@ function useRead<T>(url: string) {
 }
 
 // 표·목록 구역: 제목 줄(오른쪽에 작은 버튼) + 내용. 정본의 「구역 제목(sec-t)」과 같다.
-const Section = ({ title, id, actions, children }: { title: string; id: string; actions?: React.ReactNode; children: React.ReactNode }) => (
-  <section className="card pad-l col" style={{ gap: 14 }} aria-labelledby={id}>
+const Section = ({ title, id, actions, children, list = false }: { title: string; id: string; actions?: React.ReactNode; children: React.ReactNode; list?: boolean }) => (
+  <section className={list ? "au-list-section" : "card pad-l col"} style={{ gap: 14 }} aria-labelledby={id}>
     <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 8 }}>
       <h2 className="t-hl1" id={id}>
         {title}
@@ -125,13 +127,15 @@ export function PartnerSubscriptionTab({ seller }: { seller: SellerDetail }) {
               <span className="bdg b-gray">추후 안내</span>
             </FormRow>
           </FormSection>
-          <Section title="상태 이력" id="sub-history">
+          <Section list title="상태 이력" id="sub-history">
             {d.history.length === 0 ? (
               <div className="st">
                 <span className="t">이력이 없습니다.</span>
               </div>
             ) : (
-              <table className="tbl" aria-label="상태 이력">
+              <>
+                <ListHead total={d.history.length} loaded />
+                <ListTable><table className="tbl" aria-label="상태 이력">
                 <thead>
                   <tr>
                     <th style={{ width: 70 }}>날짜</th>
@@ -146,11 +150,12 @@ export function PartnerSubscriptionTab({ seller }: { seller: SellerDetail }) {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></ListTable>
+              </>
             )}
           </Section>
         </div>
-        <Section
+        <Section list
           title="청구 · 결제 내역"
           id="sub-invoices"
           actions={
@@ -164,7 +169,9 @@ export function PartnerSubscriptionTab({ seller }: { seller: SellerDetail }) {
               <span className="t">청구 내역이 없습니다.</span>
             </div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
+            <>
+              <ListHead total={items.length} loaded />
+              <ListTable>
               <table className="tbl" style={{ whiteSpace: "nowrap" }} aria-label="청구 · 결제 내역">
                 <thead>
                   <tr>
@@ -188,7 +195,7 @@ export function PartnerSubscriptionTab({ seller }: { seller: SellerDetail }) {
                       </td>
                       <td>
                         {i.receipt === "ISSUED" && i.receiptUrl ? (
-                          <a className="btn btn-sm btn-out" href={i.receiptUrl} target="_blank" rel="noopener noreferrer">
+                          <a className="btn btn-sm btn-out btn-level-table" href={i.receiptUrl} target="_blank" rel="noopener noreferrer">
                             매출전표
                           </a>
                         ) : i.state === "SCHEDULED" ? (
@@ -201,7 +208,8 @@ export function PartnerSubscriptionTab({ seller }: { seller: SellerDetail }) {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ListTable>
+            </>
           )}
           {next && (
             <div className="row" style={{ justifyContent: "center" }}>
@@ -326,7 +334,7 @@ export function PartnerOrdersTab({ sellerId }: { sellerId: string }) {
           </select>
         </SearchRow>
       </SearchBox>
-      <div className="card">
+      <div className="au-list-section">
         {state.kind === "loading" && <LoadingRows rows={4} />}
         {d &&
           (d.orders.length === 0 ? (
@@ -340,7 +348,9 @@ export function PartnerOrdersTab({ sellerId }: { sellerId: string }) {
                   · {from}–{from + d.orders.length - 1} 표시 (총 {d.total.toLocaleString("ko-KR")}건)
                 </span>
               </div>
-              <div style={{ overflowX: "auto" }}>
+              <>
+                <ListHead total={d.orders.length} loaded />
+                <ListTable>
                 <table className="tbl" style={{ whiteSpace: "nowrap" }} aria-label="주문">
                   <thead>
                     <tr>
@@ -373,15 +383,16 @@ export function PartnerOrdersTab({ sellerId }: { sellerId: string }) {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </ListTable>
+              </>
               <Pagination page={d.page} pageCount={Math.max(1, Math.ceil(d.total / d.pageSize))} onChange={setPage} />
             </>
           ))}
       </div>
       {d && (
         <Two>
-          <Section title="이상 징후 점검" id="orders-anomalies">
-            <table className="tbl" aria-label="이상 징후 점검">
+          <Section list title="이상 징후 점검" id="orders-anomalies">
+            <ListTable><table className="tbl" aria-label="이상 징후 점검">
               <thead>
                 <tr>
                   <th>항목</th>
@@ -406,7 +417,7 @@ export function PartnerOrdersTab({ sellerId }: { sellerId: string }) {
                   <td>{OK_WARN(d.anomalies.refundRequestOverdue, "0건", `${d.anomalies.refundRequestOverdue.count}건`)}</td>
                 </tr>
               </tbody>
-            </table>
+            </table></ListTable>
           </Section>
           <Section title="월별 주문 추이" id="orders-monthly">
             {d.monthly.length === 0 ? (
@@ -490,8 +501,8 @@ export function PartnerShopTab({ sellerId }: { sellerId: string }) {
             <FormRow label="상단 공지">{text(s.topNotice)}</FormRow>
             <FormRow label="이용안내">{text(s.usageGuide)}</FormRow>
           </FormSection>
-          <Section title="정책 점검" id="shop-policy">
-            <table className="tbl" aria-label="정책 점검">
+          <Section list title="정책 점검" id="shop-policy">
+            <ListTable><table className="tbl" aria-label="정책 점검">
               <thead>
                 <tr>
                   <th>항목</th>
@@ -516,7 +527,7 @@ export function PartnerShopTab({ sellerId }: { sellerId: string }) {
                   <td>{s.reportCount}건</td>
                 </tr>
               </tbody>
-            </table>
+            </table></ListTable>
           </Section>
         </div>
         <div className="col" style={{ gap: 20 }}>
@@ -531,13 +542,15 @@ export function PartnerShopTab({ sellerId }: { sellerId: string }) {
               { label: "이번 달 거래액", value: won(s.month.amount) },
             ]}
           />
-          <Section title="상품 상위 5" id="shop-top">
+          <Section list title="상품 상위 5" id="shop-top">
             {s.topProducts.length === 0 ? (
               <div className="st">
                 <span className="t">판매된 상품이 없습니다.</span>
               </div>
             ) : (
-              <table className="tbl" aria-label="상품 상위 5">
+              <>
+                <ListHead total={s.topProducts.length} loaded />
+                <ListTable><table className="tbl" aria-label="상품 상위 5">
                 <thead>
                   <tr>
                     <th>상품</th>
@@ -556,7 +569,8 @@ export function PartnerShopTab({ sellerId }: { sellerId: string }) {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></ListTable>
+              </>
             )}
             <span className="t-c1 c-alt">판매 수 기준</span>
           </Section>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ListHead, PageHead } from "../../../../../../components/admin-ui";
+import { ListHead, PageHead, ListTable } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows } from "../../../../../../components/seller/States";
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar } from "../../../_components/AdminShell";
@@ -46,7 +46,7 @@ export default function LivePayoutPage() {
               ))}
             </div>
           )}
-          <div className="card">
+          <div className="au-list-section">
             {state.kind === "loading" && <LoadingRows rows={4} />}
             {state.kind === "error" && <ErrorState title="실지급 파트너스를 불러오지 못했습니다." onRetry={() => void load()} />}
             {state.kind === "ok" &&
@@ -57,7 +57,7 @@ export default function LivePayoutPage() {
               ) : (
                 <>
                   <ListHead total={items.length} unit="곳" />
-                  <div style={{ overflowX: "auto" }}>
+                  <ListTable>
                     <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                       <thead>
                         <tr>
@@ -80,7 +80,7 @@ export default function LivePayoutPage() {
                             <td>{won(s.outstanding.amount)}</td>
                             <td>{s.outstanding.members.toLocaleString("ko-KR")}명</td>
                             <td>
-                              <Link className="btn btn-sm btn-out" href={`/admin/partners/${s.sellerId}`}>
+                              <Link className="btn btn-sm btn-out btn-level-table" href={`/admin/partners/${s.sellerId}`}>
                                 상세
                               </Link>
                             </td>
@@ -88,7 +88,7 @@ export default function LivePayoutPage() {
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </ListTable>
                 </>
               ))}
           </div>

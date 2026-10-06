@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ListHead, PageHead } from "../../../../../../components/admin-ui";
+import { ListHead, PageHead, ListTable } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows } from "../../../../../../components/seller/States";
 import { AdminTopbar } from "../../../_components/AdminShell";
 import { PAYMENT_CHECK, clock, usePoll, type Monitor } from "../../../_components/ops";
@@ -34,7 +34,7 @@ export default function OpsMonitorPage() {
         <PageHead description="서비스 상태와 결제 결과 확인 대기, 자동 작업의 실행 상태를 확인합니다."
           title="실시간 감시"
           actions={
-            <button className="btn btn-out" type="button" onClick={() => void reload()}>
+            <button className="btn btn-out btn-level-secondary" type="button" onClick={() => void reload()}>
               지금 갱신
             </button>
           }
@@ -82,7 +82,7 @@ export default function OpsMonitorPage() {
                 ))}
               </div>
 
-              <section className="card" aria-labelledby="mon-open">
+              <section className="au-list-section" aria-labelledby="mon-open">
                 <div className="row pad-l" style={{ justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                   <h2 className="t-hl1" id="mon-open">
                     문제 목록
@@ -100,7 +100,9 @@ export default function OpsMonitorPage() {
                     <span className="t">{data.incidents.length === 0 ? "모두 정상입니다. 열린 장애가 없습니다." : "조건에 맞는 장애가 없습니다."}</span>
                   </div>
                 ) : (
-                  <div style={{ overflowX: "auto" }}>
+                  <>
+                    <ListHead total={incidents.length} loaded />
+                    <ListTable>
                     <table className="tbl">
                       <thead>
                         <tr>
@@ -123,11 +125,12 @@ export default function OpsMonitorPage() {
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </ListTable>
+                  </>
                 )}
               </section>
 
-              <section className="card" aria-labelledby="mon-actions">
+              <section className="au-list-section" aria-labelledby="mon-actions">
                 <h2 className="t-hl1 pad-l" id="mon-actions">
                   자동 조치 기록
                 </h2>
@@ -138,7 +141,7 @@ export default function OpsMonitorPage() {
                 ) : (
                   <>
                     <ListHead total={data.autoActions.length} />
-                    <div style={{ overflowX: "auto" }}>
+                    <ListTable>
                       <table className="tbl">
                         <thead>
                           <tr>
@@ -157,16 +160,18 @@ export default function OpsMonitorPage() {
                           ))}
                         </tbody>
                       </table>
-                    </div>
+                    </ListTable>
                   </>
                 )}
               </section>
 
-              <section className="card" aria-labelledby="mon-pay">
+              <section className="au-list-section" aria-labelledby="mon-pay">
                 <h2 className="t-hl1 pad-l" id="mon-pay">
                   결제 결과 확인 대기
                 </h2>
-                <div style={{ overflowX: "auto" }}>
+                <>
+                  <ListHead total={data.paymentChecks.length} loaded />
+                  <ListTable>
                   <table className="tbl">
                     <thead>
                       <tr>
@@ -185,10 +190,11 @@ export default function OpsMonitorPage() {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </ListTable>
+                </>
               </section>
 
-              <section className="card" aria-labelledby="mon-jobs">
+              <section className="au-list-section" aria-labelledby="mon-jobs">
                 <h2 className="t-hl1 pad-l" id="mon-jobs">
                   자동으로 도는 작업
                 </h2>
@@ -197,7 +203,9 @@ export default function OpsMonitorPage() {
                     <span className="t">기록된 정기 실행이 없습니다.</span>
                   </div>
                 ) : (
-                  <div style={{ overflowX: "auto" }}>
+                  <>
+                    <ListHead total={data.jobs.length} loaded />
+                    <ListTable>
                     <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                       <thead>
                         <tr>
@@ -224,7 +232,8 @@ export default function OpsMonitorPage() {
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </ListTable>
+                  </>
                 )}
               </section>
             </>

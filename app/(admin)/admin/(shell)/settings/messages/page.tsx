@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
-import { PageHead } from "../../../../../../components/admin-ui";
+import { PageHead, ListTable } from "../../../../../../components/admin-ui";
 import { Modal } from "../../../../../../components/admin-ui/Modal";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { adminApi } from "../../../_components/api";
@@ -104,7 +104,7 @@ export default function MessagePricesPage() {
               <h2 className="t-hl1" id="msg-prices">
                 종류별 1건 요금
               </h2>
-              <div style={{ overflowX: "auto" }}>
+              <ListTable>
                 <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                   <thead>
                     <tr>
@@ -124,7 +124,7 @@ export default function MessagePricesPage() {
                         <td className="num">{p.next ? dayTime(p.next.effectiveAt) : "-"}</td>
                         {canEdit && (
                           <td>
-                            <button className="btn btn-sm btn-out" type="button" onClick={() => setPriceDialog(p)}>
+                            <button className="btn btn-sm btn-out btn-level-table" type="button" onClick={() => setPriceDialog(p)}>
                               요금 변경
                             </button>
                           </td>
@@ -133,7 +133,7 @@ export default function MessagePricesPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </ListTable>
             </section>
 
             <section className="card pad-l col" style={{ gap: 14 }} aria-labelledby="msg-limits">

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { ListHead, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
+import { ListHead, PageHead, SearchBox, SearchRow, ListTable } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { useScrollRestore } from "../../../../../../lib/client/navigation";
 import { adminApi } from "../../../_components/api";
@@ -87,7 +87,7 @@ function PgStatusPageInner() {
         <PageHead description="파트너스별 카드 결제 연결 상태와 오류 내역을 조회합니다."
           title="결제 연결 상태"
           actions={
-            <Link className="btn btn-out" href="/admin/billing/invoices">
+            <Link className="btn btn-out btn-level-secondary" href="/admin/billing/invoices">
               청구 내역
             </Link>
           }
@@ -211,7 +211,7 @@ function PgStatusPageInner() {
               <input className="inp" aria-label="쇼핑몰 이름 또는 주소" placeholder="쇼핑몰 이름" value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
             </SearchRow>
           </SearchBox>
-          <div className="card">
+          <div className="au-list-section">
             {state.kind === "loading" && <LoadingRows rows={5} />}
             {state.kind === "error" && <ErrorState title="결제 연결 상태를 불러오지 못했습니다." onRetry={() => void load(applied)} />}
             {state.kind === "ok" &&
@@ -222,7 +222,7 @@ function PgStatusPageInner() {
               ) : (
                 <>
                   <ListHead total={state.items.length} loaded={state.next !== null} />
-                  <div style={{ overflowX: "auto" }}>
+                  <ListTable>
                     <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                       <thead>
                         <tr>
@@ -250,7 +250,7 @@ function PgStatusPageInner() {
                               {r.cancelsPending || r.cancelsFailed ? `${r.cancelsPending} · ${r.cancelsFailed}` : "— · —"}
                             </td>
                             <td>
-                              <Link className="btn btn-sm btn-out" href={`/admin/partners/${r.seller.id}`}>
+                              <Link className="btn btn-sm btn-out btn-level-table" href={`/admin/partners/${r.seller.id}`}>
                                 상세
                               </Link>
                             </td>
@@ -258,7 +258,7 @@ function PgStatusPageInner() {
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </ListTable>
                   {state.next && (
                     <div className="row" style={{ justifyContent: "center", padding: "12px 16px" }}>
                       <button className="btn btn-sm btn-out" type="button" onClick={() => void loadMore()} disabled={more}>

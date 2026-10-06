@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { PageHead } from "../../../../../components/admin-ui";
+import { PageHead, ListTable, ListHead } from "../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../components/seller/States";
 import { adminApi } from "../../_components/api";
 import { AccountDialog } from "../../_components/AccountDialog";
@@ -41,10 +41,10 @@ export default function AccountsPage() {
           title="관리자 계정"
           actions={
             <>
-              <Link className="btn btn-out" href="/admin/accounts/roles">
+              <Link className="btn btn-out btn-level-secondary" href="/admin/accounts/roles">
                 권한
               </Link>
-              <button className="btn" type="button" onClick={() => setDialog({ account: null })}>
+              <button className="btn btn-level-primary" type="button" onClick={() => setDialog({ account: null })}>
                 계정 추가
               </button>
             </>
@@ -63,12 +63,14 @@ export default function AccountsPage() {
             ))}
           </div>
         )}
-        <div className="card">
+        <div className="au-list-section">
           {state.kind === "loading" && <LoadingRows rows={4} />}
           {state.kind === "error" && <ErrorState title="관리자 계정을 불러오지 못했습니다." onRetry={() => void load()} />}
           {state.kind === "ok" && (
             <>
-              <div style={{ overflowX: "auto" }}>
+              <>
+                <ListHead total={items.length} loaded />
+                <ListTable>
                 <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                   <thead>
                     <tr>
@@ -93,7 +95,7 @@ export default function AccountsPage() {
                         <td className="num">{dayTime(a.lastLoginAt)}</td>
                         <td className="num">{dayTime(a.createdAt)}</td>
                         <td>
-                          <button className="btn btn-sm btn-out" type="button" onClick={() => setDialog({ account: a })}>
+                          <button className="btn btn-sm btn-out btn-level-table" type="button" onClick={() => setDialog({ account: a })}>
                             수정
                           </button>
                         </td>
@@ -101,7 +103,8 @@ export default function AccountsPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </ListTable>
+              </>
               <div className="row" style={{ padding: "12px 16px" }}>
                 <span className="t-c1 c-alt">{items.length}명</span>
               </div>

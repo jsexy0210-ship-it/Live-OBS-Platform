@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ListHead, PageHead } from "../../../../../../components/admin-ui";
+import { ListHead, PageHead, ListTable } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar } from "../../../_components/AdminShell";
@@ -51,7 +51,7 @@ export default function SellerActivityPage() {
     <>
       <AdminTopbar crumb="운영 › 주문 · 오버레이 접속" />
       <main className="main">
-        <PageHead description="파트너스별 주문 수와 방송 화면 접속 상태를 확인합니다." title="주문 · 오버레이 접속" />
+        <PageHead description="파트너스별 주문 수와 방송 화면 접속 상태를 확인합니다." title="주문 · 방송 화면 접속" />
         <div className="col" style={{ gap: 20 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
             {[
@@ -83,7 +83,7 @@ export default function SellerActivityPage() {
             </label>
           </div>
 
-          <div className="card">
+          <div className="au-list-section">
             {state.kind === "loading" && <LoadingRows rows={5} />}
             {state.kind === "error" && <ErrorState title="주문·오버레이 접속 현황을 불러오지 못했습니다." onRetry={() => void load()} />}
             {state.kind === "ok" &&
@@ -94,7 +94,7 @@ export default function SellerActivityPage() {
               ) : (
                 <>
                   <ListHead total={items.length} unit="곳" loaded />
-                  <div style={{ overflowX: "auto" }}>
+                  <ListTable>
                     <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                       <thead>
                         <tr>
@@ -126,7 +126,7 @@ export default function SellerActivityPage() {
                               </td>
                               <td>{dayTime(s.overlay.lastSeenAt)}</td>
                               <td>
-                                <Link className="btn btn-sm btn-out" href={`/admin/partners/${s.sellerId}`}>
+                                <Link className="btn btn-sm btn-out btn-level-table" href={`/admin/partners/${s.sellerId}`}>
                                   상세
                                 </Link>
                               </td>
@@ -135,7 +135,7 @@ export default function SellerActivityPage() {
                         })}
                       </tbody>
                     </table>
-                  </div>
+                  </ListTable>
                   {state.next && (
                     <div className="row" style={{ justifyContent: "center", padding: "12px 16px" }}>
                       <button className="btn btn-sm btn-out" type="button" onClick={() => void loadMore()} disabled={more}>

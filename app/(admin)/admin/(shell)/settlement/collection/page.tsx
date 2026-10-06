@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { PageHead } from "../../../../../../components/admin-ui";
+import { PageHead, ListTable, ListHead } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows } from "../../../../../../components/seller/States";
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar } from "../../../_components/AdminShell";
@@ -113,7 +113,7 @@ function CollectionPageInner() {
         <PageHead description="기간별 구독료 수납 금액과 청구·결제 내역을 확인합니다."
           title="구독료 수납"
           actions={
-            <Link className="btn btn-out" href="/admin/billing/invoices">
+            <Link className="btn btn-out btn-level-secondary" href="/admin/billing/invoices">
               청구 내역
             </Link>
           }
@@ -163,13 +163,15 @@ function CollectionPageInner() {
                     {state.data.range.from === state.data.range.to ? dot(state.data.range.from) : `${dot(state.data.range.from)} ~ ${dot(state.data.range.to)}`}
                   </span>
                 </div>
-                <div className="card">
+                <div className="au-list-section">
                   {state.data.daily.length === 0 ? (
                     <div className="st">
                       <span className="t">수납 데이터가 없습니다 · 첫 청구 후 표시됩니다</span>
                     </div>
                   ) : (
-                    <div style={{ overflowX: "auto" }}>
+                    <>
+                      <ListHead total={state.data.daily.length} loaded />
+                      <ListTable>
                       <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                         <thead>
                           <tr>
@@ -198,7 +200,8 @@ function CollectionPageInner() {
                           ))}
                         </tbody>
                       </table>
-                    </div>
+                    </ListTable>
+                    </>
                   )}
                 </div>
               </div>

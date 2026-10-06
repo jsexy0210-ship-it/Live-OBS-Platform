@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
-import { PageHead, SearchBox, SearchRow, useConfirm } from "../../../../../../components/admin-ui";
+import { PageHead, SearchBox, SearchRow, useConfirm, ListTable, ListHead } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { DatePicker } from "../../../../../../components/admin-ui/DatePicker";
 import { MAX_SEARCH_LENGTH } from "../../../../../../components/seller/format";
@@ -194,11 +194,11 @@ function Invoices() {
           actions={
             <>
               {canRetry && (
-                <button className="btn btn-out" type="button" disabled={retryable.length === 0} title={retryable.length === 0 ? "다시 결제할 수 있는 실패 건이 없습니다" : undefined} onClick={() => void retry()}>
+                <button className="btn btn-out btn-level-secondary" type="button" disabled={retryable.length === 0} title={retryable.length === 0 ? "다시 결제할 수 있는 실패 건이 없습니다" : undefined} onClick={() => void retry()}>
                   실패 건 재시도{retryable.length > 0 ? ` ${retryable.length}` : ""}
                 </button>
               )}
-              <a className="btn btn-out" href={`/api/admin/billing/invoices/export?${params(applied)}`} download>
+              <a className="btn btn-out btn-level-secondary" href={`/api/admin/billing/invoices/export?${params(applied)}`} download>
                 내보내기
               </a>
             </>
@@ -275,7 +275,7 @@ function Invoices() {
               </button>
             </div>
           )}
-          <div className="card">
+          <div className="au-list-section">
             {state.kind === "loading" && <LoadingRows rows={5} />}
             {state.kind === "error" && <ErrorState title="청구 · 결제 내역을 불러오지 못했습니다." onRetry={() => void load()} />}
             {state.kind === "ok" &&
@@ -294,7 +294,9 @@ function Invoices() {
                     <b>불러온 {items.length}건</b>
                     <span className="t-c1 c-alt">(이 기간 {state.data.total}건)</span>
                   </div>
-                  <div style={{ overflowX: "auto" }}>
+                  <>
+                    <ListHead total={items.length} loaded />
+                    <ListTable>
                     <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                       <thead>
                         <tr>
@@ -355,7 +357,7 @@ function Invoices() {
                               </td>
                               <td>
                                 <div className="acts2">
-                                  <Link className="btn btn-sm btn-out" href={detail}>
+                                  <Link className="btn btn-sm btn-out btn-level-table" href={detail}>
                                     상세
                                   </Link>
                                 </div>
@@ -365,7 +367,8 @@ function Invoices() {
                         })}
                       </tbody>
                     </table>
-                  </div>
+                  </ListTable>
+                  </>
                   {(cursors.length > 1 || state.data.nextCursor) && (
                     <div className="row" style={{ gap: 8, justifyContent: "center", padding: 12 }}>
                       <button className="btn btn-sm btn-out" type="button" disabled={cursors.length <= 1} onClick={() => setCursors((c) => c.slice(0, -1))}>

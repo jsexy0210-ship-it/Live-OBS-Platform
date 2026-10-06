@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
 import { formatDateTime } from "../../../../../../lib/client/format";
-import { FormFoot, FormRow, FormSection, PageHead, useConfirm } from "../../../../../../components/admin-ui";
+import { FormFoot, FormRow, FormSection, PageHead, useConfirm, ListTable } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { adminApi, failMessage } from "../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
@@ -186,7 +186,7 @@ export default function PlatformBusinessPage() {
                 >
                   <tr>
                     <td colSpan={2}>
-                      <table className="tbl" data-testid="pb-history">
+                      <ListTable><table className="tbl" data-testid="pb-history">
                         <thead>
                           <tr>
                             <th>일시</th>
@@ -211,7 +211,7 @@ export default function PlatformBusinessPage() {
                             ))
                           )}
                         </tbody>
-                      </table>
+                      </table></ListTable>
                     </td>
                   </tr>
                 </FormSection>

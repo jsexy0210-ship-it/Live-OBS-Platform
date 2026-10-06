@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { PageHead } from "../../../../../../components/admin-ui";
+import { PageHead, ListTable } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows } from "../../../../../../components/seller/States";
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar } from "../../../_components/AdminShell";
@@ -21,7 +21,7 @@ function Changes({ before, after }: { before: unknown; after: unknown }) {
   const keys = [...new Set([...Object.keys(b ?? {}), ...Object.keys(a ?? {})])];
   if (keys.length === 0) return <span className="c-alt">기록된 바뀐 값이 없습니다.</span>;
   return (
-    <div style={{ overflowX: "auto" }}>
+    <ListTable>
       <table className="tbl" data-testid="audit-changes" style={{ whiteSpace: "normal" }}>
         <thead>
           <tr>
@@ -40,7 +40,7 @@ function Changes({ before, after }: { before: unknown; after: unknown }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </ListTable>
   );
 }
 
@@ -77,7 +77,7 @@ export default function AuditDetailPage() {
         <PageHead description="작업 시각, 처리 주체와 변경 내용을 확인합니다."
           title={l ? actionLabel(l.action) : "로그 상세"}
           actions={
-            <button className="btn btn-out" type="button" onClick={back}>로그 추적</button>
+            <button className="btn btn-out btn-level-secondary" type="button" onClick={back}>로그 추적</button>
           }
         />
         {!l ? (

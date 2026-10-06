@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ListHead, PageHead } from "../../../../../../components/admin-ui";
+import { ListHead, PageHead, ListTable } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar } from "../../../_components/AdminShell";
@@ -96,7 +96,7 @@ export default function RefundsPage() {
               </button>
             ))}
           </div>
-          <div className="card">
+          <div className="au-list-section">
             {state.kind === "loading" && <LoadingRows rows={5} />}
             {state.kind === "error" && <ErrorState title="환불 요청을 불러오지 못했습니다." onRetry={() => void load(tab)} />}
             {state.kind === "ok" &&
@@ -107,7 +107,7 @@ export default function RefundsPage() {
               ) : (
                 <>
                   <ListHead total={items.length} loaded={state.next !== null} />
-                  <div style={{ overflowX: "auto" }}>
+                  <ListTable>
                     <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                       <thead>
                         <tr>
@@ -148,7 +148,7 @@ export default function RefundsPage() {
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </ListTable>
                   {state.next && (
                     <div className="row" style={{ justifyContent: "center", padding: "12px 16px" }}>
                       <button className="btn btn-sm btn-out" type="button" onClick={() => void loadMore()} disabled={more}>

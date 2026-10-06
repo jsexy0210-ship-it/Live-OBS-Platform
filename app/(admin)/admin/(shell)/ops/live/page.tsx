@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
-import { ListHead, PageHead } from "../../../../../../components/admin-ui";
+import { ListHead, PageHead, ListTable } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
 import { ImpersonateDialog } from "../../../_components/ImpersonateDialog";
@@ -99,7 +99,7 @@ export default function LiveBroadcastsPage() {
             ))}
           </div>
 
-          <div className="card">
+          <div className="au-list-section">
             {first && <LoadingRows rows={4} />}
             {!first && !data && <ErrorState title="실시간 방송을 불러오지 못했습니다." onRetry={() => void reload()} />}
             {data &&
@@ -128,7 +128,7 @@ export default function LiveBroadcastsPage() {
               ) : (
                 <>
                   <ListHead total={items.length} unit="곳" />
-                  <div style={{ overflowX: "auto" }}>
+                  <ListTable>
                     <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                       <thead>
                         <tr>
@@ -163,7 +163,7 @@ export default function LiveBroadcastsPage() {
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </ListTable>
                 </>
               ))}
           </div>

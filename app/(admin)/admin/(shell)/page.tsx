@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PageHead } from "../../../../components/admin-ui";
+import { PageHead, ListTable, ListHead } from "../../../../components/admin-ui";
 import { ErrorState, LoadingRows } from "../../../../components/seller/States";
 import "../../../../components/seller/stats/stats.css";
 import { BarChart, Kpis, bucketLabel, count, pct, type Kpi } from "../../../../components/seller/stats/parts";
@@ -359,7 +359,9 @@ function PeriodStats({ days, tick }: { days: number; tick: number }) {
               </div>
             </div>
           ) : (
-            <div className="card" style={{ overflowX: "auto" }}>
+            <>
+              <ListHead total={d.rows.length} loaded />
+              <ListTable>
               <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                 <thead>
                   <tr>
@@ -392,7 +394,8 @@ function PeriodStats({ days, tick }: { days: number; tick: number }) {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ListTable>
+            </>
           )
         }
       </Panel>
@@ -447,7 +450,7 @@ export default function AdminHome() {
           actions={
             <>
               {d && <span className="t-l2 c-alt">{dayTime(d.at)} 기준</span>}
-              <button className="btn btn-out" type="button" onClick={() => { setTick((t) => t + 1); void load(); }} disabled={state.kind === "loading"}>
+              <button className="btn btn-out btn-level-secondary" type="button" onClick={() => { setTick((t) => t + 1); void load(); }} disabled={state.kind === "loading"}>
                 새로 고침
               </button>
             </>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PageHead } from "../../../../../../components/admin-ui";
+import { PageHead, ListTable, ListHead } from "../../../../../../components/admin-ui";
 import { Modal } from "../../../../../../components/admin-ui/Modal";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
@@ -112,10 +112,10 @@ export default function VendorsPage() {
           actions={
             canEdit && board ? (
               <>
-                <button className="btn btn-out" type="button" onClick={() => open({ kind: "weights" })}>
+                <button className="btn btn-out btn-level-secondary" type="button" onClick={() => open({ kind: "weights" })}>
                   점수 비중 바꾸기
                 </button>
-                <button className="btn" type="button" onClick={() => open({ kind: "form", vendor: null })}>
+                <button className="btn btn-level-primary" type="button" onClick={() => open({ kind: "form", vendor: null })}>
                   업체 등록
                 </button>
               </>
@@ -219,7 +219,9 @@ export default function VendorsPage() {
           )}
           {canEdit && <p className="c-alt t-l2">로고 파일: PNG, 용량 256KB 이하, 가로·세로 16~600 사이. 업체가 공식으로 배포한 로고만 올려 주십시오. 로고가 없으면 업체 이름 첫 글자가 보입니다.</p>}
           {board && shown.length > 0 && compare && (
-            <div className="card" style={{ overflowX: "auto" }}>
+            <>
+              <ListHead total={shown.length} loaded />
+              <ListTable>
               <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                 <thead>
                   <tr>
@@ -252,7 +254,8 @@ export default function VendorsPage() {
                   </tr>
                 </tbody>
               </table>
-            </div>
+            </ListTable>
+            </>
           )}
         </div>
         <input ref={fileRef} type="file" accept=".png,image/png" hidden onChange={(e) => { void pickLogo(e.target.files?.[0]); e.target.value = ""; }} aria-label="로고 파일" />

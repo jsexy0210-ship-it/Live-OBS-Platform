@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PageHead } from "../../../../../components/admin-ui";
+import { PageHead, ListTable, ListHead } from "../../../../../components/admin-ui";
 import { ErrorState, LoadingRows } from "../../../../../components/seller/States";
 import { adminApi } from "../../_components/api";
 import { AdminTopbar } from "../../_components/AdminShell";
@@ -35,12 +35,12 @@ export default function AdminNotificationsPage() {
         <PageHead description="결제 연결 오류와 운영 알림을 확인하고 해당 항목으로 이동합니다."
           title="알림 센터"
           actions={
-            <button className="btn btn-out" type="button" onClick={() => void load()} disabled={state.kind === "loading"}>
+            <button className="btn btn-out btn-level-secondary" type="button" onClick={() => void load()} disabled={state.kind === "loading"}>
               새로 고침
             </button>
           }
         />
-        <div className="card">
+        <div className="au-list-section">
           {state.kind === "loading" && <LoadingRows rows={4} />}
           {state.kind === "error" && <ErrorState title="알림을 불러오지 못했습니다." onRetry={() => void load()} />}
           {d &&
@@ -56,7 +56,9 @@ export default function AdminNotificationsPage() {
                   {d.unreadCount > d.items.length && <Link href="/admin/support/inquiries?status=OPEN">파트너스 문의</Link>}
                   {d.unreadCount > d.items.length && "에서 확인해 주십시오."}
                 </div>
-                <div style={{ overflowX: "auto" }}>
+                <>
+                  <ListHead total={d.items.length} loaded />
+                  <ListTable>
                   <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                     <thead>
                       <tr>
@@ -73,7 +75,7 @@ export default function AdminNotificationsPage() {
                           <td className="col-text">{n.title}</td>
                           <td>{dayTime(n.createdAt)}</td>
                           <td>
-                            <Link className="btn btn-sm btn-out" href={n.href}>
+                            <Link className="btn btn-sm btn-out btn-level-table" href={n.href}>
                               답변
                             </Link>
                           </td>
@@ -81,7 +83,8 @@ export default function AdminNotificationsPage() {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </ListTable>
+                </>
               </>
             ))}
         </div>

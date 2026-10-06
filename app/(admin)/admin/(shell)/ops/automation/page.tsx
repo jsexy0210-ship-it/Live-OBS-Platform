@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
-import { PageHead } from "../../../../../../components/admin-ui";
+import { PageHead, ListTable, ListHead } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows } from "../../../../../../components/seller/States";
 import { useUrlState } from "../../../../../../lib/client/navigation";
 import { adminApi } from "../../../_components/api";
@@ -52,7 +52,7 @@ function AutomationJobsPageInner() {
     <>
       <AdminTopbar crumb="운영 › 자동 연결 작업" />
       <main className="main">
-        <PageHead description="자동 연결 작업의 진행 상태와 실패 내역을 조회합니다." title="자동 연결 작업" actions={<button className="btn btn-out" type="button" onClick={() => setTick((n) => n + 1)}>새로 고침</button>} />
+        <PageHead description="자동 연결 작업의 진행 상태와 실패 내역을 조회합니다." title="자동 연결 작업" actions={<button className="btn btn-out btn-level-secondary" type="button" onClick={() => setTick((n) => n + 1)}>새로 고침</button>} />
         <div className="col" style={{ gap: 16 }}>
           {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
           {state.kind === "error" && <div className="card"><ErrorState title="불러오지 못했습니다. 네트워크를 확인한 뒤 다시 시도해 주십시오." onRetry={() => setTick((n) => n + 1)} /></div>}
@@ -83,11 +83,13 @@ function AutomationJobsPageInner() {
                   <button key={f} type="button" className={`btn btn-sm ${filter === f ? "" : "btn-out"}`} aria-pressed={filter === f} onClick={() => setFilter(f)}>{label}</button>
                 ))}
               </span>
-              <section className="card">
+              <section className="au-list-section">
                 {d.jobs.length === 0 ? (
                   <div className="st"><span className="t">{filter === "all" ? "진행 중인 자동 연결이 없습니다." : "조건에 맞는 작업이 없습니다."}</span></div>
                 ) : (
-                  <div style={{ overflowX: "auto" }}>
+                  <>
+                    <ListHead total={d.jobs.length} loaded />
+                    <ListTable>
                     <table className="tbl">
                       <thead><tr><th>파트너스</th><th>외부 쇼핑몰</th><th>결제</th><th>작업 상태</th><th>시작</th><th>관리</th></tr></thead>
                       <tbody>
@@ -101,13 +103,14 @@ function AutomationJobsPageInner() {
                               <td>{p ? <span className={`bdg ${p.cls}`}>{p.label}</span> : "—"}</td>
                               <td><span className={`bdg ${s.cls}`}>{s.label}</span></td>
                               <td>{dayTime(j.startedAt ?? j.createdAt)}</td>
-                              <td><Link className="btn btn-sm btn-out" href={`/admin/ops/automation/${j.id}`}>상세</Link></td>
+                              <td><Link className="btn btn-sm btn-out btn-level-table" href={`/admin/ops/automation/${j.id}`}>상세</Link></td>
                             </tr>
                           );
                         })}
                       </tbody>
                     </table>
-                  </div>
+                  </ListTable>
+                  </>
                 )}
               </section>
               <span className="t-c1 c-alt">결제가 확인되어야 작업을 시작합니다.</span>

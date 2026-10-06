@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { ListHead, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
+import { ListHead, PageHead, SearchBox, SearchRow, ListTable } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { useScrollRestore } from "../../../../../../lib/client/navigation";
 import { adminApi } from "../../../_components/api";
@@ -116,7 +116,7 @@ function Inquiries() {
               </Link>
             </div>
           )}
-          <div className="card">
+          <div className="au-list-section">
             {state.kind === "loading" && <LoadingRows rows={5} />}
             {state.kind === "error" && <ErrorState title="파트너스 문의를 불러오지 못했습니다." onRetry={() => void load()} />}
             {state.kind === "ok" &&
@@ -127,7 +127,7 @@ function Inquiries() {
               ) : (
                 <>
                   <ListHead total={items.length} loaded={state.next !== null} />
-                  <div style={{ overflowX: "auto" }}>
+                  <ListTable>
                     <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                       <thead>
                         <tr>
@@ -158,7 +158,7 @@ function Inquiries() {
                               <span className={`bdg ${INQUIRY_STATUS[r.status].cls}`}>{INQUIRY_STATUS[r.status].label}</span>
                             </td>
                             <td>
-                              <Link className="btn btn-sm btn-out" href={`/admin/support/inquiries/${r.id}`}>
+                              <Link className="btn btn-sm btn-out btn-level-table" href={`/admin/support/inquiries/${r.id}`}>
                                 {r.status === "CLOSED" ? "보기" : "답변"}
                               </Link>
                             </td>
@@ -166,7 +166,7 @@ function Inquiries() {
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </ListTable>
                   {state.next && (
                     <div className="row" style={{ justifyContent: "center", padding: "12px 16px" }}>
                       <button className="btn btn-sm btn-out" type="button" onClick={() => void loadMore()} disabled={more}>

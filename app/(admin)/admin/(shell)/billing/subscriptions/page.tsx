@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
+import { PageHead, SearchBox, SearchRow, ListTable, ListHead } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { MAX_SEARCH_LENGTH } from "../../../../../../components/seller/format";
 import { adminApi } from "../../../_components/api";
@@ -131,7 +131,7 @@ export default function SubscriptionsPage() {
           </SearchRow>
         </SearchBox>
 
-        <div className="card">
+        <div className="au-list-section">
           {state.kind === "loading" && <LoadingRows rows={5} />}
           {state.kind === "error" && <ErrorState title="구독 현황을 불러오지 못했습니다." onRetry={() => void load(applied)} />}
           {state.kind === "ok" &&
@@ -146,7 +146,9 @@ export default function SubscriptionsPage() {
               </div>
             ) : (
               <>
-                <div style={{ overflowX: "auto" }}>
+                <>
+                  <ListHead total={items.length} loaded />
+                  <ListTable>
                   <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                     <thead>
                       <tr>
@@ -186,7 +188,8 @@ export default function SubscriptionsPage() {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </ListTable>
+                </>
                 <div className="row" style={{ justifyContent: "space-between", padding: "12px 16px" }}>
                   <span className="t-c1 c-alt">{state.next ? `${items.length}곳 넘게` : `${items.length}곳`}</span>
                   {state.next && (

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
-import { PageHead, useConfirm } from "../../../../../../components/admin-ui";
+import { PageHead, useConfirm, ListTable, ListHead } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
@@ -82,7 +82,7 @@ export default function AssistantDocsPage() {
       <main className="main">
         <PageHead description="도우미 답변에 사용하는 자료와 답하지 못한 질문을 확인합니다." title="도우미 답변 자료" />
         <div className="col" style={{ gap: 20 }}>
-          <section className="card pad-l col" style={{ gap: 14 }} aria-labelledby="ast-docs">
+          <section className="au-list-section" style={{ gap: 14 }} aria-labelledby="ast-docs">
             <div className="row" style={{ justifyContent: "space-between" }}>
               <h2 className="t-hl1" id="ast-docs">
                 자료
@@ -112,7 +112,9 @@ export default function AssistantDocsPage() {
             {docs === "loading" ? <LoadingRows rows={3} /> : docs === "error" ? <ErrorState title="자료를 불러오지 못했습니다." onRetry={() => void loadDocs()} /> : docs.length === 0 ? (
               <div className="st"><span className="t">등록한 자료가 없습니다.</span></div>
             ) : (
-              <table className="tbl">
+              <>
+                <ListHead total={docs.length} loaded />
+                <ListTable><table className="tbl">
                 <thead><tr><th>제목</th><th>상태</th><th>수정일</th>{canEdit && <th>작업</th>}</tr></thead>
                 <tbody>
                   {docs.map((d) => (
@@ -122,18 +124,19 @@ export default function AssistantDocsPage() {
                       <td className="num">{dayTime(d.updatedAt)}</td>
                       {canEdit && (
                         <td className="row" style={{ gap: 6 }}>
-                          <button className="btn btn-sm btn-out" type="button" onClick={() => { setError(null); setDraft({ id: d.id, title: d.title, body: d.body, published: d.published, version: d.version }); }}>수정</button>
-                          <button className="btn btn-sm btn-out" type="button" onClick={() => void remove(d)}>삭제</button>
+                          <button className="btn btn-sm btn-out btn-level-table" type="button" onClick={() => { setError(null); setDraft({ id: d.id, title: d.title, body: d.body, published: d.published, version: d.version }); }}>수정</button>
+                          <button className="btn btn-sm btn-out btn-level-table" type="button" onClick={() => void remove(d)}>삭제</button>
                         </td>
                       )}
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></ListTable>
+              </>
             )}
           </section>
 
-          <section className="card pad-l col" style={{ gap: 14 }} aria-labelledby="ast-qs">
+          <section className="au-list-section" style={{ gap: 14 }} aria-labelledby="ast-qs">
             <div className="row" style={{ justifyContent: "space-between" }}>
               <h2 className="t-hl1" id="ast-qs">질문 기록</h2>
               <label className="chk">
@@ -145,7 +148,9 @@ export default function AssistantDocsPage() {
               <div className="st"><span className="t">질문이 없습니다.</span></div>
             ) : (
               <>
-                <table className="tbl">
+                <>
+                  <ListHead total={qs.items.length} loaded />
+                  <ListTable><table className="tbl">
                   <thead><tr><th>질문</th><th>결과</th><th>시각</th></tr></thead>
                   <tbody>
                     {qs.items.map((q) => (
@@ -156,7 +161,8 @@ export default function AssistantDocsPage() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </table></ListTable>
+                </>
                 {qs.next && <button className="btn btn-out" type="button" onClick={() => void loadQs(qs.next!)}>더 보기</button>}
               </>
             )}

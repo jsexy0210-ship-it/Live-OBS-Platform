@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
-import { PageHead } from "../../../../../../components/admin-ui";
+import { PageHead, ListTable, ListHead } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
@@ -39,7 +39,7 @@ export default function PlansPage() {
       <AdminTopbar crumb="구독·요금 › 요금제" />
       <main className="main">
         <PageHead description="요금제 가격과 체험 한도, 월 무료 메일 수량을 확인합니다." title="요금제" />
-        <div className="card">
+        <div className="au-list-section">
           {state.kind === "loading" && <LoadingRows rows={3} />}
           {state.kind === "error" && <ErrorState title="요금제를 불러오지 못했습니다." onRetry={() => void load()} />}
           {state.kind === "ok" &&
@@ -48,7 +48,9 @@ export default function PlansPage() {
                 <span className="t">등록된 요금제가 없습니다.</span>
               </div>
             ) : (
-              <div style={{ overflowX: "auto" }}>
+              <>
+                <ListHead total={state.plans.length} loaded />
+                <ListTable>
                 <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                   <thead>
                     <tr>
@@ -82,17 +84,17 @@ export default function PlansPage() {
                           <td>
                             <div className="row" style={{ gap: 8 }}>
                               {canEdit && (
-                                <button className="btn btn-sm btn-out" type="button" onClick={() => setDialog({ kind: "price", plan: p })}>
+                                <button className="btn btn-sm btn-out btn-level-table btn-w-xl" type="button" onClick={() => setDialog({ kind: "price", plan: p })}>
                                   가격 변경
                                 </button>
                               )}
                               {canTrial && (
-                                <button className="btn btn-sm btn-out" type="button" onClick={() => setDialog({ kind: "trial", plan: p })}>
+                                <button className="btn btn-sm btn-out btn-level-table btn-w-xl" type="button" onClick={() => setDialog({ kind: "trial", plan: p })}>
                                   체험 한도 변경
                                 </button>
                               )}
                               {canEdit && (
-                                <button className="btn btn-sm btn-out" type="button" onClick={() => setDialog({ kind: "quota", plan: p })}>
+                                <button className="btn btn-sm btn-out btn-level-table btn-w-xl" type="button" onClick={() => setDialog({ kind: "quota", plan: p })}>
                                   월 무료 메일 수량 변경
                                 </button>
                               )}
@@ -103,7 +105,8 @@ export default function PlansPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </ListTable>
+              </>
             ))}
         </div>
         <p className="t-c1 c-alt">무료 수량은 한 달 단위(한국 시간)이며 남아도 다음 달로 넘어가지 않습니다. 무료 수량을 넘는 메일은 파트너스의 충전 잔액에서 빠집니다.</p>

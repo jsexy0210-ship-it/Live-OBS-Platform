@@ -1,5 +1,7 @@
 "use client";
 
+import { ListTable, ListHead } from "../../../../components/admin-ui";
+
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { adminCan } from "../../../../lib/server/authz/permissions";
@@ -69,7 +71,7 @@ export function PartnerBroadcasts({ sellerId }: { sellerId: string }) {
   };
 
   return (
-    <section className="card pad-l col" style={{ gap: 14 }} aria-label="방송 이력" data-testid="tab-broadcasts">
+    <section className="au-list-section" style={{ gap: 14 }} aria-label="방송 이력" data-testid="tab-broadcasts">
       <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <DatePicker aria-label="방송 시작일 부터" value={draft.from} onChange={(v) => setDraft({ ...draft, from: v })} />
         <span aria-hidden="true">~</span>
@@ -95,7 +97,9 @@ export function PartnerBroadcasts({ sellerId }: { sellerId: string }) {
           </div>
         ) : (
           <>
-            <div style={{ overflowX: "auto" }}>
+            <>
+              <ListHead total={state.items.length} loaded />
+              <ListTable>
               <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                 <thead>
                   <tr>
@@ -130,7 +134,8 @@ export function PartnerBroadcasts({ sellerId }: { sellerId: string }) {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ListTable>
+            </>
             {state.next && (
               <div className="row" style={{ justifyContent: "center" }}>
                 <button className="btn btn-sm btn-out" type="button" onClick={() => void loadMore()} disabled={more}>

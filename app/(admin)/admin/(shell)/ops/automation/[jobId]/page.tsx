@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { PageHead, useConfirm } from "../../../../../../../components/admin-ui";
+import { PageHead, useConfirm, ListTable, ListHead } from "../../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../../components/seller/States";
 import { STEP_LABEL } from "../../../../../../../components/seller/automation/common";
 import { adminApi, failMessage } from "../../../../_components/api";
@@ -93,7 +93,7 @@ export default function AutomationJobDetailPage() {
     <>
       <AdminTopbar crumb={crumb} />
       <main className="main">
-        <PageHead description="자동 연결 작업의 단계별 진행과 실행 기록을 확인합니다." title={`자동 연결 작업 상세 · ${d.shopName}`} actions={<button className="btn btn-out" type="button" onClick={back}>목록</button>} />
+        <PageHead description="자동 연결 작업의 단계별 진행과 실행 기록을 확인합니다." title={`자동 연결 작업 상세 · ${d.shopName}`} actions={<button className="btn btn-out btn-level-secondary" type="button" onClick={back}>목록</button>} />
         <div className="col" style={{ gap: 16 }}>
           <div className="card pad col" style={{ gap: 4 }}>
             <span><b>{d.shopName}</b> · {KIND[d.kind] ?? d.kind} <span className={`bdg ${s.cls}`} data-testid="detail-status">{s.label}</span></span>
@@ -109,16 +109,19 @@ export default function AutomationJobDetailPage() {
             </section>
           )}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
-            <section className="card">
+            <section className="au-list-section">
               <h2 className="t-hl1 pad-l">진행 기록</h2>
-              <table className="tbl">
+              <>
+                <ListHead total={d.events.length} loaded />
+                <ListTable><table className="tbl">
                 <thead><tr><th>시각</th><th>바뀌기 전</th><th>바뀐 뒤</th></tr></thead>
                 <tbody>
                   {d.events.map((e) => (
                     <tr key={e.id}><td>{dayTime(e.at)}</td><td>{label(e.from)}</td><td>{label(e.to)}</td></tr>
                   ))}
                 </tbody>
-              </table>
+              </table></ListTable>
+              </>
             </section>
             <section className="card pad col" style={{ gap: 6 }}>
               <h2 className="t-hl1">지금 단계 · 결제 · 비용</h2>

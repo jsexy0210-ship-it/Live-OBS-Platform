@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { adminCan } from "../../../../../lib/server/authz/permissions";
-import { DateRangePicker, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
+import { DateRangePicker, PageHead, SearchBox, SearchRow, ListTable } from "../../../../../components/admin-ui";
 import { ListHead, Pagination } from "../../../../../components/admin-ui/ListTable";
 import { ErrorState, LoadingRows, Toast } from "../../../../../components/seller/States";
 import { MAX_SEARCH_LENGTH } from "../../../../../components/seller/format";
@@ -140,10 +140,10 @@ function PartnerList() {
           title="파트너스 목록"
           actions={
             <>
-              <Link className="btn btn-out" href="/admin/partners/applications">
+              <Link className="btn btn-out btn-level-secondary" href="/admin/partners/applications">
                 가입 신청{sum && sum.pendingApplications > 0 ? ` ${sum.pendingApplications}` : ""}
               </Link>
-              <a className="btn btn-out" href={`/api/admin/sellers/export?${params(applied, false)}`} download>
+              <a className="btn btn-out btn-level-secondary" href={`/api/admin/sellers/export?${params(applied, false)}`} download>
                 엑셀 내려받기
               </a>
             </>
@@ -232,7 +232,7 @@ function PartnerList() {
           </SearchRow>
         </SearchBox>
 
-        <div className="card">
+        <div className="au-list-section">
           {state.kind === "loading" && <LoadingRows rows={5} />}
           {state.kind === "error" && <ErrorState title="파트너스 목록을 불러오지 못했습니다." onRetry={() => void load(applied)} />}
           {data &&
@@ -265,7 +265,7 @@ function PartnerList() {
                     </span>
                   }
                 />
-                <div style={{ overflowX: "auto" }}>
+                <ListTable>
                   <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                     <thead>
                       <tr>
@@ -308,12 +308,12 @@ function PartnerList() {
                             <td>{ago(s.lastActivityAt)}</td>
                             <td>
                               <span className="row" style={{ gap: 6, justifyContent: "center" }}>
-                                <Link className="btn btn-sm btn-out" href={`/admin/partners/${s.id}`}>
+                                <Link className="btn btn-sm btn-out btn-level-table" href={`/admin/partners/${s.id}`}>
                                   상세
                                 </Link>
                                 {canImpersonate && s.status === "ACTIVE" && (
-                                  <button className="btn btn-sm btn-out" type="button" onClick={() => setViewing(s)}>
-                                    이 파트너스 화면 대신 보기
+                                  <button className="btn btn-sm btn-out btn-level-table" type="button" onClick={() => setViewing(s)}>
+                                    대신 보기
                                   </button>
                                 )}
                               </span>
@@ -323,7 +323,7 @@ function PartnerList() {
                       })}
                     </tbody>
                   </table>
-                </div>
+                </ListTable>
                 <Pagination page={page} pageCount={Math.max(1, Math.ceil(data.total / limit))} onChange={(n) => go({ page: String(n) })} />
               </>
             ))}

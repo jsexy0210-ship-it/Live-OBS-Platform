@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { PageHead } from "../../../../../../components/admin-ui";
+import { PageHead, ListTable, ListHead } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows } from "../../../../../../components/seller/States";
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar } from "../../../_components/AdminShell";
@@ -24,11 +24,13 @@ export default function RolesPage() {
       <AdminTopbar crumb="관리자 › 역할별로 할 수 있는 일" />
       <main className="main">
         <PageHead description="각 관리자 역할이 조회하거나 처리할 수 있는 일을 확인합니다." title="역할별로 할 수 있는 일" />
-        <div className="card">
+        <div className="au-list-section">
           {state.kind === "loading" && <LoadingRows rows={5} />}
           {state.kind === "error" && <ErrorState title="역할별로 할 수 있는 일을 불러오지 못했습니다." onRetry={() => void load()} />}
           {state.kind === "ok" && (
-            <div style={{ overflowX: "auto" }}>
+            <>
+              <ListHead total={state.table.permissions.length} loaded />
+              <ListTable>
               <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                 <thead>
                   <tr>
@@ -49,7 +51,8 @@ export default function RolesPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ListTable>
+            </>
           )}
         </div>
       </main>

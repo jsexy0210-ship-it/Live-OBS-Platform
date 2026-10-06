@@ -108,11 +108,11 @@ function PartnerDetail() {
           title={`파트너스 상세 · ${PARTNER_TABS.find(([k]) => k === tab)?.[1] ?? "기본정보"}`}
           actions={
             <>
-              <button className="btn btn-out" type="button" onClick={back}>
+              <button className="btn btn-out btn-level-secondary" type="button" onClick={back}>
                 목록
               </button>
               {tab === "subscription" && (
-                <Link className="btn btn-out" href="/admin/billing/subscriptions">
+                <Link className="btn btn-out btn-level-secondary" href="/admin/billing/subscriptions">
                   구독 현황
                 </Link>
               )}

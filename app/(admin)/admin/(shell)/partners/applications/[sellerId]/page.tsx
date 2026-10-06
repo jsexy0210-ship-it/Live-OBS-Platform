@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { adminCan } from "../../../../../../../lib/server/authz/permissions";
-import { PageHead } from "../../../../../../../components/admin-ui";
+import { PageHead, ListTable } from "../../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../../components/seller/States";
 import { adminApi, failMessage } from "../../../../_components/api";
 import { formatDateTime } from "../../../../../../../lib/client/format";
@@ -143,31 +143,31 @@ export default function ApplicationDetailPage() {
             <>
               {s && canModerate && pending && (
                 <>
-                  <button className="btn btn-out" type="button" onClick={() => setSupplement(true)} disabled={approving}>
+                  <button className="btn btn-out btn-level-secondary" type="button" onClick={() => setSupplement(true)} disabled={approving}>
                     보완 요청
                   </button>
-                  <button className="btn btn-out" type="button" onClick={() => setReject(true)} disabled={approving}>
+                  <button className="btn btn-out btn-level-secondary" type="button" onClick={() => setReject(true)} disabled={approving}>
                     반려
                   </button>
-                  <button className="btn" type="button" onClick={() => void approve()} disabled={approving}>
+                  <button className="btn btn-level-primary" type="button" onClick={() => void approve()} disabled={approving}>
                     {approving ? "처리 중" : "승인"}
                   </button>
                 </>
               )}
               {pos >= 0 && queue.length > 1 && (
                 <span className="row" style={{ gap: 4, alignItems: "center" }} data-testid="application-nav">
-                  <button className="btn btn-out" type="button" onClick={() => go(queue[pos - 1])} disabled={pos === 0}>
+                  <button className="btn btn-out btn-level-secondary" type="button" onClick={() => go(queue[pos - 1])} disabled={pos === 0}>
                     이전
                   </button>
                   <span className="t-l2 c-alt">
                     {pos + 1} / {queue.length}
                   </span>
-                  <button className="btn btn-out" type="button" onClick={() => go(queue[pos + 1])} disabled={pos === queue.length - 1}>
+                  <button className="btn btn-out btn-level-secondary" type="button" onClick={() => go(queue[pos + 1])} disabled={pos === queue.length - 1}>
                     다음
                   </button>
                 </span>
               )}
-              <button className="btn btn-out" type="button" onClick={back}>가입 신청 목록</button>
+              <button className="btn btn-out btn-level-secondary" type="button" onClick={back}>가입 신청 목록</button>
             </>
           }
         />
@@ -242,7 +242,7 @@ export default function ApplicationDetailPage() {
                     <h2 className="t-hl1" id="application-checks">
                       자동으로 확인한 결과
                     </h2>
-                    <table className="tbl" aria-label="자동으로 확인한 결과">
+                    <ListTable><table className="tbl" aria-label="자동으로 확인한 결과">
                       <thead>
                         <tr>
                           <th>항목</th>
@@ -259,7 +259,7 @@ export default function ApplicationDetailPage() {
                           </tr>
                         ))}
                       </tbody>
-                    </table>
+                    </table></ListTable>
                     <span className="t-c1 c-alt">{state.app.checkedAt ? `외부 조회 ${formatDateTime(state.app.checkedAt)}` : "외부 조회를 아직 하지 않았습니다"}</span>
                   </section>
                 )}

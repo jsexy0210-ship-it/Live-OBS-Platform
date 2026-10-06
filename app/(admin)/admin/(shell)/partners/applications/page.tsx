@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
-import { PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
+import { PageHead, SearchBox, SearchRow, ListTable, ListHead } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { MAX_SEARCH_LENGTH } from "../../../../../../components/seller/format";
 import { useScrollRestore } from "../../../../../../lib/client/navigation";
@@ -144,7 +144,7 @@ function ReviewPanel({ row, pos, total, busy, canModerate, onNav, onClose, onApp
           </ul>
           <span className="t-l2 c-alt">보완 요청하거나, 확인됐으면 승인해 주십시오.</span>
         </div>
-        <table className="tbl" aria-label="자동으로 확인한 결과">
+        <ListTable><table className="tbl" aria-label="자동으로 확인한 결과">
           <thead>
             <tr>
               <th>자동으로 확인한 결과</th>
@@ -161,7 +161,7 @@ function ReviewPanel({ row, pos, total, busy, canModerate, onNav, onClose, onApp
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></ListTable>
         <span className="t-c1 c-alt" data-testid="review-checked-at">
           {row.checkedAt ? `외부 조회 ${formatDateTime(row.checkedAt)}` : "외부 조회를 아직 하지 않았습니다 · 「국세청 다시 조회」로 확인해 주십시오"}
         </span>
@@ -453,19 +453,19 @@ function Applications() {
             </SearchRow>
           </SearchBox>
           <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
-          <div className="card" style={{ flex: "1 1 560px", minWidth: 0 }}>
+          <div className="au-list-section" style={{ flex: "1 1 560px", minWidth: 0 }}>
             {canModerate && picked.size > 0 && (
               <div className="row" style={{ gap: 8, padding: "8px 12px", background: "var(--info-bg)" }} data-testid="bulk-bar">
                 <b>{picked.size}개 선택</b>
                 <span className="t-c1 c-alt">이상 없는 신청만 일괄 승인 대상입니다. 확인 필요 · 보완 요청 건은 체크할 수 없습니다.</span>
                 <span className="row" style={{ marginLeft: "auto", gap: 8 }}>
-                  <button className="btn btn-sm" type="button" onClick={() => void bulkApprove()}>
+                  <button className="btn btn-sm btn-level-bulk" type="button" onClick={() => void bulkApprove()}>
                     선택 승인
                   </button>
-                  <button className="btn btn-sm btn-out" type="button" onClick={() => setBulkRejecting(true)}>
+                  <button className="btn btn-sm btn-out btn-level-bulk" type="button" onClick={() => setBulkRejecting(true)}>
                     선택 반려
                   </button>
-                  <button className="btn btn-sm btn-out" type="button" onClick={() => setPicked(new Set())}>
+                  <button className="btn btn-sm btn-out btn-level-bulk" type="button" onClick={() => setPicked(new Set())}>
                     선택 해제
                   </button>
                 </span>
@@ -479,7 +479,9 @@ function Applications() {
                   <span className="t">{tab === "all" && !applied.q && !applied.industry && !applied.receivedFrom && !applied.receivedTo ? "처리할 가입 신청이 없습니다." : "조건에 맞는 가입 신청이 없습니다."}</span>
                 </div>
               ) : (
-                <div style={{ overflowX: "auto" }}>
+                <>
+                  <ListHead total={rows.length} loaded />
+                  <ListTable>
                   <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                     <thead>
                       <tr>
@@ -498,7 +500,7 @@ function Applications() {
                         <th>사업자</th>
                         <th>업종</th>
                         <th>
-                          <button type="button" className="btn btn-sm btn-out" onClick={() => setFilter({ sort: applied.sort === "newest" ? "oldest" : "newest" })} aria-label="신청일 정렬 바꾸기">
+                          <button type="button" className="btn btn-sm btn-out btn-level-table" onClick={() => setFilter({ sort: applied.sort === "newest" ? "oldest" : "newest" })} aria-label="신청일 정렬 바꾸기">
                             신청일 · 경과 {applied.sort === "newest" ? "↓" : "↑"}
                           </button>
                         </th>
@@ -570,12 +572,12 @@ function Applications() {
                                 {r.done ? (
                                   <>
                                     {canUndo && canModerate && (
-                                      <button className="btn btn-sm btn-out" type="button" onClick={() => void undo(r)} disabled={working}>
+                                      <button className="btn btn-sm btn-out btn-level-table" type="button" onClick={() => void undo(r)} disabled={working}>
                                         되돌리기 ({Math.max(0, Math.ceil((r.undoUntil! - now) / 1000))}초)
                                       </button>
                                     )}
                                     {r.done === "approved" && (
-                                      <Link className="btn btn-sm btn-out" href={`/admin/partners/${r.id}`}>
+                                      <Link className="btn btn-sm btn-out btn-level-table" href={`/admin/partners/${r.id}`}>
                                         파트너스
                                       </Link>
                                     )}
@@ -584,25 +586,25 @@ function Applications() {
                                   <>
                                     {canModerate && r.state === "CLEAR" && (
                                       <>
-                                        <button className="btn btn-sm" type="button" onClick={() => void approve(r)} disabled={working}>
+                                        <button className="btn btn-sm btn-level-table" type="button" onClick={() => void approve(r)} disabled={working}>
                                           {working ? "처리 중" : "승인"}
                                         </button>
-                                        <button className="btn btn-sm btn-out" type="button" onClick={() => setRejecting(r)} disabled={working}>
+                                        <button className="btn btn-sm btn-out btn-level-table" type="button" onClick={() => setRejecting(r)} disabled={working}>
                                           반려
                                         </button>
                                       </>
                                     )}
                                     {canModerate && r.state === "REVIEW" && (
-                                      <button className="btn btn-sm" type="button" onClick={() => setReviewId(r.id)} disabled={working}>
+                                      <button className="btn btn-sm btn-level-table" type="button" onClick={() => setReviewId(r.id)} disabled={working}>
                                         확인할 내용 보기
                                       </button>
                                     )}
                                     {canModerate && r.state === "SUPPLEMENT" && (
-                                      <button className="btn btn-sm btn-out" type="button" onClick={() => void remind(r)} disabled={working || (r.supplement?.reminderCount ?? 0) >= 3}>
+                                      <button className="btn btn-sm btn-out btn-level-table" type="button" onClick={() => void remind(r)} disabled={working || (r.supplement?.reminderCount ?? 0) >= 3}>
                                         재촉 메일
                                       </button>
                                     )}
-                                    <Link className="btn btn-sm btn-out" href={`/admin/partners/applications/${r.id}`}>
+                                    <Link className="btn btn-sm btn-out btn-level-table" href={`/admin/partners/applications/${r.id}`}>
                                       상세
                                     </Link>
                                   </>
@@ -614,7 +616,8 @@ function Applications() {
                       })}
                     </tbody>
                   </table>
-                </div>
+                </ListTable>
+                </>
               ))}
             {state.kind === "ok" && (cursors.length > 1 || data?.nextCursor) && (
               <div className="row" style={{ gap: 8, justifyContent: "center", padding: 12 }}>
