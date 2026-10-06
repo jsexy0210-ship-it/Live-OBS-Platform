@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ListHead, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { useScrollRestore } from "../../../../../lib/client/navigation";
-import { listDefaults } from "../../../../../lib/client/filterDefaults";
+import { effectiveRange, listDefaults, type PeriodFilter } from "../../../../../lib/client/filterDefaults";
 import { useListFilters } from "../../../../(admin)/admin/_components/useListFilters";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
@@ -21,12 +21,13 @@ import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
 type Item = { id: string; title: string | null; status: "live" | "ended"; startedAt: string; endedAt: string | null; summary: BroadcastSummary };
 type Page = { items: Item[]; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error"; status: number; error: string } | { kind: "ok"; items: Item[]; next: string | null };
-type Filter = { from: string; to: string };
+type Filter = PeriodFilter;
 
 const query = (f: Filter, cursor?: string | null) => {
   const q = new URLSearchParams();
-  if (f.from) q.set("from", f.from);
-  if (f.to) q.set("to", f.to);
+  const { from, to } = effectiveRange(f);
+  if (from) q.set("from", from);
+  if (to) q.set("to", to);
   if (cursor) q.set("cursor", cursor);
   const s = q.toString();
   return `/api/seller/broadcast/history${s ? `?${s}` : ""}`;
@@ -40,6 +41,10 @@ export default function BroadcastHistoryPage() {
   // 기본은 최근 1개월(목록 공통 규칙, lib/client/filterDefaults.ts). 기간을 비우고 검색하면 전체 기간. 서버는 아직 정렬·쪽 크기를 받지 않아 from·to만 보낸다
   const defaults = listDefaults({});
   const { applied, draft, setDraft, apply, reset } = useListFilters(defaults);
+  // 업무 큐 링크(?period=all)로 들어오면 기간 칸은 비워 보인다(전체 기간)
+  useEffect(() => {
+    if (applied.period === "all") setDraft((d) => ({ ...d, from: "", to: "" }));
+  }, [applied, setDraft]);
   const [more, setMore] = useState(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
   // 조건이 바뀌면 마지막으로 보낸 조건의 응답만 반영한다
@@ -71,7 +76,7 @@ export default function BroadcastHistoryPage() {
 
   const search = () => {
     if (draft.from && draft.to && draft.from > draft.to) return setToast({ text: "시작일을 끝일보다 앞 날짜로 바꿔 주십시오", neg: true });
-    apply({ ...applied, from: draft.from, to: draft.to });
+    apply({ ...applied, from: draft.from, to: draft.to, period: "" });
   };
   const items = state.kind === "ok" ? state.items : [];
 
@@ -113,7 +118,7 @@ export default function BroadcastHistoryPage() {
                   <ListHead total={items.length} loaded />
                   {items.length === 0 ? (
                     <div className="st" style={{ boxShadow: "none" }} data-testid="bh-empty">
-                      <span className="t">{applied.from === defaults.from && applied.to === defaults.to ? "최근 1개월에는 방송 기록이 없습니다. 기간을 바꿔 다시 찾아 주십시오" : applied.from || applied.to ? "조건에 맞는 방송이 없습니다" : "아직 방송 기록이 없습니다"}</span>
+                      <span className="t">{applied.period !== "all" && applied.from === defaults.from && applied.to === defaults.to ? "최근 1개월에는 방송 기록이 없습니다. 기간을 바꿔 다시 찾아 주십시오" : applied.period !== "all" && (applied.from || applied.to) ? "조건에 맞는 방송이 없습니다" : "아직 방송 기록이 없습니다"}</span>
                       <Link className="btn btn-sm" href="/seller/broadcast">
                         방송 대시보드
                       </Link>

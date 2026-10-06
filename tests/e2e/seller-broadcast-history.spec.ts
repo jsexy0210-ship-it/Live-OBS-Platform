@@ -106,6 +106,11 @@ test("방송 기록: 처음에는 최근 1개월(주소는 깨끗함), 기간을
   await page.getByLabel("종료일").fill("");
   await page.getByRole("button", { name: "검색" }).click();
   await expect(page).toHaveURL(/from=&to=|to=&from=/);
+  // 업무 큐 링크(?period=all)로 들어오면 기간 칸이 비어 있다(전체 기간)
+  await page.goto("/seller/broadcasts?period=all");
+  await expect(page.getByLabel("시작일")).toHaveValue("");
+  await expect(page.getByLabel("종료일")).toHaveValue("");
+  await expect(page.getByTestId("bh-list").or(page.getByTestId("bh-empty"))).toBeVisible();
   // 초기화 → 최근 1개월, 주소는 다시 깨끗
   await page.getByRole("button", { name: "초기화" }).click();
   await expect(page.getByLabel("시작일")).toHaveValue(/^\d{4}\.\d{2}\.\d{2}$/);
