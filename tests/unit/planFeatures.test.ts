@@ -264,6 +264,9 @@ const SELLER_ROUTES: Record<string, string | null> = {
 // 공개·구매자 경로(ARCHITECTURE 4.8.0 표): 기능 권한이 없을 때 막는지. 막는 검사는 lib 쪽(shopOpen·createOrder·resolveOverlayToken)이나
 // 라우트에 있고, 동작은 tests/integration/planFeatures.test.ts가 경로마다 확인한다.
 const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
+  "shop/[slug]/me/profile": "OPEN", // 내 정보 조회(로그인한 회원, 회원정보 수정 SH-024)
+  "shop/[slug]/me/nickname": "OPEN", // 방송 닉네임 변경(30일에 1번)
+  "shop/[slug]/me/password": "OPEN", // 비밀번호 변경(현재 비밀번호 확인)
   "shop/[slug]/orders": "STORE_OPERATIONS", // POST만 막음, GET(내 주문)은 열림
   "shop/[slug]/orders/quote": "STORE_OPERATIONS", // 주문서 견적(읽기 전용)은 shopOpen으로 막음
   "shop/[slug]/order-consent": "STORE_OPERATIONS",
