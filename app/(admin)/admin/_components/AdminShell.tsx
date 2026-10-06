@@ -10,6 +10,7 @@ import { createContext, Fragment, useContext, useEffect, useState } from "react"
 import { adminApi, type AdminMe } from "./api";
 import { itemAllowed, routeNav, visibleAdminMenu } from "./menu";
 import { useEllipsisTitle } from "../../../../components/admin-ui/useEllipsisTitle";
+import { useTableCards } from "../../../../components/admin-ui/useTableCards";
 
 // 마스터 관리자 공통 틀(업무용 관리 화면 틀, 대표님 지시 2026-10-04): 상단 청록 GNB(대분류) + 왼쪽 LNB(고른 대분류의 하위 메뉴) + 본문.
 // 파트너스 관리자 틀(.cs·.gnb·.lnb·.loc-bar)을 그대로 쓰고 색만 admin.css에서 마스터 청록으로 바꾼다. 좁은 화면에서는 GNB가 햄버거로 접히고 LNB가 서랍(전체 메뉴)으로 열린다.
@@ -27,6 +28,7 @@ export function useAdmin(): ShellCtx {
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   useEllipsisTitle();
+  useTableCards();
   // 날짜 칸 어디를 눌러도 달력이 열린다(화면마다 따로 걸지 않는다)
   useWholeDateClick();
   const router = useRouter();
