@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { adminCan } from "../../../../../lib/server/authz/permissions";
-import { PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
+import { DateRangePicker, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { ListHead, Pagination } from "../../../../../components/admin-ui/ListTable";
 import { ErrorState, LoadingRows, Toast } from "../../../../../components/seller/States";
 import { MAX_SEARCH_LENGTH } from "../../../../../components/seller/format";
 import { adminApi } from "../../_components/api";
 import { AdminTopbar, useAdmin } from "../../_components/AdminShell";
 import { ImpersonateDialog } from "../../_components/ImpersonateDialog";
-import { DISPLAY_STATUS, PLAN_FILTER, ago, day, kstDate, type DisplayStatus, type SellerListRow, type SellerListSummary, type SellerStatus } from "../../_components/partners";
+import { DISPLAY_STATUS, PLAN_FILTER, ago, day, type DisplayStatus, type SellerListRow, type SellerListSummary, type SellerStatus } from "../../_components/partners";
 import { SuspendDialog } from "../../_components/SuspendDialog";
 import { useListFilters } from "../../_components/useListFilters";
 import { useScrollRestore } from "../../../../../lib/client/navigation";
@@ -64,13 +64,6 @@ const SORTS = [
   ["joined", "가입일순"],
   ["orders", "주문 많은순"],
   ["overdue", "연체 먼저"],
-] as const;
-const QUICK = [
-  ["오늘", () => [kstDate(), kstDate()]],
-  ["7일", () => [kstDate(6), kstDate()]],
-  ["1개월", () => [kstDate(0, 1), kstDate()]],
-  ["3개월", () => [kstDate(0, 3), kstDate()]],
-  ["전체", () => ["", ""]],
 ] as const;
 
 function params(f: Filters, withPaging: boolean) {
@@ -166,11 +159,22 @@ function PartnerList() {
             </>
           }
         />
-        <div className="row" style={{ gap: 6, flexWrap: "wrap", marginBottom: 12 }} role="group" aria-label="요약">
+        <div className="card" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(128px, 1fr))", marginBottom: 12, overflow: "hidden" }} role="group" aria-label="요약">
           {chips.map((c) => (
-            <button key={c.label} type="button" className={`btn btn-sm ${c.on ? "" : "btn-out"}`} aria-pressed={c.on} onClick={() => set(c.patch)}>
-              {c.label}
-              {c.count !== null && ` ${c.count}`}
+            <button
+              key={c.label}
+              type="button"
+              className="col"
+              style={{ gap: 4, padding: "12px 16px", textAlign: "left", border: 0, borderRight: "1px solid var(--wds-line-normal, #e5e5e5)", background: c.on ? "var(--wds-fill-alternative, #f4f5f7)" : "transparent", cursor: "pointer", minWidth: 0 }}
+              aria-pressed={c.on}
+              onClick={() => set(c.patch)}
+            >
+              <span className="t-c1 c-alt">
+                {c.label}
+              </span>{" "}
+              <span className="t-h2 fw6 num" style={{ whiteSpace: "nowrap" }}>
+                {c.count ?? "—"}
+              </span>
             </button>
           ))}
         </div>
@@ -186,34 +190,28 @@ function PartnerList() {
             <input className="inp" type="search" aria-label="검색어" placeholder="검색어" maxLength={MAX_SEARCH_LENGTH} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
           </SearchRow>
           <SearchRow label="상태">
-            <select className="inp" aria-label="상태" value={draft.state} onChange={(e) => setDraft({ ...draft, state: e.target.value })}>
-              <option value="">전체</option>
-              {STATES.map((s) => (
-                <option key={s} value={s}>
-                  {DISPLAY_STATUS[s].label}
-                </option>
-              ))}
-            </select>
+            {[["", "전체"], ...STATES.map((x) => [x, DISPLAY_STATUS[x].label])].map(([v, l]) => (
+              <label key={v} className="chk">
+                <input className="chkbox" type="radio" name="f-state" checked={draft.state === v} onChange={() => setDraft({ ...draft, state: v })} />
+                {l}
+              </label>
+            ))}
           </SearchRow>
           <SearchRow label="구독">
-            <select className="inp" aria-label="구독" value={draft.plan} onChange={(e) => setDraft({ ...draft, plan: e.target.value })}>
-              <option value="">전체</option>
-              {PLAN_FILTER.map((p) => (
-                <option key={p.code} value={p.code}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
+            {[["", "전체"], ...PLAN_FILTER.map((p) => [p.code, p.label])].map(([v, l]) => (
+              <label key={v} className="chk">
+                <input className="chkbox" type="radio" name="f-plan" checked={draft.plan === v} onChange={() => setDraft({ ...draft, plan: v })} />
+                {l}
+              </label>
+            ))}
           </SearchRow>
           <SearchRow label="카드 결제 연결">
-            <select className="inp" aria-label="카드 결제 연결" value={draft.pg} onChange={(e) => setDraft({ ...draft, pg: e.target.value })}>
-              <option value="">전체</option>
-              {PG_STATUS.map(([v, l]) => (
-                <option key={v} value={v}>
-                  {l}
-                </option>
-              ))}
-            </select>
+            {[["", "전체"], ...PG_STATUS.map(([v, l]) => [v, l])].map(([v, l]) => (
+              <label key={v} className="chk">
+                <input className="chkbox" type="radio" name="f-pg" checked={draft.pg === v} onChange={() => setDraft({ ...draft, pg: v })} />
+                {l}
+              </label>
+            ))}
           </SearchRow>
           <SearchRow label="기타">
             {(
@@ -223,21 +221,14 @@ function PartnerList() {
                 ["note", "확인 필요 메모 있음"],
               ] as const
             ).map(([k, l]) => (
-              <label key={k} className="row" style={{ gap: 6, alignItems: "center" }}>
-                <input type="checkbox" checked={draft[k] === "1"} onChange={(e) => setDraft({ ...draft, [k]: e.target.checked ? "1" : "" })} />
+              <label key={k} className="chk">
+                <input className="chkbox" type="checkbox" checked={draft[k] === "1"} onChange={(e) => setDraft({ ...draft, [k]: e.target.checked ? "1" : "" })} />
                 {l}
               </label>
             ))}
           </SearchRow>
           <SearchRow label="가입일">
-            {QUICK.map(([l, range]) => (
-              <button key={l} type="button" className="btn btn-sm btn-out" onClick={() => { const [from, to] = range(); setDraft({ ...draft, joinedFrom: from, joinedTo: to }); }}>
-                {l}
-              </button>
-            ))}
-            <input className="inp" type="date" aria-label="가입일 시작" value={draft.joinedFrom} onChange={(e) => setDraft({ ...draft, joinedFrom: e.target.value })} />
-            <span>~</span>
-            <input className="inp" type="date" aria-label="가입일 끝" value={draft.joinedTo} onChange={(e) => setDraft({ ...draft, joinedTo: e.target.value })} />
+            <DateRangePicker className="dt-sm" quick fromLabel="가입일 시작" toLabel="가입일 끝" from={draft.joinedFrom} to={draft.joinedTo} onChange={(r) => setDraft({ ...draft, joinedFrom: r.from, joinedTo: r.to })} />
           </SearchRow>
           <SearchRow label="최근 활동">
             <select className="inp" aria-label="최근 활동" value={draft.active} onChange={(e) => setDraft({ ...draft, active: e.target.value })}>
@@ -288,8 +279,8 @@ function PartnerList() {
                   <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                     <thead>
                       <tr>
-                        <th>번호</th>
                         <th>파트너스 · 쇼핑몰</th>
+                        <th>번호</th>
                         <th>상태</th>
                         <th>구독</th>
                         <th>카드 결제 연결</th>
@@ -306,7 +297,6 @@ function PartnerList() {
                         const overlayOnly = s.plan?.code === "OVERLAY_ONLY";
                         return (
                           <tr key={s.id} data-testid="partner-row">
-                            <td className="num">{s.seq}</td>
                             <td>
                               <Link className="fw6" href={`/admin/partners/${s.id}`}>
                                 {s.shopName}
@@ -315,6 +305,7 @@ function PartnerList() {
                                 {s.representativeName ? `${s.representativeName} · ` : ""}쇼핑몰 주소 {s.slug}
                               </div>
                             </td>
+                            <td className="num">{s.seq}</td>
                             <td>
                               <span className={`bdg ${DISPLAY_STATUS[s.displayStatus].cls}`}>{DISPLAY_STATUS[s.displayStatus].label}</span>
                             </td>
@@ -332,7 +323,7 @@ function PartnerList() {
                                 </Link>
                                 {canImpersonate && s.status === "ACTIVE" && (
                                   <button className="btn btn-sm btn-out" type="button" onClick={() => setViewing(s)}>
-                                    대신 보기
+                                    이 파트너스 화면 대신 보기
                                   </button>
                                 )}
                                 {canModerate && (s.status === "ACTIVE" || s.status === "SUSPENDED") && (
