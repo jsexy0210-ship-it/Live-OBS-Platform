@@ -134,7 +134,7 @@ export default function StaffPage() {
                 </div>
               )}
               <div className="card staff-table-wrap">
-                <table className="tbl staff-table">
+                <table className="tbl tbl-card staff-table">
                   <thead>
                     <tr>
                       <th>이름 · 이메일</th>
@@ -150,13 +150,13 @@ export default function StaffPage() {
                         <span className="fw6">{me.user.name} (나)</span>
                         <div className="t-c1 c-alt">{me.user.email}</div>
                       </td>
-                      <td>
+                      <td data-card="wide" data-label-set data-label="업무">
                         <span className="bdg b-open nodot">대표자 · 모든 업무</span>
                       </td>
                       <td>
                         <span className="bdg b-done">사용 중</span>
                       </td>
-                      <td className="num t-l2">지금</td>
+                      <td className="num t-l2" data-label-set data-label="로그인">지금</td>
                       <td />
                     </tr>
                     {staff.map((s) => {
@@ -170,7 +170,7 @@ export default function StaffPage() {
                               {s.phone ? phoneText(s.phone) : "휴대폰 번호 없음"} · {s.identityLinked ? "휴대폰 확인 완료" : "휴대폰 확인 전"}
                             </div>
                           </td>
-                          <td className="col-text">
+                          <td className="col-text" data-card="wide" data-label-set data-label="업무">
                             <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
                               {s.permissions.length === 0 ? (
                                 <span className="t-c1 c-alt">허용한 업무 없음</span>
@@ -186,20 +186,20 @@ export default function StaffPage() {
                           <td>
                             <span className={`bdg ${off ? "b-cancel" : "b-done"}`}>{off ? "사용 중지" : "사용 중"}</span>
                           </td>
-                          <td className="num t-l2">{s.lastLoginAt ? formatDateTime(s.lastLoginAt) : "없음"}</td>
+                          <td className="num t-l2" data-label-set data-label="로그인">{s.lastLoginAt ? formatDateTime(s.lastLoginAt) : "없음"}</td>
                           <td>
                             {!off && (
-                              <div className="acts2">
-                                <button className="btn btn-sm btn-out" type="button" onClick={() => setModal({ kind: "edit", staff: s })} aria-label={`${s.name} 정보·업무 수정`}>
-                                  수정
-                                </button>
-                                <button className="btn btn-sm btn-out" type="button" onClick={() => setModal({ kind: "password", staff: s })} aria-label={`${s.name} 비밀번호 바꾸기`}>
-                                  비밀번호 바꾸기
-                                </button>
-                                <button className="btn btn-sm btn-out" type="button" onClick={() => setModal({ kind: "disable", staff: s })} aria-label={`${s.name} 직원 계정 사용 중지`}>
-                                  사용 중지
-                                </button>
-                              </div>
+                              <>
+                              <button className="btn btn-sm btn-out" type="button" onClick={() => setModal({ kind: "edit", staff: s })} aria-label={`${s.name} 정보·업무 수정`}>
+                                수정
+                              </button>
+                              <button className="btn btn-sm btn-out" type="button" onClick={() => setModal({ kind: "password", staff: s })} aria-label={`${s.name} 비밀번호 바꾸기`}>
+                                비밀번호 바꾸기
+                              </button>
+                              <button className="btn btn-sm btn-out" type="button" onClick={() => setModal({ kind: "disable", staff: s })} aria-label={`${s.name} 직원 계정 사용 중지`}>
+                                사용 중지
+                              </button>
+                              </>
                             )}
                           </td>
                         </tr>

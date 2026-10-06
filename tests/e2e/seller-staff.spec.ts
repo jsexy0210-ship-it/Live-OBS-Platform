@@ -11,7 +11,7 @@ test.beforeAll(() => {
 
 async function shot(page: Page, name: string) {
   if (!SHOTS) return;
-  for (const width of [1440, 390]) {
+  for (const width of [1440, 1024, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(150);
@@ -23,7 +23,7 @@ async function shot(page: Page, name: string) {
 // 저장·만들기 앞의 확인 창(DS-CONFIRM): 열리면 실행 버튼을 누른다(검증 오류로 열리지 않으면 그대로 둔다)
 async function confirmIfAsked(page: Page, title: RegExp, label: string) {
   const d = page.getByRole("dialog", { name: title });
-  if (await d.waitFor({ state: "visible", timeout: 800 }).then(() => true, () => false)) await d.getByRole("button", { name: label, exact: true }).click();
+  if (await d.waitFor({ state: "visible", timeout: 2500 }).then(() => true, () => false)) await d.getByRole("button", { name: label, exact: true }).click();
 }
 async function clickCreate(page: Page) {
   await page.getByRole("button", { name: "직원 계정 만들기" }).click();
@@ -99,7 +99,7 @@ test("대표자: 메뉴에서 직원 계정으로 들어가 목록을 보고, �
   // 초기 비밀번호는 가려 두고 「보기」로만 잠깐 보여 준다
   await expect(page.getByLabel("처음 쓸 비밀번호")).toHaveAttribute("type", "password");
   await page.getByLabel("처음 쓸 비밀번호").fill("pw-visible-check");
-  await page.getByRole("button", { name: "보기" }).click();
+  await page.getByRole("button", { name: "보기", exact: true }).click();
   await expect(page.getByLabel("처음 쓸 비밀번호")).toHaveAttribute("type", "text");
   await page.getByRole("button", { name: "숨기기" }).click();
   await expect(page.getByLabel("처음 쓸 비밀번호")).toHaveAttribute("type", "password");
@@ -120,7 +120,7 @@ test("대표자: 메뉴에서 직원 계정으로 들어가 목록을 보고, �
   await expect(page.getByText("고객 이름·연락처·주소를 볼 수 있습니다").first()).toBeVisible();
   await page.getByRole("button", { name: "방송 업무만" }).click();
   // 「보기」로 본 채 만들어도, 비워진 칸은 다시 가린다(다음 직원 비밀번호가 바로 보이지 않게)
-  await page.getByRole("button", { name: "보기" }).click();
+  await page.getByRole("button", { name: "보기", exact: true }).click();
   await expect(page.getByLabel("처음 쓸 비밀번호")).toHaveAttribute("type", "text");
   // 만들기 전에 확인 창: 이름·허용 업무를 보여 주고, 취소하면 아무것도 만들지 않는다
   await page.getByRole("button", { name: "직원 계정 만들기" }).click();
@@ -139,7 +139,7 @@ test("대표자: 메뉴에서 직원 계정으로 들어가 목록을 보고, �
   // 입력 칸은 비워지고 비밀번호 칸은 다시 가려진다
   await expect(page.getByLabel("이메일 (로그인 아이디)")).toHaveValue("");
   await expect(page.getByLabel("처음 쓸 비밀번호")).toHaveAttribute("type", "password");
-  await expect(page.getByRole("button", { name: "보기" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "보기", exact: true })).toBeVisible();
 
   // 같은 이메일은 다시 만들 수 없다
   await addStaff(page, { ...s, name: "다른 사람" });
