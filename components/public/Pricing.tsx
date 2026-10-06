@@ -7,7 +7,7 @@ import type { LandingPlan } from "./Landing";
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 
 const COPY: Record<string, string[]> = {
-  OVERLAY_ONLY: ["OBS 오버레이(세로 · 가로 템플릿)", "운영 중인 다른 쇼핑몰의 주문을 자동으로 가져와요", "실시간 주문 알림 · 주문대기(결제가 끝난 주문 목록) 표시", "직원 계정 · 권한"],
+  OVERLAY_ONLY: ["OBS 방송 화면(세로 · 가로 템플릿)", "운영 중인 다른 쇼핑몰의 주문을 자동으로 가져와요", "실시간 주문 알림 · 주문대기(결제가 끝난 주문 목록) 표시", "직원 계정 · 권한"],
   INTEGRATED: ["오버레이 전용의 모든 기능", "ONQ 쇼핑몰 · 상품 · 주문 운영", "결제 · 배송 · 송장 · 적립금", "영수증 · 세금계산서 발행"],
 };
 
