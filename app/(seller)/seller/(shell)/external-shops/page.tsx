@@ -5,6 +5,7 @@ import { PageHead, useConfirm } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
+import { formatDateTime } from "../../../../../lib/client/format";
 
 // SA-006 외부 쇼핑몰 연동 관리(오버레이 전용). API: GET·POST /api/seller/external-shops, DELETE /api/seller/external-shops/{id}.
 // 인증을 마치고 돌아오는 주소(…/oauth-done)가 이 화면으로 ?connected=1 또는 ?error=코드를 붙여 보낸다. 플랫폼 이름은 어디에도 쓰지 않는다.
@@ -34,16 +35,6 @@ const RESULT_ERROR: Record<string, string> = {
   already_connected: "이미 다른 파트너스에 연결된 쇼핑몰입니다",
   forbidden: "연결은 대표자나 쇼핑몰 설정 권한이 있는 직원만 할 수 있습니다",
 };
-const date = (iso: string) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul" }).format(new Date(iso));
-function ago(iso: string | null): string {
-  if (!iso) return "아직 없습니다";
-  const m = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60_000));
-  if (m < 1) return "방금 전";
-  if (m < 60) return `${m}분 전`;
-  if (m < 60 * 24) return `${Math.floor(m / 60)}시간 전`;
-  return `${Math.floor(m / 1440)}일 전`;
-}
-
 export default function ExternalShopsPage() {
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; data: Data }>({ kind: "loading" });
   const [adding, setAdding] = useState(false);
@@ -144,8 +135,8 @@ export default function ExternalShopsPage() {
                           <tr key={c.id} data-testid="external-row">
                             <td><b>{c.shopKey}</b></td>
                             <td><span className={`bdg ${TAG[c.status].cls}`}>{TAG[c.status].label}</span><div className="t-c1 c-alt">{HELP[c.status]}</div></td>
-                            <td>{ago(c.lastEventAt)}</td>
-                            <td style={{ whiteSpace: "nowrap" }}>{date(c.connectedAt)}</td>
+                            <td className="num">{formatDateTime(c.lastEventAt, "아직 없습니다")}</td>
+                            <td className="num" style={{ whiteSpace: "nowrap" }}>{formatDateTime(c.connectedAt, "—")}</td>
                             <td>
                               {d.canManage && d.enabled && c.status === "REAUTH_REQUIRED" && <button className="btn btn-sm" type="button" onClick={() => void begin({ connectionId: c.id }, { title: `${c.shopKey} 연결을 다시 하시겠습니까?`, body: "쇼핑몰 관리자 화면으로 이동해 앱 허용을 다시 받습니다.", confirmLabel: "다시 연결하기" })}>다시 연결</button>}{" "}
                               {d.canManage && c.status === "DISCONNECT_PENDING" && <button className="btn btn-sm btn-out" type="button" onClick={() => void disconnect(c, { title: "연결 해제를 다시 요청하시겠습니까?", body: `${c.shopKey}의 주문 알림이 더 들어오지 않습니다.`, confirmLabel: "해제 다시 요청하기" })}>해제 다시 요청하기</button>}

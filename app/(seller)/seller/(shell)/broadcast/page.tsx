@@ -3,9 +3,9 @@
 import "../../../../../styles/seller-broadcast.css";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PageHead } from "../../../../../components/admin-ui";
+import { PageHead, useConfirm } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
-import { CancelItemModal, EndBroadcastModal, TimerModal } from "../../../../../components/seller/broadcast/Modals";
+import { CancelItemModal, TimerModal } from "../../../../../components/seller/broadcast/Modals";
 import { HitCardModal, type HitTarget } from "../../../../../components/seller/broadcast/HitCardModal";
 import { chatNotice, type ChatStatus } from "../../../../../components/seller/broadcast/chatStatus";
 import {
@@ -45,7 +45,7 @@ type ChatMatch = { matched: boolean; lastChatAt: string | null };
 type Matches = { orders: { nickname: string; matched: boolean; lastChatAt: string | null }[] };
 const CHAT_POLL_MS = 30_000;
 
-type Modal = { kind: "hit" } | { kind: "chat-on" } | { kind: "end"; sessionId: string } | { kind: "cancel"; item: QueueItem } | { kind: "timer"; item: QueueItem } | null;
+type Modal = { kind: "hit" } | { kind: "chat-on" } | { kind: "cancel"; item: QueueItem } | { kind: "timer"; item: QueueItem } | null;
 
 const POLL_MS = 15_000;
 
@@ -57,6 +57,9 @@ export default function BroadcastDashboardPage() {
   const allowed = can("BROADCAST_RUN");
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [modal, setModal] = useState<Modal>(null);
+  const { confirm } = useConfirm();
+  // 공용 확인 창(방송 종료·채팅 끄기)이 떠 있는 동안에도 단축키(개봉 완료 등)를 막는다
+  const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
   const [stale, setStale] = useState(false);
@@ -175,6 +178,18 @@ export default function BroadcastDashboardPage() {
     await loadYoutube();
   };
 
+  // 채팅 가져오기 끄기: 켠 채팅 열이 사라지므로 확인을 거친다(켤 때의 보관 안내 창은 그대로)
+  const askChatOff = async () => {
+    setConfirming(true);
+    const ok = await confirm({
+      title: "유튜브 채팅 가져오기를 끄시겠습니까?",
+      body: "끄면 주문대기 표의 채팅 표시가 사라집니다. 주문에는 영향이 없습니다.",
+      confirmLabel: "채팅 가져오기 끄기",
+    });
+    setConfirming(false);
+    if (ok) await setChatEnabled(false);
+  };
+
   // 타이머·되돌리기 표시용 시계
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 500);
@@ -207,22 +222,29 @@ export default function BroadcastDashboardPage() {
   );
 
   // 방송 종료는 확인 창을 연 그 방송에만 한다. 종료 API는 방송을 지정받지 않아(지금 방송을 끝냄),
-  // 보내기 직전에 서버의 지금 방송이 그 방송인지 다시 확인하고, 다르면 보내지 않는다.
-  const endBroadcast = async (sessionId: string) => {
-    setBusy(true);
-    const t = reads.next();
-    const r = await api<Snapshot>("/api/seller/queue");
-    if (!r.ok || r.data.broadcast?.id !== sessionId) {
-      setBusy(false);
-      setModal(null);
-      setToast({ text: r.ok ? "다른 화면에서 방송이 바뀌었습니다. 최신 내용을 확인한 뒤 다시 종료해 주십시오" : failMessage(r, "admin"), neg: true });
-      if (r.ok && reads.accept(t) === "apply") applySnap(r.data);
-      else void load();
-      return;
-    }
-    setBusy(false);
-    // broadcastSessionId: 서버가 지금 방송과 맞춰 볼 수 있게 미리 넘긴다(서버 확인은 기반 세션에 배정, 생기기 전에는 무시됨)
-    await mutate("/api/seller/broadcast/end", { broadcastSessionId: sessionId }, "방송을 종료했습니다");
+  // 확인 창의 「방송 끝내기」를 누른 직후 서버의 지금 방송이 그 방송인지 다시 확인하고, 다르면 보내지 않는다(창 안에 안내가 보이고 열려 있다).
+  const endBroadcast = async (sessionId: string, waitingCount: number) => {
+    setConfirming(true);
+    await confirm({
+      title: "방송을 끝내시겠습니까?",
+      body: waitingCount > 0 ? `남은 대기 ${waitingCount}건은 다음 방송으로 넘어갑니다.` : undefined,
+      confirmLabel: "방송 끝내기",
+      danger: true,
+      run: async () => {
+        const t = reads.next();
+        const r = await api<Snapshot>("/api/seller/queue");
+        if (!r.ok || r.data.broadcast?.id !== sessionId) {
+          if (r.ok && reads.accept(t) === "apply") applySnap(r.data);
+          else void load();
+          return r.ok ? "다른 화면에서 방송이 바뀌었습니다. 최신 내용을 확인한 뒤 다시 종료해 주십시오" : failMessage(r, "admin");
+        }
+        // broadcastSessionId: 서버가 지금 방송과 맞춰 볼 수 있게 미리 넘긴다(서버 확인은 기반 세션에 배정, 생기기 전에는 무시됨)
+        const e = await mutate("/api/seller/broadcast/end", { broadcastSessionId: sessionId }, "방송을 종료했습니다");
+        if (e.ok) return undefined;
+        return isUnclearFailure(e.status) ? "처리 결과를 확인하지 못했습니다. 최신 상태를 다시 불러왔습니다" : (rejectText(e.error) ?? failMessage(e, "admin"));
+      },
+    });
+    setConfirming(false);
   };
 
   // 변경 조작은 요청 처리 중(busy)이거나 보이는 내용이 서버에서 확인된 최신이 아닐 때(stale) 모두 막는다.
@@ -258,20 +280,11 @@ export default function BroadcastDashboardPage() {
     void mutate("/api/seller/queue/reorder", { broadcastSessionId: live?.id ?? null, orderedIds: ids, expectedVersion: snap.version }, "순서를 바꿨습니다");
   };
 
-  // 종료 확인 창이 열린 사이 다른 화면에서 방송이 바뀌면(끝나거나 새 방송) 창을 닫는다
-  useEffect(() => {
-    if (modal?.kind !== "end" || state.kind !== "ok" || busy) return;
-    if (state.snap.broadcast?.id !== modal.sessionId) {
-      setModal(null);
-      setToast({ text: "다른 화면에서 방송이 바뀌었습니다. 최신 내용을 확인한 뒤 다시 종료해 주십시오", neg: true });
-    }
-  }, [modal, state, busy]);
-
   // 단축키(모두 Ctrl 조합): 개봉 시작·완료 Ctrl+Enter, 타이머 +30초 Ctrl+↑, 취소 Ctrl+Backspace(확인 창)
   const keys = useRef<(e: KeyboardEvent) => void>(() => undefined);
   keys.current = (e: KeyboardEvent) => {
     // 길게 눌러 생기는 자동 반복(e.repeat)은 무시한다(완료 뒤 다음 주문이 개봉되거나 타이머가 계속 오르지 않게)
-    if (e.repeat || !e.ctrlKey || e.altKey || e.metaKey || modal || locked || !snap || typing(e.target)) return;
+    if (e.repeat || !e.ctrlKey || e.altKey || e.metaKey || modal || confirming || locked || !snap || typing(e.target)) return;
     if (e.key === "Enter") {
       e.preventDefault();
       if (opening) void act(opening, "complete", "개봉을 완료했습니다");
@@ -378,7 +391,7 @@ export default function BroadcastDashboardPage() {
                       </span>
                       <span className="t-c1 c-alt">{kstTime(live.startedAt)} 시작</span>
                     </div>
-                    <button className="btn btn-out" type="button" disabled={locked} onClick={() => live && setModal({ kind: "end", sessionId: live.id })}>
+                    <button className="btn btn-out" type="button" disabled={locked} onClick={() => live && void endBroadcast(live.id, snap?.waiting.length ?? 0)}>
                       방송 끝내기
                     </button>
                   </div>
@@ -409,7 +422,7 @@ export default function BroadcastDashboardPage() {
                             data-testid="bc-chat-toggle"
                             checked={yt.live.chatEnabled}
                             disabled={chatBusy}
-                            onChange={(e) => (e.target.checked ? setModal({ kind: "chat-on" }) : void setChatEnabled(false))}
+                            onChange={(e) => (e.target.checked ? setModal({ kind: "chat-on" }) : void askChatOff())}
                           />
                           유튜브 채팅 가져오기
                         </label>
@@ -615,15 +628,6 @@ export default function BroadcastDashboardPage() {
         )}
       </main>
 
-      {modal?.kind === "end" && (
-        <EndBroadcastModal
-          waiting={snap?.waiting.length ?? 0}
-          busy={busy}
-          blocked={stale}
-          onClose={() => setModal(null)}
-          onConfirm={() => void endBroadcast(modal.sessionId)}
-        />
-      )}
       {modal?.kind === "cancel" && <CancelItemModal item={modal.item} busy={busy} blocked={stale} onClose={() => setModal(null)} onConfirm={(reason) => void cancel(modal.item, reason)} />}
       {modal?.kind === "hit" && (
         <HitCardModal
