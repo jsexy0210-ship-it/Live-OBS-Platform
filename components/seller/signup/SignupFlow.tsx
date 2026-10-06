@@ -13,16 +13,55 @@ import { AuthFrame, IdentityUnavailable } from "../PartnersAuth";
 // 앞 단계를 건너뛰고 주소로 바로 들어오면 첫 미완료 단계로 보낸다. 신청을 마친 뒤에는 완료 화면만 보인다(docs/BACK_ROUTES.md PF-007).
 export const SIGNUP_PATHS = ["/seller/signup", "/seller/signup/verify", "/seller/signup/account", "/seller/signup/business", "/seller/signup/done"] as const;
 export const SIGNUP_STEPS = ["약관 동의", "본인확인", "가입 정보", "사업자 정보", "신청 완료"];
-export type ConsentVersions = { termsVersion: string; privacyVersion: string };
-export type Field = "companyName" | "businessNumber" | "openedOn" | "mailOrderNumber" | "email" | "password" | "shopName" | "slug";
+export type ConsentVersions = { termsVersion: string; privacyVersion: string; policyVersion: string; marketingVersion: string };
+export type Field =
+  | "companyName"
+  | "businessNumber"
+  | "openedOn"
+  | "mailOrderNumber"
+  | "email"
+  | "password"
+  | "shopName"
+  | "slug"
+  | "industry"
+  | "channelUrl"
+  | "track"
+  | "contactPhone"
+  | "zip"
+  | "address"
+  | "addressDetail";
 export type Fields = Record<Field, string>;
 export type Done = { approved: boolean; reviewReasons: string[] };
 export type Verification = { id: string; who: { name: string; phone: string } };
+// 동의: 이용약관·개인정보 수집 · 이용·파트너스 운영 정책은 필수, 새 기능 소식(marketing)은 선택
+export type Agree = { terms: boolean; privacy: boolean; policy: boolean; marketing: boolean };
+export const NO_AGREE: Agree = { terms: false, privacy: false, policy: false, marketing: false };
+// 올린 사업자등록증(파일은 서버에 있고 화면은 이름·크기만 든다)
+export type License = { fileName: string; byteSize: number };
+// 갈래: OVERLAY_ONLY = 「있어요 · 방송 화면만 쓸게요」(사업자 정보 단계 건너뜀), INTEGRATED = 「없어요 · 쇼핑몰까지 쓸게요」
+export type Track = "OVERLAY_ONLY" | "INTEGRATED";
+export const INDUSTRIES = ["트레이딩카드", "피규어 · 굿즈", "의류 · 잡화", "식품", "기타"];
 
 export const MIN_PASSWORD_LENGTH = 8; // 서버(lib/server/auth/passwordReset.ts)와 같은 값
 const SLUG = /^[a-z0-9](?:[a-z0-9-]{1,28}[a-z0-9])$/; // 서버(lib/server/sellers/application.ts)와 같은 규칙
 const STORE = "onq-partners-signup-v1";
-const EMPTY: Fields = { companyName: "", businessNumber: "", openedOn: "", mailOrderNumber: "", email: "", password: "", shopName: "", slug: "" };
+const EMPTY: Fields = {
+  companyName: "",
+  businessNumber: "",
+  openedOn: "",
+  mailOrderNumber: "",
+  email: "",
+  password: "",
+  shopName: "",
+  slug: "",
+  industry: INDUSTRIES[0],
+  channelUrl: "",
+  track: "OVERLAY_ONLY",
+  contactPhone: "",
+  zip: "",
+  address: "",
+  addressDetail: "",
+};
 
 export const digits = (v: string, max: number) => v.replace(/\D/g, "").slice(0, max);
 export const bizText = (d: string) => (d.length <= 3 ? d : d.length <= 5 ? `${d.slice(0, 3)}-${d.slice(3)}` : `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}`);
@@ -34,6 +73,18 @@ const validDate = (d: string) => {
   return y >= 1900 && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === day && d <= kstToday();
 };
 
+// 방송 채널 주소(선택): http(s) 주소 200자 이내. 서버(application.ts parseSignupExtras)와 같은 규칙
+const validChannel = (v: string) => {
+  try {
+    return ["http:", "https:"].includes(new URL(v).protocol) && v.length <= 200;
+  } catch {
+    return false;
+  }
+};
+// 연락처: 숫자만 9~11자리, 0으로 시작(서버와 같은 규칙)
+export const phoneDigits = (v: string) => v.replace(/[\s-]/g, "");
+export const validPhone = (v: string) => /^0\d{8,10}$/.test(phoneDigits(v));
+
 // 서버와 같은 규칙으로 먼저 거른다. 단계마다 자기 칸만 본다
 export function checkAccount(f: Fields): Partial<Record<Field, string>> {
   const e: Partial<Record<Field, string>> = {};
@@ -41,6 +92,7 @@ export function checkAccount(f: Fields): Partial<Record<Field, string>> {
   if (f.password.length < MIN_PASSWORD_LENGTH) e.password = `${MIN_PASSWORD_LENGTH}자 이상으로 정해 주세요`;
   if (!f.shopName.trim()) e.shopName = "쇼핑몰 이름을 적어 주세요";
   if (!SLUG.test(f.slug)) e.slug = "영문 소문자 · 숫자 · 하이픈(-)으로 3~30자를 써 주세요";
+  if (f.channelUrl.trim() && !validChannel(f.channelUrl.trim())) e.channelUrl = "채널 주소를 다시 확인해 주세요 (https://로 시작해요)";
   return e;
 }
 export function checkBusiness(f: Fields): Partial<Record<Field, string>> {
@@ -49,6 +101,8 @@ export function checkBusiness(f: Fields): Partial<Record<Field, string>> {
   if (f.businessNumber.length !== 10) e.businessNumber = "10자리를 모두 적어 주세요";
   if (!validDate(f.openedOn)) e.openedOn = "개업일 8자리를 다시 확인해 주세요";
   if (!f.mailOrderNumber.trim()) e.mailOrderNumber = "통신판매업 신고번호를 적어 주세요";
+  if (!validPhone(f.contactPhone)) e.contactPhone = "연락처를 다시 확인해 주세요";
+  if (!f.address.trim()) e.address = "사업장 주소를 적어 주세요";
   return e;
 }
 
@@ -56,13 +110,14 @@ type Notice = { text: string; login?: boolean };
 type Flow = {
   versions: ConsentVersions;
   setVersions: (v: ConsentVersions) => void;
-  agreedTerms: boolean;
-  agreedPrivacy: boolean;
-  setAgreed: (terms: boolean, privacy: boolean) => void;
+  agree: Agree;
+  setAgree: (a: Partial<Agree>) => void;
   consentError: string | null;
   setConsentError: (t: string | null) => void;
   verification: Verification | null;
   setVerification: (v: Verification | null) => void;
+  license: License | null;
+  setLicense: (l: License | null) => void;
   f: Fields;
   set: (k: Field, v: string) => void;
   errors: Partial<Record<Field, string>>;
@@ -84,7 +139,7 @@ export function useSignup(): Flow {
   return v;
 }
 
-type Saved = { agreedTerms?: boolean; agreedPrivacy?: boolean; verification?: Verification | null; f?: Partial<Fields>; done?: Done | null };
+type Saved = { agree?: Partial<Agree>; verification?: Verification | null; license?: License | null; f?: Partial<Fields>; done?: Done | null };
 
 export function SignupFlow({ consentVersions, children }: { consentVersions: ConsentVersions; children: React.ReactNode }) {
   return (
@@ -99,8 +154,8 @@ function FlowInner({ consentVersions, children }: { consentVersions: ConsentVers
   // 보내는 약관 버전: 서버 화면이 넘긴 값. 409 consent_outdated 본문에 지금 버전이 오면 그 값으로 바꾼다
   const [versions, setVersions] = useState(consentVersions);
   useEffect(() => setVersions(consentVersions), [consentVersions]);
-  const [agreedTerms, setAgreedTerms] = useState(false);
-  const [agreedPrivacy, setAgreedPrivacy] = useState(false);
+  const [agree, setAgreeState] = useState<Agree>(NO_AGREE);
+  const [license, setLicense] = useState<License | null>(null);
   const [consentError, setConsentError] = useState<string | null>(null);
   const [verification, setVerification] = useState<Verification | null>(null);
   const [f, setF] = useState<Fields>(EMPTY);
@@ -116,9 +171,11 @@ function FlowInner({ consentVersions, children }: { consentVersions: ConsentVers
       const raw = sessionStorage.getItem(STORE);
       if (raw) {
         const s = JSON.parse(raw) as Saved;
-        setAgreedTerms(!!s.agreedTerms);
-        setAgreedPrivacy(!!s.agreedPrivacy);
-        if (s.verification?.id) setVerification(s.verification);
+        setAgreeState({ ...NO_AGREE, ...s.agree });
+        if (s.verification?.id) {
+          setVerification(s.verification);
+          if (s.license) setLicense(s.license);
+        }
         if (s.f) setF({ ...EMPTY, ...s.f, password: "" });
         if (s.done) setDone(s.done);
       }
@@ -132,34 +189,31 @@ function FlowInner({ consentVersions, children }: { consentVersions: ConsentVers
     try {
       const { password: _omit, ...rest } = f;
       void _omit;
-      const s: Saved = { agreedTerms, agreedPrivacy, verification, f: rest, done };
+      const s: Saved = { agree, verification, license, f: rest, done };
       sessionStorage.setItem(STORE, JSON.stringify(s));
     } catch {
       // 저장하지 못해도 이어서 쓸 수 있다(새로고침하면 처음부터)
     }
-  }, [hydrated, agreedTerms, agreedPrivacy, verification, f, done]);
+  }, [hydrated, agree, verification, license, f, done]);
 
   const set = useCallback((k: Field, v: string) => {
     setF((p) => ({ ...p, [k]: v }));
     setErrors((p) => ({ ...p, [k]: undefined }));
   }, []);
-  const setAgreed = useCallback((t: boolean, p: boolean) => {
-    setAgreedTerms(t);
-    setAgreedPrivacy(p);
-  }, []);
+  const setAgree = useCallback((a: Partial<Agree>) => setAgreeState((p) => ({ ...p, ...a })), []);
   const fRef = useRef(f);
   fRef.current = f;
   const firstOpen = useCallback(() => {
     if (done) return 4;
-    if (!agreedTerms || !agreedPrivacy) return 0;
+    if (!agree.terms || !agree.privacy || !agree.policy) return 0;
     if (!verification) return 1;
     if (Object.keys(checkAccount(fRef.current)).length > 0) return 2;
     return 3;
-  }, [done, agreedTerms, agreedPrivacy, verification]);
+  }, [done, agree, verification]);
 
   const value = useMemo<Flow>(
-    () => ({ versions, setVersions, agreedTerms, agreedPrivacy, setAgreed, consentError, setConsentError, verification, setVerification, f, set, errors, setErrors, done, setDone, notice, setNotice, unavailable, setUnavailable, hydrated, firstOpen }),
-    [versions, agreedTerms, agreedPrivacy, setAgreed, consentError, verification, f, set, errors, done, notice, unavailable, hydrated, firstOpen],
+    () => ({ versions, setVersions, agree, setAgree, consentError, setConsentError, verification, setVerification, license, setLicense, f, set, errors, setErrors, done, setDone, notice, setNotice, unavailable, setUnavailable, hydrated, firstOpen }),
+    [versions, agree, setAgree, consentError, verification, license, f, set, errors, done, notice, unavailable, hydrated, firstOpen],
   );
   return (
     <Ctx.Provider value={value}>
@@ -191,7 +245,8 @@ export function useStepGuard(step: number): boolean {
 
 function SignupFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { notice, unavailable, done } = useSignup();
+  const { notice, unavailable, done, f } = useSignup();
+  const skipBusiness = f.track === "OVERLAY_ONLY";
   const step = stepOf(pathname);
   const noticeRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -217,6 +272,7 @@ function SignupFrame({ children }: { children: React.ReactNode }) {
               <li key={s} className={i <= step || (done && i < 4) ? "on" : ""} aria-current={i === step ? "step" : undefined}>
                 <span className="pa-step-n">{i + 1}</span>
                 <span className={i === step ? "fw7" : "c-alt"}>{s}</span>
+                {i === 3 && skipBusiness && step >= 2 && <span className="bdg b-gray">건너뜀</span>}
               </li>
             ))}
           </ol>

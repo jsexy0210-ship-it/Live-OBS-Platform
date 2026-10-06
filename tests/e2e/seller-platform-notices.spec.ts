@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import sharp from "sharp";
-import { E2E_PREFIX, adminReplyInDb, cleanupPlatformE2eInDb, createNoticeInDb, fillInquiryLimitInDb } from "./platformDb";
+import { E2E_PREFIX, adminReplyInDb, cleanupPlatformE2eInDb, addNoticeFileInDb, createNoticeInDb, fillInquiryLimitInDb } from "./platformDb";
 import { submitSellerLogin } from "./sellerLogin";
 
 // SA-111·112 공지사항, SA-113·114·115 내 문의. 공지는 DB로 만들고, 문의는 파트너스 화면으로 보낸 뒤 마스터 답변·종료를 DB로 흉내 낸다.
@@ -36,15 +36,84 @@ test("공지: 고정 공지가 위에 보이고, 눌러 본문을 읽으며, 없
   await expect(page).toHaveURL(new RegExp(`/seller/notices/${pinned}$`));
   await expect(page.getByTestId("notice-title")).toHaveText(`${E2E_PREFIX}점검 안내`);
   await expect(page.getByTestId("notice-body")).toContainText("새벽 2시 점검");
-  await expect(page.getByText(/보인 곳: 화면 공지/)).toBeVisible();
+  await expect(page.getByText(/ONQ 운영팀 · \d{4}\.\d{2}\.\d{2} \d{2}:\d{2} 올림/)).toBeVisible();
   await page.goto("/seller/notices/00000000-0000-4000-8000-000000000000");
   await expect(page.getByText("공지를 찾을 수 없습니다")).toBeVisible();
+});
+
+test("공지 상세: 첨부가 있으면 이름·크기와 다운로드가 보이고, 받을 수 있다", async ({ page }) => {
+  const id = await createNoticeInDb("첨부 공지");
+  await addNoticeFileInDb(id, "점검_안내.txt", "점검 안내 내용");
+  await login(page, `/seller/notices/${id}`);
+  const file = page.getByTestId("notice-file");
+  await expect(file).toContainText("점검_안내.txt");
+  await expect(file).toContainText("1KB");
+  const link = file.getByRole("link", { name: "다운로드" });
+  const href = (await link.getAttribute("href"))!;
+  // 받기 응답은 항상 attachment이고 한글 이름을 UTF-8로 알려 준다
+  const head = await page.evaluate(async (h) => {
+    const r = await fetch(h);
+    return { status: r.status, disposition: r.headers.get("content-disposition") ?? "", text: await r.text() };
+  }, href);
+  expect(head.status).toBe(200);
+  expect(head.disposition).toContain("attachment");
+  expect(decodeURIComponent(head.disposition)).toContain("점검_안내.txt");
+  expect(head.text).toBe("점검 안내 내용");
+  const download = page.waitForEvent("download");
+  await link.click();
+  await download;
+});
+
+test("공지 목록: 분류·안 읽은 것만·검색으로 걸러 보고, 열면 읽음이 되며, 20개씩 이전·다음으로 넘긴다", async ({ page }) => {
+  await createNoticeInDb("기능 공지", { category: "FEATURE" });
+  await createNoticeInDb("점검 공지", { category: "MAINTENANCE" });
+  const policy = await createNoticeInDb("정책 공지", { category: "POLICY" });
+  await login(page, "/seller/notices");
+  const row = (t: string) => page.getByTestId("notice-row").filter({ hasText: `${E2E_PREFIX}${t}` });
+  await expect(row("정책 공지")).toContainText("안 읽음");
+
+  // 분류 칸
+  await page.getByRole("button", { name: "기능", exact: true }).click();
+  await expect(page).toHaveURL(/category=FEATURE/);
+  await expect(row("기능 공지")).toBeVisible();
+  await expect(row("점검 공지")).toHaveCount(0);
+  await page.getByRole("button", { name: "전체", exact: true }).click();
+  await expect(page).not.toHaveURL(/category=/);
+
+  // 검색: 결과 없음은 안내와 「검색 초기화」
+  await page.getByLabel("공지 검색").fill("없는검색어zz");
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page.getByText("「없는검색어zz」 검색 결과가 없습니다")).toBeVisible();
+  await page.getByRole("button", { name: "검색 초기화" }).click();
+  await expect(row("정책 공지")).toBeVisible();
+
+  // 열면 읽음: 안 읽은 것만 목록에서 빠진다
+  await row("정책 공지").getByRole("link").click();
+  await expect(page).toHaveURL(new RegExp(`/seller/notices/${policy}$`));
+  await expect(page.getByTestId("notice-title")).toBeVisible();
+  await page.goto("/seller/notices?unread=1");
+  await expect(page.getByLabel("안 읽은 것만")).toBeChecked();
+  await expect(row("정책 공지")).toHaveCount(0);
+  await expect(row("기능 공지")).toBeVisible();
+  await page.goto("/seller/notices");
+  await expect(row("정책 공지")).toContainText("읽음");
+});
+
+test("공지 목록: 20개를 넘으면 다음 쪽으로 넘기고, 이전으로 돌아온다", async ({ page }) => {
+  for (let i = 0; i < 22; i++) await createNoticeInDb(`쪽 공지 ${String(i).padStart(2, "0")}`);
+  await login(page, "/seller/notices");
+  await expect(page.getByText(/20개씩 · 1–\d+ 표시/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "‹ 이전" })).toBeDisabled();
+  await page.getByRole("button", { name: "다음 ›" }).click();
+  await expect(page.getByText(/20개씩 · 21–\d+ 표시/)).toBeVisible();
+  await page.getByRole("button", { name: "‹ 이전" }).click();
+  await expect(page.getByText(/20개씩 · 1–\d+ 표시/)).toBeVisible();
 });
 
 test("문의: 공지에서 관련 문의를 보내고, 사진을 붙이고, 답변을 확인한 뒤 추가 문의를 보내며, 종료되면 입력란이 사라진다", async ({ page }) => {
   const noticeId = await createNoticeInDb("문의 연결 공지");
   await login(page, `/seller/notices/${noticeId}`);
-  await page.getByRole("link", { name: "이 공지로 문의하기" }).click();
+  await page.getByRole("link", { name: "이 공지에 대해 문의" }).click();
   await expect(page).toHaveURL(/\/seller\/inquiries\/new\?noticeId=/);
   await expect(page.getByText(`관련 공지: ${E2E_PREFIX}문의 연결 공지`)).toBeVisible();
 
@@ -76,7 +145,7 @@ test("문의: 공지에서 관련 문의를 보내고, 사진을 붙이고, 답�
 
   // 목록: 내 문의 탭에 대기 상태로 보인다
   await page.goto("/seller/inquiries");
-  await expect(page.getByTestId("inquiry-row").filter({ hasText: `${E2E_PREFIX}결제 문의` })).toContainText("답변 대기");
+  await expect(page.getByTestId("inquiry-row").filter({ hasText: `${E2E_PREFIX}결제 문의` })).toContainText("접수");
 
   // 마스터 답변 → 새 답변 표시, 상세에는 관리자 이름 없이 「플랫폼」
   await adminReplyInDb(id, "확인 후 안내드립니다.");
@@ -105,6 +174,35 @@ test("문의: 공지에서 관련 문의를 보내고, 사진을 붙이고, 답�
   await page.reload();
   await expect(page.getByText("종료된 문의입니다")).toBeVisible();
   await expect(page.getByLabel("추가 문의")).toHaveCount(0);
+});
+
+test("내 문의 목록: 상태 칸 숫자와 문의 종류 선택으로 걸러 보고, 조건 초기화로 돌아온다", async ({ page }) => {
+  await login(page, "/seller/inquiries");
+  const sent = await page.evaluate(async (t) => {
+    const r = await fetch("/api/seller/platform-inquiries", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ category: "REWARD", title: t, body: "내용" }) });
+    return r.status;
+  }, `${E2E_PREFIX}적립금 문의`);
+  expect(sent).toBe(201);
+  await page.reload();
+  const row = page.getByTestId("inquiry-row").filter({ hasText: `${E2E_PREFIX}적립금 문의` });
+  await expect(row).toContainText("적립금");
+  await expect(row).toContainText("접수");
+  await expect(page.getByRole("button", { name: /^접수 \d+$/ })).toBeVisible();
+
+  // 문의 종류: 다른 종류를 고르면 빠지고, 맞는 종류를 고르면 보인다
+  await page.getByLabel("문의 종류").selectOption("SHOP");
+  await expect(page).toHaveURL(/category=SHOP/);
+  await expect(row).toHaveCount(0);
+  await expect(page.getByText("조건에 맞는 문의가 없습니다")).toBeVisible();
+  await page.getByLabel("문의 종류").selectOption("REWARD");
+  await expect(row).toBeVisible();
+
+  // 상태 칸: 종료 칸에는 없다 → 조건 초기화
+  await page.getByRole("button", { name: /^종료 \d+$/ }).click();
+  await expect(page).toHaveURL(/status=CLOSED/);
+  await expect(row).toHaveCount(0);
+  await page.getByRole("button", { name: "조건 초기화" }).click();
+  await expect(row).toBeVisible();
 });
 
 test("문의: 유형 없이는 보낼 수 없고, 없는 문의는 안내한다", async ({ page }) => {

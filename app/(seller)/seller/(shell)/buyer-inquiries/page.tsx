@@ -8,6 +8,8 @@ import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../.
 import { api, failMessage } from "../../../../../components/seller/api";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
 import "./buyer-inquiries.css";
+import { recentRange } from "../../../../../lib/client/dateInput";
+import { PERIOD_ALL } from "../../../../../lib/client/filterDefaults";
 import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
 
 // SA-046 구매자 문의 목록 · SA-047 문의 상세·답변(파트너스 관리자, 게시판 › 구매자 문의).
@@ -33,9 +35,10 @@ type Inquiry = {
 };
 type Data = { inquiries: Inquiry[]; nextCursor: string | null; waitingCount: number; canEdit: boolean };
 type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; data: Data };
-type Filter = { status: "" | Status; kind: "" | Kind; from: string; to: string; q: string };
+type Filter = { status: "" | Status; kind: "" | Kind; from: string; to: string; q: string; period: string };
 
-const EMPTY: Filter = { status: "", kind: "", from: "", to: "", q: "" };
+// 기본값 정본 lib/client/filterDefaults.ts: 작성일은 처음부터 최근 1개월, 초기화도 이 값으로 돌아간다. 홈 「처리할 일」 링크는 ?period=all(기간 전체)로 들어온다
+const emptyFilter = (): Filter => ({ status: "", kind: "", q: "", period: "", ...recentRange(1) });
 const KIND_LABEL: Record<Kind, string> = { PRODUCT: "상품 문의", GENERAL: "1:1 문의" };
 const STATUS_BADGE: Record<Status, { label: string; cls: string }> = {
   WAITING: { label: "답변 대기", cls: "b-wait" },
@@ -50,16 +53,16 @@ const TABS: { key: "" | Status; label: string }[] = [
 export default function BuyerInquiriesPage() {
   const [state, setState] = useState<Load>({ kind: "loading" });
   // 조건은 URL 쿼리(?status=WAITING&kind=&from=&to=&q=)와 맞춘다: 파트너스 홈 「처리할 일」 링크가 답변 대기로 바로 연다. 틀린 값은 전체로 본다
-  const [url, setUrl] = useUrlState({ status: "", kind: "", from: "", to: "", q: "" });
+  const [url, setUrl] = useUrlState(emptyFilter());
   const filter = useMemo<Filter>(
     () => ({
       status: url.status === "WAITING" || url.status === "ANSWERED" ? url.status : "",
       kind: url.kind === "PRODUCT" || url.kind === "GENERAL" ? url.kind : "",
-      from: url.from,
-      to: url.to,
+      ...(url.period === PERIOD_ALL ? { from: "", to: "" } : { from: url.from, to: url.to }),
       q: url.q,
+      period: url.period === PERIOD_ALL ? PERIOD_ALL : "",
     }),
-    [url.status, url.kind, url.from, url.to, url.q],
+    [url.status, url.kind, url.from, url.to, url.q, url.period],
   );
   const [draft, setDraft] = useState<Filter>(filter);
   const [more, setMore] = useState<Inquiry[]>([]);
@@ -114,7 +117,7 @@ export default function BuyerInquiriesPage() {
 
   const search = () => {
     if (invalidRange) return;
-    setUrl({ ...draft });
+    setUrl({ ...draft, period: "" });
   };
   const setTab = (status: "" | Status) => {
     setDraft((d) => ({ ...d, status }));
@@ -132,8 +135,9 @@ export default function BuyerInquiriesPage() {
           </div>
         )}
         <SearchBox onSearch={search} onReset={() => {
-            setDraft({ ...EMPTY, status: filter.status });
-            setUrl({ ...EMPTY, status: filter.status });
+            const empty = { ...emptyFilter(), status: filter.status };
+            setDraft(empty);
+            setUrl(empty);
           }} label="문의 검색">
           <SearchRow label="종류">
             <select className="inp" aria-label="문의 종류" value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value as "" | Kind })}>

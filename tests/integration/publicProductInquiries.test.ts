@@ -40,8 +40,10 @@ describe("공개 상품 문의 목록", () => {
 
   it("비공개 글은 제목·내용·답변을 가리고 답변 여부만 보인다", async () => {
     const s = await shop();
-    await add(s, { isPrivate: true, title: "내 주문 문의", body: "전화번호 010-1234-5678", status: "ANSWERED", answer: "비밀 답변", answeredAt: new Date() });
-    await add(s, { isPrivate: true, title: "대기 중 비밀", body: "비밀 내용" });
+    // 목록은 최신순이고 같은 시각이면 id로 갈린다. 순서를 시험하려면 작성 시각을 서로 다르게 고정한다(같은 밀리초에 만들어지면 순서가 뒤집혀 간헐 실패했다)
+    const t0 = Date.now() - 60_000;
+    await add(s, { isPrivate: true, title: "내 주문 문의", body: "전화번호 010-1234-5678", status: "ANSWERED", answer: "비밀 답변", answeredAt: new Date(), createdAt: new Date(t0) });
+    await add(s, { isPrivate: true, title: "대기 중 비밀", body: "비밀 내용", createdAt: new Date(t0 + 1000) });
     const r = await get(s.seller.slug, s.product.id);
     expect(r.body.inquiries.map((i: any) => [i.title, i.body, i.answer, i.answered])).toEqual([
       ["비밀글입니다", null, null, false],

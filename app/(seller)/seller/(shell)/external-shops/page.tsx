@@ -100,7 +100,12 @@ export default function ExternalShopsPage() {
         />
         <div className="col" style={{ gap: 16 }}>
           {state.kind === "loading" && <div className="card"><LoadingRows rows={4} /></div>}
-          {state.kind === "error" && <div className="card">{state.status === 402 ? <Locked /> : <ErrorState title="연동 정보를 불러오지 못했습니다" onRetry={() => void load()} />}</div>}
+          {state.kind === "error" && <div className="card">{state.status === 402 ? <Locked /> : state.status === 403 ? (
+              <div className="st" style={{ boxShadow: "none" }} data-testid="external-forbidden">
+                <span className="t">쇼핑몰 설정 권한이 있는 직원만 볼 수 있습니다</span>
+                <span className="s">대표자에게 허용해 달라고 요청해 주십시오</span>
+              </div>
+            ) : <ErrorState title="연동 정보를 불러오지 못했습니다" onRetry={() => void load()} />}</div>}
           {d && (
             <>
               <div className="msg msg-info" role="note"><span>연결한 쇼핑몰의 주문 이벤트가 방송 주문대기와 오버레이로 들어옵니다</span></div>

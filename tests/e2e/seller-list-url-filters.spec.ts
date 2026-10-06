@@ -22,17 +22,18 @@ const login = async (page: Page, target: string) => {
 const row = (page: Page, title: string) => page.getByTestId("inquiry-row").filter({ hasText: title });
 
 test("구매자 문의: ?status=WAITING으로 열면 답변 대기 탭이 켜지고, 탭을 바꾸면 URL이 따라간다", async ({ page }) => {
-  await login(page, "/seller/buyer-inquiries?status=WAITING");
-  await expect(page).toHaveURL(/\/seller\/buyer-inquiries\?status=WAITING$/);
+  // 홈 「처리할 일」 링크는 기간 전체(period=all)로 연다
+  await login(page, "/seller/buyer-inquiries?period=all&status=WAITING");
+  await expect(page).toHaveURL(/\/seller\/buyer-inquiries\?period=all&status=WAITING$/);
   await expect(page.getByRole("tab", { name: /^답변 대기/ })).toHaveAttribute("aria-selected", "true");
   await expect(row(page, INQUIRY_TITLES.waiting)).toHaveCount(1);
   await expect(row(page, INQUIRY_TITLES.answered)).toHaveCount(0);
 
   await page.getByRole("tab", { name: "답변 완료" }).click();
-  await expect(page).toHaveURL(/status=ANSWERED$/);
+  await expect(page).toHaveURL(/period=all&status=ANSWERED$/);
   await expect(row(page, INQUIRY_TITLES.answered)).toHaveCount(1);
   await page.getByRole("tab", { name: "전체" }).click();
-  await expect(page).toHaveURL(/\/seller\/buyer-inquiries$/);
+  await expect(page).toHaveURL(/\/seller\/buyer-inquiries\?period=all$/);
   await expect(row(page, INQUIRY_TITLES.waiting)).toHaveCount(1);
   await expect(row(page, INQUIRY_TITLES.answered)).toHaveCount(1);
 
@@ -46,6 +47,20 @@ test("구매자 문의: ?status=WAITING으로 열면 답변 대기 탭이 켜지
   await page.goto("/seller/buyer-inquiries?status=NOPE");
   await expect(page.getByRole("tab", { name: "전체" })).toHaveAttribute("aria-selected", "true");
   await expect(row(page, INQUIRY_TITLES.waiting)).toHaveCount(1);
+});
+
+test("구매자 문의: 그냥 열면 작성일이 최근 1개월로 채워지고, 초기화도 그 값으로 돌아간다", async ({ page }) => {
+  await login(page, "/seller/buyer-inquiries");
+  await expect(page).toHaveURL(/\/seller\/buyer-inquiries$/);
+  await expect(page.getByLabel("작성일 시작")).not.toHaveValue("");
+  await expect(page.getByLabel("작성일 끝")).not.toHaveValue("");
+  const start = await page.getByLabel("작성일 시작").inputValue();
+  await page.getByLabel("작성일 시작").fill("2020-01-01");
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page).toHaveURL(/from=2020-01-01/);
+  await page.getByRole("button", { name: "초기화" }).first().click();
+  await expect(page).toHaveURL(/\/seller\/buyer-inquiries$/);
+  await expect(page.getByLabel("작성일 시작")).toHaveValue(start);
 });
 
 test("교환·반품: ?status=REQUESTED로 열면 접수 탭이 켜지고, 전체를 누르면 쿼리가 빠진다", async ({ page }) => {

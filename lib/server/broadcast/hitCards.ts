@@ -20,16 +20,16 @@ export const CARD_NAME_MAX = 60;
 export const NOTE_MAX = 200;
 export const NICKNAME_MAX = 30;
 export const HIT_PAGE_SIZE = 50;
-// 등급 선택지(SA-053 디자인 정본의 고정 목록). 목록에 없는 값은 받지 않고, 비워 둘 수 있다. 목록을 바꾸려면 이 한 곳만 고친다.
+export const GRADE_MAX = 12;
+// 등급 추천 값(SA-001-M4 HIT 기록 창·SA-053 목록). 화면의 「직접 입력」을 받으므로 등급은 자유 입력이고, 이 목록은 추천 값일 뿐이다. 비워 둘 수 있다.
 export const HIT_GRADES = ["SAR", "SR", "UR", "SE", "SP", "AA"] as const;
-const isGrade = (v: unknown): v is (typeof HIT_GRADES)[number] => (HIT_GRADES as readonly unknown[]).includes(v);
 
 export type HitRejection = "invalid_card_name" | "invalid_grade" | "invalid_note" | "invalid_nickname" | "invalid_queue_item" | "invalid_filter";
 
 // 파트너스 관리자 화면 문구(명사형·합니다체)
 export const HIT_MESSAGES: Record<HitRejection, string> = {
   invalid_card_name: `카드 이름을 ${CARD_NAME_MAX}자 안에서 입력해 주십시오`,
-  invalid_grade: `등급은 ${HIT_GRADES.join(" · ")} 중에서 골라 주십시오`,
+  invalid_grade: `등급을 ${GRADE_MAX}자 안에서 입력해 주십시오`,
   invalid_note: `메모는 ${NOTE_MAX}자까지 입력할 수 있습니다`,
   invalid_nickname: `닉네임을 ${NICKNAME_MAX}자 안에서 입력해 주십시오`,
   invalid_queue_item: "주문대기 항목을 찾을 수 없습니다. 새로고침한 뒤 다시 시도해 주십시오",
@@ -86,8 +86,9 @@ export async function listHitCards(db: PrismaClient, ctx: TenantContext, f: HitF
     where.broadcastSessionId = f.broadcastId;
   }
   if (f.grade) {
-    if (!isGrade(f.grade)) return { ok: false as const, reason: "invalid_filter" as const };
-    where.grade = f.grade;
+    const g = cleanText(f.grade, GRADE_MAX);
+    if (!g) return { ok: false as const, reason: "invalid_filter" as const };
+    where.grade = g;
   }
   const from = f.from ? kstStart(f.from) : null;
   const to = f.to ? kstStart(f.to) : null;
@@ -109,13 +110,13 @@ async function bump(tx: Tx, sellerId: string) {
   return (await tx.seller.update({ where: { id: sellerId }, data: { liveVersion: { increment: 1 } }, select: { liveVersion: true } })).liveVersion;
 }
 
-// 등록. 본문: { cardName(60자), grade?(SAR·SR·UR·SE·SP·AA 중 하나, 비우면 없음), note?(200자), queueItemId? | nickname?(30자, queueItemId가 없을 때 필수) }
+// 등록. 본문: { cardName(60자), grade?(12자 이내 자유 입력·추천 SAR·SR·UR·SE·SP·AA, 비우면 없음), note?(200자), queueItemId? | nickname?(30자, queueItemId가 없을 때 필수) }
 export async function createHitCard(db: PrismaClient, ctx: TenantContext, raw: unknown, meta: AuditMeta = {}) {
   requireSellerPermission(ctx, "BROADCAST_RUN");
   const b = obj(raw);
   const cardName = cleanText(b.cardName, CARD_NAME_MAX, "memo");
   if (!cardName) return { ok: false as const, reason: "invalid_card_name" as const };
-  const grade = b.grade === undefined || b.grade === null || b.grade === "" ? null : isGrade(b.grade) ? b.grade : undefined;
+  const grade = b.grade === undefined || b.grade === null || b.grade === "" ? null : (cleanText(b.grade, GRADE_MAX) ?? undefined);
   if (grade === undefined) return { ok: false as const, reason: "invalid_grade" as const };
   let note: string | null = null;
   if (b.note !== undefined && b.note !== null && !(typeof b.note === "string" && b.note.trim() === "")) {

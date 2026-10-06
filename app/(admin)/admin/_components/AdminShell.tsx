@@ -94,7 +94,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const utilities = (
     <>
       <Link className="util-i" href="/admin/notifications" onClick={() => setNavOpen(false)}>
-        알림 센터
+        알림
       </Link>
       <Link className="util-i" href="/admin/account" onClick={() => setNavOpen(false)}>
         내 계정

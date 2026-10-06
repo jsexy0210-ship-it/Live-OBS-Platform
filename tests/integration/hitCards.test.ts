@@ -120,7 +120,7 @@ describe("HIT 카드", () => {
 });
 
 describe("HIT 카드 등급(SA-053)", () => {
-  it("등급(SAR·SR·UR·SE·SP·AA)을 받아 저장하고 비워 둘 수 있으며, 목록에 grade·grades가 있고 ?grade= 필터로 거른다. 목록 밖 값은 400이다", async () => {
+  it("등급(SAR·SR·UR·SE·SP·AA)을 받아 저장하고 비워 둘 수 있으며, 목록에 grade·grades가 있고 ?grade= 필터로 거른다. 자유 입력(예: L-P)도 받고 형식 오류는 400이다", async () => {
     const s = await shop();
     const a = await create(s.owner, { cardName: "뮤 ex", nickname: "가", grade: "SAR" });
     const b = await create(s.owner, { cardName: "이브이", nickname: "나", grade: "SR" });
@@ -128,7 +128,9 @@ describe("HIT 카드 등급(SA-053)", () => {
     const d = await create(s.owner, { cardName: "빈 등급", nickname: "라", grade: "" });
     expect([a.status, b.status, c.status, d.status]).toEqual([201, 201, 201, 201]);
     expect([a.body.card.grade, b.body.card.grade, c.body.card.grade, d.body.card.grade]).toEqual(["SAR", "SR", null, null]);
-    for (const bad of ["sar", "L-P", "S", 1, true]) {
+    const free = await create(s.owner, { cardName: "루피", nickname: "바", grade: "  L-P " });
+    expect([free.status, free.body.card.grade]).toEqual([201, "L-P"]);
+    for (const bad of ["가".repeat(13), 1, true, "\u200b"]) {
       const r = await create(s.owner, { cardName: "x", nickname: "마", grade: bad });
       expect(r.status, String(bad)).toBe(400);
       expect(r.body).toEqual({ error: "invalid_grade", message: HIT_MESSAGES.invalid_grade });
@@ -136,11 +138,12 @@ describe("HIT 카드 등급(SA-053)", () => {
     const all = await list(s.owner);
     expect(all.body.grades).toEqual(["SAR", "SR", "UR", "SE", "SP", "AA"]);
     const pairs = all.body.items.map((x: { cardName: string; grade: string | null }) => [x.cardName, x.grade]);
-    expect(pairs).toHaveLength(4);
-    expect(pairs).toEqual(expect.arrayContaining([["무등급", null], ["빈 등급", null], ["뮤 ex", "SAR"], ["이브이", "SR"]]));
+    expect(pairs).toHaveLength(5);
+    expect(pairs).toEqual(expect.arrayContaining([["무등급", null], ["빈 등급", null], ["뮤 ex", "SAR"], ["이브이", "SR"], ["루피", "L-P"]]));
     expect((await list(s.owner, "?grade=SAR")).body.items.map((x: { cardName: string }) => x.cardName)).toEqual(["뮤 ex"]);
     expect((await list(s.owner, "?grade=UR")).body.items).toEqual([]);
-    expect((await list(s.owner, "?grade=XX")).status).toBe(400);
-    expect(await db.auditLog.count({ where: { action: "hit_card.create", sellerId: s.seller.id } })).toBe(4);
+    expect((await list(s.owner, "?grade=L-P")).body.items.map((x: { cardName: string }) => x.cardName)).toEqual(["루피"]);
+    expect((await list(s.owner, `?grade=${"가".repeat(13)}`)).status).toBe(400);
+    expect(await db.auditLog.count({ where: { action: "hit_card.create", sellerId: s.seller.id } })).toBe(5);
   });
 });

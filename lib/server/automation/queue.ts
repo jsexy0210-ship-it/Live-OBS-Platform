@@ -114,6 +114,9 @@ export function backoffMs(attempt: number, random: () => number = Math.random): 
   return Math.round(exp * (0.5 + random() * 0.5));
 }
 
+// 상태가 안 바뀌는 단계 완료 기록의 detail.reason
+export const STEP_DONE_REASON = "step_done";
+
 export async function writeJobEvent(
   tx: Tx,
   job: { id: string; sellerId: string },
@@ -404,12 +407,16 @@ export const claimObsTarget = (db: PrismaClient, c: Claim, pairingId: string) =>
 export const markTargetVerified = (db: PrismaClient, c: Claim, target: { shopKey: string; obsPairingId: string }) =>
   fencedWrite(db, c, (now) => ({ data: { targetVerifiedAt: now, shopKey: target.shopKey.slice(0, 200), obsPairingId: target.obsPairingId.slice(0, 200) } }));
 
+// 단계를 끝내고 다음으로 넘어간다. 앞으로 나아갈 때만 「N단계 완료」 기록 한 줄(상태는 그대로, detail.reason=step_done·stepIndex=끝낸 단계)을 남겨 작업 기록(SA-152)에 단계별 행이 보이게 한다.
 export const advanceStep = (db: PrismaClient, c: Claim, stepIndex: number, facts: ConnectionFacts = {}) =>
   fencedWrite(db, c, () => ({
     data: {
       stepIndex,
       ...(facts.shopKey ? { shopKey: facts.shopKey.slice(0, 200) } : {}),
       ...(facts.obsPairingId ? { obsPairingId: facts.obsPairingId.slice(0, 200) } : {}),
+    },
+    after: async (tx, cur) => {
+      if (stepIndex > cur.stepIndex) await writeJobEvent(tx, cur, cur.status, cur.status, c.token, { reason: STEP_DONE_REASON });
     },
   }));
 

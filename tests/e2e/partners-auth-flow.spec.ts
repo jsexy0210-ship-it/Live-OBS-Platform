@@ -18,6 +18,9 @@ async function shot(page: Page, name: string) {
   await page.setViewportSize({ width: 1440, height: 900 });
 }
 
+// 사업자등록증 시험 파일(서버는 PNG 앞뒤 바이트만 확인한다)
+const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(40, 2), Buffer.from([0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82])]);
+
 // 실행마다 다른 대표자(가짜 공급자는 이름·생년월일로 사람을 가른다 · 한 대표자는 쇼핑몰 하나)·사업자번호·주소·이메일
 const uniq = () => `${Date.now().toString(36).slice(-5)}${Math.floor(Math.random() * 36 ** 2).toString(36)}`;
 const letters = (s: string) => Array.from(s, (c) => "가나다라마바사아자차카타파하거너더러머버서어저처커터퍼허"[parseInt(c, 36) % 28]).join("");
@@ -44,7 +47,7 @@ const signupScreen = (page: Page) => new URL(page.url()).pathname.startsWith("/s
 const codeSentText = (page: Page) => (signupScreen(page) ? "인증번호를 보냈어요. 문자로 받은 6자리를 넣어 주세요" : "인증번호를 보냈습니다. 문자로 받은 6자리를 입력해 주십시오");
 // 파트너스 가입 필수 약관(PF-007-1). 둘 다 동의해야 인증번호를 받을 수 있다
 async function agreeSignupTerms(page: Page) {
-  await page.getByLabel("필수 약관에 모두 동의해요").check();
+  await page.getByLabel("모두 동의해요", { exact: true }).check();
 }
 // 약관 동의(1단계)를 마치고 본인확인(2단계)으로 간다
 async function toVerifyStep(page: Page) {
@@ -75,7 +78,7 @@ async function verify(page: Page, wrongFirst = false, startPath = "/api/seller-s
 
 type Account = { email: string; password: string; slug: string; name: string };
 
-async function signup(page: Page, opts: { mailOrderNumber: string; wrongFirst?: boolean; shots?: boolean; openedOn?: string; failApplyOnce?: boolean }): Promise<Account> {
+async function signup(page: Page, opts: { mailOrderNumber: string; wrongFirst?: boolean; shots?: boolean; openedOn?: string; failApplyOnce?: boolean; overlay?: boolean }): Promise<Account> {
   const id = uniq();
   const a: Account = { email: `partner-${id}@example.com`, password: `pw-${id}-long`, slug: `p-${id}`, name: `김${letters(id)}` };
   await page.goto("/seller/login");
@@ -88,9 +91,11 @@ async function signup(page: Page, opts: { mailOrderNumber: string; wrongFirst?: 
     await page.getByRole("button", { name: "다음", exact: true }).click();
     await expect(page.getByText("필수 약관에 동의해 주세요")).toBeVisible();
     await expect(page).toHaveURL(/\/seller\/signup$/);
-    await page.getByLabel("파트너스 이용약관 (필수)").check();
+    await page.getByLabel("이용약관 (필수)").check();
     await page.getByLabel("개인정보 수집 · 이용 (필수)").check();
-    await expect(page.getByLabel("필수 약관에 모두 동의해요")).toBeChecked();
+    await page.getByLabel("파트너스 운영 정책", { exact: false }).check();
+    await page.getByLabel("새 기능 · 혜택 소식 받기 (선택)").check();
+    await expect(page.getByLabel("모두 동의해요", { exact: true })).toBeChecked();
     await shot(page, "PF-007-1");
   }
   await toVerifyStep(page);
@@ -103,14 +108,28 @@ async function signup(page: Page, opts: { mailOrderNumber: string; wrongFirst?: 
   if (opts.shots) await shot(page, "PF-007-2");
   await page.getByRole("button", { name: "다음", exact: true }).click();
   await expect(page).toHaveURL(/\/seller\/signup\/account$/);
-  // 3/5 가입 정보: 서버와 같은 규칙으로 먼저 거른다
-  await page.getByRole("button", { name: "다음", exact: true }).click();
+  // 3/5 가입 정보: 기본은 「있어요 · 방송 화면만 쓸게요」(신청하기). 쇼핑몰까지 쓰려면 「없어요」를 골라 4단계로 간다
+  if (!opts.overlay) await page.getByLabel("없어요 · 쇼핑몰까지 쓸게요").check();
+  // 서버와 같은 규칙으로 먼저 거른다
+  await page.getByRole("button", { name: opts.overlay ? "신청하기" : "다음", exact: true }).click();
   await expect(page.getByText("이메일 주소를 다시 확인해 주세요")).toBeVisible();
   await page.getByLabel("이메일 (로그인에 써요)").fill(a.email);
   await page.getByLabel("비밀번호", { exact: true }).fill(a.password);
   await page.getByLabel("쇼핑몰 이름").fill(`카드숍 ${id}`);
   await page.getByLabel("쇼핑몰 주소").fill(a.slug);
+  // 쇼핑몰 주소는 타자를 멈추면 서버에 사용할 수 있는지 묻는다
+  await expect(page.getByText(`쓸 수 있는 주소예요 · onq.kr/${a.slug}`)).toBeVisible();
   if (opts.shots) await shot(page, "PF-007-3");
+  if (opts.overlay) {
+    // 방송 화면만 쓰기: 3단계에서 바로 신청한다(4단계는 건너뜀)
+    await expect(page.getByText("건너뜀", { exact: true })).toBeVisible();
+    const sent = page.waitForResponse((r) => r.url().endsWith("/api/seller-signup/apply"));
+    await page.getByRole("button", { name: "신청하기" }).click();
+    await page.getByRole("dialog", { name: "입력한 내용으로 가입을 신청할까요?" }).getByRole("button", { name: "신청하기" }).click();
+    expect((await sent).status()).toBe(200);
+    await expect(page).toHaveURL(/\/seller\/signup\/done$/);
+    return a;
+  }
   await page.getByRole("button", { name: "다음", exact: true }).click();
   await expect(page).toHaveURL(/\/seller\/signup\/business$/);
   // 4/5 사업자 정보
@@ -121,6 +140,16 @@ async function signup(page: Page, opts: { mailOrderNumber: string; wrongFirst?: 
   await page.getByLabel("사업자등록번호").fill(businessNumber());
   await page.getByLabel("개업일").fill(opts.openedOn ?? "20200101");
   await page.getByLabel("통신판매업 신고번호").fill(opts.mailOrderNumber);
+  await page.getByLabel("연락처").fill("010-1234-5678");
+  await page.getByLabel("기본 주소").fill("서울 강남구 테헤란로 1");
+  // 「조회」: 국세청 조회 결과가 사업자등록번호 아래에 보인다
+  await page.getByRole("button", { name: "조회", exact: true }).click();
+  await expect(page.getByText("계속사업자")).toBeVisible();
+  // 사업자등록증(선택): 형식·크기를 서버가 확인하고, 올리면 파일 이름이 보인다
+  await page.setInputFiles("#su-license", { name: "license.txt", mimeType: "text/plain", buffer: Buffer.from("hello") });
+  await expect(page.getByText("JPG · PNG · PDF 파일만 올릴 수 있어요")).toBeVisible();
+  await page.setInputFiles("#su-license", { name: "등록증.png", mimeType: "image/png", buffer: PNG });
+  await expect(page.getByText("등록증.png")).toBeVisible();
   if (opts.shots) await shot(page, "PF-007-4");
   if (opts.failApplyOnce) {
     // 신청은 서버가 처리하게 두고 응답만 서버 오류로 바꾼다: 본인확인을 버리지 않고, 다시 신청하면 서버가 같은 신청 결과를 돌려준다
@@ -143,6 +172,15 @@ async function signup(page: Page, opts: { mailOrderNumber: string; wrongFirst?: 
   await expect(page).toHaveURL(/\/seller\/signup\/done$/);
   return a;
 }
+
+test("방송 화면만 쓰기(있어요)를 고르면 사업자 정보 없이 3단계에서 바로 신청해 승인되고, 쇼핑몰 주소가 이미 쓰는 것이면 알려 준다", async ({ page }) => {
+  const a = await signup(page, { mailOrderNumber: "", overlay: true });
+  await expect(page.getByRole("heading", { name: "가입을 마쳤어요" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "로그인하기" })).toBeVisible();
+  // 신청이 끝난 주소는 쓸 수 없다고 답한다
+  const taken = await page.request.get(`/api/seller-signup/slug-check?slug=${a.slug}`);
+  expect(await taken.json()).toEqual({ available: false, reason: "taken" });
+});
 
 test("파트너스 가입 신청 → 바로 승인 → 로그인 → 비밀번호 찾기로 새 비밀번호 → 새 비밀번호로만 로그인", async ({ page }) => {
   const a = await signup(page, { mailOrderNumber: "제2024-서울강남-01234호", wrongFirst: true, shots: true, failApplyOnce: true });
@@ -301,7 +339,7 @@ test("가입 신청 단계: 동의 없이 다음을 누르면 막고, 앞 단계
   await fillIdentity(page, who);
   await page.getByRole("button", { name: "이전 단계" }).click();
   await expect(page).toHaveURL(/\/seller\/signup$/);
-  await expect(page.getByLabel("필수 약관에 모두 동의해요")).toBeChecked();
+  await expect(page.getByLabel("모두 동의해요", { exact: true })).toBeChecked();
   await page.getByRole("button", { name: "다음", exact: true }).click();
   await expect(page.locator("#idv-name")).toHaveValue(who);
   await page.reload();
@@ -342,8 +380,8 @@ test("가입 신청: 화면의 약관 버전이 서버와 다르면 문자를 �
   // 약관 동의 단계로 돌아가 안내한다
   await expect(page).toHaveURL(/\/seller\/signup$/);
   await expect(page.locator("#su-terms-err")).toHaveText("약관이 바뀌었어요. 다시 확인해 주세요");
-  await expect(page.getByLabel("필수 약관에 모두 동의해요")).not.toBeChecked();
-  await expect(page.getByLabel("필수 약관에 모두 동의해요")).toBeFocused();
+  await expect(page.getByLabel("모두 동의해요", { exact: true })).not.toBeChecked();
+  await expect(page.getByLabel("모두 동의해요", { exact: true })).toBeFocused();
   await expect(page.getByText("인증번호를 보냈어요", { exact: false })).toHaveCount(0);
   await shot(page, "PF-007-1-outdated");
   // 다시 동의하면 입력한 본인확인 칸이 그대로 남아 있고, 서버의 지금 버전으로 보내 이어 간다

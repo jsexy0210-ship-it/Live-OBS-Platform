@@ -1,6 +1,6 @@
 "use client";
 
-import { formatDateTime } from "../../../../../lib/client/format";
+import { formatDateTimeParts } from "../../../../../lib/client/format";
 import "../../../../../styles/seller-orders.css";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -39,14 +39,15 @@ function query(f: Filters, cursor?: string) {
 
 export default function OrderListPage() {
   // 검색어·기간·결제 상태는 주소(쿼리)가 기준이다. 상세에 갔다 Back으로 돌아와도 그대로 복원된다(IA Back 규칙 3항)
-  const [u, setU] = useUrlState({ q: "", period: "", status: "", shipped: "" });
+  const [u, setU] = useUrlState({ q: "", period: "30d", status: "", shipped: "" });
   const q = u.q;
-  const period = PERIODS.find((p) => p.key === u.period)?.key ?? null;
+  // 기본 최근 30일(≈1개월). 홈 「처리할 일」 같은 업무 큐 링크는 ?period=all(기간 전체)로 들어온다. 칩을 눌러 해제해도 전체 기간(정본 lib/client/filterDefaults.ts)
+  const period = u.period === "all" ? null : (PERIODS.find((p) => p.key === u.period)?.key ?? "30d");
   const statuses = u.status.split(",").filter((x): x is OrderStatus => STATUSES.includes(x as OrderStatus));
   const statusKey = statuses.join(",");
   // 발송 여부는 파트너스 홈 「배송 준비」 링크(?status=PAID&shipped=false)로 들어올 때 쓴다. 화면에서는 칩으로 보이고 누르면 해제된다
   const shipped: Shipped | null = u.shipped === "true" || u.shipped === "false" ? u.shipped : null;
-  const setPeriod = (v: Period | null) => setU({ period: v ?? "" });
+  const setPeriod = (v: Period | null) => setU({ period: v ?? "all" });
   const setStatuses = (v: OrderStatus[]) => setU({ status: v.join(",") });
   const [search, setSearch] = useState(q);
   const setUrl = useRef(setU);
@@ -111,11 +112,11 @@ export default function OrderListPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [menuOpen]);
 
-  const filtered = statuses.length > 0 || period !== null || q !== "" || shipped !== null;
+  const filtered = statuses.length > 0 || period !== "30d" || q !== "" || shipped !== null;
   const reset = () => {
     setSearch("");
     sent.current = "";
-    setU({ q: "", period: "", status: "", shipped: "" });
+    setU({ q: "", period: "30d", status: "", shipped: "" });
   };
   const statusText = statuses.length === 0 ? "전체" : statuses.length === 1 ? STATUS_BADGE[statuses[0]].label : `${STATUS_BADGE[statuses[0]].label} 외 ${statuses.length - 1}개`;
   const items = state.kind === "ok" ? state.items : [];
@@ -253,9 +254,11 @@ export default function OrderListPage() {
                 <tbody>
                   {items.map((o) => (
                     <tr key={o.id} className={o.status === "PENDING_PAYMENT" ? "faded" : ""} data-testid="order-row">
-                      <td>
+                      <td className="date">
                         <Link href={`/seller/orders/${o.id}`} className="fw6 num ord-link">
-                          {formatDateTime(o.createdAt)}
+                          {formatDateTimeParts(o.createdAt)?.date}
+                          <br />
+                          {formatDateTimeParts(o.createdAt)?.time}
                         </Link>
                         <div className="ord-ono num">{o.orderNoLabel}</div>
                       </td>
