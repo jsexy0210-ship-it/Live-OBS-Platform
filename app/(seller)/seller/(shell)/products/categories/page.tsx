@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Modal, PageHead } from "../../../../../../components/admin-ui";
+import { Modal, PageHead, ListTable, ListHead } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
@@ -179,7 +179,7 @@ export default function CategoriesPage() {
           </div>
         )}
 
-        <div className="card" style={{ overflow: "visible" }}>
+        <div className="au-list-section" >
           <div className="toolbar">
             <span className="t-l2 c-alt" data-testid="category-count">
               {state.kind === "ok" ? `대분류 ${tree.length} · 하위 ${childCount}` : ""}
@@ -209,7 +209,9 @@ export default function CategoriesPage() {
             </div>
           )}
           {state.kind === "ok" && tree.length > 0 && (
-            <div className="au-lt-wrap">
+            <>
+<ListHead total={parents.length} loaded unit="개" />
+<ListTable>
               <table className="tbl">
                 <thead>
                   <tr>
@@ -279,7 +281,8 @@ export default function CategoriesPage() {
                   })}
                 </tbody>
               </table>
-            </div>
+            </ListTable>
+</>
           )}
         </div>
         {state.kind === "ok" && tree.length > 0 && (

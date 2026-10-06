@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { FormFoot, FormRow, FormSection, PageHead, useConfirm } from "../../../../../components/admin-ui";
+import { FormFoot, FormRow, FormSection, PageHead, useConfirm, ListTable } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
@@ -412,7 +412,7 @@ export default function RewardPolicyPage() {
                 <div className="au-fs-h">
                   <h2 className="au-fs-t">정책 변경 이력</h2>
                 </div>
-                <div className="card sts-scroll">
+                <div className="au-list-section sts-scroll">
                   {history === null ? (
                     <LoadingRows rows={2} />
                   ) : history === "error" ? (
@@ -422,7 +422,8 @@ export default function RewardPolicyPage() {
                       <span className="t">변경 이력이 없습니다</span>
                     </div>
                   ) : (
-                    <table className="tbl tbl-card" data-testid="policy-history">
+                    <ListTable>
+<table className="tbl tbl-card" data-testid="policy-history">
                       <thead>
                         <tr>
                           <th style={{ width: 160 }}>일시</th>
@@ -440,6 +441,7 @@ export default function RewardPolicyPage() {
                         ))}
                       </tbody>
                     </table>
+</ListTable>
                   )}
                 </div>
                 {history && history !== "error" && history.next && (

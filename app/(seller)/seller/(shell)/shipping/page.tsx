@@ -3,7 +3,7 @@
 import { formatDateTime } from "../../../../../lib/client/format";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PageHead, useConfirm } from "../../../../../components/admin-ui";
+import { PageHead, useConfirm, ListTable, ListHead } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
@@ -184,7 +184,7 @@ export default function ShippingPage() {
       <main className="main">
         <PageHead description="주문의 배송 상태를 확인하고 발송 정보를 입력합니다." title="배송" />
 
-        <div className="card">
+        <div className="au-list-section">
           <nav className="tabs" aria-label="배송 상태" style={{ padding: "0 16px" }}>
             {TABS.map((t) => (
               <button key={t.key} type="button" className={`tab${tab === t.key ? " on" : ""}`} aria-pressed={tab === t.key} disabled={busy} onClick={() => setTab(t.key)}>
@@ -241,7 +241,9 @@ export default function ShippingPage() {
               </div>
             ) : (
               <>
-                <div style={{ overflowX: "auto" }}>
+                <>
+<ListHead total={items.length} loaded />
+<ListTable>
                   <table className={`tbl ship-tbl${selectable ? " ship-sel" : ""}`}>
                     <thead>
                       <tr>
@@ -327,7 +329,8 @@ export default function ShippingPage() {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </ListTable>
+</>
                 <div className="row" style={{ justifyContent: "space-between", padding: "12px 16px" }}>
                   <span className="t-c1 c-alt">{state.next ? `${items.length}건 넘게` : `${items.length}건`}</span>
                   {state.next && (

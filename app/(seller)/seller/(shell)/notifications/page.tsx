@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ListHead, PageHead } from "../../../../../components/admin-ui";
+import { ListHead, PageHead, ListTable } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -55,7 +55,7 @@ export default function NotificationsPage() {
           }
         />
         <span className="t-c1 c-alt">새 공지(최근 14일), 문의 답변, 입금 확인 요청, 결제 완료, 품절, 반품·교환 요청이 보입니다. 누르면 해당 화면으로 갑니다.</span>
-        <div className="card" style={{ overflow: "visible" }}>
+        <div className="au-list-section" >
           {state.kind === "ok" && <ListHead total={items.length} unit="건" actions={state.unreadCount > 0 ? <span className="t-l2" data-testid="notif-unread">읽지 않은 알림 {state.unreadCount}건</span> : undefined} />}
           {state.kind === "loading" && <LoadingRows rows={4} />}
           {state.kind === "error" && <ErrorState title="알림을 불러오지 못했습니다" onRetry={() => void load()} />}
@@ -67,7 +67,7 @@ export default function NotificationsPage() {
             </div>
           )}
           {state.kind === "ok" && items.length > 0 && (
-            <div className="au-lt-wrap">
+            <ListTable>
               <table className="tbl">
                 <thead>
                   <tr>
@@ -93,7 +93,7 @@ export default function NotificationsPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ListTable>
           )}
         </div>
       </main>

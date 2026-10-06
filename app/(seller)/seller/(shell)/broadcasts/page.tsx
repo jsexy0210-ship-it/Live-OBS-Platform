@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ListHead, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
+import { ListHead, PageHead, SearchBox, SearchRow, ListTable } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { useScrollRestore } from "../../../../../lib/client/navigation";
 import { effectiveRange, listDefaults, type PeriodFilter } from "../../../../../lib/client/filterDefaults";
@@ -108,7 +108,7 @@ export default function BroadcastHistoryPage() {
               </SearchRow>
             </SearchBox>
 
-            <div className="card">
+            <div className="au-list-section">
               {state.kind === "loading" && <LoadingRows rows={4} />}
               {state.kind === "error" &&
                 (state.status === 402 ? (
@@ -133,7 +133,7 @@ export default function BroadcastHistoryPage() {
                       </Link>
                     </div>
                   ) : (
-                    <div className="au-lt-wrap">
+                    <ListTable>
                       <table className="tbl">
                         <thead>
                           <tr>
@@ -170,7 +170,7 @@ export default function BroadcastHistoryPage() {
                           ))}
                         </tbody>
                       </table>
-                    </div>
+                    </ListTable>
                   )}
                   {state.next && (
                     <div className="row" style={{ justifyContent: "center", padding: 12 }}>

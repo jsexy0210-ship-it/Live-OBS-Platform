@@ -3,7 +3,7 @@
 import "../../../../../../styles/seller-orders.css";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Modal, PageHead } from "../../../../../../components/admin-ui";
+import { Modal, PageHead, ListTable, ListHead } from "../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
@@ -116,7 +116,7 @@ export default function RefundRequestsPage() {
           }
         />
         <span className="t-c1 c-alt">발송 전 주문에서 구매자가 보낸 환불 요청입니다. 승인하면 요청한 상품으로 바로 환불되고, 거절하면 사유가 구매자에게 보입니다. 발송 뒤 요청은 「교환 · 반품」 탭에서 처리합니다.</span>
-        <div className="card" style={{ overflow: "visible" }}>
+        <div className="au-list-section" >
           <div className="row" role="tablist" aria-label="처리 상태" style={{ gap: 8, flexWrap: "wrap", padding: "12px 20px" }}>
             {TABS.map((t) => (
               <button key={t.key} className={`chip${tab === t.key ? " on" : ""}`} type="button" role="tab" aria-selected={tab === t.key} onClick={() => setTab(t.key)}>
@@ -144,7 +144,9 @@ export default function RefundRequestsPage() {
             </div>
           )}
           {state.kind === "ok" && rows.length > 0 && (
-            <div className="au-lt-wrap">
+            <>
+<ListHead total={rows.length} loaded />
+<ListTable>
               <table className="tbl">
                 <thead>
                   <tr>
@@ -202,7 +204,8 @@ export default function RefundRequestsPage() {
                   })}
                 </tbody>
               </table>
-            </div>
+            </ListTable>
+</>
           )}
           {state.kind === "ok" && state.next && (
             <div className="row" style={{ padding: "12px 20px", justifyContent: "center" }}>

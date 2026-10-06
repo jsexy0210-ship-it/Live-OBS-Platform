@@ -2,7 +2,7 @@
 
 import { formatDateTime } from "../../../../../lib/client/format";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Modal, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
+import { Modal, PageHead, SearchBox, SearchRow, ListTable, ListHead } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
@@ -157,7 +157,7 @@ export default function BuyerInquiriesPage() {
           </SearchRow>
         </SearchBox>
 
-        <div className="card">
+        <div className="au-list-section">
           <div className="tabs" role="tablist">
             {TABS.map((t) => (
               <button key={t.key || "all"} className={`tab${filter.status === t.key ? " on" : ""}`} type="button" role="tab" aria-selected={filter.status === t.key} onClick={() => setTab(t.key)}>
@@ -177,7 +177,9 @@ export default function BuyerInquiriesPage() {
             </div>
           )}
           {data && rows.length > 0 && (
-            <div className="au-lt-wrap">
+            <>
+<ListHead total={rows.length} loaded />
+<ListTable>
               <table className="tbl">
                 <thead>
                   <tr>
@@ -207,7 +209,8 @@ export default function BuyerInquiriesPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ListTable>
+</>
           )}
           {cursor && (
             <div className="bi-more">

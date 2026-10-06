@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PageHead } from "../../../../../components/admin-ui";
+import { PageHead, ListTable, ListHead } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -67,7 +67,7 @@ export default function NoticesPage() {
             </>
           }
         />
-        <div className="card" style={{ overflow: "visible" }}>
+        <div className="au-list-section" >
           <div className="au-lh">
             <div className="seg" role="group" aria-label="분류">
               {NOTICE_FILTERS.map((f) => (
@@ -110,7 +110,9 @@ export default function NoticesPage() {
             </div>
           )}
           {state.kind === "ok" && rows.length > 0 && (
-            <div className="au-lt-wrap">
+            <>
+<ListHead total={rows.length} loaded />
+<ListTable>
               <table className="tbl">
                 <thead>
                   <tr>
@@ -140,7 +142,8 @@ export default function NoticesPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ListTable>
+</>
           )}
           {state.kind === "ok" && rows.length > 0 && (
             <div className="au-lh">

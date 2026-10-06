@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PageHead, useConfirm } from "../../../../../../components/admin-ui";
+import { PageHead, useConfirm, ListTable, ListHead } from "../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
@@ -202,7 +202,9 @@ export default function ShopNoticesPage() {
                 {summary(noticeList)}
               </span>
             </div>
-            <div className="sc-tbl-wrap">
+            <>
+<ListHead total={noticeList.length} loaded />
+<ListTable className="sc-tbl-wrap">
               <table className="tbl sc-tbl" data-testid="notice-table">
                 <thead>
                   <tr>
@@ -242,7 +244,8 @@ export default function ShopNoticesPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ListTable>
+</>
             <span className="t-c1 c-alt">공지는 최신순으로 보입니다 · 홈 고정은 공개한 공지 1개만 · 새로 고정하면 이전 고정은 풀립니다</span>
           </>
         )}
@@ -281,7 +284,9 @@ export default function ShopNoticesPage() {
                 {summary(shownFaqs)}
               </span>
             </div>
-            <div className="sc-tbl-wrap">
+            <>
+<ListHead total={shownFaqs.length} loaded />
+<ListTable className="sc-tbl-wrap">
               <table className="tbl sc-tbl" data-testid="faq-table">
                 <thead>
                   <tr>
@@ -329,7 +334,8 @@ export default function ShopNoticesPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ListTable>
+</>
             <span className="t-c1 c-alt">끌어서 순서 변경 · 질문은 이 순서대로 구매자 화면에 보입니다{category ? " · 분류 전체로 돌려야 순서를 바꿀 수 있습니다" : ""}</span>
           </>
         )}

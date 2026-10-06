@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { DateRangePicker, ListHead, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
+import { DateRangePicker, ListHead, PageHead, SearchBox, SearchRow, ListTable } from "../../../../../components/admin-ui";
 import { listDefaults } from "../../../../../lib/client/filterDefaults";
 import { useListFilters } from "../../../../(admin)/admin/_components/useListFilters";
 import { Topbar } from "../../../../../components/seller/SellerShell";
@@ -293,7 +293,7 @@ export default function CouponsPage() {
             </SearchRow>
           </SearchBox>
         )}
-        <section className="card" style={{ overflow: "hidden" }}>
+        <section className="au-list-section" >
           {state.kind === "loading" && <StateBox kind="loading" what="쿠폰" />}
           {state.kind === "error" && <StateBox kind={stateKind(state.status, state.error)} what="쿠폰" onRetry={() => void load()} />}
           {data && list.length === 0 && (
@@ -332,7 +332,7 @@ export default function CouponsPage() {
                   {filtered && <span className="s">조건을 바꾸거나 초기화해 보십시오</span>}
                 </div>
               )}
-              <div style={{ overflowX: "auto" }}>
+              <ListTable>
                 <table className="tbl tbl-card cp-tbl">
                   <thead>
                     <tr>
@@ -424,7 +424,7 @@ export default function CouponsPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </ListTable>
             </>
           )}
         </section>

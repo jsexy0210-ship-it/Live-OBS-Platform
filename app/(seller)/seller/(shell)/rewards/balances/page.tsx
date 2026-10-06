@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Modal, PageHead, SearchBox, SearchRow, useConfirm } from "../../../../../../components/admin-ui";
+import { Modal, PageHead, SearchBox, SearchRow, useConfirm, ListTable, ListHead } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
@@ -205,7 +205,9 @@ export default function RewardBalancesPage() {
                     엑셀 내려받기
                   </a>
                 </div>
-                <div style={{ overflowX: "auto", marginTop: 8 }}>
+                <>
+<ListHead total={rows.length} loaded />
+<ListTable>
                   <table className="tbl tbl-card" data-testid="balance-table">
                     <thead>
                       <tr>
@@ -242,7 +244,8 @@ export default function RewardBalancesPage() {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </ListTable>
+</>
                 {state.next && (
                   <div className="row" style={{ justifyContent: "center", marginTop: 16 }}>
                     <button className="btn btn-sm btn-out" type="button" onClick={() => void loadMore()} disabled={more}>

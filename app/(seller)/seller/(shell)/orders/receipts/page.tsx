@@ -3,7 +3,7 @@
 import "../../../../../../styles/seller-orders.css";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { PageHead, useConfirm } from "../../../../../../components/admin-ui";
+import { PageHead, useConfirm, ListTable, ListHead } from "../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
@@ -125,7 +125,7 @@ export default function ReceiptsPage() {
           }
         />
         <span className="t-c1 c-alt">무통장 · 계좌이체 주문에서 구매자가 신청한 현금영수증 · 세금계산서입니다. 카드 결제는 카드 매출전표로 확인합니다.</span>
-        <div className="card" style={{ overflow: "visible" }}>
+        <div className="au-list-section" >
           {state.kind === "ok" && (
             <div className="rc-sum" data-testid="receipt-summary">
               {(
@@ -162,7 +162,9 @@ export default function ReceiptsPage() {
             </div>
           )}
           {state.kind === "ok" && rows.length > 0 && (
-            <div className="au-lt-wrap">
+            <>
+<ListHead total={rows.length} loaded />
+<ListTable>
               <table className="tbl">
                 <thead>
                   <tr>
@@ -217,7 +219,8 @@ export default function ReceiptsPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ListTable>
+</>
           )}
           {state.kind === "ok" && state.next && (
             <div className="row" style={{ padding: "12px 20px", justifyContent: "center" }}>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { PageHead, useConfirm } from "../../../../../../components/admin-ui";
+import { PageHead, useConfirm, ListTable, ListHead } from "../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
@@ -193,7 +193,7 @@ export default function InvoiceIssuePage() {
         {state.kind === "error" && (state.status === 403 ? <NoPermission need="주문·배송" /> : <ErrorState title="송장 발급 대상을 불러오지 못했습니다" onRetry={() => window.location.reload()} />)}
         {state.kind === "ok" && (
           <>
-            <div className="card">
+            <div className="au-list-section">
               <div className="toolbar" style={{ padding: 16 }}>
                 <span className="t-c1">고른 주문 {pickedIds.length}건</span>
                 <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
@@ -212,7 +212,9 @@ export default function InvoiceIssuePage() {
                   <span className="t">{done && done.issued > 0 ? "발급할 주문이 남아 있지 않습니다" : "발급할 주문이 없습니다"}</span>
                 </div>
               ) : (
-                <div style={{ overflowX: "auto" }}>
+                <>
+<ListHead total={rows.length} loaded />
+<ListTable>
                   <table className="tbl">
                     <thead>
                       <tr>
@@ -265,7 +267,8 @@ export default function InvoiceIssuePage() {
                       })}
                     </tbody>
                   </table>
-                </div>
+                </ListTable>
+</>
               )}
             </div>
 

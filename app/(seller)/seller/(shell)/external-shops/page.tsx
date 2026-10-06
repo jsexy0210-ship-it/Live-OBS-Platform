@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { PageHead, useConfirm } from "../../../../../components/admin-ui";
+import { PageHead, useConfirm, ListTable, ListHead } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
@@ -131,8 +131,10 @@ export default function ExternalShopsPage() {
                   </div>
                 </div>
               ) : (
-                <section className="card">
-                  <div className="au-lt-wrap">
+                <section className="au-list-section">
+                  <>
+<ListHead total={d.connections.length} loaded />
+<ListTable>
                     <table className="tbl">
                       <thead><tr><th>쇼핑몰</th><th>상태</th><th>마지막으로 받은 주문 알림</th><th>연결일</th><th>관리</th></tr></thead>
                       <tbody>
@@ -151,7 +153,8 @@ export default function ExternalShopsPage() {
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </ListTable>
+</>
                 </section>
               )}
               <span className="t-c1 c-alt">다시 연결 필요: 쇼핑몰 관리자에서 앱 권한이 바뀌거나 만료되면 생깁니다 · 해제 대기: 쇼핑몰 응답이 늦어 연결을 끊는 중입니다 · 그동안 주문은 받지 않습니다</span>

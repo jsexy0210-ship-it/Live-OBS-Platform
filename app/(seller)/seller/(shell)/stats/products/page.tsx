@@ -1,5 +1,7 @@
 "use client";
 
+import { ListTable } from "../../../../../../components/admin-ui";
+
 import Funnel from "../../../../../../components/seller/stats/Funnel";
 import { EmptyStats, StatsFrame, StatsState, usePeriod, useStats } from "../../../../../../components/seller/stats/StatsFrame";
 import { Kpis, count, downloadCsv, won } from "../../../../../../components/seller/stats/parts";
@@ -46,12 +48,13 @@ export default function ProductStatsPage() {
           {data.top.length === 0 ? (
             <EmptyStats text="선택한 기간에 팔린 상품이 없습니다" />
           ) : (
-            <div className="card sts-scroll">
+            <div className="au-list-section sts-scroll">
               <div className="sts-h">
                 <span className="fw6">상위 상품</span>
                 <span className="t-c1 c-alt">매출순 {data.top.length}개</span>
               </div>
-              <table className="tbl" data-testid="stats-top">
+              <ListTable>
+<table className="tbl" data-testid="stats-top">
                 <thead>
                   <tr>
                     <th style={{ width: 48 }}>순위</th>
@@ -82,10 +85,11 @@ export default function ProductStatsPage() {
                   ))}
                 </tbody>
               </table>
+</ListTable>
             </div>
           )}
           <Funnel period={period} />
-          <div className="card sts-scroll">
+          <div className="au-list-section sts-scroll">
             <div className="sts-h">
               <span className="fw6">안 팔린 상품</span>
               <span className="t-c1 c-alt">임시 저장 상품은 빼고 센 값입니다 · {data.unsoldCount > data.unsold.length ? `먼저 등록한 ${data.unsold.length}개 표시` : `${data.unsoldCount}개`}</span>
@@ -95,7 +99,8 @@ export default function ProductStatsPage() {
                 <span className="t">모든 상품이 팔렸습니다</span>
               </div>
             ) : (
-              <table className="tbl" data-testid="stats-unsold">
+              <ListTable>
+<table className="tbl" data-testid="stats-unsold">
                 <thead>
                   <tr>
                     <th>상품</th>
@@ -111,6 +116,7 @@ export default function ProductStatsPage() {
                   ))}
                 </tbody>
               </table>
+</ListTable>
             )}
           </div>
         </>

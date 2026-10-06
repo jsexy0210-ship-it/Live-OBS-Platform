@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import "../../../../../../styles/seller-broadcast.css";
-import { PageHead } from "../../../../../../components/admin-ui";
+import { PageHead, ListTable } from "../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { SmartBackButton } from "../../../../../../components/seller/SmartBackButton";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
@@ -345,7 +345,7 @@ export default function BroadcastDetailPage() {
                     이 방송에는 들어온 주문이 없습니다
                   </span>
                 ) : (
-                  <div className="au-lt-wrap">
+                  <ListTable>
                     <table className="tbl">
                       <thead>
                         <tr>
@@ -393,7 +393,7 @@ export default function BroadcastDetailPage() {
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </ListTable>
                 )}
                 {d.nextCursor ? (
                   <div className="row" style={{ justifyContent: "center" }}>
@@ -414,7 +414,8 @@ export default function BroadcastDetailPage() {
                 <h2 className="t-hl1" id="bd-memo-h">
                   메모
                 </h2>
-                <table className="au-ft">
+                <ListTable>
+<table className="au-ft">
                   <tbody>
                     <tr>
                       <th scope="row">메모</th>
@@ -429,14 +430,15 @@ export default function BroadcastDetailPage() {
                     </tr>
                   </tbody>
                 </table>
+</ListTable>
               </section>
 
               {(d.externalOrders?.length ?? 0) > 0 && (
-                <section className="card pad col" style={{ gap: 12 }} aria-labelledby="bd-ext-h" data-testid="bd-external">
+                <section className="au-list-section col" style={{ gap: 12 }} aria-labelledby="bd-ext-h" data-testid="bd-external">
                   <h2 className="t-hl1" id="bd-ext-h">
                     다른 쇼핑몰 주문 <span className="c-alt fw5">{d.externalOrders!.length}건</span>
                   </h2>
-                  <div className="au-lt-wrap">
+                  <ListTable>
                     <table className="tbl">
                       <thead>
                         <tr>
@@ -465,7 +467,7 @@ export default function BroadcastDetailPage() {
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </ListTable>
                   <span className="t-c1 c-alt">다른 쇼핑몰에서 들어온 주문은 금액과 결제 내용을 알 수 없어 이 표에 보이지 않습니다.</span>
                 </section>
               )}

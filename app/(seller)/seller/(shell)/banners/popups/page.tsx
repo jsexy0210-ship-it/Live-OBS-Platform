@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { PageHead, useConfirm } from "../../../../../../components/admin-ui";
+import { PageHead, useConfirm, ListTable, ListHead } from "../../../../../../components/admin-ui";
 import { DateTimePicker } from "../../../../../../components/admin-ui/DatePicker";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../../components/seller/States";
@@ -270,7 +270,9 @@ export default function PopupsPage() {
                 {n("ended") > 0 && ` · 종료 ${n("ended")}`}
               </span>
             </div>
-            <div className="sc-tbl-wrap">
+            <>
+<ListHead total={list.length} loaded />
+<ListTable className="sc-tbl-wrap">
               <table className="tbl sc-tbl">
                 <thead>
                   <tr>
@@ -338,7 +340,8 @@ export default function PopupsPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ListTable>
+</>
             <span className="t-c1 c-alt">같은 페이지에는 한 번에 1개씩 표시 · 우선순위는 목록 순서 · 상단 띠는 맨 위 1개만</span>
           </>
         )}

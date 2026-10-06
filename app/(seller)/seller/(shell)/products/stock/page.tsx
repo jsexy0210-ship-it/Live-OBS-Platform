@@ -1,6 +1,6 @@
 "use client";
 
-import { PageHead } from "../../../../../../components/admin-ui";
+import { PageHead, ListTable, ListHead } from "../../../../../../components/admin-ui";
 
 import { formatDateTime } from "../../../../../../lib/client/format";
 import "../../../../../../styles/seller-stock.css";
@@ -324,7 +324,7 @@ export default function StockPage() {
           </div>
         ) : (
           <div className="form-grid stock-grid">
-            <div className="card" style={{ overflow: "hidden" }}>
+            <div className="au-list-section" >
               <div className="toolbar" style={{ padding: "14px 20px", boxShadow: "inset 0 -1px 0 var(--wds-line-normal-alternative)" }}>
                 <div className="search stock-search">
                   <input
@@ -395,7 +395,10 @@ export default function StockPage() {
                   )}
                 </div>
               ) : (
-                <table className="tbl stock-table">
+                <>
+<ListHead total={shown.length} loaded />
+<ListTable>
+<table className="tbl stock-table">
                   <thead>
                     <tr>
                       <th className="stock-w-chk">
@@ -489,6 +492,8 @@ export default function StockPage() {
                     })}
                   </tbody>
                 </table>
+</ListTable>
+</>
               )}
               {!searchError && cursor && (
                 <div className="row center stock-more">

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PageHead } from "../../../../../components/admin-ui";
+import { PageHead, ListTable, ListHead } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -117,7 +117,7 @@ export default function MemberListPage() {
       <main className="main">
         <PageHead description="쇼핑몰 회원의 가입 정보와 이용 상태를 확인합니다." title="회원" />
 
-        <div className="card">
+        <div className="au-list-section">
           <div className="toolbar" style={{ padding: 16 }}>
             <div className="search" style={{ flex: "1 1 220px" }}>
               <input
@@ -164,7 +164,9 @@ export default function MemberListPage() {
               </div>
             ) : (
               <>
-                <div style={{ overflowX: "auto" }}>
+                <>
+<ListHead total={items.length} loaded />
+<ListTable>
                   <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                     <thead>
                       <tr>
@@ -200,7 +202,8 @@ export default function MemberListPage() {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </ListTable>
+</>
                 <div className="row" style={{ justifyContent: "space-between", padding: "12px 16px" }}>
                   <span className="t-c1 c-alt">{state.next ? `${items.length}명 넘게` : `${items.length}명`}</span>
                   {state.next && (

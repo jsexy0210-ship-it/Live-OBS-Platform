@@ -3,7 +3,7 @@
 import "../../../../../styles/seller-broadcast.css";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PageHead, useConfirm } from "../../../../../components/admin-ui";
+import { PageHead, useConfirm, ListTable } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { CancelItemModal, TimerModal } from "../../../../../components/seller/broadcast/Modals";
 import { HitCardModal, type HitTarget } from "../../../../../components/seller/broadcast/HitCardModal";
@@ -474,7 +474,7 @@ export default function BroadcastDashboardPage() {
               </section>
 
               {/* 대기 */}
-              <section className="card pad col" style={{ gap: 12 }} aria-labelledby="bc-waiting-h">
+              <section className="au-list-section col" style={{ gap: 12 }} aria-labelledby="bc-waiting-h">
                 <h2 className="t-hl1" id="bc-waiting-h">
                   {live ? "대기" : "방송 전 대기"} <span className="c-alt fw5">{waiting.length}건</span>
                 </h2>
@@ -483,7 +483,7 @@ export default function BroadcastDashboardPage() {
                 {waiting.length === 0 ? (
                   <span className="t-l2 c-alt">대기 중인 주문이 없습니다</span>
                 ) : (
-                  <div className="au-lt-wrap">
+                  <ListTable>
                     <table className="tbl bc-tbl bc-cards">
                       <thead>
                         <tr>
@@ -543,19 +543,19 @@ export default function BroadcastDashboardPage() {
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </ListTable>
                 )}
               </section>
 
               {/* 최근 완료 */}
-              <section className="card pad col" style={{ gap: 12 }} aria-labelledby="bc-done-h">
+              <section className="au-list-section col" style={{ gap: 12 }} aria-labelledby="bc-done-h">
                 <h2 className="t-hl1" id="bc-done-h">
                   최근 완료
                 </h2>
                 {snap.recentDone.length === 0 ? (
                   <span className="t-l2 c-alt">완료한 주문이 없습니다</span>
                 ) : (
-                  <div className="au-lt-wrap">
+                  <ListTable>
                     <table className="tbl bc-tbl">
                       <thead>
                         <tr>
@@ -590,7 +590,7 @@ export default function BroadcastDashboardPage() {
                         })}
                       </tbody>
                     </table>
-                  </div>
+                  </ListTable>
                 )}
               </section>
             </div>

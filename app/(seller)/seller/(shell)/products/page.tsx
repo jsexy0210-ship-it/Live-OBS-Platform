@@ -4,7 +4,7 @@ import { formatDateTimeParts } from "../../../../../lib/client/format";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
-import { ListHead, PageHead, SearchBox, SearchRow, useConfirm } from "../../../../../components/admin-ui";
+import { ListHead, PageHead, SearchBox, SearchRow, useConfirm, ListTable } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { QuickPrice, QuickStatus, QuickStock, type QuickDone, type QuickUndo } from "../../../../../components/seller/ProductQuick";
 import { categoryLabel, categoryOptions, type CategoryNode } from "../../../../../components/seller/ProductCategoryPicker";
@@ -380,7 +380,7 @@ export default function ProductListPage() {
           </SearchRow>
         </SearchBox>
 
-        <div className="card" style={{ overflow: "hidden" }}>
+        <div className="au-list-section" >
           <ListHead
             total={items.length}
             unit={countUnit}
@@ -491,7 +491,7 @@ export default function ProductListPage() {
           {state.kind === "ok" && items.length > 0 && (
             <>
               <div className="au-lt-wrap">
-                <div className="p-tbl-wrap">
+                <ListTable className="p-tbl-wrap">
                 <table className="tbl p-table">
                   <thead>
                     <tr>
@@ -558,7 +558,7 @@ export default function ProductListPage() {
                     })}
                   </tbody>
                 </table>
-                </div>
+                </ListTable>
               </div>
               <ul className="p-cards">
                 {items.map((p) => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { PageHead } from "../../../../../components/admin-ui";
+import { PageHead, ListTable, ListHead } from "../../../../../components/admin-ui";
 
 import { useCallback, useEffect, useState } from "react";
 import { Topbar } from "../../../../../components/seller/SellerShell";
@@ -522,7 +522,9 @@ export default function SubscriptionPage() {
                 </div>
               </div>
             ) : (
-              <div className="card" style={{ overflowX: "auto" }}>
+              <>
+<ListHead total={(view.billingRows ?? []).length} loaded />
+<ListTable>
                 <table className="tbl sub-tbl">
                   <thead>
                     <tr>
@@ -565,14 +567,15 @@ export default function SubscriptionPage() {
                     })}
                   </tbody>
                 </table>
-              </div>
+              </ListTable>
+</>
             )}
             <span className="t-c1 c-alt">
               카드 매출전표는 줄마다 내려받을 수 있습니다 · 구독료 세금계산서는 따로 발행하지 않습니다 · 발송·이용 충전은 구독료와 별도로 충전할 때 결제되고 사용 내역은 「발송·이용 충전」에서 봅니다
             </span>
 
             <h2 className="t-hl1 sub-sec">구독 상태 안내</h2>
-            <div className="card" style={{ overflowX: "auto" }}>
+            <ListTable>
               <table className="tbl sub-tbl">
                 <thead>
                   <tr>
@@ -607,7 +610,7 @@ export default function SubscriptionPage() {
                   </tr>
                 </tbody>
               </table>
-            </div>
+            </ListTable>
           </div>
         )}
       </main>

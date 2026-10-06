@@ -3,7 +3,7 @@
 import "../../../../../../styles/seller-orders.css";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PageHead, useConfirm } from "../../../../../../components/admin-ui";
+import { PageHead, useConfirm, ListTable } from "../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
@@ -319,7 +319,7 @@ export default function BulkPage() {
         <div className="sc-sec-t" id="bulk-export">
           내보내기
         </div>
-        <div className="au-lt-wrap">
+        <ListTable>
           <table className="tbl">
             <thead>
               <tr>
@@ -359,7 +359,7 @@ export default function BulkPage() {
               </tr>
             </tbody>
           </table>
-        </div>
+        </ListTable>
 
         <div className="sc-two">
           <div>

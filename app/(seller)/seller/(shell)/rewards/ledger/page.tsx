@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DateRangePicker, ListHead, PageHead, SearchBox, SearchRow, useConfirm } from "../../../../../../components/admin-ui";
+import { DateRangePicker, ListHead, PageHead, SearchBox, SearchRow, useConfirm, ListTable } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { useScrollRestore, useUrlState } from "../../../../../../lib/client/navigation";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
@@ -265,7 +265,7 @@ export default function RewardLedgerPage() {
             ) : (
               <>
                 <ListHead total={entries.length} loaded />
-                <div style={{ overflowX: "auto" }}>
+                <ListTable>
                   <table className="tbl tbl-card" data-testid="ledger-table">
                     <thead>
                       <tr>
@@ -310,7 +310,7 @@ export default function RewardLedgerPage() {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </ListTable>
                 {state.next && (
                   <div className="row" style={{ justifyContent: "center", marginTop: 16 }}>
                     <button className="btn btn-sm btn-out" type="button" onClick={() => void loadMore()} disabled={more}>

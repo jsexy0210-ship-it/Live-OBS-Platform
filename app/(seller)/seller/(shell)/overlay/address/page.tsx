@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
-import { PageHead } from "../../../../../../components/admin-ui";
+import { PageHead, ListTable } from "../../../../../../components/admin-ui";
 import Link from "next/link";
 import { ago, formatDate, formatDateTime } from "../../../../../../lib/client/format";
 
@@ -256,7 +256,8 @@ export default function OverlayPage() {
                   {!info || info.reissues.length === 0 ? (
                     <span className="t-l2 c-alt">아직 발급 기록이 없습니다</span>
                   ) : (
-                    <table className="tbl" data-testid="ovu-reissues">
+                    <ListTable>
+<table className="tbl" data-testid="ovu-reissues">
                       <thead>
                         <tr>
                           <th style={{ width: 90 }}>날짜</th>
@@ -275,6 +276,7 @@ export default function OverlayPage() {
                         ))}
                       </tbody>
                     </table>
+</ListTable>
                   )}
                 </section>
               </div>
@@ -290,7 +292,8 @@ export default function OverlayPage() {
                 </span>
               ) : (
                 <>
-                  <table className="tbl ovu-ac" data-testid="ovu-accesses">
+                  <ListTable>
+<table className="tbl ovu-ac" data-testid="ovu-accesses">
                     <thead>
                       <tr>
                         <th style={{ width: 160 }}>시각</th>
@@ -312,6 +315,7 @@ export default function OverlayPage() {
                       ))}
                     </tbody>
                   </table>
+</ListTable>
                   <span className="t-c1 c-alt">낯선 접속이 보이면 재발급해 주십시오</span>
                 </>
               )}

@@ -1,5 +1,7 @@
 "use client";
 
+import { ListTable } from "../../../../../components/admin-ui";
+
 import Link from "next/link";
 import { EmptyStats, StatsFrame, StatsState, usePeriod, useStats, type Unit } from "../../../../../components/seller/stats/StatsFrame";
 import { overviewHasData } from "../../../../../components/seller/stats/overview";
@@ -158,7 +160,8 @@ function Overview({ data, compare }: { data: Data; compare: boolean }) {
             방송 통계
           </Link>
         </div>
-        <table className="tbl" data-testid="overview-broadcasts">
+        <ListTable>
+<table className="tbl" data-testid="overview-broadcasts">
           <thead>
             <tr>
               <th>구분</th>
@@ -184,6 +187,7 @@ function Overview({ data, compare }: { data: Data; compare: boolean }) {
             </tr>
           </tbody>
         </table>
+</ListTable>
         <span className="t-c1 c-alt">방송 중에 들어온 주문, 방송이 끝나고 2시간 안에 들어온 주문, 그 밖의 주문으로 나눈 금액입니다. 세 가지를 더하면 위 매출과 같습니다. 시청자 수는 아직 볼 수 없습니다.</span>
       </section>
 
@@ -197,7 +201,8 @@ function Overview({ data, compare }: { data: Data; compare: boolean }) {
         {top.length === 0 ? (
           <span className="t-l2 c-alt">선택한 기간에 팔린 상품이 없습니다</span>
         ) : (
-          <table className="tbl" data-testid="overview-products">
+          <ListTable>
+<table className="tbl" data-testid="overview-products">
             <thead>
               <tr>
                 <th style={{ width: 64 }}>순위</th>
@@ -217,6 +222,7 @@ function Overview({ data, compare }: { data: Data; compare: boolean }) {
               ))}
             </tbody>
           </table>
+</ListTable>
         )}
       </section>
 
@@ -227,7 +233,8 @@ function Overview({ data, compare }: { data: Data; compare: boolean }) {
             회원 통계
           </Link>
         </div>
-        <table className="au-ft" data-testid="overview-rewards">
+        <ListTable>
+<table className="au-ft" data-testid="overview-rewards">
           <tbody>
             <tr>
               <th scope="row">구매 회원</th>
@@ -267,6 +274,7 @@ function Overview({ data, compare }: { data: Data; compare: boolean }) {
             </tr>
           </tbody>
         </table>
+</ListTable>
         <span className="t-c1 c-alt">처음 산 회원 = 이 기간에 처음 결제한 회원 · 적립금은 처리가 끝난 시각 기준</span>
       </section>
     </>

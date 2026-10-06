@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { PageHead } from "../../../../../../components/admin-ui";
+import { PageHead, ListTable, ListHead } from "../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
@@ -196,7 +196,7 @@ export default function InvoiceTrackingPage() {
           </div>
         ))}
 
-        <div className="card">
+        <div className="au-list-section">
           <div className="toolbar" style={{ padding: 16 }}>
             <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
               {canEdit && (
@@ -229,7 +229,9 @@ export default function InvoiceTrackingPage() {
                 <span className="t">{tab.status ? "이 상태의 송장이 없습니다" : "발급한 송장이 없습니다"}</span>
               </div>
             ) : (
-              <div style={{ overflowX: "auto" }}>
+              <>
+<ListHead total={items.filter((i) => i.trackingNumber).length} loaded />
+<ListTable>
                 <table className="tbl">
                   <thead>
                     <tr>
@@ -322,7 +324,8 @@ export default function InvoiceTrackingPage() {
                     })}
                   </tbody>
                 </table>
-              </div>
+              </ListTable>
+</>
             ))}
         </div>
         {page?.nextCursor && (

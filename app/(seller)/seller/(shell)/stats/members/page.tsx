@@ -1,5 +1,7 @@
 "use client";
 
+import { ListTable } from "../../../../../../components/admin-ui";
+
 import { StatsFrame, StatsState, usePeriod, useStats, type Unit } from "../../../../../../components/seller/stats/StatsFrame";
 import { BarChart, Kpis, bucketLabel, downloadCsv, pct } from "../../../../../../components/seller/stats/parts";
 
@@ -38,7 +40,7 @@ export default function MemberStatsPage() {
             ]}
           />
           <BarChart title="신규 가입" fmt={people} points={data.series.map((p) => ({ label: bucketLabel(p.bucket, data.range.unit), value: p.signups }))} />
-          <div className="card sts-scroll">
+          <ListTable>
             <table className="tbl" data-testid="stats-table">
               <thead>
                 <tr>
@@ -59,7 +61,7 @@ export default function MemberStatsPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </ListTable>
           <p className="t-c1 c-alt">산 회원 중에서 이 기간에 2번 이상 결제한 회원의 비율입니다. 기간별 숫자를 더하면 합계와 다를 수 있습니다(같은 사람이 여러 기간에 나올 수 있기 때문입니다).</p>
         </>
       )}

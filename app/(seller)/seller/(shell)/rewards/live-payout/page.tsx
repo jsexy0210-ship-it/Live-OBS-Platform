@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { FormFoot, FormRow, FormSection, PageHead, useConfirm } from "../../../../../../components/admin-ui";
+import { FormFoot, FormRow, FormSection, PageHead, useConfirm, ListTable } from "../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
@@ -156,7 +156,7 @@ export default function LivePayoutPage() {
                     <h2 className="au-fs-t">켜기 조건</h2>
                     <span className="t-l2 c-alt">화면 안내와 버튼 비활성 표시용입니다 · 서버가 켜기를 막지는 않습니다</span>
                   </div>
-                  <div className="card sts-scroll">
+                  <ListTable>
                     <table className="tbl tbl-card" data-testid="live-conditions">
                       <thead>
                         <tr>
@@ -187,7 +187,7 @@ export default function LivePayoutPage() {
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </ListTable>
                 </section>
 
                 <section className="au-fs">
@@ -210,7 +210,7 @@ export default function LivePayoutPage() {
                 <h2 className="au-fs-t">전환 이력</h2>
                 <span className="t-l2 c-alt">켬 · 끔 전환은 사유 없이 일시 · 처리자만 남습니다</span>
               </div>
-              <div className="card sts-scroll">
+              <div className="au-list-section sts-scroll">
                 {history === null ? (
                   <LoadingRows rows={2} />
                 ) : history === "error" ? (
@@ -220,7 +220,8 @@ export default function LivePayoutPage() {
                     <span className="t">전환 이력이 없습니다</span>
                   </div>
                 ) : (
-                  <table className="tbl tbl-card" data-testid="live-history">
+                  <ListTable>
+<table className="tbl tbl-card" data-testid="live-history">
                     <thead>
                       <tr>
                         <th>일시</th>
@@ -244,6 +245,7 @@ export default function LivePayoutPage() {
                       ))}
                     </tbody>
                   </table>
+</ListTable>
                 )}
               </div>
               {history && history !== "error" && history.next && (

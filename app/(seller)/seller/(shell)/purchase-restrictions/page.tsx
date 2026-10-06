@@ -1,6 +1,6 @@
 "use client";
 
-import { PageHead } from "../../../../../components/admin-ui";
+import { PageHead, ListTable, ListHead } from "../../../../../components/admin-ui";
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -126,7 +126,7 @@ export default function PurchaseRestrictionsPage() {
           </div>
         )}
 
-        <section className="card col" aria-label="구매 제한 목록">
+        <section className="au-list-section col" aria-label="구매 제한 목록">
           {state.kind === "loading" && <LoadingRows rows={4} />}
           {state.kind === "error" &&
             (state.status === 403 && state.error === "plan_feature_required" ? (
@@ -146,7 +146,9 @@ export default function PurchaseRestrictionsPage() {
                 <span className="s">자동 제한 규칙에 걸리면 이곳에 표시됩니다</span>
               </div>
             ) : (
-              <div style={{ overflowX: "auto" }}>
+              <>
+<ListHead total={groups.length} loaded unit="묶음" />
+<ListTable>
                 <table className="tbl">
                   <thead>
                     <tr>
@@ -175,7 +177,8 @@ export default function PurchaseRestrictionsPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </ListTable>
+</>
             ))}
         </section>
       </main>

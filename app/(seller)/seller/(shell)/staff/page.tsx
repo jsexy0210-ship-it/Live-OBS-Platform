@@ -1,6 +1,6 @@
 "use client";
 
-import { PageHead } from "../../../../../components/admin-ui";
+import { PageHead, ListTable, ListHead } from "../../../../../components/admin-ui";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useConfirm } from "../../../../../components/admin-ui/ConfirmDialog";
@@ -144,8 +144,11 @@ export default function StaffPage() {
                   </button>
                 </div>
               )}
-              <div className="card staff-table-wrap">
-                <table className="tbl tbl-card staff-table">
+              <div className="au-list-section staff-table-wrap">
+                <>
+<ListHead total={staff.length} loaded />
+<ListTable>
+<table className="tbl tbl-card staff-table">
                   <thead>
                     <tr>
                       <th>이름 · 이메일</th>
@@ -218,6 +221,8 @@ export default function StaffPage() {
                     })}
                   </tbody>
                 </table>
+</ListTable>
+</>
                 {staff.length === 0 && (
                   <div className="st" style={{ boxShadow: "none" }}>
                     <span className="t">등록된 직원이 없습니다</span>

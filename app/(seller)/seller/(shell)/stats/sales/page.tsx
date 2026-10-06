@@ -1,5 +1,7 @@
 "use client";
 
+import { ListTable } from "../../../../../../components/admin-ui";
+
 import { EmptyStats, StatsFrame, StatsState, usePeriod, useStats, type Unit } from "../../../../../../components/seller/stats/StatsFrame";
 import { BarChart, Kpis, bucketLabel, count, downloadCsv, won } from "../../../../../../components/seller/stats/parts";
 
@@ -91,11 +93,12 @@ export default function SalesStatsPage() {
               </tbody>
             </table>
           </div>
-          <div className="card sts-scroll">
+          <div className="au-list-section sts-scroll">
             <div className="sts-h">
               <span className="fw6">결제 방법별</span>
             </div>
-            <table className="tbl" data-testid="stats-methods">
+            <ListTable>
+<table className="tbl" data-testid="stats-methods">
               <thead>
                 <tr>
                   <th>결제 방법</th>
@@ -117,8 +120,9 @@ export default function SalesStatsPage() {
                 ))}
               </tbody>
             </table>
+</ListTable>
           </div>
-          <div className="card sts-scroll">
+          <ListTable>
             <table className="tbl" data-testid="stats-table">
               <thead>
                 <tr>
@@ -139,7 +143,7 @@ export default function SalesStatsPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </ListTable>
         </>
       )}
     </StatsFrame>

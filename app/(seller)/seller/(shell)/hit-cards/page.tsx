@@ -2,7 +2,7 @@
 
 import "../../../../../styles/seller-broadcast.css";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ListHead, Modal, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
+import { ListHead, Modal, PageHead, SearchBox, SearchRow, ListTable } from "../../../../../components/admin-ui";
 import { HitCardModal } from "../../../../../components/seller/broadcast/HitCardModal";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { useScrollRestore } from "../../../../../lib/client/navigation";
@@ -147,7 +147,7 @@ export default function HitCardsPage() {
               </SearchRow>
             </SearchBox>
 
-            <div className="card">
+            <div className="au-list-section">
               {state.kind === "loading" && <LoadingRows rows={4} />}
               {state.kind === "error" &&
                 (state.status === 402 ? (
@@ -170,7 +170,7 @@ export default function HitCardsPage() {
                       <span className="t-c1 c-alt">방송 대시보드에서 「HIT 카드 기록하기」로 추가해 주십시오</span>
                     </div>
                   ) : (
-                    <div className="au-lt-wrap">
+                    <ListTable>
                       <table className="tbl bc-tbl">
                         <thead>
                           <tr>
@@ -208,7 +208,7 @@ export default function HitCardsPage() {
                           ))}
                         </tbody>
                       </table>
-                    </div>
+                    </ListTable>
                   )}
                   {state.next && (
                     <div className="row" style={{ justifyContent: "center", padding: 12 }}>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { PageHead, useConfirm } from "../../../../../components/admin-ui";
+import { PageHead, useConfirm, ListTable, ListHead } from "../../../../../components/admin-ui";
 import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../components/seller/States";
@@ -234,7 +234,9 @@ export default function BannersPage() {
                 </select>
               </label>
             </div>
-            <div className="sc-tbl-wrap">
+            <>
+<ListHead total={list.length} loaded />
+<ListTable className="sc-tbl-wrap">
               <table className="tbl sc-tbl">
                 <thead>
                   <tr>
@@ -297,7 +299,8 @@ export default function BannersPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ListTable>
+</>
             <span className="t-c1 c-alt">순서는 홈 슬라이드 순서와 같습니다 · 종료된 배너는 30일 뒤 자동 삭제</span>
           </>
         )}

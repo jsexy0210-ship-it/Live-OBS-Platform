@@ -3,7 +3,7 @@
 import { formatDateTime } from "../../../../../../lib/client/format";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { PageHead } from "../../../../../../components/admin-ui";
+import { PageHead, ListTable, ListHead } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
@@ -41,7 +41,7 @@ export default function RestockAlertsPage() {
             <span>재고가 들어오면 신청한 구매자에게 알림이 갑니다. 밤 9시부터 아침 8시 사이에 들어온 재고는 아침 8시에 보냅니다. 지금은 알림 발송이 연결되지 않아 발송 기록만 남습니다.</span>
           </div>
         )}
-        <div className="card">
+        <div className="au-list-section">
           {state.kind === "loading" && <LoadingRows rows={5} />}
           {state.kind === "error" &&
             (state.status === 403 ? <NoPermission need="상품 관리" /> : state.status === 402 ? <Locked /> : <ErrorState title="재입고 알림을 불러오지 못했습니다" onRetry={() => void load()} />)}
@@ -54,7 +54,9 @@ export default function RestockAlertsPage() {
           )}
           {state.kind === "ok" && items.length > 0 && (
             <>
-              <div className="au-lt-wrap">
+              <>
+<ListHead total={items.length} loaded />
+<ListTable>
                 <table className="tbl">
                   <thead>
                     <tr>
@@ -85,7 +87,8 @@ export default function RestockAlertsPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </ListTable>
+</>
               <div className="t-c1 c-alt" style={{ padding: "12px 20px" }}>
                 재고를 기다리는 구매자 {waitingTotal.toLocaleString("ko-KR")}명 · 신청한 구매자 정보는 표시하지 않습니다
               </div>
