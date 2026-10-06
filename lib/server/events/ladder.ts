@@ -34,7 +34,7 @@ export type LadderResult = Readonly<{
 
 function validateIds(ids: readonly string[], label: string): void {
   if (!Array.isArray(ids) || ids.length < 1 || ids.length > INTERNAL_ALLOCATION_CEILING) {
-    throw new RangeError(`${label} must contain 1..${INTERNAL_ALLOCATION_CEILING} IDs`);
+    throw new RangeError(`${label} must be nonempty and fit the internal allocation safety guard; this is not a product participant limit`);
   }
   const seen = new Set<string>();
   for (const id of ids) {
@@ -85,19 +85,26 @@ export function replayLadder(stored: LadderStructure): LadderResult {
     outcomeSlotIds: Object.freeze([...stored.outcomeSlotIds]),
     rows: Object.freeze(rows),
   });
-  const routes = structure.participantIds.map((participantId, startLane): LadderRoute => {
-    let lane = startLane;
-    const lanes = [lane];
-    for (const row of rows) {
-      for (const leftLane of row) {
-        if (lane === leftLane) { lane++; break; }
-        if (lane === leftLane + 1) { lane--; break; }
-      }
-      lanes.push(lane);
+  const paths = structure.participantIds.map((_, lane) => [lane]);
+  // Build each row's lane transitions once. Even a stored row containing N/2
+  // rungs costs O(N), instead of scanning its rungs again for every participant.
+  // With at most N(N-1)/2 rows, replay time and path storage are O(N^3).
+  for (const row of rows) {
+    const nextLane = Array.from({ length: size }, (_, lane) => lane);
+    for (const leftLane of row) {
+      nextLane[leftLane] = leftLane + 1;
+      nextLane[leftLane + 1] = leftLane;
     }
+    for (const path of paths) {
+      path.push(nextLane[path[path.length - 1]]);
+    }
+  }
+  const routes = structure.participantIds.map((participantId, startLane): LadderRoute => {
+    const lanes = paths[startLane];
+    const endLane = lanes[lanes.length - 1];
     return Object.freeze({
-      participantId, startLane, endLane: lane,
-      outcomeSlotId: structure.outcomeSlotIds[lane],
+      participantId, startLane, endLane,
+      outcomeSlotId: structure.outcomeSlotIds[endLane],
       lanes: Object.freeze(lanes),
     });
   });

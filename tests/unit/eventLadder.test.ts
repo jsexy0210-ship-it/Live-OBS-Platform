@@ -126,6 +126,38 @@ describe("event ladder", () => {
     expect(replayLadder(reversed.structure)).toEqual(reversed);
   });
 
+  it("replays the maximum legal row count with dense disjoint rungs", () => {
+    const n = 128;
+    const rowCount = n * (n - 1) / 2;
+    const denseRow = Array.from({ length: n / 2 }, (_, i) => 2 * i);
+    const stored: LadderStructure = {
+      version: 1, participantIds: ids(n, "p"), outcomeSlotIds: ids(n, "s"),
+      rows: Array.from({ length: rowCount }, () => [...denseRow]),
+    };
+    const result = replayLadder(stored);
+    // Every dense row swaps all pairs; an even number returns to the start.
+    for (const route of result.routes) {
+      expect(route.endLane).toBe(route.startLane);
+      expect(route.outcomeSlotId).toBe(`s${route.startLane}`);
+      expect(route.lanes).toHaveLength(rowCount + 1);
+      const partner = route.startLane % 2 === 0 ? route.startLane + 1 : route.startLane - 1;
+      for (let row = 0; row <= rowCount; row++) {
+        if (route.lanes[row] !== (row % 2 === 0 ? route.startLane : partner)) {
+          throw new Error(`Incorrect dense-row transition for lane ${route.startLane}, row ${row}`);
+        }
+      }
+    }
+    expect(new Set(result.routes.map((route) => route.endLane)).size).toBe(n);
+    expect(result.structure.rows[0]).not.toBe(stored.rows[0]);
+    expect(Object.isFrozen(result.structure.rows[0])).toBe(true);
+    expect(Object.isFrozen(result.routes[0].lanes)).toBe(true);
+  });
+
+  it("identifies the internal resource guard without suggesting a product cap", () => {
+    expect(() => generateLadder(ids(129, "p"), ids(129, "s")))
+      .toThrow(/internal allocation safety guard; this is not a product participant limit/);
+  });
+
   it("runs with the default server crypto source", () => {
     const result = generateLadder(ids(5, "p"), ids(5, "s"));
     expect(new Set(result.routes.map((r) => r.endLane)).size).toBe(5);
