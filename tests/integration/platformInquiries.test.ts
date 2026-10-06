@@ -147,7 +147,7 @@ describe("마스터 답변·종료", () => {
     expect(r1.body.inquiry).toMatchObject({ status: "ANSWERED", version: 1, messages: [{ author: "PARTNER" }, { author: "PLATFORM", authorName: cs.name, adminId: cs.id }] });
     expect((await list(a.staff.cookie)).body.items[0]).toMatchObject({ status: "ANSWERED", hasNewReply: true });
     const d = await detail(a.staff.cookie, id);
-    expect(d.body.inquiry.messages[1]).toEqual({ id: expect.any(String), author: "PLATFORM", authorName: null, body: "확인했습니다.\n중복 청구는 취소됩니다.", createdAt: expect.any(String), images: [] });
+    expect(d.body.inquiry.messages[1]).toEqual({ id: expect.any(String), author: "PLATFORM", authorName: null, body: "확인했습니다.\n중복 청구는 취소됩니다.", createdAt: expect.any(String), images: [], files: [] });
     expect(JSON.stringify(d.body)).not.toContain(cs.id);
     expect(JSON.stringify(d.body)).not.toContain(cs.name);
     expect((await list(a.staff.cookie)).body.items[0].hasNewReply).toBe(false);
