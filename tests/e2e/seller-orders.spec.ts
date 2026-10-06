@@ -58,6 +58,21 @@ test("주문 목록: 20건씩 보이고 「주문 더 불러오기」로 나머�
   await expect(page.getByRole("button", { name: "주문 더 불러오기" })).toHaveCount(0);
 });
 
+test("기간: 그냥 열면 최근 30일이 켜져 있고, 초기화도 그 값으로 돌아간다. 업무 큐 링크(period=all)는 기간 전체", async ({ page }) => {
+  await login(page);
+  await expect(page).toHaveURL(/\/seller\/orders$/);
+  const chip30 = page.getByRole("button", { name: /최근 30일/ });
+  await expect(chip30).toHaveAttribute("aria-pressed", "true");
+  await chip30.click();
+  await expect(page).toHaveURL(/period=all/);
+  await expect(chip30).toHaveAttribute("aria-pressed", "false");
+  await page.getByRole("button", { name: "필터 초기화" }).click();
+  await expect(page).toHaveURL(/\/seller\/orders$/);
+  await expect(chip30).toHaveAttribute("aria-pressed", "true");
+  await page.goto("/seller/orders?period=all&status=PAID");
+  await expect(page.getByRole("button", { name: /최근 30일/ })).toHaveAttribute("aria-pressed", "false");
+});
+
 test("상태 필터·검색·기간으로 걸러 보고, 결과가 없으면 알맞은 안내를 보여 준다", async ({ page }) => {
   await login(page);
   await expect(rows(page)).toHaveCount(20);
