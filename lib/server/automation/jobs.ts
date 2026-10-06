@@ -256,12 +256,13 @@ export async function continueJob(db: PrismaClient, ctx: TenantContext, jobId: s
 
 // 작업 기록 시각표(SA-152). 상태가 바뀐 기록을 오래된 순으로. 화면이 문구로 바꾸도록 정해 둔 코드만 내보낸다:
 // kind: payment_confirmed(결제 확인·작업 시작) · started(실행 시작) · needs_customer(고객 확인 대기) · resumed(고객 확인 뒤 이어 감) · verifying(테스트 검증) ·
-//       retry(다시 시도) · paused(잠시 멈춤) · continued(이어 하기) · succeeded · failed · canceled · cleanup_needed(정리 필요) · other.
+//       step_done(N단계 완료, stepNumber가 끝낸 단계) · retry(다시 시도) · paused(잠시 멈춤) · continued(이어 하기) · succeeded · failed · canceled · cleanup_needed(정리 필요) · other.
 // stepNumber: 그 기록 시점의 단계(1부터, 모르면 null). reason: 실패·재시도 사유 코드(publicError 허용 목록만, 원문·비밀값·작업자 식별자는 내보내지 않는다).
-export type TimelineKind = "payment_confirmed" | "started" | "needs_customer" | "resumed" | "verifying" | "retry" | "paused" | "continued" | "succeeded" | "failed" | "canceled" | "cleanup_needed" | "other";
+export type TimelineKind = "payment_confirmed" | "started" | "needs_customer" | "resumed" | "verifying" | "step_done" | "retry" | "paused" | "continued" | "succeeded" | "failed" | "canceled" | "cleanup_needed" | "other";
 export type TimelineEntry = { at: Date; kind: TimelineKind; stepNumber: number | null; reason: string | null };
 
 export function timelineKind(from: string | null, to: string, reason: unknown): TimelineKind {
+  if (reason === "step_done") return "step_done";
   if (reason === "paused") return "paused";
   if (reason === "continued") return "continued";
   if (to === "QUEUED") return from === "AWAITING_PAYMENT" || from === null ? "payment_confirmed" : from === "NEEDS_CUSTOMER" ? "resumed" : "retry";
