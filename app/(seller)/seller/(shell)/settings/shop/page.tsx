@@ -10,6 +10,7 @@ import { cleanText, textLength, type TextKind } from "../../../../../../lib/serv
 import { useUnsavedGuard } from "../../../../../../lib/client/navigation";
 import { BusinessSection } from "./BusinessSection";
 import { DomainSection } from "./DomainSection";
+import type { SectionHandle } from "./sectionSave";
 import "./shop-info.css";
 
 // SA-060 쇼핑몰 정보(파트너스 관리자, 설정 › 쇼핑몰 설정) (a)구역: 운영 상태·이름·한 줄 소개·로고·대표 색상·주소. 파비콘·공유 카드·도메인·사업자 구역은 이어서 붙인다.
@@ -284,7 +285,15 @@ export default function ShopInfoPage() {
   const textDirty = !!profile && (name.trim() !== profile.shopName || (tagline.trim() || null) !== profile.shopTagline);
   const profileDirty = textDirty || modeDirty;
   const shareDirty = !!share && ((share.title ?? "") !== shareTitle.trim() || (share.description ?? "") !== shareDesc.trim());
-  const dirty = profileDirty || shareDirty;
+  // 내 도메인 · 사업자·고객센터 구역은 자기 상태를 알려 오고, 「저장」 하나가 바뀐 구역만 차례로 저장한다
+  const sections = useRef<Record<string, SectionHandle>>({});
+  const [sectionDirty, setSectionDirty] = useState<Record<string, boolean>>({});
+  const onSection = useCallback((key: string, h: SectionHandle) => {
+    sections.current[key] = h;
+    setSectionDirty((p) => (p[key] === h.dirty ? p : { ...p, [key]: h.dirty }));
+  }, []);
+  const sectionsDirty = Object.values(sectionDirty).some(Boolean);
+  const dirty = profileDirty || shareDirty || sectionsDirty;
   useUnsavedGuard(dirty); // 링크·브라우저 Back·새로고침에 같은 확인(docs/IA.md Back 규칙 7항)
   const previewTitle = cleanText(shareTitle, SHARE_TITLE_MAX, "name") ?? shownName;
   const previewDesc = cleanText(shareDesc, SHARE_DESC_MAX, "memo") ?? (tagline.trim() || "");
@@ -293,11 +302,14 @@ export default function ShopInfoPage() {
 
   const save = async () => {
     if (!profile) return;
-    if (nameError || taglineError || titleProblem || descProblem) {
+    const changed = Object.values(sections.current).filter((h) => h.dirty);
+    const sectionsOk = changed.map((h) => h.validate()).every(Boolean);
+    if (nameError || taglineError || titleProblem || descProblem || !sectionsOk) {
       setShowErrors(true);
       return;
     }
-    const others = textDirty || shareDirty ? " 이름 · 소개 · 공유 문구 변경도 함께 저장됩니다." : "";
+    const sectionNames = changed.map((h) => h.label).join(" · ");
+    const others = (textDirty || shareDirty ? " 이름 · 소개 · 공유 문구 변경도 함께 저장됩니다." : "") + (changed.length ? ` ${sectionNames} 변경도 함께 저장됩니다.` : "");
     const ok = modeDirty
       ? await confirm({
           title: `쇼핑몰을 「${MODE_LABEL[mode]}」${mode === "PAUSED" ? "로" : "으로"} 바꾸시겠습니까?`,
@@ -310,34 +322,43 @@ export default function ShopInfoPage() {
         })
       : await confirm({
           title: "쇼핑몰 정보를 저장하시겠습니까?",
-          body: shareDirty ? "쇼핑몰 이름 · 한 줄 소개 · 공유 제목 · 공유 설명이 구매자 쇼핑몰과 공유 화면에 바로 바뀝니다." : "쇼핑몰 이름 · 한 줄 소개가 구매자 쇼핑몰에 바로 바뀝니다.",
+          body:
+            (shareDirty ? "쇼핑몰 이름 · 한 줄 소개 · 공유 제목 · 공유 설명이 구매자 쇼핑몰과 공유 화면에 바로 바뀝니다." : profileDirty ? "쇼핑몰 이름 · 한 줄 소개가 구매자 쇼핑몰에 바로 바뀝니다." : "") +
+            (changed.length ? `${profileDirty || shareDirty ? " " : ""}${sectionNames} 변경이 구매자 쇼핑몰에 바로 바뀝니다.` : ""),
           confirmLabel: "저장",
         });
     if (!ok) return;
     setSaving(true);
     setSaveFailure(null);
+    // 구역마다 따로인 API를 차례로 부르고, 실패한 구역은 이름과 함께 모아서 보인다(성공한 구역은 저장된 상태로 남는다)
+    const failures: string[] = [];
     if (profileDirty) {
       const r = await api<{ profile: Profile }>("/api/seller/shop-profile", { method: "PUT", body: { shopName: name.trim(), shopTagline: tagline.trim() === "" ? null : tagline.trim(), operatingState: mode } });
       if (!r.ok) {
-        setSaving(false);
-        return setSaveFailure(failMessage(r, "admin", "저장하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주십시오"));
+        failures.push(`쇼핑몰 정보: ${failMessage(r, "admin", "저장하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주십시오")}`);
+      } else {
+        setProfile(r.data.profile);
+        setName(r.data.profile.shopName);
+        setTagline(r.data.profile.shopTagline ?? "");
+        setMode(r.data.profile.operatingState);
       }
-      setProfile(r.data.profile);
-      setName(r.data.profile.shopName);
-      setTagline(r.data.profile.shopTagline ?? "");
-      setMode(r.data.profile.operatingState);
     }
     if (shareDirty) {
       const r = await api<{ preview: Share }>("/api/seller/share-preview", { method: "PUT", body: { title: shareTitle.trim() || null, description: shareDesc.trim() || null } });
       if (!r.ok) {
-        setSaving(false);
-        return setSaveFailure(failMessage(r, "admin", "공유 제목 · 설명을 저장하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주십시오"));
+        failures.push(`공유 제목 · 설명: ${failMessage(r, "admin", "저장하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주십시오")}`);
+      } else {
+        setShare(r.data.preview);
+        setShareTitle(r.data.preview.title ?? "");
+        setShareDesc(r.data.preview.description ?? "");
       }
-      setShare(r.data.preview);
-      setShareTitle(r.data.preview.title ?? "");
-      setShareDesc(r.data.preview.description ?? "");
+    }
+    for (const h of changed) {
+      const m = await h.save();
+      if (m) failures.push(`${h.label}: ${m}`);
     }
     setSaving(false);
+    if (failures.length > 0) return setSaveFailure(`저장하지 못한 구역이 있습니다 · ${failures.join(" / ")}`);
     setShowErrors(false);
     setToast("쇼핑몰 정보를 저장했습니다 · 쇼핑몰에 바로 반영됩니다");
   };
@@ -573,8 +594,8 @@ export default function ShopInfoPage() {
                 </FormSection>
               </div>
             )}
-            {editable && <DomainSection onToast={setToast} />}
-            {editable && <BusinessSection onToast={setToast} />}
+            {editable && <DomainSection onToast={setToast} onSection={onSection} disabled={saving} />}
+            {editable && <BusinessSection onSection={onSection} disabled={saving} />}
             <div style={{ marginTop: 32 }}>
               <FormSection title="구매자 화면 미리보기">
                 <FormRow label="쇼핑몰 맨 위" help="쇼핑몰 모든 화면 맨 위에 이렇게 표시됩니다">
@@ -606,6 +627,7 @@ export default function ShopInfoPage() {
                     onClick={() => {
                       if (profile) (setName(profile.shopName), setTagline(profile.shopTagline ?? ""), setMode(profile.operatingState));
                       if (share) (setShareTitle(share.title ?? ""), setShareDesc(share.description ?? ""));
+                      Object.values(sections.current).forEach((h) => h.reset());
                       setShowErrors(false);
                       setSaveFailure(null);
                     }}
