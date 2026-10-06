@@ -63,6 +63,13 @@ body {
 .login-links > * {
   white-space: nowrap;
 }
+/* 휴대폰 폭: 「아직 파트너스가 아니십니까? 가입 신청」+「이메일(아이디)/비밀번호 찾기」(AU-002 정본 문구)가 한 줄에 들어가게 */
+@media (max-width: 430px) {
+  .login-card .login-links {
+    font-size: 11px;
+    gap: 4px;
+  }
+}
 /* 시안: 밑줄 없음(마우스를 올렸을 때만), 회원가입만 강조색 */
 .login-links a {
   text-decoration: none;
