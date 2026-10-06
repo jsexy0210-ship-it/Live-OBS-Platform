@@ -218,7 +218,7 @@ describe("주문 통계 GET /api/seller/stats/orders", () => {
   it("마스터 대리 조회(읽기 전용)는 통계를 볼 수 있다", async () => {
     const s = await shop();
     await s.order({ createdAt: "2026-10-02T03:00:00Z" });
-    const ro: TenantContext = { sellerId: s.seller.id, actorType: "PLATFORM_ADMIN", actorId: s.owner.id, isOwner: false, permissions: [], readOnly: true };
+    const ro: TenantContext = { sellerId: s.seller.id, actorType: "PLATFORM_ADMIN", actorId: s.owner.id, isOwner: false, permissions: [], readOnly: true, impersonationScopes: ["ORDERS", "MEMBERS"] };
     expect((await orderStats(db, ro, parseStatsRange({ from: "2026-10-01", to: "2026-10-07" })!)).current.orders).toBe(1);
   });
 });
