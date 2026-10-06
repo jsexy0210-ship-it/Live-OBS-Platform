@@ -4,7 +4,7 @@ import { requireAdmin } from "../../../../lib/server/authz/guards";
 import { prisma } from "../../../../lib/server/db";
 import { clearImpersonationCookie, errorResponse, mutation, noStore, requestMeta, sessionToken } from "../../../../lib/server/http/route";
 
-// 내가 열어 둔 대리 조회(MA-016). GET → { active: null | { sellerId, shopName, slug, reason, startedAt, expiresAt } }
+// 내가 열어 둔 대리 조회(MA-016). GET → { active: null | { sellerId, shopName, slug, reason, category, relatedKind, relatedId, scopes, startedAt, expiresAt } }
 export async function GET(req: Request) {
   try {
     const admin = await requireAdmin(prisma, sessionToken(req, "admin"), "seller.impersonate");

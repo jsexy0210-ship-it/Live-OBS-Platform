@@ -43,7 +43,7 @@ export async function requireSeller(
   if (isImpersonationToken(token)) {
     const imp = await resolveImpersonation(db, token, now ?? new Date());
     if (!imp) throw unauthenticated();
-    return { sellerId: imp.seller.id, actorType: "PLATFORM_ADMIN", actorId: imp.adminId, isOwner: false, permissions: [], readOnly: true };
+    return { sellerId: imp.seller.id, actorType: "PLATFORM_ADMIN", actorId: imp.adminId, isOwner: false, permissions: [], readOnly: true, impersonationScopes: imp.scopes };
   }
   const ctx = await resolveSellerSession(db, token, now ?? new Date());
   if (!ctx) throw unauthenticated();
