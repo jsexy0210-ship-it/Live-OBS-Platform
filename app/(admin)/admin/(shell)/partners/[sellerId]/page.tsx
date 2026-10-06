@@ -9,7 +9,7 @@ import { ErrorState, LoadingRows, Toast } from "../../../../../../components/sel
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
 import { DISPLAY_STATUS, SELLER_STATUS, SUBSCRIPTION_STATUS, day, dayTime, text, type SellerDetail, type SellerListRow, type SellerStatus } from "../../../_components/partners";
-import { PartnerOrdersTab, PartnerShopTab, PartnerSubscriptionTab } from "../../../_components/PartnerDetailTabs";
+import { PartnerInfoTab, PartnerOrdersTab, PartnerShopTab, PartnerSubscriptionTab } from "../../../_components/PartnerDetailTabs";
 import { MessageBalanceSection } from "../../../_components/MessageBalanceSection";
 import { PARTNER_TABS, PartnerActivity, PartnerBroadcasts, PartnerNotes, PartnerPg, type PartnerTab } from "../../../_components/PartnerTabs";
 import { ImpersonateDialog, type ImpersonationStart } from "../../../_components/ImpersonateDialog";
@@ -208,46 +208,7 @@ function PartnerDetail() {
                 <MessageBalanceSection sellerId={s.id} />
               </div>
             )}
-            {tab === "info" && (
-              <>
-              <Info
-                title="기본 정보"
-                id="partner-basic"
-                rows={[
-                  ["쇼핑몰 주소", s.slug],
-                  ["상태", <span key="st" className={`bdg ${SELLER_STATUS[s.status].cls}`}>{SELLER_STATUS[s.status].label}</span>],
-                  ...(s.status === "SUSPENDED" ? ([["정지 사유", text(s.suspendedReason)]] as [string, React.ReactNode][]) : []),
-                  ...(s.status === "REJECTED" ? ([["반려 사유", text(s.rejectedReason)], ["반려일", day(s.rejectedAt)]] as [string, React.ReactNode][]) : []),
-                  ["요금제", s.plan?.name ?? "-"],
-                  ["가입일", day(s.createdAt)],
-                  ["승인일", day(s.approvedAt)],
-                  ["체험 종료", day(s.trialEndsAt)],
-                  ["서비스 종료일", day(s.serviceEndedAt)],
-                ]}
-              />
-              <Info
-                title="대표자"
-                id="partner-owner"
-                rows={[
-                  ["이름", s.owner?.name ?? "-"],
-                  ["이메일", s.owner?.email ?? "-"],
-                  ["계정 상태", ({ ACTIVE: "이용 중", SUSPENDED: "정지" } as Record<string, string>)[s.owner?.status ?? ""] ?? s.owner?.status ?? "-"],
-                  ["최근 로그인", dayTime(s.owner?.lastLoginAt ?? null)],
-                ]}
-              />
-              <Info
-                title="사업자 정보"
-                id="partner-business"
-                rows={[
-                  ["상호", text(biz?.companyName)],
-                  ["사업자등록번호", text(biz?.businessNumber)],
-                  ["대표자명", text(biz?.representativeName)],
-                  ["개업일", text(biz?.openedOn)],
-                  ["통신판매업 신고번호", text(biz?.mailOrderNumber)],
-                ]}
-              />
-              </>
-            )}
+            {tab === "info" && <PartnerInfoTab seller={s} />}
           </div>
         )}
       </main>

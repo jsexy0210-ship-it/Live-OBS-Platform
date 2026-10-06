@@ -108,7 +108,7 @@ test("상세: 기본 정보·대표자·사업자·구독·최근 30일 주문�
   await expect(page).toHaveURL(new RegExp(`/admin/partners/${idA}$`));
   await expect(page.getByRole("heading", { name: /^파트너스 상세 · /, level: 1 })).toBeVisible();
   await expect(page.getByTestId("partner-badges")).toContainText(nameA);
-  for (const t of ["기본 정보", "대표자", "사업자 정보"]) await expect(page.getByRole("heading", { name: t, level: 2 })).toBeVisible();
+  for (const t of ["사업자 정보", "담당자 · 연락처", "계정 상태", "도메인"]) await expect(page.getByRole("heading", { name: t, level: 2 })).toBeVisible();
   await expect(page.getByText("시험상사")).toBeVisible();
   await page.getByRole("button", { name: "주문 현황", exact: true }).click();
   await expect(page.getByTestId("orders-today")).toBeVisible();
