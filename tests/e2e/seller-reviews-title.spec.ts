@@ -12,6 +12,7 @@ test("SA-048 리뷰 표와 행 정보가 1440·1024·390 화면에서 보인다"
   await expect(page).toHaveURL(/\/seller\/reviews$/);
   await expect(page.getByRole("button", { name: "리뷰 설정" })).toBeVisible();
 
+  const heading = page.getByRole("heading", { name: "리뷰", exact: true, level: 1 });
   for (const width of [1440, 1024, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
     if (width === 390) {
@@ -22,6 +23,10 @@ test("SA-048 리뷰 표와 행 정보가 1440·1024·390 화면에서 보인다"
       await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
       await expect.poll(() => page.evaluate(() => window.scrollX)).toBe(0);
     }
+    await expect(heading).toBeVisible();
+    const headingBox = await heading.boundingBox();
+    expect(headingBox).not.toBeNull();
+    expect(headingBox!.x + headingBox!.width).toBeLessThanOrEqual(width);
     const table = page.getByRole("table");
     await expect(table).toBeVisible();
     const row = page.getByTestId("review-row").first();
