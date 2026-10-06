@@ -49,7 +49,7 @@ test("파트너스 목록: 검색어가 주소에 남고, 상세 → 「파트�
   await expect(page.getByRole("link", { name: shop })).toBeVisible();
   await page.getByRole("link", { name: shop }).click();
   await expect(page).toHaveURL(new RegExp(`/admin/partners/${ids.seller}`));
-  await page.getByRole("button", { name: "파트너스 목록" }).click();
+  await page.getByRole("button", { name: "목록", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/admin/partners\\?q=${run}`));
   await expect(page.getByLabel("검색어", { exact: true })).toHaveValue(run);
   await page.reload();

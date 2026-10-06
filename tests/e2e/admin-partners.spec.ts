@@ -106,15 +106,16 @@ test("상세: 기본 정보·대표자·사업자·구독·최근 30일 주문�
   await search(page, slugA);
   await page.getByRole("link", { name: nameA }).click();
   await expect(page).toHaveURL(new RegExp(`/admin/partners/${idA}$`));
-  await expect(page.getByRole("heading", { name: nameA, level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^파트너스 상세 · /, level: 1 })).toBeVisible();
+  await expect(page.getByTestId("partner-badges")).toContainText(nameA);
   for (const t of ["기본 정보", "대표자", "사업자 정보"]) await expect(page.getByRole("heading", { name: t, level: 2 })).toBeVisible();
   await expect(page.getByText("시험상사")).toBeVisible();
   await page.getByRole("button", { name: "주문 현황", exact: true }).click();
   await expect(page.getByTestId("orders-today")).toBeVisible();
   await page.getByRole("button", { name: "구독", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "구독", level: 2 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "요금제", level: 2 })).toBeVisible();
   // 요금제는 코드가 아니라 이름으로 보인다(코드성 표기 금지)
-  const pending = page.locator("dl.kv dt", { hasText: "바뀔 요금제" }).locator("xpath=following-sibling::dd[1]");
+  const pending = page.locator("th", { hasText: "바뀔 요금제" }).locator("xpath=following-sibling::td[1]");
   await expect(pending).toHaveText("오버레이 전용");
   await expect(page.locator("main")).not.toContainText("OVERLAY_ONLY");
   await expect(page.locator("main")).not.toContainText("INTEGRATED");
@@ -159,7 +160,8 @@ test("CS: 목록·상세는 볼 수 있지만 이용 정지·해제 버튼은 �
   await expect(page.getByTestId("partner-row").getByRole("button", { name: /이용 정지|정지 해제/ })).toHaveCount(0);
   await expect(page.locator("th", { hasText: "관리" })).toHaveCount(1);
   await page.getByRole("link", { name: nameA }).click();
-  await expect(page.getByRole("heading", { name: nameA, level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^파트너스 상세 · /, level: 1 })).toBeVisible();
+  await expect(page.getByTestId("partner-badges")).toContainText(nameA);
   await expect(page.getByRole("button", { name: /이용 정지|정지 해제/ })).toHaveCount(0);
 });
 
@@ -213,9 +215,9 @@ test("상세 탭: 구독(상태 이력·청구 상세·누적), 쇼핑몰(설정
   await page.goto(`/admin/partners/${idA}?tab=subscription`);
   const sub = page.getByTestId("tab-subscription");
   await expect(sub.getByRole("heading", { name: "상태 이력" })).toBeVisible();
-  await expect(sub.getByRole("heading", { name: "청구 상세" })).toBeVisible();
+  await expect(sub.getByRole("heading", { name: "청구 · 결제 내역" })).toBeVisible();
   await expect(sub.getByTestId("sub-totals")).toContainText("누적 결제");
-  await expect(page.getByRole("link", { name: "청구·결제 내역" })).toHaveAttribute("href", `/admin/billing/invoices?sellerId=${idA}`);
+  await expect(page.getByRole("link", { name: "청구 상세", exact: true })).toHaveAttribute("href", `/admin/billing/invoices?sellerId=${idA}`);
 
   await page.getByRole("button", { name: "쇼핑몰", exact: true }).click();
   await expect(page).toHaveURL(/tab=shop/);
