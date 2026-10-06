@@ -271,7 +271,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
     mode === "uploaded"
       ? (ogFile?.url ?? (branding.ogImage.uploaded ? branding.ogImage.url : null))
       : canEdit
-        ? `/api/admin/branding/card-preview?title=${encodeURIComponent(previewTitle)}`
+        ? `/api/admin/branding/card-preview?target=${t}&title=${encodeURIComponent(previewTitle)}`
         : branding.ogImage.url;
   const host = typeof window === "undefined" ? "" : window.location.host;
   // 공유 카드의 사이트 표시 줄에 붙는 아이콘: 고른 파비콘 → 올린 파비콘 → 기본 아이콘 순(저장 전 선택도 바로 보인다)
