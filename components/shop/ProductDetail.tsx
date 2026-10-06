@@ -223,11 +223,10 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
         <div className="pd-info">
           <h1>{p.name}</h1>
           {p.description && <p className="pd-desc">{p.description}</p>}
-          <table className="pd-form">
-            <tbody>
-              <tr>
-                <th scope="row">판매가</th>
-                <td>
+          <dl className="pd-form">
+              <div className="pd-form-row pd-price-row">
+                <dt>판매가</dt>
+                <dd>
                   {p.salePrice !== null ? (
                     <>
                       <b className="pd-price">
@@ -240,24 +239,24 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
                   ) : (
                     <b className="pd-price">{won(p.price)}</b>
                   )}
-                </td>
-              </tr>
+                </dd>
+              </div>
               <CouponRow slug={slug} loggedIn={loggedIn} />
               {reward && (
-                <tr>
-                  <th scope="row">예상 적립</th>
-                  <td>{reward}</td>
-                </tr>
+                <div className="pd-form-row pd-reward-row">
+                  <dt>예상 적립</dt>
+                  <dd>{reward}</dd>
+                </div>
               )}
-              <tr>
-                <th scope="row">배송비</th>
-                <td>{ship}</td>
-              </tr>
-              <tr>
-                <th scope="row">
+              <div className="pd-form-row pd-shipping-row">
+                <dt>배송비</dt>
+                <dd>{ship}</dd>
+              </div>
+              <div className="pd-form-row pd-option-row">
+                <dt>
                   <label htmlFor="pd-option">옵션</label>
-                </th>
-                <td>
+                </dt>
+                <dd>
                   <select id="pd-option" className="inp pd-select" value={optionId} onChange={(e) => pickOption(e.target.value)} disabled={p.options.length === 0}>
                     {p.options.map((o) => (
                       <option key={o.id} value={o.id} disabled={o.soldOut}>
@@ -265,17 +264,17 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
                       </option>
                     ))}
                   </select>
-                </td>
-              </tr>
+                </dd>
+              </div>
               {option?.stockLeft != null && (
-                <tr>
-                  <th scope="row">재고</th>
-                  <td>{option.stockLeft}개 남았어요</td>
-                </tr>
+                <div className="pd-form-row pd-stock-row">
+                  <dt>재고</dt>
+                  <dd>{option.stockLeft}개 남았어요</dd>
+                </div>
               )}
-              <tr>
-                <th scope="row">수량</th>
-                <td>
+              <div className="pd-form-row pd-quantity-row">
+                <dt>수량</dt>
+                <dd>
                   <span className="cart-qty">
                     <button type="button" aria-label="수량 줄이기" disabled={qty <= 1} onClick={() => changeQty(qty - 1)}>
                       −
@@ -285,10 +284,9 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
                       +
                     </button>
                   </span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                </dd>
+              </div>
+          </dl>
 
           <div className="pd-sum">
             <div>
