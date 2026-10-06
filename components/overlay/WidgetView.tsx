@@ -25,6 +25,17 @@ export function fmtTimer(sec: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
+export function fmtEventTimer(sec: number): string {
+  const s = Math.max(0, Math.ceil(sec));
+  return `${Math.floor(s / 3600)}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+}
+
+const kstDay = (ms: number) => Math.floor(Date.parse(new Date(ms + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)) / 86_400_000);
+const kstDateTime = (ms: number) => {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(ms)).map(({ type, value }) => [type, value]));
+  return `${parts.year}.${parts.month}.${parts.day} ${parts.hour}:${parts.minute}`;
+};
+
 export function WidgetView({ widget: wd, data, now, editing }: { widget: Widget; data: LiveData; now: number; editing?: boolean }) {
   const p = wd.props;
   const style: Record<string, string | number | undefined> = {
@@ -164,20 +175,34 @@ export function WidgetView({ widget: wd, data, now, editing }: { widget: Widget;
     case "EVENT_CARD": {
       const e = data.eventCard;
       if (!e) break;
+      const remainingSeconds = Math.max(0, Math.ceil((Date.parse(e.endsAt) - now) / 1000));
+      const active = remainingSeconds > 0;
+      const daysLeft = Math.max(0, kstDay(Date.parse(e.endsAt)) - kstDay(now));
+      const urgency = remainingSeconds < 3600 ? "soon" : daysLeft === 0 ? "today" : "days";
+      const badge = urgency === "soon" ? "곧 끝나요" : daysLeft === 0 ? "오늘 마감" : `${daysLeft}일 남음`;
+      const endDate = kstDateTime(Date.parse(e.endsAt));
       body = (
         <>
-          <span className="ow-h">{title ?? "이벤트 할인"}</span>
-          <span className="ow-ev-name">{e.productName}</span>
+          <span className="ow-ev-main">
+            {active && <span className="ow-ev-sub ow-ev-sub-port">{title ?? "지금 방송 상품 · 이벤트 할인"}</span>}
+            {active && <span className="ow-ev-sub ow-ev-sub-land">{title ?? `이벤트 할인 · ${daysLeft === 1 ? "내일까지" : badge}`}</span>}
+            <span className="ow-ev-name">{e.productName}</span>
+            {active && <s className="ow-ev-was">정가 {e.price.toLocaleString("ko-KR")}원</s>}
+          </span>
           <span className="ow-ev-price">
-            {e.discountRate !== null && <b className="ow-ev-rate">{e.discountRate}%</b>}
-            <b className="ow-ev-now">{e.discountedPrice.toLocaleString("ko-KR")}원</b>
-            <s className="ow-ev-was">{e.price.toLocaleString("ko-KR")}원</s>
+            {active && e.discountRate !== null && <b className="ow-ev-rate">{e.discountRate}%</b>}
+            <b className="ow-ev-now">{(active ? e.discountedPrice : e.price).toLocaleString("ko-KR")}원</b>
           </span>
-          <span className="ow-ev-meta">
-            {e.badge && <span className="ow-grade">{e.badge === "오늘 마감" ? "오늘 마감이에요" : e.badge}</span>}
-            {e.remainingLabel && <span>{e.remainingLabel}</span>}
-            {e.moreCount > 0 && <span>{e.moreCount}개 더 있어요</span>}
-          </span>
+          {active && (
+            <span className={`ow-ev-meta ${urgency}`}>
+              <span className={`ow-ev-clock ${urgency}`}>
+                <span className="ow-ev-badge">{badge}</span>
+                <b className="ow-ev-timer">{fmtEventTimer(remainingSeconds)}</b>
+                <span className="ow-ev-countdown-suffix">남았어요</span>
+              </span>
+              <span className="ow-ev-remaining">{endDate}까지</span>
+            </span>
+          )}
         </>
       );
       break;

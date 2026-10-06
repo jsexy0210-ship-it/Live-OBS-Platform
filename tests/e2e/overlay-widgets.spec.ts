@@ -80,20 +80,25 @@ test("이벤트 할인 카드와 구매 랭킹이 보이고, 값이 없으면 �
     { id: "ev", type: "EVENT_CARD", ...box, y: 10, h: 12, props: {} },
     { id: "rk", type: "PURCHASE_RANKING", ...box, y: 30, h: 20, props: { rows: 3 } },
   ];
-  const eventCard = { productName: "프리미엄 박스", price: 20000, discountedPrice: 15000, discountRate: 25, endsAt: new Date().toISOString(), remainingSeconds: 5400, badge: "오늘 마감", remainingLabel: "1시간 30분 남았어요", moreCount: 2 };
+  const clockTime = Date.now();
+  const eventCard = { productName: "프리미엄 박스", price: 20000, discountedPrice: 15000, discountRate: 25, endsAt: new Date(clockTime + 120_000).toISOString(), remainingSeconds: 120, badge: "오늘 마감", remainingLabel: "2분 남았어요", moreCount: 2 };
   const ranking = [
     { rank: 1, nickname: "별빛하늘", quantity: 5 },
     { rank: 2, nickname: "달콤곰", quantity: 3 },
     { rank: 2, nickname: "민트초코", quantity: 3 },
     { rank: 4, nickname: "하루", quantity: 1 },
   ];
-  await page.route("**/api/overlay/*/layout*", (r) => r.fulfill({ json: { aspect: "9x16", version: 1, widgets: wd } }));
+  await page.route("**/api/overlay/*/layout*", (r) => {
+    const aspect = new URL(r.request().url()).searchParams.get("aspect") ?? "9x16";
+    return r.fulfill({ json: { aspect, version: 1, widgets: wd.map((w) => w.type === "EVENT_CARD" ? { ...w, h: aspect === "9x16" ? 18 : 14 } : w) } });
+  });
   await page.route("**/api/overlay/*/stream", (r) => r.abort());
   await page.route("**/api/overlay/*/version", (r) => r.fulfill({ json: { version: phase + 1 } }));
   await page.route("**/api/overlay/*/state", (r) =>
     r.fulfill({ json: { version: phase + 1, live: true, opening: null, waiting: [], hits: [], orderEvents: [], eventCard: phase === 0 ? eventCard : null, purchaseRanking: phase === 0 ? ranking : [] } }),
   );
   await page.setViewportSize({ width: 1080, height: 1920 });
+  await page.clock.install({ time: new Date(clockTime) });
   await page.goto("/overlay/mock-token");
 
   const ev = page.locator('[data-widget="EVENT_CARD"]');
@@ -101,8 +106,11 @@ test("이벤트 할인 카드와 구매 랭킹이 보이고, 값이 없으면 �
   await expect(ev).toContainText("15,000원");
   await expect(ev).toContainText("20,000원");
   await expect(ev).toContainText("25%");
-  await expect(ev).toContainText("오늘 마감이에요");
-  await expect(ev).toContainText("1시간 30분 남았어요");
+  await expect(ev).toContainText("곧 끝나요");
+  await expect(ev).toContainText("남았어요");
+  await expect(ev.locator(".ow-ev-timer")).toHaveText("0:02:00");
+  await expect(ev.locator(".ow-ev-rate")).toHaveCSS("font-size", "56px");
+  expect(await ev.evaluate((node) => node.scrollHeight <= node.clientHeight)).toBe(true);
   await expect(ev).toContainText("2개 더 있어요");
   // 랭킹: rows=3만큼 위에서, 같은 수량은 같은 순위(1·2·2), 4위는 잘린다
   const rk = page.locator('[data-widget="PURCHASE_RANKING"]');
@@ -112,7 +120,20 @@ test("이벤트 할인 카드와 구매 랭킹이 보이고, 값이 없으면 �
   await expect(rk.locator("li .ow-no")).toHaveText(["1", "2", "2"]);
   await expect(rk).not.toContainText("하루");
 
-  phase = 1; // 이벤트가 끝나고 방송 랭킹이 비었다(15초 확인에서 읽는다)
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto("/overlay/mock-token?ratio=16x9");
+  const horizontal = page.locator('[data-widget="EVENT_CARD"]');
+  await expect(horizontal.locator(".ow-ev-timer")).toBeVisible();
+  await expect(horizontal).toHaveCSS("flex-direction", "row");
+  await expect(horizontal.locator(".ow-ev-name")).toHaveCSS("font-size", "22px");
+  await expect(horizontal.locator(".ow-ev-badge")).toHaveCSS("display", "none");
+
+  await page.clock.fastForward(121_000);
+  await expect(horizontal.locator(".ow-ev-rate")).toHaveCount(0);
+  await expect(horizontal.locator(".ow-ev-now")).toHaveText("20,000원");
+  await expect(horizontal.locator(".ow-ev-timer")).toHaveCount(0);
+  phase = 1; // 이벤트 종료 상태는 15초 확인 주기에 서버에서 반영된다
+  await page.clock.fastForward(15_000);
   await expect(ev).toHaveCount(0, { timeout: 25_000 });
   await expect(rk).toHaveCount(0);
 });
