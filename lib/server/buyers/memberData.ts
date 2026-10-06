@@ -26,6 +26,7 @@ export const MEMBER_DATA_POLICY: Record<string, { policy: MemberDataPolicy; note
   MemberGradeHistory: { policy: "delete", note: "등급 변경 기록(등급 이름과 금액만, 개인정보 없음). 탈퇴하면 지운다" },
   ProductReviewReport: { policy: "anonymize", note: "리뷰 신고 기록은 남긴다(보류는 판매자만 풀어야 해서 신고 사실이 필요). 신고자는 비식별된 탈퇴 회원 행으로만 이어진다" },
   BuyerCoupon: { policy: "delete", note: "받은 쿠폰. 쓰지 않은 쿠폰은 지우고, 주문에 쓴(쓴 뒤 전체 취소로 되돌린) 쿠폰은 주문 할인 기록(CouponRedemption)과 이어져 주문과 함께 남긴다(shop-coupons)" },
+  AudienceEventEntrant: { policy: "anonymize", note: "회원 참가의 buyerMemberId·표시명·개인정보를 포함한 재시도 hash를 비식별. 불변 명단/회차/결과 entrant UUID는 유지(events anonymizeMemberEventEntries)" },
   BuyerSession: { policy: "delete", note: "로그인 세션" },
   BuyerPasswordReset: { policy: "delete", note: "비밀번호 재설정 링크(해시만 저장)" },
   BuyerPurchaseRestriction: { policy: "delete", note: "구매 제한(개인정보 없음, 탈퇴하면 쓸 일 없음)" },
@@ -50,6 +51,8 @@ export const MEMBER_REFERENCE_POLICY: Record<string, { policy: MemberDataPolicy;
   "OrderRefund.actorId": { policy: "retain_legal", note: "환불한 행위자(파트너스 직원·관리자·시스템, 지금 구매자 행 없음). 환불 거래 기록" },
   "SellerMessageLedger.actorId": { policy: "retain_legal", note: "구매자 행 없음(DB CHECK로 actorType BUYER 금지, 행위자는 시스템·파트너스 직원·관리자). 발송 충전 원장" },
   "BulkJob.actorId": { policy: "retain_legal", note: "구매자 행 없음(DB CHECK로 actorType BUYER 금지, 행위자는 파트너스 직원·관리자). 엑셀 일괄 등록 작업 이력" },
+  "AudienceEventRound.actorId": { policy: "anonymize", note: "구매자 행 없음(DB CHECK로 actorType BUYER 금지). 파트너스·관리자·시스템이 확정한 불변 회차 실행자" },
+  "AudienceEventPublication.actorId": { policy: "anonymize", note: "구매자 행 없음(DB CHECK로 actorType BUYER 금지). 파트너스·관리자·시스템의 결과 공개 이력" },
 };
 
 // 탈퇴 회원이 행위자·대상인 감사 로그의 행동 종류별 보관(대표님 결정 2026-10-03, PRODUCT_SCOPE 「구매자 탈퇴·재가입」).
@@ -75,6 +78,8 @@ export const MEMBER_AUDIT_RETENTION: Record<string, MemberAuditRetention> = {
   "buyer_address.create": "non_transaction",
   "buyer_address.update": "non_transaction",
   "buyer_address.delete": "non_transaction",
+  "audience_event.mobile_join": "non_transaction",
+  "audience_event.mobile_attempt": "non_transaction",
   "buyer.withdraw": "non_transaction",
   "buyer.withdraw_failed": "non_transaction",
   // 쿠폰 받기(내려받기·코드 입력)·틀린 코드 입력. 쿠폰 사용·되돌림은 주문 기록(order.coupon.*)이라 거래 관련.

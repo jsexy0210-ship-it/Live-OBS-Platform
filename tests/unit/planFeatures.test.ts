@@ -11,13 +11,16 @@ function filesNamed(dir: string, file: string, root: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const p = join(dir, name);
     if (statSync(p).isDirectory()) return filesNamed(p, file, root);
-    return name === file ? [relative(root, p).slice(0, -(file.length + 1))] : [];
+    return name === file ? [relative(root, p).replace(/\\/g, "/").slice(0, -(file.length + 1))] : [];
   });
 }
 const routeFiles = (dir: string) => filesNamed(dir, "route.ts", dir);
 
 // 판매자 API → 요구하는 기능 권한(lib/server/authz/guards.ts SellerRouteFeature). 가드를 부르지 않는 경로는 null.
 const SELLER_ROUTES: Record<string, string | null> = {
+  "seller/events": "OVERLAY",
+  "seller/events/[eventId]": "OVERLAY",
+  "seller/events/[eventId]/[action]": "OVERLAY",
   "seller/auth/login": null,
   "seller/auth/logout": null,
   "seller/find-id/accounts": null,
@@ -440,5 +443,12 @@ describe("경로 목록 검사", () => {
   it("공개·구매자 경로는 모두 표에 있다", () => {
     const pub = all.filter((r) => r.startsWith("shop/") || r.startsWith("overlay/"));
     expect(pub.sort()).toEqual(Object.keys(PUBLIC_ROUTES).sort());
+  });
+
+  it("공개 이벤트 참가 경로는 조회와 참가에만 한정한다", () => {
+    expect(all.filter((r) => r.startsWith("public/")).sort()).toEqual([
+      "public/events/[eventId]",
+      "public/events/[eventId]/[action]",
+    ]);
   });
 });

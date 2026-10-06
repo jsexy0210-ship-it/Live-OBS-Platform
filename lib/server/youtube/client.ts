@@ -27,7 +27,8 @@ export type VideoInfo = {
   liveChatId: string | null;
 };
 
-export type ChatMessage = { messageId: string; authorChannelId: string; authorName: string; text: string; publishedAt: Date };
+// fullText는 이벤트 전체 일치 판정용 메모리 값이다. DB에는 text(앞 200자)만 저장한다.
+export type ChatMessage = { messageId: string; authorChannelId: string; authorName: string; text: string; fullText?: string; publishedAt: Date };
 // ended: 채팅이 끝났거나 꺼짐·없음·비공개. 받으면 그 방송의 수집을 멈추고 endReason을 남긴다.
 export type ChatEndReason = "chat_ended" | "chat_disabled" | "chat_not_found" | "chat_forbidden";
 export type ChatPage = { messages: ChatMessage[]; nextPageToken: string | null; pollingIntervalMillis: number | null; ended: boolean; endReason?: ChatEndReason };
@@ -144,6 +145,7 @@ export function createYoutubeClient(apiKey: string, fetchImpl: Fetch = fetch, ti
             authorChannelId: m.authorDetails?.channelId ?? "",
             authorName: cut(authorName, 100),
             text: cut(m.snippet?.displayMessage ?? "", 200),
+            fullText: m.snippet?.displayMessage ?? "",
             publishedAt,
           },
         ];
