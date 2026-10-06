@@ -97,3 +97,13 @@ export function nextPeriodEnd(anchor: Date, start: Date): Date {
   while (addMonthsKst(anchor, k) <= start) k++;
   return addMonthsKst(anchor, k);
 }
+
+// 계정의 첫 런칭가 결제 성공부터 KST 달력 3개월. 미사용 계정은 첫 결제 전까지 혜택이 만료되지 않는다.
+export function launchDiscountEndsAt(usedAt: Date | null): Date | null {
+  return usedAt ? addMonthsKst(usedAt, 3) : null;
+}
+
+export function launchDiscountEligible(usedAt: Date | null, at: Date): boolean {
+  const endsAt = launchDiscountEndsAt(usedAt);
+  return !endsAt || at < endsAt;
+}

@@ -3,7 +3,7 @@ import type { AdminSessionContext } from "../auth/session";
 import { writeAudit } from "../audit/log";
 import { forbidden } from "../authz/errors";
 import { adminCan } from "../authz/permissions";
-import { DEFAULT_PLAN_CODE, PRICE_NOTICE_MS, chargeFor, dbNow } from "./subscription";
+import { DEFAULT_PLAN_CODE, PRICE_NOTICE_MS, chargeFor, dbNow, withoutLegacy } from "./subscription";
 
 // 요금 안내·구독 화면에 보여 줄 가격(부가세 포함). 정가는 취소선, 판매가가 실제 청구액이다.
 // 기본은 신규 가입 기본 플랜. plans에는 지금 가입할 수 있는 두 플랜(오버레이 전용·쇼핑몰 통합)을 함께 준다(ONQ 1-C).
@@ -89,8 +89,8 @@ export async function listPriceChangeNoticeTargets(db: PrismaClient, admin: Admi
       shopName: s.seller.shopName,
       ownerEmails: s.seller.users.map((u) => u.email),
       oldPrice: (await chargeFor(db, plan, s, now)).amount,
-      // 정가 구독(regularPrice)은 정가가 바뀐다
-      newPrice: s.regularPrice ? latest.listPrice : latest.salePrice,
+      // 고지 적용일의 계정 할인 자격도 chargeFor와 같은 기준으로 판단한다
+      newPrice: (await chargeFor(db, { ...plan, listPrice: latest.listPrice, salePrice: latest.salePrice }, withoutLegacy(s), appliesFrom)).amount,
       appliesFrom,
     })),
   );

@@ -3,7 +3,7 @@ import { policyValue } from "../admin/platformPolicy";
 import { writeAudit } from "../audit/log";
 import { effectiveMailQuota } from "../mail/quota";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
-import { addMonthsKst, canCancelSubscription, cardRegistrationCharges, isEndedSubscription, lockedSince, nextPeriodEnd, sellerAccess, type SellerAccess } from "./access";
+import { addMonthsKst, canCancelSubscription, cardRegistrationCharges, isEndedSubscription, launchDiscountEligible, launchDiscountEndsAt, lockedSince, nextPeriodEnd, sellerAccess, type SellerAccess } from "./access";
 
 // 판정 함수는 화면과 함께 쓰려고 access.ts(순수 모듈)에 있다. 기존 import 경로를 위해 다시 내보낸다.
 export { isEndedSubscription };
@@ -71,11 +71,12 @@ export async function sellerAccessFor(db: Db, sellerId: string, now?: Date): Pro
 // 가격(정가·판매가)은 가격 기록 중 「구독을 시작할 때 이미 적용되던 것」이거나 「변경 + 30일이 지난 것」 가운데 가장 최근 것이다
 // (대표님 결정 2026-10-02). 그래서 기존 구독자는 고지 기간(30일)이 끝나기 전에는 구독을 시작할 때의 가격(또는 그 뒤 고지가 끝난 가격)을
 // 내고, 새 구독자는 지금 가격을 낸다. 정가 구독도 같은 규칙으로 정가를 고른다.
-// - 정가 구독(regularPrice: 런칭 할인을 쓴 계정이 해지 뒤 다시 구독)은 정가(대표님 결정 2026-10-04, ARCHITECTURE 4.8.0).
+// - ONQ 런칭가는 계정의 첫 성공 결제부터 KST 달력 3개월. 해지·재가입은 그 시각을 초기화하지 않는다.
+//   regularPrice는 과거 구독의 가격 구분 기록이며 ONQ의 현재 할인 자격은 계정 시각으로 판단한다.
 // - 이전 전 가격 스냅숏(STANDARD → INTEGRATED, ONQ 1-C): 고지 발송 완료 + 30일 전이거나 아직 보내지 않았으면(null) 그 금액이다.
 // - 그 밖은 판매가(= 런칭가). 스냅숏 금액과 STANDARD 플랜 결제는 런칭가로 세지 않는다.
 // 아직 구독하지 않은 판매자는 subscribedAt = at(지금 가격), 스냅숏 없음으로 부른다.
-export type PriceSubscription = Pick<SellerSubscription, "subscribedAt" | "legacyPrice" | "legacyPriceNoticeSentAt" | "regularPrice">;
+export type PriceSubscription = Pick<SellerSubscription, "sellerId" | "subscribedAt" | "legacyPrice" | "legacyPriceNoticeSentAt" | "regularPrice">;
 export async function chargeFor(db: Db, plan: SubscriptionPlan, sub: PriceSubscription, at: Date): Promise<{ amount: number; launchDiscount: boolean }> {
   const legacy = !sub.regularPrice && sub.legacyPrice != null && (!sub.legacyPriceNoticeSentAt || at < after(sub.legacyPriceNoticeSentAt, PRICE_NOTICE_MS));
   if (legacy) return { amount: sub.legacyPrice!, launchDiscount: false };
@@ -85,7 +86,11 @@ export async function chargeFor(db: Db, plan: SubscriptionPlan, sub: PriceSubscr
     select: { listPrice: true, salePrice: true },
   });
   const price = row ?? plan;
-  if (sub.regularPrice) return { amount: price.listPrice, launchDiscount: false };
+  const seller = plan.code === "STANDARD" ? null : await db.seller.findUniqueOrThrow({
+    where: { id: sub.sellerId }, select: { launchDiscountUsedAt: true },
+  });
+  const regular = seller ? !launchDiscountEligible(seller.launchDiscountUsedAt, at) : sub.regularPrice;
+  if (regular) return { amount: price.listPrice, launchDiscount: false };
   // 이전 전 STANDARD 플랜 결제도 런칭 할인 사용으로 세지 않는다
   return { amount: price.salePrice, launchDiscount: plan.code !== "STANDARD" };
 }
@@ -128,12 +133,13 @@ export async function getSubscriptionView(db: PrismaClient, ctx: TenantContext, 
   const shownPlan = sub?.plan ?? plan;
   // 하위 변경이 예약돼 있으면 다음 결제는 그 플랜 금액이다(ONQ 1-C-2)
   const nextPlan = sub?.pendingPlan && !sub.cancelAtPeriodEnd ? sub.pendingPlan : shownPlan;
+  const priceAt = new Date(Math.max(at.getTime(), sub?.nextChargeAt?.getTime() ?? 0));
   const next = shownPlan
     ? sub && !isEndedSubscription(sub, at)
       ? nextPlan === shownPlan
-        ? await chargeFor(db, shownPlan, sub, sub.nextChargeAt ?? at)
-        : await chargeFor(db, nextPlan!, withoutLegacy(sub), sub.nextChargeAt ?? at)
-      : await chargeFor(db, shownPlan, { subscribedAt: at, legacyPrice: null, legacyPriceNoticeSentAt: null, regularPrice: !!seller.launchDiscountUsedAt }, at)
+        ? await chargeFor(db, shownPlan, sub, priceAt)
+        : await chargeFor(db, nextPlan!, withoutLegacy(sub), priceAt)
+      : await chargeFor(db, shownPlan, { sellerId: ctx.sellerId, subscribedAt: at, legacyPrice: null, legacyPriceNoticeSentAt: null, regularPrice: !launchDiscountEligible(seller.launchDiscountUsedAt, at) }, at)
     : null;
   const scheduled = scheduledBillingRow(sub, next?.amount ?? null, at);
   return {
@@ -146,9 +152,9 @@ export async function getSubscriptionView(db: PrismaClient, ctx: TenantContext, 
           listPrice: shownPlan.listPrice,
           salePrice: shownPlan.salePrice,
           nextAmount: next!.amount,
-          // 월 무료 메일 통수(플랜 적용값)와 런칭 할인가 여부. 할인 종료일은 정해진 값이 아직 없어 endsAt은 null이다(종료 정책이 생기면 채운다)
+          // 다음 결제의 할인 여부와 계정의 확정된 할인 종료 시각(첫 성공 전에는 null)
           mailMonthlyQuota: effectiveMailQuota(shownPlan, at),
-          launchDiscount: { active: next!.launchDiscount, endsAt: null },
+          launchDiscount: { active: next!.launchDiscount, endsAt: launchDiscountEndsAt(seller.launchDiscountUsedAt) },
         }
       : null,
     subscription: sub
@@ -236,17 +242,17 @@ export async function registerCardAndPay(
       const card = { billingKeyCipher, cardLabel: issued.cardLabel, cancelAtPeriodEnd: false };
       const sub = await tx.sellerSubscription.upsert({
         where: { sellerId: ctx.sellerId },
-        // 런칭 할인을 이미 쓴 계정의 새 구독은 정가다(대표님 결정 2026-10-04)
-        create: { sellerId: ctx.sellerId, planId: plan.id, ...card, nextChargeAt, createdAt: now, subscribedAt: now, regularPrice: !!seller.launchDiscountUsedAt },
+        // 새 구독도 계정에 남은 할인 기간만 적용한다
+        create: { sellerId: ctx.sellerId, planId: plan.id, ...card, nextChargeAt, createdAt: now, subscribedAt: now, regularPrice: !launchDiscountEligible(seller.launchDiscountUsedAt, now) },
         update: {
           ...card,
           // 카드만 등록하는 경우(결제한 기간이 남음·체험하기 중)는 결제 없이도 정상 구독이다
           ...(cardOnly ? { status: "ACTIVE" as const, nextChargeAt, canceledAt: null } : {}),
           // 다시 구독하면 새 가입자다: 이전 전 가격 스냅숏도 비운다(그때 플랜 가격, ONQ 1-C)
-          // 런칭 할인을 이미 쓴 계정이면 이 구독은 정가다(대표님 결정 2026-10-04, 이전 전 STANDARD 결제는 사용으로 세지 않음)
+          // 첫 성공 시각은 계정에 보존한다(이전 전 STANDARD 결제는 할인 사용으로 세지 않음)
           // 해지 전에 예약한 하위 변경도 끝난 구독의 것이라 비운다(#186 Codex P2)
           ...(restart
-            ? { subscribedAt: now, legacyPrice: null, legacyPriceNoticeSentAt: null, regularPrice: !!seller.launchDiscountUsedAt, pendingPlanId: null }
+            ? { subscribedAt: now, legacyPrice: null, legacyPriceNoticeSentAt: null, regularPrice: !launchDiscountEligible(seller.launchDiscountUsedAt, now), pendingPlanId: null }
             : {}),
         },
       });

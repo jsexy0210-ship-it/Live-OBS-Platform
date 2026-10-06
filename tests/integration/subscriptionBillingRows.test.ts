@@ -59,7 +59,7 @@ const charge = (s: { seller: { id: string }; owner: { id: string } }, data: Reco
   db.messageCharge.create({ data: { sellerId: s.seller.id, sellerUserId: s.owner.id, amount: 10000, status: "PAID", idempotencyKey: `k${++pn}`, noticeVersion: "v1", ...data } as never });
 
 describe("구독 응답 확장 GET /api/seller/subscription", () => {
-  it("plan에 월 무료 메일·런칭 할인 여부, subscription에 구독 시작·청구 주기·체험 거침을 더한다(할인 종료일은 아직 null). 기존 필드는 그대로", async () => {
+  it("plan에 월 무료 메일·런칭 할인 여부, subscription에 구독 시작·청구 주기·체험 거침을 더한다(첫 성공 전 할인 종료일은 null). 기존 필드는 그대로", async () => {
     const s = await shop();
     const r = await view(s.cookie);
     expect(r.status).toBe(200);
@@ -69,11 +69,12 @@ describe("구독 응답 확장 GET /api/seller/subscription", () => {
     expect(Array.isArray(r.body.payments)).toBe(true);
   });
 
-  it("정가 구독(런칭 할인을 이미 쓴 계정)은 launchDiscount.active=false, 체험이 없던 판매자는 startedFromTrial=false", async () => {
+  it("할인 기간이 끝난 구독은 launchDiscount.active=false, 체험이 없던 판매자는 startedFromTrial=false", async () => {
     const s = await shop({ trialEndsAt: null });
-    await db.sellerSubscription.update({ where: { id: s.sub.id }, data: { regularPrice: true } });
+    await db.seller.update({ where: { id: s.seller.id }, data: { launchDiscountUsedAt: ago(200 * DAY) } });
     const r = await view(s.cookie);
-    expect(r.body.plan).toMatchObject({ nextAmount: 249000, launchDiscount: { active: false, endsAt: null } });
+    expect(r.body.plan).toMatchObject({ nextAmount: 249000, launchDiscount: { active: false } });
+    expect(r.body.plan.launchDiscount.endsAt).toBeTruthy();
     expect(r.body.subscription.startedFromTrial).toBe(false);
   });
 });

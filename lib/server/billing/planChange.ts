@@ -1,7 +1,7 @@
 import type { Prisma, PrismaClient, SubscriptionPayment, SubscriptionPlan } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
-import { addMonthsKst, isCancelScheduled, isEndedSubscription, planChangeState } from "./access";
+import { addMonthsKst, isCancelScheduled, isEndedSubscription, launchDiscountEligible, planChangeState } from "./access";
 import type { BillingProvider, ChargeResult } from "./provider";
 import { openBillingKey } from "./secret";
 import { chargeFor, dbNow, type PriceSubscription, lockSeller, planPeriod, sellerPlanOf, withoutLegacy, settlePayment, switchPlan } from "./subscription";
@@ -16,7 +16,7 @@ import { chargeFor, dbNow, type PriceSubscription, lockSeller, planPeriod, selle
 // - 하위 변경(통합 → 오버레이 전용): 결제한 기간이나 유예 중이면 다음 결제일부터(pendingPlanId), 아니면 바로. 환불 없음.
 //   변경 전에 받은 주문의 처리는 그대로 열린다(기능 권한 ORDER_FOLLOWUP).
 // - 사업자·통신판매업 점검 게이트는 오버레이 전용 최소 가입(ONQ 2단계)이 생길 때 넣는다(지금은 모든 가입이 점검을 거침).
-// - 런칭 할인 계정당 1회(대표님 결정 2026-10-04): 구독이 이어지는 동안의 상위 변경은 런칭가 기준이고, 정가 구독은 정가 기준이다.
+// - 런칭 할인은 계정 첫 성공부터 KST 3개월이며 상위 변경도 그 기간 안에서만 런칭가 기준이다.
 
 export const CHANGEABLE_PLANS = ["OVERLAY_ONLY", "INTEGRATED"] as const;
 const RANK: Record<string, number> = { OVERLAY_ONLY: 1, INTEGRATED: 2, STANDARD: 2 };
@@ -107,7 +107,7 @@ export async function quotePlanChange(
   // 상위 변경. 결제한 기간도 체험도 없다(잠김·해지·첫 결제 전): 플랜만 바꾸고 다음 결제가 새 플랜 금액이다
   if (!paidActive && !pastDue && !inTrial) return { type: "switch", direction: "up" };
   if (!sub?.billingKeyCipher) return { type: "fail", reason: "card_required" };
-  // 금액: 정가 구독이면 두 플랜 모두 정가, 아니면 판매가(런칭가). 구독이 이어지는 동안의 상위 변경은 런칭가를 유지한다(대표님 결정 2026-10-04).
+  // 금액: 계정의 3개월 할인 기간 안에서는 두 플랜 모두 런칭가, 종료 뒤에는 정가.
   // 두 금액 모두 chargeFor(가격 기록·고지 규칙)로 정한다. 새 플랜은 옮기면 스냅숏이 끝나므로 스냅숏 없이 센다.
   const curPrice = (await chargeFor(tx, current, sub, now)).amount;
   const next = await chargeFor(tx, target, withoutLegacy(sub), now);
@@ -267,7 +267,8 @@ export async function previewPlanChanges(db: PrismaClient, ctx: TenantContext, i
     const sub = await tx.sellerSubscription.findUnique({ where: { sellerId: ctx.sellerId }, include: { plan: true, pendingPlan: true } });
     // 금액 기준은 구독 화면 다음 결제 금액(getSubscriptionView)과 같다: 이어지는 구독은 다음 결제일 가격, 아니면 지금 새로 구독할 때 가격
     const live = !!sub && !isEndedSubscription(sub, now);
-    const fresh: PriceSubscription = { subscribedAt: now, legacyPrice: null, legacyPriceNoticeSentAt: null, regularPrice: !!seller.launchDiscountUsedAt };
+    const priceAt = new Date(Math.max(now.getTime(), sub?.nextChargeAt?.getTime() ?? 0));
+    const fresh: PriceSubscription = { sellerId: ctx.sellerId, subscribedAt: now, legacyPrice: null, legacyPriceNoticeSentAt: null, regularPrice: !launchDiscountEligible(seller.launchDiscountUsedAt, now) };
     const current = sub?.plan ?? (await sellerPlanOf(tx, ctx.sellerId));
     const targets = await tx.subscriptionPlan.findMany({ where: { code: { in: [...CHANGEABLE_PLANS] } } });
     targets.sort((a, b) => CHANGEABLE_PLANS.indexOf(a.code as never) - CHANGEABLE_PLANS.indexOf(b.code as never));
@@ -275,7 +276,7 @@ export async function previewPlanChanges(db: PrismaClient, ctx: TenantContext, i
     for (const target of targets) {
       const isCurrent = current?.id === target.id;
       const price = live
-        ? (await chargeFor(tx, target, isCurrent ? sub! : withoutLegacy(sub!), sub!.nextChargeAt ?? now)).amount
+        ? (await chargeFor(tx, target, isCurrent ? sub! : withoutLegacy(sub!), priceAt)).amount
         : (await chargeFor(tx, target, fresh, now)).amount;
       let change: PlanChangePreview["plans"][number]["change"];
       if (!current) change = { ok: false, reason: "plan_missing" };

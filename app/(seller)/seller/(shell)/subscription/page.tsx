@@ -5,7 +5,7 @@ import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
 import { won } from "../../../../../components/seller/format";
-import { formatDate } from "../../../../../lib/client/format";
+import { formatDate, formatDateTime } from "../../../../../lib/client/format";
 import { useLatestResponse } from "../../../../../components/seller/latestResponse";
 import { canCancelSubscription, cardRegistrationCharges, isCancelScheduled, planChangeState } from "../../../../../lib/server/billing/access";
 import { PaymentHistory, type Payment } from "../../../../../components/seller/subscription/PaymentHistory";
@@ -18,7 +18,7 @@ type Access = "trial" | "paid" | "charging" | "grace" | "expired";
 type View = {
   access: Access;
   trialEndsAt: string | null;
-  plan: { code: string; name: string; listPrice: number; salePrice: number; nextAmount: number } | null;
+  plan: { code: string; name: string; listPrice: number; salePrice: number; nextAmount: number; launchDiscount: { active: boolean; endsAt: string | null } } | null;
   subscription: {
     status: "ACTIVE" | "PAST_DUE" | "CANCELED";
     cardLabel: string | null;
@@ -319,6 +319,13 @@ export default function SubscriptionPage() {
                   </div>
                 ) : (
                   <span className="t-l2 c-alt">이용권 정보가 없습니다. 문의하기로 알려 주십시오</span>
+                )}
+                {view.plan && (
+                  <p className="t-l2 c-alt" data-testid="launch-discount-notice">
+                    {view.plan.launchDiscount.endsAt
+                      ? `런칭 할인은 ${formatDateTime(view.plan.launchDiscount.endsAt)}까지 적용됩니다. 종료 시각부터 정가가 적용됩니다. 현재 정가는 월 ${won(view.plan.listPrice)}입니다.`
+                      : `첫 런칭가 결제 성공부터 3개월 동안 할인됩니다. 이후 정가가 적용됩니다. 현재 정가는 월 ${won(view.plan.listPrice)}입니다.`}
+                  </p>
                 )}
                 <dl className="kv">
                   {view.access === "trial" && (

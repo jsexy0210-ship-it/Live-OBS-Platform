@@ -95,12 +95,23 @@ const source = (p: Parsed, now: Date) => Prisma.sql`
       LEFT JOIN LATERAL (SELECT r."id", r."amount", r."refundedAt" FROM "SubscriptionRefund" r WHERE r."paymentId" = pay."id" AND r."status" = 'REFUNDED' LIMIT 1) rf ON TRUE
      WHERE pay."createdAt" >= ${p.from} AND pay."createdAt" < ${p.end}
     UNION ALL
-    SELECT sub."id", NULL::uuid, sub."nextChargeAt", CASE WHEN sub."regularPrice" THEN pl."listPrice" WHEN sub."legacyPrice" IS NOT NULL THEN sub."legacyPrice" ELSE pl."salePrice" END,
-           'PERIOD', TRUE, NULL::timestamptz, NULL::timestamptz, NULL::timestamptz, NULL::text, FALSE, NULL::text, sub."id",
+    SELECT sub."id", NULL::uuid, sub."nextChargeAt", CASE WHEN price."legacy" THEN sub."legacyPrice" WHEN price."regular" THEN COALESCE(history."listPrice", pl."listPrice") ELSE COALESCE(history."salePrice", pl."salePrice") END,
+           'PERIOD', TRUE, NULL::timestamptz, NULL::timestamptz, NULL::timestamptz, NULL::text, (NOT price."legacy" AND NOT price."regular" AND pl."code" <> 'STANDARD'), NULL::text, sub."id",
            se."id", se."slug", se."shopName", pl."code", pl."name", sub."cardLabel", NULL::int, NULL::timestamptz, 'SCHEDULED', FALSE
       FROM "SellerSubscription" sub
       JOIN "Seller" se ON se."id" = sub."sellerId"
-      JOIN "SubscriptionPlan" pl ON pl."id" = sub."planId"
+      JOIN "SubscriptionPlan" pl ON pl."id" = COALESCE(sub."pendingPlanId", sub."planId")
+      LEFT JOIN LATERAL (
+        SELECT h."listPrice", h."salePrice" FROM "SubscriptionPriceChange" h
+         WHERE h."planId" = pl."id" AND (h."changedAt" <= sub."subscribedAt" OR h."changedAt" <= sub."nextChargeAt" - INTERVAL '30 days')
+         ORDER BY h."changedAt" DESC LIMIT 1
+      ) history ON TRUE
+      CROSS JOIN LATERAL (SELECT
+        (sub."pendingPlanId" IS NULL AND NOT sub."regularPrice" AND sub."legacyPrice" IS NOT NULL
+          AND (sub."legacyPriceNoticeSentAt" IS NULL OR sub."nextChargeAt" < sub."legacyPriceNoticeSentAt" + INTERVAL '30 days')) AS "legacy",
+        CASE WHEN pl."code" = 'STANDARD' THEN sub."regularPrice" ELSE
+          se."launchDiscountUsedAt" IS NOT NULL AND sub."nextChargeAt" >= ((se."launchDiscountUsedAt" AT TIME ZONE 'Asia/Seoul') + INTERVAL '3 months') AT TIME ZONE 'Asia/Seoul' END AS "regular"
+      ) price
      WHERE sub."status" = 'ACTIVE' AND NOT sub."cancelAtPeriodEnd" AND sub."billingKeyCipher" IS NOT NULL AND se."status" = 'ACTIVE'
        AND sub."nextChargeAt" > ${now} AND sub."nextChargeAt" >= ${p.from} AND sub."nextChargeAt" < ${p.end}
        AND NOT EXISTS (SELECT 1 FROM "SubscriptionPayment" x WHERE x."subscriptionId" = sub."id" AND x."status" = 'PENDING')
