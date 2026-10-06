@@ -454,12 +454,12 @@
 
 > 방법: 운영 빌드(`next start`) + 폐기 DB에서 계정 3종(쇼핑몰 통합 대표자 · 오버레이 전용 대표자 · 상품 담당 직원)으로 실제 로그인한 뒤 GNB · LNB · 머리 도구(알림 패널 포함)를 눌러서만 이동했습니다. GNB 10 · LNB 35개(대표자) 모두 누른 경로로 정본 경로에 착지합니다(경로 어긋남 0).
 
-| 결함 | 내용 | 근거 · 담당 |
+| 항목 | 현재 | 근거 |
 |---|---|---|
-| 로그인 착지 | 쇼핑몰 통합 대표자 · 직원은 로그인 뒤 `/seller/products`(상품 목록)로 갑니다. 정본은 파트너스 홈 SA-002(`/seller`). 오버레이 전용은 `/seller/home-overlay`(SA-002-O)로 정상 | `components/seller/PartnersAuth.tsx:18` 기본 이동 주소가 `/seller/products` → `/seller`로(SellerIndex가 요금제 · 권한별로 다시 보냄). 화면-Back 경로 (2) |
-| 홈 메뉴 없음 | GNB에 「홈」 대분류가 없고(IA 「GNB 홈 › LNB 홈 SA-002 · 시작하기 SA-003」), LNB의 「홈」은 눌러도 이동하지 않는 묶음 이름 | `components/seller/SellerShell.tsx` GNB · LNB 구성. 레이아웃 (7) |
-| 로고 링크 | 머리 로고 「ONQ 파트너스」가 `/seller/products`로 연결(홈이어야 함) | `SellerShell.tsx:528`. 레이아웃 (7) |
-| 홈 · 시작하기 도달 불가 | 위 셋 때문에 SA-002(`/seller`)와 SA-003(`/seller/onboarding`)은 메뉴로 갈 수 없음(주소 직접 입력만 됨). 오버레이 전용 SA-002-O는 로그인 착지로만 닿고 메뉴 · 로고로는 못 돌아옴 | 레이아웃 (7) 긴급 처리 중(MASTER) |
+| 로그인 착지 | 해결: 통합 대표자·직원은 `/seller` 홈, 오버레이 전용은 `/seller/home-overlay` | 기본 `safeNext=/seller`, SellerIndex가 요금제별 홈 분기 |
+| 홈 메뉴 | 해결: GNB 「홈」과 LNB 「홈」이 실제 링크로 이동 | `SellerShell.tsx` MENU home href |
+| 로고 링크 | 해결: 「ONQ 파트너스」 로고가 `/seller` 홈으로 이동 | `SellerShell.tsx` |
+| 홈 · 시작하기 | 해결: SA-002는 메뉴·로그인·로고에서 도달, SA-003는 홈의 시작하기 흐름으로 도달 | seller-home-entry 회귀 시험 |
 
 | 화면 | 대표자 | 오버레이 전용 | 직원(상품 권한) | 메모 |
 |---|---|---|---|---|
