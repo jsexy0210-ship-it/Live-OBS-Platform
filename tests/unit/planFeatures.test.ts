@@ -200,6 +200,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/shop-content/banners": "STORE_OPERATIONS",
   "seller/shop-content/banners/[bannerId]": "STORE_OPERATIONS",
   "seller/shop-content/banners/reorder": "STORE_OPERATIONS",
+  "seller/shop-content/banners/interval": "STORE_OPERATIONS",
   "seller/shop-content/popups": "STORE_OPERATIONS",
   "seller/shop-content/popups/[popupId]": "STORE_OPERATIONS",
   "seller/shop-content/popups/reorder": "STORE_OPERATIONS",

@@ -13,6 +13,7 @@ async function clearAll() {
   const ctx = await request.newContext({ baseURL: BASE, extraHTTPHeaders: { Origin: BASE } });
   try {
     expect((await ctx.post("/api/seller/auth/login", { data: { email: "demo-owner@example.com", password: PASSWORD } })).ok()).toBe(true);
+    expect((await ctx.put("/api/seller/shop-content/banners/interval", { data: { intervalSec: 0 } })).ok()).toBe(true);
     for (const kind of ["banners", "popups"] as const) {
       const list = (await (await ctx.get(`/api/seller/shop-content/${kind}`)).json()) as Record<string, { id: string }[]>;
       for (const it of list[kind]) expect((await ctx.delete(`/api/seller/shop-content/${kind}/${it.id}`)).ok()).toBe(true);
@@ -58,64 +59,80 @@ async function canvasPng(page: Page, width: number, height: number, color: strin
 
 const file = (name: string, buffer: Buffer, mimeType = "image/png") => ({ name, mimeType, buffer });
 const imageLoaded = (page: Page, selector: string) => page.locator(selector).first().evaluate((el) => (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth > 0);
+// 지금 KST 기준 날짜(YYYY-MM-DD)
+const kstDay = (days: number) => new Date(Date.now() + days * 86400_000 + 9 * 3600_000).toISOString().slice(0, 10);
 // 지금 KST 기준 datetime-local 값(분 단위)
 const kstLocal = (ms: number) => new Date(Date.now() + ms + 9 * 3600_000).toISOString().slice(0, 16);
 const POPUP_TITLE = "10/4 토 20시 스타라이트 브레이크";
 const BAR_TITLE = "추석 연휴 배송 안내 · 10/2부터 순서대로 보내요";
 
 test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
-  test("SA-064 대표자: 배너 추가(PNG만·링크 검사·미리보기) → 예약·PC만 배너 → 끌어서 순서 변경", async ({ page }) => {
+  test("SA-064 대표자: 배너 추가(PNG만·링크 검사·미리보기) → 예약·PC만 배너 → 끌어서 순서 변경 · 자동 넘김", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await ownerOpen(page, "/seller/banners");
     await expect(page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "홈 배너" })).toHaveClass(/on/);
     await expect(page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "홈 배너", exact: true })).toHaveAttribute("aria-current", "page");
     await expect(page.getByText("등록한 배너가 없습니다")).toBeVisible();
 
+    const confirmBtn = (name: string) => page.getByRole("dialog").getByRole("button", { name, exact: true });
     await page.getByRole("button", { name: "배너 추가" }).first().click();
-    const dialog = page.getByRole("dialog", { name: "배너 추가" });
-    await expect(dialog.getByText("PNG · 2MB 이하 · 1920 × 600 권장")).toBeVisible();
-    await dialog.getByLabel("제목 (대체 텍스트)").fill("10월 스타라이트 박스 오픈");
+    const ed = page.getByTestId("banner-editor");
+    await expect(ed.getByText("1200 × 400 권장 · PNG · 2MB 이하")).toBeVisible();
+    await ed.getByLabel("제목 (대체 텍스트)").fill("10월 스타라이트 박스 오픈");
     // PNG가 아닌 파일(JPEG·SVG)은 내용으로 걸러진다
-    await dialog.getByLabel("PC 이미지", { exact: true }).setInputFiles(file("pc.png", jpeg(1200, 400)));
-    await expect(dialog.getByText("PNG 파일만 올릴 수 있습니다")).toBeVisible();
-    await dialog.getByLabel("PC 이미지", { exact: true }).setInputFiles(file("pc.png", await canvasPng(page, 1920, 600, "#5b3df6", "10월 스타라이트 박스")));
-    await expect(dialog.getByText("1920 × 600px · PNG")).toBeVisible();
+    await ed.getByLabel("PC 이미지", { exact: true }).setInputFiles(file("pc.png", jpeg(1200, 400)));
+    await expect(ed.getByText("PNG 파일만 올릴 수 있습니다")).toBeVisible();
+    await ed.getByLabel("PC 이미지", { exact: true }).setInputFiles(file("pc.png", await canvasPng(page, 1920, 600, "#5b3df6", "10월 스타라이트 박스")));
+    await expect(ed.locator(".sc-up-img").first()).toBeVisible();
+    await expect.poll(() => imageLoaded(page, ".sc-up-img")).toBe(true);
     // 권장보다 작은 모바일 이미지는 올라가지만 안내가 보인다 → 권장 크기로 바꾼다
-    await dialog.getByLabel("모바일 이미지", { exact: true }).setInputFiles(file("m.png", png(300, 300)));
-    await expect(dialog.getByText("가로 750px 이상 이미지를 권장합니다 · 지금 파일은 300×300입니다 (올릴 수는 있음)")).toBeVisible();
-    await dialog.getByLabel("모바일 이미지", { exact: true }).setInputFiles(file("m.png", await canvasPng(page, 750, 750, "#7b5cff", "MOBILE")));
-    await expect(dialog.getByText("750 × 750px · PNG")).toBeVisible();
-    await dialog.getByLabel("링크").fill("javascript:alert(1)");
-    await expect(dialog.getByText("쇼핑몰 안 경로(/로 시작) 또는 http(s) 주소만 입력할 수 있습니다")).toBeVisible();
-    await expect(dialog.getByRole("button", { name: "저장" })).toBeDisabled();
-    await dialog.getByLabel("링크").fill("/signup");
-    await expect(dialog.getByRole("button", { name: "저장" })).toBeEnabled();
+    await ed.getByLabel("모바일 이미지", { exact: true }).setInputFiles(file("m.png", png(300, 300)));
+    await expect(ed.getByText("가로 750px 이상 이미지를 권장합니다 · 지금 파일은 300×300입니다 (올릴 수는 있음)")).toBeVisible();
+    await ed.getByLabel("모바일 이미지", { exact: true }).setInputFiles(file("m.png", await canvasPng(page, 750, 750, "#7b5cff", "MOBILE")));
+    // 연결: 상품 상세(검색해서 고름) · 카테고리 · 직접 입력한 주소
+    await ed.getByLabel("연결", { exact: true }).selectOption("product");
+    await expect(ed.getByLabel("상품 이름 검색")).toBeVisible();
+    await ed.getByLabel("연결", { exact: true }).selectOption("category");
+    await expect(ed.getByLabel("카테고리")).toBeVisible();
+    await ed.getByLabel("연결", { exact: true }).selectOption("custom");
+    await ed.getByLabel("연결 주소").fill("javascript:alert(1)");
+    await expect(ed.getByText("쇼핑몰 안 경로(/로 시작) 또는 http(s) 주소만 입력할 수 있습니다")).toBeVisible();
+    await ed.getByLabel("게시 시작일").fill(kstDay(0));
+    await expect(ed.getByRole("button", { name: "저장" })).toBeDisabled();
+    await ed.getByLabel("연결 주소").fill("/signup");
+    await expect(ed.getByRole("button", { name: "저장" })).toBeEnabled();
+    await ed.getByRole("button", { name: "미리보기" }).click();
     expect(await imageLoaded(page, '[data-testid="banner-preview"] img')).toBe(true);
     await page.screenshot({ path: `${SHOT}/SA-064-banner-edit-1440.png` });
-    await dialog.getByRole("radio", { name: "모바일" }).last().click();
+    await ed.getByRole("radio", { name: "모바일만" }).click();
     expect(await imageLoaded(page, '[data-testid="banner-preview"] img')).toBe(true);
-    await dialog.getByRole("button", { name: "저장" }).click();
+    await ed.getByRole("button", { name: "저장" }).click();
+    await confirmBtn("추가").click();
     await expect(page.getByText("배너를 추가했습니다 · 홈에 바로 반영")).toBeVisible();
 
-    // 두 번째: 한 시간 뒤 시작(예약)
+    // 두 번째: 내일 시작(예약)
     await page.getByRole("button", { name: "배너 추가" }).first().click();
-    const d2 = page.getByRole("dialog", { name: "배너 추가" });
+    const d2 = page.getByTestId("banner-editor");
     await d2.getByLabel("제목 (대체 텍스트)").fill("주말 브레이크 안내");
     await d2.getByLabel("PC 이미지", { exact: true }).setInputFiles(file("pc2.png", await canvasPng(page, 1920, 600, "#e8382d", "주말 브레이크")));
-    await expect(d2.getByText("1920 × 600px · PNG")).toBeVisible();
-    await fillDateTime(d2, "시작 시각", kstLocal(3600_000));
+    await expect(d2.locator(".sc-up-img")).toBeVisible();
+    await d2.getByLabel("게시 시작일").fill(kstDay(1));
     await d2.getByRole("button", { name: "저장" }).click();
+    await confirmBtn("추가").click();
+    await expect(page.getByTestId("banner-row")).toHaveCount(2);
     // 세 번째: PC만
     await page.getByRole("button", { name: "배너 추가" }).first().click();
-    const d3 = page.getByRole("dialog", { name: "배너 추가" });
+    const d3 = page.getByTestId("banner-editor");
     await d3.getByLabel("제목 (대체 텍스트)").fill("회원 등급 혜택");
     await d3.getByLabel("PC 이미지", { exact: true }).setInputFiles(file("pc3.png", await canvasPng(page, 1920, 600, "#0f8a5f", "회원 혜택 · PC만")));
-    await expect(d3.getByText("1920 × 600px · PNG")).toBeVisible();
+    await expect(d3.locator(".sc-up-img")).toBeVisible();
+    await d3.getByLabel("게시 시작일").fill(kstDay(0));
     await d3.getByRole("radio", { name: "PC만" }).click();
     await d3.getByRole("button", { name: "저장" }).click();
+    await confirmBtn("추가").click();
 
     await expect(page.getByTestId("banner-row")).toHaveCount(3);
-    await expect(page.getByText("배너 3장")).toBeVisible();
+    await expect(page.getByTestId("banner-summary")).toContainText("배너 3장");
     await expect(page.getByTestId("banner-row").nth(1).getByText("예약")).toBeVisible();
     await expect(page.getByTestId("banner-row").nth(2)).toContainText("PC만");
 
@@ -124,11 +141,22 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
     await expect(page.getByText("순서를 저장했습니다")).toBeVisible();
     await page.reload();
     await expect(page.getByTestId("banner-row").nth(0)).toContainText("회원 등급 혜택");
-    // 키보드·터치용 버튼으로 옮긴다
-    await page.getByRole("button", { name: "10월 스타라이트 박스 오픈 위로" }).click();
+    // 키보드용 버튼으로 옮긴다(포커스가 있을 때 보이는 위·아래 버튼)
+    await page.getByRole("button", { name: "10월 스타라이트 박스 오픈 위로" }).focus();
+    await page.keyboard.press("Enter");
     await expect(page.getByText("순서를 저장했습니다")).toBeVisible();
     await page.reload();
     await expect(page.getByTestId("banner-row").nth(0)).toContainText("10월 스타라이트 박스 오픈");
+
+    // 자동 넘김: 기본 끔 → 5초(확인 창) → 구매자 홈 데이터에 반영
+    await expect(page.getByLabel("자동 넘김")).toHaveValue("0");
+    await page.getByLabel("자동 넘김").selectOption("5");
+    await confirmBtn("바꾸기").click();
+    await expect(page.getByText("자동 넘김을 바꿨습니다 · 홈에 바로 반영")).toBeVisible();
+    await page.reload();
+    await expect(page.getByLabel("자동 넘김")).toHaveValue("5");
+    const home = await page.evaluate(async () => (await (await fetch("/api/shop/demo-shop/shop-content?page=home")).json()) as { bannerIntervalSec?: number });
+    expect(home.bannerIntervalSec).toBe(5);
     await page.screenshot({ path: `${SHOT}/SA-064-banners-1440.png`, fullPage: true });
 
     // 이미지를 올리는 동안은 저장할 수 없다(옛 이미지로 저장되지 않게)
@@ -139,19 +167,49 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
       await route.continue();
     });
     await page.getByTestId("banner-row").nth(0).getByRole("button", { name: "수정" }).click();
-    const edit = page.getByRole("dialog", { name: "배너 수정" });
+    const edit = page.getByTestId("banner-editor");
     await expect(edit.getByRole("button", { name: "저장" })).toBeEnabled();
     await edit.getByLabel("PC 이미지", { exact: true }).setInputFiles(file("pc4.png", await canvasPng(page, 1920, 600, "#5b3df6", "10월 스타라이트 박스")));
     await expect(edit.getByRole("button", { name: "이미지 올리는 중" })).toBeDisabled();
     release();
     await expect(edit.getByRole("button", { name: "저장" })).toBeEnabled();
     await page.unroute("**/api/seller/shop-content/images");
-    await edit.getByRole("button", { name: "취소" }).click();
+    await edit.getByRole("button", { name: "닫기" }).click();
     await page.setViewportSize({ width: 390, height: 844 });
     await page.reload();
     await expect(page.getByTestId("banner-row")).toHaveCount(3);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: `${SHOT}/SA-064-banners-390.png`, fullPage: true });
+  });
+
+  test("SA-064 연결: 상품 상세는 검색해서 고르고, 카테고리는 선택 상자에서 고르면 구매자 링크 주소로 저장된다", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const ctx = await request.newContext({ baseURL: BASE, extraHTTPHeaders: { Origin: BASE } });
+    await ctx.post("/api/seller/auth/login", { data: { email: "demo-owner@example.com", password: PASSWORD } });
+    const name = `배너연결상품 ${Date.now()}`;
+    const created = await ctx.post("/api/seller/products", { data: { name, price: 12000, status: "ON_SALE", options: [{ name: "기본", priceDelta: 0, stock: 5, sortOrder: 0 }] } });
+    expect(created.status()).toBe(201);
+    const productId = ((await created.json()) as { id: string }).id;
+    try {
+      await ownerOpen(page, "/seller/banners");
+      await page.getByTestId("banner-row").nth(0).getByRole("button", { name: "수정" }).click();
+      const ed = page.getByTestId("banner-editor");
+      await ed.getByLabel("연결", { exact: true }).selectOption("product");
+      await ed.getByLabel("상품 이름 검색").fill("배너연결상품");
+      await ed.getByRole("button", { name }).click();
+      await expect(ed.getByTestId("link-product")).toContainText(name);
+      await ed.getByRole("button", { name: "저장" }).click();
+      await page.getByRole("dialog").getByRole("button", { name: "저장", exact: true }).click();
+      await expect(page.getByText("배너를 저장했습니다 · 홈에 바로 반영")).toBeVisible();
+      const list = (await (await ctx.get("/api/seller/shop-content/banners")).json()) as { banners: { linkUrl: string | null }[] };
+      expect(list.banners.map((b) => b.linkUrl)).toContain(`/products/${productId}`);
+      // 다시 열면 고른 상품 이름이 보인다
+      await page.getByTestId("banner-row").nth(0).getByRole("button", { name: "수정" }).click();
+      await expect(page.getByTestId("banner-editor").getByTestId("link-product")).toContainText(name);
+    } finally {
+      await ctx.delete(`/api/seller/products/${productId}`);
+      await ctx.dispose();
+    }
   });
 
   test("SA-065 대표자: 이미지 팝업(전체 페이지·7일 보지 않기)과 상단 띠 추가, 복제", async ({ page }) => {

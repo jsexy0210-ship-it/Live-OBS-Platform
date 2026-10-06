@@ -7,9 +7,10 @@ import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
 import { won } from "../../../../../../components/seller/format";
+import { formatDateTime } from "../../../../../../lib/client/format";
 
 // SA-033 회원별 적립금 잔액(조회만, 회원·적립금 권한). API: GET /api/seller/reward-balances?q&cursor&limit.
-// 지급·회수·조정 버튼은 없다. 탈퇴 회원과 잔액 기록이 없는 회원은 목록에 나오지 않는다. 50명씩 「더 보기」, 전체 건수 API가 없어 「불러온 n건」으로 보인다.
+// 지급·회수·조정 버튼은 없다. 탈퇴 회원과 잔액 기록이 없는 회원은 목록에 나오지 않는다. 20명씩 「더 보기」, 전체 건수 API가 없어 「불러온 n건」으로 보인다.
 
 type Row = {
   member: { id: string; broadcastNickname: string | null };
@@ -23,9 +24,7 @@ type Row = {
 };
 type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; rows: Row[]; next: string | null };
 
-const PAGE = 50;
-const stamp = (iso: string) =>
-  new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
+const PAGE = 20;
 // 조정은 음수일 수 있다. 부호를 그대로 보인다.
 const signed = (n: number) => (n > 0 ? `+${won(n)}` : n < 0 ? `−${won(Math.abs(n))}` : won(0));
 
@@ -126,7 +125,7 @@ export default function RewardBalancesPage() {
                     <tbody>
                       {rows.map((r) => (
                         <tr key={r.member.id} data-testid="balance-row">
-                          <td>
+                          <td className="col-text">
                             <Link href={`/seller/members/${r.member.id}`}>{r.member.broadcastNickname ?? "닉네임 없음"}</Link>
                           </td>
                           <td>
@@ -137,7 +136,7 @@ export default function RewardBalancesPage() {
                           <td>{won(r.totalRevoked)}</td>
                           <td>{won(r.totalExpired)}</td>
                           <td>{signed(r.totalAdjusted)}</td>
-                          <td>{stamp(r.updatedAt)}</td>
+                          <td className="num">{formatDateTime(r.updatedAt)}</td>
                         </tr>
                       ))}
                     </tbody>

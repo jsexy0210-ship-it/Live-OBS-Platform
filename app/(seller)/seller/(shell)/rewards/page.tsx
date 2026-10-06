@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { FormFoot, FormRow, FormSection, PageHead } from "../../../../../components/admin-ui";
+import { FormFoot, FormRow, FormSection, PageHead, useConfirm } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
@@ -18,6 +18,7 @@ const OPTIONS: { key: EarnTiming; title: string; desc: string }[] = [
 export default function RewardPolicyPage() {
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; saved: EarnTiming }>({ kind: "loading" });
   const [timing, setTiming] = useState<EarnTiming>("ON_DELIVERY");
+  const { confirm } = useConfirm();
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -39,14 +40,24 @@ export default function RewardPolicyPage() {
 
   const save = async () => {
     if (!dirty) return;
-    setSaving(true);
     setFailure(null);
-    const r = await api<{ policy: { earnTiming: EarnTiming } }>("/api/seller/reward-policy", { method: "PUT", body: { earnTiming: timing } });
-    setSaving(false);
-    if (!r.ok) return setFailure(failMessage(r, "admin", "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
-    setTiming(r.data.policy.earnTiming);
-    setState({ kind: "ok", saved: r.data.policy.earnTiming });
-    setToast("적립금 지급 시점을 저장했습니다 · 다음 결제부터 적용됩니다");
+    let policy: { earnTiming: EarnTiming } | undefined;
+    const ok = await confirm({
+      title: "적립 정책을 저장하시겠습니까?",
+      body: "바꾼 지급 시점은 저장한 뒤 결제되는 주문부터 적용됩니다. 이미 지급한 적립금은 그대로입니다.",
+      confirmLabel: "저장",
+      run: async () => {
+        setSaving(true);
+        const r = await api<{ policy: { earnTiming: EarnTiming } }>("/api/seller/reward-policy", { method: "PUT", body: { earnTiming: timing } });
+        setSaving(false);
+        if (!r.ok) return failMessage(r, "admin", "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오");
+        policy = r.data.policy;
+      },
+    });
+    if (!ok || !policy) return;
+    setTiming(policy.earnTiming);
+    setState({ kind: "ok", saved: policy.earnTiming });
+    setToast("적립 정책을 저장했습니다 · 다음 지급부터 적용됩니다");
   };
 
   const option = OPTIONS.find((o) => o.key === timing)!;

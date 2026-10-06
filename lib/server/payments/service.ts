@@ -4,6 +4,7 @@ import { sellerHasFeature } from "../billing/features";
 import { sellerAccessFor } from "../billing/subscription";
 import { lockSellerOrders } from "../orders/overdue";
 import { markOrderPaid } from "../queue/service";
+import { reconcileOneTimeByTid } from "../automation/purchase";
 import type { AuthResult, PaymentGateway, PgPayment } from "./gateway";
 
 // 구매자 주문 카드 결제(나이스페이 서버 승인 모델, 테스트 결제). ARCHITECTURE 4.5 「결제(PG)」.
@@ -281,6 +282,8 @@ export async function handleWebhook(db: PrismaClient, gw: PaymentGateway, body: 
   const p = await db.payment.findUnique({ where: { pgTid: v.tid }, select: { id: true, provider: true, sellerId: true, orderId: true } });
   const matched = !!p && p.provider === gw.name;
   if (p && matched) await reconcilePayment(db, gw, p.id);
+  // 구매자 주문 결제가 아니면 자동 연결 「다른 카드로 결제」 거래인지 본다(같은 PG 웹훅 주소를 쓴다)
+  const automation = !matched && (await reconcileOneTimeByTid(db, gw, v.tid));
   const now = matched ? await db.payment.findUnique({ where: { id: p!.id }, select: { status: true } }) : null;
   await auditWebhookSafely(db, {
     ...SYSTEM,
@@ -288,7 +291,7 @@ export async function handleWebhook(db: PrismaClient, gw: PaymentGateway, body: 
     action: "payment.webhook_received",
     targetType: matched ? "Order" : undefined,
     targetId: matched ? p!.orderId : undefined,
-    after: { tid: v.tid, kind: v.status ?? null, matched, paymentStatus: now?.status ?? null },
+    after: { tid: v.tid, kind: v.status ?? null, matched, paymentStatus: now?.status ?? null, ...(automation ? { automation: true } : {}) },
   });
   return "ok";
 }
