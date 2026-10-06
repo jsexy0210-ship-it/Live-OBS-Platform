@@ -11,7 +11,7 @@
 export function ListHead({ total, unit = "건", loaded = false, actions }: { total: number; unit?: string; loaded?: boolean; actions?: React.ReactNode }) {
   return (
     <div className="au-lh">
-      <span className="au-lh-total">
+      <span className="au-lh-total" aria-live="polite">
         {loaded ? "불러온" : "총"} <b className="num">{total.toLocaleString("ko-KR")}</b>
         {unit}
       </span>
