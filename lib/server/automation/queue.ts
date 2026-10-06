@@ -122,8 +122,11 @@ export async function writeJobEvent(
   fencingToken: number,
   detail?: Record<string, unknown>,
 ) {
+  // 판매자 화면의 작업 기록(시각표)이 몇 번째 단계였는지 보이도록, 작업 행이 넘어오면 그 시점의 단계 순번(stepIndex)을 함께 남긴다
+  const stepIndex = "stepIndex" in job && typeof (job as { stepIndex?: unknown }).stepIndex === "number" ? (job as { stepIndex: number }).stepIndex : undefined;
+  const full = stepIndex === undefined ? detail : { ...detail, stepIndex };
   await tx.automationJobEvent.create({
-    data: { sellerId: job.sellerId, jobId: job.id, fromStatus: from, toStatus: to, fencingToken, detail: detail as Prisma.InputJsonValue | undefined },
+    data: { sellerId: job.sellerId, jobId: job.id, fromStatus: from, toStatus: to, fencingToken, detail: full as Prisma.InputJsonValue | undefined },
   });
 }
 
@@ -152,7 +155,7 @@ async function claimOnce(db: PrismaClient, workerId: string, opts: { leaseMs?: n
     if (running >= maxRunning) return null;
     const rows = await tx.$queryRaw<{ id: string }[]>`
       SELECT j.id FROM "AutomationJob" j
-      WHERE j.status = 'QUEUED' AND j."runAfter" <= clock_timestamp()
+      WHERE j.status = 'QUEUED' AND j."runAfter" <= clock_timestamp() AND j."pausedAt" IS NULL
         AND ${quiescentSql("j")}
         AND NOT EXISTS (
           SELECT 1 FROM "AutomationJob" r
