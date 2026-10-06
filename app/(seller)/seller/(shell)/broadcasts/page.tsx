@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ListHead, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
-import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
+import { useScrollRestore } from "../../../../../lib/client/navigation";
+import { listDefaults } from "../../../../../lib/client/filterDefaults";
+import { useListFilters } from "../../../../(admin)/admin/_components/useListFilters";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
 import { won } from "../../../../../components/seller/format";
@@ -12,7 +14,7 @@ import { kstDuration, type BroadcastSummary } from "../../../../../components/se
 import { formatDateTime } from "../../../../../lib/client/format";
 import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
 
-// SA-054 방송 이력. 방송 시작일(KST) 기간으로 검색하고, 한 줄을 누르면 방송 상세(SA-055)로 간다.
+// SA-054 방송 기록(방송별). 방송 시작일(KST) 기간으로 검색하고, 한 줄을 누르면 방송 상세(SA-055)로 간다.
 // API: GET /api/seller/broadcast/history?from=&to=&cursor=(시작 최신순 50개)
 // 시안의 이번 달 요약·레이아웃 검색·내보내기는 서버에 자료·API가 없어 두지 않았다.
 
@@ -21,7 +23,6 @@ type Page = { items: Item[]; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error"; status: number; error: string } | { kind: "ok"; items: Item[]; next: string | null };
 type Filter = { from: string; to: string };
 
-const EMPTY: Filter = { from: "", to: "" };
 const query = (f: Filter, cursor?: string | null) => {
   const q = new URLSearchParams();
   if (f.from) q.set("from", f.from);
@@ -36,9 +37,9 @@ export default function BroadcastHistoryPage() {
   const allowed = can("BROADCAST_RUN");
   const [state, setState] = useState<Load>({ kind: "loading" });
   // 조회 조건은 주소(?from=&to=)가 기준이다: 상세 → ← 에서 그대로 돌아온다(docs/IA.md Back 규칙 3항)
-  const [urlFilter, setUrlFilter] = useUrlState({ from: "", to: "" });
-  const [draft, setDraft] = useState<Filter>({ from: urlFilter.from, to: urlFilter.to });
-  const applied = useMemo<Filter>(() => ({ from: urlFilter.from, to: urlFilter.to }), [urlFilter.from, urlFilter.to]);
+  // 기본은 최근 1개월(목록 공통 규칙, lib/client/filterDefaults.ts). 기간을 비우고 검색하면 전체 기간. 서버는 아직 정렬·쪽 크기를 받지 않아 from·to만 보낸다
+  const defaults = listDefaults({});
+  const { applied, draft, setDraft, apply, reset } = useListFilters(defaults);
   const [more, setMore] = useState(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
   // 조건이 바뀌면 마지막으로 보낸 조건의 응답만 반영한다
@@ -70,19 +71,15 @@ export default function BroadcastHistoryPage() {
 
   const search = () => {
     if (draft.from && draft.to && draft.from > draft.to) return setToast({ text: "시작일을 끝일보다 앞 날짜로 바꿔 주십시오", neg: true });
-    setUrlFilter({ from: draft.from, to: draft.to });
-  };
-  const reset = () => {
-    setDraft(EMPTY);
-    setUrlFilter({ from: "", to: "" });
+    apply({ ...applied, from: draft.from, to: draft.to });
   };
   const items = state.kind === "ok" ? state.items : [];
 
   return (
     <>
-      <Topbar crumb="방송 › 방송 이력" />
+      <Topbar crumb="방송 › 방송 기록" />
       <main className="main">
-        <PageHead title="방송 이력" />
+        <PageHead title="방송 기록" />
         {!allowed ? (
           <div className="card">
             <NoPermission need="방송 진행" />
@@ -109,14 +106,14 @@ export default function BroadcastHistoryPage() {
                 ) : state.status === 403 ? (
                   <NoPermission need="방송 진행" />
                 ) : (
-                  <ErrorState title="방송 이력을 불러오지 못했습니다" onRetry={() => void load(applied)} />
+                  <ErrorState title="방송 기록을 불러오지 못했습니다" onRetry={() => void load(applied)} />
                 ))}
               {state.kind === "ok" && (
                 <>
                   <ListHead total={items.length} loaded />
                   {items.length === 0 ? (
                     <div className="st" style={{ boxShadow: "none" }} data-testid="bh-empty">
-                      <span className="t">{applied.from || applied.to ? "조건에 맞는 방송이 없습니다" : "아직 방송 기록이 없습니다"}</span>
+                      <span className="t">{applied.from === defaults.from && applied.to === defaults.to ? "최근 1개월에는 방송 기록이 없습니다. 기간을 바꿔 다시 찾아 주십시오" : applied.from || applied.to ? "조건에 맞는 방송이 없습니다" : "아직 방송 기록이 없습니다"}</span>
                       <Link className="btn btn-sm" href="/seller/broadcast">
                         방송 대시보드
                       </Link>
@@ -139,7 +136,7 @@ export default function BroadcastHistoryPage() {
                         <tbody data-testid="bh-list">
                           {items.map((b) => (
                             <tr key={b.id}>
-                              <td className="col-title">
+                              <td className="col-text">
                                 <Link href={`/seller/broadcasts/${b.id}`} className="fw6" data-testid="bh-link">
                                   {b.title || "제목 없는 방송"}
                                 </Link>

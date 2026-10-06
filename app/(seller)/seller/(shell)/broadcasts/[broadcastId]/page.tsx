@@ -89,7 +89,7 @@ export default function BroadcastDetailPage() {
   const b = d?.broadcast;
   return (
     <>
-      <Topbar crumb="방송 › 방송 이력 › 방송 상세" />
+      <Topbar crumb="방송 › 방송 기록 › 방송 상세" />
       <main className="main">
         <PageHead
           title="방송 상세"
@@ -119,7 +119,7 @@ export default function BroadcastDetailPage() {
             ) : state.status === 404 ? (
               <div className="st" style={{ boxShadow: "none" }} data-testid="bd-notfound">
                 <span className="t">방송을 찾을 수 없습니다</span>
-                <SmartBackButton fallback="/seller/broadcasts" className="btn btn-sm">방송 이력</SmartBackButton>
+                <SmartBackButton fallback="/seller/broadcasts" className="btn btn-sm">방송 기록</SmartBackButton>
               </div>
             ) : state.status === 403 && state.error === "plan_feature_required" ? (
               <div className="st" style={{ boxShadow: "none" }}>
