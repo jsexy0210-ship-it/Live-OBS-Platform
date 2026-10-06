@@ -32,6 +32,7 @@ async function overlaySeen(db: PrismaClient, sellerIds: string[], now: Date) {
 export async function listLiveBroadcasts(db: PrismaClient, admin: AdminSessionContext) {
   requireRead(admin);
   const now = await dbNow(db);
+  const rateFrom = new Date(now.getTime() - 60_000);
   const sessions = await db.broadcastSession.findMany({
     where: { status: "LIVE" },
     orderBy: [{ startedAt: "desc" }, { id: "desc" }],
@@ -40,12 +41,22 @@ export async function listLiveBroadcasts(db: PrismaClient, admin: AdminSessionCo
   });
   const ids = sessions.map((s) => s.id);
   const sellerIds = [...new Set(sessions.map((s) => s.sellerId))];
-  const [byStatus, orders, failed, approved] = await Promise.all([
+  const [byStatus, orders, failed, approved, recentOrders] = await Promise.all([
     db.queueItem.groupBy({ by: ["broadcastSessionId", "status"], where: { broadcastSessionId: { in: ids } }, _count: { _all: true } }),
     db.queueItem.groupBy({ by: ["broadcastSessionId", "orderId"], where: { broadcastSessionId: { in: ids }, status: { not: "CANCELLED" } } }),
     // 결제대행사 상태: 최근 24시간 결제 실패가 있고 그 뒤 성공이 없으면 「결제 연결 오류」(MA-031 게이트웨이 상태와 같은 기준)
     db.payment.groupBy({ by: ["sellerId"], where: { sellerId: { in: sellerIds }, status: "FAILED", updatedAt: { gt: new Date(now.getTime() - 24 * 60 * 60 * 1000) } }, _count: { _all: true }, _max: { updatedAt: true } }),
     db.payment.groupBy({ by: ["sellerId"], where: { sellerId: { in: sellerIds }, approvedAt: { not: null } }, _max: { approvedAt: true } }),
+    // 내부 주문 생성 건수: 같은 판매자의 LIVE 방송 시작 이후이면서 최근 60초 [from, at).
+    // 모든 LIVE 방송을 집계해 표시 한도 200건과 분리한다. 겹치는 방송도 전체 주문은 한 번만 센다.
+    // Order의 기존 sellerId/createdAt 인덱스로 범위를 좁히며 개인정보·주문 행은 반환하지 않는다.
+    db.$queryRaw<{ broadcastId: string | null; count: number }[]>`
+      SELECT b.id AS "broadcastId", count(DISTINCT o.id)::int AS count
+      FROM "BroadcastSession" b
+      JOIN "Order" o ON o."sellerId" = b."sellerId"
+        AND o."createdAt" >= ${rateFrom} AND o."createdAt" >= b."startedAt" AND o."createdAt" < ${now}
+      WHERE b.status = 'LIVE'
+      GROUP BY GROUPING SETS ((b.id), ())`,
   ]);
   const seen = await overlaySeen(db, sellerIds, now);
   const paymentError = (sellerId: string) => {
@@ -66,12 +77,18 @@ export async function listLiveBroadcasts(db: PrismaClient, admin: AdminSessionCo
       startedAt: s.startedAt,
       queue: { waiting: count("WAITING"), opening: count("OPENING"), done: count("DONE"), cancelled: count("CANCELLED") },
       orders: orders.filter((o) => o.broadcastSessionId === s.id).length,
+      ordersLast60Seconds: recentOrders.find((r) => r.broadcastId === s.id)?.count ?? 0,
       overlay: seen(s.sellerId),
       layoutAspect: s.layoutAspect,
       paymentError: paymentError(s.sellerId),
     };
   });
-  return { at: now, items };
+  return { at: now, items, orderRate: {
+    source: "INTERNAL_ORDER_CREATED_DURING_LIVE_SESSION" as const,
+    association: "SELLER_AND_TIME_WINDOW" as const, externalOrders: "NOT_MEASURED" as const,
+    scope: "ALL_LIVE_SESSIONS" as const, windowSeconds: 60 as const, from: rateFrom, to: now,
+    total: recentOrders.find((r) => r.broadcastId === null)?.count ?? 0,
+  } };
 }
 
 // MA-042: 승인된 파트너스(이용 중·정지)별 오늘 주문·결제와 방송·오버레이 접속. 가입 순 최신 50곳씩 커서.
