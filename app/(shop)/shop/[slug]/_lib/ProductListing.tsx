@@ -4,6 +4,7 @@ import { prisma } from "../../../../../lib/server/db";
 import { shopProductList } from "../../../../../lib/server/products/shopCatalog";
 import { SORTS } from "./catalog";
 import type { ShopSort } from "../../../../../lib/server/products/shopCatalog";
+import SortMenu from "../../../../../components/shop/SortMenu";
 
 const PAGE_SIZE = 24;
 
@@ -50,17 +51,7 @@ export default async function ProductListing(props: {
         </h1>
         {total > 0 && (
           <nav className="shop-sort" aria-label="정렬">
-            {/* key: 정렬을 고르면(클라이언트 이동) 같은 요소가 열린 채 남지 않게 새로 그려 닫는다 */}
-            <details key={props.sort} className="shop-sortmenu">
-              <summary>{SORTS[props.sort]}</summary>
-              <div>
-                {(Object.keys(SORTS) as ShopSort[]).map((k) => (
-                  <Link key={k} href={href({ sort: k })} aria-current={k === props.sort ? "page" : undefined}>
-                    {SORTS[k]}
-                  </Link>
-                ))}
-              </div>
-            </details>
+            <SortMenu current={props.sort} items={(Object.keys(SORTS) as ShopSort[]).map((k) => ({ key: k, label: SORTS[k], href: href({ sort: k }) }))} />
           </nav>
         )}
       </div>
