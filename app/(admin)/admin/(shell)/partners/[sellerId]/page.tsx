@@ -8,7 +8,8 @@ import { PageHead } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
-import { DISPLAY_STATUS, SELLER_STATUS, SUBSCRIPTION_STATUS, day, dayTime, text, won, type SellerDetail, type SellerListRow, type SellerStatus } from "../../../_components/partners";
+import { DISPLAY_STATUS, SELLER_STATUS, SUBSCRIPTION_STATUS, day, dayTime, text, type SellerDetail, type SellerListRow, type SellerStatus } from "../../../_components/partners";
+import { PartnerOrdersTab, PartnerShopTab, PartnerSubscriptionTab } from "../../../_components/PartnerDetailTabs";
 import { MessageBalanceSection } from "../../../_components/MessageBalanceSection";
 import { PARTNER_TABS, PartnerActivity, PartnerBroadcasts, PartnerNotes, PartnerPg, type PartnerTab } from "../../../_components/PartnerTabs";
 import { ImpersonateDialog, type ImpersonationStart } from "../../../_components/ImpersonateDialog";
@@ -127,11 +128,6 @@ function PartnerDetail() {
                   문의 {s.inquiryOpenCount}건
                 </Link>
               )}
-              {s && (
-                <Link className="btn btn-out" href={`/admin/billing/invoices?sellerId=${s.id}`}>
-                  청구·결제 내역
-                </Link>
-              )}
               <button className="btn btn-out" type="button" onClick={back}>파트너스 목록</button>
             </>
           }
@@ -189,27 +185,15 @@ function PartnerDetail() {
             {tab === "notes" && <PartnerNotes sellerId={s.id} />}
             {tab === "pg" && <PartnerPg sellerId={s.id} slug={s.slug} />}
             {tab === "activity" && <PartnerActivity sellerId={s.id} />}
-            {tab === "orders" && (
-              <>
-              <div className="stat-row" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
-                {[
-                  ["최근 30일 주문", `${s.orders30d.created.toLocaleString("ko-KR")}건`, "partner-orders"],
-                  ["최근 30일 결제", `${s.orders30d.paid.toLocaleString("ko-KR")}건`, "partner-paid"],
-                  ["최근 30일 결제 금액", won(s.orders30d.paidAmount), "partner-amount"],
-                  ["마지막 주문", dayTime(s.orders30d.lastOrderAt), "partner-last"],
-                ].map(([label, value, id]) => (
-                  <div key={id} className="card pad col" style={{ gap: 4 }}>
-                    <span className="t-l2 c-alt">{label}</span>
-                    <span className="t-h2" data-testid={id}>
-                      {value}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              </>
-            )}
+            {tab === "orders" && <PartnerOrdersTab sellerId={s.id} />}
+            {tab === "shop" && <PartnerShopTab sellerId={s.id} />}
             {tab === "subscription" && (
               <>
+                <div className="row">
+                  <Link className="btn btn-out" href={`/admin/billing/invoices?sellerId=${s.id}`}>
+                    청구·결제 내역
+                  </Link>
+                </div>
               <Info
                 title="구독"
                 id="partner-subscription"
@@ -229,6 +213,7 @@ function PartnerDetail() {
                     : [["상태", "구독 없음"]]
                 }
               />
+              <PartnerSubscriptionTab sellerId={s.id} />
               <MessageBalanceSection sellerId={s.id} />
               </>
             )}

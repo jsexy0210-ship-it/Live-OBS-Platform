@@ -110,6 +110,7 @@ test("청구 상세: 결제 번호·카드 매출전표 링크·구독, 실패 �
   await expect(page.locator(".loc-bar .crumb")).toContainText("청구 상세");
   await page.getByRole("link", { name: shopName }).click();
   await expect(page).toHaveURL(new RegExp(`/admin/partners/${sellerId}$`));
+  await page.getByRole("button", { name: "구독", exact: true }).click();
   await page.getByRole("link", { name: "청구·결제 내역" }).click();
   await expect(page).toHaveURL(new RegExp(`/admin/billing/invoices\\?sellerId=${sellerId}`));
 
