@@ -26,6 +26,7 @@ export const MEMBER_DATA_POLICY: Record<string, { policy: MemberDataPolicy; note
   ProductReviewReport: { policy: "anonymize", note: "리뷰 신고 기록은 남긴다(보류는 판매자만 풀어야 해서 신고 사실이 필요). 신고자는 비식별된 탈퇴 회원 행으로만 이어진다" },
   BuyerCoupon: { policy: "delete", note: "받은 쿠폰. 쓰지 않은 쿠폰은 지우고, 주문에 쓴(쓴 뒤 전체 취소로 되돌린) 쿠폰은 주문 할인 기록(CouponRedemption)과 이어져 주문과 함께 남긴다(shop-coupons)" },
   BuyerSession: { policy: "delete", note: "로그인 세션" },
+  BuyerPasswordReset: { policy: "delete", note: "비밀번호 재설정 링크(해시만 저장)" },
   BuyerPurchaseRestriction: { policy: "delete", note: "구매 제한(개인정보 없음, 탈퇴하면 쓸 일 없음)" },
   IdentityVerification: { policy: "anonymize", note: "이 쇼핑몰에서 회원과 이어진(subjectId) 또는 같은 CI 해시의 본인확인 기록. 식별 항목·requestId만 비우고 쇼핑몰·상태·요청 시각·요청 IP는 한도 계산에 남김(요청 IP는 3개월 뒤 비움)" },
   Order: { policy: "retain_legal", note: "대금 결제·재화 공급 기록 5년(받는 사람 스냅숏·결제·환불 포함). 끝난 주문은 분리 보관 표시·만료일(buyers/legalHold.ts), 방송 닉네임 스냅숏만 「탈퇴한 회원」으로" },
@@ -63,6 +64,11 @@ export const MEMBER_AUDIT_RETENTION_PREFIX: Record<string, MemberAuditRetention>
 export const MEMBER_AUDIT_RETENTION: Record<string, MemberAuditRetention> = {
   "auth.buyer.login": "non_transaction",
   "auth.buyer.login_failed": "non_transaction",
+  "auth.buyer.password_reset": "non_transaction",
+  "auth.buyer.password_reset.request": "non_transaction",
+  "auth.buyer.password_reset.limited": "non_transaction",
+  "auth.buyer.password_reset.mail": "non_transaction",
+  "auth.buyer.password_reset.failed": "non_transaction",
   "buyer.signup": "non_transaction",
   "buyer.signup.verify_limited": "non_transaction", // 가입 본인확인 한도(회원 id 없이 남지만 같은 가입 분류)
   "buyer_address.create": "non_transaction",
