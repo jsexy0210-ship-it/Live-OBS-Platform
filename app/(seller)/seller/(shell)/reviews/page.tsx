@@ -200,7 +200,7 @@ export default function ReviewsPage() {
                   ))}
                 </div>
                 <select className="inp inp-sm" style={{ width: 120 }} aria-label="별점" value={rating} onChange={(e) => setRating(e.target.value)}>
-                  <option value="">별점 전체</option>
+                  <option value="">전체</option>
                   <option value="5">5점</option>
                   <option value="4">4점</option>
                   <option value="low">3점 이하</option>
