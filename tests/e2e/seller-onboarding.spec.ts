@@ -77,7 +77,7 @@ test("오버레이 전용: 외부 쇼핑몰 연동·오버레이 설정·주소 
   expect(s.steps.find((x) => x.key === "overlay_url")!.done).toBe(false);
 
   // 오버레이 편집기에서 주소를 발급해 복사하면 서버에 「주소 복사」가 남는다
-  await page.goto("/seller/overlay");
+  await page.goto("/seller/overlay/address");
   await page.getByRole("button", { name: /^주소 (새로 )?만들기$/ }).click();
   await page.getByRole("dialog").getByRole("button", { name: /^주소 (새로 )?만들기$/ }).click();
   await expect(page.getByTestId("ovu-urls")).toBeVisible();

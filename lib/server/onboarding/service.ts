@@ -20,7 +20,7 @@ export const STEP_HREF: Record<StepKey, string> = {
   products: "/seller/products",
   order_policy: "/seller/settings/order",
   overlay: "/seller/overlay",
-  overlay_url: "/seller/overlay",
+  overlay_url: "/seller/overlay/address",
   external_shop: "/seller/external-shops",
 };
 const STEPS: Record<Track, readonly StepKey[]> = {
