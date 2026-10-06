@@ -172,6 +172,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 // 본문 위 경로 줄(대분류 › 메뉴). 메뉴에 없는 화면이면 crumb 문구를 쓴다
 export function AdminTopbar({ crumb, children }: { crumb: string; children?: React.ReactNode }) {
   const { loc } = useAdmin();
+  const pathname = usePathname();
   const parts = crumb.split("›").map((p) => p.trim());
   const last = parts[parts.length - 1];
   // 하위 화면(상세 등)이면 메뉴 경로 뒤에 crumb 마지막 칸을 덧붙인다
@@ -185,6 +186,7 @@ export function AdminTopbar({ crumb, children }: { crumb: string; children?: Rea
     : parts.map((t) => ({ t, href: undefined as string | undefined }));
   if (loc && parts.length > 2 && last !== loc.item && last !== loc.group) raw.push({ t: last, href: undefined });
   const path = raw;
+  if (pathname === "/admin" && path.every((p) => p.href === pathname) && !children) return null;
   return (
     <div className="loc-bar">
       <span className="crumb ell">

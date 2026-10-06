@@ -638,6 +638,7 @@ function PlanFeatureRequired({ crumb, noFeatures, next }: { crumb: string; noFea
 // crumb: 예전 경로 문구. 경로는 메뉴 구조에서 만들고, 하위 화면(주문 상세·이벤트 팝업 등)이면 crumb 마지막 칸을 덧붙인다.
 export function Topbar({ crumb, badge, children }: { crumb: string; badge?: React.ReactNode; children?: React.ReactNode }) {
   const { loc } = useSeller();
+  const pathname = usePathname();
   const parts = crumb.split("›").map((p) => p.trim());
   const last = parts[parts.length - 1];
   // 경로 줄: 「대분류 › 메뉴 › 현재 화면」. 앞 항목은 눌러서 갈 수 있다(메뉴 구조에서 만든 경로만 링크)
@@ -650,6 +651,8 @@ export function Topbar({ crumb, badge, children }: { crumb: string; badge?: Reac
   if (loc && !loc.exact && parts.length > 2 && last !== loc.item && last !== loc.group) raw.push({ t: last, href: undefined });
   // 대분류와 메뉴 이름이 같으면(통계 › 통계) 한 번만
   const shownPath = raw.filter((p, i) => i === 0 || p.t !== raw[i - 1].t);
+  const hideRootPath = pathname === "/seller" && shownPath.every((p) => p.href === pathname) && !badge && !children;
+  if (hideRootPath) return <AccessBanner />;
   return (
     <>
       <div className="loc-bar">
