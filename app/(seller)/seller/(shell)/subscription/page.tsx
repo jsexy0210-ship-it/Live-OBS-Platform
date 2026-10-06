@@ -368,10 +368,10 @@ export default function SubscriptionPage() {
                 <tr>
                   <th>구독 시작</th>
                   <td>
-                    {sub?.subscribedAt
-                      ? `${dotDay(sub.subscribedAt)} · ${sub.startedFromTrial ? "오버레이 전용 7일 체험 뒤 " : ""}${view.plan?.name ?? ""}으로 시작`
-                      : view.access === "trial"
-                        ? `체험 중 · ${DAY(view.trialEndsAt)}까지`
+                    {view.access === "trial"
+                      ? `체험 중 · ${DAY(view.trialEndsAt)}까지${view.plan ? ` · 끝나면 ${view.plan.name}으로 첫 결제` : ""}`
+                      : sub?.subscribedAt
+                        ? `${dotDay(sub.subscribedAt)} · ${sub.startedFromTrial ? "오버레이 전용 7일 체험 뒤 " : ""}${view.plan?.name ?? ""}으로 시작`
                         : "-"}
                   </td>
                   <th>다음 결제일</th>
