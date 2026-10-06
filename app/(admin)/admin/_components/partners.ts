@@ -82,6 +82,11 @@ export type SellerDetail = {
     pendingPlanName: string | null;
   } | null;
   orders30d: { since: string; created: number; paid: number; paidAmount: number; lastOrderAt: string | null };
+  // 머리: 승인한 관리자(자동 승인이면 null) · 담당 CS(닫히지 않은 문의의 담당자) · 답변 대기 문의 수 · 메모 수
+  approvedBy: { id: string; name: string } | null;
+  assignedCs: { id: string; name: string } | null;
+  inquiryOpenCount: number;
+  noteCount: number;
 };
 
 export const SELLER_STATUS: Record<SellerStatus, { label: string; cls: string }> = {
