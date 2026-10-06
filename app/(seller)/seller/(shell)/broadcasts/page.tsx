@@ -11,6 +11,7 @@ import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../.
 import { api, failMessage } from "../../../../../components/seller/api";
 import { won } from "../../../../../components/seller/format";
 import { kstDuration, type BroadcastSummary } from "../../../../../components/seller/broadcast/history";
+import { LAYOUT_LABEL } from "../../../../../components/seller/broadcast/hit";
 import { formatDateTime } from "../../../../../lib/client/format";
 import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
 
@@ -18,16 +19,17 @@ import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
 // API: GET /api/seller/broadcast/history?from=&to=&cursor=(시작 최신순 50개)
 // 시안의 이번 달 요약·레이아웃 검색·내보내기는 서버에 자료·API가 없어 두지 않았다.
 
-type Item = { id: string; title: string | null; status: "live" | "ended"; startedAt: string; endedAt: string | null; summary: BroadcastSummary };
+type Item = { id: string; title: string | null; status: "live" | "ended"; startedAt: string; endedAt: string | null; layout: "9x16" | "16x9" | null; summary: BroadcastSummary };
 type Page = { items: Item[]; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error"; status: number; error: string } | { kind: "ok"; items: Item[]; next: string | null };
-type Filter = PeriodFilter;
+type Filter = PeriodFilter & { layout?: string };
 
 const query = (f: Filter, cursor?: string | null) => {
   const q = new URLSearchParams();
   const { from, to } = effectiveRange(f);
   if (from) q.set("from", from);
   if (to) q.set("to", to);
+  if (f.layout) q.set("layout", f.layout);
   if (cursor) q.set("cursor", cursor);
   const s = q.toString();
   return `/api/seller/broadcast/history${s ? `?${s}` : ""}`;
@@ -39,7 +41,7 @@ export default function BroadcastHistoryPage() {
   const [state, setState] = useState<Load>({ kind: "loading" });
   // 조회 조건은 주소(?from=&to=)가 기준이다: 상세 → ← 에서 그대로 돌아온다(docs/IA.md Back 규칙 3항)
   // 기본은 최근 1개월(목록 공통 규칙, lib/client/filterDefaults.ts). 기간을 비우고 검색하면 전체 기간. 서버는 아직 정렬·쪽 크기를 받지 않아 from·to만 보낸다
-  const defaults = listDefaults({});
+  const defaults = listDefaults({ layout: "" });
   const { applied, draft, setDraft, apply, reset } = useListFilters(defaults);
   // 업무 큐 링크(?period=all)로 들어오면 기간 칸은 비워 보인다(전체 기간)
   useEffect(() => {
@@ -76,7 +78,7 @@ export default function BroadcastHistoryPage() {
 
   const search = () => {
     if (draft.from && draft.to && draft.from > draft.to) return setToast({ text: "시작일을 끝일보다 앞 날짜로 바꿔 주십시오", neg: true });
-    apply({ ...applied, from: draft.from, to: draft.to, period: "" });
+    apply({ ...applied, from: draft.from, to: draft.to, layout: draft.layout, period: "" });
   };
   const items = state.kind === "ok" ? state.items : [];
 
@@ -96,6 +98,13 @@ export default function BroadcastHistoryPage() {
                 <DatePicker aria-label="시작일" value={draft.from} onChange={(v) => setDraft({ ...draft, from: v })} />
                 <span aria-hidden="true"> ~ </span>
                 <DatePicker aria-label="종료일" value={draft.to} onChange={(v) => setDraft({ ...draft, to: v })} />
+              </SearchRow>
+              <SearchRow label="레이아웃">
+                <select className="inp" aria-label="레이아웃" value={draft.layout} onChange={(e) => setDraft({ ...draft, layout: e.target.value })}>
+                  <option value="">전체</option>
+                  <option value="9x16">{LAYOUT_LABEL["9x16"]}</option>
+                  <option value="16x9">{LAYOUT_LABEL["16x9"]}</option>
+                </select>
               </SearchRow>
             </SearchBox>
 
@@ -118,7 +127,7 @@ export default function BroadcastHistoryPage() {
                   <ListHead total={items.length} loaded />
                   {items.length === 0 ? (
                     <div className="st" style={{ boxShadow: "none" }} data-testid="bh-empty">
-                      <span className="t">{applied.period !== "all" && applied.from === defaults.from && applied.to === defaults.to ? "최근 1개월에는 방송 기록이 없습니다. 기간을 바꿔 다시 찾아 주십시오" : applied.period !== "all" && (applied.from || applied.to) ? "조건에 맞는 방송이 없습니다" : "아직 방송 기록이 없습니다"}</span>
+                      <span className="t">{applied.period !== "all" && !applied.layout && applied.from === defaults.from && applied.to === defaults.to ? "최근 1개월에는 방송 기록이 없습니다. 기간을 바꿔 다시 찾아 주십시오" : applied.layout || (applied.period !== "all" && (applied.from || applied.to)) ? "조건에 맞는 방송이 없습니다" : "아직 방송 기록이 없습니다"}</span>
                       <Link className="btn btn-sm" href="/seller/broadcast">
                         방송 대시보드
                       </Link>
@@ -135,6 +144,7 @@ export default function BroadcastHistoryPage() {
                             <th>완료 / 뺀 주문</th>
                             <th>HIT 카드</th>
                             <th>매출</th>
+                            <th>레이아웃</th>
                             <th>상태</th>
                           </tr>
                         </thead>
@@ -154,6 +164,7 @@ export default function BroadcastHistoryPage() {
                               </td>
                               <td className="num">{b.summary.hits}</td>
                               <td className="num">{won(b.summary.sales)}</td>
+                              <td data-testid="bh-layout">{b.layout ? LAYOUT_LABEL[b.layout] : "—"}</td>
                               <td>{b.status === "live" ? <span className="bdg b-live">진행 중</span> : <span className="bdg b-done">종료</span>}</td>
                             </tr>
                           ))}
