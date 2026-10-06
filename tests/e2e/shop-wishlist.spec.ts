@@ -64,10 +64,15 @@ test.describe.serial("로그인 구매자", () => {
     await expect(page.getByRole("heading", { name: "찜한 상품이 없어요" })).toBeVisible();
   });
 
-  test("휴대폰 390: 메뉴가 위에 쌓이고 가로 스크롤 없음", async ({ page }) => {
+  test("휴대폰 390: 메뉴는 펼치지 않고 「‹ 찜 · 활동」 한 줄만 보이며 가로 스크롤 없음", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`/shop/${SLUG}/wishlist`);
     await expect(page.getByRole("list", { name: "찜한 상품" }).locator(".pc")).toHaveCount(3);
+    await expect(page.getByRole("navigation", { name: "내 정보 메뉴" })).toBeHidden();
+    const back = page.locator(".my-back");
+    await expect(back).toContainText("찜");
+    await expect(back).toContainText("활동");
+    await expect(back.getByRole("link", { name: "내 정보로 돌아가기" })).toHaveAttribute("href", `/shop/${SLUG}/me`);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: "tests/e2e/screenshots/SH-034-wishlist-390.png", fullPage: true });
   });

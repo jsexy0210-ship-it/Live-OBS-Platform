@@ -93,6 +93,10 @@ export const MEMBER_AUDIT_RETENTION: Record<string, MemberAuditRetention> = {
   "buyer_inquiry.delete": "non_transaction",
   "buyer_inquiry.image_upload": "non_transaction",
   "buyer_return.image_upload": "non_transaction", // 신청 전 사진 올리기(신청에 붙은 사진은 신청과 함께 보관)
+  // 회원정보 수정(SH-024): 방송 닉네임 변경·비밀번호 변경(실패 포함)
+  "buyer.profile.nickname_change": "non_transaction",
+  "buyer.profile.password_change": "non_transaction",
+  "buyer.profile.password_change.failed": "non_transaction",
   // 마케팅 수신 동의 철회·다시 동의(회원 정보 수정과 같은 분류)
   "buyer.marketing_consent.withdraw": "non_transaction",
   "buyer.marketing_consent.agree": "non_transaction",
