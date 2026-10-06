@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { AdminSessionContext } from "../auth/session";
+import { policyValue } from "../admin/platformPolicy";
 import { writeAudit } from "../audit/log";
 import { forbidden } from "../authz/errors";
 import { adminCan } from "../authz/permissions";
@@ -131,7 +132,9 @@ export async function listApplications(db: PrismaClient, admin: AdminSessionCont
   const now = await dbNow(db);
   const take = Math.min(limit, 100);
   const dayStart = kstDayStartOf(now);
-  const over48 = new Date(now.getTime() - 48 * HOUR_MS);
+  // 「48시간 초과」 칩·탭의 기준은 플랫폼 기본 정책의 가입 심사 목표 시간(기본 48, MA-081). 이름(over48h)은 그대로 둔다.
+  const reviewTargetHours = await policyValue(db, "reviewTargetHours");
+  const over48 = new Date(now.getTime() - reviewTargetHours * HOUR_MS);
 
   const all = await loadPending(db);
   const chips = {
@@ -175,7 +178,7 @@ export async function listApplications(db: PrismaClient, admin: AdminSessionCont
     return true;
   });
   if (sort === "newest") rows = [...rows].reverse();
-  const page = rows.slice(offset, offset + take).map((p) => viewApplication(p, now));
+  const page = rows.slice(offset, offset + take).map((p) => viewApplication(p, now, reviewTargetHours));
   return { ok: true as const, chips, kpi, industries, applications: page, total: rows.length, nextCursor: offset + take < rows.length ? String(offset + take) : null };
 }
 
@@ -197,7 +200,7 @@ function applicationChecks(reasons: string[]): { key: string; label: string; res
   ];
 }
 
-function viewApplication(p: Pending, now: Date) {
+function viewApplication(p: Pending, now: Date, reviewTargetHours: number) {
   const i = info(p.businessInfo);
   const st = stateOf(p);
   const rev = p.rev;
@@ -212,7 +215,7 @@ function viewApplication(p: Pending, now: Date) {
     industry: typeof i.industry === "string" && i.industry ? i.industry : null,
     receivedAt: p.createdAt,
     elapsedHours: Math.floor((now.getTime() - p.createdAt.getTime()) / HOUR_MS),
-    over48h: st !== "SUPPLEMENT" && now.getTime() - p.createdAt.getTime() > 48 * HOUR_MS,
+    over48h: st !== "SUPPLEMENT" && now.getTime() - p.createdAt.getTime() > reviewTargetHours * HOUR_MS,
     reasons: p.reviewReasons.map((c) => ({ code: c, text: REVIEW_REASON_TEXT[c as ReviewReason] ?? "확인할 내용이 있습니다" })),
     checks: applicationChecks(p.reviewReasons),
     supplement:
@@ -312,7 +315,9 @@ export async function requestSupplement(db: PrismaClient, admin: AdminSessionCon
     const now = await dbNow(tx);
     const cur = await tx.sellerApplicationReview.findUnique({ where: { sellerId } });
     if (cur?.supplementRequestedAt && !cur.supplementResolvedAt) return { ok: false as const, reason: "already_requested" as const };
-    const dueAt = new Date(now.getTime() + SUPPLEMENT_DAYS * DAY_MS);
+    // 보완 요청 무응답 자동 반려 일수는 플랫폼 기본 정책(MA-081, 기본 7일). 0(안 함)이면 기한 없이 자동 반려하지 않는다.
+    const supplementDays = await policyValue(tx, "supplementAutoRejectDays");
+    const dueAt = supplementDays > 0 ? new Date(now.getTime() + supplementDays * DAY_MS) : null;
     const data = { supplementReason: reason, supplementRequestedAt: now, supplementDueAt: dueAt, supplementResolvedAt: null, supplementByAdminId: admin.admin.id, reminderCount: 0, lastReminderAt: null };
     await tx.sellerApplicationReview.upsert({ where: { sellerId }, create: { sellerId, ...data }, update: data });
     await writeAudit(tx, { actorType: "PLATFORM_ADMIN", actorId: admin.admin.id, sellerId, action: "admin.seller.supplement_request", targetType: "Seller", targetId: sellerId, reason, after: { dueAt }, ip: meta.ip, userAgent: meta.userAgent });
@@ -460,10 +465,12 @@ export async function undoApproval(db: PrismaClient, admin: AdminSessionContext,
 
 // 정기 작업: 보완 기한이 지난 신청을 자동 반려한다(로그 추적 seller.supplement_expired).
 export async function rejectExpiredSupplements(tx: Prisma.TransactionClient, now: Date): Promise<number> {
-  const due = await tx.sellerApplicationReview.findMany({ where: { supplementRequestedAt: { not: null }, supplementResolvedAt: null, supplementDueAt: { lte: now } }, select: { sellerId: true } });
+  const due = await tx.sellerApplicationReview.findMany({ where: { supplementRequestedAt: { not: null }, supplementResolvedAt: null, supplementDueAt: { lte: now } }, select: { sellerId: true, supplementRequestedAt: true, supplementDueAt: true } });
   let n = 0;
-  for (const { sellerId } of due) {
-    const why = `보완 기한(${SUPPLEMENT_DAYS}일) 안에 보완하지 않아 자동 반려했습니다`;
+  for (const { sellerId, supplementRequestedAt, supplementDueAt } of due) {
+    // 안내 문구의 일수는 요청 때 정해진 기한(요청 시각~기한)이다. 정책을 나중에 바꿔도 이미 보낸 요청은 그 기한을 따른다.
+    const days = supplementRequestedAt && supplementDueAt ? Math.max(1, Math.round((supplementDueAt.getTime() - supplementRequestedAt.getTime()) / DAY_MS)) : SUPPLEMENT_DAYS;
+    const why = `보완 기한(${days}일) 안에 보완하지 않아 자동 반려했습니다`;
     const moved = await tx.seller.updateMany({ where: { id: sellerId, status: "PENDING" }, data: { status: "REJECTED", rejectedReason: why, rejectedAt: now } });
     await tx.sellerApplicationReview.update({ where: { sellerId }, data: { supplementResolvedAt: now } });
     if (moved.count === 1) {

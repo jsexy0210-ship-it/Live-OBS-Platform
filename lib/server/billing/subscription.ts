@@ -1,4 +1,5 @@
 import { Prisma, type ActorType, type PrismaClient, type SellerSubscription, type SubscriptionPayment, type SubscriptionPlan } from "@prisma/client";
+import { policyValue } from "../admin/platformPolicy";
 import { writeAudit } from "../audit/log";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { addMonthsKst, canCancelSubscription, cardRegistrationCharges, isEndedSubscription, lockedSince, nextPeriodEnd, sellerAccess, type SellerAccess } from "./access";
@@ -28,6 +29,7 @@ export const DEFAULT_PLAN_CODE = "INTEGRATED";
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const RENEW_LEAD_MS = DAY_MS;
 export const RETRY_INTERVAL_MS = DAY_MS;
+// 아래 세 값은 플랫폼 기본 정책(MA-081)의 기본값이다. 실제 값은 policyValue로 읽는다(결제 재시도 횟수·연체 유예 일수·잠금 뒤 자동 해지 일수).
 export const MAX_RETRIES = 3;
 export const GRACE_MS = 7 * DAY_MS;
 // 잠긴 지 이만큼 지나면 자동 해지(대표님 결정 2026-10-02). 해지 뒤 90일 보관·삭제는 별도 작업.
@@ -388,10 +390,11 @@ export async function settlePayment(
     } else if (payment.scheduled) {
       if (sub.status !== "PAST_DUE") {
         nextChargeAt = after(now, RETRY_INTERVAL_MS);
-        await tx.sellerSubscription.update({ where: { id: sub.id }, data: { status: "PAST_DUE", retryCount: 0, graceUntil: after(now, GRACE_MS), nextChargeAt } });
+        await tx.sellerSubscription.update({ where: { id: sub.id }, data: { status: "PAST_DUE", retryCount: 0, graceUntil: after(now, (await policyValue(tx, "overdueLockDays")) * DAY_MS), nextChargeAt } });
       } else {
-        const retryCount = Math.min(sub.retryCount + 1, MAX_RETRIES);
-        nextChargeAt = retryCount >= MAX_RETRIES ? null : after(now, RETRY_INTERVAL_MS);
+        const maxRetries = await policyValue(tx, "paymentRetryCount");
+        const retryCount = Math.min(sub.retryCount + 1, maxRetries);
+        nextChargeAt = retryCount >= maxRetries ? null : after(now, RETRY_INTERVAL_MS);
         await tx.sellerSubscription.update({ where: { id: sub.id }, data: { retryCount, nextChargeAt } });
       }
     } else {
@@ -604,7 +607,7 @@ export async function reconcileStalePayments(
 // 연결 도메인 비활성. 데이터 삭제는 하지 않는다(별도 작업). 다시 구독하면 restoreAfterResubscribe가 되살린다.
 export async function closeLongLockedSellers(db: PrismaClient, input: { now?: Date } = {}): Promise<{ closed: number }> {
   const now = input.now ?? (await dbNow(db));
-  const cutoff = after(now, -AUTO_CLOSE_AFTER_MS);
+  const cutoff = after(now, -(await policyValue(db, "lockToCloseDays")) * DAY_MS);
   // 잠긴 지 30일이 지났다면 체험하기도 그 전에 끝났다
   const candidates = await db.seller.findMany({
     where: { status: "ACTIVE", serviceEndedAt: null, trialEndsAt: { lte: cutoff } },
