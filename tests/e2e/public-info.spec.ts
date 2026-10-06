@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
 test("기능 안내가 열리고 머리에서 현재 메뉴가 표시된다", async ({ page }) => {
   await page.goto("/features");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("기능 안내");
-  await expect(page.getByRole("heading", { name: "OBS 오버레이" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "OBS 방송 화면" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "주요 메뉴" }).getByRole("link", { name: "기능" })).toHaveAttribute("aria-current", "page");
 });
 
