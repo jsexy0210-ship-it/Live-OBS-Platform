@@ -85,10 +85,19 @@ test("게시하려면 시행일·본문이 필요하고, 저장하면 구매자 
 test("사이드 메뉴로 문서를 바꿔도 입력 중인 내용이 남는다", async ({ page }) => {
   await login(page, "/seller/settings/legal");
   const menu = page.getByRole("complementary", { name: "파트너스 메뉴" });
+  const confirmDirtyNavigation = () => page.once("dialog", async (dialog) => {
+    expect(dialog.type()).toBe("confirm");
+    expect(dialog.message()).toContain("저장하지 않은 변경");
+    await dialog.accept();
+  });
   await page.getByLabel("이용약관 본문").fill("입력 중인 약관");
+  confirmDirtyNavigation();
   await menu.getByRole("link", { name: "개인정보처리방침", exact: true }).click();
+  await expect(page).toHaveURL(/section=privacy/);
   await expect(page.getByLabel("개인정보처리방침 본문")).toBeVisible();
+  confirmDirtyNavigation();
   await menu.getByRole("link", { name: "이용약관", exact: true }).click();
+  await expect(page).toHaveURL((url) => url.searchParams.get("section") === "terms");
   await expect(page.getByLabel("이용약관 본문")).toHaveValue("입력 중인 약관");
 });
 
