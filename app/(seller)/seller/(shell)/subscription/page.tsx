@@ -5,6 +5,7 @@ import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
 import { won } from "../../../../../components/seller/format";
+import { formatDate } from "../../../../../lib/client/format";
 import { useLatestResponse } from "../../../../../components/seller/latestResponse";
 import { canCancelSubscription, cardRegistrationCharges, isCancelScheduled, planChangeState } from "../../../../../lib/server/billing/access";
 import { PaymentHistory, type Payment } from "../../../../../components/seller/subscription/PaymentHistory";
@@ -38,8 +39,7 @@ type PlanPreview = { plans: { planCode: string; change: { ok: true; chargeNow: n
 type Quote = { state: "loading" } | { state: "ok"; chargeNow: number | null } | { state: "error" };
 type PlanChange = { ok: true; applied: "now" | "next_payment" | "canceled_pending"; charged: number; planCode: string; effectiveAt: string | null; remainingDays?: number | null };
 
-const DAY = (iso: string | null) =>
-  iso ? new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "long", day: "numeric" }).format(new Date(iso)) : "-";
+const DAY = (iso: string | null) => (iso ? formatDate(iso, "-") : "-");
 
 // 플랜 순위(planChange.ts와 같은 기준): 올리면 남은 기간 차액을 바로 결제, 내리면 다음 결제일부터
 const RANK: Record<string, number> = { OVERLAY_ONLY: 1, INTEGRATED: 2, STANDARD: 2 };
@@ -51,12 +51,12 @@ const CARD_FAIL: Record<string, string> = {
   not_activated: "결제는 되었지만 구독에 반영되지 않았습니다. 문의하기로 알려 주십시오",
 };
 const PLAN_FAIL: Record<string, string> = {
-  same_plan: "이미 이용 중인 플랜입니다",
+  same_plan: "이미 이용 중인 이용권입니다",
   card_required: "결제 카드를 먼저 등록해 주십시오",
   payment_in_progress: "결제를 처리하고 있습니다. 잠시 후 다시 확인해 주십시오",
-  payment_failed: "차액 결제가 거절되어 플랜을 바꾸지 않았습니다. 결제 카드를 확인해 주십시오",
-  not_activated: "결제는 되었지만 플랜에 반영되지 않았습니다. 문의하기로 알려 주십시오",
-  cancel_scheduled: "해지 예정인 구독은 플랜을 바꿀 수 없습니다. 결제 카드를 다시 등록해 해지를 취소한 뒤 바꿔 주십시오",
+  payment_failed: "차액 결제가 거절되어 이용권을 바꾸지 않았습니다. 결제 카드를 확인해 주십시오",
+  not_activated: "결제는 되었지만 이용권에 반영되지 않았습니다. 문의하기로 알려 주십시오",
+  cancel_scheduled: "해지 예정인 구독은 이용권을 바꿀 수 없습니다. 결제 카드를 다시 등록해 해지를 취소한 뒤 바꿔 주십시오",
 };
 
 const toDate = (iso: string | null) => (iso ? new Date(iso) : null);
@@ -77,12 +77,12 @@ function planChangeNote(v: View, target: string): { text: string; blocked: boole
   const { paidActive, pastDue, inTrial } = billingState(v);
   const up = (RANK[target] ?? 0) > (RANK[v.plan?.code ?? ""] ?? 0);
   const noCard = !v.subscription?.cardLabel;
-  if (!up) return { text: paidActive || pastDue ? "다음 결제일부터 적용됩니다. 그 전까지는 지금 플랜을 그대로 이용합니다." : "바로 적용됩니다. 결제는 없습니다.", blocked: false };
+  if (!up) return { text: paidActive || pastDue ? "다음 결제일부터 적용됩니다. 그 전까지는 지금 이용권을 그대로 씁니다." : "바로 적용됩니다. 결제는 없습니다.", blocked: false };
   if ((paidActive || pastDue || inTrial) && noCard) return { text: "올리려면 결제 카드를 먼저 등록해 주십시오.", blocked: true };
   if (paidActive) return { text: "남은 이용 기간의 차액을 등록한 카드로 바로 결제합니다. 차액이 없으면 결제 없이 바로 바뀝니다.", blocked: false };
   if (pastDue) return { text: "밀린 이번 기간 요금과 남은 기간 차액을 등록한 카드로 바로 결제합니다.", blocked: false };
-  if (inTrial) return { text: "새 플랜 요금을 등록한 카드로 바로 결제하고, 오늘부터 새 이용 기간이 시작됩니다.", blocked: false };
-  return { text: "바로 적용되고 지금은 결제되지 않습니다. 다음 결제부터 새 플랜 요금이 청구됩니다.", blocked: false };
+  if (inTrial) return { text: "새 이용권 요금을 등록한 카드로 바로 결제하고, 오늘부터 새 이용 기간이 시작됩니다.", blocked: false };
+  return { text: "바로 적용되고 지금은 결제되지 않습니다. 다음 결제부터 새 이용권 요금이 청구됩니다.", blocked: false };
 }
 
 // 카드 등록(교체) 확인 창 안내. 결제가 일어나거나 해지 예약이 풀릴 때만 확인을 거친다(null이면 확인 없이 진행).
@@ -127,7 +127,7 @@ export default function SubscriptionPage() {
   const [failure, setFailure] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<{ kind: "plan"; plan: Plan; quote: Quote; changed?: boolean } | { kind: "cancel" } | { kind: "card"; note: string } | null>(null);
+  const [confirm, setConfirm] = useState<{ kind: "plan"; plan: Plan; quote: Quote; changed?: boolean } | { kind: "undo"; current: Plan; pendingName: string } | { kind: "cancel" } | { kind: "card"; note: string } | null>(null);
   const reads = useLatestResponse();
 
   // 변경 뒤 다시 읽기에도 쓴다: 처음이 아니면 불러오는 화면을 띄우지 않고, 다시 읽기가 실패하면 지금 화면을 두고 알린다
@@ -222,16 +222,16 @@ export default function SubscriptionPage() {
       }
       // 202: 차액 결제 결과를 아직 모름(그동안 지금 플랜 그대로)
       if ("error" in r.data) {
-        setPending("차액 결제 결과를 확인하고 있습니다. 확인될 때까지 지금 플랜을 그대로 이용합니다");
+        setPending("차액 결제 결과를 확인하고 있습니다. 확인될 때까지 지금 이용권을 그대로 씁니다");
         return reread(null);
       }
       const d = r.data;
       const text =
         d.applied === "now"
-          ? `「${plan.name}」으로 변경했습니다${d.charged > 0 ? ` · 차액 ${won(d.charged)} 결제` : ""}`
+          ? `「${plan.name}」으로 바꿨습니다${d.charged > 0 ? ` · 차액 ${won(d.charged)} 결제` : ""}`
           : d.applied === "next_payment"
-            ? `${DAY(d.effectiveAt)}부터 「${plan.name}」으로 변경됩니다`
-            : "플랜 변경 예약을 취소했습니다";
+            ? `${DAY(d.effectiveAt)}부터 「${plan.name}」으로 바뀝니다`
+            : "이용권 바꾸기 예약을 취소했습니다";
       await reread(text);
     });
 
@@ -257,10 +257,9 @@ export default function SubscriptionPage() {
   // 카드 등록 버튼: 결제가 일어나거나 해지 예약이 풀리면 확인 창을 먼저 띄운다
   const askCard = () => {
     const note = view ? cardNote(view) : null;
-    if (note) setConfirm({ kind: "card", note });
-    else void registerCard();
+    setConfirm({ kind: "card", note: note ?? "등록한 카드로 매달 자동 결제됩니다." });
   };
-  const pendingPlan = sub?.pendingPlanCode && !sub.cancelAtPeriodEnd ? plans.find((p) => p.code === sub.pendingPlanCode) ?? { code: sub.pendingPlanCode, name: "다른 플랜" } : null;
+  const pendingPlan = sub?.pendingPlanCode && !sub.cancelAtPeriodEnd ? plans.find((p) => p.code === sub.pendingPlanCode) ?? { code: sub.pendingPlanCode, name: "다른 이용권" } : null;
 
   return (
     <>
@@ -269,7 +268,7 @@ export default function SubscriptionPage() {
         <div className="ph">
           <div className="col" style={{ gap: 6 }}>
             <h1 className="t-t3">구독 · 결제</h1>
-            <span className="t-l2 c-alt">요금제, 결제 카드, 청구 내역을 관리합니다.</span>
+            <span className="t-l2 c-alt">이용권, 결제 카드, 청구 내역을 확인하고 바꿉니다.</span>
           </div>
         </div>
 
@@ -301,7 +300,7 @@ export default function SubscriptionPage() {
               <section className="card pad-l col" style={{ gap: 14 }} aria-labelledby="sub-plan">
                 <div className="row" style={{ gap: 8, justifyContent: "space-between" }}>
                   <h2 className="t-hl1" id="sub-plan">
-                    내 요금제
+                    내 이용권
                   </h2>
                   <span className={`bdg ${statusOf(view).cls}`} data-testid="sub-status">
                     {statusOf(view).label}
@@ -319,7 +318,7 @@ export default function SubscriptionPage() {
                     )}
                   </div>
                 ) : (
-                  <span className="t-l2 c-alt">요금제 정보가 없습니다. 문의하기로 알려 주십시오</span>
+                  <span className="t-l2 c-alt">이용권 정보가 없습니다. 문의하기로 알려 주십시오</span>
                 )}
                 <dl className="kv">
                   {view.access === "trial" && (
@@ -364,16 +363,16 @@ export default function SubscriptionPage() {
                 {pendingPlan && (
                   <div className="msg msg-cau t-l2" role="note">
                     <span>
-                      <b>변경 예정</b> {DAY(sub?.nextChargeAt ?? null)}부터 「{pendingPlan.name}」으로 바뀝니다.
+                      <b>바뀔 예정</b> {DAY(sub?.nextChargeAt ?? null)}부터 「{pendingPlan.name}」으로 바뀝니다.
                     </span>
                     {current && (
                       <button
                         className="btn btn-sm btn-out"
                         type="button"
                         disabled={busy}
-                        onClick={() => void changePlan(plans.find((p) => p.code === current) ?? { code: current, name: view.plan?.name ?? "" }, null)}
+                        onClick={() => setConfirm({ kind: "undo", current: plans.find((p) => p.code === current) ?? { code: current, name: view.plan?.name ?? "" }, pendingName: pendingPlan.name })}
                       >
-                        변경 취소
+                        바꾸기 취소하기
                       </button>
                     )}
                   </div>
@@ -391,14 +390,14 @@ export default function SubscriptionPage() {
                 {testMode ? (
                   <>
                     <button className="btn btn-sm" type="button" onClick={askCard} disabled={busy}>
-                      {busy ? "처리 중" : sub?.cardLabel ? "테스트 카드로 변경" : "테스트 카드 등록"}
+                      {busy ? "처리 중" : sub?.cardLabel ? "카드 변경하기" : "카드 등록하기"}
                     </button>
                     <span className="t-c1 c-alt">테스트 서버입니다. 실제 카드 등록과 결제는 이루어지지 않습니다.</span>
                   </>
                 ) : (
                   <>
                     <button className="btn btn-sm" type="button" disabled>
-                      {sub?.cardLabel ? "카드 변경" : "카드 등록"}
+                      {sub?.cardLabel ? "카드 변경하기" : "카드 등록하기"}
                     </button>
                     <span className="t-c1 c-alt">카드 등록은 준비 중입니다.</span>
                   </>
@@ -409,7 +408,7 @@ export default function SubscriptionPage() {
             {plans.length > 0 && (
               <section className="card pad-l col" style={{ gap: 14 }} aria-labelledby="sub-plans">
                 <h2 className="t-hl1" id="sub-plans">
-                  플랜 변경
+                  이용권 바꾸기
                 </h2>
                 <div className="sub-plans">
                   {plans.map((p) => {
@@ -422,7 +421,7 @@ export default function SubscriptionPage() {
                           <span className="bdg b-info nodot">이용 중</span>
                         ) : (
                           <button className="btn btn-sm btn-out" type="button" disabled={busy || canceling || pendingPlan?.code === p.code} onClick={() => void quotePlan(p)}>
-                            {pendingPlan?.code === p.code ? "변경 예정" : "변경"}
+                            {pendingPlan?.code === p.code ? "바꾸기 예정" : "바꾸기"}
                           </button>
                         )}
                       </div>
@@ -430,7 +429,7 @@ export default function SubscriptionPage() {
                   })}
                 </div>
                 <span className="t-c1 c-alt">
-                  {canceling ? "해지 예정인 구독은 플랜을 바꿀 수 없습니다." : "올리면 남은 기간 차액을 바로 결제하고, 내리면 다음 결제일부터 적용됩니다."}
+                  {canceling ? "해지 예정인 구독은 이용권을 바꿀 수 없습니다." : "위 이용권으로 올리면 남은 기간 차액을 바로 결제하고, 내리면 다음 결제일부터 바뀝니다."}
                 </span>
               </section>
             )}
@@ -446,7 +445,7 @@ export default function SubscriptionPage() {
                   <span className="t-l2 c-alt">해지해도 이번 이용 기간이 끝날 때까지는 그대로 이용할 수 있습니다.</span>
                 </div>
                 <button className="btn btn-sm btn-out" type="button" onClick={() => setConfirm({ kind: "cancel" })} disabled={busy}>
-                  해지
+                  구독 해지하기
                 </button>
               </section>
             )}
@@ -459,13 +458,15 @@ export default function SubscriptionPage() {
           <div className="modal">
             <div className="modal-h">
               <h2 className="t-h2" id="sub-confirm-title">
-                {confirm.kind === "cancel" ? "구독을 해지하시겠습니까?" : confirm.kind === "card" ? "결제 카드를 등록하시겠습니까?" : `「${confirm.plan.name}」으로 변경하시겠습니까?`}
+                {confirm.kind === "cancel" ? "구독을 해지하시겠습니까?" : confirm.kind === "undo" ? "이용권 바꾸기를 취소하시겠습니까?" : confirm.kind === "card" ? "결제 카드를 등록하시겠습니까?" : `「${confirm.plan.name}」으로 바꾸시겠습니까?`}
               </h2>
               <span className="t-l2 c-alt">
                 {confirm.kind === "cancel"
                   ? endsAt
                     ? `${DAY(endsAt)}까지 이용할 수 있고, 그 뒤에는 결제되지 않습니다.`
                     : "바로 해지되고 더 이상 결제되지 않습니다."
+                  : confirm.kind === "undo"
+                    ? `${DAY(sub?.nextChargeAt ?? null)}에 「${confirm.pendingName}」으로 바뀌는 예약이 없어지고 지금 이용권을 계속 씁니다`
                   : confirm.kind === "card"
                     ? confirm.note
                     : planChangeNote(view, confirm.plan.code).text}
@@ -491,17 +492,21 @@ export default function SubscriptionPage() {
               </button>
               {confirm.kind === "cancel" ? (
                 <button className="btn btn-neg" type="button" onClick={() => void cancel()} disabled={busy}>
-                  {busy ? "해지 중" : "해지"}
+                  {busy ? "해지 중" : "구독 해지하기"}
+                </button>
+              ) : confirm.kind === "undo" ? (
+                <button className="btn" type="button" onClick={() => void changePlan(confirm.current, null)} disabled={busy}>
+                  {busy ? "처리 중" : "바꾸기 취소하기"}
                 </button>
               ) : confirm.kind === "card" ? (
                 <button className="btn" type="button" onClick={() => void registerCard()} disabled={busy}>
-                  {busy ? "처리 중" : "등록"}
+                  {busy ? "처리 중" : "카드 등록하기"}
                 </button>
               ) : (
                 <button className="btn" type="button" onClick={() => void changePlan(confirm.plan, confirm.quote.state === "ok" ? confirm.quote.chargeNow : null)}
                   disabled={busy || confirm.quote.state !== "ok" || planChangeNote(view, confirm.plan.code).blocked}
                 >
-                  {busy ? "변경 중" : "변경"}
+                  {busy ? "바꾸는 중" : "이용권 바꾸기"}
                 </button>
               )}
             </div>
