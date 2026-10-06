@@ -1562,8 +1562,3 @@ body {
 .shop-login-opts a {
   font-size: 13px;
 }
-/* 링크 모양 보조 버튼(btn-out)은 마우스를 올려도 글자가 흰색으로 바뀌지 않는다(공통 .app a.btn:hover 규칙이 흰 글자를 덮어씌워 글자가 사라졌음) */
-.shop-app a.btn-out,
-.shop-app a.btn-out:hover {
-  color: var(--wds-label-normal);
-}
