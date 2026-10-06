@@ -208,6 +208,8 @@ export const SELLER_SIGNUP_CONSENT = {
   agreedPrivacy: true,
   termsVersion: SELLER_SIGNUP_CONSENT_VERSIONS.terms,
   privacyVersion: SELLER_SIGNUP_CONSENT_VERSIONS.privacy,
+  agreedPolicy: true,
+  policyVersion: SELLER_SIGNUP_CONSENT_VERSIONS.policy,
 } as const;
 export const REJOIN_CONSENT = { agreedRejoinRetention: true, rejoinRetentionVersion: SIGNUP_CONSENT_VERSIONS.rejoinRetention } as const;
 

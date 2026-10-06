@@ -54,7 +54,7 @@ test("파트너스 로그인: 제목·설명이 파트너스 관리자이고, �
 test("가입 신청: 본인확인 대행사 연결 전이면 인증번호 받기에서 「본인확인 서비스 준비 중이에요」 화면으로 바뀐다", async ({ page }) => {
   await page.goto("/seller/signup");
   // 필수 약관(PF-007-1)에 동의하고 본인확인 단계(2/5)로 간다
-  await page.getByLabel("필수 약관에 모두 동의해요").check();
+  await page.getByLabel("모두 동의해요", { exact: true }).check();
   await page.getByRole("button", { name: "다음", exact: true }).click();
   await expect(page).toHaveURL(/\/seller\/signup\/verify$/);
   await fillIdentity(page);

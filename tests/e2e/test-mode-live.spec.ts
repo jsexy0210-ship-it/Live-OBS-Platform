@@ -9,7 +9,7 @@ for (const path of ["/seller/signup", "/seller/password-reset"]) {
     await page.goto(path);
     if (path === "/seller/signup") {
       // 가입 신청은 약관 동의(1/5) 뒤 본인확인(2/5) 단계에서 안내가 보인다
-      await page.getByLabel("필수 약관에 모두 동의해요").check();
+      await page.getByLabel("모두 동의해요", { exact: true }).check();
       health = page.waitForResponse((r) => r.url().endsWith("/api/health"));
       await page.getByRole("button", { name: "다음", exact: true }).click();
       await expect(page).toHaveURL(/\/seller\/signup\/verify$/);

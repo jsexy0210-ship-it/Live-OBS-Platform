@@ -13,7 +13,7 @@ export const SELLER_SIGNUP_CONSENT_VERSIONS = {
 
 // 운영 정책 동의를 필수로 받을지. 가입 화면(PF-007-1)이 정본의 「파트너스 운영 정책」 체크를 보내기 전에는 false로 두어
 // 기존 화면이 막히지 않게 한다. 화면이 보내기 시작하는 변경에서 true로 바꾼다. 보내 온 값은 false여도 확인·저장한다.
-export const SELLER_POLICY_REQUIRED = false;
+export const SELLER_POLICY_REQUIRED = true;
 
 // policyVersion: 운영 정책 동의 문서 버전(동의했을 때만). marketing: 선택 동의(동의했을 때 버전·시각 marketingAt)
 export type SellerSignupConsent = {
