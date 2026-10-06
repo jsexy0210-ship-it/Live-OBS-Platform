@@ -114,7 +114,9 @@ describe("오늘 처리할 일 GET /api/admin/today-tasks", () => {
     const cookie = await adminCookie();
     expect(counts(await (await get(cookie)).json()).platformInfoMissing).toBe(0);
     await db.platformBusinessInfo.update({ where: { id: 1 }, data: { email: "" } });
-    expect(counts(await (await get(cookie)).json()).platformInfoMissing).toBe(1);
+    const partial = await (await get(cookie)).json();
+    expect(counts(partial).platformInfoMissing).toBe(1);
+    expect(partial.items.find((i: { key: string }) => i.key === "platformInfoMissing").missing).toEqual(["이메일"]);
     await db.platformBusinessInfo.update({ where: { id: 1 }, data: { ...Object.fromEntries(Object.keys(full).map((k) => [k, ""])) } });
   });
 

@@ -3,7 +3,7 @@ import type { AdminSessionContext } from "../auth/session";
 import { forbidden } from "../authz/errors";
 import { adminCan } from "../authz/permissions";
 import { dbNow } from "../billing/subscription";
-import { readPlatformBusinessInfo } from "./platformBusinessInfo";
+import { FIELDS, readPlatformBusinessInfo, type BusinessField } from "./platformBusinessInfo";
 
 // 마스터 관리자 「오늘 처리할 일」 집계(MA-001, platform.read, 조회만). 숫자와 처리 화면 주소만 주고 개인정보는 넣지 않는다.
 // 항목마다 { key, count, href }. href는 해당 목록 화면을 처리할 건만 걸러 연 주소다(화면 문구는 화면에서 붙인다).
@@ -18,6 +18,8 @@ import { readPlatformBusinessInfo } from "./platformBusinessInfo";
 export const TASK_KEYS = ["signupPending", "paymentFailed", "refundRequested", "inquiryOpen", "pgError", "automationFailed", "incidentCritical", "platformInfoMissing"] as const;
 export type TodayTaskKey = (typeof TASK_KEYS)[number];
 
+// 비어 있는 표시 의무 항목 이름(홈 타일 「3항목 · 상호 · …」, MA-088 정본)
+const FIELD_LABEL: Record<BusinessField, string> = { name: "상호", representative: "대표자", businessNumber: "사업자등록번호", mailOrderNumber: "통신판매업 신고번호", address: "주소", phone: "고객센터 전화", email: "이메일" };
 const DAY_MS = 86_400_000;
 const KST_MS = 9 * 3_600_000;
 export const PAYMENT_FAILED_DAYS = 7;
@@ -49,7 +51,8 @@ export async function adminTodayTasks(db: PrismaClient, admin: AdminSessionConte
   const incidentCritical = incidents.filter((e) => e.kind === "incident_open" && e.severity === "critical").length;
   const from = kstDate(sinceFailed);
   const to = kstDate(now);
-  const items: { key: TodayTaskKey; count: number; href: string }[] = [
+  const missing = FIELDS.filter((f) => platformInfo[f].trim() === "").map((f) => FIELD_LABEL[f]);
+  const items: { key: TodayTaskKey; count: number; href: string; missing?: string[] }[] = [
     { key: "signupPending", count: signupPending, href: "/admin/partners?status=PENDING" },
     { key: "paymentFailed", count: paymentFailed, href: `/admin/billing/invoices?status=FAILED&from=${from}&to=${to}` },
     { key: "refundRequested", count: refundRequested, href: "/admin/billing/refunds?status=REQUESTED" },
@@ -57,7 +60,7 @@ export async function adminTodayTasks(db: PrismaClient, admin: AdminSessionConte
     { key: "pgError", count: pg[0]?.n ?? 0, href: "/admin/settlement/pg" },
     { key: "automationFailed", count: automationFailed, href: "/admin/ops/automation?filter=failed" },
     { key: "incidentCritical", count: incidentCritical, href: "/admin/ops/monitor" },
-    { key: "platformInfoMissing", count: platformInfo.complete ? 0 : 1, href: "/admin/settings/platform-business" },
+    { key: "platformInfoMissing", count: platformInfo.complete ? 0 : 1, href: "/admin/settings/platform-business", missing },
   ];
   return { at: now, total: items.reduce((a, i) => a + i.count, 0), items };
 }

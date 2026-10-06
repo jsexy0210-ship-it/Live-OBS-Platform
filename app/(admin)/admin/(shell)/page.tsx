@@ -91,7 +91,7 @@ function Panel<T>({ title, state, retry, children, id }: { title: string; state:
 
 // ─── 오늘 처리할 일 ───
 type TaskKey = "signupPending" | "paymentFailed" | "refundRequested" | "inquiryOpen" | "pgError" | "automationFailed" | "incidentCritical" | "platformInfoMissing";
-type Tasks = { at: string; total: number; items: { key: TaskKey; count: number; href: string }[] };
+type Tasks = { at: string; total: number; items: { key: TaskKey; count: number; href: string; missing?: string[] }[] };
 const TASK_LABEL: Record<TaskKey, string> = {
   signupPending: "가입 신청 처리 대기",
   paymentFailed: "결제 실패",
@@ -132,6 +132,8 @@ function shortAt(iso: string): string {
 }
 
 function TodayTasks({ tick }: { tick: number }) {
+  const { me } = useAdmin();
+  const canEditInfo = adminCan(me.role, "system.manage");
   const [state, load] = useApi<Tasks>("/api/admin/today-tasks", tick);
   return (
     <Panel title="오늘 처리할 일" state={state} retry={() => void load()} id="today-tasks">
@@ -149,7 +151,14 @@ function TodayTasks({ tick }: { tick: number }) {
             {d.items.map((t) => (
               <Link key={t.key} href={taskHref(t.key, t.href)} className="card pad col" style={{ gap: 4, textDecoration: "none", color: "inherit" }} data-testid={`today-task-${t.key}`} aria-label={`${TASK_LABEL[t.key]} ${t.count}건`}>
                 <span className="t-l2 c-alt">{TASK_LABEL[t.key]}</span>
-                <span className={`t-h2 ${t.count > 0 ? "c-neg" : ""}`}>{n(t.count, "건")}</span>
+                {t.key === "platformInfoMissing" && t.count > 0 && t.missing ? (
+                  <>
+                    <span className="t-h2">{t.missing.length}항목</span>
+                    <span className="t-c1 c-alt">{t.missing.join(" · ")} 비어 있음{canEditInfo ? "" : " · 최고관리자에게 요청"}</span>
+                  </>
+                ) : (
+                  <span className={`t-h2 ${t.count > 0 ? "c-neg" : ""}`}>{n(t.count, "건")}</span>
+                )}
               </Link>
             ))}
           </div>
