@@ -41,13 +41,18 @@ export const LIVE_HISTORY_DEFAULT = 20;
 export const LIVE_HISTORY_MAX = 100;
 export async function listLivePayoutHistory(db: PrismaClient, ctx: TenantContext, query: { cursor?: string | null; limit?: string | null }) {
   requireSellerRead(ctx, "MEMBER_POINTS");
+  return listLivePayoutHistoryOf(db, ctx.sellerId, query);
+}
+
+// 권한 검사는 호출한 쪽이 한다(파트너스 SA-034 · 마스터 관리자 MA-012-7 읽기 전용).
+export async function listLivePayoutHistoryOf(db: PrismaClient, sellerId: string, query: { cursor?: string | null; limit?: string | null }) {
   const limit = query.limit == null || query.limit === "" ? LIVE_HISTORY_DEFAULT : Number(query.limit);
   if (!Number.isInteger(limit) || limit < 1) return { ok: false as const };
   const take = Math.min(limit, LIVE_HISTORY_MAX);
   const cursor = query.cursor ? decodeCursor(query.cursor) : null;
   if (query.cursor && !cursor) return { ok: false as const };
   const rows = await db.auditLog.findMany({
-    where: { sellerId: ctx.sellerId, action: "reward_policy.live_payout", ...(cursor ? { OR: [{ createdAt: { lt: cursor.createdAt } }, { createdAt: cursor.createdAt, id: { lt: cursor.id } }] } : {}) },
+    where: { sellerId: sellerId, action: "reward_policy.live_payout", ...(cursor ? { OR: [{ createdAt: { lt: cursor.createdAt } }, { createdAt: cursor.createdAt, id: { lt: cursor.id } }] } : {}) },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: take + 1,
     select: { id: true, actorType: true, actorId: true, after: true, createdAt: true },
@@ -55,14 +60,14 @@ export async function listLivePayoutHistory(db: PrismaClient, ctx: TenantContext
   const page = rows.slice(0, take);
   const last = page[page.length - 1];
   const userIds = [...new Set(page.filter((r) => r.actorType === "SELLER_USER" && r.actorId).map((r) => r.actorId!))];
-  const users = userIds.length ? await db.sellerUser.findMany({ where: { sellerId: ctx.sellerId, id: { in: userIds } }, select: { id: true, name: true } }) : [];
+  const users = userIds.length ? await db.sellerUser.findMany({ where: { sellerId: sellerId, id: { in: userIds } }, select: { id: true, name: true } }) : [];
   const names = new Map(users.map((u) => [u.id, u.name]));
   // 일괄 지급 합계: 이 쪽 전환 시각 이후 ~ 바로 다음(더 늦은) 전환 전까지
   const oldest = last?.createdAt;
   const settles = oldest
-    ? await db.auditLog.findMany({ where: { sellerId: ctx.sellerId, action: "reward.settle", createdAt: { gte: oldest } }, select: { after: true, createdAt: true } })
+    ? await db.auditLog.findMany({ where: { sellerId: sellerId, action: "reward.settle", createdAt: { gte: oldest } }, select: { after: true, createdAt: true } })
     : [];
-  const newerToggle = await db.auditLog.findMany({ where: { sellerId: ctx.sellerId, action: "reward_policy.live_payout", createdAt: { gte: oldest ?? new Date(0) } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, createdAt: true } });
+  const newerToggle = await db.auditLog.findMany({ where: { sellerId: sellerId, action: "reward_policy.live_payout", createdAt: { gte: oldest ?? new Date(0) } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, createdAt: true } });
   const nextAt = new Map(newerToggle.map((t, i) => [t.id, newerToggle[i + 1]?.createdAt ?? null]));
   return {
     ok: true as const,
