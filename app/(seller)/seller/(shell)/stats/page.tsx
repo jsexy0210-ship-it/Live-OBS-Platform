@@ -139,136 +139,140 @@ function Overview({ data, compare }: { data: Data; compare: boolean }) {
         </Tile>
       </div>
 
-      <section className="sts-sec">
-        <div className="sts-sec-h">
-          <h2>일별 매출</h2>
-          {best && best.revenue > 0 && (
-            <span className="t-c1 c-alt">
-              최고 {bucketLabel(best.bucket, data.range.unit)} {won(best.revenue)}
-            </span>
-          )}
-        </div>
-        <BarChart bare title="일별 매출" fmt={won} points={points} />
-      </section>
+      <div className="sts-grid" aria-label="매출과 방송 통계">
+        <section className="sts-sec">
+          <div className="sts-sec-h">
+            <h2>일별 매출</h2>
+            {best && best.revenue > 0 && (
+              <span className="t-c1 c-alt">
+                최고 {bucketLabel(best.bucket, data.range.unit)} {won(best.revenue)}
+              </span>
+            )}
+          </div>
+          <BarChart bare title="일별 매출" fmt={won} points={points} />
+        </section>
 
-      <section className="sts-sec">
-        <div className="sts-sec-h">
-          <h2>방송 내역</h2>
-          <Link className="btn btn-out" href="/seller/stats/broadcasts">
-            방송 통계
-          </Link>
-        </div>
-        <table className="tbl" data-testid="overview-broadcasts">
-          <thead>
-            <tr>
-              <th>구분</th>
-              <th>주문</th>
-              <th>매출</th>
-            </tr>
-          </thead>
-          <tbody>
-            {bcast.map((r) => (
-              <tr key={r.label}>
-                <td className="sts-wrap">{r.label}</td>
-                <td>{count(r.orders)}</td>
-                <td>
-                  {won(r.net)}
-                  {share(r.net)}
-                </td>
-              </tr>
-            ))}
-            <tr className="fw6">
-              <td>합계</td>
-              <td>{count(bTotal.orders)}</td>
-              <td>{won(bTotal.net)}</td>
-            </tr>
-          </tbody>
-        </table>
-        <span className="t-c1 c-alt">방송 중에 들어온 주문, 방송이 끝나고 2시간 안에 들어온 주문, 그 밖의 주문으로 나눈 금액입니다. 세 가지를 더하면 위 매출과 같습니다. 시청자 수는 아직 볼 수 없습니다.</span>
-      </section>
-
-      <section className="sts-sec">
-        <div className="sts-sec-h">
-          <h2>상품 상위 {PRODUCT_ROWS}</h2>
-          <Link className="btn btn-out" href="/seller/stats/products">
-            상품 통계
-          </Link>
-        </div>
-        {top.length === 0 ? (
-          <span className="t-l2 c-alt">선택한 기간에 팔린 상품이 없습니다</span>
-        ) : (
-          <table className="tbl" data-testid="overview-products">
+        <section className="sts-sec">
+          <div className="sts-sec-h">
+            <h2>방송 내역</h2>
+            <Link className="btn btn-out" href="/seller/stats/broadcasts">
+              방송 통계
+            </Link>
+          </div>
+          <table className="tbl" data-testid="overview-broadcasts">
             <thead>
               <tr>
-                <th style={{ width: 64 }}>순위</th>
-                <th>상품</th>
-                <th>판매</th>
+                <th>구분</th>
+                <th>주문</th>
                 <th>매출</th>
               </tr>
             </thead>
             <tbody>
-              {top.map((r, i) => (
-                <tr key={r.productId}>
-                  <td>{i + 1}</td>
-                  <td className="col-text">{r.deleted ? `${r.name} (삭제됨)` : r.name}</td>
-                  <td>{r.quantity.toLocaleString("ko-KR")}개</td>
-                  <td>{won(r.revenue)}</td>
+              {bcast.map((r) => (
+                <tr key={r.label}>
+                  <td className="sts-wrap">{r.label}</td>
+                  <td>{count(r.orders)}</td>
+                  <td>
+                    {won(r.net)}
+                    {share(r.net)}
+                  </td>
                 </tr>
               ))}
+              <tr className="fw6">
+                <td>합계</td>
+                <td>{count(bTotal.orders)}</td>
+                <td>{won(bTotal.net)}</td>
+              </tr>
             </tbody>
           </table>
-        )}
-      </section>
+          <span className="t-c1 c-alt">방송 중에 들어온 주문, 방송이 끝나고 2시간 안에 들어온 주문, 그 밖의 주문으로 나눈 금액입니다. 세 가지를 더하면 위 매출과 같습니다. 시청자 수는 아직 볼 수 없습니다.</span>
+        </section>
+      </div>
 
-      <section className="sts-sec">
-        <div className="sts-sec-h">
-          <h2>회원 · 적립금 · 쿠폰</h2>
-          <Link className="btn btn-out" href="/seller/stats/members">
-            회원 통계
-          </Link>
-        </div>
-        <table className="au-ft" data-testid="overview-rewards">
-          <tbody>
-            <tr>
-              <th scope="row">구매 회원</th>
-              <td>
-                {people(data.members.buyers)} · 같은 사람이 다시 산 비율 {pct(data.members.repeatRate)} ({people(data.members.repeatBuyers)})
-              </td>
-            </tr>
-            <tr>
-              <th scope="row">처음 산 회원 / 이전에 산 적 있는 회원의 매출</th>
-              <td>
-                처음 산 회원 {won(data.members.newNet)} · 이전에 산 회원 {won(data.members.returningNet)}
-              </td>
-            </tr>
-            <tr>
-              <th scope="row">적립금</th>
-              <td>
-                준 금액 {won(data.rewards.earned)} · 도로 거둔 금액 {won(data.rewards.revoked)} · 쓴 금액 {won(data.rewards.used)} (매출의 {pct(data.rewards.useRate)}) · 기간이 지나 없어진 금액 {won(data.rewards.expired)}
-              </td>
-            </tr>
-            <tr>
-              <th scope="row">쿠폰 사용</th>
-              <td>
-                {count(data.coupons.used)} · 할인 {won(data.coupons.discount)}
-              </td>
-            </tr>
-            <tr>
-              <th scope="row">결제부터 발송까지</th>
-              <td data-testid="overview-operations">
-                걸린 시간 {hours(data.operations.shipping.avgHours)} · 발송 {count(data.operations.shipping.shipped)} · 입금이 없어 자동 취소된 주문 {count(data.operations.autoCancelled)} ({pct(data.operations.autoCancelRate)})
-              </td>
-            </tr>
-            <tr>
-              <th scope="row">교환 · 반품 · 리뷰 · 문의</th>
-              <td>
-                <Soon />
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <span className="t-c1 c-alt">처음 산 회원 = 이 기간에 처음 결제한 회원 · 적립금은 처리가 끝난 시각 기준</span>
-      </section>
+      <div className="sts-grid" aria-label="상품과 회원 통계">
+        <section className="sts-sec">
+          <div className="sts-sec-h">
+            <h2>상품 상위 {PRODUCT_ROWS}</h2>
+            <Link className="btn btn-out" href="/seller/stats/products">
+              상품 통계
+            </Link>
+          </div>
+          {top.length === 0 ? (
+            <span className="t-l2 c-alt">선택한 기간에 팔린 상품이 없습니다</span>
+          ) : (
+            <table className="tbl" data-testid="overview-products">
+              <thead>
+                <tr>
+                  <th style={{ width: 64 }}>순위</th>
+                  <th>상품</th>
+                  <th>판매</th>
+                  <th>매출</th>
+                </tr>
+              </thead>
+              <tbody>
+                {top.map((r, i) => (
+                  <tr key={r.productId}>
+                    <td>{i + 1}</td>
+                    <td className="col-text">{r.deleted ? `${r.name} (삭제됨)` : r.name}</td>
+                    <td>{r.quantity.toLocaleString("ko-KR")}개</td>
+                    <td>{won(r.revenue)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+
+        <section className="sts-sec">
+          <div className="sts-sec-h">
+            <h2>회원 · 적립금 · 쿠폰</h2>
+            <Link className="btn btn-out" href="/seller/stats/members">
+              회원 통계
+            </Link>
+          </div>
+          <table className="au-ft" data-testid="overview-rewards">
+            <tbody>
+              <tr>
+                <th scope="row">구매 회원</th>
+                <td>
+                  {people(data.members.buyers)} · 같은 사람이 다시 산 비율 {pct(data.members.repeatRate)} ({people(data.members.repeatBuyers)})
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">처음 산 회원 / 이전에 산 적 있는 회원의 매출</th>
+                <td>
+                  처음 산 회원 {won(data.members.newNet)} · 이전에 산 회원 {won(data.members.returningNet)}
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">적립금</th>
+                <td>
+                  준 금액 {won(data.rewards.earned)} · 도로 거둔 금액 {won(data.rewards.revoked)} · 쓴 금액 {won(data.rewards.used)} (매출의 {pct(data.rewards.useRate)}) · 기간이 지나 없어진 금액 {won(data.rewards.expired)}
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">쿠폰 사용</th>
+                <td>
+                  {count(data.coupons.used)} · 할인 {won(data.coupons.discount)}
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">결제부터 발송까지</th>
+                <td data-testid="overview-operations">
+                  걸린 시간 {hours(data.operations.shipping.avgHours)} · 발송 {count(data.operations.shipping.shipped)} · 입금이 없어 자동 취소된 주문 {count(data.operations.autoCancelled)} ({pct(data.operations.autoCancelRate)})
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">교환 · 반품 · 리뷰 · 문의</th>
+                <td>
+                  <Soon />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <span className="t-c1 c-alt">처음 산 회원 = 이 기간에 처음 결제한 회원 · 적립금은 처리가 끝난 시각 기준</span>
+        </section>
+      </div>
     </>
   );
 }
