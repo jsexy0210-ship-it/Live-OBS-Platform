@@ -21,7 +21,25 @@ type Listing = { domains: Domain[]; limit: number };
 
 const STATUS_LABEL: Record<Domain["status"], string> = { PENDING_VERIFICATION: "연결 확인 중", VERIFIED: "소유 확인됨", SUSPENDED: "일시 정지" };
 
-export function DomainSection({ onToast, onSection, disabled }: { onToast: (t: string) => void; onSection: OnSection; disabled: boolean }) {
+export function DomainSection({
+  onToast,
+  onSection,
+  disabled,
+  onChanged,
+  primary,
+  onPrimary,
+  primaryDomain,
+  defaultAddress,
+}: {
+  onToast: (t: string) => void;
+  onSection: OnSection;
+  disabled: boolean;
+  onChanged: () => void;
+  primary: "DEFAULT" | "CUSTOM";
+  onPrimary: (v: "DEFAULT" | "CUSTOM") => void;
+  primaryDomain: string | null;
+  defaultAddress: string;
+}) {
   const { confirm } = useConfirm();
   const [list, setList] = useState<Listing | null>(null);
   const [failed, setFailed] = useState(false);
@@ -69,6 +87,7 @@ export function DomainSection({ onToast, onSection, disabled }: { onToast: (t: s
     const r = await api<{ verified: boolean }>(`/api/seller/domains/${d.id}/verify`, { method: "POST" });
     setBusy(null);
     if (!r.ok) return setError(failMessage(r, "admin", "확인하지 못했습니다. 잠시 뒤에 다시 눌러 주십시오"));
+    onChanged();
     onToast(r.data.verified ? "소유 확인이 끝났습니다" : "아직 확인되지 않았습니다 · 설정값을 넣은 뒤 반영까지 보통 10분, 길면 하루가 걸립니다");
     await load();
   };
@@ -87,6 +106,7 @@ export function DomainSection({ onToast, onSection, disabled }: { onToast: (t: s
     setBusy(null);
     if (!r.ok) return setError(failMessage(r, "admin", "해제하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주십시오"));
     onToast("연결을 해제했습니다");
+    onChanged();
     await load();
   };
   const copy = async (v: string) => {
@@ -120,6 +140,18 @@ export function DomainSection({ onToast, onSection, disabled }: { onToast: (t: s
   return (
     <div style={{ marginTop: 32 }} data-testid="domain-section">
       <FormSection title="내 도메인" actions={<span className="t-l2 c-alt">기본 주소 외에 내 도메인을 연결합니다</span>}>
+        <FormRow label="대표 주소" help={primaryDomain ? "구매자에게 보이는 쇼핑몰 주소입니다 · 다른 주소로 들어와도 대표 주소로 안내됩니다" : "소유 확인이 끝난 내 도메인이 있으면 대표 주소로 고를 수 있습니다"}>
+          <div className="row" role="radiogroup" aria-label="대표 주소" style={{ gap: 24, flexWrap: "wrap" }}>
+            <label className="chk">
+              <input type="radio" name="primary-address" checked={primary === "DEFAULT"} disabled={disabled} onChange={() => onPrimary("DEFAULT")} />
+              기본 주소 ({defaultAddress})
+            </label>
+            <label className="chk">
+              <input type="radio" name="primary-address" checked={primary === "CUSTOM"} disabled={disabled || !primaryDomain} onChange={() => onPrimary("CUSTOM")} />
+              내 도메인{primaryDomain ? ` (${primaryDomain})` : ""}
+            </label>
+          </div>
+        </FormRow>
         <FormRow label="연결할 주소" htmlFor="domain-host" help={full ? `도메인은 ${list.limit}개까지 연결할 수 있습니다` : `예: shop.example.com · ${list.limit}개까지 · 저장하면 등록되고, 확인하지 않은 주소는 7일 뒤 사라집니다`}>
           <input id="domain-host" className="inp" value={host} onChange={(e) => setHost(e.target.value)} placeholder="shop.example.com" style={{ width: 360 }} disabled={full || busy !== null || disabled} />
           {error && (

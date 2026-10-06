@@ -264,6 +264,9 @@ const SELLER_ROUTES: Record<string, string | null> = {
 // 공개·구매자 경로(ARCHITECTURE 4.8.0 표): 기능 권한이 없을 때 막는지. 막는 검사는 lib 쪽(shopOpen·createOrder·resolveOverlayToken)이나
 // 라우트에 있고, 동작은 tests/integration/planFeatures.test.ts가 경로마다 확인한다.
 const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
+  "shop/[slug]/me/profile": "OPEN", // 내 정보 조회(로그인한 회원, 회원정보 수정 SH-024)
+  "shop/[slug]/me/nickname": "OPEN", // 방송 닉네임 변경(30일에 1번)
+  "shop/[slug]/me/password": "OPEN", // 비밀번호 변경(현재 비밀번호 확인)
   "shop/[slug]/orders": "STORE_OPERATIONS", // POST만 막음, GET(내 주문)은 열림
   "shop/[slug]/orders/quote": "STORE_OPERATIONS", // 주문서 견적(읽기 전용)은 shopOpen으로 막음
   "shop/[slug]/order-consent": "STORE_OPERATIONS",
@@ -337,6 +340,7 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/me/marketing-consent": "OPEN",
   "shop/[slug]/me/withdraw": "OPEN",
   "shop/[slug]/me/rewards": "OPEN", // 내 적립금 잔액(탈퇴 전 확인, #180)
+  "shop/[slug]/me/reward-ledger": "OPEN", // 내 적립금 내역(SH-023, 잔액과 같은 기준)
   "shop/[slug]/me/rejoin-retention-consent": "OPEN", // 재가입 제한 정보 보관 동의 철회(언제든, #177)
   "shop/[slug]/me/legal-consent": "OPEN", // 내가 동의한 약관 버전과 지금 쇼핑몰 약관 버전 비교(표시용 플래그, 잠긴 쇼핑몰에서도 열림)
   "overlay/[token]/state": "OVERLAY",
