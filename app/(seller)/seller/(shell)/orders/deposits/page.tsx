@@ -156,7 +156,7 @@ export default function DepositsPage() {
                     {showName && <th>입금자명</th>}
                     <th>금액</th>
                     <th>결제 방식</th>
-                    <th>입금 기한</th>
+                    <th style={{ width: 136, whiteSpace: "nowrap" }}>입금 기한</th>
                     <th>남은 시간</th>
                     <th className="dep-w-act" aria-label="작업" />
                   </tr>
@@ -178,7 +178,7 @@ export default function DepositsPage() {
                         {showName && <td>{o.depositorName ?? "-"}</td>}
                         <td className="num">{won(o.amount)}</td>
                         <td>{o.paymentMethod === "BANK_TRANSFER" ? "무통장 입금" : o.paymentMethod === "CARD" ? "카드" : "선택 전"}</td>
-                        <td className="num">{o.paymentDueAt ? formatDateTime(o.paymentDueAt) : "-"}</td>
+                        <td className="num" style={{ width: 136, whiteSpace: "nowrap" }}>{o.paymentDueAt ? formatDateTime(o.paymentDueAt) : "-"}</td>
                         <td>{left.urgent ? <b style={{ color: "var(--neg, #c0262c)" }}>{left.text}</b> : left.text}</td>
                         <td>
                           <button className="btn btn-sm btn-w-sm" type="button" onClick={() => setConfirm([o])}>
