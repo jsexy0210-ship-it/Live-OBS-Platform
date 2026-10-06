@@ -27,7 +27,7 @@ const req = (path: string, cookie: string, method = "GET", body?: unknown) =>
   new Request(BASE + path, { method, headers: { ...H, cookie, ...(body === undefined ? {} : { "content-type": "application/json" }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
 const iq = (inquiryId: string) => ({ params: Promise.resolve({ inquiryId }) });
 const json = async (r: Response) => ({ status: r.status, body: await r.json() });
-const NEW = { category: "BILLING", title: "청구 금액 문의", body: "이번 달 청구가 두 번 나왔습니다." };
+const NEW = { category: "SUBSCRIPTION_FEE", title: "청구 금액 문의", body: "이번 달 청구가 두 번 나왔습니다." };
 
 async function login(sellerId: string, kind: "OWNER" | "STAFF") {
   const u = await createSellerUser(sellerId, kind === "OWNER" ? "OWNER" : { permissions: [] });
@@ -60,9 +60,9 @@ describe("목록: 상태·분류 필터, 건수, 마지막 답변", () => {
   it("status·category로 거르고, counts는 조건과 무관한 전체 상태별 건수, newReplyCount는 새 답변 문의 수다. 틀린 값은 400", async () => {
     const s = await shop();
     const cs = await csCookie();
-    const a = (await create(s.owner.cookie, { ...NEW, title: "A", category: "BILLING" })).body.inquiry.id as string;
-    const b = (await create(s.owner.cookie, { ...NEW, title: "B", category: "BUG" })).body.inquiry.id as string;
-    const c = (await create(s.owner.cookie, { ...NEW, title: "C", category: "BILLING" })).body.inquiry.id as string;
+    const a = (await create(s.owner.cookie, { ...NEW, title: "A", category: "SUBSCRIPTION_FEE" })).body.inquiry.id as string;
+    const b = (await create(s.owner.cookie, { ...NEW, title: "B", category: "SHOP" })).body.inquiry.id as string;
+    const c = (await create(s.owner.cookie, { ...NEW, title: "C", category: "SUBSCRIPTION_FEE" })).body.inquiry.id as string;
     // A 답변, C 답변 후 종료(마스터)
     expect((await reply(cs, a, { body: "확인했습니다", expectedVersion: 0 })).status).toBe(200);
     expect((await reply(cs, c, { body: "확인했습니다", expectedVersion: 0 })).status).toBe(200);
@@ -80,9 +80,9 @@ describe("목록: 상태·분류 필터, 건수, 마지막 답변", () => {
     expect(l.body.counts).toEqual({ all: 3, open: 1, answered: 1, closed: 1 }); // 조건과 무관
     expect((await list(s.owner.cookie, "?status=OPEN")).body.items.map((x: { id: string }) => x.id)).toEqual([b]);
     expect((await list(s.owner.cookie, "?status=CLOSED")).body.items.map((x: { id: string }) => x.id)).toEqual([c]);
-    expect((await list(s.owner.cookie, "?category=BILLING")).body.items.map((x: { id: string }) => x.id).sort()).toEqual([a, c].sort());
-    expect((await list(s.owner.cookie, "?category=BILLING&status=CLOSED")).body.items.map((x: { id: string }) => x.id)).toEqual([c]);
-    expect((await list(s.owner.cookie, "?category=BUG&status=CLOSED")).body.items).toEqual([]);
+    expect((await list(s.owner.cookie, "?category=SUBSCRIPTION_FEE")).body.items.map((x: { id: string }) => x.id).sort()).toEqual([a, c].sort());
+    expect((await list(s.owner.cookie, "?category=SUBSCRIPTION_FEE&status=CLOSED")).body.items.map((x: { id: string }) => x.id)).toEqual([c]);
+    expect((await list(s.owner.cookie, "?category=SHOP&status=CLOSED")).body.items).toEqual([]);
 
     // 열어 보면 새 답변이 줄어든다
     await detail(s.owner.cookie, a);
@@ -94,6 +94,40 @@ describe("목록: 상태·분류 필터, 건수, 마지막 답변", () => {
     expect((await list(s.staff.cookie)).body.counts).toEqual({ all: 0, open: 0, answered: 0, closed: 0 });
     const other = await shop();
     expect((await list(other.owner.cookie)).body).toMatchObject({ items: [], counts: { all: 0 }, newReplyCount: 0 });
+  });
+
+  it("문의 종류는 SA-114 여덟 가지만 새로 보낼 수 있고(예전 BILLING 등은 400), 예전 문의는 필터로 볼 수 있다. 제목은 80자까지", async () => {
+    const s = await shop();
+    for (const category of ["BROADCAST", "PAYMENT_LINK", "ORDER_REFUND", "REWARD", "SUBSCRIPTION_FEE", "SHOP", "ACCOUNT", "OTHER"]) {
+      expect((await create(s.owner.cookie, { ...NEW, category })).status).toBe(201);
+    }
+    expect((await create(s.owner.cookie, { ...NEW, category: "BILLING" })).body.error).toBe("invalid_category");
+    expect((await create(s.owner.cookie, { ...NEW, title: "가".repeat(81) })).body.error).toBe("invalid_title");
+    expect((await create(s.owner.cookie, { ...NEW, title: "가".repeat(80) })).status).toBe(201);
+    await db.platformInquiry.create({ data: { sellerId: s.seller.id, createdBySellerUserId: s.owner.id, category: "BILLING", title: "예전 문의" } });
+    expect((await list(s.owner.cookie, "?category=BILLING")).body.items.map((x: { title: string }) => x.title)).toEqual(["예전 문의"]);
+  });
+
+  it("긴급 표시는 별도 값(기본 false, boolean만), 담당 상태는 답변 전 PREPARING·답변 후 ASSIGNED·종료 null이며 이름은 없다. 평균 첫 답변 분은 답변이 생기면 숫자", async () => {
+    const s = await shop();
+    const cs = await csCookie();
+    expect((await list(s.owner.cookie)).body.avgFirstReplyMinutes).toBeNull();
+    expect((await create(s.owner.cookie, { ...NEW, urgent: "yes" })).body.error).toBe("invalid_urgent");
+    const normal = (await create(s.owner.cookie)).body.inquiry;
+    const urgent = (await create(s.owner.cookie, { ...NEW, urgent: true })).body.inquiry;
+    expect(normal.urgent).toBe(false);
+    expect(urgent.urgent).toBe(true);
+    const items = (await list(s.owner.cookie)).body.items as { id: string; urgent: boolean; handlerState: string | null }[];
+    expect(items.find((x) => x.id === urgent.id)).toMatchObject({ urgent: true, handlerState: "PREPARING" });
+    await db.platformInquiry.update({ where: { id: urgent.id }, data: { createdAt: new Date(Date.now() - 60 * 60_000) } });
+    expect((await reply(cs, urgent.id, { body: "확인했습니다", expectedVersion: 0 })).status).toBe(200);
+    const after = await list(s.owner.cookie);
+    expect(after.body.items.find((x: { id: string }) => x.id === urgent.id)).toMatchObject({ handlerState: "ASSIGNED" });
+    expect(JSON.stringify(after.body)).not.toMatch(/adminId|adminName/);
+    expect(after.body.avgFirstReplyMinutes).toBeGreaterThanOrEqual(59);
+    expect((await detail(s.owner.cookie, urgent.id)).body.inquiry).toMatchObject({ urgent: true, handlerState: "ASSIGNED" });
+    expect((await closeIt(s.owner.cookie, urgent.id)).status).toBe(200);
+    expect((await detail(s.owner.cookie, urgent.id)).body.inquiry.handlerState).toBeNull();
   });
 
   it("필터와 커서를 함께 써도 20건씩 빠짐·겹침 없이 이어진다", async () => {

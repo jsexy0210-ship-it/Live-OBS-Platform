@@ -7,9 +7,11 @@ import { POST as undoRoute } from "../../app/api/admin/sellers/[sellerId]/approv
 import { POST as remindRoute } from "../../app/api/admin/sellers/[sellerId]/remind/route";
 import { POST as supplementRoute } from "../../app/api/admin/sellers/[sellerId]/supplement/route";
 import { POST as resolveRoute } from "../../app/api/admin/sellers/[sellerId]/supplement/resolve/route";
-import { createAdminSession } from "../../lib/server/auth/session";
+import { createAdminSession, resolveAdminSession } from "../../lib/server/auth/session";
 import { prisma } from "../../lib/server/db";
-import { rejectExpiredSupplements, remindSupplement, undoApproval } from "../../lib/server/sellers/applications";
+import { rejectExpiredSupplements, remindSupplement, recheckBusiness, undoApproval } from "../../lib/server/sellers/applications";
+import { FakeBusinessStatusProvider } from "../../lib/server/sellers/businessCheck";
+import { POST as recheckRoute } from "../../app/api/admin/sellers/[sellerId]/recheck/route";
 import { FakeMailSender } from "../../lib/server/mail/registry";
 import { createAdmin, createSeller, createSellerUser, db, resetDb, seedPlans } from "./helpers";
 
@@ -48,7 +50,7 @@ async function pending(over: { name?: string; reasons?: string[]; ageHours?: num
       shopName: over.name ?? seller.shopName,
       reviewReasons: over.reasons ?? [],
       createdAt: new Date(Date.now() - (over.ageHours ?? 1) * HOUR),
-      businessInfo: { representativeName: over.rep ?? "홍길동", businessNumber: over.biz ?? "123-45-67890", industry: over.industry ?? "TCG 브레이크" },
+      businessInfo: { representativeName: over.rep ?? "홍길동", businessNumber: over.biz ?? "123-45-67890", openedOn: "20200101", industry: over.industry ?? "TCG 브레이크" },
     },
   });
   return { seller, owner };
@@ -83,6 +85,14 @@ describe("가입 신청 목록 GET /api/admin/sellers/applications", () => {
     const by = new Map<string, any>(r.body.applications.map((a: any) => [a.shopName, a]));
     expect(by.get("확인필요몰")).toMatchObject({ state: "REVIEW", applicantName: "김철수", applicantEmail: "kim@example.com", businessNumber: "111-22-33333", over48h: true, reasons: [{ code: "business_not_active", text: "사업자 상태가 휴업 또는 폐업입니다" }], supplement: null });
     expect(by.get("이상없음몰")).toMatchObject({ state: "CLEAR", industry: "굿즈 라이브", over48h: false, reasons: [] });
+    // 점검 항목별 결과(검토 패널): 휴업 사유는 국세청 사업자 상태만 FAIL, 나머지는 통과
+    expect(by.get("확인필요몰")?.checks).toEqual([
+      { key: "identity", label: "휴대폰 본인확인 (대표자)", result: "OK", text: "완료" },
+      { key: "duplicate", label: "대표자 · 사업자 중복", result: "OK", text: "없음" },
+      { key: "business_status", label: "국세청 사업자 상태", result: "FAIL", text: "휴업 · 폐업" },
+      { key: "mail_order", label: "통신판매업 신고번호", result: "OK", text: "확인됨" },
+    ]);
+    expect(by.get("이상없음몰")?.checks.every((c: { result: string }) => c.result === "OK")).toBe(true);
     expect(by.get("보완몰")).toMatchObject({ state: "SUPPLEMENT", over48h: false, supplement: { reason: "사업자등록증 사진이 흐립니다", daysLeft: 7, reminderCount: 0 } });
 
     const ids = async (qs: string) => (await list(cookie, qs)).body.applications.map((a: any) => a.shopName);
@@ -308,5 +318,34 @@ describe("보완 기한 자동 반려(정기 작업)·선택 반려·재촉 3번
     const other = await admin("SUPER_ADMIN");
     const otherSession = (await resolveAdminSession(db, other.cookie.replace("lo_admin=", "")))!;
     expect(await undoApproval(prisma, otherSession, s.seller.id)).toMatchObject({ ok: false, reason: "not_undoable" });
+  });
+});
+
+describe("국세청 다시 조회 POST /api/admin/sellers/{id}/recheck", () => {
+  const opsCtx = async () => {
+    const a = await createAdmin("OPERATIONS");
+    return (await resolveAdminSession(db, (await createAdminSession(db, a.id, {})).token))!;
+  };
+  it("사업자 관련 사유만 새 결과로 바꾸고(통신판매업 사유는 유지) 결과를 저장·기록한다", async () => {
+    const ctx = await opsCtx();
+    const s = await pending({ reasons: ["business_lookup_failed", "mail_order_number_invalid"] });
+    const r = await recheckBusiness(db, ctx, s.seller.id, { provider: new FakeBusinessStatusProvider("test") });
+    expect(r).toMatchObject({ ok: true, lookupOk: true });
+    const after = await db.seller.findUniqueOrThrow({ where: { id: s.seller.id } });
+    expect(after.reviewReasons).toEqual(["mail_order_number_invalid"]);
+    expect((after.businessInfo as Record<string, unknown>).businessStatus).toBe("ACTIVE");
+    const logs = await db.auditLog.findMany({ where: { targetId: s.seller.id, action: { startsWith: "admin.seller.business_recheck" } } });
+    expect(logs.map((l) => l.action).sort()).toEqual(["admin.seller.business_recheck", "admin.seller.business_recheck_result"]);
+  });
+  it("조회가 안 되면 조회 실패 사유가 남는다. 30초 안 연속 호출은 막히고, 조회 전용은 403, 잘못된 id는 404", async () => {
+    const ctx = await opsCtx();
+    const s = await pending({ reasons: [], biz: "111-22-33333" });
+    const provider = new FakeBusinessStatusProvider("test");
+    provider.fail("1112233333");
+    expect(await recheckBusiness(db, ctx, s.seller.id, { provider })).toMatchObject({ ok: true, lookupOk: false });
+    expect((await db.seller.findUniqueOrThrow({ where: { id: s.seller.id } })).reviewReasons).toEqual(["business_lookup_failed"]);
+    expect(await recheckBusiness(db, ctx, s.seller.id, { provider })).toMatchObject({ ok: false, reason: "recheck_too_soon" });
+    expect((await post(recheckRoute, (await admin("READ_ONLY")).cookie, s.seller.id)).status).toBe(403);
+    expect((await post(recheckRoute, (await admin("OPERATIONS")).cookie, "not-a-uuid")).status).toBe(404);
   });
 });

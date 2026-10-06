@@ -169,3 +169,13 @@ export async function setOptionPriceDeltaInDb(slug: string, productName: string,
     await db.$disconnect();
   }
 }
+
+// 주문 내역 e2e: 만든 주문을 취소한 상태로 바꾼다(다시 담기 버튼 확인용)
+export async function markOrderCancelledInDb(orderId: string) {
+  const db = open();
+  try {
+    await db.order.update({ where: { id: orderId }, data: { status: "CANCELLED", cancelledAt: new Date() } });
+  } finally {
+    await db.$disconnect();
+  }
+}
