@@ -33,6 +33,7 @@ export async function getAdminSeller(db: PrismaClient, admin: AdminSessionContex
       trialEndsAt: true,
       serviceEndedAt: true,
       createdAt: true,
+      approvedBy: { select: { id: true, name: true } },
       plan: { select: { code: true, name: true } },
       users: { where: { isOwner: true }, select: { name: true, email: true, status: true, lastLoginAt: true }, take: 1 },
       subscription: {
@@ -66,15 +67,30 @@ export async function getAdminSeller(db: PrismaClient, admin: AdminSessionContex
   });
   const now = await dbNow(db);
   const since = new Date(now.getTime() - 30 * DAY_MS);
-  const [orders, paid, lastOrder] = await Promise.all([
+  const [orders, paid, lastOrder, openInquiries, assignedInquiry, noteCount] = await Promise.all([
     db.order.count({ where: { sellerId, createdAt: { gte: since } } }),
     db.order.aggregate({ where: { sellerId, paidAt: { gte: since } }, _count: true, _sum: { totalAmount: true, refundAmount: true } }),
     db.order.findFirst({ where: { sellerId }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+    // MA-012 머리: 아직 닫히지 않은 문의 수, 담당 CS(닫히지 않은 문의 중 담당이 정해진 가장 최근 문의의 담당자), 메모 수
+    db.platformInquiry.count({ where: { sellerId, status: { not: "CLOSED" } } }),
+    db.platformInquiry.findFirst({
+      where: { sellerId, status: { not: "CLOSED" }, assignedAdminId: { not: null } },
+      orderBy: [{ lastMessageAt: "desc" }, { id: "desc" }],
+      select: { assignedAdminId: true },
+    }),
+    db.sellerAdminNote.count({ where: { sellerId } }),
   ]);
-  const { users, subscription, ...rest } = s;
+  const assignedCs = assignedInquiry?.assignedAdminId
+    ? await db.platformAdmin.findUnique({ where: { id: assignedInquiry.assignedAdminId }, select: { id: true, name: true } })
+    : null;
+  const { users, subscription, approvedBy, ...rest } = s;
   return {
     ...rest,
     owner: users[0] ?? null,
+    approvedBy,
+    assignedCs,
+    openInquiryCount: openInquiries,
+    noteCount,
     subscription: subscription
       ? {
           ...subscription,
