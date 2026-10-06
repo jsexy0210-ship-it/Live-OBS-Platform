@@ -3881,6 +3881,33 @@ model PlatformMaintenance {
   updatedAt        DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
 }
 
+// 점검 예약·이력(MA-083). 예약 여러 건과 지난 점검(즉시 켬·예약·취소)의 정본. 위 PlatformMaintenance 한 줄은 프록시가 읽는 「지금 상태」 사본이라, 창이 바뀔 때마다 같은 트랜잭션에서
+// 열려 있는(SCHEDULED) 창 중 시작이 가장 이른 것으로 맞춘다. SCHEDULED여도 startsAt이 지났으면 점검 중이다. 종료 예정(endsAt)은 안내용이고 저절로 끝나지 않는다(점검 종료 버튼).
+// endedAt은 실제 종료·취소 시각, affectedBroadcasts는 종료 때 센 「점검 시간과 겹친 방송 수」다.
+enum MaintenanceWindowStatus {
+  SCHEDULED
+  ENDED
+  CANCELED
+}
+
+model PlatformMaintenanceWindow {
+  id                 String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  message            String
+  reason             String
+  startsAt           DateTime                @db.Timestamptz(3)
+  endsAt             DateTime?               @db.Timestamptz(3)
+  immediate          Boolean                 @default(false)
+  status             MaintenanceWindowStatus @default(SCHEDULED)
+  createdByAdminId   String?                 @db.Uuid
+  createdAt          DateTime                @default(now()) @db.Timestamptz(3)
+  endedAt            DateTime?               @db.Timestamptz(3)
+  endedByAdminId     String?                 @db.Uuid
+  affectedBroadcasts Int?
+
+  @@index([status, startsAt])
+  @@index([endedAt(sort: Desc), id(sort: Desc)])
+}
+
 // ───────────── 파트너스 도우미(SA-140 · MA-055 · MA-084, Gemini) ─────────────
 // 설정은 한 행(id=1). 행이 없으면 꺼짐. 모델 이름·단가는 마스터 관리자가 공식 문서를 보고 넣는다(코드에 고정하지 않음).
 // 비용 단위는 1/1000원(milliWon). 단가는 100만 토큰당 원(= 토큰당 마이크로원)이라 비용(milliWon) = 토큰 × 단가 ÷ 1000(올림).

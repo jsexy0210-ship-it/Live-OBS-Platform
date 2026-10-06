@@ -4,6 +4,7 @@ import type { AdminSessionContext } from "../auth/session";
 import { forbidden } from "../authz/errors";
 import { adminCan } from "../authz/permissions";
 import { cleanText } from "../text/clean";
+import { closeWindow } from "./windowsCore";
 
 // 점검 모드(마스터 MA-083 · 점검 중 화면 AU-010). 규칙:
 // - 보기는 마스터 관리자 모든 역할(platform.read), 바꾸기는 최고관리자만(system.manage, ARCHITECTURE 3.2 「시스템 설정·점검 모드」). 바꿀 때마다 로그 추적에 전후.
@@ -103,7 +104,8 @@ export async function updateMaintenance(db: PrismaClient, admin: AdminSessionCon
   const startsAt = parseTime(b.startsAt);
   const endsAt = parseTime(b.endsAt);
   if (startsAt === undefined || endsAt === undefined) return { ok: false as const, reason: "invalid_time" as const };
-  if (endsAt && endsAt <= (startsAt ?? new Date())) return { ok: false as const, reason: "invalid_time" as const };
+  const now = new Date();
+  if (endsAt && endsAt <= (startsAt ?? now)) return { ok: false as const, reason: "invalid_time" as const };
   const r = await db.$transaction(async (tx) => {
     // 줄이 없을 때만 만든다(마이그레이션이 넣어 두지만 지워졌을 때). 동시 변경은 아래 FOR UPDATE가 막는다.
     if (!(await tx.platformMaintenance.findUnique({ where: { id: 1 }, select: { id: true } }))) {
@@ -114,6 +116,14 @@ export async function updateMaintenance(db: PrismaClient, admin: AdminSessionCon
     // version 조건을 함께 걸어, 잠금과 상관없이 같은 version으로 두 번 바뀌지 않게 한다
     const done = await tx.platformMaintenance.updateMany({ where: { id: 1, version: cur.version }, data: { enabled, message, startsAt, endsAt, updatedByAdminId: admin.admin.id, version: { increment: 1 } } });
     if (done.count !== 1) return { ok: false as const, reason: "version_conflict" as const, currentVersion: cur.version + 1 };
+    // 예약·이력 창을 같은 상태로 맞춘다(MA-083): 열려 있던 창은 닫고(시작 전이면 취소, 시작했으면 종료), 켜는 경우 새 창 1건을 남긴다. 사본(위 줄)은 이미 이 값이다.
+    for (const w of await tx.platformMaintenanceWindow.findMany({ where: { status: "SCHEDULED" }, select: { id: true, startsAt: true } })) {
+      await closeWindow(tx, w, w.startsAt <= now ? "ENDED" : "CANCELED", admin.admin.id, now);
+    }
+    if (enabled) {
+      const reason = cleanText(b.reason, 200, "memo") || "점검 모드 설정";
+      await tx.platformMaintenanceWindow.create({ data: { message, reason, startsAt: startsAt ?? now, endsAt, immediate: !startsAt, createdByAdminId: admin.admin.id } });
+    }
     const row = await tx.platformMaintenance.findUniqueOrThrow({ where: { id: 1 } });
     const pick = (x: Row) => ({ enabled: x.enabled, message: x.message, startsAt: x.startsAt, endsAt: x.endsAt });
     await writeAudit(tx, {
