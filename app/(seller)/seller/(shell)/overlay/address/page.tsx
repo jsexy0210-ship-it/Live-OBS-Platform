@@ -145,7 +145,7 @@ export default function OverlayPage() {
                         미연결
                       </span>
                     ) : null}{" "}
-                    주소는 만들 때 한 번만 보입니다. 다시 보려면 새로 만들어 주십시오(이전 주소는 바로 쓸 수 없게 됩니다).
+                    주소는 만들 때 한 번만 보입니다. 다시 보려면 새로 만들어 주십시오(이전 주소는 바로 쓸 수 없게 됩니다)
                     {info?.issuedAt ? ` · 발급 ${formatDate(info.issuedAt)}` : ""}
                     {info?.lastAccessAt ? ` · 마지막 접속 ${ago(info.lastAccessAt)}${info.lastClient ? ` (${info.lastClient})` : ""}` : ""}
                   </span>
