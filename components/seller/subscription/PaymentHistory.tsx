@@ -1,3 +1,4 @@
+import { formatDate, formatDateTime } from "../../../lib/client/format";
 import { won } from "../format";
 
 // SA-090 청구 내역(최근 24건, 서버가 최신 순으로 준다). 영수증 주소는 http(s)일 때만 링크로 연다.
@@ -14,12 +15,11 @@ export type Payment = {
 
 const STATUS: Record<Payment["status"], { label: string; cls: string }> = {
   PAID: { label: "결제 완료", cls: "b-done" },
-  PENDING: { label: "확인 중", cls: "b-wait" },
+  PENDING: { label: "결제 확인 중", cls: "b-wait" },
   FAILED: { label: "결제 실패", cls: "b-fail" },
 };
 
-const DAY = (iso: string | null) =>
-  iso ? new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso)) : "-";
+const DAY = (iso: string | null) => (iso ? formatDate(iso, "-") : "-");
 
 const safeUrl = (u: string | null) => (u && /^https?:\/\//i.test(u) ? u : null);
 
@@ -38,8 +38,8 @@ export function PaymentHistory({ payments }: { payments: Payment[] }) {
           <table className="tbl sub-tbl">
             <thead>
               <tr>
-                <th>청구일</th>
-                <th>이용 기간</th>
+                <th>결제일</th>
+                <th>이용한 기간</th>
                 <th>금액</th>
                 <th>상태</th>
                 <th>영수증</th>
@@ -50,7 +50,7 @@ export function PaymentHistory({ payments }: { payments: Payment[] }) {
                 const url = safeUrl(p.receiptUrl);
                 return (
                   <tr key={p.id} data-testid="sub-payment">
-                    <td className="num">{DAY(p.paidAt ?? p.createdAt)}</td>
+                    <td className="num">{formatDateTime(p.paidAt ?? p.createdAt, "-")}</td>
                     <td className="num">{p.periodStart ? `${DAY(p.periodStart)} ~ ${DAY(p.periodEnd)}` : "-"}</td>
                     <td className="num">{won(p.amount)}</td>
                     <td>
@@ -59,7 +59,7 @@ export function PaymentHistory({ payments }: { payments: Payment[] }) {
                     <td>
                       {url ? (
                         <a href={url} target="_blank" rel="noopener noreferrer">
-                          보기
+                          영수증 보기
                         </a>
                       ) : (
                         <span className="c-alt">-</span>

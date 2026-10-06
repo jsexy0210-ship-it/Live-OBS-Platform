@@ -4,13 +4,14 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useConfirm } from "../admin-ui/ConfirmDialog";
 import MyMenu from "./MyMenu";
-import { ProductCard, type ProductCardData } from "./ProductCard";
+import { ProductCard, ProductGrid, type ProductCardData } from "./ProductCard";
+import { readRecent } from "./RecentProducts";
 import { call } from "./reviewShared";
 import ShopModal from "./ShopModal";
 import "./Cart.css";
 import "./MyMenu.css";
 
-// SH-034 찜(시안 04 SH). 로그인 구매자 전용 API(/api/shop/{slug}/wishlist)로 목록·빼기. 「담기·바로 구매」는 상품 상세·옵션 API가 생기면, 「최근 본 상품」은 그 API가 생기면 붙인다.
+// SH-034 찜(시안 04 SH). 로그인 구매자 전용 API(/api/shop/{slug}/wishlist)로 목록·빼기. 「담기·바로 구매」는 상품 상세·옵션 API가 생기면, 「최근 본 상품」은 상품 상세가 이 기기에 남긴 목록(RecentProducts)을 탭으로 보여 준다.
 type Item = { productId: string; name: string; price: number; listPrice: number; status: "on_sale" | "sold_out" | "unavailable"; wishedAt: string };
 type View = { kind: "loading" } | { kind: "login" } | { kind: "error" } | { kind: "ok"; items: Item[] };
 
@@ -24,6 +25,10 @@ export default function WishlistView({ slug }: { slug: string }) {
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string; undo?: string[] } | null>(null);
+  const [tab, setTab] = useState<"wish" | "recent">("wish");
+  // 최근 본 상품은 이 기기 localStorage(상품 상세가 남김, 서버 값 없음)
+  const [recent, setRecent] = useState<ProductCardData[]>([]);
+  useEffect(() => setRecent(readRecent(slug)), [slug]);
 
   const load = useCallback(async () => {
     const r = await call<{ items: Item[] }>(api);
@@ -100,9 +105,6 @@ export default function WishlistView({ slug }: { slug: string }) {
       </div>
     ) : (
       <>
-        <h2 className="wl-tab">
-          찜 <span>{items.length}</span>
-        </h2>
         {msgEl}
         <ul className="pc-grid" aria-label="찜한 상품">
           {items.map((i) => (
@@ -130,11 +132,42 @@ export default function WishlistView({ slug }: { slug: string }) {
   return (
     <div className="shop-wrap cart-wrap">
       <div className="cart-head">
-        <h1>찜</h1>
+        <h1>찜 · 최근 본 상품</h1>
       </div>
       <div className="my-wrap">
         <MyMenu slug={slug} />
-        <div>{body}</div>
+        <div>
+          {view.kind === "ok" && (
+            <div className="tabs wl-tabs" role="tablist">
+              {(
+                [
+                  ["wish", "찜", items.length],
+                  ["recent", "최근 본 상품", recent.length],
+                ] as const
+              ).map(([k, label, n]) => (
+                <button key={k} className={`tab${tab === k ? " on" : ""}`} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>
+                  {label}
+                  <span className="cnt">{n}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {view.kind === "ok" && tab === "recent" ? (
+            recent.length === 0 ? (
+              <div className="cart-empty">
+                <h2>최근 본 상품이 없어요</h2>
+                <p>상품을 둘러보면 이곳에 모여요.</p>
+                <Link className="btn" href={`${base}/products`}>
+                  상품 보러 가기
+                </Link>
+              </div>
+            ) : (
+              <ProductGrid products={recent} label="최근 본 상품" hrefBase={`${base}/products`} />
+            )
+          ) : (
+            body
+          )}
+        </div>
       </div>
       {confirming && (
         <ShopModal
