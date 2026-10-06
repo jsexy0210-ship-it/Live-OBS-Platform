@@ -27,6 +27,7 @@ export default function MyMenu({ slug }: { slug: string }) {
     {
       title: "활동",
       links: [
+        { href: `${base}/me/inquiries`, label: "내 문의" },
         { href: `${base}/reviews`, label: "내 리뷰" },
         { href: `${base}/wishlist`, label: "찜" },
       ],
