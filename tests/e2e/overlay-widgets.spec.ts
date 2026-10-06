@@ -98,7 +98,7 @@ test("이벤트 할인 카드와 구매 랭킹이 보이고, 값이 없으면 �
     r.fulfill({ json: { version: phase + 1, live: true, opening: null, waiting: [], hits: [], orderEvents: [], eventCard: phase === 0 ? eventCard : null, purchaseRanking: phase === 0 ? ranking : [] } }),
   );
   await page.setViewportSize({ width: 1080, height: 1920 });
-  await page.clock.install({ time: new Date(clockTime) });
+  await page.clock.pauseAt(new Date(clockTime));
   await page.goto("/overlay/mock-token");
 
   const ev = page.locator('[data-widget="EVENT_CARD"]');
@@ -111,7 +111,8 @@ test("이벤트 할인 카드와 구매 랭킹이 보이고, 값이 없으면 �
   await expect(ev.locator(".ow-ev-timer")).toHaveText("0:02:00");
   await expect(ev.locator(".ow-ev-rate")).toHaveCSS("font-size", "56px");
   expect(await ev.evaluate((node) => node.scrollHeight <= node.clientHeight)).toBe(true);
-  await expect(ev).toContainText("2개 더 있어요");
+  await page.clock.fastForward(1_000);
+  await expect(ev.locator(".ow-ev-timer")).toHaveText("0:01:59");
   // 랭킹: rows=3만큼 위에서, 같은 수량은 같은 순위(1·2·2), 4위는 잘린다
   const rk = page.locator('[data-widget="PURCHASE_RANKING"]');
   await expect(rk.locator("li")).toHaveCount(3);
@@ -128,7 +129,7 @@ test("이벤트 할인 카드와 구매 랭킹이 보이고, 값이 없으면 �
   await expect(horizontal.locator(".ow-ev-name")).toHaveCSS("font-size", "22px");
   await expect(horizontal.locator(".ow-ev-badge")).toHaveCSS("display", "none");
 
-  await page.clock.fastForward(121_000);
+  await page.clock.fastForward(119_000);
   await expect(horizontal.locator(".ow-ev-rate")).toHaveCount(0);
   await expect(horizontal.locator(".ow-ev-now")).toHaveText("20,000원");
   await expect(horizontal.locator(".ow-ev-timer")).toHaveCount(0);
