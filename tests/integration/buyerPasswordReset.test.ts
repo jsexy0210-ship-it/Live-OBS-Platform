@@ -120,6 +120,7 @@ describe("구매자 비밀번호 재설정 확인", () => {
   it("30분이 지나면 만료, 약한 비밀번호·엉뚱한 토큰·다른 쇼핑몰은 거부", async () => {
     const s = await issue();
     expect(await confirmBuyerPasswordReset(db, { sellerId: s.seller.id, token: s.token, password: "short" })).toEqual({ ok: false, reason: "weak_password" });
+    for (const weak of ["onlyletters", "1234567890"]) expect(await confirmBuyerPasswordReset(db, { sellerId: s.seller.id, token: s.token, password: weak })).toEqual({ ok: false, reason: "weak_password" });
     expect(await confirmBuyerPasswordReset(db, { sellerId: s.seller.id, token: "nope", password: NEW })).toEqual({ ok: false, reason: "token_invalid" });
     const other = await createSeller();
     expect(await confirmBuyerPasswordReset(db, { sellerId: other.seller.id, token: s.token, password: NEW })).toEqual({ ok: false, reason: "token_invalid" });
