@@ -10,6 +10,7 @@ import { POST as checkRoute } from "../../app/api/automation/check/route";
 import { GET as adminJobsRoute } from "../../app/api/automation/admin/jobs/route";
 import { GET as adminJobRoute } from "../../app/api/automation/admin/jobs/[jobId]/route";
 import { POST as cleanupCloseRoute } from "../../app/api/automation/admin/jobs/[jobId]/cleanup/route";
+import { adminJobDetail } from "../../lib/server/automation/admin";
 import { loginAdmin, loginSeller } from "../../lib/server/auth/login";
 import { budgetOpen, recordExternalCost } from "../../lib/server/automation/budget";
 import { AUTOMATION_CONSENT, AUTOMATION_PRICE, REINSTALL_PRICE } from "../../lib/server/automation/config";
@@ -110,8 +111,9 @@ async function bought(provider = new FakeBillingProvider()) {
 }
 
 const job = (id: string) => db.automationJob.findUniqueOrThrow({ where: { id } });
+// 상태가 바뀐 기록만(단계 완료 한 줄 step_done은 제외)
 const statuses = async (jobId: string) =>
-  (await db.automationJobEvent.findMany({ where: { jobId }, orderBy: { createdAt: "asc" } })).map((e) => `${e.fromStatus ?? "-"}>${e.toStatus}`);
+  (await db.automationJobEvent.findMany({ where: { jobId }, orderBy: { createdAt: "asc" } })).filter((e) => (e.detail as { reason?: unknown } | null)?.reason !== "step_done").map((e) => `${e.fromStatus ?? "-"}>${e.toStatus}`);
 
 async function cookieFor(email: string) {
   const r = await loginSeller(db, { email, password: PASSWORD }, {});
@@ -139,6 +141,9 @@ describe("자동 연결 결제와 실행 권한", () => {
     // 화면이 작업서와 맞아 판단 모델을 부르지 않았다(비용 0)
     expect(j).toMatchObject({ costUsed: 0, plannerCalls: 0, costLimit: 3000, playbookId: "cafe24" });
     expect(await statuses(jobId)).toEqual(["->AWAITING_PAYMENT", "AWAITING_PAYMENT>QUEUED", "QUEUED>RUNNING", "RUNNING>VERIFYING", "VERIFYING>SUCCEEDED"]);
+    // 단계를 끝낼 때마다 「N단계 완료」 한 줄(검증 단계 앞의 4단계)
+    const stepRows = (await db.automationJobEvent.findMany({ where: { jobId }, orderBy: { createdAt: "asc" } })).filter((e) => (e.detail as { reason?: unknown } | null)?.reason === "step_done");
+    expect(stepRows.map((e) => (e.detail as { stepIndex: number }).stepIndex)).toEqual([0, 1, 2, 3]);
     expect((await db.automationPayment.findFirstOrThrow()).status).toBe("PAID");
   });
 
@@ -4217,6 +4222,12 @@ describe("잠시 멈추기·이어 하기·작업 기록 시각표(SA-152)", () 
     expect(kinds).toEqual(expect.arrayContaining(["paused", "continued", "started", "verifying", "succeeded"]));
     expect(kinds.indexOf("paused")).toBeLessThan(kinds.indexOf("continued"));
     expect(kinds.indexOf("continued")).toBeLessThan(kinds.indexOf("succeeded"));
+    // 단계별 행: 끝낸 단계마다 step_done 한 줄(stepNumber=끝낸 단계, 1부터 오름차순), 관리자 상태 기록에는 섞이지 않는다
+    const done = body.timeline.filter((t: { kind: string }) => t.kind === "step_done").map((t: { stepNumber: number }) => t.stepNumber);
+    expect(done.length).toBeGreaterThan(0);
+    expect(done).toEqual([...done].sort((x: number, y: number) => x - y));
+    expect(new Set(done).size).toBe(done.length);
+    expect((await adminJobDetail(db, a.jobId))!.events).toHaveLength((await db.automationJobEvent.count({ where: { jobId: a.jobId } })) - done.length);
     for (const t of body.timeline) expect(Object.keys(t).sort()).toEqual(["at", "kind", "reason", "stepNumber"]);
     expect(JSON.stringify(body.timeline)).not.toMatch(/workerId|w1|by"/);
     const b = await bought();
