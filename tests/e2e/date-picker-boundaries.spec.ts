@@ -46,6 +46,16 @@ test("scroll anchor offscreen closes floating calendar",async({page})=>{
   await page.evaluate(()=>window.scrollTo(0,350));
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
+test("scrolling clipping ancestor hides anchor and closes portal inside viewport",async({page})=>{
+  await page.setViewportSize({width:1440,height:900});
+  await page.getByTestId("clip").evaluate(el=>{
+    el.style.overflow="auto";
+    const spacer=document.createElement("div");spacer.style.height="500px";el.appendChild(spacer);
+  });
+  await page.getByLabel("날짜",{exact:true}).click();
+  await page.getByTestId("clip").evaluate(el=>{el.scrollTop=50;});
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
 test("keyboard Enter opens, Down enters, arrows move, Escape restores",async({page})=>{
   const field=page.getByLabel("날짜",{exact:true});
   await field.focus();await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -96,4 +106,11 @@ test("parent modal focus remains usable and first Escape only closes calendar",a
   await page.keyboard.press("Tab");expect(await page.evaluate(()=>!!document.activeElement?.closest(".dt-pop"))).toBe(true);
   await page.keyboard.press("Escape");await expect(page.getByRole("dialog",{name:"날짜 모달",exact:true})).toBeVisible();await expect(field).toBeFocused();
   await page.keyboard.press("Escape");await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+test("Tab from modal date input enters calendar without parent focus trap",async({page})=>{
+  await page.getByRole("button",{name:"모달 열기",exact:true}).click();
+  const field=page.getByLabel("모달 날짜",{exact:true});
+  await field.click();await field.press("Tab");
+  await expect(page.getByRole("button",{name:"2026.10.06",exact:true})).toBeFocused();
+  expect(await page.evaluate(()=>!!document.activeElement?.closest(".dt-pop"))).toBe(true);
 });

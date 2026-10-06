@@ -139,14 +139,29 @@ function Popover({ anchor, onClose, children, label, id }: { anchor: React.RefOb
       const topEdge = vp?.offsetTop ?? 0;
       const width = vp?.width ?? window.innerWidth;
       const height = vp?.height ?? window.innerHeight;
+      let visibleLeft = leftEdge, visibleTop = topEdge, visibleRight = leftEdge + width, visibleBottom = topEdge + height;
+      // body portal이 조상 스크롤 영역에서 사라진 입력에 붙은 채 남지 않도록
+      // viewport와 각 clipping ancestor의 실제 내부 영역을 교차한다.
+      for (let parent = el.parentElement; parent; parent = parent.parentElement) {
+        const style = getComputedStyle(parent);
+        const clipped = /^(auto|scroll|hidden|clip)$/;
+        const pr = parent.getBoundingClientRect();
+        if (clipped.test(style.overflowX)) {
+          visibleLeft = Math.max(visibleLeft, pr.left + parent.clientLeft);
+          visibleRight = Math.min(visibleRight, pr.left + parent.clientLeft + parent.clientWidth);
+        }
+        if (clipped.test(style.overflowY)) {
+          visibleTop = Math.max(visibleTop, pr.top + parent.clientTop);
+          visibleBottom = Math.min(visibleBottom, pr.top + parent.clientTop + parent.clientHeight);
+        }
+      }
+      if (r.bottom <= visibleTop || r.top >= visibleBottom || r.right <= visibleLeft || r.left >= visibleRight) { onClose(); return; }
       const mobile = window.matchMedia("(max-width:767px)").matches;
       pop.style.maxHeight = `${Math.max(0, height - 16)}px`;
       if (mobile) {
         setPos({ top: topEdge + height - pop.offsetHeight, left: leftEdge });
         return;
       }
-      // Anchor가 스크롤 영역 밖으로 나가면 떠 있는 달력을 남기지 않는다.
-      if (r.bottom < topEdge || r.top > topEdge + height) { onClose(); return; }
       const w = pop.offsetWidth;
       const h = pop.offsetHeight;
       const left = Math.max(leftEdge + 8, Math.min(r.left, leftEdge + width - w - 8));
@@ -182,6 +197,13 @@ function Popover({ anchor, onClose, children, label, id }: { anchor: React.RefOb
         e.stopPropagation();
         onClose();
         opener.current?.focus();
+      }
+      // 입력 → portal 이동도 document capture에서 처리한다. 부모 모달의
+      // document Tab trap보다 먼저 옮겨야 portal 밖이라고 되돌리지 않는다.
+      if (e.key === "Tab" && !e.shiftKey && anchor.current?.contains(document.activeElement)) {
+        const target = box.current?.querySelector<HTMLElement>(".dt-day[tabindex='0']:not(:disabled),.dt-time-options button[aria-pressed='true']:not(:disabled)")
+          ?? Array.from(box.current?.querySelectorAll<HTMLElement>("button:not(:disabled),input:not(:disabled),select:not(:disabled)") ?? []).find((el) => el.getClientRects().length > 0);
+        if (target) { e.preventDefault(); e.stopPropagation(); target.focus(); }
       }
       // body portal이 부모 모달 밖에 있어도 모달의 Tab trap이 포커스를 빼앗지 않는다.
       if (e.key === "Tab" && box.current?.contains(document.activeElement)) {
