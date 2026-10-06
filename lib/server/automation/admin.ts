@@ -4,6 +4,7 @@ import type { AdminSessionContext } from "../auth/session";
 import { monthlyLimitWon } from "./budget";
 import { publicError } from "./jobs";
 import { STEPS } from "./steps";
+import { STEP_DONE_REASON } from "./queue";
 import { dbNow, lockJob, lockSellerAutomation, markRefundPending, quiescent, writeJobEvent } from "./queue";
 
 // 마스터 관리자(운영 역할 이상)가 사람이 정리를 마친 「정리 필요」 작업을 닫는다: CLEANUP_NEEDED → FAILED.
@@ -151,6 +152,6 @@ export async function adminJobDetail(db: PrismaClient, jobId: string) {
       ? { status: j.payment.status, amount: j.payment.amount, refundReason: j.payment.refundReason, refundRequestedAt: j.payment.refundRequestedAt, refundedAt: j.payment.refundedAt }
       : null,
     // 기록의 detail은 내부 값이 섞일 수 있어 내보내지 않고 상태 전이만 준다
-    events: events.map((e) => ({ id: e.id, from: e.fromStatus, to: e.toStatus, at: e.createdAt })),
+    events: events.filter((e) => (e.detail as { reason?: unknown } | null)?.reason !== STEP_DONE_REASON).map((e) => ({ id: e.id, from: e.fromStatus, to: e.toStatus, at: e.createdAt })),
   };
 }
