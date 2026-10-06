@@ -11,6 +11,7 @@ import { formatDateTime } from "../../../../../../../lib/client/format";
 import { AdminTopbar, useAdmin } from "../../../../_components/AdminShell";
 import { SELLER_STATUS, day, dayTime, reasonLabel, text, type ReviewRow, type SellerDetail } from "../../../../_components/partners";
 import { SupplementDialog } from "../../../../_components/SupplementDialog";
+import { LicenseValue, type License } from "../../../../_components/LicenseValue";
 import { RejectApplicationDialog } from "../../../../_components/RejectApplicationDialog";
 import { setFlash, takeFlash } from "../../../../_components/flash";
 import { useSmartBack } from "../../../../../../../lib/client/navigation";
@@ -20,7 +21,7 @@ import { useSmartBack } from "../../../../../../../lib/client/navigation";
 // 대기 중인 신청 순서(서버가 주는 오래 기다린 순)로 [이전] N/M [다음]을 보이고, 승인·반려한 뒤에는 목록으로 돌아가지 않고 다음 건으로 넘어간다(없으면 목록).
 // 신청 목록 응답(GET /api/admin/sellers/applications)이 주는 한 건: 자동 점검 항목별 결과·접수 경과·보완 요청 상태
 type Check = { key: string; label: string; result: "OK" | "WARN" | "FAIL" | "NONE"; text: string };
-type AppInfo = { id: string; over48h: boolean; elapsedHours: number; receivedAt: string; applicantName: string; applicantEmail: string; industry: string | null; checks: Check[]; checkedAt: string | null; supplement: { daysLeft: number; dueExpired: boolean } | null };
+type AppInfo = { id: string; over48h: boolean; elapsedHours: number; receivedAt: string; applicantName: string; applicantEmail: string; industry: string | null; checks: Check[]; checkedAt: string | null; supplement: { daysLeft: number; dueExpired: boolean } | null; license: License | null; businessAddress: string | null; channelUrl: string | null };
 type Note = { id: string; body: string; author: { name: string }; createdAt: string };
 const CHECK_CLS = { OK: "b-done", WARN: "b-warn", FAIL: "b-fail", NONE: "b-gray" } as const;
 type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; seller: SellerDetail; reasons: string[]; queue: string[]; app: AppInfo | null };
@@ -269,6 +270,7 @@ export default function ApplicationDetailPage() {
                     ["쇼핑몰 주소", s.slug],
                     ["상태", <span key="st" className={`bdg ${SELLER_STATUS[s.status].cls}`}>{SELLER_STATUS[s.status].label}</span>],
                     ...(state.kind === "ok" && state.app?.industry ? ([["업종", state.app.industry]] as [string, React.ReactNode][]) : []),
+                    ...(state.kind === "ok" && state.app?.channelUrl ? ([["방송 채널", state.app.channelUrl]] as [string, React.ReactNode][]) : []),
                     ["요금제", s.plan?.name ?? "-"],
                     ["신청일", dayTime(s.createdAt)],
                     ...(s.status === "REJECTED" ? ([["반려 사유", text(s.rejectedReason)], ["반려일", day(s.rejectedAt)]] as [string, React.ReactNode][]) : []),
@@ -293,12 +295,13 @@ export default function ApplicationDetailPage() {
                     ["대표자명", text(biz?.representativeName)],
                     ["개업일", text(biz?.openedOn)],
                     ["통신판매업 신고번호", text(biz?.mailOrderNumber)],
+                    ...(state.kind === "ok" && state.app?.businessAddress ? ([["사업장 주소", state.app.businessAddress]] as [string, React.ReactNode][]) : []),
                     ["국세청 확인", biz?.businessInfoValid === true ? "일치" : biz?.businessInfoValid === false ? "불일치" : "확인 못함"],
                     ["통신판매업 조회", text(biz?.mailOrderStatus)],
                     ["점검 시각", dayTime(typeof biz?.checkedAt === "string" ? biz.checkedAt : null)],
                   ]}
                 />
-                <Info title="제출 서류" id="application-docs" rows={[["사업자등록증", <span key="d" className="c-alt">준비 중</span>]]} />
+                <Info title="제출 서류" id="application-docs" rows={[["사업자등록증", state.kind === "ok" && state.app ? <LicenseValue key="d" license={state.app.license} /> : "-"]]} />
                 <section className="card pad-l col" style={{ gap: 10 }} aria-labelledby="application-memo">
                   <h2 className="t-hl1" id="application-memo">
                     내부 메모

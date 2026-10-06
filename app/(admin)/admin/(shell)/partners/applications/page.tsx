@@ -13,6 +13,7 @@ import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
 import { text } from "../../../_components/partners";
 import { RejectApplicationDialog } from "../../../_components/RejectApplicationDialog";
 import { SupplementDialog } from "../../../_components/SupplementDialog";
+import { LicenseValue, type License } from "../../../_components/LicenseValue";
 import { takeFlash } from "../../../_components/flash";
 import { listDefaults } from "../../../../../../lib/client/filterDefaults";
 import { useListFilters } from "../../../_components/useListFilters";
@@ -38,6 +39,9 @@ type App = {
   checks: { key: string; label: string; result: "OK" | "WARN" | "FAIL" | "NONE"; text: string }[];
   checkedAt: string | null;
   supplement: Supplement | null;
+  license: License | null;
+  businessAddress: string | null;
+  channelUrl: string | null;
 };
 type Row = App & { done?: "approved" | "rejected"; undoUntil?: number };
 type Kpi = { pending: number; needsReview: number; clear: number; supplement: number; over48h: number; receivedToday: number; approvedToday: number; autoApprovedToday: number; rejectedToday: number; avgHandlingHours: { thisWeek: number | null; lastWeek: number | null } };
@@ -175,7 +179,9 @@ function ReviewPanel({ row, pos, total, busy, canModerate, onNav, onClose, onApp
           </div>
           <div className="row" style={{ gap: 8 }}>
             <dt className="c-alt" style={{ width: 70 }}>등록증</dt>
-            <dd className="c-alt" style={{ margin: 0 }}>준비 중</dd>
+            <dd style={{ margin: 0 }}>
+              <LicenseValue license={row.license} />
+            </dd>
           </div>
           <div className="row" style={{ gap: 8 }}>
             <dt className="c-alt" style={{ width: 70 }}>신청자</dt>
