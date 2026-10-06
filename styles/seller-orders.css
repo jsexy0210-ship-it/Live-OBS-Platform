@@ -1,7 +1,8 @@
 /* SA-021 주문 목록 · SA-022 주문 상세 · SA-023 환불 모달 */
 .ord-toolbar {
-  padding: 14px 20px;
-  box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative);
+  padding: var(--ui-sp-8) 0;
+  gap: var(--ui-gap-btn);
+  flex-wrap: wrap;
   position: relative;
 }
 .ord-search {
@@ -16,9 +17,9 @@
 }
 .ord-menu {
   position: absolute;
-  left: 0;
-  top: 40px;
-  width: 220px;
+  right: 0;
+  top: calc(100% + var(--ui-sp-8));
+  width: 288px;
   z-index: 4;
 }
 .ord-menu-i {
@@ -187,16 +188,37 @@
   justify-content: center;
 }
 
-/* SA-021 상태 칩 줄(정본 SA-021-OPS): 칩 · 건수 안내 · 오른쪽 「상세 검색」 */
+/* SA-021 상태 칩: 검색·목록 머리와 데이터 표 외곽은 각각 독립합니다. */
 .ord-chips {
   flex-wrap: wrap;
 }
-.ord-chips .ord-count-note {
-  margin-left: 8px;
-}
-.ord-chips .ord-detail-btn {
-  margin-left: auto;
-}
 .ord-tbl2 td.date {
   white-space: nowrap;
+}
+
+.ord-filters {
+  position: relative;
+  overflow: visible;
+}
+.ord-row-actions {
+  gap: var(--ui-gap-btn);
+  justify-content: center;
+  flex-wrap: nowrap;
+}
+@media (max-width: 767px) {
+  .ord-list-page .ord-toolbar .chip {
+    min-height: var(--ui-h-touch);
+  }
+  .ord-list-page .ord-menu-wrap {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .ord-list-page .ord-menu {
+    left: 0;
+    right: auto;
+    width: min(288px, 100%);
+  }
+  .ord-list-page .ord-menu-i {
+    min-height: var(--ui-h-touch);
+  }
 }

@@ -4,7 +4,7 @@ import { formatDateTime } from "../../../../../../lib/client/format";
 import "../../../../../../styles/seller-orders.css";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ListHead, Modal, PageHead } from "../../../../../../components/admin-ui";
+import { ListHead, ListTable, Modal, PageHead } from "../../../../../../components/admin-ui";
 import { useScrollRestore } from "../../../../../../lib/client/navigation";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
@@ -108,18 +108,17 @@ export default function DepositsPage() {
   return (
     <>
       <Topbar crumb="주문 › 입금 확인" />
-      <main className="main">
+      <main className="main ord-list-page">
         <PageHead
           title="입금 확인"
+          description="통장 내역과 입금자명 · 금액이 같은지 확인한 뒤 「입금 확인」을 누릅니다. 확인하면 방송 주문대기(개봉할 순서 목록)에 올라갑니다."
           actions={
             <Link className="btn btn-out btn-level-secondary" href="/seller/settings/order">
               주문 설정
             </Link>
           }
         />
-        <span className="t-c1 c-alt">통장 내역과 입금자명 · 금액이 같은지 확인한 뒤 「입금 확인」을 누릅니다. 확인하면 방송 주문대기(개봉할 순서 목록)에 올라갑니다.</span>
 
-        <div className="card" style={{ overflow: "visible" }}>
           {state.kind === "ok" && (
             <ListHead
               total={state.total}
@@ -145,7 +144,7 @@ export default function DepositsPage() {
             </div>
           )}
           {state.kind === "ok" && rows.length > 0 && (
-            <div className="au-lt-wrap">
+            <ListTable className="ord-data-grid" aria-label="입금 대기 목록">
               <table className="tbl">
                 <thead>
                   <tr>
@@ -178,7 +177,7 @@ export default function DepositsPage() {
                         {showName && <td>{o.depositorName ?? "-"}</td>}
                         <td className="num">{won(o.amount)}</td>
                         <td>{o.paymentMethod === "BANK_TRANSFER" ? "무통장 입금" : o.paymentMethod === "CARD" ? "카드" : "선택 전"}</td>
-                        <td className="num">{o.paymentDueAt ? formatDateTime(o.paymentDueAt) : "-"}</td>
+                        <td className="num" data-card="wide">{o.paymentDueAt ? formatDateTime(o.paymentDueAt) : "-"}</td>
                         <td>{left.urgent ? <b style={{ color: "var(--neg, #c0262c)" }}>{left.text}</b> : left.text}</td>
                         <td>
                           <button className="btn btn-sm btn-w-sm" type="button" onClick={() => setConfirm([o])}>
@@ -190,7 +189,7 @@ export default function DepositsPage() {
                   })}
                 </tbody>
               </table>
-            </div>
+            </ListTable>
           )}
           {state.kind === "ok" && state.rows.length < state.total && (
             <div className="row dep-more">
@@ -199,7 +198,6 @@ export default function DepositsPage() {
               </button>
             </div>
           )}
-        </div>
       </main>
 
       {confirm && (

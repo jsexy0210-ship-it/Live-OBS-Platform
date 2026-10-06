@@ -5,15 +5,15 @@ import "../../../../../styles/seller-orders.css";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
-import { PageHead } from "../../../../../components/admin-ui";
+import { ListHead, ListTable, PageHead } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
 import { MAX_SEARCH_LENGTH, won } from "../../../../../components/seller/format";
-import { STATUS_BADGE, itemSummaryText, kstDaysAgo, payBadge, type OrderRow, type OrderStatus } from "../../../../../components/seller/orders";
+import { STATUS_BADGE, itemSummaryText, kstDaysAgo, type OrderRow, type OrderStatus } from "../../../../../components/seller/orders";
 
 // SA-021 판매자 주문 목록. 결제 상태·기간·검색으로 걸러 보고, 20건씩 이어서 불러온다(GET /api/seller/orders).
-// 환불할 수 있는 주문(refundable)만 「환불 처리」 버튼이 있고, 발송 여부(shipped)는 「배송」 열에 따로 보인다.
+// 상태별 관리 링크와 결제·발송·환불 요청 표시는 #990 구현을 유지합니다.
 const PAGE = 20;
 const SEARCH_DELAY_MS = 300;
 const STATUSES: OrderStatus[] = ["PENDING_PAYMENT", "PAID", "CANCELLED", "REFUNDED"];
@@ -170,49 +170,44 @@ export default function OrderListPage() {
     return u.status === c.status && u.shipped === c.shipped && (k === "today" ? period === "today" : true);
   };
   const items = state.kind === "ok" ? state.items : [];
-  const countText = state.kind === "ok" ? (state.next ? `${items.length}건 넘게` : `${items.length}건`) : "";
   const periodLabel = PERIODS.find((p) => p.key === period)?.label;
 
   return (
     <>
       <Topbar crumb="판매 › 주문" />
-      <main className="main">
+      <main className="main ord-list-page">
         <PageHead
           title="전체 주문"
+          description="결제·배송 상태로 주문을 찾고 입금 확인·송장 입력·환불 처리를 진행합니다."
           back={false}
           actions={
             <>
-              <Link className="btn btn-out" href="/seller/orders/deposits">
+              <Link className="btn btn-out btn-level-secondary" href="/seller/orders/deposits">
                 입금 확인
               </Link>
-              <Link className="btn btn-out" href="/seller/shipping">
+              <Link className="btn btn-out btn-level-secondary" href="/seller/shipping">
                 배송
               </Link>
             </>
           }
         />
 
-        <div className="card" style={{ overflow: "visible" }}>
+        <section className="ord-filters" aria-label="주문 조건">
           <div className="toolbar ord-toolbar ord-chips" role="group" aria-label="주문 상태">
             {CHIPS.map((c) => (
               <button key={c.key} type="button" className={`chip${chipOn(c.key) ? " on" : ""}`} aria-pressed={chipOn(c.key)} onClick={() => setU(c.set)}>
                 {c.label}
               </button>
             ))}
-            <span className="ord-count-note c-alt t-l2" aria-live="polite">
-              {filtered && state.kind === "ok" ? `결과 ${countText}` : countText}
-            </span>
-            <button type="button" className="btn btn-dense btn-out ord-detail-btn" aria-expanded={detailOpen} onClick={() => setDetailOpen((v) => !v)}>
-              {detailOpen ? "상세 검색 접기" : "상세 검색 펼치기"}
-            </button>
           </div>
           {detailOpen && (
-          <div className="toolbar ord-toolbar">
+          <div id="order-detail-filters" className="toolbar ord-toolbar">
             <div className="search ord-search">
               <input
                 className="inp inp-sm"
                 type="search"
-                placeholder="닉네임 · 주문번호"
+                placeholder="검색어 입력"
+                title="닉네임 · 주문번호로 검색"
                 aria-label="주문 검색"
                 value={search}
                 maxLength={MAX_SEARCH_LENGTH}
@@ -232,11 +227,11 @@ export default function OrderListPage() {
               </button>
             )}
             <div className="ord-menu-wrap">
-              <button type="button" className={`chip${statuses.length ? " on" : ""}`} aria-haspopup="true" aria-expanded={menuOpen} onClick={openMenu}>
+              <button type="button" className={`chip${statuses.length ? " on" : ""}`} aria-haspopup="true" aria-expanded={menuOpen} aria-controls="order-payment-filter" onClick={openMenu}>
                 상태: {statusText} {menuOpen ? "▴" : "▾"}
               </button>
               {menuOpen && (
-                <div className="menu ord-menu" role="group" aria-label="결제 상태">
+                <div id="order-payment-filter" className="menu ord-menu" role="group" aria-label="결제 상태">
                   <span className="menu-h">결제 상태</span>
                   <label className="ord-menu-i">
                     <input className="cbx" type="checkbox" checked={draft.length === 0 || draft.length === STATUSES.length} onChange={() => setDraft([])} />
@@ -255,10 +250,10 @@ export default function OrderListPage() {
                   ))}
                   <hr className="divider" style={{ margin: "4px 0" }} />
                   <div className="row ord-menu-f">
-                    <button className="btn btn-dense btn-out btn-w-sm" type="button" onClick={() => setDraft([])}>
+                    <button className="btn btn-dense btn-out btn-w-lg" type="button" onClick={() => setDraft([])}>
                       초기화
                     </button>
-                    <button className="btn btn-dense btn-w-sm" type="button" onClick={applyMenu}>
+                    <button className="btn btn-dense btn-w-lg" type="button" onClick={applyMenu}>
                       이 상태로 보기
                     </button>
                   </div>
@@ -272,6 +267,15 @@ export default function OrderListPage() {
             )}
           </div>
           )}
+
+        </section>
+        {state.kind === "ok" && (
+          <ListHead total={items.length} loaded actions={
+            <button type="button" className="btn btn-dense btn-out btn-w-xl" aria-expanded={detailOpen} aria-controls="order-detail-filters" onClick={() => setDetailOpen(v => !v)}>
+              {detailOpen ? "상세 검색 접기" : "상세 검색 펼치기"}
+            </button>
+          } />
+        )}
 
           {state.kind === "loading" && <LoadingRows rows={5} />}
           {state.kind === "error" &&
@@ -305,7 +309,7 @@ export default function OrderListPage() {
             </div>
           )}
           {state.kind === "ok" && items.length > 0 && (
-            <div className="ord-scroll">
+            <ListTable className="ord-data-grid" aria-label="주문 목록">
               <table className="tbl tbl-card ord-tbl2" data-testid="orders-table">
                 <thead>
                   <tr>
@@ -345,13 +349,13 @@ export default function OrderListPage() {
                           <span className={`bdg ${stage.cls}`}>{stage.label}</span>
                         </td>
                         <td data-card="actions">
-                          <span className="row" style={{ gap: 4, justifyContent: "flex-end", flexWrap: "nowrap" }}>
+                          <span className="row ord-row-actions">
                             {act && (
-                              <Link className={`btn btn-sm${act.neg ? " btn-out" : ""}`} style={act.neg ? { color: "var(--neg-text)" } : undefined} href={act.href}>
+                              <Link className={`btn btn-sm btn-w-sm${act.neg ? " btn-out" : ""}`} style={act.neg ? { color: "var(--neg-text)" } : undefined} href={act.href}>
                                 {act.label}
                               </Link>
                             )}
-                            <Link className="btn btn-sm btn-out" href={`/seller/orders/${o.id}`}>
+                            <Link className="btn btn-sm btn-out btn-w-sm" href={`/seller/orders/${o.id}`}>
                               상세
                             </Link>
                           </span>
@@ -361,7 +365,7 @@ export default function OrderListPage() {
                   })}
                 </tbody>
               </table>
-            </div>
+            </ListTable>
           )}
           {state.kind === "ok" && state.next && (
             <div className="row ord-more">
@@ -370,7 +374,6 @@ export default function OrderListPage() {
               </button>
             </div>
           )}
-        </div>
       </main>
       {toast && <Toast text={toast} neg onDone={() => setToast(null)} />}
     </>
