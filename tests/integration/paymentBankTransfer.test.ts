@@ -146,6 +146,8 @@ describe("판매자 입금 대기·입금 확인", () => {
     const overdue = await create({ paymentDueAt: now });
     const paid = await create({ status: "PAID", paidAt: start, createdAt: end });
     const cancelled = await create({ status: "CANCELLED", autoCancelledAt: end });
+    await create({ status: "CANCELLED", autoCancelledAt: end, paymentMethod: "CARD" });
+    await create({ status: "CANCELLED", autoCancelledAt: end, paymentMethod: null });
     await create({ status: "CANCELLED", autoCancelledAt: null }); // 수동 취소 제외
     await create({ status: "PAID", paidAt: now, paymentMethod: "CARD" });
     await create({ status: "PAID", paidAt: now, legalHoldAt: now });

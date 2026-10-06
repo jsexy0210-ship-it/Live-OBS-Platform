@@ -164,7 +164,7 @@ export async function listPendingDeposits(db: PrismaClient, ctx: TenantContext, 
     PENDING_PAYMENT: { ...pending, OR: [{ paymentDueAt: null }, { paymentDueAt: { gt: now } }] },
     OVERDUE: { ...pending, paymentDueAt: { lte: now } },
     PAID: { paymentMethod: "BANK_TRANSFER", paidAt: { not: null }, status: { in: ["PAID", "REFUNDED"] } },
-    AUTO_CANCELLED: { status: "CANCELLED", autoCancelledAt: { not: null } },
+    AUTO_CANCELLED: { paymentMethod: "BANK_TRANSFER", status: "CANCELLED", autoCancelledAt: { not: null } },
   };
   // 무옵션 호출은 기존의 모든 입금 대기를 그대로 반환한다. 이력은 실제 무통장 결제만 포함한다.
   const scope: Prisma.OrderWhereInput = statuses === undefined ? pending : {

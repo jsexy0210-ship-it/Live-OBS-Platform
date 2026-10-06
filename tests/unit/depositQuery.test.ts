@@ -37,6 +37,7 @@ describe("SA026 읽기 계약", () => {
     } });
     for (const [call] of f.order.count.mock.calls) expect(call.where).toMatchObject({ sellerId: ctx.sellerId, legalHoldAt: null });
     expect(f.order.count.mock.calls[2][0].where.paidAt).toEqual({ gte: new Date("2026-10-05T15:00:00Z"), lt: new Date("2026-10-06T15:00:00Z") });
+    expect(f.order.count.mock.calls[4][0].where.AND[0]).toMatchObject({ paymentMethod: "BANK_TRANSFER", status: "CANCELLED", autoCancelledAt: { not: null } });
   });
   it("생략한 상태는 기존 대기 필터이고 표시 상태/요약만 추가된다", async () => {
     const f = fixture();
