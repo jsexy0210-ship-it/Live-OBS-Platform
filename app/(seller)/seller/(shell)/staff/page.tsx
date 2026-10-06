@@ -108,6 +108,19 @@ export default function StaffPage() {
             </h1>
             <span className="t-l2 c-alt">직원 계정을 직접 만들고, 직원이 할 수 있는 업무를 정합니다. 직원은 파트너스 로그인으로 들어와 허용된 메뉴만 씁니다.</span>
           </div>
+          {me.isOwner && state.kind === "ok" && (
+            <button
+              className="btn"
+              type="button"
+              onClick={() => {
+                const f = document.getElementById("sa-name");
+                f?.scrollIntoView({ block: "center" });
+                f?.focus();
+              }}
+            >
+              직원 추가
+            </button>
+          )}
         </div>
 
         {!me.isOwner ? (
@@ -123,7 +136,7 @@ export default function StaffPage() {
             {state.kind === "error" && (state.status === 402 ? <Locked /> : <ErrorState title="직원 목록을 불러오지 못했습니다" onRetry={() => void load()} />)}
           </div>
         ) : (
-          <div className="staff-grid">
+          <div className="col" style={{ gap: 16, minWidth: 0 }}>
             <div className="col" style={{ gap: 16, minWidth: 0 }}>
               {stale && (
                 <div className="msg msg-cau row between" role="status" data-testid="staff-stale" style={{ gap: 8, flexWrap: "wrap" }}>
@@ -138,7 +151,7 @@ export default function StaffPage() {
                   <thead>
                     <tr>
                       <th>이름 · 이메일</th>
-                      <th>허용한 업무</th>
+                      <th>켜진 권한</th>
                       <th>상태</th>
                       <th>마지막 로그인</th>
                       <th aria-label="관리" />
@@ -191,13 +204,13 @@ export default function StaffPage() {
                             {!off && (
                               <>
                               <button className="btn btn-sm btn-out" type="button" onClick={() => setModal({ kind: "edit", staff: s })} aria-label={`${s.name} 정보·업무 수정`}>
-                                수정
+                                권한
                               </button>
                               <button className="btn btn-sm btn-out" type="button" onClick={() => setModal({ kind: "password", staff: s })} aria-label={`${s.name} 비밀번호 바꾸기`}>
-                                비밀번호 바꾸기
+                                비밀번호 재설정
                               </button>
                               <button className="btn btn-sm btn-out" type="button" onClick={() => setModal({ kind: "disable", staff: s })} aria-label={`${s.name} 직원 계정 사용 중지`}>
-                                사용 중지
+                                비활성화
                               </button>
                               </>
                             )}
@@ -210,7 +223,7 @@ export default function StaffPage() {
                 {staff.length === 0 && (
                   <div className="st" style={{ boxShadow: "none" }}>
                     <span className="t">등록된 직원이 없습니다</span>
-                    <span className="s">방송을 도와줄 직원이 필요하면 오른쪽에서 추가해 주십시오</span>
+                    <span className="s">방송을 도와줄 직원이 필요하면 아래에서 추가해 주십시오</span>
                   </div>
                 )}
               </div>
@@ -405,6 +418,7 @@ function AddStaff({ onAdded, onChanged }: { onAdded: (name: string) => void; onC
           </div>
         )
       )}
+      <div className="staff-add-grid">
       {field("name", "이름", <input {...inputProps("name")} value={name} onChange={(e) => setName(e.target.value)} />)}
       {field(
         "phone",
@@ -423,8 +437,9 @@ function AddStaff({ onAdded, onChanged }: { onAdded: (name: string) => void; onC
         <SecretInput {...inputProps("password")} maxLength={200} value={password} onChange={(e) => setPassword(e.target.value)} />,
         `${MIN_PASSWORD_LENGTH}자 이상으로 정해 직원에게 직접 전달해 주십시오`,
       )}
+      </div>
       <PermissionPicker value={perms} onChange={setPerms} disabled={locked} />
-      <button className={`btn btn-lg btn-block${busy ? " is-loading" : ""}`} type="submit" disabled={locked}>
+      <button className={`btn${busy ? " is-loading" : ""}`} type="submit" disabled={locked} style={{ alignSelf: "flex-start" }}>
         {busy ? "만드는 중" : "직원 계정 만들기"}
       </button>
     </form>

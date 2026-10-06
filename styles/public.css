@@ -30,6 +30,23 @@
 .pf-card p{margin:0;line-height:1.6}
 .pf-plans{display:flex;flex-wrap:wrap;gap:16px;margin-bottom:24px}
 .pf-plan{display:flex;flex-direction:column;gap:6px;padding:28px;min-width:280px}
+.pf-pricing{padding:72px 64px 80px;text-align:center}
+.pf-pricing>p{margin:8px 0 36px}
+.pf-pricing .pf-plans{justify-content:center;gap:24px;margin:0 auto}
+.pf-pricing .pf-plan{padding:32px;gap:14px;text-align:left}
+.pf-pricing .pf-plan .pf-check{padding-left:0;list-style:none;gap:var(--ui-sp-8)}
+.pf-pricing .pf-plan .pf-check li{display:flex;gap:8px}
+.pf-pricing .pf-plan .pf-check li::before{content:"✓";color:var(--pos-text);font-weight:700;flex:none}
+.pf-price{display:flex;flex-wrap:wrap;gap:0 6px;align-items:baseline}
+.pf-pricing .pf-extra{margin:20px auto 0;text-align:left}
+.pf-faq-c{margin:56px auto 0;max-width:860px;text-align:left}
+@media (max-width:760px){.pf-pricing{padding:40px 20px}.pf-pricing .pf-plan{padding:24px}}
+.pf-plan-rec{box-shadow:inset 0 0 0 2px var(--brand)}
+.pf-extra{max-width:980px;display:flex;flex-direction:column;gap:12px;margin-top:20px}
+.pf-auto{padding:20px 24px;gap:16px;align-items:center;flex-wrap:wrap}
+.pf-auto-t{flex:1;min-width:260px;gap:2px}
+.pf-auto-p{align-items:flex-end;gap:0}
+.pf-auto-n{width:100%}
 .pf-strike{text-decoration:line-through}
 .pf-faq{max-width:860px;display:flex;flex-direction:column;margin-top:36px}
 .pf-faq details{padding:18px 0;box-shadow:inset 0 -1px 0 var(--wds-line-normal-alternative)}
@@ -114,3 +131,12 @@ body:has(.pf){margin:0}
 .pf-su-h2{font-size:14px;line-height:20px;letter-spacing:.0145em;font-weight:700;margin:4px 0 0}
 }
 .pf-su-card>.pa-fs{gap:20px}
+
+.pf-faq-c summary{display:flex;justify-content:space-between;align-items:center;list-style:none}
+.pf-faq-c summary::-webkit-details-marker{display:none}
+.pf-faq-c summary::after{content:"+";color:var(--wds-label-alternative,#888)}
+.pf-faq-c details[open]>summary::after{content:"−"}
+.pf-pricing .pf-plan .pf-check{gap:var(--ui-sp-16)}
+.pf-pricing .pf-plan .pf-check li{align-items:center}
+.pf-pricing .pf-plan .pf-check li::before{font-size:16px}
+.pf-pricing .pf-plan .pf-brand{margin-bottom:var(--ui-sp-4)}

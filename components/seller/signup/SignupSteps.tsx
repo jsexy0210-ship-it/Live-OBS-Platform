@@ -74,7 +74,7 @@ export function TermsStep() {
   return (
     <StepCard title="약관 동의">
       <fieldset className="col pa-fs pa-terms" aria-describedby={consentError ? "su-terms-err" : undefined}>
-        <label className="chk pa-terms-all">
+        <label className="chk pa-terms-all t-hl2">
           <input
             id="su-terms-all"
             type="checkbox"
