@@ -184,7 +184,9 @@ select.inp[multiple]{padding-right:var(--ui-sp-12);background-image:none}
 /* (대표님 지시 2026-10-06, DS-PANEL ⑤ .acts2) 버튼은 한 줄·가운데·간격 8px. 줄바꿈·겹침 없음. 버튼이 칸에 바로 둘 이상이면 .acts2 없이도 같은 규칙 */
 .cell-actions,.acts2{display:flex;justify-content:center;align-items:center;gap:var(--ui-sp-8);flex-wrap:nowrap}
 .tbl td:has(>.btn~.btn){white-space:nowrap}.tbl td>.btn~.btn{margin-left:var(--ui-sp-8)}.tbl td>.btn{vertical-align:middle}
-.tbl td.num,.tbl td.r{white-space:nowrap}.tbl tr.sel td{background:var(--info-bg)}.tbl tr.faded td{color:var(--wds-label-assistive)}
+/* 말줄임(대표님 지시 2026-10-06): 긴 글 칸에 .ell을 붙이면 한 줄 + …(칸 최대 폭 --ell-max, 기본 280px). 잘렸을 때만 마우스 올리면 전체 글(useEllipsisTitle). 숫자·날짜 열은 줄바꿈 금지 */
+.tbl td.ell{max-width:var(--ell-max,280px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tbl td.num,.tbl td.r,.tbl td.date{white-space:nowrap}.tbl tr.sel td{background:var(--info-bg)}.tbl tr.faded td{color:var(--wds-label-assistive)}
 .tbl-compact td{padding:var(--ui-sp-8) var(--ui-sp-12);height:var(--ui-row-compact)}
 .kv{display:grid;grid-template-columns:140px 1fr;gap:var(--ui-sp-12) var(--ui-sp-16);font-size:var(--ui-fs-body)}.kv>dt{color:var(--wds-label-alternative);margin:0}.kv>dd{margin:0}
 /* 탭·세그먼트·칩·페이지 이동·드롭다운 */
