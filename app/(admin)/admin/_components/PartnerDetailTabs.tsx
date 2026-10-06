@@ -7,7 +7,7 @@ import { Pagination } from "../../../../components/admin-ui/ListTable";
 import { SearchBox, SearchRow } from "../../../../components/admin-ui/SearchBox";
 import { ErrorState, LoadingRows } from "../../../../components/seller/States";
 import { adminApi } from "./api";
-import { SUBSCRIPTION_STATUS, day, dayTime, won, type SellerDetail } from "./partners";
+import { SELLER_STATUS, SUBSCRIPTION_STATUS, day, dayTime, won, type SellerDetail } from "./partners";
 import { SummaryStrip } from "./SummaryStrip";
 
 // 파트너스 상세(MA-012)의 구독·주문 현황·쇼핑몰 탭. 모두 마스터 관리자 전 역할이 읽는 읽기 전용이고, 서버가 주는 값만 보인다.
@@ -563,5 +563,47 @@ export function PartnerShopTab({ sellerId }: { sellerId: string }) {
         </div>
       </Two>
     </div>
+  );
+}
+
+// 기본정보 탭(MA-012-1): 정본 2열 — 왼쪽 사업자 정보 · 담당자, 오른쪽 계정 상태 · 도메인. 서버 응답(GET /api/admin/sellers/{id})에 있는 값만 보인다.
+// 업태·주소·서류·연락처·직원 수·마케팅 수신·정지 이력·내부 태그·비밀번호 재설정은 응답에 없어 아직 넣지 않았다(UI_STATUS 남은 차이).
+export function PartnerInfoTab({ seller: s }: { seller: SellerDetail }) {
+  const biz = s.businessInfo ?? null;
+  const st = SELLER_STATUS[s.status];
+  return (
+    <Two>
+      <div className="col" style={{ gap: 20 }}>
+        <FormSection title="사업자 정보" actions={biz?.businessInfoValid === true ? <span className="bdg b-done">확인됨</span> : undefined}>
+          <FormRow label="상호">{text(biz?.companyName as string | null)}</FormRow>
+          <FormRow label="대표자">{text(biz?.representativeName as string | null)}</FormRow>
+          <FormRow label="사업자등록번호">{text(biz?.businessNumber as string | null)}</FormRow>
+          <FormRow label="개업일">{text(biz?.openedOn as string | null)}</FormRow>
+          <FormRow label="통신판매업">{text(biz?.mailOrderNumber as string | null)}</FormRow>
+        </FormSection>
+        <FormSection title="담당자 · 연락처">
+          <FormRow label="이름">{s.owner?.name ?? "-"}</FormRow>
+          <FormRow label="로그인 이메일">{s.owner?.email ?? "-"}</FormRow>
+        </FormSection>
+      </div>
+      <div className="col" style={{ gap: 20 }}>
+        <FormSection title="계정 상태">
+          <FormRow label="상태">
+            <span className={`bdg ${st.cls}`}>{st.label}</span>
+          </FormRow>
+          {s.status === "SUSPENDED" && <FormRow label="정지 사유">{text(s.suspendedReason)}</FormRow>}
+          {s.status === "REJECTED" && <FormRow label="반려 사유">{`${text(s.rejectedReason)} · ${day(s.rejectedAt)}`}</FormRow>}
+          <FormRow label="요금제">{s.plan?.name ?? "-"}</FormRow>
+          <FormRow label="가입 신청">{`${day(s.createdAt)} · 승인 ${day(s.approvedAt)}${s.approvedBy ? ` (${s.approvedBy.name})` : ""}`}</FormRow>
+          <FormRow label="체험 종료">{day(s.trialEndsAt)}</FormRow>
+          <FormRow label="서비스 종료일">{day(s.serviceEndedAt)}</FormRow>
+          <FormRow label="계정 상태">{({ ACTIVE: "이용 중", SUSPENDED: "정지" } as Record<string, string>)[s.owner?.status ?? ""] ?? s.owner?.status ?? "-"}</FormRow>
+          <FormRow label="마지막 로그인">{dayTime(s.owner?.lastLoginAt ?? null)}</FormRow>
+        </FormSection>
+        <FormSection title="도메인">
+          <FormRow label="쇼핑몰 주소">{s.slug}</FormRow>
+        </FormSection>
+      </div>
+    </Two>
   );
 }
