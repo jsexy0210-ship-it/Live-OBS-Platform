@@ -537,7 +537,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
               <path d="M4 7h16M4 12h16M4 17h16" />
             </svg>
           </button>
-          <Link className="logo gnb-logo" href="/seller/products">
+          <Link className="logo gnb-logo" href="/seller">
             <span className="logo-sym" />
             <span className="logo-word" />
             <span className="gnb-sub">파트너스</span>
