@@ -16,6 +16,7 @@ import {
   devicesText,
   errorText,
   fromKstInput,
+  kstText,
   linkLooksOk,
   periodText,
   previewLink,
@@ -33,7 +34,8 @@ import {
 // API: /api/seller/shop-content/popups.
 
 type Kind = "IMAGE" | "TEXT" | "BAR";
-type Target = "HOME" | "ALL";
+type Target = "HOME" | "ALL" | "PRODUCT" | "CART_ORDER" | "SIGNUP_DONE";
+type Position = "CENTER" | "BOTTOM_SHEET" | "BOTTOM_RIGHT";
 type Popup = {
   id: string;
   kind: Kind;
@@ -45,12 +47,17 @@ type Popup = {
   startsAt: string | null;
   endsAt: string | null;
   target: Target;
+  position: Position;
   showOnPc: boolean;
   showOnMobile: boolean;
   dismissDays: number;
+  endsAtBroadcastStart: boolean;
+  hideDuringLive: boolean;
   isActive: boolean;
   sortOrder: number;
   status: ContentStatus;
+  stats: { impressions: number; closes: number; clicks: number };
+  closeRate: number | null;
 };
 type Draft = {
   id: string | null;
@@ -63,9 +70,12 @@ type Draft = {
   startsAt: string;
   endsAt: string;
   target: Target;
+  position: Position;
   showOnPc: boolean;
   showOnMobile: boolean;
   dismissDays: number;
+  endsAtBroadcastStart: boolean;
+  hideDuringLive: boolean;
   isActive: boolean;
 };
 
@@ -78,6 +88,14 @@ const KINDS: { key: Kind; label: string; desc: string }[] = [
 const TARGETS: { key: Target; label: string }[] = [
   { key: "HOME", label: "홈" },
   { key: "ALL", label: "전체 페이지" },
+  { key: "PRODUCT", label: "상품 상세" },
+  { key: "CART_ORDER", label: "장바구니 · 주문서" },
+  { key: "SIGNUP_DONE", label: "회원가입 완료" },
+];
+const POSITIONS: { key: Position; label: string }[] = [
+  { key: "CENTER", label: "가운데" },
+  { key: "BOTTOM_SHEET", label: "하단 시트 (모바일)" },
+  { key: "BOTTOM_RIGHT", label: "오른쪽 아래" },
 ];
 const DISMISS: { v: number; label: string }[] = [
   { v: 1, label: "오늘 하루 보지 않기" },
@@ -95,9 +113,12 @@ const empty: Draft = {
   startsAt: "",
   endsAt: "",
   target: "HOME",
+  position: "CENTER",
   showOnPc: true,
   showOnMobile: true,
   dismissDays: 1,
+  endsAtBroadcastStart: false,
+  hideDuringLive: false,
   isActive: true,
 };
 const toDraft = (p: Popup): Draft => ({
@@ -109,19 +130,22 @@ const toDraft = (p: Popup): Draft => ({
   endsAt: toKstInput(p.endsAt),
 });
 const kindText = (k: Kind) => KINDS.find((x) => x.key === k)!;
+const kindCell = (p: Popup) => (p.kind === "BAR" ? `${kindText(p.kind).label} · ${kindText(p.kind).desc}` : `${kindText(p.kind).label} · ${POSITIONS.find((x) => x.key === p.position)?.label ?? "가운데"}`);
+const targetText = (t: Target) => TARGETS.find((x) => x.key === t)?.label ?? "홈";
+const reactionCell = (p: Popup) => (p.stats.impressions === 0 ? "—" : p.closeRate === null ? p.stats.impressions.toLocaleString("ko-KR") : `${p.stats.impressions.toLocaleString("ko-KR")} · 닫기 ${p.closeRate}%`);
 
 export default function PopupsPage() {
   const { can, me } = useSeller();
   const { confirm } = useConfirm();
   const editable = can("SHOP_SETTINGS");
-  const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number; error?: string } | { kind: "ok"; list: Popup[] }>({ kind: "loading" });
+  const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number; error?: string } | { kind: "ok"; list: Popup[]; paused: { on: boolean; at: string | null; by: string | null } }>({ kind: "loading" });
   const [draft, setDraft] = useState<Draft | null>(null);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
 
   const load = useCallback(async () => {
-    const r = await api<{ popups: Popup[] }>("/api/seller/shop-content/popups");
+    const r = await api<{ popups: Popup[]; popupsPaused: boolean; pausedAt: string | null; pausedByName: string | null }>("/api/seller/shop-content/popups");
     if (!r.ok) return setState({ kind: "error", status: r.status, error: r.error });
-    setState({ kind: "ok", list: r.data.popups });
+    setState({ kind: "ok", list: r.data.popups, paused: { on: r.data.popupsPaused, at: r.data.pausedAt, by: r.data.pausedByName } });
   }, []);
 
   useEffect(() => {
@@ -129,8 +153,8 @@ export default function PopupsPage() {
   }, [load]);
 
   const list = state.kind === "ok" ? state.list : [];
-  const { rowProps, move } = useSortable(list, async (next) => {
-    setState({ kind: "ok", list: next });
+  const { move } = useSortable(list, async (next) => {
+    setState((s) => (s.kind === "ok" ? { ...s, list: next } : s));
     const r = await api("/api/seller/shop-content/popups/reorder", { method: "PUT", body: { ids: next.map((p) => p.id) } });
     if (!r.ok) setToast({ text: errorText(r, "순서를 저장하지 못했습니다"), neg: true });
     else setToast({ text: "순서를 저장했습니다" });
@@ -153,6 +177,22 @@ export default function PopupsPage() {
     });
   };
 
+  // 모든 팝업 잠시 끄기·다시 켜기: 설정은 그대로 두고 구매자 화면에서만 숨긴다(서버가 기록)
+  const setPaused = async (paused: boolean) => {
+    await confirm({
+      title: paused ? "모든 팝업을 잠시 끄시겠습니까?" : "모든 팝업을 다시 켜시겠습니까?",
+      body: paused ? "게시 중 · 예약 팝업이 모두 숨겨집니다. 다시 켤 때까지 새 팝업도 표시되지 않습니다. 설정은 그대로 남습니다." : "게시 중인 팝업이 구매자 화면에 다시 표시됩니다.",
+      confirmLabel: paused ? "잠시 끄기" : "다시 켜기",
+      run: async () => {
+        const r = await api("/api/seller/shop-content/popups/pause", { method: "PUT", body: { paused } });
+        if (!r.ok) return errorText(r, "바꾸지 못했습니다. 잠시 뒤 다시 시도해 주십시오");
+        setToast({ text: paused ? "모든 팝업을 잠시 껐습니다" : "모든 팝업을 다시 켰습니다" });
+        await load();
+      },
+    });
+  };
+
+  const paused = state.kind === "ok" ? state.paused : null;
   const n = (s: ContentStatus) => list.filter((p) => p.status === s).length;
   const current = draft ? list.find((p) => p.id === draft.id) : undefined;
   const others = list.filter((p) => p.status === "live" && p.id !== draft?.id);
@@ -165,9 +205,16 @@ export default function PopupsPage() {
           title="이벤트 팝업"
           actions={
             state.kind === "ok" && editable ? (
-              <button className="btn" type="button" disabled={list.length >= LIMIT} onClick={() => setDraft(empty)}>
-                팝업 추가
-              </button>
+              <>
+                {!paused?.on && (
+                  <button className="btn btn-out" type="button" onClick={() => void setPaused(true)}>
+                    모든 팝업 잠시 끄기
+                  </button>
+                )}
+                <button className="btn" type="button" disabled={list.length >= LIMIT} onClick={() => setDraft(empty)}>
+                  팝업 추가
+                </button>
+              </>
             ) : undefined
           }
         />
@@ -176,6 +223,20 @@ export default function PopupsPage() {
             <span>
               <b>팝업은 {LIMIT}개까지 등록할 수 있습니다.</b> 종료된 팝업을 삭제하거나 기간을 조정해 주십시오.
             </span>
+          </div>
+        )}
+        {paused?.on && (
+          <div className="msg msg-cau" role="status" data-testid="popups-paused">
+            <span>
+              <b>모든 팝업이 꺼져 있습니다</b>
+              {paused.at && ` · ${kstText(paused.at)}`}
+              {paused.by && ` ${paused.by}`}
+            </span>
+            {editable && (
+              <button className="btn btn-sm" type="button" onClick={() => void setPaused(false)}>
+                다시 켜기
+              </button>
+            )}
           </div>
         )}
         {state.kind === "ok" && !editable && (
@@ -214,45 +275,50 @@ export default function PopupsPage() {
                 <thead>
                   <tr>
                     <th style={{ textAlign: "left" }}>팝업</th>
+                    <th style={{ width: 150 }}>순서</th>
                     <th style={{ width: 150 }}>형태</th>
-                    <th style={{ width: 100 }}>노출 페이지</th>
+                    <th style={{ width: 110 }}>노출 페이지</th>
                     <th style={{ width: 190 }}>기간</th>
                     <th style={{ width: 90 }}>기기</th>
+                    <th style={{ width: 120 }}>노출 · 반응</th>
                     <th style={{ width: 70 }}>상태</th>
                     {editable && <th style={{ width: 150 }}>관리</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {list.map((p, i) => (
-                    <tr key={p.id} {...rowProps(p.id, editable)} data-testid="popup-row" className={draft?.id === p.id ? "is-sel" : undefined}>
+                    <tr key={p.id} data-testid="popup-row" className={draft?.id === p.id ? "is-sel" : undefined}>
                       <td className="col-text">
-                        <span className="sc-ord">
-                          {editable && (
-                            <span className="sc-mv">
-                              <button type="button" aria-label={`${p.title} 위로`} disabled={i === 0} onClick={() => move(i, i - 1)}>
-                                ▲
-                              </button>
-                              <button type="button" aria-label={`${p.title} 아래로`} disabled={i === list.length - 1} onClick={() => move(i, i + 1)}>
-                                ▼
-                              </button>
-                            </span>
-                          )}
-                          <span className="c-alt" aria-hidden="true">
-                            <GripIcon />
-                          </span>
-                          <b className="ell">{p.title}</b>
-                        </span>
+                        <b className="ell">{p.title}</b>
                         <div className="t-c1 c-alt ell">{linkSummary(p.linkUrl)}</div>
                       </td>
                       <td>
-                        {kindText(p.kind).label} · {kindText(p.kind).desc}
+                        <div className="acts2" style={{ justifyContent: "center", alignItems: "center", gap: 6 }}>
+                          <b className="num" style={{ minWidth: 14 }}>
+                            {i + 1}
+                          </b>
+                          {editable && (
+                            <>
+                              <button className="btn btn-sm btn-out" type="button" aria-label={`${p.title} 위로`} disabled={i === 0} onClick={() => move(i, i - 1)}>
+                                ▲
+                              </button>
+                              <button className="btn btn-sm btn-out" type="button" aria-label={`${p.title} 아래로`} disabled={i === list.length - 1} onClick={() => move(i, i + 1)}>
+                                ▼
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </td>
-                      <td>{p.target === "HOME" ? "홈" : "전체 페이지"}</td>
+                      <td>{kindCell(p)}</td>
+                      <td>{targetText(p.target)}</td>
                       <td className="num" style={{ whiteSpace: "nowrap" }}>
                         {periodText(p.startsAt, p.endsAt)}
                         <div className="t-c1 c-alt">{DISMISS.find((d) => d.v === p.dismissDays)?.label}</div>
                       </td>
                       <td>{devicesText(p)}</td>
+                      <td className="num" style={{ textAlign: "right" }}>
+                        {reactionCell(p)}
+                      </td>
                       <td>
                         <StatusBadge status={p.status} />
                       </td>
@@ -307,7 +373,15 @@ export default function PopupsPage() {
                 <tbody>
                   <tr>
                     <th>동시 노출</th>
-                    <td>페이지당 1개 · 목록 순서 우선 · 상단 띠는 맨 위 1개만</td>
+                    <td>페이지당 1개 · 목록 순서 우선 · 순서는 목록의 ▲▼로 바꿉니다</td>
+                  </tr>
+                  <tr>
+                    <th>방송 중</th>
+                    <td>주문 흐름 보호 옵션을 켜면 미표시</td>
+                  </tr>
+                  <tr>
+                    <th>반응 집계</th>
+                    <td>노출 · 닫기 · 버튼 클릭 수</td>
                   </tr>
                   <tr>
                     <th>권한</th>
@@ -391,6 +465,9 @@ function PopupEditor({
           startsAt: fromKstInput(d.startsAt),
           endsAt: fromKstInput(d.endsAt),
           target: d.target,
+          position: d.kind === "BAR" ? "CENTER" : d.position,
+          endsAtBroadcastStart: d.endsAtBroadcastStart,
+          hideDuringLive: d.hideDuringLive,
           showOnPc: d.showOnPc,
           showOnMobile: d.showOnMobile,
           dismissDays: d.dismissDays,
@@ -420,7 +497,7 @@ function PopupEditor({
       )}
       {overlap && (
         <div className="msg msg-info" role="status">
-          <span>같은 페이지에 게시 중인 팝업이 있습니다. 「{overlap}」가 먼저 표시되고, 이 팝업은 그 뒤에 표시됩니다 · 순서를 바꾸려면 목록에서 끌어 주십시오</span>
+          <span>같은 페이지에 게시 중인 팝업이 있습니다. 「{overlap}」가 먼저 표시되고, 이 팝업은 그 뒤에 표시됩니다 · 순서를 바꾸려면 목록의 ▲▼로 옮겨 주십시오</span>
         </div>
       )}
       <table className="au-ft sc-ft">
@@ -506,6 +583,20 @@ function PopupEditor({
                   </option>
                 ))}
               </select>
+              {d.kind !== "BAR" && (
+                <>
+                  <span className="c-alt" style={{ margin: "0 8px" }}>
+                    위치
+                  </span>
+                  <select className="inp" style={{ maxWidth: 200 }} aria-label="위치" value={d.position} onChange={(e) => set({ position: e.target.value as Position })}>
+                    {POSITIONS.map((x) => (
+                      <option key={x.key} value={x.key}>
+                        {x.label}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              )}
             </td>
           </tr>
           <tr>
@@ -533,6 +624,10 @@ function PopupEditor({
                 <span className="c-alt">~</span>
                 <DateTimePicker aria-label="종료 시각" value={d.endsAt} onChange={(v) => set({ endsAt: v })} />
               </span>
+              <label className="sc-ck">
+                <input type="checkbox" checked={d.endsAtBroadcastStart} onChange={(e) => set({ endsAtBroadcastStart: e.target.checked })} />
+                방송 시작 시각에 맞춰 자동 종료
+              </label>
               {badRange ? <span className="err">종료 시각은 시작 시각보다 늦어야 합니다</span> : <span className="help">비우면 바로 게시 · 종료를 비우면 상시 · 서버 시각 기준 자동 게시·숨김</span>}
             </td>
           </tr>
@@ -545,6 +640,15 @@ function PopupEditor({
                   {x.label}
                 </label>
               ))}
+            </td>
+          </tr>
+          <tr>
+            <th>방송 중</th>
+            <td>
+              <label className="sc-ck">
+                <input type="checkbox" checked={d.hideDuringLive} onChange={(e) => set({ hideDuringLive: e.target.checked })} />
+                방송 중에는 이 팝업을 띄우지 않음 (주문 흐름 방해 방지)
+              </label>
             </td>
           </tr>
           <tr>
