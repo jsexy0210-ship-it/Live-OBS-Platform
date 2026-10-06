@@ -3,6 +3,7 @@ import { writeAudit } from "../audit/log";
 import type { AdminSessionContext } from "../auth/session";
 import { forbidden } from "../authz/errors";
 import { adminCan } from "../authz/permissions";
+import { orderNoLabel } from "../orders/orderNoLabel";
 import { checkReviewImage, type ReviewImageRejection } from "../product-reviews/image";
 import type { TenantContext } from "../tenant/context";
 import { cleanText } from "../text/clean";
@@ -19,14 +20,16 @@ import { cleanText } from "../text/clean";
 type Db = PrismaClient | Prisma.TransactionClient;
 export type AuditMeta = { ip?: string | null; userAgent?: string | null };
 
-export const TITLE_MAX = 100;
+export const TITLE_MAX = 80;
 export const BODY_MAX = 5_000;
 export const IMAGES_PER_MESSAGE = 5;
 export const UNATTACHED_KEEP = 10;
 export const DAILY_LIMIT = 20;
 export const SELLER_PAGE_SIZE = 20;
 export const ADMIN_PAGE_SIZE = 50;
-export const CATEGORIES = ["BILLING", "ACCOUNT", "FEATURE", "BUG", "OTHER"] as const satisfies readonly PlatformInquiryCategory[];
+// SA-114 문의 종류(방송 화면·결제 연결·주문/환불·적립금·구독/요금·쇼핑몰·계정/직원·기타). BILLING·FEATURE·BUG는 예전 문의에만 남아 있어 새로 보낼 수 없고 필터로는 볼 수 있다.
+export const CATEGORIES: readonly PlatformInquiryCategory[] = ["BROADCAST", "PAYMENT_LINK", "ORDER_REFUND", "REWARD", "SUBSCRIPTION_FEE", "SHOP", "ACCOUNT", "OTHER"];
+const FILTER_CATEGORIES: readonly PlatformInquiryCategory[] = [...CATEGORIES, "BILLING", "FEATURE", "BUG"];
 const STATUSES: readonly PlatformInquiryStatus[] = ["OPEN", "ANSWERED", "CLOSED"];
 
 export type PlatformInquiryRejection =
@@ -36,6 +39,12 @@ export type PlatformInquiryRejection =
   | "invalid_images"
   | "invalid_notice"
   | "invalid_status"
+  | "invalid_related"
+  | "invalid_urgent"
+  | "invalid_assignee"
+  | "invalid_helpful"
+  | "already_rated"
+  | "no_reply_yet"
   | "invalid_cursor"
   | "too_many_inquiries"
   | "inquiry_closed"
@@ -50,6 +59,12 @@ export const PLATFORM_INQUIRY_MESSAGES: Record<PlatformInquiryRejection, string>
   invalid_images: `사진을 다시 올려 주십시오(${IMAGES_PER_MESSAGE}장까지)`,
   invalid_notice: "공지를 찾을 수 없습니다",
   invalid_status: "상태를 다시 선택해 주십시오",
+  invalid_related: "관련 주문·방송을 다시 선택해 주십시오",
+  invalid_urgent: "긴급 여부를 다시 선택해 주십시오",
+  invalid_assignee: "담당자를 다시 선택해 주십시오",
+  invalid_helpful: "도움이 됐는지 선택해 주십시오",
+  already_rated: "이미 평가하셨습니다",
+  no_reply_yet: "답변이 오면 평가할 수 있습니다",
   invalid_cursor: "목록을 다시 불러와 주십시오",
   too_many_inquiries: `문의는 하루 ${DAILY_LIMIT}건까지 보낼 수 있습니다. 보낸 문의에 이어서 적어 주십시오`,
   inquiry_closed: "종료된 문의입니다. 새 문의로 보내 주십시오",
@@ -64,7 +79,7 @@ export const PLATFORM_INQUIRY_MESSAGES: Record<PlatformInquiryRejection, string>
 
 export function inquiryStatus(reason: PlatformInquiryRejection): number {
   if (reason === "too_many_inquiries") return 429;
-  if (reason === "inquiry_closed" || reason === "version_conflict") return 409;
+  if (reason === "inquiry_closed" || reason === "version_conflict" || reason === "already_rated" || reason === "no_reply_yet") return 409;
   if (reason === "file_too_large") return 413;
   return 400;
 }
@@ -174,53 +189,134 @@ const sellerMessage = (m: MessageRow, n: Awaited<ReturnType<typeof names>>) => (
 });
 
 // SA-113: 내 문의 목록. 마지막 글 최신 순 20건. hasNewReply = 마지막으로 연 뒤 플랫폼 답변이 달림.
-export async function listMyInquiries(db: PrismaClient, ctx: TenantContext, q: { cursor?: string | null }) {
+// 쿼리: cursor · status(OPEN|ANSWERED|CLOSED) · category. counts는 상태·분류 조건과 무관한 내가 볼 수 있는 문의 전체의 상태별 건수(탭 숫자), newReplyCount는 새 답변이 달린 문의 수.
+export async function listMyInquiries(db: PrismaClient, ctx: TenantContext, q: { cursor?: string | null; status?: string | null; category?: string | null }) {
   const c = parseCursor(q.cursor);
   if (!c.ok) return { ok: false as const, reason: "invalid_cursor" as const };
+  if (q.status && !STATUSES.includes(q.status as PlatformInquiryStatus)) return { ok: false as const, reason: "invalid_status" as const };
+  if (q.category && !FILTER_CATEGORIES.includes(q.category as PlatformInquiryCategory)) return { ok: false as const, reason: "invalid_category" as const };
+  const mine = sellerWhere(ctx);
   const rows = await db.platformInquiry.findMany({
-    where: { ...sellerWhere(ctx), ...c.where },
+    where: { ...mine, ...(q.status ? { status: q.status as PlatformInquiryStatus } : {}), ...(q.category ? { category: q.category as PlatformInquiryCategory } : {}), ...c.where },
     orderBy: [{ lastMessageAt: "desc" }, { id: "desc" }],
     take: SELLER_PAGE_SIZE + 1,
-    select: { id: true, category: true, title: true, status: true, createdAt: true, lastMessageAt: true, lastAdminMessageAt: true, sellerReadAt: true, createdBySellerUserId: true },
+    select: { id: true, category: true, title: true, status: true, urgent: true, assignedAdminId: true, createdAt: true, lastMessageAt: true, lastAdminMessageAt: true, sellerReadAt: true, createdBySellerUserId: true },
   });
   const page = rows.slice(0, SELLER_PAGE_SIZE);
   const n = await names(db, page.map((r) => r.createdBySellerUserId), []);
+  const grouped = await db.platformInquiry.groupBy({ by: ["status"], where: mine, _count: { _all: true } });
+  const count = (s: PlatformInquiryStatus) => grouped.find((g) => g.status === s)?._count._all ?? 0;
+  const [newReplyCount] = await db.$queryRaw<{ n: number }[]>`
+    SELECT COUNT(*)::int AS "n" FROM "PlatformInquiry"
+    WHERE "sellerId" = ${ctx.sellerId}::uuid AND (${ctx.isOwner} OR "createdBySellerUserId" = ${ctx.actorId}::uuid)
+      AND "lastAdminMessageAt" IS NOT NULL AND ("sellerReadAt" IS NULL OR "lastAdminMessageAt" > "sellerReadAt")`;
   return {
     ok: true as const,
-    items: page.map(({ lastAdminMessageAt, sellerReadAt, createdBySellerUserId, ...r }) => ({
+    items: page.map(({ lastAdminMessageAt, sellerReadAt, createdBySellerUserId, assignedAdminId, ...r }) => ({
       ...r,
       authorName: n.user.get(createdBySellerUserId) ?? null,
+      lastReplyAt: lastAdminMessageAt,
+      handlerState: handlerStateOf(r.status, assignedAdminId),
       hasNewReply: !!lastAdminMessageAt && (!sellerReadAt || lastAdminMessageAt > sellerReadAt),
     })),
+    counts: { all: count("OPEN") + count("ANSWERED") + count("CLOSED"), open: count("OPEN"), answered: count("ANSWERED"), closed: count("CLOSED") },
+    newReplyCount: newReplyCount?.n ?? 0,
+    avgFirstReplyMinutes: await avgFirstReplyMinutes(db),
     nextCursor: nextCursor(rows, SELLER_PAGE_SIZE),
   };
 }
 
+// 담당 상태(파트너스 화면용, 마스터 관리자 이름·id는 내보내지 않는다): 담당이 정해졌으면 ASSIGNED(담당자 배정됨), 아니면 PREPARING(답변 준비 중), 종료면 null.
+function handlerStateOf(status: PlatformInquiryStatus, assignedAdminId: string | null) {
+  if (status === "CLOSED") return null;
+  return assignedAdminId ? ("ASSIGNED" as const) : ("PREPARING" as const);
+}
+
+// 최근 30일에 접수된 문의의 첫 플랫폼 답변까지 걸린 평균 분(전체 파트너스 기준 안내 문구용). 답변 받은 문의가 없으면 null.
+async function avgFirstReplyMinutes(db: Db) {
+  const [r] = await db.$queryRaw<{ m: number | null }[]>`
+    SELECT ROUND(AVG(EXTRACT(EPOCH FROM (f."at" - i."createdAt")) / 60))::int AS "m"
+    FROM "PlatformInquiry" i
+    JOIN LATERAL (SELECT MIN(m."createdAt") AS "at" FROM "PlatformInquiryMessage" m WHERE m."inquiryId" = i."id" AND m."authorType" = 'ADMIN') f ON f."at" IS NOT NULL
+    WHERE i."createdAt" > now() - interval '30 days'`;
+  return r?.m ?? null;
+}
+
+// 관련 주문·방송(작성 때 고른 것). 같은 쇼핑몰 것만 찾는다. 없으면 null.
+async function relatedOf(db: Db, sellerId: string, orderId: string | null, broadcastId: string | null) {
+  const [o, b] = await Promise.all([
+    orderId ? db.order.findFirst({ where: { id: orderId, sellerId, legalHoldAt: null }, select: { id: true, orderNo: true, createdAt: true, broadcastNicknameSnapshot: true } }) : null,
+    broadcastId ? db.broadcastSession.findFirst({ where: { id: broadcastId, sellerId }, select: { id: true, title: true, startedAt: true } }) : null,
+  ]);
+  return {
+    order: o ? { id: o.id, orderNoLabel: orderNoLabel(o.createdAt, o.orderNo), nickname: o.broadcastNicknameSnapshot, createdAt: o.createdAt } : null,
+    broadcast: b ? { id: b.id, title: b.title, startedAt: b.startedAt } : null,
+  };
+}
+
+export type InquiryHistoryType = "RECEIVED" | "ANSWERED" | "FOLLOWUP" | "CLOSED";
+// 처리 이력(최신순): 접수 · 플랫폼 답변 · 추가 문의 · 종료. 마스터 관리자 이름·담당 배정은 보이지 않는다(actor는 PARTNER|PLATFORM만).
+function historyOf(messages: { authorType: string; createdAt: Date }[], closedAt: Date | null, closedBy: "PARTNER" | "PLATFORM" | null) {
+  const ev: { type: InquiryHistoryType; at: Date; actor: "PARTNER" | "PLATFORM" }[] = messages.map((m, i) => ({
+    type: i === 0 ? ("RECEIVED" as const) : m.authorType === "ADMIN" ? ("ANSWERED" as const) : ("FOLLOWUP" as const),
+    at: m.createdAt,
+    actor: m.authorType === "ADMIN" ? ("PLATFORM" as const) : ("PARTNER" as const),
+  }));
+  if (closedAt) ev.push({ type: "CLOSED", at: closedAt, actor: closedBy ?? "PLATFORM" });
+  return ev.map((e, i) => ({ e, i })).sort((a, b) => b.e.at.getTime() - a.e.at.getTime() || b.i - a.i).map(({ e }) => e);
+}
+
 // SA-115: 문의 상세. 보면 읽음(sellerReadAt)으로 남긴다(마스터 대리 조회는 남기지 않음). 볼 수 없으면 null(404).
+// 응답에 related(관련 주문·방송), helpful(true|false|null), history(처리 이력, 최신순), canClose·canRate가 있다.
 export async function getMyInquiry(db: PrismaClient, ctx: TenantContext, id: string) {
   if (!isUuid(id)) return null;
   const row = await db.platformInquiry.findFirst({
     where: { ...sellerWhere(ctx), id },
-    select: { id: true, category: true, title: true, status: true, noticeId: true, createdAt: true, lastMessageAt: true, closedAt: true, createdBySellerUserId: true, messages: { select: MESSAGE_SELECT, orderBy: [{ createdAt: "asc" }, { id: "asc" }] } },
+    select: {
+      id: true, category: true, title: true, status: true, urgent: true, noticeId: true, createdAt: true, lastMessageAt: true, closedAt: true, createdBySellerUserId: true,
+      closedBySellerUserId: true, closedByAdminId: true, relatedOrderId: true, relatedBroadcastId: true, helpful: true, helpfulAt: true, lastAdminMessageAt: true, assignedAdminId: true,
+      messages: { select: MESSAGE_SELECT, orderBy: [{ createdAt: "asc" }, { id: "asc" }] },
+    },
   });
   if (!row) return null;
   if (!ctx.readOnly) await db.platformInquiry.update({ where: { id }, data: { sellerReadAt: new Date() } });
   const n = await names(db, [row.createdBySellerUserId, ...row.messages.map((m) => m.sellerUserId)], []);
-  const { messages, noticeId, createdBySellerUserId, ...rest } = row;
-  return { ...rest, authorName: n.user.get(createdBySellerUserId) ?? null, notice: await noticeTitle(db, noticeId), messages: messages.map((m) => sellerMessage(m, n)) };
+  const { messages, noticeId, createdBySellerUserId, closedBySellerUserId, closedByAdminId, relatedOrderId, relatedBroadcastId, lastAdminMessageAt, assignedAdminId, ...rest } = row;
+  const closedBy = row.closedAt ? (closedBySellerUserId ? ("PARTNER" as const) : closedByAdminId ? ("PLATFORM" as const) : null) : null;
+  return {
+    ...rest,
+    authorName: n.user.get(createdBySellerUserId) ?? null,
+    notice: await noticeTitle(db, noticeId),
+    related: await relatedOf(db, ctx.sellerId, relatedOrderId, relatedBroadcastId),
+    closedBy,
+    handlerState: handlerStateOf(row.status, assignedAdminId),
+    history: historyOf(messages, row.closedAt, closedBy),
+    canClose: row.status !== "CLOSED" && !ctx.readOnly,
+    canRate: !!lastAdminMessageAt && row.helpful === null && !ctx.readOnly,
+    messages: messages.map((m) => sellerMessage(m, n)),
+  };
 }
 
-// SA-114: 문의 보내기. 본문 { category, title, body, imageIds?, noticeId? }.
+// SA-114: 문의 보내기. 본문 { category, title, body, imageIds?, noticeId?, relatedOrderId?, relatedBroadcastId? }(관련 주문·방송은 같은 쇼핑몰 것만, 아니면 400 invalid_related).
 export async function createInquiry(db: PrismaClient, ctx: TenantContext, raw: unknown, meta: AuditMeta = {}) {
   requireSellerWrite(ctx);
   const b = obj(raw);
   if (!CATEGORIES.includes(b.category as PlatformInquiryCategory)) return { ok: false as const, reason: "invalid_category" as const };
+  if (b.urgent !== undefined && typeof b.urgent !== "boolean") return { ok: false as const, reason: "invalid_urgent" as const };
+  const urgent = b.urgent === true;
   const title = cleanText(b.title, TITLE_MAX, "memo");
   if (!title) return { ok: false as const, reason: "invalid_title" as const };
   const body = cleanText(b.body, BODY_MAX, "multiline");
   if (!body) return { ok: false as const, reason: "invalid_body" as const };
   const imageIds = parseImageIds(b.imageIds);
   if (!imageIds) return { ok: false as const, reason: "invalid_images" as const };
+  const relatedOrderId = b.relatedOrderId === undefined || b.relatedOrderId === null ? null : b.relatedOrderId;
+  const relatedBroadcastId = b.relatedBroadcastId === undefined || b.relatedBroadcastId === null ? null : b.relatedBroadcastId;
+  if ((relatedOrderId !== null && !isUuid(relatedOrderId)) || (relatedBroadcastId !== null && !isUuid(relatedBroadcastId))) return { ok: false as const, reason: "invalid_related" as const };
+  if (relatedOrderId || relatedBroadcastId) {
+    const r = await relatedOf(db, ctx.sellerId, relatedOrderId, relatedBroadcastId);
+    if ((relatedOrderId && !r.order) || (relatedBroadcastId && !r.broadcast)) return { ok: false as const, reason: "invalid_related" as const };
+  }
   let noticeId: string | null = null;
   if (b.noticeId !== undefined && b.noticeId !== null) {
     if (!isUuid(b.noticeId)) return { ok: false as const, reason: "invalid_notice" as const };
@@ -236,12 +332,12 @@ export async function createInquiry(db: PrismaClient, ctx: TenantContext, raw: u
       if (recent >= DAILY_LIMIT) throw new Rejected("too_many_inquiries");
       const now = new Date();
       const inq = await tx.platformInquiry.create({
-        data: { sellerId: ctx.sellerId, createdBySellerUserId: ctx.actorId, category: b.category as PlatformInquiryCategory, title, noticeId, lastMessageAt: now, sellerReadAt: now, createdAt: now },
+        data: { sellerId: ctx.sellerId, createdBySellerUserId: ctx.actorId, category: b.category as PlatformInquiryCategory, title, urgent, noticeId, relatedOrderId, relatedBroadcastId, lastMessageAt: now, sellerReadAt: now, createdAt: now },
         select: { id: true },
       });
       const msg = await tx.platformInquiryMessage.create({ data: { sellerId: ctx.sellerId, inquiryId: inq.id, authorType: "SELLER_USER", sellerUserId: ctx.actorId, body, createdAt: now }, select: { id: true } });
       if (!(await attachImages(tx, ctx, msg.id, imageIds))) throw new Rejected("invalid_images");
-      await sellerAudit(tx, ctx, meta, "platform_inquiry.create", inq.id, { category: b.category, title, noticeId, images: imageIds.length });
+      await sellerAudit(tx, ctx, meta, "platform_inquiry.create", inq.id, { category: b.category, title, urgent, noticeId, relatedOrderId, relatedBroadcastId, images: imageIds.length });
       return inq.id;
     });
     return { ok: true as const, inquiry: (await getMyInquiry(db, ctx, id))! };
@@ -283,6 +379,77 @@ export async function addSellerMessage(db: PrismaClient, ctx: TenantContext, id:
   }
 }
 
+// SA-115: 문의 종료(「해결됐습니다 · 종료」). 내가 볼 수 있는 문의를 접수·답변 완료 상태에서 닫는다. 이미 종료면 409 inquiry_closed. 본문 { helpful?: boolean }로 평가를 함께 남길 수 있다.
+export async function closeMyInquiry(db: PrismaClient, ctx: TenantContext, id: string, raw: unknown, meta: AuditMeta = {}) {
+  requireSellerWrite(ctx);
+  if (!isUuid(id)) return null;
+  const b = obj(raw);
+  if (b.helpful !== undefined && typeof b.helpful !== "boolean") return { ok: false as const, reason: "invalid_helpful" as const };
+  try {
+    const found = await db.$transaction(async (tx) => {
+      const [cur] = await tx.$queryRaw<{ id: string; status: PlatformInquiryStatus; helpful: boolean | null; lastAdminMessageAt: Date | null }[]>`
+        SELECT "id", "status", "helpful", "lastAdminMessageAt" FROM "PlatformInquiry"
+        WHERE "id" = ${id}::uuid AND "sellerId" = ${ctx.sellerId}::uuid AND (${ctx.isOwner} OR "createdBySellerUserId" = ${ctx.actorId}::uuid)
+        FOR UPDATE`;
+      if (!cur) return false;
+      if (cur.status === "CLOSED") throw new Rejected("inquiry_closed");
+      const rate = b.helpful !== undefined && cur.helpful === null && !!cur.lastAdminMessageAt;
+      const now = new Date();
+      await tx.platformInquiry.update({
+        where: { id },
+        data: { status: "CLOSED", closedAt: now, closedBySellerUserId: ctx.actorId, sellerReadAt: now, version: { increment: 1 }, ...(rate ? { helpful: b.helpful as boolean, helpfulAt: now } : {}) },
+      });
+      await sellerAudit(tx, ctx, meta, "platform_inquiry.close", id, { by: "PARTNER", rated: rate });
+      return true;
+    });
+    if (!found) return null;
+    return { ok: true as const, inquiry: (await getMyInquiry(db, ctx, id))! };
+  } catch (e) {
+    if (e instanceof Rejected) return { ok: false as const, reason: e.reason };
+    throw e;
+  }
+}
+
+// SA-115: 「답변이 도움이 됐습니까?」 평가. 본문 { helpful: boolean }. 문의 전체에 한 번만(다시 보내면 409 already_rated), 플랫폼 답변이 있은 뒤에만(없으면 409 no_reply_yet). 종료 전후 모두 된다.
+export async function rateMyInquiry(db: PrismaClient, ctx: TenantContext, id: string, raw: unknown, meta: AuditMeta = {}) {
+  requireSellerWrite(ctx);
+  if (!isUuid(id)) return null;
+  const helpful = obj(raw).helpful;
+  if (typeof helpful !== "boolean") return { ok: false as const, reason: "invalid_helpful" as const };
+  try {
+    const found = await db.$transaction(async (tx) => {
+      const [cur] = await tx.$queryRaw<{ helpful: boolean | null; lastAdminMessageAt: Date | null }[]>`
+        SELECT "helpful", "lastAdminMessageAt" FROM "PlatformInquiry"
+        WHERE "id" = ${id}::uuid AND "sellerId" = ${ctx.sellerId}::uuid AND (${ctx.isOwner} OR "createdBySellerUserId" = ${ctx.actorId}::uuid)
+        FOR UPDATE`;
+      if (!cur) return false;
+      if (!cur.lastAdminMessageAt) throw new Rejected("no_reply_yet");
+      if (cur.helpful !== null) throw new Rejected("already_rated");
+      await tx.platformInquiry.update({ where: { id }, data: { helpful, helpfulAt: new Date() } });
+      await sellerAudit(tx, ctx, meta, "platform_inquiry.rate", id, { helpful });
+      return true;
+    });
+    if (!found) return null;
+    return { ok: true as const, helpful };
+  } catch (e) {
+    if (e instanceof Rejected) return { ok: false as const, reason: e.reason };
+    throw e;
+  }
+}
+
+// SA-114 「관련 주문 · 방송」 선택 목록: 이 쇼핑몰의 최근 방송 20개·최근 주문 20개(최신순). 주문은 사람이 읽는 번호(orderNoLabel)와 닉네임만.
+export const RELATED_OPTIONS = 20;
+export async function listRelatedOptions(db: PrismaClient, ctx: TenantContext) {
+  const [broadcasts, orders] = await Promise.all([
+    db.broadcastSession.findMany({ where: { sellerId: ctx.sellerId }, orderBy: [{ startedAt: "desc" }, { id: "desc" }], take: RELATED_OPTIONS, select: { id: true, title: true, startedAt: true } }),
+    db.order.findMany({ where: { sellerId: ctx.sellerId, legalHoldAt: null }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: RELATED_OPTIONS, select: { id: true, orderNo: true, createdAt: true, broadcastNicknameSnapshot: true } }),
+  ]);
+  return {
+    broadcasts,
+    orders: orders.map((o) => ({ id: o.id, orderNoLabel: orderNoLabel(o.createdAt, o.orderNo), nickname: o.broadcastNicknameSnapshot, createdAt: o.createdAt })),
+  };
+}
+
 // 첨부 사진 올리기(보내기 전). 붙지 않은 사진은 계정당 10장까지 두고 오래된 것부터 지운다.
 export async function uploadInquiryImage(db: PrismaClient, ctx: TenantContext, bytes: Buffer, meta: AuditMeta = {}) {
   requireSellerWrite(ctx);
@@ -318,6 +485,9 @@ const ADMIN_LIST_SELECT = {
   category: true,
   title: true,
   status: true,
+  urgent: true,
+  assignedAdminId: true,
+  assignedAt: true,
   createdAt: true,
   lastMessageAt: true,
   lastAdminMessageAt: true,
@@ -328,25 +498,35 @@ const ADMIN_LIST_SELECT = {
 } as const satisfies Prisma.PlatformInquirySelect;
 
 // MA-051: 문의 목록. ?status=OPEN|ANSWERED|CLOSED&sellerId=&cursor=. 마지막 글 최신 순 50건, 상태별 수.
-export async function listInquiries(db: PrismaClient, admin: AdminSessionContext, q: { status?: string | null; sellerId?: string | null; cursor?: string | null }) {
+// ?assignee=me(내 담당)|none(미배정)|관리자 id, ?category. 담당·분류 조건은 건수(counts)에 넣지 않는다.
+export async function listInquiries(db: PrismaClient, admin: AdminSessionContext, q: { status?: string | null; sellerId?: string | null; cursor?: string | null; assignee?: string | null; category?: string | null }) {
   requireRead(admin);
   if (q.status && !STATUSES.includes(q.status as PlatformInquiryStatus)) return { ok: false as const, reason: "invalid_status" as const };
   if (q.sellerId && !isUuid(q.sellerId)) return { ok: false as const, reason: "invalid_cursor" as const };
   const c = parseCursor(q.cursor);
   if (!c.ok) return { ok: false as const, reason: "invalid_cursor" as const };
+  if (q.category && !FILTER_CATEGORIES.includes(q.category as PlatformInquiryCategory)) return { ok: false as const, reason: "invalid_category" as const };
+  if (q.assignee && q.assignee !== "me" && q.assignee !== "none" && !isUuid(q.assignee)) return { ok: false as const, reason: "invalid_assignee" as const };
   const base: Prisma.PlatformInquiryWhereInput = q.sellerId ? { sellerId: q.sellerId } : {};
+  const assigneeWhere: Prisma.PlatformInquiryWhereInput = !q.assignee ? {} : q.assignee === "none" ? { assignedAdminId: null } : { assignedAdminId: q.assignee === "me" ? admin.admin.id : q.assignee };
   const rows = await db.platformInquiry.findMany({
-    where: { ...base, ...(q.status ? { status: q.status as PlatformInquiryStatus } : {}), ...c.where },
+    where: { ...base, ...assigneeWhere, ...(q.category ? { category: q.category as PlatformInquiryCategory } : {}), ...(q.status ? { status: q.status as PlatformInquiryStatus } : {}), ...c.where },
     orderBy: [{ lastMessageAt: "desc" }, { id: "desc" }],
     take: ADMIN_PAGE_SIZE + 1,
     select: ADMIN_LIST_SELECT,
   });
   const page = rows.slice(0, ADMIN_PAGE_SIZE);
-  const n = await names(db, page.map((r) => r.createdBySellerUserId), []);
+  const n = await names(db, page.map((r) => r.createdBySellerUserId), page.map((r) => r.assignedAdminId));
   const grouped = await db.platformInquiry.groupBy({ by: ["status"], where: base, _count: { _all: true } });
   return {
     ok: true as const,
-    items: page.map(({ seller, createdBySellerUserId, ...r }) => ({ ...r, shopName: seller.shopName, slug: seller.slug, authorName: n.user.get(createdBySellerUserId) ?? null })),
+    items: page.map(({ seller, createdBySellerUserId, ...r }) => ({
+      ...r,
+      shopName: seller.shopName,
+      slug: seller.slug,
+      authorName: n.user.get(createdBySellerUserId) ?? null,
+      assignee: r.assignedAdminId ? { id: r.assignedAdminId, name: n.admin.get(r.assignedAdminId) ?? null } : null,
+    })),
     counts: Object.fromEntries(STATUSES.map((s) => [s, grouped.find((g) => g.status === s)?._count._all ?? 0])) as Record<PlatformInquiryStatus, number>,
     nextCursor: nextCursor(rows, ADMIN_PAGE_SIZE),
   };
@@ -358,16 +538,17 @@ export async function getInquiry(db: PrismaClient, admin: AdminSessionContext, i
   if (!isUuid(id)) return null;
   const row = await db.platformInquiry.findUnique({
     where: { id },
-    select: { ...ADMIN_LIST_SELECT, noticeId: true, closedByAdminId: true, messages: { select: MESSAGE_SELECT, orderBy: [{ createdAt: "asc" }, { id: "asc" }] } },
+    select: { ...ADMIN_LIST_SELECT, noticeId: true, closedByAdminId: true, closedBySellerUserId: true, helpful: true, helpfulAt: true, messages: { select: MESSAGE_SELECT, orderBy: [{ createdAt: "asc" }, { id: "asc" }] } },
   });
   if (!row) return null;
-  const n = await names(db, [row.createdBySellerUserId, ...row.messages.map((m) => m.sellerUserId)], [row.closedByAdminId, ...row.messages.map((m) => m.adminId)]);
+  const n = await names(db, [row.createdBySellerUserId, ...row.messages.map((m) => m.sellerUserId)], [row.closedByAdminId, row.assignedAdminId, ...row.messages.map((m) => m.adminId)]);
   const { seller, messages, noticeId, createdBySellerUserId, ...rest } = row;
   return {
     ...rest,
     shopName: seller.shopName,
     slug: seller.slug,
     authorName: n.user.get(createdBySellerUserId) ?? null,
+    assignee: row.assignedAdminId ? { id: row.assignedAdminId, name: n.admin.get(row.assignedAdminId) ?? null } : null,
     closedByAdminName: row.closedByAdminId ? (n.admin.get(row.closedByAdminId) ?? null) : null,
     notice: await noticeTitle(db, noticeId),
     messages: messages.map((m) => ({
@@ -382,9 +563,9 @@ export async function getInquiry(db: PrismaClient, admin: AdminSessionContext, i
   };
 }
 
-type Locked = { id: string; sellerId: string; status: PlatformInquiryStatus; version: number };
+type Locked = { id: string; sellerId: string; status: PlatformInquiryStatus; version: number; assignedAdminId: string | null };
 async function lockForAdmin(tx: Prisma.TransactionClient, id: string, expectedVersion: unknown) {
-  const [cur] = await tx.$queryRaw<Locked[]>`SELECT "id", "sellerId", "status", "version" FROM "PlatformInquiry" WHERE "id" = ${id}::uuid FOR UPDATE`;
+  const [cur] = await tx.$queryRaw<Locked[]>`SELECT "id", "sellerId", "status", "version", "assignedAdminId" FROM "PlatformInquiry" WHERE "id" = ${id}::uuid FOR UPDATE`;
   if (!cur) return { ok: false as const, reason: "not_found" as const };
   if (cur.status === "CLOSED") return { ok: false as const, reason: "inquiry_closed" as const };
   if (expectedVersion !== cur.version) return { ok: false as const, reason: "version_conflict" as const, currentVersion: cur.version };
@@ -403,8 +584,14 @@ export async function replyInquiry(db: PrismaClient, admin: AdminSessionContext,
     if (!l.ok) return l;
     const now = new Date();
     const msg = await tx.platformInquiryMessage.create({ data: { sellerId: l.cur.sellerId, inquiryId: id, authorType: "ADMIN", adminId: admin.admin.id, body, createdAt: now }, select: { id: true } });
-    await tx.platformInquiry.update({ where: { id }, data: { status: "ANSWERED", lastMessageAt: now, lastAdminMessageAt: now, version: { increment: 1 } } });
+    // 담당이 없는 문의에 첫 답변을 하면 그 관리자를 담당으로 자동 배정한다(이미 담당이 있으면 바꾸지 않는다)
+    const auto = l.cur.assignedAdminId === null;
+    await tx.platformInquiry.update({
+      where: { id },
+      data: { status: "ANSWERED", lastMessageAt: now, lastAdminMessageAt: now, version: { increment: 1 }, ...(auto ? { assignedAdminId: admin.admin.id, assignedAt: now } : {}) },
+    });
     await adminAudit(tx, admin, meta, "platform_inquiry.reply", l.cur, { status: l.cur.status }, { status: "ANSWERED", messageId: msg.id });
+    if (auto) await adminAudit(tx, admin, meta, "platform_inquiry.assign", l.cur, { assigneeId: null }, { assigneeId: admin.admin.id, auto: true });
     return { ok: true as const };
   });
   if (!r.ok) return r;
@@ -421,6 +608,41 @@ export async function closeInquiry(db: PrismaClient, admin: AdminSessionContext,
     if (!l.ok) return l;
     await tx.platformInquiry.update({ where: { id }, data: { status: "CLOSED", closedAt: new Date(), closedByAdminId: admin.admin.id, version: { increment: 1 } } });
     await adminAudit(tx, admin, meta, "platform_inquiry.close", l.cur, { status: l.cur.status }, { status: "CLOSED" });
+    return { ok: true as const };
+  });
+  if (!r.ok) return r;
+  return { ok: true as const, inquiry: (await getInquiry(db, admin, id))! };
+}
+
+const ASSIGNEE_ROLES = ["SUPER_ADMIN", "OPERATIONS", "CS"] as const;
+
+// MA-051·052 「담당 변경」 선택 목록: 담당할 수 있는 활성 관리자(최고관리자·운영·CS).
+export async function listAssignees(db: PrismaClient, admin: AdminSessionContext) {
+  requireRead(admin);
+  const rows = await db.platformAdmin.findMany({ where: { status: "ACTIVE", role: { in: [...ASSIGNEE_ROLES] } }, select: { id: true, name: true, role: true }, orderBy: [{ name: "asc" }, { id: "asc" }] });
+  return rows;
+}
+
+// MA-052: 담당 배정·변경·해제. 본문 { assigneeId: 관리자 id | null }. 최고관리자·운영·CS(support.assign). 종료된 문의는 409.
+// 담당만 바꾸므로 version은 올리지 않는다(작성 중인 답변·종료가 막히지 않게). 같은 담당이면 아무것도 바꾸지 않는다. 로그 추적 platform_inquiry.assign.
+export async function assignInquiry(db: PrismaClient, admin: AdminSessionContext, id: string, raw: unknown, meta: AuditMeta = {}) {
+  if (!adminCan(admin.admin.role, "support.assign")) throw forbidden();
+  if (!isUuid(id)) return { ok: false as const, reason: "not_found" as const };
+  const b = obj(raw);
+  if (b.assigneeId !== null && !isUuid(b.assigneeId)) return { ok: false as const, reason: "invalid_assignee" as const };
+  const assigneeId = b.assigneeId;
+  const r = await db.$transaction(async (tx) => {
+    const [cur] = await tx.$queryRaw<{ id: string; sellerId: string; status: PlatformInquiryStatus; assignedAdminId: string | null }[]>`
+      SELECT "id", "sellerId", "status", "assignedAdminId" FROM "PlatformInquiry" WHERE "id" = ${id}::uuid FOR UPDATE`;
+    if (!cur) return { ok: false as const, reason: "not_found" as const };
+    if (cur.status === "CLOSED") return { ok: false as const, reason: "inquiry_closed" as const };
+    if (assigneeId) {
+      const a = await tx.platformAdmin.findFirst({ where: { id: assigneeId, status: "ACTIVE", role: { in: [...ASSIGNEE_ROLES] } }, select: { id: true } });
+      if (!a) return { ok: false as const, reason: "invalid_assignee" as const };
+    }
+    if (cur.assignedAdminId === assigneeId) return { ok: true as const };
+    await tx.platformInquiry.update({ where: { id }, data: { assignedAdminId: assigneeId, assignedAt: assigneeId ? new Date() : null } });
+    await adminAudit(tx, admin, meta, "platform_inquiry.assign", cur, { assigneeId: cur.assignedAdminId }, { assigneeId });
     return { ok: true as const };
   });
   if (!r.ok) return r;

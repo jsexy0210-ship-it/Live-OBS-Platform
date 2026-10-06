@@ -3,7 +3,8 @@ import { generateToken, hashToken } from "./token";
 import { isSessionActive, sessionExpiry, type BroadcastActivity, type Realm } from "./policy";
 
 export type SessionMeta = { ip?: string | null; userAgent?: string | null; now?: Date };
-export type IssuedSession = { token: string; expiresAt: Date };
+// persistent=false면 쿠키를 만료일 없이 내려 브라우저를 닫으면 끝나게 한다(구매자 「로그인 유지」 꺼짐).
+export type IssuedSession = { token: string; expiresAt: Date; persistent?: boolean };
 
 // 마지막 활동 시각은 1분에 한 번만 갱신해 요청마다 쓰기가 생기지 않게 한다.
 const TOUCH_INTERVAL_MS = 60_000;
@@ -60,15 +61,16 @@ export async function createBuyerSession(
   db: PrismaClient | Prisma.TransactionClient,
   sellerId: string,
   buyerMemberId: string,
-  meta: SessionMeta,
+  meta: SessionMeta & { remember?: boolean },
 ): Promise<IssuedSession> {
   const now = meta.now ?? new Date();
   const token = generateToken();
-  const expiresAt = sessionExpiry("buyer", now);
+  const remember = meta.remember === true;
+  const expiresAt = sessionExpiry("buyer", now, { short: !remember });
   await db.buyerSession.create({
     data: { sellerId, buyerMemberId, tokenHash: hashToken(token), expiresAt, lastSeenAt: now, createdAt: now },
   });
-  return { token, expiresAt };
+  return { token, expiresAt, persistent: remember };
 }
 
 export type AdminSessionContext = { admin: PlatformAdmin; sessionId: string };

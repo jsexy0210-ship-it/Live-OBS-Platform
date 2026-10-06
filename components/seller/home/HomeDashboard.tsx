@@ -8,7 +8,8 @@ import { PageHead, useConfirm } from "../../admin-ui";
 import { Topbar, useSeller } from "../SellerShell";
 import { ErrorState, LoadingRows } from "../States";
 import { api } from "../api";
-import { kstDate, kstDuration, type BroadcastSummary } from "../broadcast/history";
+import { kstDuration, type BroadcastSummary } from "../broadcast/history";
+import { formatDateTime } from "../../../lib/client/format";
 import { won } from "../format";
 import { kstToday } from "../stats/StatsFrame";
 import { Kpis, count } from "../stats/parts";
@@ -198,7 +199,7 @@ function Broadcasts() {
                     <Link href={`/seller/broadcasts/${b.id}`}>{b.title || "제목 없음"}</Link>
                     {b.status === "live" && <span className="home-live">방송 중</span>}
                   </td>
-                  <td>{kstDate(b.startedAt)}</td>
+                  <td>{formatDateTime(b.startedAt)}</td>
                   <td>{kstDuration(b.startedAt, b.endedAt)}</td>
                   <td>{count(b.summary.paidOrders)}</td>
                   <td>{won(b.summary.sales)}</td>

@@ -61,18 +61,18 @@ test("검색 조건: 상품 코드·노출 상태·재고 차감·등록일로 �
   await page.reload();
   // 이름 + 재고 차감 시점
   await page.getByLabel("상품 검색").fill(`조건상품`);
-  await box(page).getByRole("radiogroup", { name: "재고 차감" }).getByRole("radio", { name: "주문하면 바로 차감" }).check();
+  await box(page).getByRole("radiogroup", { name: "재고가 줄어드는 때" }).getByRole("radio", { name: "주문하면 바로 줄임" }).check();
   await search(page);
   await expect(rows(page).filter({ hasText: b })).toHaveCount(1);
   await expect(rows(page).filter({ hasText: a })).toHaveCount(0);
   // 노출 상태: 비노출만 → 숨김인 b
-  await box(page).getByRole("radiogroup", { name: "재고 차감" }).getByRole("radio", { name: "전체" }).check();
-  await box(page).getByRole("radiogroup", { name: "노출 상태" }).getByRole("radio", { name: "비노출" }).check();
+  await box(page).getByRole("radiogroup", { name: "재고가 줄어드는 때" }).getByRole("radio", { name: "전체" }).check();
+  await box(page).getByRole("radiogroup", { name: "쇼핑몰 노출" }).getByRole("radio", { name: "안 보임" }).check();
   await search(page);
   await expect(rows(page).filter({ hasText: b })).toHaveCount(1);
   await expect(rows(page).filter({ hasText: a })).toHaveCount(0);
-  await expect(rows(page).locator("td:nth-child(7)").first()).toHaveText("비노출");
-  await box(page).getByRole("radiogroup", { name: "노출 상태" }).getByRole("radio", { name: "노출", exact: true }).check();
+  await expect(rows(page).locator("td:nth-child(7)").first()).toHaveText("안 보임");
+  await box(page).getByRole("radiogroup", { name: "쇼핑몰 노출" }).getByRole("radio", { name: "쇼핑몰에 보임", exact: true }).check();
   await search(page);
   await expect(rows(page).filter({ hasText: a })).toHaveCount(1);
   await expect(rows(page).filter({ hasText: b })).toHaveCount(0);
@@ -140,6 +140,7 @@ test("선택 일괄 처리: 숨김으로 바꾸고 되돌리고, 선택 삭제�
   await expect(page.getByRole("button", { name: "선택 숨김" })).toBeDisabled();
   for (const n of names) await page.getByLabel(`${n} 선택`).check();
   await page.getByRole("button", { name: "선택 숨김" }).click();
+  await page.getByRole("button", { name: "바꾸기", exact: true }).click();
   await expect(page.getByText("선택한 3개 상품을 숨김으로 바꿨습니다")).toBeVisible();
   await expect(mine.locator("td:nth-child(8)").first()).toHaveText("숨김");
   await expect(mine.filter({ hasText: "숨김" })).toHaveCount(3);

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
-import { ListHead, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
+import { ListHead, PageHead, SearchBox, SearchRow, useConfirm } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { QuickPrice, QuickStatus, QuickStock, type QuickDone, type QuickUndo } from "../../../../../components/seller/ProductQuick";
 import { categoryLabel, categoryOptions, type CategoryNode } from "../../../../../components/seller/ProductCategoryPicker";
@@ -32,14 +32,14 @@ const STOCK_FILTERS: { key: StockFilter; label: string }[] = [
 type Display = "" | "shown" | "hidden";
 const DISPLAYS: { key: Display; label: string }[] = [
   { key: "", label: "전체" },
-  { key: "shown", label: "노출" },
-  { key: "hidden", label: "비노출" },
+  { key: "shown", label: "쇼핑몰에 보임" },
+  { key: "hidden", label: "안 보임" },
 ];
 type Deduct = "" | "ORDER" | "PAYMENT";
 const DEDUCTS: { key: Deduct; label: string }[] = [
   { key: "", label: "전체" },
-  { key: "PAYMENT", label: "결제하면 차감" },
-  { key: "ORDER", label: "주문하면 바로 차감" },
+  { key: "PAYMENT", label: "결제하면 줄임" },
+  { key: "ORDER", label: "주문하면 바로 줄임" },
 ];
 type Sort = "newest" | "sales" | "price_asc" | "price_desc";
 const SORTS: { key: Sort; label: string }[] = [
@@ -96,7 +96,7 @@ const TOASTS: Record<string, string> = {
 type Page = { products: Product[]; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error"; status: number; message?: string } | { kind: "ok"; items: Product[]; next: string | null };
 type BulkResult = { updated: string[]; skipped: { productId: string; reason: string }[] };
-const SKIP_REASON: Record<string, string> = { not_found: "찾을 수 없음", no_sellable_option: "판매할 옵션이 없음" };
+const SKIP_REASON: Record<string, string> = { not_found: "찾을 수 없음", no_sellable_option: "판매할 수 있는 선택 항목이 없음(상품 수정에서 추가해 주십시오)" };
 const STATUS_TO: Record<string, string> = { ON_SALE: "판매 중으로", HIDDEN: "숨김으로", SOLD_OUT: "품절로", DRAFT: "임시 저장으로" };
 
 // 등록일은 한국 시간 기준 월/일
@@ -107,10 +107,11 @@ const kstDate = (offsetDays = 0, offsetMonths = 0) => {
   if (offsetMonths) d.setMonth(d.getMonth() + offsetMonths);
   return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul" }).format(d);
 };
-const optionSummary = (p: Product) => (p.options.length === 0 ? "옵션 없음" : p.options.map((o) => o.name).join(" · "));
+const optionSummary = (p: Product) => (p.options.length === 0 ? "선택 항목 없음" : p.options.map((o) => o.name).join(" · "));
 const isShown = (p: Product) => p.status === "ON_SALE" || p.status === "SOLD_OUT";
 
 export default function ProductListPage() {
+  const { confirm } = useConfirm();
   const { can } = useSeller();
   // 적용한 조건·정렬·개수는 주소(쿼리)가 기준이다. 상세에 갔다 Back으로 돌아와도 그대로 복원된다(IA Back 규칙 3항)
   const [u, setU] = useUrlState(URL_DEFAULTS);
@@ -231,7 +232,7 @@ export default function ProductListPage() {
       return next;
     });
 
-  const skippedText = (r: BulkResult) => (r.skipped.length === 0 ? "" : ` ${r.skipped.length}개는 바꾸지 못했습니다(${[...new Set(r.skipped.map((s) => SKIP_REASON[s.reason] ?? "처리할 수 없음"))].join(" · ")})`);
+  const skippedText = (r: BulkResult) => (r.skipped.length === 0 ? "" : ` ${r.skipped.length}개는 바꾸지 못했습니다(${[...new Set(r.skipped.map((s) => SKIP_REASON[s.reason] ?? "바꿀 수 없는 상품임"))].join(" · ")})`);
 
   // 빠른 처리(판매 상태·재고·판매가) 결과를 목록 한 줄에 반영한다. 서버 응답을 받은 뒤에만 바뀌고, 되돌릴 수 있는 변경은 토스트에 「되돌리기」가 붙는다
   const [quickUndo, setQuickUndo] = useState<{ text: string; run: QuickUndo } | null>(null);
@@ -246,6 +247,7 @@ export default function ProductListPage() {
   const quickFail = (text: string) => setToast(text);
   const bulkStatus = async (status: ProductStatus) => {
     const ids = [...selected];
+    if (!(await confirm({ title: `선택한 상품 ${ids.length}개를 ${STATUS_TO[status] ?? "선택한 상태로"} 바꾸시겠습니까?`, body: "쇼핑몰에 바로 반영됩니다.", confirmLabel: "바꾸기" }))) return;
     const prev = items.filter((p) => selected.has(p.id)).map((p) => ({ id: p.id, status: p.status }));
     setBulkBusy(true);
     const r = await api<BulkResult>("/api/seller/products/bulk", { method: "POST", body: { action: "status", status, productIds: ids } });
@@ -318,13 +320,13 @@ export default function ProductListPage() {
         <SearchBox label="목록 조건" onSearch={apply} onReset={resetAll}>
           <SearchRow label="검색어">
             <select className="inp inp-sm inp-w-md" aria-label="검색 기준" value={draft.mode} onChange={(e) => setDraft({ ...draft, mode: e.target.value as "name" | "code", text: "" })}>
-              <option value="name">상품명 · 옵션명</option>
+              <option value="name">상품명 · 선택 항목 이름</option>
               <option value="code">상품 코드</option>
             </select>
             <input
               className="inp inp-sm"
               type="search"
-              placeholder={draft.mode === "name" ? "상품명 · 옵션명 입력" : "상품 코드 입력(예: P12)"}
+              placeholder={draft.mode === "name" ? "상품명 · 선택 항목 이름 입력" : "상품 코드 입력(예: P12)"}
               aria-label="상품 검색"
               value={draft.text}
               onChange={(e) => setDraft({ ...draft, text: e.target.value })}
@@ -344,8 +346,8 @@ export default function ProductListPage() {
             </SearchRow>
           )}
           <SearchRow label="판매 상태">{radios("판매 상태", "status", FILTERS, draft.status, (v) => setDraft({ ...draft, status: v }))}</SearchRow>
-          <SearchRow label="노출 상태">{radios("노출 상태", "display", DISPLAYS, draft.display, (v) => setDraft({ ...draft, display: v }))}</SearchRow>
-          <SearchRow label="재고 차감">{radios("재고 차감", "deduct", DEDUCTS, draft.deduct, (v) => setDraft({ ...draft, deduct: v }))}</SearchRow>
+          <SearchRow label="쇼핑몰 노출">{radios("쇼핑몰 노출", "display", DISPLAYS, draft.display, (v) => setDraft({ ...draft, display: v }))}</SearchRow>
+          <SearchRow label="재고가 줄어드는 때">{radios("재고가 줄어드는 때", "deduct", DEDUCTS, draft.deduct, (v) => setDraft({ ...draft, deduct: v }))}</SearchRow>
           <SearchRow label="등록일">
             <span className="row wrap" style={{ gap: 8 }}>
               <button className="btn btn-dense btn-out btn-w-xs" type="button" onClick={() => setDraft({ ...draft, from: kstDate(), to: kstDate() })}>
@@ -499,7 +501,7 @@ export default function ProductListPage() {
                       <th className="p-w-price">판매가</th>
                       <th className="p-w-stock">재고</th>
                       <th className="p-w-flag">판매</th>
-                      <th className="p-w-flag">노출</th>
+                      <th className="p-w-flag">보임</th>
                       <th className="p-w-state">상태</th>
                       <th className="p-w-date">등록일</th>
                       {canManage && <th className="p-w-act">관리</th>}
@@ -532,7 +534,7 @@ export default function ProductListPage() {
                             {canManage && p.options.length === 1 ? <QuickStock product={p} onDone={quickDone} onFail={quickFail} /> : stock.toLocaleString("ko-KR")}
                           </td>
                           <td className="num">{(p.soldQuantity ?? 0).toLocaleString("ko-KR")}</td>
-                          <td>{isShown(p) ? "노출" : "비노출"}</td>
+                          <td>{isShown(p) ? "보임" : "안 보임"}</td>
                           <td>
                             <span className={`bdg ${b.cls}`}>{b.label}</span>
                             {canManage && <QuickStatus product={p} onDone={quickDone} onFail={quickFail} />}

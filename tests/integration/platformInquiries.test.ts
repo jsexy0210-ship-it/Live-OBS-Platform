@@ -47,7 +47,7 @@ const req = (path: string, cookie: string, method = "GET", body?: unknown) =>
 const iq = (inquiryId: string) => ({ params: Promise.resolve({ inquiryId }) });
 const im = (imageId: string) => ({ params: Promise.resolve({ imageId }) });
 const json = async (r: Response) => ({ status: r.status, body: await r.json() });
-const NEW = { category: "BILLING", title: "청구 금액 문의", body: "이번 달 청구가\n두 번 나왔습니다." };
+const NEW = { category: "SUBSCRIPTION_FEE", title: "청구 금액 문의", body: "이번 달 청구가\n두 번 나왔습니다." };
 
 const create = async (cookie: string, body: unknown = NEW) => json(await sellerCreate(req("/api/seller/platform-inquiries", cookie, "POST", body)));
 const list = async (cookie: string) => json(await sellerList(req("/api/seller/platform-inquiries", cookie)));
@@ -65,7 +65,7 @@ describe("파트너스 문의 보내기·보는 범위", () => {
     const other = await login(a.seller.id, "STAFF");
     const made = await create(a.staff.cookie);
     expect(made.status).toBe(201);
-    expect(made.body.inquiry).toMatchObject({ category: "BILLING", title: "청구 금액 문의", status: "OPEN", notice: null, messages: [{ author: "PARTNER", authorName: "직원", body: NEW.body, images: [] }] });
+    expect(made.body.inquiry).toMatchObject({ category: "SUBSCRIPTION_FEE", title: "청구 금액 문의", status: "OPEN", notice: null, messages: [{ author: "PARTNER", authorName: "직원", body: NEW.body, images: [] }] });
     const id = made.body.inquiry.id;
     expect((await list(a.owner.cookie)).body.items).toMatchObject([{ id, status: "OPEN", hasNewReply: false }]);
     expect((await detail(a.owner.cookie, id)).status).toBe(200);
@@ -159,7 +159,9 @@ describe("마스터 답변·종료", () => {
     expect(await close(cs.cookie, id, { expectedVersion: 1 })).toMatchObject({ status: 409, body: { error: "version_conflict", currentVersion: 2 } });
     expect((await reply(cs.cookie, id, { body: "3일 안에 취소됩니다.", expectedVersion: 2 })).body.inquiry).toMatchObject({ status: "ANSWERED", version: 3 });
     const actions = (await db.auditLog.findMany({ where: { targetType: "PlatformInquiry", targetId: id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] })).map((x) => x.action);
-    expect(actions).toEqual(["platform_inquiry.create", "platform_inquiry.reply", "platform_inquiry.message", "platform_inquiry.reply"]);
+    // 첫 답변은 담당 자동 배정 로그가 함께 남는다(두 번째 답변은 이미 담당이 있어 없음)
+    expect(actions.filter((a) => a !== "platform_inquiry.assign")).toEqual(["platform_inquiry.create", "platform_inquiry.reply", "platform_inquiry.message", "platform_inquiry.reply"]);
+    expect(actions.filter((a) => a === "platform_inquiry.assign")).toHaveLength(1);
   });
 
   it("종료하면 파트너스 추가 문의·마스터 답변·다시 종료가 409 inquiry_closed. 종료한 관리자가 남는다", async () => {

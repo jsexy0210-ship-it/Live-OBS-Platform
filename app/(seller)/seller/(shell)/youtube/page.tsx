@@ -6,7 +6,7 @@ import { Topbar, useSeller } from "../../../../../components/seller/SellerShell"
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
 import { chatNotice, type ChatStatus } from "../../../../../components/seller/broadcast/chatStatus";
-import { kstTime } from "../../../../../components/seller/broadcast/queue";
+import { formatDateTime } from "../../../../../lib/client/format";
 
 // SA-057 유튜브 연결(방송 › 연동). 채널 주소·방송 주소 연결/해제, 연결 상태, 연결한 방송의 채팅 수집 켜기·끄기.
 // API: GET /api/seller/youtube · PUT·DELETE …/channel { url } · PUT·DELETE …/live { url } · POST …/live/find · PUT …/live/chat { enabled }
@@ -47,10 +47,6 @@ const pct = (n: number, limit: number) => (limit > 0 ? Math.min(100, Math.round(
 
 const STATUS_TEXT: Record<Live["status"], string> = { upcoming: "예정", live: "진행 중", ended: "종료" };
 // 한국 시간 월/일 시:분
-const kstDate = (iso: string) => {
-  const d = new Date(new Date(iso).getTime() + 9 * 3600_000);
-  return `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${kstTime(iso)}`;
-};
 
 export default function YoutubePage() {
   const { can, me } = useSeller();
@@ -172,7 +168,7 @@ export default function YoutubePage() {
                             <>
                               <span className="bdg b-done">이어짐</span>
                               <span className="t-c1 c-alt">
-                                채널 {data.channel.title} · {kstDate(data.channel.connectedAt)}에 이어 둠
+                                채널 {data.channel.title} · {formatDateTime(data.channel.connectedAt)}에 이어 둠
                               </span>
                             </>
                           ) : (

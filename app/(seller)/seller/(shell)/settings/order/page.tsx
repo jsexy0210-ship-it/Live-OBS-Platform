@@ -7,9 +7,10 @@ import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { parseAmount } from "../../../../../../components/seller/format";
+import { useUnsavedGuard } from "../../../../../../lib/client/navigation";
 
 // SA-063 주문 설정: 미입금 자동 취소·입금 기한·자동 구매 제한(미입금·결제 후 취소)·재고 되돌리기·자동 배송 완료·자동 구매 확정.
-// 반품·교환 배송비는 배송비 정책(SA-061)에서 정한다(API가 배송비 정책에 있음). 마감 전 알림은 API가 생기면 붙인다.
+// 반품·교환 배송비는 배송비 정책(SA-061)에서 정한다(API가 배송비 정책에 있음). 마감 알림·배송 자동 조회는 order-policy의 dueReminderEnabled·autoTrackingEnabled(#713).
 
 type Policy = {
   autoCancelEnabled: boolean;
@@ -21,6 +22,8 @@ type Policy = {
   autoDeliverDays: number;
   autoConfirmEnabled: boolean;
   autoConfirmDays: number;
+  dueReminderEnabled: boolean;
+  autoTrackingEnabled: boolean;
 };
 type Unit = "day" | "hour";
 
@@ -52,6 +55,8 @@ export default function OrderSettingsPage() {
   const [deliverDays, setDeliverDays] = useState("");
   const [confirmOn, setConfirmOn] = useState(true);
   const [confirmDays, setConfirmDays] = useState("");
+  const [dueReminder, setDueReminder] = useState(true);
+  const [tracking, setTracking] = useState(false);
   // 배송 자동 조회 단가(발송·이용 충전 API, 대표자만 읽을 수 있다). 못 읽으면 단가 없이 안내만 하고, 정해지기 전이면 빈 문자열이다
   const [trackingFee, setTrackingFee] = useState<string | null>(null);
   const [showError, setShowError] = useState(false);
@@ -70,6 +75,8 @@ export default function OrderSettingsPage() {
     setDeliverDays(String(p.autoDeliverDays));
     setConfirmOn(p.autoConfirmEnabled);
     setConfirmDays(String(p.autoConfirmDays));
+    setDueReminder(p.dueReminderEnabled);
+    setTracking(p.autoTrackingEnabled);
   };
 
   const load = useCallback(async () => {
@@ -114,7 +121,10 @@ export default function OrderSettingsPage() {
       saved.autoDeliverEnabled !== deliverOn ||
       saved.autoDeliverDays !== effectiveDeliver ||
       saved.autoConfirmEnabled !== confirmOn ||
-      saved.autoConfirmDays !== effectiveConfirm);
+      saved.autoConfirmDays !== effectiveConfirm ||
+      saved.dueReminderEnabled !== dueReminder ||
+      saved.autoTrackingEnabled !== tracking);
+  useUnsavedGuard(dirty); // 링크·브라우저 Back·새로고침에 같은 확인(docs/IA.md Back 규칙 7항)
 
   // 입금 기한 칸은 자동 취소를 꺼도 값을 남겨 둔다(다시 켤 때 그대로 쓰도록). 꺼져 있으면 검사하지 않고 저장된 값을 보낸다.
   const save = async () => {
@@ -136,6 +146,8 @@ export default function OrderSettingsPage() {
       autoDeliverDays: effectiveDeliver!,
       autoConfirmEnabled: confirmOn,
       autoConfirmDays: effectiveConfirm!,
+      dueReminderEnabled: dueReminder,
+      autoTrackingEnabled: tracking,
     };
     const r = await api<{ policy: Policy }>("/api/seller/order-policy", { method: "PUT", body });
     setSaving(false);
@@ -263,6 +275,11 @@ export default function OrderSettingsPage() {
                     </select>
                   </FormRow>
                 )}
+                {autoCancel && (
+                  <FormRow label="마감 알림" help="알림톡으로 입금을 한 번 더 안내합니다 · 안 되면 문자로 보냅니다">
+                    {ck("마감 1시간 전 알림", dueReminder, () => setDueReminder((v) => !v))}
+                  </FormRow>
+                )}
               </FormSection>
 
               <FormSection title="주문 막기" actions={<span className="t-l2 c-alt">회원별 해제는 「구매 제한」 화면</span>}>
@@ -316,27 +333,29 @@ export default function OrderSettingsPage() {
                 </span>
               </div>
               <FormSection title="배송 완료 · 구매 확정">
+                <FormRow label="자동 배송 완료" help={deliverOn ? "송장을 올린 뒤 배송 중으로 기본 7일이 지나면 바뀝니다" : "꺼 두면 배송 완료는 직접 변경합니다"}>
+                  {ck("일정 기간이 지나면 배송 완료로 바꿉니다", deliverOn, () => setDeliverOn((v) => !v))}
+                </FormRow>
                 <FormRow
-                  label="자동 배송 완료"
+                  label="배송 자동 조회"
                   help={
-                    deliverOn ? (
-                      <>
-                        송장을 올린 뒤 배송 중으로 기본 7일이 지나면 바뀝니다
-                        <br />
-                        <span data-testid="tracking-fee">
-                          켜면 송장 1건 조회당 {trackingFee === null ? "비용이" : trackingFee === "" ? "단가 확정 전 금액이" : `${trackingFee}원이`} 발송·이용 충전금에서 차감됩니다 · 단가는 발송·이용 충전에서 봅니다
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        꺼 두면 배송 완료는 직접 변경합니다
-                        <br />
-                        <span data-testid="tracking-fee">끄면 구매자에게 택배사 조회 페이지 링크만 보여 드리며 비용이 없습니다</span>
-                      </>
-                    )
+                    <span data-testid="tracking-fee">
+                      {tracking
+                        ? `켜면 송장 1건 조회당 ${trackingFee === null ? "비용이" : trackingFee === "" ? "단가 확정 전 금액이" : `${trackingFee}원이`} 발송·이용 충전금에서 차감됩니다 · 단가는 발송·이용 충전에서 봅니다`
+                        : "끄면 구매자에게 택배사 조회 페이지 링크만 보여 드리며 비용이 없습니다 · 잔액은 발송·이용 충전에서 봅니다"}
+                    </span>
                   }
                 >
-                  {ck("일정 기간이 지나면 배송 완료로 바꿉니다", deliverOn, () => setDeliverOn((v) => !v))}
+                  <div className="row" role="radiogroup" aria-label="배송 자동 조회" style={{ gap: 24, flexWrap: "wrap" }}>
+                    <label className="chk">
+                      <input type="radio" name="auto-tracking" checked={tracking} onChange={() => setTracking(true)} />
+                      켬 · 송장 자동 조회
+                    </label>
+                    <label className="chk">
+                      <input type="radio" name="auto-tracking" checked={!tracking} onChange={() => setTracking(false)} />
+                      끔 · 택배사 조회 링크만 (기본)
+                    </label>
+                  </div>
                 </FormRow>
                 {deliverOn && (
                   <FormRow label="자동 배송 완료 기간" htmlFor="deliver-days" help={showError && deliverError ? undefined : `1~${MAX_AUTO_DAYS}일 · 기본 7일`}>

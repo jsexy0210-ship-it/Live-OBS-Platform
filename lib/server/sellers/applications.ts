@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { AdminSessionContext } from "../auth/session";
+import { policyValue } from "../admin/platformPolicy";
 import { writeAudit } from "../audit/log";
 import { forbidden } from "../authz/errors";
 import { adminCan } from "../authz/permissions";
@@ -9,6 +10,7 @@ import { sendMail, type MailSender } from "../mail/quota";
 import { kstDayStart } from "../orders/read";
 import { approveSeller, rejectSeller } from "./approval";
 import type { ReviewReason } from "./application";
+import { businessStatusProvider, type BusinessStatusProvider } from "./businessCheck";
 
 // 마스터 관리자 가입 신청(MA-013·014): 처리 대기 목록·요약(KPI)·이력, 보완 요청·재촉 메일·선택 승인·승인 되돌리기(10초).
 // 가입 신청 = 승인 대기(PENDING) 쇼핑몰. 상태는 계산한다: 보완 요청 중(SUPPLEMENT) > 확인 필요(REVIEW, reviewReasons 있음) > 이상 없음(CLEAR).
@@ -53,6 +55,9 @@ export const APPLICATION_MESSAGES = {
   undo_expired: "승인을 되돌릴 수 있는 시간(10초)이 지났습니다",
   not_undoable: "되돌릴 수 없는 승인입니다",
   invalid_input: "입력한 내용을 확인해 주십시오",
+  recheck_too_soon: "국세청 조회는 30초에 한 번만 다시 할 수 있습니다",
+  recheck_limit: "국세청 조회는 한 시간에 10번까지 다시 할 수 있습니다",
+  no_business_info: "사업자 정보가 없어 다시 조회할 수 없습니다",
 } as const;
 export type ApplicationFailure = keyof typeof APPLICATION_MESSAGES;
 
@@ -127,7 +132,9 @@ export async function listApplications(db: PrismaClient, admin: AdminSessionCont
   const now = await dbNow(db);
   const take = Math.min(limit, 100);
   const dayStart = kstDayStartOf(now);
-  const over48 = new Date(now.getTime() - 48 * HOUR_MS);
+  // 「48시간 초과」 칩·탭의 기준은 플랫폼 기본 정책의 가입 심사 목표 시간(기본 48, MA-081). 이름(over48h)은 그대로 둔다.
+  const reviewTargetHours = await policyValue(db, "reviewTargetHours");
+  const over48 = new Date(now.getTime() - reviewTargetHours * HOUR_MS);
 
   const all = await loadPending(db);
   const chips = {
@@ -171,11 +178,29 @@ export async function listApplications(db: PrismaClient, admin: AdminSessionCont
     return true;
   });
   if (sort === "newest") rows = [...rows].reverse();
-  const page = rows.slice(offset, offset + take).map((p) => viewApplication(p, now));
+  const page = rows.slice(offset, offset + take).map((p) => viewApplication(p, now, reviewTargetHours));
   return { ok: true as const, chips, kpi, industries, applications: page, total: rows.length, nextCursor: offset + take < rows.length ? String(offset + take) : null };
 }
 
-function viewApplication(p: Pending, now: Date) {
+// 자동 점검 항목별 결과(MA-013 검토 패널). 저장된 「확인 필요」 사유에서 만든다: 사유가 없으면 통과(OK), 조회 실패는 WARN, 정보가 틀리거나 상태가 이상하면 FAIL.
+// 휴대폰 본인확인은 가입 신청의 필수 절차라 신청이 있으면 완료다.
+type CheckResult = "OK" | "WARN" | "FAIL";
+function applicationChecks(reasons: string[]): { key: string; label: string; result: CheckResult; text: string }[] {
+  const has = (c: ReviewReason) => reasons.includes(c);
+  const pick = (rules: [ReviewReason, CheckResult, string][], ok: string): { result: CheckResult; text: string } => {
+    const hit = rules.find(([c]) => has(c));
+    return hit ? { result: hit[1], text: hit[2] } : { result: "OK", text: ok };
+  };
+  return [
+    { key: "identity", label: "휴대폰 본인확인 (대표자)", result: "OK", text: "완료" },
+    // 대표자 1인 1쇼핑몰은 신청을 받을 때 막으므로 남는 중복 점검은 사업자번호다
+    { key: "duplicate", label: "대표자 · 사업자 중복", ...pick([["business_duplicate", "FAIL", "사업자번호 중복"]], "없음") },
+    { key: "business_status", label: "국세청 사업자 상태", ...pick([["business_not_active", "FAIL", "휴업 · 폐업"], ["business_info_mismatch", "FAIL", "정보 불일치"], ["business_lookup_failed", "WARN", "조회 실패"]], "정상") },
+    { key: "mail_order", label: "통신판매업 신고번호", ...pick([["mail_order_not_registered", "FAIL", "신고 내역 없음"], ["mail_order_not_active", "FAIL", "영업 상태 이상"], ["mail_order_number_invalid", "FAIL", "번호 확인 불가"], ["mail_order_lookup_failed", "WARN", "조회 실패"]], "확인됨") },
+  ];
+}
+
+function viewApplication(p: Pending, now: Date, reviewTargetHours: number) {
   const i = info(p.businessInfo);
   const st = stateOf(p);
   const rev = p.rev;
@@ -190,8 +215,9 @@ function viewApplication(p: Pending, now: Date) {
     industry: typeof i.industry === "string" && i.industry ? i.industry : null,
     receivedAt: p.createdAt,
     elapsedHours: Math.floor((now.getTime() - p.createdAt.getTime()) / HOUR_MS),
-    over48h: st !== "SUPPLEMENT" && now.getTime() - p.createdAt.getTime() > 48 * HOUR_MS,
+    over48h: st !== "SUPPLEMENT" && now.getTime() - p.createdAt.getTime() > reviewTargetHours * HOUR_MS,
     reasons: p.reviewReasons.map((c) => ({ code: c, text: REVIEW_REASON_TEXT[c as ReviewReason] ?? "확인할 내용이 있습니다" })),
+    checks: applicationChecks(p.reviewReasons),
     supplement:
       st === "SUPPLEMENT" && rev
         ? {
@@ -289,7 +315,9 @@ export async function requestSupplement(db: PrismaClient, admin: AdminSessionCon
     const now = await dbNow(tx);
     const cur = await tx.sellerApplicationReview.findUnique({ where: { sellerId } });
     if (cur?.supplementRequestedAt && !cur.supplementResolvedAt) return { ok: false as const, reason: "already_requested" as const };
-    const dueAt = new Date(now.getTime() + SUPPLEMENT_DAYS * DAY_MS);
+    // 보완 요청 무응답 자동 반려 일수는 플랫폼 기본 정책(MA-081, 기본 7일). 0(안 함)이면 기한 없이 자동 반려하지 않는다.
+    const supplementDays = await policyValue(tx, "supplementAutoRejectDays");
+    const dueAt = supplementDays > 0 ? new Date(now.getTime() + supplementDays * DAY_MS) : null;
     const data = { supplementReason: reason, supplementRequestedAt: now, supplementDueAt: dueAt, supplementResolvedAt: null, supplementByAdminId: admin.admin.id, reminderCount: 0, lastReminderAt: null };
     await tx.sellerApplicationReview.upsert({ where: { sellerId }, create: { sellerId, ...data }, update: data });
     await writeAudit(tx, { actorType: "PLATFORM_ADMIN", actorId: admin.admin.id, sellerId, action: "admin.seller.supplement_request", targetType: "Seller", targetId: sellerId, reason, after: { dueAt }, ip: meta.ip, userAgent: meta.userAgent });
@@ -353,6 +381,48 @@ export async function remindSupplement(db: PrismaClient, admin: AdminSessionCont
   await writeAudit(db, { actorType: "PLATFORM_ADMIN", actorId: admin.admin.id, sellerId, action: "admin.seller.supplement_remind", targetType: "Seller", targetId: sellerId, after: { mail: r.status, counted: stamp.count === 1 }, ip: opts.meta?.ip, userAgent: opts.meta?.userAgent });
   return { ok: true as const, sentAt: now, reminderCount: rev.reminderCount + (stamp.count === 1 ? 1 : 0) };
 }
+// 국세청 사업자 상태 다시 조회(MA-013 검토 패널, seller.moderate). 신청 때 받은 사업자번호·대표자명·개업일자로 진위확인·상태조회를 다시 하고,
+// 사업자 관련 확인 필요 사유(조회 실패·정보 불일치·휴업 폐업)만 새 결과로 바꾼다(통신판매업·중복 사유는 그대로). 조회 결과는 신청 정보에 저장하고 로그 추적에 남긴다(키 값은 남기지 않음).
+// 연속 호출 제한: 같은 신청 30초에 한 번, 한 시간에 10번(조회 실패도 센다).
+const RECHECK_COOLDOWN_MS = 30_000;
+const RECHECK_HOUR_MAX = 10;
+const BUSINESS_REASONS: ReviewReason[] = ["business_lookup_failed", "business_info_mismatch", "business_not_active"];
+export async function recheckBusiness(db: PrismaClient, admin: AdminSessionContext, sellerId: string, opts: { provider?: BusinessStatusProvider; meta?: Meta } = {}) {
+  needModerate(admin);
+  const seller = await db.seller.findUnique({ where: { id: sellerId }, select: { status: true, businessInfo: true, reviewReasons: true } });
+  if (!seller) return { ok: false as const, reason: "not_found" as const };
+  if (seller.status !== "PENDING") return { ok: false as const, reason: "not_pending" as const };
+  const i = info(seller.businessInfo);
+  const businessNumber = biz(i.businessNumber);
+  const representativeName = typeof i.representativeName === "string" ? i.representativeName : "";
+  const openedOn = typeof i.openedOn === "string" ? i.openedOn : "";
+  if (!businessNumber || !representativeName || !openedOn) return { ok: false as const, reason: "no_business_info" as const };
+  const now = await dbNow(db);
+  const recent = await db.auditLog.findMany({ where: { action: "admin.seller.business_recheck", targetId: sellerId, createdAt: { gte: new Date(now.getTime() - 3_600_000) } }, orderBy: { createdAt: "desc" }, select: { createdAt: true } });
+  if (recent.length >= RECHECK_HOUR_MAX) return { ok: false as const, reason: "recheck_limit" as const };
+  if (recent[0] && now.getTime() - recent[0].createdAt.getTime() < RECHECK_COOLDOWN_MS) return { ok: false as const, reason: "recheck_too_soon" as const, canRecheckAt: new Date(recent[0].createdAt.getTime() + RECHECK_COOLDOWN_MS) };
+  // 호출을 먼저 기록해 동시에 여러 번 눌러도 제한이 걸린다
+  await writeAudit(db, { actorType: "PLATFORM_ADMIN", actorId: admin.admin.id, sellerId, action: "admin.seller.business_recheck", targetType: "Seller", targetId: sellerId, before: { reviewReasons: seller.reviewReasons }, ip: opts.meta?.ip, userAgent: opts.meta?.userAgent });
+  const nts = await (opts.provider ?? businessStatusProvider()).verify({ businessNumber, representativeName, openedOn });
+  const found: ReviewReason[] = [];
+  if (!nts.ok) found.push("business_lookup_failed");
+  else {
+    if (!nts.valid) found.push("business_info_mismatch");
+    if (nts.status !== "ACTIVE") found.push("business_not_active");
+  }
+  const reviewReasons = [...seller.reviewReasons.filter((c) => !BUSINESS_REASONS.includes(c as ReviewReason)), ...found];
+  const moved = await db.seller.updateMany({
+    where: { id: sellerId, status: "PENDING" },
+    data: {
+      reviewReasons,
+      businessInfo: { ...i, ...(nts.ok ? { businessStatus: nts.status, businessInfoValid: nts.valid } : {}), checkedAt: now.toISOString() } as Prisma.InputJsonValue,
+    },
+  });
+  if (moved.count !== 1) return { ok: false as const, reason: "not_pending" as const };
+  await writeAudit(db, { actorType: "PLATFORM_ADMIN", actorId: admin.admin.id, sellerId, action: "admin.seller.business_recheck_result", targetType: "Seller", targetId: sellerId, after: { lookup: nts.ok ? "OK" : "FAILED", reviewReasons }, ip: opts.meta?.ip, userAgent: opts.meta?.userAgent });
+  return { ok: true as const, lookupOk: nts.ok, reasons: reviewReasons.map((c) => ({ code: c, text: REVIEW_REASON_TEXT[c as ReviewReason] ?? "확인할 내용이 있습니다" })), checks: applicationChecks(reviewReasons), checkedAt: now };
+}
+
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 // 선택 승인: 이상 없음(CLEAR) 신청만 한꺼번에 승인한다. 건마다 따로 처리해 한 건이 실패해도 나머지는 계속한다(결과를 건별로 돌려준다).
@@ -395,10 +465,12 @@ export async function undoApproval(db: PrismaClient, admin: AdminSessionContext,
 
 // 정기 작업: 보완 기한이 지난 신청을 자동 반려한다(로그 추적 seller.supplement_expired).
 export async function rejectExpiredSupplements(tx: Prisma.TransactionClient, now: Date): Promise<number> {
-  const due = await tx.sellerApplicationReview.findMany({ where: { supplementRequestedAt: { not: null }, supplementResolvedAt: null, supplementDueAt: { lte: now } }, select: { sellerId: true } });
+  const due = await tx.sellerApplicationReview.findMany({ where: { supplementRequestedAt: { not: null }, supplementResolvedAt: null, supplementDueAt: { lte: now } }, select: { sellerId: true, supplementRequestedAt: true, supplementDueAt: true } });
   let n = 0;
-  for (const { sellerId } of due) {
-    const why = `보완 기한(${SUPPLEMENT_DAYS}일) 안에 보완하지 않아 자동 반려했습니다`;
+  for (const { sellerId, supplementRequestedAt, supplementDueAt } of due) {
+    // 안내 문구의 일수는 요청 때 정해진 기한(요청 시각~기한)이다. 정책을 나중에 바꿔도 이미 보낸 요청은 그 기한을 따른다.
+    const days = supplementRequestedAt && supplementDueAt ? Math.max(1, Math.round((supplementDueAt.getTime() - supplementRequestedAt.getTime()) / DAY_MS)) : SUPPLEMENT_DAYS;
+    const why = `보완 기한(${days}일) 안에 보완하지 않아 자동 반려했습니다`;
     const moved = await tx.seller.updateMany({ where: { id: sellerId, status: "PENDING" }, data: { status: "REJECTED", rejectedReason: why, rejectedAt: now } });
     await tx.sellerApplicationReview.update({ where: { sellerId }, data: { supplementResolvedAt: now } });
     if (moved.count === 1) {
