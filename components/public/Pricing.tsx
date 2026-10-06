@@ -16,13 +16,13 @@ const COPY: Record<string, string[]> = {
 const RECOMMENDED = "INTEGRATED";
 const DISCOUNT_NOTICE = "지금은 런칭 할인가예요. 할인이 끝나는 날짜는 정해지면 30일 전에 알려 드리고, 바뀌는 날짜와 금액은 결제 전 화면과 구독 관리 화면에서 다시 보여 드려요.";
 
-type BillingPolicy = { paymentRetryCount: number; overdueLockDays: number };
+type BillingPolicy = { overdueLockDays: number };
 
 const QA = (billingPolicy: BillingPolicy | null) => [
   ["언제 결제되나요?", "체험이 있는 이용권은 체험이 끝난 다음 날, 없는 이용권은 구독을 시작한 날 첫 결제가 되고 그 뒤로 매달 같은 날에 결제돼요. 결제일은 구독 · 결제 메뉴에서 볼 수 있어요."],
   ["결제가 실패하면 어떻게 되나요?", billingPolicy
-    ? `결제가 실패하면 하루 간격으로 ${billingPolicy.paymentRetryCount}번 다시 시도해요. 처음 실패한 날부터 ${billingPolicy.overdueLockDays}일까지는 계속 쓸 수 있고, 그 뒤에는 결제할 때까지 쇼핑몰과 방송 화면이 멈춰요. 결제하면 바로 다시 열리고, 구독 기간은 원래 결제일부터 이어서 세요.`
-    : "결제가 실패하면 하루 간격으로 다시 시도해요. 정해진 유예 기간에는 계속 쓸 수 있고, 유예가 끝나면 결제할 때까지 쇼핑몰과 방송 화면이 멈춰요. 결제하면 바로 다시 열려요."],
+    ? `정기 결제 실패가 확인되면 처음 실패한 날부터 ${billingPolicy.overdueLockDays}일까지는 계속 쓸 수 있어요. 유예가 끝나면 결제할 때까지 쇼핑몰과 방송 화면이 멈춰요. 결제하면 바로 다시 열리고, 구독 기간은 원래 결제일부터 이어서 세요.`
+    : "정기 결제 실패가 확인되면 정해진 유예 기간에는 계속 쓸 수 있어요. 유예가 끝나면 결제할 때까지 쇼핑몰과 방송 화면이 멈춰요. 결제하면 바로 다시 열려요."],
   ["해지하면 데이터는요?", "해지해도 남은 기간까지는 쓸 수 있어요. 해지한 뒤 내 자료가 어떻게 되는지는 정해지는 대로 알려 드려요."],
   ["요금이 바뀌면요?", "할인이 끝나는 날짜는 정해지면 30일 전에 알려 드리고, 바뀌는 날짜와 금액은 결제 전 화면과 구독 관리 화면에서 다시 보여 드려요."],
 ];
