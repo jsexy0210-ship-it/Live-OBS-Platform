@@ -78,10 +78,10 @@ readonly_buildx_details() {
         log "Build cache 상세: JSON 해석 실패, 확인 불가"
       else
         count="$(jq 'length' <<<"$data" 2>/dev/null || echo 0)"
-        log "Build cache records: ${count}개 (ID, 크기, 마지막 사용, 정리 가능, 공유, 변경 가능, 유형)"
-        jq -r '.[0:100][] | [(.ID // "unknown" | tostring | if test("^[A-Za-z0-9_-]{1,80}$") then . else "unknown" end), ((.Size // null) | if type == "number" and . >= 0 then tostring elif type == "string" and test("^[0-9]+$") then . else "unknown" end), (.LastUsedAt // "unknown" | tostring | if test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.+-]+Z?$" ) then . else "unknown" end), (if .Reclaimable == true then "true" elif .Reclaimable == false then "false" else "unknown" end), (if .Shared == true then "true" elif .Shared == false then "false" else "unknown" end), (if .Mutable == true then "true" elif .Mutable == false then "false" else "unknown" end), (.Type // "unknown" | tostring | if test("^[A-Za-z0-9_-]{1,40}$") then . else "unknown" end)] | @tsv' <<<"$data" 2>/dev/null | while IFS=$'\t' read -r id size last reclaimable shared mutable type; do
+        log "Build cache records: ${count}개 (ID, 표시 크기, 표시 상대시간, 정리 가능, 공유, 변경 가능, 유형)"
+        jq -r '.[0:100][] | [(.ID // "unknown" | tostring | if test("^[A-Za-z0-9_-]{1,80}$") then . else "unknown" end), ((.Size // null) | tostring | if test("^[0-9]+(\\.[0-9]+)?(B|kB|MB|GB|TB|PB|EB|ZB|YB)$") then . else "unknown" end), (.LastUsedAt // "" | tostring | if test("^(Less than a second|1 second|[0-9]+ seconds|About a minute|[0-9]+ minutes|About an hour|[0-9]+ hours|[0-9]+ days|[0-9]+ weeks|[0-9]+ months|[0-9]+ years) ago$") then . else "unknown" end), (if .Reclaimable == true then "true" elif .Reclaimable == false then "false" else "unknown" end), (if .Shared == true then "true" elif .Shared == false then "false" else "unknown" end), (if .Mutable == true then "true" elif .Mutable == false then "false" else "unknown" end), (.Type // "unknown" | tostring | if test("^[A-Za-z0-9_.-]{1,40}$") then . else "unknown" end)] | @tsv' <<<"$data" 2>/dev/null | while IFS=$'\t' read -r id size last reclaimable shared mutable type; do
           [[ "$id" =~ ^[A-Za-z0-9_-]{1,80}$ ]] || id=unknown
-          log "  cache id=$id size_bytes=$size last_used=$last reclaimable=$reclaimable shared=$shared mutable=$mutable type=$type"
+          log "  cache id=$id size_display=$size last_used_display=$last reclaimable=$reclaimable shared=$shared mutable=$mutable type=$type"
         done
         [ "$count" -le 100 ] || log "Build cache 추가 records: 확인 생략(나머지 귀속 미확인)"
       fi
@@ -94,7 +94,7 @@ readonly_buildx_details() {
       if [ -z "$raw" ]; then
         log "Build history: 빈 응답, ONQ 귀속 미확인"
       else
-        data="$(jq -ce 'if type == "array" then . else error("expected array") end' <<<"$raw" 2>/dev/null || true)"
+        data="$(jq -cs 'if all(.[]; type == "object" and (.ref | type == "string")) then . else error("expected history NDJSON objects with refs") end' <<<"$raw" 2>/dev/null || true)"
         unset raw
         if [ -z "$data" ]; then
           log "Build history: JSON 해석 실패, ONQ 귀속 미확인"
@@ -103,7 +103,7 @@ readonly_buildx_details() {
           log "Build history: 로컬 저장소 기록 ${count}개, 최대 20개 메타데이터 확인"
           [ "$count" -gt 0 ] || log "Build attribution: repository=UNKNOWN revision=UNKNOWN context=UNKNOWN (기록 없음)"
           while IFS= read -r ref; do
-            [[ "$ref" =~ ^[A-Za-z0-9_-]{1,80}$ ]] || continue
+            [[ "$ref" =~ ^[A-Za-z0-9_.-]{1,80}/[A-Za-z0-9_.-]{1,80}/[A-Za-z0-9_.-]{1,80}$ ]] || continue
             if detail_raw="$(docker buildx history inspect --format json "$ref" 2>/dev/null)" && [ -n "$detail_raw" ]; then
               detail="$(jq -c 'if type == "object" then {repository:(.VCSRepository // ""), revision:(.VCSRevision // ""), context:(.Context // "")} else {} end' <<<"$detail_raw" 2>/dev/null || true)"
             else
@@ -120,7 +120,7 @@ readonly_buildx_details() {
               " context=" + (if $ctx == "." then "repo-root" elif ($ctx | type) == "string" and ($ctx | test("^[A-Za-z0-9_./-]{1,120}$")) and ($ctx | startswith("/") | not) and (($ctx | split("/")) | all(. != "" and . != "." and . != "..")) then "workspace" elif ($ctx | type) == "string" and ($ctx | length) > 0 then "other-or-unknown" else "UNKNOWN" end)
             ' <<<"$detail" 2>/dev/null || echo 'repository=UNKNOWN revision=UNKNOWN context=UNKNOWN')"
             log "  Build record: $attribution"
-          done < <(jq -r '.[0:20][] | .ID // empty | select(type == "string")' <<<"$data" 2>/dev/null)
+          done < <(jq -r '.[0:20][] | .ref // empty | select(type == "string")' <<<"$data" 2>/dev/null | tr -d '\r')
           [ "$count" -le 20 ] || log "Build history 나머지 records: 미확인"
         fi
       fi
