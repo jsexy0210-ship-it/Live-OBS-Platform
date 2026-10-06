@@ -245,7 +245,7 @@ test("상품 삭제: 숨김을 먼저 권하고, 완전 삭제는 상품명을 �
   await expect(page).toHaveURL(/\/seller\/products$/);
   await expect(page.getByText("상품을 삭제했습니다")).toBeVisible();
   await searchFor(page, name);
-  await expect(page.getByText(`「${name}」에 해당하는 상품이 없습니다`)).toBeVisible();
+  await expect(page.getByText(new RegExp(`^「${name} · \\d{4}-\\d{2}-\\d{2} ~ \\d{4}-\\d{2}-\\d{2}」에 해당하는 상품이 없습니다$`))).toBeVisible();
   await expect(page.getByTestId("product-row").filter({ hasText: name })).toHaveCount(0);
 });
 
@@ -364,6 +364,9 @@ test("휴대폰 폭(390)에서는 메뉴가 서랍으로 열리고 상품이 카
 
   await expect(page.getByRole("link", { name: "상품 목록", exact: true })).not.toBeInViewport();
   await page.getByRole("button", { name: "메뉴 열기" }).click();
+  await expect(page.locator(".lnb")).toHaveCSS("transform", "none");
+  await page.getByRole("link", { name: "상품 목록", exact: true }).scrollIntoViewIfNeeded();
+  await expect.poll(() => page.locator(".lnb").evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
   await expect(page.getByRole("link", { name: "상품 목록", exact: true })).toBeInViewport();
   if (SHOTS) await page.screenshot({ path: "tests/e2e/screenshots/SA-shell-drawer-390.png" });
   await page.getByRole("button", { name: "메뉴 닫기" }).click();
@@ -424,7 +427,7 @@ test("「재고 없음」·「재고 부족」으로 걸러 보면 서버 기준
   await expect(page.getByTestId("product-row").filter({ hasText: "드래곤 소울 부스터" })).toHaveCount(0);
   // 판매 상태 탭과 함께 쓴다: 「숨김」 + 「재고 부족」은 해당 없음
   await applyStatus(page, "숨김", "재고 부족");
-  await expect(page.getByText("「숨김 · 재고 부족」에 해당하는 상품이 없습니다")).toBeVisible();
+  await expect(page.getByText(/^「숨김 · 재고 부족 · \d{4}-\d{2}-\d{2} ~ \d{4}-\d{2}-\d{2}」에 해당하는 상품이 없습니다$/)).toBeVisible();
 });
 
 test("「품절로 설정」 탭은 판매 상태가 품절인 상품만, 배지와 이름이 맞는다", async ({ page }) => {
@@ -459,7 +462,7 @@ test("상품 검색: 상품·옵션 이름으로 서버에서 찾고(대소문�
   await expect(page.getByTestId("product-row").first()).toContainText("문라이트 1탄 박스");
   // 없는 이름은 안내하고, 「전체 보기」로 검색까지 지운다
   await searchFor(page, "없는상품이름");
-  await expect(page.getByText("「없는상품이름 · 숨김」에 해당하는 상품이 없습니다")).toBeVisible();
+  await expect(page.getByText(/^「없는상품이름 · 숨김 · \d{4}-\d{2}-\d{2} ~ \d{4}-\d{2}-\d{2}」에 해당하는 상품이 없습니다$/)).toBeVisible();
   await page.getByRole("button", { name: "전체 보기" }).click();
   await expect(page.getByLabel("상품 검색")).toHaveValue("");
   await expect(page.getByTestId("product-row").filter({ hasText: "스타라이트 부스터 박스" })).toBeVisible();
