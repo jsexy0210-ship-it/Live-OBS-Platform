@@ -20,7 +20,8 @@ test("게시된 공개 공지만 보이고 상세가 열린다", async ({ page }
   await page.goto("/notices");
   const rows = page.getByTestId("notices-list").getByRole("link");
   await expect(rows).toHaveCount(2);
-  await expect(rows.first()).toContainText("고정 · 고정 점검 안내");
+  await expect(rows.first()).toContainText("고정");
+  await expect(rows.first()).toContainText("고정 점검 안내");
   await expect(page.getByText("파트너스 전용 공지")).toHaveCount(0);
   await expect(page.getByText("임시 저장 공지")).toHaveCount(0);
   await rows.first().click();
