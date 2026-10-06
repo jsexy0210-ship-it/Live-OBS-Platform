@@ -85,7 +85,6 @@ model Seller {
   shopName                 String
   // 한 줄 소개(SA-060, 40자). 쇼핑몰 홈·공유 설명 기본값. 비어 있으면 null.
   shopTagline              String?
-<<<<<<< ours
   // SA-060 공지·이용안내·대표 주소. 상단 공지(한 줄 60자)·홈 혜택 배너 보이기(기본 보이기)·이용안내/교환/환불 정책 글(1000자)·대표 주소 종류.
   shopTopNotice            String?
   homeBenefitBannerVisible Boolean      @default(true)
