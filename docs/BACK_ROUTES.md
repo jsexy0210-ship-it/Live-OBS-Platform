@@ -61,7 +61,7 @@
 | ID | route | 들어오는 길 | 복원할 상태 | 미저장 | 현재 |
 |---|---|---|---|---|---|
 | SA-001 | `/seller/broadcast` | M·H·L | 없음(실시간 화면) | — | 최상위 |
-| SA-002 / -O | `/seller`, `/seller/home-overlay` | M·L·H | 없음. `/seller`는 `/seller/products`로 307(UX-06, J-2) | — | 최상위 |
+| SA-002 / -O | `/seller`, `/seller/home-overlay` | M·L·H | 없음. 통합은 `/seller` 홈, 오버레이 전용은 `/seller/home-overlay` 홈 | — | 최상위 |
 | SA-003/004 | `/seller/onboarding` | M(LNB 전용)·H | 없음 | — | 최상위 |
 | SA-051 | `/seller/overlay` | M·H | 편집 중 위젯 | 필요 | 부분(링크·새로고침은 막힘, 브라우저 Back 미차단 — UX-05) |
 | SA-052 | `/seller/overlay` (URL 영역) | 같은 화면 | — | — | 최상위 |

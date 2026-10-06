@@ -48,6 +48,8 @@ async function applyStatus(page: Page, status: string, stock = "전체") {
 async function login(page: Page, email = OWNER) {
   await page.goto("/seller/login");
   await submitSellerLogin(page, email, PASSWORD);
+  await expect(page).toHaveURL(/\/seller$/);
+  await page.goto("/seller/products");
   await expect(page).toHaveURL(/\/seller\/products$/);
 }
 
@@ -295,8 +297,8 @@ test("숫자·글자 입력: 전각 숫자는 받고, 음수 가격과 보이지
 test("권한이 하나도 없는 직원에게는 권한이 필요한 메뉴가 보이지 않는다", async ({ page }) => {
   await page.goto("/seller/login");
   await submitSellerLogin(page, "demo-none@example.com", PASSWORD);
-  // 로그인 직후에는 막힌 상품 목록이 아니라 열 수 있는 첫 메뉴(상품 리뷰)로 간다(UX-06). 상품 목록은 주소로 들어오면 권한 안내
-  await expect(page).toHaveURL(/\/seller\/reviews$/);
+  // 로그인 직후는 홈(/seller)이다. 상품 목록은 주소로 들어오면 권한 안내
+  await expect(page).toHaveURL(/\/seller$/);
   await page.goto("/seller/products");
   await expect(page.getByText("이 계정은 이 일을 할 수 없습니다")).toBeVisible();
   const side = page.getByRole("complementary", { name: "파트너스 메뉴" });
@@ -314,10 +316,10 @@ test("권한이 하나도 없는 직원에게는 권한이 필요한 메뉴가 �
 });
 
 test("상품 권한이 없는 직원은 권한 안내를 본다", async ({ page }) => {
-  // 배송 담당 직원은 로그인하면 상품 목록이 아니라 주문 화면으로 간다(UX-06). 상품 목록은 주소로 들어오면 권한 안내
+  // 배송 담당 직원도 로그인하면 홈(/seller)이다. 상품 목록은 주소로 들어오면 권한 안내
   await page.goto("/seller/login");
   await submitSellerLogin(page, VIEWER, PASSWORD);
-  await expect(page).toHaveURL(/\/seller\/orders$/);
+  await expect(page).toHaveURL(/\/seller$/);
   await page.goto("/seller/products");
   await expect(page.getByText("이 계정은 이 일을 할 수 없습니다")).toBeVisible();
   await expect(page.getByRole("link", { name: "상품 등록" })).toHaveCount(0);

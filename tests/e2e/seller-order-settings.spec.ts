@@ -72,7 +72,7 @@ test("저장한 적 없는 판매자도 입금 기한이 기본 24시간으로 �
   await page.getByLabel("이메일").fill("demo-owner@example.com");
   await page.getByLabel("비밀번호").fill(PASSWORD);
   await page.getByRole("button", { name: "로그인" }).click();
-  await expect(page).toHaveURL(/\/seller\/products$/);
+  await expect(page).toHaveURL(/\/seller$/);
   await page.getByRole("link", { name: "설정", exact: true }).click();
   // 메뉴는 모든 직원이 볼 수 있는 첫 탭 「쇼핑몰 정보」로 들어간다(SA-060, MASTER 결정 2026-10-04)
   await expect(page).toHaveURL(/\/seller\/settings\/shop$/);
