@@ -1,4 +1,5 @@
-import type { AutomationJob, AutomationPayment, PrismaClient } from "@prisma/client";
+import type { AutomationCustomerAction, AutomationJob, AutomationPayment, PrismaClient } from "@prisma/client";
+import { AUTOMATION_LIMITS } from "./config";
 import { writeAudit } from "../audit/log";
 import { notFound } from "../authz/errors";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
@@ -26,9 +27,22 @@ export type JobView = {
   // 「잠시 멈추기」(SA-152): 멈춘 상태면 paused=true·pausedAt, 멈춘 단계는 stepNumber(상태는 QUEUED로 보인다). 이어 하기로 풀린다
   paused: boolean;
   pausedAt: Date | null;
+  // 「고객 확인 필요」 할 일 목록(SA-152): 고객 확인 대기(NEEDS_CUSTOMER)일 때만 5줄(로그인·2단계 인증·보안문자·앱 권한·OBS 도구), 그 밖에는 빈 배열.
+  // done: 고객이 「완료」로 표시한 줄(표시용, 작업자 진행과 무관), current: 지금 작업자가 기다리는 줄(customerAction)
+  customerChecklist: { action: AutomationCustomerAction; done: boolean; current: boolean }[];
+  // 대기 순번·예상 시작(SA-152 「대기 중」): 대기열에서 순서를 기다리는 작업(QUEUED·멈추지 않음·아직 실행 전)만, 그 밖에는 null. 목록 조회에서는 계산하지 않아 null.
+  queue: QueueEstimate | null;
   createdAt: Date;
   finishedAt: Date | null;
 };
+export type QueueEstimate = { ahead: number; etaMinutes: number };
+
+// 할 일 목록의 고정 순서(정본 SA-152)
+export const CUSTOMER_ACTION_ORDER: readonly AutomationCustomerAction[] = ["LOGIN", "TWO_FACTOR", "CAPTCHA", "PERMISSION_GRANT", "LOCAL_TOOL"];
+// 예상 시작 계산: 최근 성공한 작업 중 실행에 쓴 시간(고객 대기 제외)의 중앙값을 한 작업 길이로 보고, 앞선 작업을 동시 실행 수(maxRunning)씩 묶어 센다. 성공 기록이 없으면 기본값.
+export const DEFAULT_RUN_MINUTES = 10;
+export const ETA_MIN_MINUTES = 1;
+export const ETA_MAX_MINUTES = 24 * 60;
 
 // 화면에 내보내는 실패 사유는 정해 둔 코드만. 실행기·외부 화면에서 온 원문(외부 쇼핑몰 플랫폼 이름 등)은
 // 응답에 싣지 않는다(2026-10-04 대표님 결정: 외부 쇼핑몰 플랫폼 이름 화면 노출 금지). 원문은 작업 기록에만 남는다.
@@ -88,6 +102,8 @@ const toView = (j: AutomationJob & { payment: AutomationPayment | null }): JobVi
   verifiedAt: j.verifiedAt,
   paused: j.pausedAt !== null,
   pausedAt: j.pausedAt,
+  customerChecklist: j.status === "NEEDS_CUSTOMER" ? CUSTOMER_ACTION_ORDER.map((action) => ({ action, done: j.customerActionsDone.includes(action), current: j.customerAction === action })) : [],
+  queue: null,
   createdAt: j.createdAt,
   finishedAt: j.finishedAt,
 });
@@ -102,7 +118,23 @@ export async function getJob(db: PrismaClient, ctx: TenantContext, jobId: string
   requireSellerRead(ctx, "SUBSCRIPTION_MANAGE");
   const j = await db.automationJob.findFirst({ where: { id: jobId, sellerId: ctx.sellerId }, include: { payment: true } });
   if (!j) throw notFound();
-  return toView(j);
+  return { ...toView(j), queue: await queueEstimate(db, j) };
+}
+
+// 대기 순번·예상 시작. 순서는 작업자가 고르는 순서(runAfter, createdAt)와 같다. 같은 OBS 대상의 다른 작업을 기다리는 경우 등은 반영하지 않는 어림값이다.
+async function queueEstimate(db: PrismaClient, j: AutomationJob): Promise<QueueEstimate | null> {
+  if (j.status !== "QUEUED" || j.pausedAt || j.startedAt) return null;
+  const [ahead, recent] = await Promise.all([
+    db.automationJob.count({
+      where: { status: "QUEUED", pausedAt: null, startedAt: null, id: { not: j.id }, OR: [{ runAfter: { lt: j.runAfter } }, { runAfter: j.runAfter, createdAt: { lt: j.createdAt } }] },
+    }),
+    db.automationJob.findMany({ where: { status: "SUCCEEDED" }, orderBy: { finishedAt: "desc" }, take: 20, select: { activeMsUsed: true } }),
+  ]);
+  const ms = recent.map((r) => r.activeMsUsed).filter((v) => v > 0).sort((a, b) => a - b);
+  const medianMin = ms.length === 0 ? DEFAULT_RUN_MINUTES : ms[Math.floor(ms.length / 2)] / 60_000;
+  const waves = Math.floor(ahead / Math.max(1, AUTOMATION_LIMITS.maxRunning)) + (ahead > 0 ? 1 : 0);
+  const eta = Math.min(ETA_MAX_MINUTES, Math.max(ETA_MIN_MINUTES, Math.ceil(waves * medianMin)));
+  return { ahead, etaMinutes: ahead === 0 ? 0 : eta };
 }
 
 // action_expired: 고객 행동 마감이 지나 재개할 수 없다(그 자리에서 실패·전액 환불 처리 대기로 끝냈다)
@@ -111,7 +143,28 @@ type ChangeResult = { ok: true; job: JobView } | { ok: false; reason: "invalid_s
 // 고객이 로그인·인증·권한 승인·로컬 도구 연결을 마쳤다: 대기열로 돌려 자동으로 이어 간다.
 export async function resumeJob(db: PrismaClient, ctx: TenantContext, jobId: string): Promise<ChangeResult> {
   requireSellerPermission(ctx, "SUBSCRIPTION_MANAGE");
-  return change(db, ctx, jobId, "QUEUED", "automation.resume", (now) => ({ customerAction: null, actionDeadlineAt: null, runAfter: now }));
+  return change(db, ctx, jobId, "QUEUED", "automation.resume", (now) => ({ customerAction: null, actionDeadlineAt: null, customerActionsDone: [], runAfter: now }));
+}
+
+// 고객 확인 할 일 목록에서 한 줄을 「완료」로 표시한다(SA-152). 고객 확인 대기(NEEDS_CUSTOMER)일 때만, 같은 줄을 다시 눌러도 그대로(멱등).
+// 표시용이라 작업자 진행·마감은 바꾸지 않는다(이어서 진행하기 = 재개가 대기열로 돌린다). 대표자·구독 관리 권한만. 아닌 상태는 409 invalid_state, 모르는 줄은 400 invalid_action.
+export type MarkActionResult = { ok: true; job: JobView } | { ok: false; reason: "invalid_state" | "invalid_action" };
+export async function markCustomerActionDone(db: PrismaClient, ctx: TenantContext, jobId: string, action: unknown): Promise<MarkActionResult> {
+  requireSellerPermission(ctx, "SUBSCRIPTION_MANAGE");
+  if (typeof action !== "string" || !(CUSTOMER_ACTION_ORDER as readonly string[]).includes(action)) return { ok: false, reason: "invalid_action" };
+  const a = action as AutomationCustomerAction;
+  const ok = await db.$transaction(async (tx) => {
+    await lockJob(tx, jobId);
+    const cur = await tx.automationJob.findFirst({ where: { id: jobId, sellerId: ctx.sellerId } });
+    if (!cur) throw notFound();
+    if (cur.status !== "NEEDS_CUSTOMER") return false;
+    if (!cur.customerActionsDone.includes(a)) {
+      await tx.automationJob.update({ where: { id: jobId }, data: { customerActionsDone: [...cur.customerActionsDone, a] } });
+      await writeAudit(tx, { actorType: ctx.actorType, actorId: ctx.actorId, sellerId: ctx.sellerId, action: "automation.action_done", targetType: "AutomationJob", targetId: jobId, after: { action: a } });
+    }
+    return true;
+  });
+  return ok ? { ok: true, job: await getJob(db, ctx, jobId) } : { ok: false, reason: "invalid_state" };
 }
 
 // 취소: 실행 중이어도 토큰을 올려 작업자의 다음 쓰기를 막는다. 결제 환불은 자동으로 하지 않는다(환불 조건은 판단 필요).
