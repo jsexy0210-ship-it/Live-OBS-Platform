@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDateTime } from "../../../../../../lib/client/format";
 import "../../../../../../styles/seller-orders.css";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -9,7 +10,6 @@ import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
 import { won } from "../../../../../../components/seller/format";
-import { listTime } from "../../../../../../components/seller/orders";
 
 // SA-026 입금 확인(파트너스 관리자, 주문 › 입금 확인). 무통장 입금 대기 주문을 기한 빠른 순으로 보고, 통장 내역과 맞춰 본 뒤 단건·일괄로 입금 확인한다.
 // API: GET /api/seller/payments/deposits(입금 대기 목록), POST /api/seller/payments/deposits/confirm(확인 직전 /api/seller/queue/version 값을 함께 보냄).
@@ -173,12 +173,12 @@ export default function DepositsPage() {
                           <Link href={`/seller/orders/${o.orderId}`} className="fw6">
                             {o.nickname}
                           </Link>
-                          <div className="t-c1 c-alt num">{listTime(o.createdAt)} 주문</div>
+                          <div className="t-c1 c-alt num">{formatDateTime(o.createdAt)} 주문</div>
                         </td>
                         {showName && <td>{o.depositorName ?? "-"}</td>}
                         <td className="num">{won(o.amount)}</td>
                         <td>{o.paymentMethod === "BANK_TRANSFER" ? "무통장 입금" : o.paymentMethod === "CARD" ? "카드" : "선택 전"}</td>
-                        <td className="num">{o.paymentDueAt ? listTime(o.paymentDueAt) : "-"}</td>
+                        <td className="num">{o.paymentDueAt ? formatDateTime(o.paymentDueAt) : "-"}</td>
                         <td>{left.urgent ? <b style={{ color: "var(--neg, #c0262c)" }}>{left.text}</b> : left.text}</td>
                         <td>
                           <button className="btn btn-sm btn-w-sm" type="button" onClick={() => setConfirm([o])}>

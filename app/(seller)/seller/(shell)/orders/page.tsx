@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDateTime } from "../../../../../lib/client/format";
 import "../../../../../styles/seller-orders.css";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -8,7 +9,7 @@ import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
 import { MAX_SEARCH_LENGTH, won } from "../../../../../components/seller/format";
-import { STATUS_BADGE, itemSummaryText, kstDaysAgo, listTime, payBadge, type OrderRow, type OrderStatus } from "../../../../../components/seller/orders";
+import { STATUS_BADGE, itemSummaryText, kstDaysAgo, payBadge, type OrderRow, type OrderStatus } from "../../../../../components/seller/orders";
 
 // SA-021 판매자 주문 목록. 결제 상태·기간·검색으로 걸러 보고, 20건씩 이어서 불러온다(GET /api/seller/orders).
 // 환불할 수 있는 주문(refundable)만 「환불 처리」 버튼이 있고, 발송 여부(shipped)는 「배송」 열에 따로 보인다.
@@ -254,7 +255,7 @@ export default function OrderListPage() {
                     <tr key={o.id} className={o.status === "PENDING_PAYMENT" ? "faded" : ""} data-testid="order-row">
                       <td>
                         <Link href={`/seller/orders/${o.id}`} className="fw6 num ord-link">
-                          {listTime(o.createdAt)}
+                          {formatDateTime(o.createdAt)}
                         </Link>
                         <div className="ord-ono num">{o.orderNoLabel}</div>
                       </td>

@@ -30,8 +30,8 @@ const MAX_DAYS = 366;
 const DAY_MS = 86_400_000;
 
 export const kstToday = () => new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
-const shift = (d: string, days: number) => new Date(new Date(`${d}T00:00:00Z`).getTime() + days * DAY_MS).toISOString().slice(0, 10);
-const daysBetween = (a: string, b: string) => Math.round((new Date(`${b}T00:00:00Z`).getTime() - new Date(`${a}T00:00:00Z`).getTime()) / DAY_MS) + 1;
+export const shift = (d: string, days: number) => new Date(new Date(`${d}T00:00:00Z`).getTime() + days * DAY_MS).toISOString().slice(0, 10);
+export const daysBetween = (a: string, b: string) => Math.round((new Date(`${b}T00:00:00Z`).getTime() - new Date(`${a}T00:00:00Z`).getTime()) / DAY_MS) + 1;
 
 // 이번 달: 그달 1일(KST)부터 오늘까지(MASTER 결정 2026-10-04)
 function presetPeriod(preset: Preset, unit: Unit, compare = true): Period {
@@ -43,17 +43,19 @@ function presetPeriod(preset: Preset, unit: Unit, compare = true): Period {
 export type Load<T> = { kind: "loading" } | { kind: "error"; status: number; error: string } | { kind: "ok"; data: T };
 
 // 기간이 바뀌면 다시 부른다. 마지막 요청의 응답만 반영한다.
-export function useStats<T>(path: string, p: Period) {
+// skip: true면 부르지 않고 「불러오는 중」으로 둔다(비교 기간이 꺼져 있을 때 앞 기간을 부르지 않는다)
+export function useStats<T>(path: string, p: Period, skip = false) {
   const [state, setState] = useState<Load<T>>({ kind: "loading" });
   const reqId = useRef(0);
   const load = useCallback(async () => {
     const id = ++reqId.current;
     setState({ kind: "loading" });
+    if (skip) return;
     const q = new URLSearchParams({ from: p.from, to: p.to, unit: p.unit });
     const r = await api<T>(`/api/seller/stats/${path}?${q}`);
     if (id !== reqId.current) return;
     setState(r.ok ? { kind: "ok", data: r.data } : { kind: "error", status: r.status, error: r.error });
-  }, [path, p.from, p.to, p.unit]);
+  }, [path, p.from, p.to, p.unit, skip]);
   useEffect(() => void load(), [load]);
   return { state, reload: load };
 }

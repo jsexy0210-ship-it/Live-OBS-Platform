@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDate } from "../../../../../lib/client/format";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
@@ -100,7 +101,6 @@ const SKIP_REASON: Record<string, string> = { not_found: "찾을 수 없음", no
 const STATUS_TO: Record<string, string> = { ON_SALE: "판매 중으로", HIDDEN: "숨김으로", SOLD_OUT: "품절로", DRAFT: "임시 저장으로" };
 
 // 등록일은 한국 시간 기준 월/일
-const shortDate = (iso: string) => new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "2-digit", day: "2-digit" }).format(new Date(iso)).replace(/\.\s*/g, "/").replace(/\/$/, "");
 // 한국 날짜(YYYY-MM-DD). days만큼 앞뒤로 옮긴다
 const kstDate = (offsetDays = 0, offsetMonths = 0) => {
   const d = new Date(Date.now() + offsetDays * 86400_000);
@@ -539,7 +539,7 @@ export default function ProductListPage() {
                             <span className={`bdg ${b.cls}`}>{b.label}</span>
                             {canManage && <QuickStatus product={p} onDone={quickDone} onFail={quickFail} />}
                           </td>
-                          <td className="num">{shortDate(p.createdAt)}</td>
+                          <td className="num">{formatDate(p.createdAt)}</td>
                           {canManage && (
                             <td>
                               <Link className="btn btn-sm btn-out btn-level-table" href={`/seller/products/${p.id}`}>

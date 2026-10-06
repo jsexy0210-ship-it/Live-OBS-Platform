@@ -1,6 +1,6 @@
 import { Prisma, type ActorType, type PrismaClient, type RefundFault, type RefundRequestStatus, type ReturnReason } from "@prisma/client";
 import { writeAudit } from "../audit/log";
-import { shopOpen } from "../buyers/signup";
+import { orderServiceOpen } from "../buyers/signup";
 import { getRefundVersion } from "../queue/read";
 import { previewRefundSelection, refundOrder, type RefundSelection } from "../queue/service";
 import { REASONS, REASON_LABEL, REASON_TEXT_MAX, REJECT_REASON_MAX } from "../shop-returns/rules";
@@ -147,7 +147,7 @@ export async function buyerRefundRequestContext(db: PrismaClient, scope: BuyerSc
   if (!order) return null;
   const requests = await db.refundRequest.findMany({ where: { sellerId: scope.sellerId, orderId }, select: viewSelect, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
   const active = requests.some((r) => r.status === "REQUESTED");
-  const blocked = !(await shopOpen(db, scope.sellerId)) ? "shop_unavailable" : !refundable(order, order.shipment !== null) ? "not_refundable" : active ? "active_exists" : null;
+  const blocked = !(await orderServiceOpen(db, scope.sellerId)) ? "shop_unavailable" : !refundable(order, order.shipment !== null) ? "not_refundable" : active ? "active_exists" : null;
   return {
     orderNoLabel: orderNoLabel(order.createdAt, order.orderNo),
     canRequest: blocked === null,
@@ -163,7 +163,7 @@ export async function createRefundRequest(db: PrismaClient, scope: BuyerScope, o
   if (!isUuid(orderId)) return { ok: false as const, reason: "not_found" as const };
   const parsed = parseNewRefundRequest(body);
   if (!parsed.ok) return parsed;
-  if (!(await shopOpen(db, scope.sellerId))) return { ok: false as const, reason: "shop_unavailable" as const };
+  if (!(await orderServiceOpen(db, scope.sellerId))) return { ok: false as const, reason: "shop_unavailable" as const };
   try {
     return await db.$transaction(async (tx) => {
       const order = await lockOrder(tx, scope.sellerId, orderId);

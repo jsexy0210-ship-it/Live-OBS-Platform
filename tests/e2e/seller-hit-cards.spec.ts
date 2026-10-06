@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { submitSellerLogin } from "./sellerLogin";
 
-// SA-053 HIT 카드 이력: 메뉴에서 들어가 등록·기간 조회·해제까지 실제 API(/api/seller/hit-cards)로 처리된다.
+// SA-053 HIT 카드 기록: 메뉴에서 들어가 등록·기간 조회·해제까지 실제 API(/api/seller/hit-cards)로 처리된다.
 // 권한이 없는 직원은 메뉴와 화면이 없다.
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
 const SHOTS = process.env.E2E_SCREENSHOTS === "1";
