@@ -442,6 +442,27 @@ describe("다시 연결·목록 권한 (SA-006)", () => {
     const bad = await startRoute(new Request("http://localhost:3000/api/seller/external-shops", { method: "POST", headers: H(await cookie(a.user.email)), body: JSON.stringify({ connectionId: "nope" }) }));
     expect(bad.status).toBe(404);
   });
+
+  it("연결마다 가장 최근 웹훅의 종류(주문 생성·취소·그 밖)를 알려 주고, 받은 적 없으면 null이다. 다른 파트너스 것은 섞이지 않는다", async () => {
+    const a = await connected("shopa");
+    const b = await connected("shopb");
+    const other = await connected("shopz");
+    const conns = await db.externalShopConnection.findMany();
+    const id = (k: string) => conns.find((c) => c.shopKey === k)!;
+    const ev = (c: { id: string; sellerId: string }, key: string, payload: object, at: number) =>
+      db.externalWebhookEvent.create({ data: { sellerId: c.sellerId, connectionId: c.id, eventKey: key, payload, receivedAt: new Date(Date.now() - at) } });
+    expect((await listConnections(db, a.ctx))[0].lastEventKind).toBeNull();
+    await ev(id("shopa"), "a1", { event_no: 90026, resource: { order_id: "1" } }, 5000);
+    await ev(id("shopa"), "a2", { event_no: 90023, resource: { order_id: "2" } }, 1000);
+    await ev(id("shopz"), "z1", { event_no: 90026 }, 100);
+    expect((await listConnections(db, a.ctx))[0].lastEventKind).toBe("ORDER_CREATED");
+    await ev(id("shopa"), "a3", { event_no: 90029 }, 10);
+    expect((await listConnections(db, a.ctx))[0].lastEventKind).toBe("ORDER_CANCELED");
+    await ev(id("shopa"), "a4", { event_no: "x" }, 1);
+    expect((await listConnections(db, a.ctx))[0].lastEventKind).toBe("OTHER");
+    expect((await listConnections(db, other.ctx))[0].lastEventKind).toBe("ORDER_CANCELED");
+    void b;
+  });
 });
 
 describe("웹훅 경로", () => {

@@ -9,7 +9,7 @@ const SHOTS = process.env.E2E_SCREENSHOTS === "1";
 
 async function shot(page: Page, name: string) {
   if (!SHOTS) return;
-  for (const width of [1440, 390]) {
+  for (const width of [1440, 1024, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(150);
@@ -46,6 +46,12 @@ const codeSentText = (page: Page) => (signupScreen(page) ? "인증번호를 보�
 async function agreeSignupTerms(page: Page) {
   await page.getByLabel("필수 약관에 모두 동의해요").check();
 }
+// 약관 동의(1단계)를 마치고 본인확인(2단계)으로 간다
+async function toVerifyStep(page: Page) {
+  await agreeSignupTerms(page);
+  await page.getByRole("button", { name: "다음", exact: true }).click();
+  await expect(page).toHaveURL(/\/seller\/signup\/verify$/);
+}
 // 아이디·비밀번호 찾기 시작은 같은 휴대폰 하루 10회 한도라 찾기 확인마다 다른 번호를 쓴다(가짜 공급자 CI는 이름·생년월일로만 정해진다)
 const randomPhone = () => `010${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}`;
 
@@ -73,35 +79,41 @@ async function signup(page: Page, opts: { mailOrderNumber: string; wrongFirst?: 
   const id = uniq();
   const a: Account = { email: `partner-${id}@example.com`, password: `pw-${id}-long`, slug: `p-${id}`, name: `김${letters(id)}` };
   await page.goto("/seller/login");
+  // 앞에서 하던 가입 입력이 이 탭에 남아 있으면 지운다(새로 시작)
+  await page.evaluate(() => sessionStorage.clear());
   await page.getByRole("link", { name: "회원가입" }).click();
   await expect(page).toHaveURL(/\/seller\/signup$/);
-  await expect(page.getByLabel("상호")).toBeDisabled();
-  await fillIdentity(page, a.name);
   if (opts.shots) {
-    // 필수 약관 둘 다 동의하기 전에는 인증번호 받기가 꺼져 있고 시작 요청을 보내지 않는다
-    let starts = 0;
-    const count = (r: { url: () => string; method: () => string }) => {
-      if (r.url().endsWith("/api/seller-signup/verification") && r.method() === "POST") starts += 1;
-    };
-    page.on("request", count);
-    const send = page.getByRole("button", { name: "인증번호 문자 받기" });
-    await expect(send).toBeDisabled();
+    // 1/5 약관 동의: 동의하지 않고 다음을 누르면 막고 안내한다
+    await page.getByRole("button", { name: "다음", exact: true }).click();
+    await expect(page.getByText("필수 약관에 동의해 주세요")).toBeVisible();
+    await expect(page).toHaveURL(/\/seller\/signup$/);
     await page.getByLabel("파트너스 이용약관 (필수)").check();
-    await expect(send).toBeDisabled();
-    await send.click({ force: true });
-    await shot(page, "PF-007-1-terms");
     await page.getByLabel("개인정보 수집 · 이용 (필수)").check();
     await expect(page.getByLabel("필수 약관에 모두 동의해요")).toBeChecked();
-    await expect(send).toBeEnabled();
-    page.off("request", count);
-    expect(starts).toBe(0);
-  } else await agreeSignupTerms(page);
-  if (opts.shots) await shot(page, "PF-007-1");
+    await shot(page, "PF-007-1");
+  }
+  await toVerifyStep(page);
+  // 앞 단계를 건너뛰고 주소로 바로 들어오면 첫 미완료 단계(본인확인)로 보낸다
+  await page.goto("/seller/signup/business");
+  await expect(page).toHaveURL(/\/seller\/signup\/verify$/);
+  await fillIdentity(page, a.name);
   await verify(page, opts.wrongFirst);
   await expect(page.getByText("본인확인을 마쳤어요")).toBeVisible();
-  await expect(page.getByLabel("상호")).toBeEnabled();
-  await expect(page.getByLabel("상호")).toBeFocused();
-  // 서버와 같은 규칙으로 먼저 거른다
+  if (opts.shots) await shot(page, "PF-007-2");
+  await page.getByRole("button", { name: "다음", exact: true }).click();
+  await expect(page).toHaveURL(/\/seller\/signup\/account$/);
+  // 3/5 가입 정보: 서버와 같은 규칙으로 먼저 거른다
+  await page.getByRole("button", { name: "다음", exact: true }).click();
+  await expect(page.getByText("이메일 주소를 다시 확인해 주세요")).toBeVisible();
+  await page.getByLabel("이메일 (로그인에 써요)").fill(a.email);
+  await page.getByLabel("비밀번호", { exact: true }).fill(a.password);
+  await page.getByLabel("쇼핑몰 이름").fill(`카드숍 ${id}`);
+  await page.getByLabel("쇼핑몰 주소").fill(a.slug);
+  if (opts.shots) await shot(page, "PF-007-3");
+  await page.getByRole("button", { name: "다음", exact: true }).click();
+  await expect(page).toHaveURL(/\/seller\/signup\/business$/);
+  // 4/5 사업자 정보
   await page.getByRole("button", { name: "신청하기" }).click();
   await expect(page.getByText("상호를 적어 주세요")).toBeVisible();
   await expect(page.getByText("10자리를 모두 적어 주세요")).toBeVisible();
@@ -109,11 +121,7 @@ async function signup(page: Page, opts: { mailOrderNumber: string; wrongFirst?: 
   await page.getByLabel("사업자등록번호").fill(businessNumber());
   await page.getByLabel("개업일").fill(opts.openedOn ?? "20200101");
   await page.getByLabel("통신판매업 신고번호").fill(opts.mailOrderNumber);
-  await page.getByLabel("이메일 (로그인에 써요)").fill(a.email);
-  await page.getByLabel("비밀번호", { exact: true }).fill(a.password);
-  await page.getByLabel("쇼핑몰 이름").fill(`카드숍 ${id}`);
-  await page.getByLabel("쇼핑몰 주소").fill(a.slug);
-  if (opts.shots) await shot(page, "PF-007-2");
+  if (opts.shots) await shot(page, "PF-007-4");
   if (opts.failApplyOnce) {
     // 신청은 서버가 처리하게 두고 응답만 서버 오류로 바꾼다: 본인확인을 버리지 않고, 다시 신청하면 서버가 같은 신청 결과를 돌려준다
     await page.route((u) => u.pathname === "/api/seller-signup/apply", async (route) => {
@@ -123,7 +131,7 @@ async function signup(page: Page, opts: { mailOrderNumber: string; wrongFirst?: 
     await page.getByRole("button", { name: "신청하기" }).click();
     await page.getByRole("dialog", { name: "입력한 내용으로 가입을 신청할까요?" }).getByRole("button", { name: "신청하기" }).click();
     await expect(page.locator("#pa-notice")).toContainText("잠시 후 다시 시도해 주세요");
-    await expect(page.getByText("본인확인을 마쳤어요")).toBeVisible();
+    await expect(page).toHaveURL(/\/seller\/signup\/business$/);
     await expect(page.getByLabel("상호")).toBeEnabled();
   }
   const res = page.waitForResponse((r) => r.url().endsWith("/api/seller-signup/apply"));
@@ -132,6 +140,7 @@ async function signup(page: Page, opts: { mailOrderNumber: string; wrongFirst?: 
   await expect(sure).toContainText("쇼핑몰 주소를 바꿀 수 없어요");
   await sure.getByRole("button", { name: "신청하기" }).click();
   expect((await res).status()).toBe(200);
+  await expect(page).toHaveURL(/\/seller\/signup\/done$/);
   return a;
 }
 
@@ -139,7 +148,7 @@ test("파트너스 가입 신청 → 바로 승인 → 로그인 → 비밀번�
   const a = await signup(page, { mailOrderNumber: "제2024-서울강남-01234호", wrongFirst: true, shots: true, failApplyOnce: true });
   await expect(page.getByRole("heading", { name: "가입을 마쳤어요" })).toBeVisible();
   await expect(page.getByRole("list", { name: "진행 단계" }).locator("[aria-current=step]")).toContainText("신청 완료");
-  await shot(page, "PF-007-3");
+  await shot(page, "PF-007-5");
 
   // 가입한 계정으로 로그인
   await page.getByRole("link", { name: "로그인하기" }).click();
@@ -255,8 +264,8 @@ test("본인확인 시작 응답을 잃고 다시 누르면 같은 attemptKey로
   const id = uniq();
   const name = `이${letters(id)}`;
   await page.goto("/seller/signup");
+  await toVerifyStep(page);
   await fillIdentity(page, name);
-  await agreeSignupTerms(page);
   const signupSent = await dropFirstStart(page, "/api/seller-signup/verification");
   await retryAfterDrop(page, signupSent);
   await expect(page.getByText("본인확인을 마쳤어요")).toBeVisible();
@@ -274,32 +283,32 @@ test("본인확인 시작 응답을 잃고 다시 누르면 같은 attemptKey로
   await expect(page.getByRole("heading", { name: "새 비밀번호 설정" })).toBeVisible();
 });
 
-test("가입 신청: 인증번호 받기 요청을 보내는 동안에는 약관 동의를 바꿀 수 없다", async ({ page }) => {
+test("가입 신청 단계: 동의 없이 다음을 누르면 막고, 앞 단계를 건너뛴 주소는 첫 미완료 단계로 보내며, 본인확인 입력은 이전 단계·새로고침에도 남는다", async ({ page }) => {
   await page.goto("/seller/signup");
-  await fillIdentity(page, `윤${letters(uniq())}`);
-  await agreeSignupTerms(page);
-  // 시작 응답을 붙잡아 두고 그 사이 동의를 풀어 본다
-  let release: () => void = () => {};
-  const held = new Promise<void>((r) => (release = r));
-  await page.route(
-    (u) => u.pathname === "/api/seller-signup/verification",
-    async (route) => {
-      await held;
-      await route.continue();
-    },
-    { times: 1 },
-  );
-  await page.getByRole("button", { name: "인증번호 문자 받기" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "문자 받기" }).click();
-  const all = page.getByLabel("필수 약관에 모두 동의해요");
-  await expect(all).toBeDisabled();
-  await all.click({ force: true });
-  await page.getByLabel("개인정보 수집 · 이용 (필수)").click({ force: true });
-  await expect(all).toBeChecked();
-  await expect(page.getByLabel("개인정보 수집 · 이용 (필수)")).toBeChecked();
-  release();
-  await expect(page.getByText("인증번호를 보냈어요. 문자로 받은 6자리를 넣어 주세요")).toBeVisible();
-  await expect(all).toBeChecked();
+  await page.evaluate(() => sessionStorage.clear());
+  // 1/5: 동의하지 않으면 다음으로 갈 수 없다
+  await page.getByRole("button", { name: "다음", exact: true }).click();
+  await expect(page.locator("#su-terms-err")).toHaveText("필수 약관에 동의해 주세요");
+  await expect(page).toHaveURL(/\/seller\/signup$/);
+  // 앞 단계를 건너뛴 주소는 첫 미완료 단계로
+  await page.goto("/seller/signup/account");
+  await expect(page).toHaveURL(/\/seller\/signup$/);
+  await expect(page.getByText("앞 단계부터 진행해 주세요")).toBeVisible();
+  await toVerifyStep(page);
+  await expect(page.getByTestId("signup-step-count")).toHaveText("2 / 5");
+  // 2/5: 입력한 칸은 이전 단계로 갔다 와도, 새로고침해도 남는다
+  const who = `윤${letters(uniq())}`;
+  await fillIdentity(page, who);
+  await page.getByRole("button", { name: "이전 단계" }).click();
+  await expect(page).toHaveURL(/\/seller\/signup$/);
+  await expect(page.getByLabel("필수 약관에 모두 동의해요")).toBeChecked();
+  await page.getByRole("button", { name: "다음", exact: true }).click();
+  await expect(page.locator("#idv-name")).toHaveValue(who);
+  await page.reload();
+  await expect(page.locator("#idv-name")).toHaveValue(who);
+  await expect(page).toHaveURL(/\/seller\/signup\/verify$/);
+  // 본인확인 전에는 다음으로 갈 수 없다
+  await expect(page.getByRole("button", { name: "다음", exact: true })).toBeDisabled();
 });
 
 test("가입 신청: 화면의 약관 버전이 서버와 다르면 문자를 보내지 않고, 동의를 비워 다시 동의하게 한다", async ({ page }) => {
@@ -315,8 +324,8 @@ test("가입 신청: 화면의 약관 버전이 서버와 다르면 문자를 �
   );
   await page.goto("/seller/signup");
   const who = `최${letters(uniq())}`;
+  await toVerifyStep(page);
   await fillIdentity(page, who);
-  await agreeSignupTerms(page);
   const stale = page.waitForRequest((r) => r.url().endsWith("/api/seller-signup/verification") && r.method() === "POST");
   const refused = page.waitForResponse((r) => r.url().endsWith("/api/seller-signup/verification") && r.request().method() === "POST");
   // 거절되면 화면 데이터를 새로 받아 서버의 지금 약관 버전으로 바꾼다(열어 둔 예전 화면이 같은 버전을 계속 보내지 않게)
@@ -330,15 +339,16 @@ test("가입 신청: 화면의 약관 버전이 서버와 다르면 문자를 �
   const current = (await refusedRes.json()) as { termsVersion: string; privacyVersion: string };
   expect(current.termsVersion).toMatch(/^\d{4}-\d{2}-\d{2}\.v\d+$/);
   await refreshed;
-  await expect(page.locator("#idv-name")).toHaveValue(who);
+  // 약관 동의 단계로 돌아가 안내한다
+  await expect(page).toHaveURL(/\/seller\/signup$/);
   await expect(page.locator("#su-terms-err")).toHaveText("약관이 바뀌었어요. 다시 확인해 주세요");
   await expect(page.getByLabel("필수 약관에 모두 동의해요")).not.toBeChecked();
   await expect(page.getByLabel("필수 약관에 모두 동의해요")).toBeFocused();
-  await expect(page.getByRole("button", { name: "인증번호 문자 받기" })).toBeDisabled();
   await expect(page.getByText("인증번호를 보냈어요", { exact: false })).toHaveCount(0);
   await shot(page, "PF-007-1-outdated");
-  // 다시 동의하면 서버의 지금 버전으로 보내 본인확인을 이어 간다
-  await agreeSignupTerms(page);
+  // 다시 동의하면 입력한 본인확인 칸이 그대로 남아 있고, 서버의 지금 버전으로 보내 이어 간다
+  await toVerifyStep(page);
+  await expect(page.locator("#idv-name")).toHaveValue(who);
   await expect(page.locator("#su-terms-err")).toHaveCount(0);
   const again = page.waitForRequest((r) => r.url().endsWith("/api/seller-signup/verification") && r.method() === "POST");
   const accepted = page.waitForResponse((r) => r.url().endsWith("/api/seller-signup/verification") && r.request().method() === "POST");
@@ -355,7 +365,7 @@ test("통신판매업 신고번호를 확인하지 못하면 승인 대기로 �
   await expect(page.getByRole("heading", { name: "신청을 받았어요" })).toBeVisible();
   await expect(page.getByText("통신판매업 신고번호를 확인하지 못했어요")).toBeVisible();
   await expect(page.getByText("그 전에는 로그인할 수 없어요.")).toBeVisible();
-  await shot(page, "PF-007-3-review");
+  await shot(page, "PF-007-5-review");
 });
 
 test("비밀번호 찾기: 대표자가 아니거나 정보가 맞지 않으면 바꿀 수 없다고 알리고 처음부터 다시 하게 한다", async ({ page }) => {

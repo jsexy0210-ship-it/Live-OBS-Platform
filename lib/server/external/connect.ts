@@ -90,14 +90,31 @@ export async function completeConnect(db: PrismaClient, provider: ExternalShopPr
   }
 }
 
-export type ConnectionView = { id: string; shopKey: string; status: ExternalShopConnection["status"]; connectedAt: Date; lastEventAt: Date | null };
+// lastEventKind: 마지막으로 받은 주문 알림의 종류(SA-006 「마지막으로 받은 주문 알림」): ORDER_CREATED(주문 생성·결제 확인) · ORDER_CANCELED(취소·환불) · OTHER(그 밖) · 받은 적 없으면 null.
+export type LastEventKind = "ORDER_CREATED" | "ORDER_CANCELED" | "OTHER";
+export type ConnectionView = { id: string; shopKey: string; status: ExternalShopConnection["status"]; connectedAt: Date; lastEventAt: Date | null; lastEventKind: LastEventKind | null };
+
+// 공식 이벤트 번호(process.ts와 같은 분류): 90023·90025 주문 접수·입금 상태, 90026·90072·90029·90073 취소·환불
+export function eventKindOf(eventNo: number | null): LastEventKind {
+  if (eventNo === 90023 || eventNo === 90025) return "ORDER_CREATED";
+  if (eventNo === 90026 || eventNo === 90072 || eventNo === 90029 || eventNo === 90073) return "ORDER_CANCELED";
+  return "OTHER";
+}
 
 // 목록은 대표자·쇼핑몰 설정(SHOP_SETTINGS) 직원만 본다(메뉴와 같은 기준, 토큰·웹훅 값은 없다). 다른 파트너스의 연결은 보이지 않는다.
 export async function listConnections(db: PrismaClient, ctx: TenantContext): Promise<ConnectionView[]> {
   // 마스터 대리 조회(읽기 전용)는 이 목록만 본다(토큰·웹훅 값이 없는 조회, 연결·해제는 requireSellerPermission이 계속 거부). 일반 계정은 SHOP_SETTINGS.
   if (!ctx.readOnly) requireSellerRead(ctx, "SHOP_SETTINGS");
   const rows = await db.externalShopConnection.findMany({ where: { sellerId: ctx.sellerId, status: { not: "DISCONNECTED" } }, orderBy: { createdAt: "asc" } });
-  return rows.map((c) => ({ id: c.id, shopKey: c.shopKey, status: c.status, connectedAt: c.connectedAt, lastEventAt: c.lastEventAt }));
+  // 연결마다 가장 최근에 받은 웹훅의 이벤트 번호만 꺼낸다(본문 원본은 읽지 않는다)
+  const last = rows.length
+    ? await db.$queryRaw<{ connectionId: string; eventNo: string | null }[]>`
+        SELECT DISTINCT ON ("connectionId") "connectionId", CASE WHEN jsonb_typeof(payload->'event_no') = 'number' THEN payload->>'event_no' END AS "eventNo"
+        FROM "ExternalWebhookEvent" WHERE "sellerId" = ${ctx.sellerId}::uuid AND "connectionId" = ANY(${rows.map((c) => c.id)}::uuid[])
+        ORDER BY "connectionId", "receivedAt" DESC`
+    : [];
+  const kinds = new Map(last.map((r) => [r.connectionId, eventKindOf(r.eventNo !== null && /^\d{1,9}$/.test(r.eventNo) ? Number(r.eventNo) : null)]));
+  return rows.map((c) => ({ id: c.id, shopKey: c.shopKey, status: c.status, connectedAt: c.connectedAt, lastEventAt: c.lastEventAt, lastEventKind: kinds.get(c.id) ?? null }));
 }
 
 export type DisconnectResult = { ok: true; status: "DISCONNECTED" | "DISCONNECT_PENDING" };

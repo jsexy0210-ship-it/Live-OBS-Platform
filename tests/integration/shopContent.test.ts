@@ -4,6 +4,7 @@ import type React from "react";
 import ShopHomePage from "../../app/(shop)/shop/[slug]/page";
 import { DELETE as bannerDelete, PUT as bannerPut } from "../../app/api/seller/shop-content/banners/[bannerId]/route";
 import { PUT as bannerReorder } from "../../app/api/seller/shop-content/banners/reorder/route";
+import { PUT as intervalPut } from "../../app/api/seller/shop-content/banners/interval/route";
 import { GET as bannersGet, POST as bannersPost } from "../../app/api/seller/shop-content/banners/route";
 import { GET as sellerImageGet } from "../../app/api/seller/shop-content/images/[imageId]/route";
 import { POST as imagePost } from "../../app/api/seller/shop-content/images/route";
@@ -123,6 +124,29 @@ describe("권한", () => {
     expect(JSON.stringify(logs[0].after)).not.toContain("data");
     // 배너를 지우면 그 배너만 쓰던 이미지도 지운다
     expect(await db.shopContentImage.count({ where: { sellerId: s.seller.id } })).toBe(0);
+  });
+});
+
+describe("홈 배너 자동 넘김(SA-064)", () => {
+  it("기본 끔(0), 대표자·쇼핑몰 설정 직원만 5·8초로 바꾸고 구매자 홈 데이터와 감사 로그에 반영된다", async () => {
+    const s = await shop();
+    const read = async (cookie: string) => ((await (await bannersGet(get("/api/seller/shop-content/banners", cookie))).json()) as { intervalSec: number }).intervalSec;
+    expect(await read(s.noPerm)).toBe(0);
+    expect((await intervalPut(json("/api/seller/shop-content/banners/interval", "PUT", s.noPerm, { intervalSec: 5 }))).status).toBe(403);
+    expect(await read(s.owner)).toBe(0);
+    expect((await intervalPut(json("/api/seller/shop-content/banners/interval", "PUT", s.owner, { intervalSec: 5 }))).status).toBe(200);
+    expect(await read(s.noPerm)).toBe(5);
+    expect((await intervalPut(json("/api/seller/shop-content/banners/interval", "PUT", s.staff, { intervalSec: 8 }))).status).toBe(200);
+    // 허용 값(0·5·8) 밖은 400이고 값은 그대로
+    for (const bad of [3, 10, -1, "5", null]) {
+      const res = await intervalPut(json("/api/seller/shop-content/banners/interval", "PUT", s.owner, { intervalSec: bad }));
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as { error: string }).error).toBe("invalid_interval");
+    }
+    expect(await read(s.owner)).toBe(8);
+    const content = await visibleShopContent(db, s.seller.slug, "home");
+    expect(content?.bannerIntervalSec).toBe(8);
+    expect(await db.auditLog.count({ where: { action: "shop.banner.interval" } })).toBe(2);
   });
 });
 
