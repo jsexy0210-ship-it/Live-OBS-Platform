@@ -34,6 +34,12 @@ test.beforeAll(async () => {
   await db.seller.update({ where: { id: a.id }, data: { approvedByAdminId: su.id } });
   const owner = await db.sellerUser.create({ data: { sellerId: a.id, email: `pt-owner-${run}@example.com`, passwordHash, name: "대표", isOwner: true } });
   await db.platformInquiry.create({ data: { sellerId: a.id, createdBySellerUserId: owner.id, category: "OTHER", title: `상세 문의 ${run}`, lastMessageAt: new Date(), assignedAdminId: cs.id } });
+  // 주문 현황 탭 시험용: 결제 완료 주문 1건(구매자는 방송 닉네임만 보인다)
+  const grade = await db.memberGrade.create({ data: { sellerId: a.id, displayName: "일반", sortOrder: 0, systemKey: "BASIC" } });
+  const buyer = await db.buyerMember.create({
+    data: { sellerId: a.id, gradeId: grade.id, loginId: `pt${run}`, passwordHash: "x", name: "구매자", phone: `010${String(parseInt(run, 16)).padStart(8, "0").slice(-8)}`, broadcastNickname: "시험닉", ciHash: `ci-${run}`, identityVerifiedAt: new Date(), birthDate: new Date("1990-01-01") },
+  });
+  await db.order.create({ data: { sellerId: a.id, orderNo: 7, buyerMemberId: buyer.id, status: "PAID", broadcastNicknameSnapshot: "시험닉", totalAmount: 123_456, paidAt: new Date() } });
   await db.sellerAdminNote.create({ data: { sellerId: a.id, body: `머리 시험 메모 ${run}`, authorId: su.id, authorName: "대표" } });
   const overlay = await db.subscriptionPlan.findFirst({ where: { code: "OVERLAY_ONLY" } });
   if (plan) await db.sellerSubscription.create({ data: { sellerId: a.id, planId: plan.id, pendingPlanId: overlay?.id, currentPeriodEnd: new Date(Date.now() + 20 * 86_400_000) } });
@@ -100,15 +106,16 @@ test("상세: 기본 정보·대표자·사업자·구독·최근 30일 주문�
   await search(page, slugA);
   await page.getByRole("link", { name: nameA }).click();
   await expect(page).toHaveURL(new RegExp(`/admin/partners/${idA}$`));
-  await expect(page.getByRole("heading", { name: nameA, level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^파트너스 상세 · /, level: 1 })).toBeVisible();
+  await expect(page.getByTestId("partner-badges")).toContainText(nameA);
   for (const t of ["기본 정보", "대표자", "사업자 정보"]) await expect(page.getByRole("heading", { name: t, level: 2 })).toBeVisible();
   await expect(page.getByText("시험상사")).toBeVisible();
   await page.getByRole("button", { name: "주문 현황", exact: true }).click();
-  await expect(page.getByTestId("partner-orders")).toHaveText("0건");
+  await expect(page.getByTestId("orders-today")).toBeVisible();
   await page.getByRole("button", { name: "구독", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "구독", level: 2 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "요금제", level: 2 })).toBeVisible();
   // 요금제는 코드가 아니라 이름으로 보인다(코드성 표기 금지)
-  const pending = page.locator("dl.kv dt", { hasText: "바뀔 요금제" }).locator("xpath=following-sibling::dd[1]");
+  const pending = page.locator("th", { hasText: "바뀔 요금제" }).locator("xpath=following-sibling::td[1]");
   await expect(pending).toHaveText("오버레이 전용");
   await expect(page.locator("main")).not.toContainText("OVERLAY_ONLY");
   await expect(page.locator("main")).not.toContainText("INTEGRATED");
@@ -153,7 +160,8 @@ test("CS: 목록·상세는 볼 수 있지만 이용 정지·해제 버튼은 �
   await expect(page.getByTestId("partner-row").getByRole("button", { name: /이용 정지|정지 해제/ })).toHaveCount(0);
   await expect(page.locator("th", { hasText: "관리" })).toHaveCount(1);
   await page.getByRole("link", { name: nameA }).click();
-  await expect(page.getByRole("heading", { name: nameA, level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^파트너스 상세 · /, level: 1 })).toBeVisible();
+  await expect(page.getByTestId("partner-badges")).toContainText(nameA);
   await expect(page.getByRole("button", { name: /이용 정지|정지 해제/ })).toHaveCount(0);
 });
 
@@ -200,4 +208,40 @@ test("상세 머리: 승인자·담당 CS가 메타 줄에, 답변 대기 문의
   await expect(page.getByTestId("tab-notes")).toContainText(`머리 시험 메모 ${run}`);
   await page.getByRole("link", { name: "문의 1건" }).click();
   await expect(page).toHaveURL(new RegExp(`/admin/support/inquiries\\?.*sellerId=${idA}`));
+});
+
+test("상세 탭: 구독(상태 이력·청구 상세·누적), 쇼핑몰(설정·정책 점검), 주문 현황(요약·주문·이상 징후·월별)이 서버 값으로 보인다", async ({ page }) => {
+  await login(page, emails.cs); // 조회 전용에 가까운 역할도 읽는다
+  await page.goto(`/admin/partners/${idA}?tab=subscription`);
+  const sub = page.getByTestId("tab-subscription");
+  await expect(sub.getByRole("heading", { name: "상태 이력" })).toBeVisible();
+  await expect(sub.getByRole("heading", { name: "청구 · 결제 내역" })).toBeVisible();
+  await expect(sub.getByTestId("sub-totals")).toContainText("누적 결제");
+  await expect(page.getByRole("link", { name: "청구 상세", exact: true })).toHaveAttribute("href", `/admin/billing/invoices?sellerId=${idA}`);
+
+  await page.getByRole("button", { name: "쇼핑몰", exact: true }).click();
+  await expect(page).toHaveURL(/tab=shop/);
+  const shop = page.getByTestId("tab-shop");
+  await expect(shop).toContainText(nameA);
+  await expect(shop).toContainText("운영 중");
+  await expect(shop.getByRole("table", { name: "정책 점검" })).toContainText("전자상거래법");
+  await expect(shop.getByRole("heading", { name: "상품 상위 5" })).toBeVisible();
+
+  await page.getByRole("button", { name: "주문 현황", exact: true }).click();
+  await expect(page).toHaveURL(/tab=orders/);
+  const ord = page.getByTestId("tab-orders");
+  await expect(ord.getByTestId("orders-today")).toBeVisible();
+  const row = ord.getByTestId("partner-order-row");
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText("시험닉"); // 구매자는 닉네임만
+  await expect(row).toContainText("123,456");
+  await expect(row).toContainText("완료");
+  await expect(ord.getByRole("table", { name: "이상 징후 점검" })).toContainText("동일 구매자 반복 취소");
+  await expect(ord.getByTestId("orders-monthly")).toBeVisible();
+  // 결제 실패만 보면 이 주문은 빠진다
+  await ord.getByLabel("주문 상태").selectOption("failed");
+  await ord.getByRole("button", { name: "검색", exact: true }).click();
+  await expect(ord.getByText("조건에 맞는 주문이 없습니다.")).toBeVisible();
+  await ord.getByRole("button", { name: "초기화" }).click();
+  await expect(row).toHaveCount(1);
 });
