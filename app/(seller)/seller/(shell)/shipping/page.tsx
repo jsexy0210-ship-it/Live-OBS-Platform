@@ -121,7 +121,7 @@ export default function ShippingPage() {
     setTracking((t) => Object.fromEntries(Object.entries(t).filter(([id]) => !okIds.includes(id))));
     // 처리한 행만 갱신한다: 성공한 주문은 다른 탭으로 옮겨 가므로 이 목록에서만 빼고, 불러온 쪽수·스크롤·검색 조건은 그대로 둔다
     setState((s) => (s.kind === "ok" ? { ...s, items: s.items.filter((r) => !okIds.includes(r.orderId)) } : s));
-    const parts = [okIds.length > 0 ? `${okIds.length}건 ${verb}` : null, failed.length > 0 ? `${failed.length}건 실패` : null].filter(Boolean).join(" · ");
+    const parts = [okIds.length > 0 ? `${okIds.length}건 ${verb}` : null, failed.length > 0 ? `${failed.length}건은 처리하지 못했습니다. 빨간 글씨를 확인해 주십시오` : null].filter(Boolean).join(" · ");
     setToast({ text: parts, neg: failed.length > 0 && okIds.length === 0 });
   };
 
