@@ -197,7 +197,7 @@ export default function InvoiceTrackingPage() {
         ))}
 
         <div className="au-list-section">
-          <ListHead total={items.filter((i) => i.trackingNumber).length} loaded actions={<>
+          <ListHead total={items.length} loaded actions={<>
               {canEdit && (
                 <>
                   <select className="inp inp-sm" style={{ width: "auto" }} aria-label="출력 방식" value={format} onChange={(e) => setFormat(e.target.value as typeof format)}>

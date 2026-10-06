@@ -192,8 +192,7 @@ export default function ShippingPage() {
               </button>
             ))}
           </nav>
-          <div className="toolbar" style={{ padding: 16 }}>
-            <div className="search" style={{ flex: "1 1 220px" }}>
+          <div className="toolbar" style={{ padding: 16 }}><div className="search" style={{ flex: "1 1 220px" }}>
               <input
                 className="inp inp-sm"
                 type="search"
@@ -204,8 +203,8 @@ export default function ShippingPage() {
                 disabled={busy}
                 onChange={(e) => setSearch(e.target.value)} aria-description="주문번호 · 닉네임 · 송장번호"
               />
-            </div>
-            {tab === "ready" && (
+            </div></div>
+<ListHead total={items.length} loaded actions={<>{tab === "ready" && (
               <>
                 <select className="inp inp-sm" style={{ width: "auto" }} aria-label="택배사 일괄 선택" value={courier} onChange={(e) => {
                     // 일괄 선택을 바꾸면 줄마다 바꾼 택배사도 모두 이 값으로 맞춘다
@@ -223,12 +222,11 @@ export default function ShippingPage() {
                 </button>
               </>
             )}
-            {tab === "in_transit" && (
+{tab === "in_transit" && (
               <button className="btn btn-sm" type="button" onClick={() => void deliver()} disabled={busy || picked.size === 0}>
                 {busy ? "처리 중" : `배송 완료 처리${picked.size > 0 ? ` (${picked.size})` : ""}`}
               </button>
-            )}
-          </div>
+            )}</>} />
           {tab === "ready" && missing > 0 && <span className="t-c1 c-alt" style={{ padding: "0 16px 12px", display: "block" }}>송장번호를 적지 않은 {missing}건은 저장하지 않습니다.</span>}
 
           {state.kind === "loading" && <LoadingRows rows={5} />}
@@ -242,7 +240,7 @@ export default function ShippingPage() {
             ) : (
               <>
                 <>
-<ListHead total={items.length} loaded />
+
 <ListTable>
                   <table className={`tbl ship-tbl${selectable ? " ship-sel" : ""}`}>
                     <thead>

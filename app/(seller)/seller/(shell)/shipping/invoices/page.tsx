@@ -194,9 +194,8 @@ export default function InvoiceIssuePage() {
         {state.kind === "ok" && (
           <>
             <div className="au-list-section">
-              <div className="toolbar" style={{ padding: 16 }}>
-                <span className="t-c1">고른 주문 {pickedIds.length}건</span>
-                <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+              <ListHead total={rows.length} loaded actions={<><span className="t-c1">고른 주문 {pickedIds.length}건</span>
+<span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {canIssue && (
                     <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => void toggleBundle()}>
                       {bundle ? "묶기 해제" : "같은 받는 분 묶기"}
@@ -205,15 +204,14 @@ export default function InvoiceIssuePage() {
                   <button className="btn btn-sm btn-out" type="button" aria-pressed={remoteOnly} onClick={() => setRemoteOnly(!remoteOnly)}>
                     도서산간만
                   </button>
-                </span>
-              </div>
+                </span></>} />
               {rows.length === 0 ? (
                 <div className="st">
                   <span className="t">{done && done.issued > 0 ? "발급할 주문이 남아 있지 않습니다" : "발급할 주문이 없습니다"}</span>
                 </div>
               ) : (
                 <>
-<ListHead total={rows.length} loaded />
+
 <ListTable>
                   <table className="tbl">
                     <thead>
