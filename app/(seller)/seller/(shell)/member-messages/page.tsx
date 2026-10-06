@@ -7,6 +7,7 @@ import { Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
 import { StateBox, errorText, kstText, stateKind } from "../banners/_shared/ui";
 import "./member-messages.css";
+import { useUrlState } from "../../../../../lib/client/navigation";
 import { DateTimePicker } from "../../../../../components/admin-ui/DatePicker";
 
 // SA-049 회원 알림 발송(파트너스 관리자, 고객 › 회원 알림 발송). 실제 발송 채널(알림톡·문자·메일)과 충전 잔액 차감은 정해지기 전이라 발송 「기록」만 남긴다.
@@ -74,7 +75,9 @@ export default function MemberMessagesPage() {
   const { can } = useSeller();
   const canEdit = can("MEMBER_POINTS");
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number; error?: string } | { kind: "ok"; data: Data }>({ kind: "loading" });
-  const [tab, setTab] = useState<"list" | "new">("list");
+  const [sectionUrl, setSectionUrl] = useUrlState({ section: "list" });
+  const tab = sectionUrl.section === "new" && canEdit ? "new" : "list";
+  const setTab = (next: "list" | "new") => setSectionUrl({ section: next });
   const [toast, setToast] = useState<string | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [editing, setEditing] = useState<Msg | null>(null);

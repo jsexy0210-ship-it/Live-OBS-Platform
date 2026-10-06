@@ -8,6 +8,7 @@ import { Topbar, useSeller } from "../../../../../../components/seller/SellerShe
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
 import { won } from "../../../../../../components/seller/format";
+import { useUrlState } from "../../../../../../lib/client/navigation";
 import { kstText } from "../../banners/_shared/ui";
 
 // SA-018 엑셀 일괄 등록 · 내보내기(파트너스 관리자, 상품 › 엑셀로 올리기 · 내려받기). 정본 design/project/SA-018.dc.html: 파일 올리기 → 올린 파일 확인(미리보기) → 반영, 내보내기, 양식 안내, 처리 이력(되돌리기).
@@ -65,7 +66,13 @@ export default function BulkPage() {
   const [over, setOver] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
-  const [section, setSection] = useState<"register" | "export" | "history">("register");
+  const [sectionUrl, setSectionUrl] = useUrlState({ section: "register" });
+  const section = sectionUrl.section === "export" || sectionUrl.section === "history" ? sectionUrl.section : "register";
+  const setSection = (next: "register" | "export" | "history") => setSectionUrl({ section: next });
+  useEffect(() => {
+    if (section === "register") return;
+    document.getElementById(`bulk-${section}`)?.scrollIntoView({ block: "start" });
+  }, [section]);
 
   const loadJobs = useCallback(async () => {
     const r = await api<{ jobs: Job[] }>("/api/seller/bulk-io/jobs");

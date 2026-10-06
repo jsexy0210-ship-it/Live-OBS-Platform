@@ -6,7 +6,7 @@ import { Topbar, useSeller } from "../../../../../../components/seller/SellerShe
 import { ErrorState, LoadingRows, Locked, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import "./legal.css";
-import { useUnsavedGuard } from "../../../../../../lib/client/navigation";
+import { useUnsavedGuard, useUrlState } from "../../../../../../lib/client/navigation";
 import { DatePicker } from "../../../../../../components/admin-ui/DatePicker";
 
 // SA-062 법정 고지·약관(파트너스 관리자, 설정 › 쇼핑몰 설정): 쇼핑몰 이용약관·개인정보처리방침 입력.
@@ -400,7 +400,9 @@ function NoticePanel({ editable, visible }: { editable: boolean; visible: boolea
 export default function LegalSettingsPage() {
   const { me, can } = useSeller();
   const editable = can("SHOP_SETTINGS");
-  const [tab, setTab] = useState<Tab>("terms");
+  const [sectionUrl, setSectionUrl] = useUrlState({ section: "terms" });
+  const tab: Tab = sectionUrl.section === "privacy" || sectionUrl.section === "notice" ? sectionUrl.section : "terms";
+  const setTab = (next: Tab) => setSectionUrl({ section: next });
   return (
     <>
       <Topbar crumb="설정 › 쇼핑몰 설정 › 법정 고지 · 약관" />
