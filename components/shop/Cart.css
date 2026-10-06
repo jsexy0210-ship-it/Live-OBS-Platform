@@ -255,3 +255,9 @@
 .shop-app .cart-tbl .c-info a:hover {
   text-decoration: underline;
 }
+
+/* SH-034 탭 2 균등(보드 v287: 찜 · 최근 본 상품) */
+.wl-tabs{gap:0;margin-bottom:24px}
+.wl-tabs .tab{flex:1;text-align:center;border:1px solid var(--wds-line-normal-neutral);border-bottom-color:transparent}
+.wl-tabs .tab.on{border-color:var(--wds-label-normal);border-bottom-color:transparent}
+.wl-tabs .tab .cnt{color:var(--brand)}
