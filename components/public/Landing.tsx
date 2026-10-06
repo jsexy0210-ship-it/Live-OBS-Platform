@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PublicFrame } from "./PublicFrame";
 import { LandingSample } from "./LandingSample";
+import { pricingIntro } from "./pricingCopy";
 import "../../styles/pf-sample.css";
 import styles from "./Landing.module.css";
 
@@ -45,9 +46,10 @@ function Check({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function Landing({ plans }: { plans: LandingPlan[] }) {
+export function Landing({ plans, pricingStatus }: { plans: LandingPlan[]; pricingStatus: "available" | "unavailable" | "error" }) {
   const cheapest = plans.length > 0 ? plans.reduce((a, b) => (b.salePrice < a.salePrice ? b : a)) : null;
   const trial = plans.find((p) => p.trialDays > 0);
+  const pricingMessage = pricingIntro(plans.map((p) => p.name), pricingStatus);
   return (
       <PublicFrame mobileHeader="compact">
       <section className={`pf-hero ${styles.hero}`}>
@@ -150,7 +152,7 @@ export function Landing({ plans }: { plans: LandingPlan[] }) {
 
       <section className={`pf-sec ${styles.pricing}`} id="pricing">
         <h2 className="t-t1">요금</h2>
-        <p className="t-b1 c-neu">두 가지 이용권 · {plans.map((p) => p.name).join("과 ")} 중에 골라요.</p>
+        <p className="t-b1 c-neu" data-testid="pricing-intro">{pricingMessage}</p>
         {cheapest ? (
           <div className="pf-price-row">
             <div className="card col pf-price-card" data-plan={cheapest.code}>
@@ -177,7 +179,7 @@ export function Landing({ plans }: { plans: LandingPlan[] }) {
           </div>
         ) : (
           <>
-            <p className="t-b2 c-alt">요금은 가입 신청 화면에서 알려 드려요.</p>
+            <p className="t-b2 c-alt">{pricingStatus === "error" ? "잠시 뒤 다시 확인해 주세요." : "이용권이 준비되면 이 페이지에서 알려 드릴게요."}</p>
             <Link className="btn btn-lg pf-plan-cta" href="/seller/signup">
               파트너스 가입 신청
             </Link>

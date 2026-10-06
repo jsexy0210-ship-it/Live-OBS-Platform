@@ -1,18 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import styles from "./PublicMobileMenu.module.css";
 
 type NavLink = { href: string; label: string };
 
 export function PublicMobileMenu({ links, active }: { links: NavLink[]; active?: string }) {
   const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") {
+        event.preventDefault();
+        triggerRef.current?.focus();
+        setOpen(false);
+      }
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
@@ -21,6 +26,7 @@ export function PublicMobileMenu({ links, active }: { links: NavLink[]; active?:
   return (
     <div className={styles.root}>
       <button
+        ref={triggerRef}
         className="icon-btn"
         type="button"
         aria-label={open ? "메뉴 닫기" : "메뉴"}
