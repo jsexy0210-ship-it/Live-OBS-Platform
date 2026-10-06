@@ -141,7 +141,8 @@ test("문의: 공지에서 관련 문의를 보내고, 사진을 붙이고, 답�
   await expect(page).toHaveURL(/\/seller\/inquiries\/[0-9a-f-]{36}$/);
   const id = page.url().split("/").pop()!;
   await expect(page.getByTestId("inquiry-title")).toHaveText(`${E2E_PREFIX}결제 문의`);
-  await expect(page.getByText("답변 대기")).toBeVisible();
+  await expect(page.getByTestId("inquiry-status")).toHaveText("보냄");
+  await expect(page.getByText("ONQ 운영팀이 확인 중입니다")).toBeVisible();
   await expect(page.getByRole("link", { name: `${E2E_PREFIX}문의 연결 공지` })).toBeVisible();
   await expect(page.getByTestId("inquiry-message")).toHaveCount(1);
   await expect(page.getByTestId("inquiry-message").first().getByAltText("첨부 사진")).toHaveCount(1);
@@ -158,7 +159,7 @@ test("문의: 공지에서 관련 문의를 보내고, 사진을 붙이고, 답�
   await expect(row).toContainText("새 답변");
   await row.getByRole("link").click();
   const reply = page.getByTestId("inquiry-message").nth(1);
-  await expect(reply).toContainText("플랫폼");
+  await expect(reply).toContainText("ONQ 운영팀");
   await expect(reply).toContainText("확인 후 안내드립니다.");
   // 열었으니 읽음: 목록의 새 답변 표시가 사라진다
   await page.goto("/seller/inquiries");
@@ -170,7 +171,8 @@ test("문의: 공지에서 관련 문의를 보내고, 사진을 붙이고, 답�
   await page.getByRole("button", { name: "추가 문의 보내기" }).click();
   await page.getByRole("dialog", { name: "추가 문의를 보내시겠습니까?" }).getByRole("button", { name: "추가 문의 보내기" }).click();
   await expect(page.getByTestId("inquiry-message")).toHaveCount(3);
-  await expect(page.getByText("답변 대기")).toBeVisible();
+  await expect(page.getByTestId("inquiry-status")).toHaveText("보냄");
+  await expect(page.getByText("ONQ 운영팀이 확인 중입니다")).toBeVisible();
 
   // 종료 → 입력란이 숨고 새 문의 안내
   await adminReplyInDb(id, "문의를 종료합니다.", true);
@@ -237,6 +239,35 @@ test("문의하기: 관련 방송 · 파일 첨부 · 진단 정보 · 임시 �
   const draft = await page.evaluate(async () => (await (await fetch("/api/seller/platform-inquiries/draft")).json()).draft);
   expect(draft).toBeNull();
   await expect(page.getByTestId("inquiry-title")).toHaveText(`${E2E_PREFIX}방송 화면 멈춤`);
+});
+
+test("문의 상세: 답변 평가는 한 번만 남기고, 처리 이력이 보이며, 「해결됐습니다 · 종료」는 확인 창을 거쳐 닫는다", async ({ page }) => {
+  await login(page, "/seller/inquiries");
+  const id = await page.evaluate(async (t) => {
+    const r = await fetch("/api/seller/platform-inquiries", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ category: "ORDER_REFUND", title: t, body: "환불이 안 보입니다." }) });
+    return ((await r.json()) as { inquiry: { id: string } }).inquiry.id;
+  }, `${E2E_PREFIX}환불 문의`);
+  await page.goto(`/seller/inquiries/${id}`);
+  await expect(page.getByText("답변이 도움이 됐습니까?")).toHaveCount(0);
+  await expect(page.getByTestId("inquiry-history")).toHaveCount(1);
+  await adminReplyInDb(id, "확인했습니다.");
+  await page.reload();
+  await expect(page.getByTestId("inquiry-status")).toHaveText("답변 완료");
+  await expect(page.getByTestId("inquiry-history").first()).toContainText("답변 완료 · ONQ 운영팀");
+  await page.getByRole("button", { name: "도움됨", exact: true }).click();
+  await expect(page.getByTestId("inquiry-helpful")).toHaveText("도움됨으로 남겼습니다");
+  await expect(page.getByRole("button", { name: "도움됨", exact: true })).toHaveCount(0);
+
+  // 종료: 확인 창 취소 → 그대로, 확인 → 종료·새 문의 안내
+  await page.getByRole("button", { name: "해결됐습니다 · 종료" }).click();
+  await page.getByRole("dialog", { name: "문의를 종료하시겠습니까?" }).getByRole("button", { name: "취소" }).click();
+  await expect(page.getByTestId("inquiry-status")).toHaveText("답변 완료");
+  await page.getByRole("button", { name: "해결됐습니다 · 종료" }).click();
+  await page.getByRole("dialog", { name: "문의를 종료하시겠습니까?" }).getByRole("button", { name: "문의 종료" }).click();
+  await expect(page.getByTestId("inquiry-status")).toContainText("종료 ·");
+  await expect(page.getByText("종료된 문의입니다")).toBeVisible();
+  await expect(page.getByRole("link", { name: "새 문의" })).toBeVisible();
+  await expect(page.getByTestId("inquiry-history").first()).toContainText("문의 종료 · 파트너스");
 });
 
 test("문의: 유형 없이는 보낼 수 없고, 없는 문의는 안내한다", async ({ page }) => {
