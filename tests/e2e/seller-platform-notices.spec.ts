@@ -36,15 +36,61 @@ test("공지: 고정 공지가 위에 보이고, 눌러 본문을 읽으며, 없
   await expect(page).toHaveURL(new RegExp(`/seller/notices/${pinned}$`));
   await expect(page.getByTestId("notice-title")).toHaveText(`${E2E_PREFIX}점검 안내`);
   await expect(page.getByTestId("notice-body")).toContainText("새벽 2시 점검");
-  await expect(page.getByText(/보인 곳: 화면 공지/)).toBeVisible();
+  await expect(page.getByText(/ONQ 운영팀 · \d{4}\.\d{2}\.\d{2} \d{2}:\d{2} 올림/)).toBeVisible();
   await page.goto("/seller/notices/00000000-0000-4000-8000-000000000000");
   await expect(page.getByText("공지를 찾을 수 없습니다")).toBeVisible();
+});
+
+test("공지 목록: 분류·안 읽은 것만·검색으로 걸러 보고, 열면 읽음이 되며, 20개씩 이전·다음으로 넘긴다", async ({ page }) => {
+  await createNoticeInDb("기능 공지", { category: "FEATURE" });
+  await createNoticeInDb("점검 공지", { category: "MAINTENANCE" });
+  const policy = await createNoticeInDb("정책 공지", { category: "POLICY" });
+  await login(page, "/seller/notices");
+  const row = (t: string) => page.getByTestId("notice-row").filter({ hasText: `${E2E_PREFIX}${t}` });
+  await expect(row("정책 공지")).toContainText("안 읽음");
+
+  // 분류 칸
+  await page.getByRole("button", { name: "기능", exact: true }).click();
+  await expect(page).toHaveURL(/category=FEATURE/);
+  await expect(row("기능 공지")).toBeVisible();
+  await expect(row("점검 공지")).toHaveCount(0);
+  await page.getByRole("button", { name: "전체", exact: true }).click();
+  await expect(page).not.toHaveURL(/category=/);
+
+  // 검색: 결과 없음은 안내와 「검색 초기화」
+  await page.getByLabel("공지 검색").fill("없는검색어zz");
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page.getByText("「없는검색어zz」 검색 결과가 없습니다")).toBeVisible();
+  await page.getByRole("button", { name: "검색 초기화" }).click();
+  await expect(row("정책 공지")).toBeVisible();
+
+  // 열면 읽음: 안 읽은 것만 목록에서 빠진다
+  await row("정책 공지").getByRole("link").click();
+  await expect(page).toHaveURL(new RegExp(`/seller/notices/${policy}$`));
+  await expect(page.getByTestId("notice-title")).toBeVisible();
+  await page.goto("/seller/notices?unread=1");
+  await expect(page.getByLabel("안 읽은 것만")).toBeChecked();
+  await expect(row("정책 공지")).toHaveCount(0);
+  await expect(row("기능 공지")).toBeVisible();
+  await page.goto("/seller/notices");
+  await expect(row("정책 공지")).toContainText("읽음");
+});
+
+test("공지 목록: 20개를 넘으면 다음 쪽으로 넘기고, 이전으로 돌아온다", async ({ page }) => {
+  for (let i = 0; i < 22; i++) await createNoticeInDb(`쪽 공지 ${String(i).padStart(2, "0")}`);
+  await login(page, "/seller/notices");
+  await expect(page.getByText(/20개씩 · 1–\d+ 표시/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "‹ 이전" })).toBeDisabled();
+  await page.getByRole("button", { name: "다음 ›" }).click();
+  await expect(page.getByText(/20개씩 · 21–\d+ 표시/)).toBeVisible();
+  await page.getByRole("button", { name: "‹ 이전" }).click();
+  await expect(page.getByText(/20개씩 · 1–\d+ 표시/)).toBeVisible();
 });
 
 test("문의: 공지에서 관련 문의를 보내고, 사진을 붙이고, 답변을 확인한 뒤 추가 문의를 보내며, 종료되면 입력란이 사라진다", async ({ page }) => {
   const noticeId = await createNoticeInDb("문의 연결 공지");
   await login(page, `/seller/notices/${noticeId}`);
-  await page.getByRole("link", { name: "이 공지로 문의하기" }).click();
+  await page.getByRole("link", { name: "이 공지에 대해 문의" }).click();
   await expect(page).toHaveURL(/\/seller\/inquiries\/new\?noticeId=/);
   await expect(page.getByText(`관련 공지: ${E2E_PREFIX}문의 연결 공지`)).toBeVisible();
 
