@@ -6,7 +6,7 @@
 
 | 세션 | ID | 담당 |
 |---|---|---|
-| Live-OBS-Platform MASTER (4) | `session_01WVYfLxEbKvL8U1WR3ZcjSh` | 대표님 지시 전달 · 세션 배정·교체·보관 · 상태 문서 관리 · 테스트 서버 배포 실행(2026-10-04 대표님 지시로 검수·병합은 검수 전담에 넘김). 2026-10-06 MASTER (3) `session_01CEyJ4JsJ28uLVRMoFzD2u1`(컨텍스트 55%)에서 교체 |
+| Live-OBS-Platform MASTER (4) | `session_01WVYfLxEbKvL8U1WR3ZcjSh` | (보관, 2026-10-06 인계 완료) 대표님 지시 전달 · 세션 배정·교체·보관 · 상태 문서 관리 · 테스트 서버 배포 실행(2026-10-04 대표님 지시로 검수·병합은 검수 전담에 넘김). 2026-10-06 MASTER (3) `session_01CEyJ4JsJ28uLVRMoFzD2u1`(컨텍스트 55%)에서 교체 |
 | Live-OBS-Platform MASTER (3) | `session_01CEyJ4JsJ28uLVRMoFzD2u1` | (교체됨 → `session_01WVYfLxEbKvL8U1WR3ZcjSh`, 2026-10-06) 대표님 지시 전달 · 세션 배정·교체 · 상태 문서 관리. 컨텍스트 55%로 교체 |
 | 검수 전담 (10) | `session_01RwaCLVjHMTGQwWTR9QDdHW` | (교체됨 → `session_01CsbbusRMeNLAR9C8WCAoPg`, 2026-10-06 14:21 KST, 컨텍스트 65%) 2026-10-06 10:53 KST MASTER 생성(Sonnet 5.5). (9)를 컨텍스트 66%로 교체. 변경 파일 요약부터·CI 묶음 조회 지침. 역할·소유는 전임 행과 같음 |
 | 화면 대조 전담 MA | `session_0127F4exy72Wv6wVmn471EVx` | 2026-10-06 14:26 KST MASTER (4) 생성(Sonnet 5.5). 마스터 관리자 화면 중 「대기·미확인」·「정본과 다름」 렌더 대조·구조 차이 수정(다른 세션 큐 화면 제외) |
