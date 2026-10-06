@@ -7,10 +7,11 @@ import { call } from "./reviewShared";
 import "./Cart.css";
 import "./Help.css";
 
-// SH-030 고객센터(시안 04 SH): 공지 목록 · 자주 묻는 질문. 이용안내 탭은 API가 없어 뺐다. 공지·FAQ API는 로그인 없이 읽는다.
+// SH-030 고객센터(보드 FINAL v320): 공지 · 이용안내 · 자주 묻는 질문. 공지·FAQ·이용안내(쇼핑몰 공개 정보 profile.usageGuide, SA-060) API는 로그인 없이 읽는다.
 type Notice = { id: string; title: string; isPinned: boolean; createdAt: string };
 type Faq = { id: string; category: string; title: string; body: string };
-type Tab = "notice" | "faq";
+type Tab = "notice" | "guide" | "faq";
+const TAB_LABEL: Record<Tab, string> = { notice: "공지", guide: "이용안내", faq: "자주 묻는 질문" };
 
 function Notices({ slug }: { slug: string }) {
   const base = `/shop/${encodeURIComponent(slug)}`;
@@ -173,6 +174,42 @@ function Faqs({ slug }: { slug: string }) {
   );
 }
 
+// 이용안내: 파트너스가 쓴 안내 글(여러 줄)을 줄바꿈 그대로 보여 준다
+function Guide({ slug }: { slug: string }) {
+  const [guide, setGuide] = useState<string | null | undefined>(undefined);
+  const [error, setError] = useState(false);
+  const load = useCallback(async () => {
+    setError(false);
+    const r = await call<{ usageGuide: string | null }>(`/api/shop/${encodeURIComponent(slug)}/profile`);
+    if (r.ok) setGuide(r.data.usageGuide);
+    else setError(true);
+  }, [slug]);
+  useEffect(() => void load(), [load]);
+  if (error)
+    return (
+      <div className="cart-empty">
+        <p>이용안내를 불러오지 못했어요. 연결을 확인하고 다시 시도해 주세요.</p>
+        <button className="btn" type="button" onClick={() => void load()}>
+          다시 불러오기
+        </button>
+      </div>
+    );
+  if (guide === undefined)
+    return (
+      <p className="shop-empty" aria-busy="true">
+        이용안내를 불러오고 있어요
+      </p>
+    );
+  if (!guide)
+    return (
+      <div className="cart-empty">
+        <h2>아직 이용안내가 없어요</h2>
+        <p>판매자가 올리면 여기에 보여요.</p>
+      </div>
+    );
+  return <p className="help-guide">{guide}</p>;
+}
+
 export default function HelpView({ slug }: { slug: string }) {
   const [tab, setTab] = useState<Tab>("notice");
   return (
@@ -181,13 +218,13 @@ export default function HelpView({ slug }: { slug: string }) {
         <h1>고객센터</h1>
       </div>
       <div className="help-tabs" role="tablist" aria-label="고객센터">
-        {(["notice", "faq"] as const).map((t) => (
+        {(["notice", "guide", "faq"] as const).map((t) => (
           <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
-            {t === "notice" ? "공지" : "자주 묻는 질문"}
+            {TAB_LABEL[t]}
           </button>
         ))}
       </div>
-      <div role="tabpanel">{tab === "notice" ? <Notices slug={slug} /> : <Faqs slug={slug} />}</div>
+      <div role="tabpanel">{tab === "notice" ? <Notices slug={slug} /> : tab === "guide" ? <Guide slug={slug} /> : <Faqs slug={slug} />}</div>
     </div>
   );
 }

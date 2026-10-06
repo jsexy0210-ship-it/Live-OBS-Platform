@@ -13,6 +13,7 @@ import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
 import { text } from "../../../_components/partners";
 import { RejectApplicationDialog } from "../../../_components/RejectApplicationDialog";
 import { takeFlash } from "../../../_components/flash";
+import { listDefaults } from "../../../../../../lib/client/filterDefaults";
 import { useListFilters } from "../../../_components/useListFilters";
 
 // MA-013 가입 신청 목록(GET /api/admin/sellers/applications, 모든 마스터 역할 조회). 정본: design/project/MA-013-OPS.dc.html(FINAL).
@@ -33,7 +34,8 @@ type App = {
   elapsedHours: number;
   over48h: boolean;
   reasons: { code: string; text: string }[];
-  checks: { key: string; label: string; result: "OK" | "WARN" | "FAIL"; text: string }[];
+  checks: { key: string; label: string; result: "OK" | "WARN" | "FAIL" | "NONE"; text: string }[];
+  checkedAt: string | null;
   supplement: Supplement | null;
 };
 type Row = App & { done?: "approved" | "rejected"; undoUntil?: number };
@@ -56,10 +58,10 @@ const FIELDS = [
   ["applicant", "신청자"],
   ["biz", "사업자등록번호"],
 ] as const;
-type Filters = { tab: string; sort: string; q: string; field: string; industry: string; receivedFrom: string; receivedTo: string };
-const EMPTY: Filters = { tab: "all", sort: "oldest", q: "", field: "all", industry: "", receivedFrom: "", receivedTo: "" };
+// 승인 대기 업무 큐라 공통 기본 기간(최근 1개월)을 쓰지 않는다(오래 기다린 신청이 가려지면 안 됨, period: null). 정렬은 큐 정본대로 오래된 순이 기본, 쪽 크기는 공통 20.
+const EMPTY = listDefaults({ tab: "all", sort: "oldest", q: "", field: "all", industry: "", receivedFrom: "", receivedTo: "" }, { period: null });
+type Filters = typeof EMPTY;
 const SEARCH_KEYS = ["q", "field", "industry", "receivedFrom", "receivedTo"] as const;
-const LIMIT = 20;
 const MAX_REASON = 200;
 
 function waited(r: App): { label: string; hot: boolean } {
@@ -125,7 +127,7 @@ function SupplementDialog({ row, onClose, onDone, onStale }: { row: Row; onClose
 }
 
 type Note = { id: string; body: string; author: { name: string }; createdAt: string };
-const CHECK_CLS = { OK: "b-done", WARN: "b-warn", FAIL: "b-fail" } as const;
+const CHECK_CLS = { OK: "b-done", WARN: "b-warn", FAIL: "b-fail", NONE: "b-gray" } as const;
 
 // 확인 필요 건 검토 패널(정본 MA-013-OPS 「검토 사이드 패널」): 점검 결과 표 · 신청 정보 · 내부 메모, 이전/다음으로 넘기며 승인·반려·보완 요청.
 function ReviewPanel({ row, pos, total, busy, canModerate, onNav, onClose, onApprove, onReject, onSupplement, onRecheck, onToast }: { row: Row; pos: number; total: number; busy: boolean; canModerate: boolean; onNav: (d: number) => void; onClose: () => void; onApprove: () => void; onReject: () => void; onSupplement: () => void; onRecheck: () => Promise<void>; onToast: (t: string, neg?: boolean) => void }) {
@@ -207,6 +209,9 @@ function ReviewPanel({ row, pos, total, busy, canModerate, onNav, onClose, onApp
             ))}
           </tbody>
         </table>
+        <span className="t-c1 c-alt" data-testid="review-checked-at">
+          {row.checkedAt ? `외부 조회 ${formatDateTime(row.checkedAt)}` : "외부 조회를 아직 하지 않았습니다 · 「국세청 다시 조회」로 확인해 주십시오"}
+        </span>
         <dl className="col" style={{ gap: 6, margin: 0 }}>
           <div className="row" style={{ gap: 8 }}>
             <dt className="c-alt" style={{ width: 70 }}>사업자</dt>
@@ -296,7 +301,7 @@ function Applications() {
     async (silent = false) => {
       const id = ++reqId.current;
       if (!silent) setState({ kind: "loading" });
-      const p = new URLSearchParams({ tab, sort: applied.sort === "newest" ? "newest" : "oldest", limit: String(LIMIT) });
+      const p = new URLSearchParams({ tab, sort: applied.sort === "newest" ? "newest" : "oldest", limit: applied.size });
       for (const k of SEARCH_KEYS) if (applied[k] && !(k === "field" && !applied.q)) p.set(k, applied[k]);
       if (cursor) p.set("cursor", cursor);
       const r = await adminApi<Data>(`/api/admin/sellers/applications?${p}`);
@@ -396,13 +401,13 @@ function Applications() {
   };
 
   const recheck = async (r: Row) => {
-    const res = await adminApi<{ lookupOk: boolean; reasons: App["reasons"]; checks: App["checks"] }>(`/api/admin/sellers/${encodeURIComponent(r.id)}/recheck`, { method: "POST", json: {} });
+    const res = await adminApi<{ lookupOk: boolean; reasons: App["reasons"]; checks: App["checks"]; checkedAt: string }>(`/api/admin/sellers/${encodeURIComponent(r.id)}/recheck`, { method: "POST", json: {} });
     if (!res.ok) {
       if (res.status === 404 || (res.status === 409 && res.error === "not_pending")) return stale(r);
       return setToast({ text: failMessage(res, "국세청 조회를 다시 하지 못했습니다."), neg: true });
     }
     const d = res.data;
-    patchRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, reasons: d.reasons, checks: d.checks, state: d.reasons.length === 0 ? "CLEAR" : "REVIEW" } : x)));
+    patchRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, reasons: d.reasons, checks: d.checks, checkedAt: d.checkedAt, state: d.reasons.length === 0 ? "CLEAR" : "REVIEW" } : x)));
     setToast({ text: !d.lookupOk ? "국세청 조회가 아직 안 됩니다. 잠시 뒤 다시 시도해 주십시오." : d.reasons.length === 0 ? `${r.shopName}의 확인할 것이 모두 풀려 이상 없음으로 바뀌었습니다.` : "국세청 조회 결과를 갱신했습니다.", neg: !d.lookupOk });
   };
   const queue = rows.filter((r) => !r.done && r.state === "REVIEW");
@@ -606,7 +611,7 @@ function Applications() {
                               )}
                             </td>
                             <td>
-                              <div className="row" style={{ gap: 4, flexWrap: "nowrap" }}>
+                              <div className="acts2">
                                 {r.done ? (
                                   <>
                                     {canUndo && canModerate && (

@@ -65,6 +65,12 @@ enum ShopOperatingState {
   PAUSED
 }
 
+// 쇼핑몰 대표 주소(SA-060): 기본 주소(플랫폼 주소) 또는 소유 확인이 끝난 내 도메인. CUSTOM은 확인된 도메인이 있어야 저장된다.
+enum PrimaryAddressKind {
+  DEFAULT
+  CUSTOM
+}
+
 enum SellerStatus {
   PENDING
   ACTIVE
@@ -79,6 +85,11 @@ model Seller {
   shopName                 String
   // 한 줄 소개(SA-060, 40자). 쇼핑몰 홈·공유 설명 기본값. 비어 있으면 null.
   shopTagline              String?
+  // SA-060 공지·이용안내·대표 주소. 상단 공지(한 줄 60자)·홈 혜택 배너 보이기(기본 보이기)·이용안내/교환/환불 정책 글(1000자)·대표 주소 종류.
+  shopTopNotice            String?
+  homeBenefitBannerVisible Boolean      @default(true)
+  shopUsageGuide           String?
+  primaryAddressKind       PrimaryAddressKind @default(DEFAULT)
   // 쇼핑몰 홈 배너 자동 넘김 간격(초, SA-064). 0=끔(기본), 5, 8.
   homeBannerIntervalSec    Int          @default(0)
   // 공유 미리보기(og:title·og:description) 제목·설명. 비어 있으면 쇼핑몰 이름(제목)·없음(설명). 파트너스 쇼핑몰 설정(SHOP_SETTINGS)에서 바꾼다.
@@ -143,6 +154,7 @@ model Seller {
   memberPolicy             SellerMemberPolicy?
   brandColor               SellerBrandColor?
   favicon                  SellerFavicon?
+  businessLicense          SellerBusinessLicense?
   shopSeo                  ShopSeo?
   orderNotificationPolicy  SellerOrderNotificationPolicy?
   rejoinBlocks             BuyerRejoinBlock[]
@@ -201,6 +213,7 @@ model Seller {
   platformInquiries        PlatformInquiry[]
   platformInquiryMessages  PlatformInquiryMessage[]
   platformInquiryImages    PlatformInquiryImage[]
+  platformInquiryFiles     PlatformInquiryFile[]
   externalShopConnections  ExternalShopConnection[]
   receiptIssuer            SellerReceiptIssuer?
   externalOrders ExternalOrder[]
@@ -961,6 +974,23 @@ model SellerFavicon {
   seller Seller @relation(fields: [sellerId], references: [id])
 }
 
+// 파트너스 가입 신청의 사업자등록증 파일(PF-007-4). 비용 없는 DB 저장(파비콘과 같은 방식). JPG·PNG·PDF, 10MB 이하(서버가 파일 앞부분 바이트로 확인).
+// 신청 전에는 본인확인 기록(verificationId)에 묶인 임시 파일이고, 신청을 만들 때 sellerId로 옮긴다(verificationId는 비움).
+// 마스터 조회·내려받기는 최고관리자·운영만이며 열람은 로그 추적에 남긴다. 보관 기간·삭제는 대표님 결정 전이라 지우는 작업을 두지 않는다.
+model SellerBusinessLicense {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  verificationId String?  @unique @db.Uuid
+  sellerId       String?  @unique @db.Uuid
+  fileName       String
+  mimeType       String
+  byteSize       Int
+  sha256         String
+  data           Bytes
+  uploadedAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  seller Seller? @relation(fields: [sellerId], references: [id])
+}
+
 // ───────────── 상품 리뷰 (SA-048 리뷰 관리 · SH-029 리뷰 쓰기, 2026-10-04 대표님 확정 11건 중 2) ─────────────
 // 구매자가 배송 완료된 주문 상품마다 1번 쓴다(작성 기간은 쇼핑몰 설정, 기본 30일). 답글·숨김·공개·설정은 대표자·구매자 문의(INQUIRY_REPLY) 직원.
 // 사진은 화면에서 JPEG로 다시 저장해 올리고, 서버는 JPEG·PNG 바이트를 확인한 뒤 위치 정보 등 메타데이터를 지우고 DB에 둔다(A안).
@@ -1249,6 +1279,8 @@ model BroadcastSession {
   title     String?
   startedAt DateTime        @default(now()) @db.Timestamptz(3)
   endedAt   DateTime?       @db.Timestamptz(3)
+  // 방송 중 오버레이가 처음 요청한 레이아웃("9x16" 세로형 | "16x9" 가로형, SA-054 「레이아웃」 열). 이 기록 전의 방송·요청이 없던 방송은 null.
+  layoutAspect String?
 
   seller       Seller            @relation(fields: [sellerId], references: [id])
   queueItems   QueueItem[]
@@ -1334,6 +1366,8 @@ model HitCard {
   buyerMemberId      String?  @db.Uuid
   nicknameSnapshot   String
   cardName           String
+  // 등급(SA-053 「등급」 열). 정해 둔 목록(HIT_GRADES: SAR·SR·UR·SE·SP·AA) 중 하나, 비워 둘 수 있다.
+  grade              String?
   note               String?
   createdByUserId    String?  @db.Uuid
   createdAt          DateTime @default(now()) @db.Timestamptz(3)
@@ -1366,6 +1400,9 @@ model RewardPolicy {
   rankingBonusAmount  Int              @default(0)
   // 적립금 지급 시점(대표님 결정 2026-10-03): 결제 즉시 또는 배송 완료 후(기본)
   earnTiming          RewardEarnTiming @default(ON_DELIVERY)
+  // 적립금 사용 조건(SA-031, MASTER 2026-10-06): 최소 사용 금액(원, 기본 1,000)과 주문당 최대 사용 비율(%, 0=제한 없음). 설정 저장은 rewards/policyAdmin.ts, 견적·주문 적용은 결제 쪽.
+  useMinAmount        Int              @default(1000)
+  useMaxRatio         Int              @default(0)
   updatedAt           DateTime         @default(now()) @updatedAt @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])
@@ -1402,6 +1439,8 @@ model RewardLedger {
   status         RewardLedgerStatus @default(PENDING)
   testMode       Boolean
   failureReason  String?
+  // 수동 조정(ADJUST) 사유(SA-033, 필수 입력 최대 200자). 다른 유형은 null.
+  reason         String?
   idempotencyKey String
   createdAt      DateTime           @default(now()) @db.Timestamptz(3)
   processedAt    DateTime?          @db.Timestamptz(3)
@@ -3101,9 +3140,28 @@ model PlatformNotice {
   deletedAt        DateTime?              @db.Timestamptz(3)
 
   reads PlatformNoticeRead[]
+  files PlatformNoticeFile[]
 
   @@index([publishedAt(sort: Desc), id(sort: Desc)])
   @@index([createdAt(sort: Desc), id(sort: Desc)])
+}
+
+// 공지 첨부 파일(MA-053·054, 마스터 관리자 중 공지 작성 권한자가 올리고 파트너스는 받기만). .png·.jpg·.pdf, 파일당 5MB·공지당 5개, DB 저장.
+// 공지를 지우면(하드 삭제) 같이 지우고, 지운(deletedAt) 공지의 파일은 받을 수 없다. 올리고 지워도 공지 version은 올리지 않는다.
+model PlatformNoticeFile {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  noticeId         String   @db.Uuid
+  name             String
+  data             Bytes
+  contentType      String
+  byteSize         Int
+  sortOrder        Int      @default(0)
+  createdByAdminId String   @db.Uuid
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+
+  notice PlatformNotice @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+
+  @@index([noticeId, sortOrder, createdAt])
 }
 
 // 파트너스 계정(직원 포함)별 공지 읽음 표시(SA-111·112). 상세를 열었을 때 화면이 읽음 API를 부르면 한 줄이 생긴다(같은 계정·공지는 한 번만).
@@ -3505,6 +3563,7 @@ model PlatformInquiryMessage {
   seller  Seller                 @relation(fields: [sellerId], references: [id])
   inquiry PlatformInquiry        @relation(fields: [sellerId, inquiryId], references: [sellerId, id], onDelete: Cascade)
   images  PlatformInquiryImage[]
+  files   PlatformInquiryFile[]
 
   @@unique([sellerId, id])
   @@index([sellerId, inquiryId, createdAt])
@@ -3529,6 +3588,42 @@ model PlatformInquiryImage {
 
   @@index([sellerId, messageId])
   @@index([sellerId, sellerUserId, messageId, createdAt])
+}
+
+// 문의 첨부 파일(사진 외 .txt·.log·.zip, 파트너스만 올림, lib/server/platform-inquiries/files.ts). 사진과 같이 먼저 올리고(messageId 없음) 글을 보낼 때 붙인다. 붙지 않은 파일은 계정당 10개까지 두고 오래된 것부터 지운다.
+model PlatformInquiryFile {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId     String   @db.Uuid
+  sellerUserId String   @db.Uuid
+  messageId    String?  @db.Uuid
+  name         String
+  data         Bytes
+  contentType  String
+  byteSize     Int
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  seller  Seller                  @relation(fields: [sellerId], references: [id])
+  message PlatformInquiryMessage? @relation(fields: [sellerId, messageId], references: [sellerId, id], onDelete: Cascade)
+
+  @@index([sellerId, messageId])
+  @@index([sellerId, sellerUserId, messageId, createdAt])
+}
+
+// 문의 작성 임시 저장(SA-114 「임시 저장」). 계정(파트너스 직원 포함)당 하나. 보내도 자동으로 지우지 않고 화면이 보낸 뒤 지운다. 값은 임시라 검사가 느슨하고(보낼 때 다시 검사), 관련 주문·방송 id는 보낼 때 같은 쇼핑몰 것인지 확인한다.
+model PlatformInquiryDraft {
+  sellerUserId       String   @id @db.Uuid
+  sellerId           String   @db.Uuid
+  category           PlatformInquiryCategory?
+  title              String   @default("")
+  body               String   @default("")
+  urgent             Boolean  @default(false)
+  relatedOrderId     String?  @db.Uuid
+  relatedBroadcastId String?  @db.Uuid
+  includeDiagnostics Boolean  @default(true)
+  updatedAt          DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([sellerId])
 }
 
 // ───────────── 점검 모드(MA-083 · AU-010) ─────────────
@@ -4004,6 +4099,9 @@ model ShopLegalNotice {
   escrowProvider String         @default("")
   escrowUrl      String         @default("")
   minorNotice    String         @default("")
+  // 쇼핑몰 하단 「카카오톡 문의」 버튼·유튜브 채널 링크(SA-060, https만). 비어 있으면 버튼을 보이지 않는다.
+  kakaoChannelUrl  String       @default("")
+  youtubeChannelUrl String      @default("")
   version        Int            @default(0)
   createdAt      DateTime       @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime       @default(now()) @updatedAt @db.Timestamptz(3)

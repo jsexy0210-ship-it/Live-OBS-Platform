@@ -81,6 +81,7 @@ const info = (j: Prisma.JsonValue | null) => (j && typeof j === "object" && !Arr
 
 type Pending = {
   id: string; slug: string; shopName: string; createdAt: Date; businessInfo: Prisma.JsonValue | null; reviewReasons: string[];
+  license: { fileName: string; mimeType: string; byteSize: number; uploadedAt: Date } | null;
   owner: string | null; rev: { supplementReason: string | null; supplementRequestedAt: Date | null; supplementDueAt: Date | null; supplementResolvedAt: Date | null; reminderCount: number; lastReminderAt: Date | null } | null;
 };
 async function loadPending(db: PrismaClient): Promise<Pending[]> {
@@ -91,13 +92,15 @@ async function loadPending(db: PrismaClient): Promise<Pending[]> {
     select: { id: true, slug: true, shopName: true, createdAt: true, businessInfo: true, reviewReasons: true },
   });
   const ids = sellers.map((s) => s.id);
-  const [owners, revs] = await Promise.all([
+  const [owners, revs, licenses] = await Promise.all([
     db.sellerUser.findMany({ where: { sellerId: { in: ids }, isOwner: true }, select: { sellerId: true, email: true } }),
     db.sellerApplicationReview.findMany({ where: { sellerId: { in: ids } } }),
+    db.sellerBusinessLicense.findMany({ where: { sellerId: { in: ids } }, select: { sellerId: true, fileName: true, mimeType: true, byteSize: true, uploadedAt: true } }),
   ]);
+  const lic = new Map(licenses.map((l) => [l.sellerId, { fileName: l.fileName, mimeType: l.mimeType, byteSize: l.byteSize, uploadedAt: l.uploadedAt }]));
   const o = new Map(owners.map((u) => [u.sellerId, u.email]));
   const r = new Map(revs.map((x) => [x.sellerId, x]));
-  return sellers.map((s) => ({ ...s, owner: o.get(s.id) ?? null, rev: r.get(s.id) ?? null }));
+  return sellers.map((s) => ({ ...s, owner: o.get(s.id) ?? null, rev: r.get(s.id) ?? null, license: lic.get(s.id) ?? null }));
 }
 const supplementOpen = (p: Pending) => !!p.rev?.supplementRequestedAt && !p.rev.supplementResolvedAt;
 const stateOf = (p: Pending): "SUPPLEMENT" | "REVIEW" | "CLEAR" => (supplementOpen(p) ? "SUPPLEMENT" : p.reviewReasons.length > 0 ? "REVIEW" : "CLEAR");
@@ -178,29 +181,32 @@ export async function listApplications(db: PrismaClient, admin: AdminSessionCont
     return true;
   });
   if (sort === "newest") rows = [...rows].reverse();
-  const page = rows.slice(offset, offset + take).map((p) => viewApplication(p, now, reviewTargetHours));
+  const canView = adminCan(admin.admin.role, "seller.moderate");
+  const page = rows.slice(offset, offset + take).map((p) => viewApplication(p, now, reviewTargetHours, canView));
   return { ok: true as const, chips, kpi, industries, applications: page, total: rows.length, nextCursor: offset + take < rows.length ? String(offset + take) : null };
 }
 
 // 자동 점검 항목별 결과(MA-013 검토 패널). 저장된 「확인 필요」 사유에서 만든다: 사유가 없으면 통과(OK), 조회 실패는 WARN, 정보가 틀리거나 상태가 이상하면 FAIL.
 // 휴대폰 본인확인은 가입 신청의 필수 절차라 신청이 있으면 완료다.
-type CheckResult = "OK" | "WARN" | "FAIL";
-function applicationChecks(reasons: string[]): { key: string; label: string; result: CheckResult; text: string }[] {
+// 조회 시각(checkedAt)이 없는 신청은 외부 조회(국세청·공정위)를 한 번도 하지 않은 것이라 사유가 없어도 통과로 보이면 안 된다 → NONE 「미조회」.
+type CheckResult = "OK" | "WARN" | "FAIL" | "NONE";
+function applicationChecks(reasons: string[], checked: boolean): { key: string; label: string; result: CheckResult; text: string }[] {
   const has = (c: ReviewReason) => reasons.includes(c);
-  const pick = (rules: [ReviewReason, CheckResult, string][], ok: string): { result: CheckResult; text: string } => {
+  // external: 국세청·공정위 조회가 필요한 항목만 미조회가 될 수 있다(중복 점검은 신청 때 우리 DB로 하므로 해당 없음)
+  const pick = (rules: [ReviewReason, CheckResult, string][], ok: string, external = false): { result: CheckResult; text: string } => {
     const hit = rules.find(([c]) => has(c));
-    return hit ? { result: hit[1], text: hit[2] } : { result: "OK", text: ok };
+    return hit ? { result: hit[1], text: hit[2] } : checked || !external ? { result: "OK", text: ok } : { result: "NONE", text: "미조회" };
   };
   return [
     { key: "identity", label: "휴대폰 본인확인 (대표자)", result: "OK", text: "완료" },
     // 대표자 1인 1쇼핑몰은 신청을 받을 때 막으므로 남는 중복 점검은 사업자번호다
     { key: "duplicate", label: "대표자 · 사업자 중복", ...pick([["business_duplicate", "FAIL", "사업자번호 중복"]], "없음") },
-    { key: "business_status", label: "국세청 사업자 상태", ...pick([["business_not_active", "FAIL", "휴업 · 폐업"], ["business_info_mismatch", "FAIL", "정보 불일치"], ["business_lookup_failed", "WARN", "조회 실패"]], "정상") },
-    { key: "mail_order", label: "통신판매업 신고번호", ...pick([["mail_order_not_registered", "FAIL", "신고 내역 없음"], ["mail_order_not_active", "FAIL", "영업 상태 이상"], ["mail_order_number_invalid", "FAIL", "번호 확인 불가"], ["mail_order_lookup_failed", "WARN", "조회 실패"]], "확인됨") },
+    { key: "business_status", label: "국세청 사업자 상태", ...pick([["business_not_active", "FAIL", "휴업 · 폐업"], ["business_info_mismatch", "FAIL", "정보 불일치"], ["business_lookup_failed", "WARN", "조회 실패"]], "정상", true) },
+    { key: "mail_order", label: "통신판매업 신고번호", ...pick([["mail_order_not_registered", "FAIL", "신고 내역 없음"], ["mail_order_not_active", "FAIL", "영업 상태 이상"], ["mail_order_number_invalid", "FAIL", "번호 확인 불가"], ["mail_order_lookup_failed", "WARN", "조회 실패"]], "확인됨", true) },
   ];
 }
 
-function viewApplication(p: Pending, now: Date, reviewTargetHours: number) {
+function viewApplication(p: Pending, now: Date, reviewTargetHours: number, canViewLicense: boolean) {
   const i = info(p.businessInfo);
   const st = stateOf(p);
   const rev = p.rev;
@@ -213,11 +219,18 @@ function viewApplication(p: Pending, now: Date, reviewTargetHours: number) {
     applicantEmail: p.owner,
     businessNumber: fmtBiz(biz(i.businessNumber)) || null,
     industry: typeof i.industry === "string" && i.industry ? i.industry : null,
+    // 가입 때 적은 연락처·사업장 주소·방송 채널 주소(심사 참고, 없으면 null). 사업자등록증 파일은 조회·내려받기가 최고관리자·운영만이라
+    // 다른 역할에는 파일 정보만 주고 viewUrl은 null이다(열람은 로그 추적에 남는다).
+    contactPhone: typeof i.contactPhone === "string" ? i.contactPhone : null,
+    businessAddress: typeof i.businessAddress === "string" ? i.businessAddress : null,
+    channelUrl: typeof i.channelUrl === "string" ? i.channelUrl : null,
+    license: p.license ? { ...p.license, uploadedAt: p.license.uploadedAt.toISOString(), viewUrl: canViewLicense ? `/api/admin/sellers/${p.id}/business-license` : null } : null,
     receivedAt: p.createdAt,
     elapsedHours: Math.floor((now.getTime() - p.createdAt.getTime()) / HOUR_MS),
     over48h: st !== "SUPPLEMENT" && now.getTime() - p.createdAt.getTime() > reviewTargetHours * HOUR_MS,
     reasons: p.reviewReasons.map((c) => ({ code: c, text: REVIEW_REASON_TEXT[c as ReviewReason] ?? "확인할 내용이 있습니다" })),
-    checks: applicationChecks(p.reviewReasons),
+    checks: applicationChecks(p.reviewReasons, typeof i.checkedAt === "string"),
+    checkedAt: typeof i.checkedAt === "string" ? i.checkedAt : null,
     supplement:
       st === "SUPPLEMENT" && rev
         ? {
@@ -420,7 +433,7 @@ export async function recheckBusiness(db: PrismaClient, admin: AdminSessionConte
   });
   if (moved.count !== 1) return { ok: false as const, reason: "not_pending" as const };
   await writeAudit(db, { actorType: "PLATFORM_ADMIN", actorId: admin.admin.id, sellerId, action: "admin.seller.business_recheck_result", targetType: "Seller", targetId: sellerId, after: { lookup: nts.ok ? "OK" : "FAILED", reviewReasons }, ip: opts.meta?.ip, userAgent: opts.meta?.userAgent });
-  return { ok: true as const, lookupOk: nts.ok, reasons: reviewReasons.map((c) => ({ code: c, text: REVIEW_REASON_TEXT[c as ReviewReason] ?? "확인할 내용이 있습니다" })), checks: applicationChecks(reviewReasons), checkedAt: now };
+  return { ok: true as const, lookupOk: nts.ok, reasons: reviewReasons.map((c) => ({ code: c, text: REVIEW_REASON_TEXT[c as ReviewReason] ?? "확인할 내용이 있습니다" })), checks: applicationChecks(reviewReasons, true), checkedAt: now };
 }
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);

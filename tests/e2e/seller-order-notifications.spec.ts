@@ -41,12 +41,12 @@ test("제공량 여유: 이번 달 사용량·잔액·알림 기준이 보이고
   await reset();
   await withDb((db, sellerId) => db.sellerMessageBalance.create({ data: { sellerId, paidBalance: 3000, freeBalance: 500, lowBalanceThreshold: 1000 } }));
   await open(page);
-  await expect(page.getByRole("heading", { name: "주문자 알림" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "알림 설정" })).toBeVisible();
   await expect(page.getByTestId("quota")).toContainText("0 /");
   await expect(page.getByText("여유", { exact: true })).toBeVisible();
   await expect(page.getByTestId("balance")).toHaveText("3,500원");
-  await expect(page.getByTestId("charged")).toHaveText("거래 메일 초과 0통");
-  await expect(page.getByTestId("threshold")).toHaveText("잔액이 1,000원 아래로 내려가면 알립니다");
+  await expect(page.getByTestId("charged")).toHaveText("무료 수 초과 메일 0통");
+  await expect(page.getByTestId("threshold")).toHaveText("충전금이 1,000원 아래로 내려가면 알립니다");
   await expect(page.getByTestId("skipped-note")).toHaveCount(0);
   await expect(page.getByTestId("exhausted-note")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "발송·이용 충전" }).first()).toHaveAttribute("href", "/seller/settings/message-balance");
@@ -70,8 +70,8 @@ test("잔액 부족 미발송이 있으면 보내지 못한 건수를 알리고,
   });
   await page.reload();
   await expect(page.getByTestId("skipped-note")).toContainText("알림 2건을 보내지 못했습니다");
-  await expect(page.getByTestId("exhausted-note")).toContainText("제공량을 다 써서");
-  await expect(page.getByText("제공량 소진")).toBeVisible();
+  await expect(page.getByTestId("exhausted-note")).toContainText("무료 안내 메일을 다 써서");
+  await expect(page.getByText("다 씀", { exact: true })).toBeVisible();
 });
 
 test("직원은 대표자 전용 안내를 본다", async ({ page }) => {

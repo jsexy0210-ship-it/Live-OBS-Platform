@@ -8,7 +8,7 @@ import { useScrollRestore, useUrlState } from "../../../../../../lib/client/navi
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
 import { won } from "../../../../../../components/seller/format";
-import { listDefaults } from "../../../../../../lib/client/filterDefaults";
+import { effectiveRange, listDefaults } from "../../../../../../lib/client/filterDefaults";
 import { formatDateTime } from "../../../../../../lib/client/format";
 
 // SA-032 적립금 지급·회수 내역(조회만, 회원·적립금 권한). API: GET /api/seller/reward-ledger?from&to&status&cursor&limit.
@@ -51,9 +51,10 @@ function query(c: Cond, cursor?: string) {
 export default function RewardLedgerPage() {
   // 기간·처리 상태 조건은 주소(?from=&to=&status=)가 기준이다(상세·다른 화면 → ← 에서 그대로 돌아온다, docs/IA.md Back 규칙 3항). 기본은 최근 1개월
   const defaults = listDefaults({ status: "" });
-  const [urlState, setUrlState] = useUrlState({ from: defaults.from, to: defaults.to, status: "" });
+  // period=all(업무 큐 링크)이면 기간 제한 없이 조회한다. 날짜를 직접 고르면 period를 비운다
+  const [urlState, setUrlState] = useUrlState({ from: defaults.from, to: defaults.to, period: "", status: "" });
   const appliedStatus: Status | "" = urlState.status in STATUS ? (urlState.status as Status) : "";
-  const applied = useMemo<Cond>(() => ({ from: urlState.from, to: urlState.to, status: appliedStatus }), [urlState.from, urlState.to, appliedStatus]);
+  const applied = useMemo<Cond>(() => ({ ...effectiveRange({ from: urlState.from, to: urlState.to, period: urlState.period }), status: appliedStatus }), [urlState.from, urlState.to, urlState.period, appliedStatus]);
   const [filter, setFilter] = useState<Cond>(applied);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [more, setMore] = useState(false);
@@ -94,10 +95,10 @@ export default function RewardLedgerPage() {
         <PageHead title="적립금 지급·회수 내역" />
 
         <SearchBox
-          onSearch={() => setUrlState({ from: filter.from, to: filter.to, status: filter.status })}
+          onSearch={() => setUrlState({ from: filter.from, to: filter.to, period: "", status: filter.status })}
           onReset={() => {
             setFilter({ from: defaults.from, to: defaults.to, status: "" });
-            setUrlState({ from: defaults.from, to: defaults.to, status: "" });
+            setUrlState({ from: defaults.from, to: defaults.to, period: "", status: "" });
           }}
         >
           <SearchRow label="기간">

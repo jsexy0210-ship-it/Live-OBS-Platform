@@ -111,3 +111,10 @@
 .shop-app .help-tbl a:hover {
   text-decoration: underline;
 }
+.help-guide {
+  margin: 0;
+  padding: 16px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.7;
+}
