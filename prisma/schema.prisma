@@ -2254,6 +2254,8 @@ model AutomationJob {
   // 진행 중인 단계 순번(0부터). 단계 목록은 lib/server/automation/steps.ts
   stepIndex               Int                       @default(0)
   customerAction          AutomationCustomerAction?
+  // 「고객 확인 필요」 할 일 목록(SA-152)에서 고객이 「완료」로 표시한 줄. 이어 하기(재개)로 대기열에 돌아가면 비운다. 작업자 진행에는 영향이 없다(표시용).
+  customerActionsDone     AutomationCustomerAction[] @default([])
   // 고객 행동 대기 마감. 지나면 FAILED(customer_action_timeout)
   actionDeadlineAt        DateTime?                 @db.Timestamptz(3)
   attempts                Int                       @default(0)
