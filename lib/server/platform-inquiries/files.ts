@@ -15,19 +15,20 @@ const TYPES: Record<string, string> = {
 
 export type InquiryFileCheck = { ok: true; name: string; contentType: string } | { ok: false; reason: "unsupported_file" };
 
-// 파일 이름: 경로·제어 문자·따옴표 등을 지우고 100자 안으로(확장자는 남김). 허용 확장자가 아니면 null.
-export function cleanFileName(raw: unknown): { name: string; ext: string } | null {
+// 파일 이름: 경로·제어 문자·따옴표 등을 지우고 100자 안으로(확장자는 남김). 허용 확장자(소문자, 점 포함)가 아니면 null. 공지 첨부도 이 함수를 쓴다.
+export function cleanFileNameWith(raw: unknown, allowed: readonly string[]): { name: string; ext: string } | null {
   if (typeof raw !== "string") return null;
   const base = raw.normalize("NFKC").split(/[\\/]/).pop() ?? "";
-  const cleaned = base.replace(/[\u0000-\u001f\u007f<>:"|?*‪-‮⁦-⁩]/g, "").trim().replace(/^\.+/, "");
+  const cleaned = base.replace(/[\u0000-\u001f\u007f<>:"|?*\u202a-\u202e\u2066-\u2069]/g, "").trim().replace(/^\.+/, "");
   const dot = cleaned.lastIndexOf(".");
   if (dot <= 0) return null;
   const ext = cleaned.slice(dot).toLowerCase();
-  if (!TYPES[ext]) return null;
+  if (!allowed.includes(ext)) return null;
   const stem = cleaned.slice(0, dot).trim();
   if (!stem) return null;
   return { name: stem.slice(0, FILE_NAME_MAX - ext.length) + ext, ext };
 }
+export const cleanFileName = (raw: unknown) => cleanFileNameWith(raw, Object.keys(TYPES));
 
 export function checkInquiryFile(rawName: unknown, bytes: Buffer): InquiryFileCheck {
   const n = cleanFileName(rawName);
