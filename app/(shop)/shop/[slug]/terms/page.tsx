@@ -15,5 +15,5 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
   const shop = await findActiveShop((await params).slug);
   if (!shop) notFound();
   // 운영 중이 아닌 쇼핑몰은 안내만(API와 같은 기준)
-  return <ShopLegal kind="terms" doc={(await shopOpen(prisma, shop.id)) ? await publicLegalOf(prisma, shop.id, "TERMS") : null} />;
+  return <ShopLegal kind="terms" slug={shop.slug} doc={(await shopOpen(prisma, shop.id)) ? await publicLegalOf(prisma, shop.id, "TERMS") : null} />;
 }

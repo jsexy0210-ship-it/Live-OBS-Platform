@@ -5,7 +5,7 @@ import EventPopup from "../../../../components/shop/EventPopup";
 import HomeBanner from "../../../../components/shop/HomeBanner";
 import { ProductGrid } from "../../../../components/shop/ProductCard";
 import { kstDate } from "../../../../components/shop/kstDate";
-import ShopState from "../../../../components/shop/ShopState";
+import ShopLocked from "../../../../components/shop/ShopLocked";
 import { shopOpen } from "../../../../lib/server/buyers/signup";
 import { prisma } from "../../../../lib/server/db";
 import { shopProductList } from "../../../../lib/server/products/shopCatalog";
@@ -43,7 +43,7 @@ export default async function ShopHomePage({ params }: Params) {
   return (
     <>
       {!content ? (
-        <ShopState title="지금은 쇼핑몰을 이용할 수 없어요" body="쇼핑몰이 다시 문을 열면 이용할 수 있어요." />
+        <ShopLocked slug={slug} />
       ) : (
         <div className="shop-wrap">
           {pinned && (

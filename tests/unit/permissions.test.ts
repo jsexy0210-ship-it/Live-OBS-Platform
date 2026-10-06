@@ -69,10 +69,19 @@ describe("테넌트 컨텍스트", () => {
   });
 
   it("대리 조회(읽기 전용)는 정해 둔 조회만 허용하고 변경은 403", () => {
-    const ro: TenantContext = { ...base, actorType: "PLATFORM_ADMIN", permissions: [], readOnly: true };
+    const ro: TenantContext = { ...base, actorType: "PLATFORM_ADMIN", permissions: [], readOnly: true, impersonationScopes: ["ORDERS"] };
     expect(() => requireSellerRead(ro, "ORDER_SHIPPING")).not.toThrow();
     expect(() => requireSellerRead(ro, "BROADCAST_RUN")).toThrow("forbidden");
     expect(() => requireSellerPermission(ro, "ORDER_SHIPPING")).toThrow("forbidden");
     expect(() => assertWritable(ro)).toThrow("forbidden");
+  });
+
+  it("대리 조회는 고른 열람 범위 밖 조회를 out_of_scope로 막고, 구매자 연락처는 어떤 범위에서도 가린다", () => {
+    const ro: TenantContext = { ...base, actorType: "PLATFORM_ADMIN", permissions: [], readOnly: true, impersonationScopes: ["ORDERS"] };
+    expect(() => requireSellerRead(ro, "MEMBER_POINTS")).toThrow("out_of_scope");
+    expect(() => requireSellerRead({ ...ro, impersonationScopes: ["MEMBERS"] }, "MEMBER_POINTS")).not.toThrow();
+    // 범위가 없는(이전 형태) 컨텍스트는 열어 주지 않는다
+    expect(() => requireSellerRead({ ...ro, impersonationScopes: undefined }, "ORDER_SHIPPING")).toThrow("out_of_scope");
+    expect(canViewCustomerPii({ ...ro, impersonationScopes: ["ORDERS", "MEMBERS", "SETTINGS_PG"] })).toBe(false);
   });
 });
