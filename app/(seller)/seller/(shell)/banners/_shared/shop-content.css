@@ -468,3 +468,13 @@
 .sc-link-opt:focus-visible {
   background: var(--wds-fill-alternative);
 }
+/* 게시 기간을 일시(날짜+시각)로 고르는 화면(SA-065): 날짜 칸과 시각 칸을 한 줄에 둔다. */
+.sc-period > span.dt-dt {
+  width: auto;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: var(--ui-sp-4);
+}
+.sc-period > span.dt-dt > :first-child {
+  width: 160px;
+}

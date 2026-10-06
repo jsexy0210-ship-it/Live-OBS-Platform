@@ -1,5 +1,6 @@
 import type { PlatformAdmin, Prisma, PrismaClient, Seller, SellerUser, BuyerMember } from "@prisma/client";
 import { generateToken, hashToken } from "./token";
+import { policyValue } from "../admin/platformPolicy";
 import { isSessionActive, sessionExpiry, type BroadcastActivity, type Realm } from "./policy";
 
 export type SessionMeta = { ip?: string | null; userAgent?: string | null; now?: Date };
@@ -16,7 +17,8 @@ export async function createAdminSession(
 ): Promise<IssuedSession> {
   const now = meta.now ?? new Date();
   const token = generateToken();
-  const expiresAt = sessionExpiry("admin", now);
+  // 최대 유지 시간은 마스터 관리자 정책(adminSessionHours)이며 새 로그인부터 적용된다.
+  const expiresAt = sessionExpiry("admin", now, { maxMs: (await policyValue(db, "adminSessionHours")) * 3_600_000 });
   await db.adminSession.create({
     data: {
       adminId,
@@ -82,7 +84,8 @@ export async function resolveAdminSession(
 ): Promise<AdminSessionContext | null> {
   if (!token) return null;
   const s = await db.adminSession.findUnique({ where: { tokenHash: hashToken(token) }, include: { admin: true } });
-  if (!s || !isSessionActive("admin", s, now)) return null;
+  // 미활동 자동 로그아웃은 마스터 관리자 정책(adminIdleMinutes)이며 바로 적용된다.
+  if (!s || !isSessionActive("admin", s, now, undefined, (await policyValue(db, "adminIdleMinutes")) * 60_000)) return null;
   if (s.admin.status !== "ACTIVE") return null;
   await touch(db, "admin", s.id, s.lastSeenAt, now);
   return { admin: s.admin, sessionId: s.id };

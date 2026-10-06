@@ -93,7 +93,7 @@ export default function HitCardsPage() {
 
   const search = () => {
     if (invalidRange) return setToast({ text: "시작일을 끝일보다 앞 날짜로 바꿔 주십시오", neg: true });
-    apply({ ...applied, from: draft.from, to: draft.to, grade: draft.grade, period: "" });
+    apply({ ...applied, from: draft.from, to: draft.to, grade: draft.grade.trim(), period: "" });
   };
 
   const remove = async (card: Card) => {
@@ -138,14 +138,12 @@ export default function HitCardsPage() {
                 <DatePicker aria-label="종료일" value={draft.to} onChange={(v) => setDraft({ ...draft, to: v })} />
               </SearchRow>
               <SearchRow label="등급">
-                <select className="inp" aria-label="등급" value={draft.grade} onChange={(e) => setDraft({ ...draft, grade: e.target.value })}>
-                  <option value="">전체</option>
+                <input className="inp" aria-label="등급" list="hit-grade-filter-list" maxLength={12} placeholder="전체 · 등급 입력" value={draft.grade} onChange={(e) => setDraft({ ...draft, grade: e.target.value })} />
+                <datalist id="hit-grade-filter-list">
                   {HIT_GRADES.map((g) => (
-                    <option key={g} value={g}>
-                      {g}
-                    </option>
+                    <option key={g} value={g} />
                   ))}
-                </select>
+                </datalist>
               </SearchRow>
             </SearchBox>
 

@@ -58,7 +58,7 @@ test("최고관리자: 검색·상태 필터로 찾고, 이용 정지는 사유�
   await expect(page.getByTestId("partner-row")).toHaveCount(1);
   await expect(page.getByTestId("partner-row")).toContainText(slugA);
   await expect(page.getByTestId("partner-row")).not.toContainText(`대기몰 ${run}`);
-  await page.getByLabel("상태", { exact: true }).selectOption("NORMAL");
+  await page.getByRole("radio", { name: "정상", exact: true }).check();
   await page.getByRole("button", { name: "검색", exact: true }).click();
   await expect(page.getByTestId("partner-row")).toHaveCount(1);
   await expect(page.getByTestId("partner-row")).toContainText(slugA);
@@ -170,6 +170,6 @@ test("목록: 요약 칩 건수가 서버 값과 같고, 칩·정렬·쪽 크기
   expect(csv.charCodeAt(0)).toBe(0xfeff);
   expect(csv).not.toContain("@example.com");
 
-  await page.getByTestId("partner-row").first().getByRole("button", { name: "대신 보기" }).click();
+  await page.getByTestId("partner-row").first().getByRole("button", { name: "이 파트너스 화면 대신 보기" }).click();
   await expect(page.getByRole("dialog")).toContainText("대신 보시겠습니까");
 });
