@@ -25,6 +25,9 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/find-id/resend": null,
   "seller/find-id/reset": null,
   "seller/find-id/start": null,
+  // 승인 대기·반려 신청자의 안내·보완 재제출(AU-005 후속): 로그인 시도로 받은 15분 신청 확인 쿠키(lo_spend)로만 쓴다(파트너스 세션 아님)
+  "seller/pending-application": null,
+  "seller/pending-application/license": null,
   "seller/password-reset/complete": null,
   "seller/password-reset/confirm": null,
   "seller/password-reset/resend": null,
