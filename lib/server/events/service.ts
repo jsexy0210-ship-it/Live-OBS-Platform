@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { AudienceEvent, AudienceEventKind, Prisma, PrismaClient } from "@prisma/client";
 import { EventError } from "./errors";
+import { forbidden } from "../authz/errors";
 import { writeAudit } from "../audit/log";
 import { sellerAccessFor } from "../billing/subscription";
 import { sellerHasFeature } from "../billing/features";
@@ -22,6 +23,11 @@ const text = (value: unknown, max: number): string => {
   if (typeof value !== "string" || !value.trim() || Array.from(value.trim()).length > max) return reject(400, "invalid_request");
   return value.trim();
 };
+function requireEventMutation(ctx: TenantContext) {
+  requireSellerPermission(ctx, "BROADCAST_RUN");
+  // 참가자는 실행자가 아니다. 요청 컨텍스트가 owner처럼 보여도 구매자 실행은 허용하지 않는다.
+  if (ctx.actorType === "BUYER") throw forbidden();
+}
 async function lockSeller(tx: Tx, sellerId: string): Promise<Date> {
   await tx.$queryRaw`SELECT id FROM "Seller" WHERE id = ${sellerId}::uuid FOR UPDATE`;
   const [clock] = await tx.$queryRaw<{ at: Date }[]>`SELECT clock_timestamp() AS at`;
@@ -42,7 +48,7 @@ export type CreateEventInput = { broadcastSessionId?: unknown; title?: unknown; 
 
 // 설정은 시작 뒤 수정하지 않는다. 키워드와 규칙은 동결 회차에도 보존하며, 채팅 원문은 보존하지 않는다.
 export async function createAudienceEvent(db: PrismaClient, ctx: TenantContext, input: CreateEventInput) {
-  requireSellerPermission(ctx, "BROADCAST_RUN");
+  requireEventMutation(ctx);
   const allowed = new Set(["broadcastSessionId", "title", "keyword", "winnerCount", "testMode", "closesAt", "requestKey", "sellerNoticeAcknowledged", "kind", "items", "outcomeSlots", "allowDuplicateWinners"]);
   if (Object.keys(input).some(key => !allowed.has(key))) reject(400, "invalid_request");
   const broadcastSessionId = uuid(input.broadcastSessionId);
@@ -129,7 +135,7 @@ function rulesOf(event: AudienceEvent): Prisma.InputJsonValue {
   return { version: 2, kind: event.kind, keyword: event.keyword, settings, previousWinnerIds: [], match: "whole_trimmed_exact", identity: "youtube_author_channel_id", winnerCount: event.winnerCount, testMode: event.testMode, closesAt: event.closesAt.toISOString(), entrantLimit: EVENT_ENTRANT_LIMIT, rewardsEnabled: false };
 }
 export async function freezeAudienceEvent(db: PrismaClient, ctx: TenantContext, id: unknown) {
-  requireSellerPermission(ctx, "BROADCAST_RUN"); const eventId = uuid(id);
+  requireEventMutation(ctx); const eventId = uuid(id);
   return db.$transaction(async (tx) => {
     const at = await lockSeller(tx, ctx.sellerId);
     const event = await eventOf(tx, ctx.sellerId, eventId);
@@ -149,7 +155,7 @@ export async function freezeAudienceEvent(db: PrismaClient, ctx: TenantContext, 
 
 // 서버에서만 결정한다. 결과 입력/교체 API와 지급 연결은 없다. 시험·실행 모두 경품 원장을 만들지 않는다.
 export async function drawAudienceEvent(db: PrismaClient, ctx: TenantContext, id: unknown, selectedRoundId?: unknown) {
-  requireSellerPermission(ctx, "BROADCAST_RUN"); const eventId = uuid(id);
+  requireEventMutation(ctx); const eventId = uuid(id);
   return db.$transaction(async (tx) => {
     const at = await lockSeller(tx, ctx.sellerId);
     const event = await eventOf(tx, ctx.sellerId, eventId);
@@ -171,7 +177,7 @@ export async function drawAudienceEvent(db: PrismaClient, ctx: TenantContext, id
 export type NextRoundInput = { sourceRoundId?: unknown; requestKey?: unknown; reason?: unknown; allowDuplicateWinners?: unknown };
 // 재추첨은 이전 회차를 변경하지 않는다. 사유·실행자를 가진 새로운 불변 회차를 만든다.
 export async function createNextAudienceRound(db: PrismaClient, ctx: TenantContext, id: unknown, input: NextRoundInput) {
-  requireSellerPermission(ctx, "BROADCAST_RUN"); const eventId = uuid(id);
+  requireEventMutation(ctx); const eventId = uuid(id);
   if (Object.keys(input).some(key => !["sourceRoundId", "requestKey", "reason", "allowDuplicateWinners"].includes(key))) reject(400, "invalid_request");
   const sourceRoundId = uuid(input.sourceRoundId), requestKey = uuid(input.requestKey), reason = text(input.reason, 500);
   if (input.allowDuplicateWinners !== undefined && typeof input.allowDuplicateWinners !== "boolean") reject(400, "invalid_request");
@@ -210,7 +216,7 @@ export async function createNextAudienceRound(db: PrismaClient, ctx: TenantConte
 export type PublicationInput = { roundId?: unknown; requestKey?: unknown; scope?: unknown; participantId?: unknown };
 // 개별/전체 공개는 명시적인 scope를 받아 공개기록을 추가한다. 재표시는 별도 함수다.
 export async function publishAudienceResult(db: PrismaClient, ctx: TenantContext, id: unknown, input: PublicationInput) {
-  requireSellerPermission(ctx, "BROADCAST_RUN"); const eventId = uuid(id);
+  requireEventMutation(ctx); const eventId = uuid(id);
   if (Object.keys(input).some(key => !["roundId", "requestKey", "scope", "participantId"].includes(key))) reject(400, "invalid_request");
   const roundId = uuid(input.roundId), requestKey = uuid(input.requestKey);
   const participantId = input.participantId === undefined ? null : uuid(input.participantId);
@@ -243,7 +249,7 @@ export async function publishAudienceResult(db: PrismaClient, ctx: TenantContext
 export type RedisplayInput = { roundId?: unknown; requestKey?: unknown };
 // 재표시는 현재 공개 진행을 복원한다. 공개 범위를 확대하거나 회차/결과를 새로 만들지 않는다.
 export async function redisplayAudienceResult(db: PrismaClient, ctx: TenantContext, id: unknown, input: RedisplayInput) {
-  requireSellerPermission(ctx, "BROADCAST_RUN"); const eventId = uuid(id);
+  requireEventMutation(ctx); const eventId = uuid(id);
   if (Object.keys(input).some(key => !["roundId", "requestKey"].includes(key))) reject(400, "invalid_request");
   const roundId = uuid(input.roundId), requestKey = uuid(input.requestKey);
   return db.$transaction(async tx => {
@@ -280,7 +286,7 @@ export async function previewAudienceEvent(db: PrismaClient, ctx: TenantContext,
 }
 
 export async function cancelAudienceEvent(db: PrismaClient, ctx: TenantContext, id: unknown) {
-  requireSellerPermission(ctx, "BROADCAST_RUN"); const eventId = uuid(id);
+  requireEventMutation(ctx); const eventId = uuid(id);
   return db.$transaction(async tx => {
     const at = await lockSeller(tx, ctx.sellerId); const event = await eventOf(tx, ctx.sellerId, eventId);
     if (event.status === "CANCELED") return event;

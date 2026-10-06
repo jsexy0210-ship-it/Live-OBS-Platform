@@ -50,6 +50,8 @@ export const MEMBER_REFERENCE_POLICY: Record<string, { policy: MemberDataPolicy;
   "OrderRefund.actorId": { policy: "retain_legal", note: "환불한 행위자(파트너스 직원·관리자·시스템, 지금 구매자 행 없음). 환불 거래 기록" },
   "SellerMessageLedger.actorId": { policy: "retain_legal", note: "구매자 행 없음(DB CHECK로 actorType BUYER 금지, 행위자는 시스템·파트너스 직원·관리자). 발송 충전 원장" },
   "BulkJob.actorId": { policy: "retain_legal", note: "구매자 행 없음(DB CHECK로 actorType BUYER 금지, 행위자는 파트너스 직원·관리자). 엑셀 일괄 등록 작업 이력" },
+  "AudienceEventRound.actorId": { policy: "anonymize", note: "구매자 행 없음(DB CHECK로 actorType BUYER 금지). 파트너스·관리자·시스템이 확정한 불변 회차 실행자" },
+  "AudienceEventPublication.actorId": { policy: "anonymize", note: "구매자 행 없음(DB CHECK로 actorType BUYER 금지). 파트너스·관리자·시스템의 결과 공개 이력" },
 };
 
 // 탈퇴 회원이 행위자·대상인 감사 로그의 행동 종류별 보관(대표님 결정 2026-10-03, PRODUCT_SCOPE 「구매자 탈퇴·재가입」).
