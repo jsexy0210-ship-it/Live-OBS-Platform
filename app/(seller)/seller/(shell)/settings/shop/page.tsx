@@ -133,7 +133,9 @@ function BrandColorRow({ onToast }: { onToast: (t: string) => void }) {
   );
 }
 
-type Profile = { shopName: string; shopTagline: string | null };
+type OperatingState = "OPEN" | "PREPARING" | "PAUSED";
+type Profile = { shopName: string; shopTagline: string | null; operatingState: OperatingState };
+const MODE_LABEL: Record<OperatingState, string> = { OPEN: "운영 중", PREPARING: "준비 중", PAUSED: "일시 정지" };
 const NAME_MAX = 20;
 const TAGLINE_MAX = 40;
 const len = (v: string) => [...v].length;
@@ -145,6 +147,7 @@ export default function ShopInfoPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [name, setName] = useState("");
   const [tagline, setTagline] = useState("");
+  const [mode, setMode] = useState<OperatingState>("OPEN");
   const [showErrors, setShowErrors] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveFailure, setSaveFailure] = useState<string | null>(null);
@@ -177,6 +180,7 @@ export default function ShopInfoPage() {
     setProfile(r.data.profile);
     setName(r.data.profile.shopName);
     setTagline(r.data.profile.shopTagline ?? "");
+    setMode(r.data.profile.operatingState);
   }, []);
   const loadShare = useCallback(async () => {
     const r = await api<{ preview: Share }>("/api/seller/share-preview");
@@ -274,7 +278,9 @@ export default function ShopInfoPage() {
   const taglineError = len(tagline.trim()) > TAGLINE_MAX ? `한 줄 소개는 ${TAGLINE_MAX}자까지 쓸 수 있습니다` : null;
   const titleProblem = shareProblem(shareTitle, SHARE_TITLE_MAX, "name");
   const descProblem = shareProblem(shareDesc, SHARE_DESC_MAX, "memo");
-  const profileDirty = !!profile && (name.trim() !== profile.shopName || (tagline.trim() || null) !== profile.shopTagline);
+  const modeDirty = !!profile && mode !== profile.operatingState;
+  const textDirty = !!profile && (name.trim() !== profile.shopName || (tagline.trim() || null) !== profile.shopTagline);
+  const profileDirty = textDirty || modeDirty;
   const shareDirty = !!share && ((share.title ?? "") !== shareTitle.trim() || (share.description ?? "") !== shareDesc.trim());
   const dirty = profileDirty || shareDirty;
   useUnsavedGuard(dirty); // 링크·브라우저 Back·새로고침에 같은 확인(docs/IA.md Back 규칙 7항)
@@ -289,18 +295,27 @@ export default function ShopInfoPage() {
       setShowErrors(true);
       return;
     }
-    if (
-      !(await confirm({
-        title: "쇼핑몰 정보를 저장하시겠습니까?",
-        body: shareDirty ? "쇼핑몰 이름 · 한 줄 소개 · 공유 제목 · 공유 설명이 구매자 쇼핑몰과 공유 화면에 바로 바뀝니다." : "쇼핑몰 이름 · 한 줄 소개가 구매자 쇼핑몰에 바로 바뀝니다.",
-        confirmLabel: "저장",
-      }))
-    )
-      return;
+    const others = textDirty || shareDirty ? " 이름 · 소개 · 공유 문구 변경도 함께 저장됩니다." : "";
+    const ok = modeDirty
+      ? await confirm({
+          title: `쇼핑몰을 「${MODE_LABEL[mode]}」${mode === "PAUSED" ? "로" : "으로"} 바꾸시겠습니까?`,
+          body:
+            mode === "OPEN"
+              ? `구매자가 다시 주문하고 결제할 수 있습니다.${others}`
+              : `구매자에게는 ${MODE_LABEL[mode]} 안내만 보이고 주문 조회만 열립니다. 진행 중인 방송 주문대기는 계속 처리할 수 있고, 이미 받은 주문은 결제 · 처리할 수 있습니다.${others}`,
+          confirmLabel: "전환",
+          danger: mode !== "OPEN",
+        })
+      : await confirm({
+          title: "쇼핑몰 정보를 저장하시겠습니까?",
+          body: shareDirty ? "쇼핑몰 이름 · 한 줄 소개 · 공유 제목 · 공유 설명이 구매자 쇼핑몰과 공유 화면에 바로 바뀝니다." : "쇼핑몰 이름 · 한 줄 소개가 구매자 쇼핑몰에 바로 바뀝니다.",
+          confirmLabel: "저장",
+        });
+    if (!ok) return;
     setSaving(true);
     setSaveFailure(null);
     if (profileDirty) {
-      const r = await api<{ profile: Profile }>("/api/seller/shop-profile", { method: "PUT", body: { shopName: name.trim(), shopTagline: tagline.trim() === "" ? null : tagline.trim() } });
+      const r = await api<{ profile: Profile }>("/api/seller/shop-profile", { method: "PUT", body: { shopName: name.trim(), shopTagline: tagline.trim() === "" ? null : tagline.trim(), operatingState: mode } });
       if (!r.ok) {
         setSaving(false);
         return setSaveFailure(failMessage(r, "admin", "저장하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주십시오"));
@@ -308,6 +323,7 @@ export default function ShopInfoPage() {
       setProfile(r.data.profile);
       setName(r.data.profile.shopName);
       setTagline(r.data.profile.shopTagline ?? "");
+      setMode(r.data.profile.operatingState);
     }
     if (shareDirty) {
       const r = await api<{ preview: Share }>("/api/seller/share-preview", { method: "PUT", body: { title: shareTitle.trim() || null, description: shareDesc.trim() || null } });
@@ -369,19 +385,18 @@ export default function ShopInfoPage() {
             <FormSection title="쇼핑몰 정보">
               <FormRow label="운영 상태" help="준비 중 · 일시 정지는 구매자에게 안내 화면만 보이고 주문 조회만 열립니다">
                 <div className="row" role="radiogroup" aria-label="운영 상태" style={{ gap: 24, flexWrap: "wrap" }}>
-                  <label className="chk">
-                    <input type="radio" name="shop-mode" checked readOnly />
-                    운영 중
-                  </label>
-                  <label className="chk c-alt">
-                    <input type="radio" name="shop-mode" disabled />
-                    준비 중
-                  </label>
-                  <label className="chk c-alt">
-                    <input type="radio" name="shop-mode" disabled />
-                    일시 정지
-                  </label>
-                  <span className="t-c1 c-alt">준비 중 · 일시 정지는 곧 열립니다</span>
+                  {(["OPEN", "PREPARING", "PAUSED"] as const).map((m) => (
+                    <label key={m} className="chk">
+                      <input
+                        type="radio"
+                        name="shop-mode"
+                        checked={(editable && profile ? mode : "OPEN") === m}
+                        disabled={!editable || !profile || saving}
+                        onChange={() => setMode(m)}
+                      />
+                      {MODE_LABEL[m]}
+                    </label>
+                  ))}
                 </div>
               </FormRow>
               {editable && profile ? (
@@ -585,7 +600,7 @@ export default function ShopInfoPage() {
                     type="button"
                     disabled={saving || !dirty}
                     onClick={() => {
-                      if (profile) (setName(profile.shopName), setTagline(profile.shopTagline ?? ""));
+                      if (profile) (setName(profile.shopName), setTagline(profile.shopTagline ?? ""), setMode(profile.operatingState));
                       if (share) (setShareTitle(share.title ?? ""), setShareDesc(share.description ?? ""));
                       setShowErrors(false);
                       setSaveFailure(null);
