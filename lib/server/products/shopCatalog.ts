@@ -14,6 +14,9 @@ import { LOW_STOCK_MAX, productCode } from "./manage";
 // 가격은 지금(DB 시계) 걸린 이벤트 할인을 반영한 표시용이다. 실제 주문 금액은 주문 API가 다시 계산한다.
 // 품절: 판매자가 품절로 바꿨거나 살아 있는 옵션 재고가 모두 0. 옵션 재고는 적을 때(1~5)만 남은 수를 알려 준다.
 export const SHOP_SORTS = ["new", "recommended", "popular", "low", "high"] as const;
+// 관련도순(relevance)은 검색어(q)가 있을 때만 의미가 있다. 목록 정렬 값(SHOP_SORTS)과 따로 받는다.
+export const SHOP_PRICE_MAX = 100_000_000;
+export const SHOP_CATEGORY_FILTER_MAX = 5;
 export type ShopSort = (typeof SHOP_SORTS)[number];
 export const SHOP_PAGE_MAX = 60;
 // 베스트 영역 판매량 기간(MASTER 결정 2026-10-05)
@@ -55,18 +58,24 @@ async function visibleCategoryIds(db: PrismaClient, sellerId: string, categoryId
   return [c.id, ...children.map((x) => x.id)];
 }
 
+const foldTerm = (s: string) => s.normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase();
+// 켜기 값: 없거나 빈 값·0·false는 꺼짐, 1·true는 켜짐, 그 밖은 null(잘못된 값)
+const parseFlag = (v: unknown): boolean | null => (v === undefined || v === "" || v === "0" || v === "false" ? false : v === "1" || v === "true" ? true : null);
+
 const parseInt10 = (v: unknown, def: number, min: number, max: number) => {
   if (v === undefined || v === null || v === "") return def;
   const n = typeof v === "string" && /^\d+$/.test(v) ? Number(v) : NaN;
   return Number.isInteger(n) && n >= min && n <= max ? n : null;
 };
 
-// 목록. ?categoryId(대분류는 하위 포함)·q(상품 이름, 50자)·sort(new 최근 등록 | recommended 판매자 진열 순서 | popular 판매량 | low·high 표시 가격)·page·limit(1~60)
+// 목록. ?categoryId(대분류는 하위 포함, 쉼표로 여러 개를 주면 모두에 속한 상품만: 「게임」+「형태」 필터 시트 SH-002-F, 최대 5개)·q(상품 이름, 50자)
+// ·sort(new 최근 등록 | recommended 판매자 진열 순서 | popular 판매량 | low·high 표시 가격 | relevance 관련도: q가 있을 때만, 없으면 목록 기본 정렬)
+// ·inStock(1이면 품절이 아닌 상품만)·live(1이면 지금 방송 중 상품만)·minPrice·maxPrice(표시 가격, 원 정수, 둘 다 주면 min ≤ max)·page·limit(1~60)
 // 응답 { products, total, page, hasMore }. 운영 중이 아닌 쇼핑몰·보이지 않는 카테고리는 not_found, 틀린 값은 invalid_query.
 export async function shopProductList(
   db: PrismaClient,
   slug: string,
-  q: { categoryId?: unknown; q?: unknown; sort?: unknown; page?: unknown; limit?: unknown },
+  q: { categoryId?: unknown; q?: unknown; sort?: unknown; page?: unknown; limit?: unknown; inStock?: unknown; live?: unknown; minPrice?: unknown; maxPrice?: unknown },
   // 홈 진열 영역 전용(구매자 쿼리로는 받지 않음): sale = 이벤트 할인이 지금 걸린 상품만,
   // best = 최근 30일 결제 완료 판매량이 있는 상품만 판매량순(동률이면 최근 판매 순, 취소·환불 주문 제외)
   only?: "sale" | "best",
@@ -75,33 +84,47 @@ export async function shopProductList(
 ): Promise<{ ok: true; value: { products: ShopProductCard[]; total: number; page: number; hasMore: boolean } } | { ok: false; reason: ListFailure }> {
   const shop = await openShop(db, slug);
   if (!shop) return { ok: false, reason: "not_found" };
-  // 정렬을 빼면 판매자가 정한 목록 기본 정렬(상품 진열 SA-016, 없으면 new)
-  const sort = q.sort === undefined || q.sort === "" ? await defaultListSort(db, shop.id) : SHOP_SORTS.includes(q.sort as ShopSort) ? (q.sort as ShopSort) : null;
+  // 정렬을 빼면 판매자가 정한 목록 기본 정렬(상품 진열 SA-016, 없으면 new). relevance는 검색어가 있을 때만 쓰고 없으면 기본 정렬로 본다.
+  const relevance = q.sort === "relevance";
+  const sort = q.sort === undefined || q.sort === "" || relevance ? await defaultListSort(db, shop.id) : SHOP_SORTS.includes(q.sort as ShopSort) ? (q.sort as ShopSort) : null;
+  const inStock = parseFlag(q.inStock);
+  const onlyLive = parseFlag(q.live);
+  const minPrice = parseInt10(q.minPrice, 0, 0, SHOP_PRICE_MAX);
+  const maxPrice = q.maxPrice === undefined || q.maxPrice === "" ? SHOP_PRICE_MAX : parseInt10(q.maxPrice, SHOP_PRICE_MAX, 0, SHOP_PRICE_MAX);
   const page = parseInt10(q.page, 1, 1, 10000);
   const limit = parseInt10(q.limit, SHOP_PAGE_DEFAULT, 1, SHOP_PAGE_MAX);
   const blankQ = q.q === undefined || (typeof q.q === "string" && /^ *$/.test(q.q));
   const term = blankQ ? null : cleanText(q.q, 50);
-  if (!sort || page === null || limit === null || (!blankQ && term === null)) return { ok: false, reason: "invalid_query" };
+  if (!sort || page === null || limit === null || (!blankQ && term === null) || inStock === null || onlyLive === null || minPrice === null || maxPrice === null || minPrice > maxPrice) return { ok: false, reason: "invalid_query" };
+  // 카테고리: 여러 개(쉼표)면 모두에 속한 상품만. 첫 번째가 카테고리 안 진열 순서의 기준이다.
   let categoryIds: string[] | null = null;
+  const categoryGroups: string[][] = [];
   if (q.categoryId !== undefined && q.categoryId !== "") {
-    if (typeof q.categoryId !== "string" || !UUID.test(q.categoryId)) return { ok: false, reason: "invalid_query" };
-    categoryIds = await visibleCategoryIds(db, shop.id, q.categoryId);
-    if (!categoryIds) return { ok: false, reason: "not_found" };
+    const wanted = typeof q.categoryId === "string" ? q.categoryId.split(",") : [];
+    if (wanted.length === 0 || wanted.length > SHOP_CATEGORY_FILTER_MAX || wanted.some((id) => !UUID.test(id))) return { ok: false, reason: "invalid_query" };
+    for (const id of new Set(wanted)) {
+      const ids = await visibleCategoryIds(db, shop.id, id);
+      if (!ids) return { ok: false, reason: "not_found" };
+      categoryGroups.push(ids);
+    }
+    categoryIds = categoryGroups[0];
   }
   // 검색어는 판매자 유사어 묶음으로 넓히고, 상품 이름 또는 검색 태그에 들어 있으면 찾는다(shop-search, % _ 는 글자 그대로)
-  const matchedIds = term ? await productIdsByTerm(db, shop.id, await expandSearchTerm(db, shop.id, term)) : null;
+  const words = term ? await expandSearchTerm(db, shop.id, term) : null;
+  const matchedIds = term && words ? await productIdsByTerm(db, shop.id, words) : null;
   const rows = await db.product.findMany({
     where: {
       sellerId: shop.id,
       deletedAt: null,
       status: { in: [...VISIBLE] },
       ...(matchedIds ? { id: { in: matchedIds } } : {}),
-      ...(categoryIds ? { categories: { some: { categoryId: { in: categoryIds } } } } : {}),
+      ...(categoryGroups.length ? { AND: categoryGroups.map((ids) => ({ categories: { some: { categoryId: { in: ids } } } })) } : {}),
     },
     select: {
       id: true,
       codeNo: true,
       name: true,
+      searchTags: true,
       price: true,
       status: true,
       sortOrder: true,
@@ -137,7 +160,24 @@ export async function shopProductList(
     const shown = orderUnitPrice(p.price, eventOf(p), now);
     return { p, shown, salePrice: shown < p.price ? shown : null, soldOut: p.status === "SOLD_OUT" || p.options.every((o) => o.stock <= 0) };
   });
-  const cards = only === "sale" ? allCards.filter((c) => c.salePrice !== null) : only === "best" ? allCards.filter((c) => sold.has(c.p.id)) : allCards;
+  const liveIds = await liveProductIds(db, shop.id);
+  const liveSet = new Set(liveIds);
+  const base = only === "sale" ? allCards.filter((c) => c.salePrice !== null) : only === "best" ? allCards.filter((c) => sold.has(c.p.id)) : allCards;
+  // 구매자 필터(SH-002-F): 재고 있는 상품만 · 방송 중 상품만 · 표시 가격 범위
+  const cards = base.filter((c) => (!inStock || !c.soldOut) && (!onlyLive || liveSet.has(c.p.id)) && c.shown >= minPrice && c.shown <= maxPrice);
+  // 관련도(검색어가 있을 때): 이름이 검색어와 같음 > 이름이 검색어로 시작 > 이름에 들어 있음 > 태그가 같음 > 태그에 들어 있음.
+  // 유사어로만 찾은 상품은 원래 검색어로 찾은 상품보다 모두 아래에 두고, 그 안에서는 같은 단계 순서를 지킨다.
+  const relevanceOf = new Map<string, number>();
+  if (relevance && term && words) {
+    const score = (name: string, tags: string[], w: string, synonym: boolean) => {
+      const k = foldTerm(w);
+      const n = foldTerm(name);
+      const t = tags.map(foldTerm);
+      const best = n === k ? 100 : n.startsWith(k) ? 80 : n.includes(k) ? 60 : t.includes(k) ? 50 : t.some((x) => x.includes(k)) ? 40 : 0;
+      return synonym ? best / 10 : best;
+    };
+    for (const c of cards) relevanceOf.set(c.p.id, Math.max(...words.map((w, i) => score(c.p.name, c.p.searchTags, w, i > 0))));
+  }
   // 카테고리를 고르고 진열 순서(recommended)로 보면 카테고리 안 진열 순서가 먼저: 고른 카테고리에 직접 지정한 상품 → 하위 카테고리(카테고리 순서대로)
   const catRank = new Map<string, number>();
   if (categoryIds && sort === "recommended" && rows.length) {
@@ -158,8 +198,10 @@ export async function shopProductList(
     low: (a, b) => a.shown - b.shown || byId(a, b),
     high: (a, b) => b.shown - a.shown || byId(a, b),
   };
-  cards.sort(only === "best" ? (a, b) => sold.get(b.p.id)! - sold.get(a.p.id)! || lastSold.get(b.p.id)! - lastSold.get(a.p.id)! || byId(a, b) : cmp[sort]);
-  const liveIds = await liveProductIds(db, shop.id);
+  // 관련도순: 점수 높은 순 → 품절은 뒤 → 최근 등록 → id
+  const byRelevance = (a: (typeof cards)[number], b: (typeof cards)[number]) =>
+    (relevanceOf.get(b.p.id) ?? 0) - (relevanceOf.get(a.p.id) ?? 0) || Number(a.soldOut) - Number(b.soldOut) || b.p.createdAt.getTime() - a.p.createdAt.getTime() || byId(a, b);
+  cards.sort(only === "best" ? (a, b) => sold.get(b.p.id)! - sold.get(a.p.id)! || lastSold.get(b.p.id)! - lastSold.get(a.p.id)! || byId(a, b) : relevance && term ? byRelevance : cmp[sort]);
   const arranged = arrange(cards, await displayOptions(db, shop.id), liveIds, (c) => c.p.id);
   // 인기 검색어: 구매자가 직접 한 검색(홈 진열 제외)의 첫 쪽 결과가 있을 때만 센다
   if (term && !only && page === 1 && arranged.length > 0) await recordSearchTerm(db, shop.id, term, clientIp);
