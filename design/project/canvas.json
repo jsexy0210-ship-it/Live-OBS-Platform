@@ -3038,6 +3038,13 @@
       "w": 1920,
       "x": 0,
       "y": 30500
+    },
+    "DS-TABLE-CARD.dc.html": {
+      "h": 3450,
+      "title": "DS-TABLE-CARD 공통 표 모바일 카드 (768px 미만 · 선택 · 제목 · 라벨:값 · 배지 · 행동 2+더보기 · 일괄 바 · MA-013 · SA-021 예 · MASTER 배정 2026-10-06)",
+      "w": 1280,
+      "x": 25000,
+      "y": 108800
     }
   },
   "createdOnFiles": {
@@ -4124,6 +4131,7 @@
     "DS-NAV.dc.html",
     "DS-TYPE-SCALE.dc.html",
     "DS-DATEPICKER.dc.html",
+    "DS-TABLE-CARD.dc.html",
     "PF-007-4.dc.html",
     "PF-007-5.dc.html",
     "MA-120.dc.html"
