@@ -10,7 +10,7 @@ import { createAdminSession } from "../../lib/server/auth/session";
 import { prisma } from "../../lib/server/db";
 import { FakeIdentityProvider } from "../../lib/server/identity/provider";
 import { applyForSeller, type ApplyInput } from "../../lib/server/sellers/application";
-import { BUSINESS_CHECK_LIMIT } from "../../lib/server/sellers/signupAssist";
+import { BUSINESS_CHECK_LIMIT, SLUG_CHECK_PER_MINUTE, resetSlugCheckLimit, slugCheckAllowed } from "../../lib/server/sellers/signupAssist";
 import { detectLicenseType, cleanLicenseName } from "../../lib/server/sellers/businessLicense";
 import { FakeBusinessStatusProvider, FakeMailOrderProvider } from "../../lib/server/sellers/businessCheck";
 import { SELLER_SIGNUP_CONSENT_VERSIONS, parseSellerSignupConsent } from "../../lib/server/sellers/signupConsent";
@@ -96,6 +96,19 @@ describe("쇼핑몰 주소 확인", () => {
     expect(await ask("admin")).toEqual({ available: false, reason: "invalid" });
     expect(await ask("a")).toEqual({ available: false, reason: "invalid" });
     expect(await ask("free-name")).toEqual({ available: true, reason: null });
+  });
+});
+
+describe("쇼핑몰 주소 확인 횟수 제한", () => {
+  it("같은 IP는 1분에 30번까지, 1분이 지나면 다시 가능하고, IP를 모르면 세지 않는다", () => {
+    resetSlugCheckLimit();
+    const t = 1_000_000;
+    for (let i = 0; i < SLUG_CHECK_PER_MINUTE; i++) expect(slugCheckAllowed("1.2.3.4", t + i)).toBe(true);
+    expect(slugCheckAllowed("1.2.3.4", t + 1000)).toBe(false);
+    expect(slugCheckAllowed("5.6.7.8", t + 1000)).toBe(true);
+    expect(slugCheckAllowed("1.2.3.4", t + 61_000)).toBe(true);
+    for (let i = 0; i < 100; i++) expect(slugCheckAllowed(null, t)).toBe(true);
+    resetSlugCheckLimit();
   });
 });
 

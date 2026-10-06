@@ -35,6 +35,24 @@ export async function ownedVerification(db: PrismaClient, verificationId: string
   return v;
 }
 
+// 쇼핑몰 주소 확인 조회는 같은 접속 IP에서 1분에 30번까지(MASTER 결정 2026-10-06). 서버 메모리로 센다(운영은 앱 1대 구성, 재시작하면 비워짐).
+// 접속 IP를 알 수 없으면(신뢰하는 프록시 없음) 세지 않는다.
+export const SLUG_CHECK_PER_MINUTE = 30;
+const slugHits = new Map<string, number[]>();
+export function slugCheckAllowed(ip: string | null, now = Date.now()): boolean {
+  if (!ip) return true;
+  const recent = (slugHits.get(ip) ?? []).filter((t) => now - t < 60_000);
+  if (recent.length >= SLUG_CHECK_PER_MINUTE) {
+    slugHits.set(ip, recent);
+    return false;
+  }
+  recent.push(now);
+  slugHits.set(ip, recent);
+  if (slugHits.size > 5000) for (const [k, v] of slugHits) if (!v.some((t) => now - t < 60_000)) slugHits.delete(k);
+  return true;
+}
+export const resetSlugCheckLimit = () => slugHits.clear();
+
 // 쇼핑몰 주소(slug) 사용 가능 여부. 형식·예약어가 틀리면 invalid, 이미 쓰는 주소면 taken
 export async function checkSlug(db: PrismaClient, rawSlug: string): Promise<{ available: boolean; reason: "invalid" | "taken" | null }> {
   const slug = rawSlug.trim().toLowerCase();
