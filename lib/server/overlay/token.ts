@@ -3,6 +3,7 @@ import { writeAudit } from "../audit/log";
 import { generateToken, hashToken } from "../auth/token";
 import { sellerHasFeature } from "../billing/features";
 import { sellerAccessFor } from "../billing/subscription";
+import { liveBroadcastState } from "../broadcast/stale";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
 
 // 마지막 접속 시각은 이 간격이 지났을 때만 갱신하고, 운영 현황은 이 창 안에 접속했으면 「접속 중」으로 본다
@@ -36,12 +37,10 @@ export async function issueOverlayToken(db: PrismaClient, ctx: TenantContext, no
 }
 
 // 방송 중에는 재발급할 수 없다(SA-052). 처음 발급(살아 있는 주소가 없을 때)은 방송 중에도 된다.
+// 「방송 중」은 LIVE 방송이 있고 방송 화면 접속 신호가 최근 5분 안에 있을 때만이다(broadcast/stale.ts). 신호 없이 LIVE만 남은 방송이 재발급을 영구히 막지 않게 한다.
 export async function reissueBlockedByLive(db: PrismaClient, sellerId: string): Promise<boolean> {
-  const [current, live] = await Promise.all([
-    db.overlayToken.findFirst({ where: { sellerId, revokedAt: null }, select: { id: true } }),
-    db.broadcastSession.findFirst({ where: { sellerId, status: "LIVE" }, select: { id: true } }),
-  ]);
-  return !!current && !!live;
+  const current = await db.overlayToken.findFirst({ where: { sellerId, revokedAt: null }, select: { id: true } });
+  return !!current && (await liveBroadcastState(db, sellerId)).active;
 }
 
 // 오버레이 토큰으로 판매자를 찾는다. 폐기된 토큰, 운영 중이 아닌 판매자, 구독이 끝나 잠긴 판매자,
