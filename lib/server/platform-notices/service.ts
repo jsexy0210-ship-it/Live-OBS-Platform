@@ -240,10 +240,12 @@ const readerWhere = (reader: NoticeReader): Prisma.PlatformNoticeWhereInput => (
 });
 
 // 첫 쪽(cursor 없음)에만 고정 공지(pinned, 최신순)를 따로 주고, items는 고정이 아닌 공지 게시일 최신순 20건
-export async function listNotices(db: PrismaClient, reader: NoticeReader, q: { cursor?: string | null }) {
+export async function listNotices(db: PrismaClient, reader: NoticeReader, q: { cursor?: string | null; category?: string | null }) {
   const c = parseCursor(q.cursor);
   if (c === "invalid") return { ok: false as const, reason: "invalid_cursor" as const };
-  const base = readerWhere(reader);
+  // 분류 거름(PF-005 분류 칩): 모르는 값은 거르지 않고 전체로 본다
+  const cat = CATEGORIES.includes(q.category as PlatformNoticeCategory) ? (q.category as PlatformNoticeCategory) : null;
+  const base = { ...readerWhere(reader), ...(cat ? { category: cat } : {}) };
   const order: Prisma.PlatformNoticeOrderByWithRelationInput[] = [{ publishedAt: "desc" }, { id: "desc" }];
   const pinned = c ? [] : await db.platformNotice.findMany({ where: { ...base, isPinned: true }, orderBy: order });
   const rows = await db.platformNotice.findMany({

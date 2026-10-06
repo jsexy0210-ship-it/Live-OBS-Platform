@@ -2,11 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useConfirm } from "../admin-ui/ConfirmDialog";
-import ShopState from "./ShopState";
 import { call, md, RATING_TEXT, reencodePhoto } from "./reviewShared";
 import "./Reviews.css";
 
-// SH-029 리뷰 쓰기·고치기. 별점(필수)·사진(선택, 5장)·리뷰(10~1,000자). 사진은 이 화면에서 JPEG로 다시 저장해 올린다(위치 정보 제거).
+// SH-029 리뷰 쓰기·고치기(내 리뷰 화면 위쪽 상자). 별점(필수)·내용(10~1,000자)·사진(선택, 5장). 사진은 이 화면에서 JPEG로 다시 저장해 올린다(위치 정보 제거).
 // 쓰기: GET·POST /api/shop/{slug}/reviews/items/{orderItemId}. 고치기: GET·PUT /reviews/{id}(목록에서 찾지 않고 id로 직접 읽는다).
 type Photo = { id: string; url: string };
 type Item = { productName: string; optionName: string; quantity: number; orderedAt: string; deliveredAt: string | null; reward: { text: number; photo: number } };
@@ -14,7 +13,9 @@ type Mine = { id: string; productName: string; optionName: string; rating: numbe
 const MAX_PHOTOS = 5;
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 
-export default function ReviewWrite({ slug, itemId, reviewId }: { slug: string; itemId: string | null; reviewId: string | null }) {
+type Props = { slug: string; itemId: string | null; reviewId: string | null; writableUntil?: string | null; right?: React.ReactNode; onSaved: (text: string) => void; onCancel?: () => void };
+
+export default function ReviewWrite({ slug, itemId, reviewId, writableUntil, right, onSaved, onCancel }: Props) {
   const { confirm } = useConfirm();
   const base = `/api/shop/${encodeURIComponent(slug)}/reviews`;
   const [view, setView] = useState<{ kind: "loading" } | { kind: "login" } | { kind: "closed" } | { kind: "error" } | { kind: "ok"; title: string; sub: string; reward: { text: number; photo: number } | null }>({ kind: "loading" });
@@ -24,8 +25,7 @@ export default function ReviewWrite({ slug, itemId, reviewId }: { slug: string; 
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [done, setDone] = useState(false);
-  const input = useRef<HTMLInputElement>(null);
+    const input = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     if (itemId) {
@@ -92,110 +92,131 @@ export default function ReviewWrite({ slug, itemId, reviewId }: { slug: string; 
       if (r.status === 401) return setView({ kind: "login" });
       return setMsg({ ok: false, text: r.message ?? "리뷰를 올리지 못했어요. 잠시 뒤 다시 해 주세요" });
     }
-    setDone(true);
     const granted = "grantedReward" in r.data ? (r.data.grantedReward as number) : 0;
-    setMsg({
-      ok: true,
-      text:
-        r.data.status === "VISIBLE"
-          ? `${itemId ? "리뷰를 올렸어요" : "리뷰를 고쳤어요"}${granted > 0 ? ` · 적립금 ${won(granted)}을 드려요` : ""}`
-          : `${itemId ? "리뷰를 올렸어요" : "리뷰를 고쳤어요"} · 판매자가 확인하면 공개돼요`,
-    });
+    const what = itemId ? "리뷰를 등록했어요" : "리뷰를 고쳤어요";
+    onSaved(r.data.status === "VISIBLE" ? `${what}${granted > 0 ? ` · 적립금 ${won(granted)}이 들어왔어요` : ""}` : `${what} · 판매자가 확인하면 공개돼요`);
   };
 
-  if (view.kind === "loading") return <section className="card shop-card" aria-busy="true"><span className="t-l1 c-alt">불러오고 있어요</span></section>;
-  if (view.kind === "login") return <ShopState title="로그인이 필요해요" body="이 쇼핑몰에 로그인하면 리뷰를 쓸 수 있어요." />;
-  if (view.kind === "closed") return <ShopState title="리뷰를 쓸 수 있는 기간이 지났어요" body="배송 완료 뒤 정해진 기간 안에만 쓰고, 쓴 뒤 7일 안에만 고칠 수 있어요." />;
-  if (view.kind === "error")
+  if (view.kind === "loading")
     return (
-      <section className="card shop-card col" style={{ gap: 12 }}>
-        <span className="t-l1">불러오지 못했어요</span>
-        <button className="btn btn-sm" type="button" style={{ alignSelf: "flex-start" }} onClick={() => void load()}>
-          다시 불러오기
-        </button>
+      <section className="rv-box" aria-busy="true">
+        <div className="rv-box-h">{itemId ? "리뷰 쓰기" : "리뷰 고치기"}</div>
+        <p className="rv-box-note">불러오고 있어요</p>
+      </section>
+    );
+  if (view.kind !== "ok")
+    return (
+      <section className="rv-box">
+        <div className="rv-box-h">{itemId ? "리뷰 쓰기" : "리뷰 고치기"}</div>
+        <div className="rv-box-b">
+          <p className="msg msg-cau t-l2" role="alert" style={{ display: "block" }}>
+            {view.kind === "login"
+              ? "로그인하면 리뷰를 쓸 수 있어요"
+              : view.kind === "closed"
+                ? "리뷰를 쓸 수 있는 기간이 지났어요. 배송 완료 뒤 정해진 기간 안에만 쓰고, 쓴 뒤 7일 안에만 고칠 수 있어요"
+                : "불러오지 못했어요. 네트워크를 확인하고 다시 시도해 주세요"}
+          </p>
+          {view.kind === "error" && (
+            <button className="btn btn-sm" type="button" onClick={() => void load()}>
+              다시 불러오기
+            </button>
+          )}
+        </div>
       </section>
     );
 
+  const reward = view.reward && (view.reward.photo > 0 || view.reward.text > 0) ? view.reward : null;
+  const hints = [
+    ...(itemId && reward ? [reward.text > 0 ? `리뷰를 쓰면 적립금 ${won(reward.text)}${reward.photo > 0 ? ` (사진 리뷰 ${won(reward.photo)})` : ""}` : `사진 리뷰를 쓰면 적립금 ${won(reward.photo)}`] : []),
+    ...(itemId && writableUntil ? [`${md(writableUntil)}까지 쓸 수 있어요`] : []),
+    "등록 뒤 7일 안에 고칠 수 있어요",
+  ];
   return (
-    <section className="card shop-card col rv" aria-labelledby="rv-title">
-      <h1 id="rv-title" className="t-h1">
-        {itemId ? "리뷰 쓰기" : "리뷰 고치기"}
-      </h1>
-      <div className="col" style={{ gap: 2 }}>
-        <span className="t-l1 fw6">{view.title}</span>
-        <span className="t-c1 c-alt">{view.sub}</span>
+    <section className="rv-box" aria-labelledby="rv-title">
+      <div className="rv-box-h">
+        <h2 id="rv-title">{itemId ? "리뷰 쓰기" : "리뷰 고치기"}</h2>
+        <span className="rv-box-r">{right ?? `${view.title} · ${view.sub}`}</span>
       </div>
-      <div className="col" style={{ gap: 6, alignItems: "center" }}>
-        <span className="t-l2 c-alt" id="rv-rating">
-          상품은 어땠나요?
-        </span>
-        <div className="rv-stars" role="radiogroup" aria-labelledby="rv-rating">
-          {[1, 2, 3, 4, 5].map((n) => (
-            <button key={n} type="button" role="radio" aria-checked={rating === n} aria-label={`${n}점`} className={`rv-star${n <= rating ? " on" : ""}`} disabled={done} onClick={() => setRating(n)}>
-              ★
-            </button>
-          ))}
-        </div>
-        <span className="t-c1 fw6">{RATING_TEXT[rating] || " "}</span>
-      </div>
-      <div className="col" style={{ gap: 6 }}>
-        <span className="lbl">사진 (선택)</span>
-        <div className="rv-photos">
-          {photos.map((p) => (
-            <span key={p.id} className="rv-photo">
-              <img src={p.url} alt="올린 사진" />
-              {!done && (
-                <button type="button" aria-label="사진 빼기" onClick={() => setPhotos((x) => x.filter((y) => y.id !== p.id))}>
-                  ×
+      <div className="rv-box-b">
+        <div className="rv-row">
+          <span className="rv-th" id="rv-rating">
+            별점<i>*</i>
+          </span>
+          <div className="rv-td rv-rate">
+            <div className="rv-stars" role="radiogroup" aria-labelledby="rv-rating">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button key={n} type="button" role="radio" aria-checked={rating === n} aria-label={`${n}점`} className={`rv-star${n <= rating ? " on" : ""}`} onClick={() => setRating(n)}>
+                  ★
                 </button>
-              )}
-            </span>
-          ))}
-          {photos.length < MAX_PHOTOS && !done && (
-            <button className="rv-add" type="button" disabled={uploading} onClick={() => input.current?.click()}>
-              <span className="t-hl1">+</span>
-              <span className="t-c1 c-alt num">{uploading ? "올리는 중" : `${photos.length}/${MAX_PHOTOS}`}</span>
+              ))}
+            </div>
+            <span className="rv-hint">{rating > 0 ? `${rating}점` : "별을 눌러 주세요"}</span>
+          </div>
+        </div>
+        <div className="rv-row">
+          <label className="rv-th" htmlFor="rv-body">
+            내용<i>*</i>
+          </label>
+          <div className="rv-td">
+            <textarea id="rv-body" className="inp" placeholder="상품은 어땠나요? 10자 이상 적어 주세요 (개인정보 · 욕설 금지)" value={body} maxLength={1000} onChange={(e) => setBody(e.target.value)} />
+            <span className="rv-hint num">{length.toLocaleString("ko-KR")} / 1,000자</span>
+          </div>
+        </div>
+        <div className="rv-row">
+          <span className="rv-th">사진</span>
+          <div className="rv-td">
+            <div className="rv-photos">
+              {Array.from({ length: MAX_PHOTOS }, (_, i) => {
+                const p = photos[i];
+                if (p)
+                  return (
+                    <span key={p.id} className="rv-photo">
+                      <img src={p.url} alt="올린 사진" />
+                      <button type="button" aria-label="사진 빼기" onClick={() => setPhotos((x) => x.filter((y) => y.id !== p.id))}>
+                        ×
+                      </button>
+                    </span>
+                  );
+                const first = i === photos.length;
+                return first ? (
+                  <button key={`s${i}`} className="rv-add" type="button" disabled={uploading} onClick={() => input.current?.click()}>
+                    {uploading ? "올리는 중" : i === 0 ? "+ 사진" : String(i + 1)}
+                  </button>
+                ) : (
+                  <span key={`s${i}`} className="rv-add is-off" aria-hidden>
+                    {i + 1}
+                  </span>
+                );
+              })}
+              <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden aria-label="리뷰 사진" onChange={(e) => void addPhotos(e.target.files)} />
+            </div>
+            <span className="rv-hint">최대 5장 · JPG · PNG · WEBP · 장당 5MB · 연락처 · 외부 링크는 적을 수 없어요</span>
+          </div>
+        </div>
+        <div className="rv-row">
+          <span className="rv-th">공개</span>
+          <div className="rv-td">
+            <span className="rv-hint">방송 닉네임으로 공개돼요</span>
+          </div>
+        </div>
+        {msg && (
+          <p className={`msg ${msg.ok ? "msg-pos" : "msg-neg"} t-l2`} role={msg.ok ? "status" : "alert"}>
+            {msg.text}
+          </p>
+        )}
+        <div className="rv-actions">
+          {onCancel && (
+            <button className="btn btn-lg btn-out" type="button" disabled={busy} onClick={onCancel}>
+              취소
             </button>
           )}
-          <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden aria-label="리뷰 사진" onChange={(e) => void addPhotos(e.target.files)} />
-        </div>
-        <span className="t-c1 c-alt">JPG·PNG·WEBP, 한 장에 5MB까지 올릴 수 있어요. 사진에 담긴 위치 정보는 지워져요</span>
-        {view.reward && (view.reward.photo > 0 || view.reward.text > 0) && (
-          <span className="t-c1 c-alt">
-            {view.reward.photo > 0 ? `사진을 1장 이상 넣으면 적립금 ${won(view.reward.photo)}` : ""}
-            {view.reward.photo > 0 && view.reward.text > 0 ? ", " : ""}
-            {view.reward.text > 0 ? `글만 쓰면 ${won(view.reward.text)}` : ""}을 드려요
-          </span>
-        )}
-      </div>
-      <div className="col" style={{ gap: 6 }}>
-        <label className="lbl" htmlFor="rv-body">
-          리뷰
-        </label>
-        <textarea id="rv-body" className="inp" style={{ minHeight: 110, padding: "10px 12px" }} value={body} maxLength={1000} disabled={done} onChange={(e) => setBody(e.target.value)} />
-        <div className="row between t-c1 c-alt">
-          <span>연락처 · 다른 쇼핑몰 주소는 쓸 수 없어요</span>
-          <span className="num">{length.toLocaleString("ko-KR")} / 1,000</span>
-        </div>
-      </div>
-      <span className="t-c1 c-alt">방송 닉네임으로 상품 리뷰에 공개돼요. 7일 안에 고칠 수 있어요.</span>
-      {msg && (
-        <p className={`msg ${msg.ok ? "msg-pos" : "msg-neg"} t-l2`} role={msg.ok ? "status" : "alert"}>
-          {msg.text}
-        </p>
-      )}
-      {done ? (
-        <a className="btn btn-out" href={`/shop/${encodeURIComponent(slug)}/reviews`}>
-          내 리뷰 보기
-        </a>
-      ) : (
-        <>
-          <button className="btn btn-lg btn-block" type="button" disabled={!ready} onClick={() => void submit()}>
-            {busy ? "올리는 중" : itemId ? "리뷰 올리기" : "고친 리뷰 올리기"}
+          <button className="btn btn-lg" type="button" disabled={!ready} onClick={() => void submit()}>
+            {busy ? "올리는 중" : itemId ? "리뷰 등록" : "고친 리뷰 올리기"}
           </button>
-          {rating > 0 && length < 10 && <span className="t-c1 c-alt">10자 이상 써야 올릴 수 있어요</span>}
-        </>
-      )}
+        </div>
+        {rating > 0 && length < 10 && <span className="rv-hint rv-c">10자 이상 써야 올릴 수 있어요</span>}
+        <span className="rv-hint rv-c">{hints.join(" · ")}</span>
+      </div>
     </section>
   );
 }
