@@ -129,7 +129,7 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql://live_obs:live_obs@localhost:5432/live_obs_test
-      SMOKE_SPECS: admin-shell layout-admin-login login-tabs admin-dashboard seller-deposits seller-products
+      SMOKE_SPECS: admin-shell layout-admin-login login-tabs admin-dashboard seller-deposits seller-products seller-broadcast
     steps:
       - name: Checkout
         uses: actions/checkout@v5

@@ -12,9 +12,9 @@ import { api } from "../../../../../../components/seller/api";
 import { won } from "../../../../../../components/seller/format";
 
 // SA-026 입금 확인(파트너스 관리자, 주문 › 입금 확인). 무통장 입금 대기 주문을 기한 빠른 순으로 보고, 통장 내역과 맞춰 본 뒤 단건·일괄로 입금 확인한다.
-// API: GET /api/seller/payments/deposits(입금 대기 목록), POST /api/seller/payments/deposits/confirm(확인 직전 /api/seller/queue/version 값을 함께 보냄).
+// API: GET /api/seller/payments/deposits(from/to/status/q/searchBy, summary는 판매자 전체), POST /api/seller/payments/deposits/confirm(확인 직전 /api/seller/queue/version 값을 함께 보냄).
 // 확인에 보내는 expectedVersion은 목록을 불러올 때 함께 읽어 둔 값이다(보낸 사이 바뀌었으면 서버가 409로 막는다).
-// 입금자명은 구매자 개인정보 열람 권한이 있을 때만 서버가 내려 준다.
+// 실제 입금자명은 수집하지 않는다. legacy depositorName이 있어도 구매자 실명이므로 입금자명으로 표시하지 않는다.
 const PAGE = 20;
 type DepositStatus = "PENDING_PAYMENT" | "OVERDUE" | "PAID" | "AUTO_CANCELLED";
 type Row = { orderId: string; orderNo: number; amount: number; nickname: string; buyerName?: string; depositorName?: string; depositorNameSource?: "BUYER_MEMBER_NAME_LEGACY"; depositorNameStatus?: "NOT_COLLECTED"; status?: string; depositStatus?: DepositStatus; paidAt?: string | null; autoCancelledAt?: string | null; paymentMethod: "CARD" | "BANK_TRANSFER" | null; paymentDueAt: string | null; createdAt: string };
@@ -189,7 +189,7 @@ export default function DepositsPage() {
                     <th>입금자 확인</th>
                     <th>금액</th>
                     <th>결제 방식</th>
-                    <th style={{ width: 136, whiteSpace: "nowrap" }}>입금 기한</th>
+                    <th className="dep-due">입금 기한</th>
                     <th>남은 시간</th>
                     <th className="dep-w-act" aria-label="작업" />
                   </tr>
@@ -212,7 +212,7 @@ export default function DepositsPage() {
                         <td>{o.buyerName ? <span>주문자 실명 · {o.buyerName} · 실제 입금자명 미수집</span> : o.depositorNameStatus === "NOT_COLLECTED" || o.depositorNameSource === "BUYER_MEMBER_NAME_LEGACY" || o.depositorName !== undefined ? <span className="t-c1 c-alt">실제 입금자명 미수집</span> : <span className="t-c1 c-alt">확인 정보 없음</span>}</td>
                         <td className="num">{won(o.amount)}</td>
                         <td>{o.paymentMethod === "BANK_TRANSFER" ? "무통장 입금" : o.paymentMethod === "CARD" ? "카드" : "선택 전"}</td>
-                        <td className="num" style={{ width: 136, whiteSpace: "nowrap" }}>{o.paymentDueAt ? formatDateTime(o.paymentDueAt) : "-"}</td>
+                        <td className="num dep-due">{o.paymentDueAt ? formatDateTime(o.paymentDueAt) : "-"}</td>
                         <td>{left.urgent ? <b style={{ color: "var(--neg, #c0262c)" }}>{left.text}</b> : left.text}</td>
                         <td>
                           {payable.some((r) => r.orderId === o.orderId) ? <button className="btn btn-sm btn-w-sm" type="button" onClick={() => setConfirm([o])}>입금 확인</button> : <span className="t-c1 c-alt">{stateLabel}</span>}
