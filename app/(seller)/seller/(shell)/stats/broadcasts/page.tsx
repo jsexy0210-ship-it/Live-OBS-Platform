@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment } from "react";
+import { formatDate, formatDateTime } from "../../../../../../lib/client/format";
 import { EmptyStats, StatsFrame, StatsState, usePeriod, useStats } from "../../../../../../components/seller/stats/StatsFrame";
 import { BarChart, Kpis, count, downloadCsv, won } from "../../../../../../components/seller/stats/parts";
 
@@ -11,10 +12,7 @@ type Row = { id: string; title: string | null; status: string; startedAt: string
 type Sum = { orders: number; paid: number; net: number };
 type Data = { range: { from: string; to: string }; total: { broadcasts: number } & Sum; general: Sum; broadcasts: Row[] };
 
-const kst = (iso: string) => {
-  const d = new Date(new Date(iso).getTime() + 9 * 3600_000);
-  return `${d.getUTCMonth() + 1}.${d.getUTCDate()} ${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
-};
+const kst = (iso: string) => formatDateTime(iso);
 const name = (r: Row) => r.title?.trim() || `${kst(r.startedAt)} 방송`;
 
 export default function BroadcastStatsPage() {
@@ -51,7 +49,7 @@ export default function BroadcastStatsPage() {
               { label: "시청자 중 주문한 비율", now: null, prev: null, fmt: String, text: "아직 볼 수 없습니다", compare: false, note: "시청자 수를 모으면 보여 드립니다" },
             ]}
           />
-          <BarChart title="방송별 순매출" fmt={won} points={chrono.map((r) => ({ label: kst(r.startedAt).split(" ")[0], value: Math.max(0, r.net) }))} />
+          <BarChart title="방송별 순매출" fmt={won} points={chrono.map((r) => ({ label: formatDate(r.startedAt), value: Math.max(0, r.net) }))} />
           <div className="card sts-scroll">
             <table className="tbl" data-testid="stats-broadcasts">
               <thead>
