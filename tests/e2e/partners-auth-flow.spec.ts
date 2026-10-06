@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { grantPaidPeriodInDb } from "./billingDb";
+import { grantPaidPeriodInDb, requestSupplementInDb } from "./billingDb";
 
 // 파트너스 가입 신청(PF-007) → 로그인 → 비밀번호 찾기(AU-003·004)를 실제 API로 끝까지 확인한다.
 // 개발 서버(playwright.config.ts 「dev」)에서 돈다: 가짜 본인확인 공급자(인증번호 000000)와
@@ -404,6 +404,37 @@ test("통신판매업 신고번호를 확인하지 못하면 승인 대기로 �
   await expect(page.getByText("통신판매업 신고번호를 확인하지 못했어요")).toBeVisible();
   await expect(page.getByText("그 전에는 로그인할 수 없어요.")).toBeVisible();
   await shot(page, "PF-007-5-review");
+});
+
+test("승인 대기 대표자가 로그인하면 안내 화면으로 가고, 보완 요청이 걸리면 사유와 「사진 다시 올리기」가 보이며 올리면 제출 안내가 뜬다", async ({ page }) => {
+  const a = await signup(page, { mailOrderNumber: "신고번호없음" });
+  const tryLogin = async () => {
+    await page.goto("/seller/login");
+    await page.getByLabel("이메일").fill(a.email);
+    await page.getByLabel("비밀번호").fill(a.password);
+    await page.getByRole("button", { name: "로그인" }).click();
+    await expect(page).toHaveURL(/\/seller\/pending$/);
+  };
+  await tryLogin();
+  await expect(page.getByRole("heading", { name: "가입 신청을 확인하고 있습니다" })).toBeVisible();
+  await expect(page.getByTestId("pending-supplement")).toHaveCount(0);
+  await shot(page, "AU-005");
+
+  // 마스터가 보완을 요청하면(접수 3일 경과) 로그인 시도로 받은 쿠키로 후속 상태가 보인다
+  await requestSupplementInDb(a.email, "글자가 흐려서 확인이 어렵습니다", 3);
+  await page.reload();
+  const sup = page.getByTestId("pending-supplement");
+  await expect(sup).toContainText("사업자등록증 사진을 다시 올려 주십시오.");
+  await expect(sup).toContainText("글자가 흐려서 확인이 어렵습니다 · 7일 안에 올리지 않으면 신청이 취소됩니다");
+  await shot(page, "AU-005-supplement");
+  await page.setInputFiles("input[type=file]", { name: "license.txt", mimeType: "text/plain", buffer: Buffer.from("hello") });
+  await expect(page.getByText("JPG · PNG · PDF 파일만 올릴 수 있습니다")).toBeVisible();
+  await page.setInputFiles("input[type=file]", { name: "등록증.png", mimeType: "image/png", buffer: PNG });
+  await expect(page.getByText("사업자등록증을 올렸습니다. 확인한 뒤 알려 드립니다")).toBeVisible();
+  await expect(page.getByTestId("pending-supplement")).toHaveCount(0);
+  // 접수 3일이 지난 승인 대기는 심사 지연으로 보인다
+  await expect(page.getByTestId("pending-delayed")).toContainText("신청이 많아 조금 늦어지고 있습니다");
+  await shot(page, "AU-005-delayed");
 });
 
 test("비밀번호 찾기: 대표자가 아니거나 정보가 맞지 않으면 바꿀 수 없다고 알리고 처음부터 다시 하게 한다", async ({ page }) => {

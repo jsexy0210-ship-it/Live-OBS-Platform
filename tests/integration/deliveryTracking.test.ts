@@ -111,9 +111,15 @@ describe("배송 자동조회 충전금 차감", () => {
     expect(await balance(s.seller.id)).toEqual({ paid: 10, free: 0 });
     expect(await shipment(o.orderId)).toMatchObject({ status: "IN_TRANSIT" });
     expect((await db.order.findUniqueOrThrow({ where: { id: o.orderId } })).status).toBe("PAID");
+    // 파트너스 알림 센터에 「충전금 부족」이 한 줄 남는다(같은 구간은 한 번만 센다)
+    expect(await db.messageShortage.findMany({ where: { sellerId: s.seller.id, resolvedAt: null } })).toEqual([expect.objectContaining({ channel: "DELIVERY_TRACKING", reason: "INSUFFICIENT_BALANCE", count: 1 })]);
+    await runDeliveryTrackingLookups(db, p, { now: t });
+    expect((await db.messageShortage.findFirstOrThrow({ where: { sellerId: s.seller.id, resolvedAt: null } })).count).toBe(1);
     await db.sellerMessageBalance.update({ where: { sellerId: s.seller.id }, data: { paidBalance: { increment: 500 } } });
     expect(await runDeliveryTrackingLookups(db, p, { now: new Date(t.getTime() + TRACKING_INTERVAL_MS + 1000) })).toMatchObject({ looked: 1 });
     expect(await balance(s.seller.id)).toEqual({ paid: 510 - PRICE, free: 0 });
+    // 조회가 다시 성공하면 알림이 풀린다
+    expect(await db.messageShortage.count({ where: { sellerId: s.seller.id, resolvedAt: null } })).toBe(0);
   });
 
   it("충전 기능이 꺼져 있으면 차감하지 않고 조회도 하지 않는다", async () => {
@@ -123,6 +129,7 @@ describe("배송 자동조회 충전금 차감", () => {
     expect(await runDeliveryTrackingLookups(db, p, { now: NOW() })).toMatchObject({ looked: 0, skippedChargingOff: 1 });
     expect(p.calls).toEqual([]);
     expect(await balance(s.seller.id)).toEqual({ paid: 1000, free: 0 });
+    expect(await db.messageShortage.findMany({ where: { sellerId: s.seller.id, resolvedAt: null } })).toEqual([expect.objectContaining({ channel: "DELIVERY_TRACKING", reason: "CHARGING_DISABLED" })]);
   });
 
   it("조회가 실패하면(오류 응답·예외·시간 초과) 차감을 되돌린다", async () => {

@@ -1,0 +1,17 @@
+/* SA-114 문의하기(정본 v319): 왼쪽 표형 폼 + 오른쪽 안내 2열, 좁은 화면은 한 열 */
+.iq-two {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.iq-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+@media (max-width: 1023px) {
+  .iq-two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
