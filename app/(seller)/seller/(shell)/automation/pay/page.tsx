@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
-import { FormRow, FormSection, PageHead, useConfirm } from "../../../../../../components/admin-ui";
+import { FormFoot, FormRow, FormSection, PageHead, useConfirm } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import TestModeNotice from "../../../../../../components/seller/TestModeNotice";
 import { SmartBackButton } from "../../../../../../components/seller/SmartBackButton";
@@ -179,12 +179,12 @@ function Pay() {
               </span>
             </div>
           )}
-          <div className="row" style={{ gap: 8 }}>
+          <FormFoot>
             <button className="btn btn-lg" type="button" disabled={!all || (!other && !card) || !shop} onClick={() => void pay()} data-testid="pay-submit">
               {`${AUTOMATION_PRICE.toLocaleString("ko-KR")}원 결제하기`}
             </button>
             <SmartBackButton fallback="/seller/automation" className="btn btn-out btn-lg">이전 화면으로</SmartBackButton>
-          </div>
+          </FormFoot>
         </div>
       </main>
     </>
