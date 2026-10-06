@@ -3430,6 +3430,9 @@ model PlatformInquiry {
   helpfulAt             DateTime?               @db.Timestamptz(3)
   // 방송 중 장애 등 급한 문의 표시(분류가 아니라 별도 표시)
   urgent                Boolean                 @default(false)
+  // 마스터 관리자 담당(운영·CS·최고관리자 중 한 명, 없으면 미배정). 이름은 마스터 화면에만 나간다. 바꿔도 version은 올리지 않는다(작성 중인 답변을 막지 않기 위해).
+  assignedAdminId       String?                 @db.Uuid
+  assignedAt            DateTime?               @db.Timestamptz(3)
   version               Int                     @default(0)
   createdAt             DateTime                @default(now()) @db.Timestamptz(3)
 
@@ -3440,6 +3443,7 @@ model PlatformInquiry {
   @@index([sellerId, lastMessageAt(sort: Desc), id(sort: Desc)])
   @@index([status, lastMessageAt(sort: Desc), id(sort: Desc)])
   @@index([lastMessageAt(sort: Desc), id(sort: Desc)])
+  @@index([assignedAdminId, lastMessageAt(sort: Desc), id(sort: Desc)])
 }
 
 // 문의 대화 한 줄. 지우거나 고치지 않는다.
