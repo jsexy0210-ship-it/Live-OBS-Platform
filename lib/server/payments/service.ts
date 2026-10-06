@@ -46,8 +46,8 @@ export function goodsNameOf(items: { productNameSnapshot: string }[]) {
 
 // 주문 생성과 같은 조건: 운영 중이고 잠기지 않았고 스토어 운영 기능 권한이 있어야 결제(카드·무통장 선택)할 수 있다
 export async function shopOpenForPayment(db: PrismaClient, sellerId: string): Promise<boolean> {
-  const seller = await db.seller.findUnique({ where: { id: sellerId }, select: { status: true } });
-  return !!seller && seller.status === "ACTIVE" && (await sellerAccessFor(db, sellerId)) !== "expired" && (await sellerHasFeature(db, sellerId, "STORE_OPERATIONS"));
+  const seller = await db.seller.findUnique({ where: { id: sellerId }, select: { status: true, operatingState: true } });
+  return !!seller && seller.status === "ACTIVE" && seller.operatingState === "OPEN" && (await sellerAccessFor(db, sellerId)) !== "expired" && (await sellerHasFeature(db, sellerId, "STORE_OPERATIONS"));
 }
 
 export async function startPayment(
