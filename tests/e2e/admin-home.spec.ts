@@ -9,6 +9,7 @@ import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 const password = randomBytes(12).toString("base64url");
 const run = randomBytes(4).toString("hex");
 const email = `hm-cs-${run}@example.com`;
+const suEmail = `hm-su-${run}@example.com`;
 const topShop = `상위몰 ${run}`;
 const pendingShop = `대기몰 ${run}`;
 let db: PrismaClient;
@@ -16,7 +17,12 @@ let db: PrismaClient;
 test.beforeAll(async () => {
   db = new PrismaClient({ datasources: { db: { url: assertTestDatabaseUrl(process.env.DATABASE_URL) } } });
   const passwordHash = await hashPassword(password);
-  await db.platformAdmin.create({ data: { email, passwordHash, name: "상담", role: "CS" } });
+  await db.platformAdmin.createMany({
+    data: [
+      { email, passwordHash, name: "상담", role: "CS" },
+      { email: suEmail, passwordHash, name: "최고", role: "SUPER_ADMIN" },
+    ],
+  });
   await db.seller.create({ data: { slug: `hm-p-${run}`, shopName: pendingShop, status: "PENDING" } });
   const seller = await db.seller.create({ data: { slug: `hm-t-${run}`, shopName: topShop, status: "ACTIVE", approvedAt: new Date() } });
   const user = await db.sellerUser.create({ data: { sellerId: seller.id, email: `hm-owner-${run}@example.com`, passwordHash, name: "대표", isOwner: true } });
@@ -32,10 +38,10 @@ test.afterAll(async () => {
   await db.$disconnect();
 });
 
-async function login(page: Page) {
+async function login(page: Page, who = email) {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/admin/login");
-  await page.getByLabel("이메일").fill(email);
+  await page.getByLabel("이메일").fill(who);
   await page.getByLabel("비밀번호").fill(password);
   await page.getByRole("button", { name: "로그인" }).click();
   await expect(page).toHaveURL(/\/admin$/);
@@ -51,6 +57,9 @@ test("오늘 처리할 일: 서버 숫자가 맨 위에 보이고, 누르면 조
   await expect(tasks.getByTestId("today-task-signupPending")).toContainText(`${count("signupPending")}건`);
   await expect(tasks.getByTestId("today-task-inquiryOpen")).toContainText(`${count("inquiryOpen")}건`);
   await expect(tasks.locator('[data-testid^="today-task-"]')).toHaveCount(7);
+  await expect(tasks.getByTestId("today-task-inquiryOpen")).toContainText("파트너스 문의");
+  await expect(page.getByTestId("today-tasks-at")).toContainText("집계");
+  await expect(page.getByTestId("infra-card")).toHaveCount(0); // 인프라 · 비용 카드는 최고관리자에게만 보인다
   await page.screenshot({ path: "tests/e2e/screenshots/admin-home-1440.png", fullPage: true });
 
   await tasks.getByTestId("today-task-signupPending").click();
@@ -80,4 +89,18 @@ test("한 통계가 실패해도 오늘 처리할 일과 나머지 통계는 그
   fail = false;
   await page.getByTestId("stats-orders").getByRole("button", { name: "다시 시도" }).click();
   await expect(page.getByTestId("stats-orders")).toContainText("결제 금액");
+});
+
+test("최고관리자: 오늘 처리할 일 아래에 인프라 · 비용 요약 카드가 보이고 누르면 인프라 · 비용 화면으로 간다", async ({ page }) => {
+  await login(page, suEmail);
+  const card = page.getByTestId("infra-card");
+  await expect(card).toBeVisible();
+  await expect(card.getByTestId("infra-card-cost")).toBeVisible();
+  await expect(card.getByTestId("infra-card-warnings")).toBeVisible();
+  const above = await page.getByTestId("today-tasks").boundingBox();
+  const at = await card.boundingBox();
+  expect(at!.y).toBeGreaterThan(above!.y); // 「오늘 처리할 일」 바로 아래
+  await page.screenshot({ path: "tests/e2e/screenshots/admin-home-infra-1440.png", fullPage: true });
+  await card.getByRole("link").click();
+  await expect(page).toHaveURL(/\/admin\/ops\/infra$/);
 });
