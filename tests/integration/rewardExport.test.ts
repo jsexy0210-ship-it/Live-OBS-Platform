@@ -151,7 +151,8 @@ describe("적립금 CSV 내려받기", () => {
       expect(res.headers.get("content-type")).toBe("text/csv; charset=utf-8");
       expect(res.headers.get("content-disposition")).toMatch(new RegExp(`^attachment; filename="${file}\\d{8}\\.csv"$`));
       expect(res.headers.get("cache-control")).toBe("no-store");
-      expect((await res.text()).startsWith("﻿")).toBe(true);
+      // text()는 BOM을 떼므로 바이트로 확인한다(EF BB BF)
+      expect([...new Uint8Array(await res.arrayBuffer()).slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
     }
     const bad = await ledgerExport(new Request("http://localhost:3000/api/seller/reward-ledger/export?kind=NOPE", { headers }));
     expect(bad.status).toBe(400);
