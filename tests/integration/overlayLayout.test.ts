@@ -220,3 +220,22 @@ describe("권한·격리", () => {
     expect((await (await get(other.cookie)).json()).version).toBe(0);
   });
 });
+
+describe("방송 중 오버레이 레이아웃 기록(SA-054)", () => {
+  it("LIVE 방송이 있으면 처음 요청한 레이아웃만 방송에 남기고, 방송이 없거나 이미 있으면 바꾸지 않는다", async () => {
+    const s = await shop();
+    const token = await issueOverlayToken(db, s.ctx);
+    // 방송이 없을 때 요청은 아무것도 만들지 않는다
+    expect((await pub(token, "?aspect=16x9")).status).toBe(200);
+    expect(await db.broadcastSession.count({ where: { sellerId: s.seller.id } })).toBe(0);
+    const live = await db.broadcastSession.create({ data: { sellerId: s.seller.id, status: "LIVE" } });
+    expect((await pub(token, "?aspect=16x9")).status).toBe(200);
+    expect((await db.broadcastSession.findUniqueOrThrow({ where: { id: live.id } })).layoutAspect).toBe("16x9");
+    expect((await pub(token, "?aspect=9x16")).status).toBe(200);
+    expect((await db.broadcastSession.findUniqueOrThrow({ where: { id: live.id } })).layoutAspect).toBe("16x9");
+    // 잘못된 aspect는 기록하지 않는다
+    const live2 = await db.broadcastSession.create({ data: { sellerId: s.seller.id, status: "ENDED" } });
+    expect((await pub(token, "?aspect=4x3")).status).toBe(400);
+    expect((await db.broadcastSession.findUniqueOrThrow({ where: { id: live2.id } })).layoutAspect).toBeNull();
+  });
+});

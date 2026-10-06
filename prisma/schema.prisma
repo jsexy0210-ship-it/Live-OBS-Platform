@@ -1279,6 +1279,8 @@ model BroadcastSession {
   title     String?
   startedAt DateTime        @default(now()) @db.Timestamptz(3)
   endedAt   DateTime?       @db.Timestamptz(3)
+  // 방송 중 오버레이가 처음 요청한 레이아웃("9x16" 세로형 | "16x9" 가로형, SA-054 「레이아웃」 열). 이 기록 전의 방송·요청이 없던 방송은 null.
+  layoutAspect String?
 
   seller       Seller            @relation(fields: [sellerId], references: [id])
   queueItems   QueueItem[]
@@ -1364,6 +1366,8 @@ model HitCard {
   buyerMemberId      String?  @db.Uuid
   nicknameSnapshot   String
   cardName           String
+  // 등급(SA-053 「등급」 열). 정해 둔 목록(HIT_GRADES: SAR·SR·UR·SE·SP·AA) 중 하나, 비워 둘 수 있다.
+  grade              String?
   note               String?
   createdByUserId    String?  @db.Uuid
   createdAt          DateTime @default(now()) @db.Timestamptz(3)
