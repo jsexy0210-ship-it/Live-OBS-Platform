@@ -941,7 +941,8 @@ describe("Codex 리뷰 반영", () => {
       await new Promise((r) => setTimeout(r, 20 + n * 40));
       await cancelJob(db, a.ctx, a.jobId);
       await run;
-      const events = await db.automationJobEvent.findMany({ where: { jobId: a.jobId } });
+      // 상태가 안 바뀌는 「단계 완료」 기록(step_done)은 전이가 아니므로 제외한다
+      const events = (await db.automationJobEvent.findMany({ where: { jobId: a.jobId } })).filter((e) => (e.detail as { reason?: unknown } | null)?.reason !== "step_done");
       // null에서 시작해 「이전 상태 = 직전 기록의 다음 상태」로 모든 기록이 빠짐없이 한 줄로 이어져야 한다
       let cur: string | null = null;
       const left = [...events];
