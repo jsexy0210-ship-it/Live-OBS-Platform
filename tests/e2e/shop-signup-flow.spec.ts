@@ -39,8 +39,9 @@ async function fillIdentity(page: Page, name: string, phone = "01012345678") {
 
 async function fillAccount(page: Page, id: string, nickname: string) {
   await page.getByLabel("아이디 (이메일)").fill(`buyer-${id}@example.com`);
-  await page.getByLabel("비밀번호", { exact: true }).fill(`pw-${id}-long`);
-  await page.getByLabel("비밀번호 확인").fill(`pw-${id}-long`);
+  const password = `pw-${id}1-long`;
+  await page.getByLabel("비밀번호", { exact: true }).fill(password);
+  await page.getByLabel("비밀번호 확인").fill(password);
   await page.getByLabel("방송 닉네임").fill(nickname);
 }
 
