@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { clearCouponsInDb, createClaimableCouponInDb } from "./couponDb";
+import { okConfirm } from "./shopConfirm";
 
 // 보드 SH-003-IA 맞춤: 탭(리뷰·상품 문의 개수), 상품 문의 목록·쓰기, 쿠폰 받기 줄, 공유, 최근 본 상품, 버튼 순서(장바구니·찜·공유·구매하기).
 const SLUG = "demo-shop";
@@ -38,6 +39,7 @@ test("상품 문의: 쓰기(공개·비공개) → 목록·탭 개수 → 지우
   await dlg.getByLabel("제목").fill(TITLE);
   await dlg.getByLabel("내용").fill("박스 크기가 어떻게 되나요?");
   await dlg.getByRole("button", { name: "문의 남기기" }).click();
+  await okConfirm(page, "남기기");
   await expect(qna.getByText("문의를 남겼어요")).toBeVisible();
   await expect(qna.getByText(TITLE)).toBeVisible();
   await expect(qna.getByText("답변 대기").first()).toBeVisible();
@@ -49,6 +51,7 @@ test("상품 문의: 쓰기(공개·비공개) → 목록·탭 개수 → 지우
   await dlg.getByLabel("내용").fill("개인 정보가 들어 있어요");
   await dlg.getByLabel(/비공개로 남겨요/).check();
   await dlg.getByRole("button", { name: "문의 남기기" }).click();
+  await okConfirm(page, "남기기");
   await expect(qna.getByText("🔒 비밀글이에요")).toBeVisible();
   await expect(qna.getByText("개인 정보가 들어 있어요")).toHaveCount(0);
 
@@ -128,4 +131,34 @@ test("PC·태블릿: 하단 바는 고정되지 않고 상품 정보 아래에 �
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     if (process.env.E2E_SCREENSHOTS === "1") await page.screenshot({ path: `tests/e2e/screenshots/SH-003-pd-bar-${name}.png` });
   }
+});
+
+// 모달(상품 문의) 위에 확인 창이 겹칠 때: Esc는 위(확인 창)만 닫고, 포커스는 아래 모달로 돌아온다.
+test("문의 창 위의 확인 창: Esc로 확인 창만 닫히고 문의 창·입력 내용은 그대로, 취소하면 서버에 보내지 않는다", async ({ page, baseURL }) => {
+  await login(page, baseURL!);
+  const id = await productIdOf(page, "탑로더 25장");
+  await page.goto(`/shop/${SLUG}/products/${id}`);
+  let posts = 0;
+  await page.route("**/api/shop/*/inquiries", (route) => {
+    if (route.request().method() === "POST") posts += 1;
+    return route.continue();
+  });
+  await page.getByRole("region", { name: /^상품 문의/ }).getByRole("button", { name: "문의하기" }).click();
+  const dlg = page.getByRole("dialog", { name: "상품 문의" });
+  await dlg.getByLabel("제목").fill("겹침 시험");
+  await dlg.getByLabel("내용").fill("확인 창 위에서 Esc를 눌러 봐요");
+  const send = dlg.getByRole("button", { name: "문의 남기기" });
+  await send.click();
+  const cfm = page.getByRole("dialog", { name: "문의를 남길까요?" });
+  await expect(cfm).toBeVisible();
+  await expect(cfm.getByRole("button", { name: "취소" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(cfm).toHaveCount(0);
+  await expect(dlg).toBeVisible(); // 아래 문의 창은 남아 있다
+  await expect(dlg.getByLabel("제목")).toHaveValue("겹침 시험");
+  await expect(send).toBeFocused(); // 포커스가 확인 창을 연 버튼으로 돌아온다
+  expect(posts).toBe(0);
+  await dlg.getByRole("button", { name: "취소" }).click(); // 문의 창을 닫는다(보내지 않음)
+  await expect(dlg).toHaveCount(0);
+  expect(posts).toBe(0);
 });

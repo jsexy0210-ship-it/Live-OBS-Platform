@@ -8,7 +8,9 @@ import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigat
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
 import { won } from "../../../../../components/seller/format";
-import { kstDate, kstDuration, type BroadcastSummary } from "../../../../../components/seller/broadcast/history";
+import { kstDuration, type BroadcastSummary } from "../../../../../components/seller/broadcast/history";
+import { formatDateTime } from "../../../../../lib/client/format";
+import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
 
 // SA-054 방송 이력. 방송 시작일(KST) 기간으로 검색하고, 한 줄을 누르면 방송 상세(SA-055)로 간다.
 // API: GET /api/seller/broadcast/history?from=&to=&cursor=(시작 최신순 50개)
@@ -89,9 +91,9 @@ export default function BroadcastHistoryPage() {
           <>
             <SearchBox onSearch={search} onReset={reset} busy={state.kind === "loading"}>
               <SearchRow label="기간">
-                <input className="inp" type="date" aria-label="시작일" value={draft.from} onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
+                <DatePicker aria-label="시작일" value={draft.from} onChange={(v) => setDraft({ ...draft, from: v })} />
                 <span aria-hidden="true"> ~ </span>
-                <input className="inp" type="date" aria-label="종료일" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
+                <DatePicker aria-label="종료일" value={draft.to} onChange={(v) => setDraft({ ...draft, to: v })} />
               </SearchRow>
             </SearchBox>
 
@@ -124,8 +126,8 @@ export default function BroadcastHistoryPage() {
                       <table className="tbl">
                         <thead>
                           <tr>
-                            <th>일시</th>
                             <th>제목</th>
+                            <th>일시</th>
                             <th>시간</th>
                             <th>주문</th>
                             <th>완료 / 뺀 주문</th>
@@ -137,12 +139,12 @@ export default function BroadcastHistoryPage() {
                         <tbody data-testid="bh-list">
                           {items.map((b) => (
                             <tr key={b.id}>
-                              <td className="num">{kstDate(b.startedAt)}</td>
                               <td className="col-title">
                                 <Link href={`/seller/broadcasts/${b.id}`} className="fw6" data-testid="bh-link">
                                   {b.title || "제목 없는 방송"}
                                 </Link>
                               </td>
+                              <td className="num">{formatDateTime(b.startedAt)}</td>
                               <td className="num">{kstDuration(b.startedAt, b.endedAt)}</td>
                               <td className="num">{b.summary.orders.toLocaleString("ko-KR")}</td>
                               <td className="num">

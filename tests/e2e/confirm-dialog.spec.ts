@@ -35,6 +35,7 @@ test("대리 조회 종료는 확인 창을 거치고, 취소·Esc·X·바깥 �
   const popup = context.waitForEvent("page");
   await start.click();
   const p = await popup;
+  await p.waitForURL((u) => u.pathname.startsWith("/seller"));
   await p.waitForLoadState("load");
   // 대신 보기를 시작한 창이 파트너스 화면으로 스스로 넘어가는 중이면 이동이 끊긴다(ERR_ABORTED): 넘어간 뒤에 연다
   await p.waitForURL(/\/seller(\/|$)/);

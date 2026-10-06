@@ -77,7 +77,9 @@ test.describe.serial("SH-022-R 교환·반품 신청 · SA-029 교환·반품 �
     await page.goto(`/seller/login?next=${encodeURIComponent("/seller/returns")}`);
     await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
     await expect(page).toHaveURL(/\/seller\/returns$/);
-    await expect(page.getByRole("link", { name: "취소 · 교환 · 반품" })).toHaveClass(/on/);
+    // 통합 메뉴: LNB 「취소 · 교환 · 반품」이 켜져 있고, 화면 안 탭 「교환 · 반품」이 현재 탭
+    await expect(page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "취소 · 교환 · 반품" })).toHaveClass(/on/);
+    await expect(page.getByRole("navigation", { name: "화면 탭" }).getByRole("link", { name: "교환 · 반품" })).toHaveClass(/on/);
     const sum = page.getByTestId("rt-summary");
     await expect(sum).toContainText("접수 (처리 필요)");
     await expect(sum).toContainText("반품률 (30일)");
@@ -91,6 +93,7 @@ test.describe.serial("SH-022-R 교환·반품 신청 · SA-029 교환·반품 �
     await page.screenshot({ path: `${SHOT}/sa029-detail-1440.png` });
     await expect(dlg.getByLabel("수거 방법")).toHaveValue("COURIER"); // 구매자가 고른 희망
     await dlg.getByRole("button", { name: "접수" }).click();
+    await page.getByRole("button", { name: "신청 접수", exact: true }).click();
     await expect(page.getByText("신청을 접수했습니다")).toBeVisible();
     await expect(dlg).toContainText("수거 중");
     // 환불 미리보기를 못 불러오면(처음 한 번) 「다시 시도」가 보이고 환불은 막힌다. 다시 시도하면 실제 값이 나온다
@@ -102,15 +105,17 @@ test.describe.serial("SH-022-R 교환·반품 신청 · SA-029 교환·반품 �
       await route.fulfill({ response: res, json: { ...(await res.json()), refundPreview: null } });
     });
     await dlg.getByRole("button", { name: "입고 확인" }).click();
-    await expect(dlg).toContainText("검수 중");
+    await page.getByRole("button", { name: "도착 확인", exact: true }).click();
+    await expect(dlg).toContainText("상품 확인 중");
     await expect(dlg.getByRole("alert")).toContainText("환불 금액을 불러오지 못했습니다");
     await expect(dlg.getByRole("button", { name: "환불", exact: true })).toBeDisabled();
     await dlg.getByRole("button", { name: "다시 시도" }).click();
     // 검수 결과를 저장하기 전에는 환불할 수 없다
     await expect(dlg.getByRole("button", { name: "환불", exact: true })).toBeDisabled();
-    await dlg.getByLabel("검수 결과 입력").selectOption("OK");
-    await dlg.getByRole("button", { name: "검수 결과 저장" }).click();
-    await expect(page.getByText("검수 결과를 저장했습니다")).toBeVisible();
+    await dlg.getByLabel("상품 확인 결과 입력").selectOption("OK");
+    await dlg.getByRole("button", { name: "상품 확인 결과 저장" }).click();
+    await page.getByRole("button", { name: "결과 저장", exact: true }).click();
+    await expect(page.getByText("상품 확인 결과를 저장했습니다")).toBeVisible();
     await expect(dlg.getByTestId("rt-inspection")).toContainText("이상 없음");
     // 판매자 사정(전부 반품): 현금 환불 = 상품 금액 − 적립금 반환, 적립금 반환 = 쓴 적립금 전부
     await expect(dlg.getByTestId("rt-reward")).toHaveText("적립금 반환 1,000원");
@@ -120,6 +125,9 @@ test.describe.serial("SH-022-R 교환·반품 신청 · SA-029 교환·반품 �
     await page.screenshot({ path: `${SHOT}/sa029-reward-1440.png` });
     // 환불 금액이 보이고, 누르면 환불 상태가 된다
     await dlg.getByRole("button", { name: "환불", exact: true }).click();
+    const cf = page.getByRole("dialog", { name: /환불하시겠습니까/ });
+    await cf.getByLabel("환불 금액").fill(String(paid));
+    await cf.getByRole("button", { name: "환불", exact: true }).click();
     await expect(page.getByText("환불을 처리했습니다")).toBeVisible();
     await expect(dlg).toContainText("완료");
     expect(await orderStatusInDb(orderId)).toBe("REFUNDED");

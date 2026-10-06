@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { randomBytes } from "node:crypto";
 import { hashPassword } from "../../lib/server/auth/password";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
+import { fillDateTime } from "./dateInput";
 
 // 마스터 관리자 발송 단가(MA-086): 채널 11종 단가·변경 예정·플랫폼 메일 한도·충전 스위치. 계정은 폐기용 테스트 DB(이름이 _test로 끝남)에 실행마다 새로 만든다.
 const password = randomBytes(12).toString("base64url");
@@ -59,7 +60,7 @@ test("채널 11종 단가가 이름으로 보이고, 단가 변경(바로·예�
   const future = new Date(Date.now() + 3 * 86_400_000 + 9 * 3_600_000).toISOString().slice(0, 16);
   await row(page, "단문 문자").getByRole("button", { name: "변경" }).click();
   await dialog.getByLabel("단가").fill("20");
-  await dialog.getByLabel("바뀌는 시각").fill(future);
+  await fillDateTime(dialog, "바뀌는 시각", future);
   await dialog.getByRole("button", { name: "저장" }).click();
   await expect(dialog).toHaveCount(0);
   const sms = row(page, "단문 문자");

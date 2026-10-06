@@ -9,7 +9,8 @@ import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigat
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
 import { SourceBadge } from "../../../../../components/seller/broadcast/SourceBadge";
-import { kstTime } from "../../../../../components/seller/broadcast/queue";
+import { formatDateTime } from "../../../../../lib/client/format";
+import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
 
 // SA-053 HIT 카드 이력(방송 중 등록한 당첨 카드). 조회·등록·해제.
 // API: GET /api/seller/hit-cards?from=&to=&cursor=(KST 날짜, 최신순 50개) · POST /api/seller/hit-cards { cardName, note?, nickname } · DELETE /api/seller/hit-cards/{id}
@@ -38,12 +39,6 @@ const query = (f: Filter, cursor?: string | null) => {
   if (cursor) q.set("cursor", cursor);
   const s = q.toString();
   return `/api/seller/hit-cards${s ? `?${s}` : ""}`;
-};
-
-// 한국 시간 월/일 시:분
-const kstDate = (iso: string) => {
-  const d = new Date(new Date(iso).getTime() + 9 * 3600_000);
-  return `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${kstTime(iso)}`;
 };
 
 export default function HitCardsPage() {
@@ -133,9 +128,9 @@ export default function HitCardsPage() {
           <>
             <SearchBox onSearch={search} onReset={reset} busy={state.kind === "loading"}>
               <SearchRow label="기간">
-                <input className="inp" type="date" aria-label="시작일" value={draft.from} onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
+                <DatePicker aria-label="시작일" value={draft.from} onChange={(v) => setDraft({ ...draft, from: v })} />
                 <span aria-hidden="true"> ~ </span>
-                <input className="inp" type="date" aria-label="종료일" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
+                <DatePicker aria-label="종료일" value={draft.to} onChange={(v) => setDraft({ ...draft, to: v })} />
               </SearchRow>
             </SearchBox>
 
@@ -177,7 +172,7 @@ export default function HitCardsPage() {
                         <tbody data-testid="hit-list">
                           {items.map((c) => (
                             <tr key={c.id}>
-                              <td className="num">{kstDate(c.createdAt)}</td>
+                              <td className="num">{formatDateTime(c.createdAt)}</td>
                               <td className="col-text">
                                 <span className="col bc-item">
                                   <span className="t-l1 fw6 ell">{c.cardName}</span>

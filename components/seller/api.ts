@@ -125,7 +125,7 @@ export type Me = { sellerId: string; userId: string; isOwner: boolean; permissio
 export type StockDeductMode = "ORDER" | "PAYMENT";
 export type ProductStatus = "DRAFT" | "ON_SALE" | "SOLD_OUT" | "HIDDEN";
 // 서버에 올라간 상품 이미지(첫 번째가 대표)
-export type ProductImageInfo = { id: string; url: string; sortOrder: number; width: number; height: number };
+export type ProductImageInfo = { id: string; url: string; sortOrder: number; width: number; height: number; isThumbnail?: boolean };
 export type ProductOption = { id: string; name: string; priceDelta: number; stock: number; sku: string | null; sortOrder: number };
 export type Product = {
   id: string;

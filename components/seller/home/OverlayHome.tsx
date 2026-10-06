@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { PageHead } from "../../admin-ui";
 import { api } from "../api";
-import { kstDate, kstDuration, type BroadcastSummary } from "../broadcast/history";
+import { kstDuration, type BroadcastSummary } from "../broadcast/history";
+import { formatDateTime } from "../../../lib/client/format";
 import type { Snapshot } from "../broadcast/queue";
 import { won } from "../format";
 import { useSeller } from "../SellerShell";
@@ -100,7 +101,7 @@ export function OverlayHome() {
                   <td className="col-text">
                     <Link href={`/seller/broadcasts/${b.id}`}>{b.title || "제목 없는 방송"}</Link>
                   </td>
-                  <td className="num">{kstDate(b.startedAt)}</td>
+                  <td className="num">{formatDateTime(b.startedAt)}</td>
                   <td className="num">{kstDuration(b.startedAt, b.endedAt)}</td>
                   <td className="num">{b.summary.orders.toLocaleString("ko-KR")}건</td>
                 </tr>

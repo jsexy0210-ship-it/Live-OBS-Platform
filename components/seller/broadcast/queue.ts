@@ -17,6 +17,8 @@ export type QueueItem = {
   broadcastSessionId: string | null;
   // 스냅샷에만 있다(개봉·완료·취소 같은 동작 응답에는 없다). 외부 쇼핑몰 주문이면 "EXTERNAL"
   source?: "INTERNAL" | "EXTERNAL";
+  // 스냅샷의 내부 주문 항목만: 상품 합계(원). 외부 주문·값 없음은 null
+  amount?: number | null;
 };
 export type Snapshot = {
   version: number;

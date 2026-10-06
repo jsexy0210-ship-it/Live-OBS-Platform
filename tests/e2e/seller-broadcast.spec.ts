@@ -376,7 +376,7 @@ test("390폭: 대기 표가 카드 안에서 가로로 스크롤되고 머리글
   await page.screenshot({ path: "tests/e2e/screenshots/SA-001-390-scrolled.png", fullPage: true });
 });
 
-// 문구 교체(쉬운 말)로 대기 표 「조작」 열 폭을 240→360px, 좁은 화면(≤1280px) 표 최소 폭을 880px로 넓혔다(의도한 차이).
+// 문구 교체(쉬운 말)로 대기 표 「조작」 열 폭을 240→360px, 좁은 화면(≤1280px) 표 최소 폭을 880px로 넓혔고, 금액 열(100px)을 더하며 980px로 다시 넓혔다(의도한 차이).
 // 1440·1024·390에서 대기 표 버튼이 잘리지 않고, 좁은 폭에서는 카드 안에서만 가로로 스크롤되는지 보고 캡처를 남긴다(E2E_SCREENSHOTS=1).
 test("방송 대시보드 대기 표: 1440·1024·390폭에서 조작 버튼이 잘리지 않는다", async ({ page }) => {
   await login(page, "demo-owner@example.com", "/seller/broadcast");
@@ -403,6 +403,9 @@ test("방송 대시보드 대기 표: 1440·1024·390폭에서 조작 버튼이 
     // 넓은 폭에서는 표 전체가 보이고, 좁은 폭에서는 카드 안에서만 스크롤된다
     if (width >= 1440) expect(m.scroll).toBeLessThanOrEqual(m.client + 1);
     else expect(m.scroll).toBeGreaterThan(m.client);
+    // 금액 열: 내부 주문 항목은 상품 합계(원)가 보인다
+    await expect(page.locator("section[aria-labelledby=bc-waiting-h] th", { hasText: "금액" })).toBeVisible();
+    await expect(page.getByTestId("bc-amount").first()).toHaveText(/^[\d,]+원$/);
     // 모든 폭에서 구매자·상품 머리글이 읽히고, 끝까지 밀면 마지막 버튼이 영역 안에 보인다
     const head = await page.locator("section[aria-labelledby=bc-waiting-h] th", { hasText: "구매자 · 상품" }).boundingBox();
     expect(head!.width).toBeGreaterThanOrEqual(120);

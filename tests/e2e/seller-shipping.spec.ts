@@ -46,6 +46,7 @@ test("대표자: 송장 저장 → 배송 중 → 배송 완료로 옮겨 가고
   await page.getByLabel(`주문 ${b.orderNo} 송장번호`).fill("12");
   const shipped = post(page, "/api/seller/shipments");
   await page.getByRole("button", { name: "송장 저장 (2)" }).click();
+  await page.getByRole("button", { name: "송장 저장", exact: true }).click();
   const shippedRes = await shipped;
   const sent = shippedRes.request().postDataJSON().items as { orderId: string; courier: string }[];
   expect(sent.find((x) => x.orderId === a.orderId)?.courier).toBe("LOTTE");
@@ -53,7 +54,7 @@ test("대표자: 송장 저장 → 배송 중 → 배송 완료로 옮겨 가고
   const results = (await shippedRes.json()).results as { orderId: string; ok: boolean }[];
   expect(results.find((r) => r.orderId === a.orderId)?.ok).toBe(true);
   expect(results.find((r) => r.orderId === b.orderId)?.ok).toBe(false);
-  await expect(page.getByText("1건 송장 저장 · 1건 실패")).toBeVisible();
+  await expect(page.getByText("1건 송장 저장 · 1건은 처리하지 못했습니다. 빨간 글씨를 확인해 주십시오")).toBeVisible();
   await expect(page.getByLabel(`주문 ${a.orderNo} 송장번호`)).toHaveCount(0);
   await expect(rows.filter({ has: page.getByLabel(`주문 ${b.orderNo} 송장번호`) })).toContainText("송장번호");
   await expect(page.locator(".err[role=alert]")).toHaveCount(1);
@@ -68,6 +69,7 @@ test("대표자: 송장 저장 → 배송 중 → 배송 완료로 옮겨 가고
   await row.getByRole("checkbox").check();
   const delivered = post(page, "/api/seller/shipments/deliver");
   await page.getByRole("button", { name: "배송 완료 처리 (1)" }).click();
+  await page.getByRole("button", { name: "배송 완료로 바꾸기", exact: true }).click();
   expect((await delivered).status()).toBe(200);
   await expect(page.getByText("1건 배송 완료")).toBeVisible();
   await expect(row).toHaveCount(0);
@@ -83,5 +85,5 @@ test("주문·배송 권한이 없는 직원은 메뉴가 안 보이고, 주소�
   await submitSellerLogin(page, "demo-staff@example.com", PASSWORD);
   await expect(page).toHaveURL(/\/seller\/shipping$/);
   await expect(page.getByText("필요한 권한: 주문·배송", { exact: false })).toBeVisible();
-  await expect(page.getByRole("link", { name: "배송", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "배송 · 송장", exact: true })).toHaveCount(0);
 });

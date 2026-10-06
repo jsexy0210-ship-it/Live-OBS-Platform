@@ -46,12 +46,14 @@ export default async function ShopFrame({ slug, shopName, children }: { slug: st
   const bizNumber = text((seller?.businessInfo as BusinessInfo | null)?.businessNumber);
   const rows: FootRow[] = [...footRows(seller?.businessInfo).map(([label, value]) => ({ label, value })), ...(notice ? noticeRows(bizNumber, notice) : [])];
   return (
-    <ConfirmProvider>
+    <ConfirmProvider defaultTone="shop">
     <div className="shop-page">
       <ShopChrome slug={slug} shopName={shopName} loggedIn={!!session} nickname={session?.member.broadcastNickname ?? null} categories={categories} />
       <LiveBar slug={slug} />
       <EventPopupForPage />
-      <main className="shop-main">{children}</main>
+      <main className="shop-main">
+        {children}
+      </main>
       <footer className="shop-foot">
         <div className="shop-wrap">
           <p className="shop-foot-name">{shopName}</p>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { useConfirm } from "../admin-ui/ConfirmDialog";
 import ShopLogo from "./ShopLogo";
 
 export const CART_COUNT_EVENT = "shop-cart-count";
@@ -32,6 +33,7 @@ const ICON = {
 
 // 구매자 쇼핑몰 머리(띠·로고·검색·장바구니·카테고리)와 휴대폰 카테고리 서랍·아래 고정 바. 「전체 상품」 뒤에 쇼핑몰의 대분류 카테고리를 붙이고, 「전체 카테고리」 버튼이나 머리 줄에 마우스를 올리면(키보드 포커스도) 대분류·소분류 펼침 판이 열린다. 서랍에는 소분류까지 보인다.
 export default function ShopChrome({ slug, shopName, loggedIn, nickname, categories = [] }: Props) {
+  const { confirm } = useConfirm();
   const base = `/shop/${encodeURIComponent(slug)}`;
   const path = usePathname() ?? "";
   const router = useRouter();
@@ -108,6 +110,7 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname, categor
   }, [drawer]);
 
   async function logout() {
+    if (!(await confirm({ tone: "shop", title: "로그아웃할까요?", body: "장바구니와 찜은 그대로 남아요. 다시 로그인하면 이어서 쓸 수 있어요.", confirmLabel: "로그아웃" }))) return;
     await fetch(`/api/shop/${encodeURIComponent(slug)}/auth/logout`, { method: "POST" }).catch(() => null);
     window.location.assign(base);
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useConfirm } from "../admin-ui/ConfirmDialog";
 import MarketingConsentDoc, { MARKETING_DOC_VERSION } from "./MarketingConsentDoc";
 import ShopState from "./ShopState";
 
@@ -33,6 +34,7 @@ const kstDate = (iso: string) =>
   new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "long", day: "numeric" }).format(new Date(iso));
 
 export default function MarketingConsent({ slug, shopName }: { slug: string; shopName: string }) {
+  const { confirm } = useConfirm();
   const path = `/api/shop/${encodeURIComponent(slug)}/me/marketing-consent`;
   const [view, setView] = useState<{ kind: "loading" } | { kind: "login" } | { kind: "error" } | { kind: "ok"; state: State }>({ kind: "loading" });
   const [asking, setAsking] = useState(false);
@@ -64,6 +66,12 @@ export default function MarketingConsent({ slug, shopName }: { slug: string; sho
           ? `${shopName}에서 보내는 이벤트·할인 소식 받기를 그만뒀어요 · 처리한 날 ${kstDate(s.withdrawnAt)}`
           : null,
     );
+
+  const askAgree = async () => {
+    if (busy) return;
+    const ok = await confirm({ tone: "shop", title: "이벤트·할인 소식을 받을까요?", body: `${shopName}에서 이름·휴대폰 번호로 소식을 보내요. 언제든 그만 받을 수 있어요.`, confirmLabel: "받기" });
+    if (ok) void save(true);
+  };
 
   const save = async (agreed: boolean) => {
     if (busy) return;
@@ -150,7 +158,8 @@ export default function MarketingConsent({ slug, shopName }: { slug: string; sho
           onClick={() => {
             setResult(null);
             setFailure(null);
-            if (s.agreed) void save(false);
+            if (s.agreed)
+              void confirm({ tone: "shop", title: "이벤트·할인 소식을 그만 받을까요?", body: "방송 시작·새 상품·할인 소식이 오지 않아요. 언제든 다시 켤 수 있어요.", confirmLabel: "그만 받기" }).then((ok) => { if (ok) void save(false); });
             else setAsking(true);
           }}
         />
@@ -186,7 +195,7 @@ export default function MarketingConsent({ slug, shopName }: { slug: string; sho
           {/* 동의를 받기 전에 서식 전체(이용 목적·항목·보유 기간)를 보여 준다 */}
           <MarketingConsentDoc shopName={shopName} />
           <span className="row" style={{ gap: 8 }}>
-            <button className={`btn btn-sm${busy ? " is-loading" : ""}`} type="button" disabled={busy} onClick={() => void save(true)}>
+            <button className={`btn btn-sm${busy ? " is-loading" : ""}`} type="button" disabled={busy} onClick={() => void askAgree()}>
               동의하고 받기
             </button>
             <button

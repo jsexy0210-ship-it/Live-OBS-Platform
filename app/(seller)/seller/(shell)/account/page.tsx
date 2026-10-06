@@ -2,7 +2,7 @@
 
 import "../../../../../styles/seller-account.css";
 import { useEffect, useState } from "react";
-import { PageHead } from "../../../../../components/admin-ui";
+import { PageHead, useConfirm } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -15,6 +15,7 @@ import { api } from "../../../../../components/seller/api";
 //   | 429 rate_limited { message, retryAfterSeconds }. 정본대로 변경하면 이 세션만 남기고 다른 곳은 항상 로그아웃한다(signOutOthers: true).
 export default function AccountPage() {
   const { me } = useSeller();
+  const { confirm } = useConfirm();
   const [name, setName] = useState(me?.user.name ?? "");
   const [nameErr, setNameErr] = useState("");
   const [nameBusy, setNameBusy] = useState(false);
@@ -46,6 +47,7 @@ export default function AccountPage() {
     if (nameBusy) return;
     setNameErr("");
     if (name.trim() === "") return setNameErr("이름을 입력해 주십시오");
+    if (!(await confirm({ title: "이름을 저장하시겠습니까?", body: `「${name.trim()}」으로 바뀌고 직원·고객에게 이 이름으로 보입니다.`, confirmLabel: "저장" }))) return;
     setNameBusy(true);
     const r = await api<{ name: string }>("/api/seller/me/name", { method: "PATCH", body: { name } });
     setNameBusy(false);
@@ -66,6 +68,7 @@ export default function AccountPage() {
     if (cur === "") return setCurErr("현재 비밀번호를 입력해 주십시오");
     if (next === "") return setNextErr("새 비밀번호를 입력해 주십시오");
     if (next !== again) return setAgainErr("새 비밀번호가 서로 다릅니다");
+    if (!(await confirm({ title: "비밀번호를 변경하시겠습니까?", body: "변경하면 다른 기기의 로그인이 모두 풀립니다.", confirmLabel: "비밀번호 변경", danger: true }))) return;
     setPwBusy(true);
     const r = await api("/api/seller/me/password", { method: "POST", body: { currentPassword: cur, newPassword: next, signOutOthers: true } });
     setPwBusy(false);

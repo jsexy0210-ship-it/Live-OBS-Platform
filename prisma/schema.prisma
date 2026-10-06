@@ -57,6 +57,14 @@ model AdminSession {
 
 // ───────────── 판매자(쇼핑몰)·직원 ─────────────
 
+// 쇼핑몰 운영 상태(SA-060, 대표님 결정 2026-10-05). 파트너스가 바꾼다. 준비 중·일시 정지면 구매자에게 안내 화면만 보이고
+// 주문 조회만 열린다(새 주문·결제·장바구니·가입 등은 shopOpen이 막음). 이용 정지·구독 만료와 별개다.
+enum ShopOperatingState {
+  OPEN
+  PREPARING
+  PAUSED
+}
+
 enum SellerStatus {
   PENDING
   ACTIVE
@@ -75,6 +83,7 @@ model Seller {
   shareTitle               String?
   shareDescription         String?
   status                   SellerStatus @default(PENDING)
+  operatingState           ShopOperatingState @default(OPEN)
   businessInfo             Json?
   approvedAt               DateTime?    @db.Timestamptz(3)
   // 체험하기 종료 시각 = 마스터 승인 시각(DB 시계) + 판매자 플랜의 체험 일수(SubscriptionPlan.trialDays, 오버레이 전용 7일·통합 없음,
@@ -1683,6 +1692,10 @@ model SellerOrderPolicy {
   autoDeliverDays                Int       @default(7)
   autoConfirmEnabled             Boolean   @default(true)
   autoConfirmDays                Int       @default(7)
+  // 입금 기한 알림(기본 켜짐). 끄면 이 쇼핑몰 주문은 알림 대상에서 뺀다(orders/notifications.ts).
+  dueReminderEnabled             Boolean   @default(true)
+  // 배송 자동 조회(기본 꺼짐). 켜면 송장 1건 조회마다 발송·이용 충전금에서 차감한다(docs/COST_POLICY.md). 지금은 설정만 저장하고 유료 연동은 하지 않는다.
+  autoTrackingEnabled            Boolean   @default(false)
   // 「미입금 자동 취소 3회 → 30일 주문 막기」
   unpaidRestrictionEnabled       Boolean   @default(true)
   // 꺼져 있다가 다시 켠 시각. 이 뒤의 자동 취소만 센다(MASTER 결정).
@@ -3053,8 +3066,23 @@ model PlatformNotice {
   updatedAt        DateTime               @default(now()) @updatedAt @db.Timestamptz(3)
   deletedAt        DateTime?              @db.Timestamptz(3)
 
+  reads PlatformNoticeRead[]
+
   @@index([publishedAt(sort: Desc), id(sort: Desc)])
   @@index([createdAt(sort: Desc), id(sort: Desc)])
+}
+
+// 파트너스 계정(직원 포함)별 공지 읽음 표시(SA-111·112). 상세를 열었을 때 화면이 읽음 API를 부르면 한 줄이 생긴다(같은 계정·공지는 한 번만).
+// 계정(sellerUserId)은 지워도 기록이 남지 않게 정리하지 않고 두며, 공지를 지우면(하드 삭제) 같이 지운다.
+model PlatformNoticeRead {
+  sellerUserId String   @db.Uuid
+  noticeId     String   @db.Uuid
+  readAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  notice PlatformNotice @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+
+  @@id([sellerUserId, noticeId])
+  @@index([noticeId])
 }
 
 // 파트너스 유튜브 설정(SA-057). 행이 없으면 기본값. 채팅 수집 기본값은 새로 연결하는 방송에 적용한다(기본 꺼짐).
@@ -3364,6 +3392,12 @@ enum PlatformInquiryCategory {
   FEATURE
   BUG
   OTHER
+  BROADCAST
+  PAYMENT_LINK
+  ORDER_REFUND
+  REWARD
+  SUBSCRIPTION_FEE
+  SHOP
 }
 
 // 답변 대기 → (마스터 답변) 답변 완료 → (파트너스 추가 문의) 답변 대기 … 마스터가 종료하면 끝(추가 문의 불가, 새 문의로).
@@ -3395,6 +3429,19 @@ model PlatformInquiry {
   sellerReadAt          DateTime?               @db.Timestamptz(3)
   closedAt              DateTime?               @db.Timestamptz(3)
   closedByAdminId       String?                 @db.Uuid
+  // 파트너스가 「해결됐습니다 · 종료」로 닫은 계정(마스터가 닫으면 closedByAdminId)
+  closedBySellerUserId  String?                 @db.Uuid
+  // 문의 작성 때 고른 관련 주문·방송(같은 쇼핑몰만, 선택). 지워지는 일이 없는 기록이라 관계 없이 id만 둔다.
+  relatedOrderId        String?                 @db.Uuid
+  relatedBroadcastId    String?                 @db.Uuid
+  // 「답변이 도움이 됐습니까?」 평가(true 도움됨 · false 아니요). 문의 전체에 한 번만, 마스터 답변이 있은 뒤.
+  helpful               Boolean?
+  helpfulAt             DateTime?               @db.Timestamptz(3)
+  // 방송 중 장애 등 급한 문의 표시(분류가 아니라 별도 표시)
+  urgent                Boolean                 @default(false)
+  // 마스터 관리자 담당(운영·CS·최고관리자 중 한 명, 없으면 미배정). 이름은 마스터 화면에만 나간다. 바꿔도 version은 올리지 않는다(작성 중인 답변을 막지 않기 위해).
+  assignedAdminId       String?                 @db.Uuid
+  assignedAt            DateTime?               @db.Timestamptz(3)
   version               Int                     @default(0)
   createdAt             DateTime                @default(now()) @db.Timestamptz(3)
 
@@ -3405,6 +3452,7 @@ model PlatformInquiry {
   @@index([sellerId, lastMessageAt(sort: Desc), id(sort: Desc)])
   @@index([status, lastMessageAt(sort: Desc), id(sort: Desc)])
   @@index([lastMessageAt(sort: Desc), id(sort: Desc)])
+  @@index([assignedAdminId, lastMessageAt(sort: Desc), id(sort: Desc)])
 }
 
 // 문의 대화 한 줄. 지우거나 고치지 않는다.
@@ -3940,4 +3988,35 @@ model SellerApplicationReview {
   reminderCount         Int       @default(0)
   lastReminderAt        DateTime? @db.Timestamptz(3)
   updatedAt             DateTime  @updatedAt @db.Timestamptz(3)
+}
+
+// 서버 자원 스냅숏(앱이 자기 서버를 잰 값, 정기 실행 infra_snapshot.collect가 시간마다 저장하고 35일 지난 것은 지운다).
+// 마스터 관리자(최고관리자)가 인프라 용량 화면에서 읽는다. 비밀값은 담지 않는다.
+model InfraSnapshot {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  takenAt        DateTime @db.Timestamptz(3)
+  instance       String
+  diskTotalBytes BigInt?
+  diskUsedBytes  BigInt?
+  memTotalBytes  BigInt?
+  memUsedBytes   BigInt?
+  cpuCount       Int?
+  load1          Float?
+  dbSizeBytes    BigInt?
+  dbConnections  Int?
+  dbMaxConnections Int?
+  // 백업 폴더를 읽을 수 있을 때만 값이 있다(OPS_BACKUP_DIR). 없으면 null = 못 잼.
+  backupLastAt   DateTime? @db.Timestamptz(3)
+  backupCount    Int?
+  backupBytes    BigInt?
+
+  @@index([takenAt])
+}
+
+// 플랫폼 기본 정책(MA-081). 키별 정수 값(불리언 0/1). 행이 없으면 코드 기본값(현재 동작과 같음). 최고관리자만 바꾸고 변경은 로그 추적에 남긴다.
+model PlatformPolicy {
+  key              String   @id
+  intValue         Int
+  updatedAt        DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+  updatedByAdminId String?  @db.Uuid
 }

@@ -602,7 +602,7 @@ export default function OverlayEditor() {
         <div className="row between" style={{ gap: 12, flexWrap: "wrap" }}>
           <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
             <h2 className="t-hl1" id="ove-h">
-              방송 화면 꾸미기
+              화면 구성 편집
             </h2>
             {changes > 0 && (
               <span className="ove-tag" data-testid="ove-dirty">

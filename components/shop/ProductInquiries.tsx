@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useConfirm } from "../admin-ui/ConfirmDialog";
 import { kstDate } from "./kstDate";
 import { announceCount } from "./pdEvents";
 import { call } from "./reviewShared";
@@ -120,6 +121,7 @@ export default function ProductInquiries({ slug, productId, loggedIn, onNeedLogi
 }
 
 function WriteInquiry({ api, productId, onClose, onSaved }: { api: string; productId: string; onClose: () => void; onSaved: () => void }) {
+  const { confirm } = useConfirm();
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [priv, setPriv] = useState(false);
@@ -129,6 +131,7 @@ function WriteInquiry({ api, productId, onClose, onSaved }: { api: string; produ
 
   async function save() {
     if (!ready || busy) return;
+    if (!(await confirm({ tone: "shop", title: "문의를 남길까요?", body: `${priv ? "판매자만" : "모두"} 볼 수 있어요. 답변이 달리면 고치거나 지울 수 없어요.`, confirmLabel: "남기기" }))) return;
     setBusy(true);
     setErr(null);
     const r = await call(`${api}/inquiries`, { method: "POST", body: { kind: "PRODUCT", productId, title: title.trim(), body: body.trim(), isPrivate: priv } });

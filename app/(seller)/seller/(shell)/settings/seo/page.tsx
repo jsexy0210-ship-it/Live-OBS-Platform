@@ -5,6 +5,7 @@ import { FormFoot, FormRow, FormSection, Modal, PageHead } from "../../../../../
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
+import { useUnsavedGuard } from "../../../../../../lib/client/navigation";
 
 // SA-067 검색 노출(파트너스 관리자, 설정 › 쇼핑몰 설정). API: GET·PUT /api/seller/seo (쇼핑몰 설정 권한 필요).
 // PUT은 바뀐 항목만 보낸다(문자 값은 빈 값이면 지운다). 검색 노출을 끄는 저장은 확인 창을 거친다.
@@ -107,6 +108,7 @@ export default function SeoSettingsPage() {
   };
   const patch = changes();
   const dirty = Object.keys(patch).length > 0;
+  useUnsavedGuard(dirty); // 링크·브라우저 Back·새로고침에 같은 확인(docs/IA.md Back 규칙 7항)
   const turningOff = patch.indexingEnabled === false;
 
   const send = async () => {

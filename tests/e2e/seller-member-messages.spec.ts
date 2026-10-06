@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { clearMessagesInDb, setConsentInDb } from "./messageDb";
 import { submitSellerLogin } from "./sellerLogin";
+import { fillDateTime } from "./dateInput";
 
 // SA-049 회원 알림 발송(파트너스, 발송 기록만): 정보성 즉시 기록 → 목록·상세, 광고성 시간 밖 예약 거절 → 다음 08:00으로 바꿔 예약 → 취소.
 // 운영 빌드 + 데모 시드(demo-owner, 비밀번호 E2E_PASSWORD). 시작·끝에 데모 쇼핑몰의 발송 기록을 지운다.
@@ -59,7 +60,7 @@ test("대표자: 정보성 발송 기록 → 상세, 광고성 시간 밖 예약
   await f2.getByLabel("문구").fill("이번 주말에 새 박스가 들어와요");
   await f2.getByRole("radio", { name: "예약" }).check();
   const tomorrow = new Date(Date.now() + 86_400_000 + 9 * 3600_000).toISOString().slice(0, 10);
-  await f2.getByLabel("예약 시각 (KST)").fill(`${tomorrow}T22:30`);
+  await fillDateTime(f2, "예약 시각 (KST)", `${tomorrow}T22:30`);
   await expect(page.locator(".msg-neg")).toContainText("광고성 알림은 08:00 ~ 21:00에만 보낼 수 있습니다");
   await page.screenshot({ path: `${SHOT}/sa049-adwindow-1440.png`, fullPage: true });
   await page.getByRole("button", { name: /으로 바꾸기$/ }).click();

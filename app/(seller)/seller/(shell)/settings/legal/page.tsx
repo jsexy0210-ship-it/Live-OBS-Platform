@@ -6,6 +6,8 @@ import { Topbar, useSeller } from "../../../../../../components/seller/SellerShe
 import { ErrorState, LoadingRows, Locked, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import "./legal.css";
+import { useUnsavedGuard } from "../../../../../../lib/client/navigation";
+import { DatePicker } from "../../../../../../components/admin-ui/DatePicker";
 
 // SA-062 법정 고지·약관(파트너스 관리자, 설정 › 쇼핑몰 설정): 쇼핑몰 이용약관·개인정보처리방침 입력.
 // 입력한 글이 구매자 쇼핑몰(/shop/{슬러그}/terms·privacy)에 글자 그대로 표시된다. 게시하기 전에는 구매자에게 「준비 중」으로 보인다.
@@ -66,13 +68,7 @@ function LegalPanel({ kind, label, slug, editable, visible }: { kind: Kind; labe
 
   const saved = state.kind === "ok" ? state.saved : null;
   const dirty = !!saved && (saved.body !== body || (saved.effectiveOn ?? "") !== date || saved.isPublished !== published);
-  // 긴 글을 입력하다 닫으면 잃으므로 저장하지 않은 변경이 있으면 닫기 전에 묻는다
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+  useUnsavedGuard(dirty); // 링크·브라우저 Back·새로고침에 같은 확인(docs/IA.md Back 규칙 7항)
 
   const length = [...body].length;
   const bodyError = length > BODY_MAX ? `본문은 ${BODY_MAX.toLocaleString("ko-KR")}자까지 입력할 수 있습니다` : published && !body.trim() ? "공개하려면 본문을 써 주십시오" : null;
@@ -140,7 +136,7 @@ function LegalPanel({ kind, label, slug, editable, visible }: { kind: Kind; labe
           </FormRow>
           <FormRow label="시작하는 날" help="공개하려면 필요합니다">
             <div className="col" style={{ gap: 4 }}>
-              <input className={`inp${showError && dateError ? " is-error" : ""}`} type="date" aria-label={`${label} 시작하는 날`} aria-invalid={showError && !!dateError} readOnly={!editable} value={date} onChange={(e) => setDate(e.target.value)} />
+              <DatePicker className={`${showError && dateError ? " is-error" : ""}`} aria-label={`${label} 시작하는 날`} aria-invalid={showError && !!dateError} readOnly={!editable} value={date} onChange={(v) => setDate(v)} />
               {showError && dateError && <span className="err" role="alert">{dateError}</span>}
             </div>
           </FormRow>

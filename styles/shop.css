@@ -1463,3 +1463,9 @@ body {
     width: 72px;
   }
 }
+/* 보드 SH-010: 로그인 유지 체크 */
+.shop-login-keep {
+  gap: 8px;
+  align-items: center;
+  cursor: pointer;
+}

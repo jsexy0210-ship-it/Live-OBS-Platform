@@ -8,6 +8,7 @@ import { api, failMessage } from "../../../../../components/seller/api";
 import { listTime } from "../../../../../components/seller/orders";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
 import "./buyer-inquiries.css";
+import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
 
 // SA-046 구매자 문의 목록 · SA-047 문의 상세·답변(파트너스 관리자, 게시판 › 구매자 문의).
 // API: GET /api/seller/inquiries(?status·kind·from·to·q·cursor), PUT /api/seller/inquiries/{id}/answer { answer | null }.
@@ -142,9 +143,9 @@ export default function BuyerInquiriesPage() {
             </select>
           </SearchRow>
           <SearchRow label="작성일">
-            <input className="inp" type="date" aria-label="작성일 시작" value={draft.from} onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
+            <DatePicker aria-label="작성일 시작" value={draft.from} onChange={(v) => setDraft({ ...draft, from: v })} />
             <span aria-hidden="true">~</span>
-            <input className="inp" type="date" aria-label="작성일 끝" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
+            <DatePicker aria-label="작성일 끝" value={draft.to} onChange={(v) => setDraft({ ...draft, to: v })} />
             {invalidRange && <span className="help bi-neg">시작일이 끝일보다 늦습니다</span>}
           </SearchRow>
           <SearchRow label="검색어">

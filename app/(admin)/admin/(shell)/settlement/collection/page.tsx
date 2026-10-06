@@ -8,6 +8,7 @@ import { adminApi } from "../../../_components/api";
 import { AdminTopbar } from "../../../_components/AdminShell";
 import { won } from "../../../_components/partners";
 import { useListFilters } from "../../../_components/useListFilters";
+import { DatePicker } from "../../../../../../components/admin-ui/DatePicker";
 
 // MA-032 구독료 수납 현황(GET /api/admin/subscription-billing, 모든 마스터 역할, 조회만). 기간(KST 날짜, 청구 시각 기준)을 비우면 오늘 하루.
 // 결제 목록은 청구·결제 내역(MA-024), 연체·유예 파트너스는 구독 현황(MA-023)에서 본다.
@@ -62,9 +63,9 @@ function CollectionPageInner() {
             busy={state.kind === "loading"}
           >
             <SearchRow label="청구 기간">
-              <input className="inp" type="date" aria-label="시작일" value={draft.from} onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
+              <DatePicker aria-label="시작일" value={draft.from} onChange={(v) => setDraft({ ...draft, from: v })} />
               <span aria-hidden="true">~</span>
-              <input className="inp" type="date" aria-label="종료일" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
+              <DatePicker aria-label="종료일" value={draft.to} onChange={(v) => setDraft({ ...draft, to: v })} />
               {rangeError && (
                 <span className="err" role="alert">
                   시작일이 종료일보다 늦습니다.
