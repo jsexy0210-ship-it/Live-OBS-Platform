@@ -59,9 +59,13 @@ for(const path of ['/seller/products','/seller/subscription','/admin/settings/pl
 }
 test('정상 상품 응답은 검색과 목록 도구 및 등록 링크를 보존한다',async({page})=>{
   await page.setViewportSize({width:390,height:568});await fixture(page,'READ_ONLY',true);await page.goto('/seller/products');
+  const main=page.getByRole('main');
   await expect(page.getByTestId('permission-card')).toHaveCount(0);
-  await expect(page.getByRole('searchbox',{name:'상품 검색'})).toBeVisible();
-  await expect(page.getByRole('combobox',{name:'정렬'})).toBeVisible();
-  await expect(page.getByRole('link',{name:'상품 등록',exact:true})).toHaveCount(2);
-  await expect(page.getByRole('link',{name:'상품 등록',exact:true}).first()).toBeVisible();
+  await expect(main.getByRole('searchbox',{name:'상품 검색'})).toBeVisible();
+  await expect(main.getByRole('combobox',{name:'정렬'})).toBeVisible();
+  await expect(main.getByRole('link',{name:'상품 등록',exact:true})).toHaveCount(2);
+  await expect(main.getByRole('link',{name:'상품 등록',exact:true}).first()).toBeVisible();
+  const menuLink=page.getByRole('complementary',{name:'파트너스 메뉴',includeHidden:true}).getByRole('link',{name:'상품 등록',exact:true,includeHidden:true});
+  await expect(menuLink).toHaveCount(1);
+  await expect(menuLink).toHaveAttribute('href','/seller/products/new');
 });
