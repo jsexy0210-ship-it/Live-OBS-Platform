@@ -237,7 +237,16 @@ function Invoices() {
                 )}
               </SearchRow>
             )}
-            <SearchRow label="상태">
+            <SearchRow label="상태" label2="요금제" children2={
+              <select className="inp" aria-label="요금제" value={draft.plan} onChange={(e) => setDraft({ ...draft, plan: e.target.value })}>
+                <option value="">전체</option>
+                {PLAN_FILTER.map((p) => (
+                  <option key={p.code} value={p.code}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            }>
               <select className="inp" aria-label="상태" value={draft.state} onChange={(e) => setDraft({ ...draft, state: e.target.value })}>
                 <option value="">전체</option>
                 {STATE_OPTIONS.map((v) => (
@@ -247,24 +256,13 @@ function Invoices() {
                 ))}
               </select>
             </SearchRow>
-            <SearchRow label="요금제">
-              <select className="inp" aria-label="요금제" value={draft.plan} onChange={(e) => setDraft({ ...draft, plan: e.target.value })}>
-                <option value="">전체</option>
-                {PLAN_FILTER.map((p) => (
-                  <option key={p.code} value={p.code}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
-            </SearchRow>
-            <SearchRow label="파트너스">
-              <input className="inp" type="search" aria-label="파트너스" placeholder="쇼핑몰 이름 · 주소" maxLength={MAX_SEARCH_LENGTH} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
-            </SearchRow>
-            <SearchRow label="기타">
+            <SearchRow label="파트너스" label2="기타" children2={
               <label className="chk">
                 <input className="chkbox" type="checkbox" checked={draft.failedOnly === "1"} onChange={(e) => setDraft({ ...draft, failedOnly: e.target.checked ? "1" : "" })} />
                 결제 실패 · 재시도만
               </label>
+            }>
+              <input className="inp" type="search" aria-label="파트너스" placeholder="쇼핑몰 이름 · 주소" maxLength={MAX_SEARCH_LENGTH} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
             </SearchRow>
           </SearchBox>
           {applied.sellerId && (

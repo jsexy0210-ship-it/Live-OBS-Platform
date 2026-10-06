@@ -116,10 +116,7 @@ export default function SubscriptionsPage() {
           ))}
         </nav>
         <SearchBox onSearch={() => setApplied({ ...applied, q: draft.q.trim(), plan: draft.plan })} onReset={reset} busy={state.kind === "loading"}>
-          <SearchRow label="검색어">
-            <input className="inp" type="search" aria-label="쇼핑몰 이름 · 주소" placeholder="쇼핑몰 이름 · 주소" maxLength={MAX_SEARCH_LENGTH} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
-          </SearchRow>
-          <SearchRow label="요금제">
+          <SearchRow label="검색어" label2="요금제" children2={
             <select className="inp" aria-label="요금제" value={draft.plan} onChange={(e) => setDraft({ ...draft, plan: e.target.value })}>
               <option value="">전체</option>
               {PLAN_FILTER.map((p) => (
@@ -128,6 +125,8 @@ export default function SubscriptionsPage() {
                 </option>
               ))}
             </select>
+          }>
+            <input className="inp" type="search" aria-label="쇼핑몰 이름 · 주소" placeholder="쇼핑몰 이름 · 주소" maxLength={MAX_SEARCH_LENGTH} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
           </SearchRow>
         </SearchBox>
 
