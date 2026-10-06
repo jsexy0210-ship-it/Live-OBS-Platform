@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useConfirm } from "../../../../../components/admin-ui/ConfirmDialog";
+import { formatDateTime } from "../../../../../lib/client/format";
 import { phoneText } from "../../../../../components/seller/IdentityCheck";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import {
@@ -34,15 +36,6 @@ import { useLatestResponse } from "../../../../../components/seller/latestRespon
 type Modal = { kind: "edit" | "password" | "disable"; staff: Staff } | null;
 
 const LABEL = Object.fromEntries(PERMS.map((p) => [p.key, p.label])) as Record<StaffPerm, string>;
-
-// 마지막 로그인: 한국 시간 M/D HH:mm
-function kstShort(iso: string | null): string {
-  if (!iso) return "없음";
-  const d = new Date(new Date(iso).getTime() + 9 * 3600_000);
-  const hh = String(d.getUTCHours()).padStart(2, "0");
-  const mm = String(d.getUTCMinutes()).padStart(2, "0");
-  return `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${hh}:${mm}`;
-}
 
 export default function StaffPage() {
   const { me } = useSeller();
@@ -113,7 +106,7 @@ export default function StaffPage() {
                 </span>
               )}
             </h1>
-            <span className="t-l2 c-alt">대표자가 직접 계정을 만들고 권한을 항목별로 설정합니다. 직원은 파트너스 로그인으로 접속해 허용된 메뉴만 사용합니다.</span>
+            <span className="t-l2 c-alt">직원 계정을 직접 만들고, 직원이 할 수 있는 업무를 정합니다. 직원은 파트너스 로그인으로 들어와 허용된 메뉴만 씁니다.</span>
           </div>
         </div>
 
@@ -121,7 +114,7 @@ export default function StaffPage() {
           <div className="card">
             <div className="st" style={{ boxShadow: "none" }}>
               <span className="t">대표자만 볼 수 있습니다</span>
-              <span className="s">직원 계정은 대표자가 만들고 관리합니다. 필요한 사항은 대표자에게 요청해 주십시오</span>
+              <span className="s">직원 계정은 대표자가 만들고 관리합니다. 필요한 내용은 대표자에게 요청해 주십시오</span>
             </div>
           </div>
         ) : state.kind !== "ok" ? (
@@ -141,11 +134,11 @@ export default function StaffPage() {
                 </div>
               )}
               <div className="card staff-table-wrap">
-                <table className="tbl staff-table">
+                <table className="tbl tbl-card staff-table">
                   <thead>
                     <tr>
                       <th>이름 · 이메일</th>
-                      <th>켜진 권한</th>
+                      <th>허용한 업무</th>
                       <th>상태</th>
                       <th>마지막 로그인</th>
                       <th aria-label="관리" />
@@ -157,13 +150,13 @@ export default function StaffPage() {
                         <span className="fw6">{me.user.name} (나)</span>
                         <div className="t-c1 c-alt">{me.user.email}</div>
                       </td>
-                      <td>
-                        <span className="bdg b-open nodot">대표자 · 모든 권한</span>
+                      <td data-card="wide" data-label-set data-label="업무">
+                        <span className="bdg b-open nodot">대표자 · 모든 업무</span>
                       </td>
                       <td>
-                        <span className="bdg b-done">활성</span>
+                        <span className="bdg b-done">사용 중</span>
                       </td>
-                      <td className="num t-l2">지금</td>
+                      <td className="num t-l2" data-label-set data-label="로그인">지금</td>
                       <td />
                     </tr>
                     {staff.map((s) => {
@@ -174,13 +167,13 @@ export default function StaffPage() {
                             <span className="fw6">{s.name}</span>
                             <div className="t-c1 c-alt">{s.email}</div>
                             <div className="t-c1 c-alt">
-                              {s.phone ? phoneText(s.phone) : "휴대폰 미등록"} · {s.identityLinked ? "본인확인 연결됨" : "본인확인 전"}
+                              {s.phone ? phoneText(s.phone) : "휴대폰 번호 없음"} · {s.identityLinked ? "휴대폰 확인 완료" : "휴대폰 확인 전"}
                             </div>
                           </td>
-                          <td className="col-text">
+                          <td className="col-text" data-card="wide" data-label-set data-label="업무">
                             <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
                               {s.permissions.length === 0 ? (
-                                <span className="t-c1 c-alt">켜진 권한 없음</span>
+                                <span className="t-c1 c-alt">허용한 업무 없음</span>
                               ) : (
                                 s.permissions.map((p) => (
                                   <span key={p} className="bdg b-info nodot">
@@ -191,24 +184,22 @@ export default function StaffPage() {
                             </div>
                           </td>
                           <td>
-                            <span className={`bdg ${off ? "b-cancel" : "b-done"}`}>{off ? "비활성" : "활성"}</span>
+                            <span className={`bdg ${off ? "b-cancel" : "b-done"}`}>{off ? "사용 중지" : "사용 중"}</span>
                           </td>
-                          <td className="num t-l2">{kstShort(s.lastLoginAt)}</td>
+                          <td className="num t-l2" data-label-set data-label="로그인">{s.lastLoginAt ? formatDateTime(s.lastLoginAt) : "없음"}</td>
                           <td>
                             {!off && (
-                              <div className="col" style={{ gap: 4, alignItems: "flex-start" }}>
-                                <div className="row" style={{ gap: 4 }}>
-                                  <button className="btn btn-sm btn-out" type="button" onClick={() => setModal({ kind: "edit", staff: s })} aria-label={`${s.name} 정보 · 권한 수정`}>
-                                    수정
-                                  </button>
-                                  <button className="icon-btn staff-x" type="button" onClick={() => setModal({ kind: "disable", staff: s })} aria-label={`${s.name} 비활성화`}>
-                                    ×
-                                  </button>
-                                </div>
-                                <button className="btn btn-sm btn-text" type="button" style={{ paddingLeft: 0 }} onClick={() => setModal({ kind: "password", staff: s })} aria-label={`${s.name} 비밀번호 재설정`}>
-                                  비밀번호 재설정
-                                </button>
-                              </div>
+                              <>
+                              <button className="btn btn-sm btn-out" type="button" onClick={() => setModal({ kind: "edit", staff: s })} aria-label={`${s.name} 정보·업무 수정`}>
+                                수정
+                              </button>
+                              <button className="btn btn-sm btn-out" type="button" onClick={() => setModal({ kind: "password", staff: s })} aria-label={`${s.name} 비밀번호 바꾸기`}>
+                                비밀번호 바꾸기
+                              </button>
+                              <button className="btn btn-sm btn-out" type="button" onClick={() => setModal({ kind: "disable", staff: s })} aria-label={`${s.name} 직원 계정 사용 중지`}>
+                                사용 중지
+                              </button>
+                              </>
                             )}
                           </td>
                         </tr>
@@ -219,17 +210,17 @@ export default function StaffPage() {
                 {staff.length === 0 && (
                   <div className="st" style={{ boxShadow: "none" }}>
                     <span className="t">등록된 직원이 없습니다</span>
-                    <span className="s">방송 보조가 필요하면 직원을 추가해 주십시오</span>
+                    <span className="s">방송을 도와줄 직원이 필요하면 오른쪽에서 추가해 주십시오</span>
                   </div>
                 )}
               </div>
               <div className="card pad col" style={{ gap: 6 }}>
                 <span className="t-hl2">안내</span>
-                <span className="t-l2 c-neu">결제(PG) 연결 · 구독 · 직원 관리 · 적립금 실지급은 대표자만 할 수 있습니다. 직원에게는 메뉴가 표시되지 않습니다.</span>
-                <span className="t-l2 c-neu">권한 변경은 즉시 적용됩니다. 직원이 로그인 중이면 다음 화면부터 반영됩니다. 변경 기록은 로그 추적에 남습니다.</span>
+                <span className="t-l2 c-neu">카드 결제 연결, 구독, 직원 관리, 적립금 실제 지급은 대표자만 할 수 있습니다. 직원에게는 이 메뉴가 보이지 않습니다.</span>
+                <span className="t-l2 c-neu">업무 변경은 바로 적용됩니다. 직원이 로그인 중이면 다음 화면부터 바뀝니다. 바뀐 내용은 로그 추적에 남습니다.</span>
               </div>
             </div>
-            <AddStaff onAdded={(name) => done(`${name} 계정을 생성했습니다 · 이메일과 초기 비밀번호를 직원에게 직접 전달해 주십시오`)} onChanged={() => void load()} />
+            <AddStaff onAdded={(name) => done(`${name} 계정을 만들었습니다 · 이메일과 처음 쓸 비밀번호를 직원에게 직접 전달해 주십시오`)} onChanged={() => void load()} />
           </div>
         )}
       </main>
@@ -241,8 +232,8 @@ export default function StaffPage() {
   );
 }
 
-const UNCLEAR_CREATE = "생성 여부를 확인하지 못했습니다. 목록에서 확인하고, 있으면 비밀번호를 재설정해 주십시오. 같은 값으로 재전송해 성공하면 생성이 확정됩니다";
-const TAKEN_TEXT = "이 이메일로 등록된 계정이 이미 있습니다. 목록에서 확인하고 필요하면 비밀번호를 재설정해 주십시오";
+const UNCLEAR_CREATE = "계정이 만들어졌는지 확인하지 못했습니다. 목록에서 확인하고, 있으면 비밀번호를 바꿔 주십시오. 같은 내용으로 다시 만들어 성공하면 만들어진 것으로 확정됩니다";
+const TAKEN_TEXT = "이 이메일로 등록된 계정이 이미 있습니다. 목록에서 확인하고 필요하면 비밀번호를 바꿔 주십시오";
 
 type Errors = Partial<Record<"name" | "phone" | "email" | "password", string>>;
 
@@ -256,6 +247,7 @@ function AddStaff({ onAdded, onChanged }: { onAdded: (name: string) => void; onC
   const [errors, setErrors] = useState<Errors>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { confirm } = useConfirm();
   // 결과가 불분명했던 시도(보낸 값 그대로, 비밀번호 포함). 있는 동안 칸을 잠그고 「같은 값으로 재전송」과 「새로 입력」만 누를 수 있다.
   // 목록으로 「생성됨」을 추정하지 않는다: 목록의 계정이 이 요청으로 생긴 것인지(다른 창이 만든 것인지), 입력한 비밀번호가 적용됐는지 알 수 없기 때문.
   // 생성을 확정하는 것은 서버의 성공 응답뿐이다(재전송 포함). 목록은 보여 주기용으로만 다시 읽는다
@@ -302,15 +294,15 @@ function AddStaff({ onAdded, onChanged }: { onAdded: (name: string) => void; onC
     const r = await api("/api/seller/staff", { method: "POST", body: sent.body });
     if (r.ok) return succeed(sent.name);
     if (isUnclear(r)) return keepUnclear(sent, UNCLEAR_CREATE);
-    if (r.error === "email_taken") return keepUnclear(sent, "같은 이메일의 계정이 이미 있습니다. 이전 요청으로 생성된 계정인지는 확인할 수 없습니다. 목록에서 확인하고, 있으면 비밀번호를 재설정해 주십시오");
-    keepUnclear(sent, staffFail(r, "재전송하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
+    if (r.error === "email_taken") return keepUnclear(sent, "같은 이메일의 계정이 이미 있습니다. 이전 요청으로 만들어진 계정인지는 확인할 수 없습니다. 목록에서 확인하고, 있으면 비밀번호를 바꿔 주십시오");
+    keepUnclear(sent, staffFail(r, "다시 만들지 못했습니다. 잠시 후 다시 시도해 주십시오"));
   };
 
   const restart = () => {
     setUnclear(null);
     setRestarted(true);
     setFailure(null);
-    setNotice("이전 계정 생성 요청이 처리되었을 수 있습니다. 목록에서 확인한 뒤 입력해 주십시오");
+    setNotice("이전 계정 만들기 요청이 처리되었을 수 있습니다. 목록에서 확인한 뒤 입력해 주십시오");
     onChanged();
     setFocusTo({ id: "sa-name" });
   };
@@ -322,12 +314,19 @@ function AddStaff({ onAdded, onChanged }: { onAdded: (name: string) => void; onC
     const nameError = staffNameError(name);
     if (nameError) next.name = nameError;
     if (!phoneOk(phone)) next.phone = "01로 시작하는 휴대폰 번호를 숫자로 입력해 주십시오";
-    if (!email.trim().includes("@")) next.email = "로그인에 사용할 이메일을 입력해 주십시오";
+    if (!email.trim().includes("@")) next.email = "로그인에 쓸 이메일을 입력해 주십시오";
     if (password.length < MIN_PASSWORD_LENGTH) next.password = `${MIN_PASSWORD_LENGTH}자 이상으로 정해 주십시오`;
     setErrors(next);
     setFailure(null);
     const first = (["name", "phone", "email", "password"] as const).find((k) => next[k]);
     if (first) return setFocusTo({ id: `sa-${first}` });
+    const perm = perms.map((k) => PERMS.find((p) => p.key === k)?.label ?? k);
+    const ok = await confirm({
+      title: "직원 계정을 만드시겠습니까?",
+      body: `${name.trim()} 계정이 바로 만들어지고 ${perm.length > 0 ? `${perm.join(", ")} 업무를 할 수 있게 됩니다` : "허용한 업무 없이 만들어집니다"}. 이메일과 처음 쓸 비밀번호를 직접 전달해 주십시오`,
+      confirmLabel: "직원 계정 만들기",
+    });
+    if (!ok) return;
     setBusy(true);
     setNotice(null);
     const body = { name: name.trim(), phone: cleanPhone(phone), email: email.trim(), password, permissions: perms };
@@ -347,7 +346,7 @@ function AddStaff({ onAdded, onChanged }: { onAdded: (name: string) => void; onC
       setErrors({ [field]: STAFF_ERRORS[r.error] });
       return setFocusTo({ id: `sa-${field}` });
     }
-    setFailure(staffFail(r, "계정을 생성하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
+    setFailure(staffFail(r, "계정을 만들지 못했습니다. 잠시 후 다시 시도해 주십시오"));
   };
 
   const field = (key: keyof Errors, label: string, input: React.ReactNode, help?: string) => (
@@ -379,19 +378,19 @@ function AddStaff({ onAdded, onChanged }: { onAdded: (name: string) => void; onC
         <h2 className="t-hl1" id="sa-title">
           직원 추가
         </h2>
-        <span className="t-c1 c-alt">계정이 즉시 생성됩니다 · 메일 초대는 없습니다</span>
+        <span className="t-c1 c-alt">계정이 바로 만들어집니다. 메일 초대는 보내지 않습니다</span>
       </div>
       {unclear ? (
         <UnclearBox
           testId="sa-unclear"
-          title="계정이 생성되었을 수 있습니다."
+          title="계정이 만들어졌을 수 있습니다."
           text={failure ?? UNCLEAR_CREATE}
           busy={busy}
           onResend={() => void resend(unclear)}
-          resendLabel="같은 값으로 재전송"
+          resendLabel="같은 내용으로 다시 만들기"
           extra={
             <button className="btn btn-sm btn-text" type="button" disabled={busy} onClick={restart}>
-              새로 입력
+              처음부터 다시 입력
             </button>
           }
         />
@@ -411,7 +410,7 @@ function AddStaff({ onAdded, onChanged }: { onAdded: (name: string) => void; onC
         "phone",
         "휴대폰 번호",
         <input {...inputProps("phone")} className={`${inputProps("phone").className} num`} inputMode="numeric" placeholder="숫자만 입력" value={phone} onChange={(e) => setPhone(e.target.value)} />,
-        "직원이 아이디 · 비밀번호를 찾을 때 본인확인에 사용합니다",
+        "직원이 아이디나 비밀번호를 찾을 때 본인 확인에 씁니다",
       )}
       {field(
         "email",
@@ -420,13 +419,13 @@ function AddStaff({ onAdded, onChanged }: { onAdded: (name: string) => void; onC
       )}
       {field(
         "password",
-        "초기 비밀번호",
+        "처음 쓸 비밀번호",
         <SecretInput {...inputProps("password")} maxLength={200} value={password} onChange={(e) => setPassword(e.target.value)} />,
-        `${MIN_PASSWORD_LENGTH}자 이상 · 직원에게 직접 전달해 주십시오`,
+        `${MIN_PASSWORD_LENGTH}자 이상으로 정해 직원에게 직접 전달해 주십시오`,
       )}
       <PermissionPicker value={perms} onChange={setPerms} disabled={locked} />
       <button className={`btn btn-lg btn-block${busy ? " is-loading" : ""}`} type="submit" disabled={locked}>
-        {busy ? "생성 중" : "계정 생성"}
+        {busy ? "만드는 중" : "직원 계정 만들기"}
       </button>
     </form>
   );

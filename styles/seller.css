@@ -564,8 +564,10 @@ body {
 .staff-table-wrap {
   overflow-x: auto;
 }
-.staff-table {
-  min-width: 720px;
+@media (min-width: 768px) {
+  .staff-table {
+    min-width: 720px;
+  }
 }
 .staff-table td:nth-child(4) {
   white-space: nowrap;
@@ -611,7 +613,7 @@ body {
   max-height: calc(100vh - 40px);
   overflow-y: auto;
 }
-@media (max-width: 1023px) {
+@media (max-width: 1279px) {
   .staff-grid {
     grid-template-columns: minmax(0, 1fr);
   }

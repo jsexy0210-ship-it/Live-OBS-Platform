@@ -78,9 +78,18 @@ async function verify(page: Page, wrongFirst = false, startPath = "/api/seller-s
 
 type Account = { email: string; password: string; slug: string; name: string };
 
-async function signup(page: Page, opts: { mailOrderNumber: string; wrongFirst?: boolean; shots?: boolean; openedOn?: string; failApplyOnce?: boolean; overlay?: boolean }): Promise<Account> {
+async function signup(page: Page, opts: { mailOrderNumber: string; wrongFirst?: boolean; shots?: boolean; openedOn?: string; failApplyOnce?: boolean; overlay?: boolean; postcodeFail?: boolean }): Promise<Account> {
   const id = uniq();
   const a: Account = { email: `partner-${id}@example.com`, password: `pw-${id}-long`, slug: `p-${id}`, name: `김${letters(id)}` };
+  // 우편번호 서비스 스크립트는 외부(다음) 주소라 시험에서는 가짜로 바꾼다. fallback은 postcode: "fail"로 막는다
+  await page.route("**/postcode.v2.js", (route) =>
+    opts.postcodeFail
+      ? route.abort()
+      : route.fulfill({
+          contentType: "application/javascript",
+          body: "window.daum={Postcode:function(o){this.open=function(){o.oncomplete({zonecode:'06236',roadAddress:'서울 강남구 테헤란로 152',jibunAddress:'서울 강남구 역삼동 737',userSelectedType:'R',buildingName:'역삼동',apartment:'Y'})}}}",
+        }),
+  );
   await page.goto("/seller/login");
   // 앞에서 하던 가입 입력이 이 탭에 남아 있으면 지운다(새로 시작)
   await page.evaluate(() => sessionStorage.clear());
@@ -141,7 +150,24 @@ async function signup(page: Page, opts: { mailOrderNumber: string; wrongFirst?: 
   await page.getByLabel("개업일").fill(opts.openedOn ?? "20200101");
   await page.getByLabel("통신판매업 신고번호").fill(opts.mailOrderNumber);
   await page.getByLabel("연락처").fill("010-1234-5678");
-  await page.getByLabel("기본 주소").fill("서울 강남구 테헤란로 1");
+  if (opts.postcodeFail) {
+    // 스크립트를 못 불러오면 안내가 뜨고 우편번호 · 기본 주소 칸이 입력칸으로 바뀐다
+    await expect(page.getByText("주소 검색을 열지 못했어요. 우편번호와 주소를 직접 적어 주세요")).toBeVisible();
+    await expect(page.getByRole("button", { name: "주소 검색" })).toBeDisabled();
+    await shot(page, "PF-007-4-postcode-fail");
+    await page.getByLabel("우편번호").fill("06236");
+    await page.getByLabel("기본 주소").fill("서울 강남구 테헤란로 152");
+    await page.getByLabel("상세 주소").fill("3층");
+  } else {
+  // 「주소 검색」: 무료 우편번호 서비스 스크립트(시험에서는 가짜 스크립트)의 검색 결과로 우편번호·기본 주소가 채워지고 상세 주소로 이동한다
+  await expect(page.getByRole("button", { name: "주소 검색" })).toBeEnabled();
+  await expect(page.getByLabel("기본 주소")).toHaveAttribute("readonly", "");
+  await page.getByRole("button", { name: "주소 검색" }).click();
+  await expect(page.getByLabel("우편번호")).toHaveValue("06236");
+  await expect(page.getByLabel("기본 주소")).toHaveValue("서울 강남구 테헤란로 152 (역삼동)");
+  await expect(page.getByLabel("상세 주소")).toBeFocused();
+  await page.getByLabel("상세 주소").fill("3층");
+  }
   // 「조회」: 국세청 조회 결과가 사업자등록번호 아래에 보인다
   await page.getByRole("button", { name: "조회", exact: true }).click();
   await expect(page.getByText("계속사업자")).toBeVisible();
@@ -180,6 +206,11 @@ test("방송 화면만 쓰기(있어요)를 고르면 사업자 정보 없이 3�
   // 신청이 끝난 주소는 쓸 수 없다고 답한다
   const taken = await page.request.get(`/api/seller-signup/slug-check?slug=${a.slug}`);
   expect(await taken.json()).toEqual({ available: false, reason: "taken" });
+});
+
+test("주소 검색 스크립트를 못 불러오면 안내가 뜨고 우편번호·주소를 직접 적어 신청할 수 있다", async ({ page }) => {
+  await signup(page, { mailOrderNumber: "제2024-서울강남-01234호", postcodeFail: true });
+  await expect(page.getByRole("heading", { name: "가입을 마쳤어요" })).toBeVisible();
 });
 
 test("파트너스 가입 신청 → 바로 승인 → 로그인 → 비밀번호 찾기로 새 비밀번호 → 새 비밀번호로만 로그인", async ({ page }) => {

@@ -9,7 +9,7 @@
 }
 .ove-cols {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr) 360px;
+  grid-template-columns: 300px minmax(0, 1fr) 360px;
   gap: 16px;
   align-items: start;
 }
@@ -234,4 +234,23 @@ textarea.ove-txt {
   color: #fff;
   background: repeating-conic-gradient(#2b2b30 0% 25%, #35353b 0% 50%) 0 0 / 24px 24px;
   font-family: "Wanted Sans Variable", "Wanted Sans", "Apple SD Gothic Neo", sans-serif;
+}
+
+/* 왼쪽 열: 꾸미는 칸 · 템플릿 · 캔버스(보드 SA-051의 위젯 · 템플릿 · 캔버스 순서) */
+.ove-left {
+  min-width: 0;
+}
+.ove-sec {
+  padding-top: 16px;
+  border-top: 1px solid var(--wds-line-normal-alternative, #e1e2e4);
+}
+.ove-sec .ove-tbl td {
+  padding: 8px;
+}
+.ove-sec .ove-tbl td:last-child .row {
+  flex-direction: column;
+  align-items: stretch;
+}
+.ove-canvas-opts .seg {
+  align-self: flex-start;
 }
