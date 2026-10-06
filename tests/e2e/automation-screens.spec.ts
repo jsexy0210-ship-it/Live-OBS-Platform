@@ -184,4 +184,14 @@ test("파트너스: 다른 카드로 결제 — 서버가 준 결제창 값을 �
   await page.route(`**/api/automation/jobs/${jobId}`, (route) => route.fulfill({ json: job("AWAITING_PAYMENT", "PENDING") }));
   await page.goto(`/seller/automation/${jobId}?payment=pending`);
   await expect(page.getByTestId("pay-result-pending")).toContainText("결제를 확인하고 있습니다 · 카드사 승인 뒤 서버가 한 번 더 확인합니다");
+
+  // 주소만 고쳐 ?payment=paid를 붙여도 서버 상태가 결제됨이 아니면 「결제됐습니다」는 뜨지 않는다(쿼리는 표시 힌트일 뿐)
+  await page.goto(`/seller/automation/${jobId}?payment=paid`);
+  await expect(page.getByTestId("job-status")).toContainText("결제 확인 중");
+  await expect(page.getByTestId("pay-result-paid")).toHaveCount(0);
+  await page.unroute(`**/api/automation/jobs/${jobId}`);
+  await page.route(`**/api/automation/jobs/${jobId}`, (route) => route.fulfill({ json: job("AWAITING_PAYMENT", "FAILED") }));
+  await page.goto(`/seller/automation/${jobId}?payment=paid`);
+  await expect(page.getByTestId("pay-result-paid")).toHaveCount(0);
+  await expect(page.getByTestId("pay-result-pending")).toHaveCount(0);
 });

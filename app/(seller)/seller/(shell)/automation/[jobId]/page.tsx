@@ -89,7 +89,7 @@ export default function AutomationProgressPage() {
           actions={cancelable && <button className="btn btn-out" type="button" onClick={() => void act("cancel", "자동 연결을 취소했습니다", { title: "자동 연결을 취소하시겠습니까?", body: j.status === "QUEUED" ? "아직 연결을 시작하지 않았습니다. 취소한 뒤 환불을 요청할 수 있습니다." : "진행을 멈추고 지금까지 바꾼 설정을 되돌립니다. 설정을 시작한 뒤라 환불되지 않습니다 · 결제 전에 동의하신 내용입니다.", confirmLabel: "그만두기", danger: true })}>자동 설정 그만두기</button>}
         />
         <div className="col" style={{ gap: 16 }}>
-          {payment === "paid" && (
+          {payment === "paid" && j.paymentStatus === "PAID" && (
             <div className="msg msg-pos" role="status" data-testid="pay-result-paid"><span><b>결제됐습니다</b> · 자동 연결을 시작합니다 · 카드 매출전표는 구독 · 결제 메뉴에서 내려받습니다</span></div>
           )}
           {payment === "pending" && j.status === "AWAITING_PAYMENT" && (
