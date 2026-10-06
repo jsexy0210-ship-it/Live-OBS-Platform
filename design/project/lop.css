@@ -1091,3 +1091,8 @@ select.inp{cursor:pointer}
 .sh24.m .mh.sub{height:56px}
 .sh24.m .mh .mi.bk{width:44px;height:44px;margin-left:-10px;color:var(--ink)}
 .sh24.m .mh .mi.bk svg{width:20px;height:20px}
+/* 2026-10-06 관리자 인증 카드(AU-001~012) 승인된 현대화 수치(UI_STATUS 2단계 ★ 관리자 로그인): 안쪽 32/24 · 모서리 12 · 제목 20/28 · 항목 사이 16. 구조(왼쪽 브랜드 줄 · 분절 탭 · 420)는 카페24식 정본 그대로 */
+.c24 .auth{padding:32px 24px;border-radius:var(--ui-r-card)}
+.c24 .auth h1{line-height:28px}
+.c24 .auth .fl{margin:16px 0 4px}
+.c24 .auth .b.lg.w{margin-top:16px}
