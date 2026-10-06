@@ -97,9 +97,13 @@
 }
 
 @media (min-width: 1200px) {
+  .wishlist-view .wl-tabs,
   .wishlist-view .wishlist-grid {
     width: calc(100% + 32px);
     margin-left: -16px;
+  }
+
+  .wishlist-view .wishlist-grid {
     column-gap: 24px;
   }
 }
