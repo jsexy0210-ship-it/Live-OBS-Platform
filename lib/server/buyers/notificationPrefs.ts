@@ -90,13 +90,12 @@ export async function setNotificationPrefs(db: PrismaClient, scope: Scope, raw: 
   // 혜택·이벤트 칸 = 마케팅 동의. 바뀔 때만 마케팅 동의 기록(철회 시각·감사 로그)을 같은 규칙으로 남긴다.
   const cur = await readMarketingConsent(db, scope);
   if (!cur) return { ok: false as const, reason: "not_found" as const };
-  let agreed = cur.agreed;
+  // 동의 없이 광고성 칸을 켜는 요청은 동의 기록을 바꾸기 전에 거절한다(오류 응답인데 동의 상태만 바뀌는 일이 없게)
+  if (!(parsed.benefit ?? cur.agreed) && parsed.cells.some((c) => AD.has(c.kind) && c.enabled)) return { ok: false as const, reason: "marketing_consent_required" as const };
   if (parsed.benefit !== undefined && (parsed.benefit !== cur.agreed || (parsed.benefit && cur.version !== SIGNUP_CONSENT_VERSIONS.marketing))) {
     const r = await setMarketingConsent(db, scope, { agreed: parsed.benefit, marketingVersion: body.marketingVersion }, meta);
     if (!r.ok) return r.reason === "not_found" ? { ok: false as const, reason: "not_found" as const } : { ok: false as const, reason: r.reason === "consent_outdated" ? ("consent_outdated" as const) : ("invalid_notification_prefs" as const) };
-    agreed = r.state.agreed;
   }
-  if (!agreed && parsed.cells.some((c) => AD.has(c.kind) && c.enabled)) return { ok: false as const, reason: "marketing_consent_required" as const };
   await db.$transaction(async (tx) => {
     // 같은 회원의 동시 저장을 한 줄로 세운다
     await tx.$queryRaw`SELECT "id" FROM "BuyerMember" WHERE "id" = ${scope.buyerMemberId}::uuid AND "sellerId" = ${scope.sellerId}::uuid FOR UPDATE`;
