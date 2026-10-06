@@ -9,7 +9,7 @@
 | `Dockerfile` | 앱 이미지(Next.js standalone, `node server.js`) + 마이그레이션 이미지(`migrator` 단계) |
 | `deploy/docker-compose.yml` | 프로젝트 `obs-web`: DB·마이그레이션·앱·프록시 |
 | `deploy/Caddyfile` | 80·443을 받아 앱으로 넘기는 리버스 프록시 |
-| `.github/workflows/deploy-obs-test.yml` | 수동 배포 워크플로(VM 안의 self-hosted runner에서 실행) |
+| `.github/workflows/deploy-obs-test.yml` | main push의 CI 성공 뒤 자동 배포·수동 재배포 워크플로(VM 안의 self-hosted runner에서 실행) |
 | `app/api/health/route.ts` | `GET /api/health` 기동·DB 확인 |
 
 | 서비스 | 내용 | 밖으로 여는 포트 |
@@ -33,31 +33,41 @@
 
 ### 권고: VM 안의 self-hosted runner
 
-VM에 GitHub Actions runner(라벨 `obs-kakao`)를 **상시 서비스로 등록**해 두고, Actions 화면에서 수동 실행하면 runner가 main을 받아 VM에서 이미지를 빌드·기동하는 방식이에요(2026-10-03 대표님 결정, 아래 「runner 보안」). **먼저 꼭 할 설정**: Settings → Actions → General → 「Approval for running fork pull request workflows from contributors」를 **Require approval for all external contributors**로 바꿔요(이 설정 없이 runner를 등록하지 않아요).
+VM에 GitHub Actions runner(라벨 `obs-kakao`)를 **상시 서비스로 등록**해 두고, main에 push(일반 커밋·PR 병합)가 생기고 **같은 SHA의 CI 전체가 성공하면** 해당 커밋을 VM에서 빌드·기동해요(2026-10-06 대표님 자동 배포 지시). 수동 실행은 긴급 재배포용으로 남겨요. 기존 테스트 VM만 사용하고 새 유료 인프라는 추가하지 않아요(아래 「runner 보안」). **먼저 꼭 할 설정**: Settings → Actions → General → 「Approval for running fork pull request workflows from contributors」를 **Require approval for all external contributors**로 바꿔요(이 설정 없이 runner를 등록하지 않아요).
 
 - runner는 GitHub로 나가는 연결만 써요. SSH 22를 인터넷에 열 필요가 없어요.
 - 비밀값은 서버의 `/opt/obs/.env`에만 있어요. GitHub Secrets에 DB 비밀번호를 둘 필요가 없어요.
 - 레지스트리(GHCR 용량 과금 가능성) 없이 동작해요.
-- 주의: runner가 받은 코드를 VM에서 그대로 실행해요. 그래서 배포 워크플로는 `workflow_dispatch`만, main만, Environment `obs-test`로 묶어야 하고, PR·다른 브랜치·fork에서는 절대 runner로 가지 않아야 해요.
+- 주의: runner가 받은 코드를 VM에서 그대로 실행해요. 그래서 배포 워크플로는 main push의 CI 성공을 받는 `workflow_run`과 main `workflow_dispatch`만, 이 저장소만, Environment `obs-test`로 묶고, PR·다른 브랜치·fork에서는 절대 runner로 가지 않아야 해요.
 
 워크플로 `Deploy obs-test`가 하는 일:
 
-1. 입력한 커밋 SHA가 실행 시점의 main과 같은지, `/opt/obs/.env`가 있는지 확인
-2. main 체크아웃
+1. GitHub 호스팅 gate가 CI의 실제 저장소·main push·성공 결과를 확인. CI가 검사한 SHA가 현재 main인지, 그 SHA의 최신 CI가 성공했는지 확인(수동 실행도 같은 검사·`confirm_sha` 확인)
+2. VM에서 main·CI를 다시 확인한 뒤 `/opt/obs/.env` 존재 확인. gate를 통과한 SHA를 고정해 체크아웃
 3. DB가 있으면 배포 전 백업(`/opt/obs/backups/obs-<KST 시각>-before-<SHA 7자리>.dump`)
 4. `docker compose ... up -d --build --wait`(마이그레이션 → 앱 healthy → 프록시)
 5. `http://127.0.0.1/api/health`의 `version`이 배포 SHA이고 `db`가 `ok`인지 확인
 6. 성공하면 `/opt/obs/deploy-history.log`에 KST 시각·SHA·실행 번호·실행자를 남기고 실행 요약에 표시
 
-CI의 「No deploy workflows」 검사가 self-hosted runner를 이 워크플로 하나에만 허용하고, `workflow_dispatch` 말고 다른 트리거가 생기면 실패해요.
+CI의 「No deploy workflows」 검사는 승인된 self-hosted 워크플로만 허용해요. 자동 실행 예외는 `deploy-obs-test.yml`의 main push CI 성공 `workflow_run`뿐이고, 시험 데이터·디스크 정리·운영 배포는 계속 수동 실행만 허용해요. CI 성공·main push·CI 원본 저장소 조건과 gate 의존 관계, 배포 job의 저장소·main 조건과 `obs-kakao` 라벨·`obs-test` Environment도 검사해요.
 
-#### 배포 실행 순서
+#### 자동 배포와 승인 상태
 
-runner는 처음 한 번 상시 서비스로 등록해 둬요(「서버 준비」 5번). 그 뒤 배포할 때마다 이 순서를 따라요.
+runner 등록은 처음 한 번만 해요(「서버 준비」 5번). 이 변경이 main에 병합되면 그 병합 push의 CI 성공부터 자동 배포 대상이에요. `CI` 워크플로가 완료되면 배포 워크플로 실행이 만들어지고, 성공한 이 저장소의 main push만 gate로 들어가요. CI 실패·취소, PR CI·fork·다른 브랜치·태그·예약 실행은 VM 배포 job을 시작하지 않아요. 앱 변경 경로 필터가 없어 문서만 바뀐 main push도 CI가 성공하면 대상이에요. main 병합 전 CI·검수 기준도 그대로 지켜요.
 
-1. 배포할 main 커밋을 확인해요(저장소 첫 화면 또는 Commits에서 맨 위 커밋의 앞 7자리).
-2. Actions → **Deploy obs-test** → **Run workflow**를 눌러요. Branch는 **main** 그대로 두고, `confirm_sha`에 1의 앞 7자리를 넣고 실행해요.
-   - 다른 브랜치를 고르면 job이 건너뛰어져요. 입력한 SHA가 main과 다르면(그새 병합이 있었으면) 멈춰요.
+**자동 실행 생성과 무인 배포 완료는 달라요.** 기존 Environment `obs-test`와 보호 규칙을 유지해요. Required reviewers(기존 기록: 대표님), 대기 시간 또는 다른 배포 보호 규칙이 있으면 runner 실행 전에 기다려요. Required reviewers가 적용되는 한 **승인 없이 끝나는 무인 자동 배포는 아직 완료가 아니에요.** 2026-10-06 이 변경 작업에서 Environment API 조회는 Forbidden으로 실패해 실제 보호 설정을 확인하지 못했어요. 설정 변경·API 승인 우회·시험 배포는 하지 않았어요. 무인 배포를 마치려면 저장소 관리자가 `obs-test`의 Required reviewers 설정 변경과 다른 보호 규칙을 검토해야 해요. main만 허용하는 배포 브랜치 제한과 외부 기여자 PR 승인 설정은 유지해요.
+
+- main push → 같은 SHA의 **CI** 전체 성공 → **Deploy obs-test**의 GitHub 호스팅 gate가 현재 main·최신 CI 성공 확인 → Environment 보호 규칙 통과 → VM에서 main·CI 재확인 → 같은 SHA 배포 → 실행 요약과 health 확인 순서예요.
+- gate 시점에 main이 바뀐 오래된 SHA는 VM runner로 가지 않아요. gate를 통과한 뒤 승인·runner 대기 중 main이 바뀌면 VM 첫 검사에서 배포를 멈춰요. VM 재검사 뒤 main이 바뀌는 짧은 경합까지 막는 원자적 잠금은 없고, 이미 시작한 배포는 중단하지 않아요.
+- 배포는 동시에 한 건만 돌아요(`cancel-in-progress: false`). 진행 중인 배포를 새 push가 중단하지 않아요. 대기 실행이 여러 개면 GitHub concurrency가 기존 대기 실행을 새 것으로 바꿀 수 있어 중간 커밋 모두가 배포되지는 않아요.
+- 자동 실행에서는 성공한 CI의 SHA를 쓰므로 `confirm_sha`를 입력할 필요가 없고, 선택 사항인 이미지 버킷 조회도 하지 않아요.
+- 실패한 배포는 자동 재시도하지 않아요. 원인을 해결한 뒤 해당 Actions 실행을 재실행하거나 아래 수동 재배포를 사용해요.
+
+#### 수동 재배포 순서
+
+1. 배포할 main 커밋과 같은 SHA의 **CI** 성공을 확인해요(저장소 첫 화면 또는 Commits에서 맨 위 커밋의 앞 7자리). CI가 실패·진행 중이면 수동 실행도 VM에 들어가지 않아요.
+2. Actions → **Deploy obs-test** → **Run workflow**를 눌러요. Branch는 **main**으로 두고, `confirm_sha`에 1의 앞 7자리를 넣고 실행해요.
+   - 다른 브랜치를 고르면 job이 건너뛰어져요. 입력한 SHA가 실행 대상 main 커밋과 다르면 멈춰요.
 3. Environment `obs-test`에 Required reviewers가 있으면 **Review deployments → Approve**를 눌러요.
 4. 끝나면 실행 요약의 「obs-test 배포 완료」와 커밋을 확인하고, 브라우저로 주소를 열어 봐요.
 
@@ -68,7 +78,8 @@ runner는 처음 한 번 상시 서비스로 등록해 둬요(「서버 준비�
 
 | 실패한 단계 | 확인할 것 |
 | --- | --- |
-| Check target commit | `confirm_sha`가 지금 main 맨 위 커밋과 같은지. `/opt/obs/.env`가 있는지 |
+| Verify current main and exact-SHA CI / Recheck main and CI before deploy | 실행 대상 SHA가 현재 main인지, 같은 SHA의 최신 CI가 완료·성공했는지 |
+| Check target commit | 수동 실행이면 `confirm_sha`가 실행 대상 main 커밋과 같은지. `/opt/obs/.env`가 있는지 |
 | Waiting for a runner(시작 안 함) | 서버에서 `sudo bash -c 'cd /home/obs && ./svc.sh status'`가 active인지, GitHub Runners 화면에 `obs-web-test`가 Idle인지, 등록 때 라벨 `obs-kakao`를 넣었는지 |
 | Backup / Build and start에서 permission denied | `obs` 계정이 `docker` 그룹인지(`id obs`). 그룹을 추가한 뒤에는 runner 서비스를 다시 시작해야 해요(`sudo ./svc.sh stop && sudo ./svc.sh start`) |
 | Build and start | 마이그레이션 실패(`obs-web-migrate` 로그), `.env` 값 누락(`POSTGRES_*`), 디스크 부족(`df -h`) |
@@ -232,9 +243,9 @@ $C up -d --wait         # 같은 버전 그대로, 앱·마이그레이션이 �
    ```
    - 지금 obs-test 서버(obs-web-test)의 runner는 `/home/obs`에 설치돼 있어요(2026-10-03). 그 서버에서는 위·아래 명령의 `/opt/obs/actions-runner`를 `/home/obs`로 바꿔 써요.
    GitHub Runners 화면에 `obs-web-test`가 **Idle**로 보이면 끝이에요.
-4. Settings → Environments → `obs-test`를 이렇게 설정하길 권해요.
-   - Deployment branches and tags: **Selected branches** → `main`만
-   - Required reviewers: **대표님** (실행할 때마다 승인 한 번)
+4. Settings → Environments → `obs-test`의 기존 보호 설정을 확인해요.
+   - Deployment branches and tags: **Selected branches** → `main`만 유지
+   - Required reviewers: 기존 기록은 **대표님**(실행할 때마다 승인). 이 규칙이 남아 있으면 자동 실행도 승인 대기해요. 무인 자동 배포 전환에는 관리자의 설정 검토·변경이 필요해요(위 「자동 배포와 승인 상태」). 이 작업은 설정을 바꾸지 않아요.
 
 GitHub Secrets·Variables는 이 방식에서 필요 없어요(비밀값은 서버 `.env`에만).
 
