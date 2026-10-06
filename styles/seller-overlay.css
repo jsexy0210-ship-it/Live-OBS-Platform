@@ -40,3 +40,16 @@
     align-items: stretch;
   }
 }
+.ovu-url + .btn {
+  flex: 0 0 auto;
+  min-width: 56px;
+}
+@media (max-width: 600px) {
+  .ovu-url {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+  .ovu-ac td.col-text {
+    min-width: 120px;
+  }
+}

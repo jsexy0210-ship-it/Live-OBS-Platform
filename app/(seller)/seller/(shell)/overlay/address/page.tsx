@@ -290,7 +290,7 @@ export default function OverlayPage() {
                 </span>
               ) : (
                 <>
-                  <table className="tbl" data-testid="ovu-accesses">
+                  <table className="tbl ovu-ac" data-testid="ovu-accesses">
                     <thead>
                       <tr>
                         <th style={{ width: 160 }}>시각</th>
