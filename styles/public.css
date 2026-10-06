@@ -54,7 +54,7 @@
 .pf-faq p{margin:12px 0 0;line-height:1.6}
 .pf-more{display:inline-block;margin-top:16px;font-weight:700}
 .pf-end{display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center}
-.pf-end h2{margin:0 0 8px}
+.pf-end h2{margin:0}
 .pf-foot{padding:40px 64px;background:var(--page);display:flex;flex-direction:column;gap:20px}
 .pf-foot-top{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap}
 .pf-foot-brand{display:flex;flex-direction:column;gap:8px}
@@ -104,10 +104,10 @@ body:has(.pf){margin:0}
 .pf-mt-box .btn{margin-top:8px}
 /* PF-005·006 공지 */
 .pf-notice-list{list-style:none;margin:var(--ui-sp-24) 0;padding:0;max-width:900px;display:flex;flex-direction:column}
-.pf-notice-row{display:flex;align-items:center;gap:var(--ui-sp-12);padding:var(--ui-sp-16) 0;box-shadow:inset 0 -1px 0 var(--wds-line-normal-alternative);color:inherit}
+.pf-notice-row{display:flex;align-items:center;justify-content:space-between;gap:var(--ui-sp-16);padding:18px 4px;text-decoration:none;box-shadow:inset 0 -1px 0 var(--wds-line-normal-alternative);color:inherit}
 .pf-notice-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pf-notice-body{white-space:pre-wrap;line-height:1.8}
-@media (max-width:600px){.pf-notice-row{flex-wrap:wrap}.pf-notice-title{flex-basis:100%;order:3;white-space:normal}}
+@media (max-width:600px){.pf-notice-row{flex-wrap:wrap}.pf-notice-l{flex-wrap:wrap}.pf-notice-title{flex-basis:100%;white-space:normal}}
 
 /* 파트너스 가입 신청 PF-007: 페이지 배경 + 가운데 단(640/760) + 진행 표시 + 카드 밖 제목(h2) */
 .pf-su{padding:56px 64px 80px;background:var(--page)}
@@ -131,12 +131,68 @@ body:has(.pf){margin:0}
 .pf-su-h2{font-size:14px;line-height:20px;letter-spacing:.0145em;font-weight:700;margin:4px 0 0}
 }
 .pf-su-card>.pa-fs{gap:20px}
-
-.pf-faq-c summary{display:flex;justify-content:space-between;align-items:center;list-style:none}
-.pf-faq-c summary::-webkit-details-marker{display:none}
-.pf-faq-c summary::after{content:"+";color:var(--wds-label-alternative,#888)}
-.pf-faq-c details[open]>summary::after{content:"−"}
+.pf-faq-c summary,.pf-faq-mk summary{display:flex;justify-content:space-between;align-items:center;list-style:none}
+.pf-faq-c summary::-webkit-details-marker,.pf-faq-mk summary::-webkit-details-marker{display:none}
+.pf-faq-c summary::after,.pf-faq-mk summary::after{content:"+";color:var(--wds-label-alternative,#888)}
+.pf-faq-c details[open]>summary::after,.pf-faq-mk details[open]>summary::after{content:"−"}
 .pf-pricing .pf-plan .pf-check{gap:var(--ui-sp-16)}
 .pf-pricing .pf-plan .pf-check li{align-items:center}
 .pf-pricing .pf-plan .pf-check li::before{font-size:16px}
 .pf-pricing .pf-plan .pf-brand{margin-bottom:var(--ui-sp-4)}
+
+/* 공개 화면 바탕은 흰색(정본 보드 --page:#fff) */
+.app.pf{--page:#fff}
+/* PF-001 정본 구조 */
+.pf-hero{padding:72px 64px 80px}
+.pf-sample{flex:none;width:389px;height:691px;overflow:hidden;border-radius:18px;box-shadow:var(--wds-shadow-large)}
+.pf-sample .o-root{width:1080px;height:1920px;transform:scale(.36);transform-origin:0 0}
+.pf-hero .btn-xl{min-height:56px}
+.pf-ico{width:44px;height:44px;border-radius:12px;background:var(--info-bg);color:var(--brand);display:flex;align-items:center;justify-content:center}
+.pf-card{padding:24px;gap:10px}
+.pf-price-row{display:flex;gap:24px;align-items:stretch;flex-wrap:wrap}
+.pf-price-card{padding:32px;gap:14px;width:420px;max-width:100%;box-shadow:inset 0 0 0 2px var(--brand)}
+.pf-nowrap{white-space:nowrap}
+.pf-chks{gap:10px;justify-content:center}
+.pf-chk{gap:8px;color:var(--pos-text)}
+.pf-faq-home{max-width:860px;margin:36px 0 0;text-align:left}
+@media (max-width:760px){
+  .pf-sample{width:350px;max-width:100%;height:622px;margin:0 auto}
+  .pf-sample .o-root{transform:scale(.324)}
+  .pf-price-card{width:100%}
+}
+
+/* PF-002 정본: 기능별 좌우 교대 섹션 */
+.pf-feat-page{padding:80px 64px}
+.pf-feat-page>p{margin:8px 0 8px}
+.pf-feat-row{display:flex;gap:48px;align-items:center;padding:56px 0;box-shadow:inset 0 -1px 0 var(--wds-line-normal-alternative)}
+.pf-feat-row.rev{flex-direction:row-reverse}
+.pf-feat-text{flex:1;gap:14px;min-width:0}
+.pf-feat-text h2,.pf-feat-text p{margin:0}
+.pf-feat-text p{line-height:1.7}
+.pf-chk{color:var(--pos-text);flex:none;display:inline-flex}
+.pf-mock{flex:1;min-width:0;min-height:320px;padding:20px;display:flex;align-items:center;justify-content:center;background:var(--page);box-shadow:none}
+.pf-mock-in{width:420px;max-width:100%;padding:16px;gap:10px}
+.pf-mock-row{padding:8px 10px;border-radius:8px;background:var(--wds-fill-alternative)}
+.pf-sample.pf-sample-sm{width:184px;height:326px}
+.pf-sample-sm .o-root{transform:scale(.17)}
+@media (max-width:760px){
+  .pf-feat-page{padding:40px 20px}
+  .pf-mock{min-height:0}
+  .pf-feat-row,.pf-feat-row.rev{flex-direction:column;align-items:stretch;gap:24px;padding:32px 0}
+  .pf-sample.pf-sample-sm{width:184px;height:326px;margin:0 auto}
+  .pf-sample-sm .o-root{transform:scale(.17)}
+}
+
+/* PF-004 정본: 검색 칸(돋보기), 문의 카드 한 줄 */
+.pf-faq-search{position:relative;margin:var(--ui-sp-16) 0 var(--ui-sp-24)}
+.pf-faq-search .pf-search-ico{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--wds-label-assistive);display:flex}
+.pf-faq-search .inp{padding-left:40px}
+.pf-chips{margin-bottom:var(--ui-sp-16)}
+.pf-ask.row{flex-direction:row;align-items:center;padding:20px 24px;margin-top:32px;gap:16px;flex-wrap:wrap}
+.pf-ask.row .btn{margin-top:0}
+.pf-notice-l{gap:10px;min-width:0;align-items:center;flex:1}
+.pf-notice-date{flex:none}
+.pf-chips a.chip{text-decoration:none}
+.pf a.pf-notice-row{color:var(--wds-label-normal)}
+.pf .pf-chips a.chip{color:var(--wds-label-neutral)}
+.pf .pf-chips a.chip.on{color:var(--page)}

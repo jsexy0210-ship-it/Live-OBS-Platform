@@ -164,40 +164,42 @@ export default function SeoSettingsPage() {
               </div>
             )}
 
-            <FormSection title="검색 결과 표시">
+            <FormSection title="쇼핑몰 기본">
+              <FormRow label="검색 노출" help="허용 안 함이면 검색엔진에 「수집 금지」로 안내합니다 · 이미 나온 결과가 사라지기까지는 시간이 걸립니다">
+                <div className="row" style={{ gap: 16 }} role="radiogroup" aria-label="검색 노출">
+                  <label className="chk">
+                    <input type="radio" name="seo-indexing" checked={form.indexingEnabled} onChange={() => set("indexingEnabled", true)} />
+                    허용
+                  </label>
+                  <label className="chk">
+                    <input type="radio" name="seo-indexing" checked={!form.indexingEnabled} onChange={() => set("indexingEnabled", false)} />
+                    허용 안 함
+                  </label>
+                </div>
+              </FormRow>
               <FormRow label="검색 제목" htmlFor="seo-title" help={err("searchTitle") ? <span className="err">{err("searchTitle")}</span> : `비우면 쇼핑몰 이름을 씁니다 · ${len(form.searchTitle)} / ${TITLE_MAX}자`}>
                 <input id="seo-title" className={`inp${err("searchTitle") ? " is-error" : ""}`} type="text" value={form.searchTitle} onChange={(e) => set("searchTitle", e.target.value)} aria-invalid={!!err("searchTitle")} style={{ width: "100%", maxWidth: 480 }} />
               </FormRow>
               <FormRow label="검색 설명" htmlFor="seo-desc" help={err("searchDescription") ? <span className="err">{err("searchDescription")}</span> : `${len(form.searchDescription)} / ${DESCRIPTION_MAX}자`}>
                 <textarea id="seo-desc" className={`inp${err("searchDescription") ? " is-error" : ""}`} rows={3} value={form.searchDescription} onChange={(e) => set("searchDescription", e.target.value)} aria-invalid={!!err("searchDescription")} style={{ width: "100%", maxWidth: 480 }} />
               </FormRow>
-              <FormRow label="미리보기">
-                <div className="card" data-testid="seo-preview" style={{ padding: 12, maxWidth: 480 }}>
-                  <div className="t-l1 fw6">{previewTitle}</div>
-                  <div className="t-c1 c-alt">{previewDesc}</div>
-                </div>
-              </FormRow>
-            </FormSection>
-
-            <div style={{ marginTop: 32 }}>
-              <FormSection title="노출 설정">
-                <FormRow label="검색 노출" help="끄면 검색 사이트에 쇼핑몰이 나오지 않도록 요청합니다 · 이미 나온 결과가 사라지기까지는 시간이 걸립니다">
-                  <label className="chk">
-                    <input type="checkbox" checked={form.indexingEnabled} onChange={(e) => set("indexingEnabled", e.target.checked)} />
-                    검색 사이트에 쇼핑몰 노출
-                  </label>
-                </FormRow>
-                <FormRow label="사이트맵" help="검색 사이트가 상품 주소를 찾을 수 있게 목록을 제공합니다">
+              <FormRow label="사이트맵" help="검색 사이트가 상품 주소를 찾을 수 있게 목록을 제공합니다">
                   <label className="chk">
                     <input type="checkbox" checked={form.sitemapEnabled} onChange={(e) => set("sitemapEnabled", e.target.checked)} />
                     사이트맵 제공
                   </label>
                 </FormRow>
-              </FormSection>
-            </div>
+              <FormRow label="구글 확인 코드" htmlFor="seo-google" help={err("googleVerification") ? <span className="err">{err("googleVerification")}</span> : "구글 서치 콘솔이 알려 주는 메타 태그의 content 값만 입력합니다"}>
+                  <input id="seo-google" className={`inp${err("googleVerification") ? " is-error" : ""}`} type="text" value={form.googleVerification} onChange={(e) => set("googleVerification", e.target.value)} aria-invalid={!!err("googleVerification")} style={{ width: "100%", maxWidth: 480 }} />
+                </FormRow>
+              <FormRow label="네이버 확인 코드" htmlFor="seo-naver" help={err("naverVerification") ? <span className="err">{err("naverVerification")}</span> : "네이버 서치어드바이저가 알려 주는 메타 태그의 content 값만 입력합니다"}>
+                  <input id="seo-naver" className={`inp${err("naverVerification") ? " is-error" : ""}`} type="text" value={form.naverVerification} onChange={(e) => set("naverVerification", e.target.value)} aria-invalid={!!err("naverVerification")} style={{ width: "100%", maxWidth: 480 }} />
+                </FormRow>
+            </FormSection>
+            <p className="help" style={{ marginTop: 8 }}>파비콘과 공유 카드 이미지는 「공유 설정」에서 바꿉니다.</p>
 
             <div style={{ marginTop: 32 }}>
-              <FormSection title="상품 페이지 규칙">
+              <FormSection title="상품별 자동 생성 규칙">
                 <FormRow
                   label="상품 제목 규칙"
                   htmlFor="seo-ptitle"
@@ -215,17 +217,27 @@ export default function SeoSettingsPage() {
               </FormSection>
             </div>
 
-            <div style={{ marginTop: 32 }}>
-              <FormSection title="검색 사이트 소유 확인">
-                <FormRow label="구글 확인 코드" htmlFor="seo-google" help={err("googleVerification") ? <span className="err">{err("googleVerification")}</span> : "구글 서치 콘솔이 알려 주는 메타 태그의 content 값만 입력합니다"}>
-                  <input id="seo-google" className={`inp${err("googleVerification") ? " is-error" : ""}`} type="text" value={form.googleVerification} onChange={(e) => set("googleVerification", e.target.value)} aria-invalid={!!err("googleVerification")} style={{ width: "100%", maxWidth: 480 }} />
+            <div className="seo-state-grid" style={{ marginTop: 32 }}>
+              <FormSection title="노출 상태">
+                <FormRow label="검색 노출">
+                  <span data-testid="seo-state-indexing">{form.indexingEnabled ? "허용" : "허용 안 함"}</span>
                 </FormRow>
-                <FormRow label="네이버 확인 코드" htmlFor="seo-naver" help={err("naverVerification") ? <span className="err">{err("naverVerification")}</span> : "네이버 서치어드바이저가 알려 주는 메타 태그의 content 값만 입력합니다"}>
-                  <input id="seo-naver" className={`inp${err("naverVerification") ? " is-error" : ""}`} type="text" value={form.naverVerification} onChange={(e) => set("naverVerification", e.target.value)} aria-invalid={!!err("naverVerification")} style={{ width: "100%", maxWidth: 480 }} />
+                <FormRow label="사이트맵">
+                  <span>{form.sitemapEnabled ? "제공" : "제공 안 함"}</span>
+                </FormRow>
+                <FormRow label="기록">
+                  <span className="t-l2">설정 변경은 로그 추적에 남습니다</span>
                 </FormRow>
               </FormSection>
+              <FormSection title="검색 결과 미리보기">
+                <FormRow label="미리보기">
+                <div className="card" data-testid="seo-preview" style={{ padding: 12, maxWidth: 480 }}>
+                  <div className="t-l1 fw6">{previewTitle}</div>
+                  <div className="t-c1 c-alt">{previewDesc}</div>
+                </div>
+              </FormRow>
+              </FormSection>
             </div>
-            <p className="help" style={{ marginTop: 8 }}>파비콘과 공유 카드 이미지는 「공유 설정」에서 바꿉니다.</p>
 
             <FormFoot>
               <button className="btn btn-lg" type="submit" disabled={saving || !dirty} data-testid="seo-save">

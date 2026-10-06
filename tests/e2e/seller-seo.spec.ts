@@ -37,8 +37,8 @@ test("기본값은 검색 노출·사이트맵 켬. 제목·설명·규칙·확�
   await reset();
   await open(page);
   await expect(page.getByRole("heading", { name: "검색 노출" })).toBeVisible();
-  await expect(page.getByLabel("검색 사이트에 쇼핑몰 노출")).toBeChecked();
-  await expect(page.getByLabel("사이트맵 제공")).toBeChecked();
+  await expect(page.getByRole("radiogroup", { name: "검색 노출" }).getByRole("radio", { name: "허용", exact: true })).toBeChecked();
+  await expect(page.getByLabel("사이트맵 제공", { exact: true })).toBeChecked();
   await expect(page.getByTestId("seo-save")).toBeDisabled();
 
   await page.getByLabel("검색 제목").fill("별빛 라이브 쇼핑");
@@ -88,7 +88,7 @@ test("잘못된 입력은 저장하지 않고 이유를 보인다: 규칙의 알
 test("검색 노출을 끄는 저장은 확인 창을 거치고, 끄면 안내 띠가 보인다. 다시 켜면 확인 없이 저장된다", async ({ page }) => {
   await reset();
   await open(page);
-  await page.getByLabel("검색 사이트에 쇼핑몰 노출").uncheck();
+  await page.getByRole("radiogroup", { name: "검색 노출" }).getByRole("radio", { name: "허용 안 함" }).check();
   await page.getByTestId("seo-save").click();
   await expect(page.getByRole("dialog")).toContainText("검색 노출을 끄시겠습니까?");
   await page.getByRole("button", { name: "취소" }).click();
@@ -102,7 +102,7 @@ test("검색 노출을 끄는 저장은 확인 창을 거치고, 끄면 안내 �
   expect(res.request().postDataJSON()).toEqual({ indexingEnabled: false });
   await expect(page.getByTestId("indexing-off")).toBeVisible();
 
-  await page.getByLabel("검색 사이트에 쇼핑몰 노출").check();
+  await page.getByRole("radiogroup", { name: "검색 노출" }).getByRole("radio", { name: "허용", exact: true }).check();
   const on = page.waitForResponse(isPut);
   await page.getByTestId("seo-save").click();
   expect((await on).request().postDataJSON()).toEqual({ indexingEnabled: true });
