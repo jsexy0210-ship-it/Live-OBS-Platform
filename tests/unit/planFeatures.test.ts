@@ -170,6 +170,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/products/stock-movements": "STORE_OPERATIONS",
   "seller/reward-policy": "STORE_OPERATIONS",
   "seller/reward-live-payout": "STORE_OPERATIONS",
+  "seller/reward-balances/[memberId]/adjust": "STORE_OPERATIONS",
   "seller/share-preview": "STORE_OPERATIONS",
   "seller/seo": "STORE_OPERATIONS",
   "seller/brand-color": "STORE_OPERATIONS",
@@ -196,6 +197,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/platform-inquiries/draft": "BILLING",
   "seller/platform-inquiries/images": "BILLING",
   "seller/platform-inquiries/images/[imageId]": "BILLING",
+  "seller/platform-inquiries/files": "BILLING",
+  "seller/platform-inquiries/files/[fileId]": "BILLING",
   "seller/notices/[noticeId]": "STORE_OPERATIONS",
   "seller/notices/faq-order": "STORE_OPERATIONS",
   "seller/shop-content/banners": "STORE_OPERATIONS",
@@ -297,7 +300,6 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/orders/[orderId]": "OPEN",
   "shop/[slug]/payments": "STORE_OPERATIONS",
   "shop/[slug]/payments/bank-transfer": "STORE_OPERATIONS", // 무통장 입금 선택(shopOpenForPayment로 막음) // 주문 카드 결제 시작(startPayment가 주문 생성과 같은 조건으로 막음)
-  "shop/[slug]/payments/shipping-preview": "STORE_OPERATIONS", // 배송비 미리보기(shopOpenForPayment로 막음)
   "shop/[slug]/auth/login": "OPEN",
   "shop/[slug]/auth/logout": "OPEN",
   "shop/[slug]/auth/password-reset/request": "OPEN",

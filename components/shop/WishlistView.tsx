@@ -23,7 +23,7 @@ export default function WishlistView({ slug }: { slug: string }) {
   const [view, setView] = useState<View>({ kind: "loading" });
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string; undo?: string[] } | null>(null);
 
   const load = useCallback(async () => {
     const r = await call<{ items: Item[] }>(api);
@@ -40,11 +40,33 @@ export default function WishlistView({ slug }: { slug: string }) {
       const r = await call(`${api}/${i.productId}`, { method: "DELETE" });
       if (!r.ok && r.status !== 404) failed += 1;
     }
-    setMsg(failed === 0 ? { ok: true, text } : { ok: false, text: "일부를 빼지 못했어요. 잠시 뒤 다시 해 주세요" });
+    setMsg(failed === 0 ? { ok: true, text, undo: items.map((i) => i.productId) } : { ok: false, text: "일부를 빼지 못했어요. 잠시 뒤 다시 해 주세요" });
     setConfirming(false);
     await load();
     setBusy(false);
   }
+
+  // 되돌리기: 뺀 상품을 다시 찜한다(품절이 된 상품 등 못 찜하는 것은 건너뛰고 개수를 알린다)
+  async function undo(ids: string[]) {
+    if (busy) return;
+    setBusy(true);
+    let back = 0;
+    for (const productId of ids) if ((await call(api, { method: "POST", body: { productId } })).ok) back += 1;
+    setMsg(back === ids.length ? { ok: true, text: "다시 찜했어요" } : back > 0 ? { ok: false, text: `${back}개만 다시 찜했어요. 나머지는 찜할 수 없는 상품이에요` } : { ok: false, text: "다시 찜하지 못했어요. 잠시 뒤 다시 해 주세요" });
+    await load();
+    setBusy(false);
+  }
+
+  const msgEl = msg && (
+    <p className={`cart-msg${msg.ok ? "" : " is-err"}`} role="status">
+      {msg.text}
+      {msg.undo && (
+        <button type="button" className="shop-linkbtn" disabled={busy} onClick={() => void undo(msg.undo!)}>
+          되돌리기
+        </button>
+      )}
+    </p>
+  );
 
   const items = view.kind === "ok" ? view.items : [];
   const out = items.filter((i) => i.status !== "on_sale");
@@ -69,6 +91,7 @@ export default function WishlistView({ slug }: { slug: string }) {
       </div>
     ) : items.length === 0 ? (
       <div className="cart-empty">
+        {msgEl}
         <h2>찜한 상품이 없어요</h2>
         <p>상품 상세에서 하트를 누르면 이곳에 모여요.</p>
         <Link className="btn" href={`${base}/products`}>
@@ -80,11 +103,7 @@ export default function WishlistView({ slug }: { slug: string }) {
         <h2 className="wl-tab">
           찜 <span>{items.length}</span>
         </h2>
-        {msg && (
-          <p className={`cart-msg${msg.ok ? "" : " is-err"}`} role="status">
-            {msg.text}
-          </p>
-        )}
+        {msgEl}
         <ul className="pc-grid" aria-label="찜한 상품">
           {items.map((i) => (
             <ProductCard key={i.productId} p={card(i)} href={i.status === "unavailable" ? undefined : `${base}/products/${i.productId}`}>
