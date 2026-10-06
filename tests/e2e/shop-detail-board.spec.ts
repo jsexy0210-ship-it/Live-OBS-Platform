@@ -23,6 +23,25 @@ async function productIdOf(page: Page, name: string) {
   return list.products.find((p) => p.name === name)!.id;
 }
 
+async function expectInfoLayout(page: Page, width: number) {
+  await expect(page.locator(".pd-price-summary")).toBeVisible();
+  const priceBottom = await page.locator(".pd-price-summary").evaluate((el) => el.getBoundingClientRect().bottom);
+  const rows = await page.locator(".pd-form-row").evaluateAll((els) =>
+    els.map((el) => {
+      const rect = el.getBoundingClientRect();
+      return { name: ["pd-coupon-row", "pd-reward-row", "pd-stock-row", "pd-shipping-row", "pd-option-row", "pd-quantity-row"].find((name) => el.classList.contains(name))!, top: rect.top, bottom: rect.bottom };
+    }),
+  );
+  const order = ["pd-coupon-row", "pd-reward-row", "pd-stock-row", "pd-shipping-row", "pd-option-row", "pd-quantity-row"];
+  const ranks = rows.map((row) => order.indexOf(row.name));
+  expect(ranks.every((rank) => rank >= 0)).toBe(true);
+  expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
+  expect(priceBottom).toBeLessThanOrEqual(rows[0].top + 1);
+  for (let i = 0; i < rows.length - 1; i++) expect(rows[i].bottom).toBeLessThanOrEqual(rows[i + 1].top + 1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  if (process.env.E2E_SCREENSHOTS === "1") await page.screenshot({ path: `tests/e2e/screenshots/SH-003-info-${width}.png`, fullPage: true });
+}
+
 test("상품 문의: 쓰기(공개·비공개) → 목록·탭 개수 → 지우기, 비회원은 로그인 안내", async ({ page, baseURL }) => {
   const id = await productIdOf(page, "탑로더 25장");
   await page.goto(`/shop/${SLUG}/products/${id}`);
@@ -69,7 +88,7 @@ test("쿠폰 받기 줄·버튼 순서·공유(주소 복사)", async ({ page, b
   await login(page, baseURL!);
   const id = await productIdOf(page, "탑로더 25장");
   await page.goto(`/shop/${SLUG}/products/${id}`);
-  const row = page.locator("tr", { has: page.getByRole("rowheader", { name: "쿠폰" }) });
+  const row = page.locator(".pd-coupon-row");
   await expect(row).toContainText("상세 시험 쿠폰");
   await row.getByRole("button", { name: "쿠폰 받기" }).click();
   await expect(row.getByText("쿠폰을 받았어요")).toBeVisible();
@@ -101,6 +120,7 @@ test("휴대폰 390: 찜 · 공유 · 장바구니에 담기 · 바로 주문하
   await login(page, baseURL!);
   const id = await productIdOf(page, "탑로더 25장");
   await page.goto(`/shop/${SLUG}/products/${id}`);
+  await expectInfoLayout(page, 390);
   const boxes = await page.locator(".pd-actions button").evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return { t: (e.textContent ?? "").trim(), x: r.left, y: r.top, w: r.width, h: r.height, sw: e.scrollWidth, cw: e.clientWidth }; }));
   expect(boxes.map((b) => b.t)).toEqual(["♡", "공유", "장바구니에 담기", "바로 주문하기"]);
   expect(new Set(boxes.map((b) => Math.round(b.y))).size).toBe(1); // 한 줄
@@ -127,6 +147,7 @@ test("PC·태블릿: 하단 바는 고정되지 않고 상품 정보 아래에 �
   for (const [w, name] of [[1024, "1024"], [1440, "1440"]] as const) {
     await page.setViewportSize({ width: w, height: 900 });
     await page.goto(`/shop/${SLUG}/products/${id}`);
+    await expectInfoLayout(page, w);
     expect(await page.locator(".pd-actions").evaluate((el) => getComputedStyle(el).position)).not.toBe("fixed");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     if (process.env.E2E_SCREENSHOTS === "1") await page.screenshot({ path: `tests/e2e/screenshots/SH-003-pd-bar-${name}.png` });
