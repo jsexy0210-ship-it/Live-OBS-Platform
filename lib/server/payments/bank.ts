@@ -1,10 +1,13 @@
-import type { PrismaClient } from "@prisma/client";
+import type { OrderStatus, Prisma, PrismaClient } from "@prisma/client";
+import { forbidden } from "../authz/errors";
+import { cleanText } from "../text/clean";
 import { writeAudit } from "../audit/log";
 import { lockSellerOrders } from "../orders/overdue";
 import { markOrderPaid } from "../queue/service";
 import { canViewCustomerPii, requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { payableAmount, shopOpenForPayment } from "./service";
 import { orderNoLabel } from "../orders/orderNoLabel";
+import { kstDayStart } from "../orders/read";
 
 // 무통장 입금(기반-결제 2단계): 판매자 입금 계좌, 구매자 무통장 선택·안내, 판매자 입금 대기 목록·입금 확인(SA-026).
 // - 입금 기한은 주문할 때 정한 값(Order.paymentDueAt)을 그대로 안내한다. 무통장을 다시 골라도 늘어나지 않는다.
@@ -114,23 +117,71 @@ export type DepositRow = {
   paymentMethod: "CARD" | "BANK_TRANSFER" | null;
   paymentDueAt: Date | null;
   createdAt: Date;
+  status: OrderStatus;
+  depositStatus: DepositStatus;
+  paidAt: Date | null;
+  autoCancelledAt: Date | null;
 };
+
+export type DepositStatus = "PENDING_PAYMENT" | "OVERDUE" | "PAID" | "AUTO_CANCELLED";
+export type DepositQuery = { offset?: unknown; limit?: unknown; from?: unknown; to?: unknown; status?: unknown; q?: unknown; searchBy?: unknown };
+
+// 날짜는 KST 주문일. 종료일 다음 날 00:00 미만으로 밀리초까지 포함한다.
+function depositDate(raw: unknown): Date | null | undefined {
+  if (raw == null || raw === "") return undefined;
+  return typeof raw === "string" ? kstDayStart(raw) : null;
+}
 
 // 입금 대기 = 결제 대기이면서 카드 결제가 승인 중·완료가 아닌 주문. 입금 기한 빠른 순(기한 없는 주문은 뒤), 같으면 주문 순.
 // 입금자 확인용 구매자 이름은 CUSTOMER_PII_VIEW가 있을 때만 넣고, 넣었으면 customer.pii.view를 남긴다.
-export async function listPendingDeposits(db: PrismaClient, ctx: TenantContext, query: { offset?: unknown; limit?: unknown }) {
+export async function listPendingDeposits(db: PrismaClient, ctx: TenantContext, query: DepositQuery, now = new Date()) {
   requireSellerRead(ctx, "ORDER_SHIPPING");
   const limit = query.limit == null || query.limit === "" ? DEPOSIT_PAGE_DEFAULT : Number(query.limit);
   const offset = query.offset == null || query.offset === "" ? 0 : Number(query.offset);
   if (!Number.isInteger(limit) || limit < 1 || limit > DEPOSIT_PAGE_MAX || !Number.isInteger(offset) || offset < 0 || offset > 100_000) return { ok: false as const };
-  const where = {
-    sellerId: ctx.sellerId,
-    status: "PENDING_PAYMENT" as const,
-    legalHoldAt: null,
-    payments: { none: { status: { in: ["APPROVING" as const, "PAID" as const, "PARTIAL_CANCELLED" as const] } } },
-  };
+  const from = depositDate(query.from), to = depositDate(query.to);
+  if (from === null || to === null || (from && to && from > to)) return { ok: false as const };
+  const statuses = query.status == null || query.status === "" ? undefined : typeof query.status === "string" ? query.status.split(",") : [];
+  const allowed = ["ALL", "PENDING_PAYMENT", "OVERDUE", "PAID", "AUTO_CANCELLED"];
+  if (statuses && (!statuses.length || statuses.some((s) => !allowed.includes(s)) || (statuses.includes("ALL") && statuses.length !== 1))) return { ok: false as const };
+  const searchBy = query.searchBy ?? "buyer";
+  if (!["buyer", "depositor", "amount"].includes(searchBy as string)) return { ok: false as const };
+  const term = query.q == null || query.q === "" || (typeof query.q === "string" && !query.q.trim()) ? "" : cleanText(query.q, 100);
+  if (term === null) return { ok: false as const };
   const pii = canViewCustomerPii(ctx);
-  const [total, rows] = await Promise.all([
+  // 검색 결과 건수로 이름을 추측하는 것도 개인정보 열람이다.
+  if (term && searchBy === "depositor" && !pii) throw forbidden();
+  const pending: Prisma.OrderWhereInput = {
+    status: "PENDING_PAYMENT",
+    payments: { none: { status: { in: ["APPROVING", "PAID", "PARTIAL_CANCELLED"] } } },
+  };
+  const stateWhere: Record<DepositStatus, Prisma.OrderWhereInput> = {
+    PENDING_PAYMENT: { ...pending, OR: [{ paymentDueAt: null }, { paymentDueAt: { gt: now } }] },
+    OVERDUE: { ...pending, paymentDueAt: { lte: now } },
+    PAID: { paymentMethod: "BANK_TRANSFER", paidAt: { not: null }, status: { in: ["PAID", "REFUNDED"] } },
+    AUTO_CANCELLED: { status: "CANCELLED", autoCancelledAt: { not: null } },
+  };
+  // 무옵션 호출은 기존의 모든 입금 대기를 그대로 반환한다. 이력은 실제 무통장 결제만 포함한다.
+  const scope: Prisma.OrderWhereInput = statuses === undefined ? pending : {
+    OR: (statuses.includes("ALL") ? Object.keys(stateWhere) : statuses).map((s) => stateWhere[s as DepositStatus]),
+  };
+  let search: Prisma.OrderWhereInput = {};
+  if (term) {
+    if (searchBy === "amount") {
+      const amount = term.replace(/[,\s]/g, "").replace(/원$/, "");
+      if (!/^\d+$/.test(amount) || !Number.isSafeInteger(Number(amount)) || Number(amount) > 2_147_483_647) return { ok: false as const };
+      search = { totalAmount: Number(amount) };
+    } else if (searchBy === "depositor") search = { buyerMember: { name: { contains: term, mode: "insensitive" } } };
+    else search = { broadcastNicknameSnapshot: { contains: term, mode: "insensitive" } };
+  }
+  const base: Prisma.OrderWhereInput = {
+    sellerId: ctx.sellerId,
+    legalHoldAt: null,
+  };
+  const where: Prisma.OrderWhereInput = { ...base, AND: [scope, search], ...(from || to ? { createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lt: new Date(to.getTime() + 86400_000) } : {}) } } : {}) };
+  const today = new Date(Math.floor((now.getTime() + 9 * 3600_000) / 86400_000) * 86400_000 - 9 * 3600_000);
+  const todayRange = { gte: today, lt: new Date(today.getTime() + 86400_000) };
+  const [total, rows, pendingSummary, dueWithinHourCount, confirmedTodayCount, overdueCount, autoCancelledTodayCount] = await Promise.all([
     db.order.count({ where }),
     db.order.findMany({
       where,
@@ -145,9 +196,17 @@ export async function listPendingDeposits(db: PrismaClient, ctx: TenantContext, 
         paymentMethod: true,
         paymentDueAt: true,
         createdAt: true,
-        buyerMember: { select: { name: true } },
+        status: true,
+        paidAt: true,
+        autoCancelledAt: true,
+        ...(pii ? { buyerMember: { select: { name: true } } } : {}),
       },
     }),
+    db.order.aggregate({ where: { ...base, AND: [stateWhere.PENDING_PAYMENT] }, _count: true, _sum: { totalAmount: true } }),
+    db.order.count({ where: { ...base, AND: [pending], paymentDueAt: { gt: now, lte: new Date(now.getTime() + 3600_000) } } }),
+    db.order.count({ where: { ...base, AND: [stateWhere.PAID], paidAt: todayRange } }),
+    db.order.count({ where: { ...base, AND: [stateWhere.OVERDUE] } }),
+    db.order.count({ where: { ...base, AND: [stateWhere.AUTO_CANCELLED], autoCancelledAt: todayRange } }),
   ]);
   const deposits: DepositRow[] = rows.map((o) => ({
     orderId: o.id,
@@ -155,10 +214,14 @@ export async function listPendingDeposits(db: PrismaClient, ctx: TenantContext, 
     orderNoLabel: orderNoLabel(o.createdAt, o.orderNo),
     amount: o.totalAmount,
     nickname: o.broadcastNicknameSnapshot,
-    ...(pii ? { depositorName: o.buyerMember.name } : {}),
+    ...(pii && o.buyerMember ? { depositorName: o.buyerMember.name } : {}),
     paymentMethod: o.paymentMethod,
     paymentDueAt: o.paymentDueAt,
     createdAt: o.createdAt,
+    status: o.status,
+    depositStatus: o.autoCancelledAt ? "AUTO_CANCELLED" : o.paidAt ? "PAID" : o.paymentDueAt && o.paymentDueAt <= now ? "OVERDUE" : "PENDING_PAYMENT",
+    paidAt: o.paidAt,
+    autoCancelledAt: o.autoCancelledAt,
   }));
   if (pii && deposits.length > 0) {
     await writeAudit(db, {
@@ -171,7 +234,10 @@ export async function listPendingDeposits(db: PrismaClient, ctx: TenantContext, 
       after: { orderIds: deposits.map((d) => d.orderId), count: deposits.length },
     });
   }
-  return { ok: true as const, value: { deposits, total } };
+  return { ok: true as const, value: { deposits, total, summary: {
+    pendingCount: pendingSummary._count, pendingAmount: pendingSummary._sum.totalAmount ?? 0,
+    dueWithinHourCount, confirmedTodayCount, overdueCount, autoCancelledTodayCount,
+  } } };
 }
 
 export type DepositResult = { orderId: string; result: "paid" | "stock_shortage" | "already_paid" | "card_in_progress" | "not_payable" | "not_found" };

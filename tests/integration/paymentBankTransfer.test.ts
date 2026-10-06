@@ -132,6 +132,64 @@ describe("구매자 무통장 입금 선택", () => {
 });
 
 describe("판매자 입금 대기·입금 확인", () => {
+  it("정본 상태·KST 기간·요약은 테넌트/분리 보관 경계를 지킨다", async () => {
+    const s = await setup();
+    const other = await setup();
+    const now = new Date("2026-10-06T00:30:00Z");
+    const start = new Date("2026-10-05T15:00:00Z");
+    const end = new Date("2026-10-06T14:59:59.999Z");
+    const create = async (change: Parameters<typeof db.order.update>[0]["data"], tenant = s) => {
+      const o = await tenant.order();
+      return db.order.update({ where: { id: o.id }, data: { paymentMethod: "BANK_TRANSFER", createdAt: start, ...change } });
+    };
+    const pending = await create({ paymentDueAt: new Date(now.getTime() + 3600_000) });
+    const overdue = await create({ paymentDueAt: now });
+    const paid = await create({ status: "PAID", paidAt: start, createdAt: end });
+    const cancelled = await create({ status: "CANCELLED", autoCancelledAt: end });
+    await create({ status: "CANCELLED", autoCancelledAt: null }); // 수동 취소 제외
+    await create({ status: "PAID", paidAt: now, paymentMethod: "CARD" });
+    await create({ status: "PAID", paidAt: now, legalHoldAt: now });
+    await create({ status: "PAID", paidAt: now }, other);
+    await create({ createdAt: new Date("2026-10-06T15:00:00Z"), paymentDueAt: null });
+    const r = await listPendingDeposits(db, s.ctx, { status: "ALL", from: "2026-10-06", to: "2026-10-06" }, now);
+    if (!r.ok) throw new Error();
+    expect(new Set(r.value.deposits.map((d) => d.orderId))).toEqual(new Set([pending.id, overdue.id, paid.id, cancelled.id]));
+    expect(r.value.total).toBe(4);
+    expect(r.value.summary).toEqual({ pendingCount: 2, pendingAmount: 26000, dueWithinHourCount: 1, confirmedTodayCount: 1, overdueCount: 1, autoCancelledTodayCount: 1 });
+    const late = await listPendingDeposits(db, s.ctx, { status: "OVERDUE" }, now);
+    expect(late.ok && late.value.deposits.map((d) => d.orderId)).toEqual([overdue.id]);
+    const page = await listPendingDeposits(db, s.ctx, { status: "ALL", offset: "5", limit: "1" }, now);
+    expect(page.ok && page.value.deposits).toEqual([]);
+    expect(page.ok && page.value.total).toBe(5);
+  });
+
+  it("정규화 검색과 개인정보 권한은 전체 상태에서도 유지된다", async () => {
+    const s = await setup();
+    const o = await s.order();
+    await db.order.update({ where: { id: o.id }, data: { broadcastNicknameSnapshot: "ABC", paymentMethod: "BANK_TRANSFER" } });
+    const buyer = await listPendingDeposits(db, s.ctx, { status: "ALL", searchBy: "buyer", q: "  ＡＢＣ  " });
+    expect(buyer.ok && buyer.value.deposits.map((d) => d.orderId)).toEqual([o.id]);
+    const amount = await listPendingDeposits(db, s.ctx, { status: "ALL", searchBy: "amount", q: " １３，０００원 " });
+    expect(amount.ok && amount.value.total).toBe(1);
+    const noPii: TenantContext = { ...s.ctx, isOwner: false, permissions: ["ORDER_SHIPPING"] };
+    await expect(listPendingDeposits(db, noPii, { status: "ALL", searchBy: "depositor", q: s.buyer.name })).rejects.toMatchObject({ status: 403 });
+    const visible = await listPendingDeposits(db, noPii, { status: "ALL", searchBy: "buyer", q: "ABC" });
+    expect(visible.ok && visible.value.deposits[0]).not.toHaveProperty("depositorName");
+  });
+
+  it("조회 route는 필터 오류 400과 PII 검색 거부 403을 no-store로 반환한다", async () => {
+    const s = await setup();
+    const cookie = await s.sellerCookie(s.owner.email);
+    const response = await depositsRoute(jsonReq("/api/seller/payments/deposits?status=ALL&from=2026-02-30", "GET", cookie));
+    expect(response.status).toBe(400);
+    expect(response.headers.get("cache-control")).toContain("no-store");
+    const staff = await createSellerUser(s.seller.id, { permissions: ["ORDER_SHIPPING"] });
+    const staffCookie = await s.sellerCookie(staff.email);
+    const denied = await depositsRoute(jsonReq("/api/seller/payments/deposits?status=ALL&searchBy=depositor&q=test", "GET", staffCookie));
+    expect(denied.status).toBe(403);
+    expect(denied.headers.get("cache-control")).toContain("no-store");
+  });
+
   it("목록은 이 쇼핑몰의 결제 대기 주문만(카드 승인 중·완료 제외), 기한 빠른 순, 입금자 이름은 개인정보 권한이 있을 때만", async () => {
     const s = await setup();
     const t = await setup();
