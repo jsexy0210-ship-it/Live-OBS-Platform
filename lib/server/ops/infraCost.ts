@@ -3,6 +3,7 @@ import type { AdminSessionContext } from "../auth/session";
 import { writeAudit } from "../audit/log";
 import { forbidden } from "../authz/errors";
 import { adminCan } from "../authz/permissions";
+import { connectionWarnings, listConnections } from "./connections";
 import { infraSignals, measureInfra } from "./infra";
 
 // 인프라 비용(MA-120, 대표님 지시 2026-10-06). 1단계: 마스터가 입력한 단가 × 우리가 센 사용량 = 「추정」.
@@ -158,13 +159,14 @@ export async function infraCost(db: PrismaClient, admin: AdminSessionContext, op
 }
 
 // 마스터 홈 요약 카드(최고관리자만): 서버별 디스크·메모리 사용률, 이번 달 요금 누적·월말 예상(추정), 경고 개수.
-// 서버는 이 서버의 지금 값과 같은 DB에 최근 3시간 안에 스냅숏을 남긴 다른 서버의 마지막 값. 경고 = 용량 기준 초과 신호 + 한도 정지 기능 수.
+// 서버는 이 서버의 지금 값과 같은 DB에 최근 3시간 안에 스냅숏을 남긴 다른 서버의 마지막 값. 경고 = 용량 기준 초과 신호 + 한도 정지 기능 수 + 외부 연결(만료 30일·7일 이내, 인증 오류).
 export async function infraSummary(db: PrismaClient, admin: AdminSessionContext, opts: { now?: Date } = {}) {
   if (!adminCan(admin.admin.role, "infra.manage")) throw forbidden();
   const now = opts.now ?? new Date();
-  const [m, cost, others] = await Promise.all([
+  const [m, cost, conns, others] = await Promise.all([
     measureInfra(db, now),
     infraCost(db, admin, { now }),
+    listConnections(db, admin, { now }),
     db.$queryRaw<{ instance: string; takenAt: Date; diskTotalBytes: bigint | null; diskUsedBytes: bigint | null; memTotalBytes: bigint | null; memUsedBytes: bigint | null }[]>`
       SELECT DISTINCT ON ("instance") "instance", "takenAt", "diskTotalBytes", "diskUsedBytes", "memTotalBytes", "memUsedBytes"
       FROM "InfraSnapshot" WHERE "takenAt" >= ${new Date(now.getTime() - 3 * 3_600_000)} ORDER BY "instance", "takenAt" DESC`,
@@ -177,10 +179,11 @@ export async function infraSummary(db: PrismaClient, admin: AdminSessionContext,
   ];
   const capacity = infraSignals(m).length;
   const limitStopped = cost.limited.filter((l) => l.stopped).length;
+  const cw = connectionWarnings(conns.connections);
   return {
     checkedAt: now.toISOString(),
     servers,
     cost: { month: cost.month, estimated: true as const, accruedWon: cost.totals.accruedWon, projectedWon: cost.totals.projectedWon },
-    warnings: { capacity, limitStopped, total: capacity + limitStopped },
+    warnings: { capacity, limitStopped, ...cw, total: capacity + limitStopped + cw.expiring30 + cw.expiring7 + cw.authError },
   };
 }

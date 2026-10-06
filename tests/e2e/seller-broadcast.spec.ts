@@ -287,7 +287,7 @@ test("거부(409)된 변경도 그 전에 시작된 읽기를 무효로 해, 늦
   await expect(page.getByRole("button", { name: /개봉 완료/ })).toBeDisabled();
 });
 
-test("종료 확인 창이 열린 사이 다른 화면이 방송을 바꾸면 창을 닫고, 새 방송은 끝나지 않는다", async ({ page, context }) => {
+test("종료 확인 창이 열린 사이 다른 화면이 방송을 바꾸면 끝내지 않고 창 안에 안내하며, 새 방송은 끝나지 않는다", async ({ page, context }) => {
   await login(page, "demo-owner@example.com", "/seller/broadcast");
   await page.getByLabel("방송 제목").fill("방송 A");
   await page.getByRole("button", { name: "방송 시작" }).click();
@@ -303,11 +303,13 @@ test("종료 확인 창이 열린 사이 다른 화면이 방송을 바꾸면 �
   await other.getByLabel("방송 제목").fill("방송 B");
   await other.getByRole("button", { name: "방송 시작" }).click();
   await expect(other.getByTestId("bc-title")).toHaveText("방송 B");
-  // 처음 창: 확인 창이 닫히고 B가 보인다(B를 끌 수 있는 확인 버튼이 남지 않음)
+  // 처음 창: 확인 창이 열려 있어도, 「방송 끝내기」를 누르면 지금 방송(B)이 그 방송이 아니라서 보내지 않고 창 안에 안내한다
   await page.bringToFront();
-  await expect(page.getByTestId("bc-title")).toHaveText("방송 B", { timeout: 5000 });
+  await dialog.getByRole("button", { name: "방송 끝내기" }).click();
+  await expect(dialog).toContainText("다른 화면에서 방송이 바뀌었습니다", { timeout: 5000 });
+  await dialog.getByRole("button", { name: "취소" }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(toast(page)).toContainText("다른 화면에서 방송이 바뀌었습니다");
+  await expect(page.getByTestId("bc-title")).toHaveText("방송 B", { timeout: 5000 });
   await other.reload();
   await expect(other.getByTestId("bc-title")).toHaveText("방송 B");
   await other.close();
@@ -419,4 +421,25 @@ test("방송 대시보드 대기 표: 1440·1024·390폭에서 조작 버튼이 
     expect(await doc()).toEqual(before);
     if (SHOTS) await page.screenshot({ path: `tests/e2e/screenshots/SA-001-plain-${width}.png`, fullPage: true });
   }
+});
+
+// 공용 확인 창(방송 종료)이 떠 있는 동안에는 단축키로 개봉 완료가 되지 않고, 1440·1024·390폭에서 창이 화면 안에 들어온다
+test("방송 종료 확인 창: 떠 있는 동안 Ctrl+Enter가 먹히지 않고, 폭마다 창이 화면 안에 보인다", async ({ page }) => {
+  await openFirst(page);
+  await page.getByRole("button", { name: "방송 끝내기" }).click();
+  const dlg = page.getByRole("dialog", { name: "방송을 끝내시겠습니까?" });
+  await expect(dlg).toBeVisible();
+  await page.keyboard.press("Control+Enter");
+  await page.waitForTimeout(400);
+  await expect(page.getByTestId("bc-opening")).toContainText(A);
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.waitForTimeout(600);
+    const b = await dlg.boundingBox();
+    expect(b!.x).toBeGreaterThanOrEqual(0);
+    expect(b!.x + b!.width).toBeLessThanOrEqual(width + 1);
+    if (SHOTS) await page.screenshot({ path: `tests/e2e/screenshots/SA-001-end-confirm-${width}.png` });
+  }
+  await dlg.getByRole("button", { name: "취소" }).click();
+  await expect(dlg).toHaveCount(0);
 });

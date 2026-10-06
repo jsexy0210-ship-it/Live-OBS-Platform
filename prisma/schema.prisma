@@ -3442,6 +3442,8 @@ model PlatformInquiry {
   // 마스터 관리자 담당(운영·CS·최고관리자 중 한 명, 없으면 미배정). 이름은 마스터 화면에만 나간다. 바꿔도 version은 올리지 않는다(작성 중인 답변을 막지 않기 위해).
   assignedAdminId       String?                 @db.Uuid
   assignedAt            DateTime?               @db.Timestamptz(3)
+  // 보낼 때 모은 진단 정보(브라우저·OS·최근 방송·오버레이 마지막 접속·앱 버전, lib/server/platform-inquiries/diagnostics.ts). 마스터 화면에만 보인다. 보내지 않기로 했거나 옛 문의는 null.
+  diagnostics           Json?
   version               Int                     @default(0)
   createdAt             DateTime                @default(now()) @db.Timestamptz(3)
 
@@ -4013,6 +4015,53 @@ model InfraSnapshot {
   @@index([takenAt])
 }
 
+enum AdminAlertSeverity {
+  URGENT
+  WARNING
+  INFO
+}
+
+enum AdminAlertStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+// 마스터 관리자 알림 센터(MA-002) 알림. 다른 기능이 lib/server/admin-alerts/service.ts의 createAdminAlert 한 곳으로 만든다(화면 안 알림만, 외부 발송 없음).
+// 알림 하나를 보는 역할(targetRoles)이 같이 보고, 담당·상태(미처리·처리 중·해결됨)도 모두 같은 값을 본다. 읽음은 관리자마다(AdminAlertRead).
+model AdminAlert {
+  id              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  kind            String
+  severity        AdminAlertSeverity
+  sellerId        String?             @db.Uuid
+  title           String
+  body            String?
+  linkPath        String
+  // 같은 사건이 여러 번 알림으로 쌓이지 않게 부르는 쪽이 정한 키(없으면 중복 검사 없음)
+  dedupeKey       String?             @unique
+  targetRoles     PlatformAdminRole[]
+  status          AdminAlertStatus    @default(OPEN)
+  assignedAdminId String?             @db.Uuid
+  resolvedAt      DateTime?           @db.Timestamptz(3)
+  occurredAt      DateTime            @default(now()) @db.Timestamptz(3)
+  createdAt       DateTime            @default(now()) @db.Timestamptz(3)
+
+  reads AdminAlertRead[]
+
+  @@index([status, occurredAt(sort: Desc), id(sort: Desc)])
+  @@index([occurredAt(sort: Desc), id(sort: Desc)])
+}
+
+model AdminAlertRead {
+  adminId String   @db.Uuid
+  alertId String   @db.Uuid
+  readAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  alert AdminAlert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+
+  @@id([adminId, alertId])
+}
+
 // 플랫폼 기본 정책(MA-081). 키별 정수 값(불리언 0/1). 행이 없으면 코드 기본값(현재 동작과 같음). 최고관리자만 바꾸고 변경은 로그 추적에 남긴다.
 model PlatformPolicy {
   key              String   @id
@@ -4029,4 +4078,19 @@ model InfraPriceSetting {
   version          Int      @default(0)
   updatedByAdminId String?  @db.Uuid
   updatedAt        DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+}
+
+// 외부 연결(공공데이터포털 API·결제대행사·메일·도우미 등) 만료일·호출 상태(MA-120 「외부 연결 · 만료 · 상태」). 키 값은 어디에도 두지 않는다.
+// 연결 목록(key·이름·용도)은 코드(lib/server/ops/connections.ts)가 정하고, 행은 처음 기록·입력할 때 만든다.
+// 만료일은 최고관리자가 입력(KST 하루 끝까지 유효), 마지막 정상 호출·인증 오류 시각은 각 연동 호출부가 기록한다.
+model ExternalConnection {
+  key                String    @id
+  expiresAt          DateTime? @db.Timestamptz(3)
+  lastOkAt           DateTime? @db.Timestamptz(3)
+  lastAuthErrorAt    DateTime? @db.Timestamptz(3)
+  // 상태 코드만(예: http_401). 응답 본문·키는 남기지 않는다.
+  lastAuthErrorCode  String?
+  version            Int       @default(0)
+  updatedByAdminId   String?   @db.Uuid
+  updatedAt          DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
 }

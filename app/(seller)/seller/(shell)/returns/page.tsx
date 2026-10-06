@@ -1,6 +1,6 @@
 "use client";
 
-import { formatDate, formatDateTime } from "../../../../../lib/client/format";
+import { formatDateTime } from "../../../../../lib/client/format";
 import { useCallback, useEffect, useState } from "react";
 import { useConfirm } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
@@ -177,7 +177,7 @@ export default function ReturnsPage() {
                       <span>
                         <span className={`bdg ${STATUS[r.status].cls}`}>{STATUS[r.status].label}</span>
                       </span>
-                      <span className="t-c1 c-alt rt-hide-m num">{formatDate(r.createdAt)}</span>
+                      <span className="t-c1 c-alt rt-hide-m num">{formatDateTime(r.createdAt)}</span>
                     </div>
                   ))}
                 </div>
