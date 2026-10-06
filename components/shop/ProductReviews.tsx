@@ -26,7 +26,7 @@ const kstDate = (iso: string) => {
 };
 const stars = (n: number) => "★".repeat(n) + "☆".repeat(5 - n);
 
-export default function ProductReviews({ slug, productId }: { slug: string; productId: string }) {
+export default function ProductReviews({ slug, productId, onSummaryChange }: { slug: string; productId: string; onSummaryChange?: (summary: { average: number | null; total: number }) => void }) {
   const api = `/api/shop/${encodeURIComponent(slug)}/products/${productId}/reviews`;
   const [data, setData] = useState<Data | null>(null);
   const [state, setState] = useState<"loading" | "error" | "ok">("loading");
@@ -38,9 +38,10 @@ export default function ProductReviews({ slug, productId }: { slug: string; prod
     if (r.ok) {
       setData(r.data);
       setState("ok");
+      onSummaryChange?.({ average: r.data.average, total: r.data.total });
       announceCount({ key: "reviews", n: r.data.total });
     } else setState("error");
-  }, [api]);
+  }, [api, onSummaryChange]);
   useEffect(() => void load(), [load]);
 
   async function loadMore() {

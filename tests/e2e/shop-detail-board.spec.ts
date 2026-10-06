@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { clearCouponsInDb, createClaimableCouponInDb } from "./couponDb";
 import { okConfirm } from "./shopConfirm";
 
-// 보드 SH-003-IA 맞춤: 탭(리뷰·상품 문의 개수), 상품 문의 목록·쓰기, 쿠폰 받기 줄, 공유, 최근 본 상품, 버튼 순서(장바구니·찜·공유·구매하기).
+// SH-003 FINAL v284: 정보 순서·상품 문의·쿠폰·공유·최근 본 상품과 모바일 고정 구매 바.
 const SLUG = "demo-shop";
 const LOGIN = "demo-buyer1@example.com";
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
@@ -25,7 +25,15 @@ async function productIdOf(page: Page, name: string) {
 
 async function expectInfoLayout(page: Page, width: number) {
   await expect(page.locator(".pd-price-summary")).toBeVisible();
+  await expect(page.locator(".pd-rating")).toBeVisible();
   await expect(page.locator(".pd-coupon-row")).toContainText("세 폭 화면 검수 쿠폰");
+  const infoOrder = await page.locator(".pd-info").evaluate((info) => {
+    const children = [...info.children];
+    return [".pd-crumb", "h1", ".pd-rating", ".pd-desc", ".pd-price-summary"]
+      .map((selector) => children.findIndex((el) => el.matches(selector)))
+      .filter((index) => index >= 0);
+  });
+  expect(infoOrder).toEqual([...infoOrder].sort((a, b) => a - b));
   const geometry = await page.locator(".pd-top").evaluate((top) => {
     const rect = (element: Element) => {
       const box = element.getBoundingClientRect();
@@ -114,9 +122,14 @@ test("쿠폰 받기 줄·버튼 순서·공유(주소 복사)", async ({ page, b
 
   const names = await page.locator(".pd-actions button").allInnerTexts();
   expect(names.map((n) => n.trim())).toEqual(["♡", "공유", "장바구니에 담기", "바로 주문하기"]);
-  // PC는 장바구니에 담기 · 찜 · 공유 · 바로 주문하기 순서로 보인다(보드 SH-003-PC-IA)
-  const xs = await page.locator(".pd-actions button").evaluateAll((els) => els.map((e) => ({ t: (e.textContent ?? "").trim(), x: e.getBoundingClientRect().left })));
-  expect(xs.sort((a, b) => a.x - b.x).map((e) => e.t)).toEqual(["장바구니에 담기", "♡", "공유", "바로 주문하기"]);
+  const actionBoxes = await page.locator(".pd-actions button").evaluateAll((els) => els.map((e) => {
+    const r = e.getBoundingClientRect();
+    return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+  }));
+  expect(actionBoxes).toHaveLength(4);
+  expect(new Set(actionBoxes.map((b) => Math.round(b.top))).size).toBe(1);
+  const visualOrder = [...actionBoxes].sort((a, b) => a.left - b.left);
+  for (let i = 0; i < visualOrder.length - 1; i++) expect(visualOrder[i].right).toBeLessThanOrEqual(visualOrder[i + 1].left + 1);
   await page.getByRole("button", { name: "공유" }).click();
   await expect(page.getByText("상품 주소를 복사했어요")).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(`/products/${id}`);

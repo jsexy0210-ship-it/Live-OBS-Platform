@@ -23,6 +23,7 @@ import "./ProductDetail.css";
 // 장바구니·찜은 로그인한 구매자만: 로그인 전이면 「로그인이 필요해요」 창. 「구매하기」는 장바구니에 담은 줄만 골라 주문서로 보낸다(주문 바로 만들기 API가 없음).
 type Option = { id: string; name: string; price: number; salePrice: number | null; soldOut: boolean; stockLeft: number | null };
 type Block = { type: "text"; text: string } | { type: "image"; imageId: string; url: string; width: number; height: number };
+type ReviewSummary = { average: number | null; total: number };
 export type ShopProduct = {
   id: string;
   isLive?: boolean;
@@ -50,6 +51,7 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
   const [optionId, setOptionId] = useState(firstOpen?.id ?? "");
   const [qty, setQty] = useState(1);
   const [photo, setPhoto] = useState(0);
+  const [reviewSummary, setReviewSummary] = useState<ReviewSummary | null>(null);
   const [wished, setWished] = useState(false);
   const [restock, setRestock] = useState(false); // 재입고 알림을 신청했는지(상품이 품절일 때만 쓴다)
   const [busy, setBusy] = useState(false);
@@ -192,22 +194,12 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
     <article className="pd" aria-label={p.name}>
       {p.isLive && <LiveNotice slug={slug} />}
       <ShopBack fallback={`/shop/${encodeURIComponent(slug)}/products`} label="목록" />
-      {crumb.length > 0 && (
-        <nav className="pd-crumb" aria-label="상품 경로">
-          <Link href={`${base}/products`}>전체 상품</Link>
-          {crumb.map((c) => (
-            <span key={c.id}>
-              {" › "}
-              <Link href={`${base}/products?category=${c.id}`}>{c.name}</Link>
-            </span>
-          ))}
-        </nav>
-      )}
       <div className="pd-top">
         <div className="pd-gallery">
           <div className="pd-hero">
             {hero && <Image src={hero.url} alt={p.name} width={hero.width} height={hero.height} unoptimized priority />}
             {p.soldOut && <span className="pc-out" role="img" aria-label="품절">품절</span>}
+            {p.images.length > 1 && <span className="pd-photo-count" aria-label={`상품 사진 ${photo + 1} / ${p.images.length}`}>{photo + 1} / {p.images.length}</span>}
           </div>
           {p.images.length > 1 && (
             <div className="pd-thumbs" role="group" aria-label="상품 사진">
@@ -221,7 +213,23 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
         </div>
 
         <div className="pd-info">
+          {crumb.length > 0 && (
+            <nav className="pd-crumb" aria-label="상품 경로">
+              {crumb.map((c, i) => (
+                <span key={c.id}>
+                  {i > 0 && " › "}
+                  <Link href={`${base}/products?category=${c.id}`}>{c.name}</Link>
+                </span>
+              ))}
+            </nav>
+          )}
           <h1>{p.name}</h1>
+          {reviewSummary && (
+            <a className="pd-rating" href="#pd-reviews" aria-label={`리뷰 ${reviewSummary.total}개${reviewSummary.average === null ? "" : `, 평점 ${reviewSummary.average.toFixed(1)}`}`}>
+              {reviewSummary.average !== null && <b>★ {reviewSummary.average.toFixed(1)}</b>}
+              <span>리뷰 {reviewSummary.total.toLocaleString("ko-KR")}개</span>
+            </a>
+          )}
           {p.description && <p className="pd-desc">{p.description}</p>}
           <div className="pd-price-summary" role="group" aria-label="판매가">
             {p.salePrice !== null ? (
@@ -369,7 +377,7 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
         )}
       </section>
 
-      <ProductReviews slug={slug} productId={p.id} />
+      <ProductReviews slug={slug} productId={p.id} onSummaryChange={setReviewSummary} />
 
       <ProductInquiries slug={slug} productId={p.id} loggedIn={loggedIn} onNeedLogin={() => setNeedLogin(true)} />
 
