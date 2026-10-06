@@ -1,6 +1,5 @@
 /* SA-031 적립 정책(정본 v322): 구역 사이 간격 32, 구역 제목 옆 안내, 「회수 · 사용 조건」 4열 표 */
-.rw-form > fieldset > .au-fs,
-.rw-form > fieldset > section {
+.rw-form .au-fs {
   margin-bottom: 32px;
 }
 .rw-form .au-fs-h {
