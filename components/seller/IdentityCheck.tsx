@@ -101,9 +101,12 @@ type Props = {
   onStartRefused?: (r: Fail) => boolean;
   // 말투(기본 admin). 가입 신청(PF-007)은 public
   tone: Tone;
+  // 주어지면 입력한 칸(이름·생년월일·성별·내외국인·통신사·휴대폰번호·약관 동의)을 이 탭 안(sessionStorage)에 저장해 새로고침·단계 이동에도 남긴다.
+  // 인증번호·확인 결과는 저장하지 않는다(가입 신청 단계 화면, PF-007-2)
+  saveKey?: string;
 };
 
-export default function IdentityCheck({ label, start, scope = "", base, blocked = false, onVerified, onUnavailable, onSentChange, onStartRefused, tone }: Props) {
+export default function IdentityCheck({ label, start, scope = "", base, blocked = false, onVerified, onUnavailable, onSentChange, onStartRefused, tone, saveKey }: Props) {
   const T = TEXT[tone];
   const { confirm: ask } = useConfirm();
   // 문자 발송은 횟수 한도와 비용이 있어 보내기 전에 확인한다
@@ -119,6 +122,33 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
   const [carrier, setCarrier] = useState<Carrier | "">("");
   const [phone, setPhone] = useState("");
   const [agreed, setAgreed] = useState(false);
+  const [restored, setRestored] = useState(!saveKey);
+  useEffect(() => {
+    if (!saveKey) return;
+    try {
+      const s = JSON.parse(sessionStorage.getItem(saveKey) ?? "null") as { name?: string; birth?: string; gender?: "M" | "F" | null; foreigner?: boolean; carrier?: Carrier | ""; phone?: string; agreed?: boolean } | null;
+      if (s) {
+        setName(s.name ?? "");
+        setBirth(s.birth ?? "");
+        setGender(s.gender ?? null);
+        setForeigner(!!s.foreigner);
+        setCarrier(s.carrier ?? "");
+        setPhone(s.phone ?? "");
+        setAgreed(!!s.agreed);
+      }
+    } catch {
+      // 저장소를 못 읽어도 빈 칸으로 시작한다
+    }
+    setRestored(true);
+  }, [saveKey]);
+  useEffect(() => {
+    if (!saveKey || !restored) return;
+    try {
+      sessionStorage.setItem(saveKey, JSON.stringify({ name, birth, gender, foreigner, carrier, phone, agreed }));
+    } catch {
+      // 저장하지 못해도 이어서 쓸 수 있다
+    }
+  }, [saveKey, restored, name, birth, gender, foreigner, carrier, phone, agreed]);
   const [birthError, setBirthError] = useState<string | null>(null);
   const [verificationId, setVerificationId] = useState<string | null>(null);
   // 본인확인 시작 한 번(같은 입력)의 멱등 키(구매자 가입 SignupForm과 같은 방식). 응답이 끊겨 다시 누르면 같은 키로 보낸다.

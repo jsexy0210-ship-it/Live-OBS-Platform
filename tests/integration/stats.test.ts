@@ -282,7 +282,7 @@ describe("상품 통계 GET /api/seller/stats/products", () => {
 
     const { status, body } = await call(productsRoute, "products?from=2026-10-01&to=2026-10-07", await cookieOf(s.owner.email));
     expect(status).toBe(200);
-    expect(body.top).toEqual([
+    expect(body.top).toMatchObject([
       { productId: card.id, name: "카드 박스", deleted: false, quantity: 3, revenue: 90000, orders: 2 },
       { productId: s.product.id, name: "부스터 팩", deleted: false, quantity: 2, revenue: 10000, orders: 1 },
     ]);
@@ -290,6 +290,37 @@ describe("상품 통계 GET /api/seller/stats/products", () => {
     expect(body.previous).toEqual({ quantity: 1, revenue: 5000, products: 1 });
     expect(body.unsold.map((p: { name: string }) => p.name)).toEqual(["안 팔린 상품", "숨긴 상품"]);
     expect(body.unsoldCount).toBe(2);
+  });
+
+  it("SA-056-P: 요약·카테고리별 매출·재고·바로 앞 기간·마지막 판매", async () => {
+    const s = await shop();
+    const box = await s.newProduct("박스");
+    const card = await s.newProduct("싱글");
+    const idle = await s.newProduct("안 팔림");
+    await s.newProduct("임시", "DRAFT");
+    const cat = (name: string) => db.shopCategory.create({ data: { sellerId: s.seller.id, name } });
+    const [boxCat, otherCat, emptyCat] = [await cat("박스·팩"), await cat("싱글 카드"), await cat("용품")];
+    // 박스는 두 카테고리에 넣어도 먼저 넣은 하나로만 센다
+    await db.productCategory.create({ data: { sellerId: s.seller.id, productId: box.id, categoryId: boxCat.id, createdAt: new Date("2026-09-01T00:00:00Z") } });
+    await db.productCategory.create({ data: { sellerId: s.seller.id, productId: box.id, categoryId: otherCat.id, createdAt: new Date("2026-09-02T00:00:00Z") } });
+    await db.productCategory.create({ data: { sellerId: s.seller.id, productId: card.id, categoryId: otherCat.id } });
+    await db.productCategory.create({ data: { sellerId: s.seller.id, productId: idle.id, categoryId: emptyCat.id } });
+    await db.productOption.updateMany({ where: { productId: box.id }, data: { stock: 7 } });
+    await s.order({ createdAt: "2026-10-02T03:00:00Z", items: [[30000, 30000, 3, box.id], [10000, 10000, 1, card.id]] });
+    await s.order({ createdAt: "2026-09-25T03:00:00Z", items: [[30000, 30000, 2, box.id]] });
+    await s.order({ createdAt: "2026-09-20T03:00:00Z", items: [[1000, 1000, 1, idle.id]] });
+    await db.restockAlert.create({ data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, productId: box.id, createdAt: new Date("2026-10-03T00:00:00Z") } });
+
+    const r = await productStats(db, s.ctx, WEEK());
+    expect(r.summary).toEqual({ registered: 4, topShare: 100, missedBySoldOut: 1 });
+    expect(r.categories).toEqual([
+      { categoryId: boxCat.id, name: "박스·팩", quantity: 3, revenue: 90000, share: 90 },
+      { categoryId: otherCat.id, name: "싱글 카드", quantity: 1, revenue: 10000, share: 10 },
+      { categoryId: emptyCat.id, name: "용품", quantity: 0, revenue: 0, share: 0 },
+    ]);
+    expect(r.top[0]).toMatchObject({ productId: box.id, categoryName: "박스·팩", share: 90, stock: 7, previous: { quantity: 2, revenue: 60000 } });
+    expect(r.top[1]).toMatchObject({ productId: card.id, categoryName: "싱글 카드", share: 10, previous: { quantity: 0, revenue: 0 } });
+    expect(r.unsold.find((u) => u.productId === idle.id)).toMatchObject({ stock: 100, lastSoldAt: new Date("2026-09-20T03:00:00Z") });
   });
 
   it("다른 쇼핑몰 상품·판매는 섞이지 않는다", async () => {

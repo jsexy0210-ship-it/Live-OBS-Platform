@@ -59,7 +59,11 @@ const daysLeft = (expiresAt: Date, now: Date) => Math.floor((expiresAt.getTime()
 
 export async function listConnections(db: Db, admin: AdminSessionContext, opts: { now?: Date } = {}) {
   if (!adminCan(admin.admin.role, "infra.manage")) throw forbidden();
-  const now = opts.now ?? new Date();
+  return readConnections(db, opts.now ?? new Date());
+}
+
+// 권한 확인 없는 조회(정기 실행 알림 판단용). 화면·API는 listConnections로만 부른다.
+export async function readConnections(db: Db, now: Date) {
   const rows = new Map((await db.externalConnection.findMany()).map((r) => [r.key, r]));
   const connections = CONNECTIONS.map((c) => {
     const r = rows.get(c.key);
