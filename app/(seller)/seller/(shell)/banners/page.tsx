@@ -10,7 +10,6 @@ import { api } from "../../../../../components/seller/api";
 import { formatDate } from "../../../../../lib/client/format";
 import LinkPicker, { linkSummary } from "./_shared/LinkPicker";
 import {
-  GripIcon,
   ImagePicker,
   StateBox,
   StatusBadge,
@@ -116,7 +115,7 @@ export default function BannersPage() {
   }, [load]);
 
   const list = state.kind === "ok" ? state.list : [];
-  const { rowProps, move } = useSortable(list, async (next) => {
+  const { move } = useSortable(list, async (next) => {
     setState((s) => (s.kind === "ok" ? { ...s, list: next } : s));
     const r = await api("/api/seller/shop-content/banners/reorder", {
       method: "PUT",
@@ -240,7 +239,7 @@ export default function BannersPage() {
                 <thead>
                   <tr>
                     <th style={{ textAlign: "left" }}>제목 · 연결</th>
-                    <th style={{ width: 60 }}>순서</th>
+                    <th style={{ width: 150 }}>순서</th>
                     <th style={{ width: 110 }}>이미지</th>
                     <th style={{ width: 170 }}>게시 기간</th>
                     <th style={{ width: 90 }}>기기</th>
@@ -250,28 +249,27 @@ export default function BannersPage() {
                 </thead>
                 <tbody>
                   {list.map((b, i) => (
-                    <tr key={b.id} {...rowProps(b.id, editable)} data-testid="banner-row" className={draft?.id === b.id ? "is-sel" : undefined}>
+                    <tr key={b.id} data-testid="banner-row" className={draft?.id === b.id ? "is-sel" : undefined}>
                       <td className="col-text">
                         <b className="ell">{b.title}</b>
                         <div className="t-c1 c-alt ell">{linkSummary(b.linkUrl)}</div>
                       </td>
                       <td>
-                        <span className="sc-ord">
+                        <div className="acts2" style={{ justifyContent: "center", alignItems: "center", gap: 6 }}>
+                          <b className="num" style={{ minWidth: 14 }}>
+                            {i + 1}
+                          </b>
                           {editable && (
-                            <span className="sc-mv">
-                              <button type="button" aria-label={`${b.title} 위로`} disabled={i === 0} onClick={() => move(i, i - 1)}>
+                            <>
+                              <button className="btn btn-sm btn-out" type="button" aria-label={`${b.title} 위로`} disabled={i === 0} onClick={() => move(i, i - 1)}>
                                 ▲
                               </button>
-                              <button type="button" aria-label={`${b.title} 아래로`} disabled={i === list.length - 1} onClick={() => move(i, i + 1)}>
+                              <button className="btn btn-sm btn-out" type="button" aria-label={`${b.title} 아래로`} disabled={i === list.length - 1} onClick={() => move(i, i + 1)}>
                                 ▼
                               </button>
-                            </span>
+                            </>
                           )}
-                          <span className="c-alt" aria-hidden="true">
-                            <GripIcon />
-                          </span>
-                          <span className="num">{i + 1}</span>
-                        </span>
+                        </div>
                       </td>
                       <td>
                         <img className="sc-thumb-sm" src={b.pcImage.url} alt="" />
@@ -351,7 +349,7 @@ export default function BannersPage() {
                 <tbody>
                   <tr>
                     <th>노출 순서</th>
-                    <td>위에서부터 · 끌어서 변경</td>
+                    <td>위에서부터 · 목록의 ▲▼로 변경</td>
                   </tr>
                   <tr>
                     <th>게시 기간</th>
