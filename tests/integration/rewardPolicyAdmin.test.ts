@@ -49,6 +49,25 @@ describe("적립 정책 저장 (SA-031)", () => {
     }
   });
 
+  it("적립금 사용 조건: 기본은 1,000원·제한 없음, 저장·경계값·이력·DB 범위 검사", async () => {
+    const s = await setup();
+    expect(await readRewardPolicy(db, s.ctx)).toMatchObject({ useMinAmount: 1000, useMaxRatio: 0 });
+    expect(await updateRewardPolicy(db, s.ctx, { useMinAmount: 5000, useMaxRatio: 50 })).toMatchObject({ ok: true, changed: true, policy: { useMinAmount: 5000, useMaxRatio: 50 } });
+    expect(await updateRewardPolicy(db, s.ctx, { useMinAmount: 5000 })).toMatchObject({ ok: true, changed: false });
+    for (const [min, ok] of [[10, true], [1_000_000, true], [5, false], [15, false], [1_000_010, false], [0, false], [-10, false], [1000.5, false], ["1000", false]] as const) {
+      expect((await updateRewardPolicy(db, s.ctx, { useMinAmount: min })).ok, `min ${min}`).toBe(ok);
+    }
+    for (const [ratio, ok] of [[0, true], [100, true], [101, false], [-1, false], [1.5, false], ["10", false]] as const) {
+      expect((await updateRewardPolicy(db, s.ctx, { useMaxRatio: ratio })).ok, `ratio ${ratio}`).toBe(ok);
+    }
+    const p = await db.rewardPolicy.findUniqueOrThrow({ where: { sellerId: s.seller.id } });
+    expect([p.useMinAmount, p.useMaxRatio]).toEqual([1_000_000, 100]);
+    await expect(db.rewardPolicy.update({ where: { sellerId: s.seller.id }, data: { useMaxRatio: 101 } })).rejects.toThrow();
+    await expect(db.rewardPolicy.update({ where: { sellerId: s.seller.id }, data: { useMinAmount: 15 } })).rejects.toThrow();
+    const h = await listRewardPolicyHistory(db, s.ctx, {});
+    expect(h.ok && h.history.flatMap((x) => x.changes).filter((c) => c.kind === "useMinAmount").map((c) => c.after)).toEqual(expect.arrayContaining([5000, 10, 1_000_000]));
+  });
+
   it("저장한 적립률로 실제 지급액이 계산된다(원 단위 내림)", async () => {
     const s = await setup();
     await updateRewardPolicy(db, s.ctx, { rates: { [s.basic.id]: { card: 1.5 } } });

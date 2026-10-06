@@ -8,10 +8,16 @@ import { DEFAULT_EARN_TIMING, EARN_TIMINGS } from "./policy";
 // 적립 정책(SA-031, MEMBER_POINTS). 등급별 적립률(카드·무통장)·지급 시점·취소/환불 회수 방식·인기 카드 1위 보너스를 읽고 저장한다.
 // - 저장은 보낸 항목만 바꾼다(부분 저장). 바꾼 항목은 한 건의 로그 추적(reward_policy.update)과 정책 변경 이력에 항목별로 남는다.
 // - 적립률은 0~10%, 소수 첫째 자리까지. 등급은 이 쇼핑몰 것만. 바뀐 적립률은 저장 뒤 결제되는 주문부터(이미 지급한 적립금은 그대로).
+// - 사용 조건: 최소 사용 금액(기본 1,000원, 10원 단위)·주문당 최대 사용 비율(0=제한 없음). 여기서는 저장만 하고 견적·주문에서 적용하는 것은 결제 쪽(MASTER 2026-10-06).
+// - 유효 기간은 대표님 결정대로 마지막 적립 후 3년 고정(설정 없음). 「마이너스 허용」 회수는 없다(잔액 음수 금지).
 // - 회수 방식은 AUTO(자동 회수, 잔액이 모자라면 실패로 기록)·MANUAL(원장에서 수동 처리). 잔액은 0 아래로 내려갈 수 없어 「마이너스 허용」은 없다.
 // - 같은 쇼핑몰의 동시 저장은 잠금으로 한 줄로 세운다(JSON 적립률이 서로 덮이지 않게).
 export const RATE_MAX = 10;
 export const RANKING_BONUS_MAX = 1_000_000;
+// 적립금 사용 조건(SA-031): 최소 사용 금액(10원 단위, 기본 1,000원) · 주문당 최대 사용 비율(정수 %, 0=제한 없음).
+export const USE_MIN_DEFAULT = 1000;
+export const USE_MIN_UNIT = 10;
+export const USE_MIN_MAX = 1_000_000;
 export const REVOKE_MODES = ["AUTO", "MANUAL"] as const satisfies readonly RevokeMode[];
 
 export const REWARD_POLICY_MESSAGES = {
@@ -20,9 +26,11 @@ export const REWARD_POLICY_MESSAGES = {
   reward_rate_unit: "적립률은 소수점 1자리까지 입력해 주십시오",
   reward_grade_not_found: "등급을 찾을 수 없습니다",
   reward_ranking_bonus_invalid: "인기 카드 1위 보너스 금액을 확인해 주십시오",
+  reward_use_min_invalid: "최소 사용 금액은 10원 단위로 10원 이상 입력해 주십시오",
+  reward_use_ratio_invalid: "최대 사용 비율은 0~100 사이 정수로 입력해 주십시오(0은 제한 없음)",
 } as const;
 export type RewardPolicyFailure = keyof typeof REWARD_POLICY_MESSAGES;
-export const REWARD_POLICY_STATUS = { invalid_reward_policy: 400, reward_rate_out_of_range: 400, reward_rate_unit: 400, reward_grade_not_found: 404, reward_ranking_bonus_invalid: 400 } as const;
+export const REWARD_POLICY_STATUS = { invalid_reward_policy: 400, reward_rate_out_of_range: 400, reward_rate_unit: 400, reward_grade_not_found: 404, reward_ranking_bonus_invalid: 400, reward_use_min_invalid: 400, reward_use_ratio_invalid: 400 } as const;
 
 type Rates = RewardRates;
 const asRates = (v: unknown): Rates => (v && typeof v === "object" && !Array.isArray(v) ? (v as Rates) : {});
@@ -33,11 +41,13 @@ export type Change =
   | { kind: "rate"; gradeId: string; gradeName: string; method: "card" | "bankTransfer"; before: number | null; after: number | null }
   | { kind: "earnTiming"; before: RewardEarnTiming; after: RewardEarnTiming }
   | { kind: "revokeMode"; before: RevokeMode; after: RevokeMode }
+  | { kind: "useMinAmount"; before: number; after: number }
+  | { kind: "useMaxRatio"; before: number; after: number }
   | { kind: "rankingBonus"; before: { enabled: boolean; amount: number }; after: { enabled: boolean; amount: number } };
 
 async function readState(db: Pick<PrismaClient, "rewardPolicy" | "memberGrade">, sellerId: string) {
   const [p, grades] = await Promise.all([
-    db.rewardPolicy.findUnique({ where: { sellerId }, select: { rates: true, earnTiming: true, revokeMode: true, rankingBonusEnabled: true, rankingBonusAmount: true, livePayoutEnabled: true, updatedAt: true } }),
+    db.rewardPolicy.findUnique({ where: { sellerId }, select: { rates: true, earnTiming: true, useMinAmount: true, useMaxRatio: true, revokeMode: true, rankingBonusEnabled: true, rankingBonusAmount: true, livePayoutEnabled: true, updatedAt: true } }),
     db.memberGrade.findMany({ where: { sellerId }, orderBy: { sortOrder: "asc" }, select: { id: true, displayName: true, systemKey: true, minAmount: true, sortOrder: true, _count: { select: { members: { where: { deletedAt: null } } } } } }),
   ]);
   const rates = asRates(p?.rates);
@@ -45,6 +55,8 @@ async function readState(db: Pick<PrismaClient, "rewardPolicy" | "memberGrade">,
     configured: !!p,
     earnTiming: p?.earnTiming ?? DEFAULT_EARN_TIMING,
     revokeMode: p?.revokeMode ?? ("AUTO" as RevokeMode),
+    useMinAmount: p?.useMinAmount ?? USE_MIN_DEFAULT,
+    useMaxRatio: p?.useMaxRatio ?? 0,
     rankingBonus: { enabled: p?.rankingBonusEnabled ?? false, amount: p?.rankingBonusAmount ?? 0 },
     livePayoutEnabled: p?.livePayoutEnabled ?? false,
     updatedAt: p?.updatedAt ?? null,
@@ -60,7 +72,7 @@ export async function readRewardPolicy(db: PrismaClient, ctx: TenantContext) {
   return rest;
 }
 
-type Parsed = { earnTiming?: RewardEarnTiming; revokeMode?: RevokeMode; rankingBonus?: { enabled: boolean; amount: number }; rates?: Record<string, { card?: number | null; bankTransfer?: number | null }> };
+type Parsed = { earnTiming?: RewardEarnTiming; useMinAmount?: number; useMaxRatio?: number; revokeMode?: RevokeMode; rankingBonus?: { enabled: boolean; amount: number }; rates?: Record<string, { card?: number | null; bankTransfer?: number | null }> };
 
 function parseRate(v: unknown): number | null | RewardPolicyFailure {
   if (v === null) return null;
@@ -72,7 +84,7 @@ function parseRate(v: unknown): number | null | RewardPolicyFailure {
 
 function parse(raw: unknown): { ok: true; value: Parsed } | { ok: false; reason: RewardPolicyFailure } {
   if (!isObj(raw)) return { ok: false, reason: "invalid_reward_policy" };
-  const known = ["earnTiming", "revokeMode", "rankingBonus", "rates"];
+  const known = ["earnTiming", "revokeMode", "rankingBonus", "rates", "useMinAmount", "useMaxRatio"];
   if (Object.keys(raw).some((k) => !known.includes(k)) || Object.keys(raw).length === 0) return { ok: false, reason: "invalid_reward_policy" };
   const out: Parsed = {};
   if (raw.earnTiming !== undefined) {
@@ -82,6 +94,16 @@ function parse(raw: unknown): { ok: true; value: Parsed } | { ok: false; reason:
   if (raw.revokeMode !== undefined) {
     if (!REVOKE_MODES.includes(raw.revokeMode as RevokeMode)) return { ok: false, reason: "invalid_reward_policy" };
     out.revokeMode = raw.revokeMode as RevokeMode;
+  }
+  if (raw.useMinAmount !== undefined) {
+    const v = raw.useMinAmount;
+    if (typeof v !== "number" || !Number.isInteger(v) || v < USE_MIN_UNIT || v > USE_MIN_MAX || v % USE_MIN_UNIT !== 0) return { ok: false, reason: "reward_use_min_invalid" };
+    out.useMinAmount = v;
+  }
+  if (raw.useMaxRatio !== undefined) {
+    const v = raw.useMaxRatio;
+    if (typeof v !== "number" || !Number.isInteger(v) || v < 0 || v > 100) return { ok: false, reason: "reward_use_ratio_invalid" };
+    out.useMaxRatio = v;
   }
   if (raw.rankingBonus !== undefined) {
     const r = raw.rankingBonus;
@@ -136,6 +158,8 @@ export async function updateRewardPolicy(db: PrismaClient, ctx: TenantContext, r
       else nextRates[gradeId] = entry;
     }
     if (want.earnTiming && want.earnTiming !== cur.earnTiming) changes.push({ kind: "earnTiming", before: cur.earnTiming, after: want.earnTiming });
+    if (want.useMinAmount !== undefined && want.useMinAmount !== cur.useMinAmount) changes.push({ kind: "useMinAmount", before: cur.useMinAmount, after: want.useMinAmount });
+    if (want.useMaxRatio !== undefined && want.useMaxRatio !== cur.useMaxRatio) changes.push({ kind: "useMaxRatio", before: cur.useMaxRatio, after: want.useMaxRatio });
     if (want.revokeMode && want.revokeMode !== cur.revokeMode) changes.push({ kind: "revokeMode", before: cur.revokeMode, after: want.revokeMode });
     if (want.rankingBonus && (want.rankingBonus.enabled !== cur.rankingBonus.enabled || want.rankingBonus.amount !== cur.rankingBonus.amount)) {
       changes.push({ kind: "rankingBonus", before: cur.rankingBonus, after: want.rankingBonus });
@@ -145,6 +169,8 @@ export async function updateRewardPolicy(db: PrismaClient, ctx: TenantContext, r
     const data = {
       rates: nextRates as object,
       ...(want.earnTiming ? { earnTiming: want.earnTiming } : {}),
+      ...(want.useMinAmount !== undefined ? { useMinAmount: want.useMinAmount } : {}),
+      ...(want.useMaxRatio !== undefined ? { useMaxRatio: want.useMaxRatio } : {}),
       ...(want.revokeMode ? { revokeMode: want.revokeMode } : {}),
       ...(want.rankingBonus ? { rankingBonusEnabled: want.rankingBonus.enabled, rankingBonusAmount: want.rankingBonus.amount } : {}),
     };
