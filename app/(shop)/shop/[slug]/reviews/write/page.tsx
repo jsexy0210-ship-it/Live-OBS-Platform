@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import ReviewWrite from "../../../../../../components/shop/ReviewWrite";
 import ShopState from "../../../../../../components/shop/ShopState";
+import ShopLocked from "../../../../../../components/shop/ShopLocked";
 import { shopOpen } from "../../../../../../lib/server/buyers/signup";
 import { prisma } from "../../../../../../lib/server/db";
 
@@ -30,7 +31,7 @@ export default async function ShopReviewWritePage({ params, searchParams }: Para
   return (
     <>
       {!open ? (
-        <ShopState title="지금은 쇼핑몰을 이용할 수 없어요" body="쇼핑몰이 다시 문을 열면 리뷰를 쓸 수 있어요." />
+        <ShopLocked slug={shop.slug} />
       ) : !item && !review ? (
         <ShopState title="리뷰를 쓸 상품을 골라 주세요" body="내 리뷰에서 리뷰를 기다리는 상품을 골라 주세요." />
       ) : (
