@@ -1493,3 +1493,13 @@ body {
   width: 100%;
   max-width: 560px;
 }
+/* 보드 SH-010: 로그인 유지(왼쪽) · 비밀번호를 잊었어요(오른쪽) 한 줄 */
+.shop-login-opts {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.shop-login-opts a {
+  font-size: 13px;
+}

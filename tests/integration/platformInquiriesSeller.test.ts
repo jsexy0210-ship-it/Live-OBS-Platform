@@ -9,6 +9,7 @@ import { POST as sellerClose } from "../../app/api/seller/platform-inquiries/[in
 import { POST as sellerMessage } from "../../app/api/seller/platform-inquiries/[inquiryId]/messages/route";
 import { POST as sellerRate } from "../../app/api/seller/platform-inquiries/[inquiryId]/rating/route";
 import { GET as sellerGetOne } from "../../app/api/seller/platform-inquiries/[inquiryId]/route";
+import { DELETE as draftDelete, GET as draftGet, PUT as draftPut } from "../../app/api/seller/platform-inquiries/draft/route";
 import { GET as relatedOptions } from "../../app/api/seller/platform-inquiries/related-options/route";
 import { GET as sellerList, POST as sellerCreate } from "../../app/api/seller/platform-inquiries/route";
 import { loginSeller } from "../../lib/server/auth/login";
@@ -55,6 +56,9 @@ const adminClosing = async (cookie: string, id: string, body: unknown) => json(a
 const closeIt = async (cookie: string, id: string, body: unknown = {}) => json(await sellerClose(req(`/api/seller/platform-inquiries/${id}/close`, cookie, "POST", body), iq(id)));
 const assign = async (cookie: string, id: string, body: unknown) => json(await adminAssign(req(`/api/admin/platform-inquiries/${id}/assign`, cookie, "POST", body), iq(id)));
 const adminListing = async (cookie: string, qs = "") => json(await adminList(req(`/api/admin/platform-inquiries${qs}`, cookie)));
+const draftOf = async (cookie: string) => json(await draftGet(req("/api/seller/platform-inquiries/draft", cookie)));
+const draftSave = async (cookie: string, body: unknown) => json(await draftPut(req("/api/seller/platform-inquiries/draft", cookie, "PUT", body)));
+const draftClear = async (cookie: string) => json(await draftDelete(req("/api/seller/platform-inquiries/draft", cookie, "DELETE", {})));
 const rate = async (cookie: string, id: string, body: unknown) => json(await sellerRate(req(`/api/seller/platform-inquiries/${id}/rating`, cookie, "POST", body), iq(id)));
 
 async function order(sellerId: string, buyerId: string, orderNo: number, at: string, nickname = "닉") {
@@ -241,6 +245,45 @@ describe("목록: 상태·분류 필터, 건수, 마지막 답변", () => {
     } finally {
       delete process.env.APP_VERSION;
     }
+  });
+
+  it("임시 저장: 계정당 하나(직원·대표자 따로), 전체 교체, 비어 있어도 되고 모두 비면 지워진다. 잘못된 값은 400, 다른 쇼핑몰·계정은 못 봄, 지우기는 여러 번 해도 성공", async () => {
+    const s = await shop();
+    const other = await shop();
+    expect((await draftOf(s.owner.cookie)).body).toEqual({ draft: null });
+
+    const full = { category: "BROADCAST", title: "방송 화면이 멈춥니다", body: "21시쯤 끊겼어요", urgent: true, relatedOrderId: "11111111-1111-4111-8111-111111111111", includeDiagnostics: false };
+    const saved = await draftSave(s.owner.cookie, full);
+    expect(saved.status).toBe(200);
+    expect(saved.body.draft).toMatchObject({ ...full, relatedBroadcastId: null });
+    expect((await draftOf(s.owner.cookie)).body.draft).toMatchObject(full);
+    // 전체 교체: 빠진 항목은 비워진다(제목만 남김)
+    expect((await draftSave(s.owner.cookie, { title: "제목만" })).body.draft).toMatchObject({ category: null, title: "제목만", body: "", urgent: false, relatedOrderId: null, includeDiagnostics: true });
+    // 직원·다른 쇼핑몰은 따로
+    expect((await draftOf(s.staff.cookie)).body.draft).toBeNull();
+    expect((await draftOf(other.owner.cookie)).body.draft).toBeNull();
+    expect((await draftSave(s.staff.cookie, { body: "직원 메모" })).body.draft.body).toBe("직원 메모");
+    expect(await db.platformInquiryDraft.count()).toBe(2);
+    expect((await draftOf(s.owner.cookie)).body.draft.title).toBe("제목만");
+
+    for (const [body, error] of [
+      [{ category: "BILLING" }, "invalid_category"],
+      [{ title: "가".repeat(81) }, "invalid_title"],
+      [{ body: "가".repeat(5001) }, "invalid_body"],
+      [{ urgent: "yes" }, "invalid_urgent"],
+      [{ includeDiagnostics: 1 }, "invalid_diagnostics"],
+      [{ relatedOrderId: "nope" }, "invalid_related"],
+    ] as const) {
+      expect((await draftSave(s.owner.cookie, { title: "유지", ...body })).body.error).toBe(error);
+    }
+    expect((await draftOf(s.owner.cookie)).body.draft.title).toBe("제목만");
+
+    // 모두 비우면 지워진다. 지우기는 없어도 성공
+    expect((await draftSave(s.owner.cookie, { title: "  ", body: "", category: null })).body).toEqual({ draft: null });
+    expect(await db.platformInquiryDraft.count()).toBe(1);
+    expect((await draftClear(s.staff.cookie)).body).toEqual({ draft: null });
+    expect((await draftClear(s.staff.cookie)).status).toBe(200);
+    expect(await db.platformInquiryDraft.count()).toBe(0);
   });
 
   it("필터와 커서를 함께 써도 20건씩 빠짐·겹침 없이 이어진다", async () => {
