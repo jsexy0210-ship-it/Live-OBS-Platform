@@ -118,6 +118,17 @@ describe("파트너스 메일(EM-101·102)", () => {
   });
 });
 
+describe("파트너스 메일 바닥글: 빈 항목은 뺀다", () => {
+  it("플랫폼 정보가 비면 줄에서 그 항목만 빠지고 값을 지어내지 않는다", () => {
+    const input = { platform: { name: "", representative: "", businessNumber: "", address: "", phone: "", url: "onq.example" }, representative: "a", shopName: "b", statusUrl: "https://x.example/s", kind: "SUPPLEMENT" as const, reason: "r", daysLeft: 3 };
+    const none = partnerRejectedMail(input).text;
+    expect(none).not.toMatch(/상호|사업자등록번호|고객센터/);
+    expect(none).toContain("이 메일은 발신 전용이에요");
+    const some = partnerRejectedMail({ ...input, platform: { ...input.platform, name: "온큐", phone: "1588-0000" } }).text;
+    expect(some).toContain("상호 온큐 · 고객센터 1588-0000");
+  });
+});
+
 describe("안전·서식 도우미", () => {
   it("값은 HTML로 이스케이프하고 위험한 링크·색은 막는다", () => {
     const evil = '<script>alert(1)</script>"><img src=x onerror=1>';
