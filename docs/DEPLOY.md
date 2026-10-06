@@ -373,6 +373,8 @@ $C start obs-web-app
 
 서버에 접속하지 않고 정리하려면 `Disk cleanup obs-test` 워크플로(`.github/workflows/disk-cleanup-obs-test.yml`)를 실행합니다. 먼저 `mode=list`로 지울 후보를 확인하고(결과는 실행 요약의 알림으로 남음), 확인한 뒤 `mode=apply`로 정리합니다. 배포와 같은 동시 실행 그룹이라 배포 중에는 기다립니다.
 
+mode=list에서 `include_readonly_details`를 선택하면 공간·inode 사용량, 허용된 Buildx 캐시 필드, 로컬 빌드 기록의 저장소(ONQ/OTHER/UNKNOWN)·축약 리비전·컨텍스트 분류를 추가로 표시합니다. 필요한 명령이나 귀속 메타데이터가 없으면 UNKNOWN으로 남기며, 빌드 기록과 캐시 ID의 연결이 확인되지 않으면 캐시 소유권은 미확인으로 남깁니다. 이 옵션은 조회만 하며 정리 동작이나 `mode=apply`에는 영향을 주지 않습니다.
+
 정리 기준(환경변수로 조정, 서버 값은 모두 추정치이므로 실제 사용량을 본 뒤 조정):
 
 - DB 백업: 배포 전 자동 백업(`obs-<날짜>-<시각>-before-<커밋7자리>.dump`)만 최근 10개(`OBS_BACKUP_KEEP`) 남기고 지웁니다. 수동·복원 안전 백업은 지우지 않고 개수만 알립니다. 24시간 넘은 `.part` 부분 파일은 지웁니다.
