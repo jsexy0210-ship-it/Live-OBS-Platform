@@ -422,7 +422,7 @@
 
 ## 파트너스 입력칸 placeholder (2026-10-06, 대표님 지시 「플레이스홀더도 다 기입해」)
 
-정본 v336(묶음 14, PR design/board-sync14)에서 파트너스 관리자 보드 56장의 빈 placeholder 277칸을 채웠다. 전체 목록은 `docs/design-gap/board-sync14/placeholders.md`(보드 · 칸 · 예시 값 · placeholder). 화면 세션은 같은 화면 · 같은 칸에 그 문구를 그대로 쓴다. 쇼핑몰 가입 시 기본값이 들어가는 칸(배송비 · 자동 구매 확정 기간 · 적립률 등)은 기반 (8)이 docs에 기본값 목록을 정리하면 정본에 「기본값 보이는 상태」로 후속 반영한다.
+정본 v336(묶음 14, PR design/board-sync14)에서 파트너스 관리자 보드 56장의 빈 placeholder 277칸을 채웠다. 전체 목록은 `docs/design-gap/board-sync14/placeholders.md`(보드 · 칸 · 예시 값 · placeholder) + 2차 `docs/design-gap/board-sync15/placeholders-2.md`(v337, placeholder 속성이 없던 textarea 22 · 입력 2). 화면 세션은 같은 화면 · 같은 칸에 그 문구를 그대로 쓴다. 쇼핑몰 가입 시 기본값이 들어가는 칸(배송비 · 자동 구매 확정 기간 · 적립률 등)은 기반 (8)이 docs에 기본값 목록을 정리하면 정본에 「기본값 보이는 상태」로 후속 반영한다.
 
 ## 휴대폰(390) 보드 제안 (2026-10-06, 디자인 전담 (7) · MASTER (4) 요청)
 
