@@ -193,6 +193,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/platform-inquiries/[inquiryId]/close": "BILLING",
   "seller/platform-inquiries/[inquiryId]/rating": "BILLING",
   "seller/platform-inquiries/related-options": "BILLING",
+  "seller/platform-inquiries/draft": "BILLING",
   "seller/platform-inquiries/images": "BILLING",
   "seller/platform-inquiries/images/[imageId]": "BILLING",
   "seller/notices/[noticeId]": "STORE_OPERATIONS",
@@ -282,6 +283,7 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/reviews/images": "STORE_OPERATIONS",
   "shop/[slug]/reviews/[reviewId]/report": "STORE_OPERATIONS",
   "shop/[slug]/reviews/public-images/[imageId]": "STORE_OPERATIONS",
+  "shop/[slug]/profile": "OPEN", // 쇼핑몰 공개 정보(SA-060: 이름·소개·상단 공지·이용안내·운영 상태). 승인된 쇼핑몰만, 안내 화면에도 필요해 잠긴 쇼핑몰에서도 열림
   "shop/[slug]/home": "STORE_OPERATIONS", // 홈 진열(SA-016)
   "shop/[slug]/products": "STORE_OPERATIONS", // 구매자 상품 목록(운영 중 쇼핑몰만)
   "shop/[slug]/products/[productId]": "STORE_OPERATIONS", // 구매자 상품 상세
@@ -337,6 +339,7 @@ const SHOP_PAGES: Record<string, "STORE_OPERATIONS" | "OPEN"> = {
   "shop/[slug]/search": "STORE_OPERATIONS", // SH-002 상품 검색
   "shop/[slug]/products/[productId]": "STORE_OPERATIONS", // SH-003 상품 상세: shopOpen으로 막고, 막히면 안내 화면
   "shop/[slug]/login": "OPEN", // SH-010 로그인: 잠긴 쇼핑몰에서도 받은 쿠폰·알림 설정에 들어갈 수 있게 연다
+  "shop/[slug]/password-reset": "OPEN", // SH-012 비밀번호 찾기: 로그인과 같은 기준(API password-reset/*도 OPEN)
   "shop/[slug]/me": "OPEN", // SH-020 내 정보(메뉴 링크만)
   "shop/[slug]/cart": "STORE_OPERATIONS", // SH-004 장바구니: shopOpen으로 막고, 막히면 안내 화면
   "shop/[slug]/checkout": "STORE_OPERATIONS", // SH-005 주문서: shopOpen으로 막고, 막히면 안내 화면

@@ -22,23 +22,27 @@ test("내 도메인: 추가하면 설정값 표가 보이고, 연결 확인은 �
   await expect(section).toBeVisible();
   await expect(section.getByText("실제 도메인 연결(주소 연결 · 보안 인증서)은 준비 중입니다")).toBeVisible();
 
-  // 잘못된 주소는 서버가 이유를 알려 준다(확인 창 뒤)
-  await page.getByLabel("연결할 주소").fill("https://bad.example.com/path");
-  await page.getByRole("button", { name: "추가", exact: true }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "추가", exact: true }).click();
-  await expect(section.getByRole("alert")).toContainText("도메인은 shop.example.com 같은 영문 소문자 주소로 입력해 주십시오");
+  const savePage = () => page.getByRole("button", { name: "저장", exact: true }).click();
+  const dialog = () => page.getByRole("dialog");
 
-  // 추가: 확인 창 취소 → 아무 것도 안 만들어진다
+  // 잘못된 주소는 서버가 이유를 알려 준다(페이지 저장 확인 뒤, 실패한 구역 이름과 함께)
+  await page.getByLabel("연결할 주소").fill("https://bad.example.com/path");
+  await savePage();
+  await dialog().getByRole("button", { name: "저장", exact: true }).click();
+  await expect(section.getByRole("alert")).toContainText("도메인은 shop.example.com 같은 영문 소문자 주소로 입력해 주십시오");
+  await expect(page.getByText("저장하지 못한 구역이 있습니다 · 내 도메인:")).toBeVisible();
+
+  // 저장 확인 창 취소 → 아무 것도 안 만들어진다
   await page.getByLabel("연결할 주소").fill(HOST);
-  await page.getByRole("button", { name: "추가", exact: true }).click();
-  await expect(page.getByRole("dialog")).toContainText(`「${HOST}」 주소를 등록하고`);
-  await page.getByRole("dialog").getByRole("button", { name: "취소", exact: true }).click();
+  await savePage();
+  await expect(dialog()).toContainText("내 도메인 변경이 구매자 쇼핑몰에 바로 바뀝니다");
+  await dialog().getByRole("button", { name: "취소", exact: true }).click();
   await expect(section.getByTestId("domain-row").filter({ hasText: HOST })).toHaveCount(0);
 
-  // 추가: 확인 → 행 + 설정값 표(CNAME · TXT)
-  await page.getByRole("button", { name: "추가", exact: true }).click();
+  // 저장 확인 → 행 + 설정값 표(CNAME · TXT)
+  await savePage();
   const post = page.waitForResponse((r) => r.request().method() === "POST" && r.url().endsWith("/api/seller/domains"));
-  await page.getByRole("dialog").getByRole("button", { name: "추가", exact: true }).click();
+  await dialog().getByRole("button", { name: "저장", exact: true }).click();
   expect((await post).status()).toBe(201);
   const row = section.getByTestId("domain-row").filter({ hasText: HOST });
   await expect(row).toContainText("연결 확인 중");

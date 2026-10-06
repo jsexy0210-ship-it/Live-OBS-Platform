@@ -368,6 +368,57 @@ export async function createInquiry(db: PrismaClient, ctx: TenantContext, raw: u
   }
 }
 
+// SA-114 임시 저장: 계정(직원 포함)당 하나. 값은 임시라 느슨하게 받고(비어 있어도 됨) 보낼 때 createInquiry가 다시 검사한다.
+// 모두 비어 있으면 임시 저장을 지운다. 마스터 대리 조회(readOnly)는 보지도 쓰지도 않는다.
+const draftView = (d: { category: PlatformInquiryCategory | null; title: string; body: string; urgent: boolean; relatedOrderId: string | null; relatedBroadcastId: string | null; includeDiagnostics: boolean; updatedAt: Date }) => ({
+  category: d.category,
+  title: d.title,
+  body: d.body,
+  urgent: d.urgent,
+  relatedOrderId: d.relatedOrderId,
+  relatedBroadcastId: d.relatedBroadcastId,
+  includeDiagnostics: d.includeDiagnostics,
+  updatedAt: d.updatedAt,
+});
+
+export async function getMyDraft(db: PrismaClient, ctx: TenantContext) {
+  if (ctx.readOnly) return null;
+  const d = await db.platformInquiryDraft.findFirst({ where: { sellerUserId: ctx.actorId, sellerId: ctx.sellerId } });
+  return d ? draftView(d) : null;
+}
+
+// 본문 { category?, title?, body?, urgent?, relatedOrderId?, relatedBroadcastId?, includeDiagnostics? }. 항목을 빼거나 null·""이면 비운다(전체 교체).
+export async function saveMyDraft(db: PrismaClient, ctx: TenantContext, raw: unknown) {
+  requireSellerWrite(ctx);
+  const b = obj(raw);
+  const blank = (v: unknown) => v === undefined || v === null || (typeof v === "string" && v.trim() === "");
+  if (!blank(b.category) && !CATEGORIES.includes(b.category as PlatformInquiryCategory)) return { ok: false as const, reason: "invalid_category" as const };
+  if (b.urgent !== undefined && typeof b.urgent !== "boolean") return { ok: false as const, reason: "invalid_urgent" as const };
+  if (b.includeDiagnostics !== undefined && typeof b.includeDiagnostics !== "boolean") return { ok: false as const, reason: "invalid_diagnostics" as const };
+  const title = blank(b.title) ? "" : cleanText(b.title, TITLE_MAX, "memo");
+  if (title === null) return { ok: false as const, reason: "invalid_title" as const };
+  const body = blank(b.body) ? "" : cleanText(b.body, BODY_MAX, "multiline");
+  if (body === null) return { ok: false as const, reason: "invalid_body" as const };
+  const relatedOrderId = blank(b.relatedOrderId) ? null : b.relatedOrderId;
+  const relatedBroadcastId = blank(b.relatedBroadcastId) ? null : b.relatedBroadcastId;
+  if ((relatedOrderId !== null && !isUuid(relatedOrderId)) || (relatedBroadcastId !== null && !isUuid(relatedBroadcastId))) return { ok: false as const, reason: "invalid_related" as const };
+  const category = blank(b.category) ? null : (b.category as PlatformInquiryCategory);
+  const urgent = b.urgent === true;
+  const includeDiagnostics = b.includeDiagnostics !== false;
+  if (!category && !title && !body && !urgent && !relatedOrderId && !relatedBroadcastId) {
+    await db.platformInquiryDraft.deleteMany({ where: { sellerUserId: ctx.actorId } });
+    return { ok: true as const, draft: null };
+  }
+  const data = { sellerId: ctx.sellerId, category, title, body, urgent, relatedOrderId, relatedBroadcastId, includeDiagnostics, updatedAt: new Date() };
+  const d = await db.platformInquiryDraft.upsert({ where: { sellerUserId: ctx.actorId }, create: { sellerUserId: ctx.actorId, ...data }, update: data });
+  return { ok: true as const, draft: draftView(d) };
+}
+
+export async function deleteMyDraft(db: PrismaClient, ctx: TenantContext) {
+  requireSellerWrite(ctx);
+  await db.platformInquiryDraft.deleteMany({ where: { sellerUserId: ctx.actorId } });
+}
+
 // SA-115: 추가 문의. 본문 { body, imageIds? }. 종료된 문의는 409 inquiry_closed. 답변 대기로 돌아간다.
 export async function addSellerMessage(db: PrismaClient, ctx: TenantContext, id: string, raw: unknown, meta: AuditMeta = {}) {
   requireSellerWrite(ctx);

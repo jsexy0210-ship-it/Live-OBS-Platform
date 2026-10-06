@@ -84,6 +84,9 @@ test("운영: 이상 없음은 목록에서 한 번에 승인되고(처리한 �
   const panel = page.getByTestId("review-panel");
   await expect(panel.getByTestId("review-reasons")).toContainText("사업자 상태가 휴업 또는 폐업입니다");
   await expect(panel.getByRole("row", { name: /국세청 사업자 상태.*휴업 · 폐업/ })).toBeVisible();
+  // 시험 신청은 외부 조회를 한 번도 하지 않았으므로 사유가 없는 통신판매업 행은 통과가 아니라 「미조회」
+  await expect(panel.getByRole("row", { name: /통신판매업 신고번호.*미조회/ })).toBeVisible();
+  await expect(panel.getByTestId("review-checked-at")).toContainText("아직 하지 않았습니다");
   await expect(panel.getByRole("button", { name: "국세청 다시 조회" })).toBeVisible();
   await expect(panel).toContainText("등록증");
   await panel.getByLabel("내부 메모").fill("재개업 증빙 확인 필요");
