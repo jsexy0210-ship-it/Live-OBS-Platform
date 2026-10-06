@@ -15,7 +15,7 @@ import { recentRange } from "../../../../../lib/client/dateInput";
 import { PERIOD_ALL } from "../../../../../lib/client/filterDefaults";
 import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
 
-// SA-011 상품 목록(업무용 관리 화면). 위쪽 표형 검색 상자에서 조건을 정해 「검색」을 누르면 걸러 보고, 이어서 불러온다(기본 50개씩).
+// SA-011 상품 목록(업무용 관리 화면). 위쪽 표형 검색 상자에서 조건을 정해 「검색」을 누르면 걸러 보고, 이어서 불러온다(기본 20개씩).
 // 정렬·페이지 크기는 바꾸는 즉시 적용한다. 체크한 상품은 판매 상태 변경·삭제를 한 번에 처리한다(POST /api/seller/products/bulk).
 const FILTERS: { key: ProductStatus | "ALL"; label: string }[] = [
   { key: "ALL", label: "전체" },
@@ -81,13 +81,13 @@ const query = (f: Filters, sort: Sort, limit: number) =>
     f.from ? `createdFrom=${f.from}` : "",
     f.to ? `createdTo=${f.to}` : "",
     sort === "newest" ? "" : `sort=${sort}`,
-    limit === 50 ? "" : `limit=${limit}`,
+    `limit=${limit}`,
   ]
     .filter(Boolean)
     .join("&");
 
 // 주소에 싣는 값(기본값과 같으면 쿼리에서 뺀다). 알 수 없는 값은 읽을 때 기본값으로 돌린다
-const urlDefaults = () => ({ q: "", mode: "name", status: "ALL", stock: "", categoryId: "", display: "", deduct: "", ...recentRange(1), period: "", sort: "newest", limit: "50" });
+const urlDefaults = () => ({ q: "", mode: "name", status: "ALL", stock: "", categoryId: "", display: "", deduct: "", ...recentRange(1), period: "", sort: "newest", limit: "20" });
 const oneOf = <T extends string>(v: string, list: readonly T[], fallback: T): T => ((list as readonly string[]).includes(v) ? (v as T) : fallback);
 
 const TOASTS: Record<string, string> = {
@@ -129,7 +129,7 @@ export default function ProductListPage() {
     ...(u.period === PERIOD_ALL ? { from: "", to: "" } : { from: u.from, to: u.to }),
   };
   const sort = oneOf(u.sort, SORTS.map((x) => x.key), "newest");
-  const limit = Number(oneOf(u.limit, LIMITS.map(String), "50"));
+  const limit = Number(oneOf(u.limit, LIMITS.map(String), "20"));
   const key = query(applied, sort, limit);
   const appliedJson = JSON.stringify(applied);
   const [draft, setDraft] = useState<Filters>(applied);

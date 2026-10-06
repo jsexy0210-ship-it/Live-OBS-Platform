@@ -8,7 +8,8 @@ import { PageHead } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
-import { DISPLAY_STATUS, SELLER_STATUS, SUBSCRIPTION_STATUS, day, dayTime, text, won, type SellerDetail, type SellerListRow, type SellerStatus } from "../../../_components/partners";
+import { DISPLAY_STATUS, SELLER_STATUS, SUBSCRIPTION_STATUS, day, dayTime, text, type SellerDetail, type SellerListRow, type SellerStatus } from "../../../_components/partners";
+import { PartnerOrdersTab, PartnerShopTab, PartnerSubscriptionTab } from "../../../_components/PartnerDetailTabs";
 import { MessageBalanceSection } from "../../../_components/MessageBalanceSection";
 import { PARTNER_TABS, PartnerActivity, PartnerBroadcasts, PartnerNotes, PartnerPg, type PartnerTab } from "../../../_components/PartnerTabs";
 import { ImpersonateDialog, type ImpersonationStart } from "../../../_components/ImpersonateDialog";
@@ -104,35 +105,17 @@ function PartnerDetail() {
       <AdminTopbar crumb="파트너스 › 파트너스 목록 › 파트너스 상세" />
       <main className="main">
         <PageHead
-          title={s ? s.shopName : "파트너스 상세"}
+          title={`파트너스 상세 · ${PARTNER_TABS.find(([k]) => k === tab)?.[1] ?? "기본정보"}`}
           actions={
             <>
-              {s && canModerate && (s.status === "ACTIVE" || s.status === "SUSPENDED") && (
-                <button className="btn btn-out" type="button" onClick={() => setDialog(true)}>
-                  {s.status === "ACTIVE" ? "이용 정지" : "정지 해제"}
-                </button>
-              )}
-              {s && canImpersonate && (s.status === "ACTIVE" || s.status === "SUSPENDED") && (
-                <button className="btn btn-out" type="button" onClick={() => setImpDialog(true)}>
-                  이 파트너스 화면 대신 보기
-                </button>
-              )}
-              {s && (
-                <button className="btn btn-out" type="button" onClick={() => setQ({ tab: "notes" })}>
-                  메모
-                </button>
-              )}
-              {s && s.inquiryOpenCount > 0 && (
-                <Link className="btn btn-out" href={`/admin/support/inquiries?sellerId=${s.id}`}>
-                  문의 {s.inquiryOpenCount}건
+              <button className="btn btn-out" type="button" onClick={back}>
+                목록
+              </button>
+              {tab === "subscription" && (
+                <Link className="btn btn-out" href="/admin/billing/subscriptions">
+                  구독 현황
                 </Link>
               )}
-              {s && (
-                <Link className="btn btn-out" href={`/admin/billing/invoices?sellerId=${s.id}`}>
-                  청구·결제 내역
-                </Link>
-              )}
-              <button className="btn btn-out" type="button" onClick={back}>파트너스 목록</button>
             </>
           }
         />
@@ -163,19 +146,47 @@ function PartnerDetail() {
                 </button>
               </div>
             )}
-            <div className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "center" }} data-testid="partner-badges">
-              <span className={`bdg ${row ? DISPLAY_STATUS[row.displayStatus].cls : SELLER_STATUS[s.status].cls}`}>{row ? DISPLAY_STATUS[row.displayStatus].label : SELLER_STATUS[s.status].label}</span>
-              {s.subscription && <span className={`bdg ${SUBSCRIPTION_STATUS[s.subscription.status].cls}`}>구독 {SUBSCRIPTION_STATUS[s.subscription.status].label}</span>}
-              {row?.pg.status === "ERROR" && <span className="bdg b-fail">결제 연결 오류</span>}
-              {row?.live && <span className="bdg b-live">방송 중</span>}
-              {row?.payoutEnabled && <span className="bdg b-done">실제 지급 켜짐</span>}
-              <span className="t-l2 c-alt">
-                쇼핑몰 주소 {s.slug}
-                {s.owner ? ` · 대표 ${s.owner.name}` : ""} · {day(s.createdAt)} 가입
-                {s.approvedAt ? ` · 승인 ${s.approvedBy ? s.approvedBy.name : "자동"}` : ""}
-                {s.assignedCs ? ` · 담당 CS ${s.assignedCs.name}` : ""}
+            <section className="card pad row" style={{ gap: 12, alignItems: "center", flexWrap: "wrap" }} aria-label="파트너스 요약" data-testid="partner-badges">
+              <span aria-hidden="true" style={{ width: 40, height: 40, borderRadius: 2, background: "var(--wds-primary-normal, #0a7a6b)", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 18, flex: "none" }}>
+                {s.shopName.slice(0, 1)}
               </span>
-            </div>
+              <div className="col" style={{ gap: 4, flex: "1 1 320px", minWidth: 0 }}>
+                <span className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  <b className="t-h2">{s.shopName}</b>
+                  <span className={`bdg ${row ? DISPLAY_STATUS[row.displayStatus].cls : SELLER_STATUS[s.status].cls}`}>{row ? DISPLAY_STATUS[row.displayStatus].label : SELLER_STATUS[s.status].label}</span>
+                  {s.subscription && <span className={`bdg ${SUBSCRIPTION_STATUS[s.subscription.status].cls}`}>구독 {SUBSCRIPTION_STATUS[s.subscription.status].label}</span>}
+                  {row?.pg.status === "ERROR" && <span className="bdg b-fail">결제 연결 오류</span>}
+                  {row?.live && <span className="bdg b-live">LIVE</span>}
+                  {row?.payoutEnabled && <span className="bdg b-warn">실제 지급 켜짐</span>}
+                </span>
+                <span className="t-l2 c-alt">
+                  쇼핑몰 주소 {s.slug}
+                  {s.owner ? ` · 대표 ${s.owner.name}` : ""} · {day(s.createdAt)} 가입
+                  {s.approvedAt ? ` · 승인 ${s.approvedBy ? s.approvedBy.name : "자동"}` : ""}
+                  {s.assignedCs ? ` · 담당 CS ${s.assignedCs.name}` : ""}
+                </span>
+              </div>
+              <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                {canImpersonate && (s.status === "ACTIVE" || s.status === "SUSPENDED") && (
+                  <button className="btn btn-sm btn-out" type="button" onClick={() => setImpDialog(true)}>
+                    대신 보기
+                  </button>
+                )}
+                <button className="btn btn-sm btn-out" type="button" onClick={() => setQ({ tab: "notes" })}>
+                  메모
+                </button>
+                {s.inquiryOpenCount > 0 && (
+                  <Link className="btn btn-sm btn-out" href={`/admin/support/inquiries?sellerId=${s.id}`}>
+                    문의 {s.inquiryOpenCount}건
+                  </Link>
+                )}
+                {canModerate && (s.status === "ACTIVE" || s.status === "SUSPENDED") && (
+                  <button className="btn btn-sm btn-out c-neg" type="button" onClick={() => setDialog(true)}>
+                    {s.status === "ACTIVE" ? "이용 정지" : "정지 해제"}
+                  </button>
+                )}
+              </div>
+            </section>
             <nav className="tabs" aria-label="파트너스 정보 탭" style={{ overflowX: "auto", maxWidth: "100%" }}>
               {PARTNER_TABS.map(([k, label]) => (
                 <button key={k} type="button" className={`tab${tab === k ? " on" : ""}`} aria-pressed={tab === k} onClick={() => setQ({ tab: k })}>
@@ -189,48 +200,13 @@ function PartnerDetail() {
             {tab === "notes" && <PartnerNotes sellerId={s.id} />}
             {tab === "pg" && <PartnerPg sellerId={s.id} slug={s.slug} />}
             {tab === "activity" && <PartnerActivity sellerId={s.id} />}
-            {tab === "orders" && (
-              <>
-              <div className="stat-row" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
-                {[
-                  ["최근 30일 주문", `${s.orders30d.created.toLocaleString("ko-KR")}건`, "partner-orders"],
-                  ["최근 30일 결제", `${s.orders30d.paid.toLocaleString("ko-KR")}건`, "partner-paid"],
-                  ["최근 30일 결제 금액", won(s.orders30d.paidAmount), "partner-amount"],
-                  ["마지막 주문", dayTime(s.orders30d.lastOrderAt), "partner-last"],
-                ].map(([label, value, id]) => (
-                  <div key={id} className="card pad col" style={{ gap: 4 }}>
-                    <span className="t-l2 c-alt">{label}</span>
-                    <span className="t-h2" data-testid={id}>
-                      {value}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              </>
-            )}
+            {tab === "orders" && <PartnerOrdersTab sellerId={s.id} />}
+            {tab === "shop" && <PartnerShopTab sellerId={s.id} />}
             {tab === "subscription" && (
-              <>
-              <Info
-                title="구독"
-                id="partner-subscription"
-                rows={
-                  s.subscription
-                    ? [
-                        ["상태", <span key="sub" className={`bdg ${SUBSCRIPTION_STATUS[s.subscription.status].cls}`}>{SUBSCRIPTION_STATUS[s.subscription.status].label}</span>],
-                        ["결제 카드", text(s.subscription.cardLabel)],
-                        ["현재 기간", `${day(s.subscription.currentPeriodStart)} ~ ${day(s.subscription.currentPeriodEnd)}`],
-                        ["다음 결제", dayTime(s.subscription.nextChargeAt)],
-                        ["이용 기간이 끝나면 해지", s.subscription.cancelAtPeriodEnd ? "예" : "아니요"],
-                        ["이용 중인 요금제", s.subscription.planName],
-                        ["바뀔 요금제", s.subscription.pendingPlanName ?? "-"],
-                        ["결제 못 한 뒤 기다려 주는 날짜", dayTime(s.subscription.graceUntil)],
-                        ["결제를 다시 시도한 횟수", `${s.subscription.retryCount}회`],
-                      ]
-                    : [["상태", "구독 없음"]]
-                }
-              />
-              <MessageBalanceSection sellerId={s.id} />
-              </>
+              <div className="col" style={{ gap: 20 }}>
+                <PartnerSubscriptionTab seller={s} />
+                <MessageBalanceSection sellerId={s.id} />
+              </div>
             )}
             {tab === "info" && (
               <>

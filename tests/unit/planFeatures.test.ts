@@ -40,6 +40,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/subscription": "BILLING",
   "seller/subscription/card": "BILLING",
   "seller/subscription/cancel": "BILLING",
+  "seller/subscription/payments/export": "BILLING",
   "seller/subscription/plan": "BILLING",
   "seller/subscription/plan/preview": "BILLING",
   "seller/message-balance": "BILLING",
@@ -74,6 +75,13 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/members/[memberId]/memo": "ORDER_FOLLOWUP",
   "seller/shipments": "ORDER_FOLLOWUP",
   "seller/shipments/deliver": "ORDER_FOLLOWUP",
+  "seller/invoices": "ORDER_FOLLOWUP",
+  "seller/invoices/[id]": "ORDER_FOLLOWUP",
+  "seller/invoices/[id]/pickup-request": "ORDER_FOLLOWUP",
+  "seller/invoices/[id]/retry": "ORDER_FOLLOWUP",
+  "seller/invoices/export": "ORDER_FOLLOWUP",
+  "seller/invoices/plan": "ORDER_FOLLOWUP",
+  "seller/invoices/print": "ORDER_FOLLOWUP",
   "seller/members": "ORDER_FOLLOWUP",
   "seller/members/[memberId]": "ORDER_FOLLOWUP",
   "seller/reward-balances": "ORDER_FOLLOWUP",
@@ -343,6 +351,7 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/faqs": "STORE_OPERATIONS",
   "shop/[slug]/legal/[kind]": "STORE_OPERATIONS", // 쇼핑몰 이용약관·개인정보처리방침(운영 중이 아니면 404)
   "shop/[slug]/me/marketing-consent": "OPEN",
+  "shop/[slug]/me/notification-prefs": "OPEN",
   "shop/[slug]/me/withdraw": "OPEN",
   "shop/[slug]/me/rewards": "OPEN", // 내 적립금 잔액(탈퇴 전 확인, #180)
   "shop/[slug]/me/reward-ledger": "OPEN", // 내 적립금 내역(SH-023, 잔액과 같은 기준)
@@ -367,7 +376,9 @@ const SHOP_PAGES: Record<string, "STORE_OPERATIONS" | "OPEN"> = {
   "shop/[slug]/products/[productId]": "STORE_OPERATIONS", // SH-003 상품 상세: shopOpen으로 막고, 막히면 안내 화면
   "shop/[slug]/login": "OPEN", // SH-010 로그인: 잠긴 쇼핑몰에서도 받은 쿠폰·알림 설정에 들어갈 수 있게 연다
   "shop/[slug]/password-reset": "OPEN", // SH-012 비밀번호 찾기: 로그인과 같은 기준(API password-reset/*도 OPEN)
+  "shop/[slug]/me/rewards": "OPEN", // SH-023 내 적립금: 잔액·내역 조회는 잠긴 쇼핑몰에서도 열림(API me/rewards·reward-ledger와 같은 기준)
   "shop/[slug]/me/inquiries": "OPEN", // SH-026 내 문의: 받은 답변은 잠긴 쇼핑몰에서도 본다(API inquiries와 같은 기준)
+  "shop/[slug]/me/profile": "OPEN", // SH-024 회원정보 수정: 본인 정보·닉네임·비밀번호·탈퇴는 잠긴 쇼핑몰에서도 열림(API me/profile 등과 같은 기준)
   "shop/[slug]/me/addresses": "OPEN", // SH-027 배송지 관리: 본인 배송지 조회·정리는 잠긴 쇼핑몰에서도 열림(API addresses와 같은 기준)
   "shop/[slug]/me": "OPEN", // SH-020 내 정보(메뉴 링크만)
   "shop/[slug]/cart": "STORE_OPERATIONS", // SH-004 장바구니: shopOpen으로 막고, 막히면 안내 화면
