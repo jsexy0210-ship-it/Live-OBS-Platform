@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { submitSellerLogin } from "./sellerLogin";
+import { confirmLogout, submitSellerLogin } from "./sellerLogin";
 import { RUN, cleanupProducts, track } from "./cleanup";
 
 // 판매자 로그인 → 상품 목록 → 등록 → 수정 → 숨김·삭제를 실제로 눌러 확인한다.
@@ -370,15 +370,35 @@ test("휴대폰 폭(390)에서는 메뉴가 서랍으로 열리고 상품이 카
   await expect(page.getByRole("link", { name: "상품 목록", exact: true })).not.toBeInViewport();
 });
 
-test("로그아웃 요청이 실패하면 화면에 남아 다시 시도하게 한다", async ({ page }) => {
+test("로그아웃 요청이 실패하면 확인 창 안에 오류를 보이고 화면에 남아 다시 시도하게 한다", async ({ page }) => {
   await login(page);
   await page.route("**/api/seller/auth/logout", (r) => r.fulfill({ status: 500, contentType: "application/json", body: "{}" }));
   await page.getByRole("button", { name: "로그아웃" }).click();
-  await expect(page.getByText("로그아웃하지 못했습니다. 다시 시도해 주십시오")).toBeVisible();
+  await confirmLogout(page);
+  await expect(page.getByRole("dialog").getByText("로그아웃하지 못했습니다. 다시 시도해 주십시오")).toBeVisible();
   await expect(page).toHaveURL(/\/seller\/products$/);
   await page.unroute("**/api/seller/auth/logout");
-  await page.getByRole("button", { name: "로그아웃" }).click();
+  await confirmLogout(page);
   await expect(page).toHaveURL(/\/seller\/login$/);
+});
+
+test("로그아웃은 확인 전에는 실행되지 않고, 취소하면 로그인이 유지된다", async ({ page }) => {
+  await login(page);
+  let called = 0;
+  await page.route("**/api/seller/auth/logout", (r) => {
+    called += 1;
+    return r.continue();
+  });
+  await page.getByRole("button", { name: "로그아웃" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("로그아웃하시겠습니까?")).toBeVisible();
+  await expect(dialog.getByText("이 기기에서 로그아웃됩니다")).toBeVisible();
+  expect(called).toBe(0);
+  await dialog.getByRole("button", { name: "취소" }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(called).toBe(0);
+  await expect(page).toHaveURL(/\/seller\/products$/);
+  expect((await page.request.get("/api/seller/me")).status()).toBe(200);
 });
 
 test("로그인이 풀린 뒤 다른 탭·화면을 열면 로그인으로 보낸다", async ({ page }) => {
@@ -433,6 +453,7 @@ test("「품절로 설정」 탭은 판매 상태가 품절인 상품만, 배지
 test("로그아웃하면 로그인 화면으로 가고 다시 들어갈 수 없다", async ({ page }) => {
   await login(page);
   await page.getByRole("button", { name: "로그아웃" }).click();
+  await confirmLogout(page);
   await expect(page).toHaveURL(/\/seller\/login$/);
   await page.goto("/seller/products");
   await expect(page).toHaveURL(/\/seller\/login\?next=/);

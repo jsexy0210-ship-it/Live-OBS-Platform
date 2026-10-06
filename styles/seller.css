@@ -1106,12 +1106,6 @@ body {
 .gnb-pop-k {
   color: var(--cs-accent);
 }
-.logout-err {
-  position: fixed;
-  top: 52px;
-  right: 12px;
-  z-index: 41;
-}
 /* LNB 제목 줄과 본문 첫 줄(경로 줄)이 같은 높이 토큰을 써서 두 아래 선이 한 수평선이 된다 */
 .cs {
   --cs-bar-h: 48px;
