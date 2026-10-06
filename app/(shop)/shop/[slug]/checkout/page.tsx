@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import CheckoutView from "../../../../../components/shop/CheckoutView";
-import ShopState from "../../../../../components/shop/ShopState";
+import ShopLocked from "../../../../../components/shop/ShopLocked";
 import { COOKIE_NAMES } from "../../../../../lib/server/auth/policy";
 import { resolveBuyerSession } from "../../../../../lib/server/auth/session";
 import { shopOpen } from "../../../../../lib/server/buyers/signup";
@@ -24,6 +24,6 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
       <CheckoutView slug={shop.slug} memberNickname={session?.member.broadcastNickname ?? ""} />
     </Suspense>
   ) : (
-    <ShopState title="지금은 쇼핑몰을 이용할 수 없어요" body="쇼핑몰이 다시 문을 열면 이용할 수 있어요." />
+    <ShopLocked slug={shop.slug} />
   );
 }

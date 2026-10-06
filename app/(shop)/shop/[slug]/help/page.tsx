@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import HelpView from "../../../../../components/shop/HelpView";
-import ShopState from "../../../../../components/shop/ShopState";
+import ShopLocked from "../../../../../components/shop/ShopLocked";
 import { shopOpen } from "../../../../../lib/server/buyers/signup";
 import { prisma } from "../../../../../lib/server/db";
 import { findActiveShop } from "../_lib/shop";
@@ -17,6 +17,6 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
   return (await shopOpen(prisma, shop.id)) ? (
     <HelpView slug={shop.slug} />
   ) : (
-    <ShopState title="지금은 쇼핑몰을 이용할 수 없어요" body="쇼핑몰이 다시 문을 열면 이용할 수 있어요." />
+    <ShopLocked slug={shop.slug} />
   );
 }
