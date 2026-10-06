@@ -1,11 +1,11 @@
 "use client";
 
+import { formatDateTime } from "../../../../../lib/client/format";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Modal, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
-import { listTime } from "../../../../../components/seller/orders";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
 import "./buyer-inquiries.css";
 import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
@@ -198,7 +198,7 @@ export default function BuyerInquiriesPage() {
                         {r.product && <div className="t-c1 c-alt">{r.product.name}</div>}
                       </td>
                       <td>{r.authorNickname}</td>
-                      <td className="num">{listTime(r.createdAt)}</td>
+                      <td className="num">{formatDateTime(r.createdAt)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -258,7 +258,7 @@ function InquiryDialog({ item, canEdit, onClose, onSaved }: { item: Inquiry; can
               {item.isPrivate ? "비공개 문의" : "문의"} · {item.authorNickname}
             </h2>
             <span className="t-c1 c-alt num">
-              {KIND_LABEL[item.kind]} · {listTime(item.createdAt)}
+              {KIND_LABEL[item.kind]} · {formatDateTime(item.createdAt)}
               {item.product ? ` · ${item.product.name}` : ""}
             </span>
           </div>
@@ -283,7 +283,7 @@ function InquiryDialog({ item, canEdit, onClose, onSaved }: { item: Inquiry; can
               <textarea id="bi-answer" className="inp bi-answer" value={answer} maxLength={ANSWER_MAX} disabled={!canEdit || busy} onChange={(e) => setAnswer(e.target.value)} />
               <span className="help num">
                 {answer.length.toLocaleString("ko-KR")} / {ANSWER_MAX.toLocaleString("ko-KR")}자
-                {item.answeredAt ? ` · ${listTime(item.answeredAt)} 답변` : ""}
+                {item.answeredAt ? ` · ${formatDateTime(item.answeredAt)} 답변` : ""}
               </span>
             </div>
           </div>
