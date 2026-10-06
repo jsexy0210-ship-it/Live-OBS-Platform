@@ -39,6 +39,7 @@ test("찜 카드에 할인율·방송 중·마감 배지가 표시된다", async
     await expect(card).toContainText("10%");
     await expect(card.getByText("방송 중")).toBeVisible();
     await expect(card.getByText("오늘 마감")).toBeVisible();
+    await expect(card.locator(".pc-photo .pc-live")).toHaveCount(0);
     await page.screenshot({ path: `tests/e2e/screenshots/SH-034-wishlist-badges-${width}.png`, fullPage: true });
   }
 });

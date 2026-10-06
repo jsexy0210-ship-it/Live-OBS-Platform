@@ -15,7 +15,7 @@ import "./MyMenu.css";
 type Item = { productId: string; name: string; price: number; listPrice: number; status: "on_sale" | "sold_out" | "unavailable"; wishedAt: string; isLive: boolean; eventBadge: string | null };
 type View = { kind: "loading" } | { kind: "login" } | { kind: "error" } | { kind: "ok"; items: Item[] };
 
-const card = (i: Item): ProductCardData => ({ id: i.productId, name: i.name, price: i.listPrice, salePrice: i.price < i.listPrice ? i.price : null, soldOut: i.status === "sold_out", isLive: i.isLive });
+const card = (i: Item): ProductCardData => ({ id: i.productId, name: i.name, price: i.listPrice, salePrice: i.price < i.listPrice ? i.price : null, soldOut: i.status === "sold_out" });
 
 export default function WishlistView({ slug }: { slug: string }) {
   const { confirm } = useConfirm();
