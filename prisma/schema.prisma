@@ -122,6 +122,7 @@ model Seller {
   buyerAddresses           BuyerAddress[]
   identityVerifications    IdentityVerification[]
   buyerSessions            BuyerSession[]
+  buyerPasswordResets      BuyerPasswordReset[]
   products                 Product[]
   productImages            ProductImage[]
   productOptions           ProductOption[]
@@ -404,6 +405,7 @@ model BuyerMember {
   seller               Seller                     @relation(fields: [sellerId], references: [id])
   grade                MemberGrade                @relation(fields: [sellerId, gradeId], references: [sellerId, id])
   sessions             BuyerSession[]
+  passwordResets       BuyerPasswordReset[]
   orders               Order[]
   purchaseRestrictions BuyerPurchaseRestriction[]
   memo                 MemberMemo?
@@ -545,6 +547,22 @@ model BuyerSession {
 
   seller      Seller      @relation(fields: [sellerId], references: [id])
   buyerMember BuyerMember @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
+
+  @@index([sellerId, buyerMemberId])
+}
+
+// 구매자 비밀번호 재설정 링크(buyers/passwordReset.ts). 토큰 원문은 저장하지 않고 해시만 둔다. 유효 30분·한 번만 쓴다.
+model BuyerPasswordReset {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String    @db.Uuid
+  buyerMemberId String    @db.Uuid
+  tokenHash     String    @unique
+  expiresAt     DateTime  @db.Timestamptz(3)
+  usedAt        DateTime? @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+
+  seller Seller      @relation(fields: [sellerId], references: [id])
+  member BuyerMember @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
 
   @@index([sellerId, buyerMemberId])
 }
