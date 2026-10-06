@@ -654,7 +654,7 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   await expect(page.getByText("다음 로그인 때 다시 안내합니다", { exact: false })).toBeVisible();
   await shot(page, "AU-012");
   await page.getByRole("button", { name: "나중에 하기" }).click();
-  await expect(page).toHaveURL(/\/seller\/products$/);
+  await expect(page).toHaveURL(/\/seller$/);
   // 원래 가려던 곳이 있으면 「다른 계정으로 로그인」해도 그곳을 잃지 않는다
   await page.goto("/seller/identity-link?next=%2Fseller%2Forders");
   await page.getByRole("link", { name: "다른 계정으로 로그인" }).click();
@@ -688,7 +688,7 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   await expect(page.locator("#il-state")).toContainText("대표자에게 정보를 고쳐 달라고 요청해 주십시오");
   await shot(page, "AU-012-mismatch");
   await page.getByRole("button", { name: "나중에 하기" }).click();
-  await expect(page).toHaveURL(/\/seller\/products$/);
+  await expect(page).toHaveURL(/\/seller$/);
 
   // 다시 로그인 → 맞는 정보로 연결
   await signOut(page);
@@ -718,7 +718,7 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   await page.unroute((u) => u.pathname === "/api/seller/me/identity/link");
   await shot(page, "AU-012-done");
   await page.getByRole("button", { name: "계속", exact: true }).click();
-  await expect(page).toHaveURL(/\/seller\/products$/);
+  await expect(page).toHaveURL(/\/seller$/);
 
   // 연결한 뒤에는 로그인해도 안내가 뜨지 않는다
   await signOut(page);
