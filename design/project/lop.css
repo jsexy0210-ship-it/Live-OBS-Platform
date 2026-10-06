@@ -1084,6 +1084,8 @@ select.inp{cursor:pointer}
 .c24 .lgrid>.lt th:first-child,.c24 .lgrid>.lt td:first-child{border-left:0}
 .c24 .lgrid>.lt th:last-child,.c24 .lgrid>.lt td:last-child{border-right:0}
 .c24 .lgrid>.lt tr:last-child>td{border-bottom:0}
+/* 모바일 카드 변환에서는 각 행 카드가 경계이며 바깥 grid 프레임을 중복하지 않습니다. */
+@media(max-width:767px){.c24 .lgrid:has(> .lt[data-card-table]){border:0;border-radius:0;background:transparent;overflow:visible}}
 /* 기존 bare grid도 표 자체만 프레임을 가집니다. 검색/건수까지 감싸지 않습니다. */
 .c24:not(.pre):not(.mob) .lpanel>.lt{border:1px solid var(--c24-line)}
 
