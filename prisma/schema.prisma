@@ -79,6 +79,8 @@ model Seller {
   shopName                 String
   // 한 줄 소개(SA-060, 40자). 쇼핑몰 홈·공유 설명 기본값. 비어 있으면 null.
   shopTagline              String?
+  // 쇼핑몰 홈 배너 자동 넘김 간격(초, SA-064). 0=끔(기본), 5, 8.
+  homeBannerIntervalSec    Int          @default(0)
   // 공유 미리보기(og:title·og:description) 제목·설명. 비어 있으면 쇼핑몰 이름(제목)·없음(설명). 파트너스 쇼핑몰 설정(SHOP_SETTINGS)에서 바꾼다.
   shareTitle               String?
   shareDescription         String?
@@ -3527,6 +3529,22 @@ model PlatformInquiryImage {
 
   @@index([sellerId, messageId])
   @@index([sellerId, sellerUserId, messageId, createdAt])
+}
+
+// 문의 작성 임시 저장(SA-114 「임시 저장」). 계정(파트너스 직원 포함)당 하나. 보내도 자동으로 지우지 않고 화면이 보낸 뒤 지운다. 값은 임시라 검사가 느슨하고(보낼 때 다시 검사), 관련 주문·방송 id는 보낼 때 같은 쇼핑몰 것인지 확인한다.
+model PlatformInquiryDraft {
+  sellerUserId       String   @id @db.Uuid
+  sellerId           String   @db.Uuid
+  category           PlatformInquiryCategory?
+  title              String   @default("")
+  body               String   @default("")
+  urgent             Boolean  @default(false)
+  relatedOrderId     String?  @db.Uuid
+  relatedBroadcastId String?  @db.Uuid
+  includeDiagnostics Boolean  @default(true)
+  updatedAt          DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([sellerId])
 }
 
 // ───────────── 점검 모드(MA-083 · AU-010) ─────────────
