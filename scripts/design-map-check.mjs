@@ -15,7 +15,7 @@ for (const l of rows) {
   const src = cells[4]; const status = cells[6];
   counts[status] = (counts[status] ?? 0) + 1;
   if (src && src !== "—" && !existsSync(src)) broken.push(`${cells[1]} → ${src}`);
-  if (!["FINAL", "DRAFT", "BLOCKED", "MISSING", "SUPERSEDED"].includes(status)) broken.push(`${cells[1]} 상태값 이상: ${status}`);
+  if (!["FINAL", "DRAFT", "BLOCKED", "GROUP", "MISSING", "SUPERSEDED"].includes(status)) broken.push(`${cells[1]} 상태값 이상: ${status}`);
 }
 console.log(`IA 화면 ID ${iaIds.size}개 · SCREEN_MAP 행 ${rows.length}개 · 상태 ${JSON.stringify(counts)}`);
 console.log(`IA에 있는데 MAP에 없는 화면: ${missingInMap.length}${missingInMap.length ? " → " + missingInMap.join(", ") : ""}`);
