@@ -4,6 +4,8 @@ import { sealBillingKey } from "../billing/secret";
 import { orderServiceOpen } from "../buyers/signup";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { cleanText } from "../text/clean";
+import { dbNow } from "../billing/subscription";
+import { kstDayStart } from "../orders/read";
 import { orderNoLabel } from "../orders/orderNoLabel";
 
 // 현금영수증·세금계산서 신청과 발행 상태(SA-024 · SH-005·SH-022, MASTER 배정 2026-10-05).
@@ -18,7 +20,7 @@ export type AuditMeta = { ip?: string | null; userAgent?: string | null };
 export type BuyerScope = { sellerId: string; buyerMemberId: string };
 const PAGE = 30;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const isUuid = (v: unknown): v is string => typeof v === "string" && UUID.test(v);
+export const isUuid = (v: unknown): v is string => typeof v === "string" && UUID.test(v);
 const isUniqueViolation = (e: unknown) => e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
 
 export const RECEIPT_KINDS: readonly ReceiptKind[] = ["CASH_RECEIPT_INCOME", "CASH_RECEIPT_EXPENSE", "TAX_INVOICE"];
@@ -30,6 +32,8 @@ export type ReceiptFailure =
   | "not_requestable"
   | "active_exists"
   | "invalid_transition"
+  | "not_paid"
+  | "auto_unavailable"
   | "invalid_kind"
   | "invalid_identity"
   | "invalid_tax_info";
@@ -41,6 +45,8 @@ export const BUYER_RECEIPT_MESSAGES: Record<ReceiptFailure, string> = {
   not_requestable: "무통장·계좌이체 주문만 신청할 수 있어요. 카드는 카드 매출전표로 확인해 주세요",
   active_exists: "이미 신청한 주문이에요",
   invalid_transition: "이미 발행된 신청은 철회할 수 없어요. 판매자에게 문의해 주세요",
+  not_paid: "입금이 확인된 뒤에 처리돼요",
+  auto_unavailable: "지금은 쓸 수 없어요",
   invalid_kind: "발행 종류를 골라 주세요",
   invalid_identity: "번호를 다시 확인해 주세요",
   invalid_tax_info: "사업자 정보를 다시 확인해 주세요",
@@ -50,7 +56,9 @@ export const SELLER_RECEIPT_MESSAGES: Record<ReceiptFailure, string> = {
   not_found: "신청을 찾을 수 없습니다",
   not_requestable: "신청할 수 없는 주문입니다",
   active_exists: "이미 신청한 주문입니다",
-  invalid_transition: "다시 시도할 수 없는 상태입니다. 화면을 새로 고쳐 주십시오",
+  invalid_transition: "처리할 수 없는 상태입니다. 화면을 새로 고쳐 주십시오",
+  not_paid: "입금 확인 후에 처리할 수 있습니다",
+  auto_unavailable: "자동 발행은 준비 중입니다",
   invalid_kind: "발행 종류를 확인해 주십시오",
   invalid_identity: "번호를 확인해 주십시오",
   invalid_tax_info: "사업자 정보를 확인해 주십시오",
@@ -95,7 +103,7 @@ export function parseNewReceiptRequest(raw: Record<string, unknown>): { ok: true
 // ───────────── 보기 ─────────────
 
 const issueSelect = { id: true, status: true, amount: true, chargeable: true, attempts: true, failureCode: true, issuedAt: true, cancelledAt: true, createdAt: true } satisfies Prisma.ReceiptIssueSelect;
-const viewSelect = {
+export const viewSelect = {
   id: true,
   orderId: true,
   kind: true,
@@ -107,13 +115,13 @@ const viewSelect = {
 } satisfies Prisma.OrderReceiptRequestSelect;
 type Row = Prisma.OrderReceiptRequestGetPayload<{ select: typeof viewSelect }>;
 type TaxInfo = { companyName: string; representative: string; email: string };
-const view = ({ issues, taxInfo, ...r }: Row) => ({ ...r, taxInfo: (taxInfo as TaxInfo | null) ?? null, issue: issues[0] ?? null });
+export const view = ({ issues, taxInfo, ...r }: Row) => ({ ...r, taxInfo: (taxInfo as TaxInfo | null) ?? null, issue: issues[0] ?? null });
 export type ReceiptRequestView = ReturnType<typeof view>;
 
 // 신청할 수 있는 주문: 무통장·계좌이체, 입금 전이거나 결제 완료
 const requestable = (o: { status: string; paymentMethod: string | null }) => o.paymentMethod === "BANK_TRANSFER" && (o.status === "PENDING_PAYMENT" || o.status === "PAID");
 
-async function lockOrder(tx: Tx, sellerId: string, orderId: string) {
+export async function lockOrder(tx: Tx, sellerId: string, orderId: string) {
   const [o] = await tx.$queryRaw<{ status: string; paymentMethod: string | null; buyerMemberId: string; totalAmount: number; legalHoldAt: Date | null }[]>`
     SELECT "status"::text AS "status", "paymentMethod"::text AS "paymentMethod", "buyerMemberId", "totalAmount", "legalHoldAt" FROM "Order"
     WHERE "id" = ${orderId}::uuid AND "sellerId" = ${sellerId}::uuid FOR UPDATE`;
@@ -196,29 +204,79 @@ export async function withdrawReceiptRequest(db: PrismaClient, scope: BuyerScope
 
 // ───────────── 파트너스 ─────────────
 
-// 목록·상태별 건수(최근 발행 상태 기준). ?status, 커서(createdAt 내림, id 내림). 철회한 신청도 취소로 보인다.
-export async function listSellerReceiptRequests(db: PrismaClient, ctx: TenantContext, q: { status?: unknown; cursor?: unknown } = {}) {
-  requireSellerRead(ctx, "RECEIPT_TAX");
+// 목록 조건(SA-024 검색 패널): 상태 · 종류(CASH_RECEIPT = 소득공제·지출증빙 전체, TAX_INVOICE, 또는 세부 종류) · 접수 기간(from·to, KST 날짜 YYYY-MM-DD, to 포함) · 검색어.
+// 검색어: field = nickname(닉네임 포함 검색) · bizno(사업자등록번호: 지출증빙·세금계산서) · phone(휴대폰 번호: 소득공제). 번호는 봉인해 두어 뒤 4자리로만 찾는다. field 없이 숫자 4자리 이상이면 번호, 아니면 닉네임.
+export type ReceiptListQuery = { status?: unknown; kind?: unknown; from?: unknown; to?: unknown; field?: unknown; q?: unknown; cursor?: unknown };
+export const RECEIPT_SEARCH_FIELDS = ["nickname", "bizno", "phone"] as const;
+const SEARCH_MAX = 50;
+const DAY_MS = 86_400_000;
+
+// 날짜·검색 칸 값이 잘못됐는지(API가 400으로 거른다). 모르는 상태·종류는 거르지 않고 무시한다(다른 목록과 같음).
+export function receiptFilterValid(q: ReceiptListQuery): boolean {
+  const date = (v: unknown) => v === undefined || v === null || v === "" || (typeof v === "string" && kstDayStart(v) !== null);
+  if (!date(q.from) || !date(q.to)) return false;
+  if (typeof q.from === "string" && typeof q.to === "string" && q.from && q.to && kstDayStart(q.from)! > kstDayStart(q.to)!) return false;
+  if (q.q !== undefined && q.q !== null && (typeof q.q !== "string" || q.q.length > SEARCH_MAX)) return false;
+  if (q.field !== undefined && q.field !== null && q.field !== "" && !(RECEIPT_SEARCH_FIELDS as readonly unknown[]).includes(q.field)) return false;
+  return true;
+}
+
+export function listWhere(q: ReceiptListQuery): Prisma.OrderReceiptRequestWhereInput[] {
+  const and: Prisma.OrderReceiptRequestWhereInput[] = [];
   const status = STATUSES.find((s) => s === q.status);
+  // 최근 발행 상태로 거르려면 신청마다 마지막 발행 행이 필요하다. 발행은 신청당 한두 건이라 상태로 먼저 후보를 좁힌다.
+  if (status) and.push({ issues: { some: { status } } });
+  if (q.kind === "CASH_RECEIPT") and.push({ kind: { in: ["CASH_RECEIPT_INCOME", "CASH_RECEIPT_EXPENSE"] } });
+  else if (RECEIPT_KINDS.find((k) => k === q.kind)) and.push({ kind: q.kind as ReceiptKind });
+  const from = typeof q.from === "string" && q.from ? kstDayStart(q.from) : null;
+  const to = typeof q.to === "string" && q.to ? kstDayStart(q.to) : null;
+  if (from) and.push({ createdAt: { gte: from } });
+  if (to) and.push({ createdAt: { lt: new Date(to.getTime() + DAY_MS) } });
+  const text = typeof q.q === "string" ? q.q.trim() : "";
+  if (text) {
+    const num = text.replace(/[\s-]/g, "");
+    const byNumber = q.field === "bizno" || q.field === "phone" || (!q.field && /^\d{4,}$/.test(num));
+    if (!byNumber) and.push({ order: { broadcastNicknameSnapshot: { contains: text, mode: "insensitive" } } });
+    else if (!/^\d{4,}$/.test(num)) and.push({ id: { in: [] } });
+    else {
+      const kinds: ReceiptKind[] = q.field === "phone" ? ["CASH_RECEIPT_INCOME"] : q.field === "bizno" ? ["CASH_RECEIPT_EXPENSE", "TAX_INVOICE"] : [...RECEIPT_KINDS];
+      and.push({ kind: { in: kinds }, identityLast4: num.slice(-4) });
+    }
+  }
+  return and;
+}
+
+// 목록·상태별 건수(최근 발행 상태 기준). 조건은 위와 같고 커서(createdAt 내림, id 내림). 철회한 신청도 취소로 보인다.
+// summary: 발행 대기·실패·취소 건수, 이번 달(KST) 발행 완료 건수·금액(상단 요약 칸).
+export async function listSellerReceiptRequests(db: PrismaClient, ctx: TenantContext, q: ReceiptListQuery = {}) {
+  requireSellerRead(ctx, "RECEIPT_TAX");
   let after: Prisma.OrderReceiptRequestWhereInput = {};
   if (isUuid(q.cursor)) {
     const c = await db.orderReceiptRequest.findFirst({ where: { id: q.cursor, sellerId: ctx.sellerId }, select: { id: true, createdAt: true } });
     if (c) after = { OR: [{ createdAt: { lt: c.createdAt } }, { createdAt: c.createdAt, id: { lt: c.id } }] };
   }
-  // 최근 발행 상태로 거르려면 신청마다 마지막 발행 행이 필요하다. 발행은 신청당 한두 건이라 상태로 먼저 후보를 좁힌다.
-  const statusWhere: Prisma.OrderReceiptRequestWhereInput = status ? { issues: { some: { status } } } : {};
   const rows = await db.orderReceiptRequest.findMany({
-    where: { sellerId: ctx.sellerId, order: { legalHoldAt: null }, ...statusWhere, ...after },
+    where: { sellerId: ctx.sellerId, order: { legalHoldAt: null }, AND: listWhere(q), ...after },
     select: { ...viewSelect, order: { select: { orderNo: true, createdAt: true, broadcastNicknameSnapshot: true, totalAmount: true } } },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: PAGE + 1,
   });
   const page = rows.slice(0, PAGE);
   const counts = await db.receiptIssue.groupBy({ by: ["status"], where: { sellerId: ctx.sellerId, request: { order: { legalHoldAt: null } } }, _count: { _all: true } });
+  const byStatus = Object.fromEntries(counts.map((c) => [c.status, c._count._all])) as Partial<Record<ReceiptIssueStatus, number>>;
+  const now = await dbNow(db);
+  const kst = new Date(now.getTime() + 9 * 3_600_000);
+  const monthStart = new Date(Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), 1) - 9 * 3_600_000);
+  const issued = await db.receiptIssue.aggregate({
+    where: { sellerId: ctx.sellerId, status: "ISSUED", issuedAt: { gte: monthStart }, request: { order: { legalHoldAt: null } } },
+    _count: { _all: true },
+    _sum: { amount: true },
+  });
   return {
     requests: page.map(({ order, ...r }) => ({ ...view(r), orderNo: order.orderNo, orderNoLabel: orderNoLabel(order.createdAt, order.orderNo), nickname: order.broadcastNicknameSnapshot, totalAmount: order.totalAmount })),
     nextCursor: rows.length > PAGE ? page[page.length - 1].id : null,
-    counts: Object.fromEntries(counts.map((c) => [c.status, c._count._all])) as Partial<Record<ReceiptIssueStatus, number>>,
+    counts: byStatus,
+    summary: { pending: byStatus.PENDING ?? 0, failed: byStatus.FAILED ?? 0, cancelled: byStatus.CANCELLED ?? 0, issuedThisMonth: issued._count._all, issuedAmountThisMonth: issued._sum.amount ?? 0 },
   };
 }
 
