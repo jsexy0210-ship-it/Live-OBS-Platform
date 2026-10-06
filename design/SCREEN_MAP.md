@@ -141,7 +141,7 @@
 | SA-005 | 쇼핑몰 통합 전환 | — | design/project/SA-005.dc.html | SA-005.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-006 | 외부 쇼핑몰 연동 | /seller/external-shops | design/project/SA-006.dc.html | SA-006.dc.html | FINAL | v302 (1791240973-f773) | 2026-10-06 07:56 KST | v302 상태를 서버 실제 값 3종(이어짐 · 다시 이어야 함 · 끊는 중→끊어짐)으로 · 「결제 잠금으로 멈춤」 행 · 변형 제거(서버에 생기면 추가) · 열 「마지막으로 받은 주문 알림」 · 버튼 「해제 다시 요청하기」 「이 주소로 연결 시작하기」 · 해제 확인 창 [유지][연결 해제] · 「쇼핑몰 추가 연결」 변형 · 마지막 이벤트 열 유지(보드 정본) |
 | SA-010 | 상품(메뉴 그룹) | — | — | 메뉴 그룹 ID(화면 아님) | MISSING | 1791213911-1437 | 2026-10-06 00:27 KST | IA 그룹 헤더 · 보드 대상 아님 |
-| SA-011 | 상품 목록 | /seller/products | design/project/SA-011.dc.html | SA-011.dc.html | FINAL | v287 (1791217739-ca0d) | 2026-10-06 02:08 KST | DS-PANEL 목록 패널 구조 적용(v243) · 변형: SA-011-DK, SA-011-M, SA-011-PRE, SA-011-S · 현대화 기준 재확인(v270): 관리 열 가로 flex 가운데 8px(열 190) · 상품명 제목 왼쪽 · 썸네일 64 |
+| SA-011 | 상품 목록 | /seller/products | design/project/SA-011.dc.html | SA-011.dc.html | FINAL | v315 (1791248663-aca7) | 2026-10-06 10:05 KST | v315: 모바일 변형 SA-011-M 카드 버튼 44(DS-TABLE-CARD) · 높이 2368→2400. DS-PANEL 목록 패널 구조 적용(v243) · 변형: SA-011-DK, SA-011-M, SA-011-PRE, SA-011-S · 현대화 기준 재확인(v270): 관리 열 가로 flex 가운데 8px(열 190) · 상품명 제목 왼쪽 · 썸네일 64 |
 | SA-012 | 상품 등록·수정 | /seller/products/new · [productId] | design/project/SA-012.dc.html | SA-012.dc.html | FINAL | v301 (1791240487-94ff) | 2026-10-06 07:48 KST | v301: 낡은 변형 「이미지 한도(체험 중 3장 · 구독 시 10장)」 삭제(이미지는 상품당 최대 5장, 「이미지 5장 다 참」 변형 유지). 현대화 기준 충족(v270): 폼 표 안 버튼 40(입력과 같은 줄) · 표 안 보조 행동만 32 · 아이콘 버튼 정사각 32 · 하단 고정 행동 줄 · 상태 12종 · 변형: SA-012-D, SA-012-DK, SA-012-E |
 | SA-013 | 상품 상세 미리보기 | (상품 목록 미리보기) | design/project/SA-013.dc.html | SA-013.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-014 | 재고 일괄 수정 | /seller/products/stock | design/project/SA-014.dc.html | SA-014.dc.html | FINAL | v290 (1791218258-c278) | 2026-10-06 02:33 KST | FINAL(통합 「재고」 탭 「재고 수정」(제목 통일) · 적용 확인 창 [취소][실행] · 일시 표기 · 상태 11종) · 현대화 기준 충족 |
@@ -305,7 +305,7 @@
 | SearchBox · ListPanel (검색 패널 3층 · 목록 패널 2층 · 외곽 프레임 완전성) | design/project/DS-PANEL.dc.html · lop.css (`.c24 .box.dense` `.ft` `.sbtn` `.lpanel` `.ltop` `.lt`) |
 | 행 동작 · 칩 · 일괄 고정 줄 · 사이드 패널 · 확인 3단계 (관리자 목록 즉시 처리) | design/project/DS-ROW-ACTION.dc.html · 적용 예 MA-013-OPS.dc.html · SA-021-OPS.dc.html · 정본 규칙 docs/ADMIN_OPS_UX.md |
 | Table | lop.css `.c24 .lt`(목록) · `.ft`(표형 폼) · `.sh24 .tbl`(구매자) |
-| 모바일 카드 목록 (관리자 표 768px 미만 접힘) | **정본 DS-TABLE-CARD** · 적용 예 SA-011-M.dc.html(현행, 44 맞춤 전) · lop.css `.c24.mob .m-cards` `.m-card` `.m-kvs` `.m-kv` `.m-bar` |
+| 모바일 카드 목록 (관리자 표 768px 미만 접힘) | **정본 DS-TABLE-CARD** · 적용 예 SA-011-M.dc.html · SA-FRAME-M.dc.html(v315 버튼 44) · lop.css `.c24.mob .m-cards` `.m-card` `.m-kvs` `.m-kv` `.m-bar` |
 | Button | lop.css `.c24 .b` + `.sm` `.lg` `.pri` `.neg` `.dark` (높이 토큰 `--ui-h-*`, 폭 토큰 `--btn-w-*`) · 구매자 `.sh24 .btn` |
 | Input · Select · DatePicker | lop.css `.c24 .i` + `.w-xs~.w-f` · Select 화살표 · 날짜 전체 클릭 규칙은 docs/DESIGN_PROMPT.md 「규격」 |
 | Modal · 확인 창 | **정본 DS-CONFIRM** · lop.css `.c24 .cfm` `.ovl` · 구매자 `.sh24 .cfm` · 휴대폰 `.sh24.m .sheet .pn` · 위험 실행 `.b.neg.pri` / `.btn.neg.p` · 예시 MA-013-OPS(반려 사유) · SA-021-OPS(환불) |
