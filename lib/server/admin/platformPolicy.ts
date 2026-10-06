@@ -28,8 +28,8 @@ export const POLICY_DEFS = [
   D({ key: "maxUseRatioPercent", group: "rewards", kind: "int", default: 50, min: 1, max: 100, unit: "percent", applied: false }),
   D({ key: "rewardBalanceWarnPercent", group: "rewards", kind: "int", default: 25, min: 1, max: 100, unit: "percent", applied: false }),
   D({ key: "manualGrantMax", group: "rewards", kind: "int", default: 1_000_000, min: 1_000, max: 100_000_000, unit: "won", applied: false }),
-  D({ key: "adminSessionHours", group: "session", kind: "int", default: 8, min: 1, max: 24, unit: "hours", applied: false }),
-  D({ key: "adminIdleMinutes", group: "session", kind: "int", default: 30, min: 5, max: 240, unit: "minutes", applied: false }),
+  D({ key: "adminSessionHours", group: "session", kind: "int", default: 8, min: 1, max: 24, unit: "hours", applied: true }),
+  D({ key: "adminIdleMinutes", group: "session", kind: "int", default: 30, min: 5, max: 240, unit: "minutes", applied: true }),
   D({ key: "impersonationMinutes", group: "session", kind: "int", default: 30, min: 5, max: 60, unit: "minutes", applied: true }),
   D({ key: "reconsentOnNewLegalVersion", group: "legal", kind: "bool", default: 1, unit: "", applied: false }),
 ] as const satisfies readonly Def[];
