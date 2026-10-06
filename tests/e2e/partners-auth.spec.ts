@@ -61,6 +61,7 @@ test("가입 신청: 본인확인 대행사 연결 전이면 인증번호 받기
   await page.getByLabel("필수 약관에 모두 동의해요").check();
   const res = page.waitForResponse((r) => r.url().endsWith("/api/seller-signup/verification") && r.request().method() === "POST");
   await page.getByRole("button", { name: "인증번호 문자 받기" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "문자 받기" }).click();
   expect((await res).status()).toBe(503);
   await expect(page.getByRole("heading", { name: "본인확인 서비스 준비 중이에요" })).toBeVisible();
   await expect(page.getByText("준비되면 바로 가입을 신청할 수 있어요.")).toBeVisible();
@@ -81,6 +82,7 @@ test("비밀번호 찾기: 이메일·쇼핑몰 주소를 적어야 인증번호
   await shot(page, "AU-003");
   const res = page.waitForResponse((r) => r.url().endsWith("/api/seller/password-reset/start"));
   await send.click();
+  await page.getByRole("dialog").getByRole("button", { name: "문자 받기" }).click();
   expect((await res).status()).toBe(503);
   await expect(page.getByRole("heading", { name: "본인 확인 서비스를 준비하는 중입니다" })).toBeVisible();
   await expect(page.getByText("준비가 끝나면 바로 비밀번호를 찾을 수 있습니다.")).toBeVisible();

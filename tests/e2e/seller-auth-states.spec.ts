@@ -57,6 +57,8 @@ test("AU-007 세션 만료: 로그인이 풀린 채 화면을 열면 로그인�
   await page.goto("/seller/login");
   await submitSellerLogin(page, OWNER, PASSWORD);
   await page.waitForURL((u) => u.pathname !== "/seller/login");
+  // 앞 화면이 로그인이 풀린 걸 알고 스스로 로그인으로 보내지 않도록 빈 화면으로 옮긴 뒤 쿠키를 지운다
+  await page.goto("about:blank");
   await page.context().clearCookies();
   // 열자마자 클라이언트가 로그인으로 보내므로 이동이 끝나길 기다리지 않는다
   // 클라이언트가 곧바로 로그인으로 보내 이 이동이 끊기면(ERR_ABORTED) 정상이다. 결과는 아래 주소·문구로 확인한다
