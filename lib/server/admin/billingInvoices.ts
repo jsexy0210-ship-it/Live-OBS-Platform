@@ -218,6 +218,37 @@ export async function listBillingInvoices(db: PrismaClient, admin: AdminSessionC
   };
 }
 
+// 파트너스 상세 「구독」 탭(MA-012)용: 한 파트너스의 전체 기간 청구(예정 포함). 기간 상한(366일)·월 단위 없이 같은 원천(source)·같은 표시 모양(view)을 쓴다.
+// 응답: { items, total, totals: { paidAmount, paidCount, refundedAmount, refundedCount } }. totals는 결제가 이뤄진 건(결제 완료 + 환불 완료) 합계와 환불 합계다.
+export async function listSellerInvoices(db: PrismaClient, sellerId: string, opts: { offset: number; limit: number; now: Date }) {
+  const p: Parsed = {
+    from: new Date(0),
+    end: new Date(opts.now.getTime() + 400 * DAY_MS),
+    state: null,
+    plan: null,
+    q: "",
+    failedOnly: false,
+    sellerId,
+    label: { from: "", to: "" },
+  };
+  const where = filters(p);
+  const [rows, [t]] = await Promise.all([
+    db.$queryRaw<Row[]>`WITH ${source(p, opts.now)} SELECT * FROM inv WHERE ${where} ORDER BY at DESC, id DESC LIMIT ${opts.limit} OFFSET ${opts.offset}`,
+    db.$queryRaw<Record<string, bigint | number>[]>`
+      WITH ${source(p, opts.now)}
+      SELECT count(*) AS "total",
+             count(*) FILTER (WHERE state IN ('PAID', 'REFUNDED')) AS "paidCount", coalesce(sum(amount::bigint) FILTER (WHERE state IN ('PAID', 'REFUNDED')), 0) AS "paidAmount",
+             count(*) FILTER (WHERE state = 'REFUNDED') AS "refundedCount", coalesce(sum("refundedAmount"::bigint) FILTER (WHERE state = 'REFUNDED'), 0) AS "refundedAmount"
+        FROM inv WHERE ${where}`,
+  ]);
+  const n = (k: string) => Number(t?.[k] ?? 0);
+  return {
+    items: rows.map(view),
+    total: n("total"),
+    totals: { paidAmount: n("paidAmount"), paidCount: n("paidCount"), refundedAmount: n("refundedAmount"), refundedCount: n("refundedCount") },
+  };
+}
+
 // 내보내기(CSV, UTF-8 BOM, 같은 조건, 최대 5,000건, 수식 문자 방지). 조회 권한자 누구나, 로그 추적 admin.billing.export.
 const STATE_LABEL: Record<InvoiceState, string> = { PAID: "결제 완료", PENDING: "결제 진행 중", RETRYING: "실패·재시도", OVERDUE: "연체", FAILED: "실패", REFUNDED: "환불 완료", SCHEDULED: "예정" };
 const RECEIPT_LABEL = { ISSUED: "발행", CANCELED: "취소", SCHEDULED: "예정", NOT_ISSUED: "미발행" } as const;

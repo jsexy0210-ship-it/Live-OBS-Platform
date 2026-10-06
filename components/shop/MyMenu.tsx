@@ -9,7 +9,7 @@ export default function MyMenu({ slug }: { slug: string }) {
   const base = `/shop/${encodeURIComponent(slug)}`;
   const path = usePathname() ?? "";
   const groups = [
-    { title: "주문", links: [{ href: `${base}/orders`, label: "주문 내역" }] },
+    { title: "주문", links: [{ href: `${base}/orders`, label: "주문 내역" }, { href: `${base}/me/addresses`, label: "배송지 관리" }] },
     { title: "혜택", links: [{ href: `${base}/coupons`, label: "내 쿠폰함" }] },
     {
       title: "활동",
