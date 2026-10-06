@@ -95,6 +95,28 @@ test("기간으로 걸러 보고, 잘못된 기간은 조회하지 않으며, �
   await expect(page.getByTestId("bd-notfound")).toContainText("방송을 찾을 수 없습니다");
 });
 
+test("방송 기록: 처음에는 최근 1개월(주소는 깨끗함), 기간을 비워 검색하면 전체, 초기화하면 최근 1개월로 돌아온다", async ({ page }) => {
+  await login(page, "demo-owner@example.com", "/seller/broadcasts");
+  await expect(page.getByRole("heading", { name: "방송 기록", level: 1 })).toBeVisible();
+  await expect(page.getByLabel("시작일")).toHaveValue(/^\d{4}\.\d{2}\.\d{2}$/);
+  await expect(page.getByLabel("종료일")).toHaveValue(/^\d{4}\.\d{2}\.\d{2}$/);
+  expect(new URL(page.url()).search).toBe("");
+  // 기간을 비우고 검색 → 전체 기간
+  await page.getByLabel("시작일").fill("");
+  await page.getByLabel("종료일").fill("");
+  await page.getByRole("button", { name: "검색" }).click();
+  await expect(page).toHaveURL(/from=&to=|to=&from=/);
+  // 업무 큐 링크(?period=all)로 들어오면 기간 칸이 비어 있다(전체 기간)
+  await page.goto("/seller/broadcasts?period=all");
+  await expect(page.getByLabel("시작일")).toHaveValue("");
+  await expect(page.getByLabel("종료일")).toHaveValue("");
+  await expect(page.getByTestId("bh-list").or(page.getByTestId("bh-empty"))).toBeVisible();
+  // 초기화 → 최근 1개월, 주소는 다시 깨끗
+  await page.getByRole("button", { name: "초기화" }).click();
+  await expect(page.getByLabel("시작일")).toHaveValue(/^\d{4}\.\d{2}\.\d{2}$/);
+  await expect.poll(() => new URL(page.url()).search).toBe("");
+});
+
 test("방송 진행 권한이 없는 직원: 메뉴가 없고 주소로 들어와도 화면이 없다", async ({ page }) => {
   await login(page, "demo-none@example.com", "/seller/broadcasts");
   await expect(page.getByText("필요한 권한: 방송 진행")).toBeVisible();

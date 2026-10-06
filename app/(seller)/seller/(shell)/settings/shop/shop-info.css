@@ -122,3 +122,13 @@
   font-size: 12px;
   box-shadow: inset 0 0 0 1px var(--wds-line-normal-alternative);
 }
+
+/* SA-060 사업자 · 고객센터 4열 표(정본 v313): 첫 값 칸 오른쪽 선. 휴대폰은 한 열로 쌓이므로 선을 없앤다 */
+.si-ft4 > tbody > tr > td.si-rt {
+  border-right: 1px solid var(--cs-line);
+}
+@media (max-width: 767px) {
+  .si-ft4 > tbody > tr > td.si-rt {
+    border-right: 0;
+  }
+}
