@@ -374,6 +374,7 @@ export default function MessageBalancePage() {
             >
               <input
                 id="threshold"
+                placeholder="0"
                 className={`inp num${showError && thresholdError ? " is-error" : ""}`}
                 type="text"
                 inputMode="numeric"

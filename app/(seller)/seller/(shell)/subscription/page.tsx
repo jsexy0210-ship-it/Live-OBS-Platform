@@ -7,7 +7,7 @@ import { api, failMessage } from "../../../../../components/seller/api";
 import { won } from "../../../../../components/seller/format";
 import { useLatestResponse } from "../../../../../components/seller/latestResponse";
 import { canCancelSubscription, cardRegistrationCharges, isCancelScheduled, planChangeState } from "../../../../../lib/server/billing/access";
-import { PaymentHistory, type Payment } from "../../../../../components/seller/subscription/PaymentHistory";
+import { type Payment } from "../../../../../components/seller/subscription/PaymentHistory";
 import "../../../../../styles/seller-settings2.css";
 
 // SA-090 구독 · 결제(대표자 전용). API: GET /api/seller/subscription, POST …/card · …/plan · …/cancel, GET /api/plans(바꿀 수 있는 플랜 이름).
@@ -17,7 +17,7 @@ type Access = "trial" | "paid" | "charging" | "grace" | "expired";
 type View = {
   access: Access;
   trialEndsAt: string | null;
-  plan: { code: string; name: string; listPrice: number; salePrice: number; nextAmount: number } | null;
+  plan: { code: string; name: string; listPrice: number; salePrice: number; nextAmount: number; mailMonthlyQuota?: number; launchDiscount?: { active: boolean; endsAt: string | null } } | null;
   subscription: {
     status: "ACTIVE" | "PAST_DUE" | "CANCELED";
     cardLabel: string | null;
@@ -28,10 +28,25 @@ type View = {
     graceUntil: string | null;
     retryCount: number;
     pendingPlanCode: string | null;
+    subscribedAt?: string | null;
+    billingDay?: number | null;
+    startedFromTrial?: boolean;
   } | null;
   payments: Payment[];
+  billingRows?: BillingRow[];
 };
+type BillingRow = { id: string; kind: "SUBSCRIPTION" | "PRORATION" | "MESSAGE_CHARGE"; billingMonth: string; state: "SCHEDULED" | "PENDING" | "PAID" | "FAILED"; amount: number; at: string; receiptUrl: string | null };
 type Plan = { code: string; name: string };
+const ROW_STATE: Record<BillingRow["state"], { label: string; cls: string }> = {
+  SCHEDULED: { label: "예정", cls: "b-info" },
+  PENDING: { label: "확인 중", cls: "b-wait" },
+  PAID: { label: "결제 완료", cls: "b-done" },
+  FAILED: { label: "결제 실패", cls: "b-fail" },
+};
+const ROW_KIND: Record<BillingRow["kind"], string> = { SUBSCRIPTION: "월 구독", PRORATION: "이용권 변경 차액", MESSAGE_CHARGE: "발송·이용 충전 (선불)" };
+const dotDay = (iso: string) => new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso)).replace(/\.\s*/g, ".").replace(/\.$/, "");
+const dotTime = (iso: string) => new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
+const safeUrl = (u: string | null) => (u && /^https?:\/\//i.test(u) ? u : null);
 // 미리보기(GET …/plan/preview)의 플랜별 변경 결과. chargeNow는 지금 바로 낼 금액(원)이다.
 type PlanPreview = { plans: { planCode: string; change: { ok: true; chargeNow: number } | { ok: false; reason: string } }[] };
 // 확인 창의 금액: 미리보기를 읽는 중 · 읽음(chargeNow가 없으면 서버가 사유로 거절할 변경) · 읽지 못함
@@ -124,6 +139,7 @@ export default function SubscriptionPage() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [testMode, setTestMode] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [showPlans, setShowPlans] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -269,8 +285,24 @@ export default function SubscriptionPage() {
         <div className="ph">
           <div className="col" style={{ gap: 6 }}>
             <h1 className="t-t3">구독 · 결제</h1>
-            <span className="t-l2 c-alt">요금제, 결제 카드, 청구 내역을 관리합니다.</span>
           </div>
+          {view && (
+            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+              <a className="btn btn-out" href="/pricing">
+                요금 안내
+              </a>
+              {plans.length > 0 && (
+                <button className="btn btn-out" type="button" aria-expanded={showPlans} onClick={() => setShowPlans((v) => !v)}>
+                  이용권 바꾸기
+                </button>
+              )}
+              {live && (
+                <button className="btn btn-out" type="button" onClick={() => setConfirm({ kind: "cancel" })} disabled={busy}>
+                  구독 해지
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {!view ? (
@@ -297,119 +329,127 @@ export default function SubscriptionPage() {
               </div>
             )}
 
-            <div className="sub-grid">
-              <section className="card pad-l col" style={{ gap: 14 }} aria-labelledby="sub-plan">
-                <div className="row" style={{ gap: 8, justifyContent: "space-between" }}>
-                  <h2 className="t-hl1" id="sub-plan">
-                    내 요금제
-                  </h2>
-                  <span className={`bdg ${statusOf(view).cls}`} data-testid="sub-status">
-                    {statusOf(view).label}
-                  </span>
-                </div>
-                {view.plan ? (
-                  <div className="row" style={{ gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
-                    <span className="t-h2">{view.plan.name}</span>
-                    {/* nextAmount는 다음 결제 금액이라 하위 변경이 예약돼 있으면 바뀔 플랜 금액이다: 그때는 「다음 결제」 줄에만 보인다 */}
-                    {!pendingPlan && (
-                      <>
-                        <span className="t-l1 fw6">월 {won(view.plan.nextAmount)}</span>
-                        {view.plan.listPrice > view.plan.nextAmount && <s className="t-l2 c-alt">{won(view.plan.listPrice)}</s>}
-                      </>
-                    )}
-                  </div>
-                ) : (
-                  <span className="t-l2 c-alt">요금제 정보가 없습니다. 문의하기로 알려 주십시오</span>
-                )}
-                <dl className="kv">
-                  {view.access === "trial" && (
-                    <>
-                      <dt>체험 종료</dt>
-                      <dd>{DAY(view.trialEndsAt)}</dd>
-                    </>
-                  )}
-                  {sub?.currentPeriodEnd && (
-                    <>
-                      <dt>이용 기간</dt>
-                      <dd>
-                        {DAY(sub.currentPeriodStart)} ~ {DAY(sub.currentPeriodEnd)}
-                      </dd>
-                    </>
-                  )}
-                  {live && sub?.nextChargeAt && (
-                    <>
-                      <dt>다음 결제</dt>
-                      <dd>
-                        {DAY(sub.nextChargeAt)} · {won(view.plan?.nextAmount ?? 0)}
-                      </dd>
-                    </>
-                  )}
-                  {view.access === "grace" && sub?.graceUntil && (
-                    <>
-                      <dt>결제 확인 기한</dt>
-                      <dd>{DAY(sub.graceUntil)}</dd>
-                    </>
-                  )}
-                </dl>
-                {sub && !live && endsAt && (
-                  <div className="msg msg-info t-l2" role="note">
-                    <span>해지했습니다. {DAY(endsAt)}까지 이용할 수 있고, 그 뒤에는 결제되지 않습니다.</span>
-                  </div>
-                )}
-                {view.access === "expired" && (
-                  <div className="msg msg-neg t-l2" role="note">
-                    <span>결제 카드를 등록하면 바로 결제되고 다시 이용할 수 있습니다.</span>
-                  </div>
-                )}
-                {pendingPlan && (
-                  <div className="msg msg-cau t-l2" role="note">
-                    <span>
-                      <b>변경 예정</b> {DAY(sub?.nextChargeAt ?? null)}부터 「{pendingPlan.name}」으로 바뀝니다.
+            <h2 className="t-hl1 sub-sec" id="sub-plan">
+              내 이용권
+            </h2>
+            {view.plan ? (
+              <div className="card pad row sub-box">
+                <div className="col" style={{ gap: 2 }}>
+                  <span className="row" style={{ gap: 8, alignItems: "center" }}>
+                    <b className="t-l1">{view.plan.name}</b>
+                    <span className={`bdg ${statusOf(view).cls}`} data-testid="sub-status">
+                      {statusOf(view).label}
                     </span>
-                    {current && (
-                      <button
-                        className="btn btn-sm btn-out"
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void changePlan(plans.find((p) => p.code === current) ?? { code: current, name: view.plan?.name ?? "" }, null)}
-                      >
-                        변경 취소
-                      </button>
-                    )}
-                  </div>
+                  </span>
+                  {view.plan.listPrice > view.plan.nextAmount && <span className="t-c1 c-alt">정가 월 {won(view.plan.listPrice)}</span>}
+                </div>
+                {/* nextAmount는 다음 결제 금액이라 하위 변경이 예약돼 있으면 바뀔 플랜 금액이다: 그때는 「다음 결제일」 칸에만 보인다 */}
+                {!pendingPlan && (
+                  <span className="t-hl1 sub-price">
+                    {won(view.plan.nextAmount)}
+                    <small className="t-c1 c-alt fw5"> / 월 · 부가세 포함{view.plan.launchDiscount?.active ? " · 런칭 할인가" : ""}</small>
+                  </span>
                 )}
-              </section>
-
-              <section className="card pad-l col" style={{ gap: 14 }} aria-labelledby="sub-card">
-                <h2 className="t-hl1" id="sub-card">
-                  결제 카드
-                </h2>
-                <span className="t-l1" data-testid="sub-card-label">
-                  {sub?.cardLabel ?? "등록된 카드가 없습니다"}
+                {view.plan.launchDiscount?.active && (
+                  <span className="t-c1 c-alt sub-box-note">
+                    지금은 런칭 할인가로 결제됩니다. 할인이 끝나는 날짜와 그 뒤 금액(정가 월 {won(view.plan.listPrice)})은 정해지면 30일 전에 알려 드립니다.
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="card pad">
+                <span className="t-l2 c-alt">요금제 정보가 없습니다. 문의하기로 알려 주십시오</span>
+                <span className="bdg b-wait" data-testid="sub-status" style={{ marginLeft: 8 }}>
+                  {statusOf(view).label}
                 </span>
-                <span className="t-c1 c-alt">카드 자동결제만 지원합니다. 매달 결제일에 등록한 카드로 결제됩니다.</span>
-                {testMode ? (
-                  <>
-                    <button className="btn btn-sm" type="button" onClick={askCard} disabled={busy}>
-                      {busy ? "처리 중" : sub?.cardLabel ? "테스트 카드로 변경" : "테스트 카드 등록"}
-                    </button>
-                    <span className="t-c1 c-alt">테스트 서버입니다. 실제 카드 등록과 결제는 이루어지지 않습니다.</span>
-                  </>
-                ) : (
-                  <>
-                    <button className="btn btn-sm" type="button" disabled>
-                      {sub?.cardLabel ? "카드 변경" : "카드 등록"}
-                    </button>
-                    <span className="t-c1 c-alt">카드 등록은 준비 중입니다.</span>
-                  </>
+              </div>
+            )}
+            <table className="sub-ft">
+              <tbody>
+                <tr>
+                  <th>구독 시작</th>
+                  <td>
+                    {sub?.subscribedAt
+                      ? `${dotDay(sub.subscribedAt)} · ${sub.startedFromTrial ? "오버레이 전용 7일 체험 뒤 " : ""}${view.plan?.name ?? ""}으로 시작`
+                      : view.access === "trial"
+                        ? `체험 중 · ${DAY(view.trialEndsAt)}까지`
+                        : "-"}
+                  </td>
+                  <th>다음 결제일</th>
+                  <td>
+                    {live && sub?.nextChargeAt ? (
+                      <>
+                        <b>{dotDay(sub.nextChargeAt)}</b> · {won(view.plan?.nextAmount ?? 0)}
+                      </>
+                    ) : (
+                      "-"
+                    )}
+                    {sub?.currentPeriodEnd && !live ? <span className="t-c1 c-alt"> 이용 기간 {DAY(sub.currentPeriodStart)} ~ {DAY(sub.currentPeriodEnd)}</span> : null}
+                    {view.access === "grace" && sub?.graceUntil ? <span className="t-c1 c-alt"> 결제 확인 기한 {DAY(sub.graceUntil)}</span> : null}
+                  </td>
+                </tr>
+                <tr>
+                  <th>할인 종료</th>
+                  <td>
+                    {view.plan?.launchDiscount?.active
+                      ? view.plan.launchDiscount.endsAt
+                        ? DAY(view.plan.launchDiscount.endsAt)
+                        : "아직 정해지지 않았습니다 · 정해지면 30일 전에 알림톡과 메일로 알려 드립니다"
+                      : "-"}
+                  </td>
+                  <th>할인이 끝나면</th>
+                  <td>{view.plan?.launchDiscount?.active ? `정가 월 ${won(view.plan.listPrice)}` : "-"}</td>
+                </tr>
+                <tr>
+                  <th>월 무료 메일</th>
+                  <td>
+                    {view.plan?.mailMonthlyQuota !== undefined
+                      ? `주문 · 배송 안내 메일 월 ${view.plan.mailMonthlyQuota.toLocaleString("ko-KR")}통 (넘는 발송 · 알림톡 · 문자는 발송·이용 충전 잔액에서 차감)`
+                      : "-"}
+                  </td>
+                  <th>청구 주기</th>
+                  <td>{sub?.billingDay ? `매월 ${sub.billingDay}일 · 카드 자동결제` : "-"}</td>
+                </tr>
+              </tbody>
+            </table>
+            {sub && !live && endsAt && (
+              <div className="msg msg-info t-l2" role="note">
+                <span>해지했습니다. {DAY(endsAt)}까지 이용할 수 있고, 그 뒤에는 결제되지 않습니다.</span>
+              </div>
+            )}
+            {view.access === "expired" && (
+              <div className="msg msg-neg t-l2" role="note">
+                <span>결제 카드를 등록하면 바로 결제되고 다시 이용할 수 있습니다.</span>
+              </div>
+            )}
+            {pendingPlan && (
+              <div className="msg msg-cau t-l2" role="note">
+                <span>
+                  <b>변경 예정</b> {DAY(sub?.nextChargeAt ?? null)}부터 「{pendingPlan.name}」으로 바뀝니다.
+                </span>
+                {current && (
+                  <button
+                    className="btn btn-sm btn-out"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void changePlan(plans.find((p) => p.code === current) ?? { code: current, name: view.plan?.name ?? "" }, null)}
+                  >
+                    변경 취소
+                  </button>
                 )}
-              </section>
+              </div>
+            )}
+            <div className="card pad col" style={{ gap: 4 }}>
+              <b className="t-l1">해지 · 이용권 변경 안내</b>
+              <span className="t-l2 c-neu">해지하면 이번 결제 기간이 끝날 때까지 쓸 수 있고, 다음 결제부터 청구하지 않습니다 · 이미 낸 구독료는 남은 날짜만큼 돌려드리지 않습니다</span>
+              <span className="t-l2 c-neu">올리면 남은 기간 차액을 바로 결제하고, 내리면 다음 결제일부터 바뀝니다</span>
+              <span className="t-l2 c-neu">런칭 할인가는 계정당 한 번입니다 · 해지한 뒤 다시 구독하면 적용되지 않습니다</span>
             </div>
 
-            {plans.length > 0 && (
+            {showPlans && plans.length > 0 && (
               <section className="card pad-l col" style={{ gap: 14 }} aria-labelledby="sub-plans">
                 <h2 className="t-hl1" id="sub-plans">
-                  플랜 변경
+                  이용권 바꾸기
                 </h2>
                 <div className="sub-plans">
                   {plans.map((p) => {
@@ -435,21 +475,139 @@ export default function SubscriptionPage() {
               </section>
             )}
 
-            <PaymentHistory payments={view.payments} />
+            <h2 className="t-hl1 sub-sec" id="sub-card">
+              결제 수단
+            </h2>
+            <table className="sub-ft">
+              <tbody>
+                <tr>
+                  <th>카드</th>
+                  <td>
+                    <span className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      <span data-testid="sub-card-label">{sub?.cardLabel ?? "등록된 카드가 없습니다"}</span>
+                      {sub?.cardLabel && <span className="bdg b-info nodot">기본 수단</span>}
+                      {testMode ? (
+                        <button className="btn btn-sm btn-out" type="button" onClick={askCard} disabled={busy}>
+                          {busy ? "처리 중" : sub?.cardLabel ? "테스트 카드로 변경" : "테스트 카드 등록"}
+                        </button>
+                      ) : (
+                        <button className="btn btn-sm btn-out" type="button" disabled>
+                          {sub?.cardLabel ? "변경" : "카드 등록"}
+                        </button>
+                      )}
+                    </span>
+                    <span className="t-c1 c-alt sub-hint">
+                      구독료는 카드 자동결제로만 받습니다 (파트너스 쇼핑몰 PG와 별개) · 결제에 실패하면 하루 간격으로 3번 다시 시도합니다 · 실패한 날부터 7일 유예, 그 뒤에는 잠깁니다
+                    </span>
+                    <span className="t-c1 c-alt sub-hint">
+                      {testMode ? "테스트 서버입니다. 실제 카드 등록과 결제는 이루어지지 않습니다." : "카드 등록은 준비 중입니다."}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
 
-            {live && (
-              <section className="card pad-l row" style={{ gap: 12, justifyContent: "space-between", flexWrap: "wrap" }} aria-labelledby="sub-cancel">
-                <div className="col" style={{ gap: 4 }}>
-                  <h2 className="t-hl1" id="sub-cancel">
-                    구독 해지
-                  </h2>
-                  <span className="t-l2 c-alt">해지해도 이번 이용 기간이 끝날 때까지는 그대로 이용할 수 있습니다.</span>
+            <div className="row between sub-sec">
+              <h2 className="t-hl1" id="sub-history">
+                청구 내역
+              </h2>
+              <a className="btn btn-sm btn-out" href="/api/seller/subscription/payments/export" download>
+                전체 내보내기
+              </a>
+            </div>
+            {(view.billingRows ?? []).length === 0 ? (
+              <div className="card">
+                <div className="st">
+                  <span className="t">청구 내역이 없습니다</span>
                 </div>
-                <button className="btn btn-sm btn-out" type="button" onClick={() => setConfirm({ kind: "cancel" })} disabled={busy}>
-                  해지
-                </button>
-              </section>
+              </div>
+            ) : (
+              <div className="card" style={{ overflowX: "auto" }}>
+                <table className="tbl sub-tbl">
+                  <thead>
+                    <tr>
+                      <th>청구월</th>
+                      <th>항목</th>
+                      <th>금액</th>
+                      <th>결제일</th>
+                      <th>상태</th>
+                      <th>매출전표</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(view.billingRows ?? []).map((r) => {
+                      const url = safeUrl(r.receiptUrl);
+                      return (
+                        <tr key={r.id} data-testid={r.state === "SCHEDULED" ? "sub-scheduled" : "sub-payment"}>
+                          <td className="num">{r.billingMonth.replace("-", ".")}</td>
+                          <td className="col-text">
+                            {ROW_KIND[r.kind]}
+                            {r.kind === "MESSAGE_CHARGE" && <div className="t-c1 c-alt">알림톡 · 문자 · 대량 메일 · 제공량 넘긴 거래 메일 차감용 · 내역은 발송·이용 충전에서</div>}
+                          </td>
+                          <td className="num">{won(r.amount)}</td>
+                          <td className="num">{r.state === "SCHEDULED" ? `예정 ${dotDay(r.at)}` : `${dotDay(r.at)} ${dotTime(r.at)}`}</td>
+                          <td>
+                            <span className={`bdg ${ROW_STATE[r.state].cls}`}>{ROW_STATE[r.state].label}</span>
+                          </td>
+                          <td>
+                            {url ? (
+                              <a className="btn btn-sm btn-out" href={url} target="_blank" rel="noopener noreferrer">
+                                매출전표
+                              </a>
+                            ) : r.state === "SCHEDULED" || r.state === "PENDING" ? (
+                              <span className="t-c1 c-alt">결제 후 발행</span>
+                            ) : (
+                              <span className="c-alt">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             )}
+            <span className="t-c1 c-alt">
+              카드 매출전표는 줄마다 내려받을 수 있습니다 · 구독료 세금계산서는 따로 발행하지 않습니다 · 발송·이용 충전은 구독료와 별도로 충전할 때 결제되고 사용 내역은 「발송·이용 충전」에서 봅니다
+            </span>
+
+            <h2 className="t-hl1 sub-sec">구독 상태 안내</h2>
+            <div className="card" style={{ overflowX: "auto" }}>
+              <table className="tbl sub-tbl">
+                <thead>
+                  <tr>
+                    <th style={{ width: 100 }}>상태</th>
+                    <th>설명</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>
+                      <span className="bdg b-info">체험 중</span>
+                    </td>
+                    <td className="col-text">오버레이 전용만 승인일부터 7일 · 모든 기능 · 끝나면 런칭 할인가로 첫 결제</td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <span className="bdg b-done">이용 중</span>
+                    </td>
+                    <td className="col-text">정상 결제</td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <span className="bdg b-fail">연체</span>
+                    </td>
+                    <td className="col-text">결제 실패 후 하루 간격 3번 재시도 · 실패한 날부터 7일 유예 · 7일이 지나면 쇼핑몰과 방송 화면이 멈춥니다</td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <span className="bdg b-cancel">해지</span>
+                    </td>
+                    <td className="col-text">잠긴 지 30일이 지나면 자동 해지 · 해지 뒤 90일 보관 후 삭제 · 그 안에 다시 구독하면 그대로 돌아옵니다</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </main>

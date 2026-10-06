@@ -31,3 +31,57 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* 구독 · 결제(SA-090): 정본 표형 구성 — 내 이용권 요약 박스 · 2열 표 · 구역 제목 */
+.sub-sec {
+  margin-top: 12px;
+  padding-bottom: 8px;
+  box-shadow: inset 0 -1px 0 var(--wds-line-normal-neutral);
+}
+.sub-box {
+  gap: 24px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.sub-price {
+  color: var(--wds-primary-normal, #0066ff);
+}
+.sub-box-note {
+  margin-left: auto;
+  max-width: 360px;
+}
+.sub-ft {
+  width: 100%;
+  border-collapse: collapse;
+  border-top: 1px solid var(--wds-line-normal-neutral);
+}
+.sub-ft th {
+  width: 150px;
+  padding: 12px;
+  text-align: left;
+  font-weight: 600;
+  background: var(--wds-fill-alternative);
+  border-bottom: 1px solid var(--wds-line-normal-neutral);
+}
+.sub-ft td {
+  padding: 12px;
+  border-bottom: 1px solid var(--wds-line-normal-neutral);
+  vertical-align: top;
+}
+.sub-hint {
+  display: block;
+  margin-top: 6px;
+}
+@media (max-width: 767px) {
+  .sub-ft,
+  .sub-ft tbody,
+  .sub-ft tr,
+  .sub-ft th,
+  .sub-ft td {
+    display: block;
+    width: 100%;
+  }
+  .sub-box-note {
+    margin-left: 0;
+  }
+}
