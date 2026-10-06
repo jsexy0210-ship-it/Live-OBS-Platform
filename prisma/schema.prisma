@@ -4482,3 +4482,36 @@ model PlatformBusinessInfo {
   updatedAt        DateTime @default(now()) @updatedAt @db.Timestamptz(3)
   updatedByAdminId String?  @db.Uuid
 }
+
+enum AdminNotifyChannel {
+  SLACK
+  EMAIL
+  SMS
+  EXTERNAL_MONITOR
+}
+
+// 마스터 관리자 운영팀 수신 채널 설정(MA-082). 채널마다 한 줄. target은 화면에 보이는 표시용 값(슬랙 채널 이름·이메일 주소·문자 「당직 번호」 같은 이름·감시 주소)이고
+// 웹훅 주소·API 키·실제 전화번호 같은 비밀값은 저장하지 않는다(연동 때 비밀 저장소·환경변수로, 승인 필요). 연결 여부는 저장하지 않고 조회 때 계산한다(실제 공급자가 있는 채널만 연결됨).
+model AdminNotificationChannel {
+  channel          AdminNotifyChannel  @id
+  target           String              @default("")
+  minSeverity      AdminAlertSeverity  @default(URGENT)
+  includeNight     Boolean             @default(false)
+  lastSentAt       DateTime?           @db.Timestamptz(3)
+  lastError        String?
+  updatedByAdminId String?             @db.Uuid
+  updatedAt        DateTime            @updatedAt @db.Timestamptz(3)
+}
+
+// 이벤트별 라우팅(MA-082) 바꾼 값. 이벤트 10개의 기본값은 코드(lib/server/admin/notificationSettings.ts)에 있고, 바꾼 이벤트만 한 줄이 생긴다. 「기본값 복원」은 이 표를 비운다.
+// roles: PlatformAdminRole 이름 목록, 빈 목록이면 「전체」.
+model AdminNotificationRoute {
+  eventKey         String   @id
+  slack            Boolean
+  email            Boolean
+  sms              Boolean
+  roles            String[]
+  nightSuppress    Boolean
+  updatedByAdminId String?  @db.Uuid
+  updatedAt        DateTime @updatedAt @db.Timestamptz(3)
+}
