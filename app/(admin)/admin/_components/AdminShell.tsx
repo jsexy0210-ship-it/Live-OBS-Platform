@@ -10,6 +10,7 @@ import { Suspense, createContext, Fragment, useContext, useEffect, useState } fr
 import { adminApi, type AdminMe } from "./api";
 import { itemAllowed, routeNav, visibleAdminMenu } from "./menu";
 import { useEllipsisTitle } from "../../../../components/admin-ui/useEllipsisTitle";
+import { NoPermission } from "../../../../components/seller/States";
 import { useTableCards } from "../../../../components/admin-ui/useTableCards";
 
 // 마스터 관리자 공통 틀(업무용 관리 화면 틀, 대표님 지시 2026-10-04): 상단 청록 GNB(대분류) + 왼쪽 LNB(고른 대분류의 하위 메뉴) + 본문.
@@ -248,12 +249,13 @@ export function ComingSoon() {
 
 // 그 역할이 못 보는 메뉴 주소로 직접 들어온 경우(화면은 그리지 않는다)
 function NoAccess() {
+  const { me } = useAdmin();
   return (
     <>
       <AdminTopbar crumb="권한 없음" />
       <main className="main">
-        <div className="card st" style={{ boxShadow: "none" }} data-testid="admin-no-access">
-          <span className="t">이 화면을 볼 권한이 없습니다</span>
+        <div data-testid="admin-no-access">
+          <NoPermission audience="master" readOnly={me.role === "READ_ONLY"} />
         </div>
       </main>
     </>

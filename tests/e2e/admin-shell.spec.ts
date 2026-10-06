@@ -76,7 +76,9 @@ test("CS: 최고관리자 전용 메뉴(설정 대분류=시스템·관리자)�
   await expect(gnb(page).getByRole("link", { name: "설정" })).toHaveCount(0);
   for (const path of ["/admin/logs", "/admin/settings/branding", "/admin/settings/maintenance"]) {
     await page.goto(path);
-    await expect(page.getByTestId("admin-no-access")).toHaveText("이 화면을 볼 권한이 없습니다");
+    const noAccess = page.getByTestId("admin-no-access");
+    await expect(noAccess.getByRole("heading", { name: "이 화면을 볼 권한이 없습니다", exact: true })).toBeVisible();
+    await expect(noAccess).toContainText("권한이 필요하면 최고관리자에게 요청해 주십시오.");
     await expect(page.getByRole("heading", { name: "파비콘 · 공유 카드" })).toHaveCount(0);
   }
 });

@@ -28,7 +28,7 @@ type Shown = { event: OrderEvent; until: number };
 // 새 HIT 카드를 강조하는 시간
 const HIT_FRESH_MS = 8_000;
 type Layout = { aspect: string; version: number; widgets: Widget[] };
-type View = { kind: "loading" } | { kind: "gone" } | { kind: "offline" } | { kind: "ok"; state: State; offline: boolean };
+type View = { kind: "loading" } | { kind: "gone" } | { kind: "offline" } | { kind: "ok"; state: State; stateReceivedAt: number; offline: boolean };
 
 const POLL_MS = 15_000;
 // 실시간 채널 오류로 다시 읽는 간격: 처음 오류는 바로 확인하고, 계속 실패하면 3초에서 30초까지 늘린다(서버가 죽어 있을 때 3초마다 읽지 않게)
@@ -85,7 +85,7 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
     version.current = state.version;
     isOffline.current = false;
     errorReload.current.gap = ERROR_RELOAD_MIN_MS;
-    setView({ kind: "ok", state, offline: false });
+    setView({ kind: "ok", state, stateReceivedAt: Date.now(), offline: false });
     // 새 HIT 카드 강조: 처음 읽을 때 이미 있던 카드는 강조하지 않는다
     const hitIds = (state.hits ?? []).map((h) => h.id);
     if (seenHits.current === null) seenHits.current = new Set(hitIds);
@@ -230,6 +230,8 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
                 widget={w}
                 data={w.type === "NEW_ORDER_ALERT" ? { ...data, alert: shownAlerts[w.id]?.event ?? null } : data}
                 now={now}
+                landscape={landscape}
+                stateReceivedAt={view.kind === "ok" ? view.stateReceivedAt : now}
               />
             ))}
           </>
