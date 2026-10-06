@@ -75,6 +75,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/members/[memberId]": "ORDER_FOLLOWUP",
   "seller/reward-balances": "ORDER_FOLLOWUP",
   "seller/reward-ledger": "ORDER_FOLLOWUP",
+  "seller/reward-ledger/summary": "ORDER_FOLLOWUP",
   "seller/purchase-restrictions/[buyerMemberId]/lift": "ORDER_FOLLOWUP",
   "seller/coupons": "STORE_OPERATIONS",
   "seller/member-grades": "STORE_OPERATIONS",
@@ -169,6 +170,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/products/options": "STORE_OPERATIONS",
   "seller/products/stock-movements": "STORE_OPERATIONS",
   "seller/reward-policy": "STORE_OPERATIONS",
+  "seller/reward-policy/history": "STORE_OPERATIONS",
+  "seller/reward-policy/preview": "STORE_OPERATIONS",
   "seller/reward-live-payout": "STORE_OPERATIONS",
   "seller/reward-balances/[memberId]/adjust": "STORE_OPERATIONS",
   "seller/share-preview": "STORE_OPERATIONS",
@@ -185,6 +188,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/platform-notices": "BILLING", // 플랫폼 공지(SA-111·112): 잠김·정지 중에도 본다
   "seller/platform-notices/[noticeId]": "BILLING",
   "seller/platform-notices/[noticeId]/read": "BILLING",
+  "seller/platform-notices/[noticeId]/files/[fileId]": "BILLING",
   "seller/notifications": "BILLING", // 알림 센터(SA-130): 잠김·정지 중에도 본다
   "seller/notifications/read": "BILLING",
   "seller/assistant": "BILLING", // 도우미(SA-140): 사용법 질문, 잠김·정지 중에도 쓴다(비용은 플랫폼 월 한도·하루 한도가 막음)

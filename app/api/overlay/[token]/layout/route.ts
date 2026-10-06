@@ -14,6 +14,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
     const raw = new URL(req.url).searchParams.get("aspect");
     const aspect = raw === null ? "9x16" : parseAspect(raw);
     if (!aspect) return NextResponse.json({ error: "invalid_aspect" }, { status: 400 });
+    // 지금 LIVE 방송이 있고 아직 레이아웃이 기록되지 않았으면 처음 요청한 레이아웃을 방송 이력(SA-054)에 남긴다(실패해도 오버레이 응답을 막지 않음)
+    await prisma.broadcastSession.updateMany({ where: { sellerId, status: "LIVE", layoutAspect: null }, data: { layoutAspect: aspect } }).catch(() => undefined);
     return NextResponse.json(await getPublicLayout(prisma, sellerId, aspect), { headers: { "cache-control": "no-store" } });
   } catch (e) {
     return errorResponse(e);

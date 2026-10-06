@@ -1279,6 +1279,8 @@ model BroadcastSession {
   title     String?
   startedAt DateTime        @default(now()) @db.Timestamptz(3)
   endedAt   DateTime?       @db.Timestamptz(3)
+  // 방송 중 오버레이가 처음 요청한 레이아웃("9x16" 세로형 | "16x9" 가로형, SA-054 「레이아웃」 열). 이 기록 전의 방송·요청이 없던 방송은 null.
+  layoutAspect String?
 
   seller       Seller            @relation(fields: [sellerId], references: [id])
   queueItems   QueueItem[]
@@ -1364,6 +1366,8 @@ model HitCard {
   buyerMemberId      String?  @db.Uuid
   nicknameSnapshot   String
   cardName           String
+  // 등급(SA-053 「등급」 열). 정해 둔 목록(HIT_GRADES: SAR·SR·UR·SE·SP·AA) 중 하나, 비워 둘 수 있다.
+  grade              String?
   note               String?
   createdByUserId    String?  @db.Uuid
   createdAt          DateTime @default(now()) @db.Timestamptz(3)
@@ -1396,6 +1400,9 @@ model RewardPolicy {
   rankingBonusAmount  Int              @default(0)
   // 적립금 지급 시점(대표님 결정 2026-10-03): 결제 즉시 또는 배송 완료 후(기본)
   earnTiming          RewardEarnTiming @default(ON_DELIVERY)
+  // 적립금 사용 조건(SA-031, MASTER 2026-10-06): 최소 사용 금액(원, 기본 1,000)과 주문당 최대 사용 비율(%, 0=제한 없음). 설정 저장은 rewards/policyAdmin.ts, 견적·주문 적용은 결제 쪽.
+  useMinAmount        Int              @default(1000)
+  useMaxRatio         Int              @default(0)
   updatedAt           DateTime         @default(now()) @updatedAt @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])
@@ -3133,9 +3140,28 @@ model PlatformNotice {
   deletedAt        DateTime?              @db.Timestamptz(3)
 
   reads PlatformNoticeRead[]
+  files PlatformNoticeFile[]
 
   @@index([publishedAt(sort: Desc), id(sort: Desc)])
   @@index([createdAt(sort: Desc), id(sort: Desc)])
+}
+
+// 공지 첨부 파일(MA-053·054, 마스터 관리자 중 공지 작성 권한자가 올리고 파트너스는 받기만). .png·.jpg·.pdf, 파일당 5MB·공지당 5개, DB 저장.
+// 공지를 지우면(하드 삭제) 같이 지우고, 지운(deletedAt) 공지의 파일은 받을 수 없다. 올리고 지워도 공지 version은 올리지 않는다.
+model PlatformNoticeFile {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  noticeId         String   @db.Uuid
+  name             String
+  data             Bytes
+  contentType      String
+  byteSize         Int
+  sortOrder        Int      @default(0)
+  createdByAdminId String   @db.Uuid
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+
+  notice PlatformNotice @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+
+  @@index([noticeId, sortOrder, createdAt])
 }
 
 // 파트너스 계정(직원 포함)별 공지 읽음 표시(SA-111·112). 상세를 열었을 때 화면이 읽음 API를 부르면 한 줄이 생긴다(같은 계정·공지는 한 번만).
