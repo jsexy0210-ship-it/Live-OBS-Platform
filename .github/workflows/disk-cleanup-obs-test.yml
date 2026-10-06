@@ -1,0 +1,70 @@
+# obs-test 서버(obs-web-test) 디스크 점검·정리. 절차: docs/DEPLOY.md 「디스크 정리」
+# - 수동 실행(workflow_dispatch)만. main과 이 저장소일 때만 돈다.
+# - mode=list: 지울 후보만 보여 준다(아무것도 지우지 않음). 결과는 실행 요약의 알림(annotation)으로 남는다.
+# - mode=apply: scripts/ops/disk-cleanup.sh --apply 로 정리한다. list로 후보를 확인한 뒤에만 실행한다.
+# - 정리 대상은 스크립트에 정한 네 가지뿐이다(오래된 배포 전 자동 백업·옛 앱 이미지·오래된 빌드 캐시·오래된 러너 로그).
+#   DB 볼륨·수동 백업·컨테이너·최근 5개 버전 이미지는 지우지 않는다.
+name: Disk cleanup obs-test
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "list = 지울 후보만 보기, apply = 정리하기(list로 먼저 확인)"
+        required: true
+        default: list
+        type: choice
+        options:
+          - list
+          - apply
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-obs-test
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    name: Disk cleanup (${{ inputs.mode }})
+    if: github.ref == 'refs/heads/main' && github.repository == 'jsexy0210-ship-it/Live-OBS-Platform'
+    runs-on: [self-hosted, obs-kakao]
+    environment: obs-test
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      # 로그를 열지 못하는 환경에서도 결과를 볼 수 있게 출력 전체를 알림 한 건으로 남긴다.
+      - name: Disk check (before)
+        run: |
+          set -uo pipefail
+          out="$(OBS_MIN_FREE_GB=5 scripts/ops/disk-cleanup.sh --check 2>&1)"; code=$?
+          printf '%s\n' "$out"
+          msg="${out//'%'/'%25'}"; msg="${msg//$'\r'/'%0D'}"; msg="${msg//$'\n'/'%0A'}"
+          echo "::notice title=disk before (exit ${code})::${msg}"
+
+      - name: Cleanup (${{ inputs.mode }})
+        env:
+          MODE: ${{ inputs.mode }}
+        run: |
+          set -uo pipefail
+          if [ "$MODE" = apply ]; then args=(--apply); else args=(); fi
+          out="$(scripts/ops/disk-cleanup.sh "${args[@]}" 2>&1)"; code=$?
+          printf '%s\n' "$out"
+          msg="${out//'%'/'%25'}"; msg="${msg//$'\r'/'%0D'}"; msg="${msg//$'\n'/'%0A'}"
+          echo "::notice title=disk-cleanup ${MODE} (exit ${code})::${msg}"
+          exit "$code"
+
+      - name: Disk check (after)
+        if: always()
+        run: |
+          set -uo pipefail
+          out="$(OBS_MIN_FREE_GB=5 scripts/ops/disk-cleanup.sh --check 2>&1)"; code=$?
+          printf '%s\n' "$out"
+          msg="${out//'%'/'%25'}"; msg="${msg//$'\r'/'%0D'}"; msg="${msg//$'\n'/'%0A'}"
+          echo "::notice title=disk after (exit ${code})::${msg}"

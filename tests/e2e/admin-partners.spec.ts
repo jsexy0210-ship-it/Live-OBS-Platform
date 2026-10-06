@@ -54,7 +54,10 @@ async function search(page: Page, q: string) {
 test("최고관리자: 검색·상태 필터로 찾고, 이용 정지는 사유가 있어야 하며, 정지·해제가 목록과 DB에 반영된다", async ({ page }) => {
   await login(page, emails.super);
   await search(page, run);
-  await expect(page.getByTestId("partner-row")).toHaveCount(2);
+  // 가입 신청 중·반려는 기본 목록에 없다(가입 신청 화면에서 본다, MA-011). 승인된 시험몰만 나온다
+  await expect(page.getByTestId("partner-row")).toHaveCount(1);
+  await expect(page.getByTestId("partner-row")).toContainText(slugA);
+  await expect(page.getByTestId("partner-row")).not.toContainText(`대기몰 ${run}`);
   await page.getByLabel("상태", { exact: true }).selectOption("NORMAL");
   await page.getByRole("button", { name: "검색", exact: true }).click();
   await expect(page.getByTestId("partner-row")).toHaveCount(1);

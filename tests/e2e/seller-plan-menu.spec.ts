@@ -76,7 +76,11 @@ test("로그인 뒤 기본 화면: 통합은 지금처럼 상품, 오버레이 �
   await expect(page).toHaveURL(/\/seller\/products$/);
   await page.context().clearCookies();
 
-  await page.goto("/seller/login");
+  // 앞 화면의 뒤쪽 요청이 로그인으로 스스로 넘기는 중이면 이동이 끊긴다(ERR_ABORTED): 한 번 더 연다
+  await page.goto("/seller/login").catch(async (e: Error) => {
+    if (!e.message.includes("ERR_ABORTED")) throw e;
+    await page.goto("/seller/login");
+  });
   await submitSellerLogin(page, OVERLAY, PASSWORD);
   await expect(page).toHaveURL(/\/seller\/home-overlay$/);
   await expect(page.getByTestId("plan-feature-required")).toHaveCount(0);

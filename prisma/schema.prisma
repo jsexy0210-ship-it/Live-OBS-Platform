@@ -2185,6 +2185,9 @@ model AutomationJob {
   // 외부 행동 격리 창: 마지막 외부 행동 시작 시각과 종료 확인 시각. 소유권이 넘어가거나 닫히는 지점은 종료 확인 또는 시작 + 행동 상한 + 여유까지 기다린다(quiescent)
   lastActionStartedAt     DateTime?                 @db.Timestamptz(3)
   lastActionEndedAt       DateTime?                 @db.Timestamptz(3)
+  // 판매자가 「잠시 멈추기」를 누른 시각(SA-152). 있으면 작업자가 이 작업에 실행 자리를 주지 않는다(상태는 QUEUED로 두고 진행 단계 stepIndex는 그대로).
+  // 「이어 하기」로 비우면 멈춘 단계부터 다시 시작한다. 시작·전체·실행 시간 마감은 멈춰도 그대로 흐른다(마감이 지나면 기존대로 닫고 환불 대기).
+  pausedAt                DateTime?                 @db.Timestamptz(3)
   // 처음 대기열에 들어간 시각(결제 확인·무료 재연결 생성). 시작 마감 기준(deadlinesFor)
   queuedAt                DateTime?                 @db.Timestamptz(3)
   startedAt               DateTime?                 @db.Timestamptz(3)
