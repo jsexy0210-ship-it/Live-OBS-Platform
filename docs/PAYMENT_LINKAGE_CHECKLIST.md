@@ -13,7 +13,7 @@
 | SH-022 주문 상세 | `GET /orders/{id}`(paymentInfo 카드 요약·현금영수증 상태·배송지·받는 방법) | ✓ | 카드 매출전표 안내 문구 표시 |
 | 취소·환불 요청 | `refund-requests`, 취소 | ✓ | RefundRequestSection |
 | SH-022-R 교환·반품 | `returns` | ✓ | ReturnSection |
-| 배송비 미리보기 | `GET /payments/shipping-preview` | △ | 화면 호출 없음. 체크아웃은 `orders/quote`가 배송비를 줘서 쓸모가 겹침 → 화면-쇼핑몰이 quote로 충분한지 확인 후 API 삭제 또는 연결 결정 |
+| 배송비 미리보기 | (제거됨) | ✓ | 호출처가 없고 `orders/quote`가 같은 계산(단가·배송비·도서산간)을 줘서 API 삭제(MASTER 배정 2026-10-06). 로그인 없이 쓰는 용도는 없음 |
 | 현금영수증·세금계산서 신청(구매자) | `/receipt-requests`, `/receipt-requests/{id}` | ✗ | 구매자 화면에서 신청하는 곳 없음(SH-022는 신청 상태 표시만). 정본에 신청 UI가 있는지 SH-022 보드 확인 필요 → 없으면 서버 API만 남은 상태로 MASTER 판단 |
 
 ## 마스터 관리자
