@@ -94,6 +94,16 @@ export default function SubscriptionsPage() {
       <AdminTopbar crumb="구독·요금 › 구독 현황" />
       <main className="main">
         <PageHead title="구독 현황" />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
+          {(["trial", "paid", "grace", "expired"] as Access[]).map((a) => (
+            <div key={a} className="card pad col" style={{ gap: 4 }}>
+              <span className="t-l2 c-alt">{a === "trial" ? "체험 중" : ACCESS[a].label}</span>
+              <span className="t-h2" data-testid={`sub-count-${a}`}>
+                {counts ? `${counts[a].toLocaleString("ko-KR")}곳` : "-"}
+              </span>
+            </div>
+          ))}
+        </div>
         <nav className="tabs" aria-label="이용 상태">
           <button type="button" className={`tab${applied.access === "" ? " on" : ""}`} aria-pressed={applied.access === ""} onClick={() => setApplied({ ...applied, access: "" })}>
             전체{counts ? ` ${TABS.reduce((n, a) => n + counts[a], 0).toLocaleString("ko-KR")}` : ""}

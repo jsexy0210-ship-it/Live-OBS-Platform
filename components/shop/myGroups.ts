@@ -2,8 +2,8 @@
 export function myGroups(base: string) {
   return [
     { title: "쇼핑", links: [{ href: `${base}/orders`, label: "주문 내역" }, { href: `${base}/me/addresses`, label: "배송지 관리" }, { href: `${base}/wishlist`, label: "찜" }] },
-    { title: "혜택", links: [{ href: `${base}/coupons`, label: "내 쿠폰함" }] },
-    { title: "활동", links: [{ href: `${base}/reviews`, label: "내 리뷰" }] },
-    { title: "내 정보", links: [{ href: `${base}/me/notifications`, label: "알림 설정" }] },
+    { title: "혜택", links: [{ href: `${base}/me/rewards`, label: "내 적립금" }, { href: `${base}/coupons`, label: "내 쿠폰함" }] },
+    { title: "활동", links: [{ href: `${base}/me/inquiries`, label: "내 문의" }, { href: `${base}/reviews`, label: "내 리뷰" }] },
+    { title: "내 정보", links: [{ href: `${base}/me/profile`, label: "회원정보 수정" }, { href: `${base}/me/notifications`, label: "알림 설정" }] },
   ];
 }
