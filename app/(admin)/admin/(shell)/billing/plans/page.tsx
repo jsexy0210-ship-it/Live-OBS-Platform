@@ -38,7 +38,7 @@ export default function PlansPage() {
     <>
       <AdminTopbar crumb="구독·요금 › 요금제" />
       <main className="main">
-        <PageHead title="요금제" />
+        <PageHead title="요금제" description="요금제별 가격과 제공량을 확인하고, 현재 설정을 관리합니다." />
         <div className="card">
           {state.kind === "loading" && <LoadingRows rows={3} />}
           {state.kind === "error" && <ErrorState title="요금제를 불러오지 못했습니다." onRetry={() => void load()} />}

@@ -191,6 +191,7 @@ function Invoices() {
       <main className="main">
         <PageHead
           title="청구 · 결제"
+          description="기간별 청구 내역과 결제 결과를 확인합니다."
           actions={
             <>
               {canRetry && (

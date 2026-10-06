@@ -138,6 +138,7 @@ function PartnerList() {
       <main className="main">
         <PageHead
           title="파트너스 목록"
+          description="검색 조건을 표 밖에 두고, 건수와 일괄 작업을 확인한 뒤 목록을 처리합니다."
           actions={
             <>
               <Link className="btn btn-out" href="/admin/partners/applications">
