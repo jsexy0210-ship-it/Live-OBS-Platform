@@ -941,8 +941,14 @@ describe("Codex 리뷰 반영", () => {
       await new Promise((r) => setTimeout(r, 20 + n * 40));
       await cancelJob(db, a.ctx, a.jobId);
       await run;
-      // 상태가 안 바뀌는 「단계 완료」 기록(step_done)은 전이가 아니므로 제외한다
-      const events = (await db.automationJobEvent.findMany({ where: { jobId: a.jobId } })).filter((e) => (e.detail as { reason?: unknown } | null)?.reason !== "step_done");
+      const all = await db.automationJobEvent.findMany({ where: { jobId: a.jobId } });
+      // 「단계 완료」 기록(step_done)은 상태가 안 바뀌는 기록이라(실행 중 상태 그대로) 사슬 이동에서는 건너뛰되, 같은 상태 유지임은 단언한다
+      const isStepDone = (e: (typeof all)[number]) => (e.detail as { reason?: unknown } | null)?.reason === "step_done";
+      for (const e of all.filter(isStepDone)) {
+        expect(e.fromStatus).toBe(e.toStatus);
+        expect(["RUNNING", "VERIFYING"]).toContain(e.toStatus);
+      }
+      const events = all.filter((e) => !isStepDone(e));
       // null에서 시작해 「이전 상태 = 직전 기록의 다음 상태」로 모든 기록이 빠짐없이 한 줄로 이어져야 한다
       let cur: string | null = null;
       const left = [...events];
