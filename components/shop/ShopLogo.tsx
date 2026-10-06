@@ -20,7 +20,7 @@ export default function ShopLogo({ shopName }: { shopName: string }) {
     return (
       <span
         aria-hidden="true"
-        style={{ ...box, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "var(--brand)", color: "var(--brand-ink)", fontSize: 14, fontWeight: 800 }}
+        style={{ ...box, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "var(--wds-primary-normal)", color: "#ffffff", fontSize: 14, fontWeight: 800 }}
       >
         {letter}
       </span>

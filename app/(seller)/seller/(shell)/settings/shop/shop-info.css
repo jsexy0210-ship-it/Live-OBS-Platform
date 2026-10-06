@@ -9,7 +9,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--wds-fill-alternative);
+  background: var(--wds-primary-normal);
   box-shadow: inset 0 0 0 1px var(--wds-line-normal-alternative);
 }
 .si-logo.is-editable {
@@ -32,7 +32,7 @@
 .si-letter {
   font-size: 48px;
   font-weight: 800;
-  color: var(--wds-label-assistive);
+  color: #ffffff;
 }
 .si-hint {
   position: absolute;
@@ -65,8 +65,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--brand);
-  color: var(--brand-ink);
+  background: var(--wds-primary-normal);
+  color: #ffffff;
   font-size: 14px;
   font-weight: 800;
 }
