@@ -23,7 +23,7 @@ export const POST = mutation(async (req: Request) => {
     if (r.reason === "daily_limit_exceeded") return NextResponse.json({ error: r.reason }, { status: 429, headers: { "cache-control": "no-store" } });
     if (r.reason === "terms_required" || r.reason === "consent_outdated") {
       // 문서 버전이 바뀌었으면 지금 버전을 함께 돌려준다(배포 전에 열어 둔 화면이 다시 동의할 때 새 버전을 보내게)
-      const current = r.reason === "consent_outdated" ? { termsVersion: SELLER_SIGNUP_CONSENT_VERSIONS.terms, privacyVersion: SELLER_SIGNUP_CONSENT_VERSIONS.privacy } : {};
+      const current = r.reason === "consent_outdated" ? { termsVersion: SELLER_SIGNUP_CONSENT_VERSIONS.terms, privacyVersion: SELLER_SIGNUP_CONSENT_VERSIONS.privacy, policyVersion: SELLER_SIGNUP_CONSENT_VERSIONS.policy, marketingVersion: SELLER_SIGNUP_CONSENT_VERSIONS.marketing } : {};
       return NextResponse.json(
         { error: r.reason, message: SELLER_CONSENT_MESSAGES[r.reason], ...current },
         { status: SELLER_CONSENT_STATUS[r.reason], headers: { "cache-control": "no-store" } },

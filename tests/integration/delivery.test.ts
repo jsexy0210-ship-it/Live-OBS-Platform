@@ -354,9 +354,9 @@ describe("설정 API", () => {
     const cookie = await sellerCookie(owner.email);
     const get = async (c: string) => rewardPolicyGet(new Request("http://localhost:3000/api/seller/reward-policy", { headers: { ...H, cookie: c } }));
     const put = (c: string, body: unknown) => rewardPolicyPut(new Request("http://localhost:3000/api/seller/reward-policy", { method: "PUT", headers: { ...H, cookie: c }, body: JSON.stringify(body) }));
-    expect(await (await get(cookie)).json()).toEqual({ policy: { earnTiming: "ON_DELIVERY" } });
+    expect(await (await get(cookie)).json()).toMatchObject({ policy: { earnTiming: "ON_DELIVERY", configured: false, revokeMode: "AUTO" } });
     expect((await put(cookie, { earnTiming: "ON_PAYMENT" })).status).toBe(200);
-    expect(await (await get(cookie)).json()).toEqual({ policy: { earnTiming: "ON_PAYMENT" } });
+    expect(await (await get(cookie)).json()).toMatchObject({ policy: { earnTiming: "ON_PAYMENT", configured: true } });
     expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "reward_policy.earn_timing", sellerId: seller.id } })).toMatchObject({
       before: { earnTiming: "ON_DELIVERY" },
       after: { earnTiming: "ON_PAYMENT" },
