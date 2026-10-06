@@ -8,7 +8,7 @@ import { externalConfig } from "../../../../lib/server/external/config";
 import { externalProvider } from "../../../../lib/server/external/provider";
 import { errorResponse, mutation, noStore, readJson, sessionToken } from "../../../../lib/server/http/route";
 
-// 외부 쇼핑몰 연동 목록(SA-006)과 연결 시작. 대표자 또는 쇼핑몰 설정 권한 직원만, 「외부 연동」 권한이 있는 요금제만.
+// 외부 쇼핑몰 연동 목록(SA-006, 연결마다 lastEventAt·lastEventKind)과 연결 시작. 대표자 또는 쇼핑몰 설정 권한 직원만, 「외부 연동」 권한이 있는 요금제만.
 // 플랫폼 이름은 응답·오류에 쓰지 않는다. 연동 키가 없으면 enabled:false(화면은 「준비 중」), 연결 시작은 503.
 const MESSAGES = {
   integration_disabled: "외부 쇼핑몰 연결을 준비하고 있습니다. 조금만 기다려 주십시오",
