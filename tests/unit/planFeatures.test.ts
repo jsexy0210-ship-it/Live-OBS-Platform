@@ -225,6 +225,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/shop-legal-notice": "STORE_OPERATIONS",
   "seller/shop-profile": "STORE_OPERATIONS",
   "seller/broadcast/[broadcastId]": "OVERLAY",
+  "seller/broadcast/[broadcastId]/report": "OVERLAY",
   "seller/broadcast/history": "OVERLAY",
   "seller/broadcast/summary": "OVERLAY",
   "seller/external-shops": "EXTERNAL_INTEGRATION",

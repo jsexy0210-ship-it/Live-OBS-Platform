@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { notFound } from "../authz/errors";
 import { requireSellerRead, type TenantContext } from "../tenant/context";
 import { aggregateBroadcasts } from "./summary";
+import { broadcastInsights } from "./insights";
 import { orderNoLabel } from "../orders/orderNoLabel";
 
 // 방송 상세(SA-055): 집계 + 그 방송 주문 목록 + HIT 카드. 귀속은 summary.ts와 같다(주문 createdAt·HIT createdAt이 방송 [시작, 종료] 안).
@@ -25,8 +26,9 @@ export async function broadcastDetail(db: PrismaClient, ctx: TenantContext, id: 
   const at = isUuid(cursor)
     ? await db.order.findFirst({ where: { id: cursor, sellerId: ctx.sellerId, createdAt: window }, select: { id: true, createdAt: true } })
     : null;
-  const [agg, rows, hits, externals] = await Promise.all([
+  const [agg, insights, rows, hits, externals] = await Promise.all([
     aggregateBroadcasts(db, ctx.sellerId, [session.id]),
+    broadcastInsights(db, ctx.sellerId, session.id, session.startedAt, session.endedAt),
     db.order.findMany({
       where: {
         sellerId: ctx.sellerId,
@@ -66,8 +68,9 @@ export async function broadcastDetail(db: PrismaClient, ctx: TenantContext, id: 
   const page = rows.slice(0, DETAIL_ORDER_PAGE);
   const doneTimes = (o: (typeof page)[number]) => o.queueItems.map((q) => q.doneAt).filter((d): d is Date => !!d);
   return {
-    broadcast: { id: session.id, title: session.title, status: session.status === "LIVE" ? ("live" as const) : ("ended" as const), startedAt: session.startedAt, endedAt: session.endedAt },
-    summary: agg.get(session.id)!,
+    broadcast: { id: session.id, title: session.title, status: session.status === "LIVE" ? ("live" as const) : ("ended" as const), startedAt: session.startedAt, endedAt: session.endedAt, memo: session.memo },
+    summary: { ...agg.get(session.id)!, avgOpenSeconds: insights.avgOpenSeconds, maxWaiting: insights.maxWaiting },
+    hourly: insights.hourly,
     orders: page.map((o) => {
       const done = doneTimes(o);
       return {
