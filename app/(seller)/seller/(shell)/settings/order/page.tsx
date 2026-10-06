@@ -7,6 +7,7 @@ import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { parseAmount } from "../../../../../../components/seller/format";
+import { useUnsavedGuard } from "../../../../../../lib/client/navigation";
 
 // SA-063 주문 설정: 미입금 자동 취소·입금 기한·자동 구매 제한(미입금·결제 후 취소)·재고 되돌리기·자동 배송 완료·자동 구매 확정.
 // 반품·교환 배송비는 배송비 정책(SA-061)에서 정한다(API가 배송비 정책에 있음). 마감 전 알림은 API가 생기면 붙인다.
@@ -115,6 +116,7 @@ export default function OrderSettingsPage() {
       saved.autoDeliverDays !== effectiveDeliver ||
       saved.autoConfirmEnabled !== confirmOn ||
       saved.autoConfirmDays !== effectiveConfirm);
+  useUnsavedGuard(dirty); // 링크·브라우저 Back·새로고침에 같은 확인(docs/IA.md Back 규칙 7항)
 
   // 입금 기한 칸은 자동 취소를 꺼도 값을 남겨 둔다(다시 켤 때 그대로 쓰도록). 꺼져 있으면 검사하지 않고 저장된 값을 보낸다.
   const save = async () => {

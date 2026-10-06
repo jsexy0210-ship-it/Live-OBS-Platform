@@ -190,6 +190,9 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/platform-inquiries": "BILLING", // 플랫폼 문의(SA-113·114·115): 잠김·정지 중에도 쓴다
   "seller/platform-inquiries/[inquiryId]": "BILLING",
   "seller/platform-inquiries/[inquiryId]/messages": "BILLING",
+  "seller/platform-inquiries/[inquiryId]/close": "BILLING",
+  "seller/platform-inquiries/[inquiryId]/rating": "BILLING",
+  "seller/platform-inquiries/related-options": "BILLING",
   "seller/platform-inquiries/images": "BILLING",
   "seller/platform-inquiries/images/[imageId]": "BILLING",
   "seller/notices/[noticeId]": "STORE_OPERATIONS",

@@ -50,6 +50,11 @@ export function isSessionActive(realm: Realm, s: SessionTimes, now: Date, broadc
   return true;
 }
 
-export function sessionExpiry(realm: Realm, now: Date): Date {
-  return new Date(now.getTime() + SESSION_POLICY[realm].maxMs);
+// 구매자 「로그인 유지」를 끈 로그인(기본)의 세션 기간. 쿠키는 브라우저를 닫으면 사라지고, 서버 쪽도 이 기간이 지나면 끝난다.
+// 켜면 SESSION_POLICY.buyer(30일)다.
+export const BUYER_SHORT_SESSION_MS = DAY;
+
+export function sessionExpiry(realm: Realm, now: Date, opts: { short?: boolean } = {}): Date {
+  const ms = realm === "buyer" && opts.short ? BUYER_SHORT_SESSION_MS : SESSION_POLICY[realm].maxMs;
+  return new Date(now.getTime() + ms);
 }
