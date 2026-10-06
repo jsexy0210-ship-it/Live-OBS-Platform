@@ -45,6 +45,15 @@ test.afterAll(async () => {
   await db.$disconnect();
 });
 
+// 1440·1024·390에서 찍는다(검수 증거)
+async function shotAll(page: Page, name: string) {
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.screenshot({ path: `tests/e2e/screenshots/${name}-${width}.png`, fullPage: true });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+}
+
 async function sellerLogin(page: Page) {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/seller/login");
@@ -130,4 +139,59 @@ test("마스터 관리자: 조회 전용 관리자가 목록 요약·필터·상
   await page.getByRole("link", { name: "상세" }).first().click();
   await expect(page.getByTestId("detail-status")).toContainText("완료");
   await page.screenshot({ path: "tests/e2e/screenshots/automation-ma111-1920.png", fullPage: true });
+});
+
+test("파트너스: 다른 카드로 결제 — 서버가 준 결제창 값을 그대로 열고, 실패로 돌아오면 안내하며, 결과 안내는 진행 화면에 뜬다", async ({ page }) => {
+  await sellerLogin(page);
+  // 나이스페이 SDK와 시작 응답은 가짜로 바꾼다(실제 결제창·돈은 쓰지 않는다). 서버 계약: POST /api/automation/purchase/one-time
+  await page.route("**/v1/js/", (route) => route.fulfill({ contentType: "application/javascript", body: "window.AUTHNICE={requestPay:function(o){window.__pay=o}}" }));
+  const jobId = "11111111-2222-4333-8444-555555555555";
+  let startedBody: unknown = null;
+  await page.route("**/api/automation/purchase/one-time", async (route) => {
+    startedBody = route.request().postDataJSON();
+    await route.fulfill({
+      status: 201,
+      json: { jobId, paymentId: "p1", paymentStatus: "PENDING", replayed: false, window: { clientId: "S2_test", method: "card", orderId: "ord_1", amount: 110000, goodsName: "자동 연결" }, returnUrl: "http://localhost/api/automation/purchase/one-time/return" },
+    });
+  });
+  await page.goto(`/seller/automation/pay?shop=${encodeURIComponent(SHOP)}`);
+  await expect(page.getByTestId("pay-card")).toContainText("구독에 쓰는 카드 · 테스트카드 1234");
+  await page.getByTestId("pay-other").click();
+  await expect(page.getByTestId("pay-card")).toContainText("다른 카드로 결제");
+  await expect(page.getByText("이번 한 번만 씁니다 · 저장하지 않습니다")).toBeVisible();
+  await shotAll(page, "automation-sa151-other");
+  for (let i = 0; i < 5; i++) await page.getByTestId(`pay-check-${i}`).check();
+  await page.getByTestId("pay-submit").click();
+  const dialog = page.getByRole("dialog", { name: "110,000원을 결제하시겠습니까?" });
+  await expect(dialog).toContainText("다른 카드를 입력하면");
+  await dialog.getByLabel("결제 금액").fill("110,000");
+  await dialog.getByRole("button", { name: "110,000원 결제하기" }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __pay?: unknown }).__pay)).toMatchObject({ clientId: "S2_test", method: "card", orderId: "ord_1", amount: 110000, goodsName: "자동 연결", returnUrl: "http://localhost/api/automation/purchase/one-time/return" });
+  expect(startedBody).toMatchObject({ shopUrl: SHOP, consent: { agreed: true } });
+
+  // 결제창에서 실패하고 돌아오면(?payment=failed) 안내와 함께 다른 카드가 골라져 있다
+  await page.goto(`/seller/automation/pay?shop=${encodeURIComponent(SHOP)}&payment=failed`);
+  await expect(page.getByTestId("pay-failed")).toContainText("결제되지 않았습니다. 카드사에서 승인을 거절했습니다");
+  await expect(page.getByTestId("pay-card")).toContainText("다른 카드로 결제");
+  await shotAll(page, "automation-sa151-failed");
+
+  // 결제됨·확인 중 결과는 진행 화면 위에 한 줄로 뜬다
+  const job = (status: string, paymentStatus: string) => ({ id: jobId, kind: "INITIAL", status, paymentStatus, amount: 110000, step: null, stepNumber: 1, stepCount: 5, customerAction: null, actionDeadlineAt: null, lastError: null, verifiedAt: null, createdAt: new Date().toISOString(), finishedAt: null });
+  await page.route(`**/api/automation/jobs/${jobId}`, (route) => route.fulfill({ json: job("QUEUED", "PAID") }));
+  await page.goto(`/seller/automation/${jobId}?payment=paid`);
+  await expect(page.getByTestId("pay-result-paid")).toContainText("결제됐습니다 · 자동 연결을 시작합니다");
+  await page.unroute(`**/api/automation/jobs/${jobId}`);
+  await page.route(`**/api/automation/jobs/${jobId}`, (route) => route.fulfill({ json: job("AWAITING_PAYMENT", "PENDING") }));
+  await page.goto(`/seller/automation/${jobId}?payment=pending`);
+  await expect(page.getByTestId("pay-result-pending")).toContainText("결제를 확인하고 있습니다 · 카드사 승인 뒤 서버가 한 번 더 확인합니다");
+
+  // 주소만 고쳐 ?payment=paid를 붙여도 서버 상태가 결제됨이 아니면 「결제됐습니다」는 뜨지 않는다(쿼리는 표시 힌트일 뿐)
+  await page.goto(`/seller/automation/${jobId}?payment=paid`);
+  await expect(page.getByTestId("job-status")).toContainText("결제 확인 중");
+  await expect(page.getByTestId("pay-result-paid")).toHaveCount(0);
+  await page.unroute(`**/api/automation/jobs/${jobId}`);
+  await page.route(`**/api/automation/jobs/${jobId}`, (route) => route.fulfill({ json: job("AWAITING_PAYMENT", "FAILED") }));
+  await page.goto(`/seller/automation/${jobId}?payment=paid`);
+  await expect(page.getByTestId("pay-result-paid")).toHaveCount(0);
+  await expect(page.getByTestId("pay-result-pending")).toHaveCount(0);
 });
