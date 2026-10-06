@@ -1086,8 +1086,13 @@ select.inp{cursor:pointer}
 .c24 .lgrid>.lt tr:last-child>td{border-bottom:0}
 /* 모바일 카드 변환에서는 각 행 카드가 경계이며 바깥 grid 프레임을 중복하지 않습니다. */
 @media(max-width:767px){.c24 .lgrid:has(> .lt[data-card-table]){border:0;border-radius:0;background:transparent;overflow:visible}}
-/* 기존 bare grid도 표 자체만 프레임을 가집니다. 검색/건수까지 감싸지 않습니다. */
-.c24:not(.pre):not(.mob) .lpanel>.lt{border:1px solid var(--c24-line)}
+/* lgrid로 옮기지 않은 정본은 기존 목록 프레임과 잘림 경계를 유지합니다. */
+.c24:not(.pre):not(.mob) .lpanel:not(:has(>.lgrid)){border:1px solid var(--c24-line);border-radius:12px;overflow:clip;background:#fff}
+.c24:not(.pre):not(.mob) .lpanel:not(:has(>.lgrid))>.ltop{padding:12px 16px;border-bottom:1px solid var(--c24-line2);background:#fff}
+.c24:not(.pre):not(.mob) .lpanel:not(:has(>.lgrid)) .lt,.c24:not(.pre):not(.mob) .lpanel:not(:has(>.lgrid)) .plist{margin:0;border:0;box-shadow:none}
+.c24:not(.pre):not(.mob) .lpanel:not(:has(>.lgrid)) .lt th:first-child,.c24:not(.pre):not(.mob) .lpanel:not(:has(>.lgrid)) .lt td:first-child{border-left:0}
+.c24:not(.pre):not(.mob) .lpanel:not(:has(>.lgrid)) .lt tr:last-child>td{border-bottom:0}
+.c24:not(.pre):not(.mob) .lpanel:not(:has(>.lgrid)) .lt th:last-child,.c24:not(.pre):not(.mob) .lpanel:not(:has(>.lgrid)) .lt td:last-child{border-right:0}
 
 /* 2026-10-05 현대화 기준: 글 열(.l)은 제목도 왼쪽 · 관리자 목록 썸네일 64×64 모서리 8 · 썸네일 행 88 */
 .c24 .lt th.l,.c24 .st .lt th.l{text-align:left !important}

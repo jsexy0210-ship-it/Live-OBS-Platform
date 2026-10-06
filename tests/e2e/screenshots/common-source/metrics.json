@@ -1,0 +1,32 @@
+[
+  {
+    "width": 1440,
+    "title": "공통 검색 · 목록 패널",
+    "description": "검색 조건을 표 밖에 두고, 건수와 일괄 작업을 확인한 뒤 목록을 처리합니다.",
+    "gridCount": 1,
+    "outerBorder": "0px",
+    "headerBorder": "0px",
+    "gridBorder": "1px",
+    "bodyWidth": 1440
+  },
+  {
+    "width": 1024,
+    "title": "공통 검색 · 목록 패널",
+    "description": "검색 조건을 표 밖에 두고, 건수와 일괄 작업을 확인한 뒤 목록을 처리합니다.",
+    "gridCount": 1,
+    "outerBorder": "0px",
+    "headerBorder": "0px",
+    "gridBorder": "1px",
+    "bodyWidth": 1024
+  },
+  {
+    "width": 390,
+    "title": "공통 검색 · 목록 패널",
+    "description": "검색 조건을 표 밖에 두고, 건수와 일괄 작업을 확인한 뒤 목록을 처리합니다.",
+    "gridCount": 1,
+    "outerBorder": "0px",
+    "headerBorder": "0px",
+    "gridBorder": "1px",
+    "bodyWidth": 390
+  }
+]
