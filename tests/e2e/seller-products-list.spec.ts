@@ -12,7 +12,7 @@ const box = (page: Page) => page.getByRole("search", { name: "목록 조건" });
 async function open(page: Page) {
   await page.goto("/seller/login");
   await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
-  await page.waitForURL(/\/seller\/(?!login)/);
+  await page.waitForURL((url) => url.pathname === "/seller" || (url.pathname.startsWith("/seller/") && url.pathname !== "/seller/login"));
   await page.goto("/seller/products");
   await expect(rows(page).first()).toBeVisible();
 }
