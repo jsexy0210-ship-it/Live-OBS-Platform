@@ -341,6 +341,8 @@ test("휴대폰 폭(390)에서는 메뉴가 서랍으로 열리고 상품이 카
   await page.setViewportSize({ width: 390, height: 844 });
   await login(page);
   await expect(page.getByTestId("product-card").first()).toBeVisible();
+  await expect(page.locator(".tbl.p-table")).toBeHidden();
+  await expect(page.locator(".p-cards")).toBeVisible();
   await expect(page.getByTestId("product-row").first()).toBeHidden();
   // 가로 스크롤이 생기지 않는다
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
