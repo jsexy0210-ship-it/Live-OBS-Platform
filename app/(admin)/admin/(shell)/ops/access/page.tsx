@@ -7,7 +7,7 @@ import { ErrorState, LoadingRows, Toast } from "../../../../../../components/sel
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar } from "../../../_components/AdminShell";
 import { OVERLAY_STATE, type SellerActivity } from "../../../_components/ops";
-import { dayTime, won } from "../../../_components/partners";
+import { day, dayTime, won } from "../../../_components/partners";
 
 // MA-042 주문·오버레이 접속. 전체 이용 중·정지 파트너스 요약과 50곳 단위 목록을 조회한다.
 type PeriodKey = "today" | "7d" | "30d";
@@ -51,6 +51,7 @@ export default function SellerActivityPage() {
   const items = all.filter((s) => (!liveOnly || s.live) && (!offOnly || (s.overlay.hasUrl && !s.overlay.connected)));
   const summary = state.kind === "ok" ? state.summary : { created: 0, paid: 0, paidAmount: 0 };
   const periodLabel = period === "today" ? "오늘" : period === "7d" ? "7일" : "30일";
+  const rangeLabel = state.kind !== "ok" ? "조회 중" : period === "today" ? day(state.period.from) : `${day(state.period.from)} ~ ${day(state.period.to)}`;
 
   return (
     <>
@@ -77,7 +78,7 @@ export default function SellerActivityPage() {
             {([["today", "오늘"], ["7d", "7일"], ["30d", "30일"]] as const).map(([key, label]) => <button key={key} className={`btn btn-sm ${period === key ? "btn-primary" : "btn-out"}`} role="radio" aria-checked={period === key} type="button" onClick={() => setPeriod(key)}>{label}</button>)}
           </div>
           <p className="t-c1 c-alt" style={{ margin: 0 }}>
-            {periodLabel}부터 {state.kind === "ok" ? `${state.period.to}까지` : "조회 중"} (KST). 전체 이용 중·정지 파트너스 합계이며, 7일·30일은 오늘을 포함합니다. 주문은 생성일, 결제 건수와 금액은 결제일 기준이며 현재 환불을 반영합니다. 외부 주문은 포함하지 않습니다. 집계 시각 {state.kind === "ok" ? dayTime(state.observedAt) : "—"}; 파트너스와 방송 상태는 현재값입니다.
+            {periodLabel} 기간 {rangeLabel} (KST). 전체 이용 중·정지 파트너스 합계이며, 7일·30일은 오늘을 포함합니다. 주문은 생성일, 결제 건수와 금액은 결제일 기준이며 현재 환불을 반영합니다. 외부 주문은 포함하지 않습니다. 집계 시각 {state.kind === "ok" ? dayTime(state.observedAt) : "—"}; 파트너스와 방송 상태는 현재값입니다.
           </p>
 
           <div className="card pad row" style={{ gap: 16, flexWrap: "wrap" }}>

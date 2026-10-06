@@ -46,9 +46,9 @@ export default function LivePayoutPage() {
                   </span>
                 </div>
               ))}
-          {state.kind === "ok" && <p className="t-c1 c-alt" style={{ margin: 0 }}>기준 시각 {day(state.at)}. 이번 달 거래액은 이번 달 결제일 기준 순액이며 현재 환불을 반영합니다. 잔액 비율 경고 기준은 25% 초과입니다. 수동 지급액은 성공한 비테스트 양수 조정의 최근 30×24시간 합계입니다. 지급 실패는 모의·날짜 누락 자료가 있으면 합계를 확정할 수 없습니다. 수동 지급 집중도 기준은 정해져 있지 않습니다.</p>}
             </div>
           )}
+          {state.kind === "ok" && <p className="t-c1 c-alt" style={{ margin: 0 }}>기준 시각 {day(state.at)}. 이번 달 거래액은 이번 달 결제일 기준 순액이며 현재 환불을 반영합니다. 잔액 비율 경고 기준은 25% 초과입니다. 수동 지급액은 성공한 비테스트 양수 조정의 최근 30×24시간 합계입니다. 지급 실패는 모의·날짜 누락 자료가 있으면 합계를 확정할 수 없습니다. 수동 지급 집중도 기준은 정해져 있지 않습니다.</p>}
           <div className="card">
             {state.kind === "loading" && <LoadingRows rows={4} />}
             {state.kind === "error" && <ErrorState title="실지급 파트너스를 불러오지 못했습니다." onRetry={() => void load()} />}
