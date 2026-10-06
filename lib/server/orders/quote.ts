@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { shopOpen } from "../buyers/signup";
-import { parseRewardUse, rewardUsePrecheck, REWARD_USE_MIN, REWARD_USE_UNIT, type RewardUseFailure } from "../payments/rewardUse";
+import { parseRewardUse, rewardUsePrecheck, REWARD_USE_UNIT, type RewardUseFailure } from "../payments/rewardUse";
 import { itemCouponDiscount } from "../shop-coupons/service";
 import { dbClock } from "./overdue";
 import { priceOrder, type OrderPricingFailure } from "./pricing";
@@ -47,14 +47,13 @@ export async function quoteOrder(db: PrismaClient, input: QuoteInput) {
     if (!member) return { ok: false as const, reason: "shop_unavailable" as const };
     const price = await priceOrder(tx, { sellerId: input.sellerId, buyerMemberId: member.id, lines, address, couponId: input.couponId, now });
     if (!price.ok) return { ok: false as const, reason: price.reason };
-    const policy = await tx.rewardPolicy.findUnique({ where: { sellerId: input.sellerId }, select: { livePayoutEnabled: true } });
     const balanceRow = await tx.rewardBalance.findUnique({ where: { sellerId_buyerMemberId: { sellerId: input.sellerId, buyerMemberId: member.id } }, select: { balance: true } });
     const rewardBalance = balanceRow?.balance ?? 0;
-    // 쓸 수 있는 최대: 한도와 잔액 중 작은 값을 10원 단위로 내림, 1,000원 미만이면 0
+    // 쓸 수 있는 최대: 한도(쇼핑몰 최대 비율 반영)와 잔액 중 작은 값을 10원 단위로 내림, 쇼핑몰 최소 사용 금액 미만이면 0
     const usable = Math.floor(Math.min(price.rewardLimit, rewardBalance) / REWARD_USE_UNIT) * REWARD_USE_UNIT;
-    const rewardMax = policy?.livePayoutEnabled && usable >= REWARD_USE_MIN ? usable : 0;
+    const rewardMax = price.rewardSettings.livePayoutEnabled && usable >= price.rewardSettings.minAmount ? usable : 0;
     if (rewardUse > 0) {
-      const pre = await rewardUsePrecheck(tx, { sellerId: input.sellerId, amount: rewardUse, limit: price.rewardLimit });
+      const pre = await rewardUsePrecheck(tx, { sellerId: input.sellerId, amount: rewardUse, limit: price.rewardLimit, settings: price.rewardSettings });
       if (pre) return { ok: false as const, reason: pre };
       if (rewardUse > rewardBalance) return { ok: false as const, reason: "reward_balance_insufficient" as const };
     }

@@ -115,7 +115,7 @@ test("로그인하면 맨 위 띠 오른쪽에 닉네임 님이 보인다", asyn
   await expect(page.locator(".shop-util").getByRole("link", { name: "내 정보" })).toBeVisible();
 });
 
-test("크기 규칙(2026-10-05 시각 규격): 입력·검색 44px, 주요 버튼·하단 고정 바 48px, 모서리 8px", async ({ page }) => {
+test("크기 규칙(2026-10-05 시각 규격): 입력·검색 44px, 주요 버튼 48px, 휴대폰 아래 탭 바 56px(정본 SH-001 .sh24.m .tabbar), 모서리 8px", async ({ page }) => {
   const box = (sel: string) => page.locator(sel).first().evaluate((el) => ({ h: Math.round(el.getBoundingClientRect().height), r: getComputedStyle(el).borderTopLeftRadius }));
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/shop/${SLUG}/login`);
@@ -125,7 +125,7 @@ test("크기 규칙(2026-10-05 시각 규격): 입력·검색 44px, 주요 버�
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/shop/${SLUG}`);
   const bar = await page.locator(".shop-tabbar").evaluate((el) => ({ h: Math.round(el.getBoundingClientRect().height), r: getComputedStyle(el).borderTopLeftRadius }));
-  expect(bar).toEqual({ h: 48, r: "8px" });
+  expect(bar).toEqual({ h: 56, r: "8px" }); // 정본 SH-001 휴대폰 아래 바 56(#776)
 });
 
 test("구매자 쇼핑몰 모든 화면의 바탕은 흰색이다(회색 바탕 없음)", async ({ page }) => {
