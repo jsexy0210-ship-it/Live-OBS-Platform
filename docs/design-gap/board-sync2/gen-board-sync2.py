@@ -90,4 +90,11 @@ for f in ('SH-012', 'SH-012-PC'):
     s2 = rep(s2, '8자 이상 · 영문과 숫자를 섞어 주세요', '8자 이상')
     s2 = rep(s2, '링크는 30분 동안 쓸 수 있어요 · 메일이 없으면 스팸함을 확인해 주세요', '가입된 이메일이면 재설정 메일이 가요 · 링크는 30분 동안 쓸 수 있어요 · 메일이 없으면 스팸함을 확인해 주세요')
     (out / f'{f}.dc.html').write_text(s2)
+
+# ⑨ SA-064 · SA-065 배너 · 팝업 이미지 형식 「JPG · PNG」 → 「PNG」(대표님 2026-10-04 지시 · 서버 PNG만). SA-066에는 형식 안내 없음
+for f, n in (('SA-064', 6), ('SA-065', 5)):
+    s = (src / f'{f}.dc.html').read_text()
+    s = rep(s, 'JPG · PNG', 'PNG', n)
+    assert 'JPG' not in s
+    (out / f'{f}.dc.html').write_text(s)
 print('ok')
