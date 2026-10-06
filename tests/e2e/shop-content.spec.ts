@@ -60,6 +60,11 @@ async function canvasPng(page: Page, width: number, height: number, color: strin
 const file = (name: string, buffer: Buffer, mimeType = "image/png") => ({ name, mimeType, buffer });
 const imageLoaded = (page: Page, selector: string) => page.locator(selector).first().evaluate((el) => (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth > 0);
 async function expectBannerPreview(page: Page, testId: "banner-home-preview" | "banner-preview") {
+  const shell = page.locator(".cs");
+  const lnb = page.locator(".lnb");
+  await expect(shell).not.toHaveClass(/\bnav-open\b/);
+  await expect.poll(() => lnb.evaluate((el) => el.getAnimations().every((animation) => animation.playState !== "running"))).toBe(true);
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   const frame = page.getByTestId(testId);
   const image = frame.locator('.hb-only .hb-slide[aria-hidden="false"] img').first();
   await frame.scrollIntoViewIfNeeded();
@@ -67,8 +72,20 @@ async function expectBannerPreview(page: Page, testId: "banner-home-preview" | "
   const metrics = await image.evaluate((el) => {
     const img = el as HTMLImageElement;
     const frame = img.closest<HTMLElement>("[data-testid]")!;
+    const shell = document.querySelector(".cs");
+    const lnb = document.querySelector(".lnb");
+    const frameRect = frame.getBoundingClientRect();
     const imageRect = img.getBoundingClientRect();
+    const lnbRect = lnb!.getBoundingClientRect();
+    const leftEdge = document.elementFromPoint(imageRect.left + 1, imageRect.top + imageRect.height / 2);
     return {
+      viewportWidth: window.innerWidth,
+      scrollX: window.scrollX,
+      navOpen: shell?.classList.contains("nav-open"),
+      lnbRight: lnbRect.right,
+      lnbTransform: getComputedStyle(lnb!).transform,
+      frame: { x: frameRect.x, y: frameRect.y, width: frameRect.width, height: frameRect.height, right: frameRect.right },
+      leftEdgeUnobscured: !!leftEdge && frame.contains(leftEdge),
       frameWidth: frame.getBoundingClientRect().width,
       imageHeight: imageRect.height,
       naturalWidth: img.naturalWidth,
@@ -76,6 +93,13 @@ async function expectBannerPreview(page: Page, testId: "banner-home-preview" | "
       objectFit: getComputedStyle(img).objectFit,
     };
   });
+  console.log(`[SA-064 preview] ${JSON.stringify(metrics)}`);
+  expect(metrics.navOpen).toBe(false);
+  expect(metrics.scrollX).toBe(0);
+  expect(metrics.frame.x).toBeGreaterThanOrEqual(0);
+  expect(metrics.frame.right).toBeLessThanOrEqual(metrics.viewportWidth);
+  if (metrics.viewportWidth <= 1023) expect(metrics.lnbRight).toBeLessThanOrEqual(0);
+  expect(metrics.leftEdgeUnobscured).toBe(true);
   expect(metrics.frameWidth).toBe(240);
   expect(metrics.imageHeight).toBe(80);
   expect(metrics.naturalWidth).toBe(750);
