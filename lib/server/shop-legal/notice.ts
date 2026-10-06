@@ -29,6 +29,8 @@ export type NoticeRejection =
   | "invalid_escrow_provider"
   | "invalid_escrow_url"
   | "invalid_minor_notice"
+  | "invalid_kakao_url"
+  | "invalid_youtube_url"
   | "version_conflict";
 
 // 파트너스 관리자 화면 문구(명사형·합니다체)
@@ -41,6 +43,8 @@ export const NOTICE_MESSAGES: Record<NoticeRejection, string> = {
   invalid_escrow_provider: `가입한 업체 이름을 ${PROVIDER_MAX}자 안에서 입력해 주십시오`,
   invalid_escrow_url: "확인 주소는 https로 시작하는 주소만 입력할 수 있습니다",
   invalid_minor_notice: `미성년자 구매 안내를 ${MINOR_NOTICE_MAX.toLocaleString("ko-KR")}자 안에서 입력해 주십시오`,
+  invalid_kakao_url: "카카오톡 채널 주소는 https로 시작하는 주소만 입력할 수 있습니다",
+  invalid_youtube_url: "유튜브 채널 주소는 https로 시작하는 주소만 입력할 수 있습니다",
   version_conflict: "다른 곳에서 먼저 고쳤습니다. 새로고침한 뒤 다시 시도해 주십시오",
 };
 
@@ -72,7 +76,7 @@ function httpsUrl(v: unknown): string | null {
   }
 }
 
-type Input = Pick<ShopLegalNotice, "address" | "csPhone" | "csEmail" | "csHours" | "escrowKind" | "escrowProvider" | "escrowUrl" | "minorNotice">;
+type Input = Pick<ShopLegalNotice, "address" | "csPhone" | "csEmail" | "csHours" | "escrowKind" | "escrowProvider" | "escrowUrl" | "minorNotice" | "kakaoChannelUrl" | "youtubeChannelUrl">;
 
 function parseInput(raw: unknown): { ok: true; v: Input } | { ok: false; reason: Exclude<NoticeRejection, "version_conflict"> } {
   const b = obj(raw);
@@ -92,7 +96,11 @@ function parseInput(raw: unknown): { ok: true; v: Input } | { ok: false; reason:
   if (escrowUrl === null) return { ok: false, reason: "invalid_escrow_url" };
   const minorNotice = isEmpty(b.minorNotice) ? "" : cleanText(b.minorNotice, MINOR_NOTICE_MAX, "multiline");
   if (minorNotice === null) return { ok: false, reason: "invalid_minor_notice" };
-  return { ok: true, v: { address, csPhone: csPhoneRaw, csEmail: csEmailRaw, csHours, escrowKind: KIND_TO_DB[kind], escrowProvider, escrowUrl, minorNotice } };
+  const kakaoChannelUrl = httpsUrl(b.kakaoChannelUrl);
+  if (kakaoChannelUrl === null) return { ok: false, reason: "invalid_kakao_url" };
+  const youtubeChannelUrl = httpsUrl(b.youtubeChannelUrl);
+  if (youtubeChannelUrl === null) return { ok: false, reason: "invalid_youtube_url" };
+  return { ok: true, v: { address, csPhone: csPhoneRaw, csEmail: csEmailRaw, csHours, escrowKind: KIND_TO_DB[kind], escrowProvider, escrowUrl, minorNotice, kakaoChannelUrl, youtubeChannelUrl } };
 }
 
 const view = (r: ShopLegalNotice | null) => ({
@@ -104,10 +112,12 @@ const view = (r: ShopLegalNotice | null) => ({
   escrowProvider: r?.escrowProvider ?? "",
   escrowUrl: r?.escrowUrl ?? "",
   minorNotice: r?.minorNotice ?? "",
+  kakaoChannelUrl: r?.kakaoChannelUrl ?? "",
+  youtubeChannelUrl: r?.youtubeChannelUrl ?? "",
   version: r?.version ?? 0,
 });
 
-const FIELDS = ["address", "csPhone", "csEmail", "csHours", "escrowKind", "escrowProvider", "escrowUrl", "minorNotice"] as const;
+const FIELDS = ["address", "csPhone", "csEmail", "csHours", "escrowKind", "escrowProvider", "escrowUrl", "minorNotice", "kakaoChannelUrl", "youtubeChannelUrl"] as const;
 const changedFields = (before: ShopLegalNotice | null, after: Input) => FIELDS.filter((f) => (before?.[f] ?? (f === "escrowKind" ? "NONE" : "")) !== after[f]);
 
 const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { FormFoot, FormRow, FormSection, PageHead } from "../../../../../../components/admin-ui";
+import { FormFoot, FormRow, FormSection, PageHead, useConfirm } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
@@ -20,8 +20,8 @@ export default function MemberSettingsPage() {
   const [available, setAvailable] = useState(true);
   const [enabled, setEnabled] = useState(false);
   const [days, setDays] = useState(30);
+  const { confirm } = useConfirm();
   const [saving, setSaving] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const apply = (p: Policy) => {
@@ -46,15 +46,31 @@ export default function MemberSettingsPage() {
   const dirty = !!saved && (saved.rejoinRestrictionEnabled !== enabled || saved.rejoinRestrictionDays !== days);
   useUnsavedGuard(dirty); // 링크·브라우저 Back·새로고침에 같은 확인(docs/IA.md Back 규칙 7항)
 
+  // 저장 전에 확인 창을 거친다. 끄고 저장하면 보관하던 탈퇴 회원 기록이 바로 지워지므로 그 경우만 위험 색·되돌릴 수 없음 안내
   const save = async () => {
     if (!saved) return;
-    setSaving(true);
-    setFailure(null);
-    const r = await api<{ policy: Policy }>("/api/seller/member-policy", { method: "PUT", body: { rejoinRestrictionEnabled: enabled, rejoinRestrictionDays: days } });
-    setSaving(false);
-    if (!r.ok) return setFailure(failMessage(r, "admin", "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
-    apply(r.data.policy);
-    setState({ kind: "ok", saved: r.data.policy });
+    const turningOff = saved.rejoinRestrictionEnabled && !enabled;
+    let next: Policy | undefined;
+    const ok = await confirm({
+      title: turningOff ? "탈퇴한 사람 다시 가입 막기를 끄시겠습니까?" : "회원 정책을 저장하시겠습니까?",
+      body: turningOff
+        ? "보관하던 탈퇴 회원 기록이 바로 지워지며 되돌릴 수 없습니다."
+        : enabled
+          ? `탈퇴한 사람은 ${label(days)} 동안 다시 가입할 수 없습니다. 저장한 뒤 가입·탈퇴하는 회원부터 적용됩니다.`
+          : "바꾼 내용은 저장한 뒤 가입·탈퇴하는 회원부터 적용됩니다.",
+      confirmLabel: turningOff ? "끄기" : "저장",
+      danger: turningOff,
+      run: async () => {
+        setSaving(true);
+        const r = await api<{ policy: Policy }>("/api/seller/member-policy", { method: "PUT", body: { rejoinRestrictionEnabled: enabled, rejoinRestrictionDays: days } });
+        setSaving(false);
+        if (!r.ok) return failMessage(r, "admin", "저장하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주십시오");
+        next = r.data.policy;
+      },
+    });
+    if (!ok || !next) return;
+    apply(next);
+    setState({ kind: "ok", saved: next });
     setToast("회원 정책을 저장했습니다");
   };
 
@@ -88,22 +104,15 @@ export default function MemberSettingsPage() {
           >
             {/* 저장하는 동안은 칸을 잠근다: 보낸 값과 다른 수정이 응답으로 덮이지 않게 */}
             <fieldset className="settings-fields" disabled={saving}>
-              {failure && (
-                <div className="msg msg-neg" role="alert" style={{ marginBottom: 16 }}>
-                  <span>
-                    <b>저장할 수 없습니다.</b> {failure}
-                  </span>
-                </div>
-              )}
               <FormSection title="재가입 제한">
                 <FormRow
-                  label="탈퇴한 사람의 재가입 막기"
+                  label="탈퇴한 사람 다시 가입 막기"
                   help={
                     <span id="rj-help">
                       {!available && !enabled
-                        ? "회원이 동의를 철회할 수 있는 화면이 준비되면 켤 수 있습니다"
+                        ? "회원이 보관 동의를 취소할 수 있는 화면이 준비되면 켤 수 있습니다"
                         : enabled
-                          ? `탈퇴한 날부터 ${label(days)} 동안 같은 사람이 다시 가입할 수 없습니다`
+                          ? `정한 기간(${label(days)}) 동안 같은 사람이 다시 가입할 수 없습니다`
                           : "꺼 두면 탈퇴한 사람도 바로 다시 가입할 수 있습니다 · 기본 꺼짐"}
                     </span>
                   }
@@ -113,7 +122,7 @@ export default function MemberSettingsPage() {
                     type="button"
                     role="switch"
                     aria-checked={enabled}
-                    aria-label="탈퇴한 사람의 재가입 막기"
+                    aria-label="탈퇴한 사람 다시 가입 막기"
                     aria-describedby="rj-help"
                     disabled={!available && !enabled}
                     onClick={() => setEnabled((v) => !v)}
@@ -132,7 +141,7 @@ export default function MemberSettingsPage() {
                 )}
               </FormSection>
               <p className="help" style={{ marginTop: 16 }}>
-                켜면 가입할 때 「재가입 제한 정보 보관」 동의를 따로 받습니다. 이미 가입한 회원은 가입할 때 동의한 기간까지만 적용됩니다. 끄면 보관하던 탈퇴 회원 정보는 바로 삭제합니다.
+                이 기능을 켜면 가입할 때 「탈퇴 기록 보관」에 동의를 따로 받습니다. 이미 가입한 회원은 가입할 때 동의한 기간까지만 막습니다. 이 기능을 끄면 보관하던 탈퇴 회원 기록이 바로 지워집니다.
               </p>
             </fieldset>
             <FormFoot>
