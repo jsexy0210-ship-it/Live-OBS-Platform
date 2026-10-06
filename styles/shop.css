@@ -511,24 +511,83 @@ body {
   color: var(--wds-label-alternative);
 }
 .shop-sort {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 16px;
+  position: relative;
   font-size: 13px;
 }
-.shop-app .shop-sort a {
+/* 보드 SH-002: 「인기순 ▾」 한 칸을 누르면 정렬 목록이 펼쳐진다 */
+.shop-sortmenu summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 4px;
+  list-style: none;
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--wds-label-normal);
+}
+.shop-sortmenu summary::-webkit-details-marker {
+  display: none;
+}
+.shop-sortmenu summary::after {
+  content: "▾";
+  font-size: 11px;
+}
+.shop-sortmenu[open] > div {
+  position: absolute;
+  right: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  padding: 4px 0;
+  background: #fff;
+  border: 1px solid var(--wds-line-solid-neutral);
+  border-radius: var(--shop-r);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 12%);
+}
+.shop-app .shop-sortmenu a {
+  padding: 10px 16px;
   color: var(--wds-label-alternative);
   text-decoration: none;
 }
-.shop-app .shop-sort a[aria-current="page"] {
+.shop-app .shop-sortmenu a[aria-current="page"] {
   color: var(--wds-label-normal);
   font-weight: 700;
 }
 .shop-pager {
   display: flex;
   justify-content: center;
-  gap: 8px;
+  gap: 4px;
   margin-top: 40px;
+}
+.shop-app .shop-pager a,
+.shop-pager .is-off {
+  display: inline-grid;
+  place-items: center;
+  min-width: 36px;
+  height: 36px;
+  border-radius: var(--shop-r);
+  color: var(--wds-label-alternative);
+  text-decoration: none;
+}
+.shop-pager .is-off {
+  opacity: 0.35;
+}
+.shop-app .shop-pager a[aria-current="page"] {
+  background: var(--wds-label-normal);
+  color: #fff;
+  font-weight: 700;
+}
+.shop-listend {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+.shop-listend p {
+  margin: 0;
 }
 .shop-searchbox {
   display: flex;

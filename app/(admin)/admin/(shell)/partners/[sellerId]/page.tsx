@@ -8,7 +8,7 @@ import { PageHead } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
-import { SELLER_STATUS, SUBSCRIPTION_STATUS, day, dayTime, text, won, type SellerDetail, type SellerStatus } from "../../../_components/partners";
+import { DISPLAY_STATUS, SELLER_STATUS, SUBSCRIPTION_STATUS, day, dayTime, text, won, type SellerDetail, type SellerListRow, type SellerStatus } from "../../../_components/partners";
 import { MessageBalanceSection } from "../../../_components/MessageBalanceSection";
 import { PARTNER_TABS, PartnerActivity, PartnerBroadcasts, PartnerNotes, PartnerPg, type PartnerTab } from "../../../_components/PartnerTabs";
 import { ImpersonateDialog, type ImpersonationStart } from "../../../_components/ImpersonateDialog";
@@ -54,6 +54,8 @@ function PartnerDetail() {
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [dialog, setDialog] = useState(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
+  // 머리 배지(결제 연결·방송·실제 지급·메모 수)는 목록 응답이 이미 주는 값이라, 쇼핑몰 주소로 한 건만 걸러 같은 값을 쓴다
+  const [row, setRow] = useState<SellerListRow | null>(null);
 
   const load = useCallback(async () => {
     setState({ kind: "loading" });
@@ -61,6 +63,11 @@ function PartnerDetail() {
     setState(r.ok ? { kind: "ok", seller: r.data.seller } : { kind: "error", status: r.status });
   }, [sellerId]);
   useEffect(() => void load(), [load]);
+  const slug = state.kind === "ok" ? state.seller.slug : null;
+  useEffect(() => {
+    if (!slug) return;
+    void adminApi<{ sellers: SellerListRow[] }>(`/api/admin/sellers?field=slug&q=${encodeURIComponent(slug)}&limit=20`).then((r) => setRow(r.ok ? (r.data.sellers.find((x) => x.id === sellerId) ?? null) : null));
+  }, [slug, sellerId, state]);
   const loadImp = useCallback(async () => {
     if (!canImpersonate) return;
     const r = await adminApi<{ active: Impersonation | null }>("/api/admin/impersonation");
@@ -146,18 +153,31 @@ function PartnerDetail() {
                 </button>
               </div>
             )}
-            <div className="row" style={{ gap: 6, flexWrap: "wrap" }} role="group" aria-label="파트너스 정보 탭">
+            <div className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "center" }} data-testid="partner-badges">
+              <span className={`bdg ${row ? DISPLAY_STATUS[row.displayStatus].cls : SELLER_STATUS[s.status].cls}`}>{row ? DISPLAY_STATUS[row.displayStatus].label : SELLER_STATUS[s.status].label}</span>
+              {s.subscription && <span className={`bdg ${SUBSCRIPTION_STATUS[s.subscription.status].cls}`}>구독 {SUBSCRIPTION_STATUS[s.subscription.status].label}</span>}
+              {row?.pg.status === "ERROR" && <span className="bdg b-fail">결제 연결 오류</span>}
+              {row?.live && <span className="bdg b-live">방송 중</span>}
+              {row?.payoutEnabled && <span className="bdg b-done">실제 지급 켜짐</span>}
+              <span className="t-l2 c-alt">
+                쇼핑몰 주소 {s.slug}
+                {s.owner ? ` · 대표 ${s.owner.name}` : ""} · {day(s.createdAt)} 가입
+              </span>
+            </div>
+            <nav className="tabs" aria-label="파트너스 정보 탭" style={{ overflowX: "auto", maxWidth: "100%" }}>
               {PARTNER_TABS.map(([k, label]) => (
-                <button key={k} type="button" className={`btn btn-sm ${tab === k ? "" : "btn-out"}`} aria-pressed={tab === k} onClick={() => setQ({ tab: k })}>
+                <button key={k} type="button" className={`tab${tab === k ? " on" : ""}`} aria-pressed={tab === k} onClick={() => setQ({ tab: k })}>
                   {label}
+                  {k === "notes" && row && row.noteCount > 0 ? ` ${row.noteCount}` : ""}
+                  {k === "pg" && row?.pg.status === "ERROR" ? " 오류" : ""}
                 </button>
               ))}
-            </div>
+            </nav>
             {tab === "broadcasts" && <PartnerBroadcasts sellerId={s.id} />}
             {tab === "notes" && <PartnerNotes sellerId={s.id} />}
             {tab === "pg" && <PartnerPg sellerId={s.id} slug={s.slug} />}
             {tab === "activity" && <PartnerActivity sellerId={s.id} />}
-            {tab === "info" && (
+            {tab === "orders" && (
               <>
               <div className="stat-row" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
                 {[
@@ -174,6 +194,34 @@ function PartnerDetail() {
                   </div>
                 ))}
               </div>
+              </>
+            )}
+            {tab === "subscription" && (
+              <>
+              <Info
+                title="구독"
+                id="partner-subscription"
+                rows={
+                  s.subscription
+                    ? [
+                        ["상태", <span key="sub" className={`bdg ${SUBSCRIPTION_STATUS[s.subscription.status].cls}`}>{SUBSCRIPTION_STATUS[s.subscription.status].label}</span>],
+                        ["결제 카드", text(s.subscription.cardLabel)],
+                        ["현재 기간", `${day(s.subscription.currentPeriodStart)} ~ ${day(s.subscription.currentPeriodEnd)}`],
+                        ["다음 결제", dayTime(s.subscription.nextChargeAt)],
+                        ["이용 기간이 끝나면 해지", s.subscription.cancelAtPeriodEnd ? "예" : "아니요"],
+                        ["이용 중인 요금제", s.subscription.planName],
+                        ["바뀔 요금제", s.subscription.pendingPlanName ?? "-"],
+                        ["결제 못 한 뒤 기다려 주는 날짜", dayTime(s.subscription.graceUntil)],
+                        ["결제를 다시 시도한 횟수", `${s.subscription.retryCount}회`],
+                      ]
+                    : [["상태", "구독 없음"]]
+                }
+              />
+              <MessageBalanceSection sellerId={s.id} />
+              </>
+            )}
+            {tab === "info" && (
+              <>
               <Info
                 title="기본 정보"
                 id="partner-basic"
@@ -210,26 +258,6 @@ function PartnerDetail() {
                   ["통신판매업 신고번호", text(biz?.mailOrderNumber)],
                 ]}
               />
-              <Info
-                title="구독"
-                id="partner-subscription"
-                rows={
-                  s.subscription
-                    ? [
-                        ["상태", <span key="sub" className={`bdg ${SUBSCRIPTION_STATUS[s.subscription.status].cls}`}>{SUBSCRIPTION_STATUS[s.subscription.status].label}</span>],
-                        ["결제 카드", text(s.subscription.cardLabel)],
-                        ["현재 기간", `${day(s.subscription.currentPeriodStart)} ~ ${day(s.subscription.currentPeriodEnd)}`],
-                        ["다음 결제", dayTime(s.subscription.nextChargeAt)],
-                        ["이용 기간이 끝나면 해지", s.subscription.cancelAtPeriodEnd ? "예" : "아니요"],
-                        ["이용 중인 요금제", s.subscription.planName],
-                        ["바뀔 요금제", s.subscription.pendingPlanName ?? "-"],
-                        ["결제 못 한 뒤 기다려 주는 날짜", dayTime(s.subscription.graceUntil)],
-                        ["결제를 다시 시도한 횟수", `${s.subscription.retryCount}회`],
-                      ]
-                    : [["상태", "구독 없음"]]
-                }
-              />
-              <MessageBalanceSection sellerId={s.id} />
               </>
             )}
           </div>

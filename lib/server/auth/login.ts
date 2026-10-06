@@ -16,7 +16,8 @@ export type LoginFailure =
   | "dormant"
   | "wrong_account_type"; // 파트너스 로그인 탭(대표자·직원)과 비밀번호가 맞은 계정의 종류가 다름
 
-export type LoginResult = ({ ok: true } & IssuedSession) | { ok: false; reason: LoginFailure };
+// pendingGrant: 비밀번호가 맞은 대표자의 신청이 승인 대기·반려일 때(로그인은 막지만 신청 안내 화면용 쿠키를 줄 수 있음, sellers/pendingAccess.ts)
+export type LoginResult = ({ ok: true } & IssuedSession) | { ok: false; reason: LoginFailure; pendingGrant?: { userId: string; credentialVersion: number; application: "pending" | "rejected" } };
 
 const fail = (reason: LoginFailure): LoginResult => ({ ok: false, reason });
 
@@ -117,7 +118,8 @@ export async function loginSeller(
   const blocked = sellerBlock[user.seller.status];
   if (blocked) {
     await audit("auth.seller.login_blocked", user.id, user.sellerId, blocked);
-    return fail(blocked);
+    const application = user.seller.status === "PENDING" ? "pending" : user.seller.status === "REJECTED" ? "rejected" : null;
+    return application && user.isOwner ? { ok: false, reason: blocked, pendingGrant: { userId: user.id, credentialVersion: user.credentialVersion, application } } : fail(blocked);
   }
 
   await db.sellerUser.update({ where: { id: user.id }, data: { lastLoginAt: now } });

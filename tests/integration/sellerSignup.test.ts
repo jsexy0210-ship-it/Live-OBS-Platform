@@ -179,7 +179,7 @@ describe("자동 점검에 걸림 → 「확인 필요」", () => {
 
     // 승인 대기 판매자는 로그인할 수 없다
     const owner = await db.sellerUser.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { seller: { id: (closed as { sellerId: string }).sellerId } } });
-    expect(await loginSeller(db, { email: owner.email, password: "seller-pass-1" }, {})).toEqual({ ok: false, reason: "seller_pending" });
+    expect(await loginSeller(db, { email: owner.email, password: "seller-pass-1" }, {})).toMatchObject({ ok: false, reason: "seller_pending" });
   });
 
   it("마스터 「확인 필요」 목록에 보이고, 승인하면 사유를 지우고 체험하기를 시작, 반려는 사유 필수", async () => {
