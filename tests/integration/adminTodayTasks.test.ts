@@ -27,9 +27,9 @@ describe("오늘 처리할 일 GET /api/admin/today-tasks", () => {
     expect(r.status).toBe(200);
     expect(r.headers.get("cache-control")).toBe("no-store");
     const body = await r.json();
-    // 플랫폼 정보(MA-088)가 비어 있으면 그것만 1
-    expect(body.total).toBe(1);
-    expect(counts(body)).toMatchObject({ platformInfoMissing: 1, signupPending: 0, refundRequested: 0 });
+    // 플랫폼 정보(MA-088)가 모두 비어 있으면 빈 항목 7개만 센다
+    expect(body.total).toBe(7);
+    expect(counts(body)).toMatchObject({ platformInfoMissing: 7, signupPending: 0, refundRequested: 0 });
     expect(body.items.map((i: { key: string }) => i.key)).toEqual(["signupPending", "paymentFailed", "refundRequested", "inquiryOpen", "pgError", "automationFailed", "incidentCritical", "platformInfoMissing"]);
     expect(Object.fromEntries(body.items.map((i: { key: string; href: string }) => [i.key, i.href.split("?")[0]]))).toEqual({
       signupPending: "/admin/partners",
@@ -103,18 +103,19 @@ describe("오늘 처리할 일 GET /api/admin/today-tasks", () => {
 
     for (const role of ["SUPER_ADMIN", "OPERATIONS", "CS", "READ_ONLY"] as const) {
       const body = await (await get(await adminCookie(role))).json();
-      expect(counts(body)).toEqual({ signupPending: 2, paymentFailed: 1, refundRequested: 1, inquiryOpen: 2, pgError: 2, automationFailed: 2, incidentCritical: 1, platformInfoMissing: 1 });
-      expect(body.total).toBe(12);
+      expect(counts(body)).toEqual({ signupPending: 2, paymentFailed: 1, refundRequested: 1, inquiryOpen: 2, pgError: 2, automationFailed: 2, incidentCritical: 1, platformInfoMissing: 7 });
+      expect(body.total).toBe(18);
     }
   });
 
-  it("플랫폼 정보 7칸이 모두 차면 「플랫폼 정보 미입력」은 0, 하나라도 비면 1", async () => {
+  it("플랫폼 정보는 빈 항목 수와 이름을 준다: 모두 차면 0, 일부만 비면 그 칸만", async () => {
     const full = { name: "온큐", representative: "박", businessNumber: "123-45-67890", mailOrderNumber: "2026-서울-1", address: "서울", phone: "1588-0000", email: "a@b.kr" };
     await db.platformBusinessInfo.upsert({ where: { id: 1 }, create: { id: 1, ...full }, update: full });
     const cookie = await adminCookie();
-    expect(counts(await (await get(cookie)).json()).platformInfoMissing).toBe(0);
-    await db.platformBusinessInfo.update({ where: { id: 1 }, data: { email: "" } });
-    expect(counts(await (await get(cookie)).json()).platformInfoMissing).toBe(1);
+    const item = async () => (await (await get(cookie)).json()).items.find((i: { key: string }) => i.key === "platformInfoMissing");
+    expect(await item()).toMatchObject({ count: 0, fields: [] });
+    await db.platformBusinessInfo.update({ where: { id: 1 }, data: { name: "", phone: " " } });
+    expect(await item()).toMatchObject({ count: 2, fields: ["name", "phone"] });
     await db.platformBusinessInfo.update({ where: { id: 1 }, data: { ...Object.fromEntries(Object.keys(full).map((k) => [k, ""])) } });
   });
 
