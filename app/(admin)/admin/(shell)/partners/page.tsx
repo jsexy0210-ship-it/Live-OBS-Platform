@@ -325,7 +325,9 @@ function PartnerList() {
                     </tbody>
                   </table>
                 </div>
-                <Pagination page={page} pageCount={Math.max(1, Math.ceil(data.total / limit))} onChange={(n) => go({ page: String(n) })} />
+                <div style={{ maxWidth: "100%", overflowX: "auto" }}>
+                  <Pagination page={page} pageCount={Math.max(1, Math.ceil(data.total / limit))} onChange={(n) => go({ page: String(n) })} />
+                </div>
               </>
             ))}
         </div>

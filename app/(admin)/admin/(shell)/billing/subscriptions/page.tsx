@@ -104,17 +104,19 @@ export default function SubscriptionsPage() {
             </div>
           ))}
         </div>
-        <nav className="tabs" aria-label="이용 상태">
-          <button type="button" className={`tab${applied.access === "" ? " on" : ""}`} aria-pressed={applied.access === ""} onClick={() => setApplied({ ...applied, access: "" })}>
-            전체{counts ? ` ${TABS.reduce((n, a) => n + counts[a], 0).toLocaleString("ko-KR")}` : ""}
-          </button>
-          {TABS.map((a) => (
-            <button key={a} type="button" className={`tab${applied.access === a ? " on" : ""}`} aria-pressed={applied.access === a} onClick={() => setApplied({ ...applied, access: a })}>
-              {ACCESS[a].label}
-              {counts ? ` ${counts[a].toLocaleString("ko-KR")}` : ""}
+        <div style={{ maxWidth: "100%", overflowX: "auto" }}>
+          <nav className="tabs" aria-label="이용 상태" style={{ minWidth: "max-content" }}>
+            <button type="button" className={`tab${applied.access === "" ? " on" : ""}`} aria-pressed={applied.access === ""} onClick={() => setApplied({ ...applied, access: "" })}>
+              전체{counts ? ` ${TABS.reduce((n, a) => n + counts[a], 0).toLocaleString("ko-KR")}` : ""}
             </button>
-          ))}
-        </nav>
+            {TABS.map((a) => (
+              <button key={a} type="button" className={`tab${applied.access === a ? " on" : ""}`} aria-pressed={applied.access === a} onClick={() => setApplied({ ...applied, access: a })}>
+                {ACCESS[a].label}
+                {counts ? ` ${counts[a].toLocaleString("ko-KR")}` : ""}
+              </button>
+            ))}
+          </nav>
+        </div>
         <SearchBox onSearch={() => setApplied({ ...applied, q: draft.q.trim(), plan: draft.plan })} onReset={reset} busy={state.kind === "loading"}>
           <SearchRow label="검색어" label2="요금제" children2={
             <select className="inp" aria-label="요금제" value={draft.plan} onChange={(e) => setDraft({ ...draft, plan: e.target.value })}>
