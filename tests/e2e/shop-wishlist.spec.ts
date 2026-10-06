@@ -32,11 +32,15 @@ test("찜 카드에 할인율·방송 중·마감 배지가 표시된다", async
       },
     });
   });
-  await page.goto(`/shop/${SLUG}/wishlist`);
-  const card = page.getByRole("list", { name: "찜한 상품" }).locator(".pc");
-  await expect(card).toContainText("10%");
-  await expect(card.getByText("방송 중")).toBeVisible();
-  await expect(card.getByText("오늘 마감")).toBeVisible();
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.goto(`/shop/${SLUG}/wishlist`);
+    const card = page.getByRole("list", { name: "찜한 상품" }).locator(".pc");
+    await expect(card).toContainText("10%");
+    await expect(card.getByText("방송 중")).toBeVisible();
+    await expect(card.getByText("오늘 마감")).toBeVisible();
+    await page.screenshot({ path: `tests/e2e/screenshots/SH-034-wishlist-badges-${width}.png`, fullPage: true });
+  }
 });
 
 test.describe.serial("로그인 구매자", () => {
