@@ -40,7 +40,7 @@ test("공지 목록은 고정·첫·중간·마지막 페이지를 구분하고 
 
 test("분류·상세·브라우저 뒤로 가기가 원래 페이지 상태를 보존한다", async ({ page }) => {
   await page.goto("/notices?category=FEATURE");
-  await expect(page.getByRole("link", { name: "새 기능" })).toHaveAttribute("aria-current", "true");
+  await expect(page.getByRole("link", { name: "새 기능", exact: true })).toHaveAttribute("aria-current", "true");
   const pager = page.getByRole("navigation", { name: "공지 페이지 이동" });
   await expect(pager.getByRole("link", { name: "2", exact: true })).toHaveAttribute("href", "/notices?category=FEATURE&page=2");
   await pager.getByRole("link", { name: "2", exact: true }).click();
@@ -58,7 +58,7 @@ test("분류·상세·브라우저 뒤로 가기가 원래 페이지 상태를 �
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "390px notice detail overflow").toBe(true);
   await page.goBack();
   await expect(page).toHaveURL(/\/notices\?category=FEATURE&page=2$/);
-  await expect(page.getByRole("link", { name: "새 기능" })).toHaveAttribute("aria-current", "true");
+  await expect(page.getByRole("link", { name: "새 기능", exact: true })).toHaveAttribute("aria-current", "true");
 
   await page.getByTestId("notices-list").getByRole("link").click();
   await page.getByRole("link", { name: "← 공지 목록" }).click();
