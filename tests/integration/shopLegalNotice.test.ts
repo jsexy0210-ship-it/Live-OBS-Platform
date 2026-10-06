@@ -78,10 +78,23 @@ describe("입력", () => {
       await bad({ escrowUrl: url }, "invalid_escrow_url");
     }
     await bad({ minorNotice: "가".repeat(1001) }, "invalid_minor_notice");
+    await bad({ kakaoChannelUrl: "http://pf.kakao.com/_abc" }, "invalid_kakao_url");
+    await bad({ kakaoChannelUrl: "javascript:alert(1)" }, "invalid_kakao_url");
+    await bad({ youtubeChannelUrl: "youtube.com/@byulbit" }, "invalid_youtube_url");
     // 가입하지 않음이면 업체·주소 없이 저장되고, 빈 값은 모두 허용된다
     expect((await save(s.owner, { escrowKind: "none", expectedVersion: 0 })).body.notice).toMatchObject({ escrowKind: "none", address: "", version: 1 });
     // 상한 정확히는 저장된다
     expect((await save(s.owner, { address: "가".repeat(200), minorNotice: "나".repeat(1000), expectedVersion: 1 })).status).toBe(200);
+  });
+
+  it("카카오톡·유튜브 채널 주소(https)를 저장하고 읽으며, 비우면 지운다", async () => {
+    const s = await shop();
+    const r = await save(s.owner, { ...OK, kakaoChannelUrl: "https://pf.kakao.com/_abcdef", youtubeChannelUrl: "https://www.youtube.com/@byulbit" });
+    expect(r.status).toBe(200);
+    expect(r.body.notice).toMatchObject({ kakaoChannelUrl: "https://pf.kakao.com/_abcdef", youtubeChannelUrl: "https://www.youtube.com/@byulbit", version: 1 });
+    expect((await read(s.owner)).body.notice).toMatchObject({ kakaoChannelUrl: "https://pf.kakao.com/_abcdef" });
+    const cleared = await save(s.owner, { ...OK, kakaoChannelUrl: "", youtubeChannelUrl: null, expectedVersion: 1 });
+    expect(cleared.body.notice).toMatchObject({ kakaoChannelUrl: "", youtubeChannelUrl: "" });
   });
 
   it("옛 version은 409, 같은 version 동시 저장은 하나만 성공한다", async () => {
