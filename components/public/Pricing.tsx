@@ -24,6 +24,8 @@ const QA = [
 
 export function Pricing({ plans }: { plans: LandingPlan[] }) {
   const shown = plans.filter((p) => COPY[p.code]);
+  const trialPlan = shown.find((p) => p.trialDays > 0);
+  const noTrialPlan = shown.find((p) => p.trialDays === 0);
   return (
     <PublicFrame active="/pricing">
       <section className="pf-sec pf-pricing">
@@ -102,14 +104,19 @@ export function Pricing({ plans }: { plans: LandingPlan[] }) {
           ))}
         </div>
       </section>
-      <section className="pf-sec pf-alt pf-end">
+      <section className="pf-sec pf-end">
         <h2 className="t-t1">오늘 쇼핑몰을 열고, 다음 방송부터 줄을 세워요</h2>
+        {trialPlan && noTrialPlan && (
+          <p className="t-b1 c-neu">
+            점검을 통과하면 바로 승인돼요. {trialPlan.name}은 승인되면 {trialPlan.trialDays}일 동안 체험할 수 있고, {noTrialPlan.name}은 체험 없이 구독으로 시작해요.
+          </p>
+        )}
         <div className="pf-cta">
-          <Link className="btn" href="/seller/signup">
+          <Link className="btn btn-lg" href="/seller/signup">
             파트너스 가입 신청
           </Link>
-          <Link className="btn btn-out" href="/seller/login">
-            로그인
+          <Link className="btn btn-lg btn-out" href="/pricing">
+            요금 보기
           </Link>
         </div>
       </section>

@@ -262,20 +262,21 @@ function SignupFrame({ children }: { children: React.ReactNode }) {
         <IdentityUnavailable action="가입을 신청할" tone="public" />
       ) : (
         <>
-          <div className="row between" style={{ gap: 8 }}>
-            <span className="t-l1 fw6 num" data-testid="signup-step-count">
+          <div className="pf-steps-row">
+            <span className="t-l2 fw7 c-pri num" data-testid="signup-step-count">
               {step + 1} / {SIGNUP_STEPS.length}
             </span>
+            <ol className="pa-steps" aria-label="진행 단계">
+              {SIGNUP_STEPS.map((s, i) => (
+                <li key={s} className={i <= step || (done && i < 4) ? "on" : ""} aria-current={i === step ? "step" : undefined}>
+                  <span className="pa-step-n">{i + 1}</span>
+                  <span className={`pf-step-l ${i === step ? "t-l1 fw7" : "t-l1 c-alt"}`}>{s}</span>
+                  {i === 3 && skipBusiness && step >= 2 && <span className="bdg b-gray">건너뜀</span>}
+                  {i < SIGNUP_STEPS.length - 1 && <span className="arw" style={{ width: 16 }} aria-hidden="true" />}
+                </li>
+              ))}
+            </ol>
           </div>
-          <ol className="pa-steps" aria-label="진행 단계">
-            {SIGNUP_STEPS.map((s, i) => (
-              <li key={s} className={i <= step || (done && i < 4) ? "on" : ""} aria-current={i === step ? "step" : undefined}>
-                <span className="pa-step-n">{i + 1}</span>
-                <span className={i === step ? "fw7" : "c-alt"}>{s}</span>
-                {i === 3 && skipBusiness && step >= 2 && <span className="bdg b-gray">건너뜀</span>}
-              </li>
-            ))}
-          </ol>
           {notice && (
             <div id="pa-notice" ref={noticeRef} tabIndex={-1} className="msg msg-neg" role="alert" style={{ display: "block" }}>
               <span>{notice.text}</span>

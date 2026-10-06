@@ -113,3 +113,24 @@ body:has(.pf){margin:0}
 .pf-signup{max-width:640px;margin:0 auto;padding:56px 0 80px;display:flex;flex-direction:column;gap:var(--ui-gap-field,16px)}
 .pf-signup>h1{margin:0}
 @media (max-width:760px){.pf-signup{padding:32px var(--ui-gutter-mobile,20px) 56px}}
+.pf-faq-c summary{display:flex;justify-content:space-between;align-items:center;list-style:none}
+.pf-faq-c summary::-webkit-details-marker{display:none}
+.pf-faq-c summary::after{content:"+";color:var(--wds-label-alternative,#888)}
+.pf-faq-c details[open]>summary::after{content:"−"}
+.pf-signup .pf-steps-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:20px}
+.pf-signup .pf-steps-row .pa-steps{flex-wrap:nowrap;gap:6px}
+.pf-signup .pf-steps-row .pa-steps>li{gap:6px}
+.pf-signup .pf-terms-h{margin:0 0 4px}
+.pf-signup .pf-terms-card{padding:28px;gap:14px}
+.pf-signup .pf-terms-card .pa-fs{gap:14px;border:0;padding:0;margin:0;min-width:0}
+.pf-signup .pf-terms-card .pa-terms-all{padding-bottom:14px;font-weight:inherit}
+@media (max-width:760px){
+  .pf-signup .pf-terms-card{padding:20px}
+  .pf-signup .pf-steps-row .pa-steps>li:not([aria-current]) .pf-step-l{display:none}
+}
+.pf-signup .pf-terms-card a{white-space:nowrap}
+@media (max-width:760px){.pf-signup .pf-terms-h{font-size:15px;line-height:22px}}
+.pf-pricing .pf-plan .pf-check{gap:var(--ui-sp-16)}
+.pf-pricing .pf-plan .pf-check li{align-items:center}
+.pf-pricing .pf-plan .pf-check li::before{font-size:16px}
+.pf-pricing .pf-plan .pf-brand{margin-bottom:var(--ui-sp-4)}
