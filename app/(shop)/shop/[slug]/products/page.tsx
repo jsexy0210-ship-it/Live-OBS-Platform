@@ -6,12 +6,14 @@ import { shopOpen } from "../../../../../lib/server/buyers/signup";
 import { prisma } from "../../../../../lib/server/db";
 import { publicCategories } from "../../../../../lib/server/shop-category/service";
 import { categoryParam, sortKey } from "../_lib/catalog";
+import { parseFilters } from "../_lib/filters";
+import ListSide from "../_lib/ListSide";
 import ProductListing, { pageNumber } from "../_lib/ProductListing";
 import { findActiveShop } from "../_lib/shop";
 
 export const dynamic = "force-dynamic";
 
-type Props = { params: Promise<{ slug: string }>; searchParams: Promise<{ category?: string; sort?: string; page?: string }> };
+type Props = { params: Promise<{ slug: string }>; searchParams: Promise<{ category?: string; sort?: string; page?: string; cats?: string; inStock?: string; live?: string; minPrice?: string; maxPrice?: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const shop = await findActiveShop((await params).slug);
@@ -34,6 +36,8 @@ export default async function ShopProductsPage({ params, searchParams }: Props) 
   const sibling = parent?.children.find((x) => x.id === categoryId) ?? null;
   const current = top ?? sibling;
   if (categoryId && !current) notFound();
+  const filters = parseFilters(sp, categories);
+  const sort = sortKey(sp.sort);
   const group = top ?? parent; // 칩으로 보여 줄 묶음(대분류와 그 소분류)
   const crumb = parent && sibling ? `${parent.name} › ${sibling.name}` : undefined;
   const chipLink = (id: string | null, label: string, on: boolean) => (
@@ -55,7 +59,9 @@ export default async function ShopProductsPage({ params, searchParams }: Props) 
       crumb={crumb}
       chips={chips}
       path={`${base}/products`}
-      sort={sortKey(sp.sort)}
+      sort={sort}
+      filters={filters}
+      tree={categories}
       page={pageNumber(sp.page)}
       categoryId={current?.id}
       empty={current ? "이 분류에는 아직 상품이 없어요." : "아직 올라온 상품이 없어요."}
@@ -63,24 +69,7 @@ export default async function ShopProductsPage({ params, searchParams }: Props) 
   );
   return (
     <div className="shop-wrap shop-plist">
-      <aside className="shop-sidecat" aria-label="카테고리">
-        <p className="shop-sidecat-h">전체 카테고리</p>
-        <Link href={`${base}/products`} aria-current={!current ? "page" : undefined}>
-          전체
-        </Link>
-        {categories.map((c) => (
-          <div key={c.id}>
-            <Link className="top" href={`${base}/products?category=${c.id}`} aria-current={current?.id === c.id ? "page" : undefined}>
-              {c.name}
-            </Link>
-            {c.children.map((x) => (
-              <Link key={x.id} className="sub" href={`${base}/products?category=${x.id}`} aria-current={current?.id === x.id ? "page" : undefined}>
-                {x.name}
-              </Link>
-            ))}
-          </div>
-        ))}
-      </aside>
+      <ListSide slug={shop.slug} tree={categories} currentId={current?.id} path={`${base}/products`} sort={sort} filters={filters} />
       <div className="shop-plist-main">{list}</div>
     </div>
   );
