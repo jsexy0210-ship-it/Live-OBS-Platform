@@ -1,12 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { PageHead } from "../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../components/seller/States";
 import { adminApi } from "../../_components/api";
 import { AccountDialog } from "../../_components/AccountDialog";
 import { AdminTopbar } from "../../_components/AdminShell";
-import { ROLE_LABEL, STATUS_LABEL, type AdminAccount } from "../../_components/accounts";
+import { ROLE_LABEL, STATUS_LABEL, type AdminAccount, type AdminRoleCode } from "../../_components/accounts";
 import { dayTime } from "../../_components/partners";
 
 // MA-061 관리자 계정 목록·MA-062 추가·수정(GET·POST /api/admin/admins, PATCH …/{id}). 최고관리자만 열린다(메뉴·주소 모두 막힘).
@@ -39,11 +40,29 @@ export default function AccountsPage() {
         <PageHead
           title="관리자 계정"
           actions={
-            <button className="btn" type="button" onClick={() => setDialog({ account: null })}>
-              계정 추가
-            </button>
+            <>
+              <Link className="btn btn-out" href="/admin/accounts/roles">
+                권한
+              </Link>
+              <button className="btn" type="button" onClick={() => setDialog({ account: null })}>
+                계정 추가
+              </button>
+            </>
           }
         />
+        <div className="t-b2" style={{ padding: "12px 16px", background: "var(--info-bg)", border: "1px solid var(--info-bg)", borderRadius: 8 }}>최고관리자만 볼 수 있는 메뉴입니다 · 최고관리자는 대표 1명이며 바꾸거나 추가할 수 없습니다 · 다른 관리자는 운영 · 고객 지원 · 조회 전용 중에서 정합니다.</div>
+        {state.kind === "ok" && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
+            {(["SUPER_ADMIN", "OPERATIONS", "CS", "READ_ONLY"] as AdminRoleCode[]).map((r) => (
+              <div key={r} className="card pad col" style={{ gap: 4 }}>
+                <span className="t-l2 c-alt">{ROLE_LABEL[r]}</span>
+                <span className="t-h2" data-testid={`role-count-${r}`}>
+                  {items.filter((a) => a.role === r).length}명
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="card">
           {state.kind === "loading" && <LoadingRows rows={4} />}
           {state.kind === "error" && <ErrorState title="관리자 계정을 불러오지 못했습니다." onRetry={() => void load()} />}
