@@ -393,3 +393,5 @@ select.inp[multiple]{padding-right:var(--ui-sp-12);background-image:none}
   .dt-wrap{min-width:0;flex:1 1 140px}
 }
 .dt-sm .inp.dt{min-height:var(--ui-h-dense)}
+/* 정본 DS-DATEPICKER ① 「관리자 40 · 폼 44 · 휴대폰 48」: 휴대폰 폭에서는 compact 날짜 칸도 48 */
+@media (max-width:767px){.dt-sm .inp.dt{min-height:var(--ui-h-touch)}}
