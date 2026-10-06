@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { PublicFrame } from "./PublicFrame";
 import { LandingSample } from "./LandingSample";
+import { pricingIntro } from "./pricingCopy";
 import "../../styles/pf-sample.css";
+import styles from "./Landing.module.css";
 
 // 요금 안내용 값(서버 요금제에서 읽은 것). 없으면 숫자 없이 안내 문구만 보여 준다.
 export type LandingPlan = { code: string; name: string; listPrice: number; salePrice: number; trialDays: number };
@@ -44,21 +46,28 @@ function Check({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function Landing({ plans }: { plans: LandingPlan[] }) {
+export function Landing({ plans, pricingStatus }: { plans: LandingPlan[]; pricingStatus: "available" | "unavailable" | "error" }) {
   const cheapest = plans.length > 0 ? plans.reduce((a, b) => (b.salePrice < a.salePrice ? b : a)) : null;
   const trial = plans.find((p) => p.trialDays > 0);
+  const pricingMessage = pricingIntro(plans.map((p) => p.name), pricingStatus);
   return (
-    <PublicFrame>
-      <section className="pf-hero">
+      <PublicFrame mobileHeader="compact">
+      <section className={`pf-hero ${styles.hero}`}>
         <div className="pf-hero-copy">
           <span className="bdg b-live">라이브 커머스 파트너스용</span>
-          <h1 className="t-d1">
+          <h1 className={`t-d1 ${styles.desktopOnly} ${styles.heroTitle}`}>
             주문이 들어오면,
             <br />
             방송 화면에 줄이 서요
           </h1>
-          <p className="t-b1 c-neu pf-lead">파트너스별 쇼핑몰과 라이브 주문대기를 하나로. 파트너스는 팔고, 시청자는 자기 순서를 보고, 당첨 카드는 인기 카드에 남아요.</p>
-          <div className="pf-cta">
+          <h1 className={`t-t1 ${styles.mobileOnly} ${styles.heroTitle}`}>
+            주문이 들어오면,
+            <br />
+            방송 화면에 줄이 서요
+          </h1>
+          <p className={`t-b1 c-neu pf-lead ${styles.desktopOnly}`}>파트너스별 쇼핑몰과 라이브 주문대기를 하나로. 파트너스는 팔고, 시청자는 자기 순서를 보고, 당첨 카드는 인기 카드에 남아요.</p>
+          <p className={`t-b2 c-neu ${styles.mobileOnly} ${styles.mobileLead}`}>파트너스별 쇼핑몰과 라이브 주문대기를 하나로. 파트너스는 팔고, 시청자는 자기 순서를 봐요.</p>
+          <div className={`pf-cta ${styles.desktopOnly}`}>
             <Link className="btn btn-xl" href="/seller/signup">
               파트너스 가입 신청
             </Link>
@@ -66,12 +75,18 @@ export function Landing({ plans }: { plans: LandingPlan[] }) {
               기능 둘러보기
             </Link>
           </div>
-          {trial && <span className="t-c1 c-alt">{trial.name} {trial.trialDays}일 체험 · 카드 등록 없이 시작 · 점검 통과하면 바로 승인</span>}
+          {trial && <span className={`t-c1 c-alt ${styles.desktopOnly}`}>{trial.name} {trial.trialDays}일 체험 · 카드 등록 없이 시작 · 점검 통과하면 바로 승인</span>}
+          <div className={`pf-cta ${styles.mobileOnly} ${styles.mobileButtons}`}>
+            <Link className="btn btn-lg" href="/seller/signup">파트너스 가입 신청</Link>
+            <Link className="btn btn-lg btn-out" href="/features">기능 둘러보기</Link>
+          </div>
+          {trial && <span className={`t-c1 c-alt ${styles.mobileOnly}`}>{trial.name} {trial.trialDays}일 체험 · 카드 등록 없이 시작</span>}
         </div>
-        <LandingSample />
+        <div className={styles.desktopSample}><LandingSample /></div>
       </section>
+      <section className={`${styles.mobileOnly} ${styles.mobileSample}`} aria-label="방송 화면 예시"><LandingSample /></section>
 
-      <section className="pf-sec">
+      <section className={`pf-sec ${styles.desktopOnly}`}>
         <h2 className="t-t1">이렇게 써요</h2>
         <p className="t-b1 c-neu">설정 네 번이면 다음 방송부터 바로 써요.</p>
         <ol className="pf-steps">
@@ -85,7 +100,23 @@ export function Landing({ plans }: { plans: LandingPlan[] }) {
         </ol>
       </section>
 
-      <section className="pf-sec pf-alt">
+      <section className={`pf-sec ${styles.mobileOnly} ${styles.mobileSteps}`}>
+        <h2 className="t-t3">이렇게 써요</h2>
+        {[
+          ["쇼핑몰을 열어요", "상품을 올리고 대표 색상과 로고를 정해요."],
+          ["OBS에 오버레이를 붙여요", "주소 하나를 브라우저 소스에 넣으면 끝."],
+          ["방송 중 주문이 줄을 서요", "닉네임과 상품이 바로 떠요. 순서대로 열어 줘요."],
+          ["HIT은 명예의 전당에", "당첨 카드는 6초 연출 뒤 1위에 올라가요."],
+        ].map(([title, description], index) => (
+          <div className={styles.mobileStep} key={title}>
+            <span className={styles.mobileStepNumber}>{index + 1}</span>
+            <span className="t-hl1">{title}</span>
+            <p className="t-b2 c-neu">{description}</p>
+          </div>
+        ))}
+      </section>
+
+      <section className={`pf-sec pf-alt ${styles.desktopOnly}`}>
         <h2 className="t-t1">기능</h2>
         <p className="t-b1 c-neu">쇼핑몰, 방송, 적립금까지 한 계정으로.</p>
         <div className="pf-grid">
@@ -103,10 +134,25 @@ export function Landing({ plans }: { plans: LandingPlan[] }) {
           ))}
         </div>
       </section>
+      <section className={`pf-sec ${styles.mobileOnly} ${styles.mobileFeatures}`}>
+        <h2 className="t-t3">기능</h2>
+        {[
+          ["파트너스별 쇼핑몰", "내 로고와 색으로 꾸민 모바일 쇼핑몰."],
+          ["주문대기", "순서대로 줄을 세우고 한 손으로 조작해요."],
+          ["OBS 오버레이", "현재 주문 · 대기 · 명예의 전당 · 공지 · 시계."],
+          ["적립금 · 회원 등급", "등급별 적립률과 지급 · 회수 내역."],
+        ].map(([title, description]) => (
+          <div className={`card col pf-card ${styles.mobileFeature}`} key={title}>
+            <div className="pf-ico" aria-hidden="true">·</div>
+            <span className="t-hl1">{title}</span>
+            <p className="t-b2 c-neu">{description}</p>
+          </div>
+        ))}
+      </section>
 
-      <section className="pf-sec" id="pricing">
+      <section className={`pf-sec ${styles.pricing}`} id="pricing">
         <h2 className="t-t1">요금</h2>
-        <p className="t-b1 c-neu">두 가지 이용권 · {plans.map((p) => p.name).join("과 ")} 중에 골라요.</p>
+        <p className="t-b1 c-neu" data-testid="pricing-intro">{pricingMessage}</p>
         {cheapest ? (
           <div className="pf-price-row">
             <div className="card col pf-price-card" data-plan={cheapest.code}>
@@ -133,7 +179,7 @@ export function Landing({ plans }: { plans: LandingPlan[] }) {
           </div>
         ) : (
           <>
-            <p className="t-b2 c-alt">요금은 가입 신청 화면에서 알려 드려요.</p>
+            <p className="t-b2 c-alt">{pricingStatus === "error" ? "잠시 뒤 다시 확인해 주세요." : "이용권이 준비되면 이 페이지에서 알려 드릴게요."}</p>
             <Link className="btn btn-lg pf-plan-cta" href="/seller/signup">
               파트너스 가입 신청
             </Link>
@@ -141,7 +187,7 @@ export function Landing({ plans }: { plans: LandingPlan[] }) {
         )}
       </section>
 
-      <section className="pf-sec pf-alt">
+      <section className={`pf-sec pf-alt ${styles.desktopOnly}`}>
         <h2 className="t-t1">자주 묻는 질문</h2>
         <div className="pf-faq pf-faq-c pf-faq-home">
           {FAQ.map(([q, a], i) => (
@@ -156,7 +202,7 @@ export function Landing({ plans }: { plans: LandingPlan[] }) {
         </Link>
       </section>
 
-      <section className="pf-sec pf-end">
+      <section className={`pf-sec pf-end ${styles.desktopOnly}`}>
         <h2 className="t-t1">오늘 쇼핑몰을 열고, 다음 방송부터 줄을 세워요</h2>
         {trial && (
           <p className="t-b1 c-neu">
