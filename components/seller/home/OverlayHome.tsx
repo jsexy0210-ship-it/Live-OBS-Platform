@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { PageHead } from "../../admin-ui";
 import { api } from "../api";
 import { type BroadcastSummary } from "../broadcast/history";
-import { formatTime } from "../../../lib/client/format";
+import { formatTime, ago } from "../../../lib/client/format";
 import type { Snapshot } from "../broadcast/queue";
 import { useSeller } from "../SellerShell";
 
@@ -14,27 +14,21 @@ import { useSeller } from "../SellerShell";
 // 상태 3칸(외부 쇼핑몰 · 오늘 들어온 주문 · 방송 화면), 왼쪽 「지금 방송」, 오른쪽 「스토어 메뉴는 쇼핑몰 통합에서 열립니다」 안내.
 // 서버가 주는 값만 보인다: 주문대기·지금 방송(GET /api/seller/queue)·방송 요약(…/broadcast/summary)·외부 쇼핑몰(…/external-shops, 쇼핑몰 설정 권한이 있을 때).
 // 체험 남은 일수 띠는 화면 위 공통 띠(SellerShell)가 이미 보여 여기서 다시 만들지 않는다. 못 읽은 값·서버에 아직 없는 값은 「-」로 둔다
-// (방송 화면 연결 시각 · 자동 연결 완료 안내 · 통합 요금은 서버 값이 생기면 붙인다).
+// (자동 연결 완료 안내 · 통합 요금은 서버 값이 생기면 붙인다).
 
 type Summary = { broadcast: { id: string; title: string | null; status: "live" | "ended"; startedAt: string; endedAt: string | null } | null; summary: BroadcastSummary };
+type Info = { lastAccessAt: string | null; lastClient: string | null; connected: boolean };
 type Shops = { connections: { id: string; status: string; lastEventAt: string | null }[] };
-
-// 「2분 전」「3시간 전」「2일 전」
-function ago(iso: string, now = Date.now()): string {
-  const s = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 1000));
-  if (s < 60) return "방금";
-  if (s < 3600) return `${Math.floor(s / 60)}분 전`;
-  if (s < 86400) return `${Math.floor(s / 3600)}시간 전`;
-  return `${Math.floor(s / 86400)}일 전`;
-}
 
 export function OverlayHome() {
   const { can } = useSeller();
   const run = can("BROADCAST_RUN");
   const shopRead = can("SHOP_SETTINGS");
+  const ovEdit = can("OVERLAY_EDIT");
   const [queue, setQueue] = useState<Snapshot | null>(null);
   const [sum, setSum] = useState<Summary | null>(null);
   const [shops, setShops] = useState<Shops | null>(null);
+  const [info, setInfo] = useState<Info | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -43,13 +37,14 @@ export function OverlayHome() {
       void api<Snapshot>("/api/seller/queue").then((r) => live && setQueue(r.ok ? r.data : null));
       void api<Summary>("/api/seller/broadcast/summary").then((r) => live && setSum(r.ok ? r.data : null));
     }
+    if (ovEdit) void api<Info>("/api/seller/overlay/address-info").then((r) => live && setInfo(r.ok ? r.data : null));
     if (shopRead) void api<Shops>("/api/seller/external-shops").then((r) => live && setShops(r.ok ? r.data : null));
     const t = setInterval(() => setNow(Date.now()), 30_000);
     return () => {
       live = false;
       clearInterval(t);
     };
-  }, [run, shopRead]);
+  }, [run, shopRead, ovEdit]);
 
   const waiting = queue ? queue.waiting.length + queue.beforeBroadcast.length : null;
   const onAir = queue?.broadcast ?? null;
@@ -112,7 +107,8 @@ export function OverlayHome() {
         </div>
         <div className="stat" data-testid="oh-screen">
           <span className="t-l2 c-alt">방송 화면</span>
-          <span className="v">-</span>
+          <span className="v">{info?.lastAccessAt ? (info.connected ? "연결됨" : "연결 끊김") : "-"}</span>
+          <span className="t-c1 c-alt">{info?.lastAccessAt ? `${info.lastClient ?? "방송 프로그램"} · ${info.connected ? "지금 연결 중" : `마지막 접속 ${ago(info.lastAccessAt, now)}`}` : info ? "아직 접속한 적이 없습니다" : ""}</span>
         </div>
       </div>
 

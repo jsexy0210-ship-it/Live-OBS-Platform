@@ -90,6 +90,12 @@ test("대표자: 메뉴에서 들어가 주소를 발급·복사하면 실제 �
   await expect(ov.getByTestId("overlay-gone")).toHaveCount(0);
   await expect(ov.getByTestId("overlay-idle").or(ov.getByTestId("overlay-queue"))).toBeVisible();
   await ov.close();
+
+  // 발급 정보: 연결 상태 · 재발급 이력 · 접속 기록(없으면 안내)
+  await expect(page.getByTestId("ovu-conn")).toBeVisible();
+  await expect(page.getByTestId("ovu-reissues")).toContainText("재발급");
+  await expect(page.getByTestId("ovu-accesses").or(page.getByTestId("ovu-ac-empty"))).toBeVisible();
+  await shot(page, "SA-052-info");
 });
 
 test("발급 결과가 불분명하면 주소를 보이지 않고 이전 주소가 끊겼을 수 있다고 알린다", async ({ page }) => {

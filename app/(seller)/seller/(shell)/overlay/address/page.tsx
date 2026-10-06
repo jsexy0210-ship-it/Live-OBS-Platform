@@ -1,20 +1,33 @@
 "use client";
 
 import "../../../../../../styles/seller-overlay.css";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { PageHead } from "../../../../../../components/admin-ui";
 import Link from "next/link";
+import { ago, formatDate, formatDateTime } from "../../../../../../lib/client/format";
 
 // SA-052 방송 프로그램에 넣기(방송 화면 꾸미기의 둘째 탭): 방송 화면 주소 발급·재발급과 OBS에 넣는 방법.
 // 주소의 토큰은 서버에 해시로만 남아 지금 쓰는 주소를 다시 보여 줄 수 없다: 발급할 때 이 화면에서 한 번만 보이고,
 // 다시 발급하면 이전 주소는 바로 끊긴다(OBS에 넣은 주소도 바꿔야 한다).
 // 결과가 불분명하면(연결 끊김·서버 오류) 발급됐는지 알 수 없으므로 성공으로 보이지 않고, 이전 주소가 끊겼을 수 있다고 알린다.
-// API: POST /api/seller/overlay/token(OVERLAY_EDIT)
+// API: POST /api/seller/overlay/token(OVERLAY_EDIT, 방송 중 재발급은 409 live) · GET /api/seller/overlay/address-info(발급일·마지막 접속·접속 기록·재발급 이력)
 
 type Issued = { token: string; at: number };
+type Info = {
+  issuedAt: string | null;
+  lastAccessAt: string | null;
+  lastClient: string | null;
+  connected: boolean;
+  openSources: number;
+  live: boolean;
+  accesses: { at: string; client: string; layout: "9x16" | "16x9" | null; state: "connected" | "ended" | "unknown_browser" }[];
+  reissues: { at: string; by: string | null; kind: "first" | "reissue" }[];
+};
+const LAYOUT = { "9x16": "세로형", "16x9": "가로형" } as const;
+const ACCESS_STATE = { connected: "연결 중", ended: "종료", unknown_browser: "미확인 브라우저" } as const;
 type Fail = { kind: "unclear" } | { kind: "locked" } | { kind: "plan" } | { kind: "forbidden" } | { kind: "other"; text: string };
 
 const urls = (token: string) => {
@@ -32,7 +45,16 @@ export default function OverlayPage() {
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [fail, setFail] = useState<Fail | null>(null);
+  const [info, setInfo] = useState<Info | null>(null);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
+
+  const loadInfo = useCallback(async () => {
+    const r = await api<Info>("/api/seller/overlay/address-info");
+    if (r.ok) setInfo(r.data);
+  }, []);
+  useEffect(() => {
+    if (allowed) void loadInfo();
+  }, [allowed, loadInfo]);
 
   const issue = async () => {
     setBusy(true);
@@ -41,6 +63,7 @@ export default function OverlayPage() {
     setBusy(false);
     setConfirm(false);
     if (r.ok) {
+      void loadInfo();
       setIssued({ token: r.data.token, at: Date.now() });
       return setToast({ text: "새 주소를 만들었습니다" });
     }
@@ -48,6 +71,10 @@ export default function OverlayPage() {
     if (r.status === 0 || r.status >= 500) {
       setIssued(null);
       return setFail({ kind: "unclear" });
+    }
+    if (r.status === 409 && r.error === "live") {
+      void loadInfo();
+      return setFail({ kind: "other", text: "방송 중에는 주소를 다시 만들 수 없습니다. 방송을 끝낸 뒤 진행해 주십시오." });
     }
     if (r.status === 402) return setFail({ kind: "locked" });
     if (r.status === 403) return setFail({ kind: r.error === "plan_feature_required" ? "plan" : "forbidden" });
@@ -108,13 +135,31 @@ export default function OverlayPage() {
                   <h2 className="t-hl1" id="ovu-h">
                     방송 화면 주소
                   </h2>
-                  <span className="t-l2 c-alt">주소는 만들 때 한 번만 보입니다. 새로 만들면 이전 주소는 바로 쓸 수 없게 됩니다.</span>
+                  <span className="t-l2 c-alt">
+                    {info?.lastAccessAt ? (
+                      <span className={`bdg ${info.connected ? "b-done" : "b-wait"}`} data-testid="ovu-conn">
+                        {info.connected ? `연결됨 · ${info.lastClient ?? "방송 프로그램"}${info.openSources > 0 ? `, ${info.openSources}개 소스` : ""}` : "연결 끊김"}
+                      </span>
+                    ) : info ? (
+                      <span className="bdg b-wait" data-testid="ovu-conn">
+                        미연결
+                      </span>
+                    ) : null}{" "}
+                    주소는 만들 때 한 번만 보입니다. 다시 보려면 새로 만들어 주십시오(이전 주소는 바로 쓸 수 없게 됩니다).
+                    {info?.issuedAt ? ` · 발급 ${formatDate(info.issuedAt)}` : ""}
+                    {info?.lastAccessAt ? ` · 마지막 접속 ${ago(info.lastAccessAt)}${info.lastClient ? ` (${info.lastClient})` : ""}` : ""}
+                  </span>
                 </div>
-                <button className="btn" type="button" disabled={busy} onClick={() => setConfirm(true)}>
-                  {issued ? "주소 새로 만들기" : "주소 만들기"}
+                <button className="btn" type="button" disabled={busy || (info?.live === true && info.issuedAt !== null)} onClick={() => setConfirm(true)}>
+                  {issued || info?.issuedAt ? "주소 새로 만들기" : "주소 만들기"}
                 </button>
               </div>
 
+              {info?.live && info.issuedAt !== null && (
+                <span className="t-c1 c-alt" data-testid="ovu-live-block">
+                  방송 중에는 주소를 다시 만들 수 없습니다. 방송을 끝낸 뒤 진행해 주십시오.
+                </span>
+              )}
               {fail?.kind === "unclear" && (
                 <div className="msg msg-cau" role="alert" data-testid="ovu-unclear">
                   새 주소를 만들었는지 확인하지 못했습니다. 이전 주소를 쓸 수 없을 수 있으니 방송 전에 주소를 새로 만들어 방송 프로그램(OBS)에 다시 넣어 주십시오.
@@ -190,6 +235,70 @@ export default function OverlayPage() {
                   연결이 안 되면 문의
                 </Link>
               </div>
+            </section>
+
+            <section className="card pad col" style={{ gap: 10 }} aria-labelledby="ovu-re-h">
+              <h2 className="t-hl1" id="ovu-re-h">
+                재발급 이력
+              </h2>
+              {!info || info.reissues.length === 0 ? (
+                <span className="t-l2 c-alt">아직 발급 기록이 없습니다</span>
+              ) : (
+                <table className="tbl" data-testid="ovu-reissues">
+                  <thead>
+                    <tr>
+                      <th>일시</th>
+                      <th>내용</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {info.reissues.map((r, i) => (
+                      <tr key={i}>
+                        <td className="num">{formatDateTime(r.at)}</td>
+                        <td className="col-text">
+                          {r.kind === "first" ? "최초 발급" : "재발급"}
+                          {r.by ? ` · ${r.by}` : ""}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </section>
+
+            <section className="card pad col" style={{ gap: 10 }} aria-labelledby="ovu-ac-h">
+              <h2 className="t-hl1" id="ovu-ac-h">
+                접속 기록
+              </h2>
+              {!info || info.accesses.length === 0 ? (
+                <span className="t-l2 c-alt" data-testid="ovu-ac-empty">
+                  아직 방송 프로그램에서 접속한 적이 없습니다
+                </span>
+              ) : (
+                <>
+                  <table className="tbl" data-testid="ovu-accesses">
+                    <thead>
+                      <tr>
+                        <th>시각</th>
+                        <th>소스</th>
+                        <th>레이아웃</th>
+                        <th>상태</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {info.accesses.map((a, i) => (
+                        <tr key={i}>
+                          <td className="num">{formatDateTime(a.at)}</td>
+                          <td className="col-text">{a.client}</td>
+                          <td>{a.layout ? LAYOUT[a.layout] : "—"}</td>
+                          <td>{ACCESS_STATE[a.state]}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <span className="t-c1 c-alt">낯선 접속이 보이면 주소를 새로 만들어 주십시오.</span>
+                </>
+              )}
             </section>
           </div>
         )}
