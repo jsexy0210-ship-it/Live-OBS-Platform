@@ -75,3 +75,21 @@ describe("방송 이력", () => {
     expect(new Set([...p1.body.items, ...p2.body.items].map((b: { id: string }) => b.id)).size).toBe(HISTORY_PAGE + 2);
   });
 });
+
+describe("방송 이력 레이아웃 열(SA-054)", () => {
+  it("layout 값(9x16·16x9·없으면 null)을 주고, ?layout= 필터로 거르며, 잘못된 값은 400이다", async () => {
+    const s = await shop();
+    const a = await session(s.seller.id, new Date("2026-10-03T20:00:00+09:00"), 60, "세로");
+    const b = await session(s.seller.id, new Date("2026-10-02T20:00:00+09:00"), 60, "가로");
+    const c = await session(s.seller.id, new Date("2026-10-01T20:00:00+09:00"), 60, "기록 전");
+    await db.broadcastSession.update({ where: { id: a.id }, data: { layoutAspect: "9x16" } });
+    await db.broadcastSession.update({ where: { id: b.id }, data: { layoutAspect: "16x9" } });
+    const all = await history(s.owner);
+    expect(all.body.items.map((x: { id: string; layout: string | null }) => [x.id, x.layout])).toEqual([[a.id, "9x16"], [b.id, "16x9"], [c.id, null]]);
+    expect((await history(s.owner, "?layout=9x16")).body.items.map((x: { id: string }) => x.id)).toEqual([a.id]);
+    expect((await history(s.owner, "?layout=16x9")).body.items.map((x: { id: string }) => x.id)).toEqual([b.id]);
+    const bad = await history(s.owner, "?layout=4x3");
+    expect(bad.status).toBe(400);
+    expect(bad.body.error).toBe("invalid_range");
+  });
+});

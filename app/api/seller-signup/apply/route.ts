@@ -46,6 +46,9 @@ export const POST = mutation(async (req: Request) => {
     openedOn: str(body.openedOn, 20),
     mailOrderNumber: str(body.mailOrderNumber, 100) || null,
     industry: str(body.industry, 30) || null,
+    channelUrl: str(body.channelUrl, 200) || null,
+    contactPhone: str(body.contactPhone, 20) || null,
+    businessAddress: str(body.businessAddress, 200) || null,
     // 문자열이 아닌 값은 그대로 거절되게 넘긴다(빈 값으로 바꿔 기본 플랜이 되지 않게)
     planCode: body.planCode == null ? null : typeof body.planCode === "string" ? body.planCode.slice(0, 40) : "invalid",
     meta: requestMeta(req),
@@ -59,5 +62,5 @@ export const POST = mutation(async (req: Request) => {
   }
   // 흐름 쿠키는 성공해도 지우지 않는다. 성공 응답이 잘려 브라우저가 결과를 못 받았을 때 같은 요청을 다시 보내면 이 쿠키로
   // 이미 만든 신청을 돌려받는다(resumed). 쿠키는 시작 때 정한 유효 시간(40분)이 지나면 사라진다.
-  return NextResponse.json({ approved: r.approved, reviewReasons: r.reviewReasons, resumed: r.resumed });
+  return NextResponse.json({ approved: r.approved, reviewReasons: r.reviewReasons, resumed: r.resumed, license: r.license });
 });
