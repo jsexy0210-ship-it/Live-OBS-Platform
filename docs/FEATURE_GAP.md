@@ -1,6 +1,7 @@
 # ONQ 기능 격차 분석 — 카페24 관리자 기능 대비
 
-> 작성: 2026-10-02 (KST) · MASTER 검수 · 법령은 출시 전 법률 검토로 확정 · 비교 기준: `docs/PRODUCT_SCOPE.md`, `docs/IA.md`, `docs/ARCHITECTURE.md`, `docs/REFERENCE_MANGOTCG.md` (최신 main)
+> 작성: 2026-10-02 (KST) · MASTER 검수 · 법령은 출시 전 법률 검토로 확정 · 비교 기준: `docs/PRODUCT_SCOPE.md`, `docs/IA.md`, `docs/ARCHITECTURE.md`, `docs/REFERENCE_MANGOTCG.md` (작성 당시 main)
+> 역사 기록: 아래 상태·업체 후보·권고는 2026-10-02 작성 당시 분석이며 현재 구현 완료나 현행 정책을 뜻하지 않는다. 현재 제품 정책은 `docs/PRODUCT_SCOPE.md`, 디자인·구현 대조 상태는 `docs/UI_STATUS.md`를 따른다.
 > 조사 방법 한계: 이 환경에서는 `*.cafe24.com` 도메인 직접 열람이 막혀 있었다(프록시 차단). 카페24 기능 목록은 ① 검색 결과에 노출된 카페24 공식 도움말·매뉴얼 요약, ② 공개 npm 패키지 `@gracefullight/mcp-cafe24-admin@0.2.2` 소스에 들어 있는 카페24 Admin API 엔드포인트 전체 목록(약 250개 경로)으로 교차 확인했다. 로그인·비공개 관리자 접근 없음.
 
 ---
@@ -49,7 +50,7 @@
 
 ## 2. 비교표
 
-상태: 있음 / 일부 / 없음 (최신 main 문서 기준). 필요도: 필수 / 권장 / 불필요.
+상태: 있음 / 일부 / 없음 (2026-10-02 작성 당시 문서 기준). 필요도: 필수 / 권장 / 불필요.
 
 ### 주문
 
