@@ -32,6 +32,8 @@ async function reset() {
     await db.sellerMessageBalance.deleteMany({ where: { sellerId } });
     await db.messageCharge.deleteMany({ where: { sellerId } });
     await db.sellerSubscription.deleteMany({ where: { sellerId, cardLabel: "e2e-charge" } });
+    // 카드가 없는 상태에서 시작한다(다른 시험이 남긴 카드가 있으면 「카드가 없으면 거절」을 볼 수 없다)
+    await db.sellerSubscription.updateMany({ where: { sellerId }, data: { billingKeyCipher: null, cardLabel: null } });
   });
 }
 
@@ -179,7 +181,8 @@ test("충전: 금액은 비어 있고 틀린 금액은 막는다. 카드가 없�
   // 카드를 등록한 뒤에는 확인 창 → 충전 → 잔액·내역 반영
   await withDb(async (db, sellerId) => {
     const plan = await db.subscriptionPlan.findFirstOrThrow({ select: { id: true } });
-    await db.sellerSubscription.create({ data: { sellerId, planId: plan.id, cardLabel: "e2e-charge", billingKeyCipher: sealBillingKey("fake-bk-e2e", sellerId) } });
+    const card = { cardLabel: "e2e-charge", billingKeyCipher: sealBillingKey("fake-bk-e2e", sellerId) };
+    await db.sellerSubscription.upsert({ where: { sellerId }, create: { sellerId, planId: plan.id, ...card }, update: card });
   });
   await amount.fill("5000");
   await page.getByTestId("charge-button").click();
