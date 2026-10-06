@@ -75,7 +75,7 @@ function shipmentView(s: ShipmentRow) {
   return { state: s.status === "DELIVERED" ? ("delivered" as const) : ("in_transit" as const), courier: s.courier, trackingNumber: s.trackingNumber, deliveredAt: s.deliveredAt };
 }
 
-const refundedAmountOf = (o: { status: OrderStatus; totalAmount: number; refundAmount: number | null }) => o.refundAmount ?? (o.status === "REFUNDED" ? o.totalAmount : 0);
+export const refundedAmountOf = (o: { status: OrderStatus; totalAmount: number; refundAmount: number | null }) => o.refundAmount ?? (o.status === "REFUNDED" ? o.totalAmount : 0);
 
 const rewardReturnedOf = (o: { refunds: { rewardReturn: number }[] }) => o.refunds.reduce((a, r) => a + r.rewardReturn, 0);
 

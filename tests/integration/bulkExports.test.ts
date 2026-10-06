@@ -45,7 +45,7 @@ async function shop() {
 }
 
 describe("주문 내보내기", () => {
-  it("기간 안의 주문을 상태·송장·금액과 함께 내보내고(받는 분 정보 없음), 법정 보관 주문은 뺀다. 이력·로그 추적에 남는다", async () => {
+  it("기간 안의 주문을 상태·송장·금액과 함께 내보내고(받는 분 정보는 개인정보 권한이 있을 때만), 법정 보관 주문은 뺀다. 이력·로그 추적에 남는다", async () => {
     const s = await shop();
     const m = await s.member("별빛", "홍길동", "01011112222");
     const shipped = await s.order(m.id, "별빛", { no: 1 });
@@ -58,20 +58,32 @@ describe("주문 내보내기", () => {
     const r = await exportOrdersCsv(db, s.ctx, { from: today(), to: today() });
     if (!r.ok) throw new Error(r.reason);
     const rows = lines(r.value.csv);
-    expect(rows[0]).toBe("주문번호,주문 시각,닉네임,상품,금액,환불 금액,결제수단,주문 상태,배송 상태,택배사,송장번호");
+    expect(rows[0]).toBe("주문번호,주문 시각,닉네임,상품,금액,환불 금액,결제수단,주문 상태,배송 상태,택배사,송장번호,받는 분,연락처,주소");
     expect(rows).toHaveLength(3);
     expect(rows[1]).toContain("결제 완료");
-    expect(rows[1]).toContain("배송 중,CJ,123456789012");
+    expect(rows[1]).toContain("배송 중,CJ,123456789012,박받는,01033334444,(06236) 서울시 강남구");
     expect(rows[2]).toContain("입금 대기");
     expect(rows[2]).toContain("발송 전");
-    expect(r.value.csv).not.toContain("박받는");
+    expect(rows[2].endsWith(",,,")).toBe(true);
     expect(r.value.csv).not.toContain("홍길동");
+    expect(await db.auditLog.count({ where: { action: "customer.pii.view", targetType: "OrderExport", actorId: s.owner.id } })).toBe(1);
+    // 개인정보 권한이 없는 직원(ORDER_SHIPPING만)은 받는 분 열이 없다
+    const noPii = await exportOrdersCsv(db, s.staff, { from: today(), to: today() });
+    if (!noPii.ok) throw new Error(noPii.reason);
+    expect(lines(noPii.value.csv)[0]).toBe("주문번호,주문 시각,닉네임,상품,금액,환불 금액,결제수단,주문 상태,배송 상태,택배사,송장번호");
+    expect(noPii.value.csv).not.toContain("박받는");
+    expect(await db.auditLog.count({ where: { action: "customer.pii.view", targetType: "OrderExport", actorId: s.staffUser.id } })).toBe(0);
+    // 환불 금액: 금액이 비어 있는 옛 전액 환불 주문은 주문 금액으로
+    await s.order(m.id, "별빛", { no: 5, status: "REFUNDED" });
+    const refunded = await exportOrdersCsv(db, s.ctx, { from: today(), to: today() });
+    expect(refunded.ok && lines(refunded.value.csv).find((l) => l.includes("환불,"))).toContain(",10000,10000,카드,환불,");
     const old = await exportOrdersCsv(db, s.ctx, { from: "2020-01-01", to: "2020-01-31" });
     expect(old.ok && lines(old.value.csv)).toHaveLength(2);
+    expect(old.ok && old.value.csv).toContain(",,,");
 
     const job = (await listBulkJobs(db, s.ctx, { all: true })).jobs.find((j) => j.kind === "ORDER_EXPORT");
-    expect(job).toMatchObject({ status: "COMMITTED", totalRows: expect.any(Number), undoable: false, actorName: s.owner.name, actorIsOwner: true, meta: { from: "2020-01-01", to: "2020-01-31" } });
-    expect(await db.auditLog.count({ where: { action: "bulk_io.order_export", actorId: s.owner.id } })).toBe(2);
+    expect(job).toMatchObject({ status: "COMMITTED", totalRows: expect.any(Number), undoable: false, actorName: s.owner.name, actorIsOwner: true, meta: { from: "2020-01-01", to: "2020-01-31", includePii: true } });
+    expect(await db.auditLog.count({ where: { action: "bulk_io.order_export", actorId: s.owner.id } })).toBeGreaterThanOrEqual(2);
   });
 
   it("기간은 둘 다 필요하고 366일 이내여야 하며, ORDER_SHIPPING 권한이 없으면 막힌다", async () => {

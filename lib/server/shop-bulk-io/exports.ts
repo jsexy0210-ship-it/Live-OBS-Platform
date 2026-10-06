@@ -2,14 +2,14 @@ import type { BulkJobKind, Prisma, PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { dbNow } from "../billing/subscription";
 import { forbidden } from "../authz/errors";
-import { itemSummary, itemSummarySelect, kstDayStart } from "../orders/read";
+import { itemSummary, itemSummarySelect, kstDayStart, refundedAmountOf } from "../orders/read";
 import { orderNoLabel } from "../orders/orderNoLabel";
-import { requireSellerPermission, type TenantContext } from "../tenant/context";
+import { canViewCustomerPii, requireSellerPermission, type TenantContext } from "../tenant/context";
 import { cleanText } from "../text/clean";
 import { formatCsv, guardText } from "./csv";
 
 // 주문·회원 내보내기와 내보내기 이력(SA-018 정본 「내보내기」·「처리 이력」). 내려받은 사실은 BulkJob(kind *_EXPORT, status COMMITTED, 되돌리기 없음)에 남아 처리 이력에 「누가·언제」로 보인다.
-// - 주문 내보내기(ORDER_SHIPPING): 기간(from·to, KST 날짜, 최대 366일)의 주문·결제·배송 상태·송장·금액. 받는 분·연락처·주소는 넣지 않는다. 5,000건까지.
+// - 주문 내보내기(ORDER_SHIPPING): 기간(from·to, KST 날짜, 최대 366일)의 주문·결제·배송 상태·송장·금액. 받는 분·연락처·주소 열은 CUSTOMER_PII_VIEW도 있을 때만 넣고(docs/IA.md SA-018), 넣었으면 customer.pii.view를 남긴다. 5,000건까지.
 // - 회원 내보내기(대표자만): 사유(1~100자) 필수. 기본은 닉네임·등급·상태·가입일·최근 접속·마케팅 수신 동의·적립금 잔액이고, 이름·연락처는 includePii일 때만 넣는다.
 //   내려받은 사실과 사유는 로그 추적(bulk_io.member_export)에, 개인정보를 넣었으면 customer.pii.view도 남긴다. 5,000명까지.
 export const MAX_EXPORT_ORDERS = 5000;
@@ -69,6 +69,9 @@ const ORDER_STATUS_TEXT = { PENDING_PAYMENT: "입금 대기", PAID: "결제 완�
 const METHOD_TEXT = { CARD: "카드", BANK_TRANSFER: "무통장 · 계좌이체" } as const;
 const SHIPMENT_TEXT = { READY: "발송 전", IN_TRANSIT: "배송 중", DELIVERED: "배송 완료" } as const;
 
+const addressCells = (a: { recipientName: string; phone: string; zipCode: string; address1: string; address2: string | null } | null) =>
+  a ? [guardText(a.recipientName), guardText(a.phone), guardText(`(${a.zipCode}) ${a.address1}${a.address2 ? ` ${a.address2}` : ""}`)] : ["", "", ""];
+
 export function parseExportPeriod(from: unknown, to: unknown): { from: Date; toExclusive: Date; fromText: string; toText: string } | null {
   if (typeof from !== "string" || typeof to !== "string") return null;
   const f = kstDayStart(from);
@@ -77,7 +80,7 @@ export function parseExportPeriod(from: unknown, to: unknown): { from: Date; toE
   return { from: f, toExclusive: new Date(t.getTime() + DAY_MS), fromText: from, toText: to };
 }
 
-// 열: 주문번호·주문 시각·닉네임·상품·금액·환불 금액·결제수단·주문 상태·배송 상태·택배사·송장번호. 주문 시각 오래된 순.
+// 열: 주문번호·주문 시각·닉네임·상품·금액·환불 금액·결제수단·주문 상태·배송 상태·택배사·송장번호(+ 개인정보 권한이 있으면 받는 분·연락처·주소). 주문 시각 오래된 순.
 export async function exportOrdersCsv(db: PrismaClient, ctx: TenantContext, q: { from?: unknown; to?: unknown }): Promise<Result<{ csv: string; count: number }>> {
   requireSellerPermission(ctx, "ORDER_SHIPPING");
   const period = parseExportPeriod(q.from, q.to);
@@ -96,11 +99,13 @@ export async function exportOrdersCsv(db: PrismaClient, ctx: TenantContext, q: {
       status: true,
       items: itemSummarySelect,
       shipment: { select: { status: true, courier: true, trackingNumber: true } },
+      shippingAddress: { select: { recipientName: true, phone: true, zipCode: true, address1: true, address2: true } },
     },
   });
   if (rows.length > MAX_EXPORT_ORDERS) return { ok: false, reason: "too_many_orders" };
+  const pii = canViewCustomerPii(ctx);
   const csv = formatCsv([
-    ["주문번호", "주문 시각", "닉네임", "상품", "금액", "환불 금액", "결제수단", "주문 상태", "배송 상태", "택배사", "송장번호"],
+    ["주문번호", "주문 시각", "닉네임", "상품", "금액", "환불 금액", "결제수단", "주문 상태", "배송 상태", "택배사", "송장번호", ...(pii ? ["받는 분", "연락처", "주소"] : [])],
     ...rows.map((o) => {
       const s = itemSummary(o.items);
       const product = s.firstProductName ? `${s.firstProductName}${s.otherCount > 0 ? ` 외 ${s.otherCount}건` : ""}` : "";
@@ -111,22 +116,26 @@ export async function exportOrdersCsv(db: PrismaClient, ctx: TenantContext, q: {
         guardText(o.broadcastNicknameSnapshot),
         guardText(product),
         String(o.totalAmount),
-        String(o.refundAmount ?? 0),
+        String(refundedAmountOf(o)),
         o.paymentMethod ? METHOD_TEXT[o.paymentMethod] : "",
         ORDER_STATUS_TEXT[o.status],
         o.shipment ? SHIPMENT_TEXT[o.shipment.status] : "발송 전",
         shipped ? guardText(o.shipment!.courier) : "",
         shipped ? guardText(o.shipment!.trackingNumber) : "",
+        ...(pii ? addressCells(o.shippingAddress) : []),
       ];
     }),
   ]);
   await recordExport(db, ctx, {
     kind: "ORDER_EXPORT",
     rows: rows.length,
-    meta: { from: period.fromText, to: period.toText },
+    meta: { from: period.fromText, to: period.toText, includePii: pii },
     action: "bulk_io.order_export",
     targetType: "BulkJob",
   });
+  if (pii && rows.length > 0) {
+    await writeAudit(db, { actorType: ctx.actorType, actorId: ctx.actorId, sellerId: ctx.sellerId, action: "customer.pii.view", targetType: "OrderExport", reason: "order_export", after: { count: rows.length } });
+  }
   return { ok: true, value: { csv, count: rows.length } };
 }
 
