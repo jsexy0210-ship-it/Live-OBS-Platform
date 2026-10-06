@@ -40,14 +40,15 @@ async function shop() {
 }
 
 describe("쇼핑몰 운영 상태", () => {
-  it.each(["PREPARING", "PAUSED"])("%s: 새 주문·결제·공유 미리보기가 막히고, OPEN으로 되돌리면 다시 열린다", async (state) => {
+  it.each(["PREPARING", "PAUSED"])("%s: 새 주문·공유 미리보기가 막히고 기존 결제 대기 주문 결제는 열려 있으며, OPEN으로 되돌리면 다시 열린다", async (state) => {
     const s = await shop();
     const buyer = await createLoginBuyer(s.seller.id, s.grade.id);
     expect(await shopOpen(db, s.seller.id)).toBe(true);
     expect(await shopOpenForPayment(db, s.seller.id)).toBe(true);
     expect((await s.setState(state)).status).toBe(200);
     expect(await shopOpen(db, s.seller.id)).toBe(false);
-    expect(await shopOpenForPayment(db, s.seller.id)).toBe(false);
+    // 이미 만든 결제 대기 주문의 결제는 막지 않는다(대표님 결정 2026-10-06). 새 거래(주문)만 막는다
+    expect(await shopOpenForPayment(db, s.seller.id)).toBe(true);
     expect(await s.place(buyer.id)).toEqual({ ok: false, reason: "shop_unavailable" });
     expect(await db.order.count()).toBe(0);
     expect(await shopShareMeta(db, s.seller.slug)).toBeNull();
