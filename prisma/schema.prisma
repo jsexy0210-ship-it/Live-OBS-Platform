@@ -221,6 +221,9 @@ model Seller {
   externalShopConnections  ExternalShopConnection[]
   receiptIssuer            SellerReceiptIssuer?
   receiptSetting           SellerReceiptSetting?
+  shipmentInvoices         ShipmentInvoice[]
+  shipmentInvoiceOrders    ShipmentInvoiceOrder[]
+  shipmentInvoiceEvents    ShipmentInvoiceEvent[]
   externalOrders ExternalOrder[]
 }
 
@@ -1226,6 +1229,7 @@ model Order {
   items            OrderItem[]
   consents         OrderConsent[]
   shippingAddress  OrderShippingAddress?
+  invoiceLink      ShipmentInvoiceOrder?
   shipment         Shipment?
   statusHistory    OrderStatusHistory[]
   stockMovements   StockMovement[]
@@ -1824,6 +1828,86 @@ model Shipment {
   order  Order  @relation(fields: [sellerId, orderId], references: [sellerId, id])
 
   @@unique([sellerId, orderId])
+}
+
+// 송장(SA-027 송장 발급 · SA-028 출력·추적). 상자 하나에 송장 하나, 합배송이면 주문 여러 건이 한 송장에 묶인다(ShipmentInvoiceOrder).
+// 배송 접수 업체가 정해지기 전이라 모의 발급이다(mock=true, lib/server/invoices/provider.ts의 어댑터 자리). 모의 송장은 주문 상태·배송 레코드(Shipment)·구매자 안내를 바꾸지 않는다.
+// FAILED = 아직 번호가 없는 상태(발급 중이거나 업체 응답 실패, failureCode). 번호가 있으면 ISSUED → PRINTED(출력) → PICKED_UP(집하) → DELIVERED(배송 완료).
+enum InvoiceStatus {
+  FAILED
+  ISSUED
+  PRINTED
+  PICKED_UP
+  DELIVERED
+}
+
+enum InvoiceEventKind {
+  ISSUED
+  PRINTED
+  PICKUP_REQUESTED
+  PICKED_UP
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+}
+
+model ShipmentInvoice {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId       String        @db.Uuid
+  courier        String
+  trackingNumber String?
+  status         InvoiceStatus @default(FAILED)
+  mock           Boolean       @default(true)
+  attempts       Int           @default(1)
+  failureCode    String?
+  issuedAt       DateTime?     @db.Timestamptz(3)
+  printedAt      DateTime?     @db.Timestamptz(3)
+  printFormat    String?
+  pickedUpAt     DateTime?     @db.Timestamptz(3)
+  deliveredAt    DateTime?     @db.Timestamptz(3)
+  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime      @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller                 @relation(fields: [sellerId], references: [id])
+  orders ShipmentInvoiceOrder[]
+  events ShipmentInvoiceEvent[]
+
+  @@unique([sellerId, id])
+  @@index([sellerId, status, createdAt])
+}
+
+// 주문은 하나의 송장에만 묶인다(orderId 유니크). 발급이 실패한 송장도 주문을 잡고 있다가 다시 발급한다.
+model ShipmentInvoiceOrder {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId  String   @db.Uuid
+  invoiceId String   @db.Uuid
+  orderId   String   @unique @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  seller  Seller          @relation(fields: [sellerId], references: [id])
+  invoice ShipmentInvoice @relation(fields: [sellerId, invoiceId], references: [sellerId, id])
+  order   Order           @relation(fields: [sellerId, orderId], references: [sellerId, id])
+
+  @@unique([sellerId, orderId])
+  @@index([sellerId, invoiceId])
+}
+
+// 추적 상세의 한 줄(시각·상태·처리·비고). 종류마다 송장당 1행(유니크). source = SELLER(쇼핑몰) | CARRIER(택배사).
+model ShipmentInvoiceEvent {
+  id        String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId  String           @db.Uuid
+  invoiceId String           @db.Uuid
+  kind      InvoiceEventKind
+  at        DateTime         @db.Timestamptz(3)
+  source    String
+  note      String?
+  createdAt DateTime         @default(now()) @db.Timestamptz(3)
+
+  seller  Seller          @relation(fields: [sellerId], references: [id])
+  invoice ShipmentInvoice @relation(fields: [sellerId, invoiceId], references: [sellerId, id])
+
+  @@unique([invoiceId, kind])
+  @@index([sellerId, invoiceId, at])
 }
 
 // 판매자 주문 정책(판매자당 1행, 없으면 기본값). PRODUCT_SCOPE 「무통장 입금·구매 제한 기본값」.
