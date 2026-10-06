@@ -57,7 +57,19 @@ test("최고관리자: 안내 문구 없이는 켤 수 없고, 켜면 점검 중
   expect(row.enabled).toBe(true);
   expect(row.message).toContain(`정기 점검 ${run}`);
   await expect.poll(async () => (await (await page.request.get("/api/maintenance")).json()).active).toBe(true);
-  await page.screenshot({ path: "tests/e2e/screenshots/admin-maintenance-1440.png" });
+  for (const [width, height] of [[1440, 900], [1024, 900], [390, 844]] as const) {
+    await page.setViewportSize({ width, height });
+    await expect(page.getByTestId("maintenance-preview")).toBeVisible();
+    const formBox = await page.getByTestId("maintenance-form-column").boundingBox();
+    const asideBox = await page.getByTestId("maintenance-aside").boundingBox();
+    expect(formBox).not.toBeNull();
+    expect(asideBox).not.toBeNull();
+    if (width === 390) expect(asideBox!.y).toBeGreaterThan(formBox!.y);
+    else expect(asideBox!.x).toBeGreaterThan(formBox!.x);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    await page.screenshot({ path: `tests/e2e/screenshots/admin-maintenance-${width}.png`, fullPage: true });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
 
   await page.getByRole("button", { name: "점검 끄기" }).first().click();
   await page.getByRole("dialog").getByRole("button", { name: "점검 끄기" }).click();

@@ -105,25 +105,9 @@ export default function MaintenancePage() {
           </div>
         )}
         {m && status && (
-          <div className="col" style={{ gap: 20 }}>
-            <section className="card pad-l col" style={{ gap: 12 }} aria-labelledby="mt-state" data-testid="maintenance-state">
-              <h2 className="t-hl1" id="mt-state">
-                현재 상태
-              </h2>
-              <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <span className={`bdg ${status.cls}`}>{status.label}</span>
-                {m.updatedAt && (
-                  <span className="t-l2 c-alt">
-                    {dayTime(m.updatedAt)} · {m.updatedByAdminName ?? "관리자"}가 마지막으로 바꿨습니다.
-                  </span>
-                )}
-              </div>
-              <p className="t-l2 c-alt" style={{ margin: 0 }}>
-                켜면 파트너스 관리자·쇼핑몰·파트너스 가입 신청이 막힙니다. 마스터 관리자와 방송 오버레이는 그대로 열립니다. 바꾼 내용이 반영되기까지 최대 5초 걸립니다.
-              </p>
-            </section>
-
-            <section className="card pad-l col" style={{ gap: 14 }} aria-labelledby="mt-form">
+          <div data-testid="maintenance-columns" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 20, alignItems: "start" }}>
+            <div className="col" style={{ gap: 20, minWidth: 0 }} data-testid="maintenance-form-column">
+              <section className="card pad-l col" style={{ gap: 14 }} aria-labelledby="mt-form" data-testid="maintenance-form">
               <h2 className="t-hl1" id="mt-form">
                 {m.enabled ? "점검 설정" : "점검 켜기"}
               </h2>
@@ -181,7 +165,46 @@ export default function MaintenancePage() {
                   점검 설정은 최고관리자만 바꿀 수 있습니다.
                 </div>
               )}
-            </section>
+              </section>
+            </div>
+            <div className="col" style={{ gap: 20, minWidth: 0 }} data-testid="maintenance-aside">
+              <section className="card pad-l col" style={{ gap: 12 }} aria-labelledby="mt-state" data-testid="maintenance-state">
+                <h2 className="t-hl1" id="mt-state">현재 상태</h2>
+                <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <span className={`bdg ${status.cls}`}>{status.label}</span>
+                  {m.updatedAt && <span className="t-l2 c-alt">{dayTime(m.updatedAt)} · {m.updatedByAdminName ?? "관리자"}가 마지막으로 바꿨습니다.</span>}
+                </div>
+                <p className="t-l2 c-alt" style={{ margin: 0 }}>켜면 파트너스 관리자·쇼핑몰·파트너스 가입 신청이 막힙니다. 마스터 관리자와 방송 오버레이는 그대로 열립니다. 바꾼 내용이 반영되기까지 최대 5초 걸립니다.</p>
+              </section>
+              <section className="card pad-l col" style={{ gap: 12 }} aria-labelledby="mt-scheduled" data-testid="maintenance-schedule">
+                <h2 className="t-hl1" id="mt-scheduled">예약된 점검</h2>
+                {m.scheduled ? (
+                  <div className="col" style={{ gap: 6 }}>
+                    <span>시작 예정 · {m.startsAt ? dayTime(m.startsAt) : "시각 미정"}</span>
+                    <span>종료 예정 · {m.endsAt ? dayTime(m.endsAt) : "시각 미정"}</span>
+                  </div>
+                ) : <p className="t-l2 c-alt" style={{ margin: 0 }}>예약된 점검이 없습니다.</p>}
+              </section>
+              <section className="card pad-l col" style={{ gap: 12 }} aria-labelledby="mt-history" data-testid="maintenance-history">
+                <h2 className="t-hl1" id="mt-history">점검 이력</h2>
+                {m.updatedAt ? (
+                  <div className="col" style={{ gap: 6 }}>
+                    <span>마지막 변경 · {dayTime(m.updatedAt)}</span>
+                    <span>변경한 관리자 · {m.updatedByAdminName ?? "관리자"}</span>
+                  </div>
+                ) : <p className="t-l2 c-alt" style={{ margin: 0 }}>변경 기록이 없습니다.</p>}
+                <span className="t-c1 c-alt">현재 설정의 마지막 변경 정보만 표시합니다.</span>
+              </section>
+              <section className="card pad-l col" style={{ gap: 12 }} aria-labelledby="mt-preview" data-testid="maintenance-preview">
+                <h2 className="t-hl1" id="mt-preview">점검 화면 미리보기</h2>
+                <div className="card pad col" style={{ gap: 8, boxShadow: "none" }}>
+                  <b>쇼핑몰 점검 안내</b>
+                  <p className="t-l2" style={{ margin: 0, whiteSpace: "pre-wrap" }}>{message.trim() || "안내 문구를 입력해 주십시오."}</p>
+                  <span className="t-c1 c-alt">시작 · {startsAt ? startsAt.replace("T", " ").replace(/-/g, ".") : "점검을 켜면 바로 시작"}</span>
+                  <span className="t-c1 c-alt">종료 예정 · {endsAt ? endsAt.replace("T", " ").replace(/-/g, ".") : "미정"} · 안내용</span>
+                </div>
+              </section>
+            </div>
           </div>
         )}
       </main>
