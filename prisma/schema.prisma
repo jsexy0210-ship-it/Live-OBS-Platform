@@ -220,6 +220,7 @@ model Seller {
   platformInquiryFiles     PlatformInquiryFile[]
   externalShopConnections  ExternalShopConnection[]
   receiptIssuer            SellerReceiptIssuer?
+  receiptSetting           SellerReceiptSetting?
   externalOrders ExternalOrder[]
 }
 
@@ -1912,6 +1913,8 @@ model MemberMemo {
 // 실패했거나 PENDING으로 오래 멈춘 기록은 시도 횟수 안에서 다시 잡을 수 있다(lib/server/orders/notifications.ts).
 enum OrderNotificationKind {
   PAYMENT_DUE_SOON
+  // 파트너스가 현금영수증·세금계산서를 직접 발행하고 완료 처리했을 때 구매자 안내(SA-024). 발송 채널 연동 전이라 기록만(PENDING).
+  RECEIPT_ISSUED
 }
 
 enum OrderNotificationStatus {
@@ -3582,6 +3585,22 @@ model SellerReceiptIssuer {
   certCheckedAt   DateTime?         @db.Timestamptz(3)
   createdAt       DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime          @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+}
+
+// 영수증·세금계산서 발행 방식(SA-024 「발행 방식」). DIRECT = 홈택스 등에서 직접 발행하고 목록에서 「발행 완료 처리」(기본).
+// AUTO = 자동 발행(발행 업체 연동 후, 지금은 준비 중이라 저장할 수 없다). 행이 없으면 DIRECT.
+enum ReceiptIssueMode {
+  DIRECT
+  AUTO
+}
+
+model SellerReceiptSetting {
+  sellerId  String           @id @db.Uuid
+  issueMode ReceiptIssueMode @default(DIRECT)
+  createdAt DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime         @updatedAt @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])
 }
