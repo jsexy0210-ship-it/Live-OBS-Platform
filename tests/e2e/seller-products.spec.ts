@@ -106,14 +106,18 @@ test("상품 목록: 데모 상품·상태 배지·필터, 체험 배너가 보�
   await expect(rows.filter({ hasText: "스타라이트 부스터 박스" })).toHaveCount(0);
 });
 
-test("옵션 이름이 길고 많아도 목록 표가 카드 밖으로 넘치지 않는다(1440·1024)", async ({ page }) => {
+test("옵션 이름이 길어도 표는 내부에서 스크롤되고 페이지 폭을 밀지 않는다(1440·1024)", async ({ page }) => {
   await login(page);
   const row = page.getByTestId("product-row").filter({ hasText: "보관용 카드 바인더" });
   for (const width of [1440, 1024]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(row).toBeVisible();
-    const fit = await page.locator(".p-table").evaluate((t) => ({ table: t.scrollWidth, card: t.parentElement!.clientWidth }));
-    expect(fit.table).toBeLessThanOrEqual(fit.card);
+    const fit = await page.locator(".p-table").evaluate((t) => {
+      const wrap = t.closest(".p-tbl-wrap")!;
+      return { table: t.scrollWidth, wrap: wrap.scrollWidth, page: document.documentElement.scrollWidth, client: document.documentElement.clientWidth };
+    });
+    expect(fit.table).toBeLessThanOrEqual(fit.wrap);
+    expect(fit.page).toBeLessThanOrEqual(fit.client);
     // 판매가·재고·상태 열이 화면 안에 보인다(세로로는 그 줄까지 내려서 본다)
     await row.scrollIntoViewIfNeeded();
     await expect(row.getByText("18,000원")).toBeInViewport();
