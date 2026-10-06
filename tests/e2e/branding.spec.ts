@@ -136,7 +136,7 @@ test("최고관리자가 파트너스 관리자 파비콘·공유 카드를 바�
 test("마스터 관리자 공유 카드에 1200×630 이미지를 올리면 og:image가 그 이미지가 되고, 크기가 틀리면 막힌다", async ({ page, request }) => {
   await login(page, superEmail);
   // 정확한 크기를 고르기 전에 먼저 알려 준다(MASTER 결정)
-  await expect(page.getByText("PNG 파일만 올릴 수 있습니다. 카드 이미지 크기는 1200×630이며 2MB까지 업로드할 수 있습니다.")).toBeVisible();
+  await expect(page.getByText("PNG 파일만 올릴 수 있습니다. 카드 그림은 가로 1200, 세로 630 크기로 만들어 주십시오. 용량은 2MB 이하입니다.")).toBeVisible();
   await page.getByRole("radio", { name: "이미지 업로드" }).click();
   const wrong = await sharp({ create: { width: 800, height: 600, channels: 3, background: "#222" } }).png().toBuffer();
   await page.getByLabel("공유 카드 이미지 파일").setInputFiles({ name: "wrong.png", mimeType: "image/png", buffer: wrong });

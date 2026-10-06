@@ -7,7 +7,8 @@ import { findPlaybook } from "./playbooks";
 import { plannerBudget } from "./budget";
 import type { AutomationRuntime, JobScope } from "./ports";
 import { cleanupPracticeArtifacts, playbookReadiness } from "./practice";
-import { reconcileAutomationPayments } from "./purchase";
+import type { PaymentGateway } from "../payments/gateway";
+import { reconcileAutomationPayments, reconcileOneTimeAutomationPayments } from "./purchase";
 import { FencingError, RunTimeExceeded, dbNow, hasChanges, markChanged, unmarkChanged, markActionStarted, markActionEnded, markReleaseStarted, quiescent, markCleanupNeeded, advanceStep, claimNext, claimObsTarget, extendLease, failWithRefund, markBrowserStateHeld, markTargetVerified, finishJob, parkForCustomer, reapExpired, retryLater, toVerifying, touch, type Claimed } from "./queue";
 
 // 자동 연결 작업자 진입점. 웹 서버(주문 API)와 다른 프로세스로 띄우는 것을 전제로 한다.
@@ -283,7 +284,7 @@ async function recordPurgeFailure(db: PrismaClient, jobId: string, sellerId: str
 export async function runWorkerLoop(
   db: PrismaClient,
   rt: AutomationRuntime,
-  opts: WorkerOptions & { signal: AbortSignal; idleMs?: number; billing?: BillingProvider },
+  opts: WorkerOptions & { signal: AbortSignal; idleMs?: number; billing?: BillingProvider; paymentGateway?: PaymentGateway | null },
 ): Promise<void> {
   const idleMs = opts.idleMs ?? 1_000;
   while (!opts.signal.aborted) {
@@ -291,6 +292,7 @@ export async function runWorkerLoop(
     await purgeEndedBrowserState(db, rt);
     await cleanupPracticeArtifacts(db, rt);
     if (opts.billing) await reconcileAutomationPayments(db, opts.billing);
+    if (opts.paymentGateway) await reconcileOneTimeAutomationPayments(db, opts.paymentGateway);
     const r = await runOnce(db, rt, opts);
     if (r === "idle") await new Promise((res) => setTimeout(res, idleMs));
   }

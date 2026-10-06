@@ -23,6 +23,9 @@ export type JobView = {
   actionDeadlineAt: Date | null;
   lastError: string | null;
   verifiedAt: Date | null;
+  // 「잠시 멈추기」(SA-152): 멈춘 상태면 paused=true·pausedAt, 멈춘 단계는 stepNumber(상태는 QUEUED로 보인다). 이어 하기로 풀린다
+  paused: boolean;
+  pausedAt: Date | null;
   createdAt: Date;
   finishedAt: Date | null;
 };
@@ -83,6 +86,8 @@ const toView = (j: AutomationJob & { payment: AutomationPayment | null }): JobVi
   actionDeadlineAt: j.actionDeadlineAt,
   lastError: publicError(j.lastError),
   verifiedAt: j.verifiedAt,
+  paused: j.pausedAt !== null,
+  pausedAt: j.pausedAt,
   createdAt: j.createdAt,
   finishedAt: j.finishedAt,
 });
@@ -195,4 +200,86 @@ export async function requestRefund(db: PrismaClient, ctx: TenantContext, jobId:
     return true;
   });
   return ok ? { ok: true, job: await getJob(db, ctx, jobId) } : { ok: false, reason: "not_refundable" };
+}
+
+// 잠시 멈추기(SA-152): 대기열·실행 중·검증 중인 작업을 멈춘 단계 그대로 두고 작업자가 가져가지 못하게 한다. 대표자·구독 관리 권한만(취소·재개와 같음).
+// 실행 중이면 취소와 같이 토큰을 올려 작업자의 다음 쓰기부터 막고(진행 중인 외부 행동 1개는 끝까지 갈 수 있다), 상태는 QUEUED로 돌려 단계(stepIndex)는 지키고 쓴 시간은 합계에 넣는다.
+// 시작·전체·실행 시간 마감은 멈춰도 흐른다(지나면 reapExpired가 기존대로 닫고 환불 대기). 이미 멈췄거나 고객 행동 대기·끝난 작업은 409 invalid_state.
+export async function pauseJob(db: PrismaClient, ctx: TenantContext, jobId: string): Promise<ChangeResult> {
+  requireSellerPermission(ctx, "SUBSCRIPTION_MANAGE");
+  const ok = await db.$transaction(async (tx) => {
+    await lockJob(tx, jobId);
+    const cur = await tx.automationJob.findFirst({ where: { id: jobId, sellerId: ctx.sellerId } });
+    if (!cur) throw notFound();
+    if (cur.pausedAt || !(["QUEUED", "RUNNING", "VERIFYING"] as const).some((s) => s === cur.status)) return false;
+    const now = await dbNow(tx);
+    const leased = cur.status !== "QUEUED";
+    const after = await tx.automationJob.update({
+      where: { id: jobId },
+      data: {
+        pausedAt: now,
+        status: "QUEUED",
+        ...(leased
+          ? {
+              activeMsUsed: cur.activeMsUsed + (cur.runStartedAt ? Math.max(0, now.getTime() - cur.runStartedAt.getTime()) : 0),
+              runStartedAt: null,
+              leaseOwner: null,
+              leaseExpiresAt: null,
+              fencingToken: { increment: 1 },
+            }
+          : {}),
+      },
+    });
+    await writeJobEvent(tx, after, cur.status, "QUEUED", after.fencingToken, { reason: "paused", by: ctx.actorId });
+    await writeAudit(tx, { actorType: ctx.actorType, actorId: ctx.actorId, sellerId: ctx.sellerId, action: "automation.pause", targetType: "AutomationJob", targetId: jobId, before: { status: cur.status, stepIndex: cur.stepIndex }, after: { status: "QUEUED", paused: true } });
+    return true;
+  });
+  return ok ? { ok: true, job: await getJob(db, ctx, jobId) } : { ok: false, reason: "invalid_state" };
+}
+
+// 이어 하기(SA-152): 멈춘 작업을 풀어 바로 대기열로 돌린다. 멈춘 단계(stepIndex)부터 다시 시작한다. 멈춰 있지 않으면 409 invalid_state.
+export async function continueJob(db: PrismaClient, ctx: TenantContext, jobId: string): Promise<ChangeResult> {
+  requireSellerPermission(ctx, "SUBSCRIPTION_MANAGE");
+  const ok = await db.$transaction(async (tx) => {
+    await lockJob(tx, jobId);
+    const cur = await tx.automationJob.findFirst({ where: { id: jobId, sellerId: ctx.sellerId } });
+    if (!cur) throw notFound();
+    if (!cur.pausedAt || cur.status !== "QUEUED") return false;
+    const now = await dbNow(tx);
+    const after = await tx.automationJob.update({ where: { id: jobId }, data: { pausedAt: null, runAfter: now } });
+    await writeJobEvent(tx, after, "QUEUED", "QUEUED", after.fencingToken, { reason: "continued", by: ctx.actorId });
+    await writeAudit(tx, { actorType: ctx.actorType, actorId: ctx.actorId, sellerId: ctx.sellerId, action: "automation.continue", targetType: "AutomationJob", targetId: jobId, before: { paused: true }, after: { paused: false, stepIndex: cur.stepIndex } });
+    return true;
+  });
+  return ok ? { ok: true, job: await getJob(db, ctx, jobId) } : { ok: false, reason: "invalid_state" };
+}
+
+// 작업 기록 시각표(SA-152). 상태가 바뀐 기록을 오래된 순으로. 화면이 문구로 바꾸도록 정해 둔 코드만 내보낸다:
+// kind: payment_confirmed(결제 확인·작업 시작) · started(실행 시작) · needs_customer(고객 확인 대기) · resumed(고객 확인 뒤 이어 감) · verifying(테스트 검증) ·
+//       retry(다시 시도) · paused(잠시 멈춤) · continued(이어 하기) · succeeded · failed · canceled · cleanup_needed(정리 필요) · other.
+// stepNumber: 그 기록 시점의 단계(1부터, 모르면 null). reason: 실패·재시도 사유 코드(publicError 허용 목록만, 원문·비밀값·작업자 식별자는 내보내지 않는다).
+export type TimelineKind = "payment_confirmed" | "started" | "needs_customer" | "resumed" | "verifying" | "retry" | "paused" | "continued" | "succeeded" | "failed" | "canceled" | "cleanup_needed" | "other";
+export type TimelineEntry = { at: Date; kind: TimelineKind; stepNumber: number | null; reason: string | null };
+
+export function timelineKind(from: string | null, to: string, reason: unknown): TimelineKind {
+  if (reason === "paused") return "paused";
+  if (reason === "continued") return "continued";
+  if (to === "QUEUED") return from === "AWAITING_PAYMENT" || from === null ? "payment_confirmed" : from === "NEEDS_CUSTOMER" ? "resumed" : "retry";
+  if (to === "AWAITING_PAYMENT") return "other";
+  const byTo: Partial<Record<string, TimelineKind>> = { RUNNING: "started", NEEDS_CUSTOMER: "needs_customer", VERIFYING: "verifying", SUCCEEDED: "succeeded", FAILED: "failed", CANCELED: "canceled", CLEANUP_NEEDED: "cleanup_needed" };
+  return byTo[to] ?? "other";
+}
+
+export async function getJobTimeline(db: PrismaClient, ctx: TenantContext, jobId: string): Promise<{ job: JobView; timeline: TimelineEntry[] }> {
+  const job = await getJob(db, ctx, jobId);
+  const events = await db.automationJobEvent.findMany({ where: { jobId, sellerId: ctx.sellerId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: 200 });
+  const timeline = events.filter((e) => e.toStatus !== "AWAITING_PAYMENT").map((e) => {
+    const d = (e.detail ?? {}) as { reason?: unknown; stepIndex?: unknown };
+    const kind = timelineKind(e.fromStatus, e.toStatus, d.reason);
+    const stepNumber = typeof d.stepIndex === "number" && d.stepIndex >= 0 ? Math.min(d.stepIndex + 1, STEPS.length) : null;
+    // 사유는 끝나거나 다시 시도한 기록에만, 정해 둔 코드(publicError)로만 내보낸다
+    const reason = (kind === "failed" || kind === "retry" || kind === "cleanup_needed" || kind === "canceled") && typeof d.reason === "string" ? publicError(d.reason) : null;
+    return { at: e.createdAt, kind, stepNumber, reason };
+  });
+  return { job, timeline };
 }
