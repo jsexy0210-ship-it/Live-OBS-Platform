@@ -29,7 +29,7 @@ test("대리 조회 종료는 확인 창을 거치고, 취소·Esc·X·바깥 �
   await page.getByRole("button", { name: "로그인" }).click();
   await page.waitForURL((u) => u.pathname === "/admin");
   await page.goto(`/admin/partners/${sellerId}`);
-  await page.getByRole("button", { name: "이 파트너스 화면 대신 보기", exact: true }).click();
+  await page.getByRole("button", { name: "대신 보기", exact: true }).click();
   const start = page.getByRole("dialog").getByRole("button", { name: "대신 보기 시작", exact: true });
   await page.getByRole("dialog").getByLabel("사유").fill("확인 창 시험");
   const popup = context.waitForEvent("page");

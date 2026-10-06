@@ -100,6 +100,18 @@ describe("발송(EM-002)·배송 완료(EM-003)", () => {
     expect(delivered.text).toContain("적립금 9,306원이 쌓였어요");
     expect(await run(sender)).toBe(0);
   });
+
+  it("구매자가 SH-025에서 배송 이메일을 끄면 발송·배송 완료 메일은 보내지 않고, 결제 메일은 필수라 그대로 보낸다", async () => {
+    const s = await shop();
+    await order(s, {}, { shippedAt: ago(2 * H), deliveredAt: ago(H), status: "DELIVERED" });
+    await db.buyerNotificationPref.create({ data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, kind: "SHIPPING", channel: "EMAIL", enabled: false } });
+    const sender = new FakeMailSender();
+    expect(await run(sender)).toBe(1);
+    expect((await db.mailDelivery.findMany({ select: { kind: true } })).map((d) => d.kind)).toEqual(["order.paid"]);
+    // 알림톡·문자 칸만 끈 경우(이메일은 켬)는 메일을 보낸다
+    await db.buyerNotificationPref.update({ where: { buyerMemberId_kind_channel: { buyerMemberId: s.buyer.id, kind: "SHIPPING", channel: "EMAIL" } }, data: { enabled: true } });
+    expect(await run(sender)).toBe(2);
+  });
 });
 
 describe("환불(EM-004)", () => {

@@ -40,6 +40,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/subscription": "BILLING",
   "seller/subscription/card": "BILLING",
   "seller/subscription/cancel": "BILLING",
+  "seller/subscription/payments/export": "BILLING",
   "seller/subscription/plan": "BILLING",
   "seller/subscription/plan/preview": "BILLING",
   "seller/message-balance": "BILLING",
@@ -343,6 +344,7 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/faqs": "STORE_OPERATIONS",
   "shop/[slug]/legal/[kind]": "STORE_OPERATIONS", // 쇼핑몰 이용약관·개인정보처리방침(운영 중이 아니면 404)
   "shop/[slug]/me/marketing-consent": "OPEN",
+  "shop/[slug]/me/notification-prefs": "OPEN",
   "shop/[slug]/me/withdraw": "OPEN",
   "shop/[slug]/me/rewards": "OPEN", // 내 적립금 잔액(탈퇴 전 확인, #180)
   "shop/[slug]/me/reward-ledger": "OPEN", // 내 적립금 내역(SH-023, 잔액과 같은 기준)

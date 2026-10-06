@@ -490,6 +490,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   const gnbMenu = menu.filter((g) => !g.util);
   const route = routeNav(pathname);
   const active = route && menu.some((g) => g.key === route.group.key) ? route : null;
+  // 요금제 · 권한 때문에 상단 메뉴(GNB) 묶음이 하나도 안 남아도(대신 보기로 연 구독 없는 파트너스 등) 상단 유틸 묶음만으로 열린다
   const shown = menu.find((g) => g.key === picked) ?? menu.find((g) => g.key === active?.group.key) ?? gnbMenu[0] ?? menu[0];
   const shownGroup = active ? menu.find((g) => g.key === active.group.key) : undefined;
   const shownItem = shownGroup?.items.find((n) => n.label === active?.item.label);
