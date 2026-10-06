@@ -1942,6 +1942,8 @@ model SellerOrderPolicy {
   paidCancelRestrictionEnabledAt DateTime? @db.Timestamptz(3)
   // 판매자별 단조 시계(orders/overdue.ts sellerEventClock)가 마지막으로 찍은 시각. 주문 생성 잠금 아래에서만 바꾼다.
   lastEventClockAt               DateTime? @db.Timestamptz(3)
+  // 파트너스가 「주문 정책」을 실제로 저장한 시각(없으면 쇼핑몰 생성 때 기본값으로 만든 행이거나 시계만 찍은 행). 온보딩 「설정 완료」 판정에 쓴다.
+  savedAt                        DateTime? @db.Timestamptz(3)
   updatedAt                      DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])

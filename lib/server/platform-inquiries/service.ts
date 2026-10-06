@@ -30,6 +30,7 @@ export const UNATTACHED_KEEP = 10;
 export const DAILY_LIMIT = 20;
 export const SELLER_PAGE_SIZE = 20;
 export const ADMIN_PAGE_SIZE = 50;
+export const SELLER_SEARCH_MAX = 50;
 // SA-114 문의 종류(방송 화면·결제 연결·주문/환불·적립금·구독/요금·쇼핑몰·계정/직원·기타). BILLING·FEATURE·BUG는 예전 문의에만 남아 있어 새로 보낼 수 없고 필터로는 볼 수 있다.
 export const CATEGORIES: readonly PlatformInquiryCategory[] = ["BROADCAST", "PAYMENT_LINK", "ORDER_REFUND", "REWARD", "SUBSCRIPTION_FEE", "SHOP", "ACCOUNT", "OTHER"];
 const FILTER_CATEGORIES: readonly PlatformInquiryCategory[] = [...CATEGORIES, "BILLING", "FEATURE", "BUG"];
@@ -37,6 +38,7 @@ const STATUSES: readonly PlatformInquiryStatus[] = ["OPEN", "ANSWERED", "CLOSED"
 
 export type PlatformInquiryRejection =
   | "invalid_category"
+  | "invalid_seller"
   | "invalid_title"
   | "invalid_body"
   | "invalid_images"
@@ -69,6 +71,7 @@ export const PLATFORM_INQUIRY_MESSAGES: Record<PlatformInquiryRejection, string>
   invalid_status: "상태를 다시 선택해 주십시오",
   invalid_related: "관련 주문·방송을 다시 선택해 주십시오",
   invalid_urgent: "긴급 여부를 다시 선택해 주십시오",
+  invalid_seller: `파트너스 이름을 ${SELLER_SEARCH_MAX}자 안에서 입력해 주십시오`,
   invalid_assignee: "담당자를 다시 선택해 주십시오",
   invalid_diagnostics: "진단 정보 첨부 여부를 다시 선택해 주십시오",
   invalid_helpful: "도움이 됐는지 선택해 주십시오",
@@ -631,25 +634,51 @@ const ADMIN_LIST_SELECT = {
 
 // MA-051: 문의 목록. ?status=OPEN|ANSWERED|CLOSED&sellerId=&cursor=. 마지막 글 최신 순 50건, 상태별 수.
 // ?assignee=me(내 담당)|none(미배정)|관리자 id, ?category. 담당·분류 조건은 건수(counts)에 넣지 않는다.
-export async function listInquiries(db: PrismaClient, admin: AdminSessionContext, q: { status?: string | null; sellerId?: string | null; cursor?: string | null; assignee?: string | null; category?: string | null }) {
+// ?urgent=first(긴급 먼저, 그 안에서 마지막 글 최신 순)|only(긴급만), ?seller=파트너스 이름(또는 주소) 일부(대소문자 무시). 파트너스 검색은 건수(counts)에도 적용한다.
+// 응답 summary는 필터와 무관한 전체 요약(상단 카드). 상태 이름은 현행(OPEN 답변 대기 · ANSWERED 답변 완료 · CLOSED 종료).
+export const OVERDUE_MS = 4 * 3_600_000;
+type ListQuery = { status?: string | null; sellerId?: string | null; cursor?: string | null; assignee?: string | null; category?: string | null; urgent?: string | null; seller?: string | null };
+
+// 긴급 먼저 정렬의 커서: 「U1_」(긴급) · 「U0_」(그 밖) 뒤에 기본 커서(마지막 글 시각_id)
+function parseUrgentCursor(cursor: string | null | undefined): { ok: true; where: Prisma.PlatformInquiryWhereInput } | { ok: false } {
+  if (!cursor) return { ok: true, where: {} };
+  const m = /^U([01])_(.+)$/.exec(cursor);
+  if (!m) return { ok: false };
+  const base = parseCursor(m[2]);
+  if (!base.ok) return { ok: false };
+  // 긴급 줄을 다 보여 준 뒤에는 긴급이 아닌 글 전부 + 같은 긴급 값에서 이어지는 글
+  return { ok: true, where: m[1] === "1" ? { OR: [{ urgent: false }, { AND: [{ urgent: true }, base.where] }] } : { AND: [{ urgent: false }, base.where] } };
+}
+
+export async function listInquiries(db: PrismaClient, admin: AdminSessionContext, q: ListQuery) {
   requireRead(admin);
   if (q.status && !STATUSES.includes(q.status as PlatformInquiryStatus)) return { ok: false as const, reason: "invalid_status" as const };
   if (q.sellerId && !isUuid(q.sellerId)) return { ok: false as const, reason: "invalid_cursor" as const };
-  const c = parseCursor(q.cursor);
+  if (q.urgent && q.urgent !== "first" && q.urgent !== "only") return { ok: false as const, reason: "invalid_urgent" as const };
+  const urgentFirst = q.urgent === "first";
+  const c = urgentFirst ? parseUrgentCursor(q.cursor) : parseCursor(q.cursor);
   if (!c.ok) return { ok: false as const, reason: "invalid_cursor" as const };
   if (q.category && !FILTER_CATEGORIES.includes(q.category as PlatformInquiryCategory)) return { ok: false as const, reason: "invalid_category" as const };
   if (q.assignee && q.assignee !== "me" && q.assignee !== "none" && !isUuid(q.assignee)) return { ok: false as const, reason: "invalid_assignee" as const };
-  const base: Prisma.PlatformInquiryWhereInput = q.sellerId ? { sellerId: q.sellerId } : {};
+  const sellerText = (q.seller ?? "").trim();
+  if (sellerText.length > SELLER_SEARCH_MAX) return { ok: false as const, reason: "invalid_seller" as const };
+  // LIKE 와일드카드(% _)와 역슬래시는 글자 그대로 찾는다
+  const needle = sellerText.replace(/[\\%_]/g, "\\$&");
+  const base: Prisma.PlatformInquiryWhereInput = {
+    ...(q.sellerId ? { sellerId: q.sellerId } : {}),
+    ...(sellerText ? { seller: { OR: [{ shopName: { contains: needle, mode: "insensitive" } }, { slug: { contains: needle, mode: "insensitive" } }] } } : {}),
+  };
   const assigneeWhere: Prisma.PlatformInquiryWhereInput = !q.assignee ? {} : q.assignee === "none" ? { assignedAdminId: null } : { assignedAdminId: q.assignee === "me" ? admin.admin.id : q.assignee };
   const rows = await db.platformInquiry.findMany({
-    where: { ...base, ...assigneeWhere, ...(q.category ? { category: q.category as PlatformInquiryCategory } : {}), ...(q.status ? { status: q.status as PlatformInquiryStatus } : {}), ...c.where },
-    orderBy: [{ lastMessageAt: "desc" }, { id: "desc" }],
+    where: { ...base, ...assigneeWhere, ...(q.category ? { category: q.category as PlatformInquiryCategory } : {}), ...(q.status ? { status: q.status as PlatformInquiryStatus } : {}), ...(q.urgent === "only" ? { urgent: true } : {}), ...c.where },
+    orderBy: urgentFirst ? [{ urgent: "desc" }, { lastMessageAt: "desc" }, { id: "desc" }] : [{ lastMessageAt: "desc" }, { id: "desc" }],
     take: ADMIN_PAGE_SIZE + 1,
     select: ADMIN_LIST_SELECT,
   });
   const page = rows.slice(0, ADMIN_PAGE_SIZE);
   const n = await names(db, page.map((r) => r.createdBySellerUserId), page.map((r) => r.assignedAdminId));
   const grouped = await db.platformInquiry.groupBy({ by: ["status"], where: base, _count: { _all: true } });
+  const last = page[page.length - 1];
   return {
     ok: true as const,
     items: page.map(({ seller, createdBySellerUserId, ...r }) => ({
@@ -660,7 +689,49 @@ export async function listInquiries(db: PrismaClient, admin: AdminSessionContext
       assignee: r.assignedAdminId ? { id: r.assignedAdminId, name: n.admin.get(r.assignedAdminId) ?? null } : null,
     })),
     counts: Object.fromEntries(STATUSES.map((s) => [s, grouped.find((g) => g.status === s)?._count._all ?? 0])) as Record<PlatformInquiryStatus, number>,
-    nextCursor: nextCursor(rows, ADMIN_PAGE_SIZE),
+    nextCursor: rows.length > ADMIN_PAGE_SIZE && last ? `${urgentFirst ? `U${last.urgent ? 1 : 0}_` : ""}${last.lastMessageAt.toISOString()}_${last.id}` : null,
+    summary: await inquirySummary(db, admin),
+  };
+}
+
+// MA-051 상단 요약 카드(필터와 무관한 전체). KST 오늘 기준.
+// - waiting: 답변 대기(OPEN) 수, urgent: 그중 긴급, overdue: 그중 마지막 글 이후 4시간(OVERDUE_MS)이 지난 것
+// - mine: 내 담당 답변 대기 수, todayReceived: 오늘 접수, answeredToday: 오늘 마스터 답변이 달린 문의 수
+// - avgFirstReplyHours: 최근 7일에 접수해 답변을 받은 문의의 접수 → 첫 답변 평균(시간, 소수 첫째 자리, 없으면 null)
+// - helpful7d: 최근 7일에 「답변이 도움이 됐습니까?」에 답한 수와 도움됨 수, rate(0~100 정수, 답한 문의가 없으면 null).
+//   별점이 아니라 예·아니요 평가라서 점수(4.6 같은)는 만들 수 없다(화면 문구 판단 필요).
+export async function inquirySummary(db: Db, admin: AdminSessionContext) {
+  const [{ now }] = await db.$queryRaw<{ now: Date }[]>`SELECT now() AS now`;
+  const KST = 9 * 3_600_000;
+  const DAY = 86_400_000;
+  const todayStart = new Date(Math.floor((now.getTime() + KST) / DAY) * DAY - KST);
+  const weekAgo = new Date(now.getTime() - 7 * DAY);
+  const open: Prisma.PlatformInquiryWhereInput = { status: "OPEN" };
+  const [waiting, urgent, overdue, mine, todayReceived, answeredToday, first, helpfulAnswered, helpfulYes] = await Promise.all([
+    db.platformInquiry.count({ where: open }),
+    db.platformInquiry.count({ where: { ...open, urgent: true } }),
+    db.platformInquiry.count({ where: { ...open, lastMessageAt: { lte: new Date(now.getTime() - OVERDUE_MS) } } }),
+    db.platformInquiry.count({ where: { ...open, assignedAdminId: admin.admin.id } }),
+    db.platformInquiry.count({ where: { createdAt: { gte: todayStart } } }),
+    db.platformInquiry.count({ where: { lastAdminMessageAt: { gte: todayStart } } }),
+    db.$queryRaw<{ avg: number | null }[]>`
+      SELECT avg(extract(epoch FROM (f.first_at - i."createdAt")) / 3600)::float AS avg
+      FROM "PlatformInquiry" i
+      JOIN (SELECT "inquiryId", min("createdAt") AS first_at FROM "PlatformInquiryMessage" WHERE "authorType" = 'ADMIN' GROUP BY "inquiryId") f ON f."inquiryId" = i.id
+      WHERE i."createdAt" >= ${weekAgo}`,
+    db.platformInquiry.count({ where: { helpfulAt: { gte: weekAgo }, helpful: { not: null } } }),
+    db.platformInquiry.count({ where: { helpfulAt: { gte: weekAgo }, helpful: true } }),
+  ]);
+  const avg = first[0]?.avg;
+  return {
+    waiting,
+    urgent,
+    overdue,
+    mine,
+    todayReceived,
+    answeredToday,
+    avgFirstReplyHours: avg == null ? null : Math.round(avg * 10) / 10,
+    helpful7d: { answered: helpfulAnswered, helpful: helpfulYes, rate: helpfulAnswered === 0 ? null : Math.round((helpfulYes / helpfulAnswered) * 100) },
   };
 }
 
