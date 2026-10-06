@@ -82,18 +82,19 @@ test("게시하려면 시행일·본문이 필요하고, 저장하면 구매자 
   await expect(buyer.getByRole("heading", { level: 1 })).toHaveText("이용약관을 준비하고 있어요");
 });
 
-test("탭을 옮겨도 입력 중인 내용이 남는다", async ({ page }) => {
+test("사이드 메뉴로 문서를 바꿔도 입력 중인 내용이 남는다", async ({ page }) => {
   await login(page, "/seller/settings/legal");
+  const menu = page.getByRole("complementary", { name: "파트너스 메뉴" });
   await page.getByLabel("이용약관 본문").fill("입력 중인 약관");
-  await page.getByRole("tab", { name: "개인정보처리방침" }).click();
+  await menu.getByRole("link", { name: "개인정보처리방침", exact: true }).click();
   await expect(page.getByLabel("개인정보처리방침 본문")).toBeVisible();
-  await page.getByRole("tab", { name: "이용약관" }).click();
+  await menu.getByRole("link", { name: "이용약관", exact: true }).click();
   await expect(page.getByLabel("이용약관 본문")).toHaveValue("입력 중인 약관");
 });
 
 test("사업자 정보·고지: 검사 오류가 칸 가까이에 보이고, 저장하면 구매자 바닥글에 입력한 항목만 표시된다", async ({ page, context }) => {
   await login(page, "/seller/settings/legal");
-  await page.getByRole("tab", { name: "사업자 정보·고지" }).click();
+  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "사업자정보 고지", exact: true }).click();
   // 입점 신청 때 받은 값은 읽기 전용으로 보인다
   await expect(page.getByTestId("legal-biz")).toContainText("별빛상사");
   await expect(page.getByTestId("legal-biz")).toContainText("123-45-67890");
