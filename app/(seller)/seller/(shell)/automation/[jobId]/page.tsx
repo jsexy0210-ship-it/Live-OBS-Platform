@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { PageHead, useConfirm } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
@@ -28,6 +28,8 @@ const TAG: Record<string, { label: string; cls: string }> = {
 export default function AutomationProgressPage() {
   const { jobId } = useParams<{ jobId: string }>();
   const router = useRouter();
+  // 결제창에서 돌아온 결과(다른 카드로 결제, 서버가 ?payment=paid|pending으로 이동시킴)
+  const payment = useSearchParams().get("payment");
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; job: Job }>({ kind: "loading" });
   const { confirm } = useConfirm();
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
@@ -87,6 +89,12 @@ export default function AutomationProgressPage() {
           actions={cancelable && <button className="btn btn-out" type="button" onClick={() => void act("cancel", "자동 연결을 취소했습니다", { title: "자동 연결을 취소하시겠습니까?", body: j.status === "QUEUED" ? "아직 연결을 시작하지 않았습니다. 취소한 뒤 환불을 요청할 수 있습니다." : "진행을 멈추고 지금까지 바꾼 설정을 되돌립니다. 설정을 시작한 뒤라 환불되지 않습니다 · 결제 전에 동의하신 내용입니다.", confirmLabel: "그만두기", danger: true })}>자동 설정 그만두기</button>}
         />
         <div className="col" style={{ gap: 16 }}>
+          {payment === "paid" && (
+            <div className="msg msg-pos" role="status" data-testid="pay-result-paid"><span><b>결제됐습니다</b> · 자동 연결을 시작합니다 · 카드 매출전표는 구독 · 결제 메뉴에서 내려받습니다</span></div>
+          )}
+          {payment === "pending" && j.status === "AWAITING_PAYMENT" && (
+            <div className="msg msg-info" role="status" data-testid="pay-result-pending"><span><b>결제를 확인하고 있습니다</b> · 카드사 승인 뒤 서버가 한 번 더 확인합니다 · 확인 전에는 작업이 시작되지 않습니다</span></div>
+          )}
           <div className={`msg ${j.status === "NEEDS_CUSTOMER" ? "msg-cau" : terminal ? "msg-neg" : "msg-info"}`} role="status" data-testid="job-status">
             <span>
               <span className={`bdg ${tag.cls}`}>{tag.label}</span> {stamp(j.createdAt)} 시작 · 결제 {j.paymentStatus === "PAID" ? "확인됨" : j.paymentStatus === "REFUND_PENDING" ? "환불 처리 중" : j.paymentStatus === "REFUNDED" ? "환불 완료" : j.paymentStatus === "PENDING" ? "확인 중" : "없음"}
