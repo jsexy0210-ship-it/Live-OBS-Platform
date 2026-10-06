@@ -33,7 +33,7 @@ export function HitCardModal({ targets, onClose, onDone }: { targets: HitTarget[
     setError(null);
     const r = await api<{ card: { id: string } }>("/api/seller/hit-cards", {
       method: "POST",
-      body: { cardName: cardName.trim(), ...(note.trim() ? { note: note.trim() } : {}), ...(grade ? { grade } : {}), ...(manual ? { nickname: nickname.trim() } : { queueItemId: target }) },
+      body: { cardName: cardName.trim(), ...(note.trim() ? { note: note.trim() } : {}), ...(grade.trim() ? { grade: grade.trim() } : {}), ...(manual ? { nickname: nickname.trim() } : { queueItemId: target }) },
     });
     setBusy(false);
     if (!r.ok) return setError(failMessage(r, "admin"));
@@ -86,14 +86,12 @@ export function HitCardModal({ targets, onClose, onDone }: { targets: HitTarget[
           </div>
           <div className="fld">
             <label htmlFor="hit-grade">등급</label>
-            <select id="hit-grade" className="inp" value={grade} disabled={busy} onChange={(e) => setGrade(e.target.value)}>
-              <option value="">선택 안 함</option>
+            <input id="hit-grade" className="inp" list="hit-grade-list" maxLength={12} placeholder="비우면 등급 없음 · 직접 입력 12자까지" value={grade} disabled={busy} onChange={(e) => setGrade(e.target.value)} />
+            <datalist id="hit-grade-list">
               {HIT_GRADES.map((g) => (
-                <option key={g} value={g}>
-                  {g}
-                </option>
+                <option key={g} value={g} />
               ))}
-            </select>
+            </datalist>
           </div>
           <div className="fld">
             <label htmlFor="hit-note">메모 (나만 보임)</label>
