@@ -259,3 +259,9 @@
 표적 검증: 만료 경계·challenge 재사용/동시 소비·교차 seller/device/job·대표자/PC 한쪽만 승인·승인 이후 구독/job 변경·해시만 저장·감사 실패 롤백·철회 후 credential/generation·응답 유실·완료/재설치/무료 재연결 job를 INITIAL로 승격하지 않는 반례를 격리 폐기 DB에서 수행한다. 기존 INITIAL 계약 시험은 정책 회귀를 확인하며 운영 DB migration·실기기 동의 조작·실송출·실결제는 실행하지 않는다.
 
 비용/롤백: 기존 VM/DB에 짧은 challenge와 기기 행을 추가하고 외부 유료 인프라/API를 전제하지 않는다. 실제 저장량·발급 제한은 측정 대상이다. 앱 롤백은 신규 등록과 제어를 닫고 기존 표·해시·로그를 보존한다. 운영 down migration이나 credential 원문 복구는 하지 않는다. 판단 필요는 OVERLAY_ONLY 완료 연결의 지속 제어/재페어링 근거, 통합 기본 PC 변경과 유료 재설치 고지, 응답 유실/PC 교체 시 기존 기기 처리이다. 정의 전에는 임의 권한 발급이나 기존 33,000원/30일 권리의 소급 변경을 하지 않는다.
+
+### 후속 읽기 전용 기기 인증 adapter (2026-10-07 KST, 구현 독립 검수 전)
+
+`readObsDeviceAuthentication`은 서버 저장 tokenHash·seller/device·현재 generation·비철회 상태, 동일 generation의 consumed challenge와 현재 ACTIVE 등록 대표자를 대조한다. 같은 읽기 전용 RepeatableRead 안에서 기존 구독/설치 reader를 호출하며 클라이언트 plan/paid/actorId를 근거로 받지 않는다. 기존 첫 결제·체험 이전·유예·charging 정책과 33,000원/30일 권리는 바꾸지 않는다.
+
+INTEGRATED의 현재 기본 자격과 device에 등록 때 고정한 OVERLAY INITIAL job의 현재 lease/jobFence만 `authenticated_transport_unavailable`로 관측한다. OVERLAY의 일반 제어는 `control_denied_support_required`, 완료/취소/만료 INITIAL 위임은 거부한다. 유효한 해시만으로 임의 다른 job을 위임하거나 완료 job을 지속 권리로 승격하지 않는다. 반환값에 token/해시/대표자 정보가 없고 연결 epoch나 credential 만료를 지어내지 않는다. 이 adapter는 실제 ObsServerReader·ObsAuthority·기기 세션·명령/API/WSS/helper/실PC 동의 구현이 아니며 관측값 재사용으로 명령을 허용하지 않는다. 실제 명령 단계에서는 현재 credential/generation/권한 재조회와 연결 target/epoch 검증이 추가로 필요하다. 스키마 변경·운영 migration·유료 인프라·실송출 없이 폐기 DB의 인증/tenant/철회/현재 권한 거절 경계만 검증한다.
