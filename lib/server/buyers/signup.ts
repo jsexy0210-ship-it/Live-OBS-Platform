@@ -2,7 +2,7 @@ import { Prisma, type IdentityVerification, type PrismaClient } from "@prisma/cl
 import { writeAudit } from "../audit/log";
 import { hashPassword, verifyPassword } from "../auth/password";
 import { MAX_EMAIL_LENGTH, normalizeEmail } from "../auth/login";
-import { MIN_PASSWORD_LENGTH } from "../auth/passwordReset";
+import { isAcceptableBuyerPassword } from "./passwordPolicy";
 import { sellerHasFeature } from "../billing/features";
 import { dbNow, sellerAccessFor } from "../billing/subscription";
 import { birthDateOf, type IdentityProvider } from "../identity/provider";
@@ -205,7 +205,7 @@ export async function signupBuyer(
   if (!(await shopOpen(db, input.sellerId))) return { ok: false, reason: "shop_unavailable" };
   const loginId = typeof input.loginId === "string" ? normalizeEmail(input.loginId) : "";
   if (loginId.length > MAX_EMAIL_LENGTH || !EMAIL.test(loginId)) return { ok: false, reason: "invalid_login_id" };
-  if (typeof input.password !== "string" || input.password.length < MIN_PASSWORD_LENGTH || input.password.length > 200) return { ok: false, reason: "weak_password" };
+  if (!isAcceptableBuyerPassword(input.password)) return { ok: false, reason: "weak_password" };
   const nickname = cleanText(input.broadcastNickname, MAX_NICKNAME_LENGTH);
   if (!nickname) return { ok: false, reason: "invalid_nickname" };
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.verificationId)) return { ok: false, reason: "verification_invalid" };
@@ -360,7 +360,7 @@ export async function signupBuyer(
 // 가입 실패 문구(해요체). 화면은 error 코드로 분기하고 message를 그대로 보여 준다.
 export const BUYER_SIGNUP_MESSAGES: Record<BuyerSignupFailure | "daily_limit_exceeded" | "start_in_progress", string> = {
   invalid_login_id: "아이디로 쓸 이메일 주소를 다시 확인해 주세요",
-  weak_password: "비밀번호는 8자 이상으로 정해 주세요",
+  weak_password: "비밀번호는 영문과 숫자를 섞어 8자 이상으로 정해 주세요",
   invalid_nickname: "방송 닉네임은 20자까지, 쓸 수 있는 글자로 정해 주세요",
   terms_required: "필수 약관에 동의해 주세요",
   invalid_marketing_consent: "마케팅 정보 수신 동의를 다시 선택해 주세요",
