@@ -46,6 +46,7 @@ test("대표자: 송장 저장 → 배송 중 → 배송 완료로 옮겨 가고
   await page.getByLabel(`주문 ${b.orderNo} 송장번호`).fill("12");
   const shipped = post(page, "/api/seller/shipments");
   await page.getByRole("button", { name: "송장 저장 (2)" }).click();
+  await page.getByRole("button", { name: "송장 저장", exact: true }).click();
   const shippedRes = await shipped;
   const sent = shippedRes.request().postDataJSON().items as { orderId: string; courier: string }[];
   expect(sent.find((x) => x.orderId === a.orderId)?.courier).toBe("LOTTE");
@@ -68,6 +69,7 @@ test("대표자: 송장 저장 → 배송 중 → 배송 완료로 옮겨 가고
   await row.getByRole("checkbox").check();
   const delivered = post(page, "/api/seller/shipments/deliver");
   await page.getByRole("button", { name: "배송 완료 처리 (1)" }).click();
+  await page.getByRole("button", { name: "배송 완료로 바꾸기", exact: true }).click();
   expect((await delivered).status()).toBe(200);
   await expect(page.getByText("1건 배송 완료")).toBeVisible();
   await expect(row).toHaveCount(0);

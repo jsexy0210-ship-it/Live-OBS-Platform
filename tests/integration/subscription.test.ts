@@ -332,6 +332,18 @@ describe("자동결제·재시도·해지", () => {
     expect(await sellerAccessFor(db, seller.id, new Date(t0.getTime() + 7 * DAY + 1000))).toBe("expired");
   });
 
+  it("플랫폼 기본 정책(MA-081)으로 연체 유예 일수·결제 재시도 횟수를 바꾸면 다음 실패부터 그 값을 쓴다", async () => {
+    await db.platformPolicy.createMany({ data: [{ key: "overdueLockDays", intValue: 10 }, { key: "paymentRetryCount", intValue: 2 }] });
+    const provider = new FakeBillingProvider();
+    const { sub } = await paidShop(provider);
+    await declineStored(provider, sub.id);
+    const t0 = new Date(sub.currentPeriodEnd!.getTime() - DAY / 2);
+    await renewDueSubscriptions(db, provider, { now: t0 });
+    expect(await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub.id } })).toMatchObject({ graceUntil: new Date(t0.getTime() + 10 * DAY) });
+    for (let i = 1; i <= 2; i++) await renewDueSubscriptions(db, provider, { now: new Date(t0.getTime() + i * DAY) });
+    expect(await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub.id } })).toMatchObject({ retryCount: 2, nextChargeAt: null });
+  });
+
   it("유예 중에 카드를 바꾸면 바로 다시 결제하고, 기간은 끊긴 데서 이어진다", async () => {
     const provider = new FakeBillingProvider();
     const { sub, ctx, seller } = await paidShop(provider);

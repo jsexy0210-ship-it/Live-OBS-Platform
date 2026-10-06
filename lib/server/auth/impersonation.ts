@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient, Seller } from "@prisma/client";
+import { policyValue } from "../admin/platformPolicy";
 import { writeAudit } from "../audit/log";
 import { forbidden, notFound } from "../authz/errors";
 import { adminCan } from "../authz/permissions";
@@ -73,7 +74,8 @@ export async function startImpersonation(db: PrismaClient, admin: AdminSessionCo
   if (!seller) throw notFound();
   if (seller.status !== "ACTIVE" && seller.status !== "SUSPENDED") return { ok: false as const, reason: "seller_not_viewable" as const };
   const token = IMPERSONATION_PREFIX + generateToken();
-  const expiresAt = new Date(now.getTime() + IMPERSONATION_TTL_MS);
+  // 대신 보기 기본 세션 길이는 플랫폼 기본 정책(MA-081, 기본 30분, 최대 60분)이다.
+  const expiresAt = new Date(now.getTime() + (await policyValue(db, "impersonationMinutes")) * 60_000);
   await db.$transaction(async (tx) => {
     await closeSessions(tx, { adminId: admin.admin.id, expiresAt: { lte: now } }, "expired", now);
     await closeSessions(tx, { adminId: admin.admin.id }, "replaced", now);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useConfirm } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -208,6 +209,7 @@ export default function ReturnsPage() {
 }
 
 function ReturnDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit: boolean; onClose: () => void; onChanged: (text: string) => void | Promise<void> }) {
+  const { confirm } = useConfirm();
   const [d, setD] = useState<Detail | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -248,6 +250,11 @@ function ReturnDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
     setReturning(false);
     await onChanged(done);
     await load();
+  };
+
+  const ask = async (path: string, body: unknown, done: string, c: Parameters<typeof confirm>[0]) => {
+    if (!(await confirm(c))) return;
+    await act(path, body, done);
   };
 
   const preview = d?.fault && d.refundPreview ? d.refundPreview.byFault[d.fault] : null;
@@ -524,7 +531,7 @@ function ReturnDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
           {canEdit && d?.status === "REQUESTED" && (
             <>
               {rejecting ? (
-                <button className="btn btn-out" type="button" disabled={busy || !rejectReason.trim()} onClick={() => void act("reject", { reason: rejectReason }, "신청을 거절했습니다")}>
+                <button className="btn btn-out" type="button" disabled={busy || !rejectReason.trim()} onClick={() => void ask("reject", { reason: rejectReason }, "신청을 거절했습니다", { title: "신청을 거절하시겠습니까?", body: "거절 사유가 구매자에게 전달됩니다.", confirmLabel: "거절", danger: true })}>
                   거절 확정
                 </button>
               ) : (
@@ -532,24 +539,24 @@ function ReturnDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
                   거절
                 </button>
               )}
-              <button className="btn" type="button" disabled={busy || !fault} onClick={() => void act("accept", { fault, pickup }, "신청을 접수했습니다")}>
+              <button className="btn" type="button" disabled={busy || !fault} onClick={() => void ask("accept", { fault, pickup }, "신청을 접수했습니다", { title: "신청을 접수하시겠습니까?", body: "접수하면 구매자에게 알림이 가고 수거가 시작됩니다.", confirmLabel: "신청 접수" })}>
                 접수
               </button>
             </>
           )}
           {canEdit && d?.status === "ACCEPTED" && (
-            <button className="btn" type="button" disabled={busy} onClick={() => void act("receive", {}, "입고를 확인했습니다")}>
+            <button className="btn" type="button" disabled={busy} onClick={() => void ask("receive", {}, "입고를 확인했습니다", { title: "상품이 도착했는지 확인하시겠습니까?", body: "반품 상품을 받은 것으로 바꾸고 상품 확인 단계로 넘어갑니다.", confirmLabel: "도착 확인" })}>
               입고 확인
             </button>
           )}
           {canEdit && d?.status === "RECEIVED" && (
-            <button className="btn btn-out" type="button" disabled={busy} onClick={() => void act("inspect", { result: inspResult, note: inspNote, restock }, "상품 확인 결과를 저장했습니다")}>
+            <button className="btn btn-out" type="button" disabled={busy} onClick={() => void ask("inspect", { result: inspResult, note: inspNote, restock }, "상품 확인 결과를 저장했습니다", { title: "상품 확인 결과를 저장하시겠습니까?", body: "저장하면 환불 또는 반송 단계로 넘어갑니다.", confirmLabel: "결과 저장" })}>
               상품 확인 결과 저장
             </button>
           )}
           {canEdit && d?.status === "RECEIVED" && d.inspectionResult && d.inspectionResult !== "OK" &&
             (returning ? (
-              <button className="btn" type="button" disabled={busy || !rejectReason.trim()} onClick={() => void act("reject-inspected", { reason: rejectReason }, "반송 · 거절로 처리했습니다")}>
+              <button className="btn" type="button" disabled={busy || !rejectReason.trim()} onClick={() => void ask("reject-inspected", { reason: rejectReason }, "반송 · 거절로 처리했습니다", { title: "반송 · 거절로 처리하시겠습니까?", body: "환불·교환은 진행되지 않고 구매자에게 알림이 갑니다.", confirmLabel: "반송 · 거절", danger: true })}>
                 반송 · 거절 확정
               </button>
             ) : (
@@ -560,11 +567,11 @@ function ReturnDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
           {canEdit && d?.status === "RECEIVED" && d.kind === "EXCHANGE" && d.inspectionResult === "OK" && (
             <>
               {!d.exchangeHeldAt && (
-                <button className="btn btn-out" type="button" disabled={busy} onClick={() => void act("hold", {}, "재입고 뒤 발송으로 보류했습니다")}>
+                <button className="btn btn-out" type="button" disabled={busy} onClick={() => void ask("hold", {}, "재입고 뒤 발송으로 보류했습니다", { title: "재입고 뒤 발송으로 보류하시겠습니까?", body: "재고가 들어온 뒤 교환 상품을 보냅니다.", confirmLabel: "보류" })}>
                   재입고 뒤 발송
                 </button>
               )}
-              <button className="btn btn-out" type="button" disabled={busy} onClick={() => void act("convert", {}, "환불로 전환했습니다")}>
+              <button className="btn btn-out" type="button" disabled={busy} onClick={() => void ask("convert", {}, "환불로 전환했습니다", { title: "환불로 바꾸시겠습니까?", body: "교환 대신 반품 환불로 바꿉니다. 바꾼 뒤에는 교환 상품을 보낼 수 없습니다.", confirmLabel: "환불로 바꾸기", danger: true })}>
                 환불로 전환
               </button>
             </>
@@ -574,13 +581,13 @@ function ReturnDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
               className="btn"
               type="button"
               disabled={busy || !preview || preview.blocked || d.queueVersion === null || d.inspectionResult !== "OK"}
-              onClick={() => void act("refund", { expectedVersion: d.queueVersion, expectedRefundAmount: preview!.refundAmount, confirmOpened }, "환불을 처리했습니다")}
+              onClick={() => void ask("refund", { expectedVersion: d.queueVersion, expectedRefundAmount: preview!.refundAmount, confirmOpened }, "환불을 처리했습니다", { title: `${won(preview!.refundAmount)}을 환불하시겠습니까?`, body: "환불하면 되돌릴 수 없습니다. 환불 금액을 다시 입력해 주십시오.", confirmLabel: "환불", danger: true, retype: { expected: String(preview!.refundAmount), label: "환불 금액" } })}
             >
               {busy ? "처리 중" : "환불"}
             </button>
           )}
           {canEdit && d?.status === "RECEIVED" && d.kind === "EXCHANGE" && (
-            <button className="btn" type="button" disabled={busy || tracking.trim().length < 4 || d.inspectionResult !== "OK"} onClick={() => void act("exchange", { courier, trackingNumber: tracking }, "교환 상품을 발송 처리했습니다")}>
+            <button className="btn" type="button" disabled={busy || tracking.trim().length < 4 || d.inspectionResult !== "OK"} onClick={() => void ask("exchange", { courier, trackingNumber: tracking }, "교환 상품을 발송 처리했습니다", { title: "교환 상품 발송을 완료 처리하시겠습니까?", body: "입력한 택배사·송장 번호로 발송한 것으로 기록하고 구매자에게 알립니다.", confirmLabel: "발송 완료" })}>
               교환 발송
             </button>
           )}
