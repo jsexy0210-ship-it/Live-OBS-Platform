@@ -559,7 +559,8 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
         {me.impersonation && <ImpersonationBar shop={me.shop.name} imp={me.impersonation} />}
         <div className="cs-wrap">
           <aside className="lnb" aria-label="파트너스 메뉴">
-            {menu.map((g) => (
+            {/* 상단 유틸 묶음(공지 · 문의·도우미)은 그 화면일 때만 그린다(서랍에서 아래 유틸 링크와 겹치지 않게) */}
+            {menu.filter((g) => !g.util || g.key === shown?.key).map((g) => (
               <section key={g.key} className={`lnb-sec${g.key === shown?.key ? " on" : ""}`}>
                 <strong className="lnb-h">{g.label}</strong>
                 {g.items.filter((n) => !n.hidden).map((n) =>
