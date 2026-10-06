@@ -291,7 +291,11 @@ body {
 }
 .p-table {
   table-layout: fixed;
-  min-width: 940px;
+}
+@media (min-width: 768px) {
+  .p-table {
+    min-width: 940px;
+  }
 }
 .p-table td {
   overflow: hidden;
