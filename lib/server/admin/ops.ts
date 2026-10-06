@@ -36,14 +36,24 @@ export async function listLiveBroadcasts(db: PrismaClient, admin: AdminSessionCo
     where: { status: "LIVE" },
     orderBy: [{ startedAt: "desc" }, { id: "desc" }],
     take: 200,
-    select: { id: true, title: true, startedAt: true, sellerId: true, seller: { select: { shopName: true, slug: true, status: true } } },
+    select: { id: true, title: true, startedAt: true, sellerId: true, layoutAspect: true, seller: { select: { shopName: true, slug: true, status: true } } },
   });
   const ids = sessions.map((s) => s.id);
-  const [byStatus, orders] = await Promise.all([
+  const sellerIds = [...new Set(sessions.map((s) => s.sellerId))];
+  const [byStatus, orders, failed, approved] = await Promise.all([
     db.queueItem.groupBy({ by: ["broadcastSessionId", "status"], where: { broadcastSessionId: { in: ids } }, _count: { _all: true } }),
     db.queueItem.groupBy({ by: ["broadcastSessionId", "orderId"], where: { broadcastSessionId: { in: ids }, status: { not: "CANCELLED" } } }),
+    // 결제대행사 상태: 최근 24시간 결제 실패가 있고 그 뒤 성공이 없으면 「결제 연결 오류」(MA-031 게이트웨이 상태와 같은 기준)
+    db.payment.groupBy({ by: ["sellerId"], where: { sellerId: { in: sellerIds }, status: "FAILED", updatedAt: { gt: new Date(now.getTime() - 24 * 60 * 60 * 1000) } }, _count: { _all: true }, _max: { updatedAt: true } }),
+    db.payment.groupBy({ by: ["sellerId"], where: { sellerId: { in: sellerIds }, approvedAt: { not: null } }, _max: { approvedAt: true } }),
   ]);
-  const seen = await overlaySeen(db, [...new Set(sessions.map((s) => s.sellerId))], now);
+  const seen = await overlaySeen(db, sellerIds, now);
+  const paymentError = (sellerId: string) => {
+    const f = failed.find((r) => r.sellerId === sellerId);
+    if (!f?._max.updatedAt) return false;
+    const ok = approved.find((r) => r.sellerId === sellerId)?._max.approvedAt;
+    return !ok || f._max.updatedAt > ok;
+  };
   const items = sessions.map((s) => {
     const count = (status: string) => byStatus.find((r) => r.broadcastSessionId === s.id && r.status === status)?._count._all ?? 0;
     return {
@@ -57,6 +67,8 @@ export async function listLiveBroadcasts(db: PrismaClient, admin: AdminSessionCo
       queue: { waiting: count("WAITING"), opening: count("OPENING"), done: count("DONE"), cancelled: count("CANCELLED") },
       orders: orders.filter((o) => o.broadcastSessionId === s.id).length,
       overlay: seen(s.sellerId),
+      layoutAspect: s.layoutAspect,
+      paymentError: paymentError(s.sellerId),
     };
   });
   return { at: now, items };

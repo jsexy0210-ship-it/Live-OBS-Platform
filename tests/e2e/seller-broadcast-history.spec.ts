@@ -53,6 +53,8 @@ test("방송을 끝낸 뒤 이력 목록에서 찾아 상세로 들어가 요약
   const row = page.getByTestId("bh-list").locator("tr", { hasText: title });
   await expect(row).toContainText("종료");
   await expect(row.locator("td").nth(3)).toHaveText("2");
+  // 레이아웃 열: 방송 중 방송 화면이 레이아웃을 요청한 적이 없으면 「—」
+  await expect(row.getByTestId("bh-layout")).toHaveText("—");
   // 제목이 첫 열, 일시는 「2026.10.05 22:25」 형식
   await expect(page.locator("table.tbl thead th").first()).toHaveText("제목");
   await expect(row.locator("td").first().getByTestId("bh-link")).toHaveText(title);
@@ -106,6 +108,12 @@ test("방송 기록: 처음에는 최근 1개월(주소는 깨끗함), 기간을
   await page.getByLabel("종료일").fill("");
   await page.getByRole("button", { name: "검색" }).click();
   await expect(page).toHaveURL(/from=&to=|to=&from=/);
+  // 레이아웃 필터: 세로형으로 걸러 검색하면 주소에 남고, 초기화하면 전체로 돌아온다
+  await page.getByRole("combobox", { name: "레이아웃" }).selectOption("9x16");
+  await page.getByRole("button", { name: "검색" }).click();
+  await expect(page).toHaveURL(/layout=9x16/);
+  await page.getByRole("button", { name: "초기화" }).click();
+  await expect.poll(() => new URL(page.url()).search).toBe("");
   // 업무 큐 링크(?period=all)로 들어오면 기간 칸이 비어 있다(전체 기간)
   await page.goto("/seller/broadcasts?period=all");
   await expect(page.getByLabel("시작일")).toHaveValue("");

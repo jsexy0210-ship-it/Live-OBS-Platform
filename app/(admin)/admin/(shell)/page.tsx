@@ -6,8 +6,10 @@ import { PageHead } from "../../../../components/admin-ui";
 import { ErrorState, LoadingRows } from "../../../../components/seller/States";
 import "../../../../components/seller/stats/stats.css";
 import { BarChart, Kpis, bucketLabel, count, pct, type Kpi } from "../../../../components/seller/stats/parts";
+import { adminCan } from "../../../../lib/server/authz/permissions";
+import { allPeriodHref } from "../../../../lib/client/filterDefaults";
 import { adminApi } from "../_components/api";
-import { AdminTopbar } from "../_components/AdminShell";
+import { AdminTopbar, useAdmin } from "../_components/AdminShell";
 import { dayTime, won } from "../_components/partners";
 
 // MA-001 통합 대시보드(모든 마스터 역할, 숫자만·조회만). 맨 위 「오늘 처리할 일」(GET /api/admin/today-tasks)은 숫자를 누르면 조건이 걸린 목록으로 간다.
@@ -94,11 +96,39 @@ const TASK_LABEL: Record<TaskKey, string> = {
   signupPending: "가입 신청 처리 대기",
   paymentFailed: "결제 실패",
   refundRequested: "환불 요청",
-  inquiryOpen: "답변 대기 문의",
+  inquiryOpen: "파트너스 문의",
   pgError: "카드 결제 연결 오류",
   automationFailed: "자동 연결 실패",
   incidentCritical: "바로 확인할 문제",
 };
+
+// 「오늘 처리할 일」 숫자 링크: 업무 큐라 기간 전체로 들어간다(MASTER 공통 규칙, period=all). 결제 실패는 청구 화면의 최대 조회 기간(366일) 안에서 연다.
+const KST_DAY = 86_400_000;
+const kstDay = (ms: number) => new Date(ms + 9 * 3_600_000).toISOString().slice(0, 10);
+function taskHref(key: TaskKey, fallback: string): string {
+  switch (key) {
+    case "signupPending":
+      return "/admin/partners/applications";
+    case "paymentFailed":
+      return `/admin/billing/invoices?failedOnly=1&from=${kstDay(Date.now() - 365 * KST_DAY)}&to=${kstDay(Date.now())}`;
+    case "refundRequested":
+      return allPeriodHref("/admin/billing/refunds", { status: "REQUESTED" });
+    case "inquiryOpen":
+      return allPeriodHref("/admin/support/inquiries", { status: "OPEN" });
+    case "pgError":
+      return allPeriodHref("/admin/settlement/pg");
+    case "automationFailed":
+      return allPeriodHref("/admin/ops/automation", { filter: "failed" });
+    default:
+      return fallback;
+  }
+}
+// 「10/5 (월) 15:45」
+const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
+function shortAt(iso: string): string {
+  const k = new Date(new Date(iso).getTime() + 9 * 3_600_000);
+  return `${k.getUTCMonth() + 1}/${k.getUTCDate()} (${WEEK[k.getUTCDay()]}) ${String(k.getUTCHours()).padStart(2, "0")}:${String(k.getUTCMinutes()).padStart(2, "0")}`;
+}
 
 function TodayTasks({ tick }: { tick: number }) {
   const [state, load] = useApi<Tasks>("/api/admin/today-tasks", tick);
@@ -106,6 +136,9 @@ function TodayTasks({ tick }: { tick: number }) {
     <Panel title="오늘 처리할 일" state={state} retry={() => void load()} id="today-tasks">
       {(d) => (
         <>
+          <span className="t-c1 c-alt" data-testid="today-tasks-at">
+            숫자를 누르면 해당 조건이 걸린 목록으로 이동합니다 · {shortAt(d.at)} 집계
+          </span>
           {d.total === 0 && (
             <div className="card pad t-l2 c-alt" role="status" data-testid="today-tasks-empty">
               지금 처리할 일이 없습니다.
@@ -113,7 +146,7 @@ function TodayTasks({ tick }: { tick: number }) {
           )}
           <div className="stat-row" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
             {d.items.map((t) => (
-              <Link key={t.key} href={t.key === "signupPending" ? "/admin/partners/applications" : t.href} className="card pad col" style={{ gap: 4, textDecoration: "none", color: "inherit" }} data-testid={`today-task-${t.key}`} aria-label={`${TASK_LABEL[t.key]} ${t.count}건`}>
+              <Link key={t.key} href={taskHref(t.key, t.href)} className="card pad col" style={{ gap: 4, textDecoration: "none", color: "inherit" }} data-testid={`today-task-${t.key}`} aria-label={`${TASK_LABEL[t.key]} ${t.count}건`}>
                 <span className="t-l2 c-alt">{TASK_LABEL[t.key]}</span>
                 <span className={`t-h2 ${t.count > 0 ? "c-neg" : ""}`}>{n(t.count, "건")}</span>
               </Link>
@@ -122,6 +155,94 @@ function TodayTasks({ tick }: { tick: number }) {
         </>
       )}
     </Panel>
+  );
+}
+
+// ─── 인프라 · 비용 요약 카드(최고관리자만, GET /api/admin/infra/summary) ───
+type InfraSummary = {
+  checkedAt: string;
+  servers: { instance: string; takenAt: string; diskPct: number | null; memoryPct: number | null }[];
+  cost: { month: string; estimated: boolean; accruedWon: number | null; projectedWon: number | null };
+  warnings: { capacity: number; limitStopped: number; expiring30: number; expiring7: number; authError: number; total: number };
+};
+const WARN_LABEL: [keyof InfraSummary["warnings"], string][] = [
+  ["capacity", "용량 기준 초과"],
+  ["limitStopped", "한도 정지 기능"],
+  ["authError", "외부 연결 인증 오류"],
+  ["expiring7", "외부 연결 만료 7일 이내"],
+  ["expiring30", "외부 연결 만료 30일 이내"],
+];
+function InfraBar({ label, pct }: { label: string; pct: number | null }) {
+  const level = pct === null ? "" : pct >= 90 ? "var(--neg-text, #c0262c)" : pct >= 80 ? "var(--cau-text, #b25e00)" : "var(--wds-primary-normal, #0f766e)";
+  return (
+    <span className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
+      <span className="t-c1 c-alt" style={{ width: 52 }}>{label}</span>
+      <span style={{ width: 90, height: 8, borderRadius: 4, background: "var(--wds-fill-normal, #eee)", overflow: "hidden", display: "inline-block" }} aria-hidden="true">
+        <i style={{ display: "block", height: "100%", width: `${Math.min(100, pct ?? 0)}%`, background: level }} />
+      </span>
+      <span>{pct === null ? "측정 전" : `${pct}%`}</span>
+    </span>
+  );
+}
+function InfraCard({ tick }: { tick: number }) {
+  const [state, setState] = useState<Fetch<InfraSummary>>({ kind: "loading" });
+  const reqId = useRef(0);
+  const load = useCallback(async () => {
+    const id = ++reqId.current;
+    const r = await adminApi<InfraSummary>("/api/admin/infra/summary");
+    if (id !== reqId.current) return;
+    setState((prev) => (r.ok ? { kind: "ok", data: r.data } : prev.kind === "ok" ? prev : { kind: "error" }));
+  }, []);
+  // 1분마다 갱신(카드 정본: 「1분마다 갱신」). 새로 고침 버튼(tick)도 다시 부른다.
+  useEffect(() => {
+    void load();
+    const t = setInterval(() => void load(), 60_000);
+    return () => clearInterval(t);
+  }, [load, tick]);
+  return (
+    <section className="col" style={{ gap: 10 }} aria-label="인프라 · 비용" data-testid="infra-card">
+      <h2 className="t-hl1">인프라 · 비용</h2>
+      <span className="t-c1 c-alt">최고관리자에게만 보입니다 · 1분마다 갱신 · 카드를 누르면 「인프라 · 비용」으로 갑니다</span>
+      {state.kind === "loading" && (
+        <div className="card">
+          <LoadingRows rows={2} />
+        </div>
+      )}
+      {state.kind === "error" && (
+        <div className="card">
+          <ErrorState title="인프라 · 비용을 불러오지 못했습니다." onRetry={() => void load()} />
+        </div>
+      )}
+      {state.kind === "ok" && (
+        <Link href="/admin/ops/infra" className="card pad" style={{ textDecoration: "none", color: "inherit", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16 }}>
+          <div className="col" style={{ gap: 6 }}>
+            <span className="t-l2 c-alt">서버 디스크 · 메모리</span>
+            {state.data.servers.length === 0 && <span className="c-alt">측정 전</span>}
+            {state.data.servers.map((sv) => (
+              <div key={sv.instance} className="col" style={{ gap: 2 }}>
+                <b>{sv.instance}</b>
+                <InfraBar label="디스크" pct={sv.diskPct} />
+                <InfraBar label="메모리" pct={sv.memoryPct} />
+              </div>
+            ))}
+            <span className="t-c1 c-alt">디스크 · 메모리 순 · 마지막 보고 {dayTime(state.data.servers[0]?.takenAt ?? state.data.checkedAt).slice(11)}</span>
+          </div>
+          <div className="col" style={{ gap: 4 }}>
+            <span className="t-l2 c-alt">이번 달 요금 (추정)</span>
+            <span className="t-h2" data-testid="infra-card-cost">{state.data.cost.accruedWon === null ? "측정 전" : won(state.data.cost.accruedWon)}</span>
+            <span className="t-c1 c-alt">월말 예상 {state.data.cost.projectedWon === null ? "-" : won(state.data.cost.projectedWon)} · 승인 월 비용 안</span>
+          </div>
+          <div className="col" style={{ gap: 4 }}>
+            <span className="t-l2 c-alt">경고</span>
+            <span className={`t-h2 ${state.data.warnings.total > 0 ? "c-neg" : ""}`} data-testid="infra-card-warnings">{n(state.data.warnings.total, "건")}</span>
+            {WARN_LABEL.filter(([k]) => state.data.warnings[k] > 0).map(([k, label]) => (
+              <span key={k} className="t-c1">{label} {state.data.warnings[k]}</span>
+            ))}
+            <span className="t-c1 c-alt">기준 초과 · 한도 정지 · 외부 연결 만료 30일 · 7일 전 · 인증 오류</span>
+          </div>
+        </Link>
+      )}
+    </section>
   );
 }
 
@@ -277,6 +398,8 @@ function SubscriptionRevenue({ tick }: { tick: number }) {
 }
 
 export default function AdminHome() {
+  const { me } = useAdmin();
+  const isSuper = adminCan(me.role, "infra.manage");
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [tick, setTick] = useState(0);
   const [days, setDays] = useState<number>(30);
@@ -308,6 +431,7 @@ export default function AdminHome() {
         />
         <div className="col" style={{ gap: 24 }}>
           <TodayTasks tick={tick} />
+          {isSuper && <InfraCard tick={tick} />}
           {!d ? (
             <div className="card">
               {state.kind === "loading" && <LoadingRows rows={4} />}

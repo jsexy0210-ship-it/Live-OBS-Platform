@@ -10,8 +10,10 @@ import { externalProvider } from "../external/provider";
 import { MESSAGE_JOB_NAME, runMessageJobs } from "../messaging/jobs";
 import { purgeFunnelDaily, purgeFunnelSeen } from "../stats/funnel";
 import { recoverStuckBulkCommits } from "../shop-bulk-io/recover";
+import { settleAllLiveSellers } from "../rewards/settle";
 import { recalcMonthlyGrades } from "../shop-member-grades/service";
 import { rejectExpiredSupplements } from "../sellers/applications";
+import { sendDecisionMails } from "../sellers/decisionMails";
 import { processDueMemberMessages } from "../shop-member-messages/service";
 import { collectInfraSnapshot } from "../ops/infra";
 import { evaluateInfraAlerts } from "../ops/infraAlerts";
@@ -55,11 +57,15 @@ export const SCHEDULED_JOBS: ScheduledJob[] = [
   { name: "external_webhook_event.process", run: async (_tx, now) => (await processWebhookEvents(prisma, externalProvider(), { now })).processed },
   // 회원 등급 자동 재산정: 켠 쇼핑몰만, 쇼핑몰마다 달(KST)에 한 번(shop-member-grades)
   { name: "member_grade.recalc_monthly", run: (_tx, now) => recalcMonthlyGrades(prisma, now) },
+  // 실제 지급이 켜진 쇼핑몰의 대기 적립 원장 지급 처리(rewards/settle.ts, 회원 단위 트랜잭션·멱등)
+  { name: "reward.settle_pending", run: (_tx, now) => settleAllLiveSellers(prisma, now) },
   // 전환 단계 통계: 중복 제거 표 8일·일 집계 400일 지난 것 삭제(stats/funnel.ts)
   { name: "product_funnel_seen.purge_old", run: (tx, now) => purgeFunnelSeen(tx, now) },
   { name: "product_funnel_daily.purge_old", run: (tx, now) => purgeFunnelDaily(tx, now) },
   // 가입 신청 보완 기한(7일)이 지난 신청 자동 반려(sellers/applications.ts, 로그 추적 seller.supplement_expired)
   { name: "seller_application.reject_expired_supplements", run: (tx, now) => rejectExpiredSupplements(tx, now) },
+  // 파트너스 가입 승인·반려 안내 메일(EM-101·102, sellers/decisionMails.ts). 공급자·플랫폼 사업자 정보가 없으면 보내지 않는다.
+  { name: "seller_application.send_decision_mails", run: (_tx, now) => sendDecisionMails(prisma, now) },
   // 회원 대상 발송: 시각이 된 예약을 기록으로 바꾼다(shop-member-messages, 실제 발송 채널은 아직 없음)
   // 일괄 상품 등록 확정이 서버 중단으로 10분 넘게 COMMITTING에 머문 작업을 마감한다(shop-bulk-io/recover.ts)
   { name: "bulk_job.recover_stuck_commit", run: (_tx, now) => recoverStuckBulkCommits(prisma, now) },
