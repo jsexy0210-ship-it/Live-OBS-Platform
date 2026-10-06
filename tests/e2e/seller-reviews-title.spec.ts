@@ -35,7 +35,6 @@ test("SA-048 리뷰 표와 행 정보가 1440·1024·390 화면에서 보인다"
     for (const cell of [".rv-select", ".rv-item", ".rv-rating", ".rv-content", ".rv-status", ".rv-actions"]) {
       await expect(row.locator(cell)).toBeVisible();
     }
-    await expect(row.locator(".rv-select input")).toBeDisabled();
     if (width !== 390) {
       await expect(table.getByRole("columnheader")).toHaveText(["", "상품 · 작성자", "별점", "내용 · 작성일", "상태", "관리"]);
     } else {

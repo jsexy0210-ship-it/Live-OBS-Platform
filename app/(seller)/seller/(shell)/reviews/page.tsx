@@ -216,7 +216,7 @@ export default function ReviewsPage() {
                   <table className="rv-table">
                     <thead>
                       <tr>
-                        <th scope="col" className="rv-select"><input type="checkbox" disabled aria-label="선택 및 일괄 처리 미지원" /></th>
+                        <th scope="col" className="rv-select" />
                         <th scope="col">상품 · 작성자</th>
                         <th scope="col">별점</th>
                         <th scope="col">내용 · 작성일</th>
@@ -235,7 +235,7 @@ export default function ReviewsPage() {
                             if (e.currentTarget === e.target && e.key === "Enter") setOpenId(r.id);
                           }}
                         >
-                          <td className="rv-select"><input type="checkbox" disabled aria-label="선택 및 일괄 처리 미지원" /></td>
+                          <td className="rv-select" />
                           <td className="rv-item">
                             <span className="t-l2 fw6 ell">{r.productName}</span>
                             <span className="t-c1 c-alt">{r.author}{r.grade ? ` (${r.grade})` : ""}</span>
