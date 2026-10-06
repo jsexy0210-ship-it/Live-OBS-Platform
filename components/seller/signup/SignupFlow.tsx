@@ -5,7 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { ConfirmProvider } from "../../admin-ui";
 import { kstToday } from "../IdentityCheck";
-import { AuthFrame, IdentityUnavailable } from "../PartnersAuth";
+import { IdentityUnavailable } from "../PartnersAuth";
+import { PublicFrame } from "../../public/PublicFrame";
 
 // PF-007 파트너스 가입 신청 단계 화면(1 약관 동의 · 2 본인확인 · 3 가입 정보 · 4 사업자 정보 · 5 신청 완료).
 // 단계마다 주소가 있고(/seller/signup · /verify · /account · /business · /done), 이 틀(layout)이 단계 사이에서 입력값을 들고 있다.
@@ -253,11 +254,10 @@ function SignupFrame({ children }: { children: React.ReactNode }) {
     if (notice) noticeRef.current?.focus();
   }, [notice]);
   return (
-    <AuthFrame wide>
-      <div className="col" style={{ gap: 4 }}>
-        <h1 className="t-t3">파트너스 가입 신청</h1>
-        <span className="t-l2 c-alt">대표자 본인 확인을 하고 사업자 정보를 적으면 바로 확인해요.</span>
-      </div>
+    <PublicFrame>
+      {/* 정본 PF-007: 공개 머리 아래 가운데 640 본문(카드 없음) */}
+      <section className="pf-signup">
+      <h1 className="t-t1">파트너스 가입 신청</h1>
       {unavailable ? (
         <IdentityUnavailable action="가입을 신청할" tone="public" />
       ) : (
@@ -291,6 +291,7 @@ function SignupFrame({ children }: { children: React.ReactNode }) {
           {children}
         </>
       )}
-    </AuthFrame>
+      </section>
+    </PublicFrame>
   );
 }

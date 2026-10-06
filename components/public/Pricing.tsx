@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PublicFrame } from "./PublicFrame";
 import type { LandingPlan } from "./Landing";
+import { AUTOMATION_PRICE, FREE_RECONNECT_DAYS, REINSTALL_PRICE } from "../../lib/server/automation/config";
 
 // PF-003 요금 안내(디자인 PF-003). 금액·체험 일수는 서버 요금제 값만 쓴다(하드코딩 금지).
 // 플랜 안내 문구는 플랜 코드별로 둔다. 서버에 없는 플랜은 보여 주지 않는다.
@@ -10,6 +11,10 @@ const COPY: Record<string, string[]> = {
   OVERLAY_ONLY: ["OBS 방송 화면(세로 · 가로 템플릿)", "운영 중인 다른 쇼핑몰의 주문을 자동으로 가져와요", "실시간 주문 알림 · 주문대기(결제가 끝난 주문 목록) 표시", "직원 계정 · 권한"],
   INTEGRATED: ["오버레이 전용의 모든 기능", "ONQ 쇼핑몰 · 상품 · 주문 운영", "결제 · 배송 · 송장 · 적립금", "영수증 · 세금계산서 발행"],
 };
+
+// 정본 PF-003: 쇼핑몰 통합 카드에만 「추천」 배지·강조 테두리
+const RECOMMENDED = "INTEGRATED";
+const DISCOUNT_NOTICE = "지금은 런칭 할인가예요. 할인이 끝나는 날짜는 정해지면 30일 전에 알려 드리고, 바뀌는 날짜와 금액은 결제 전 화면과 구독 관리 화면에서 다시 보여 드려요.";
 
 const QA = [
   ["언제 결제되나요?", "체험이 있는 이용권은 체험이 끝난 다음 날, 없는 이용권은 구독을 시작한 날 첫 결제가 되고 그 뒤로 매달 같은 날에 결제돼요. 결제일은 구독 · 결제 메뉴에서 볼 수 있어요."],
@@ -21,18 +26,25 @@ export function Pricing({ plans }: { plans: LandingPlan[] }) {
   const shown = plans.filter((p) => COPY[p.code]);
   return (
     <PublicFrame active="/pricing">
-      <section className="pf-sec">
+      <section className="pf-sec pf-pricing">
         <h1 className="t-d2">요금</h1>
-        <p className="t-b1 c-neu">판매 수수료는 없어요 · 모두 부가세 포함</p>
+        <p className="t-b1 c-neu">두 가지 이용권 · 판매 수수료는 없어요 · 모두 부가세 포함</p>
         {shown.length > 0 ? (
           <div className="pf-plans pf-plans-wide">
             {shown.map((p) => {
               const discounted = p.listPrice > p.salePrice;
               return (
-                <div className="card pf-plan" key={p.code} data-plan={p.code}>
-                  <span className="t-hl1">{p.name}</span>
+                <div className={`card pf-plan${p.code === RECOMMENDED ? " pf-plan-rec" : ""}`} key={p.code} data-plan={p.code}>
+                  {p.code === RECOMMENDED ? (
+                    <div className="row between">
+                      <span className="t-hl1">{p.name}</span>
+                      <span className="bdg b-info">추천</span>
+                    </div>
+                  ) : (
+                    <span className="t-hl1">{p.name}</span>
+                  )}
                   {discounted && <span className="t-l2 c-alt num pf-strike">정가 월 {won(p.listPrice)}</span>}
-                  <span className="t-t1 num">
+                  <span className="t-d1 num pf-price">
                     {won(p.salePrice)}
                     <span className="t-l1 c-alt"> / 월 · 부가세 포함</span>
                   </span>
@@ -46,7 +58,7 @@ export function Pricing({ plans }: { plans: LandingPlan[] }) {
                       <li key={c}>{c}</li>
                     ))}
                   </ul>
-                  <Link className="btn btn-block" href="/seller/signup">
+                  <Link className="btn btn-xl btn-block" href="/seller/signup">
                     {p.name} 요금제로 시작하기
                   </Link>
                 </div>
@@ -58,10 +70,32 @@ export function Pricing({ plans }: { plans: LandingPlan[] }) {
             요금을 지금 불러오지 못했어요. 잠시 뒤 다시 확인해 주세요.
           </p>
         )}
-        <div className="pf-faq pf-faq-wide">
+        {shown.length > 0 && (
+          <div className="pf-extra">
+            {shown.some((p) => p.listPrice > p.salePrice) && (
+              <div className="msg msg-info t-l2" style={{ display: "block" }}>
+                {DISCOUNT_NOTICE}
+              </div>
+            )}
+            <div className="card row pf-auto">
+              <div className="col pf-auto-t">
+                <span className="t-hl2">자동 연결 (선택)</span>
+                <span className="t-l2 c-neu">외부 쇼핑몰 · 웹훅 · OBS 방송 화면 연결을 대신 해 드려요 · 직접 설정은 무료예요</span>
+              </div>
+              <div className="col pf-auto-p">
+                <span className="t-h2 num">{won(AUTOMATION_PRICE)}</span>
+                <span className="t-c1 c-alt">1회 · 부가세 포함 · 월 구독료와 별도</span>
+              </div>
+              <span className="t-c1 c-alt pf-auto-n">
+                테스트 주문이 방송 화면에 표시되지 않으면 전액 환불 · 완료 뒤 {FREE_RECONNECT_DAYS}일 동안 같은 쇼핑몰 · 같은 PC는 무료로 재설치 · 그 밖의 재설치 {won(REINSTALL_PRICE)}
+              </span>
+            </div>
+          </div>
+        )}
+        <div className="pf-faq pf-faq-wide pf-faq-c">
           <h2 className="t-t3">요금 · 결제 질문</h2>
-          {QA.map(([q, a]) => (
-            <details key={q}>
+          {QA.map(([q, a], i) => (
+            <details key={q} open={i === 0}>
               <summary className="t-hl2">{q}</summary>
               <p className="t-b2 c-neu">{a}</p>
             </details>
