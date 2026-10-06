@@ -71,7 +71,7 @@ export default function RefundsPage() {
     <>
       <AdminTopbar crumb="구독·요금 › 환불 요청" />
       <main className="main">
-        <PageHead title="환불 요청" />
+        <PageHead description="환불 요청과 처리 상태를 조회합니다. 승인은 최고관리자만 할 수 있습니다." title="환불 요청" />
         <div className="col" style={{ gap: 20 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
             {[

@@ -74,7 +74,7 @@ export default function AuditDetailPage() {
     <>
       <AdminTopbar crumb="관리자 › 로그 추적 › 로그 상세" />
       <main className="main">
-        <PageHead
+        <PageHead description="작업 시각, 처리 주체와 변경 내용을 확인합니다."
           title={l ? actionLabel(l.action) : "로그 상세"}
           actions={
             <button className="btn btn-out" type="button" onClick={back}>로그 추적</button>

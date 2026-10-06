@@ -442,7 +442,7 @@ export default function AdminHome() {
     <>
       <AdminTopbar crumb="홈 › 통합 대시보드" />
       <main className="main">
-        <PageHead
+        <PageHead description="오늘 처리할 일과 파트너스·주문·구독 현황을 확인합니다."
           title="통합 대시보드"
           actions={
             <>

@@ -96,7 +96,7 @@ function Inquiries() {
     <>
       <AdminTopbar crumb="고객지원 › 파트너스 문의" />
       <main className="main">
-        <PageHead title="파트너스 문의" />
+        <PageHead description="파트너스 문의를 조건별로 조회하고 답변이 필요한 문의를 확인합니다." title="파트너스 문의" />
         <div className="col" style={{ gap: 20 }}>
           <SearchBox onSearch={search} onReset={reset} busy={state.kind === "loading"}>
             <SearchRow label="상태">

@@ -106,7 +106,7 @@ export default function InquiryDetailPage() {
     <>
       <AdminTopbar crumb="고객지원 › 파트너스 문의 › 문의 상세" />
       <main className="main">
-        <PageHead
+        <PageHead description="문의 내용과 진단 정보를 확인하고 답변과 처리 이력을 관리합니다."
           title={inq ? inq.title : "문의 상세"}
           actions={
             <button className="btn btn-out" type="button" onClick={back}>목록</button>

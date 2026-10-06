@@ -75,7 +75,7 @@ export default function BrandingSettingsPage() {
     <>
       <AdminTopbar crumb="설정 › 파비콘·공유 카드" />
       <main className="main">
-        <PageHead title="파비콘 · 공유 카드" />
+        <PageHead description="마스터·파트너스 관리자의 파비콘과 공유 카드 이미지를 설정합니다." title="파비콘 · 공유 카드" />
         <div className="msg msg-info" role="note">
           <span>마스터 관리자와 파트너스 관리자에 각각 넣습니다 · 대상을 고른 뒤 바꿔 주십시오</span>
         </div>

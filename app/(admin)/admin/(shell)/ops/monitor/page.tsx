@@ -31,7 +31,7 @@ export default function OpsMonitorPage() {
     <>
       <AdminTopbar crumb="운영 › 실시간 감시" />
       <main className="main">
-        <PageHead
+        <PageHead description="서비스 상태와 결제 결과 확인 대기, 자동 작업의 실행 상태를 확인합니다."
           title="실시간 감시"
           actions={
             <button className="btn btn-out" type="button" onClick={() => void reload()}>

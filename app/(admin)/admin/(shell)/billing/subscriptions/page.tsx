@@ -93,7 +93,7 @@ export default function SubscriptionsPage() {
     <>
       <AdminTopbar crumb="구독·요금 › 구독 현황" />
       <main className="main">
-        <PageHead title="구독 현황" />
+        <PageHead description="파트너스의 이용 단계와 구독 기간, 다음 결제 상태를 조회합니다." title="구독 현황" />
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
           {(["trial", "paid", "grace", "expired"] as Access[]).map((a) => (
             <div key={a} className="card pad col" style={{ gap: 4 }}>

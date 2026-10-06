@@ -51,7 +51,7 @@ export default function SellerActivityPage() {
     <>
       <AdminTopbar crumb="운영 › 주문 · 오버레이 접속" />
       <main className="main">
-        <PageHead title="주문 · 오버레이 접속" />
+        <PageHead description="파트너스별 주문 수와 방송 화면 접속 상태를 확인합니다." title="주문 · 오버레이 접속" />
         <div className="col" style={{ gap: 20 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
             {[

@@ -32,7 +32,7 @@ export default function AdminNotificationsPage() {
     <>
       <AdminTopbar crumb="알림 센터" />
       <main className="main">
-        <PageHead
+        <PageHead description="결제 연결 오류와 운영 알림을 확인하고 해당 항목으로 이동합니다."
           title="알림 센터"
           actions={
             <button className="btn btn-out" type="button" onClick={() => void load()} disabled={state.kind === "loading"}>

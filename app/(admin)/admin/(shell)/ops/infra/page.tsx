@@ -181,7 +181,7 @@ export default function InfraPage() {
     <>
       <AdminTopbar crumb="운영 › 인프라 · 비용" />
       <main className="main">
-        <PageHead title="인프라 · 비용" />
+        <PageHead description="서버 용량과 사용 비용, 외부 연결의 만료·오류 상태를 확인합니다." title="인프라 · 비용" />
         {state.kind === "loading" && <LoadingRows rows={5} />}
         {state.kind === "error" && <ErrorState title="불러오지 못했습니다." onRetry={() => void load(false)} />}
         {data && cur && state.kind === "ok" && (

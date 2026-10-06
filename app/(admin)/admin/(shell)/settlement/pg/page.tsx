@@ -84,7 +84,7 @@ function PgStatusPageInner() {
     <>
       <AdminTopbar crumb="파트너스 › 결제 연결 상태" />
       <main className="main">
-        <PageHead
+        <PageHead description="파트너스별 카드 결제 연결 상태와 오류 내역을 조회합니다."
           title="결제 연결 상태"
           actions={
             <Link className="btn btn-out" href="/admin/billing/invoices">

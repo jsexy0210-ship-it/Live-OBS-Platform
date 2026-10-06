@@ -137,7 +137,7 @@ export default function ApplicationDetailPage() {
     <>
       <AdminTopbar crumb="파트너스 › 가입 신청 › 가입 신청 상세" />
       <main className="main">
-        <PageHead
+        <PageHead description="신청 정보와 확인 결과를 검토하고 가입 승인 여부를 결정합니다."
           title={s ? `가입 신청 상세 · ${s.shopName}` : "가입 신청 상세"}
           actions={
             <>

@@ -189,7 +189,7 @@ function Invoices() {
     <>
       <AdminTopbar crumb="요금 · 결제 › 청구 · 결제 내역" />
       <main className="main">
-        <PageHead
+        <PageHead description="구독 청구와 결제 결과를 조회하고 실패 건을 확인합니다."
           title="청구 · 결제"
           actions={
             <>

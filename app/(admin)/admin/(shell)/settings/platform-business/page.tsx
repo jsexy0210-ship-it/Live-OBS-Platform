@@ -114,7 +114,7 @@ export default function PlatformBusinessPage() {
     <>
       <AdminTopbar crumb="설정 › 플랫폼 정보" />
       <main className="main">
-        <PageHead title="플랫폼 정보" />
+        <PageHead description="쇼핑몰에 표시하는 사업자·고객센터 정보를 입력합니다." title="플랫폼 정보" />
         <div className="col" style={{ gap: 20 }}>
           <div className="msg msg-info" role="note">
             <span>

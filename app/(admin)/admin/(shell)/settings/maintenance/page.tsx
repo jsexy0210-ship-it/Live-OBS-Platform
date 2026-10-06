@@ -93,7 +93,7 @@ export default function MaintenancePage() {
     <>
       <AdminTopbar crumb="설정 › 점검 모드" />
       <main className="main">
-        <PageHead title="점검 모드" />
+        <PageHead description="점검 상태와 안내 문구를 설정하고 점검을 시작하거나 종료합니다." title="점검 모드" />
         {state.kind === "loading" && (
           <div className="card">
             <LoadingRows rows={4} />

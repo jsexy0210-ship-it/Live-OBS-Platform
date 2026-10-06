@@ -82,7 +82,7 @@ export default function AssistantSettingsPage() {
     <>
       <AdminTopbar crumb="설정 › 도우미 설정" />
       <main className="main">
-        <PageHead title="도우미 설정" />
+        <PageHead description="도우미 연결 정보와 사용 비용 한도를 설정합니다." title="도우미 설정" />
         {!d ? (
           <div className="card">{state.kind === "loading" ? <LoadingRows rows={4} /> : <ErrorState title="도우미 설정을 불러오지 못했습니다." onRetry={() => void load()} />}</div>
         ) : (

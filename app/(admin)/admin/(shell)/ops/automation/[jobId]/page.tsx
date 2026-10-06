@@ -78,7 +78,7 @@ export default function AutomationJobDetailPage() {
       <>
         <AdminTopbar crumb={crumb} />
         <main className="main">
-          <PageHead title="자동 연결 작업 상세" />
+          <PageHead description="자동 연결 작업의 단계별 진행과 실행 기록을 확인합니다." title="자동 연결 작업 상세" />
           <div className="card">
             {state.kind === "loading" ? <LoadingRows rows={5} /> : state.status === 404 ? <ErrorState title="작업을 찾을 수 없습니다." onRetry={() => void load()} /> : <ErrorState title="불러오지 못했습니다." onRetry={() => void load()} />}
           </div>
@@ -93,7 +93,7 @@ export default function AutomationJobDetailPage() {
     <>
       <AdminTopbar crumb={crumb} />
       <main className="main">
-        <PageHead title={`자동 연결 작업 상세 · ${d.shopName}`} actions={<button className="btn btn-out" type="button" onClick={back}>목록</button>} />
+        <PageHead description="자동 연결 작업의 단계별 진행과 실행 기록을 확인합니다." title={`자동 연결 작업 상세 · ${d.shopName}`} actions={<button className="btn btn-out" type="button" onClick={back}>목록</button>} />
         <div className="col" style={{ gap: 16 }}>
           <div className="card pad col" style={{ gap: 4 }}>
             <span><b>{d.shopName}</b> · {KIND[d.kind] ?? d.kind} <span className={`bdg ${s.cls}`} data-testid="detail-status">{s.label}</span></span>

@@ -53,7 +53,7 @@ export default function AdminAccountPage() {
     <>
       <AdminTopbar crumb="내 계정" />
       <main className="main">
-        <PageHead title="내 계정" />
+        <PageHead description="내 계정 정보와 비밀번호를 확인하고 변경합니다." title="내 계정" />
         <div className="col" style={{ gap: 20, maxWidth: 520 }}>
           <div className="card pad col" style={{ gap: 4 }}>
             <b>{me.name}</b>

@@ -107,7 +107,7 @@ export default function VendorsPage() {
     <>
       <AdminTopbar crumb="설정 › 외부 서비스 연동" />
       <main className="main">
-        <PageHead
+        <PageHead description="외부 서비스 업체의 요금·기능과 비교 점수 기준을 관리합니다."
           title="외부 서비스 연동"
           actions={
             canEdit && board ? (

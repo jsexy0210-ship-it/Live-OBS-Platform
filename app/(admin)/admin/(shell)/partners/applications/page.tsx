@@ -406,7 +406,7 @@ function Applications() {
     <>
       <AdminTopbar crumb="파트너스 › 가입 신청" />
       <main className="main">
-        <PageHead title="가입 신청" />
+        <PageHead description="가입 신청 정보와 자동 확인 결과를 검토하고 승인·보완 요청·반려합니다." title="가입 신청" />
         <div className="col" style={{ gap: 16 }}>
           {k && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }} data-testid="application-kpi">

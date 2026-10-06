@@ -210,7 +210,7 @@ export default function PlatformPolicyPage() {
     <>
       <AdminTopbar crumb="설정 › 플랫폼 기본 정책" />
       <main className="main">
-        <PageHead title="플랫폼 기본 정책" />
+        <PageHead description="가입·이용·보관에 적용하는 플랫폼 기본 정책을 설정합니다." title="플랫폼 기본 정책" />
         {state.kind === "loading" && <LoadingRows rows={5} />}
         {state.kind === "error" && <ErrorState title="불러오지 못했습니다." onRetry={() => void load()} />}
         {data && (

@@ -23,7 +23,7 @@ export default function RolesPage() {
     <>
       <AdminTopbar crumb="관리자 › 역할별로 할 수 있는 일" />
       <main className="main">
-        <PageHead title="역할별로 할 수 있는 일" />
+        <PageHead description="각 관리자 역할이 조회하거나 처리할 수 있는 일을 확인합니다." title="역할별로 할 수 있는 일" />
         <div className="card">
           {state.kind === "loading" && <LoadingRows rows={5} />}
           {state.kind === "error" && <ErrorState title="역할별로 할 수 있는 일을 불러오지 못했습니다." onRetry={() => void load()} />}

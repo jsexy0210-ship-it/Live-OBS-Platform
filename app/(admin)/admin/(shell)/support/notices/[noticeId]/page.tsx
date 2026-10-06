@@ -30,7 +30,7 @@ export default function NoticeEditPage() {
     <>
       <AdminTopbar crumb="고객지원 › 공지사항 › 수정" />
       <main className="main">
-        <PageHead title="공지 수정" />
+        <PageHead description="공지 내용과 대상을 수정하고 임시 저장하거나 게시합니다." title="공지 수정" />
         {!canEdit ? (
           <div className="card">
             <div className="st">

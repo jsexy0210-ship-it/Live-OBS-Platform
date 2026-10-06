@@ -104,7 +104,7 @@ function PartnerDetail() {
     <>
       <AdminTopbar crumb="파트너스 › 파트너스 목록 › 파트너스 상세" />
       <main className="main">
-        <PageHead
+        <PageHead description="파트너스의 쇼핑몰, 구독과 운영 현황을 탭별로 확인합니다."
           title={`파트너스 상세 · ${PARTNER_TABS.find(([k]) => k === tab)?.[1] ?? "기본정보"}`}
           actions={
             <>

@@ -75,7 +75,7 @@ export default function MessagePricesPage() {
     <>
       <AdminTopbar crumb="설정 › 발송 단가" />
       <main className="main">
-        <PageHead title="발송 단가" />
+        <PageHead description="발송 단가와 충전·차감 기준, 무료 제공량을 확인합니다." title="발송 단가" />
         {!d ? (
           <div className="card">
             {state.kind === "loading" && <LoadingRows rows={4} />}

@@ -132,7 +132,7 @@ function NoticeList() {
     <>
       <AdminTopbar crumb="고객지원 › 공지사항" />
       <main className="main">
-        <PageHead
+        <PageHead description="공지의 대상과 게시 상태를 확인하고 공지를 작성·수정합니다."
           title="공지사항"
           actions={
             canEdit && (

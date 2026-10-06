@@ -52,7 +52,7 @@ function AutomationJobsPageInner() {
     <>
       <AdminTopbar crumb="운영 › 자동 연결 작업" />
       <main className="main">
-        <PageHead title="자동 연결 작업" actions={<button className="btn btn-out" type="button" onClick={() => setTick((n) => n + 1)}>새로 고침</button>} />
+        <PageHead description="자동 연결 작업의 진행 상태와 실패 내역을 조회합니다." title="자동 연결 작업" actions={<button className="btn btn-out" type="button" onClick={() => setTick((n) => n + 1)}>새로 고침</button>} />
         <div className="col" style={{ gap: 16 }}>
           {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
           {state.kind === "error" && <div className="card"><ErrorState title="불러오지 못했습니다. 네트워크를 확인한 뒤 다시 시도해 주십시오." onRetry={() => setTick((n) => n + 1)} /></div>}

@@ -74,7 +74,7 @@ function Logs() {
     <>
       <AdminTopbar crumb="관리자 › 로그 추적" />
       <main className="main">
-        <PageHead title="로그 추적" />
+        <PageHead description="관리자와 시스템의 작업 기록을 조건별로 조회합니다." title="로그 추적" />
         <SearchBox onSearch={search} onReset={reset} busy={state.kind === "loading"}>
           <SearchRow label="종류">
             <select className="inp" aria-label="종류" value={draft.action} onChange={(e) => setDraft({ ...draft, action: e.target.value })}>

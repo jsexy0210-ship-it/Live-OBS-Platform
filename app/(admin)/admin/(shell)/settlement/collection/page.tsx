@@ -110,7 +110,7 @@ function CollectionPageInner() {
     <>
       <AdminTopbar crumb="요금 · 결제 › 구독료 수납" />
       <main className="main">
-        <PageHead
+        <PageHead description="기간별 구독료 수납 금액과 청구·결제 내역을 확인합니다."
           title="구독료 수납"
           actions={
             <Link className="btn btn-out" href="/admin/billing/invoices">

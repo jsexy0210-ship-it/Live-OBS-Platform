@@ -37,7 +37,7 @@ export default function AccountsPage() {
     <>
       <AdminTopbar crumb="관리자 › 관리자 계정" />
       <main className="main">
-        <PageHead
+        <PageHead description="관리자 계정을 추가하고 역할과 이용 상태를 확인합니다."
           title="관리자 계정"
           actions={
             <>

@@ -15,7 +15,7 @@ export default function NoticeNewPage() {
     <>
       <AdminTopbar crumb="고객지원 › 공지사항 › 작성" />
       <main className="main">
-        <PageHead title="공지 작성" />
+        <PageHead description="공지 내용과 대상을 입력하고 임시 저장하거나 게시합니다." title="공지 작성" />
         {canEdit ? (
           <NoticeForm onSaved={(_, published) => router.push(`/admin/support/notices?saved=${published ? "published" : "draft"}`)} onStale={() => router.push("/admin/support/notices")} />
         ) : (

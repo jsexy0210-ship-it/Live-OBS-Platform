@@ -50,7 +50,7 @@ export default function InvoiceDetailPage() {
     <>
       <AdminTopbar crumb="구독·요금 › 청구·결제 내역 › 청구 상세" />
       <main className="main">
-        <PageHead
+        <PageHead description="청구 금액과 결제 결과, 처리 이력을 확인합니다."
           title={p ? `${won(p.amount)} · ${PAYMENT_STATUS[p.status].label}` : "청구 상세"}
           actions={
             <button className="btn btn-out" type="button" onClick={back}>청구·결제 내역</button>

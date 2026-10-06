@@ -136,7 +136,7 @@ function PartnerList() {
     <>
       <AdminTopbar crumb="파트너스 › 파트너스 목록" />
       <main className="main">
-        <PageHead
+        <PageHead description="파트너스의 가입·구독·결제 연결 상태를 조회합니다."
           title="파트너스 목록"
           actions={
             <>

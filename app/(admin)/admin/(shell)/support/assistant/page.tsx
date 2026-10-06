@@ -80,7 +80,7 @@ export default function AssistantDocsPage() {
     <>
       <AdminTopbar crumb="고객지원 › 도우미 답변 자료" />
       <main className="main">
-        <PageHead title="도우미 답변 자료" />
+        <PageHead description="도우미 답변에 사용하는 자료와 답하지 못한 질문을 확인합니다." title="도우미 답변 자료" />
         <div className="col" style={{ gap: 20 }}>
           <section className="card pad-l col" style={{ gap: 14 }} aria-labelledby="ast-docs">
             <div className="row" style={{ justifyContent: "space-between" }}>
