@@ -68,20 +68,23 @@ test("최고관리자: 검색·상태 필터로 찾고, 이용 정지는 사유�
   await expect(row).toHaveCount(1);
   await expect(row).toContainText("정상");
 
-  await row.getByRole("button", { name: "이용 정지" }).click();
+  // 이용 정지·해제는 목록 행에 없고(정본 MA-011), 상세의 행동 버튼에서 한다
+  await expect(row.getByRole("button", { name: /이용 정지|정지 해제/ })).toHaveCount(0);
+  await page.getByRole("link", { name: nameA }).click();
+  await page.getByRole("button", { name: "이용 정지" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("button", { name: "이용 정지" })).toBeDisabled();
   await dialog.getByLabel("사유").fill("약관 위반 확인");
   await dialog.getByRole("button", { name: "이용 정지" }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(row).toContainText("이용 정지");
+  await expect(page.getByRole("button", { name: "정지 해제" })).toBeVisible();
   const s = await db.seller.findUniqueOrThrow({ where: { id: idA } });
   expect(s.status).toBe("SUSPENDED");
   expect(s.suspendedReason).toBe("약관 위반 확인");
 
-  await row.getByRole("button", { name: "정지 해제" }).click();
+  await page.getByRole("button", { name: "정지 해제" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "정지 해제" }).click();
-  await expect(row).toContainText("정상");
+  await expect(page.getByRole("button", { name: "이용 정지" })).toBeVisible();
   expect((await db.seller.findUniqueOrThrow({ where: { id: idA } })).status).toBe("ACTIVE");
 });
 
@@ -113,9 +116,8 @@ test("상세: 기본 정보·대표자·사업자·구독·최근 30일 주문�
 
 test("정지 처리 중에는 닫을 수 없고, 서버 403·409는 안내가 보인다", async ({ page }) => {
   await login(page, emails.super);
-  await search(page, slugA);
-  await expect(page.getByTestId("partner-row")).toHaveCount(1);
-  await page.getByTestId("partner-row").getByRole("button", { name: "이용 정지" }).click();
+  await page.goto(`/admin/partners/${idA}`);
+  await page.getByRole("button", { name: "이용 정지" }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("사유").fill("확인");
   let release!: () => void;
