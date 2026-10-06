@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { GlobalSearch, NotificationBell } from "../../../../components/admin-ui/GnbTools";
 import { ConfirmProvider } from "../../../../components/admin-ui/ConfirmDialog";
-import { ShellNavProvider, type ShellNav } from "../../../../components/admin-ui/shellNav";
+import { PARTNER_NAV_ITEMS, ShellNavProvider, type PartnerNavIndicators, type ShellNav } from "../../../../components/admin-ui/shellNav";
 import { useWholeDateClick } from "../../../../components/admin-ui/useWholeDateClick";
-import { usePathname, useRouter } from "next/navigation";
-import { createContext, Fragment, useContext, useEffect, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, createContext, Fragment, useContext, useEffect, useState } from "react";
 import { adminApi, type AdminMe } from "./api";
 import { itemAllowed, routeNav, visibleAdminMenu } from "./menu";
 import { useEllipsisTitle } from "../../../../components/admin-ui/useEllipsisTitle";
@@ -27,12 +27,18 @@ export function useAdmin(): ShellCtx {
 }
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
+  return <Suspense fallback={<div className="st" aria-busy="true"><span className="spin" /></div>}><AdminShellContent>{children}</AdminShellContent></Suspense>;
+}
+
+function AdminShellContent({ children }: { children: React.ReactNode }) {
   useEllipsisTitle();
   useTableCards();
   // 날짜 칸 어디를 눌러도 달력이 열린다(화면마다 따로 걸지 않는다)
   useWholeDateClick();
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [partnerIndicators, setPartnerIndicators] = useState<PartnerNavIndicators | null>(null);
   const [me, setMe] = useState<AdminMe | null>(null);
   const [failed, setFailed] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
@@ -89,7 +95,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const shownGroup = route ? menu.find((g) => g.key === route.group.key) : undefined;
   const loc = route ? { group: route.group.label, item: route.item.label, groupHref: shownGroup?.items[0]?.href, itemHref: route.item.href } : null;
   // 화면 ←(PageHead가 읽는다): 메뉴로 바로 여는 화면에는 없고, 상세·등록 같은 하위 화면에는 그 메뉴 화면이 부모
-  const shellNav: ShellNav = { backHref: route && pathname !== route.item.href ? route.item.href : null, tabs: [] };
+  const partnerMatch = /^\/admin\/partners\/([^/]+)$/.exec(pathname);
+  const partnerId = partnerMatch?.[1];
+  const partnerTabValue = searchParams.get("tab");
+  const partnerTab = PARTNER_NAV_ITEMS.some(([key]) => key === partnerTabValue) ? partnerTabValue : "info";
+  const shellNav: ShellNav = { backHref: route && pathname !== route.item.href ? route.item.href : null, tabs: [], setPartnerIndicators };
 
   const utilities = (
     <>
@@ -153,6 +163,16 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                     <Link className={`lnb-i${active?.item === n ? " on" : ""}`} href={n.href} aria-current={active?.item === n ? "page" : undefined} onClick={() => setNavOpen(false)}>
                       {n.label}
                     </Link>
+                    {n.href === "/admin/partners" && partnerId && route?.item === n && (
+                      <nav className="lnb-subnav" aria-label="파트너스 정보">
+                        {PARTNER_NAV_ITEMS.map(([key, label]) => {
+                          const query = new URLSearchParams(searchParams.toString());
+                          query.set("tab", key);
+                          const indicators = partnerIndicators?.sellerId === partnerId ? partnerIndicators : null;
+                          return <Link key={key} className={`lnb-sub-i${partnerTab === key ? " on" : ""}`} href={`${pathname}?${query}`} aria-current={partnerTab === key ? "page" : undefined} onClick={() => setNavOpen(false)}>{label}{key === "notes" && indicators && indicators.noteCount > 0 ? ` ${indicators.noteCount}` : ""}{key === "pg" && indicators?.pgError ? " 오류" : ""}</Link>;
+                        })}
+                      </nav>
+                    )}
                   </Fragment>
                 ))}
               </section>
@@ -172,6 +192,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 // 본문 위 경로 줄(대분류 › 메뉴). 메뉴에 없는 화면이면 crumb 문구를 쓴다
 export function AdminTopbar({ crumb, children }: { crumb: string; children?: React.ReactNode }) {
   const { loc } = useAdmin();
+  const pathname = usePathname();
   const parts = crumb.split("›").map((p) => p.trim());
   const last = parts[parts.length - 1];
   // 하위 화면(상세 등)이면 메뉴 경로 뒤에 crumb 마지막 칸을 덧붙인다
@@ -185,6 +206,7 @@ export function AdminTopbar({ crumb, children }: { crumb: string; children?: Rea
     : parts.map((t) => ({ t, href: undefined as string | undefined }));
   if (loc && parts.length > 2 && last !== loc.item && last !== loc.group) raw.push({ t: last, href: undefined });
   const path = raw;
+  if (pathname === "/admin" && path.every((p) => p.href === pathname) && !children) return null;
   return (
     <div className="loc-bar">
       <span className="crumb ell">
