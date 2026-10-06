@@ -48,11 +48,12 @@ test("판매 상태를 목록에서 바꾸면 서버에 반영되고, 서버가 
   const empty = await make(page, `${PREFIX}-옵션없음`, "HIDDEN", null);
   await page.goto(`/seller/products?q=${encodeURIComponent(PREFIX)}`);
   const a = row(page, `${PREFIX}-판매`);
-  await expect(a).toContainText("노출");
+  await expect(a).toContainText("보임");
+  await expect(a).not.toContainText("안 보임");
   await a.getByRole("combobox", { name: /판매 상태/ }).selectOption("HIDDEN");
   await expect(page.getByText("판매 상태를 숨김(으)로 바꿨습니다")).toBeVisible();
   expect((await serverProduct(page, sale.id)).status).toBe("HIDDEN");
-  await expect(a).toContainText("비노출");
+  await expect(a).toContainText("안 보임");
 
   // 옵션이 없는 숨김 상품은 판매 중으로 못 바꾼다: 서버 거절 → 원래 값 숨김, 이유 표시
   const b = row(page, `${PREFIX}-옵션없음`);

@@ -10,7 +10,10 @@ export const REWARD_LEDGER_PAGE_MAX = 200;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STATUSES: readonly RewardLedgerStatus[] = ["PENDING", "SUCCEEDED", "FAILED"];
 
-export type RewardLedgerQuery = { status?: string | null; memberId?: string | null; cursor?: string | null; limit?: string | null };
+// from·to: 생성일(한국 시간 YYYY-MM-DD, 끝 날짜 포함)로 거른다. 둘 다 없으면 전체 기간. 하나만 줘도 된다.
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const kstDayStart = (d: string) => new Date(`${d}T00:00:00+09:00`);
+export type RewardLedgerQuery = { status?: string | null; memberId?: string | null; cursor?: string | null; limit?: string | null; from?: string | null; to?: string | null };
 
 const SELECT = {
   id: true,
@@ -36,7 +39,14 @@ export async function listRewardLedger(db: PrismaClient, ctx: TenantContext, que
   if (query.status && !STATUSES.includes(query.status as RewardLedgerStatus)) return { ok: false as const };
   if (query.memberId && !UUID_RE.test(query.memberId)) return { ok: false as const };
 
+  for (const d of [query.from, query.to]) {
+    if (d && (!DATE_RE.test(d) || Number.isNaN(kstDayStart(d).getTime()))) return { ok: false as const };
+  }
+  if (query.from && query.to && query.from > query.to) return { ok: false as const };
+
   const and: Prisma.RewardLedgerWhereInput[] = [{ sellerId: ctx.sellerId }];
+  if (query.from) and.push({ createdAt: { gte: kstDayStart(query.from) } });
+  if (query.to) and.push({ createdAt: { lt: new Date(kstDayStart(query.to).getTime() + 86_400_000) } });
   if (query.status) and.push({ status: query.status as RewardLedgerStatus });
   if (query.memberId) and.push({ buyerMemberId: query.memberId });
   if (cursor) and.push({ OR: [{ createdAt: { lt: cursor.createdAt } }, { createdAt: cursor.createdAt, id: { lt: cursor.id } }] });

@@ -79,6 +79,8 @@ model Seller {
   shopName                 String
   // 한 줄 소개(SA-060, 40자). 쇼핑몰 홈·공유 설명 기본값. 비어 있으면 null.
   shopTagline              String?
+  // 쇼핑몰 홈 배너 자동 넘김 간격(초, SA-064). 0=끔(기본), 5, 8.
+  homeBannerIntervalSec    Int          @default(0)
   // 공유 미리보기(og:title·og:description) 제목·설명. 비어 있으면 쇼핑몰 이름(제목)·없음(설명). 파트너스 쇼핑몰 설정(SHOP_SETTINGS)에서 바꾼다.
   shareTitle               String?
   shareDescription         String?
@@ -2028,6 +2030,12 @@ enum AutomationPaymentStatus {
   REFUNDED
 }
 
+// 결제 수단. BILLING_KEY = 구독에 등록한 카드(빌링키) 자동결제, ONE_TIME_CARD = 「다른 카드로 결제」(나이스페이 일반 결제창, 이번 한 번만, 카드 저장 안 함)
+enum AutomationPaymentMethod {
+  BILLING_KEY
+  ONE_TIME_CARD
+}
+
 // INITIAL = 처음 자동 연결(110,000원), REINSTALL = 무료 대상이 아닌 재설치(33,000원),
 // RECONNECT_FREE = 완료 뒤 30일 안 같은 쇼핑몰·같은 PC(OBS pairing) 재연결(무료, 결제 없음)
 enum AutomationJobKind {
@@ -2079,6 +2087,11 @@ model AutomationPayment {
   // 오래 미확정인 청구(조회 안 됨)를 마스터 관리자에게 알린 시각(1회만)
   unresolvedAlertedAt    DateTime?               @db.Timestamptz(3)
   providerPaymentId      String?
+  method                 AutomationPaymentMethod @default(BILLING_KEY)
+  // 일반 결제창(ONE_TIME_CARD) 결제의 PG 거래 id와 승인 응답 카드 요약(카드사·끝 4자리). 환불은 이 거래 id로 취소한다. 카드번호 전체는 저장하지 않는다.
+  pgTid                  String?                 @unique
+  cardName               String?
+  cardLast4              String?
   failureReason          String?
   paidAt                 DateTime?               @db.Timestamptz(3)
   refundReason           String?
@@ -2174,6 +2187,9 @@ model AutomationJob {
   // 외부 행동 격리 창: 마지막 외부 행동 시작 시각과 종료 확인 시각. 소유권이 넘어가거나 닫히는 지점은 종료 확인 또는 시작 + 행동 상한 + 여유까지 기다린다(quiescent)
   lastActionStartedAt     DateTime?                 @db.Timestamptz(3)
   lastActionEndedAt       DateTime?                 @db.Timestamptz(3)
+  // 판매자가 「잠시 멈추기」를 누른 시각(SA-152). 있으면 작업자가 이 작업에 실행 자리를 주지 않는다(상태는 QUEUED로 두고 진행 단계 stepIndex는 그대로).
+  // 「이어 하기」로 비우면 멈춘 단계부터 다시 시작한다. 시작·전체·실행 시간 마감은 멈춰도 그대로 흐른다(마감이 지나면 기존대로 닫고 환불 대기).
+  pausedAt                DateTime?                 @db.Timestamptz(3)
   // 처음 대기열에 들어간 시각(결제 확인·무료 재연결 생성). 시작 마감 기준(deadlinesFor)
   queuedAt                DateTime?                 @db.Timestamptz(3)
   startedAt               DateTime?                 @db.Timestamptz(3)
@@ -3513,6 +3529,22 @@ model PlatformInquiryImage {
 
   @@index([sellerId, messageId])
   @@index([sellerId, sellerUserId, messageId, createdAt])
+}
+
+// 문의 작성 임시 저장(SA-114 「임시 저장」). 계정(파트너스 직원 포함)당 하나. 보내도 자동으로 지우지 않고 화면이 보낸 뒤 지운다. 값은 임시라 검사가 느슨하고(보낼 때 다시 검사), 관련 주문·방송 id는 보낼 때 같은 쇼핑몰 것인지 확인한다.
+model PlatformInquiryDraft {
+  sellerUserId       String   @id @db.Uuid
+  sellerId           String   @db.Uuid
+  category           PlatformInquiryCategory?
+  title              String   @default("")
+  body               String   @default("")
+  urgent             Boolean  @default(false)
+  relatedOrderId     String?  @db.Uuid
+  relatedBroadcastId String?  @db.Uuid
+  includeDiagnostics Boolean  @default(true)
+  updatedAt          DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([sellerId])
 }
 
 // ───────────── 점검 모드(MA-083 · AU-010) ─────────────

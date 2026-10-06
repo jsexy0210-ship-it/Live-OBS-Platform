@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 import { submitSellerLogin } from "./sellerLogin";
 
-// SA-032 적립금 지급·회수 원장: 조회만(GET /api/seller/reward-ledger). 처리 상태 검색, 부호 있는 금액, 「더 보기」.
+// SA-032 적립금 지급·회수 내역: 조회만(GET /api/seller/reward-ledger). 기간(기본 최근 1개월)·처리 상태 검색, 부호 있는 금액, 「더 보기」(20건씩).
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
 const NICK = "별빛사냥꾼";
 
@@ -34,7 +34,7 @@ async function open(page: Page) {
 
 test.afterAll(reset);
 
-test("원장: 적립·회수(음수)·실패 사유가 최근 순으로 보이고, 처리 상태로 찾을 수 있다. 지급·회수 버튼은 없다", async ({ page }) => {
+test("내역: 적립·회수(음수)·실패 사유가 최근 순으로 보이고, 처리 상태로 찾을 수 있다. 지급·회수 버튼은 없다", async ({ page }) => {
   await reset();
   const now = Date.now();
   await withDb((db, sellerId, buyerMemberId) =>
@@ -47,16 +47,18 @@ test("원장: 적립·회수(음수)·실패 사유가 최근 순으로 보이�
     }),
   );
   await open(page);
-  await expect(page.getByRole("heading", { name: "적립금 지급·회수 원장" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "적립금 지급·회수 내역" })).toBeVisible();
   const rows = page.getByTestId("ledger-row");
   await expect(rows).toHaveCount(3);
-  // 최근 순: 실패(300) → 회수(−500, 테스트) → 적립(1,200)
+  // 최근 순: 실패(300) → 회수(−500, 계산만) → 적립(1,200)
   await expect(rows.nth(0)).toContainText("실패");
   await expect(rows.nth(0)).toContainText("지급 처리 실패");
-  await expect(rows.nth(1)).toContainText("회수 · 테스트");
+  await expect(rows.nth(1)).toContainText("회수 · 계산만");
   await expect(rows.nth(1)).toContainText("−500원");
   await expect(rows.nth(2)).toContainText("+1,200원");
   await expect(rows.nth(2)).toContainText(NICK);
+  // 일시는 공용 서식 「2026.10.05 22:25」
+  await expect(rows.nth(2)).toContainText(/\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}/);
   await expect(page.getByText("불러온", { exact: false }).first()).toBeVisible();
   // 조회만: 지급·회수 실행 버튼이 없다
   await expect(page.getByRole("button", { name: /지급|회수 실행/ })).toHaveCount(0);
@@ -72,7 +74,34 @@ test("원장: 적립·회수(음수)·실패 사유가 최근 순으로 보이�
   await expect(rows).toHaveCount(3);
 });
 
-test("내역이 없으면 안내하고, 50건을 넘으면 「더 보기」로 이어서 불러온다", async ({ page }) => {
+test("기간: 기본은 최근 1개월이라 오래된 내역은 안 보이고, 기간을 넓히면 보인다(요청에 from·to가 실린다)", async ({ page }) => {
+  await reset();
+  const day = 86_400_000;
+  await withDb((db, sellerId, buyerMemberId) =>
+    db.rewardLedger.createMany({
+      data: [
+        { sellerId, buyerMemberId, type: "EARN", amount: 111, status: "SUCCEEDED", testMode: false, idempotencyKey: "e2e-recent", createdAt: new Date(Date.now() - 2 * day), processedAt: new Date() },
+        { sellerId, buyerMemberId, type: "EARN", amount: 222, status: "SUCCEEDED", testMode: false, idempotencyKey: "e2e-old", createdAt: new Date(Date.now() - 45 * day), processedAt: new Date() },
+      ],
+    }),
+  );
+  const first = page.waitForResponse((r) => r.url().includes("/api/seller/reward-ledger?"));
+  await open(page);
+  const url = new URL((await first).url());
+  expect(url.searchParams.get("from")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  expect(url.searchParams.get("to")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  expect(url.searchParams.get("limit")).toBe("20");
+  const rows = page.getByTestId("ledger-row");
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText("+111원");
+  // 시작일을 60일 전으로(주소 조건) 열면 오래된 내역도 나온다
+  const ymd = (offset: number) => new Date(Date.now() + 9 * 3_600_000 - offset * day).toISOString().slice(0, 10);
+  await page.goto(`/seller/rewards/ledger?from=${ymd(60)}&to=${ymd(0)}`);
+  await expect(rows).toHaveCount(2);
+  await expect(page.getByText("+222원")).toBeVisible();
+});
+
+test("내역이 없으면 안내하고, 20건을 넘으면 「더 보기」로 이어서 불러온다", async ({ page }) => {
   await reset();
   await open(page);
   await expect(page.getByText("아직 적립금 내역이 없습니다")).toBeVisible();
@@ -92,14 +121,14 @@ test("내역이 없으면 안내하고, 50건을 넘으면 「더 보기」로 �
   });
   await page.route("**/api/seller/reward-ledger?*", (route) => {
     const cursor = new URL(route.request().url()).searchParams.get("cursor");
-    const body = cursor ? { entries: [entry(51), entry(52)], nextCursor: null } : { entries: Array.from({ length: 50 }, (_, i) => entry(i + 1)), nextCursor: "next-cursor" };
+    const body = cursor ? { entries: [entry(21), entry(22)], nextCursor: null } : { entries: Array.from({ length: 20 }, (_, i) => entry(i + 1)), nextCursor: "next-cursor" };
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
   });
   await page.reload();
   const rows = page.getByTestId("ledger-row");
-  await expect(rows).toHaveCount(50);
+  await expect(rows).toHaveCount(20);
   await page.getByRole("button", { name: "더 보기" }).click();
-  await expect(rows).toHaveCount(52);
+  await expect(rows).toHaveCount(22);
   await expect(page.getByRole("button", { name: "더 보기" })).toHaveCount(0);
 });
 

@@ -54,7 +54,7 @@ export default async function ShopHomePage({ params }: Params) {
             </div>
           )}
           <EventPopup popups={content.popups} />
-          <HomeBanner banners={content.banners} />
+          <HomeBanner banners={content.banners} intervalSec={content.bannerIntervalSec} />
           <section className="shop-sec" aria-labelledby="home-products">
             <div className="shop-sec-head">
               <h2 id="home-products">전체 상품</h2>

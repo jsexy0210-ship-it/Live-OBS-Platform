@@ -37,6 +37,8 @@ test.beforeAll(async () => {
   await db.platformAdmin.create({ data: { email: adminEmail, passwordHash: await hashPassword(adminPw), name: "운영", role: "READ_ONLY" } });
 });
 test.afterAll(async () => {
+  // 시험용 카드를 지운다(남기면 카드가 없다고 가정하는 다른 시험, 예: 충전 시험이 흔들린다)
+  await db.sellerSubscription.updateMany({ where: { sellerId, cardLabel: "테스트카드 1234" }, data: { billingKeyCipher: null, cardLabel: null } });
   const ids = (await db.platformAdmin.findMany({ where: { email: adminEmail }, select: { id: true } })).map((a) => a.id);
   await db.adminSession.deleteMany({ where: { adminId: { in: ids } } });
   await db.platformAdmin.deleteMany({ where: { email: adminEmail } });
@@ -122,7 +124,7 @@ test("마스터 관리자: 조회 전용 관리자가 목록 요약·필터·상
   await expect(page.getByTestId("sum-done")).toBeVisible();
   await expect(page.getByTestId("automation-job").first()).toContainText("완료");
   await page.screenshot({ path: "tests/e2e/screenshots/automation-ma110-1920.png", fullPage: true });
-  await page.getByRole("button", { name: "고객 확인 대기", exact: true }).click();
+  await page.getByRole("button", { name: "고객이 할 일 기다림", exact: true }).click();
   await expect(page.getByTestId("automation-job")).toHaveCount(0);
   await page.getByRole("button", { name: "전체", exact: true }).click();
   await page.getByRole("link", { name: "상세" }).first().click();

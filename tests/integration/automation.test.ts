@@ -19,7 +19,10 @@ import { PRACTICE_STREAK_REQUIRED, PracticeEnvironmentBusy, playbookReadiness, r
 import { AUTOMATION_LIMITS } from "../../lib/server/automation/config";
 import { FakeBrowserExecutor, FakeObsBridge, FakePlanner, FakePracticeEnvironment, FakeSecretVault, actionWindowGuard } from "../../lib/server/automation/fakes";
 import { markConnectionRevoked } from "../../lib/server/automation/connection";
-import { cancelJob, getJob, requestRefund, resumeJob } from "../../lib/server/automation/jobs";
+import { POST as pauseRoute } from "../../app/api/automation/jobs/[jobId]/pause/route";
+import { POST as continueRoute } from "../../app/api/automation/jobs/[jobId]/continue/route";
+import { GET as timelineRoute } from "../../app/api/automation/jobs/[jobId]/timeline/route";
+import { cancelJob, continueJob, getJob, pauseJob, requestRefund, resumeJob } from "../../lib/server/automation/jobs";
 import { purchaseAutomation, reconcileAutomationPayments, reconnectAutomation } from "../../lib/server/automation/purchase";
 import { EngineAborted, actionKeyOf, callPort, insidePortCall, runSteps, trackedWindow } from "../../lib/server/automation/engine";
 import { FencingError, RunTimeExceeded, advanceStep, claimNext, extendLease, finishJob, lockJob, markActionEnded, markActionStarted, markBrowserStateHeld, markChanged, markReleaseStarted, parkForCustomer, reapExpired, toVerifying, touch, unmarkChanged } from "../../lib/server/automation/queue";
@@ -4145,3 +4148,80 @@ describe("자동 연결 화면용 API (SA-150 주소 확인 · MA-110·111 조�
     expect((await adminJobsRoute(new Request(`${BASE}/api/automation/admin/jobs`, { headers: { host: "localhost:3000", cookie: sellerCookie } }))).status).toBeGreaterThanOrEqual(401);
   });
 });
+
+describe("잠시 멈추기·이어 하기·작업 기록 시각표(SA-152)", () => {
+  it("대기 중 작업을 멈추면 작업자가 가져가지 못하고, 이어 하면 다시 가져간다(멈춘 단계 그대로). 두 번 멈추거나 멈추지 않은 작업 이어 하기는 409", async () => {
+    const a = await bought();
+    expect(await pauseJob(db, a.ctx, a.jobId)).toMatchObject({ ok: true, job: { status: "QUEUED", paused: true, stepNumber: 1 } });
+    expect(await claimNext(db, "w1")).toBeNull();
+    expect(await pauseJob(db, a.ctx, a.jobId)).toEqual({ ok: false, reason: "invalid_state" });
+    expect(await continueJob(db, a.ctx, a.jobId)).toMatchObject({ ok: true, job: { status: "QUEUED", paused: false, pausedAt: null } });
+    expect(await continueJob(db, a.ctx, a.jobId)).toEqual({ ok: false, reason: "invalid_state" });
+    expect(await runOnce(db, runtime(), W)).toBe("succeeded");
+    expect(await pauseJob(db, a.ctx, a.jobId)).toEqual({ ok: false, reason: "invalid_state" });
+  });
+
+  it("실행 중 작업을 멈추면 토큰이 올라가 작업자의 다음 쓰기가 거부되고, 단계는 그대로이며, 이어 하면 처음부터가 아니라 그 단계부터 다시 한다", async () => {
+    const a = await bought();
+    const claimed = await claimNext(db, "w1");
+    expect(claimed?.job.id).toBe(a.jobId);
+    const token = claimed!.job.fencingToken;
+    expect(await pauseJob(db, a.ctx, a.jobId)).toMatchObject({ ok: true, job: { paused: true, status: "QUEUED" } });
+    expect(await executeJob(db, runtime(), claimed!, W)).toBe("fenced");
+    const j = await job(a.jobId);
+    expect(j).toMatchObject({ status: "QUEUED", leaseOwner: null, leaseExpiresAt: null, runStartedAt: null, stepIndex: 0 });
+    expect(j.fencingToken).toBeGreaterThan(token);
+    await continueJob(db, a.ctx, a.jobId);
+    expect(await runOnce(db, runtime(), W)).toBe("succeeded");
+  });
+
+  it("멈춰도 시작 마감은 흐른다(지나면 기존대로 닫는다). 고객 행동 대기 작업은 멈출 수 없다. 권한 없는 직원 403·다른 판매자 404", async () => {
+    const a = await bought();
+    await pauseJob(db, a.ctx, a.jobId);
+    await db.automationJob.update({ where: { id: a.jobId }, data: { queuedAt: new Date(Date.now() - 25 * 3_600_000) } });
+    expect(await reapExpired(db)).toMatchObject({ failed: 1 });
+    expect((await job(a.jobId)).status).toBe("FAILED");
+
+    const b = await bought();
+    const rt = runtime();
+    rt.obs.disconnected.add(b.seller.id);
+    await runOnce(db, rt, W);
+    expect((await job(b.jobId)).status).toBe("NEEDS_CUSTOMER");
+    expect(await pauseJob(db, b.ctx, b.jobId)).toEqual({ ok: false, reason: "invalid_state" });
+
+    const c = await bought();
+    const staff = await createSellerUser(c.seller.id, { permissions: ["SHOP_SETTINGS"] });
+    await expect(pauseJob(db, { ...c.ctx, actorId: staff.id, isOwner: false, permissions: ["SHOP_SETTINGS"] }, c.jobId)).rejects.toMatchObject({ status: 403 });
+    await expect(pauseJob(db, c.ctx, a.jobId)).rejects.toMatchObject({ status: 404 });
+    const cookie = await cookieFor(c.owner.email);
+    const r = await pauseRoute(new Request("http://localhost:3000/x", { method: "POST", headers: H(cookie) }), params(c.jobId));
+    expect(r.status).toBe(200);
+    expect((await r.json()).paused).toBe(true);
+    expect((await pauseRoute(new Request("http://localhost:3000/x", { method: "POST", headers: H(cookie) }), params(c.jobId))).status).toBe(409);
+    expect((await continueRoute(new Request("http://localhost:3000/x", { method: "POST", headers: H(cookie) }), params(c.jobId))).status).toBe(200);
+    expect(await db.auditLog.count({ where: { action: { in: ["automation.pause", "automation.continue"] }, sellerId: c.seller.id } })).toBe(2);
+  });
+
+  it("작업 기록 시각표: 상태 변화를 오래된 순 코드로 주고(단계 번호 포함), 비밀·내부 값은 내보내지 않으며, 다른 판매자는 404", async () => {
+    const a = await bought();
+    await pauseJob(db, a.ctx, a.jobId);
+    await continueJob(db, a.ctx, a.jobId);
+    expect(await runOnce(db, runtime(), W)).toBe("succeeded");
+    const cookie = await cookieFor(a.owner.email);
+    const r = await timelineRoute(new Request("http://localhost:3000/x", { headers: H(cookie) }), params(a.jobId));
+    expect(r.status).toBe(200);
+    const body = await r.json();
+    expect(body.job).toMatchObject({ id: a.jobId, status: "SUCCEEDED" });
+    const kinds = body.timeline.map((t: { kind: string }) => t.kind);
+    expect(kinds[0]).toBe("payment_confirmed");
+    expect(kinds).toEqual(expect.arrayContaining(["paused", "continued", "started", "verifying", "succeeded"]));
+    expect(kinds.indexOf("paused")).toBeLessThan(kinds.indexOf("continued"));
+    expect(kinds.indexOf("continued")).toBeLessThan(kinds.indexOf("succeeded"));
+    for (const t of body.timeline) expect(Object.keys(t).sort()).toEqual(["at", "kind", "reason", "stepNumber"]);
+    expect(JSON.stringify(body.timeline)).not.toMatch(/workerId|w1|by"/);
+    const b = await bought();
+    const other = await cookieFor(b.owner.email);
+    expect((await timelineRoute(new Request("http://localhost:3000/x", { headers: H(other) }), params(a.jobId))).status).toBe(404);
+  });
+});
+
