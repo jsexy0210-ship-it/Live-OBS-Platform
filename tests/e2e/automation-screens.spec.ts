@@ -104,8 +104,15 @@ test("파트너스: 주소 확인 → 결제 동의 5개 → 결제 → 진행 �
   // 고객 확인 대기: 할 일이 보이고 이어서 진행하기로 다시 대기열에 들어간다
   await db.automationJob.update({ where: { id: job.id }, data: { status: "NEEDS_CUSTOMER", customerAction: "TWO_FACTOR", actionDeadlineAt: new Date(Date.now() + 3600_000) } });
   await page.goto(`/seller/automation/${job.id}`);
-  await expect(page.getByTestId("job-action")).toContainText("문자 인증을 마쳐 주십시오");
+  await expect(page.getByTestId("job-action")).toContainText("2단계 인증을 완료해 주십시오");
   await page.screenshot({ path: "tests/e2e/screenshots/automation-sa152-1440.png", fullPage: true });
+  // 390은 폭을 바꾼 뒤 다시 불러와 찍는다(열린 메뉴 서랍이 찍히지 않게)
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  await expect(page.getByTestId("job-action")).toBeVisible();
+  await page.screenshot({ path: "tests/e2e/screenshots/automation-sa152-390.png", fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.reload();
   await page.getByRole("button", { name: "이어서 진행하기" }).click();
   await page.getByRole("dialog", { name: "이어서 진행하시겠습니까?" }).getByRole("button", { name: "이어서 진행하기" }).click();
   await expect.poll(async () => (await db.automationJob.findUniqueOrThrow({ where: { id: job.id } })).status).toBe("QUEUED");
