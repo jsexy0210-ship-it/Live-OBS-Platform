@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useConfirm } from "../../admin-ui";
 import { useSmartBack } from "../../../lib/client/navigation";
+import { usePostcode } from "../../../lib/client/usePostcode";
 import IdentityCheck, { IdentityDone } from "../IdentityCheck";
 import { api, failMessage } from "../api";
 import { RETRY_TEXT_PUBLIC, stepOutcome } from "../stepFailure";
@@ -472,47 +473,6 @@ const LICENSE_MAX = 10 * 1024 * 1024;
 
 // 사업장 주소 검색: 무료 우편번호 서비스(다음 우편번호, 키 없음)의 검색 창. 스크립트는 4단계에서만 불러온다(MASTER 결정 2026-10-06).
 // 불러오지 못하거나 검색 창을 열지 못하면 우편번호 · 기본 주소 칸이 바로 입력칸으로 바뀐다(정본 PF-007-4 「주소 검색을 열지 못함 · 직접 입력」).
-const POSTCODE_SRC = "https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";
-type PostcodeData = { zonecode: string; roadAddress: string; jibunAddress: string; userSelectedType: "R" | "J"; buildingName?: string; apartment?: "Y" | "N" };
-type DaumGlobal = { Postcode: new (o: { oncomplete: (d: PostcodeData) => void }) => { open: () => void } };
-function usePostcode(enabled: boolean) {
-  const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
-  useEffect(() => {
-    if (!enabled) return;
-    const w = window as unknown as { daum?: DaumGlobal };
-    if (w.daum?.Postcode) return setState("ready");
-    setState("loading");
-    const tag = document.createElement("script");
-    tag.src = POSTCODE_SRC;
-    tag.async = true;
-    // 15초 안에 못 불러오면 직접 입력으로 바꾼다
-    const timer = setTimeout(() => setState((p) => (p === "loading" ? "failed" : p)), 15_000);
-    tag.onload = () => {
-      clearTimeout(timer);
-      setState((window as unknown as { daum?: DaumGlobal }).daum?.Postcode ? "ready" : "failed");
-    };
-    tag.onerror = () => {
-      clearTimeout(timer);
-      setState("failed");
-    };
-    document.head.appendChild(tag);
-    return () => {
-      clearTimeout(timer);
-      tag.onload = null;
-      tag.onerror = null;
-    };
-  }, [enabled]);
-  const open = (onPick: (d: PostcodeData) => void) => {
-    const w = window as unknown as { daum?: DaumGlobal };
-    try {
-      if (!w.daum?.Postcode) throw new Error("postcode_missing");
-      new w.daum.Postcode({ oncomplete: onPick }).open();
-    } catch {
-      setState("failed");
-    }
-  };
-  return { state, open };
-}
 const sizeText = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
 
 export function BusinessStep() {
