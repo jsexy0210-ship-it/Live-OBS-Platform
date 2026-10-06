@@ -36,7 +36,7 @@ const kstDateTime = (ms: number) => {
   return `${parts.year}.${parts.month}.${parts.day} ${parts.hour}:${parts.minute}`;
 };
 
-export function WidgetView({ widget: wd, data, now, editing }: { widget: Widget; data: LiveData; now: number; editing?: boolean }) {
+export function WidgetView({ widget: wd, data, now, editing, landscape = false, stateReceivedAt = now }: { widget: Widget; data: LiveData; now: number; editing?: boolean; landscape?: boolean; stateReceivedAt?: number }) {
   const p = wd.props;
   const style: Record<string, string | number | undefined> = {
     left: `${wd.x}%`,
@@ -56,6 +56,7 @@ export function WidgetView({ widget: wd, data, now, editing }: { widget: Widget;
     "--w-fw": num(p, "fontWeight"),
     "--w-appear": num(p, "appearSec") === undefined ? undefined : `${num(p, "appearSec")}s`,
     "--w-flow": num(p, "flowSec") === undefined ? undefined : `${num(p, "flowSec")}s`,
+    "--w-event-scale": wd.type === "EVENT_CARD" ? Math.min(1, wd.h / (landscape ? 14 : 18)) : undefined,
     "--w-q-open-title": str(p, "openTitleColor"),
     "--w-q-open-nick": str(p, "openNicknameColor"),
     "--w-q-open-prod": str(p, "openProductColor"),
@@ -175,12 +176,15 @@ export function WidgetView({ widget: wd, data, now, editing }: { widget: Widget;
     case "EVENT_CARD": {
       const e = data.eventCard;
       if (!e) break;
-      const remainingSeconds = Math.max(0, Math.ceil((Date.parse(e.endsAt) - now) / 1000));
+      const remainingSeconds = editing
+        ? e.remainingSeconds
+        : Math.max(0, e.remainingSeconds - Math.floor(Math.max(0, now - stateReceivedAt) / 1000));
       const active = remainingSeconds > 0;
-      const daysLeft = Math.max(0, kstDay(Date.parse(e.endsAt)) - kstDay(now));
+      const endAt = Date.parse(e.endsAt);
+      const daysLeft = Math.max(0, kstDay(endAt - 1) - kstDay(now));
       const urgency = remainingSeconds < 3600 ? "soon" : daysLeft === 0 ? "today" : "days";
       const badge = urgency === "soon" ? "곧 끝나요" : daysLeft === 0 ? "오늘 마감" : `${daysLeft}일 남음`;
-      const endDate = kstDateTime(Date.parse(e.endsAt));
+      const endDate = kstDateTime(endAt - 1);
       body = (
         <>
           <span className="ow-ev-main">

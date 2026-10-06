@@ -221,8 +221,8 @@
 /* 이벤트 할인 카드(OV-007) */
 .ow-event-card {
   justify-content: center;
-  gap: 10px;
-  padding: 22px 24px;
+  gap: calc(10px * var(--w-event-scale, 1));
+  padding: calc(22px * var(--w-event-scale, 1)) calc(24px * var(--w-event-scale, 1));
   border-radius: 22px;
   background: #0c0a18d1;
   box-shadow: 0 0 0 2px #ffffff24, 0 18px 40px #00000073;
@@ -230,16 +230,16 @@
 .ow-ev-main {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: calc(4px * var(--w-event-scale, 1));
   min-width: 0;
 }
 .ow-ev-sub {
   color: #ffffffb3;
-  font-size: 16px;
+  font-size: calc(16px * var(--w-event-scale, 1));
 }
 .ow-ev-name {
   color: var(--w-nick, #fff);
-  font-size: 26px;
+  font-size: calc(26px * var(--w-event-scale, 1));
   font-weight: 800;
   line-height: 1.3;
   display: -webkit-box;
@@ -251,17 +251,17 @@
 .ow-ev-price {
   display: flex;
   align-items: baseline;
-  gap: 14px;
+  gap: calc(14px * var(--w-event-scale, 1));
 }
 .ow-ev-rate {
   color: var(--w-accent, #ff6b6b);
-  font-size: 56px;
+  font-size: calc(56px * var(--w-event-scale, 1));
   font-weight: 900;
   line-height: 1;
   letter-spacing: -0.03em;
 }
 .ow-ev-now {
-  font-size: 44px;
+  font-size: calc(44px * var(--w-event-scale, 1));
   font-weight: 900;
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -270,21 +270,21 @@
 .ow-ev-was {
   opacity: 0.65;
   color: #ffffff8c;
-  font-size: 18px;
+  font-size: calc(18px * var(--w-event-scale, 1));
   font-variant-numeric: tabular-nums;
 }
 .ow-ev-meta {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 10px;
-  font-size: 16px;
+  gap: calc(10px * var(--w-event-scale, 1));
+  font-size: calc(16px * var(--w-event-scale, 1));
 }
 .ow-ev-sub-land { display: none; }
 .ow-ev-clock {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: calc(10px * var(--w-event-scale, 1));
   padding: 10px 14px;
   border-radius: 14px;
   color: #fff;
@@ -292,36 +292,36 @@
 }
 .ow-ev-clock.days { color: #1a1200; background: #ffb020; }
 .ow-ev-badge {
-  font-size: 22px;
+  font-size: calc(22px * var(--w-event-scale, 1));
   font-weight: 800;
 }
 .ow-ev-timer {
-  font-size: 30px;
+  font-size: calc(30px * var(--w-event-scale, 1));
   font-variant-numeric: tabular-nums;
 }
-.ow-ev-countdown-suffix { font-size: 16px; font-weight: 600; }
-.ow-ev-remaining { color: #ffffffb3; font-size: 16px; }
+.ow-ev-countdown-suffix { font-size: calc(16px * var(--w-event-scale, 1)); font-weight: 600; }
+.ow-ev-remaining { color: #ffffffb3; font-size: calc(16px * var(--w-event-scale, 1)); }
 .ovl-land .ow-event-card {
   flex-direction: row;
   align-items: center;
-  gap: 22px;
-  padding: 18px 24px;
+  gap: calc(22px * var(--w-event-scale, 1));
+  padding: calc(18px * var(--w-event-scale, 1)) calc(24px * var(--w-event-scale, 1));
 }
 .ovl-land .ow-ev-main { flex: 1; }
 .ovl-land .ow-ev-sub-port { display: none; }
 .ovl-land .ow-ev-sub-land { display: block; }
 .ovl-land .ow-ev-name {
-  font-size: 22px;
+  font-size: calc(22px * var(--w-event-scale, 1));
   -webkit-line-clamp: 1;
 }
 .ovl-land .ow-ev-sub,
-.ovl-land .ow-ev-was { font-size: 15px; }
+.ovl-land .ow-ev-was { font-size: calc(15px * var(--w-event-scale, 1)); }
 .ovl-land .ow-ev-price { flex: none; gap: 12px; }
-.ovl-land .ow-ev-rate { font-size: 46px; }
-.ovl-land .ow-ev-now { font-size: 36px; }
+.ovl-land .ow-ev-rate { font-size: calc(46px * var(--w-event-scale, 1)); }
+.ovl-land .ow-ev-now { font-size: calc(36px * var(--w-event-scale, 1)); }
 .ovl-land .ow-ev-meta { flex: none; }
 .ovl-land .ow-ev-clock { gap: 10px; }
 .ovl-land .ow-ev-badge { display: none; }
-.ovl-land .ow-ev-timer { font-size: 24px; }
-.ovl-land .ow-ev-countdown-suffix { font-size: 15px; }
+.ovl-land .ow-ev-timer { font-size: calc(24px * var(--w-event-scale, 1)); }
+.ovl-land .ow-ev-countdown-suffix { font-size: calc(15px * var(--w-event-scale, 1)); }
 .ovl-land .ow-ev-remaining { display: none; }

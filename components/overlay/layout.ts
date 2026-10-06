@@ -83,9 +83,10 @@ export type LiveData = {
   freshHitIds?: string[];
   live: boolean;
 };
+export const SAMPLE_NOW = Date.parse("2026-01-01T00:00:00.000Z");
 export const SAMPLE_DATA: LiveData = {
   live: true,
-  eventCard: { productName: "프리미엄 박스", price: 20000, discountedPrice: 15000, discountRate: 25, endsAt: "2026-01-01T00:00:00.000Z", remainingSeconds: 5400, badge: "오늘 마감", remainingLabel: "1시간 30분 남았어요", moreCount: 2 },
+  eventCard: { productName: "프리미엄 박스", price: 20000, discountedPrice: 15000, discountRate: 25, endsAt: "2026-01-01T01:30:00.000Z", remainingSeconds: 5400, badge: "오늘 마감", remainingLabel: "1시간 30분 남았어요", moreCount: 2 },
   purchaseRanking: [
     { rank: 1, nickname: "별빛하늘", quantity: 5 },
     { rank: 2, nickname: "달콤곰", quantity: 3 },
