@@ -237,8 +237,10 @@ function Applications() {
   const canModerate = adminCan(me.role, "seller.moderate");
   const { applied, draft, setDraft, apply } = useListFilters(EMPTY);
   const tab = CHIPS.some(([k]) => k === applied.tab) ? applied.tab : "all";
+  const searchFilterKey = JSON.stringify([applied.q, applied.industry, applied.receivedFrom, applied.receivedTo]);
+  const hasSearchFilters = Boolean(applied.q || applied.industry || applied.receivedFrom || applied.receivedTo);
   const [state, setState] = useState<Load>({ kind: "loading" });
-  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(hasSearchFilters);
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -252,6 +254,10 @@ function Applications() {
   const reqId = useRef(0);
   const cursor = cursors[cursors.length - 1];
   const key = JSON.stringify({ ...applied, tab, cursor });
+
+  useEffect(() => {
+    if (hasSearchFilters) setSearchOpen(true);
+  }, [searchFilterKey, hasSearchFilters]);
 
   const load = useCallback(
     async (silent = false) => {
@@ -433,7 +439,7 @@ function Applications() {
               onClick={() => setSearchOpen((open) => !open)}
               style={{ marginLeft: "auto" }}
             >
-              상세 검색 {searchOpen ? "접기" : "펼치기"}
+              상세 검색{hasSearchFilters ? " · 조건 적용 중" : ""} {searchOpen ? "접기" : "펼치기"}
             </button>
           </div>
           <div id="application-search" hidden={!searchOpen}>
