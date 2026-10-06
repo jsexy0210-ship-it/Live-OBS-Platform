@@ -31,19 +31,19 @@ async function noSellerWord(page: Page) {
   expect(await page.locator("body").innerText()).not.toContain("판매자");
 }
 
-test("파트너스 로그인: 제목·설명이 파트너스 관리자이고, 회원가입·비밀번호 찾기로 이동한다", async ({ page }) => {
+test("파트너스 로그인: 제목·설명이 파트너스 관리자이고, 가입 신청·비밀번호 찾기로 이동한다", async ({ page }) => {
   await page.goto("/seller/login");
   await expect(page.getByRole("heading", { name: "파트너스 관리자" })).toBeVisible();
-  await expect(page.getByText("쇼핑몰 운영과 방송 주문대기(방송 중 들어온 주문 목록)를 한곳에서 관리합니다.")).toBeVisible();
+  await expect(page.getByText("라이브 방송과 주문을 한곳에서 관리합니다")).toBeVisible();
   await noSellerWord(page);
   await shot(page, "AU-002");
-  await page.getByRole("link", { name: "회원가입" }).click();
+  await page.getByRole("link", { name: "가입 신청" }).click();
   await expect(page).toHaveURL(/\/seller\/signup$/);
   await expect(page.getByRole("heading", { name: "파트너스 가입 신청" })).toBeVisible();
   await expect(page.getByRole("list", { name: "진행 단계" })).toContainText("본인확인");
   await noSellerWord(page);
   await page.goto("/seller/login");
-  await page.getByRole("link", { name: "아이디/비밀번호 찾기" }).click();
+  await page.getByRole("link", { name: "이메일(아이디)/비밀번호 찾기" }).click();
   await page.getByRole("navigation", { name: "아이디·비밀번호 찾기" }).getByRole("link", { name: "비밀번호 찾기" }).click();
   await expect(page).toHaveURL(/\/seller\/password-reset$/);
   await expect(page.getByRole("heading", { name: "비밀번호 찾기" })).toBeVisible();
