@@ -85,7 +85,7 @@ test("발급한 주소가 열리고 방송·개봉 변화가 바로 반영되며
 
 test("없는 토큰 주소는 주문을 보여 주지 않고 주소 확인 안내만 보인다", async ({ page }) => {
   await page.goto("/overlay/not-a-real-token");
-  await expect(page.getByTestId("overlay-gone")).toHaveText("지금은 오버레이를 보여 드릴 수 없어요. 파트너스 관리자에서 주소를 확인해 주세요");
+  await expect(page.getByTestId("overlay-gone")).toHaveText("지금은 방송 화면을 보여 드릴 수 없어요. 파트너스 관리자에서 주소를 확인해 주세요");
   await expect(page.getByTestId("overlay-queue")).toHaveCount(0);
 });
 

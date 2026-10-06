@@ -209,7 +209,7 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
         )}
         {view.kind === "gone" && (
           <div className="ovl-pill ovl-notice" role="status" data-testid="overlay-gone">
-            지금은 오버레이를 보여 드릴 수 없어요. 파트너스 관리자에서 주소를 확인해 주세요
+            지금은 방송 화면을 보여 드릴 수 없어요. 파트너스 관리자에서 주소를 확인해 주세요
           </div>
         )}
         {state && data && (
