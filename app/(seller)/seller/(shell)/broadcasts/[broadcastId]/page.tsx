@@ -127,6 +127,7 @@ export default function BroadcastDetailPage() {
   };
 
   const d = state.kind === "ok" ? state.data : null;
+  const hasOpen = (d?.orders ?? []).some((o) => o.openSeconds != null);
   const hitOrders = new Set((d?.hits ?? []).map((h) => h.order?.id).filter(Boolean) as string[]);
   const b = d?.broadcast;
   return (
@@ -354,7 +355,7 @@ export default function BroadcastDetailPage() {
                           <th className="num" style={{ width: 120 }}>
                             금액
                           </th>
-                          <th style={{ width: 90 }}>오픈 시간</th>
+                          <th style={{ width: 90 }}>{hasOpen ? "오픈 시간" : "개봉 완료"}</th>
                           <th style={{ width: 130 }}>상태</th>
                         </tr>
                       </thead>
@@ -376,7 +377,15 @@ export default function BroadcastDetailPage() {
                               {won(o.totalAmount)}
                               {o.refundAmount ? <div className="t-c1 c-alt">환불 {won(o.refundAmount)}</div> : null}
                             </td>
-                            <td className="num">{o.openSeconds != null ? `${Math.floor(o.openSeconds / 60)}:${String(o.openSeconds % 60).padStart(2, "0")}` : "—"}</td>
+                            <td className="num">
+                              {hasOpen
+                                ? o.openSeconds != null
+                                  ? `${Math.floor(o.openSeconds / 60)}:${String(o.openSeconds % 60).padStart(2, "0")}`
+                                  : "—"
+                                : o.completedAt
+                                  ? formatTime(o.completedAt)
+                                  : "—"}
+                            </td>
                             <td>
                               <OrderTags o={o} hit={hitOrders.has(o.id)} />
                             </td>
