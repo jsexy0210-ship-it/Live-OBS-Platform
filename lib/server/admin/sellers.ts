@@ -71,8 +71,8 @@ export async function getAdminSeller(db: PrismaClient, admin: AdminSessionContex
     db.order.count({ where: { sellerId, createdAt: { gte: since } } }),
     db.order.aggregate({ where: { sellerId, paidAt: { gte: since } }, _count: true, _sum: { totalAmount: true, refundAmount: true } }),
     db.order.findFirst({ where: { sellerId }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
-    // MA-012 머리: 아직 닫히지 않은 문의 수, 담당 CS(닫히지 않은 문의 중 담당이 정해진 가장 최근 문의의 담당자), 메모 수
-    db.platformInquiry.count({ where: { sellerId, status: { not: "CLOSED" } } }),
+    // MA-012 머리: 답변 대기(OPEN) 문의 수, 담당 CS(닫히지 않은 문의 중 담당이 정해진 가장 최근 문의의 담당자), 메모 수
+    db.platformInquiry.count({ where: { sellerId, status: "OPEN" } }),
     db.platformInquiry.findFirst({
       where: { sellerId, status: { not: "CLOSED" }, assignedAdminId: { not: null } },
       orderBy: [{ lastMessageAt: "desc" }, { id: "desc" }],
@@ -89,7 +89,7 @@ export async function getAdminSeller(db: PrismaClient, admin: AdminSessionContex
     owner: users[0] ?? null,
     approvedBy,
     assignedCs,
-    openInquiryCount: openInquiries,
+    inquiryOpenCount: openInquiries,
     noteCount,
     subscription: subscription
       ? {
