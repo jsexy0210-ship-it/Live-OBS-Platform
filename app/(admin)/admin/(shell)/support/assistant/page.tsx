@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
-import { PageHead } from "../../../../../../components/admin-ui";
+import { PageHead, useConfirm } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
@@ -17,6 +17,7 @@ const EMPTY: Draft = { id: null, title: "", body: "", published: false, version:
 
 export default function AssistantDocsPage() {
   const { me } = useAdmin();
+  const { confirm } = useConfirm();
   const canEdit = adminCan(me.role, "support.manage");
   const [docs, setDocs] = useState<Doc[] | "loading" | "error">("loading");
   const [qs, setQs] = useState<{ items: Q[]; next: string | null } | "loading" | "error">("loading");
@@ -55,9 +56,23 @@ export default function AssistantDocsPage() {
     void loadDocs();
   };
   const remove = async (d: Doc) => {
-    if (!window.confirm(`「${d.title}」을(를) 지우시겠습니까?`)) return;
-    const r = await adminApi(`/api/admin/assistant/docs/${d.id}?expectedVersion=${d.version}`, { method: "DELETE" });
-    setToast(r.ok ? "자료를 지웠습니다." : r.message ?? "자료를 지우지 못했습니다. 잠시 후 다시 시도해 주십시오.");
+    let message = "";
+    const ok = await confirm({
+      title: `「${d.title}」을(를) 지우시겠습니까?`,
+      body: "지운 자료는 도우미 답변에 더 이상 쓰이지 않으며 되돌릴 수 없습니다",
+      confirmLabel: "지우기",
+      danger: true,
+      run: async () => {
+        const r = await adminApi(`/api/admin/assistant/docs/${d.id}?expectedVersion=${d.version}`, { method: "DELETE" });
+        if (!r.ok) {
+          if (r.status === 409) void loadDocs();
+          return r.message ?? "자료를 지우지 못했습니다. 잠시 후 다시 시도해 주십시오.";
+        }
+        message = "자료를 지웠습니다.";
+        return undefined;
+      },
+    });
+    if (ok) setToast(message);
     void loadDocs();
   };
 
