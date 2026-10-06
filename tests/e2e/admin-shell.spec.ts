@@ -78,12 +78,12 @@ test("CS: 최고관리자 전용 메뉴(설정 대분류=시스템·관리자)�
   }
 });
 
-test("메뉴에 없는 주소는 관리자 404(합니다체·홈으로), 화면 있는 메뉴(파비콘·공유 카드)는 그대로 열린다", async ({ page }) => {
+test("메뉴에 없는 주소는 관리자 404(합니다체·대시보드로), 화면 있는 메뉴(파비콘·공유 카드)는 그대로 열린다", async ({ page }) => {
   await login(page, emails.super);
   await page.goto("/admin/nothing-here");
   await expect(page.getByTestId("admin-coming-soon")).toHaveCount(0);
   await expect(page.getByTestId("not-found")).toContainText("페이지를 찾을 수 없습니다");
-  await expect(page.getByRole("link", { name: "홈으로" })).toHaveAttribute("href", "/admin");
+  await expect(page.getByRole("link", { name: "대시보드로" })).toHaveAttribute("href", "/admin");
   await page.goto("/admin/settings/branding");
   await expect(page.getByRole("heading", { name: "파비콘 · 공유 카드" })).toBeVisible();
 });
