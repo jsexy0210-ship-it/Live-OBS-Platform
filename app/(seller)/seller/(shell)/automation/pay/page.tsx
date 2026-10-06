@@ -8,7 +8,7 @@ import { Topbar } from "../../../../../../components/seller/SellerShell";
 import TestModeNotice from "../../../../../../components/seller/TestModeNotice";
 import { SmartBackButton } from "../../../../../../components/seller/SmartBackButton";
 import { api, failMessage } from "../../../../../../components/seller/api";
-import { AUTOMATION_CONSENT, AUTOMATION_PRICE, FREE_RECONNECT_DAYS, REINSTALL_PRICE } from "../../../../../../lib/server/automation/config";
+import { AUTOMATION_CONSENT, AUTOMATION_PRICE } from "../../../../../../lib/server/automation/config";
 
 // SA-151 자동 연결 결제. 구독에 등록한 카드: POST /api/automation/purchase (Idempotency-Key + consent).
 // 「다른 카드로 결제」(이번 한 번만·저장 안 함): POST /api/automation/purchase/one-time → 응답 window가 있으면 나이스페이 결제창(AUTHNICE.requestPay)을 연다.
@@ -31,7 +31,7 @@ const CHECKS = [
   "로그인·문자 인증·앱 설치 허용·연결 프로그램 설치는 제가 직접 합니다. 그 단계에서 멈추면 알림을 받고 이어 갑니다.",
   "방송 화면에 실제로 나오는지 확인이 끝나야 완료입니다. 테스트 주문이 방송 화면에 나오지 않고 도움을 받아도 해결되지 않으면 전액 환불합니다.",
   "설정을 시작한 뒤에는 마음이 바뀌어도 환불되지 않습니다.",
-  `끝난 뒤 ${FREE_RECONNECT_DAYS}일 안에 같은 쇼핑몰·같은 컴퓨터에 다시 설치하는 것은 무료입니다. 그 밖의 다시 설치는 ${REINSTALL_PRICE.toLocaleString("ko-KR")}원입니다.`,
+  "완료 뒤 다시 설치 조건(무료 기간 · 요금)은 가격 결정 뒤 안내합니다 · 보류",
   "1회 결제입니다. 월 구독료와 별도이고 자동으로 다시 결제되지 않습니다.",
 ];
 const REASON: Record<string, string> = {
@@ -135,9 +135,11 @@ function Pay() {
                 <span data-testid="pay-card">{card === undefined ? "확인 중" : card ? `구독에 쓰는 카드 · ${card}` : "등록된 카드가 없습니다"}</span>
               )}
               <span className="row" style={{ gap: 8, alignItems: "center" }}>
-                <button className="btn btn-sm btn-out" type="button" disabled={card === undefined || (other && !card)} onClick={() => setOther(!other)} data-testid="pay-other">
-                  {other ? "구독 카드로 결제" : "다른 카드로 결제"}
-                </button>
+                {!other && (
+                  <button className="btn btn-sm btn-out" type="button" disabled={card === undefined} onClick={() => setOther(true)} data-testid="pay-other">
+                    다른 카드로 결제
+                  </button>
+                )}
                 <span className="t-c1 c-alt">{other ? "이번 한 번만 씁니다 · 저장하지 않습니다" : "구독에 쓰는 카드로 결제합니다"}</span>
               </span>
             </FormRow>
