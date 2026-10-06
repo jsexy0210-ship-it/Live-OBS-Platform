@@ -3,7 +3,7 @@ import { submitSellerLogin } from "./sellerLogin";
 import { RUN, cleanupProducts, track } from "./cleanup";
 
 // 판매자 로그인 → 상품 목록 → 등록 → 수정 → 숨김·삭제를 실제로 눌러 확인한다.
-// E2E_SCREENSHOTS=1이면 390·1440 화면을 tests/e2e/screenshots에 남긴다.
+// E2E_SCREENSHOTS=1이면 390·1024·1440 화면을 tests/e2e/screenshots에 남긴다.
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
 const OWNER = "demo-owner@example.com";
 const VIEWER = "demo-viewer@example.com";
@@ -18,7 +18,7 @@ test.afterAll(() => cleanupProducts(PASSWORD));
 
 async function shot(page: Page, name: string) {
   if (!SHOTS) return;
-  for (const width of [1440, 390]) {
+  for (const width of [1440, 1024, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(150);

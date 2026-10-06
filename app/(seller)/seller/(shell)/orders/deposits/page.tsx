@@ -209,7 +209,7 @@ export default function DepositsPage() {
                           </Link>
                           <div className="t-c1 c-alt num">{formatDateTime(o.createdAt)} 주문</div>
                         </td>
-                        <td>{o.buyerName ? <span>주문자 실명 · {o.buyerName}</span> : o.depositorNameStatus === "NOT_COLLECTED" || o.depositorNameSource === "BUYER_MEMBER_NAME_LEGACY" ? <span className="t-c1 c-alt">실제 입금자명 미수집</span> : <span className="t-c1 c-alt">확인 정보 없음</span>}</td>
+                        <td>{o.buyerName ? <span>주문자 실명 · {o.buyerName} · 실제 입금자명 미수집</span> : o.depositorNameStatus === "NOT_COLLECTED" || o.depositorNameSource === "BUYER_MEMBER_NAME_LEGACY" || o.depositorName !== undefined ? <span className="t-c1 c-alt">실제 입금자명 미수집</span> : <span className="t-c1 c-alt">확인 정보 없음</span>}</td>
                         <td className="num">{won(o.amount)}</td>
                         <td>{o.paymentMethod === "BANK_TRANSFER" ? "무통장 입금" : o.paymentMethod === "CARD" ? "카드" : "선택 전"}</td>
                         <td className="num" style={{ width: 136, whiteSpace: "nowrap" }}>{o.paymentDueAt ? formatDateTime(o.paymentDueAt) : "-"}</td>
