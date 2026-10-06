@@ -148,7 +148,7 @@ export default function ReviewsPage() {
       <main className="main">
         <div className="ph">
           <div className="col" style={{ gap: 6 }}>
-            <h1 className="t-t3">리뷰 관리</h1>
+            <h1 className="t-t3">리뷰</h1>
             <span className="t-l2 c-alt">구매자 상품 리뷰 확인 · 답글 · 숨김 · 신고 처리 · 리뷰 적립금 · 작성 조건 설정</span>
           </div>
           {data && (
