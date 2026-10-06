@@ -107,7 +107,7 @@ const MENU: Group[] = [
           { label: "홈 진열", href: "/seller/products/display", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
         ],
       },
-      { label: "엑셀로 올리기 · 내려받기", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
+      { label: "엑셀로 올리기 · 내려받기", href: "/seller/products/bulk", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
     ],
   },
   {

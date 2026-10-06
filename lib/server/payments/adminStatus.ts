@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
-import { subscriptionAccessCounts } from "../admin/billing";
+import { lockedSql, subscriptionAccessCounts } from "../admin/billing";
+import { policyValue } from "../admin/platformPolicy";
 import type { AdminSessionContext } from "../auth/session";
 import { forbidden } from "../authz/errors";
 import { adminCan } from "../authz/permissions";
@@ -222,7 +223,7 @@ export async function adminSubscriptionBilling(db: PrismaClient, admin: AdminSes
   if (!from || !toStart || toStart < from || (toStart.getTime() - from.getTime()) / DAY_MS >= BILLING_RANGE_MAX_DAYS) return { ok: false as const };
   const end = new Date(toStart.getTime() + DAY_MS);
 
-  const [[s], daily, [subs], access] = await Promise.all([
+  const [[s], daily, [subs], access, [dues], retrySeq, maxRetries, events] = await Promise.all([
     db.$queryRaw<{ charged: number; paid: number; failed: number; pending: number; paidAmount: bigint; failedAmount: bigint }[]>`
       SELECT count(*)::int AS "charged",
         count(*) FILTER (WHERE "status" = 'PAID')::int AS "paid",
@@ -231,11 +232,12 @@ export async function adminSubscriptionBilling(db: PrismaClient, admin: AdminSes
         coalesce(sum("amount"::bigint) FILTER (WHERE "status" = 'PAID'), 0) AS "paidAmount",
         coalesce(sum("amount"::bigint) FILTER (WHERE "status" = 'FAILED'), 0) AS "failedAmount"
       FROM "SubscriptionPayment" WHERE "createdAt" >= ${from} AND "createdAt" < ${end}`,
-    db.$queryRaw<{ date: string; charged: number; paid: number; failed: number; paidAmount: bigint }[]>`
+    db.$queryRaw<{ date: string; charged: number; paid: number; failed: number; pending: number; paidAmount: bigint }[]>`
       SELECT to_char(("createdAt" AT TIME ZONE 'Asia/Seoul')::date, 'YYYY-MM-DD') AS "date",
         count(*)::int AS "charged",
         count(*) FILTER (WHERE "status" = 'PAID')::int AS "paid",
         count(*) FILTER (WHERE "status" = 'FAILED')::int AS "failed",
+        count(*) FILTER (WHERE "status" = 'PENDING')::int AS "pending",
         coalesce(sum("amount"::bigint) FILTER (WHERE "status" = 'PAID'), 0) AS "paidAmount"
       FROM "SubscriptionPayment" WHERE "createdAt" >= ${from} AND "createdAt" < ${end}
       GROUP BY 1 ORDER BY 1`,
@@ -244,6 +246,25 @@ export async function adminSubscriptionBilling(db: PrismaClient, admin: AdminSes
         count(*) FILTER (WHERE "status" = 'PAST_DUE')::int AS "pastDue"
       FROM "SellerSubscription"`,
     subscriptionAccessCounts(db, now),
+    db.$queryRaw<{ pastDueAmount: bigint; locked: number }[]>`
+      SELECT coalesce(sum(lp."amount"::bigint) FILTER (WHERE sub."status" = 'PAST_DUE'), 0) AS "pastDueAmount",
+        count(*) FILTER (WHERE ${lockedSql(now)})::int AS "locked"
+      FROM "SellerSubscription" sub JOIN "Seller" se ON se."id" = sub."sellerId"
+      LEFT JOIN LATERAL (
+        SELECT p."amount" FROM "SubscriptionPayment" p
+        WHERE p."subscriptionId" = sub."id" AND p."kind" = 'PERIOD' AND p."status" = 'FAILED' ORDER BY p."createdAt" DESC LIMIT 1
+      ) lp ON true
+      WHERE se."approvedAt" IS NOT NULL AND se."status" IN ('ACTIVE', 'SUSPENDED', 'CLOSED') AND sub."status" = 'PAST_DUE'`,
+    // 재시도 대기: 연체 구독 중 다음 시도가 남은 건을 시도 차수(1차=최초 청구)별로. retryCount n이면 다음은 n+2차
+    db.$queryRaw<{ seq: number; n: number }[]>`
+      SELECT ("retryCount" + 2)::int AS "seq", count(*)::int AS "n" FROM "SellerSubscription"
+      WHERE "status" = 'PAST_DUE' AND "nextChargeAt" IS NOT NULL GROUP BY 1`,
+    policyValue(db, "paymentRetryCount"),
+    // 연체 발생·재시도 시도: 날짜별 감사 로그 건수(이 기능 이전 날짜는 0)
+    db.$queryRaw<{ date: string; action: string; n: number }[]>`
+      SELECT to_char(("createdAt" AT TIME ZONE 'Asia/Seoul')::date, 'YYYY-MM-DD') AS "date", "action", count(*)::int AS "n"
+      FROM "AuditLog" WHERE "action" IN ('subscription.past_due', 'subscription.payment_retry') AND "createdAt" >= ${from} AND "createdAt" < ${end}
+      GROUP BY 1, 2`,
   ]);
   return {
     ok: true as const,
@@ -258,8 +279,26 @@ export async function adminSubscriptionBilling(db: PrismaClient, admin: AdminSes
       retrying: subs.retrying,
       pastDue: subs.pastDue,
       grace: access.grace,
+      pastDueAmount: Number(dues?.pastDueAmount ?? 0),
+      locked: dues?.locked ?? 0,
+      // 재시도 대기 건수(시도 차수별): "2"~"{최대 재시도 + 1}" 키를 0으로 채워 준다
+      retryBySeq: Object.fromEntries(Array.from({ length: Math.max(maxRetries, 2) }, (_, i) => [String(i + 2), retrySeq.find((r) => r.seq === i + 2)?.n ?? 0])),
     },
-    daily: daily.map((d) => ({ date: d.date, charged: d.charged, paid: d.paid, failed: d.failed, paidAmount: Number(d.paidAmount) })),
+    // 청구가 없는 날에도 연체·재시도 기록이 있으면 그 날짜 줄을 낸다
+    daily: [...new Set([...daily.map((d) => d.date), ...events.map((e) => e.date)])].sort().map((date) => {
+      const d = daily.find((x) => x.date === date);
+      const ev = (action: string) => events.find((e) => e.date === date && e.action === action)?.n ?? 0;
+      return {
+        date,
+        charged: d?.charged ?? 0,
+        paid: d?.paid ?? 0,
+        failed: d?.failed ?? 0,
+        pending: d?.pending ?? 0,
+        retried: ev("subscription.payment_retry"),
+        pastDueStarted: ev("subscription.past_due"),
+        paidAmount: Number(d?.paidAmount ?? 0),
+      };
+    }),
   };
 }
 

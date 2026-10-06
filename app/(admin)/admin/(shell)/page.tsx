@@ -91,7 +91,9 @@ function Panel<T>({ title, state, retry, children, id }: { title: string; state:
 
 // ─── 오늘 처리할 일 ───
 type TaskKey = "signupPending" | "paymentFailed" | "refundRequested" | "inquiryOpen" | "pgError" | "automationFailed" | "incidentCritical" | "platformInfoMissing";
-type Tasks = { at: string; total: number; items: { key: TaskKey; count: number; href: string }[] };
+type Tasks = { at: string; total: number; items: { key: TaskKey; count: number; href: string; fields?: string[] }[] };
+// 플랫폼 정보(MA-088) 빈 항목 이름
+const INFO_FIELD: Record<string, string> = { name: "상호", representative: "대표자", businessNumber: "사업자등록번호", mailOrderNumber: "통신판매업 신고번호", address: "사업장 주소", phone: "고객센터 전화", email: "고객센터 이메일" };
 const TASK_LABEL: Record<TaskKey, string> = {
   signupPending: "가입 신청 처리 대기",
   paymentFailed: "결제 실패",
@@ -133,6 +135,8 @@ function shortAt(iso: string): string {
 
 function TodayTasks({ tick }: { tick: number }) {
   const [state, load] = useApi<Tasks>("/api/admin/today-tasks", tick);
+  const { me } = useAdmin();
+  const canEditInfo = adminCan(me.role, "system.manage");
   return (
     <Panel title="오늘 처리할 일" state={state} retry={() => void load()} id="today-tasks">
       {(d) => (
@@ -146,12 +150,31 @@ function TodayTasks({ tick }: { tick: number }) {
             </div>
           )}
           <div className="stat-row" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
-            {d.items.map((t) => (
-              <Link key={t.key} href={taskHref(t.key, t.href)} className="card pad col" style={{ gap: 4, textDecoration: "none", color: "inherit" }} data-testid={`today-task-${t.key}`} aria-label={`${TASK_LABEL[t.key]} ${t.count}건`}>
-                <span className="t-l2 c-alt">{TASK_LABEL[t.key]}</span>
-                <span className={`t-h2 ${t.count > 0 ? "c-neg" : ""}`}>{n(t.count, "건")}</span>
-              </Link>
-            ))}
+            {d.items
+              // 플랫폼 정보 미입력은 한 항목이라도 비어 있을 때만 보이고 모두 채우면 사라진다(MA-088 정본)
+              .filter((t) => t.key !== "platformInfoMissing" || t.count > 0)
+              .map((t) => {
+                const isInfo = t.key === "platformInfoMissing";
+                const unit = isInfo ? "항목" : "건";
+                const body = (
+                  <>
+                    <span className="t-l2 c-alt">{TASK_LABEL[t.key]}</span>
+                    <span className={`t-h2 ${t.count > 0 && !isInfo ? "c-neg" : ""}`}>{n(t.count, unit)}</span>
+                    {isInfo && <span className="t-c1 c-alt">{(t.fields ?? []).map((f) => INFO_FIELD[f] ?? f).join(" · ")} 비어 있음</span>}
+                    {isInfo && !canEditInfo && <span className="t-c1 c-alt">최고관리자에게 요청</span>}
+                  </>
+                );
+                // 플랫폼 정보 화면은 최고관리자만 열 수 있어 다른 관리자에게는 누르는 타일이 아니라 안내로 보인다
+                return isInfo && !canEditInfo ? (
+                  <div key={t.key} className="card pad col" style={{ gap: 4 }} data-testid={`today-task-${t.key}`} aria-label={`${TASK_LABEL[t.key]} ${t.count}${unit}`}>
+                    {body}
+                  </div>
+                ) : (
+                  <Link key={t.key} href={taskHref(t.key, t.href)} className="card pad col" style={{ gap: 4, textDecoration: "none", color: "inherit" }} data-testid={`today-task-${t.key}`} aria-label={`${TASK_LABEL[t.key]} ${t.count}${unit}`}>
+                    {body}
+                  </Link>
+                );
+              })}
           </div>
         </>
       )}
