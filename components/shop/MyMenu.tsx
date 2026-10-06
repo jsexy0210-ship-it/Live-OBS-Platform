@@ -17,7 +17,13 @@ export default function MyMenu({ slug }: { slug: string }) {
         { href: `${base}/me/addresses`, label: "배송지 관리" },
       ],
     },
-    { title: "혜택", links: [{ href: `${base}/coupons`, label: "내 쿠폰함" }] },
+    {
+      title: "혜택",
+      links: [
+        { href: `${base}/me/rewards`, label: "내 적립금" },
+        { href: `${base}/coupons`, label: "내 쿠폰함" },
+      ],
+    },
     {
       title: "활동",
       links: [
