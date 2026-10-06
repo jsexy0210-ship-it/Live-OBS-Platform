@@ -99,20 +99,35 @@ describe("반려 메일(EM-102)", () => {
 });
 
 describe("보내지 않는 경우", () => {
-  it("공급자가 없거나 플랫폼 사업자 정보가 비었거나 APP_ORIGIN이 없으면 아무것도 보내지 않고 기록하지 않는다(채워지면 따라 보냄)", async () => {
+  it("공급자가 없거나 APP_ORIGIN이 없으면 아무것도 보내지 않고 기록하지 않는다(채워지면 따라 보냄)", async () => {
     const p = await plan();
     await applicant({ planId: p.id });
     const sender = new FakeMailSender();
     expect(await run(null)).toBe(0);
-    expect(await run(sender)).toBe(0); // 사업자 정보 없음
-    await platform({ phone: "" });
-    expect(await run(sender)).toBe(0); // 한 칸이 비어 있음
-    await platform();
     delete process.env.APP_ORIGIN;
     expect(await run(sender)).toBe(0);
     expect(await db.mailDelivery.count()).toBe(0);
     process.env.APP_ORIGIN = "https://onq.example";
     expect(await run(sender)).toBe(1);
+  });
+
+  it("플랫폼 사업자 정보가 비어 있어도 보낸다: 바닥글에서 빈 항목만 빠지고 지어낸 값은 없다", async () => {
+    const p = await plan();
+    await applicant({ planId: p.id });
+    await platform({ name: "", representative: "", businessNumber: "", address: "", phone: "" });
+    const sender = new FakeMailSender();
+    expect(await run(sender)).toBe(1);
+    const m = sender.sent[0];
+    expect(m.text).toContain("이 메일은 발신 전용이에요");
+    expect(m.text).not.toContain("상호");
+    expect(m.text).not.toContain("사업자등록번호");
+    expect(m.text).not.toContain("고객센터");
+    // 일부만 있으면 있는 항목만
+    await db.mailDelivery.deleteMany();
+    await platform({ name: "온큐 주식회사", representative: "", businessNumber: "", address: "", phone: "1588-0000" });
+    expect(await run(sender)).toBe(1);
+    expect(sender.sent[1].text).toContain("상호 온큐 주식회사 · 고객센터 1588-0000");
+    expect(sender.sent[1].text).not.toContain("대표 ");
   });
 
   it("동시에 두 번 돌려도 한 통만 보낸다", async () => {

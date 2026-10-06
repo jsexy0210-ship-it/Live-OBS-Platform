@@ -8,7 +8,7 @@ import { cleanText } from "../text/clean";
 
 // 플랫폼(ONQ) 사업자 정보(마스터 관리자 설정). 파트너스 가입 안내 메일 바닥글(EM-101·102)에 쓴다.
 // 조회는 마스터 관리자 전 역할, 바꾸기는 최고관리자만(system.manage). 로그 추적에는 바뀐 칸 이름만 남긴다(값은 남기지 않음).
-// 값이 하나라도 비어 있으면 메일 바닥글을 채울 수 없어 가입 승인·반려 메일을 보내지 않는다(sellers/decisionMails.ts).
+// 값이 비어 있으면 가입 안내 메일 바닥글에서 그 항목만 빠지고 발송은 그대로 한다(sellers/decisionMails.ts).
 export const BUSINESS_NUMBER = /^\d{3}-\d{2}-\d{5}$/;
 export const FIELDS = ["name", "representative", "businessNumber", "address", "phone"] as const;
 export type BusinessField = (typeof FIELDS)[number];
@@ -31,11 +31,11 @@ export async function readPlatformBusinessInfo(db: PrismaClient) {
   return view(await db.platformBusinessInfo.findUnique({ where: { id: 1 } }));
 }
 
-// 가입 안내 메일 바닥글용. 비어 있는 칸이 있으면 null.
+// 가입 안내 메일 바닥글용. 빈 칸은 빈 문자열로 두고(바닥글에서 그 항목을 뺀다, MASTER 결정 — 값을 지어내지 않고 발송도 막지 않음) 링크용 APP_ORIGIN이 없을 때만 null.
 export async function platformMailInfo(db: PrismaClient): Promise<PlatformInfo | null> {
   const v = await readPlatformBusinessInfo(db);
   const origin = process.env.APP_ORIGIN?.replace(/\/+$/, "");
-  if (!v.complete || !origin) return null;
+  if (!origin) return null;
   return { name: v.name, representative: v.representative, businessNumber: v.businessNumber, address: v.address, phone: v.phone, url: origin.replace(/^https?:\/\//, "") };
 }
 
