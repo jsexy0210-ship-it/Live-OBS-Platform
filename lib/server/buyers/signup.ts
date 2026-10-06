@@ -50,13 +50,18 @@ export function kstAge(birthDate: Date, now: Date): number {
 // 공유 미리보기·공유 카드도 이 기준이다(ARCHITECTURE 4.8.0 공개·구매자 경로 표).
 export async function shopOpen(db: PrismaClient, sellerId: string) {
   const seller = await db.seller.findUnique({ where: { id: sellerId }, select: { status: true, operatingState: true } });
-  return (
-    !!seller &&
-    seller.status === "ACTIVE" &&
-    seller.operatingState === "OPEN" &&
-    (await sellerAccessFor(db, sellerId)) !== "expired" &&
-    (await sellerHasFeature(db, sellerId, "STORE_OPERATIONS"))
-  );
+  return !!seller && seller.operatingState === "OPEN" && (await orderServiceOpenFor(db, sellerId, seller.status));
+}
+
+// 이미 낸 주문의 반품·환불·현금영수증 요청 조건(대표님 결정 2026-10-06): 운영 상태(준비 중·일시 정지)와 상관없이 받는다.
+// 이용 정지·구독 만료·스토어 운영 권한 없음일 때는 shopOpen과 같이 막는다. 새 거래(주문·가입 등)에는 쓰지 않는다.
+export async function orderServiceOpen(db: PrismaClient, sellerId: string) {
+  const seller = await db.seller.findUnique({ where: { id: sellerId }, select: { status: true } });
+  return !!seller && (await orderServiceOpenFor(db, sellerId, seller.status));
+}
+
+async function orderServiceOpenFor(db: PrismaClient, sellerId: string, status: string) {
+  return status === "ACTIVE" && (await sellerAccessFor(db, sellerId)) !== "expired" && (await sellerHasFeature(db, sellerId, "STORE_OPERATIONS"));
 }
 
 // 첫 문자를 보내는 중으로 보는 시간. 공급자 호출 제한시간(10초)보다 넉넉하게 잡는다. 이 시간이 지나도 보낸 기록이 없으면

@@ -2,7 +2,7 @@ import { cleanText } from "../text/clean";
 import { Prisma, type ActorType, type PrismaClient, type RefundFault, type ReturnKind, type ReturnReason, type ReturnStatus } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { assertBillingSecret, openBillingKey, sealBillingKey } from "../billing/secret";
-import { shopOpen } from "../buyers/signup";
+import { orderServiceOpen } from "../buyers/signup";
 import { checkReviewImage, type ReviewImageRejection } from "../product-reviews/image";
 import { getRefundVersion } from "../queue/read";
 import { previewRefundSelection, refundOrder, type RefundSelection } from "../queue/service";
@@ -170,7 +170,7 @@ function buyerAudit(tx: Tx, scope: BuyerScope, meta: AuditMeta, action: string, 
 
 // 신청 사진 올리기(리뷰 사진과 같은 검사). 붙지 않은 사진은 회원당 10장까지 두고 오래된 것부터 지운다.
 export async function uploadReturnImage(db: PrismaClient, scope: BuyerScope, bytes: Buffer, meta: AuditMeta = {}) {
-  if (!(await shopOpen(db, scope.sellerId))) return { ok: false as const, reason: "shop_unavailable" as const };
+  if (!(await orderServiceOpen(db, scope.sellerId))) return { ok: false as const, reason: "shop_unavailable" as const };
   const c = checkReviewImage(bytes);
   if (!c.ok) return c satisfies { ok: false; reason: ReviewImageRejection };
   return db.$transaction(async (tx) => {
@@ -219,7 +219,7 @@ export async function buyerReturnContext(db: PrismaClient, scope: BuyerScope, or
   const returnable = order.items.filter((i) => i.refundedQuantity < i.quantity);
   const requests = await db.returnRequest.findMany({ where: { sellerId: scope.sellerId, orderId }, include: viewInclude, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
   const active = requests.find((r) => ACTIVE_STATUSES.includes(r.status)) ?? null;
-  const open = await shopOpen(db, scope.sellerId);
+  const open = await orderServiceOpen(db, scope.sellerId);
   const blocked = !open ? "shop_unavailable" : order.status !== "PAID" || order.shipment?.status !== "DELIVERED" || order.purchaseConfirmedAt ? "not_returnable" : active ? "active_exists" : null;
   return {
     orderNoLabel: orderNoLabel(order.createdAt, order.orderNo),
@@ -240,7 +240,7 @@ export async function createReturn(db: PrismaClient, scope: BuyerScope, orderId:
   const parsed = parseNewReturn(body);
   if (!parsed.ok) return parsed;
   const input = parsed.v;
-  if (!(await shopOpen(db, scope.sellerId))) return { ok: false as const, reason: "shop_unavailable" as const };
+  if (!(await orderServiceOpen(db, scope.sellerId))) return { ok: false as const, reason: "shop_unavailable" as const };
   try {
     return await db.$transaction(async (tx) => {
       const locked = await lockOrder(tx, scope.sellerId, orderId);
@@ -343,7 +343,7 @@ async function buyerStep(
   body: (tx: Tx, r: NonNullable<Awaited<ReturnType<typeof lockRequest>>>, now: Date) => Promise<void>,
 ) {
   if (!isUuid(id)) return { ok: false as const, reason: "not_found" as const };
-  if (!(await shopOpen(db, scope.sellerId))) return { ok: false as const, reason: "shop_unavailable" as const };
+  if (!(await orderServiceOpen(db, scope.sellerId))) return { ok: false as const, reason: "shop_unavailable" as const };
   return db.$transaction(async (tx) => {
     const pre = await tx.returnRequest.findFirst({ where: { id, ...scope }, select: { orderId: true } });
     if (!pre) return { ok: false as const, reason: "not_found" as const };
