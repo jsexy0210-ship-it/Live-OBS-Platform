@@ -73,11 +73,11 @@ describe("파트너스 오늘 처리할 일", () => {
     expect(body.items.map((i: { key: string }) => i.key)).toEqual(["depositPending", "shipPending", "returnRequested", "inquiryWaiting", "stockOut", "stockLow"]);
     expect(Object.fromEntries(body.items.map((i: { key: string; href: string }) => [i.key, i.href]))).toEqual({
       depositPending: "/seller/orders/deposits",
-      shipPending: "/seller/orders?status=PAID&shipped=false",
+      shipPending: "/seller/orders?period=all&status=PAID&shipped=false",
       returnRequested: "/seller/returns?status=REQUESTED",
-      inquiryWaiting: "/seller/buyer-inquiries?status=WAITING",
-      stockOut: "/seller/products?stock=out&display=shown",
-      stockLow: "/seller/products?stock=low&display=shown",
+      inquiryWaiting: "/seller/buyer-inquiries?period=all&status=WAITING",
+      stockOut: "/seller/products?period=all&stock=out&display=shown",
+      stockLow: "/seller/products?period=all&stock=low&display=shown",
     });
     // 숫자와 주소만(구매자 정보 키 없음)
     expect(Object.keys(body).sort()).toEqual(["items", "total"]);
