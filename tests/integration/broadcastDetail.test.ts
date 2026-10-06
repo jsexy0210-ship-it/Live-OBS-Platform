@@ -58,7 +58,7 @@ describe("방송 상세", () => {
       const r = await detail(cookie, b.id);
       expect(r.status).toBe(200);
       expect(r.body.broadcast).toMatchObject({ id: b.id, title: "목요 방송", status: "ended" });
-      expect(r.body.summary).toEqual({ orders: 3, paidOrders: 2, sales: 10000, completed: 1, cancelled: 1, hits: 1 });
+      expect(r.body.summary).toEqual({ orders: 3, paidOrders: 2, sales: 10000, completed: 1, cancelled: 1, hits: 1, avgOpenSeconds: expect.toSatisfy((v: unknown) => v === null || typeof v === "number"), maxWaiting: 1 });
       expect(r.body.orders.map((o: { id: string; status: string; completedAt: string | null }) => [o.id, o.status, o.completedAt])).toEqual([
         [a.order.id, "PAID", at(start, 15).toISOString()],
         [expect.any(String), "CANCELLED", null],
