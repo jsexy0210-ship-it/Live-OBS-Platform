@@ -124,6 +124,7 @@ model Seller {
   buyerAddresses           BuyerAddress[]
   identityVerifications    IdentityVerification[]
   buyerSessions            BuyerSession[]
+  buyerPasswordResets      BuyerPasswordReset[]
   products                 Product[]
   productImages            ProductImage[]
   productOptions           ProductOption[]
@@ -406,6 +407,7 @@ model BuyerMember {
   seller               Seller                     @relation(fields: [sellerId], references: [id])
   grade                MemberGrade                @relation(fields: [sellerId, gradeId], references: [sellerId, id])
   sessions             BuyerSession[]
+  passwordResets       BuyerPasswordReset[]
   orders               Order[]
   purchaseRestrictions BuyerPurchaseRestriction[]
   memo                 MemberMemo?
@@ -547,6 +549,22 @@ model BuyerSession {
 
   seller      Seller      @relation(fields: [sellerId], references: [id])
   buyerMember BuyerMember @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
+
+  @@index([sellerId, buyerMemberId])
+}
+
+// 구매자 비밀번호 재설정 링크(buyers/passwordReset.ts). 토큰 원문은 저장하지 않고 해시만 둔다. 유효 30분·한 번만 쓴다.
+model BuyerPasswordReset {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String    @db.Uuid
+  buyerMemberId String    @db.Uuid
+  tokenHash     String    @unique
+  expiresAt     DateTime  @db.Timestamptz(3)
+  usedAt        DateTime? @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+
+  seller Seller      @relation(fields: [sellerId], references: [id])
+  member BuyerMember @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
 
   @@index([sellerId, buyerMemberId])
 }
@@ -3444,6 +3462,8 @@ model PlatformInquiry {
   // 마스터 관리자 담당(운영·CS·최고관리자 중 한 명, 없으면 미배정). 이름은 마스터 화면에만 나간다. 바꿔도 version은 올리지 않는다(작성 중인 답변을 막지 않기 위해).
   assignedAdminId       String?                 @db.Uuid
   assignedAt            DateTime?               @db.Timestamptz(3)
+  // 보낼 때 모은 진단 정보(브라우저·OS·최근 방송·오버레이 마지막 접속·앱 버전, lib/server/platform-inquiries/diagnostics.ts). 마스터 화면에만 보인다. 보내지 않기로 했거나 옛 문의는 null.
+  diagnostics           Json?
   version               Int                     @default(0)
   createdAt             DateTime                @default(now()) @db.Timestamptz(3)
 
@@ -4078,4 +4098,19 @@ model InfraPriceSetting {
   version          Int      @default(0)
   updatedByAdminId String?  @db.Uuid
   updatedAt        DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+}
+
+// 외부 연결(공공데이터포털 API·결제대행사·메일·도우미 등) 만료일·호출 상태(MA-120 「외부 연결 · 만료 · 상태」). 키 값은 어디에도 두지 않는다.
+// 연결 목록(key·이름·용도)은 코드(lib/server/ops/connections.ts)가 정하고, 행은 처음 기록·입력할 때 만든다.
+// 만료일은 최고관리자가 입력(KST 하루 끝까지 유효), 마지막 정상 호출·인증 오류 시각은 각 연동 호출부가 기록한다.
+model ExternalConnection {
+  key                String    @id
+  expiresAt          DateTime? @db.Timestamptz(3)
+  lastOkAt           DateTime? @db.Timestamptz(3)
+  lastAuthErrorAt    DateTime? @db.Timestamptz(3)
+  // 상태 코드만(예: http_401). 응답 본문·키는 남기지 않는다.
+  lastAuthErrorCode  String?
+  version            Int       @default(0)
+  updatedByAdminId   String?   @db.Uuid
+  updatedAt          DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
 }

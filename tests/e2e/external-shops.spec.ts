@@ -48,7 +48,7 @@ test("대표자: 목록·상태, 새 연결 시작(지원 밖 주소 거절 포�
   const rows = page.getByTestId("external-row");
   await expect(rows).toHaveCount(3);
   await expect(rows.filter({ hasText: "e2e-connected" })).toContainText("이어짐");
-  await expect(rows.filter({ hasText: "e2e-connected" })).toContainText("2분 전");
+  await expect(rows.filter({ hasText: "e2e-connected" })).toContainText(/\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}/);
   await expect(rows.filter({ hasText: "e2e-reauth" })).toContainText("다시 이어야 함");
   await expect(rows.filter({ hasText: "e2e-pending" })).toContainText("끊는 중");
   await page.screenshot({ path: "tests/e2e/screenshots/external-shops-sa006-1440.png", fullPage: true });

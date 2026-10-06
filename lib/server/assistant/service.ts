@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { TenantContext } from "../tenant/context";
+import { recordConnectionResult } from "../ops/connections";
 import { assistantApiKey, GeminiError, geminiGenerate, MODEL_NAME, type GeminiGenerate } from "./gemini";
 
 // 파트너스 도우미(SA-140). 플랫폼 사용법 질문·답변 전용(대표님 2026-10-02·05).
@@ -172,6 +173,8 @@ export async function askAssistant(db: PrismaClient, ctx: TenantContext, input: 
     // Gemini가 처리하지 않았음이 확실한 실패(4xx)만 예상 비용을 돌려준다. 시간 초과·끊김·5xx·해석 실패는 이미 과금됐을 수 있어
     // 예상 비용을 그대로 남기고 원장에 ERROR + 예상 비용으로 기록한다(한도 우회 방지). 오류 내용·키는 남기지 않는다.
     const refund = e instanceof GeminiError && e.refundable;
+    // 외부 연결 상태(MA-120): 인증 실패(401·403)만 기록한다
+    if (e instanceof GeminiError && /^gemini_http_40[13]$/.test(e.message)) await recordConnectionResult(db, "gemini", "auth_error", e.message.replace("gemini_", ""));
     await db.$transaction(async (tx) => {
       if (refund) await adjustUsage(tx, period.month, -estMilli);
       await log({ status: "ERROR", costMilliWon: refund ? 0 : estMilli }, tx);
@@ -179,6 +182,7 @@ export async function askAssistant(db: PrismaClient, ctx: TenantContext, input: 
     return { ok: false, reason: "upstream_error" };
   }
 
+  await recordConnectionResult(db, "gemini", "ok");
   const cost = costMilli(out.inputTokens, out.outputTokens, settings.inputWonPerMTok, settings.outputWonPerMTok);
   const noAnswer = out.text.length === 0 || out.text.includes(NO_ANSWER_TOKEN);
   const answer = noAnswer ? ASSISTANT_MESSAGES.no_answer : out.text.slice(0, 2000);
