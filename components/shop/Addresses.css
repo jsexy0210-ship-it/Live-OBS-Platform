@@ -1,0 +1,97 @@
+/* SH-027 배송지 관리 */
+.ad-count {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--wds-label-alternative);
+}
+.ad-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+.ad-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 16px;
+  border: 1px solid var(--wds-line-solid-neutral);
+  border-radius: var(--shop-r);
+}
+.ad-card h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+.ad-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.ad-chip {
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--wds-background-normal-alternative);
+  font-size: 12px;
+  color: var(--brand);
+}
+.ad-links {
+  display: flex;
+  gap: 12px;
+  margin-left: auto;
+}
+.ad-who,
+.ad-addr {
+  margin: 0;
+  font-size: 14px;
+}
+.ad-addr {
+  color: var(--wds-label-alternative);
+}
+.ad-card .btn {
+  margin-top: 8px;
+}
+.ad-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+.ad-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ad-field label {
+  font-size: 13px;
+  font-weight: 700;
+}
+.ad-field label i {
+  margin-left: 2px;
+  font-style: normal;
+  color: var(--wds-status-negative);
+}
+.ad-field .err {
+  font-size: 13px;
+  color: var(--wds-status-negative);
+}
+.ad-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.ad-actions {
+  display: flex;
+  gap: 8px;
+}
+.ad-actions .btn {
+  flex: 1;
+  margin: 0;
+}
+.ad-add {
+  width: 100%;
+}
