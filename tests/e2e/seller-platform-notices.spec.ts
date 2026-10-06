@@ -50,7 +50,7 @@ test("문의: 공지에서 관련 문의를 보내고, 사진을 붙이고, 답�
 
   const send = page.getByRole("button", { name: "문의 보내기" });
   await expect(send).toBeDisabled();
-  await page.getByLabel("유형").selectOption("BILLING");
+  await page.getByLabel("유형").selectOption("SUBSCRIPTION_FEE");
   await page.getByLabel("제목").fill(`${E2E_PREFIX}결제 문의`);
   await page.getByLabel("내용").fill("결제 내역이 맞지 않습니다.");
   // 너무 작은 사진은 이유를 알려 주고 붙이지 않는다

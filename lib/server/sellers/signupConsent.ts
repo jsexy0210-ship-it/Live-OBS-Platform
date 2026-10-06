@@ -7,9 +7,23 @@ import type { Prisma } from "@prisma/client";
 export const SELLER_SIGNUP_CONSENT_VERSIONS = {
   terms: "2026-10-04.v1", // 파트너스 이용약관(PF-008)
   privacy: "2026-10-04.v1", // 개인정보 수집·이용 동의(처리방침 PF-009와 별도 문서)
+  policy: "2026-10-06.v1", // 파트너스 운영 정책(구매자 개인정보 보호·방송 표시 규칙, PF-007-1 필수 동의)
+  marketing: "2026-10-06.v1", // 새 기능·혜택 소식 받기(선택 동의)
 } as const;
 
-export type SellerSignupConsent = { termsVersion: string; privacyVersion: string; agreedAt: string };
+// 운영 정책 동의를 필수로 받을지. 가입 화면(PF-007-1)이 정본의 「파트너스 운영 정책」 체크를 보내기 전에는 false로 두어
+// 기존 화면이 막히지 않게 한다. 화면이 보내기 시작하는 변경에서 true로 바꾼다. 보내 온 값은 false여도 확인·저장한다.
+export const SELLER_POLICY_REQUIRED = false;
+
+// policyVersion: 운영 정책 동의 문서 버전(동의했을 때만). marketing: 선택 동의(동의했을 때 버전·시각 marketingAt)
+export type SellerSignupConsent = {
+  termsVersion: string;
+  privacyVersion: string;
+  agreedAt: string;
+  policyVersion?: string;
+  marketingVersion?: string;
+  marketingAt?: string;
+};
 
 export type SellerConsentFailure = "terms_required" | "consent_outdated";
 
@@ -19,13 +33,25 @@ export const SELLER_CONSENT_MESSAGES: Record<SellerConsentFailure, string> = {
 };
 export const SELLER_CONSENT_STATUS: Record<SellerConsentFailure, number> = { terms_required: 400, consent_outdated: 409 };
 
-// 본문: { agreedTerms: true, agreedPrivacy: true, termsVersion, privacyVersion }. 둘 중 하나라도 true가 아니면 terms_required,
-// 화면이 보여 준 문서 버전이 지금과 다르면 consent_outdated(동의한 내용을 확인할 수 없어 시작하지 않는다).
+// 본문: { agreedTerms: true, agreedPrivacy: true, termsVersion, privacyVersion } + 운영 정책 { agreedPolicy: true, policyVersion } + 선택 { agreedMarketing: true, marketingVersion }.
+// 필수 둘 중 하나라도 true가 아니면 terms_required(운영 정책은 SELLER_POLICY_REQUIRED일 때 필수, 보냈다면 false는 거절).
+// 화면이 보여 준 문서 버전이 지금과 다르면 consent_outdated(동의한 내용을 확인할 수 없어 시작하지 않는다). 선택 동의는 거절해도 가입에 영향이 없다.
 export function parseSellerSignupConsent(raw: unknown, now: Date): { ok: true; consent: SellerSignupConsent } | { ok: false; reason: SellerConsentFailure } {
   const b = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   if (b.agreedTerms !== true || b.agreedPrivacy !== true) return { ok: false, reason: "terms_required" };
+  const policySent = b.agreedPolicy !== undefined || b.policyVersion !== undefined;
+  if ((SELLER_POLICY_REQUIRED || policySent) && b.agreedPolicy !== true) return { ok: false, reason: "terms_required" };
   if (b.termsVersion !== SELLER_SIGNUP_CONSENT_VERSIONS.terms || b.privacyVersion !== SELLER_SIGNUP_CONSENT_VERSIONS.privacy) return { ok: false, reason: "consent_outdated" };
-  return { ok: true, consent: { termsVersion: SELLER_SIGNUP_CONSENT_VERSIONS.terms, privacyVersion: SELLER_SIGNUP_CONSENT_VERSIONS.privacy, agreedAt: now.toISOString() } };
+  if ((SELLER_POLICY_REQUIRED || policySent) && b.policyVersion !== SELLER_SIGNUP_CONSENT_VERSIONS.policy) return { ok: false, reason: "consent_outdated" };
+  const at = now.toISOString();
+  const consent: SellerSignupConsent = { termsVersion: SELLER_SIGNUP_CONSENT_VERSIONS.terms, privacyVersion: SELLER_SIGNUP_CONSENT_VERSIONS.privacy, agreedAt: at };
+  if (b.agreedPolicy === true) consent.policyVersion = SELLER_SIGNUP_CONSENT_VERSIONS.policy;
+  if (b.agreedMarketing === true) {
+    if (b.marketingVersion !== SELLER_SIGNUP_CONSENT_VERSIONS.marketing) return { ok: false, reason: "consent_outdated" };
+    consent.marketingVersion = SELLER_SIGNUP_CONSENT_VERSIONS.marketing;
+    consent.marketingAt = at;
+  }
+  return { ok: true, consent };
 }
 
 // DB에서 읽은 값을 다시 확인한다(형식이 틀리거나 없으면 null).
@@ -33,5 +59,11 @@ export function readSellerSignupConsent(v: Prisma.JsonValue | null | undefined):
   if (!v || typeof v !== "object" || Array.isArray(v)) return null;
   const c = v as Record<string, unknown>;
   if (typeof c.termsVersion !== "string" || typeof c.privacyVersion !== "string" || typeof c.agreedAt !== "string") return null;
-  return { termsVersion: c.termsVersion, privacyVersion: c.privacyVersion, agreedAt: c.agreedAt };
+  const out: SellerSignupConsent = { termsVersion: c.termsVersion, privacyVersion: c.privacyVersion, agreedAt: c.agreedAt };
+  if (typeof c.policyVersion === "string") out.policyVersion = c.policyVersion;
+  if (typeof c.marketingVersion === "string" && typeof c.marketingAt === "string") {
+    out.marketingVersion = c.marketingVersion;
+    out.marketingAt = c.marketingAt;
+  }
+  return out;
 }

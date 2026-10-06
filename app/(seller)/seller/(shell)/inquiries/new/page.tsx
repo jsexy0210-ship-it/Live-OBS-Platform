@@ -7,7 +7,7 @@ import { InquiryAttach, type Attached } from "../../../../../../components/selle
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { useUnsavedGuard } from "../../../../../../lib/client/navigation";
 import { api } from "../../../../../../components/seller/api";
-import { INQUIRY_BODY_MAX, INQUIRY_CATEGORY, INQUIRY_TITLE_MAX, type InquiryCategory } from "../../../../../../components/seller/platformInquiry";
+import { INQUIRY_BODY_MAX, INQUIRY_CATEGORY, INQUIRY_TITLE_MAX, INQUIRY_WRITE_CATEGORIES, type InquiryCategory } from "../../../../../../components/seller/platformInquiry";
 
 // SA-114 문의 작성(파트너스 관리자, 공지 · 문의 › 문의하기). 유형·제목·내용·사진. 공지 상세 「관련 문의하기」로 들어오면 그 공지가 함께 붙는다.
 // API: POST /api/seller/platform-inquiries { category, title, body, imageIds?, noticeId? } → 201 { inquiry } · 400 invalid_* · 429 too_many_inquiries(24시간 20건).
@@ -80,7 +80,7 @@ function Form() {
               </label>
               <select id="iq-cat" className="inp" value={category} onChange={(e) => setCategory(e.target.value as InquiryCategory | "")}>
                 <option value="">선택</option>
-                {Object.entries(INQUIRY_CATEGORY).map(([k, v]) => (
+                {INQUIRY_WRITE_CATEGORIES.map((k) => [k, INQUIRY_CATEGORY[k]] as const).map(([k, v]) => (
                   <option key={k} value={k}>
                     {v}
                   </option>
