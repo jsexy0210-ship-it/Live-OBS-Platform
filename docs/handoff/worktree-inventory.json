@@ -94,13 +94,13 @@
       ],
       "archive": [
         "working-tree/Live-OBS-Platform-event-entrants/tracked.patch",
-        "working-tree/Live-OBS-Platform-event-entrants/untracked/app/api/public/events/[eventId]/[action]/route.ts",
-        "working-tree/Live-OBS-Platform-event-entrants/untracked/app/api/public/events/[eventId]/route.ts",
-        "working-tree/Live-OBS-Platform-event-entrants/untracked/lib/server/events/entries.ts",
-        "working-tree/Live-OBS-Platform-event-entrants/untracked/prisma/migrations/20261006320000_audience_event_entry_sources/migration.sql",
-        "working-tree/Live-OBS-Platform-event-entrants/untracked/tests/integration/eventEntryModes.test.ts",
-        "working-tree/Live-OBS-Platform-event-entrants/untracked/tests/integration/eventEntrySourcesSql.test.ts",
-        "working-tree/Live-OBS-Platform-event-entrants/untracked/tests/unit/eventEntryService.test.ts"
+        "working-tree/Live-OBS-Platform-event-entrants/untracked/app/api/public/events/[eventId]/[action]/route.ts.source",
+        "working-tree/Live-OBS-Platform-event-entrants/untracked/app/api/public/events/[eventId]/route.ts.source",
+        "working-tree/Live-OBS-Platform-event-entrants/untracked/lib/server/events/entries.ts.source",
+        "working-tree/Live-OBS-Platform-event-entrants/untracked/prisma/migrations/20261006320000_audience_event_entry_sources/migration.sql.source",
+        "working-tree/Live-OBS-Platform-event-entrants/untracked/tests/integration/eventEntryModes.test.ts.source",
+        "working-tree/Live-OBS-Platform-event-entrants/untracked/tests/integration/eventEntrySourcesSql.test.ts.source",
+        "working-tree/Live-OBS-Platform-event-entrants/untracked/tests/unit/eventEntryService.test.ts.source"
       ]
     },
     {
@@ -198,5 +198,6 @@
     "wip/onq-event-entrants-checkpoint-20261006": "3140ff8f3cb8defc728482d33f44fe84235f657e",
     "wip/page-guidance-sidebar-panels-20261006": "29e8a005d11f973326e51c5203d2fad91f22561c",
     "wip/sa056-hierarchy-20261006": "df8a2c117c5b065e22009f2a9e837164b329cfdb"
-  }
+  },
+  "archiveSourceSuffix": ".source; restore untracked file paths after removing this last suffix"
 }

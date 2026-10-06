@@ -1,4 +1,4 @@
-bb4374c7d83e0ca9035053584bfcd5505bf6dba205d7b4a26642ced7209ef2a7  README.md
+c315c6653fd9b99345fe03dc3671d03bd593266ae2b116fc49d2fa6875fcc447  README.md
 33c35efce5bb885ebd47e7944b56dd2d13d5a01c5769446b7fa8afb882e32503  agent-checkpoints.md
 d382a10750f2a72c165cd196c709ff81841240f523f6de15c9cd3d890e59348a  open-prs.json
 8ab1f86451144f95f6b926b33a10fdd99fbdbb509f581d43ace882aeddfd9366  pr-bodies/event-core-pr-body.md
@@ -20,12 +20,12 @@ a784f83872b898040162a0d9f169afdcd62104ee619c6b4ef33222bc127fe4ec  references/onq
 a607ea4d66b0f222f4c10e6ca12927b45e70932d30141629a54147ccfcf6f60e  references/onq-sa056-readonly-audit.md
 bb33a6b3f1a5c33ece6578b723fbc430115c544dfa765814aae61ea466d92a59  working-tree/Live-OBS-Platform-datetime-picker/tracked.patch
 5a52fdb422f5f1434ddf2dd1c837d6a3f4293155b70ec43c6df4b7382532e98b  working-tree/Live-OBS-Platform-event-entrants/tracked.patch
-7f266799b1f03a9bf27a755d6b6bdf42121bc68e629688da93210e9424889392  working-tree/Live-OBS-Platform-event-entrants/untracked/app/api/public/events/[eventId]/[action]/route.ts
-33ff6bdf46cf02028992dc2a155d667e2752b529c847ee0e9f5faa136554a908  working-tree/Live-OBS-Platform-event-entrants/untracked/app/api/public/events/[eventId]/route.ts
-a14f95d440a4181efc74d32f7174534a1fa33d44358db71fe2c98817296fad18  working-tree/Live-OBS-Platform-event-entrants/untracked/lib/server/events/entries.ts
-80907d9f489dc08b6f744e5b0a6b5397df6361e0d97450f01d719d8355174910  working-tree/Live-OBS-Platform-event-entrants/untracked/prisma/migrations/20261006320000_audience_event_entry_sources/migration.sql
-86ac8fa531e378338994b35293f4efd1d0995a786f609a0f13939b4b5197eb6d  working-tree/Live-OBS-Platform-event-entrants/untracked/tests/integration/eventEntryModes.test.ts
-3aff42a2e7381bbf1420b80c5d931dbf32e3bea383845e51cebfa93ab1b7c17b  working-tree/Live-OBS-Platform-event-entrants/untracked/tests/integration/eventEntrySourcesSql.test.ts
-8712d7a3c3687e1a2afabc22b599a82522429cc948ece99ef8d3fa2e1592060d  working-tree/Live-OBS-Platform-event-entrants/untracked/tests/unit/eventEntryService.test.ts
+7f266799b1f03a9bf27a755d6b6bdf42121bc68e629688da93210e9424889392  working-tree/Live-OBS-Platform-event-entrants/untracked/app/api/public/events/[eventId]/[action]/route.ts.source
+33ff6bdf46cf02028992dc2a155d667e2752b529c847ee0e9f5faa136554a908  working-tree/Live-OBS-Platform-event-entrants/untracked/app/api/public/events/[eventId]/route.ts.source
+a14f95d440a4181efc74d32f7174534a1fa33d44358db71fe2c98817296fad18  working-tree/Live-OBS-Platform-event-entrants/untracked/lib/server/events/entries.ts.source
+80907d9f489dc08b6f744e5b0a6b5397df6361e0d97450f01d719d8355174910  working-tree/Live-OBS-Platform-event-entrants/untracked/prisma/migrations/20261006320000_audience_event_entry_sources/migration.sql.source
+86ac8fa531e378338994b35293f4efd1d0995a786f609a0f13939b4b5197eb6d  working-tree/Live-OBS-Platform-event-entrants/untracked/tests/integration/eventEntryModes.test.ts.source
+3aff42a2e7381bbf1420b80c5d931dbf32e3bea383845e51cebfa93ab1b7c17b  working-tree/Live-OBS-Platform-event-entrants/untracked/tests/integration/eventEntrySourcesSql.test.ts.source
+8712d7a3c3687e1a2afabc22b599a82522429cc948ece99ef8d3fa2e1592060d  working-tree/Live-OBS-Platform-event-entrants/untracked/tests/unit/eventEntryService.test.ts.source
 3b81116378f1200e81bcafc3521dd5d6b1230861031ad18facddcd6e2620da57  working-tree/Live-OBS-Platform-sidebar-nav/tracked.patch
-d32563ec42b770116e47e88fc4dd547d187ff534e70e38485c2b7b75fcb6479f  worktree-inventory.json
+b090af08f29c29ac3089e11ea22b6948955a2929ad41f3954b542d353b28bba3  worktree-inventory.json
