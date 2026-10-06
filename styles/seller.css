@@ -1507,6 +1507,16 @@ body {
   flex-wrap: wrap;
   min-height: var(--ui-h-default);
 }
+/* 2026-10-06 대표님: 읽기 전용 값은 label-alt 회색, placeholder는 기존 안내 토큰 */
+.app input[readonly],
+.app textarea[readonly] {
+  color: var(--wds-label-alternative);
+  -webkit-text-fill-color: var(--wds-label-alternative);
+}
+.app input::placeholder,
+.app textarea::placeholder {
+  color: var(--wds-label-assistive);
+}
 /* 제목 아래 설명: 기존 본문·텍스트 토큰, 페이지 목적/핵심 안내 한두 문장 */
 .au-ph-description {
   margin: 0;
