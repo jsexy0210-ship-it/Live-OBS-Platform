@@ -194,13 +194,22 @@ test("자동 배송 완료·자동 구매 확정: 기본 7일, 기간을 바꾸�
   await expect(page.getByLabel("자동 구매 확정 기간")).toHaveValue("7");
   await expect(page.getByTestId("delivery-preview")).toContainText("배송 중 7일이 지나면 배송 완료로 바뀝니다 · 배송 완료 7일 뒤 자동으로 구매 확정됩니다");
   await shot(page, "SA-063-delivery");
-  // 켜면 송장 조회 비용이 발송·이용 충전금에서 차감된다고 알리고, 끄면 비용이 없다고 알린다(단가는 발송·이용 충전 API, 정해지기 전에는 「단가 확정 전 금액이」)
+  // 배송 자동 조회: 기본은 끔(택배사 조회 링크만, 비용 없음). 켜면 송장 조회 비용이 발송·이용 충전금에서 차감된다고 알린다(단가는 발송·이용 충전 API, 정해지기 전에는 「단가 확정 전」)
+  await expect(page.getByRole("radio", { name: "끔 · 택배사 조회 링크만 (기본)" })).toBeChecked();
+  await expect(page.getByTestId("tracking-fee")).toContainText("택배사 조회 페이지 링크만 보여 드리며 비용이 없습니다");
+  await page.getByRole("radio", { name: "켬 · 송장 자동 조회" }).check();
   await expect(page.getByTestId("tracking-fee")).toContainText("켜면 송장 1건 조회당");
   await expect(page.getByTestId("tracking-fee")).toContainText("단가 확정 전 금액이 발송·이용 충전금에서 차감됩니다");
   await expect(page.getByTestId("tracking-fee")).not.toContainText("[확정 전]");
-  await page.getByRole("checkbox", { name: "일정 기간이 지나면 배송 완료로 바꿉니다" }).click();
-  await expect(page.getByTestId("tracking-fee")).toContainText("택배사 조회 페이지 링크만 보여 드리며 비용이 없습니다");
-  await page.getByRole("checkbox", { name: "일정 기간이 지나면 배송 완료로 바꿉니다" }).click();
+  const put = page.waitForResponse((r) => r.request().method() === "PUT" && r.url().endsWith("/api/seller/order-policy"));
+  await save(page);
+  const res = await put;
+  expect(res.request().postDataJSON()).toMatchObject({ autoTrackingEnabled: true, dueReminderEnabled: true });
+  await page.reload();
+  await expect(page.getByRole("radio", { name: "켬 · 송장 자동 조회" })).toBeChecked();
+  // 기본(끔)으로 되돌려 저장해 둔다
+  await page.getByRole("radio", { name: "끔 · 택배사 조회 링크만 (기본)" }).check();
+  await saveOk(page);
 
   // 기간 검사: 1~30일
   await page.getByLabel("자동 배송 완료 기간").fill("31");
@@ -270,4 +279,24 @@ test("결제 후 취소 제한: 기본 꺼짐, 켜서 저장하면 다시 열어
   await saveOk(page);
   await page.reload();
   await expect(page.getByRole("checkbox", { name: "결제 후 5번 취소하면 30일 동안 주문 막기" })).not.toBeChecked();
+});
+
+test("마감 알림: 기본 켜짐, 끄면 저장되고 다시 열어도 꺼져 있으며, 자동 취소를 끄면 행이 숨는다", async ({ page }) => {
+  await openAs(page, "demo-owner@example.com");
+  const box = page.getByRole("checkbox", { name: "마감 1시간 전 알림" });
+  await expect(box).toBeChecked();
+  await expect(page.getByText("알림톡으로 입금을 한 번 더 안내합니다 · 안 되면 문자로 보냅니다")).toBeVisible();
+  await box.uncheck();
+  const put = page.waitForResponse((r) => r.request().method() === "PUT" && r.url().endsWith("/api/seller/order-policy"));
+  await save(page);
+  expect((await put).request().postDataJSON()).toMatchObject({ dueReminderEnabled: false });
+  await page.reload();
+  await expect(page.getByRole("checkbox", { name: "마감 1시간 전 알림" })).not.toBeChecked();
+  // 자동 취소를 끄면 마감 알림 행도 숨는다
+  await page.getByRole("checkbox", { name: "기한이 지나면 자동으로 취소합니다" }).uncheck();
+  await expect(page.getByRole("checkbox", { name: "마감 1시간 전 알림" })).toHaveCount(0);
+  await page.getByRole("checkbox", { name: "기한이 지나면 자동으로 취소합니다" }).check();
+  // 켜 둔 상태로 되돌린다
+  await page.getByRole("checkbox", { name: "마감 1시간 전 알림" }).check();
+  await saveOk(page);
 });
