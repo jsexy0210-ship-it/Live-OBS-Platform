@@ -15,6 +15,14 @@ const ADDRESS_MAX = 200;
 const HOURS_MAX = 100;
 const PHONE = /^[0-9+\-() ]{5,30}$/;
 const bizNo = (v: string | null) => (v && /^\d{10}$/.test(v) ? `${v.slice(0, 3)}-${v.slice(3, 5)}-${v.slice(5)}` : v);
+// 입력 예시(placeholder). 정본 보드에는 문구가 없어 디자인 전담에 확정을 요청한 임시 문구
+const PLACEHOLDER: Record<string, string> = {
+  "biz-phone": "예: 1588-1234",
+  "biz-hours": "예: 평일 10:00~17:00",
+  "biz-kakao": "https://pf.kakao.com/_채널주소",
+  "biz-youtube": "https://www.youtube.com/@채널이름",
+  "biz-address": "예: 서울특별시 중구 세종대로 110 3층",
+};
 const len = (v: string) => [...v.trim()].length;
 const URL_MAX = 300;
 // 채널 주소는 https://로 시작하는 주소만(서버 기준, 비우면 지운다)
@@ -105,7 +113,7 @@ export function BusinessSection({ onSection, disabled }: { onSection: OnSection;
   const readonly = (v: string | null) => <input className="inp" value={v ?? ""} readOnly aria-readonly style={{ width: "100%" }} />;
   const field = (id: string, v: string, set: (v: string) => void, error: string | null, help?: string) => (
     <>
-      <input id={id} className={`inp${showErrors && error ? " is-error" : ""}`} value={v} onChange={(e) => set(e.target.value)} style={{ width: "100%" }} aria-invalid={showErrors && !!error} disabled={disabled} />
+      <input id={id} placeholder={PLACEHOLDER[id]} className={`inp${showErrors && error ? " is-error" : ""}`} value={v} onChange={(e) => set(e.target.value)} style={{ width: "100%" }} aria-invalid={showErrors && !!error} disabled={disabled} />
       {showErrors && error ? <span className="err" role="alert">{error}</span> : help && <p className="help au-ft-help">{help}</p>}
     </>
   );
@@ -138,9 +146,9 @@ export function BusinessSection({ onSection, disabled }: { onSection: OnSection;
           </tr>
           <tr>
             <th scope="row"><label htmlFor="biz-phone" className="req">고객센터 연락처</label></th>
-            <td className="si-rt">{field("biz-phone", csPhone, setCsPhone, phoneError, "예: 1588-1234")}</td>
+            <td className="si-rt">{field("biz-phone", csPhone, setCsPhone, phoneError)}</td>
             <th scope="row"><label htmlFor="biz-hours">운영 시간</label></th>
-            <td>{field("biz-hours", csHours, setCsHours, hoursError, "예: 평일 10:00~17:00")}</td>
+            <td>{field("biz-hours", csHours, setCsHours, hoursError)}</td>
           </tr>
           <tr>
             <th scope="row"><label htmlFor="biz-kakao">카카오톡 채널 주소</label></th>
