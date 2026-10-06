@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PageHead } from "../../../../../components/admin-ui";
+import { PageHead, useConfirm } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
@@ -55,6 +55,7 @@ function query(tab: Tab, q: string, cursor?: string) {
 }
 
 export default function ShippingPage() {
+  const { confirm } = useConfirm();
   // 탭·검색어는 주소(쿼리 ?tab·?q)가 기준이다. 주문 상세에 갔다 Back으로 돌아와도 그대로 복원된다(UX 감사 9.3). 틀린 탭 값은 발송 대기로 본다
   const [u, setU] = useUrlState({ tab: "ready", q: "" });
   const tab: Tab = TABS.some((t) => t.key === u.tab) ? (u.tab as Tab) : "ready";
@@ -146,9 +147,10 @@ export default function ShippingPage() {
     setBusy(false);
   };
 
-  const ship = () =>
-    readyTargets.length > 0 &&
-    send(
+  const ship = async () => {
+    if (readyTargets.length === 0) return;
+    if (!(await confirm({ title: `송장 ${readyTargets.length}건을 저장하시겠습니까?`, body: "택배사·송장번호를 저장하고 해당 주문을 「배송 중」으로 바꿉니다. 구매자에게 알림이 갑니다.", confirmLabel: "송장 저장" }))) return;
+    await send(
       "/api/seller/shipments",
       readyTargets,
       (chunk) => ({ items: chunk.map((x) => ({ orderId: x.orderId, courier: courierOf[x.orderId] ?? courier, trackingNumber: tracking[x.orderId].trim() })) }),
@@ -156,10 +158,13 @@ export default function ShippingPage() {
       "송장 저장",
       "송장을 저장하지 못했습니다. 잠시 후 다시 시도해 주십시오",
     );
+  };
 
-  const deliver = () => {
+  const deliver = async () => {
     const ids = items.filter((x) => picked.has(x.orderId)).map((x) => x.orderId);
-    return ids.length > 0 && send("/api/seller/shipments/deliver", ids, (chunk) => ({ orderIds: chunk }), (x) => x, "배송 완료", "배송 완료로 바꾸지 못했습니다. 잠시 후 다시 시도해 주십시오");
+    if (ids.length === 0) return;
+    if (!(await confirm({ title: `${ids.length}건을 배송 완료로 바꾸시겠습니까?`, body: "선택한 주문을 배송 완료로 바꿉니다. 구매자에게 알림이 가고 리뷰 작성이 열립니다.", confirmLabel: "배송 완료로 바꾸기" }))) return;
+    await send("/api/seller/shipments/deliver", ids, (chunk) => ({ orderIds: chunk }), (x) => x, "배송 완료", "배송 완료로 바꾸지 못했습니다. 잠시 후 다시 시도해 주십시오");
   };
 
   const toggle = (id: string) =>

@@ -1187,28 +1187,28 @@
       "y": 3720
     },
     "PF-007-1.dc.html": {
-      "h": 740,
+      "h": 1630,
       "is_interactive": true,
       "page": "p05",
-      "title": "PF-007-1 가입 신청 — 약관 동의",
+      "title": "PF-007-1 가입 신청 1/5 — 약관 동의",
       "w": 1440,
       "x": 0,
       "y": 5840
     },
     "PF-007-2.dc.html": {
-      "h": 2890,
+      "h": 3160,
       "is_interactive": true,
       "page": "p05",
-      "title": "PF-007-2 가입 신청 — 정보 입력",
+      "title": "PF-007-2 가입 신청 2/5 — 대표자 본인확인",
       "w": 1440,
       "x": 1520,
       "y": 5840
     },
     "PF-007-3.dc.html": {
-      "h": 865,
+      "h": 3080,
       "is_interactive": true,
       "page": "p05",
-      "title": "PF-007-3 가입 신청 — 완료 · 승인 대기",
+      "title": "PF-007-3 가입 신청 3/5 — 가입 정보(계정 · 쇼핑몰 · 쇼핑몰 여부)",
       "w": 1440,
       "x": 3040,
       "y": 5840
@@ -1331,7 +1331,7 @@
       "y": 2301
     },
     "SA-001.dc.html": {
-      "h": 3650,
+      "h": 3670,
       "is_interactive": true,
       "page": "p02",
       "title": "SA-001 방송 대시보드 · 방송 중 (개발 맞춤 2026-10-05 코드 기준 · 요약 4타일 · 방송 상태 줄 · 개봉 중 카드 · 대기 표 ↑↓ · 최근 완료 되돌리기 · 오버레이 · 단축키 · 후속 표시)",
@@ -1831,16 +1831,16 @@
       "y": 15121
     },
     "SA-053.dc.html": {
-      "h": 1564,
+      "h": 1810,
       "is_interactive": true,
       "page": "p02",
-      "title": "SA-053 HIT 카드 이력 (카페24식 · 표형 검색 · 목록 · 갤러리 · 삭제)",
+      "title": "SA-053 HIT 카드 기록 (카페24식 · 표형 검색 · 목록 · 갤러리 · 삭제)",
       "w": 1440,
       "x": 3040,
       "y": 15121
     },
     "SA-054.dc.html": {
-      "h": 1504,
+      "h": 1760,
       "is_interactive": true,
       "page": "p02",
       "title": "SA-054 방송 이력 (카페24식 · 요약 · 표형 검색 · 목록 · 페이지)",
@@ -2634,14 +2634,6 @@
       "x": 0,
       "y": 44620
     },
-    "SH-022-R.dc.html": {
-      "h": 3220,
-      "title": "SH-022-R 주문 상세 · 교환 · 반품 요청 시트(구현 shop-returns 기준)",
-      "w": 800,
-      "x": 880,
-      "y": 48660,
-      "page": "p04"
-    },
     "SH-022.dc.html": {
       "h": 1539,
       "is_interactive": true,
@@ -3011,6 +3003,32 @@
       "w": 800,
       "x": 0,
       "y": 48660
+    },
+    "SH-022-R.dc.html": {
+      "h": 3220,
+      "title": "SH-022-R 주문 상세 · 교환 · 반품 요청 시트(구현 shop-returns 기준)",
+      "w": 800,
+      "x": 880,
+      "y": 48660,
+      "page": "p04"
+    },
+    "PF-007-4.dc.html": {
+      "h": 3470,
+      "is_interactive": true,
+      "page": "p05",
+      "title": "PF-007-4 가입 신청 4/5 — 사업자 정보",
+      "w": 1440,
+      "x": 0,
+      "y": 8900
+    },
+    "PF-007-5.dc.html": {
+      "h": 2590,
+      "is_interactive": true,
+      "page": "p05",
+      "title": "PF-007-5 가입 신청 5/5 — 신청 완료 · 승인 대기",
+      "w": 1440,
+      "x": 1520,
+      "y": 8900
     },
     "MA-120.dc.html": {
       "h": 4060,
@@ -3872,6 +3890,7 @@
     "SH-022-PC.dc.html",
     "SH-022.dc.html",
     "SH-022-M.dc.html",
+    "SH-022-RF.dc.html",
     "SH-022-R.dc.html",
     "SH-023-PC.dc.html",
     "SH-023.dc.html",
@@ -4105,7 +4124,8 @@
     "DS-NAV.dc.html",
     "DS-TYPE-SCALE.dc.html",
     "DS-DATEPICKER.dc.html",
-    "SH-022-RF.dc.html",
+    "PF-007-4.dc.html",
+    "PF-007-5.dc.html",
     "MA-120.dc.html"
   ],
   "pages": [

@@ -1,4 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { GET as adminAssignees } from "../../app/api/admin/platform-inquiries/assignees/route";
+import { POST as adminAssign } from "../../app/api/admin/platform-inquiries/[inquiryId]/assign/route";
+import { GET as adminList } from "../../app/api/admin/platform-inquiries/route";
 import { POST as adminClose } from "../../app/api/admin/platform-inquiries/[inquiryId]/close/route";
 import { GET as adminGetOne } from "../../app/api/admin/platform-inquiries/[inquiryId]/route";
 import { POST as adminReply } from "../../app/api/admin/platform-inquiries/[inquiryId]/reply/route";
@@ -50,6 +53,8 @@ const follow = async (cookie: string, id: string, body: unknown) => json(await s
 const reply = async (cookie: string, id: string, body: unknown) => json(await adminReply(req(`/api/admin/platform-inquiries/${id}/reply`, cookie, "POST", body), iq(id)));
 const adminClosing = async (cookie: string, id: string, body: unknown) => json(await adminClose(req(`/api/admin/platform-inquiries/${id}/close`, cookie, "POST", body), iq(id)));
 const closeIt = async (cookie: string, id: string, body: unknown = {}) => json(await sellerClose(req(`/api/seller/platform-inquiries/${id}/close`, cookie, "POST", body), iq(id)));
+const assign = async (cookie: string, id: string, body: unknown) => json(await adminAssign(req(`/api/admin/platform-inquiries/${id}/assign`, cookie, "POST", body), iq(id)));
+const adminListing = async (cookie: string, qs = "") => json(await adminList(req(`/api/admin/platform-inquiries${qs}`, cookie)));
 const rate = async (cookie: string, id: string, body: unknown) => json(await sellerRate(req(`/api/seller/platform-inquiries/${id}/rating`, cookie, "POST", body), iq(id)));
 
 async function order(sellerId: string, buyerId: string, orderNo: number, at: string, nickname = "닉") {
@@ -108,7 +113,7 @@ describe("목록: 상태·분류 필터, 건수, 마지막 답변", () => {
     expect((await list(s.owner.cookie, "?category=BILLING")).body.items.map((x: { title: string }) => x.title)).toEqual(["예전 문의"]);
   });
 
-  it("긴급 표시는 별도 값(기본 false, boolean만), 담당 상태는 답변 전 PREPARING·답변 후 ASSIGNED·종료 null이며 이름은 없다. 평균 첫 답변 분은 답변이 생기면 숫자", async () => {
+  it("긴급 표시는 별도 값(기본 false, boolean만), 담당 상태는 답변 전 PREPARING·첫 답변 뒤 ASSIGNED(자동 배정)·종료 null이며 이름은 없다. 평균 첫 답변 분은 답변이 생기면 숫자", async () => {
     const s = await shop();
     const cs = await csCookie();
     expect((await list(s.owner.cookie)).body.avgFirstReplyMinutes).toBeNull();
@@ -122,12 +127,84 @@ describe("목록: 상태·분류 필터, 건수, 마지막 답변", () => {
     await db.platformInquiry.update({ where: { id: urgent.id }, data: { createdAt: new Date(Date.now() - 60 * 60_000) } });
     expect((await reply(cs, urgent.id, { body: "확인했습니다", expectedVersion: 0 })).status).toBe(200);
     const after = await list(s.owner.cookie);
+    // 담당이 없던 문의에 첫 답변을 하면 자동 배정된다
     expect(after.body.items.find((x: { id: string }) => x.id === urgent.id)).toMatchObject({ handlerState: "ASSIGNED" });
     expect(JSON.stringify(after.body)).not.toMatch(/adminId|adminName/);
     expect(after.body.avgFirstReplyMinutes).toBeGreaterThanOrEqual(59);
-    expect((await detail(s.owner.cookie, urgent.id)).body.inquiry).toMatchObject({ urgent: true, handlerState: "ASSIGNED" });
+    const csAdmin = await db.platformAdmin.findFirstOrThrow({ where: { role: "CS" } });
+    expect((await assign(cs, urgent.id, { assigneeId: csAdmin.id })).status).toBe(200);
+    const assigned = await detail(s.owner.cookie, urgent.id);
+    expect(assigned.body.inquiry).toMatchObject({ urgent: true, handlerState: "ASSIGNED" });
+    expect(JSON.stringify(assigned.body)).not.toContain(csAdmin.id);
     expect((await closeIt(s.owner.cookie, urgent.id)).status).toBe(200);
     expect((await detail(s.owner.cookie, urgent.id)).body.inquiry.handlerState).toBeNull();
+  });
+
+  it("담당 배정: 운영·CS·최고관리자만, 활성 운영·CS·최고관리자에게만, 종료 뒤엔 409. version은 그대로(작성 중 답변이 막히지 않음), 같은 담당 재배정은 로그 없음, 이름은 마스터 화면에만", async () => {
+    const s = await shop();
+    const ops = await createAdmin("OPERATIONS");
+    const cs = await createAdmin("CS");
+    const viewer = await createAdmin("READ_ONLY");
+    const gone = await createAdmin("CS", { status: "SUSPENDED" });
+    const cookieOf = async (a: { id: string }) => `lo_admin=${(await createAdminSession(db, a.id, {})).token}`;
+    const [opsC, csC, viewC] = [await cookieOf(ops), await cookieOf(cs), await cookieOf(viewer)];
+    const id = (await create(s.owner.cookie)).body.inquiry.id as string;
+
+    expect((await assign(viewC, id, { assigneeId: cs.id })).status).toBe(403);
+    for (const bad of [viewer.id, gone.id, "11111111-1111-4111-8111-111111111111", "me", 7, undefined]) {
+      expect((await assign(opsC, id, { assigneeId: bad })).body.error).toBe("invalid_assignee");
+    }
+    expect((await assign(opsC, "11111111-1111-4111-8111-111111111111", { assigneeId: cs.id })).status).toBe(404);
+
+    const r = await assign(opsC, id, { assigneeId: cs.id });
+    expect(r.status).toBe(200);
+    expect(r.body.inquiry).toMatchObject({ version: 0, assignee: { id: cs.id, name: "관리자" } });
+    expect(await db.auditLog.count({ where: { action: "platform_inquiry.assign", targetId: id } })).toBe(1);
+    expect((await assign(opsC, id, { assigneeId: cs.id })).status).toBe(200);
+    expect(await db.auditLog.count({ where: { action: "platform_inquiry.assign", targetId: id } })).toBe(1);
+    // 배정해도 옛 version(0)으로 답변할 수 있다
+    expect((await reply(csC, id, { body: "확인했습니다", expectedVersion: 0 })).status).toBe(200);
+
+    const other = (await create(s.owner.cookie, { ...NEW, category: "SHOP" })).body.inquiry.id as string;
+    expect((await adminListing(csC, "?assignee=me")).body.items.map((x: { id: string }) => x.id)).toEqual([id]);
+    expect((await adminListing(csC, "?assignee=none")).body.items.map((x: { id: string }) => x.id)).toEqual([other]);
+    expect((await adminListing(csC, `?assignee=${cs.id}`)).body.items[0]).toMatchObject({ id, assignee: { id: cs.id, name: "관리자" } });
+    expect((await adminListing(opsC, "?assignee=me")).body.items).toEqual([]);
+    expect((await adminListing(csC, "?category=SHOP")).body.items.map((x: { id: string }) => x.id)).toEqual([other]);
+    expect((await adminListing(csC, "?assignee=x")).body.error).toBe("invalid_assignee");
+    expect((await adminListing(csC, "?category=NOPE")).body.error).toBe("invalid_category");
+
+    const list2 = await adminAssignees(req("/api/admin/platform-inquiries/assignees", viewC));
+    const people = (await list2.json()).items as { id: string; role: string }[];
+    expect(people.map((p) => p.id).sort()).toEqual([ops.id, cs.id].sort());
+
+    // 해제 → 미배정, 종료 뒤에는 409
+    expect((await assign(opsC, id, { assigneeId: null })).body.inquiry.assignee).toBeNull();
+    expect((await closeIt(s.owner.cookie, id)).status).toBe(200);
+    expect((await assign(opsC, id, { assigneeId: cs.id })).body.error).toBe("inquiry_closed");
+  });
+
+  it("담당이 없는 문의에 첫 답변을 하면 그 관리자가 자동 배정되고(로그 auto), 이미 담당이 있으면 바뀌지 않는다", async () => {
+    const s = await shop();
+    const a = await createAdmin("CS");
+    const b = await createAdmin("SUPER_ADMIN");
+    const cookieOf = async (x: { id: string }) => `lo_admin=${(await createAdminSession(db, x.id, {})).token}`;
+    const [aC, bC] = [await cookieOf(a), await cookieOf(b)];
+    const free = (await create(s.owner.cookie)).body.inquiry.id as string;
+    const taken = (await create(s.owner.cookie, { ...NEW, title: "담당 있음" })).body.inquiry.id as string;
+    expect((await assign(bC, taken, { assigneeId: b.id })).status).toBe(200);
+
+    expect((await reply(aC, free, { body: "확인했습니다", expectedVersion: 0 })).body.inquiry.assignee).toMatchObject({ id: a.id });
+    expect((await detail(s.owner.cookie, free)).body.inquiry.handlerState).toBe("ASSIGNED");
+    const log = await db.auditLog.findMany({ where: { action: "platform_inquiry.assign", targetId: free } });
+    expect(log).toHaveLength(1);
+    expect(log[0].after).toMatchObject({ assigneeId: a.id, auto: true });
+
+    expect((await reply(aC, taken, { body: "확인했습니다", expectedVersion: 0 })).body.inquiry.assignee).toMatchObject({ id: b.id });
+    expect(await db.auditLog.count({ where: { action: "platform_inquiry.assign", targetId: taken } })).toBe(1);
+    // 같은 문의에 다시 답해도 담당은 그대로
+    expect((await reply(aC, free, { body: "추가 안내", expectedVersion: 1 })).body.inquiry.assignee).toMatchObject({ id: a.id });
+    expect(await db.auditLog.count({ where: { action: "platform_inquiry.assign", targetId: free } })).toBe(1);
   });
 
   it("필터와 커서를 함께 써도 20건씩 빠짐·겹침 없이 이어진다", async () => {

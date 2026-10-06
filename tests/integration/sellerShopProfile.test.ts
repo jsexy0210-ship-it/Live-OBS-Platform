@@ -25,8 +25,8 @@ describe("쇼핑몰 정보 저장(SA-060)", () => {
     const c = await cookieOf(owner.email);
     const r = await put({ shopName: "카드숍 별빛", shopTagline: "매일 밤 8시 라이브" }, c);
     expect(r.status).toBe(200);
-    expect(await r.json()).toEqual({ profile: { shopName: "카드숍 별빛", shopTagline: "매일 밤 8시 라이브" } });
-    expect((await (await put({ shopTagline: "" }, c)).json()).profile).toEqual({ shopName: "카드숍 별빛", shopTagline: null });
+    expect(await r.json()).toEqual({ profile: { shopName: "카드숍 별빛", shopTagline: "매일 밤 8시 라이브", operatingState: "OPEN" } });
+    expect((await (await put({ shopTagline: "" }, c)).json()).profile).toEqual({ shopName: "카드숍 별빛", shopTagline: null, operatingState: "OPEN" });
     expect((await (await get(c)).json()).profile.shopName).toBe("카드숍 별빛");
     expect(await db.auditLog.count({ where: { action: "shop.profile.update", sellerId: seller.id } })).toBe(2);
     await put({ shopName: "카드숍 별빛" }, c);
@@ -44,6 +44,18 @@ describe("쇼핑몰 정보 저장(SA-060)", () => {
     }
     expect((await put({ shopName: "가".repeat(20), shopTagline: "나".repeat(40) }, c)).status).toBe(200);
     expect(before.shopName).not.toBe("가".repeat(20));
+  });
+
+  it("운영 상태: 기본 OPEN, 준비 중·일시 정지로 바꾸고 빼면 유지하며, 모르는 값은 400이다", async () => {
+    const { seller } = await createSeller();
+    const c = await cookieOf((await createSellerUser(seller.id, "OWNER")).email);
+    expect((await (await get(c)).json()).profile.operatingState).toBe("OPEN");
+    expect((await (await put({ operatingState: "PREPARING" }, c)).json()).profile).toMatchObject({ operatingState: "PREPARING" });
+    expect((await (await put({ shopTagline: "소개" }, c)).json()).profile.operatingState).toBe("PREPARING");
+    expect((await db.seller.findUniqueOrThrow({ where: { id: seller.id } })).operatingState).toBe("PREPARING");
+    for (const bad of ["CLOSED", "open", "", null, 1]) expect((await put({ operatingState: bad }, c)).status, String(bad)).toBe(400);
+    expect((await put({ operatingState: "PAUSED" }, c)).status).toBe(200);
+    expect(await db.auditLog.count({ where: { action: "shop.profile.update", sellerId: seller.id } })).toBe(3);
   });
 
   it("대표자와 「쇼핑몰 설정」 권한 직원만 바꾸고 그 밖 직원은 403이다", async () => {

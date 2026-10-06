@@ -24,7 +24,9 @@ describe("마스터 역할 권한 표", () => {
   });
 
   it("CS는 문의·공지와 대리 조회만", () => {
-    expect(allowed("CS")).toEqual(["platform.read", "seller.impersonate", "support.manage"]);
+    expect(allowed("CS")).toEqual(["platform.read", "seller.impersonate", "support.assign", "support.manage"]);
+    expect(adminCan("OPERATIONS", "support.assign")).toBe(true);
+    expect(adminCan("READ_ONLY", "support.assign")).toBe(false);
   });
 });
 
