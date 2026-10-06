@@ -20,6 +20,8 @@ test("SA-048 리뷰 제목이 1440·1024·390 화면에서 정본과 일치한�
         const box = await page.getByRole("complementary", { name: "파트너스 메뉴" }).boundingBox();
         return box ? box.x + box.width : 0;
       }).toBeLessThanOrEqual(0);
+      await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      await expect.poll(() => page.evaluate(() => window.scrollX)).toBe(0);
     }
     await expect(heading).toBeVisible();
     const box = await heading.boundingBox();
