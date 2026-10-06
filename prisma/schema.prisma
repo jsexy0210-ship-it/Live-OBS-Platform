@@ -4289,14 +4289,17 @@ model ExternalConnection {
 }
 
 // 플랫폼(ONQ) 사업자 정보(한 줄, id = 1, 마이그레이션 CHECK). 파트너스 가입 안내 메일 바닥글(EM-101·102)에 쓴다. 최고관리자만 바꾸고 변경은 로그 추적에 남긴다.
-// 값이 하나라도 비어 있으면 가입 승인·반려 메일을 보내지 않는다(법정 바닥글을 채울 수 없음). 주소(URL)는 APP_ORIGIN을 쓴다.
+// 값이 비어 있어도 가입 승인·반려 메일은 보내고 바닥글에서 그 항목만 뺀다(MASTER 결정). 빈 칸은 마스터 홈 「오늘 처리할 일」에 남는다. 주소(URL)는 APP_ORIGIN을 쓴다.
+// 표시 의무 7항목(MA-088): 상호·대표·사업자등록번호·통신판매업 신고번호·주소·고객센터 전화·이메일.
 model PlatformBusinessInfo {
   id               Int      @id @default(1)
   name             String   @default("")
   representative   String   @default("")
   businessNumber   String   @default("")
+  mailOrderNumber  String   @default("")
   address          String   @default("")
   phone            String   @default("")
+  email            String   @default("")
   updatedAt        DateTime @default(now()) @updatedAt @db.Timestamptz(3)
   updatedByAdminId String?  @db.Uuid
 }

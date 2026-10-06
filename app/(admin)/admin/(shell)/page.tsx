@@ -90,7 +90,7 @@ function Panel<T>({ title, state, retry, children, id }: { title: string; state:
 }
 
 // ─── 오늘 처리할 일 ───
-type TaskKey = "signupPending" | "paymentFailed" | "refundRequested" | "inquiryOpen" | "pgError" | "automationFailed" | "incidentCritical";
+type TaskKey = "signupPending" | "paymentFailed" | "refundRequested" | "inquiryOpen" | "pgError" | "automationFailed" | "incidentCritical" | "platformInfoMissing";
 type Tasks = { at: string; total: number; items: { key: TaskKey; count: number; href: string }[] };
 const TASK_LABEL: Record<TaskKey, string> = {
   signupPending: "가입 신청 처리 대기",
@@ -100,6 +100,7 @@ const TASK_LABEL: Record<TaskKey, string> = {
   pgError: "카드 결제 연결 오류",
   automationFailed: "자동 연결 실패",
   incidentCritical: "바로 확인할 문제",
+  platformInfoMissing: "플랫폼 정보 미입력",
 };
 
 // 「오늘 처리할 일」 숫자 링크: 업무 큐라 기간 전체로 들어간다(MASTER 공통 규칙, period=all). 결제 실패는 청구 화면의 최대 조회 기간(366일) 안에서 연다.

@@ -8,7 +8,7 @@ import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 const password = randomBytes(12).toString("base64url");
 const run = randomBytes(4).toString("hex");
 const emails = { super: `ap-super-${run}@example.com`, cs: `ap-cs-${run}@example.com` };
-const shops = { approve: `승인몰 ${run}`, reject: `반려몰 ${run}` };
+const shops = { approve: `승인몰 ${run}`, reject: `반려몰 ${run}`, doc: `서류몰 ${run}` };
 const ids: Record<string, string> = {};
 let db: PrismaClient;
 
@@ -22,7 +22,7 @@ test.beforeAll(async () => {
     ],
   });
   const plan = await db.subscriptionPlan.findFirst({ where: { code: "OVERLAY_ONLY" } });
-  for (const key of ["approve", "reject"] as const) {
+  for (const key of ["approve", "reject", "doc"] as const) {
     const s = await db.seller.create({
       data: {
         slug: `ap-${key}-${run}`,
@@ -35,6 +35,8 @@ test.beforeAll(async () => {
     });
     ids[key] = s.id;
   }
+  // 사업자등록증 파일(작은 PNG 바이트) — 상세·검토 패널의 「보기·내려받기」 시험용
+  await db.sellerBusinessLicense.create({ data: { sellerId: ids.doc, fileName: "license.png", mimeType: "image/png", byteSize: 4, sha256: "0".repeat(64), data: Buffer.from([0x89, 0x50, 0x4e, 0x47]) } });
 });
 test.afterAll(async () => {
   await db.$disconnect();
@@ -90,4 +92,26 @@ test("상담(CS): 신청 내용은 볼 수 있지만 승인·반려 버튼은 �
   await expect(page.getByRole("button", { name: "승인", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "반려", exact: true })).toHaveCount(0);
   await page.screenshot({ path: "tests/e2e/screenshots/admin-application-detail-cs.png" });
+});
+
+test("상세: 제출 서류에서 사업자등록증을 보고 내려받는다(최고관리자), 상담은 파일 정보만 보인다", async ({ page }) => {
+  await login(page, emails.super);
+  await page.goto(`/admin/partners/applications/${ids.doc}`);
+  const lic = page.getByTestId("license-value");
+  await expect(lic).toContainText("license.png");
+  const view = lic.getByRole("link", { name: "보기" });
+  await expect(view).toHaveAttribute("href", `/api/admin/sellers/${ids.doc}/business-license`);
+  await expect(view).toHaveAttribute("target", "_blank");
+  await expect(lic.getByRole("link", { name: "내려받기" })).toHaveAttribute("href", `/api/admin/sellers/${ids.doc}/business-license?download=1`);
+  const res = await page.request.get(`/api/admin/sellers/${ids.doc}/business-license`);
+  expect(res.status()).toBe(200);
+  expect(res.headers()["content-type"]).toContain("image/png");
+});
+
+test("상담(CS): 등록증 파일 정보는 보이지만 보기·내려받기 링크는 없다", async ({ page }) => {
+  await login(page, emails.cs);
+  await page.goto(`/admin/partners/applications/${ids.doc}`);
+  const lic = page.getByTestId("license-value");
+  await expect(lic).toContainText("license.png");
+  await expect(lic.getByRole("link")).toHaveCount(0);
 });
