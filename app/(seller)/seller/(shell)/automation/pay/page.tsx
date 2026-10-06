@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
-import { FormRow, FormSection, PageHead, useConfirm } from "../../../../../../components/admin-ui";
+import { FormFoot, FormRow, FormSection, PageHead, useConfirm } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import TestModeNotice from "../../../../../../components/seller/TestModeNotice";
 import { SmartBackButton } from "../../../../../../components/seller/SmartBackButton";
@@ -129,23 +129,21 @@ function Pay() {
           )}
           <FormSection title="결제 수단">
             <FormRow label="카드" required>
-              {other ? (
-                <span data-testid="pay-card">다른 카드로 결제 · 결제창에서 카드를 입력합니다</span>
-              ) : (
-                <span data-testid="pay-card">{card === undefined ? "확인 중" : card ? `구독에 쓰는 카드 · ${card}` : "등록된 카드가 없습니다"}</span>
-              )}
-              <span className="row" style={{ gap: 8, alignItems: "center" }}>
-                {!other && (
-                  <button className="btn btn-sm btn-out" type="button" disabled={card === undefined} onClick={() => setOther(true)} data-testid="pay-other">
-                    다른 카드로 결제
-                  </button>
-                )}
-                <span className="t-c1 c-alt">{other ? "이번 한 번만 씁니다 · 저장하지 않습니다" : "구독에 쓰는 카드로 결제합니다"}</span>
-              </span>
+              <div className="col" style={{ gap: 4, alignItems: "flex-start" }} data-testid="pay-card">
+                <label className="chk">
+                  <input className="rdo" type="radio" name="pay" checked={!other} disabled={!card} onChange={() => setOther(false)} />
+                  {card === undefined ? "확인 중" : card ? `구독에 쓰는 카드 · ${card}` : "등록된 카드가 없습니다"}
+                </label>
+                <label className="chk">
+                  <input className="rdo" type="radio" name="pay" checked={other} disabled={card === undefined} onChange={() => setOther(true)} data-testid="pay-other" />
+                  다른 카드로 결제
+                </label>
+                <span className="t-c1 c-alt">이번 한 번만 씁니다 · 저장하지 않습니다</span>
+              </div>
             </FormRow>
           </FormSection>
           <section className="au-fs">
-            <div className="au-fs-h"><h2 className="au-fs-t">확인해 주십시오 · 필수 {CHECKS.length}개</h2></div>
+            <div className="au-fs-h"><span className="row" style={{ gap: 8, alignItems: "center" }}><h2 className="au-fs-t">확인해 주십시오</h2><span className="bdg b-fail nodot">필수 {CHECKS.length}개</span></span></div>
             <div className="card pad col" style={{ gap: 8 }}>
               {CHECKS.map((t, i) => (
                 <label key={t} className="chk">
@@ -156,12 +154,23 @@ function Pay() {
               <span className="t-c1 c-alt">다섯 가지를 확인하면 결제할 수 있습니다 · 동의한 시각과 문구 버전을 기록합니다</span>
             </div>
           </section>
-          <FormSection title="결제 금액">
-            <FormRow label="자동 연결">{(AUTOMATION_PRICE - vat).toLocaleString("ko-KR")}원</FormRow>
-            <FormRow label="부가세">{vat.toLocaleString("ko-KR")}원</FormRow>
-            <FormRow label="합계"><b>{AUTOMATION_PRICE.toLocaleString("ko-KR")}원</b></FormRow>
-            <FormRow label="대상">{shop || "쇼핑몰 주소가 없습니다"}</FormRow>
-          </FormSection>
+          <section className="au-fs">
+            <div className="au-fs-h"><h2 className="au-fs-t">결제 금액</h2></div>
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>항목</th>
+                  <th style={{ width: 200 }}>금액</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>자동 연결</td><td className="r">{(AUTOMATION_PRICE - vat).toLocaleString("ko-KR")}원</td></tr>
+                <tr><td>부가세</td><td className="r">{vat.toLocaleString("ko-KR")}원</td></tr>
+                <tr><td><b>합계</b></td><td className="r"><b>{AUTOMATION_PRICE.toLocaleString("ko-KR")}원</b></td></tr>
+                <tr><td>대상</td><td className="r">{shop || "쇼핑몰 주소가 없습니다"}</td></tr>
+              </tbody>
+            </table>
+          </section>
           {problem && (
             <div className="msg msg-neg" role="alert" data-testid="pay-problem">
               <span>
@@ -170,12 +179,12 @@ function Pay() {
               </span>
             </div>
           )}
-          <div className="row" style={{ gap: 8 }}>
+          <FormFoot>
             <button className="btn btn-lg" type="button" disabled={!all || (!other && !card) || !shop} onClick={() => void pay()} data-testid="pay-submit">
               {`${AUTOMATION_PRICE.toLocaleString("ko-KR")}원 결제하기`}
             </button>
             <SmartBackButton fallback="/seller/automation" className="btn btn-out btn-lg">이전 화면으로</SmartBackButton>
-          </div>
+          </FormFoot>
         </div>
       </main>
     </>

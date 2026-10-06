@@ -61,13 +61,13 @@ test.describe.serial("SH-029 리뷰 쓰기 · SA-048 리뷰 관리", () => {
     await buyerLogin(page, baseURL!);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`/shop/${SLUG}/reviews`);
-    await expect(page.getByRole("heading", { name: "내 리뷰" })).toBeVisible();
-    await page.getByRole("link", { name: "리뷰 쓰기" }).first().click();
-    await expect(page).toHaveURL(new RegExp(`/reviews/write\\?item=${itemId}$`));
-    await expect(page.getByRole("button", { name: "리뷰 올리기" })).toBeDisabled();
+    await expect(page.getByRole("heading", { name: "내 리뷰", level: 1 })).toBeVisible();
+    // 한 화면: 리뷰를 기다리는 첫 상품의 쓰기 상자가 바로 위에 열려 있다
+    await expect(page.getByRole("heading", { name: "리뷰 쓰기" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "리뷰 등록" })).toBeDisabled();
     await page.getByRole("radio", { name: "5점" }).click();
-    await expect(page.getByText("아주 좋아요")).toBeVisible();
-    await expect(page.getByText("JPG·PNG·WEBP, 한 장에 5MB까지 올릴 수 있어요")).toBeVisible();
+    await expect(page.getByText("5점", { exact: true })).toBeVisible();
+    await expect(page.getByText("최대 5장 · JPG · PNG · WEBP · 장당 5MB")).toBeVisible();
     await expect(page.getByLabel("리뷰 사진")).toHaveAttribute("accept", "image/jpeg,image/png,image/webp");
 
     const original = await phonePhoto(page);
@@ -92,14 +92,13 @@ test.describe.serial("SH-029 리뷰 쓰기 · SA-048 리뷰 관리", () => {
     expect(Math.max(sent.readUInt16BE(sof + 5), sent.readUInt16BE(sof + 7))).toBe(1600);
     await expect(page.locator(".rv-photo img")).toHaveCount(1);
 
-    await page.getByRole("textbox", { name: "리뷰" }).fill("짧아요");
+    await page.getByRole("textbox", { name: /내용/ }).fill("짧아요");
     await expect(page.getByText("10자 이상 써야 올릴 수 있어요")).toBeVisible();
-    await page.getByRole("textbox", { name: "리뷰" }).fill("브레이크 때 뽑힌 카드 상태가 정말 좋았어요. 포장도 꼼꼼했어요.");
+    await page.getByRole("textbox", { name: /내용/ }).fill("브레이크 때 뽑힌 카드 상태가 정말 좋았어요. 포장도 꼼꼼했어요.");
     await shots(page, "sh029-write");
-    await page.getByRole("button", { name: "리뷰 올리기" }).click();
+    await page.getByRole("button", { name: "리뷰 등록" }).click();
     await okConfirm(page, "올리기");
-    await expect(page.locator("p.msg")).toContainText("리뷰를 올렸어요");
-    await page.getByRole("link", { name: "내 리뷰 보기" }).click();
+    await expect(page.locator("p.msg").first()).toContainText("리뷰를 등록했어요");
     const mine = page.getByTestId("my-review").first();
     await expect(mine).toContainText("공개");
     await expect(mine).toContainText("사진 1장");
@@ -132,11 +131,17 @@ test.describe.serial("SH-029 리뷰 쓰기 · SA-048 리뷰 관리", () => {
 
   test("구매자: 내 리뷰에서 판매자 답글과 숨김 사유를 본다", async ({ page, baseURL }) => {
     await buyerLogin(page, baseURL!);
+    for (const width of [1440, 1024]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`/shop/${SLUG}/reviews`);
+      await expect(page.getByTestId("my-review").first()).toBeVisible();
+      await page.screenshot({ path: `${SHOT}/sh029-mine-${width}.png`, fullPage: true });
+    }
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`/shop/${SLUG}/reviews`);
     const mine = page.getByTestId("my-review").first();
     await expect(mine).toContainText("숨김");
-    await expect(mine).toContainText("이 리뷰는 판매자가 숨겼어요.");
+    await expect(mine).toContainText("이 리뷰는 숨겨졌어요");
     await expect(mine).toContainText("상품과 관계없는 내용이에요");
     await expect(mine).toContainText("소중한 리뷰 감사합니다");
     await page.screenshot({ path: `${SHOT}/sh029-mine-390.png`, fullPage: true });
@@ -195,5 +200,12 @@ test.describe.serial("SH-029 리뷰 쓰기 · SA-048 리뷰 관리", () => {
     await expect(dlg).toBeVisible();
     await expect(dlg).toBeHidden({ timeout: 10_000 });
     expect(deletes).toBe(1);
+  });
+
+  test("예전 주소 /reviews/write?item=…은 내 리뷰 한 화면으로 보낸다", async ({ page, baseURL }) => {
+    await buyerLogin(page, baseURL!);
+    await page.goto(`/shop/${SLUG}/reviews/write?item=${itemId}`);
+    await expect(page).toHaveURL(new RegExp(`/shop/${SLUG}/reviews\\?item=${itemId}$`));
+    await expect(page.getByRole("heading", { name: "내 리뷰", level: 1 })).toBeVisible();
   });
 });
