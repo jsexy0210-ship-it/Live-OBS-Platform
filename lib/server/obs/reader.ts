@@ -19,7 +19,7 @@ const jobSelect = {
 } satisfies Prisma.AutomationJobSelect;
 
 export type ObsConnectionEligibility = {
-  // 자격 조회 결과이지 ObsAuthority가 아니다. 현재 schema에는 지속 기기 인증 저장소가 없다.
+  // 자격 조회 결과이지 ObsAuthority가 아니다. 기기 인증과 명령 위임은 별도다.
   state: "pairing_required";
   entitlement: "INTEGRATED_BASIC" | "PAID_INITIAL_INSTALL";
   records: ObsAccountRecords;
@@ -31,10 +31,21 @@ export type ObsConnectionEligibility = {
 export async function readObsConnectionEligibility(
   db: PrismaClient, ctx: TenantContext, now: Date, installJobId?: string,
 ): Promise<ObsConnectionEligibility> {
+  assertReaderInput(ctx, now, installJobId);
+  return db.$transaction(tx => readObsConnectionEligibilityTx(tx, ctx, now, installJobId), { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+}
+
+function assertReaderInput(ctx: TenantContext, now: Date, installJobId?: string) {
   requireSellerPermission(ctx, "OVERLAY_EDIT");
   if (!Number.isFinite(now.getTime())) throw new Error("obs_access_denied");
   if (installJobId !== undefined && !isJobId(installJobId)) throw new Error("obs_purchase_unverified");
-  return db.$transaction(async tx => {
+}
+
+// pairing 승인/소비의 같은 트랜잭션에서 현재 자격을 재검사한다.
+export async function readObsConnectionEligibilityTx(
+  tx: Prisma.TransactionClient, ctx: TenantContext, now: Date, installJobId?: string,
+): Promise<ObsConnectionEligibility> {
+  assertReaderInput(ctx, now, installJobId);
     const seller = await tx.seller.findUnique({ where: { id: ctx.sellerId }, select: sellerSelect });
     if (!seller) throw new Error("obs_access_denied");
     const planCode = seller.subscription?.plan.code ?? seller.plan?.code ?? DEFAULT_PLAN_CODE;
@@ -65,5 +76,4 @@ export async function readObsConnectionEligibility(
     // fencingToken/obsPairingId는 임시 작업의 근거일 뿐 persistent device로 변환하지 않는다.
     // SUCCEEDED·REINSTALL·RECONNECT_FREE의 기존 지속/재설치 권리는 변경하거나 부정하지 않는다.
     return { state: "pairing_required", entitlement: "PAID_INITIAL_INSTALL", records };
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
 }

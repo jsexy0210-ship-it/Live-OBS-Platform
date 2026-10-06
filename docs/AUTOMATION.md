@@ -233,3 +233,29 @@
 필수 반례: 통합/오버레이 구독 분기, 수동 URL 사용 보존, 클라이언트 plan 위조, 결제 실패·취소·중복 callback·동시 요청, 다른 판매자/기기의 페어링/명령/ACK, revoked generation·늦은 ACK·apply 뒤 crash, 같은 actionKey 내용 변경·중복 소스, OBS 재시작/도구 오프라인/구독 변경, 한 기기 지연이 다른 판매자에 미치는 영향, 설치와 재연결에서 실송출 0회. 목표 지연·판매자/기기 용량은 기존 VM에서 측정 후 정하고 무중단을 보장했다고 표현하지 않습니다.
 
 공식 근거: [obs-websocket README](https://github.com/obsproject/obs-websocket#using-obs-websocket), [5.x 프로토콜](https://github.com/obsproject/obs-websocket/blob/master/docs/generated/protocol.md) (2026-10-07 KST 확인). CreateInput·SetInputSettings·GetStreamStatus·GetSourceScreenshot과 인증/RequestResponse를 확인했습니다. 입력 kind와 browser_source 설정 키는 해당 OBS 설치의 GetVersion/입력 종류·기본 설정 조회로 확인하고 고정 가정하지 않습니다.
+
+### 후속 최소 범위: 기기 페어링 저장 계약 (2026-10-07 KST, 설계 검토 반영·구현 독립 검수 전)
+
+기준 main은 reader가 병합된 `23b4086d`입니다. 이 절은 다음 구현의 범위안이며 현재 PC 연결·기기 인증·명령 권한 발급이 완료됐다는 뜻이 아닙니다. 기존 `readObsConnectionEligibility`의 `pairing_required`는 구독/INITIAL 작업 자격의 저장값 판정이며 연결 성공이나 `ObsAuthority`가 아닙니다.
+
+| 신규 저장 모델 | 최소 필드와 경계 |
+|---|---|
+| `ObsPairingChallenge` | 서버 발급 UUID, PC 도구에 한 번 전달할 256비트 verifier의 해시, DB 시계 기준 만료(초기 제안 5분), 최초 승인의 sellerId/actorId와 승인 시각, 일회 소비 시각, 확정 deviceId. 기기 표시명은 길이 제한된 안내값이며 PC 소유권 증거가 아니다. 유료 INITIAL을 선택했다면 해당 jobId도 승인 때 고정한다. |
+| `ObsDevice` | 서버 발급 UUID, 고정 sellerId, 서버 발급 기기 credential의 해시, generation, 등록/철회 시각. seller-device 복합 키로 다른 판매자 연결을 막는다. 설치 job의 obsPairingId·fencingToken을 이 모델의 인증 근거로 복사하지 않는다. |
+
+- 모델은 additive migration으로 추가한다. Seller 역관계와 seller 외래키·seller/device 복합 키·해시 유일 제약·만료 조회 인덱스만 추가하며 기존 subscription/payment/AutomationJob 열·결제 상태·가격을 바꾸지 않는다. challenge는 만료돼도 승인/소비 상태를 되살리지 않는다.
+- 초기 경로는 PC challenge 생성 → 로그인한 대표자의 같은 PC 확인·승인 → PC 도구의 현재 verifier 확인과 명시 동의 → 서버의 원자적 소비·기기 등록이다. 대표자 세션은 기존 서버 guard/CSRF를 사용하고 대리 조회·직원 승인은 초기 범위에서 닫는다. 최초 등록/권한 해제에 대한 동의 문구 버전과 서버 시각을 기록한다.
+- challenge 생성·확정 경로는 별도의 제한된 미인증 bootstrap이며 판매자 cookie guard를 느슨하게 만들지 않는다. 발급/검증 횟수 제한·요청 크기/시간 상한·만료 조건을 두고, verifier는 본문 또는 인증 헤더만 사용한다. URL·로그·브라우저 저장소에 넣지 않는다. 대표자 승인 뒤 seller/job 범위를 변경하거나 다른 판매자 세션이 재승인하지 못한다.
+- 대표자 승인은 구독/유료 INITIAL 저장값을 조회하고, PC 확정 때 같은 범위를 새로 조회한다. 두 시점 사이 미결제·만료·철회·job 취소/lease 만료가 발생하면 확정하지 않는다. OVERLAY_ONLY의 manual_only는 수동 사용을 유지하지만 이 경로의 자동 기기 등록 자격은 아니다.
+- PC 요청의 `consent=true`만으로 실제 PC 동의를 검증했다고 주장하지 않는다. 서버는 양쪽 확인의 상태/nonce/verifier와 동의 버전을 확인할 뿐이며, 실제 화면에서 현재 PC 사용자에게 승인받는 helper와 그 독립 검증은 후속 범위다. helper가 없는 이번 서버 단계는 실제 PC 승인/연결 완료가 아니다.
+- 만료되지 않은 미소비 challenge의 조건부 갱신, device 생성, 기존 `writeAudit` 기록은 한 트랜잭션에서 수행한다. 동시에 확정해도 한 번만 성공하며 감사 기록 실패 시 등록도 롤백한다. 명시 승인 없이 기존 기기를 교체하거나 sellerId를 바꾸지 않는다.
+- credential은 확정된 PC에 한 번만 반환하고 서버에는 기존 `generateToken/hashToken` 방식의 해시만 남긴다. PC는 OS 보안 저장소에 저장한다. helper는 소비 요청 전에 challenge ID와 승인된 기기 ID를 보존해야 한다(실helper 구현은 후속). 응답 유실 뒤 원문 credential을 DB에서 복구/재반환하지 않는다. 새 challenge의 대표자 승인에서 `replacesChallengeId`로 같은 판매자·대표자의 기존 발급을 지정하고, 현재 device generation을 대조해 기존 tokenHash 회수·generation 증가를 원자 처리한 뒤 새 PC 소비를 허용한다. 이전 credential을 남긴 채 응답 유실을 자동 새 등록으로 처리하지 않는다. OBS 암호·쇼핑몰 자격증명은 이 저장 모델에 넣지 않는다.
+- 기기 철회는 인증된 대표자의 sellerId/deviceId/current generation 조건으로 수행하고 generation을 증가시켜 기존 credential/지연 명령을 거부한다. 반복 철회는 추가 권한을 만들지 않는다. `writeAudit`에는 challenge/device ID·generation·상태·사유만 허용하며 verifier/credential/해시·OBS 암호는 넘기지 않는다. 기기 철회와 기존 쇼핑몰 권한 해제/무료 재연결 과금 정책을 같은 사건으로 간주하지 않는다.
+- 등록된 기기는 인증 대상일 뿐 영구 명령 권리가 아니다. INTEGRATED 명령에는 현재 서버 구독 검사, 유료 INITIAL 명령에는 현재 job scope/lease/fencing 검사가 별도로 필요하다. OVERLAY_ONLY의 완료 job만으로 지속 제어·재페어링 권한을 발급하지 않으며 정의 전에는 제한 상태를 유지한다. 수동 overlay URL 사용은 차단하지 않는다.
+- 현재 계약의 `device.epoch === job.fencingToken` 혼합을 분리한다. 기기 인증의 generation과 명령/job별 fencing은 다른 수명이다. 서버 명령 권한에는 jobFence를 별도로 두고 INITIAL은 현재 jobFence로 검증한다. 서버가 명령에 현재 jobFence를 찍고 ACK도 같은 jobFence를 요구한다(이전 fence/미포함 ACK는 UNKNOWN). 기존 exact actionKey·임시 discard scope를 유지하고 fence 갱신만으로 UNKNOWN 행동을 다시 실행하지 않는다. 이전 INITIAL 모의 계약의 동일 epoch 강제는 독립 fence/늦은 ACK 반례로 교체하며 기존 판매자·결제·lease·단계·PC 거부 반례는 보존한다.
+
+최소 API는 `/api/obs/pairing/challenges`(PC 생성), `/api/seller/obs/pairing/challenges/[id]/approve`(대표자 승인), `/api/obs/pairing/challenges/[id]/consume`(PC 확정), `/api/seller/obs/devices/[id]/revoke`(대표자 철회)이다. 대표자 경로는 기존 seller cookie/Origin/대리 조회 보호를 유지하고, PC bootstrap은 cookie를 거부하며 consume에 정확한 서버 발급 verifier와 저장된 seller/device 대조를 요구한다. 요청은 2KiB/5초 상한, challenge 발급은 DB 공유 잠금으로 전체 100회/분 상한이다(대량 공급/공정성 목표를 충족했다고 주장하지 않는다). challenge ID가 노출돼도 verifier와 대표자 승인 없이 credential을 얻을 수 없어야 한다. 명령·WSS·helper 설치·영상·방송 시작/종료 API는 이 PR 범위가 아니다. 일반 API 인증을 느슨하게 만들지 않는다.
+
+표적 검증: 만료 경계·challenge 재사용/동시 소비·교차 seller/device/job·대표자/PC 한쪽만 승인·승인 이후 구독/job 변경·해시만 저장·감사 실패 롤백·철회 후 credential/generation·응답 유실·완료/재설치/무료 재연결 job를 INITIAL로 승격하지 않는 반례를 격리 폐기 DB에서 수행한다. 기존 INITIAL 계약 시험은 정책 회귀를 확인하며 운영 DB migration·실기기 동의 조작·실송출·실결제는 실행하지 않는다.
+
+비용/롤백: 기존 VM/DB에 짧은 challenge와 기기 행을 추가하고 외부 유료 인프라/API를 전제하지 않는다. 실제 저장량·발급 제한은 측정 대상이다. 앱 롤백은 신규 등록과 제어를 닫고 기존 표·해시·로그를 보존한다. 운영 down migration이나 credential 원문 복구는 하지 않는다. 판단 필요는 OVERLAY_ONLY 완료 연결의 지속 제어/재페어링 근거, 통합 기본 PC 변경과 유료 재설치 고지, 응답 유실/PC 교체 시 기존 기기 처리이다. 정의 전에는 임의 권한 발급이나 기존 33,000원/30일 권리의 소급 변경을 하지 않는다.
