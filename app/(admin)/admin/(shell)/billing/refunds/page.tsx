@@ -8,15 +8,27 @@ import { adminApi } from "../../../_components/api";
 import { AdminTopbar } from "../../../_components/AdminShell";
 import { PAYMENT_KIND } from "../../../_components/payments";
 import { day, dayTime, won } from "../../../_components/partners";
-import { REFUND_SOURCE, REFUND_STATUS, REFUND_TABS, refundReason, type Refund, type RefundCounts, type RefundStatus } from "../../../_components/refunds";
+import { REFUND_STATUS, refundReason, type RefundCounts, type RefundListItem, type RefundSummary } from "../../../_components/refunds";
 
-// MA-026 환불 요청 목록(GET /api/admin/subscription-refunds, 모든 마스터 역할, 조회만). 상태 탭의 숫자는 서버의 상태별 전체 수.
-// 승인·거절은 상세(MA-027)에서 한다. 요청 최신 순 50건씩 이어서 불러온다.
-type Page = { items: Refund[]; counts: RefundCounts; nextCursor: string | null };
-type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; items: Refund[]; counts: RefundCounts; next: string | null };
+// MA-026 환불 요청 목록(GET /api/admin/subscription-refunds, 모든 마스터 역할, 조회만). 탭의 숫자는 서버의 상태별 전체 수를 묶은 값.
+// 대기 = 처리 대기·처리 중·실패, 완료 = 환불 완료. 승인·거절은 상세(MA-027)에서 한다. 요청 최신 순 50건씩 이어서 불러온다.
+type Page = { items: RefundListItem[]; counts: RefundCounts; summary: RefundSummary; nextCursor: string | null };
+type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; items: RefundListItem[]; counts: RefundCounts; summary: RefundSummary; next: string | null };
+type Tab = "pending" | "done" | "rejected" | "";
+const TABS: { key: Tab; label: string }[] = [
+  { key: "pending", label: "대기" },
+  { key: "done", label: "완료" },
+  { key: "rejected", label: "거절" },
+  { key: "", label: "전체" },
+];
+// 요청 뒤 지난 시간(끝난 요청은 처리한 시각까지가 아니라 표시하지 않는다)
+const since = (iso: string, now: number) => {
+  const m = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 60_000));
+  return m < 60 ? `${m}분` : m < 1440 ? `${Math.floor(m / 60)}시간` : `${Math.floor(m / 1440)}일${m % 1440 >= 60 ? ` ${Math.floor((m % 1440) / 60)}시간` : ""}`;
+};
 
 export default function RefundsPage() {
-  const [tab, setTab] = useState<RefundStatus | "">("REQUESTED");
+  const [tab, setTab] = useState<Tab>("pending");
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [more, setMore] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -33,7 +45,7 @@ export default function RefundsPage() {
     setState({ kind: "loading" });
     const r = await adminApi<Page>(`/api/admin/subscription-refunds?${qs(status)}`);
     if (id !== reqId.current) return;
-    setState(r.ok ? { kind: "ok", items: r.data.items, counts: r.data.counts, next: r.data.nextCursor } : { kind: "error" });
+    setState(r.ok ? { kind: "ok", items: r.data.items, counts: r.data.counts, summary: r.data.summary, next: r.data.nextCursor } : { kind: "error" });
   }, []);
   useEffect(() => void load(tab), [tab, load]);
 
@@ -50,7 +62,10 @@ export default function RefundsPage() {
 
   const counts = state.kind === "ok" ? state.counts : null;
   const total = counts ? Object.values(counts).reduce((a, b) => a + b, 0) : null;
+  const tabCount = (t: Tab) => (!counts ? null : t === "pending" ? counts.REQUESTED + counts.PROCESSING + counts.FAILED : t === "done" ? counts.REFUNDED : t === "rejected" ? counts.REJECTED : total);
   const items = state.kind === "ok" ? state.items : [];
+  const sum = state.kind === "ok" ? state.summary : null;
+  const now = Date.now();
 
   return (
     <>
@@ -58,11 +73,26 @@ export default function RefundsPage() {
       <main className="main">
         <PageHead title="환불 요청" />
         <div className="col" style={{ gap: 20 }}>
-          <div className="row" style={{ gap: 6, flexWrap: "wrap" }} role="group" aria-label="상태">
-            {REFUND_TABS.map((t) => (
-              <button key={t || "all"} type="button" className={`btn btn-sm ${tab === t ? "" : "btn-out"}`} aria-pressed={tab === t} onClick={() => setTab(t)}>
-                {t === "" ? "전체" : REFUND_STATUS[t].label}
-                {counts && ` ${t === "" ? total : counts[t]}`}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
+            {[
+              ["검토 대기", counts ? `${counts.REQUESTED}건` : "-", "refund-requested"],
+              ["이번 달 환불 완료", sum ? `${sum.monthRefunded.count}건 · ${won(sum.monthRefunded.amount)}` : "-", "refund-month"],
+              ["거절", counts ? `${counts.REJECTED}건` : "-", "refund-rejected"],
+              ["평균 처리", sum ? (sum.avgProcessDays === null ? "-" : `${sum.avgProcessDays.toFixed(1)}일`) : "-", "refund-avg"],
+            ].map(([label, value, id]) => (
+              <div key={id} className="card pad col" style={{ gap: 4 }}>
+                <span className="t-l2 c-alt">{label}</span>
+                <span className="t-h2" data-testid={id}>
+                  {value}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="seg" role="radiogroup" aria-label="상태" style={{ alignSelf: "flex-start" }}>
+            {TABS.map((t) => (
+              <button key={t.key || "all"} type="button" role="radio" aria-checked={tab === t.key} className={tab === t.key ? "on" : ""} onClick={() => setTab(t.key)}>
+                {t.label}
+                {tabCount(t.key) !== null && ` ${tabCount(t.key)}`}
               </button>
             ))}
           </div>
@@ -72,7 +102,7 @@ export default function RefundsPage() {
             {state.kind === "ok" &&
               (items.length === 0 ? (
                 <div className="st">
-                  <span className="t">{tab === "REQUESTED" ? "대기 중인 환불 요청이 없습니다." : "환불 요청이 없습니다."}</span>
+                  <span className="t">{tab === "pending" ? "대기 중인 환불 요청이 없습니다." : "환불 요청이 없습니다."}</span>
                 </div>
               ) : (
                 <>
@@ -86,7 +116,8 @@ export default function RefundsPage() {
                           <th>청구</th>
                           <th>요청 금액</th>
                           <th>사유</th>
-                          <th>요청한 곳</th>
+                          <th>경과</th>
+                          <th>담당</th>
                           <th>상태</th>
                           <th>관리</th>
                         </tr>
@@ -103,13 +134,14 @@ export default function RefundsPage() {
                             </td>
                             <td>{won(r.amount)}</td>
                             <td className="col-text">{refundReason(r.reason)}</td>
-                            <td>{REFUND_SOURCE[r.source]}</td>
+                            <td>{r.status === "REQUESTED" || r.status === "PROCESSING" || r.status === "FAILED" ? since(r.createdAt, now) : "—"}</td>
+                            <td>{r.assignee ?? "—"}</td>
                             <td>
                               <span className={`bdg ${REFUND_STATUS[r.status].cls}`}>{REFUND_STATUS[r.status].label}</span>
                             </td>
                             <td>
-                              <Link className="btn btn-sm btn-out" href={`/admin/billing/refunds/${r.id}`}>
-                                {r.status === "REQUESTED" || r.status === "FAILED" || r.status === "PROCESSING" ? "환불 처리하기" : "보기"}
+                              <Link className={`btn btn-sm ${r.status === "REQUESTED" || r.status === "FAILED" || r.status === "PROCESSING" ? "" : "btn-out"}`} href={`/admin/billing/refunds/${r.id}`}>
+                                처리
                               </Link>
                             </td>
                           </tr>

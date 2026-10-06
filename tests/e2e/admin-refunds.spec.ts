@@ -58,10 +58,9 @@ test("목록: 승인 대기 탭에 요청이 보이고, 시스템이 만든 요�
   await page.goto("/admin/billing/refunds");
   const auto = page.getByTestId("refund-row").filter({ hasText: shop("auto") });
   await expect(auto).toContainText("해지 뒤 결제됨");
-  await expect(auto).toContainText("자동 요청");
   await expect(auto).toContainText("처리 대기");
-  await expect(page.getByRole("button", { name: /^처리 대기 \d+$/ })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: /^환불 완료/ }).click();
+  await expect(page.getByRole("radio", { name: /^대기 \d+$/ })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("radio", { name: /^완료/ }).click();
   await expect(page.getByTestId("refund-row").filter({ hasText: shop("auto") })).toHaveCount(0);
   await page.screenshot({ path: "tests/e2e/screenshots/admin-refunds-1440.png" });
 });

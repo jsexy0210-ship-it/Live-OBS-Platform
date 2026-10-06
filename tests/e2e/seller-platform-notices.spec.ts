@@ -145,7 +145,7 @@ test("문의: 공지에서 관련 문의를 보내고, 사진을 붙이고, 답�
 
   // 목록: 내 문의 탭에 대기 상태로 보인다
   await page.goto("/seller/inquiries");
-  await expect(page.getByTestId("inquiry-row").filter({ hasText: `${E2E_PREFIX}결제 문의` })).toContainText("답변 대기");
+  await expect(page.getByTestId("inquiry-row").filter({ hasText: `${E2E_PREFIX}결제 문의` })).toContainText("접수");
 
   // 마스터 답변 → 새 답변 표시, 상세에는 관리자 이름 없이 「플랫폼」
   await adminReplyInDb(id, "확인 후 안내드립니다.");
@@ -174,6 +174,35 @@ test("문의: 공지에서 관련 문의를 보내고, 사진을 붙이고, 답�
   await page.reload();
   await expect(page.getByText("종료된 문의입니다")).toBeVisible();
   await expect(page.getByLabel("추가 문의")).toHaveCount(0);
+});
+
+test("내 문의 목록: 상태 칸 숫자와 문의 종류 선택으로 걸러 보고, 조건 초기화로 돌아온다", async ({ page }) => {
+  await login(page, "/seller/inquiries");
+  const sent = await page.evaluate(async (t) => {
+    const r = await fetch("/api/seller/platform-inquiries", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ category: "REWARD", title: t, body: "내용" }) });
+    return r.status;
+  }, `${E2E_PREFIX}적립금 문의`);
+  expect(sent).toBe(201);
+  await page.reload();
+  const row = page.getByTestId("inquiry-row").filter({ hasText: `${E2E_PREFIX}적립금 문의` });
+  await expect(row).toContainText("적립금");
+  await expect(row).toContainText("접수");
+  await expect(page.getByRole("button", { name: /^접수 \d+$/ })).toBeVisible();
+
+  // 문의 종류: 다른 종류를 고르면 빠지고, 맞는 종류를 고르면 보인다
+  await page.getByLabel("문의 종류").selectOption("SHOP");
+  await expect(page).toHaveURL(/category=SHOP/);
+  await expect(row).toHaveCount(0);
+  await expect(page.getByText("조건에 맞는 문의가 없습니다")).toBeVisible();
+  await page.getByLabel("문의 종류").selectOption("REWARD");
+  await expect(row).toBeVisible();
+
+  // 상태 칸: 종료 칸에는 없다 → 조건 초기화
+  await page.getByRole("button", { name: /^종료 \d+$/ }).click();
+  await expect(page).toHaveURL(/status=CLOSED/);
+  await expect(row).toHaveCount(0);
+  await page.getByRole("button", { name: "조건 초기화" }).click();
+  await expect(row).toBeVisible();
 });
 
 test("문의: 유형 없이는 보낼 수 없고, 없는 문의는 안내한다", async ({ page }) => {

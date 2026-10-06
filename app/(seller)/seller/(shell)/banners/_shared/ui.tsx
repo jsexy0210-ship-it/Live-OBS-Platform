@@ -41,21 +41,6 @@ export function periodText(startsAt: string | null, endsAt: string | null): stri
   return `${kstText(startsAt)} ~ ${kstText(endsAt)}`;
 }
 
-export function PeriodFields({ startsAt, endsAt, onChange, disabled }: { startsAt: string; endsAt: string; onChange: (v: { startsAt: string; endsAt: string }) => void; disabled?: boolean }) {
-  const bad = !!startsAt && !!endsAt && startsAt >= endsAt;
-  return (
-    <div className="fld">
-      <span className="lbl">게시 기간 (KST)</span>
-      <div className="sc-period">
-        <DateTimePicker aria-label="시작 시각" value={startsAt} disabled={disabled} onChange={(v) => onChange({ startsAt: v, endsAt })} />
-        <span className="c-alt">~</span>
-        <DateTimePicker aria-label="종료 시각" value={endsAt} disabled={disabled} onChange={(v) => onChange({ startsAt, endsAt: v })} />
-      </div>
-      {bad ? <span className="err">종료 시각은 시작 시각보다 늦어야 합니다</span> : <span className="help">비우면 바로 게시 · 종료를 비우면 상시 · 서버 시각 기준 자동 게시·숨김</span>}
-    </div>
-  );
-}
-
 // ───────── 이미지 올리기 ─────────
 // 상자 자체가 올리는 곳이다(누르거나 끌어다 놓기, 미리보기, 바꾸기·지우기). PNG만, 2MB 이하(서버가 바이트로 확인).
 const IMAGE_ERRORS: Record<string, string> = {
@@ -274,22 +259,6 @@ export function ImagePicker({
 }
 
 // ───────── 탭 · 기기 · 요약 ─────────
-export function ContentTabs({ active }: { active: "banners" | "popups" }) {
-  const tabs = [
-    { key: "banners", href: "/seller/banners", label: "홈 배너" },
-    { key: "popups", href: "/seller/banners/popups", label: "이벤트 팝업" },
-  ] as const;
-  return (
-    <nav className="tabs" aria-label="배너 · 팝업">
-      {tabs.map((t) => (
-        <Link key={t.key} href={t.href} className={`tab${active === t.key ? " on" : ""}`} aria-current={active === t.key ? "page" : undefined}>
-          {t.label}
-        </Link>
-      ))}
-    </nav>
-  );
-}
-
 type Devices = { showOnPc: boolean; showOnMobile: boolean };
 const DEVICE_CHOICES: { label: string; v: Devices }[] = [
   { label: "PC · 모바일", v: { showOnPc: true, showOnMobile: true } },
@@ -297,42 +266,6 @@ const DEVICE_CHOICES: { label: string; v: Devices }[] = [
   { label: "모바일만", v: { showOnPc: false, showOnMobile: true } },
 ];
 export const devicesText = (d: Devices) => DEVICE_CHOICES.find((c) => c.v.showOnPc === d.showOnPc && c.v.showOnMobile === d.showOnMobile)?.label ?? "PC · 모바일";
-
-export function DeviceSeg({ value, onChange }: { value: Devices; onChange: (v: Devices) => void }) {
-  return (
-    <div className="fld">
-      <span className="lbl" id="sc-device-label">
-        표시 기기
-      </span>
-      <div className="seg" role="radiogroup" aria-labelledby="sc-device-label" style={{ alignSelf: "flex-start" }}>
-        {DEVICE_CHOICES.map((c) => {
-          const on = c.v.showOnPc === value.showOnPc && c.v.showOnMobile === value.showOnMobile;
-          return (
-            <button key={c.label} type="button" role="radio" aria-checked={on} className={on ? "on" : ""} onClick={() => onChange(c.v)}>
-              {c.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-export function StatusSummary({ noun, unit, list }: { noun: string; unit: string; list: { status: ContentStatus }[] }) {
-  const n = (s: ContentStatus) => list.filter((i) => i.status === s).length;
-  return (
-    <div className="row" style={{ gap: 8, flexWrap: "wrap", padding: "14px 20px", boxShadow: "inset 0 -1px 0 var(--wds-line-normal-alternative)" }}>
-      <span className="t-hl2">
-        {noun} {list.length}
-        {unit}
-      </span>
-      {n("live") > 0 && <span className="bdg b-done">게시 중 {n("live")}</span>}
-      {n("scheduled") > 0 && <span className="bdg b-info">예약 {n("scheduled")}</span>}
-      {n("hidden") > 0 && <span className="bdg b-cancel">숨김 {n("hidden")}</span>}
-      {n("ended") > 0 && <span className="bdg b-gray nodot">종료 {n("ended")}</span>}
-    </div>
-  );
-}
 
 // 편집 화면의 이미지 올리기 진행 수. 하나라도 올리는 중이면 저장을 막는다.
 export function useUploading() {
@@ -348,29 +281,6 @@ export function linkLooksOk(v: string): boolean {
   if (/\s/.test(t)) return false;
   if (t.startsWith("/")) return !t.startsWith("//") && !t.startsWith("/\\");
   return /^https?:\/\/[^/]/i.test(t);
-}
-
-export function LinkField({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled?: boolean }) {
-  const bad = !linkLooksOk(value);
-  return (
-    <div className="fld">
-      <label htmlFor="sc-link">링크</label>
-      <input
-        id="sc-link"
-        className={`inp${bad ? " is-error" : ""}`}
-        placeholder="/products/상품 주소 또는 https://"
-        value={value}
-        maxLength={500}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-      />
-      {bad ? (
-        <span className="err">쇼핑몰 안 경로(/로 시작) 또는 http(s) 주소만 입력할 수 있습니다</span>
-      ) : (
-        <span className="help">쇼핑몰 안 경로는 쇼핑몰 주소 뒤에 붙음 · 바깥 주소는 새 창으로 열림 · 비워 두면 링크 없음</span>
-      )}
-    </div>
-  );
 }
 
 // ───────── 끌어서 순서 바꾸기 ─────────

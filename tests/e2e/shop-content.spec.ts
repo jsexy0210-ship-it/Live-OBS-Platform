@@ -213,51 +213,63 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
   });
 
   test("SA-065 대표자: 이미지 팝업(전체 페이지·7일 보지 않기)과 상단 띠 추가, 복제", async ({ page }) => {
+    const confirmBtn = (name: string) => page.getByRole("dialog").getByRole("button", { name, exact: true });
     await page.setViewportSize({ width: 1440, height: 900 });
     await ownerOpen(page, "/seller/banners/popups");
     await expect(page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "이벤트 팝업", exact: true })).toHaveAttribute("aria-current", "page");
     await page.getByRole("button", { name: "팝업 추가" }).first().click();
-    const dialog = page.getByRole("dialog", { name: "팝업 추가" });
+    const dialog = page.getByTestId("popup-editor");
     // 이미지 팝업은 이미지가 있어야 저장된다
     await dialog.getByLabel("제목 (대체 텍스트)").fill(POPUP_TITLE);
     await expect(dialog.getByRole("button", { name: "저장" })).toBeDisabled();
     await dialog.getByLabel("이미지", { exact: true }).setInputFiles(file("ev.png", await canvasPng(page, 600, 600, "#ffc451", "LIVE 20:00")));
-    await expect(dialog.getByText("600 × 600px · PNG")).toBeVisible();
+    await expect(dialog.locator(".sc-up-img")).toBeVisible();
     await dialog.getByLabel("내용").fill("방송 중 주문은 순서대로 열어 드려요.\n주문할 때 방송 닉네임을 꼭 적어 주세요.");
-    await dialog.getByLabel("링크").fill("/signup");
+    await dialog.getByLabel("연결", { exact: true }).selectOption("custom");
+    await dialog.getByLabel("연결 주소").fill("/signup");
     await dialog.getByLabel("버튼 이름").fill("회원가입하기");
     await dialog.getByLabel("노출 페이지").selectOption("ALL");
-    await dialog.getByLabel("다시 보지 않기").selectOption("7");
-    await expect(dialog.getByTestId("popup-preview")).toContainText("회원가입하기");
-    await expect(dialog.getByTestId("popup-preview")).toContainText("7일 동안 보지 않기");
+    await dialog.getByRole("radio", { name: "7일 동안 보지 않기" }).click();
+    await expect(page.getByTestId("popup-preview")).toContainText("회원가입하기");
+    await expect(page.getByTestId("popup-preview")).toContainText("7일 동안 보지 않기");
     await dialog.getByRole("radio", { name: "PC만" }).click();
-    await dialog.getByRole("radio", { name: "모바일" }).last().click();
-    await expect(dialog.getByTestId("popup-preview")).toContainText("모바일에서는 표시하지 않음");
+    await expect(page.getByTestId("popup-preview")).toContainText("모바일에서는 표시하지 않음");
     await dialog.getByRole("radio", { name: "PC · 모바일" }).click();
     await page.screenshot({ path: `${SHOT}/SA-065-popup-edit-1440.png` });
     await dialog.getByRole("button", { name: "저장" }).click();
+    await confirmBtn("추가").click();
     await expect(page.getByText("팝업을 추가했습니다")).toBeVisible();
 
     await page.getByRole("button", { name: "팝업 추가" }).first().click();
-    const bar = page.getByRole("dialog", { name: "팝업 추가" });
+    const bar = page.getByTestId("popup-editor");
     await bar.getByRole("radio", { name: "상단 띠" }).click();
     await bar.getByLabel("띠 문구").fill(BAR_TITLE);
     await bar.getByLabel("노출 페이지").selectOption("ALL");
-    await expect(bar.getByTestId("popup-preview")).toContainText(BAR_TITLE);
+    await expect(page.getByTestId("popup-preview")).toContainText(BAR_TITLE);
     await bar.getByRole("button", { name: "저장" }).click();
+    await confirmBtn("추가").click();
     await expect(page.getByTestId("popup-row")).toHaveCount(2);
-    await expect(page.getByTestId("popup-row").nth(0)).toContainText("이미지 팝업 · 가운데 · 전체 페이지 · PC · 모바일");
+    await expect(page.getByTestId("popup-row").nth(0)).toContainText("이미지 팝업 · 가운데");
+    await expect(page.getByTestId("popup-row").nth(0)).toContainText("전체 페이지");
     await expect(page.getByTestId("popup-row").nth(0)).toContainText("7일 동안 보지 않기");
     await expect(page.getByTestId("popup-row").nth(1)).toContainText("상단 띠 · 맨 위 한 줄");
 
     // 복제: 같은 값으로 새 팝업(숨김 상태)
     await page.getByTestId("popup-row").nth(1).getByRole("button", { name: "복제" }).click();
-    const dup = page.getByRole("dialog", { name: "팝업 추가" });
+    const dup = page.getByTestId("popup-editor");
     await expect(dup.getByLabel("띠 문구")).toHaveValue(`${BAR_TITLE} 복사본`.slice(0, 40));
     await dup.getByRole("button", { name: "저장" }).click();
+    await confirmBtn("추가").click();
     await expect(page.getByTestId("popup-row")).toHaveCount(3);
     await expect(page.getByTestId("popup-row").nth(2).getByText("숨김")).toBeVisible();
     await page.screenshot({ path: `${SHOT}/SA-065-popups-1440.png`, fullPage: true });
+    await page.setViewportSize({ width: 1024, height: 800 });
+    await page.screenshot({ path: `${SHOT}/SA-065-popups-1024.png`, fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.reload();
+    await expect(page.getByTestId("popup-row")).toHaveCount(3);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: `${SHOT}/SA-065-popups-390.png`, fullPage: true });
   });
 
   test("구매자 PC: 게시 중·PC 배너만, 상단 띠와 가운데 팝업, 「7일 동안 보지 않기」는 다시 열어도 안 보임", async ({ page }) => {
