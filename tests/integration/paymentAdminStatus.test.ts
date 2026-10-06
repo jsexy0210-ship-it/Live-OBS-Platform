@@ -233,3 +233,102 @@ describe("구독료 수납 현황 GET /api/admin/subscription-billing", () => {
     }
   });
 });
+
+describe("PG 연결 상태 확장(MA-031 정본 v295): 24시간 요약·상태 필터·기간·LIVE", () => {
+  type Row = { seller: { id: string; shopName: string }; live: boolean; failures24h: number; failuresInPeriod: number; cancelsPending: number; cancelsFailed: number };
+  const ids = (b: { sellers: Row[] }) => b.sellers.map((s) => s.seller.id);
+
+  async function fixture() {
+    setPaymentGatewayForTest(new FakePaymentGateway());
+    const now = Date.now();
+    // A: 24시간 안 실패 1건·성공 1건(2시간 전, 최근 성공)·취소 대기 1건, 방송 중
+    const a = await shopWithPayments("가게A", [{ status: "PAID", at: new Date(now - 2 * HOUR) }, { status: "FAILED", at: new Date(now - 3 * HOUR), code: "nicepay_3095" }], ["REQUESTED"]);
+    await db.broadcastSession.create({ data: { sellerId: a.id, status: "LIVE" } });
+    // B: 3일 전 실패만(7일 안, 24시간 밖), 취소 실패 1건, 방송 종료
+    const b = await shopWithPayments("가게B", [{ status: "FAILED", at: new Date(now - 3 * 24 * HOUR), code: "amount_mismatch" }], ["FAILED"]);
+    await db.broadcastSession.create({ data: { sellerId: b.id, status: "ENDED", endedAt: new Date() } });
+    // C: 20일 전 실패(30일 안, 7일 밖)
+    const c = await shopWithPayments("가게C", [{ status: "FAILED", at: new Date(now - 20 * 24 * HOUR), code: "nicepay_3021" }]);
+    // D: 성공만(48시간 전, 24시간 요약에는 안 들어감)
+    const d = await shopWithPayments("가게D", [{ status: "PAID", at: new Date(now - 48 * HOUR) }]);
+    // E: 24시간 안 실패 1건, 다른 파트너스(실패한 파트너스 수 2)
+    const e = await shopWithPayments("가게E", [{ status: "FAILED", at: new Date(now - 30 * 60_000), code: "approve_timeout" }]);
+    return { a, b, c, d, e };
+  }
+
+  it("gateway.summary24h: 직전 24시간 성공·실패·실패한 파트너스 수와 마지막 성공·실패(쇼핑몰·금액·코드), 취소는 처리 안 끝난 건 전체", async () => {
+    const f = await fixture();
+    const body = await (await get(pgStatusRoute, "/api/admin/pg-status", await adminCookie())).json();
+    expect(body.gateway.summary24h).toMatchObject({
+      successCount: 1, // A의 2시간 전 성공(D는 48시간 전)
+      failureCount: 2, // A 3시간 전, E 30분 전
+      failedSellerCount: 2,
+      cancelsPending: 1,
+      cancelsFailed: 1, // B의 3일 전 취소 실패도 센다(처리 안 끝난 건)
+      lastSuccess: { at: expect.any(String), sellerName: "가게A", amount: 10000 },
+      lastFailure: { at: expect.any(String), sellerName: "가게E", code: "approve_timeout", message: paymentFailureMessage("approve_timeout") },
+    });
+    // 기간(7일·30일)을 바꿔도 요약은 24시간 기준 그대로
+    for (const period of ["7d", "30d"]) {
+      const b = await (await get(pgStatusRoute, `/api/admin/pg-status?period=${period}`, await adminCookie())).json();
+      expect(b.gateway.summary24h).toEqual(body.gateway.summary24h);
+    }
+    expect(f.a.id).toBeTruthy();
+  });
+
+  it("결제가 하나도 없으면 요약은 0과 null이다", async () => {
+    setPaymentGatewayForTest(new FakePaymentGateway());
+    const body = await (await get(pgStatusRoute, "/api/admin/pg-status", await adminCookie())).json();
+    expect(body.gateway.summary24h).toEqual({ successCount: 0, failureCount: 0, failedSellerCount: 0, cancelsPending: 0, cancelsFailed: 0, lastSuccess: null, lastFailure: null });
+    expect(body.counts).toEqual({ all: 0, failed: 0, cancel: 0 });
+  });
+
+  it("상태 필터: failed는 기간 안 실패가 있는 파트너스, cancel은 처리 안 끝난 취소가 있는 파트너스, counts는 같은 기간 기준(status·쪽과 무관)", async () => {
+    const f = await fixture();
+    const cookie = await adminCookie();
+    const all = await (await get(pgStatusRoute, "/api/admin/pg-status", cookie)).json();
+    expect(all.counts).toEqual({ all: 5, failed: 2, cancel: 2 }); // 24시간: 실패 A·E, 취소 A·B
+    expect(ids(all)).toHaveLength(5);
+    const failed = await (await get(pgStatusRoute, "/api/admin/pg-status?status=failed", cookie)).json();
+    expect(new Set(ids(failed))).toEqual(new Set([f.a.id, f.e.id]));
+    expect(failed.counts).toEqual(all.counts);
+    const cancel = await (await get(pgStatusRoute, "/api/admin/pg-status?status=cancel", cookie)).json();
+    expect(new Set(ids(cancel))).toEqual(new Set([f.a.id, f.b.id]));
+    // 7일: B(3일 전 실패)가 실패에 들어오고, 30일: C도 들어온다
+    const f7 = await (await get(pgStatusRoute, "/api/admin/pg-status?status=failed&period=7d", cookie)).json();
+    expect(new Set(ids(f7))).toEqual(new Set([f.a.id, f.b.id, f.e.id]));
+    expect(f7.counts).toEqual({ all: 5, failed: 3, cancel: 2 });
+    const f30 = await (await get(pgStatusRoute, "/api/admin/pg-status?status=failed&period=30d", cookie)).json();
+    expect(new Set(ids(f30))).toEqual(new Set([f.a.id, f.b.id, f.c.id, f.e.id]));
+    expect(f30.counts.failed).toBe(4);
+    // 기간 안 실패 수(failuresInPeriod)와 24시간 실패 수(failures24h)
+    const b30 = (f30.sellers as Row[]).find((s) => s.seller.id === f.b.id)!;
+    expect(b30).toMatchObject({ failures24h: 0, failuresInPeriod: 1 });
+    // 검색과 필터 조합, 쪽 나누기는 필터 뒤 목록 기준
+    const q = await (await get(pgStatusRoute, `/api/admin/pg-status?status=failed&q=${encodeURIComponent("게E")}`, cookie)).json();
+    expect(ids(q)).toEqual([f.e.id]);
+    expect(q.counts).toEqual({ all: 1, failed: 1, cancel: 0 });
+    const p1 = await (await get(pgStatusRoute, "/api/admin/pg-status?status=failed&limit=1", cookie)).json();
+    expect(p1.sellers).toHaveLength(1);
+    expect(p1.nextCursor).toBe("1");
+    expect(p1.counts).toEqual(all.counts);
+    const p2 = await (await get(pgStatusRoute, `/api/admin/pg-status?status=failed&limit=1&cursor=${p1.nextCursor}`, cookie)).json();
+    expect(p2.sellers).toHaveLength(1);
+    expect(p2.nextCursor).toBeNull();
+    expect(new Set([...ids(p1), ...ids(p2)])).toEqual(new Set([f.a.id, f.e.id]));
+  });
+
+  it("방송 중 파트너스는 live가 true, 방송이 끝났거나 없으면 false", async () => {
+    const f = await fixture();
+    const body = await (await get(pgStatusRoute, "/api/admin/pg-status", await adminCookie())).json();
+    const live = Object.fromEntries((body.sellers as Row[]).map((s) => [s.seller.id, s.live]));
+    expect(live).toEqual({ [f.a.id]: true, [f.b.id]: false, [f.c.id]: false, [f.d.id]: false, [f.e.id]: false });
+  });
+
+  it("status·period 값이 틀리면 400", async () => {
+    setPaymentGatewayForTest(new FakePaymentGateway());
+    for (const bad of ["?status=weird", "?period=1y", "?period=24H", "?status=constructor", "?period=toString"]) {
+      expect((await get(pgStatusRoute, `/api/admin/pg-status${bad}`, await adminCookie())).status, bad).toBe(400);
+    }
+  });
+});

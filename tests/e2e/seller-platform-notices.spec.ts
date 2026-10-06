@@ -118,18 +118,21 @@ test("문의: 공지에서 관련 문의를 보내고, 사진을 붙이고, 답�
   await expect(page.getByText(`관련 공지: ${E2E_PREFIX}문의 연결 공지`)).toBeVisible();
 
   const send = page.getByRole("button", { name: "문의 보내기" });
-  await expect(send).toBeDisabled();
-  await page.getByLabel("유형").selectOption("SUBSCRIPTION_FEE");
+  // 비워 둔 채 보내면 입력 오류가 보이고 확인 창은 뜨지 않는다
+  await send.click();
+  await expect(page.getByText("문의 종류를 선택해 주십시오")).toBeVisible();
+  await expect(page.getByText("제목을 입력해 주십시오")).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.getByRole("radio", { name: "구독 · 요금" }).click();
   await page.getByLabel("제목").fill(`${E2E_PREFIX}결제 문의`);
   await page.getByLabel("내용").fill("결제 내역이 맞지 않습니다.");
   // 너무 작은 사진은 이유를 알려 주고 붙이지 않는다
-  await page.getByLabel("사진 파일").setInputFiles({ name: "tiny.png", mimeType: "image/png", buffer: TINY });
+  await page.getByLabel("첨부 파일").setInputFiles({ name: "tiny.png", mimeType: "image/png", buffer: TINY });
   await expect(page.getByRole("alert").filter({ hasText: "사진 크기가 맞지 않습니다" })).toBeVisible();
   await expect(page.getByAltText("첨부 사진")).toHaveCount(0);
   const png = await sharp({ create: { width: 120, height: 120, channels: 4, background: "#ff3b30" } }).png().toBuffer();
-  await page.getByLabel("사진 파일").setInputFiles({ name: "a.png", mimeType: "image/png", buffer: png });
+  await page.getByLabel("첨부 파일").setInputFiles({ name: "a.png", mimeType: "image/png", buffer: png });
   await expect(page.getByAltText("첨부 사진")).toHaveCount(1);
-  await expect(send).toBeEnabled();
   await send.click();
   const sendDialog = page.getByRole("dialog", { name: "문의를 보내시겠습니까?" });
   await expect(sendDialog).toContainText("보낸 뒤에는 수정하거나 지울 수 없습니다");
@@ -205,11 +208,44 @@ test("내 문의 목록: 상태 칸 숫자와 문의 종류 선택으로 걸러 
   await expect(row).toBeVisible();
 });
 
+test("문의하기: 관련 방송 · 파일 첨부 · 진단 정보 · 임시 저장 · [긴급] 표시를 보내고, 임시 저장은 다시 오면 이어진다", async ({ page }) => {
+  await login(page, "/seller/inquiries/new");
+  await page.getByRole("radio", { name: "방송 화면" }).click();
+  await expect(page.getByText("방송 화면이 멈출 때")).toBeVisible();
+  await page.getByLabel("제목").fill(`[긴급] ${E2E_PREFIX}방송 화면 멈춤`);
+  await page.getByLabel("내용").fill("21:03에 멈췄습니다.");
+  await expect(page.getByLabel("진단 정보를 함께 보냅니다")).toBeChecked();
+
+  // 임시 저장 → 다시 오면 이어서 쓴다
+  await page.getByRole("button", { name: "임시 저장" }).click();
+  await expect(page.getByText("작성 중인 내용을 임시 저장했습니다")).toBeVisible();
+  await page.goto("/seller/inquiries/new");
+  await expect(page.getByLabel("제목")).toHaveValue(`[긴급] ${E2E_PREFIX}방송 화면 멈춤`);
+  await expect(page.getByRole("radio", { name: "방송 화면" })).toHaveAttribute("aria-checked", "true");
+
+  // 파일 첨부(.log는 받고, 실행 파일은 화면에서 막는다)
+  await page.getByLabel("첨부 파일").setInputFiles({ name: "obs.log", mimeType: "text/plain", buffer: Buffer.from("log line") });
+  await expect(page.getByTestId("inquiry-file")).toContainText("obs.log");
+  await page.getByLabel("첨부 파일").setInputFiles({ name: "run.exe", mimeType: "application/octet-stream", buffer: Buffer.from("MZ") });
+  await expect(page.getByRole("alert").filter({ hasText: "run.exe을 올리지 못했습니다" })).toBeVisible();
+
+  await page.getByRole("button", { name: "문의 보내기" }).first().click();
+  const dialog = page.getByRole("dialog", { name: "문의를 보내시겠습니까?" });
+  await dialog.getByRole("button", { name: "문의 보내기" }).click();
+  await expect(page).toHaveURL(/\/seller\/inquiries\/[0-9a-f-]{36}$/);
+  // 보내면 임시 저장은 지워진다
+  const draft = await page.evaluate(async () => (await (await fetch("/api/seller/platform-inquiries/draft")).json()).draft);
+  expect(draft).toBeNull();
+  await expect(page.getByTestId("inquiry-title")).toHaveText(`${E2E_PREFIX}방송 화면 멈춤`);
+});
+
 test("문의: 유형 없이는 보낼 수 없고, 없는 문의는 안내한다", async ({ page }) => {
   await login(page, "/seller/inquiries/new");
   await page.getByLabel("제목").fill(`${E2E_PREFIX}유형 없음`);
   await page.getByLabel("내용").fill("내용");
-  await expect(page.getByRole("button", { name: "문의 보내기" })).toBeDisabled();
+  await page.getByRole("button", { name: "문의 보내기" }).click();
+  await expect(page.getByText("문의 종류를 선택해 주십시오")).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.goto("/seller/inquiries/00000000-0000-4000-8000-000000000000");
   await expect(page.getByText("문의를 찾을 수 없습니다")).toBeVisible();
 });
@@ -242,7 +278,7 @@ test("하루 20건을 넘기면 보내지 못하고 서버 안내문이 보인�
   await cleanupPlatformE2eInDb();
   await fillInquiryLimitInDb(20);
   await login(page, "/seller/inquiries/new");
-  await page.getByLabel("유형").selectOption("OTHER");
+  await page.getByRole("radio", { name: "기타" }).click();
   await page.getByLabel("제목").fill(`${E2E_PREFIX}한도 초과`);
   await page.getByLabel("내용").fill("내용");
   await page.getByRole("button", { name: "문의 보내기" }).click();
