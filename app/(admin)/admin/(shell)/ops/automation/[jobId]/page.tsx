@@ -104,7 +104,7 @@ export default function AutomationJobDetailPage() {
             <section className="card pad col" style={{ gap: 8 }} data-testid="cleanup-box">
               <b>정리 필요</b>
               <span className="t-l2 c-alt">외부 쇼핑몰에 남은 연결과 OBS 설정을 직접 지운 뒤 닫아 주십시오. 닫으면 이 작업은 실패로 끝나고, 결제는 환불 대기로 바뀝니다. 파트너스가 취소한 작업은 「취소」로 닫힙니다.</span>
-              <textarea className="inp" rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} placeholder="정리한 내용(필수, 500자까지)" aria-label="정리한 내용" />
+              <textarea className="inp" rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} placeholder="정리 내용 입력" aria-description="정리한 내용은 필수이며 500자까지 입력할 수 있습니다." aria-label="정리한 내용" />
               <div><button className="btn" type="button" disabled={!note.trim()} onClick={() => void closeCleanup()}>정리 완료로 닫기</button></div>
             </section>
           )}

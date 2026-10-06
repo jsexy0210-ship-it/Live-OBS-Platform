@@ -164,7 +164,7 @@ function NoticeList() {
             </select>
           </SearchRow>
           <SearchRow label="검색어">
-            <input className="inp" type="search" aria-label="제목" placeholder="제목" maxLength={MAX_SEARCH_LENGTH} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
+            <input className="inp" type="search" aria-label="제목" placeholder="제목 입력" maxLength={MAX_SEARCH_LENGTH} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
           </SearchRow>
         </SearchBox>
 

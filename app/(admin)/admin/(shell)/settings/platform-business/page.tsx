@@ -22,11 +22,11 @@ type History = { id: string; at: string; fields: string[]; actor: string };
 const ROWS: { key: Key; label: string; cls: string; placeholder?: string; help?: string; empty: string }[] = [
   { key: "name", label: "상호", cls: "w-l", help: "사업자등록증의 상호 그대로", empty: "상호를 입력해 주십시오" },
   { key: "representative", label: "대표자", cls: "w-m", empty: "대표자를 입력해 주십시오" },
-  { key: "businessNumber", label: "사업자등록번호", cls: "w-m", placeholder: "숫자 10자리", help: "하이픈 없이", empty: "사업자등록번호는 숫자 10자리로 입력해 주십시오" },
-  { key: "mailOrderNumber", label: "통신판매업 신고번호", cls: "w-l", placeholder: "예: 제2026-서울강남-01234호", empty: "통신판매업 신고번호를 입력해 주십시오" },
+  { key: "businessNumber", label: "사업자등록번호", cls: "w-m", placeholder: "사업자등록번호 입력", help: "숫자 10자리 · 하이픈 없이", empty: "사업자등록번호는 숫자 10자리로 입력해 주십시오" },
+  { key: "mailOrderNumber", label: "통신판매업 신고번호", cls: "w-l", placeholder: "신고번호 입력", help: "신고증의 번호 그대로", empty: "통신판매업 신고번호를 입력해 주십시오" },
   { key: "address", label: "사업장 주소", cls: "w-xl", help: "우편번호 · 기본 주소 · 상세 주소를 한 줄로", empty: "사업장 주소를 입력해 주십시오" },
-  { key: "phone", label: "고객센터 전화", cls: "w-m", placeholder: "예: 1588-0000", help: "구매자 화면 바닥글과 메일에 표시", empty: "고객센터 전화를 입력해 주십시오" },
-  { key: "email", label: "고객센터 이메일", cls: "w-l", placeholder: "example@email.com", help: "구매자 · 파트너스 문의 회신 주소", empty: "이메일 형식을 확인해 주십시오" },
+  { key: "phone", label: "고객센터 전화", cls: "w-m", placeholder: "전화번호 입력", help: "구매자 화면 바닥글과 메일에 표시", empty: "고객센터 전화를 입력해 주십시오" },
+  { key: "email", label: "고객센터 이메일", cls: "w-l", placeholder: "이메일 입력", help: "구매자 · 파트너스 문의 회신 주소", empty: "이메일 형식을 확인해 주십시오" },
 ];
 const WIDTH: Record<string, number> = { "w-l": 320, "w-m": 184, "w-xl": 520 };
 const LABEL = Object.fromEntries(ROWS.map((r) => [r.key, r.label])) as Record<Key, string>;

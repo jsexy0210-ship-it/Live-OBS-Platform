@@ -208,7 +208,7 @@ function PgStatusPageInner() {
               </span>
             </SearchRow>
             <SearchRow label="파트너스">
-              <input className="inp" aria-label="쇼핑몰 이름 또는 주소" placeholder="쇼핑몰 이름" value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
+              <input className="inp" aria-label="쇼핑몰 이름 또는 주소" placeholder="쇼핑몰 이름 입력" value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
             </SearchRow>
           </SearchBox>
           <div className="au-list-section">

@@ -55,7 +55,7 @@ export function RejectApplicationDialog({ id, bulkIds, shopName, onClose, onDone
                 </option>
               ))}
             </select>
-            <textarea id="reject-reason" className="inp" rows={3} aria-label="추가 안내" placeholder="추가 안내 (사유를 고르지 않았다면 직접 입력)" value={extra} onChange={(e) => setExtra(e.target.value)} disabled={busy} />
+            <textarea id="reject-reason" className="inp" rows={3} aria-label="추가 안내" placeholder="추가 안내 입력" aria-description="사유를 고르지 않았다면 직접 입력해 주십시오." value={extra} onChange={(e) => setExtra(e.target.value)} disabled={busy} />
             <span className={`t-c1 ${count > MAX_REASON ? "c-neg" : "c-alt"}`}>
               {count}/{MAX_REASON}
             </span>

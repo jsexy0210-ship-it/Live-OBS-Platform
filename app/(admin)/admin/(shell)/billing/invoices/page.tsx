@@ -258,7 +258,7 @@ function Invoices() {
               </select>
             </SearchRow>
             <SearchRow label="파트너스">
-              <input className="inp" type="search" aria-label="파트너스" placeholder="쇼핑몰 이름 · 주소" maxLength={MAX_SEARCH_LENGTH} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
+              <input className="inp" type="search" aria-label="파트너스" placeholder="쇼핑몰 이름 · 주소 입력" maxLength={MAX_SEARCH_LENGTH} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
             </SearchRow>
             <SearchRow label="기타">
               <label className="chk">

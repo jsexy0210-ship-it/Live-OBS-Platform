@@ -376,7 +376,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
               id={`title-${t}`}
               className={`inp${titleLen > TITLE_MAX ? " is-error" : ""}`}
               value={title}
-              placeholder={branding.defaults.title}
+              placeholder="제목 입력"
               disabled={!canEdit}
               onChange={(e) => setTitle(e.target.value)}
             />
@@ -390,12 +390,12 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
               id={`desc-${t}`}
               className={`inp${descLen > DESCRIPTION_MAX ? " is-error" : ""}`}
               value={description}
-              placeholder={branding.defaults.description ?? "비워 두면 설명 없이 표시됩니다."}
+              placeholder="설명 입력"
               disabled={!canEdit}
               onChange={(e) => setDescription(e.target.value)}
             />
             <span className={descLen > DESCRIPTION_MAX ? "err" : "help"}>
-              {descLen}/{DESCRIPTION_MAX}
+              {descLen}/{DESCRIPTION_MAX} · 비워 두면 기본 설명으로 표시됩니다. 기본 설명이 없으면 표시하지 않습니다.
             </span>
           </div>
           <div className="col" style={{ gap: 8 }}>

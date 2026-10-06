@@ -177,7 +177,7 @@ function PartnerList() {
                 </option>
               ))}
             </select>
-            <input className="inp" type="search" aria-label="검색어" placeholder="검색어" maxLength={MAX_SEARCH_LENGTH} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
+            <input className="inp" type="search" aria-label="검색어" placeholder="검색어 입력" maxLength={MAX_SEARCH_LENGTH} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
           </SearchRow>
           <SearchRow label="상태">
             {[["", "전체"], ...STATES.map((x) => [x, DISPLAY_STATUS[x].label])].map(([v, l]) => (

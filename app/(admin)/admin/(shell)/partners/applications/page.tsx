@@ -449,7 +449,7 @@ function Applications() {
                   </option>
                 ))}
               </select>
-              <input className="inp" type="search" aria-label="검색어" placeholder="검색어" maxLength={MAX_SEARCH_LENGTH} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
+              <input className="inp" type="search" aria-label="검색어" placeholder="검색어 입력" maxLength={MAX_SEARCH_LENGTH} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
             </SearchRow>
           </SearchBox>
           <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>

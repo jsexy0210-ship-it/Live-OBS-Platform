@@ -96,8 +96,8 @@ export default function AssistantDocsPage() {
             <span className="t-c1 c-alt">공개해도 되는 자료만 넣어 주십시오. 파트너스 개인정보와 주문 정보는 넣지 마십시오. 「게시」를 켠 자료만 도우미가 답할 때 씁니다.</span>
             {draft && (
               <form className="col" style={{ gap: 10 }} onSubmit={save}>
-                <input className="inp" aria-label="제목" placeholder="제목" maxLength={100} value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} disabled={busy} />
-                <textarea className="inp" aria-label="내용" placeholder="내용(4,000자까지)" rows={10} maxLength={4000} value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} disabled={busy} />
+                <input className="inp" aria-label="제목" placeholder="제목 입력" maxLength={100} value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} disabled={busy} />
+                <textarea className="inp" aria-label="내용" placeholder="내용 입력" aria-description="4,000자까지 입력할 수 있습니다." rows={10} maxLength={4000} value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} disabled={busy} />
                 <label className="chk">
                   <input type="checkbox" checked={draft.published} onChange={(e) => setDraft({ ...draft, published: e.target.checked })} disabled={busy} />
                   도우미 답변에 사용(게시)
