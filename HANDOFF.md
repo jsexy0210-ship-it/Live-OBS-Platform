@@ -7,7 +7,8 @@
 | 세션 | ID | 담당 |
 |---|---|---|
 | Live-OBS-Platform MASTER (2) | `session_018xa8SC5evpEFNVcQBwcN5t` | 대표님 지시 전달 · 세션 배정·교체 · 상태 문서 관리(2026-10-04 대표님 지시로 검수·병합은 검수 전담에 넘김). 2026-10-02 17:21 KST 교체 생성 |
-| 검수 전담 (8) | `session_01R5GCoaquPEMsXCjqtr2tNd` | 2026-10-06 09:26 KST MASTER 생성(Sonnet 5.5). (7)을 컨텍스트 58%로 교체. CI 반복 조회 대신 CI 끝난 PR을 모아 병합. 역할·소유는 전임 행과 같음 |
+| 검수 전담 (9) | `session_01Jc3uUUzghsYvaLRuzqBeM9` | 2026-10-06 10:09 KST MASTER 생성(Sonnet 5.5). (8)을 컨텍스트 53%로 교체(증가 속도 빠름). 컨텍스트 절약 지침 강화. 역할·소유는 전임 행과 같음 |
+| 검수 전담 (8) | `session_01R5GCoaquPEMsXCjqtr2tNd` | (교체됨 → `session_01Jc3uUUzghsYvaLRuzqBeM9`, 2026-10-06) 2026-10-06 09:26 KST MASTER 생성(Sonnet 5.5). (7)을 컨텍스트 58%로 교체. CI 반복 조회 대신 CI 끝난 PR을 모아 병합. 역할·소유는 전임 행과 같음 |
 | 검수 전담 (7) | `session_012afgA2RqbUUEXVYD6PFi7e` | (교체됨 → `session_01R5GCoaquPEMsXCjqtr2tNd`, 2026-10-06) 2026-10-06 07:37 KST MASTER 생성(Sonnet 5.5). (6)을 컨텍스트 66%로 교체. 컨텍스트 절약 지침(파일 목록·위험 hunk만, 디자인 PR은 CI 통과 시 바로 병합) 포함. 역할·소유는 전임 행과 같음 |
 | 검수 전담 (6) | `session_01BGhFbE9bzWWVY6yG1ZyZrB` | (교체됨 → `session_012afgA2RqbUUEXVYD6PFi7e`, 2026-10-06)  2026-10-06 01:34 KST MASTER 생성(Sonnet 5.5). (5)를 컨텍스트 53%로 선제 교체. 역할·소유는 전임 행과 같음 |
 | 검수 전담 (5) | `session_012JyUS33LLXBeuX7LfdgDTB` | (교체됨 → `session_01BGhFbE9bzWWVY6yG1ZyZrB`, 2026-10-06)  2026-10-06 00:35 KST MASTER 생성(Sonnet 5.5). `session_01Wjnr6nWyiUkbYMPBmx7CPt`를 컨텍스트 증가 속도(54%, 선제)로 교체. 역할·소유는 전임 행과 같음 |
@@ -27,7 +28,8 @@
 | 레이아웃 전담 (5) · UI 현대화 | `session_017WgBx8FtCk7jBgmCL4id5V` | (교체됨 → `session_01CzgXixxpn7b3FGjcb2fSnS`, 2026-10-06)  2026-10-06 00:05 KST MASTER 생성(Sonnet 5.5). `session_01E7X37SDuT7CyPd67Yonm4k` 를 컨텍스트 67%로 교체. 역할·소유는 전임 행과 같음 |
 | 레이아웃 전담 (4) · UI 현대화 | `session_01E7X37SDuT7CyPd67Yonm4k` | (교체됨 → `session_017WgBx8FtCk7jBgmCL4id5V`, 2026-10-06)  2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_015hHqzBD92PvX1wauiYmjyK`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | UX 감사 전담 (2) | `session_01MHWWLyxFsh9VRU33s3g4DQ` | (보관, 2026-10-06 — 결과 docs/UX_PLAIN_AUDIT.md(#639)·각 화면 세션 배정 완료, 결정은 4절) 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01GbMUeY3UxdmHvLeW5HQ7co`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
-| 화면-Back 경로 전담 | `session_01CH2Lf4gV1p2A6YwEoJJdrD` | 2026-10-05 대표님 지시 「진입부터 돌아가는 모든 루트를 계산」. 1단계 `docs/BACK_ROUTES.md` 경로표 → 2단계 화면 묶음별 ← 버튼·useSmartBack·상태 보존 적용(파트너스 → 마스터 → 쇼핑몰 → 인증·공개). 공통 셸·navigation 도우미는 레이아웃 소관. 2026-10-05 KST MASTER 생성 |
+| 화면-Back 경로 (2) | `session_014JGMxa5e6Nn7qA8CLY6J6s` | 2026-10-06 10:16 KST MASTER 생성(Sonnet 5.5). 전임을 컨텍스트 75%로 교체. 소유: BACK_ROUTES 적용, 파트너스 가입 단계 화면·서버(가입 필드·사업자등록증 업로드), SA-003·006·150~153·151 화면 |
+| 화면-Back 경로 전담 | `session_01CH2Lf4gV1p2A6YwEoJJdrD` | (교체됨 → `session_014JGMxa5e6Nn7qA8CLY6J6s`, 2026-10-06) 2026-10-05 대표님 지시 「진입부터 돌아가는 모든 루트를 계산」. 1단계 `docs/BACK_ROUTES.md` 경로표 → 2단계 화면 묶음별 ← 버튼·useSmartBack·상태 보존 적용(파트너스 → 마스터 → 쇼핑몰 → 인증·공개). 공통 셸·navigation 도우미는 레이아웃 소관. 2026-10-05 KST MASTER 생성 |
 | 화면-마스터 (3) | `session_015guETvqpWgmPwcRvfFkSeF` | 2026-10-06 KST MASTER 생성(Sonnet 5.5). (2)를 컨텍스트 66%로 교체, 인계 #701 댓글 |
 | 화면-마스터 (2) | `session_01745GgCnQxQhtnpCd5Pv88w` | (교체됨 → `session_015guETvqpWgmPwcRvfFkSeF`, 2026-10-06)  2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01JMzttsfKDXeXncJrX2VsLG`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 화면-공개 (2) | `session_01VWVPemvkt3eicZ8fDRLSAR` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01HfJMUwycvTKgmVctvRpGjH`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 — 2026-10-05 23:55 KST #565·#614 병합, 보관 |
@@ -51,7 +53,8 @@
 | 개발 전담 (기반-유튜브) | `session_01H4tkcKx7B9mokLRDNuBNYP` | (교체됨 → `session_01NnpcVX7ZtjRk8oBEM6fMj8`, 2026-10-05)  2026-10-05 신설(대표님 지시). YouTube Data API v3: 채널·방송 연결, 방송 시작·종료 자동 감지, 실시간 채팅 닉네임·주문 매칭. 설계(할당량) 보고 후 구현. 마이그레이션 20261004300000~ |
 | 개발 전담 (화면) (3) | `session_01BwVsBQrQRL49RsUn9ejKYw` | (2)를 교체(Sonnet, 2026-10-04 대표님 지시 속도). 소유는 아래 (2)·(이전) 줄과 같음. 2026-10-04 KST MASTER 생성 |
 | 화면-방송 (2) | `session_01LEN2yPC22mYAT7r16f4RJ6` | 화면-방송(`session_01EUscVzBZ5i68jWQHwNpus7`) 교체(Sonnet). 방송 화면 SA-001 계열·SA-051~055, 오버레이 OV-001·002, #212·#213. 2026-10-04 KST MASTER 생성 |
-| 화면-설정 (3) | `session_01XhYNFkgrpwNSHoU7MbBo8o` | 2026-10-06 00:25 KST MASTER 생성(Sonnet 5.5). (2) `session_014yzgBefSGaxVp7o6eBETzb`를 컨텍스트 70% 초과로 교체. 역할·소유는 전임 행과 같음 |
+| 화면-설정 (4) | `session_01XVMtiwS9Y8yk6uWsCp4j5f` | 2026-10-06 10:11 KST MASTER 생성(Sonnet 5.5). (3)을 컨텍스트 70%로 교체. 소유: SA-060~063 설정·SA-111~115 공지·내 문의 화면(적립금·회원 정책·알림 설정·직원·구독은 개발 전담(화면) (3)으로 이관) |
+| 화면-설정 (3) | `session_01XhYNFkgrpwNSHoU7MbBo8o` | (교체됨 → `session_01XVMtiwS9Y8yk6uWsCp4j5f`, 2026-10-06) 2026-10-06 00:25 KST MASTER 생성(Sonnet 5.5). (2) `session_014yzgBefSGaxVp7o6eBETzb`를 컨텍스트 70% 초과로 교체. 역할·소유는 전임 행과 같음 |
 | 화면-설정 (2) | `session_014yzgBefSGaxVp7o6eBETzb` | (교체됨 → `session_01XhYNFkgrpwNSHoU7MbBo8o`, 2026-10-06)  화면-설정(`session_01BEoFcXM4wkW8BLX8c54YBJ`) 교체(Sonnet). #210 → #216 → #218 → #220. 2026-10-04 KST MASTER 생성 |
 | 디자인·개발 싱크 전수조사 | `session_0184r9sq5MrKs74LgqRZPw5z` | 2026-10-06 00:20 KST MASTER 생성(대표님 지시). 캔버스 최신본·design/project·구현 3면 대조(docs/DESIGN_SYNC_AUDIT.md), 끝나면 캔버스 최신본으로 design/project 덮기, 어긋남 배정. 캔버스 읽기만 |
 | 레이아웃 전담 (3) · UI 현대화 | `session_015hHqzBD92PvX1wauiYmjyK` | (교체됨 → `session_01E7X37SDuT7CyPd67Yonm4k`, 2026-10-05)  레이아웃 전담 (2) 교체(대화 41%). 대표님 지시 「전체 UI 현대화 및 디자인 시스템 통합」(2026-10-05): 공통 토큰·공통 컴포넌트·셸·모달 기반 → 대표 화면 → 관리자 전체 → 구매자·편집기 전체. 공통 파일 소유. 다른 세션 소유 화면은 파일 목록을 MASTER에 보내 잠금 회신을 받은 뒤 고친다. 화면별 적용 표 `docs/UI_STATUS.md`. 2026-10-05 KST MASTER 생성 |
