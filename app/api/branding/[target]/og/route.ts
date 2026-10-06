@@ -10,7 +10,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ target: string 
   if (!isBrandingTarget(target)) return new Response("not found", { status: 404 });
   const src = await ogImageSource(prisma, target);
   const [body, type, version] =
-    src.kind === "uploaded" ? [src.image.data, src.image.type, src.image.hash] : [await renderBrandingCard(src.title), "image/png", src.version];
+    src.kind === "uploaded" ? [src.image.data, src.image.type, src.image.hash] : [await renderBrandingCard(target, src.title, new URL(req.url).host), "image/png", src.version];
   const fresh = new URL(req.url).searchParams.get("v") === version;
   return new Response(new Uint8Array(body), {
     headers: {
