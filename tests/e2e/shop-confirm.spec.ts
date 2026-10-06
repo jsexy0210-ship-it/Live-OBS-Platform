@@ -118,7 +118,7 @@ test("장바구니 삭제·로그아웃은 확인 창을 거치고, 취소하면
 
   await page.locator(".shop-util").getByRole("button", { name: "로그아웃" }).click();
   const out = page.getByRole("dialog", { name: "로그아웃할까요?" });
-  await expect(out).toContainText("장바구니와 찜은 그대로 남아요");
+  await expect(out).toContainText("이 기기에서 로그아웃돼요");
   await out.getByRole("button", { name: "취소" }).click();
   expect(logouts).toBe(0);
   await expect(page.locator(".shop-util").getByRole("link", { name: "내 정보" })).toBeVisible();

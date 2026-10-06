@@ -110,7 +110,7 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname, categor
   }, [drawer]);
 
   async function logout() {
-    if (!(await confirm({ tone: "shop", title: "로그아웃할까요?", body: "장바구니와 찜은 그대로 남아요. 다시 로그인하면 이어서 쓸 수 있어요.", confirmLabel: "로그아웃" }))) return;
+    if (!(await confirm({ tone: "shop", title: "로그아웃할까요?", body: "이 기기에서 로그아웃돼요.", confirmLabel: "로그아웃" }))) return;
     await fetch(`/api/shop/${encodeURIComponent(slug)}/auth/logout`, { method: "POST" }).catch(() => null);
     window.location.assign(base);
   }

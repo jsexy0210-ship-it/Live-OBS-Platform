@@ -14,7 +14,7 @@ export function LogoutButton({ onLogout, className = "util-i util-btn", children
       onClick={() =>
         void confirm({
           title: "로그아웃하시겠습니까?",
-          body: "이 기기에서 로그아웃됩니다 · 저장하지 않은 입력은 사라집니다",
+          body: "이 기기에서 로그아웃됩니다 · 저장하지 않은 입력은 사라집니다.",
           confirmLabel: "로그아웃",
           allowReadOnly: true,
           run: async () => ((await onLogout()) ? undefined : "로그아웃하지 못했습니다. 다시 시도해 주십시오"),
