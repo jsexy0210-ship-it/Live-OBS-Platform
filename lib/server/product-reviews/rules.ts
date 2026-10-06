@@ -32,8 +32,11 @@ export const REASON_BUYER: Record<ProductReviewReason, string> = {
 
 export const isReason = (v: unknown): v is ProductReviewReason => typeof v === "string" && (REASONS as readonly string[]).includes(v);
 
-export type ReviewInput = { rating: number; body: string; imageIds: string[] };
-export type ReviewRejection = "invalid_rating" | "invalid_body" | "invalid_images";
+// showNickname·showOpeningResult는 보내지 않으면 undefined(만들 때 기본값, 고칠 때 지금 값 유지)
+export type ReviewInput = { rating: number; body: string; imageIds: string[]; showNickname?: boolean; showOpeningResult?: boolean };
+export type ReviewRejection = "invalid_rating" | "invalid_body" | "invalid_images" | "invalid_options";
+// 공개 화면에서 닉네임을 숨긴 리뷰의 작성자 표시
+export const HIDDEN_AUTHOR = "구매자";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const isUuid = (v: unknown): v is string => typeof v === "string" && UUID.test(v);
@@ -46,7 +49,11 @@ export function parseReview(raw: unknown, maxImages: number): { ok: true; v: Rev
   if (!body || [...body].length < REVIEW_BODY_MIN) return { ok: false, reason: "invalid_body" };
   const ids = b.imageIds === undefined || b.imageIds === null ? [] : b.imageIds;
   if (!Array.isArray(ids) || ids.length > maxImages || !ids.every(isUuid) || new Set(ids).size !== ids.length) return { ok: false, reason: "invalid_images" };
-  return { ok: true, v: { rating, body, imageIds: ids } };
+  const opt = (v: unknown) => (v === undefined ? undefined : typeof v === "boolean" ? v : null);
+  const showNickname = opt(b.showNickname);
+  const showOpeningResult = opt(b.showOpeningResult);
+  if (showNickname === null || showOpeningResult === null) return { ok: false, reason: "invalid_options" };
+  return { ok: true, v: { rating, body, imageIds: ids, showNickname, showOpeningResult } };
 }
 
 export const cleanReply = (v: unknown) => cleanText(v, REVIEW_REPLY_MAX, "multiline");
