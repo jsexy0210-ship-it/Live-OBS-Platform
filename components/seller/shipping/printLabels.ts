@@ -10,9 +10,12 @@ export type Label = {
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c);
 
-export function printLabels(labels: Label[], format: "LABEL_100X150" | "A4_2UP"): boolean {
-  const w = window.open("", "_blank", "width=720,height=900");
-  if (!w) return false;
+// 인쇄 창은 눌렀을 때 바로(요청을 기다리기 전에) 열어 둬야 브라우저가 팝업으로 막지 않는다
+export function openPrintWindow(): Window | null {
+  return window.open("", "_blank", "width=720,height=900");
+}
+
+export function printLabels(w: Window, labels: Label[], format: "LABEL_100X150" | "A4_2UP"): void {
   const label = (l: Label) => `<section>
 <b>${esc(l.courierName)} ${esc(l.trackingNumber)}</b>${l.mock ? " <small>(모의)</small>" : ""}
 <p>${l.recipient ? `${esc(l.recipient.name)} · ${esc(l.recipient.phone)}<br>[${esc(l.recipient.zipCode)}] ${esc(l.recipient.address1)}${l.recipient.address2 ? ` ${esc(l.recipient.address2)}` : ""}` : "받는 분 정보는 권한이 있는 계정만 볼 수 있습니다"}</p>
@@ -23,5 +26,4 @@ export function printLabels(labels: Label[], format: "LABEL_100X150" | "A4_2UP")
   w.document.close();
   w.focus();
   w.print();
-  return true;
 }

@@ -7,7 +7,7 @@ import { Topbar, useSeller } from "../../../../../../components/seller/SellerShe
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
 import { InvoiceSteps } from "../../../../../../components/seller/shipping/InvoiceSteps";
-import { printLabels, type Label } from "../../../../../../components/seller/shipping/printLabels";
+import { openPrintWindow, printLabels, type Label } from "../../../../../../components/seller/shipping/printLabels";
 import { formatDateTime } from "../../../../../../lib/client/format";
 import { useUrlState } from "../../../../../../lib/client/navigation";
 import "../../../../../../styles/seller-orders.css";
@@ -49,7 +49,7 @@ const TAG: Record<Status, { label: string; cls: string }> = {
   DELIVERED: { label: "배송 완료", cls: "g" },
 };
 const EVENT: Record<string, string> = { ISSUED: "발급", PRINTED: "출력", PICKUP_REQUESTED: "집하 요청", PICKED_UP: "집하", IN_TRANSIT: "간선 이동", OUT_FOR_DELIVERY: "배송 출발", DELIVERED: "배송 완료" };
-const SOURCE: Record<string, string> = { SELLER: "파트너스", COURIER: "택배사", SYSTEM: "시스템" };
+const SOURCE: Record<string, string> = { SELLER: "파트너스", CARRIER: "택배사", SYSTEM: "시스템" };
 const num = (n: string) => n.replace(/\D/g, "").replace(/(\d{4})(?=\d)/g, "$1 ").trim();
 
 export default function InvoiceTrackingPage() {
@@ -65,6 +65,7 @@ export default function InvoiceTrackingPage() {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
   const reqId = useRef(0);
+  const openId = useRef<string | null>(null);
 
   const load = useCallback(async (status?: Status, quiet = false) => {
     const id = ++reqId.current;
@@ -81,13 +82,18 @@ export default function InvoiceTrackingPage() {
   }, [tab.status, load]);
 
   const print = async (invoiceIds?: string[]) => {
+    // 인쇄 창을 먼저 연다(요청 뒤에 열면 브라우저가 막아 출력됨으로만 바뀐다)
+    const win = openPrintWindow();
+    if (!win) return setToast({ text: "인쇄 창을 열지 못했습니다. 팝업 차단을 풀어 주십시오", neg: true });
     setBusy(true);
-    const r = await api<{ labels: Label[]; printed: number; results: { ok: boolean }[] }>("/api/seller/invoices/print", { method: "POST", body: { format, ...(invoiceIds ? { invoiceIds } : {}) } });
+    const r = await api<{ labels: Label[]; printed: number }>("/api/seller/invoices/print", { method: "POST", body: { format, ...(invoiceIds ? { invoiceIds } : {}) } });
     setBusy(false);
-    if (!r.ok) return setToast({ text: r.message ?? "출력하지 못했습니다. 잠시 후 다시 시도해 주십시오", neg: true });
-    if (r.data.labels.length === 0) return setToast({ text: "출력할 송장이 없습니다", neg: true });
-    if (!printLabels(r.data.labels, format)) setToast({ text: "인쇄 창을 열지 못했습니다. 팝업 차단을 풀어 주십시오", neg: true });
-    else setToast({ text: `송장 ${r.data.labels.length}개를 출력했습니다` });
+    if (!r.ok || r.data.labels.length === 0) {
+      win.close();
+      return setToast({ text: !r.ok ? (r.message ?? "출력하지 못했습니다. 잠시 후 다시 시도해 주십시오") : "출력할 송장이 없습니다", neg: true });
+    }
+    printLabels(win, r.data.labels, format);
+    setToast({ text: `송장 ${r.data.labels.length}개를 출력했습니다` });
     setPicked(new Set());
     void load(tab.status, true);
   };
@@ -102,12 +108,26 @@ export default function InvoiceTrackingPage() {
   };
 
   const track = async (id: string) => {
-    if (open === id) return setOpen(null);
+    if (open === id) {
+      openId.current = null;
+      return setOpen(null);
+    }
+    openId.current = id;
     setOpen(id);
     setDetail(null);
     const r = await api<{ invoice: Detail }>(`/api/seller/invoices/${id}`);
+    if (openId.current !== id) return;
     if (r.ok) setDetail(r.data.invoice);
     else setToast({ text: "추적 내용을 불러오지 못했습니다", neg: true });
+  };
+
+  const retry = async (id: string) => {
+    setBusy(true);
+    const r = await api<{ result: { ok: boolean } }>(`/api/seller/invoices/${id}/retry`, { method: "POST" });
+    setBusy(false);
+    const ok = r.ok && r.data.result.ok;
+    setToast(ok ? { text: "송장을 다시 발급했습니다" } : { text: (!r.ok && r.message) || "다시 발급하지 못했습니다. 잠시 후 다시 시도해 주십시오", neg: true });
+    void load(tab.status, true);
   };
 
   const pickup = async (id: string) => {
@@ -252,7 +272,11 @@ export default function InvoiceTrackingPage() {
                               {i.status === "ISSUED" ? " · 아직 출력 안 함" : i.status === "PRINTED" ? " · 집하 전" : ""}
                             </td>
                             <td>
-                              {i.status === "ISSUED" && canEdit ? (
+                              {i.status === "FAILED" && canEdit ? (
+                                <button className="btn btn-sm" type="button" disabled={busy} onClick={() => void retry(i.id)}>
+                                  다시 발급
+                                </button>
+                              ) : i.status === "ISSUED" && canEdit ? (
                                 <button className="btn btn-sm" type="button" disabled={busy} onClick={() => void print([i.id])}>
                                   출력
                                 </button>
@@ -283,7 +307,7 @@ export default function InvoiceTrackingPage() {
                                         <tr key={n}>
                                           <td>{formatDateTime(e.at)}</td>
                                           <td>{EVENT[e.kind] ?? e.kind}</td>
-                                          <td>{e.source === "COURIER" ? i.courierName : (SOURCE[e.source] ?? e.source)}</td>
+                                          <td>{e.source === "CARRIER" ? i.courierName : (SOURCE[e.source] ?? e.source)}</td>
                                           <td>{e.note ?? ""}</td>
                                         </tr>
                                       ))}

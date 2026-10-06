@@ -40,6 +40,7 @@ type Issued = {
 };
 type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok" };
 
+const READY_BATCH = 50;
 const REASON: Record<string, string> = {
   provider_error: "택배사 응답 오류",
   invalid_transition: "이미 처리된 송장",
@@ -67,16 +68,33 @@ export default function InvoiceIssuePage() {
   const [done, setDone] = useState<Issued | null>(null);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
 
-  // 주문 주소가 없으면 발송 대기 주문 전체
+  // 주문 주소가 없으면 발송 대기 주문 중 발급할 수 있는 것부터 최대 50건(이미 송장이 있는 주문은 건너뛰며 다음 쪽까지 찾는다)
   useEffect(() => {
     if (ids) return;
     void (async () => {
-      const r = await api<{ shipments: { orderId: string }[] }>("/api/seller/shipments?tab=ready&limit=50");
-      if (r.ok) {
-        const all = r.data.shipments.map((s) => s.orderId);
-        setIds(all);
-        setPicked(new Set(all));
-      } else setState({ kind: "error", status: r.status });
+      const found: string[] = [];
+      let cursor: string | null = null;
+      for (let pageNo = 0; pageNo < 10 && found.length < READY_BATCH; pageNo++) {
+        const r: Awaited<ReturnType<typeof api<{ shipments: { orderId: string }[]; nextCursor: string | null }>>> = await api(`/api/seller/shipments?tab=ready&limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
+        if (!r.ok) {
+          setState({ kind: "error", status: r.status });
+          return;
+        }
+        const pageIds = r.data.shipments.map((x) => x.orderId);
+        if (pageIds.length > 0) {
+          const pr = await api<Plan>("/api/seller/invoices/plan", { method: "POST", body: { orderIds: pageIds } });
+          if (!pr.ok) {
+            setState({ kind: "error", status: pr.status });
+            return;
+          }
+          found.push(...pr.data.rows.map((x) => x.orderId));
+        }
+        cursor = r.data.nextCursor;
+        if (!cursor) break;
+      }
+      const list = found.slice(0, READY_BATCH);
+      setIds(list);
+      setPicked(new Set(list));
     })();
   }, [ids]);
   useEffect(() => {
