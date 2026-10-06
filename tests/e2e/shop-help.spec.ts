@@ -13,7 +13,7 @@ test("홈: 고정 공지 띠가 공지 상세로 이어진다", async ({ page })
   await page.goto(`/shop/${SLUG}`);
   const band = page.locator(".shop-ntc");
   await expect(band).toContainText("공지");
-  await expect(band).toContainText("10/3 (토) 20시 문라이트 브레이크 방송해요");
+  await expect(band).toContainText("2026.10.03 (토) 20시 문라이트 브레이크 방송해요");
   await band.getByRole("link").click();
   await expect(page).toHaveURL(new RegExp(`/shop/${SLUG}/help/notices/[0-9a-f-]+$`));
   const article = page.locator("article");
