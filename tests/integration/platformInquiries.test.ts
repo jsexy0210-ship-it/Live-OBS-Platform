@@ -47,7 +47,7 @@ const req = (path: string, cookie: string, method = "GET", body?: unknown) =>
 const iq = (inquiryId: string) => ({ params: Promise.resolve({ inquiryId }) });
 const im = (imageId: string) => ({ params: Promise.resolve({ imageId }) });
 const json = async (r: Response) => ({ status: r.status, body: await r.json() });
-const NEW = { category: "BILLING", title: "청구 금액 문의", body: "이번 달 청구가\n두 번 나왔습니다." };
+const NEW = { category: "SUBSCRIPTION_FEE", title: "청구 금액 문의", body: "이번 달 청구가\n두 번 나왔습니다." };
 
 const create = async (cookie: string, body: unknown = NEW) => json(await sellerCreate(req("/api/seller/platform-inquiries", cookie, "POST", body)));
 const list = async (cookie: string) => json(await sellerList(req("/api/seller/platform-inquiries", cookie)));
@@ -65,7 +65,7 @@ describe("파트너스 문의 보내기·보는 범위", () => {
     const other = await login(a.seller.id, "STAFF");
     const made = await create(a.staff.cookie);
     expect(made.status).toBe(201);
-    expect(made.body.inquiry).toMatchObject({ category: "BILLING", title: "청구 금액 문의", status: "OPEN", notice: null, messages: [{ author: "PARTNER", authorName: "직원", body: NEW.body, images: [] }] });
+    expect(made.body.inquiry).toMatchObject({ category: "SUBSCRIPTION_FEE", title: "청구 금액 문의", status: "OPEN", notice: null, messages: [{ author: "PARTNER", authorName: "직원", body: NEW.body, images: [] }] });
     const id = made.body.inquiry.id;
     expect((await list(a.owner.cookie)).body.items).toMatchObject([{ id, status: "OPEN", hasNewReply: false }]);
     expect((await detail(a.owner.cookie, id)).status).toBe(200);

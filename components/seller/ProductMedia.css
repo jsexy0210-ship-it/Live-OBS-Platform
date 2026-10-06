@@ -8,6 +8,7 @@
 .pm-grid {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-start;
   gap: 8px;
   padding: 2px;
   border-radius: 6px;
@@ -69,11 +70,54 @@
   position: absolute;
   top: 4px;
   left: 4px;
+  min-width: 20px;
   padding: 1px 6px;
   border-radius: 4px;
   background: rgba(23, 23, 25, 0.75);
   color: #fff;
   font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+.pm-badge.is-thumb {
+  background: var(--wds-primary-normal, #0066ff);
+}
+.pm-tile.is-thumb {
+  box-shadow: inset 0 0 0 2px var(--wds-primary-normal, #0066ff);
+}
+.pm-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 96px;
+}
+/* 칸 아래: 지금 썸네일이면 「대표 이미지」 표시, 아니면 「썸네일로 지정」 버튼 */
+.pm-cap {
+  width: 100%;
+  height: 28px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px var(--wds-line-normal-normal, #c8c9cd);
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.pm-cap:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.pm-cap.is-thumb {
+  background: var(--wds-primary-weak, #e6f0ff);
+  box-shadow: none;
+  color: var(--wds-primary-normal, #0066ff);
+  font-weight: 600;
+  cursor: default;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .pm-prog {
   position: absolute;
@@ -98,27 +142,48 @@
   text-align: center;
   word-break: keep-all;
 }
-/* 칸 위에 올리거나 키보드로 들어가면 보이는 조작 줄(순서·지우기·다시 시도) */
+/* 칸 아래쪽 조작 줄(순서 ‹ › · 지우기 ×)과, 실패한 칸의 다시 시도 */
 .pm-ov {
   position: absolute;
   inset: 0;
   display: flex;
-  opacity: 0;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   gap: 4px;
-  background: rgba(255, 255, 255, 0.88);
+  pointer-events: none;
 }
-.pm-tile:hover > .pm-ov,
-.pm-tile:focus-within > .pm-ov {
-  opacity: 1;
+.pm-ov > * {
+  pointer-events: auto;
 }
 .pm-ov .btn-sm {
   height: 24px;
   padding: 0 6px;
   font-size: 11px;
   min-width: 0;
+}
+.pm-bar {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  padding: 4px 0;
+  background: rgba(23, 23, 25, 0.6);
+}
+.pm-ib {
+  width: 24px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 12px;
+  line-height: 20px;
+  cursor: pointer;
+}
+.pm-ib:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 .pm-detail {
   display: flex;
@@ -181,8 +246,8 @@
 }
 
 .pm-add.is-first {
-  color: var(--wds-primary-normal, #0066ff);
-  box-shadow: inset 0 0 0 1px var(--wds-primary-normal, #0066ff);
+  box-shadow: none;
+  border: 1px dashed var(--wds-line-normal-normal, #c8c9cd);
 }
 .pm-undo {
   display: flex;
@@ -192,4 +257,193 @@
   gap: 6px;
   font-size: 12px;
   color: var(--wds-label-alternative, #70737c);
+}
+
+/* 상세 설명 에디터(SA-012 v274, Tiptap) */
+.pm-ed {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px var(--wds-line-normal-normal, #c8c9cd);
+  background: #fff;
+}
+.pm-ed-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  background: var(--wds-background-normal-alternative, #f4f5f7);
+  border-bottom: 1px solid var(--wds-line-normal-alternative, #e1e2e4);
+  border-radius: 6px 6px 0 0;
+}
+.pm-ed-bar .pm-ed-block {
+  width: 96px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0 24px 0 8px;
+  font-size: 12px;
+}
+.pm-ed-sep {
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background: var(--wds-line-normal-normal, #c8c9cd);
+}
+.pm-ed-grow {
+  flex: 1;
+}
+.pm-tb {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--wds-line-normal-normal, #c8c9cd);
+  border-radius: 6px;
+  background: #fff;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pm-tb.is-on {
+  background: var(--wds-primary-weak, #e6f0ff);
+  border-color: var(--wds-primary-normal, #0066ff);
+  color: var(--wds-primary-normal, #0066ff);
+}
+.pm-tb:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.pm-pop-wrap {
+  position: relative;
+}
+.pm-pop {
+  position: absolute;
+  z-index: 5;
+  top: 32px;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(23, 23, 25, 0.18), inset 0 0 0 1px var(--wds-line-normal-alternative, #e1e2e4);
+}
+.pm-link {
+  width: 300px;
+}
+.pm-link .inp {
+  flex: 1;
+  height: 28px;
+}
+.pm-sw {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--wds-line-normal-normal, #c8c9cd);
+  border-radius: 50%;
+  padding: 0;
+  cursor: pointer;
+}
+.pm-ed-body {
+  min-height: 280px;
+  padding: 16px 20px;
+  outline: none;
+  line-height: 1.7;
+  word-break: break-word;
+}
+.pm-ed-body:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--wds-primary-normal, #0066ff);
+}
+.pm-ed-body h1 {
+  font-size: 22px;
+  margin: 0 0 12px;
+}
+.pm-ed-body h2 {
+  font-size: 18px;
+  margin: 0 0 10px;
+}
+.pm-ed-body p {
+  margin: 0 0 8px;
+}
+.pm-ed-body img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 8px 0;
+}
+.pm-ed-body img.ProseMirror-selectednode {
+  outline: 2px solid var(--wds-primary-normal, #0066ff);
+}
+.pm-ed-body hr {
+  border: 0;
+  border-top: 1px solid var(--wds-line-normal-normal, #c8c9cd);
+  margin: 12px 0;
+}
+.pm-ed-body a {
+  color: var(--wds-primary-normal, #0066ff);
+  text-decoration: underline;
+}
+.pm-ed-body ul,
+.pm-ed-body ol {
+  margin: 0 0 8px;
+  padding-left: 28px;
+}
+.pm-ed-body table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  max-width: 100%;
+}
+.pm-ed-body th,
+.pm-ed-body td {
+  min-width: 60px;
+  padding: 6px 10px;
+  border: 1px solid var(--wds-line-normal-normal, #c8c9cd);
+  text-align: left;
+  vertical-align: top;
+}
+.pm-ed-body th {
+  background: var(--wds-background-normal-alternative, #f4f5f7);
+}
+.pm-ed-body td > p,
+.pm-ed-body th > p {
+  margin: 0;
+}
+.pm-ed-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 16px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--wds-line-normal-alternative, #e1e2e4);
+  color: var(--wds-label-alternative, #70737c);
+  font-size: 12px;
+}
+.pm-pv-phone {
+  max-width: 390px;
+  margin: 0 auto 8px;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px var(--wds-line-normal-normal, #c8c9cd);
+  overflow: hidden;
+}
+.pm-pv-tabs {
+  display: flex;
+  gap: 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--wds-line-normal-alternative, #e1e2e4);
+  font-size: 13px;
+}
+.pm-pv-body {
+  min-height: 0;
+  max-height: 60vh;
+  overflow: auto;
+}
+@media (max-width: 480px) {
+  .pm-ed-bar {
+    gap: 4px;
+  }
+  .pm-link {
+    width: 240px;
+  }
 }
