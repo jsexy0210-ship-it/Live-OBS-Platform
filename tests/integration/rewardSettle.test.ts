@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { listRewardLedger } from "../../lib/server/seller-settings/rewardLedger";
 import { adjustRewardBalance } from "../../lib/server/rewards/adjust";
 import { listLivePayoutHistory, readLivePayoutConditions } from "../../lib/server/rewards/livePayoutAdmin";
 import { updateRewardPolicy } from "../../lib/server/rewards/policyAdmin";
@@ -84,6 +85,24 @@ describe("대기 적립 지급 처리", () => {
     expect(await db.rewardLedger.findUniqueOrThrow({ where: { id: r1.id } })).toMatchObject({ status: "SUCCEEDED" });
     expect(await db.rewardLedger.findUniqueOrThrow({ where: { id: r2.id } })).toMatchObject({ status: "FAILED", failureReason: "insufficient_balance" });
     expect(await db.rewardLedger.findUniqueOrThrow({ where: { id: r3.id } })).toMatchObject({ status: "SUCCEEDED" });
+    await expectConsistent(s, m.id);
+  });
+
+  it("같은 시각에 만든 줄도 처리한 순서가 남아 잔액(후)이 어긋나지 않는다(회수 id가 적립 id보다 작아도)", async () => {
+    const s = await setup();
+    const m = await member(s);
+    const at = new Date("2026-10-01T00:00:00Z");
+    const base = { sellerId: s.seller.id, buyerMemberId: m.id, status: "PENDING" as const, testMode: true, createdAt: at };
+    // 적립을 먼저 만들었지만 id는 회수가 더 작다(처리 순서는 createdAt 순이라 적립이 먼저 적용된다)
+    await db.rewardLedger.create({ data: { ...base, id: "ffffffff-0000-4000-8000-000000000001", type: "EARN", amount: 1000, idempotencyKey: "same-earn", createdAt: new Date(at.getTime() - 1000) } });
+    await db.rewardLedger.create({ data: { ...base, id: "00000000-0000-4000-8000-000000000001", type: "REVOKE", amount: -300, idempotencyKey: "same-revoke" } });
+    await run(s);
+    const r = await listRewardLedger(db, s.ctx, {});
+    if (!r.ok) throw new Error("list");
+    const by = new Map(r.entries.map((e) => [e.amount, e]));
+    expect(by.get(1000)?.balanceAfter).toBe(1000);
+    expect(by.get(-300)?.balanceAfter).toBe(700);
+    expect((by.get(1000)!.processedAt as Date).getTime()).toBeLessThan((by.get(-300)!.processedAt as Date).getTime());
     await expectConsistent(s, m.id);
   });
 

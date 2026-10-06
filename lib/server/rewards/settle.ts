@@ -86,15 +86,18 @@ async function settleMember(tx: Prisma.TransactionClient, sellerId: string, memb
     take: SETTLE_ROWS_PER_MEMBER,
     select: { id: true, amount: true, status: true, type: true },
   });
+  // 처리 시각은 줄마다 1ms씩 늦춰 만든 순서를 남긴다(원장의 「잔액(후)」가 (처리 시각, id) 순으로 누적하므로 같은 시각이면 id 순서에 따라 적립 앞 회수처럼 어긋나 보일 수 있다)
+  let step = 0;
   for (const row of rows) {
+    const at = new Date(now.getTime() + step++);
     const reason = withdrawn ? "member_withdrawn" : row.amount < 0 && balance + row.amount < 0 ? "insufficient_balance" : balance + row.amount > BALANCE_MAX ? "balance_overflow" : null;
     const was = { id: row.id, status: row.status };
     if (reason) {
-      const moved = await tx.rewardLedger.updateMany({ where: was, data: { status: "FAILED", failureReason: reason, processedAt: now } });
+      const moved = await tx.rewardLedger.updateMany({ where: was, data: { status: "FAILED", failureReason: reason, processedAt: at } });
       if (moved.count === 1) out.failed += 1;
       continue;
     }
-    const moved = await tx.rewardLedger.updateMany({ where: was, data: { status: "SUCCEEDED", testMode: false, failureReason: null, processedAt: now } });
+    const moved = await tx.rewardLedger.updateMany({ where: was, data: { status: "SUCCEEDED", testMode: false, failureReason: null, processedAt: at } });
     if (moved.count !== 1) continue;
     balance += row.amount;
     out.settled += 1;
