@@ -7,8 +7,8 @@ import { call } from "./reviewShared";
 import "./Cart.css";
 import "./Help.css";
 
-// SH-030 고객센터(보드 FINAL v320): 공지 · 이용안내 · 자주 묻는 질문. 공지·FAQ·이용안내(쇼핑몰 공개 정보 profile.usageGuide, SA-060) API는 로그인 없이 읽는다.
-type Notice = { id: string; title: string; isPinned: boolean; createdAt: string };
+// SH-030 고객센터(보드 FINAL v322): 공지 · 이용안내 · 자주 묻는 질문. 공지·FAQ·이용안내(쇼핑몰 공개 정보 profile.usageGuide, SA-060) API는 로그인 없이 읽는다.
+type Notice = { id: string; title: string; category: string | null; isPinned: boolean; createdAt: string };
 type Faq = { id: string; category: string; title: string; body: string };
 type Tab = "notice" | "guide" | "faq";
 const TAB_LABEL: Record<Tab, string> = { notice: "공지", guide: "이용안내", faq: "자주 묻는 질문" };
@@ -72,6 +72,7 @@ function Notices({ slug }: { slug: string }) {
           {items.map((n) => (
             <tr key={n.id}>
               <td>
+                {n.category && <span className="help-tag">{n.category}</span>}
                 {n.isPinned && <span className="help-tag">고정</span>}
                 <Link href={`${base}/help/notices/${n.id}`}>{n.title}</Link>
               </td>
