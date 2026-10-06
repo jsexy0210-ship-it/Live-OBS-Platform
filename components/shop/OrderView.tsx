@@ -2,6 +2,7 @@
 
 import ShopBack from "./ShopBack";
 import Link from "next/link";
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import OrderPay from "./OrderPay";
@@ -10,6 +11,7 @@ import ReturnSection from "./returns/ReturnSection";
 import { call } from "./reviewShared";
 import { trackingUrl } from "./trackingLink";
 import { qtyText } from "./orderFormat";
+import { formatDateTime } from "../../lib/client/format";
 import "./Cart.css";
 import "./Checkout.css";
 
@@ -25,7 +27,11 @@ type Order = {
   paymentDueAt: string | null;
   couponRedemption: { discountAmount: number; restoredAt: string | null; coupon: { name: string } } | null;
   refundAmount: number | null;
-  items: { productNameSnapshot: string; optionNameSnapshot: string; unitPrice: number; quantity: number; refundedQuantity?: number }[];
+  items: { productNameSnapshot: string; optionNameSnapshot: string; unitPrice: number; quantity: number; refundedQuantity?: number; imageUrl?: string | null }[];
+  queue?: { status: "WAITING" | "OPENING" | "DONE"; aheadCount: number } | null;
+  fulfillmentType?: "IMMEDIATE" | "STORAGE";
+  paymentInfo?: { method: "CARD" | "BANK_TRANSFER"; card: { name: string | null; last4: string | null; installment: number | null } | null };
+  cashReceipt?: { requested: boolean };
   shipment: { courier: string; courierName: string; trackingNumber: string; status: "READY" | "IN_TRANSIT" | "DELIVERED"; shippedAt: string; deliveredAt: string | null } | null;
   shippingAddress: { recipientName: string; phone: string; zipCode: string; address1: string; address2: string | null; memo: string | null } | null;
 };
@@ -40,6 +46,12 @@ const PAY_NOTE: Record<string, { ok: boolean; text: string }> = {
   cancelled: { ok: false, text: "주문이 이미 취소돼 결제 금액을 돌려 드렸어요." },
 };
 const STATUS = { PENDING_PAYMENT: "결제 전", PAID: "결제 완료", CANCELLED: "취소했어요", REFUNDED: "환불했어요" } as const;
+const payMethodText = (p: NonNullable<Order["paymentInfo"]>) => {
+  if (p.method === "BANK_TRANSFER") return "무통장 입금";
+  if (!p.card) return "카드";
+  const inst = p.card.installment && p.card.installment > 1 ? `${p.card.installment}개월 할부` : p.card.installment !== null ? "일시불" : "";
+  return [`카드${p.card.last4 ? ` ****-${p.card.last4}` : ""}`, inst].filter(Boolean).join(" · ");
+};
 // KST 날짜·시각(서버 값은 UTC ISO)
 const kst = (iso: string) => {
   const d = new Date(new Date(iso).getTime() + 9 * 3600_000);
@@ -130,7 +142,7 @@ export default function OrderView({ slug, orderId }: { slug: string; orderId: st
       )}
       <section className="co-box od-head" aria-label="주문 요약">
         <p className="od-headline">
-          <span>{kst(o.createdAt)} 주문</span>
+          <span>{formatDateTime(o.createdAt)} 주문</span>
           <span className="od-chip">{STATUS[o.status]}</span>
         </p>
         <p className="od-no">
@@ -147,6 +159,24 @@ export default function OrderView({ slug, orderId }: { slug: string; orderId: st
         {o.status === "PENDING_PAYMENT" && o.paymentDueAt && <p className="cart-hint">결제 기한 {kst(o.paymentDueAt)}</p>}
       </section>
       {o.status === "PENDING_PAYMENT" && <OrderPay slug={slug} orderId={o.id} amount={o.totalAmount} dueAt={o.paymentDueAt} />}
+      {o.status === "PAID" && o.queue && (
+        <section className="co-box" aria-label="주문 진행">
+          <ol className="od-steps">
+            <li className="is-done">
+              <b>주문 접수</b>
+              <span>{formatDateTime(o.createdAt)}</span>
+            </li>
+            <li className={o.queue.status === "WAITING" ? "is-now" : "is-done"}>
+              <b>개봉 대기</b>
+              <span>{o.queue.status === "WAITING" ? `앞에 ${o.queue.aheadCount}명` : "끝났어요"}</span>
+            </li>
+            <li className={o.queue.status === "OPENING" ? "is-now" : o.queue.status === "DONE" ? "is-done" : ""}>
+              <b>개봉 · 결과</b>
+              <span>{o.queue.status === "DONE" ? "개봉이 끝났어요" : o.queue.status === "OPENING" ? "방송에서 열고 있어요" : "방송에서 열어요"}</span>
+            </li>
+          </ol>
+        </section>
+      )}
       <section className="co-box" aria-labelledby="od-items">
         <h2 id="od-items">
           주문 상품 <span>{o.items.length}개</span>
@@ -154,6 +184,9 @@ export default function OrderView({ slug, orderId }: { slug: string; orderId: st
         <ul className="co-lines">
           {o.items.map((i, n) => (
             <li key={n}>
+              <span className="ol-thumb" aria-hidden="true">
+                {i.imageUrl && <Image src={i.imageUrl} alt="" width={48} height={48} unoptimized />}
+              </span>
               <div>
                 <b>{i.productNameSnapshot}</b>
                 <span className="cart-opt">
@@ -196,6 +229,19 @@ export default function OrderView({ slug, orderId }: { slug: string; orderId: st
             <span>{won(o.refundAmount!)}</span>
           </div>
         )}
+        {o.paymentInfo && (
+          <div className="cart-row">
+            <span>결제 수단</span>
+            <span>{payMethodText(o.paymentInfo)}</span>
+          </div>
+        )}
+        {o.cashReceipt && (
+          <div className="cart-row">
+            <span>현금영수증 · 세금계산서</span>
+            <span>{o.cashReceipt.requested ? "신청했어요" : "신청 안 함"}</span>
+          </div>
+        )}
+        {o.paymentInfo?.method === "CARD" && <p className="cart-hint">카드 결제는 카드 매출전표로 대신해요</p>}
         <p className="cart-hint">주문을 모두 취소하면 쓴 적립금이 바로 돌아와요 · 일부만 환불하면 환불한 비율만큼 돌아와요 · 카드 취소는 3~5영업일 걸려요</p>
       </section>
       {(o.shippingAddress || o.shipment) && (
@@ -221,6 +267,12 @@ export default function OrderView({ slug, orderId }: { slug: string; orderId: st
                   <div>
                     <dt>배송 메모</dt>
                     <dd>{o.shippingAddress.memo}</dd>
+                  </div>
+                )}
+                {o.fulfillmentType && (
+                  <div>
+                    <dt>받는 방법</dt>
+                    <dd>{o.fulfillmentType === "STORAGE" ? "보관하기 · 합배송" : `택배 (${won(o.shippingFee)})`}</dd>
                   </div>
                 )}
               </>

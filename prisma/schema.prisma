@@ -4013,10 +4013,67 @@ model InfraSnapshot {
   @@index([takenAt])
 }
 
+enum AdminAlertSeverity {
+  URGENT
+  WARNING
+  INFO
+}
+
+enum AdminAlertStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+// 마스터 관리자 알림 센터(MA-002) 알림. 다른 기능이 lib/server/admin-alerts/service.ts의 createAdminAlert 한 곳으로 만든다(화면 안 알림만, 외부 발송 없음).
+// 알림 하나를 보는 역할(targetRoles)이 같이 보고, 담당·상태(미처리·처리 중·해결됨)도 모두 같은 값을 본다. 읽음은 관리자마다(AdminAlertRead).
+model AdminAlert {
+  id              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  kind            String
+  severity        AdminAlertSeverity
+  sellerId        String?             @db.Uuid
+  title           String
+  body            String?
+  linkPath        String
+  // 같은 사건이 여러 번 알림으로 쌓이지 않게 부르는 쪽이 정한 키(없으면 중복 검사 없음)
+  dedupeKey       String?             @unique
+  targetRoles     PlatformAdminRole[]
+  status          AdminAlertStatus    @default(OPEN)
+  assignedAdminId String?             @db.Uuid
+  resolvedAt      DateTime?           @db.Timestamptz(3)
+  occurredAt      DateTime            @default(now()) @db.Timestamptz(3)
+  createdAt       DateTime            @default(now()) @db.Timestamptz(3)
+
+  reads AdminAlertRead[]
+
+  @@index([status, occurredAt(sort: Desc), id(sort: Desc)])
+  @@index([occurredAt(sort: Desc), id(sort: Desc)])
+}
+
+model AdminAlertRead {
+  adminId String   @db.Uuid
+  alertId String   @db.Uuid
+  readAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  alert AdminAlert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+
+  @@id([adminId, alertId])
+}
+
 // 플랫폼 기본 정책(MA-081). 키별 정수 값(불리언 0/1). 행이 없으면 코드 기본값(현재 동작과 같음). 최고관리자만 바꾸고 변경은 로그 추적에 남긴다.
 model PlatformPolicy {
   key              String   @id
   intValue         Int
   updatedAt        DateTime @default(now()) @updatedAt @db.Timestamptz(3)
   updatedByAdminId String?  @db.Uuid
+}
+
+// 인프라 단가 표(한 행, id = 1). 마스터 관리자(최고관리자)가 입력하는 월 단가·건당 단가·수수료율. 비밀값 없음.
+// prices는 키(serverMonthlyWon 등) → 숫자. 입력하지 않은 키는 없다(비용 추정에서 「단가 없음」). 변경은 version으로 겹침을 막고 로그 추적에 남긴다.
+model InfraPriceSetting {
+  id               Int      @id @default(1)
+  prices           Json     @default("{}")
+  version          Int      @default(0)
+  updatedByAdminId String?  @db.Uuid
+  updatedAt        DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 }

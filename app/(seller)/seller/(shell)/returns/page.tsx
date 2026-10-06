@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDate, formatDateTime } from "../../../../../lib/client/format";
 import { useCallback, useEffect, useState } from "react";
 import { useConfirm } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
@@ -176,7 +177,7 @@ export default function ReturnsPage() {
                       <span>
                         <span className={`bdg ${STATUS[r.status].cls}`}>{STATUS[r.status].label}</span>
                       </span>
-                      <span className="t-c1 c-alt rt-hide-m num">{kstText(r.createdAt).slice(5, 10)}</span>
+                      <span className="t-c1 c-alt rt-hide-m num">{formatDate(r.createdAt)}</span>
                     </div>
                   ))}
                 </div>
@@ -362,7 +363,7 @@ function ReturnDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
                 <span className="t-l2 fw6">이 주문의 환불 내역</span>
                 {d.refunds.map((f) => (
                   <span key={f.seq} className="t-c1 c-alt num">
-                    {kstText(f.createdAt).slice(5, 16)} · {f.items.map((i) => `${i.productName} ${i.quantity}개`).join(", ")} · 현금 {won(f.refundAmount)}
+                    {formatDateTime(f.createdAt)} · {f.items.map((i) => `${i.productName} ${i.quantity}개`).join(", ")} · 현금 {won(f.refundAmount)}
                     {f.returnFeeDeducted > 0 ? ` · 반품 배송비 ${won(f.returnFeeDeducted)} 차감` : ""}
                     {f.rewardReturn > 0 ? ` · 적립금 반환 ${won(f.rewardReturn)}` : ""}
                     {f.isFinal ? " · 마지막 환불" : ""}

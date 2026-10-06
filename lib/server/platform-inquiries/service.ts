@@ -1,4 +1,5 @@
 import type { PlatformInquiryCategory, PlatformInquiryStatus, Prisma, PrismaClient } from "@prisma/client";
+import { createAdminAlert } from "../admin-alerts/service";
 import { writeAudit } from "../audit/log";
 import type { AdminSessionContext } from "../auth/session";
 import { forbidden } from "../authz/errors";
@@ -338,6 +339,20 @@ export async function createInquiry(db: PrismaClient, ctx: TenantContext, raw: u
       const msg = await tx.platformInquiryMessage.create({ data: { sellerId: ctx.sellerId, inquiryId: inq.id, authorType: "SELLER_USER", sellerUserId: ctx.actorId, body, createdAt: now }, select: { id: true } });
       if (!(await attachImages(tx, ctx, msg.id, imageIds))) throw new Rejected("invalid_images");
       await sellerAudit(tx, ctx, meta, "platform_inquiry.create", inq.id, { category: b.category, title, urgent, noticeId, relatedOrderId, relatedBroadcastId, images: imageIds.length });
+      // 긴급 문의는 마스터 관리자 알림 센터로 바로 알린다(화면 안 알림만, 외부 발송 없음)
+      if (urgent) {
+        await createAdminAlert(tx, {
+          kind: "INQUIRY_URGENT",
+          severity: "URGENT",
+          title: `[긴급] ${title}`,
+          body: body.slice(0, 200),
+          linkPath: `/admin/support/inquiries/${inq.id}`,
+          sellerId: ctx.sellerId,
+          targetRoles: ["SUPER_ADMIN", "OPERATIONS", "CS"],
+          dedupeKey: `inquiry-urgent:${inq.id}`,
+          occurredAt: now,
+        });
+      }
       return inq.id;
     });
     return { ok: true as const, inquiry: (await getMyInquiry(db, ctx, id))! };
