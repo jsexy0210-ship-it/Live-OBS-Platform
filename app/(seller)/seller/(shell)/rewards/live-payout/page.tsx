@@ -164,6 +164,7 @@ export default function LivePayoutPage() {
                 <section className="au-fs">
                   <div className="au-fs-h">
                     <h2 className="au-fs-t">켜기 조건</h2>
+                    <span className="t-l2 c-alt">화면 안내와 버튼 비활성 표시용입니다 · 서버가 켜기를 막지는 않습니다</span>
                   </div>
                   <div className="card sts-scroll">
                     <table className="tbl tbl-card" data-testid="live-conditions">
@@ -219,6 +220,7 @@ export default function LivePayoutPage() {
             <section className="au-fs">
               <div className="au-fs-h">
                 <h2 className="au-fs-t">전환 이력</h2>
+                <span className="t-l2 c-alt">켬 · 끔 전환은 사유 없이 일시 · 처리자만 남습니다</span>
               </div>
               <div className="card sts-scroll">
                 {history === null ? (
