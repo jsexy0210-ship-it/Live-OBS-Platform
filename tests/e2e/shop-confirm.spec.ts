@@ -118,7 +118,7 @@ test("장바구니 삭제·로그아웃은 확인 창을 거치고, 취소하면
 
   await page.locator(".shop-util").getByRole("button", { name: "로그아웃" }).click();
   const out = page.getByRole("dialog", { name: "로그아웃할까요?" });
-  await expect(out).toContainText("장바구니와 찜은 그대로 남아요");
+  await expect(out).toContainText("이 기기에서 로그아웃돼요");
   await out.getByRole("button", { name: "취소" }).click();
   expect(logouts).toBe(0);
   await expect(page.locator(".shop-util").getByRole("link", { name: "내 정보" })).toBeVisible();
@@ -127,4 +127,20 @@ test("장바구니 삭제·로그아웃은 확인 창을 거치고, 취소하면
   await okConfirm(page, "빼기");
   await expect(page.getByRole("heading", { name: "장바구니가 비어 있어요" })).toBeVisible();
   expect(deletes).toBe(1);
+});
+
+test("구매자 로그아웃 요청이 실패하면 확인 창 안에 오류를 보이고 로그인이 유지된다", async ({ page, baseURL }) => {
+  const r = await page.request.post(`/api/shop/${SLUG}/auth/login`, { data: { loginId: LOGIN, password: PASSWORD }, headers: { origin: baseURL! } });
+  expect(r.status()).toBe(200);
+  await page.route("**/api/shop/*/auth/logout", (route) => route.fulfill({ status: 500, contentType: "application/json", body: "{}" }));
+  await page.goto(`/shop/${SLUG}`);
+  await page.locator(".shop-util").getByRole("button", { name: "로그아웃" }).click();
+  const out = page.getByRole("dialog", { name: "로그아웃할까요?" });
+  await out.getByRole("button", { name: "로그아웃", exact: true }).click();
+  await expect(out).toContainText("로그아웃하지 못했어요");
+  await expect(page).not.toHaveURL(/\/login/);
+  await expect(page.locator(".shop-util").getByRole("link", { name: "내 정보" })).toBeVisible();
+  await page.unroute("**/api/shop/*/auth/logout");
+  await out.getByRole("button", { name: "로그아웃", exact: true }).click();
+  await expect(page.locator(".shop-util").getByRole("link", { name: "로그인" })).toBeVisible();
 });

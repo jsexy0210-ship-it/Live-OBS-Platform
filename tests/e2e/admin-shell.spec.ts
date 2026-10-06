@@ -78,6 +78,26 @@ test("CS: 최고관리자 전용 메뉴(설정 대분류=시스템·관리자)�
   }
 });
 
+test("마스터 로그아웃은 확인 창을 거치고, 취소하면 로그인이 유지된다", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await login(page, emails.super);
+  let called = 0;
+  await page.route("**/api/admin/auth/logout", (r) => {
+    called += 1;
+    return r.continue();
+  });
+  await page.locator(".gnb").getByRole("button", { name: "로그아웃" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("로그아웃하시겠습니까?")).toBeVisible();
+  expect(called).toBe(0);
+  await dialog.getByRole("button", { name: "취소" }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(called).toBe(0);
+  await page.locator(".gnb").getByRole("button", { name: "로그아웃" }).click();
+  await dialog.getByRole("button", { name: "로그아웃", exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/login/);
+});
+
 test("메뉴에 없는 주소는 관리자 404(합니다체·홈으로), 화면 있는 메뉴(파비콘·공유 카드)는 그대로 열린다", async ({ page }) => {
   await login(page, emails.super);
   await page.goto("/admin/nothing-here");

@@ -2,7 +2,7 @@
 
 import "../../../../../styles/seller-account.css";
 import { useEffect, useState } from "react";
-import { PageHead, useConfirm } from "../../../../../components/admin-ui";
+import { LogoutButton, PageHead, useConfirm } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -39,7 +39,7 @@ export default function AccountPage() {
   const logout = async () => {
     const r = await api("/api/seller/auth/logout", { method: "POST" });
     if (r.ok) window.location.assign("/seller/login");
-    else setToast("로그아웃하지 못했습니다. 다시 시도해 주십시오");
+    return r.ok;
   };
 
   const saveName = async (e: React.FormEvent) => {
@@ -97,9 +97,7 @@ export default function AccountPage() {
         <PageHead
           title="내 계정"
           actions={
-            <button className="btn btn-out" type="button" onClick={() => void logout()}>
-              로그아웃
-            </button>
+            <LogoutButton className="btn btn-out" onLogout={logout} />
           }
         />
         <div className="acc-two">

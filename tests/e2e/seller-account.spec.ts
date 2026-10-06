@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { submitSellerLogin } from "./sellerLogin";
+import { confirmLogout, submitSellerLogin } from "./sellerLogin";
 
 // SA-120 내 계정(정본 SA-120.dc.html 2열): 이름 변경, 비밀번호 변경(확인 칸·현재 비밀번호 검증·항상 다른 곳 로그아웃), 시도 제한 안내(429), 로그아웃.
 // 데모 대표자의 비밀번호를 바꾸는 시험은 끝에서 원래대로 되돌려 다른 시험에 영향이 없게 한다.
@@ -83,6 +83,7 @@ test("비밀번호 변경: 확인 칸이 다르면 막고, 현재 비밀번호�
 test("우측 상단 로그아웃을 누르면 로그인 화면으로 간다", async ({ page }) => {
   await login(page);
   await page.getByRole("button", { name: "로그아웃" }).first().click();
+  await confirmLogout(page);
   await page.waitForURL((u) => u.pathname === "/seller/login");
 });
 

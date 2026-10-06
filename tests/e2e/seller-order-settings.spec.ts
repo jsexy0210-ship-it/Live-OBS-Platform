@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { submitSellerLogin } from "./sellerLogin";
+import { confirmLogout, submitSellerLogin } from "./sellerLogin";
 
 // SA-063 주문 설정: 입금 기한·자동 취소·자동 구매 제한·자동 배송 완료·자동 구매 확정을 실제로 바꾸고 저장해 확인한다.
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
@@ -156,7 +156,9 @@ test("로그인이 풀린 뒤 저장하면 로그인으로 보내고, 로그아�
   await openAs(page, "demo-owner@example.com");
   await page.route("**/api/seller/auth/logout", (r) => r.fulfill({ status: 500, contentType: "application/json", body: "{}" }));
   await page.getByRole("button", { name: "로그아웃" }).click();
-  await expect(page.getByText("로그아웃하지 못했습니다. 다시 시도해 주십시오")).toBeVisible();
+  await confirmLogout(page);
+  await expect(page.getByRole("dialog").getByText("로그아웃하지 못했습니다. 다시 시도해 주십시오")).toBeVisible();
+  await page.getByRole("dialog").getByRole("button", { name: "취소" }).click();
   await expect(page).toHaveURL(/\/seller\/settings\/order$/);
   await page.unroute("**/api/seller/auth/logout");
 
