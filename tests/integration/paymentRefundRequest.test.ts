@@ -84,12 +84,15 @@ describe("구매자 환불 요청", () => {
     expect(list.requests.map((x) => x.id)).toEqual([r.request.id]);
     expect(list.requests[0].orderNoLabel).toEqual(expect.stringMatching(/^\d{8}-\d{4,}$/));
     expect(list.counts).toEqual({ REQUESTED: 1 });
+    expect(list.requests[0]).toMatchObject({ buyerGrade: expect.any(String), firstItem: { productName: expect.any(String), optionName: expect.any(String), otherCount: 1 }, decidedByName: null });
     const d = await getSellerRefundRequest(db, s.ctx, r.request.id);
     expect(d?.refundPreview).toMatchObject({ isFinal: false, byFault: { BUYER: { itemsAmount: 10000, refundAmount: 10000 } } });
 
     const a = await approve(s, r.request.id);
     if (!a.ok) throw new Error(a.reason);
     expect(a.request).toMatchObject({ status: "APPROVED", refundId: a.refund.refundId });
+    const done = (await listSellerRefundRequests(db, s.ctx, { status: "APPROVED" })).requests[0];
+    expect(done.decidedByName).toBe(s.owner.name);
     expect(a.refund).toMatchObject({ refundAmount: 10000, isFinal: false });
     expect((await db.orderItem.findUniqueOrThrow({ where: { id: s.packItem.id } })).refundedQuantity).toBe(2);
     expect((await db.order.findUniqueOrThrow({ where: { id: s.order.id } })).status).toBe("PAID");

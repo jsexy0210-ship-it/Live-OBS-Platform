@@ -13,9 +13,15 @@ export const OVERLAY_ONLINE_MS = 2 * 60_000;
 export async function issueOverlayToken(db: PrismaClient, ctx: TenantContext, now = new Date()): Promise<string> {
   requireSellerPermission(ctx, "OVERLAY_EDIT");
   const token = generateToken();
+  // 발급한 사람(재발급 이력용 스냅숏): 「쇼핑몰 이름 · 직원 이름」
+  const [shop, user] = await Promise.all([
+    db.seller.findUnique({ where: { id: ctx.sellerId }, select: { shopName: true } }),
+    ctx.actorType === "SELLER_USER" && ctx.actorId ? db.sellerUser.findFirst({ where: { id: ctx.actorId, sellerId: ctx.sellerId }, select: { name: true } }) : null,
+  ]);
+  const issuedByName = [shop?.shopName, user?.name].filter(Boolean).join(" · ") || null;
   await db.$transaction(async (tx) => {
     const revoked = await tx.overlayToken.updateMany({ where: { sellerId: ctx.sellerId, revokedAt: null }, data: { revokedAt: now } });
-    const created = await tx.overlayToken.create({ data: { sellerId: ctx.sellerId, tokenHash: hashToken(token), createdAt: now } });
+    const created = await tx.overlayToken.create({ data: { sellerId: ctx.sellerId, tokenHash: hashToken(token), createdAt: now, issuedByName } });
     await writeAudit(tx, {
       actorType: ctx.actorType,
       actorId: ctx.actorId,
@@ -27,6 +33,15 @@ export async function issueOverlayToken(db: PrismaClient, ctx: TenantContext, no
     });
   });
   return token;
+}
+
+// 방송 중에는 재발급할 수 없다(SA-052). 처음 발급(살아 있는 주소가 없을 때)은 방송 중에도 된다.
+export async function reissueBlockedByLive(db: PrismaClient, sellerId: string): Promise<boolean> {
+  const [current, live] = await Promise.all([
+    db.overlayToken.findFirst({ where: { sellerId, revokedAt: null }, select: { id: true } }),
+    db.broadcastSession.findFirst({ where: { sellerId, status: "LIVE" }, select: { id: true } }),
+  ]);
+  return !!current && !!live;
 }
 
 // 오버레이 토큰으로 판매자를 찾는다. 폐기된 토큰, 운영 중이 아닌 판매자, 구독이 끝나 잠긴 판매자,

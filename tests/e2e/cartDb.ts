@@ -226,3 +226,32 @@ export async function removeFillerProducts(slug: string) {
     await db.$disconnect();
   }
 }
+
+// 배송지 e2e 준비: 데모 구매자의 저장 배송지를 지우고 n개(첫째가 기본, 이름 「집」「회사」「부모님 댁」…)를 넣는다. 끝나면 n=0으로 비운다.
+export async function resetAddressesInDb(slug: string, loginId: string, n: number) {
+  const db = open();
+  try {
+    const seller = await db.seller.findUniqueOrThrow({ where: { slug } });
+    const buyer = await db.buyerMember.findFirstOrThrow({ where: { sellerId: seller.id, loginId, deletedAt: null } });
+    await db.buyerAddress.deleteMany({ where: { sellerId: seller.id, buyerMemberId: buyer.id } });
+    const labels = ["집", "회사", "부모님 댁"];
+    for (let i = 0; i < n; i += 1) {
+      await db.buyerAddress.create({
+        data: {
+          sellerId: seller.id,
+          buyerMemberId: buyer.id,
+          label: labels[i] ?? `배송지 ${i + 1}`,
+          recipientName: i === 2 ? "김은하" : "김별빛",
+          phone: "01012345678",
+          zipCode: String(6000 + i).padStart(5, "0"),
+          address1: `서울 강남구 테스트로 ${i + 1}`,
+          address2: i === 0 ? "101동 1001호" : null,
+          isDefault: i === 0,
+          createdAt: new Date(Date.now() - i * 60_000),
+        },
+      });
+    }
+  } finally {
+    await db.$disconnect();
+  }
+}
