@@ -85,7 +85,7 @@ test("잔액: 현재 잔액과 성공 내역 누적(적립·사용·회수·소�
   await expect(rows).toHaveCount(1);
 });
 
-test("잔액이 없으면 안내하고, 50명을 넘으면 「더 보기」로 이어서 불러온다", async ({ page }) => {
+test("잔액이 없으면 안내하고, 20명을 넘으면 「더 보기」로 이어서 불러온다", async ({ page }) => {
   await reset();
   await open(page);
   await expect(page.getByText("아직 적립금 잔액이 있는 회원이 없습니다")).toBeVisible();
@@ -98,14 +98,14 @@ test("잔액이 없으면 안내하고, 50명을 넘으면 「더 보기」로 �
   });
   await page.route("**/api/seller/reward-balances?*", (route) => {
     const cursor = new URL(route.request().url()).searchParams.get("cursor");
-    const body = cursor ? { balances: [item(51), item(52)], nextCursor: null } : { balances: Array.from({ length: 50 }, (_, i) => item(i + 1)), nextCursor: "next-cursor" };
+    const body = cursor ? { balances: [item(21), item(22)], nextCursor: null } : { balances: Array.from({ length: 20 }, (_, i) => item(i + 1)), nextCursor: "next-cursor" };
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
   });
   await page.reload();
   const rows = page.getByTestId("balance-row");
-  await expect(rows).toHaveCount(50);
+  await expect(rows).toHaveCount(20);
   await page.getByRole("button", { name: "더 보기" }).click();
-  await expect(rows).toHaveCount(52);
+  await expect(rows).toHaveCount(22);
   await expect(page.getByRole("button", { name: "더 보기" })).toHaveCount(0);
 });
 
