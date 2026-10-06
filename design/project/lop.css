@@ -770,6 +770,8 @@ select.inp{cursor:pointer}
 .c24 .ph2 .path{display:none}
 .c24 .pathbar{height:var(--c24-h1);box-sizing:border-box;display:flex;align-items:center;margin:-16px -24px 0;padding:0 24px;font-size:12px;line-height:18px;color:var(--c24-sub);border-bottom:1px solid var(--c24-line);background:#fff}
 .c24 .ph2{margin:0 -24px}
+/* 경로 행이 없는 최상위 제목은 기존 .cont 상단 여백 16px만 상쇄합니다. */
+.c24 .cont:not(:has(>.pathbar))>.ph2:first-child{margin-top:-16px}
 .c24 .sec-t{font-size:16px;line-height:24px;font-weight:600}
 .c24 .lt{font-size:13px}.c24 .lt th,.c24 .lt td{line-height:20px}
 .c24 .ft{font-size:14px}.c24 .ft th{font-size:14px;line-height:20px}

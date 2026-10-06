@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export default function SignupLayout({ children }: { children: React.ReactNode }) {
   const { terms, privacy, policy, marketing } = SELLER_SIGNUP_CONSENT_VERSIONS;
   return (
-    <PublicFrame>
+      <PublicFrame mobileHeader="compact">
       <SignupFlow consentVersions={{ termsVersion: terms, privacyVersion: privacy, policyVersion: policy, marketingVersion: marketing }}>{children}</SignupFlow>
     </PublicFrame>
   );
