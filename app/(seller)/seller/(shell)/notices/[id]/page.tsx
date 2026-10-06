@@ -12,10 +12,13 @@ import { NOTICE_CATEGORY, type NoticeItem } from "../../../../../../components/s
 import { formatDateTime } from "../../../../../../lib/client/format";
 
 // SA-112 공지 상세(정본 v302). 본문·올린 때, 「이 공지에 대해 문의」(SA-114로 공지 id를 넘김), 이전 공지·관련 공지. 열면 읽음으로 남긴다.
-// API: GET /api/seller/platform-notices/{id} → { notice: { …, prev(더 최근), next(더 오래된), related } }, POST …/{id}/read.
+// 첨부는 받기만 한다(files[].url). API: GET /api/seller/platform-notices/{id} → { notice: { …, prev(더 최근), next(더 오래된), related } }, POST …/{id}/read.
 // 정본의 「이전」은 목록에서 아래(더 오래된) 공지이므로 서버의 next를 쓴다.
 type Brief = Pick<NoticeItem, "id" | "title" | "category" | "publishedAt">;
-type Notice = NoticeItem & { body: string; prev: Brief | null; next: Brief | null; related: Brief[] };
+type File = { id: string; name: string; byteSize: number; url: string };
+type Notice = NoticeItem & { body: string; files: File[]; prev: Brief | null; next: Brief | null; related: Brief[] };
+
+const fileSize = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
 
 export default function NoticeDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -81,6 +84,17 @@ export default function NoticeDetailPage() {
                 <div className="t-b1" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }} data-testid="notice-body">
                   {state.notice.body}
                 </div>
+                {state.notice.files.map((f) => (
+                  <div key={f.id} className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }} data-testid="notice-file">
+                    <span className="bdg b-gray nodot">첨부</span>
+                    <span>
+                      {f.name} · {fileSize(f.byteSize)}
+                    </span>
+                    <a className="btn btn-sm btn-out" href={f.url} download>
+                      다운로드
+                    </a>
+                  </div>
+                ))}
               </article>
             </div>
             <div className="au-lh">

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import sharp from "sharp";
-import { E2E_PREFIX, adminReplyInDb, cleanupPlatformE2eInDb, createNoticeInDb, fillInquiryLimitInDb } from "./platformDb";
+import { E2E_PREFIX, adminReplyInDb, cleanupPlatformE2eInDb, addNoticeFileInDb, createNoticeInDb, fillInquiryLimitInDb } from "./platformDb";
 import { submitSellerLogin } from "./sellerLogin";
 
 // SA-111·112 공지사항, SA-113·114·115 내 문의. 공지는 DB로 만들고, 문의는 파트너스 화면으로 보낸 뒤 마스터 답변·종료를 DB로 흉내 낸다.
@@ -39,6 +39,29 @@ test("공지: 고정 공지가 위에 보이고, 눌러 본문을 읽으며, 없
   await expect(page.getByText(/ONQ 운영팀 · \d{4}\.\d{2}\.\d{2} \d{2}:\d{2} 올림/)).toBeVisible();
   await page.goto("/seller/notices/00000000-0000-4000-8000-000000000000");
   await expect(page.getByText("공지를 찾을 수 없습니다")).toBeVisible();
+});
+
+test("공지 상세: 첨부가 있으면 이름·크기와 다운로드가 보이고, 받을 수 있다", async ({ page }) => {
+  const id = await createNoticeInDb("첨부 공지");
+  await addNoticeFileInDb(id, "점검_안내.txt", "점검 안내 내용");
+  await login(page, `/seller/notices/${id}`);
+  const file = page.getByTestId("notice-file");
+  await expect(file).toContainText("점검_안내.txt");
+  await expect(file).toContainText("1KB");
+  const link = file.getByRole("link", { name: "다운로드" });
+  const href = (await link.getAttribute("href"))!;
+  // 받기 응답은 항상 attachment이고 한글 이름을 UTF-8로 알려 준다
+  const head = await page.evaluate(async (h) => {
+    const r = await fetch(h);
+    return { status: r.status, disposition: r.headers.get("content-disposition") ?? "", text: await r.text() };
+  }, href);
+  expect(head.status).toBe(200);
+  expect(head.disposition).toContain("attachment");
+  expect(decodeURIComponent(head.disposition)).toContain("점검_안내.txt");
+  expect(head.text).toBe("점검 안내 내용");
+  const download = page.waitForEvent("download");
+  await link.click();
+  await download;
 });
 
 test("공지 목록: 분류·안 읽은 것만·검색으로 걸러 보고, 열면 읽음이 되며, 20개씩 이전·다음으로 넘긴다", async ({ page }) => {
