@@ -3269,11 +3269,12 @@ model AudienceEvent {
   sellerId String @db.Uuid
   broadcastSessionId String @db.Uuid
   liveLinkId String @db.Uuid
-  liveChatId String
+  liveChatId String?
   kind AudienceEventKind
   status AudienceEventStatus @default(OPEN)
   title String
-  keyword String
+  keyword String?
+  rules Json @default("{}")
   winnerCount Int
   testMode Boolean
   requestKey String @db.Uuid
@@ -3316,19 +3317,31 @@ model AudienceEventEntrant {
   @@index([sellerId, eventId, publishedAt, id])
 }
 
-// 첫 slice는 이벤트당 1회. UPDATE/DELETE는 migration의 append-only trigger로 막는다.
+// 이벤트당 여러 불변 회차. 결과 재표시는 저장된 회차를 사용하고 재추첨은 원회차/사유를 가진 새 회차다.
 model AudienceEventRound {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   sellerId String @db.Uuid
   eventId String @db.Uuid
+  roundNumber Int @default(1)
+  requestKey String @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  requestHash String @default("")
+  sourceRoundId String? @db.Uuid
+  reason String?
+  actorType ActorType @default(SYSTEM)
+  actorId String?
   rulesSnapshot Json
   entrantIds Json
   frozenAt DateTime @default(now()) @db.Timestamptz(3)
 
   event AudienceEvent @relation(fields: [sellerId, eventId], references: [sellerId, id])
   result AudienceEventResult?
+  publications AudienceEventPublication[]
+  sourceRound AudienceEventRound? @relation("AudienceRoundSource", fields: [sellerId, eventId, sourceRoundId], references: [sellerId, eventId, id], onDelete: Restrict)
+  derivedRounds AudienceEventRound[] @relation("AudienceRoundSource")
 
-  @@unique([sellerId, eventId])
+  @@unique([sellerId, eventId, roundNumber])
+  @@unique([sellerId, eventId, requestKey])
+  @@unique([sellerId, eventId, id])
   @@unique([sellerId, id])
 }
 
@@ -3352,11 +3365,35 @@ model AudienceEventResult {
   algorithmVersion String
   winnerEntrantIds Json
   testMode Boolean
+  execution Json @default("{}")
   createdAt DateTime @default(now()) @db.Timestamptz(3)
 
   round AudienceEventRound @relation(fields: [sellerId, roundId], references: [sellerId, id])
 
   @@unique([sellerId, roundId])
+}
+
+enum AudienceEventPublicationScope {
+  ALL
+  PARTICIPANT
+}
+
+// 불변 결과와 별개인 공개 이력. 재표시는 이 이력만 추가하며 RNG/경품 지급을 실행하지 않는다.
+model AudienceEventPublication {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId String @db.Uuid
+  roundId String @db.Uuid
+  requestKey String @db.Uuid
+  scope AudienceEventPublicationScope
+  participantId String? @db.Uuid
+  actorType ActorType
+  actorId String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  round AudienceEventRound @relation(fields: [sellerId, roundId], references: [sellerId, id])
+
+  @@unique([sellerId, requestKey])
+  @@index([sellerId, roundId])
 }
 
 // 하루 할당량 사용(태평양 시각 날짜 기준, 구글 할당량 초기화와 같음). scope는 "all"(전체 합) 또는 판매자 id.

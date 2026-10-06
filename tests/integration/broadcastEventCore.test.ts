@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { acceptYoutubeEventEntries, cancelAudienceEvent, createAudienceEvent, drawAudienceEvent, freezeAudienceEvent, readAudienceEvent } from "../../lib/server/events/service";
+import { acceptYoutubeEventEntries, cancelAudienceEvent, createAudienceEvent, createNextAudienceRound, drawAudienceEvent, freezeAudienceEvent, previewAudienceEvent, publishAudienceResult, readAudienceEvent } from "../../lib/server/events/service";
 import type { ChatMessage, YoutubeClient } from "../../lib/server/youtube/client";
 import { collectChats } from "../../lib/server/youtube/chat";
 import { loginSeller } from "../../lib/server/auth/login";
@@ -104,14 +104,14 @@ describe("방송 이벤트 공통 서버", () => {
     expect(stored).not.toHaveProperty("fullText");
     expect((await db.audienceEventEntrant.findMany()).map(e => e.messageId)).toEqual(["exact"]);
   });
-  it("고지 확인·기한·미구현 종류를 서버에서 막고 부족한 참가자 추첨은 결과를 만들지 않는다", async () => {
+  it("고지 확인·기한·알 수 없는 종류를 서버에서 막고 부족한 참가자 추첨은 결과를 만들지 않는다", async () => {
     const s = await setup();
     await expect(createAudienceEvent(db, s.ctx, { ...s.input, sellerNoticeAcknowledged: false })).rejects.toMatchObject({ code: "seller_notice_required" });
     await expect(createAudienceEvent(db, s.ctx, { ...s.input, closesAt: new Date(0).toISOString() })).rejects.toMatchObject({ code: "invalid_deadline" });
-    for (const kind of ["ROULETTE_ITEM", "ROULETTE_PARTICIPANT", "LADDER"]) await expect(createAudienceEvent(db, s.ctx, { ...s.input, kind })).rejects.toMatchObject({ code: "not_ready" });
+    await expect(createAudienceEvent(db, s.ctx, { ...s.input, kind: "UNKNOWN" })).rejects.toMatchObject({ code: "unsupported_event_kind" });
     const event = await createAudienceEvent(db, s.ctx, s.input);
     await freezeAudienceEvent(db, s.ctx, event.id);
-    await expect(drawAudienceEvent(db, s.ctx, event.id)).rejects.toMatchObject({ code: "not_enough_entrants" });
+    await expect(drawAudienceEvent(db, s.ctx, event.id)).rejects.toMatchObject({ code: "not_enough_candidates" });
     expect(await db.audienceEventResult.count()).toBe(0);
   });
   it("API가 CSRF·권한·플랜·본문 한도를 적용하며 시험 draw는 보상 입력을 받지 않는다", async () => {
@@ -156,4 +156,60 @@ describe("방송 이벤트 공통 서버", () => {
     expect((await acceptYoutubeEventEntries(db, s.link, [message("suspended", 1)])).accepted).toBe(0);
     expect(await db.audienceEvent.findUnique({ where: { id: event.id } })).toMatchObject({ lastEntryRejection: "seller_unavailable" });
   });
+  it.each(["RANDOM_DRAW", "ROULETTE_PARTICIPANT", "ROULETTE_ITEM", "LADDER"])("%s service는 frozen 설정을 실행하고 지급하지 않는다", async kind => {
+    const s = await setup();
+    const input = { ...s.input, kind, ...(kind === "ROULETTE_ITEM" ? { keyword: undefined, items: ["첫 항목", "둘째 항목"] } : {}), ...(kind === "LADDER" ? { outcomeSlots: ["결과 1", "결과 2"] } : {}) };
+    const event = await createAudienceEvent(db, s.ctx, input);
+    if (kind !== "ROULETTE_ITEM") await acceptYoutubeEventEntries(db, s.link, [message("a", 1), message("b", 2)]);
+    const round = await freezeAudienceEvent(db, s.ctx, event.id);
+    const result = await drawAudienceEvent(db, s.ctx, event.id, round.id);
+    expect(result.execution).toMatchObject({ version: 2, kind });
+    expect(await db.rewardLedger.count()).toBe(0);expect(await db.coupon.count()).toBe(0);expect(await db.shipment.count()).toBe(0);
+  });
+  it("다음회차 동시재시도/중복허용/이전결과 보존과 legacy draw 재시도를 구분한다", async () => {
+    const s=await setup(),event=await createAudienceEvent(db,s.ctx,s.input);
+    await acceptYoutubeEventEntries(db,s.link,[message("a",1),message("b",2)]);
+    const first=await freezeAudienceEvent(db,s.ctx,event.id), result1=await drawAudienceEvent(db,s.ctx,event.id);
+    const input={sourceRoundId:first.id,reason:"다음 회차",requestKey:randomUUID()};
+    const next=await Promise.all([createNextAudienceRound(db,s.ctx,event.id,input),createNextAudienceRound(db,s.ctx,event.id,input)]);
+    expect(next[0].id).toBe(next[1].id); expect(next[0]).toMatchObject({roundNumber:2,sourceRoundId:first.id,reason:input.reason,actorId:s.owner.id});
+    await expect(createNextAudienceRound(db,s.ctx,event.id,{...input,reason:"다른 이유"})).rejects.toMatchObject({code:"idempotency_conflict"});
+    const result2=await drawAudienceEvent(db,s.ctx,event.id,next[0].id);
+    expect(result2.winnerEntrantIds).not.toEqual(result1.winnerEntrantIds);
+    expect((await drawAudienceEvent(db,s.ctx,event.id)).id).toBe(result1.id);
+    await expect(createNextAudienceRound(db,s.ctx,event.id,{sourceRoundId:next[0].id,reason:"다음",requestKey:randomUUID()})).rejects.toMatchObject({code:"not_enough_candidates"});
+    const third=await createNextAudienceRound(db,s.ctx,event.id,{sourceRoundId:next[0].id,reason:"중복 허용",requestKey:randomUUID(),allowDuplicateWinners:true});
+    await drawAudienceEvent(db,s.ctx,event.id,third.id);
+    expect(await db.audienceEventResult.findUnique({where:{id:result1.id}})).toEqual(result1);
+    expect(await db.audienceEventRound.count()).toBe(3);
+  });
+  it("사다리 미리보기/개별공개/전체재표시는 저장 결과만 읽고 다른 판매자는 접근하지 못한다", async () => {
+    const s=await setup(),other=await setup();
+    const event=await createAudienceEvent(db,s.ctx,{...s.input,kind:"LADDER",outcomeSlots:["결과 1","결과 2"]});
+    await acceptYoutubeEventEntries(db,s.link,[message("a",1),message("b",2)]);
+    expect((await previewAudienceEvent(db,s.ctx,event.id)).frozen).toBe(false);
+    expect(await db.audienceEventResult.count()).toBe(0);
+    const round=await freezeAudienceEvent(db,s.ctx,event.id), result=await drawAudienceEvent(db,s.ctx,event.id,round.id);
+    const participantId=(round.entrantIds as string[])[0], input={roundId:round.id,requestKey:randomUUID(),participantId};
+    const published=await Promise.all([publishAudienceResult(db,s.ctx,event.id,input),publishAudienceResult(db,s.ctx,event.id,input)]);
+    expect(published[0].publication.id).toBe(published[1].publication.id);
+    await expect(publishAudienceResult(db,s.ctx,event.id,{...input,participantId:randomUUID()})).rejects.toMatchObject({code:"idempotency_conflict"});
+    const all=await publishAudienceResult(db,s.ctx,event.id,{roundId:round.id,requestKey:randomUUID()});expect(all.publication.scope).toBe("ALL");
+    expect(all.result).toEqual(result);expect(await db.audienceEventResult.count()).toBe(1);
+    expect((await readAudienceEvent(db,s.ctx,event.id)).publications).toHaveLength(2);
+    await expect(publishAudienceResult(db,other.ctx,event.id,input)).rejects.toMatchObject({code:"not_found"});
+    expect(await db.rewardLedger.count()).toBe(0);
+  });
+  it("execute/next-round/redisplay API는 회차 식별과 요청키를 요구하며 지정당첨 입력을 거부한다", async () => {
+    const s=await setup(),token=await cookie(s.owner.email),event=await createAudienceEvent(db,s.ctx,s.input);
+    await acceptYoutubeEventEntries(db,s.link,[message("a",1),message("b",2)]);
+    const first=await freezeAudienceEvent(db,s.ctx,event.id),params=(action:string)=>({params:Promise.resolve({eventId:event.id,action})});
+    expect((await actionRoute(request({},token),params("execute"))).status).toBe(400);
+    expect((await actionRoute(request({roundId:first.id,winners:["chosen"]},token),params("execute"))).status).toBe(400);
+    expect((await actionRoute(request({roundId:first.id},token),params("execute"))).status).toBe(200);
+    expect((await actionRoute(request({roundId:first.id,requestKey:randomUUID()},token),params("redisplay"))).status).toBe(200);
+    const nextResponse=await actionRoute(request({sourceRoundId:first.id,reason:"다음",requestKey:randomUUID()},token),params("next-round"));expect(nextResponse.status).toBe(200);
+    const {value:next}=await nextResponse.json();expect((await actionRoute(request({roundId:next.id},token),params("execute"))).status).toBe(200);
+  });
+
 });
