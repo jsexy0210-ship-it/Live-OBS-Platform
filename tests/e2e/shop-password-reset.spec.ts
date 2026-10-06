@@ -79,3 +79,12 @@ test("휴대폰 390: 가로 스크롤 없음", async ({ page }) => {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: "tests/e2e/screenshots/SH-012-request-390.png" });
 });
+
+// 가짜 응답이 아니라 실제 서버(#782): 없는 토큰은 400 token_invalid → 「이 링크는 쓸 수 없어요」
+test("실제 서버: 쓸 수 없는 링크는 안내 문구", async ({ page }) => {
+  await page.goto(`/shop/${SLUG}/password-reset?token=not-a-real-token`);
+  await page.getByLabel("새 비밀번호", { exact: true }).fill("longenough1");
+  await page.getByLabel("새 비밀번호 확인").fill("longenough1");
+  await page.getByRole("button", { name: "비밀번호 바꾸기" }).click();
+  await expect(page.locator(".shop-login [role=alert]")).toHaveText("이 링크는 쓸 수 없어요. 재설정 메일을 다시 받아 주세요.");
+});
