@@ -5,7 +5,7 @@ import { useState } from "react";
 
 // SH-010 구매자 로그인(보드 SH-010 v298). API: POST /api/shop/{slug}/auth/login { loginId, password, remember? } → 실패면 { message }(해요체 화면 문구).
 // 「로그인 유지」(기본 꺼짐)를 켜면 remember: true를 보내 30일 동안 유지하고, 끄면 브라우저를 닫을 때 끝나는 세션으로 24시간까지 쓴다(서버 정책).
-// 「비회원으로 주문하기」는 없다(회원만 주문, PRODUCT_SCOPE). 「비밀번호를 잊었어요」는 재설정 서버가 준비되면 SH-012와 함께 연결한다.
+// 「비회원으로 주문하기」는 없다(회원만 주문, PRODUCT_SCOPE). 「비밀번호를 잊었어요」는 SH-012(/password-reset)로 간다.
 // 로그인하면 next(같은 쇼핑몰 안 경로만)나 쇼핑몰 홈으로 간다.
 export default function LoginForm({ slug, shopName, next }: { slug: string; shopName: string; next: string | null }) {
   const base = `/shop/${encodeURIComponent(slug)}`;
@@ -54,10 +54,13 @@ export default function LoginForm({ slug, shopName, next }: { slug: string; shop
         <label htmlFor="login-pw">비밀번호</label>
         <input id="login-pw" className="inp" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
       </div>
-      <label className="row shop-login-keep">
-        <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-        <span>로그인 유지</span>
-      </label>
+      <div className="shop-login-opts">
+        <label className="row shop-login-keep">
+          <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+          <span>로그인 유지</span>
+        </label>
+        <Link href={`${base}/password-reset`}>비밀번호를 잊었어요</Link>
+      </div>
       {error && (
         <p className="msg msg-neg" role="alert">
           {error}

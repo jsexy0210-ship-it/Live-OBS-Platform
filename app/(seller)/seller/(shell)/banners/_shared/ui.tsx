@@ -78,6 +78,7 @@ export function ImagePicker({
   emptyHint,
   disabled,
   onBusy,
+  frame,
 }: {
   label: string;
   recommend: { width: number; height: number };
@@ -88,6 +89,8 @@ export function ImagePicker({
   disabled?: boolean;
   // 올리는 동안 true. 편집 화면은 이 동안 저장을 막는다(옛 이미지로 저장되지 않게).
   onBusy?: (busy: boolean) => void;
+  // 표형 입력 화면(SA-064 정본 .up): 정해진 크기의 칸 안에서 올리고, 이미지 위에 「바꾸기」「지우기」가 겹쳐 보인다. 칸 아래에 안내 한 줄.
+  frame?: { width: number; height: number; hint: string };
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -118,6 +121,80 @@ export function ImagePicker({
 
   const small = value && (value.width < recommend.width || value.height < recommend.height);
   const pick = () => !disabled && !busy && input.current?.click();
+
+  if (frame) {
+    return (
+      <div className="sc-up-wrap">
+        <div
+          className={`sc-up${over ? " is-over" : ""}${value ? " has-img" : ""}`}
+          style={{ width: frame.width, height: frame.height }}
+          role="button"
+          tabIndex={disabled ? -1 : 0}
+          aria-label={`${label} ${value ? "바꾸기" : "올리기"}`}
+          aria-busy={busy}
+          onClick={pick}
+          onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), pick())}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setOver(true);
+          }}
+          onDragLeave={() => setOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setOver(false);
+            const f = e.dataTransfer.files?.[0];
+            if (f && !disabled && !busy) void upload(f);
+          }}
+        >
+          {value ? (
+            <>
+              <img src={value.url} alt="" className="sc-up-img" />
+              <span className="sc-up-ov">
+                <button className="btn btn-sm btn-out" type="button" disabled={disabled || busy} onClick={(e) => (e.stopPropagation(), pick())}>
+                  {busy ? "올리는 중" : "바꾸기"}
+                </button>
+                {optional && (
+                  <button className="btn btn-sm btn-out" type="button" disabled={disabled || busy} onClick={(e) => (e.stopPropagation(), onChange(null))}>
+                    지우기
+                  </button>
+                )}
+              </span>
+            </>
+          ) : (
+            <span className="sc-up-empty">
+              <b>+</b>
+              <span>{busy ? "올리는 중" : `${label} 올리기`}</span>
+              <span className="sc-up-rec">
+                {recommend.width} × {recommend.height} 권장 · PNG · 2MB 이하
+              </span>
+            </span>
+          )}
+        </div>
+        <input
+          ref={input}
+          type="file"
+          accept="image/png"
+          hidden
+          aria-label={label}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void upload(f);
+          }}
+        />
+        {error ? (
+          <span className="err" role="alert">
+            {error}
+          </span>
+        ) : small ? (
+          <span className="help">
+            가로 {recommend.width}px 이상 이미지를 권장합니다 · 지금 파일은 {value!.width}×{value!.height}입니다 (올릴 수는 있음)
+          </span>
+        ) : (
+          <span className="help">{frame.hint}</span>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="fld">
