@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient, ShopBanner, ShopPopup, ShopPopupKind, ShopPopupTarget } from "@prisma/client";
+import type { Prisma, PrismaClient, ShopBanner, ShopPopup, ShopPopupKind, ShopPopupPosition, ShopPopupTarget } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { writeAudit } from "../audit/log";
 import { notFound } from "../authz/errors";
@@ -30,6 +30,8 @@ export type ContentRejection =
   | "invalid_image"
   | "invalid_device"
   | "invalid_target"
+  | "invalid_position"
+  | "invalid_pause"
   | "invalid_kind"
   | "invalid_dismiss"
   | "invalid_interval"
@@ -46,6 +48,8 @@ export const CONTENT_MESSAGES: Record<ContentRejection, string> = {
   invalid_image: "이미지를 올려 주십시오",
   invalid_device: "PC·모바일 중 하나 이상 선택해 주십시오",
   invalid_target: "노출 화면을 다시 선택해 주십시오",
+  invalid_position: "팝업 위치를 다시 선택해 주십시오",
+  invalid_pause: "잠시 끄기 값을 다시 확인해 주십시오",
   invalid_kind: "팝업 형태를 다시 선택해 주십시오",
   invalid_dismiss: "다시 보지 않기 기간을 다시 선택해 주십시오",
   invalid_interval: "자동 넘김을 다시 선택해 주십시오",
@@ -101,10 +105,10 @@ const lockSeller = (tx: Prisma.TransactionClient, sellerId: string) => tx.$query
 
 // ───────── 상태(화면 표시용) ─────────
 export type ContentStatus = "live" | "scheduled" | "ended" | "hidden";
-function statusOf(r: { isActive: boolean; startsAt: Date | null; endsAt: Date | null }, now: Date): ContentStatus {
+function statusOf(r: { isActive: boolean; startsAt: Date | null; endsAt: Date | null }, now: Date, endedByBroadcast = false): ContentStatus {
   if (!r.isActive) return "hidden";
   if (r.startsAt && r.startsAt > now) return "scheduled";
-  if (r.endsAt && r.endsAt <= now) return "ended";
+  if ((r.endsAt && r.endsAt <= now) || endedByBroadcast) return "ended";
   return "live";
 }
 const visibleWhere = (now: Date) => ({
@@ -269,11 +273,17 @@ type PopupInput = {
   startsAt: Date | null;
   endsAt: Date | null;
   target: ShopPopupTarget;
+  position: ShopPopupPosition;
+  endsAtBroadcastStart: boolean;
+  hideDuringLive: boolean;
   showOnPc: boolean;
   showOnMobile: boolean;
   dismissDays: number;
   isActive: boolean;
 };
+
+export const POPUP_TARGETS = ["HOME", "ALL", "PRODUCT", "CART_ORDER", "SIGNUP_DONE"] as const;
+export const POPUP_POSITIONS = ["CENTER", "BOTTOM_SHEET", "BOTTOM_RIGHT"] as const;
 
 // 형태별: 이미지 팝업은 이미지 필수(내용은 선택), 글 팝업은 내용 필수(이미지 없음), 상단 띠는 제목 한 줄과 링크만(이미지·내용 없음).
 async function parsePopup(db: Db, sellerId: string, raw: unknown): Promise<{ ok: true; v: PopupInput } | Fail> {
@@ -299,7 +309,9 @@ async function parsePopup(db: Db, sellerId: string, raw: unknown): Promise<{ ok:
   const period = parsePeriod(b);
   if (!period) return { ok: false, reason: "invalid_period" };
   const target = b.target === undefined ? "HOME" : b.target;
-  if (target !== "HOME" && target !== "ALL") return { ok: false, reason: "invalid_target" };
+  if (!(POPUP_TARGETS as readonly unknown[]).includes(target)) return { ok: false, reason: "invalid_target" };
+  const position = b.position === undefined ? "CENTER" : b.position;
+  if (!(POPUP_POSITIONS as readonly unknown[]).includes(position)) return { ok: false, reason: "invalid_position" };
   const devices = parseDevices(b);
   if (!devices) return { ok: false, reason: "invalid_device" };
   const dismissDays = b.dismissDays === undefined ? 1 : b.dismissDays;
@@ -316,7 +328,11 @@ async function parsePopup(db: Db, sellerId: string, raw: unknown): Promise<{ ok:
       linkUrl: link.value,
       linkLabel,
       ...period,
-      target,
+      target: target as ShopPopupTarget,
+      // 상단 띠는 항상 맨 위라 위치를 쓰지 않는다
+      position: kind === "BAR" ? "CENTER" : (position as ShopPopupPosition),
+      endsAtBroadcastStart: bool(b.endsAtBroadcastStart, false),
+      hideDuringLive: bool(b.hideDuringLive, false),
       ...devices,
       dismissDays: dismissDays as number,
       isActive: bool(b.isActive, true),
@@ -325,8 +341,14 @@ async function parsePopup(db: Db, sellerId: string, raw: unknown): Promise<{ ok:
 }
 
 type PopupRow = ShopPopup & { image: ImageRow };
+export type PopupStats = { impressions: number; closes: number; clicks: number };
+const NO_STATS: PopupStats = { impressions: 0, closes: 0, clicks: 0 };
 
-function popupView(r: PopupRow, now: Date) {
+// 「방송 시작 시각에 맞춰 자동 종료」: 기준 시각(시작 시각, 없으면 만든 시각) 이후 방송이 시작됐으면 끝난 팝업이다.
+const endedByBroadcast = (r: { endsAtBroadcastStart: boolean; startsAt: Date | null; createdAt: Date }, lastBroadcastStartedAt: Date | null) =>
+  r.endsAtBroadcastStart && lastBroadcastStartedAt !== null && lastBroadcastStartedAt >= (r.startsAt ?? r.createdAt);
+
+function popupView(r: PopupRow, now: Date, stats: PopupStats = NO_STATS, lastBroadcastStartedAt: Date | null = null) {
   return {
     id: r.id,
     kind: r.kind,
@@ -338,12 +360,18 @@ function popupView(r: PopupRow, now: Date) {
     startsAt: r.startsAt?.toISOString() ?? null,
     endsAt: r.endsAt?.toISOString() ?? null,
     target: r.target,
+    position: r.position,
+    endsAtBroadcastStart: r.endsAtBroadcastStart,
+    hideDuringLive: r.hideDuringLive,
     showOnPc: r.showOnPc,
     showOnMobile: r.showOnMobile,
     dismissDays: r.dismissDays,
     isActive: r.isActive,
     sortOrder: r.sortOrder,
-    status: statusOf(r, now),
+    status: statusOf(r, now, endedByBroadcast(r, lastBroadcastStartedAt)),
+    // 노출·반응 집계(읽기 전용, 누적). closeRate: 노출 대비 닫기 비율(0~100 정수 %), 노출이 없으면 null
+    stats,
+    closeRate: stats.impressions > 0 ? Math.min(100, Math.round((stats.closes / stats.impressions) * 100)) : null,
   };
 }
 export type PopupView = ReturnType<typeof popupView>;
@@ -358,6 +386,9 @@ const popupAudit = (r: ShopPopup) => ({
   startsAt: r.startsAt,
   endsAt: r.endsAt,
   target: r.target,
+  position: r.position,
+  endsAtBroadcastStart: r.endsAtBroadcastStart,
+  hideDuringLive: r.hideDuringLive,
   showOnPc: r.showOnPc,
   showOnMobile: r.showOnMobile,
   dismissDays: r.dismissDays,
@@ -367,11 +398,38 @@ const popupAudit = (r: ShopPopup) => ({
 
 export async function listPopups(db: PrismaClient, ctx: TenantContext) {
   // 조회는 같은 쇼핑몰의 파트너스 계정이면 누구나(보기만, MASTER 결정 2026-10-04). 바꾸기는 대표자·SHOP_SETTINGS만.
-  const [now, rows] = await Promise.all([
+  const [now, rows, last, sums] = await Promise.all([
     dbNow(db),
     db.shopPopup.findMany({ where: { sellerId: ctx.sellerId }, include: { image: imageSelect }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] }),
+    db.broadcastSession.aggregate({ where: { sellerId: ctx.sellerId }, _max: { startedAt: true } }),
+    db.shopPopupStat.groupBy({ by: ["popupId"], where: { popup: { sellerId: ctx.sellerId } }, _sum: { impressions: true, closes: true, clicks: true } }),
   ]);
-  return rows.map((r) => popupView(r, now));
+  const stats = new Map(sums.map((x) => [x.popupId, { impressions: x._sum.impressions ?? 0, closes: x._sum.closes ?? 0, clicks: x._sum.clicks ?? 0 }]));
+  return rows.map((r) => popupView(r, now, stats.get(r.id), last._max.startedAt));
+}
+
+// 「모든 팝업 잠시 끄기」 상태(SA-065 꺼짐 띠: 끈 시각·끈 직원 이름). 켜져 있으면 popupsPaused=false, 나머지 null.
+export async function popupPauseState(db: PrismaClient, ctx: TenantContext) {
+  const s = await db.seller.findUniqueOrThrow({ where: { id: ctx.sellerId }, select: { popupsPausedAt: true, popupsPausedById: true } });
+  if (!s.popupsPausedAt) return { popupsPaused: false, pausedAt: null, pausedByName: null };
+  const by = s.popupsPausedById ? await db.sellerUser.findFirst({ where: { id: s.popupsPausedById, sellerId: ctx.sellerId }, select: { name: true } }) : null;
+  return { popupsPaused: true, pausedAt: s.popupsPausedAt.toISOString(), pausedByName: by?.name ?? null };
+}
+
+// 모든 팝업 잠시 끄기·다시 켜기. 본문 { paused: boolean }. 바뀐 경우만 로그 추적에 남긴다(멱등).
+export async function setPopupsPaused(db: PrismaClient, ctx: TenantContext, raw: unknown, meta: AuditMeta = {}) {
+  requireSellerPermission(ctx, "SHOP_SETTINGS");
+  const paused = obj(raw).paused;
+  if (typeof paused !== "boolean") return { ok: false as const, reason: "invalid_pause" as const };
+  await db.$transaction(async (tx) => {
+    await lockSeller(tx, ctx.sellerId);
+    const cur = await tx.seller.findUniqueOrThrow({ where: { id: ctx.sellerId }, select: { popupsPausedAt: true } });
+    if ((cur.popupsPausedAt !== null) === paused) return;
+    const at = paused ? await dbNow(tx) : null;
+    await tx.seller.update({ where: { id: ctx.sellerId }, data: { popupsPausedAt: at, popupsPausedById: paused ? ctx.actorId : null } });
+    await audit(tx, ctx, meta, paused ? "shop.popups.pause" : "shop.popups.resume", "Seller", ctx.sellerId, { paused: !paused }, { paused });
+  });
+  return { ok: true as const, ...(await popupPauseState(db, ctx)) };
 }
 
 export async function createPopup(db: PrismaClient, ctx: TenantContext, raw: unknown, meta: AuditMeta = {}) {
@@ -447,24 +505,38 @@ export async function reorder(db: PrismaClient, ctx: TenantContext, kind: "banne
 }
 
 // ───────── 구매자 화면 ─────────
-export type ShopPage = "home" | "other";
+export type ShopPage = "home" | "product" | "cart_order" | "signup_done" | "other";
+export const SHOP_PAGES: readonly ShopPage[] = ["home", "product", "cart_order", "signup_done", "other"];
+// 팝업 노출 페이지 → 그 화면에 보이는 target. ALL은 모든 화면.
+const TARGETS_FOR_PAGE: Record<ShopPage, ShopPopupTarget[]> = {
+  home: ["HOME", "ALL"],
+  product: ["PRODUCT", "ALL"],
+  cart_order: ["CART_ORDER", "ALL"],
+  signup_done: ["SIGNUP_DONE", "ALL"],
+  other: ["ALL"],
+};
 
 // 지금 보여 줄 배너·팝업(운영 중이고 스토어 운영 권한이 있는 쇼핑몰만, 아니면 null). 기간은 DB 시계로 판단한다.
-// 배너는 홈에서만, 팝업은 홈이면 HOME·ALL, 그 밖 화면이면 ALL만. PC·모바일 구분은 화면 너비(768px)로 브라우저가 한다.
+// 배너는 홈에서만, 팝업은 화면별 target(TARGETS_FOR_PAGE)과 ALL. 「모든 팝업 잠시 끄기」 중이면 팝업을 비우고, 방송 중 미표시·방송 시작 자동 종료 팝업은 서버가 뺀다. PC·모바일 구분은 화면 너비(768px)로 브라우저가 한다.
 export async function visibleShopContent(db: PrismaClient, slug: string, page: ShopPage) {
-  const shop = await db.seller.findUnique({ where: { slug }, select: { id: true, slug: true, homeBannerIntervalSec: true } });
+  const shop = await db.seller.findUnique({ where: { slug }, select: { id: true, slug: true, homeBannerIntervalSec: true, popupsPausedAt: true } });
   if (!shop || !(await shopOpen(db, shop.id))) return null;
   const now = await dbNow(db);
-  const [banners, popups] = await Promise.all([
+  const [banners, popupRows, live, last] = await Promise.all([
     page === "home"
       ? db.shopBanner.findMany({ where: { sellerId: shop.id, ...visibleWhere(now) }, include: bannerInclude, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] })
       : Promise.resolve([]),
-    db.shopPopup.findMany({
-      where: { sellerId: shop.id, ...visibleWhere(now), ...(page === "home" ? {} : { target: "ALL" as const }) },
-      include: { image: imageSelect },
-      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-    }),
+    shop.popupsPausedAt
+      ? Promise.resolve([])
+      : db.shopPopup.findMany({
+          where: { sellerId: shop.id, ...visibleWhere(now), target: { in: TARGETS_FOR_PAGE[page] } },
+          include: { image: imageSelect },
+          orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+        }),
+    db.broadcastSession.findFirst({ where: { sellerId: shop.id, status: "LIVE" }, select: { id: true } }),
+    db.broadcastSession.aggregate({ where: { sellerId: shop.id }, _max: { startedAt: true } }),
   ]);
+  const popups = popupRows.filter((p) => !(p.hideDuringLive && live) && !endedByBroadcast(p, last._max.startedAt));
   return {
     bannerIntervalSec: shop.homeBannerIntervalSec,
     banners: banners.map((b) => ({
@@ -486,6 +558,7 @@ export async function visibleShopContent(db: PrismaClient, slug: string, page: S
       linkLabel: p.linkUrl ? (p.linkLabel ?? DEFAULT_LINK_LABEL) : null,
       showOnPc: p.showOnPc,
       showOnMobile: p.showOnMobile,
+      position: p.position,
       dismissDays: p.dismissDays,
       // 구매자에게 보이는 내용이 바뀌면 「보지 않기」를 다시 묻도록 저장 키에 넣는다. 순서·기간·노출 스위치만 바꾼 것은 버전을 바꾸지 않는다.
       version: popupContentVersion(p),
@@ -497,6 +570,8 @@ export type VisibleShopContent = NonNullable<Awaited<ReturnType<typeof visibleSh
 // 팝업 내용 버전(구매자 브라우저의 「보지 않기」 저장 키). updatedAt은 순서 바꾸기에도 바뀌므로 쓰지 않는다.
 function popupContentVersion(p: ShopPopup): string {
   const content = [p.kind, p.title, p.body, p.imageId, p.linkUrl, p.linkLabel, p.target, p.showOnPc, p.showOnMobile, p.dismissDays];
+  // 위치는 기본값(가운데)이 아닐 때만 넣어, 이 값이 생기기 전에 구매자가 고른 「보지 않기」가 그대로 유지되게 한다
+  if (p.position !== "CENTER") content.push(p.position);
   return createHash("sha256").update(JSON.stringify(content)).digest("hex").slice(0, 12);
 }
 
@@ -527,4 +602,29 @@ export type AuditMeta = { ip?: string | null; userAgent?: string | null };
 
 function audit(tx: Prisma.TransactionClient, ctx: TenantContext, meta: AuditMeta, action: string, targetType: string, targetId: string, before: unknown, after: unknown) {
   return writeAudit(tx, { actorType: ctx.actorType, actorId: ctx.actorId, sellerId: ctx.sellerId, action, targetType, targetId, before, after, ip: meta.ip, userAgent: meta.userAgent });
+}
+
+// ───────── 팝업 노출·반응 집계(SA-065) ─────────
+export type PopupEventType = "impression" | "close" | "click";
+const EVENT_COLUMN: Record<PopupEventType, "impressions" | "closes" | "clicks"> = { impression: "impressions", close: "closes", click: "clicks" };
+export const isPopupEventType = (v: unknown): v is PopupEventType => typeof v === "string" && v in EVENT_COLUMN;
+
+// 구매자 화면이 보내는 집계 한 건. 운영 중인 쇼핑몰의 숨기지 않은 팝업만 센다(그 밖은 false, 화면은 무시). 팝업·일(KST) 한 줄에 합산해 저장량이 늘지 않는다.
+export async function recordPopupEvent(db: PrismaClient, slug: string, popupId: string, type: PopupEventType): Promise<boolean> {
+  if (!isUuid(popupId)) return false;
+  const shop = await db.seller.findUnique({ where: { slug }, select: { id: true } });
+  if (!shop || !(await shopOpen(db, shop.id))) return false;
+  const popup = await db.shopPopup.findFirst({ where: { id: popupId, sellerId: shop.id, isActive: true }, select: { id: true } });
+  if (!popup) return false;
+  const imp = type === "impression" ? 1 : 0;
+  const clo = type === "close" ? 1 : 0;
+  const cli = type === "click" ? 1 : 0;
+  await db.$executeRaw`
+    INSERT INTO "ShopPopupStat" ("popupId", "day", "impressions", "closes", "clicks")
+    VALUES (${popupId}::uuid, (now() AT TIME ZONE 'Asia/Seoul')::date, ${imp}, ${clo}, ${cli})
+    ON CONFLICT ("popupId", "day") DO UPDATE SET
+      "impressions" = "ShopPopupStat"."impressions" + ${imp},
+      "closes" = "ShopPopupStat"."closes" + ${clo},
+      "clicks" = "ShopPopupStat"."clicks" + ${cli}`;
+  return true;
 }
