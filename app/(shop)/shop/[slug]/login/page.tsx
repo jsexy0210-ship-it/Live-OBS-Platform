@@ -28,7 +28,7 @@ export default async function ShopLoginPage({ params, searchParams }: Props) {
   if (session) redirect(next ?? base);
   return (
     <>
-      <LoginForm slug={shop.slug} next={next} />
+      <LoginForm slug={shop.slug} shopName={shop.shopName} next={next} />
     </>
   );
 }
