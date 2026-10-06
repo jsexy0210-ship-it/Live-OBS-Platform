@@ -9,3 +9,5 @@ export { useWholeDateClick } from "./useWholeDateClick";
 export { GlobalSearch, NotificationBell } from "./GnbTools";
 export { ConfirmDialog, ConfirmProvider, useConfirm, type ConfirmOptions } from "./ConfirmDialog";
 export { DatePicker, DateRangePicker, DateTimePicker, TimePicker } from "./DatePicker";
+
+export { CursorPagination } from "../Pagination";

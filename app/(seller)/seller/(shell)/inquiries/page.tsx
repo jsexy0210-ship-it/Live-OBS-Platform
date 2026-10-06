@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PageHead } from "../../../../../components/admin-ui";
+import { CursorPagination, PageHead } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -158,14 +158,7 @@ export default function InquiriesPage() {
                 20개씩 · {first}–{first + rows.length - 1} 표시
                 {page.avgFirstReplyMinutes !== null && ` · 평균 첫 답변 ${avgText(page.avgFirstReplyMinutes)} (평일 10~18시)`}
               </span>
-              <div className="au-lh-act">
-                <button className="btn btn-sm btn-out" type="button" disabled={no === 1} onClick={() => go(cursors.slice(0, -1))}>
-                  ‹ 이전
-                </button>
-                <button className="btn btn-sm btn-out" type="button" disabled={!page.nextCursor} onClick={() => page.nextCursor && go([...cursors, page.nextCursor])}>
-                  다음 ›
-                </button>
-              </div>
+              <CursorPagination visited={cursors.length} hasNext={!!page.nextCursor} onChange={n => go(cursors.slice(0, n))} onNext={() => page.nextCursor && go([...cursors, page.nextCursor])} />
             </div>
           )}
         </div>

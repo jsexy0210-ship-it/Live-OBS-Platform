@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PageHead } from "../../../../../components/admin-ui";
+import { CursorPagination, PageHead } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -147,14 +147,7 @@ export default function NoticesPage() {
               <span className="t-l2 c-alt">
                 20개씩 · {first}–{first + rows.length - 1} 표시
               </span>
-              <div className="au-lh-act">
-                <button className="btn btn-sm btn-out" type="button" disabled={page === 1} onClick={() => go(cursors.slice(0, -1))}>
-                  ‹ 이전
-                </button>
-                <button className="btn btn-sm btn-out" type="button" disabled={!state.next} onClick={() => state.next && go([...cursors, state.next])}>
-                  다음 ›
-                </button>
-              </div>
+              <CursorPagination visited={cursors.length} hasNext={!!state.next} onChange={n => go(cursors.slice(0, n))} onNext={() => state.next && go([...cursors, state.next])} />
             </div>
           )}
         </div>

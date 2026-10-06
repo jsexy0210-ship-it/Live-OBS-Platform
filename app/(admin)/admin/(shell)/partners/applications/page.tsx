@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
-import { PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
+import { CursorPagination, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { MAX_SEARCH_LENGTH } from "../../../../../../components/seller/format";
 import { useScrollRestore } from "../../../../../../lib/client/navigation";
@@ -617,14 +617,7 @@ function Applications() {
                 </div>
               ))}
             {state.kind === "ok" && (cursors.length > 1 || data?.nextCursor) && (
-              <div className="row" style={{ gap: 8, justifyContent: "center", padding: 12 }}>
-                <button className="btn btn-sm btn-out" type="button" disabled={cursors.length <= 1} onClick={() => setCursors((c) => c.slice(0, -1))}>
-                  ‹ 이전
-                </button>
-                <button className="btn btn-sm btn-out" type="button" disabled={!data?.nextCursor} onClick={() => data?.nextCursor && setCursors((c) => [...c, data.nextCursor])}>
-                  다음 ›
-                </button>
-              </div>
+              <CursorPagination visited={cursors.length} hasNext={!!data?.nextCursor} onChange={n => setCursors(c => c.slice(0, n))} onNext={() => data?.nextCursor && setCursors(c => [...c, data.nextCursor])} />
             )}
           </div>
           {reviewing && (
