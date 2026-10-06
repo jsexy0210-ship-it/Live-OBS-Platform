@@ -78,6 +78,7 @@ test("위치·크기·속성을 고쳐 저장하면 서버에 남고, 오버레�
   await expect(page.getByTestId("ove-dirty")).toHaveText("저장 안 한 변경 3개");
 
   await page.getByRole("button", { name: "저장하기" }).click();
+  await page.getByRole("dialog", { name: "변경 사항을 저장하시겠습니까?" }).getByRole("button", { name: "저장", exact: true }).click();
   await expect(toast(page)).toContainText("저장했습니다. 방송 화면이 바로 바뀝니다");
   await expect(page.getByTestId("ove-dirty")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "방금 작업 취소" })).toBeDisabled();
@@ -99,6 +100,7 @@ test("위치·크기·속성을 고쳐 저장하면 서버에 남고, 오버레�
   // 편집기에서 다시 저장하면 열려 있는 오버레이가 15초 안에 바뀐다
   await page.getByLabel("명예의 전당 보이기").check();
   await page.getByRole("button", { name: "저장하기" }).click();
+  await page.getByRole("dialog", { name: "변경 사항을 저장하시겠습니까?" }).getByRole("button", { name: "저장", exact: true }).click();
   await expect(toast(page)).toContainText("저장했습니다");
   await expect(ov.locator('[data-widget="HALL_OF_FAME"]')).toBeVisible({ timeout: 25_000 });
   await expect(ov.locator('[data-widget="HALL_OF_FAME"]')).toHaveCSS("position", "absolute");
@@ -125,6 +127,7 @@ test("다른 창에서 먼저 저장했으면 안내하고, 다시 불러오면 
   await other.close();
 
   await page.getByRole("button", { name: "저장하기" }).click();
+  await page.getByRole("dialog", { name: "변경 사항을 저장하시겠습니까?" }).getByRole("button", { name: "저장", exact: true }).click();
   await expect(page.getByTestId("ove-conflict")).toContainText("다른 창에서 먼저 저장해서 저장하지 못했습니다");
   await page.getByRole("button", { name: "최신 내용 불러오기" }).click();
   await expect(page.getByTestId("ove-conflict")).toHaveCount(0);
@@ -148,6 +151,7 @@ test("템플릿으로 초기화(초안)하고 되돌릴 수 있으며, 내 템�
   await expect(page.getByTestId("ove-dirty")).toHaveCount(0);
   await page.getByRole("button", { name: "취소한 작업 다시 하기" }).click();
   await page.getByRole("button", { name: "저장하기" }).click();
+  await page.getByRole("dialog", { name: "변경 사항을 저장하시겠습니까?" }).getByRole("button", { name: "저장", exact: true }).click();
   await expect(toast(page)).toContainText("저장했습니다");
   expect(await currentX(page)).toBe(43);
 
@@ -164,10 +168,12 @@ test("템플릿으로 초기화(초안)하고 되돌릴 수 있으며, 내 템�
   await page.getByRole("button", { name: "줄서기형" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "이 템플릿으로 바꾸기" }).click();
   await page.getByRole("button", { name: "저장하기" }).click();
+  await page.getByRole("dialog", { name: "변경 사항을 저장하시겠습니까?" }).getByRole("button", { name: "저장", exact: true }).click();
   await expect.poll(() => currentX(page)).toBe(4.4);
   await row.getByRole("button", { name: "이 템플릿으로 바꾸기" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "이 템플릿으로 바꾸기" }).click();
   await page.getByRole("button", { name: "저장하기" }).click();
+  await page.getByRole("dialog", { name: "변경 사항을 저장하시겠습니까?" }).getByRole("button", { name: "저장", exact: true }).click();
   await expect.poll(() => currentX(page)).toBe(43);
 
   // 삭제
@@ -254,6 +260,7 @@ test("끌 때 정렬 가이드선이 보이고, 실제 크기 미리보기가 �
   await page.getByRole("button", { name: "현재 주문", exact: true }).click();
   await page.getByLabel("세로 위치").fill("41");
   await page.getByRole("button", { name: "저장하기" }).click();
+  await page.getByRole("dialog", { name: "변경 사항을 저장하시겠습니까?" }).getByRole("button", { name: "저장", exact: true }).click();
   await expect(page.getByTestId("ove-dirty")).toHaveCount(0);
   page.once("dialog", () => {
     throw new Error("저장한 뒤에는 나가기 확인이 뜨면 안 됩니다");

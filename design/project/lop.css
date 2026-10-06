@@ -1021,7 +1021,7 @@ select.inp{cursor:pointer}
 .c24.mob .m-kv{display:flex;gap:8px;font-size:13px;line-height:20px;min-width:0}
 .c24.mob .m-kv b{flex:none;width:40px;font-weight:600;color:var(--c24-sub)}
 .c24.mob .m-kv span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.c24.mob .m-card .ac{display:flex;gap:8px}.c24.mob .m-card .ac .b{flex:1;height:40px;padding:0}
+.c24.mob .m-card .ac{display:flex;gap:8px}.c24.mob .m-card .ac .b{flex:1;height:44px;padding:0;font-size:15px}.c24.mob .m-card .ac .b.more{flex:none;width:44px;min-width:44px}
 .c24.mob .pg2{padding:0;gap:8px}.c24.mob .pg2 a{flex:1;height:48px;font-size:14px}
 .c24.mob .m-bar{display:flex;gap:8px;align-items:center;padding:12px 16px;background:#fff;border-top:1px solid var(--c24-line);margin:0;flex:none}
 .c24.mob .m-bar .n{flex:none;font-weight:700;font-size:14px;margin-right:4px}

@@ -11,7 +11,7 @@ const badge = (n: number) => (n > 0 ? <b className="shop-badge" aria-hidden="tru
 const cartLabel = (n: number) => (n > 0 ? `장바구니 (${n}개)` : "장바구니");
 
 type Category = { id: string; name: string; children: { id: string; name: string }[] };
-type Props = { slug: string; shopName: string; loggedIn: boolean; nickname?: string | null; categories?: Category[] };
+type Props = { slug: string; shopName: string; loggedIn: boolean; nickname?: string | null; categories?: Category[]; signupOpen?: boolean };
 
 function Icon({ d }: { d: string }) {
   return (
@@ -32,7 +32,7 @@ const ICON = {
 };
 
 // 구매자 쇼핑몰 머리(띠·로고·검색·장바구니·카테고리)와 휴대폰 카테고리 서랍·아래 고정 바. 「전체 상품」 뒤에 쇼핑몰의 대분류 카테고리를 붙이고, 「전체 카테고리」 버튼이나 머리 줄에 마우스를 올리면(키보드 포커스도) 대분류·소분류 펼침 판이 열린다. 서랍에는 소분류까지 보인다.
-export default function ShopChrome({ slug, shopName, loggedIn, nickname, categories = [] }: Props) {
+export default function ShopChrome({ slug, shopName, loggedIn, nickname, categories = [], signupOpen = true }: Props) {
   const { confirm } = useConfirm();
   const base = `/shop/${encodeURIComponent(slug)}`;
   const path = usePathname() ?? "";
@@ -125,7 +125,7 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname, categor
   ) : (
     <>
       <Link href={`${base}/login`}>로그인</Link>
-      <Link href={`${base}/signup`}>회원가입</Link>
+      {signupOpen && <Link href={`${base}/signup`}>회원가입</Link>}
     </>
   );
   const cats = [

@@ -298,6 +298,8 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/payments/shipping-preview": "STORE_OPERATIONS", // 배송비 미리보기(shopOpenForPayment로 막음)
   "shop/[slug]/auth/login": "OPEN",
   "shop/[slug]/auth/logout": "OPEN",
+  "shop/[slug]/auth/password-reset/request": "OPEN",
+  "shop/[slug]/auth/password-reset/confirm": "OPEN",
   "shop/[slug]/addresses": "OPEN",
   "shop/[slug]/addresses/[addressId]": "OPEN",
   "shop/[slug]/cart": "STORE_OPERATIONS", // 장바구니: 담기(POST)는 shopOpen으로 막음, 목록·선택 삭제는 열림

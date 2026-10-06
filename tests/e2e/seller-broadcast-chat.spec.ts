@@ -38,7 +38,7 @@ test("연결된 유튜브 방송이 없으면 토글과 채팅 열이 없고 연
   await expect(page.getByTestId("bc-chat-head")).toHaveCount(0);
 });
 
-test("채팅 수집은 기본 꺼짐: 켜기 전 보관 고지를 확인하고, 켜면 채팅 열이 생기고, 끄면 바로 사라진다", async ({ page }) => {
+test("채팅 수집은 기본 꺼짐: 켜기 전 보관 고지를 확인하고, 켜면 채팅 열이 생기고, 끄면 확인 뒤 사라진다", async ({ page }) => {
   await seedYoutube();
   await openAndStart(page);
   const toggle = page.getByTestId("bc-chat-toggle");
@@ -69,8 +69,13 @@ test("채팅 수집은 기본 꺼짐: 켜기 전 보관 고지를 확인하고, 
   await expect(page.getByTestId("bc-waiting").locator("tr", { hasText: NICKS[0] }).getByTestId("bc-chat-cell")).toHaveText("채팅 기록 없음");
   await expect(page.getByTestId("bc-waiting").locator("tr", { hasText: NICKS[2] }).getByTestId("bc-chat-cell")).toHaveText("-");
 
-  // 끄기는 확인 없이 바로, 열도 사라진다
+  // 끄기도 확인 창을 거친다: 취소하면 켜진 채로, 「채팅 가져오기 끄기」를 누르면 열이 사라진다
   await page.getByTestId("bc-chat-toggle").click();
+  const off = page.getByRole("dialog", { name: "유튜브 채팅 가져오기를 끄시겠습니까?" });
+  await off.getByRole("button", { name: "취소" }).click();
+  await expect(page.getByTestId("bc-chat-toggle")).toBeChecked();
+  await page.getByTestId("bc-chat-toggle").click();
+  await off.getByRole("button", { name: "채팅 가져오기 끄기" }).click();
   await expect(page.getByTestId("bc-chat-toggle")).not.toBeChecked();
   await expect.poll(() => chatEnabledInDb()).toBe(false);
   await expect(page.getByTestId("bc-chat-head")).toHaveCount(0);

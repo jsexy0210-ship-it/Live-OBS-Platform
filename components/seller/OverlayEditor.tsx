@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useUnsavedGuard } from "../../lib/client/navigation";
 import { WidgetView } from "../overlay/WidgetView";
 import { MAX_TEMPLATES, SAMPLE_DATA, SLOTS, STAGE, newWidget, slotOf, widgetLabel, type Aspect, type PropValue, type Widget } from "../overlay/layout";
+import { useConfirm } from "../admin-ui";
 import { api, failMessage } from "./api";
 import { Toast } from "./States";
 
@@ -530,6 +531,17 @@ export default function OverlayEditor() {
     setToast({ text: "저장했습니다. 방송 화면이 바로 바뀝니다" });
     return true;
   };
+  // 저장 버튼: 저장하면 방송 화면이 바로 바뀌므로 확인을 거친다(나가기 확인 창의 「저장하고 나가기」는 이미 확인을 거친 것이라 save를 바로 부른다)
+  const { confirm: confirmSave } = useConfirm();
+  const askSave = async () => {
+    if (!server || busy) return;
+    const ok = await confirmSave({
+      title: "변경 사항을 저장하시겠습니까?",
+      body: `${aspect === "9x16" ? "세로 9:16" : "가로 16:9"} 비율의 변경 ${changes}개를 저장합니다. 저장하면 방송 화면이 바로 바뀝니다.`,
+      confirmLabel: "저장",
+    });
+    if (ok) await save();
+  };
   // 템플릿으로 초기화: 지금 비율의 배치만 템플릿 값으로 바꾼다(저장하기 전까지는 초안이라 되돌리기로 가져올 수 있다)
   const askReset = (list: Widget[], name: string) =>
     setConfirm({
@@ -626,7 +638,7 @@ export default function OverlayEditor() {
             <button className="btn btn-out" type="button" disabled={busy || widgets.length === 0 || total >= MAX_TEMPLATES} onClick={() => setTplName("")}>
               지금 배치를 내 템플릿으로 저장
             </button>
-            <button className="btn" type="button" disabled={busy || changes === 0} onClick={() => void save()}>
+            <button className="btn" type="button" disabled={busy || changes === 0} onClick={() => void askSave()}>
               방송 화면에 저장하기
             </button>
           </div>

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { TIMER_MAX_SECONDS, clock, type QueueItem } from "./queue";
 
-// SA-001 확인 창: 방송 종료 · 주문 취소(사유 필수) · 타이머 설정. Esc로 닫는다(처리 중에는 닫지 않는다).
+// SA-001 방송 전용 창: 주문 취소(사유 필수) · 타이머 설정(방송 종료·채팅 끄기는 공용 확인 창 useConfirm). Esc로 닫는다(처리 중에는 닫지 않는다).
 // blocked: 대시보드 내용이 최신이 아님(다시 불러오기 전까지 확인 버튼을 끈다, 닫기는 된다)
 
 function useEscape(busy: boolean, onClose: () => void) {
@@ -31,22 +31,6 @@ function Frame({ id, title, sub, children }: { id: string; title: string; sub?: 
 }
 
 const who = (item: QueueItem) => `${item.nicknameSnapshot} · ${item.productLabel} ×${item.quantity}`;
-
-export function EndBroadcastModal({ waiting, busy, blocked, onClose, onConfirm }: { waiting: number; busy: boolean; blocked: boolean; onClose: () => void; onConfirm: () => void }) {
-  useEscape(busy, onClose);
-  return (
-    <Frame id="bc-end-title" title="방송을 끝내시겠습니까?" sub={waiting > 0 ? `남은 대기 ${waiting}건은 다음 방송으로 넘어갑니다` : undefined}>
-      <div className="modal-f">
-        <button className="btn btn-out" type="button" disabled={busy} onClick={onClose}>
-          취소
-        </button>
-        <button className="btn btn-neg" type="button" disabled={busy || blocked} onClick={onConfirm}>
-          방송 끝내기
-        </button>
-      </div>
-    </Frame>
-  );
-}
 
 export function CancelItemModal({ item, busy, blocked, onClose, onConfirm }: { item: QueueItem; busy: boolean; blocked: boolean; onClose: () => void; onConfirm: (reason: string) => void }) {
   useEscape(busy, onClose);
