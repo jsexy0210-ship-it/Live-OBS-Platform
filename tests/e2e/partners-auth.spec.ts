@@ -34,7 +34,7 @@ async function noSellerWord(page: Page) {
 test("파트너스 로그인: 제목·설명이 파트너스 관리자이고, 회원가입·비밀번호 찾기로 이동한다", async ({ page }) => {
   await page.goto("/seller/login");
   await expect(page.getByRole("heading", { name: "파트너스 관리자" })).toBeVisible();
-  await expect(page.getByText("쇼핑몰 운영과 방송 주문대기(방송 중 들어온 주문 목록)를 한곳에서 관리합니다.")).toBeVisible();
+  await expect(page.getByText("라이브 방송과 주문을 한곳에서 관리합니다")).toBeVisible();
   await noSellerWord(page);
   await shot(page, "AU-002");
   await page.getByRole("link", { name: "회원가입" }).click();
