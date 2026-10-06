@@ -91,3 +91,26 @@ body:has(.pf){margin:0}
 .pf-notice-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pf-notice-body{white-space:pre-wrap;line-height:1.8}
 @media (max-width:600px){.pf-notice-row{flex-wrap:wrap}.pf-notice-title{flex-basis:100%;order:3;white-space:normal}}
+
+/* 파트너스 가입 신청 PF-007: 페이지 배경 + 가운데 단(640/760) + 진행 표시 + 카드 밖 제목(h2) */
+.pf-su{padding:56px 64px 80px;background:var(--page)}
+.pf-su-in{max-width:760px;margin:0 auto;gap:8px}
+.pf-su-in.narrow{max-width:640px}
+.pf-su-steps{margin-bottom:20px;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.pf-su-steps>.num{margin-right:4px}
+.pf-su-steps ol{display:contents;margin:0;padding:0;list-style:none}
+.pf-su-steps li{display:flex;align-items:center;gap:6px}
+.pf-su-n{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;background:var(--wds-fill-strong);color:var(--wds-label-alternative)}
+.pf-su-n[data-on="true"]{background:var(--brand);color:var(--brand-ink)}
+.pf-su-h2{margin:0 0 4px}
+.pf-su-card{padding:28px;gap:20px}
+.pf-su-card.pf-su-center{padding:36px 28px;gap:18px;align-items:center;text-align:center}
+@media (max-width:600px){
+.pf-su{padding:20px 16px 32px}
+.pf-su-h1{font-size:28px;line-height:38px}
+.pf-su-card,.pf-su-card.pf-su-center{padding:18px 16px}
+.pf-su-steps li:not(.cur) .pf-su-lbl{display:none}
+.pf-su-steps{margin-bottom:0}
+.pf-su-h2{font-size:14px;line-height:20px;letter-spacing:.0145em;font-weight:700;margin:4px 0 0}
+}
+.pf-su-card>.pa-fs{gap:20px}

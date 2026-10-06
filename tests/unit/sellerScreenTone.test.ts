@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 const ROOT = join(__dirname, "../..");
 const DIRS = ["app/(seller)/seller", "components/seller"];
 const EXCLUDE = [
-  "app/(seller)/seller/signup/",
+  "app/(public)/seller/signup/",
   "components/seller/signup/", // 가입 신청 단계 화면 본문(위 signup 화면에서 옮김, 공개 화면이라 해요체)
   "components/seller/api.ts", // failMessage 말투표(admin·public)
   "components/seller/IdentityCheck.tsx", // 본인확인 문구표(admin·public)
