@@ -63,6 +63,8 @@ describe("쇼핑몰 메일(EM-001~004)", () => {
   it("EM-001 카드: 접수·주문대기 안내·표기(주문일 KST 연월일·금액·적립금·배송비)", () => {
     const m = all[0][1];
     expect(m.subject).toBe("[카드숍 별빛] 주문이 접수됐어요");
+    expect(m.text).toContain("스타라이트 부스터 박스 x 2  178,200원");
+    expect(m.html).toContain("수량 2");
     for (const s of ["별구름님, 주문해 주셔서 고마워요", "지금 앞에 11명", "방송 닉네임: 별구름", "20261002-0007", "2026.10.02 20:41", "카드 · 일시불", "300,200원", "178,200원", "배송비", "0원 · 50,000원 이상 무료", "−10,000원", "문 앞에 두세요", "주문 상세 보기", "통신판매업 신고 2026-서울강남-0001"]) expect(m.text).toContain(s);
   });
   it("EM-001 무통장: 입금 계좌·기한·현금영수증 안내", () => {
@@ -73,6 +75,7 @@ describe("쇼핑몰 메일(EM-001~004)", () => {
   it("EM-002 발송: 택배·송장·보낸 날·합계 개수, 조회 버튼은 주소가 있을 때만, 도서산간 안내", () => {
     expect(all[2][1].text).toContain("보낸 날: 2026.10.05 (월)");
     expect(all[2][1].text).toContain("합계  3개 · 300,200원");
+    expect(all[2][1].text).toContain("문라이트 컬렉션 박스 x 1  132,000원");
     expect(all[2][1].text).toContain("배송 조회: https://track.example/1234567890");
     expect(all[3][1].text).not.toContain("배송 조회");
     expect(all[3][1].text).toContain("제주 · 도서지역이라 1~2일 더 걸릴 수 있어요");
