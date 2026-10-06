@@ -43,8 +43,18 @@ test("사업자·고객센터: 잘못된 전화는 막고, 저장하면 법정 �
   await page.getByRole("dialog").getByRole("button", { name: "저장", exact: true }).click();
   await expect(page.getByText("쇼핑몰 정보를 저장했습니다")).toBeVisible();
 
-  // 카카오톡·유튜브 칸은 서버 준비 전이라 준비 중
-  await expect(section.getByLabel("카카오톡 채널 주소")).toBeDisabled();
+  // 카카오톡·유튜브 채널 주소: https만 받고, 저장하면 법정 고지 값과 구매자 공개 값에 같이 남는다
+  const kakao = `https://pf.kakao.com/_e2e${Date.now().toString(36)}`;
+  await section.getByLabel("카카오톡 채널 주소").fill("pf.kakao.com/abc");
+  await savePage();
+  await expect(section.getByText("카카오톡 채널 주소는 https://로 시작하는 주소만 쓸 수 있습니다")).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await section.getByLabel("카카오톡 채널 주소").fill(kakao);
+  await savePage();
+  await page.getByRole("dialog").getByRole("button", { name: "저장", exact: true }).click();
+  await expect(page.getByText("쇼핑몰 정보를 저장했습니다")).toBeVisible();
+  await page.reload();
+  await expect(page.getByTestId("business-section").getByLabel("카카오톡 채널 주소")).toHaveValue(kakao);
 
   await page.goto("/seller/settings/legal");
   await page.getByRole("tab", { name: "사업자 정보·고지" }).click();

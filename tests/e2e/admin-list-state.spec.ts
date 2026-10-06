@@ -62,7 +62,8 @@ test("파트너스 목록: 검색어가 주소에 남고, 상세 → 「파트�
 test("파트너스 문의: 탭·파트너스 지정이 주소에 남고, 상세 「목록」과 브라우저 Back 모두 같은 목록으로 돌아온다", async ({ page }) => {
   await login(page);
   await page.goto(`/admin/support/inquiries?sellerId=${ids.seller}`);
-  await page.getByRole("button", { name: /^종료/ }).click();
+  await page.getByRole("radio", { name: /^종료/ }).check();
+  await page.getByRole("button", { name: "검색", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`status=CLOSED`));
   const row = page.getByTestId("inquiry-row").filter({ hasText: `닫힌 문의 ${run}` });
   await expect(row).toBeVisible();
@@ -70,12 +71,12 @@ test("파트너스 문의: 탭·파트너스 지정이 주소에 남고, 상세 
   await expect(page).toHaveURL(new RegExp(`/admin/support/inquiries/${ids.inquiry}`));
   await page.getByRole("button", { name: "목록", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`status=CLOSED.*sellerId=${ids.seller}|sellerId=${ids.seller}.*status=CLOSED`));
-  await expect(page.getByRole("button", { name: /^종료/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("radio", { name: /^종료/ })).toBeChecked();
   await row.getByRole("link", { name: "보기" }).click();
   await expect(page).toHaveURL(new RegExp(`/admin/support/inquiries/${ids.inquiry}`));
   await expect(page.getByTestId("inquiry-status")).toBeVisible();
   await page.goBack();
-  await expect(page.getByRole("button", { name: /^종료/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("radio", { name: /^종료/ })).toBeChecked();
   await expect(row).toBeVisible();
 });
 
