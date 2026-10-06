@@ -73,4 +73,21 @@ s = rep(s, '<span class="unit">영업일</span>', '<span class="unit">일</span>
 s = rep(s, '개봉이 끝나면 2영업일 안에 보내요', '개봉이 끝나면 2일 안에 보내요', 2)
 assert '영업일' not in s
 (out / 'SA-061.dc.html').write_text(s)
+
+# ⑦ 쇼핑몰 닫힘 화면(SH-040 · SH-040-PC · SH-041): 이용약관 · 개인정보처리방침 · 고객센터는 열려 있음(법정 고지)
+for f, old in (('SH-040', '홈 · 상품 · 장바구니 · 회원가입 주소로 들어와도 이 화면이 떠요. 판매자 사정은 적지 않아요.'),
+               ('SH-040-PC', '홈 · 상품 · 장바구니 · 회원가입 주소로 들어와도 이 화면이 떠요. 판매자 사정은 적지 않아요.'),
+               ('SH-041', '상품 · 홈 · 장바구니 주소로 들어와도 이 화면이 떠요. 판매자 사정은 적지 않아요.')):
+    s = (src / f'{f}.dc.html').read_text()
+    s = rep(s, old, old + ' 이용약관 · 개인정보처리방침 · 고객센터는 닫혀 있어도 볼 수 있어요.')
+    (out / f'{f}.dc.html').write_text(s)
+
+# ⑧ SH-012 · SH-012-PC 비밀번호 찾기: 「가입 안 된 이메일」 상태 삭제(서버는 존재 여부를 드러내지 않음) · 새 비밀번호 힌트 8자 이상
+for f in ('SH-012', 'SH-012-PC'):
+    s = (src / f'{f}.dc.html').read_text()
+    s2 = re.sub(r'<div class="st"><span class="st-tag">가입 안 된 이메일</span>.*?</div></div></div>(?=<div class="st">|\n</div>)', '', s, count=1, flags=re.S)
+    assert s2 != s and '가입 안 된' not in s2, f
+    s2 = rep(s2, '8자 이상 · 영문과 숫자를 섞어 주세요', '8자 이상')
+    s2 = rep(s2, '링크는 30분 동안 쓸 수 있어요 · 메일이 없으면 스팸함을 확인해 주세요', '가입된 이메일이면 재설정 메일이 가요 · 링크는 30분 동안 쓸 수 있어요 · 메일이 없으면 스팸함을 확인해 주세요')
+    (out / f'{f}.dc.html').write_text(s2)
 print('ok')
