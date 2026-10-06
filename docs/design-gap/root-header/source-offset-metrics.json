@@ -1,0 +1,1130 @@
+[
+  {
+    "file": "SA-002-IA.dc.html",
+    "width": 1440,
+    "before": {
+      "title": {
+        "top": 64,
+        "left": 196,
+        "width": 1244,
+        "height": 93,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "content": {
+        "top": 48,
+        "left": 196,
+        "width": 1244,
+        "height": 803,
+        "paddingTop": "16px",
+        "marginTop": "0px"
+      },
+      "lnb": {
+        "top": 48,
+        "left": 0,
+        "width": 195,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "path": null,
+      "shopHeader": null,
+      "actions": [
+        {
+          "text": "쇼핑몰 보기",
+          "href": "SH-001.dc.html"
+        },
+        {
+          "text": "방송 대시보드",
+          "href": "SA-001.dc.html"
+        }
+      ],
+      "purpose": "카드숍 별빛의 오늘 상황입니다",
+      "section": "오늘 처리할 일숫자를 누르면 해당 조건이 걸린 목록으로 이동합니다 · 10/2 (금) 21:12 집계"
+    },
+    "after": {
+      "title": {
+        "top": 48,
+        "left": 196,
+        "width": 1244,
+        "height": 93,
+        "paddingTop": "0px",
+        "marginTop": "-16px"
+      },
+      "content": {
+        "top": 48,
+        "left": 196,
+        "width": 1244,
+        "height": 787,
+        "paddingTop": "16px",
+        "marginTop": "0px"
+      },
+      "lnb": {
+        "top": 48,
+        "left": 0,
+        "width": 195,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "path": null,
+      "shopHeader": null,
+      "actions": [
+        {
+          "text": "쇼핑몰 보기",
+          "href": "SH-001.dc.html"
+        },
+        {
+          "text": "방송 대시보드",
+          "href": "SA-001.dc.html"
+        }
+      ],
+      "purpose": "카드숍 별빛의 오늘 상황입니다",
+      "section": "오늘 처리할 일숫자를 누르면 해당 조건이 걸린 목록으로 이동합니다 · 10/2 (금) 21:12 집계"
+    }
+  },
+  {
+    "file": "SA-002-IA.dc.html",
+    "width": 1024,
+    "before": {
+      "title": {
+        "top": 64,
+        "left": 196,
+        "width": 1244,
+        "height": 93,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "content": {
+        "top": 48,
+        "left": 196,
+        "width": 1244,
+        "height": 803,
+        "paddingTop": "16px",
+        "marginTop": "0px"
+      },
+      "lnb": {
+        "top": 48,
+        "left": 0,
+        "width": 195,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "path": null,
+      "shopHeader": null,
+      "actions": [
+        {
+          "text": "쇼핑몰 보기",
+          "href": "SH-001.dc.html"
+        },
+        {
+          "text": "방송 대시보드",
+          "href": "SA-001.dc.html"
+        }
+      ],
+      "purpose": "카드숍 별빛의 오늘 상황입니다",
+      "section": "오늘 처리할 일숫자를 누르면 해당 조건이 걸린 목록으로 이동합니다 · 10/2 (금) 21:12 집계"
+    },
+    "after": {
+      "title": {
+        "top": 48,
+        "left": 196,
+        "width": 1244,
+        "height": 93,
+        "paddingTop": "0px",
+        "marginTop": "-16px"
+      },
+      "content": {
+        "top": 48,
+        "left": 196,
+        "width": 1244,
+        "height": 787,
+        "paddingTop": "16px",
+        "marginTop": "0px"
+      },
+      "lnb": {
+        "top": 48,
+        "left": 0,
+        "width": 195,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "path": null,
+      "shopHeader": null,
+      "actions": [
+        {
+          "text": "쇼핑몰 보기",
+          "href": "SH-001.dc.html"
+        },
+        {
+          "text": "방송 대시보드",
+          "href": "SA-001.dc.html"
+        }
+      ],
+      "purpose": "카드숍 별빛의 오늘 상황입니다",
+      "section": "오늘 처리할 일숫자를 누르면 해당 조건이 걸린 목록으로 이동합니다 · 10/2 (금) 21:12 집계"
+    }
+  },
+  {
+    "file": "SA-002-IA.dc.html",
+    "width": 390,
+    "before": {
+      "title": {
+        "top": 64,
+        "left": 196,
+        "width": 1244,
+        "height": 93,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "content": {
+        "top": 48,
+        "left": 196,
+        "width": 1244,
+        "height": 803,
+        "paddingTop": "16px",
+        "marginTop": "0px"
+      },
+      "lnb": {
+        "top": 48,
+        "left": 0,
+        "width": 195,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "path": null,
+      "shopHeader": null,
+      "actions": [
+        {
+          "text": "쇼핑몰 보기",
+          "href": "SH-001.dc.html"
+        },
+        {
+          "text": "방송 대시보드",
+          "href": "SA-001.dc.html"
+        }
+      ],
+      "purpose": "카드숍 별빛의 오늘 상황입니다",
+      "section": "오늘 처리할 일숫자를 누르면 해당 조건이 걸린 목록으로 이동합니다 · 10/2 (금) 21:12 집계"
+    },
+    "after": {
+      "title": {
+        "top": 48,
+        "left": 196,
+        "width": 1244,
+        "height": 93,
+        "paddingTop": "0px",
+        "marginTop": "-16px"
+      },
+      "content": {
+        "top": 48,
+        "left": 196,
+        "width": 1244,
+        "height": 787,
+        "paddingTop": "16px",
+        "marginTop": "0px"
+      },
+      "lnb": {
+        "top": 48,
+        "left": 0,
+        "width": 195,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "path": null,
+      "shopHeader": null,
+      "actions": [
+        {
+          "text": "쇼핑몰 보기",
+          "href": "SH-001.dc.html"
+        },
+        {
+          "text": "방송 대시보드",
+          "href": "SA-001.dc.html"
+        }
+      ],
+      "purpose": "카드숍 별빛의 오늘 상황입니다",
+      "section": "오늘 처리할 일숫자를 누르면 해당 조건이 걸린 목록으로 이동합니다 · 10/2 (금) 21:12 집계"
+    }
+  },
+  {
+    "file": "MA-001-IA.dc.html",
+    "width": 1440,
+    "before": {
+      "title": {
+        "top": 64,
+        "left": 196,
+        "width": 1724,
+        "height": 49,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "content": {
+        "top": 48,
+        "left": 196,
+        "width": 1724,
+        "height": 2716,
+        "paddingTop": "16px",
+        "marginTop": "0px"
+      },
+      "lnb": {
+        "top": 48,
+        "left": 0,
+        "width": 195,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "path": null,
+      "shopHeader": null,
+      "actions": [
+        {
+          "text": "알림",
+          "href": "MA-002.dc.html"
+        },
+        {
+          "text": "가입 신청 검토",
+          "href": "MA-013.dc.html"
+        }
+      ],
+      "purpose": null,
+      "section": "오늘 처리할 일숫자를 누르면 해당 조건이 걸린 목록으로 이동합니다 · 10/5 (월) 15:45 집계"
+    },
+    "after": {
+      "title": {
+        "top": 48,
+        "left": 196,
+        "width": 1724,
+        "height": 49,
+        "paddingTop": "0px",
+        "marginTop": "-16px"
+      },
+      "content": {
+        "top": 48,
+        "left": 196,
+        "width": 1724,
+        "height": 2700,
+        "paddingTop": "16px",
+        "marginTop": "0px"
+      },
+      "lnb": {
+        "top": 48,
+        "left": 0,
+        "width": 195,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "path": null,
+      "shopHeader": null,
+      "actions": [
+        {
+          "text": "알림",
+          "href": "MA-002.dc.html"
+        },
+        {
+          "text": "가입 신청 검토",
+          "href": "MA-013.dc.html"
+        }
+      ],
+      "purpose": null,
+      "section": "오늘 처리할 일숫자를 누르면 해당 조건이 걸린 목록으로 이동합니다 · 10/5 (월) 15:45 집계"
+    }
+  },
+  {
+    "file": "MA-001-IA.dc.html",
+    "width": 1024,
+    "before": {
+      "title": {
+        "top": 64,
+        "left": 196,
+        "width": 1724,
+        "height": 49,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "content": {
+        "top": 48,
+        "left": 196,
+        "width": 1724,
+        "height": 2716,
+        "paddingTop": "16px",
+        "marginTop": "0px"
+      },
+      "lnb": {
+        "top": 48,
+        "left": 0,
+        "width": 195,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "path": null,
+      "shopHeader": null,
+      "actions": [
+        {
+          "text": "알림",
+          "href": "MA-002.dc.html"
+        },
+        {
+          "text": "가입 신청 검토",
+          "href": "MA-013.dc.html"
+        }
+      ],
+      "purpose": null,
+      "section": "오늘 처리할 일숫자를 누르면 해당 조건이 걸린 목록으로 이동합니다 · 10/5 (월) 15:45 집계"
+    },
+    "after": {
+      "title": {
+        "top": 48,
+        "left": 196,
+        "width": 1724,
+        "height": 49,
+        "paddingTop": "0px",
+        "marginTop": "-16px"
+      },
+      "content": {
+        "top": 48,
+        "left": 196,
+        "width": 1724,
+        "height": 2700,
+        "paddingTop": "16px",
+        "marginTop": "0px"
+      },
+      "lnb": {
+        "top": 48,
+        "left": 0,
+        "width": 195,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "path": null,
+      "shopHeader": null,
+      "actions": [
+        {
+          "text": "알림",
+          "href": "MA-002.dc.html"
+        },
+        {
+          "text": "가입 신청 검토",
+          "href": "MA-013.dc.html"
+        }
+      ],
+      "purpose": null,
+      "section": "오늘 처리할 일숫자를 누르면 해당 조건이 걸린 목록으로 이동합니다 · 10/5 (월) 15:45 집계"
+    }
+  },
+  {
+    "file": "MA-001-IA.dc.html",
+    "width": 390,
+    "before": {
+      "title": {
+        "top": 64,
+        "left": 196,
+        "width": 1724,
+        "height": 49,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "content": {
+        "top": 48,
+        "left": 196,
+        "width": 1724,
+        "height": 2716,
+        "paddingTop": "16px",
+        "marginTop": "0px"
+      },
+      "lnb": {
+        "top": 48,
+        "left": 0,
+        "width": 195,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "path": null,
+      "shopHeader": null,
+      "actions": [
+        {
+          "text": "알림",
+          "href": "MA-002.dc.html"
+        },
+        {
+          "text": "가입 신청 검토",
+          "href": "MA-013.dc.html"
+        }
+      ],
+      "purpose": null,
+      "section": "오늘 처리할 일숫자를 누르면 해당 조건이 걸린 목록으로 이동합니다 · 10/5 (월) 15:45 집계"
+    },
+    "after": {
+      "title": {
+        "top": 48,
+        "left": 196,
+        "width": 1724,
+        "height": 49,
+        "paddingTop": "0px",
+        "marginTop": "-16px"
+      },
+      "content": {
+        "top": 48,
+        "left": 196,
+        "width": 1724,
+        "height": 2700,
+        "paddingTop": "16px",
+        "marginTop": "0px"
+      },
+      "lnb": {
+        "top": 48,
+        "left": 0,
+        "width": 195,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "path": null,
+      "shopHeader": null,
+      "actions": [
+        {
+          "text": "알림",
+          "href": "MA-002.dc.html"
+        },
+        {
+          "text": "가입 신청 검토",
+          "href": "MA-013.dc.html"
+        }
+      ],
+      "purpose": null,
+      "section": "오늘 처리할 일숫자를 누르면 해당 조건이 걸린 목록으로 이동합니다 · 10/5 (월) 15:45 집계"
+    }
+  },
+  {
+    "file": "SA-018.dc.html",
+    "width": 1440,
+    "before": {
+      "title": {
+        "top": 112,
+        "left": 196,
+        "width": 1244,
+        "height": 49,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "content": {
+        "top": 48,
+        "left": 196,
+        "width": 1244,
+        "height": 1462.171875,
+        "paddingTop": "16px",
+        "marginTop": "0px"
+      },
+      "lnb": {
+        "top": 48,
+        "left": 0,
+        "width": 195,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "path": {
+        "top": 48,
+        "left": 196,
+        "width": 1244,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "-16px"
+      },
+      "shopHeader": null,
+      "actions": [],
+      "purpose": null,
+      "section": null
+    },
+    "after": {
+      "title": {
+        "top": 112,
+        "left": 196,
+        "width": 1244,
+        "height": 49,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "content": {
+        "top": 48,
+        "left": 196,
+        "width": 1244,
+        "height": 1462.171875,
+        "paddingTop": "16px",
+        "marginTop": "0px"
+      },
+      "lnb": {
+        "top": 48,
+        "left": 0,
+        "width": 195,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "path": {
+        "top": 48,
+        "left": 196,
+        "width": 1244,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "-16px"
+      },
+      "shopHeader": null,
+      "actions": [],
+      "purpose": null,
+      "section": null
+    }
+  },
+  {
+    "file": "SA-018.dc.html",
+    "width": 1024,
+    "before": {
+      "title": {
+        "top": 112,
+        "left": 196,
+        "width": 1244,
+        "height": 49,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "content": {
+        "top": 48,
+        "left": 196,
+        "width": 1244,
+        "height": 1462.171875,
+        "paddingTop": "16px",
+        "marginTop": "0px"
+      },
+      "lnb": {
+        "top": 48,
+        "left": 0,
+        "width": 195,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "path": {
+        "top": 48,
+        "left": 196,
+        "width": 1244,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "-16px"
+      },
+      "shopHeader": null,
+      "actions": [],
+      "purpose": null,
+      "section": null
+    },
+    "after": {
+      "title": {
+        "top": 112,
+        "left": 196,
+        "width": 1244,
+        "height": 49,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "content": {
+        "top": 48,
+        "left": 196,
+        "width": 1244,
+        "height": 1462.171875,
+        "paddingTop": "16px",
+        "marginTop": "0px"
+      },
+      "lnb": {
+        "top": 48,
+        "left": 0,
+        "width": 195,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "path": {
+        "top": 48,
+        "left": 196,
+        "width": 1244,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "-16px"
+      },
+      "shopHeader": null,
+      "actions": [],
+      "purpose": null,
+      "section": null
+    }
+  },
+  {
+    "file": "SA-018.dc.html",
+    "width": 390,
+    "before": {
+      "title": {
+        "top": 112,
+        "left": 196,
+        "width": 1244,
+        "height": 49,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "content": {
+        "top": 48,
+        "left": 196,
+        "width": 1244,
+        "height": 1462.171875,
+        "paddingTop": "16px",
+        "marginTop": "0px"
+      },
+      "lnb": {
+        "top": 48,
+        "left": 0,
+        "width": 195,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "path": {
+        "top": 48,
+        "left": 196,
+        "width": 1244,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "-16px"
+      },
+      "shopHeader": null,
+      "actions": [],
+      "purpose": null,
+      "section": null
+    },
+    "after": {
+      "title": {
+        "top": 112,
+        "left": 196,
+        "width": 1244,
+        "height": 49,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "content": {
+        "top": 48,
+        "left": 196,
+        "width": 1244,
+        "height": 1462.171875,
+        "paddingTop": "16px",
+        "marginTop": "0px"
+      },
+      "lnb": {
+        "top": 48,
+        "left": 0,
+        "width": 195,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "path": {
+        "top": 48,
+        "left": 196,
+        "width": 1244,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "-16px"
+      },
+      "shopHeader": null,
+      "actions": [],
+      "purpose": null,
+      "section": null
+    }
+  },
+  {
+    "file": "MA-011.dc.html",
+    "width": 1440,
+    "before": {
+      "title": {
+        "top": 112,
+        "left": 196,
+        "width": 1724,
+        "height": 49,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "content": {
+        "top": 48,
+        "left": 196,
+        "width": 1724,
+        "height": 1552,
+        "paddingTop": "16px",
+        "marginTop": "0px"
+      },
+      "lnb": {
+        "top": 48,
+        "left": 0,
+        "width": 195,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "path": {
+        "top": 48,
+        "left": 196,
+        "width": 1724,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "-16px"
+      },
+      "shopHeader": null,
+      "actions": [
+        {
+          "text": "가입 신청 3",
+          "href": "MA-013.dc.html"
+        }
+      ],
+      "purpose": null,
+      "section": null
+    },
+    "after": {
+      "title": {
+        "top": 112,
+        "left": 196,
+        "width": 1724,
+        "height": 49,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "content": {
+        "top": 48,
+        "left": 196,
+        "width": 1724,
+        "height": 1552,
+        "paddingTop": "16px",
+        "marginTop": "0px"
+      },
+      "lnb": {
+        "top": 48,
+        "left": 0,
+        "width": 195,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "path": {
+        "top": 48,
+        "left": 196,
+        "width": 1724,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "-16px"
+      },
+      "shopHeader": null,
+      "actions": [
+        {
+          "text": "가입 신청 3",
+          "href": "MA-013.dc.html"
+        }
+      ],
+      "purpose": null,
+      "section": null
+    }
+  },
+  {
+    "file": "MA-011.dc.html",
+    "width": 1024,
+    "before": {
+      "title": {
+        "top": 112,
+        "left": 196,
+        "width": 1724,
+        "height": 49,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "content": {
+        "top": 48,
+        "left": 196,
+        "width": 1724,
+        "height": 1552,
+        "paddingTop": "16px",
+        "marginTop": "0px"
+      },
+      "lnb": {
+        "top": 48,
+        "left": 0,
+        "width": 195,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "path": {
+        "top": 48,
+        "left": 196,
+        "width": 1724,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "-16px"
+      },
+      "shopHeader": null,
+      "actions": [
+        {
+          "text": "가입 신청 3",
+          "href": "MA-013.dc.html"
+        }
+      ],
+      "purpose": null,
+      "section": null
+    },
+    "after": {
+      "title": {
+        "top": 112,
+        "left": 196,
+        "width": 1724,
+        "height": 49,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "content": {
+        "top": 48,
+        "left": 196,
+        "width": 1724,
+        "height": 1552,
+        "paddingTop": "16px",
+        "marginTop": "0px"
+      },
+      "lnb": {
+        "top": 48,
+        "left": 0,
+        "width": 195,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "path": {
+        "top": 48,
+        "left": 196,
+        "width": 1724,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "-16px"
+      },
+      "shopHeader": null,
+      "actions": [
+        {
+          "text": "가입 신청 3",
+          "href": "MA-013.dc.html"
+        }
+      ],
+      "purpose": null,
+      "section": null
+    }
+  },
+  {
+    "file": "MA-011.dc.html",
+    "width": 390,
+    "before": {
+      "title": {
+        "top": 112,
+        "left": 196,
+        "width": 1724,
+        "height": 49,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "content": {
+        "top": 48,
+        "left": 196,
+        "width": 1724,
+        "height": 1552,
+        "paddingTop": "16px",
+        "marginTop": "0px"
+      },
+      "lnb": {
+        "top": 48,
+        "left": 0,
+        "width": 195,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "path": {
+        "top": 48,
+        "left": 196,
+        "width": 1724,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "-16px"
+      },
+      "shopHeader": null,
+      "actions": [
+        {
+          "text": "가입 신청 3",
+          "href": "MA-013.dc.html"
+        }
+      ],
+      "purpose": null,
+      "section": null
+    },
+    "after": {
+      "title": {
+        "top": 112,
+        "left": 196,
+        "width": 1724,
+        "height": 49,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "content": {
+        "top": 48,
+        "left": 196,
+        "width": 1724,
+        "height": 1552,
+        "paddingTop": "16px",
+        "marginTop": "0px"
+      },
+      "lnb": {
+        "top": 48,
+        "left": 0,
+        "width": 195,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "path": {
+        "top": 48,
+        "left": 196,
+        "width": 1724,
+        "height": 48,
+        "paddingTop": "0px",
+        "marginTop": "-16px"
+      },
+      "shopHeader": null,
+      "actions": [
+        {
+          "text": "가입 신청 3",
+          "href": "MA-013.dc.html"
+        }
+      ],
+      "purpose": null,
+      "section": null
+    }
+  },
+  {
+    "file": "SH-001-IA.dc.html",
+    "width": 1440,
+    "before": {
+      "title": null,
+      "content": null,
+      "lnb": null,
+      "path": null,
+      "shopHeader": {
+        "top": 57,
+        "left": 25,
+        "width": 390,
+        "height": 52,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "actions": [],
+      "purpose": null,
+      "section": null
+    },
+    "after": {
+      "title": null,
+      "content": null,
+      "lnb": null,
+      "path": null,
+      "shopHeader": {
+        "top": 57,
+        "left": 25,
+        "width": 390,
+        "height": 52,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "actions": [],
+      "purpose": null,
+      "section": null
+    }
+  },
+  {
+    "file": "SH-001-IA.dc.html",
+    "width": 1024,
+    "before": {
+      "title": null,
+      "content": null,
+      "lnb": null,
+      "path": null,
+      "shopHeader": {
+        "top": 57,
+        "left": 25,
+        "width": 390,
+        "height": 52,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "actions": [],
+      "purpose": null,
+      "section": null
+    },
+    "after": {
+      "title": null,
+      "content": null,
+      "lnb": null,
+      "path": null,
+      "shopHeader": {
+        "top": 57,
+        "left": 25,
+        "width": 390,
+        "height": 52,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "actions": [],
+      "purpose": null,
+      "section": null
+    }
+  },
+  {
+    "file": "SH-001-IA.dc.html",
+    "width": 390,
+    "before": {
+      "title": null,
+      "content": null,
+      "lnb": null,
+      "path": null,
+      "shopHeader": {
+        "top": 57,
+        "left": 25,
+        "width": 390,
+        "height": 52,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "actions": [],
+      "purpose": null,
+      "section": null
+    },
+    "after": {
+      "title": null,
+      "content": null,
+      "lnb": null,
+      "path": null,
+      "shopHeader": {
+        "top": 57,
+        "left": 25,
+        "width": 390,
+        "height": 52,
+        "paddingTop": "0px",
+        "marginTop": "0px"
+      },
+      "actions": [],
+      "purpose": null,
+      "section": null
+    }
+  }
+]

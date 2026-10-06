@@ -93,7 +93,7 @@ export default function SubscriptionsPage() {
     <>
       <AdminTopbar crumb="구독·요금 › 구독 현황" />
       <main className="main">
-        <PageHead title="구독 현황" />
+        <PageHead title="구독 현황" description="파트너스별 구독 상태와 다음 결제 일정을 확인합니다." />
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
           {(["trial", "paid", "grace", "expired"] as Access[]).map((a) => (
             <div key={a} className="card pad col" style={{ gap: 4 }}>
@@ -104,22 +104,21 @@ export default function SubscriptionsPage() {
             </div>
           ))}
         </div>
-        <nav className="tabs" aria-label="이용 상태">
-          <button type="button" className={`tab${applied.access === "" ? " on" : ""}`} aria-pressed={applied.access === ""} onClick={() => setApplied({ ...applied, access: "" })}>
-            전체{counts ? ` ${TABS.reduce((n, a) => n + counts[a], 0).toLocaleString("ko-KR")}` : ""}
-          </button>
-          {TABS.map((a) => (
-            <button key={a} type="button" className={`tab${applied.access === a ? " on" : ""}`} aria-pressed={applied.access === a} onClick={() => setApplied({ ...applied, access: a })}>
-              {ACCESS[a].label}
-              {counts ? ` ${counts[a].toLocaleString("ko-KR")}` : ""}
+        <div style={{ maxWidth: "100%", overflowX: "auto" }}>
+          <nav className="tabs" aria-label="이용 상태" style={{ minWidth: "max-content" }}>
+            <button type="button" className={`tab${applied.access === "" ? " on" : ""}`} aria-pressed={applied.access === ""} onClick={() => setApplied({ ...applied, access: "" })}>
+              전체{counts ? ` ${TABS.reduce((n, a) => n + counts[a], 0).toLocaleString("ko-KR")}` : ""}
             </button>
-          ))}
-        </nav>
+            {TABS.map((a) => (
+              <button key={a} type="button" className={`tab${applied.access === a ? " on" : ""}`} aria-pressed={applied.access === a} onClick={() => setApplied({ ...applied, access: a })}>
+                {ACCESS[a].label}
+                {counts ? ` ${counts[a].toLocaleString("ko-KR")}` : ""}
+              </button>
+            ))}
+          </nav>
+        </div>
         <SearchBox onSearch={() => setApplied({ ...applied, q: draft.q.trim(), plan: draft.plan })} onReset={reset} busy={state.kind === "loading"}>
-          <SearchRow label="검색어">
-            <input className="inp" type="search" aria-label="쇼핑몰 이름 · 주소" placeholder="쇼핑몰 이름 · 주소" maxLength={MAX_SEARCH_LENGTH} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
-          </SearchRow>
-          <SearchRow label="요금제">
+          <SearchRow label="검색어" label2="요금제" children2={
             <select className="inp" aria-label="요금제" value={draft.plan} onChange={(e) => setDraft({ ...draft, plan: e.target.value })}>
               <option value="">전체</option>
               {PLAN_FILTER.map((p) => (
@@ -128,6 +127,8 @@ export default function SubscriptionsPage() {
                 </option>
               ))}
             </select>
+          }>
+            <input className="inp" type="search" aria-label="쇼핑몰 이름 · 주소" placeholder="쇼핑몰 이름 · 주소" maxLength={MAX_SEARCH_LENGTH} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
           </SearchRow>
         </SearchBox>
 
