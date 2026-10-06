@@ -32,13 +32,16 @@ test("SA-048 리뷰 표와 행 정보가 1440·1024·390 화면에서 보인다"
     const row = page.getByTestId("review-row").first();
     await expect(row).toBeVisible();
     await expect(row.locator("td")).toHaveCount(6);
-    for (const cell of [".rv-product", ".rv-author", ".rv-rating", ".rv-content", ".rv-status", ".rv-actions"]) {
+    for (const cell of [".rv-select", ".rv-item", ".rv-rating", ".rv-content", ".rv-status", ".rv-actions"]) {
       await expect(row.locator(cell)).toBeVisible();
     }
+    await expect(row.locator(".rv-select input")).toBeDisabled();
     if (width !== 390) {
-      await expect(table.getByRole("columnheader")).toHaveText(["상품", "작성자", "별점", "내용", "상태", "관리"]);
+      await expect(table.getByRole("columnheader")).toHaveText(["", "상품 · 작성자", "별점", "내용 · 작성일", "상태", "관리"]);
     } else {
-      await expect(row.getByRole("button", { name: /답글 및 숨기기 관리/ })).toBeVisible();
+      await expect(row.locator(".rv-actions button")).toHaveCount(2);
+      await expect(row.getByRole("button", { name: /리뷰 답글 관리/ })).toBeVisible();
+      await expect(row.getByRole("button", { name: /리뷰 숨기기/ })).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
     }
     await page.screenshot({ path: `tests/e2e/screenshots/sa048-table-${width}.png`, fullPage: true });

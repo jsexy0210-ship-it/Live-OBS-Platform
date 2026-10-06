@@ -216,10 +216,10 @@ export default function ReviewsPage() {
                   <table className="rv-table">
                     <thead>
                       <tr>
-                        <th scope="col">상품</th>
-                        <th scope="col">작성자</th>
+                        <th scope="col" className="rv-select"><input type="checkbox" disabled aria-label="선택 및 일괄 처리 미지원" /></th>
+                        <th scope="col">상품 · 작성자</th>
                         <th scope="col">별점</th>
-                        <th scope="col">내용</th>
+                        <th scope="col">내용 · 작성일</th>
                         <th scope="col">상태</th>
                         <th scope="col">관리</th>
                       </tr>
@@ -235,10 +235,10 @@ export default function ReviewsPage() {
                             if (e.currentTarget === e.target && e.key === "Enter") setOpenId(r.id);
                           }}
                         >
-                          <td className="rv-product"><span className="t-l2 fw6 ell">{r.productName}</span></td>
-                          <td className="rv-author">
-                            <span className="t-l2">{r.author}</span>
-                            {r.grade && <span className="t-c1 c-alt">{r.grade}</span>}
+                          <td className="rv-select"><input type="checkbox" disabled aria-label="선택 및 일괄 처리 미지원" /></td>
+                          <td className="rv-item">
+                            <span className="t-l2 fw6 ell">{r.productName}</span>
+                            <span className="t-c1 c-alt">{r.author}{r.grade ? ` (${r.grade})` : ""}</span>
                           </td>
                           <td className="rv-rating"><span className="rv-star" aria-label={`${r.rating}점`}>{stars(r.rating)}</span></td>
                           <td className="rv-content">
@@ -252,8 +252,11 @@ export default function ReviewsPage() {
                           </td>
                           <td className="rv-status"><span className={`bdg ${STATUS[r.status].cls}`}>{STATUS[r.status].label}</span></td>
                           <td className="rv-actions">
-                            <button className="btn btn-out" type="button" onClick={() => setOpenId(r.id)} aria-label={`${r.productName} 리뷰 답글 및 숨기기 관리`}>
-                              답글 · 숨기기
+                            <button className="btn btn-out" type="button" onClick={() => setOpenId(r.id)} aria-label={`${r.productName} 리뷰 답글 관리`}>
+                              {r.replied ? "답글 보기" : "답글"}
+                            </button>
+                            <button className="btn btn-out" type="button" onClick={() => setOpenId(r.id)} aria-label={`${r.productName} 리뷰 숨기기`}>
+                              숨기기
                             </button>
                           </td>
                         </tr>
