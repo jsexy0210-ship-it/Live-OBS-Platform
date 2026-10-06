@@ -124,9 +124,9 @@ describe("진열 설정", () => {
     }
     expect(await setSections(db, s.ctx, { sections: [] })).toMatchObject({ ok: true, value: { sections: [{ kind: "RECOMMENDED" }, { kind: "NEW" }] } }); // 비우면 기본
     expect(await setListSort(db, s.ctx, { listSort: "name" })).toEqual({ ok: false, reason: "invalid_display_settings" });
-    await expect(setRecommended(db, { ...s.ctx, readOnly: true }, { productIds: [] })).rejects.toMatchObject({ status: 403 });
-    await expect(setSections(db, { ...s.ctx, readOnly: true }, { sections: [] })).rejects.toMatchObject({ status: 403 });
-    expect(await getDisplay(db, { ...s.ctx, readOnly: true })).toMatchObject({ listSort: "new" });
+    await expect(setRecommended(db, { ...s.ctx, readOnly: true, impersonationScopes: ["ORDERS", "MEMBERS"] }, { productIds: [] })).rejects.toMatchObject({ status: 403 });
+    await expect(setSections(db, { ...s.ctx, readOnly: true, impersonationScopes: ["ORDERS", "MEMBERS"] }, { sections: [] })).rejects.toMatchObject({ status: 403 });
+    expect(await getDisplay(db, { ...s.ctx, readOnly: true, impersonationScopes: ["ORDERS", "MEMBERS"] })).toMatchObject({ listSort: "new" });
     expect(await getDisplay(db, other.ctx)).toMatchObject({ recommended: [] });
   });
 });

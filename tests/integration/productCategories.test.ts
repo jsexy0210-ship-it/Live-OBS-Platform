@@ -176,7 +176,7 @@ describe("상품에 카테고리 지정", () => {
     expect(await db.auditLog.count({ where: { action: "product.categories", sellerId: s.seller.id } })).toBe(4);
 
     // 조회 전용(마스터 대리 조회)은 읽기만
-    const ro = { ...s.ctx, readOnly: true };
+    const ro = { ...s.ctx, readOnly: true, impersonationScopes: ["ORDERS", "MEMBERS"] as const };
     expect(await productCategoryIds(db, ro, p1.id)).toEqual([poke.id]);
     await expect(setProductCategories(db, ro, p1.id, { categoryIds: [] })).rejects.toMatchObject({ status: 403 });
     await expect(createCategory(db, ro, { name: "x" })).rejects.toMatchObject({ status: 403 });

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import ProductDetail from "../../../../../../components/shop/ProductDetail";
-import ShopState from "../../../../../../components/shop/ShopState";
+import ShopLocked from "../../../../../../components/shop/ShopLocked";
 import { COOKIE_NAMES } from "../../../../../../lib/server/auth/policy";
 import { resolveBuyerSession } from "../../../../../../lib/server/auth/session";
 import { shopOpen } from "../../../../../../lib/server/buyers/signup";
@@ -27,7 +27,7 @@ export default async function ShopProductPage({ params }: Props) {
   const { slug, productId } = await params;
   const shop = await findActiveShop(slug);
   if (!shop) notFound();
-  if (!(await shopOpen(prisma, shop.id))) return <ShopState title="지금은 쇼핑몰을 이용할 수 없어요" body="쇼핑몰이 다시 문을 열면 이용할 수 있어요." />;
+  if (!(await shopOpen(prisma, shop.id))) return <ShopLocked slug={shop.slug} />;
   const token = (await cookies()).get(COOKIE_NAMES.buyer)?.value;
   const session = await resolveBuyerSession(prisma, token, shop.id);
   const product = await shopProductDetail(prisma, shop.slug, productId, session?.member.gradeId);

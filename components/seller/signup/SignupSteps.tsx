@@ -9,7 +9,7 @@ import { usePostcode } from "../../../lib/client/usePostcode";
 import IdentityCheck, { IdentityDone } from "../IdentityCheck";
 import { api, failMessage } from "../api";
 import { RETRY_TEXT_PUBLIC, stepOutcome } from "../stepFailure";
-import { INDUSTRIES, MIN_PASSWORD_LENGTH, NO_AGREE, SIGNUP_PATHS, bizText, checkAccount, checkBusiness, digits, phoneDigits, useSignup, useStepGuard, type Done, type Field } from "./SignupFlow";
+import { INDUSTRIES, MIN_PASSWORD_LENGTH, NO_AGREE, SIGNUP_PATHS, bizText, checkAccount, checkBusiness, digits, phoneDigits, useSignup, StepCard, useStepGuard, type Done, type Field } from "./SignupFlow";
 
 // PF-007 단계 화면 본문(틀과 입력값은 SignupFlow). API: POST /api/seller-signup/verification(·/resend·/confirm) → POST /api/seller-signup/apply.
 // 필수 동의는 본인확인 시작 요청에 함께 보낸다(문자 비용을 쓰기 전에 서버가 확인). 서버가 terms_required(400)·consent_outdated(409)로
@@ -72,10 +72,8 @@ export function TermsStep() {
     </label>
   );
   return (
-    <>
-    <h2 className="t-t3 pf-terms-h" id="su-terms-h">약관 동의</h2>
-    <div className="card col pf-terms-card">
-      <fieldset className="col pa-fs pa-terms" aria-labelledby="su-terms-h" aria-describedby={consentError ? "su-terms-err" : undefined}>
+    <StepCard title="약관 동의">
+      <fieldset className="col pa-fs pa-terms" aria-describedby={consentError ? "su-terms-err" : undefined}>
         <label className="chk pa-terms-all t-hl2">
           <input
             id="su-terms-all"
@@ -109,8 +107,7 @@ export function TermsStep() {
           다음
         </button>
       </div>
-    </div>
-    </>
+    </StepCard>
   );
 }
 
@@ -142,7 +139,7 @@ export function VerifyStep() {
   };
 
   return (
-    <div className="col pa-sec">
+    <StepCard title="대표자 휴대폰 본인확인">
       {verification ? (
         <IdentityDone tone="public" who={verification.who} onAgain={() => { setVerification(null); setLicense(null); setAgain((k) => k + 1); }} />
       ) : (
@@ -171,7 +168,7 @@ export function VerifyStep() {
           다음
         </button>
       </div>
-    </div>
+    </StepCard>
   );
 }
 
@@ -369,9 +366,8 @@ export function AccountStep() {
       <span className="help">영문 소문자 · 숫자 · 하이픈(-)으로 3~30자 · 구매자가 쇼핑몰 주소창에 쓰는 이름이에요</span>
     );
   return (
-    <form className="col pa-sec" aria-label="가입 정보" onSubmit={submit} noValidate>
+    <><h2 className="t-t3 pf-su-h2">가입 정보</h2><form className="card col pf-su-card" aria-label="가입 정보" onSubmit={submit} noValidate>
       <fieldset className="col pa-fs" disabled={busy}>
-        <h2 className="t-hl2">가입 정보</h2>
         <div className="pa-two">
           <div className="fld">
             <label htmlFor="su-email" className="req">
@@ -461,7 +457,7 @@ export function AccountStep() {
           </button>
         </div>
       </fieldset>
-    </form>
+    </form></>
   );
 }
 
@@ -495,7 +491,7 @@ export function BusinessStep() {
   // 방송 화면만 쓰기: 이 단계가 없다. 3단계에서 바로 신청한다
   if (overlay) {
     return (
-      <div className="col pa-sec">
+      <StepCard title="사업자 정보">
         <div className="msg msg-info" style={{ display: "block" }}>
           <b>오버레이 전용은 사업자 정보가 필요 없어요.</b> 3단계에서 바로 신청하고, 사업자 · 정산 정보는 쇼핑몰 통합으로 바꿀 때 받아요.
         </div>
@@ -511,7 +507,7 @@ export function BusinessStep() {
             {busy ? "신청하고 있어요" : "신청하기"}
           </button>
         </div>
-      </div>
+      </StepCard>
     );
   }
 
@@ -583,9 +579,8 @@ export function BusinessStep() {
     : null;
 
   return (
-    <form className="col pa-sec" aria-label="사업자 정보" onSubmit={(ev) => { ev.preventDefault(); void apply(); }} noValidate>
+    <><h2 className="t-t3 pf-su-h2">사업자 정보</h2><form className="card col pf-su-card" aria-label="사업자 정보" onSubmit={(ev) => { ev.preventDefault(); void apply(); }} noValidate>
       <fieldset className="col pa-fs" disabled={busy}>
-        <h2 className="t-hl2">사업자 정보</h2>
         <span className="help">사업자등록증을 보고 적어 주세요 · 적은 정보는 국세청 · 통신판매업 신고 내역과 자동으로 맞춰 봐요</span>
         <div className="pa-two">
           <div className="fld">
@@ -764,7 +759,7 @@ export function BusinessStep() {
           </button>
         </div>
       </fieldset>
-    </form>
+    </form></>
   );
 }
 
@@ -778,19 +773,19 @@ export function DoneStep() {
   if (!ok || !done) return <Wait />;
   if (done.approved) {
     return (
-      <div className="col pa-result" style={{ gap: 10, padding: 18, borderRadius: 12, background: "var(--wds-background-status-positive)", textAlign: "center", alignItems: "center" }}>
-        <h2 className="t-t3" id="pa-done-title" tabIndex={-1}>
+      <StepCard title="신청 완료" center>
+        <h2 className="t-t2 pa-result" id="pa-done-title" tabIndex={-1}>
           가입을 마쳤어요
         </h2>
         <span className="t-b1 c-neu">바로 로그인해서 쇼핑몰을 준비할 수 있어요.</span>
         <Link className="btn btn-lg" href="/seller/login">
           로그인하기
         </Link>
-      </div>
+      </StepCard>
     );
   }
   return (
-    <div className="col pa-result" style={{ alignItems: "center", textAlign: "center", gap: 18 }}>
+    <StepCard title="신청 완료 · 승인 대기" center>
       <div className="st-ic pa-result-ic" data-approved={false} aria-hidden>
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
           <path d="M5 12l5 5L20 7" />
@@ -839,6 +834,6 @@ export function DoneStep() {
           기능 미리 보기
         </Link>
       </div>
-    </div>
+    </StepCard>
   );
 }
