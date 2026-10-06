@@ -20,15 +20,21 @@ test("오버레이 전용 대표자: /seller가 오버레이 홈으로 열리고
   await login(page, "demo-overlay-owner@example.com");
   await page.goto("/seller");
   await expect(page).toHaveURL(/\/seller\/home-overlay$/);
-  await expect(page.getByRole("heading", { name: "홈" })).toBeVisible();
-  await expect(page.getByTestId("oh-todo")).toContainText("주문대기");
-  await expect(page.getByTestId("oh-perf")).toContainText("매출");
-  await expect(page.getByTestId("oh-broadcast").getByRole("link", { name: "방송 대시보드" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "홈 · 오버레이 전용", level: 1 })).toBeVisible();
+  // 머리 오른쪽 버튼 · 상태 3칸 · 지금 방송 · 스토어 안내(보드 SA-002-O)
+  await expect(page.getByRole("link", { name: "방송 대시보드" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "방송 화면 꾸미기" }).first()).toBeVisible();
+  const tiles = page.getByTestId("oh-tiles");
+  await expect(tiles.getByText("외부 쇼핑몰", { exact: true })).toBeVisible();
+  await expect(tiles.getByText("오늘 들어온 주문", { exact: true })).toBeVisible();
+  await expect(tiles.getByText("방송 화면", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("oh-live")).toContainText("지금 방송");
   // 스토어 업무(입금·배송·재고)는 없고 통합 구독 안내가 있다
   await expect(page.getByText("입금 확인")).toHaveCount(0);
   const up = page.getByTestId("oh-upgrade");
+  await expect(up).toContainText("스토어 메뉴는 쇼핑몰 통합에서 열립니다");
   await expect(up).toContainText("통합 구독");
-  await up.getByRole("link", { name: "이용권 보기" }).click();
+  await up.getByRole("link", { name: "쇼핑몰 통합으로 바꾸기" }).click();
   await expect(page).toHaveURL(/\/seller\/subscription/);
   if (SHOTS) {
     await page.goto("/seller/home-overlay");
