@@ -40,7 +40,7 @@ test("요금 안내는 서버 요금제 값을 보여 주거나 불러오지 못
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
     await expect(page.locator(".pf-foot-links a").first()).toHaveCSS("text-decoration-line", "underline");
     await expect(page.locator("html")).toHaveJSProperty("scrollWidth", width);
-    await page.screenshot({ path: `test-results/pf003-pricing-${width}.png`, fullPage: true });
+    await page.screenshot({ path: `tests/e2e/screenshots/pf003-pricing-${width}.png`, fullPage: true });
   }
 });
 
