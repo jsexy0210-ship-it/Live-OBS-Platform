@@ -6,7 +6,6 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { ConfirmProvider } from "../../admin-ui";
 import { kstToday } from "../IdentityCheck";
 import { IdentityUnavailable } from "../PartnersAuth";
-import { PublicFrame } from "../../public/PublicFrame";
 
 // PF-007 파트너스 가입 신청 단계 화면(1 약관 동의 · 2 본인확인 · 3 가입 정보 · 4 사업자 정보 · 5 신청 완료).
 // 단계마다 주소가 있고(/seller/signup · /verify · /account · /business · /done), 이 틀(layout)이 단계 사이에서 입력값을 들고 있다.
@@ -244,6 +243,16 @@ export function useStepGuard(step: number): boolean {
   return hydrated && !blocked;
 }
 
+// 단계 화면 본문 틀(정본 PF-007): 카드 밖 제목(h2) + 카드. 완료 화면은 가운데 정렬 카드(center)
+export function StepCard({ title, center = false, children }: { title: string; center?: boolean; children: React.ReactNode }) {
+  return (
+    <>
+      <h2 className="t-t3 pf-su-h2">{title}</h2>
+      <div className={`card col pf-su-card${center ? " pf-su-center" : ""}`}>{children}</div>
+    </>
+  );
+}
+
 function SignupFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { notice, unavailable, done, f } = useSignup();
@@ -254,45 +263,55 @@ function SignupFrame({ children }: { children: React.ReactNode }) {
     if (notice) noticeRef.current?.focus();
   }, [notice]);
   return (
-    <PublicFrame>
-      {/* 정본 PF-007: 공개 머리 아래 가운데 640 본문(카드 없음) */}
-      <section className="pf-signup">
-      <h1 className="t-t1">파트너스 가입 신청</h1>
-      {unavailable ? (
-        <IdentityUnavailable action="가입을 신청할" tone="public" />
-      ) : (
-        <>
-          <div className="pf-steps-row">
-            <span className="t-l2 fw7 c-pri num" data-testid="signup-step-count">
-              {step + 1} / {SIGNUP_STEPS.length}
-            </span>
-            <ol className="pa-steps" aria-label="진행 단계">
-              {SIGNUP_STEPS.map((s, i) => (
-                <li key={s} className={i <= step || (done && i < 4) ? "on" : ""} aria-current={i === step ? "step" : undefined}>
-                  <span className="pa-step-n">{i + 1}</span>
-                  <span className={`pf-step-l ${i === step ? "t-l1 fw7" : "t-l1 c-alt"}`}>{s}</span>
-                  {i === 3 && skipBusiness && step >= 2 && <span className="bdg b-gray">건너뜀</span>}
-                  {i < SIGNUP_STEPS.length - 1 && <span className="arw" style={{ width: 16 }} aria-hidden="true" />}
-                </li>
-              ))}
-            </ol>
-          </div>
-          {notice && (
-            <div id="pa-notice" ref={noticeRef} tabIndex={-1} className="msg msg-neg" role="alert" style={{ display: "block" }}>
-              <span>{notice.text}</span>
-              {notice.login && (
-                <span className="row" style={{ gap: 6, marginTop: 8 }}>
-                  <Link className="btn btn-sm" href="/seller/login">
-                    로그인하기
-                  </Link>
-                </span>
-              )}
+    <section className="pf-su">
+      <div className={`col pf-su-in${step === 0 || step === 4 ? " narrow" : ""}`}>
+        <h1 className="t-t1 pf-su-h1">파트너스 가입 신청</h1>
+        {unavailable ? (
+          <IdentityUnavailable action="가입을 신청할" tone="public" />
+        ) : (
+          <>
+            <div className="pf-su-steps">
+              <span className="t-l2 fw7 c-pri num" data-testid="signup-step-count">
+                {step + 1} / {SIGNUP_STEPS.length}
+              </span>
+              <ol aria-label="진행 단계">
+                {SIGNUP_STEPS.map((s, i) => {
+                  const passed = i < step || (done && i < 4);
+                  return (
+                    <li key={s} className={i === step ? "cur" : passed ? "on" : ""} aria-current={i === step ? "step" : undefined}>
+                      <span className="pf-su-n" data-on={i <= step || passed ? "true" : "false"}>
+                        {passed && i !== step ? (
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M5 12l5 5L20 7" />
+                          </svg>
+                        ) : (
+                          i + 1
+                        )}
+                      </span>
+                      <span className={`t-l1 pf-su-lbl ${i === step ? "fw7" : "c-alt"}`}>{s}</span>
+                      {i === 3 && skipBusiness && step >= 2 && <span className="bdg b-gray pf-su-lbl">건너뜀</span>}
+                      {i < SIGNUP_STEPS.length - 1 && <span className="arw" style={{ width: 16 }} />}
+                    </li>
+                  );
+                })}
+              </ol>
             </div>
-          )}
-          {children}
-        </>
-      )}
-      </section>
-    </PublicFrame>
+            {notice && (
+              <div id="pa-notice" ref={noticeRef} tabIndex={-1} className="msg msg-neg" role="alert" style={{ display: "block", marginBottom: 8 }}>
+                <span>{notice.text}</span>
+                {notice.login && (
+                  <span className="row" style={{ gap: 6, marginTop: 8 }}>
+                    <Link className="btn btn-sm" href="/seller/login">
+                      로그인하기
+                    </Link>
+                  </span>
+                )}
+              </div>
+            )}
+            {children}
+          </>
+        )}
+      </div>
+    </section>
   );
 }
