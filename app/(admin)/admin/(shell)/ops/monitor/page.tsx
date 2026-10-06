@@ -9,7 +9,7 @@ import { dayTime } from "../../../_components/partners";
 
 // MA-100 실시간 감시(GET /api/admin/ops/monitor, 모든 마스터 역할이 API를 볼 수 있으나 메뉴·화면은 최고관리자만 — 셸이 막는다). 10초마다 다시 읽는다.
 // 「감시 끊김」: 읽지 못하면 마지막으로 읽은 내용과 시각을 그대로 두고 알린다. 웹훅은 서버가 재지 않아(not_measured) 「측정 안 함」으로 보인다.
-// 보드에 있고 서버에 없는 것(웹훅·결제 검증 지연, 오늘 비용, 자동 조치 결과, 자동 연결 결제 막기)은 넣지 않는다.
+// 정본(design/project/MA-100.dc.html FINAL)에 있고 서버에 없는 것(웹훅 지연 값, 결제 검증 지연 초, 오늘 비용, 장애별 자동 조치·처리 상태, 자동 해결 숨기기, 자동 조치 결과, 안전 규칙 문구, 자동 연결 결제 잠시 막기)은 넣지 않는다(MASTER 판단 대기).
 const SEVERITY: Record<string, { label: string; cls: string }> = {
   critical: { label: "긴급", cls: "b-fail" },
   warning: { label: "주의", cls: "b-warn" },
@@ -34,19 +34,16 @@ export default function OpsMonitorPage() {
         <PageHead
           title="실시간 감시"
           actions={
-            <button className="btn btn-out" type="button" onClick={() => void reload()}>
+            <button className="btn" type="button" onClick={() => void reload()}>
               지금 갱신
             </button>
           }
         />
         <div className="col" style={{ gap: 20 }}>
-          <div className="card pad row" style={{ justifyContent: "space-between", gap: 12, flexWrap: "wrap" }} role="status" data-testid="monitor-status">
-            <span className="row" style={{ gap: 8 }}>
-              <span className={`bdg ${failed ? "b-fail" : "b-done"}`}>{failed ? "감시 끊김" : "감시 중"}</span>
-              <span className="t-l2 c-alt">
-                마지막 갱신 {clock(lastOk)}
-                {failed ? " · 감시 데이터를 읽지 못했습니다. 화면의 숫자는 마지막으로 읽은 값입니다. 10초마다 다시 시도합니다." : " · 10초마다"}
-              </span>
+          <div className="row" style={{ justifyContent: "space-between", gap: 12, flexWrap: "wrap" }} role="status" data-testid="monitor-status">
+            <span className="t-c1 c-alt">
+              {failed ? <span className="bdg b-fail">감시 끊김</span> : <span className="sr-only">감시 중</span>} 마지막 갱신 {clock(lastOk)}
+              {failed ? " · 감시 데이터를 읽지 못했습니다. 화면의 숫자는 마지막으로 읽은 값입니다. 10초마다 다시 시도합니다." : " · 10초마다"}
             </span>
             {critical > 0 && <span className="bdg b-fail">긴급 {critical}</span>}
           </div>
@@ -64,15 +61,15 @@ export default function OpsMonitorPage() {
 
           {data && (
             <>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+              <div className="card" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", overflow: "hidden" }}>
                 {[
                   ["서비스 서버", `${data.servers.healthy}/${data.servers.total} 정상`, "monitor-servers", data.servers.stale + data.servers.noSignal > 0 ? `멈춘 서버 ${data.servers.stale} · 응답 없는 서버 ${data.servers.noSignal}` : ""],
-                  ["자동으로 도는 작업", `${(data.jobs.length - jobsBad)}/${data.jobs.length} 정상`, "monitor-jobs", ""],
+                  ["자동으로 도는 작업", `${data.jobs.length - jobsBad}/${data.jobs.length} 정상`, "monitor-jobs", ""],
                   ["자동 연결 대기", `${data.queue.automationQueued}건`, "monitor-queue", data.queue.oldestQueuedAt ? `가장 오래된 ${dayTime(data.queue.oldestQueuedAt)}` : ""],
-                  ["결제 결과 확인 대기", `${payPending}건`, "monitor-pay", ""],
                   ["외부 알림 수신 지연", "확인하지 않음", "monitor-webhook", "받은 기록을 저장하지 않습니다"],
-                ].map(([label, value, id, sub]) => (
-                  <div key={id} className="card pad col" style={{ gap: 4 }}>
+                  ["결제 결과 확인 대기", `${payPending}건`, "monitor-pay", ""],
+                ].map(([label, value, id, sub], i) => (
+                  <div key={id} className="col pad" style={{ gap: 4, borderLeft: i === 0 ? "none" : "1px solid var(--wds-line-normal, #e5e7eb)" }}>
                     <span className="t-l2 c-alt">{label}</span>
                     <span className="t-h2" data-testid={id}>
                       {value}
@@ -83,21 +80,21 @@ export default function OpsMonitorPage() {
               </div>
 
               <section className="card" aria-labelledby="mon-open">
-                <div className="row pad-l" style={{ justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <div className="row pad-l" style={{ gap: 16, flexWrap: "wrap", alignItems: "center" }}>
                   <h2 className="t-hl1" id="mon-open">
-                    문제 목록
+                    장애 · 이상 목록
                   </h2>
-                  <span className="row" style={{ gap: 6 }} role="group" aria-label="얼마나 급한지">
+                  <div className="seg" role="radiogroup" aria-label="얼마나 급한지">
                     {(["all", "critical", "warning"] as Filter[]).map((f) => (
-                      <button key={f} type="button" className={`btn btn-sm ${filter === f ? "" : "btn-out"}`} aria-pressed={filter === f} onClick={() => setFilter(f)}>
+                      <button key={f} type="button" role="radio" aria-checked={filter === f} className={filter === f ? "on" : ""} onClick={() => setFilter(f)}>
                         {f === "all" ? "전체" : f === "critical" ? "긴급" : "주의"}
                       </button>
                     ))}
-                  </span>
+                  </div>
                 </div>
                 {incidents.length === 0 ? (
                   <div className="st">
-                    <span className="t">{data.incidents.length === 0 ? "모두 정상입니다. 열린 장애가 없습니다." : "조건에 맞는 장애가 없습니다."}</span>
+                    <span className="t">{data.incidents.length === 0 ? "모두 정상입니다 · 열린 장애가 없습니다" : "조건에 맞는 장애가 없습니다."}</span>
                   </div>
                 ) : (
                   <div style={{ overflowX: "auto" }}>
@@ -105,9 +102,11 @@ export default function OpsMonitorPage() {
                       <thead>
                         <tr>
                           <th>시각</th>
-                          <th>얼마나 급한지</th>
+                          <th>심각도</th>
                           <th>대상</th>
                           <th>내용</th>
+                          <th>자동 조치</th>
+                          <th>상태</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -119,6 +118,10 @@ export default function OpsMonitorPage() {
                             </td>
                             <td>{e.key}</td>
                             <td className="col-text">{e.message}</td>
+                            <td>—</td>
+                            <td>
+                              <span className="bdg b-warn">열림</span>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
