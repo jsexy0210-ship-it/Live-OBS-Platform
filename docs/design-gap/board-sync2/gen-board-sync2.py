@@ -66,4 +66,11 @@ s = rep(s, '<td class="l">접수 · 자동 진단</td>', '<td class="l">접수 �
 for bad in ('접속 기록', '연결 로그', '응답 코드', '자동 진단'):
     assert bad not in s, (bad, [s[m.start()-60:m.start()+60] for m in re.finditer(bad, s)][:2])
 (out / 'MA-052.dc.html').write_text(s)
+
+# ⑥ SA-061 배송 설정 「영업일」 → 「일」(서버가 달력 일수로 계산, MASTER 결정)
+s = (src / 'SA-061.dc.html').read_text()
+s = rep(s, '<span class="unit">영업일</span>', '<span class="unit">일</span>')
+s = rep(s, '개봉이 끝나면 2영업일 안에 보내요', '개봉이 끝나면 2일 안에 보내요', 2)
+assert '영업일' not in s
+(out / 'SA-061.dc.html').write_text(s)
 print('ok')
