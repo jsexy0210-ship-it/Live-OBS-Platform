@@ -72,6 +72,8 @@ test("리뷰: ?tab=·?rating=으로 열면 그 조건이 켜지고, 바꾸면 �
   await expect(page).toHaveURL(/rating=low/);
   await page.getByRole("tab", { name: "전체" }).click();
   await expect(page).toHaveURL(/rating=low$/);
+  // 주소가 바뀐 뒤 화면(탭 선택)이 다시 그려지길 기다린 다음에 별점을 바꾼다(그 전에 바꾸면 이전 주소 기준으로 계산된다)
+  await expect(page.getByRole("tab", { name: "전체" })).toHaveAttribute("aria-selected", "true");
   await page.getByLabel("별점").selectOption("");
   await expect(page).toHaveURL(/\/seller\/reviews$/);
   await page.goto("/seller/reviews?tab=NOPE&rating=9");

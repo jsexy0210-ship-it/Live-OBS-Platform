@@ -96,11 +96,13 @@ test("인증을 마치고 돌아온 결과(?connected·?error)는 알림으로 �
   await expect(page.getByText("쇼핑몰을 연결했습니다")).toBeVisible();
 });
 
-test("권한 없는 직원은 목록만 보고 연결·해제 버튼이 보이지 않는다", async ({ page }) => {
+// 목록은 대표자·쇼핑몰 설정(SHOP_SETTINGS) 직원만 본다(lib/server/external/connect.ts listConnections, 메뉴와 같은 기준)
+test("쇼핑몰 설정 권한이 없는 직원은 목록을 받지 못하고 연결·해제 버튼이 보이지 않는다", async ({ page }) => {
   await login(page, "demo-staff@example.com");
+  expect((await page.request.get("/api/seller/external-shops")).status()).toBe(403);
   await page.goto("/seller/external-shops");
-  await expect(page.getByTestId("external-row")).toHaveCount(3);
-  await expect(page.getByText("목록만 볼 수 있습니다")).toBeVisible();
+  await expect(page.getByText("연동 정보를 불러오지 못했습니다")).toBeVisible();
+  await expect(page.getByTestId("external-row")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "쇼핑몰 더 이어 두기" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "연결 해제" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "다시 연결" })).toHaveCount(0);

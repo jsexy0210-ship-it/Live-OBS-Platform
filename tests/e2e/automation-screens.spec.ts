@@ -112,7 +112,7 @@ test("마스터 관리자: 조회 전용 관리자가 목록 요약·필터·상
   await expect(page.getByTestId("sum-done")).toBeVisible();
   await expect(page.getByTestId("automation-job").first()).toContainText("완료");
   await page.screenshot({ path: "tests/e2e/screenshots/automation-ma110-1920.png", fullPage: true });
-  await page.getByRole("button", { name: "고객 확인 대기", exact: true }).click();
+  await page.getByRole("button", { name: "고객이 할 일 기다림", exact: true }).click();
   await expect(page.getByTestId("automation-job")).toHaveCount(0);
   await page.getByRole("button", { name: "전체", exact: true }).click();
   await page.getByRole("link", { name: "상세" }).first().click();
