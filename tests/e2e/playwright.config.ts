@@ -12,6 +12,7 @@ import { defineConfig } from "@playwright/test";
 //   같은 DB로 하루 5번 넘게 돌리면 daily_limit_exceeded로 실패한다(DB를 새로 만들면 풀린다).
 //   자동 연결 화면(automation-screens)도 개발 서버에서 돌린다: 가짜 결제 공급자(BILLING_PROVIDER=fake)는 운영 빌드에서 쓸 수 없고,
 //   BILLING_KEY_SECRET(32자 이상 테스트용 임의값)이 서버와 시험 양쪽에 있어야 한다.
+//   외부 쇼핑몰 연동 시험(external-shops)은 기본 서버에 EXTERNAL_SHOP_CLIENT_ID·EXTERNAL_SHOP_CLIENT_SECRET(아무 값)과 https:// 로 시작하는 EXTERNAL_SHOP_REDIRECT_URI가 있어야 「연결 켜짐」으로 뜬다(없으면 「준비 중」).
 //   유튜브 시험(seller-youtube·seller-broadcast-chat)은 서버와 시험 양쪽에 YOUTUBE_API_KEY(아무 값)가 있고 서버를 SCHEDULER_DISABLED=1로 띄워야 한다.
 // 운영 빌드(next start)는 본인확인 키가 없으면 가입을 503으로 막으므로, 그 상태 화면은 기본 서버에서 확인한다.
 export default defineConfig({

@@ -42,7 +42,7 @@ test("최고관리자: 확인 체크 후 승인하면 환불 완료로 바뀌고
   await login(page);
   await page.goto(`/admin/billing/refunds/${refundId}`);
   await page.getByLabel("내용을 확인했고 환불을 승인합니다").check();
-  await page.getByRole("button", { name: "승인 · 환불 실행" }).click();
+  await page.getByRole("button", { name: "환불 승인하고 카드 결제 취소" }).click();
   await expect(page.getByText("199,000원을 환불했습니다.")).toBeVisible();
   await expect(page.getByTestId("refund-status")).toContainText("환불 완료");
   await expect(page.getByRole("button", { name: /환불 실행/ })).toHaveCount(0);
