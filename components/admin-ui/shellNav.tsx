@@ -1,29 +1,17 @@
 "use client";
 
-import Link from "next/link";
 import { createContext, useContext } from "react";
 
 // 셸(파트너스·마스터 관리자 틀)이 PageHead에 넘기는 화면 이동 정보.
-// backHref: 화면 ← 버튼이 갈 부모 주소(없으면 ← 없음 = 메뉴로 바로 여는 화면·홈). tabs: 통합 화면의 위쪽 탭(2개 이상일 때만 채운다).
+// backHref: 화면 ← 버튼이 갈 부모 주소(없으면 ← 없음 = 메뉴로 바로 여는 화면·홈). tabs: 이전 호출 호환용이며 화면 이동은 사이드 메뉴가 담당한다.
 export type ShellTab = { label: string; href: string; on: boolean };
-export type ShellNav = { backHref: string | null; tabs: ShellTab[] };
+export const PARTNER_NAV_ITEMS = [
+  ["info", "기본정보"], ["shop", "쇼핑몰"], ["subscription", "구독"], ["pg", "결제 연결"],
+  ["broadcasts", "방송 이력"], ["orders", "주문 현황"], ["notes", "메모"], ["activity", "활동 기록"],
+] as const;
+export type PartnerNavIndicators = { sellerId: string; noteCount: number; pgError: boolean };
+export type ShellNav = { backHref: string | null; tabs: ShellTab[]; setPartnerIndicators?: (value: PartnerNavIndicators | null) => void };
 
 const ShellNavCtx = createContext<ShellNav>({ backHref: null, tabs: [] });
 export const ShellNavProvider = ShellNavCtx.Provider;
 export const useShellNav = (): ShellNav => useContext(ShellNavCtx);
-
-// 통합 화면 탭 줄(.rtabs). 같은 메뉴 항목의 화면이 2개 이상일 때만 그린다.
-// PageHead가 머리 바로 아래에 붙이고, PageHead를 아직 안 쓰는 화면은 셸 경로 줄 아래(.rtabs-top)에 대신 붙는다(둘 중 하나만 보임, styles/seller.css)
-export function RouteTabs({ className }: { className?: string }) {
-  const { tabs } = useShellNav();
-  if (tabs.length < 2) return null;
-  return (
-    <nav className={`rtabs${className ? ` ${className}` : ""}`} aria-label="화면 탭">
-      {tabs.map((t) => (
-        <Link key={t.href} href={t.href} className={t.on ? "on" : undefined} aria-current={t.on ? "page" : undefined}>
-          {t.label}
-        </Link>
-      ))}
-    </nav>
-  );
-}

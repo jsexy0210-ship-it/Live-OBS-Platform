@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
+import { useShellNav } from "../../../../../../components/admin-ui/shellNav";
 import { PageHead } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { adminApi } from "../../../_components/api";
@@ -57,6 +58,13 @@ function PartnerDetail() {
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
   // 머리 배지(결제 연결·방송·실제 지급·메모 수)는 목록 응답이 이미 주는 값이라, 쇼핑몰 주소로 한 건만 걸러 같은 값을 쓴다
   const [row, setRow] = useState<SellerListRow | null>(null);
+  const { setPartnerIndicators } = useShellNav();
+  const noteCount = state.kind === "ok" ? state.seller.noteCount : 0;
+  const pgError = row?.pg.status === "ERROR";
+  useEffect(() => {
+    setPartnerIndicators?.({ sellerId, noteCount, pgError });
+    return () => setPartnerIndicators?.(null);
+  }, [sellerId, noteCount, pgError, setPartnerIndicators]);
 
   const load = useCallback(async () => {
     setState({ kind: "loading" });
@@ -187,15 +195,6 @@ function PartnerDetail() {
                 )}
               </div>
             </section>
-            <nav className="tabs" aria-label="파트너스 정보 탭" style={{ overflowX: "auto", maxWidth: "100%" }}>
-              {PARTNER_TABS.map(([k, label]) => (
-                <button key={k} type="button" className={`tab${tab === k ? " on" : ""}`} aria-pressed={tab === k} onClick={() => setQ({ tab: k })}>
-                  {label}
-                  {k === "notes" && s.noteCount > 0 ? ` ${s.noteCount}` : ""}
-                  {k === "pg" && row?.pg.status === "ERROR" ? " 오류" : ""}
-                </button>
-              ))}
-            </nav>
             {tab === "broadcasts" && <PartnerBroadcasts sellerId={s.id} />}
             {tab === "notes" && <PartnerNotes sellerId={s.id} />}
             {tab === "pg" && <PartnerPg sellerId={s.id} slug={s.slug} />}

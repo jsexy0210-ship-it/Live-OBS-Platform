@@ -8,6 +8,7 @@ import { Topbar, useSeller } from "../../../../../../components/seller/SellerShe
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
 import { won } from "../../../../../../components/seller/format";
+import { useUrlState } from "../../../../../../lib/client/navigation";
 import { kstText } from "../../banners/_shared/ui";
 
 // SA-018 엑셀 일괄 등록 · 내보내기(파트너스 관리자, 상품 › 엑셀로 올리기 · 내려받기). 정본 design/project/SA-018.dc.html: 파일 올리기 → 올린 파일 확인(미리보기) → 반영, 내보내기, 양식 안내, 처리 이력(되돌리기).
@@ -65,7 +66,11 @@ export default function BulkPage() {
   const [over, setOver] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
-  const [section, setSection] = useState<"register" | "export" | "history">("register");
+  const [query] = useUrlState({ section: "register" });
+  const section = ["register", "export", "history"].includes(query.section) ? query.section : "register";
+  useEffect(() => {
+    if (section !== "register") document.getElementById(`bulk-${section}`)?.scrollIntoView({ block: "start" });
+  }, [section]);
 
   const loadJobs = useCallback(async () => {
     const r = await api<{ jobs: Job[] }>("/api/seller/bulk-io/jobs");
@@ -151,29 +156,6 @@ export default function BulkPage() {
           }
         />
         <input ref={input} type="file" accept=".csv,text/csv" hidden aria-label="CSV 파일 선택" onChange={(e) => void upload(e.target.files?.[0])} />
-        <nav className="rtabs" aria-label="구역" data-testid="bulk-tabs">
-          {(
-            [
-              ["register", "상품 일괄 등록 · 수정"],
-              ["export", "내보내기"],
-              ["history", "처리 이력"],
-            ] as const
-          ).map(([k, label]) => (
-            <a
-              key={k}
-              href={`#bulk-${k}`}
-              className={section === k ? "on" : ""}
-              aria-current={section === k ? "true" : undefined}
-              onClick={(e) => {
-                e.preventDefault();
-                setSection(k);
-                document.getElementById(`bulk-${k}`)?.scrollIntoView({ block: "start", behavior: "smooth" });
-              }}
-            >
-              {label}
-            </a>
-          ))}
-        </nav>
         {!canEdit && (
           <div className="msg msg-info" role="status">
             <span>처리 이력만 볼 수 있습니다. 일괄 등록과 내려받기는 「상품 관리」 권한이 있는 계정만 할 수 있습니다.</span>
