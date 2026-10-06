@@ -73,7 +73,7 @@ export async function expireDormantRewards(db: PrismaClient, opts: { now?: Date;
 }
 
 // 바깥 잔액 행(b)의 마지막 적립 시각
-function lastEarnSql() {
+export function lastEarnSql() {
   return Prisma.sql`
     SELECT max(l."createdAt") AS "at" FROM "RewardLedger" l
     WHERE l."sellerId" = b."sellerId" AND l."buyerMemberId" = b."buyerMemberId"
