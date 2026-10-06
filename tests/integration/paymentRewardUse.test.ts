@@ -5,6 +5,7 @@ import { createOrder } from "../../lib/server/orders/create";
 import { cancelOverdueOrders } from "../../lib/server/orders/overdue";
 import { shipOrder } from "../../lib/server/orders/ship";
 import { FakePaymentGateway } from "../../lib/server/payments/gateway";
+import { quoteOrder } from "../../lib/server/orders/quote";
 import { parseRewardUse, rewardReturnAmount, rewardUseLimit } from "../../lib/server/payments/rewardUse";
 import { startPayment } from "../../lib/server/payments/service";
 import { cancelPendingOrder, markOrderPaid, previewRefund, refundOrder } from "../../lib/server/queue/service";
@@ -21,19 +22,21 @@ const consent = { agreed: true, noticeVersion: OPENED_NO_REFUND_CONSENT.version 
 const shippingAddress = { recipientName: "김구매", phone: "010-1234-5678", zipCode: "06236", address1: "서울 강남구 테헤란로 1" };
 
 // 상품 5,000원, 기본 배송비 3,000원. 회원 적립금 잔액 10,000원, 실지급 스위치 켜짐.
-async function shop(opts: { balance?: number; live?: boolean; freeShipping?: boolean } = {}) {
+async function shop(opts: { balance?: number; live?: boolean; freeShipping?: boolean; useMinAmount?: number; useMaxRatio?: number } = {}) {
   const { seller, grade } = await createSeller();
   const owner = await createSellerUser(seller.id, "OWNER");
   const ctx: TenantContext = { sellerId: seller.id, actorType: "SELLER_USER", actorId: owner.id, isOwner: true, permissions: [], readOnly: false };
   const buyer = await createLoginBuyer(seller.id, grade.id);
   const product = await db.product.create({ data: { sellerId: seller.id, name: "부스터 팩", price: 5000, status: "ON_SALE" } });
   const option = await db.productOption.create({ data: { sellerId: seller.id, productId: product.id, name: "1팩", stock: 100 } });
-  await db.rewardPolicy.create({ data: { sellerId: seller.id, livePayoutEnabled: opts.live ?? true } });
+  await db.rewardPolicy.create({ data: { sellerId: seller.id, livePayoutEnabled: opts.live ?? true, ...(opts.useMinAmount !== undefined ? { useMinAmount: opts.useMinAmount } : {}), ...(opts.useMaxRatio !== undefined ? { useMaxRatio: opts.useMaxRatio } : {}) } });
   await db.rewardBalance.create({ data: { sellerId: seller.id, buyerMemberId: buyer.id, balance: opts.balance ?? 10000 } });
   if (opts.freeShipping) await db.sellerShippingPolicy.create({ data: { sellerId: seller.id, freeShipping: true } });
+  const quote = (rewardUseAmount: unknown, quantity = 1) =>
+    quoteOrder(db, { sellerId: seller.id, buyerMemberId: buyer.id, items: [{ optionId: option.id, quantity }], couponId: undefined, rewardUseAmount, zipCode: "06236", address1: "서울 강남구 테헤란로 1" });
   const order = (rewardUseAmount: unknown, quantity = 1) =>
     createOrder(db, { sellerId: seller.id, buyerMemberId: buyer.id, items: [{ optionId: option.id, quantity }], consent, shippingAddress, rewardUseAmount });
-  return { seller, owner, ctx, buyer, option, order };
+  return { seller, owner, ctx, buyer, option, order, quote };
 }
 
 const balanceOf = async (sellerId: string, buyerMemberId: string) =>
@@ -44,11 +47,27 @@ describe("적립금 사용 규칙(계산)", () => {
   it("1,000원 이상 10원 단위, 한도는 상품 금액(상품 쿠폰 뺀 값)이고 결제할 금액이 1원 이상 남는다", () => {
     expect([undefined, null, 0].map(parseRewardUse)).toEqual([0, 0, 0]);
     expect([1000, 1010, 25000].map(parseRewardUse)).toEqual([1000, 1010, 25000]);
+    expect(parseRewardUse(10)).toBe(10); // 쇼핑몰 최소 금액은 설정을 읽은 뒤 확인(형식은 10원 단위만)
     expect([999, 1005, -1000, "1000", 1000.5].map(parseRewardUse)).toEqual([null, null, null, null, null]);
     expect(rewardUseLimit({ itemsSubtotal: 5000, shippingFee: 3000, couponDiscount: 0, couponIsShipping: false })).toBe(5000);
     expect(rewardUseLimit({ itemsSubtotal: 5000, shippingFee: 3000, couponDiscount: 1000, couponIsShipping: false })).toBe(4000);
     expect(rewardUseLimit({ itemsSubtotal: 5000, shippingFee: 3000, couponDiscount: 3000, couponIsShipping: true })).toBe(4999);
     expect(rewardUseLimit({ itemsSubtotal: 5000, shippingFee: 0, couponDiscount: 0, couponIsShipping: false })).toBe(4999);
+  });
+
+  it("주문당 최대 비율: 상품 금액(상품 쿠폰 뺀 값) × 비율 ÷ 100을 10원 단위로 내리고, 0·100은 비율 제한 없음", () => {
+    const o = { itemsSubtotal: 5000, shippingFee: 3000, couponDiscount: 0, couponIsShipping: false };
+    expect(rewardUseLimit({ ...o, maxRatio: 0 })).toBe(5000);
+    expect(rewardUseLimit({ ...o, maxRatio: 100 })).toBe(5000);
+    expect(rewardUseLimit({ ...o, maxRatio: 50 })).toBe(2500);
+    expect(rewardUseLimit({ ...o, maxRatio: 33 })).toBe(1650);
+    expect(rewardUseLimit({ ...o, itemsSubtotal: 5010, maxRatio: 33 })).toBe(1650); // 1653.3 → 10원 단위 내림
+    expect(rewardUseLimit({ ...o, maxRatio: 1 })).toBe(50);
+    expect(rewardUseLimit({ ...o, itemsSubtotal: 999, maxRatio: 1 })).toBe(0); // 9.99 → 0
+    // 상품 쿠폰을 뺀 금액이 기준, 기존 한도(결제 1원 이상)가 더 작으면 그쪽
+    expect(rewardUseLimit({ ...o, couponDiscount: 1000, maxRatio: 50 })).toBe(2000);
+    expect(rewardUseLimit({ ...o, shippingFee: 0, maxRatio: 100 })).toBe(4999);
+    expect(rewardUseLimit({ ...o, shippingFee: 0, maxRatio: 99 })).toBe(4950);
   });
 
   it("반환: 취소·상품 전부 환불은 전부, 일부 상품 환불은 상품 금액 비율로 10원 단위 내림", () => {
@@ -102,6 +121,109 @@ describe("주문할 때 적립금 사용", () => {
     expect(rs.filter((r) => !r.ok).map((r) => !r.ok && r.reason)).toEqual(["reward_balance_insufficient", "reward_balance_insufficient"]);
     expect(await balanceOf(s.seller.id, s.buyer.id)).toBe(2000);
     expect(await db.rewardLedger.count({ where: { type: "USE" } })).toBe(1);
+  });
+});
+
+describe("쇼핑몰별 적립금 사용 조건(최소 금액·최대 비율)", () => {
+  it("설정을 바꾸지 않은 쇼핑몰은 예전과 같다: 최소 1,000원, 비율 제한 없음", async () => {
+    const s = await shop();
+    expect(await s.order(990)).toEqual({ ok: false, reason: "invalid_reward_use" });
+    expect(await s.order(1000)).toMatchObject({ ok: true });
+    const q = await s.quote(0);
+    expect(q.ok && q.value.rewardMax).toBe(5000);
+  });
+
+  it("최소 사용 금액: 미만은 invalid_reward_use, 경계값(같음)은 통과, 10원 단위가 아니면 형식 오류", async () => {
+    const s = await shop({ useMinAmount: 3000, balance: 20000 });
+    expect(await s.order(2990)).toEqual({ ok: false, reason: "invalid_reward_use" });
+    expect(await s.order(10)).toEqual({ ok: false, reason: "invalid_reward_use" });
+    expect(await s.order(3005)).toEqual({ ok: false, reason: "invalid_reward_use" });
+    expect(await s.order(3000)).toMatchObject({ ok: true });
+    expect(await s.order(3010)).toMatchObject({ ok: true });
+    const low = await shop({ useMinAmount: 10 });
+    expect(await low.order(10)).toMatchObject({ ok: true });
+    // 견적도 같은 판단
+    const q = await s.quote(2990);
+    expect(q.ok).toBe(false);
+    if (!q.ok) expect(q.reason).toBe("invalid_reward_use");
+    expect((await s.quote(3000)).ok).toBe(true);
+  });
+
+  it("최소 금액이 한도·잔액보다 크면 견적의 rewardMax는 0이다", async () => {
+    const s = await shop({ useMinAmount: 6000, balance: 20000 }); // 상품 5,000원이라 6,000원은 못 씀
+    const q = await s.quote(0);
+    expect(q.ok && q.value.rewardMax).toBe(0);
+    const poor = await shop({ useMinAmount: 3000, balance: 2000 });
+    const q2 = await poor.quote(0);
+    expect(q2.ok && q2.value.rewardMax).toBe(0);
+  });
+
+  it("주문당 최대 비율: 한도 = 상품 금액 × 비율, 경계값(같음)은 통과·10원 초과는 reward_use_over_limit, 견적 rewardMax도 같다", async () => {
+    const s = await shop({ useMaxRatio: 50, balance: 20000 });
+    const q = await s.quote(0);
+    expect(q.ok && q.value.rewardMax).toBe(2500);
+    expect(await s.order(2510)).toEqual({ ok: false, reason: "reward_use_over_limit" });
+    expect(await s.order(2500)).toMatchObject({ ok: true, totalAmount: 5000 + 3000 - 2500 });
+    expect(await balanceOf(s.seller.id, s.buyer.id)).toBe(17500);
+    // 수량 2개면 상품 금액이 10,000원이라 한도 5,000원
+    const q2 = await s.quote(0, 2);
+    expect(q2.ok && q2.value.rewardMax).toBe(5000);
+    expect(await s.order(5010, 2)).toEqual({ ok: false, reason: "reward_use_over_limit" });
+    expect(await s.order(5000, 2)).toMatchObject({ ok: true });
+  });
+
+  it("비율 한도가 최소 금액보다 작으면 쓸 수 없고(rewardMax 0), 비율 0은 제한 없음", async () => {
+    const s = await shop({ useMaxRatio: 10, useMinAmount: 1000 }); // 한도 500원 < 최소 1,000원
+    const q = await s.quote(0);
+    expect(q.ok && q.value.rewardMax).toBe(0);
+    expect(await s.order(500)).toEqual({ ok: false, reason: "invalid_reward_use" });
+    expect(await s.order(1000)).toEqual({ ok: false, reason: "reward_use_over_limit" });
+    const none = await shop({ useMaxRatio: 0 });
+    expect(await none.order(5000)).toMatchObject({ ok: true });
+  });
+
+  it("견적과 주문 생성은 같은 금액에서 같은 결과를 낸다(최소 금액·비율 조합)", async () => {
+    const s = await shop({ useMinAmount: 2000, useMaxRatio: 60, balance: 100000 });
+    for (const amount of [0, 1990, 2000, 2990, 3000, 3010, 4000]) {
+      const q = await s.quote(amount);
+      const o = await s.order(amount);
+      expect(q.ok, String(amount)).toBe(o.ok);
+      if (!q.ok && !o.ok) expect(q.reason, String(amount)).toBe(o.reason);
+    }
+  });
+
+  it("바꾼 설정은 다음 주문부터 적용된다: 비율을 줄이면 이미 만든 주문은 그대로, 새 주문은 새 한도", async () => {
+    const s = await shop({ useMaxRatio: 100, balance: 20000 });
+    const a = await s.order(4000);
+    expect(a).toMatchObject({ ok: true });
+    await db.rewardPolicy.update({ where: { sellerId: s.seller.id }, data: { useMaxRatio: 40 } });
+    expect(await s.order(4000)).toEqual({ ok: false, reason: "reward_use_over_limit" });
+    expect(await s.order(2000)).toMatchObject({ ok: true });
+    if (a.ok) expect(await db.order.findUniqueOrThrow({ where: { id: a.orderId } })).toMatchObject({ rewardUsedAmount: 4000 });
+  });
+
+  it("동시성: 비율 한도 안에서 여러 주문이 동시에 와도 잔액이 음수가 되지 않고 한도를 넘는 주문은 없다", async () => {
+    const s = await shop({ useMaxRatio: 50, balance: 6000 });
+    const rs = await Promise.all([s.order(2500), s.order(2500), s.order(2500), s.order(2510)]);
+    expect(rs[3]).toEqual({ ok: false, reason: "reward_use_over_limit" });
+    expect(rs.slice(0, 3).filter((r) => r.ok)).toHaveLength(2); // 잔액 6,000원: 2,500원 두 번만
+    expect(rs.slice(0, 3).filter((r) => !r.ok).map((r) => !r.ok && r.reason)).toEqual(["reward_balance_insufficient"]);
+    expect(await balanceOf(s.seller.id, s.buyer.id)).toBe(1000);
+    expect(await db.rewardLedger.count({ where: { type: "USE" } })).toBe(2);
+  });
+
+  it("동시성: 설정을 바꾸는 동안 주문이 와도 어느 주문도 이전·이후 한도 중 큰 값을 넘지 않고 잔액은 맞는다", async () => {
+    const s = await shop({ useMaxRatio: 100, balance: 50000 });
+    const upd = db.rewardPolicy.update({ where: { sellerId: s.seller.id }, data: { useMaxRatio: 20, useMinAmount: 500 } });
+    const rs = await Promise.all([upd, s.order(1000), s.order(1000), s.order(5000), s.order(1000)]);
+    const orders = rs.slice(1) as Awaited<ReturnType<typeof s.order>>[];
+    // 5,000원(이전 한도 100%에서만 가능)은 되거나 안 되거나, 되면 이전 설정으로 읽은 것
+    const used = await db.order.aggregate({ _sum: { rewardUsedAmount: true } });
+    expect(await balanceOf(s.seller.id, s.buyer.id)).toBe(50000 - (used._sum.rewardUsedAmount ?? 0));
+    for (const o of orders) if (o.ok) expect((await db.order.findUniqueOrThrow({ where: { id: o.orderId } })).rewardUsedAmount).toBeLessThanOrEqual(5000);
+    // 이후(커밋된 뒤) 주문은 새 한도 1,000원(상품 5,000원의 20%)만 쓴다
+    expect(await s.order(1010)).toEqual({ ok: false, reason: "reward_use_over_limit" });
+    expect(await s.order(1000)).toMatchObject({ ok: true });
   });
 });
 

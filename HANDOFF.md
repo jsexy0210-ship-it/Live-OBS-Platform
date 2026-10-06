@@ -6,8 +6,9 @@
 
 | 세션 | ID | 담당 |
 |---|---|---|
-| Live-OBS-Platform MASTER (2) | `session_018xa8SC5evpEFNVcQBwcN5t` | 대표님 지시 전달 · 세션 배정·교체 · 상태 문서 관리(2026-10-04 대표님 지시로 검수·병합은 검수 전담에 넘김). 2026-10-02 17:21 KST 교체 생성 |
-| 검수 전담 (9) | `session_01Jc3uUUzghsYvaLRuzqBeM9` | 2026-10-06 10:09 KST MASTER 생성(Sonnet 5.5). (8)을 컨텍스트 53%로 교체(증가 속도 빠름). 컨텍스트 절약 지침 강화. 역할·소유는 전임 행과 같음 |
+| Live-OBS-Platform MASTER (3) | `session_01CEyJ4JsJ28uLVRMoFzD2u1` | 대표님 지시 전달 · 세션 배정·교체 · 상태 문서 관리(2026-10-04 대표님 지시로 검수·병합은 검수 전담에 넘김). 2026-10-06 12:25 KST MASTER (2) `session_018xa8SC5evpEFNVcQBwcN5t`(컨텍스트 73%)에서 교체 |
+| 검수 전담 (10) | `session_01RwaCLVjHMTGQwWTR9QDdHW` | 2026-10-06 10:53 KST MASTER 생성(Sonnet 5.5). (9)를 컨텍스트 66%로 교체. 변경 파일 요약부터·CI 묶음 조회 지침. 역할·소유는 전임 행과 같음 |
+| 검수 전담 (9) | `session_01Jc3uUUzghsYvaLRuzqBeM9` | (교체됨 → `session_01RwaCLVjHMTGQwWTR9QDdHW`, 2026-10-06) 2026-10-06 10:09 KST MASTER 생성(Sonnet 5.5). (8)을 컨텍스트 53%로 교체(증가 속도 빠름). 컨텍스트 절약 지침 강화. 역할·소유는 전임 행과 같음 |
 | 검수 전담 (8) | `session_01R5GCoaquPEMsXCjqtr2tNd` | (교체됨 → `session_01Jc3uUUzghsYvaLRuzqBeM9`, 2026-10-06) 2026-10-06 09:26 KST MASTER 생성(Sonnet 5.5). (7)을 컨텍스트 58%로 교체. CI 반복 조회 대신 CI 끝난 PR을 모아 병합. 역할·소유는 전임 행과 같음 |
 | 검수 전담 (7) | `session_012afgA2RqbUUEXVYD6PFi7e` | (교체됨 → `session_01R5GCoaquPEMsXCjqtr2tNd`, 2026-10-06) 2026-10-06 07:37 KST MASTER 생성(Sonnet 5.5). (6)을 컨텍스트 66%로 교체. 컨텍스트 절약 지침(파일 목록·위험 hunk만, 디자인 PR은 CI 통과 시 바로 병합) 포함. 역할·소유는 전임 행과 같음 |
 | 검수 전담 (6) | `session_01BGhFbE9bzWWVY6yG1ZyZrB` | (교체됨 → `session_012afgA2RqbUUEXVYD6PFi7e`, 2026-10-06)  2026-10-06 01:34 KST MASTER 생성(Sonnet 5.5). (5)를 컨텍스트 53%로 선제 교체. 역할·소유는 전임 행과 같음 |
@@ -16,8 +17,10 @@
 | 검수 전담 (3) | `session_01FX4H9fYuFRUBq4EEXRqeXq` | (교체됨 → `session_01Wjnr6nWyiUkbYMPBmx7CPt`, 2026-10-06)  2026-10-05 23:15 KST MASTER 생성(Sonnet 5.5). `session_017wDPPy8EXzNu5zkAP2uu6R`(검수 전담 (2))를 컨텍스트 78%로 교체. 역할·소유는 전임 행과 같음 |
 | 검수 전담 (2) | `session_017wDPPy8EXzNu5zkAP2uu6R` | (교체됨 → `session_01FX4H9fYuFRUBq4EEXRqeXq`, 2026-10-05)  2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01MHJsYfiTFZ8VWkM3xVF7wM`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 시험 정비 전담 | `session_015cgJKFCqcHLHLSVGPaNKnc` | 2026-10-06 KST MASTER 생성(Sonnet 5.5). CI 스모크 밖 전체 e2e·통합 시험 실패 정비(검증 약화 금지, 제품 결함은 소유 세션에 보고) |
+| 화면-마스터 B | `session_01Xtb8ZwCuiony8apxu1D8Qf` | 2026-10-06 10:55 KST MASTER 생성(Sonnet 5.5). 정본 대조 구조 차이 분담: MA-026·031·032·041·083·085·100·111 화면 소유(나머지 마스터 화면은 화면-마스터 (3)) |
 | 인프라 감시 전담 | `session_01MZdLC1JGqFZQ3U9zdBHZwL` | 2026-10-06 대표님 지시 「모든 인프라 용량, 요금을 마스터에서 실시간으로 확인」. MA-120 인프라·비용 서버: 자원 수집기·스냅숏·조회 API #735, 단가 입력·비용 추정·홈 요약 #743, 외부 연결 만료·상태 #774, 알림 센터 연결 #789 병합 완료. 남은 것: 각 외부 연동의 실제 공급자가 붙을 때 `recordConnectionResult` 한 줄 추가(지금은 도우미만), 2단계 카카오클라우드 청구 조회(API 키 발급 뒤). 화면은 화면-마스터 (3). 2026-10-06 KST MASTER 생성(Sonnet 5.5) |
-| 개발 전담 (기반) (7) | `session_01NtyNfQ2KbvTFRqRvgudJ9n` | 2026-10-06 07:32 KST MASTER 생성(Sonnet 5.5). (6)을 컨텍스트 64%로 교체(인계 #691 댓글). 큐: SA-060 쇼핑몰 정보 API → 쇼핑몰 운영 상태(준비 중·일시 정지 차단) |
+| 개발 전담 (기반) (8) | `session_01MKhnUVXsqkqq9TqibDddm3` | 2026-10-06 12:33 KST MASTER (3) 생성(Sonnet 5.5). 큐: SA-060 ③-3 서버 잔여 → HIT grade 자유 입력 → MA-081 세션 시간 적용 → 구매자 세션 무효화 → 배송 자동조회 충전금 차감 → SA-152 타임라인 |
+| 개발 전담 (기반) (7) | `session_01NtyNfQ2KbvTFRqRvgudJ9n` | (교체됨 → `session_01MKhnUVXsqkqq9TqibDddm3`, 2026-10-06 12:33 KST, 큐 완료 후 컨텍스트 73%) 2026-10-06 07:32 KST MASTER 생성(Sonnet 5.5). (6)을 컨텍스트 64%로 교체(인계 #691 댓글). 큐: SA-060 쇼핑몰 정보 API → 쇼핑몰 운영 상태(준비 중·일시 정지 차단) |
 | 개발 전담 (기반) (6) | `session_014TjcA8RirjWptikziBwasM` | (교체됨 → `session_01NtyNfQ2KbvTFRqRvgudJ9n`, 2026-10-06, #691 대응까지)  2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01N4xJrEzQvUuRHB8QzcQcKE`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 개발 전담 (기반-상품) (2) | `session_01Cr44KBNsnx39N7sPjPurpx` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_018WsyHpKDofgW5DEiS4tUoA`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 개발 전담 (기반-쇼핑몰) (3) | `session_012ZNvXsR6YxyrBsjNEkte9p` | 2026-10-06 09:54 KST MASTER 생성(Sonnet 5.5). (2)를 컨텍스트 63%로 교체(전임 작업 모두 병합). 첫 작업 구매자 비밀번호 재설정 서버, SA-056-P 통계 서버 값. 역할·소유는 전임 행과 같음 |
@@ -38,7 +41,8 @@
 | 화면-파트너스 운영 (2) | `session_01JFxmyNJFB2Ztwv2jUtQSCr` | (교체됨 → `session_016P8zSbRmKFuuWC9krz69jq`, 2026-10-05)  2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_017i9HrY4Z9if193ZLQfJQbp`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 쇼핑몰 운영 전담 (2) | `session_01WDkrYfwDz7o3oD8f2PeSvP` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01AKkKsTJjMHv2KaJLHh8u1y`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 — 2026-10-05 23:45 KST 인계분(#455·#481·#500·#525·#547) 전부 병합, 열린 PR 0, 보관. 남은 것: 실제 발송 채널(대표님 결정) 뒤 SA-049 발송 기록을 발송에 연결 |
 | 통계 전담 (2) | `session_01GPhc7Kd9oq7YFPv4Tar4ZX` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_013CH4KbJKN2cpDNBKtipGYL`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 — 2026-10-05 23:55 KST #593 퍼널 API 병합, 보관. 남은 것: 퍼널 화면·브라우저 검증(화면 세션 미배정) |
-| 디자인 전담 (5) · Fable | `session_011d8Z2cYpic36sAioV2XasE` | 2026-10-06 09:31 KST MASTER 생성(Fable 5.1). (4)를 컨텍스트 72%로 교체. 캔버스 v312부터 이어받음. 역할·소유는 전임 행과 같음 |
+| 디자인 전담 (6) · Fable | `session_013ZzceQ1AZpiVwU1s8vJNBt` | 2026-10-06 12:25 KST MASTER (3) 생성(Fable 5.1). 캔버스 v321부터 이어받음. 할 일: 최신 main 렌더 재대조, DS-TABLE-CARD 2×2 예외·SA-031·SH-022·체험 띠·구매자 상단 공지/카카오톡/유튜브 FINAL. 역할·소유는 전임 행과 같음 |
+| 디자인 전담 (5) · Fable | `session_011d8Z2cYpic36sAioV2XasE` | (교체됨 → `session_013ZzceQ1AZpiVwU1s8vJNBt`, 2026-10-06 12:25 KST, 컨텍스트 71%) 2026-10-06 09:31 KST MASTER 생성(Fable 5.1). (4)를 컨텍스트 72%로 교체. 캔버스 v312부터 이어받음. 역할·소유는 전임 행과 같음 |
 | 디자인 전담 (4) · Fable | `session_01QUUqmD2DDwArxHsUqMyA7Y` | (교체됨 → `session_011d8Z2cYpic36sAioV2XasE`, 2026-10-06) 2026-10-05 대표님 지시 「디자인은 다 fable로 바꿔서 빨리 진행해」로 디자인 전담 (3)(`session_019Eb1gYYx6hQzm3VDbKmKmM`, Sonnet)을 Fable 5.1로 교체. 역할·소유는 전임 행과 같음. 첫 배정: docs/ADMIN_OPS_UX.md P1 보드 |
 | 인프라 전담 (2) | `session_013HzEF83eiqjaDFkjzVyUxD` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_016ErhcGpbBooDx8a9sYYUmK`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 개발 전담 (기반-결제) (3) | `session_01EendtbgjpxRCCNb1zxheAo` | 2026-10-06 09:52 KST MASTER 생성(Sonnet 5.5). (2)를 컨텍스트 64%로 교체. 첫 작업 SA-151 「다른 카드로 결제」 서버. 역할·소유는 전임 행과 같음 |

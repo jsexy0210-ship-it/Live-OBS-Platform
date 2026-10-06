@@ -3,6 +3,7 @@ import type { AdminSessionContext } from "../auth/session";
 import { forbidden } from "../authz/errors";
 import { adminCan } from "../authz/permissions";
 import { requireSellerRead, type TenantContext } from "../tenant/context";
+import { ASPECTS } from "../overlay/layout";
 import { aggregateBroadcasts } from "./summary";
 
 // 방송 이력(SA-054): 시작 시각 최신순 50개, 기간(KST 날짜, 끝 포함)은 방송 시작일 기준, cursor(마지막 방송 id).
@@ -20,7 +21,7 @@ function kstStart(v: string): Date | null {
   return !Number.isNaN(d.getTime()) && new Date(d.getTime() + 9 * 3_600_000).toISOString().slice(0, 10) === v ? d : null;
 }
 
-type HistoryQuery = { from?: string | null; to?: string | null; cursor?: string | null };
+type HistoryQuery = { from?: string | null; to?: string | null; cursor?: string | null; layout?: string | null };
 
 export async function broadcastHistory(db: PrismaClient, ctx: TenantContext, q: HistoryQuery) {
   requireSellerRead(ctx, "BROADCAST_RUN");
@@ -39,6 +40,11 @@ async function listBroadcastHistory(db: PrismaClient, sellerId: string, q: Histo
   const to = q.to ? kstStart(q.to) : null;
   if ((q.from && !from) || (q.to && !to) || (from && to && from > to)) return { ok: false as const, reason: "invalid_range" as const };
   const where: Prisma.BroadcastSessionWhereInput = { sellerId };
+  // 레이아웃 필터(SA-054): 9x16(세로형)·16x9(가로형). 그 밖의 값은 invalid_range와 같은 400
+  if (q.layout) {
+    if (!(ASPECTS as readonly string[]).includes(q.layout)) return { ok: false as const, reason: "invalid_range" as const };
+    where.layoutAspect = q.layout;
+  }
   if (from || to) where.startedAt = { ...(from ? { gte: from } : {}), ...(to ? { lt: new Date(to.getTime() + 86_400_000) } : {}) };
   const at = isUuid(q.cursor) ? await db.broadcastSession.findFirst({ where: { id: q.cursor, sellerId }, select: { id: true, startedAt: true } }) : null;
   const rows = await db.broadcastSession.findMany({
@@ -57,6 +63,8 @@ async function listBroadcastHistory(db: PrismaClient, sellerId: string, q: Histo
         status: b.status === "LIVE" ? ("live" as const) : ("ended" as const),
         startedAt: b.startedAt,
         endedAt: b.endedAt,
+        // 방송 중 오버레이가 처음 요청한 레이아웃("9x16" 세로형 | "16x9" 가로형). 기록이 없으면 null(화면은 「—」)
+        layout: b.layoutAspect === "9x16" || b.layoutAspect === "16x9" ? b.layoutAspect : null,
         summary: agg.get(b.id)!,
       })),
       nextCursor: rows.length > HISTORY_PAGE ? page[page.length - 1].id : null,

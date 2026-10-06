@@ -75,6 +75,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/members/[memberId]": "ORDER_FOLLOWUP",
   "seller/reward-balances": "ORDER_FOLLOWUP",
   "seller/reward-ledger": "ORDER_FOLLOWUP",
+  "seller/reward-ledger/summary": "ORDER_FOLLOWUP",
   "seller/purchase-restrictions/[buyerMemberId]/lift": "ORDER_FOLLOWUP",
   "seller/coupons": "STORE_OPERATIONS",
   "seller/member-grades": "STORE_OPERATIONS",
@@ -169,6 +170,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/products/options": "STORE_OPERATIONS",
   "seller/products/stock-movements": "STORE_OPERATIONS",
   "seller/reward-policy": "STORE_OPERATIONS",
+  "seller/reward-policy/history": "STORE_OPERATIONS",
+  "seller/reward-policy/preview": "STORE_OPERATIONS",
   "seller/reward-live-payout": "STORE_OPERATIONS",
   "seller/reward-balances/[memberId]/adjust": "STORE_OPERATIONS",
   "seller/share-preview": "STORE_OPERATIONS",
@@ -185,6 +188,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/platform-notices": "BILLING", // 플랫폼 공지(SA-111·112): 잠김·정지 중에도 본다
   "seller/platform-notices/[noticeId]": "BILLING",
   "seller/platform-notices/[noticeId]/read": "BILLING",
+  "seller/platform-notices/[noticeId]/files/[fileId]": "BILLING",
   "seller/notifications": "BILLING", // 알림 센터(SA-130): 잠김·정지 중에도 본다
   "seller/notifications/read": "BILLING",
   "seller/assistant": "BILLING", // 도우미(SA-140): 사용법 질문, 잠김·정지 중에도 쓴다(비용은 플랫폼 월 한도·하루 한도가 막음)
@@ -197,6 +201,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/platform-inquiries/draft": "BILLING",
   "seller/platform-inquiries/images": "BILLING",
   "seller/platform-inquiries/images/[imageId]": "BILLING",
+  "seller/platform-inquiries/files": "BILLING",
+  "seller/platform-inquiries/files/[fileId]": "BILLING",
   "seller/notices/[noticeId]": "STORE_OPERATIONS",
   "seller/notices/faq-order": "STORE_OPERATIONS",
   "seller/shop-content/banners": "STORE_OPERATIONS",
@@ -298,7 +304,6 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/orders/[orderId]": "OPEN",
   "shop/[slug]/payments": "STORE_OPERATIONS",
   "shop/[slug]/payments/bank-transfer": "STORE_OPERATIONS", // 무통장 입금 선택(shopOpenForPayment로 막음) // 주문 카드 결제 시작(startPayment가 주문 생성과 같은 조건으로 막음)
-  "shop/[slug]/payments/shipping-preview": "STORE_OPERATIONS", // 배송비 미리보기(shopOpenForPayment로 막음)
   "shop/[slug]/auth/login": "OPEN",
   "shop/[slug]/auth/logout": "OPEN",
   "shop/[slug]/auth/password-reset/request": "OPEN",

@@ -2,7 +2,9 @@ import type { Prisma } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 
 // 적립금 사용(결제 차감, 대표님 결정 2026-10-05).
-// - 최소 1,000원, 10원 단위, 상품 금액(상품 할인 쿠폰을 뺀 금액)까지. 배송비에는 쓸 수 없다. 결제할 금액은 1원 이상 남아야 한다.
+// - 최소 사용 금액(쇼핑몰 설정 RewardPolicy.useMinAmount, 기본 1,000원), 10원 단위, 상품 금액(상품 할인 쿠폰을 뺀 금액)까지. 배송비에는 쓸 수 없다. 결제할 금액은 1원 이상 남아야 한다.
+// - 주문당 최대 사용 비율(쇼핑몰 설정 RewardPolicy.useMaxRatio, 정수 %, 0 = 제한 없음): 한도 = min(위 한도, 상품 금액 × 비율 ÷ 100을 10원 단위 내림).
+//   설정 행이 없으면 기본값(최소 1,000원·비율 제한 없음)이라 설정을 바꾸지 않은 쇼핑몰은 예전과 같다. 설정은 주문(견적) 트랜잭션 안에서 한 번 읽어 견적·주문 생성이 같은 값을 쓴다.
 // - 판매자 실지급 스위치(RewardPolicy.livePayoutEnabled)가 꺼져 있으면 쓸 수 없다.
 // - 주문 생성 트랜잭션 안에서 잔액을 바로 빼고 USE 원장(음수, SUCCEEDED)을 남긴다. 멱등 키 use:{orderId}라 같은 주문에 두 번 쓰이지 않는다.
 // - 결제 대기 주문 취소·입금 기한 자동 취소는 전부 돌려준다. 환불은 적립금이 상품 금액에만 쓰이므로 상품 금액 기준(MASTER 2026-10-05):
@@ -11,30 +13,48 @@ import { writeAudit } from "../audit/log";
 // - 잠금 순서: 주문(판매자 주문 잠금, 부르는 쪽) → 회원(FOR SHARE) → 적립금 잔액 행(FOR UPDATE). 잔액은 DB CHECK로 음수가 될 수 없다.
 type Tx = Prisma.TransactionClient;
 
+// 최소 사용 금액 기본값(쇼핑몰 설정 행이 없을 때). 쇼핑몰별 값은 loadRewardUseSettings로 읽는다.
 export const REWARD_USE_MIN = 1000;
 export const REWARD_USE_UNIT = 10;
 
+// 쇼핑몰의 적립금 사용 설정(한 트랜잭션에서 한 번 읽어 견적·주문 생성에 같이 쓴다)
+export type RewardUseSettings = { livePayoutEnabled: boolean; minAmount: number; maxRatio: number };
+
+export async function loadRewardUseSettings(tx: Tx, sellerId: string): Promise<RewardUseSettings> {
+  const p = await tx.rewardPolicy.findUnique({ where: { sellerId }, select: { livePayoutEnabled: true, useMinAmount: true, useMaxRatio: true } });
+  return { livePayoutEnabled: p?.livePayoutEnabled ?? false, minAmount: p?.useMinAmount ?? REWARD_USE_MIN, maxRatio: p?.useMaxRatio ?? 0 };
+}
+
 export type RewardUseFailure = "invalid_reward_use" | "reward_use_unavailable" | "reward_use_over_limit" | "reward_balance_insufficient";
 
-// 요청 값: 없거나 0이면 0(사용 안 함), 1,000원 이상·10원 단위 정수면 그 값, 아니면 null.
+// 요청 값 형식: 없거나 0이면 0(사용 안 함), 10원 단위 양의 정수면 그 값, 아니면 null.
+// 쇼핑몰별 최소 사용 금액은 설정을 읽은 뒤 rewardUsePrecheck가 확인한다(미달이면 invalid_reward_use).
 export function parseRewardUse(raw: unknown): number | null {
   if (raw === undefined || raw === null || raw === 0) return 0;
-  if (typeof raw !== "number" || !Number.isSafeInteger(raw) || raw < REWARD_USE_MIN || raw % REWARD_USE_UNIT !== 0) return null;
+  if (typeof raw !== "number" || !Number.isSafeInteger(raw) || raw < REWARD_USE_UNIT || raw % REWARD_USE_UNIT !== 0) return null;
   return raw;
 }
 
 // 쓸 수 있는 최대: 상품 금액 − 상품 할인 쿠폰(배송비 무료 쿠폰은 배송비만 깎으므로 빼지 않음), 그리고 결제할 금액이 1원 이상 남도록.
-export function rewardUseLimit(o: { itemsSubtotal: number; shippingFee: number; couponDiscount: number; couponIsShipping: boolean }): number {
+// maxRatio(정수 %, 1~100)가 있으면 그 상품 금액 × 비율 ÷ 100을 10원 단위로 내린 값을 넘지 않는다(0·없음 = 비율 제한 없음).
+export function rewardUseLimit(o: { itemsSubtotal: number; shippingFee: number; couponDiscount: number; couponIsShipping: boolean; maxRatio?: number }): number {
   const itemCoupon = o.couponIsShipping ? 0 : o.couponDiscount;
+  const itemsAmount = o.itemsSubtotal - itemCoupon;
   const payable = o.itemsSubtotal + o.shippingFee - o.couponDiscount;
-  return Math.max(0, Math.min(o.itemsSubtotal - itemCoupon, payable - 1));
+  const base = Math.max(0, Math.min(itemsAmount, payable - 1));
+  const ratio = o.maxRatio ?? 0;
+  if (ratio <= 0 || ratio >= 100) return base;
+  const ratioCap = Math.floor(Math.floor((Math.max(0, itemsAmount) * ratio) / 100) / REWARD_USE_UNIT) * REWARD_USE_UNIT;
+  return Math.min(base, ratioCap);
 }
 
-// 주문을 넣기 전에 부른다: 판매자 사용 불가·한도 초과면 그 코드(한도를 크게 넘으면 결제 금액이 음수가 되어 주문 insert가 DB CHECK에 걸리므로 먼저 막는다).
-export async function rewardUsePrecheck(tx: Tx, o: { sellerId: string; amount: number; limit: number }): Promise<RewardUseFailure | null> {
+// 주문을 넣기 전에 부른다: 최소 사용 금액 미달(invalid_reward_use)·판매자 사용 불가·한도 초과면 그 코드(한도를 크게 넘으면 결제 금액이 음수가 되어 주문 insert가 DB CHECK에 걸리므로 먼저 막는다).
+// settings를 넘기면(견적·주문 생성이 가격 계산 때 읽은 값) 다시 읽지 않아 같은 설정으로 판단한다.
+export async function rewardUsePrecheck(tx: Tx, o: { sellerId: string; amount: number; limit: number; settings?: RewardUseSettings }): Promise<RewardUseFailure | null> {
   if (o.amount === 0) return null;
-  const policy = await tx.rewardPolicy.findUnique({ where: { sellerId: o.sellerId }, select: { livePayoutEnabled: true } });
-  if (!policy?.livePayoutEnabled) return "reward_use_unavailable";
+  const settings = o.settings ?? (await loadRewardUseSettings(tx, o.sellerId));
+  if (o.amount < settings.minAmount) return "invalid_reward_use";
+  if (!settings.livePayoutEnabled) return "reward_use_unavailable";
   if (o.amount > o.limit) return "reward_use_over_limit";
   return null;
 }
@@ -42,7 +62,7 @@ export async function rewardUsePrecheck(tx: Tx, o: { sellerId: string; amount: n
 // 주문 생성 트랜잭션 안에서 부른다(판매자 주문 잠금·회원 FOR SHARE를 잡은 뒤). 성공하면 null.
 export async function useRewardForOrder(
   tx: Tx,
-  o: { sellerId: string; buyerMemberId: string; orderId: string; amount: number; limit: number; now: Date },
+  o: { sellerId: string; buyerMemberId: string; orderId: string; amount: number; limit: number; settings?: RewardUseSettings; now: Date },
 ): Promise<RewardUseFailure | null> {
   if (o.amount === 0) return null;
   const pre = await rewardUsePrecheck(tx, o);

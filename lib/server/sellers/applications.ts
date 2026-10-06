@@ -81,6 +81,7 @@ const info = (j: Prisma.JsonValue | null) => (j && typeof j === "object" && !Arr
 
 type Pending = {
   id: string; slug: string; shopName: string; createdAt: Date; businessInfo: Prisma.JsonValue | null; reviewReasons: string[];
+  license: { fileName: string; mimeType: string; byteSize: number; uploadedAt: Date } | null;
   owner: string | null; rev: { supplementReason: string | null; supplementRequestedAt: Date | null; supplementDueAt: Date | null; supplementResolvedAt: Date | null; reminderCount: number; lastReminderAt: Date | null } | null;
 };
 async function loadPending(db: PrismaClient): Promise<Pending[]> {
@@ -91,13 +92,15 @@ async function loadPending(db: PrismaClient): Promise<Pending[]> {
     select: { id: true, slug: true, shopName: true, createdAt: true, businessInfo: true, reviewReasons: true },
   });
   const ids = sellers.map((s) => s.id);
-  const [owners, revs] = await Promise.all([
+  const [owners, revs, licenses] = await Promise.all([
     db.sellerUser.findMany({ where: { sellerId: { in: ids }, isOwner: true }, select: { sellerId: true, email: true } }),
     db.sellerApplicationReview.findMany({ where: { sellerId: { in: ids } } }),
+    db.sellerBusinessLicense.findMany({ where: { sellerId: { in: ids } }, select: { sellerId: true, fileName: true, mimeType: true, byteSize: true, uploadedAt: true } }),
   ]);
+  const lic = new Map(licenses.map((l) => [l.sellerId, { fileName: l.fileName, mimeType: l.mimeType, byteSize: l.byteSize, uploadedAt: l.uploadedAt }]));
   const o = new Map(owners.map((u) => [u.sellerId, u.email]));
   const r = new Map(revs.map((x) => [x.sellerId, x]));
-  return sellers.map((s) => ({ ...s, owner: o.get(s.id) ?? null, rev: r.get(s.id) ?? null }));
+  return sellers.map((s) => ({ ...s, owner: o.get(s.id) ?? null, rev: r.get(s.id) ?? null, license: lic.get(s.id) ?? null }));
 }
 const supplementOpen = (p: Pending) => !!p.rev?.supplementRequestedAt && !p.rev.supplementResolvedAt;
 const stateOf = (p: Pending): "SUPPLEMENT" | "REVIEW" | "CLEAR" => (supplementOpen(p) ? "SUPPLEMENT" : p.reviewReasons.length > 0 ? "REVIEW" : "CLEAR");
@@ -178,7 +181,8 @@ export async function listApplications(db: PrismaClient, admin: AdminSessionCont
     return true;
   });
   if (sort === "newest") rows = [...rows].reverse();
-  const page = rows.slice(offset, offset + take).map((p) => viewApplication(p, now, reviewTargetHours));
+  const canView = adminCan(admin.admin.role, "seller.moderate");
+  const page = rows.slice(offset, offset + take).map((p) => viewApplication(p, now, reviewTargetHours, canView));
   return { ok: true as const, chips, kpi, industries, applications: page, total: rows.length, nextCursor: offset + take < rows.length ? String(offset + take) : null };
 }
 
@@ -202,7 +206,7 @@ function applicationChecks(reasons: string[], checked: boolean): { key: string; 
   ];
 }
 
-function viewApplication(p: Pending, now: Date, reviewTargetHours: number) {
+function viewApplication(p: Pending, now: Date, reviewTargetHours: number, canViewLicense: boolean) {
   const i = info(p.businessInfo);
   const st = stateOf(p);
   const rev = p.rev;
@@ -215,6 +219,12 @@ function viewApplication(p: Pending, now: Date, reviewTargetHours: number) {
     applicantEmail: p.owner,
     businessNumber: fmtBiz(biz(i.businessNumber)) || null,
     industry: typeof i.industry === "string" && i.industry ? i.industry : null,
+    // 가입 때 적은 연락처·사업장 주소·방송 채널 주소(심사 참고, 없으면 null). 사업자등록증 파일은 조회·내려받기가 최고관리자·운영만이라
+    // 다른 역할에는 파일 정보만 주고 viewUrl은 null이다(열람은 로그 추적에 남는다).
+    contactPhone: typeof i.contactPhone === "string" ? i.contactPhone : null,
+    businessAddress: typeof i.businessAddress === "string" ? i.businessAddress : null,
+    channelUrl: typeof i.channelUrl === "string" ? i.channelUrl : null,
+    license: p.license ? { ...p.license, uploadedAt: p.license.uploadedAt.toISOString(), viewUrl: canViewLicense ? `/api/admin/sellers/${p.id}/business-license` : null } : null,
     receivedAt: p.createdAt,
     elapsedHours: Math.floor((now.getTime() - p.createdAt.getTime()) / HOUR_MS),
     over48h: st !== "SUPPLEMENT" && now.getTime() - p.createdAt.getTime() > reviewTargetHours * HOUR_MS,

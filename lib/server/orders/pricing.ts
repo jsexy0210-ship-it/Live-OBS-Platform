@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { eventOf, orderUnitPrice } from "../products/event";
-import { rewardUseLimit } from "../payments/rewardUse";
+import { loadRewardUseSettings, rewardUseLimit } from "../payments/rewardUse";
 import { quoteOrderCoupon, type OrderCouponFailure } from "../shop-coupons/service";
 import { computeShippingFee, getShippingPolicy, isRemoteAddress } from "./shipping";
 import { applyGradeShipping, loadGradeShipping } from "../shop-member-grades/benefits";
@@ -63,6 +63,8 @@ export async function priceOrder(
   });
   if (!coupon.ok) return { ok: false as const, reason: coupon.reason };
   const couponDiscount = coupon.applied?.discountAmount ?? 0;
-  const rewardLimit = rewardUseLimit({ itemsSubtotal, shippingFee, couponDiscount, couponIsShipping: coupon.applied?.benefit === "FREE_SHIPPING" });
-  return { ok: true as const, priced, policy, isRemote, itemsSubtotal, shippingFee, gradeShippingDiscount: baseShippingFee - shippingFee, coupon, couponDiscount, rewardLimit };
+  // 적립금 사용 설정(최소 금액·최대 비율)은 여기서 한 번 읽어 한도 계산과 견적·주문 검증에 같이 쓴다
+  const rewardSettings = await loadRewardUseSettings(tx, o.sellerId);
+  const rewardLimit = rewardUseLimit({ itemsSubtotal, shippingFee, couponDiscount, couponIsShipping: coupon.applied?.benefit === "FREE_SHIPPING", maxRatio: rewardSettings.maxRatio });
+  return { ok: true as const, priced, policy, isRemote, itemsSubtotal, shippingFee, gradeShippingDiscount: baseShippingFee - shippingFee, coupon, couponDiscount, rewardLimit, rewardSettings };
 }

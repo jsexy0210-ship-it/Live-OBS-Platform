@@ -484,7 +484,7 @@ export default function BroadcastDashboardPage() {
                   <span className="t-l2 c-alt">대기 중인 주문이 없습니다</span>
                 ) : (
                   <div className="au-lt-wrap">
-                    <table className="tbl bc-tbl">
+                    <table className="tbl bc-tbl bc-cards">
                       <thead>
                         <tr>
                           <th style={{ width: 48 }}>순서</th>
@@ -503,21 +503,27 @@ export default function BroadcastDashboardPage() {
                       <tbody data-testid="bc-waiting">
                         {waiting.map((w, i) => (
                           <tr key={w.id}>
-                            <td className="num">{i + 1}</td>
-                            <td className="num">{kstTime(w.receivedAt)}</td>
-                            <td className="col-text">
+                            <td className="num" data-label="순서">
+                              {i + 1}
+                            </td>
+                            <td className="num" data-label="주문 시각">
+                              {kstTime(w.receivedAt)}
+                            </td>
+                            <td className="col-text bc-c-title">
                               <ItemText item={w} />
                             </td>
-                            <td className="num" data-testid="bc-amount">
+                            <td className="num" data-label="금액" data-testid="bc-amount">
                               {typeof w.amount === "number" ? won(w.amount) : "-"}
                             </td>
                             {chatOn && (
-                              <td className="t-c1 col-text" data-testid="bc-chat-cell">
+                              <td className="t-c1 col-text bc-c-wide" data-label="채팅" data-testid="bc-chat-cell">
                                 {chatText(chat.get(w.nicknameSnapshot))}
                               </td>
                             )}
-                            <td className="num">{w.timerSeconds > 0 ? clock(w.timerSeconds) : "-"}</td>
-                            <td>
+                            <td className="num" data-label="타이머">
+                              {w.timerSeconds > 0 ? clock(w.timerSeconds) : "-"}
+                            </td>
+                            <td className="bc-c-acts">
                               <span className="row bc-acts">
                                 <button className="btn btn-sm btn-ghost" type="button" aria-label={`${w.nicknameSnapshot} 위로`} disabled={locked || i === 0} onClick={() => move(i, -1)}>
                                   ↑

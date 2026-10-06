@@ -189,3 +189,15 @@ export async function setOperatingState(slug: string, state: "OPEN" | "PREPARING
     await db.$disconnect();
   }
 }
+
+// 쇼핑몰 이용안내 글(SA-060 shopUsageGuide) 바꾸기. 바꾸기 전 값을 돌려준다.
+export async function setUsageGuide(slug: string, text: string | null) {
+  const db = open();
+  try {
+    const prev = await db.seller.findUniqueOrThrow({ where: { slug }, select: { shopUsageGuide: true } });
+    await db.seller.update({ where: { slug }, data: { shopUsageGuide: text } });
+    return prev.shopUsageGuide;
+  } finally {
+    await db.$disconnect();
+  }
+}
