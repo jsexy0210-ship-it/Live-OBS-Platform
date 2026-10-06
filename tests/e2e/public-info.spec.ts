@@ -30,9 +30,10 @@ test("요금 안내는 서버 요금제 값을 보여 주거나 불러오지 못
   const paymentFailure = pricingFaq.filter({ hasText: "결제가 실패하면 어떻게 되나요?" });
   await expect(paymentFailure).toContainText(/하루 간격으로 (\d+번 다시 시도|다시 시도)/);
   await expect(paymentFailure).toContainText(/처음 실패한 날부터 \d+일까지는|정해진 유예 기간/);
+  await expect(paymentFailure).not.toContainText("자동으로 해지");
   const failureCopy = (await paymentFailure.textContent()) ?? "";
   if (/하루 간격으로 \d+번 다시 시도/.test(failureCopy)) {
-    await expect(paymentFailure).toContainText(/잠긴 지 \d+일이 지나면 자동으로 해지돼요/);
+    await expect(paymentFailure).toContainText("구독 기간은 원래 결제일부터 이어서 세요");
   }
   await paymentFailure.locator("summary").click();
   for (const width of [1440, 1024, 390]) {

@@ -12,19 +12,17 @@ export const metadata: Metadata = { title: "요금 안내 · ONQ", description: 
 
 export default async function PricingPage() {
   let plans: LandingPlan[] = [];
-  let billingPolicy: { paymentRetryCount: number; overdueLockDays: number; lockToCloseDays: number } | null = null;
-  const [plansResult, retryResult, graceResult, closeResult] = await Promise.allSettled([
+  let billingPolicy: { paymentRetryCount: number; overdueLockDays: number } | null = null;
+  const [plansResult, retryResult, graceResult] = await Promise.allSettled([
     getPublicPlan(prisma),
     policyValue(prisma, "paymentRetryCount"),
     policyValue(prisma, "overdueLockDays"),
-    policyValue(prisma, "lockToCloseDays"),
   ]);
   if (plansResult.status === "fulfilled") plans = plansResult.value?.plans ?? [];
-  if (retryResult.status === "fulfilled" && graceResult.status === "fulfilled" && closeResult.status === "fulfilled") {
+  if (retryResult.status === "fulfilled" && graceResult.status === "fulfilled") {
     billingPolicy = {
       paymentRetryCount: retryResult.value,
       overdueLockDays: graceResult.value,
-      lockToCloseDays: closeResult.value,
     };
   }
   return <Pricing plans={plans} billingPolicy={billingPolicy} />;
