@@ -26,6 +26,15 @@ on:
           - "24"
           - "6"
           - "1"
+      image_keep:
+        description: "보관할 최근 앱 버전 이미지 개수(기본 5). 디스크가 모자라면 3으로 줄여 오래된 버전 이미지를 지워요. 줄이면 그만큼 되돌릴 수 있는 이전 버전이 줄어요(실행 중 버전은 항상 남아요)."
+        required: false
+        default: "5"
+        type: choice
+        options:
+          - "5"
+          - "3"
+          - "2"
 
 permissions:
   contents: read
@@ -62,6 +71,7 @@ jobs:
         env:
           MODE: ${{ inputs.mode }}
           OBS_BUILDER_KEEP_H: ${{ inputs.builder_keep_h }}
+          OBS_IMAGE_KEEP: ${{ inputs.image_keep }}
         run: |
           set -uo pipefail
           if [ "$MODE" = apply ]; then args=(--apply); else args=(); fi
