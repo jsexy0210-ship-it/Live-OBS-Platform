@@ -375,6 +375,8 @@ $C start obs-web-app
 
 mode=list에서 `include_readonly_details`를 선택하면 공간·inode 사용량, 허용된 Buildx 캐시 필드, 로컬 빌드 기록의 저장소(ONQ/OTHER/UNKNOWN)·축약 리비전·컨텍스트 분류를 추가로 표시합니다. 필요한 명령이나 귀속 메타데이터가 없으면 UNKNOWN으로 남기며, 빌드 기록과 캐시 ID의 연결이 확인되지 않으면 캐시 소유권은 미확인으로 남깁니다. 이 옵션은 조회만 하며 정리 동작이나 `mode=apply`에는 영향을 주지 않습니다.
 
+`include_onq_checkout_artifact_details`는 별도의 list 전용 읽기 옵션입니다. 문서상 ONQ checkout(`/opt/obs/src`)의 `.next`와 `node_modules` 두 경로만 상태·용량을 요약하며 Buildx cache/history 조회는 하지 않습니다. 두 읽기 옵션을 함께 선택해도 이 artifact 전용 조회가 우선되어 캐시는 다시 조회하지 않습니다. 마운트·소유권·Git dirty 상태·현재 작업공간 또는 프로세스 참조를 확인할 수 없으면 UNKNOWN으로 표시합니다. 이 정보는 삭제 후보나 회수량을 확정하지 않으며 삭제 기능도 추가하지 않습니다. 현재 서버의 빌드·앱·롤백 구성이 저장소 소스와 다른지는 별도 확인 전까지 UNKNOWN입니다.
+
 정리 기준(환경변수로 조정, 서버 값은 모두 추정치이므로 실제 사용량을 본 뒤 조정):
 
 - DB 백업: 배포 전 자동 백업(`obs-<날짜>-<시각>-before-<커밋7자리>.dump`)만 최근 10개(`OBS_BACKUP_KEEP`) 남기고 지웁니다. 수동·복원 안전 백업은 지우지 않고 개수만 알립니다. 24시간 넘은 `.part` 부분 파일은 지웁니다.

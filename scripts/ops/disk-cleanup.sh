@@ -15,12 +15,14 @@ set -euo pipefail
 
 MODE=dry
 DETAILS=0
+CHECKOUT_DETAILS=0
 case "${1:-}" in
   --apply) MODE=apply ;;
   --check) MODE=check ;;
   --details) DETAILS=1 ;;
+  --checkout-details) CHECKOUT_DETAILS=1 ;;
   ""|--dry-run) ;;
-  *) echo "사용법: disk-cleanup.sh [--check | --apply]   (아무 옵션 없으면 지울 목록만 보여 줘요)" >&2; exit 2 ;;
+  *) echo "사용법: disk-cleanup.sh [--check | --apply | --details | --checkout-details]   (아무 옵션 없으면 지울 목록만 보여 줘요)" >&2; exit 2 ;;
 esac
 
 kst() { TZ=Asia/Seoul date "$@"; }
@@ -133,6 +135,161 @@ readonly_buildx_details() {
   log "Build cache ownership: UNKNOWN (cache ID와 build history 연결 근거 없음)"
 }
 
+# ONQ server checkout artifacts only. This is informational; it never proposes or removes files.
+readonly_path_overlap() {
+  local a="$1" b="$2"
+  [[ "$a" == "$b" || "$a" == "/" || "$b" == "/" || "$a" == "$b/"* || "$b" == "$a/"* ]]
+}
+
+readonly_checkout_git_state() {
+  local root="$1" top="" origin="" status="" identity=UNKNOWN dirty=UNKNOWN
+  top="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null || true)"
+  origin="$(git -C "$root" remote get-url origin 2>/dev/null || true)"
+  case "${origin,,}" in
+    https://github.com/jsexy0210-ship-it/live-obs-platform|https://github.com/jsexy0210-ship-it/live-obs-platform.git|git@github.com:jsexy0210-ship-it/live-obs-platform|git@github.com:jsexy0210-ship-it/live-obs-platform.git)
+      [ "$top" = "$root" ] && identity=ONQ ;;
+  esac
+  if [ "$identity" = ONQ ]; then
+    if status="$(git -C "$root" status --porcelain --untracked-files=normal 2>/dev/null)"; then
+      [ -z "$status" ] && dirty=clean || dirty=dirty
+    fi
+  fi
+  printf '%s %s' "$identity" "$dirty"
+}
+
+readonly_target_mount_state() {
+  local root="$1" target="$2" mounts mount root_mount="" target_mount="" nested=no
+  local root_mount_len=0 target_mount_len=0 mount_len
+  [ -r /proc/self/mountinfo ] || { printf 'UNKNOWN'; return; }
+  mounts="$(awk '{print $5}' /proc/self/mountinfo 2>/dev/null)" || { printf 'UNKNOWN'; return; }
+  [ -n "$mounts" ] || { printf 'UNKNOWN'; return; }
+  while IFS= read -r mount; do
+    mount_len=${#mount}
+    if { [ "$mount" = / ] || [ "$target" = "$mount" ] || [[ "$target" == "$mount/"* ]]; } && [ "$mount_len" -gt "$target_mount_len" ]; then
+      target_mount="$mount"; target_mount_len="$mount_len"
+    fi
+    if { [ "$mount" = / ] || [ "$root" = "$mount" ] || [[ "$root" == "$mount/"* ]]; } && [ "$mount_len" -gt "$root_mount_len" ]; then
+      root_mount="$mount"; root_mount_len="$mount_len"
+    fi
+    case "$mount" in "$target"|"$target/"*) nested=yes ;; esac
+  done <<<"$mounts"
+  if [ -z "$root_mount" ] || [ -z "$target_mount" ]; then printf 'UNKNOWN'
+  elif [ "$nested" = yes ] || [ "$target_mount" != "$root_mount" ]; then printf 'separate'
+  else printf 'same'
+  fi
+}
+
+readonly_exact_active_ref() {
+  local target="$1" proc entry path found=0 incomplete=0
+  [ -d /proc ] && [ -r /proc ] || { printf 'UNKNOWN'; return; }
+  for proc in /proc/[0-9]*; do
+    [ -d "$proc" ] || continue
+    if [ ! -r "$proc/fd" ]; then incomplete=1; continue; fi
+    for entry in "$proc"/cwd "$proc"/root "$proc"/exe "$proc"/fd/*; do
+      if [ ! -e "$entry" ] && [ ! -L "$entry" ]; then incomplete=1; continue; fi
+      if ! path="$(readlink -- "$entry" 2>/dev/null)"; then incomplete=1; continue; fi
+      if readonly_path_overlap "${path% (deleted)}" "$target"; then found=1; break 2; fi
+    done
+  done
+  if [ "$found" = 1 ]; then printf 'yes'
+  elif [ "$incomplete" = 1 ]; then printf 'UNKNOWN'
+  else printf 'no'
+  fi
+}
+
+readonly_live_app_mount_sources() {
+  local ids id mounts source all_mounts="" failed=0
+  command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1 || { printf 'UNKNOWN'; return; }
+  ids="$(docker ps -q --filter label=com.docker.compose.project=obs-web --filter label=com.docker.compose.service=obs-web-app 2>/dev/null)" || { printf 'UNKNOWN'; return; }
+  [ -n "$ids" ] || { printf 'UNKNOWN'; return; }
+  for id in $ids; do
+    mounts="$(docker inspect --format '{{range .Mounts}}{{println .Source}}{{end}}' "$id" 2>/dev/null)" || { failed=1; continue; }
+    while IFS= read -r source; do
+      [ -z "$source" ] && continue
+      [[ "$source" == /* && "$source" != *$'\r'* ]] || failed=1
+    done <<<"$mounts"
+    all_mounts+="${mounts}"$'\n'
+  done
+  [ "$failed" = 0 ] || { printf 'UNKNOWN'; return; }
+  printf 'KNOWN\n%s\n__END__' "$all_mounts"
+}
+
+readonly_live_app_ref_for_target() {
+  local state="$1" sources="$2" target="$3" source target_real source_real unresolved=0
+  [ "$state" = KNOWN ] || { printf 'UNKNOWN'; return; }
+  command -v realpath >/dev/null 2>&1 || { printf 'UNKNOWN'; return; }
+  target_real="$(realpath -e -- "$target" 2>/dev/null || true)"
+  [ -n "$target_real" ] || { printf 'UNKNOWN'; return; }
+  while IFS= read -r source; do
+    [ -n "$source" ] || continue
+    source_real="$(realpath -e -- "$source" 2>/dev/null || true)"
+    if [ -z "$source_real" ]; then unresolved=1; continue; fi
+    if readonly_path_overlap "$source_real" "$target_real"; then printf 'yes'; return; fi
+  done <<<"$sources"
+  [ "$unresolved" = 0 ] && printf 'no' || printf 'UNKNOWN'
+}
+
+readonly_onq_artifact_detail() {
+  local root="$1" rel="$2" git_identity="$3" git_state="$4" app_state="$5" app_sources="$6"
+  local target="$root/$rel" root_real="" target_real="" exists=no type=missing symlink=no canonical=unknown
+  local owner=UNKNOWN mount=UNKNOWN size=UNKNOWN workspace_ref=UNKNOWN active_ref=UNKNOWN app_ref=UNKNOWN
+  if [ -e "$target" ] || [ -L "$target" ]; then exists=yes; fi
+  if [ -L "$target" ]; then
+    symlink=yes; type=symlink
+  elif [ -d "$target" ]; then type=directory
+  elif [ -f "$target" ]; then type=file
+  elif [ "$exists" = yes ]; then type=other
+  fi
+  if [ "$exists" = yes ] && [ "$symlink" = no ] && command -v realpath >/dev/null 2>&1; then
+    root_real="$(realpath -e -- "$root" 2>/dev/null || true)"
+    target_real="$(realpath -e -- "$target" 2>/dev/null || true)"
+    if [ "$root_real" = "$root" ] && [ "$target_real" = "$target" ] && [[ "$target_real" == "$root_real/"* ]]; then canonical=contained; fi
+  fi
+  if [ "$exists" = yes ] && [ "$symlink" = no ] && command -v stat >/dev/null 2>&1; then
+    case "$(stat -c '%U' -- "$target" 2>/dev/null || true)" in
+      obs) owner=obs ;;
+      "") owner=UNKNOWN ;;
+      *[!0-9]*) owner=other ;;
+      *) owner=UNKNOWN ;;
+    esac
+  fi
+  if [ "$exists" = yes ] && [ "$symlink" = no ] && [ "$canonical" = contained ]; then
+    mount="$(readonly_target_mount_state "$root" "$target")"
+  fi
+  if [ "$exists" = yes ] && [ "$type" = directory ] && [ "$symlink" = no ] && [ "$canonical" = contained ] && [ "$owner" = obs ] && [ "$mount" = same ] && [ "$git_identity" = ONQ ] && command -v du >/dev/null 2>&1 && command -v cut >/dev/null 2>&1; then
+    size="$(du -sx --block-size=1 -- "$target" 2>/dev/null | cut -f1 2>/dev/null)" || size=UNKNOWN
+    [[ "$size" =~ ^[0-9]+$ ]] || size=UNKNOWN
+  fi
+  if [ -n "${GITHUB_WORKSPACE:-}" ] && command -v realpath >/dev/null 2>&1; then
+    local workspace_real
+    workspace_real="$(realpath -e -- "$GITHUB_WORKSPACE" 2>/dev/null || true)"
+    if [ -n "$workspace_real" ] && [ "$canonical" = contained ]; then
+      readonly_path_overlap "$workspace_real" "$target" && workspace_ref=yes || workspace_ref=no
+    fi
+  fi
+  if [ "$canonical" = contained ]; then
+    active_ref="$(readonly_exact_active_ref "$target")"
+    app_ref="$(readonly_live_app_ref_for_target "$app_state" "$app_sources" "$target")"
+  fi
+  log "ONQ artifact detail: checkout=$git_identity path=$target exists=$exists type=$type symlink=$symlink canonical=$canonical owner=$owner mount=$mount size_bytes=$size git_state=$git_state workspace_ref=$workspace_ref active_ref=$active_ref app_mount_ref=$app_ref candidate=UNKNOWN"
+}
+
+readonly_onq_checkout_artifacts_details() {
+  local root=/opt/obs/src git_identity git_state app_state app_sources
+  read -r git_identity git_state <<<"$(readonly_checkout_git_state "$root")"
+  app_state=UNKNOWN; app_sources=""
+  local app_info
+  app_info="$(readonly_live_app_mount_sources)"
+  if [[ "$app_info" == KNOWN$'\n'*$'\n'__END__ ]]; then
+    app_state=KNOWN
+    app_sources="${app_info#*$'\n'}"
+    app_sources="${app_sources%$'\n'__END__}"
+  fi
+  log "ONQ artifact source contract: .next/node_modules excluded from Docker context; rollback uses existing images; live build/source drift=UNKNOWN, live rollback activity=UNKNOWN"
+  readonly_onq_artifact_detail "$root" .next "$git_identity" "$git_state" "$app_state" "$app_sources"
+  readonly_onq_artifact_detail "$root" node_modules "$git_identity" "$git_state" "$app_state" "$app_sources"
+}
+
 docker_root() {
   local d=""
   if command -v docker >/dev/null 2>&1; then d="$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || true)"; fi
@@ -193,6 +350,10 @@ if [ "$DETAILS" = 1 ]; then
   readonly_space_details "백업 디스크" "$BACKUP_DIR"
   readonly_space_details "러너 작업 디스크" "$(runner_root)"
   readonly_buildx_details
+elif [ "$CHECKOUT_DETAILS" = 1 ]; then
+  log "ONQ checkout artifact 진단 시작 (Buildx cache 조회 없음)"
+  readonly_onq_checkout_artifacts_details
+  exit 0
 fi
 say() { if [ "$MODE" = apply ]; then log "$*"; else log "[지울 후보] $*"; fi; }
 total_freed=0
