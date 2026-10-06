@@ -1754,11 +1754,19 @@ body {
   }
 }
 /* SH-041 쇼핑몰 잠금 안내: 가운데 카드, 버튼 두 개 나란히 */
-.shop-locked {
+.shop-locked-wrap {
   align-self: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   width: 100%;
   max-width: 560px;
   margin-inline: auto;
+}
+.shop-locked-hint {
+  text-align: center;
+  font-size: 13px;
+  color: var(--wds-label-alternative);
 }
 .shop-locked-btns {
   display: flex;
