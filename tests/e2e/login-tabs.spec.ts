@@ -98,7 +98,7 @@ test("로그인 요청에 고른 탭을 보내고, 아직 그 값을 모르는 �
   const req = page.waitForRequest((r) => r.url().endsWith("/api/seller/auth/login"));
   await page.getByRole("button", { name: "로그인" }).click();
   expect(((await req).postDataJSON() as { accountType: string }).accountType).toBe("owner");
-  await expect(page).toHaveURL(/\/seller\/products$/);
+  await expect(page).toHaveURL(/\/seller$/);
 });
 
 test("고른 탭과 계정 종류가 다르면(wrong_account_type) 맞는 탭으로 안내하고, 버튼으로 탭을 바꾼다", async ({ page }) => {
@@ -140,7 +140,7 @@ test("대표자 탭에서 쇼핑몰 주소를 물은 뒤 직원 탭으로 바꾸
   await page.getByRole("tab", { name: "직원" }).click();
   await expect(page.getByLabel("쇼핑몰 주소")).toHaveCount(0);
   await page.getByRole("button", { name: "로그인" }).click();
-  await expect(page).toHaveURL(/\/seller\/products$/);
+  await expect(page).toHaveURL(/\/seller$/);
   // 직원 탭 요청에는 앞 탭에서 적은 쇼핑몰 주소가 실리지 않는다
   expect(bodies[1]).toMatchObject({ accountType: "staff" });
   expect(bodies[1]).not.toHaveProperty("shopSlug");
@@ -170,7 +170,7 @@ test("본인확인을 쓸 수 없는 서버(대행사 미연결)에서는 연결
   await page.getByLabel("비밀번호").fill(PASSWORD);
   await page.getByRole("button", { name: "로그인" }).click();
   expect(await (await status).json()).toMatchObject({ available: false, linked: false });
-  await expect(page).toHaveURL(/\/seller\/products$/);
+  await expect(page).toHaveURL(/\/seller$/);
 });
 
 test("아이디 찾기: 본인확인 대행사 연결 전이면 인증번호 받기에서 준비 중 화면으로 바뀐다", async ({ page }) => {

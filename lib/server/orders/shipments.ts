@@ -18,7 +18,7 @@ export const SHIPMENT_TABS = ["ready", "in_transit", "delivered"] as const;
 export type ShipmentTab = (typeof SHIPMENT_TABS)[number];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const TAB_WHERE: Record<ShipmentTab, Prisma.OrderWhereInput> = {
+export const TAB_WHERE: Record<ShipmentTab, Prisma.OrderWhereInput> = {
   ready: { status: "PAID", fulfillmentType: "IMMEDIATE", stockShortageAt: null, shippingAddress: { isNot: null }, OR: [{ shipment: { is: null } }, { shipment: { is: { status: "READY" } } }] },
   in_transit: { status: "PAID", shipment: { status: "IN_TRANSIT" } },
   delivered: { shipment: { status: "DELIVERED" } },

@@ -140,3 +140,44 @@ export async function deleteRefundRequestInDb(id: string) {
     await db.$disconnect();
   }
 }
+
+// 내 적립금(SH-023) e2e: 적립금 내역 4건(적립·보너스·사용·회수)과 잔액을 넣는다. 키가 「e2e-rw:」로 시작하는 행만 만들고 지운다.
+const RW_PREFIX = "e2e-rw:";
+export async function seedRewardLedgerInDb(slug: string, loginId: string, opts: { payout: boolean }) {
+  const db = open();
+  try {
+    const seller = await db.seller.findUniqueOrThrow({ where: { slug } });
+    const buyer = await db.buyerMember.findFirstOrThrow({ where: { sellerId: seller.id, loginId, deletedAt: null } });
+    await db.rewardLedger.deleteMany({ where: { sellerId: seller.id, buyerMemberId: buyer.id, idempotencyKey: { startsWith: RW_PREFIX } } });
+    const day = (n: number) => new Date(Date.now() - n * 86_400_000);
+    const rows = [
+      { type: "EARN" as const, amount: 1782, createdAt: day(5) },
+      { type: "RANKING_BONUS" as const, amount: 5000, createdAt: day(4) },
+      { type: "REVOKE" as const, amount: -760, createdAt: day(3) },
+      { type: "USE" as const, amount: -10000, createdAt: day(2) },
+    ];
+    for (const [i, r] of rows.entries()) {
+      await db.rewardLedger.create({ data: { sellerId: seller.id, buyerMemberId: buyer.id, type: r.type, amount: r.amount, status: "SUCCEEDED", testMode: false, idempotencyKey: `${RW_PREFIX}${i}`, createdAt: r.createdAt, processedAt: r.createdAt } });
+    }
+    await db.rewardPolicy.upsert({ where: { sellerId: seller.id }, create: { sellerId: seller.id, livePayoutEnabled: opts.payout }, update: { livePayoutEnabled: opts.payout } });
+    await db.rewardBalance.upsert({
+      where: { sellerId_buyerMemberId: { sellerId: seller.id, buyerMemberId: buyer.id } },
+      create: { sellerId: seller.id, buyerMemberId: buyer.id, balance: 32_400 },
+      update: { balance: 32_400 },
+    });
+  } finally {
+    await db.$disconnect();
+  }
+}
+
+export async function clearRewardLedgerInDb(slug: string, loginId: string) {
+  const db = open();
+  try {
+    const seller = await db.seller.findUniqueOrThrow({ where: { slug } });
+    const buyer = await db.buyerMember.findFirstOrThrow({ where: { sellerId: seller.id, loginId, deletedAt: null } });
+    await db.rewardLedger.deleteMany({ where: { sellerId: seller.id, buyerMemberId: buyer.id, idempotencyKey: { startsWith: RW_PREFIX } } });
+    await db.rewardBalance.deleteMany({ where: { sellerId: seller.id, buyerMemberId: buyer.id } });
+  } finally {
+    await db.$disconnect();
+  }
+}
