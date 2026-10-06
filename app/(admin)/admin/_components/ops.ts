@@ -18,9 +18,20 @@ export type LiveBroadcast = {
   startedAt: string;
   queue: { waiting: number; opening: number; done: number; cancelled: number };
   orders: number;
+  ordersLast60Seconds: number;
   overlay: Overlay;
   layoutAspect: string | null;
   paymentError: boolean;
+};
+export type LiveOrderRate = {
+  source: "INTERNAL_ORDER_CREATED_DURING_LIVE_SESSION";
+  association: "SELLER_AND_TIME_WINDOW";
+  externalOrders: "NOT_MEASURED";
+  scope: "ALL_LIVE_SESSIONS";
+  windowSeconds: 60;
+  from: string;
+  to: string;
+  total: number;
 };
 export type SellerActivity = {
   sellerId: string;
