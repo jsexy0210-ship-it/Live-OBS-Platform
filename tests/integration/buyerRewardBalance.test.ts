@@ -33,7 +33,7 @@ describe("구매자 적립금 잔액(GET /api/shop/{slug}/me/rewards)", () => {
     const empty = await get(seller.slug, c);
     expect(empty.status).toBe(200);
     expect(empty.headers.get("cache-control")).toBe("no-store");
-    expect(await empty.json()).toEqual({ balance: 0, pendingEarn: 0, useEnabled: false });
+    expect(await empty.json()).toEqual({ balance: 0, pendingEarn: 0, expiringSoon: null, useEnabled: false });
 
     await db.rewardBalance.create({ data: { sellerId: seller.id, buyerMemberId: a.id, balance: 3200 } });
     await ledger(seller.id, a.id, 1000, "PENDING");
@@ -43,7 +43,7 @@ describe("구매자 적립금 잔액(GET /api/shop/{slug}/me/rewards)", () => {
     await ledger(seller.id, a.id, 9000, "FAILED");
     await ledger(seller.id, a.id, 3200, "SUCCEEDED");
     await ledger(seller.id, a.id, -300, "PENDING", false, "REVOKE");
-    expect(await (await get(seller.slug, c)).json()).toEqual({ balance: 3200, pendingEarn: 1500, useEnabled: false });
+    expect(await (await get(seller.slug, c)).json()).toEqual({ balance: 3200, pendingEarn: 1500, expiringSoon: null, useEnabled: false });
   });
 
   it("다른 회원·다른 쇼핑몰 값은 섞이지 않고, 로그인 없거나 다른 쇼핑몰 세션은 401, 없는 쇼핑몰은 404, 탈퇴 뒤 세션은 401", async () => {
@@ -56,7 +56,7 @@ describe("구매자 적립금 잔액(GET /api/shop/{slug}/me/rewards)", () => {
     await ledger(s1.seller.id, b.id, 100, "PENDING");
     await db.rewardBalance.create({ data: { sellerId: s2.seller.id, buyerMemberId: other.id, balance: 777 } });
     const ca = await cookie(s1.seller.id, a.loginId);
-    expect(await (await get(s1.seller.slug, ca)).json()).toEqual({ balance: 0, pendingEarn: 0, useEnabled: false });
+    expect(await (await get(s1.seller.slug, ca)).json()).toEqual({ balance: 0, pendingEarn: 0, expiringSoon: null, useEnabled: false });
     expect((await get(s1.seller.slug)).status).toBe(401);
     expect((await get(s2.seller.slug, ca)).status).toBe(401);
     expect((await get("no-such-shop", ca)).status).toBe(404);
@@ -71,7 +71,7 @@ describe("구매자 적립금 잔액(GET /api/shop/{slug}/me/rewards)", () => {
     const c = await cookie(seller.id, a.loginId);
     await db.rewardBalance.create({ data: { sellerId: seller.id, buyerMemberId: a.id, balance: 1200 } });
     await db.seller.update({ where: { id: seller.id }, data: { trialEndsAt: new Date(Date.now() - 1000) } });
-    expect(await (await get(seller.slug, c)).json()).toEqual({ balance: 1200, pendingEarn: 0, useEnabled: false });
+    expect(await (await get(seller.slug, c)).json()).toEqual({ balance: 1200, pendingEarn: 0, expiringSoon: null, useEnabled: false });
   });
 
   it("useEnabled는 그 쇼핑몰 판매자의 적립금 실지급 켜짐 여부이고, 다른 쇼핑몰 설정과 섞이지 않는다", async () => {

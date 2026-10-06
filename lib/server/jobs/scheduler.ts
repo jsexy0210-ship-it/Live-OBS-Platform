@@ -15,6 +15,8 @@ import { recalcMonthlyGrades } from "../shop-member-grades/service";
 import { rejectExpiredSupplements } from "../sellers/applications";
 import { sendDecisionMails } from "../sellers/decisionMails";
 import { sendBuyerOrderMails } from "../orders/buyerMails";
+import { runDeliveryTrackingLookups } from "../orders/tracking";
+import { deliveryTrackingProvider } from "../orders/trackingProvider";
 import { processDueMemberMessages } from "../shop-member-messages/service";
 import { collectInfraSnapshot } from "../ops/infra";
 import { evaluateInfraAlerts } from "../ops/infraAlerts";
@@ -69,6 +71,8 @@ export const SCHEDULED_JOBS: ScheduledJob[] = [
   { name: "seller_application.send_decision_mails", run: (_tx, now) => sendDecisionMails(prisma, now) },
   // 구매자 거래 메일(주문 접수·결제·발송·배송 완료·환불, EM-001~004, orders/buyerMails.ts). 제공량 안 무료·초과 충전금 차감·잔액 없으면 그 메일만 건너뜀.
   { name: "order_mail.send_buyer_mails", run: (_tx, now) => sendBuyerOrderMails(prisma, now) },
+  // 배송 자동조회(orders/tracking.ts): 판매자가 켠 배송 중 주문만 6시간 간격으로 조회하고 건당 발송·이용 충전금을 차감한다. 조회 업체 어댑터가 없으면(deliveryTrackingProvider() null) 조회·차감 없이 0건.
+  { name: "delivery_tracking.lookup", run: async (_tx, now) => { const r = await runDeliveryTrackingLookups(prisma, deliveryTrackingProvider(), { now }); return r.looked; } },
   // 회원 대상 발송: 시각이 된 예약을 기록으로 바꾼다(shop-member-messages, 실제 발송 채널은 아직 없음)
   // 일괄 상품 등록 확정이 서버 중단으로 10분 넘게 COMMITTING에 머문 작업을 마감한다(shop-bulk-io/recover.ts)
   { name: "bulk_job.recover_stuck_commit", run: (_tx, now) => recoverStuckBulkCommits(prisma, now) },
