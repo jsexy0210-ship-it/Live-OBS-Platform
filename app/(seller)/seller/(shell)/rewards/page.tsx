@@ -7,6 +7,7 @@ import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
 import { formatDateTime } from "../../../../../lib/client/format";
+import "./rewards.css";
 
 // SA-031 적립 정책(정본 SA-031 FINAL). API: GET·PUT /api/seller/reward-policy, POST …/preview, GET …/history (회원·적립금 권한).
 // 등급별 적립률(카드·무통장)·지급 시점·회수 방식·최소 사용 금액·주문당 최대 사용 비율·인기 카드 1위 보너스를 한 번에 저장한다(바뀐 항목만 보냄).
@@ -230,6 +231,7 @@ export default function RewardPolicyPage() {
           </div>
         ) : (
           <form
+            className="rw-form"
             noValidate
             onSubmit={(e) => {
               e.preventDefault();
@@ -314,48 +316,84 @@ export default function RewardPolicyPage() {
                 </FormRow>
               </FormSection>
 
-              <FormSection title="회수 · 사용 조건">
-                <FormRow label="취소 · 환불 시 회수" htmlFor="rp-revoke">
-                  <select id="rp-revoke" className="inp" style={{ maxWidth: 360 }} value={form.revoke} onChange={(e) => patch({ revoke: e.target.value as RevokeMode })}>
-                    {(["AUTO", "MANUAL"] as const).map((k) => (
-                      <option key={k} value={k}>
-                        {REVOKE_LABEL[k]}
-                      </option>
-                    ))}
-                  </select>
-                </FormRow>
-                <FormRow label="유효 기간">
-                  <span>마지막 적립 후 3년이 지나면 소멸</span>
-                  <span className="help" style={{ display: "block" }}>
-                    새로 적립되지 않은 채 3년이 지나면 남은 적립금이 사라집니다 · 소멸 30일 전 회원에게 알림톡(안 되면 문자)으로 안내 · 기간은 바꿀 수 없습니다
-                  </span>
-                </FormRow>
-                <FormRow label="최소 사용 금액" htmlFor="rp-min" help={errors.useMin ? <span className="err">{errors.useMin}</span> : undefined}>
-                  <div className="row" style={{ gap: 6, alignItems: "center" }}>
-                    <input id="rp-min" className={`inp num${errors.useMin ? " is-error" : ""}`} style={{ width: 140, textAlign: "right" }} inputMode="numeric" value={form.useMin} onChange={(e) => patch({ useMin: e.target.value })} aria-invalid={!!errors.useMin} />
-                    <span>원</span>
-                  </div>
-                </FormRow>
-                <FormRow label="주문당 최대 사용 비율" htmlFor="rp-ratio" help={errors.useRatio ? <span className="err">{errors.useRatio}</span> : undefined}>
-                  <div className="row" style={{ gap: 6, alignItems: "center" }}>
-                    <input id="rp-ratio" className={`inp num${errors.useRatio ? " is-error" : ""}`} style={{ width: 100, textAlign: "right" }} inputMode="numeric" value={form.useRatio} onChange={(e) => patch({ useRatio: e.target.value })} aria-invalid={!!errors.useRatio} />
-                    <span>% · 0 = 제한 없음</span>
-                  </div>
-                </FormRow>
-                <FormRow label="인기 카드 1위 보너스" help={errors.bonus ? <span className="err">{errors.bonus}</span> : "HIT 당첨으로 1위에 오른 구매자에게 추가 지급"}>
-                  <div className="row" style={{ gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                    <label className="chk">
-                      <input className="cbx" type="checkbox" checked={form.bonusOn} onChange={(e) => patch({ bonusOn: e.target.checked })} aria-label="인기 카드 1위 보너스 사용" />
-                      사용
-                    </label>
-                    <input className={`inp num${errors.bonus ? " is-error" : ""}`} style={{ width: 120, textAlign: "right" }} inputMode="numeric" aria-label="인기 카드 1위 보너스 금액" value={form.bonusAmount} disabled={!form.bonusOn} onChange={(e) => patch({ bonusAmount: e.target.value })} aria-invalid={!!errors.bonus} />
-                    <span>원</span>
-                  </div>
-                </FormRow>
-                <FormRow label="리뷰 적립금">
-                  <span>리뷰 관리에서 설정합니다</span>
-                </FormRow>
-              </FormSection>
+              <section className="au-fs" data-testid="revoke-section">
+                <div className="au-fs-h">
+                  <h2 className="au-fs-t">회수 · 사용 조건</h2>
+                </div>
+                <table className="au-ft rw-ft4">
+                  <colgroup>
+                    <col style={{ width: 160 }} />
+                    <col />
+                    <col style={{ width: 160 }} />
+                    <col />
+                  </colgroup>
+                  <tbody>
+                    <tr>
+                      <th scope="row">
+                        <label htmlFor="rp-revoke">취소 · 환불 시 회수</label>
+                      </th>
+                      <td className="rw-rt">
+                        <select id="rp-revoke" className="inp" style={{ width: "100%", maxWidth: 360 }} value={form.revoke} onChange={(e) => patch({ revoke: e.target.value as RevokeMode })}>
+                          {(["AUTO", "MANUAL"] as const).map((k) => (
+                            <option key={k} value={k}>
+                              {REVOKE_LABEL[k]}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <th scope="row">
+                        <span>유효 기간</span>
+                      </th>
+                      <td>
+                        <span>마지막 적립 후 3년이 지나면 소멸</span>
+                        <p className="help au-ft-help">새로 적립되지 않은 채 3년이 지나면 남은 적립금이 사라집니다 · 소멸 30일 전 회원에게 알림톡(안 되면 문자)으로 안내 · 기간은 바꿀 수 없습니다</p>
+                      </td>
+                    </tr>
+                    <tr>
+                      <th scope="row">
+                        <label htmlFor="rp-min">최소 사용 금액</label>
+                      </th>
+                      <td className="rw-rt">
+                        <div className="row" style={{ gap: 6, alignItems: "center" }}>
+                          <input id="rp-min" className={`inp num${errors.useMin ? " is-error" : ""}`} style={{ width: 140, textAlign: "right" }} inputMode="numeric" value={form.useMin} onChange={(e) => patch({ useMin: e.target.value })} aria-invalid={!!errors.useMin} />
+                          <span>원</span>
+                        </div>
+                        {errors.useMin && <p className="err au-ft-help">{errors.useMin}</p>}
+                      </td>
+                      <th scope="row">
+                        <label htmlFor="rp-ratio">주문당 최대 사용 비율</label>
+                      </th>
+                      <td>
+                        <div className="row" style={{ gap: 6, alignItems: "center" }}>
+                          <input id="rp-ratio" className={`inp num${errors.useRatio ? " is-error" : ""}`} style={{ width: 100, textAlign: "right" }} inputMode="numeric" value={form.useRatio} onChange={(e) => patch({ useRatio: e.target.value })} aria-invalid={!!errors.useRatio} />
+                          <span>% · 0 = 제한 없음</span>
+                        </div>
+                        {errors.useRatio && <p className="err au-ft-help">{errors.useRatio}</p>}
+                      </td>
+                    </tr>
+                    <tr>
+                      <th scope="row">
+                        <span>인기 카드 1위 보너스</span>
+                      </th>
+                      <td className="rw-rt">
+                        <div className="row" style={{ gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                          <label className="chk">
+                            <input className="cbx" type="checkbox" checked={form.bonusOn} onChange={(e) => patch({ bonusOn: e.target.checked })} aria-label="인기 카드 1위 보너스 사용" />
+                            사용
+                          </label>
+                          <input className={`inp num${errors.bonus ? " is-error" : ""}`} style={{ width: 120, textAlign: "right" }} inputMode="numeric" aria-label="인기 카드 1위 보너스 금액" value={form.bonusAmount} disabled={!form.bonusOn} onChange={(e) => patch({ bonusAmount: e.target.value })} aria-invalid={!!errors.bonus} />
+                          <span>원</span>
+                        </div>
+                        {errors.bonus ? <p className="err au-ft-help">{errors.bonus}</p> : <p className="help au-ft-help">HIT 당첨으로 1위에 오른 구매자에게 추가 지급</p>}
+                      </td>
+                      <th scope="row">
+                        <span>리뷰 적립금</span>
+                      </th>
+                      <td>리뷰 관리에서 설정합니다</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </section>
 
               <FormSection title="변경 영향 미리보기">
                 <FormRow label="예시 주문">{example ? `${n(EXAMPLE_AMOUNT)}원 · 카드 · ${example.name}` : "등급이 없습니다"}</FormRow>
@@ -413,11 +451,11 @@ export default function RewardPolicyPage() {
               </section>
             </fieldset>
             <FormFoot>
-              <button className="btn btn-out btn-lg" type="button" disabled={saving || !dirty} onClick={() => saved && (setForm(saved), setErrors({}))}>
-                변경 취소
-              </button>
               <button className="btn btn-lg" type="submit" disabled={saving || !dirty}>
                 {saving ? "저장 중" : "정책 저장"}
+              </button>
+              <button className="btn btn-out btn-lg" type="button" disabled={saving || !dirty} onClick={() => saved && (setForm(saved), setErrors({}))}>
+                변경 취소
               </button>
             </FormFoot>
           </form>

@@ -1,7 +1,7 @@
 /* SA-013 상품 상세 미리보기(정본 v320): 왼쪽 구매자 화면 틀(모바일 390 · PC), 오른쪽 점검 항목·공유 링크. 좁은 화면은 한 열 */
 .pv-two {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 5fr) minmax(0, 8fr);
   gap: 24px;
   align-items: start;
 }

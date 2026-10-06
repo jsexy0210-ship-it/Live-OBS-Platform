@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { FormRow, FormSection, PageHead, useConfirm } from "../../../../../../components/admin-ui";
+import { FormFoot, FormRow, FormSection, PageHead, useConfirm } from "../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { won } from "../../../../../../components/seller/format";
 import { formatDateTime } from "../../../../../../lib/client/format";
+import "../rewards.css";
 
 // SA-034 적립금 실제 지급 켜기(정본 SA-034 FINAL, 대표자만 바꾸고 조회는 회원·적립금 권한).
 // API: GET·PUT /api/seller/reward-live-payout(+ /settle, /history). 기본은 꺼짐: 꺼져 있으면 적립은 「대기」로만 기록된다.
@@ -88,7 +89,7 @@ export default function LivePayoutPage() {
   };
 
   const failedCond = data?.conditions.find((c) => c.key === "noRecentFailures");
-  const blockedLabel = failedCond && !failedCond.met && failedCond.failedCount ? `실패 ${n(failedCond.failedCount)}건 먼저 확인` : "실제 지급 켜기";
+  const blockedLabel = failedCond && !failedCond.met && failedCond.failedCount ? `실패 ${n(failedCond.failedCount)}건 먼저 확인` : null;
 
   return (
     <>
@@ -106,7 +107,7 @@ export default function LivePayoutPage() {
           </div>
         )}
         {data && (
-          <>
+          <div className="rw-form">
             {failure && (
               <div className="msg msg-neg" role="alert" style={{ marginBottom: 16 }}>
                 <span>{failure}</span>
@@ -120,30 +121,19 @@ export default function LivePayoutPage() {
               </div>
             )}
             {data.livePayout.enabled ? (
-              <div className="msg msg-cau" role="note" data-testid="live-on" style={{ marginBottom: 16 }}>
+              <div className="msg msg-pos" role="note" data-testid="live-on" style={{ marginBottom: 16 }}>
                 <span>
                   <b>실제 지급 켜짐</b>
                   {data.livePayout.changedAt ? ` · ${formatDateTime(data.livePayout.changedAt)}부터` : ""}. 끄면 그때부터 다시 「대기」로 기록합니다.
                 </span>
               </div>
             ) : (
-              <div className="msg msg-cau" role="note" style={{ marginBottom: 16 }}>
+              <div className="msg msg-info" role="note" data-testid="live-status" style={{ marginBottom: 16 }}>
                 <span>
                   <b>적립금 실제 지급 · 현재 꺼짐 (기본).</b> 꺼져 있으면 모든 적립은 「대기」로만 기록되고 회원 잔액에 반영되지 않습니다. 켜면 대기분이 일괄 지급되고 이후 정책대로 실제 지급됩니다.
                 </span>
               </div>
             )}
-
-            <FormSection title="실제 지급 설정">
-              <FormRow label="현재 상태" help="기본은 꺼짐입니다 · 꺼져 있으면 적립은 「대기」로만 기록되고 구매자 잔액은 바뀌지 않습니다">
-                <span className={`bdg ${data.livePayout.enabled ? "b-done" : "b-warn"}`} data-testid="live-status">
-                  {data.livePayout.enabled ? "켜짐" : "꺼짐"}
-                </span>
-              </FormRow>
-              <FormRow label="마지막 변경" help="변경할 때마다 로그 추적에 남습니다">
-                <span data-testid="live-changed">{data.livePayout.changedAt ? `${formatDateTime(data.livePayout.changedAt)} · ${data.livePayout.changedByName ?? "알 수 없음"}` : "변경한 적 없음"}</span>
-              </FormRow>
-            </FormSection>
 
             {!data.livePayout.enabled && (
               <>
@@ -191,9 +181,7 @@ export default function LivePayoutPage() {
                                 </>
                               ) : !c.met && c.key === "policy" ? (
                                 <Link href="/seller/rewards">적립 정책 설정</Link>
-                              ) : (
-                                "-"
-                              )}
+                              ) : null}
                             </td>
                           </tr>
                         ))}
@@ -206,7 +194,7 @@ export default function LivePayoutPage() {
                   <div className="au-fs-h">
                     <h2 className="au-fs-t">켜면 일어나는 일</h2>
                   </div>
-                  <ol className="col" style={{ gap: 6, margin: 0, paddingLeft: 20 }}>
+                  <ol className="card col" style={{ gap: 6, margin: 0, padding: "16px 16px 16px 36px" }}>
                     <li>대기 {n(data.pending.count)}건이 「성공」으로 바뀌고 잔액에 더해집니다</li>
                     <li>이후 개봉 완료마다 정책대로 바로 지급됩니다</li>
                     <li>취소 · 환불하면 자동으로 회수됩니다 · 잔액이 모자라면 실패로 남습니다</li>
@@ -245,10 +233,12 @@ export default function LivePayoutPage() {
                       {history.rows.map((h) => (
                         <tr key={h.id}>
                           <td className="num">{formatDateTime(h.at)}</td>
-                          <td>{h.enabled ? "켬" : "끔"}</td>
+                          <td>
+                            <span className={`bdg ${h.enabled ? "b-done" : "b-gray"} nodot`}>{h.enabled ? "켬" : "끔"}</span>
+                          </td>
                           <td>{h.actorName ?? "-"}</td>
                           <td className="col-text" data-card="wide">
-                            {h.settled ? `대기 ${n(h.settled.count)}건 ${n(h.settled.amount)}원 지급` : "-"}
+                            {h.settled ? `대기 ${n(h.settled.count)}건 ${n(h.settled.amount)}원 지급` : ""}
                           </td>
                         </tr>
                       ))}
@@ -265,23 +255,29 @@ export default function LivePayoutPage() {
               )}
             </section>
 
-            <div className="row" style={{ gap: 8, marginTop: 16, alignItems: "center", flexWrap: "wrap" }}>
+            <FormFoot>
               {me.isOwner ? (
                 data.livePayout.enabled ? (
-                  <button className="btn btn-out" type="button" disabled={!!progress} onClick={() => void change(false)} data-testid="live-off">
+                  <button className="btn btn-out btn-lg" type="button" disabled={!!progress} onClick={() => void change(false)} data-testid="live-off">
                     실제 지급 끄기
                   </button>
                 ) : (
-                  <button className="btn" type="button" disabled={!data.canEnable || !!progress} onClick={() => void change(true)} data-testid="live-on-button">
-                    {data.canEnable ? "실제 지급 켜기" : blockedLabel}
-                  </button>
+                  <>
+                    <button className="btn btn-lg" type="button" disabled={!data.canEnable || !!progress} onClick={() => void change(true)} data-testid="live-on-button">
+                      실제 지급 켜기
+                    </button>
+                    {blockedLabel && (
+                      <Link className="btn btn-lg btn-out" href="/seller/rewards/ledger?status=FAILED&period=all">
+                        {blockedLabel}
+                      </Link>
+                    )}
+                  </>
                 )
               ) : (
                 <span className="t-l2 c-alt">변경은 대표자만 할 수 있습니다 (읽기 전용)</span>
               )}
-              {me.isOwner && <span className="t-c1 c-alt">대표자만 바꿀 수 있습니다</span>}
-            </div>
-          </>
+            </FormFoot>
+          </div>
         )}
       </main>
 
