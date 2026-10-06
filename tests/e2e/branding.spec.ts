@@ -269,12 +269,12 @@ test("저장 전 입력값이 미리보기에 바로 반영된다(제목·설명
   await page.getByLabel("설명").fill("미리보기 확인 설명");
   await expect(card.getByText("미리보기 확인 제목")).toBeVisible();
   await expect(card.getByText("미리보기 확인 설명")).toBeVisible();
-  await expect(image).toHaveAttribute("src", `/api/admin/branding/card-preview?title=${encodeURIComponent("미리보기 확인 제목")}`);
+  await expect(image).toHaveAttribute("src", `/api/admin/branding/card-preview?target=seller&title=${encodeURIComponent("미리보기 확인 제목")}`);
   await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(1200);
   // 글자 수를 넘으면 마지막으로 그릴 수 있던 카드를 그대로 두고 깨진 그림을 보이지 않는다
   await page.getByLabel("제목").fill("가".repeat(61));
   await page.waitForTimeout(600);
-  await expect(image).toHaveAttribute("src", `/api/admin/branding/card-preview?title=${encodeURIComponent("미리보기 확인 제목")}`);
+  await expect(image).toHaveAttribute("src", `/api/admin/branding/card-preview?target=seller&title=${encodeURIComponent("미리보기 확인 제목")}`);
   // 파비콘: 고르기만 해도 공유 카드의 사이트 아이콘이 고른 파일로 바뀐다(저장 전)
   const iconBefore = await icon.getAttribute("src");
   await page.getByLabel("파비콘 파일").setInputFiles({ name: "preview.png", mimeType: "image/png", buffer: await sharp({ create: { width: 64, height: 64, channels: 4, background: "#00aaff" } }).png().toBuffer() });

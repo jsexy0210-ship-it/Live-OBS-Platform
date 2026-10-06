@@ -22,6 +22,10 @@
 }
 .help-tbl .c-date {
   width: 96px;
+  white-space: nowrap;
+}
+.help-tbl {
+  table-layout: fixed;
 }
 .help-tbl th.c-date,
 .help-tbl td.c-date {
@@ -110,6 +114,24 @@
 }
 .shop-app .help-tbl a:hover {
   text-decoration: underline;
+}
+@media (max-width: 767px) {
+  /* cart-tbl의 작은 화면 카드형 배치가 제목·날짜 표를 좁히지 않게 한다 */
+  .shop-app .help-tbl {
+    display: table;
+  }
+  .shop-app .help-tbl tbody {
+    display: table-row-group;
+  }
+  .shop-app .help-tbl tr {
+    display: table-row;
+    padding: 0;
+  }
+  .shop-app .help-tbl td {
+    display: table-cell;
+    padding: 10px 6px;
+    border-bottom: 1px solid var(--wds-line-solid-neutral);
+  }
 }
 .help-guide {
   margin: 0;
