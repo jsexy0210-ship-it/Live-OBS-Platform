@@ -292,6 +292,20 @@ export async function exportBillingInvoices(db: PrismaClient, admin: AdminSessio
 
 export type RetryResult = { paymentId: string; ok: boolean; reason?: string; result?: "PAID" | "FAILED" | "PENDING" };
 
+// 기존 재시도 판정만 분리한다. 상세 조회도 같은 순서·5분 경계를 쓰며 잠금/예약/결제 실행은 retryOne에 남긴다.
+export function invoiceRetryReason(
+  pay: { id: string; status: string; scheduled: boolean; kind: string },
+  latest: { id: string; createdAt: Date } | null,
+  sub: { status: string; cancelAtPeriodEnd: boolean; billingKeyCipher: string | null; seller: { status: string } },
+  now: Date,
+) {
+  if (pay.status !== "FAILED") return "not_failed" as const;
+  if (latest?.id !== pay.id || !pay.scheduled || pay.kind !== "PERIOD") return "not_latest" as const;
+  if (!["ACTIVE", "PAST_DUE"].includes(sub.status) || sub.cancelAtPeriodEnd || !sub.billingKeyCipher || sub.seller.status === "SUSPENDED") return "not_retryable" as const;
+  if (now.getTime() - latest.createdAt.getTime() < RETRY_MIN_GAP_MS) return "too_soon" as const;
+  return null;
+}
+
 // 실패 건 재시도(billing.manage = 최고관리자·운영). 실패한 자동결제(구독료) 청구 중 그 구독의 최신 청구이고, 구독이 살아 있고(해지 예약·정지 아님) 카드가 있는 것만.
 // 자동결제 예약 실행과 같은 경로(renewDueSubscriptions)로 그 구독만 지금 결제한다 → 같은 잠금·중복 방지·결제 결과 반영. 5분 안에 만든 청구가 있으면 too_soon.
 // 한 건이 실패해도 나머지는 계속한다(건별 결과, 1~50건). 결제 공급자는 부르는 쪽이 넘긴다(시험 환경은 가짜 공급자).
@@ -325,10 +339,8 @@ async function retryOne(db: PrismaClient, provider: BillingProvider, admin: Admi
     const cur = await tx.subscriptionPayment.findUniqueOrThrow({ where: { id: paymentId }, select: { status: true } });
     const latest = await tx.subscriptionPayment.findFirst({ where: { subscriptionId: pay.subscriptionId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true, createdAt: true } });
     const sub = await tx.sellerSubscription.findUniqueOrThrow({ where: { id: pay.subscriptionId }, select: { status: true, cancelAtPeriodEnd: true, billingKeyCipher: true, seller: { select: { status: true } } } });
-    if (cur.status !== "FAILED") return { reason: "not_failed" as const };
-    if (latest?.id !== paymentId || !pay.scheduled || pay.kind !== "PERIOD") return { reason: "not_latest" as const };
-    if (!["ACTIVE", "PAST_DUE"].includes(sub.status) || sub.cancelAtPeriodEnd || !sub.billingKeyCipher || sub.seller.status === "SUSPENDED") return { reason: "not_retryable" as const };
-    if (now.getTime() - latest.createdAt.getTime() < RETRY_MIN_GAP_MS) return { reason: "too_soon" as const };
+    const reason = invoiceRetryReason({ ...pay, id: paymentId, status: cur.status }, latest, sub, now);
+    if (reason) return { reason };
     await tx.sellerSubscription.update({ where: { id: pay.subscriptionId }, data: { nextChargeAt: now } });
     return { subscriptionId: pay.subscriptionId, sellerId: pay.sellerId };
   });
