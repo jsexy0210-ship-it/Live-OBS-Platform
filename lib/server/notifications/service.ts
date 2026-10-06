@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import type { AdminSessionContext } from "../auth/session";
 import { forbidden } from "../authz/errors";
 import { adminCan, IMPERSONATION_READ_ACTIONS, sellerCan, type SellerAction } from "../authz/permissions";
+import { shortageTitle } from "../messaging/shortage";
 import type { TenantContext } from "../tenant/context";
 
 // 알림 센터(파트너스 SA-130 · 마스터 MA-002). 알림은 공지·문의에서 바로 만들어 주고 따로 쌓지 않는다(메일·알림톡 발송 없음).
@@ -14,6 +15,7 @@ import type { TenantContext } from "../tenant/context";
 //   · ORDER_PAID 결제 완료: 최근 14일 안에 결제된 주문(결제 시각 기준)
 //   · OUT_OF_STOCK 재고 없음: 판매 중인 상품 중 지우지 않은 옵션 재고 합계가 0(목록의 「재고 없음」과 같은 기준)
 //   · RETURN_REQUESTED 반품·교환 요청: 접수를 기다리는(REQUESTED) 건
+//   · CHARGE_SHORTAGE 충전금: 충전금 부족·충전 기능 꺼짐으로 건너뛴 일(메일·배송 자동조회 등, MessageShortage의 열린 기록. 충전하면 사라짐). SUBSCRIPTION_MANAGE 권한자만, 같은 사유는 한 줄.
 // - 마스터: 답변을 기다리는 문의(OPEN). 보기는 마스터 관리자 전 역할.
 // - 마스터 대리 조회(readOnly)는 보기만 하고 「읽음」은 남기지 않는다.
 
@@ -23,7 +25,7 @@ export const PER_KIND = 10;
 export const LIMIT = 30;
 const DAY = 86_400_000;
 
-export type NotificationKind = "NOTICE" | "INQUIRY_REPLY" | "INQUIRY_WAITING" | "DEPOSIT_PENDING" | "ORDER_PAID" | "OUT_OF_STOCK" | "RETURN_REQUESTED";
+export type NotificationKind = "NOTICE" | "INQUIRY_REPLY" | "INQUIRY_WAITING" | "DEPOSIT_PENDING" | "ORDER_PAID" | "OUT_OF_STOCK" | "RETURN_REQUESTED" | "CHARGE_SHORTAGE";
 export type NotificationItem = { id: string; kind: NotificationKind; title: string; href: string; createdAt: Date; unread: boolean };
 
 const byNewest = (a: NotificationItem, b: NotificationItem) => b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? 1 : -1);
@@ -35,7 +37,7 @@ export async function listSellerNotifications(db: PrismaClient, ctx: TenantConte
   const isUnread = (at: Date) => !seen || at > seen.seenAt;
   const orderSince = new Date(now.getTime() - ORDER_DAYS * DAY);
   const seeOrders = canSee(ctx, "ORDER_SHIPPING");
-  const [notices, inquiries, deposits, paid, stock, returns] = await Promise.all([
+  const [notices, inquiries, deposits, paid, stock, returns, shortages] = await Promise.all([
     db.platformNotice.findMany({
       where: { deletedAt: null, publishedAt: { gte: new Date(now.getTime() - NOTICE_DAYS * DAY), not: null }, audience: { in: ["PARTNERS", "ALL"] } },
       orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
@@ -82,6 +84,15 @@ export async function listSellerNotifications(db: PrismaClient, ctx: TenantConte
           select: { id: true, kind: true, createdAt: true, order: { select: { broadcastNicknameSnapshot: true } } },
         })
       : [],
+    // 충전금 부족·충전 기능 꺼짐으로 건너뛴 일(열린 기록, 충전하면 사라짐). 충전금을 다루는 권한자(SUBSCRIPTION_MANAGE)에게만 준다.
+    canSee(ctx, "SUBSCRIPTION_MANAGE")
+      ? db.messageShortage.findMany({
+          where: { sellerId: ctx.sellerId, resolvedAt: null, lastAt: { gte: new Date(now.getTime() - NOTICE_DAYS * DAY) } },
+          orderBy: [{ lastAt: "desc" }, { id: "desc" }],
+          take: PER_KIND,
+          select: { id: true, channel: true, reason: true, lastAt: true },
+        })
+      : [],
   ]);
   const items: NotificationItem[] = [
     ...notices.map((n) => ({
@@ -104,6 +115,7 @@ export async function listSellerNotifications(db: PrismaClient, ctx: TenantConte
     ...paid.map((o) => ({ id: `paid:${o.id}`, kind: "ORDER_PAID" as const, title: `${o.broadcastNicknameSnapshot} 님 주문 결제 완료`, href: `/seller/orders/${o.id}`, createdAt: o.paidAt!, unread: isUnread(o.paidAt!) })),
     ...stock.map((p) => ({ id: `stock:${p.id}`, kind: "OUT_OF_STOCK" as const, title: `${p.name} 재고 없음`, href: `/seller/products/${p.id}`, createdAt: p.at, unread: isUnread(p.at) })),
     ...returns.map((r) => ({ id: `return:${r.id}`, kind: "RETURN_REQUESTED" as const, title: `${r.order.broadcastNicknameSnapshot} 님 주문 ${r.kind === "EXCHANGE" ? "교환" : "반품"} 요청`, href: "/seller/returns", createdAt: r.createdAt, unread: isUnread(r.createdAt) })),
+    ...shortages.map((x) => ({ id: `charge-shortage:${x.id}`, kind: "CHARGE_SHORTAGE" as const, title: shortageTitle(x.channel, x.reason), href: "/seller/settings/message-balance", createdAt: x.lastAt, unread: isUnread(x.lastAt) })),
   ]
     .sort(byNewest)
     .slice(0, LIMIT);

@@ -10,14 +10,13 @@ import { MAX_SEARCH_LENGTH } from "../../../../../components/seller/format";
 import { adminApi } from "../../_components/api";
 import { AdminTopbar, useAdmin } from "../../_components/AdminShell";
 import { ImpersonateDialog } from "../../_components/ImpersonateDialog";
-import { DISPLAY_STATUS, PLAN_FILTER, ago, day, type DisplayStatus, type SellerListRow, type SellerListSummary, type SellerStatus } from "../../_components/partners";
-import { SuspendDialog } from "../../_components/SuspendDialog";
+import { DISPLAY_STATUS, PLAN_FILTER, ago, day, type DisplayStatus, type SellerListRow, type SellerListSummary } from "../../_components/partners";
 import { useListFilters } from "../../_components/useListFilters";
 import { useScrollRestore } from "../../../../../lib/client/navigation";
 
 // MA-011 파트너스 목록(GET /api/admin/sellers, 모든 마스터 역할). 정본: design/project/MA-011.dc.html(FINAL).
 // 위쪽 요약 칩 → 검색 조건 → 목록(정렬·쪽 크기·번호형 쪽 이동). 칩·정렬·쪽은 누르는 즉시 적용되고 검색 조건은 「검색」을 눌러 적용한다. 모든 조건은 주소에 남는다.
-// 이용 정지·해제(MA-015)는 최고관리자·운영, 대리 조회(MA-016)는 최고관리자·운영·고객 지원만 버튼이 보인다. 엑셀 내려받기에는 대표자 연락처가 들어 있지 않다.
+// 이용 정지·해제(MA-015)는 상세(MA-012)에서만 한다. 대리 조회(MA-016)는 최고관리자·운영·고객 지원만 버튼이 보인다. 엑셀 내려받기에는 대표자 연락처가 들어 있지 않다.
 type Filters = {
   q: string;
   field: string;
@@ -84,12 +83,10 @@ function params(f: Filters, withPaging: boolean) {
 
 function PartnerList() {
   const { me } = useAdmin();
-  const canModerate = adminCan(me.role, "seller.moderate");
   const canImpersonate = adminCan(me.role, "seller.impersonate");
   const { applied, draft, setDraft, apply } = useListFilters<Filters>(EMPTY);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
-  const [target, setTarget] = useState<SellerListRow | null>(null);
   const [viewing, setViewing] = useState<SellerListRow | null>(null);
 
   // 조건을 빨리 바꾸면 이전 응답이 늦게 올 수 있다. 마지막으로 보낸 조건의 응답만 반영한다
@@ -123,13 +120,6 @@ function PartnerList() {
 
   const search = () => go({ ...draft, q: draft.q.trim(), sort: latest.current.sort, limit: latest.current.limit, page: "1" });
   const reset = () => go({ ...EMPTY, sort: latest.current.sort, limit: latest.current.limit });
-
-  const done = (status: SellerStatus) => {
-    if (!target) return;
-    setTarget(null);
-    setToast({ text: status === "SUSPENDED" ? "이용을 정지했습니다." : "정지를 해제했습니다." });
-    void load(applied); // 표시 상태·요약 건수가 함께 바뀌므로 다시 불러온다
-  };
 
   const chips: { label: string; count: string | null; on: boolean; patch: Partial<Filters> }[] = [
     { label: "전체", count: sum ? String(sum.total) : null, on: !applied.state && !applied.pg && !applied.live && !applied.payout, patch: { state: "", pg: "", live: "", payout: "" } },
@@ -326,11 +316,6 @@ function PartnerList() {
                                     이 파트너스 화면 대신 보기
                                   </button>
                                 )}
-                                {canModerate && (s.status === "ACTIVE" || s.status === "SUSPENDED") && (
-                                  <button className="btn btn-sm btn-out" type="button" onClick={() => setTarget(s)}>
-                                    {s.status === "ACTIVE" ? "이용 정지" : "정지 해제"}
-                                  </button>
-                                )}
                               </span>
                             </td>
                           </tr>
@@ -344,18 +329,6 @@ function PartnerList() {
             ))}
         </div>
       </main>
-      {target && (
-        <SuspendDialog
-          seller={target}
-          onClose={() => setTarget(null)}
-          onDone={done}
-          onStale={() => {
-            setTarget(null);
-            setToast({ text: "다른 곳에서 이미 처리됐습니다. 목록을 새로 불러옵니다.", neg: true });
-            void load(applied);
-          }}
-        />
-      )}
       {viewing && (
         <ImpersonateDialog
           seller={viewing}

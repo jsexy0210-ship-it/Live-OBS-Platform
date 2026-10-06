@@ -96,6 +96,6 @@ test("결제 연결·활동 기록 탭: 결제 내역이 없으면 안내하고,
   await login(page, emails.ro);
   await page.goto(detail("pg"));
   await expect(page.getByTestId("tab-pg")).toContainText("결제 내역이 없습니다.");
-  await page.getByRole("button", { name: "활동 기록(로그 추적)", exact: true }).click();
+  await page.getByRole("button", { name: "활동 기록", exact: true }).click();
   await expect(page.getByRole("link", { name: "이 파트너스의 로그 추적 보기" })).toHaveAttribute("href", `/admin/logs?sellerId=${ids.seller}`);
 });

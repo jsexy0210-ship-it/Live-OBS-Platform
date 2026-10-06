@@ -6,6 +6,7 @@ import { openBillingKey } from "../billing/secret";
 import { dbNow } from "../billing/subscription";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
 import { MESSAGE_FEE_NOTICE_VERSION, balanceOf, lockBalance, messageSettings } from "./balance";
+import { resolveMessageShortages } from "./shortage";
 
 // 발송 충전(서식 2·7절). 대표자가 구독 결제 카드(빌링키)로 유료 잔액을 충전한다. 결제 공급자는 구독과 같은 것(지금은 가짜 공급자만,
 // 실제 결제 없음). 충전 기능 스위치가 켜져 있고 지금 서식 버전에 동의했을 때만 한다.
@@ -101,6 +102,8 @@ export async function settleMessageCharge(db: PrismaClient, chargeId: string, re
           },
         });
         await writeAudit(tx, { actorType: "SYSTEM", sellerId: c.sellerId, action: "seller.message_charge.paid", targetType: "MessageCharge", targetId: chargeId, after: { amount: c.amount } });
+        // 충전했으니 잔액 부족으로 건너뛴 알림은 푼다(다시 부족하면 새로 쌓인다). 충전 기능 꺼짐 기록은 이후 차감이 성공할 때 풀린다.
+        await resolveMessageShortages(tx, { sellerId: c.sellerId, reasons: ["INSUFFICIENT_BALANCE"], now });
       } else {
         await tx.messageCharge.update({ where: { id: chargeId }, data: { status: "FAILED", failureReason: result.reason.slice(0, 100), finishedAt: now } });
         await writeAudit(tx, { actorType: "SYSTEM", sellerId: c.sellerId, action: "seller.message_charge.failed", targetType: "MessageCharge", targetId: chargeId, reason: result.reason.slice(0, 100) });
