@@ -127,7 +127,7 @@ export default function SellerLoginPage() {
         </span>
         <div className="col login-head">
           <h1 className="t-t3">파트너스 관리자</h1>
-          <span className="t-l2 c-alt">쇼핑몰 운영과 방송 주문대기(방송 중 들어온 주문 목록)를 한곳에서 관리합니다.</span>
+          <span className="t-l2 c-alt">라이브 방송과 주문을 한곳에서 관리합니다</span>
         </div>
         <div className="tabs login-tabs" role="tablist" aria-label="계정 종류">
           {TABS.map((t, i) => (
