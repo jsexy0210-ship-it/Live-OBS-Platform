@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
-import { PageHead, SearchBox, SearchRow, useConfirm } from "../../../../../../components/admin-ui";
+import { CursorPagination, PageHead, SearchBox, SearchRow, useConfirm } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { DatePicker } from "../../../../../../components/admin-ui/DatePicker";
 import { MAX_SEARCH_LENGTH } from "../../../../../../components/seller/format";
@@ -98,11 +98,12 @@ function Invoices() {
   const { confirm } = useConfirm();
   const { applied, draft, setDraft, apply } = useListFilters<Filters>(EMPTY);
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
+  const [cursorPage, setCursorPage] = useState(1);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [custom, setCustom] = useState(false);
   const [rangeError, setRangeError] = useState(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
-  const cursor = cursors[cursors.length - 1];
+  const cursor = cursors[cursorPage - 1];
   const key = JSON.stringify({ applied, cursor });
   const reqId = useRef(0);
 
@@ -131,6 +132,7 @@ function Invoices() {
   const activeMonth = customActive ? "" : applied.month || thisMonth;
   const go = (next: Filters) => {
     setCursors([null]);
+    setCursorPage(1);
     apply(next);
   };
   const pickMonth = (m: string) => {
@@ -366,14 +368,7 @@ function Invoices() {
                     </table>
                   </div>
                   {(cursors.length > 1 || state.data.nextCursor) && (
-                    <div className="row" style={{ gap: 8, justifyContent: "center", padding: 12 }}>
-                      <button className="btn btn-sm btn-out" type="button" disabled={cursors.length <= 1} onClick={() => setCursors((c) => c.slice(0, -1))}>
-                        ‹ 이전
-                      </button>
-                      <button className="btn btn-sm btn-out" type="button" disabled={!state.data.nextCursor} onClick={() => state.data.nextCursor && setCursors((c) => [...c, state.data.nextCursor])}>
-                        다음 ›
-                      </button>
-                    </div>
+                    <CursorPagination page={cursorPage} visited={cursors.length} hasNext={!!state.data.nextCursor} onChange={setCursorPage} onNext={() => { if (state.data.nextCursor) { setCursors(c => c.length === cursorPage ? [...c, state.data.nextCursor] : c); setCursorPage(cursorPage + 1); } }} />
                   )}
                 </>
               ))}

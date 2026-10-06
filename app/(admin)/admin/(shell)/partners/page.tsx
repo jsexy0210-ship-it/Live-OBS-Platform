@@ -115,6 +115,16 @@ function PartnerList() {
   const limit = Number(applied.limit) || 20;
   const page = Math.max(1, Number(applied.page) || 1);
   const data = state.kind === "ok" ? state.data : null;
+  useEffect(() => {
+    if (!data) return;
+    const last = Math.max(1, Math.ceil(data.total / limit));
+    const normalized = Math.min(last, Math.max(1, Number.isFinite(Number(applied.page)) ? Math.floor(Number(applied.page)) : 1));
+    if (applied.page !== String(normalized)) {
+      const next = { ...latest.current, page: String(normalized) };
+      latest.current = next;
+      apply(next);
+    }
+  }, [data?.total, limit, applied.page, apply]);
   const sum = data?.summary ?? null;
   const filtered = SEARCH_KEYS.some((k) => k !== "field" && applied[k] !== "");
 
@@ -327,7 +337,7 @@ function PartnerList() {
                   </table>
                 </div>
                 <div style={{ maxWidth: "100%", overflowX: "auto" }}>
-                  <Pagination page={page} pageCount={Math.max(1, Math.ceil(data.total / limit))} onChange={(n) => go({ page: String(n) })} />
+                  <Pagination page={page} pageCount={Math.ceil(data.total / limit)} onChange={(n) => go({ page: String(n) })} />
                 </div>
               </>
             ))}
