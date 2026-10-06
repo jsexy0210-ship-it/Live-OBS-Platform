@@ -132,6 +132,16 @@ describe("파트너스 이름 검색", () => {
     expect(r.body.counts).toEqual({ OPEN: 1, ANSWERED: 1, CLOSED: 0 });
     expect((await get(me.cookie, `?seller=${encodeURIComponent("pocket duck")}`)).body.items).toHaveLength(1);
     expect((await get(me.cookie, `?seller=${encodeURIComponent("%")}`)).body.items).toHaveLength(0);
+    // 이름에 %·_가 실제로 든 쇼핑몰은 그 글자로 찾히고(이중 이스케이프가 아님), 다른 쇼핑몰은 와일드카드로 딸려 오지 않는다
+    const pct = await shop("50% 할인샵");
+    const under = await shop("a_b샵");
+    await inquiry(pct);
+    await inquiry(under);
+    const byPct = await get(me.cookie, `?seller=${encodeURIComponent("%")}`);
+    expect(byPct.body.items.map((i: { shopName: string }) => i.shopName)).toEqual(["50% 할인샵"]);
+    expect((await get(me.cookie, `?seller=${encodeURIComponent("50%")}`)).body.items).toHaveLength(1);
+    expect((await get(me.cookie, `?seller=${encodeURIComponent("a_b")}`)).body.items.map((i: { shopName: string }) => i.shopName)).toEqual(["a_b샵"]);
+    expect((await get(me.cookie, `?seller=${encodeURIComponent("a%b")}`)).body.items).toHaveLength(0);
     expect((await get(me.cookie, `?seller=${encodeURIComponent("x".repeat(51))}`)).status).toBe(400);
     expect((await get(me.cookie, `?seller=${encodeURIComponent("없는이름")}`)).body.items).toEqual([]);
   });
