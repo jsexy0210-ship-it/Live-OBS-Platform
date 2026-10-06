@@ -207,6 +207,42 @@ describe("목록: 상태·분류 필터, 건수, 마지막 답변", () => {
     expect(await db.auditLog.count({ where: { action: "platform_inquiry.assign", targetId: free } })).toBe(1);
   });
 
+  it("진단 정보: 보낼 때 User-Agent·최근 방송·오버레이 마지막 접속·앱 버전을 모아 붙이고(마스터 상세에만), 보내지 않기로 하면 없다. 없는 값은 null", async () => {
+    const s = await shop();
+    const cs = await csCookie();
+    const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 OBS/30.1.2";
+    const post = async (body: unknown) =>
+      json(await sellerCreate(new Request(BASE + "/api/seller/platform-inquiries", { method: "POST", headers: { ...H, cookie: s.owner.cookie, "user-agent": UA, "content-type": "application/json" }, body: JSON.stringify(body) })));
+    process.env.APP_VERSION = "abc1234";
+    try {
+      // 방송·오버레이 기록이 없으면 null
+      const bare = (await post(NEW)).body.inquiry.id as string;
+      const bareDiag = (await json(await adminGetOne(req(`/api/admin/platform-inquiries/${bare}`, cs), iq(bare)))).body.inquiry.diagnostics;
+      expect(bareDiag).toMatchObject({ sellerId: s.seller.id, browser: { name: "OBS 브라우저", version: "122" }, os: { name: "Windows", version: "10/11" }, obsVersion: "30.1.2", latestBroadcast: null, overlay: { lastSeenAt: null, userAgent: null, obsVersion: null }, appVersion: "abc1234" });
+      expect(bareDiag.userAgent).toBe(UA);
+
+      await db.broadcastSession.create({ data: { sellerId: s.seller.id, status: "ENDED", title: "예전", startedAt: new Date("2026-10-01T10:00:00Z"), endedAt: new Date("2026-10-01T11:00:00Z") } });
+      const live = await db.broadcastSession.create({ data: { sellerId: s.seller.id, status: "LIVE", title: "지금", startedAt: new Date("2026-10-02T10:00:00Z") } });
+      await db.overlayToken.create({ data: { sellerId: s.seller.id, tokenHash: "h1", lastSeenAt: new Date("2026-10-02T10:05:00Z") } });
+      await db.overlayToken.create({ data: { sellerId: s.seller.id, tokenHash: "h2", lastSeenAt: new Date("2026-10-02T10:30:00Z"), revokedAt: new Date("2026-10-02T10:31:00Z") } });
+      const id = (await post(NEW)).body.inquiry.id as string;
+      const full = (await json(await adminGetOne(req(`/api/admin/platform-inquiries/${id}`, cs), iq(id)))).body.inquiry.diagnostics;
+      expect(full.latestBroadcast).toMatchObject({ id: live.id, status: "LIVE", endedAt: null });
+      expect(full.overlay.lastSeenAt).toBe("2026-10-02T10:05:00.000Z");
+
+      // 파트너스 응답과 마스터 목록에는 진단 정보가 없다
+      expect(JSON.stringify((await detail(s.owner.cookie, id)).body)).not.toContain("diagnostics");
+      expect(JSON.stringify((await list(s.owner.cookie)).body)).not.toContain("diagnostics");
+      expect(JSON.stringify((await adminListing(cs)).body)).not.toContain("diagnostics");
+
+      const off = (await post({ ...NEW, includeDiagnostics: false })).body.inquiry.id as string;
+      expect((await json(await adminGetOne(req(`/api/admin/platform-inquiries/${off}`, cs), iq(off)))).body.inquiry.diagnostics).toBeNull();
+      expect((await post({ ...NEW, includeDiagnostics: "no" })).body.error).toBe("invalid_diagnostics");
+    } finally {
+      delete process.env.APP_VERSION;
+    }
+  });
+
   it("필터와 커서를 함께 써도 20건씩 빠짐·겹침 없이 이어진다", async () => {
     const s = await shop();
     for (let i = 0; i < 23; i++) {

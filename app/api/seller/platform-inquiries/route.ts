@@ -20,7 +20,7 @@ export async function GET(req: Request) {
   }
 }
 
-// 문의 보내기(SA-114). 본문 { category: BROADCAST|PAYMENT_LINK|ORDER_REFUND|REWARD|SUBSCRIPTION_FEE|SHOP|ACCOUNT|OTHER, urgent?: boolean(긴급 표시), title(80자까지), body, imageIds?: 최대 5, noticeId?, relatedOrderId?, relatedBroadcastId? }(관련 주문·방송은 이 쇼핑몰 것만, 아니면 400 invalid_related).
+// 문의 보내기(SA-114). 본문 { category: BROADCAST|PAYMENT_LINK|ORDER_REFUND|REWARD|SUBSCRIPTION_FEE|SHOP|ACCOUNT|OTHER, urgent?: boolean(긴급 표시), includeDiagnostics?: boolean(기본 true, false면 진단 정보를 붙이지 않음), title(80자까지), body, imageIds?: 최대 5, noticeId?, relatedOrderId?, relatedBroadcastId? }(관련 주문·방송은 이 쇼핑몰 것만, 아니면 400 invalid_related).
 // 201 { inquiry } · 400 invalid_* · 429 too_many_inquiries(쇼핑몰당 24시간 20건)
 export const POST = mutation(async (req: Request) => {
   const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { allowUnpaid: true, feature: "BILLING", allowSuspended: true });
