@@ -179,3 +179,13 @@ export async function markOrderCancelledInDb(orderId: string) {
     await db.$disconnect();
   }
 }
+
+// 쇼핑몰 운영 상태(OPEN·PREPARING·PAUSED) 바꾸기. 시험이 끝나면 OPEN으로 되돌린다.
+export async function setOperatingState(slug: string, state: "OPEN" | "PREPARING" | "PAUSED") {
+  const db = open();
+  try {
+    await db.seller.update({ where: { slug }, data: { operatingState: state } });
+  } finally {
+    await db.$disconnect();
+  }
+}
