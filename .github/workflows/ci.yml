@@ -129,7 +129,9 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql://live_obs:live_obs@localhost:5432/live_obs_test
-      SMOKE_SPECS: admin-shell layout-admin-login login-tabs admin-dashboard public-notices admin-ops
+      SMOKE_SPECS: admin-shell layout-admin-login login-tabs admin-dashboard public-notices seller-deposits seller-products seller-members seller-stats seller-broadcast admin-ops
+      # 방송·채팅 스모크는 실제 YouTube 호출 없이 임의 키와 스케줄러 중지로 실행한다.
+      YOUTUBE_API_KEY: e2e-dummy
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -183,7 +185,7 @@ jobs:
         if: steps.gate.outputs.skip != 'true'
         run: |
           set -euo pipefail
-          nohup npx next start -p 3100 > "$RUNNER_TEMP/next.log" 2>&1 &
+          SCHEDULER_DISABLED=1 nohup npx next start -p 3100 > "$RUNNER_TEMP/next.log" 2>&1 &
           for i in $(seq 1 60); do
             curl -sf -o /dev/null http://localhost:3100/ && exit 0
             sleep 1
@@ -192,16 +194,18 @@ jobs:
 
       - name: E2E smoke
         if: steps.gate.outputs.skip != 'true'
+        env:
+          E2E_SCREENSHOTS: "1"
         run: npx playwright test -c tests/e2e/playwright.config.ts --project=start $SMOKE_SPECS
 
-      - name: Upload MA-041 viewport screenshots
+      - name: Upload branch screenshots
         if: always() && steps.gate.outputs.skip != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: ma041-order-rate-screenshots
-          path: tests/e2e/screenshots/admin-ops-order-rate-*.png
+          name: sa-body-branch-screenshots
+          path: tests/e2e/screenshots/*.png
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 1
 
       - name: App log on failure
         if: failure() && steps.gate.outputs.skip != 'true'

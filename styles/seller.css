@@ -463,7 +463,7 @@ body {
 
 /* 휴대폰: 표 대신 카드 목록, 입력 칸은 한 줄씩 */
 @media (max-width: 767px) {
-  .p-table {
+  .tbl.p-table {
     display: none;
   }
   .p-cards {

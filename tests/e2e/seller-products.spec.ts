@@ -3,7 +3,7 @@ import { submitSellerLogin } from "./sellerLogin";
 import { RUN, cleanupProducts, track } from "./cleanup";
 
 // 판매자 로그인 → 상품 목록 → 등록 → 수정 → 숨김·삭제를 실제로 눌러 확인한다.
-// E2E_SCREENSHOTS=1이면 390·1440 화면을 tests/e2e/screenshots에 남긴다.
+// E2E_SCREENSHOTS=1이면 390·1024·1440 화면을 tests/e2e/screenshots에 남긴다.
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
 const OWNER = "demo-owner@example.com";
 const VIEWER = "demo-viewer@example.com";
@@ -18,7 +18,7 @@ test.afterAll(() => cleanupProducts(PASSWORD));
 
 async function shot(page: Page, name: string) {
   if (!SHOTS) return;
-  for (const width of [1440, 390]) {
+  for (const width of [1440, 1024, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(150);
@@ -106,14 +106,18 @@ test("상품 목록: 데모 상품·상태 배지·필터, 체험 배너가 보�
   await expect(rows.filter({ hasText: "스타라이트 부스터 박스" })).toHaveCount(0);
 });
 
-test("옵션 이름이 길고 많아도 목록 표가 카드 밖으로 넘치지 않는다(1440·1024)", async ({ page }) => {
+test("옵션 이름이 길어도 표는 내부에서 스크롤되고 페이지 폭을 밀지 않는다(1440·1024)", async ({ page }) => {
   await login(page);
   const row = page.getByTestId("product-row").filter({ hasText: "보관용 카드 바인더" });
   for (const width of [1440, 1024]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(row).toBeVisible();
-    const fit = await page.locator(".p-table").evaluate((t) => ({ table: t.scrollWidth, card: t.parentElement!.clientWidth }));
-    expect(fit.table).toBeLessThanOrEqual(fit.card);
+    const fit = await page.locator(".p-table").evaluate((t) => {
+      const wrap = t.closest(".p-tbl-wrap")!;
+      return { table: t.scrollWidth, wrap: wrap.scrollWidth, page: document.documentElement.scrollWidth, client: document.documentElement.clientWidth };
+    });
+    expect(fit.table).toBeLessThanOrEqual(fit.wrap);
+    expect(fit.page).toBeLessThanOrEqual(fit.client);
     // 판매가·재고·상태 열이 화면 안에 보인다(세로로는 그 줄까지 내려서 본다)
     await row.scrollIntoViewIfNeeded();
     await expect(row.getByText("18,000원")).toBeInViewport();
@@ -241,7 +245,7 @@ test("상품 삭제: 숨김을 먼저 권하고, 완전 삭제는 상품명을 �
   await expect(page).toHaveURL(/\/seller\/products$/);
   await expect(page.getByText("상품을 삭제했습니다")).toBeVisible();
   await searchFor(page, name);
-  await expect(page.getByText(`「${name}」에 해당하는 상품이 없습니다`)).toBeVisible();
+  await expect(page.getByText(new RegExp(`^「${name} · \\d{4}-\\d{2}-\\d{2} ~ \\d{4}-\\d{2}-\\d{2}」에 해당하는 상품이 없습니다$`))).toBeVisible();
   await expect(page.getByTestId("product-row").filter({ hasText: name })).toHaveCount(0);
 });
 
@@ -337,6 +341,8 @@ test("휴대폰 폭(390)에서는 메뉴가 서랍으로 열리고 상품이 카
   await page.setViewportSize({ width: 390, height: 844 });
   await login(page);
   await expect(page.getByTestId("product-card").first()).toBeVisible();
+  await expect(page.locator(".tbl.p-table")).toBeHidden();
+  await expect(page.locator(".p-cards")).toBeVisible();
   await expect(page.getByTestId("product-row").first()).toBeHidden();
   // 가로 스크롤이 생기지 않는다
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
@@ -358,6 +364,9 @@ test("휴대폰 폭(390)에서는 메뉴가 서랍으로 열리고 상품이 카
 
   await expect(page.getByRole("link", { name: "상품 목록", exact: true })).not.toBeInViewport();
   await page.getByRole("button", { name: "메뉴 열기" }).click();
+  await expect(page.locator(".lnb")).toHaveCSS("transform", "none");
+  await page.getByRole("link", { name: "상품 목록", exact: true }).scrollIntoViewIfNeeded();
+  await expect.poll(() => page.locator(".lnb").evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
   await expect(page.getByRole("link", { name: "상품 목록", exact: true })).toBeInViewport();
   if (SHOTS) await page.screenshot({ path: "tests/e2e/screenshots/SA-shell-drawer-390.png" });
   await page.getByRole("button", { name: "메뉴 닫기" }).click();
@@ -418,7 +427,7 @@ test("「재고 없음」·「재고 부족」으로 걸러 보면 서버 기준
   await expect(page.getByTestId("product-row").filter({ hasText: "드래곤 소울 부스터" })).toHaveCount(0);
   // 판매 상태 탭과 함께 쓴다: 「숨김」 + 「재고 부족」은 해당 없음
   await applyStatus(page, "숨김", "재고 부족");
-  await expect(page.getByText("「숨김 · 재고 부족」에 해당하는 상품이 없습니다")).toBeVisible();
+  await expect(page.getByText(/^「숨김 · 재고 부족 · \d{4}-\d{2}-\d{2} ~ \d{4}-\d{2}-\d{2}」에 해당하는 상품이 없습니다$/)).toBeVisible();
 });
 
 test("「품절로 설정」 탭은 판매 상태가 품절인 상품만, 배지와 이름이 맞는다", async ({ page }) => {
@@ -453,7 +462,7 @@ test("상품 검색: 상품·옵션 이름으로 서버에서 찾고(대소문�
   await expect(page.getByTestId("product-row").first()).toContainText("문라이트 1탄 박스");
   // 없는 이름은 안내하고, 「전체 보기」로 검색까지 지운다
   await searchFor(page, "없는상품이름");
-  await expect(page.getByText("「없는상품이름 · 숨김」에 해당하는 상품이 없습니다")).toBeVisible();
+  await expect(page.getByText(/^「없는상품이름 · 숨김 · \d{4}-\d{2}-\d{2} ~ \d{4}-\d{2}-\d{2}」에 해당하는 상품이 없습니다$/)).toBeVisible();
   await page.getByRole("button", { name: "전체 보기" }).click();
   await expect(page.getByLabel("상품 검색")).toHaveValue("");
   await expect(page.getByTestId("product-row").filter({ hasText: "스타라이트 부스터 박스" })).toBeVisible();

@@ -125,6 +125,11 @@
   box-shadow: inset 0 0 0 2px var(--brand);
 }
 @media (max-width: 767px) {
+  .dep-due {
+    width: auto;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
   /* 좁은 화면: 표 대신 주문 한 건을 한 덩어리로 쌓는다 */
   .ord-tbl {
     min-width: 0;
@@ -178,6 +183,10 @@
 /* SA-026 입금 확인 */
 .dep-w-chk {
   width: 36px;
+}
+.dep-due {
+  width: 136px;
+  white-space: nowrap;
 }
 .dep-w-act {
   width: 110px;
