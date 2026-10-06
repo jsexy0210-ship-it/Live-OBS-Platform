@@ -23,7 +23,7 @@ export function ListHead({ total, unit = "건", loaded = false, actions }: { tot
 // 데이터 표의 외곽 프레임만 제공한다. 검색/건수/작업/페이지 이동은 이 부품 밖에 둔다.
 // className은 화면별 grid 폭/카드 변환에 사용하며 기존 .tbl와 버튼 토큰을 그대로 쓴다.
 export function ListTable({ children, className, "aria-label": label = "목록 표" }: { children: React.ReactNode; className?: string; "aria-label"?: string }) {
-  return <div className={`au-lt-wrap${className ? ` ${className}` : ""}`} role="region" aria-label={label} tabIndex={0}>{children}</div>;
+  return <div className={`au-lt-wrap au-list-grid${className ? ` ${className}` : ""}`} role="region" aria-label={label} tabIndex={0}>{children}</div>;
 }
 
 // page는 1부터. 한 번에 10개 번호를 보이고, 처음·이전·다음·마지막 버튼을 둔다.
