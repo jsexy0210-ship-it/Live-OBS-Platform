@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useUnsavedGuard } from "../../lib/client/navigation";
 import { WidgetView } from "../overlay/WidgetView";
 import { MAX_TEMPLATES, SAMPLE_DATA, SLOTS, STAGE, newWidget, slotOf, widgetLabel, type Aspect, type PropValue, type Widget } from "../overlay/layout";
-import { useConfirm } from "../admin-ui";
+import { PageHead, useConfirm } from "../admin-ui";
 import { api, failMessage } from "./api";
 import { Toast } from "./States";
 
@@ -592,58 +592,59 @@ export default function OverlayEditor() {
     return (wb ? wb.z + 1 : 0) - (wa ? wa.z + 1 : 0);
   });
 
+  const head = (actions?: React.ReactNode) => <PageHead title="방송 화면 꾸미기" actions={actions} />;
   if (state === "loading" && !server)
     return (
-      <div className="card pad" role="status" aria-busy="true">
-        <span className="t-l2 c-alt">불러오는 중입니다</span>
-      </div>
+      <>
+        {head()}
+        <div className="card pad" role="status" aria-busy="true">
+          <span className="t-l2 c-alt">불러오는 중입니다</span>
+        </div>
+      </>
     );
   if (state === "error" && !server)
     return (
-      <div className="card pad col" style={{ gap: 10 }} role="alert">
-        <span className="t-l2">편집기를 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 「다시 시도」를 눌러 주십시오.</span>
-        <button className="btn btn-out" type="button" style={{ alignSelf: "flex-start" }} onClick={() => void load(aspect)}>
-          다시 시도
-        </button>
-      </div>
+      <>
+        {head()}
+        <div className="card pad col" style={{ gap: 10 }} role="alert">
+          <span className="t-l2">편집기를 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 「다시 시도」를 눌러 주십시오.</span>
+          <button className="btn btn-out" type="button" style={{ alignSelf: "flex-start" }} onClick={() => void load(aspect)}>
+            다시 시도
+          </button>
+        </div>
+      </>
     );
 
-  return (
-    <div className="col" style={{ gap: 12 }} data-testid="ove">
-      <section className="card pad col" style={{ gap: 12 }} aria-labelledby="ove-h">
-        <div className="row between" style={{ gap: 12, flexWrap: "wrap" }}>
-          <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
-            <h2 className="t-hl1" id="ove-h">
-              화면 구성 편집
-            </h2>
-            {changes > 0 && (
-              <span className="ove-tag" data-testid="ove-dirty">
-                저장 안 한 변경 {changes}개
-              </span>
-            )}
-          </div>
-          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-            <button className="btn btn-out" type="button" disabled={widgets.length === 0} onClick={() => setFullPreview(true)}>
-              실제 크기로 보기
-            </button>
-            <button className="btn btn-out" type="button" onClick={() => document.getElementById("ovu-h")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
-              방송 화면 주소
-            </button>
-            <button className="btn btn-out" type="button" title="Ctrl+Z" disabled={hist.current.past.length === 0} onClick={undo}>
-              방금 작업 취소
-            </button>
-            <button className="btn btn-out" type="button" title="Ctrl+Shift+Z" disabled={hist.current.future.length === 0} onClick={redo}>
-              취소한 작업 다시 하기
-            </button>
-            <button className="btn btn-out" type="button" disabled={busy || widgets.length === 0 || total >= MAX_TEMPLATES} onClick={() => setTplName("")}>
-              지금 배치를 내 템플릿으로 저장
-            </button>
-            <button className="btn" type="button" disabled={busy || changes === 0} onClick={() => void askSave()}>
-              방송 화면에 저장하기
-            </button>
-          </div>
-        </div>
+  const actions = (
+    <>
+      {changes > 0 && (
+        <span className="ove-tag" data-testid="ove-dirty">
+          저장 안 한 변경 {changes}개
+        </span>
+      )}
+      <button className="btn btn-out" type="button" title="Ctrl+Z" disabled={hist.current.past.length === 0} onClick={undo}>
+        방금 작업 취소
+      </button>
+      <button className="btn btn-out" type="button" title="Ctrl+Shift+Z" disabled={hist.current.future.length === 0} onClick={redo}>
+        취소한 작업 다시 하기
+      </button>
+      <button className="btn btn-out" type="button" disabled={widgets.length === 0} onClick={() => setFullPreview(true)}>
+        실제 크기로 보기
+      </button>
+      <button className="btn btn-out" type="button" disabled={busy || widgets.length === 0 || total >= MAX_TEMPLATES} onClick={() => setTplName("")}>
+        지금 배치를 내 템플릿으로 저장
+      </button>
+      <button className="btn" type="button" disabled={busy || changes === 0} onClick={() => void askSave()}>
+        방송 화면에 저장하기
+      </button>
+    </>
+  );
 
+  return (
+    <>
+    {head(actions)}
+    <div className="col" style={{ gap: 12 }} data-testid="ove">
+      <section className="card pad col" style={{ gap: 12 }} aria-label="화면 구성 편집">
         {conflict && (
           <div className="msg msg-neg row between" role="alert" data-testid="ove-conflict" style={{ gap: 8, flexWrap: "wrap" }}>
             <span className="col" style={{ gap: 2 }}>
@@ -909,6 +910,7 @@ export default function OverlayEditor() {
       {fullPreview && <FullPreview widgets={widgets} aspect={aspect} onClose={() => setFullPreview(false)} />}
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
     </div>
+    </>
   );
 }
 

@@ -150,7 +150,7 @@ describe("판매자 로그인과 마스터 기능 차단", () => {
     const { seller } = await createSeller();
     const owner = await createSellerUser(seller.id, "OWNER");
     await db.seller.update({ where: { id: seller.id }, data: { status: "PENDING" } });
-    expect(await loginSeller(db, { email: owner.email, password: PASSWORD }, { now: t0 })).toEqual({ ok: false, reason: "seller_pending" });
+    expect(await loginSeller(db, { email: owner.email, password: PASSWORD }, { now: t0 })).toMatchObject({ ok: false, reason: "seller_pending" });
     await db.seller.update({ where: { id: seller.id }, data: { status: "SUSPENDED" } });
     expect(await loginSeller(db, { email: owner.email, password: PASSWORD }, { now: t0 })).toMatchObject({ ok: true });
   });

@@ -21,3 +21,17 @@ export async function grantPaidPeriodInDb(ownerEmail: string) {
     await db.$disconnect();
   }
 }
+
+// 승인 대기 신청에 마스터의 보완 요청이 걸린 상태를 만든다(마스터 화면 없이 AU-005 후속 화면을 시험). 폐기용 테스트 DB에서만.
+export async function requestSupplementInDb(ownerEmail: string, reason: string, openedAgoDays = 0) {
+  const db = new PrismaClient({ datasources: { db: { url: assertTestDatabaseUrl(process.env.DATABASE_URL) } } });
+  try {
+    const owner = await db.sellerUser.findFirstOrThrow({ where: { email: ownerEmail, isOwner: true }, select: { sellerId: true } });
+    const now = new Date();
+    const data = { supplementReason: reason, supplementRequestedAt: now, supplementDueAt: new Date(now.getTime() + 7 * 86_400_000), supplementResolvedAt: null };
+    await db.sellerApplicationReview.upsert({ where: { sellerId: owner.sellerId }, create: { sellerId: owner.sellerId, ...data }, update: data });
+    if (openedAgoDays > 0) await db.seller.update({ where: { id: owner.sellerId }, data: { createdAt: new Date(now.getTime() - openedAgoDays * 86_400_000) } });
+  } finally {
+    await db.$disconnect();
+  }
+}

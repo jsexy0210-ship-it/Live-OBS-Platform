@@ -27,10 +27,12 @@ test("PC: 머리 카테고리 → 분류 목록(하위 분류 상품 포함)·�
   await expect(side.getByRole("link", { name: "프리미엄" })).toBeVisible();
   await expect(side.getByRole("link", { name: "비공개 분류" })).toHaveCount(0);
   // 낮은 가격 순: 문라이트(132,000) → 스타라이트(189,000)
+  await page.getByRole("navigation", { name: "정렬" }).locator("summary").click();
   await page.getByRole("navigation", { name: "정렬" }).getByRole("link", { name: "낮은 가격" }).click();
   await expect(page).toHaveURL(/sort=low/);
   await expect(page).toHaveURL(/category=/);
   await expectNames(page, ["문라이트 컬렉션 박스", "스타라이트 부스터 박스"]);
+  await page.getByRole("navigation", { name: "정렬" }).locator("summary").click();
   await page.getByRole("navigation", { name: "정렬" }).getByRole("link", { name: "높은 가격" }).click();
   await expectNames(page, ["스타라이트 부스터 박스", "문라이트 컬렉션 박스"]);
   // 소분류
@@ -103,4 +105,20 @@ test("휴대폰 390: 메뉴 탭·서랍에 카테고리, 왼쪽 메뉴는 숨김
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
   if (SHOT) await page.screenshot({ path: "tests/e2e/screenshots/SH-002-list-390.png" });
+});
+
+// 보드 SH-002: 정렬은 「신상품 ▾」 한 칸을 누르면 펼쳐지는 목록(현재 정렬 강조), 고르면 주소에 sort가 붙는다.
+test("정렬 드롭다운: 현재 정렬이 보이고 펼쳐서 고른다", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/shop/${SLUG}/products`);
+  const nav = page.getByRole("navigation", { name: "정렬" });
+  await expect(nav.locator("summary")).toHaveText("신상품");
+  await expect(nav.getByRole("link", { name: "낮은 가격" })).toBeHidden();
+  await nav.locator("summary").click();
+  await expect(nav.getByRole("link")).toHaveText(["추천순", "인기순", "신상품", "낮은 가격", "높은 가격"]);
+  await expect(nav.getByRole("link", { name: "신상품" })).toHaveAttribute("aria-current", "page");
+  await page.screenshot({ path: "tests/e2e/screenshots/SH-002-sort-1440.png" });
+  await nav.getByRole("link", { name: "높은 가격" }).click();
+  await expect(page).toHaveURL(/sort=high/);
+  await expect(page.getByRole("navigation", { name: "정렬" }).locator("summary")).toHaveText("높은 가격");
 });

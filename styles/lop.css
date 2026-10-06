@@ -79,6 +79,11 @@
 .btn-outp,.app a.btn-outp{background:transparent;color:var(--wds-primary-normal);box-shadow:inset 0 0 0 1px var(--wds-line-primary-strong)}
 .btn-ghost,.app a.btn-ghost{background:var(--wds-fill-normal);color:var(--wds-label-normal)}
 .btn-text{background:transparent;color:var(--wds-label-neutral);padding:0 8px}
+/* 링크 버튼(a.btn)의 호버 글자색은 .btn 기본(흰 글자)이 아니라 변형 색을 유지한다(윗줄 .app a.btn:hover가 변형보다 우선해 투명·연한 버튼이 호버 때 안 보이던 결함) */
+.app a.btn-out:hover,.app a.btn-ghost:hover{color:var(--wds-label-normal)}
+.app a.btn-outp:hover{color:var(--wds-primary-normal)}
+.app a.btn-text:hover{color:var(--wds-label-neutral)}
+.app a.btn-neg:hover{color:#fff}
 .btn-neg{background:var(--neg-btn);color:#fff}
 .btn-pos{background:var(--pos-btn);color:#fff}
 .btn-master{background:var(--master);color:var(--master-ink)}

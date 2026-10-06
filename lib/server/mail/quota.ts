@@ -3,6 +3,7 @@ import type { MailDeliveryStatus, Prisma, PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { dbNow, sellerPlanOf } from "../billing/subscription";
 import { captureDebit, messageSettings, releaseDebit, reserveDebit } from "../messaging/balance";
+import { recordMessageShortage, resolveMessageShortages } from "../messaging/shortage";
 
 // 메일 제공량·충전 잔액 차감(대표님 결정 2026-10-05, docs/terms/SELLER_MESSAGE_FEE_NOTICE.md 1~3절).
 // - 거래 메일: 구독 플랜의 월 제공량(SubscriptionPlan.mailMonthlyQuota, KST 달, 다음 달로 넘어가지 않음)까지 무료. 넘으면 발송 충전 잔액에서
@@ -96,9 +97,15 @@ export async function reserveMail(
       const sellerId = input.sellerId;
       const free = !bulk && (await tx.mailDelivery.count({ where: { sellerId, month, status: { in: COUNTED }, charged: false, bulk: false } })) < (await monthlyQuota(tx, sellerId, now));
       if (!free) {
-        const debit = await reserveDebit(tx, { sellerId, channel: bulk ? "MAIL_BULK" : "MAIL_TRANSACTIONAL", idempotencyKey: `mail:${id}`, now });
-        if (!debit.ok) return { ok: false as const, reason: "insufficient_balance" as const, deliveryId: await skip("SKIPPED_BALANCE", true) };
+        const channel = bulk ? ("MAIL_BULK" as const) : ("MAIL_TRANSACTIONAL" as const);
+        const debit = await reserveDebit(tx, { sellerId, channel, idempotencyKey: `mail:${id}`, now });
+        if (!debit.ok) {
+          // 파트너스 알림 센터 「충전금」 알림: 같은 사유는 열린 기록 1개로 합친다(같은 발송 기록은 한 번만 센다)
+          await recordMessageShortage(tx, { sellerId, channel, reason: debit.reason === "insufficient_balance" ? "INSUFFICIENT_BALANCE" : "CHARGING_DISABLED", eventKey: `mail:${id}`, now });
+          return { ok: false as const, reason: "insufficient_balance" as const, deliveryId: await skip("SKIPPED_BALANCE", true) };
+        }
         ledgerId = debit.ledgerId;
+        await resolveMessageShortages(tx, { sellerId, channels: [channel], now });
       }
     }
 

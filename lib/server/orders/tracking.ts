@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { captureDebit, releaseDebit, reserveDebit } from "../messaging/balance";
+import { recordMessageShortage, resolveMessageShortages } from "../messaging/shortage";
 import { completeDeliveryByCarrier } from "./delivery";
 import { dbClock } from "./overdue";
 import type { DeliveryTrackingProvider } from "./trackingProvider";
@@ -62,6 +63,14 @@ export async function runDeliveryTrackingLookups(
         // 잔액 부족·충전 기능 꺼짐: 조회만 멈추고 주문·배송은 그대로 둔다
         if (debit.reason === "insufficient_balance") result.skippedNoBalance++;
         else result.skippedChargingOff++;
+        // 파트너스 알림 센터에 「충전금 부족」을 남긴다(같은 구간·같은 사유는 한 번만 센다). 기록이 실패해도 조회를 건너뛴 일은 그대로.
+        await recordMessageShortage(db, {
+          sellerId: s.sellerId,
+          channel: "DELIVERY_TRACKING",
+          reason: debit.reason === "insufficient_balance" ? "INSUFFICIENT_BALANCE" : "CHARGING_DISABLED",
+          eventKey: `tracking:${s.id}:${slot}`,
+          now,
+        }).catch((e) => console.error("[message_shortage.record_failed]", e instanceof Error ? e.message : e));
         continue;
       }
       // 같은 구간의 이전 시도가 이미 조회를 끝냈으면(차감 확정) 다시 조회하지 않는다. 멈춘 시도(차감만 잡힘)는 같은 차감으로 이어서 조회한다.
@@ -81,6 +90,7 @@ export async function runDeliveryTrackingLookups(
         continue;
       }
       await captureDebit(db, debit.ledgerId);
+      await resolveMessageShortages(db, { sellerId: s.sellerId, channels: ["DELIVERY_TRACKING"], now }).catch(() => 0);
       result.looked++;
       if (lookup.status === "DELIVERED" && (await completeDeliveryByCarrier(db, s.sellerId, s.orderId)).ok) result.delivered++;
     } catch (e) {
