@@ -36,7 +36,7 @@ async function login(page: Page, email: string) {
 const gnb = (page: Page) => page.getByRole("navigation", { name: "주 메뉴" });
 const lnb = (page: Page) => page.getByRole("complementary", { name: "마스터 관리자 메뉴" });
 
-test("최고관리자: 로그인하면 홈으로 들어가고, GNB 6개 대분류와 청록 바탕·같은 높이의 LNB 제목 줄·경로 줄이 보인다", async ({ page }) => {
+test("최고관리자: 홈 중복 경로는 생략하고 운영 화면의 LNB 제목 줄·경로 줄은 같은 높이를 유지한다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await login(page, emails.super);
   await expect(gnb(page).getByRole("link")).toHaveText(["홈", "파트너스", "요금 · 결제", "운영", "고객지원", "설정"]);
@@ -45,10 +45,13 @@ test("최고관리자: 로그인하면 홈으로 들어가고, GNB 6개 대분�
   await expect(lnb(page).getByRole("link", { name: "홈", exact: true })).toHaveAttribute("aria-current", "page");
   const bg = await page.locator(".gnb").evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(bg).toBe("rgb(15, 118, 110)");
-  const h = await page.evaluate(() => ({ lnb: document.querySelector(".lnb-h")!.getBoundingClientRect().height, loc: document.querySelector(".loc-bar")!.getBoundingClientRect().height }));
+  await expect(page.locator(".loc-bar")).toHaveCount(0);
+  expect(await page.locator(".lnb-sec.on .lnb-h").evaluate((el) => el.getBoundingClientRect().height)).toBe(48);
+  await gnb(page).getByRole("link", { name: "운영" }).click();
+  await expect(page.locator(".loc-bar")).toBeVisible();
+  const h = await page.evaluate(() => ({ lnb: document.querySelector(".lnb-sec.on .lnb-h")!.getBoundingClientRect().height, loc: document.querySelector(".loc-bar")!.getBoundingClientRect().height }));
   expect(h.lnb).toBe(48);
   expect(h.loc).toBe(48);
-  await gnb(page).getByRole("link", { name: "운영" }).click();
   await expect(lnb(page).getByRole("link", { name: "실시간 감시" })).toBeVisible();
   await expect(lnb(page).locator(".lnb-sec.on .lnb-i")).toHaveText(["실시간 방송", "주문 · 방송 화면 접속", "실시간 감시", "자동 연결 작업", "인프라 · 비용"]);
   await expect(lnb(page).getByRole("link", { name: "자동 연결 작업" })).toHaveAttribute("href", "/admin/ops/automation");

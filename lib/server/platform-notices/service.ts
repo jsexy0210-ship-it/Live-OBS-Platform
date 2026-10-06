@@ -23,6 +23,8 @@ export type AuditMeta = { ip?: string | null; userAgent?: string | null };
 export const TITLE_MAX = 100;
 export const BODY_MAX = 10_000;
 export const PAGE_SIZE = 20;
+export const PUBLIC_NOTICE_PAGE_SIZE = 5;
+const MAX_PUBLIC_NOTICE_PAGE_SIZE = 20;
 export const CATEGORIES = ["MAINTENANCE", "POLICY", "FEATURE", "GENERAL"] as const satisfies readonly PlatformNoticeCategory[];
 export const AUDIENCES = ["PARTNERS", "PUBLIC", "ALL"] as const satisfies readonly PlatformNoticeAudience[];
 export const CHANNELS = ["IN_APP"] as const;
@@ -233,9 +235,9 @@ export async function deletePlatformNotice(db: PrismaClient, admin: AdminSession
 // ───────── 파트너스 관리자·공개 ─────────
 
 export type NoticeReader = "partners" | "public";
-const readerWhere = (reader: NoticeReader): Prisma.PlatformNoticeWhereInput => ({
+const readerWhere = (reader: NoticeReader, now = new Date()): Prisma.PlatformNoticeWhereInput => ({
   deletedAt: null,
-  publishedAt: { not: null },
+  publishedAt: reader === "public" ? { not: null, lte: now } : { not: null },
   audience: { in: reader === "partners" ? ["PARTNERS", "ALL"] : ["PUBLIC", "ALL"] },
 });
 
@@ -263,11 +265,58 @@ export async function listNotices(db: PrismaClient, reader: NoticeReader, q: { c
   };
 }
 
+export function parsePublicNoticePagination(pageParam: string | null, pageSizeParam: string | null) {
+  const page = pageParam === null ? 1 : Number(pageParam);
+  if (!Number.isSafeInteger(page) || page < 1 || (pageParam !== null && !/^\d+$/.test(pageParam))) {
+    return { ok: false as const, reason: "invalid_page" as const };
+  }
+  const pageSize = pageSizeParam === null ? PUBLIC_NOTICE_PAGE_SIZE : Number(pageSizeParam);
+  if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > MAX_PUBLIC_NOTICE_PAGE_SIZE || (pageSizeParam !== null && !/^\d+$/.test(pageSizeParam))) {
+    return { ok: false as const, reason: "invalid_page_size" as const };
+  }
+  return { ok: true as const, page, pageSize };
+}
+
+export async function listPublicNoticesPage(db: PrismaClient, page: number, pageSize: number, category?: string | null) {
+  const cat = CATEGORIES.includes(category as PlatformNoticeCategory) ? (category as PlatformNoticeCategory) : null;
+  const base = { ...readerWhere("public"), ...(cat ? { category: cat } : {}) };
+  const itemsWhere = { ...base, isPinned: false };
+  const order: Prisma.PlatformNoticeOrderByWithRelationInput[] = [{ publishedAt: "desc" }, { id: "desc" }];
+  const [total, rows, pinned] = await Promise.all([
+    db.platformNotice.count({ where: itemsWhere }),
+    db.platformNotice.findMany({ where: itemsWhere, orderBy: order, skip: (page - 1) * pageSize, take: pageSize }),
+    page === 1 ? db.platformNotice.findMany({ where: { ...base, isPinned: true }, orderBy: order }) : Promise.resolve([]),
+  ]);
+  return {
+    page,
+    pageSize,
+    total,
+    pageCount: Math.ceil(total / pageSize),
+    pinned: pinned.map((r) => listView(readerView(r))),
+    items: rows.map((r) => listView(readerView(r))),
+  };
+}
+
 export async function getNotice(db: PrismaClient, reader: NoticeReader, id: string) {
   if (!isUuid(id)) throw notFound();
-  const row = await db.platformNotice.findFirst({ where: { id, ...readerWhere(reader) } });
+  const now = new Date();
+  const visible = readerWhere(reader, now);
+  const row = await db.platformNotice.findFirst({ where: { id, ...visible } });
   if (!row) throw notFound();
-  return readerView(row);
+  const notice = readerView(row);
+  if (reader === "partners") return notice;
+  const [newer, older] = await Promise.all([
+    db.platformNotice.findFirst({
+      where: { ...visible, OR: [{ publishedAt: { gt: row.publishedAt! } }, { publishedAt: row.publishedAt, id: { gt: row.id } }] },
+      orderBy: [{ publishedAt: "asc" }, { id: "asc" }],
+    }),
+    db.platformNotice.findFirst({
+      where: { ...visible, OR: [{ publishedAt: { lt: row.publishedAt! } }, { publishedAt: row.publishedAt, id: { lt: row.id } }] },
+      orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
+    }),
+  ]);
+  const brief = (r: PlatformNotice | null) => r ? { id: r.id, title: r.title, category: r.category, publishedAt: r.publishedAt! } : null;
+  return { ...notice, author: "ONQ 운영팀", prev: brief(newer), next: brief(older) };
 }
 
 // ───────── 파트너스 관리자 전용(SA-111·112): 읽음 표시·검색·분류 필터·이전/다음·관련 공지 ─────────

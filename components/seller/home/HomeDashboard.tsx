@@ -219,10 +219,7 @@ export function HomeDashboard() {
       <Topbar crumb="홈 › 홈" />
       <main className="main">
         <div className="home">
-          <PageHead title="홈" />
-          <p className="t-l2 c-alt" style={{ margin: 0 }}>
-            {me.shop.name}의 오늘 상황입니다
-          </p>
+          <PageHead title="홈" description={`${me.shop.name}의 오늘 상황입니다`} />
           <OnboardingStrip />
           <TodayTasks />
           <Performance />

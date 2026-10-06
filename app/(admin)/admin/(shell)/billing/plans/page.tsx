@@ -38,7 +38,7 @@ export default function PlansPage() {
     <>
       <AdminTopbar crumb="구독·요금 › 요금제" />
       <main className="main">
-        <PageHead title="요금제" />
+        <PageHead title="요금제" description="요금제별 가격과 제공량을 확인하고, 현재 설정을 관리합니다." />
         <div className="card">
           {state.kind === "loading" && <LoadingRows rows={3} />}
           {state.kind === "error" && <ErrorState title="요금제를 불러오지 못했습니다." onRetry={() => void load()} />}
@@ -48,61 +48,60 @@ export default function PlansPage() {
                 <span className="t">등록된 요금제가 없습니다.</span>
               </div>
             ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table className="tbl" style={{ whiteSpace: "nowrap" }}>
-                  <thead>
-                    <tr>
-                      <th>요금제</th>
-                      <th>정가</th>
-                      <th>판매가</th>
-                      <th>체험 일수</th>
-                      <th>체험 알림톡·문자</th>
-                      <th>체험 중 휴대폰 본인확인</th>
-                      <th>체험 저장 용량</th>
-                      <th>월 주문·배송 안내 메일 무료 수량</th>
-                      <th>바뀔 무료 수량</th>
-                      <th>적용 예정일</th>
-                      {(canEdit || canTrial) && <th>작업</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {state.plans.map((p) => (
-                      <tr key={p.code} data-testid="plan-row">
-                        <td className="fw6">{p.name}</td>
-                        <td className="num">{won(p.listPrice)}</td>
-                        <td className="num">{won(p.salePrice)}</td>
-                        <td className="num">{p.trialDays}일</td>
-                        <td className="num">{p.trialMessageLimit.toLocaleString("ko-KR")}건</td>
-                        <td className="num">{p.trialIdentityLimit.toLocaleString("ko-KR")}건</td>
-                        <td className="num">{p.trialStorageMb.toLocaleString("ko-KR")}MB</td>
-                        <td className="num">{p.mailMonthlyQuota.toLocaleString("ko-KR")}통</td>
-                        <td className="num">{p.next ? `${p.next.mailMonthlyQuota.toLocaleString("ko-KR")}통` : "-"}</td>
-                        <td className="num">{p.next ? dayTime(p.next.effectiveAt) : "-"}</td>
-                        {(canEdit || canTrial) && (
-                          <td>
-                            <div className="row" style={{ gap: 8 }}>
-                              {canEdit && (
-                                <button className="btn btn-sm btn-out" type="button" onClick={() => setDialog({ kind: "price", plan: p })}>
-                                  가격 변경
-                                </button>
-                              )}
-                              {canTrial && (
-                                <button className="btn btn-sm btn-out" type="button" onClick={() => setDialog({ kind: "trial", plan: p })}>
-                                  체험 한도 변경
-                                </button>
-                              )}
-                              {canEdit && (
-                                <button className="btn btn-sm btn-out" type="button" onClick={() => setDialog({ kind: "quota", plan: p })}>
-                                  월 무료 메일 수량 변경
-                                </button>
-                              )}
-                            </div>
-                          </td>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))", gap: 12 }}>
+                {state.plans.map((p) => (
+                  <article key={p.code} className="card pad col" data-testid="plan-row" style={{ gap: 12, minWidth: 0 }}>
+                    <div>
+                      <h2 className="t-l1 fw6" style={{ margin: 0 }}>{p.name}</h2>
+                      <div className="t-c1 c-alt" style={{ marginTop: 6 }}>
+                        <s>정가 월 {won(p.listPrice)}</s>
+                      </div>
+                      <div className="t-h2 fw6" data-testid="plan-sale-price">
+                        {won(p.salePrice)}<span className="t-c1 c-alt fw4"> / 월 · 부가세 포함</span>
+                      </div>
+                    </div>
+                    <dl className="col" style={{ gap: 0, margin: 0 }}>
+                      <div className="row" style={{ alignItems: "flex-start", justifyContent: "space-between", gap: 12, padding: "8px 0", borderTop: "1px solid var(--line, #e4e7eb)" }}>
+                        <dt className="t-c1 c-alt">월 무료 메일</dt>
+                        <dd style={{ flex: 1, minWidth: 0, margin: 0, overflowWrap: "anywhere", textAlign: "right" }}>
+                          주문 · 배송 안내 메일 {p.mailMonthlyQuota.toLocaleString("ko-KR")}통
+                          {p.next && <div className="t-c1 c-alt" data-testid="plan-next-quota">{dayTime(p.next.effectiveAt)}부터 {p.next.mailMonthlyQuota.toLocaleString("ko-KR")}통 (적용 예정)</div>}
+                        </dd>
+                      </div>
+                      <div className="row" style={{ alignItems: "flex-start", justifyContent: "space-between", gap: 12, padding: "8px 0", borderTop: "1px solid var(--line, #e4e7eb)" }}>
+                        <dt className="t-c1 c-alt">체험 한도</dt>
+                        <dd data-testid="plan-trial-limits" style={{ flex: 1, minWidth: 0, margin: 0, overflowWrap: "anywhere", textAlign: "right" }}>
+                          {p.trialDays === 0 ? "— (체험 없음)" : `알림톡 · 문자 ${p.trialMessageLimit.toLocaleString("ko-KR")}건 · 휴대폰 본인확인 ${p.trialIdentityLimit.toLocaleString("ko-KR")}건 · 저장 용량 ${p.trialStorageMb.toLocaleString("ko-KR")}MB`}
+                        </dd>
+                      </div>
+                      <div className="row" style={{ alignItems: "flex-start", justifyContent: "space-between", gap: 12, padding: "8px 0", borderTop: "1px solid var(--line, #e4e7eb)" }}>
+                        <dt className="t-c1 c-alt">무료 체험 중</dt>
+                        <dd data-testid="plan-trial-days" style={{ flex: 1, minWidth: 0, margin: 0, overflowWrap: "anywhere", textAlign: "right" }}>
+                          {p.trialDays === 0 ? "없음 · 구독 시작하면 바로 결제" : `${p.trialDays}일`}
+                        </dd>
+                      </div>
+                    </dl>
+                    {(canEdit || canTrial) && (
+                      <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                        {canEdit && (
+                          <button className="btn btn-sm btn-out" type="button" onClick={() => setDialog({ kind: "price", plan: p })}>
+                            가격 변경
+                          </button>
                         )}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        {canTrial && (
+                          <button className="btn btn-sm btn-out" type="button" onClick={() => setDialog({ kind: "trial", plan: p })}>
+                            체험 한도 변경
+                          </button>
+                        )}
+                        {canEdit && (
+                          <button className="btn btn-sm btn-out" type="button" onClick={() => setDialog({ kind: "quota", plan: p })}>
+                            월 무료 메일 수량 변경
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </article>
+                ))}
               </div>
             ))}
         </div>
