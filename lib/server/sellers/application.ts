@@ -12,6 +12,7 @@ import { parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification }
 import { SIGNUP_PLAN_CODES } from "../billing/plans";
 import { DEFAULT_PLAN_CODE } from "../billing/subscription";
 import { activateSeller } from "./approval";
+import { attachDraftLicense, licenseSummaryOf, type LicenseSummary } from "./businessLicense";
 import {
   normalizeBusinessNumber,
   normalizeMailOrderNumber,
@@ -27,9 +28,9 @@ import { parseSellerSignupConsent, readSellerSignupConsent, type SellerConsentFa
 // 모두 통과하면 바로 승인(체험하기 시작), 하나라도 걸리면 승인 대기로 두고 걸린 항목을 「확인 필요」 사유로 남긴다.
 // 로그인 이메일·비밀번호는 신청자가 정한다.
 
-const VERIFY_WINDOW_MS = 30 * 60_000;
-const SLUG = /^[a-z0-9](?:[a-z0-9-]{1,28}[a-z0-9])$/;
-const RESERVED_SLUGS = new Set(["admin", "api", "app", "www", "master", "seller", "shop", "static", "help", "support", "login", "signup", "overlay"]);
+export const VERIFY_WINDOW_MS = 30 * 60_000;
+export const SLUG = /^[a-z0-9](?:[a-z0-9-]{1,28}[a-z0-9])$/;
+export const RESERVED_SLUGS = new Set(["admin", "api", "app", "www", "master", "seller", "shop", "static", "help", "support", "login", "signup", "overlay"]);
 // 이메일 형식. 공백·제어·서식 문자(\p{C}, NUL 포함)는 받지 않는다(DB 오류 500 대신 형식 오류로).
 export const EMAIL = /^[^\s@\p{C}]{1,64}@[^\s@\p{C}]{1,190}\.[^\s@\p{C}]{2,}$/u;
 
@@ -139,6 +140,10 @@ export type ApplyInput = {
   // 플랜(ONQ 1-C): OVERLAY_ONLY | INTEGRATED. 없으면 신규 가입 기본 플랜(DEFAULT_PLAN_CODE). 그 밖의 값은 invalid_input.
   // 가입 화면이 「지금 운영 중인 쇼핑몰이 있나요?」로 고르면 보낸다(ONQ 2단계).
   planCode?: string | null;
+  // 방송 채널 주소(선택, http(s) 주소 200자 이내) · 연락처(휴대폰·일반전화, 숫자만 9~11자리) · 사업장 주소(200자 이내). 심사에 참고하며 businessInfo에 담긴다.
+  channelUrl?: string | null;
+  contactPhone?: string | null;
+  businessAddress?: string | null;
   meta?: { ip?: string | null; userAgent?: string | null };
   now?: Date;
 };
@@ -154,7 +159,7 @@ export type ApplyFailure =
   | SellerConsentFailure; // 본인확인 기록에 필수 동의가 없음(동의 저장 전에 시작한 기록, terms_required)
 
 // resumed: 응답이 끊겨 같은 요청을 다시 보낸 경우(새로 만들지 않고 이미 만든 신청의 지금 상태를 돌려줌)
-export type ApplyResult = { ok: true; sellerId: string; approved: boolean; reviewReasons: ReviewReason[]; resumed: boolean } | { ok: false; reason: ApplyFailure };
+export type ApplyResult = { ok: true; sellerId: string; approved: boolean; reviewReasons: ReviewReason[]; resumed: boolean; license: LicenseSummary | null } | { ok: false; reason: ApplyFailure };
 
 class Fail extends Error {
   constructor(readonly reason: ApplyFailure) {
@@ -177,6 +182,33 @@ export async function applyForSeller(
   return (v && (await resumeApplication(db, v, input))) ?? r;
 }
 
+// 연락처·사업장 주소·방송 채널 주소(모두 선택). 형식이 틀리면 null(invalid_input). 값은 심사 참고용이라 비어 있으면 담지 않는다.
+function parseSignupExtras(input: Pick<ApplyInput, "channelUrl" | "contactPhone" | "businessAddress">): Record<string, string> | null {
+  const out: Record<string, string> = {};
+  const channel = input.channelUrl?.trim();
+  if (channel) {
+    let url: URL;
+    try {
+      url = new URL(channel);
+    } catch {
+      return null;
+    }
+    if (!["http:", "https:"].includes(url.protocol) || channel.length > 200) return null;
+    out.channelUrl = channel;
+  }
+  const phone = input.contactPhone?.replace(/[\s-]/g, "");
+  if (phone) {
+    if (!/^0\d{8,10}$/.test(phone)) return null;
+    out.contactPhone = phone;
+  }
+  const address = input.businessAddress?.trim();
+  if (address) {
+    if (address.length > 200 || /\p{C}/u.test(address)) return null;
+    out.businessAddress = address;
+  }
+  return out;
+}
+
 // 응답 유실 뒤 다시 보낸 같은 요청: 시작한 브라우저(ownerToken)의 이미 쓴 본인확인이 만든 대표자 계정(subjectId)이고
 // 아이디·비밀번호·쇼핑몰 주소가 같으면 새로 만들지 않고 그 신청의 지금 상태(승인 여부·확인 필요 사유)를 돌려준다.
 // 이미 쓴 이 브라우저의 본인확인이지만 조건이 다르면 verification_invalid, 재개 대상이 아니면 null.
@@ -187,7 +219,7 @@ async function resumeApplication(db: PrismaClient, v: IdentityVerification, inpu
   const owner = v.subjectId ? await db.sellerUser.findUnique({ where: { id: v.subjectId }, include: { seller: { select: { id: true, slug: true, status: true, reviewReasons: true } } } }) : null;
   if (owner?.isOwner && owner.email === email && owner.seller.slug === slug && (await verifyPassword(owner.passwordHash, input.password))) {
     const approved = owner.seller.status === "ACTIVE";
-    return { ok: true, sellerId: owner.seller.id, approved, reviewReasons: approved ? [] : (owner.seller.reviewReasons as ReviewReason[]), resumed: true };
+    return { ok: true, sellerId: owner.seller.id, approved, reviewReasons: approved ? [] : (owner.seller.reviewReasons as ReviewReason[]), resumed: true, license: await licenseSummaryOf(db, owner.seller.id) };
   }
   return { ok: false, reason: "verification_invalid" };
 }
@@ -202,15 +234,19 @@ async function applyOnce(
   const shopName = input.shopName.trim();
   const companyName = input.companyName.trim();
   const slug = input.slug.trim().toLowerCase();
-  if (!EMAIL.test(email) || !shopName || shopName.length > 50 || !companyName || companyName.length > 100) return { ok: false, reason: "invalid_input" };
+  // 방송 화면만 쓰기(OVERLAY_ONLY)는 사업자 정보 단계가 없다(PF-007-3 「있어요」): 사업자·통신판매업 입력과 점검을 하지 않는다.
+  const overlayOnly = input.planCode === "OVERLAY_ONLY";
+  if (!EMAIL.test(email) || !shopName || shopName.length > 50 || (!overlayOnly && (!companyName || companyName.length > 100))) return { ok: false, reason: "invalid_input" };
+  const extra = parseSignupExtras(input);
+  if (!extra) return { ok: false, reason: "invalid_input" };
   if (input.password.length < MIN_PASSWORD_LENGTH || input.password.length > 200) return { ok: false, reason: "weak_password" };
   if (!SLUG.test(slug) || RESERVED_SLUGS.has(slug)) return { ok: false, reason: "invalid_slug" };
   const planCode = input.planCode || DEFAULT_PLAN_CODE;
   if (!(SIGNUP_PLAN_CODES as readonly string[]).includes(planCode)) return { ok: false, reason: "invalid_input" };
-  const businessNumber = normalizeBusinessNumber(input.businessNumber);
-  if (!businessNumber) return { ok: false, reason: "invalid_business_number" };
-  const openedOn = normalizeOpenedOn(input.openedOn ?? "");
-  if (!openedOn) return { ok: false, reason: "invalid_input" };
+  const businessNumber = overlayOnly ? "" : (normalizeBusinessNumber(input.businessNumber) ?? "");
+  if (!overlayOnly && !businessNumber) return { ok: false, reason: "invalid_business_number" };
+  const openedOn = overlayOnly ? "" : (normalizeOpenedOn(input.openedOn ?? "") ?? "");
+  if (!overlayOnly && !openedOn) return { ok: false, reason: "invalid_input" };
 
   // 대표자 휴대폰 본인확인: 이 신청을 시작한 브라우저의 인증, 완료, 30분 안, 아직 안 쓴 것
   const v = await db.identityVerification.findUnique({ where: { id: input.verificationId } });
@@ -245,16 +281,20 @@ async function applyOnce(
   // 자동 점검: 걸린 항목은 「확인 필요」 사유가 된다
   const reasons: ReviewReason[] = [];
   // 국세청 진위확인: 사업자번호·대표자명(휴대폰 본인확인으로 확인한 이름)·개업일자 대조 + 계속사업자
-  const nts = await providers.business.verify({ businessNumber, representativeName: v.name, openedOn });
-  if (!nts.ok) reasons.push("business_lookup_failed");
-  else {
-    if (!nts.valid) reasons.push("business_info_mismatch");
-    if (nts.status !== "ACTIVE") reasons.push("business_not_active");
+  const nts = overlayOnly ? null : await providers.business.verify({ businessNumber, representativeName: v.name, openedOn });
+  if (nts) {
+    if (!nts.ok) reasons.push("business_lookup_failed");
+    else {
+      if (!nts.valid) reasons.push("business_info_mismatch");
+      if (nts.status !== "ACTIVE") reasons.push("business_not_active");
+    }
   }
   // 공정위 통신판매업 신고 조회: 등록·사업자번호 일치·영업 정상
   const mailOrderNumber = input.mailOrderNumber ? normalizeMailOrderNumber(input.mailOrderNumber) : null;
   let mailOrderStatus: string | null = null;
-  if (!mailOrderNumber) reasons.push("mail_order_number_invalid");
+  if (overlayOnly) {
+    // 사업자 정보 단계 없음
+  } else if (!mailOrderNumber) reasons.push("mail_order_number_invalid");
   else {
     const ftc = await providers.mailOrder.lookup({ businessNumber, mailOrderNumber });
     if (!ftc.ok) reasons.push("mail_order_lookup_failed");
@@ -272,10 +312,12 @@ async function applyOnce(
       if (used.count !== 1) throw new Fail("verification_invalid");
       // 같은 사업자번호로 운영 중이거나 신청 중인 쇼핑몰이 있으면 자동 승인하지 않는다(번호별로 줄을 세워 동시 신청도 막음)
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`seller_bizno:${businessNumber}`}))`;
-      const sameBusiness = await tx.seller.findFirst({
-        where: { status: { notIn: ["CLOSED", "REJECTED"] }, businessInfo: { path: ["businessNumber"], equals: businessNumber } },
-        select: { id: true },
-      });
+      const sameBusiness = overlayOnly
+        ? null
+        : await tx.seller.findFirst({
+            where: { status: { notIn: ["CLOSED", "REJECTED"] }, businessInfo: { path: ["businessNumber"], equals: businessNumber } },
+            select: { id: true },
+          });
       if (sameBusiness) reasons.push("business_duplicate");
       const plan = await tx.subscriptionPlan.findUniqueOrThrow({ where: { code: planCode }, select: { id: true } });
       const seller = await tx.seller.create({
@@ -287,18 +329,22 @@ async function applyOnce(
           representativeCiHash: ciHash,
           representativeVerifiedAt: v.verifiedAt,
           reviewReasons: reasons,
-          businessInfo: {
-            businessNumber,
-            companyName,
-            representativeName: v.name,
-            openedOn,
-            mailOrderNumber: mailOrderNumber ?? input.mailOrderNumber?.trim().slice(0, 100) ?? null,
-            industry: input.industry?.trim().slice(0, 30) || null,
-            businessStatus: nts.ok ? nts.status : null,
-            businessInfoValid: nts.ok ? nts.valid : null,
-            mailOrderStatus,
-            checkedAt: now.toISOString(),
-          },
+          // 방송 화면만 쓰기는 사업자 정보가 없다(businessNumber 없음). 쇼핑몰 통합으로 바꿀 때 받는다(PF-007-4).
+          businessInfo: overlayOnly
+            ? { ...extra, representativeName: v.name, industry: input.industry?.trim().slice(0, 30) || null }
+            : {
+                businessNumber,
+                companyName,
+                representativeName: v.name,
+                openedOn,
+                mailOrderNumber: mailOrderNumber ?? input.mailOrderNumber?.trim().slice(0, 100) ?? null,
+                industry: input.industry?.trim().slice(0, 30) || null,
+                ...extra,
+                businessStatus: nts?.ok ? nts.status : null,
+                businessInfoValid: nts?.ok ? nts.valid : null,
+                mailOrderStatus,
+                checkedAt: now.toISOString(),
+              },
         },
       });
       await tx.memberGrade.createMany({
@@ -317,13 +363,14 @@ async function applyOnce(
       await tx.identityVerification.update({ where: { id: v.id }, data: { subjectId: owner.id } });
       const audit = { sellerId: seller.id, targetType: "Seller", targetId: seller.id, ip: input.meta?.ip, userAgent: input.meta?.userAgent };
       await writeAudit(tx, { ...audit, actorType: "SELLER_USER", actorId: owner.id, action: "seller.apply", after: { reviewReasons: reasons, consent } });
+      const license = await attachDraftLicense(tx, v.id, seller.id);
       let approved = false;
       if (reasons.length === 0) {
         const row = await activateSeller(tx, seller.id, null);
         approved = !!row;
         await writeAudit(tx, { ...audit, actorType: "SYSTEM", action: "seller.auto_approve", after: { trialEndsAt: row?.trialEndsAt } });
       }
-      return { sellerId: seller.id, approved };
+      return { sellerId: seller.id, approved, license };
     });
     return { ok: true, ...result, reviewReasons: reasons, resumed: false };
   } catch (e) {

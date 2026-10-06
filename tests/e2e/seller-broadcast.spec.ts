@@ -353,28 +353,37 @@ test("PC 시계가 틀려도(1시간 빠름) 방금 완료한 주문의 되돌�
   expect((await queueStatuses())[A].status).toBe("OPENING");
 });
 
-// 휴대폰(390폭): 대기 표가 카드 밖으로 넘치거나 머리글이 겹치지 않고, 표 안에서 가로로 밀어 관리 버튼까지 닿는다.
-test("390폭: 대기 표가 카드 안에서 가로로 스크롤되고 머리글·관리 버튼이 잘리지 않는다", async ({ page }) => {
+// 휴대폰(390폭): 대기 표가 카드(DS-TABLE-CARD, 768px 미만)로 바뀐다. 가로로 밀리지 않고, 한 행 = 카드 한 장, 관리 버튼은 높이 44px 이상이 화면 안에 모두 보인다.
+test("390폭: 대기 표가 모바일 카드로 바뀌고 가로 스크롤 없이 버튼이 44px 이상으로 보인다", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await login(page, "demo-owner@example.com", "/seller/broadcast");
   await expect(waitingNames(page)).toHaveText([A, B, C]);
   if (SHOTS) await page.screenshot({ path: "tests/e2e/screenshots/SA-001-390.png", fullPage: true });
   // 화면 전체는 가로로 밀리지 않는다
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
-  const wrap = page.locator("section[aria-labelledby=bc-waiting-h] .au-lt-wrap");
-  const table = wrap.locator("table");
-  // 표는 영역보다 넓어 영역 안에서 스크롤된다(칸을 짜부라뜨리지 않는다)
+  const section = page.locator("section[aria-labelledby=bc-waiting-h]");
+  const wrap = section.locator(".au-lt-wrap");
+  // 표 안에서도 가로로 밀 필요가 없다(카드는 한 칸 폭)
   const m = await wrap.evaluate((el) => ({ client: el.clientWidth, scroll: el.scrollWidth }));
-  expect(m.scroll).toBeGreaterThan(m.client);
-  // 머리글 「구매자 · 상품」이 읽히는 폭이다(옆 칸과 겹치지 않음)
-  const head = await table.locator("th", { hasText: "구매자 · 상품" }).boundingBox();
-  expect(head!.width).toBeGreaterThanOrEqual(120);
-  // 끝까지 밀면 마지막 줄의 아래로 버튼이 영역 안에 보인다
-  await wrap.evaluate((el) => (el.scrollLeft = el.scrollWidth));
-  const box = await wrap.boundingBox();
-  const btn = await page.getByRole("button", { name: `${A} 아래로` }).boundingBox();
-  expect(btn!.x).toBeGreaterThanOrEqual(box!.x);
-  expect(btn!.x + btn!.width).toBeLessThanOrEqual(box!.x + box!.width + 1);
+  expect(m.scroll).toBeLessThanOrEqual(m.client + 1);
+  // 머리글 줄은 숨고, 칸마다 「라벨: 값」이 보인다(순서·주문 시각·금액·타이머)
+  await expect(section.locator("thead")).toBeHidden();
+  const firstCard = section.locator("tbody tr").first();
+  for (const label of ["순서", "주문 시각", "금액", "타이머"]) {
+    const before = await firstCard.locator(`td[data-label="${label}"]`).evaluate((el) => getComputedStyle(el, "::before").content);
+    expect(before).toContain(label);
+  }
+  // 관리 버튼 4개 모두 화면 안, 높이 44px 이상
+  for (const name of [`${A} 위로`, `${A} 아래로`, "타이머 정하기", "주문대기에서 빼기"]) {
+    const btn = firstCard.getByRole("button", { name: name.includes(A) ? name : new RegExp(`^${name}$`) });
+    const box = await btn.boundingBox();
+    expect(box, name).not.toBeNull();
+    expect(box!.height, name).toBeGreaterThanOrEqual(43.5);
+    expect(box!.x, name).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width, name).toBeLessThanOrEqual(390 + 1);
+  }
+  // 카드는 세 장(행마다 한 장)
+  await expect(section.locator("tbody tr")).toHaveCount(3);
   await page.screenshot({ path: "tests/e2e/screenshots/SA-001-390-scrolled.png", fullPage: true });
 });
 
@@ -402,9 +411,13 @@ test("방송 대시보드 대기 표: 1440·1024·390폭에서 조작 버튼이 
     if (before.narrow && before.lnbRight !== null) expect(before.lnbRight).toBeLessThanOrEqual(0);
     const wrap = page.locator("section[aria-labelledby=bc-waiting-h] .au-lt-wrap");
     const m = await wrap.evaluate((el) => ({ client: el.clientWidth, scroll: el.scrollWidth }));
-    // 넓은 폭에서는 표 전체가 보이고, 좁은 폭에서는 카드 안에서만 스크롤된다
-    if (width >= 1440) expect(m.scroll).toBeLessThanOrEqual(m.client + 1);
+    // 넓은 폭에서는 표 전체가 보이고, 1024폭은 카드 안에서만 스크롤되며, 768px 미만은 모바일 카드라 스크롤이 필요 없다
+    if (width >= 1440 || width < 768) expect(m.scroll).toBeLessThanOrEqual(m.client + 1);
     else expect(m.scroll).toBeGreaterThan(m.client);
+    if (width < 768) {
+      if (SHOTS) await page.screenshot({ path: `tests/e2e/screenshots/SA-001-plain-${width}.png`, fullPage: true });
+      continue;
+    }
     // 금액 열: 내부 주문 항목은 상품 합계(원)가 보인다
     await expect(page.locator("section[aria-labelledby=bc-waiting-h] th", { hasText: "금액" })).toBeVisible();
     await expect(page.getByTestId("bc-amount").first()).toHaveText(/^[\d,]+원$/);

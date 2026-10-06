@@ -393,3 +393,191 @@ select.inp[multiple]{padding-right:var(--ui-sp-12);background-image:none}
   .dt-wrap{min-width:0;flex:1 1 140px}
 }
 .dt-sm .inp.dt{min-height:var(--ui-h-dense)}
+
+/* 공통 표 모바일 카드(정본 DS-TABLE-CARD, 768px 미만): 표 한 행 = 카드 한 장. 칸의 역할(data-card-role)·라벨(data-label)은 useTableCards가 붙인다.
+   카드 모서리 12 · 안쪽 여백 12 · 카드 사이 8 · 제목 15/20 · 보조 12/16 · 필드 13/20 · 버튼 44 · 섬네일 48. 규칙 요약은 design/SCREEN_MAP.md DS-TABLE-CARD 행 */
+@media (max-width: 767px) {
+  .tbl[data-card-table],
+  .tbl[data-card-table] > tbody,
+  .tbl[data-card-table] > tbody > tr,
+  .tbl[data-card-table] > tbody > tr > td {
+    display: block;
+    width: auto;
+  }
+  .tbl[data-card-table] > thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .tbl[data-card-table] > tbody > tr {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 var(--ui-sp-12);
+    margin-bottom: var(--ui-sp-8);
+    padding: var(--ui-sp-12);
+    border-radius: var(--ui-r-card);
+    background: var(--surface);
+    box-shadow: inset 0 0 0 1px var(--wds-line-normal-alternative);
+  }
+  .tbl[data-card-table] > tbody > tr:has(input[type="checkbox"]:checked) {
+    box-shadow: inset 0 0 0 2px var(--wds-primary-normal);
+  }
+  .tbl[data-card-table] > tbody > tr > td {
+    height: auto;
+    padding: 0;
+    box-shadow: none;
+    text-align: left;
+    font-size: 13px;
+    line-height: 20px;
+  }
+  .tbl[data-card-table] > tbody > tr:hover > td,
+  .tbl[data-card-table] > tbody > tr.sel > td {
+    background: transparent;
+  }
+  /* 숫자·날짜도 왼쪽 정렬(표의 가운데·오른쪽 정렬은 카드에서 쓰지 않는다) */
+  .tbl[data-card-table] > tbody > tr > td[data-card-role] {
+    text-align: left !important;
+  }
+  .tbl[data-card-table] > tbody > tr > td > .row {
+    justify-content: flex-start;
+  }
+  .tbl[data-card-table] > tbody > tr > td > .col {
+    align-items: flex-start;
+  }
+  /* 선택 체크: 왼쪽 위, 20px(터치 44×44) */
+  .tbl[data-card-table] td[data-card-role="check"] {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--ui-hit-min);
+    height: var(--ui-hit-min);
+  }
+  .tbl[data-card-table] td[data-card-role="check"] input {
+    width: 20px;
+    height: 20px;
+    margin: 0;
+  }
+  /* 섬네일 48 */
+  .tbl[data-card-table] td[data-card-role="thumb"] {
+    position: absolute;
+    top: var(--ui-sp-12);
+    left: var(--ui-sp-12);
+    width: 48px;
+    height: 48px;
+    overflow: hidden;
+  }
+  .tbl[data-card-table] tr[data-card-lead="1"] > td[data-card-role="title"] {
+    padding-left: 32px;
+  }
+  .tbl[data-card-table] tr[data-card-lead="2"] > td[data-card-role="title"] {
+    padding-left: 56px;
+  }
+  .tbl[data-card-table] tr[data-card-lead="3"] > td[data-card-role="thumb"] {
+    left: 44px;
+  }
+  .tbl[data-card-table] tr[data-card-lead="3"] > td[data-card-role="title"] {
+    padding-left: 88px;
+  }
+  /* 제목 15/20 굵게 한 줄 말줄임 + 보조 글 12/16 */
+  .tbl[data-card-table] td[data-card-role="title"] {
+    grid-column: 1 / -1;
+    min-height: 20px;
+    padding-right: 88px;
+    margin-bottom: var(--ui-sp-8);
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--wds-label-alternative);
+  }
+  .tbl[data-card-table] td[data-card-role="title"] > a:first-child,
+  .tbl[data-card-table] td[data-card-role="title"] > b:first-child,
+  .tbl[data-card-table] td[data-card-role="title"] > .fw6:first-child {
+    display: block;
+    overflow: hidden;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 20px;
+    color: var(--wds-label-normal);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* 상태 배지: 오른쪽 위 */
+  .tbl[data-card-table] td[data-card-role="status"] {
+    position: absolute;
+    top: var(--ui-sp-12);
+    right: var(--ui-sp-12);
+    text-align: right;
+  }
+  /* 부가 필드: 「라벨 값」 2열, 라벨 48px 회색 600, 값은 한 줄 말줄임 */
+  .tbl[data-card-table] td[data-card-role="field"],
+  .tbl[data-card-table] td[data-card-role="wide"] {
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr);
+    gap: var(--ui-sp-4);
+    padding: 2px 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .tbl[data-card-table] td[data-card-role="field"]::before,
+  .tbl[data-card-table] td[data-card-role="wide"]::before {
+    content: attr(data-label);
+    overflow: hidden;
+    font-weight: 600;
+    color: var(--wds-label-alternative);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tbl[data-card-table] td[data-card-role="field"] {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tbl[data-card-table] td[data-card-role="wide"] {
+    grid-column: 1 / -1;
+    white-space: normal;
+  }
+  /* 값 칸 안의 버튼(값을 눌러 바로 고치는 칸 등)도 터치 44 */
+  .tbl[data-card-table] td[data-card-role="field"] button,
+  .tbl[data-card-table] td[data-card-role="field"] .btn {
+    min-height: var(--ui-hit-min);
+  }
+  .tbl[data-card-table] td[data-empty]::after {
+    content: "-";
+    color: var(--wds-label-assistive);
+  }
+  .tbl[data-card-table] td[data-card-role="hide"] {
+    display: none;
+  }
+  /* 관리: 주요 2개 44px 같은 폭 + 더보기(···) 44×44. 나머지 행동은 더보기를 누르면 아래에 열린다 */
+  .tbl[data-card-table] td[data-card-role="actions"] {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--ui-sp-8);
+    margin-top: var(--ui-sp-8);
+  }
+  .tbl[data-card-table] td[data-card-role="actions"] > .btn,
+  .tbl[data-card-table] td[data-card-role="actions"] > button {
+    flex: 1 1 0;
+    min-width: 0;
+    height: var(--ui-hit-min);
+    margin: 0;
+  }
+  .tbl[data-card-table] td[data-card-role="actions"] > .card-more {
+    flex: 0 0 var(--ui-hit-min);
+    width: var(--ui-hit-min);
+    padding: 0;
+  }
+  .tbl[data-card-table] td[data-card-role="actions"] > [data-extra] {
+    display: none;
+  }
+  .tbl[data-card-table] td[data-card-role="actions"][data-open] > [data-extra] {
+    display: inline-flex;
+    flex: 1 0 100%;
+    order: 9;
+  }
+}
