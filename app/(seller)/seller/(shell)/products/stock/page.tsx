@@ -1,5 +1,7 @@
 "use client";
 
+import { PageHead } from "../../../../../../components/admin-ui";
+
 import { formatDateTime } from "../../../../../../lib/client/format";
 import "../../../../../../styles/seller-stock.css";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -298,12 +300,11 @@ export default function StockPage() {
         </button>
       </Topbar>
       <main className="main">
-        <div className="ph">
-          <div className="col" style={{ gap: 4 }}>
-            <h1 className="t-t3">재고 관리</h1>
-            <span className="t-l2 c-alt">선택 항목마다 바꿀 재고를 적어 한꺼번에 저장하거나, 이유를 적고 재고를 줄이거나 늘립니다.</span>
-          </div>
-        </div>
+        <PageHead
+          title={<>재고 관리</>}
+          description={<>선택 항목마다 바꿀 재고를 적어 한꺼번에 저장하거나, 이유를 적고 재고를 줄이거나 늘립니다.</>}
+
+        />
         {notice && (
           <div className={`msg msg-${notice.kind}`} role="alert">
             <span>{notice.text}</span>

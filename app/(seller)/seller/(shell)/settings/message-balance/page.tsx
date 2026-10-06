@@ -110,7 +110,7 @@ export default function MessageBalancePage() {
       <>
         <Topbar crumb="설정 › 쇼핑몰 설정 › 발송·이용 충전" />
         <main className="main">
-          <PageHead title="발송·이용 충전" />
+          <PageHead description="발송·이용 충전금의 잔액과 사용 내역을 확인합니다." title="발송·이용 충전" />
           <div className="card">
             {state.kind === "loading" && <LoadingRows rows={5} />}
             {state.kind === "error" &&
@@ -239,7 +239,7 @@ export default function MessageBalancePage() {
     <>
       <Topbar crumb="설정 › 쇼핑몰 설정 › 발송·이용 충전" />
       <main className="main">
-        <PageHead
+        <PageHead description="발송·이용 충전금의 잔액과 사용 내역을 확인합니다."
           title="충전금"
           actions={
             <button className="btn" type="button" disabled={!b.chargingEnabled || !consented || busy} onClick={openCharge}>

@@ -134,7 +134,7 @@ export default function BroadcastDetailPage() {
     <>
       <Topbar crumb="방송 › 방송 기록 › 방송 상세" />
       <main className="main">
-        <PageHead
+        <PageHead description="선택한 방송의 주문과 HIT 카드 기록, 메모를 확인합니다."
           title="방송 상세"
           actions={
             <>

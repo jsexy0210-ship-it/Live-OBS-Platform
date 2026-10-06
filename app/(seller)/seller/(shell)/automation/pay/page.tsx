@@ -118,7 +118,7 @@ function Pay() {
     <>
       <Topbar crumb="방송 › 연동 › 자동 연결 › 자동 연결 결제" />
       <main className="main">
-        <PageHead title="자동 연결 결제" />
+        <PageHead description="자동 연결 비용과 동의 내용을 확인하고 결제합니다." title="자동 연결 결제" />
         <div className="col" style={{ gap: 16 }}>
           <div className="msg msg-info" role="note"><span>결제가 서버에서 확인된 뒤에 작업이 시작됩니다</span></div>
           <TestModeNotice kind="payment" formal />

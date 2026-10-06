@@ -116,7 +116,7 @@ export default function ReceiptsPage() {
     <>
       <Topbar crumb="주문 › 영수증 · 세금계산서" />
       <main className="main">
-        <PageHead
+        <PageHead description="영수증과 세금계산서 신청을 확인하고 처리합니다."
           title="영수증 · 세금계산서"
           actions={
             <Link className="btn btn-out" href="/seller/orders/deposits">

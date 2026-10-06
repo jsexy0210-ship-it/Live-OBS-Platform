@@ -1,5 +1,7 @@
 "use client";
 
+import { PageHead } from "../../../../../components/admin-ui";
+
 import { useCallback, useEffect, useState } from "react";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../components/seller/States";
@@ -146,17 +148,15 @@ export default function ReviewsPage() {
     <>
       <Topbar crumb="판매 › 리뷰" />
       <main className="main">
-        <div className="ph">
-          <div className="col" style={{ gap: 6 }}>
-            <h1 className="t-t3">리뷰 관리</h1>
-            <span className="t-l2 c-alt">구매자 상품 리뷰 확인 · 답글 · 숨김 · 신고 처리 · 리뷰 적립금 · 작성 조건 설정</span>
-          </div>
-          {data && (
+        <PageHead
+          title={<>리뷰 관리</>}
+          description={<>구매자 상품 리뷰 확인 · 답글 · 숨김 · 신고 처리 · 리뷰 적립금 · 작성 조건 설정</>}
+          actions={<>{data && (
             <button className="btn btn-out" type="button" onClick={() => setSettings(true)}>
               리뷰 설정
             </button>
-          )}
-        </div>
+          )}</>}
+        />
         {data && !data.canEdit && (
           <div className="msg msg-info" role="status">
             <span>리뷰 목록만 볼 수 있습니다. 답글 · 숨김 · 설정 변경은 대표자나 구매자 문의 권한이 있는 직원에게 요청해 주십시오.</span>

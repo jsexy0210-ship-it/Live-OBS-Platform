@@ -186,7 +186,7 @@ export default function InvoiceIssuePage() {
     <>
       <Topbar crumb="주문 › 배송 · 송장 › 송장 발급" />
       <main className="main">
-        <PageHead title="송장 발급" />
+        <PageHead description="발송할 주문과 주소를 확인하고 송장을 발급합니다." title="송장 발급" />
         <InvoiceSteps now={done && done.issued > 0 ? 4 : 2} />
 
         {state.kind === "loading" && <LoadingRows rows={5} />}

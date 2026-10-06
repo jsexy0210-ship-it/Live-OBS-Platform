@@ -154,7 +154,7 @@ export default function CategoriesPage() {
     <>
       <Topbar crumb="상품 › 카테고리" />
       <main className="main">
-        <PageHead
+        <PageHead description="상품 카테고리와 표시 순서를 관리합니다."
           title="카테고리"
           actions={
             <>

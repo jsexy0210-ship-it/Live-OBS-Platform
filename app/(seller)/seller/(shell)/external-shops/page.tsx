@@ -88,7 +88,7 @@ export default function ExternalShopsPage() {
     <>
       <Topbar crumb="방송 › 연동 › 외부 쇼핑몰 연동" />
       <main className="main">
-        <PageHead
+        <PageHead description="외부 쇼핑몰의 연결 상태와 주문 수신 기록을 확인합니다."
           title="외부 쇼핑몰 연동"
           actions={
             d?.canManage && d.enabled ? (

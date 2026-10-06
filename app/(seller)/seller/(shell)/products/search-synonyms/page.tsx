@@ -98,7 +98,7 @@ export default function SearchSynonymsPage() {
     <>
       <Topbar crumb="상품 › 검색 유사어" />
       <main className="main">
-        <PageHead
+        <PageHead description="상품 검색에 함께 사용할 유사어를 설정합니다."
           title="검색 유사어"
           actions={
             <>

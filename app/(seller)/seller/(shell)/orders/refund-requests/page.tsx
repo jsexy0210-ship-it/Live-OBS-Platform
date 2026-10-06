@@ -107,7 +107,7 @@ export default function RefundRequestsPage() {
     <>
       <Topbar crumb="주문 › 취소 · 교환 · 반품" />
       <main className="main">
-        <PageHead
+        <PageHead description="구매자의 취소·환불 요청을 확인하고 처리합니다."
           title="취소 · 환불 요청"
           actions={
             <Link className="btn btn-out" href="/seller/orders">

@@ -405,7 +405,7 @@ export default function LegalSettingsPage() {
     <>
       <Topbar crumb="설정 › 쇼핑몰 설정 › 법정 고지 · 약관" />
       <main className="main">
-        <PageHead title="법정 고지 · 약관" />
+        <PageHead description="구매자에게 공개할 법정 고지와 약관을 관리합니다." title="법정 고지 · 약관" />
         {!editable && (
           <div className="msg msg-info" role="status" style={{ marginBottom: 16 }}>
             <span>보기만 할 수 있습니다. 변경은 대표자나 쇼핑몰 설정 권한이 있는 직원에게 요청해 주십시오.</span>

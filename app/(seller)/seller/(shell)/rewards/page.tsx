@@ -208,7 +208,7 @@ export default function RewardPolicyPage() {
     <>
       <Topbar crumb="고객 › 적립금 › 적립 정책" />
       <main className="main">
-        <PageHead
+        <PageHead description="적립금의 지급 시점과 회수, 사용 조건을 설정합니다."
           title="적립 정책"
           actions={
             <Link className="btn btn-out" href="/seller/member-grades">

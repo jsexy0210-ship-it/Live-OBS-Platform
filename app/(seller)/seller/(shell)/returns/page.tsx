@@ -2,7 +2,7 @@
 
 import { formatDateTime } from "../../../../../lib/client/format";
 import { useCallback, useEffect, useState } from "react";
-import { useConfirm } from "../../../../../components/admin-ui";
+import { useConfirm, PageHead } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -112,12 +112,11 @@ export default function ReturnsPage() {
     <>
       <Topbar crumb="주문 › 교환 · 반품" />
       <main className="main">
-        <div className="ph">
-          <div className="col" style={{ gap: 6 }}>
-            <h1 className="t-t3">교환 · 반품</h1>
-            <span className="t-l2 c-alt">구매자가 신청한 교환·반품을 처리하는 화면입니다. 접수 → 수거 → 상품 확인 → 환불 또는 교환 상품 발송 순서로 진행합니다.</span>
-          </div>
-        </div>
+        <PageHead
+          title={<>교환 · 반품</>}
+          description={<>구매자가 신청한 교환·반품을 처리하는 화면입니다. 접수 → 수거 → 상품 확인 → 환불 또는 교환 상품 발송 순서로 진행합니다.</>}
+
+        />
         <section className="card" style={{ overflow: "hidden" }}>
           {state.kind === "loading" && <StateBox kind="loading" what="교환 · 반품" />}
           {state.kind === "error" && <StateBox kind={stateKind(state.status, state.error)} what="교환 · 반품" onRetry={() => void load()} />}

@@ -63,7 +63,7 @@ export default function InquiriesPage() {
     <>
       <Topbar crumb="공지 · 문의 › 내 문의" />
       <main className="main">
-        <PageHead
+        <PageHead description="ONQ 운영팀에 남긴 문의와 답변을 확인합니다."
           title="내 문의"
           back="/seller/notices"
           actions={

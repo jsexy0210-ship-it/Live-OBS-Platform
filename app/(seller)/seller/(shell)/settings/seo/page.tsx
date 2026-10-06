@@ -140,7 +140,7 @@ export default function SeoSettingsPage() {
     <>
       <Topbar crumb="설정 › 쇼핑몰 설정 › 검색 노출" />
       <main className="main">
-        <PageHead title="검색 노출" />
+        <PageHead description="검색 사이트에 표시할 쇼핑몰 제목과 설명을 설정합니다." title="검색 노출" />
         {state.kind === "loading" && (
           <div className="card">
             <LoadingRows rows={6} />

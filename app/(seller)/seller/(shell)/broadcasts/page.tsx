@@ -86,7 +86,7 @@ export default function BroadcastHistoryPage() {
     <>
       <Topbar crumb="방송 › 방송 기록" />
       <main className="main">
-        <PageHead title="방송 기록" />
+        <PageHead description="방송별 진행 상태와 주문 기록을 확인합니다." title="방송 기록" />
         {!allowed ? (
           <div className="card">
             <NoPermission need="방송 진행" />

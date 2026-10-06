@@ -182,7 +182,7 @@ export default function RewardLedgerPage() {
     <>
       <Topbar crumb="고객 › 적립금 › 지급 · 회수 원장" />
       <main className="main">
-        <PageHead title="지급 · 회수 원장" />
+        <PageHead description="적립금의 지급·회수 내역과 처리 상태를 확인합니다." title="지급 · 회수 원장" />
 
         {live === false && (
           <div className="msg msg-cau row between" role="note" data-testid="ledger-live-off" style={{ gap: 8, flexWrap: "wrap", marginBottom: 16 }}>

@@ -43,7 +43,7 @@ export default function OrderNotificationsPage() {
       <>
         <Topbar crumb="설정 › 알림 설정" />
         <main className="main">
-          <PageHead title="알림 설정" />
+          <PageHead description="주문·배송 안내의 발송 채널과 사용 현황을 확인합니다." title="알림 설정" />
           <div className="card">
             {state.kind === "loading" && <LoadingRows rows={4} />}
             {state.kind === "error" &&
@@ -61,7 +61,7 @@ export default function OrderNotificationsPage() {
     <>
       <Topbar crumb="설정 › 알림 설정" />
       <main className="main">
-        <PageHead title="알림 설정" />
+        <PageHead description="주문·배송 안내의 발송 채널과 사용 현황을 확인합니다." title="알림 설정" />
 
         {b.mail.skippedBalance > 0 && (
           <div className="msg msg-neg" role="alert" data-testid="skipped-note" style={{ marginBottom: 16 }}>

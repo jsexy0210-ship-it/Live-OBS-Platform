@@ -105,7 +105,7 @@ export default function OrderDetailPage() {
         )}
       </Topbar>
       <main className="main">
-        <PageHead
+        <PageHead description="주문 상품과 결제, 배송 정보를 확인하고 주문을 처리합니다."
           title={
             <>
               {nick} · {formatDateTime(o.createdAt)} 주문{" "}

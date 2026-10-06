@@ -81,7 +81,7 @@ export default function MemberSettingsPage() {
     <>
       <Topbar crumb="설정 › 쇼핑몰 설정 › 회원 정책" />
       <main className="main">
-        <PageHead title="회원 정책" />
+        <PageHead description="회원의 탈퇴와 재가입 제한 정책을 설정합니다." title="회원 정책" />
 
         {state.kind !== "ok" ? (
           <div className="card">

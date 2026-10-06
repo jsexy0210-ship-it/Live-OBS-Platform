@@ -37,7 +37,7 @@ export default function DisplayPage() {
     <>
       <Topbar crumb="상품 › 상품 진열" />
       <main className="main">
-        <PageHead
+        <PageHead description="쇼핑몰에서 상품을 보여 줄 위치와 순서를 설정합니다."
           title="상품 진열"
           actions={
             <>

@@ -98,7 +98,7 @@ export default function OverlayPage() {
     <>
       <Topbar crumb="방송 › 방송 화면 꾸미기 › 방송 프로그램에 넣기" />
       <main className="main">
-        <PageHead
+        <PageHead description="방송 화면 주소를 복사해 방송 프로그램에 넣습니다."
           title="방송 프로그램에 넣기"
           actions={
             <Link className="btn btn-out" href="/seller/overlay">

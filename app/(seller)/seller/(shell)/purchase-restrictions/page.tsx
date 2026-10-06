@@ -1,5 +1,7 @@
 "use client";
 
+import { PageHead } from "../../../../../components/admin-ui";
+
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Topbar } from "../../../../../components/seller/SellerShell";
@@ -99,18 +101,15 @@ export default function PurchaseRestrictionsPage() {
     <>
       <Topbar crumb="판매 › 구매 제한" />
       <main className="main">
-        <div className="ph">
-          <div className="col" style={{ gap: 6 }}>
-            <h1 className="t-t3">구매 제한</h1>
-            <span className="t-l2 c-alt">
-              지금 주문이 막힌 구매자입니다. 자동 제한 규칙은{" "}
+        <PageHead
+          title={<>구매 제한</>}
+          description={<>지금 주문이 막힌 구매자입니다. 자동 제한 규칙은{" "}
               <Link href="/seller/settings/order" className="t-l2 fw6">
                 주문 설정
               </Link>
-              에서 정합니다.
-            </span>
-          </div>
-        </div>
+              에서 정합니다.</>}
+
+        />
 
         {stale && (
           <div className="msg msg-cau" role="status" style={{ marginBottom: 16 }}>

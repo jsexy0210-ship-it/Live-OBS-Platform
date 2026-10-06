@@ -144,7 +144,7 @@ function Form() {
     <>
       <Topbar crumb="공지 · 문의 › 내 문의 › 문의하기" />
       <main className="main">
-        <PageHead back="/seller/inquiries" title="문의하기" />
+        <PageHead description="문의 내용과 관련 자료를 ONQ 운영팀에 보냅니다." back="/seller/inquiries" title="문의하기" />
         <form
           onSubmit={(e) => {
             e.preventDefault();

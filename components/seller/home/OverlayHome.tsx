@@ -55,7 +55,7 @@ export function OverlayHome() {
 
   return (
     <main className="main">
-      <PageHead
+      <PageHead description="외부 쇼핑몰 연결과 방송, 주문대기 상태를 확인합니다."
         title="홈 · 오버레이 전용"
         actions={
           <>

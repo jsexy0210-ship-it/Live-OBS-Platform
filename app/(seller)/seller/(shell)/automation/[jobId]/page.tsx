@@ -78,7 +78,7 @@ export default function AutomationProgressPage() {
       <>
         <Topbar crumb="방송 › 연동 › 자동 연결 › 자동 연결 진행" />
         <main className="main">
-          <PageHead title="자동 연결 진행" />
+          <PageHead description="자동 연결의 진행 단계와 작업 기록을 확인합니다." title="자동 연결 진행" />
           <div className="card">{state.kind === "loading" ? <LoadingRows rows={4} /> : <ErrorState title="진행 상황을 불러오지 못했습니다" onRetry={() => void load()} />}</div>
         </main>
       </>
@@ -96,7 +96,7 @@ export default function AutomationProgressPage() {
     <>
       <Topbar crumb="방송 › 연동 › 자동 연결 › 자동 연결 진행" />
       <main className="main">
-        <PageHead
+        <PageHead description="자동 연결의 진행 단계와 작업 기록을 확인합니다."
           title="자동 연결 진행"
           actions={
             (pausable || j.paused || cancelable) && (

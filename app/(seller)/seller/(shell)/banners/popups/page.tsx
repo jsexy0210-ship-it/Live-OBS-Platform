@@ -201,7 +201,7 @@ export default function PopupsPage() {
     <>
       <Topbar crumb="마케팅 › 이벤트 팝업" />
       <main className="main">
-        <PageHead
+        <PageHead description="쇼핑몰에 표시할 팝업과 노출 기간을 관리합니다."
           title="이벤트 팝업"
           actions={
             state.kind === "ok" && editable ? (

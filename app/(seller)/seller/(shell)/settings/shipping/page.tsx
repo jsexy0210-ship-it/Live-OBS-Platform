@@ -204,7 +204,7 @@ export default function ShippingSettingsPage() {
     <>
       <Topbar crumb="설정 › 주문 · 배송 설정 › 배송 설정" />
       <main className="main">
-        <PageHead title="배송 설정" />
+        <PageHead description="배송비와 반품·교환 비용, 발송 안내를 설정합니다." title="배송 설정" />
 
         {state.kind !== "ok" ? (
           <div className="card">

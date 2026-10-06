@@ -35,7 +35,7 @@ export default function RestockAlertsPage() {
     <>
       <Topbar crumb="상품 › 재입고 알림" />
       <main className="main">
-        <PageHead title="재입고 알림" />
+        <PageHead description="품절 상품의 재입고 알림 신청과 기록을 확인합니다." title="재입고 알림" />
         {state.kind === "ok" && (
           <div className="msg msg-info" role="status">
             <span>재고가 들어오면 신청한 구매자에게 알림이 갑니다. 밤 9시부터 아침 8시 사이에 들어온 재고는 아침 8시에 보냅니다. 지금은 알림 발송이 연결되지 않아 발송 기록만 남습니다.</span>

@@ -135,7 +135,7 @@ export default function BulkPage() {
     <>
       <Topbar crumb="상품 › 엑셀로 올리기 · 내려받기" />
       <main className="main">
-        <PageHead
+        <PageHead description="파일로 상품을 일괄 등록·수정하고 자료를 내보냅니다."
           title="엑셀 일괄 등록 · 내보내기"
           actions={
             canEdit ? (

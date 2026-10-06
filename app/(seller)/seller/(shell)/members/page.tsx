@@ -115,7 +115,7 @@ export default function MemberListPage() {
     <>
       <Topbar crumb="판매 › 회원" />
       <main className="main">
-        <PageHead title="회원" />
+        <PageHead description="쇼핑몰 회원의 가입 정보와 이용 상태를 확인합니다." title="회원" />
 
         <div className="card">
           <div className="toolbar" style={{ padding: 16 }}>

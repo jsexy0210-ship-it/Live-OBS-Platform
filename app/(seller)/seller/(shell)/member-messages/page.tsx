@@ -103,7 +103,7 @@ export default function MemberMessagesPage() {
     <>
       <Topbar crumb="고객 › 회원 알림 발송" />
       <main className="main">
-        <PageHead
+        <PageHead description="회원을 골라 알림을 보내고 발송 기록을 확인합니다."
           title="회원 알림 발송"
           actions={
             data && canEdit ? (

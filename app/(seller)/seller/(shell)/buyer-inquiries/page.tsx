@@ -128,7 +128,7 @@ export default function BuyerInquiriesPage() {
     <>
       <Topbar crumb="게시판 › 구매자 문의" />
       <main className="main">
-        <PageHead title="구매자 문의" />
+        <PageHead description="구매자가 남긴 문의를 확인하고 답변합니다." title="구매자 문의" />
         {data && !data.canEdit && (
           <div className="msg msg-info" role="status">
             <span>문의 목록만 볼 수 있습니다. 답변은 대표자나 구매자 문의 권한이 있는 직원에게 요청해 주십시오.</span>

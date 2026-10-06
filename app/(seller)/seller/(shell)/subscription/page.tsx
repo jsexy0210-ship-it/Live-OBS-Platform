@@ -1,5 +1,7 @@
 "use client";
 
+import { PageHead } from "../../../../../components/admin-ui";
+
 import { useCallback, useEffect, useState } from "react";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
@@ -281,11 +283,10 @@ export default function SubscriptionPage() {
     <>
       <Topbar crumb="설정 › 구독 · 결제" />
       <main className="main">
-        <div className="ph">
-          <div className="col" style={{ gap: 6 }}>
-            <h1 className="t-t3">구독 · 결제</h1>
-          </div>
-          {view && (
+        <PageHead
+          title={<>구독 · 결제</>}
+          description={<>이용권과 결제 수단을 관리하고 청구 내역을 확인합니다.</>}
+          actions={<>{view && (
             <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
               <a className="btn btn-out" href="/pricing">
                 요금 안내
@@ -301,8 +302,8 @@ export default function SubscriptionPage() {
                 </button>
               )}
             </div>
-          )}
-        </div>
+          )}</>}
+        />
 
         {!view ? (
           <div className="card">

@@ -188,7 +188,7 @@ export default function OrderSettingsPage() {
     <>
       <Topbar crumb="설정 › 주문 · 배송 설정 › 주문 설정" />
       <main className="main">
-        <PageHead title="주문 설정" />
+        <PageHead description="입금 기한과 주문 제한, 주문 자동 처리 기준을 설정합니다." title="주문 설정" />
 
         {state.kind !== "ok" ? (
           <div className="card">

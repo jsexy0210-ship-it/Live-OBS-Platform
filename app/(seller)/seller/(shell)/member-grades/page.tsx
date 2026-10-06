@@ -143,7 +143,7 @@ export default function MemberGradesPage() {
     <>
       <Topbar crumb="회원 › 회원 등급" />
       <main className="main">
-        <PageHead
+        <PageHead description="회원 등급의 기준과 혜택을 설정합니다."
           title="회원 등급"
           actions={
             data && canEdit ? (

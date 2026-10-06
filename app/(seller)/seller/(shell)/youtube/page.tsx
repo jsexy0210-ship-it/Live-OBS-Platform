@@ -113,7 +113,7 @@ export default function YoutubePage() {
     <>
       <Topbar crumb="방송 › 유튜브 이어 두기" />
       <main className="main">
-        <PageHead
+        <PageHead description="유튜브 채널과 방송의 연결 상태를 확인합니다."
           title="유튜브 이어 두기"
           actions={
             allowed &&

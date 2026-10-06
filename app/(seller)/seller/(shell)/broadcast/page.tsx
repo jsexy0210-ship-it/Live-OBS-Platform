@@ -319,7 +319,7 @@ export default function BroadcastDashboardPage() {
         }
       />
       <main className="main">
-        <PageHead
+        <PageHead description="방송 상태와 주문대기를 확인하고 HIT 카드를 기록합니다."
           title="방송 대시보드"
           path={["방송", "방송 대시보드"]}
           actions={

@@ -68,7 +68,7 @@ export default function OnboardingPage() {
     <>
       <Topbar crumb="홈 › 시작하기" />
       <main className="main">
-        <PageHead title="시작하기" />
+        <PageHead description="쇼핑몰과 방송을 시작하는 데 필요한 설정을 확인합니다." title="시작하기" />
         {state.kind === "loading" && (
           <div className="card">
             <LoadingRows rows={4} />

@@ -95,7 +95,7 @@ export default function LivePayoutPage() {
     <>
       <Topbar crumb="고객 › 적립금 › 실제 지급 켜기" />
       <main className="main">
-        <PageHead title="실제 지급 켜기" />
+        <PageHead description="적립금 실제 지급 여부와 지급 대기 내역을 확인합니다." title="실제 지급 켜기" />
         {state.kind === "loading" && (
           <div className="card">
             <LoadingRows rows={3} />

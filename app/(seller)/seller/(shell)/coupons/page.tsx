@@ -225,7 +225,7 @@ export default function CouponsPage() {
     <>
       <Topbar crumb="판매 › 쿠폰" />
       <main className="main">
-        <PageHead
+        <PageHead description="쿠폰의 혜택과 사용 기간, 발급 상태를 관리합니다."
           title="쿠폰"
           back={false}
           actions={

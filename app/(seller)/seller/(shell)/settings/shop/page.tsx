@@ -415,7 +415,7 @@ export default function ShopInfoPage() {
     <>
       <Topbar crumb="설정 › 쇼핑몰 정보" />
       <main className="main">
-        <PageHead title="쇼핑몰 정보" />
+        <PageHead description="쇼핑몰의 기본 정보와 운영 상태, 공유 화면을 설정합니다." title="쇼핑몰 정보" />
         {state.kind === "loading" && (
           <div className="card st" style={{ boxShadow: "none" }} aria-busy="true">
             <span className="spin" />

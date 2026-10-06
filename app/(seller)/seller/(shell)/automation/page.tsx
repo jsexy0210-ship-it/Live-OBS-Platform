@@ -51,7 +51,7 @@ export default function AutomationIntroPage() {
     <>
       <Topbar crumb="방송 › 연동 › 자동 연결" />
       <main className="main">
-        <PageHead title="자동 연결" />
+        <PageHead description="자동 연결의 작업 범위와 현재 상태를 확인합니다." title="자동 연결" />
         {jobs.kind === "loading" && (
           <div className="card">
             <LoadingRows rows={4} />

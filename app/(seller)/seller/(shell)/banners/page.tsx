@@ -171,7 +171,7 @@ export default function BannersPage() {
     <>
       <Topbar crumb="마케팅 › 홈 배너" />
       <main className="main">
-        <PageHead
+        <PageHead description="쇼핑몰 홈에 표시할 배너와 노출 순서를 관리합니다."
           title="홈 배너"
           actions={
             <>

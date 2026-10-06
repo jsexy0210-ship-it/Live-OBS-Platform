@@ -148,7 +148,7 @@ export default function InvoiceTrackingPage() {
     <>
       <Topbar crumb="주문 › 배송 · 송장 › 송장 출력 · 추적" />
       <main className="main">
-        <PageHead
+        <PageHead description="발급한 송장을 출력하고 배송 추적 기록을 확인합니다."
           title="송장 출력 · 추적"
           actions={
             <>

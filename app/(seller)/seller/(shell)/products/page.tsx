@@ -304,7 +304,7 @@ export default function ProductListPage() {
     <>
       <Topbar crumb="상품 › 상품 목록" />
       <main className="main">
-        <PageHead
+        <PageHead description="등록한 상품의 판매 상태와 재고를 확인합니다."
           title="상품 목록"
           actions={
             canManage && (

@@ -113,7 +113,7 @@ export default function HitCardsPage() {
     <>
       <Topbar crumb="방송 › HIT 카드 기록" />
       <main className="main">
-        <PageHead
+        <PageHead description="방송에서 개봉한 HIT 카드와 연결된 주문을 기록합니다."
           title="HIT 카드 기록"
           path={["방송", "HIT 카드 기록"]}
           actions={

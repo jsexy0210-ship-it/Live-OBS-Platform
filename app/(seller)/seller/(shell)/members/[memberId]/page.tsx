@@ -37,7 +37,7 @@ export default function MemberDetailPage() {
     <>
       <Topbar crumb="판매 › 회원 › 회원 상세" />
       <main className="main">
-        <PageHead
+        <PageHead description="회원의 정보와 주문, 적립금 등 이용 기록을 확인합니다."
           title={m ? (m.broadcastNickname ?? "닉네임 없음") : "회원 상세"}
         />
 

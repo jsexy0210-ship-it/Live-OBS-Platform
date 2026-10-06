@@ -127,7 +127,7 @@ export default function InquiryDetailPage() {
     <>
       <Topbar crumb="공지 · 문의 › 내 문의 › 상세" />
       <main className="main">
-        <PageHead
+        <PageHead description="문의 내용과 답변을 확인하고 추가 내용을 남깁니다."
           back="/seller/inquiries"
           title="문의 상세"
           actions={

@@ -153,7 +153,7 @@ export default function ShopNoticesPage() {
     <>
       <Topbar crumb="마케팅 › 쇼핑몰 공지 · 자주 묻는 질문" />
       <main className="main">
-        <PageHead
+        <PageHead description="구매자에게 보여 줄 공지와 자주 묻는 질문을 관리합니다."
           title="쇼핑몰 공지 · 자주 묻는 질문"
           actions={
             <>

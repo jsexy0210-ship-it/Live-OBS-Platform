@@ -3,7 +3,7 @@
 import "./ProductPreview.css";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { FormRow, FormSection } from "../admin-ui";
+import { FormRow, FormSection, PageHead } from "../admin-ui";
 import ProductDetailEditor, { DETAIL_TEXT_MAX, blocksToHtml, type PendingImages } from "./ProductDetailEditor";
 import ProductImages, { IMAGE_MAX_COUNT, type SlotImage } from "./ProductImages";
 import { Topbar } from "./SellerShell";
@@ -572,13 +572,23 @@ export function ProductForm({ initial }: { initial?: Product }) {
 
   return (
     <>
-      <Topbar crumb={`판매 › 상품 › ${crumbName}`} badge={badge && <span className={`bdg ${badge.cls}`}>{badge.label}</span>}>
-        <SmartBackButton fallback="/seller/products" className="btn btn-sm btn-out" dirty={dirtyNow && !leaving}>
-          취소
-        </SmartBackButton>
-        {saveButtons(false)}
-      </Topbar>
-      <main className="main form-grid">
+      <Topbar crumb={`판매 › 상품 › ${crumbName}`} badge={badge && <span className={`bdg ${badge.cls}`}>{badge.label}</span>} />
+      <main className="main">
+        <PageHead
+          back={false}
+          tabs={false}
+          title={isEdit ? "상품 수정" : "상품 등록"}
+          description="상품의 정보와 이미지, 가격과 재고, 판매 상태를 설정합니다."
+          actions={
+            <>
+              <SmartBackButton fallback="/seller/products" className="btn btn-sm btn-out" dirty={dirtyNow && !leaving}>
+                취소
+              </SmartBackButton>
+              {saveButtons(false)}
+            </>
+          }
+        />
+        <div className="form-grid">
         <div className="col" style={{ gap: 20 }} ref={topRef}>
           {failure && (
             <div className="msg msg-neg" role="alert">
@@ -889,6 +899,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
             )}
           </div>
         </aside>
+        </div>
       </main>
       {confirmDelete && base && (
         <DeleteDialog

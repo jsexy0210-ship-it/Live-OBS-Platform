@@ -30,7 +30,7 @@ export default function AutomationDonePage() {
       <>
         <Topbar crumb={crumb} />
         <main className="main">
-          <PageHead title="자동 연결 완료" />
+          <PageHead description="완료된 연결 내용과 방송 전 확인할 사항을 확인합니다." title="자동 연결 완료" />
           <div className="card">{state.kind === "loading" ? <LoadingRows rows={3} /> : <ErrorState title="자동 연결 정보를 불러오지 못했습니다" onRetry={() => void load()} />}</div>
         </main>
       </>
@@ -42,7 +42,7 @@ export default function AutomationDonePage() {
     <>
       <Topbar crumb={crumb} />
       <main className="main">
-        <PageHead
+        <PageHead description="완료된 연결 내용과 방송 전 확인할 사항을 확인합니다."
           title="자동 연결 완료"
           actions={<Link className="btn" href="/seller/broadcast">방송 대시보드로</Link>}
         />

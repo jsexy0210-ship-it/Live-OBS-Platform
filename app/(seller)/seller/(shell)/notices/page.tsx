@@ -55,7 +55,7 @@ export default function NoticesPage() {
     <>
       <Topbar crumb="공지 · 문의 › 공지사항" />
       <main className="main">
-        <PageHead
+        <PageHead description="ONQ의 공지와 운영 안내를 확인합니다."
           title="공지사항"
           back={false}
           actions={

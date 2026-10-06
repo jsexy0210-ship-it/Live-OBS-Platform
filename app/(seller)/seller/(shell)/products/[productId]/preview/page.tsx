@@ -85,7 +85,7 @@ export default function ProductPreviewPage() {
     <>
       <Topbar crumb="상품 › 상품 목록 › 상품 상세 미리보기" />
       <main className="main">
-        <PageHead
+        <PageHead description="상품이 구매자 화면에 어떻게 표시되는지 확인합니다."
           back="/seller/products"
           title="상품 상세 미리보기"
           actions={

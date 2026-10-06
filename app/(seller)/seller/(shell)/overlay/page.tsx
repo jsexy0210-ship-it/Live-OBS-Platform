@@ -19,7 +19,7 @@ export default function OverlayPage() {
           <OverlayEditor />
         ) : (
           <>
-            <PageHead title="방송 화면 꾸미기" />
+            <PageHead description="방송 화면의 구성과 표시할 내용을 설정합니다." title="방송 화면 꾸미기" />
             <div className="card">
               <NoPermission need="오버레이 편집" />
             </div>

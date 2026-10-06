@@ -40,7 +40,7 @@ export default function NoticeDetailPage() {
     <>
       <Topbar crumb="공지 · 문의 › 공지사항 › 상세" />
       <main className="main">
-        <PageHead
+        <PageHead description="공지 내용과 첨부 자료를 확인합니다."
           back="/seller/notices"
           title="공지 상세"
           actions={

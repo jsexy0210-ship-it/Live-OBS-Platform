@@ -46,7 +46,7 @@ export default function NotificationsPage() {
     <>
       <Topbar crumb="알림" />
       <main className="main">
-        <PageHead
+        <PageHead description="주문과 쇼핑몰 운영에서 확인할 알림을 모아 봅니다."
           title="알림"
           actions={
             <Link className="btn btn-out" href="/seller/notices">

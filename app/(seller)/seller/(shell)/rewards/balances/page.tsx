@@ -119,7 +119,7 @@ export default function RewardBalancesPage() {
     <>
       <Topbar crumb="고객 › 적립금 › 회원별 잔액" />
       <main className="main">
-        <PageHead title="회원별 잔액" />
+        <PageHead description="회원별 적립금 잔액과 지급 대기 금액을 확인합니다." title="회원별 잔액" />
 
         <SearchBox
           onSearch={search}

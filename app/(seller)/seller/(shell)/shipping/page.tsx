@@ -182,7 +182,7 @@ export default function ShippingPage() {
     <>
       <Topbar crumb="판매 › 배송" />
       <main className="main">
-        <PageHead title="배송" />
+        <PageHead description="주문의 배송 상태를 확인하고 발송 정보를 입력합니다." title="배송" />
 
         <div className="card">
           <nav className="tabs" aria-label="배송 상태" style={{ padding: "0 16px" }}>

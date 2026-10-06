@@ -1,5 +1,7 @@
 "use client";
 
+import { PageHead } from "../../../../../components/admin-ui";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useConfirm } from "../../../../../components/admin-ui/ConfirmDialog";
 import { formatDateTime } from "../../../../../lib/client/format";
@@ -96,19 +98,15 @@ export default function StaffPage() {
     <>
       <Topbar crumb="설정 › 직원 계정" />
       <main className="main">
-        <div className="ph">
-          <div className="col" style={{ gap: 4 }}>
-            <h1 className="t-t3">
-              직원 계정{" "}
+        <PageHead
+          title={<>직원 계정{" "}
               {state.kind === "ok" && (
                 <span className="c-alt fw5" data-testid="staff-count">
                   {active}명
                 </span>
-              )}
-            </h1>
-            <span className="t-l2 c-alt">직원 계정을 직접 만들고, 직원이 할 수 있는 업무를 정합니다. 직원은 파트너스 로그인으로 들어와 허용된 메뉴만 씁니다.</span>
-          </div>
-          {me.isOwner && state.kind === "ok" && (
+              )}</>}
+          description={<>직원 계정을 직접 만들고, 직원이 할 수 있는 업무를 정합니다. 직원은 파트너스 로그인으로 들어와 허용된 메뉴만 씁니다.</>}
+          actions={<>{me.isOwner && state.kind === "ok" && (
             <button
               className="btn"
               type="button"
@@ -120,8 +118,8 @@ export default function StaffPage() {
             >
               직원 추가
             </button>
-          )}
-        </div>
+          )}</>}
+        />
 
         {!me.isOwner ? (
           <div className="card">

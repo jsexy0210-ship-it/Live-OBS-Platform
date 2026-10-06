@@ -48,7 +48,7 @@ export default function AssistantPage() {
     <>
       <Topbar crumb="도우미" />
       <main className="main">
-        <PageHead title="도우미" />
+        <PageHead description="사용 중 궁금한 내용을 도우미에게 질문합니다." title="도우미" />
         {!s ? (
           <div className="card">{state.kind === "loading" ? <LoadingRows rows={3} /> : <ErrorState title="도우미를 불러오지 못했습니다" onRetry={() => void load()} />}</div>
         ) : !s.available ? (
