@@ -10,7 +10,7 @@ import { mutation, noStore, readJson, requestMeta } from "../../../../../../lib/
 export const POST = mutation(async (req: Request, { params }: { params: Promise<{ slug: string }> }) => {
   const b = await buyerScope(req, (await params).slug);
   if (!b.scope) return noStore(b.res);
-  const r = await changeMemberPassword(prisma, b.scope, await readJson(req), requestMeta(req));
+  const r = await changeMemberPassword(prisma, { ...b.scope, sessionId: b.sessionId }, await readJson(req), requestMeta(req));
   if (!r.ok) return noStore(NextResponse.json({ error: r.reason, message: PROFILE_MESSAGES[r.reason] }, { status: PROFILE_STATUS[r.reason] }));
   return noStore(NextResponse.json({ ok: true, revokedSessions: r.revokedSessions }));
 });
