@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { PublicFrame } from "./PublicFrame";
-import { noticeDate, PUBLIC_NOTICE_CATEGORY, type PublicNoticeCategory } from "./noticeView";
+import { noticeDate, noticeDetailHref, noticeListHref, PUBLIC_NOTICE_CATEGORY, type NoticeListState, type PublicNoticeCategory } from "./noticeView";
 
 // PF-005 공지 목록(디자인 PF-005). 고정 공지는 첫 쪽 맨 위, 나머지는 게시일 최신순.
 export type NoticeRow = { id: string; title: string; category: PublicNoticeCategory; isPinned: boolean; publishedAt: Date | string };
@@ -13,11 +13,11 @@ const CHIPS: [string, string | null][] = [
   ["정책", "POLICY"],
 ];
 
-function Row({ n }: { n: NoticeRow }) {
+function Row({ n, state }: { n: NoticeRow; state: NoticeListState }) {
   const c = PUBLIC_NOTICE_CATEGORY[n.category];
   return (
     <li>
-      <Link className="pf-notice-row" href={`/notices/${n.id}`}>
+      <Link className="pf-notice-row" href={noticeDetailHref(n.id, state)}>
         <span className="row pf-notice-l">
           <span className={`bdg ${c.cls}`}>{c.label}</span>
           {n.isPinned && <span className="bdg b-open nodot">고정</span>}
@@ -29,14 +29,43 @@ function Row({ n }: { n: NoticeRow }) {
   );
 }
 
-export function Notices({ pinned, items, nextCursor, failed, category = null }: { pinned: NoticeRow[]; items: NoticeRow[]; nextCursor: string | null; failed?: boolean; category?: string | null }) {
+export function Notices({
+  pinned,
+  items,
+  nextCursor,
+  failed,
+  category = null,
+  page,
+  pageSize,
+  total,
+  pageCount,
+  cursor,
+}: {
+  pinned: NoticeRow[];
+  items: NoticeRow[];
+  nextCursor: string | null;
+  failed?: boolean;
+  category?: string | null;
+  page?: number;
+  pageSize?: number;
+  total?: number;
+  pageCount?: number;
+  cursor?: string | null;
+}) {
+  const state: NoticeListState = { category, page, pageSize, cursor };
+  const filterCategory = ["MAINTENANCE", "FEATURE", "POLICY", "GENERAL"].includes(category ?? "") ? category : null;
+  const activePage = page && pageCount ? Math.min(page, pageCount) : page ?? 1;
+  const pageStart = pageCount && pageCount > 5 ? Math.max(1, Math.min(activePage - 2, pageCount - 4)) : 1;
+  const pageEnd = pageCount ? Math.min(pageCount, pageStart + 4) : 0;
+  const pages = Array.from({ length: pageEnd - pageStart + 1 }, (_, i) => pageStart + i);
+  const pageHref = (n: number) => noticeListHref({ category: filterCategory, page: n, pageSize });
   return (
     <PublicFrame active="/notices">
       <section className="pf-sec">
         <h1 className="t-d2">공지</h1>
         <div className="pf-chips" role="group" aria-label="분류">
           {CHIPS.map(([label, v]) => (
-            <Link key={label} className={`chip${(category ?? null) === v ? " on" : ""}`} href={v ? `/notices?category=${v}` : "/notices"} aria-current={(category ?? null) === v ? "true" : undefined}>
+            <Link key={label} className={`chip${(filterCategory ?? null) === v ? " on" : ""}`} href={v ? `/notices?category=${v}` : "/notices"} aria-current={(filterCategory ?? null) === v ? "true" : undefined}>
               {label}
             </Link>
           ))}
@@ -56,14 +85,25 @@ export function Notices({ pinned, items, nextCursor, failed, category = null }: 
           <>
             <ul className="pf-notice-list" data-testid="notices-list">
               {pinned.map((n) => (
-                <Row key={n.id} n={n} />
+                <Row key={n.id} n={n} state={state} />
               ))}
               {items.map((n) => (
-                <Row key={n.id} n={n} />
+                <Row key={n.id} n={n} state={state} />
               ))}
             </ul>
+            {pageCount !== undefined && pageCount > 0 && (
+              <nav className="pg" aria-label="공지 페이지 이동" data-testid="notice-pagination">
+                {activePage > 1 && <Link href={pageHref(activePage - 1)} aria-label="이전 페이지">이전</Link>}
+                {pages.map((n) => (
+                  <Link key={n} className={n === activePage ? "on" : ""} href={pageHref(n)} aria-current={n === activePage ? "page" : undefined} data-testid={`notice-page-${n}`}>
+                    {n}
+                  </Link>
+                ))}
+                {activePage < pageCount && <Link href={pageHref(activePage + 1)} aria-label="다음 페이지">다음</Link>}
+              </nav>
+            )}
             {nextCursor && (
-              <Link className="btn btn-out" href={`/notices?${category ? `category=${category}&` : ""}cursor=${encodeURIComponent(nextCursor)}`}>
+              <Link className="btn btn-out" href={noticeListHref({ category, cursor: nextCursor })}>
                 다음 공지 보기
               </Link>
             )}
