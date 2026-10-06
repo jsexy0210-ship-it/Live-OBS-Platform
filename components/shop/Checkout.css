@@ -158,3 +158,32 @@
   gap: 8px;
   margin: 0;
 }
+.co-lines .ol-thumb {
+  flex: none;
+}
+.co-lines li:has(> .ol-thumb) > div {
+  flex: 1;
+}
+.od-steps {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.od-steps li {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--wds-label-alternative);
+}
+.od-steps li.is-done b,
+.od-steps li.is-now b {
+  color: var(--wds-label-strong);
+}
+.od-steps li.is-now span {
+  color: var(--wds-primary-normal);
+}
