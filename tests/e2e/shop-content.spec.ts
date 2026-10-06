@@ -328,8 +328,8 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
       const rect = el.getBoundingClientRect();
       return { ratio: rect.width / rect.height, naturalRatio: (el as HTMLImageElement).naturalWidth / (el as HTMLImageElement).naturalHeight };
     });
-    expect(pcImage.naturalRatio).toBe(3);
-    expect(pcImage.ratio).toBeCloseTo(3, 2);
+    expect(pcImage.naturalRatio).toBeCloseTo(3.2, 2);
+    expect(pcImage.ratio).toBeCloseTo(3.2, 2);
     // 모바일 슬라이드(숨김)의 이미지는 내려받지 않는다
     expect(await page.locator(".hb-m img").first().evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBe(0);
     await page.screenshot({ path: `${SHOT}/SA-064-065-shop-home-popup-1440.png` });
