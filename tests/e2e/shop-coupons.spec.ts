@@ -90,18 +90,20 @@ test.describe.serial("SA-035 쿠폰 관리 · SH-028 내 쿠폰함", () => {
     await page.goto(`/shop/${SLUG}/coupons`);
     await expect(page.getByRole("heading", { name: "내 쿠폰함" })).toBeVisible();
     await expect(page.getByText("쓸 수 있는 쿠폰이 없어요")).toBeVisible();
-    await page.getByRole("tab", { name: /받을 수 있어요/ }).click();
-    await expect(page.getByText("10월 스타라이트 오픈 기념")).toBeVisible();
-    await shots(page, "sh028-claimable");
-    await page.getByRole("button", { name: "받기" }).click();
-    await expect(page.locator("p.msg")).toContainText("쿠폰을 받았어요");
-    await expect(page.getByRole("tab", { name: /쓸 수 있어요/ })).toHaveAttribute("aria-selected", "true");
+    // 쿠폰 받기는 상품 상세(CouponRow)에서 하므로 여기서는 받은 쿠폰만 확인한다(API로 받기)
+    const claim = (await (await page.request.get(`/api/shop/${SLUG}/coupons?claimable=1`)).json()) as { claimable: { couponId: string }[] };
+    const dl = await page.request.post(`/api/shop/${SLUG}/coupons/${claim.claimable[0].couponId}/download`, { headers: { origin: baseURL! } });
+    expect(dl.ok()).toBeTruthy();
+    await page.reload();
+    await expect(page.getByRole("tab", { name: /받을 수 있어요/ })).toHaveCount(0);
+    await expect(page.getByRole("tab", { name: /쓸 수 있는 쿠폰/ })).toHaveAttribute("aria-selected", "true");
     await expect(page.getByText("50,000원 이상 주문 · 할인 중 상품 제외")).toBeVisible();
+    await expect(page.getByRole("link", { name: "쓰러 가기" })).toBeVisible();
 
-    await page.getByLabel("쿠폰 코드").fill("WRONGCODE");
+    await page.getByLabel("쿠폰 번호 입력").fill("WRONGCODE");
     await page.getByRole("button", { name: "등록" }).click();
-    await expect(page.locator("p.msg")).toContainText("맞는 코드가 아니에요");
-    await page.getByLabel("쿠폰 코드").fill("starnight");
+    await expect(page.locator("p.msg")).toContainText("없는 쿠폰 번호예요");
+    await page.getByLabel("쿠폰 번호 입력").fill("starnight");
     await page.getByRole("button", { name: "등록" }).click();
     await expect(page.locator("p.msg")).toContainText("쿠폰을 받았어요");
     await expect(page.locator(".cb-item")).toHaveCount(2);
@@ -119,12 +121,9 @@ test.describe.serial("SA-035 쿠폰 관리 · SH-028 내 쿠폰함", () => {
     });
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`/shop/${SLUG}/coupons`);
-    await expect(page.getByText("지금은 쿠폰을 받을 수 없어요. 받은 쿠폰은 여기서 볼 수 있어요")).toBeVisible();
-    await expect(page.getByLabel("쿠폰 코드")).toHaveCount(0);
+    await expect(page.getByText("지금은 쿠폰 번호를 등록할 수 없어요. 받은 쿠폰은 여기서 볼 수 있어요")).toBeVisible();
+    await expect(page.getByLabel("쿠폰 번호 입력")).toHaveCount(0);
     await expect(page.locator(".cb-item")).toHaveCount(2);
-    await page.getByRole("tab", { name: /받을 수 있어요/ }).click();
-    await expect(page.getByTestId("cb-claimable-empty")).toBeVisible();
-    await expect(page.getByRole("button", { name: "받기" })).toHaveCount(0);
     await page.screenshot({ path: `${SHOT}/sh028-locked-390.png`, fullPage: true });
   });
 
