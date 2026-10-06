@@ -6,6 +6,7 @@ import type { YoutubeClient } from "./client";
 import { addMonthlyChats } from "./settings";
 import { QUOTA_ALL, QUOTA_CHAT_RATIO, QUOTA_WARN_RATIO, quotaDay, quotaLimits, quotaUsage, type QuotaLimits } from "./quota";
 import { orderNoLabel } from "../orders/orderNoLabel";
+import { acceptYoutubeEventEntries } from "../events/service";
 
 // 유튜브 채팅 수집(MASTER 승인 2026-10-05, 무료 할당량 안에서만).
 // - 기본 꺼짐. 파트너스가 방송(진행 중 연결)마다 켠 LIVE 연결만 수집한다. 켜지 않으면 할당량을 쓰지 않는다.
@@ -20,7 +21,7 @@ export const CHAT_SLOW_MAX_MS = 120_000;
 export const CHAT_RETENTION_DAYS = 30;
 
 // 수집을 켤 때 파트너스 화면에 보여 줄 고지(명사형·합니다체). 화면 세션은 이 문구를 그대로 쓴다.
-export const CHAT_NOTICE = `채팅 가져오기를 켜면 시청자의 채팅 표시 이름과 채팅 본문 앞 200자를 ${CHAT_RETENTION_DAYS}일 동안 보관합니다. 주문 닉네임 확인에만 씁니다.`;
+export const CHAT_NOTICE = `채팅 가져오기를 켜면 시청자의 채팅 표시 이름과 채팅 본문 앞 200자를 ${CHAT_RETENTION_DAYS}일 동안 보관합니다. 주문 닉네임 확인에 씁니다. 방송 이벤트를 켜면 안내한 참가 키워드와 전체 채팅이 일치하는지 확인하고, 유튜브 채널별로 한 번 참가 처리합니다.`;
 
 export type ChatReport = { polled: number; saved: number; stopped?: "quota_exhausted" };
 
@@ -51,10 +52,12 @@ export async function collectChats(db: PrismaClient, client: YoutubeClient, now 
         continue;
       }
       const r = page.messages.length
-        ? await db.youtubeChatMessage.createMany({ data: page.messages.map((m) => ({ ...m, sellerId: link.sellerId, liveLinkId: link.id })), skipDuplicates: true })
+        ? await db.youtubeChatMessage.createMany({ data: page.messages.map(({ fullText: _fullText, ...m }) => ({ ...m, sellerId: link.sellerId, liveLinkId: link.id })), skipDuplicates: true })
         : { count: 0 };
       report.saved += r.count;
       await addMonthlyChats(db, link.sellerId, r.count, now);
+      // DB에 fullText를 저장하지 않는다. 재시도 페이지도 처리해 저장과 참가 hook 사이 장애를 복구한다.
+      await acceptYoutubeEventEntries(db, link, page.messages);
       ratio = (await quotaUsage(db, now)).ratio;
       const interval = nextChatInterval(link.chatIntervalMs, page.pollingIntervalMillis, r.count, ratio);
       await db.youtubeLiveLink.updateMany({
