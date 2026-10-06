@@ -38,3 +38,25 @@ ST = ('<div class="st"><span class="st-tag">MA-032 수납 현황 링크로 진�
       '<span class="hint">연체 목록 → 상태 「연체」 · 유예 목록 → 「유예」 · 잠금 목록 → 「잠금」 · 제목 앞 ← 는 MA-032로 돌아갑니다</span></div></div>')
 s = rep(s, '필요한 권한: 구독 조회</div></div></div>\n</div>', '필요한 권한: 구독 조회</div></div></div>' + ST + '\n</div>')
 wr('MA-023.dc.html', s)
+
+# ③ MA-041 실시간 방송 — 「강제 종료」 (MASTER (4) 요청 · 서버 #944 POST /api/admin/ops/live-broadcasts/[id]/end, 운영 · 최고관리자만, 사유 필수, 이미 끝났으면 409)
+s = rd('MA-041.dc.html')
+s = rep(s, '<style>body{margin:0}</style>', '<style>body{margin:0}.c24 .st .cfm{position:relative}</style>')
+s = rep(s, '<th style="width: 190px">관리</th>', '<th style="width: 270px">관리</th>')
+s = rep(s, '<a class="b sm" href="MA-012-5.dc.html">상세</a></div></td></tr>', '<a class="b sm" href="MA-012-5.dc.html">상세</a><button class="b sm" type="button">강제 종료</button></div></td></tr>', 8)
+COL = '<div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start">'
+CFM = ('<div class="cfm" style="max-width:420px"><div class="h">「문라이트마켓 · 수요 문라이트 박스 오픈」 방송을 강제 종료하시겠습니까?<button class="x" type="button" aria-label="닫기">×</button></div>'
+       '<div class="bd">LIVE 상태를 종료로 바꿉니다 · 개봉 중인 주문대기 항목은 그대로 둡니다 · 사유는 로그 추적에 남습니다<label class="lbl-w" style="display:block;margin-top:12px"><span class="nt">사유 (필수)</span><input class="i w-f" type="text" value="" placeholder="종료 사유"></label></div>'
+       '<div class="f"><button class="b" type="button">취소</button><button class="b neg pri dis" type="button" disabled>강제 종료</button></div></div>')
+ST41 = (f'<div class="st"><span class="st-tag">강제 종료 확인 (운영 · 최고관리자 · 사유 필수) · 이미 끝난 방송</span>{COL}{CFM}<span class="hint">DS-CONFIRM ④ 위험 규격 · 사유를 입력해야 실행 버튼이 켜집니다 · 종료 뒤 목록에서 빠지고 토스트 「방송을 종료했습니다」</span>'
+        '<div class="note cau" style="width: 100%">이미 끝난 방송입니다 · 목록을 다시 불러옵니다</div><span class="hint">서버가 이미 끝났다고 답하면(409) 창을 닫고 목록만 새로 고칩니다</span></div></div>')
+s = rep(s, '조회 전용 권한입니다 · 변경 버튼은 보이지 않습니다 · 필요한 권한: 운영 현황 조회</div></div></div>\n</div>',
+        '조회 전용 권한입니다 · 「대신 보기」 「강제 종료」 버튼은 보이지 않습니다 · 필요한 권한: 운영 현황 조회 · 강제 종료는 운영 · 최고관리자만</div></div></div>' + ST41 + '\n</div>')
+assert s.count('강제 종료') >= 12
+wr('MA-041.dc.html', s)
+
+# ④ MA-051 파트너스 문의 — 「만족도 (7일) 4.6」 별점 → 「도움됨 (7일)」 비율 (MASTER (4) 결정 ①: 문의 평가는 「도움이 됐습니까?」 예 · 아니요뿐, 서버 helpful7d.rate)
+s = rd('MA-051.dc.html')
+s = rep(s, '<div><div class="k">만족도 (7일)</div><div class="v">4.6</div></div>', '<div><div class="k">도움됨 (7일)</div><div class="v">92%<small>「도움이 됐습니까?」 예 비율</small></div></div>')
+assert '만족도' not in s
+wr('MA-051.dc.html', s)
