@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import MyMenu from "./MyMenu";
 import ShopState from "./ShopState";
 import "./Cart.css";
@@ -22,7 +23,7 @@ function Frame({ slug, children }: { slug: string; children: React.ReactNode }) 
   );
 }
 
-// SH-028 내 쿠폰함. 코드 등록(방송 채팅·문자로 받은 코드), 쓸 수 있어요 · 받을 수 있어요 · 지난 쿠폰 탭.
+// SH-028 내 쿠폰함(보드 v287). 탭 2(쓸 수 있는 쿠폰 · 사용 · 만료) → 목록 → 쿠폰 번호 입력·등록 → 안내 띠. 쿠폰 받기는 상품 상세 CouponRow.
 // 쿠폰은 주문서에서 고르면 서버가 할인 금액을 계산한다(주문당 1장). API: /api/shop/{slug}/coupons.
 export type CouponView = {
   couponId: string;
@@ -40,8 +41,7 @@ export type CouponView = {
 };
 type Mine = CouponView & { issuedAt: string; expiresAt: string; usedAt: string | null; state: "usable" | "upcoming" | "used" | "expired" };
 type Box = { usable: Mine[]; claimable: CouponView[]; claimableMore: boolean; past: Mine[]; now: string; shopOpen: boolean };
-const PAGE = 50;
-type Tab = "usable" | "claimable" | "past";
+type Tab = "usable" | "past";
 
 const DAY = 86_400_000;
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
@@ -57,7 +57,7 @@ export function couponConditions(c: CouponView): string {
   return parts.join(" · ");
 }
 
-function MineItem({ c, now }: { c: Mine; now: number }) {
+function MineItem({ c, now, slug }: { c: Mine; now: number; slug: string }) {
   const left = Math.ceil((new Date(c.expiresAt).getTime() - now) / DAY);
   const past = c.state === "used" || c.state === "expired";
   return (
@@ -83,8 +83,13 @@ function MineItem({ c, now }: { c: Mine; now: number }) {
           <span className="cb-tag">사용함</span>
         ) : c.state === "expired" ? (
           <span className="cb-tag">기간 지남</span>
-        ) : c.state === "usable" && left <= 3 ? (
-          <span className="cb-tag is-soon">곧 끝나요</span>
+        ) : c.state === "usable" ? (
+          <>
+            {left <= 3 && <span className="cb-tag is-soon">곧 끝나요</span>}
+            <Link className="btn btn-sm btn-out" href={`/shop/${encodeURIComponent(slug)}/products`}>
+              쓰러 가기
+            </Link>
+          </>
         ) : null}
       </div>
     </li>
@@ -114,14 +119,12 @@ export default function CouponBox({ slug }: { slug: string }) {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  // 받을 수 있는 쿠폰을 몇 개까지 볼지(「더 보기」로 50개씩)
-  const [limit, setLimit] = useState(PAGE);
 
   const load = useCallback(async () => {
-    const r = await call<Box>(`${base}?claimable=${limit}`);
+    const r = await call<Box>(`${base}?claimable=1`);
     if (r.ok) return setView({ kind: "ok", box: r.data });
     setView(r.status === 401 || r.status === 404 ? { kind: "login" } : { kind: "error" });
-  }, [base, limit]);
+  }, [base]);
 
   useEffect(() => {
     void load();
@@ -140,7 +143,10 @@ export default function CouponBox({ slug }: { slug: string }) {
       return load();
     }
     if (r.status === 401) return setView({ kind: "login" });
-    setMsg({ ok: false, text: r.message ?? "쿠폰을 받지 못했어요. 잠시 뒤 다시 해 주세요" });
+    setMsg({
+      ok: false,
+      text: key === "code" && (r.status === 400 || r.status === 404) ? "없는 쿠폰 번호예요 · 대소문자를 확인해 주세요" : (r.message ?? "쿠폰을 등록하지 못했어요. 잠시 뒤 다시 해 주세요"),
+    });
     if (r.status === 404 || r.status === 409) void load();
   };
 
@@ -169,116 +175,62 @@ export default function CouponBox({ slug }: { slug: string }) {
 
   const { box } = view;
   const now = new Date(box.now).getTime();
+  const list = tab === "usable" ? box.usable : box.past;
   return (
     <Frame slug={slug}>
-    <section className="col cb">
-      {box.shopOpen && (
-        <form
-          className="col"
-          style={{ gap: 6 }}
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (code.trim()) void take("code", `${base}/code`, { code });
-          }}
-        >
-          <label className="t-l2 fw6" htmlFor="cb-code">
-            쿠폰 코드
-          </label>
-          <div className="cb-code">
-            <input id="cb-code" className="inp" value={code} maxLength={16} autoComplete="off" placeholder="코드를 입력해 주세요" onChange={(e) => setCode(e.target.value)} />
-            <button className="btn" type="submit" disabled={!code.trim() || busy !== null}>
-              쿠폰 코드 등록하기
+      <section className="col cb">
+        {!box.shopOpen && (
+          <p className="msg msg-info t-l2" role="status">
+            지금은 쿠폰 번호를 등록할 수 없어요. 받은 쿠폰은 여기서 볼 수 있어요
+          </p>
+        )}
+        <div className="tabs" role="tablist">
+          {(
+            [
+              ["usable", "쓸 수 있는 쿠폰", box.usable.length],
+              ["past", "사용 · 만료", box.past.length],
+            ] as const
+          ).map(([k, label, n]) => (
+            <button key={k} className={`tab${tab === k ? " on" : ""}`} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>
+              {label}
+              <span className="cnt">{n}</span>
             </button>
-          </div>
-          <span className="t-c1 c-alt">방송 채팅 · 문자로 받은 코드를 넣으면 쿠폰함에 들어와요</span>
-        </form>
-      )}
-      {!box.shopOpen && (
-        <p className="msg msg-info t-l2" role="status">
-          지금은 쿠폰을 받을 수 없어요. 받은 쿠폰은 여기서 볼 수 있어요
-        </p>
-      )}
-      {msg && (
-        <p className={`msg ${msg.ok ? "msg-pos" : "msg-neg"} t-l2`} role={msg.ok ? "status" : "alert"}>
-          {msg.text}
-        </p>
-      )}
-      <div className="tabs" role="tablist">
-        {(
-          [
-            ["usable", "쓸 수 있어요", box.usable.length],
-            ["claimable", "받을 수 있어요", box.claimable.length],
-            ["past", "지난 쿠폰", null],
-          ] as const
-        ).map(([k, label, n]) => (
-          <button key={k} className={`tab${tab === k ? " on" : ""}`} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>
-            {label}
-            {n !== null && <span className="cnt">{n}</span>}
-          </button>
-        ))}
-      </div>
-      {tab === "usable" &&
-        (box.usable.length === 0 ? (
+          ))}
+        </div>
+        {list.length === 0 ? (
           <div className="cb-empty col" style={{ gap: 4 }}>
-            <span className="t-b2 fw6">쓸 수 있는 쿠폰이 없어요</span>
-            <span className="t-l2 c-alt">방송 중 채팅 코드나 받을 수 있는 쿠폰으로 혜택을 받아 보세요</span>
-          </div>
-        ) : (
-          <>
-            <ul className="cb-list">
-              {box.usable.map((c) => (
-                <MineItem key={c.couponId} c={c} now={now} />
-              ))}
-            </ul>
-            <span className="t-c1 c-alt">주문서에서 쿠폰을 고르면 바로 할인돼요. 주문당 1장만 쓸 수 있어요.</span>
-          </>
-        ))}
-      {tab === "claimable" &&
-        (box.claimable.length === 0 ? (
-          <div className="cb-empty" data-testid="cb-claimable-empty">
-            <span className="t-b2 fw6">지금 받을 수 있는 쿠폰이 없어요</span>
+            <span className="t-b2 fw6">{tab === "usable" ? "쓸 수 있는 쿠폰이 없어요" : "사용하거나 만료된 쿠폰이 없어요"}</span>
+            {tab === "usable" && <span className="t-l2 c-alt">등급이 오르거나 이벤트가 열리면 쿠폰을 드려요</span>}
           </div>
         ) : (
           <ul className="cb-list">
-            {box.claimable.map((c) => (
-              <li key={c.couponId} className="cb-item">
-                <div className="cb-amt">
-                  <span className="t-h2 fw7">{couponAmountText(c)}</span>
-                </div>
-                <div className="cb-body">
-                  <span className="t-b2 fw6">{c.name}</span>
-                  <span className="t-l2 c-alt">{couponConditions(c)}</span>
-                  <span className="t-c1 c-alt">{c.validDays ? `받은 날부터 ${c.validDays}일` : `${couponDate(c.endsAt)}까지`}</span>
-                </div>
-                <div className="cb-side">
-                  <button className="btn btn-sm" type="button" disabled={busy !== null} onClick={() => void take(c.couponId, `${base}/${c.couponId}/download`, {})}>
-                    {busy === c.couponId ? "받는 중" : "쿠폰 받기"}
-                  </button>
-                </div>
-              </li>
-            ))}
-            {box.claimableMore && (
-              <li>
-                <button className="btn btn-out btn-block" type="button" onClick={() => setLimit((n) => n + PAGE)}>
-                  더 보기
-                </button>
-              </li>
-            )}
-          </ul>
-        ))}
-      {tab === "past" &&
-        (box.past.length === 0 ? (
-          <div className="cb-empty">
-            <span className="t-b2 fw6">지난 쿠폰이 없어요</span>
-          </div>
-        ) : (
-          <ul className="cb-list">
-            {box.past.map((c) => (
-              <MineItem key={c.couponId} c={c} now={now} />
+            {list.map((c) => (
+              <MineItem key={c.couponId} c={c} now={now} slug={slug} />
             ))}
           </ul>
-        ))}
-    </section>
+        )}
+        {box.shopOpen && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (code.trim()) void take("code", `${base}/code`, { code });
+            }}
+          >
+            <div className="cb-code">
+              <input id="cb-code" className="inp" aria-label="쿠폰 번호 입력" value={code} maxLength={16} autoComplete="off" placeholder="쿠폰 번호 입력" onChange={(e) => setCode(e.target.value)} />
+              <button className="btn" type="submit" disabled={!code.trim() || busy !== null}>
+                등록
+              </button>
+            </div>
+          </form>
+        )}
+        {msg && (
+          <p className={`msg ${msg.ok ? "msg-pos" : "msg-neg"} t-l2`} role={msg.ok ? "status" : "alert"}>
+            {msg.text}
+          </p>
+        )}
+        <span className="t-c1 c-alt cb-note">쿠폰은 주문서에서 1장만 쓸 수 있어요 · 적립금과 함께 쓸 수 있어요 · 쿠폰 할인분은 적립 대상에서 빠져요</span>
+      </section>
     </Frame>
   );
 }
