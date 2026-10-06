@@ -5,6 +5,7 @@ import "../../../../../styles/seller-orders.css";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
+import { PageHead } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -23,6 +24,15 @@ const PERIODS: { key: Period; label: string; days: number }[] = [
   { key: "30d", label: "최근 30일", days: 29 },
 ];
 type Shipped = "true" | "false";
+// 상태 칩(정본 SA-021-OPS): 지금 서버 필터로 만들 수 있는 칩만 둔다. 「송장 미입력」 「취소 · 환불 요청」 「개봉 대기」와 칩 건수는 서버 필요(UI_STATUS)
+const CHIPS = [
+  { key: "today", label: "오늘", set: { period: "today", status: "", shipped: "" } },
+  { key: "unpaid", label: "입금 전", set: { period: "all", status: "PENDING_PAYMENT", shipped: "" } },
+  { key: "ready", label: "배송 준비 전", set: { period: "all", status: "PAID", shipped: "false" } },
+  { key: "cancelled", label: "취소", set: { period: "all", status: "CANCELLED", shipped: "" } },
+  { key: "refunded", label: "환불", set: { period: "all", status: "REFUNDED", shipped: "" } },
+  { key: "all", label: "전체", set: { period: "all", status: "", shipped: "" } },
+] as const;
 type Filters = { statuses: OrderStatus[]; period: Period | null; q: string; shipped: Shipped | null };
 type Page = { orders: OrderRow[]; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; items: OrderRow[]; next: string | null };
@@ -35,6 +45,37 @@ function query(f: Filters, cursor?: string) {
   if (f.shipped) p.set("shipped", f.shipped);
   if (cursor) p.set("cursor", cursor);
   return p.toString();
+}
+
+// 주문 상태 열: 결제 · 발송 · 환불 요청을 한 칸으로 합친다(정본 SA-021-OPS). 「개봉 대기 · 개봉 완료」는 주문 목록 응답에 개봉 상태가 없어 서버 필요(UI_STATUS)
+function stageOf(o: OrderRow): { label: string; cls: string } {
+  if (o.refundRequest && o.refundRequest.pendingCount > 0) return { label: "취소 요청", cls: "b-cancel" };
+  if (o.status === "PENDING_PAYMENT") return { label: "입금 전", cls: "b-wait" };
+  if (o.status === "CANCELLED") return { label: "취소", cls: "b-cancel" };
+  if (o.status === "REFUNDED") return { label: "환불됨", cls: "b-cancel" };
+  if (o.shipment?.state === "delivered") return { label: "배송 완료", cls: "b-gray nodot" };
+  if (o.shipped) return { label: "배송 중", cls: "b-info" };
+  return { label: "배송 준비", cls: "b-gray nodot" };
+}
+function elapsedText(o: OrderRow): { text: string; urgent: boolean } {
+  const now = Date.now();
+  if (o.status === "PENDING_PAYMENT" && o.paymentDueAt) {
+    const left = new Date(o.paymentDueAt).getTime() - now;
+    if (left <= 0) return { text: "입금 기한 지남", urgent: true };
+    const h = Math.max(1, Math.round(left / 3_600_000));
+    return { text: h >= 24 ? `입금 기한 ${Math.floor(h / 24)}일 남음` : `입금 기한 ${h}시간 남음`, urgent: h < 6 };
+  }
+  const ago = Math.max(0, now - new Date(o.createdAt).getTime());
+  const h = Math.floor(ago / 3_600_000);
+  return { text: h < 1 ? "방금 접수" : h < 24 ? `${h}시간 전 접수` : `${Math.floor(h / 24)}일 전 접수`, urgent: false };
+}
+// 관리 열 주 버튼은 주문 상태에 따라 다르다(정본: 입금 전 「입금 확인」 · 배송 준비 「송장 입력」 · 취소 요청 「환불 처리」)
+function mainAction(o: OrderRow): { label: string; href: string; neg?: boolean } | null {
+  if (o.refundRequest && o.refundRequest.pendingCount > 0) return { label: "환불 처리", href: "/seller/orders/refund-requests", neg: true };
+  if (o.status === "PENDING_PAYMENT" && o.paymentMethod === "BANK_TRANSFER") return { label: "입금 확인", href: "/seller/orders/deposits" };
+  if (o.status === "PAID" && !o.shipped) return { label: "송장 입력", href: "/seller/shipping" };
+  if (o.refundable) return { label: "환불 처리", href: `/seller/orders/${o.id}?refund=1`, neg: true };
+  return null;
 }
 
 export default function OrderListPage() {
@@ -68,6 +109,7 @@ export default function OrderListPage() {
     setSearch(q);
   }, [q]);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(u.q !== "");
   const [draft, setDraft] = useState<OrderStatus[]>([]);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [more, setMore] = useState(false);
@@ -119,6 +161,11 @@ export default function OrderListPage() {
     setU({ q: "", period: "30d", status: "", shipped: "" });
   };
   const statusText = statuses.length === 0 ? "전체" : statuses.length === 1 ? STATUS_BADGE[statuses[0]].label : `${STATUS_BADGE[statuses[0]].label} 외 ${statuses.length - 1}개`;
+  const chipOn = (k: (typeof CHIPS)[number]["key"]) => {
+    const c = CHIPS.find((x) => x.key === k)!.set;
+    if (k === "all") return statuses.length === 0 && !shipped && period !== "today";
+    return u.status === c.status && u.shipped === c.shipped && (k === "today" ? period === "today" : true);
+  };
   const items = state.kind === "ok" ? state.items : [];
   const countText = state.kind === "ok" ? (state.next ? `${items.length}건 넘게` : `${items.length}건`) : "";
   const periodLabel = PERIODS.find((p) => p.key === period)?.label;
@@ -127,17 +174,36 @@ export default function OrderListPage() {
     <>
       <Topbar crumb="판매 › 주문" />
       <main className="main">
-        <div className="ph">
-          <div className="col" style={{ gap: 4 }}>
-            <h1 className="t-t3">주문</h1>
-            <span className="t-l2 c-alt">결제가 끝난 주문만 방송 주문대기(개봉할 순서 목록)에 들어갑니다. 아직 결제하지 않은 주문은 「결제 대기」로 보입니다.</span>
-          </div>
-          <Link className="btn btn-out btn-level-secondary" href="/seller/orders/refund-requests">
-            환불 요청
-          </Link>
-        </div>
+        <PageHead
+          title="전체 주문"
+          back={false}
+          actions={
+            <>
+              <Link className="btn btn-out" href="/seller/orders/deposits">
+                입금 확인
+              </Link>
+              <Link className="btn btn-out" href="/seller/shipping">
+                배송
+              </Link>
+            </>
+          }
+        />
 
         <div className="card" style={{ overflow: "visible" }}>
+          <div className="toolbar ord-toolbar ord-chips" role="group" aria-label="주문 상태">
+            {CHIPS.map((c) => (
+              <button key={c.key} type="button" className={`chip${chipOn(c.key) ? " on" : ""}`} aria-pressed={chipOn(c.key)} onClick={() => setU(c.set)}>
+                {c.label}
+              </button>
+            ))}
+            <span className="ord-count-note c-alt t-l2" aria-live="polite">
+              {filtered && state.kind === "ok" ? `결과 ${countText}` : countText}
+            </span>
+            <button type="button" className="btn btn-dense btn-out ord-detail-btn" aria-expanded={detailOpen} onClick={() => setDetailOpen((v) => !v)}>
+              {detailOpen ? "상세 검색 접기" : "상세 검색 펼치기"}
+            </button>
+          </div>
+          {detailOpen && (
           <div className="toolbar ord-toolbar">
             <div className="search ord-search">
               <input
@@ -201,10 +267,8 @@ export default function OrderListPage() {
                 필터 초기화
               </button>
             )}
-            <span className="t-l2 c-alt ord-count" aria-live="polite">
-              {filtered && state.kind === "ok" ? `결과 ${countText}` : countText}
-            </span>
           </div>
+          )}
 
           {state.kind === "loading" && <LoadingRows rows={5} />}
           {state.kind === "error" &&
@@ -239,48 +303,59 @@ export default function OrderListPage() {
           )}
           {state.kind === "ok" && items.length > 0 && (
             <div className="ord-scroll">
-              <table className="tbl ord-tbl">
+              <table className="tbl tbl-card ord-tbl2" data-testid="orders-table">
                 <thead>
                   <tr>
-                    <th>접수 시각</th>
+                    <th>접수 · 경과</th>
                     <th>구매자</th>
                     <th>상품</th>
                     <th>금액</th>
                     <th>결제</th>
-                    <th>배송</th>
-                    <th className="ord-w-act" aria-label="작업" />
+                    <th>주문 상태</th>
+                    <th>관리</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((o) => (
-                    <tr key={o.id} className={o.status === "PENDING_PAYMENT" ? "faded" : ""} data-testid="order-row">
-                      <td className="date">
-                        <Link href={`/seller/orders/${o.id}`} className="fw6 num ord-link">
-                          {formatDateTimeParts(o.createdAt)?.date}
-                          <br />
-                          {formatDateTimeParts(o.createdAt)?.time}
-                        </Link>
-                        <div className="ord-ono num">{o.orderNoLabel}</div>
-                      </td>
-                      <td className="fw6">{o.buyer.broadcastNickname}</td>
-                      <td className="ell ord-product col-text">{itemSummaryText(o.itemSummary)}</td>
-                      <td className="num">
-                        {won(o.totalAmount)}
-                        {o.refundedAmount > 0 && <div className="ord-rf c-neg">환불 {won(o.refundedAmount)}</div>}
-                      </td>
-                      <td>
-                        <span className={`bdg ${payBadge(o).cls}`}>{payBadge(o).label}</span>
-                      </td>
-                      <td>{o.shipped ? <span className="bdg b-info nodot">발송함</span> : <span className="c-alt">—</span>}</td>
-                      <td>
-                        {o.refundable && (
-                          <Link className="btn btn-sm btn-w-sm" href={`/seller/orders/${o.id}?refund=1`}>
-                            환불 처리
+                  {items.map((o) => {
+                    const stage = stageOf(o);
+                    const act = mainAction(o);
+                    return (
+                      <tr key={o.id} className={o.status === "PENDING_PAYMENT" ? "faded" : ""} data-testid="order-row">
+                        <td className="date" data-card="title">
+                          <Link href={`/seller/orders/${o.id}`} className="fw6 num ord-link">
+                            {formatDateTimeParts(o.createdAt)?.date} {formatDateTimeParts(o.createdAt)?.time}
                           </Link>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                          <div className="ord-ono num">{o.orderNoLabel}</div>
+                          <div className={`t-c1 ${elapsedText(o).urgent ? "c-neg" : "c-alt"}`}>{elapsedText(o).text}</div>
+                        </td>
+                        <td className="fw6" data-card="field">{o.buyer.broadcastNickname}</td>
+                        <td className="ell ord-product col-text" data-card="wide">{itemSummaryText(o.itemSummary)}</td>
+                        <td className="num" data-card="field">
+                          {won(o.totalAmount)}
+                          {o.refundedAmount > 0 && <div className="ord-rf c-neg">환불 {won(o.refundedAmount)}</div>}
+                        </td>
+                        <td data-card="field">
+                          {o.paymentMethod ? <div>{o.paymentMethod === "CARD" ? "카드" : "무통장"}</div> : <span className="c-alt">—</span>}
+                          {o.refundedAmount > 0 && o.status === "PAID" && <span className="bdg b-cancel">부분 환불</span>}
+                        </td>
+                        <td data-card="status">
+                          <span className={`bdg ${stage.cls}`}>{stage.label}</span>
+                        </td>
+                        <td data-card="actions">
+                          <span className="row" style={{ gap: 4, justifyContent: "flex-end", flexWrap: "nowrap" }}>
+                            {act && (
+                              <Link className={`btn btn-sm${act.neg ? " btn-out" : ""}`} style={act.neg ? { color: "var(--neg-text)" } : undefined} href={act.href}>
+                                {act.label}
+                              </Link>
+                            )}
+                            <Link className="btn btn-sm btn-out" href={`/seller/orders/${o.id}`}>
+                              상세
+                            </Link>
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

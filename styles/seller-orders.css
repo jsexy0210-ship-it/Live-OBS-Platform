@@ -186,3 +186,17 @@
   padding: 12px 20px;
   justify-content: center;
 }
+
+/* SA-021 상태 칩 줄(정본 SA-021-OPS): 칩 · 건수 안내 · 오른쪽 「상세 검색」 */
+.ord-chips {
+  flex-wrap: wrap;
+}
+.ord-chips .ord-count-note {
+  margin-left: 8px;
+}
+.ord-chips .ord-detail-btn {
+  margin-left: auto;
+}
+.ord-tbl2 td.date {
+  white-space: nowrap;
+}

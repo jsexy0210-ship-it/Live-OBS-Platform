@@ -74,17 +74,20 @@ test("상품 목록: 검색어·판매 상태·정렬이 주소에 실리고, �
 test("주문 목록: 기간 칩이 주소에 실리고 새로고침·Back에도 유지된다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await login(page, "/seller/orders");
+  await page.getByRole("button", { name: "상세 검색 펼치기" }).click();
   await page.getByRole("button", { name: /^최근 7일/ }).click();
   await expect(page).toHaveURL(/period=7d/);
   await page.reload();
+  await page.getByRole("button", { name: "상세 검색 펼치기" }).click();
   await expect(page.getByRole("button", { name: /^최근 7일/ })).toHaveAttribute("aria-pressed", "true");
   await page.getByPlaceholder("닉네임 · 주문번호").fill("zzz-없는-닉네임");
   await expect(page).toHaveURL(/q=/);
   await page.getByRole("button", { name: "필터 초기화" }).first().click();
   await expect(page).not.toHaveURL(/period=|q=/);
   await expect(page.getByPlaceholder("닉네임 · 주문번호")).toHaveValue("");
-  // 환불 요청 버튼은 Secondary 96
-  expect(await size(page.getByRole("link", { name: "환불 요청" }).last())).toMatchObject({ w: 96 });
+  // 머리 버튼(정본 SA-021-OPS): 「입금 확인」 「배송」
+  await expect(page.getByRole("link", { name: "입금 확인", exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: "배송", exact: true }).first()).toBeVisible();
 });
 
 test("입금 확인: 일괄 버튼 40×144, 표 안 버튼은 폭 80", async ({ page }) => {
@@ -132,10 +135,11 @@ test("주문 목록: 홈 「배송 준비」 링크(status=PAID&shipped=false)�
   const reqs: string[] = [];
   page.on("request", (r) => r.url().includes("/api/seller/orders?") && reqs.push(r.url()));
   await page.goto("/seller/orders?status=PAID&shipped=false");
+  await page.getByRole("button", { name: "상세 검색 펼치기" }).click();
   await expect(page.getByRole("button", { name: /^발송 전/ })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: /^상태: 완료/ })).toBeVisible();
   await expect.poll(() => reqs.some((u) => u.includes("shipped=false") && u.includes("status=PAID"))).toBe(true);
-  for (const row of await page.getByTestId("order-row").all()) await expect(row).not.toContainText("발송함");
+  for (const row of await page.getByTestId("order-row").all()) await expect(row).not.toContainText(/배송 (중|완료)/);
   await page.getByRole("button", { name: /^발송 전/ }).click();
   await expect(page).not.toHaveURL(/shipped=/);
 });
