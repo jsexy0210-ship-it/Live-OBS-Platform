@@ -133,6 +133,7 @@ test("상품 통계: 상위 상품·안 팔린 상품을 API 값으로 보여 �
     for (const id of ["stats-top", "stats-unsold"]) {
       const table = page.getByTestId(id);
       await expect(table).toBeVisible();
+      await table.scrollIntoViewIfNeeded();
       const box = await table.evaluate((el) => {
         const scroller = el.closest<HTMLElement>(".sts-scroll")!;
         return { left: scroller.getBoundingClientRect().left, top: scroller.getBoundingClientRect().top, width: scroller.clientWidth, height: scroller.clientHeight, scrollWidth: scroller.scrollWidth, tableWidth: el.scrollWidth };
@@ -178,7 +179,7 @@ test("방송 통계: 방송이 없으면 빈 상태를, 탭으로 다른 통계�
     await expect(page.getByTestId("stats-broadcast-general")).toHaveCount(body.broadcasts.length);
   }
   await shot(page, "stats-broadcasts");
-  await page.getByRole("navigation", { name: "통계 종류" }).getByRole("link", { name: "매출" }).click();
+  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("navigation", { name: "통계" }).getByRole("link", { name: "매출" }).click();
   await expect(page).toHaveURL(/\/seller\/stats\/sales$/);
 });
 
@@ -187,7 +188,7 @@ test("통계 요약(SA-056): 요약 지표·방송 내역·상품 상위·회원
   await login(page, "demo-owner@example.com", "/seller/stats");
   await first;
   await expect(page.getByRole("heading", { name: "통계 · 요약" })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "통계 종류" }).getByRole("link", { name: "요약" })).toHaveClass(/on/);
+  await expect(page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("navigation", { name: "통계" }).getByRole("link", { name: "요약" })).toHaveClass(/on/);
   await expect(page.getByRole("button", { name: "1개월", exact: true })).toHaveAttribute("aria-pressed", "true");
   const body = await (await first).json();
   await expect(kpi(page, "결제된 매출")).toHaveText(won(body.summary.current.revenue));
