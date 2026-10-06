@@ -81,6 +81,8 @@ describe("동의 확장(운영 정책·마케팅)", () => {
     expect(parseSellerSignupConsent({ ...SELLER_SIGNUP_CONSENT, agreedPolicy: false, policyVersion: V.policy }, now)).toEqual({ ok: false, reason: "terms_required" });
     expect(parseSellerSignupConsent({ ...SELLER_SIGNUP_CONSENT, agreedPolicy: true, policyVersion: "old" }, now)).toEqual({ ok: false, reason: "consent_outdated" });
     expect(parseSellerSignupConsent({ ...SELLER_SIGNUP_CONSENT, agreedPolicy: true, policyVersion: V.policy, agreedMarketing: true, marketingVersion: "old" }, now)).toEqual({ ok: false, reason: "consent_outdated" });
+    // 운영 정책 동의는 필수다(보내지 않아도 terms_required)
+    expect(parseSellerSignupConsent({ ...SELLER_SIGNUP_CONSENT, agreedPolicy: undefined, policyVersion: undefined }, now)).toEqual({ ok: false, reason: "terms_required" });
     // 마케팅을 동의하지 않으면 기록에 남지 않는다
     const none = parseSellerSignupConsent({ ...SELLER_SIGNUP_CONSENT, agreedPolicy: true, policyVersion: V.policy }, now);
     expect(none.ok && none.consent.marketingAt).toBeUndefined();

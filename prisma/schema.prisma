@@ -1279,6 +1279,8 @@ model BroadcastSession {
   title     String?
   startedAt DateTime        @default(now()) @db.Timestamptz(3)
   endedAt   DateTime?       @db.Timestamptz(3)
+  // 방송 중 오버레이가 처음 요청한 레이아웃("9x16" 세로형 | "16x9" 가로형, SA-054 「레이아웃」 열). 이 기록 전의 방송·요청이 없던 방송은 null.
+  layoutAspect String?
 
   seller       Seller            @relation(fields: [sellerId], references: [id])
   queueItems   QueueItem[]
@@ -1364,6 +1366,8 @@ model HitCard {
   buyerMemberId      String?  @db.Uuid
   nicknameSnapshot   String
   cardName           String
+  // 등급(SA-053 「등급」 열). 정해 둔 목록(HIT_GRADES: SAR·SR·UR·SE·SP·AA) 중 하나, 비워 둘 수 있다.
+  grade              String?
   note               String?
   createdByUserId    String?  @db.Uuid
   createdAt          DateTime @default(now()) @db.Timestamptz(3)
@@ -1725,6 +1729,8 @@ model Shipment {
   status         ShipmentStatus @default(IN_TRANSIT)
   shippedAt      DateTime       @db.Timestamptz(3)
   deliveredAt    DateTime?      @db.Timestamptz(3)
+  // 배송 자동조회(판매자가 켠 경우만, 건당 발송·이용 충전금 차감)를 마지막으로 시도한 시각. 조회 간격(6시간)을 지키는 데만 쓴다.
+  trackingCheckedAt DateTime?   @db.Timestamptz(3)
   updatedAt      DateTime       @default(now()) @updatedAt @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])
@@ -4221,4 +4227,17 @@ model ExternalConnection {
   version            Int       @default(0)
   updatedByAdminId   String?   @db.Uuid
   updatedAt          DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
+}
+
+// 플랫폼(ONQ) 사업자 정보(한 줄, id = 1, 마이그레이션 CHECK). 파트너스 가입 안내 메일 바닥글(EM-101·102)에 쓴다. 최고관리자만 바꾸고 변경은 로그 추적에 남긴다.
+// 값이 하나라도 비어 있으면 가입 승인·반려 메일을 보내지 않는다(법정 바닥글을 채울 수 없음). 주소(URL)는 APP_ORIGIN을 쓴다.
+model PlatformBusinessInfo {
+  id               Int      @id @default(1)
+  name             String   @default("")
+  representative   String   @default("")
+  businessNumber   String   @default("")
+  address          String   @default("")
+  phone            String   @default("")
+  updatedAt        DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+  updatedByAdminId String?  @db.Uuid
 }

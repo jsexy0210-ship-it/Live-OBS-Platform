@@ -161,8 +161,8 @@ async function createInTransaction(
     // 단가가 1원 미만이거나 합계가 저장 범위(INT4)를 넘으면 주문을 만들지 않는다(500 대신 invalid_amount).
     const price = await priceOrder(tx, { sellerId: input.sellerId, buyerMemberId: member.id, lines, address, couponId: input.couponId, now });
     if (!price.ok) return { ok: false as const, reason: price.reason };
-    const { priced, policy, isRemote, itemsSubtotal, shippingFee, coupon, couponDiscount, rewardLimit } = price;
-    const rewardPre = await rewardUsePrecheck(tx, { sellerId: input.sellerId, amount: rewardUse, limit: rewardLimit });
+    const { priced, policy, isRemote, itemsSubtotal, shippingFee, coupon, couponDiscount, rewardLimit, rewardSettings } = price;
+    const rewardPre = await rewardUsePrecheck(tx, { sellerId: input.sellerId, amount: rewardUse, limit: rewardLimit, settings: rewardSettings });
     if (rewardPre) throw new RewardUseRejected(rewardPre);
     const totalAmount = itemsSubtotal + shippingFee - couponDiscount - rewardUse;
     if (!Number.isSafeInteger(totalAmount) || totalAmount > INT4_MAX) return { ok: false as const, reason: "invalid_amount" as const };
@@ -189,7 +189,7 @@ async function createInTransaction(
       },
     });
     // 적립금 사용: 주문 잠금 → 회원(위 FOR SHARE) → 잔액 행 순서. 안 되면 이 트랜잭션 전체를 되돌린다(주문 없음).
-    const rewardFailure = await useRewardForOrder(tx, { sellerId: input.sellerId, buyerMemberId: member.id, orderId: order.id, amount: rewardUse, limit: rewardLimit, now });
+    const rewardFailure = await useRewardForOrder(tx, { sellerId: input.sellerId, buyerMemberId: member.id, orderId: order.id, amount: rewardUse, limit: rewardLimit, settings: rewardSettings, now });
     if (rewardFailure) throw new RewardUseRejected(rewardFailure);
     if (coupon.applied) await useOrderCoupon(tx, { sellerId: input.sellerId, buyerMemberId: member.id, orderId: order.id, applied: coupon.applied, now });
     await tx.orderShippingAddress.create({ data: { sellerId: input.sellerId, orderId: order.id, ...address, isRemote } });

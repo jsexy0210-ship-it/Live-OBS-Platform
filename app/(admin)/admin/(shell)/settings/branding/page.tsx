@@ -76,7 +76,9 @@ export default function BrandingSettingsPage() {
       <AdminTopbar crumb="설정 › 파비콘·공유 카드" />
       <main className="main">
         <PageHead title="파비콘 · 공유 카드" />
-        <span className="t-l2 c-alt">마스터 관리자와 파트너스 관리자에 각각 넣습니다. 대상을 고른 뒤 바꿔 주십시오.</span>
+        <div className="msg msg-info" role="note">
+          <span>마스터 관리자와 파트너스 관리자에 각각 넣습니다 · 대상을 고른 뒤 바꿔 주십시오</span>
+        </div>
         <div className="seg" role="radiogroup" aria-label="적용할 화면" style={{ alignSelf: "flex-start" }}>
           {TABS.map((t) => (
             <button key={t.key} type="button" role="radio" aria-checked={tab === t.key} className={tab === t.key ? "on" : ""} onClick={() => setTab(t.key)}>
@@ -188,9 +190,9 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
     setFaviconError(null);
     const r = await adminApi<{ branding: Branding }>(`/api/admin/branding/${t}/favicon`, { method: "PUT", file: favicon.file });
     setFaviconBusy(false);
-    if (!r.ok) return setFaviconError(failMessage(r, "파비콘을 변경하지 못했습니다. 잠시 후 다시 시도해 주십시오."));
+    if (!r.ok) return setFaviconError(failMessage(r, "파비콘을 저장하지 못했습니다. 잠시 후 다시 시도해 주십시오."));
     if (faviconPick.current === pickAtUpload) setFavicon(null);
-    onSaved(r.data.branding, "파비콘을 변경했습니다.");
+    onSaved(r.data.branding, "파비콘을 저장했습니다.");
   };
 
   const resetFavicon = async () => {
@@ -222,6 +224,16 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
       return setOgError(`1200×630 크기 이미지를 선택해 주십시오. 선택한 이미지: ${size.w}×${size.h}`);
     }
     setOgFile({ file, url });
+  };
+
+  const onCancel = () => {
+    setTitle(branding.title ?? "");
+    setDescription(branding.description ?? "");
+    setMode(branding.ogImage.uploaded ? "uploaded" : "generated");
+    ogPick.current++;
+    setOgFile(null);
+    setOgError(null);
+    setFailure(null);
   };
 
   const save = async () => {
@@ -269,7 +281,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
   const shownDescription = description.trim() || branding.defaults.description;
 
   return (
-    <div className="form-grid">
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 20, alignItems: "start" }}>
       <div className="col" style={{ gap: 20 }}>
         <section className="card pad col" style={{ gap: 14 }} aria-labelledby={`fav-${t}`}>
           <div className="col" style={{ gap: 4 }}>
@@ -305,27 +317,14 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
                     e.target.value = "";
                   }}
                 />
-                {favicon ? (
-                  <>
-                    <button className="btn btn-sm btn-ghost" type="button" disabled={faviconBusy} onClick={() => setFavicon(null)}>
-                      취소
-                    </button>
-                    <button className="btn btn-sm" type="button" disabled={faviconBusy || !!faviconError} onClick={() => void uploadFavicon()}>
-                      {faviconBusy ? "변경 중" : "파비콘 변경"}
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    {branding.favicon && (
-                      <button className="btn btn-sm btn-ghost" type="button" disabled={faviconBusy} onClick={() => setConfirmReset(true)}>
-                        기본값으로 되돌리기
-                      </button>
-                    )}
-                    <button className="btn btn-sm" type="button" disabled={faviconBusy} onClick={() => faviconInput.current?.click()}>
-                      파일 선택
-                    </button>
-                  </>
+                {branding.favicon && !favicon && (
+                  <button className="btn btn-sm btn-ghost" type="button" disabled={faviconBusy} onClick={() => setConfirmReset(true)}>
+                    기본값으로 되돌리기
+                  </button>
                 )}
+                <button className="btn btn-sm" type="button" disabled={faviconBusy} onClick={() => faviconInput.current?.click()}>
+                  {favicon ? "다른 파일 선택" : "파일 선택"}
+                </button>
               </div>
             )}
           </div>
@@ -335,8 +334,28 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
               {faviconError}
             </span>
           )}
+          <div className="col" style={{ gap: 6 }}>
+            <span className="t-l2 fw6">브라우저 탭에서 이렇게 보입니다</span>
+            <span className="card row t-c1" style={{ gap: 8, padding: "8px 12px", alignSelf: "flex-start", boxShadow: "none" }}>
+              <img src={previewIcon} alt="" width={14} height={14} />
+              {t === "admin" ? "ONQ 마스터 관리자" : "ONQ 파트너스 관리자"} <span className="c-alt">· 브라우저 탭</span>
+            </span>
+            <span className="t-c1 c-alt">{t === "admin" ? "마스터 관리자 로그인과 관리자 화면 탭에 보입니다." : "파트너스 관리자 로그인과 관리자 화면 탭에 보입니다."}</span>
+          </div>
+          {canEdit && (
+            <div className="row" style={{ gap: 8 }}>
+              <button className="btn btn-lg" type="button" disabled={!favicon || faviconBusy || !!faviconError} onClick={() => void uploadFavicon()}>
+                {faviconBusy ? "저장 중" : "파비콘 저장"}
+              </button>
+              <button className="btn btn-lg btn-out" type="button" disabled={!favicon || faviconBusy} onClick={() => setFavicon(null)}>
+                취소
+              </button>
+            </div>
+          )}
         </section>
+      </div>
 
+      <div className="col" style={{ gap: 20 }}>
         <section className="card pad col" style={{ gap: 16 }} aria-labelledby={`og-${t}`}>
           <div className="col" style={{ gap: 4 }}>
             <h2 className="t-hl2" id={`og-${t}`}>
@@ -437,12 +456,9 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
             )}
           </div>
         </section>
-      </div>
-
-      <aside className="col aside-sticky" style={{ gap: 16 }}>
         <div className="card col" style={{ overflow: "hidden" }} aria-label="공유 카드 미리보기">
           <span className="t-hl2" style={{ padding: "16px 16px 12px" }}>
-            공유 카드 미리보기
+            카카오톡 · 링크 미리보기
           </span>
           <div style={{ aspectRatio: "1200 / 630", background: "var(--wds-fill-normal)", display: "flex", alignItems: "center", justifyContent: "center" }}>
             {previewSrc && !previewBroken ? (
@@ -463,11 +479,16 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
           </div>
         </div>
         {canEdit && (
-          <button className="btn btn-lg btn-block" type="button" onClick={() => void save()} disabled={!canSave}>
-            {saving ? "저장 중" : "공유 카드 저장"}
-          </button>
+          <div className="row" style={{ gap: 8 }}>
+            <button className="btn btn-lg" type="button" onClick={() => void save()} disabled={!canSave}>
+              {saving ? "저장 중" : "공유 카드 저장"}
+            </button>
+            <button className="btn btn-lg btn-out" type="button" onClick={onCancel} disabled={saving || !(textDirty || imageDirty || ogFile || mode !== (branding.ogImage.uploaded ? "uploaded" : "generated"))}>
+              취소
+            </button>
+          </div>
         )}
-      </aside>
+      </div>
       {confirmReset && (
         <Modal labelId="favicon-reset-title" busy={faviconBusy} onClose={() => setConfirmReset(false)}>
           {(requestClose) => (

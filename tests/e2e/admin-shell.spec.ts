@@ -50,7 +50,7 @@ test("최고관리자: 로그인하면 홈으로 들어가고, GNB 6개 대분�
   expect(h.loc).toBe(48);
   await gnb(page).getByRole("link", { name: "운영" }).click();
   await expect(lnb(page).getByRole("link", { name: "실시간 감시" })).toBeVisible();
-  await expect(lnb(page).locator(".lnb-sec.on .lnb-i")).toHaveText(["실시간 방송", "주문 · 방송 화면 접속", "실시간 감시", "자동 연결 작업"]);
+  await expect(lnb(page).locator(".lnb-sec.on .lnb-i")).toHaveText(["실시간 방송", "주문 · 방송 화면 접속", "실시간 감시", "자동 연결 작업", "인프라 · 비용"]);
   await expect(lnb(page).getByRole("link", { name: "자동 연결 작업" })).toHaveAttribute("href", "/admin/ops/automation");
   await gnb(page).getByRole("link", { name: "설정" }).click();
   // 설정은 소제목 「시스템」「관리자」로 나뉜다(관리자 그룹은 설정으로 합쳐짐)

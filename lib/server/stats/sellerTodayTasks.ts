@@ -1,3 +1,4 @@
+import { allPeriodHref } from "../../client/filterDefaults";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { sellerFeatures } from "../billing/features";
 import { LOW_STOCK_MAX } from "../products/manage";
@@ -20,11 +21,11 @@ export type SellerTaskKey = (typeof SELLER_TASK_KEYS)[number];
 
 const TASKS: { key: SellerTaskKey; action: SellerAction; store: boolean; href: string }[] = [
   { key: "depositPending", action: "ORDER_SHIPPING", store: false, href: "/seller/orders/deposits" },
-  { key: "shipPending", action: "ORDER_SHIPPING", store: false, href: "/seller/orders?status=PAID&shipped=false" },
+  { key: "shipPending", action: "ORDER_SHIPPING", store: false, href: allPeriodHref("/seller/orders", { status: "PAID", shipped: "false" }) },
   { key: "returnRequested", action: "ORDER_SHIPPING", store: false, href: "/seller/returns?status=REQUESTED" },
-  { key: "inquiryWaiting", action: "INQUIRY_REPLY", store: true, href: "/seller/buyer-inquiries?status=WAITING" },
-  { key: "stockOut", action: "PRODUCT_MANAGE", store: true, href: "/seller/products?stock=out&display=shown" },
-  { key: "stockLow", action: "PRODUCT_MANAGE", store: true, href: "/seller/products?stock=low&display=shown" },
+  { key: "inquiryWaiting", action: "INQUIRY_REPLY", store: true, href: allPeriodHref("/seller/buyer-inquiries", { status: "WAITING" }) },
+  { key: "stockOut", action: "PRODUCT_MANAGE", store: true, href: allPeriodHref("/seller/products", { stock: "out", display: "shown" }) },
+  { key: "stockLow", action: "PRODUCT_MANAGE", store: true, href: allPeriodHref("/seller/products", { stock: "low", display: "shown" }) },
 ];
 
 function readable(ctx: TenantContext, action: SellerAction) {

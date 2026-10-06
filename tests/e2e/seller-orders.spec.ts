@@ -58,6 +58,21 @@ test("주문 목록: 20건씩 보이고 「주문 더 불러오기」로 나머�
   await expect(page.getByRole("button", { name: "주문 더 불러오기" })).toHaveCount(0);
 });
 
+test("기간: 그냥 열면 최근 30일이 켜져 있고, 초기화도 그 값으로 돌아간다. 업무 큐 링크(period=all)는 기간 전체", async ({ page }) => {
+  await login(page);
+  await expect(page).toHaveURL(/\/seller\/orders$/);
+  const chip30 = page.getByRole("button", { name: /최근 30일/ });
+  await expect(chip30).toHaveAttribute("aria-pressed", "true");
+  await chip30.click();
+  await expect(page).toHaveURL(/period=all/);
+  await expect(chip30).toHaveAttribute("aria-pressed", "false");
+  await page.getByRole("button", { name: "필터 초기화" }).click();
+  await expect(page).toHaveURL(/\/seller\/orders$/);
+  await expect(chip30).toHaveAttribute("aria-pressed", "true");
+  await page.goto("/seller/orders?period=all&status=PAID");
+  await expect(page.getByRole("button", { name: /최근 30일/ })).toHaveAttribute("aria-pressed", "false");
+});
+
 test("상태 필터·검색·기간으로 걸러 보고, 결과가 없으면 알맞은 안내를 보여 준다", async ({ page }) => {
   await login(page);
   await expect(rows(page)).toHaveCount(20);
@@ -101,10 +116,13 @@ test("주문 상세: 상품·결제·구매자·배송을 보여 주고, 없는 
   await login(page);
   await page.getByRole("button", { name: /상태: 전체/ }).click();
   await page.getByRole("group", { name: "결제 상태" }).getByLabel("완료").check();
+  const paid = listResponse(page, "status=PAID");
   await page.getByRole("button", { name: "이 상태로 보기" }).click();
+  await paid;
   await expect(rows(page).first()).toBeVisible();
-  const nick = (await rows(page).first().locator("td").nth(1).textContent())!;
-  await rows(page).first().locator("a.ord-link").click();
+  // 구매자 이름과 주소를 한 번에 읽어, 목록이 다시 그려지는 사이 다른 행의 이름이 섞이지 않게 한다
+  const { nick, href } = await rows(page).first().evaluate((tr) => ({ nick: tr.querySelectorAll("td")[1].textContent ?? "", href: tr.querySelector("a.ord-link")!.getAttribute("href")! }));
+  await page.goto(href);
   await expect(page).toHaveURL(/\/seller\/orders\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("heading", { level: 1 })).toContainText(`${nick} · `);
   await expect(page.locator(".bdg-lg").first()).toHaveText("결제 완료");

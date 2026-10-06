@@ -30,13 +30,14 @@ async function lockOrder(tx: Tx, sellerId: string, orderId: string) {
 
 // 결제 완료·배송 중일 때만 배송 완료로 바꾼다. 자동 처리면 잠근 뒤 판매자 설정(켜짐·기간)을 다시 읽어,
 // 후보를 고른 뒤 설정을 끄거나 기간을 늘렸으면 처리하지 않는다.
-async function deliverLocked(tx: Tx, sellerId: string, orderId: string, actor: Actor, auto: boolean) {
+async function deliverLocked(tx: Tx, sellerId: string, orderId: string, actor: Actor, auto: boolean | "carrier") {
   const locked = await lockOrder(tx, sellerId, orderId);
   if (!locked) return { ok: false as const, reason: "not_found" as const };
   const { now } = locked;
   const shipment = await tx.shipment.findUnique({ where: { orderId } });
   if (locked.status !== "PAID" || shipment?.status !== "IN_TRANSIT") return { ok: false as const, reason: "not_deliverable" as const };
-  if (auto) {
+  // 택배사 조회로 배송 완료가 확인된 경우("carrier")는 자동 배송 완료 기간(n일)을 보지 않는다
+  if (auto === true) {
     const policy = await getOrderPolicy(tx, sellerId);
     if (!policy.autoDeliverEnabled || shipment.shippedAt.getTime() + policy.autoDeliverDays * DAY_MS > now.getTime()) {
       return { ok: false as const, reason: "not_deliverable" as const };
@@ -47,13 +48,18 @@ async function deliverLocked(tx: Tx, sellerId: string, orderId: string, actor: A
   await writeAudit(tx, {
     ...actor,
     sellerId,
-    action: auto ? "order.auto_deliver" : "order.deliver",
+    action: auto === "carrier" ? "order.carrier_deliver" : auto ? "order.auto_deliver" : "order.deliver",
     targetType: "Order",
     targetId: orderId,
     before: { shipmentStatus: "IN_TRANSIT" },
     after: { shipmentStatus: "DELIVERED", rewardEarned },
   });
   return { ok: true as const, deliveredAt: now, rewardEarned };
+}
+
+// 택배사 배송 조회(배송 자동조회, orders/tracking.ts)로 배송 완료가 확인된 주문을 배송 완료로 바꾼다. 배송 중이 아니면 not_deliverable(여러 번 불러도 같음).
+export async function completeDeliveryByCarrier(db: PrismaClient, sellerId: string, orderId: string) {
+  return db.$transaction((tx) => deliverLocked(tx, sellerId, orderId, SYSTEM, "carrier"));
 }
 
 // 판매자가 직접 배송 완료 처리(ORDER_SHIPPING). 배송 중이 아니면(발송 전·이미 완료·환불) not_deliverable.

@@ -20,12 +20,16 @@ export const CARD_NAME_MAX = 60;
 export const NOTE_MAX = 200;
 export const NICKNAME_MAX = 30;
 export const HIT_PAGE_SIZE = 50;
+export const GRADE_MAX = 12;
+// 등급 추천 값(SA-001-M4 HIT 기록 창·SA-053 목록). 화면의 「직접 입력」을 받으므로 등급은 자유 입력이고, 이 목록은 추천 값일 뿐이다. 비워 둘 수 있다.
+export const HIT_GRADES = ["SAR", "SR", "UR", "SE", "SP", "AA"] as const;
 
-export type HitRejection = "invalid_card_name" | "invalid_note" | "invalid_nickname" | "invalid_queue_item" | "invalid_filter";
+export type HitRejection = "invalid_card_name" | "invalid_grade" | "invalid_note" | "invalid_nickname" | "invalid_queue_item" | "invalid_filter";
 
 // 파트너스 관리자 화면 문구(명사형·합니다체)
 export const HIT_MESSAGES: Record<HitRejection, string> = {
   invalid_card_name: `카드 이름을 ${CARD_NAME_MAX}자 안에서 입력해 주십시오`,
+  invalid_grade: `등급을 ${GRADE_MAX}자 안에서 입력해 주십시오`,
   invalid_note: `메모는 ${NOTE_MAX}자까지 입력할 수 있습니다`,
   invalid_nickname: `닉네임을 ${NICKNAME_MAX}자 안에서 입력해 주십시오`,
   invalid_queue_item: "주문대기 항목을 찾을 수 없습니다. 새로고침한 뒤 다시 시도해 주십시오",
@@ -48,6 +52,7 @@ function kstStart(v: string): Date | null {
 const cardSelect = {
   id: true,
   cardName: true,
+  grade: true,
   note: true,
   nicknameSnapshot: true,
   createdAt: true,
@@ -59,6 +64,7 @@ type CardRow = Prisma.HitCardGetPayload<{ select: typeof cardSelect }>;
 const view = (r: CardRow) => ({
   id: r.id,
   cardName: r.cardName,
+  grade: r.grade,
   note: r.note,
   nickname: r.nicknameSnapshot,
   broadcast: r.broadcastSession ? { id: r.broadcastSession.id, title: r.broadcastSession.title } : null,
@@ -70,7 +76,7 @@ const view = (r: CardRow) => ({
   createdAt: r.createdAt,
 });
 
-export type HitFilter = { broadcastId?: string | null; from?: string | null; to?: string | null; cursor?: string | null };
+export type HitFilter = { broadcastId?: string | null; from?: string | null; to?: string | null; cursor?: string | null; grade?: string | null };
 
 export async function listHitCards(db: PrismaClient, ctx: TenantContext, f: HitFilter) {
   requireSellerRead(ctx, "BROADCAST_RUN");
@@ -78,6 +84,11 @@ export async function listHitCards(db: PrismaClient, ctx: TenantContext, f: HitF
   if (f.broadcastId) {
     if (!isUuid(f.broadcastId)) return { ok: false as const, reason: "invalid_filter" as const };
     where.broadcastSessionId = f.broadcastId;
+  }
+  if (f.grade) {
+    const g = cleanText(f.grade, GRADE_MAX);
+    if (!g) return { ok: false as const, reason: "invalid_filter" as const };
+    where.grade = g;
   }
   const from = f.from ? kstStart(f.from) : null;
   const to = f.to ? kstStart(f.to) : null;
@@ -91,7 +102,7 @@ export async function listHitCards(db: PrismaClient, ctx: TenantContext, f: HitF
     select: cardSelect,
   });
   const items = rows.slice(0, HIT_PAGE_SIZE).map(view);
-  return { ok: true as const, value: { items, nextCursor: rows.length > HIT_PAGE_SIZE ? items[items.length - 1].id : null } };
+  return { ok: true as const, value: { items, grades: [...HIT_GRADES], nextCursor: rows.length > HIT_PAGE_SIZE ? items[items.length - 1].id : null } };
 }
 
 // 판매자 행을 잠그고 liveVersion을 올린다(오버레이가 새 카드를 다시 읽게)
@@ -99,12 +110,14 @@ async function bump(tx: Tx, sellerId: string) {
   return (await tx.seller.update({ where: { id: sellerId }, data: { liveVersion: { increment: 1 } }, select: { liveVersion: true } })).liveVersion;
 }
 
-// 등록. 본문: { cardName(60자), note?(200자), queueItemId? | nickname?(30자, queueItemId가 없을 때 필수) }
+// 등록. 본문: { cardName(60자), grade?(12자 이내 자유 입력·추천 SAR·SR·UR·SE·SP·AA, 비우면 없음), note?(200자), queueItemId? | nickname?(30자, queueItemId가 없을 때 필수) }
 export async function createHitCard(db: PrismaClient, ctx: TenantContext, raw: unknown, meta: AuditMeta = {}) {
   requireSellerPermission(ctx, "BROADCAST_RUN");
   const b = obj(raw);
   const cardName = cleanText(b.cardName, CARD_NAME_MAX, "memo");
   if (!cardName) return { ok: false as const, reason: "invalid_card_name" as const };
+  const grade = b.grade === undefined || b.grade === null || b.grade === "" ? null : (cleanText(b.grade, GRADE_MAX) ?? undefined);
+  if (grade === undefined) return { ok: false as const, reason: "invalid_grade" as const };
   let note: string | null = null;
   if (b.note !== undefined && b.note !== null && !(typeof b.note === "string" && b.note.trim() === "")) {
     note = cleanText(b.note, NOTE_MAX, "memo");
@@ -129,6 +142,7 @@ export async function createHitCard(db: PrismaClient, ctx: TenantContext, raw: u
         buyerMemberId: item?.order?.buyerMemberId ?? null,
         nicknameSnapshot: item?.nicknameSnapshot ?? typedNickname!,
         cardName,
+        grade,
         note,
         createdByUserId: ctx.actorType === "SELLER_USER" ? ctx.actorId : null,
       },
@@ -141,7 +155,7 @@ export async function createHitCard(db: PrismaClient, ctx: TenantContext, raw: u
       action: "hit_card.create",
       targetType: "HitCard",
       targetId: row.id,
-      after: { cardName, note, queueItemId: item?.id ?? null, broadcastSessionId: row.broadcastSession?.id ?? null },
+      after: { cardName, grade, note, queueItemId: item?.id ?? null, broadcastSessionId: row.broadcastSession?.id ?? null },
       ip: meta.ip,
       userAgent: meta.userAgent,
     });
@@ -167,7 +181,7 @@ export async function deleteHitCard(db: PrismaClient, ctx: TenantContext, id: st
       action: "hit_card.delete",
       targetType: "HitCard",
       targetId: id,
-      before: { cardName: before.cardName, note: before.note, queueItemId: before.queueItemId, broadcastSessionId: before.broadcastSessionId },
+      before: { cardName: before.cardName, grade: before.grade, note: before.note, queueItemId: before.queueItemId, broadcastSessionId: before.broadcastSessionId },
       ip: meta.ip,
       userAgent: meta.userAgent,
     });
