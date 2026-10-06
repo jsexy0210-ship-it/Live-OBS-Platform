@@ -17,8 +17,22 @@
   border-top: 0;
 }
 .ovu-url {
-  width: 100%;
+  flex: 0 1 360px;
+  width: 360px;
+  max-width: 100%;
   font-variant-numeric: tabular-nums;
+}
+/* 정본(SA-052): OBS에 추가하는 방법 | 주소 재발급 · 재발급 이력 2열 */
+.ovu-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .ovu-two {
+    grid-template-columns: 1fr;
+  }
 }
 @media (max-width: 600px) {
   .ovu-row {

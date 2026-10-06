@@ -27,14 +27,16 @@ type Info = {
   reissues: { at: string; by: string | null; kind: "first" | "reissue" }[];
 };
 const LAYOUT = { "9x16": "세로형", "16x9": "가로형" } as const;
+const ACCESS_BADGE = { connected: "b-done", ended: "b-wait", unknown_browser: "b-warn" } as const;
 const ACCESS_STATE = { connected: "연결 중", ended: "종료", unknown_browser: "미확인 브라우저" } as const;
 type Fail = { kind: "unclear" } | { kind: "locked" } | { kind: "plan" } | { kind: "forbidden" } | { kind: "other"; text: string };
 
-const urls = (token: string) => {
-  const base = `${window.location.origin}/overlay/${token}`;
+// 주소는 발급한 직후에만 보인다(서버는 해시만 가짐). 그 밖에는 가려서 보이고 복사는 막는다.
+const urls = (token: string | null) => {
+  const base = token ? `${window.location.origin}/overlay/${token}` : null;
   return [
-    { key: "port", label: "세로 9:16", size: "너비 1080 · 높이 1920", url: base },
-    { key: "land", label: "가로 16:9", size: "너비 1920 · 높이 1080", url: `${base}?ratio=16x9` },
+    { key: "port", label: "세로형 1080×1920 (9:16)", hint: "모바일 시청 · 하단 주문대기", url: base ?? "https://•••••••••••••••••••", copyable: base },
+    { key: "land", label: "가로형 1920×1080 (16:9)", hint: "PC 시청 · 아래 주문대기 띠", url: base ? `${base}?ratio=16x9` : "https://•••••••••••••••••••", copyable: base },
   ];
 };
 
@@ -124,42 +126,52 @@ export default function OverlayPage() {
             <NoPermission need="오버레이 편집" />
           </div>
         ) : (
-          <div className="col" style={{ gap: 16 }}>
+          <div className="col" style={{ gap: 20 }}>
             <div className="msg msg-cau" role="note">
-              파트너스 전용 비공개 주소입니다. 이 주소를 아는 사람은 누구나 주문대기를 볼 수 있으니 방송 화면에 노출하지 마십시오.
+              파트너스 전용 비공개 주소입니다 · 이 주소를 아는 사람은 누구나 주문대기를 볼 수 있으니 방송 화면에 노출하지 마십시오
             </div>
 
-            <section className="card pad col" style={{ gap: 14 }} aria-labelledby="ovu-h">
-              <div className="row between" style={{ gap: 12, flexWrap: "wrap" }}>
-                <div className="col" style={{ gap: 4, minWidth: 0 }}>
-                  <h2 className="t-hl1" id="ovu-h">
-                    방송 화면 주소
-                  </h2>
-                  <span className="t-l2 c-alt">
-                    {info?.lastAccessAt ? (
-                      <span className={`bdg ${info.connected ? "b-done" : "b-wait"}`} data-testid="ovu-conn">
-                        {info.connected ? `연결됨 · ${info.lastClient ?? "방송 프로그램"}${info.openSources > 0 ? `, ${info.openSources}개 소스` : ""}` : "연결 끊김"}
-                      </span>
-                    ) : info ? (
-                      <span className="bdg b-wait" data-testid="ovu-conn">
-                        미연결
-                      </span>
-                    ) : null}{" "}
-                    주소는 만들 때 한 번만 보입니다. 다시 보려면 새로 만들어 주십시오(이전 주소는 바로 쓸 수 없게 됩니다)
-                    {info?.issuedAt ? ` · 발급 ${formatDate(info.issuedAt)}` : ""}
-                    {info?.lastAccessAt ? ` · 마지막 접속 ${ago(info.lastAccessAt)}${info.lastClient ? ` (${info.lastClient})` : ""}` : ""}
+            <section className="col" style={{ gap: 8 }} aria-labelledby="ovu-h">
+              <h2 className="t-hl1 row" style={{ gap: 8 }} id="ovu-h">
+                방송 프로그램에 넣기 주소
+                {info?.lastAccessAt ? (
+                  <span className={`bdg ${info.connected ? "b-done" : "b-wait"}`} data-testid="ovu-conn">
+                    {info.connected ? `연결됨 · ${info.lastClient ?? "방송 프로그램"}` : "연결 끊김"}
                   </span>
+                ) : info ? (
+                  <span className="bdg b-wait" data-testid="ovu-conn">
+                    미연결
+                  </span>
+                ) : null}
+              </h2>
+              {issued && (
+                <div className="msg msg-cau" role="status">
+                  이 주소는 지금만 볼 수 있습니다. OBS에 넣은 뒤 잃어버리면 재발급해 주십시오.
                 </div>
-                <button className="btn" type="button" disabled={busy || (info?.live === true && info.issuedAt !== null)} onClick={() => setConfirm(true)}>
-                  {issued || info?.issuedAt ? "주소 새로 만들기" : "주소 만들기"}
-                </button>
-              </div>
-
-              {info?.live && info.issuedAt !== null && (
-                <span className="t-c1 c-alt" data-testid="ovu-live-block">
-                  방송 중에는 주소를 다시 만들 수 없습니다. 방송을 끝낸 뒤 진행해 주십시오.
-                </span>
               )}
+              <table className="au-ft" data-testid="ovu-urls">
+                <tbody>
+                  {urls(issued?.token ?? null).map((u) => (
+                    <tr key={u.key}>
+                      <th scope="row">{u.label}</th>
+                      <td>
+                        <div className="au-ft-v">
+                          <input className="inp ovu-url" readOnly value={u.url} aria-label={`${u.label} 주소`} onFocus={(e) => e.currentTarget.select()} />
+                          <button className="btn btn-sm" type="button" disabled={!issued} onClick={() => void copy(u.url)}>
+                            복사
+                          </button>
+                          <span className="t-c1 c-alt">{u.hint}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <span className="t-c1 c-alt">
+                {issued ? "창을 닫으면 다시 가려집니다 · 접속 기록에 「발급」이 남습니다" : "주소는 만들 때 한 번만 보입니다 · 다시 보려면 「재발급」으로 새 주소를 받습니다(기존 주소는 바로 쓸 수 없게 됩니다)"}
+                {info?.issuedAt ? ` · 발급 ${formatDate(info.issuedAt)}` : ""}
+                {info?.lastAccessAt ? ` · 마지막 접속 ${ago(info.lastAccessAt)} (${info.lastClient ?? "방송 프로그램"}${info.openSources > 0 ? `, ${info.openSources}개 소스` : ""})` : ""}
+              </span>
               {fail?.kind === "unclear" && (
                 <div className="msg msg-cau" role="alert" data-testid="ovu-unclear">
                   새 주소를 만들었는지 확인하지 못했습니다. 이전 주소를 쓸 수 없을 수 있으니 방송 전에 주소를 새로 만들어 방송 프로그램(OBS)에 다시 넣어 주십시오.
@@ -170,119 +182,121 @@ export default function OverlayPage() {
                   {fail.text}
                 </div>
               )}
-
-              {issued && (
-                <>
-                  <div className="msg msg-info" role="status">
-                    이 주소는 지금만 볼 수 있습니다. 방송 프로그램에 넣어 두십시오. 잃어버리면 새로 만들어 주십시오.
-                  </div>
-                  <ul className="ovu-list" data-testid="ovu-urls">
-                    {urls(issued.token).map((u) => (
-                      <li key={u.key} className="ovu-row">
-                        <span className="col" style={{ gap: 2, minWidth: 0, flex: 1 }}>
-                          <span className="t-l1 fw6">
-                            {u.label} <span className="t-c1 c-alt fw5">방송 프로그램 설정값 {u.size}</span>
-                          </span>
-                          <input className="inp inp-sm ovu-url" readOnly value={u.url} aria-label={`${u.label} 주소`} onFocus={(e) => e.currentTarget.select()} />
-                        </span>
-                        <span className="row" style={{ gap: 6 }}>
-                          <button className="btn btn-sm" type="button" onClick={() => void copy(u.url)}>
-                            주소 복사
-                          </button>
-                          <a className="btn btn-sm btn-out" href={u.url} target="_blank" rel="noreferrer">
-                            열어 보기
-                          </a>
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
             </section>
 
-            <section className="card pad col" style={{ gap: 10 }} aria-labelledby="ovu-how-h">
-              <h2 className="t-hl1" id="ovu-how-h">
-                방송 프로그램(OBS)에 추가하는 방법
-              </h2>
-              <table className="tbl" data-testid="ovu-how">
-                <thead>
-                  <tr>
-                    <th style={{ width: 60 }}>순서</th>
-                    <th>내용</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td className="num">1</td>
-                    <td className="col-text">OBS 「소스」의 「+」에서 「브라우저」를 고르고 이름을 입력합니다(예: 주문대기).</td>
-                  </tr>
-                  <tr>
-                    <td className="num">2</td>
-                    <td className="col-text">「URL」 칸에 위 주소를 붙여 넣고, 세로형은 너비 1080 · 높이 1920, 가로형은 너비 1920 · 높이 1080을 넣습니다.</td>
-                  </tr>
-                  <tr>
-                    <td className="num">3</td>
-                    <td className="col-text">「소스가 보이지 않을 때 종료」는 해제하고, 「OBS로 오디오 제어」도 해제합니다.</td>
-                  </tr>
-                  <tr>
-                    <td className="num">4</td>
-                    <td className="col-text">방송 대시보드에서 「방송 시작」을 누르면 방송 화면이 LIVE로 바뀌는지 확인합니다.</td>
-                  </tr>
-                </tbody>
-              </table>
-              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                <Link className="btn btn-out" href="/seller/inquiries">
-                  연결이 안 되면 문의
-                </Link>
-              </div>
-            </section>
-
-            <section className="card pad col" style={{ gap: 10 }} aria-labelledby="ovu-re-h">
-              <h2 className="t-hl1" id="ovu-re-h">
-                재발급 이력
-              </h2>
-              {!info || info.reissues.length === 0 ? (
-                <span className="t-l2 c-alt">아직 발급 기록이 없습니다</span>
-              ) : (
-                <table className="tbl" data-testid="ovu-reissues">
+            <div className="ovu-two">
+              <section className="col" style={{ gap: 8 }} aria-labelledby="ovu-how-h">
+                <h2 className="t-hl1" id="ovu-how-h">
+                  OBS에 추가하는 방법
+                </h2>
+                <table className="tbl" data-testid="ovu-how">
                   <thead>
                     <tr>
-                      <th>일시</th>
+                      <th style={{ width: 60 }}>순서</th>
                       <th>내용</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {info.reissues.map((r, i) => (
-                      <tr key={i}>
-                        <td className="num">{formatDateTime(r.at)}</td>
-                        <td className="col-text">
-                          {r.kind === "first" ? "최초 발급" : "재발급"}
-                          {r.by ? ` · ${r.by}` : ""}
-                        </td>
-                      </tr>
-                    ))}
+                    <tr>
+                      <td className="num">1</td>
+                      <td className="col-text">
+                        OBS › 소스 › <b>+ 브라우저</b> 선택 후 이름 입력 (예: ONQ 주문대기)
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="num">2</td>
+                      <td className="col-text">
+                        URL에 위 주소를 붙여넣고 <b>너비 1080 · 높이 1920</b> (가로형은 1920 · 1080)을 넣습니다
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="num">3</td>
+                      <td className="col-text">
+                        「소스가 보이지 않을 때 종료」 <b>해제</b>, 「OBS로 오디오 제어」 해제
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="num">4</td>
+                      <td className="col-text">방송 대시보드에서 「방송 시작」을 누르면 방송 화면이 LIVE로 바뀌는지 확인합니다</td>
+                    </tr>
                   </tbody>
                 </table>
-              )}
-            </section>
+                <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                  <Link className="btn btn-sm btn-out" href="/seller/inquiries">
+                    연결이 안 되면 문의
+                  </Link>
+                </div>
+              </section>
 
-            <section className="card pad col" style={{ gap: 10 }} aria-labelledby="ovu-ac-h">
+              <div className="col" style={{ gap: 16 }}>
+                <section className="col" style={{ gap: 8 }} aria-labelledby="ovu-re-h">
+                  <h2 className="t-hl1" id="ovu-re-h">
+                    주소 재발급
+                  </h2>
+                  <div className="msg msg-info" role="note">
+                    주소가 유출됐거나 직원이 퇴사했을 때 재발급해 주십시오 · 기존 주소는 즉시 무효화되고 OBS 소스를 새 주소로 바꿔야 합니다
+                    {info?.live && info.issuedAt !== null && (
+                      <>
+                        <br />
+                        <b data-testid="ovu-live-block">방송 중에는 재발급할 수 없습니다.</b> 방송 종료 후 진행해 주십시오 (현재: 방송 중)
+                      </>
+                    )}
+                  </div>
+                  <div className="row">
+                    <button className="btn btn-sm btn-out" type="button" disabled={busy || (info?.live === true && info.issuedAt !== null)} onClick={() => setConfirm(true)}>
+                      {issued || info?.issuedAt ? "재발급" : "주소 만들기"}
+                    </button>
+                  </div>
+                </section>
+
+                <section className="col" style={{ gap: 8 }} aria-labelledby="ovu-hist-h">
+                  <h2 className="t-hl1" id="ovu-hist-h">
+                    재발급 이력
+                  </h2>
+                  {!info || info.reissues.length === 0 ? (
+                    <span className="t-l2 c-alt">아직 발급 기록이 없습니다</span>
+                  ) : (
+                    <table className="tbl" data-testid="ovu-reissues">
+                      <thead>
+                        <tr>
+                          <th style={{ width: 90 }}>날짜</th>
+                          <th>내용</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {info.reissues.map((r, i) => (
+                          <tr key={i}>
+                            <td className="num">{formatDate(r.at)}</td>
+                            <td className="col-text">
+                              {r.kind === "first" ? "최초 발급" : "재발급"}
+                              {r.by ? ` · ${r.by}` : ""}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </section>
+              </div>
+            </div>
+
+            <section className="col" style={{ gap: 8 }} aria-labelledby="ovu-ac-h">
               <h2 className="t-hl1" id="ovu-ac-h">
                 접속 기록
               </h2>
               {!info || info.accesses.length === 0 ? (
                 <span className="t-l2 c-alt" data-testid="ovu-ac-empty">
-                  아직 방송 프로그램에서 접속한 적이 없습니다
+                  아직 OBS에서 접속한 적이 없습니다
                 </span>
               ) : (
                 <>
                   <table className="tbl" data-testid="ovu-accesses">
                     <thead>
                       <tr>
-                        <th>시각</th>
+                        <th style={{ width: 160 }}>시각</th>
                         <th>소스</th>
-                        <th>레이아웃</th>
-                        <th>상태</th>
+                        <th style={{ width: 100 }}>레이아웃</th>
+                        <th style={{ width: 140 }}>상태</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -291,12 +305,14 @@ export default function OverlayPage() {
                           <td className="num">{formatDateTime(a.at)}</td>
                           <td className="col-text">{a.client}</td>
                           <td>{a.layout ? LAYOUT[a.layout] : "—"}</td>
-                          <td>{ACCESS_STATE[a.state]}</td>
+                          <td>
+                            <span className={`bdg ${ACCESS_BADGE[a.state]}`}>{ACCESS_STATE[a.state]}</span>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                  <span className="t-c1 c-alt">낯선 접속이 보이면 주소를 새로 만들어 주십시오.</span>
+                  <span className="t-c1 c-alt">낯선 접속이 보이면 재발급해 주십시오</span>
                 </>
               )}
             </section>
@@ -311,6 +327,7 @@ export default function OverlayPage() {
 }
 
 function IssueConfirm({ again, busy, onClose, onConfirm }: { again: boolean; busy: boolean; onClose: () => void; onConfirm: () => void }) {
+  const [ok, setOk] = useState(false);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && !busy && onClose();
     window.addEventListener("keydown", onKey);
@@ -321,16 +338,22 @@ function IssueConfirm({ again, busy, onClose, onConfirm }: { again: boolean; bus
       <div className="modal">
         <div className="modal-h">
           <h2 className="t-h2" id="ovu-confirm-h">
-            {again ? "주소를 새로 만드시겠습니까?" : "새 주소를 만드시겠습니까?"}
+            {again ? "주소를 재발급하시겠습니까?" : "새 주소를 만드시겠습니까?"}
           </h2>
-          <span className="t-l2 c-alt">{again ? "기존 주소는 바로 쓸 수 없게 됩니다. 방송 프로그램(OBS)에 새 주소를 다시 넣어야 합니다." : "이전에 만든 주소가 있으면 바로 쓸 수 없게 됩니다. 방송 프로그램에 넣은 주소도 새 주소로 바꿔야 합니다."}</span>
+          <span className="t-l2 c-alt">{again ? "기존 OBS 주소는 바로 끊깁니다. OBS 소스 1개를 새 주소로 바꿔야 합니다." : "이전에 만든 주소가 있으면 바로 쓸 수 없게 됩니다. 방송 프로그램에 넣은 주소도 새 주소로 바꿔야 합니다."}</span>
+          {again && (
+            <label className="row" style={{ gap: 8 }}>
+              <input type="checkbox" checked={ok} onChange={(e) => setOk(e.target.checked)} />
+              <span className="t-l2">확인했습니다</span>
+            </label>
+          )}
         </div>
         <div className="modal-f">
           <button className="btn btn-out" type="button" disabled={busy} onClick={onClose}>
             취소
           </button>
-          <button className="btn" type="button" disabled={busy} onClick={onConfirm}>
-            {again ? "주소 새로 만들기" : "주소 만들기"}
+          <button className={`btn ${again ? "btn-neg" : ""}`} type="button" disabled={busy || (again && !ok)} onClick={onConfirm}>
+            {again ? "재발급" : "주소 만들기"}
           </button>
         </div>
       </div>
