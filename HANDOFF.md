@@ -6,6 +6,10 @@
 
 | 세션 | ID | 담당 |
 |---|---|---|
+| Codex ONQ MASTER | `01a10187-33d2-70d0-951f-e2d69fdd2dc1` | 2026-10-06 대표님 지정 인계 문서 확인 후 인수. 개발 배정·감시·상태 문서·테스트 배포 담당. 기존 `/workspace`와 다른 Windows 실행 환경이므로 로컬 WIP는 인계 assets와 원격 refs로 복구. 기존 세션의 실행·인증이 이전됐다고 간주하지 않음 |
+| 날짜·시간 복구 전담 | `/root/date_recovery` | 독립 worktree `onq-datetime`, `codex/datetime-picker-boundaries`. 공통 날짜/범위/시간 부품과 해당 디자인·전용 검증 소유. 이전 dirty 초안은 참조이며 완료 코드 아님 |
+| Codex 독립 검수 전담 | `/root/independent_review` | 이벤트 참가 WIP 복구·Prisma 및 통합 검증 조건 확인, 구현 PR 독립 검수. 병합은 기존 CI·디자인·검수 조건 충족 후만 |
+| Codex 인계 감시 전담 | `/root/watchdog` | 원격 refs·인계 assets 보존, 작업 소유 충돌·누락·허위 완료 감시. 읽기 전용, 정기 자동화 신규 생성 없음 |
 | Live-OBS-Platform MASTER (4) | `session_01WVYfLxEbKvL8U1WR3ZcjSh` | (보관, 2026-10-06 인계 완료) 대표님 지시 전달 · 세션 배정·교체·보관 · 상태 문서 관리 · 테스트 서버 배포 실행(2026-10-04 대표님 지시로 검수·병합은 검수 전담에 넘김). 2026-10-06 MASTER (3) `session_01CEyJ4JsJ28uLVRMoFzD2u1`(컨텍스트 55%)에서 교체 |
 | Live-OBS-Platform MASTER (3) | `session_01CEyJ4JsJ28uLVRMoFzD2u1` | (교체됨 → `session_01WVYfLxEbKvL8U1WR3ZcjSh`, 2026-10-06) 대표님 지시 전달 · 세션 배정·교체 · 상태 문서 관리. 컨텍스트 55%로 교체 |
 | 검수 전담 (10) | `session_01RwaCLVjHMTGQwWTR9QDdHW` | (교체됨 → `session_01CsbbusRMeNLAR9C8WCAoPg`, 2026-10-06 14:21 KST, 컨텍스트 65%) 2026-10-06 10:53 KST MASTER 생성(Sonnet 5.5). (9)를 컨텍스트 66%로 교체. 변경 파일 요약부터·CI 묶음 조회 지침. 역할·소유는 전임 행과 같음 |
