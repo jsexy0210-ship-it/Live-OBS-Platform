@@ -59,6 +59,7 @@ test("최고관리자: 안내 문구 없이는 켤 수 없고, 켜면 점검 중
   await expect.poll(async () => (await (await page.request.get("/api/maintenance")).json()).active).toBe(true);
   for (const [width, height] of [[1440, 900], [1024, 900], [390, 844]] as const) {
     await page.setViewportSize({ width, height });
+    await page.reload();
     await expect(page.getByTestId("maintenance-preview")).toBeVisible();
     const formBox = await page.getByTestId("maintenance-form-column").boundingBox();
     const asideBox = await page.getByTestId("maintenance-aside").boundingBox();
