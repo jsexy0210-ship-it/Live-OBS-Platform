@@ -40,6 +40,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/subscription": "BILLING",
   "seller/subscription/card": "BILLING",
   "seller/subscription/cancel": "BILLING",
+  "seller/subscription/payments/export": "BILLING",
   "seller/subscription/plan": "BILLING",
   "seller/subscription/plan/preview": "BILLING",
   "seller/message-balance": "BILLING",
@@ -367,6 +368,7 @@ const SHOP_PAGES: Record<string, "STORE_OPERATIONS" | "OPEN"> = {
   "shop/[slug]/products/[productId]": "STORE_OPERATIONS", // SH-003 상품 상세: shopOpen으로 막고, 막히면 안내 화면
   "shop/[slug]/login": "OPEN", // SH-010 로그인: 잠긴 쇼핑몰에서도 받은 쿠폰·알림 설정에 들어갈 수 있게 연다
   "shop/[slug]/password-reset": "OPEN", // SH-012 비밀번호 찾기: 로그인과 같은 기준(API password-reset/*도 OPEN)
+  "shop/[slug]/me/inquiries": "OPEN", // SH-026 내 문의: 받은 답변은 잠긴 쇼핑몰에서도 본다(API inquiries와 같은 기준)
   "shop/[slug]/me/addresses": "OPEN", // SH-027 배송지 관리: 본인 배송지 조회·정리는 잠긴 쇼핑몰에서도 열림(API addresses와 같은 기준)
   "shop/[slug]/me": "OPEN", // SH-020 내 정보(메뉴 링크만)
   "shop/[slug]/cart": "STORE_OPERATIONS", // SH-004 장바구니: shopOpen으로 막고, 막히면 안내 화면

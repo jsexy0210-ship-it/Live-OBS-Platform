@@ -295,6 +295,9 @@ describe("구매자 가입 HTTP", () => {
       [{ loginId: "a b@example.com" }, "invalid_login_id"],
       [{ loginId: `${"a".repeat(250)}@example.com` }, "invalid_login_id"],
       [{ password: "short" }, "weak_password"],
+      [{ password: "onlyletters" }, "weak_password"], // 영문과 숫자를 섞어야 한다(SH-004 정본)
+      [{ password: "1234567890" }, "weak_password"],
+      [{ password: "가나다라마바사아1" }, "weak_password"], // 한글+숫자는 영문이 없어 약함
       [{ broadcastNickname: "​" }, "invalid_nickname"],
       [{ broadcastNickname: "닉".repeat(21) }, "invalid_nickname"],
     ] as const) {

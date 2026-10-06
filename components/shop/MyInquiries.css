@@ -1,0 +1,182 @@
+/* SH-026 내 문의 */
+.mi-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.mi-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin: 0;
+  border-bottom: 0;
+}
+.mi-tabs button {
+  border: 1px solid var(--wds-line-solid-neutral);
+  border-bottom-width: 1px;
+  margin-left: -1px;
+  padding: 0 8px;
+  text-align: center;
+}
+.mi-tabs button[aria-selected="true"] {
+  border-top: 2px solid var(--brand);
+  background: #fff;
+}
+.mi-tabs {
+  width: 100%;
+}
+.mi-tbl td {
+  vertical-align: top;
+}
+.mi-target {
+  display: block;
+  font-size: 13px;
+  color: var(--wds-label-alternative);
+}
+.mi-title {
+  display: block;
+  font-weight: 600;
+}
+.mi-open {
+  margin-top: 4px;
+}
+.mi-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--wds-background-normal-alternative);
+  font-size: 12px;
+  color: var(--wds-label-alternative);
+  white-space: nowrap;
+}
+.mi-chip.is-done {
+  color: var(--brand);
+}
+.mi-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 12px;
+  border-radius: var(--shop-r);
+  background: var(--wds-background-normal-alternative);
+  font-size: 14px;
+}
+.mi-q,
+.mi-a p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.mi-a {
+  padding-top: 8px;
+  border-top: 1px solid var(--wds-line-solid-neutral);
+}
+.mi-a span {
+  font-size: 12px;
+  color: var(--wds-label-alternative);
+}
+.mi-box {
+  margin-top: 24px;
+  padding: 16px 20px 20px;
+  border: 1px solid var(--wds-line-solid-neutral);
+  border-radius: 16px;
+}
+.mi-box h2 {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+.mi-rows {
+  border-top: 1px solid var(--wds-label-normal);
+}
+.mi-row {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--wds-line-solid-neutral);
+}
+.mi-th {
+  font-size: 14px;
+  font-weight: 700;
+}
+.mi-th i {
+  margin-left: 2px;
+  font-style: normal;
+  color: var(--wds-status-negative);
+}
+.mi-td {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.mi-td .inp,
+.mi-td select,
+.mi-td textarea {
+  width: 100%;
+}
+.mi-radios {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.mi-td .chk {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.mi-err {
+  font-size: 13px;
+  color: var(--wds-status-negative);
+}
+.mi-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+}
+@media (max-width: 767px) {
+  /* 보드 휴대폰도 표(종류 · 내용 · 상태 · 날짜) 그대로: 장바구니 표의 카드형 겹침을 끈다 */
+  .cart-tbl.mi-tbl {
+    display: table;
+  }
+  .cart-tbl.mi-tbl thead {
+    display: table-header-group;
+  }
+  .cart-tbl.mi-tbl tbody {
+    display: table-row-group;
+  }
+  .cart-tbl.mi-tbl tr {
+    display: table-row;
+    padding: 0;
+  }
+  .cart-tbl.mi-tbl th,
+  .cart-tbl.mi-tbl td {
+    display: table-cell;
+    padding: 10px 6px;
+    border-bottom: 1px solid var(--wds-line-solid-neutral);
+    font-size: 13px;
+  }
+  .cart-tbl.mi-tbl th {
+    height: 36px;
+    padding: 0 6px;
+  }
+  .cart-tbl.mi-tbl th:first-child,
+  .cart-tbl.mi-tbl td:first-child {
+    width: 56px;
+  }
+  .cart-tbl.mi-tbl .c-date {
+    width: 44px;
+  }
+  .mi-box {
+    padding: 12px 12px 16px;
+  }
+  .mi-row {
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 8px;
+  }
+}
