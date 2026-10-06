@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
-import { ListHead, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
+import { ListHead, PageHead, SearchBox, SearchRow, useConfirm } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { QuickPrice, QuickStatus, QuickStock, type QuickDone, type QuickUndo } from "../../../../../components/seller/ProductQuick";
 import { categoryLabel, categoryOptions, type CategoryNode } from "../../../../../components/seller/ProductCategoryPicker";
@@ -111,6 +111,7 @@ const optionSummary = (p: Product) => (p.options.length === 0 ? "선택 항목 �
 const isShown = (p: Product) => p.status === "ON_SALE" || p.status === "SOLD_OUT";
 
 export default function ProductListPage() {
+  const { confirm } = useConfirm();
   const { can } = useSeller();
   // 적용한 조건·정렬·개수는 주소(쿼리)가 기준이다. 상세에 갔다 Back으로 돌아와도 그대로 복원된다(IA Back 규칙 3항)
   const [u, setU] = useUrlState(URL_DEFAULTS);
@@ -246,6 +247,7 @@ export default function ProductListPage() {
   const quickFail = (text: string) => setToast(text);
   const bulkStatus = async (status: ProductStatus) => {
     const ids = [...selected];
+    if (!(await confirm({ title: `선택한 상품 ${ids.length}개를 ${STATUS_TO[status] ?? "선택한 상태로"} 바꾸시겠습니까?`, body: "쇼핑몰에 바로 반영됩니다.", confirmLabel: "바꾸기" }))) return;
     const prev = items.filter((p) => selected.has(p.id)).map((p) => ({ id: p.id, status: p.status }));
     setBulkBusy(true);
     const r = await api<BulkResult>("/api/seller/products/bulk", { method: "POST", body: { action: "status", status, productIds: ids } });

@@ -140,6 +140,7 @@ test("선택 일괄 처리: 숨김으로 바꾸고 되돌리고, 선택 삭제�
   await expect(page.getByRole("button", { name: "선택 숨김" })).toBeDisabled();
   for (const n of names) await page.getByLabel(`${n} 선택`).check();
   await page.getByRole("button", { name: "선택 숨김" }).click();
+  await page.getByRole("button", { name: "바꾸기", exact: true }).click();
   await expect(page.getByText("선택한 3개 상품을 숨김으로 바꿨습니다")).toBeVisible();
   await expect(mine.locator("td:nth-child(8)").first()).toHaveText("숨김");
   await expect(mine.filter({ hasText: "숨김" })).toHaveCount(3);
