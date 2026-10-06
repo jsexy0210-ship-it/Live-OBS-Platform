@@ -511,24 +511,83 @@ body {
   color: var(--wds-label-alternative);
 }
 .shop-sort {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 16px;
+  position: relative;
   font-size: 13px;
 }
-.shop-app .shop-sort a {
+/* 보드 SH-002: 「인기순 ▾」 한 칸을 누르면 정렬 목록이 펼쳐진다 */
+.shop-sortmenu summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 4px;
+  list-style: none;
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--wds-label-normal);
+}
+.shop-sortmenu summary::-webkit-details-marker {
+  display: none;
+}
+.shop-sortmenu summary::after {
+  content: "▾";
+  font-size: 11px;
+}
+.shop-sortmenu[open] > div {
+  position: absolute;
+  right: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  padding: 4px 0;
+  background: #fff;
+  border: 1px solid var(--wds-line-solid-neutral);
+  border-radius: var(--shop-r);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 12%);
+}
+.shop-app .shop-sortmenu a {
+  padding: 10px 16px;
   color: var(--wds-label-alternative);
   text-decoration: none;
 }
-.shop-app .shop-sort a[aria-current="page"] {
+.shop-app .shop-sortmenu a[aria-current="page"] {
   color: var(--wds-label-normal);
   font-weight: 700;
 }
 .shop-pager {
   display: flex;
   justify-content: center;
-  gap: 8px;
+  gap: 4px;
   margin-top: 40px;
+}
+.shop-app .shop-pager a,
+.shop-pager .is-off {
+  display: inline-grid;
+  place-items: center;
+  min-width: 36px;
+  height: 36px;
+  border-radius: var(--shop-r);
+  color: var(--wds-label-alternative);
+  text-decoration: none;
+}
+.shop-pager .is-off {
+  opacity: 0.35;
+}
+.shop-app .shop-pager a[aria-current="page"] {
+  background: var(--wds-label-normal);
+  color: #fff;
+  font-weight: 700;
+}
+.shop-listend {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+.shop-listend p {
+  margin: 0;
 }
 .shop-searchbox {
   display: flex;
@@ -1502,4 +1561,195 @@ body {
 }
 .shop-login-opts a {
   font-size: 13px;
+}
+
+/* SH-002 필터: 왼쪽 열(PC) = 카테고리 + 「검색 조건」 패널, 휴대폰 = 「필터」 버튼으로 여는 아래 시트(보드 SH-002-F · SH-002-PC-IA) */
+.shop-side {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 24px;
+  width: 200px;
+}
+.shop-side .shop-sidecat {
+  width: auto;
+}
+.shop-sec-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fl-open {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--wds-label-normal);
+  cursor: pointer;
+}
+.fl-open b {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 11px;
+}
+.fl {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 14px;
+  border-top: 2px solid var(--wds-label-normal);
+}
+.fl-h {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+.fl-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.fl-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.fl-group legend {
+  padding: 0;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.fl-chips-in {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.shop-app .shop-chip {
+  background: transparent;
+  cursor: pointer;
+}
+.shop-app button.shop-chip[aria-pressed="true"] {
+  border-color: var(--brand);
+  color: var(--brand);
+  font-weight: 700;
+}
+.fl-price {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.fl-price .inp {
+  min-width: 0;
+  flex: 1;
+}
+.fl .err {
+  margin: 0;
+  font-size: 13px;
+  color: var(--wds-status-negative);
+}
+.fl .chk {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  font-size: 14px;
+}
+.fl-foot {
+  display: flex;
+  gap: 8px;
+}
+.fl-foot .btn {
+  flex: 1;
+}
+.fl-hint {
+  margin: 0;
+  font-size: 13px;
+  text-align: center;
+  color: var(--wds-label-alternative);
+}
+.fl-m-only {
+  display: none;
+}
+.fl-head {
+  align-items: center;
+  justify-content: space-between;
+}
+.fl-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.fl-bg {
+  display: none;
+}
+/* 적용한 조건 칩 */
+.fl-applied {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 0 0 16px;
+}
+.shop-app .fl-clear {
+  margin-left: 4px;
+  font-size: 13px;
+  color: var(--wds-label-alternative);
+}
+.shop-empty .btn {
+  margin-top: 12px;
+}
+
+@media (max-width: 767px) {
+  .shop-side {
+    display: contents;
+  }
+  .fl-pc-only {
+    display: none;
+  }
+  .fl-m-only {
+    display: flex;
+  }
+  .fl-open {
+    display: inline-flex;
+  }
+  .fl-wrap .fl {
+    display: none;
+  }
+  .fl-wrap.is-open .fl {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 60;
+    display: flex;
+    max-height: 85vh;
+    padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+    overflow-y: auto;
+    border-top: 0;
+    border-radius: 16px 16px 0 0;
+    background: #fff;
+    box-shadow: 0 -4px 24px rgb(0 0 0 / 16%);
+  }
+  .fl-wrap.is-open .fl-bg {
+    position: fixed;
+    inset: 0;
+    z-index: 59;
+    display: block;
+    background: rgb(0 0 0 / 40%);
+  }
 }

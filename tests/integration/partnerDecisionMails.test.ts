@@ -23,7 +23,7 @@ const BASE = "http://localhost:3000";
 const H = { host: "localhost:3000", origin: BASE };
 const NOW = new Date("2026-10-06T03:00:00Z");
 const ago = (ms: number) => new Date(NOW.getTime() - ms);
-const FULL = { name: "온큐 주식회사", representative: "박플랫폼", businessNumber: "123-45-67890", address: "서울 중구 세종대로 1", phone: "1588-0000" };
+const FULL = { name: "온큐 주식회사", representative: "박플랫폼", businessNumber: "123-45-67890", mailOrderNumber: "2026-서울중구-0001", address: "서울 중구 세종대로 1", phone: "1588-0000", email: "help@onq.example" };
 
 async function platform(over: Record<string, string> = {}) {
   await db.platformBusinessInfo.upsert({ where: { id: 1 }, create: { id: 1, ...FULL, ...over }, update: { ...FULL, ...over } });
@@ -173,7 +173,8 @@ describe("플랫폼 사업자 정보 설정(마스터 관리자)", () => {
 
     const partial = await put(root, { name: FULL.name, representative: FULL.representative });
     expect(partial).toMatchObject({ status: 200, body: { changed: ["name", "representative"], info: { complete: false } } });
-    const full = await put(root, { businessNumber: FULL.businessNumber, address: FULL.address, phone: FULL.phone });
+    expect((await put(root, { email: "not-an-email" })).body).toMatchObject({ error: "invalid_field", field: "email" });
+    const full = await put(root, { businessNumber: FULL.businessNumber, mailOrderNumber: FULL.mailOrderNumber, address: FULL.address, phone: FULL.phone, email: FULL.email });
     expect(full.body.info).toMatchObject({ ...FULL, complete: true });
     expect((await get(cs)).body).toMatchObject({ ...FULL, complete: true });
     // 같은 값을 다시 보내면 바뀐 칸 없음·로그 없음, 빈 값으로 비울 수 있다

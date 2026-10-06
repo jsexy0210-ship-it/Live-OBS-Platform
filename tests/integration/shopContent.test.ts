@@ -9,6 +9,8 @@ import { GET as bannersGet, POST as bannersPost } from "../../app/api/seller/sho
 import { GET as sellerImageGet } from "../../app/api/seller/shop-content/images/[imageId]/route";
 import { POST as imagePost } from "../../app/api/seller/shop-content/images/route";
 import { PUT as popupPut } from "../../app/api/seller/shop-content/popups/[popupId]/route";
+import { PUT as popupsPause } from "../../app/api/seller/shop-content/popups/pause/route";
+import { POST as popupEventPost } from "../../app/api/shop/[slug]/shop-content/popups/[popupId]/events/route";
 import { PUT as popupReorder } from "../../app/api/seller/shop-content/popups/reorder/route";
 import { GET as popupsGet, POST as popupsPost } from "../../app/api/seller/shop-content/popups/route";
 import { GET as publicImageGet } from "../../app/api/shop/[slug]/shop-content/images/[imageId]/route";
@@ -17,12 +19,16 @@ import { loginSeller } from "../../lib/server/auth/login";
 import { prisma } from "../../lib/server/db";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { UNUSED_IMAGE_LIMIT } from "../../lib/server/shop-content/image";
+import { POPUP_EVENT_BUDGET, resetPopupEventLimiter } from "../../lib/server/shop-content/popupEventLimit";
 import { visibleShopContent } from "../../lib/server/shop-content/service";
 import { jpeg, png, svg, svgInPng } from "../unit/shopContentFixtures";
 import { PASSWORD, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
 // SA-064 홈 배너·SA-065 이벤트 팝업(2026-10-04 대표님 지시): 권한·테넌트 격리·플랜 권한·기간(DB 시계)·링크·이미지(PNG만)·형태·감사 로그.
-beforeEach(resetDb);
+beforeEach(async () => {
+  resetPopupEventLimiter();
+  await resetDb();
+});
 afterAll(async () => {
   await db.$disconnect();
   await prisma.$disconnect();
@@ -409,5 +415,115 @@ describe("순서", () => {
     const over = await banner(s.owner);
     expect(over.res.status).toBe(409);
     expect(over.body.error).toBe("too_many");
+  });
+});
+
+describe("이벤트 팝업 확장(SA-065)", () => {
+  type PublicPopup = { id: string; position: string };
+  const pub = async (slug: string, page: string) => ((await publicContent(slug, page)).body!.popups as PublicPopup[]).map((x) => x.id);
+  const event = (slug: string, id: string, type: unknown) => popupEventPost(json(`/x`, "POST", "", { type }), p({ slug, popupId: id }));
+
+  it("위치·노출 페이지 5종: 저장하고, 페이지별로 해당 target과 ALL만 구매자에게 나간다. 값 오류는 400", async () => {
+    const s = await shop();
+    const ids: Record<string, string> = {};
+    for (const [target, position] of [["HOME", "CENTER"], ["PRODUCT", "BOTTOM_SHEET"], ["CART_ORDER", "BOTTOM_RIGHT"], ["SIGNUP_DONE", "CENTER"], ["ALL", "BOTTOM_RIGHT"]] as const) {
+      const r = await popup(s.owner, { target, position });
+      expect(r.res.status, target).toBe(201);
+      ids[target] = r.body.popup!.id;
+    }
+    const list = (await (await popupsGet(get("/x", s.owner))).json()) as { popups: { id: string; target: string; position: string }[] };
+    expect(list.popups.map((x) => [x.target, x.position])).toEqual([["HOME", "CENTER"], ["PRODUCT", "BOTTOM_SHEET"], ["CART_ORDER", "BOTTOM_RIGHT"], ["SIGNUP_DONE", "CENTER"], ["ALL", "BOTTOM_RIGHT"]]);
+    expect(await pub(s.seller.slug, "home")).toEqual([ids.HOME, ids.ALL]);
+    expect(await pub(s.seller.slug, "product")).toEqual([ids.PRODUCT, ids.ALL]);
+    expect(await pub(s.seller.slug, "cart_order")).toEqual([ids.CART_ORDER, ids.ALL]);
+    expect(await pub(s.seller.slug, "signup_done")).toEqual([ids.SIGNUP_DONE, ids.ALL]);
+    expect(await pub(s.seller.slug, "other")).toEqual([ids.ALL]);
+    expect(await pub(s.seller.slug, "nonsense")).toEqual([ids.ALL]);
+    expect(((await publicContent(s.seller.slug, "product")).body!.popups as PublicPopup[])[0].position).toBe("BOTTOM_SHEET");
+    for (const bad of [{ target: "CART" }, { position: "TOP" }]) {
+      const r = await popup(s.owner, bad);
+      expect(r.res.status).toBe(400);
+    }
+    // 상단 띠는 위치를 쓰지 않는다
+    const bar = await popup(s.owner, { kind: "BAR", title: "공지", position: "BOTTOM_RIGHT" });
+    expect(((await (await popupsGet(get("/x", s.owner))).json()) as { popups: { id: string; position: string }[] }).popups.find((x) => x.id === bar.body.popup!.id)!.position).toBe("CENTER");
+  });
+
+  it("방송 중 미표시: 방송이 LIVE인 동안만 해당 팝업을 뺀다", async () => {
+    const s = await shop();
+    const keep = (await popup(s.owner)).body.popup!.id;
+    const hide = (await popup(s.owner, { hideDuringLive: true })).body.popup!.id;
+    expect(await pub(s.seller.slug, "home")).toEqual([keep, hide]);
+    const b = await db.broadcastSession.create({ data: { sellerId: s.seller.id, status: "LIVE" } });
+    expect(await pub(s.seller.slug, "home")).toEqual([keep]);
+    await db.broadcastSession.update({ where: { id: b.id }, data: { status: "ENDED", endedAt: new Date() } });
+    expect(await pub(s.seller.slug, "home")).toEqual([keep, hide]);
+  });
+
+  it("방송 시작 시각에 맞춰 자동 종료: 만든 뒤 방송이 시작되면 종료 상태가 되고 구매자에게서 빠진다. 그 전에 시작한 방송은 영향 없음", async () => {
+    const s = await shop();
+    await db.broadcastSession.create({ data: { sellerId: s.seller.id, status: "ENDED", startedAt: new Date(Date.now() - 60 * MIN), endedAt: new Date(Date.now() - 30 * MIN) } });
+    const auto = (await popup(s.owner, { endsAtBroadcastStart: true })).body.popup!.id;
+    const keep = (await popup(s.owner)).body.popup!.id;
+    expect(await pub(s.seller.slug, "home")).toEqual([auto, keep]);
+    await db.broadcastSession.create({ data: { sellerId: s.seller.id, status: "LIVE" } });
+    expect(await pub(s.seller.slug, "home")).toEqual([keep]);
+    const list = (await (await popupsGet(get("/x", s.owner))).json()) as { popups: { id: string; status: string }[] };
+    expect(list.popups.map((x) => [x.id, x.status])).toEqual([[auto, "ended"], [keep, "live"]]);
+  });
+
+  it("모든 팝업 잠시 끄기: 구매자 응답이 비고, 끈 시각·직원이 나오며, 다시 켜면 돌아오고, 권한 없는 직원은 403, 바뀔 때만 로그 추적에 남는다", async () => {
+    const s = await shop();
+    const id = (await popup(s.owner)).body.popup!.id;
+    const state = async () => (await (await popupsGet(get("/x", s.owner))).json()) as { popupsPaused: boolean; pausedAt: string | null; pausedByName: string | null };
+    expect(await state()).toMatchObject({ popupsPaused: false, pausedAt: null, pausedByName: null });
+    expect((await popupsPause(json("/x", "PUT", s.noPerm, { paused: true }))).status).toBe(403);
+    expect((await popupsPause(json("/x", "PUT", s.owner, { paused: "yes" }))).status).toBe(400);
+    const r = await popupsPause(json("/x", "PUT", s.staff, { paused: true }));
+    expect(r.status).toBe(200);
+    const after = await state();
+    expect(after.popupsPaused).toBe(true);
+    expect(after.pausedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(after.pausedByName).toBeTruthy();
+    expect(await pub(s.seller.slug, "home")).toEqual([]);
+    expect((await popupsPause(json("/x", "PUT", s.staff, { paused: true }))).status).toBe(200); // 멱등
+    expect((await popupsPause(json("/x", "PUT", s.owner, { paused: false }))).status).toBe(200);
+    expect(await state()).toMatchObject({ popupsPaused: false, pausedAt: null, pausedByName: null });
+    expect(await pub(s.seller.slug, "home")).toEqual([id]);
+    expect(await db.auditLog.count({ where: { action: "shop.popups.pause", sellerId: s.seller.id } })).toBe(1);
+    expect(await db.auditLog.count({ where: { action: "shop.popups.resume", sellerId: s.seller.id } })).toBe(1);
+  });
+
+  it("노출·반응 집계: 구매자 화면이 보낸 건을 일 단위로 합산해 목록에 stats·closeRate로 준다. 없거나 숨긴 팝업·다른 쇼핑몰은 404, 형식 오류는 400", async () => {
+    const s = await shop();
+    const other = await shop();
+    const id = (await popup(s.owner)).body.popup!.id;
+    const hidden = (await popup(s.owner, { isActive: false })).body.popup!.id;
+    const stats = async () => ((await (await popupsGet(get("/x", s.owner))).json()) as { popups: { id: string; stats: unknown; closeRate: number | null }[] }).popups.find((x) => x.id === id)!;
+    expect(await stats()).toMatchObject({ stats: { impressions: 0, closes: 0, clicks: 0 }, closeRate: null });
+    for (const t of ["impression", "impression", "impression", "impression", "close", "close", "close", "click"]) expect((await event(s.seller.slug, id, t)).status).toBe(204);
+    expect(await stats()).toMatchObject({ stats: { impressions: 4, closes: 3, clicks: 1 }, closeRate: 75 });
+    expect(await db.shopPopupStat.count({ where: { popupId: id } })).toBe(1);
+    expect((await event(s.seller.slug, id, "view")).status).toBe(400);
+    expect((await event(s.seller.slug, hidden, "impression")).status).toBe(404);
+    expect((await event(other.seller.slug, id, "impression")).status).toBe(404);
+    expect((await event(s.seller.slug, "not-a-uuid", "impression")).status).toBe(404);
+    // 팝업을 지우면 집계도 함께 지운다
+    await db.shopPopup.delete({ where: { id } });
+    expect(await db.shopPopupStat.count()).toBe(0);
+  });
+
+  it("집계 과다 호출 제한: 같은 접속이 같은 팝업·종류를 한도 넘게 보내면 429이고 세지 않으며, 다른 종류·다른 팝업은 따로 센다", async () => {
+    const s = await shop();
+    const a = (await popup(s.owner)).body.popup!.id;
+    const b = (await popup(s.owner)).body.popup!.id;
+    for (let i = 0; i < POPUP_EVENT_BUDGET; i++) expect((await event(s.seller.slug, a, "impression")).status).toBe(204);
+    const over = await event(s.seller.slug, a, "impression");
+    expect(over.status).toBe(429);
+    expect(await over.json()).toEqual({ error: "too_many_requests" });
+    expect((await event(s.seller.slug, a, "close")).status).toBe(204);
+    expect((await event(s.seller.slug, b, "impression")).status).toBe(204);
+    const row = await db.shopPopupStat.findFirstOrThrow({ where: { popupId: a } });
+    expect(row).toMatchObject({ impressions: POPUP_EVENT_BUDGET, closes: 1 });
   });
 });

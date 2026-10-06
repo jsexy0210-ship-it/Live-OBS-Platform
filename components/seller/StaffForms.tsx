@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { cleanText, textLength } from "../../lib/server/text/clean";
+import { useConfirm } from "../admin-ui/ConfirmDialog";
 import { api, failMessage } from "./api";
 
 // SA-100 직원 계정(대표자 전용)에서 쓰는 권한 고르기·수정·비밀번호 재설정·비활성화 창.
@@ -19,22 +20,22 @@ export type StaffPerm =
   | "SHOP_SETTINGS";
 
 export const PERMS: { key: StaffPerm; label: string; desc: string }[] = [
-  { key: "BROADCAST_RUN", label: "방송 진행", desc: "주문대기 · 개봉" },
-  { key: "OVERLAY_EDIT", label: "오버레이 편집", desc: "오버레이 설정 · URL" },
+  { key: "BROADCAST_RUN", label: "방송 진행", desc: "주문 대기와 개봉" },
+  { key: "OVERLAY_EDIT", label: "방송 화면 꾸미기", desc: "방송 화면 설정과 주소" },
   { key: "PRODUCT_MANAGE", label: "상품", desc: "등록 · 재고 · 카테고리" },
   { key: "ORDER_SHIPPING", label: "주문·배송", desc: "주문 처리 · 입금 확인 · 송장" },
-  { key: "CUSTOMER_PII_VIEW", label: "고객 정보 보기", desc: "고객 이름·연락처·주소를 볼 수 있습니다" },
+  { key: "CUSTOMER_PII_VIEW", label: "고객 개인정보 보기", desc: "고객 이름·연락처·주소를 볼 수 있습니다" },
   { key: "MEMBER_POINTS", label: "회원·적립금", desc: "회원 · 구매 제한 · 적립금" },
   { key: "INQUIRY_REPLY", label: "문의 답변", desc: "구매자 문의" },
   { key: "RECEIPT_TAX", label: "영수증·세금계산서", desc: "발행 · 재발행" },
   { key: "SALES_VIEW", label: "매출 보기", desc: "홈 매출 · 정산 금액" },
   { key: "SHOP_SETTINGS", label: "쇼핑몰 설정", desc: "쇼핑몰 · 배송비 · 법정 고지 · 알림" },
 ];
-const OWNER_ONLY = ["결제(PG) 연결", "구독 · 결제", "직원 관리", "적립금 실지급"];
+const OWNER_ONLY = ["카드 결제 연결", "구독 · 결제", "직원 관리", "적립금 실제 지급"];
 // 묶음: 누른 뒤 개별로 고칠 수 있다. 「운영 전체」에 고객 정보 보기는 넣지 않는다(개인정보는 꼭 필요한 직원에게만 대표자가 따로 켬, MASTER 결정 2026-10-04)
 const BUNDLES: { label: string; perms: StaffPerm[] }[] = [
-  { label: "방송만", perms: ["BROADCAST_RUN", "OVERLAY_EDIT"] },
-  { label: "운영 전체", perms: PERMS.map((p) => p.key).filter((k) => k !== "CUSTOMER_PII_VIEW") },
+  { label: "방송 업무만", perms: ["BROADCAST_RUN", "OVERLAY_EDIT"] },
+  { label: "모든 운영 업무", perms: PERMS.map((p) => p.key).filter((k) => k !== "CUSTOMER_PII_VIEW") },
 ];
 
 export type Staff = {
@@ -96,15 +97,15 @@ export function PermissionPicker({ value, onChange, disabled }: { value: StaffPe
   const toggle = (k: StaffPerm) => onChange(value.includes(k) ? value.filter((x) => x !== k) : [...value, k]);
   return (
     <fieldset className="col staff-perms" disabled={disabled}>
-      <legend className="lbl">권한</legend>
+      <legend className="lbl">허용할 업무</legend>
       <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <span className="t-c1 c-alt">묶음</span>
+        <span className="t-c1 c-alt">한 번에 고르기</span>
         {BUNDLES.map((b) => (
           <button key={b.label} className="btn btn-sm btn-out" type="button" onClick={() => onChange(b.perms)}>
             {b.label}
           </button>
         ))}
-        <span className="t-c1 c-alt">선택 후 항목별로 수정할 수 있습니다</span>
+        <span className="t-c1 c-alt">고른 뒤 업무별로 바꿀 수 있습니다</span>
       </div>
       <div className="col">
         {PERMS.map((p) => (
@@ -120,7 +121,7 @@ export function PermissionPicker({ value, onChange, disabled }: { value: StaffPe
           <div key={label} className="row between staff-perm is-owner-only">
             <span className="col" style={{ gap: 1 }}>
               <span className="t-l1 fw6">{label}</span>
-              <span className="t-c1 c-alt">대표자 전용</span>
+              <span className="t-c1 c-alt">대표자만 할 수 있습니다</span>
             </span>
             <input className="cbx" type="checkbox" disabled aria-label={`${label} · 대표자만`} />
           </div>
@@ -175,7 +176,7 @@ export async function settleByList<T>(judge: (list: Staff[]) => T): Promise<T | 
 
 // 결과가 불분명한 동안 보여 주는 안내: 「확인」(목록을 다시 읽음)과 「재전송」(보낸 값 그대로 다시 보냄)만 누를 수 있다.
 // 「없음」으로 읽혀도 실패로 확정하지 않는다: 첫 요청이 아직 서버에서 처리 중일 수 있기 때문(확실한 성공 증거가 있을 때만 푼다)
-export function UnclearBox({ testId, title, text, busy, onCheck, onResend, resendLabel, extra }: { testId: string; title: string; text: string; busy: boolean; onCheck?: () => void; onResend: () => void; resendLabel: string; extra?: React.ReactNode }) {
+export function UnclearBox({ testId, title, text, busy, onCheck, onResend, resendLabel, extra, checkLabel = "결과 확인하기" }: { testId: string; title: string; text: string; busy: boolean; onCheck?: () => void; onResend: () => void; resendLabel: string; extra?: React.ReactNode; checkLabel?: string }) {
   return (
     <div className="msg msg-cau" role="alert" style={{ display: "block" }} data-testid={testId}>
       <span>
@@ -184,7 +185,7 @@ export function UnclearBox({ testId, title, text, busy, onCheck, onResend, resen
       <span className="row" style={{ gap: 6, marginTop: 8, flexWrap: "wrap" }}>
         {onCheck && (
           <button className="btn btn-sm" type="button" disabled={busy} onClick={onCheck}>
-            확인
+            {checkLabel}
           </button>
         )}
         <button className={`btn btn-sm${onCheck ? " btn-out" : ""}`} type="button" disabled={busy} onClick={onResend}>
@@ -264,12 +265,27 @@ export function EditStaffModal({ staff, onClose, onSaved, onChanged, onApply }: 
     onSaved(savedText(sent));
   };
 
-  const save = (e: React.FormEvent) => {
+  const { confirm } = useConfirm();
+  const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (locked) return;
     const nameError = staffNameError(name);
     if (nameError) return setError(nameError);
     if (nextPhone !== null && !phoneOk(phone)) return setPhoneError("01로 시작하는 휴대폰 번호를 숫자로 입력해 주십시오");
+    const label = (k: StaffPerm) => PERMS.find((p) => p.key === k)?.label ?? k;
+    const added = perms.filter((k) => !staff.permissions.includes(k)).map(label);
+    const removed = staff.permissions.filter((k) => !perms.includes(k)).map(label);
+    const parts = [
+      added.length > 0 && `새로 허용: ${added.join(", ")}`,
+      removed.length > 0 && `허용 해제: ${removed.join(", ")}`,
+      phoneChanged && staff.identityLinked && "휴대폰 번호를 바꾸면 직원이 본인 확인을 다시 해야 합니다",
+    ].filter(Boolean);
+    const ok = await confirm({
+      title: `${staff.name} 직원 정보를 바꾸시겠습니까?`,
+      body: `${parts.length > 0 ? `${parts.join(". ")}. ` : ""}바로 적용됩니다`,
+      confirmLabel: "변경 내용 저장",
+    });
+    if (!ok) return;
     void send({ name: normStaffName(name), phone: nextPhone, perms, profile: profileChanged, permissions: permsChanged }, { name: name.trim() });
   };
 
@@ -277,7 +293,7 @@ export function EditStaffModal({ staff, onClose, onSaved, onChanged, onApply }: 
   const close = () => (unclear ? onSaved("이전 저장 요청이 처리되었을 수 있습니다 · 목록에서 정보와 권한을 확인해 주십시오") : onClose());
 
   return (
-    <Dialog title={`${staff.name} 정보 · 권한 수정`} labelId="staff-edit-title" busy={busy} onClose={close} wide>
+    <Dialog title={`${staff.name} 정보·업무 수정`} labelId="staff-edit-title" busy={busy} onClose={close} wide>
       <form className="col" style={{ gap: 14 }} onSubmit={save} noValidate>
         <p className="t-b2 c-neu" style={{ margin: 0 }}>
           {staff.email}
@@ -289,8 +305,9 @@ export function EditStaffModal({ staff, onClose, onSaved, onChanged, onApply }: 
             text={unclear.text}
             busy={busy}
             onCheck={() => void check(unclear.sent)}
+            checkLabel="저장 결과 확인하기"
             onResend={() => void send(unclear.sent, { name: name.trim() })}
-            resendLabel="같은 값으로 재저장"
+            resendLabel="같은 내용으로 다시 저장"
           />
         ) : (
           error && (
@@ -333,21 +350,21 @@ export function EditStaffModal({ staff, onClose, onSaved, onChanged, onApply }: 
           </div>
         ) : (
           <span className="t-c1 c-alt">
-            {staff.phone === null ? "예전에 만든 직원은 비어 있습니다 · 입력하면 직원이 다음 로그인 때 휴대폰 본인확인으로 계정을 연결합니다" : "직원이 아이디 · 비밀번호를 찾을 때 본인확인에 사용합니다"}
+            {staff.phone === null ? "예전에 만든 직원은 비어 있습니다 · 입력하면 직원이 다음 로그인 때 휴대폰 본인확인으로 계정을 연결합니다" : "직원이 아이디나 비밀번호를 찾을 때 본인 확인에 씁니다"}
           </span>
         )}
         <div className="row between staff-link">
-          <span className="t-l1">계정 연결</span>
-          <span className={`bdg ${staff.identityLinked && !phoneChanged ? "b-done" : "b-cancel"}`}>{staff.identityLinked && !phoneChanged ? "연결됨" : "본인확인 전"}</span>
+          <span className="t-l1">휴대폰 확인</span>
+          <span className={`bdg ${staff.identityLinked && !phoneChanged ? "b-done" : "b-cancel"}`}>{staff.identityLinked && !phoneChanged ? "휴대폰 확인 완료" : "휴대폰 확인 전"}</span>
         </div>
         <PermissionPicker value={perms} onChange={setPerms} disabled={locked} />
-        <span className="t-c1 c-alt">저장하면 즉시 적용됩니다 · 직원이 로그인 중이면 다음 화면부터 반영됩니다 · 변경 기록은 로그 추적에 남습니다</span>
+        <span className="t-c1 c-alt">저장하면 바로 적용됩니다. 직원이 로그인 중이면 다음 화면부터 바뀝니다. 바뀐 내용은 로그 추적에 남습니다</span>
         <div className="modal-f">
           <button className="btn btn-out" type="button" onClick={close} disabled={busy}>
             {unclear ? "닫기" : "취소"}
           </button>
           <button className={`btn${busy ? " is-loading" : ""}`} type="submit" disabled={locked || (!profileChanged && !permsChanged)}>
-            {busy ? "저장 중" : "저장"}
+            {busy ? "저장 중" : "변경 내용 저장"}
           </button>
         </div>
       </form>
@@ -372,17 +389,17 @@ export function ResetPasswordModal({ staff, onClose, onDone }: { staff: Staff; o
     const r = await api(`/api/seller/staff/${staff.id}/password`, { method: "POST", body: { newPassword: pw } });
     setBusy(false);
     if (r.ok) return onDone(`${staff.name} 비밀번호를 변경했습니다 · 직원에게 직접 전달해 주십시오`);
-    if (isUnclear(r)) return setUnclear("결과를 확인하지 못했습니다. 같은 비밀번호로 재전송해 주십시오");
-    if (unclear) return setUnclear(staffFail(r, "재전송하지 못했습니다. 잠시 후 다시 재전송해 주십시오"));
+    if (isUnclear(r)) return setUnclear("결과를 확인하지 못했습니다. 같은 비밀번호로 다시 보내 주십시오");
+    if (unclear) return setUnclear(staffFail(r, "재전송하지 못했습니다. 잠시 후 다시 보내 주십시오"));
     setError(staffFail(r, "변경하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
   };
 
-  const close = () => (unclear ? onDone(`이전 비밀번호 재설정 요청이 처리되었을 수 있습니다 · ${staff.name} 로그인이 되지 않으면 입력한 비밀번호를 전달해 주십시오`) : onClose());
+  const close = () => (unclear ? onDone(`이전 비밀번호 변경 요청이 처리되었을 수 있습니다 · ${staff.name} 로그인이 되지 않으면 입력한 비밀번호를 전달해 주십시오`) : onClose());
 
   return (
-    <Dialog title={`${staff.name} 비밀번호를 재설정하시겠습니까?`} labelId="staff-pw-title" busy={busy} onClose={close}>
+    <Dialog title={`${staff.name} 비밀번호를 바꾸시겠습니까?`} labelId="staff-pw-title" busy={busy} onClose={close}>
       <form className="col" style={{ gap: 14 }} onSubmit={submit} noValidate>
-        {unclear && <UnclearBox testId="sp-unclear" title="비밀번호가 변경되었을 수 있습니다." text={unclear} busy={busy} onResend={() => void submit()} resendLabel="같은 비밀번호로 재전송" />}
+        {unclear && <UnclearBox testId="sp-unclear" title="비밀번호가 변경되었을 수 있습니다." text={unclear} busy={busy} onResend={() => void submit()} resendLabel="같은 비밀번호로 다시 보내기" />}
         <div className="fld">
           <label htmlFor="sp-new">새 비밀번호</label>
           <SecretInput
@@ -414,7 +431,7 @@ export function ResetPasswordModal({ staff, onClose, onDone }: { staff: Staff; o
             {unclear ? "닫기" : "취소"}
           </button>
           <button className={`btn${busy ? " is-loading" : ""}`} type="submit" disabled={busy || unclear !== null || pw === ""}>
-            {busy ? "변경 중" : "재설정"}
+            {busy ? "변경 중" : "새 비밀번호로 바꾸기"}
           </button>
         </div>
       </form>
@@ -428,7 +445,7 @@ export function DisableStaffModal({ staff, onClose, onDone, onChanged, onApply }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [unclear, setUnclear] = useState<string | null>(null);
-  const doneText = `${staff.name} 계정을 비활성화했습니다`;
+  const doneText = `${staff.name} 계정을 사용 중지했습니다`;
 
   const check = async () => {
     setBusy(true);
@@ -453,18 +470,18 @@ export function DisableStaffModal({ staff, onClose, onDone, onChanged, onApply }
     if (isUnclear(r)) return check();
     setBusy(false);
     if (unclear) return setUnclear(failMessage(r, "admin", "재전송하지 못했습니다. 잠시 후 「확인」을 눌러 주십시오"));
-    setError(failMessage(r, "admin", "비활성화하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
+    setError(failMessage(r, "admin", "사용 중지하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
   };
 
-  const close = () => (unclear ? onDone("이전 비활성화 요청이 처리되었을 수 있습니다 · 목록에서 상태를 확인해 주십시오") : onClose());
+  const close = () => (unclear ? onDone("이전 사용 중지 요청이 처리되었을 수 있습니다 · 목록에서 상태를 확인해 주십시오") : onClose());
 
   return (
-    <Dialog title={`${staff.name} 계정을 비활성화하시겠습니까?`} labelId="staff-disable-title" busy={busy} onClose={close}>
+    <Dialog title={`${staff.name} 계정을 사용 중지하시겠습니까?`} labelId="staff-disable-title" busy={busy} onClose={close}>
       <p className="t-b2 c-neu" style={{ margin: 0 }}>
-        즉시 로그아웃되며 다시 로그인할 수 없습니다. 처리 기록은 로그 추적에 남습니다.
+        바로 로그아웃되고 다시 로그인할 수 없습니다. 처리 내용은 로그 추적에 남습니다.
       </p>
       {unclear ? (
-        <UnclearBox testId="sd-unclear" title="비활성화되었을 수 있습니다." text={unclear} busy={busy} onCheck={() => void check()} onResend={() => void submit()} resendLabel="재전송" />
+        <UnclearBox testId="sd-unclear" title="사용 중지되었을 수 있습니다." text={unclear} busy={busy} onCheck={() => void check()} onResend={() => void submit()} resendLabel="다시 보내기" />
       ) : (
         error && (
           <div className="msg msg-neg" role="alert">
@@ -477,7 +494,7 @@ export function DisableStaffModal({ staff, onClose, onDone, onChanged, onApply }
           {unclear ? "닫기" : "취소"}
         </button>
         <button className={`btn btn-neg${busy ? " is-loading" : ""}`} type="button" onClick={() => void submit()} disabled={busy || unclear !== null}>
-          {busy ? "비활성화 중" : "비활성화"}
+          {busy ? "사용 중지 중" : "직원 계정 사용 중지"}
         </button>
       </div>
     </Dialog>
