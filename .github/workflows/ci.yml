@@ -129,7 +129,7 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql://live_obs:live_obs@localhost:5432/live_obs_test
-      SMOKE_SPECS: admin-shell layout-admin-login login-tabs partners-auth admin-dashboard public-notices seller-deposits seller-products seller-members seller-reviews-title seller-stats seller-broadcast seller-shop-legal shop-content shop-detail-board admin-ops
+      SMOKE_SPECS: admin-shell layout-admin-login login-tabs partners-auth admin-dashboard public-notices public-info seller-deposits seller-products seller-members seller-reviews-title seller-stats seller-broadcast seller-shop-legal shop-content shop-detail-board admin-ops
       # 방송·채팅 스모크는 실제 YouTube 호출 없이 임의 키와 스케줄러 중지로 실행한다.
       YOUTUBE_API_KEY: e2e-dummy
     steps:
