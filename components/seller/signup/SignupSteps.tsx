@@ -133,6 +133,7 @@ export function VerifyStep() {
         <IdentityCheck
           key={again}
           tone="public"
+          saveKey="onq-partners-signup-identity-v1"
           label="대표자 휴대폰 본인확인"
           base={BASE}
           blocked={!(agreedTerms && agreedPrivacy)}
@@ -303,6 +304,13 @@ export function BusinessStep() {
     });
     setBusy(false);
     if (r.ok) {
+      // 신청을 마쳤으면 본인확인 기록·입력한 본인 정보는 이 탭에서 지운다
+      try {
+        sessionStorage.removeItem("onq-partners-signup-identity-v1");
+      } catch {
+        // 지우지 못해도 신청은 끝났다
+      }
+      setVerification(null);
       setDone(r.data);
       router.replace(SIGNUP_PATHS[4]);
       return;
