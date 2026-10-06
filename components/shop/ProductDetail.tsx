@@ -54,7 +54,7 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
   const [restock, setRestock] = useState(false); // 재입고 알림을 신청했는지(상품이 품절일 때만 쓴다)
   const [busy, setBusy] = useState(false);
   const [needLogin, setNeedLogin] = useState(false);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string; cart?: boolean } | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string; cart?: boolean; undo?: () => Promise<void> } | null>(null);
 
   const option = p.options.find((o) => o.id === optionId);
   const unit = option ? (option.salePrice ?? option.price) : (p.salePrice ?? p.price);
@@ -106,7 +106,7 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
   }
 
   async function addToCart() {
-    const r = await call<{ item: { id: string }; count: number }>(`${api}/cart`, { method: "POST", body: { optionId, quantity: qty } });
+    const r = await call<{ item: { id: string; quantity: number }; count: number }>(`${api}/cart`, { method: "POST", body: { optionId, quantity: qty } });
     if (r.ok) window.dispatchEvent(new CustomEvent(CART_COUNT_EVENT, { detail: r.data.count }));
     return r;
   }
@@ -116,8 +116,19 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
     setBusy(true);
     setMsg(null);
     const r = await addToCart();
-    setMsg(r.ok ? { ok: true, text: "장바구니에 담았어요", cart: true } : { ok: false, text: r.message ?? "담지 못했어요. 잠시 뒤 다시 해 주세요" });
+    setMsg(r.ok ? { ok: true, text: "장바구니에 담았어요", cart: true, undo: undoCart(r.data.item.id, r.data.item.quantity - qty) } : { ok: false, text: r.message ?? "담지 못했어요. 잠시 뒤 다시 해 주세요" });
     setBusy(false);
+  }
+  // 되돌리기: 새로 생긴 줄이면 지우고, 이미 있던 줄에 더한 것이면 이전 수량으로 돌린다
+  function undoCart(itemId: string, prevQty: number) {
+    return async () => {
+      setBusy(true);
+      const r = prevQty > 0 ? await call(`${api}/cart/${itemId}`, { method: "PATCH", body: { quantity: prevQty } }) : await call(`${api}/cart/${itemId}`, { method: "DELETE" });
+      const count = await call<{ count: number }>(`${api}/cart/count`);
+      if (count.ok) window.dispatchEvent(new CustomEvent(CART_COUNT_EVENT, { detail: count.data.count }));
+      setMsg(r.ok || r.status === 404 ? { ok: true, text: "담기를 되돌렸어요" } : { ok: false, text: r.message ?? "되돌리지 못했어요. 장바구니에서 직접 빼 주세요" });
+      setBusy(false);
+    };
   }
   async function onBuy() {
     if (busy || out) return;
@@ -135,9 +146,23 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
     setBusy(true);
     setMsg(null);
     const r = wished ? await call(`${api}/wishlist/${p.id}`, { method: "DELETE" }) : await call(`${api}/wishlist`, { method: "POST", body: { productId: p.id } });
-    if (r.ok || (wished && r.status === 404)) setWished(!wished);
-    else setMsg({ ok: false, text: r.message ?? "찜하지 못했어요. 잠시 뒤 다시 해 주세요" });
+    if (r.ok || (wished && r.status === 404)) {
+      setWished(!wished);
+      setMsg({ ok: true, text: wished ? "찜에서 뺐어요" : "찜했어요", undo: undoWish(!wished) });
+    } else setMsg({ ok: false, text: r.message ?? "찜하지 못했어요. 잠시 뒤 다시 해 주세요" });
     setBusy(false);
+  }
+  // 되돌리기: 찜했으면 빼고, 뺐으면 다시 찜한다
+  function undoWish(nowWished: boolean) {
+    return async () => {
+      setBusy(true);
+      const r = nowWished ? await call(`${api}/wishlist/${p.id}`, { method: "DELETE" }) : await call(`${api}/wishlist`, { method: "POST", body: { productId: p.id } });
+      if (r.ok || (nowWished && r.status === 404)) {
+        setWished(!nowWished);
+        setMsg({ ok: true, text: nowWished ? "찜을 되돌렸어요" : "다시 찜했어요" });
+      } else setMsg({ ok: false, text: r.message ?? "되돌리지 못했어요. 잠시 뒤 다시 눌러 주세요" });
+      setBusy(false);
+    };
   }
 
   async function onShare() {
@@ -315,6 +340,14 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
                 <>
                   {" "}
                   <Link href={`${base}/cart`}>장바구니 보기</Link>
+                </>
+              )}
+              {msg.undo && (
+                <>
+                  {" "}
+                  <button type="button" className="shop-linkbtn" disabled={busy} onClick={() => void msg.undo!()}>
+                    되돌리기
+                  </button>
                 </>
               )}
             </p>
