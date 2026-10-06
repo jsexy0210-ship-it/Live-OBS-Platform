@@ -563,9 +563,9 @@ export async function getInquiry(db: PrismaClient, admin: AdminSessionContext, i
   };
 }
 
-type Locked = { id: string; sellerId: string; status: PlatformInquiryStatus; version: number };
+type Locked = { id: string; sellerId: string; status: PlatformInquiryStatus; version: number; assignedAdminId: string | null };
 async function lockForAdmin(tx: Prisma.TransactionClient, id: string, expectedVersion: unknown) {
-  const [cur] = await tx.$queryRaw<Locked[]>`SELECT "id", "sellerId", "status", "version" FROM "PlatformInquiry" WHERE "id" = ${id}::uuid FOR UPDATE`;
+  const [cur] = await tx.$queryRaw<Locked[]>`SELECT "id", "sellerId", "status", "version", "assignedAdminId" FROM "PlatformInquiry" WHERE "id" = ${id}::uuid FOR UPDATE`;
   if (!cur) return { ok: false as const, reason: "not_found" as const };
   if (cur.status === "CLOSED") return { ok: false as const, reason: "inquiry_closed" as const };
   if (expectedVersion !== cur.version) return { ok: false as const, reason: "version_conflict" as const, currentVersion: cur.version };
@@ -584,8 +584,14 @@ export async function replyInquiry(db: PrismaClient, admin: AdminSessionContext,
     if (!l.ok) return l;
     const now = new Date();
     const msg = await tx.platformInquiryMessage.create({ data: { sellerId: l.cur.sellerId, inquiryId: id, authorType: "ADMIN", adminId: admin.admin.id, body, createdAt: now }, select: { id: true } });
-    await tx.platformInquiry.update({ where: { id }, data: { status: "ANSWERED", lastMessageAt: now, lastAdminMessageAt: now, version: { increment: 1 } } });
+    // 담당이 없는 문의에 첫 답변을 하면 그 관리자를 담당으로 자동 배정한다(이미 담당이 있으면 바꾸지 않는다)
+    const auto = l.cur.assignedAdminId === null;
+    await tx.platformInquiry.update({
+      where: { id },
+      data: { status: "ANSWERED", lastMessageAt: now, lastAdminMessageAt: now, version: { increment: 1 }, ...(auto ? { assignedAdminId: admin.admin.id, assignedAt: now } : {}) },
+    });
     await adminAudit(tx, admin, meta, "platform_inquiry.reply", l.cur, { status: l.cur.status }, { status: "ANSWERED", messageId: msg.id });
+    if (auto) await adminAudit(tx, admin, meta, "platform_inquiry.assign", l.cur, { assigneeId: null }, { assigneeId: admin.admin.id, auto: true });
     return { ok: true as const };
   });
   if (!r.ok) return r;
