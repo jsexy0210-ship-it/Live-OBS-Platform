@@ -48,8 +48,8 @@ test("정렬: 판매가 낮은순·높은순으로 바로 바뀌고, 판매량 �
     return p.length > 1 && p.every((v, i) => i === 0 || v <= p[i - 1]!);
   }).toBe(true);
   await expect(page.locator("th", { hasText: /^판매$/ })).toBeVisible();
-  // 목록 개수
-  await Promise.all([page.waitForResponse((r) => r.url().includes("limit=20")), page.getByLabel("목록 개수").selectOption("20")]);
+  // 목록 개수(기본 20개)
+  await Promise.all([page.waitForResponse((r) => r.url().includes("limit=50")), page.getByLabel("목록 개수").selectOption("50")]);
 });
 
 test("검색 조건: 상품 코드·노출 상태·재고 차감·등록일로 걸러 본다", async ({ page }) => {
