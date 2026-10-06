@@ -98,11 +98,12 @@ function Invoices() {
   const { confirm } = useConfirm();
   const { applied, draft, setDraft, apply } = useListFilters<Filters>(EMPTY);
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
+  const [cursorPage, setCursorPage] = useState(1);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [custom, setCustom] = useState(false);
   const [rangeError, setRangeError] = useState(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
-  const cursor = cursors[cursors.length - 1];
+  const cursor = cursors[cursorPage - 1];
   const key = JSON.stringify({ applied, cursor });
   const reqId = useRef(0);
 
@@ -131,6 +132,7 @@ function Invoices() {
   const activeMonth = customActive ? "" : applied.month || thisMonth;
   const go = (next: Filters) => {
     setCursors([null]);
+    setCursorPage(1);
     apply(next);
   };
   const pickMonth = (m: string) => {
@@ -366,7 +368,7 @@ function Invoices() {
                     </table>
                   </div>
                   {(cursors.length > 1 || state.data.nextCursor) && (
-                    <CursorPagination visited={cursors.length} hasNext={!!state.data.nextCursor} onChange={n => setCursors(c => c.slice(0, n))} onNext={() => state.data.nextCursor && setCursors(c => [...c, state.data.nextCursor])} />
+                    <CursorPagination page={cursorPage} visited={cursors.length} hasNext={!!state.data.nextCursor} onChange={setCursorPage} onNext={() => { if (state.data.nextCursor) { setCursors(c => c.length === cursorPage ? [...c, state.data.nextCursor] : c); setCursorPage(cursorPage + 1); } }} />
                   )}
                 </>
               ))}

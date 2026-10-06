@@ -242,6 +242,7 @@ function Applications() {
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [searchOpen, setSearchOpen] = useState(hasSearchFilters);
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
+  const [cursorPage, setCursorPage] = useState(1);
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [rejecting, setRejecting] = useState<Row | null>(null);
@@ -252,7 +253,7 @@ function Applications() {
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const reqId = useRef(0);
-  const cursor = cursors[cursors.length - 1];
+  const cursor = cursors[cursorPage - 1];
   const key = JSON.stringify({ ...applied, tab, cursor });
 
   useEffect(() => {
@@ -388,16 +389,19 @@ function Applications() {
   const k = data?.kpi;
   const search = () => {
     setCursors([null]);
+    setCursorPage(1);
     setPicked(new Set());
     apply({ ...applied, ...draft, tab });
   };
   const reset = () => {
     setCursors([null]);
+    setCursorPage(1);
     setPicked(new Set());
     apply({ ...applied, q: "", field: "all", industry: "", receivedFrom: "", receivedTo: "" });
   };
   const setFilter = (patch: Partial<Filters>) => {
     setCursors([null]);
+    setCursorPage(1);
     setPicked(new Set());
     apply({ ...applied, ...patch });
   };
@@ -636,7 +640,7 @@ function Applications() {
                 </div>
               ))}
             {state.kind === "ok" && (cursors.length > 1 || data?.nextCursor) && (
-              <CursorPagination visited={cursors.length} hasNext={!!data?.nextCursor} onChange={n => setCursors(c => c.slice(0, n))} onNext={() => data?.nextCursor && setCursors(c => [...c, data.nextCursor])} />
+              <CursorPagination page={cursorPage} visited={cursors.length} hasNext={!!data?.nextCursor} onChange={setCursorPage} onNext={() => { if (data?.nextCursor) { setCursors(c => c.length === cursorPage ? [...c, data.nextCursor] : c); setCursorPage(cursorPage + 1); } }} />
             )}
           </div>
           {reviewing && (

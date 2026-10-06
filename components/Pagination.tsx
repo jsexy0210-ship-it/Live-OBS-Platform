@@ -43,6 +43,6 @@ function PageNavigation(props: Props & { cursor?: boolean; hasNext?: boolean; on
 export function Pagination(props: Props) { return <PageNavigation {...props} />; }
 
 // Never invent a last page for a cursor API. Numbers represent the caller's saved history only.
-export function CursorPagination({ visited, hasNext, onChange, onNext }: { visited: number; hasNext: boolean; onChange: (page: number) => void; onNext: () => void }) {
-  return <PageNavigation page={visited} pageCount={visited} onChange={onChange} cursor hasNext={hasNext} onNext={onNext} />;
+export function CursorPagination({ page, visited, hasNext, onChange, onNext }: { page: number; visited: number; hasNext: boolean; onChange: (page: number) => void; onNext: () => void }) {
+  return <PageNavigation page={page} pageCount={visited} onChange={onChange} cursor hasNext={page < visited || hasNext} onNext={() => page < visited ? onChange(page + 1) : onNext()} />;
 }

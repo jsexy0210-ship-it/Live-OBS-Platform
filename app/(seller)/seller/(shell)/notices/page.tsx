@@ -21,6 +21,7 @@ export default function NoticesPage() {
   const [state, setState] = useState<Load>({ kind: "loading" });
   // 지금까지 거쳐 온 쪽의 cursor(첫 쪽은 null). 마지막 원소가 지금 쪽이다
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
+  const [cursorPage, setCursorPage] = useState(1);
   const seq = useRef(0);
 
   const load = useCallback(async (cursor: string | null) => {
@@ -39,16 +40,17 @@ export default function NoticesPage() {
   // 조건이 바뀌면 첫 쪽부터 다시 본다
   useEffect(() => {
     setCursors([null]);
+    setCursorPage(1);
     void load(null);
   }, [load]);
 
-  const go = (next: (string | null)[]) => {
-    setCursors(next);
-    void load(next[next.length - 1]);
+  const go = (next: number) => {
+    setCursorPage(next);
+    void load(cursors[next - 1]);
   };
   const filtered = !!(applied.category || applied.unread || applied.q.trim());
   const rows = state.kind === "ok" ? [...state.pinned, ...state.items] : [];
-  const page = cursors.length;
+  const page = cursorPage;
   const first = (page - 1) * 20 + 1;
 
   return (
@@ -94,7 +96,7 @@ export default function NoticesPage() {
             </form>
           </div>
           {state.kind === "loading" && <LoadingRows rows={5} />}
-          {state.kind === "error" && <ErrorState title="목록을 불러오지 못했습니다" onRetry={() => void load(cursors[cursors.length - 1])} />}
+          {state.kind === "error" && <ErrorState title="목록을 불러오지 못했습니다" onRetry={() => void load(cursors[cursorPage - 1])} />}
           {state.kind === "ok" && rows.length === 0 && (
             <div className="st" style={{ boxShadow: "none" }}>
               {filtered ? (
@@ -147,7 +149,7 @@ export default function NoticesPage() {
               <span className="t-l2 c-alt">
                 20개씩 · {first}–{first + rows.length - 1} 표시
               </span>
-              <CursorPagination visited={cursors.length} hasNext={!!state.next} onChange={n => go(cursors.slice(0, n))} onNext={() => state.next && go([...cursors, state.next])} />
+              <CursorPagination page={cursorPage} visited={cursors.length} hasNext={!!state.next} onChange={go} onNext={() => { if (state.next) { setCursors(c => c.length === cursorPage ? [...c, state.next] : c); setCursorPage(cursorPage + 1); void load(state.next); } }} />
             </div>
           )}
         </div>

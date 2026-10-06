@@ -51,6 +51,11 @@ for (const width of [1440, 1024, 390]) {
     await expect(cursor.getByRole("button", { name: "다음", exact: true })).toBeDisabled();
     await cursor.getByRole("button", { name: "1페이지", exact: true }).click();
     await expect(cursor.locator('[aria-current="page"]')).toHaveText("1");
+    await expect(cursor.getByRole("button", { name: "3페이지", exact: true })).toBeVisible();
+    await cursor.getByRole("button", { name: "다음", exact: true }).click();
+    await expect(cursor.locator('[aria-current="page"]')).toHaveText("2");
+    await cursor.getByRole("button", { name: "3페이지", exact: true }).click();
+    await expect(cursor.locator('[aria-current="page"]')).toHaveText("3");
     const links = page.getByRole("region", { name: "쇼핑몰 링크" });
     await links.getByRole("link", { name: "마지막", exact: true }).focus();
     await page.keyboard.press("Enter"); await expect(page).toHaveURL(/page=23/); await expect(page).toHaveURL(/sort=price/); await expect(page).toHaveURL(/q=/);

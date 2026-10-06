@@ -49,6 +49,15 @@ for (const route of ["/admin/partners?q=보존", "/admin/partners?q=보존&page=
     expect(geometry.every(g => g.height === (width < 768 ? 44 : 40) && g.inside && g.margin === "0px")).toBe(true);
     await nav.getByRole("button", { name: "처음", exact: true }).focus(); await page.keyboard.press("Enter");
     await expect(nav.locator('[aria-current="page"]')).toHaveText("1");
+    if (!route.startsWith("/admin/partners?")) {
+      await expect(nav.getByRole("button", { name: "2페이지", exact: true })).toBeVisible();
+      await nav.getByRole("button", { name: "다음", exact: true }).click();
+      await expect(nav.locator('[aria-current="page"]')).toHaveText("2");
+      await expect(nav.getByRole("button", { name: "다음", exact: true })).toBeDisabled();
+      await nav.getByRole("button", { name: "처음", exact: true }).click();
+      await expect(nav.locator('[aria-current="page"]')).toHaveText("1");
+      await expect(nav.getByRole("button", { name: "2페이지", exact: true })).toBeVisible();
+    }
     await nav.screenshot({ path: `tests/e2e/screenshots/pagination/${route.split('?')[0].replaceAll('/', '-')}-${width}.png` });
   });
 }

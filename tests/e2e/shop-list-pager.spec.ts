@@ -19,9 +19,11 @@ for (const vp of [
     await page.setViewportSize({ width: vp.w, height: vp.h });
     await page.goto(`/shop/${SLUG}/products`);
     const pager = page.getByRole("navigation", { name: "쪽 이동" });
-    await expect(pager.getByRole("link", { name: "1쪽" })).toHaveAttribute("aria-current", "page");
-    await expect(pager.getByRole("link", { name: "2쪽" })).toBeVisible();
-    await expect(pager.getByRole("link", { name: "다음 쪽" })).toBeVisible();
+    await expect(pager.getByRole("link", { name: "1페이지" })).toHaveAttribute("aria-current", "page");
+    await expect(pager.getByRole("link", { name: "2페이지" })).toBeVisible();
+    await expect(pager.getByRole("link", { name: "다음", exact: true })).toBeVisible();
+    await expect(pager.getByRole("button", { name: "처음", exact: true })).toBeDisabled();
+    await expect(pager.getByRole("link", { name: "마지막", exact: true })).toBeVisible();
     await expect(page.getByText("상품을 모두 봤어요")).toHaveCount(0); // 첫 쪽에는 끝 안내 없음
     // 정렬 드롭다운 열린 상태
     await page.getByRole("navigation", { name: "정렬" }).locator("summary").click();
@@ -36,9 +38,11 @@ for (const vp of [
     await expect(page.getByRole("navigation", { name: "정렬" }).getByRole("link", { name: "높은 가격" })).toBeHidden();
     await page.getByRole("navigation", { name: "정렬" }).locator("summary").click(); // 연 채로 쪽을 옮겨도 새 쪽에서는 닫혀 있다
     // 끝 쪽
-    await pager.getByRole("link", { name: "2쪽" }).click();
+    await pager.getByRole("link", { name: "2페이지" }).click();
     await expect(page).toHaveURL(/page=2/);
-    await expect(page.getByRole("navigation", { name: "쪽 이동" }).getByRole("link", { name: "2쪽" })).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("navigation", { name: "쪽 이동" }).getByRole("link", { name: "2페이지" })).toHaveAttribute("aria-current", "page");
+    await expect(pager.getByRole("button", { name: "다음", exact: true })).toBeDisabled();
+    await expect(pager.getByRole("button", { name: "마지막", exact: true })).toBeDisabled();
     await expect(page.getByRole("navigation", { name: "정렬" }).getByRole("link", { name: "높은 가격" })).toBeHidden();
     await expect(page.getByText("상품을 모두 봤어요 · 28개")).toBeVisible();
     await expect(page.getByRole("link", { name: "홈으로" })).toHaveAttribute("href", `/shop/${SLUG}`);
@@ -52,7 +56,7 @@ for (const vp of [
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); // 끝까지 내려 아래 고정 바에 가린 것이 없는지 본다
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(800);
-    await page.locator(".shop-pager").locator("xpath=..").locator(".shop-listend").screenshot({ path: `tests/e2e/screenshots/SH-002-list-end-note-${vp.name}.png` }); // 목록 끝 안내만 따로(보이는 화면 캡처에서는 이 버튼 글자가 비어 찍혀 요소 캡처를 함께 둔다)
+    await page.locator(".onq-pagination").locator("xpath=..").locator(".shop-listend").screenshot({ path: `tests/e2e/screenshots/SH-002-list-end-note-${vp.name}.png` }); // 목록 끝 안내만 따로(보이는 화면 캡처에서는 이 버튼 글자가 비어 찍혀 요소 캡처를 함께 둔다)
     await page.waitForTimeout(300);
     await page.screenshot({ path: `tests/e2e/screenshots/SH-002-list-p2-end-${vp.name}.png` }); // 아래 고정 바가 있는 휴대폰은 보이는 화면 그대로(전체 쪽 캡처는 고정 바가 겹쳐 찍힘)
   });

@@ -31,6 +31,7 @@ export default function InquiriesPage() {
   const [state, setState] = useState<Load>({ kind: "loading" });
   // 지금까지 거쳐 온 쪽의 cursor(첫 쪽은 null). 마지막 원소가 지금 쪽이다
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
+  const [cursorPage, setCursorPage] = useState(1);
   const seq = useRef(0);
 
   const load = useCallback(async (cursor: string | null) => {
@@ -46,17 +47,18 @@ export default function InquiriesPage() {
   }, [applied]);
   useEffect(() => {
     setCursors([null]);
+    setCursorPage(1);
     void load(null);
   }, [load]);
 
-  const go = (next: (string | null)[]) => {
-    setCursors(next);
-    void load(next[next.length - 1]);
+  const go = (next: number) => {
+    setCursorPage(next);
+    void load(cursors[next - 1]);
   };
   const page = state.kind === "ok" ? state.page : null;
   const rows = page?.items ?? [];
   const filtered = !!(applied.status || applied.category);
-  const no = cursors.length;
+  const no = cursorPage;
   const first = (no - 1) * 20 + 1;
 
   return (
@@ -98,7 +100,7 @@ export default function InquiriesPage() {
             </div>
           </div>
           {state.kind === "loading" && <LoadingRows rows={5} />}
-          {state.kind === "error" && <ErrorState title="목록을 불러오지 못했습니다" onRetry={() => void load(cursors[cursors.length - 1])} />}
+          {state.kind === "error" && <ErrorState title="목록을 불러오지 못했습니다" onRetry={() => void load(cursors[cursorPage - 1])} />}
           {page && rows.length === 0 && (
             <div className="st" style={{ boxShadow: "none" }}>
               {filtered ? (
@@ -158,7 +160,7 @@ export default function InquiriesPage() {
                 20개씩 · {first}–{first + rows.length - 1} 표시
                 {page.avgFirstReplyMinutes !== null && ` · 평균 첫 답변 ${avgText(page.avgFirstReplyMinutes)} (평일 10~18시)`}
               </span>
-              <CursorPagination visited={cursors.length} hasNext={!!page.nextCursor} onChange={n => go(cursors.slice(0, n))} onNext={() => page.nextCursor && go([...cursors, page.nextCursor])} />
+              <CursorPagination page={cursorPage} visited={cursors.length} hasNext={!!page.nextCursor} onChange={go} onNext={() => { if (page.nextCursor) { setCursors(c => c.length === cursorPage ? [...c, page.nextCursor] : c); setCursorPage(cursorPage + 1); void load(page.nextCursor); } }} />
             </div>
           )}
         </div>
