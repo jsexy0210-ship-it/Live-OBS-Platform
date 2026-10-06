@@ -44,7 +44,7 @@ let pn = 0;
 const pay = (s: { seller: { id: string }; sub: { id: string } }, data: Record<string, unknown> = {}) => {
   pn++;
   return db.subscriptionPayment.create({
-    data: { sellerId: s.seller.id, subscriptionId: s.sub.id, amount: 179000, status: "PAID", periodStart: ago(10 * DAY), periodEnd: ahead(20 * DAY), scheduled: true, paidAt: new Date(), createdAt: ago(pn * 1000), ...data } as never,
+    data: { sellerId: s.seller.id, subscriptionId: s.sub.id, amount: 179000, status: "PAID", periodStart: new Date(Date.UTC(2026, 0, 1) + pn * DAY), periodEnd: new Date(Date.UTC(2026, 0, 31) + pn * DAY), scheduled: true, paidAt: new Date(), createdAt: ago(pn * 1000), ...data } as never,
   });
 };
 
