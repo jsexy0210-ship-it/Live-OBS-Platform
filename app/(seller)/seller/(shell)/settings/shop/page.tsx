@@ -8,6 +8,7 @@ import { Toast } from "../../../../../../components/seller/States";
 import { api, apiUpload, failMessage } from "../../../../../../components/seller/api";
 import { cleanText, textLength, type TextKind } from "../../../../../../lib/server/text/clean";
 import { useUnsavedGuard } from "../../../../../../lib/client/navigation";
+import { BusinessSection } from "./BusinessSection";
 import { DomainSection } from "./DomainSection";
 import "./shop-info.css";
 
@@ -573,6 +574,7 @@ export default function ShopInfoPage() {
               </div>
             )}
             {editable && <DomainSection onToast={setToast} />}
+            {editable && <BusinessSection onToast={setToast} />}
             <div style={{ marginTop: 32 }}>
               <FormSection title="구매자 화면 미리보기">
                 <FormRow label="쇼핑몰 맨 위" help="쇼핑몰 모든 화면 맨 위에 이렇게 표시됩니다">
