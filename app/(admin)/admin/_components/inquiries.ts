@@ -14,6 +14,9 @@ export type InquiryRow = {
   category: InquiryCategory;
   title: string;
   status: InquiryStatus;
+  // 목록 응답(GET /api/admin/platform-inquiries)이 주는 긴급 표시와 담당 관리자(없으면 null)
+  urgent?: boolean;
+  assignee?: { id: string; name: string } | null;
   createdAt: string;
   lastMessageAt: string;
   lastAdminMessageAt: string | null;

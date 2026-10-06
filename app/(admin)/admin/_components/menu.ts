@@ -64,6 +64,7 @@ export const ADMIN_MENU: AdminGroup[] = [
       { label: "파비콘 · 공유 카드", href: "/admin/settings/branding", perm: "system.manage", ready: true, sub: "시스템" },
       { label: "발송 단가", href: "/admin/settings/messages", perm: "system.manage", ready: true, sub: "시스템" },
       { label: "외부 서비스 연동", href: "/admin/settings/vendors", perm: "vendor.manage", ready: true, sub: "시스템" },
+      { label: "플랫폼 정보", href: "/admin/settings/platform-business", perm: "system.manage", ready: true, sub: "시스템" },
       { label: "관리자 계정", href: "/admin/accounts", perm: "admin.manage", ready: true, sub: "관리자" },
       { label: "역할별 권한", href: "/admin/accounts/roles", perm: "admin.manage", ready: true, sub: "관리자" },
       // 로그 추적은 CS에 숨긴다(audit.read)

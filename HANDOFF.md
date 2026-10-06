@@ -6,9 +6,13 @@
 
 | 세션 | ID | 담당 |
 |---|---|---|
-| Live-OBS-Platform MASTER (3) | `session_01CEyJ4JsJ28uLVRMoFzD2u1` | 대표님 지시 전달 · 세션 배정·교체 · 상태 문서 관리(2026-10-04 대표님 지시로 검수·병합은 검수 전담에 넘김). 2026-10-06 12:25 KST MASTER (2) `session_018xa8SC5evpEFNVcQBwcN5t`(컨텍스트 73%)에서 교체 |
-| 검수 전담 (11) | `session_01CsbbusRMeNLAR9C8WCAoPg` | 2026-10-06 14:21 KST MASTER (3) 생성(Sonnet 5.5). 검수·병합 전담(독립 검수자). (10)의 인계 메모(열린 PR·반복 지적 패턴·배포 대기 마이그레이션 12건)로 시작 |
+| Live-OBS-Platform MASTER (4) | `session_01WVYfLxEbKvL8U1WR3ZcjSh` | 대표님 지시 전달 · 세션 배정·교체·보관 · 상태 문서 관리 · 테스트 서버 배포 실행(2026-10-04 대표님 지시로 검수·병합은 검수 전담에 넘김). 2026-10-06 MASTER (3) `session_01CEyJ4JsJ28uLVRMoFzD2u1`(컨텍스트 55%)에서 교체 |
+| Live-OBS-Platform MASTER (3) | `session_01CEyJ4JsJ28uLVRMoFzD2u1` | (교체됨 → `session_01WVYfLxEbKvL8U1WR3ZcjSh`, 2026-10-06) 대표님 지시 전달 · 세션 배정·교체 · 상태 문서 관리. 컨텍스트 55%로 교체 |
 | 검수 전담 (10) | `session_01RwaCLVjHMTGQwWTR9QDdHW` | (교체됨 → `session_01CsbbusRMeNLAR9C8WCAoPg`, 2026-10-06 14:21 KST, 컨텍스트 65%) 2026-10-06 10:53 KST MASTER 생성(Sonnet 5.5). (9)를 컨텍스트 66%로 교체. 변경 파일 요약부터·CI 묶음 조회 지침. 역할·소유는 전임 행과 같음 |
+| 화면 대조 전담 MA | `session_0127F4exy72Wv6wVmn471EVx` | 2026-10-06 14:26 KST MASTER (4) 생성(Sonnet 5.5). 마스터 관리자 화면 중 「대기·미확인」·「정본과 다름」 렌더 대조·구조 차이 수정(다른 세션 큐 화면 제외) |
+| 화면 대조 전담 SA | `session_011eEtULwRG1eJZdP465534M` | 2026-10-06 14:26 KST MASTER (4) 생성(Sonnet 5.5). 파트너스 관리자 영역, 범위 위와 같음 |
+| 화면 대조 전담 SH | `session_019MNTyjhUfgz2oBzRSQGLv8` | 2026-10-06 14:26 KST MASTER (4) 생성(Sonnet 5.5). 구매자 쇼핑몰 영역(SH-011 제외), 범위 위와 같음 |
+| 화면 대조 전담 PF·AU | `session_01RGWdBCch9pvauA8agUbdet` | 2026-10-06 14:26 KST MASTER (4) 생성(Sonnet 5.5). 공개·인증 영역, 범위 위와 같음 |
 | 검수 전담 (9) | `session_01Jc3uUUzghsYvaLRuzqBeM9` | (교체됨 → `session_01RwaCLVjHMTGQwWTR9QDdHW`, 2026-10-06) 2026-10-06 10:09 KST MASTER 생성(Sonnet 5.5). (8)을 컨텍스트 53%로 교체(증가 속도 빠름). 컨텍스트 절약 지침 강화. 역할·소유는 전임 행과 같음 |
 | 검수 전담 (8) | `session_01R5GCoaquPEMsXCjqtr2tNd` | (교체됨 → `session_01Jc3uUUzghsYvaLRuzqBeM9`, 2026-10-06) 2026-10-06 09:26 KST MASTER 생성(Sonnet 5.5). (7)을 컨텍스트 58%로 교체. CI 반복 조회 대신 CI 끝난 PR을 모아 병합. 역할·소유는 전임 행과 같음 |
 | 검수 전담 (7) | `session_012afgA2RqbUUEXVYD6PFi7e` | (교체됨 → `session_01R5GCoaquPEMsXCjqtr2tNd`, 2026-10-06) 2026-10-06 07:37 KST MASTER 생성(Sonnet 5.5). (6)을 컨텍스트 66%로 교체. 컨텍스트 절약 지침(파일 목록·위험 hunk만, 디자인 PR은 CI 통과 시 바로 병합) 포함. 역할·소유는 전임 행과 같음 |
