@@ -1241,7 +1241,7 @@
       "y": 0
     },
     "SA-001-C.dc.html": {
-      "h": 849,
+      "h": 1210,
       "is_interactive": true,
       "page": "p02",
       "title": "SA-001-C 방송 대시보드 · 방송 시작 전 (카페24식 · 점검표 · 제목 · 레이아웃 · 방송 전 주문 · 지난 방송)",
@@ -1687,7 +1687,7 @@
       "y": 9613
     },
     "SA-034.dc.html": {
-      "h": 1716,
+      "h": 2220,
       "is_interactive": true,
       "page": "p02",
       "title": "SA-034 실지급 스위치 (카페24식 · 조건 · 켜면 일어나는 일 · 전환 이력)",
@@ -1822,7 +1822,7 @@
       "y": 15121
     },
     "SA-052.dc.html": {
-      "h": 1637,
+      "h": 2150,
       "is_interactive": true,
       "page": "p02",
       "title": "SA-052 오버레이 주소 (카페24식 · 주소 2종 · OBS 추가 방법 · 재발급 · 접속 기록)",
@@ -3013,7 +3013,7 @@
       "page": "p04"
     },
     "PF-007-4.dc.html": {
-      "h": 3470,
+      "h": 3870,
       "is_interactive": true,
       "page": "p05",
       "title": "PF-007-4 가입 신청 4/5 — 사업자 정보",
@@ -3045,6 +3045,15 @@
       "w": 1280,
       "x": 25000,
       "y": 108800
+    },
+    "MA-088.dc.html": {
+      "h": 2100,
+      "is_interactive": true,
+      "page": "p03",
+      "title": "MA-088 플랫폼 정보 (최고관리자만 수정 · 표시 의무 7항목 · 변경 이력 · 미입력 → 홈 처리할 일)",
+      "w": 1920,
+      "x": 7200,
+      "y": 27008
     }
   },
   "createdOnFiles": {
@@ -3942,6 +3951,7 @@
     "SH-CARD-IA.dc.html",
     "DS-PANEL.dc.html",
     "MA-087.dc.html",
+    "MA-088.dc.html",
     "SA-082.dc.html",
     "SA-LNB.dc.html",
     "DS-ROW-ACTION.dc.html",
