@@ -1,15 +1,16 @@
 import { type Block, type MailBody, dateOnly, renderMail, won } from "./layout";
 
 // 파트너스(판매자) 가입 안내 메일 2종(디자인 EM-101 가입 승인 · EM-102 가입 반려·보완 요청). 해요체. 헤더는 ONQ 파트너스 고정(쇼핑몰 색 아님).
-// 플랫폼 사업자 정보(바닥글)는 부르는 쪽이 넘긴다(저장 위치가 정해지면 한 곳에서 읽는다 — 아직 없음).
+// 플랫폼 사업자 정보(바닥글)는 부르는 쪽이 넘긴다(마스터 설정에 저장된 값, 빈 항목은 바닥글에서 뺀다).
 export type PlatformInfo = { name: string; representative: string; businessNumber: string; address: string; phone: string; url: string };
 
 const BRAND_COLOR = "#5b3df6";
 const brandOf = (p: PlatformInfo) => ({ name: "ONQ 파트너스", mark: "ONQ", color: BRAND_COLOR, site: p.url });
-const footerOf = (p: PlatformInfo) => ({
-  title: "ONQ",
-  lines: [`상호 ${p.name} · 대표 ${p.representative} · 사업자등록번호 ${p.businessNumber} · ${p.address} · 고객센터 ${p.phone}`, "이 메일은 발신 전용이에요 · 문의는 파트너스 관리자 「공지 · 문의」로 남겨 주세요"],
-});
+const footerOf = (p: PlatformInfo) => {
+  // 비어 있는 항목은 줄에서 뺀다(값을 지어내지 않는다)
+  const info = [p.name && `상호 ${p.name}`, p.representative && `대표 ${p.representative}`, p.businessNumber && `사업자등록번호 ${p.businessNumber}`, p.address, p.phone && `고객센터 ${p.phone}`].filter(Boolean).join(" · ");
+  return { title: "ONQ", lines: [...(info ? [info] : []), "이 메일은 발신 전용이에요 · 문의는 파트너스 관리자 「공지 · 문의」로 남겨 주세요"] };
+};
 const make = (p: PlatformInfo, subject: string, blocks: Block[]): MailBody => renderMail({ subject: `[ONQ] ${subject}`, brand: brandOf(p), blocks, footer: footerOf(p) });
 
 const STEPS = "시작하기 네 단계(쇼핑몰 정보 → PG 연결 → 첫 상품 → 방송 화면 주소)";

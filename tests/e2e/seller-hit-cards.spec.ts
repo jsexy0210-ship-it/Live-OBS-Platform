@@ -31,13 +31,27 @@ test("대표자: 메뉴에서 들어가 HIT 카드를 등록하고, 기간으로
   await expect(add.getByRole("button", { name: "HIT 카드 기록하기" })).toBeDisabled();
   await add.getByLabel("카드명").fill(card);
   await add.getByLabel("구매자 닉네임").fill("hit-e2e-buyer");
+  await add.getByLabel("등급").selectOption("SR");
   await add.getByLabel("메모").fill("e2e 메모");
   await add.getByRole("button", { name: "HIT 카드 기록하기" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const row = page.getByTestId("hit-list").locator("tr", { hasText: card });
   await expect(row).toContainText("hit-e2e-buyer");
   await expect(row).toContainText("e2e 메모");
+  await expect(row.getByTestId("hit-grade")).toHaveText("SR");
   if (SHOTS) await page.screenshot({ path: "tests/e2e/screenshots/SA-053-1440.png", fullPage: true });
+
+  // 등급 필터: 다른 등급이면 안 보이고, 같은 등급이면 보인다(고정 목록 SAR·SR·UR·SE·SP·AA)
+  await expect(page.getByLabel("등급").first().locator("option")).toHaveText(["전체", "SAR", "SR", "UR", "SE", "SP", "AA"]);
+  await page.getByRole("combobox", { name: "등급" }).selectOption("UR");
+  await page.getByRole("button", { name: "검색" }).click();
+  await expect(page.getByTestId("hit-empty")).toContainText("조건에 맞는 HIT 카드가 없습니다");
+  await page.getByRole("combobox", { name: "등급" }).selectOption("SR");
+  await page.getByRole("button", { name: "검색" }).click();
+  await expect(row).toBeVisible();
+  await page.getByRole("button", { name: "초기화" }).click();
+  await expect.poll(() => new URL(page.url()).search).toBe(""); // 주소가 깨끗해진 뒤(입력 칸 동기화 뒤) 다음 입력을 한다
+  await expect(row).toBeVisible();
 
   // 기간: 과거 하루만 고르면 방금 등록한 카드는 없다. 잘못된 기간(시작 > 끝)은 조회하지 않는다
   await page.getByLabel("시작일").fill("2020-01-01");
