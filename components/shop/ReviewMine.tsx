@@ -145,7 +145,7 @@ export default function ReviewMine({ slug, initialItem, initialReview }: { slug:
               ) : undefined
             }
             onSaved={saved}
-            onCancel={() => setPicked(null)}
+            onCancel={"review" in target ? () => setPicked(null) : undefined}
           />
         ) : data.writable.length > 0 ? (
           <div className="rv-box">
