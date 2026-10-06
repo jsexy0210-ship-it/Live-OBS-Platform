@@ -50,6 +50,18 @@ describe("서버 근거와 구독별 OBS 계약 (모의 경계, 실제 인증·P
     expect(next.actionKey).toBe(first.actionKey);
     expect(await memory.run(next, send, now)).toBe("UNKNOWN"); expect(send).toHaveBeenCalledTimes(1);
   });
+  it("같은 actionKey의 이전 APPLIED를 새 commandId/fence에서 성공으로 재사용하지 않는다", async () => {
+    const memory = new ObsCommandMemory(); const send = vi.fn(async (p: ObsPreparedCommand) => ack(p));
+    const first = prepareObsCommand(await load(paid()), command(), now);
+    expect(await memory.run(first, send, now)).toBe("APPLIED");
+    const r = paid(); r.install!.job.fencingToken = 4;
+    const next = prepareObsCommand(await load(r), command({ id: "33333333-3333-4333-8333-333333333333" }), now);
+    expect(next.actionKey).toBe(first.actionKey);
+    expect(obsAckState(next, ack(first))).toBe("UNKNOWN");
+    expect(await memory.run(next, send, now)).toBe("UNKNOWN");
+    expect(await memory.run(next, send, now)).toBe("UNKNOWN");
+    expect(send).toHaveBeenCalledTimes(1);
+  });
   it("통합은 실제 첫 PAID 근거로 허용, 오버레이만으로는 자동 연결을 열지 않는다", async () => {
     expect((await load()).jobId).toBeNull();
     await expect(load({ ...records(), planCode: "OVERLAY_ONLY" })).rejects.toThrow("obs_purchase_required");

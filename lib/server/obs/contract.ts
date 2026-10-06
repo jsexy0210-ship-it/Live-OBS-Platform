@@ -135,7 +135,7 @@ export function obsAckState(prepared: ObsPreparedCommand, ack: ObsAck | null): O
 // 한 프로세스의 모의 중복/ACK 경계만 검증한다. 영속 저널·재시작 복구 구현이 아니다.
 export class ObsCommandMemory {
   private readonly calls = new Map<string, { fingerprint: string; result: Promise<ObsCommandState> }>();
-  private readonly actions = new Map<string, Promise<ObsCommandState>>();
+  private readonly actions = new Map<string, { jobFence: number | null; result: Promise<ObsCommandState> }>();
   run(prepared: ObsPreparedCommand, send: (command: ObsPreparedCommand) => Promise<ObsAck | null>, now = new Date()): Promise<ObsCommandState> {
     const c = prepared.command;
     const authority = preparedAuthorities.get(prepared);
@@ -152,8 +152,12 @@ export class ObsCommandMemory {
     }
     // send는 다음 microtask에서 시작해 동시 요청도 단 하나의 결과를 공유한다.
     const actionScope = `${c.sellerId}:${c.deviceId}:${c.generation}:${c.epoch}:${prepared.actionKey}`;
-    const result = this.actions.get(actionScope) ?? Promise.resolve().then(() => send(prepared)).then(ack => obsAckState(prepared, ack), () => "UNKNOWN" as const);
-    this.actions.set(actionScope, result);
+    const cached = this.actions.get(actionScope);
+    // 이전 fence의 성공도 현재 ACK가 아니다. 행동은 재전송하지 않고 대사를 기다린다.
+    const result = cached
+      ? cached.jobFence === prepared.scope.jobFence ? cached.result : Promise.resolve("UNKNOWN" as const)
+      : Promise.resolve().then(() => send(prepared)).then(ack => obsAckState(prepared, ack), () => "UNKNOWN" as const);
+    if (!cached) this.actions.set(actionScope, { jobFence: prepared.scope.jobFence, result });
     this.calls.set(key, { fingerprint, result });
     return result;
   }
