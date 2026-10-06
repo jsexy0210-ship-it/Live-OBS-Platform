@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { GlobalSearch, NotificationBell } from "../../../../components/admin-ui/GnbTools";
+import { LogoutButton } from "../../../../components/admin-ui/LogoutButton";
 import { ConfirmProvider } from "../../../../components/admin-ui/ConfirmDialog";
 import { ShellNavProvider, type ShellNav } from "../../../../components/admin-ui/shellNav";
 import { useWholeDateClick } from "../../../../components/admin-ui/useWholeDateClick";
@@ -38,7 +39,6 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const [navOpen, setNavOpen] = useState(false);
   // GNB에서 고른 대분류(화면을 옮기면 지금 화면의 대분류로 돌아간다)
   const [picked, setPicked] = useState<string | null>(null);
-  const [logoutError, setLogoutError] = useState(false);
 
   const load = async () => {
     setFailed(false);
@@ -57,10 +57,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   }, [pathname]);
 
   const logout = async () => {
-    setLogoutError(false);
     const r = await adminApi("/api/admin/auth/logout", { method: "POST" });
     if (r.ok) router.replace("/admin/login");
-    else setLogoutError(true);
+    return r.ok;
   };
 
   if (failed) {
@@ -99,9 +98,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       <Link className="util-i" href="/admin/account" onClick={() => setNavOpen(false)}>
         내 계정
       </Link>
-      <button className="util-i util-btn" type="button" onClick={() => void logout()}>
-        로그아웃
-      </button>
+      <LogoutButton onLogout={logout} />
     </>
   );
 
@@ -137,11 +134,6 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             <span className="util-desk">{utilities}</span>
           </div>
         </header>
-        {logoutError && (
-          <div className="msg msg-neg logout-err" role="alert">
-            로그아웃하지 못했습니다. 다시 시도해 주십시오.
-          </div>
-        )}
         <div className="cs-wrap">
           <aside className="lnb" aria-label="마스터 관리자 메뉴">
             {menu.map((g) => (

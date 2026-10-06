@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { GlobalSearch, NotificationBell } from "../admin-ui/GnbTools";
 import { ConfirmProvider, useConfirm } from "../admin-ui/ConfirmDialog";
+import { LogoutButton } from "../admin-ui/LogoutButton";
 import { RouteTabs, ShellNavProvider, type ShellNav } from "../admin-ui/shellNav";
 import { useWholeDateClick } from "../admin-ui/useWholeDateClick";
 import { usePathname, useRouter } from "next/navigation";
@@ -444,13 +445,11 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
     if (planBlocked && need && me && meGen >= planBlocked.gen && menuAllows(me, need)) setPlanBlocked(null);
   }, [planBlocked, me, meGen]);
 
-  // 세션을 실제로 끊었을 때만 로그인 화면으로 보낸다. 실패하면 화면에 남아 다시 시도하게 한다(공용 기기에서 로그아웃된 줄 착각하지 않게).
-  const [logoutError, setLogoutError] = useState(false);
+  // 세션을 실제로 끊었을 때만 로그인 화면으로 보낸다. 실패하면 확인 창 안에 오류를 보이고 다시 시도하게 한다(공용 기기에서 로그아웃된 줄 착각하지 않게).
   const logout = async () => {
-    setLogoutError(false);
     const r = await api("/api/seller/auth/logout", { method: "POST" });
     if (r.ok) router.replace("/seller/login");
-    else setLogoutError(true);
+    return r.ok;
   };
 
   if (failed) {
@@ -509,9 +508,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
       <Link className="util-i" href="/seller/account" onClick={leaveNav}>
         내 계정
       </Link>
-      <button className="util-i util-btn" type="button" onClick={() => void logout()}>
-        로그아웃
-      </button>
+      <LogoutButton onLogout={logout} />
     </>
   );
 
@@ -556,11 +553,6 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         {me.impersonation && <ImpersonationBar shop={me.shop.name} imp={me.impersonation} />}
-        {logoutError && (
-          <div className="msg msg-neg logout-err" role="alert">
-            로그아웃하지 못했습니다. 다시 시도해 주십시오
-          </div>
-        )}
         <div className="cs-wrap">
           <aside className="lnb" aria-label="파트너스 메뉴">
             {menu.map((g) => (
