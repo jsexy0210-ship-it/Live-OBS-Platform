@@ -38,7 +38,7 @@ VM에 GitHub Actions runner(라벨 `obs-kakao`)를 **상시 서비스로 등록*
 - runner는 GitHub로 나가는 연결만 써요. SSH 22를 인터넷에 열 필요가 없어요.
 - 비밀값은 서버의 `/opt/obs/.env`에만 있어요. GitHub Secrets에 DB 비밀번호를 둘 필요가 없어요.
 - 레지스트리(GHCR 용량 과금 가능성) 없이 동작해요.
-- 주의: runner가 받은 코드를 VM에서 그대로 실행해요. 그래서 배포 워크플로는 main push의 CI 성공을 받는 `workflow_run`과 main `workflow_dispatch`만, 이 저장소만, Environment `obs-test`로 묶고, PR·다른 브랜치·fork에서는 절대 runner로 가지 않아야 해요.
+- 주의: runner가 받은 코드를 VM에서 그대로 실행해요. 그래서 배포 워크플로는 main push의 CI 성공을 받는 `workflow_run`과 main `workflow_dispatch`만 배포 job으로 들어가도록 제한하고, 이 저장소·Environment `obs-test`로 묶어요. 주간 `schedule`은 Environment 없이 별도 정리 job만 실행해요. 배포·정리 모두 PR·다른 브랜치·fork에서는 절대 runner로 가지 않아야 해요.
 
 워크플로 `Deploy obs-test`가 하는 일:
 
@@ -49,11 +49,11 @@ VM에 GitHub Actions runner(라벨 `obs-kakao`)를 **상시 서비스로 등록*
 5. `http://127.0.0.1/api/health`의 `version`이 배포 SHA이고 `db`가 `ok`인지 확인
 6. 성공하면 `/opt/obs/deploy-history.log`에 KST 시각·SHA·실행 번호·실행자를 남기고 실행 요약에 표시
 
-CI의 「No deploy workflows」 검사는 승인된 self-hosted 워크플로만 허용해요. 자동 실행 예외는 `deploy-obs-test.yml`의 main push CI 성공 `workflow_run`뿐이고, 시험 데이터·디스크 정리·운영 배포는 계속 수동 실행만 허용해요. CI 성공·main push·CI 원본 저장소 조건과 gate 의존 관계, 배포 job의 저장소·main 조건과 `obs-kakao` 라벨·`obs-test` Environment도 검사해요.
+CI의 「No deploy workflows」 검사는 승인된 self-hosted 워크플로만 허용해요. 자동 실행 예외는 `deploy-obs-test.yml`의 main push CI 성공 `workflow_run` 배포와 월요일 03:00 KST의 별도 정리 job뿐이고, 시험 데이터·디스크 정리·운영 배포는 계속 수동 실행만 허용해요. CI 성공·main push·CI 원본 저장소 조건과 gate 의존 관계, 배포 job의 저장소·main 조건과 `obs-kakao` 라벨·`obs-test` Environment도 검사해요.
 
 #### 자동 배포와 승인 상태
 
-runner 등록은 처음 한 번만 해요(「서버 준비」 5번). 이 변경이 main에 병합되면 그 병합 push의 CI 성공부터 자동 배포 대상이에요. `CI` 워크플로가 완료되면 배포 워크플로 실행이 만들어지고, 성공한 이 저장소의 main push만 gate로 들어가요. CI 실패·취소, PR CI·fork·다른 브랜치·태그·예약 실행은 VM 배포 job을 시작하지 않아요. 앱 변경 경로 필터가 없어 문서만 바뀐 main push도 CI가 성공하면 대상이에요. main 병합 전 CI·검수 기준도 그대로 지켜요.
+runner 등록은 처음 한 번만 해요(「서버 준비」 5번). 이 변경이 main에 병합되면 그 병합 push의 CI 성공부터 자동 배포 대상이에요. `CI` 워크플로가 완료되면 배포 워크플로 실행이 만들어지고, 성공한 이 저장소의 main push만 gate로 들어가요. CI 실패·취소, PR CI·fork·다른 브랜치·태그·예약 실행은 VM **배포** job을 시작하지 않아요. 예약 실행은 아래의 별도 디스크 정리 job만 시작해요. 앱 변경 경로 필터가 없어 문서만 바뀐 main push도 CI가 성공하면 대상이에요. main 병합 전 CI·검수 기준도 그대로 지켜요.
 
 **자동 실행 생성과 무인 배포 완료는 달라요.** 기존 Environment `obs-test`와 보호 규칙을 유지해요. Required reviewers(기존 기록: 대표님), 대기 시간 또는 다른 배포 보호 규칙이 있으면 runner 실행 전에 기다려요. Required reviewers가 적용되는 한 **승인 없이 끝나는 무인 자동 배포는 아직 완료가 아니에요.** 2026-10-06 이 변경 작업에서 Environment API 조회는 Forbidden으로 실패해 실제 보호 설정을 확인하지 못했어요. 설정 변경·API 승인 우회·시험 배포는 하지 않았어요. 무인 배포를 마치려면 저장소 관리자가 `obs-test`의 Required reviewers 설정 변경과 다른 보호 규칙을 검토해야 해요. main만 허용하는 배포 브랜치 제한과 외부 기여자 PR 승인 설정은 유지해요.
 
@@ -375,31 +375,36 @@ $C start obs-web-app
 
 ## 디스크 정리
 
-테스트 서버 디스크가 가득 차 배포가 빌드 도중 죽은 일(run 37214718838)을 막기 위한 장치입니다. 스크립트: `scripts/ops/disk-cleanup.sh`.
+테스트 서버 디스크가 가득 차 배포가 멈추는 것을 막기 위한 장치입니다. 자동 정리는 `deploy/maintenance/disk-cleanup.sh`, 기존 수동 점검·정리는 `scripts/ops/disk-cleanup.sh`를 사용합니다.
 
 | 시점 | 동작 |
 | --- | --- |
-| 배포 시작(Checkout 직후) | 도커 이미지·백업·러너 폴더 디스크의 남은 용량이 5GB 미만이면 배포를 멈추고 정리 방법을 안내합니다. |
-| 배포 성공 뒤 | 아래 기준으로 오래된 것만 정리합니다. 정리가 실패해도 배포 결과는 바뀌지 않습니다. |
+| 배포 시작(Checkout 직후) | 기존 용량 검사로 남은 공간이 5GB 미만이면 배포를 멈춥니다. |
+| 배포 성공 뒤 | 자동 정리 스크립트를 실행합니다. 정리 실패는 배포 결과를 바꾸지 않습니다. |
+| 매주 월요일 03:00 KST | `Deploy obs-test`의 별도 `maintenance` job이 자동 정리합니다(UTC 일요일 18:00, cron `0 18 * * 0`). GitHub 예약 실행은 지연될 수 있습니다. |
 
-서버에 접속하지 않고 정리하려면 `Disk cleanup obs-test` 워크플로(`.github/workflows/disk-cleanup-obs-test.yml`)를 실행합니다. 먼저 `mode=list`로 지울 후보를 확인하고(결과는 실행 요약의 알림으로 남음), 확인한 뒤 `mode=apply`로 정리합니다. 배포와 같은 동시 실행 그룹이라 배포 중에는 기다립니다.
+주간 정리 job은 이 저장소의 main 예약 실행만 받으며, main SHA를 고정해 checkout한 뒤 정리 스크립트만 실행합니다. **Environment를 연결하지 않아 배포 승인자를 기다리지 않습니다.** secrets·서버 `.env`를 읽거나 배포·마이그레이션·seed를 호출하지 않습니다. 배포 job의 Environment 보호는 그대로 유지합니다. 기존 배포·seed·수동 정리와 같은 concurrency 그룹으로 한 번에 한 작업만 실행합니다.
 
-정리 기준(환경변수로 조정, 서버 값은 모두 추정치이므로 실제 사용량을 본 뒤 조정):
+자동 보존 정책은 고정입니다.
 
-- DB 백업: 배포 전 자동 백업(`obs-<날짜>-<시각>-before-<커밋7자리>.dump`)만 최근 10개(`OBS_BACKUP_KEEP`) 남기고 지웁니다. 수동·복원 안전 백업은 지우지 않고 개수만 알립니다. 24시간 넘은 `.part` 부분 파일은 지웁니다.
-- 도커 이미지: `deploy-history.log`의 최근 5개 버전(`OBS_IMAGE_KEEP`)과 실행 중인 이미지는 남기고, 나머지 `obs-web-app`·`obs-web-migrate` 버전 태그를 지웁니다. 배포 기록을 읽지 못하면 앱 이미지는 지우지 않습니다. 이름 없는 이미지와 24시간 넘게 안 쓴 빌드 캐시(`OBS_BUILDER_KEEP_H`)도 지웁니다.
-- 워크플로에서 `image_keep`(5·3·2, 기본 5)으로 이미지 보관 개수를 줄여 한 번 더 비울 수 있습니다. 줄이면 되돌릴 수 있는 이전 버전도 그만큼 줄어드니 디스크가 모자랄 때만 씁니다(실행 중인 버전은 항상 남습니다).
-- 러너 `_diag` 로그: 14일(`OBS_DIAG_KEEP_DAYS`) 넘은 것만 지웁니다.
-- 볼륨·컨테이너·`docker system prune`은 쓰지 않습니다(DB 데이터 보호).
+- 배포 전 자동 백업(`obs-YYYYMMDD-HHMMSS-before-<7자리 소문자 SHA>.dump`)은 파일명 시각 기준 **최신 3개**만 남깁니다. 수동·복원 안전 백업·`.part`·symlink는 지우지 않습니다.
+- 성공 배포 기록 `/opt/obs/deploy-history.log`에서 **최근 서로 다른 SHA 3개**의 앱·마이그레이션 이미지를 남깁니다(현재 버전과 이전 2개가 기본). 실제 현재 버전이 이전 SHA로 롤백됐다면 해당 SHA의 앱·마이그레이션 이미지도 추가로 남깁니다. 모든 실행 중·중지된 컨테이너가 참조하는 이미지 ID와 그 별칭도 보존합니다.
+- 나머지 이미지 삭제는 `obs-web-app:<40자리 SHA>`·`obs-web-migrate:<40자리 SHA>` 태그만 허용하며 강제 삭제하지 않습니다. `postgres:16`·프록시·다른 저장소의 태그는 대상이 아닙니다.
+- 미사용 dangling 이미지와 빌드 캐시는 **168시간 이상 지난 것**만 Docker의 필터로 정리합니다. `-a`·`docker system prune`·볼륨/컨테이너 삭제는 사용하지 않습니다.
+- PostgreSQL named volume·실행 중 컨테이너·`.env`·러너 파일/로그는 건드리지 않습니다. 남은 이미지 밖으로 롤백하려면 다시 빌드해야 합니다.
 
-서버에서 직접 확인·실행:
+권한 근거는 서버 준비 절차의 `obs` 소유 `/opt/obs`·backups(700), runner의 `obs` 계정·docker 그룹입니다. 실제 VM 권한은 이번 작업에서 확인하지 않았습니다. 스크립트는 Docker 조회, 현재 앱 SHA, 배포 기록, 백업 폴더 접근·쓰기 권한을 **삭제 전에 확인**하며 기록 손상·누락, 조회 실패, 경로 symlink·상위 이동 또는 권한 부족이면 전체 정리를 중단합니다. sudo·권한 설정 변경으로 우회하지 않습니다.
+
+서버에서 자동 정책의 후보를 확인하려면(기본 dry-run, 삭제 없음):
 
 ```bash
-cd /opt/obs/src && scripts/ops/disk-cleanup.sh          # 지울 목록만 보기
-cd /opt/obs/src && scripts/ops/disk-cleanup.sh --apply  # 실제 정리
+cd /opt/obs/src && deploy/maintenance/disk-cleanup.sh --dry-run
+cd /opt/obs/src && deploy/maintenance/disk-cleanup.sh --apply
 ```
 
-롤백은 남긴 5개 버전 안에서만 이미지 재빌드 없이 됩니다. 컨테이너 로그(json-file)는 서비스마다 10MB×3개까지만 남깁니다(`deploy/docker-compose.yml`의 `x-logging`). 컨테이너가 새로 만들어질 때 적용되므로 다음 배포부터 반영됩니다.
+기존 `Disk cleanup obs-test` 수동 워크플로는 `mode=list`로 후보를 먼저 확인한 뒤 `mode=apply`로 실행합니다. 그 수동 스크립트의 기본 정책은 자동 백업 10개·최근 이미지 5개, 빌드 캐시 24시간·진단 로그 14일이며 입력으로 조정할 수 있습니다. 자동 정리 이후에는 이미 지운 이전 버전이 복원되지는 않습니다.
+
+검증은 `python3 deploy/maintenance/test_disk_cleanup.py`로 임시 폴더와 가짜 Docker만 사용합니다. CI에도 같은 시험을 연결했습니다. 이번 작업에서는 실제 VM에 접속하거나 정리를 실행하지 않았습니다. 컨테이너 로그는 기존 compose의 서비스별 10MB×3개 제한을 유지합니다.
 
 ## 롤백
 

@@ -15,6 +15,7 @@
 - CI: typecheck + build, 배포 워크플로 재유입 검사
 - 배포 워크플로: `.github/workflows/deploy-obs-test.yml`(테스트 서버 obs-test, main push의 같은 SHA CI 성공 뒤 자동 실행·main 수동 재배포(CI 성공 필요), Environment `obs-test` 유지(main만, 기존 기록상 승인자 대표님; Required reviewers가 남아 있으면 자동 실행도 승인 대기), 상시 self-hosted runner `obs-web-test`(라벨 `obs-kakao`, 서버의 `/home/obs`에 설치·서비스 등록). 2026-10-03 첫 배포 성공: `https://test.on-aircue.com/api/health` → status ok, db ok, version c37492f. 대표님 결정 2026-10-03: 공개 저장소 + 상시 runner, 「Require approval for all external contributors」 필수). 테스트 도메인 `test.on-aircue.com`(Cloudflare DNS 전용). 절차: `docs/DEPLOY.md`
 - 2026-10-06 자동 배포 전환: CI 성공 SHA 고정, GitHub 호스팅 gate에서 현재 main·최신 CI 성공 확인 뒤 VM으로 진입하고 VM 변경 전 재확인. CI 실패·취소·오래된 SHA·PR·fork·다른 브랜치는 gate에서 제외. 기존 테스트 VM만 사용하며 새 유료 인프라 없음. Environment API 조회 Forbidden으로 실제 보호 규칙은 미확인; 설정 변경·승인 우회·배포 실행 없음. Required reviewers가 적용되는 한 무인 자동 배포 완료가 아니며, 관리자의 Environment 설정 검토·변경이 필요함(`docs/DEPLOY.md` 「자동 배포와 승인 상태」).
+- 2026-10-06 주간 자동 정리: 매주 월요일 03:00 KST(UTC 일요일 18:00) main·이 저장소만, 별도 maintenance job은 Environment·secrets 없이 정리 스크립트만 실행. 배포와 동시 실행하지 않음. 최신 자동 백업 3개·최근 성공 SHA 3개+현재 롤백 SHA·모든 컨테이너 참조 이미지를 보존하고, 오래된 허용 SHA 태그와 168시간 넘은 미사용 dangling/빌드 캐시만 정리. DB 볼륨·컨테이너·.env는 보존. 실제 VM 권한/정리는 미검증·미실행이며 접근·기록 문제는 삭제 전 중단(`docs/DEPLOY.md` 「디스크 정리」).
 
 ## 인프라 방향
 

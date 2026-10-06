@@ -30,9 +30,9 @@ jobs:
           # 그 밖의 워크플로가 self-hosted를 쓰면 실패한다.
           # `! cmd`는 set -e에서 실패로 잡히지 않으므로 if로 멈춘다
           if grep -RIl 'self-hosted' .github/workflows/ --exclude=ci.yml --exclude=deploy-obs-test.yml --exclude=seed-obs-test.yml --exclude=deploy-obs-prod.yml --exclude=disk-cleanup-obs-test.yml; then exit 1; fi
-          # 자동 배포 예외는 obs-test main CI 성공 뒤의 workflow_run 하나뿐이다.
+          # 자동 배포는 main CI 성공 workflow_run, 자동 정리는 정확한 주간 schedule job만 허용한다.
           f=.github/workflows/deploy-obs-test.yml
-          if grep -Eq '^[[:space:]]*(push|pull_request|pull_request_target|schedule|workflow_call|repository_dispatch|issue_comment|issues|release|merge_group)[[:space:]]*:' "$f"; then echo "$f: 허용하지 않은 배포 트리거가 있어요"; exit 1; fi
+          if grep -Eq '^[[:space:]]*(push|pull_request|pull_request_target|workflow_call|repository_dispatch|issue_comment|issues|release|merge_group)[[:space:]]*:' "$f"; then echo "$f: 허용하지 않은 배포 트리거가 있어요"; exit 1; fi
           grep -q '^  workflow_run:$' "$f"
           grep -q '^    workflows: \[CI\]$' "$f"
           grep -q '^    types: \[completed\]$' "$f"
@@ -43,6 +43,22 @@ jobs:
           grep -Fq "if: github.ref == 'refs/heads/main' && github.repository == 'jsexy0210-ship-it/Live-OBS-Platform' && needs.gate.result == 'success'" "$f"
           grep -q '^    environment: obs-test$' "$f"
           grep -q '^    runs-on: \[self-hosted, obs-kakao\]$' "$f"
+          [ "$(awk '/^jobs:/ { in_jobs=1; next } in_jobs && /^  [a-zA-Z_][a-zA-Z0-9_-]*:$/ { print $1 }' "$f")" = $'gate:\ndeploy:\nmaintenance:' ]
+          [ "$(grep -c '^    runs-on: \[self-hosted, obs-kakao\]$' "$f")" = 2 ]
+          [ "$(grep -c '^    environment:' "$f")" = 1 ]
+          # 마지막 maintenance job만 Environment 없이 정확한 main 예약 실행을 허용한다.
+          [ "$(grep -c '^  schedule:$' "$f")" = 1 ]
+          [ "$(grep -c '^    - cron:' "$f")" = 1 ]
+          grep -Fq "    - cron: '0 18 * * 0'" "$f"
+          maintenance="$(sed -n '/^  maintenance:$/,$p' "$f")"
+          grep -Fq "if: github.event_name == 'schedule' && github.event.schedule == '0 18 * * 0' && github.ref == 'refs/heads/main' && github.repository == 'jsexy0210-ship-it/Live-OBS-Platform'" <<<"$maintenance"
+          grep -q '^    runs-on: \[self-hosted, obs-kakao\]$' <<<"$maintenance"
+          grep -q '^      contents: read$' <<<"$maintenance"
+          grep -q '^          ref: [$][{][{] github.sha [}][}]$' <<<"$maintenance"
+          grep -q '^          persist-credentials: false$' <<<"$maintenance"
+          grep -q '^        run: deploy/maintenance/disk-cleanup.sh --apply$' <<<"$maintenance"
+          if grep -Eq 'secrets\.|^[[:space:]]*(environment|env|needs):|deploy-obs-prod|docker compose' <<<"$maintenance"; then exit 1; fi
+          if grep -E '^[[:space:]]*(run|uses):' <<<"$maintenance" | grep -Ev '^        (uses: actions/checkout@v5|run: deploy/maintenance/disk-cleanup.sh --apply)$'; then exit 1; fi
           for f in .github/workflows/seed-obs-test.yml .github/workflows/disk-cleanup-obs-test.yml; do
             [ -f "$f" ] || continue
             # 수동 실행 전용: workflow_dispatch 말고 다른 트리거가 있으면 실패
@@ -61,6 +77,11 @@ jobs:
             grep -q '^    environment: production$' "$f"
             grep -q '^    runs-on: \[self-hosted, obs-prod\]$' "$f"
           fi
+
+      - name: Maintenance safety fixtures
+        run: |
+          bash -n deploy/maintenance/disk-cleanup.sh
+          python3 deploy/maintenance/test_disk_cleanup.py
 
       - name: Node
         uses: actions/setup-node@v4

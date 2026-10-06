@@ -11,6 +11,9 @@ on:
     workflows: [CI]
     types: [completed]
     branches: [main]
+  schedule:
+    # 월요일 03:00 KST = 일요일 18:00 UTC. GitHub 예약 실행은 지연될 수 있다.
+    - cron: '0 18 * * 0'
   workflow_dispatch:
     inputs:
       confirm_sha:
@@ -346,7 +349,7 @@ jobs:
       - name: Clean up disk
         if: success()
         continue-on-error: true
-        run: scripts/ops/disk-cleanup.sh --apply
+        run: deploy/maintenance/disk-cleanup.sh --apply
 
       - name: Show status on failure
         if: failure() && steps.checkout.outcome == 'success'
@@ -363,3 +366,20 @@ jobs:
           if command -v flock >/dev/null 2>&1 && [ -x scripts/ops/deploy-mark.sh ]; then
             scripts/ops/deploy-mark.sh off "$MARK_KEY" || echo "::warning::배포 진행 표시를 끄지 못했어요. 표시는 만료 시각(기본 1시간)에 저절로 풀려요."
           fi
+
+  maintenance:
+    name: Weekly disk cleanup obs-test
+    # 이 job은 배포와 분리한다. secrets·Environment·compose·배포 호출 없이 정리 스크립트만 실행한다.
+    if: github.event_name == 'schedule' && github.event.schedule == '0 18 * * 0' && github.ref == 'refs/heads/main' && github.repository == 'jsexy0210-ship-it/Live-OBS-Platform'
+    runs-on: [self-hosted, obs-kakao]
+    permissions:
+      contents: read
+    timeout-minutes: 15
+    steps:
+      - name: Checkout trusted main
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Retain recent backups and rollback images
+        run: deploy/maintenance/disk-cleanup.sh --apply
