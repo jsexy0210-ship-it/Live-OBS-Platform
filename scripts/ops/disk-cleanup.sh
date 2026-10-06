@@ -55,7 +55,7 @@ readonly_space_details() {
 }
 
 readonly_buildx_details() {
-  local version data count
+  local version data count ref detail attribution
   if ! command -v docker >/dev/null 2>&1 || ! docker buildx version >/dev/null 2>&1; then
     log "Buildx 상세: 미지원 또는 확인 불가"; return 0
   fi
@@ -74,12 +74,31 @@ readonly_buildx_details() {
     done
     [ "$count" -le 100 ] || log "Build cache 추가 records: 확인 생략(나머지 귀속 미확인)"
   fi
-  if docker buildx history ls --help >/dev/null 2>&1 && docker buildx history ls --help 2>&1 | grep -q -- '--local'; then
-    log "Build history attribution: repository=UNKNOWN revision=UNKNOWN context=UNKNOWN"
-    log "Build cache ownership: UNKNOWN (cache ID와 build history 연결 근거 없음)"
+  if docker buildx history ls --help >/dev/null 2>&1 && docker buildx history inspect --help >/dev/null 2>&1 && docker buildx history ls --help 2>&1 | grep -q -- '--local'; then
+    data="$(docker buildx history ls --local --format json 2>/dev/null | jq -c 'if type == "array" then . else [] end' 2>/dev/null || true)"
+    if [ -z "$data" ]; then
+      log "Build history: 지원 명령 실행 실패, ONQ 귀속 미확인"
+    else
+      count="$(jq 'length' <<<"$data" 2>/dev/null || echo 0)"
+      log "Build history: 로컬 저장소 기록 ${count}개, 최대 20개 메타데이터 확인"
+      while IFS= read -r ref; do
+        [[ "$ref" =~ ^[A-Za-z0-9_-]{1,80}$ ]] || continue
+        detail="$(docker buildx history inspect --format json "$ref" 2>/dev/null | jq -c 'if type == "object" then {repository:(.VCSRepository // ""), revision:(.VCSRevision // ""), context:(.Context // "")} else {} end' 2>/dev/null || true)"
+        attribution="$(jq -r '
+          def onq_repo: ascii_downcase | sub("\\.git$"; "") | . == "https://github.com/jsexy0210-ship-it/live-obs-platform" or . == "http://github.com/jsexy0210-ship-it/live-obs-platform" or . == "git@github.com:jsexy0210-ship-it/live-obs-platform";
+          .repository as $repo | .revision as $rev | .context as $ctx |
+          "repository=" + (if ($repo | type) == "string" and ($repo | onq_repo) then "ONQ" elif ($repo | type) == "string" and ($repo | length) > 0 then "OTHER" else "UNKNOWN" end) +
+          " revision=" + (if ($rev | type) == "string" and ($rev | test("^[0-9a-fA-F]{40}$")) then ($rev[0:12] | ascii_downcase) else "UNKNOWN" end) +
+          " context=" + (if $ctx == "." then "repo-root" elif ($ctx | type) == "string" and ($ctx | test("^[A-Za-z0-9_./-]{1,120}$")) and (($ctx | split("/")) | index("..")) == null then "workspace" elif ($ctx | type) == "string" and ($ctx | length) > 0 then "other-or-unknown" else "UNKNOWN" end)
+        ' <<<"${detail:-{}}" 2>/dev/null || echo 'repository=UNKNOWN revision=UNKNOWN context=UNKNOWN')"
+        log "  Build record: $attribution"
+      done < <(jq -r '.[0:20][] | .ID // empty | select(type == "string")' <<<"$data" 2>/dev/null)
+      [ "$count" -le 20 ] || log "Build history 나머지 records: 미확인"
+    fi
   else
-    log "Build history: --local 지원 여부를 확인할 수 없어 미확인"
+    log "Build history: history ls --local/inspect 미지원 또는 확인 불가"
   fi
+  log "Build cache ownership: UNKNOWN (cache ID와 build history 연결 근거 없음)"
 }
 
 docker_root() {
