@@ -4,7 +4,7 @@
 
 | ID | 제안 경로 | 내용 |
 |---|---|---|
-| SA-001-EVENT | /seller/broadcast | SA-001 v336 원본의 제목 행동 줄에 「이벤트 운영」 한 요소만 추가한 bounded variant |
+| SA-001 (상태 소스 SA-001-EVENT) | /seller/broadcast | SA-001 v336 원본의 제목 행동 줄에 「이벤트 운영」 한 요소만 추가한 bounded variant |
 | SA-058 | /seller/broadcast의 이벤트 운영 상태 | 기존 방송 GNB/LNB 유지 · 이벤트 목록/생성·설정·참여자·진행·결과 기록 |
 | SH-042 | /event/[opaqueToken] | 쇼핑몰 없는 파트너스도 이용하는 독립 공개 참여 화면 |
 | OV-009 | /overlay/[token]의 event state | OBS 주소 하나 재사용 · 16:9/9:16 · 대기/QR/마감/카운트다운/진행/결과/재연결 |

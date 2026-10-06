@@ -3,27 +3,39 @@
   "sources": [
     {
       "source": "SA-001-EVENT.dc.html",
-      "ids": 0,
       "brokenLinks": 0,
-      "status": "DRAFT / PROPOSED"
+      "status": "DRAFT / PROPOSED",
+      "domElementIds": 0,
+      "screenId": "SA-001",
+      "productRoute": "/seller/broadcast",
+      "screenMetadataMatchesManifest": true
     },
     {
       "source": "SA-058.dc.html",
-      "ids": 18,
       "brokenLinks": 0,
-      "status": "DRAFT / PROPOSED"
+      "status": "DRAFT / PROPOSED",
+      "domElementIds": 18,
+      "screenId": "SA-058",
+      "productRoute": "/seller/broadcast",
+      "screenMetadataMatchesManifest": true
     },
     {
       "source": "SH-042.dc.html",
-      "ids": 1,
       "brokenLinks": 0,
-      "status": "DRAFT / PROPOSED"
+      "status": "DRAFT / PROPOSED",
+      "domElementIds": 1,
+      "screenId": "SH-042",
+      "productRoute": "/event/[opaqueToken]",
+      "screenMetadataMatchesManifest": true
     },
     {
       "source": "OV-009.dc.html",
-      "ids": 0,
       "brokenLinks": 0,
-      "status": "DRAFT / PROPOSED"
+      "status": "DRAFT / PROPOSED",
+      "domElementIds": 0,
+      "screenId": "OV-009",
+      "productRoute": "/overlay/[token]",
+      "screenMetadataMatchesManifest": true
     }
   ],
   "sharedMetadataChanged": false,
