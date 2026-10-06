@@ -56,6 +56,15 @@ export async function putDraftLicense(db: PrismaClient, verificationId: string, 
   return { ok: true as const, license: summary(row) };
 }
 
+// 신청한 쇼핑몰의 사업자등록증을 바꾼다(보완 요청 뒤 다시 올리기). 없으면 새로 둔다
+export async function putSellerLicense(db: PrismaClient, sellerId: string, bytes: Buffer, rawName: string | null, now = new Date()) {
+  const f = checkLicenseFile(bytes);
+  if (!f.ok) return f;
+  const data = { fileName: cleanLicenseName(rawName, f.type), mimeType: f.type, byteSize: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex"), data: new Uint8Array(bytes), uploadedAt: now };
+  const row = await db.sellerBusinessLicense.upsert({ where: { sellerId }, create: { sellerId, ...data }, update: data });
+  return { ok: true as const, license: summary(row) };
+}
+
 export async function readDraftLicense(db: PrismaClient, verificationId: string) {
   const row = await db.sellerBusinessLicense.findUnique({ where: { verificationId }, select: { fileName: true, mimeType: true, byteSize: true, uploadedAt: true } });
   return row ? summary(row) : null;

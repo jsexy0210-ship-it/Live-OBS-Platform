@@ -103,6 +103,10 @@ export default function SellerLoginPage() {
         text: other === "staff" ? "직원 계정입니다. 직원 탭에서 로그인해 주십시오" : "대표자 계정입니다. 대표자 탭에서 로그인해 주십시오",
         switchTo: other,
       });
+    } else if (r.error === "seller_closed" && r.body?.application === "rejected") {
+      // 가입 반려: 안내 화면(AU-005)이 사유와 「다시 신청」을 보인다
+      router.push("/seller/pending");
+      return;
     } else if (r.error === "seller_pending") {
       // 가입 승인 대기(AU-005): 로그인 오류 문구 대신 안내 화면
       router.push("/seller/pending");
