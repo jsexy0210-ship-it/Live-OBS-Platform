@@ -465,12 +465,12 @@ export default function ShopInfoPage() {
               {editable && profile ? (
                 <>
                   <FormRow label="쇼핑몰 이름" required htmlFor="shop-name">
-                    <input id="shop-name" placeholder="예: 카드숍 별빛" className={`inp${showErrors && nameError ? " is-error" : ""}`} type="text" value={name} onChange={(e) => setName(e.target.value)} style={{ width: 360 }} aria-invalid={showErrors && !!nameError} disabled={saving} />
+                    <input id="shop-name" placeholder="쇼핑몰 이름" className={`inp${showErrors && nameError ? " is-error" : ""}`} type="text" value={name} onChange={(e) => setName(e.target.value)} style={{ width: 360 }} aria-invalid={showErrors && !!nameError} disabled={saving} />
                     <span className="t-l2 c-alt">{len(name.trim())} / {NAME_MAX}</span>
                     {showErrors && nameError && <span className="err">{nameError}</span>}
                   </FormRow>
                   <FormRow label="한 줄 소개" htmlFor="shop-tagline">
-                    <input id="shop-tagline" placeholder="예: 매일 밤 8시 카드 라이브" className={`inp${showErrors && taglineError ? " is-error" : ""}`} type="text" value={tagline} onChange={(e) => setTagline(e.target.value)} style={{ width: 520, maxWidth: "100%" }} aria-invalid={showErrors && !!taglineError} disabled={saving} />
+                    <input id="shop-tagline" placeholder="한 줄 소개 (40자)" className={`inp${showErrors && taglineError ? " is-error" : ""}`} type="text" value={tagline} onChange={(e) => setTagline(e.target.value)} style={{ width: 520, maxWidth: "100%" }} aria-invalid={showErrors && !!taglineError} disabled={saving} />
                     <span className="t-l2 c-alt">{len(tagline.trim())} / {TAGLINE_MAX}</span>
                     {showErrors && taglineError && <span className="err">{taglineError}</span>}
                   </FormRow>
@@ -595,12 +595,12 @@ export default function ShopInfoPage() {
                     </div>
                   </FormRow>
                   <FormRow label="공유 제목" htmlFor="share-title" help={`비우면 쇼핑몰 이름 · ${SHARE_TITLE_MAX}자`}>
-                    <input id="share-title" placeholder="비우면 쇼핑몰 이름이 보입니다" className={`inp${showErrors && titleProblem ? " is-error" : ""}`} value={shareTitle} onChange={(e) => setShareTitle(e.target.value)} style={{ width: 360 }} aria-invalid={!!titleProblem} disabled={saving} />
+                    <input id="share-title" placeholder="공유 카드 제목 (60자)" className={`inp${showErrors && titleProblem ? " is-error" : ""}`} value={shareTitle} onChange={(e) => setShareTitle(e.target.value)} style={{ width: 360 }} aria-invalid={!!titleProblem} disabled={saving} />
                     <span className="t-l2 c-alt">{textLength(shareTitle)} / {SHARE_TITLE_MAX}</span>
                     {titleProblem && <span className="err">{titleProblem}</span>}
                   </FormRow>
                   <FormRow label="공유 설명" htmlFor="share-desc" help={`비우면 한 줄 소개 · ${SHARE_DESC_MAX}자`}>
-                    <input id="share-desc" placeholder="비우면 한 줄 소개가 보입니다" className={`inp${showErrors && descProblem ? " is-error" : ""}`} value={shareDesc} onChange={(e) => setShareDesc(e.target.value)} style={{ width: 520, maxWidth: "100%" }} aria-invalid={!!descProblem} disabled={saving} />
+                    <input id="share-desc" placeholder="공유 카드 설명 한 줄" className={`inp${showErrors && descProblem ? " is-error" : ""}`} value={shareDesc} onChange={(e) => setShareDesc(e.target.value)} style={{ width: 520, maxWidth: "100%" }} aria-invalid={!!descProblem} disabled={saving} />
                     <span className="t-l2 c-alt">{textLength(shareDesc)} / {SHARE_DESC_MAX}</span>
                     {descProblem && <span className="err">{descProblem}</span>}
                   </FormRow>
@@ -651,7 +651,7 @@ export default function ShopInfoPage() {
               <div style={{ marginTop: 32 }} data-testid="notice-section">
                 <FormSection title="공지 · 이용안내">
                   <FormRow label="상단 공지 (한 줄)" htmlFor="top-notice" help="모든 쇼핑몰 화면 맨 위에 한 줄로 보입니다 · 비우면 보이지 않습니다 · 홈 띠 고정 공지는 「쇼핑몰 공지 · 질문」에서 관리">
-                    <input id="top-notice" placeholder="예: 추석 연휴에는 배송이 늦어질 수 있어요" className={`inp${showErrors && topNoticeError ? " is-error" : ""}`} value={topNotice} onChange={(e) => setTopNotice(e.target.value)} style={{ width: 520, maxWidth: "100%" }} aria-invalid={showErrors && !!topNoticeError} disabled={saving} />
+                    <input id="top-notice" placeholder="상단 공지 한 줄" className={`inp${showErrors && topNoticeError ? " is-error" : ""}`} value={topNotice} onChange={(e) => setTopNotice(e.target.value)} style={{ width: 520, maxWidth: "100%" }} aria-invalid={showErrors && !!topNoticeError} disabled={saving} />
                     <span className="t-l2 c-alt">{len(topNotice.trim())} / {TOP_NOTICE_MAX}</span>
                     {showErrors && topNoticeError && <span className="err" role="alert">{topNoticeError}</span>}
                   </FormRow>

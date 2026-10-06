@@ -15,13 +15,13 @@ const ADDRESS_MAX = 200;
 const HOURS_MAX = 100;
 const PHONE = /^[0-9+\-() ]{5,30}$/;
 const bizNo = (v: string | null) => (v && /^\d{10}$/.test(v) ? `${v.slice(0, 3)}-${v.slice(3, 5)}-${v.slice(5)}` : v);
-// 입력 예시(placeholder). 정본 보드에는 문구가 없어 디자인 전담에 확정을 요청한 임시 문구
+// 입력 예시(placeholder): 정본 v336 placeholders.md 문구
 const PLACEHOLDER: Record<string, string> = {
-  "biz-phone": "예: 1588-1234",
-  "biz-hours": "예: 평일 10:00~17:00",
-  "biz-kakao": "https://pf.kakao.com/_채널주소",
-  "biz-youtube": "https://www.youtube.com/@채널이름",
-  "biz-address": "예: 서울특별시 중구 세종대로 110 3층",
+  "biz-phone": "02-000-0000",
+  "biz-hours": "평일 10:00 ~ 18:00",
+  "biz-kakao": "카카오톡 채널 주소",
+  "biz-youtube": "유튜브 채널 주소",
+  "biz-address": "주소 검색",
 };
 const len = (v: string) => [...v.trim()].length;
 const URL_MAX = 300;
@@ -110,7 +110,7 @@ export function BusinessSection({ onSection, disabled }: { onSection: OnSection;
   }
   if (!data) return null;
   const biz = data.business;
-  const readonly = (v: string | null) => <input className="inp" value={v ?? ""} readOnly aria-readonly style={{ width: "100%" }} />;
+  const readonly = (v: string | null, placeholder: string) => <input className="inp" value={v ?? ""} placeholder={placeholder} readOnly aria-readonly style={{ width: "100%" }} />;
   const field = (id: string, v: string, set: (v: string) => void, error: string | null, help?: string) => (
     <>
       <input id={id} placeholder={PLACEHOLDER[id]} className={`inp${showErrors && error ? " is-error" : ""}`} value={v} onChange={(e) => set(e.target.value)} style={{ width: "100%" }} aria-invalid={showErrors && !!error} disabled={disabled} />
@@ -134,15 +134,15 @@ export function BusinessSection({ onSection, disabled }: { onSection: OnSection;
         <tbody>
           <tr>
             <th scope="row"><span className="req">상호</span></th>
-            <td className="si-rt" data-testid="biz-company">{readonly(biz.companyName)}</td>
+            <td className="si-rt" data-testid="biz-company">{readonly(biz.companyName, "사업자등록증의 상호")}</td>
             <th scope="row"><span className="req">대표자</span></th>
-            <td>{readonly(biz.representativeName)}</td>
+            <td>{readonly(biz.representativeName, "대표자 이름")}</td>
           </tr>
           <tr>
             <th scope="row"><span className="req">사업자등록번호</span></th>
-            <td className="si-rt">{readonly(bizNo(biz.businessNumber))}<p className="help au-ft-help">가입 심사 때 확인 · 변경은 문의</p></td>
+            <td className="si-rt">{readonly(bizNo(biz.businessNumber), "000-00-00000")}<p className="help au-ft-help">가입 심사 때 확인 · 변경은 문의</p></td>
             <th scope="row"><span className="req">통신판매업 신고번호</span></th>
-            <td>{readonly(biz.mailOrderNumber)}</td>
+            <td>{readonly(biz.mailOrderNumber, "통신판매업 신고번호")}</td>
           </tr>
           <tr>
             <th scope="row"><label htmlFor="biz-phone" className="req">고객센터 연락처</label></th>

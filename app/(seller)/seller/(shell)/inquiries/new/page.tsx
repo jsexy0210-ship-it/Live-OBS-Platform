@@ -180,7 +180,7 @@ function Form() {
                 </FormRow>
                 <FormRow label="제목" required htmlFor="iq-title">
                   <div className="col" style={{ gap: 4, width: "100%" }}>
-                    <input id="iq-title" placeholder="예: 방송 중 방송 화면이 가끔 멈춥니다" className={`inp${err(errors.title) ? " is-error" : ""}`} style={{ width: "100%" }} maxLength={INQUIRY_TITLE_MAX + 5} aria-invalid={!!err(errors.title)} value={title} onChange={(e) => setTitle(e.target.value)} />
+                    <input id="iq-title" placeholder="제목" className={`inp${err(errors.title) ? " is-error" : ""}`} style={{ width: "100%" }} maxLength={INQUIRY_TITLE_MAX + 5} aria-invalid={!!err(errors.title)} value={title} onChange={(e) => setTitle(e.target.value)} />
                     {err(errors.title) ? <span className="err" role="alert">{errors.title}</span> : <span className="t-c1 c-alt num">{[...title].length} / {INQUIRY_TITLE_MAX}</span>}
                   </div>
                 </FormRow>
