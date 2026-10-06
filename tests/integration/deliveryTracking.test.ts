@@ -1,10 +1,11 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "../../lib/server/db";
+import { SCHEDULED_JOBS, runScheduledJobs } from "../../lib/server/jobs/scheduler";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
 import { shipOrder } from "../../lib/server/orders/ship";
 import { TRACKING_INTERVAL_MS, runDeliveryTrackingLookups } from "../../lib/server/orders/tracking";
-import { FakeDeliveryTrackingProvider, deliveryTrackingProvider } from "../../lib/server/orders/trackingProvider";
+import { FakeDeliveryTrackingProvider, deliveryTrackingProvider, setDeliveryTrackingProviderForTest } from "../../lib/server/orders/trackingProvider";
 import { markOrderPaid } from "../../lib/server/queue/service";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { createLoginBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
@@ -202,5 +203,39 @@ describe("배송 자동조회 충전금 차감", () => {
     const p = new FakeDeliveryTrackingProvider();
     expect(await runDeliveryTrackingLookups(db, p, { now: NOW() })).toMatchObject({ looked: 0 });
     expect(p.calls).toEqual([]);
+  });
+});
+
+describe("정기 실행 연결(앱 안 스케줄러)", () => {
+  const JOB = "delivery_tracking.lookup";
+  const only = [() => SCHEDULED_JOBS.find((j) => j.name === JOB)!];
+
+  it("작업이 등록돼 있고, 조회 업체가 없으면 조회·차감 없이 0건으로 끝난다", async () => {
+    expect(SCHEDULED_JOBS.map((j) => j.name)).toContain(JOB);
+    const s = await shop();
+    const o = await s.shipped();
+    const out = await runScheduledJobs(db, NOW(), only.map((f) => f()));
+    expect(out).toEqual([{ name: JOB, status: "done", count: 0 }]);
+    expect(await debits(s.seller.id)).toEqual([]);
+    expect((await shipment(o.orderId)).trackingCheckedAt).toBeNull();
+  });
+
+  it("조회 업체가 있으면 켠 판매자의 배송 중 주문만 조회하고 한 번 차감한다. 같은 구간에 다시 돌아도 다시 차감하지 않는다", async () => {
+    const on = await shop();
+    const off = await shop({ tracking: false });
+    const a = await on.shipped();
+    await off.shipped();
+    const p = new FakeDeliveryTrackingProvider();
+    setDeliveryTrackingProviderForTest(p);
+    try {
+      const t = NOW();
+      expect(await runScheduledJobs(db, t, only.map((f) => f()))).toEqual([{ name: JOB, status: "done", count: 1 }]);
+      expect(await runScheduledJobs(db, t, only.map((f) => f()))).toEqual([{ name: JOB, status: "done", count: 0 }]);
+      expect(p.calls).toEqual([{ courier: "CJ", trackingNumber: a.trackingNumber }]);
+      expect((await debits(on.seller.id)).length).toBe(1);
+      expect(await debits(off.seller.id)).toEqual([]);
+    } finally {
+      setDeliveryTrackingProviderForTest(undefined);
+    }
   });
 });

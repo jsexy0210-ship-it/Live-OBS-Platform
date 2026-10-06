@@ -137,10 +137,13 @@ function BrandColorRow({ onToast }: { onToast: (t: string) => void }) {
 }
 
 type OperatingState = "OPEN" | "PREPARING" | "PAUSED";
-type Profile = { shopName: string; shopTagline: string | null; operatingState: OperatingState };
+type Primary = "DEFAULT" | "CUSTOM";
+type Profile = { shopName: string; shopTagline: string | null; operatingState: OperatingState; topNotice: string | null; homeBenefitBannerVisible: boolean; usageGuide: string | null; primaryAddress: Primary; primaryDomain: string | null };
 const MODE_LABEL: Record<OperatingState, string> = { OPEN: "운영 중", PREPARING: "준비 중", PAUSED: "일시 정지" };
 const NAME_MAX = 20;
 const TAGLINE_MAX = 40;
+const TOP_NOTICE_MAX = 60;
+const USAGE_GUIDE_MAX = 1000;
 const len = (v: string) => [...v].length;
 
 export default function ShopInfoPage() {
@@ -151,6 +154,11 @@ export default function ShopInfoPage() {
   const [name, setName] = useState("");
   const [tagline, setTagline] = useState("");
   const [mode, setMode] = useState<OperatingState>("OPEN");
+  const [topNotice, setTopNotice] = useState("");
+  const [benefit, setBenefit] = useState(true);
+  const [usageGuide, setUsageGuide] = useState("");
+  const [primary, setPrimary] = useState<Primary>("DEFAULT");
+  const [primaryDomain, setPrimaryDomain] = useState<string | null>(null);
   const [showErrors, setShowErrors] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveFailure, setSaveFailure] = useState<string | null>(null);
@@ -184,6 +192,19 @@ export default function ShopInfoPage() {
     setName(r.data.profile.shopName);
     setTagline(r.data.profile.shopTagline ?? "");
     setMode(r.data.profile.operatingState);
+    setTopNotice(r.data.profile.topNotice ?? "");
+    setBenefit(r.data.profile.homeBenefitBannerVisible);
+    setUsageGuide(r.data.profile.usageGuide ?? "");
+    setPrimary(r.data.profile.primaryAddress);
+    setPrimaryDomain(r.data.profile.primaryDomain);
+  }, []);
+  // 도메인을 확인하거나 해제하면 「대표 주소」로 고를 수 있는 도메인만 다시 읽는다(입력 중인 값은 건드리지 않는다)
+  const reloadPrimaryDomain = useCallback(async () => {
+    const r = await api<{ profile: Profile }>("/api/seller/shop-profile");
+    if (!r.ok) return;
+    setProfile((p) => (p ? { ...p, primaryDomain: r.data.profile.primaryDomain, primaryAddress: r.data.profile.primaryAddress } : p));
+    setPrimaryDomain(r.data.profile.primaryDomain);
+    setPrimary((cur) => (cur === "CUSTOM" && !r.data.profile.primaryDomain ? "DEFAULT" : cur));
   }, []);
   const loadShare = useCallback(async () => {
     const r = await api<{ preview: Share }>("/api/seller/share-preview");
@@ -281,9 +302,13 @@ export default function ShopInfoPage() {
   const taglineError = len(tagline.trim()) > TAGLINE_MAX ? `한 줄 소개는 ${TAGLINE_MAX}자까지 쓸 수 있습니다` : null;
   const titleProblem = shareProblem(shareTitle, SHARE_TITLE_MAX, "name");
   const descProblem = shareProblem(shareDesc, SHARE_DESC_MAX, "memo");
+  const topNoticeError = len(topNotice.trim()) > TOP_NOTICE_MAX ? `상단 공지는 ${TOP_NOTICE_MAX}자까지 쓸 수 있습니다` : topNotice.includes("\n") ? "상단 공지는 한 줄로 써 주십시오" : null;
+  const guideError = len(usageGuide.trim()) > USAGE_GUIDE_MAX ? `이용안내는 ${USAGE_GUIDE_MAX.toLocaleString("ko-KR")}자까지 쓸 수 있습니다` : null;
   const modeDirty = !!profile && mode !== profile.operatingState;
   const textDirty = !!profile && (name.trim() !== profile.shopName || (tagline.trim() || null) !== profile.shopTagline);
-  const profileDirty = textDirty || modeDirty;
+  const noticeDirty = !!profile && ((topNotice.trim() || null) !== profile.topNotice || benefit !== profile.homeBenefitBannerVisible || (usageGuide.trim() || null) !== profile.usageGuide);
+  const primaryDirty = !!profile && primary !== profile.primaryAddress;
+  const profileDirty = textDirty || modeDirty || noticeDirty || primaryDirty;
   const shareDirty = !!share && ((share.title ?? "") !== shareTitle.trim() || (share.description ?? "") !== shareDesc.trim());
   // 내 도메인 · 사업자·고객센터 구역은 자기 상태를 알려 오고, 「저장」 하나가 바뀐 구역만 차례로 저장한다
   const sections = useRef<Record<string, SectionHandle>>({});
@@ -304,7 +329,7 @@ export default function ShopInfoPage() {
     if (!profile) return;
     const changed = Object.values(sections.current).filter((h) => h.dirty);
     const sectionsOk = changed.map((h) => h.validate()).every(Boolean);
-    if (nameError || taglineError || titleProblem || descProblem || !sectionsOk) {
+    if (nameError || taglineError || topNoticeError || guideError || titleProblem || descProblem || !sectionsOk) {
       setShowErrors(true);
       return;
     }
@@ -323,7 +348,7 @@ export default function ShopInfoPage() {
       : await confirm({
           title: "쇼핑몰 정보를 저장하시겠습니까?",
           body:
-            (shareDirty ? "쇼핑몰 이름 · 한 줄 소개 · 공유 제목 · 공유 설명이 구매자 쇼핑몰과 공유 화면에 바로 바뀝니다." : profileDirty ? "쇼핑몰 이름 · 한 줄 소개가 구매자 쇼핑몰에 바로 바뀝니다." : "") +
+            (shareDirty ? "쇼핑몰 이름 · 한 줄 소개 · 공유 제목 · 공유 설명이 구매자 쇼핑몰과 공유 화면에 바로 바뀝니다." : textDirty || modeDirty ? "쇼핑몰 이름 · 한 줄 소개가 구매자 쇼핑몰에 바로 바뀝니다." : noticeDirty || primaryDirty ? "공지 · 이용안내 · 대표 주소가 구매자 쇼핑몰에 바로 바뀝니다." : "") +
             (changed.length ? `${profileDirty || shareDirty ? " " : ""}${sectionNames} 변경이 구매자 쇼핑몰에 바로 바뀝니다.` : ""),
           confirmLabel: "저장",
         });
@@ -333,7 +358,17 @@ export default function ShopInfoPage() {
     // 구역마다 따로인 API를 차례로 부르고, 실패한 구역은 이름과 함께 모아서 보인다(성공한 구역은 저장된 상태로 남는다)
     const failures: string[] = [];
     if (profileDirty) {
-      const r = await api<{ profile: Profile }>("/api/seller/shop-profile", { method: "PUT", body: { shopName: name.trim(), shopTagline: tagline.trim() === "" ? null : tagline.trim(), operatingState: mode } });
+      const r = await api<{ profile: Profile }>("/api/seller/shop-profile", { method: "PUT", body: {
+          shopName: name.trim(),
+          shopTagline: tagline.trim() === "" ? null : tagline.trim(),
+          operatingState: mode,
+          // 공지 · 이용안내 · 대표 주소는 바뀐 것만 보낸다(서버는 보낸 키만 바꾼다)
+          ...(profile.topNotice !== (topNotice.trim() || null) ? { topNotice: topNotice.trim() === "" ? null : topNotice.trim() } : {}),
+          ...(profile.homeBenefitBannerVisible !== benefit ? { homeBenefitBannerVisible: benefit } : {}),
+          ...(profile.usageGuide !== (usageGuide.trim() || null) ? { usageGuide: usageGuide.trim() === "" ? null : usageGuide.trim() } : {}),
+          ...(primaryDirty ? { primaryAddress: primary } : {}),
+        },
+      });
       if (!r.ok) {
         failures.push(`쇼핑몰 정보: ${failMessage(r, "admin", "저장하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주십시오")}`);
       } else {
@@ -341,6 +376,11 @@ export default function ShopInfoPage() {
         setName(r.data.profile.shopName);
         setTagline(r.data.profile.shopTagline ?? "");
         setMode(r.data.profile.operatingState);
+        setTopNotice(r.data.profile.topNotice ?? "");
+        setBenefit(r.data.profile.homeBenefitBannerVisible);
+        setUsageGuide(r.data.profile.usageGuide ?? "");
+        setPrimary(r.data.profile.primaryAddress);
+        setPrimaryDomain(r.data.profile.primaryDomain);
       }
     }
     if (shareDirty) {
@@ -594,8 +634,47 @@ export default function ShopInfoPage() {
                 </FormSection>
               </div>
             )}
-            {editable && <DomainSection onToast={setToast} onSection={onSection} disabled={saving} />}
+            {editable && (
+              <DomainSection
+                onToast={setToast}
+                onSection={onSection}
+                disabled={saving}
+                onChanged={() => void reloadPrimaryDomain()}
+                primary={primary}
+                onPrimary={setPrimary}
+                primaryDomain={primaryDomain}
+                defaultAddress={shopUrl}
+              />
+            )}
             {editable && <BusinessSection onSection={onSection} disabled={saving} />}
+            {editable && profile && (
+              <div style={{ marginTop: 32 }} data-testid="notice-section">
+                <FormSection title="공지 · 이용안내">
+                  <FormRow label="상단 공지 (한 줄)" htmlFor="top-notice" help="모든 쇼핑몰 화면 맨 위에 한 줄로 보입니다 · 비우면 보이지 않습니다 · 홈 띠 고정 공지는 「쇼핑몰 공지 · 질문」에서 관리">
+                    <input id="top-notice" className={`inp${showErrors && topNoticeError ? " is-error" : ""}`} value={topNotice} onChange={(e) => setTopNotice(e.target.value)} style={{ width: 520, maxWidth: "100%" }} aria-invalid={showErrors && !!topNoticeError} disabled={saving} />
+                    <span className="t-l2 c-alt">{len(topNotice.trim())} / {TOP_NOTICE_MAX}</span>
+                    {showErrors && topNoticeError && <span className="err" role="alert">{topNoticeError}</span>}
+                  </FormRow>
+                  <FormRow label="홈 혜택 배너" help="「등급 혜택」 「인기 카드」 배너 2장 · 적립금을 끄면 자동으로 숨깁니다">
+                    <div className="row" role="radiogroup" aria-label="홈 혜택 배너" style={{ gap: 24 }}>
+                      {([true, false] as const).map((v) => (
+                        <label key={String(v)} className="chk">
+                          <input type="radio" name="home-benefit" checked={benefit === v} disabled={saving} onChange={() => setBenefit(v)} />
+                          {v ? "보이기" : "숨기기"}
+                        </label>
+                      ))}
+                    </div>
+                  </FormRow>
+                  <FormRow label="이용안내 · 교환 · 환불 정책" htmlFor="usage-guide" help="구매자에게 보이는 글이라 해요체로 씁니다 · 줄바꿈이 그대로 보입니다">
+                    <div className="col" style={{ gap: 4, width: "100%" }}>
+                      <textarea id="usage-guide" className={`inp${showErrors && guideError ? " is-error" : ""}`} rows={6} style={{ width: "100%", maxWidth: 820, padding: "10px 12px" }} value={usageGuide} onChange={(e) => setUsageGuide(e.target.value)} aria-invalid={showErrors && !!guideError} disabled={saving} />
+                      <span className="t-l2 c-alt">{len(usageGuide.trim()).toLocaleString("ko-KR")} / {USAGE_GUIDE_MAX.toLocaleString("ko-KR")}</span>
+                      {showErrors && guideError && <span className="err" role="alert">{guideError}</span>}
+                    </div>
+                  </FormRow>
+                </FormSection>
+              </div>
+            )}
             <div style={{ marginTop: 32 }}>
               <FormSection title="구매자 화면 미리보기">
                 <FormRow label="쇼핑몰 맨 위" help="쇼핑몰 모든 화면 맨 위에 이렇게 표시됩니다">
@@ -625,7 +704,7 @@ export default function ShopInfoPage() {
                     type="button"
                     disabled={saving || !dirty}
                     onClick={() => {
-                      if (profile) (setName(profile.shopName), setTagline(profile.shopTagline ?? ""), setMode(profile.operatingState));
+                      if (profile) (setName(profile.shopName), setTagline(profile.shopTagline ?? ""), setMode(profile.operatingState), setTopNotice(profile.topNotice ?? ""), setBenefit(profile.homeBenefitBannerVisible), setUsageGuide(profile.usageGuide ?? ""), setPrimary(profile.primaryAddress));
                       if (share) (setShareTitle(share.title ?? ""), setShareDesc(share.description ?? ""));
                       Object.values(sections.current).forEach((h) => h.reset());
                       setShowErrors(false);
