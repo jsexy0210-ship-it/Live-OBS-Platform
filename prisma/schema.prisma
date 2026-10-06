@@ -4020,3 +4020,13 @@ model PlatformPolicy {
   updatedAt        DateTime @default(now()) @updatedAt @db.Timestamptz(3)
   updatedByAdminId String?  @db.Uuid
 }
+
+// 인프라 단가 표(한 행, id = 1). 마스터 관리자(최고관리자)가 입력하는 월 단가·건당 단가·수수료율. 비밀값 없음.
+// prices는 키(serverMonthlyWon 등) → 숫자. 입력하지 않은 키는 없다(비용 추정에서 「단가 없음」). 변경은 version으로 겹침을 막고 로그 추적에 남긴다.
+model InfraPriceSetting {
+  id               Int      @id @default(1)
+  prices           Json     @default("{}")
+  version          Int      @default(0)
+  updatedByAdminId String?  @db.Uuid
+  updatedAt        DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+}
