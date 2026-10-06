@@ -4,7 +4,8 @@ import { prisma } from "../../../../../lib/server/db";
 import { errorResponse } from "../../../../../lib/server/http/route";
 import { resolveOverlayToken } from "../../../../../lib/server/overlay/token";
 import { liveHub } from "../../../../../lib/server/realtime/hub";
-import { openSse } from "../../../../../lib/server/realtime/sse";
+import { DISCONNECT_GRACE_MS, recordOverlayConnect, recordOverlayDisconnect } from "../../../../../lib/server/broadcast/events";
+import { openSse, openStreamCount } from "../../../../../lib/server/realtime/sse";
 
 export const dynamic = "force-dynamic";
 
@@ -15,14 +16,26 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
     const token = (await params).token;
     const sellerId = await resolveOverlayToken(prisma, token);
     if (!sellerId) return NextResponse.json({ error: "not_found" }, { status: 404 });
-    return await openSse(liveHub(), {
+    const key = `overlay:${hashToken(token)}`;
+    const res = await openSse(liveHub(), {
       sellerId,
-      key: `overlay:${hashToken(token)}`,
+      key,
       readVersion: async () =>
         (await prisma.seller.findUniqueOrThrow({ where: { id: sellerId }, select: { liveVersion: true } })).liveVersion,
       revalidate: async () => (await resolveOverlayToken(prisma, token)) === sellerId,
       signal: req.signal,
     });
+    // 방송 화면·연결 로그(SA-055): 연결을 남기고, 마지막 연결이 닫힌 뒤 잠시 지나도 다시 안 붙으면 끊김으로 남긴다
+    if (res.ok) {
+      void recordOverlayConnect(prisma, sellerId);
+      req.signal.addEventListener("abort", () => {
+        const at = new Date();
+        setTimeout(() => {
+          if (openStreamCount(key) === 0) void recordOverlayDisconnect(prisma, sellerId, at);
+        }, DISCONNECT_GRACE_MS).unref?.();
+      });
+    }
+    return res;
   } catch (e) {
     return errorResponse(e);
   }
