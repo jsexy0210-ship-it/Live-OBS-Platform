@@ -2,6 +2,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { mailSender } from "../mail/registry";
 import { sendMail, type MailSender } from "../mail/quota";
 import { cancelledMail, deliveredMail, orderCompletedMail, shippedMail, type CancelledInput, type OrderBase, type ShopMailBrand } from "../mail/templates";
+import { notifyEnabled } from "../buyers/notificationPrefs";
 import { businessView } from "../shop-legal/notice";
 import { orderNoLabel } from "./orderNoLabel";
 
@@ -88,6 +89,8 @@ export async function sendBuyerOrderMails(db: PrismaClient, now: Date, opts: { s
   const deliver = async (o: OrderRow, kind: Kind, refId: string, build: () => { subject: string; text: string; html: string } | null) => {
     const to = o.buyerMember.loginId;
     if (!EMAIL.test(to) || !policyOf(o.sellerId)[ALLOWED[kind]]) return;
+    // 구매자가 SH-025에서 배송 이메일을 끈 경우 발송·배송 완료 메일은 보내지 않는다(주문·결제·환불 메일은 필수라 항상 보낸다)
+    if ((kind === "order.shipped" || kind === "order.delivered") && !(await notifyEnabled(db, { sellerId: o.sellerId, buyerMemberId: o.buyerMemberId }, "SHIPPING", "EMAIL"))) return;
     await db.$transaction(
       async (tx) => {
         const [{ locked }] = await tx.$queryRaw<{ locked: boolean }[]>`SELECT pg_try_advisory_xact_lock(hashtext('buyer_mail'), hashtext(${`${kind}:${refId}`})) AS "locked"`;
