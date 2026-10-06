@@ -568,9 +568,6 @@ body {
   .staff-table {
     min-width: 720px;
   }
-  .staff-table .card-more {
-    display: none;
-  }
 }
 .staff-table td:nth-child(4) {
   white-space: nowrap;
