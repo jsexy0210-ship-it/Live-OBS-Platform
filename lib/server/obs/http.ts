@@ -24,13 +24,13 @@ export async function pairingJson(req: Request, fields: readonly string[]): Prom
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => { void reader.cancel(); reject(new ObsPairingError(408, "obs_request_timeout")); }, 5_000);
+      timer = setTimeout(() => reject(new ObsPairingError(408, "obs_request_timeout")), 5_000);
     });
     while (true) {
       const chunk = await Promise.race([reader.read(), timeout]);
       if (chunk.done) break;
       size += chunk.value.length;
-      if (size > 2048) { await reader.cancel(); throw new ObsPairingError(413, "obs_request_too_large"); }
+      if (size > 2048) throw new ObsPairingError(413, "obs_request_too_large");
       chunks.push(chunk.value);
     }
     const bytes = new Uint8Array(size); let offset = 0;
@@ -39,7 +39,12 @@ export async function pairingJson(req: Request, fields: readonly string[]): Prom
     try { data = size ? JSON.parse(new TextDecoder().decode(bytes)) : {}; } catch { throw new ObsPairingError(400, "obs_invalid_request"); }
     if (!data || typeof data !== "object" || Array.isArray(data) || Object.keys(data).some(k => !fields.includes(k))) throw new ObsPairingError(400, "obs_invalid_request");
     return data as Record<string, unknown>;
-  } finally { if (timer) clearTimeout(timer); reader.releaseLock(); }
+  } finally {
+    if (timer) clearTimeout(timer);
+    // 판정이 끝난 뒤 정리한다. pending read의 done/cancel promise로 거부를 뒤집거나 지연하지 않는다.
+    void reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
 }
 
 export function pairingProof(req: Request): string | undefined {
