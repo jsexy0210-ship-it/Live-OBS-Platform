@@ -112,7 +112,7 @@ test.describe.serial("SA-060 쇼핑몰 로고", () => {
     await expect(page).toHaveURL(/\/seller\/banners$/);
     await page.getByRole("button", { name: "배너 추가" }).first().click();
     await context.clearCookies();
-    await page.getByRole("dialog", { name: "배너 추가" }).getByLabel("PC 이미지", { exact: true }).setInputFiles(file("pc.png", png(1200, 400)));
+    await page.getByTestId("banner-editor").getByLabel("PC 이미지", { exact: true }).setInputFiles(file("pc.png", png(1200, 400)));
     await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fbanners$/);
     // 로고는 그대로(아무것도 저장되지 않음)
     await clearLogo();
@@ -154,8 +154,8 @@ test.describe.serial("SA-060 쇼핑몰 로고", () => {
       await new Promise((r) => setTimeout(r, 800));
       await route.continue();
     });
-    await dropTwice('[role="dialog"] .sc-drop');
-    await expect(page.locator('[role="dialog"] .sc-drop img').first()).toBeVisible();
+    await dropTwice('[data-testid="banner-editor"] .sc-up');
+    await expect(page.locator('[data-testid="banner-editor"] .sc-up img').first()).toBeVisible();
     expect(imagePosts).toBe(1);
   });
 
@@ -177,9 +177,9 @@ test.describe.serial("SA-060 쇼핑몰 로고", () => {
 
     await page.goto("/seller/banners");
     await page.getByRole("button", { name: "배너 추가" }).first().click();
-    const pcInput = page.getByRole("dialog", { name: "배너 추가" }).getByLabel("PC 이미지", { exact: true });
+    const pcInput = page.getByTestId("banner-editor").getByLabel("PC 이미지", { exact: true });
     await pcInput.setInputFiles(file("big.png", big));
-    await expect(page.getByRole("dialog").getByText("2MB를 넘었습니다")).toBeVisible();
+    await expect(page.getByTestId("banner-editor").getByText("2MB를 넘었습니다")).toBeVisible();
     expect(await pcInput.evaluate((el) => (el as HTMLInputElement).value)).toBe("");
     const post = page.waitForRequest((r) => r.url().endsWith("/api/seller/shop-content/images") && r.method() === "POST");
     await pcInput.setInputFiles(file("pc.png", png(1200, 400)));
