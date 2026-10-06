@@ -49,9 +49,9 @@ export default function SellerActivityPage() {
 
   return (
     <>
-      <AdminTopbar crumb="운영 › 주문 · 오버레이 접속" />
+      <AdminTopbar crumb="운영 › 주문 · 방송 화면 접속" />
       <main className="main">
-        <PageHead title="주문 · 오버레이 접속" />
+        <PageHead title="주문 · 방송 화면 접속" description="기간별 주문 현황과 방송 화면 접속 상태를 파트너스별로 확인합니다." />
         <div className="col" style={{ gap: 20 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
             {[

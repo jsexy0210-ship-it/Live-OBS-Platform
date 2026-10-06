@@ -26,9 +26,9 @@ export default function LivePayoutPage() {
   const items = state.kind === "ok" ? state.items : [];
   return (
     <>
-      <AdminTopbar crumb="운영 › 적립금을 실제로 주는 파트너스" />
+      <AdminTopbar crumb="파트너스 › 적립금 실제 지급 켠 파트너스" />
       <main className="main">
-        <PageHead title="적립금을 실제로 주는 파트너스" />
+        <PageHead title="적립금 실제 지급 켠 파트너스" description="실제 지급을 켠 파트너스의 발행 잔액, 월 거래액과 지급 징후를 확인합니다." />
         <div className="col" style={{ gap: 20 }}>
           {state.kind === "ok" && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
