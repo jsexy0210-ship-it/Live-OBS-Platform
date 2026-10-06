@@ -1795,6 +1795,9 @@ body {
   gap: var(--ui-sp-8);
   flex-wrap: wrap;
   min-width: 0;
+  padding: var(--ui-sp-8) var(--ui-sp-12);
+}
+.au-list-section > .au-lh {
   padding: var(--ui-sp-8) 0;
 }
 .au-lh-total {
@@ -1810,34 +1813,43 @@ body {
   min-width: 0;
   max-width: 100%;
   overflow-x: auto;
+}
+/* 새 표 전용 프레임은 ListTable에만 적용한다. 기존 .card 내부 래퍼는 외곽선을 중복하지 않는다. */
+.au-list-grid {
   border: 1px solid var(--cs-line);
   border-radius: var(--ui-r-card);
   background: var(--cs-surface);
 }
-.au-lt-wrap:focus-visible {
+.au-list-grid:focus-visible {
   outline: 2px solid var(--ui-focus);
   outline-offset: 2px;
 }
-.au-lt-wrap > .tbl {
+.au-list-grid > .tbl {
   margin: 0;
   border: 0;
   box-shadow: none;
 }
-.au-lt-wrap > .tbl > thead > tr:first-child > th {
+.au-list-grid > .tbl > thead > tr:first-child > th {
   border-top: 0;
 }
-.au-lt-wrap > .tbl > :is(thead, tbody, tfoot) > tr > :is(th, td):first-child {
+.au-list-grid > .tbl > :is(thead, tbody, tfoot) > tr > :is(th, td):first-child {
   border-left: 0;
 }
-.au-lt-wrap > .tbl > :is(thead, tbody, tfoot) > tr > :is(th, td):last-child {
+.au-list-grid > .tbl > :is(thead, tbody, tfoot) > tr > :is(th, td):last-child {
   border-right: 0;
 }
-.au-lt-wrap > .tbl > :is(tbody, tfoot):last-child > tr:last-child > :is(th, td) {
+.au-list-grid > .tbl > :is(tbody, tfoot):last-child > tr:last-child > :is(th, td) {
   border-bottom: 0;
+  box-shadow: none;
+}
+@media (min-width: 768px) {
+  .au-list-grid > .tbl > :is(tbody, tfoot):last-child > tr:last-child > :is(th, td) + :is(th, td) {
+    box-shadow: inset 1px 0 0 var(--cs-line);
+  }
 }
 /* 카드로 바꾼 표는 각 행이 프레임을 가지므로 모바일 외곽선을 중복하지 않는다. */
 @media (max-width: 767px) {
-  .au-lt-wrap:has(> .tbl[data-card-table]) {
+  .au-list-grid:has(> .tbl[data-card-table]) {
     border: 0;
     border-radius: 0;
     background: transparent;
