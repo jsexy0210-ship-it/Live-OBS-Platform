@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDateTime } from "../../../../../../lib/client/format";
 import "../../../../../../styles/seller-stock.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
@@ -765,16 +766,6 @@ type Movement = {
   createdAt: string;
 };
 
-const KST_PARTS = { timeZone: "Asia/Seoul", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false } as const;
-const kst = new Intl.DateTimeFormat("ko-KR", KST_PARTS);
-const kstWithYear = new Intl.DateTimeFormat("ko-KR", { ...KST_PARTS, year: "numeric" });
-const kstYear = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", year: "numeric" });
-// 올해(KST) 이력은 월·일·시각만, 올해가 아니면 연도를 붙인다
-const when = (iso: string) => {
-  const d = new Date(iso);
-  return kstYear.format(d) === kstYear.format(new Date()) ? kst.format(d) : kstWithYear.format(d);
-};
-
 // 누가·언제·왜 바꿨는지(주문·취소·환불·직접 변경). 최근 것부터 50개씩, 「더 보기」로 이어서 불러온다.
 // productId·optionId를 주면 그 옵션의 이력만 보여 준다.
 function StockHistory({ refreshKey, productId, optionId }: { refreshKey: number; productId?: string; optionId?: string }) {
@@ -832,7 +823,7 @@ function StockHistory({ refreshKey, productId, optionId }: { refreshKey: number;
                   {m.productName} · {m.optionName}
                 </span>
                 <span className="t-c1 c-alt">
-                  {m.actor.name} · {when(m.createdAt)}
+                  {m.actor.name} · {formatDateTime(m.createdAt)}
                   {m.note ? ` · 사유: ${m.note}` : ""}
                   {m.stockAfter !== null ? ` · 남은 재고 ${m.stockAfter.toLocaleString("ko-KR")}` : ""}
                 </span>

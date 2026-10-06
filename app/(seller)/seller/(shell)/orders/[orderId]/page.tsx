@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDateTime, formatTime } from "../../../../../../lib/client/format";
 import "../../../../../../styles/seller-orders.css";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -11,7 +12,7 @@ import { LoadingRows, NoPermission, Toast } from "../../../../../../components/s
 import { api } from "../../../../../../components/seller/api";
 import { won } from "../../../../../../components/seller/format";
 import { COURIERS, isCourier } from "../../../../../../lib/server/orders/shipping";
-import { PAYMENT_METHOD, STATUS_BADGE, detailStatusLabel, fullTime, historyActor, historyLabel, historyNote, longTime, phoneText, type OrderDetail } from "../../../../../../components/seller/orders";
+import { PAYMENT_METHOD, STATUS_BADGE, detailStatusLabel, historyActor, historyLabel, historyNote, phoneText, type OrderDetail } from "../../../../../../components/seller/orders";
 
 // SA-022 판매자 주문 상세(GET /api/seller/orders/{id}). 결제 완료 주문만 「취소 · 환불」(SA-023 모달)을 열 수 있다.
 // 받는 분 이름·연락처·주소는 고객 정보 보기 권한이 있을 때만 서버가 준다(열람 기록은 서버가 남긴다).
@@ -92,7 +93,7 @@ export default function OrderDetailPage() {
   const canRefund = o.status === "PAID";
   const pii = o.buyer.name !== undefined;
   const addr = o.shippingAddress;
-  const hhmm = longTime(o.createdAt).split(" ").pop();
+  const hhmm = formatTime(o.createdAt);
 
   return (
     <>
@@ -107,14 +108,14 @@ export default function OrderDetailPage() {
         <PageHead
           title={
             <>
-              {nick} · {longTime(o.createdAt)} 주문{" "}
+              {nick} · {formatDateTime(o.createdAt)} 주문{" "}
               <span className={`bdg bdg-lg ${STATUS_BADGE[o.status].cls}`}>{detailStatusLabel(o.status)}</span>
               {o.shipment && <span className="bdg bdg-lg b-info nodot">{SHIPMENT_STATUS[o.shipment.status] ?? "발송함"}</span>}
             </>
           }
         />
         <div className="col" style={{ gap: 4, marginBottom: 16 }}>
-          <span className="t-l2 c-alt">{fullTime(o.createdAt)} 접수</span>
+          <span className="t-l2 c-alt">{formatDateTime(o.createdAt)} 접수</span>
           <div className="ord-ono-bar t-l2">
             <span>주문번호</span>
             <b className="num" data-testid="order-no-label">
@@ -174,13 +175,13 @@ export default function OrderDetailPage() {
                 <dt>결제 수단</dt>
                 <dd>{o.paymentMethod ? PAYMENT_METHOD[o.paymentMethod] : "—"}</dd>
                 <dt>결제 시각</dt>
-                <dd className="num">{o.paidAt ? fullTime(o.paidAt) : "아직 결제하지 않았습니다"}</dd>
+                <dd className="num">{o.paidAt ? formatDateTime(o.paidAt) : "아직 결제하지 않았습니다"}</dd>
                 {o.status === "REFUNDED" && (
                   <>
                     <dt>환불</dt>
                     <dd className="num">
                       {won(o.refundAmount ?? o.totalAmount)}
-                      {o.refundedAt && ` · ${fullTime(o.refundedAt)}`}
+                      {o.refundedAt && ` · ${formatDateTime(o.refundedAt)}`}
                     </dd>
                     {o.refundFault && (
                       <>
@@ -199,7 +200,7 @@ export default function OrderDetailPage() {
                 {o.status === "CANCELLED" && o.cancelledAt && (
                   <>
                     <dt>취소</dt>
-                    <dd className="num">{fullTime(o.cancelledAt)}</dd>
+                    <dd className="num">{formatDateTime(o.cancelledAt)}</dd>
                   </>
                 )}
               </dl>
@@ -249,7 +250,7 @@ export default function OrderDetailPage() {
                 {o.shipment && (
                   <>
                     <dt>발송 시각</dt>
-                    <dd className="num">{fullTime(o.shipment.shippedAt)}</dd>
+                    <dd className="num">{formatDateTime(o.shipment.shippedAt)}</dd>
                   </>
                 )}
               </dl>
@@ -276,7 +277,7 @@ export default function OrderDetailPage() {
                 <tbody>
                   {[...o.history].reverse().map((e, i) => (
                     <tr key={i} data-testid="history-row">
-                      <td className="num">{fullTime(e.at)}</td>
+                      <td className="num">{formatDateTime(e.at)}</td>
                       <td>{historyLabel(e)}</td>
                       <td>{historyActor(e.actor)}</td>
                       <td>{historyNote(e)}</td>
