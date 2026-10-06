@@ -1469,3 +1469,24 @@ body {
   align-items: center;
   cursor: pointer;
 }
+/* 글자 아이콘(SH-040 준비 중 「별」 · 일시 정지 「!」) */
+.shop-state-ico.is-text {
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: var(--wds-primary-normal);
+}
+.shop-state-ico.is-text::before,
+.shop-state-ico.is-text::after {
+  display: none;
+}
+/* SH-040 안내 카드는 본문 가운데에 둔다 */
+.shop-closed {
+  display: flex;
+  justify-content: center;
+}
+.shop-closed .shop-state {
+  align-self: center;
+  width: 100%;
+  max-width: 560px;
+}

@@ -42,11 +42,12 @@ export function Kpis({ items }: { items: Kpi[] }) {
   );
 }
 
-// 묶음 표기: 일 10.4 · 주 10.5 주 · 월 2026.10
+// 묶음 표기(공용 서식 「2026.10.05」): 일 2026.10.04 · 주 2026.10.05 주(그 주 시작일) · 월 2026.10
 export function bucketLabel(bucket: string, unit: "day" | "week" | "month") {
-  const [y, m, d] = bucket.split("-").map(Number);
+  const [y, m, d] = bucket.split("-");
   if (unit === "month") return `${y}.${m}`;
-  return unit === "week" ? `${m}.${d} 주` : `${m}.${d}`;
+  const day = `${y}.${m}.${d}`;
+  return unit === "week" ? `${day} 주` : day;
 }
 
 const nice = (max: number) => {
