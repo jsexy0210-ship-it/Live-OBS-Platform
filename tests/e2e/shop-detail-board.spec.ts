@@ -26,6 +26,24 @@ async function productIdOf(page: Page, name: string) {
 async function expectInfoLayout(page: Page, width: number) {
   await expect(page.locator(".pd-price-summary")).toBeVisible();
   await expect(page.locator(".pd-coupon-row")).toContainText("세 폭 화면 검수 쿠폰");
+  const geometry = await page.locator(".pd-top").evaluate((top) => {
+    const rect = (element: Element) => {
+      const box = element.getBoundingClientRect();
+      return { left: box.left, right: box.right, width: box.width };
+    };
+    return {
+      container: rect(top),
+      gallery: rect(top.querySelector(".pd-gallery")!),
+      info: rect(top.querySelector(".pd-info")!),
+    };
+  });
+  expect(Math.abs(geometry.gallery.left - geometry.container.left)).toBeLessThanOrEqual(1);
+  expect(Math.abs(geometry.info.right - geometry.container.right)).toBeLessThanOrEqual(1);
+  if (width <= 767) {
+    expect(Math.abs(geometry.info.left - geometry.gallery.left)).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.info.right - geometry.gallery.right)).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.info.width - geometry.gallery.width)).toBeLessThanOrEqual(1);
+  }
   const priceBottom = await page.locator(".pd-price-summary").evaluate((el) => el.getBoundingClientRect().bottom);
   const rows = await page.locator(".pd-form-row").evaluateAll((els) =>
     els.map((el) => {
@@ -40,7 +58,7 @@ async function expectInfoLayout(page: Page, width: number) {
   expect(priceBottom).toBeLessThanOrEqual(rows[0].top + 1);
   for (let i = 0; i < rows.length - 1; i++) expect(rows[i].bottom).toBeLessThanOrEqual(rows[i + 1].top + 1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  if (process.env.E2E_SCREENSHOTS === "1") await page.screenshot({ path: `tests/e2e/screenshots/SH-003-info-${width}.png`, fullPage: true });
+  if (process.env.E2E_SCREENSHOTS === "1" && width !== 390) await page.screenshot({ path: `tests/e2e/screenshots/SH-003-info-${width}.png`, fullPage: true });
 }
 
 test("상품 문의: 쓰기(공개·비공개) → 목록·탭 개수 → 지우기, 비회원은 로그인 안내", async ({ page, baseURL }) => {
@@ -123,6 +141,26 @@ test("휴대폰 390: 찜 · 공유 · 장바구니에 담기 · 바로 주문하
   const id = await productIdOf(page, "탑로더 25장");
   await page.goto(`/shop/${SLUG}/products/${id}`);
   await expectInfoLayout(page, 390);
+  await page.locator(".pd-shipping-row").scrollIntoViewIfNeeded();
+  await page.evaluate(() => {
+    const quantity = document.querySelector(".pd-quantity-row")!.getBoundingClientRect();
+    const actions = document.querySelector(".pd-actions")!.getBoundingClientRect();
+    const overlap = quantity.bottom - actions.top + 8;
+    if (overlap > 0) window.scrollBy(0, overlap);
+  });
+  const visibleRows = await page.locator(".pd-shipping-row, .pd-option-row, .pd-quantity-row").evaluateAll((els) =>
+    els.map((el) => {
+      const rect = el.getBoundingClientRect();
+      return { top: rect.top, bottom: rect.bottom };
+    }),
+  );
+  expect(visibleRows).toHaveLength(3);
+  const actionTop = await page.locator(".pd-actions").evaluate((el) => el.getBoundingClientRect().top);
+  for (const row of visibleRows) {
+    expect(row.top).toBeGreaterThanOrEqual(0);
+    expect(row.bottom).toBeLessThanOrEqual(actionTop - 8);
+  }
+  if (process.env.E2E_SCREENSHOTS === "1") await page.screenshot({ path: "tests/e2e/screenshots/SH-003-info-390.png" });
   const boxes = await page.locator(".pd-actions button").evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return { t: (e.textContent ?? "").trim(), x: r.left, y: r.top, w: r.width, h: r.height, sw: e.scrollWidth, cw: e.clientWidth }; }));
   expect(boxes.map((b) => b.t)).toEqual(["♡", "공유", "장바구니에 담기", "바로 주문하기"]);
   expect(new Set(boxes.map((b) => Math.round(b.y))).size).toBe(1); // 한 줄

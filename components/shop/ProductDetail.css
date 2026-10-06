@@ -206,6 +206,9 @@
   .pd-gallery {
     width: 100%;
   }
+  .pd-info {
+    width: 100%;
+  }
   .pd-form-row {
     grid-template-columns: 72px minmax(0, 1fr);
   }
