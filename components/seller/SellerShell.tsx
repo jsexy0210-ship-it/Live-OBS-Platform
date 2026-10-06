@@ -41,7 +41,13 @@ const MENU: Group[] = [
     label: "방송",
     items: [
       { label: "방송 대시보드", href: "/seller/broadcast", perm: "BROADCAST_RUN", plan: "OVERLAY" },
-      { label: "방송 화면 꾸미기", href: "/seller/overlay", perm: "OVERLAY_EDIT", plan: "OVERLAY" },
+      {
+        label: "방송 화면 꾸미기",
+        tabs: [
+          { label: "편집기", href: "/seller/overlay", perm: "OVERLAY_EDIT", plan: "OVERLAY" },
+          { label: "방송 프로그램에 넣기", href: "/seller/overlay/address", perm: "OVERLAY_EDIT", plan: "OVERLAY" },
+        ],
+      },
       {
         label: "방송 기록",
         tabs: [

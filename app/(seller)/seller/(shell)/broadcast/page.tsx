@@ -329,7 +329,7 @@ export default function BroadcastDashboardPage() {
                   HIT 카드 기록하기 <span className="kbd">Ctrl+H</span>
                 </button>
               )}
-              <Link className="btn btn-out" href="/seller/overlay">
+              <Link className="btn btn-out" href="/seller/overlay/address">
                 방송 화면 주소
               </Link>
             </>
@@ -601,7 +601,7 @@ export default function BroadcastDashboardPage() {
                 방송 화면
               </h2>
               <span className="t-c1 c-alt">방송 화면 주소는 만들 때 한 번만 보여 드립니다. 잃어버리면 새로 만들어 주십시오. 새로 만들면 예전 주소는 쓸 수 없습니다.</span>
-              <Link className="btn btn-sm btn-out" href="/seller/overlay">
+              <Link className="btn btn-sm btn-out" href="/seller/overlay/address">
                 방송 화면 주소 만들기
               </Link>
             </section>
