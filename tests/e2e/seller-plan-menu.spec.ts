@@ -73,6 +73,8 @@ test("오버레이 전용은 쇼핑몰 기능 메뉴를 숨기고, 오버레이�
 test("로그인 뒤 기본 화면: 통합은 지금처럼 상품, 오버레이 전용은 안내 화면 대신 오버레이 홈", async ({ page }) => {
   await page.goto("/seller/login");
   await submitSellerLogin(page, INTEGRATED, PASSWORD);
+  await expect(page).toHaveURL(/\/seller$/);
+  await page.goto("/seller/products");
   await expect(page).toHaveURL(/\/seller\/products$/);
   await page.context().clearCookies();
 

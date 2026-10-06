@@ -490,7 +490,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   const gnbMenu = menu.filter((g) => !g.util);
   const route = routeNav(pathname);
   const active = route && menu.some((g) => g.key === route.group.key) ? route : null;
-  const shown = menu.find((g) => g.key === picked) ?? menu.find((g) => g.key === active?.group.key) ?? gnbMenu[0];
+  const shown = menu.find((g) => g.key === picked) ?? menu.find((g) => g.key === active?.group.key) ?? gnbMenu[0] ?? menu[0];
   const shownGroup = active ? menu.find((g) => g.key === active.group.key) : undefined;
   const shownItem = shownGroup?.items.find((n) => n.label === active?.item.label);
   const loc =
@@ -545,13 +545,13 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
           <nav className="gnb-nav" aria-label="주 메뉴">
             {gnbMenu.map((g) => {
               const first = g.items.find((n) => n.href)?.href;
-              const cls = `gnb-i${g.key === shown.key ? " on" : ""}`;
+              const cls = `gnb-i${g.key === shown?.key ? " on" : ""}`;
               return first ? (
                 <Link key={g.key} className={cls} href={first} onClick={() => setPicked(null)}>
                   {g.label}
                 </Link>
               ) : (
-                <button key={g.key} className={cls} type="button" aria-pressed={g.key === shown.key} onClick={() => setPicked(g.key)}>
+                <button key={g.key} className={cls} type="button" aria-pressed={g.key === shown?.key} onClick={() => setPicked(g.key)}>
                   {g.label}
                 </button>
               );
@@ -575,7 +575,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
         <div className="cs-wrap">
           <aside className="lnb" aria-label="파트너스 메뉴">
             {menu.map((g) => (
-              <section key={g.key} className={`lnb-sec${g.key === shown.key ? " on" : ""}`}>
+              <section key={g.key} className={`lnb-sec${g.key === shown?.key ? " on" : ""}`}>
                 <strong className="lnb-h">{g.label}</strong>
                 {g.items.filter((n) => !n.hidden).map((n) =>
                   n.href ? (
