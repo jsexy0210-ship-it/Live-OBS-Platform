@@ -186,11 +186,16 @@ export default function OrdersView({ slug }: { slug: string }) {
   const empty =
     ok && orders.length === 0 ? (
       ok.counts.all === 0 && tab === "all" ? (
-        period !== "1y" ? (
+        custom || period !== "1y" ? (
           <div className="cart-empty">
             <h2>{periodLabel} 주문이 없어요</h2>
             <p>기간을 늘려 보세요.</p>
-            <button className="btn btn-out" type="button" onClick={() => setPeriod("1y")}>
+            <button className="btn btn-out" type="button" onClick={() => {
+                setCustom(null);
+                setRangeErr(null);
+                setPeriod("1y");
+                setDraft(range("1y"));
+              }}>
               1년 보기
             </button>
           </div>
