@@ -21,6 +21,7 @@ import {
   type MailOrderProvider,
 } from "./businessCheck";
 import { parseSellerSignupConsent, readSellerSignupConsent, type SellerConsentFailure } from "./signupConsent";
+import { createShopDefaults } from "./shopDefaults";
 
 // 판매자 가입 신청과 자동 점검(대표님 결정 2026-10-02, PRODUCT_SCOPE 「판매자 가입 자동 승인」).
 // 점검: 대표자 휴대폰 본인확인(필수) · 대표자 CI 중복(1인 1쇼핑몰) · 국세청 진위확인(대표자명·개업일 대조)·「계속사업자」 ·
@@ -356,6 +357,7 @@ async function applyOnce(
           { sellerId: seller.id, displayName: "VIP", sortOrder: 4, systemKey: "VIP" },
         ],
       });
+      await createShopDefaults(tx, seller.id);
       const owner = await tx.sellerUser.create({
         data: { sellerId: seller.id, email, passwordHash, name: v.name!, isOwner: true, permissions: [], signupConsent: consent },
       });

@@ -152,6 +152,19 @@ describe("자동 점검 통과 → 자동 승인", () => {
       mailOrderStatus: "NORMAL",
     });
     expect(await db.memberGrade.count({ where: { sellerId: seller.id } })).toBe(5);
+    // 쇼핑몰 설정은 만들 때 기본값으로 채워진다(docs/SHOP_DEFAULTS.md). 값은 읽기 폴백·PRODUCT_SCOPE와 같고, 근거 없는 정책(적립금)은 만들지 않는다.
+    const sid = seller.id;
+    expect(await db.sellerShippingPolicy.findUniqueOrThrow({ where: { sellerId: sid } })).toMatchObject({ freeShipping: false, baseFee: 3000, remoteSurcharge: 3000, freeOverAmount: null });
+    expect(await db.sellerOrderPolicy.findUniqueOrThrow({ where: { sellerId: sid } })).toMatchObject({ autoCancelEnabled: true, paymentDueHours: 24, restockOnCancel: true, autoDeliverEnabled: true, autoDeliverDays: 7, autoConfirmEnabled: true, autoConfirmDays: 7, unpaidRestrictionEnabledAt: null, paidCancelRestrictionEnabled: false, autoTrackingEnabled: false, savedAt: null });
+    expect(await db.sellerMemberPolicy.findUniqueOrThrow({ where: { sellerId: sid } })).toMatchObject({ rejoinRestrictionEnabled: false, rejoinRestrictionDays: 30 });
+    expect(await db.sellerOrderNotificationPolicy.findUniqueOrThrow({ where: { sellerId: sid } })).toMatchObject({ orderCompleteEnabled: true, shippedEnabled: true, deliveredEnabled: true, cancelRefundEnabled: true });
+    expect(await db.memberGradePolicy.findUniqueOrThrow({ where: { sellerId: sid } })).toMatchObject({ autoEnabled: false });
+    expect(await db.productReviewPolicy.findUniqueOrThrow({ where: { sellerId: sid } })).toMatchObject({ rewardText: 0, rewardPhoto: 0 });
+    expect(await db.shopSeo.findUniqueOrThrow({ where: { sellerId: sid } })).toMatchObject({ indexingEnabled: true, sitemapEnabled: true, searchTitle: null });
+    expect(await db.youtubeSellerSetting.findUniqueOrThrow({ where: { sellerId: sid } })).toMatchObject({ chatDefaultEnabled: false });
+    expect(await db.shopDisplaySetting.findUniqueOrThrow({ where: { sellerId: sid } })).toMatchObject({ listSort: "new" });
+    expect((await db.shopDisplaySection.findMany({ where: { sellerId: sid }, orderBy: { sortOrder: "asc" } })).map((x) => [x.kind, x.title, x.visible, x.itemCount])).toEqual([["RECOMMENDED", "추천 상품", true, 8], ["NEW", "신상품", true, 8]]);
+    for (const none of [await db.rewardPolicy.count({ where: { sellerId: sid } }), await db.shopLegalDoc.count({ where: { sellerId: sid } }), await db.shopLegalNotice.count({ where: { sellerId: sid } }), await db.sellerBankAccount.count({ where: { sellerId: sid } }), await db.shopCategory.count({ where: { sellerId: sid } }), await db.overlayLayout.count({ where: { sellerId: sid } })]) expect(none).toBe(0);
     const owner = await db.sellerUser.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: seller.id } });
     expect(owner).toMatchObject({ isOwner: true, name: "김대표", email: f.email });
     expect((await loginSeller(db, { email: f.email, password: f.password }, {})).ok).toBe(true);
