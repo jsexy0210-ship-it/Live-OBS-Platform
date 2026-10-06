@@ -7,9 +7,10 @@ export const metadata: Metadata = { title: "공지 · ONQ", description: "ONQ �
 export const dynamic = "force-dynamic";
 
 // PF-005 공지 목록(로그인 없음). 공개·전체 대상의 게시 공지만 서버에서 읽는다.
-export default async function NoticesPage({ searchParams }: { searchParams: Promise<{ cursor?: string | string[] }> }) {
-  const cursor = (await searchParams).cursor;
-  const r = await listNotices(prisma, "public", { cursor: typeof cursor === "string" ? cursor : null }).catch(() => null);
+export default async function NoticesPage({ searchParams }: { searchParams: Promise<{ cursor?: string | string[]; category?: string | string[] }> }) {
+  const { cursor, category } = await searchParams;
+  const cat = typeof category === "string" ? category : null;
+  const r = await listNotices(prisma, "public", { cursor: typeof cursor === "string" ? cursor : null, category: cat }).catch(() => null);
   if (!r || !r.ok) return <Notices pinned={[]} items={[]} nextCursor={null} failed />;
-  return <Notices pinned={r.pinned} items={r.items} nextCursor={r.nextCursor} />;
+  return <Notices pinned={r.pinned} items={r.items} nextCursor={r.nextCursor} category={cat} />;
 }
