@@ -34,6 +34,10 @@ const accessSql = (now: Date) => Prisma.sql`CASE
   WHEN sub."status" = 'ACTIVE' AND NOT sub."cancelAtPeriodEnd" AND sub."nextChargeAt" <= ${now} THEN 'charging'
   ELSE 'expired' END`;
 
+// 잠금: 결제 실패로 연체(PAST_DUE)가 됐고 유예 기간이 끝나 이용이 막힌 구독(해지 예약·체험·결제한 기간이 남은 건 제외). 이용 상태로는 expired다(MA-032 잠금 목록).
+export const lockedSql = (now: Date) => Prisma.sql`(sub."status" = 'PAST_DUE' AND NOT sub."cancelAtPeriodEnd" AND sub."graceUntil" <= ${now}
+  AND sub."currentPeriodEnd" <= ${now} AND (se."trialEndsAt" IS NULL OR se."trialEndsAt" <= ${now}))`;
+
 // 구독 현황 대상(승인된 파트너스: 운영 중·정지·종료)과 이용 상태별 수. 구독 현황 탭 숫자와 대시보드(MA-001)가 같은 기준을 쓴다.
 const subscriptionBase = Prisma.sql`FROM "Seller" se
     LEFT JOIN "SellerSubscription" sub ON sub."sellerId" = se."id"
@@ -73,7 +77,7 @@ export async function listAdminSubscriptions(db: PrismaClient, admin: AdminSessi
   if (!take) return { ok: false as const };
   const cursor = query.cursor ? decodeCursor(query.cursor) : null;
   if (query.cursor && !cursor) return { ok: false as const };
-  if (query.access && !ACCESS.includes(query.access as SellerAccess)) return { ok: false as const };
+  if (query.access && query.access !== "locked" && !ACCESS.includes(query.access as SellerAccess)) return { ok: false as const };
   if (query.plan && !PLAN_CODES.includes(query.plan)) return { ok: false as const };
   const q = query.q?.trim() ?? "";
   if (q.length > 50) return { ok: false as const };
@@ -81,7 +85,8 @@ export async function listAdminSubscriptions(db: PrismaClient, admin: AdminSessi
   const access = accessSql(now);
   const base = subscriptionBase;
   const conds: Prisma.Sql[] = [];
-  if (query.access) conds.push(Prisma.sql`(${access}) = ${query.access}`);
+  if (query.access === "locked") conds.push(lockedSql(now));
+  else if (query.access) conds.push(Prisma.sql`(${access}) = ${query.access}`);
   if (query.plan) conds.push(Prisma.sql`p."code" = ${query.plan}`);
   if (q) conds.push(Prisma.sql`(se."shopName" ILIKE ${`%${q}%`} OR se."slug" LIKE ${`%${q.toLowerCase()}%`})`);
   if (cursor) conds.push(Prisma.sql`(se."createdAt" < ${cursor.createdAt} OR (se."createdAt" = ${cursor.createdAt} AND se."id" < ${cursor.id}::uuid))`);

@@ -554,12 +554,46 @@ body {
   flex: none;
 }
 
-/* 직원 계정(SA-100): 왼쪽 목록 + 오른쪽 직원 추가. 좁은 화면에서는 아래로 내리고 표는 칸 안에서 가로로 민다 */
-.staff-grid {
+/* 직원 계정(SA-100): 목록 · 안내 · 아래 직원 추가 폼(정본 SA-100). 표는 칸 안에서 가로로 민다 */
+/* 정본 SA-100 「직원 추가」 표형 폼: 왼쪽 회색 라벨 칸 150 + 입력 칸, 2열 */
+.staff-add-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 420px;
-  gap: 20px;
-  align-items: start;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid var(--wds-line-normal-neutral);
+  border-left: 1px solid var(--wds-line-normal-neutral);
+}
+.staff-add-grid > .fld {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
+  gap: 0;
+  border-right: 1px solid var(--wds-line-normal-neutral);
+  border-bottom: 1px solid var(--wds-line-normal-neutral);
+}
+.staff-add-grid > .fld > label {
+  grid-row: 1 / span 2;
+  display: flex;
+  align-items: flex-start;
+  padding: 14px 12px;
+  background: var(--wds-fill-alternative);
+  border-right: 1px solid var(--wds-line-normal-neutral);
+}
+.staff-add-grid > .fld > .inp,
+.staff-add-grid > .fld > .pw-wrap {
+  grid-column: 2;
+  margin: 10px 12px 0;
+  width: auto;
+}
+.staff-add-grid > .fld > .help,
+.staff-add-grid > .fld > .err {
+  grid-column: 2;
+  margin: 4px 12px 10px;
+  border: 0;
+}
+.staff-add .staff-perms > .col {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 24px;
 }
 .staff-table-wrap {
   overflow-x: auto;
@@ -613,9 +647,13 @@ body {
   max-height: calc(100vh - 40px);
   overflow-y: auto;
 }
-@media (max-width: 1279px) {
-  .staff-grid {
+@media (max-width: 767px) {
+  .staff-add-grid,
+  .staff-add .staff-perms > .col {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .staff-add-grid > .fld {
+    grid-template-columns: 110px minmax(0, 1fr);
   }
 }
 

@@ -72,10 +72,11 @@ export function TermsStep() {
     </label>
   );
   return (
-    <div className="col pa-sec">
-      <fieldset className="col pa-fs pa-terms" aria-describedby={consentError ? "su-terms-err" : undefined}>
-        <legend className="t-hl2">약관 동의</legend>
-        <label className="chk pa-terms-all">
+    <>
+    <h2 className="t-t3 pf-terms-h" id="su-terms-h">약관 동의</h2>
+    <div className="card col pf-terms-card">
+      <fieldset className="col pa-fs pa-terms" aria-labelledby="su-terms-h" aria-describedby={consentError ? "su-terms-err" : undefined}>
+        <label className="chk pa-terms-all t-hl2">
           <input
             id="su-terms-all"
             type="checkbox"
@@ -109,6 +110,7 @@ export function TermsStep() {
         </button>
       </div>
     </div>
+    </>
   );
 }
 
