@@ -302,7 +302,7 @@ EM-101 판매자 가입 승인 안내 (플랫폼 → 판매자: 판매자 관리
 
 ### 확정 메뉴 구조 (2026-10-06 대표님 확정 「그대로 진행」)
 
-2026-10-06 최신 확정: 페이지 이동용 탭은 왼쪽 사이드바의 실제 링크로 펼칩니다. 부모는 묶음 제목이며 각 기존 주소·권한·요금제 제한을 보존합니다. 통계 6종, 엑셀 작업 3종, 약관 문서 3종, 회원 알림 발송 2종과 마스터 파트너스 상세 8종도 포함합니다. 같은 경로의 패널은 `section=register|export|history`, `section=terms|privacy|notice`, `section=list|new`를 사용하고 마스터 상세는 기존 `tab=info|shop|subscription|pg|broadcasts|orders|notes|activity`를 유지합니다. 알 수 없는 값은 각 첫 화면을 선택합니다. 상태 필터·폼 선택·작업 단계는 메뉴 이동 대상이 아닙니다. 화면 위 RouteTabs는 제거하고, 모바일은 같은 메뉴를 서랍에서 제공합니다. 외부 디자인 캔버스는 미연결이며 저장소 DS-NAV·SA-LNB 최신 확정 규칙이 기준입니다.
+2026-10-06 최신 확정: 페이지 이동용 탭은 왼쪽 사이드바의 실제 링크로 펼칩니다. 부모는 묶음 제목이며 각 기존 주소·권한·요금제 제한을 보존합니다. 통계 6종, 엑셀 작업 3종, 약관 문서 3종, 회원 알림 발송 2종과 마스터 파트너스 상세 9종도 포함합니다. 같은 경로의 패널은 `section=register|export|history`, `section=terms|privacy|notice`, `section=list|new`를 사용하고 마스터 상세는 기존 `tab=info|shop|subscription|pg|broadcasts|orders|rewards|notes|activity`를 유지합니다. 알 수 없는 값은 각 첫 화면을 선택합니다. 상태 필터·폼 선택·작업 단계는 메뉴 이동 대상이 아닙니다. 화면 위 RouteTabs는 제거하고, 모바일은 같은 메뉴를 서랍에서 제공합니다. 외부 디자인 캔버스는 미연결이며 저장소 DS-NAV·SA-LNB 최신 확정 규칙이 기준입니다.
 
 정본: 디자인 보드 DS-NAV(캔버스 v275, `design/project/DS-NAV.dc.html`)의 대응표 전체를 그대로 채택한다. 위 「2026-10-05 IA 개편 결정」의 GNB 구성과 다르면 이 절이 우선한다.
 
