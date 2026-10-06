@@ -1,0 +1,76 @@
+{
+  "sourceVersion": "EVT-1.0-r1",
+  "status": "DRAFT / PROPOSED",
+  "implementationAllowed": false,
+  "baseMain": "4a06ba9016dae9784774329c1e253ecc92b0c9d3",
+  "existingCanvasVersion": "v337 (1791268534-05ab)",
+  "externalCanvasSynced": false,
+  "model": "gpt-6.1-sol / high (preferred Fable unavailable; MASTER-authorized equivalent)",
+  "screenRoutes": "MASTER-approved proposals, IA/SCREEN_MAP update pending shared owner lock",
+  "boards": [
+    {
+      "id": "SA-001-EVENT",
+      "route": "/seller/broadcast",
+      "file": "SA-001-EVENT.dc.html",
+      "role": "기존 콘솔 제목 한 진입만 추가한 bounded variant",
+      "width": 1440,
+      "height": 3670
+    },
+    {
+      "id": "SA-058",
+      "route": "/seller/broadcast (이벤트 운영 상태)",
+      "file": "SA-058.dc.html",
+      "role": "목록·생성/설정·참여·진행·결과 기록 패널",
+      "width": 1440,
+      "height": 4200
+    },
+    {
+      "id": "SH-042",
+      "route": "/event/[opaqueToken]",
+      "file": "SH-042.dc.html",
+      "role": "무점포도 이용하는 공개 참여 상태",
+      "width": 390,
+      "height": 1300
+    },
+    {
+      "id": "OV-009",
+      "route": "/overlay/[token] (event state)",
+      "file": "OV-009.dc.html",
+      "role": "기존 OBS 주소에 재사용하는 이벤트 상태·양비율",
+      "width": 1920,
+      "height": 1500
+    }
+  ],
+  "dependencies": [
+    "lop.css",
+    "ov.css",
+    "ds/wds/tokens.css",
+    "SA-LNB.dc.html",
+    "DS-PANEL.dc.html",
+    "DS-ROW-ACTION.dc.html",
+    "SA-FRAME-M.dc.html",
+    "OV-000.dc.html"
+  ],
+  "dedupe": {
+    "youtube": "stable author channel ID",
+    "qrGuest": "anonymous guest token/session",
+    "crossMethod": "not automatically linked; matching display names are not identity",
+    "guestLimitation": "changing browser/session may create a separate participant"
+  },
+  "privacy": "public payload includes display nickname/participant number and prize only; no email, phone, address, real name, internal account IDs",
+  "productLimits": "no paid entry, arbitrary participation cap, subscriber requirement, purchase weighting, or manually manipulated outcome",
+  "blocked": [
+    "shared metadata lock (#986/#995/#1002/#1004/#1005 refs)",
+    "external Claude canvas tools unavailable",
+    "GitHub API Forbidden; PR/CI API unavailable",
+    "FINAL review and canonical map integration required before UI implementation"
+  ],
+  "sourceHashes": {
+    "SA-001-EVENT.dc.html": "65cd377688ff3899185a8ab9b86dc6a6dcecec4f44754b9e7d34e2c056d399cf",
+    "SA-058.dc.html": "655d7a46198f5afb963bb9e262edace97ef442149b16247c5c83081a4e030a56",
+    "SH-042.dc.html": "37be4500b51dd90a5846335aa22af014602d59c87ab78a8fd0aa4c48b3716ef5",
+    "OV-009.dc.html": "f113d53c3c16c65679fdc31495d6ef2e54208db1173780f5f71d8fa9dc6f4213",
+    "event-1-0.css": "83313777318d72413e62a81b7d25577f2d4d1454c3b82e057df76a0ea2af201e",
+    "event-1-0.js": "014561739133a0d1c03d50a663e31bbbbda0da64edaf5d4f1936134fcb212a08"
+  }
+}

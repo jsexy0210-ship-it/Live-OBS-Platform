@@ -1,0 +1,32 @@
+{
+  "ok": true,
+  "sources": [
+    {
+      "source": "SA-001-EVENT.dc.html",
+      "ids": 0,
+      "brokenLinks": 0,
+      "status": "DRAFT / PROPOSED"
+    },
+    {
+      "source": "SA-058.dc.html",
+      "ids": 18,
+      "brokenLinks": 0,
+      "status": "DRAFT / PROPOSED"
+    },
+    {
+      "source": "SH-042.dc.html",
+      "ids": 1,
+      "brokenLinks": 0,
+      "status": "DRAFT / PROPOSED"
+    },
+    {
+      "source": "OV-009.dc.html",
+      "ids": 0,
+      "brokenLinks": 0,
+      "status": "DRAFT / PROPOSED"
+    }
+  ],
+  "sharedMetadataChanged": false,
+  "boundedEntryOnly": true,
+  "hashesVerified": true
+}

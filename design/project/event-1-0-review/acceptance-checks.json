@@ -1,0 +1,90 @@
+{
+  "ok": true,
+  "checks": [
+    {
+      "sel": "#event-title",
+      "focus": true,
+      "top": 402,
+      "bottom": 442,
+      "footerPosition": "static",
+      "overlap": false
+    },
+    {
+      "sel": "#event-kind",
+      "focus": true,
+      "top": 495,
+      "bottom": 535,
+      "footerPosition": "static",
+      "overlap": false
+    },
+    {
+      "sel": "#event-keyword",
+      "focus": true,
+      "top": 804,
+      "bottom": 844,
+      "footerPosition": "static",
+      "overlap": false
+    },
+    {
+      "sel": "#event-prize",
+      "focus": true,
+      "top": 402,
+      "bottom": 442,
+      "footerPosition": "static",
+      "overlap": false
+    },
+    {
+      "sel": "#event-winners",
+      "focus": true,
+      "top": 450,
+      "bottom": 490,
+      "footerPosition": "static",
+      "overlap": false
+    },
+    {
+      "sel": "#exclude-winners",
+      "focus": true,
+      "top": 545,
+      "bottom": 561,
+      "footerPosition": "static",
+      "overlap": false
+    },
+    {
+      "sel": "#allow-repeat",
+      "focus": true,
+      "top": 545,
+      "bottom": 561,
+      "footerPosition": "static",
+      "overlap": false
+    },
+    {
+      "sel": "#event-sound",
+      "focus": true,
+      "top": 678,
+      "bottom": 694,
+      "footerPosition": "static",
+      "overlap": false
+    },
+    {
+      "sel": "#event-countdown",
+      "focus": true,
+      "top": 402,
+      "bottom": 442,
+      "footerPosition": "static",
+      "overlap": false
+    },
+    {
+      "sel": "#event-rules",
+      "focus": true,
+      "top": 568,
+      "bottom": 656,
+      "footerPosition": "static",
+      "overlap": false
+    }
+  ],
+  "keyboard": "Tab reaches save then participation",
+  "nativeKeyboard": "not emulated",
+  "itemCRUD": true,
+  "ladderValidation": true,
+  "cancel": true
+}

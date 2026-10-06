@@ -1,0 +1,80 @@
+[
+  {
+    "name": "setup-1440",
+    "width": 1440,
+    "scroll": 1440
+  },
+  {
+    "name": "participants-1440",
+    "width": 1440,
+    "scroll": 1440
+  },
+  {
+    "name": "run-1440",
+    "width": 1440,
+    "scroll": 1440
+  },
+  {
+    "name": "history-1440",
+    "width": 1440,
+    "scroll": 1440
+  },
+  {
+    "name": "setup-1024",
+    "width": 1024,
+    "scroll": 1024
+  },
+  {
+    "name": "participants-1024",
+    "width": 1024,
+    "scroll": 1024
+  },
+  {
+    "name": "run-1024",
+    "width": 1024,
+    "scroll": 1024
+  },
+  {
+    "name": "history-1024",
+    "width": 1024,
+    "scroll": 1024
+  },
+  {
+    "name": "setup-390",
+    "width": 390,
+    "scroll": 390
+  },
+  {
+    "name": "participants-390",
+    "width": 390,
+    "scroll": 390
+  },
+  {
+    "name": "run-390",
+    "width": 390,
+    "scroll": 390
+  },
+  {
+    "name": "history-390",
+    "width": 390,
+    "scroll": 390
+  },
+  {
+    "name": "join-1440",
+    "width": 1440,
+    "scroll": 1440
+  },
+  {
+    "name": "join-1024",
+    "width": 1024,
+    "scroll": 1024
+  },
+  {
+    "name": "join-390",
+    "width": 390,
+    "scroll": 390
+  },
+  {
+    "pageErrors": []
+  }
+]
