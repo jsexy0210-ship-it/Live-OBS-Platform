@@ -97,6 +97,11 @@ while read -r tag image_id extra; do
   if [ "$mode" = apply ]; then docker image rm "$tag" || fail '이미지 삭제가 거부됐어요.'; fi
 done <<< "$images"
 
+# 다음 prune 두 개는 obs-web 프로젝트 범위가 아니라 연결된 Docker daemon 전체 범위다.
+# 문서가 이 서비스의 시험 앱+DB용으로 지정한 obs-web-test VM의 obs/docker-group runner 전용이다
+# (PROJECT_STATUS.md 「인프라 방향」, docs/DEPLOY.md 「서버 준비」「디스크 정리」).
+# 다른 workload와 Docker daemon을 공유하는 호스트에는 이 스크립트를 적용하지 않는다.
+# 실제 VM의 다른 workload 부재를 이 스크립트나 이번 작업이 확인한 것은 아니다.
 # 일주일 이상 된 미사용 dangling 이미지·빌드 캐시만. -a/볼륨/컨테이너 정리는 사용하지 않는다.
 note '미사용 dangling 이미지·빌드 캐시 중 168시간 지난 것 정리'
 if [ "$mode" = apply ]; then
