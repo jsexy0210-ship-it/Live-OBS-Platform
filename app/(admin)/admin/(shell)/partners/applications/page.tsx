@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
-import { PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
+import { CursorPagination, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { MAX_SEARCH_LENGTH } from "../../../../../../components/seller/format";
 import { useScrollRestore } from "../../../../../../lib/client/navigation";
@@ -237,9 +237,12 @@ function Applications() {
   const canModerate = adminCan(me.role, "seller.moderate");
   const { applied, draft, setDraft, apply } = useListFilters(EMPTY);
   const tab = CHIPS.some(([k]) => k === applied.tab) ? applied.tab : "all";
+  const searchFilterKey = JSON.stringify([applied.q, applied.industry, applied.receivedFrom, applied.receivedTo]);
+  const hasSearchFilters = Boolean(applied.q || applied.industry || applied.receivedFrom || applied.receivedTo);
   const [state, setState] = useState<Load>({ kind: "loading" });
-  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(hasSearchFilters);
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
+  const [cursorPage, setCursorPage] = useState(1);
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [rejecting, setRejecting] = useState<Row | null>(null);
@@ -250,8 +253,12 @@ function Applications() {
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const reqId = useRef(0);
-  const cursor = cursors[cursors.length - 1];
+  const cursor = cursors[cursorPage - 1];
   const key = JSON.stringify({ ...applied, tab, cursor });
+
+  useEffect(() => {
+    if (hasSearchFilters) setSearchOpen(true);
+  }, [searchFilterKey, hasSearchFilters]);
 
   const load = useCallback(
     async (silent = false) => {
@@ -382,16 +389,19 @@ function Applications() {
   const k = data?.kpi;
   const search = () => {
     setCursors([null]);
+    setCursorPage(1);
     setPicked(new Set());
     apply({ ...applied, ...draft, tab });
   };
   const reset = () => {
     setCursors([null]);
+    setCursorPage(1);
     setPicked(new Set());
     apply({ ...applied, q: "", field: "all", industry: "", receivedFrom: "", receivedTo: "" });
   };
   const setFilter = (patch: Partial<Filters>) => {
     setCursors([null]);
+    setCursorPage(1);
     setPicked(new Set());
     apply({ ...applied, ...patch });
   };
@@ -433,7 +443,7 @@ function Applications() {
               onClick={() => setSearchOpen((open) => !open)}
               style={{ marginLeft: "auto" }}
             >
-              상세 검색 {searchOpen ? "접기" : "펼치기"}
+              상세 검색{hasSearchFilters ? " · 조건 적용 중" : ""} {searchOpen ? "접기" : "펼치기"}
             </button>
           </div>
           <div id="application-search" hidden={!searchOpen}>
@@ -630,14 +640,7 @@ function Applications() {
                 </div>
               ))}
             {state.kind === "ok" && (cursors.length > 1 || data?.nextCursor) && (
-              <div className="row" style={{ gap: 8, justifyContent: "center", padding: 12 }}>
-                <button className="btn btn-sm btn-out" type="button" disabled={cursors.length <= 1} onClick={() => setCursors((c) => c.slice(0, -1))}>
-                  ‹ 이전
-                </button>
-                <button className="btn btn-sm btn-out" type="button" disabled={!data?.nextCursor} onClick={() => data?.nextCursor && setCursors((c) => [...c, data.nextCursor])}>
-                  다음 ›
-                </button>
-              </div>
+              <CursorPagination page={cursorPage} visited={cursors.length} hasNext={!!data?.nextCursor} onChange={setCursorPage} onNext={() => { if (data?.nextCursor) { setCursors(c => c.length === cursorPage ? [...c, data.nextCursor] : c); setCursorPage(cursorPage + 1); } }} />
             )}
           </div>
           {reviewing && (

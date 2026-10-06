@@ -35,6 +35,16 @@ on:
           - "5"
           - "3"
           - "2"
+      include_readonly_details:
+        description: "읽기 전용 공간·BuildKit 진단을 포함(list 전용, 삭제 없음)"
+        required: false
+        default: false
+        type: boolean
+      include_onq_checkout_artifact_details:
+        description: "ONQ checkout의 .next/node_modules 고정 경로 상태만 조회(list 전용, Buildx cache 조회·삭제 없음)"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -72,9 +82,11 @@ jobs:
           MODE: ${{ inputs.mode }}
           OBS_BUILDER_KEEP_H: ${{ inputs.builder_keep_h }}
           OBS_IMAGE_KEEP: ${{ inputs.image_keep }}
+          INCLUDE_READONLY_DETAILS: ${{ inputs.include_readonly_details }}
+          INCLUDE_ONQ_CHECKOUT_ARTIFACT_DETAILS: ${{ inputs.include_onq_checkout_artifact_details }}
         run: |
           set -uo pipefail
-          if [ "$MODE" = apply ]; then args=(--apply); else args=(); fi
+          if [ "$MODE" = apply ]; then args=(--apply); elif [ "$INCLUDE_ONQ_CHECKOUT_ARTIFACT_DETAILS" = true ]; then args=(--checkout-details); elif [ "$INCLUDE_READONLY_DETAILS" = true ]; then args=(--details); else args=(); fi
           code=0; out="$(scripts/ops/disk-cleanup.sh "${args[@]}" 2>&1)" || code=$?
           printf '%s\n' "$out"
           msg="${out//'%'/'%25'}"; msg="${msg//$'\r'/'%0D'}"; msg="${msg//$'\n'/'%0A'}"

@@ -43,7 +43,7 @@ test("결제 대기 주문: 카드가 기본, 금액 확인 버튼, 결제 준�
   const orderId = await orderPage(page, baseURL!);
   const box = page.getByRole("region", { name: "결제", exact: true });
   await expect(box.getByRole("radio", { name: "카드 결제" })).toBeChecked(); // 기본 수단
-  await expect(box.getByText(/결제 기한 .+까지예요/)).toBeVisible();
+  await expect(box.getByText(/결제 기한 \d{4}\.\d{2}\.\d{2} \d{2}:\d{2}까지예요/)).toBeVisible();
   const amount = await page.locator(".cart-row b").last().innerText(); // 결제 금액
   await expect(box.getByRole("button", { name: `${amount} 결제하기` })).toBeVisible(); // 금액은 읽기 전용, 누르기 전에 보인다
   await page.screenshot({ path: "tests/e2e/screenshots/SH-007-pay-1440.png", fullPage: true });

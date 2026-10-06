@@ -26,33 +26,4 @@ export function ListTable({ children, className, "aria-label": label = "목록 �
   return <div className={`au-lt-wrap au-list-grid${className ? ` ${className}` : ""}`} role="region" aria-label={label} tabIndex={0}>{children}</div>;
 }
 
-// page는 1부터. 한 번에 10개 번호를 보이고, 처음·이전·다음·마지막 버튼을 둔다.
-export function Pagination({ page, pageCount, onChange }: { page: number; pageCount: number; onChange: (page: number) => void }) {
-  if (pageCount <= 1) return null;
-  const start = Math.floor((page - 1) / 10) * 10 + 1;
-  const end = Math.min(pageCount, start + 9);
-  const nums: number[] = [];
-  for (let n = start; n <= end; n++) nums.push(n);
-  const go = (n: number) => () => onChange(Math.min(pageCount, Math.max(1, n)));
-  return (
-    <nav className="pg au-pg" aria-label="페이지 이동">
-      <button type="button" onClick={go(1)} disabled={page === 1} aria-label="처음">
-        «
-      </button>
-      <button type="button" onClick={go(page - 1)} disabled={page === 1} aria-label="이전">
-        ‹
-      </button>
-      {nums.map((n) => (
-        <button key={n} type="button" className={n === page ? "on" : undefined} aria-current={n === page ? "page" : undefined} onClick={go(n)}>
-          {n}
-        </button>
-      ))}
-      <button type="button" onClick={go(page + 1)} disabled={page === pageCount} aria-label="다음">
-        ›
-      </button>
-      <button type="button" onClick={go(pageCount)} disabled={page === pageCount} aria-label="마지막">
-        »
-      </button>
-    </nav>
-  );
-}
+export { Pagination } from "../Pagination";
