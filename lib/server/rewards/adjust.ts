@@ -6,7 +6,7 @@ import { requireSellerPermission, type TenantContext } from "../tenant/context";
 
 // 적립금 수동 조정(SA-033, MEMBER_POINTS). 회원 한 명에게 지급(+)·회수(−)하고 사유를 원장(ADJUST)에 남긴다. 실제 현금 지급은 없다(적립금 내부 처리).
 // - 실제 지급이 켜져 있으면 바로 반영: 잔액 행을 잠그고(FOR UPDATE) 잔액을 바꾼 뒤 SUCCEEDED 원장을 남긴다. 회수는 잔액을 넘을 수 없다(음수 잔액 금지, DB CHECK도 막는다).
-// - 꺼져 있으면 「대기」(PENDING, testMode)로만 남기고 잔액은 그대로. 켜는 순간 일괄 지급(rewardLivePayout)이 반영한다. 회수는 이때도 지금 잔액을 넘을 수 없다.
+// - 꺼져 있으면 「대기」(PENDING, testMode)로만 남기고 잔액은 그대로. 지금은 켜도 이 줄이 저절로 반영되지 않는다(rewardLivePayout.ts에 대기분 일괄 처리가 아직 없음). 켜는 순간 대기분을 지급하는 일괄 처리는 SA-034(MASTER 배정 ④)에서 만든다. 회수는 이때도 지금 잔액을 넘을 수 없다.
 // - 실지급 스위치 변경(rewardLivePayout.ts)과 같은 잠금(shared)으로 순서를 세워, 켜는 도중에 끼어든 대기 줄이 빠지지 않게 한다.
 // - requestId(선택, UUID): 같은 값으로 다시 보내면(응답을 잃은 재시도) 새로 만들지 않고 처음 결과를 돌려준다. 다른 회원·값이면 conflict.
 // - 항상 ctx.sellerId 범위. 탈퇴 회원은 대상이 아니다. 로그 추적에 남긴다(사유 포함).
