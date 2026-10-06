@@ -6,7 +6,8 @@
 
 | 세션 | ID | 담당 |
 |---|---|---|
-| Live-OBS-Platform MASTER (3) | `session_01CEyJ4JsJ28uLVRMoFzD2u1` | 대표님 지시 전달 · 세션 배정·교체 · 상태 문서 관리(2026-10-04 대표님 지시로 검수·병합은 검수 전담에 넘김). 2026-10-06 12:25 KST MASTER (2) `session_018xa8SC5evpEFNVcQBwcN5t`(컨텍스트 73%)에서 교체 |
+| Live-OBS-Platform MASTER (4) | `session_01WVYfLxEbKvL8U1WR3ZcjSh` | 대표님 지시 전달 · 세션 배정·교체·보관 · 상태 문서 관리 · 테스트 서버 배포 실행(2026-10-04 대표님 지시로 검수·병합은 검수 전담에 넘김). 2026-10-06 MASTER (3) `session_01CEyJ4JsJ28uLVRMoFzD2u1`(컨텍스트 55%)에서 교체 |
+| Live-OBS-Platform MASTER (3) | `session_01CEyJ4JsJ28uLVRMoFzD2u1` | (교체됨 → `session_01WVYfLxEbKvL8U1WR3ZcjSh`, 2026-10-06) 대표님 지시 전달 · 세션 배정·교체 · 상태 문서 관리. 컨텍스트 55%로 교체 |
 | 검수 전담 (10) | `session_01RwaCLVjHMTGQwWTR9QDdHW` | 2026-10-06 10:53 KST MASTER 생성(Sonnet 5.5). (9)를 컨텍스트 66%로 교체. 변경 파일 요약부터·CI 묶음 조회 지침. 역할·소유는 전임 행과 같음 |
 | 검수 전담 (9) | `session_01Jc3uUUzghsYvaLRuzqBeM9` | (교체됨 → `session_01RwaCLVjHMTGQwWTR9QDdHW`, 2026-10-06) 2026-10-06 10:09 KST MASTER 생성(Sonnet 5.5). (8)을 컨텍스트 53%로 교체(증가 속도 빠름). 컨텍스트 절약 지침 강화. 역할·소유는 전임 행과 같음 |
 | 검수 전담 (8) | `session_01R5GCoaquPEMsXCjqtr2tNd` | (교체됨 → `session_01Jc3uUUzghsYvaLRuzqBeM9`, 2026-10-06) 2026-10-06 09:26 KST MASTER 생성(Sonnet 5.5). (7)을 컨텍스트 58%로 교체. CI 반복 조회 대신 CI 끝난 PR을 모아 병합. 역할·소유는 전임 행과 같음 |
