@@ -11,7 +11,9 @@ import { MAX_REASON } from "./SuspendDialog";
 const PRESETS = ["사업자 상태가 휴업 · 폐업입니다", "서류와 신청 정보가 다릅니다", "통신판매업을 신고하지 않았습니다", "취급 품목이 이용약관에 맞지 않습니다"];
 const join = (preset: string, extra: string) => [preset, extra.trim()].filter(Boolean).join(" · ");
 
-export function RejectApplicationDialog({ id, shopName, onClose, onDone, onStale }: { id: string; shopName: string; onClose: () => void; onDone: () => void; onStale: () => void }) {
+type BulkResult = { id: string; ok: boolean; message?: string }[];
+// bulkIds를 주면 선택 반려(POST /api/admin/sellers/applications/bulk-reject)로 보내고 건별 결과를 onDone에 넘긴다.
+export function RejectApplicationDialog({ id, bulkIds, shopName, onClose, onDone, onStale }: { id?: string; bulkIds?: string[]; shopName: string; onClose: () => void; onDone: (results?: BulkResult) => void; onStale: () => void }) {
   const [preset, setPreset] = useState("");
   const [extra, setExtra] = useState("");
   const [busy, setBusy] = useState(false);
@@ -23,10 +25,12 @@ export function RejectApplicationDialog({ id, shopName, onClose, onDone, onStale
     if (busy || invalid) return;
     setBusy(true);
     setError(null);
-    const r = await adminApi(`/api/admin/sellers/${id}/reject`, { method: "POST", json: { reason } });
+    const r = bulkIds
+      ? await adminApi<{ results: BulkResult }>("/api/admin/sellers/applications/bulk-reject", { method: "POST", json: { ids: bulkIds, reason } })
+      : await adminApi<unknown>(`/api/admin/sellers/${id}/reject`, { method: "POST", json: { reason } });
     setBusy(false);
-    if (r.ok) return onDone();
-    if (r.status === 404 || r.status === 409) return onStale();
+    if (r.ok) return onDone(bulkIds ? (r.data as { results: BulkResult }).results : undefined);
+    if (!bulkIds && (r.status === 404 || r.status === 409)) return onStale();
     setError(r.error === "reason_required" ? "사유를 1자 이상 200자 이하로 입력해 주십시오." : failMessage(r, "가입 반려를 하지 못했습니다. 잠시 후 다시 시도해 주십시오."));
   };
   return (
