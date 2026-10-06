@@ -54,6 +54,21 @@ test("상단 「공지 · 문의」「도우미」는 링크로 열린다", asyn
   await expect(page).toHaveURL(/\/seller\/notices$/);
 });
 
+test("상단 유틸 화면은 GNB 선택 없이 자기 LNB를 쓴다(SA-LNB ⑤)", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await login(page, "/seller/notices");
+  await expect(gnb(page).locator(".gnb-i.on")).toHaveCount(0);
+  await expect(lnb(page).locator(".lnb-sec.on .lnb-h")).toHaveText("공지 · 문의");
+  await expect(lnb(page).locator(".lnb-sec.on .lnb-i")).toHaveText(["공지사항", "내 문의"]);
+  await expect(page.locator(".loc-bar .crumb")).toHaveText("공지 · 문의›공지사항");
+  await page.goto("/seller/notifications");
+  await expect(page.locator(".loc-bar .crumb")).toHaveText("공지 · 문의›알림");
+  await page.goto("/seller/assistant");
+  await expect(gnb(page).locator(".gnb-i.on")).toHaveCount(0);
+  await expect(lnb(page).locator(".lnb-sec.on .lnb-h")).toHaveText("도우미");
+  await expect(lnb(page).locator(".lnb-sec.on .lnb-i")).toHaveText(["도우미"]);
+});
+
 for (const width of [1024, 1100, 1280, 1440]) {
   test(`${width}px에서 GNB 메뉴·검색·알림·상단 유틸이 겹치지 않고 잘리지 않는다`, async ({ page }) => {
     await page.setViewportSize({ width, height: 800 });

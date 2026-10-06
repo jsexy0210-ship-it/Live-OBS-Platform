@@ -67,7 +67,7 @@ const POPUP_TITLE = "10/4 토 20시 스타라이트 브레이크";
 const BAR_TITLE = "추석 연휴 배송 안내 · 10/2부터 순서대로 보내요";
 
 test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
-  test("SA-064 대표자: 배너 추가(PNG만·링크 검사·미리보기) → 예약·PC만 배너 → 끌어서 순서 변경 · 자동 넘김", async ({ page }) => {
+  test("SA-064 대표자: 배너 추가(PNG만·링크 검사·미리보기) → 예약·PC만 배너 → ▲▼ 순서 변경 · 자동 넘김", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await ownerOpen(page, "/seller/banners");
     await expect(page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "홈 배너" })).toHaveClass(/on/);
@@ -136,14 +136,16 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
     await expect(page.getByTestId("banner-row").nth(1).getByText("예약")).toBeVisible();
     await expect(page.getByTestId("banner-row").nth(2)).toContainText("PC만");
 
-    // 끌어서 순서 바꾸기 → 새로고침해도 유지
-    await page.getByTestId("banner-row").nth(2).dragTo(page.getByTestId("banner-row").nth(0));
+    // ▲▼로 순서 바꾸기 → 맨 위 ▲와 맨 아래 ▼는 꺼져 있고, 새로고침해도 유지
+    await expect(page.getByTestId("banner-row").nth(0).getByRole("button", { name: /위로$/ })).toBeDisabled();
+    await expect(page.getByTestId("banner-row").nth(2).getByRole("button", { name: /아래로$/ })).toBeDisabled();
+    await page.getByRole("button", { name: "회원 등급 혜택 위로" }).click();
+    await expect(page.getByText("순서를 저장했습니다")).toBeVisible();
+    await page.getByRole("button", { name: "회원 등급 혜택 위로" }).click();
     await expect(page.getByText("순서를 저장했습니다")).toBeVisible();
     await page.reload();
     await expect(page.getByTestId("banner-row").nth(0)).toContainText("회원 등급 혜택");
-    // 키보드용 버튼으로 옮긴다(포커스가 있을 때 보이는 위·아래 버튼)
-    await page.getByRole("button", { name: "10월 스타라이트 박스 오픈 위로" }).focus();
-    await page.keyboard.press("Enter");
+    await page.getByRole("button", { name: "10월 스타라이트 박스 오픈 위로" }).click();
     await expect(page.getByText("순서를 저장했습니다")).toBeVisible();
     await page.reload();
     await expect(page.getByTestId("banner-row").nth(0)).toContainText("10월 스타라이트 박스 오픈");

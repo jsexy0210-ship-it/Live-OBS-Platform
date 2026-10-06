@@ -79,6 +79,27 @@ test("방송을 끝낸 뒤 이력 목록에서 찾아 상세로 들어가 요약
   await expect(page.getByTestId("bd-hits")).toContainText(A);
   await expect(page.getByTestId("bd-orders").locator("tr")).toHaveCount(2);
   await expect(page.getByTestId("bd-orders")).toContainText(B);
+  // 통계·차트·연결 로그·리포트·메모
+  await expect(page.getByTestId("bd-summary")).toContainText("평균 오픈");
+  await expect(page.getByTestId("bd-summary")).toContainText("최대 대기");
+  await expect(page.getByTestId("bd-layout")).toBeVisible();
+  await expect(page.getByTestId("bd-hourly")).toBeVisible();
+  await expect(page.getByTestId("bd-log")).toContainText("방송 끝냄");
+  await expect(page.getByTestId("bd-report")).toHaveAttribute("href", /\/report$/);
+  const memo = `e2e-메모-${Date.now()}`;
+  await page.getByTestId("bd-memo").fill(memo);
+  await page.getByTestId("bd-memo-save").click();
+  await expect(page.getByText("메모를 저장했습니다")).toBeVisible();
+  await page.reload();
+  await expect(page.getByTestId("bd-memo")).toHaveValue(memo);
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.waitForTimeout(600);
+    const doc = await page.evaluate(() => document.documentElement.scrollWidth);
+    expect(doc, `${width}px 문서 너비`).toBe(width);
+    if (process.env.E2E_SCREENSHOTS === "1") await page.screenshot({ path: `tests/e2e/screenshots/SA-055-detail-${width}.png`, fullPage: true });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.getByRole("button", { name: "뒤로" }).click();
   await expect(page).toHaveURL(/\/seller\/broadcasts$/);
 });
