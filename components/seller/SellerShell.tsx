@@ -35,7 +35,15 @@ const MENU: Group[] = [
     key: "home",
     label: "홈",
     // 시작하기(SA-003)는 메뉴에서 빠지고 홈 아래 화면이다(첫 가입 때만 홈 위 띠로 안내)
-    items: [{ label: "홈", plan: "STORE_OPERATIONS", alt: { plan: "OVERLAY", href: "/seller/home-overlay" }, also: [{ href: "/seller/onboarding", plan: "ANY" }] }],
+    items: [
+      {
+        label: "홈",
+        href: "/seller",
+        plan: "STORE_OPERATIONS",
+        alt: { plan: "OVERLAY", href: "/seller/home-overlay" },
+        also: [{ href: "/seller/onboarding", plan: "ANY" }, { href: "/seller/home-overlay", plan: "OVERLAY" }],
+      },
+    ],
   },
   {
     key: "broadcast",
@@ -220,7 +228,8 @@ function routeNav(pathname: string): { group: Group; item: Item; leaf: Leaf; exa
         ...(item.also ?? []).map((a) => ({ href: a.href, leaf: { ...leavesOf(item)[0], href: a.href, plan: a.plan ?? leavesOf(item)[0].plan, perm: a.perm ?? leavesOf(item)[0].perm } })),
       ];
       for (const { href, leaf } of cands) {
-        if (href && (pathname === href || pathname.startsWith(`${href}/`)) && (!best || href.length > best.len)) best = { group, item, leaf, len: href.length };
+        // 홈(/seller)은 정확히 같을 때만: 접두어로 보면 메뉴 밖 모든 화면이 홈으로 잡힌다
+        if (href && (pathname === href || (href !== "/seller" && pathname.startsWith(`${href}/`))) && (!best || href.length > best.len)) best = { group, item, leaf, len: href.length };
       }
     }
   if (!best) return null;
@@ -234,6 +243,8 @@ function routeCrumb(pathname: string): string {
 }
 // FOLLOWUP은 메뉴를 숨길 때만 쓴다. 주소로 들어온 화면은 서버(ORDER_FOLLOWUP 경로는 기능 권한이 하나라도 있으면 열림)가 막는지에 따른다
 function routePlan(pathname: string): PlanNeed | undefined {
+  // /seller는 요금제에 맞는 홈·첫 메뉴로 보내는 화면이 스스로 판단한다(여기서 막으면 그 화면이 열리지 못한다)
+  if (pathname === "/seller") return undefined;
   const r = routeNav(pathname);
   const need = ROUTE_PLAN.find(([p]) => pathname.startsWith(p))?.[1] ?? r?.leaf.plan;
   return need === "FOLLOWUP" ? "ANY" : need;
@@ -273,7 +284,8 @@ function visibleMenu(me: Me): ShownGroup[] {
 export function landingFor(me: Me, href: string): string {
   const perm = routeNav(href)?.leaf.perm;
   if (menuAllows(me, routePlan(href)) && (!perm || canFor(me, perm))) return href;
-  return visibleMenu(me).flatMap((g) => g.items).find((n) => !!n.href)?.href ?? href;
+  // 홈(/seller)은 이 판단을 하는 화면 자신이라 건너뛴다(자기에게 다시 보내면 끝없이 돈다)
+  return visibleMenu(me).flatMap((g) => g.items).find((n) => !!n.href && n.href !== "/seller")?.href ?? href;
 }
 
 // loc: 지금 화면의 대분류 · 메뉴 이름(본문 위 경로 줄에 쓴다)
@@ -492,7 +504,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   };
   const blocked = (planBlocked?.path === pathname && planBlocked.visit === currentNavGeneration()) || !menuAllows(me, routePlan(pathname));
   // 안내 화면에서 갈 수 있는 첫 화면(만든 메뉴 중 지금 열리는 것)
-  const nextNav = gnbMenu.flatMap((g) => g.items).find((n) => !!n.href && !pathname.startsWith(n.href));
+  const nextNav = gnbMenu.flatMap((g) => g.items).find((n) => !!n.href && n.href !== "/seller" && !pathname.startsWith(n.href));
 
   const utilities = (
     <>
