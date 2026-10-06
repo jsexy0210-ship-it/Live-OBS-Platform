@@ -1396,6 +1396,9 @@ model RewardPolicy {
   rankingBonusAmount  Int              @default(0)
   // 적립금 지급 시점(대표님 결정 2026-10-03): 결제 즉시 또는 배송 완료 후(기본)
   earnTiming          RewardEarnTiming @default(ON_DELIVERY)
+  // 적립금 사용 조건(SA-031, MASTER 2026-10-06): 최소 사용 금액(원, 기본 1,000)과 주문당 최대 사용 비율(%, 0=제한 없음). 설정 저장은 rewards/policyAdmin.ts, 견적·주문 적용은 결제 쪽.
+  useMinAmount        Int              @default(1000)
+  useMaxRatio         Int              @default(0)
   updatedAt           DateTime         @default(now()) @updatedAt @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])

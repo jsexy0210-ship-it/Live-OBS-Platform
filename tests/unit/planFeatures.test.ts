@@ -169,6 +169,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/products/options": "STORE_OPERATIONS",
   "seller/products/stock-movements": "STORE_OPERATIONS",
   "seller/reward-policy": "STORE_OPERATIONS",
+  "seller/reward-policy/history": "STORE_OPERATIONS",
+  "seller/reward-policy/preview": "STORE_OPERATIONS",
   "seller/reward-live-payout": "STORE_OPERATIONS",
   "seller/reward-balances/[memberId]/adjust": "STORE_OPERATIONS",
   "seller/share-preview": "STORE_OPERATIONS",
