@@ -156,6 +156,8 @@ export default function CouponsPage() {
   const [stopping, setStopping] = useState<Coupon | null>(null);
   const [deleting, setDeleting] = useState<Coupon | null>(null);
   const [busy, setBusy] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [bulkStopping, setBulkStopping] = useState(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
 
   const load = useCallback(async () => {
@@ -194,6 +196,18 @@ export default function CouponsPage() {
     setBusy(false);
     setStopping(null);
     setToast(r.ok ? { text: isActive ? "다시 발급합니다" : "발급을 중지했습니다" } : { text: errorText(r, "바꾸지 못했습니다"), neg: true });
+    await load();
+  };
+
+  const bulkStop = async () => {
+    const targets = list.filter((c) => picked.includes(c.id) && c.isActive);
+    setBusy(true);
+    const results = await Promise.all(targets.map((c) => api(`/api/seller/coupons/${c.id}`, { method: "PATCH", body: { isActive: false } })));
+    setBusy(false);
+    setBulkStopping(false);
+    setPicked([]);
+    const failed = results.filter((r) => !r.ok).length;
+    setToast(failed === 0 ? { text: `${targets.length}개의 발급을 중지했습니다` } : { text: `${failed}개는 중지하지 못했습니다`, neg: true });
     await load();
   };
 
@@ -301,9 +315,14 @@ export default function CouponsPage() {
                 unit="개"
                 actions={
                   editable && (
-                    <button className="btn btn-sm" type="button" onClick={() => setDraft(emptyDraft())}>
-                      쿠폰 만들기
-                    </button>
+                    <>
+                      <button className="btn btn-sm btn-out" type="button" disabled={busy || !shown.some((c) => picked.includes(c.id) && c.isActive)} onClick={() => setBulkStopping(true)}>
+                        선택 발급 중지
+                      </button>
+                      <button className="btn btn-sm" type="button" onClick={() => setDraft(emptyDraft())}>
+                        쿠폰 만들기
+                      </button>
+                    </>
                   )
                 }
               />
@@ -317,19 +336,34 @@ export default function CouponsPage() {
                 <table className="tbl tbl-card cp-tbl">
                   <thead>
                     <tr>
+                      {editable && (
+                        <th data-card="check">
+                          <input
+                            className="chkbox"
+                            type="checkbox"
+                            aria-label="쿠폰 모두 선택"
+                            checked={shown.length > 0 && shown.every((c) => picked.includes(c.id))}
+                            onChange={(e) => setPicked(e.target.checked ? shown.map((c) => c.id) : [])}
+                          />
+                        </th>
+                      )}
                       <th>쿠폰 · 발급 방식</th>
                       <th>혜택 · 조건</th>
                       <th>사용 기간</th>
                       <th>발급</th>
                       <th>사용 (비율)</th>
-                      <th>할인 총액</th>
                       <th>상태</th>
-                      {editable && <th />}
+                      {editable && <th>관리</th>}
                     </tr>
                   </thead>
                   <tbody>
                     {shown.map((c) => (
                       <tr key={c.id} data-testid="coupon-row" className={c.status === "ended" ? "faded" : undefined}>
+                        {editable && (
+                          <td data-card="check">
+                            <input className="chkbox" type="checkbox" aria-label={`${c.name} 선택`} checked={picked.includes(c.id)} onChange={(e) => setPicked(e.target.checked ? [...picked, c.id] : picked.filter((x) => x !== c.id))} />
+                          </td>
+                        )}
                         <td className="col-text" data-card="title">
                           <div className="col" style={{ gap: 2 }}>
                             <span className="fw6">{c.name}</span>
@@ -362,7 +396,6 @@ export default function CouponsPage() {
                           {c.used.toLocaleString("ko-KR")}
                           {c.issuedCount > 0 && <span className="c-alt"> ({Math.round((c.used / c.issuedCount) * 100)}%)</span>}
                         </td>
-                        <td className="num">{won(c.discountTotal)}</td>
                         <td data-card="status">
                           <span className={`bdg ${STATUS[c.status].cls}`}>{STATUS[c.status].label}</span>
                         </td>
@@ -384,20 +417,6 @@ export default function CouponsPage() {
                               >
                                 복제
                               </button>
-                              {c.isActive ? (
-                                <button className="btn btn-sm btn-text" type="button" onClick={() => setStopping(c)}>
-                                  발급 중지
-                                </button>
-                              ) : (
-                                <button className="btn btn-sm btn-text" type="button" disabled={busy} onClick={() => void setActive(c, true)}>
-                                  다시 발급
-                                </button>
-                              )}
-                              {c.issuedCount === 0 && (
-                                <button className="btn btn-sm btn-text" type="button" style={{ color: "var(--neg-text)" }} onClick={() => setDeleting(c)}>
-                                  삭제
-                                </button>
-                              )}
                             </span>
                           </td>
                         )}
@@ -419,6 +438,19 @@ export default function CouponsPage() {
         <CouponEditor
           draft={draft}
           products={data.products}
+          current={draft.id ? (list.find((c) => c.id === draft.id) ?? null) : null}
+          onStop={(c) => {
+            setDraft(null);
+            setStopping(c);
+          }}
+          onResume={(c) => {
+            setDraft(null);
+            void setActive(c, true);
+          }}
+          onDelete={(c) => {
+            setDraft(null);
+            setDeleting(c);
+          }}
           onClose={() => setDraft(null)}
           onSaved={async (text) => {
             setDraft(null);
@@ -461,6 +493,26 @@ export default function CouponsPage() {
           </div>
         </div>
       )}
+      {bulkStopping && (
+        <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="cp-bulk-title">
+          <div className="modal">
+            <div className="modal-h">
+              <h2 className="t-h2" id="cp-bulk-title">
+                선택한 쿠폰의 발급을 중지하시겠습니까?
+              </h2>
+              <span className="t-l2 c-alt">{list.filter((c) => picked.includes(c.id) && c.isActive).length}개가 더 이상 내려받아지지 않습니다. 이미 받은 쿠폰은 기간 안에 그대로 쓸 수 있습니다.</span>
+            </div>
+            <div className="modal-f">
+              <button className="btn btn-out" type="button" onClick={() => setBulkStopping(false)} disabled={busy}>
+                취소
+              </button>
+              <button className="btn btn-neg" type="button" onClick={() => void bulkStop()} disabled={busy}>
+                {busy ? "중지 중" : "발급 중지"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {deleting && (
         <ConfirmDelete title="쿠폰을 삭제하시겠습니까?" body={`「${deleting.name}」를 삭제합니다. 되돌릴 수 없습니다.`} busy={busy} onCancel={() => setDeleting(null)} onConfirm={() => void remove()} />
       )}
@@ -469,7 +521,7 @@ export default function CouponsPage() {
   );
 }
 
-function CouponEditor({ draft: initial, products, onClose, onSaved }: { draft: Draft; products: Product[]; onClose: () => void; onSaved: (text: string) => void }) {
+function CouponEditor({ draft: initial, products, current, onClose, onSaved, onStop, onResume, onDelete }: { draft: Draft; products: Product[]; current: Coupon | null; onClose: () => void; onSaved: (text: string) => void; onStop: (c: Coupon) => void; onResume: (c: Coupon) => void; onDelete: (c: Coupon) => void }) {
   const [d, setD] = useState<Draft>(initial);
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -735,6 +787,24 @@ function CouponEditor({ draft: initial, products, onClose, onSaved }: { draft: D
           </div>
         </div>
         <div className="modal-f">
+          {current && (
+            <span className="row" style={{ gap: 8, marginRight: "auto" }}>
+              {current.isActive ? (
+                <button className="btn btn-out" type="button" onClick={() => onStop(current)} disabled={saving}>
+                  발급 중지
+                </button>
+              ) : (
+                <button className="btn btn-out" type="button" onClick={() => onResume(current)} disabled={saving}>
+                  다시 발급
+                </button>
+              )}
+              {current.issuedCount === 0 && (
+                <button className="btn btn-out" type="button" style={{ color: "var(--neg-text)" }} onClick={() => onDelete(current)} disabled={saving}>
+                  쿠폰 삭제
+                </button>
+              )}
+            </span>
+          )}
           <button className="btn btn-out" type="button" onClick={onClose} disabled={saving}>
             취소
           </button>
