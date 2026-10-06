@@ -59,6 +59,29 @@ async function canvasPng(page: Page, width: number, height: number, color: strin
 
 const file = (name: string, buffer: Buffer, mimeType = "image/png") => ({ name, mimeType, buffer });
 const imageLoaded = (page: Page, selector: string) => page.locator(selector).first().evaluate((el) => (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth > 0);
+async function expectBannerPreview(page: Page, testId: "banner-home-preview" | "banner-preview") {
+  const frame = page.getByTestId(testId);
+  const image = frame.locator('.hb-only .hb-slide[aria-hidden="false"] img').first();
+  await frame.scrollIntoViewIfNeeded();
+  await expect.poll(() => imageLoaded(page, `[data-testid="${testId}"] .hb-only .hb-slide[aria-hidden="false"] img`)).toBe(true);
+  const metrics = await image.evaluate((el) => {
+    const img = el as HTMLImageElement;
+    const frame = img.closest<HTMLElement>("[data-testid]")!;
+    const imageRect = img.getBoundingClientRect();
+    return {
+      frameWidth: frame.getBoundingClientRect().width,
+      imageHeight: imageRect.height,
+      naturalWidth: img.naturalWidth,
+      naturalHeight: img.naturalHeight,
+      objectFit: getComputedStyle(img).objectFit,
+    };
+  });
+  expect(metrics.frameWidth).toBe(240);
+  expect(metrics.imageHeight).toBe(80);
+  expect(metrics.naturalWidth).toBe(750);
+  expect(metrics.naturalHeight).toBe(750);
+  expect(metrics.objectFit).toBe("cover");
+}
 // 지금 KST 기준 날짜(YYYY-MM-DD)
 const kstDay = (days: number) => new Date(Date.now() + days * 86400_000 + 9 * 3600_000).toISOString().slice(0, 10);
 // 지금 KST 기준 datetime-local 값(분 단위)
@@ -103,14 +126,26 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
     await expect(ed.getByRole("button", { name: "저장" })).toBeEnabled();
     await ed.getByRole("button", { name: "미리보기" }).click();
     expect(await imageLoaded(page, '[data-testid="banner-preview"] img')).toBe(true);
+    for (const [width, height] of [[1440, 900], [1024, 768], [390, 844]]) {
+      await page.setViewportSize({ width, height });
+      await expectBannerPreview(page, "banner-preview");
+      await page.screenshot({ path: `${SHOT}/SA-064-banner-edit-preview-${width}.png` });
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.screenshot({ path: `${SHOT}/SA-064-banner-edit-1440.png` });
     await ed.getByRole("radio", { name: "모바일만" }).click();
-    expect(await imageLoaded(page, '[data-testid="banner-preview"] img')).toBe(true);
+    await expectBannerPreview(page, "banner-preview");
     // 저장은 PC · 모바일로 한다(아래 구매자 화면 시험이 PC 슬라이드 2장 · 모바일 슬라이드 1장을 기대한다)
     await ed.getByRole("radio", { name: "PC · 모바일" }).click();
     await ed.getByRole("button", { name: "저장" }).click();
     await confirmBtn("추가").click();
     await expect(page.getByText("배너를 추가했습니다 · 홈에 바로 반영")).toBeVisible();
+    for (const [width, height] of [[1440, 900], [1024, 768], [390, 844]]) {
+      await page.setViewportSize({ width, height });
+      await expectBannerPreview(page, "banner-home-preview");
+      await page.screenshot({ path: `${SHOT}/SA-064-banner-home-preview-${width}.png` });
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
 
     // 두 번째: 내일 시작(예약)
     await page.getByRole("button", { name: "배너 추가" }).first().click();
@@ -289,6 +324,12 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
     await expect(page.locator(".hb-pc")).toBeVisible();
     await expect(page.locator(".hb-m")).toBeHidden();
     expect(await imageLoaded(page, ".hb-pc .hb-slide img")).toBe(true);
+    const pcImage = await page.locator('.hb-pc .hb-slide[aria-hidden="false"] img').first().evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      return { ratio: rect.width / rect.height, naturalRatio: (el as HTMLImageElement).naturalWidth / (el as HTMLImageElement).naturalHeight };
+    });
+    expect(pcImage.naturalRatio).toBe(3);
+    expect(pcImage.ratio).toBeCloseTo(3, 2);
     // 모바일 슬라이드(숨김)의 이미지는 내려받지 않는다
     expect(await page.locator(".hb-m img").first().evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBe(0);
     await page.screenshot({ path: `${SHOT}/SA-064-065-shop-home-popup-1440.png` });
@@ -320,6 +361,14 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
     const list = await page.evaluate(async () => (await (await fetch("/api/shop/demo-shop/shop-content?page=home")).json()) as { banners: { title: string; mobileImage: { url: string } | null }[] });
     expect(src).toContain(list.banners.find((b) => b.title === "10월 스타라이트 박스 오픈")!.mobileImage!.url);
     expect(await imageLoaded(page, ".hb-m .hb-slide img")).toBe(true);
+    const mobileImage = await page.locator('.hb-m .hb-slide[aria-hidden="false"] img').first().evaluate((el) => {
+      const img = el as HTMLImageElement;
+      const rect = img.getBoundingClientRect();
+      return { ratio: rect.width / rect.height, naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight };
+    });
+    expect(mobileImage.naturalWidth).toBe(750);
+    expect(mobileImage.naturalHeight).toBe(750);
+    expect(mobileImage.ratio).toBeCloseTo(1, 2);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: `${SHOT}/SA-064-065-shop-home-390.png` });
 
