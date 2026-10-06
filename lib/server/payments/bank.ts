@@ -114,6 +114,9 @@ export type DepositRow = {
   amount: number;
   nickname: string;
   depositorName?: string;
+  buyerName?: string;
+  depositorNameSource?: "BUYER_MEMBER_NAME_LEGACY";
+  depositorNameStatus: "NOT_COLLECTED";
   paymentMethod: "CARD" | "BANK_TRANSFER" | null;
   paymentDueAt: Date | null;
   createdAt: Date;
@@ -133,7 +136,8 @@ function depositDate(raw: unknown): Date | null | undefined {
 }
 
 // 입금 대기 = 결제 대기이면서 카드 결제가 승인 중·완료가 아닌 주문. 입금 기한 빠른 순(기한 없는 주문은 뒤), 같으면 주문 순.
-// 입금자 확인용 구매자 이름은 CUSTOMER_PII_VIEW가 있을 때만 넣고, 넣었으면 customer.pii.view를 남긴다.
+// legacy depositorName은 실제 입금자가 아닌 구매자 실명이다. 하위 호환으로 남기되 원천/미수집 상태를 함께 반환한다.
+// 구매자 실명은 CUSTOMER_PII_VIEW가 있을 때만 넣고, 넣었으면 customer.pii.view를 남긴다.
 export async function listPendingDeposits(db: PrismaClient, ctx: TenantContext, query: DepositQuery, now = new Date()) {
   requireSellerRead(ctx, "ORDER_SHIPPING");
   const limit = query.limit == null || query.limit === "" ? DEPOSIT_PAGE_DEFAULT : Number(query.limit);
@@ -151,6 +155,7 @@ export async function listPendingDeposits(db: PrismaClient, ctx: TenantContext, 
   const pii = canViewCustomerPii(ctx);
   // 검색 결과 건수로 이름을 추측하는 것도 개인정보 열람이다.
   if (term && searchBy === "depositor" && !pii) throw forbidden();
+  if (term && searchBy === "depositor") return { ok: false as const, reason: "depositor_search_unavailable" as const };
   const pending: Prisma.OrderWhereInput = {
     status: "PENDING_PAYMENT",
     payments: { none: { status: { in: ["APPROVING", "PAID", "PARTIAL_CANCELLED"] } } },
@@ -171,8 +176,7 @@ export async function listPendingDeposits(db: PrismaClient, ctx: TenantContext, 
       const amount = term.replace(/[,\s]/g, "").replace(/원$/, "");
       if (!/^\d+$/.test(amount) || !Number.isSafeInteger(Number(amount)) || Number(amount) > 2_147_483_647) return { ok: false as const };
       search = { totalAmount: Number(amount) };
-    } else if (searchBy === "depositor") search = { buyerMember: { name: { contains: term, mode: "insensitive" } } };
-    else search = { broadcastNicknameSnapshot: { contains: term, mode: "insensitive" } };
+    } else search = { broadcastNicknameSnapshot: { contains: term, mode: "insensitive" } };
   }
   const base: Prisma.OrderWhereInput = {
     sellerId: ctx.sellerId,
@@ -214,7 +218,8 @@ export async function listPendingDeposits(db: PrismaClient, ctx: TenantContext, 
     orderNoLabel: orderNoLabel(o.createdAt, o.orderNo),
     amount: o.totalAmount,
     nickname: o.broadcastNicknameSnapshot,
-    ...(pii && o.buyerMember ? { depositorName: o.buyerMember.name } : {}),
+    ...(pii && o.buyerMember ? { depositorName: o.buyerMember.name, buyerName: o.buyerMember.name, depositorNameSource: "BUYER_MEMBER_NAME_LEGACY" as const } : {}),
+    depositorNameStatus: "NOT_COLLECTED",
     paymentMethod: o.paymentMethod,
     paymentDueAt: o.paymentDueAt,
     createdAt: o.createdAt,
@@ -234,7 +239,7 @@ export async function listPendingDeposits(db: PrismaClient, ctx: TenantContext, 
       after: { orderIds: deposits.map((d) => d.orderId), count: deposits.length },
     });
   }
-  return { ok: true as const, value: { deposits, total, summary: {
+  return { ok: true as const, value: { deposits, total, summaryScope: "SELLER" as const, capabilities: { depositorSearch: false }, summary: {
     pendingCount: pendingSummary._count, pendingAmount: pendingSummary._sum.totalAmount ?? 0,
     dueWithinHourCount, confirmedTodayCount, overdueCount, autoCancelledTodayCount,
   } } };

@@ -70,10 +70,14 @@ describe("SA026 읽기 계약", () => {
     await expect(listPendingDeposits(f.db, { ...ctx, isOwner: false }, {}, now)).rejects.toMatchObject({ status: 403 });
     expect(f.order.count).not.toHaveBeenCalled();
   });
-  it("입금자명 검색은 PII 로그를 남긴다", async () => {
+  it("실제 입금자명이 없으면 구매자 이름을 검색하지 않고 원천을 구분한다", async () => {
     const f = fixture();
-    await listPendingDeposits(f.db, ctx, { q: "입금자", searchBy: "depositor" }, now);
-    expect(f.order.findMany.mock.calls[0][0].where.AND[1]).toEqual({ buyerMember: { name: { contains: "입금자", mode: "insensitive" } } });
+    expect(await listPendingDeposits(f.db, ctx, { q: "입금자", searchBy: "depositor" }, now)).toEqual({ ok: false, reason: "depositor_search_unavailable" });
+    expect(f.order.findMany).not.toHaveBeenCalled();
+    const result = await listPendingDeposits(f.db, ctx, {}, now);
+    expect(result.ok && result.value.deposits[0]).toMatchObject({ depositorName: "입금자", buyerName: "입금자", depositorNameSource: "BUYER_MEMBER_NAME_LEGACY", depositorNameStatus: "NOT_COLLECTED" });
+    expect(result.ok && result.value.capabilities).toEqual({ depositorSearch: false });
+    expect(result.ok && result.value.summaryScope).toBe("SELLER");
     expect(f.auditLog.create.mock.calls[0][0].data.action).toBe("customer.pii.view");
   });
 });

@@ -180,6 +180,9 @@ describe("판매자 입금 대기·입금 확인", () => {
   it("조회 route는 필터 오류 400과 PII 검색 거부 403을 no-store로 반환한다", async () => {
     const s = await setup();
     const cookie = await s.sellerCookie(s.owner.email);
+    const unsupported = await depositsRoute(jsonReq("/api/seller/payments/deposits?searchBy=depositor&q=test", "GET", cookie));
+    expect(unsupported.status).toBe(400);
+    expect(await unsupported.json()).toMatchObject({ error: "depositor_search_unavailable" });
     const response = await depositsRoute(jsonReq("/api/seller/payments/deposits?status=ALL&from=2026-02-30", "GET", cookie));
     expect(response.status).toBe(400);
     expect(response.headers.get("cache-control")).toContain("no-store");
