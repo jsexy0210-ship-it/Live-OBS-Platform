@@ -5,7 +5,7 @@ export default function ShopNotFound() {
   return (
     <div className="shop-page">
       <main className="shop-main">
-        <ShopState title="쇼핑몰을 찾을 수 없어요" body="주소를 다시 확인해 주세요. 쇼핑몰이 문을 닫았을 수도 있어요." />
+        <ShopState title="이런 쇼핑몰은 없어요" body="주소를 다시 확인해 주세요" />
       </main>
     </div>
   );

@@ -7,7 +7,7 @@ const SHOTS = process.env.E2E_SCREENSHOTS === "1";
 
 async function shot(page: Page, name: string) {
   if (!SHOTS) return;
-  for (const width of [1440, 390]) {
+  for (const width of [1440, 1024, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(150);
@@ -198,17 +198,14 @@ test("직원 탭 흐름 전체에서 계정 종류가 이어진다: 로그인 �
   await page.getByRole("tab", { name: "직원" }).click();
   await page.getByRole("link", { name: "아이디/비밀번호 찾기" }).click();
   await expect(page).toHaveURL(/\/seller\/find-id\?type=staff$/);
-  // 화면 위쪽 「아이디 찾기 | 비밀번호 찾기」 전환
-  const sw = page.getByRole("navigation", { name: "아이디·비밀번호 찾기" });
-  await expect(sw.getByRole("link")).toHaveText(["아이디 찾기", "비밀번호 찾기"]);
-  await expect(sw.getByRole("link", { name: "아이디 찾기" })).toHaveAttribute("aria-current", "page");
-  await expect(sw.getByRole("link", { name: "비밀번호 찾기" })).toHaveAttribute("href", "/seller/password-reset?type=staff");
+  const accountType = page.getByRole("navigation", { name: "계정 종류" });
+  await expect(accountType.getByRole("link")).toHaveText(["대표자", "직원"]);
+  await expect(accountType.getByRole("link", { name: "직원" })).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("link", { name: "로그인으로 돌아가기" })).toHaveAttribute("href", "/seller/login?type=staff");
+  await expect(page.getByRole("link", { name: "비밀번호 찾기" })).toHaveAttribute("href", "/seller/password-reset?type=staff");
   await shot(page, "AU-011-switch");
-  await sw.getByRole("link", { name: "비밀번호 찾기" }).click();
+  await page.getByRole("link", { name: "비밀번호 찾기" }).click();
   await expect(page).toHaveURL(/\/seller\/password-reset\?type=staff$/);
-  await expect(sw.getByRole("link", { name: "비밀번호 찾기" })).toHaveAttribute("aria-current", "page");
-  await expect(sw.getByRole("link", { name: "아이디 찾기" })).toHaveAttribute("href", "/seller/find-id?type=staff");
   await shot(page, "AU-003-switch");
   await expect(page.getByText("직원 본인 명의의 휴대폰으로 확인합니다.")).toBeVisible();
   await page.getByRole("link", { name: "로그인으로 돌아가기" }).click();
