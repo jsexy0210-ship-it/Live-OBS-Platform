@@ -13,6 +13,7 @@ for (const width of WIDTHS) {
     await page.goto("/admin/login");
     const card = page.locator(".login-card");
     await expect(card).toBeVisible();
+    await expect(card.getByText("이메일과 비밀번호로 로그인합니다.")).toBeVisible();
 
     const { sw, cw } = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }));
     expect(sw).toBeLessThanOrEqual(cw);

@@ -38,7 +38,7 @@ export default function AdminLoginPage() {
         </span>
         <div className="col login-head">
           <h1 className="t-t3">마스터 관리자</h1>
-          <span className="t-l2 c-alt">마스터 관리자 계정으로 로그인해 주십시오.</span>
+          <span className="t-l2 c-alt">이메일과 비밀번호로 로그인합니다.</span>
         </div>
         <div className="col" style={{ gap: 16 }}>
           <div className="fld">
