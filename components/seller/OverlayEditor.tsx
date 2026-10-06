@@ -662,25 +662,8 @@ export default function OverlayEditor() {
           </div>
         )}
 
-        <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
-          <div className="seg" role="radiogroup" aria-label="비율">
-            {(["9x16", "16x9"] as const).map((a) => (
-              <button key={a} type="button" role="radio" aria-checked={aspect === a} className={aspect === a ? "on" : ""} onClick={() => switchAspect(a)}>
-                {a === "9x16" ? "세로 9:16" : "가로 16:9"}
-              </button>
-            ))}
-          </div>
-          <label className="chk">
-            <input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} /> 칸 맞추기(눈금에 붙이기)
-          </label>
-          {aspect === "9x16" && (
-            <label className="chk">
-              <input type="checkbox" checked={guides} onChange={(e) => setGuides(e.target.checked)} /> 가려지는 곳 표시
-            </label>
-          )}
-        </div>
-
         <div className="ove-cols">
+          <div className="ove-left col" style={{ gap: 20 }}>
           <div className="ove-list col" style={{ gap: 6 }}>
             <span className="t-l1 fw6">꾸미는 칸(글상자·카드)</span>
             <span className="t-c1 c-alt">위가 앞에 보입니다</span>
@@ -709,6 +692,86 @@ export default function OverlayEditor() {
                 );
               })}
             </ul>
+          </div>
+      <section className="ove-sec col" style={{ gap: 8 }} aria-labelledby="ove-t">
+        <h2 className="t-hl2" id="ove-t">
+          템플릿
+        </h2>
+        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          {templates?.builtin.map((t) => (
+            <button key={t.key} className="btn btn-out" type="button" disabled={busy} onClick={() => askReset(t.widgets, t.name)}>
+              {t.name}
+            </button>
+          ))}
+        </div>
+        {(full || total >= MAX_TEMPLATES) && (
+          <div className="msg msg-cau" role="status" data-testid="ove-full">
+            내 템플릿은 20개까지입니다. 하나를 지우면 저장할 수 있습니다
+          </div>
+        )}
+        <table className="tbl ove-tbl" data-testid="ove-mine">
+          <caption className="t-l2 c-alt" style={{ textAlign: "left", paddingBottom: 6 }}>
+            내 템플릿 {total} / {MAX_TEMPLATES} · 비율마다 따로 저장되고 지금 비율({aspect === "9x16" ? "세로" : "가로"})에 저장한 것만 보입니다
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">이름</th>
+              <th scope="col">관리</th>
+            </tr>
+          </thead>
+          <tbody>
+            {templates?.mine.length === 0 && (
+              <tr>
+                <td colSpan={2} className="c-alt">
+                  저장한 템플릿이 없습니다
+                </td>
+              </tr>
+            )}
+            {templates?.mine.map((m) => (
+              <tr key={m.id} data-testid="ove-mine-row">
+                <td className="col-text">{m.name}</td>
+                <td>
+                  <span className="row" style={{ gap: 6, justifyContent: "center" }}>
+                    <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => askReset(m.widgets, m.name)}>
+                      이 템플릿으로 바꾸기
+                    </button>
+                    <button
+                      className="btn btn-sm btn-out"
+                      type="button"
+                      aria-label={`${m.name} 지우기`}
+                      onClick={() => setConfirm({ text: `「${m.name}」 템플릿을 지우시겠습니까?`, ok: "템플릿 지우기", run: () => void removeTemplate(m) })}
+                    >
+                      템플릿 지우기
+                    </button>
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+          <section className="ove-sec col" style={{ gap: 8 }} aria-labelledby="ove-c">
+            <h2 className="t-hl2" id="ove-c">
+              캔버스
+            </h2>
+            <div className="ove-canvas-opts col" style={{ gap: 8 }}>
+          <div className="seg" role="radiogroup" aria-label="비율">
+            {(["9x16", "16x9"] as const).map((a) => (
+              <button key={a} type="button" role="radio" aria-checked={aspect === a} className={aspect === a ? "on" : ""} onClick={() => switchAspect(a)}>
+                {a === "9x16" ? "세로 9:16" : "가로 16:9"}
+              </button>
+            ))}
+          </div>
+          <label className="chk">
+            <input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} /> 칸 맞추기(눈금에 붙이기)
+          </label>
+          {aspect === "9x16" && (
+            <label className="chk">
+              <input type="checkbox" checked={guides} onChange={(e) => setGuides(e.target.checked)} /> 가려지는 곳 표시
+            </label>
+          )}
+        </div>
+          </section>
           </div>
 
           <div className="ove-center" ref={col}>
@@ -773,99 +836,46 @@ export default function OverlayEditor() {
             ) : (
               <>
                 <span className="t-l1 fw6">{widgetLabel(selected)}</span>
-                <fieldset className="ove-fs">
-                  <legend>위치와 크기(화면 대비 %)</legend>
-                  {(["x", "y", "w", "h"] as const).map((k) => (
-                    <label key={k} className="ove-fr">
-                      <span>{{ x: "가로 위치", y: "세로 위치", w: "너비", h: "높이" }[k]}</span>
-                      <NumInput
-                        label={{ x: "가로 위치", y: "세로 위치", w: "너비", h: "높이" }[k]}
-                        value={selected[k]}
-                        min={k === "w" || k === "h" ? MIN_SIZE : 0}
-                        max={100}
-                        step={0.1}
-                        onCommit={(n) => setBoxMarked(selected.id, { [k]: n }, k)}
-                      />
-                    </label>
-                  ))}
-                </fieldset>
-                {[
-                  ["내용", contentFields(selected)],
-                  ["글꼴", fontFields],
-                  ["색", [...colorFields, ...(selected.type === "QUEUE" ? queueColors : [])]],
-                  ["효과", effectFields],
-                ].map(([title, fields]) => (
-                  <fieldset key={title as string} className="ove-fs">
-                    <legend>{title as string}</legend>
-                    {(fields as Field[]).map((f) => (
-                      <PropRow key={f.key} f={f} w={selected} onSet={(v) => setProp(selected.id, f.key, v)} />
-                    ))}
-                  </fieldset>
-                ))}
+                {/* 보드(SA-051) 순서: 내용 → 위치·크기 → 글자 → 색 → 효과 */}
+                {(
+                  [
+                    ["내용", contentFields(selected)],
+                    ["위치·크기", null],
+                    ["글자", fontFields],
+                    ["색", [...colorFields, ...(selected.type === "QUEUE" ? queueColors : [])]],
+                    ["효과", effectFields],
+                  ] as [string, Field[] | null][]
+                ).map(([title, fields]) =>
+                  fields === null ? (
+                    <fieldset key={title} className="ove-fs">
+                      <legend>위치·크기 (화면 대비 %)</legend>
+                      {(["x", "y", "w", "h"] as const).map((k) => (
+                        <label key={k} className="ove-fr">
+                          <span>{{ x: "가로 위치", y: "세로 위치", w: "너비", h: "높이" }[k]}</span>
+                          <NumInput
+                            label={{ x: "가로 위치", y: "세로 위치", w: "너비", h: "높이" }[k]}
+                            value={selected[k]}
+                            min={k === "w" || k === "h" ? MIN_SIZE : 0}
+                            max={100}
+                            step={0.1}
+                            onCommit={(n) => setBoxMarked(selected.id, { [k]: n }, k)}
+                          />
+                        </label>
+                      ))}
+                    </fieldset>
+                  ) : (
+                    <fieldset key={title} className="ove-fs">
+                      <legend>{title}</legend>
+                      {fields.map((f) => (
+                        <PropRow key={f.key} f={f} w={selected} onSet={(v) => setProp(selected.id, f.key, v)} />
+                      ))}
+                    </fieldset>
+                  ),
+                )}
               </>
             )}
           </div>
         </div>
-      </section>
-
-      <section className="card pad col" style={{ gap: 10 }} aria-labelledby="ove-t">
-        <h2 className="t-hl1" id="ove-t">
-          템플릿
-        </h2>
-        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-          {templates?.builtin.map((t) => (
-            <button key={t.key} className="btn btn-out" type="button" disabled={busy} onClick={() => askReset(t.widgets, t.name)}>
-              {t.name}
-            </button>
-          ))}
-        </div>
-        {(full || total >= MAX_TEMPLATES) && (
-          <div className="msg msg-cau" role="status" data-testid="ove-full">
-            내 템플릿은 20개까지입니다. 하나를 지우면 저장할 수 있습니다
-          </div>
-        )}
-        <table className="tbl ove-tbl" data-testid="ove-mine">
-          <caption className="t-l2 c-alt" style={{ textAlign: "left", paddingBottom: 6 }}>
-            내 템플릿 {total} / {MAX_TEMPLATES} · 비율마다 따로 저장되고 지금 비율({aspect === "9x16" ? "세로" : "가로"})에 저장한 것만 보입니다
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">이름</th>
-              <th scope="col">저장일</th>
-              <th scope="col">관리</th>
-            </tr>
-          </thead>
-          <tbody>
-            {templates?.mine.length === 0 && (
-              <tr>
-                <td colSpan={3} className="c-alt">
-                  저장한 템플릿이 없습니다
-                </td>
-              </tr>
-            )}
-            {templates?.mine.map((m) => (
-              <tr key={m.id} data-testid="ove-mine-row">
-                <td className="col-text">{m.name}</td>
-                <td>{new Date(m.createdAt).toLocaleDateString("ko-KR")}</td>
-                <td>
-                  <span className="row" style={{ gap: 6, justifyContent: "center" }}>
-                    <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => askReset(m.widgets, m.name)}>
-                      이 템플릿으로 바꾸기
-                    </button>
-                    <button
-                      className="btn btn-sm btn-out"
-                      type="button"
-                      aria-label={`${m.name} 지우기`}
-                      onClick={() => setConfirm({ text: `「${m.name}」 템플릿을 지우시겠습니까?`, ok: "템플릿 지우기", run: () => void removeTemplate(m) })}
-                    >
-                      템플릿 지우기
-                    </button>
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </section>
 
       {confirm && (
