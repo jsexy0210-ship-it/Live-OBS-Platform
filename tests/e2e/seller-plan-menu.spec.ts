@@ -43,6 +43,20 @@ const overlayMe = (orderFollowup: boolean) => async (route: import("@playwright/
   await route.fulfill({ response: res, json: { ...body, orderFollowup } });
 };
 
+// 구독이 없거나 대신 보기 범위가 좁아 상단 메뉴(GNB) 묶음이 하나도 안 남아도 셸이 죽지 않고 안내 화면이 열려야 한다(#911 회귀)
+test("상단 메뉴 묶음이 하나도 안 남는 파트너스(기능·권한 없음): 셸이 열리고 요금제 안내를 보인다", async ({ page }) => {
+  await page.route("**/api/seller/me", async (route) => {
+    const res = await route.fetch();
+    const body = await res.json();
+    await route.fulfill({ response: res, json: { ...body, features: [], isOwner: false, permissions: [], orderFollowup: false } });
+  });
+  await login(page, INTEGRATED, "/seller/orders");
+  await expect(page.getByText("This page couldn't load")).toHaveCount(0);
+  await expect(gnb(page).locator(".gnb-i")).toHaveCount(0);
+  await expect(lnb(page)).toBeVisible();
+  await expect(page.locator(".util-desk").getByRole("link", { name: "공지 · 문의" })).toBeVisible();
+});
+
 test("쇼핑몰 통합은 쇼핑몰 기능 메뉴가 모두 보인다", async ({ page }) => {
   await login(page, INTEGRATED, "/seller/orders");
   const me = await (await page.request.get("/api/seller/me")).json();
@@ -73,6 +87,8 @@ test("오버레이 전용은 쇼핑몰 기능 메뉴를 숨기고, 오버레이�
 test("로그인 뒤 기본 화면: 통합은 지금처럼 상품, 오버레이 전용은 안내 화면 대신 오버레이 홈", async ({ page }) => {
   await page.goto("/seller/login");
   await submitSellerLogin(page, INTEGRATED, PASSWORD);
+  await expect(page).toHaveURL(/\/seller$/);
+  await page.goto("/seller/products");
   await expect(page).toHaveURL(/\/seller\/products$/);
   await page.context().clearCookies();
 
