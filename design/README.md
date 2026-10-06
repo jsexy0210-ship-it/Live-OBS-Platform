@@ -24,6 +24,10 @@ PNG·JPG는 정본이 아니라 검수 증거다. 이 폴더의 `project/`가 �
 - 문구는 그대로 쓴다: 마스터·파트너스 관리자는 명사형·합니다체, 구매자·공개·오버레이는 해요체(`CLAUDE.md`).
 - 같은 ID의 변형(`-PC`, `-IA`, `-OPS`, `-M`, `-E` …) 중 어느 것이 정본인지는 `SCREEN_MAP.md`의 Entry 열을 따른다.
 
+## 정본 ↔ 구현 나란히 비교(검수 증거)
+
+- `node scripts/design-compare.mjs <보드ID> <구현1440.png> [구현390.png] <출력.png>` — 보드를 임시 정적 서버로 열어 1440 본판과 390 휴대폰 변형을 캡처해 구현 스크린샷과 한 장에 붙인다(왼쪽 정본 · 오른쪽 구현, 서체는 저장소 Wanted Sans). UI PR은 이 그림(1440·390)을 본문에 붙인다(MASTER 2026-10-06).
+
 ## 미리보기
 
 - 정식 미리보기는 캔버스에서 한다: https://claude.ai/artifact/YYGXZ3u4QvjQpEMUHnN4tS (보드 이름으로 찾기). 캔버스 런타임(`support.js`, `artifact-type/`)은 Artifact 유형 소유라 저장소에 복사하지 않았다. 그래서 저장소만으로는 **빌드·실행이 되지 않는다(Build: NOT_APPLICABLE)**. 없는 빌드 시스템을 새로 만들지 않는다.
