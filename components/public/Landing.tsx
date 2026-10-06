@@ -49,7 +49,7 @@ export function Landing({ plans }: { plans: LandingPlan[] }) {
   const cheapest = plans.length > 0 ? plans.reduce((a, b) => (b.salePrice < a.salePrice ? b : a)) : null;
   const trial = plans.find((p) => p.trialDays > 0);
   return (
-      <PublicFrame mobileHeader="landing">
+      <PublicFrame mobileHeader="compact">
       <section className={`pf-hero ${styles.hero}`}>
         <div className="pf-hero-copy">
           <span className="bdg b-live">라이브 커머스 파트너스용</span>

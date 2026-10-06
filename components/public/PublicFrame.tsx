@@ -23,7 +23,7 @@ const NAV = [
   { href: "/notices", label: "공지" },
 ];
 
-export function PublicFrame({ children, active, mobileHeader }: { children: React.ReactNode; active?: string; mobileHeader?: "landing" }) {
+export function PublicFrame({ children, active, mobileHeader }: { children: React.ReactNode; active?: string; mobileHeader?: "compact" }) {
   return (
     <div className="app pf" data-theme="light">
       <header className="pf-head">
@@ -44,10 +44,10 @@ export function PublicFrame({ children, active, mobileHeader }: { children: Reac
           <Link className="btn btn-sm btn-out" href="/seller/login">
             로그인
           </Link>
-          <Link className={`btn btn-sm ${mobileHeader === "landing" ? styles.landingSignup : ""}`} href="/seller/signup">
+          <Link className={`btn btn-sm ${mobileHeader === "compact" ? styles.compactSignup : ""}`} href="/seller/signup">
             파트너스 가입 신청
           </Link>
-          {mobileHeader === "landing" && <PublicMobileMenu links={NAV} active={active} />}
+          {mobileHeader === "compact" && <PublicMobileMenu links={NAV} active={active} />}
         </div>
       </header>
       <main>{children}</main>

@@ -1,9 +1,5 @@
-.landingSignup {
-  /* hidden below 900px; the mobile landing header matches PF-001-M */
-}
-
 @media (max-width: 900px) {
-  .landingSignup {
+  .compactSignup {
     display: none;
   }
 }

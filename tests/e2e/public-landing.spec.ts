@@ -41,3 +41,27 @@ test("PF-001 정본은 세 화면 폭과 모바일 메뉴를 지원한다", asyn
   await page.getByRole("navigation", { name: "모바일 주요 메뉴" }).getByRole("link", { name: "기능", exact: true }).click();
   await expect(page).toHaveURL(/\/features$/);
 });
+
+test("PF-007-1은 정본 헤더와 모바일 메뉴를 유지한다", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/seller/signup");
+  await expect(page.getByTestId("signup-step-count")).toHaveText("1 / 5");
+  await page.screenshot({ path: "tests/e2e/screenshots/PF-007-1-1440.png", fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1440);
+
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.screenshot({ path: "tests/e2e/screenshots/PF-007-1-1024.png", fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1024);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: "tests/e2e/screenshots/PF-007-1-390.png", fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await expect(page.getByRole("button", { name: "메뉴" })).toBeVisible();
+  await expect(page.locator('.pf-head-r a[href="/seller/signup"]')).toBeHidden();
+
+  const menuButton = page.getByRole("button", { name: "메뉴" });
+  await menuButton.press("Enter");
+  await expect(page.getByRole("navigation", { name: "모바일 주요 메뉴" })).toBeVisible();
+  await menuButton.press("Escape");
+  await expect(page.getByRole("navigation", { name: "모바일 주요 메뉴" })).toHaveCount(0);
+});
