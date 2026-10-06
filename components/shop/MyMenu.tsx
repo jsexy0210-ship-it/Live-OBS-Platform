@@ -32,7 +32,13 @@ export default function MyMenu({ slug }: { slug: string }) {
         { href: `${base}/wishlist`, label: "찜" },
       ],
     },
-    { title: "내 정보", links: [{ href: `${base}/me/notifications`, label: "알림 설정" }] },
+    {
+      title: "내 정보",
+      links: [
+        { href: `${base}/me/profile`, label: "회원정보 수정" },
+        { href: `${base}/me/notifications`, label: "알림 설정" },
+      ],
+    },
   ];
   const now = groups.flatMap((g) => g.links.map((l) => ({ ...l, group: g.title }))).find((l) => path === l.href || path.startsWith(`${l.href}/`));
   return (

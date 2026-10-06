@@ -378,6 +378,7 @@ const SHOP_PAGES: Record<string, "STORE_OPERATIONS" | "OPEN"> = {
   "shop/[slug]/password-reset": "OPEN", // SH-012 비밀번호 찾기: 로그인과 같은 기준(API password-reset/*도 OPEN)
   "shop/[slug]/me/rewards": "OPEN", // SH-023 내 적립금: 잔액·내역 조회는 잠긴 쇼핑몰에서도 열림(API me/rewards·reward-ledger와 같은 기준)
   "shop/[slug]/me/inquiries": "OPEN", // SH-026 내 문의: 받은 답변은 잠긴 쇼핑몰에서도 본다(API inquiries와 같은 기준)
+  "shop/[slug]/me/profile": "OPEN", // SH-024 회원정보 수정: 본인 정보·닉네임·비밀번호·탈퇴는 잠긴 쇼핑몰에서도 열림(API me/profile 등과 같은 기준)
   "shop/[slug]/me/addresses": "OPEN", // SH-027 배송지 관리: 본인 배송지 조회·정리는 잠긴 쇼핑몰에서도 열림(API addresses와 같은 기준)
   "shop/[slug]/me": "OPEN", // SH-020 내 정보(메뉴 링크만)
   "shop/[slug]/cart": "STORE_OPERATIONS", // SH-004 장바구니: shopOpen으로 막고, 막히면 안내 화면
