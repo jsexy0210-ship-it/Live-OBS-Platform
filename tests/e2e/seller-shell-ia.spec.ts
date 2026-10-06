@@ -69,6 +69,19 @@ test("상단 유틸 화면은 GNB 선택 없이 자기 LNB를 쓴다(SA-LNB ⑤)
   await expect(lnb(page).locator(".lnb-sec.on .lnb-i")).toHaveText(["도우미"]);
 });
 
+test("로그인하면 홈(/seller)으로 가고, GNB 「홈」은 링크로 홈을 켠다", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/seller/login");
+  await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
+  await page.waitForURL((u) => u.pathname === "/seller");
+  await expect(gnb(page).getByRole("link", { name: "홈", exact: true })).toHaveAttribute("href", "/seller");
+  await expect(gnb(page).locator(".gnb-i.on")).toHaveText("홈");
+  await page.goto("/seller/products");
+  await gnb(page).getByRole("link", { name: "홈", exact: true }).click();
+  await expect(page).toHaveURL(/\/seller$/);
+  await expect(page.getByRole("heading", { level: 1, name: "홈" })).toBeVisible();
+});
+
 for (const width of [1024, 1100, 1280, 1440]) {
   test(`${width}px에서 GNB 메뉴·검색·알림·상단 유틸이 겹치지 않고 잘리지 않는다`, async ({ page }) => {
     await page.setViewportSize({ width, height: 800 });

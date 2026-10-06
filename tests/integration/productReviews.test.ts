@@ -990,3 +990,39 @@ describe("사진·잠긴 쇼핑몰·탈퇴", () => {
     expect((audit.after as { reviews: { reviews: number } }).reviews.reviews).toBe(1);
   });
 });
+
+describe("공개 옵션(SH-029 닉네임 공개 · 개봉 결과 함께 보여 주기)", () => {
+  const publicList = async (s: Shop) =>
+    ((await (await productReviewsGet(get("/x"), p({ slug: s.slug, productId: s.product.id }))).json()) as { reviews: { id: string; author: string; showOpeningResult: boolean }[] }).reviews;
+
+  it("보내지 않으면 닉네임 공개·개봉 결과 숨김이 기본이고, 보내면 저장해 내 리뷰·공개 목록에 반영한다", async () => {
+    const s = await shop();
+    const a = await created(s, (await s.delivered()).id);
+    expect(a.res.status).toBe(201);
+    expect(await publicList(s)).toEqual([expect.objectContaining({ id: a.reviewId, author: s.buyer.broadcastNickname, showOpeningResult: false })]);
+    const b = await created(s, (await s.delivered(s.buyer2.id)).id, { rating: 4, body: BODY, showNickname: false, showOpeningResult: true }, s.b2);
+    expect(b.res.status).toBe(201);
+    const list = await publicList(s);
+    expect(list.find((r) => r.id === b.reviewId)).toMatchObject({ author: "구매자", showOpeningResult: true });
+    // 판매자 화면은 실제 닉네임을 그대로 본다
+    const seller = (await (await sellerDetailGet(get("/x", s.owner), p({ reviewId: b.reviewId }))).json()) as { review: { author: string } };
+    expect(seller.review.author).toBe(s.buyer2.broadcastNickname);
+    const mine = (await (await mineGet(get("/x", s.b2), p({ slug: s.slug }))).json()) as { reviews: { id: string; showNickname: boolean; showOpeningResult: boolean }[] };
+    expect(mine.reviews[0]).toMatchObject({ id: b.reviewId, showNickname: false, showOpeningResult: true });
+  });
+
+  it("고칠 때 보낸 옵션만 바꾸고 안 보내면 지금 값을 유지하며, 불리언이 아니면 400", async () => {
+    const s = await shop();
+    const a = await created(s, (await s.delivered()).id, { rating: 5, body: BODY, showNickname: false, showOpeningResult: true });
+    const upd = (body: unknown) => reviewPut(json("/x", "PUT", s.b1, body), p({ slug: s.slug, reviewId: a.reviewId }));
+    expect((await upd({ rating: 5, body: BODY })).status).toBe(200);
+    expect(await db.productReview.findUniqueOrThrow({ where: { id: a.reviewId } })).toMatchObject({ showNickname: false, showOpeningResult: true });
+    expect((await upd({ rating: 5, body: BODY, showOpeningResult: false })).status).toBe(200);
+    expect(await db.productReview.findUniqueOrThrow({ where: { id: a.reviewId } })).toMatchObject({ showNickname: false, showOpeningResult: false });
+    const bad = await upd({ rating: 5, body: BODY, showNickname: "yes" });
+    expect(bad.status).toBe(400);
+    expect((await bad.json()).error).toBe("invalid_options");
+    const bad2 = await write(s, (await s.delivered()).id, { rating: 5, body: BODY, showOpeningResult: 1 });
+    expect(bad2.status).toBe(400);
+  });
+});

@@ -1791,3 +1791,57 @@ body {
     min-height: var(--ui-h-touch);
   }
 }
+
+/* 충전금(SA-081): 잔액 가로 4칸(정본). 좁은 화면은 2칸 → 1칸 */
+.bal-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid var(--wds-line-normal-neutral);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.bal-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 18px;
+  border-left: 1px solid var(--wds-line-normal-neutral);
+}
+.bal-card:first-child {
+  border-left: 0;
+}
+@media (max-width: 1023px) {
+  .bal-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .bal-card:nth-child(3) {
+    border-left: 0;
+  }
+  .bal-card:nth-child(n + 3) {
+    border-top: 1px solid var(--wds-line-normal-neutral);
+  }
+}
+@media (max-width: 479px) {
+  .bal-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .bal-card {
+    border-left: 0;
+  }
+  .bal-card:nth-child(n + 2) {
+    border-top: 1px solid var(--wds-line-normal-neutral);
+  }
+}
+
+/* 검색 노출(SA-067): 노출 상태 + 미리보기 2단(정본) */
+.seo-state-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 1023px) {
+  .seo-state-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
