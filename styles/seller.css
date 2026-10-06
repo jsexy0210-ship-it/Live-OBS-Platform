@@ -1840,6 +1840,12 @@ body {
 }
 .au-list-grid > .tbl > :is(tbody, tfoot):last-child > tr:last-child > :is(th, td) {
   border-bottom: 0;
+  box-shadow: none;
+}
+@media (min-width: 768px) {
+  .au-list-grid > .tbl > :is(tbody, tfoot):last-child > tr:last-child > :is(th, td) + :is(th, td) {
+    box-shadow: inset 1px 0 0 var(--cs-line);
+  }
 }
 /* 카드로 바꾼 표는 각 행이 프레임을 가지므로 모바일 외곽선을 중복하지 않는다. */
 @media (max-width: 767px) {

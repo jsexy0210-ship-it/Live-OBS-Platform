@@ -21,6 +21,24 @@ test.beforeAll(async () => {
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
 });
+for (const width of [1440, 1024, 390]) test(`new grid final edge ${width}`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 }); await page.goto(origin);
+  const grid = page.getByRole("region", { name: "주문 목록 표" });
+  const cells = grid.locator("tbody tr:last-child td");
+  const shadows = await cells.evaluateAll(els => els.map(el => getComputedStyle(el).boxShadow));
+  for (const shadow of shadows) expect(shadow).not.toContain("0px -1px");
+  if (width >= 768) expect(shadows[1]).toContain("1px 0px");
+  const rect = (await grid.boundingBox())!, cell = (await cells.first().boundingBox())!;
+  const pixels = await page.evaluate(async ({ png, x, y }) => {
+    const image = new Image(); image.src = `data:image/png;base64,${png}`; await image.decode();
+    const canvas = document.createElement("canvas"); canvas.width = image.width; canvas.height = image.height;
+    const context = canvas.getContext("2d")!; context.drawImage(image, 0, 0);
+    return [Array.from(context.getImageData(x, y - 2, 1, 1).data), Array.from(context.getImageData(x, y - 3, 1, 1).data)];
+  }, { png: (await page.screenshot()).toString("base64"), x: Math.floor(cell.x + cell.width / 2), y: Math.ceil(rect.y + rect.height) });
+  // The pixel immediately inside the wrapper's bottom border is the cell background,
+  // not a second separator. Compare with the blank interior just above it.
+  expect(pixels[0]).toEqual(pixels[1]);
+});
 test.afterAll(async () => { await new Promise<void>((resolve, reject) => server.close(err => err ? reject(err) : resolve())); rmSync(dir, { recursive: true, force: true }); });
 for (const width of [1440, 1024, 390]) test(`common source layout ${width}`, async ({ page }) => {
   await page.setViewportSize({ width, height: 900 }); await page.goto(origin);
