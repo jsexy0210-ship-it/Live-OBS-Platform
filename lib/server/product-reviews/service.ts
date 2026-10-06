@@ -11,6 +11,7 @@ import {
   cleanReply,
   DEFAULT_POLICY,
   HELD_LABEL,
+  HIDDEN_AUTHOR,
   heldReason,
   isReason,
   isUuid,
@@ -404,6 +405,7 @@ export const BUYER_REVIEW_MESSAGES: Record<BuyerReviewFailure, string> = {
   invalid_rating: "별점을 골라 주세요",
   invalid_body: "리뷰를 10자 이상 1,000자 안에서 써 주세요",
   invalid_images: "사진을 다시 골라 주세요",
+  invalid_options: "공개 옵션을 다시 골라 주세요",
   empty_file: "빈 파일은 올릴 수 없어요",
   file_too_large: "사진은 한 장에 5MB까지 올릴 수 있어요",
   unsupported_image: "JPG·PNG·WEBP 사진만 올릴 수 있어요",
@@ -486,6 +488,8 @@ function myView(r: MyRow, slug: string, now: Date, reward: number) {
     optionName: r.orderItem.optionNameSnapshot,
     rating: r.rating,
     body: r.body,
+    showNickname: r.showNickname,
+    showOpeningResult: r.showOpeningResult,
     status: r.status,
     hiddenReason: r.hiddenReason ? REASON_BUYER[r.hiddenReason] : null,
     hiddenNote: r.status === "HIDDEN" ? r.hiddenNote : null,
@@ -606,6 +610,8 @@ export async function createReview(db: PrismaClient, scope: BuyerScope, orderIte
           productId: item.productId,
           buyerMemberId: member.id,
           authorNickname: member.broadcastNickname,
+          showNickname: p.v.showNickname ?? true,
+          showOpeningResult: p.v.showOpeningResult ?? false,
           rating: p.v.rating,
           body: p.v.body,
           status: st.status,
@@ -659,7 +665,7 @@ export async function updateReview(db: PrismaClient, scope: BuyerScope, id: stri
       const photosBefore = await tx.productReviewImage.count({ where: { sellerId: scope.sellerId, reviewId: id } });
       await reviewImageStore.delete(tx, { sellerId: scope.sellerId, reviewId: id, id: { notIn: p.v.imageIds } });
       if (!(await attachImages(tx, scope, id, p.v.imageIds))) throw new BadImages();
-      await tx.productReview.update({ where: { id }, data: { rating: p.v.rating, body: p.v.body, status, heldBy, updatedAt: now } });
+      await tx.productReview.update({ where: { id }, data: { rating: p.v.rating, body: p.v.body, status, heldBy, updatedAt: now, showNickname: p.v.showNickname, showOpeningResult: p.v.showOpeningResult } });
       // 리뷰 고치기는 적립 상태를 바꾸지 않는다(MASTER 원칙). 공개 여부(보류 ↔ 공개)나 사진 자격이 바뀔 때만 settleReward로 맞춘다.
       // 별점·본문만 고치면 설정이 바뀌었든, MANUAL 환불로 남겨 둔 적립이든 그대로 둔다(Codex 4177188513·4177247985).
       if (status !== before.status || photosBefore > 0 !== p.v.imageIds.length > 0) await settleReward(tx, { ...before, status, heldBy }, now, locked.orderPaid);
@@ -773,7 +779,8 @@ export async function productReviews(db: PrismaClient, slug: string, productId: 
     distribution: [5, 4, 3, 2, 1].map((n) => ({ rating: n, count: dist.find((d) => d.rating === n)?._count._all ?? 0 })),
     reviews: page.map((r) => ({
       id: r.id,
-      author: r.authorNickname,
+      author: r.showNickname ? r.authorNickname : HIDDEN_AUTHOR,
+      showOpeningResult: r.showOpeningResult,
       rating: r.rating,
       body: r.body,
       optionName: r.orderItem.optionNameSnapshot,

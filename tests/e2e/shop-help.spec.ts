@@ -29,7 +29,7 @@ test("홈: 고정 공지 띠가 공지 상세로 이어진다", async ({ page })
 test("고객센터: 공지 표(열 제목·값 왼쪽)·비공개 공지 숨김, 자주 묻는 질문 분류·검색·펼치기", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/shop/${SLUG}/help`);
-  await expect(page.getByRole("heading", { name: "고객센터", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "공지 · 이용안내", level: 1 })).toBeVisible();
   const rows = page.locator(".help-tbl tbody tr");
   await expect(rows).toHaveCount(2);
   await expect(page.getByText("비공개 공지는 보이지 않아요")).toHaveCount(0);

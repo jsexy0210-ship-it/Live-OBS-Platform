@@ -215,9 +215,9 @@ export default function HelpView({ slug }: { slug: string }) {
   return (
     <div className="shop-wrap cart-wrap">
       <div className="cart-head">
-        <h1>고객센터</h1>
+        <h1>공지 · 이용안내</h1>
       </div>
-      <div className="help-tabs" role="tablist" aria-label="고객센터">
+      <div className="help-tabs" role="tablist" aria-label="공지 · 이용안내">
         {(["notice", "guide", "faq"] as const).map((t) => (
           <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
             {TAB_LABEL[t]}

@@ -143,6 +143,8 @@ describe("비밀번호 변경", () => {
     const weak = await s.pw({ currentPassword: PASSWORD, newPassword: "short" });
     expect(weak.status).toBe(400);
     expect((await weak.json()).error).toBe("weak_password");
+    for (const w of ["onlyletters", "1234567890"]) expect((await s.pw({ currentPassword: PASSWORD, newPassword: w })).status, w).toBe(400);
+    // 이미 쓰는 비밀번호는 기준과 상관없이 현재 비밀번호로 확인된다(기준은 새로 만들 때만)
     const same = await s.pw({ currentPassword: PASSWORD, newPassword: PASSWORD });
     expect(same.status).toBe(400);
     expect((await same.json()).error).toBe("same_password");
