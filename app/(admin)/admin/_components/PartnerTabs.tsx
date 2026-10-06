@@ -13,11 +13,13 @@ import { DatePicker } from "../../../../components/admin-ui/DatePicker";
 
 // 파트너스 상세(MA-012)의 탭 내용: 방송 이력·메모·결제 연결(PG)·활동 기록. 모두 서버가 주는 값만 보인다.
 export const PARTNER_TABS = [
-  ["info", "기본 정보"],
+  ["info", "기본정보"],
+  ["subscription", "구독"],
+  ["pg", "결제 연결"],
   ["broadcasts", "방송 이력"],
+  ["orders", "주문 현황"],
   ["notes", "메모"],
-  ["pg", "카드 결제 연결"],
-  ["activity", "활동 기록(로그 추적)"],
+  ["activity", "활동 기록"],
 ] as const;
 export type PartnerTab = (typeof PARTNER_TABS)[number][0];
 

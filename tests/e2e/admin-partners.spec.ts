@@ -91,9 +91,12 @@ test("상세: 기본 정보·대표자·사업자·구독·최근 30일 주문�
   await page.getByRole("link", { name: nameA }).click();
   await expect(page).toHaveURL(new RegExp(`/admin/partners/${idA}$`));
   await expect(page.getByRole("heading", { name: nameA, level: 1 })).toBeVisible();
-  for (const t of ["기본 정보", "대표자", "사업자 정보", "구독"]) await expect(page.getByRole("heading", { name: t, level: 2 })).toBeVisible();
+  for (const t of ["기본 정보", "대표자", "사업자 정보"]) await expect(page.getByRole("heading", { name: t, level: 2 })).toBeVisible();
   await expect(page.getByText("시험상사")).toBeVisible();
+  await page.getByRole("button", { name: "주문 현황", exact: true }).click();
   await expect(page.getByTestId("partner-orders")).toHaveText("0건");
+  await page.getByRole("button", { name: "구독", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "구독", level: 2 })).toBeVisible();
   // 요금제는 코드가 아니라 이름으로 보인다(코드성 표기 금지)
   const pending = page.locator("dl.kv dt", { hasText: "바뀔 요금제" }).locator("xpath=following-sibling::dd[1]");
   await expect(pending).toHaveText("오버레이 전용");
