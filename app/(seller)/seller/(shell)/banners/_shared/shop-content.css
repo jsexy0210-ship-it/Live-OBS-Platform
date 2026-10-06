@@ -440,3 +440,31 @@
 .sc-period {
   flex-wrap: wrap;
 }
+.sc-link-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-sp-4);
+  margin-top: var(--ui-sp-8);
+}
+.sc-link-list {
+  max-width: 360px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--wds-line-normal-neutral);
+  border-radius: var(--ui-r-control);
+  overflow: hidden;
+}
+.sc-link-opt {
+  display: block;
+  width: 100%;
+  padding: var(--ui-sp-8) var(--ui-sp-12);
+  border: 0;
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+}
+.sc-link-opt:hover,
+.sc-link-opt:focus-visible {
+  background: var(--wds-fill-alternative);
+}

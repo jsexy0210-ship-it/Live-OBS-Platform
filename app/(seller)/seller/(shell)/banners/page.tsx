@@ -8,6 +8,7 @@ import { Toast } from "../../../../../components/seller/States";
 import HomeBanner from "../../../../../components/shop/HomeBanner";
 import { api } from "../../../../../components/seller/api";
 import { formatDate } from "../../../../../lib/client/format";
+import LinkPicker, { linkSummary } from "./_shared/LinkPicker";
 import {
   GripIcon,
   ImagePicker,
@@ -49,7 +50,6 @@ type Draft = {
   title: string;
   pcImage: AdminImage | null;
   mobileImage: AdminImage | null;
-  linkMode: "none" | "custom";
   linkUrl: string;
   // 게시 기간은 날짜(KST)로 고른다. 시작은 그 날 0시, 끝은 그 날 끝(23:59:59)까지 게시한다.
   start: string;
@@ -69,7 +69,6 @@ const empty: Draft = {
   title: "",
   pcImage: null,
   mobileImage: null,
-  linkMode: "none",
   linkUrl: "",
   start: "",
   end: "",
@@ -83,7 +82,6 @@ const toDraft = (b: Banner): Draft => ({
   title: b.title,
   pcImage: b.pcImage,
   mobileImage: b.mobileImage,
-  linkMode: b.linkUrl ? "custom" : "none",
   linkUrl: b.linkUrl ?? "",
   start: kstDay(b.startsAt),
   end: kstDay(b.endsAt),
@@ -255,7 +253,7 @@ export default function BannersPage() {
                     <tr key={b.id} {...rowProps(b.id, editable)} data-testid="banner-row" className={draft?.id === b.id ? "is-sel" : undefined}>
                       <td className="col-text">
                         <b className="ell">{b.title}</b>
-                        <div className="t-c1 c-alt ell">{b.linkUrl ?? "—"}</div>
+                        <div className="t-c1 c-alt ell">{linkSummary(b.linkUrl)}</div>
                       </td>
                       <td>
                         <span className="sc-ord">
@@ -398,7 +396,7 @@ function BannerEditor({
   const [previewing, setPreviewing] = useState(false);
   const { uploading, onBusy } = useUploading();
   const set = (patch: Partial<Draft>) => setD((v) => ({ ...v, ...patch }));
-  const link = d.linkMode === "custom" ? d.linkUrl : "";
+  const link = d.linkUrl;
   const badRange = !!d.start && !!d.end && d.start > d.end;
   const ready = d.title.trim() !== "" && !!d.pcImage && !!d.start && linkLooksOk(link) && !badRange;
 
@@ -519,28 +517,7 @@ function BannerEditor({
               <label htmlFor="banner-link-kind">연결</label>
             </th>
             <td>
-              <select id="banner-link-kind" className="inp" style={{ maxWidth: 360 }} value={d.linkMode} onChange={(e) => set({ linkMode: e.target.value as Draft["linkMode"] })}>
-                <option value="none">연결 없음</option>
-                <option value="custom">직접 입력한 주소</option>
-              </select>
-              {d.linkMode === "custom" && (
-                <>
-                  <input
-                    className={`inp${linkLooksOk(d.linkUrl) ? "" : " is-error"}`}
-                    style={{ maxWidth: 360, marginTop: 8 }}
-                    aria-label="연결 주소"
-                    placeholder="/products/상품 주소 또는 https://"
-                    maxLength={500}
-                    value={d.linkUrl}
-                    onChange={(e) => set({ linkUrl: e.target.value })}
-                  />
-                  {linkLooksOk(d.linkUrl) ? (
-                    <span className="help">쇼핑몰 안 경로는 쇼핑몰 주소 뒤에 붙음 · 바깥 주소는 새 창으로 열림</span>
-                  ) : (
-                    <span className="err">쇼핑몰 안 경로(/로 시작) 또는 http(s) 주소만 입력할 수 있습니다</span>
-                  )}
-                </>
-              )}
+              <LinkPicker value={d.linkUrl} onChange={(v) => set({ linkUrl: v })} />
             </td>
           </tr>
           <tr>

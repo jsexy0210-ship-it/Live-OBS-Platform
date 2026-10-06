@@ -89,6 +89,11 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
     await ed.getByLabel("모바일 이미지", { exact: true }).setInputFiles(file("m.png", png(300, 300)));
     await expect(ed.getByText("가로 750px 이상 이미지를 권장합니다 · 지금 파일은 300×300입니다 (올릴 수는 있음)")).toBeVisible();
     await ed.getByLabel("모바일 이미지", { exact: true }).setInputFiles(file("m.png", await canvasPng(page, 750, 750, "#7b5cff", "MOBILE")));
+    // 연결: 상품 상세(검색해서 고름) · 카테고리 · 직접 입력한 주소
+    await ed.getByLabel("연결", { exact: true }).selectOption("product");
+    await expect(ed.getByLabel("상품 이름 검색")).toBeVisible();
+    await ed.getByLabel("연결", { exact: true }).selectOption("category");
+    await expect(ed.getByLabel("카테고리")).toBeVisible();
     await ed.getByLabel("연결", { exact: true }).selectOption("custom");
     await ed.getByLabel("연결 주소").fill("javascript:alert(1)");
     await expect(ed.getByText("쇼핑몰 안 경로(/로 시작) 또는 http(s) 주소만 입력할 수 있습니다")).toBeVisible();
@@ -175,6 +180,36 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
     await expect(page.getByTestId("banner-row")).toHaveCount(3);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: `${SHOT}/SA-064-banners-390.png`, fullPage: true });
+  });
+
+  test("SA-064 연결: 상품 상세는 검색해서 고르고, 카테고리는 선택 상자에서 고르면 구매자 링크 주소로 저장된다", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const ctx = await request.newContext({ baseURL: BASE, extraHTTPHeaders: { Origin: BASE } });
+    await ctx.post("/api/seller/auth/login", { data: { email: "demo-owner@example.com", password: PASSWORD } });
+    const name = `배너연결상품 ${Date.now()}`;
+    const created = await ctx.post("/api/seller/products", { data: { name, price: 12000, status: "ON_SALE", options: [{ name: "기본", priceDelta: 0, stock: 5, sortOrder: 0 }] } });
+    expect(created.status()).toBe(201);
+    const productId = ((await created.json()) as { id: string }).id;
+    try {
+      await ownerOpen(page, "/seller/banners");
+      await page.getByTestId("banner-row").nth(0).getByRole("button", { name: "수정" }).click();
+      const ed = page.getByTestId("banner-editor");
+      await ed.getByLabel("연결", { exact: true }).selectOption("product");
+      await ed.getByLabel("상품 이름 검색").fill("배너연결상품");
+      await ed.getByRole("button", { name }).click();
+      await expect(ed.getByTestId("link-product")).toContainText(name);
+      await ed.getByRole("button", { name: "저장" }).click();
+      await page.getByRole("dialog").getByRole("button", { name: "저장", exact: true }).click();
+      await expect(page.getByText("배너를 저장했습니다 · 홈에 바로 반영")).toBeVisible();
+      const list = (await (await ctx.get("/api/seller/shop-content/banners")).json()) as { banners: { linkUrl: string | null }[] };
+      expect(list.banners.map((b) => b.linkUrl)).toContain(`/products/${productId}`);
+      // 다시 열면 고른 상품 이름이 보인다
+      await page.getByTestId("banner-row").nth(0).getByRole("button", { name: "수정" }).click();
+      await expect(page.getByTestId("banner-editor").getByTestId("link-product")).toContainText(name);
+    } finally {
+      await ctx.delete(`/api/seller/products/${productId}`);
+      await ctx.dispose();
+    }
   });
 
   test("SA-065 대표자: 이미지 팝업(전체 페이지·7일 보지 않기)과 상단 띠 추가, 복제", async ({ page }) => {
