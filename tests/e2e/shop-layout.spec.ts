@@ -73,9 +73,11 @@ test.describe("PC 1440", () => {
 
     await page.getByRole("navigation", { name: "카테고리" }).getByRole("link", { name: "전체 상품" }).click();
     await expect(page.getByRole("heading", { name: /전체 상품/ })).toBeVisible();
+    await page.getByRole("navigation", { name: "정렬" }).locator("summary").click();
     await page.getByRole("navigation", { name: "정렬" }).getByRole("link", { name: "낮은 가격" }).click();
     await expect(page).toHaveURL(/sort=low/);
     await expect(page.locator(".pc-grid .pc").first()).toContainText("탑로더 25장");
+    await page.getByRole("navigation", { name: "정렬" }).locator("summary").click();
     await page.getByRole("navigation", { name: "정렬" }).getByRole("link", { name: "높은 가격" }).click();
     await expect(page.locator(".pc-grid .pc").first()).toContainText("스타라이트 부스터 박스");
   });

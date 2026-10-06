@@ -22,7 +22,7 @@ export const INQUIRY_STATUS: Record<InquiryStatus, { label: string; cls: string 
   ANSWERED: { label: "답변 완료", cls: "b-done" },
   CLOSED: { label: "종료", cls: "b-gray nodot" },
 };
-export const INQUIRY_TITLE_MAX = 100;
+export const INQUIRY_TITLE_MAX = 80;
 export const INQUIRY_BODY_MAX = 5000;
 export const INQUIRY_IMAGES_MAX = 5;
 

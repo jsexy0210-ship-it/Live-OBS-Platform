@@ -36,7 +36,7 @@ async function open(page: Page, email: string) {
   await page.getByLabel("비밀번호").fill(password);
   await page.getByRole("button", { name: "로그인" }).click();
   await expect(page).toHaveURL(/\/admin$/);
-  await page.goto(`/admin/partners/${sellerId}`);
+  await page.goto(`/admin/partners/${sellerId}?tab=subscription`);
 }
 
 test("CS도 잔액을 본다: 합계·유료·무상·부족 표시, 값 왼쪽 정렬, 무상 지급 버튼은 없다", async ({ page }) => {
