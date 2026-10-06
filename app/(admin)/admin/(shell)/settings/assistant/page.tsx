@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
-import { PageHead } from "../../../../../../components/admin-ui";
+import { PageHead, useConfirm } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
@@ -16,6 +16,7 @@ type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; d: Data };
 
 export default function AssistantSettingsPage() {
   const { me } = useAdmin();
+  const { confirm } = useConfirm();
   const canEdit = adminCan(me.role, "system.manage");
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [f, setF] = useState({ model: "", inputWonPerMTok: "", outputWonPerMTok: "", monthlyBudgetWon: "", sellerDailyLimit: "" });
@@ -45,9 +46,33 @@ export default function AssistantSettingsPage() {
     setToast(done);
     void load();
   };
-  const save = (e: React.FormEvent) => {
+  const won = (v: number) => `${v.toLocaleString("ko-KR")}원`;
+  const toggle = async () => {
+    if (state.kind !== "ok") return;
+    const on = !state.d.settings.enabled;
+    const ok = await confirm({
+      title: on ? "도우미를 켜시겠습니까?" : "도우미를 끄시겠습니까?",
+      body: on ? `월 한도 ${won(state.d.settings.monthlyBudgetWon)} 안에서 도우미가 답합니다 · 한도에 이르면 자동으로 멈춥니다` : "도우미가 바로 멈춥니다 · 다시 켜기 전까지 답하지 않습니다",
+      confirmLabel: on ? "켜기" : "끄기",
+      danger: !on,
+    });
+    if (ok) void put({ enabled: on }, on ? "켰습니다." : "껐습니다.");
+  };
+  const save = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (state.kind !== "ok") return;
     const n = (v: string) => (v.trim() === "" ? NaN : Number(v));
+    const cur = state.d.settings;
+    const changes = [
+      f.model.trim() !== cur.model && `모델 ${cur.model || "-"} → ${f.model.trim() || "-"}`,
+      n(f.inputWonPerMTok) !== cur.inputWonPerMTok && `입력 단가 ${cur.inputWonPerMTok} → ${f.inputWonPerMTok}`,
+      n(f.outputWonPerMTok) !== cur.outputWonPerMTok && `출력 단가 ${cur.outputWonPerMTok} → ${f.outputWonPerMTok}`,
+      n(f.monthlyBudgetWon) !== cur.monthlyBudgetWon && `월 한도 ${won(cur.monthlyBudgetWon)} → ${won(n(f.monthlyBudgetWon))}`,
+      n(f.sellerDailyLimit) !== cur.sellerDailyLimit && `파트너스 하루 제한 ${cur.sellerDailyLimit} → ${f.sellerDailyLimit}`,
+    ].filter(Boolean);
+    if (changes.length === 0) return setToast("바뀐 내용이 없습니다.");
+    const ok = await confirm({ title: `도우미 설정 ${changes.length}개를 변경하시겠습니까?`, body: changes.join(" · "), confirmLabel: "저장" });
+    if (!ok) return;
     void put({ model: f.model.trim(), inputWonPerMTok: n(f.inputWonPerMTok), outputWonPerMTok: n(f.outputWonPerMTok), monthlyBudgetWon: n(f.monthlyBudgetWon), sellerDailyLimit: n(f.sellerDailyLimit) }, "저장했습니다.");
   };
 
@@ -67,7 +92,7 @@ export default function AssistantSettingsPage() {
               <div className="row" style={{ gap: 12 }}>
                 <span className={`bdg ${d.settings.enabled ? "b-done" : "b-gray"}`} data-testid="assistant-state">{d.settings.enabled ? "켜짐" : "꺼짐"}</span>
                 {canEdit && (
-                  <button className="btn btn-out" type="button" disabled={busy} onClick={() => void put({ enabled: !d.settings.enabled }, d.settings.enabled ? "껐습니다." : "켰습니다.")}>
+                  <button className="btn btn-out" type="button" disabled={busy} onClick={() => void toggle()}>
                     {d.settings.enabled ? "도우미 끄기" : "도우미 켜기"}
                   </button>
                 )}
