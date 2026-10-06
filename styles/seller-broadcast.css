@@ -246,3 +246,60 @@
     order: 2;
   }
 }
+
+/* SA-055 방송 상세: 요약 6칸 · 시간대별 주문 막대 */
+.bd-sum6 {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+@media (max-width: 900px) {
+  .bd-sum6 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .bd-sum6 .stat:nth-child(4) {
+    border-left: 0;
+  }
+  .bd-sum6 .stat:nth-child(n + 4) {
+    border-top: 1px solid var(--wds-line-normal-alternative);
+  }
+}
+@media (max-width: 600px) {
+  .bd-sum6 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .bd-sum6 .stat:nth-child(4) {
+    border-left: 1px solid var(--wds-line-normal-alternative);
+  }
+  .bd-sum6 .stat:nth-child(odd) {
+    border-left: 0;
+  }
+  .bd-sum6 .stat:nth-child(n + 3) {
+    border-top: 1px solid var(--wds-line-normal-alternative);
+  }
+}
+.bd-bars {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  height: 160px;
+  overflow-x: auto;
+}
+.bd-bar {
+  flex: 1 0 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 28px;
+}
+.bd-bar i {
+  display: block;
+  width: 100%;
+  max-width: 28px;
+  min-height: 2px;
+  border-radius: 4px 4px 0 0;
+  background: var(--wds-primary-normal, #0066ff);
+}
+.bd-bar > i {
+  flex: 0 0 auto;
+}

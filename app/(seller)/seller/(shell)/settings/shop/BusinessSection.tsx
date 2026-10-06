@@ -6,8 +6,8 @@ import type { OnSection } from "./sectionSave";
 
 // SA-060 ③ 사업자·고객센터(쇼핑몰 설정 권한이 있는 계정에만 보임, 정본 v313의 4열 표). SA-062 「사업자 정보·고지」 탭과 같은 저장 값·같은 API(GET·PUT /api/seller/shop-legal-notice)를 쓴다.
 // 상호·대표자·사업자등록번호·통신판매업 신고번호는 입점 신청 때 받은 검증 값이라 읽기 전용. 주소·고객센터 전화·운영시간은 페이지의 「저장」으로 저장한다(나머지 고지 항목은 서버에 있는 값 그대로 다시 보낸다).
-// 카카오톡·유튜브 채널 주소는 서버가 준비되기 전이라 「준비 중」으로 둔다.
-type Notice = { address: string; csPhone: string; csEmail: string; csHours: string; escrowKind: string; escrowProvider: string; escrowUrl: string; minorNotice: string; version: number };
+// 카카오톡·유튜브 채널 주소(https만)는 같은 API로 저장하고, 입력하면 구매자 바닥글에 「카카오톡 문의」 · 「유튜브 채널」이 보인다.
+type Notice = { address: string; csPhone: string; csEmail: string; csHours: string; kakaoChannelUrl: string; youtubeChannelUrl: string; escrowKind: string; escrowProvider: string; escrowUrl: string; minorNotice: string; version: number };
 type Business = { companyName: string | null; representativeName: string | null; businessNumber: string | null; mailOrderNumber: string | null };
 type Loaded = { notice: Notice; business: Business };
 
@@ -16,6 +16,17 @@ const HOURS_MAX = 100;
 const PHONE = /^[0-9+\-() ]{5,30}$/;
 const bizNo = (v: string | null) => (v && /^\d{10}$/.test(v) ? `${v.slice(0, 3)}-${v.slice(3, 5)}-${v.slice(5)}` : v);
 const len = (v: string) => [...v.trim()].length;
+const URL_MAX = 300;
+// 채널 주소는 https://로 시작하는 주소만(서버 기준, 비우면 지운다)
+const httpsOk = (v: string) => {
+  try {
+    const u = new URL(v.trim());
+    return u.protocol === "https:" && !u.username && !u.password && u.hostname.includes(".");
+  } catch {
+    return false;
+  }
+};
+const urlError = (v: string, label: string) => (v.trim() && (v.trim().length > URL_MAX || !httpsOk(v)) ? `${label}는 https://로 시작하는 주소만 쓸 수 있습니다` : null);
 
 export function BusinessSection({ onSection, disabled }: { onSection: OnSection; disabled: boolean }) {
   const [data, setData] = useState<Loaded | null>(null);
@@ -23,6 +34,8 @@ export function BusinessSection({ onSection, disabled }: { onSection: OnSection;
   const [address, setAddress] = useState("");
   const [csPhone, setCsPhone] = useState("");
   const [csHours, setCsHours] = useState("");
+  const [kakao, setKakao] = useState("");
+  const [youtube, setYoutube] = useState("");
   const [showErrors, setShowErrors] = useState(false);
 
   const apply = (d: Loaded) => {
@@ -30,6 +43,8 @@ export function BusinessSection({ onSection, disabled }: { onSection: OnSection;
     setAddress(d.notice.address);
     setCsPhone(d.notice.csPhone);
     setCsHours(d.notice.csHours);
+    setKakao(d.notice.kakaoChannelUrl ?? "");
+    setYoutube(d.notice.youtubeChannelUrl ?? "");
   };
   const load = useCallback(async () => {
     const r = await api<Loaded>("/api/seller/shop-legal-notice");
@@ -42,10 +57,12 @@ export function BusinessSection({ onSection, disabled }: { onSection: OnSection;
   }, [load]);
 
   const saved = data?.notice;
-  const dirty = !!saved && (saved.address !== address || saved.csPhone !== csPhone || saved.csHours !== csHours);
+  const dirty = !!saved && (saved.address !== address || saved.csPhone !== csPhone || saved.csHours !== csHours || (saved.kakaoChannelUrl ?? "") !== kakao || (saved.youtubeChannelUrl ?? "") !== youtube);
   // 필수 칸은 이 구역을 고칠 때만 막는다(서버는 빈 값도 받으므로, 손대지 않은 기존 값 때문에 다른 구역 저장이 막히지 않게)
   const phoneError = !csPhone.trim() ? "고객센터 연락처를 입력해 주십시오" : !PHONE.test(csPhone.trim()) ? "전화번호는 숫자·하이픈·괄호만 입력할 수 있습니다" : null;
   const hoursError = len(csHours) > HOURS_MAX ? `운영 시간은 ${HOURS_MAX}자까지 입력할 수 있습니다` : null;
+  const kakaoError = urlError(kakao, "카카오톡 채널 주소");
+  const youtubeError = urlError(youtube, "유튜브 채널 주소");
   const addressError = !address.trim() ? "사업장 주소를 입력해 주십시오" : len(address) > ADDRESS_MAX ? `주소는 ${ADDRESS_MAX}자까지 입력할 수 있습니다` : null;
 
   // 렌더마다 최신 핸들을 페이지에 넘긴다(부모의 상태 갱신은 렌더 중이 아니라 효과에서 한다)
@@ -55,16 +72,16 @@ export function BusinessSection({ onSection, disabled }: { onSection: OnSection;
     validate: () => {
       if (!dirty) return true;
       setShowErrors(true);
-      return !phoneError && !hoursError && !addressError;
+      return !phoneError && !hoursError && !addressError && !kakaoError && !youtubeError;
     },
     reset: () => {
-      if (saved) (setAddress(saved.address), setCsPhone(saved.csPhone), setCsHours(saved.csHours));
+      if (saved) (setAddress(saved.address), setCsPhone(saved.csPhone), setCsHours(saved.csHours), setKakao(saved.kakaoChannelUrl ?? ""), setYoutube(saved.youtubeChannelUrl ?? ""));
       setShowErrors(false);
     },
     save: async () => {
       if (!saved || !dirty) return null;
       const { version, ...rest } = saved;
-      const r = await api<Loaded>("/api/seller/shop-legal-notice", { method: "PUT", body: { ...rest, address, csPhone, csHours, expectedVersion: version } });
+      const r = await api<Loaded>("/api/seller/shop-legal-notice", { method: "PUT", body: { ...rest, address, csPhone, csHours, kakaoChannelUrl: kakao.trim(), youtubeChannelUrl: youtube.trim(), expectedVersion: version } });
       if (!r.ok) return r.error === "version_conflict" ? "다른 곳에서 먼저 바뀌었습니다. 새로고침한 뒤 다시 저장해 주십시오" : failMessage(r, "admin", "저장하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주십시오");
       apply(r.data);
       setShowErrors(false);
@@ -128,12 +145,11 @@ export function BusinessSection({ onSection, disabled }: { onSection: OnSection;
           <tr>
             <th scope="row"><label htmlFor="biz-kakao">카카오톡 채널 주소</label></th>
             <td className="si-rt">
-              <input id="biz-kakao" className="inp" placeholder="준비 중" disabled style={{ width: "100%" }} />
-              <p className="help au-ft-help">준비 중 · 입력하면 하단에 「카카오톡 문의」 버튼</p>
+              {field("biz-kakao", kakao, setKakao, kakaoError, "입력하면 하단에 「카카오톡 문의」 버튼")}
             </td>
             <th scope="row"><label htmlFor="biz-youtube">유튜브 채널 주소</label></th>
             <td>
-              <input id="biz-youtube" className="inp" placeholder="준비 중" disabled style={{ width: "100%" }} />
+              {field("biz-youtube", youtube, setYoutube, youtubeError)}
             </td>
           </tr>
           <tr>

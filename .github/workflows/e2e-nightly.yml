@@ -92,7 +92,23 @@ jobs:
           done
 
       - name: E2E full
-        run: npx playwright test -c tests/e2e/playwright.config.ts
+        run: |
+          set -o pipefail
+          npx playwright test -c tests/e2e/playwright.config.ts 2>&1 | tee "$RUNNER_TEMP/e2e.log"
+
+      # 아침에 로그 끝부분만 봐도 결과를 알 수 있게 실패·통과 건수와 실패 시험 목록을 요약으로 남긴다(실패 여부는 위 단계가 정함).
+      - name: E2E summary
+        if: always()
+        run: |
+          log="$RUNNER_TEMP/e2e.log"
+          [ -f "$log" ] || { echo "e2e 로그가 없어요."; exit 0; }
+          {
+            echo "### E2E nightly 결과"
+            grep -E '^ +[0-9]+ (failed|passed|skipped|did not run|flaky)' "$log" | sed 's/^ */- /' || true
+            echo
+            echo "실패 시험:"
+            awk '/^ +[0-9]+ failed/{f=1;next} /^ +[0-9]+ (skipped|passed|did not run|flaky)/{f=0} f' "$log" | sed -E 's/^ +/- /; s/ ─+$//' | cut -c1-200
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Server logs on failure
         if: failure()
