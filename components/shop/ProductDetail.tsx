@@ -223,72 +223,67 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
         <div className="pd-info">
           <h1>{p.name}</h1>
           {p.description && <p className="pd-desc">{p.description}</p>}
-          <table className="pd-form">
-            <tbody>
-              <tr>
-                <th scope="row">판매가</th>
-                <td>
-                  {p.salePrice !== null ? (
-                    <>
-                      <b className="pd-price">
-                        {rate > 0 && <span className="pc-rate">{rate}% </span>}
-                        {won(p.salePrice)}
-                      </b>{" "}
-                      <del>{won(p.price)}</del>
-                      {p.event && <span className="pd-hint">이벤트 할인{p.event.endsAt ? ` · ${kstDate(p.event.endsAt)}까지` : ""}</span>}
-                    </>
-                  ) : (
-                    <b className="pd-price">{won(p.price)}</b>
-                  )}
-                </td>
-              </tr>
-              <CouponRow slug={slug} loggedIn={loggedIn} />
-              {reward && (
-                <tr>
-                  <th scope="row">예상 적립</th>
-                  <td>{reward}</td>
-                </tr>
-              )}
-              <tr>
-                <th scope="row">배송비</th>
-                <td>{ship}</td>
-              </tr>
-              <tr>
-                <th scope="row">
-                  <label htmlFor="pd-option">옵션</label>
-                </th>
-                <td>
-                  <select id="pd-option" className="inp pd-select" value={optionId} onChange={(e) => pickOption(e.target.value)} disabled={p.options.length === 0}>
-                    {p.options.map((o) => (
-                      <option key={o.id} value={o.id} disabled={o.soldOut}>
-                        {o.name} · {o.soldOut ? "품절" : won(o.salePrice ?? o.price)}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-              </tr>
-              {option?.stockLeft != null && (
-                <tr>
-                  <th scope="row">재고</th>
-                  <td>{option.stockLeft}개 남았어요</td>
-                </tr>
-              )}
-              <tr>
-                <th scope="row">수량</th>
-                <td>
-                  <span className="cart-qty">
-                    <button type="button" aria-label="수량 줄이기" disabled={qty <= 1} onClick={() => changeQty(qty - 1)}>
-                      −
-                    </button>
-                    <span aria-label={`수량 ${qty}개`}>{qty}</span>
-                    <button type="button" aria-label="수량 늘리기" disabled={out || qty >= QTY_MAX} onClick={() => changeQty(qty + 1)}>
-                      +
-                    </button>
-                  </span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <div className="pd-price-summary" role="group" aria-label="판매가">
+            {p.salePrice !== null ? (
+              <>
+                <b className="pd-price">
+                  {rate > 0 && <span className="pc-rate">{rate}% </span>}
+                  {won(p.salePrice)}
+                </b>{" "}
+                <del>{won(p.price)}</del>
+                {p.event && <span className="pd-hint">이벤트 할인{p.event.endsAt ? ` · ${kstDate(p.event.endsAt)}까지` : ""}</span>}
+              </>
+            ) : (
+              <b className="pd-price">{won(p.price)}</b>
+            )}
+          </div>
+          <dl className="pd-form">
+            <CouponRow slug={slug} loggedIn={loggedIn} />
+            {reward && (
+              <div className="pd-form-row pd-reward-row">
+                <dt>예상 적립</dt>
+                <dd>{reward}</dd>
+              </div>
+            )}
+            {option?.stockLeft != null && (
+              <div className="pd-form-row pd-stock-row">
+                <dt>재고</dt>
+                <dd>{option.stockLeft}개 남았어요</dd>
+              </div>
+            )}
+            <div className="pd-form-row pd-shipping-row">
+              <dt>배송비</dt>
+              <dd>{ship}</dd>
+            </div>
+            <div className="pd-form-row pd-option-row">
+              <dt>
+                <label htmlFor="pd-option">옵션</label>
+              </dt>
+              <dd>
+                <select id="pd-option" className="inp pd-select" value={optionId} onChange={(e) => pickOption(e.target.value)} disabled={p.options.length === 0}>
+                  {p.options.map((o) => (
+                    <option key={o.id} value={o.id} disabled={o.soldOut}>
+                      {o.name} · {o.soldOut ? "품절" : won(o.salePrice ?? o.price)}
+                    </option>
+                  ))}
+                </select>
+              </dd>
+            </div>
+            <div className="pd-form-row pd-quantity-row">
+              <dt>수량</dt>
+              <dd>
+                <span className="cart-qty">
+                  <button type="button" aria-label="수량 줄이기" disabled={qty <= 1} onClick={() => changeQty(qty - 1)}>
+                    −
+                  </button>
+                  <span aria-label={`수량 ${qty}개`}>{qty}</span>
+                  <button type="button" aria-label="수량 늘리기" disabled={out || qty >= QTY_MAX} onClick={() => changeQty(qty + 1)}>
+                    +
+                  </button>
+                </span>
+              </dd>
+            </div>
+          </dl>
 
           <div className="pd-sum">
             <div>

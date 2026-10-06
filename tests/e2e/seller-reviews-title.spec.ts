@@ -1,9 +1,20 @@
 import { expect, test } from "@playwright/test";
+import { clearReviewsInDb, deliveredItemInDb, reviewInDb } from "./reviewDb";
 import { submitSellerLogin } from "./sellerLogin";
 
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
+const SLUG = "demo-shop";
 
-test("SA-048 리뷰 제목이 1440·1024·390 화면에서 정본과 일치한다", async ({ page }) => {
+test.beforeAll(async () => {
+  if (!PASSWORD) throw new Error("E2E_PASSWORD가 없어요. dev-seed가 출력한 데모 비밀번호를 넣어 주세요");
+  await clearReviewsInDb(SLUG);
+  const itemId = await deliveredItemInDb(SLUG, "demo-buyer1@example.com");
+  await reviewInDb(itemId);
+});
+
+test.afterAll(async () => clearReviewsInDb(SLUG));
+
+test("SA-048 리뷰 표와 행 정보가 1440·1024·390 화면에서 보인다", async ({ page }) => {
   if (!PASSWORD) throw new Error("E2E_PASSWORD가 없어요. dev-seed가 출력한 데모 비밀번호를 넣어 주세요");
 
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -24,9 +35,26 @@ test("SA-048 리뷰 제목이 1440·1024·390 화면에서 정본과 일치한�
       await expect.poll(() => page.evaluate(() => window.scrollX)).toBe(0);
     }
     await expect(heading).toBeVisible();
-    const box = await heading.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.x + box!.width).toBeLessThanOrEqual(width);
-    await page.screenshot({ path: `tests/e2e/screenshots/sa048-title-${width}.png` });
+    const headingBox = await heading.boundingBox();
+    expect(headingBox).not.toBeNull();
+    expect(headingBox!.x + headingBox!.width).toBeLessThanOrEqual(width);
+    const table = page.getByRole("table");
+    await expect(table).toBeVisible();
+    const row = page.getByTestId("review-row").first();
+    await expect(row).toBeVisible();
+    await expect(row).toContainText("배송도 빨랐어요");
+    await expect(row.locator("td")).toHaveCount(6);
+    for (const cell of [".rv-select", ".rv-item", ".rv-rating", ".rv-content", ".rv-status", ".rv-actions"]) {
+      await expect(row.locator(cell)).toBeVisible();
+    }
+    if (width !== 390) {
+      await expect(table.getByRole("columnheader")).toHaveText(["", "상품 · 작성자", "별점", "내용 · 작성일", "상태", "관리"]);
+    } else {
+      await expect(row.locator(".rv-actions button")).toHaveCount(2);
+      await expect(row.getByRole("button", { name: /리뷰 답글 관리/ })).toBeVisible();
+      await expect(row.getByRole("button", { name: /리뷰 숨기기/ })).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    }
+    await page.screenshot({ path: `tests/e2e/screenshots/sa048-table-${width}.png`, fullPage: true });
   }
 });
