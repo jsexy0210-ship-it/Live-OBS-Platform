@@ -12,7 +12,7 @@ afterAll(async () => {
 });
 
 // 마이그레이션의 「행 채우기」 부분(INSERT)만 다시 실행한다(칼럼 추가·옛 행 옮기기는 이미 적용됨)
-const FILL = readFileSync("prisma/migrations/20261006270000_shop_defaults/migration.sql", "utf8")
+const FILL = readFileSync("prisma/migrations/20261006280000_shop_defaults/migration.sql", "utf8")
   .split("\n")
   .filter((l) => !l.startsWith("--"))
   .join("\n")
