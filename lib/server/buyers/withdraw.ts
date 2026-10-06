@@ -171,6 +171,7 @@ export async function withdrawBuyer(
     await clearCart(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
     await clearWish(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
     await clearRestock(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
+    await tx.buyerNotificationPref.deleteMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id } });
     // 쓰지 않은 쿠폰 삭제(결제 대기 주문을 위에서 취소해 되돌린 쿠폰은 주문 기록과 이어져 남는다, shop-coupons)
     const deletedCoupons = await deleteUnusedBuyerCoupons(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
     // 상품 리뷰는 남기고 작성자 표시만 「탈퇴 회원」으로, 신고·붙지 않은 사진은 지운다(product-reviews)

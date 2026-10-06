@@ -443,6 +443,7 @@ model BuyerMember {
   productReviewReports ProductReviewReport[]
   cartItems            CartItem[]
   wishItems            WishItem[]
+  notificationPrefs    BuyerNotificationPref[]
   restockAlerts        RestockAlert[]
   returnRequests       ReturnRequest[]
   refundRequests       RefundRequest[]
@@ -1078,6 +1079,9 @@ model ProductReview {
   buyerMemberId  String               @db.Uuid
   // 작성할 때 방송 닉네임. 탈퇴하면 「탈퇴 회원」으로 바꾼다(리뷰는 남김).
   authorNickname String
+  // 작성자가 고른 공개 옵션(SH-029): 닉네임 공개(끄면 공개 화면엔 「구매자」), 개봉 결과 함께 보여 주기
+  showNickname      Boolean              @default(true)
+  showOpeningResult Boolean              @default(false)
   rating         Int
   body           String
   status         ProductReviewStatus  @default(VISIBLE)
@@ -2519,6 +2523,23 @@ model WishItem {
   @@unique([buyerMemberId, productId])
   @@index([sellerId, buyerMemberId, createdAt])
   @@index([sellerId, productId])
+}
+
+// 구매자 알림 설정(SH-025). 끌 수 있는 칸만 저장하고, 줄이 없으면 켬이 기본이다. kind·channel 값은 buyers/notificationPrefs.ts와 마이그레이션 CHECK가 같다.
+// 혜택·이벤트 줄은 여기 저장하지 않고 마케팅 수신 동의(BuyerMember.marketingConsentAt)가 그 값이다.
+model BuyerNotificationPref {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String   @db.Uuid
+  buyerMemberId String   @db.Uuid
+  kind          String
+  channel       String
+  enabled       Boolean
+  updatedAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  member BuyerMember @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
+
+  @@unique([buyerMemberId, kind, channel])
+  @@index([sellerId, buyerMemberId])
 }
 
 // 재입고 알림 신청(SA-017·SH). 회원당 상품 하나에 한 줄. WAITING(품절 기다림) → QUEUED(재고가 들어와 발송 대기, 야간이면 아침 8시 KST로 미룸) → SENT(발송 기록만, 실제 발송은 아직 없음). 다시 신청하면 WAITING으로 돌아간다(shop-restock-alerts/service.ts).
