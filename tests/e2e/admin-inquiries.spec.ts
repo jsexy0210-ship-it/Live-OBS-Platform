@@ -32,6 +32,10 @@ test.beforeAll(async () => {
   const seller = await db.seller.create({ data: { slug: `iq-${run}`, shopName: shop, status: "ACTIVE", approvedAt: new Date() } });
   ids.seller = seller.id;
   ids.user = (await db.sellerUser.create({ data: { sellerId: seller.id, email: `iq-owner-${run}@example.com`, passwordHash, name: "대표", isOwner: true } })).id;
+  // 담당이 정해진 긴급 문의(분류 방송 화면, 2시간 전 접수) — 분류·담당 필터와 목록 열 시험용
+  const cs = await db.platformAdmin.findUniqueOrThrow({ where: { email: emails.cs } });
+  const urgent = await db.platformInquiry.create({ data: { sellerId: seller.id, createdBySellerUserId: ids.user, category: "BROADCAST", title: `긴급 문의 ${run}`, urgent: true, assignedAdminId: cs.id, createdAt: new Date(Date.now() - 2 * 3_600_000), lastMessageAt: new Date() } });
+  await db.platformInquiryMessage.create({ data: { sellerId: seller.id, inquiryId: urgent.id, authorType: "SELLER_USER", sellerUserId: ids.user, body: "긴급 문의 내용입니다." } });
   await inquiry("reply", `결제 문의 ${run}`);
   await inquiry("ro", `조회 문의 ${run}`);
 });
@@ -54,8 +58,9 @@ test("목록: 답변 대기 탭에 문의가 보이고, 종료 탭에는 보이�
   const row = page.getByTestId("inquiry-row").filter({ hasText: `결제 문의 ${run}` });
   await expect(row).toContainText(shop);
   await expect(row).toContainText("답변 대기");
-  await expect(page.getByRole("button", { name: /^답변 대기 \d+$/ })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: /^종료/ }).click();
+  await expect(page.getByRole("radio", { name: /^답변 대기 \d+$/ })).toBeChecked();
+  await page.getByRole("radio", { name: /^종료/ }).check();
+  await page.getByRole("button", { name: "검색", exact: true }).click();
   await expect(page.getByTestId("inquiry-row").filter({ hasText: `결제 문의 ${run}` })).toHaveCount(0);
   await page.screenshot({ path: "tests/e2e/screenshots/admin-inquiries-1440.png" });
 });
@@ -90,4 +95,36 @@ test("조회 전용: 대화는 보이지만 답변 칸 대신 안내만 보인�
   await expect(page.getByLabel("답변 내용")).toHaveCount(0);
   await expect(page.getByText("답변과 종료는 최고관리자와 CS만 할 수 있습니다.")).toBeVisible();
   await page.screenshot({ path: "tests/e2e/screenshots/admin-inquiry-detail-1440.png" });
+});
+
+test("목록: 긴급 배지·분류·접수·경과·담당 열이 보이고, 분류·담당 필터가 조건에 맞는 문의만 남긴다", async ({ page }) => {
+  await login(page, emails.cs);
+  await page.goto(`/admin/support/inquiries?sellerId=${ids.seller}`);
+  const urgent = page.getByTestId("inquiry-row").filter({ hasText: `긴급 문의 ${run}` });
+  const plain = page.getByTestId("inquiry-row").filter({ hasText: `조회 문의 ${run}` });
+  await expect(urgent).toContainText("긴급");
+  await expect(urgent).toContainText("방송 화면");
+  await expect(urgent).toContainText("상담"); // 담당
+  await expect(urgent).toContainText("2시간"); // 경과
+  await expect(plain).toContainText("결제 · 이용권");
+  await expect(plain.locator("td").nth(5)).toHaveText("—"); // 담당 없음
+  // 분류 = 방송 화면
+  await page.getByRole("radio", { name: "방송 화면", exact: true }).check();
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page).toHaveURL(/category=BROADCAST/);
+  await expect(urgent).toBeVisible();
+  await expect(plain).toHaveCount(0);
+  // 담당 = 나(상담) → 긴급 문의, 미배정 → 없음
+  await page.getByRole("radio", { name: "나", exact: true }).check();
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page).toHaveURL(/assignee=me/);
+  await expect(urgent).toBeVisible();
+  await page.getByRole("radio", { name: "미배정", exact: true }).check();
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page.getByTestId("inquiry-row")).toHaveCount(0);
+  await expect(page.getByText("조건에 맞는 문의가 없습니다.")).toBeVisible();
+  await page.getByRole("button", { name: "초기화" }).click();
+  await expect(page).not.toHaveURL(/category=|assignee=/);
+  await expect(urgent).toBeVisible();
+  await expect(plain).toBeVisible();
 });
