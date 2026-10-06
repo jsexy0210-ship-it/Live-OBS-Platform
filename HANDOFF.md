@@ -19,7 +19,8 @@
 | 개발 전담 (기반) (7) | `session_01NtyNfQ2KbvTFRqRvgudJ9n` | 2026-10-06 07:32 KST MASTER 생성(Sonnet 5.5). (6)을 컨텍스트 64%로 교체(인계 #691 댓글). 큐: SA-060 쇼핑몰 정보 API → 쇼핑몰 운영 상태(준비 중·일시 정지 차단) |
 | 개발 전담 (기반) (6) | `session_014TjcA8RirjWptikziBwasM` | (교체됨 → `session_01NtyNfQ2KbvTFRqRvgudJ9n`, 2026-10-06, #691 대응까지)  2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01N4xJrEzQvUuRHB8QzcQcKE`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 개발 전담 (기반-상품) (2) | `session_01Cr44KBNsnx39N7sPjPurpx` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_018WsyHpKDofgW5DEiS4tUoA`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
-| 개발 전담 (기반-쇼핑몰) (2) | `session_01DGVUmLcp7u4NTNbERqjkHj` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01GnUdkmvAEWEVA3Yh3wbB5a`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
+| 개발 전담 (기반-쇼핑몰) (3) | `session_012ZNvXsR6YxyrBsjNEkte9p` | 2026-10-06 09:54 KST MASTER 생성(Sonnet 5.5). (2)를 컨텍스트 63%로 교체(전임 작업 모두 병합). 첫 작업 구매자 비밀번호 재설정 서버, SA-056-P 통계 서버 값. 역할·소유는 전임 행과 같음 |
+| 개발 전담 (기반-쇼핑몰) (2) | `session_01DGVUmLcp7u4NTNbERqjkHj` | (교체됨 → `session_012ZNvXsR6YxyrBsjNEkte9p`, 2026-10-06) 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01GnUdkmvAEWEVA3Yh3wbB5a`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 개발 전담 (기반-설정) (2) | `session_01VWSSGv5DNryPJeTT6xd9zX` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01EUBERBNF6aDTDawpJF4gkf`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 — 2026-10-05 23:20 KST 배정분 전부 병합(#440·#553·#563·#571·#582·#592·#601·#606·#608), 열린 PR 0, 보관 |
 | 개발 전담 (기반-유튜브) (2) | `session_01NnpcVX7ZtjRk8oBEM6fMj8` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01H4tkcKx7B9mokLRDNuBNYP`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 — 2026-10-05 23:55 KST #474 병합, 보관 |
 | 레이아웃 전담 (6) · UI 공통 | `session_01CzgXixxpn7b3FGjcb2fSnS` | 2026-10-06 KST MASTER 생성(Sonnet 5.5). (5)를 컨텍스트 78%로 교체, 인계 #688·#720 본문. 큐: 공통 표 규칙 → 필터 기본값 공통화 |
