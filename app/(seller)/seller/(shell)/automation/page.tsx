@@ -155,7 +155,7 @@ export default function AutomationIntroPage() {
               <FormRow label="대상">
                 {me.shop.name} · {check.kind === "ok" ? check.url : url.trim() || "쇼핑몰 주소를 입력해 주십시오"}
               </FormRow>
-              <FormRow label="소요">보통 20~40분 · 고객 확인 대기 제외</FormRow>
+              <FormRow label="소요 시간">보통 20~40분 · 고객 확인 대기 제외</FormRow>
               <FormRow label="실패하면">원인과 함께 다시 시도 · 지원으로도 안 되면 전액 환불</FormRow>
               <FormRow label="재설치">완료 뒤 {FREE_RECONNECT_DAYS}일 · 같은 쇼핑몰 · 같은 PC는 무료</FormRow>
             </FormSection>
