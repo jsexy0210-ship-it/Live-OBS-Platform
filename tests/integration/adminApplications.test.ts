@@ -39,7 +39,7 @@ const bulk = async (cookie: string, ids: unknown) => {
 };
 const HOUR = 3_600_000;
 
-async function pending(over: { name?: string; reasons?: string[]; ageHours?: number; industry?: string; biz?: string; rep?: string; email?: string } = {}) {
+async function pending(over: { name?: string; reasons?: string[]; ageHours?: number; industry?: string; biz?: string; rep?: string; email?: string; unchecked?: boolean } = {}) {
   await seedPlans();
   const { seller } = await createSeller();
   const owner = await createSellerUser(seller.id, "OWNER", over.email ?? `o${seller.slug}@example.com`);
@@ -50,7 +50,7 @@ async function pending(over: { name?: string; reasons?: string[]; ageHours?: num
       shopName: over.name ?? seller.shopName,
       reviewReasons: over.reasons ?? [],
       createdAt: new Date(Date.now() - (over.ageHours ?? 1) * HOUR),
-      businessInfo: { representativeName: over.rep ?? "홍길동", businessNumber: over.biz ?? "123-45-67890", openedOn: "20200101", industry: over.industry ?? "TCG 브레이크" },
+      businessInfo: { representativeName: over.rep ?? "홍길동", businessNumber: over.biz ?? "123-45-67890", openedOn: "20200101", ...(over.unchecked ? {} : { checkedAt: new Date().toISOString() }), industry: over.industry ?? "TCG 브레이크" },
     },
   });
   return { seller, owner };
@@ -123,6 +123,19 @@ describe("가입 신청 목록 GET /api/admin/sellers/applications", () => {
     await pending();
     for (const role of ["SUPER_ADMIN", "OPERATIONS", "CS", "READ_ONLY"] as const) expect((await list((await admin(role)).cookie)).status).toBe(200);
     expect((await list("")).status).toBe(401);
+  });
+  it("외부 조회를 한 번도 하지 않은 신청(checkedAt 없음)은 사유가 없어도 통과가 아니라 「미조회」", async () => {
+    const { cookie } = await admin("OPERATIONS");
+    const never = await pending({ name: "미조회몰", ageHours: 3, unchecked: true });
+    const r = await list(cookie, "?limit=100");
+    const nv = (r.body.applications as Record<string, any>[]).find((a) => a.id === never.seller.id)!;
+    expect(nv.checkedAt).toBeNull();
+    expect(nv.checks.map((c: { key: string; result: string; text: string }) => [c.key, c.result, c.text])).toEqual([
+      ["identity", "OK", "완료"],
+      ["duplicate", "OK", "없음"],
+      ["business_status", "NONE", "미조회"],
+      ["mail_order", "NONE", "미조회"],
+    ]);
   });
 });
 
