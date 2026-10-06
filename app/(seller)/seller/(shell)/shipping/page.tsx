@@ -1,6 +1,6 @@
 "use client";
 
-import { formatDate } from "../../../../../lib/client/format";
+import { formatDateTime } from "../../../../../lib/client/format";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHead, useConfirm } from "../../../../../components/admin-ui";
@@ -272,7 +272,7 @@ export default function ShippingPage() {
                                 {itemSummaryText(r.itemSummary)}
                               </span>
                               <span className="t-c1 c-alt num">
-                                주문번호 {r.orderNo} · {formatDate(r.createdAt)}
+                                주문번호 {r.orderNo} · {formatDateTime(r.createdAt)}
                               </span>
                             </div>
                           </td>

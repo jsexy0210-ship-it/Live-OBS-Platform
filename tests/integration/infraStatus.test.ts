@@ -32,12 +32,13 @@ const base: InfraMeasure = {
 };
 
 describe("인프라 용량", () => {
-  it("기준 초과 신호: 디스크 80% 경고·90% 심각, 메모리 90%, DB 연결 80%, 백업 36시간 초과. 못 잰 값은 신호를 내지 않는다", () => {
+  it("기준 초과 신호: 디스크·메모리·CPU·DB 연결 80% 경고·90% 위험, 백업 36시간 경고·72시간 위험. 못 잰 값은 신호를 내지 않는다", () => {
     expect(infraSignals(base)).toEqual([]);
     expect(infraSignals({ ...base, diskUsedBytes: 80 })).toEqual([{ key: "disk", level: "warning", value: 80, threshold: 80 }]);
-    expect(infraSignals({ ...base, diskUsedBytes: 91, memUsedBytes: 95, dbConnections: 85 }).map((s) => [s.key, s.level])).toEqual([["disk", "critical"], ["memory", "critical"], ["dbConnections", "warning"]]);
+    expect(infraSignals({ ...base, diskUsedBytes: 91, memUsedBytes: 85, load1: 1.8, dbConnections: 85 }).map((s) => [s.key, s.level])).toEqual([["disk", "critical"], ["memory", "warning"], ["cpu", "critical"], ["dbConnections", "warning"]]);
     expect(infraSignals({ ...base, diskTotalBytes: null, diskUsedBytes: null })).toEqual([]);
     expect(infraSignals({ ...base, backupLastAt: new Date("2026-10-04T12:00:00Z") })).toEqual([{ key: "backupStale", level: "warning", value: 36, threshold: 36 }]);
+    expect(infraSignals({ ...base, backupLastAt: new Date("2026-10-03T00:00:00Z") })).toEqual([{ key: "backupStale", level: "critical", value: 72, threshold: 36 }]);
     expect(infraSignals({ ...base, backupLastAt: new Date("2026-10-05T12:00:00Z") })).toEqual([]);
   });
 
@@ -81,7 +82,7 @@ describe("인프라 용량", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toContain("no-store");
     const body = await res.json();
-    expect(body.thresholds).toEqual({ diskPct: 80, memPct: 90, dbConnPct: 80, backupMaxAgeHours: 36 });
+    expect(body.thresholds).toEqual({ warnPct: 80, criticalPct: 90, backupMaxAgeHours: 36 });
     expect(body.current.disk.totalBytes).toBeGreaterThan(0);
     expect(body.current.backup).toEqual({ lastAt: null, count: null, totalBytes: null });
     expect(Array.isArray(body.signals)).toBe(true);

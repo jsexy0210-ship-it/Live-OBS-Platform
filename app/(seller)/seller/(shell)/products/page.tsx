@@ -1,6 +1,6 @@
 "use client";
 
-import { formatDate } from "../../../../../lib/client/format";
+import { formatDateTime } from "../../../../../lib/client/format";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
@@ -11,6 +11,7 @@ import { categoryLabel, categoryOptions, type CategoryNode } from "../../../../.
 import { ErrorState, LoadingRows, Locked, NoImage, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, type Product, type ProductStatus } from "../../../../../components/seller/api";
 import { LOW_STOCK, MAX_SEARCH_LENGTH, statusBadge, textLength, totalStock, won } from "../../../../../components/seller/format";
+import { recentRange } from "../../../../../lib/client/dateInput";
 import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
 
 // SA-011 상품 목록(업무용 관리 화면). 위쪽 표형 검색 상자에서 조건을 정해 「검색」을 누르면 걸러 보고, 이어서 불러온다(기본 50개씩).
@@ -65,7 +66,8 @@ type Filters = {
   from: string;
   to: string;
 };
-const EMPTY: Filters = { status: "ALL", stock: null, mode: "name", text: "", categoryId: "", display: "", deduct: "", from: "", to: "" };
+// 기본값 정본 lib/client/filterDefaults.ts: 등록일은 처음부터 최근 1개월이 채워져 있고, 초기화도 이 값으로 돌아간다
+const emptyFilters = (): Filters => ({ status: "ALL", stock: null, mode: "name", text: "", categoryId: "", display: "", deduct: "", ...recentRange(1) });
 
 const query = (f: Filters, sort: Sort, limit: number) =>
   [
@@ -84,7 +86,7 @@ const query = (f: Filters, sort: Sort, limit: number) =>
     .join("&");
 
 // 주소에 싣는 값(기본값과 같으면 쿼리에서 뺀다). 알 수 없는 값은 읽을 때 기본값으로 돌린다
-const URL_DEFAULTS = { q: "", mode: "name", status: "ALL", stock: "", categoryId: "", display: "", deduct: "", from: "", to: "", sort: "newest", limit: "50" };
+const urlDefaults = () => ({ q: "", mode: "name", status: "ALL", stock: "", categoryId: "", display: "", deduct: "", ...recentRange(1), sort: "newest", limit: "50" });
 const oneOf = <T extends string>(v: string, list: readonly T[], fallback: T): T => ((list as readonly string[]).includes(v) ? (v as T) : fallback);
 
 const TOASTS: Record<string, string> = {
@@ -114,7 +116,7 @@ export default function ProductListPage() {
   const { confirm } = useConfirm();
   const { can } = useSeller();
   // 적용한 조건·정렬·개수는 주소(쿼리)가 기준이다. 상세에 갔다 Back으로 돌아와도 그대로 복원된다(IA Back 규칙 3항)
-  const [u, setU] = useUrlState(URL_DEFAULTS);
+  const [u, setU] = useUrlState(urlDefaults());
   const applied: Filters = {
     status: oneOf(u.status, FILTERS.map((f) => f.key), "ALL"),
     stock: u.stock === "out" || u.stock === "low" ? u.stock : null,
@@ -160,9 +162,10 @@ export default function ProductListPage() {
     }
   };
   const resetAll = () => {
-    setDraft(EMPTY);
-    pushed.current = JSON.stringify(EMPTY);
-    setU(toUrl(EMPTY));
+    const empty = emptyFilters();
+    setDraft(empty);
+    pushed.current = JSON.stringify(empty);
+    setU(toUrl(empty));
   };
 
   // 카테고리 칸은 상품 목록이 열린 뒤 한 번만 읽는다(목록이 요금제·권한으로 막힌 화면에서 쓸데없이 요청하지 않게)
@@ -220,7 +223,7 @@ export default function ProductListPage() {
   const canManage = can("PRODUCT_MANAGE");
   const items = state.kind === "ok" ? state.items : [];
   const appliedCat = applied.categoryId ? categoryLabel(cats, applied.categoryId) : null;
-  const isApplied = JSON.stringify(applied) !== JSON.stringify(EMPTY);
+  const isApplied = JSON.stringify(applied) !== JSON.stringify(emptyFilters());
   // 목록 위 「총 n건」: 이어서 불러오는 목록이라 다 불러오기 전에는 「이상」
   const countUnit = state.kind === "ok" && state.next ? "건 이상" : "건";
   const allChecked = items.length > 0 && items.every((p) => selected.has(p.id));
@@ -539,7 +542,7 @@ export default function ProductListPage() {
                             <span className={`bdg ${b.cls}`}>{b.label}</span>
                             {canManage && <QuickStatus product={p} onDone={quickDone} onFail={quickFail} />}
                           </td>
-                          <td className="num">{formatDate(p.createdAt)}</td>
+                          <td className="num">{formatDateTime(p.createdAt)}</td>
                           {canManage && (
                             <td>
                               <Link className="btn btn-sm btn-out btn-level-table" href={`/seller/products/${p.id}`}>
