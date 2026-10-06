@@ -1,6 +1,6 @@
 import { adminCan, type AdminPermission } from "../../../../lib/server/authz/permissions";
 
-// 마스터 관리자 메뉴: 확정 구조(2026-10-06 대표님 「그대로 진행」, docs/IA.md 「확정 메뉴 구조」·design/project/SA-LNB.dc.html·DS-NAV). GNB 6그룹·LNB 24항목.
+// 마스터 관리자 메뉴: 확정 구조(2026-10-06 대표님 「그대로 진행」, docs/IA.md 「확정 메뉴 구조」·design/project/SA-LNB.dc.html·DS-NAV). GNB 6그룹·LNB 25항목(DS-NAV 24 + 인프라 · 비용).
 // perm은 그 화면의 서버 API가 요구하는 권한과 같다(없으면 platform.read).
 // ready: 화면이 있는 메뉴. 없으면 「준비 중」 한 줄 화면으로 연결한다. 하위 메뉴가 모두 숨겨진 대분류는 GNB에서도 숨긴다.
 // sub: LNB 소제목(회색 12px). 설정 그룹의 「시스템」·「관리자」. 앞 항목과 소제목이 다를 때 한 번 그린다(앞 항목이 역할로 숨겨져도 소제목은 남는다)
@@ -40,6 +40,8 @@ export const ADMIN_MENU: AdminGroup[] = [
       { label: "주문 · 방송 화면 접속", href: "/admin/ops/access", ready: true },
       { label: "실시간 감시", href: "/admin/ops/monitor", perm: "system.manage", ready: true },
       { label: "자동 연결 작업", href: "/admin/ops/automation", ready: true },
+      // MA-120(DS-NAV v307, 2026-10-06 대표님 지시): 최고관리자만·조회 전용. 화면 본체가 생기기 전까지는 「준비 중」(ready 없음)
+      { label: "인프라 · 비용", href: "/admin/ops/infra", perm: "infra.manage" },
     ],
   },
   {
