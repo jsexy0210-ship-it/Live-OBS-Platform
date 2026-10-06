@@ -112,11 +112,12 @@ readonly_buildx_details() {
             unset detail_raw
             [ -n "$detail" ] || detail='{}'
             attribution="$(jq -r '
-              def onq_repo: ascii_downcase | sub("^ssh://"; "") | sub("^git@github.com/"; "git@github.com:") | sub("\\.git$"; "") | sub("/+$"; "") | . == "https://github.com/jsexy0210-ship-it/live-obs-platform" or . == "http://github.com/jsexy0210-ship-it/live-obs-platform" or . == "git@github.com:jsexy0210-ship-it/live-obs-platform";
+              def normalized_repo: ascii_downcase | sub("^ssh://"; "") | sub("^git@github.com/"; "git@github.com:") | sub("\\.git$"; "") | sub("/+$"; "");
+              def repo_class: if type != "string" or length == 0 then "UNKNOWN" else normalized_repo as $url | if $url == "https://github.com/jsexy0210-ship-it/live-obs-platform" or $url == "http://github.com/jsexy0210-ship-it/live-obs-platform" or $url == "git@github.com:jsexy0210-ship-it/live-obs-platform" then "ONQ" elif ($url | test("^https?://[a-z0-9.-]+/[a-z0-9_.-]+/[a-z0-9_.-]+$")) or ($url | test("^git@github\\.com:[a-z0-9_.-]+/[a-z0-9_.-]+$")) then "OTHER" else "UNKNOWN" end end;
               .repository as $repo | .revision as $rev | .context as $ctx |
-              "repository=" + (if ($repo | type) == "string" and ($repo | onq_repo) then "ONQ" else "UNKNOWN" end) +
+              "repository=" + (($repo | repo_class)) +
               " revision=" + (if ($rev | type) == "string" and ($rev | test("^[0-9a-fA-F]{40}$")) then ($rev[0:12] | ascii_downcase) else "UNKNOWN" end) +
-              " context=" + (if $ctx == "." then "repo-root" elif ($ctx | type) == "string" and ($ctx | test("^[A-Za-z0-9_./-]{1,120}$")) and (($ctx | split("/")) | index("..")) == null then "workspace" elif ($ctx | type) == "string" and ($ctx | length) > 0 then "other-or-unknown" else "UNKNOWN" end)
+              " context=" + (if $ctx == "." then "repo-root" elif ($ctx | type) == "string" and ($ctx | test("^[A-Za-z0-9_./-]{1,120}$")) and ($ctx | startswith("/") | not) and (($ctx | split("/")) | all(. != "" and . != "." and . != "..")) then "workspace" elif ($ctx | type) == "string" and ($ctx | length) > 0 then "other-or-unknown" else "UNKNOWN" end)
             ' <<<"$detail" 2>/dev/null || echo 'repository=UNKNOWN revision=UNKNOWN context=UNKNOWN')"
             log "  Build record: $attribution"
           done < <(jq -r '.[0:20][] | .ID // empty | select(type == "string")' <<<"$data" 2>/dev/null)
