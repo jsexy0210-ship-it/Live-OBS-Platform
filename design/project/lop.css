@@ -303,10 +303,13 @@ select.inp{cursor:pointer}
 .c24 .lnb a.on{color:var(--c24-acc);font-weight:700;background:var(--c24-acc-bg);box-shadow:inset 3px 0 0 var(--c24-acc)}
 .c24 .lnb a.dis{color:#b0b5bd}
 .c24 .cont{padding:16px 24px 48px;display:flex;flex-direction:column;gap:16px;min-width:0}
-.c24 .ph2{display:flex;align-items:center;gap:12px;height:var(--c24-h1);box-sizing:border-box;margin:-16px -24px 0;padding:0 24px;border-bottom:1px solid var(--c24-line)}
+.c24 .ph2{display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-height:var(--c24-h1);height:auto;box-sizing:border-box;margin:-16px -24px 0;padding:0 24px;border-bottom:1px solid var(--c24-line)}
 .c24 .ph2 h1{font-size:18px;line-height:24px;font-weight:800;margin:0;white-space:nowrap}
 .c24 .ph2 .path{font-size:12px;color:var(--c24-sub);white-space:nowrap}
-.c24 .ph2 .acts{margin-left:auto;display:flex;gap:4px}
+.c24 .ph2 .acts{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;max-width:100%;order:2}
+/* 2026-10-06 대표님 최신 결정: 제목 바로 아래 목적·핵심 안내, 기존 버튼 토큰 유지 */
+.c24 .ph-description{margin:0;font-size:14px;line-height:20px;color:var(--c24-sub);overflow-wrap:anywhere}
+.c24 .ph2 .ph-description{order:3;flex-basis:100%;padding-bottom:12px}
 .c24 .sec-t{display:flex;align-items:center;gap:8px;padding:8px 0;font-size:14px;font-weight:800;border-bottom:1px solid var(--c24-line);margin-top:8px}
 .c24 .sec-t .nt{font-weight:400}
 .c24 .sec-t .acts{margin-left:auto;display:flex;gap:4px}
@@ -1066,13 +1069,30 @@ select.inp{cursor:pointer}
 .c24:not(.pre):not(.mob) .box.dense>.ft tr>th:first-child{border-left:0;border-radius:0}
 .c24:not(.pre):not(.mob) .box.dense>.ft tr:last-child>th,.c24:not(.pre):not(.mob) .box.dense>.ft tr:last-child>td{border-bottom:0}
 .c24:not(.pre):not(.mob) .box.dense>.sbtn{margin:0;padding:16px;border:0;box-shadow:none;background:#f6f7f9;gap:8px}
-.c24:not(.pre):not(.mob) .lpanel{border:1px solid var(--c24-line);border-radius:12px;overflow:clip;background:#fff;margin-top:0}
-.c24:not(.pre):not(.mob) .lpanel>.ltop{margin:0;padding:12px 16px;min-height:0;border-bottom:1px solid var(--c24-line2);background:#fff}
-.c24:not(.pre):not(.mob) .lpanel .cnt{font-size:14px;line-height:20px;font-weight:700;margin-right:4px}
-.c24:not(.pre):not(.mob) .lpanel .lt,.c24:not(.pre):not(.mob) .lpanel .plist{margin:0;border-top:0;border-left:0;border-right:0;border-bottom:0;box-shadow:none}
-.c24:not(.pre):not(.mob) .lpanel .lt th:first-child,.c24:not(.pre):not(.mob) .lpanel .lt td:first-child{border-left:0}
-.c24:not(.pre):not(.mob) .lpanel .lt tr:last-child>td{border-bottom:0}
-.c24:not(.pre):not(.mob) .lpanel .lt th:last-child,.c24:not(.pre):not(.mob) .lpanel .lt td:last-child{border-right:0}
+/* 2026-10-06 대표님: 읽기 전용 값 회색(label-alt), 간결한 동작형 placeholder */
+.c24 .i[readonly],.c24 .inp[readonly],.sh24 .i[readonly],.sh24 .inp[readonly]{color:var(--wds-label-alternative);-webkit-text-fill-color:var(--wds-label-alternative)}
+.c24 .i::placeholder,.c24 .inp::placeholder,.sh24 .i::placeholder,.sh24 .inp::placeholder{color:var(--wds-label-assistive)}
+/* 2026-10-06 대표님 최신 결정: 검색/건수/작업/페이지 안내는 테두리 밖, 외곽은 표만 */
+.c24:not(.pre):not(.mob) .lpanel{border:0;border-radius:0;overflow:visible;background:transparent;margin-top:0}
+.c24:not(.pre):not(.mob) .lpanel>.ltop{margin:0;padding:8px 0;min-height:0;border:0;background:transparent}
+.c24 .ltop{justify-content:space-between}
+.c24 .ltop .sp{margin-left:auto;justify-content:flex-end;max-width:100%}
+.c24 .lpanel .cnt{font-size:14px;line-height:20px;font-weight:700;margin-right:4px}
+.c24 .lgrid{min-width:0;border:1px solid var(--c24-line);border-radius:12px;overflow-x:auto;background:var(--c24-bg,#fff)}
+.c24 .lgrid:focus-visible{outline:2px solid var(--ui-focus,var(--c24-acc));outline-offset:2px}
+.c24 .lgrid>.lt{margin:0;border:0;box-shadow:none}
+.c24 .lgrid>.lt th:first-child,.c24 .lgrid>.lt td:first-child{border-left:0}
+.c24 .lgrid>.lt th:last-child,.c24 .lgrid>.lt td:last-child{border-right:0}
+.c24 .lgrid>.lt tr:last-child>td{border-bottom:0}
+/* 모바일 카드 변환에서는 각 행 카드가 경계이며 바깥 grid 프레임을 중복하지 않습니다. */
+@media(max-width:767px){.c24 .lgrid:has(> .lt[data-card-table]){border:0;border-radius:0;background:transparent;overflow:visible}}
+/* lgrid로 옮기지 않은 정본은 기존 목록 프레임과 잘림 경계를 유지합니다. */
+.c24:not(.pre):not(.mob) .lpanel:not(:has(>.lgrid)){border:1px solid var(--c24-line);border-radius:12px;overflow:clip;background:#fff}
+.c24:not(.pre):not(.mob) .lpanel:not(:has(>.lgrid))>.ltop{padding:12px 16px;border-bottom:1px solid var(--c24-line2);background:#fff}
+.c24:not(.pre):not(.mob) .lpanel:not(:has(>.lgrid)) .lt,.c24:not(.pre):not(.mob) .lpanel:not(:has(>.lgrid)) .plist{margin:0;border:0;box-shadow:none}
+.c24:not(.pre):not(.mob) .lpanel:not(:has(>.lgrid)) .lt th:first-child,.c24:not(.pre):not(.mob) .lpanel:not(:has(>.lgrid)) .lt td:first-child{border-left:0}
+.c24:not(.pre):not(.mob) .lpanel:not(:has(>.lgrid)) .lt tr:last-child>td{border-bottom:0}
+.c24:not(.pre):not(.mob) .lpanel:not(:has(>.lgrid)) .lt th:last-child,.c24:not(.pre):not(.mob) .lpanel:not(:has(>.lgrid)) .lt td:last-child{border-right:0}
 
 /* 2026-10-05 현대화 기준: 글 열(.l)은 제목도 왼쪽 · 관리자 목록 썸네일 64×64 모서리 8 · 썸네일 행 88 */
 .c24 .lt th.l,.c24 .st .lt th.l{text-align:left !important}
