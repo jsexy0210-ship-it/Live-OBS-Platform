@@ -93,7 +93,7 @@ async function signup(page: Page, opts: { mailOrderNumber: string; wrongFirst?: 
   await page.goto("/seller/login");
   // 앞에서 하던 가입 입력이 이 탭에 남아 있으면 지운다(새로 시작)
   await page.evaluate(() => sessionStorage.clear());
-  await page.getByRole("link", { name: "회원가입" }).click();
+  await page.getByRole("link", { name: "가입 신청" }).click();
   await expect(page).toHaveURL(/\/seller\/signup$/);
   if (opts.shots) {
     // 1/5 약관 동의: 동의하지 않고 다음을 누르면 막고 안내한다
@@ -236,7 +236,7 @@ test("파트너스 가입 신청 → 바로 승인 → 로그인 → 비밀번�
 
   // 비밀번호 찾기: 대표자 본인확인 → 새 비밀번호
   await page.goto("/seller/login");
-  await page.getByRole("link", { name: "아이디/비밀번호 찾기" }).click();
+  await page.getByRole("link", { name: "이메일(아이디)/비밀번호 찾기" }).click();
   await page.getByRole("navigation", { name: "아이디·비밀번호 찾기" }).getByRole("link", { name: "비밀번호 찾기" }).click();
   await expect(page).toHaveURL(/\/seller\/password-reset$/);
   await page.getByLabel("이메일").fill(a.email);
@@ -504,7 +504,7 @@ test("비밀번호 찾기: 대표자가 아니거나 정보가 맞지 않으면 
 test("비밀번호 찾기(직원 탭에서 옴): 본인확인이 등록된 직원 정보와 맞지 않으면 대표자에게 물어보라고 안내한다", async ({ page }) => {
   await page.goto("/seller/login");
   await page.getByRole("tab", { name: "직원" }).click();
-  await page.getByRole("link", { name: "아이디/비밀번호 찾기" }).click();
+  await page.getByRole("link", { name: "이메일(아이디)/비밀번호 찾기" }).click();
   await page.getByRole("navigation", { name: "아이디·비밀번호 찾기" }).getByRole("link", { name: "비밀번호 찾기" }).click();
   await expect(page).toHaveURL(/\/seller\/password-reset\?type=staff$/);
   await expect(page.getByText("직원 본인 명의의 휴대폰으로 확인합니다.")).toBeVisible();
@@ -549,7 +549,7 @@ test("아이디 찾기(대표자): 본인확인하면 가입한 이메일과 쇼
   await page.context().clearCookies();
 
   await page.goto("/seller/login");
-  await page.getByRole("link", { name: "아이디/비밀번호 찾기" }).click();
+  await page.getByRole("link", { name: "이메일(아이디)/비밀번호 찾기" }).click();
   await expect(page).toHaveURL(/\/seller\/find-id$/);
   await expect(page.getByText("쇼핑몰 대표자 본인 명의의 휴대폰으로 확인합니다.")).toBeVisible();
   await fillIdentity(page, a.name, randomPhone());
