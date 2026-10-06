@@ -23,6 +23,8 @@ export type Refund = {
   payment: { amount: number; kind: PaymentKind; periodStart: string; periodEnd: string; paidAt: string | null; receiptUrl: string | null };
 };
 export type RefundCounts = Record<RefundStatus, number>;
+export type RefundListItem = Refund & { assignee: string | null };
+export type RefundSummary = { monthRefunded: { count: number; amount: number }; avgProcessDays: number | null };
 
 export const REFUND_STATUS: Record<RefundStatus, { label: string; cls: string }> = {
   REQUESTED: { label: "처리 대기", cls: "b-warn" },
