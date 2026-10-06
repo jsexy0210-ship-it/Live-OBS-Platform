@@ -296,6 +296,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 - 결제 확인에 결제수단이 없으면 주문에 저장된 결제수단으로 적립률을 정한다.
 - 적립금 3년 소멸(대표님 결정 2026-10-03, `lib/server/rewards/expire.ts` `expireDormantRewards`, 정기 실행 연결은 인프라 승인 대기): 마지막 적립일(실지급·실패 아닌 양수 `EARN`·`RANKING_BONUS`·`ADJUST` 원장의 가장 늦은 `createdAt`)부터 3년이 지난 잔액을 `EXPIRE`(음수, `SUCCEEDED`)로 남기고 0으로 만든다(감사 로그 `reward.expire`, 사유 `no_earn_3_years`). 적립 기록이 없는 잔액은 소멸하지 않는다. 오래된 순으로 limit(기본 100)건, 회원마다 잔액 행을 잠그고 다시 확인한다(멱등, 한 건 실패해도 계속). 소멸 30일 전 안내(알림톡, 실패하면 문자, 메일 없음): `claimRewardExpiryNotices`가 소멸 예정 30일 전~소멸 전인 회원을 `RewardExpiryNotice`((buyerMemberId, lastEarnAt) 유니크, 상태 PENDING·SENT·FAILED, 시도 3번·10분 멈춤 다시 잡기)로 한 번만 잡아 소멸 예정 금액·시각을 돌려주고, 보내는 쪽이 `markRewardExpiryNoticeSent·Failed`(같은 시도 번호만)로 결과를 남긴다. 실제 발송·정기 실행은 연동·인프라 승인 뒤.
 - 원장의 실제 처리(SUCCEEDED·잔액 반영), 주문에 쓴 적립금(`USE`)을 환불·취소 때 돌려주는 것은 다음 단계(적립금 사용 기능과 함께).
+- 적립금 사용 조건은 쇼핑몰별 설정(`RewardPolicy.useMinAmount` 기본 1,000원 · `useMaxRatio` 정수 % 기본 0 = 제한 없음, 저장은 SA-031)을 따른다(2026-10-06 MASTER 배정, `lib/server/payments/rewardUse.ts`). 견적(`orders/quote`)과 주문 생성은 `priceOrder`가 한 트랜잭션에서 읽은 같은 설정으로 판단한다. 최소 금액 미달·10원 단위가 아님은 `invalid_reward_use`, 한도 = min(상품 금액(상품 쿠폰 뺀 값, 결제 1원 이상 유지), 상품 금액 × 비율 ÷ 100을 10원 단위 내림) 초과는 `reward_use_over_limit`, 견적 `rewardMax`는 한도·잔액 중 작은 값이 쇼핑몰 최소 금액 이상일 때만 값이 있다. 설정을 바꾸면 다음 주문부터 적용되고 이미 만든 주문·반환 계산은 그대로다.
 
 ### 4.8 오버레이·감사 로그
 
