@@ -229,7 +229,7 @@
   }
   .cart-sum {
     position: sticky;
-    bottom: calc(var(--shop-h-lg) + env(safe-area-inset-bottom) + 8px);
+    bottom: calc(var(--shop-tabbar-h) + env(safe-area-inset-bottom) + 8px);
     background: #fff;
   }
   .cart-hint {
