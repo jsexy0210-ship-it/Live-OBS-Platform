@@ -5,6 +5,6 @@ import { SignupFlow } from "../../../../components/seller/signup/SignupFlow";
 export const dynamic = "force-dynamic";
 
 export default function SignupLayout({ children }: { children: React.ReactNode }) {
-  const { terms, privacy } = SELLER_SIGNUP_CONSENT_VERSIONS;
-  return <SignupFlow consentVersions={{ termsVersion: terms, privacyVersion: privacy }}>{children}</SignupFlow>;
+  const { terms, privacy, policy, marketing } = SELLER_SIGNUP_CONSENT_VERSIONS;
+  return <SignupFlow consentVersions={{ termsVersion: terms, privacyVersion: privacy, policyVersion: policy, marketingVersion: marketing }}>{children}</SignupFlow>;
 }
