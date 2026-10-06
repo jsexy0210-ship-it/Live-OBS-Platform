@@ -130,6 +130,8 @@ jobs:
     env:
       DATABASE_URL: postgresql://live_obs:live_obs@localhost:5432/live_obs_test
       SMOKE_SPECS: admin-shell layout-admin-login login-tabs admin-dashboard seller-deposits seller-products seller-members seller-stats seller-broadcast
+      # 방송·채팅 스모크는 실제 YouTube 호출 없이 임의 키와 스케줄러 중지로 실행한다.
+      YOUTUBE_API_KEY: e2e-dummy
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -183,7 +185,7 @@ jobs:
         if: steps.gate.outputs.skip != 'true'
         run: |
           set -euo pipefail
-          nohup npx next start -p 3100 > "$RUNNER_TEMP/next.log" 2>&1 &
+          SCHEDULER_DISABLED=1 nohup npx next start -p 3100 > "$RUNNER_TEMP/next.log" 2>&1 &
           for i in $(seq 1 60); do
             curl -sf -o /dev/null http://localhost:3100/ && exit 0
             sleep 1
