@@ -2,7 +2,7 @@
 
 import { formatDateTime } from "../../../../../lib/client/format";
 import { useCallback, useEffect, useState } from "react";
-import { useConfirm, PageHead } from "../../../../../components/admin-ui";
+import { useConfirm, PageHead, ListHead, ListTable } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -117,7 +117,7 @@ export default function ReturnsPage() {
           description={<>구매자가 신청한 교환·반품을 처리하는 화면입니다. 접수 → 수거 → 상품 확인 → 환불 또는 교환 상품 발송 순서로 진행합니다.</>}
 
         />
-        <section className="card" style={{ overflow: "hidden" }}>
+        <section className="au-list-section" >
           {state.kind === "loading" && <StateBox kind="loading" what="교환 · 반품" />}
           {state.kind === "error" && <StateBox kind={stateKind(state.status, state.error)} what="교환 · 반품" onRetry={() => void load()} />}
           {data && (
@@ -159,7 +159,9 @@ export default function ReturnsPage() {
                   <span className="s">구매자가 주문 상세에서 신청하면 여기에 들어옵니다</span>
                 </div>
               ) : (
-                <div role="list">
+                <>
+<ListHead total={rows.length} loaded />
+<ListTable><div role="list">
                   {rows.map((r) => (
                     <div key={r.id} className="rt-row" role="listitem" tabIndex={0} data-testid="return-row" onClick={() => setOpenId(r.id)} onKeyDown={(e) => e.key === "Enter" && setOpenId(r.id)}>
                       <span className="col" style={{ gap: 2, minWidth: 0 }}>
@@ -179,7 +181,8 @@ export default function ReturnsPage() {
                       <span className="t-c1 c-alt rt-hide-m num">{formatDateTime(r.createdAt)}</span>
                     </div>
                   ))}
-                </div>
+                </div></ListTable>
+</>
               )}
             </>
           )}

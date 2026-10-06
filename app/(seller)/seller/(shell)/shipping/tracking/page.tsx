@@ -153,9 +153,9 @@ export default function InvoiceTrackingPage() {
           actions={
             <>
               {canEdit && (
-                <Link className="btn btn-out" href="/seller/shipping/invoices">송장 발급</Link>
+                <Link className="btn btn-out btn-level-secondary" href="/seller/shipping/invoices">송장 발급</Link>
               )}
-              <Link className="btn btn-out" href="/seller/shipping">배송 목록</Link>
+              <Link className="btn btn-out btn-level-secondary" href="/seller/shipping">배송 목록</Link>
             </>
           }
         />

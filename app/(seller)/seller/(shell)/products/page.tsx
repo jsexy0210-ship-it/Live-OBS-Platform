@@ -309,10 +309,10 @@ export default function ProductListPage() {
           actions={
             canManage && (
               <>
-                <Link className="btn btn-out" href="/seller/products/stock">
+                <Link className="btn btn-out btn-level-secondary" href="/seller/products/stock">
                   재고 관리
                 </Link>
-                <Link className="btn" href="/seller/products/new">
+                <Link className="btn btn-level-primary" href="/seller/products/new">
                   상품 등록
                 </Link>
               </>

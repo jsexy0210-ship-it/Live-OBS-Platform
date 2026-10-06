@@ -207,11 +207,11 @@ export default function PopupsPage() {
             state.kind === "ok" && editable ? (
               <>
                 {!paused?.on && (
-                  <button className="btn btn-out" type="button" onClick={() => void setPaused(true)}>
+                  <button className="btn btn-out btn-level-secondary" type="button" onClick={() => void setPaused(true)}>
                     모든 팝업 잠시 끄기
                   </button>
                 )}
-                <button className="btn" type="button" disabled={list.length >= LIMIT} onClick={() => setDraft(empty)}>
+                <button className="btn btn-level-primary" type="button" disabled={list.length >= LIMIT} onClick={() => setDraft(empty)}>
                   팝업 추가
                 </button>
               </>

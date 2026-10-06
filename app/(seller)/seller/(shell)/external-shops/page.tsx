@@ -92,7 +92,7 @@ export default function ExternalShopsPage() {
           title="외부 쇼핑몰 연동"
           actions={
             d?.canManage && d.enabled ? (
-              <button className="btn" type="button" onClick={() => setAdding((v) => !v)} aria-expanded={adding}>
+              <button className="btn btn-level-primary" type="button" onClick={() => setAdding((v) => !v)} aria-expanded={adding}>
                 쇼핑몰 더 이어 두기
               </button>
             ) : undefined

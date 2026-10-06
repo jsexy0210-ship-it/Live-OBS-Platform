@@ -242,7 +242,7 @@ export default function MessageBalancePage() {
         <PageHead description="발송·이용 충전금의 잔액과 사용 내역을 확인합니다."
           title="충전금"
           actions={
-            <button className="btn" type="button" disabled={!b.chargingEnabled || !consented || busy} onClick={openCharge}>
+            <button className="btn btn-level-primary" type="button" disabled={!b.chargingEnabled || !consented || busy} onClick={openCharge}>
               충전하기
             </button>
           }

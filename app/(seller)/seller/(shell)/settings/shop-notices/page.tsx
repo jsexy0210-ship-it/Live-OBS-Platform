@@ -157,15 +157,15 @@ export default function ShopNoticesPage() {
           title="쇼핑몰 공지 · 자주 묻는 질문"
           actions={
             <>
-              <a className="btn btn-out" href={`/shop/${encodeURIComponent(me.shop.slug)}/help`} target="_blank" rel="noopener noreferrer">
+              <a className="btn btn-out btn-level-secondary" href={`/shop/${encodeURIComponent(me.shop.slug)}/help`} target="_blank" rel="noopener noreferrer">
                 구매자 화면 보기
               </a>
               {editable && (
                 <>
-                  <button className="btn btn-out" type="button" onClick={() => open(empty("faq"))} data-testid="add-faq">
+                  <button className="btn btn-out btn-level-secondary" type="button" onClick={() => open(empty("faq"))} data-testid="add-faq">
                     질문 추가
                   </button>
-                  <button className="btn" type="button" onClick={() => open(empty("notice"))} data-testid="add-notice">
+                  <button className="btn btn-level-primary" type="button" onClick={() => open(empty("notice"))} data-testid="add-notice">
                     공지 쓰기
                   </button>
                 </>

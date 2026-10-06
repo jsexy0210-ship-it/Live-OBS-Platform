@@ -158,10 +158,10 @@ export default function CategoriesPage() {
           title="카테고리"
           actions={
             <>
-              <Link className="btn btn-out" href="/seller/products">
+              <Link className="btn btn-out btn-level-secondary" href="/seller/products">
                 상품 목록
               </Link>
-              <button className="btn" type="button" disabled={changed.length === 0 || busy || stale} onClick={() => void saveOrder()}>
+              <button className="btn btn-level-primary" type="button" disabled={changed.length === 0 || busy || stale} onClick={() => void saveOrder()}>
                 순서 저장
               </button>
             </>

@@ -325,11 +325,11 @@ export default function BroadcastDashboardPage() {
           actions={
             <>
               {allowed && (
-                <button className="btn" type="button" data-testid="bc-hit-open" disabled={!live || locked} title={live ? undefined : "방송 중에만 등록할 수 있습니다"} onClick={() => setModal({ kind: "hit" })}>
+                <button className="btn btn-level-primary" type="button" data-testid="bc-hit-open" disabled={!live || locked} title={live ? undefined : "방송 중에만 등록할 수 있습니다"} onClick={() => setModal({ kind: "hit" })}>
                   HIT 카드 기록하기 <span className="kbd">Ctrl+H</span>
                 </button>
               )}
-              <Link className="btn btn-out" href="/seller/overlay/address">
+              <Link className="btn btn-out btn-level-secondary" href="/seller/overlay/address">
                 방송 화면 주소
               </Link>
             </>

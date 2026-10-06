@@ -110,7 +110,7 @@ export default function RefundRequestsPage() {
         <PageHead description="구매자의 취소·환불 요청을 확인하고 처리합니다."
           title="취소 · 환불 요청"
           actions={
-            <Link className="btn btn-out" href="/seller/orders">
+            <Link className="btn btn-out btn-level-secondary" href="/seller/orders">
               전체 주문
             </Link>
           }

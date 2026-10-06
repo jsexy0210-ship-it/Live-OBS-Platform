@@ -140,10 +140,10 @@ export default function BulkPage() {
           actions={
             canEdit ? (
               <>
-                <a className="btn btn-out" href="/api/seller/bulk-io/products/template" download>
+                <a className="btn btn-out btn-level-secondary" href="/api/seller/bulk-io/products/template" download>
                   양식 내려받기
                 </a>
-                <button className="btn" type="button" disabled={uploading} onClick={() => input.current?.click()}>
+                <button className="btn btn-level-primary" type="button" disabled={uploading} onClick={() => input.current?.click()}>
                   {uploading ? "확인 중" : "파일 올리기"}
                 </button>
               </>

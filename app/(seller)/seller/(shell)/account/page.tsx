@@ -97,7 +97,7 @@ export default function AccountPage() {
         <PageHead description="계정 정보를 확인하고 비밀번호를 변경합니다."
           title="내 계정"
           actions={
-            <LogoutButton className="btn btn-out" onLogout={logout} />
+            <LogoutButton className="btn btn-out btn-level-secondary" onLogout={logout} />
           }
         />
         <div className="acc-two">

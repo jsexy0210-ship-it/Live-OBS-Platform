@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Modal, PageHead } from "../../../../../components/admin-ui";
+import { Modal, PageHead, ListHead, ListTable } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -107,7 +107,7 @@ export default function MemberMessagesPage() {
           title="회원 알림 발송"
           actions={
             data && canEdit ? (
-              <button className="btn" type="button" onClick={() => setTab("new")}>
+              <button className="btn btn-level-primary" type="button" onClick={() => setTab("new")}>
                 새 발송
               </button>
             ) : undefined
@@ -165,7 +165,9 @@ export default function MemberMessagesPage() {
               )}
             </div>
             {tab === "list" && (
-              <section className="card" style={{ overflow: "hidden" }} aria-label="발송 내역">
+              <section className="au-list-section"  aria-label="발송 내역">
+<ListHead total={data.messages.length} loaded />
+<ListTable>
                 <div className="mm-row mm-head">
                   <span>제목 · 대상</span>
                   <span className="mm-hide-m">채널</span>
@@ -212,7 +214,8 @@ export default function MemberMessagesPage() {
                     </div>
                   ))
                 )}
-              </section>
+              </ListTable>
+</section>
             )}
             {tab === "new" && canEdit && (
               <NewMessage

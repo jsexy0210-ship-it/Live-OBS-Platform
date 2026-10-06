@@ -101,9 +101,9 @@ export default function AutomationProgressPage() {
           actions={
             (pausable || j.paused || cancelable) && (
               <>
-                {pausable && <button className="btn btn-out" type="button" onClick={() => void act("pause", "잠시 멈췄습니다", { title: "잠시 멈추시겠습니까?", body: "지금 단계에서 멈춰 둡니다. 이어 하면 멈춘 단계부터 다시 시작합니다.", confirmLabel: "잠시 멈추기" })}>잠시 멈추기</button>}
-                {j.paused && <button className="btn" type="button" onClick={() => void act("continue", "이어서 진행합니다", { title: "이어 하시겠습니까?", body: "멈춘 단계부터 다시 시작합니다.", confirmLabel: "이어 하기" })}>이어 하기</button>}
-                {cancelable && <button className="btn btn-out" type="button" onClick={() => void act("cancel", "자동 연결을 취소했습니다", { title: "자동 연결을 취소하시겠습니까?", body: j.status === "QUEUED" ? "아직 연결을 시작하지 않았습니다. 취소한 뒤 환불을 요청할 수 있습니다." : "진행을 멈추고 지금까지 바꾼 설정을 되돌립니다. 설정을 시작한 뒤라 환불되지 않습니다 · 결제 전에 동의하신 내용입니다.", confirmLabel: "그만두기", danger: true })}>자동 설정 그만두기</button>}
+                {pausable && <button className="btn btn-out btn-level-secondary" type="button" onClick={() => void act("pause", "잠시 멈췄습니다", { title: "잠시 멈추시겠습니까?", body: "지금 단계에서 멈춰 둡니다. 이어 하면 멈춘 단계부터 다시 시작합니다.", confirmLabel: "잠시 멈추기" })}>잠시 멈추기</button>}
+                {j.paused && <button className="btn btn-level-primary" type="button" onClick={() => void act("continue", "이어서 진행합니다", { title: "이어 하시겠습니까?", body: "멈춘 단계부터 다시 시작합니다.", confirmLabel: "이어 하기" })}>이어 하기</button>}
+                {cancelable && <button className="btn btn-out btn-level-secondary" type="button" onClick={() => void act("cancel", "자동 연결을 취소했습니다", { title: "자동 연결을 취소하시겠습니까?", body: j.status === "QUEUED" ? "아직 연결을 시작하지 않았습니다. 취소한 뒤 환불을 요청할 수 있습니다." : "진행을 멈추고 지금까지 바꾼 설정을 되돌립니다. 설정을 시작한 뒤라 환불되지 않습니다 · 결제 전에 동의하신 내용입니다.", confirmLabel: "그만두기", danger: true })}>자동 설정 그만두기</button>}
               </>
             )
           }

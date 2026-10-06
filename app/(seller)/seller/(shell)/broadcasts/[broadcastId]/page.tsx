@@ -138,21 +138,21 @@ export default function BroadcastDetailPage() {
           title="방송 상세"
           actions={
             <>
-              <Link className="btn btn-out" href="/seller/broadcasts">
+              <Link className="btn btn-out btn-level-secondary" href="/seller/broadcasts">
                 목록
               </Link>
               {b?.status === "live" && (
-                <Link className="btn" href="/seller/broadcast">
+                <Link className="btn btn-level-primary" href="/seller/broadcast">
                   방송 대시보드로
                 </Link>
               )}
               {b && (
                 b.status === "live" ? (
-                  <button className="btn" type="button" disabled title="방송이 끝난 뒤에 내보낼 수 있습니다">
+                  <button className="btn btn-level-primary" type="button" disabled title="방송이 끝난 뒤에 내보낼 수 있습니다">
                     리포트 내보내기
                   </button>
                 ) : (
-                  <a className="btn" href={`/api/seller/broadcast/${encodeURIComponent(b.id)}/report`} data-testid="bd-report">
+                  <a className="btn btn-level-primary" href={`/api/seller/broadcast/${encodeURIComponent(b.id)}/report`} data-testid="bd-report">
                     리포트 내보내기
                   </a>
                 )

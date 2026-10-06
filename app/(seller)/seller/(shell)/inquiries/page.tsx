@@ -69,7 +69,7 @@ export default function InquiriesPage() {
           actions={
             <>
               {page && page.newReplyCount > 0 && <span className="bdg b-pending nodot">답변 {page.newReplyCount}</span>}
-              <Link className="btn" href="/seller/inquiries/new">
+              <Link className="btn btn-level-primary" href="/seller/inquiries/new">
                 문의하기
               </Link>
             </>

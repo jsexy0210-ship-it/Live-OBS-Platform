@@ -128,7 +128,7 @@ export function StatsFrame({ title, heading, sub, period, setPeriod, onDownload,
     <>
       <Topbar crumb={`통계 › ${title}`} />
       <main className="main">
-        <PageHead description={sub} title={heading ?? `통계 · ${title}`} actions={download ?? (onDownload && <button className="btn btn-out" type="button" onClick={onDownload}>엑셀 파일로 받기</button>)} />
+        <PageHead description={sub} title={heading ?? `통계 · ${title}`} actions={download ?? (onDownload && <button className="btn btn-out btn-level-secondary" type="button" onClick={onDownload}>엑셀 파일로 받기</button>)} />
         <nav className="tabs sts-tabs" aria-label="통계 종류">
           {STATS_TABS.filter((t) => planAllows(me.features, t.plan)).map((t) => (
             <Link key={t.href} href={t.href} className={`tab${(t.href === "/seller/stats" ? pathname === t.href : pathname.startsWith(t.href)) ? " on" : ""}`}>

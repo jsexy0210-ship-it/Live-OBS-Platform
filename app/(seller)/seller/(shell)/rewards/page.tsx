@@ -211,7 +211,7 @@ export default function RewardPolicyPage() {
         <PageHead description="적립금의 지급 시점과 회수, 사용 조건을 설정합니다."
           title="적립 정책"
           actions={
-            <Link className="btn btn-out" href="/seller/member-grades">
+            <Link className="btn btn-out btn-level-secondary" href="/seller/member-grades">
               회원 등급
             </Link>
           }

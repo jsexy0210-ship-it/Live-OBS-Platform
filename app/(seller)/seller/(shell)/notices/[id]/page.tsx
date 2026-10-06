@@ -44,7 +44,7 @@ export default function NoticeDetailPage() {
           back="/seller/notices"
           title="공지 상세"
           actions={
-            <Link className="btn btn-out" href="/seller/notices">
+            <Link className="btn btn-out btn-level-secondary" href="/seller/notices">
               목록
             </Link>
           }

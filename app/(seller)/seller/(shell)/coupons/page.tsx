@@ -229,7 +229,7 @@ export default function CouponsPage() {
           title="쿠폰"
           back={false}
           actions={
-            <Link className="btn btn-out" href="/seller/rewards">
+            <Link className="btn btn-out btn-level-secondary" href="/seller/rewards">
               적립 정책
             </Link>
           }
@@ -316,10 +316,10 @@ export default function CouponsPage() {
                 actions={
                   editable && (
                     <>
-                      <button className="btn btn-sm btn-out" type="button" disabled={busy || !shown.some((c) => picked.includes(c.id) && c.isActive)} onClick={() => setBulkStopping(true)}>
+                      <button className="btn btn-sm btn-out btn-level-bulk" type="button" disabled={busy || !shown.some((c) => picked.includes(c.id) && c.isActive)} onClick={() => setBulkStopping(true)}>
                         선택 발급 중지
                       </button>
-                      <button className="btn btn-sm" type="button" onClick={() => setDraft(emptyDraft())}>
+                      <button className="btn btn-sm btn-level-bulk" type="button" onClick={() => setDraft(emptyDraft())}>
                         쿠폰 만들기
                       </button>
                     </>

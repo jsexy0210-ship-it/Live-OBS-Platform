@@ -581,7 +581,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
           description="상품의 정보와 이미지, 가격과 재고, 판매 상태를 설정합니다."
           actions={
             <>
-              <SmartBackButton fallback="/seller/products" className="btn btn-sm btn-out" dirty={dirtyNow && !leaving}>
+              <SmartBackButton fallback="/seller/products" className="btn btn-sm btn-out btn-level-secondary" dirty={dirtyNow && !leaving}>
                 취소
               </SmartBackButton>
               {saveButtons(false)}

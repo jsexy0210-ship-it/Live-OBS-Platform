@@ -118,7 +118,7 @@ export default function YoutubePage() {
           actions={
             allowed &&
             data?.channel && (
-              <button className="btn btn-out" type="button" disabled={busy} onClick={() => setConfirm("channel")}>
+              <button className="btn btn-out btn-level-secondary" type="button" disabled={busy} onClick={() => setConfirm("channel")}>
                 유튜브 이어 둔 것 풀기
               </button>
             )

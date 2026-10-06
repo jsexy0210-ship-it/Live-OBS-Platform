@@ -49,7 +49,7 @@ export default function NotificationsPage() {
         <PageHead description="주문과 쇼핑몰 운영에서 확인할 알림을 모아 봅니다."
           title="알림"
           actions={
-            <Link className="btn btn-out" href="/seller/notices">
+            <Link className="btn btn-out btn-level-secondary" href="/seller/notices">
               공지 · 문의
             </Link>
           }

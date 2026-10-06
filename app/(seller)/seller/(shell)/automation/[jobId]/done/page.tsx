@@ -44,7 +44,7 @@ export default function AutomationDonePage() {
       <main className="main">
         <PageHead description="완료된 연결 내용과 방송 전 확인할 사항을 확인합니다."
           title="자동 연결 완료"
-          actions={<Link className="btn" href="/seller/broadcast">방송 대시보드로</Link>}
+          actions={<Link className="btn btn-level-primary" href="/seller/broadcast">방송 대시보드로</Link>}
         />
         {!done ? (
           <div className="msg msg-cau" role="status" data-testid="done-not-yet">

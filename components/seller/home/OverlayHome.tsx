@@ -60,12 +60,12 @@ export function OverlayHome() {
         actions={
           <>
             {run && (
-              <Link className="btn btn-out" href="/seller/broadcast">
+              <Link className="btn btn-out btn-level-secondary" href="/seller/broadcast">
                 방송 대시보드
               </Link>
             )}
             {can("OVERLAY_EDIT") && (
-              <Link className="btn btn-out" href="/seller/overlay">
+              <Link className="btn btn-out btn-level-secondary" href="/seller/overlay">
                 방송 화면 꾸미기
               </Link>
             )}

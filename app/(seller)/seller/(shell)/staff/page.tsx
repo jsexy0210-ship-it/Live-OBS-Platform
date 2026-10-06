@@ -108,7 +108,7 @@ export default function StaffPage() {
           description={<>직원 계정을 직접 만들고, 직원이 할 수 있는 업무를 정합니다. 직원은 파트너스 로그인으로 들어와 허용된 메뉴만 씁니다.</>}
           actions={<>{me.isOwner && state.kind === "ok" && (
             <button
-              className="btn"
+              className="btn btn-level-primary"
               type="button"
               onClick={() => {
                 const f = document.getElementById("sa-name");

@@ -61,7 +61,7 @@ export default function NoticesPage() {
           actions={
             <>
               {state.kind === "ok" && state.unread > 0 && <span className="bdg b-info nodot">새 글 {state.unread}</span>}
-              <Link className="btn btn-out" href="/seller/inquiries">
+              <Link className="btn btn-out btn-level-secondary" href="/seller/inquiries">
                 내 문의
               </Link>
             </>

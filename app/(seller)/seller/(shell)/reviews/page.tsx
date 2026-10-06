@@ -1,6 +1,6 @@
 "use client";
 
-import { PageHead } from "../../../../../components/admin-ui";
+import { PageHead, ListHead, ListTable } from "../../../../../components/admin-ui";
 
 import { useCallback, useEffect, useState } from "react";
 import { Topbar } from "../../../../../components/seller/SellerShell";
@@ -152,7 +152,7 @@ export default function ReviewsPage() {
           title={<>리뷰 관리</>}
           description={<>구매자 상품 리뷰 확인 · 답글 · 숨김 · 신고 처리 · 리뷰 적립금 · 작성 조건 설정</>}
           actions={<>{data && (
-            <button className="btn btn-out" type="button" onClick={() => setSettings(true)}>
+            <button className="btn btn-out btn-level-secondary" type="button" onClick={() => setSettings(true)}>
               리뷰 설정
             </button>
           )}</>}
@@ -186,7 +186,7 @@ export default function ReviewsPage() {
             </div>
           </section>
         )}
-        <section className="card" style={{ overflow: "hidden" }}>
+        <section className="au-list-section" >
           {state.kind === "loading" && <StateBox kind="loading" what="리뷰" />}
           {state.kind === "error" && <StateBox kind={stateKind(state.status, state.error)} what="리뷰" onRetry={() => void load()} />}
           {data && (
@@ -212,7 +212,9 @@ export default function ReviewsPage() {
                   <span className="s">배송 완료 뒤 구매자가 리뷰를 쓸 수 있습니다 · 리뷰 적립금을 켜면 작성률이 올라갑니다</span>
                 </div>
               ) : (
-                <div role="list">
+                <>
+<ListHead total={rows.length} loaded />
+<ListTable><div role="list">
                   {rows.map((r) => (
                     <div key={r.id} className="rv-row" role="listitem" tabIndex={0} data-testid="review-row" onClick={() => setOpenId(r.id)} onKeyDown={(e) => e.key === "Enter" && setOpenId(r.id)}>
                       <span className="col" style={{ gap: 2, minWidth: 0 }}>
@@ -240,7 +242,8 @@ export default function ReviewsPage() {
                       <span className="t-c1 c-alt">{r.replied ? "답글 보기" : "답글"}</span>
                     </div>
                   ))}
-                </div>
+                </div></ListTable>
+</>
               )}
               {cursor && (
                 <div style={{ padding: 12 }}>

@@ -91,15 +91,15 @@ export default function ProductPreviewPage() {
           actions={
             p && (
               <>
-                <Link className="btn btn-out" href={`/seller/products/${productId}`}>
+                <Link className="btn btn-out btn-level-secondary" href={`/seller/products/${productId}`}>
                   상품 수정
                 </Link>
                 {hidden ? (
-                  <button className="btn" type="button" disabled>
+                  <button className="btn btn-level-primary" type="button" disabled>
                     쇼핑몰에서 열기
                   </button>
                 ) : (
-                  <a className="btn" href={`/shop/${me.shop.slug}/products/${productId}`} target="_blank" rel="noreferrer">
+                  <a className="btn btn-level-primary" href={`/shop/${me.shop.slug}/products/${productId}`} target="_blank" rel="noreferrer">
                     쇼핑몰에서 열기
                   </a>
                 )}

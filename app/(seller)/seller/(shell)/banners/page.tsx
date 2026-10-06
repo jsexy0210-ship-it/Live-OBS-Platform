@@ -175,11 +175,11 @@ export default function BannersPage() {
           title="홈 배너"
           actions={
             <>
-              <a className="btn btn-out" href={`/shop/${encodeURIComponent(me.shop.slug)}`} target="_blank" rel="noopener noreferrer">
+              <a className="btn btn-out btn-level-secondary" href={`/shop/${encodeURIComponent(me.shop.slug)}`} target="_blank" rel="noopener noreferrer">
                 쇼핑몰 홈 보기
               </a>
               {state.kind === "ok" && editable && (
-                <button className="btn" type="button" disabled={list.length >= LIMIT} onClick={() => setDraft(empty)}>
+                <button className="btn btn-level-primary" type="button" disabled={list.length >= LIMIT} onClick={() => setDraft(empty)}>
                   배너 추가
                 </button>
               )}

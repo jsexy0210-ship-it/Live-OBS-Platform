@@ -288,16 +288,16 @@ export default function SubscriptionPage() {
           description={<>이용권과 결제 수단을 관리하고 청구 내역을 확인합니다.</>}
           actions={<>{view && (
             <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-              <a className="btn btn-out" href="/pricing">
+              <a className="btn btn-out btn-level-secondary" href="/pricing">
                 요금 안내
               </a>
               {plans.length > 0 && (
-                <button className="btn btn-out" type="button" aria-expanded={showPlans} onClick={() => setShowPlans((v) => !v)}>
+                <button className="btn btn-out btn-level-secondary" type="button" aria-expanded={showPlans} onClick={() => setShowPlans((v) => !v)}>
                   이용권 바꾸기
                 </button>
               )}
               {live && (
-                <button className="btn btn-out" type="button" onClick={() => setConfirm({ kind: "cancel" })} disabled={busy}>
+                <button className="btn btn-out btn-level-secondary" type="button" onClick={() => setConfirm({ kind: "cancel" })} disabled={busy}>
                   구독 해지
                 </button>
               )}

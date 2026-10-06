@@ -133,11 +133,11 @@ export default function InquiryDetailPage() {
           actions={
             inq && (
               <>
-                <Link className="btn btn-out" href="/seller/inquiries">
+                <Link className="btn btn-out btn-level-secondary" href="/seller/inquiries">
                   목록
                 </Link>
                 {inq.canClose && (
-                  <button className="btn btn-out" type="button" onClick={() => void close()}>
+                  <button className="btn btn-out btn-level-secondary" type="button" onClick={() => void close()}>
                     문의 종료
                   </button>
                 )}

@@ -148,10 +148,10 @@ export default function MemberGradesPage() {
           actions={
             data && canEdit ? (
               <>
-                <button className="btn btn-out" type="button" disabled={busy} onClick={() => setConfirm("recalc")}>
+                <button className="btn btn-out btn-level-secondary" type="button" disabled={busy} onClick={() => setConfirm("recalc")}>
                   지금 재산정
                 </button>
-                <button className="btn" type="button" disabled={busy} onClick={save}>
+                <button className="btn btn-level-primary" type="button" disabled={busy} onClick={save}>
                   {busy ? "저장 중" : "저장"}
                 </button>
               </>

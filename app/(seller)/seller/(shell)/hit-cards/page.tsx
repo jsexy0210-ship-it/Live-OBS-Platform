@@ -118,7 +118,7 @@ export default function HitCardsPage() {
           path={["방송", "HIT 카드 기록"]}
           actions={
             allowed && (
-              <button className="btn" type="button" onClick={() => setModal({ kind: "add" })}>
+              <button className="btn btn-level-primary" type="button" onClick={() => setModal({ kind: "add" })}>
                 HIT 카드 기록하기
               </button>
             )
