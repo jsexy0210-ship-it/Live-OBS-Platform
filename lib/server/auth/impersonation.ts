@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient, Seller } from "@prisma/client";
+import type { ImpersonationCategory, ImpersonationRelatedKind, ImpersonationScope, Prisma, PrismaClient, Seller } from "@prisma/client";
 import { policyValue } from "../admin/platformPolicy";
 import { writeAudit } from "../audit/log";
 import { forbidden, notFound } from "../authz/errors";
@@ -18,6 +18,15 @@ export const IMPERSONATION_COOKIE = "lo_imp";
 export const IMPERSONATION_PREFIX = "imp.";
 export const IMPERSONATION_TTL_MS = 30 * 60_000;
 export const REASON_MAX = 200;
+// 접근 사유 분류·관련 건·열람 범위·세션 시간(MA-016). 분류가 문의 대응·장애 확인이면 같은 쇼핑몰의 관련 건이 필수다.
+export const IMPERSONATION_CATEGORIES = ["INQUIRY", "INCIDENT", "FINANCE_CHECK", "AUDIT"] as const satisfies readonly ImpersonationCategory[];
+export const IMPERSONATION_RELATED_KINDS = ["INQUIRY", "NOTIFICATION", "REPORT"] as const satisfies readonly ImpersonationRelatedKind[];
+export const IMPERSONATION_SCOPES = ["BROADCAST", "OVERLAY", "ORDERS", "MEMBERS", "SETTINGS_PG"] as const satisfies readonly ImpersonationScope[];
+export const IMPERSONATION_DURATIONS = [15, 30, 60] as const;
+// 60분은 최고관리자만
+export const IMPERSONATION_LONG_MINUTES = 60;
+// 범위를 받지 않은 이전 방식 요청의 기본 범위(그때 열려 있던 화면). 화면이 새 입력을 보내면 쓰이지 않는다.
+export const IMPERSONATION_LEGACY_SCOPES: readonly ImpersonationScope[] = ["ORDERS", "MEMBERS"];
 // 대리 조회로 열리는 파트너스 API(조회 권한 표 IMPERSONATION_READ_ACTIONS와 맞춘다). 이 밖은 proxy가 403으로 막는다.
 export const IMPERSONATION_API_PREFIXES = ["/api/seller/orders", "/api/seller/members", "/api/seller/products", "/api/seller/stats", "/api/seller/impersonation"] as const;
 // 파트너스 화면 틀(SellerShell)이 처음에 읽는 내 정보. 하위 경로(/me/password 등)는 열지 않는 정확 일치만 허용한다.
@@ -39,7 +48,25 @@ export function impersonationRequestAllowed(method: string, pathname: string): b
 }
 
 type Meta = { ip?: string | null; userAgent?: string | null };
-export type ImpersonationRejection = "reason_required" | "seller_not_viewable";
+export type ImpersonationRejection =
+  | "reason_required"
+  | "seller_not_viewable"
+  | "category_invalid"
+  | "related_required"
+  | "related_invalid"
+  | "scopes_required"
+  | "duration_invalid"
+  | "duration_not_allowed";
+export type ImpersonationInput = { category?: unknown; relatedKind?: unknown; relatedId?: unknown; scopes?: unknown; durationMinutes?: unknown };
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const oneOf = <T extends string>(list: readonly T[], v: unknown): v is T => typeof v === "string" && (list as readonly string[]).includes(v);
+
+// 관련 건이 이 쇼핑몰 것인지(다른 쇼핑몰 건은 존재 여부도 알리지 않고 related_invalid)
+async function relatedBelongs(db: PrismaClient, kind: ImpersonationRelatedKind, id: string, sellerId: string): Promise<boolean> {
+  if (kind === "INQUIRY") return !!(await db.platformInquiry.findFirst({ where: { id, sellerId }, select: { id: true } }));
+  if (kind === "NOTIFICATION") return !!(await db.adminAlert.findFirst({ where: { id, sellerId }, select: { id: true } }));
+  return !!(await db.productReviewReport.findFirst({ where: { id, sellerId }, select: { id: true } }));
+}
 
 type EndCause = "manual" | "replaced" | "expired";
 type Db = PrismaClient | Prisma.TransactionClient;
@@ -66,25 +93,64 @@ async function closeSessions(db: Db, where: Prisma.AdminImpersonationSessionWher
   return ended;
 }
 
-export async function startImpersonation(db: PrismaClient, admin: AdminSessionContext, sellerId: string, rawReason: unknown, meta: Meta = {}, now = new Date()) {
+export async function startImpersonation(db: PrismaClient, admin: AdminSessionContext, sellerId: string, rawReason: unknown, meta: Meta = {}, now = new Date(), input: ImpersonationInput = {}) {
   if (!adminCan(admin.admin.role, "seller.impersonate")) throw forbidden();
   const reason = cleanText(rawReason, REASON_MAX, "memo");
   if (!reason) return { ok: false as const, reason: "reason_required" as const };
   const seller = await db.seller.findUnique({ where: { id: sellerId }, select: { id: true, shopName: true, slug: true, status: true } });
   if (!seller) throw notFound();
   if (seller.status !== "ACTIVE" && seller.status !== "SUSPENDED") return { ok: false as const, reason: "seller_not_viewable" as const };
+  // 분류·관련 건·범위·시간(MA-016). 아무것도 보내지 않은 이전 방식 요청은 이전 범위·기본 시간으로 연다(화면이 새 입력을 보내면 모두 검사한다).
+  let category: ImpersonationCategory | null = null;
+  let relatedKind: ImpersonationRelatedKind | null = null;
+  let relatedId: string | null = null;
+  if (input.category !== undefined) {
+    if (!oneOf(IMPERSONATION_CATEGORIES, input.category)) return { ok: false as const, reason: "category_invalid" as const };
+    category = input.category;
+    const needsRelated = category === "INQUIRY" || category === "INCIDENT";
+    if (input.relatedKind !== undefined || input.relatedId !== undefined) {
+      if (!oneOf(IMPERSONATION_RELATED_KINDS, input.relatedKind) || typeof input.relatedId !== "string" || !UUID.test(input.relatedId)) return { ok: false as const, reason: "related_invalid" as const };
+      if (!(await relatedBelongs(db, input.relatedKind, input.relatedId, sellerId))) return { ok: false as const, reason: "related_invalid" as const };
+      relatedKind = input.relatedKind;
+      relatedId = input.relatedId;
+    } else if (needsRelated) {
+      return { ok: false as const, reason: "related_required" as const };
+    }
+  }
+  let scopes: ImpersonationScope[] = [...IMPERSONATION_LEGACY_SCOPES];
+  if (input.scopes !== undefined) {
+    if (!Array.isArray(input.scopes) || input.scopes.length === 0 || !input.scopes.every((x) => oneOf(IMPERSONATION_SCOPES, x))) return { ok: false as const, reason: "scopes_required" as const };
+    scopes = [...new Set(input.scopes as ImpersonationScope[])];
+  }
+  // 대신 보기 기본 세션 길이는 플랫폼 기본 정책(MA-081, 기본 30분, 최대 60분)이다. 화면이 15·30·60분을 고르면 그 값(60분은 최고관리자만).
+  let minutes = await policyValue(db, "impersonationMinutes");
+  if (input.durationMinutes !== undefined) {
+    if (typeof input.durationMinutes !== "number" || !(IMPERSONATION_DURATIONS as readonly number[]).includes(input.durationMinutes)) return { ok: false as const, reason: "duration_invalid" as const };
+    if (input.durationMinutes === IMPERSONATION_LONG_MINUTES && admin.admin.role !== "SUPER_ADMIN") return { ok: false as const, reason: "duration_not_allowed" as const };
+    minutes = input.durationMinutes;
+  }
   const token = IMPERSONATION_PREFIX + generateToken();
-  // 대신 보기 기본 세션 길이는 플랫폼 기본 정책(MA-081, 기본 30분, 최대 60분)이다.
-  const expiresAt = new Date(now.getTime() + (await policyValue(db, "impersonationMinutes")) * 60_000);
+  const expiresAt = new Date(now.getTime() + minutes * 60_000);
   await db.$transaction(async (tx) => {
     await closeSessions(tx, { adminId: admin.admin.id, expiresAt: { lte: now } }, "expired", now);
     await closeSessions(tx, { adminId: admin.admin.id }, "replaced", now);
     await tx.adminImpersonationSession.create({
-      data: { adminId: admin.admin.id, sellerId, tokenHash: hashToken(token), reason, ip: meta.ip ?? null, userAgent: meta.userAgent ?? null, expiresAt, createdAt: now },
+      data: { adminId: admin.admin.id, sellerId, tokenHash: hashToken(token), reason, ip: meta.ip ?? null, userAgent: meta.userAgent ?? null, expiresAt, createdAt: now, category, relatedKind, relatedId, scopes },
     });
-    await writeAudit(tx, { actorType: "PLATFORM_ADMIN", actorId: admin.admin.id, sellerId, action: "admin.impersonate.view", targetType: "Seller", targetId: sellerId, reason, ip: meta.ip, userAgent: meta.userAgent });
+    await writeAudit(tx, {
+      actorType: "PLATFORM_ADMIN",
+      actorId: admin.admin.id,
+      sellerId,
+      action: "admin.impersonate.view",
+      targetType: "Seller",
+      targetId: sellerId,
+      reason,
+      after: { category, relatedKind, relatedId, scopes, minutes },
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
   });
-  return { ok: true as const, token, expiresAt, seller: { id: seller.id, shopName: seller.shopName, slug: seller.slug } };
+  return { ok: true as const, token, expiresAt, scopes, seller: { id: seller.id, shopName: seller.shopName, slug: seller.slug } };
 }
 
 // 이 관리자에게 열린 대리 조회를 모두 끝낸다(쿠키가 /api/seller로만 가서 관리자 쪽은 쿠키 없이 관리자 신원으로 끝낸다)
@@ -104,10 +170,21 @@ export async function activeImpersonation(db: PrismaClient, admin: AdminSessionC
   });
   if (!s) return null;
   const seller = await db.seller.findUnique({ where: { id: s.sellerId }, select: { id: true, shopName: true, slug: true } });
-  return { sellerId: s.sellerId, shopName: seller?.shopName ?? null, slug: seller?.slug ?? null, reason: s.reason, startedAt: s.createdAt, expiresAt: s.expiresAt };
+  return {
+    sellerId: s.sellerId,
+    shopName: seller?.shopName ?? null,
+    slug: seller?.slug ?? null,
+    reason: s.reason,
+    category: s.category,
+    relatedKind: s.relatedKind,
+    relatedId: s.relatedId,
+    scopes: s.scopes,
+    startedAt: s.createdAt,
+    expiresAt: s.expiresAt,
+  };
 }
 
-export type ImpersonationContext = { sessionId: string; adminId: string; adminName: string; seller: Seller; reason: string; startedAt: Date; expiresAt: Date };
+export type ImpersonationContext = { sessionId: string; adminId: string; adminName: string; seller: Seller; reason: string; scopes: readonly ImpersonationScope[]; startedAt: Date; expiresAt: Date };
 
 // 파트너스 가드가 쓴다. 끝났거나 만료됐거나, 관리자가 정지·권한 상실이거나, 쇼핑몰이 운영·정지가 아니면 null(401).
 export async function resolveImpersonation(db: PrismaClient, token: string | undefined, now = new Date()): Promise<ImpersonationContext | null> {
@@ -121,5 +198,5 @@ export async function resolveImpersonation(db: PrismaClient, token: string | und
   const [admin, seller] = await Promise.all([db.platformAdmin.findUnique({ where: { id: s.adminId } }), db.seller.findUnique({ where: { id: s.sellerId } })]);
   if (!admin || admin.status !== "ACTIVE" || !adminCan(admin.role, "seller.impersonate")) return null;
   if (!seller || (seller.status !== "ACTIVE" && seller.status !== "SUSPENDED")) return null;
-  return { sessionId: s.id, adminId: admin.id, adminName: admin.name, seller, reason: s.reason, startedAt: s.createdAt, expiresAt: s.expiresAt };
+  return { sessionId: s.id, adminId: admin.id, adminName: admin.name, seller, reason: s.reason, scopes: s.scopes, startedAt: s.createdAt, expiresAt: s.expiresAt };
 }
