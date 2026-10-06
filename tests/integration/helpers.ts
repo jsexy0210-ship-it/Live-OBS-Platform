@@ -265,3 +265,24 @@ export function failingAudit(target: PrismaClient, action: string): PrismaClient
     },
   }) as PrismaClient;
 }
+
+// SA-005 상위 변경 게이트(오버레이 전용 → 통합)를 통과하는 사업자·정산 정보(필수 6개 + 계속사업자 조회 결과). 시험에서 플랜 변경 전에 쓴다.
+export async function completeIntegrationProfile(sellerId: string, over: Record<string, unknown> = {}) {
+  const data = {
+    companyName: "별빛카드",
+    representativeName: "김대표",
+    businessNumber: "1234567891",
+    businessAddress: "서울시 강남구 1",
+    bankName: "국민은행",
+    accountCipher: "test-cipher",
+    accountLast4: "7890",
+    accountHolder: "김대표",
+    checkBusinessNumber: "1234567891",
+    checkRepresentativeName: "김대표",
+    checkStatus: "ACTIVE",
+    checkValid: true,
+    checkedAt: new Date(),
+    ...over,
+  };
+  return db.sellerIntegrationProfile.upsert({ where: { sellerId }, create: { sellerId, ...data }, update: data });
+}

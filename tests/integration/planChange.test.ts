@@ -11,7 +11,7 @@ import { sealBillingKey } from "../../lib/server/billing/secret";
 import { cancelSubscription, getSubscriptionView, reconcileStalePayments, registerCardAndPay, renewDueSubscriptions } from "../../lib/server/billing/subscription";
 import { prisma } from "../../lib/server/db";
 import type { TenantContext } from "../../lib/server/tenant/context";
-import { PASSWORD, createAdmin, createSeller, createSellerUser, db, resetDb, seedPlans } from "./helpers";
+import { PASSWORD, completeIntegrationProfile, createAdmin, createSeller, createSellerUser, db, resetDb, seedPlans } from "./helpers";
 
 // ONQ 1-C-2 플랜 변경(ONQ_PLAN E1-B, ARCHITECTURE 4.8.0 결제 규칙). 실제 PG 없이 가짜 공급자로 확인한다.
 beforeAll(() => {
@@ -43,8 +43,10 @@ const declining = () =>
 
 type PlanKey = "OVERLAY_ONLY" | "INTEGRATED";
 // 판매자(플랜)와 구독 상태. sub가 없으면 구독 행 없음.
-async function shop(plan: PlanKey, trialEndsAt: Date | null, sub?: Record<string, unknown>) {
+async function shop(plan: PlanKey, trialEndsAt: Date | null, sub?: Record<string, unknown>, opts: { profile?: boolean } = {}) {
   const { seller } = await createSeller();
+  // 오버레이 전용 → 통합은 사업자·정산 정보와 사업자 조회가 있어야 열린다(SA-005). 게이트 시험만 profile:false로 뺀다
+  if (opts.profile !== false) await completeIntegrationProfile(seller.id);
   await db.seller.update({ where: { id: seller.id }, data: { trialEndsAt, planId: plans[plan].id } });
   const owner = await createSellerUser(seller.id, "OWNER");
   const ctx: TenantContext = { sellerId: seller.id, actorType: "SELLER_USER", actorId: owner.id, isOwner: true, permissions: [], readOnly: false };
