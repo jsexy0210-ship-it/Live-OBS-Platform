@@ -13,6 +13,8 @@
 | 화면 대조 전담 SA | `session_011eEtULwRG1eJZdP465534M` | 2026-10-06 14:26 KST MASTER (4) 생성(Sonnet 5.5). 파트너스 관리자 영역, 범위 위와 같음 |
 | 화면 대조 전담 SH | `session_019MNTyjhUfgz2oBzRSQGLv8` | 2026-10-06 14:26 KST MASTER (4) 생성(Sonnet 5.5). 구매자 쇼핑몰 영역(SH-011 제외), 범위 위와 같음 |
 | 화면 대조 전담 PF·AU | `session_01RGWdBCch9pvauA8agUbdet` | 2026-10-06 14:26 KST MASTER (4) 생성(Sonnet 5.5). 공개·인증 영역, 범위 위와 같음 |
+| 화면 대조 전담 SA-2 | `session_01S2hvfLhwULe5KC9P444WR2` | 2026-10-06 14:40 KST MASTER (4) 생성(Sonnet 5.5). 파트너스 설정 화면 SA-061·062·063·067·068·080·081·090·100(화면-설정 (4)에서 인수) |
+| 개발 전담 (기반-주문·배송) | `session_01Na3y6y8gvoz7DZb93nV1Ah` | 2026-10-06 14:32 KST MASTER (4) 생성(Sonnet 5.5). 서버 전담. 큐: SA-023 서버 보완 → SA-024 발행 완료 처리·방식·필터·합계·내려받기 → SA-027·028 송장 모의 발급·출력·추적(실제 택배사 연동·과금은 대표님 승인 전 금지) |
 | 검수 전담 (9) | `session_01Jc3uUUzghsYvaLRuzqBeM9` | (교체됨 → `session_01RwaCLVjHMTGQwWTR9QDdHW`, 2026-10-06) 2026-10-06 10:09 KST MASTER 생성(Sonnet 5.5). (8)을 컨텍스트 53%로 교체(증가 속도 빠름). 컨텍스트 절약 지침 강화. 역할·소유는 전임 행과 같음 |
 | 검수 전담 (8) | `session_01R5GCoaquPEMsXCjqtr2tNd` | (교체됨 → `session_01Jc3uUUzghsYvaLRuzqBeM9`, 2026-10-06) 2026-10-06 09:26 KST MASTER 생성(Sonnet 5.5). (7)을 컨텍스트 58%로 교체. CI 반복 조회 대신 CI 끝난 PR을 모아 병합. 역할·소유는 전임 행과 같음 |
 | 검수 전담 (7) | `session_012afgA2RqbUUEXVYD6PFi7e` | (교체됨 → `session_01R5GCoaquPEMsXCjqtr2tNd`, 2026-10-06) 2026-10-06 07:37 KST MASTER 생성(Sonnet 5.5). (6)을 컨텍스트 66%로 교체. 컨텍스트 절약 지침(파일 목록·위험 hunk만, 디자인 PR은 CI 통과 시 바로 병합) 포함. 역할·소유는 전임 행과 같음 |
