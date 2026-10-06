@@ -179,6 +179,9 @@ model Seller {
   auditLogs                AuditLog[]
   shopBanners              ShopBanner[]
   shopPopups               ShopPopup[]
+  // 「모든 팝업 잠시 끄기」(SA-065): 끈 시각과 끈 직원. null이면 켜짐.
+  popupsPausedAt           DateTime?    @db.Timestamptz(3)
+  popupsPausedById         String?      @db.Uuid
   shopContentImages        ShopContentImage[]
   coupons                  Coupon[]
   buyerCoupons             BuyerCoupon[]
@@ -738,9 +741,20 @@ model StockMovement {
 // 이미지는 대표님 저장 방식 결정 전이라 비용 없는 A안(DB bytea). 형식·크기·해시 CHECK는 마이그레이션 SQL.
 // 배너·팝업은 (sellerId, 이미지 id) 복합 외래키로 같은 쇼핑몰 이미지만 가리킨다.
 
+// 노출 페이지(SA-065, 단일 선택). HOME=홈, ALL=모든 구매자 화면, PRODUCT=상품 상세, CART_ORDER=장바구니·주문서, SIGNUP_DONE=회원가입 완료.
 enum ShopPopupTarget {
   HOME
   ALL
+  PRODUCT
+  CART_ORDER
+  SIGNUP_DONE
+}
+
+// 이미지·글 팝업 위치. 상단 띠(BAR)는 항상 맨 위라 이 값을 쓰지 않는다.
+enum ShopPopupPosition {
+  CENTER
+  BOTTOM_SHEET
+  BOTTOM_RIGHT
 }
 
 // IMAGE=이미지 팝업(가운데), TEXT=글 팝업(가운데), BAR=상단 띠(화면 맨 위 한 줄)
@@ -817,13 +831,31 @@ model ShopPopup {
   dismissDays  Int             @default(1)
   isActive     Boolean         @default(true)
   sortOrder    Int             @default(0)
+  position     ShopPopupPosition @default(CENTER)
+  // 방송이 시작되면 끝낸다(기준: 시작 시각, 없으면 만든 시각 이후 처음 시작한 방송). 방송 중에는 띄우지 않음(hideDuringLive).
+  endsAtBroadcastStart Boolean  @default(false)
+  hideDuringLive       Boolean  @default(false)
   createdAt    DateTime        @default(now()) @db.Timestamptz(3)
   updatedAt    DateTime        @default(now()) @updatedAt @db.Timestamptz(3)
 
   seller Seller            @relation(fields: [sellerId], references: [id])
   image  ShopContentImage? @relation(fields: [sellerId, imageId], references: [sellerId, id], onDelete: Restrict)
+  stats  ShopPopupStat[]
 
   @@index([sellerId, sortOrder])
+}
+
+// 팝업 노출·반응 집계(SA-065, 외부 서비스 없이 자체 기록). 팝업·일(KST) 단위 한 줄에 합산해 저장량이 늘지 않는다.
+model ShopPopupStat {
+  popupId     String   @db.Uuid
+  day         DateTime @db.Date
+  impressions Int      @default(0)
+  closes      Int      @default(0)
+  clicks      Int      @default(0)
+
+  popup ShopPopup @relation(fields: [popupId], references: [id], onDelete: Cascade)
+
+  @@id([popupId, day])
 }
 
 // ───────────── 쿠폰 (SA-035 쿠폰 관리 · SH-028 내 쿠폰함, 2026-10-04 대표님 확정 11건 중 1) ─────────────
