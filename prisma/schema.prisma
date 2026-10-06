@@ -1540,10 +1540,30 @@ model OverlayToken {
   revokedAt  DateTime? @db.Timestamptz(3)
   // 오버레이 주소로 마지막 접속한 시각(1분에 한 번만 갱신, 마스터 관리자 운영 현황 MA-041·042)
   lastSeenAt DateTime? @db.Timestamptz(3)
+  // 발급·재발급한 사람(SA-052 재발급 이력, 발급 때 스냅숏 「쇼핑몰 이름 · 직원 이름」). 이 기록 전 토큰은 null.
+  issuedByName String?
 
-  seller Seller @relation(fields: [sellerId], references: [id])
+  seller   Seller          @relation(fields: [sellerId], references: [id])
+  accesses OverlayAccess[]
 
   @@index([sellerId])
+}
+
+// 방송 화면 주소 접속 기록(SA-052). 화면을 열 때(레이아웃 요청) 한 줄, 같은 접속 환경·레이아웃이 10분 안에 다시 열면 새로 남기지 않는다.
+// 사용자 에이전트 원문은 저장하지 않고 읽기 쉬운 이름(「OBS 30.1 · Windows」)만 남긴다. 판매자당 최근 100건만 보관.
+model OverlayAccess {
+  id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId String   @db.Uuid
+  tokenId  String   @db.Uuid
+  at       DateTime @default(now()) @db.Timestamptz(3)
+  client   String
+  isObs    Boolean
+  layout   String?
+
+  token OverlayToken @relation(fields: [tokenId], references: [id], onDelete: Cascade)
+
+  @@index([sellerId, at])
+  @@index([tokenId, at])
 }
 
 // 추가만 한다. 수정·삭제하지 않는다. 비밀번호 해시·토큰·TOTP 비밀키는 before/after에 넣지 않는다.

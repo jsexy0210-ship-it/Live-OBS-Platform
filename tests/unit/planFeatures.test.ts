@@ -128,6 +128,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/broadcast/start": "OVERLAY",
   "seller/broadcast/end": "OVERLAY",
   "seller/overlay/token": "OVERLAY",
+  "seller/overlay/address-info": "OVERLAY",
   "seller/overlay/layout": "OVERLAY",
   "seller/overlay/layout/reset": "OVERLAY",
   "seller/overlay/templates": "OVERLAY",
