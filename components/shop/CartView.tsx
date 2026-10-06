@@ -58,7 +58,7 @@ export default function CartView({ slug }: { slug: string }) {
   const [view, setView] = useState<View>({ kind: "loading" });
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string; undo?: { optionId: string; quantity: number } } | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string; undo?: { optionId: string; quantity: number } | { itemId: string; quantity: number } } | null>(null);
   const [ack, setAck] = useState<Record<string, number>>({});
   // 서버 견적(읽기 전용): 고른 줄의 배송비와 결제 예정 금액. 배송지가 없으면 일반 지역 기준이라 제주·도서는 주문서에서 달라질 수 있다.
   const [quote, setQuote] = useState<{ kind: "idle" } | { kind: "loading" } | { kind: "error" } | { kind: "ok"; shippingFee: number; total: number }>({ kind: "idle" });
@@ -123,7 +123,7 @@ export default function CartView({ slug }: { slug: string }) {
     setBusy(true);
     setMsg(null);
     const r = await call(`${api}/${l.id}`, { method: "PATCH", body: { quantity } });
-    if (!r.ok) setMsg({ ok: false, text: failMsg(r, "수량을 바꾸지 못했어요. 잠시 뒤 다시 눌러 주세요") });
+    setMsg(r.ok ? { ok: true, text: `수량을 ${quantity}개로 바꿨어요`, undo: { itemId: l.id, quantity: l.quantity } } : { ok: false, text: failMsg(r, "수량을 바꾸지 못했어요. 잠시 뒤 다시 눌러 주세요") });
     await load(true);
     setBusy(false);
   }
@@ -148,9 +148,16 @@ export default function CartView({ slug }: { slug: string }) {
     setBusy(false);
   }
 
-  async function undo(u: { optionId: string; quantity: number }) {
+  async function undo(u: { optionId: string; quantity: number } | { itemId: string; quantity: number }) {
     if (busy) return;
     setBusy(true);
+    if ("itemId" in u) {
+      const r = await call(`${api}/${u.itemId}`, { method: "PATCH", body: { quantity: u.quantity } });
+      setMsg(r.ok ? { ok: true, text: `수량을 ${u.quantity}개로 되돌렸어요` } : { ok: false, text: failMsg(r, "되돌리지 못했어요. 잠시 뒤 다시 눌러 주세요") });
+      await load(true);
+      setBusy(false);
+      return;
+    }
     const r = await call<{ item: { id: string } }>(api, { method: "POST", body: { optionId: u.optionId, quantity: u.quantity } });
     setMsg(r.ok ? { ok: true, text: "다시 담았어요" } : { ok: false, text: failMsg(r, "다시 담지 못했어요. 잠시 뒤 다시 눌러 주세요") });
     await load(true);
