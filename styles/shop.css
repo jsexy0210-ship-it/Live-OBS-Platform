@@ -13,6 +13,7 @@ body {
   --shop-h: var(--ui-h-default);
   --shop-h-sm: var(--ui-h-compact);
   --shop-h-lg: var(--ui-h-touch);
+  --shop-tabbar-h: 56px; /* 정본 SH-001 휴대폰 아래 바 56(design/project/lop.css .sh24.m .tabbar) */
   --page: #ffffff;
   word-break: keep-all;
   overflow-wrap: anywhere;
@@ -78,7 +79,7 @@ body {
   display: flex;
   align-items: center;
   gap: 16px;
-  height: 80px;
+  height: 88px;
 }
 .shop-app a.shop-brand {
   display: inline-flex;
@@ -191,8 +192,10 @@ body {
   gap: 4px 28px;
 }
 .shop-app .shop-cats a {
-  display: block;
-  padding: 12px 0;
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0;
   font-size: 15px;
   font-weight: 700;
   color: var(--wds-label-normal);
@@ -278,7 +281,7 @@ body {
   padding: 0;
 }
 .shop-foot {
-  padding: 28px 0 32px;
+  padding: 24px 0 32px;
   background: var(--wds-background-normal-normal);
   border-top: 1px solid var(--wds-line-solid-neutral);
   font-size: 12px;
@@ -776,7 +779,7 @@ body {
     font-size: 17px;
   }
   .shop-page {
-    padding-bottom: calc(var(--shop-h-lg) + env(safe-area-inset-bottom));
+    padding-bottom: calc(var(--shop-tabbar-h) + env(safe-area-inset-bottom));
   }
   .shop-tabbar {
     position: fixed;
@@ -786,7 +789,7 @@ body {
     z-index: 50;
     display: grid;
     grid-template-columns: repeat(5, 1fr);
-    height: calc(var(--shop-h-lg) + env(safe-area-inset-bottom));
+    height: calc(var(--shop-tabbar-h) + env(safe-area-inset-bottom));
     border-radius: var(--ui-r-control) var(--ui-r-control) 0 0;
     padding-bottom: env(safe-area-inset-bottom);
     background: var(--wds-background-normal-normal);
@@ -1468,4 +1471,25 @@ body {
   gap: 8px;
   align-items: center;
   cursor: pointer;
+}
+/* 글자 아이콘(SH-040 준비 중 「별」 · 일시 정지 「!」) */
+.shop-state-ico.is-text {
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: var(--wds-primary-normal);
+}
+.shop-state-ico.is-text::before,
+.shop-state-ico.is-text::after {
+  display: none;
+}
+/* SH-040 안내 카드는 본문 가운데에 둔다 */
+.shop-closed {
+  display: flex;
+  justify-content: center;
+}
+.shop-closed .shop-state {
+  align-self: center;
+  width: 100%;
+  max-width: 560px;
 }

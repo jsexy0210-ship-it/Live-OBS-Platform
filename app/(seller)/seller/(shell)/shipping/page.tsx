@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDateTime } from "../../../../../lib/client/format";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHead, useConfirm } from "../../../../../components/admin-ui";
@@ -7,7 +8,7 @@ import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
 import { MAX_SEARCH_LENGTH } from "../../../../../components/seller/format";
-import { itemSummaryText, listDate, phoneText } from "../../../../../components/seller/orders";
+import { itemSummaryText, phoneText } from "../../../../../components/seller/orders";
 import { sendInBatches } from "../../../../../components/seller/shipping/sendInBatches";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
 import { COURIERS, isCourier, type Courier } from "../../../../../lib/server/orders/shipping";
@@ -271,7 +272,7 @@ export default function ShippingPage() {
                                 {itemSummaryText(r.itemSummary)}
                               </span>
                               <span className="t-c1 c-alt num">
-                                주문번호 {r.orderNo} · {listDate(r.createdAt)}
+                                주문번호 {r.orderNo} · {formatDateTime(r.createdAt)}
                               </span>
                             </div>
                           </td>

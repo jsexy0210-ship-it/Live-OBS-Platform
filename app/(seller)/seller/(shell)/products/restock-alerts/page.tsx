@@ -1,12 +1,12 @@
 "use client";
 
+import { formatDateTime } from "../../../../../../lib/client/format";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { PageHead } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
-import { listTime } from "../../../../../../components/seller/orders";
 
 // SA-017 재입고 알림(파트너스 관리자, 상품 › 재입고 알림). 품절 상품에 구매자가 건 알림 신청을 상품별 수로 본다.
 // API: GET /api/seller/restock-alerts(PRODUCT_MANAGE). 신청한 회원은 서버가 내려 주지 않는다.
@@ -79,8 +79,8 @@ export default function RestockAlertsPage() {
                         <td className="num">{x.waiting.toLocaleString("ko-KR")}명</td>
                         <td className="num">{x.queued.toLocaleString("ko-KR")}명</td>
                         <td className="num">{x.sent.toLocaleString("ko-KR")}명</td>
-                        <td className="num">{x.nextNotifyAt ? listTime(x.nextNotifyAt) : "-"}</td>
-                        <td className="num">{x.lastNotifiedAt ? listTime(x.lastNotifiedAt) : "-"}</td>
+                        <td className="num">{x.nextNotifyAt ? formatDateTime(x.nextNotifyAt) : "-"}</td>
+                        <td className="num">{x.lastNotifiedAt ? formatDateTime(x.lastNotifiedAt) : "-"}</td>
                       </tr>
                     ))}
                   </tbody>

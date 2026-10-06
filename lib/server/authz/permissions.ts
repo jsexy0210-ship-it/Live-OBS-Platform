@@ -15,6 +15,8 @@ export const ADMIN_PERMISSIONS = {
   "seller.impersonate": ["SUPER_ADMIN", "OPERATIONS", "CS"],
   "admin.manage": ["SUPER_ADMIN"],
   "system.manage": ["SUPER_ADMIN"],
+  // 인프라·비용(MA-120): 용량·요금 조회와 단가 입력은 최고관리자만(대표님 지시 2026-10-06)
+  "infra.manage": ["SUPER_ADMIN"],
   "audit.read": ["SUPER_ADMIN", "OPERATIONS", "READ_ONLY"],
   // 외부 서비스 업체 등록·비교·추천·선택(설정 > 외부 서비스 연동). 변경은 최고관리자·운영(대표님 지시 2026-10-05), 조회는 platform.read
   "vendor.manage": ["SUPER_ADMIN", "OPERATIONS"],

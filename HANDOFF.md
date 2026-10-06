@@ -19,7 +19,8 @@
 | 개발 전담 (기반) (7) | `session_01NtyNfQ2KbvTFRqRvgudJ9n` | 2026-10-06 07:32 KST MASTER 생성(Sonnet 5.5). (6)을 컨텍스트 64%로 교체(인계 #691 댓글). 큐: SA-060 쇼핑몰 정보 API → 쇼핑몰 운영 상태(준비 중·일시 정지 차단) |
 | 개발 전담 (기반) (6) | `session_014TjcA8RirjWptikziBwasM` | (교체됨 → `session_01NtyNfQ2KbvTFRqRvgudJ9n`, 2026-10-06, #691 대응까지)  2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01N4xJrEzQvUuRHB8QzcQcKE`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 개발 전담 (기반-상품) (2) | `session_01Cr44KBNsnx39N7sPjPurpx` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_018WsyHpKDofgW5DEiS4tUoA`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
-| 개발 전담 (기반-쇼핑몰) (2) | `session_01DGVUmLcp7u4NTNbERqjkHj` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01GnUdkmvAEWEVA3Yh3wbB5a`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
+| 개발 전담 (기반-쇼핑몰) (3) | `session_012ZNvXsR6YxyrBsjNEkte9p` | 2026-10-06 09:54 KST MASTER 생성(Sonnet 5.5). (2)를 컨텍스트 63%로 교체(전임 작업 모두 병합). 첫 작업 구매자 비밀번호 재설정 서버, SA-056-P 통계 서버 값. 역할·소유는 전임 행과 같음 |
+| 개발 전담 (기반-쇼핑몰) (2) | `session_01DGVUmLcp7u4NTNbERqjkHj` | (교체됨 → `session_012ZNvXsR6YxyrBsjNEkte9p`, 2026-10-06) 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01GnUdkmvAEWEVA3Yh3wbB5a`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 개발 전담 (기반-설정) (2) | `session_01VWSSGv5DNryPJeTT6xd9zX` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01EUBERBNF6aDTDawpJF4gkf`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 — 2026-10-05 23:20 KST 배정분 전부 병합(#440·#553·#563·#571·#582·#592·#601·#606·#608), 열린 PR 0, 보관 |
 | 개발 전담 (기반-유튜브) (2) | `session_01NnpcVX7ZtjRk8oBEM6fMj8` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01H4tkcKx7B9mokLRDNuBNYP`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 — 2026-10-05 23:55 KST #474 병합, 보관 |
 | 레이아웃 전담 (6) · UI 공통 | `session_01CzgXixxpn7b3FGjcb2fSnS` | 2026-10-06 KST MASTER 생성(Sonnet 5.5). (5)를 컨텍스트 78%로 교체, 인계 #688·#720 본문. 큐: 공통 표 규칙 → 필터 기본값 공통화 |
@@ -35,9 +36,11 @@
 | 화면-파트너스 운영 (2) | `session_01JFxmyNJFB2Ztwv2jUtQSCr` | (교체됨 → `session_016P8zSbRmKFuuWC9krz69jq`, 2026-10-05)  2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_017i9HrY4Z9if193ZLQfJQbp`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 쇼핑몰 운영 전담 (2) | `session_01WDkrYfwDz7o3oD8f2PeSvP` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01AKkKsTJjMHv2KaJLHh8u1y`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 — 2026-10-05 23:45 KST 인계분(#455·#481·#500·#525·#547) 전부 병합, 열린 PR 0, 보관. 남은 것: 실제 발송 채널(대표님 결정) 뒤 SA-049 발송 기록을 발송에 연결 |
 | 통계 전담 (2) | `session_01GPhc7Kd9oq7YFPv4Tar4ZX` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_013CH4KbJKN2cpDNBKtipGYL`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 — 2026-10-05 23:55 KST #593 퍼널 API 병합, 보관. 남은 것: 퍼널 화면·브라우저 검증(화면 세션 미배정) |
-| 디자인 전담 (4) · Fable | `session_01QUUqmD2DDwArxHsUqMyA7Y` | 2026-10-05 대표님 지시 「디자인은 다 fable로 바꿔서 빨리 진행해」로 디자인 전담 (3)(`session_019Eb1gYYx6hQzm3VDbKmKmM`, Sonnet)을 Fable 5.1로 교체. 역할·소유는 전임 행과 같음. 첫 배정: docs/ADMIN_OPS_UX.md P1 보드 |
+| 디자인 전담 (5) · Fable | `session_011d8Z2cYpic36sAioV2XasE` | 2026-10-06 09:31 KST MASTER 생성(Fable 5.1). (4)를 컨텍스트 72%로 교체. 캔버스 v312부터 이어받음. 역할·소유는 전임 행과 같음 |
+| 디자인 전담 (4) · Fable | `session_01QUUqmD2DDwArxHsUqMyA7Y` | (교체됨 → `session_011d8Z2cYpic36sAioV2XasE`, 2026-10-06) 2026-10-05 대표님 지시 「디자인은 다 fable로 바꿔서 빨리 진행해」로 디자인 전담 (3)(`session_019Eb1gYYx6hQzm3VDbKmKmM`, Sonnet)을 Fable 5.1로 교체. 역할·소유는 전임 행과 같음. 첫 배정: docs/ADMIN_OPS_UX.md P1 보드 |
 | 인프라 전담 (2) | `session_013HzEF83eiqjaDFkjzVyUxD` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_016ErhcGpbBooDx8a9sYYUmK`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
-| 개발 전담 (기반-결제) (2) | `session_018dHyuf6MTABkU1qXJgwHVm` | 2026-10-05 대표님 지시로 `session_012jhVJxoLMffGfwxWvcKJom`를 Sonnet 5.5로 교체. 역할은 전임과 같음 |
+| 개발 전담 (기반-결제) (3) | `session_01EendtbgjpxRCCNb1zxheAo` | 2026-10-06 09:52 KST MASTER 생성(Sonnet 5.5). (2)를 컨텍스트 64%로 교체. 첫 작업 SA-151 「다른 카드로 결제」 서버. 역할·소유는 전임 행과 같음 |
+| 개발 전담 (기반-결제) (2) | `session_018dHyuf6MTABkU1qXJgwHVm` | (교체됨 → `session_01EendtbgjpxRCCNb1zxheAo`, 2026-10-06) 2026-10-05 대표님 지시로 `session_012jhVJxoLMffGfwxWvcKJom`를 Sonnet 5.5로 교체. 역할은 전임과 같음 |
 | 도우미 전담 (3) | `session_018HDBKkX75yvKWWPHUTovLB` | 2026-10-06 00:48 KST MASTER 생성(Sonnet 5.5). 전임 (2)를 컨텍스트 77%로 교체. 인계 정본 PR #647 「인계」. 큐: UX 감사 도우미 몫 → 반품·환불 응답 orderNoLabel → shipment READY → refundedAmount 적립금 포함 여부 보고 |
 | 도우미 전담 (2) | `session_01179Trx8rmw3gteLPm2YqPm` | (보관, → `session_018HDBKkX75yvKWWPHUTovLB`, 2026-10-06)  2026-10-05 대표님 지시로 `session_01LeAAUEjs1rJTq5gQptRN2S`를 Sonnet 5.5로 교체. 역할은 전임과 같음 |
 | 검수 전담 | `session_01MHJsYfiTFZ8VWkM3xVF7wM` | (교체됨 → `session_017wDPPy8EXzNu5zkAP2uu6R`, 2026-10-05)  모든 PR 독립 검수 · main 병합 · 후속 수정 배정 · 테스트 서버 배포 dispatch(승인은 대표님). 병합 기준은 `CLAUDE.md` 「마스터·전담 세션 운영」. 문서 PR은 만들지 않음. 2026-10-04 KST MASTER 생성 |

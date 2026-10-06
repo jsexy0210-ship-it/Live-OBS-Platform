@@ -77,3 +77,34 @@ test("휴대폰 390: 주문 상세 가로 스크롤 없음", async ({ page, base
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   if (process.env.E2E_SCREENSHOTS === "1") await page.screenshot({ path: "tests/e2e/screenshots/SH-022-detail-390.png", fullPage: true });
 });
+
+// 서버 값은 #697 계약 모양으로 가짜 응답을 끼워 화면 쪽만 확인한다(실제 서버 값은 getBuyerOrder 통합 시험이 맡는다).
+test("주문 상세: 진행 단계(개봉 대기 앞에 N명) · 결제 수단 · 현금영수증 · 받는 방법", async ({ page, baseURL }) => {
+  await login(page, baseURL!);
+  const { orderId } = await makeOrder(page, baseURL!);
+  await page.route(`**/api/shop/${SLUG}/orders/${orderId}`, async (route) => {
+    const res = await route.fetch();
+    const body = (await res.json()) as Record<string, unknown>;
+    await route.fulfill({
+      response: res,
+      json: {
+        ...body,
+        status: "PAID",
+        queue: { status: "WAITING", aheadCount: 11 },
+        fulfillmentType: "IMMEDIATE",
+        paymentInfo: { method: "CARD", card: { name: "국민", last4: "1234", installment: 0 } },
+        cashReceipt: { requested: false },
+      },
+    });
+  });
+  await page.goto(`/shop/${SLUG}/orders/${orderId}`);
+  const steps = page.getByLabel("주문 진행");
+  await expect(steps).toContainText("주문 접수");
+  await expect(steps).toContainText("앞에 11명");
+  await expect(steps).toContainText("방송에서 열어요");
+  const pay = page.getByRole("region", { name: "결제 정보" });
+  await expect(pay).toContainText("카드 ****-1234 · 일시불");
+  await expect(pay).toContainText("신청 안 함");
+  await expect(pay).toContainText("카드 결제는 카드 매출전표로 대신해요");
+  await expect(page.getByRole("region", { name: "배송 정보" })).toContainText("택배 (");
+});

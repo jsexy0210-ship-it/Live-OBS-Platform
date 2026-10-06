@@ -1,4 +1,6 @@
 import type { PlatformInquiryCategory, PlatformInquiryStatus, Prisma, PrismaClient } from "@prisma/client";
+import { createAdminAlert } from "../admin-alerts/service";
+import { collectInquiryDiagnostics } from "./diagnostics";
 import { writeAudit } from "../audit/log";
 import type { AdminSessionContext } from "../auth/session";
 import { forbidden } from "../authz/errors";
@@ -42,6 +44,7 @@ export type PlatformInquiryRejection =
   | "invalid_related"
   | "invalid_urgent"
   | "invalid_assignee"
+  | "invalid_diagnostics"
   | "invalid_helpful"
   | "already_rated"
   | "no_reply_yet"
@@ -62,6 +65,7 @@ export const PLATFORM_INQUIRY_MESSAGES: Record<PlatformInquiryRejection, string>
   invalid_related: "관련 주문·방송을 다시 선택해 주십시오",
   invalid_urgent: "긴급 여부를 다시 선택해 주십시오",
   invalid_assignee: "담당자를 다시 선택해 주십시오",
+  invalid_diagnostics: "진단 정보 첨부 여부를 다시 선택해 주십시오",
   invalid_helpful: "도움이 됐는지 선택해 주십시오",
   already_rated: "이미 평가하셨습니다",
   no_reply_yet: "답변이 오면 평가할 수 있습니다",
@@ -304,6 +308,7 @@ export async function createInquiry(db: PrismaClient, ctx: TenantContext, raw: u
   if (!CATEGORIES.includes(b.category as PlatformInquiryCategory)) return { ok: false as const, reason: "invalid_category" as const };
   if (b.urgent !== undefined && typeof b.urgent !== "boolean") return { ok: false as const, reason: "invalid_urgent" as const };
   const urgent = b.urgent === true;
+  if (b.includeDiagnostics !== undefined && typeof b.includeDiagnostics !== "boolean") return { ok: false as const, reason: "invalid_diagnostics" as const };
   const title = cleanText(b.title, TITLE_MAX, "memo");
   if (!title) return { ok: false as const, reason: "invalid_title" as const };
   const body = cleanText(b.body, BODY_MAX, "multiline");
@@ -324,6 +329,8 @@ export async function createInquiry(db: PrismaClient, ctx: TenantContext, raw: u
     if (!n) return { ok: false as const, reason: "invalid_notice" as const };
     noticeId = n.id;
   }
+  // 진단 정보는 보낼 때 한 번 모아 붙인다(includeDiagnostics가 false면 붙이지 않는다)
+  const diagnostics = b.includeDiagnostics === false ? null : await collectInquiryDiagnostics(db, ctx.sellerId, meta.userAgent);
   try {
     const id = await db.$transaction(async (tx) => {
       // 쇼핑몰마다 줄을 세워 하루 한도를 정확히 센다(동시에 보내도 20건을 넘지 않음)
@@ -332,12 +339,26 @@ export async function createInquiry(db: PrismaClient, ctx: TenantContext, raw: u
       if (recent >= DAILY_LIMIT) throw new Rejected("too_many_inquiries");
       const now = new Date();
       const inq = await tx.platformInquiry.create({
-        data: { sellerId: ctx.sellerId, createdBySellerUserId: ctx.actorId, category: b.category as PlatformInquiryCategory, title, urgent, noticeId, relatedOrderId, relatedBroadcastId, lastMessageAt: now, sellerReadAt: now, createdAt: now },
+        data: { sellerId: ctx.sellerId, createdBySellerUserId: ctx.actorId, category: b.category as PlatformInquiryCategory, title, urgent, noticeId, relatedOrderId, relatedBroadcastId, ...(diagnostics ? { diagnostics } : {}), lastMessageAt: now, sellerReadAt: now, createdAt: now },
         select: { id: true },
       });
       const msg = await tx.platformInquiryMessage.create({ data: { sellerId: ctx.sellerId, inquiryId: inq.id, authorType: "SELLER_USER", sellerUserId: ctx.actorId, body, createdAt: now }, select: { id: true } });
       if (!(await attachImages(tx, ctx, msg.id, imageIds))) throw new Rejected("invalid_images");
-      await sellerAudit(tx, ctx, meta, "platform_inquiry.create", inq.id, { category: b.category, title, urgent, noticeId, relatedOrderId, relatedBroadcastId, images: imageIds.length });
+      await sellerAudit(tx, ctx, meta, "platform_inquiry.create", inq.id, { category: b.category, title, urgent, noticeId, relatedOrderId, relatedBroadcastId, diagnostics: diagnostics !== null, images: imageIds.length });
+      // 긴급 문의는 마스터 관리자 알림 센터로 바로 알린다(화면 안 알림만, 외부 발송 없음)
+      if (urgent) {
+        await createAdminAlert(tx, {
+          kind: "INQUIRY_URGENT",
+          severity: "URGENT",
+          title: `[긴급] ${title}`,
+          body: body.slice(0, 200),
+          linkPath: `/admin/support/inquiries/${inq.id}`,
+          sellerId: ctx.sellerId,
+          targetRoles: ["SUPER_ADMIN", "OPERATIONS", "CS"],
+          dedupeKey: `inquiry-urgent:${inq.id}`,
+          occurredAt: now,
+        });
+      }
       return inq.id;
     });
     return { ok: true as const, inquiry: (await getMyInquiry(db, ctx, id))! };
@@ -538,7 +559,7 @@ export async function getInquiry(db: PrismaClient, admin: AdminSessionContext, i
   if (!isUuid(id)) return null;
   const row = await db.platformInquiry.findUnique({
     where: { id },
-    select: { ...ADMIN_LIST_SELECT, noticeId: true, closedByAdminId: true, closedBySellerUserId: true, helpful: true, helpfulAt: true, messages: { select: MESSAGE_SELECT, orderBy: [{ createdAt: "asc" }, { id: "asc" }] } },
+    select: { ...ADMIN_LIST_SELECT, diagnostics: true, noticeId: true, closedByAdminId: true, closedBySellerUserId: true, helpful: true, helpfulAt: true, messages: { select: MESSAGE_SELECT, orderBy: [{ createdAt: "asc" }, { id: "asc" }] } },
   });
   if (!row) return null;
   const n = await names(db, [row.createdBySellerUserId, ...row.messages.map((m) => m.sellerUserId)], [row.closedByAdminId, row.assignedAdminId, ...row.messages.map((m) => m.adminId)]);

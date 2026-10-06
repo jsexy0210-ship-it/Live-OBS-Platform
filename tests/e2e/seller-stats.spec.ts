@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
+import { PrismaClient } from "@prisma/client";
 import { expect, test, type Page } from "@playwright/test";
+import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 import { submitSellerLogin } from "./sellerLogin";
 
 // 파트너스 통계(주문·매출). dev-seed의 데모 주문(최근 약 8일, 결제 대기·완료·환불·취소)으로 확인한다.
@@ -184,4 +186,61 @@ test("통계 요약(SA-056): 요약 지표·방송 내역·상품 상위·회원
   expect(file.suggestedFilename()).toMatch(/^stats-summary_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.csv$/);
   const csv = readFileSync((await file.path())!, "utf8");
   for (const h of ["일별 매출", "방송 내역", "그 밖의 주문", "상품 상위"]) expect(csv).toContain(h);
+});
+
+// 상품 전환 퍼널(SA-056-P): 데모 상품 둘에 조회·담기 집계를 직접 넣고, 화면 숫자를 API 응답·넣은 값과 맞춘다(끝나면 지운다).
+test("상품 전환 퍼널: 단계 숫자·전환율·상품별 표·정렬을 API 값으로 보여 주고, 비교를 끄면 앞 기간 줄이 사라진다", async ({ page }) => {
+  const db = new PrismaClient({ datasources: { db: { url: assertTestDatabaseUrl(process.env.DATABASE_URL) } } });
+  const owner = await db.sellerUser.findFirstOrThrow({ where: { email: "demo-owner@example.com" }, select: { sellerId: true } });
+  const products = await db.product.findMany({ where: { sellerId: owner.sellerId, deletedAt: null }, orderBy: { codeNo: "asc" }, take: 2, select: { id: true, name: true } });
+  expect(products.length).toBe(2);
+  const kst = (offset: number) => new Date(Date.now() + 9 * 3600_000 + offset * 86_400_000).toISOString().slice(0, 10);
+  const rows = [
+    { productId: products[0]!.id, day: kst(-1), views: 40, cartAdds: 10 },
+    { productId: products[1]!.id, day: kst(-1), views: 10, cartAdds: 1 },
+    // 바로 앞 기간(30일 전보다 앞)
+    { productId: products[0]!.id, day: kst(-40), views: 20, cartAdds: 2 },
+  ];
+  await db.productFunnelDaily.deleteMany({ where: { sellerId: owner.sellerId } });
+  await db.productFunnelDaily.createMany({ data: rows.map((r) => ({ sellerId: owner.sellerId, productId: r.productId, day: new Date(`${r.day}T00:00:00Z`), views: r.views, cartAdds: r.cartAdds })) });
+  try {
+    const first = statsResponse(page, "funnel", `to=${kst(0)}`);
+    await login(page, "demo-owner@example.com", "/seller/stats/products");
+    const body = await (await first).json();
+    expect(body.totals.views).toBe(50);
+    expect(body.totals.cartAdds).toBe(11);
+    const sec = page.getByTestId("stats-funnel");
+    await expect(sec.getByRole("heading", { name: "상품 전환 퍼널" })).toBeVisible();
+    const steps = page.getByTestId("funnel-steps");
+    await expect(steps.getByText("50명")).toBeVisible();
+    await expect(steps.getByText("11명")).toBeVisible();
+    await expect(page.getByTestId("funnel-rate-cart")).toContainText("22.0%");
+    await expect(page.getByTestId("funnel-rate-order")).toContainText(body.totals.cartToOrder === null ? "—" : `${(body.totals.cartToOrder * 100).toFixed(1)}%`);
+    await expect(steps.getByText("상태와 관계없이")).toBeVisible();
+    await expect(steps.getByText("결제된 적 있는 주문")).toBeVisible();
+    // 바로 앞 기간 비교: 앞 기간 조회 20 · 담기 2 → 10.0%, 지금 22.0% → +12.0%p
+    await expect(steps.getByText("바로 앞 기간 10.0%")).toBeVisible();
+    await expect(steps.getByText("+12.0%p")).toBeVisible();
+    // 상품별 표: 조회 많은 순이 기본, 정렬을 바꾸면 순서가 바뀐다
+    const table = page.getByTestId("funnel-table");
+    await expect(table.locator("tbody tr").first()).toContainText(products[0]!.name);
+    await expect(table.locator("tbody tr").first()).toContainText("40");
+    await page.getByLabel("상품별 정렬").selectOption("lowCart");
+    await expect(table.locator("tbody tr").first()).toContainText(products[1]!.name);
+    await expect(table.locator("tbody tr").first()).toContainText("10.0%");
+    await expect(page.getByText("로그인 회원만 집계합니다")).toBeVisible();
+    // 상품 이름 칸은 왼쪽, 숫자 칸은 가운데
+    expect(await table.locator("tbody tr").first().locator("td.col-text").count()).toBe(1);
+    await shot(page, "stats-funnel");
+    // 비교를 끄면(주소 compare=0) 앞 기간 줄이 사라진다
+    await page.goto("/seller/stats/products?compare=0");
+    await expect(page.getByTestId("funnel-steps").getByText("50명")).toBeVisible();
+    await expect(page.getByTestId("funnel-steps").getByText("바로 앞 기간 10.0%")).toHaveCount(0);
+    // 퍼널 집계 전 기간(10/5 이전)은 안내가 보인다
+    await page.goto("/seller/stats/products?preset=custom&from=2026-09-01&to=2026-09-30");
+    await expect(page.getByTestId("funnel-before")).toContainText("10/5부터");
+  } finally {
+    await db.productFunnelDaily.deleteMany({ where: { sellerId: owner.sellerId } });
+    await db.$disconnect();
+  }
 });

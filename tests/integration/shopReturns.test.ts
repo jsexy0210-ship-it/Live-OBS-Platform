@@ -780,3 +780,16 @@ describe("환불 계좌번호 봉인", () => {
     expect(await getSellerReturn(db, s.ctx, r.request.id)).toMatchObject({ refundAccount: { accountNumber: null } });
   });
 });
+
+describe("쇼핑몰 운영 상태와 반품 신청(대표님 결정 2026-10-06)", () => {
+  it("준비 중·일시 정지에서도 이미 받은 주문의 반품 신청은 받고, 이용 정지 중에는 기존대로 막는다", async () => {
+    const s = await shop();
+    const id = await s.delivered();
+    await db.seller.update({ where: { id: s.seller.id }, data: { operatingState: "PREPARING" } });
+    expect((await buyerReturnContext(db, s.scope, id))?.blocked).toBeNull();
+    expect(await createReturn(db, s.scope, id, { orderId: id, kind: "RETURN", reason: "DEFECTIVE" })).toMatchObject({ ok: true });
+    await db.seller.update({ where: { id: s.seller.id }, data: { status: "SUSPENDED" } });
+    expect((await buyerReturnContext(db, s.scope, id))?.blocked).toBe("shop_unavailable");
+  });
+});
+

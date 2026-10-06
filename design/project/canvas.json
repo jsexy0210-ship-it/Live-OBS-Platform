@@ -1410,7 +1410,7 @@
       "y": 67943
     },
     "SA-011-M.dc.html": {
-      "h": 2368,
+      "h": 2400,
       "page": "p02",
       "title": "SA-011-M 상품 목록 — 모바일 변형 (카드형 목록 · 검색 상자 1열)",
       "w": 884,
@@ -2186,7 +2186,7 @@
       "y": 45285
     },
     "SA-FRAME-M.dc.html": {
-      "h": 1328,
+      "h": 1350,
       "page": "p02",
       "title": "SA-FRAME-M 공통 틀 — 모바일 변형 (768px 미만 · 서랍 아코디언 · 1열 폼)",
       "w": 1314,
@@ -2906,19 +2906,19 @@
       "y": 73280
     },
     "SH-040-PC.dc.html": {
-      "h": 1000,
+      "h": 1430,
       "is_interactive": true,
       "page": "p04",
-      "title": "SH-040-PC 쇼핑몰 준비 중 (PC)",
+      "title": "SH-040-PC 쇼핑몰 준비 중 · 일시 정지 안내 (PC)",
       "w": 1440,
       "x": 0,
       "y": 104820
     },
     "SH-040.dc.html": {
-      "h": 951,
+      "h": 1230,
       "is_interactive": true,
       "page": "p04",
-      "title": "SH-040 쇼핑몰 준비 중 (휴대폰)",
+      "title": "SH-040 쇼핑몰 준비 중 · 일시 정지 안내 (휴대폰)",
       "w": 800,
       "x": 0,
       "y": 103700
@@ -3038,6 +3038,13 @@
       "w": 1920,
       "x": 0,
       "y": 30500
+    },
+    "DS-TABLE-CARD.dc.html": {
+      "h": 3450,
+      "title": "DS-TABLE-CARD 공통 표 모바일 카드 (768px 미만 · 선택 · 제목 · 라벨:값 · 배지 · 행동 2+더보기 · 일괄 바 · MA-013 · SA-021 예 · MASTER 배정 2026-10-06)",
+      "w": 1280,
+      "x": 25000,
+      "y": 108800
     }
   },
   "createdOnFiles": {
@@ -4124,6 +4131,7 @@
     "DS-NAV.dc.html",
     "DS-TYPE-SCALE.dc.html",
     "DS-DATEPICKER.dc.html",
+    "DS-TABLE-CARD.dc.html",
     "PF-007-4.dc.html",
     "PF-007-5.dc.html",
     "MA-120.dc.html"

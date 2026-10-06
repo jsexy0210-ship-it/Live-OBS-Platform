@@ -1,7 +1,7 @@
 import { Prisma, type ActorType, type PrismaClient, type ReceiptIssueStatus, type ReceiptKind } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { sealBillingKey } from "../billing/secret";
-import { shopOpen } from "../buyers/signup";
+import { orderServiceOpen } from "../buyers/signup";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { cleanText } from "../text/clean";
 import { orderNoLabel } from "../orders/orderNoLabel";
@@ -133,7 +133,7 @@ export async function buyerReceiptContext(db: PrismaClient, scope: BuyerScope, o
   const rows = await db.orderReceiptRequest.findMany({ where: { sellerId: scope.sellerId, orderId }, select: viewSelect, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
   const requests = rows.map(view);
   const active = requests.find((r) => r.withdrawnAt === null) ?? null;
-  const blocked = !(await shopOpen(db, scope.sellerId)) ? "shop_unavailable" : !requestable(order) ? "not_requestable" : active ? "active_exists" : null;
+  const blocked = !(await orderServiceOpen(db, scope.sellerId)) ? "shop_unavailable" : !requestable(order) ? "not_requestable" : active ? "active_exists" : null;
   return { canRequest: blocked === null, blocked, active, requests };
 }
 
@@ -141,7 +141,7 @@ export async function createReceiptRequest(db: PrismaClient, scope: BuyerScope, 
   if (!isUuid(orderId)) return { ok: false as const, reason: "not_found" as const };
   const parsed = parseNewReceiptRequest(body);
   if (!parsed.ok) return parsed;
-  if (!(await shopOpen(db, scope.sellerId))) return { ok: false as const, reason: "shop_unavailable" as const };
+  if (!(await orderServiceOpen(db, scope.sellerId))) return { ok: false as const, reason: "shop_unavailable" as const };
   const { kind, identity, taxInfo } = parsed.v;
   try {
     return await db.$transaction(async (tx) => {

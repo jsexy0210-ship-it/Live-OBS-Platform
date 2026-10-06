@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Modal } from "../../admin-ui";
 import { api, failMessage } from "../api";
 
-// HIT 카드 등록 창(SA-001 방송 대시보드 · SA-053 HIT 카드 이력 공용). 공통 Modal 위에 만든다.
+// HIT 카드 등록 창(SA-001 방송 대시보드 · SA-053 HIT 카드 기록 공용). 공통 Modal 위에 만든다.
 // API: POST /api/seller/hit-cards { cardName(60자), note?(200자), queueItemId | nickname(30자) } → 201 { card }. 등록하면 오버레이에 바로 나온다.
 // targets: 고를 수 있는 주문(첫 번째가 기본). 비어 있거나 「직접 입력」을 고르면 구매자 닉네임을 직접 적는다.
 // 시안의 등급·카드 이미지·오버레이 노출 시간은 서버가 받지 않아 두지 않았다.

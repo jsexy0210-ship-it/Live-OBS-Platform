@@ -12,7 +12,7 @@ import { SourceBadge } from "../../../../../components/seller/broadcast/SourceBa
 import { formatDateTime } from "../../../../../lib/client/format";
 import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
 
-// SA-053 HIT 카드 이력(방송 중 등록한 당첨 카드). 조회·등록·해제.
+// SA-053 HIT 카드 기록(방송 중 등록한 당첨 카드). 조회·등록·해제.
 // API: GET /api/seller/hit-cards?from=&to=&cursor=(KST 날짜, 최신순 50개) · POST /api/seller/hit-cards { cardName, note?, nickname } · DELETE /api/seller/hit-cards/{id}
 // 해제하면 오버레이에서도 사라진다. 방송별 걸러 보기·카드 등급·갤러리 보기는 서버에 자료가 없어 두지 않았다.
 
@@ -106,11 +106,11 @@ export default function HitCardsPage() {
 
   return (
     <>
-      <Topbar crumb="방송 › HIT 카드 이력" />
+      <Topbar crumb="방송 › HIT 카드 기록" />
       <main className="main">
         <PageHead
-          title="HIT 카드 이력"
-          path={["방송", "HIT 카드 이력"]}
+          title="HIT 카드 기록"
+          path={["방송", "HIT 카드 기록"]}
           actions={
             allowed && (
               <button className="btn" type="button" onClick={() => setModal({ kind: "add" })}>
@@ -146,7 +146,7 @@ export default function HitCardsPage() {
                 ) : state.status === 403 ? (
                   <NoPermission need="방송 진행" />
                 ) : (
-                  <ErrorState title="HIT 카드 이력을 불러오지 못했습니다" onRetry={() => void load(applied)} />
+                  <ErrorState title="HIT 카드 기록을 불러오지 못했습니다" onRetry={() => void load(applied)} />
                 ))}
               {state.kind === "ok" && (
                 <>

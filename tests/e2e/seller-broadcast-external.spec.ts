@@ -3,7 +3,7 @@ import { submitSellerLogin } from "./sellerLogin";
 import { NICKS, cleanupBroadcastQueue, resetBroadcastQueue } from "./seller-broadcast-db";
 import { EXT_CARD_PREFIX, EXT_NICK, EXT_PRODUCT, cleanupExternalQueue, putExternalInLiveBroadcast, seedExternalQueue } from "./externalOrderDb";
 
-// 외부 쇼핑몰 주문 출처 표시(#542): 방송 대시보드 대기 줄·방송 상세(외부 주문 목록, HIT 표)·HIT 카드 이력에 「외부 주문」 배지가 보이고,
+// 외부 쇼핑몰 주문 출처 표시(#542): 방송 대시보드 대기 줄·방송 상세(외부 주문 목록, HIT 표)·HIT 카드 기록에 「외부 주문」 배지가 보이고,
 // 내부 주문에는 보이지 않는다. 외부 주문은 주문 번호가 없어 HIT 이력의 주문 칸에 배지만 보인다. (폐기용 테스트 DB)
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
 
@@ -26,7 +26,7 @@ async function login(page: Page, next: string) {
   await page.waitForURL((u) => u.pathname === next);
 }
 
-test("외부 주문은 대기 줄·방송 상세·HIT 카드 이력에 「외부 주문」으로 표시되고 내부 주문에는 없다", async ({ page }) => {
+test("외부 주문은 대기 줄·방송 상세·HIT 카드 기록에 「외부 주문」으로 표시되고 내부 주문에는 없다", async ({ page }) => {
   const title = `e2e-외부-${Date.now()}`;
   const card = `${EXT_CARD_PREFIX}-${Date.now()}`;
   await login(page, "/seller/broadcast");
@@ -56,7 +56,7 @@ test("외부 주문은 대기 줄·방송 상세·HIT 카드 이력에 「외부
   await expect(row).toContainText("다른 쇼핑몰 주문");
   await expect(page.getByTestId("bd-hits").locator("tr", { hasText: card }).getByTestId("source-badge")).toBeVisible();
 
-  // HIT 카드 이력: 주문 번호가 없는 외부 주문 카드는 배지로 표시
+  // HIT 카드 기록: 주문 번호가 없는 외부 주문 카드는 배지로 표시
   await page.goto("/seller/hit-cards");
   await expect(page.getByTestId("hit-list").locator("tr", { hasText: card }).getByTestId("source-badge")).toBeVisible();
 });

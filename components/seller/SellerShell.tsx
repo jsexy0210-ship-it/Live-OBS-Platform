@@ -9,6 +9,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useLatestResponse, type ReadTicket } from "./latestResponse";
 import { api, currentNavGeneration, nextNavGeneration, PLAN_FEATURE_EVENT, type Me, type PlanFeatureEventDetail } from "./api";
+import { useEllipsisTitle } from "../admin-ui/useEllipsisTitle";
 
 // 파트너스 관리자 공통 틀(업무용 관리 화면 틀, 대표님 지시 2026-10-04): 상단 고정 GNB(대분류 8개) + 왼쪽 LNB(고른 대분류의 하위 메뉴) + 본문.
 // 메뉴 구조는 확정안(2026-10-06 대표님 「그대로 진행」, docs/IA.md 「확정 메뉴 구조」·design/project/SA-LNB.dc.html)을 따른다. 좁은 화면에서는 GNB가 햄버거로 접히고 LNB가 서랍으로 열린다(서랍에는 전체 메뉴).
@@ -273,6 +274,7 @@ export function useSeller(): ShellCtx {
 }
 
 export function SellerShell({ children }: { children: React.ReactNode }) {
+  useEllipsisTitle();
   // 날짜 칸 어디를 눌러도 달력이 열린다(화면마다 따로 걸지 않는다)
   useWholeDateClick();
   const router = useRouter();
