@@ -53,6 +53,8 @@ const write = async (s: Shop, body: Record<string, unknown>, cookie = s.b1, slug
   const res = await inquiryPost(req("POST", cookie, body), p({ slug }));
   return { status: res.status, body: (await res.json()) as Record<string, any> };
 };
+// 같은 밀리초에 만들어진 행은 최신순·시간순 정렬에서 순서가 id(무작위)로 갈린다. 순서를 비교하는 시험은 쓰기 사이에 시각을 벌린다
+const tick = () => new Promise((r) => setTimeout(r, 5));
 const general = (extra: Record<string, unknown> = {}) => ({ kind: "GENERAL", title: "배송 문의", body: "언제 도착하나요?", ...extra });
 const productQ = (s: Shop, extra: Record<string, unknown> = {}) => ({ kind: "PRODUCT", productId: s.product.id, title: "재입고", body: "재입고 일정이 궁금해요", ...extra });
 const mine = async (s: Shop, cookie = s.b1) => ((await (await myList(req("GET", cookie), p({ slug: s.slug }))).json()) as { inquiries: any[] }).inquiries;
@@ -73,6 +75,7 @@ describe("구매자 쓰기·내 문의", () => {
   it("상품 문의와 1:1 문의를 쓰고, 내 목록에는 내 것만 최신순으로 나온다", async () => {
     const s = await shop();
     expect((await write(s, productQ(s, { isPrivate: true }))).status).toBe(201);
+    await tick();
     expect((await write(s, general())).status).toBe(201);
     expect((await write(s, general({ title: "다른 구매자" }), s.b2)).status).toBe(201);
     const l = await mine(s);
@@ -232,9 +235,11 @@ describe("파트너스 목록·상세·답변", () => {
   it("대표자·문의 답변 권한 직원만 답변하고, 다른 직원은 조회만 한다", async () => {
     const s = await shop();
     const id = (await write(s, general())).body.id as string;
+    await tick();
     expect((await answer(s, id, "권한 없음", s.noPerm)).status).toBe(403);
     expect((await list(s, "", s.noPerm)).body.canEdit).toBe(false);
     expect((await answer(s, id, "직원 답변", s.reply)).status).toBe(200);
+    await tick();
     expect((await answer(s, id, "수정 답변")).status).toBe(200);
     expect((await answer(s, id, "")).body.error).toBe("invalid_answer");
     expect((await answer(s, id, "가".repeat(1001))).body.error).toBe("invalid_answer");
