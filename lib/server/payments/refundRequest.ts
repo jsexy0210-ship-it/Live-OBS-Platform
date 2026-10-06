@@ -219,25 +219,68 @@ export async function cancelRefundRequest(db: PrismaClient, scope: BuyerScope, i
 
 const STATUSES: readonly RefundRequestStatus[] = ["REQUESTED", "APPROVED", "REJECTED", "CANCELLED"];
 
-// 목록·상태별 건수. ?status, 커서(createdAt 내림, id 내림)
-export async function listSellerRefundRequests(db: PrismaClient, ctx: TenantContext, q: { status?: unknown; cursor?: unknown } = {}) {
+// 목록·상태별 건수. ?status, ?sort(oldest·newest), 커서. 정렬 기본: 처리 대기(REQUESTED)는 요청 시각 오래된 순(먼저 온 요청부터), 그 밖은 최신 순.
+// 각 행: 첫 상품 요약(대표 상품명·옵션·나머지 품목 수), 구매자 등급, 처리한 사람(승인·거절·주문 화면 환불로 닫은 사람 이름, 진행 중·철회는 null).
+export async function listSellerRefundRequests(db: PrismaClient, ctx: TenantContext, q: { status?: unknown; sort?: unknown; cursor?: unknown } = {}) {
   requireSellerRead(ctx, "ORDER_SHIPPING");
   const status = STATUSES.find((s) => s === q.status);
+  const oldest = q.sort === "oldest" || (q.sort !== "newest" && status === "REQUESTED");
+  const dir = oldest ? "asc" : "desc";
   let after: Prisma.RefundRequestWhereInput = {};
   if (isUuid(q.cursor)) {
     const c = await db.refundRequest.findFirst({ where: { id: q.cursor, sellerId: ctx.sellerId }, select: { id: true, createdAt: true } });
-    if (c) after = { OR: [{ createdAt: { lt: c.createdAt } }, { createdAt: c.createdAt, id: { lt: c.id } }] };
+    if (c) {
+      const op = oldest ? "gt" : "lt";
+      after = { OR: [{ createdAt: { [op]: c.createdAt } }, { createdAt: c.createdAt, id: { [op]: c.id } }] };
+    }
   }
   const rows = await db.refundRequest.findMany({
     where: { sellerId: ctx.sellerId, order: { legalHoldAt: null }, ...(status ? { status } : {}), ...after },
-    select: { ...viewSelect, order: { select: { orderNo: true, createdAt: true, broadcastNicknameSnapshot: true, totalAmount: true } } },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    select: {
+      ...viewSelect,
+      buyerMember: { select: { grade: { select: { displayName: true } } } },
+      order: {
+        select: {
+          orderNo: true,
+          createdAt: true,
+          broadcastNicknameSnapshot: true,
+          totalAmount: true,
+          items: { orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { productNameSnapshot: true, optionNameSnapshot: true } },
+        },
+      },
+    },
+    orderBy: [{ createdAt: dir }, { id: dir }],
     take: PAGE + 1,
   });
   const page = rows.slice(0, PAGE);
   const counts = await db.refundRequest.groupBy({ by: ["status"], where: { sellerId: ctx.sellerId, order: { legalHoldAt: null } }, _count: { _all: true } });
+  // 처리한 사람: 닫힌 요청의 로그 추적(승인·거절·주문 화면 환불로 닫음)에서 파트너스 직원 이름을 찾는다
+  const decidedIds = page.filter((r) => r.status === "APPROVED" || r.status === "REJECTED").map((r) => r.id);
+  const logs = decidedIds.length
+    ? await db.auditLog.findMany({
+        where: { sellerId: ctx.sellerId, targetType: "RefundRequest", targetId: { in: decidedIds }, action: { in: ["refund_request.approve", "refund_request.reject", "refund_request.close_on_refund"] } },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: { targetId: true, actorType: true, actorId: true },
+      })
+    : [];
+  const actorOf = new Map<string, string>();
+  for (const l of logs) if (l.targetId && l.actorType === "SELLER_USER" && l.actorId && !actorOf.has(l.targetId)) actorOf.set(l.targetId, l.actorId);
+  const users = actorOf.size ? await db.sellerUser.findMany({ where: { sellerId: ctx.sellerId, id: { in: [...new Set(actorOf.values())] } }, select: { id: true, name: true } }) : [];
+  const names = new Map(users.map((u) => [u.id, u.name]));
   return {
-    requests: page.map(({ order, ...r }) => ({ ...view(r), orderNo: order.orderNo, orderNoLabel: orderNoLabel(order.createdAt, order.orderNo), nickname: order.broadcastNicknameSnapshot, totalAmount: order.totalAmount })),
+    requests: page.map(({ order, buyerMember, ...r }) => {
+      const first = order.items[0];
+      return {
+        ...view(r),
+        orderNo: order.orderNo,
+        orderNoLabel: orderNoLabel(order.createdAt, order.orderNo),
+        nickname: order.broadcastNicknameSnapshot,
+        totalAmount: order.totalAmount,
+        buyerGrade: buyerMember.grade.displayName,
+        firstItem: first ? { productName: first.productNameSnapshot, optionName: first.optionNameSnapshot, otherCount: order.items.length - 1 } : null,
+        decidedByName: names.get(actorOf.get(r.id) ?? "") ?? null,
+      };
+    }),
     nextCursor: rows.length > PAGE ? page[page.length - 1].id : null,
     counts: Object.fromEntries(counts.map((c) => [c.status, c._count._all])) as Partial<Record<RefundRequestStatus, number>>,
   };
