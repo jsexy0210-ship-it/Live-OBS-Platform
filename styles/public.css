@@ -59,7 +59,7 @@
 .pf-foot-top{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap}
 .pf-foot-brand{display:flex;flex-direction:column;gap:8px}
 .pf-foot-links{display:flex;gap:24px;flex-wrap:wrap;font-size:13px}
-.pf-foot-links a{color:inherit}
+.pf-foot-links a{color:inherit;text-decoration:underline}
 @media (max-width:900px){
   .pf-head{padding:0 16px;height:56px}
   .pf-nav{display:none}
