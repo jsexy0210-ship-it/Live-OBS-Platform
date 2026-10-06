@@ -12,6 +12,7 @@ import { purgeFunnelDaily, purgeFunnelSeen } from "../stats/funnel";
 import { recoverStuckBulkCommits } from "../shop-bulk-io/recover";
 import { recalcMonthlyGrades } from "../shop-member-grades/service";
 import { rejectExpiredSupplements } from "../sellers/applications";
+import { sendDecisionMails } from "../sellers/decisionMails";
 import { processDueMemberMessages } from "../shop-member-messages/service";
 import { collectInfraSnapshot } from "../ops/infra";
 import { evaluateInfraAlerts } from "../ops/infraAlerts";
@@ -60,6 +61,8 @@ export const SCHEDULED_JOBS: ScheduledJob[] = [
   { name: "product_funnel_daily.purge_old", run: (tx, now) => purgeFunnelDaily(tx, now) },
   // 가입 신청 보완 기한(7일)이 지난 신청 자동 반려(sellers/applications.ts, 로그 추적 seller.supplement_expired)
   { name: "seller_application.reject_expired_supplements", run: (tx, now) => rejectExpiredSupplements(tx, now) },
+  // 파트너스 가입 승인·반려 안내 메일(EM-101·102, sellers/decisionMails.ts). 공급자·플랫폼 사업자 정보가 없으면 보내지 않는다.
+  { name: "seller_application.send_decision_mails", run: (_tx, now) => sendDecisionMails(prisma, now) },
   // 회원 대상 발송: 시각이 된 예약을 기록으로 바꾼다(shop-member-messages, 실제 발송 채널은 아직 없음)
   // 일괄 상품 등록 확정이 서버 중단으로 10분 넘게 COMMITTING에 머문 작업을 마감한다(shop-bulk-io/recover.ts)
   { name: "bulk_job.recover_stuck_commit", run: (_tx, now) => recoverStuckBulkCommits(prisma, now) },

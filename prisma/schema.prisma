@@ -4226,3 +4226,16 @@ model ExternalConnection {
   updatedByAdminId   String?   @db.Uuid
   updatedAt          DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
 }
+
+// 플랫폼(ONQ) 사업자 정보(한 줄, id = 1, 마이그레이션 CHECK). 파트너스 가입 안내 메일 바닥글(EM-101·102)에 쓴다. 최고관리자만 바꾸고 변경은 로그 추적에 남긴다.
+// 값이 하나라도 비어 있으면 가입 승인·반려 메일을 보내지 않는다(법정 바닥글을 채울 수 없음). 주소(URL)는 APP_ORIGIN을 쓴다.
+model PlatformBusinessInfo {
+  id               Int      @id @default(1)
+  name             String   @default("")
+  representative   String   @default("")
+  businessNumber   String   @default("")
+  address          String   @default("")
+  phone            String   @default("")
+  updatedAt        DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+  updatedByAdminId String?  @db.Uuid
+}
