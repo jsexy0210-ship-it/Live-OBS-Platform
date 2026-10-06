@@ -38,7 +38,8 @@ describe("시작하기 체크리스트 GET /api/seller/onboarding", () => {
     const b = await get(await login(seller.id, "OWNER"));
     expect(b).toMatchObject({ track: "INTEGRATED", planCode: "INTEGRATED", total: 6, doneCount: 0, currentStep: "subscription", completed: false, dismissed: false, trialEndsAt: null });
     expect(keys(b)).toEqual(["subscription", "shop_info", "products", "order_policy", "overlay", "overlay_url"]);
-    expect(b.steps[0]).toEqual({ key: "subscription", done: false, href: "/seller/subscription" });
+    expect(b.steps[0]).toEqual({ key: "subscription", done: false, status: "CURRENT", href: "/seller/subscription" });
+    expect(b.steps.slice(1).every((s: { status: string }) => s.status === "WAITING")).toBe(true);
   });
 
   it("기존 데이터에서 완료가 계산되고, 순서와 상관없이 첫 미완료 단계로 이어진다. 끝까지 하면 completed", async () => {
@@ -133,3 +134,60 @@ describe("저장 POST /api/seller/onboarding", () => {
     expect((await postRoute(noOrigin)).status).toBe(403);
   });
 });
+
+describe("시작하기 SA-003 확장: 상태 3종·지금 상태·갈래 바꾸기", () => {
+  it("단계 상태(DONE·CURRENT·WAITING)와 「지금 상태」 요약, 대표자 여부, 갈래 바꾸기 가능 여부", async () => {
+    const seller = await shop("INTEGRATED");
+    await db.product.create({ data: { sellerId: seller.id, name: "부스터", price: 1000, status: "ON_SALE" } });
+    await db.seller.update({ where: { id: seller.id }, data: { shopTagline: "매일 밤 8시 라이브" } });
+    const owner = await login(seller.id, "OWNER");
+    const b = await get(owner);
+    expect(b.steps.map((s: { key: string; status: string }) => `${s.key}:${s.status}`)).toEqual([
+      "subscription:CURRENT",
+      "shop_info:DONE",
+      "products:DONE",
+      "order_policy:WAITING",
+      "overlay:WAITING",
+      "overlay_url:WAITING",
+    ]);
+    expect(b.steps.find((s: { key: string }) => s.key === "shop_info").href).toBe("/seller/settings/shop");
+    expect(b).toMatchObject({ isOwner: true, trackChangeable: true, summary: { plan: { code: "INTEGRATED", paid: false }, shopSlug: seller.slug, billingConnected: false, productCount: 1, overlayUrlCopied: false } });
+    expect((await get(await login(seller.id, "MANAGER"))).isOwner).toBe(false);
+    await postRoute(req(owner, "POST", { action: "overlay_url_copied" }));
+    expect((await get(owner)).summary.overlayUrlCopied).toBe(true);
+  });
+
+  it("갈래 바꾸기: 구독 전에는 바뀌고 체험 종료일이 승인일 기준으로 다시 정해진다. 구독이 있으면 409. 잘못된 값 400. 권한 없으면 403. 로그 추적", async () => {
+    const plans = await seedPlans();
+    const { seller } = await createSeller();
+    const approvedAt = new Date(Date.now() - 2 * 86_400_000);
+    await db.seller.update({ where: { id: seller.id }, data: { planId: plans.INTEGRATED.id, approvedAt, trialEndsAt: null } });
+    const owner = await login(seller.id, "OWNER");
+    const post = (body: unknown, cookie = owner) => postRoute(req(cookie, "POST", body));
+    const r = await post({ action: "change_track", track: "OVERLAY_ONLY" });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, track: "OVERLAY_ONLY", changed: true });
+    const after = await db.seller.findUniqueOrThrow({ where: { id: seller.id } });
+    expect(after.planId).toBe(plans.OVERLAY_ONLY.id);
+    expect(after.trialEndsAt!.getTime()).toBe(approvedAt.getTime() + 7 * 86_400_000);
+    expect(await get(owner)).toMatchObject({ track: "OVERLAY_ONLY", total: 3 });
+    expect(await (await post({ action: "change_track", track: "OVERLAY_ONLY" })).json()).toEqual({ ok: true, track: "OVERLAY_ONLY", changed: false });
+    expect(await db.auditLog.count({ where: { action: "onboarding.track_change", sellerId: seller.id } })).toBe(1);
+    // 다시 쇼핑몰까지 쓰기로: 체험 없음
+    expect((await post({ action: "change_track", track: "INTEGRATED" })).status).toBe(200);
+    expect((await db.seller.findUniqueOrThrow({ where: { id: seller.id } })).trialEndsAt).toBeNull();
+    for (const track of ["X", undefined, null, "STANDARD"]) {
+      const bad = await post({ action: "change_track", track });
+      expect(bad.status).toBe(400);
+      expect((await bad.json()).error).toBe("invalid_track");
+    }
+    expect((await post({ action: "change_track", track: "OVERLAY_ONLY" }, await login(seller.id, "MANAGER"))).status).toBe(403);
+    // 구독을 만든 뒤에는 잠긴다
+    await db.sellerSubscription.create({ data: { sellerId: seller.id, planId: plans.INTEGRATED.id, status: "ACTIVE" } });
+    const locked = await post({ action: "change_track", track: "OVERLAY_ONLY" });
+    expect(locked.status).toBe(409);
+    expect((await locked.json()).error).toBe("track_locked");
+    expect((await get(owner)).trackChangeable).toBe(false);
+  });
+});
+
