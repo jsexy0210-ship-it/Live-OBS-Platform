@@ -10,6 +10,8 @@ export const ADMIN_PERMISSIONS = {
   // 구독 환불 승인(결제 취소 요청)은 최고관리자만(MASTER 결정 2026-10-05). 요청 만들기·반려는 billing.manage
   "billing.refund": ["SUPER_ADMIN"],
   "support.manage": ["SUPER_ADMIN", "CS"],
+  // 파트너스 문의 담당 배정·변경(MASTER 결정 2026-10-06: 운영·CS·최고관리자)
+  "support.assign": ["SUPER_ADMIN", "OPERATIONS", "CS"],
   "seller.impersonate": ["SUPER_ADMIN", "OPERATIONS", "CS"],
   "admin.manage": ["SUPER_ADMIN"],
   "system.manage": ["SUPER_ADMIN"],

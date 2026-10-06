@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { FormFoot, FormRow, FormSection, PageHead } from "../../../../../../components/admin-ui";
+import { FormFoot, FormRow, FormSection, PageHead, useConfirm } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
@@ -57,6 +57,7 @@ function deadlineError(v: string, max: number): string | null {
 }
 
 export default function ShippingSettingsPage() {
+  const { confirm } = useConfirm();
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; saved: Policy }>({ kind: "loading" });
   const [mode, setMode] = useState<Mode>("fixed");
   const [fee, setFee] = useState("");
@@ -151,6 +152,7 @@ export default function ShippingSettingsPage() {
       setShowErrors(true);
       return;
     }
+    if (!(await confirm({ title: "배송 설정을 저장하시겠습니까?", body: "바뀐 배송비 · 받는 방법은 저장한 뒤 들어오는 주문부터 적용됩니다. 이미 접수된 주문의 배송비는 바뀌지 않습니다.", confirmLabel: "저장" }))) return;
     setSaving(true);
     setFailure(null);
     const r = await api<{ policy: Policy }>("/api/seller/shipping-policy", { method: "PUT", body: candidate });

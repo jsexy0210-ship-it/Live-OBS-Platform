@@ -159,7 +159,9 @@ describe("마스터 답변·종료", () => {
     expect(await close(cs.cookie, id, { expectedVersion: 1 })).toMatchObject({ status: 409, body: { error: "version_conflict", currentVersion: 2 } });
     expect((await reply(cs.cookie, id, { body: "3일 안에 취소됩니다.", expectedVersion: 2 })).body.inquiry).toMatchObject({ status: "ANSWERED", version: 3 });
     const actions = (await db.auditLog.findMany({ where: { targetType: "PlatformInquiry", targetId: id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] })).map((x) => x.action);
-    expect(actions).toEqual(["platform_inquiry.create", "platform_inquiry.reply", "platform_inquiry.message", "platform_inquiry.reply"]);
+    // 첫 답변은 담당 자동 배정 로그가 함께 남는다(두 번째 답변은 이미 담당이 있어 없음)
+    expect(actions.filter((a) => a !== "platform_inquiry.assign")).toEqual(["platform_inquiry.create", "platform_inquiry.reply", "platform_inquiry.message", "platform_inquiry.reply"]);
+    expect(actions.filter((a) => a === "platform_inquiry.assign")).toHaveLength(1);
   });
 
   it("종료하면 파트너스 추가 문의·마스터 답변·다시 종료가 409 inquiry_closed. 종료한 관리자가 남는다", async () => {

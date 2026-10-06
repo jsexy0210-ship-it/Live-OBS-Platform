@@ -477,6 +477,7 @@ export default function BroadcastDashboardPage() {
                           <th style={{ width: 48 }}>순서</th>
                           <th style={{ width: 80 }}>주문 시각</th>
                           <th>구매자 · 상품</th>
+                          <th style={{ width: 100 }}>금액</th>
                           {chatOn && (
                             <th style={{ width: 150 }} data-testid="bc-chat-head">
                               채팅
@@ -493,6 +494,9 @@ export default function BroadcastDashboardPage() {
                             <td className="num">{kstTime(w.receivedAt)}</td>
                             <td className="col-text">
                               <ItemText item={w} />
+                            </td>
+                            <td className="num" data-testid="bc-amount">
+                              {typeof w.amount === "number" ? won(w.amount) : "-"}
                             </td>
                             {chatOn && (
                               <td className="t-c1 col-text" data-testid="bc-chat-cell">

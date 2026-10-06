@@ -46,13 +46,14 @@ export function kstAge(birthDate: Date, now: Date): number {
   return ty - by - (tm < bm || (tm === bm && td < bd) ? 1 : 0);
 }
 
-// 운영 중이고 잠기지 않았고 스토어 운영 기능 권한이 있는 쇼핑몰만 가입을 받는다(주문과 같은 기준, DB 시계).
+// 운영 중(운영 상태 OPEN)이고 잠기지 않았고 스토어 운영 기능 권한이 있는 쇼핑몰만 가입을 받는다(주문과 같은 기준, DB 시계).
 // 공유 미리보기·공유 카드도 이 기준이다(ARCHITECTURE 4.8.0 공개·구매자 경로 표).
 export async function shopOpen(db: PrismaClient, sellerId: string) {
-  const seller = await db.seller.findUnique({ where: { id: sellerId }, select: { status: true } });
+  const seller = await db.seller.findUnique({ where: { id: sellerId }, select: { status: true, operatingState: true } });
   return (
     !!seller &&
     seller.status === "ACTIVE" &&
+    seller.operatingState === "OPEN" &&
     (await sellerAccessFor(db, sellerId)) !== "expired" &&
     (await sellerHasFeature(db, sellerId, "STORE_OPERATIONS"))
   );

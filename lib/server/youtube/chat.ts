@@ -20,7 +20,7 @@ export const CHAT_SLOW_MAX_MS = 120_000;
 export const CHAT_RETENTION_DAYS = 30;
 
 // 수집을 켤 때 파트너스 화면에 보여 줄 고지(명사형·합니다체). 화면 세션은 이 문구를 그대로 쓴다.
-export const CHAT_NOTICE = `채팅 수집을 켜면 시청자의 채팅 표시 이름과 채팅 본문 앞 200자를 ${CHAT_RETENTION_DAYS}일 동안 보관합니다. 주문 닉네임 확인에만 씁니다.`;
+export const CHAT_NOTICE = `채팅 가져오기를 켜면 시청자의 채팅 표시 이름과 채팅 본문 앞 200자를 ${CHAT_RETENTION_DAYS}일 동안 보관합니다. 주문 닉네임 확인에만 씁니다.`;
 
 export type ChatReport = { polled: number; saved: number; stopped?: "quota_exhausted" };
 
