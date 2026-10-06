@@ -57,12 +57,16 @@ readonly_space_details() {
 readonly_buildx_details() {
   local version data count ref detail attribution
   if ! command -v docker >/dev/null 2>&1 || ! docker buildx version >/dev/null 2>&1; then
-    log "Buildx 상세: 미지원 또는 확인 불가"; return 0
+    log "Buildx 상세: 미지원 또는 확인 불가"
+    log "Build history attribution 및 Build cache ownership: UNKNOWN"
+    return 0
   fi
   version="$(docker buildx version 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)"
   log "Buildx 버전: ${version:-확인 불가}"
   if ! command -v jq >/dev/null 2>&1 || ! docker buildx du --help >/dev/null 2>&1; then
-    log "Build cache 상세: 미지원 또는 확인 불가"; return 0
+    log "Build cache 상세: 미지원 또는 확인 불가"
+    log "Build history attribution 및 Build cache ownership: UNKNOWN (필수 조회 지원 확인 불가)"
+    return 0
   fi
   data="$(docker buildx du --format=json 2>/dev/null | jq -c 'if type == "array" then . else [.] end' 2>/dev/null || true)"
   if [ -z "$data" ]; then log "Build cache 상세: 확인 불가"; else
@@ -81,6 +85,7 @@ readonly_buildx_details() {
     else
       count="$(jq 'length' <<<"$data" 2>/dev/null || echo 0)"
       log "Build history: 로컬 저장소 기록 ${count}개, 최대 20개 메타데이터 확인"
+      [ "$count" -gt 0 ] || log "Build attribution: repository=UNKNOWN revision=UNKNOWN context=UNKNOWN (기록 없음)"
       while IFS= read -r ref; do
         [[ "$ref" =~ ^[A-Za-z0-9_-]{1,80}$ ]] || continue
         detail="$(docker buildx history inspect --format json "$ref" 2>/dev/null | jq -c 'if type == "object" then {repository:(.VCSRepository // ""), revision:(.VCSRevision // ""), context:(.Context // "")} else {} end' 2>/dev/null || true)"
