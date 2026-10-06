@@ -40,10 +40,11 @@ jobs:
           persist-credentials: false
 
       # 로그를 열지 못하는 환경에서도 결과를 볼 수 있게 출력 전체를 알림 한 건으로 남긴다.
+      # run 기본 셸은 bash -e 이므로 실패 코드는 `|| code=$?`로 받는다. 용량 점검 단계는 정보용이라 실패로 끝내지 않는다.
       - name: Disk check (before)
         run: |
           set -uo pipefail
-          out="$(OBS_MIN_FREE_GB=5 scripts/ops/disk-cleanup.sh --check 2>&1)"; code=$?
+          code=0; out="$(OBS_MIN_FREE_GB=5 scripts/ops/disk-cleanup.sh --check 2>&1)" || code=$?
           printf '%s\n' "$out"
           msg="${out//'%'/'%25'}"; msg="${msg//$'\r'/'%0D'}"; msg="${msg//$'\n'/'%0A'}"
           echo "::notice title=disk before (exit ${code})::${msg}"
@@ -54,7 +55,7 @@ jobs:
         run: |
           set -uo pipefail
           if [ "$MODE" = apply ]; then args=(--apply); else args=(); fi
-          out="$(scripts/ops/disk-cleanup.sh "${args[@]}" 2>&1)"; code=$?
+          code=0; out="$(scripts/ops/disk-cleanup.sh "${args[@]}" 2>&1)" || code=$?
           printf '%s\n' "$out"
           msg="${out//'%'/'%25'}"; msg="${msg//$'\r'/'%0D'}"; msg="${msg//$'\n'/'%0A'}"
           echo "::notice title=disk-cleanup ${MODE} (exit ${code})::${msg}"
@@ -64,7 +65,7 @@ jobs:
         if: always()
         run: |
           set -uo pipefail
-          out="$(OBS_MIN_FREE_GB=5 scripts/ops/disk-cleanup.sh --check 2>&1)"; code=$?
+          code=0; out="$(OBS_MIN_FREE_GB=5 scripts/ops/disk-cleanup.sh --check 2>&1)" || code=$?
           printf '%s\n' "$out"
           msg="${out//'%'/'%25'}"; msg="${msg//$'\r'/'%0D'}"; msg="${msg//$'\n'/'%0A'}"
           echo "::notice title=disk after (exit ${code})::${msg}"
