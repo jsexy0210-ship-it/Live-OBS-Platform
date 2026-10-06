@@ -63,7 +63,7 @@ export default function AssistantPage() {
             <section className="card pad-l col" style={{ gap: 12 }} aria-label="질문하기">
               <span className="t-c1 c-alt">사용 방법만 알려 드립니다. 주문이나 설정을 대신 바꾸지는 않습니다. 이름·전화번호 같은 개인정보는 쓰지 마십시오. 오늘 남은 질문 {s.remainingToday}번</span>
               <form className="col" style={{ gap: 10 }} onSubmit={send}>
-                <textarea className="inp" rows={3} maxLength={s.questionMax} value={question} onChange={(e) => setQuestion(e.target.value)} disabled={busy || s.remainingToday === 0} placeholder="예: 주문 취소 방법" aria-label="질문" />
+                <textarea className="inp" rows={3} maxLength={s.questionMax} value={question} onChange={(e) => setQuestion(e.target.value)} disabled={busy || s.remainingToday === 0} placeholder="질문 입력" aria-label="질문" aria-description="예: 주문 취소 방법" />
                 <div className="row" style={{ gap: 12 }}>
                   <button className="btn btn-pri" type="submit" disabled={busy || s.remainingToday === 0 || question.trim() === ""}>
                     {busy ? "답변 중" : "도우미에게 질문하기"}

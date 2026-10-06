@@ -406,7 +406,7 @@ export default function BroadcastDashboardPage() {
                     <label className="sr" htmlFor="bc-title-input">
                       방송 제목
                     </label>
-                    <input id="bc-title-input" className="inp" placeholder="방송 제목 (선택)" maxLength={100} value={title} disabled={locked} onChange={(e) => setTitle(e.target.value)} />
+                    <input id="bc-title-input" className="inp" placeholder="방송 제목 입력" maxLength={100} value={title} disabled={locked} onChange={(e) => setTitle(e.target.value)} aria-description="방송 제목 (선택)" />
                     <button className="btn" type="submit" disabled={locked}>
                       방송 시작
                     </button>

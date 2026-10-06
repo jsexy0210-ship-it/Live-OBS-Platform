@@ -330,13 +330,13 @@ export default function StockPage() {
                   <input
                     className={`inp inp-sm${searchError ? " is-error" : ""}`}
                     type="search"
-                    placeholder="상품명 · 옵션명 검색"
+                    placeholder="검색어 입력"
                     aria-label="재고 검색"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     aria-invalid={!!searchError}
                     maxLength={MAX_SEARCH_LENGTH}
-                    aria-busy={searching}
+                    aria-busy={searching} aria-description="상품명 · 옵션명 검색"
                   />
                 </div>
                 <button className={`chip${filter === "low" ? " on" : ""}`} type="button" aria-pressed={filter === "low"} onClick={() => setFilter(filter === "low" ? "all" : "low")}>
@@ -352,7 +352,7 @@ export default function StockPage() {
                 </label>
                 <div className="row stock-bulk">
                   <span className="t-l2 c-alt">선택한 옵션에</span>
-                  <input className="inp inp-sm num stock-delta" type="text" inputMode="numeric" placeholder="+10" value={bulkDelta} onChange={(e) => setBulkDelta(e.target.value)} aria-label="선택한 옵션에 더하거나 뺄 수량" />
+                  <input className="inp inp-sm num stock-delta" type="text" inputMode="numeric" placeholder="수량 입력" value={bulkDelta} onChange={(e) => setBulkDelta(e.target.value)} aria-label="선택한 옵션에 더하거나 뺄 수량" aria-description="+10" />
                   <button className="btn btn-dense btn-out btn-w-lg" type="button" onClick={applyBulkDelta} disabled={pending || selected.size === 0 || !parseAmount(bulkDelta)}>
                     한꺼번에 적기
                   </button>
@@ -591,7 +591,7 @@ export default function StockPage() {
             {bulkReason === "직접 입력" && (
               <div className="fld">
                 <label htmlFor="bulk-memo">사유 메모</label>
-                <input id="bulk-memo" className={`inp${bulkMemoError ? " is-error" : ""}`} type="text" placeholder="예: 창고 재고 맞춤" value={bulkMemo} onChange={(e) => setBulkMemo(e.target.value)} aria-invalid={!!bulkMemoError} />
+                <input id="bulk-memo" className={`inp${bulkMemoError ? " is-error" : ""}`} type="text" placeholder="변경 사유 입력" value={bulkMemo} onChange={(e) => setBulkMemo(e.target.value)} aria-invalid={!!bulkMemoError} aria-description="예: 창고 재고 맞춤" />
                 {bulkMemoError && <span className="err">{bulkMemoError}</span>}
               </div>
             )}
@@ -739,7 +739,7 @@ function AdjustSheet({ row, onClose, onDone }: { row: Row; onClose: () => void; 
         {reason === "직접 입력" && (
           <div className="fld">
             <label htmlFor="adj-memo">사유 메모</label>
-            <input id="adj-memo" className={`inp${memoErr ? " is-error" : ""}`} type="text" placeholder="예: 추가 입고" value={memo} onChange={(e) => setMemo(e.target.value)} aria-invalid={!!memoErr} />
+            <input id="adj-memo" className={`inp${memoErr ? " is-error" : ""}`} type="text" placeholder="변경 사유 입력" value={memo} onChange={(e) => setMemo(e.target.value)} aria-invalid={!!memoErr} aria-description="예: 추가 입고" />
             {memoErr && <span className="err">{memoErr}</span>}
           </div>
         )}

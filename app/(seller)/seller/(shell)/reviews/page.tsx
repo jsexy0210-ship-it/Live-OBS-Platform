@@ -401,7 +401,7 @@ function ReviewDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
                     </button>
                   ))}
                 </div>
-                <input className="inp" aria-label="사유 설명" placeholder="사유 설명 (선택, 200자)" maxLength={200} value={note} onChange={(e) => setNote(e.target.value)} />
+                <input className="inp" aria-label="사유 설명" placeholder="사유 입력" maxLength={200} value={note} onChange={(e) => setNote(e.target.value)} aria-description="사유 설명 (선택, 200자)" />
                 <div className="row" style={{ gap: 8, justifyContent: "flex-end" }}>
                   <button className="btn btn-sm btn-out" type="button" onClick={() => setHiding(false)} disabled={busy}>
                     취소
@@ -508,7 +508,7 @@ function PolicyDialog({ policy, canEdit, onClose, onSaved }: { policy: Policy; c
           </div>
           <div className="fld">
             <label htmlFor="rv-words">금지어</label>
-            <input id="rv-words" className="inp" disabled={!canEdit} placeholder="쉼표로 구분 · 20자 이하 50개까지" value={words} onChange={(e) => setWords(e.target.value)} />
+            <input id="rv-words" className="inp" disabled={!canEdit} placeholder="단어 입력" value={words} onChange={(e) => setWords(e.target.value)} aria-description="쉼표로 구분 · 20자 이하 50개까지" />
             <span className="help">연락처 · 외부 주소는 자동으로 검사합니다 · 걸리면 보류</span>
           </div>
         </div>

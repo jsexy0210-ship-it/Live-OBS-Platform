@@ -197,12 +197,12 @@ export default function ShippingPage() {
               <input
                 className="inp inp-sm"
                 type="search"
-                placeholder="주문번호 · 닉네임 · 송장번호"
+                placeholder="검색어 입력"
                 aria-label="배송 검색"
                 value={search}
                 maxLength={MAX_SEARCH_LENGTH}
                 disabled={busy}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => setSearch(e.target.value)} aria-description="주문번호 · 닉네임 · 송장번호"
               />
             </div>
             {tab === "ready" && (
@@ -301,14 +301,14 @@ export default function ShippingPage() {
                                 className="inp inp-sm"
                                 autoCapitalize="characters"
                                 aria-label={`주문 ${r.orderNo} 송장번호`}
-                                placeholder="송장번호"
+                                placeholder="송장번호 입력"
                                 value={tracking[r.orderId] ?? ""}
                                 onChange={(e) => {
                                   const v = e.target.value;
                                   setTracking((t) => ({ ...t, [r.orderId]: v }));
                                   // 송장번호를 적으면 그 주문을 고른 것으로 본다
                                   if (v.trim() && !picked.has(r.orderId)) toggle(r.orderId);
-                                }}
+                                }} aria-description="송장번호"
                               />
                               </div>
                             ) : r.shipment ? (

@@ -421,7 +421,7 @@ export default function BroadcastDetailPage() {
                       <th scope="row">메모</th>
                       <td>
                         <div className="au-ft-v" style={{ alignItems: "flex-start" }}>
-                          <textarea className="inp" style={{ flex: "1 1 360px", minHeight: 48 }} maxLength={1000} value={memo} placeholder="방송 메모 (파트너스만 봅니다)" onChange={(e) => setMemo(e.target.value)} aria-label="메모" data-testid="bd-memo" />
+                          <textarea className="inp" style={{ flex: "1 1 360px", minHeight: 48 }} maxLength={1000} value={memo} placeholder="메모 입력" onChange={(e) => setMemo(e.target.value)} aria-label="메모" data-testid="bd-memo" aria-description="방송 메모 (파트너스만 봅니다)" />
                           <button className="btn btn-sm btn-out" type="button" disabled={saving || memo === (b.memo ?? "")} onClick={() => void saveMemo()} data-testid="bd-memo-save">
                             저장
                           </button>

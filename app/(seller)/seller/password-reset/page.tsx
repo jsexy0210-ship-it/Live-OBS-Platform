@@ -154,10 +154,10 @@ function PasswordResetPageInner() {
                       className="inp"
                       autoCapitalize="none"
                       spellCheck={false}
-                      placeholder="예: byulbit"
+                      placeholder="쇼핑몰 주소 입력"
                       value={shopSlug}
                       disabled={busy || codeSent}
-                      onChange={(e) => setShopSlug(e.target.value.toLowerCase())}
+                      onChange={(e) => setShopSlug(e.target.value.toLowerCase())} aria-description="예: byulbit"
                     />
                     <span className="help">가입할 때 정한 쇼핑몰 주소입니다</span>
                   </div>

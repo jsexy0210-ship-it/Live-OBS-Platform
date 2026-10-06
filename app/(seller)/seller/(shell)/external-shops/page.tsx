@@ -117,7 +117,7 @@ export default function ExternalShopsPage() {
                 <section className="card pad col" style={{ gap: 8 }} data-testid="external-add">
                   <label htmlFor="ext-url"><b>쇼핑몰 주소</b></label>
                   <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                    <input id="ext-url" className="inp" style={{ minWidth: 320 }} type="text" inputMode="url" placeholder="운영 중인 쇼핑몰 주소" value={url} onChange={(e) => setUrl(e.target.value)} />
+                    <input id="ext-url" className="inp" style={{ minWidth: 320 }} type="text" inputMode="url" placeholder="쇼핑몰 주소 입력" value={url} onChange={(e) => setUrl(e.target.value)} aria-description="운영 중인 쇼핑몰 주소" />
                     <button className="btn" type="button" disabled={!url.trim()} onClick={() => void begin({ shopUrl: url.trim() }, { title: "이 쇼핑몰을 연결하시겠습니까?", body: `${url.trim()}의 쇼핑몰 관리자 로그인 화면으로 이동합니다. 로그인하고 앱 설치를 허용하면 연결됩니다.`, confirmLabel: "연결 시작하기" })}>이 주소로 연결 시작하기</button>
                   </div>
                   <span className="t-c1 c-alt">주소로 연결할 수 있는지 자동으로 확인합니다 · 연결할 수 있으면 관리자 로그인과 앱 설치 승인으로 이어집니다</span>

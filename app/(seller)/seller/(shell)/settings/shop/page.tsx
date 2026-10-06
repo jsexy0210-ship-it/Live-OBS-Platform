@@ -465,12 +465,12 @@ export default function ShopInfoPage() {
               {editable && profile ? (
                 <>
                   <FormRow label="쇼핑몰 이름" required htmlFor="shop-name">
-                    <input id="shop-name" placeholder="쇼핑몰 이름" className={`inp${showErrors && nameError ? " is-error" : ""}`} type="text" value={name} onChange={(e) => setName(e.target.value)} style={{ width: 360 }} aria-invalid={showErrors && !!nameError} disabled={saving} />
+                    <input id="shop-name" placeholder="쇼핑몰 이름 입력" className={`inp${showErrors && nameError ? " is-error" : ""}`} type="text" value={name} onChange={(e) => setName(e.target.value)} style={{ width: 360 }} aria-invalid={showErrors && !!nameError} disabled={saving} aria-description="쇼핑몰 이름" />
                     <span className="t-l2 c-alt">{len(name.trim())} / {NAME_MAX}</span>
                     {showErrors && nameError && <span className="err">{nameError}</span>}
                   </FormRow>
                   <FormRow label="한 줄 소개" htmlFor="shop-tagline">
-                    <input id="shop-tagline" placeholder="한 줄 소개 (40자)" className={`inp${showErrors && taglineError ? " is-error" : ""}`} type="text" value={tagline} onChange={(e) => setTagline(e.target.value)} style={{ width: 520, maxWidth: "100%" }} aria-invalid={showErrors && !!taglineError} disabled={saving} />
+                    <input id="shop-tagline" placeholder="한 줄 소개 입력" className={`inp${showErrors && taglineError ? " is-error" : ""}`} type="text" value={tagline} onChange={(e) => setTagline(e.target.value)} style={{ width: 520, maxWidth: "100%" }} aria-invalid={showErrors && !!taglineError} disabled={saving} aria-description="한 줄 소개 (40자)" />
                     <span className="t-l2 c-alt">{len(tagline.trim())} / {TAGLINE_MAX}</span>
                     {showErrors && taglineError && <span className="err">{taglineError}</span>}
                   </FormRow>
@@ -595,12 +595,12 @@ export default function ShopInfoPage() {
                     </div>
                   </FormRow>
                   <FormRow label="공유 제목" htmlFor="share-title" help={`비우면 쇼핑몰 이름 · ${SHARE_TITLE_MAX}자`}>
-                    <input id="share-title" placeholder="공유 카드 제목 (60자)" className={`inp${showErrors && titleProblem ? " is-error" : ""}`} value={shareTitle} onChange={(e) => setShareTitle(e.target.value)} style={{ width: 360 }} aria-invalid={!!titleProblem} disabled={saving} />
+                    <input id="share-title" placeholder="공유 제목 입력" className={`inp${showErrors && titleProblem ? " is-error" : ""}`} value={shareTitle} onChange={(e) => setShareTitle(e.target.value)} style={{ width: 360 }} aria-invalid={!!titleProblem} disabled={saving} aria-description="공유 카드 제목 (60자)" />
                     <span className="t-l2 c-alt">{textLength(shareTitle)} / {SHARE_TITLE_MAX}</span>
                     {titleProblem && <span className="err">{titleProblem}</span>}
                   </FormRow>
                   <FormRow label="공유 설명" htmlFor="share-desc" help={`비우면 한 줄 소개 · ${SHARE_DESC_MAX}자`}>
-                    <input id="share-desc" placeholder="공유 카드 설명 한 줄" className={`inp${showErrors && descProblem ? " is-error" : ""}`} value={shareDesc} onChange={(e) => setShareDesc(e.target.value)} style={{ width: 520, maxWidth: "100%" }} aria-invalid={!!descProblem} disabled={saving} />
+                    <input id="share-desc" placeholder="공유 설명 입력" className={`inp${showErrors && descProblem ? " is-error" : ""}`} value={shareDesc} onChange={(e) => setShareDesc(e.target.value)} style={{ width: 520, maxWidth: "100%" }} aria-invalid={!!descProblem} disabled={saving} aria-description="공유 카드 설명 한 줄" />
                     <span className="t-l2 c-alt">{textLength(shareDesc)} / {SHARE_DESC_MAX}</span>
                     {descProblem && <span className="err">{descProblem}</span>}
                   </FormRow>
@@ -651,7 +651,7 @@ export default function ShopInfoPage() {
               <div style={{ marginTop: 32 }} data-testid="notice-section">
                 <FormSection title="공지 · 이용안내">
                   <FormRow label="상단 공지 (한 줄)" htmlFor="top-notice" help="모든 쇼핑몰 화면 맨 위에 한 줄로 보입니다 · 비우면 보이지 않습니다 · 홈 띠 고정 공지는 「쇼핑몰 공지 · 질문」에서 관리">
-                    <input id="top-notice" placeholder="상단 공지 한 줄" className={`inp${showErrors && topNoticeError ? " is-error" : ""}`} value={topNotice} onChange={(e) => setTopNotice(e.target.value)} style={{ width: 520, maxWidth: "100%" }} aria-invalid={showErrors && !!topNoticeError} disabled={saving} />
+                    <input id="top-notice" placeholder="공지 내용 입력" className={`inp${showErrors && topNoticeError ? " is-error" : ""}`} value={topNotice} onChange={(e) => setTopNotice(e.target.value)} style={{ width: 520, maxWidth: "100%" }} aria-invalid={showErrors && !!topNoticeError} disabled={saving} aria-description="상단 공지 한 줄" />
                     <span className="t-l2 c-alt">{len(topNotice.trim())} / {TOP_NOTICE_MAX}</span>
                     {showErrors && topNoticeError && <span className="err" role="alert">{topNoticeError}</span>}
                   </FormRow>
@@ -667,7 +667,7 @@ export default function ShopInfoPage() {
                   </FormRow>
                   <FormRow label="이용안내 · 교환 · 환불 정책" htmlFor="usage-guide" help="구매자에게 보이는 글이라 해요체로 씁니다 · 줄바꿈이 그대로 보입니다">
                     <div className="col" style={{ gap: 4, width: "100%" }}>
-                      <textarea id="usage-guide" placeholder="예: 개봉 전 주문은 취소할 수 있어요. 개봉하면 단순 변심으로는 취소 · 환불이 안 돼요." className={`inp${showErrors && guideError ? " is-error" : ""}`} rows={6} style={{ width: "100%", maxWidth: 820, padding: "10px 12px" }} value={usageGuide} onChange={(e) => setUsageGuide(e.target.value)} aria-invalid={showErrors && !!guideError} disabled={saving} />
+                      <textarea id="usage-guide" placeholder="이용안내 입력" className={`inp${showErrors && guideError ? " is-error" : ""}`} rows={6} style={{ width: "100%", maxWidth: 820, padding: "10px 12px" }} value={usageGuide} onChange={(e) => setUsageGuide(e.target.value)} aria-invalid={showErrors && !!guideError} disabled={saving} aria-description="예: 개봉 전 주문은 취소할 수 있어요. 개봉하면 단순 변심으로는 취소 · 환불이 안 돼요." />
                       <span className="t-l2 c-alt">{len(usageGuide.trim()).toLocaleString("ko-KR")} / {USAGE_GUIDE_MAX.toLocaleString("ko-KR")}</span>
                       {showErrors && guideError && <span className="err" role="alert">{guideError}</span>}
                     </div>

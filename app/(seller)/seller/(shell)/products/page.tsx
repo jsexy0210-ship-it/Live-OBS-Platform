@@ -329,7 +329,7 @@ export default function ProductListPage() {
             <input
               className="inp inp-sm"
               type="search"
-              placeholder={draft.mode === "name" ? "상품명 · 선택 항목 이름 입력" : "상품 코드 입력(예: P12)"}
+              placeholder="검색어 입력" aria-description={draft.mode === "name" ? "상품명 · 선택 항목 이름 입력" : "상품 코드 입력(예: P12)"}
               aria-label="상품 검색"
               value={draft.text}
               onChange={(e) => setDraft({ ...draft, text: e.target.value })}

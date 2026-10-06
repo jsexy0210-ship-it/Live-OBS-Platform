@@ -277,11 +277,11 @@ export default function RewardPolicyPage() {
                                     className={`inp num${err ? " is-error" : ""}`}
                                     style={{ width: 80, textAlign: "right" }}
                                     inputMode="decimal"
-                                    placeholder="0"
+                                    placeholder="금액 입력"
                                     aria-label={`${g.name} ${key === "card" ? "카드 결제" : "무통장"} 적립률`}
                                     aria-invalid={!!err}
                                     value={form.rates[g.id][key]}
-                                    onChange={(e) => setRate(g.id, key, e.target.value)}
+                                    onChange={(e) => setRate(g.id, key, e.target.value)} aria-description="0"
                                   />
                                   <span>%</span>
                                 </div>
@@ -356,7 +356,7 @@ export default function RewardPolicyPage() {
                       </th>
                       <td className="rw-rt">
                         <div className="row" style={{ gap: 6, alignItems: "center" }}>
-                          <input id="rp-min" className={`inp num${errors.useMin ? " is-error" : ""}`} style={{ width: 140, textAlign: "right" }} inputMode="numeric" placeholder="0" value={form.useMin} onChange={(e) => patch({ useMin: e.target.value })} aria-invalid={!!errors.useMin} />
+                          <input id="rp-min" className={`inp num${errors.useMin ? " is-error" : ""}`} style={{ width: 140, textAlign: "right" }} inputMode="numeric" placeholder="금액 입력" value={form.useMin} onChange={(e) => patch({ useMin: e.target.value })} aria-invalid={!!errors.useMin} aria-description="0" />
                           <span>원</span>
                         </div>
                         {errors.useMin && <p className="err au-ft-help">{errors.useMin}</p>}
@@ -366,7 +366,7 @@ export default function RewardPolicyPage() {
                       </th>
                       <td>
                         <div className="row" style={{ gap: 6, alignItems: "center" }}>
-                          <input id="rp-ratio" className={`inp num${errors.useRatio ? " is-error" : ""}`} style={{ width: 100, textAlign: "right" }} inputMode="numeric" placeholder="0" value={form.useRatio} onChange={(e) => patch({ useRatio: e.target.value })} aria-invalid={!!errors.useRatio} />
+                          <input id="rp-ratio" className={`inp num${errors.useRatio ? " is-error" : ""}`} style={{ width: 100, textAlign: "right" }} inputMode="numeric" placeholder="비율 입력" value={form.useRatio} onChange={(e) => patch({ useRatio: e.target.value })} aria-invalid={!!errors.useRatio} aria-description="0" />
                           <span>% · 0 = 제한 없음</span>
                         </div>
                         {errors.useRatio && <p className="err au-ft-help">{errors.useRatio}</p>}
@@ -382,7 +382,7 @@ export default function RewardPolicyPage() {
                             <input className="cbx" type="checkbox" checked={form.bonusOn} onChange={(e) => patch({ bonusOn: e.target.checked })} aria-label="인기 카드 1위 보너스 사용" />
                             사용
                           </label>
-                          <input className={`inp num${errors.bonus ? " is-error" : ""}`} style={{ width: 120, textAlign: "right" }} inputMode="numeric" placeholder="0" aria-label="인기 카드 1위 보너스 금액" value={form.bonusAmount} disabled={!form.bonusOn} onChange={(e) => patch({ bonusAmount: e.target.value })} aria-invalid={!!errors.bonus} />
+                          <input className={`inp num${errors.bonus ? " is-error" : ""}`} style={{ width: 120, textAlign: "right" }} inputMode="numeric" placeholder="금액 입력" aria-label="인기 카드 1위 보너스 금액" value={form.bonusAmount} disabled={!form.bonusOn} onChange={(e) => patch({ bonusAmount: e.target.value })} aria-invalid={!!errors.bonus} aria-description="0" />
                           <span>원</span>
                         </div>
                         {errors.bonus ? <p className="err au-ft-help">{errors.bonus}</p> : <p className="help au-ft-help">HIT 당첨으로 1위에 오른 구매자에게 추가 지급</p>}

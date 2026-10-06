@@ -153,7 +153,7 @@ export default function BuyerInquiriesPage() {
             {invalidRange && <span className="help bi-neg">시작일이 끝일보다 늦습니다</span>}
           </SearchRow>
           <SearchRow label="검색어">
-            <input className="inp" aria-label="검색어" placeholder="제목 · 내용 · 작성자 · 상품명" maxLength={50} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
+            <input className="inp" aria-label="검색어" placeholder="검색어 입력" maxLength={50} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} aria-description="제목 · 내용 · 작성자 · 상품명" />
           </SearchRow>
         </SearchBox>
 

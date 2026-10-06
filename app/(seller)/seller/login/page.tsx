@@ -190,7 +190,7 @@ export default function SellerLoginPage() {
           {needShop && (
             <div className="fld">
               <label htmlFor="shop">쇼핑몰 주소(가입할 때 정한 영문 이름)</label>
-              <input id="shop" className="inp" type="text" placeholder="예: byulbit" value={shopSlug} onChange={(e) => setShopSlug(e.target.value)} />
+              <input id="shop" className="inp" type="text" placeholder="쇼핑몰 주소 입력" value={shopSlug} onChange={(e) => setShopSlug(e.target.value)} aria-description="예: byulbit" />
               <span className="help">이 이메일로 쓰는 쇼핑몰이 여러 곳입니다. 가입할 때 정한 쇼핑몰 주소(영문)를 입력해 주십시오</span>
             </div>
           )}

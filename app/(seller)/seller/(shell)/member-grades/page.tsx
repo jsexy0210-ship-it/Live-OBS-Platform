@@ -233,8 +233,8 @@ export default function MemberGradesPage() {
               ))}
               {canEdit && (
                 <div className="mg-grid">
-                  <input className="inp" aria-label="새 등급 이름" placeholder="새 등급 이름" maxLength={12} value={newName} onChange={(e) => setNewName(e.target.value)} />
-                  <input className="inp num" inputMode="numeric" aria-label="새 등급 기준 금액" placeholder="기준 금액" value={newAmount} onChange={(e) => setNewAmount(digits(e.target.value))} />
+                  <input className="inp" aria-label="새 등급 이름" placeholder="등급 이름 입력" maxLength={12} value={newName} onChange={(e) => setNewName(e.target.value)} aria-description="새 등급 이름" />
+                  <input className="inp num" inputMode="numeric" aria-label="새 등급 기준 금액" placeholder="기준 금액 입력" value={newAmount} onChange={(e) => setNewAmount(digits(e.target.value))} aria-description="기준 금액" />
                   <span className="mg-hide-m" />
                   <span className="mg-hide-m" />
                   <button className="btn btn-sm btn-out" type="button" disabled={busy || !newName.trim()} onClick={() => void add()}>
@@ -274,10 +274,10 @@ export default function MemberGradesPage() {
                       className="inp num"
                       inputMode="numeric"
                       aria-label={`${g.displayName} 배송비 할인 금액`}
-                      placeholder="원"
+                      placeholder="금액 입력"
                       disabled={!canEdit || b.shippingBenefit !== "DISCOUNT"}
                       value={b.shippingBenefit === "DISCOUNT" ? b.shippingDiscount : ""}
-                      onChange={(e) => set({ shippingDiscount: digits(e.target.value) })}
+                      onChange={(e) => set({ shippingDiscount: digits(e.target.value) })} aria-description="원"
                     />
                     <select className="inp" aria-label={`${g.displayName} 승급 쿠폰`} disabled={!canEdit || g.isBase} value={b.promotionCouponId} onChange={(e) => set({ promotionCouponId: e.target.value })}>
                       <option value="">없음</option>
@@ -509,7 +509,7 @@ function MemberAdjust({ grades, onDone }: { grades: Grade[]; onDone: (text: stri
             void search();
           }}
         >
-          <input className="inp inp-sm" aria-label="회원 닉네임 검색" placeholder="방송 닉네임" maxLength={30} value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className="inp inp-sm" aria-label="회원 닉네임 검색" placeholder="검색어 입력" maxLength={30} value={q} onChange={(e) => setQ(e.target.value)} aria-description="방송 닉네임" />
           <button className="btn btn-sm btn-out" type="submit">
             검색
           </button>
@@ -545,7 +545,7 @@ function MemberAdjust({ grades, onDone }: { grades: Grade[]; onDone: (text: stri
           {pick[m.id]?.lock && (
             <div className="mg-adj-more">
               <DatePicker className="dt-sm" aria-label={`${m.broadcastNickname} 고정 종료일`} value={pick[m.id].until} onChange={(v) => set(m.id, { until: v })} />
-              <input className="inp inp-sm" aria-label={`${m.broadcastNickname} 고정 사유`} placeholder="사유 (예: 방송 단골)" maxLength={100} value={pick[m.id].reason} onChange={(e) => set(m.id, { reason: e.target.value })} />
+              <input className="inp inp-sm" aria-label={`${m.broadcastNickname} 고정 사유`} placeholder="사유 입력" maxLength={100} value={pick[m.id].reason} onChange={(e) => set(m.id, { reason: e.target.value })} aria-description="사유 (예: 방송 단골)" />
               <span className="t-c1 c-alt">종료일을 비우면 직접 풀 때까지 고정됩니다</span>
             </div>
           )}

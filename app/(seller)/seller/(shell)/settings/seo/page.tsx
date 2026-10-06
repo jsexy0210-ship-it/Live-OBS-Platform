@@ -178,10 +178,10 @@ export default function SeoSettingsPage() {
                 </div>
               </FormRow>
               <FormRow label="검색 제목" htmlFor="seo-title" help={err("searchTitle") ? <span className="err">{err("searchTitle")}</span> : `비우면 쇼핑몰 이름을 씁니다 · ${len(form.searchTitle)} / ${TITLE_MAX}자`}>
-                <input id="seo-title" placeholder="검색 결과에 보일 제목 (60자)" className={`inp${err("searchTitle") ? " is-error" : ""}`} type="text" value={form.searchTitle} onChange={(e) => set("searchTitle", e.target.value)} aria-invalid={!!err("searchTitle")} style={{ width: "100%", maxWidth: 480 }} />
+                <input id="seo-title" placeholder="검색 제목 입력" className={`inp${err("searchTitle") ? " is-error" : ""}`} type="text" value={form.searchTitle} onChange={(e) => set("searchTitle", e.target.value)} aria-invalid={!!err("searchTitle")} style={{ width: "100%", maxWidth: 480 }} aria-description="검색 결과에 보일 제목 (60자)" />
               </FormRow>
               <FormRow label="검색 설명" htmlFor="seo-desc" help={err("searchDescription") ? <span className="err">{err("searchDescription")}</span> : `${len(form.searchDescription)} / ${DESCRIPTION_MAX}자`}>
-                <textarea id="seo-desc" placeholder="검색 결과에 보일 설명 (160자)" className={`inp${err("searchDescription") ? " is-error" : ""}`} rows={3} value={form.searchDescription} onChange={(e) => set("searchDescription", e.target.value)} aria-invalid={!!err("searchDescription")} style={{ width: "100%", maxWidth: 480 }} />
+                <textarea id="seo-desc" placeholder="검색 설명 입력" className={`inp${err("searchDescription") ? " is-error" : ""}`} rows={3} value={form.searchDescription} onChange={(e) => set("searchDescription", e.target.value)} aria-invalid={!!err("searchDescription")} style={{ width: "100%", maxWidth: 480 }} aria-description="검색 결과에 보일 설명 (160자)" />
               </FormRow>
               <FormRow label="사이트맵" help="검색 사이트가 상품 주소를 찾을 수 있게 목록을 제공합니다">
                   <label className="chk">
@@ -190,10 +190,10 @@ export default function SeoSettingsPage() {
                   </label>
                 </FormRow>
               <FormRow label="구글 확인 코드" htmlFor="seo-google" help={err("googleVerification") ? <span className="err">{err("googleVerification")}</span> : "구글 서치 콘솔이 알려 주는 메타 태그의 content 값만 입력합니다"}>
-                  <input id="seo-google" placeholder="검색 도구에서 받은 확인 코드" className={`inp${err("googleVerification") ? " is-error" : ""}`} type="text" value={form.googleVerification} onChange={(e) => set("googleVerification", e.target.value)} aria-invalid={!!err("googleVerification")} style={{ width: "100%", maxWidth: 480 }} />
+                  <input id="seo-google" placeholder="확인 코드 입력" className={`inp${err("googleVerification") ? " is-error" : ""}`} type="text" value={form.googleVerification} onChange={(e) => set("googleVerification", e.target.value)} aria-invalid={!!err("googleVerification")} style={{ width: "100%", maxWidth: 480 }} aria-description="검색 도구에서 받은 확인 코드" />
                 </FormRow>
               <FormRow label="네이버 확인 코드" htmlFor="seo-naver" help={err("naverVerification") ? <span className="err">{err("naverVerification")}</span> : "네이버 서치어드바이저가 알려 주는 메타 태그의 content 값만 입력합니다"}>
-                  <input id="seo-naver" placeholder="검색 도구에서 받은 확인 코드" className={`inp${err("naverVerification") ? " is-error" : ""}`} type="text" value={form.naverVerification} onChange={(e) => set("naverVerification", e.target.value)} aria-invalid={!!err("naverVerification")} style={{ width: "100%", maxWidth: 480 }} />
+                  <input id="seo-naver" placeholder="확인 코드 입력" className={`inp${err("naverVerification") ? " is-error" : ""}`} type="text" value={form.naverVerification} onChange={(e) => set("naverVerification", e.target.value)} aria-invalid={!!err("naverVerification")} style={{ width: "100%", maxWidth: 480 }} aria-description="검색 도구에서 받은 확인 코드" />
                 </FormRow>
             </FormSection>
             <p className="help" style={{ marginTop: 8 }}>파비콘과 공유 카드 이미지는 「공유 설정」에서 바꿉니다.</p>
@@ -205,7 +205,7 @@ export default function SeoSettingsPage() {
                   htmlFor="seo-ptitle"
                   help={err("productTitleTemplate") ? <span className="err">{err("productTitleTemplate")}</span> : `{상품명}, {쇼핑몰}을 넣을 수 있습니다 · 비우면 기본 형식을 씁니다 · ${len(form.productTitleTemplate)} / ${TITLE_MAX}자`}
                 >
-                  <input id="seo-ptitle" className={`inp${err("productTitleTemplate") ? " is-error" : ""}`} type="text" value={form.productTitleTemplate} placeholder="{상품명} | {쇼핑몰}" onChange={(e) => set("productTitleTemplate", e.target.value)} aria-invalid={!!err("productTitleTemplate")} style={{ width: "100%", maxWidth: 480 }} />
+                  <input id="seo-ptitle" className={`inp${err("productTitleTemplate") ? " is-error" : ""}`} type="text" value={form.productTitleTemplate} placeholder="제목 규칙 입력" onChange={(e) => set("productTitleTemplate", e.target.value)} aria-invalid={!!err("productTitleTemplate")} style={{ width: "100%", maxWidth: 480 }} aria-description="{상품명} | {쇼핑몰}" />
                 </FormRow>
                 <FormRow
                   label="상품 설명 규칙"

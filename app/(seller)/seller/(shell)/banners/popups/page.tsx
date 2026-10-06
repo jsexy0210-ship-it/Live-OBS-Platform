@@ -569,7 +569,7 @@ function PopupEditor({
                 <label htmlFor="popup-link-label">버튼 이름</label>
               </th>
               <td>
-                <input id="popup-link-label" className="inp" style={{ maxWidth: 240 }} value={d.linkLabel} maxLength={20} placeholder="자세히 보기" onChange={(e) => set({ linkLabel: e.target.value })} />
+                <input id="popup-link-label" className="inp" style={{ maxWidth: 240 }} value={d.linkLabel} maxLength={20} placeholder="버튼 문구 입력" onChange={(e) => set({ linkLabel: e.target.value })} aria-description="자세히 보기" />
                 <span className="help">비우면 「자세히 보기」</span>
               </td>
             </tr>

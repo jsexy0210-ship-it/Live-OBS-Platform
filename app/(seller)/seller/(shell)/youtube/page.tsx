@@ -210,7 +210,7 @@ export default function YoutubePage() {
                               <label className="sr" htmlFor="yt-channel">
                                 채널 주소
                               </label>
-                              <input id="yt-channel" className="inp" style={{ width: 360, maxWidth: "100%" }} placeholder="예: @내채널이름 또는 유튜브 채널 주소" value={channelUrl} disabled={off} onChange={(e) => setChannelUrl(e.target.value)} />
+                              <input id="yt-channel" className="inp" style={{ width: 360, maxWidth: "100%" }} placeholder="채널 주소 입력" value={channelUrl} disabled={off} onChange={(e) => setChannelUrl(e.target.value)} aria-description="예: @내채널이름 또는 유튜브 채널 주소" />
                               <button className="btn" type="submit" disabled={off || !channelUrl.trim()}>
                                 {data.channel ? "채널 바꾸기" : "채널 이어 두기"}
                               </button>
@@ -258,7 +258,7 @@ export default function YoutubePage() {
                                 <label className="sr" htmlFor="yt-live-url">
                                   방송 주소
                                 </label>
-                                <input id="yt-live-url" className="inp" style={{ width: 360, maxWidth: "100%" }} placeholder="방송 주소 (선택)" value={liveUrl} disabled={off} onChange={(e) => setLiveUrl(e.target.value)} />
+                                <input id="yt-live-url" className="inp" style={{ width: 360, maxWidth: "100%" }} placeholder="방송 주소 입력" value={liveUrl} disabled={off} onChange={(e) => setLiveUrl(e.target.value)} aria-description="방송 주소 (선택)" />
                                 <button className="btn" type="submit" disabled={off || !liveUrl.trim()}>
                                   방송 이어 두기
                                 </button>

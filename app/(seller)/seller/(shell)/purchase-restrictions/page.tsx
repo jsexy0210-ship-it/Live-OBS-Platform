@@ -227,7 +227,7 @@ function LiftModal({ group, onClose, onDone, onGone }: { group: Group; onClose: 
           <label className="lbl" htmlFor="pr-lift-reason">
             사유 (선택)
           </label>
-          <textarea id="pr-lift-reason" className="inp" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="예: 입금 확인 후 해제" />
+          <textarea id="pr-lift-reason" className="inp" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="해제 사유 입력" aria-description="예: 입금 확인 후 해제" />
           <span className={`t-c1 ${tooLong ? "c-neg" : "c-alt"}`}>
             {count}/{MAX_REASON}
           </span>

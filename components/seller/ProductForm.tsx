@@ -611,11 +611,11 @@ export function ProductForm({ initial }: { initial?: Product }) {
                     id="p-name"
                     className={`inp${shown.name || nameLen > NAME_MAX ? " is-error" : ""}`}
                     type="text"
-                    placeholder="예: 스타라이트 부스터 박스"
+                    placeholder="상품명 입력"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     style={{ paddingRight: 80 }}
-                    aria-invalid={!!shown.name}
+                    aria-invalid={!!shown.name} aria-description="예: 스타라이트 부스터 박스"
                   />
                   <span className={`t-c1 num name-count ${nameLen > NAME_MAX ? "c-neg" : "c-alt"}`} data-testid="name-count">
                     {nameLen}/{NAME_MAX}
@@ -635,7 +635,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
               )}
             </FormRow>
             <FormRow label="검색 키워드" htmlFor="p-tags" help={`쉼표로 구분 · ${TAG_MAX}개까지, 하나에 ${TAG_LEN}자까지. 상품명에 없는 말로도 쇼핑몰 검색에 걸립니다`}>
-              <input id="p-tags" className={`inp${showErrors && tagError ? " is-error" : ""}`} value={tagsText} disabled={busy} placeholder="예: 선물, 한정판" onChange={(e) => setTagsText(e.target.value)} />
+              <input id="p-tags" className={`inp${showErrors && tagError ? " is-error" : ""}`} value={tagsText} disabled={busy} placeholder="검색 태그 입력" onChange={(e) => setTagsText(e.target.value)} aria-description="예: 선물, 한정판" />
               {showErrors && tagError && <span className="err">{tagError}</span>}
             </FormRow>
             <FormRow label="상품 코드" help="등록하면 판매자별 순번으로 자동 매겨집니다">
@@ -649,9 +649,9 @@ export function ProductForm({ initial }: { initial?: Product }) {
                   <textarea
                     id="p-desc"
                     className={`inp${shown.description ? " is-error" : ""}`}
-                    placeholder="한 줄로 소개해 주십시오"
+                    placeholder="한 줄 소개 입력"
                     value={description}
-                    onChange={(e) => setDescription(e.target.value)}
+                    onChange={(e) => setDescription(e.target.value)} aria-description="한 줄로 소개해 주십시오"
                   />
                 ) : (
                   <div style={{ position: "relative" }}>
@@ -659,11 +659,11 @@ export function ProductForm({ initial }: { initial?: Product }) {
                       id="p-desc"
                       className={`inp${shown.description ? " is-error" : ""}`}
                       type="text"
-                      placeholder="예: 36팩 · 한정 수량"
+                      placeholder="표시 문구 입력"
                       maxLength={SHORT_DESC_MAX}
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
-                      style={{ paddingRight: 70 }}
+                      style={{ paddingRight: 70 }} aria-description="예: 36팩 · 한정 수량"
                     />
                     <span className="t-c1 num name-count c-alt" data-testid="desc-count">
                       {textLength(description)}/{SHORT_DESC_MAX}
@@ -754,11 +754,11 @@ export function ProductForm({ initial }: { initial?: Product }) {
                   className={`inp num${shown.price ? " is-error" : ""}`}
                   type="text"
                   inputMode="numeric"
-                  placeholder="0"
+                  placeholder="금액 입력"
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
                   style={{ maxWidth: 200 }}
-                  aria-invalid={!!shown.price}
+                  aria-invalid={!!shown.price} aria-description="0"
                 />
                 {shown.price && <span className="err">{shown.price}</span>}
               </div>
@@ -811,10 +811,10 @@ export function ProductForm({ initial }: { initial?: Product }) {
                         <input
                           className={`inp inp-sm${re.name ? " is-error" : ""}`}
                           type="text"
-                          placeholder="예: 1박스 (36팩)"
+                          placeholder="옵션명 입력"
                           aria-label={`옵션 ${i + 1} 이름`}
                           value={o.name}
-                          onChange={(e) => setRow(o.key, { name: e.target.value })}
+                          onChange={(e) => setRow(o.key, { name: e.target.value })} aria-description="예: 1박스 (36팩)"
                         />
                         {re.name && <span className="err">{re.name}</span>}
                       </div>
@@ -1049,7 +1049,7 @@ function DeleteDialog({ product, onClose, onHidden }: { product: Product; onClos
               <span className="t-c1 c-alt">되돌릴 수 없습니다 · 상품명을 입력해 확인합니다</span>
             </span>
           </label>
-          {mode === "delete" && <input className="inp" type="text" placeholder={product.name} aria-label="삭제할 상품명 입력" value={typed} onChange={(e) => setTyped(e.target.value)} />}
+          {mode === "delete" && <input className="inp" type="text" placeholder="상품명 입력" aria-label="삭제할 상품명 입력" value={typed} onChange={(e) => setTyped(e.target.value)} />}
         </div>
         <div className="modal-f">
           <button className="btn btn-out" type="button" onClick={onClose} disabled={busy}>

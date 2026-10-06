@@ -83,14 +83,14 @@ export default function AutomationIntroPage() {
                     style={{ minWidth: 320 }}
                     type="text"
                     inputMode="url"
-                    placeholder="운영 중인 쇼핑몰 주소"
+                    placeholder="쇼핑몰 주소 입력"
                     value={url}
                     onChange={(e) => {
                       setUrl(e.target.value);
                       setCheck({ kind: "idle" });
                     }}
                     aria-label="쇼핑몰 주소"
-                    data-testid="automation-url"
+                    data-testid="automation-url" aria-description="운영 중인 쇼핑몰 주소"
                   />
                   <button className="btn" type="button" disabled={check.kind === "checking"} onClick={() => void verify()}>
                     연결 가능한지 확인하기

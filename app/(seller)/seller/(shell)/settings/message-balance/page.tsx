@@ -351,7 +351,7 @@ export default function MessageBalancePage() {
                 className={`inp num${amountError ? " is-error" : ""}`}
                 type="text"
                 inputMode="numeric"
-                placeholder="0"
+                placeholder="금액 입력"
                 value={amount}
                 disabled={!b.chargingEnabled || !consented || busy}
                 readOnly={pending}
@@ -362,7 +362,7 @@ export default function MessageBalancePage() {
                 aria-label="충전 금액"
                 aria-invalid={!!amountError}
                 data-testid="charge-amount"
-                style={{ width: 160 }}
+                style={{ width: 160 }} aria-description="0"
               />
               <span className="t-l2 c-alt">원</span>
               {amountError && <span className="err" role="alert">{amountError}</span>}
@@ -374,14 +374,14 @@ export default function MessageBalancePage() {
             >
               <input
                 id="threshold"
-                placeholder="0"
+                placeholder="금액 입력"
                 className={`inp num${showError && thresholdError ? " is-error" : ""}`}
                 type="text"
                 inputMode="numeric"
                 value={threshold}
                 onChange={(e) => setThreshold(e.target.value)}
                 style={{ width: 160 }}
-                aria-invalid={showError && !!thresholdError}
+                aria-invalid={showError && !!thresholdError} aria-description="0"
               />
               <span className="t-l2 c-alt">원</span>
               <button className="btn btn-sm btn-out" type="button" disabled={busy || !thresholdDirty} onClick={() => void saveThreshold()}>

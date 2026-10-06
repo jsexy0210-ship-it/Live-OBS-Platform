@@ -358,7 +358,7 @@ function AdjustModal({ row, live, onClose, onDone }: { row: Row; live: boolean |
               <label htmlFor="adjust-reason" className="req">
                 사유
               </label>
-              <input id="adjust-reason" className="inp" maxLength={200} placeholder="이벤트 보상" value={reason} onChange={(e) => setReason(e.target.value)} />
+              <input id="adjust-reason" className="inp" maxLength={200} placeholder="사유 입력" value={reason} onChange={(e) => setReason(e.target.value)} aria-description="이벤트 보상" />
             </div>
             <div className="row between">
               <span className="t-l1">조정 후 잔액</span>

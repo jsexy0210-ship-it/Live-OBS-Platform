@@ -454,7 +454,7 @@ function NewMessage({ onDone }: { onDone: (text: string) => void | Promise<void>
       )}
       <label className="fld">
         <span className="req">제목</span>
-        <input className="inp" maxLength={40} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="목록에서 알아보는 이름" />
+        <input className="inp" maxLength={40} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="발송 이름 입력" aria-description="목록에서 알아보는 이름" />
       </label>
       <fieldset className="fld">
         <legend>종류</legend>
@@ -489,7 +489,7 @@ function NewMessage({ onDone }: { onDone: (text: string) => void | Promise<void>
         {(type === "WISHED" || type === "PRODUCT_BOUGHT") && (
           <div className="mm-pick">
             <div className="row" style={{ gap: 8 }}>
-              <input className="inp" aria-label="상품 이름 검색" placeholder="상품 이름" value={term} onChange={(e) => setTerm(e.target.value)} />
+              <input className="inp" aria-label="상품 이름 검색" placeholder="검색어 입력" value={term} onChange={(e) => setTerm(e.target.value)} aria-description="상품 이름" />
               <button className="btn btn-sm btn-out" type="button" onClick={() => void searchProducts()}>
                 검색
               </button>
@@ -505,7 +505,7 @@ function NewMessage({ onDone }: { onDone: (text: string) => void | Promise<void>
         {type === "PICKED" && (
           <div className="mm-pick">
             <div className="row" style={{ gap: 8 }}>
-              <input className="inp" aria-label="회원 검색" placeholder="닉네임 · 아이디" value={q} onChange={(e) => setQ(e.target.value)} />
+              <input className="inp" aria-label="회원 검색" placeholder="검색어 입력" value={q} onChange={(e) => setQ(e.target.value)} aria-description="닉네임 · 아이디" />
               <button className="btn btn-sm btn-out" type="button" onClick={() => void searchMembers()}>
                 검색
               </button>
@@ -554,7 +554,7 @@ function NewMessage({ onDone }: { onDone: (text: string) => void | Promise<void>
       </fieldset>
       <label className="fld">
         <span className="req">문구</span>
-        <textarea className="inp" style={{ height: 110, padding: "10px 12px" }} maxLength={500} value={body} onChange={(e) => setBody(e.target.value)} placeholder="구매자에게 보이는 문구 (해요체)" />
+        <textarea className="inp" style={{ height: 110, padding: "10px 12px" }} maxLength={500} value={body} onChange={(e) => setBody(e.target.value)} placeholder="발송 내용 입력" aria-description="구매자에게 보이는 문구 (해요체)" />
         <span className="help">(광고) · 쇼핑몰 이름 · 무료 수신거부는 광고성일 때 자동으로 붙습니다 · 90자를 넘으면 긴 문자</span>
       </label>
       {preview && (

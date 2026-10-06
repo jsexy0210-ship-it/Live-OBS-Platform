@@ -279,7 +279,7 @@ export default function CouponsPage() {
                 ))}
               </span>
             }>
-              <input className="inp" type="search" aria-label="검색어" placeholder="쿠폰 이름 · 코드" maxLength={50} value={cond.q} onChange={(e) => setCond({ ...cond, q: e.target.value })} />
+              <input className="inp" type="search" aria-label="검색어" placeholder="검색어 입력" maxLength={50} value={cond.q} onChange={(e) => setCond({ ...cond, q: e.target.value })} aria-description="쿠폰 이름 · 코드" />
             </SearchRow>
             <SearchRow label="발급 방식" label2="사용 기간" children2={<DateRangePicker quick fromLabel="시작일" toLabel="종료일" from={cond.from} to={cond.to} onChange={(r) => setCond({ ...cond, ...r, period: "" })} />}>
               <select className="inp" aria-label="발급 방식" value={cond.method} onChange={(e) => setCond({ ...cond, method: e.target.value })}>
@@ -624,7 +624,7 @@ function CouponEditor({ draft: initial, products, current, onClose, onSaved, onS
               <label htmlFor="cp-name" className="req">
                 쿠폰 이름
               </label>
-              <input id="cp-name" className="inp" value={d.name} maxLength={30} placeholder="예: 10월 스타라이트 오픈 기념" onChange={(e) => set({ name: e.target.value })} />
+              <input id="cp-name" className="inp" value={d.name} maxLength={30} placeholder="쿠폰 이름 입력" onChange={(e) => set({ name: e.target.value })} aria-description="예: 10월 스타라이트 오픈 기념" />
               <span className="help">구매자 쿠폰함에 그대로 표시 · 30자</span>
             </div>
             <div className="fld">
@@ -679,12 +679,12 @@ function CouponEditor({ draft: initial, products, current, onClose, onSaved, onS
               {d.benefit === "RATE" && (
                 <div className="fld">
                   <label htmlFor="cp-max">최대 할인 (원)</label>
-                  <input id="cp-max" className="inp num" inputMode="numeric" value={d.maxDiscount} disabled={locked} placeholder="비우면 제한 없음" onChange={(e) => set({ maxDiscount: e.target.value.replace(/[^0-9]/g, "") })} />
+                  <input id="cp-max" className="inp num" inputMode="numeric" value={d.maxDiscount} disabled={locked} placeholder="금액 입력" onChange={(e) => set({ maxDiscount: e.target.value.replace(/[^0-9]/g, "") })} aria-description="비우면 제한 없음" />
                 </div>
               )}
               <div className="fld">
                 <label htmlFor="cp-min">최소 주문 금액 (원)</label>
-                <input id="cp-min" className="inp num" inputMode="numeric" value={d.minOrderAmount} placeholder="0" onChange={(e) => set({ minOrderAmount: e.target.value.replace(/[^0-9]/g, "") })} />
+                <input id="cp-min" className="inp num" inputMode="numeric" value={d.minOrderAmount} placeholder="금액 입력" onChange={(e) => set({ minOrderAmount: e.target.value.replace(/[^0-9]/g, "") })} aria-description="0" />
                 <span className="help">적용 상품 금액 기준 · 배송비 제외</span>
               </div>
             </div>
@@ -705,7 +705,7 @@ function CouponEditor({ draft: initial, products, current, onClose, onSaved, onS
             </div>
             <div className="fld">
               <label htmlFor="cp-limit">발급 수량 한도</label>
-              <input id="cp-limit" className="inp num" inputMode="numeric" value={d.issueLimit} placeholder="비우면 제한 없음" onChange={(e) => set({ issueLimit: e.target.value.replace(/[^0-9]/g, "") })} />
+              <input id="cp-limit" className="inp num" inputMode="numeric" value={d.issueLimit} placeholder="수량 입력" onChange={(e) => set({ issueLimit: e.target.value.replace(/[^0-9]/g, "") })} aria-description="비우면 제한 없음" />
               <span className="help">비우면 제한 없음 · 1인 1장{d.id && d.issued > 0 ? ` · 지금까지 ${d.issued.toLocaleString("ko-KR")}장 발급` : ""}</span>
             </div>
             <div className="fld">
@@ -722,7 +722,7 @@ function CouponEditor({ draft: initial, products, current, onClose, onSaved, onS
               </div>
               {scoped && (
                 <div className="col" style={{ gap: 8 }}>
-                  <input className="inp" aria-label="상품 이름 검색" placeholder="상품 이름 검색" value={q} onChange={(e) => setQ(e.target.value)} />
+                  <input className="inp" aria-label="상품 이름 검색" placeholder="검색어 입력" value={q} onChange={(e) => setQ(e.target.value)} aria-description="상품 이름 검색" />
                   {matches.length > 0 && (
                     <ul className="cp-pick">
                       {matches.map((p) => (

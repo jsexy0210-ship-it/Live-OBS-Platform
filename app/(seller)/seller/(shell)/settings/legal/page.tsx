@@ -332,9 +332,9 @@ function NoticePanel({ editable, visible }: { editable: boolean; visible: boolea
         <div style={{ marginTop: 32 }}>
           <FormSection title="구매자 쇼핑몰 바닥글">
             {field("address", "주소", { help: "입력한 항목만 바닥글에 표시됩니다 · 저장한 뒤에 반영" })}
-            {field("csPhone", "고객센터 전화", { placeholder: "예: 1588-1234" })}
+            {field("csPhone", "고객센터 전화", { placeholder: "전화번호 입력", help: "예: 1588-1234" })}
             {field("csEmail", "이메일", { type: "email" })}
-            {field("csHours", "운영시간", { placeholder: "예: 평일 10:00~17:00" })}
+            {field("csHours", "운영시간", { placeholder: "운영시간 입력", help: "예: 평일 10:00~17:00" })}
             <FormRow label="쇼핑몰 제공" help="쇼핑몰 맨 아래에 플랫폼 이름이 자동으로 나옵니다">
               <span className="t-l2">ONQ</span>
             </FormRow>
@@ -354,7 +354,7 @@ function NoticePanel({ editable, visible }: { editable: boolean; visible: boolea
             {form.escrowKind !== "none" && (
               <>
                 {field("escrowProvider", "가입한 업체")}
-                {field("escrowUrl", "확인 주소", { help: "선택 · 가입 사실을 확인할 수 있는 https 주소", placeholder: "https://" })}
+                {field("escrowUrl", "확인 주소", { help: "선택 · 가입 사실을 확인할 수 있는 https 주소", placeholder: "확인 주소 입력" })}
               </>
             )}
           </FormSection>

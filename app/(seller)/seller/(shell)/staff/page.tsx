@@ -422,17 +422,17 @@ function AddStaff({ onAdded, onChanged }: { onAdded: (name: string) => void; onC
         )
       )}
       <div className="staff-add-grid">
-      {field("name", "이름", <input {...inputProps("name")} placeholder="이름" value={name} onChange={(e) => setName(e.target.value)} />)}
+      {field("name", "이름", <input {...inputProps("name")} placeholder="이름 입력" value={name} onChange={(e) => setName(e.target.value)} aria-description="이름" />)}
       {field(
         "phone",
         "휴대폰 번호",
-        <input {...inputProps("phone")} className={`${inputProps("phone").className} num`} inputMode="numeric" placeholder="010-0000-0000" value={phone} onChange={(e) => setPhone(e.target.value)} />,
+        <input {...inputProps("phone")} className={`${inputProps("phone").className} num`} inputMode="numeric" placeholder="휴대폰 번호 입력" value={phone} onChange={(e) => setPhone(e.target.value)} aria-description="010-0000-0000" />,
         "직원이 아이디나 비밀번호를 찾을 때 본인 확인에 씁니다",
       )}
       {field(
         "email",
         "이메일 (로그인 아이디)",
-        <input {...inputProps("email")} placeholder="name@example.com" type="text" inputMode="email" autoCapitalize="none" spellCheck={false} autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />,
+        <input {...inputProps("email")} placeholder="이메일 입력" type="text" inputMode="email" autoCapitalize="none" spellCheck={false} autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} aria-description="name@example.com" />,
       )}
       {field(
         "password",

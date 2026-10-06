@@ -448,7 +448,7 @@ function ReturnDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
                 </div>
                 <div className="fld">
                   <label htmlFor="rt-insp-note">확인 메모</label>
-                  <input id="rt-insp-note" className="inp" maxLength={200} value={inspNote} onChange={(e) => setInspNote(e.target.value)} placeholder="예: 봉인 훼손 확인" />
+                  <input id="rt-insp-note" className="inp" maxLength={200} value={inspNote} onChange={(e) => setInspNote(e.target.value)} placeholder="확인 내용 입력" aria-description="예: 봉인 훼손 확인" />
                 </div>
                 {inspResult === "OK" && !d.restocked && (
                   <label className="row t-l2" style={{ gap: 8 }}>
@@ -519,7 +519,7 @@ function ReturnDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
                     </option>
                   ))}
                 </select>
-                <input className="inp" style={{ flex: 1, minWidth: 160 }} aria-label="송장 번호" placeholder="교환 상품 송장 번호" maxLength={40} value={tracking} onChange={(e) => setTracking(e.target.value.replace(/[^0-9A-Za-z-]/g, ""))} />
+                <input className="inp" style={{ flex: 1, minWidth: 160 }} aria-label="송장 번호" placeholder="송장번호 입력" maxLength={40} value={tracking} onChange={(e) => setTracking(e.target.value.replace(/[^0-9A-Za-z-]/g, ""))} aria-description="교환 상품 송장 번호" />
               </div>
             )}
           </div>

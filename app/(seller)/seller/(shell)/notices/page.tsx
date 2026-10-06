@@ -87,7 +87,7 @@ export default function NoticesPage() {
                 <input type="checkbox" checked={!!applied.unread} onChange={(e) => apply({ ...applied, unread: e.target.checked ? "1" : "" })} />
                 안 읽은 것만
               </label>
-              <input className="inp" type="search" aria-label="공지 검색" placeholder="검색" maxLength={50} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} style={{ width: 200 }} />
+              <input className="inp" type="search" aria-label="공지 검색" placeholder="검색어 입력" maxLength={50} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} style={{ width: 200 }} aria-description="검색" />
               <button className="btn btn-sm btn-out" type="submit">
                 검색
               </button>

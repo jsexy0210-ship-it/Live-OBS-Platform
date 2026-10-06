@@ -236,7 +236,7 @@ export default function RewardLedgerPage() {
             </select>
           </SearchRow>
           <SearchRow label="검색어">
-            <input className="inp" aria-label="검색어" placeholder="회원 닉네임 또는 주문번호" maxLength={50} value={filter.q} onChange={(e) => setFilter({ ...filter, q: e.target.value })} />
+            <input className="inp" aria-label="검색어" placeholder="검색어 입력" maxLength={50} value={filter.q} onChange={(e) => setFilter({ ...filter, q: e.target.value })} aria-description="회원 닉네임 또는 주문번호" />
           </SearchRow>
         </SearchBox>
 

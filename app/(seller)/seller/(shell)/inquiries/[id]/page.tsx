@@ -231,7 +231,7 @@ export default function InquiryDetailPage() {
                       <tbody>
                       <FormRow label="추가 문의 보내기" htmlFor="iq-more">
                         <div className="col" style={{ gap: 8, width: "100%" }}>
-                          <textarea id="iq-more" placeholder="추가로 궁금한 내용을 적어 주십시오" className="inp" style={{ width: "100%", height: 120, padding: "10px 12px" }} maxLength={INQUIRY_BODY_MAX} value={body} onChange={(e) => setBody(e.target.value)} />
+                          <textarea id="iq-more" placeholder="추가 문의 입력" className="inp" style={{ width: "100%", height: 120, padding: "10px 12px" }} maxLength={INQUIRY_BODY_MAX} value={body} onChange={(e) => setBody(e.target.value)} aria-description="추가로 궁금한 내용을 적어 주십시오" />
                           <span className="t-c1 c-alt num">
                             {[...body].length} / {INQUIRY_BODY_MAX.toLocaleString("ko-KR")}
                           </span>

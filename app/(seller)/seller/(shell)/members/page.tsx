@@ -123,7 +123,7 @@ export default function MemberListPage() {
               <input
                 className="inp inp-sm"
                 type="search"
-                placeholder={searchHint}
+                placeholder="검색어 입력" aria-description={searchHint}
                 aria-label="회원 검색"
                 value={search}
                 maxLength={MAX_SEARCH_LENGTH}

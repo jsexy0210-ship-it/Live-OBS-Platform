@@ -138,7 +138,7 @@ export default function HitCardsPage() {
                 <DatePicker aria-label="종료일" value={draft.to} onChange={(v) => setDraft({ ...draft, to: v })} />
               </SearchRow>
               <SearchRow label="등급">
-                <input className="inp" aria-label="등급" list="hit-grade-filter-list" maxLength={12} placeholder="전체 · 등급 입력" value={draft.grade} onChange={(e) => setDraft({ ...draft, grade: e.target.value })} />
+                <input className="inp" aria-label="등급" list="hit-grade-filter-list" maxLength={12} placeholder="등급 입력" value={draft.grade} onChange={(e) => setDraft({ ...draft, grade: e.target.value })} aria-description="전체 · 등급 입력" />
                 <datalist id="hit-grade-filter-list">
                   {HIT_GRADES.map((g) => (
                     <option key={g} value={g} />

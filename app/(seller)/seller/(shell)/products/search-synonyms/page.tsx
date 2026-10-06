@@ -139,8 +139,8 @@ export default function SearchSynonymsPage() {
                       className={`inp grow${showErrors && errorOf[i] ? " is-error" : ""}`}
                       value={r.text}
                       disabled={!canEdit || busy}
-                      placeholder="예: 노트북, 랩탑"
-                      onChange={(e) => setRows((rs) => rs.map((x) => (x.key === r.key ? { ...x, text: e.target.value } : x)))}
+                      placeholder="유사어 입력"
+                      onChange={(e) => setRows((rs) => rs.map((x) => (x.key === r.key ? { ...x, text: e.target.value } : x)))} aria-description="예: 노트북, 랩탑"
                     />
                     {canEdit && (
                       <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => setRows((rs) => rs.filter((x) => x.key !== r.key))}>
