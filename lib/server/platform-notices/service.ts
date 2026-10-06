@@ -308,7 +308,7 @@ export async function getNotice(db: PrismaClient, reader: NoticeReader, id: stri
   const [newer, older] = await Promise.all([
     db.platformNotice.findFirst({
       where: { ...visible, OR: [{ publishedAt: { gt: row.publishedAt! } }, { publishedAt: row.publishedAt, id: { gt: row.id } }] },
-      orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
+      orderBy: [{ publishedAt: "asc" }, { id: "asc" }],
     }),
     db.platformNotice.findFirst({
       where: { ...visible, OR: [{ publishedAt: { lt: row.publishedAt! } }, { publishedAt: row.publishedAt, id: { lt: row.id } }] },

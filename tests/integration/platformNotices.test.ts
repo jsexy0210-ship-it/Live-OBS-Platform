@@ -228,9 +228,11 @@ describe("파트너스·공개 공지", () => {
         } as never,
       });
     const older = await add("이전 공개 공지", new Date(now));
+    const olderNear = await add("가까운 이전 공개 공지", new Date(now + 10_000));
     const rawBody = "첫 줄\n둘째 <b>원문</b> & 그대로";
     const current = await add("제목 원문", new Date(now + 20_000), { body: rawBody });
-    const newer = await add("다음 공개 공지", new Date(now + 40_000));
+    const newerNear = await add("가까운 다음 공개 공지", new Date(now + 30_000));
+    const newer = await add("가장 최근 공개 공지", new Date(now + 40_000));
     const partner = await add("파트너 전용 최신 공지", new Date(now + 50_000), { audience: "PARTNERS" });
     const deleted = await add("삭제된 최신 공지", new Date(now + 60_000), { deletedAt: new Date() });
     const future = await add("게시 기간 전", new Date(Date.now() + 86_400_000));
@@ -242,8 +244,8 @@ describe("파트너스·공개 공지", () => {
       title: "제목 원문",
       body: rawBody,
       author: "ONQ 운영팀",
-      prev: { id: newer.id, title: "다음 공개 공지" },
-      next: { id: older.id, title: "이전 공개 공지" },
+      prev: { id: newerNear.id, title: "가까운 다음 공개 공지" },
+      next: { id: olderNear.id, title: "가까운 이전 공개 공지" },
     });
     expect(result.body.notice).not.toHaveProperty("createdByAdminId");
     expect(result.body.notice).not.toHaveProperty("audience");
@@ -251,5 +253,31 @@ describe("파트너스·공개 공지", () => {
       expect(result.body.notice.prev.id).not.toBe(hidden.id);
       expect(result.body.notice.next.id).not.toBe(hidden.id);
     }
+    expect(result.body.notice.prev.id).not.toBe(newer.id);
+    expect(result.body.notice.next.id).not.toBe(older.id);
+  });
+
+  it("공개 상세 이전·다음은 같은 게시 시각이면 공개 목록의 UUID 순서상 바로 이웃을 반환한다", async () => {
+    const cs = await adminCookie("CS");
+    const publishedAt = new Date(Date.now() - 10_000);
+    const add = (noticeId: string, title: string) => db.platformNotice.create({
+      data: {
+        ...draft,
+        id: noticeId,
+        title,
+        audience: "PUBLIC",
+        publishedAt,
+        createdByAdminId: cs.id,
+        updatedByAdminId: cs.id,
+      } as never,
+    });
+    await add("00000000-0000-4000-8000-000000000101", "동일 시각 이전 이웃");
+    const current = await add("00000000-0000-4000-8000-000000000102", "동일 시각 현재 공지");
+    const next = await add("00000000-0000-4000-8000-000000000103", "동일 시각 다음 이웃");
+    await add("00000000-0000-4000-8000-000000000104", "동일 시각 더 최근 공지");
+
+    const result = await json(await publicGetOne(new Request(`${BASE}/api/notices/${current.id}`), id(current.id)));
+    expect(result.body.notice.prev).toMatchObject({ id: next.id, title: "동일 시각 다음 이웃" });
+    expect(result.body.notice.next).toMatchObject({ id: "00000000-0000-4000-8000-000000000101", title: "동일 시각 이전 이웃" });
   });
 });
