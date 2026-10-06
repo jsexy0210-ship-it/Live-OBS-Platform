@@ -170,6 +170,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/products/stock-movements": "STORE_OPERATIONS",
   "seller/reward-policy": "STORE_OPERATIONS",
   "seller/reward-live-payout": "STORE_OPERATIONS",
+  "seller/reward-balances/[memberId]/adjust": "STORE_OPERATIONS",
   "seller/share-preview": "STORE_OPERATIONS",
   "seller/seo": "STORE_OPERATIONS",
   "seller/brand-color": "STORE_OPERATIONS",
@@ -196,6 +197,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/platform-inquiries/draft": "BILLING",
   "seller/platform-inquiries/images": "BILLING",
   "seller/platform-inquiries/images/[imageId]": "BILLING",
+  "seller/platform-inquiries/files": "BILLING",
+  "seller/platform-inquiries/files/[fileId]": "BILLING",
   "seller/notices/[noticeId]": "STORE_OPERATIONS",
   "seller/notices/faq-order": "STORE_OPERATIONS",
   "seller/shop-content/banners": "STORE_OPERATIONS",
@@ -283,6 +286,7 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/reviews/images": "STORE_OPERATIONS",
   "shop/[slug]/reviews/[reviewId]/report": "STORE_OPERATIONS",
   "shop/[slug]/reviews/public-images/[imageId]": "STORE_OPERATIONS",
+  "shop/[slug]/profile": "OPEN", // 쇼핑몰 공개 정보(SA-060: 이름·소개·상단 공지·이용안내·운영 상태). 승인된 쇼핑몰만, 안내 화면에도 필요해 잠긴 쇼핑몰에서도 열림
   "shop/[slug]/home": "STORE_OPERATIONS", // 홈 진열(SA-016)
   "shop/[slug]/products": "STORE_OPERATIONS", // 구매자 상품 목록(운영 중 쇼핑몰만)
   "shop/[slug]/products/[productId]": "STORE_OPERATIONS", // 구매자 상품 상세

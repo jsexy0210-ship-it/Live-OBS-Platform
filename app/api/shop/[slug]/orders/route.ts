@@ -8,7 +8,7 @@ import { orderErrorBody, purchaseRestrictedMessage } from "../../../../../lib/se
 import { isOrderCouponFailure, ORDER_COUPON_MESSAGES } from "../../../../../lib/server/shop-coupons/service";
 
 // 구매자 본인 주문 목록(?cursor·limit·tab·from·to, 응답 { orders, nextCursor, range, counts }). tab: all·pending·inProgress·done·cancelled·refunded,
-// from·to: KST 날짜(YYYY-MM-DD, 둘 다 포함, 비우면 최근 1개월, 최대 1년), counts는 같은 기간의 탭별 전체 개수. 잠긴 쇼핑몰이어도 기존 주문 조회는 연다.
+// from·to: KST 날짜(YYYY-MM-DD, 둘 다 포함, 비우면 최근 3개월, 최대 1년), counts는 같은 기간의 탭별 전체 개수. 잠긴 쇼핑몰이어도 기존 주문 조회는 연다.
 export async function GET(req: Request, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;

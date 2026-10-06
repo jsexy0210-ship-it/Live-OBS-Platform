@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { FormRow, FormSection, useConfirm } from "../../../../../../components/admin-ui";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { formatDateTime } from "../../../../../../lib/client/format";
+import type { OnSection } from "./sectionSave";
 
 // SA-060 ③ 내 도메인(쇼핑몰 설정 권한이 있는 계정에만 보임). API: GET·POST /api/seller/domains, POST …/[id]/verify, DELETE …/[id].
 // 서버는 등록·DNS 안내·소유 확인(DNS 조회)·해제·상태 표시까지만 한다. 실제 연결(DNS·인증서)은 준비 중이라 그렇게 알린다. 쇼핑몰마다 3개, 확인 전 등록은 7일 뒤 사라진다.
@@ -20,7 +21,7 @@ type Listing = { domains: Domain[]; limit: number };
 
 const STATUS_LABEL: Record<Domain["status"], string> = { PENDING_VERIFICATION: "연결 확인 중", VERIFIED: "소유 확인됨", SUSPENDED: "일시 정지" };
 
-export function DomainSection({ onToast }: { onToast: (t: string) => void }) {
+export function DomainSection({ onToast, onSection, disabled }: { onToast: (t: string) => void; onSection: OnSection; disabled: boolean }) {
   const { confirm } = useConfirm();
   const [list, setList] = useState<Listing | null>(null);
   const [failed, setFailed] = useState(false);
@@ -38,19 +39,29 @@ export function DomainSection({ onToast }: { onToast: (t: string) => void }) {
     void load();
   }, [load]);
 
-  const add = async () => {
-    const hostname = host.trim().toLowerCase();
-    if (!hostname || busy) return;
-    setError(null);
-    if (!(await confirm({ title: "도메인을 추가하시겠습니까?", body: `「${hostname}」 주소를 등록하고, 소유 확인에 쓸 설정값을 안내합니다.`, confirmLabel: "추가" }))) return;
-    setBusy("add");
-    const r = await api<{ domain: Domain }>("/api/seller/domains", { method: "POST", body: { hostname } });
-    setBusy(null);
-    if (!r.ok) return setError(failMessage(r, "admin", "추가하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주십시오"));
-    setHost("");
-    onToast("도메인을 추가했습니다 · 아래 설정값을 도메인 업체에 넣어 주십시오");
-    await load();
-  };
+  // 새 주소는 페이지의 「저장」에서 등록한다(확인 창도 페이지 저장 확인 하나). 확인·해제는 줄마다 바로 처리한다.
+  useEffect(() =>
+    onSection("domain", {
+      label: "내 도메인",
+      dirty: host.trim() !== "",
+      validate: () => true,
+      reset: () => (setHost(""), setError(null)),
+      save: async () => {
+        const hostname = host.trim().toLowerCase();
+        if (!hostname) return null;
+        const r = await api<{ domain: Domain }>("/api/seller/domains", { method: "POST", body: { hostname } });
+        if (!r.ok) {
+          const m = failMessage(r, "admin", "추가하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주십시오");
+          setError(m);
+          return m;
+        }
+        setHost("");
+        setError(null);
+        await load();
+        return null;
+      },
+    }),
+  );
   const verify = async (d: Domain) => {
     if (busy) return;
     setError(null);
@@ -109,11 +120,8 @@ export function DomainSection({ onToast }: { onToast: (t: string) => void }) {
   return (
     <div style={{ marginTop: 32 }} data-testid="domain-section">
       <FormSection title="내 도메인" actions={<span className="t-l2 c-alt">기본 주소 외에 내 도메인을 연결합니다</span>}>
-        <FormRow label="연결할 주소" htmlFor="domain-host" help={full ? `도메인은 ${list.limit}개까지 연결할 수 있습니다` : `예: shop.example.com · ${list.limit}개까지 · 확인하지 않은 주소는 등록 7일 뒤 사라집니다`}>
-          <input id="domain-host" className="inp" value={host} onChange={(e) => setHost(e.target.value)} placeholder="shop.example.com" style={{ width: 360 }} disabled={full || busy !== null} />
-          <button className="btn btn-sm btn-out" type="button" disabled={full || !host.trim() || busy !== null} onClick={() => void add()}>
-            추가
-          </button>
+        <FormRow label="연결할 주소" htmlFor="domain-host" help={full ? `도메인은 ${list.limit}개까지 연결할 수 있습니다` : `예: shop.example.com · ${list.limit}개까지 · 저장하면 등록되고, 확인하지 않은 주소는 7일 뒤 사라집니다`}>
+          <input id="domain-host" className="inp" value={host} onChange={(e) => setHost(e.target.value)} placeholder="shop.example.com" style={{ width: 360 }} disabled={full || busy !== null || disabled} />
           {error && (
             <span className="err" role="alert">
               {error}
@@ -126,7 +134,7 @@ export function DomainSection({ onToast }: { onToast: (t: string) => void }) {
               <b>{d.hostname}</b>
               <span className={`t-c1 ${d.status === "VERIFIED" ? "c-pos" : "c-alt"}`}>{STATUS_LABEL[d.status]}</span>
               {d.status === "PENDING_VERIFICATION" && (
-                <button className="btn btn-sm btn-out" type="button" disabled={busy !== null} onClick={() => void verify(d)}>
+                <button className="btn btn-sm" type="button" disabled={busy !== null} onClick={() => void verify(d)}>
                   {busy === d.id ? "확인 중" : "연결 확인"}
                 </button>
               )}

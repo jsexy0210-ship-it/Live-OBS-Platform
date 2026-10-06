@@ -34,10 +34,10 @@ test("쇼핑몰 설정 탭에서 회원 정책으로 들어가면, 동의 철회
   await openAsOwner(page);
   await expect(page.getByRole("heading", { name: "회원 정책" })).toBeVisible();
   await expect(page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "회원 정책" })).toHaveAttribute("aria-current", "page");
-  const sw = page.getByRole("switch", { name: "탈퇴한 사람의 재가입 막기" });
+  const sw = page.getByRole("switch", { name: "탈퇴한 사람 다시 가입 막기" });
   await expect(sw).toHaveAttribute("aria-checked", "false");
   await expect(sw).toBeDisabled();
-  await expect(page.getByText("회원이 동의를 철회할 수 있는 화면이 준비되면 켤 수 있습니다")).toBeVisible();
+  await expect(page.getByText("회원이 보관 동의를 취소할 수 있는 화면이 준비되면 켤 수 있습니다")).toBeVisible();
   await expect(saveButton(page)).toBeDisabled();
   const status = await page.evaluate(async () => {
     const res = await fetch("/api/seller/member-policy", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ rejoinRestrictionEnabled: true, rejoinRestrictionDays: 90 }) });
@@ -46,12 +46,12 @@ test("쇼핑몰 설정 탭에서 회원 정책으로 들어가면, 동의 철회
   expect(status).toEqual({ status: 409, body: { error: "rejoin_restriction_unavailable", message: "회원이 동의를 철회할 수 있는 화면이 준비되면 켤 수 있습니다" } });
 });
 
-test("이미 켜진 쇼핑몰은 끄기만 할 수 있고, 끄기 저장에 실패하면 화면 위에 이유를 보여 주고 바꾼 값은 그대로 둔다", async ({ page }) => {
+test("이미 켜진 쇼핑몰은 끄기만 할 수 있고, 끄기는 위험 확인 창을 거치고, 저장에 실패하면 창 안에 이유를 보여 주며 바꾼 값은 그대로 둔다", async ({ page }) => {
   await openAsOwner(page);
   await setMemberPolicyInDb("demo-shop", true, 90);
   try {
     await page.reload();
-    const sw = page.getByRole("switch", { name: "탈퇴한 사람의 재가입 막기" });
+    const sw = page.getByRole("switch", { name: "탈퇴한 사람 다시 가입 막기" });
     await expect(sw).toHaveAttribute("aria-checked", "true");
     await expect(sw).toBeEnabled();
     await expect(page.getByRole("radio", { name: "90일" })).toHaveAttribute("aria-checked", "true");
@@ -63,11 +63,20 @@ test("이미 켜진 쇼핑몰은 끄기만 할 수 있고, 끄기 저장에 실�
     await sw.click();
     await expect(sw).toHaveAttribute("aria-checked", "false");
     await saveButton(page).click();
-    await expect(page.getByRole("alert").filter({ hasText: "저장할 수 없습니다." })).toContainText("재가입 제한 기간은 1일에서 365일 사이로 정해 주십시오");
+    const dialog = page.getByRole("dialog", { name: "탈퇴한 사람 다시 가입 막기를 끄시겠습니까?" });
+    await expect(dialog).toContainText("보관하던 탈퇴 회원 기록이 바로 지워지며 되돌릴 수 없습니다");
+    await dialog.getByRole("button", { name: "끄기" }).click();
+    await expect(dialog.getByRole("alert")).toContainText("재가입 제한 기간은 1일에서 365일 사이로 정해 주십시오");
+    // 취소하면 아무것도 저장하지 않고, 바꾼 값은 그대로 둔다
+    await dialog.getByRole("button", { name: "취소" }).click();
     await expect(sw).toHaveAttribute("aria-checked", "false");
     await page.unrouteAll({ behavior: "ignoreErrors" });
     // 실제로 끄면 저장된다
-    await Promise.all([page.waitForResponse((r) => r.request().method() === "PUT" && r.url().includes("/api/seller/member-policy") && r.ok()), saveButton(page).click()]);
+    await saveButton(page).click();
+    await Promise.all([
+      page.waitForResponse((r) => r.request().method() === "PUT" && r.url().includes("/api/seller/member-policy") && r.ok()),
+      page.getByRole("dialog", { name: "탈퇴한 사람 다시 가입 막기를 끄시겠습니까?" }).getByRole("button", { name: "끄기" }).click(),
+    ]);
     await expect(page.getByText("회원 정책을 저장했습니다")).toBeVisible();
   } finally {
     await setMemberPolicyInDb("demo-shop", false, 30);
@@ -79,5 +88,5 @@ test("회원·적립금 권한이 없는 직원은 권한 안내를 본다", asy
   await submitSellerLogin(page, "demo-staff@example.com", PASSWORD);
   await expect(page).toHaveURL(/\/seller\/settings\/member$/);
   await expect(page.getByText("회원·적립금", { exact: false }).first()).toBeVisible();
-  await expect(page.getByRole("switch", { name: "탈퇴한 사람의 재가입 막기" })).toHaveCount(0);
+  await expect(page.getByRole("switch", { name: "탈퇴한 사람 다시 가입 막기" })).toHaveCount(0);
 });
