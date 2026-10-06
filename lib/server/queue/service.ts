@@ -236,7 +236,8 @@ export async function startBroadcast(
 export async function endBroadcast(
   db: PrismaClient,
   ctx: TenantContext,
-  input: { now?: Date; broadcastSessionId?: string } = {},
+  // force: 개봉 중이 남아 있어도 끝낸다(마스터 관리자 강제 종료 전용, 개봉 중 항목은 그대로 두어 파트너스가 완료·취소한다). audit: 감사 로그 행동 이름(기본 broadcast.end).
+  input: { now?: Date; broadcastSessionId?: string; force?: boolean; audit?: string; reason?: string } = {},
 ): Promise<QueueResult<{ broadcastSessionId: string; carriedOver: number }>> {
   requireSellerPermission(ctx, "BROADCAST_RUN");
   const now = input.now ?? new Date();
@@ -245,7 +246,7 @@ export async function endBroadcast(
     if (!live) throw new Rejected("not_live");
     // 화면이 확인한 방송(A)이 아닌 다른 방송(B)이 지금 LIVE이면 종료하지 않는다(A를 끝내려다 B를 끝내는 일 방지)
     if (input.broadcastSessionId !== undefined && input.broadcastSessionId !== live.id) throw new Rejected("not_live");
-    if (await tx.queueItem.count({ where: { sellerId: ctx.sellerId, broadcastSessionId: live.id, status: "OPENING" } })) {
+    if (!input.force && (await tx.queueItem.count({ where: { sellerId: ctx.sellerId, broadcastSessionId: live.id, status: "OPENING" } }))) {
       throw new Rejected("opening_in_progress");
     }
     // 남은 대기는 방송 전 대기 맨 뒤로, 원래 순서를 지켜 옮긴다.
@@ -266,10 +267,10 @@ export async function endBroadcast(
       actorType: ctx.actorType,
       actorId: ctx.actorType === "SYSTEM" ? null : ctx.actorId,
       sellerId: ctx.sellerId,
-      action: "broadcast.end",
+      action: input.audit ?? "broadcast.end",
       targetType: "BroadcastSession",
       targetId: live.id,
-      after: { carriedOver: carried.count },
+      after: { carriedOver: carried.count, ...(input.force ? { forced: true } : {}), ...(input.reason ? { reason: input.reason } : {}) },
     });
     return { broadcastSessionId: live.id, carriedOver: carried.count };
   });
