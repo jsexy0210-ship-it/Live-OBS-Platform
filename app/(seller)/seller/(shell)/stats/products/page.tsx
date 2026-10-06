@@ -1,5 +1,6 @@
 "use client";
 
+import Funnel from "../../../../../../components/seller/stats/Funnel";
 import { EmptyStats, StatsFrame, StatsState, usePeriod, useStats } from "../../../../../../components/seller/stats/StatsFrame";
 import { Kpis, count, downloadCsv, won } from "../../../../../../components/seller/stats/parts";
 
@@ -55,9 +56,9 @@ export default function ProductStatsPage() {
                   <tr>
                     <th style={{ width: 48 }}>순위</th>
                     <th>상품</th>
-                    <th className="r">판매 수량</th>
-                    <th className="r">매출</th>
-                    <th className="r">주문 수</th>
+                    <th>판매 수량</th>
+                    <th>매출</th>
+                    <th>주문 수</th>
                     <th aria-label="매출 비교" />
                   </tr>
                 </thead>
@@ -65,13 +66,13 @@ export default function ProductStatsPage() {
                   {data.top.map((r, i) => (
                     <tr key={r.productId}>
                       <td className="num">{i + 1}</td>
-                      <td className="fw6 sts-name">
+                      <td className="fw6 sts-name col-text">
                         {r.name}
                         {r.deleted && <span className="t-c1 c-alt"> · 삭제됨</span>}
                       </td>
-                      <td className="r num">{qty(r.quantity)}</td>
-                      <td className="r num fw6">{won(r.revenue)}</td>
-                      <td className="r num">{count(r.orders)}</td>
+                      <td className="num">{qty(r.quantity)}</td>
+                      <td className="num fw6">{won(r.revenue)}</td>
+                      <td className="num">{count(r.orders)}</td>
                       <td>
                         <span className="sts-share" aria-hidden="true">
                           <i style={{ width: `${Math.max(2, (r.revenue / max) * 100)}%` }} />
@@ -83,6 +84,7 @@ export default function ProductStatsPage() {
               </table>
             </div>
           )}
+          <Funnel period={period} />
           <div className="card sts-scroll">
             <div className="sts-h">
               <span className="fw6">안 팔린 상품</span>
@@ -103,7 +105,7 @@ export default function ProductStatsPage() {
                 <tbody>
                   {data.unsold.map((p) => (
                     <tr key={p.productId}>
-                      <td>{p.name}</td>
+                      <td className="col-text">{p.name}</td>
                       <td className="c-alt">{STATUS[p.status] ?? "확인 필요"}</td>
                     </tr>
                   ))}
