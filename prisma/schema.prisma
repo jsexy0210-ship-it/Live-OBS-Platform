@@ -1729,6 +1729,8 @@ model Shipment {
   status         ShipmentStatus @default(IN_TRANSIT)
   shippedAt      DateTime       @db.Timestamptz(3)
   deliveredAt    DateTime?      @db.Timestamptz(3)
+  // 배송 자동조회(판매자가 켠 경우만, 건당 발송·이용 충전금 차감)를 마지막으로 시도한 시각. 조회 간격(6시간)을 지키는 데만 쓴다.
+  trackingCheckedAt DateTime?   @db.Timestamptz(3)
   updatedAt      DateTime       @default(now()) @updatedAt @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])
