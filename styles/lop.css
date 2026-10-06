@@ -396,7 +396,8 @@ select.inp[multiple]{padding-right:var(--ui-sp-12);background-image:none}
   .dt-dim{display:block;position:fixed;inset:0;z-index:1349;background:var(--wds-material-dimmer,rgba(0,0,0,.45))}
   .dt-pop{top:auto!important;left:0!important;right:0;bottom:0;width:auto;border-radius:20px 20px 0 0;padding:var(--ui-sp-16);border-width:1px 0 0}
   .dt-day{width:44px;height:44px}
-  .dt-wrap{width:auto;min-width:148px;flex:1 1 148px}
+  .dt-wrap{width:auto;min-width:138px;flex:1 1 138px}
+  .dt-wrap .inp.dt{padding-right:32px}
 }
 .dt-sm .inp.dt{min-height:var(--ui-h-dense)}
 /* 정본 DS-DATEPICKER ① 「관리자 40 · 폼 44 · 휴대폰 48」: 휴대폰 폭에서는 compact 날짜 칸도 48 */
