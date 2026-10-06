@@ -95,9 +95,15 @@ test.describe.serial("SH-029 리뷰 쓰기 · SA-048 리뷰 관리", () => {
     await page.getByRole("textbox", { name: /내용/ }).fill("짧아요");
     await expect(page.getByText("10자 이상 써야 올릴 수 있어요")).toBeVisible();
     await page.getByRole("textbox", { name: /내용/ }).fill("브레이크 때 뽑힌 카드 상태가 정말 좋았어요. 포장도 꼼꼼했어요.");
+    // 공개 선택: 처음에는 둘 다 켜져 있고, 개봉 결과를 끄면 그 값이 그대로 올라간다
+    await expect(page.getByLabel("닉네임 공개")).toBeChecked();
+    await expect(page.getByLabel("개봉 결과(카드 이름) 함께 보여 주기")).toBeChecked();
+    await page.getByLabel("개봉 결과(카드 이름) 함께 보여 주기").uncheck();
     await shots(page, "sh029-write");
+    const posted = page.waitForRequest((r) => r.url().includes(`/reviews/items/`) && r.method() === "POST");
     await page.getByRole("button", { name: "리뷰 등록" }).click();
     await okConfirm(page, "올리기");
+    expect((await posted).postDataJSON()).toMatchObject({ showNickname: true, showOpeningResult: false });
     await expect(page.locator("p.msg").first()).toContainText("리뷰를 등록했어요");
     const mine = page.getByTestId("my-review").first();
     await expect(mine).toContainText("공개");

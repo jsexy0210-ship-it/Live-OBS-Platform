@@ -259,3 +259,14 @@
     margin-right: auto;
   }
 }
+.rv-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.rv-checks .chk {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
