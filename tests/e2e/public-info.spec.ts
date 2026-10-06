@@ -46,6 +46,7 @@ test("요금 안내는 서버 요금제 값을 보여 주거나 불러오지 못
 test("자주 묻는 질문은 분류와 검색으로 좁혀진다", async ({ page }) => {
   await page.goto("/faq");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("자주 묻는 질문");
+  await expect(page.getByText("가입 신청은 어떻게 처리되나요?")).toBeVisible();
   await expect(page.locator("details").first()).toContainText("자동 점검을 통과하면 바로 승인돼요. 확인이 필요한 신청은 마스터 관리자가 살펴본 뒤 승인하거나, 보완을 요청하거나 반려해요.");
   await expect(page.getByText("운영팀이 평일 10~18시에 답해요. 평균 첫 답변 4시간.")).toBeVisible();
   const all = await page.locator("details").count();
