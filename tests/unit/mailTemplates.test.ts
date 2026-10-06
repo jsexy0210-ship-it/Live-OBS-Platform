@@ -63,6 +63,8 @@ describe("쇼핑몰 메일(EM-001~004)", () => {
   it("EM-001 카드: 접수·주문대기 안내·표기(주문일 KST 연월일·금액·적립금·배송비)", () => {
     const m = all[0][1];
     expect(m.subject).toBe("[카드숍 별빛] 주문이 접수됐어요");
+    expect(m.text).toContain("스타라이트 부스터 박스 x 2  178,200원");
+    expect(m.html).toContain("수량 2");
     for (const s of ["별구름님, 주문해 주셔서 고마워요", "지금 앞에 11명", "방송 닉네임: 별구름", "20261002-0007", "2026.10.02 20:41", "카드 · 일시불", "300,200원", "178,200원", "배송비", "0원 · 50,000원 이상 무료", "−10,000원", "문 앞에 두세요", "주문 상세 보기", "통신판매업 신고 2026-서울강남-0001"]) expect(m.text).toContain(s);
   });
   it("EM-001 무통장: 입금 계좌·기한·현금영수증 안내", () => {
@@ -73,6 +75,7 @@ describe("쇼핑몰 메일(EM-001~004)", () => {
   it("EM-002 발송: 택배·송장·보낸 날·합계 개수, 조회 버튼은 주소가 있을 때만, 도서산간 안내", () => {
     expect(all[2][1].text).toContain("보낸 날: 2026.10.05 (월)");
     expect(all[2][1].text).toContain("합계  3개 · 300,200원");
+    expect(all[2][1].text).toContain("문라이트 컬렉션 박스 x 1  132,000원");
     expect(all[2][1].text).toContain("배송 조회: https://track.example/1234567890");
     expect(all[3][1].text).not.toContain("배송 조회");
     expect(all[3][1].text).toContain("제주 · 도서지역이라 1~2일 더 걸릴 수 있어요");
@@ -115,6 +118,17 @@ describe("파트너스 메일(EM-101·102)", () => {
     for (const s of ["서류를 보완해 주세요", "통신판매업 신고증을 올려 주세요", "7일 안에 올리지 않으면 신청이 취소돼요"]) expect(sup.text).toContain(s);
     expect(partnerRejectedMail({ platform, representative: "a", shopName: "b", statusUrl: "https://x.example/s", kind: "SUPPLEMENT", reason: "r", daysLeft: 0.2 }).text).toContain("1일 안에");
     expect(partnerRejectedMail({ platform, representative: "a", shopName: "b", statusUrl: "https://x.example/s", kind: "REJECTED", reason: "r", reapplyUrl: "https://x.example/a" }).text).not.toContain("담당자 메모");
+  });
+});
+
+describe("파트너스 메일 바닥글: 빈 항목은 뺀다", () => {
+  it("플랫폼 정보가 비면 줄에서 그 항목만 빠지고 값을 지어내지 않는다", () => {
+    const input = { platform: { name: "", representative: "", businessNumber: "", address: "", phone: "", url: "onq.example" }, representative: "a", shopName: "b", statusUrl: "https://x.example/s", kind: "SUPPLEMENT" as const, reason: "r", daysLeft: 3 };
+    const none = partnerRejectedMail(input).text;
+    expect(none).not.toMatch(/상호|사업자등록번호|고객센터/);
+    expect(none).toContain("이 메일은 발신 전용이에요");
+    const some = partnerRejectedMail({ ...input, platform: { ...input.platform, name: "온큐", phone: "1588-0000" } }).text;
+    expect(some).toContain("상호 온큐 · 고객센터 1588-0000");
   });
 });
 

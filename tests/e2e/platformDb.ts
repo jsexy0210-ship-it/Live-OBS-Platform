@@ -39,6 +39,17 @@ export async function createNoticeInDb(title: string, opts: { pinned?: boolean; 
   }
 }
 
+// 공지에 첨부 한 개를 붙인다(공지는 지울 때 같이 지워진다)
+export async function addNoticeFileInDb(noticeId: string, name: string, text: string) {
+  const db = open();
+  try {
+    const data = Buffer.from(text, "utf8");
+    await db.platformNoticeFile.create({ data: { noticeId, name, data, contentType: "text/plain", byteSize: data.length, createdByAdminId: await adminId(db) } });
+  } finally {
+    await db.$disconnect();
+  }
+}
+
 export async function adminReplyInDb(inquiryId: string, body: string, close = false) {
   const db = open();
   try {

@@ -1,6 +1,6 @@
 "use client";
 
-import { formatDateTime } from "../../../../../lib/client/format";
+import { formatDateTimeParts } from "../../../../../lib/client/format";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
@@ -12,6 +12,7 @@ import { ErrorState, LoadingRows, Locked, NoImage, NoPermission, Toast } from ".
 import { api, type Product, type ProductStatus } from "../../../../../components/seller/api";
 import { LOW_STOCK, MAX_SEARCH_LENGTH, statusBadge, textLength, totalStock, won } from "../../../../../components/seller/format";
 import { recentRange } from "../../../../../lib/client/dateInput";
+import { PERIOD_ALL } from "../../../../../lib/client/filterDefaults";
 import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
 
 // SA-011 상품 목록(업무용 관리 화면). 위쪽 표형 검색 상자에서 조건을 정해 「검색」을 누르면 걸러 보고, 이어서 불러온다(기본 50개씩).
@@ -86,7 +87,7 @@ const query = (f: Filters, sort: Sort, limit: number) =>
     .join("&");
 
 // 주소에 싣는 값(기본값과 같으면 쿼리에서 뺀다). 알 수 없는 값은 읽을 때 기본값으로 돌린다
-const urlDefaults = () => ({ q: "", mode: "name", status: "ALL", stock: "", categoryId: "", display: "", deduct: "", ...recentRange(1), sort: "newest", limit: "50" });
+const urlDefaults = () => ({ q: "", mode: "name", status: "ALL", stock: "", categoryId: "", display: "", deduct: "", ...recentRange(1), period: "", sort: "newest", limit: "50" });
 const oneOf = <T extends string>(v: string, list: readonly T[], fallback: T): T => ((list as readonly string[]).includes(v) ? (v as T) : fallback);
 
 const TOASTS: Record<string, string> = {
@@ -125,8 +126,7 @@ export default function ProductListPage() {
     categoryId: u.categoryId,
     display: oneOf(u.display, DISPLAYS.map((d) => d.key), ""),
     deduct: oneOf(u.deduct, DEDUCTS.map((d) => d.key), ""),
-    from: u.from,
-    to: u.to,
+    ...(u.period === PERIOD_ALL ? { from: "", to: "" } : { from: u.from, to: u.to }),
   };
   const sort = oneOf(u.sort, SORTS.map((x) => x.key), "newest");
   const limit = Number(oneOf(u.limit, LIMITS.map(String), "50"));
@@ -151,7 +151,7 @@ export default function ProductListPage() {
   // 판매 상태를 일괄로 바꾼 직후 「되돌리기」(바꾸기 전 상태별로 다시 보낸다)
   const [undo, setUndo] = useState<{ text: string; prev: { id: string; status: ProductStatus }[] } | null>(null);
 
-  const toUrl = (f: Filters) => ({ q: f.text, mode: f.mode, status: f.status, stock: f.stock ?? "", categoryId: f.categoryId, display: f.display, deduct: f.deduct, from: f.from, to: f.to });
+  const toUrl = (f: Filters) => ({ q: f.text, mode: f.mode, status: f.status, stock: f.stock ?? "", categoryId: f.categoryId, display: f.display, deduct: f.deduct, from: f.from, to: f.to, period: "" });
   const apply = () => {
     const next = { ...draft, text: draft.text.trim() };
     // 같은 조건으로 다시 누르면 주소가 안 바뀌므로 목록만 다시 읽는다
@@ -491,6 +491,7 @@ export default function ProductListPage() {
           {state.kind === "ok" && items.length > 0 && (
             <>
               <div className="au-lt-wrap">
+                <div className="p-tbl-wrap">
                 <table className="tbl p-table">
                   <thead>
                     <tr>
@@ -542,7 +543,9 @@ export default function ProductListPage() {
                             <span className={`bdg ${b.cls}`}>{b.label}</span>
                             {canManage && <QuickStatus product={p} onDone={quickDone} onFail={quickFail} />}
                           </td>
-                          <td className="num">{formatDateTime(p.createdAt)}</td>
+                          <td className="num">{formatDateTimeParts(p.createdAt)?.date}
+                            <br />
+                            {formatDateTimeParts(p.createdAt)?.time}</td>
                           {canManage && (
                             <td>
                               <Link className="btn btn-sm btn-out btn-level-table" href={`/seller/products/${p.id}`}>
@@ -555,6 +558,7 @@ export default function ProductListPage() {
                     })}
                   </tbody>
                 </table>
+                </div>
               </div>
               <ul className="p-cards">
                 {items.map((p) => {

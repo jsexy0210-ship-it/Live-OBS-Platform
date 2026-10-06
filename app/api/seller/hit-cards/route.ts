@@ -19,7 +19,7 @@ export async function GET(req: Request) {
   }
 }
 
-// 등록. 본문: { cardName(60자), grade?(SAR·SR·UR·SE·SP·AA 중 하나, 목록 밖은 400 invalid_grade·비우면 없음), note?(200자), queueItemId?(주문대기 항목) | nickname?(30자, queueItemId 없을 때) }. 응답 201 { card }.
+// 등록. 본문: { cardName(60자), grade?(12자 이내 자유 입력·추천 SAR·SR·UR·SE·SP·AA, 형식 오류는 400 invalid_grade·비우면 없음), note?(200자), queueItemId?(주문대기 항목) | nickname?(30자, queueItemId 없을 때) }. 응답 201 { card }.
 export const POST = mutation(async (req: Request) => {
   const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "OVERLAY" });
   const r = await createHitCard(prisma, ctx, await readJson(req), requestMeta(req));

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { HIT_GRADES } from "./hit";
 import { Modal } from "../../admin-ui";
 import { api, failMessage } from "../api";
 
@@ -18,12 +19,13 @@ export function HitCardModal({ targets, onClose, onDone }: { targets: HitTarget[
   const [cardName, setCardName] = useState("");
   const [nickname, setNickname] = useState("");
   const [note, setNote] = useState("");
+  const [grade, setGrade] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const manual = target === MANUAL;
   const ok = cardName.trim() !== "" && (!manual || nickname.trim() !== "");
-  const dirty = cardName !== "" || nickname !== "" || note !== "";
+  const dirty = cardName !== "" || nickname !== "" || note !== "" || grade !== "";
 
   const submit = async () => {
     if (!ok || busy) return;
@@ -31,7 +33,7 @@ export function HitCardModal({ targets, onClose, onDone }: { targets: HitTarget[
     setError(null);
     const r = await api<{ card: { id: string } }>("/api/seller/hit-cards", {
       method: "POST",
-      body: { cardName: cardName.trim(), ...(note.trim() ? { note: note.trim() } : {}), ...(manual ? { nickname: nickname.trim() } : { queueItemId: target }) },
+      body: { cardName: cardName.trim(), ...(note.trim() ? { note: note.trim() } : {}), ...(grade.trim() ? { grade: grade.trim() } : {}), ...(manual ? { nickname: nickname.trim() } : { queueItemId: target }) },
     });
     setBusy(false);
     if (!r.ok) return setError(failMessage(r, "admin"));
@@ -81,6 +83,15 @@ export function HitCardModal({ targets, onClose, onDone }: { targets: HitTarget[
               카드명
             </label>
             <input id="hit-card-name" className="inp" maxLength={60} value={cardName} disabled={busy} autoFocus onChange={(e) => setCardName(e.target.value)} />
+          </div>
+          <div className="fld">
+            <label htmlFor="hit-grade">등급</label>
+            <input id="hit-grade" className="inp" list="hit-grade-list" maxLength={12} placeholder="비우면 등급 없음 · 직접 입력 12자까지" value={grade} disabled={busy} onChange={(e) => setGrade(e.target.value)} />
+            <datalist id="hit-grade-list">
+              {HIT_GRADES.map((g) => (
+                <option key={g} value={g} />
+              ))}
+            </datalist>
           </div>
           <div className="fld">
             <label htmlFor="hit-note">메모 (나만 보임)</label>

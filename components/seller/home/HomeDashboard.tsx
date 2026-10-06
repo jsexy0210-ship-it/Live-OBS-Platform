@@ -175,7 +175,7 @@ function Broadcasts() {
   const [part, retry] = usePart<Broadcast[]>("/api/seller/broadcast/history", (d) => (d as { items: Broadcast[] }).items.slice(0, BROADCAST_ROWS));
   if (part.kind === "hidden") return null;
   return (
-    <Section title="방송" actions={<Link className="btn btn-out" href="/seller/broadcasts">방송 이력</Link>}>
+    <Section title="방송" actions={<Link className="btn btn-out" href="/seller/broadcasts">방송 기록</Link>}>
       {part.kind === "loading" && <LoadingRows rows={2} />}
       {part.kind === "error" && <ErrorState title="방송을 불러오지 못했습니다" onRetry={retry} />}
       {part.kind === "ok" &&

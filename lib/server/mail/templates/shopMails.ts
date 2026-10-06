@@ -26,22 +26,23 @@ export type OrderBase = {
 };
 
 const brandOf = (b: ShopMailBrand): Brand => ({ name: b.shopName, mark: (b.mark ?? b.shopName).slice(0, 2), color: safeColor(b.color), site: b.shopUrl });
-const footerOf = (b: ShopMailBrand) => ({
-  title: b.shopName,
-  lines: [
-    `상호 ${b.business.name} · 대표 ${b.business.representative} · 사업자등록번호 ${b.business.businessNumber} · 통신판매업 신고 ${b.business.mailOrderNumber}`,
-    `${b.business.address} · 고객센터 ${b.business.phone} · ${b.business.email}`,
-    "이 메일은 발신 전용이에요 · 문의는 쇼핑몰 1:1 문의로 남겨 주세요",
-  ],
-});
+// 비어 있는 항목은 줄에서 뺀다(값을 지어내지 않는다)
+const footerOf = (b: ShopMailBrand) => {
+  const x = b.business;
+  const l1 = [x.name && `상호 ${x.name}`, x.representative && `대표 ${x.representative}`, x.businessNumber && `사업자등록번호 ${x.businessNumber}`, x.mailOrderNumber && `통신판매업 신고 ${x.mailOrderNumber}`].filter(Boolean).join(" · ");
+  const l2 = [x.address, x.phone && `고객센터 ${x.phone}`, x.email].filter(Boolean).join(" · ");
+  return { title: b.shopName, lines: [...(l1 ? [l1] : []), ...(l2 ? [l2] : []), "이 메일은 발신 전용이에요 · 문의는 쇼핑몰 1:1 문의로 남겨 주세요"] };
+};
 const make = (b: ShopMailBrand, subject: string, blocks: Block[]): MailBody => renderMail({ subject: `[${b.shopName}] ${subject}`, brand: brandOf(b), blocks, footer: footerOf(b) });
 
+// 메일 틀의 품목 줄은 수량을 qty로 받는다
+const qtyLines = (ls: OrderLine[]) => ls.map((l) => ({ name: l.name, qty: l.quantity, amount: l.amount }));
 const receiverBox = (r: Receiver): Block => ({ t: "box", title: "받는 분", lines: [`${r.name} · ${r.phone}`, r.address, ...(r.memo ? [`배송 메모 · ${r.memo}`] : [])] });
 const feeExtra = (o: OrderBase) => [
   { label: "배송비", value: o.shippingFee === 0 ? `0원${o.freeShippingNote ? ` · ${o.freeShippingNote}` : ""}` : won(o.shippingFee) },
   ...(o.rewardUsed > 0 ? [{ label: "적립금 사용", value: signedWon(-o.rewardUsed) }] : []),
 ];
-const itemsBlock = (o: OrderBase, label = "합계"): Block => ({ t: "items", lines: o.lines, extra: feeExtra(o), total: { label, value: won(o.total) } });
+const itemsBlock = (o: OrderBase, label = "합계"): Block => ({ t: "items", lines: qtyLines(o.lines), extra: feeExtra(o), total: { label, value: won(o.total) } });
 const summaryBox = (o: OrderBase, payment: string, amount: string): Block => ({
   t: "box",
   rows: [["주문번호", o.orderNoLabel], ["주문일", dateTime(o.orderedAt)], ["결제수단", payment], ["결제금액", amount]],
@@ -89,7 +90,7 @@ export function shippedMail(i: ShippedInput): MailBody {
     { t: "box", accent: true, rows: [["택배사", i.carrier], ["송장번호", i.trackingNo], ["보낸 날", dateDay(i.shippedAt)]], muted: "보통 1~2일 안에 도착해요. 휴일이 끼면 늦어질 수 있어요." },
     ...(i.island ? [{ t: "box", title: "제주 · 도서지역이라 1~2일 더 걸릴 수 있어요", lines: [`도서산간 추가비 ${won(i.island.extraFee)}은 주문할 때 결제됐어요`] } as Block] : []),
     receiverBox(i.receiver),
-    { t: "items", lines: i.lines, extra: i.rewardUsed > 0 ? [{ label: "적립금 사용", value: signedWon(-i.rewardUsed) }] : [], total: { label: "합계", value: `${count}개 · ${won(i.total)}` } },
+    { t: "items", lines: qtyLines(i.lines), extra: i.rewardUsed > 0 ? [{ label: "적립금 사용", value: signedWon(-i.rewardUsed) }] : [], total: { label: "합계", value: `${count}개 · ${won(i.total)}` } },
     { t: "buttons", buttons: [...(i.trackingUrl ? [{ label: "배송 조회", url: i.trackingUrl }] : []), { label: "주문 상세 보기", url: i.orderUrl, secondary: !!i.trackingUrl }] },
   ]);
 }
@@ -116,13 +117,13 @@ export function deliveredMail(i: DeliveredInput): MailBody {
       ? [{ t: "box", title: `적립금 ${won(i.rewardEarned)}이 쌓였어요`, lines: i.rewardBalance != null ? [`보유 적립금 ${won(i.rewardBalance)} · 다음 주문부터 쓸 수 있어요`] : ["다음 주문부터 쓸 수 있어요"] } as Block]
       : []),
     { t: "p", text: "받은 카드에 문제가 있으면 3일 안에 1:1 문의로 알려 주세요.", muted: true },
-    { t: "items", lines: i.lines, extra: i.rewardUsed > 0 ? [{ label: "적립금 사용", value: signedWon(-i.rewardUsed) }] : [], total: { label: "합계", value: `${count}개 · ${won(i.total)}` } },
+    { t: "items", lines: qtyLines(i.lines), extra: i.rewardUsed > 0 ? [{ label: "적립금 사용", value: signedWon(-i.rewardUsed) }] : [], total: { label: "합계", value: `${count}개 · ${won(i.total)}` } },
     { t: "buttons", buttons: [{ label: "주문 상세 보기", url: i.orderUrl }, ...(i.replayUrl ? [{ label: "방송 다시보기", url: i.replayUrl, secondary: true }] : [])] },
   ]);
 }
 
 // ─── EM-004 취소·환불 ───
-export type RefundMethod = { kind: "CARD"; label?: string } | { kind: "BANK"; bankName: string; accountNumber: string; holder: string };
+export type RefundMethod = { kind: "CARD"; label?: string } | { kind: "BANK"; bankName?: string; accountNumber?: string; holder?: string }; // 무통장은 계좌를 알 때만 보여 준다
 export type CancelledInput = OrderBase & { paymentLabel: string; refund: RefundMethod; rewardReturned?: number } & (
     | { kind: "FULL"; reason: string; refundAmount: number }
     | { kind: "PARTIAL"; cancelledLines: OrderLine[]; refundAmount: number; remainingTotal: number; remainingLines: OrderLine[] }
@@ -135,7 +136,14 @@ const refundTail = (i: CancelledInput): Block[] => [
   ...(i.rewardReturned && i.rewardReturned > 0 ? [{ t: "box", title: `적립금 사용한 ${won(i.rewardReturned)}을 돌려드렸어요` } as Block] : []),
   ...(i.refund.kind === "CARD"
     ? [{ t: "p", text: "카드사에 따라 반영 시점이 달라요. 승인 취소 문자는 카드사에서 보내요.", muted: true } as Block]
-    : [{ t: "box", title: "무통장 환불 · 입력한 계좌로 돌려 드려요", rows: [["은행", i.refund.bankName], ["계좌번호", i.refund.accountNumber], ["예금주", i.refund.holder]], muted: "1~2영업일 안에 입금돼요 · 계좌가 틀리면 1:1 문의로 알려 주세요" } as Block]),
+    : [
+        {
+          t: "box",
+          title: "무통장 환불 · 입력한 계좌로 돌려 드려요",
+          rows: i.refund.bankName && i.refund.accountNumber ? [["은행", i.refund.bankName], ["계좌번호", i.refund.accountNumber], ...(i.refund.holder ? ([["예금주", i.refund.holder]] as [string, string][]) : [])] : undefined,
+          muted: "1~2영업일 안에 입금돼요 · 계좌가 틀리면 1:1 문의로 알려 주세요",
+        } as Block,
+      ]),
 ];
 
 export function cancelledMail(i: CancelledInput): MailBody {
@@ -149,7 +157,7 @@ export function cancelledMail(i: CancelledInput): MailBody {
       { t: "box", accent: true, title: `${names} · ${won(i.cancelledLines.reduce((n, l) => n + l.amount, 0))} 취소`, rows: [["환불 금액", won(i.refundAmount)], ...refundRows(i)], muted: "나머지 상품은 그대로 진행돼요" },
       ...refundTail(i),
       detail,
-      { t: "items", lines: i.remainingLines, extra: i.rewardUsed > 0 ? [{ label: "적립금 사용", value: signedWon(-i.rewardUsed) }] : [], total: { label: `합계 남은 주문 ${rest}개`, value: won(i.remainingTotal) } },
+      { t: "items", lines: qtyLines(i.remainingLines), extra: i.rewardUsed > 0 ? [{ label: "적립금 사용", value: signedWon(-i.rewardUsed) }] : [], total: { label: `합계 남은 주문 ${rest}개`, value: won(i.remainingTotal) } },
       { t: "buttons", buttons: [{ label: "주문 상세 보기", url: i.orderUrl }] },
     ]);
   }

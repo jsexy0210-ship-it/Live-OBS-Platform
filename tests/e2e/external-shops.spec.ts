@@ -107,7 +107,9 @@ test("쇼핑몰 설정 권한이 없는 직원은 목록을 받지 못하고 연
   await login(page, "demo-staff@example.com");
   expect((await page.request.get("/api/seller/external-shops")).status()).toBe(403);
   await page.goto("/seller/external-shops");
-  await expect(page.getByText("연동 정보를 불러오지 못했습니다")).toBeVisible();
+  // 403은 오류 화면이 아니라 권한 안내
+  await expect(page.getByTestId("external-forbidden")).toContainText("쇼핑몰 설정 권한이 있는 직원만 볼 수 있습니다");
+  await expect(page.getByText("연동 정보를 불러오지 못했습니다")).toHaveCount(0);
   await expect(page.getByTestId("external-row")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "쇼핑몰 더 이어 두기" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "연결 해제" })).toHaveCount(0);

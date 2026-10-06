@@ -19,6 +19,8 @@ export type LiveBroadcast = {
   queue: { waiting: number; opening: number; done: number; cancelled: number };
   orders: number;
   overlay: Overlay;
+  layoutAspect: string | null;
+  paymentError: boolean;
 };
 export type SellerActivity = {
   sellerId: string;

@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
+import { settlePendingRewards } from "../rewards/settle";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 
 // 적립금 실지급 스위치(SA-034, PRODUCT_SCOPE 「실지급은 판매자별 실행 스위치(기본 꺼짐)」). 돈이 움직이는 설정이다.
@@ -7,7 +8,9 @@ import { requireSellerPermission, requireSellerRead, type TenantContext } from "
 // - 켤 때는 body.confirm === true가 있어야 한다(경고 확인). 끌 때는 필요 없다.
 // - 값이 그대로면(이미 켜짐·꺼짐) 아무것도 바꾸지 않고 로그도 남기지 않는다(켠 시각·변경자가 덮이지 않음).
 // - 바꾸면 켠·끈 시각과 변경자를 기록하고 로그 추적에 남긴다. 판매자마다 잠금을 잡아 동시 변경을 한 줄로 세운다.
-// 이 값은 이후 생기는 적립 기록(testMode)과 사용 가능 여부(quote.ts)에서 읽는다. 이미 만든 기록은 바뀌지 않는다.
+// 이 값은 이후 생기는 적립 기록(testMode)과 사용 가능 여부(quote.ts)에서 읽는다.
+// 켜면 쌓여 있던 대기(PENDING) 줄을 바로 일괄 지급한다(rewards/settle.ts, 한 번에 회원 200명까지 — 남으면 응답의 settlement.remaining으로 알리고
+// POST /api/seller/reward-live-payout/settle로 이어서 처리). 지급 처리가 실패해도 스위치는 켜진 채로 두고 settlement를 null로 준다(정기 처리가 이어서 한다).
 export type LivePayout = { enabled: boolean; changedAt: Date | null; changedByName: string | null };
 
 export const REWARD_LIVE_PAYOUT_MESSAGES = {
@@ -35,7 +38,7 @@ export async function updateLivePayout(db: PrismaClient, ctx: TenantContext, raw
   if (typeof b.enabled !== "boolean" || (b.confirm !== undefined && typeof b.confirm !== "boolean")) return { ok: false as const, reason: "invalid_live_payout" as const };
   const enabled = b.enabled;
   if (enabled && b.confirm !== true) return { ok: false as const, reason: "live_payout_confirm_required" as const };
-  return db.$transaction(async (tx) => {
+  const done = await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`reward_live_payout:${ctx.sellerId}`}))`;
     const cur = await tx.rewardPolicy.findUnique({ where: { sellerId: ctx.sellerId }, select: { livePayoutEnabled: true } });
     if ((cur?.livePayoutEnabled ?? false) === enabled) return { ok: true as const, changed: false as const, livePayout: await readOf(tx, ctx.sellerId) };
@@ -54,4 +57,12 @@ export async function updateLivePayout(db: PrismaClient, ctx: TenantContext, raw
     });
     return { ok: true as const, changed: true as const, livePayout: await readOf(tx, ctx.sellerId) };
   });
+  if (!done.changed || !enabled) return { ...done, settlement: null };
+  try {
+    const settlement = await settlePendingRewards(db, { sellerId: ctx.sellerId, trigger: "live_on", actor: { actorType: ctx.actorType, actorId: ctx.actorId } });
+    return { ...done, settlement };
+  } catch (e) {
+    console.error("[reward.live_on_settle_failed]", ctx.sellerId, e instanceof Error ? e.message : e);
+    return { ...done, settlement: null };
+  }
 }

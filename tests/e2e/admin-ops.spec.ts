@@ -45,14 +45,14 @@ test("실시간 방송: 방송 중인 파트너스만 오버레이 상태와 함
   await page.goto("/admin/ops/live");
   const on = page.getByTestId("live-row").filter({ hasText: names.on });
   const off = page.getByTestId("live-row").filter({ hasText: names.off });
-  await expect(on).toContainText("접속 중");
+  await expect(on).toContainText("정상");
   await expect(on).toContainText("1시간 15분");
-  await expect(off).toContainText("접속 안 됨");
+  await expect(off).toContainText("불안정");
   await expect(page.getByTestId("live-row").filter({ hasText: names.idle })).toHaveCount(0);
-  await page.getByLabel("방송 화면이 연결되지 않은 방송만").check();
+  await page.getByLabel("문제 있음만").check();
   await expect(on).toHaveCount(0);
   await expect(off).toHaveCount(1);
-  await expect(page.getByTestId("live-status")).toContainText("10초마다 새로고침");
+  await expect(page.getByTestId("live-status")).toContainText("10초마다 갱신");
   await page.screenshot({ path: "tests/e2e/screenshots/admin-ops-live-1440.png" });
 });
 
