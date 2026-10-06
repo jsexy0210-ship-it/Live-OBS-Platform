@@ -6,6 +6,7 @@ import { adminCan } from "../authz/permissions";
 import type { TenantContext } from "../tenant/context";
 import { assertWritable } from "../tenant/context";
 import { cleanText } from "../text/clean";
+import { checkNoticeFile, NOTICE_FILES_PER_NOTICE } from "./files";
 
 // 플랫폼 공지(마스터 MA-053·054 작성 · 파트너스 SA-111·112 · 공개 PF-005·006). 규칙:
 // - 보기는 마스터 관리자 모든 역할(platform.read), 쓰기·게시·삭제는 최고관리자·CS(support.manage, ARCHITECTURE 3.2 「공지 작성」).
@@ -29,10 +30,12 @@ export const CHANNELS = ["IN_APP"] as const;
 export const SEARCH_MAX = 50;
 export const RELATED_COUNT = 3;
 
-export type PlatformNoticeRejection = "invalid_title" | "invalid_body" | "invalid_category" | "invalid_audience" | "invalid_cursor" | "invalid_query" | "version_conflict";
+export type PlatformNoticeRejection = "unsupported_file" | "too_many_files" | "invalid_title" | "invalid_body" | "invalid_category" | "invalid_audience" | "invalid_cursor" | "invalid_query" | "version_conflict";
 
 // 마스터 관리자 화면 문구(명사형·합니다체)
 export const PLATFORM_NOTICE_MESSAGES: Record<PlatformNoticeRejection, string> = {
+  unsupported_file: "png·jpg·pdf 파일만 올릴 수 있습니다(5MB까지)",
+  too_many_files: `첨부는 공지당 ${NOTICE_FILES_PER_NOTICE}개까지 올릴 수 있습니다`,
   invalid_title: `제목을 ${TITLE_MAX}자 안에서 입력해 주십시오`,
   invalid_body: `내용을 ${BODY_MAX}자 안에서 입력해 주십시오`,
   invalid_category: "분류를 선택해 주십시오",
@@ -122,11 +125,61 @@ export async function listAdminNotices(db: PrismaClient, admin: AdminSessionCont
   return { ok: true as const, items: page.map(adminView), nextCursor: rows.length > PAGE_SIZE && last ? cursorOf(last.createdAt, last.id) : null };
 }
 
+const FILE_SELECT = { id: true, name: true, byteSize: true } as const;
+const filesOf = (db: Db, noticeId: string) => db.platformNoticeFile.findMany({ where: { noticeId }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }], select: FILE_SELECT });
+
 export async function getAdminNotice(db: PrismaClient, _admin: AdminSessionContext, id: string) {
   if (!isUuid(id)) throw notFound();
   const row = await db.platformNotice.findFirst({ where: { id, deletedAt: null } });
   if (!row) throw notFound();
-  return adminView(row);
+  const files = await filesOf(db, id);
+  return { ...adminView(row), files: files.map((f) => ({ ...f, url: `/api/admin/platform-notices/${id}/files/${f.id}` })) };
+}
+
+// 공지 첨부 올리기(공지 작성 권한자). name은 파일 이름(.png·.jpg·.pdf). 공지 행을 잠가 공지당 5개를 정확히 센다. 공지 version은 올리지 않는다.
+export async function uploadNoticeFile(db: PrismaClient, admin: AdminSessionContext, id: string, name: unknown, bytes: Buffer, meta: AuditMeta = {}) {
+  requireWriter(admin);
+  if (!isUuid(id)) throw notFound();
+  const c = checkNoticeFile(name, bytes);
+  if (!c.ok) return c;
+  return db.$transaction(async (tx) => {
+    const [n] = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "PlatformNotice" WHERE "id" = ${id}::uuid AND "deletedAt" IS NULL FOR UPDATE`;
+    if (!n) throw notFound();
+    const last = await tx.platformNoticeFile.aggregate({ where: { noticeId: id }, _count: { _all: true }, _max: { sortOrder: true } });
+    if (last._count._all >= NOTICE_FILES_PER_NOTICE) return { ok: false as const, reason: "too_many_files" as const };
+    const f = await tx.platformNoticeFile.create({
+      data: { noticeId: id, name: c.name, data: new Uint8Array(c.data), contentType: c.contentType, byteSize: c.data.length, sortOrder: (last._max.sortOrder ?? -1) + 1, createdByAdminId: admin.admin.id },
+      select: FILE_SELECT,
+    });
+    await audit(tx, admin, meta, "platform.notice.file_upload", id, undefined, { fileId: f.id, name: f.name, byteSize: f.byteSize });
+    return { ok: true as const, file: { ...f, url: `/api/admin/platform-notices/${id}/files/${f.id}` } };
+  });
+}
+
+// 공지 첨부 지우기(공지 작성 권한자). 없는 파일·다른 공지의 파일은 404.
+export async function deleteNoticeFile(db: PrismaClient, admin: AdminSessionContext, id: string, fileId: string, meta: AuditMeta = {}) {
+  requireWriter(admin);
+  if (!isUuid(id) || !isUuid(fileId)) throw notFound();
+  await db.$transaction(async (tx) => {
+    const [n] = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "PlatformNotice" WHERE "id" = ${id}::uuid AND "deletedAt" IS NULL FOR UPDATE`;
+    if (!n) throw notFound();
+    const f = await tx.platformNoticeFile.findFirst({ where: { id: fileId, noticeId: id }, select: FILE_SELECT });
+    if (!f) throw notFound();
+    await tx.platformNoticeFile.delete({ where: { id: fileId } });
+    await audit(tx, admin, meta, "platform.notice.file_delete", id, { fileId: f.id, name: f.name, byteSize: f.byteSize }, undefined);
+  });
+}
+
+// 마스터가 받는 공지 첨부(전 역할). 지운 공지의 파일·없는 파일은 null(404).
+export async function adminNoticeFile(db: PrismaClient, _admin: AdminSessionContext, id: string, fileId: string) {
+  if (!isUuid(id) || !isUuid(fileId)) return null;
+  return db.platformNoticeFile.findFirst({ where: { id: fileId, noticeId: id, notice: { deletedAt: null } }, select: { data: true, contentType: true, name: true } });
+}
+
+// 파트너스가 받는 공지 첨부: 파트너스에게 게시된 공지의 파일만(임시 저장·지운 공지·공개 전용 공지는 null).
+export async function sellerNoticeFile(db: PrismaClient, id: string, fileId: string) {
+  if (!isUuid(id) || !isUuid(fileId)) return null;
+  return db.platformNoticeFile.findFirst({ where: { id: fileId, noticeId: id, notice: readerWhere("partners") }, select: { data: true, contentType: true, name: true } });
 }
 
 export async function createPlatformNotice(db: PrismaClient, admin: AdminSessionContext, raw: unknown, meta: AuditMeta = {}) {
@@ -285,7 +338,8 @@ export async function getSellerNotice(db: PrismaClient, ctx: TenantContext, id: 
     db.platformNotice.findMany({ where: { ...base, category: row.category, id: { not: id } }, orderBy: [{ publishedAt: "desc" }, { id: "desc" }], take: RELATED_COUNT }),
     readSet(db, ctx, [id]),
   ]);
-  return { ...readerView(row), read: read.has(id), prev: newer ? brief(newer) : null, next: older ? brief(older) : null, related: related.map(brief) };
+  const files = await filesOf(db, id);
+  return { ...readerView(row), files: files.map((f) => ({ ...f, url: `/api/seller/platform-notices/${id}/files/${f.id}` })), read: read.has(id), prev: newer ? brief(newer) : null, next: older ? brief(older) : null, related: related.map(brief) };
 }
 
 // 읽음 표시(계정별, 같은 공지를 여러 번 불러도 한 줄). 마스터 대리 조회(읽기 전용)는 403. 응답 { read: true, unreadCount }
