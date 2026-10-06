@@ -52,43 +52,50 @@ async function open(page: Page, path: string) {
   await page.goto(path);
 }
 
-test("CS도 청구·결제 내역을 조회한다: 파트너스 지정·상태·구분·기간 필터, 표 데이터는 가운데 정렬, 코드는 이름으로 보인다", async ({ page }) => {
-  await open(page, `/admin/billing/invoices?sellerId=${sellerId}`);
-  const rows = page.getByTestId("payment-row");
+test("CS도 청구·결제 내역을 조회한다: 월 요약·기간·상태·실패만 필터, 재시도 버튼 없음, 표 데이터는 가운데 정렬, 코드는 이름으로 보인다", async ({ page }) => {
+  const kst = (ms: number) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul" }).format(new Date(ms));
+  const range = `from=${kst(Date.now() - 60 * DAY)}&to=${kst(Date.now() + 30 * DAY)}`;
+  await open(page, `/admin/billing/invoices?sellerId=${sellerId}&${range}`);
+  const rows = page.getByTestId("invoice-row");
   await expect(rows).toHaveCount(3);
-  await expect(rows.first()).toContainText("차액 결제");
-  await expect(rows.first()).toContainText("오버레이 전용");
+  await expect(rows.first()).toContainText("차액");
+  await expect(rows.first()).toContainText("진행 중");
   await expect(page.locator("main")).not.toContainText("OVERLAY_ONLY");
-  await expect(page.getByRole("button", { name: /환불|결제 실행|재시도/ })).toHaveCount(0);
-  const align = await page.locator(".tbl td").first().evaluate((el) => getComputedStyle(el).textAlign);
+  await expect(page.getByTestId("invoice-summary")).toContainText("결제 완료");
+  await expect(page.getByRole("button", { name: /실패 건 재시도|환불|결제 실행/ })).toHaveCount(0); // CS는 재시도 없음
+  await expect(page.getByRole("link", { name: "내보내기" })).toBeVisible();
+  const align = await rows.first().locator("td").nth(4).evaluate((el) => getComputedStyle(el).textAlign);
   expect(align).toBe("center"); // 표 정렬 새 규칙(2026-10-05): 글 열(.col-text)이 아니면 데이터는 가운데
 
   const search = () => page.getByRole("button", { name: "검색", exact: true }).click();
-  await page.getByLabel("결제 상태").selectOption("FAILED");
+  await page.getByLabel("결제 실패 · 재시도만").check();
   await search();
   await expect(rows).toHaveCount(1);
-  await expect(rows).toContainText("결제 실패");
-  await page.getByLabel("결제 상태").selectOption("");
-  await page.getByLabel("구분").selectOption("PRORATION");
+  await expect(rows).toContainText("실패");
+  await expect(rows).toContainText("카드 한도 초과");
+  await page.getByLabel("결제 실패 · 재시도만").uncheck();
+  await page.getByLabel("상태", { exact: true }).selectOption("PAID");
   await search();
   await expect(rows).toHaveCount(1);
-  await expect(rows).toContainText("결제 대기");
-  await page.getByLabel("구분").selectOption("");
+  await expect(rows).toContainText("결제 완료");
+  await expect(rows).toContainText("발행");
+  await page.getByRole("button", { name: "초기화" }).click();
+  await expect(rows).toHaveCount(3);
 
   // 기간: 시작일이 종료일보다 늦으면 요청 없이 안내
   await page.getByLabel("청구 시작일").fill("2026-10-10");
   await page.getByLabel("청구 종료일").fill("2026-10-01");
   await search();
   await expect(page.locator(".err[role=alert]")).toHaveText("시작일이 종료일보다 늦습니다.");
-  const kst = (ms: number) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul" }).format(new Date(ms));
-  await page.getByLabel("청구 시작일").fill(kst(Date.now() - 30 * DAY));
-  await page.getByLabel("청구 종료일").fill(kst(Date.now()));
-  await search();
-  await expect(rows).toHaveCount(2);
-  await page.getByRole("button", { name: "초기화" }).click();
-  await expect(rows).toHaveCount(3);
   await page.getByRole("button", { name: "전체 보기" }).click();
   await expect(page.getByRole("button", { name: "전체 보기" })).toHaveCount(0);
+
+  for (const w of [1440, 1024, 390]) {
+    await page.setViewportSize({ width: w, height: 900 });
+    await page.goto(`/admin/billing/invoices?${range}`);
+    await expect(page.getByTestId("invoice-summary")).toBeVisible();
+    await page.screenshot({ path: `tests/e2e/screenshots/admin-invoices-${w}.png` });
+  }
 });
 
 test("청구 상세: 결제 번호·카드 매출전표 링크·구독, 실패 청구는 실패 사유가 보인다", async ({ page }) => {
