@@ -1,7 +1,18 @@
 import { expect, test } from "@playwright/test";
+import { clearReviewsInDb, deliveredItemInDb, reviewInDb } from "./reviewDb";
 import { submitSellerLogin } from "./sellerLogin";
 
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
+const SLUG = "demo-shop";
+
+test.beforeAll(async () => {
+  if (!PASSWORD) throw new Error("E2E_PASSWORD가 없어요. dev-seed가 출력한 데모 비밀번호를 넣어 주세요");
+  await clearReviewsInDb(SLUG);
+  const itemId = await deliveredItemInDb(SLUG, "demo-buyer1@example.com");
+  await reviewInDb(itemId);
+});
+
+test.afterAll(async () => clearReviewsInDb(SLUG));
 
 test("SA-048 리뷰 표와 행 정보가 1440·1024·390 화면에서 보인다", async ({ page }) => {
   if (!PASSWORD) throw new Error("E2E_PASSWORD가 없어요. dev-seed가 출력한 데모 비밀번호를 넣어 주세요");
@@ -31,6 +42,7 @@ test("SA-048 리뷰 표와 행 정보가 1440·1024·390 화면에서 보인다"
     await expect(table).toBeVisible();
     const row = page.getByTestId("review-row").first();
     await expect(row).toBeVisible();
+    await expect(row).toContainText("배송도 빨랐어요");
     await expect(row.locator("td")).toHaveCount(6);
     for (const cell of [".rv-select", ".rv-item", ".rv-rating", ".rv-content", ".rv-status", ".rv-actions"]) {
       await expect(row.locator(cell)).toBeVisible();
