@@ -164,3 +164,85 @@
   border-top: 1px solid var(--wds-line-normal-alternative);
   align-items: center;
 }
+
+/* 대기 표 모바일 카드(DS-TABLE-CARD, 768px 미만): 같은 표 DOM을 CSS로 카드로 바꾼다(버튼이 두 벌이 되지 않게).
+   카드 한 장 = 표 한 행: 구매자·상품(제목) → 순서·주문 시각·금액·타이머 「라벨: 값」 2열(채팅은 한 줄 전체) → 관리 버튼 44px.
+   위로·아래로는 아래 줄(2열), 타이머 정하기·주문대기에서 빼기는 위 줄(2열)로 나눈다. */
+@media (max-width: 767px) {
+  .au-lt-wrap:has(> .bc-cards) {
+    overflow: visible;
+  }
+  .bc-cards,
+  .bc-cards tbody {
+    display: block;
+    min-width: 0;
+    width: 100%;
+  }
+  .bc-cards thead {
+    display: none;
+  }
+  .bc-cards tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .bc-cards tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 4px 16px;
+    padding: 12px;
+    border: 1px solid var(--wds-line-normal-alternative);
+    border-radius: 12px;
+    background: var(--wds-background-normal-normal, #fff);
+  }
+  .bc-cards td {
+    display: flex;
+    gap: 8px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    text-align: left;
+    overflow: hidden;
+    white-space: normal;
+    font-size: 13px;
+    line-height: 20px;
+  }
+  .bc-cards td[data-label]::before {
+    content: attr(data-label);
+    flex: none;
+    width: 56px;
+    font-weight: 600;
+    color: var(--wds-label-alternative);
+  }
+  .bc-cards td.bc-c-title {
+    grid-column: 1 / -1;
+    order: -1;
+    padding-bottom: 8px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--wds-line-normal-alternative);
+  }
+  .bc-cards td.bc-c-wide {
+    grid-column: 1 / -1;
+  }
+  .bc-cards td.bc-c-acts {
+    grid-column: 1 / -1;
+    order: 99;
+    padding-top: 8px;
+  }
+  .bc-cards td.bc-c-acts .bc-acts {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+    width: 100%;
+  }
+  .bc-cards td.bc-c-acts .btn {
+    height: 44px;
+    padding: 0 8px;
+    font-size: 14px;
+    justify-content: center;
+  }
+  /* 버튼 순서: 타이머 정하기 · 빼기 먼저, 위로 · 아래로는 그 아래 */
+  .bc-cards td.bc-c-acts .btn-ghost {
+    order: 2;
+  }
+}
