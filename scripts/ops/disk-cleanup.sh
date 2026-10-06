@@ -141,6 +141,11 @@ readonly_path_overlap() {
   [[ "$a" == "$b" || "$a" == "/" || "$b" == "/" || "$a" == "$b/"* || "$b" == "$a/"* ]]
 }
 
+readonly_path_within() {
+  local path="$1" target="$2"
+  [[ "$path" == "$target" || "$path" == "$target/"* ]]
+}
+
 readonly_checkout_git_state() {
   local root="$1" top="" origin="" status="" identity=UNKNOWN dirty=UNKNOWN
   top="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null || true)"
@@ -180,15 +185,15 @@ readonly_target_mount_state() {
 }
 
 readonly_exact_active_ref() {
-  local target="$1" proc entry path found=0 incomplete=0
-  [ -d /proc ] && [ -r /proc ] || { printf 'UNKNOWN'; return; }
-  for proc in /proc/[0-9]*; do
+  local target="$1" proc_root="${2:-/proc}" proc entry path found=0 incomplete=0
+  [ -d "$proc_root" ] && [ -r "$proc_root" ] || { printf 'UNKNOWN'; return; }
+  for proc in "$proc_root"/[0-9]*; do
     [ -d "$proc" ] || continue
     if [ ! -r "$proc/fd" ]; then incomplete=1; continue; fi
     for entry in "$proc"/cwd "$proc"/root "$proc"/exe "$proc"/fd/*; do
       if [ ! -e "$entry" ] && [ ! -L "$entry" ]; then incomplete=1; continue; fi
       if ! path="$(readlink -- "$entry" 2>/dev/null)"; then incomplete=1; continue; fi
-      if readonly_path_overlap "${path% (deleted)}" "$target"; then found=1; break 2; fi
+      if readonly_path_within "${path% (deleted)}" "$target"; then found=1; break 2; fi
     done
   done
   if [ "$found" = 1 ]; then printf 'yes'
