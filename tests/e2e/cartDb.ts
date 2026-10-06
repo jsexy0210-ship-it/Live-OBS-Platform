@@ -201,3 +201,28 @@ export async function setUsageGuide(slug: string, text: string | null) {
     await db.$disconnect();
   }
 }
+
+// 상품 목록 쪽 이동 시험용: 판매 중 상품 n개를 더하고(이름 「채움상품 NN」, 옵션 1개씩), 끝나면 지운다.
+export async function addFillerProducts(slug: string, n: number) {
+  const db = open();
+  try {
+    const seller = await db.seller.findUniqueOrThrow({ where: { slug } });
+    for (let i = 1; i <= n; i += 1) {
+      const p = await db.product.create({ data: { sellerId: seller.id, name: `채움상품 ${String(i).padStart(2, "0")}`, price: 1000 + i, status: "ON_SALE" } });
+      await db.productOption.create({ data: { sellerId: seller.id, productId: p.id, name: "기본", stock: 10 } });
+    }
+  } finally {
+    await db.$disconnect();
+  }
+}
+export async function removeFillerProducts(slug: string) {
+  const db = open();
+  try {
+    const seller = await db.seller.findUniqueOrThrow({ where: { slug } });
+    const ids = (await db.product.findMany({ where: { sellerId: seller.id, name: { startsWith: "채움상품 " } }, select: { id: true } })).map((p) => p.id);
+    await db.productOption.deleteMany({ where: { sellerId: seller.id, productId: { in: ids } } });
+    await db.product.deleteMany({ where: { sellerId: seller.id, id: { in: ids } } });
+  } finally {
+    await db.$disconnect();
+  }
+}
