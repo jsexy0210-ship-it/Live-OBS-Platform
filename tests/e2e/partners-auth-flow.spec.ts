@@ -148,7 +148,7 @@ test("파트너스 가입 신청 → 바로 승인 → 로그인 → 비밀번�
   const a = await signup(page, { mailOrderNumber: "제2024-서울강남-01234호", wrongFirst: true, shots: true, failApplyOnce: true });
   await expect(page.getByRole("heading", { name: "가입을 마쳤어요" })).toBeVisible();
   await expect(page.getByRole("list", { name: "진행 단계" }).locator("[aria-current=step]")).toContainText("신청 완료");
-  await shot(page, "PF-007-3");
+  await shot(page, "PF-007-5");
 
   // 가입한 계정으로 로그인
   await page.getByRole("link", { name: "로그인하기" }).click();
@@ -365,7 +365,7 @@ test("통신판매업 신고번호를 확인하지 못하면 승인 대기로 �
   await expect(page.getByRole("heading", { name: "신청을 받았어요" })).toBeVisible();
   await expect(page.getByText("통신판매업 신고번호를 확인하지 못했어요")).toBeVisible();
   await expect(page.getByText("그 전에는 로그인할 수 없어요.")).toBeVisible();
-  await shot(page, "PF-007-3-review");
+  await shot(page, "PF-007-5-review");
 });
 
 test("비밀번호 찾기: 대표자가 아니거나 정보가 맞지 않으면 바꿀 수 없다고 알리고 처음부터 다시 하게 한다", async ({ page }) => {
