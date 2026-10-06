@@ -9,7 +9,7 @@ import type { AutomationAction } from "../automation/ports";
 import { validateDecision } from "../automation/ports";
 import { STEPS } from "../automation/steps";
 
-// 검토용 서버 경계. 실제 DB reader/기기 인증/영속 저널/OBS transport는 구현하지 않는다.
+// 서버 명령 경계. 지속 기기 인증 reader/영속 저널/OBS transport는 아직 구현하지 않는다.
 // reader는 인증된 서버 저장소 전용이다. HTTP 본문/클라이언트 plan·paid 값으로 구현하면 안 된다.
 export type ObsServerRecords = {
   seller: Pick<Seller, "id" | "status" | "trialEndsAt">;
@@ -43,16 +43,31 @@ export type ObsAuthority = {
 function fail(code: string): never { throw new Error(code); }
 const time = (date: Date | null): number => date instanceof Date ? date.getTime() : NaN;
 
+// 기기 인증과 별개인 저장값 판정. DB reader와 명령 계약이 같은 구독·설치 기준을 사용한다.
+export type ObsAccountRecords = Omit<ObsServerRecords, "device" | "explicitInput">;
+export function obsAccountAccess(r: ObsAccountRecords, sellerId: string, now: Date) {
+  if (r.seller.id !== sellerId || r.seller.status !== "ACTIVE" ||
+    (r.subscription && r.subscription.sellerId !== sellerId) ||
+    (r.firstPayment && r.firstPayment.sellerId !== sellerId)) fail("obs_access_denied");
+  const features = planFeatures(r.planCode, { firstPaymentConfirmed: r.firstPayment?.status === "PAID", hadTrial: !!r.seller.trialEndsAt });
+  const access = sellerAccess({ trialEndsAt: r.seller.trialEndsAt, subscription: r.subscription }, now);
+  if (!features.includes("OVERLAY") || access === "expired") fail("obs_access_denied");
+  return access;
+}
+export function obsInitialInstallValid(install: ObsAccountRecords["install"], sellerId: string, jobId: string, now: Date): boolean {
+  if (!install) return false;
+  const { payment: p, job: j } = install;
+  return p.sellerId === sellerId && p.status === "PAID" && p.amount === AUTOMATION_PRICE && time(p.paidAt) <= time(now) &&
+    j.id === jobId && j.sellerId === sellerId && j.paymentId === p.id && j.kind === "INITIAL" &&
+    ["RUNNING", "VERIFYING"].includes(j.status) && !j.cancelRequestedAt && !j.connectionRevokedAt && time(j.leaseExpiresAt) > time(now);
+}
+
 export async function loadObsAuthority(ctx: TenantContext, reader: ObsServerReader, deviceId: string, now: Date, installJobId?: string): Promise<ObsAuthority> {
   requireSellerPermission(ctx, "OVERLAY_EDIT");
   if (installJobId && !isJobId(installJobId)) fail("obs_purchase_unverified");
   const r = await reader.read(ctx.sellerId, deviceId, installJobId);
-  if (!r || r.seller.id !== ctx.sellerId || r.seller.status !== "ACTIVE") fail("obs_access_denied");
-  if (r.subscription && r.subscription.sellerId !== ctx.sellerId) fail("obs_access_denied");
-  if (r.firstPayment && r.firstPayment.sellerId !== ctx.sellerId) fail("obs_access_denied");
-  const features = planFeatures(r.planCode, { firstPaymentConfirmed: r.firstPayment?.status === "PAID", hadTrial: !!r.seller.trialEndsAt });
-  const access = sellerAccess({ trialEndsAt: r.seller.trialEndsAt, subscription: r.subscription }, now);
-  if (!features.includes("OVERLAY") || access === "expired") fail("obs_access_denied");
+  if (!r) fail("obs_access_denied");
+  const access = obsAccountAccess(r, ctx.sellerId, now);
   const d = r.device;
   if (d.sellerId !== ctx.sellerId || d.id !== deviceId || !d.pairingId || d.revokedAt || !Number.isSafeInteger(d.generation) || d.generation < 1 || !Number.isSafeInteger(d.epoch) || d.epoch < 1 || !(time(d.expiresAt) > time(now))) fail("obs_device_denied");
   let jobId: string | null = null;
@@ -64,10 +79,8 @@ export async function loadObsAuthority(ctx: TenantContext, reader: ObsServerRead
     // 유료 설치의 현재 작업 위임만 검증한다. 완료 후 지속 권리/재설치 정책을 새로 결정하지 않는다.
     const install = r.install;
     if (r.planCode !== "OVERLAY_ONLY" || !ctx.isOwner || !install || !installJobId) fail("obs_purchase_required");
-    const { payment: p, job: j } = install;
-    if (p.sellerId !== ctx.sellerId || p.status !== "PAID" || p.amount !== AUTOMATION_PRICE || !(time(p.paidAt) <= time(now)) ||
-      j.id !== installJobId || j.sellerId !== ctx.sellerId || j.paymentId !== p.id || j.kind !== "INITIAL" ||
-      !["RUNNING", "VERIFYING"].includes(j.status) || j.cancelRequestedAt || j.connectionRevokedAt || !(time(j.leaseExpiresAt) > time(now)) || j.fencingToken !== d.epoch || j.obsPairingId !== d.pairingId) fail("obs_purchase_unverified");
+    const { job: j } = install;
+    if (!obsInitialInstallValid(install, ctx.sellerId, installJobId, now) || j.fencingToken !== d.epoch || j.obsPairingId !== d.pairingId) fail("obs_purchase_unverified");
     jobId = j.id; stepIndex = j.stepIndex; deadline = Math.min(deadline, time(j.leaseExpiresAt));
   }
   // 초안의 짧은 관측 수명. 실제 명령 직전 재조회·기기 fencing은 향후 reader/transport 책임이다.
