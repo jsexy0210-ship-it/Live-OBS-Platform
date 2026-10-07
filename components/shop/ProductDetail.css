@@ -256,12 +256,18 @@
   margin: 0 auto;
 }
 @media (max-width: 767px) {
+  .shop-main > .shop-wrap:has(> .pd) {
+    padding-top: 0;
+  }
   .pd {
-    padding-top: 16px;
+    padding-top: 0;
+  }
+  .pd > .shop-back {
+    display: none;
   }
   .pd-top {
     flex-direction: column;
-    gap: 24px;
+    gap: 16px;
   }
   .pd-gallery {
     width: calc(100% + 32px);

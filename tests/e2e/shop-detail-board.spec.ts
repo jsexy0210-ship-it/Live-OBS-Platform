@@ -168,6 +168,37 @@ test("상품 상세: 실제 받는 방법·배송환불 정책과 찜 총수 변
   await expect(page.locator(".pd-wish-count")).toHaveText(`· 찜 ${product.wishCount.toLocaleString("ko-KR")}`);
 });
 
+test("상품 상세만 56px 모바일 헤더를 쓰고 홈·목록·장바구니 헤더는 유지한다", async ({ page, baseURL }) => {
+  await login(page, baseURL!);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const id = await productIdOf(page, "탑로더 25장");
+  await page.goto(`/shop/${SLUG}/products/${id}`);
+  const head = page.locator(".shop-product-header");
+  await expect(head).toBeVisible();
+  await expect(head).toHaveCSS("height", "56px");
+  await expect(head.locator(".shop-product-title")).toHaveText("상품 상세");
+  await expect(head.getByRole("button", { name: "목록 화면으로" })).toHaveCSS("width", "44px");
+  await expect(head.getByRole("button", { name: "목록 화면으로" })).toHaveCSS("height", "44px");
+  await expect(head.getByRole("link", { name: "홈", exact: true })).toHaveAttribute("href", `/shop/${SLUG}`);
+  await expect(head.getByRole("link", { name: /^장바구니/ })).toHaveAttribute("href", `/shop/${SLUG}/cart`);
+  await expect(page.locator(".shop-top")).toBeHidden();
+  if (process.env.E2E_SCREENSHOTS === "1") await page.screenshot({ path: "tests/e2e/screenshots/SH-003-top-390.png" });
+  await head.getByRole("button", { name: "목록 화면으로" }).click();
+  await expect(page).toHaveURL(new RegExp(`/shop/${SLUG}/products$`));
+  for (const route of ["", "/products", "/cart"]) {
+    await page.goto(`/shop/${SLUG}${route}`);
+    await expect(page.locator(".shop-product-header")).toHaveCount(0);
+    await expect(page.locator(".shop-top")).toBeVisible();
+    await expect(page.getByRole("button", { name: "카테고리 메뉴" })).toBeVisible();
+  }
+  for (const width of [1024, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`/shop/${SLUG}/products/${id}`);
+    await expect(head).toBeHidden();
+    await expect(page.locator(".shop-top")).toBeVisible();
+  }
+});
+
 test("최근 본 상품: 다른 상품을 본 뒤 상세에 보이고, 지금 상품은 빠진다", async ({ page }) => {
   const a = await productIdOf(page, "탑로더 25장");
   const b = await productIdOf(page, "스타라이트 부스터 박스");
