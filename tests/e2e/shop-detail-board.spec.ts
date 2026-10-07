@@ -64,7 +64,7 @@ async function expectInfoLayout(page: Page, width: number) {
     expect(Math.abs(geometry.gallery.left - geometry.container.left)).toBeLessThanOrEqual(1);
   }
   const priceBottom = await page.locator(".pd-price-summary").evaluate((el) => el.getBoundingClientRect().bottom);
-  const rows = await page.locator(".pd-form-row").evaluateAll((els) =>
+  const rows = await page.locator(".pd-info .pd-form-row").evaluateAll((els) =>
     els.map((el) => {
       const rect = el.getBoundingClientRect();
       return { name: ["pd-coupon-row", "pd-reward-row", "pd-stock-row", "pd-shipping-row", "pd-receive-row", "pd-option-row", "pd-quantity-row"].find((name) => el.classList.contains(name))!, top: rect.top, bottom: rect.bottom };
@@ -259,6 +259,7 @@ test("휴대폰 390: 찜 · 공유 · 장바구니에 담기 · 바로 주문하
 });
 
 test("PC·태블릿: 하단 바는 고정되지 않고 상품 정보 아래에 있다", async ({ page, baseURL }) => {
+  await createClaimableCouponInDb(SLUG, "세 폭 화면 검수 쿠폰", 2000);
   await login(page, baseURL!);
   const id = await productIdOf(page, "탑로더 25장");
   for (const [w, name] of [[1024, "1024"], [1440, "1440"]] as const) {
