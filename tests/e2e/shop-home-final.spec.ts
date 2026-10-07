@@ -84,6 +84,10 @@ test("홈 카드: 로그인 경계·찜·담기·선택 상품 바로 구매", a
   await page.goto(`/shop/${slug}`);
   await card.getByRole("button", { name: "찜", exact: true }).click();
   await expect(card.getByRole("button", { name: "찜 취소" })).toBeVisible();
+  const repeated = page.locator(".shop-home .pc").filter({ has: page.locator(`a[href$="/${productIds[0]}"]`) });
+  await expect(repeated.getByRole("button", { name: "찜 취소" })).toHaveCount(3);
+  await repeated.last().getByRole("button", { name: "찜 취소" }).click();
+  await expect(repeated.getByRole("button", { name: "찜", exact: true })).toHaveCount(3);
   await card.getByRole("button", { name: "담기", exact: true }).click();
   await expect(card.getByRole("status")).toHaveText("장바구니에 담았어요");
   const count = await page.request.get(`/api/shop/${slug}/cart/count`);
@@ -102,6 +106,7 @@ test("홈: 판매자 진열 숨김과 구독 만료 차단", async ({ page }) =>
 });
 
 test("방송 종료 홈: LIVE 띠 숨김과 최근 방송 상품 유지", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
   await db.broadcastSession.update({ where: { id: sessionId }, data: { status: "ENDED", endedAt: new Date() } });
   try {
     await page.goto(`/shop/${slug}`);
