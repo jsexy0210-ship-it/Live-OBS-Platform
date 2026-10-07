@@ -159,12 +159,21 @@ export async function setRecommended(db: PrismaClient, ctx: TenantContext, raw: 
 export type HomeSection = { kind: ShopDisplayKind; title: string; categoryId: string | null; products: ShopProductCard[] };
 
 // 구매자 홈 진열. 운영 중이 아닌 쇼핑몰은 null(404).
-export async function publicHome(db: PrismaClient, slug: string): Promise<{ sections: HomeSection[]; listSort: ShopSort } | null> {
+export async function publicHome(db: PrismaClient, slug: string, options: { recentBroadcastProducts?: boolean } = {}): Promise<{ sections: HomeSection[]; listSort: ShopSort } | null> {
   const shop = await db.seller.findUnique({ where: { slug: slug.slice(0, 60) }, select: { id: true, slug: true } });
   if (!shop || !(await shopOpen(db, shop.id))) return null;
   const out: HomeSection[] = [];
   const opts = await displayOptions(db, shop.id);
-  const live = await liveProductIds(db, shop.id);
+  let live = await liveProductIds(db, shop.id);
+  // SH-001 방송 종료 상태: LIVE 영역은 마지막 방송의 상품을 「최근 방송 상품」으로 보인다.
+  // 상품 목록의 live=1 필터는 진행 중 방송만 유지한다.
+  if (options.recentBroadcastProducts && !live.length && !(await db.broadcastSession.findFirst({ where: { sellerId: shop.id, status: "LIVE" }, select: { id: true } }))) {
+    const recent = await db.broadcastSession.findFirst({ where: { sellerId: shop.id, status: "ENDED" }, orderBy: [{ startedAt: "desc" }, { id: "desc" }], select: { id: true } });
+    if (recent) {
+      const items = await db.queueItem.findMany({ where: { sellerId: shop.id, broadcastSessionId: recent.id, orderItemId: { not: null } }, orderBy: [{ position: "asc" }, { id: "asc" }], select: { orderItem: { select: { productId: true } } } });
+      live = [...new Set(items.flatMap(i => i.orderItem ? [i.orderItem.productId] : []))];
+    }
+  }
   // 정한 순서를 그대로 쓰는 영역(추천·방송·명예의 전당)은 방송 상품 앞으로를 걸지 않는다
   const fixed = (cards: ShopProductCard[], n: number) => arrange(cards, opts, null, (c) => c.id).slice(0, n);
   for (const s of (await sections(db, shop.id)).filter((x) => x.visible)) {

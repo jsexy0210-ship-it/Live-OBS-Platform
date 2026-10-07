@@ -46,6 +46,11 @@ export default async function ShopFrame({ slug, shopName, operatingState = "OPEN
   const notice = seller ? await footerNotice(prisma, seller.id) : null;
   const bizNumber = text((seller?.businessInfo as BusinessInfo | null)?.businessNumber);
   const rows: FootRow[] = [...footRows(seller?.businessInfo).map(([label, value]) => ({ label, value })), ...(notice ? noticeRows(bizNumber, notice) : [])];
+  const bank = seller ? await prisma.sellerBankAccount.findUnique({ where: { sellerId: seller.id } }) : null;
+  const channels = (notice?.kakaoChannelUrl || notice?.youtubeChannelUrl) ? <div className="shop-foot-channels">
+    {notice.kakaoChannelUrl && <a className="shop-foot-kakao" href={notice.kakaoChannelUrl} target="_blank" rel="noopener noreferrer">카카오톡 문의</a>}
+    {notice.youtubeChannelUrl && <a href={notice.youtubeChannelUrl} target="_blank" rel="noopener noreferrer">▶ 유튜브 채널</a>}
+  </div> : null;
   return (
     <ConfirmProvider defaultTone="shop">
     <div className="shop-page">
@@ -64,6 +69,19 @@ export default async function ShopFrame({ slug, shopName, operatingState = "OPEN
       </main>
       <footer className="shop-foot">
         <div className="shop-wrap">
+          <div className="shop-foot-service">
+            {notice?.csPhone && <div><span>고객센터</span><b>{notice.csPhone}</b><span>{notice.csHours}</span></div>}
+            {bank && <div><span>무통장 입금 계좌</span><b>{bank.bankName} {bank.accountNumber}</b><span>예금주 {bank.accountHolder}</span></div>}
+            {notice?.csEmail && <div><span>이메일</span><b>{notice.csEmail}</b></div>}
+            {channels}
+          </div>
+          <p className="shop-foot-links">
+            <Link href={`/shop/${encodeURIComponent(slug)}/terms`}>이용약관</Link>
+            <Link href={`/shop/${encodeURIComponent(slug)}/privacy`}><b>개인정보처리방침</b></Link>
+            <Link href={`/shop/${encodeURIComponent(slug)}/help`}>이용안내</Link>
+            <Link href={`/shop/${encodeURIComponent(slug)}/me/inquiries`}>문의하기</Link>
+          </p>
+          <div className="shop-foot-mobile-channels">{channels}</div>
           <p className="shop-foot-name">{shopName}</p>
           {rows.length > 0 && (
             <dl className="shop-foot-info">
@@ -80,10 +98,6 @@ export default async function ShopFrame({ slug, shopName, operatingState = "OPEN
               {notice.minorNotice}
             </p>
           )}
-          <p className="shop-foot-links">
-            <Link href={`/shop/${encodeURIComponent(slug)}/terms`}>이용약관</Link>
-            <Link href={`/shop/${encodeURIComponent(slug)}/privacy`}>개인정보처리방침</Link>
-          </p>
           <p className="shop-foot-by">
             <span className="logo-word" />로 운영하는 쇼핑몰이에요
           </p>

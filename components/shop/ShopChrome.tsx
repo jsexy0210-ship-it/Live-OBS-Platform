@@ -221,6 +221,7 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname, categor
                 {c.label}
               </Link>
             ))}
+            <Link href={`${base}/help`}>공지 · 이용안내</Link>
           </div>
           {panel && categories.length > 0 && (
             <div id="shop-catpanel" className="shop-catpanel">

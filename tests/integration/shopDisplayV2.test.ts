@@ -102,6 +102,8 @@ describe("새 진열 영역", () => {
     // 방송이 끝나면 방송 상품·명예의 전당 영역은 빠진다(오버레이처럼 지금 방송 기준)
     await db.broadcastSession.update({ where: { id: live.id }, data: { status: "ENDED", endedAt: new Date() } });
     expect(titles(await home(s.seller.slug)).map((x) => x[0])).toEqual(["BEST", "SALE"]);
+    // SH-001 종료 상태만 마지막 방송 상품을 남긴다. 일반 공개 API·명예의 전당 계약은 그대로다.
+    expect((await publicHome(db, s.seller.slug, { recentBroadcastProducts: true }))?.sections.map(x => x.kind)).toEqual(["LIVE", "BEST", "SALE"]);
     // 판매량이 같으면 최근에 팔린 상품이 앞
     await paidOrder(s, c.options[0].id, 3);
     expect(titles(await home(s.seller.slug))[0]).toEqual(["BEST", ["C", "B"]]);
@@ -228,3 +230,4 @@ describe("HTTP", () => {
     expect(await stale.json()).toEqual({ error: "invalid_category_order", message: ORDER_ERROR_MESSAGES_FORMAL.invalid_category_order });
   });
 });
+import { publicHome } from "../../lib/server/shop-display/service";

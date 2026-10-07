@@ -1,0 +1,70 @@
+/* SH-001 FINAL v322. 홈에만 적용하여 목록·상세 상품 카드는 보존한다. */
+.shop-home { display:flex; flex-direction:column; gap:32px; }
+.shop-main > .shop-home { width:1200px; }
+.shop-home .shop-ntc { margin:0; }
+.shop-home-banner { display:grid; grid-template-columns:2fr 1fr; gap:16px; }
+.shop-home-hero { min-width:0; min-height:360px; background:#2b2a33; color:#fff; display:flex; flex-direction:column; justify-content:flex-end; gap:8px; padding:32px; }
+.shop-home-hero small { font-size:12px; opacity:.8; }
+.shop-home-hero b { font-size:28px; line-height:36px; overflow-wrap:anywhere; }
+.shop-home-hero span { font-size:14px; }
+.shop-home-hero > div { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+.shop-app .shop-home-hero .btn { background:#fff; color:#222; border-color:#fff; }
+.shop-home-side { display:flex; flex-direction:column; gap:16px; min-width:0; }
+.shop-home-side > div { flex:1; border:1px solid var(--wds-line-solid-neutral); padding:16px; display:flex; flex-direction:column; gap:4px; }
+.shop-home-side b { font-size:15px; overflow-wrap:anywhere; }
+.shop-home-side span,.shop-home-side a { font-size:12px; color:var(--wds-label-alternative); }
+.shop-home-side p { margin:0; display:flex; flex-direction:column; gap:4px; }
+.shop-home-side p+p { margin-top:12px; }
+.shop-home-side small { color:var(--brand); font-weight:700; }
+.shop-home .shop-sec { margin:0; }
+.shop-home .shop-sec-head { align-items:flex-end; justify-content:flex-start; gap:12px; margin:0 0 24px; padding-bottom:12px; border-bottom:1px solid #222; }
+.shop-home .shop-sec-head h2 { font-size:18px; line-height:24px; font-weight:800; }
+.shop-home-sub { font-size:12px; color:var(--wds-label-alternative); }
+.shop-home .shop-more { margin-left:auto; font-size:12px; }
+.shop-home .pc-grid { gap:32px 24px; }
+.shop-home .pc { display:flex; flex-direction:column; gap:8px; }
+.shop-home .pc-photo { border:1px solid var(--wds-line-solid-neutral); border-radius:10px; }
+.shop-home .pc-photo:not(:has(img)) { background:#f1f2f4; }
+.shop-home .pc-photo:not(:has(img))::before { content:"사진"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#aeb3bb; font-size:12px; }
+.shop-home .pc-name { margin:0; height:40px; }
+.shop-home .pc-price,.shop-home .pc-rating,.shop-home .pc-reward { margin:0; }
+.shop-home .pc-live { display:none; }
+.shop-home .pc-unit { font-size:12px; color:var(--wds-label-alternative); }
+.shop-home-badges { min-height:20px; }
+.shop-home-badges span { display:inline-flex; padding:2px 6px; background:#fff0f0; color:#d33; font-size:11px; font-weight:600; border:1px solid #ffcdd2; }
+.shop-home-actions { display:flex; gap:4px; margin-top:6px; }
+.shop-home-actions .btn { flex:1; min-width:0; height:var(--ui-h-compact); padding:0 8px; background:#fff; color:#222; border:1px solid var(--wds-line-solid-neutral); border-radius:6px; }
+.shop-home-actions .shop-home-buy { background:#222; color:#fff; border-color:#222; }
+.shop-home-actions .shop-home-wish { flex:none; width:36px; }
+.shop-home-action-message { font-size:12px; margin:0; }
+.shop-home table { width:100%; border-collapse:collapse; font-size:13px; table-layout:fixed; }
+.shop-home th { padding:10px 12px; background:#f7f8fa; border-bottom:1px solid var(--wds-line-solid-neutral); font-weight:500; }
+.shop-home td { padding:12px; border-bottom:1px solid var(--wds-line-solid-neutral); overflow-wrap:anywhere; }
+.shop-home th:first-child { width:112px; }
+.shop-home th:last-child { width:96px; }
+.shop-home td:first-child,.shop-home td:last-child { text-align:center; }
+.shop-home-notices th:first-child { width:64px; }
+.shop-home-notices a { color:inherit; text-decoration:none; }
+.shop-home .hb { margin:0; }
+@media(max-width:1023px) and (min-width:768px) { .shop-home .pc-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@media(max-width:767px) {
+  .shop-main > .shop-home { padding:0; gap:24px; }
+  .shop-home-banner { display:block; order:-2; }
+  .shop-home .shop-ntc { order:-1; }
+  .shop-home-hero { min-height:200px; padding:16px; gap:4px; }
+  .shop-home-hero b { font-size:20px; line-height:26px; }
+  .shop-home-hero small { font-size:11px; }
+  .shop-home-hero span { font-size:12px; }
+  .shop-home-side { display:none; }
+  .shop-home .shop-sec,.shop-home .shop-ntc { margin:0 16px; }
+  .shop-home .shop-sec-head { padding-bottom:8px; margin-bottom:12px; }
+  .shop-home .shop-sec-head h2 { font-size:16px; line-height:22px; }
+  .shop-home-sub { display:none; }
+  .shop-home .pc-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px 12px; }
+  .shop-home .pc-name { font-size:13px; line-height:18px; height:36px; }
+  .shop-home .shop-home-buy { display:none; }
+  .shop-home th,.shop-home td { padding:8px; font-size:12px; }
+  .shop-home th:first-child { width:88px; }
+  .shop-home th:last-child { width:68px; }
+  .shop-home-notices { display:none; }
+}
