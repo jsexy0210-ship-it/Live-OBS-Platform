@@ -1,0 +1,21 @@
+{
+  "width": 1024,
+  "geometry": {
+    "minHeight": "48px",
+    "border": "1px",
+    "x": 196,
+    "right": 1024,
+    "mainX": 196,
+    "mainRight": 1024,
+    "padding": "24px",
+    "overflow": false
+  },
+  "gaps": {
+    "gap": "16px",
+    "titleToBody": 16,
+    "sections": [
+      16
+    ]
+  },
+  "internalGaps": []
+}
