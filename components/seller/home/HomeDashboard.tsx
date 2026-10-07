@@ -132,10 +132,8 @@ function TodayTasks() {
             <div className="home-tasks" data-testid="home-tasks">
               {["depositPending", "shipPending", "inquiryWaiting", "stockLow", "returnRequested"].flatMap((key) => part.data.items.filter((t) => t.key === key)).map((t) => t.key === "stockLow" ? (
                 <div key={t.key} className={`home-task home-task-stock${t.count === 0 ? " zero" : ""} hot`} data-testid={`home-task-${t.key}`}>
-                  <Link href={t.href} className="home-task-stock-primary" aria-label={`재고 부족 상품 ${t.count}개 보기`}>
-                    <span className="l">{TASK_LABEL[t.key]}</span>
-                    <span className="v">{t.count.toLocaleString("ko-KR")}개</span>
-                  </Link>
+                  <Link href={t.href} className="l">{TASK_LABEL[t.key]}</Link>
+                  <Link href={t.href} className="v" aria-label={`재고 부족 상품 ${t.count}개 보기`}>{t.count.toLocaleString("ko-KR")}개</Link>
                   {stockOut && stockOut.count > 0 ? <Link className="note home-task-stock-out" href={stockOut.href} aria-label={`품절 상품 ${stockOut.count}개 보기`}>품절 임박 · 품절 {stockOut.count.toLocaleString("ko-KR")}개</Link> : <span className="note">품절 임박 · 품절 0개</span>}
                 </div>
               ) : (

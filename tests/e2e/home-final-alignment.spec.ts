@@ -133,7 +133,7 @@ test("파트너스 정상 홈 3폭·tenant 숫자·기존 처리 링크", async 
     await page.setViewportSize({ width, height: 1000 });
     if(width < 1024) await expect.poll(() => page.locator(".lnb").evaluate(el => el.getBoundingClientRect().right)).toBeLessThanOrEqual(0);
     await expect(page.getByTestId("home-tasks").locator(".home-task")).toHaveCount(5);
-    await expect(page.getByTestId("home-task-stockLow").getByRole("link", { name: /재고 부족 상품/ })).toHaveAttribute("href", /stock=low/);
+    await expect(page.getByTestId("home-task-stockLow").locator("a.l")).toHaveAttribute("href", /stock=low/);
     await expect(page.getByTestId("home-task-stockLow").getByRole("link", { name: /품절.*보기/ })).toHaveAttribute("href", /stock=out/);
     await expect(page.getByTestId("home-broadcasts").locator("th")).toHaveText(["방송", "상태", "시각", "주문", "매출", "바로 가기"]);
     const data = await page.locator(".home").evaluate((el) => ({ headings: Array.from(el.querySelectorAll(".home-sec h2")).map((h) => h.textContent?.trim()), taskLabels: Array.from(el.querySelectorAll(".home-task .l")).map((h) => h.textContent), taskColumns: getComputedStyle(el.querySelector(".home-tasks")!).gridTemplateColumns.split(" ").length, overflow: document.documentElement.scrollWidth > innerWidth, gap: getComputedStyle(el).gap }));
@@ -151,6 +151,16 @@ test("파트너스 정상 홈 3폭·tenant 숫자·기존 처리 링크", async 
     writeFileSync(`${folder}/actual-SA-002-${width}.json`, JSON.stringify({ ...data, copy, performance, widths }, null, 2));
     await page.screenshot({ path: `${folder}/actual-SA-002-${width}.png`, fullPage: true });
   }
+  await page.getByTestId("home-task-stockLow").locator("a.l").click();
+  await expect(page).toHaveURL(/stock=low/);
+  await expect(page.getByTestId("product-card").getByText("재고 검증", { exact: true })).toBeVisible();
+  await expect(page.getByText("품절 검증", { exact: true })).toHaveCount(0);
+  await page.goto("/seller");
+  await page.getByTestId("home-task-stockLow").getByRole("link", { name: /품절.*보기/ }).click();
+  await expect(page).toHaveURL(/stock=out/);
+  await expect(page.getByTestId("product-card").getByText("품절 검증", { exact: true })).toBeVisible();
+  await expect(page.getByText("재고 검증", { exact: true })).toHaveCount(0);
+  await page.goto("/seller");
   const href = await page.getByTestId("home-task-depositPending").getAttribute("href");
   expect(href).toBe("/seller/orders/deposits");
   await page.goto(href!);
