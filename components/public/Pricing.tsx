@@ -27,7 +27,7 @@ const QA = (billingPolicy: BillingPolicy | null, trialPlan: LandingPlan | undefi
     ? `${trialPlan.name}은 ${trialPlan.trialDays}일 체험이 끝난 다음 날, ${noTrialPlan.name}은 구독을 시작한 날 첫 결제가 되고 그 뒤로 매달 같은 날에 결제돼요. 결제일은 구독 · 결제 메뉴에서 볼 수 있어요.`
     : "체험이 있는 이용권은 체험이 끝난 다음 날, 없는 이용권은 구독을 시작한 날 첫 결제가 되고 그 뒤로 매달 같은 날에 결제돼요. 결제일은 구독 · 결제 메뉴에서 볼 수 있어요."],
   ["결제가 실패하면 어떻게 되나요?", billingPolicy
-    ? `하루 간격으로 ${billingPolicy.paymentRetryCount}번 다시 시도해요. 처음 실패한 날부터 ${billingPolicy.overdueLockDays}일까지는 그대로 쓸 수 있고, 그 뒤에는 쇼핑몰과 방송 화면이 멈춰요. 결제하면 바로 다시 열리고, 구독 기간은 원래 결제일부터 이어서 세요. 잠긴 지 ${billingPolicy.lockToCloseDays}일이 지나면 자동으로 해지돼요.`
+    ? `하루 간격으로 ${billingPolicy.paymentRetryCount}번 다시 시도해요. 처음 실패한 날부터 ${billingPolicy.overdueLockDays}일까지는 그대로 쓸 수 있고, 그 뒤에는 쇼핑몰과 방송 화면이 멈춰요. 결제하면 바로 다시 열리고, 구독 기간은 원래 결제일부터 이어서 세요. 잠긴 지 ${billingPolicy.lockToCloseDays}일이 지나면 체험 종료일이 등록된 계정은 자동으로 해지돼요.`
     : "정기 결제 실패가 확인되면 정해진 유예 기간에는 계속 쓸 수 있어요. 유예가 끝나면 결제할 때까지 쇼핑몰과 방송 화면이 멈춰요. 결제하면 바로 다시 열려요."],
   ["해지하면 데이터는요?", "해지해도 남은 기간까지는 쓸 수 있어요. 해지한 뒤 내 자료가 어떻게 되는지는 정해지는 대로 알려 드려요."],
   ["요금이 바뀌면요?", "할인 종료일과 변경 요금 안내는 아직 준비 중이에요."],
