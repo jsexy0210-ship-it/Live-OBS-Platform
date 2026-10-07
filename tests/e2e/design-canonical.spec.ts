@@ -8,12 +8,15 @@ let previewProcess: ChildProcess | undefined;
 let previewUrl = "";
 
 async function expectWantedSans(page: import("@playwright/test").Page) {
-  const font = await page.locator(".app").evaluate(async (app) => ({
-    family: getComputedStyle(app).fontFamily,
-    loadedFaces: (await document.fonts.load('400 16px "Wanted Sans Variable"', "요금")).length,
-  }));
+  const font = await page.locator(".app").evaluate(async (app) => {
+    const loadedFaces = (await document.fonts.load('400 16px "Wanted Sans Variable"', "요금")).length;
+    // 한글 두 글자는 라틴 숫자 등 다른 unicode-range 파일의 준비를 보장하지 않는다.
+    await document.fonts.ready;
+    return { family: getComputedStyle(app).fontFamily, loadedFaces, status: document.fonts.status };
+  });
   expect(font.family).toContain('"Wanted Sans Variable"');
   expect(font.loadedFaces).toBeGreaterThan(0);
+  expect(font.status).toBe("loaded");
 }
 
 async function freePort() {
@@ -57,6 +60,11 @@ test.afterAll(async () => {
 });
 
 test("PF-003 TSX는 legacy v331의 문구와 1440 레이아웃을 보존한다", async ({ page }) => {
+  // 요금 글자보다 숫자 파일이 늦어도 완성된 서체의 geometry를 비교한다.
+  await page.route("**/fonts/wanted-sans/split/WantedSansVariable.split.90.woff2", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    await route.continue();
+  });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${previewUrl}/design/project/PF-003.dc.html`);
   await page.addStyleTag({ url: `${previewUrl}/design-assets/styles/wanted-sans.css` });
@@ -101,6 +109,17 @@ test("PF-003 TSX는 legacy v331의 문구와 1440 레이아웃을 보존한다",
   await expect(page.locator(".app").getByRole("button", { name: "결제가 실패하면 어떻게 되나요?" })).toBeVisible();
   if (process.env.E2E_SCREENSHOTS) await page.screenshot({ path: "tests/e2e/screenshots/pf003-tsx-1440.png", fullPage: true });
 
+  if (process.env.E2E_SCREENSHOTS) {
+    for (const width of [1440, 1024, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      await page.goto(previewUrl);
+      await expectWantedSans(page);
+      await page.screenshot({ path: `tests/e2e/screenshots/pf003-tsx-viewport-${width}.png` });
+    }
+  }
+});
+
+test("PF-003 운영 요금은 정책과 FAQ 펼침 상태를 보존한다", async ({ page }) => {
   const productionUrl = process.env.E2E_BASE_URL ?? "http://localhost:3100";
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${productionUrl}/pricing`);
@@ -116,8 +135,6 @@ test("PF-003 TSX는 legacy v331의 문구와 1440 레이아웃을 보존한다",
   if (process.env.E2E_SCREENSHOTS) {
     for (const width of [1440, 1024, 390]) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
-      await page.goto(previewUrl);
-      await page.screenshot({ path: `tests/e2e/screenshots/pf003-tsx-viewport-${width}.png` });
       await page.goto(`${productionUrl}/pricing`);
       await page.screenshot({ path: `tests/e2e/screenshots/pf003-production-viewport-${width}.png`, ...(width === 1440 ? { fullPage: true } : {}) });
     }
