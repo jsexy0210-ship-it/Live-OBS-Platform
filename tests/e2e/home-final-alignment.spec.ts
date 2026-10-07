@@ -161,8 +161,10 @@ test("마스터 정상 홈 3폭·기간 선택·4열 상위 표", async ({ page 
     const data = await page.locator(".admin-home").evaluate((el) => ({ headings: Array.from(el.querySelectorAll("h2")).map((h) => h.textContent), table: Array.from(el.querySelectorAll("[data-testid=stats-top] th")).map((h) => h.textContent), overflow: document.documentElement.scrollWidth > innerWidth }));
     expect(data.headings).toEqual(["오늘 처리할 일", "인프라 · 비용", "파트너스", "오늘", "구독", "기간별 현황", "주문 · 결제", "파트너스 성장", "상위 5 파트너스", "구독 매출 (최근 6개월)"]);
     expect(data.overflow).toBe(false);
+    const metrics = await page.locator(".admin-home-infra-meter-value").evaluateAll(els => els.map(el => ({ text: el.textContent, whiteSpace: getComputedStyle(el).whiteSpace, rects: el.getClientRects().length })));
+    for (const metric of metrics) expect(metric).toMatchObject({ whiteSpace: "nowrap", rects: 1 });
     if (data.table.length) expect(data.table).toEqual(["순위", "파트너스", "결제 금액", "결제된 주문"]);
-    writeFileSync(`${folder}/actual-MA-001-${width}.json`, JSON.stringify(data, null, 2));
+    writeFileSync(`${folder}/actual-MA-001-${width}.json`, JSON.stringify({ ...data, metrics }, null, 2));
     await page.screenshot({ path: `${folder}/actual-MA-001-${width}.png`, fullPage: true });
   }
   await page.getByRole("button", { name: "최근 30일", exact: true }).click();

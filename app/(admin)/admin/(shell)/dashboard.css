@@ -13,9 +13,9 @@
 .admin-home-tile{padding:16px;border:1px solid var(--cs-line);border-radius:var(--ui-r-card);display:flex;flex-direction:column;gap:4px;min-width:0}
 .admin-home-tile>.t-l2{font-size:13px;line-height:18px}
 .admin-home-tile>.t-h2{font-size:22px;line-height:30px;font-weight:700;overflow-wrap:anywhere}
-.admin-home-infra{display:grid;grid-template-columns:2fr 1.3fr 2fr;border:1px solid var(--cs-line);border-radius:var(--ui-r-card);padding:16px;gap:16px;text-decoration:none;color:inherit;min-width:0}
+.admin-home-infra{display:grid;grid-template-columns:1.2fr 1fr 1.4fr;border:1px solid var(--cs-line);border-radius:var(--ui-r-card);padding:16px 20px;gap:16px;text-decoration:none;color:inherit;min-width:0}
 .admin-home-infra>div{min-width:0}
-.admin-home-infra-server{display:grid;grid-template-columns:56px repeat(2,minmax(0,1fr));gap:8px;align-items:center;font-size:13px}
+.admin-home-infra-server{display:grid;grid-template-columns:90px repeat(2,minmax(0,1fr));gap:8px;align-items:center;font-size:13px}
 .admin-home-warning{display:inline-flex;width:fit-content;padding:0 8px;height:20px;align-items:center;background:#fff3df;color:#a65b00;font-size:11px;font-weight:700;border-radius:2px}
 .admin-home [data-testid^=stats-]{padding:16px;border:1px solid var(--cs-line);border-radius:var(--ui-r-card)}
 .admin-home [data-testid^=stats-]>.admin-home-section-head h2{font-size:14px;line-height:20px}
@@ -38,3 +38,8 @@
 .home-bars i{display:block;background:var(--wds-primary-normal);width:100%;max-width:36px;border-radius:4px 4px 0 0}
 .home-bars span{flex:none;white-space:nowrap}
 @media(max-width:767px){.admin-home-charts{grid-template-columns:minmax(0,1fr)}.admin-home [data-testid="stats-orders"] .sts-kpis{grid-template-columns:minmax(0,1fr)}.admin-home [data-testid^="stats-"]{padding:16px}}
+
+.admin-home-infra-meter{display:flex;align-items:center;gap:6px;min-width:0}
+.admin-home-infra-track{flex:1;min-width:16px;max-width:80px;height:8px;border-radius:4px;background:var(--wds-fill-normal,#eee);overflow:hidden}
+.admin-home-infra-meter-value{flex:none;white-space:nowrap;font-size:13px;line-height:18px}
+@media(max-width:1199px){.admin-home-infra{grid-template-columns:minmax(0,1fr)}}

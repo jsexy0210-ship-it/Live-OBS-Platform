@@ -193,12 +193,11 @@ const WARN_LABEL: [keyof InfraSummary["warnings"], string][] = [
 function InfraBar({ label, pct }: { label: string; pct: number | null }) {
   const level = pct === null ? "" : pct >= 90 ? "var(--neg-text, #c0262c)" : pct >= 80 ? "var(--cau-text, #b25e00)" : "var(--wds-primary-normal, #0f766e)";
   return (
-    <span className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
-      <span className="t-c1 c-alt" style={{ width: 52 }}>{label}</span>
-      <span style={{ width: 90, height: 8, borderRadius: 4, background: "var(--wds-fill-normal, #eee)", overflow: "hidden", display: "inline-block" }} aria-hidden="true">
+    <span className="admin-home-infra-meter" role="group" aria-label={label}>
+      <span className="admin-home-infra-track" aria-hidden="true">
         <i style={{ display: "block", height: "100%", width: `${Math.min(100, pct ?? 0)}%`, background: level }} />
       </span>
-      <span>{pct === null ? "측정 전" : `${pct}%`}</span>
+      <span className="admin-home-infra-meter-value">{pct === null ? "측정 전" : `${pct}%`}</span>
     </span>
   );
 }
