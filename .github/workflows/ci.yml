@@ -49,6 +49,9 @@ jobs:
             grep -q '^    runs-on: \[self-hosted, obs-prod\]$' "$f"
           fi
 
+      - name: Disk cleanup workflow safety fixtures
+        run: bash scripts/ops/disk-cleanup-active-ref-fixture.sh
+
       - name: Node
         uses: actions/setup-node@v4
         with:

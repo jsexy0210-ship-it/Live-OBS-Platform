@@ -178,6 +178,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/bulk-io/products/template": "STORE_OPERATIONS",
   "seller/bulk-io/products/preview": "STORE_OPERATIONS",
   "seller/bulk-io/products/export": "STORE_OPERATIONS",
+  "seller/bulk-io/orders/export": "ORDER_FOLLOWUP",
+  "seller/bulk-io/members/export": "STORE_OPERATIONS",
   "seller/bulk-io/jobs": "STORE_OPERATIONS",
   "seller/bulk-io/jobs/[jobId]": "STORE_OPERATIONS",
   "seller/bulk-io/jobs/[jobId]/commit": "STORE_OPERATIONS",
