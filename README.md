@@ -1,8 +1,8 @@
-# 샵캐스트 (Shopcast)
+# 스트림샵 (StreamShop)
 
 판매자별 쇼핑몰·라이브 방송 운영 구독 플랫폼.
 
-- 서비스명: 샵캐스트(Shopcast), 이전 가칭 ONQ / OnAirCue. [브랜드 기준](docs/BRAND.md)
+- 서비스명: 스트림샵(StreamShop), 이전 가칭 ONQ / OnAirCue 및 이전 후보 샵캐스트. [브랜드 기준](docs/BRAND.md)
 
 - 제품 범위: `docs/PRODUCT_SCOPE.md`
 - 현재 상태: `PROJECT_STATUS.md`
