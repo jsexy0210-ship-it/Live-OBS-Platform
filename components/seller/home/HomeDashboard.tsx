@@ -118,6 +118,7 @@ function OnboardingStrip() {
 function TodayTasks() {
   const { can } = useSeller();
   const [part, retry] = usePart<Tasks>("/api/seller/today-tasks", (d) => d as Tasks);
+  const stockOut = part.kind === "ok" ? part.data.items.find((item) => item.key === "stockOut") : undefined;
   if (part.kind === "hidden") return null;
   return (
     <Section title="오늘 처리할 일" sub={<><span className="home-copy-pc">숫자를 누르면 해당 조건이 걸린 목록으로 이동합니다</span><span className="home-copy-mobile">숫자를 누르면 그 목록으로</span>{part.kind === "ok" ? ` · ${formatDateTime(part.data.at)} 집계` : ""}</>}>
@@ -129,14 +130,21 @@ function TodayTasks() {
         ) : (
           <>
             <div className="home-tasks" data-testid="home-tasks">
-              {["depositPending", "shipPending", "inquiryWaiting", "stockLow", "returnRequested"].flatMap((key) => part.data.items.filter((t) => t.key === key)).map((t) => (
-                <Link key={t.key} href={t.href} className={`home-task${t.count === 0 ? " zero" : ""}${["depositPending", "shipPending", "stockLow"].includes(t.key) ? " hot" : ""}`} data-testid={`home-task-${t.key}`}>
+              {["depositPending", "shipPending", "inquiryWaiting", "stockLow", "returnRequested"].flatMap((key) => part.data.items.filter((t) => t.key === key)).map((t) => t.key === "stockLow" ? (
+                <div key={t.key} className={`home-task home-task-stock${t.count === 0 ? " zero" : ""} hot`} data-testid={`home-task-${t.key}`}>
+                  <Link href={t.href} className="home-task-stock-primary" aria-label={`재고 부족 상품 ${t.count}개 보기`}>
+                    <span className="l">{TASK_LABEL[t.key]}</span>
+                    <span className="v">{t.count.toLocaleString("ko-KR")}개</span>
+                  </Link>
+                  {stockOut && stockOut.count > 0 ? <Link className="note home-task-stock-out" href={stockOut.href} aria-label={`품절 상품 ${stockOut.count}개 보기`}>품절 임박 · 품절 {stockOut.count.toLocaleString("ko-KR")}개</Link> : <span className="note">품절 임박 · 품절 0개</span>}
+                </div>
+              ) : (
+                <Link key={t.key} href={t.href} className={`home-task${t.count === 0 ? " zero" : ""}${["depositPending", "shipPending"].includes(t.key) ? " hot" : ""}`} data-testid={`home-task-${t.key}`}>
                   <span className="l">{TASK_LABEL[t.key] ?? "확인할 일"}</span>
-                  <span className="v">{t.count.toLocaleString("ko-KR")}{t.key === "stockLow" ? "개" : "건"}</span>
+                  <span className="v">{t.count.toLocaleString("ko-KR")}건</span>
                   {t.key === "depositPending" && <span className="note">입금 전 · 2일 넘음 {t.overTwoDays ?? 0}건</span>}
                   {t.key === "shipPending" && <span className="note">송장 입력 전</span>}
                   {t.key === "inquiryWaiting" && t.oldestAt && <span className="note">오래된 문의 {Math.floor((new Date(part.data.at).getTime() - new Date(t.oldestAt).getTime()) / 86_400_000) > 0 ? `${Math.floor((new Date(part.data.at).getTime() - new Date(t.oldestAt).getTime()) / 86_400_000)}일 전` : "오늘"}</span>}
-                  {t.key === "stockLow" && <span className="note">품절 임박 · 품절 {part.data.items.find((item) => item.key === "stockOut")?.count ?? 0}개</span>}
                 </Link>
               ))}
             </div>

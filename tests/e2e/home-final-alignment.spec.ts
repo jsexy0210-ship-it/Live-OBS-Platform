@@ -60,6 +60,8 @@ test.beforeAll(async () => {
   await db.buyerInquiry.create({ data: { sellerId, buyerMemberId: buyer.id, kind: "GENERAL", authorNickname: "검증", title: "검증 문의", body: "검증 문의 본문", status: "WAITING", createdAt: old } });
   const product = await db.product.create({ data: { sellerId, name: "재고 검증", price: 5000, status: "ON_SALE" } });
   await db.productOption.create({ data: { sellerId, productId: product.id, name: "기본", stock: 2 } });
+  const soldOut = await db.product.create({ data: { sellerId, name: "품절 검증", price: 5000, status: "ON_SALE" } });
+  await db.productOption.create({ data: { sellerId, productId: soldOut.id, name: "기본", stock: 0 } });
   await db.youtubeLiveLink.create({ data: { sellerId, videoId: "homefixture", title: "예정된 검증 방송", status: "UPCOMING", scheduledStartAt: new Date(now.getTime() + 86400000) } });
   await db.broadcastSession.create({ data: { sellerId, title: "진행 중인 검증 방송", status: "LIVE", startedAt: now } });
   await db.broadcastSession.create({ data: { sellerId, title: "종료한 검증 방송", status: "ENDED", startedAt: old, endedAt: new Date(old.getTime() + 3600000) } });
@@ -116,7 +118,9 @@ test("파트너스 정상 홈 3폭·tenant 숫자·기존 처리 링크", async 
   await login(page, "owner");
   await expect(page.getByTestId("home-performance")).toBeVisible();
   await expect(page.getByTestId("home-broadcasts").getByRole("link", {name:"준비하기"})).toBeVisible();
-  const tasks = await (await page.request.get("/api/seller/today-tasks")).json();
+  const tasksResponse = await page.request.get("/api/seller/today-tasks");
+  expect(tasksResponse.status(), await tasksResponse.text()).toBe(200);
+  const tasks = await tasksResponse.json();
   expect(tasks.items.find((t: { key: string }) => t.key === "depositPending")).toMatchObject({ count: 2, overTwoDays: 1 });
   expect(tasks.items.find((t: { key: string }) => t.key === "inquiryWaiting").oldestAt).toBeTruthy();
   const today = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
@@ -128,7 +132,9 @@ test("파트너스 정상 홈 3폭·tenant 숫자·기존 처리 링크", async 
   for (const width of [1440, 1024, 390]) {
     await page.setViewportSize({ width, height: 1000 });
     if(width < 1024) await expect.poll(() => page.locator(".lnb").evaluate(el => el.getBoundingClientRect().right)).toBeLessThanOrEqual(0);
-    await expect(page.getByTestId("home-tasks").locator("a")).toHaveCount(5);
+    await expect(page.getByTestId("home-tasks").locator(".home-task")).toHaveCount(5);
+    await expect(page.getByTestId("home-task-stockLow").getByRole("link", { name: /재고 부족 상품/ })).toHaveAttribute("href", /stock=low/);
+    await expect(page.getByTestId("home-task-stockLow").getByRole("link", { name: /품절.*보기/ })).toHaveAttribute("href", /stock=out/);
     await expect(page.getByTestId("home-broadcasts").locator("th")).toHaveText(["방송", "상태", "시각", "주문", "매출", "바로 가기"]);
     const data = await page.locator(".home").evaluate((el) => ({ headings: Array.from(el.querySelectorAll(".home-sec h2")).map((h) => h.textContent?.trim()), taskLabels: Array.from(el.querySelectorAll(".home-task .l")).map((h) => h.textContent), taskColumns: getComputedStyle(el.querySelector(".home-tasks")!).gridTemplateColumns.split(" ").length, overflow: document.documentElement.scrollWidth > innerWidth, gap: getComputedStyle(el).gap }));
     expect(data.headings).toEqual(["오늘 처리할 일", "오늘 성과", "방송"]);
