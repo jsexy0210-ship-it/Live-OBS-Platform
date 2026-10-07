@@ -39,7 +39,7 @@ const questions = [
   ["요금이 바뀌면요?", "새로 가입하는 분에게는 바뀐 요금이 바로 적용되고, 이미 구독 중이면 30일 전에 메일 · 알림톡 · 파트너스 관리자 공지로 알린 뒤 그다음 결제부터 적용돼요. 런칭 할인이 끝나는 날짜도 정해지면 30일 전에 알려 드려요."],
 ] as const;
 
-const designHref = (id: string) => `/design/project/${id}.dc.html`;
+const designHref = (id: string) => id === "PF-003" ? "/" : `/design/project/${id}.dc.html`;
 
 function CheckMark() {
   return (

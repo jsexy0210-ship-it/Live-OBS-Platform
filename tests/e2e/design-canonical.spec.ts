@@ -80,6 +80,13 @@ test("PF-003 TSX는 legacy v331의 문구와 1440 레이아웃을 보존한다",
   await canonical.getByRole("button", { name: "결제가 실패하면 어떻게 되나요?" }).click();
   await expect(canonical.getByRole("button", { name: "결제가 실패하면 어떻게 되나요?" })).toHaveAttribute("aria-expanded", "false");
   await canonical.getByRole("button", { name: "결제가 실패하면 어떻게 되나요?" }).click();
+  await canonical.getByRole("link", { name: "요금", exact: true }).click();
+  await expect(page).toHaveURL(`${previewUrl}/`);
+  const afterNav = page.locator(".app");
+  await expect(afterNav.getByRole("button", { name: "결제가 실패하면 어떻게 되나요?" })).toHaveAttribute("aria-expanded", "true");
+  await afterNav.getByRole("link", { name: "요금 보기" }).click();
+  await expect(page).toHaveURL(`${previewUrl}/`);
+  await expect(page.locator(".app").getByRole("button", { name: "결제가 실패하면 어떻게 되나요?" })).toBeVisible();
   if (process.env.E2E_SCREENSHOTS) await page.screenshot({ path: "tests/e2e/screenshots/pf003-tsx-1440.png", fullPage: true });
 
   if (process.env.E2E_SCREENSHOTS) {
@@ -89,7 +96,7 @@ test("PF-003 TSX는 legacy v331의 문구와 1440 레이아웃을 보존한다",
       await page.goto(previewUrl);
       await page.screenshot({ path: `tests/e2e/screenshots/pf003-tsx-viewport-${width}.png` });
       await page.goto(`${productionUrl}/pricing`);
-      await page.screenshot({ path: `tests/e2e/screenshots/pf003-production-viewport-${width}.png` });
+      await page.screenshot({ path: `tests/e2e/screenshots/pf003-production-viewport-${width}.png`, ...(width === 1440 ? { fullPage: true } : {}) });
     }
   }
 });
