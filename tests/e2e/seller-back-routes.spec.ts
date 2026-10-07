@@ -89,6 +89,10 @@ test("목록 조건은 주소에 남아 새로고침·다른 화면 → Back에�
   await page.getByLabel("상태", { exact: true }).selectOption("SUCCEEDED");
   await page.getByRole("button", { name: "검색" }).click();
   // 조건은 주소에 남는다(SA-032 개편 뒤에는 기본 기간 from·to도 함께 적힌다)
+  await expect.poll(() => {
+    const url = new URL(page.url());
+    return url.pathname === "/seller/rewards/ledger" && url.searchParams.get("status") === "SUCCEEDED";
+  }).toBe(true);
   const ledgerUrl = new URL(page.url());
   expect(ledgerUrl.pathname).toBe("/seller/rewards/ledger");
   expect(ledgerUrl.searchParams.get("status")).toBe("SUCCEEDED");
