@@ -34,7 +34,10 @@
 .home-performance .stat{box-shadow:none;background:transparent}
 .home-kpi-note{font-size:12px;line-height:18px;color:var(--wds-label-alternative)}
 .home-kpi-note .d{display:inline}
+.home-copy-mobile{display:none}
 @media(max-width:767px){
+.home-copy-pc{display:none}
+.home-copy-mobile{display:inline}
 .home-tasks{grid-template-columns:minmax(0,1fr);gap:8px}
 .home-task{display:grid;grid-template-columns:56px minmax(0,1fr) auto;grid-template-rows:auto auto;column-gap:12px;row-gap:0;padding:12px 14px;border-radius:8px}
 .home-task .v{grid-column:1;grid-row:1 / span 2;align-self:center;font-size:22px;line-height:30px;font-weight:800;color:var(--wds-label-normal)}

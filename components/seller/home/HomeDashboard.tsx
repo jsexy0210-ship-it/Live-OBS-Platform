@@ -62,7 +62,7 @@ function usePart<T>(path: string, pick: (raw: never) => T): [Part<T>, () => void
   return [state, useCallback(() => setN((v) => v + 1), [])];
 }
 
-function Section({ title, sub, actions, children }: { title: string; sub?: string; actions?: React.ReactNode; children: React.ReactNode }) {
+function Section({ title, sub, actions, children }: { title: string; sub?: React.ReactNode; actions?: React.ReactNode; children: React.ReactNode }) {
   return (
     <section className="home-sec">
       <div className="home-sec-h">
@@ -120,7 +120,7 @@ function TodayTasks() {
   const [part, retry] = usePart<Tasks>("/api/seller/today-tasks", (d) => d as Tasks);
   if (part.kind === "hidden") return null;
   return (
-    <Section title="오늘 처리할 일" sub={`숫자를 누르면 해당 조건이 걸린 목록으로 이동합니다${part.kind === "ok" ? ` · ${formatDateTime(part.data.at)} 집계` : ""}`}>
+    <Section title="오늘 처리할 일" sub={<><span className="home-copy-pc">숫자를 누르면 해당 조건이 걸린 목록으로 이동합니다</span><span className="home-copy-mobile">숫자를 누르면 그 목록으로</span>{part.kind === "ok" ? ` · ${formatDateTime(part.data.at)} 집계` : ""}</>}>
       {part.kind === "loading" && <LoadingRows rows={2} />}
       {part.kind === "error" && <ErrorState title="처리할 일을 불러오지 못했습니다" onRetry={retry} />}
       {part.kind === "ok" &&
@@ -160,7 +160,7 @@ function Performance() {
             items={[
               { label: "결제된 매출", now: part.data.summary.current.revenue, prev: part.data.summary.previous.revenue, fmt: won, note: `어제 같은 시각 ${won(part.data.summary.previous.revenue)}` },
               { label: "오늘 주문", now: part.data.summary.current.orders, prev: part.data.summary.previous.orders, fmt: count, note: "취소 · 환불 제외" },
-              { label: "주문 1건당 평균 금액", now: part.data.summary.current.averageOrderValue, prev: part.data.summary.previous.averageOrderValue, fmt: won, note: `어제 ${part.data.summary.previous.averageOrderValue === null ? "—" : won(part.data.summary.previous.averageOrderValue)}` },
+              { label: "주문 1건당 평균 금액", labelDisplay: <>주문 1건당 평균<span className="home-copy-pc"> 금액</span></>, now: part.data.summary.current.averageOrderValue, prev: part.data.summary.previous.averageOrderValue, fmt: won, note: `어제 ${part.data.summary.previous.averageOrderValue === null ? "—" : won(part.data.summary.previous.averageOrderValue)}` },
               {
                 label: "취소·환불 건수",
                 now: null,

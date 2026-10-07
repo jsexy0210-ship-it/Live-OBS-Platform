@@ -27,14 +27,14 @@ function Delta({ now, prev, fmt, lowerIsBetter, caption = "바로 앞 기간", c
 }
 
 // compare: false면 비교 줄을 빼고 note(있으면)를 둔다(비교 기간이 없는 지표)
-export type Kpi = { label: string; now: number | null; prev: number | null; fmt: (n: number) => string; lowerIsBetter?: boolean; text?: string; compare?: false; note?: string };
+export type Kpi = { label: string; labelDisplay?: React.ReactNode; now: number | null; prev: number | null; fmt: (n: number) => string; lowerIsBetter?: boolean; text?: string; compare?: false; note?: string };
 
 export function Kpis({ items, caption, compact = false, difference = false }: { items: Kpi[]; caption?: string; compact?: boolean; difference?: boolean }) {
   return (
     <div className="sts-kpis">
       {items.map((k) => (
         <div key={k.label} className="stat" data-testid="stats-kpi">
-          <span className="t-l2 c-alt">{k.label}</span>
+          <span className="t-l2 c-alt">{k.labelDisplay ?? k.label}</span>
           <span className="v">{k.text ?? (k.now === null ? "—" : k.fmt(k.now))}</span>
           {k.compare === false ? <span className="d">{k.note ?? "\u00a0"}</span> : compact ? <span className="home-kpi-note"><Delta now={k.now} prev={k.prev} fmt={k.fmt} lowerIsBetter={k.lowerIsBetter} caption={caption} compact difference={difference} />{k.note && <> {k.note}</>}</span> : <Delta now={k.now} prev={k.prev} fmt={k.fmt} lowerIsBetter={k.lowerIsBetter} caption={caption} difference={difference} />}
         </div>

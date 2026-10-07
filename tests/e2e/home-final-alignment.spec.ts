@@ -135,11 +135,14 @@ test("파트너스 정상 홈 3폭·tenant 숫자·기존 처리 링크", async 
     expect(data.taskLabels).toEqual(["입금 확인 필요", "배송 준비 필요", "문의 답변 필요", "재고 부족 상품", "반품 요청 답변 필요"]);
     expect(data.overflow).toBe(false);
     expect(data.taskColumns).toBe(width === 390 ? 1 : 5);
+    const copy = await page.locator(".home").evaluate(el => ({ instruction: (el.querySelector(".home-sec-h .sub") as HTMLElement).innerText, average: (el.querySelectorAll(".home-performance .stat .t-l2")[2] as HTMLElement).innerText }));
+    expect(copy.instruction).toContain(width === 390 ? "숫자를 누르면 그 목록으로" : "숫자를 누르면 해당 조건이 걸린 목록으로 이동합니다");
+    expect(copy.average).toBe(width === 390 ? "주문 1건당 평균" : "주문 1건당 평균 금액");
     const performance = await page.getByTestId("home-performance").evaluate(el => ({ gap: getComputedStyle(el.querySelector(".sts-kpis")!).gap, padding: getComputedStyle(el.querySelector(".stat")!).padding, size: getComputedStyle(el.querySelector(".v")!).fontSize }));
     expect(performance).toEqual(width === 390 ? { gap: "0px", padding: "12px 16px", size: "18px" } : { gap: "12px", padding: "16px", size: "22px" });
     const widths = await page.getByTestId("home-performance").locator(".stat").evaluateAll(els => els.map(el => el.getBoundingClientRect().width));
     expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(1);
-    writeFileSync(`${folder}/actual-SA-002-${width}.json`, JSON.stringify({ ...data, performance, widths }, null, 2));
+    writeFileSync(`${folder}/actual-SA-002-${width}.json`, JSON.stringify({ ...data, copy, performance, widths }, null, 2));
     await page.screenshot({ path: `${folder}/actual-SA-002-${width}.png`, fullPage: true });
   }
   const href = await page.getByTestId("home-task-depositPending").getAttribute("href");
