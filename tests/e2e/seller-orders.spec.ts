@@ -40,7 +40,12 @@ async function preShipTarget(page: Page) {
 // 야간 전체 실행에서는 앞선 시험(방송 개봉 등)이 시드 주문의 품목을 열어 둘 수 있어, 있으면 체크하고 환불은 같은 흐름으로 이어 간다.
 async function confirmOpenedIfAsked(dialog: Locator) {
   const opened = dialog.getByLabel("개봉한 상품이 있는 것을 확인했습니다");
-  if (await opened.count()) await opened.check();
+  if (!(await opened.count())) return false;
+  const refund = dialog.getByRole("button", { name: /환불 실행/ });
+  await expect(refund).toBeDisabled();
+  await opened.check();
+  await expect(refund).toBeEnabled();
+  return true;
 }
 const listResponse = (page: Page, has?: string) =>
   page.waitForResponse((r) => r.url().includes("/api/seller/orders?") && r.request().method() === "GET" && (!has || r.url().includes(has)));
@@ -294,10 +299,12 @@ test("실제 환불: 판매자 사정으로 환불하면 완료 알림이 뜨고
   await dialog.getByRole("radio", { name: /파트너스 사정/ }).check();
   await dialog.getByLabel("처리 사유").selectOption("품절 · 재고 없음");
   await dialog.getByLabel("위 금액으로 환불합니다. 환불한 뒤에는 되돌릴 수 없습니다.").check();
-  await confirmOpenedIfAsked(dialog);
+  const openedConfirmed = await confirmOpenedIfAsked(dialog);
   const refund = page.waitForResponse((r) => r.url().endsWith("/refund") && r.request().method() === "POST");
   await dialog.getByRole("button", { name: /환불 실행/ }).click();
-  expect((await refund).status()).toBe(200);
+  const response = await refund;
+  expect(response.status()).toBe(200);
+  expect(response.request().postDataJSON()).toMatchObject({ confirmOpened: openedConfirmed });
   await expect(page.getByText(/원 환불을 완료했습니다/)).toBeVisible();
   await expect(page.locator(".bdg-lg").first()).toHaveText("환불됨");
   await expect(page.getByText("파트너스 사정")).toBeVisible();
@@ -353,10 +360,12 @@ test("주문·배송 권한만 있는 직원(방송 진행 권한 없음)도 실
   await dialog.getByRole("radio", { name: /파트너스 사정/ }).check();
   await dialog.getByLabel("처리 사유").selectOption("품절 · 재고 없음");
   await dialog.getByLabel("위 금액으로 환불합니다. 환불한 뒤에는 되돌릴 수 없습니다.").check();
-  await confirmOpenedIfAsked(dialog);
+  const openedConfirmed = await confirmOpenedIfAsked(dialog);
   const refund = page.waitForResponse((r) => r.url().endsWith("/refund") && r.request().method() === "POST");
   await dialog.getByRole("button", { name: /환불 실행/ }).click();
-  expect((await refund).status()).toBe(200);
+  const response = await refund;
+  expect(response.status()).toBe(200);
+  expect(response.request().postDataJSON()).toMatchObject({ confirmOpened: openedConfirmed });
   await expect(page.getByText(/원 환불을 완료했습니다/)).toBeVisible();
   await expect(page.locator(".bdg-lg").first()).toHaveText("환불됨");
 });
