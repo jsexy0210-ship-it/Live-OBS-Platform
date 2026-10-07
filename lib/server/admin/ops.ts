@@ -1,9 +1,11 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import type { AdminSessionContext } from "../auth/session";
 import { forbidden } from "../authz/errors";
 import { adminCan } from "../authz/permissions";
 import { dbNow } from "../billing/subscription";
 import { OVERLAY_ONLINE_MS } from "../overlay/token";
+import { kstDate, parseStatsRange } from "../stats/range";
+import { RATE_MAX } from "../rewards/policyAdmin";
 
 // 마스터 관리자 운영 현황(조회만, platform.read): 방송 중 파트너스 MA-041 · 파트너스별 주문·오버레이 접속 MA-042 ·
 // 적립금 실지급 켜진 파트너스 MA-043. 쇼핑몰 이름·주소(slug)·숫자만 주고 구매자·직원 개인정보는 넣지 않는다.
@@ -32,6 +34,7 @@ async function overlaySeen(db: PrismaClient, sellerIds: string[], now: Date) {
 export async function listLiveBroadcasts(db: PrismaClient, admin: AdminSessionContext) {
   requireRead(admin);
   const now = await dbNow(db);
+  const rateFrom = new Date(now.getTime() - 60_000);
   const sessions = await db.broadcastSession.findMany({
     where: { status: "LIVE" },
     orderBy: [{ startedAt: "desc" }, { id: "desc" }],
@@ -40,12 +43,22 @@ export async function listLiveBroadcasts(db: PrismaClient, admin: AdminSessionCo
   });
   const ids = sessions.map((s) => s.id);
   const sellerIds = [...new Set(sessions.map((s) => s.sellerId))];
-  const [byStatus, orders, failed, approved] = await Promise.all([
+  const [byStatus, orders, failed, approved, recentOrders] = await Promise.all([
     db.queueItem.groupBy({ by: ["broadcastSessionId", "status"], where: { broadcastSessionId: { in: ids } }, _count: { _all: true } }),
     db.queueItem.groupBy({ by: ["broadcastSessionId", "orderId"], where: { broadcastSessionId: { in: ids }, status: { not: "CANCELLED" } } }),
     // 결제대행사 상태: 최근 24시간 결제 실패가 있고 그 뒤 성공이 없으면 「결제 연결 오류」(MA-031 게이트웨이 상태와 같은 기준)
     db.payment.groupBy({ by: ["sellerId"], where: { sellerId: { in: sellerIds }, status: "FAILED", updatedAt: { gt: new Date(now.getTime() - 24 * 60 * 60 * 1000) } }, _count: { _all: true }, _max: { updatedAt: true } }),
     db.payment.groupBy({ by: ["sellerId"], where: { sellerId: { in: sellerIds }, approvedAt: { not: null } }, _max: { approvedAt: true } }),
+    // 내부 주문 생성 건수: 같은 판매자의 LIVE 방송 시작 이후이면서 최근 60초 [from, at).
+    // 모든 LIVE 방송을 집계해 표시 한도 200건과 분리한다. 겹치는 방송도 전체 주문은 한 번만 센다.
+    // Order의 기존 sellerId/createdAt 인덱스로 범위를 좁히며 개인정보·주문 행은 반환하지 않는다.
+    db.$queryRaw<{ broadcastId: string | null; count: number }[]>`
+      SELECT b.id AS "broadcastId", count(DISTINCT o.id)::int AS count
+      FROM "BroadcastSession" b
+      JOIN "Order" o ON o."sellerId" = b."sellerId"
+        AND o."createdAt" >= ${rateFrom} AND o."createdAt" >= b."startedAt" AND o."createdAt" < ${now}
+      WHERE b.status = 'LIVE'
+      GROUP BY GROUPING SETS ((b.id), ())`,
   ]);
   const seen = await overlaySeen(db, sellerIds, now);
   const paymentError = (sellerId: string) => {
@@ -66,19 +79,32 @@ export async function listLiveBroadcasts(db: PrismaClient, admin: AdminSessionCo
       startedAt: s.startedAt,
       queue: { waiting: count("WAITING"), opening: count("OPENING"), done: count("DONE"), cancelled: count("CANCELLED") },
       orders: orders.filter((o) => o.broadcastSessionId === s.id).length,
+      ordersLast60Seconds: recentOrders.find((r) => r.broadcastId === s.id)?.count ?? 0,
       overlay: seen(s.sellerId),
       layoutAspect: s.layoutAspect,
       paymentError: paymentError(s.sellerId),
     };
   });
-  return { at: now, items };
+  return { at: now, items, orderRate: {
+    source: "INTERNAL_ORDER_CREATED_DURING_LIVE_SESSION" as const,
+    association: "SELLER_AND_TIME_WINDOW" as const, externalOrders: "NOT_MEASURED" as const,
+    scope: "ALL_LIVE_SESSIONS" as const, windowSeconds: 60 as const, from: rateFrom, to: now,
+    total: recentOrders.find((r) => r.broadcastId === null)?.count ?? 0,
+  } };
 }
 
 // MA-042: 승인된 파트너스(이용 중·정지)별 오늘 주문·결제와 방송·오버레이 접속. 가입 순 최신 50곳씩 커서.
-export async function listSellerActivity(db: PrismaClient, admin: AdminSessionContext, q: { cursor?: string | null }) {
+export async function listSellerActivity(db: PrismaClient, admin: AdminSessionContext, q: { cursor?: string | null; period?: string | null; asOf?: string | null }) {
   requireRead(admin);
-  const now = await dbNow(db);
+  const period = q.period ?? "today";
+  if (!["today", "7d", "30d"].includes(period)) return { ok: false as const, reason: "invalid_period" as const };
+  const observedAt = await dbNow(db);
+  const now = q.asOf == null ? observedAt : new Date(q.asOf);
+  if (Number.isNaN(now.getTime()) || (q.asOf != null && (q.asOf.length !== 24 || now.toISOString() !== q.asOf)) || now > observedAt) return { ok: false as const, reason: "invalid_as_of" as const };
   const todayStart = todayStartOf(now);
+  const days = period === "7d" ? 7 : period === "30d" ? 30 : 1;
+  const range = parseStatsRange({ from: kstDate(new Date(todayStart.getTime() - (days - 1) * DAY_MS)), to: kstDate(now) });
+  if (!range) return { ok: false as const, reason: "invalid_as_of" as const };
   let after: Prisma.SellerWhereInput = {};
   if (q.cursor) {
     const i = q.cursor.lastIndexOf("_");
@@ -95,14 +121,25 @@ export async function listSellerActivity(db: PrismaClient, admin: AdminSessionCo
   });
   const page = rows.slice(0, ACTIVITY_PAGE_SIZE);
   const ids = page.map((s) => s.id);
-  const [created, paid, live] = await Promise.all([
-    db.order.groupBy({ by: ["sellerId"], where: { sellerId: { in: ids }, createdAt: { gte: todayStart, lte: now } }, _count: { _all: true } }),
-    db.order.groupBy({ by: ["sellerId"], where: { sellerId: { in: ids }, paidAt: { gte: todayStart, lte: now } }, _count: { _all: true }, _sum: { totalAmount: true, refundAmount: true } }),
+  const [activity, live] = await Promise.all([
+    db.$queryRaw<{ sellerId: string | null; created: number; paid: number; paidAmount: bigint; todayCreated: number; todayPaid: number; todayPaidAmount: bigint }[]>`
+      SELECT o."sellerId", count(*) FILTER (WHERE o."createdAt" >= ${range.start} AND o."createdAt" < ${now})::int AS created,
+        count(*) FILTER (WHERE o."paidAt" >= ${range.start} AND o."paidAt" < ${now})::int AS paid,
+        coalesce(sum(o."totalAmount"::bigint - coalesce(o."refundAmount", 0)) FILTER (WHERE o."paidAt" >= ${range.start} AND o."paidAt" < ${now}), 0)::bigint AS "paidAmount",
+        count(*) FILTER (WHERE o."createdAt" >= ${todayStart} AND o."createdAt" < ${now})::int AS "todayCreated",
+        count(*) FILTER (WHERE o."paidAt" >= ${todayStart} AND o."paidAt" < ${now})::int AS "todayPaid",
+        coalesce(sum(o."totalAmount"::bigint - coalesce(o."refundAmount", 0)) FILTER (WHERE o."paidAt" >= ${todayStart} AND o."paidAt" < ${now}), 0)::bigint AS "todayPaidAmount"
+      FROM "Order" o JOIN "Seller" s ON s.id = o."sellerId"
+      WHERE s.status IN ('ACTIVE', 'SUSPENDED') AND
+        ((o."createdAt" >= ${range.start} AND o."createdAt" < ${now}) OR (o."paidAt" >= ${range.start} AND o."paidAt" < ${now}))
+      GROUP BY GROUPING SETS ((o."sellerId"), ())
+      HAVING GROUPING(o."sellerId") = 1 OR o."sellerId" = ANY(${ids}::uuid[])`,
     db.broadcastSession.findMany({ where: { sellerId: { in: ids }, status: "LIVE" }, select: { sellerId: true, startedAt: true } }),
   ]);
-  const seen = await overlaySeen(db, ids, now);
+  const seen = await overlaySeen(db, ids, observedAt);
+  const metrics = (r: (typeof activity)[number] | undefined) => ({ created: r?.created ?? 0, paid: r?.paid ?? 0, paidAmount: Number(r?.paidAmount ?? 0) });
   const items = page.map((s) => {
-    const p = paid.find((r) => r.sellerId === s.id);
+    const p = activity.find((r) => r.sellerId === s.id);
     const l = live.find((r) => r.sellerId === s.id);
     return {
       sellerId: s.id,
@@ -110,31 +147,67 @@ export async function listSellerActivity(db: PrismaClient, admin: AdminSessionCo
       slug: s.slug,
       status: s.status,
       ordersToday: {
-        created: created.find((r) => r.sellerId === s.id)?._count._all ?? 0,
-        paid: p?._count._all ?? 0,
-        paidAmount: (p?._sum.totalAmount ?? 0) - (p?._sum.refundAmount ?? 0),
+        created: p?.todayCreated ?? 0,
+        paid: p?.todayPaid ?? 0,
+        paidAmount: Number(p?.todayPaidAmount ?? 0),
       },
+      ordersPeriod: metrics(p),
       live: l ? { startedAt: l.startedAt } : null,
       overlay: seen(s.id),
     };
   });
   const last = page[page.length - 1];
-  return { ok: true as const, at: now, todayStart, items, nextCursor: rows.length > ACTIVITY_PAGE_SIZE && last ? `${last.createdAt.toISOString()}_${last.id}` : null };
+  return { ok: true as const, at: now, observedAt, todayStart, items,
+    period: { key: period, days, from: range.from, to: range.to, start: range.start, end: now, timezone: "Asia/Seoul" as const, snapshot: "TIME_BOUNDARY_ONLY_CURRENT_STATE" as const },
+    sources: { created: "INTERNAL_ORDER_CREATED_AT", paid: "INTERNAL_ORDER_PAID_AT_CURRENT_REFUND_NET", externalOrders: "NOT_MEASURED" } as const,
+    summary: { scope: "CURRENT_ACTIVE_AND_SUSPENDED_SELLERS" as const, ...metrics(activity.find((r) => r.sellerId === null)) },
+    nextCursor: rows.length > ACTIVITY_PAGE_SIZE && last ? `${last.createdAt.toISOString()}_${last.id}` : null };
 }
 
 // MA-043: 적립금 실지급을 켠 파트너스. 켠 시각 최근 순. 남은 적립금 합계·적립금이 남은 회원 수(개인 단위는 주지 않음).
 export async function listLivePayoutSellers(db: PrismaClient, admin: AdminSessionContext) {
   requireRead(admin);
+  const now = await dbNow(db);
+  const todayStart = todayStartOf(now);
+  const monthStart = parseStatsRange({ from: `${kstDate(now).slice(0, 7)}-01`, to: kstDate(now) })!.start;
+  const manualSince = new Date(now.getTime() - 30 * DAY_MS);
   const policies = await db.rewardPolicy.findMany({
     where: { livePayoutEnabled: true },
     orderBy: [{ livePayoutChangedAt: { sort: "desc", nulls: "last" } }, { sellerId: "asc" }],
-    select: { sellerId: true, livePayoutChangedAt: true, earnTiming: true, seller: { select: { shopName: true, slug: true, status: true } } },
+    select: { sellerId: true, livePayoutChangedAt: true, earnTiming: true, rates: true, seller: { select: { shopName: true, slug: true, status: true } } },
   });
   const ids = policies.map((p) => p.sellerId);
-  const balances = await db.rewardBalance.groupBy({ by: ["sellerId"], where: { sellerId: { in: ids }, balance: { gt: 0 } }, _sum: { balance: true }, _count: { _all: true } });
+  const [balances, monthPaid, grants] = await Promise.all([
+    db.rewardBalance.groupBy({ by: ["sellerId"], where: { sellerId: { in: ids }, balance: { gt: 0 } }, _sum: { balance: true }, _count: { _all: true } }),
+    // 기존 관리자 잔액 비율 계약(sellerRewards): KST 이번 달 paidAt 순액. 생성 시각 매출 cohort와 다르다.
+    db.order.groupBy({ by: ["sellerId"], where: { sellerId: { in: ids }, paidAt: { gte: monthStart, lt: now } }, _sum: { totalAmount: true, refundAmount: true } }),
+    db.$queryRaw<{ sellerId: string; succeeded: number; observedFailed: number; uncertainModeFailed: number; undatedFailed: number; manualAmount: bigint }[]>`
+      SELECT "sellerId",
+        count(*) FILTER (WHERE status = 'SUCCEEDED' AND "testMode" = false AND "processedAt" >= ${todayStart} AND "processedAt" < ${now})::int AS succeeded,
+        count(*) FILTER (WHERE status = 'FAILED' AND "failureReason" IS DISTINCT FROM 'member_withdrawn' AND "processedAt" >= ${todayStart} AND "processedAt" < ${now})::int AS "observedFailed",
+        count(*) FILTER (WHERE status = 'FAILED' AND "failureReason" IS DISTINCT FROM 'member_withdrawn' AND "testMode" = true AND "processedAt" >= ${todayStart} AND "processedAt" < ${now})::int AS "uncertainModeFailed",
+        count(*) FILTER (WHERE status = 'FAILED' AND "failureReason" IS DISTINCT FROM 'member_withdrawn' AND "processedAt" IS NULL)::int AS "undatedFailed",
+        coalesce(sum(amount::bigint) FILTER (WHERE type = 'ADJUST' AND status = 'SUCCEEDED' AND "testMode" = false AND "processedAt" >= ${manualSince} AND "processedAt" < ${now}), 0)::bigint AS "manualAmount"
+      FROM "RewardLedger" WHERE "sellerId" = ANY(${ids}::uuid[]) AND amount > 0 AND type IN ('EARN', 'RANKING_BONUS', 'ADJUST')
+        AND (("processedAt" >= ${manualSince} AND "processedAt" < ${now}) OR (status = 'FAILED' AND "processedAt" IS NULL))
+      GROUP BY "sellerId"`,
+  ]);
   return {
+    at: now,
+    windows: { today: { start: todayStart, end: now }, month: { start: monthStart, end: now }, manual30Days: { start: manualSince, end: now, kind: "ROLLING_30_DAYS" as const } },
+    sources: { monthTradingAmount: "INTERNAL_ORDER_PAID_AT_CURRENT_REFUND_NET", payout: "CURRENT_POSITIVE_GRANT_LEDGER_RESULTS", manual: "SUCCEEDED_NON_TEST_POSITIVE_ADJUST_PROCESSED_AT", failureAttempts: "NOT_RECORDED", maxConfiguredRewardRatePercent: "STORED_POLICY_RATE_VALUES" } as const,
     items: policies.map((p) => {
       const b = balances.find((r) => r.sellerId === p.sellerId);
+      const m = monthPaid.find((r) => r.sellerId === p.sellerId);
+      const g = grants.find((r) => r.sellerId === p.sellerId);
+      const amount = b?._sum.balance ?? 0;
+      const monthTradingAmount = (m?._sum.totalAmount ?? 0) - (m?._sum.refundAmount ?? 0);
+      const balanceRatioPercent = monthTradingAmount > 0 ? Math.round(amount / monthTradingAmount * 1000) / 10 : null;
+      const observedFailed = g?.observedFailed ?? 0, uncertainModeFailed = g?.uncertainModeFailed ?? 0, undatedFailed = g?.undatedFailed ?? 0;
+      const failed = uncertainModeFailed || undatedFailed ? null : observedFailed;
+      const rates = p.rates && typeof p.rates === "object" && !Array.isArray(p.rates) ? Object.values(p.rates) : null;
+      const configured = rates?.flatMap((r) => r && typeof r === "object" && !Array.isArray(r) ? [r.card, r.bankTransfer].filter((v) => v !== undefined) : [null]);
+      const maxConfiguredRewardRatePercent = configured?.every((r) => typeof r === "number" && Number.isFinite(r) && r >= 0 && r <= RATE_MAX) ? Math.max(0, ...configured as number[]) : null;
       return {
         sellerId: p.sellerId,
         shopName: p.seller.shopName,
@@ -142,7 +215,15 @@ export async function listLivePayoutSellers(db: PrismaClient, admin: AdminSessio
         status: p.seller.status,
         enabledAt: p.livePayoutChangedAt,
         earnTiming: p.earnTiming,
-        outstanding: { amount: b?._sum.balance ?? 0, members: b?._count._all ?? 0 },
+        outstanding: { amount, members: b?._count._all ?? 0 },
+        monthTradingAmount, balanceRatioPercent, maxConfiguredRewardRatePercent,
+        payoutToday: { succeeded: g?.succeeded ?? 0, failed, observedFailed, uncertainModeFailed, undatedFailed },
+        manualGrant30DaysAmount: Number(g?.manualAmount ?? 0),
+        signals: {
+          balanceRatio: { thresholdPercent: 25, state: balanceRatioPercent === null ? "UNAVAILABLE" : balanceRatioPercent > 25 ? "WARN" : "OK" },
+          payoutFailure: { state: failed === null ? "UNKNOWN" : failed > 0 ? "WARN" : "OK" },
+          manualConcentration: { state: "NOT_DEFINED" },
+        },
       };
     }),
   };

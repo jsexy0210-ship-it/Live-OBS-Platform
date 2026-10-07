@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { PublicFrame } from "./PublicFrame";
-import type { LandingPlan } from "./Landing";
 import { LandingSample } from "./LandingSample";
 import "../../styles/pf-sample.css";
 
@@ -69,8 +68,7 @@ function Check() {
   );
 }
 
-export function Features({ plans = [] }: { plans?: LandingPlan[] }) {
-  const trial = plans.find((p) => p.trialDays > 0);
+export function Features() {
   return (
     <PublicFrame active="/features">
       <section className="pf-sec pf-feat-page">
@@ -97,8 +95,7 @@ export function Features({ plans = [] }: { plans?: LandingPlan[] }) {
       <section className="pf-sec pf-end">
         <h2 className="t-t1">오늘 쇼핑몰을 열고, 다음 방송부터 줄을 세워요</h2>
         <p className="t-b1 c-neu">
-          자동 점검을 통과하면 바로 승인돼요.
-          {trial ? ` ${trial.name}은 승인되면 ${trial.trialDays}일 동안 체험할 수 있어요.` : ""}
+          자동 점검을 통과하면 바로 승인돼요. 오버레이 전용은 승인되면 7일 동안 체험할 수 있어요.
         </p>
         <div className="pf-cta">
           <Link className="btn btn-lg" href="/seller/signup">

@@ -322,7 +322,7 @@ export default function BannersPage() {
           <div className="sc-two">
             <div>
               <div className="sc-sec-t">홈 미리보기 · 모바일</div>
-              <PreviewFrame className="sc-box" data-testid="banner-home-preview">
+              <PreviewFrame className="sc-box sc-banner-preview" data-testid="banner-home-preview">
                 <HomeBanner
                   only="mobile"
                   intervalSec={0}
@@ -577,7 +577,7 @@ function BannerEditor({
         </tbody>
       </table>
       {previewing && (
-        <PreviewFrame className="sc-box" data-testid="banner-preview">
+        <PreviewFrame className="sc-box sc-banner-preview" data-testid="banner-preview">
           {d.devices === "pc" ? (
             <span className="t-c1 c-alt">모바일에서는 표시하지 않음</span>
           ) : previewItem.length > 0 ? (

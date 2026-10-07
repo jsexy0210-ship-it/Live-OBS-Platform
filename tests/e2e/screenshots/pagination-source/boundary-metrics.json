@@ -1,0 +1,248 @@
+[
+  {
+    "file": "DS-PANEL.dc.html",
+    "width": 1440,
+    "height": 40,
+    "heights": [
+      40,
+      40,
+      40,
+      40,
+      40,
+      40,
+      40,
+      40,
+      40,
+      40,
+      40,
+      40,
+      40,
+      40
+    ],
+    "gaps": [
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4
+    ],
+    "margins": [
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px"
+    ],
+    "numberRow": false
+  },
+  {
+    "file": "DS-PANEL.dc.html",
+    "width": 1024,
+    "height": 40,
+    "heights": [
+      40,
+      40,
+      40,
+      40,
+      40,
+      40,
+      40,
+      40,
+      40,
+      40,
+      40,
+      40,
+      40,
+      40
+    ],
+    "gaps": [
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4
+    ],
+    "margins": [
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px"
+    ],
+    "numberRow": false
+  },
+  {
+    "file": "DS-PANEL.dc.html",
+    "width": 390,
+    "height": 44,
+    "heights": [
+      44,
+      44,
+      44,
+      44,
+      44,
+      44,
+      44,
+      44,
+      44
+    ],
+    "gaps": [
+      4,
+      4,
+      4,
+      4,
+      4,
+      4
+    ],
+    "margins": [
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px"
+    ],
+    "numberRow": true
+  },
+  {
+    "file": "SH-002-IA.dc.html",
+    "width": 800,
+    "height": 44,
+    "heights": [
+      44,
+      44,
+      44,
+      44,
+      44,
+      44
+    ],
+    "gaps": [
+      4,
+      4,
+      4
+    ],
+    "margins": [
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px"
+    ],
+    "numberRow": true
+  },
+  {
+    "file": "SH-002-IA.dc.html",
+    "width": 1440,
+    "height": 44,
+    "heights": [
+      44,
+      44,
+      44,
+      44,
+      44,
+      44
+    ],
+    "gaps": [
+      4,
+      4,
+      4
+    ],
+    "margins": [
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px"
+    ],
+    "numberRow": true
+  },
+  {
+    "file": "SH-002-IA.dc.html",
+    "width": 1024,
+    "height": 44,
+    "heights": [
+      44,
+      44,
+      44,
+      44,
+      44,
+      44
+    ],
+    "gaps": [
+      4,
+      4,
+      4
+    ],
+    "margins": [
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px"
+    ],
+    "numberRow": true
+  },
+  {
+    "file": "SH-002-IA.dc.html",
+    "width": 390,
+    "height": 44,
+    "heights": [
+      44,
+      44,
+      44,
+      44,
+      44,
+      44
+    ],
+    "gaps": [
+      4,
+      4,
+      4
+    ],
+    "margins": [
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px",
+      "0px"
+    ],
+    "numberRow": true
+  }
+]

@@ -7,7 +7,7 @@ const SHOTS = process.env.E2E_SCREENSHOTS === "1";
 
 async function shot(page: Page, name: string) {
   if (!SHOTS) return;
-  for (const width of [1440, 390]) {
+  for (const width of [1440, 1024, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(150);
@@ -173,24 +173,15 @@ test("본인확인을 쓸 수 없는 서버(대행사 미연결)에서는 연결
   await expect(page).toHaveURL(/\/seller$/);
 });
 
-test("아이디 찾기: 본인확인 대행사 연결 전이면 인증번호 받기에서 준비 중 화면으로 바뀐다", async ({ page }) => {
+test("아이디 찾기 화면에는 현재 안내와 대표자·직원 계정 종류가 보인다", async ({ page }) => {
   await page.goto("/seller/login");
   await page.getByRole("link", { name: "아이디/비밀번호 찾기" }).click();
   await expect(page).toHaveURL(/\/seller\/find-id$/);
-  await expect(page.getByRole("heading", { name: "이메일(아이디) 찾기" })).toBeVisible();
-  await page.getByLabel("이름", { exact: true }).fill("김별빛");
-  await page.getByLabel("생년월일").fill("19900101");
-  await page.getByRole("button", { name: "남", exact: true }).click();
-  await page.getByLabel("통신사").selectOption("SKT");
-  await page.getByLabel("휴대폰번호", { exact: true }).fill("01012345678");
-  await page.getByLabel("본인확인 이용 약관에 모두 동의합니다").check();
-  const res = page.waitForResponse((r) => r.url().endsWith("/api/seller/find-id/start"));
-  await page.getByRole("button", { name: "인증번호 문자 받기" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "문자 받기" }).click();
-  expect((await res).status()).toBe(503);
-  await expect(page.getByRole("heading", { name: "본인 확인 서비스를 준비하는 중입니다" })).toBeVisible();
-  expect(await page.locator("body").innerText()).not.toMatch(/판매자|cafe24|카페24/i);
-  await shot(page, "AU-011-unavailable");
+  await expect(page.getByRole("heading", { name: "이메일(아이디)을 찾습니다" })).toBeVisible();
+  await expect(page.getByText("로그인 아이디는 가입할 때 쓴 이메일입니다. 휴대폰 본인확인을 하면 바로 보여 드립니다.")).toBeVisible();
+  const accountType = page.getByRole("navigation", { name: "계정 종류" });
+  await expect(accountType.getByRole("link")).toHaveText(["대표자", "직원"]);
+  await expect(page.getByRole("button", { name: "인증번호 문자 받기" })).toBeVisible();
 });
 
 test("직원 탭 흐름 전체에서 계정 종류가 이어진다: 로그인 → 아이디 찾기 → 비밀번호 찾기 → 로그인 복귀(직원 탭)", async ({ page }) => {
@@ -198,17 +189,14 @@ test("직원 탭 흐름 전체에서 계정 종류가 이어진다: 로그인 �
   await page.getByRole("tab", { name: "직원" }).click();
   await page.getByRole("link", { name: "아이디/비밀번호 찾기" }).click();
   await expect(page).toHaveURL(/\/seller\/find-id\?type=staff$/);
-  // 화면 위쪽 「아이디 찾기 | 비밀번호 찾기」 전환
-  const sw = page.getByRole("navigation", { name: "아이디·비밀번호 찾기" });
-  await expect(sw.getByRole("link")).toHaveText(["아이디 찾기", "비밀번호 찾기"]);
-  await expect(sw.getByRole("link", { name: "아이디 찾기" })).toHaveAttribute("aria-current", "page");
-  await expect(sw.getByRole("link", { name: "비밀번호 찾기" })).toHaveAttribute("href", "/seller/password-reset?type=staff");
+  const accountType = page.getByRole("navigation", { name: "계정 종류" });
+  await expect(accountType.getByRole("link")).toHaveText(["대표자", "직원"]);
+  await expect(accountType.getByRole("link", { name: "직원" })).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("link", { name: "로그인으로 돌아가기" })).toHaveAttribute("href", "/seller/login?type=staff");
+  await expect(page.getByRole("link", { name: "비밀번호 찾기" })).toHaveAttribute("href", "/seller/password-reset?type=staff");
   await shot(page, "AU-011-switch");
-  await sw.getByRole("link", { name: "비밀번호 찾기" }).click();
+  await page.getByRole("link", { name: "비밀번호 찾기" }).click();
   await expect(page).toHaveURL(/\/seller\/password-reset\?type=staff$/);
-  await expect(sw.getByRole("link", { name: "비밀번호 찾기" })).toHaveAttribute("aria-current", "page");
-  await expect(sw.getByRole("link", { name: "아이디 찾기" })).toHaveAttribute("href", "/seller/find-id?type=staff");
   await shot(page, "AU-003-switch");
   await expect(page.getByText("직원 본인 명의의 휴대폰으로 확인합니다.")).toBeVisible();
   await page.getByRole("link", { name: "로그인으로 돌아가기" }).click();

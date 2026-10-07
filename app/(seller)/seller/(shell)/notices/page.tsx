@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PageHead } from "../../../../../components/admin-ui";
+import { CursorPagination, PageHead } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -21,6 +21,7 @@ export default function NoticesPage() {
   const [state, setState] = useState<Load>({ kind: "loading" });
   // 지금까지 거쳐 온 쪽의 cursor(첫 쪽은 null). 마지막 원소가 지금 쪽이다
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
+  const [cursorPage, setCursorPage] = useState(1);
   const seq = useRef(0);
 
   const load = useCallback(async (cursor: string | null) => {
@@ -39,16 +40,17 @@ export default function NoticesPage() {
   // 조건이 바뀌면 첫 쪽부터 다시 본다
   useEffect(() => {
     setCursors([null]);
+    setCursorPage(1);
     void load(null);
   }, [load]);
 
-  const go = (next: (string | null)[]) => {
-    setCursors(next);
-    void load(next[next.length - 1]);
+  const go = (next: number) => {
+    setCursorPage(next);
+    void load(cursors[next - 1]);
   };
   const filtered = !!(applied.category || applied.unread || applied.q.trim());
   const rows = state.kind === "ok" ? [...state.pinned, ...state.items] : [];
-  const page = cursors.length;
+  const page = cursorPage;
   const first = (page - 1) * 20 + 1;
 
   return (
@@ -94,7 +96,7 @@ export default function NoticesPage() {
             </form>
           </div>
           {state.kind === "loading" && <LoadingRows rows={5} />}
-          {state.kind === "error" && <ErrorState title="목록을 불러오지 못했습니다" onRetry={() => void load(cursors[cursors.length - 1])} />}
+          {state.kind === "error" && <ErrorState title="목록을 불러오지 못했습니다" onRetry={() => void load(cursors[cursorPage - 1])} />}
           {state.kind === "ok" && rows.length === 0 && (
             <div className="st" style={{ boxShadow: "none" }}>
               {filtered ? (
@@ -147,14 +149,7 @@ export default function NoticesPage() {
               <span className="t-l2 c-alt">
                 20개씩 · {first}–{first + rows.length - 1} 표시
               </span>
-              <div className="au-lh-act">
-                <button className="btn btn-sm btn-out" type="button" disabled={page === 1} onClick={() => go(cursors.slice(0, -1))}>
-                  ‹ 이전
-                </button>
-                <button className="btn btn-sm btn-out" type="button" disabled={!state.next} onClick={() => state.next && go([...cursors, state.next])}>
-                  다음 ›
-                </button>
-              </div>
+              <CursorPagination page={cursorPage} visited={cursors.length} hasNext={!!state.next} onChange={go} onNext={() => { if (state.next) { setCursors(c => c.length === cursorPage ? [...c, state.next] : c); setCursorPage(cursorPage + 1); void load(state.next); } }} />
             </div>
           )}
         </div>

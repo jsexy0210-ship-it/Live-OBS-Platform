@@ -214,7 +214,7 @@ export default function ReviewWrite({ slug, itemId, reviewId, writableUntil, rig
             {busy ? "올리는 중" : itemId ? "리뷰 등록" : "고친 리뷰 올리기"}
           </button>
         </div>
-        {rating > 0 && length < 10 && <span className="rv-hint rv-c">10자 이상 써야 올릴 수 있어요</span>}
+        {rating > 0 && length < 10 && <span className="rv-hint rv-c">10자 이상 적어 주세요</span>}
         <span className="rv-hint rv-c">{hints.join(" · ")}</span>
       </div>
     </section>

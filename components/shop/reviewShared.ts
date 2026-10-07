@@ -1,10 +1,9 @@
 // 리뷰 화면 공통: 별점 문구, KST 날짜, 사진 다시 저장(긴 변 1600px JPEG 0.85, 위치 정보 등 메타데이터는 다시 그리면서 빠진다)
+import { formatDate } from "../../lib/client/format";
+
 export const RATING_TEXT = ["", "별로예요", "그저 그래요", "보통이에요", "좋아요", "아주 좋아요"];
 export const stars = (n: number) => "★".repeat(n) + "☆".repeat(5 - n);
-export const md = (iso: string) => {
-  const d = new Date(new Date(iso).getTime() + 9 * 3600_000);
-  return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
-};
+export const md = (iso: string) => formatDate(iso);
 
 export const PHOTO_MAX_SIDE = 1600;
 

@@ -67,7 +67,7 @@ export async function getAdminSeller(db: PrismaClient, admin: AdminSessionContex
   });
   const now = await dbNow(db);
   const since = new Date(now.getTime() - 30 * DAY_MS);
-  const [orders, paid, lastOrder, openInquiries, assignedInquiry, noteCount] = await Promise.all([
+  const [orders, paid, lastOrder, openInquiries, assignedInquiry, noteCount, processingRows] = await Promise.all([
     db.order.count({ where: { sellerId, createdAt: { gte: since } } }),
     db.order.aggregate({ where: { sellerId, paidAt: { gte: since } }, _count: true, _sum: { totalAmount: true, refundAmount: true } }),
     db.order.findFirst({ where: { sellerId }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
@@ -79,7 +79,23 @@ export async function getAdminSeller(db: PrismaClient, admin: AdminSessionContex
       select: { assignedAdminId: true },
     }),
     db.sellerAdminNote.count({ where: { sellerId } }),
+    db.auditLog.findMany({
+      where: { sellerId, targetType: "Seller", targetId: sellerId, action: { in: [
+        "seller.apply", "seller.auto_approve", "admin.seller.approve", "admin.seller.reject",
+        "admin.seller.supplement_request", "admin.seller.supplement_resolve", "admin.seller.supplement_remind",
+        "admin.seller.business_recheck", "admin.seller.business_recheck_result", "admin.seller.approve_undo", "seller.supplement_expired",
+      ] } },
+      select: { id: true, createdAt: true, actorType: true, actorId: true, action: true, reason: true },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 101,
+    }),
   ]);
+  const processingPage = processingRows.slice(0, 100).reverse();
+  const [processingAdmins, processingStaff] = await Promise.all([
+    db.platformAdmin.findMany({ where: { id: { in: processingPage.filter((r) => r.actorType === "PLATFORM_ADMIN" && r.actorId).map((r) => r.actorId!) } }, select: { id: true, name: true, role: true } }),
+    db.sellerUser.findMany({ where: { sellerId, id: { in: processingPage.filter((r) => r.actorType === "SELLER_USER" && r.actorId).map((r) => r.actorId!) } }, select: { id: true, name: true, isOwner: true } }),
+  ]);
+  const adminActors = new Map(processingAdmins.map((a) => [a.id, a]));
+  const staffActors = new Map(processingStaff.map((a) => [a.id, a]));
   const assignedCs = assignedInquiry?.assignedAdminId
     ? await db.platformAdmin.findUnique({ where: { id: assignedInquiry.assignedAdminId }, select: { id: true, name: true } })
     : null;
@@ -91,6 +107,13 @@ export async function getAdminSeller(db: PrismaClient, admin: AdminSessionContex
     assignedCs,
     inquiryOpenCount: openInquiries,
     noteCount,
+    processingHistorySource: "APPLICATION_AUDIT" as const,
+    processingHistoryTruncated: processingRows.length > 100,
+    processingHistory: processingPage.map((r) => {
+      const actor = r.actorId ? r.actorType === "PLATFORM_ADMIN" ? adminActors.get(r.actorId) : r.actorType === "SELLER_USER" ? staffActors.get(r.actorId) : undefined : undefined;
+      return { at: r.createdAt, action: r.action, reason: r.reason,
+        actor: { type: r.actorType, name: actor?.name ?? null, role: actor ? "role" in actor ? actor.role : actor.isOwner ? "OWNER" : "STAFF" : null } };
+    }),
     subscription: subscription
       ? {
           ...subscription,

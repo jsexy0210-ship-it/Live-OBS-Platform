@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 import { PLAN_FEATURES, planFeatures } from "../../lib/server/billing/features";
 
@@ -11,7 +11,7 @@ function filesNamed(dir: string, file: string, root: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const p = join(dir, name);
     if (statSync(p).isDirectory()) return filesNamed(p, file, root);
-    return name === file ? [relative(root, p).slice(0, -(file.length + 1))] : [];
+    return name === file ? [relative(root, p).split(sep).join("/").slice(0, -(file.length + 1))] : [];
   });
 }
 const routeFiles = (dir: string) => filesNamed(dir, "route.ts", dir);
@@ -63,6 +63,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/today-tasks": "ORDER_FOLLOWUP", // 홈 「오늘 처리할 일」(SA-002): 잠금 중에도 이미 받은 주문 처리 항목은 보임
   "seller/search": "ORDER_FOLLOWUP", // 전역 검색: 이미 받은 주문·문의를 잠김·정지 중에도 찾는다
   "seller/orders/[orderId]": "ORDER_FOLLOWUP",
+  "seller/orders/[orderId]/items/[itemId]/image": "ORDER_FOLLOWUP",
   "seller/orders/[orderId]/cancel": "ORDER_FOLLOWUP",
   "seller/orders/[orderId]/deliver": "ORDER_FOLLOWUP",
   "seller/orders/[orderId]/refund": "ORDER_FOLLOWUP",
@@ -141,6 +142,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/broadcast/start": "OVERLAY",
   "seller/broadcast/end": "OVERLAY",
   "seller/overlay/token": "OVERLAY",
+  "seller/obs/pairing/challenges/[id]/approve": "OVERLAY",
+  "seller/obs/devices/[id]/revoke": "BILLING",
   "seller/overlay/address-info": "OVERLAY",
   "seller/overlay/layout": "OVERLAY",
   "seller/overlay/layout/reset": "OVERLAY",

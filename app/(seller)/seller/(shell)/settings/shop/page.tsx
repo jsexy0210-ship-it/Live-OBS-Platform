@@ -483,7 +483,7 @@ export default function ShopInfoPage() {
               <FormRow label="로고" help="칸을 누르거나 파일을 끌어다 놓으면 올라갑니다 · 로고가 없으면 쇼핑몰 이름 첫 글자를 씁니다">
                 <div className="row" style={{ gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
                   <div
-                    className={`si-logo${over ? " is-over" : ""}${editable ? " is-editable" : ""}`}
+                    className={`si-logo${logo ? " has-logo" : ""}${over ? " is-over" : ""}${editable ? " is-editable" : ""}`}
                     role={editable ? "button" : undefined}
                     tabIndex={editable ? 0 : -1}
                     aria-label={editable ? (logo ? "로고 바꾸기" : "로고 올리기") : "로고"}
