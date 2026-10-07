@@ -830,7 +830,8 @@ describe("Codex 리뷰 반영", () => {
 
   it("검증 단계를 마친 뒤 완료 기록 전에 작업자가 멈춰도, 다시 잡은 작업자가 검증부터 다시 해 증거와 함께 완료한다", async () => {
     const a = await bought();
-    const claimed = await claimNext(db, "crashing", { leaseMs: 200 });
+    // 검증 완료 전 DB 대기를 중단 후 lease 만료와 혼동하지 않도록 실행 중에는 정상 lease를 쓴다.
+    const claimed = await claimNext(db, "crashing");
     if (!claimed) throw new Error("no claim");
     const nextIndexes: number[] = [];
     // 완료 기록(finishJob) 없이 엔진만 돌리고 멈춘 작업자
@@ -839,7 +840,7 @@ describe("Codex 리뷰 반영", () => {
       { sellerId: a.seller.id, jobId: a.jobId },
       { startIndex: 0, verifying: false, stats: { costUsed: 0, plannerCalls: 0, playbookActions: 0, deviatedSteps: [] }, costLimit: 3000, maxActionsPerStep: 12, playbook: cafe24Playbook, shopHost: "myshop.cafe24.com" },
       {
-        touch: (st) => touch(db, claimed.claim, st, 200),
+        touch: (st) => touch(db, claimed.claim, st),
         enterVerify: () => toVerifying(db, claimed.claim),
         stepDone: (next, facts) => (nextIndexes.push(next), advanceStep(db, claimed.claim, next, facts)),
       },
@@ -847,14 +848,10 @@ describe("Codex 리뷰 반영", () => {
     expect(r.kind).toBe("succeeded");
     expect(Math.max(...nextIndexes)).toBe(4);
     expect(await job(a.jobId)).toMatchObject({ status: "VERIFYING", stepIndex: 4, verifiedAt: null });
-    // 고정 시간(250ms)을 자는 대신 DB 시계가 lease 만료를 말할 때까지 기다린다(CI에서 늦게 끝난 쓰기가 lease를 더 늘려도 안정적)
-    const deadline = Date.now() + 10_000;
-    for (;;) {
-      const [{ expired }] = await db.$queryRaw<{ expired: boolean }[]>`SELECT "leaseExpiresAt" <= clock_timestamp() AS expired FROM "AutomationJob" WHERE id = ${a.jobId}::uuid`;
-      if (expired) break;
-      if (Date.now() > deadline) throw new Error("lease가 10초 안에 끝나지 않았다");
-      await new Promise((res) => setTimeout(res, 25));
-    }
+    // 완료 기록 전 중단된 작업자의 lease만 DB 시각으로 만료시킨다.
+    // 실시간 200ms 제한 대신 복구 대상 상태를 명시해 CI 부하와 시험 목적을 분리한다.
+    expect(await db.$executeRaw`UPDATE "AutomationJob" SET "leaseExpiresAt" = clock_timestamp() - interval '1 second' WHERE id = ${a.jobId}::uuid AND "fencingToken" = ${claimed.claim.token} AND status = 'VERIFYING'`).toBe(1);
+    await expect(touch(db, claimed.claim, { costUsed: 0 })).rejects.toBeInstanceOf(FencingError);
     expect((await reapExpired(db, () => 0)).requeued).toBe(1);
     await db.automationJob.update({ where: { id: a.jobId }, data: { runAfter: new Date(Date.now() - 1000) } });
     expect(await runOnce(db, runtime(), W)).toBe("succeeded");

@@ -22,6 +22,7 @@
 
 - #1089 검증: owner 단위 11건·E2E 7건(정본 DOM 2건/실제 로그인 5건), 후속 CI 회귀 통합 4건·E2E 1건, 모바일 문구 보정 후 기존 통계 부품 단위 3건·정상 홈 3폭 E2E 1건, typecheck/build PASS. 후속 건수를 초기 건수에 중복 합산하지 않는다.
 - CI `37624539707` attempt 1은 제품 코드 `65a6066`에서 Typecheck and build / Unit and integration tests / E2E smoke **3개 모두 SUCCESS**. 이 문서만 추가한 후속 HEAD는 제품 코드 동일 여부와 새 exact CI를 별도 확인한다.
+- 문서 후속 `77aae09`의 CI `37640199076`은 typecheck/build·E2E SUCCESS, 통합 시험 1건 실패였다. 자동 연결의 중단 복구 시험이 검증 전 실행까지 200ms lease로 제한해 CI의 첫 `runSteps → touchStats`에서 fencing 거절됐다. 250ms 지연으로 같은 경로를 재현했다. 후속 시험 보정은 정상 lease로 검증을 끝낸 뒤 해당 작업의 lease를 DB 시각으로 만료시키며 이전 작업자 쓰기 거절·reap·재획득 증거 복구를 그대로 검증한다. 관련 통합 8건·typecheck PASS, 제품/FINAL 불변이며 새 HEAD exact CI는 별도 확인한다(2026-10-08 00:53 KST).
 - 독립 HTTP GET PASS: owner 처리 total 7(입금 2/배송 3/문의 1/재고 부족 1), other 입금 1·매출 0, empty 처리·매출·방송 0; owner 오늘 5,000원/1건/평균 5,000원, 전일 같은 시각 5,000원과 전일 전체 12,000원 구분. staff 허용 항목 3개/stats 403, 무인증·교차 쿠키 401, ops 인프라 403/admin 200, 관리자 조회 6개 endpoint 200/no-store 및 집계 시각·시계열 합계·순위 확인. **HTTP PASS는 브라우저 UI PASS가 아니다.**
 - 검수 읽기권 반환 후 이번 소유 fixture와 세션만 회수하고 앱·PG를 정상 종료했다. 기존 미확인 5쌍·기존 DB는 보존했다. 사용자 답변 후 관리자 구현 담당이 별도 fixture/runtime 준비, release 담당이 독립 UI → exact CI → 병합/main CI → TEST 검증을 이어 소유한다.
 - #1090 범위는 미인증·tenant 세션/상품·옵션·cart 격리·숨김·품절·수량·현재 금액·checkout 선택까지이며 외부 결제·결제 완료는 미시험이다. 가격·재고 변경 후 재계산은 owner 시험만 수행했다. 최초 CI의 무작위 image UUID/문자열 assertion 충돌 1건은 같은 SHA 재실행으로 통과했다. Shop owner 직접 인계에 따라 소유 fixture **2건** 회수/잔여 0·PG/앱 정상 종료·64304/3158 반환을 기록한다(정리 검사 5항목과 fixture 수를 구분). 이전 HEAD live PASS는 현재 홈 전체 PASS로 재사용하지 않는다.
