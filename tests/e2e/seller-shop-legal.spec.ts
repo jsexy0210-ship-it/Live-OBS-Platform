@@ -132,7 +132,8 @@ test("사업자 정보·고지: 검사 오류가 칸 가까이에 보이고, 저
   await buyer.goto(`/shop/${SLUG}/terms`);
   const foot = buyer.locator(".shop-foot");
   await expect(foot).toContainText("서울시 중구 세종대로 1 <b>3층</b>");
-  expect(await foot.locator("b").count()).toBe(0);
+  // 정본의 고객센터·개인정보 강조는 허용하되, 입력한 고지값은 HTML로 해석하지 않는다.
+  expect(await foot.locator(".shop-foot-info b").count()).toBe(0);
   await expect(foot).toContainText("1588-1234 · 평일 10:00~17:00");
   await expect(foot).not.toContainText("이메일"); // 입력하지 않은 항목은 줄을 뺀다
   await expect(foot).toContainText("호스팅 제공");

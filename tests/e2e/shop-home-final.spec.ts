@@ -34,7 +34,7 @@ test.beforeAll(async () => {
   }
   for (const [i, kind] of (["LIVE", "RECOMMENDED", "NEW"] as const).entries()) await db.shopDisplaySection.create({ data: { sellerId, kind, title: ["방송 중 상품", "추천 상품", "신상품"][i], itemCount: 4, sortOrder: i } });
   await db.shopNotice.createMany({ data: ["개천절 연휴 배송 안내", "방송 주문 개봉 영상은 유튜브 다시보기에서 볼 수 있어요"].map((title, i) => ({ sellerId, kind: "NOTICE", title, body: title, isPublished: true, isPinned: i === 0 })) });
-  await db.shopLegalNotice.create({ data: { sellerId, csPhone: "02-0000-0000", csHours: "평일 13:00~18:00", kakaoChannelUrl: "https://pf.kakao.com/_test", youtubeChannelUrl: "https://www.youtube.com/@test" } });
+  await db.shopLegalNotice.create({ data: { sellerId, address: "검수용 주소 <b>3층</b>", csPhone: "02-0000-0000", csHours: "평일 13:00~18:00", kakaoChannelUrl: "https://pf.kakao.com/_test", youtubeChannelUrl: "https://www.youtube.com/@test" } });
 });
 
 test.afterAll(async () => {
@@ -62,6 +62,8 @@ test("홈: 실제 진열 순서·카드·공지·채널과 3폭 안전성", asyn
     await expect(page.getByRole("link", { name: "카카오톡 문의", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "▶ 유튜브 채널", exact: true })).toBeVisible();
     await expect(page.getByLabel("상단 공지", { exact: true })).toBeVisible();
+    await expect(page.locator(".shop-foot-info")).toContainText("검수용 주소 <b>3층</b>");
+    await expect(page.locator(".shop-foot-info b")).toHaveCount(0);
     const geometry = await page.evaluate(() => ({ width: innerWidth, overflow: document.documentElement.scrollWidth > innerWidth, columns: getComputedStyle(document.querySelector(".shop-home .pc-grid")!).gridTemplateColumns.split(" ").length, headings: [...document.querySelectorAll(".shop-home h2")].map(n => n.textContent), noticeHeight: document.querySelector(".shop-top-notice")!.getBoundingClientRect().height, heroHeight: document.querySelector(".shop-home-hero")!.getBoundingClientRect().height, homeNoticeAfterHero: document.querySelector(".shop-ntc")!.getBoundingClientRect().top >= document.querySelector(".shop-home-banner")!.getBoundingClientRect().bottom }));
     expect(geometry.overflow).toBe(false);
     expect(geometry.columns).toBe(width >= 1024 ? 4 : 2);
@@ -86,8 +88,11 @@ test("홈 카드: 로그인 경계·찜·담기·선택 상품 바로 구매", a
   await expect(card.getByRole("button", { name: "찜 취소" })).toBeVisible();
   const repeated = page.locator(".shop-home .pc").filter({ has: page.locator(`a[href$="/${productIds[0]}"]`) });
   await expect(repeated.getByRole("button", { name: "찜 취소" })).toHaveCount(3);
+  const added = await repeated.getByRole("button", { name: "찜 취소" }).count();
+  await page.screenshot({ path: `${evidence}/wishlist-added-1440.png`, fullPage: true });
   await repeated.last().getByRole("button", { name: "찜 취소" }).click();
   await expect(repeated.getByRole("button", { name: "찜", exact: true })).toHaveCount(3);
+  writeFileSync(`${evidence}/wishlist-state.json`, JSON.stringify({ repeatedCards: await repeated.count(), added, removed: await repeated.getByRole("button", { name: "찜", exact: true }).count() }));
   await card.getByRole("button", { name: "담기", exact: true }).click();
   await expect(card.getByRole("status")).toHaveText("장바구니에 담았어요");
   const count = await page.request.get(`/api/shop/${slug}/cart/count`);
