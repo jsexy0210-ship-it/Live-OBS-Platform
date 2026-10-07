@@ -2,11 +2,12 @@ import type { PrismaClient } from "@prisma/client";
 import { dbNow } from "../billing/subscription";
 import { shopOpen } from "../buyers/signup";
 import { getShippingPolicy } from "../orders/shipping";
+import { OPENED_NO_REFUND_CONSENT } from "../orders/consent";
 import type { RewardRates } from "../rewards/earn";
 import { expandSearchTerm, productIdsByTerm, recordSearchTerm } from "../shop-search/service";
 import { cleanText } from "../text/clean";
 import { publicDetailBlocks, publicDetailHtml } from "./detail";
-import { eventOf, isEventActive, orderUnitPrice } from "./event";
+import { eventOf, eventView, isEventActive, orderUnitPrice } from "./event";
 import { shopImageUrl, thumbnailUrls } from "./images";
 import { LOW_STOCK_MAX, productCode } from "./manage";
 
@@ -343,6 +344,15 @@ export async function shopProductDetail(db: PrismaClient, slug: string, productI
   const shown = orderUnitPrice(p.price, event, now);
   const productSoldOut = p.status === "SOLD_OUT";
   const shipping = await getShippingPolicy(db, shop.id);
+  const [wishCount, liveIds, liveSession] = await Promise.all([
+    db.wishItem.count({ where: { sellerId: shop.id, productId: p.id } }),
+    liveProductIds(db, shop.id),
+    db.broadcastSession.findFirst({ where: { sellerId: shop.id, status: "LIVE" }, orderBy: { startedAt: "desc" }, select: { id: true } }),
+  ]);
+  const isLive = liveIds.includes(p.id);
+  const broadcast = isLive && liveSession
+    ? { waitingCount: await db.queueItem.count({ where: { sellerId: shop.id, broadcastSessionId: liveSession.id, status: "WAITING" } }) }
+    : null;
   return {
     id: p.id,
     code: productCode(p.codeNo),
@@ -350,7 +360,8 @@ export async function shopProductDetail(db: PrismaClient, slug: string, productI
     description: p.description,
     price: p.price,
     salePrice: shown < p.price ? shown : null,
-    event: active ? { endsAt: event.endsAt } : null,
+    event: active ? { endsAt: event.endsAt, badge: eventView(event, p.price, now)?.badge ?? null } : null,
+    eventEnded: !!event && event.endsAt <= now,
     soldOut: productSoldOut || p.options.every((o) => o.stock <= 0),
     images: p.images.map((i) => ({ id: i.id, url: shopImageUrl(shop.slug, i), width: i.width, height: i.height })),
     options: p.options.map((o) => {
@@ -366,9 +377,15 @@ export async function shopProductDetail(db: PrismaClient, slug: string, productI
       .filter((c) => c.visible && (!c.parent || c.parent.visible))
       .sort((a, b) => (a.parent?.sortOrder ?? a.sortOrder) - (b.parent?.sortOrder ?? b.sortOrder) || a.sortOrder - b.sortOrder)
       .map(({ id, name }) => ({ id, name })),
-    shipping: { freeShipping: shipping.freeShipping, baseFee: shipping.baseFee, freeOverAmount: shipping.freeOverAmount, remoteSurcharge: shipping.remoteSurcharge },
+    shipping: {
+      freeShipping: shipping.freeShipping, baseFee: shipping.baseFee, freeOverAmount: shipping.freeOverAmount, remoteSurcharge: shipping.remoteSurcharge,
+      receiveMethods: shipping.receiveMethods, dispatchDeadlineDays: shipping.dispatchDeadlineDays, returnFee: shipping.returnFee, exchangeFee: shipping.exchangeFee,
+    },
+    openingNotice: OPENED_NO_REFUND_CONSENT.text,
+    wishCount,
+    broadcast,
     reward: await rewardPreview(db, shop.id, buyerGradeId ?? null, shown, now),
-    isLive: (await liveProductIds(db, shop.id)).includes(p.id),
+    isLive,
   };
 }
 

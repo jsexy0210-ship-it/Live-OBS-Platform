@@ -111,6 +111,26 @@ describe("구매자 상품 목록", () => {
 });
 
 describe("구매자 상품 상세", () => {
+  it("배송·환불 안내는 판매자 설정을 쓰고 찜 총수에는 다른 상품·판매자를 섞지 않는다", async () => {
+    const s = await seller();
+    const other = await seller();
+    const p = await made(s.ctx, { name: "찜 집계 상품" });
+    const another = await made(s.ctx, { name: "별도 상품" });
+    const foreign = await made(other.ctx, { name: "다른 판매자 상품" });
+    const a = await createLoginBuyer(s.seller.id, s.grade.id);
+    const b = await createLoginBuyer(s.seller.id, s.grade.id);
+    const c = await createLoginBuyer(other.seller.id, other.grade.id);
+    await db.wishItem.createMany({ data: [
+      { sellerId: s.seller.id, buyerMemberId: a.id, productId: p.id },
+      { sellerId: s.seller.id, buyerMemberId: b.id, productId: p.id },
+      { sellerId: s.seller.id, buyerMemberId: a.id, productId: another.id },
+      { sellerId: other.seller.id, buyerMemberId: c.id, productId: foreign.id },
+    ] });
+    await db.sellerShippingPolicy.create({ data: { sellerId: s.seller.id, returnFee: 4500, exchangeFee: 9000, dispatchDeadlineDays: 5 } });
+    const result = await detail(s.seller.slug, p.id);
+    expect(result.body.product).toMatchObject({ wishCount: 2, shipping: { receiveMethods: ["IMMEDIATE"], returnFee: 4500, exchangeFee: 9000, dispatchDeadlineDays: 5 }, openingNotice: OPENED_NO_REFUND_CONSENT.text });
+    expect((await detail(other.seller.slug, p.id)).status).toBe(404);
+  });
   it("사진·옵션(할인가·품절·적을 때 남은 수)·상세 블록·카테고리·배송비·적립 예정을 주고, 보이지 않는 상품은 404", async () => {
     const s = await seller();
     const p = await made(s.ctx, {
@@ -142,6 +162,7 @@ describe("구매자 상품 상세", () => {
     expect(r.cache).toContain("no-store");
     const d = r.body.product;
     expect(d).toMatchObject({ id: p.id, code: "P0000001", name: "포켓몬 팩", description: "설명", price: 10000, salePrice: 9000, event: { endsAt: expect.any(String) }, soldOut: false });
+    expect(d.eventEnded).toBe(false);
     expect(d.images).toEqual([{ id: img.image.id, url: expect.stringMatching(new RegExp(`^/api/shop/${s.seller.slug}/products/${p.id}/images/${img.image.id}\\?v=`)), width: 300, height: 300 }]);
     expect(d.options.map((o: Record<string, unknown>) => [o.name, o.price, o.salePrice, o.soldOut, o.stockLeft])).toEqual([
       ["1팩", 10000, 9000, false, 3],
@@ -153,8 +174,12 @@ describe("구매자 상품 상세", () => {
       { type: "image", imageId: dimg.image.id, url: expect.stringContaining(`/api/shop/${s.seller.slug}/`), width: 400, height: 300 },
     ]);
     expect(d.categories).toEqual([{ id: cat.value[0].id, name: "카드" }]);
-    expect(Object.keys(d.shipping).sort()).toEqual(["baseFee", "freeOverAmount", "freeShipping", "remoteSurcharge"]); // 반품비·도서산간 우편번호 표는 내보내지 않음
+    expect(Object.keys(d.shipping).sort()).toEqual(["baseFee", "dispatchDeadlineDays", "exchangeFee", "freeOverAmount", "freeShipping", "receiveMethods", "remoteSurcharge", "returnFee"]); // 도서산간 우편번호 표·판매자 전용 기본 택배사는 내보내지 않음
     expect(d.shipping).toMatchObject({ freeShipping: false, baseFee: expect.any(Number) });
+    expect(d.shipping).toMatchObject({ receiveMethods: ["IMMEDIATE"], dispatchDeadlineDays: 3, returnFee: 3000, exchangeFee: 6000 });
+    expect(d.openingNotice).toBe(OPENED_NO_REFUND_CONSENT.text);
+    expect(d.wishCount).toBe(0);
+    expect(d.broadcast).toBeNull();
     expect(d.reward).toEqual({ card: { rate: 1, amount: 90 }, bankTransfer: { rate: 3, amount: 270 } });
 
     // 로그인 회원은 그 등급의 적립률
@@ -165,6 +190,9 @@ describe("구매자 상품 상세", () => {
     if (!login.ok) throw new Error(login.reason);
     expect((await detail(s.seller.slug, p.id, `lo_buyer=${login.token}`)).body.product.reward).toEqual({ card: { rate: 5, amount: 450 }, bankTransfer: null });
     expect((await detail(s.seller.slug, p.id)).body.product.reward).toEqual({ card: { rate: 1, amount: 90 }, bankTransfer: null });
+
+    await db.product.update({ where: { id: p.id }, data: { eventStartsAt: new Date(Date.now() - 60_000), eventEndsAt: new Date(Date.now() - 1_000) } });
+    expect((await detail(s.seller.slug, p.id)).body.product).toMatchObject({ salePrice: null, event: null, eventEnded: true });
 
     // 보이지 않는 상품·다른 쇼핑몰·없는 id는 404
     const other = await seller();
