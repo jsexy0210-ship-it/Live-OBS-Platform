@@ -93,7 +93,7 @@ body {
 .shop-top .shop-wrap {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 24px;
   height: 88px;
 }
 .shop-app a.shop-brand {
@@ -128,7 +128,7 @@ body {
   border: 0;
   outline: 0;
   font: inherit;
-  font-size: 14px;
+  font-size: 13px;
   background: transparent;
   color: var(--wds-label-normal);
 }
@@ -148,7 +148,7 @@ body {
 .shop-hics {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 24px;
 }
 .shop-app a.shop-hic {
   display: flex;
