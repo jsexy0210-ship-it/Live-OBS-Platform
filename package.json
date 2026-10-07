@@ -12,6 +12,7 @@
     "test:integration": "vitest run --dir tests/integration --no-file-parallelism",
     "db:migrate": "prisma migrate deploy",
     "test:e2e": "playwright test -c tests/e2e/playwright.config.ts",
+    "design:preview": "next dev design/preview --port 3001",
     "design:check": "node scripts/design-map-check.mjs"
   },
   "dependencies": {

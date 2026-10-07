@@ -61,15 +61,44 @@ jobs:
     environment: obs-test
     timeout-minutes: 15
     steps:
+      - name: Verify isolated checkout path
+        id: isolated_checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          workspace="$(realpath -e -- "${GITHUB_WORKSPACE:?}")"
+          [[ -d "$workspace" && "$workspace" != / ]] || { echo "GITHUB_WORKSPACE 확인 실패" >&2; exit 1; }
+          checkout_name="disk-cleanup-${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}"
+          [[ "$checkout_name" =~ ^disk-cleanup-[0-9]+-[0-9]+$ ]] || { echo "진단 checkout 이름이 안전하지 않아요" >&2; exit 1; }
+          target="${workspace%/}/$checkout_name"
+          resolved="$(realpath -m -- "$target")"
+          workspace_prefix="${workspace%/}/"
+          [[ "$resolved" == "$workspace_prefix"* ]] || { echo "진단 checkout 경로가 workspace 밖이에요" >&2; exit 1; }
+          if [[ -e "$target" || -L "$target" ]]; then
+            echo "진단 checkout 경로가 이미 있어 기존 runner 자료를 보존합니다" >&2
+            exit 1
+          fi
+          if ! mkdir -- "$target"; then
+            echo "진단 checkout 경로를 독점할 수 없어 기존 runner 자료를 보존합니다" >&2
+            exit 1
+          fi
+          target_real="$(realpath -e -- "$target")"
+          [[ "$target_real" == "$target" ]] || { echo "진단 checkout 경로가 안전하지 않아요" >&2; exit 1; }
+          printf 'checkout_path=%s\n' "$checkout_name" >> "$GITHUB_OUTPUT"
+
       - name: Checkout
+        id: checkout
         uses: actions/checkout@v5
         with:
           ref: ${{ github.sha }}
+          path: ${{ steps.isolated_checkout.outputs.checkout_path }}
+          clean: false
           persist-credentials: false
 
       # 로그를 열지 못하는 환경에서도 결과를 볼 수 있게 출력 전체를 알림 한 건으로 남긴다.
       # run 기본 셸은 bash -e 이므로 실패 코드는 `|| code=$?`로 받는다. 용량 점검 단계는 정보용이라 실패로 끝내지 않는다.
       - name: Disk check (before)
+        working-directory: ${{ github.workspace }}/${{ steps.isolated_checkout.outputs.checkout_path }}
         run: |
           set -uo pipefail
           code=0; out="$(OBS_MIN_FREE_GB=5 scripts/ops/disk-cleanup.sh --check 2>&1)" || code=$?
@@ -78,6 +107,7 @@ jobs:
           echo "::notice title=disk before (exit ${code})::${msg}"
 
       - name: Cleanup (${{ inputs.mode }})
+        working-directory: ${{ github.workspace }}/${{ steps.isolated_checkout.outputs.checkout_path }}
         env:
           MODE: ${{ inputs.mode }}
           OBS_BUILDER_KEEP_H: ${{ inputs.builder_keep_h }}
@@ -94,7 +124,8 @@ jobs:
           exit "$code"
 
       - name: Disk check (after)
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
+        working-directory: ${{ github.workspace }}/${{ steps.isolated_checkout.outputs.checkout_path }}
         run: |
           set -uo pipefail
           code=0; out="$(OBS_MIN_FREE_GB=5 scripts/ops/disk-cleanup.sh --check 2>&1)" || code=$?

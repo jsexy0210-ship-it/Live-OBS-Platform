@@ -137,6 +137,10 @@ body:has(.pf){margin:0}
 .pf-faq-c summary::-webkit-details-marker,.pf-faq-mk summary::-webkit-details-marker{display:none}
 .pf-faq-c summary::after,.pf-faq-mk summary::after{content:"+";color:var(--wds-label-alternative,#888)}
 .pf-faq-c details[open]>summary::after,.pf-faq-mk details[open]>summary::after{content:"−"}
+.pf-pricing .pf-faq-c{max-width:860px;margin:56px auto 0}
+.pf-pricing .pf-faq-c details{padding:0}
+.pf-pricing .pf-faq-c summary{padding:18px 0}
+.pf-pricing .pf-faq-c p{margin:0;padding:0 0 16px;line-height:1.6}
 .pf-pricing .pf-plan .pf-check{gap:var(--ui-sp-16)}
 .pf-pricing .pf-plan .pf-check li{align-items:center}
 .pf-pricing .pf-plan .pf-check li::before{font-size:16px}

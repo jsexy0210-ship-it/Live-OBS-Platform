@@ -6,6 +6,7 @@ import { MAX_OPTIONS_PER_PRODUCT, PRODUCT_NAME_MAX, createProduct, deleteProduct
 import { MAX_CATEGORIES_PER_PRODUCT, listCategories, setProductCategories } from "../shop-category/service";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { formatCsv, guardText, parseCsv, unguardText } from "./csv";
+import { recordExport } from "./exports";
 
 // 엑셀(CSV) 일괄 등록·내보내기(SA-018, PRODUCT_MANAGE). 규칙:
 // - 파일은 UTF-8 CSV(엑셀에서 「CSV UTF-8」로 저장). 열: 상품명·판매가·상태·설명·차감시점·카테고리·옵션명·옵션추가금·재고·SKU. 옵션마다 한 줄이고, 상품명을 비운 줄은 앞 상품의 옵션이다.
@@ -362,25 +363,42 @@ const jobSummary = (j: Awaited<ReturnType<typeof listRaw>>[number], now: Date) =
   committedAt: j.committedAt,
   undoUntil: j.undoUntil,
   undoneAt: j.undoneAt,
+  reason: j.reason,
+  meta: j.meta,
   undoable: j.status === "COMMITTED" && !!j.undoUntil && j.undoUntil.getTime() >= now.getTime(),
 });
-const listRaw = (db: PrismaClient, sellerId: string, id?: string) =>
-  db.bulkJob.findMany({ where: { sellerId, ...(id ? { id } : {}) }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: id ? 1 : 30 });
+const IMPORT_ONLY: Prisma.BulkJobWhereInput = { kind: "PRODUCT_IMPORT" };
+const listRaw = (db: PrismaClient, sellerId: string, opts: { id?: string; all?: boolean } = {}) =>
+  db.bulkJob.findMany({ where: { sellerId, ...(opts.id ? { id: opts.id } : opts.all ? {} : IMPORT_ONLY) }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: opts.id ? 1 : 30 });
 
-// 작업 목록(최근 30개). 응답 { jobs: [{ id, status, fileName, totalRows, productCount, createdCount, failedCount, errorTotal, keptCount, createdAt, committedAt, undoUntil, undoable }] }
-export async function listBulkJobs(db: PrismaClient, ctx: TenantContext) {
+// 처리한 사람(처리 이력의 「누가」): 파트너스 직원 이름과 대표자 여부. 직원이 아닌 행위자(마스터 대리 조회 등)는 이름 없음.
+async function withActors<T extends { actorType: string; actorId: string | null }>(db: PrismaClient, sellerId: string, rows: T[]) {
+  const ids = [...new Set(rows.filter((r) => r.actorType === "SELLER_USER" && r.actorId).map((r) => r.actorId!))];
+  const users = ids.length ? await db.sellerUser.findMany({ where: { sellerId, id: { in: ids } }, select: { id: true, name: true, isOwner: true } }) : [];
+  const byId = new Map(users.map((u) => [u.id, u]));
+  return rows.map((r) => {
+    const u = r.actorType === "SELLER_USER" && r.actorId ? byId.get(r.actorId) : undefined;
+    return { row: r, actorName: u?.name ?? null, actorIsOwner: u?.isOwner ?? null };
+  });
+}
+
+// 작업 목록(최근 30개). 기본은 일괄 등록만(기존 화면), all=true면 내보내기 이력(상품·주문·회원)까지 함께(처리 이력).
+// 응답 { jobs: [{ id, kind, status, fileName, totalRows, productCount, createdCount, failedCount, errorTotal, keptCount, reason, meta, createdAt, committedAt, undoUntil, undoable, actorName, actorIsOwner }] }
+export async function listBulkJobs(db: PrismaClient, ctx: TenantContext, opts: { all?: boolean } = {}) {
   requireSellerRead(ctx, "PRODUCT_MANAGE");
   const now = await dbNow(db);
-  return { jobs: (await listRaw(db, ctx.sellerId)).map((j) => jobSummary(j, now)) };
+  const rows = await listRaw(db, ctx.sellerId, { all: opts.all });
+  return { jobs: (await withActors(db, ctx.sellerId, rows)).map(({ row, actorName, actorIsOwner }) => ({ ...jobSummary(row, now), actorName, actorIsOwner })) };
 }
 
 // 작업 상세: 목록 항목 + 오류 목록(500개까지)과 확정 때 못 만든 상품.
 export async function getBulkJob(db: PrismaClient, ctx: TenantContext, jobId: string) {
   requireSellerRead(ctx, "PRODUCT_MANAGE");
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)) throw notFound();
-  const [j] = await listRaw(db, ctx.sellerId, jobId);
+  const [j] = await listRaw(db, ctx.sellerId, { id: jobId });
   if (!j) throw notFound();
-  return { ...jobSummary(j, await dbNow(db)), errors: asErrors(j.errors).items, failures: asArray<Failure>(j.failures) };
+  const [{ actorName, actorIsOwner }] = await withActors(db, ctx.sellerId, [j]);
+  return { ...jobSummary(j, await dbNow(db)), actorName, actorIsOwner, errors: asErrors(j.errors).items, failures: asArray<Failure>(j.failures) };
 }
 
 // 상품 내보내기: 양식과 같은 열이라 고쳐서 다시 올리는 데 쓸 수 있다(올리면 새 상품으로 등록된다). 지운 상품은 뺀다. 개인정보 없음.
@@ -416,6 +434,6 @@ export async function exportProductsCsv(db: PrismaClient, ctx: TenantContext): P
       rows.push([...head, o ? guardText(o.name) : "", o ? String(o.priceDelta) : "", o ? String(o.stock) : "", o?.sku ? guardText(o.sku) : ""]);
     });
   }
-  await writeAudit(db, { actorType: ctx.actorType, actorId: ctx.actorId, sellerId: ctx.sellerId, action: "bulk_io.product_export", targetType: "Product", after: { count: products.length } });
+  await recordExport(db, ctx, { kind: "PRODUCT_EXPORT", rows: products.length, action: "bulk_io.product_export", targetType: "BulkJob" });
   return { ok: true, value: { csv: formatCsv(rows), count: products.length } };
 }
