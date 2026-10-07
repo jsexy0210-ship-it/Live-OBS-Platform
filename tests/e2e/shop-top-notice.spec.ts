@@ -38,6 +38,11 @@ test("FINAL v322 상단 공지 계산 규격: PC와 휴대폰", async ({ page })
     const css = await bar.evaluate(el => { const c = getComputedStyle(el); return { height: el.getBoundingClientRect().height, color: c.color, background: c.backgroundColor, fontSize: c.fontSize, whiteSpace: c.whiteSpace, textOverflow: c.textOverflow }; });
     expect(css).toEqual({ height: 32, color: "rgb(255, 255, 255)", background: "rgb(34, 34, 34)", fontSize: "12px", whiteSpace: "nowrap", textOverflow: "ellipsis" });
     await expect(bar.locator("a,button")).toHaveCount(0);
+    if (width === 1440) {
+      expect(await page.locator(".hd .in").first().evaluate(el => getComputedStyle(el).gap)).toBe("24px");
+      expect(await page.locator(".hd .ic").first().evaluate(el => getComputedStyle(el).gap)).toBe("24px");
+      expect(await page.locator(".srch input").first().evaluate(el => getComputedStyle(el).fontSize)).toBe("13px");
+    }
     writeFileSync(`${evidence}/source-${width}.json`, JSON.stringify(css));
     await bar.screenshot({ path: `${evidence}/source-${width}.png` });
   }
@@ -53,6 +58,11 @@ test("실앱: 공지는 3폭 최상단 32px 한 줄이며 다른 쇼핑몰 화�
     const css = await bar.evaluate(el => { const c = getComputedStyle(el), text = getComputedStyle(el.firstElementChild!); return { top: el.getBoundingClientRect().top, height: el.getBoundingClientRect().height, color: c.color, background: c.backgroundColor, fontSize: c.fontSize, whiteSpace: text.whiteSpace, textOverflow: text.textOverflow, overflow: document.documentElement.scrollWidth > innerWidth }; });
     expect(css).toEqual({ top: 0, height: 32, color: "rgb(255, 255, 255)", background: "rgb(34, 34, 34)", fontSize: "12px", whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: false });
     await expect(bar.locator("a,button")).toHaveCount(0);
+    if (width >= 768) {
+      expect(await page.locator(".shop-top .shop-wrap").evaluate(el => getComputedStyle(el).gap)).toBe("24px");
+      expect(await page.locator(".shop-hics").evaluate(el => getComputedStyle(el).gap)).toBe("24px");
+      expect(await page.locator(".shop-search input").evaluate(el => getComputedStyle(el).fontSize)).toBe("13px");
+    }
     writeFileSync(`${evidence}/app-${width}.json`, JSON.stringify(css));
     await page.screenshot({ path: `${evidence}/app-${width}.png` });
   }
