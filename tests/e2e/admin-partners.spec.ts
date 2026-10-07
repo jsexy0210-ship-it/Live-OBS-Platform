@@ -219,7 +219,7 @@ test("상세 탭: 구독(상태 이력·청구 상세·누적), 쇼핑몰(설정
   await expect(sub.getByTestId("sub-totals")).toContainText("누적 결제");
   await expect(page.getByRole("link", { name: "청구 상세", exact: true })).toHaveAttribute("href", `/admin/billing/invoices?sellerId=${idA}`);
 
-  await page.getByRole("button", { name: "쇼핑몰", exact: true }).click();
+  await page.getByRole("link", { name: "쇼핑몰", exact: true }).click();
   await expect(page).toHaveURL(/tab=shop/);
   const shop = page.getByTestId("tab-shop");
   await expect(shop).toContainText(nameA);
@@ -227,7 +227,7 @@ test("상세 탭: 구독(상태 이력·청구 상세·누적), 쇼핑몰(설정
   await expect(shop.getByRole("table", { name: "정책 점검" })).toContainText("전자상거래법");
   await expect(shop.getByRole("heading", { name: "상품 상위 5" })).toBeVisible();
 
-  await page.getByRole("button", { name: "주문 현황", exact: true }).click();
+  await page.getByRole("link", { name: "주문 현황", exact: true }).click();
   await expect(page).toHaveURL(/tab=orders/);
   const ord = page.getByTestId("tab-orders");
   await expect(ord.getByTestId("orders-today")).toBeVisible();

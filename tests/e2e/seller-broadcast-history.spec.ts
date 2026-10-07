@@ -48,7 +48,7 @@ test("방송을 끝낸 뒤 이력 목록에서 찾아 상세로 들어가 요약
 
   // 메뉴로 이력 목록 → 방송 찾기
   await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "방송", exact: true }).click();
-  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "방송 기록" }).click();
+  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("navigation", { name: "방송 기록" }).getByRole("link", { name: "방송별" }).click();
   await expect(page).toHaveURL(/\/seller\/broadcasts$/);
   const row = page.getByTestId("bh-list").locator("tr", { hasText: title });
   await expect(row).toContainText("종료");

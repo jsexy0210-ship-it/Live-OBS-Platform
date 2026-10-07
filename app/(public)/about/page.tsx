@@ -14,10 +14,13 @@ export const metadata: Metadata = {
 // PF-001 서비스 소개(랜딩). 요금을 읽지 못해도 화면은 열린다.
 export default async function AboutPage() {
   let plans: LandingPlan[] = [];
+  let pricingStatus: "available" | "unavailable" | "error" = "unavailable";
   try {
-    plans = (await getPublicPlan(prisma))?.plans ?? [];
+    const result = await getPublicPlan(prisma);
+    plans = result?.plans ?? [];
+    if (plans.length > 0) pricingStatus = "available";
   } catch {
-    plans = [];
+    pricingStatus = "error";
   }
-  return <Landing plans={plans} />;
+  return <Landing plans={plans} pricingStatus={pricingStatus} />;
 }

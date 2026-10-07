@@ -90,6 +90,40 @@
   font-weight: 700;
   color: var(--wds-status-negative);
 }
+.wl-badges {
+  display: flex;
+  gap: 4px;
+  margin: 4px 0 0;
+}
+
+@media (min-width: 1200px) {
+  .wishlist-view .wl-tabs,
+  .wishlist-view .wishlist-grid {
+    width: calc(100% + 32px);
+    margin-left: -16px;
+  }
+
+  .wishlist-view .wishlist-grid {
+    column-gap: 24px;
+  }
+}
+.wl-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.wl-live {
+  color: var(--wds-static-white);
+  background: var(--wds-status-negative);
+}
+.wl-deadline {
+  color: var(--brand);
+  border: 1px solid var(--brand);
+}
 .cart-qty {
   display: inline-flex;
   align-items: center;

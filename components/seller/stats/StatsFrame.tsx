@@ -1,17 +1,15 @@
 "use client";
 
 import "./stats.css";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHead } from "../../admin-ui";
-import { Topbar, planAllows, useSeller } from "../SellerShell";
+import { Topbar } from "../SellerShell";
 import { LoadingRows } from "../States";
 import { api } from "../api";
 import { useUrlState } from "../../../lib/client/navigation";
 import { DatePicker } from "../../../components/admin-ui/DatePicker";
 
-// SA-056 통계 화면 공통 틀: 통계 탭 · 기간 선택(오늘·7일·1개월·이번 달·직접 선택, 기본 1개월) · 묶음 단위 · 상태(로딩·데이터 없음·오류·권한 없음).
+// SA-056 통계 화면 공통 틀: 통계 사이드 메뉴 · 기간 선택(오늘·7일·1개월·이번 달·직접 선택, 기본 1개월) · 묶음 단위 · 상태(로딩·데이터 없음·오류·권한 없음).
 // 날짜는 KST 기준. 서버가 최대 366일까지 받는다(lib/server/stats/range.ts).
 // plan: 그 탭을 여는 요금제 기능 권한(서버 stats API와 같은 기준). 없는 탭은 숨긴다(오버레이 전용은 방송만)
 export const STATS_TABS = [
@@ -100,8 +98,6 @@ export function StatsFrame({ title, heading, sub, period, setPeriod, onDownload,
   comparable?: boolean;
   children: React.ReactNode;
 }) {
-  const pathname = usePathname();
-  const { me } = useSeller();
   const [draft, setDraft] = useState({ from: period.from, to: period.to });
   const [rangeError, setRangeError] = useState<string | null>(null);
   // 직접 입력한 날짜를 「조회」로 적용한다. 프리셋 칩은 누르는 즉시 조회한다
@@ -129,13 +125,6 @@ export function StatsFrame({ title, heading, sub, period, setPeriod, onDownload,
       <Topbar crumb={`통계 › ${title}`} />
       <main className="main">
         <PageHead title={heading ?? `통계 · ${title}`} actions={download ?? (onDownload && <button className="btn btn-out" type="button" onClick={onDownload}>엑셀 파일로 받기</button>)} />
-        <nav className="tabs sts-tabs" aria-label="통계 종류">
-          {STATS_TABS.filter((t) => planAllows(me.features, t.plan)).map((t) => (
-            <Link key={t.href} href={t.href} className={`tab${(t.href === "/seller/stats" ? pathname === t.href : pathname.startsWith(t.href)) ? " on" : ""}`}>
-              {t.label}
-            </Link>
-          ))}
-        </nav>
         <form
           className="sts-period"
           onSubmit={(e) => {

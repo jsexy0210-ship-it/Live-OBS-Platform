@@ -148,7 +148,7 @@ export default function ReviewsPage() {
       <main className="main">
         <div className="ph">
           <div className="col" style={{ gap: 6 }}>
-            <h1 className="t-t3">리뷰 관리</h1>
+            <h1 className="t-t3">리뷰</h1>
             <span className="t-l2 c-alt">구매자 상품 리뷰 확인 · 답글 · 숨김 · 신고 처리 · 리뷰 적립금 · 작성 조건 설정</span>
           </div>
           {data && (
@@ -200,7 +200,7 @@ export default function ReviewsPage() {
                   ))}
                 </div>
                 <select className="inp inp-sm" style={{ width: 120 }} aria-label="별점" value={rating} onChange={(e) => setRating(e.target.value)}>
-                  <option value="">별점 전체</option>
+                  <option value="">전체</option>
                   <option value="5">5점</option>
                   <option value="4">4점</option>
                   <option value="low">3점 이하</option>
@@ -212,34 +212,57 @@ export default function ReviewsPage() {
                   <span className="s">배송 완료 뒤 구매자가 리뷰를 쓸 수 있습니다 · 리뷰 적립금을 켜면 작성률이 올라갑니다</span>
                 </div>
               ) : (
-                <div role="list">
-                  {rows.map((r) => (
-                    <div key={r.id} className="rv-row" role="listitem" tabIndex={0} data-testid="review-row" onClick={() => setOpenId(r.id)} onKeyDown={(e) => e.key === "Enter" && setOpenId(r.id)}>
-                      <span className="col" style={{ gap: 2, minWidth: 0 }}>
-                        <span className="t-l2 fw6 ell">{r.productName}</span>
-                        <span className="t-c1 c-alt">
-                          {r.author}
-                          {r.grade ? ` (${r.grade})` : ""}
-                        </span>
-                      </span>
-                      <span className="rv-star rv-hide-m" aria-label={`${r.rating}점`}>
-                        {stars(r.rating)}
-                      </span>
-                      <span className="col rv-hide-m" style={{ gap: 2, minWidth: 0 }}>
-                        <span className="t-l2 rv-body">{r.status === "HELD" && r.heldLabel ? `[${r.heldLabel}] ` : ""}{r.body}</span>
-                        <span className="t-c1 c-alt num">
-                          {kstText(r.createdAt).slice(5, 10)} · {r.photos > 0 ? `사진 ${r.photos}장` : "사진 없음"}
-                          {r.replied ? " · 답글 완료" : ""}
-                          {r.reportCount > 0 ? ` · 신고 ${r.reportCount}건` : ""}
-                          {r.revokePending > 0 ? ` · 환불된 주문 · 적립금 수동 회수 필요 ${won(r.revokePending)}` : ""}
-                        </span>
-                      </span>
-                      <span>
-                        <span className={`bdg ${STATUS[r.status].cls}`}>{STATUS[r.status].label}</span>
-                      </span>
-                      <span className="t-c1 c-alt">{r.replied ? "답글 보기" : "답글"}</span>
-                    </div>
-                  ))}
+                <div className="rv-table-scroll">
+                  <table className="rv-table">
+                    <thead>
+                      <tr>
+                        <th scope="col" className="rv-select" />
+                        <th scope="col">상품 · 작성자</th>
+                        <th scope="col">별점</th>
+                        <th scope="col">내용 · 작성일</th>
+                        <th scope="col">상태</th>
+                        <th scope="col">관리</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((r) => (
+                        <tr
+                          key={r.id}
+                          data-testid="review-row"
+                          tabIndex={0}
+                          onClick={() => setOpenId(r.id)}
+                          onKeyDown={(e) => {
+                            if (e.currentTarget === e.target && e.key === "Enter") setOpenId(r.id);
+                          }}
+                        >
+                          <td className="rv-select" />
+                          <td className="rv-item">
+                            <span className="t-l2 fw6 ell">{r.productName}</span>
+                            <span className="t-c1 c-alt">{r.author}{r.grade ? ` (${r.grade})` : ""}</span>
+                          </td>
+                          <td className="rv-rating"><span className="rv-star" aria-label={`${r.rating}점`}>{stars(r.rating)}</span></td>
+                          <td className="rv-content">
+                            <span className="t-l2 rv-body">{r.status === "HELD" && r.heldLabel ? `[${r.heldLabel}] ` : ""}{r.body}</span>
+                            <span className="t-c1 c-alt num">
+                              {kstText(r.createdAt).slice(5, 10)} · {r.photos > 0 ? `사진 ${r.photos}장` : "사진 없음"}
+                              {r.replied ? " · 답글 완료" : ""}
+                              {r.reportCount > 0 ? ` · 신고 ${r.reportCount}건` : ""}
+                              {r.revokePending > 0 ? ` · 환불된 주문 · 적립금 수동 회수 필요 ${won(r.revokePending)}` : ""}
+                            </span>
+                          </td>
+                          <td className="rv-status"><span className={`bdg ${STATUS[r.status].cls}`}>{STATUS[r.status].label}</span></td>
+                          <td className="rv-actions">
+                            <button className="btn btn-out" type="button" onClick={() => setOpenId(r.id)} aria-label={`${r.productName} 리뷰 답글 관리`}>
+                              {r.replied ? "답글 보기" : "답글"}
+                            </button>
+                            <button className="btn btn-out" type="button" onClick={() => setOpenId(r.id)} aria-label={`${r.productName} 리뷰 숨기기`}>
+                              숨기기
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
               {cursor && (

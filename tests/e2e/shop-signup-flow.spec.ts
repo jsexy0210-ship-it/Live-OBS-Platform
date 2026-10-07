@@ -39,8 +39,9 @@ async function fillIdentity(page: Page, name: string, phone = "01012345678") {
 
 async function fillAccount(page: Page, id: string, nickname: string) {
   await page.getByLabel("아이디 (이메일)").fill(`buyer-${id}@example.com`);
-  await page.getByLabel("비밀번호", { exact: true }).fill(`pw-${id}-long`);
-  await page.getByLabel("비밀번호 확인").fill(`pw-${id}-long`);
+  const password = `pw-${id}1-long`;
+  await page.getByLabel("비밀번호", { exact: true }).fill(password);
+  await page.getByLabel("비밀번호 확인").fill(password);
   await page.getByLabel("방송 닉네임").fill(nickname);
 }
 
@@ -918,7 +919,7 @@ test("재가입 제한 중이면 문구 뒤에 다시 가입할 수 있는 날(K
   await fillAccount(page, "rj", "제한");
   await page.getByRole("button", { name: "가입하기" }).click();
   await okConfirm(page, "가입하기");
-  await expect(page.getByText("지금은 다시 가입할 수 없어요. 11월 3일부터 다시 가입할 수 있어요")).toBeVisible();
+  await expect(page.getByText("지금은 다시 가입할 수 없어요. 2026.11.03부터 다시 가입할 수 있어요")).toBeVisible();
 });
 
 // 문서 버전이 바뀐 경우(consent_outdated)는 화면의 글이 예전 것이라 새로고침하게 한다(위 「문서 바뀜」 테스트)

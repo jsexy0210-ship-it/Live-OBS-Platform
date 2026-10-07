@@ -15,8 +15,7 @@ import { useUnsavedGuard } from "../../lib/client/navigation";
 import { SmartBackButton } from "./SmartBackButton";
 import { cleanText } from "../../lib/server/text/clean";
 
-// SA-012 상품 등록 · SA-012-E 상품 수정. 지금 API가 받는 항목(상품명·설명·판매가·판매 상태·옵션)만 보여 준다.
-// 이미지·카테고리·이벤트 할인 등은 API가 생기면 붙인다.
+// SA-012 상품 등록 · SA-012-E 상품 수정.
 
 const NAME_MAX = 100;
 const DESC_MAX = 5000;
@@ -125,6 +124,12 @@ function errorFields(e: Errors): string {
 type FormImage = SlotImage & { server?: boolean; file?: File };
 // 짧은 설명(시안: 한 줄 0/80). 이미 저장된 긴 설명·여러 줄 설명은 그대로 보여 주고 저장을 막지 않는다
 const SHORT_DESC_MAX = 80;
+const kstInput = (value?: string) => {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : new Date(date.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 16);
+};
+const kstIso = (value: string) => `${value}:00+09:00`;
 
 export function ProductForm({ initial }: { initial?: Product }) {
   const router = useRouter();
@@ -133,6 +138,11 @@ export function ProductForm({ initial }: { initial?: Product }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [price, setPrice] = useState(initial ? String(initial.price) : "");
+  const [eventEnabled, setEventEnabled] = useState(!!initial?.event);
+  const [eventType, setEventType] = useState<"RATE" | "AMOUNT">(initial?.event?.type ?? "RATE");
+  const [eventValue, setEventValue] = useState(initial?.event ? String(initial.event.value) : "20");
+  const [eventStartsAt, setEventStartsAt] = useState(kstInput(initial?.event?.startsAt));
+  const [eventEndsAt, setEventEndsAt] = useState(kstInput(initial?.event?.endsAt));
   const [tagsText, setTagsText] = useState((initial?.searchTags ?? []).join(", "));
   // 카테고리: 칩으로 여러 개(대분류·하위 어느 쪽이든, 최대 10개). 지정은 상품을 만든 뒤(수정은 바뀌었을 때) 따로 저장한다
   const [cats, setCats] = useState<CategoryNode[] | null>(null);
@@ -237,6 +247,26 @@ export function ProductForm({ initial }: { initial?: Product }) {
   const detailError = detailLen > DETAIL_TEXT_MAX ? `상세 설명은 글자 ${DETAIL_TEXT_MAX.toLocaleString("ko-KR")}자까지 쓸 수 있습니다(지금 ${detailLen.toLocaleString("ko-KR")}자)` : null;
 
   const checkFirst = (st: ProductStatus) => {
+    if (eventEnabled) {
+      const value = parseAmount(eventValue);
+      const start = Date.parse(kstIso(eventStartsAt));
+      const end = Date.parse(kstIso(eventEndsAt));
+      const now = Date.now();
+      const eventError = !value || value < 1 || (eventType === "RATE" && value > 90)
+        ? "할인 값은 1 이상, 할인율은 90% 이하로 입력해 주십시오"
+        : !Number.isFinite(start) || !Number.isFinite(end) || end <= start || end <= now || end - start > 365 * 24 * 60 * 60 * 1000
+          ? "종료 시각은 시작 시각보다 뒤이며, 365일 이내의 미래로 설정해 주십시오"
+          : rows.some((row) => {
+              const delta = parseAmount(row.priceDelta);
+              return delta === null || priceNum === null || (eventType === "RATE" ? Math.floor((priceNum + delta) * (100 - value) / 100) < 1 : value * 100 > (priceNum + delta) * 90 || priceNum + delta - value < 1);
+            })
+            ? "할인 후 모든 옵션 가격이 1원 이상이고, 할인 금액은 각 옵션 가격의 90% 이하여야 합니다"
+            : null;
+      if (eventError) {
+        fail(eventError);
+        return false;
+      }
+    }
     if (tagError) {
       setShowErrors(true);
       fail(tagError);
@@ -370,6 +400,8 @@ export function ProductForm({ initial }: { initial?: Product }) {
       (description.trim() === "" ? null : description.trim()) !== (base.description ?? null) ||
       JSON.stringify(tags) !== JSON.stringify(base.searchTags ?? []) ||
       priceNum !== base.price ||
+      eventEnabled !== !!base.event ||
+      (eventEnabled && (eventType !== base.event?.type || parseAmount(eventValue) !== base.event?.value || Date.parse(kstIso(eventStartsAt)) !== Date.parse(base.event?.startsAt ?? "") || Date.parse(kstIso(eventEndsAt)) !== Date.parse(base.event?.endsAt ?? ""))) ||
       status !== base.status ||
       deduct !== base.stockDeductMode ||
       optionsChanged ||
@@ -381,6 +413,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
       description.trim() !== "" ||
       tags.length > 0 ||
       price.trim() !== "" ||
+      eventEnabled ||
       status !== "ON_SALE" ||
       deduct !== "PAYMENT" ||
       rows.length !== 1 ||
@@ -409,6 +442,11 @@ export function ProductForm({ initial }: { initial?: Product }) {
       },
     });
     if (!r.ok) return fail(failMessage(r, "admin", "상품을 등록하지 못했습니다. 입력한 내용은 그대로 있습니다"));
+    let eventFailed = false;
+    if (eventEnabled) {
+      const event = await api(`/api/seller/products/${r.data.id}/event`, { method: "PUT", body: { type: eventType, value: parseAmount(eventValue), startsAt: kstIso(eventStartsAt), endsAt: kstIso(eventEndsAt) } });
+      eventFailed = !event.ok;
+    }
     // 카테고리·이미지는 상품이 만들어진 뒤에 저장한다. 실패해도 상품은 이미 등록됐으므로 목록으로 보내고 알려 준다(다시 눌러 중복 등록하지 않게)
     let catFailed = false;
     if (categoryIds.length > 0) {
@@ -422,7 +460,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
     if (images.length > 0) imgFailed = !(await syncImages(r.data.id)).ok;
     if (!imgFailed && detailNow !== "") imgFailed = !(await syncDetail(r.data.id)).ok;
     setLeaving(true);
-    router.replace(`/seller/products?toast=${catFailed || imgFailed ? "created_partial" : st === "DRAFT" ? "draft" : "created"}`);
+    router.replace(`/seller/products?toast=${catFailed || imgFailed || eventFailed ? "created_partial" : st === "DRAFT" ? "draft" : "created"}`);
   };
 
   // 수정: 바뀐 것만 하나씩 보낸다. 한 단계가 실패하면 거기서 멈추고, 이미 저장된 단계는 기준값에 반영해 다시 보내지 않는다.
@@ -437,6 +475,13 @@ export function ProductForm({ initial }: { initial?: Product }) {
     // 판매가를 올리거나 판매 중이 아닌 상태로 바꾸는 것은 옵션보다 먼저(early), 판매가를 내리거나 판매 중으로 바꾸는 것은 옵션 뒤에(late) 보낸다.
     const early: Record<string, unknown> = {};
     const late: Record<string, unknown> = {};
+    const eventChanged = eventEnabled && (!current.event || eventType !== current.event.type || parseAmount(eventValue) !== current.event.value || Date.parse(kstIso(eventStartsAt)) !== Date.parse(current.event.startsAt) || Date.parse(kstIso(eventEndsAt)) !== Date.parse(current.event.endsAt));
+    if (current.event && (!eventEnabled || eventChanged)) {
+      const removedEvent = await api(`/api/seller/products/${current.id}/event`, { method: "DELETE" });
+      if (!removedEvent.ok) return fail(failMessage(removedEvent, "admin", "기존 이벤트 할인을 갱신하지 못했습니다"));
+      current = { ...current, event: null };
+      setBase(current);
+    }
     const desc = description.trim() === "" ? null : description.trim();
     if (name.trim() !== current.name) early.name = name.trim();
     if (desc !== (current.description ?? null)) early.description = desc;
@@ -529,6 +574,17 @@ export function ProductForm({ initial }: { initial?: Product }) {
     }
 
     if (!(await patchProduct(late))) return;
+    if (eventEnabled) {
+      if (eventChanged) {
+        const r = await api<{ event: NonNullable<Product["event"]> }>(`/api/seller/products/${current.id}/event`, { method: "PUT", body: { type: eventType, value: parseAmount(eventValue), startsAt: kstIso(eventStartsAt), endsAt: kstIso(eventEndsAt) } });
+        if (!r.ok) return fail(failMessage(r, "admin", "이벤트 할인을 저장하지 못했습니다"));
+        current = { ...current, event: r.data.event };
+      }
+    } else if (current.event) {
+      const r = await api(`/api/seller/products/${current.id}/event`, { method: "DELETE" });
+      if (!r.ok) return fail(failMessage(r, "admin", "이벤트 할인을 해제하지 못했습니다"));
+      current = { ...current, event: null };
+    }
     if (JSON.stringify(categoryIds) !== JSON.stringify(catBase)) {
       const c = await api(`/api/seller/products/${current.id}/categories`, {
         method: "PUT",
@@ -751,6 +807,32 @@ export function ProductForm({ initial }: { initial?: Product }) {
                   aria-invalid={!!shown.price}
                 />
                 {shown.price && <span className="err">{shown.price}</span>}
+              </div>
+            </FormRow>
+            <FormRow label="이벤트 할인" help="기간이 끝나면 자동으로 판매가로 돌아갑니다 · KST 기준">
+              <div className="col" style={{ gap: 10, width: "100%" }}>
+                <div className="seg" role="radiogroup" aria-label="이벤트 할인 사용">
+                  <button type="button" role="radio" aria-checked={eventEnabled} className={eventEnabled ? "on" : ""} onClick={() => setEventEnabled(true)}>사용</button>
+                  <button type="button" role="radio" aria-checked={!eventEnabled} className={!eventEnabled ? "on" : ""} onClick={() => setEventEnabled(false)}>사용 안 함</button>
+                </div>
+                {eventEnabled && <>
+                  <div className="seg" role="radiogroup" aria-label="할인 방식">
+                    <button type="button" role="radio" aria-checked={eventType === "RATE"} className={eventType === "RATE" ? "on" : ""} onClick={() => setEventType("RATE")}>할인율 (%)</button>
+                    <button type="button" role="radio" aria-checked={eventType === "AMOUNT"} className={eventType === "AMOUNT" ? "on" : ""} onClick={() => setEventType("AMOUNT")}>할인 금액 (원)</button>
+                  </div>
+                  <label className="fld">할인 값
+                    <input className="inp num" type="number" min={1} max={eventType === "RATE" ? 90 : 2147483647} value={eventValue} onChange={(e) => setEventValue(e.target.value)} style={{ maxWidth: 180 }} />
+                    <span className="help">{eventType === "RATE" ? "1~90%" : "원 · 옵션별 판매가의 90% 이내"}</span>
+                  </label>
+                  <label className="fld">적용 기간
+                    <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                      <input className="inp" aria-label="할인 시작 시각" type="datetime-local" value={eventStartsAt} onChange={(e) => setEventStartsAt(e.target.value)} />
+                      <span>~</span>
+                      <input className="inp" aria-label="할인 종료 시각" type="datetime-local" value={eventEndsAt} onChange={(e) => setEventEndsAt(e.target.value)} />
+                    </div>
+                  </label>
+                  {eventEnabled && priceNum && parseAmount(eventValue) && <span className="help">판매가 기준 미리보기: {won(eventType === "RATE" ? Math.floor(priceNum * (100 - parseAmount(eventValue)!) / 100) : priceNum - parseAmount(eventValue)!)}원</span>}
+                </>}
               </div>
             </FormRow>
             <FormRow

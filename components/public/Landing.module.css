@@ -1,0 +1,120 @@
+.mobileOnly {
+  display: none;
+}
+
+.desktopSample {
+  display: contents;
+}
+
+@media (min-width: 901px) and (max-width: 1100px) {
+  .heroTitle {
+    font-size: 40px;
+    line-height: 1.35;
+  }
+}
+
+@media (max-width: 760px) {
+  .desktopOnly,
+  .desktopSample {
+    display: none !important;
+  }
+
+  .mobileOnly {
+    display: flex;
+  }
+
+  .hero {
+    gap: 16px;
+    padding: 32px 20px 16px;
+  }
+
+  .heroTitle {
+    font-size: 20px;
+    line-height: 28px;
+  }
+
+  .mobileLead {
+    line-height: 1.6;
+  }
+
+  .mobileButtons {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .mobileButtons a {
+    width: 100%;
+  }
+
+  .mobileSample {
+    align-items: center;
+    padding: 8px 20px 32px;
+  }
+
+  .mobileSample :global(.pf-sample) {
+    width: 324px;
+    max-width: 100%;
+    height: 576px;
+  }
+
+  .mobileSample :global(.pf-sample .o-root) {
+    transform: scale(0.3);
+  }
+
+  .mobileSteps,
+  .mobileFeatures {
+    flex-direction: column;
+  }
+
+  .mobileSteps {
+    gap: 20px;
+    padding: 32px 20px;
+    background: var(--page);
+  }
+
+  .mobileStep {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .mobileStepNumber {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--brand);
+    color: var(--brand-ink);
+    font-weight: 800;
+  }
+
+  .mobileStep p,
+  .mobileFeature p {
+    margin: 0;
+    line-height: 1.6;
+  }
+
+  .mobileFeatures {
+    gap: 12px;
+    padding: 32px 20px;
+  }
+
+  .mobileFeature {
+    gap: 10px;
+  }
+
+  .pricing {
+    padding: 32px 20px;
+  }
+
+  .pricing :global(.pf-chks) {
+    display: none;
+  }
+
+  .pricing :global(.pf-price-card) {
+    width: 100%;
+    padding: 24px;
+  }
+}

@@ -3,6 +3,8 @@ import { writeAudit } from "../audit/log";
 import { orderNoLabel, parseOrderNoLabel } from "./orderNoLabel";
 import { notFound } from "../authz/errors";
 import { canViewCustomerPii, requireSellerRead, type TenantContext } from "../tenant/context";
+import { thumbnailUrls } from "../products/images";
+import { getImage } from "../storage";
 
 // 판매자 범위 조회의 기준 예시. where에는 항상 ctx.sellerId가 들어가고, 다른 판매자 주문은 없음(404)으로 처리한다.
 // 구매자 이름·연락처(·주소)는 CUSTOMER_PII_VIEW가 있을 때만 응답에 넣고, 넣었으면 열람 기록을 남긴다
@@ -10,6 +12,7 @@ import { canViewCustomerPii, requireSellerRead, type TenantContext } from "../te
 // 탈퇴 회원의 법정 보관으로 분리한 주문(legalHoldAt, buyers/legalHold.ts)은 일반 조회(상세·목록·검색)에서 없는 주문으로 다룬다.
 export async function getOrder(db: PrismaClient, ctx: TenantContext, orderId: string) {
   requireSellerRead(ctx, "ORDER_SHIPPING");
+  const pii = canViewCustomerPii(ctx);
   const order = await db.order.findFirst({
     where: { id: orderId, sellerId: ctx.sellerId, legalHoldAt: null },
     include: {
@@ -18,14 +21,72 @@ export async function getOrder(db: PrismaClient, ctx: TenantContext, orderId: st
       shipment: { select: { courier: true, trackingNumber: true, status: true, shippedAt: true, deliveredAt: true } },
       shippingAddress: { select: { recipientName: true, phone: true, zipCode: true, address1: true, address2: true, memo: true, isRemote: true } },
       buyerMember: { select: { id: true, broadcastNickname: true, name: true, phone: true } },
+      payments: {
+        where: { sellerId: ctx.sellerId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: { id: true, provider: true, method: true, status: true, amount: true, cancelledAmount: true, pgTid: true,
+          cardName: true, cardLast4: true, cardInstallment: true, approvedAt: true, cancelledAt: true, createdAt: true },
+      },
+      receiptRequests: {
+        where: { sellerId: ctx.sellerId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: { id: true, kind: true, createdAt: true, withdrawnAt: true, issues: {
+          where: { sellerId: ctx.sellerId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          select: { id: true, status: true, amount: true, issuedAt: true, cancelledAt: true, createdAt: true },
+        } },
+      },
+      consents: { where: { sellerId: ctx.sellerId }, select: { kind: true, noticeVersion: true, agreedAt: true }, orderBy: { agreedAt: "asc" } },
+      notifications: {
+        where: { sellerId: ctx.sellerId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: { id: true, kind: true, status: true, claimedAt: true, sentAt: true, createdAt: true, attempts: true },
+      },
+      queueItems: {
+        where: { sellerId: ctx.sellerId }, orderBy: [{ position: "asc" }, { receivedAt: "asc" }, { id: "asc" }],
+        select: { id: true, orderItemId: true, status: true, position: true, receivedAt: true,
+          openingStartedAt: true, doneAt: true, cancelledAt: true,
+          broadcastSession: { select: { id: true, title: true, status: true, startedAt: true } },
+          hitCards: { where: { sellerId: ctx.sellerId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+            select: { id: true, cardName: true, grade: true, createdAt: true, ...(pii ? { note: true } : {}) } },
+        },
+      },
     },
   });
   if (!order) throw notFound();
 
-  const { buyerMember, shippingAddress, ...orderRest } = order;
+  const { buyerMember, shippingAddress, queueItems, notifications, ...orderRest } = order;
+  const waitingIds = queueItems.filter((q) => q.status === "WAITING").map((q) => q.id);
+  const [images, aheadRows, mails] = await Promise.all([
+    thumbnailUrls(db, ctx.sellerId, [...new Set(order.items.map((i) => i.productId))]),
+    waitingIds.length ? db.$queryRaw<{ id: string; ahead: number }[]>`
+      SELECT q."id", (SELECT count(*)::int FROM "QueueItem" w
+        WHERE w."sellerId" = q."sellerId" AND w."status" = 'WAITING'
+          AND w."broadcastSessionId" IS NOT DISTINCT FROM q."broadcastSessionId"
+          AND (w."position", w."receivedAt", w."id") < (q."position", q."receivedAt", q."id")) AS "ahead"
+      FROM "QueueItem" q WHERE q."sellerId" = ${ctx.sellerId}::uuid AND q."orderId" = ${orderId}::uuid AND q."id" = ANY(${waitingIds}::uuid[])`
+      : Promise.resolve([]),
+    db.mailDelivery.findMany({
+      where: { sellerId: ctx.sellerId, OR: [
+        { kind: { in: ["order.pending_bank", "order.paid", "order.shipped", "order.delivered"] }, refId: orderId },
+        { kind: "order.refund", refId: { startsWith: `${orderId}:` } },
+      ] },
+      select: { id: true, kind: true, status: true, createdAt: true, finishedAt: true },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    }),
+  ]);
+  const ahead = new Map(aheadRows.map((q) => [q.id, q.ahead]));
+  const queueByItem = new Map(queueItems.map(({ orderItemId, hitCards, ...q }) => [orderItemId, {
+    ...q, aheadCount: q.status === "WAITING" ? ahead.get(q.id) ?? 0 : null,
+    waitingNumber: q.status === "WAITING" ? (ahead.get(q.id) ?? 0) + 1 : null,
+  }]));
   // 품목마다 보낼 수량(수량 − 부분 환불한 수량). 화면은 refundedQuantity로 「부분 환불 n개」를 보여 준다.
-  const rest = { ...orderRest, orderNoLabel: orderNoLabel(order.createdAt, order.orderNo), items: order.items.map((i) => ({ ...i, shipQuantity: i.quantity - i.refundedQuantity })) };
-  if (!canViewCustomerPii(ctx)) {
+  const rest = { ...orderRest, orderNoLabel: orderNoLabel(order.createdAt, order.orderNo),
+    items: order.items.map((i) => ({ ...i, shipQuantity: i.quantity - i.refundedQuantity,
+      imageUrl: images.has(i.productId) ? `/api/seller/orders/${order.id}/items/${i.id}/image` : null, queue: queueByItem.get(i.id) ?? null })),
+    hitCards: queueItems.flatMap((q) => q.hitCards.map((hit) => ({ ...hit, queueItemId: q.id }))).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id)),
+    notifications: [
+      ...notifications.map((n) => ({ ...n, source: "ORDER_NOTIFICATION" as const, channel: null })),
+      ...mails.map(({ finishedAt, ...m }) => ({ ...m, source: "MAIL_DELIVERY" as const, channel: "EMAIL" as const, sentAt: m.status === "SENT" ? finishedAt : null })),
+    ].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id)),
+  };
+  if (!pii) {
     // 배송지도 개인정보라 도서산간 여부(배송비 근거)만 남긴다
     return {
       ...rest,
@@ -42,6 +103,22 @@ export async function getOrder(db: PrismaClient, ctx: TenantContext, orderId: st
     targetId: order.id,
   });
   return { ...rest, shippingAddress, buyer: buyerMember };
+}
+
+// 주문 처리 담당자가 주문 소속 상품 사진만 읽는다. 상품 관리·공개 쇼핑몰 권한으로 우회하지 않는다.
+export async function getOrderItemImage(db: PrismaClient, ctx: TenantContext, orderId: string, itemId: string) {
+  requireSellerRead(ctx, "ORDER_SHIPPING");
+  const item = await db.orderItem.findFirst({
+    where: { id: itemId, orderId, sellerId: ctx.sellerId, order: { legalHoldAt: null }, product: { deletedAt: null } },
+    select: { productId: true },
+  });
+  if (!item) throw notFound();
+  const image = await db.productImage.findFirst({
+    where: { sellerId: ctx.sellerId, productId: item.productId, kind: "GALLERY" },
+    orderBy: [{ thumbnail: "desc" }, { sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+    select: { storageKey: true },
+  });
+  return image ? getImage(db, image.storageKey, ctx.sellerId) : null;
 }
 
 export async function listOrders(

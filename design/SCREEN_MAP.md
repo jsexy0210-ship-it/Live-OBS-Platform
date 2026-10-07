@@ -14,21 +14,23 @@
 
 ## 집계
 
-| 영역 | IA 화면 수 |
+화면 지도 등록 행 기준이며 GROUP·SUPERSEDED를 포함한다. 완료율 분모는 아래 상태 집계의 FINAL만 사용한다.
+
+| 영역 | SCREEN_MAP 등록 수 |
 |---|---|
 | AU | 12 |
-| PF | 10 |
-| MA | 49 |
+| PF | 14 |
+| MA | 50 |
 | SA | 78 |
-| SH | 29 |
+| SH | 33 |
 | OV | 8 |
 | EM | 6 |
 | OG | 2 |
-| 합계 | 193 |
+| 합계 | 203 |
 
 | 상태 | 수 |
 |---|---|
-| FINAL | 182 |
+| FINAL | 187 |
 | DRAFT | 0 |
 | BLOCKED | 0 |
 | GROUP | 14 |
@@ -61,7 +63,7 @@
 | PF-001 | 서비스 소개(랜딩) | /about | design/project/PF-001.dc.html | PF-001.dc.html | FINAL | v329 (1791265128-d8ae) | 2026-10-06 14:38 KST | v329: 조사 「방송 화면를」 → 「방송 화면을」(검수 요청 #899) · FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) · 결제 구조 문구 「ONQ 결제 연결로 한 번에」(플랫폼 결제대행사 키 하나 결정, 2026-10-05) · 방송 화면 · 인기 카드 용어 |
 | PF-002 | 기능 안내 | /features | design/project/PF-002.dc.html | PF-002.dc.html | FINAL | v329 (1791265128-d8ae) | 2026-10-06 14:38 KST | v329: 「운영팀 평균 첫 답변 4시간」 삭제(근거 없는 약속 수치, MASTER 승인 2026-10-06) · FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) |
 | PF-003 | 요금 안내 | /pricing | design/project/PF-003.dc.html | PF-003.dc.html | FINAL | v331 (1791266519-9c85) | 2026-10-06 15:01 KST | v331: 「요금 · 결제 질문」 접힌 3항(결제 실패 · 해지 데이터 · 요금 변경)을 펼쳐 답변 본문 추가(docs/PRODUCT_SCOPE.md:32-34 · :221 결정 기준, #928 요청) · 높이 1900 → 2120 · FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) · 방송 화면 용어(「오버레이 전용」 이용권명 유지) |
-| PF-004 | 자주 묻는 질문 | /faq | design/project/PF-004.dc.html | PF-004.dc.html | FINAL | v329 (1791265128-d8ae) | 2026-10-06 14:38 KST | v329: 조사 「방송 화면가」 → 「방송 화면이」(검수 요청 #899) · FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) |
+| PF-004 | 자주 묻는 질문 | /faq | design/project/PF-004.dc.html | PF-004.dc.html | FINAL | v329 (1791265128-d8ae) | 2026-10-07 06:26 KST | v329: 조사 「방송 화면가」 → 「방송 화면이」(검수 요청 #899) · FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) · 가입 FAQ를 정책/실행 분기에 맞춤(2영업일 제거, 캔버스 버전 갱신 없음) |
 | PF-005 | 공지사항 목록 | /notices | design/project/PF-005.dc.html | PF-005.dc.html | FINAL | v297 (1791239220-fcb0) | 2026-10-06 07:27 KST | FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) |
 | PF-006 | 공지 상세 | /notices/[noticeId] | design/project/PF-006.dc.html | PF-006.dc.html | FINAL | v297 (1791239220-fcb0) | 2026-10-06 07:27 KST | FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) · 작성자 「ONQ 운영팀」 |
 | PF-007 | 판매자 가입 신청 | /seller/signup | design/project/PF-007-2.dc.html | PF-007-2.dc.html | FINAL | v297 (1791239220-fcb0) | 2026-10-06 07:27 KST | FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) |
@@ -266,19 +268,19 @@
 
 | ID | 화면 | Product Route | Design Source | Entry | Status | Artifact Version | 마지막 동기화(KST) | 비고 |
 |---|---|---|---|---|---|---|---|---|
-| EM-001 | 메일 · 주문 완료 | (메일) | design/project/EM-001.dc.html | EM-001.dc.html | FINAL | v321 (1791251122-229f) | 2026-10-06 10:55 KST | v321 FINAL(묶음 3) 전용 기준 확인(공통 틀 밖, MASTER 결정 ①+②): 메일 600px · 해요체 · 버튼 44 이상 · 주문일 「2026.10.02 20:41」 연월일. 메일 템플릿 구현 없음(디자인만 확정). 이전 비고: 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 |
-| EM-002 | 메일 · 발송 | (메일) | design/project/EM-002.dc.html | EM-002.dc.html | FINAL | v321 (1791251122-229f) | 2026-10-06 10:55 KST | v321 FINAL(묶음 3) 전용 기준 확인(공통 틀 밖, MASTER 결정 ①+②): 메일 600px · 해요체 · 날짜 「2026.10.05」 연월일. 구현 없음(디자인만 확정). 이전 비고: 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 |
-| EM-003 | 메일 · 배송 완료 | (메일) | design/project/EM-003.dc.html | EM-003.dc.html | FINAL | v321 (1791251122-229f) | 2026-10-06 10:55 KST | v321 FINAL(묶음 3) 전용 기준 확인(공통 틀 밖, MASTER 결정 ①+②): 메일 600px · 해요체 · 「2026.10.02 방송」 연월일. 구현 없음(디자인만 확정). 이전 비고: 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 |
-| EM-004 | 메일 · 취소·환불 | (메일) | design/project/EM-004.dc.html | EM-004.dc.html | FINAL | v321 (1791251122-229f) | 2026-10-06 10:55 KST | v321 FINAL(묶음 3) 전용 기준 확인(공통 틀 밖, MASTER 결정 ①+②): 메일 600px · 해요체 · 「2026.10.02 20:41」 연월일. 구현 없음(디자인만 확정). 이전 비고: 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 |
-| EM-101 | 메일 · 가입 승인 | (메일) | design/project/EM-101.dc.html | EM-101.dc.html | FINAL | v321 (1791251122-229f) | 2026-10-06 10:55 KST | v321 FINAL(묶음 3) 전용 기준 확인(공통 틀 밖, MASTER 결정 ①+②): 메일 600px · 해요체 · 「2026.10.09까지」 연월일 · 「오버레이 주소」→「방송 화면 주소」 2곳. 구현 없음(디자인만 확정, 가입 보완 메일만 구현). 이전 비고: 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 |
-| EM-102 | 메일 · 가입 반려 | (메일) | design/project/EM-102.dc.html | EM-102.dc.html | FINAL | v321 (1791251122-229f) | 2026-10-06 10:55 KST | v321 FINAL(묶음 3) 전용 기준 확인(공통 틀 밖, MASTER 결정 ①+②): 메일 600px · 해요체. 변경 없음. 구현 없음(디자인만 확정). 이전 비고: 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 |
+| EM-001 | 메일 · 주문 완료 | (메일) | design/project/EM-001.dc.html | EM-001.dc.html | FINAL | v321 (1791251122-229f) | 2026-10-06 10:55 KST | v321 FINAL 전용 기준: 600px · 해요체 · 버튼 44 이상 · 주문일 「2026.10.02 20:41」. 구현 `shopMails.orderCompletedMail` · 카드/무통장 상태 및 샘플 검증 `tests/unit/mailTemplates.test.ts`. |
+| EM-002 | 메일 · 발송 | (메일) | design/project/EM-002.dc.html | EM-002.dc.html | FINAL | v321 (1791251122-229f) | 2026-10-06 10:55 KST | v321 FINAL 전용 기준: 600px · 해요체 · 발송일 「2026.10.05」. 구현 `shopMails.shippedMail` · 배송 조회/도서지역 상태 및 샘플 검증 `tests/unit/mailTemplates.test.ts`. |
+| EM-003 | 메일 · 배송 완료 | (메일) | design/project/EM-003.dc.html | EM-003.dc.html | FINAL | v321 (1791251122-229f) | 2026-10-06 10:55 KST | v321 FINAL 전용 기준: 600px · 해요체 · 방송일 「2026.10.02」. 구현 `shopMails.deliveredMail` · 방송 결과/HIT/적립금 변형 및 샘플 검증 `tests/unit/mailTemplates.test.ts`. |
+| EM-004 | 메일 · 취소·환불 | (메일) | design/project/EM-004.dc.html | EM-004.dc.html | FINAL | v321 (1791251122-229f) | 2026-10-06 10:55 KST | v321 FINAL 전용 기준: 600px · 해요체 · 주문일 「2026.10.02 20:41」. 구현 `shopMails.cancelledMail` · 전체/부분/무통장/판매자 취소 변형 및 샘플 검증 `tests/unit/mailTemplates.test.ts`. |
+| EM-101 | 메일 · 가입 승인 | (메일) | design/project/EM-101.dc.html | EM-101.dc.html | FINAL | v321 (1791251122-229f) | 2026-10-06 10:55 KST | v321 FINAL 전용 기준: 600px · 해요체 · 체험 종료일 「2026.10.09」 · 방송 화면 주소. 구현 `partnerMails.partnerApprovedMail` · 체험/통합 요금제 변형 및 샘플 검증 `tests/unit/mailTemplates.test.ts`. |
+| EM-102 | 메일 · 가입 반려 | (메일) | design/project/EM-102.dc.html | EM-102.dc.html | FINAL | v321 (1791251122-229f) | 2026-10-06 10:55 KST | v321 FINAL 전용 기준: 600px · 해요체. 구현 `partnerMails.partnerRejectedMail` · 반려/보완 요청 변형 및 샘플 검증 `tests/unit/mailTemplates.test.ts`. |
 
 ## OG 공유 카드
 
 | ID | 화면 | Product Route | Design Source | Entry | Status | Artifact Version | 마지막 동기화(KST) | 비고 |
 |---|---|---|---|---|---|---|---|---|
-| OG-001 | 공유 카드 · 마스터 관리자 | (공유 카드 이미지) | design/project/OG-001.dc.html | OG-001.dc.html | FINAL | v321 (1791251122-229f) | 2026-10-06 10:55 KST | v321 FINAL(묶음 3) 전용 기준 확인(공통 틀 밖, MASTER 결정 ①+②): 1200×630 · 원티드 산스 · 마스터 관리자 공유 카드. 변경 없음. 구현 app/api/admin/branding/[target]/og-image. 이전 비고: 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 |
-| OG-002 | 공유 카드 · 파트너스 관리자 | (공유 카드 이미지) | design/project/OG-002.dc.html | OG-002.dc.html | FINAL | v321 (1791251122-229f) | 2026-10-06 10:55 KST | v321 FINAL(묶음 3) 전용 기준 확인(공통 틀 밖, MASTER 결정 ①+②): 1200×630 · 파트너스 관리자 공유 카드. 변경 없음. 이전 비고: 공통 틀 밖(오버레이 · 메일 · 공유 카드 등) · 전용 기준으로 확인 전 |
+| OG-001 | 공유 카드 · 마스터 관리자 | (공유 카드 이미지) | design/project/OG-001.dc.html | OG-001.dc.html | FINAL | v321 (1791251122-229f) | 2026-10-06 10:55 KST | v321 FINAL: 1200×630 · Wanted Sans · 틸 그라데이션 · Q 심볼 · 마스터 관리자 제목 · 부제 · 플랫폼 주소 · OnAirCue. 생성 `app/api/branding/admin/og` 및 저장 전 미리보기 `card-preview?target=admin`; 업로드 PNG는 기존 `og-image` 경로 사용. |
+| OG-002 | 공유 카드 · 파트너스 관리자 | (공유 카드 이미지) | design/project/OG-002.dc.html | OG-002.dc.html | FINAL | v321 (1791251122-229f) | 2026-10-06 10:55 KST | v321 FINAL: 1200×630 · Wanted Sans · 보라 그라데이션 · Q 심볼 · 파트너스 관리자 제목 · 부제 · 플랫폼 주소 · OnAirCue. 생성 `app/api/branding/seller/og` 및 저장 전 미리보기 `card-preview?target=seller`; 업로드 PNG는 기존 `og-image` 경로 사용. |
 
 ## IA 밖 보드 · 공통 시스템 보드
 

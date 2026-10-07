@@ -59,7 +59,7 @@
 .pf-foot-top{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap}
 .pf-foot-brand{display:flex;flex-direction:column;gap:8px}
 .pf-foot-links{display:flex;gap:24px;flex-wrap:wrap;font-size:13px}
-.pf-foot-links a{color:inherit}
+.pf-foot-links a{color:inherit;text-decoration:underline}
 @media (max-width:900px){
   .pf-head{padding:0 16px;height:56px}
   .pf-nav{display:none}
@@ -107,6 +107,8 @@ body:has(.pf){margin:0}
 .pf-notice-row{display:flex;align-items:center;justify-content:space-between;gap:var(--ui-sp-16);padding:18px 4px;text-decoration:none;box-shadow:inset 0 -1px 0 var(--wds-line-normal-alternative);color:inherit}
 .pf-notice-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pf-notice-body{white-space:pre-wrap;line-height:1.8}
+.pf-notice-neighbors{min-width:0;gap:var(--ui-sp-16)}
+.pf-notice-neighbors>a{min-width:0;overflow-wrap:anywhere}
 @media (max-width:600px){.pf-notice-row{flex-wrap:wrap}.pf-notice-l{flex-wrap:wrap}.pf-notice-title{flex-basis:100%;white-space:normal}}
 
 /* 파트너스 가입 신청 PF-007: 페이지 배경 + 가운데 단(640/760) + 진행 표시 + 카드 밖 제목(h2) */

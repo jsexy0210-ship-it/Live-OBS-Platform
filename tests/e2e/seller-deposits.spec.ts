@@ -42,10 +42,27 @@ test("대표자: 메뉴에서 입금 확인을 열고, 단건 확인 뒤 일괄 
   await expect(page).toHaveURL(/\/seller\/orders\/deposits$/);
   await expect(page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "입금 확인", exact: true })).toHaveAttribute("href", "/seller/orders/deposits");
   for (const n of DEPOSIT_NICKNAMES.slice(0, 2)) await expect(row(page, n)).toHaveCount(1);
-  // 기한이 2000년이라 지남으로 보이고, 입금자명은 대표자 개인정보 열람으로 열려 있다
+  // 기한이 지난 주문도 입금 확인할 수 있으며, legacy 구매자 실명은 실제 입금자명으로 표시하지 않는다.
   await expect(row(page, DEPOSIT_NICKNAMES[0])).toContainText("기한 지남");
-  await expect(page.locator("thead").getByText("입금자명", { exact: true })).toBeVisible();
-  if (SHOTS) await page.screenshot({ path: "tests/e2e/screenshots/SA-026-deposits-1440.png", fullPage: true });
+  await expect(page.locator("thead").getByText("입금자 확인", { exact: true })).toBeVisible();
+  await expect(row(page, DEPOSIT_NICKNAMES[0])).toContainText("실제 입금자명 미수집");
+  const legacyBuyerName = await page.evaluate(async () => {
+    const r = await fetch("/api/seller/payments/deposits?limit=1");
+    const data = await r.json();
+    return data.deposits[0]?.buyerName as string | undefined;
+  });
+  if (legacyBuyerName) await expect(row(page, DEPOSIT_NICKNAMES[0])).not.toContainText(legacyBuyerName);
+  await expect(page.getByRole("option", { name: "입금자명" })).toBeDisabled();
+  await expect(page.getByText("실제 입금자명을 수집하지 않아 검색할 수 없습니다")).toBeVisible();
+  if (SHOTS) {
+    for (const width of [1440, 1024, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.waitForTimeout(150);
+      await page.screenshot({ path: `tests/e2e/screenshots/SA-026-deposits-${width}.png`, fullPage: true });
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+  }
 
   // 목록 개수 문구가 서버 total과 같다
   const total = await page.evaluate(async () => (await (await fetch("/api/seller/payments/deposits?limit=1")).json()).total);
