@@ -76,6 +76,8 @@ describe("바꾸기", () => {
     expect(r.body.changed.channels.sort()).toEqual(["EMAIL", "EXTERNAL_MONITOR", "SLACK", "SMS"]);
     const by = Object.fromEntries(r.body.settings.channels.map((x: { channel: string }) => [x.channel, x]));
     expect(by.EMAIL).toMatchObject({ status: "CONNECTED", target: "ops@onq.example" });
+    const latestChannel = await db.adminNotificationChannel.findFirstOrThrow({ orderBy: { updatedAt: "desc" } });
+    expect(r.body.settings.updatedAt).toBe(latestChannel.updatedAt.toISOString());
     expect(by.SLACK).toMatchObject({ status: "NOT_CONNECTED", target: "#ops-alerts" });
     expect(by.SMS.status).toBe("NOT_CONNECTED");
     expect(by.EXTERNAL_MONITOR.target).toBe("https://mon.example.com/hook");
@@ -141,6 +143,8 @@ describe("테스트 보내기", () => {
     expect(sender.sent[0].to).toBe("ops@onq.example");
     const email = r.body.settings.channels.find((x: { channel: string }) => x.channel === "EMAIL");
     expect(email.lastSentAt).toBeTruthy();
+    expect(r.body.settings.senderProfiles.usage.email).toBe(1);
+    expect(await db.mailDelivery.findFirstOrThrow({ where: { kind: "admin_notification_test" } })).toMatchObject({ sellerId: null, status: "SENT", charged: false });
     // 채널을 골라 보내기, 모르는 채널은 400
     expect((await test(c, { channels: ["SLACK"] })).body.results).toEqual([{ channel: "SLACK", status: "NOT_CONNECTED" }]);
     expect((await test(c, { channels: ["FAX"] })).status).toBe(400);
@@ -157,11 +161,34 @@ describe("테스트 보내기", () => {
     try {
       const r = await test(c, { channels: ["EMAIL"] });
       expect(r.body.results).toEqual([{ channel: "EMAIL", status: "FAILED" }]);
+      expect(r.body.settings.channels.find((x: { channel: string }) => x.channel === "EMAIL")).toMatchObject({ status: "ERROR", lastError: "send_failed", lastSentAt: null });
+      expect(r.body.settings.senderProfiles.usage.email).toBe(0);
+      expect(await db.mailDelivery.findFirstOrThrow({ where: { kind: "admin_notification_test" } })).toMatchObject({ status: "FAILED" });
       expect(await db.adminNotificationChannel.findUniqueOrThrow({ where: { channel: "EMAIL" } })).toMatchObject({ lastError: "send_failed" });
     } finally {
       sender.send = orig;
     }
+    const retried = await test(c, { channels: ["EMAIL"] });
+    expect(retried.body.results).toEqual([{ channel: "EMAIL", status: "SENT" }]);
+    expect(retried.body.settings.channels.find((x: { channel: string }) => x.channel === "EMAIL")).toMatchObject({ status: "CONNECTED", lastError: null });
+    expect(retried.body.settings.senderProfiles.usage.email).toBe(1);
     await put(c, { channels: { EMAIL: { target: "ops2@onq.example" } } });
     expect((await db.adminNotificationChannel.findUniqueOrThrow({ where: { channel: "EMAIL" } })).lastError).toBeNull();
+  });
+
+  it.each(["platformDailyLimit", "platformMonthlyLimit"] as const)("%s를 다 쓰면 공급자를 호출하지 않고 실패·미발송 기록을 남긴다", async (limit) => {
+    const c = await admin();
+    await put(c, { channels: { EMAIL: { target: "ops@onq.example" } } });
+    await db.platformMessageSetting.update({ where: { id: 1 }, data: { [limit]: 1 } });
+    const sender = mailSender() as FakeMailSender;
+    sender.sent.length = 0;
+    expect((await test(c, { channels: ["EMAIL"] })).body.results).toEqual([{ channel: "EMAIL", status: "SENT" }]);
+    const sentAt = (await db.adminNotificationChannel.findUniqueOrThrow({ where: { channel: "EMAIL" } })).lastSentAt;
+    const capped = await test(c, { channels: ["EMAIL"] });
+    expect(capped.body.results).toEqual([{ channel: "EMAIL", status: "FAILED" }]);
+    expect(capped.body.settings.channels.find((x: { channel: string }) => x.channel === "EMAIL")).toMatchObject({ status: "ERROR", lastError: "platform_limit", lastSentAt: sentAt!.toISOString() });
+    expect(capped.body.settings.senderProfiles.usage.email).toBe(1);
+    expect(sender.sent).toHaveLength(1);
+    expect(await db.mailDelivery.count({ where: { kind: "admin_notification_test", status: "SKIPPED_PLATFORM_LIMIT" } })).toBe(1);
   });
 });

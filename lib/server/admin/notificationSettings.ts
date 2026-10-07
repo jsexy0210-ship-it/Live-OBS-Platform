@@ -4,6 +4,7 @@ import type { AdminSessionContext } from "../auth/session";
 import { forbidden } from "../authz/errors";
 import { adminCan } from "../authz/permissions";
 import { mailSender } from "../mail/registry";
+import { sendMail } from "../mail/quota";
 import { cleanText } from "../text/clean";
 
 // 마스터 관리자 알림 채널 설정(MA-082): 운영팀 수신 채널 4종(슬랙·이메일·문자·외부 모니터링)과 이벤트별 라우팅 10행, 파트너스 발신 프로필 읽기.
@@ -79,7 +80,7 @@ function channelView(c: AdminNotifyChannel, row: ChannelRow | undefined) {
     target,
     minSeverity: row?.minSeverity ?? CHANNEL_DEFAULT[c].minSeverity,
     includeNight: row?.includeNight ?? CHANNEL_DEFAULT[c].includeNight,
-    status: connected ? ("CONNECTED" as const) : row?.lastError ? ("ERROR" as const) : ("NOT_CONNECTED" as const),
+    status: row?.lastError ? ("ERROR" as const) : connected ? ("CONNECTED" as const) : ("NOT_CONNECTED" as const),
     lastSentAt: row?.lastSentAt ?? null,
     lastError: row?.lastError ?? null,
   };
@@ -120,7 +121,7 @@ export async function readNotificationSettings(db: PrismaClient, admin: AdminSes
       email: { address: emailFrom, status: emailFrom && mailSender() ? ("CONNECTED" as const) : ("NOT_CONNECTED" as const) },
       usage,
     },
-    updatedAt: [...rows.map((r) => r.lastSentAt), ...routes.map((r) => r.updatedAt)].filter((d): d is Date => !!d).sort((a, b) => b.getTime() - a.getTime())[0] ?? null,
+    updatedAt: [...rows.map((r) => r.updatedAt), ...routes.map((r) => r.updatedAt)].filter((d): d is Date => !!d).sort((a, b) => b.getTime() - a.getTime())[0] ?? null,
   };
 }
 
@@ -253,16 +254,22 @@ export async function sendNotificationTest(db: PrismaClient, admin: AdminSession
   const results: TestResult[] = [];
   for (const c of wanted) {
     const view = channelView(c, rows.find((r) => r.channel === c));
-    if (view.status !== "CONNECTED") {
+    const sender = c === "EMAIL" && EMAIL.test(view.target) ? mailSender() : null;
+    if (!sender) {
       results.push({ channel: c, status: "NOT_CONNECTED" });
       continue;
     }
-    const sender = mailSender();
     try {
-      await sender!.send(
-        { to: view.target, subject: "[ONQ] 알림 채널 테스트", html: "<p>마스터 관리자 알림 채널 테스트입니다. 이 메일을 받으셨다면 이메일 채널이 정상입니다.</p>", text: "마스터 관리자 알림 채널 테스트입니다. 이 메일을 받으셨다면 이메일 채널이 정상입니다." },
-        { idempotencyKey: `admin-notify-test:${admin.admin.id}:${Date.now()}` },
-      );
+      const sent = await sendMail(db, sender, {
+        sellerId: null,
+        kind: "admin_notification_test",
+        message: { to: view.target, subject: "[ONQ] 알림 채널 테스트", html: "<p>마스터 관리자 알림 채널 테스트입니다. 이 메일을 받으셨다면 이메일 채널이 정상입니다.</p>", text: "마스터 관리자 알림 채널 테스트입니다. 이 메일을 받으셨다면 이메일 채널이 정상입니다." },
+      });
+      if (sent.status !== "SENT") {
+        await db.adminNotificationChannel.update({ where: { channel: c }, data: { lastError: sent.status === "SKIPPED_PLATFORM_LIMIT" ? "platform_limit" : "send_failed" } });
+        results.push({ channel: c, status: "FAILED" });
+        continue;
+      }
       await db.adminNotificationChannel.update({ where: { channel: c }, data: { lastSentAt: new Date(), lastError: null } });
       results.push({ channel: c, status: "SENT" });
     } catch {
