@@ -1118,7 +1118,7 @@ body {
 }
 .cs-wrap {
   display: grid;
-  grid-template-columns: 200px minmax(0, 1fr);
+  grid-template-columns: 196px minmax(0, 1fr);
   min-height: calc(100vh - 48px - var(--imp-h));
 }
 .lnb {
@@ -1256,10 +1256,10 @@ body {
   margin: 12px 24px 0;
 }
 
-/* 본문: 관리자 본문 좌우 24px, 섹션 간격 24px, 화면 제목 20px/28px(2026-10-05 시각 규격) */
+/* 본문: 정본 공통 틀의 상단 16px·좌우 24px, 섹션 간격 24px, 화면 제목 20px/28px */
 :where(.seller-app) .main {
   gap: var(--ui-gap-section);
-  padding: var(--ui-sp-24) var(--ui-gutter) var(--ui-sp-32);
+  padding: var(--ui-sp-16) var(--ui-gutter) var(--ui-sp-32);
 }
 :where(.seller-app) .ph {
   align-items: center;
