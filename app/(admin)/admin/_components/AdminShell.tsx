@@ -12,6 +12,8 @@ import { itemAllowed, routeNav, visibleAdminMenu } from "./menu";
 import { useEllipsisTitle } from "../../../../components/admin-ui/useEllipsisTitle";
 import { NoPermission } from "../../../../components/seller/States";
 import { useTableCards } from "../../../../components/admin-ui/useTableCards";
+import { MaintenanceBanner } from "../../../../components/public/MaintenanceBanner";
+import maintenanceStyles from "../../../../components/public/MaintenanceBanner.module.css";
 
 // 마스터 관리자 공통 틀(업무용 관리 화면 틀, 대표님 지시 2026-10-04): 상단 청록 GNB(대분류) + 왼쪽 LNB(고른 대분류의 하위 메뉴) + 본문.
 // 파트너스 관리자 틀(.cs·.gnb·.lnb·.loc-bar)을 그대로 쓰고 색만 admin.css에서 마스터 청록으로 바꾼다. 좁은 화면에서는 GNB가 햄버거로 접히고 LNB가 서랍(전체 메뉴)으로 열린다.
@@ -120,7 +122,7 @@ function AdminShellContent({ children }: { children: React.ReactNode }) {
     <Ctx.Provider value={{ me, openNav: () => setNavOpen(true), loc }}>
       <ShellNavProvider value={shellNav}>
       <ConfirmProvider>
-      <div className={`cs${navOpen ? " nav-open" : ""}`}>
+      <div className={`cs ${maintenanceStyles.shell}${navOpen ? " nav-open" : ""}`}>
         <header className="gnb">
           <button className="gnb-menu" type="button" aria-label="메뉴 열기" onClick={() => setNavOpen(true)}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
@@ -148,6 +150,7 @@ function AdminShellContent({ children }: { children: React.ReactNode }) {
             <span className="util-desk">{utilities}</span>
           </div>
         </header>
+        <MaintenanceBanner scope="admin" canManage={me.role === "SUPER_ADMIN"} />
         {logoutError && (
           <div className="msg msg-neg logout-err" role="alert">
             로그아웃하지 못했습니다. 다시 시도해 주십시오.

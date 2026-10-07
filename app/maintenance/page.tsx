@@ -29,6 +29,7 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
             <>
               <div className={styles.heading}>
                 <h1 className="t-h2">{c.title}</h1>
+                {m?.reason && <p className="t-b1">{m.reason}</p>}
                 <p className="t-b1" data-testid="maintenance-message">
                   {m?.message || c.fallback}
                 </p>

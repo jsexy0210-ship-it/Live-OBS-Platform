@@ -7,7 +7,7 @@ import { kstDayStart } from "../orders/read";
 import { INT4_MAX } from "../orders/shipping";
 import { cleanText } from "../text/clean";
 import { parseSearchTags } from "../shop-search/service";
-import { eventFits, eventOf, eventView } from "./event";
+import { eventFits, eventOf, eventView, MAX_EVENT_RATE, parseEvent, type EventFailure } from "./event";
 import { listProductImages, thumbnailUrls } from "./images";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 
@@ -29,6 +29,7 @@ export const PRODUCT_STATUSES: readonly ProductStatus[] = ["DRAFT", "ON_SALE", "
 export const MAX_OPTIONS_PER_PRODUCT = 100;
 
 export type ProductFailure =
+  | EventFailure
   | "invalid_product"
   | "product_name_too_long"
   | "invalid_option"
@@ -476,6 +477,8 @@ export async function updateProduct(
   const expectedStatus = b.expectedStatus;
   if (expectedPrice !== undefined && !isInt(expectedPrice, 1, INT4_MAX)) return fail("invalid_price");
   if (expectedStatus !== undefined && !PRODUCT_STATUSES.includes(expectedStatus as ProductStatus)) return fail("invalid_product");
+  // 가격과 할인을 함께 바꿀 때만 쓴다. 두 값을 별도 요청으로 저장하면 충돌·실패 사이에 기존 할인이 사라질 수 있다.
+  if (b.event !== undefined && (b.price === undefined || expectedPrice === undefined)) return fail("invalid_product");
 
   return db.$transaction(async (tx) => {
     const before = await lockProduct(tx, ctx.sellerId, productId);
@@ -484,8 +487,15 @@ export async function updateProduct(
     const options = await liveOptions(tx, ctx.sellerId, productId);
     const price = (data.price as number | undefined) ?? before.price;
     if (options.some((o) => !unitOk(price, o.priceDelta))) return fail("invalid_price");
+    const now = await dbClock(tx);
+    const event = b.event === undefined ? eventOf(before) : b.event === null ? null : parseEvent(b.event, now);
+    if (typeof event === "string") return fail(event);
+    if (b.event !== undefined) {
+      if (event?.type === "AMOUNT" && event.value * 100 > price * MAX_EVENT_RATE) return fail("invalid_event");
+      Object.assign(data, { eventDiscountType: event?.type ?? null, eventDiscountValue: event?.value ?? null, eventStartsAt: event?.startsAt ?? null, eventEndsAt: event?.endsAt ?? null });
+    }
     // 이벤트 할인이 걸려 있으면 바뀐 가격에서도 할인 뒤 단가가 1원 이상이어야 한다
-    if (!eventFits(eventOf(before), price, [0, ...options.map((o) => o.priceDelta)], await dbClock(tx))) return fail("event_price_too_low");
+    if (!eventFits(event, price, [0, ...options.map((o) => o.priceDelta)], now)) return fail("event_price_too_low");
     if ((data.status ?? before.status) === "ON_SALE" && options.length === 0) return fail("no_sellable_option");
     await tx.product.update({ where: { id: productId }, data });
     await writeAudit(tx, {
@@ -498,6 +508,9 @@ export async function updateProduct(
       before: { price: before.price, status: before.status },
       after: data,
     });
+    if (b.event !== undefined) {
+      await writeAudit(tx, { actorType: ctx.actorType, actorId: ctx.actorId, sellerId: ctx.sellerId, action: event ? "product.event_set" : "product.event_clear", targetType: "Product", targetId: productId, before: eventOf(before), ...(event ? { after: event } : {}) });
+    }
     return { ok: true as const, value: await productView(tx, ctx.sellerId, productId) };
   });
 }

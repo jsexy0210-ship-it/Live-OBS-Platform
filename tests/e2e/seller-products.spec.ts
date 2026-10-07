@@ -53,6 +53,126 @@ async function login(page: Page, email = OWNER) {
   await expect(page).toHaveURL(/\/seller\/products$/);
 }
 
+for (const surface of ["수정 화면", "목록 빠른 변경"] as const) {
+  test(`상품 판매가 ${surface}: 오래된 값은 덮어쓰지 않고 재조회 후 다시 저장한다`, async ({ page }) => {
+    await login(page);
+    const name = track(`가격충돌 ${surface} ${stamp}`);
+    const product = await page.evaluate(async name => {
+      const r = await fetch("/api/seller/products", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, price: 1000, status: "ON_SALE", options: [{ name: "기본", stock: 10 }] }) });
+      if (!r.ok) throw new Error(`상품 fixture 생성 실패: ${r.status}`);
+      return await r.json() as { id: string };
+    }, name);
+    const isForm = surface === "수정 화면";
+    await page.goto(isForm ? `/seller/products/${product.id}` : `/seller/products?q=${encodeURIComponent(name)}`);
+    const row = page.getByTestId("product-row").filter({ hasText: name });
+    const input = isForm ? page.getByLabel("판매가") : row.getByRole("textbox", { name: /가격$/ });
+    if (!isForm) await row.getByRole("button", { name: /가격 변경/ }).click();
+    await expect(input).toHaveValue("1000");
+    await input.fill("1500");
+    if (isForm) await page.getByRole("button", { name: "저장", exact: true }).first().click();
+    else await input.press("Enter");
+    const confirmation = page.getByRole("dialog", { name: "판매가를 변경하시겠습니까?" });
+    await expect(confirmation).toContainText("이미 받은 주문 금액은 바뀌지 않습니다");
+    await confirmation.getByRole("button", { name: "취소", exact: true }).click();
+    expect((await (await page.request.get(`/api/seller/products/${product.id}`)).json()).price).toBe(1000);
+    if (!isForm) {
+      await row.getByRole("button", { name: /가격 변경/ }).click();
+      await input.fill("1500");
+    }
+    // 같은 상품을 다른 요청에서 먼저 바꾼다. 화면은 최초 판매가 1000을 유지한다.
+    const other = await page.request.patch(`/api/seller/products/${product.id}`, { headers: { origin: new URL(page.url()).origin }, data: { price: 2000, expectedPrice: 1000 } });
+    expect(other.status()).toBe(200);
+    const saved = page.waitForResponse(r => new URL(r.url()).pathname === `/api/seller/products/${product.id}` && r.request().method() === "PATCH");
+    if (isForm) await page.getByRole("button", { name: "저장", exact: true }).first().click();
+    else await input.press("Enter");
+    await page.getByRole("dialog").getByRole("button", { name: "판매가 변경", exact: true }).click();
+    const conflict = await saved;
+    expect(conflict.request().postDataJSON()).toMatchObject({ price: 1500, expectedPrice: 1000 });
+    expect(conflict.status()).toBe(409);
+    await expect(page.getByText("그사이 판매가가 바뀌었습니다. 지금 판매가를 확인한 뒤 다시 입력해 주십시오")).toBeVisible();
+    if (isForm) await expect(input).toHaveValue("2000");
+    else {
+      await expect(row.getByRole("button", { name: /가격 변경/ })).toHaveText("2,000원");
+      await row.getByRole("button", { name: /가격 변경/ }).click();
+    }
+    await input.fill("2500");
+    const retried = page.waitForResponse(r => new URL(r.url()).pathname === `/api/seller/products/${product.id}` && r.request().method() === "PATCH");
+    if (isForm) await page.getByRole("button", { name: "저장", exact: true }).first().click();
+    else await input.press("Enter");
+    await page.getByRole("dialog").getByRole("button", { name: "판매가 변경", exact: true }).click();
+    const response = await retried;
+    expect(response.request().postDataJSON()).toMatchObject({ price: 2500, expectedPrice: 2000 });
+    expect(response.status()).toBe(200);
+    const latest = await (await page.request.get(`/api/seller/products/${product.id}`)).json();
+    expect(latest.price).toBe(2500);
+    expect(latest.options[0].stock).toBe(10);
+  });
+}
+
+for (const eventChange of ["변경", "해제"] as const) {
+  test(`판매가와 이벤트 할인 ${eventChange}: 충돌이면 기존 할인을 유지하고 함께 다시 저장한다`, async ({ page }) => {
+    await login(page);
+    const name = track(`가격이벤트 ${eventChange} ${stamp}`);
+    const product = await page.request.post("/api/seller/products", { headers: { origin: new URL(page.url()).origin }, data: { name, price: 1000, status: "ON_SALE", options: [{ name: "기본", stock: 10 }] } });
+    expect(product.status()).toBe(201);
+    const { id } = await product.json();
+    const event = { type: "RATE", value: 10, startsAt: new Date(Date.now() - 60_000).toISOString(), endsAt: new Date(Date.now() + 3600_000).toISOString() };
+    expect((await page.request.put(`/api/seller/products/${id}/event`, { headers: { origin: new URL(page.url()).origin }, data: event })).status()).toBe(200);
+    await page.goto(`/seller/products/${id}`);
+    await page.getByLabel("판매가").fill("1500");
+    if (eventChange === "변경") await page.getByLabel("할인 값").fill("20");
+    else await page.getByRole("radiogroup", { name: "이벤트 할인 사용" }).getByRole("radio", { name: "사용 안 함", exact: true }).click();
+    expect((await page.request.patch(`/api/seller/products/${id}`, { headers: { origin: new URL(page.url()).origin }, data: { price: 2000, expectedPrice: 1000 } })).status()).toBe(200);
+    const before = await (await page.request.get(`/api/seller/products/${id}`)).json();
+    const preservedEvent = expect.objectContaining({ type: before.event.type, value: before.event.value, startsAt: before.event.startsAt, endsAt: before.event.endsAt, active: true, discountedPrice: 1800 });
+    await page.getByRole("button", { name: "저장", exact: true }).first().click();
+    await page.getByRole("dialog").getByRole("button", { name: "취소", exact: true }).click();
+    expect(await (await page.request.get(`/api/seller/products/${id}`)).json()).toMatchObject({ price: 2000, event: preservedEvent });
+    const saved = page.waitForResponse(r => new URL(r.url()).pathname === `/api/seller/products/${id}` && r.request().method() === "PATCH");
+    await page.getByRole("button", { name: "저장", exact: true }).first().click();
+    await page.getByRole("dialog").getByRole("button", { name: "판매가 변경", exact: true }).click();
+    expect((await saved).status()).toBe(409);
+    await expect(page.getByText("그사이 판매가가 바뀌었습니다. 지금 판매가를 확인한 뒤 다시 입력해 주십시오")).toBeVisible();
+    expect(await (await page.request.get(`/api/seller/products/${id}`)).json()).toMatchObject({ price: 2000, event: preservedEvent, options: [{ stock: 10 }] });
+    await expect(page.getByLabel("판매가")).toHaveValue("2000");
+    await page.getByLabel("판매가").fill("2500");
+    await page.getByRole("button", { name: "저장", exact: true }).first().click();
+    await page.getByRole("dialog").getByRole("button", { name: "판매가 변경", exact: true }).click();
+    await expect(page.getByText("저장했습니다")).toBeVisible();
+    const after = await (await page.request.get(`/api/seller/products/${id}`)).json();
+    expect(after.price).toBe(2500);
+    expect(after.event).toEqual(eventChange === "해제" ? null : expect.objectContaining({ type: "RATE", value: 20, active: true, discountedPrice: 2000 }));
+  });
+}
+
+test("이벤트만 수정하다 서버가 거절해도 기존 할인은 지우지 않는다", async ({ page }) => {
+  await login(page);
+  const name = track(`이벤트실패 ${stamp}`);
+  const origin = new URL(page.url()).origin;
+  const created = await page.request.post("/api/seller/products", { headers: { origin }, data: { name, price: 1000, status: "ON_SALE", options: [{ name: "기본", stock: 10 }] } });
+  expect(created.status()).toBe(201);
+  const { id } = await created.json();
+  const eventPath = `/api/seller/products/${id}/event`;
+  const event = { type: "RATE", value: 10, startsAt: new Date(Date.now() - 60_000).toISOString(), endsAt: new Date(Date.now() + 3600_000).toISOString() };
+  expect((await page.request.put(eventPath, { headers: { origin }, data: event })).status()).toBe(200);
+  await page.goto(`/seller/products/${id}`);
+  await page.getByLabel("할인 값").fill("20");
+  const eventWrites: string[] = [];
+  page.on("request", r => { if (new URL(r.url()).pathname === eventPath) eventWrites.push(r.method()); });
+  // 화면 검증은 통과시키고 실제 서버에 잘못된 할인율을 보내 거절 경계를 확인한다.
+  await page.route(`**${eventPath}`, r => r.continue({ postData: JSON.stringify({ ...r.request().postDataJSON(), value: 91 }) }));
+  const rejected = page.waitForResponse(r => new URL(r.url()).pathname === eventPath && r.request().method() === "PUT");
+  await page.getByRole("button", { name: "저장", exact: true }).first().click();
+  expect((await rejected).status()).toBe(400);
+  await expect(page.locator(".msg-neg[role=alert]")).toBeVisible();
+  expect(await (await page.request.get(`/api/seller/products/${id}`)).json()).toMatchObject({ price: 1000, event: { ...event, active: true, discountedPrice: 900 }, options: [{ stock: 10 }] });
+  expect(eventWrites).toEqual(["PUT"]);
+  await page.unroute(`**${eventPath}`);
+  await page.getByRole("button", { name: "저장", exact: true }).first().click();
+  await expect(page.getByText("저장했습니다")).toBeVisible();
+  expect(await (await page.request.get(`/api/seller/products/${id}`)).json()).toMatchObject({ price: 1000, event: { value: 20, active: true, discountedPrice: 800 } });
+});
+
 test("로그인 안 한 채로 상품 화면에 오면 로그인으로 보낸다", async ({ page }) => {
   await page.goto("/seller/products");
   await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fproducts/);
@@ -104,6 +224,61 @@ test("상품 목록: 데모 상품·상태 배지·필터, 체험 배너가 보�
   await applyStatus(page, "숨김");
   await expect(rows.filter({ hasText: "문라이트 1탄 박스" })).toBeVisible();
   await expect(rows.filter({ hasText: "스타라이트 부스터 박스" })).toHaveCount(0);
+});
+
+test("상품 목록 제목 안내·검색 두 쌍·표 경계가 1440·1024·390에서 맞는다", async ({ page }) => {
+  await login(page);
+  await expect(page.getByTestId("product-row").first()).toBeVisible();
+  const description = page.locator(".au-ph-description");
+  await expect(description).toHaveText("상품을 검색하고 판매 상태와 재고를 관리합니다.");
+  await expect(page.getByLabel("상품 검색")).toHaveAttribute("placeholder", "검색어 입력");
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    const layout = await page.evaluate(() => {
+      const title = document.querySelector(".au-ph-title")!;
+      const description = document.querySelector(".au-ph-description")!;
+      const grid = document.querySelector('[aria-label="상품 목록 표"]')!;
+      const head = document.querySelector(".au-lh")!;
+      const style = getComputedStyle(title);
+      return {
+        font: style.fontSize, line: style.lineHeight,
+        descriptionBelow: description.getBoundingClientRect().top >= title.getBoundingClientRect().bottom,
+        descriptionFont: getComputedStyle(description).fontSize,
+        descriptionLine: getComputedStyle(description).lineHeight,
+        headOutside: !grid.contains(head),
+        twoPairs: [...document.querySelectorAll(".au-ft tr")].filter(row => row.querySelectorAll("th").length === 2).length,
+        radioLabelsReadable: [...document.querySelectorAll(".au-ft .chk")].every(label => label.getBoundingClientRect().height <= 28),
+        gridVisible: getComputedStyle(grid).display !== "none",
+        overflow: document.documentElement.scrollWidth > innerWidth,
+      };
+    });
+    expect(layout).toMatchObject({ font: "20px", line: "28px", descriptionBelow: true, descriptionFont: "14px", descriptionLine: "20px", headOutside: true, twoPairs: 2, radioLabelsReadable: true, gridVisible: width >= 768, overflow: false });
+    if (SHOTS) await page.screenshot({ path: `tests/e2e/screenshots/SA-011-alignment-${width}.png`, fullPage: true, animations: "disabled" });
+  }
+
+  // 상품 조회·인증은 실제 Next/격리 DB를 사용한다. 공통 배너 표시 상태만 주입하며,
+  // 점검 예약·tenant LIVE 판정 API 자체는 admin-maintenance의 실제 DB 시험이 검증한다.
+  await page.route("**/api/maintenance", route => route.fulfill({ json: {
+    active: false, scheduled: true,
+    startsAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+    endsAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+  } }));
+  await page.route("**/api/seller/broadcast/summary", route => route.fulfill({ json: { broadcast: { status: "live" } } }));
+  await page.evaluate(() => window.dispatchEvent(new Event("onq:maintenance-changed")));
+  const banner = page.getByTestId("maintenance-seller-banner");
+  await expect(banner).toContainText("방송을 끝내 주십시오");
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await expect(description).toBeVisible();
+    const fit = await banner.evaluate(e => ({
+      bottom: e.getBoundingClientRect().bottom,
+      titleTop: document.querySelector(".au-ph-title")!.getBoundingClientRect().top,
+      overflow: document.documentElement.scrollWidth > innerWidth,
+    }));
+    expect(fit.titleTop).toBeGreaterThanOrEqual(fit.bottom);
+    expect(fit.overflow).toBe(false);
+    if (SHOTS) await page.screenshot({ path: `tests/e2e/screenshots/SA-011-maintenance-${width}.png`, fullPage: true, animations: "disabled" });
+  }
 });
 
 test("옵션 이름이 길어도 표는 내부에서 스크롤되고 페이지 폭을 밀지 않는다(1440·1024)", async ({ page }) => {
@@ -198,6 +373,7 @@ test("상품 수정: 가격·재고를 바꾸면 저장되고 목록에도 반�
   await page.getByLabel("판매가").fill("129000");
   await page.getByLabel("옵션 1 재고").fill("9");
   await page.getByRole("button", { name: "저장", exact: true }).first().click();
+  await page.getByRole("dialog").getByRole("button", { name: "판매가 변경", exact: true }).click();
   await expect(page.getByText("저장했습니다")).toBeVisible();
 
   await page.reload();
@@ -214,6 +390,7 @@ test("상품 수정: 가격·재고를 바꾸면 저장되고 목록에도 반�
   await page.getByLabel("판매가").fill("132000");
   await page.getByLabel("옵션 1 재고").fill("5");
   await page.getByRole("button", { name: "저장", exact: true }).first().click();
+  await page.getByRole("dialog").getByRole("button", { name: "판매가 변경", exact: true }).click();
   await expect(page.getByText("저장했습니다")).toBeVisible();
 });
 
@@ -266,6 +443,7 @@ test("판매가를 내리면서 추가 금액을 바꿔도 저장된다(중간 �
   await page.getByLabel("판매가").fill("5000");
   await page.getByLabel("옵션 1 추가 금액").fill("-4000");
   await page.getByRole("button", { name: "저장", exact: true }).first().click();
+  await page.getByRole("dialog").getByRole("button", { name: "판매가 변경", exact: true }).click();
   await expect(page.getByText("저장했습니다", { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByLabel("판매가")).toHaveValue("5000");
@@ -275,6 +453,7 @@ test("판매가를 내리면서 추가 금액을 바꿔도 저장된다(중간 �
   await page.getByLabel("판매가").fill("10000");
   await page.getByLabel("옵션 1 추가 금액").fill("-9000");
   await page.getByRole("button", { name: "저장", exact: true }).first().click();
+  await page.getByRole("dialog").getByRole("button", { name: "판매가 변경", exact: true }).click();
   await expect(page.getByText("저장했습니다", { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByLabel("판매가")).toHaveValue("10000");
