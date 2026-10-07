@@ -35,7 +35,7 @@ async function expectInfoLayout(page: Page, width: number) {
   expect(actionOrder).toEqual(["♡", "공유", "장바구니에 담기", "바로 주문하기"]);
   const infoOrder = await page.locator(".pd-info").evaluate((info) => {
     const children = [...info.children];
-    return [".pd-crumb", "h1", ".pd-rating", ".pd-desc", ".pd-price-summary"]
+    return [".pd-crumb", "h1", ".pd-social-summary", ".pd-desc", ".pd-price-summary"]
       .map((selector) => children.findIndex((el) => el.matches(selector)))
       .filter((index) => index >= 0);
   });
@@ -51,21 +51,26 @@ async function expectInfoLayout(page: Page, width: number) {
       info: rect(top.querySelector(".pd-info")!),
     };
   });
-  expect(Math.abs(geometry.gallery.left - geometry.container.left)).toBeLessThanOrEqual(1);
   expect(Math.abs(geometry.info.right - geometry.container.right)).toBeLessThanOrEqual(1);
   if (width <= 767) {
-    expect(Math.abs(geometry.info.left - geometry.gallery.left)).toBeLessThanOrEqual(1);
-    expect(Math.abs(geometry.info.right - geometry.gallery.right)).toBeLessThanOrEqual(1);
-    expect(Math.abs(geometry.info.width - geometry.gallery.width)).toBeLessThanOrEqual(1);
+    // FINAL v284: 사진은 390 본판 전체 폭, 정보·표는 좌우 16px 안쪽이다.
+    expect(Math.abs(geometry.gallery.width - width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.info.left - geometry.gallery.left - 16)).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.gallery.right - geometry.info.right - 16)).toBeLessThanOrEqual(1);
+    await expect(page.locator(".pd-info h1")).toHaveCSS("font-size", "24px");
+    await expect(page.locator(".pd-info h1")).toHaveCSS("line-height", "32px");
+    await expect(page.locator(".pd-info h1")).toHaveCSS("font-weight", "700");
+  } else {
+    expect(Math.abs(geometry.gallery.left - geometry.container.left)).toBeLessThanOrEqual(1);
   }
   const priceBottom = await page.locator(".pd-price-summary").evaluate((el) => el.getBoundingClientRect().bottom);
   const rows = await page.locator(".pd-form-row").evaluateAll((els) =>
     els.map((el) => {
       const rect = el.getBoundingClientRect();
-      return { name: ["pd-coupon-row", "pd-reward-row", "pd-stock-row", "pd-shipping-row", "pd-option-row", "pd-quantity-row"].find((name) => el.classList.contains(name))!, top: rect.top, bottom: rect.bottom };
+      return { name: ["pd-coupon-row", "pd-reward-row", "pd-stock-row", "pd-shipping-row", "pd-receive-row", "pd-option-row", "pd-quantity-row"].find((name) => el.classList.contains(name))!, top: rect.top, bottom: rect.bottom };
     }),
   );
-  const order = ["pd-coupon-row", "pd-reward-row", "pd-stock-row", "pd-shipping-row", "pd-option-row", "pd-quantity-row"];
+  const order = ["pd-coupon-row", "pd-reward-row", "pd-stock-row", "pd-shipping-row", "pd-receive-row", "pd-option-row", "pd-quantity-row"];
   const ranks = rows.map((row) => order.indexOf(row.name));
   expect(ranks.every((rank) => rank >= 0)).toBe(true);
   expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
@@ -139,6 +144,28 @@ test("쿠폰 받기 줄·버튼 순서·공유(주소 복사)", async ({ page, b
   await page.getByRole("button", { name: "공유" }).click();
   await expect(page.getByText("상품 주소를 복사했어요")).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(`/products/${id}`);
+});
+
+test("상품 상세: 실제 받는 방법·배송환불 정책과 찜 총수 변경을 표시한다", async ({ page, baseURL }) => {
+  await login(page, baseURL!);
+  const id = await productIdOf(page, "탑로더 25장");
+  await page.request.delete(`/api/shop/${SLUG}/wishlist/${id}`, { headers: { origin: baseURL! } });
+  const product = (await (await page.request.get(`/api/shop/${SLUG}/products/${id}`)).json()).product;
+  await page.goto(`/shop/${SLUG}/products/${id}`);
+  await expect(page.locator(".pd-receive-row")).toContainText("택배 · 즉시 발송");
+  await expect(page.locator(".pd-opening-notice")).toContainText(product.openingNotice);
+  await page.getByRole("navigation", { name: "상품 상세 메뉴" }).getByRole("link", { name: "배송 · 환불" }).click();
+  const policy = page.getByRole("region", { name: "배송 · 환불" });
+  await expect(policy).toContainText(`결제 확인 뒤 ${product.shipping.dispatchDeadlineDays}일 이내`);
+  await expect(policy).toContainText(`${product.shipping.returnFee.toLocaleString("ko-KR")}원 · 편도`);
+  await expect(policy).toContainText(`${product.shipping.exchangeFee.toLocaleString("ko-KR")}원 · 왕복`);
+  await expect(page.locator(".pd-wish-count")).toHaveText(`· 찜 ${product.wishCount.toLocaleString("ko-KR")}`);
+  await page.getByRole("button", { name: "찜하기", exact: true }).click();
+  await expect(page.locator(".pd-wish-count")).toHaveText(`· 찜 ${(product.wishCount + 1).toLocaleString("ko-KR")}`);
+  const persisted = (await (await page.request.get(`/api/shop/${SLUG}/products/${id}`)).json()).product;
+  expect(persisted.wishCount).toBe(product.wishCount + 1);
+  await page.getByRole("button", { name: "찜 빼기", exact: true }).click();
+  await expect(page.locator(".pd-wish-count")).toHaveText(`· 찜 ${product.wishCount.toLocaleString("ko-KR")}`);
 });
 
 test("최근 본 상품: 다른 상품을 본 뒤 상세에 보이고, 지금 상품은 빠진다", async ({ page }) => {

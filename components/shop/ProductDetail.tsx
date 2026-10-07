@@ -27,6 +27,9 @@ type ReviewSummary = { average: number | null; total: number };
 export type ShopProduct = {
   id: string;
   isLive?: boolean;
+  wishCount: number;
+  broadcast: { waitingCount: number } | null;
+  openingNotice: string;
   name: string;
   description: string | null;
   price: number;
@@ -36,7 +39,7 @@ export type ShopProduct = {
   images: { id: string; url: string; width: number; height: number }[];
   options: Option[];
   detail: Block[];
-  shipping: { freeShipping: boolean; baseFee: number; freeOverAmount: number | null; remoteSurcharge: number };
+  shipping: { freeShipping: boolean; baseFee: number; freeOverAmount: number | null; remoteSurcharge: number; receiveMethods: string[]; dispatchDeadlineDays: number; returnFee: number; exchangeFee: number };
   reward: { card: { rate: number; amount: number } | null; bankTransfer: { rate: number; amount: number } | null } | null;
 };
 
@@ -53,6 +56,7 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
   const [photo, setPhoto] = useState(0);
   const [reviewSummary, setReviewSummary] = useState<ReviewSummary | null>(null);
   const [wished, setWished] = useState(false);
+  const [wishCount, setWishCount] = useState<number | null>(p.wishCount);
   const [restock, setRestock] = useState(false); // 재입고 알림을 신청했는지(상품이 품절일 때만 쓴다)
   const [busy, setBusy] = useState(false);
   const [needLogin, setNeedLogin] = useState(false);
@@ -150,9 +154,14 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
     const r = wished ? await call(`${api}/wishlist/${p.id}`, { method: "DELETE" }) : await call(`${api}/wishlist`, { method: "POST", body: { productId: p.id } });
     if (r.ok || (wished && r.status === 404)) {
       setWished(!wished);
+      await refreshWishCount();
       setMsg({ ok: true, text: wished ? "찜에서 뺐어요" : "찜했어요", undo: undoWish(!wished) });
     } else setMsg({ ok: false, text: r.message ?? "찜하지 못했어요. 잠시 뒤 다시 해 주세요" });
     setBusy(false);
+  }
+  async function refreshWishCount() {
+    const r = await call<{ product: { wishCount: number } }>(`${api}/products/${p.id}`);
+    setWishCount(r.ok ? r.data.product.wishCount : null);
   }
   // 되돌리기: 찜했으면 빼고, 뺐으면 다시 찜한다
   function undoWish(nowWished: boolean) {
@@ -161,6 +170,7 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
       const r = nowWished ? await call(`${api}/wishlist/${p.id}`, { method: "DELETE" }) : await call(`${api}/wishlist`, { method: "POST", body: { productId: p.id } });
       if (r.ok || (nowWished && r.status === 404)) {
         setWished(!nowWished);
+        await refreshWishCount();
         setMsg({ ok: true, text: nowWished ? "찜을 되돌렸어요" : "다시 찜했어요" });
       } else setMsg({ ok: false, text: r.message ?? "되돌리지 못했어요. 잠시 뒤 다시 눌러 주세요" });
       setBusy(false);
@@ -183,9 +193,10 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
   }
 
   const here = `${base}/products/${p.id}`;
-  const ship = p.shipping.freeShipping
+  const shippingBase = p.shipping.freeShipping
     ? "무료"
-    : `${won(p.shipping.baseFee)}${p.shipping.freeOverAmount ? ` · ${won(p.shipping.freeOverAmount)} 이상 무료` : ""}${p.shipping.remoteSurcharge ? ` · 제주·도서 ${won(p.shipping.remoteSurcharge)} 추가` : ""}`;
+    : `${won(p.shipping.baseFee)}${p.shipping.freeOverAmount ? ` · ${won(p.shipping.freeOverAmount)} 이상 무료` : ""}`;
+  const ship = `${shippingBase}${p.shipping.remoteSurcharge ? ` · 제주·도서 ${won(p.shipping.remoteSurcharge)} 추가` : ""}`;
   const reward = p.reward
     ? [p.reward.card && `카드 ${won(Math.floor((unit * p.reward.card.rate) / 100))} (${p.reward.card.rate}%)`, p.reward.bankTransfer && `무통장 ${won(Math.floor((unit * p.reward.bankTransfer.rate) / 100))} (${p.reward.bankTransfer.rate}%)`].filter(Boolean).join(" · ")
     : null;
@@ -224,12 +235,15 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
             </nav>
           )}
           <h1>{p.name}</h1>
+          <div className="pd-social-summary">
           {reviewSummary && (
             <a className="pd-rating" href="#pd-reviews" aria-label={`리뷰 ${reviewSummary.total}개${reviewSummary.average === null ? "" : `, 평점 ${reviewSummary.average.toFixed(1)}`}`}>
               {reviewSummary.average !== null && <b>★ {reviewSummary.average.toFixed(1)}</b>}
               <span>리뷰 {reviewSummary.total.toLocaleString("ko-KR")}개</span>
             </a>
           )}
+          {wishCount !== null && <span className="pd-wish-count">· 찜 {wishCount.toLocaleString("ko-KR")}</span>}
+          </div>
           {p.description && <p className="pd-desc">{p.description}</p>}
           <div className="pd-price-summary" role="group" aria-label="판매가">
             {p.salePrice !== null ? (
@@ -263,6 +277,10 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
               <dt>배송비</dt>
               <dd>{ship}</dd>
             </div>
+            <div className="pd-form-row pd-receive-row">
+              <dt>받는 방법</dt>
+              <dd>{p.shipping.receiveMethods.includes("IMMEDIATE") ? "택배 · 즉시 발송" : ""}</dd>
+            </div>
             <div className="pd-form-row pd-option-row">
               <dt>
                 <label htmlFor="pd-option">옵션</label>
@@ -292,6 +310,10 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
               </dd>
             </div>
           </dl>
+          <div className="pd-opening-notice">
+            {p.broadcast && <p>방송 중 주문은 결제가 끝난 순서대로 열어 드려요 · 지금 주문대기 {p.broadcast.waitingCount.toLocaleString("ko-KR")}건</p>}
+            <p>{p.openingNotice}</p>
+          </div>
 
           <div className="pd-sum">
             <div>
@@ -380,6 +402,17 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
       <ProductReviews slug={slug} productId={p.id} onSummaryChange={setReviewSummary} />
 
       <ProductInquiries slug={slug} productId={p.id} loggedIn={loggedIn} onNeedLogin={() => setNeedLogin(true)} />
+
+      <section className="pd-detail" id="pd-shipping-refund" aria-label="배송 · 환불">
+        <h2>배송 · 환불</h2>
+        <dl className="pd-form">
+          <div className="pd-form-row"><dt>배송비</dt><dd>{ship}</dd></div>
+          <div className="pd-form-row"><dt>발송 기한</dt><dd>결제 확인 뒤 {p.shipping.dispatchDeadlineDays}일 이내</dd></div>
+          <div className="pd-form-row"><dt>반품 배송비</dt><dd>구매자 사정일 때 {won(p.shipping.returnFee)} · 편도</dd></div>
+          <div className="pd-form-row"><dt>교환 배송비</dt><dd>구매자 사정일 때 {won(p.shipping.exchangeFee)} · 왕복</dd></div>
+        </dl>
+        <p className="pd-text">{p.openingNotice}</p>
+      </section>
 
       <RecommendedProducts slug={slug} productId={p.id} />
 
