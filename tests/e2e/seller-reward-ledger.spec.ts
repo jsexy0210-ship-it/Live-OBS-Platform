@@ -34,8 +34,13 @@ async function withDb<T>(fn: (db: PrismaClient, sellerId: string, buyerMemberId:
   }
 }
 
+// 원장과 적립 정책을 처음 상태(정책 없음 = 실제 지급 꺼짐)로 돌린다. 다른 시험(적립금 쓰는 주문·실제 지급)이 정책을 켜 둔 채 끝나도
+// 이 시험의 「꺼짐 안내·재시도 잠김」 전제가 깨지지 않게 하고, 이 시험이 켠 정책도 남기지 않는다.
 async function reset() {
-  await withDb((db, sellerId) => db.rewardLedger.deleteMany({ where: { sellerId } }));
+  await withDb(async (db, sellerId) => {
+    await db.rewardLedger.deleteMany({ where: { sellerId } });
+    await db.rewardPolicy.deleteMany({ where: { sellerId } });
+  });
 }
 
 async function open(page: Page) {
