@@ -27,6 +27,7 @@ async function expectInfoLayout(page: Page, width: number) {
   await expect(page.locator(".pd-price-summary")).toBeVisible();
   await expect(page.locator(".pd-rating")).toBeVisible();
   await expect(page.locator(".pd-coupon-row")).toContainText("세 폭 화면 검수 쿠폰");
+  await page.evaluate(() => document.fonts.ready);
   const actionOrder = await page.locator(".pd-actions button").evaluateAll((els) =>
     els.map((el) => ({ name: (el.textContent ?? "").trim(), left: el.getBoundingClientRect().left }))
       .sort((a, b) => a.left - b.left)
@@ -223,7 +224,7 @@ test("휴대폰 390: 찜 · 공유 · 장바구니에 담기 · 바로 주문하
     const quantity = document.querySelector(".pd-quantity-row")!.getBoundingClientRect();
     const actions = document.querySelector(".pd-actions")!.getBoundingClientRect();
     const overlap = quantity.bottom - actions.top + 8;
-    if (overlap > 0) window.scrollBy(0, overlap);
+    if (overlap > 0) window.scrollBy(0, Math.ceil(overlap));
   });
   const visibleRows = await page.locator(".pd-shipping-row, .pd-option-row, .pd-quantity-row").evaluateAll((els) =>
     els.map((el) => {
