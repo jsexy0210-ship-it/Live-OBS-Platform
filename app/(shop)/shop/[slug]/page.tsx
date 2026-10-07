@@ -88,10 +88,10 @@ export default async function ShopHomePage({ params }: Params) {
             })}</ul>
           </section>)}
           {!home?.sections.length && <section className="shop-sec"><div className="shop-sec-head"><h2>전체 상품</h2></div><p className="shop-empty">아직 올라온 상품이 없어요.</p></section>}
-          <section className="shop-sec shop-home-notices" aria-labelledby="home-notices-title">
+          <div className="shop-home-tables"><section className="shop-sec shop-home-notices" aria-labelledby="home-notices-title">
             <div className="shop-sec-head"><h2 id="home-notices-title">공지</h2><Link className="shop-more" href={`${base}/help`}>더 보기 ›</Link></div>
-            <table><thead><tr><th>구분</th><th>제목</th><th>날짜</th></tr></thead><tbody>{notices?.notices.length ? notices.notices.slice(0, 3).map(n => <tr key={n.id}><td>{n.isPinned ? "공지" : n.category || "안내"}</td><td><Link href={`${base}/help/notices/${n.id}`}>{n.title}</Link></td><td>{kstDate(n.createdAt)}</td></tr>) : <tr><td colSpan={3}>아직 공지가 없어요.</td></tr>}</tbody></table>
-          </section>
+            <table><tbody>{notices?.notices.length ? notices.notices.slice(0, 3).map(n => <tr key={n.id}><td><Link href={`${base}/help/notices/${n.id}`}>{n.title}</Link></td><td>{kstDate(n.createdAt).slice(5).split(".").map(Number).join("/")}</td></tr>) : <tr><td colSpan={2}>아직 공지가 없어요.</td></tr>}</tbody></table>
+          </section></div>
         </div>
       )}
     </>

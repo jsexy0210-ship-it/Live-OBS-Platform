@@ -59,8 +59,7 @@ export default async function ShopFrame({ slug, shopName, operatingState = "OPEN
           <div className="shop-wrap">{text(seller?.shopTopNotice)}</div>
         </div>
       )}
-      <ShopChrome slug={slug} shopName={shopName} loggedIn={!!session} nickname={session?.member.broadcastNickname ?? null} categories={categories} signupOpen={operatingState === "OPEN"} />
-      <LiveBar slug={slug} />
+      <ShopChrome slug={slug} shopName={shopName} loggedIn={!!session} nickname={session?.member.broadcastNickname ?? null} categories={categories} signupOpen={operatingState === "OPEN"} liveBar={<LiveBar slug={slug} />} />
       <EventPopupForPage />
       <main className="shop-main">
         <ShopClosedGate slug={slug} shopName={shopName} state={operatingState}>

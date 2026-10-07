@@ -70,7 +70,19 @@ test("홈: 실제 진열 순서·카드·공지·채널과 3폭 안전성", asyn
     expect(geometry.noticeHeight).toBe(32);
     expect(geometry.heroHeight).toBe(width === 390 ? 200 : 360);
     expect(geometry.homeNoticeAfterHero).toBe(width === 390);
-    writeFileSync(`${evidence}/app-${width}.json`, JSON.stringify(geometry));
+    const layout = await page.evaluate(() => {
+      const rect = (selector: string) => document.querySelector(selector)!.getBoundingClientRect();
+      const head = rect(".shop-top"), live = rect(".live-bar"), category = rect(innerWidth < 768 ? ".shop-mcat" : ".shop-cats");
+      const tables = rect(".shop-home-tables"), notices = rect(".shop-home-notices");
+      return { liveOrder: innerWidth < 768 ? head.bottom <= live.top && live.bottom <= category.top : category.bottom <= live.top, tableWidth: tables.width, noticeWidth: notices.width, noticeRight: notices.right, tableRight: tables.right, noticeCells: document.querySelector(".shop-home-notices tr")!.children.length };
+    });
+    expect(layout.liveOrder).toBe(true);
+    expect(layout.noticeCells).toBe(2);
+    if (width >= 1024) {
+      expect(layout.noticeWidth).toBeCloseTo((layout.tableWidth - 24) / 2, 0);
+      expect(layout.noticeRight).toBeCloseTo(layout.tableRight, 0);
+    }
+    writeFileSync(`${evidence}/app-${width}.json`, JSON.stringify({ ...geometry, ...layout }));
     await page.screenshot({ path: `${evidence}/app-${width}.png`, fullPage: true });
   }
 });
@@ -120,6 +132,36 @@ test("방송 종료 홈: LIVE 띠 숨김과 최근 방송 상품 유지", async 
     await expect(page.getByRole("link", { name: "방송 시작 알림 받기" })).toHaveAttribute("href", `/shop/${slug}/me/notifications`);
     await page.screenshot({ path: `${evidence}/ended-1440.png`, fullPage: true });
   } finally { await db.broadcastSession.update({ where: { id: sessionId }, data: { status: "LIVE", endedAt: null } }); }
+});
+
+test("공통 머리: 비홈 3폭 LIVE 순서와 상세 56·일반 52·조작44 보존", async ({ page }) => {
+  const results = [];
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const route of ["products", "help", "terms", `products/${productIds[0]}`]) {
+      await page.goto(`/shop/${slug}/${route}`);
+      await expect(page.locator(".live-bar")).toBeVisible();
+      await expect(page.getByLabel("상단 공지", { exact: true })).toBeVisible();
+      const detail = route.includes("/");
+      const geometry = await page.evaluate(({ detail }) => {
+        const rect = (selector: string) => document.querySelector(selector)!.getBoundingClientRect();
+        const head = rect(innerWidth < 768 && detail ? ".shop-product-header" : ".shop-top");
+        const live = rect(".live-bar"), category = rect(innerWidth < 768 ? ".shop-mcat" : ".shop-cats");
+        return { width:innerWidth,overflow:document.documentElement.scrollWidth>innerWidth,headHeight:head.height,liveOrder:innerWidth<768?head.bottom<=live.top&&(detail||live.bottom<=category.top):category.bottom<=live.top };
+      }, { detail });
+      expect(geometry.overflow).toBe(false);
+      expect(geometry.liveOrder).toBe(true);
+      if (width === 390) {
+        expect(geometry.headHeight).toBe(detail ? 56 : 52);
+        const button = detail ? page.getByRole("button", { name: "목록 화면으로" }) : page.getByRole("button", { name: "카테고리 메뉴" });
+        await expect(button).toHaveCSS("width", "44px");
+        await expect(button).toHaveCSS("height", "44px");
+      }
+      results.push({ route:detail?"product-detail":route,...geometry });
+      if (route === "products" || width === 390 && detail) await page.screenshot({ path:`${evidence}/nonhome-${detail?"detail":route}-${width}.png`,fullPage:true });
+    }
+  }
+  writeFileSync(`${evidence}/nonhome-layout.json`,JSON.stringify(results));
 });
 
 test("FINAL 원본 구조 증거: 실앱 캡처와 구분", async ({ page }) => {

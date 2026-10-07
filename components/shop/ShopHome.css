@@ -43,7 +43,11 @@
 .shop-home th:first-child { width:112px; }
 .shop-home th:last-child { width:96px; }
 .shop-home td:first-child,.shop-home td:last-child { text-align:center; }
-.shop-home-notices th:first-child { width:64px; }
+.shop-home-tables { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:24px; align-items:start; }
+.shop-home-notices { grid-column:2; }
+.shop-home .shop-home-notices .shop-sec-head { margin-bottom:12px; }
+.shop-home-notices td:first-child { text-align:left; width:auto; }
+.shop-home-notices td:last-child { width:72px; text-align:right; color:var(--wds-label-alternative); }
 .shop-home-notices a { color:inherit; text-decoration:none; }
 .shop-home .hb { margin:0; }
 @media(max-width:1023px) and (min-width:768px) { .shop-home .pc-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } }
@@ -56,6 +60,7 @@
   .shop-home-hero small { font-size:11px; }
   .shop-home-hero span { font-size:12px; }
   .shop-home-side { display:none; }
+  .shop-home-tables { display:none; }
   .shop-home .shop-sec,.shop-home .shop-ntc { margin:0 16px; }
   .shop-home .shop-sec-head { padding-bottom:8px; margin-bottom:12px; }
   .shop-home .shop-sec-head h2 { font-size:16px; line-height:22px; }
