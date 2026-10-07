@@ -2666,6 +2666,10 @@ model RestockAlert {
 // payload는 미리보기에서 통과한 상품 입력, errors는 행별 오류(shop-bulk-io/service.ts).
 enum BulkJobKind {
   PRODUCT_IMPORT
+  // 내보내기 이력(SA-018 처리 이력): 내려받은 사실만 남긴다(status COMMITTED, 되돌리기 없음). 회원 내보내기는 reason(사유) 필수.
+  PRODUCT_EXPORT
+  ORDER_EXPORT
+  MEMBER_EXPORT
 }
 
 enum BulkJobStatus {
@@ -2688,6 +2692,9 @@ model BulkJob {
   createdProductIds Json          @default("[]")
   failures          Json          @default("[]")
   keptCount         Int           @default(0)
+  // 내보내기: 내보내는 사유(회원 내보내기), 기간·개인정보 포함 여부 등 조건(meta)
+  reason            String?
+  meta              Json          @default("{}")
   actorType         ActorType
   actorId           String?       @db.Uuid
   createdAt         DateTime      @default(now()) @db.Timestamptz(3)
