@@ -93,6 +93,19 @@ describe("점검 모드 설정", () => {
 });
 
 describe("점검 사유·예약 취소·다건 이력", () => {
+  it("저장된 미래 예약을 즉시 켜면 설정 변경이 아닌 즉시 켬으로 표시하고 감사 원문을 보존한다", async () => {
+    const su = await adminCookie("SUPER_ADMIN");
+    const startsAt = new Date(Date.now() + 3600_000).toISOString();
+    const endsAt = new Date(Date.now() + 7200_000).toISOString();
+    await put(su.cookie, { ...ON, reason: "긴급 점검", startsAt, endsAt, expectedVersion: 0 });
+    const started = await put(su.cookie, { ...ON, reason: "긴급 점검", startsAt: null, endsAt, expectedVersion: 1 });
+    expect(started.body.maintenance).toMatchObject({ active: true, scheduled: false, startsAt: null });
+    expect(started.body.maintenance.history[0].action).toBe("즉시 켬");
+    const log = await db.auditLog.findFirstOrThrow({ where: { action: "platform.maintenance.update" }, orderBy: { createdAt: "desc" } });
+    expect(log.before).toMatchObject({ enabled: true, startsAt });
+    expect(log.after).toMatchObject({ enabled: true, startsAt: null });
+  });
+
   it("사유 검증·예약 취소를 버전 잠금 안에서 기록하고 이전 사유를 보존한다", async () => {
     const su = await adminCookie("SUPER_ADMIN");
     expect((await put(su.cookie, { ...ON, reason: "", expectedVersion: 0 })).body.error).toBe("invalid_reason");

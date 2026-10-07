@@ -12,6 +12,7 @@ import { dayTime } from "../../../_components/partners";
 import { DateTimePicker } from "../../../../../../components/admin-ui/DatePicker";
 import Link from "next/link";
 import styles from "./maintenance.module.css";
+import { MAINTENANCE_CHANGED } from "../../../../../../components/public/MaintenanceBanner";
 
 // MA-083 점검 모드(GET·PUT /api/admin/settings/maintenance). 보기는 모든 마스터 역할, 켜기·끄기·바꾸기는 최고관리자만(system.manage).
 // 켜면 파트너스 관리자·쇼핑몰·가입 신청이 막힌다(마스터 관리자·오버레이는 열림, 반영까지 최대 5초). 종료 시각은 안내용이라 지나도 저절로 꺼지지 않는다.
@@ -63,6 +64,7 @@ export default function MaintenancePage() {
     const r = await adminApi<{ maintenance: Maintenance }>("/api/admin/settings/maintenance");
     if (id !== reqId.current) return;
     if (r.ok) {
+      window.dispatchEvent(new Event(MAINTENANCE_CHANGED));
       fill(r.data.maintenance);
       setState({ kind: "ok", data: r.data.maintenance });
     } else setState({ kind: "error" });
@@ -131,7 +133,7 @@ export default function MaintenancePage() {
                       <label><input type="checkbox" disabled />시작 10분 전 방송 중 파트너스에게 경고 배너 + 알림톡</label>
                       <label><input type="checkbox" disabled />종료 시 전체 파트너스에게 「점검 완료」 알림</label>
                       <label><input type="checkbox" disabled />마스터 관리자도 읽기 전용으로 (배포 중)</label>
-                    </div><span className={styles.hint}>자동 처리는 아직 연결되지 않았습니다.</span></td></tr>
+                    </div><span className={styles.hint}>10분 전 방송 중 파트너스에게 경고 배너를 표시합니다. 알림톡·완료 알림·마스터 읽기 전용은 아직 연결되지 않았습니다.</span></td></tr>
                     {canEdit && <tr><th></th><td><div className={styles.actions}>
                       {m.active ? <><button className="btn" onClick={() => void put(true)} disabled={busy || invalid}>점검 안내 변경 저장</button><button className="btn btn-out" onClick={() => setConfirm("off")} disabled={busy}>점검 종료</button></> : <><button className="btn" onClick={() => void put(true)} disabled={busy || invalid || !startsAt || !endsAt || new Date(effectiveAtIso(startsAt) ?? 0) <= new Date()}>예약 저장</button><button className="btn btn-neg" onClick={() => setConfirm("on")} disabled={busy || invalid}>지금 즉시 켜기</button></>}
                       <Link className="btn btn-out" href="/admin/support/notices/new">점검 공지 작성</Link>
@@ -180,7 +182,7 @@ export default function MaintenancePage() {
                 </span>
                 {confirm === "on" && <>
                   <p className="t-l2">방송 화면과 주문대기 연결은 유지됩니다. 예약 없이 켜는 즉시 점검은 긴급 장애 대응에만 사용해 주십시오.</p>
-                  <p className={styles.warning}>영향 범위 (지금): 방송 중 {m.liveBroadcasts}개 · 대기 주문 {m.waitingOrders}건. 방송 자동 종료·주문 이월은 실행하지 않습니다. 경고 배너·알림톡은 아직 연결되지 않았습니다.</p>
+                  <p className={styles.warning}>영향 범위 (지금): 방송 중 {m.liveBroadcasts}개 · 대기 주문 {m.waitingOrders}건. 방송 자동 종료·주문 이월은 실행하지 않습니다. 파트너스 알림톡은 아직 연결되지 않았습니다.</p>
                   <p className="t-l2">사유: {reason}</p>
                   <label htmlFor="mt-confirm">확인 *</label><input id="mt-confirm" className="inp" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} disabled={busy} placeholder="점검 시작" /><span className={styles.hint}>확인을 위해 「점검 시작」을 입력합니다.</span>
                 </>}

@@ -11,6 +11,8 @@ import { useLatestResponse, type ReadTicket } from "./latestResponse";
 import { api, currentNavGeneration, nextNavGeneration, PLAN_FEATURE_EVENT, type Me, type PlanFeatureEventDetail } from "./api";
 import { useEllipsisTitle } from "../admin-ui/useEllipsisTitle";
 import { useTableCards } from "../admin-ui/useTableCards";
+import { MaintenanceBanner } from "../public/MaintenanceBanner";
+import maintenanceStyles from "../public/MaintenanceBanner.module.css";
 
 // 파트너스 관리자 공통 틀(업무용 관리 화면 틀, 대표님 지시 2026-10-04): 상단 고정 GNB(대분류 8개) + 왼쪽 LNB(고른 대분류의 하위 메뉴) + 본문.
 // 메뉴 구조는 확정안(2026-10-06 대표님 「그대로 진행」, docs/IA.md 「확정 메뉴 구조」·design/project/SA-LNB.dc.html)을 따른다. 좁은 화면에서는 GNB가 햄버거로 접히고 LNB가 서랍으로 열린다(서랍에는 전체 메뉴).
@@ -535,7 +537,7 @@ function SellerShellContent({ children }: { children: React.ReactNode }) {
     <Ctx.Provider value={{ me, trialDaysLeft, openNav, can, loc }}>
       <ShellNavProvider value={shellNav}>
       <ConfirmProvider readOnly={!!me.readOnly}>
-      <div className={`cs${navOpen ? " nav-open" : ""}${me.impersonation ? " imp" : ""}`} data-readonly={me.readOnly ? "true" : undefined}>
+      <div className={`cs ${maintenanceStyles.shell}${navOpen ? " nav-open" : ""}${me.impersonation ? " imp" : ""}`} data-readonly={me.readOnly ? "true" : undefined}>
         <header className="gnb">
           <button className="gnb-menu" type="button" aria-label="메뉴 열기" onClick={openNav}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
@@ -571,6 +573,7 @@ function SellerShellContent({ children }: { children: React.ReactNode }) {
             <span className="util-desk">{utilities}</span>
           </div>
         </header>
+        <MaintenanceBanner key={me.sellerId} scope="seller" checkLive={features.includes("OVERLAY") && can("BROADCAST_RUN")} />
         {me.impersonation && <ImpersonationBar shop={me.shop.name} imp={me.impersonation} />}
         {logoutError && (
           <div className="msg msg-neg logout-err" role="alert">

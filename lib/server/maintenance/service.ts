@@ -88,8 +88,12 @@ const adminView = async (db: Db, r: Row) => {
   const history = logs.map((log) => {
     const before = log.before && typeof log.before === "object" && !Array.isArray(log.before) ? log.before as Record<string, Prisma.JsonValue> : {};
     const after = log.after && typeof log.after === "object" && !Array.isArray(log.after) ? log.after as Record<string, Prisma.JsonValue> : {};
-    const scheduled = typeof before.startsAt === "string" && new Date(before.startsAt) > log.createdAt;
-    const action = after.enabled === false ? before.enabled === true ? scheduled ? "예약 취소" : "점검 종료" : "설정 변경" : before.enabled === true ? "설정 변경" : typeof after.startsAt === "string" && new Date(after.startsAt) > log.createdAt ? "예약 저장" : "즉시 켬";
+    const beforeScheduled = before.enabled === true && typeof before.startsAt === "string" && new Date(before.startsAt) > log.createdAt;
+    const afterScheduled = after.enabled === true && typeof after.startsAt === "string" && new Date(after.startsAt) > log.createdAt;
+    const action = after.enabled === false
+      ? before.enabled === true ? beforeScheduled ? "예약 취소" : "점검 종료" : "설정 변경"
+      : afterScheduled ? beforeScheduled ? "설정 변경" : "예약 저장"
+        : before.enabled !== true || beforeScheduled ? "즉시 켬" : "설정 변경";
     return { id: log.id, at: log.createdAt, action, reason: typeof after.reason === "string" && after.reason ? after.reason : typeof before.reason === "string" ? before.reason : "", message: typeof after.message === "string" ? after.message : "" };
   });
   return { ...publicView(r), enabled: r.enabled, message: r.message, reason: r.reason, startsAt: r.startsAt, endsAt: r.endsAt, version: r.version, updatedAt: r.updatedByAdminId ? r.updatedAt : null, updatedByAdminName: by?.name ?? null, history, liveBroadcasts, waitingOrders };
