@@ -24,6 +24,21 @@ body {
   flex-direction: column;
   background: var(--wds-background-normal-normal);
 }
+/* SH-001 FINAL v322: 설정한 공지는 모든 쇼핑몰 화면 맨 위의 32px 한 줄 띠로 표시한다. */
+.shop-top-notice {
+  height: 32px;
+  flex: none;
+  background: #222;
+  color: #fff;
+  font-size: 12px;
+  line-height: 32px;
+  text-align: center;
+}
+.shop-top-notice .shop-wrap {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 /* 일반 쇼핑몰 공통 틀: 흰 바탕·옅은 회색 구분선. 판매자 대표 색(--brand)은 강조(가격·선택 표시·버튼)에만 */
 .shop-wrap {
   width: 1200px;
