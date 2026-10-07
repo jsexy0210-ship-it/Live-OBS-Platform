@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { GET as route } from "../../app/api/seller/today-tasks/route";
 import { createSellerSession } from "../../lib/server/auth/session";
+import { dbNow } from "../../lib/server/billing/subscription";
 import { listSellerInquiries } from "../../lib/server/buyer-inquiries/service";
 import { listSellerOrders } from "../../lib/server/orders/read";
 import { listPendingDeposits } from "../../lib/server/payments/bank";
@@ -122,8 +123,14 @@ describe("파트너스 오늘 처리할 일", () => {
     const productOnly = await createSellerUser(s.seller.id, { permissions: ["PRODUCT_MANAGE"] });
     expect(counts(await (await get(await cookieOf(s, productOnly))).json())).toEqual({ stockOut: 2, stockLow: 1 });
     const none = await createSellerUser(s.seller.id, { permissions: ["BROADCAST_RUN"] });
+    const before = await dbNow(db);
     const r = await (await get(await cookieOf(s, none))).json();
-    expect(r).toEqual({ total: 0, items: [] });
+    const after = await dbNow(db);
+    expect(r).toEqual({ at: expect.any(String), total: 0, items: [] });
+    const at = new Date(r.at);
+    expect(at.toISOString()).toBe(r.at);
+    expect(at.getTime()).toBeGreaterThanOrEqual(before.getTime());
+    expect(at.getTime()).toBeLessThanOrEqual(after.getTime());
   });
 
   it("로그인 없음은 401, 읽기만 하며 아무것도 바꾸지 않는다", async () => {

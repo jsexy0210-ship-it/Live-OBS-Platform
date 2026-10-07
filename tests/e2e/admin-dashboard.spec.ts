@@ -39,8 +39,21 @@ test("로그인하면 홈에 통합 대시보드가 보이고, 숫자가 API 값
   await expect(page.getByTestId("dash-orders-amount")).toHaveText(`${api.ordersToday.paidAmount.toLocaleString("ko-KR")}원`);
   await expect(page.getByTestId("dash-live")).toHaveText(fmt(api.liveBroadcasts, "곳"));
 
-  await page.getByRole("button", { name: "새로 고침" }).click();
-  await expect(page.getByTestId("dash-sellers-total")).toBeVisible();
+  // 정본의 두 CTA가 CS 역할에서도 실제 목록으로 이어지고, 재진입·새로고침 뒤 집계가 유지된다.
+  await expect(page.getByTestId("infra-card")).toHaveCount(0);
+  for (const [name, path] of [["알림", "/admin/notifications"], ["가입 신청 검토", "/admin/partners/applications"]]) {
+    const link = page.getByRole("main").getByRole("link", { name, exact: true });
+    await expect(link).toHaveAttribute("href", path);
+    await link.click();
+    await expect(page).toHaveURL(new RegExp(`${path}$`));
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await page.goto("/admin");
+    await expect(page.getByTestId("dash-sellers-total")).toHaveText(fmt(api.sellers.total, "곳"));
+  }
+  const refreshed = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/admin/dashboard" && r.status() === 200);
+  await page.reload();
+  const freshApi = await (await refreshed).json();
+  await expect(page.getByTestId("dash-sellers-total")).toHaveText(fmt(freshApi.sellers.total, "곳"));
   await page.getByRole("link", { name: "구독 현황" }).first().click();
   await expect(page).toHaveURL(/\/admin\/billing\/subscriptions$/);
 });
