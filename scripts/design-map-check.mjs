@@ -25,6 +25,13 @@ for (const l of rows) {
   }
   if (!["FINAL", "DRAFT", "BLOCKED", "GROUP", "MISSING", "SUPERSEDED"].includes(status)) broken.push(`${cells[1]} 상태값 이상: ${status}`);
 }
+const mobileRows = map.split("\n").filter((line) => /^\| SA-\d{3}-M \|/.test(line));
+for (const line of mobileRows) {
+  const cells = line.split("|").map((s) => s.trim());
+  const id = cells[1];
+  if (cells[2] !== `design/project/${id}.dc.tsx` || cells[3] !== `${id}.dc.tsx` || !existsSync(cells[2])) broken.push(`${id}: TSX 정본 경로 오류`);
+  if (cells[7] !== `design/project/${id}.dc.html` || !existsSync(cells[7])) broken.push(`${id}: 이행 HTML 보존 누락`);
+}
 // 등록 행과 상태 집계표를 함께 검증해 새 화면 추가 뒤 오래된 분모가 남지 않게 한다.
 const summary = map.replace(/\r/g, "").split("## 집계\n")[1]?.split("## AU 공통 인증")[0] ?? "";
 for (const [label, actual] of Object.entries({ ...areas, 합계: rows.length, FINAL: 0, DRAFT: 0, BLOCKED: 0, GROUP: 0, MISSING: 0, SUPERSEDED: 0, ...counts })) {
