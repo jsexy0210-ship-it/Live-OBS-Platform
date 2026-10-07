@@ -4,7 +4,7 @@ import { formatDateTimeParts } from "../../../../../lib/client/format";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
-import { ListHead, PageHead, SearchBox, SearchRow, useConfirm } from "../../../../../components/admin-ui";
+import { ListHead, ListTable, PageHead, SearchBox, SearchRow, useConfirm } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { QuickPrice, QuickStatus, QuickStock, type QuickDone, type QuickUndo } from "../../../../../components/seller/ProductQuick";
 import { categoryLabel, categoryOptions, type CategoryNode } from "../../../../../components/seller/ProductCategoryPicker";
@@ -14,6 +14,7 @@ import { LOW_STOCK, MAX_SEARCH_LENGTH, statusBadge, textLength, totalStock, won 
 import { recentRange } from "../../../../../lib/client/dateInput";
 import { PERIOD_ALL } from "../../../../../lib/client/filterDefaults";
 import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
+import styles from "./products.module.css";
 
 // SA-011 상품 목록(업무용 관리 화면). 위쪽 표형 검색 상자에서 조건을 정해 「검색」을 누르면 걸러 보고, 이어서 불러온다(기본 20개씩).
 // 정렬·페이지 크기는 바꾸는 즉시 적용한다. 체크한 상품은 판매 상태 변경·삭제를 한 번에 처리한다(POST /api/seller/products/bulk).
@@ -312,9 +313,10 @@ export default function ProductListPage() {
   return (
     <>
       <Topbar crumb="상품 › 상품 목록" />
-      <main className="main">
+      <main className={`main ${styles.page}`}>
         <PageHead
           title="상품 목록"
+          description="상품을 검색하고 판매 상태와 재고를 관리합니다."
           actions={
             canManage && (
               <>
@@ -338,7 +340,7 @@ export default function ProductListPage() {
             <input
               className="inp inp-sm"
               type="search"
-              placeholder={draft.mode === "name" ? "상품명 · 선택 항목 이름 입력" : "상품 코드 입력(예: P12)"}
+              placeholder="검색어 입력"
               aria-label="상품 검색"
               value={draft.text}
               onChange={(e) => setDraft({ ...draft, text: e.target.value })}
@@ -357,10 +359,11 @@ export default function ProductListPage() {
               </select>
             </SearchRow>
           )}
-          <SearchRow label="판매 상태">{radios("판매 상태", "status", FILTERS, draft.status, (v) => setDraft({ ...draft, status: v }))}</SearchRow>
-          <SearchRow label="쇼핑몰 노출">{radios("쇼핑몰 노출", "display", DISPLAYS, draft.display, (v) => setDraft({ ...draft, display: v }))}</SearchRow>
+          <SearchRow label="판매 상태" label2="쇼핑몰 노출" children2={radios("쇼핑몰 노출", "display", DISPLAYS, draft.display, (v) => setDraft({ ...draft, display: v }))}>
+            {radios("판매 상태", "status", FILTERS, draft.status, (v) => setDraft({ ...draft, status: v }))}
+          </SearchRow>
           <SearchRow label="재고가 줄어드는 때">{radios("재고가 줄어드는 때", "deduct", DEDUCTS, draft.deduct, (v) => setDraft({ ...draft, deduct: v }))}</SearchRow>
-          <SearchRow label="등록일">
+          <SearchRow label="등록일" label2="재고" children2={radios("재고", "stock", [{ key: "", label: "전체" }, ...STOCK_FILTERS] as { key: StockFilter | ""; label: string }[], draft.stock ?? "", (v) => setDraft({ ...draft, stock: v === "" ? null : v }))}>
             <span className="row wrap" style={{ gap: 8 }}>
               <button className="btn btn-dense btn-out btn-w-xs" type="button" onClick={() => setDraft({ ...draft, from: kstDate(), to: kstDate() })}>
                 오늘
@@ -384,12 +387,9 @@ export default function ProductListPage() {
               <DatePicker className="dt-sm" aria-label="등록일 끝" value={draft.to} onChange={(v) => setDraft({ ...draft, to: v })} />
             </span>
           </SearchRow>
-          <SearchRow label="재고">
-            {radios("재고", "stock", [{ key: "", label: "전체" }, ...STOCK_FILTERS] as { key: StockFilter | ""; label: string }[], draft.stock ?? "", (v) => setDraft({ ...draft, stock: v === "" ? null : v }))}
-          </SearchRow>
         </SearchBox>
 
-        <div className="card" style={{ overflow: "hidden" }}>
+        <div className="au-list-section">
           <ListHead
             total={items.length}
             unit={countUnit}
@@ -499,8 +499,7 @@ export default function ProductListPage() {
           )}
           {state.kind === "ok" && items.length > 0 && (
             <>
-              <div className="au-lt-wrap">
-                <div className="p-tbl-wrap">
+              <ListTable className={`p-tbl-wrap ${styles.grid}`} aria-label="상품 목록 표">
                 <table className="tbl p-table">
                   <thead>
                     <tr>
@@ -567,8 +566,7 @@ export default function ProductListPage() {
                     })}
                   </tbody>
                 </table>
-                </div>
-              </div>
+              </ListTable>
               <ul className="p-cards">
                 {items.map((p) => {
                   const b = statusBadge(p);
