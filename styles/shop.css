@@ -842,8 +842,8 @@ body {
   }
   .shop-top .shop-wrap {
     gap: 4px;
-    height: 56px;
-    padding: 0 8px;
+    height: 52px;
+    padding: 0 16px;
   }
   .shop-app a.shop-brand {
     flex: 1;
