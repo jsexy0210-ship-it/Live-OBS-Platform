@@ -1533,6 +1533,29 @@ body {
   flex-wrap: wrap;
   min-height: var(--ui-h-default);
 }
+/* FINAL lop.css .ph2: 관리자 데스크톱 제목 띠는 본문 좌우 끝까지 이어진다. */
+@media (min-width: 768px) {
+  .seller-app .main > .au-ph {
+    min-height: var(--ui-h-touch);
+    box-sizing: border-box;
+    margin: 0 calc(-1 * var(--ui-gutter));
+    padding: 0 var(--ui-gutter);
+    border-bottom: 1px solid var(--cs-line);
+  }
+  .seller-app .main > .au-ph > .au-ph-description {
+    padding-bottom: var(--ui-sp-12);
+  }
+  .seller-app .main > .au-ph .au-ph-act > .btn {
+    height: var(--ui-h-touch);
+    min-width: var(--btn-w-lg);
+  }
+}
+@media (min-width: 768px) and (max-width: 1023px) {
+  .seller-app .main > .au-ph {
+    margin-inline: calc(-1 * var(--ui-gutter-mobile));
+    padding-inline: var(--ui-gutter-mobile);
+  }
+}
 /* 2026-10-06 대표님: 읽기 전용 값은 label-alt 회색, placeholder는 기존 안내 토큰 */
 .app input[readonly],
 .app textarea[readonly] {
