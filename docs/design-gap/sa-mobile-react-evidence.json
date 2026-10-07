@@ -1,125 +1,17 @@
 {
   "referenceGit": "d8873227bfc07021963829dd96cdd1a775746747",
   "mode": "actual Next React preview compared against retained static HTML with repository Wanted Sans and shared tokens/lop; no original Artifact synchronization claimed",
+  "viewportMeaning": "390px mobile states retained inside 884px board; 1440/1024/390 are board-container checks, not production responsive canonical equivalence",
   "states": 22,
   "domIdenticalBoards": 11,
-  "pixelComparison": [
+  "screens": [
     {
       "id": "SA-002-M",
-      "state": 1,
-      "identical": true
-    },
-    {
-      "id": "SA-002-M",
-      "state": 2,
-      "identical": true
-    },
-    {
-      "id": "SA-012-M",
-      "state": 1,
-      "identical": true
-    },
-    {
-      "id": "SA-012-M",
-      "state": 2,
-      "identical": true
-    },
-    {
-      "id": "SA-021-M",
-      "state": 1,
-      "identical": true
-    },
-    {
-      "id": "SA-021-M",
-      "state": 2,
-      "identical": true
-    },
-    {
-      "id": "SA-022-M",
-      "state": 1,
-      "identical": true
-    },
-    {
-      "id": "SA-022-M",
-      "state": 2,
-      "identical": true
-    },
-    {
-      "id": "SA-023-M",
-      "state": 1,
-      "identical": true
-    },
-    {
-      "id": "SA-023-M",
-      "state": 2,
-      "identical": true
-    },
-    {
-      "id": "SA-025-M",
-      "state": 1,
-      "identical": true
-    },
-    {
-      "id": "SA-025-M",
-      "state": 2,
-      "identical": true
-    },
-    {
-      "id": "SA-052-M",
-      "state": 1,
-      "identical": true
-    },
-    {
-      "id": "SA-052-M",
-      "state": 2,
-      "identical": true
-    },
-    {
-      "id": "SA-053-M",
-      "state": 1,
-      "identical": true
-    },
-    {
-      "id": "SA-053-M",
-      "state": 2,
-      "identical": true
-    },
-    {
-      "id": "SA-113-M",
-      "state": 1,
-      "identical": true
-    },
-    {
-      "id": "SA-113-M",
-      "state": 2,
-      "identical": true
-    },
-    {
-      "id": "SA-114-M",
-      "state": 1,
-      "identical": true
-    },
-    {
-      "id": "SA-114-M",
-      "state": 2,
-      "identical": true
-    },
-    {
-      "id": "SA-120-M",
-      "state": 1,
-      "identical": true
-    },
-    {
-      "id": "SA-120-M",
-      "state": 2,
-      "identical": true
-    }
-  ],
-  "viewportCases": [
-    {
-      "id": "SA-002-M",
-      "viewport": 1440,
-      "phones": [
+      "sourceSha256LF": {
+        "html": "e63d0ec6c01cfc14715ae548667e142e19af011bc6f54c2a07591ccc3df56310",
+        "tsx": "262b0c8ca1ad49810591012293ade0645011582f7575037b84ae35cd05dafbdd"
+      },
+      "phoneStates": [
         {
           "width": 390,
           "height": 1570,
@@ -133,13 +25,24 @@
           "scroll": 388
         }
       ],
-      "matching390States": true,
-      "boardOnly": true
+      "pixelsIdentical": [
+        true,
+        true
+      ],
+      "boardViewports": [
+        1440,
+        1024,
+        390
+      ],
+      "dimensionsMatchAtAllViewports": true
     },
     {
       "id": "SA-012-M",
-      "viewport": 1440,
-      "phones": [
+      "sourceSha256LF": {
+        "html": "62d27b952cea4581c28099906b3a7062cec819195c7ebbf7fd3ad0daa22db9a5",
+        "tsx": "04074be93f5569f568080c0bbb5ced96adf89988a74c2fcaaf155d76e2dd3489"
+      },
+      "phoneStates": [
         {
           "width": 390,
           "height": 1540,
@@ -153,13 +56,24 @@
           "scroll": 388
         }
       ],
-      "matching390States": true,
-      "boardOnly": true
+      "pixelsIdentical": [
+        true,
+        true
+      ],
+      "boardViewports": [
+        1440,
+        1024,
+        390
+      ],
+      "dimensionsMatchAtAllViewports": true
     },
     {
       "id": "SA-021-M",
-      "viewport": 1440,
-      "phones": [
+      "sourceSha256LF": {
+        "html": "bc4c5afa769cc9c1b0b57accf398d0cbdd5f9e541d97b83c18eb33b23f957be4",
+        "tsx": "9e986514f5050b45850fc6c10801b02ff5ec1bba056bdc886c503d2303cc5353"
+      },
+      "phoneStates": [
         {
           "width": 390,
           "height": 1620,
@@ -173,13 +87,24 @@
           "scroll": 388
         }
       ],
-      "matching390States": true,
-      "boardOnly": true
+      "pixelsIdentical": [
+        true,
+        true
+      ],
+      "boardViewports": [
+        1440,
+        1024,
+        390
+      ],
+      "dimensionsMatchAtAllViewports": true
     },
     {
       "id": "SA-022-M",
-      "viewport": 1440,
-      "phones": [
+      "sourceSha256LF": {
+        "html": "b635a60d4da3c83394d4a530302cc599dbe432279f02c72ede1ccf7c6a63ab05",
+        "tsx": "5cf475af49f6badd0a46852e69f78dd010a48719b898514ac0c8ddf6e24b4d0b"
+      },
+      "phoneStates": [
         {
           "width": 390,
           "height": 1670,
@@ -193,13 +118,24 @@
           "scroll": 388
         }
       ],
-      "matching390States": true,
-      "boardOnly": true
+      "pixelsIdentical": [
+        true,
+        true
+      ],
+      "boardViewports": [
+        1440,
+        1024,
+        390
+      ],
+      "dimensionsMatchAtAllViewports": true
     },
     {
       "id": "SA-023-M",
-      "viewport": 1440,
-      "phones": [
+      "sourceSha256LF": {
+        "html": "04eec58c53213325d01e425417230084f203f19b6468d2aaa9bff19ce92e0d98",
+        "tsx": "e02f98ea1f8a6cfe9e1f2db3e69c78d8c10d7ba41716b2d4fb2a6c305821462d"
+      },
+      "phoneStates": [
         {
           "width": 390,
           "height": 1090,
@@ -213,13 +149,24 @@
           "scroll": 388
         }
       ],
-      "matching390States": true,
-      "boardOnly": true
+      "pixelsIdentical": [
+        true,
+        true
+      ],
+      "boardViewports": [
+        1440,
+        1024,
+        390
+      ],
+      "dimensionsMatchAtAllViewports": true
     },
     {
       "id": "SA-025-M",
-      "viewport": 1440,
-      "phones": [
+      "sourceSha256LF": {
+        "html": "c8f0c10880e18edfd011be8e3616c43f1c35f816ba5ceadda70be27b16a01a5e",
+        "tsx": "6b1cffce3ec90c1f9549d51932f12df5c6a366dd35decc0eb5e63b6b4e8c5603"
+      },
+      "phoneStates": [
         {
           "width": 390,
           "height": 1960,
@@ -233,13 +180,24 @@
           "scroll": 388
         }
       ],
-      "matching390States": true,
-      "boardOnly": true
+      "pixelsIdentical": [
+        true,
+        true
+      ],
+      "boardViewports": [
+        1440,
+        1024,
+        390
+      ],
+      "dimensionsMatchAtAllViewports": true
     },
     {
       "id": "SA-052-M",
-      "viewport": 1440,
-      "phones": [
+      "sourceSha256LF": {
+        "html": "f92205e00c0ce65913eaa04eaaedbc8a909e9f378f7bf5663b45a8276f5b77e0",
+        "tsx": "e996b89d61a98a587eb50be2706553dffef73e19a0c5bfaea0721540810ed366"
+      },
+      "phoneStates": [
         {
           "width": 390,
           "height": 1780,
@@ -253,13 +211,24 @@
           "scroll": 388
         }
       ],
-      "matching390States": true,
-      "boardOnly": true
+      "pixelsIdentical": [
+        true,
+        true
+      ],
+      "boardViewports": [
+        1440,
+        1024,
+        390
+      ],
+      "dimensionsMatchAtAllViewports": true
     },
     {
       "id": "SA-053-M",
-      "viewport": 1440,
-      "phones": [
+      "sourceSha256LF": {
+        "html": "ed81795aa313591aecae2b89505fda754b82383519cce60d06bc865a90d764d8",
+        "tsx": "d550d2fd4de7d329be83d4758f3a5e96531ea287547239f8e8c9e21256db6a00"
+      },
+      "phoneStates": [
         {
           "width": 390,
           "height": 1630,
@@ -273,13 +242,24 @@
           "scroll": 388
         }
       ],
-      "matching390States": true,
-      "boardOnly": true
+      "pixelsIdentical": [
+        true,
+        true
+      ],
+      "boardViewports": [
+        1440,
+        1024,
+        390
+      ],
+      "dimensionsMatchAtAllViewports": true
     },
     {
       "id": "SA-113-M",
-      "viewport": 1440,
-      "phones": [
+      "sourceSha256LF": {
+        "html": "d8a081837b755135f1a4564fca12d9868937d7a08aad231ca77401727b2376dc",
+        "tsx": "8af79813eec282d3db29bee0bfa8faa1c197e39310c3ea5a425f4126aab7cce0"
+      },
+      "phoneStates": [
         {
           "width": 390,
           "height": 1050,
@@ -293,13 +273,24 @@
           "scroll": 388
         }
       ],
-      "matching390States": true,
-      "boardOnly": true
+      "pixelsIdentical": [
+        true,
+        true
+      ],
+      "boardViewports": [
+        1440,
+        1024,
+        390
+      ],
+      "dimensionsMatchAtAllViewports": true
     },
     {
       "id": "SA-114-M",
-      "viewport": 1440,
-      "phones": [
+      "sourceSha256LF": {
+        "html": "41ccba60d8ef5c3d6b4b60e432d78307b8aae5d8cbf1e8be28030ee3a75d233c",
+        "tsx": "18a7c6505ff437547b1177f6c9d96380816cec3e29fed9b0e1bddd02eda59ede"
+      },
+      "phoneStates": [
         {
           "width": 390,
           "height": 1480,
@@ -313,13 +304,24 @@
           "scroll": 388
         }
       ],
-      "matching390States": true,
-      "boardOnly": true
+      "pixelsIdentical": [
+        true,
+        true
+      ],
+      "boardViewports": [
+        1440,
+        1024,
+        390
+      ],
+      "dimensionsMatchAtAllViewports": true
     },
     {
       "id": "SA-120-M",
-      "viewport": 1440,
-      "phones": [
+      "sourceSha256LF": {
+        "html": "8728ae2d7961ac0a7c249b608dbf6341b015d108b595d02d5ea0134a31896cb2",
+        "tsx": "aed539ca19404278bc6a8964e6c0598f24fe6f7090843b66bab80a348f32ecde"
+      },
+      "phoneStates": [
         {
           "width": 390,
           "height": 1190,
@@ -333,494 +335,16 @@
           "scroll": 388
         }
       ],
-      "matching390States": true,
-      "boardOnly": true
-    },
-    {
-      "id": "SA-002-M",
-      "viewport": 1024,
-      "phones": [
-        {
-          "width": 390,
-          "height": 1570,
-          "client": 388,
-          "scroll": 388
-        },
-        {
-          "width": 390,
-          "height": 930,
-          "client": 388,
-          "scroll": 388
-        }
+      "pixelsIdentical": [
+        true,
+        true
       ],
-      "matching390States": true,
-      "boardOnly": true
-    },
-    {
-      "id": "SA-012-M",
-      "viewport": 1024,
-      "phones": [
-        {
-          "width": 390,
-          "height": 1540,
-          "client": 388,
-          "scroll": 388
-        },
-        {
-          "width": 390,
-          "height": 1020,
-          "client": 388,
-          "scroll": 388
-        }
+      "boardViewports": [
+        1440,
+        1024,
+        390
       ],
-      "matching390States": true,
-      "boardOnly": true
-    },
-    {
-      "id": "SA-021-M",
-      "viewport": 1024,
-      "phones": [
-        {
-          "width": 390,
-          "height": 1620,
-          "client": 388,
-          "scroll": 388
-        },
-        {
-          "width": 390,
-          "height": 910,
-          "client": 388,
-          "scroll": 388
-        }
-      ],
-      "matching390States": true,
-      "boardOnly": true
-    },
-    {
-      "id": "SA-022-M",
-      "viewport": 1024,
-      "phones": [
-        {
-          "width": 390,
-          "height": 1670,
-          "client": 388,
-          "scroll": 388
-        },
-        {
-          "width": 390,
-          "height": 930,
-          "client": 388,
-          "scroll": 388
-        }
-      ],
-      "matching390States": true,
-      "boardOnly": true
-    },
-    {
-      "id": "SA-023-M",
-      "viewport": 1024,
-      "phones": [
-        {
-          "width": 390,
-          "height": 1090,
-          "client": 388,
-          "scroll": 388
-        },
-        {
-          "width": 390,
-          "height": 1880,
-          "client": 388,
-          "scroll": 388
-        }
-      ],
-      "matching390States": true,
-      "boardOnly": true
-    },
-    {
-      "id": "SA-025-M",
-      "viewport": 1024,
-      "phones": [
-        {
-          "width": 390,
-          "height": 1960,
-          "client": 388,
-          "scroll": 388
-        },
-        {
-          "width": 390,
-          "height": 980,
-          "client": 388,
-          "scroll": 388
-        }
-      ],
-      "matching390States": true,
-      "boardOnly": true
-    },
-    {
-      "id": "SA-052-M",
-      "viewport": 1024,
-      "phones": [
-        {
-          "width": 390,
-          "height": 1780,
-          "client": 388,
-          "scroll": 388
-        },
-        {
-          "width": 390,
-          "height": 1180,
-          "client": 388,
-          "scroll": 388
-        }
-      ],
-      "matching390States": true,
-      "boardOnly": true
-    },
-    {
-      "id": "SA-053-M",
-      "viewport": 1024,
-      "phones": [
-        {
-          "width": 390,
-          "height": 1630,
-          "client": 388,
-          "scroll": 388
-        },
-        {
-          "width": 390,
-          "height": 1480,
-          "client": 388,
-          "scroll": 388
-        }
-      ],
-      "matching390States": true,
-      "boardOnly": true
-    },
-    {
-      "id": "SA-113-M",
-      "viewport": 1024,
-      "phones": [
-        {
-          "width": 390,
-          "height": 1050,
-          "client": 388,
-          "scroll": 388
-        },
-        {
-          "width": 390,
-          "height": 1360,
-          "client": 388,
-          "scroll": 388
-        }
-      ],
-      "matching390States": true,
-      "boardOnly": true
-    },
-    {
-      "id": "SA-114-M",
-      "viewport": 1024,
-      "phones": [
-        {
-          "width": 390,
-          "height": 1480,
-          "client": 388,
-          "scroll": 388
-        },
-        {
-          "width": 390,
-          "height": 940,
-          "client": 388,
-          "scroll": 388
-        }
-      ],
-      "matching390States": true,
-      "boardOnly": true
-    },
-    {
-      "id": "SA-120-M",
-      "viewport": 1024,
-      "phones": [
-        {
-          "width": 390,
-          "height": 1190,
-          "client": 388,
-          "scroll": 388
-        },
-        {
-          "width": 390,
-          "height": 950,
-          "client": 388,
-          "scroll": 388
-        }
-      ],
-      "matching390States": true,
-      "boardOnly": true
-    },
-    {
-      "id": "SA-002-M",
-      "viewport": 390,
-      "phones": [
-        {
-          "width": 390,
-          "height": 1570,
-          "client": 388,
-          "scroll": 388
-        },
-        {
-          "width": 390,
-          "height": 930,
-          "client": 388,
-          "scroll": 388
-        }
-      ],
-      "matching390States": true,
-      "boardOnly": true
-    },
-    {
-      "id": "SA-012-M",
-      "viewport": 390,
-      "phones": [
-        {
-          "width": 390,
-          "height": 1540,
-          "client": 388,
-          "scroll": 388
-        },
-        {
-          "width": 390,
-          "height": 1020,
-          "client": 388,
-          "scroll": 388
-        }
-      ],
-      "matching390States": true,
-      "boardOnly": true
-    },
-    {
-      "id": "SA-021-M",
-      "viewport": 390,
-      "phones": [
-        {
-          "width": 390,
-          "height": 1620,
-          "client": 388,
-          "scroll": 388
-        },
-        {
-          "width": 390,
-          "height": 910,
-          "client": 388,
-          "scroll": 388
-        }
-      ],
-      "matching390States": true,
-      "boardOnly": true
-    },
-    {
-      "id": "SA-022-M",
-      "viewport": 390,
-      "phones": [
-        {
-          "width": 390,
-          "height": 1670,
-          "client": 388,
-          "scroll": 388
-        },
-        {
-          "width": 390,
-          "height": 930,
-          "client": 388,
-          "scroll": 388
-        }
-      ],
-      "matching390States": true,
-      "boardOnly": true
-    },
-    {
-      "id": "SA-023-M",
-      "viewport": 390,
-      "phones": [
-        {
-          "width": 390,
-          "height": 1090,
-          "client": 388,
-          "scroll": 388
-        },
-        {
-          "width": 390,
-          "height": 1880,
-          "client": 388,
-          "scroll": 388
-        }
-      ],
-      "matching390States": true,
-      "boardOnly": true
-    },
-    {
-      "id": "SA-025-M",
-      "viewport": 390,
-      "phones": [
-        {
-          "width": 390,
-          "height": 1960,
-          "client": 388,
-          "scroll": 388
-        },
-        {
-          "width": 390,
-          "height": 980,
-          "client": 388,
-          "scroll": 388
-        }
-      ],
-      "matching390States": true,
-      "boardOnly": true
-    },
-    {
-      "id": "SA-052-M",
-      "viewport": 390,
-      "phones": [
-        {
-          "width": 390,
-          "height": 1780,
-          "client": 388,
-          "scroll": 388
-        },
-        {
-          "width": 390,
-          "height": 1180,
-          "client": 388,
-          "scroll": 388
-        }
-      ],
-      "matching390States": true,
-      "boardOnly": true
-    },
-    {
-      "id": "SA-053-M",
-      "viewport": 390,
-      "phones": [
-        {
-          "width": 390,
-          "height": 1630,
-          "client": 388,
-          "scroll": 388
-        },
-        {
-          "width": 390,
-          "height": 1480,
-          "client": 388,
-          "scroll": 388
-        }
-      ],
-      "matching390States": true,
-      "boardOnly": true
-    },
-    {
-      "id": "SA-113-M",
-      "viewport": 390,
-      "phones": [
-        {
-          "width": 390,
-          "height": 1050,
-          "client": 388,
-          "scroll": 388
-        },
-        {
-          "width": 390,
-          "height": 1360,
-          "client": 388,
-          "scroll": 388
-        }
-      ],
-      "matching390States": true,
-      "boardOnly": true
-    },
-    {
-      "id": "SA-114-M",
-      "viewport": 390,
-      "phones": [
-        {
-          "width": 390,
-          "height": 1480,
-          "client": 388,
-          "scroll": 388
-        },
-        {
-          "width": 390,
-          "height": 940,
-          "client": 388,
-          "scroll": 388
-        }
-      ],
-      "matching390States": true,
-      "boardOnly": true
-    },
-    {
-      "id": "SA-120-M",
-      "viewport": 390,
-      "phones": [
-        {
-          "width": 390,
-          "height": 1190,
-          "client": 388,
-          "scroll": 388
-        },
-        {
-          "width": 390,
-          "height": 950,
-          "client": 388,
-          "scroll": 388
-        }
-      ],
-      "matching390States": true,
-      "boardOnly": true
+      "dimensionsMatchAtAllViewports": true
     }
-  ],
-  "sourceHashes": {
-    "SA-002-M": {
-      "html": "e63d0ec6c01cfc14715ae548667e142e19af011bc6f54c2a07591ccc3df56310",
-      "tsx": "262b0c8ca1ad49810591012293ade0645011582f7575037b84ae35cd05dafbdd"
-    },
-    "SA-012-M": {
-      "html": "62d27b952cea4581c28099906b3a7062cec819195c7ebbf7fd3ad0daa22db9a5",
-      "tsx": "04074be93f5569f568080c0bbb5ced96adf89988a74c2fcaaf155d76e2dd3489"
-    },
-    "SA-021-M": {
-      "html": "bc4c5afa769cc9c1b0b57accf398d0cbdd5f9e541d97b83c18eb33b23f957be4",
-      "tsx": "9e986514f5050b45850fc6c10801b02ff5ec1bba056bdc886c503d2303cc5353"
-    },
-    "SA-022-M": {
-      "html": "b635a60d4da3c83394d4a530302cc599dbe432279f02c72ede1ccf7c6a63ab05",
-      "tsx": "5cf475af49f6badd0a46852e69f78dd010a48719b898514ac0c8ddf6e24b4d0b"
-    },
-    "SA-023-M": {
-      "html": "04eec58c53213325d01e425417230084f203f19b6468d2aaa9bff19ce92e0d98",
-      "tsx": "e02f98ea1f8a6cfe9e1f2db3e69c78d8c10d7ba41716b2d4fb2a6c305821462d"
-    },
-    "SA-025-M": {
-      "html": "c8f0c10880e18edfd011be8e3616c43f1c35f816ba5ceadda70be27b16a01a5e",
-      "tsx": "6b1cffce3ec90c1f9549d51932f12df5c6a366dd35decc0eb5e63b6b4e8c5603"
-    },
-    "SA-052-M": {
-      "html": "f92205e00c0ce65913eaa04eaaedbc8a909e9f378f7bf5663b45a8276f5b77e0",
-      "tsx": "e996b89d61a98a587eb50be2706553dffef73e19a0c5bfaea0721540810ed366"
-    },
-    "SA-053-M": {
-      "html": "ed81795aa313591aecae2b89505fda754b82383519cce60d06bc865a90d764d8",
-      "tsx": "d550d2fd4de7d329be83d4758f3a5e96531ea287547239f8e8c9e21256db6a00"
-    },
-    "SA-113-M": {
-      "html": "d8a081837b755135f1a4564fca12d9868937d7a08aad231ca77401727b2376dc",
-      "tsx": "8af79813eec282d3db29bee0bfa8faa1c197e39310c3ea5a425f4126aab7cce0"
-    },
-    "SA-114-M": {
-      "html": "41ccba60d8ef5c3d6b4b60e432d78307b8aae5d8cbf1e8be28030ee3a75d233c",
-      "tsx": "18a7c6505ff437547b1177f6c9d96380816cec3e29fed9b0e1bddd02eda59ede"
-    },
-    "SA-120-M": {
-      "html": "8728ae2d7961ac0a7c249b608dbf6341b015d108b595d02d5ea0134a31896cb2",
-      "tsx": "aed539ca19404278bc6a8964e6c0598f24fe6f7090843b66bab80a348f32ecde"
-    }
-  }
+  ]
 }
