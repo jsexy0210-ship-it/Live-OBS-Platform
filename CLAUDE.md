@@ -43,6 +43,8 @@
 
 ### 디자인 정본 소스 (2026-10-05 대표님 지시 「디자인 실제 소스 Git 이관 및 Source of Truth 구축」)
 
+- 대표님 최신 React 전환 지시에 따라 `SCREEN_MAP.md`에 TSX 정본으로 등록한 PF-003 및 SA 모바일 11개는 최신 Git의 TSX Source/Entry가 권위다. 보존 HTML·기존 Artifact는 이행/읽기 참조이며 동기화 완료로 주장하지 않는다. 해당 모바일 정본은 390px 두 상태만 정의한다. 그 밖의 HTML 정본은 기존 캔버스 동기화 규칙을 유지한다.
+
 - 디자인 정본은 저장소 루트 `design/`(캔버스 `project/` 실제 소스)이다. PNG·JPG는 검수 증거일 뿐 정본이 아니다. 출처·버전·우선순위는 `design/DESIGN_SOURCE.md`, 화면별 상태는 `design/SCREEN_MAP.md`.
 - UI 작업을 시작할 때 ① `design/SCREEN_MAP.md` ② 대상 화면의 FINAL 소스 ③ 관련 공통 컴포넌트 소스(`design/project/lop.css` · DS-PANEL · DS-ROW-ACTION · SA-LNB · SH-CARD-IA) ④ `docs/IA.md` ⑤ production 소스 순으로 확인한다. **FINAL 확인 없이 UI 구현을 시작하지 않는다.** DRAFT · BLOCKED로 보고된 화면은 임의로 구현하지 않고 MASTER에 묻는다.
 - 새 화면·큰 UI 변경은 디자인 소스 수정 → 디자인 PR 병합 → 개발 PR 순서다. 단순 구현 오류(정본과 다른 간격·문구·크기)는 정본 기준으로 바로 고친다. 스크린샷은 검수 증거로만 쓴다.
