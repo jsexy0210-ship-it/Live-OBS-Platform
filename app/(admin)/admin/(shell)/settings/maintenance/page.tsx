@@ -64,7 +64,6 @@ export default function MaintenancePage() {
     const r = await adminApi<{ maintenance: Maintenance }>("/api/admin/settings/maintenance");
     if (id !== reqId.current) return;
     if (r.ok) {
-      window.dispatchEvent(new Event(MAINTENANCE_CHANGED));
       fill(r.data.maintenance);
       setState({ kind: "ok", data: r.data.maintenance });
     } else setState({ kind: "error" });
@@ -86,6 +85,7 @@ export default function MaintenancePage() {
     const r = await adminApi<{ maintenance: Maintenance }>("/api/admin/settings/maintenance", { method: "PUT", json: body });
     setBusy(false);
     if (r.ok) {
+      window.dispatchEvent(new Event(MAINTENANCE_CHANGED));
       setConfirm(null);
       fill(r.data.maintenance);
       setState({ kind: "ok", data: r.data.maintenance });
