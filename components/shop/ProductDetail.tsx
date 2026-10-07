@@ -34,7 +34,8 @@ export type ShopProduct = {
   description: string | null;
   price: number;
   salePrice: number | null;
-  event: { endsAt: string | null } | null;
+  event: { endsAt: string | null; badge: string | null } | null;
+  eventEnded: boolean;
   soldOut: boolean;
   images: { id: string; url: string; width: number; height: number }[];
   options: Option[];
@@ -68,6 +69,8 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
   const rate = p.salePrice !== null ? Math.floor(((p.price - p.salePrice) / p.price) * 100) : 0;
   const out = p.soldOut || !option || option.soldOut;
   const hero = p.images[photo] ?? null;
+
+  useEffect(() => setWishCount(p.wishCount), [p.id, p.wishCount]);
 
   useEffect(() => {
     if (!loggedIn) return;
@@ -234,6 +237,13 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
               ))}
             </nav>
           )}
+          {(p.isLive || p.event?.badge || option?.stockLeft != null) && (
+            <div className="pd-badges">
+              {p.isLive && <span className="pd-live-tag">방송 중</span>}
+              {p.event?.badge && <span className="pd-event-tag">{p.event.badge}</span>}
+              {option?.stockLeft != null && <span>재고 {option.stockLeft}개</span>}
+            </div>
+          )}
           <h1>{p.name}</h1>
           <div className="pd-social-summary">
           {reviewSummary && (
@@ -256,7 +266,7 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
                 {p.event && <span className="pd-hint">이벤트 할인{p.event.endsAt ? ` · ${kstDate(p.event.endsAt)}까지` : ""}</span>}
               </>
             ) : (
-              <b className="pd-price">{won(p.price)}</b>
+              <><b className="pd-price">{won(p.price)}</b>{p.eventEnded && <span className="pd-hint">이벤트가 끝나 정가로 돌아갔어요</span>}</>
             )}
           </div>
           <dl className="pd-form">

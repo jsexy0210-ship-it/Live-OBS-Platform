@@ -96,6 +96,23 @@
   align-items: baseline;
   gap: 8px;
 }
+.pd-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 11px;
+}
+.pd-badges span {
+  padding: 2px 4px;
+  border: 1px solid var(--wds-line-solid-normal);
+}
+.pd-badges .pd-live-tag {
+  background: var(--wds-status-negative);
+  color: #fff;
+}
+.pd-badges .pd-event-tag {
+  color: var(--wds-status-negative);
+}
 .pd-wish-count {
   color: var(--wds-label-alternative);
   font-size: 12px;

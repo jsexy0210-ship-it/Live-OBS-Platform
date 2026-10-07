@@ -162,6 +162,7 @@ describe("구매자 상품 상세", () => {
     expect(r.cache).toContain("no-store");
     const d = r.body.product;
     expect(d).toMatchObject({ id: p.id, code: "P0000001", name: "포켓몬 팩", description: "설명", price: 10000, salePrice: 9000, event: { endsAt: expect.any(String) }, soldOut: false });
+    expect(d.eventEnded).toBe(false);
     expect(d.images).toEqual([{ id: img.image.id, url: expect.stringMatching(new RegExp(`^/api/shop/${s.seller.slug}/products/${p.id}/images/${img.image.id}\\?v=`)), width: 300, height: 300 }]);
     expect(d.options.map((o: Record<string, unknown>) => [o.name, o.price, o.salePrice, o.soldOut, o.stockLeft])).toEqual([
       ["1팩", 10000, 9000, false, 3],
@@ -189,6 +190,9 @@ describe("구매자 상품 상세", () => {
     if (!login.ok) throw new Error(login.reason);
     expect((await detail(s.seller.slug, p.id, `lo_buyer=${login.token}`)).body.product.reward).toEqual({ card: { rate: 5, amount: 450 }, bankTransfer: null });
     expect((await detail(s.seller.slug, p.id)).body.product.reward).toEqual({ card: { rate: 1, amount: 90 }, bankTransfer: null });
+
+    await db.product.update({ where: { id: p.id }, data: { eventStartsAt: new Date(Date.now() - 60_000), eventEndsAt: new Date(Date.now() - 1_000) } });
+    expect((await detail(s.seller.slug, p.id)).body.product).toMatchObject({ salePrice: null, event: null, eventEnded: true });
 
     // 보이지 않는 상품·다른 쇼핑몰·없는 id는 404
     const other = await seller();

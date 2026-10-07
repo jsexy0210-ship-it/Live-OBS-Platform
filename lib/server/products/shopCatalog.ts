@@ -7,7 +7,7 @@ import type { RewardRates } from "../rewards/earn";
 import { expandSearchTerm, productIdsByTerm, recordSearchTerm } from "../shop-search/service";
 import { cleanText } from "../text/clean";
 import { publicDetailBlocks, publicDetailHtml } from "./detail";
-import { eventOf, isEventActive, orderUnitPrice } from "./event";
+import { eventOf, eventView, isEventActive, orderUnitPrice } from "./event";
 import { shopImageUrl, thumbnailUrls } from "./images";
 import { LOW_STOCK_MAX, productCode } from "./manage";
 
@@ -360,7 +360,8 @@ export async function shopProductDetail(db: PrismaClient, slug: string, productI
     description: p.description,
     price: p.price,
     salePrice: shown < p.price ? shown : null,
-    event: active ? { endsAt: event.endsAt } : null,
+    event: active ? { endsAt: event.endsAt, badge: eventView(event, p.price, now)?.badge ?? null } : null,
+    eventEnded: !!event && event.endsAt <= now,
     soldOut: productSoldOut || p.options.every((o) => o.stock <= 0),
     images: p.images.map((i) => ({ id: i.id, url: shopImageUrl(shop.slug, i), width: i.width, height: i.height })),
     options: p.options.map((o) => {
