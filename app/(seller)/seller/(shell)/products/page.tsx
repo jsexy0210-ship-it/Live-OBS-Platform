@@ -313,7 +313,7 @@ export default function ProductListPage() {
   return (
     <>
       <Topbar crumb="상품 › 상품 목록" />
-      <main className="main">
+      <main className={`main ${styles.page}`}>
         <PageHead
           title="상품 목록"
           description="상품을 검색하고 판매 상태와 재고를 관리합니다."

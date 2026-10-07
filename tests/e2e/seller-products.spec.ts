@@ -127,11 +127,12 @@ test("상품 목록 제목 안내·검색 두 쌍·표 경계가 1440·1024·390
         descriptionLine: getComputedStyle(description).lineHeight,
         headOutside: !grid.contains(head),
         twoPairs: [...document.querySelectorAll(".au-ft tr")].filter(row => row.querySelectorAll("th").length === 2).length,
+        radioLabelsReadable: [...document.querySelectorAll(".au-ft .chk")].every(label => label.getBoundingClientRect().height <= 28),
         gridVisible: getComputedStyle(grid).display !== "none",
         overflow: document.documentElement.scrollWidth > innerWidth,
       };
     });
-    expect(layout).toMatchObject({ font: "20px", line: "28px", descriptionBelow: true, descriptionFont: "14px", descriptionLine: "20px", headOutside: true, twoPairs: 2, gridVisible: width >= 768, overflow: false });
+    expect(layout).toMatchObject({ font: "20px", line: "28px", descriptionBelow: true, descriptionFont: "14px", descriptionLine: "20px", headOutside: true, twoPairs: 2, radioLabelsReadable: true, gridVisible: width >= 768, overflow: false });
     if (SHOTS) await page.screenshot({ path: `tests/e2e/screenshots/SA-011-alignment-${width}.png`, fullPage: true, animations: "disabled" });
   }
 

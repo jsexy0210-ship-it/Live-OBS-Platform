@@ -4,3 +4,18 @@
     display: none;
   }
 }
+
+/* 태블릿의 좁은 값 칸에서 라디오 문구·날짜 범위가 잘리지 않게 쌓는다. */
+@media (min-width: 768px) and (max-width: 1199px) {
+  .page :global(.au-ft),
+  .page :global(.au-ft > tbody) {
+    display: block;
+  }
+  .page :global(.au-ft > colgroup) {
+    display: none;
+  }
+  .page :global(.au-ft > tbody > tr) {
+    display: grid;
+    grid-template-columns: 160px minmax(0, 1fr);
+  }
+}
