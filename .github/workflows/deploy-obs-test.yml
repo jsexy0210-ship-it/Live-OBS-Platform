@@ -236,19 +236,34 @@ jobs:
           trap 'rm -f "$tmp" "$tmp.n"' EXIT
           cat "$ENV_FILE" > "$tmp"
           if [ -s "$tmp" ] && [ -n "$(tail -c1 "$tmp")" ]; then echo >> "$tmp"; fi
-          put=()
+          shop_put=()
           if [ -n "${EXTERNAL_SHOP_CLIENT_ID:-}" ] && [ -n "${EXTERNAL_SHOP_CLIENT_SECRET:-}" ]; then
-            put+=(EXTERNAL_SHOP_CLIENT_ID EXTERNAL_SHOP_CLIENT_SECRET EXTERNAL_SHOP_REDIRECT_URI)
+            shop_put+=(EXTERNAL_SHOP_CLIENT_ID EXTERNAL_SHOP_CLIENT_SECRET EXTERNAL_SHOP_REDIRECT_URI)
+            for n in EXTERNAL_SHOP_CLIENT_ID EXTERNAL_SHOP_CLIENT_SECRET; do
+              v="${!n}"
+              if ! [[ "$v" =~ $safe ]]; then
+                echo "::warning::$n Secret에 .env에 그대로 쓸 수 없는 문자가 있어 외부 쇼핑몰 설정을 그대로 둬요."
+                shop_put=()
+                break
+              fi
+            done
           else
             echo "::notice::EXTERNAL_SHOP_CLIENT_* Secret이 비어 있어 외부 쇼핑몰 연동 설정은 그대로 둬요."
           fi
-          if [ -n "${EXTERNAL_WEBHOOK_API_KEY:-}" ]; then put+=(EXTERNAL_WEBHOOK_API_KEY); else echo "::notice::EXTERNAL_WEBHOOK_API_KEY Secret이 비어 있어 그대로 둬요."; fi
+          webhook_put=()
+          if [ -n "${EXTERNAL_WEBHOOK_API_KEY:-}" ]; then
+            if [[ "$EXTERNAL_WEBHOOK_API_KEY" =~ $safe ]]; then
+              webhook_put+=(EXTERNAL_WEBHOOK_API_KEY)
+            else
+              echo "::warning::EXTERNAL_WEBHOOK_API_KEY Secret에 .env에 그대로 쓸 수 없는 문자가 있어 웹훅 설정을 그대로 둬요."
+            fi
+          else
+            echo "::notice::EXTERNAL_WEBHOOK_API_KEY Secret이 비어 있어 그대로 둬요."
+          fi
+          put=("${shop_put[@]}" "${webhook_put[@]}")
           for n in "${put[@]}"; do
             [ "$n" = EXTERNAL_SHOP_REDIRECT_URI ] && continue
             v="${!n}"
-            if ! [[ "$v" =~ $safe ]]; then
-              echo "::warning::$n Secret에 .env에 그대로 쓸 수 없는 문자(공백·따옴표·\$·# 등)가 있어 이 단계의 설정을 모두 넣지 않아요."; exit 0
-            fi
             echo "::add-mask::$v"
           done
           for n in "${put[@]}"; do
