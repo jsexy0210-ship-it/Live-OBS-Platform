@@ -19,9 +19,9 @@ export const MAINTENANCE_COPY: Record<
   },
   formal: {
     title: "지금은 점검 중입니다",
-    fallback: "서비스를 점검하고 있습니다. 잠시 뒤에 다시 이용해 주십시오.",
+    fallback: "더 안정적으로 이용하실 수 있게 서비스를 점검하고 있습니다. 잠시 뒤에 다시 이용해 주십시오.",
     ends: (t) => `${t}에 끝날 예정입니다`,
-    note: "점검 중에는 파트너스 관리자를 이용할 수 없습니다",
+    note: "결제가 끝난 주문은 점검이 끝난 뒤 주문 목록에서 확인할 수 있습니다",
     doneTitle: "점검이 끝났습니다",
     doneBody: "이제 다시 이용할 수 있습니다.",
     doneCta: "홈으로",
@@ -31,4 +31,4 @@ export const MAINTENANCE_COPY: Record<
 
 // 프록시가 /seller 주소를 이 화면으로 돌릴 때만 붙이는 값(?area=partners). 그 밖의 값은 모두 해요체.
 export const PARTNERS_AREA = "partners";
-export const maintenanceTone = (area: string | string[] | undefined): MaintenanceTone => (area === PARTNERS_AREA ? "formal" : "friendly");
+export const maintenanceTone = (area: string | string[] | undefined): MaintenanceTone => (area === PARTNERS_AREA || area === "admin" ? "formal" : "friendly");

@@ -2,6 +2,8 @@ import Link from "next/link";
 import "../../styles/tokens.css";
 import "../../styles/lop.css";
 import "../../styles/public.css";
+import { PublicMobileMenu } from "./PublicMobileMenu";
+import styles from "./PublicFrame.module.css";
 
 // 공개 화면(PF) 공통 머리·꼬리. 디자인 PF-001 기준.
 // 플랫폼 사업자 정보는 아직 정해진 값이 없다. 값이 없는 동안은 하단 정보 줄을 숨기고, 값이 정해지면 COMPANY에 넣는다(이 한 곳만 고친다).
@@ -21,7 +23,7 @@ const NAV = [
   { href: "/notices", label: "공지" },
 ];
 
-export function PublicFrame({ children, active }: { children: React.ReactNode; active?: string }) {
+export function PublicFrame({ children, active, mobileHeader }: { children: React.ReactNode; active?: string; mobileHeader?: "compact" }) {
   return (
     <div className="app pf" data-theme="light">
       <header className="pf-head">
@@ -42,9 +44,10 @@ export function PublicFrame({ children, active }: { children: React.ReactNode; a
           <Link className="btn btn-sm btn-out" href="/seller/login">
             로그인
           </Link>
-          <Link className="btn btn-sm" href="/seller/signup">
+          <Link className={`btn btn-sm ${mobileHeader === "compact" ? styles.compactSignup : ""}`} href="/seller/signup">
             파트너스 가입 신청
           </Link>
+          {mobileHeader === "compact" && <PublicMobileMenu links={NAV} active={active} />}
         </div>
       </header>
       <main>{children}</main>

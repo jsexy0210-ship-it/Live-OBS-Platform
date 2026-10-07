@@ -83,6 +83,7 @@ describe("찜", () => {
     });
     let item = (await (await list(s.seller.slug, s.cookie)).json()).items[0];
     expect([item.price, item.listPrice, item.status]).toEqual([4000, 5000, "on_sale"]);
+    expect([item.eventBadge, item.isLive]).toEqual([expect.any(String), false]);
     await db.productOption.updateMany({ where: { productId: s.p.id }, data: { stock: 0 } });
     expect((await (await list(s.seller.slug, s.cookie)).json()).items[0].status).toBe("sold_out");
     await db.product.update({ where: { id: s.p.id }, data: { status: "HIDDEN" } });

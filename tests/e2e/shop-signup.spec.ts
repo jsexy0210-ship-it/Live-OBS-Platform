@@ -39,5 +39,5 @@ test("본인확인 키가 없으면 가입 대신 준비 중 상태 화면을 �
 test("없는 쇼핑몰 주소는 해요체 404 화면을 보여 준다", async ({ page }) => {
   const res = await page.goto("/shop/no-such-shop-e2e/signup");
   expect(res?.status()).toBe(404);
-  await expect(page.getByRole("heading", { name: "쇼핑몰을 찾을 수 없어요" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "이런 쇼핑몰은 없어요" })).toBeVisible();
 });

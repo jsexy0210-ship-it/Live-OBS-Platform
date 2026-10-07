@@ -410,6 +410,10 @@
 .sc-box .hb-dots {
   display: none;
 }
+.sc-banner-preview .hb-only .hb-slide img {
+  height: 80px;
+  object-fit: cover;
+}
 .sc-box-n {
   position: absolute;
   right: 16px;

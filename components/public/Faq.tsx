@@ -12,7 +12,7 @@ export function Faq() {
         <div className="card row between pf-ask">
           <span className="col" style={{ gap: 2 }}>
             <span className="t-hl2">원하는 답이 없나요?</span>
-            <span className="t-l2 c-alt">운영팀이 평일 10~18시에 답해요.</span>
+            <span className="t-l2 c-alt">운영팀이 평일 10~18시에 답해요. 평균 첫 답변 4시간.</span>
           </span>
           <Link className="btn" href="/seller/login?next=%2Fseller%2Finquiries%2Fnew">
             문의하기

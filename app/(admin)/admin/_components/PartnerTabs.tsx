@@ -19,6 +19,7 @@ export const PARTNER_TABS = [
   ["pg", "결제 연결"],
   ["broadcasts", "방송 이력"],
   ["orders", "주문 현황"],
+  ["rewards", "적립금 설정"],
   ["notes", "메모"],
   ["activity", "활동 기록"],
 ] as const;
