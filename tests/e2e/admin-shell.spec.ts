@@ -1,6 +1,8 @@
 import { PrismaClient } from "@prisma/client";
 import { expect, test, type Page } from "@playwright/test";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
 import { hashPassword } from "../../lib/server/auth/password";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 
@@ -35,6 +37,31 @@ async function login(page: Page, email: string) {
 
 const gnb = (page: Page) => page.getByRole("navigation", { name: "주 메뉴" });
 const lnb = (page: Page) => page.getByRole("complementary", { name: "마스터 관리자 메뉴" });
+
+test("파트너스 목록: 실제 로그인 후 공통 틀 3폭 geometry와 이번 SHA 캡처를 확인한다", async ({ page }) => {
+  const sourceSha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  const captures = [];
+  await login(page, emails.super);
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/admin/partners");
+    await expect(page.getByRole("heading", { name: "파트너스 목록", exact: true })).toBeVisible();
+    await expect(page.getByTestId("partner-row").first()).toBeVisible();
+    await page.evaluate(() => document.fonts.ready);
+    const geometry = await page.evaluate(() => {
+      const main = document.querySelector(".main")!.getBoundingClientRect();
+      const head = document.querySelector(".au-ph")!.getBoundingClientRect();
+      return { mainX: main.x, headY: head.y, overflow: document.documentElement.scrollWidth > innerWidth };
+    });
+    expect(geometry).toEqual({ mainX: width < 768 ? 0 : 196, headY: 112, overflow: false });
+    const path = `tests/e2e/screenshots/current-shell-${sourceSha}/admin-partners-list-${width}.png`;
+    const png = await page.screenshot({ path, fullPage: true });
+    captures.push({ width, path, geometry, sha256: createHash("sha256").update(png).digest("hex") });
+  }
+  const manifest = { sourceSha, route: "/admin/partners", state: "CI seeded test DB, authenticated SUPER_ADMIN", captures };
+  writeFileSync(`tests/e2e/screenshots/current-shell-${sourceSha}/manifest.json`, JSON.stringify(manifest, null, 2));
+  console.info("Current shell captures:", JSON.stringify(manifest));
+});
 
 test("최고관리자: 홈 중복 경로는 생략하고 운영 화면의 LNB 제목 줄·경로 줄은 같은 높이를 유지한다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
