@@ -88,7 +88,7 @@ test("목록 조건은 주소에 남아 새로고침·다른 화면 → Back에�
   await login(page, "/seller/rewards/ledger");
   await page.getByLabel("상태", { exact: true }).selectOption("SUCCEEDED");
   await page.getByRole("button", { name: "검색" }).click();
-  // 조건은 주소에 남는다(SA-032 개편 뒤에는 기본 기간 from·to도 함께 적힌다)
+  // 기본 기간은 주소에서 생략하고, 선택한 상태 조건은 주소에 남는다.
   await expect.poll(() => {
     const url = new URL(page.url());
     return url.pathname === "/seller/rewards/ledger" && url.searchParams.get("status") === "SUCCEEDED";
@@ -96,8 +96,8 @@ test("목록 조건은 주소에 남아 새로고침·다른 화면 → Back에�
   const ledgerUrl = new URL(page.url());
   expect(ledgerUrl.pathname).toBe("/seller/rewards/ledger");
   expect(ledgerUrl.searchParams.get("status")).toBe("SUCCEEDED");
-  expect(ledgerUrl.searchParams.get("from")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-  expect(ledgerUrl.searchParams.get("to")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  expect(ledgerUrl.searchParams.has("from")).toBe(false);
+  expect(ledgerUrl.searchParams.has("to")).toBe(false);
   await page.reload();
   await expect(page.getByLabel("상태", { exact: true })).toHaveValue("SUCCEEDED");
 
