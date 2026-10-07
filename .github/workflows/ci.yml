@@ -57,6 +57,9 @@ jobs:
       - name: Install
         run: npm ci --no-audit --no-fund
 
+      - name: Design map check
+        run: npm run design:check
+
       - name: Typecheck
         run: npm run typecheck
 
