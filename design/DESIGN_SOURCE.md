@@ -30,7 +30,7 @@
 
 - **고아 파일**: 캔버스의 `project/SA-045.dc.html`(옛 틀의 회원 알림 발송 보드)은 `canvas.json` 인덱스 밖이고 SA-049로 이동된 보드가 따로 있어 복사하지 않았다(MASTER 결정 2026-10-05). MASTER가 캔버스에서 삭제함(v257 `1791209877-f282`, canvas.json 변경 없음) — 이 시점부터 `design/project`는 캔버스 `project/`와 서체 파일 외 1:1이다.
 - **서체**: 캔버스의 `project/fonts/WantedSansVariable.woff2`(1.2MB)는 복사하지 않았다. 저장소에 이미 있는 `public/fonts/wanted-sans/split/WantedSansVariable.split.*.woff2`(92개 unicode-range 분할, `styles/wanted-sans.css`)가 같은 서체(Wanted Sans Variable, SIL OFL 1.1)다. 디자인 `lop.css`·`ov.css`의 `@font-face`는 `fonts/WantedSansVariable.woff2`를 가리키므로 저장소 안에서 정적으로 열면 시스템 서체로 대체된다.
-- **런타임**: 보드가 참조하는 `./support.js`와 캔버스의 `artifact-type/**` · `index.html` · `SKILL.md` · 루트의 `*.dc.html`은 Artifact 유형 소유라 이관 대상이 아니다. 따라서 Build는 NOT_APPLICABLE이다.
+- **런타임**: 아직 HTML 정본인 보드가 참조하는 `./support.js`와 캔버스의 `artifact-type/**` · `index.html` · `SKILL.md` · 루트의 `*.dc.html`은 Artifact 유형 소유라 이관 대상이 아니다. 단, PF-003 v331은 `design/project/PF-003.dc.tsx`를 유일한 정본으로 전환했고 `design/preview`에서만 기존 Next.js 개발 서버로 렌더한다. `PF-003.dc.html`과 `canvas.json` 항목은 기존 링크·캔버스 호환용 legacy 참조이며 정본이 아니다. 앱 production 빌드·Docker에는 preview 앱을 포함하지 않는다.
 - **업로드 이미지**(`/_blob/…`): 2026-10-05 기준 보드가 참조하는 블롭이 없다(스크립트 검사 0건). 생기면 `design/project/` 안에 받아 두고 경로 대응을 여기에 적는다.
 - **외부 의존**: Google Fonts 등 외부 CDN 참조 없음(검사 0건). `ibgen/shot_board.mjs.txt`의 `localhost:8000`은 생성 스크립트 기록이다.
 - **비밀값**: 파일 내용을 검사했다. 사람 이름·번호·이메일은 모두 자리표시자(`[휴대폰 번호]` · `010-0000-0000` · `byulbit@mail.com` 등 가상 값)다.

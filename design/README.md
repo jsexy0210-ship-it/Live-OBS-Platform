@@ -9,7 +9,9 @@ PNG·JPG는 정본이 아니라 검수 증거다. 이 폴더의 `project/`가 �
 | `SCREEN_MAP.md` | 화면 ID ↔ 제품 경로 ↔ 디자인 소스 ↔ 상태(FINAL / DRAFT / BLOCKED / MISSING / SUPERSEDED). UI 작업의 출발점 |
 | `DESIGN_SOURCE.md` | Artifact 주소·버전·동기화 시각, 정본 우선순위, 예외(폰트·런타임) |
 | `CHANGELOG.md` | 동기화 이력(캔버스 버전 ↔ Git 커밋) |
-| `project/*.dc.html` | 보드(아트보드) 하나 = 파일 하나. 캔버스 `project/`와 경로·이름이 같다 |
+| `project/*.dc.html` | 캔버스 보드. 전환하지 않은 화면은 정본이며, PF-003은 기존 링크/인덱스 호환용 legacy로 보존 |
+| `project/*.dc.tsx` | TSX로 전환한 화면의 유일한 정본(현재 PF-003 v331) |
+| `preview/` | 기존 Next.js/React로 TSX 정본을 실행하는 개발 전용 미리보기 |
 | `project/canvas.json` | 캔버스 인덱스(보드 좌표·페이지·제목·노트) |
 | `project/lop.css` · `project/ov.css` | 관리자·쇼핑몰 공통 스타일(`.c24` `.sh24`) · 오버레이 스타일 |
 | `project/ds/wds/tokens.json` · `tokens.css` | 디자인 시스템 토큰(WDS) |
@@ -26,18 +28,19 @@ PNG·JPG는 정본이 아니라 검수 증거다. 이 폴더의 `project/`가 �
 
 ## 정본 ↔ 구현 나란히 비교(검수 증거)
 
-- `node scripts/design-compare.mjs <보드ID> <구현1440.png> [구현390.png] <출력.png>` — 보드를 임시 정적 서버로 열어 1440 본판과 390 휴대폰 변형을 캡처해 구현 스크린샷과 한 장에 붙인다(왼쪽 정본 · 오른쪽 구현, 서체는 저장소 Wanted Sans). UI PR은 이 그림(1440·390)을 본문에 붙인다(MASTER 2026-10-06).
+- `node scripts/design-compare.mjs <보드ID> <구현1440.png> [구현390.png] <출력.png>` — HTML 정본은 1440 본판과 390 변형을 대조한다. PF-003은 `npm run design:preview` 실행 후 `node scripts/design-compare.mjs PF-003 <구현1440.png> <구현1024.png> <구현390.png> <출력.png>`로 TSX 미리보기의 세 화면 폭을 구현 캡처와 붙인다(왼쪽 정본 · 오른쪽 구현). 1024·390은 정본 아트보드가 아니라 구현 확인 폭이다.
 
 ## 미리보기
 
-- 정식 미리보기는 캔버스에서 한다: https://claude.ai/artifact/YYGXZ3u4QvjQpEMUHnN4tS (보드 이름으로 찾기). 캔버스 런타임(`support.js`, `artifact-type/`)은 Artifact 유형 소유라 저장소에 복사하지 않았다. 그래서 저장소만으로는 **빌드·실행이 되지 않는다(Build: NOT_APPLICABLE)**. 없는 빌드 시스템을 새로 만들지 않는다.
-- 빠른 정적 확인: `design/project/` 안에서 보드 파일을 Chromium으로 열면 `lop.css`·토큰이 상대 경로로 붙어 정적 마크업은 보인다. `{{…}}` 홀 · `<sc-for>` 반복 · 상호작용은 렌더링되지 않는다. 폰트는 시스템 서체로 대체된다.
+- PF-003 정본은 `npm run design:preview`로 기존 Next.js 개발 서버에서 연다(`http://localhost:3001`). 이는 별도 `design/preview` 앱이며 production 앱·`/pricing`에서 import하지 않는다.
+- PF-003의 기존 `.dc.html`과 `canvas.json` 엔트리는 캔버스·기존 href 호환을 위해 보존한 legacy 참조다. `SCREEN_MAP`의 Source/Entry와 `design:check`가 지정하는 유일한 정본은 `.dc.tsx`다.
+- 전환되지 않은 `*.dc.html`은 캔버스 Artifact runtime(`support.js`, `artifact-type/`)을 그대로 쓴다. 일반 보드는 정적 확인 시 홀 · 반복 · 상호작용이 렌더되지 않을 수 있다.
 
 ## 규칙(요약 · 정본은 CLAUDE.md 「디자인 정본」)
 
 1. UI 작업은 ① `design/SCREEN_MAP.md` ② 대상 화면의 FINAL 소스 ③ 공통 컴포넌트 소스 ④ `docs/IA.md` ⑤ production 소스 순으로 확인한다. FINAL 확인 없이 UI 구현을 시작하지 않는다.
 2. DRAFT · BLOCKED 화면은 임의로 구현하지 않는다. 디자인 세션이 캔버스에서 고치고 `design/project` 동기화 PR로 FINAL 승격한 뒤 개발한다.
 3. 새 화면·큰 UI 변경은 디자인 소스 수정 → 디자인 PR 병합 → 개발 PR 순서. 단순 구현 오류(정본과 다른 간격·문구)는 정본 기준으로 바로 고친다.
-4. 디자인 소스는 production 코드에서 import하지 않는다. `design/`은 타입 검사·린트·Next 빌드·Docker 이미지에서 제외한다.
+4. 디자인 소스는 production 앱 코드에서 import하지 않는다. `design/preview`만 개발 서버로 실행하고, 변환된 TSX는 root production build에서 route로 등록하지 않는다.
 5. 캔버스를 고칠 때마다 `design/project`를 같은 내용으로 동기화하는 PR을 낸다. 커밋 규칙: `design(project): SA-011 …` / `design(system): …`.
 6. 검사: `npm run design:check` — SCREEN_MAP의 소스 경로가 모두 존재하고, `docs/IA.md`의 화면 ID가 빠짐없이 등록돼 있는지 확인한다.
