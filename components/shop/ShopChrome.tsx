@@ -5,6 +5,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useConfirm } from "../admin-ui/ConfirmDialog";
 import ShopLogo from "./ShopLogo";
+import ShopBack from "./ShopBack";
+import "./ShopProductHeader.css";
 
 export const CART_COUNT_EVENT = "shop-cart-count";
 const badge = (n: number) => (n > 0 ? <b className="shop-badge" aria-hidden="true">{n > 99 ? "99+" : n}</b> : null);
@@ -36,6 +38,8 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname, categor
   const { confirm } = useConfirm();
   const base = `/shop/${encodeURIComponent(slug)}`;
   const path = usePathname() ?? "";
+  const productPrefix = `${base}/products/`;
+  const productDetail = path.startsWith(productPrefix) && !!path.slice(productPrefix.length) && !path.slice(productPrefix.length).includes("/");
   const router = useRouter();
   const [drawer, setDrawer] = useState(false);
   const entryRef = useRef(false); // 서랍을 열 때 기록 한 칸을 쌓았는지(UX-11: Back으로 서랍부터 닫는다)
@@ -135,7 +139,17 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname, categor
 
   return (
     <>
-      <header className="shop-head">
+      <header className={`shop-head${productDetail ? " shop-product-head" : ""}`}>
+        {productDetail && (
+          <div className="shop-product-header" aria-label="상품 상세 머리">
+            <ShopBack fallback={`${base}/products`} label="목록" />
+            <span className="shop-product-title">상품 상세</span>
+            <div className="shop-product-links">
+              <Link href={base} className="shop-iconbtn" aria-label="홈"><Icon d={ICON.home} /></Link>
+              <Link href={`${base}/cart`} className="shop-iconbtn" aria-label={cartLabel(cartCount)}><Icon d={ICON.cart} />{badge(cartCount)}</Link>
+            </div>
+          </div>
+        )}
         <div className="shop-util">
           <div className="shop-wrap">
             {account}

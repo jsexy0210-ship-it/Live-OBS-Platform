@@ -50,8 +50,8 @@ human() { awk -v b="$1" 'BEGIN { s = "B KB MB GB TB"; split(s, u, " "); i = 1; w
 readonly_space_details() {
   local label="$1" path="$2" line
   while [ ! -e "$path" ] && [ "$path" != "/" ]; do path="$(dirname "$path")"; done
-  line="$(df -hP -- "$path" 2>/dev/null | awk 'NR == 2 { print $3, $4, $5 }')"
-  if [ -n "$line" ]; then log "$label 공간(사용/남음/사용률): $line"; else log "$label 공간: 확인 불가"; fi
+  line="$(df -hP -- "$path" 2>/dev/null | awk 'NR == 2 { print $2, $3, $4, $5 }')"
+  if [ -n "$line" ]; then log "$label 공간(총량/사용/남음/사용률): $line"; else log "$label 공간: 확인 불가"; fi
   line="$(df -iP -- "$path" 2>/dev/null | awk 'NR == 2 { print $3, $4, $5 }')"
   if [ -n "$line" ]; then log "$label inode(사용/남음/사용률): $line"; else log "$label inode: 확인 불가"; fi
 }

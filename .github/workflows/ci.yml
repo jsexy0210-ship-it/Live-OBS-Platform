@@ -49,6 +49,9 @@ jobs:
             grep -q '^    runs-on: \[self-hosted, obs-prod\]$' "$f"
           fi
 
+      - name: Disk cleanup workflow safety fixtures
+        run: bash scripts/ops/disk-cleanup-active-ref-fixture.sh
+
       - name: Node
         uses: actions/setup-node@v4
         with:
@@ -56,6 +59,9 @@ jobs:
 
       - name: Install
         run: npm ci --no-audit --no-fund
+
+      - name: Design map check
+        run: npm run design:check
 
       - name: Typecheck
         run: npm run typecheck
@@ -129,7 +135,7 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql://live_obs:live_obs@localhost:5432/live_obs_test
-      SMOKE_SPECS: admin-shell layout-admin-login login-tabs partners-auth admin-dashboard public-notices public-info seller-deposits seller-products seller-members seller-reviews-title seller-stats seller-broadcast seller-shop-legal shop-content shop-detail-board admin-ops admin-maintenance
+      SMOKE_SPECS: admin-shell layout-admin-login login-tabs partners-auth admin-dashboard public-notices public-info design-canonical seller-deposits seller-products seller-members seller-reviews-title seller-stats seller-broadcast seller-shop-legal shop-content shop-detail-board admin-ops admin-maintenance
       # 방송·채팅 스모크는 실제 YouTube 호출 없이 임의 키와 스케줄러 중지로 실행한다.
       YOUTUBE_API_KEY: e2e-dummy
     steps:
