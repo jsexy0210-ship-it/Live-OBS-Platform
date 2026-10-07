@@ -1,6 +1,8 @@
 /* SA-002 파트너스 홈: 오늘 처리할 일 → 성과 → 방송 */
 .home{display:flex;flex-direction:column;gap:24px}
-.home-sec{display:flex;flex-direction:column;gap:8px}
+/* PC 정본은 cont gap 16 + sec-h 상단 여백 8. 별도 모바일 body는 gap 16. */
+@media (max-width:767px){.home{gap:var(--ui-sp-16)}}
+.home-sec{display:flex;flex-direction:column;gap:var(--ui-sp-16)}
 .home-sec-h{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .home-sec-h h2{margin:0;font-size:14px;font-weight:700}
 .home-sec-h .sub{font-size:12px;color:var(--wds-label-alternative)}
