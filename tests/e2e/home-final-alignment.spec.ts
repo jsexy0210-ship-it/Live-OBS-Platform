@@ -137,7 +137,9 @@ test("파트너스 정상 홈 3폭·tenant 숫자·기존 처리 링크", async 
     expect(data.taskColumns).toBe(width === 390 ? 1 : 5);
     const performance = await page.getByTestId("home-performance").evaluate(el => ({ gap: getComputedStyle(el.querySelector(".sts-kpis")!).gap, padding: getComputedStyle(el.querySelector(".stat")!).padding, size: getComputedStyle(el.querySelector(".v")!).fontSize }));
     expect(performance).toEqual(width === 390 ? { gap: "0px", padding: "12px 16px", size: "18px" } : { gap: "12px", padding: "16px", size: "22px" });
-    writeFileSync(`${folder}/actual-SA-002-${width}.json`, JSON.stringify(data, null, 2));
+    const widths = await page.getByTestId("home-performance").locator(".stat").evaluateAll(els => els.map(el => el.getBoundingClientRect().width));
+    expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(1);
+    writeFileSync(`${folder}/actual-SA-002-${width}.json`, JSON.stringify({ ...data, performance, widths }, null, 2));
     await page.screenshot({ path: `${folder}/actual-SA-002-${width}.png`, fullPage: true });
   }
   const href = await page.getByTestId("home-task-depositPending").getAttribute("href");
