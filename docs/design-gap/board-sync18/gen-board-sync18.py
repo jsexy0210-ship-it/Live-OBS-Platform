@@ -68,7 +68,7 @@ body21b = (mph('전체 주문', '주문 › 전체 주문', ACTS21) + '<div clas
            + f1('방송', sel(['전체 방송', '10.02 스타라이트 · 문라이트 브레이크', '10.01 151 케이스 오픈']))
            + f1('접수 기간', PRE) + SBTN + '</div></div>')
 CUR = 'SA-021-M'; _ph.clear()
-s = (HEAD.format(title='전체 주문 (휴대폰)') + phone('① 칩으로 거르기(홈 「오늘 처리할 일」과 같은 주소) · 상세 검색 접힘 · 행 = 카드(상품 · 주문번호 · 구매자 · 상태 · 금액 · 결제 · 경과) · 관리 버튼은 상태별(입금 확인 · 환불 처리 · 배송 준비 · 송장 입력) + 상세 + ··· · 선택하면 아래 띠에 일괄 처리', 2500, body21a, bar21)
+s = (HEAD.format(title='전체 주문 (휴대폰)').replace('</style>', '.c24.mob .f1 .pre .b{min-width:0}</style>') + phone('① 칩으로 거르기(홈 「오늘 처리할 일」과 같은 주소) · 상세 검색 접힘 · 행 = 카드(상품 · 주문번호 · 구매자 · 상태 · 금액 · 결제 · 경과) · 관리 버튼은 상태별(입금 확인 · 환불 처리 · 배송 준비 · 송장 입력) + 상세 + ··· · 선택하면 아래 띠에 일괄 처리', 2500, body21a, bar21)
      + phone('② 상세 검색 펼침 · 1열 · 「검색 · 초기화」는 폭 전체 · 조건은 주소에 보존(Back · 새로고침)', 2500, body21b) + TAIL.format(h=H.get(CUR + '/preview', 2550)))
 wr('SA-021-M.dc.html', s)
 
@@ -140,6 +140,6 @@ body25b = (mph('배송', '주문 › 배송 · 송장 › 배송', ACTS25) + '<d
            + f1('검색어', '<div class="row">' + sel(['닉네임', '받는 분', '송장번호', '상품명'], 'i w-s') + '<input class="i " type="text" value="" placeholder="검색어 입력"></div>')
            + f1('기타', '<div class="cks"><label class="ck"><input type="checkbox" name="r">도서산간만</label></div>') + SBTN + '</div></div>')
 CUR = 'SA-025-M'; _ph.clear()
-s = (HEAD.format(title='배송 (휴대폰)') + phone('① 탭(배송 준비 / 송장 발급 / 출력 · 추적) · 요약 2×2 · 검색 조건 접힘 · 행 = 카드(주문자 · 상품 · 받는 분 · 주소 · 택배사 · 송장번호 입력) · 「발송 처리」 · 선택하면 아래 띠에 택배사 일괄 지정 · 송장 일괄 입력 · 선택 발송', 2700, body25a, bar25)
+s = (HEAD.format(title='배송 (휴대폰)').replace('</style>', '.c24.mob .f1 .pre .b{min-width:0}</style>') + phone('① 탭(배송 준비 / 송장 발급 / 출력 · 추적) · 요약 2×2 · 검색 조건 접힘 · 행 = 카드(주문자 · 상품 · 받는 분 · 주소 · 택배사 · 송장번호 입력) · 「발송 처리」 · 선택하면 아래 띠에 택배사 일괄 지정 · 송장 일괄 입력 · 선택 발송', 2700, body25a, bar25)
      + phone('② 검색 조건 펼침 · 1열 · 기간 기준(개봉 완료일 · 주문일 · 발송일) · 「검색 · 초기화」 폭 전체', 1900, body25b) + TAIL.format(h=H.get(CUR + '/preview', 2750)))
 wr('SA-025-M.dc.html', s)

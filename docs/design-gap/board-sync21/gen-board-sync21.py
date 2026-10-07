@@ -112,7 +112,7 @@ body53b = (mph('HIT 카드 기록', '방송 › 방송 기록 › HIT 카드 기
            + '<div class="box">' + f1('방송', sel(['전체', '2026.10.02 브레이크', '2026.10.01 브레이크', '2026.09.29 브레이크'])) + f1('등급', sel(['전체', 'SAR', 'SR', 'UR', 'SE', 'SP', 'AA'])) + f1('기간', PRE) + SBTN + '</div>'
            + '<div class="sort"><span class="nt">총 <b>128</b></span><div class="seg" style="margin-left: auto"><button class="" type="button">목록</button><button class="on" type="button">갤러리</button></div></div>'
            + gal + '</div>' + CFM53)
-s = (HEAD.format(title='HIT 카드 기록 (휴대폰)').replace('</style>', CFM_STYLE + '</style>')
+s = (HEAD.format(title='HIT 카드 기록 (휴대폰)').replace('</style>', CFM_STYLE + '.c24.mob .f1 .pre .b{min-width:0}</style>')
      + phone('① 탭(방송별 / HIT 카드) · 검색 조건 접힘 · 총 건수 + 목록/갤러리 전환 · 행 = 카드(카드명 · 팩 · 일시 · 등급 · 구매자 · 주문 · 방송 · 방송 화면) · 「다시 연출」 「상세」 · 선택하면 아래 띠에 「선택한 카드 지우기」', 2300, body53a, bar53)
      + phone('② 검색 조건 펼침(방송 · 등급 · 기간) · 갤러리 2열 · 카드 지우기 확인 창(DS-CONFIRM ④ 위험)', 2000, body53b) + TAIL.format(h=H.get(CUR + '/preview', 2350)))
 wr('SA-053-M.dc.html', s)
