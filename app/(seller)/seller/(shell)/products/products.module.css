@@ -1,0 +1,6 @@
+/* 휴대폰에서는 기존 상품 카드가 각 행의 경계를 표시한다. */
+@media (max-width: 767px) {
+  .grid {
+    display: none;
+  }
+}

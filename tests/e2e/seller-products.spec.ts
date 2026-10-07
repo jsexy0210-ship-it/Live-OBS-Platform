@@ -106,6 +106,36 @@ test("상품 목록: 데모 상품·상태 배지·필터, 체험 배너가 보�
   await expect(rows.filter({ hasText: "스타라이트 부스터 박스" })).toHaveCount(0);
 });
 
+test("상품 목록 제목 안내·검색 두 쌍·표 경계가 1440·1024·390에서 맞는다", async ({ page }) => {
+  await login(page);
+  await expect(page.getByTestId("product-row").first()).toBeVisible();
+  const description = page.locator(".au-ph-description");
+  await expect(description).toHaveText("상품을 검색하고 판매 상태와 재고를 관리합니다.");
+  await expect(page.getByLabel("상품 검색")).toHaveAttribute("placeholder", "검색어 입력");
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    const layout = await page.evaluate(() => {
+      const title = document.querySelector(".au-ph-title")!;
+      const description = document.querySelector(".au-ph-description")!;
+      const grid = document.querySelector('[aria-label="상품 목록 표"]')!;
+      const head = document.querySelector(".au-lh")!;
+      const style = getComputedStyle(title);
+      return {
+        font: style.fontSize, line: style.lineHeight,
+        descriptionBelow: description.getBoundingClientRect().top >= title.getBoundingClientRect().bottom,
+        descriptionFont: getComputedStyle(description).fontSize,
+        descriptionLine: getComputedStyle(description).lineHeight,
+        headOutside: !grid.contains(head),
+        twoPairs: [...document.querySelectorAll(".au-ft tr")].filter(row => row.querySelectorAll("th").length === 2).length,
+        gridVisible: getComputedStyle(grid).display !== "none",
+        overflow: document.documentElement.scrollWidth > innerWidth,
+      };
+    });
+    expect(layout).toMatchObject({ font: "20px", line: "28px", descriptionBelow: true, descriptionFont: "14px", descriptionLine: "20px", headOutside: true, twoPairs: 2, gridVisible: width >= 768, overflow: false });
+    if (SHOTS) await page.screenshot({ path: `tests/e2e/screenshots/SA-011-alignment-${width}.png`, fullPage: true });
+  }
+});
+
 test("옵션 이름이 길어도 표는 내부에서 스크롤되고 페이지 폭을 밀지 않는다(1440·1024)", async ({ page }) => {
   await login(page);
   const row = page.getByTestId("product-row").filter({ hasText: "보관용 카드 바인더" });
