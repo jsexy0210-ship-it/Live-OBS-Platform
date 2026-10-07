@@ -23,6 +23,7 @@ export async function GET(req: Request, { params }: Params) {
 // 본문: 바꿀 항목만 { name?, description?, price?, status?, sortOrder?, ... } + 낙관적 잠금(선택) { expectedPrice?(정수), expectedStatus?(판매 상태) }.
 // 화면이 본 값과 지금 값이 다르면 바꾸지 않고 409 { error: "price_conflict", message, currentPrice } · { error: "status_conflict", message, currentStatus }.
 // 둘 다 없으면 지금 동작 그대로(둘 다 있으면 판매가를 먼저 비교). 형식이 틀리면 400.
+// price + expectedPrice와 함께 event?({type,value,startsAt,endsAt} 또는 null)를 보내면 가격·이벤트를 같은 행 잠금 트랜잭션에서 검증/저장한다.
 export const PATCH = mutation(async (req: Request, { params }: Params) => {
   const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "STORE_OPERATIONS" });
   const { productId } = await params;
