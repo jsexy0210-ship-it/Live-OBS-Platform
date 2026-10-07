@@ -9,8 +9,8 @@ PNG·JPG는 정본이 아니라 검수 증거다. 이 폴더의 `project/`가 �
 | `SCREEN_MAP.md` | 화면 ID ↔ 제품 경로 ↔ 디자인 소스 ↔ 상태(FINAL / DRAFT / BLOCKED / MISSING / SUPERSEDED). UI 작업의 출발점 |
 | `DESIGN_SOURCE.md` | Artifact 주소·버전·동기화 시각, 정본 우선순위, 예외(폰트·런타임) |
 | `CHANGELOG.md` | 동기화 이력(캔버스 버전 ↔ Git 커밋) |
-| `project/*.dc.html` | 캔버스 보드. 전환하지 않은 화면은 정본이며, PF-003은 기존 링크/인덱스 호환용 legacy로 보존 |
-| `project/*.dc.tsx` | TSX로 전환한 화면의 유일한 정본(현재 PF-003 v331) |
+| `project/*.dc.html` | 캔버스 보드. 전환하지 않은 화면은 정본이며, PF-003 및 전환된 SA 모바일 11개는 기존 링크/이행용 legacy로 보존 |
+| `project/*.dc.tsx` | TSX로 전환한 화면의 유일한 정본(PF-003 v331 및 SCREEN_MAP에 등록된 SA 모바일 11개) |
 | `preview/` | 기존 Next.js/React로 TSX 정본을 실행하는 개발 전용 미리보기 |
 | `project/canvas.json` | 캔버스 인덱스(보드 좌표·페이지·제목·노트) |
 | `project/lop.css` · `project/ov.css` | 관리자·쇼핑몰 공통 스타일(`.c24` `.sh24`) · 오버레이 스타일 |
@@ -32,7 +32,7 @@ PNG·JPG는 정본이 아니라 검수 증거다. 이 폴더의 `project/`가 �
 
 ## 미리보기
 
-- PF-003 정본은 `npm run design:preview`로 기존 Next.js 개발 서버에서 연다(`http://localhost:3001`). 이는 별도 `design/preview` 앱이며 production 앱·`/pricing`에서 import하지 않는다.
+- TSX 정본은 `npm run design:preview`로 기존 Next.js 개발 서버에서 연다(`http://localhost:3001`). 이는 별도 `design/preview` 앱이며 production 앱·`/pricing`에서 import하지 않는다.
 - PF-003의 기존 `.dc.html`과 `canvas.json` 엔트리는 캔버스·기존 href 호환을 위해 보존한 legacy 참조다. `SCREEN_MAP`의 Source/Entry와 `design:check`가 지정하는 유일한 정본은 `.dc.tsx`다.
 - 전환되지 않은 `*.dc.html`은 캔버스 Artifact runtime(`support.js`, `artifact-type/`)을 그대로 쓴다. 일반 보드는 정적 확인 시 홀 · 반복 · 상호작용이 렌더되지 않을 수 있다.
 
@@ -44,3 +44,7 @@ PNG·JPG는 정본이 아니라 검수 증거다. 이 폴더의 `project/`가 �
 4. 디자인 소스는 production 앱 코드에서 import하지 않는다. `design/preview`만 개발 서버로 실행하고, 변환된 TSX는 root production build에서 route로 등록하지 않는다.
 5. 캔버스를 고칠 때마다 `design/project`를 같은 내용으로 동기화하는 PR을 낸다. 커밋 규칙: `design(project): SA-011 …` / `design(system): …`.
 6. 검사: `npm run design:check` — SCREEN_MAP의 소스 경로가 모두 존재하고, `docs/IA.md`의 화면 ID가 빠짐없이 등록돼 있는지 확인한다.
+
+## SA 모바일 React 전환
+
+`SCREEN_MAP.md`의 React 모바일 정본 표가 11개 모바일 변형의 유일한 TSX Source/Entry를 지정한다. preview는 `/mobile/SA-021-M`처럼 연다. 각 보드의 390px 두 상태를 보존하며 1440·1024 제품 레이아웃은 이 전환에서 정의하지 않는다. HTML·기존 생성기·canvas 인덱스는 이행/읽기 참조로 보존한다. 원 Artifact는 기존 버전이며 새 CSS 및 React 동기화는 미완료다.
