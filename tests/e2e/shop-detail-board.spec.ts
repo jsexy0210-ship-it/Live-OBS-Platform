@@ -27,6 +27,12 @@ async function expectInfoLayout(page: Page, width: number) {
   await expect(page.locator(".pd-price-summary")).toBeVisible();
   await expect(page.locator(".pd-rating")).toBeVisible();
   await expect(page.locator(".pd-coupon-row")).toContainText("세 폭 화면 검수 쿠폰");
+  const actionOrder = await page.locator(".pd-actions button").evaluateAll((els) =>
+    els.map((el) => ({ name: (el.textContent ?? "").trim(), left: el.getBoundingClientRect().left }))
+      .sort((a, b) => a.left - b.left)
+      .map(({ name }) => name),
+  );
+  expect(actionOrder).toEqual(["♡", "공유", "장바구니에 담기", "바로 주문하기"]);
   const infoOrder = await page.locator(".pd-info").evaluate((info) => {
     const children = [...info.children];
     return [".pd-crumb", "h1", ".pd-rating", ".pd-desc", ".pd-price-summary"]
