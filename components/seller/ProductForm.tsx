@@ -485,17 +485,17 @@ export function ProductForm({ initial }: { initial?: Product }) {
     const early: Record<string, unknown> = {};
     const late: Record<string, unknown> = {};
     const eventChanged = eventEnabled && (!current.event || eventType !== current.event.type || parseAmount(eventValue) !== current.event.value || Date.parse(kstIso(eventStartsAt)) !== Date.parse(current.event.startsAt) || Date.parse(kstIso(eventEndsAt)) !== Date.parse(current.event.endsAt));
-    if (current.event && (!eventEnabled || eventChanged)) {
-      const removedEvent = await api(`/api/seller/products/${current.id}/event`, { method: "DELETE" });
-      if (!removedEvent.ok) return fail(failMessage(removedEvent, "admin", "기존 이벤트 할인을 갱신하지 못했습니다"));
-      current = { ...current, event: null };
-      setBase(current);
-    }
+    const changingEventWithPrice = changingPrice && (eventChanged || (!!current.event && !eventEnabled));
+    const eventPatch = eventEnabled ? { type: eventType, value: parseAmount(eventValue), startsAt: kstIso(eventStartsAt), endsAt: kstIso(eventEndsAt) } : null;
     const desc = description.trim() === "" ? null : description.trim();
     if (name.trim() !== current.name) early.name = name.trim();
     if (desc !== (current.description ?? null)) early.description = desc;
     if (JSON.stringify(tags) !== JSON.stringify(current.searchTags ?? [])) early.searchTags = tags;
-    if (priceNum !== current.price) (priceNum! > current.price ? early : late).price = priceNum;
+    if (priceNum !== current.price) {
+      const pricePatch = priceNum! > current.price ? early : late;
+      pricePatch.price = priceNum;
+      if (changingEventWithPrice) pricePatch.event = eventPatch;
+    }
     if (status !== current.status) (status === "ON_SALE" ? late : early).status = status;
     if (deduct !== current.stockDeductMode) early.stockDeductMode = deduct;
 
@@ -593,13 +593,13 @@ export function ProductForm({ initial }: { initial?: Product }) {
     }
 
     if (!(await patchProduct(late))) return;
-    if (eventEnabled) {
+    if (eventEnabled && !changingEventWithPrice) {
       if (eventChanged) {
         const r = await api<{ event: NonNullable<Product["event"]> }>(`/api/seller/products/${current.id}/event`, { method: "PUT", body: { type: eventType, value: parseAmount(eventValue), startsAt: kstIso(eventStartsAt), endsAt: kstIso(eventEndsAt) } });
         if (!r.ok) return fail(failMessage(r, "admin", "이벤트 할인을 저장하지 못했습니다"));
         current = { ...current, event: r.data.event };
       }
-    } else if (current.event) {
+    } else if (!eventEnabled && current.event && !changingEventWithPrice) {
       const r = await api(`/api/seller/products/${current.id}/event`, { method: "DELETE" });
       if (!r.ok) return fail(failMessage(r, "admin", "이벤트 할인을 해제하지 못했습니다"));
       current = { ...current, event: null };

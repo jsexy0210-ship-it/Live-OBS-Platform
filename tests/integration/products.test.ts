@@ -392,8 +392,8 @@ describe("판매가 변경과 기존 주문", () => {
     const orders = await readOrder();
     const stock = await db.productOption.findUniqueOrThrow({ where: { id: p.options[0].id }, select: { stock: true } });
     const movements = await db.stockMovement.count({ where: { sellerId: s.seller.id } });
-    expect((await updateProduct(db, s.ctx, p.id, { price: 7000, expectedPrice: 5000 })).ok).toBe(true);
-    expect(await updateProduct(db, s.ctx, p.id, { price: 8000, expectedPrice: 5000 })).toMatchObject({ ok: false, reason: "price_conflict", currentPrice: 7000 });
+    expect((await updateProduct(db, s.ctx, p.id, { price: 7000, expectedPrice: 5000, event: { type: "RATE", value: 10, startsAt: new Date(Date.now() - 60_000).toISOString(), endsAt: new Date(Date.now() + 3600_000).toISOString() } })).ok).toBe(true);
+    expect(await updateProduct(db, s.ctx, p.id, { price: 8000, expectedPrice: 5000, event: null })).toMatchObject({ ok: false, reason: "price_conflict", currentPrice: 7000 });
     expect(await readOrder()).toEqual(orders);
     expect(await db.productOption.findUniqueOrThrow({ where: { id: p.options[0].id }, select: { stock: true } })).toEqual(stock);
     expect(await db.stockMovement.count({ where: { sellerId: s.seller.id } })).toBe(movements);

@@ -109,6 +109,70 @@ for (const surface of ["수정 화면", "목록 빠른 변경"] as const) {
   });
 }
 
+for (const eventChange of ["변경", "해제"] as const) {
+  test(`판매가와 이벤트 할인 ${eventChange}: 충돌이면 기존 할인을 유지하고 함께 다시 저장한다`, async ({ page }) => {
+    await login(page);
+    const name = track(`가격이벤트 ${eventChange} ${stamp}`);
+    const product = await page.request.post("/api/seller/products", { headers: { origin: new URL(page.url()).origin }, data: { name, price: 1000, status: "ON_SALE", options: [{ name: "기본", stock: 10 }] } });
+    expect(product.status()).toBe(201);
+    const { id } = await product.json();
+    const event = { type: "RATE", value: 10, startsAt: new Date(Date.now() - 60_000).toISOString(), endsAt: new Date(Date.now() + 3600_000).toISOString() };
+    expect((await page.request.put(`/api/seller/products/${id}/event`, { headers: { origin: new URL(page.url()).origin }, data: event })).status()).toBe(200);
+    await page.goto(`/seller/products/${id}`);
+    await page.getByLabel("판매가").fill("1500");
+    if (eventChange === "변경") await page.getByLabel("할인 값").fill("20");
+    else await page.getByRole("radiogroup", { name: "이벤트 할인 사용" }).getByRole("radio", { name: "사용 안 함", exact: true }).click();
+    expect((await page.request.patch(`/api/seller/products/${id}`, { headers: { origin: new URL(page.url()).origin }, data: { price: 2000, expectedPrice: 1000 } })).status()).toBe(200);
+    const before = await (await page.request.get(`/api/seller/products/${id}`)).json();
+    const preservedEvent = expect.objectContaining({ type: before.event.type, value: before.event.value, startsAt: before.event.startsAt, endsAt: before.event.endsAt, active: true, discountedPrice: 1800 });
+    await page.getByRole("button", { name: "저장", exact: true }).first().click();
+    await page.getByRole("dialog").getByRole("button", { name: "취소", exact: true }).click();
+    expect(await (await page.request.get(`/api/seller/products/${id}`)).json()).toMatchObject({ price: 2000, event: preservedEvent });
+    const saved = page.waitForResponse(r => new URL(r.url()).pathname === `/api/seller/products/${id}` && r.request().method() === "PATCH");
+    await page.getByRole("button", { name: "저장", exact: true }).first().click();
+    await page.getByRole("dialog").getByRole("button", { name: "판매가 변경", exact: true }).click();
+    expect((await saved).status()).toBe(409);
+    await expect(page.getByText("그사이 판매가가 바뀌었습니다. 지금 판매가를 확인한 뒤 다시 입력해 주십시오")).toBeVisible();
+    expect(await (await page.request.get(`/api/seller/products/${id}`)).json()).toMatchObject({ price: 2000, event: preservedEvent, options: [{ stock: 10 }] });
+    await expect(page.getByLabel("판매가")).toHaveValue("2000");
+    await page.getByLabel("판매가").fill("2500");
+    await page.getByRole("button", { name: "저장", exact: true }).first().click();
+    await page.getByRole("dialog").getByRole("button", { name: "판매가 변경", exact: true }).click();
+    await expect(page.getByText("저장했습니다")).toBeVisible();
+    const after = await (await page.request.get(`/api/seller/products/${id}`)).json();
+    expect(after.price).toBe(2500);
+    expect(after.event).toEqual(eventChange === "해제" ? null : expect.objectContaining({ type: "RATE", value: 20, active: true, discountedPrice: 2000 }));
+  });
+}
+
+test("이벤트만 수정하다 서버가 거절해도 기존 할인은 지우지 않는다", async ({ page }) => {
+  await login(page);
+  const name = track(`이벤트실패 ${stamp}`);
+  const origin = new URL(page.url()).origin;
+  const created = await page.request.post("/api/seller/products", { headers: { origin }, data: { name, price: 1000, status: "ON_SALE", options: [{ name: "기본", stock: 10 }] } });
+  expect(created.status()).toBe(201);
+  const { id } = await created.json();
+  const eventPath = `/api/seller/products/${id}/event`;
+  const event = { type: "RATE", value: 10, startsAt: new Date(Date.now() - 60_000).toISOString(), endsAt: new Date(Date.now() + 3600_000).toISOString() };
+  expect((await page.request.put(eventPath, { headers: { origin }, data: event })).status()).toBe(200);
+  await page.goto(`/seller/products/${id}`);
+  await page.getByLabel("할인 값").fill("20");
+  const eventWrites: string[] = [];
+  page.on("request", r => { if (new URL(r.url()).pathname === eventPath) eventWrites.push(r.method()); });
+  // 화면 검증은 통과시키고 실제 서버에 잘못된 할인율을 보내 거절 경계를 확인한다.
+  await page.route(`**${eventPath}`, r => r.continue({ postData: JSON.stringify({ ...r.request().postDataJSON(), value: 91 }) }));
+  const rejected = page.waitForResponse(r => new URL(r.url()).pathname === eventPath && r.request().method() === "PUT");
+  await page.getByRole("button", { name: "저장", exact: true }).first().click();
+  expect((await rejected).status()).toBe(400);
+  await expect(page.locator(".msg-neg[role=alert]")).toBeVisible();
+  expect(await (await page.request.get(`/api/seller/products/${id}`)).json()).toMatchObject({ price: 1000, event: { ...event, active: true, discountedPrice: 900 }, options: [{ stock: 10 }] });
+  expect(eventWrites).toEqual(["PUT"]);
+  await page.unroute(`**${eventPath}`);
+  await page.getByRole("button", { name: "저장", exact: true }).first().click();
+  await expect(page.getByText("저장했습니다")).toBeVisible();
+  expect(await (await page.request.get(`/api/seller/products/${id}`)).json()).toMatchObject({ price: 1000, event: { value: 20, active: true, discountedPrice: 800 } });
+});
+
 test("로그인 안 한 채로 상품 화면에 오면 로그인으로 보낸다", async ({ page }) => {
   await page.goto("/seller/products");
   await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fproducts/);

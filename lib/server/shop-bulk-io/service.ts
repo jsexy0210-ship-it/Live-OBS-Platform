@@ -2,6 +2,7 @@ import type { Prisma, PrismaClient, ProductStatus, StockDeductMode } from "@pris
 import { writeAudit } from "../audit/log";
 import { notFound } from "../authz/errors";
 import { dbNow } from "../billing/subscription";
+import { ORDER_ERROR_MESSAGES_FORMAL } from "../orders/messages";
 import { MAX_OPTIONS_PER_PRODUCT, PRODUCT_NAME_MAX, createProduct, deleteProduct, parseNewProduct, type ProductFailure } from "../products/manage";
 import { MAX_CATEGORIES_PER_PRODUCT, listCategories, setProductCategories } from "../shop-category/service";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
@@ -59,6 +60,8 @@ export const bulkFailureStatus = (reason: BulkFailure) =>
         : 409;
 
 const PRODUCT_FAILURE_MESSAGES: Record<ProductFailure, string> = {
+  invalid_event: ORDER_ERROR_MESSAGES_FORMAL.invalid_event,
+  invalid_event_period: ORDER_ERROR_MESSAGES_FORMAL.invalid_event_period,
   invalid_product: "상품명·상태·설명·차감시점을 확인해 주십시오",
   product_name_too_long: `상품명은 ${PRODUCT_NAME_MAX}자까지 입력할 수 있습니다`,
   invalid_option: "옵션명·옵션추가금·재고·SKU를 확인해 주십시오",
