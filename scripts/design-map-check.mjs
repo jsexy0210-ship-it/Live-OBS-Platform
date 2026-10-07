@@ -10,7 +10,7 @@ const mapIds = new Set(rows.map((l) => l.split("|")[1].trim()));
 const missingInMap = [...iaIds].filter((id) => !mapIds.has(id)).sort();
 const broken = [];
 const counts = {};
-const areas = {};
+const areas = { AU: 0, PF: 0, MA: 0, SA: 0, SH: 0, OV: 0, EM: 0, OG: 0 };
 for (const l of rows) {
   const cells = l.split("|").map((s) => s.trim());
   const src = cells[4]; const status = cells[6];
