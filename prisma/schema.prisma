@@ -3883,6 +3883,7 @@ model PlatformMaintenance {
   id               Int       @id @default(1)
   enabled          Boolean   @default(false)
   message          String    @default("")
+  reason           String    @default("")
   startsAt         DateTime? @db.Timestamptz(3)
   endsAt           DateTime? @db.Timestamptz(3)
   version          Int       @default(0)
