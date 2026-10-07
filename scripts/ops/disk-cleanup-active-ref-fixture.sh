@@ -39,6 +39,15 @@ tmp="$(mktemp -d)"
 trap 'rm -rf -- "$tmp"' EXIT
 workspace="$tmp/workspace"
 mkdir "$workspace"
+git -C "$workspace" init --quiet
+git -C "$workspace" config user.name fixture
+git -C "$workspace" config user.email fixture@example.invalid
+printf 'parent repository evidence\n' > "$workspace/runner-evidence"
+git -C "$workspace" add runner-evidence
+git -C "$workspace" commit --quiet -m fixture
+printf 'preserve this dirty parent file\n' > "$workspace/runner-evidence"
+parent_head="$(git -C "$workspace" rev-parse HEAD)"
+parent_status="$(git -C "$workspace" status --porcelain --untracked-files=no)"
 output="$tmp/github-output"
 : > "$output"
 run_preflight() {
@@ -49,7 +58,15 @@ run_preflight "$workspace" 12345 "$output"
 [ "$(cat "$output")" = 'checkout_path=disk-cleanup-12345-2' ]
 [ -d "$workspace/disk-cleanup-12345-2" ]
 [ -z "$(ls -A "$workspace/disk-cleanup-12345-2")" ]
-printf 'checkout preflight fixture PASS (new contained path is atomically reserved)\n'
+# Before checkout initializes its target, Git can discover the parent repository.
+[ "$(git -C "$workspace/disk-cleanup-12345-2" rev-parse --show-prefix)" = 'disk-cleanup-12345-2/' ]
+# actions/checkout@v5 sees no target/.git, clears only the reserved target, then initializes there.
+git -C "$workspace/disk-cleanup-12345-2" init --quiet
+[ -z "$(git -C "$workspace/disk-cleanup-12345-2" rev-parse --show-prefix)" ]
+[ "$(git -C "$workspace" rev-parse HEAD)" = "$parent_head" ]
+[ "$(git -C "$workspace" status --porcelain --untracked-files=no)" = "$parent_status" ]
+grep -Fxq 'preserve this dirty parent file' "$workspace/runner-evidence"
+printf 'checkout preflight fixture PASS (checkout initializes a separate repository and preserves parent state)\n'
 
 : > "$output"
 existing_workspace="$tmp/existing-workspace"
