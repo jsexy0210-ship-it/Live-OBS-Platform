@@ -132,7 +132,7 @@ test("상품 목록 제목 안내·검색 두 쌍·표 경계가 1440·1024·390
       };
     });
     expect(layout).toMatchObject({ font: "20px", line: "28px", descriptionBelow: true, descriptionFont: "14px", descriptionLine: "20px", headOutside: true, twoPairs: 2, gridVisible: width >= 768, overflow: false });
-    if (SHOTS) await page.screenshot({ path: `tests/e2e/screenshots/SA-011-alignment-${width}.png`, fullPage: true });
+    if (SHOTS) await page.screenshot({ path: `tests/e2e/screenshots/SA-011-alignment-${width}.png`, fullPage: true, animations: "disabled" });
   }
 
   // 상품 조회·인증은 실제 Next/격리 DB를 사용한다. 공통 배너 표시 상태만 주입하며,
@@ -156,7 +156,7 @@ test("상품 목록 제목 안내·검색 두 쌍·표 경계가 1440·1024·390
     }));
     expect(fit.titleTop).toBeGreaterThanOrEqual(fit.bottom);
     expect(fit.overflow).toBe(false);
-    if (SHOTS) await page.screenshot({ path: `tests/e2e/screenshots/SA-011-maintenance-${width}.png`, fullPage: true });
+    if (SHOTS) await page.screenshot({ path: `tests/e2e/screenshots/SA-011-maintenance-${width}.png`, fullPage: true, animations: "disabled" });
   }
 });
 
