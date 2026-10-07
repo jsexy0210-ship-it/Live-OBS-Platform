@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { PublicFrame } from "./PublicFrame";
+import { PublicFrame, type PublicCompanyInfo } from "./PublicFrame";
 import type { LandingPlan } from "./Landing";
 import { AUTOMATION_PRICE, FREE_RECONNECT_DAYS, REINSTALL_PRICE } from "../../lib/server/automation/config";
 
@@ -8,31 +8,37 @@ import { AUTOMATION_PRICE, FREE_RECONNECT_DAYS, REINSTALL_PRICE } from "../../li
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 
 const COPY: Record<string, string[]> = {
-  OVERLAY_ONLY: ["OBS 방송 화면(세로 · 가로 템플릿)", "운영 중인 외부 쇼핑몰 웹훅 연결", "실시간 주문 알림 · 주문대기(결제가 끝난 주문 목록) 표시", "직원 계정 · 권한"],
+  OVERLAY_ONLY: ["OBS 방송 화면(세로 · 가로 템플릿)", "운영 중인 외부 쇼핑몰 웹훅 연결", "실시간 주문 알림 · 주문대기 표시", "직원 계정 · 권한"],
   INTEGRATED: ["오버레이 전용의 모든 기능", "ONQ 스토어 · 상품 · 주문 운영", "결제 · 배송 · 송장 · 적립금", "영수증 · 세금계산서 발행"],
+};
+const START_LABEL: Record<string, string> = {
+  OVERLAY_ONLY: "오버레이 전용으로 시작하기",
+  INTEGRATED: "쇼핑몰 통합으로 시작하기",
 };
 
 // 정본 PF-003: 쇼핑몰 통합 카드에만 「추천」 배지·강조 테두리
 const RECOMMENDED = "INTEGRATED";
-const DISCOUNT_NOTICE = "지금은 런칭 할인가예요. 할인이 끝나는 날짜는 정해지면 30일 전에 알려 드리고, 바뀌는 날짜와 금액은 결제 전 화면과 구독 관리 화면에서 다시 보여 드려요.";
+const DISCOUNT_NOTICE = "지금은 런칭 할인가예요.";
 
-type BillingPolicy = { overdueLockDays: number };
+type BillingPolicy = { paymentRetryCount: number; overdueLockDays: number; lockToCloseDays: number };
 
-const QA = (billingPolicy: BillingPolicy | null) => [
-  ["언제 결제되나요?", "체험이 있는 이용권은 체험이 끝난 다음 날, 없는 이용권은 구독을 시작한 날 첫 결제가 되고 그 뒤로 매달 같은 날에 결제돼요. 결제일은 구독 · 결제 메뉴에서 볼 수 있어요."],
+const QA = (billingPolicy: BillingPolicy | null, trialPlan: LandingPlan | undefined, noTrialPlan: LandingPlan | undefined) => [
+  ["언제 결제되나요?", trialPlan && noTrialPlan
+    ? `${trialPlan.name}은 ${trialPlan.trialDays}일 체험이 끝난 다음 날, ${noTrialPlan.name}은 구독을 시작한 날 첫 결제가 되고 그 뒤로 매달 같은 날에 결제돼요. 결제일은 구독 · 결제 메뉴에서 볼 수 있어요.`
+    : "체험이 있는 이용권은 체험이 끝난 다음 날, 없는 이용권은 구독을 시작한 날 첫 결제가 되고 그 뒤로 매달 같은 날에 결제돼요. 결제일은 구독 · 결제 메뉴에서 볼 수 있어요."],
   ["결제가 실패하면 어떻게 되나요?", billingPolicy
-    ? `정기 결제 실패가 확인되면 처음 실패한 날부터 ${billingPolicy.overdueLockDays}일까지는 계속 쓸 수 있어요. 유예가 끝나면 결제할 때까지 쇼핑몰과 방송 화면이 멈춰요. 결제하면 바로 다시 열리고, 구독 기간은 원래 결제일부터 이어서 세요.`
+    ? `하루 간격으로 ${billingPolicy.paymentRetryCount}번 다시 시도해요. 처음 실패한 날부터 ${billingPolicy.overdueLockDays}일까지는 그대로 쓸 수 있고, 그 뒤에는 쇼핑몰과 방송 화면이 멈춰요. 결제하면 바로 다시 열리고, 구독 기간은 원래 결제일부터 이어서 세요. 잠긴 지 ${billingPolicy.lockToCloseDays}일이 지나면 자동으로 해지돼요.`
     : "정기 결제 실패가 확인되면 정해진 유예 기간에는 계속 쓸 수 있어요. 유예가 끝나면 결제할 때까지 쇼핑몰과 방송 화면이 멈춰요. 결제하면 바로 다시 열려요."],
   ["해지하면 데이터는요?", "해지해도 남은 기간까지는 쓸 수 있어요. 해지한 뒤 내 자료가 어떻게 되는지는 정해지는 대로 알려 드려요."],
-  ["요금이 바뀌면요?", "할인이 끝나는 날짜는 정해지면 30일 전에 알려 드리고, 바뀌는 날짜와 금액은 결제 전 화면과 구독 관리 화면에서 다시 보여 드려요."],
+  ["요금이 바뀌면요?", "할인 종료일과 변경 요금 안내는 아직 준비 중이에요."],
 ];
 
-export function Pricing({ plans, billingPolicy }: { plans: LandingPlan[]; billingPolicy: BillingPolicy | null }) {
+export function Pricing({ plans, billingPolicy, companyInfo }: { plans: LandingPlan[]; billingPolicy: BillingPolicy | null; companyInfo?: PublicCompanyInfo | null }) {
   const shown = plans.filter((p) => COPY[p.code]);
   const trialPlan = shown.find((p) => p.trialDays > 0);
   const noTrialPlan = shown.find((p) => p.trialDays === 0);
   return (
-    <PublicFrame active="/pricing">
+    <PublicFrame active="/pricing" companyInfo={companyInfo}>
       <section className="pf-sec pf-pricing">
         <h1 className="t-d2">요금</h1>
         <p className="t-b1 c-neu">두 가지 이용권 · 판매 수수료는 없어요 · 모두 부가세 포함</p>
@@ -66,7 +72,7 @@ export function Pricing({ plans, billingPolicy }: { plans: LandingPlan[]; billin
                     ))}
                   </ul>
                   <Link className="btn btn-xl btn-block" href="/seller/signup">
-                    {p.name} 요금제로 시작하기
+                    {START_LABEL[p.code]}
                   </Link>
                 </div>
               );
@@ -101,8 +107,8 @@ export function Pricing({ plans, billingPolicy }: { plans: LandingPlan[]; billin
         )}
         <div className="pf-faq pf-faq-wide pf-faq-c">
           <h2 className="t-t3">요금 · 결제 질문</h2>
-          {QA(billingPolicy).map(([q, a], i) => (
-            <details key={q} open={i === 0}>
+          {QA(billingPolicy, trialPlan, noTrialPlan).map(([q, a]) => (
+            <details key={q} open>
               <summary className="t-hl2">{q}</summary>
               <p className="t-b2 c-neu">{a}</p>
             </details>

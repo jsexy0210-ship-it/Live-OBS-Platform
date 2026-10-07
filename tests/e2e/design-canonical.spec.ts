@@ -89,8 +89,19 @@ test("PF-003 TSX는 legacy v331의 문구와 1440 레이아웃을 보존한다",
   await expect(page.locator(".app").getByRole("button", { name: "결제가 실패하면 어떻게 되나요?" })).toBeVisible();
   if (process.env.E2E_SCREENSHOTS) await page.screenshot({ path: "tests/e2e/screenshots/pf003-tsx-1440.png", fullPage: true });
 
+  const productionUrl = process.env.E2E_BASE_URL ?? "http://localhost:3100";
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${productionUrl}/pricing`);
+  const production = page.locator(".pf-pricing");
+  await expect(production.getByText("실시간 주문 알림 · 주문대기 표시", { exact: true })).toBeVisible();
+  await expect(production.getByText(/결제가 끝난 주문 목록/)).toHaveCount(0);
+  await expect(production.getByRole("link", { name: "오버레이 전용으로 시작하기" })).toBeVisible();
+  const questions = production.locator(".pf-faq-c details");
+  await expect(questions).toHaveCount(4);
+  await expect(production.locator(".pf-faq-c details:not([open])")).toHaveCount(0);
+  await expect(production.getByText(/정기 결제 실패가 확인되면/)).toHaveCount(0);
+
   if (process.env.E2E_SCREENSHOTS) {
-    const productionUrl = process.env.E2E_BASE_URL ?? "http://localhost:3100";
     for (const width of [1440, 1024, 390]) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
       await page.goto(previewUrl);

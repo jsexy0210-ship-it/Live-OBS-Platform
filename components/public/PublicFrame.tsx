@@ -6,16 +6,15 @@ import { PublicMobileMenu } from "./PublicMobileMenu";
 import styles from "./PublicFrame.module.css";
 
 // 공개 화면(PF) 공통 머리·꼬리. 디자인 PF-001 기준.
-// 플랫폼 사업자 정보는 아직 정해진 값이 없다. 값이 없는 동안은 하단 정보 줄을 숨기고, 값이 정해지면 COMPANY에 넣는다(이 한 곳만 고친다).
-const COMPANY: { label: string; value: string | null }[] = [
-  { label: "상호", value: null },
-  { label: "대표", value: null },
-  { label: "사업자등록번호", value: null },
-  { label: "통신판매업 신고", value: null },
-  { label: "주소", value: null },
-  { label: "고객센터", value: null },
-];
-const COMPANY_ROWS = COMPANY.filter((c) => c.value);
+export type PublicCompanyInfo = Partial<Record<"name" | "representative" | "businessNumber" | "mailOrderNumber" | "address" | "phone", string | null>>;
+const COMPANY_FIELDS = [
+  ["상호", "name"],
+  ["대표", "representative"],
+  ["사업자등록번호", "businessNumber"],
+  ["통신판매업 신고", "mailOrderNumber"],
+  ["주소", "address"],
+  ["고객센터", "phone"],
+] as const;
 const NAV = [
   { href: "/features", label: "기능" },
   { href: "/pricing", label: "요금" },
@@ -23,7 +22,12 @@ const NAV = [
   { href: "/notices", label: "공지" },
 ];
 
-export function PublicFrame({ children, active, mobileHeader }: { children: React.ReactNode; active?: string; mobileHeader?: "compact" }) {
+export function PublicFrame({ children, active, mobileHeader, companyInfo }: { children: React.ReactNode; active?: string; mobileHeader?: "compact"; companyInfo?: PublicCompanyInfo | null }) {
+  const companyParts = COMPANY_FIELDS.flatMap(([label, key]) => {
+    const value = companyInfo?.[key]?.trim();
+    return value ? [`${label} ${value}`] : [];
+  });
+  if (companyInfo?.name?.trim()) companyParts.push(`© 2026 ${companyInfo.name.trim()}`);
   return (
     <div className="app pf" data-theme="light">
       <header className="pf-head">
@@ -69,9 +73,9 @@ export function PublicFrame({ children, active, mobileHeader }: { children: Reac
             <Link href="/faq">자주 묻는 질문</Link>
           </div>
         </div>
-        {COMPANY_ROWS.length > 0 && (
+        {companyParts.length > 0 && (
           <span className="t-c1 c-alt">
-            {COMPANY_ROWS.map((c) => `${c.label} ${c.value}`).join(" · ")} · © 2026 {COMPANY.find((c) => c.label === "상호")?.value}
+            {companyParts.join(" · ")}
           </span>
         )}
       </footer>
