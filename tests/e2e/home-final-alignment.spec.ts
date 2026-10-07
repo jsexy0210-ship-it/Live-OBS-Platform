@@ -89,6 +89,10 @@ test("FINAL PC 정본 DOM의 본문 구조와 카드·표 규격", async ({ page
     const data = await page.locator("main").evaluate((el) => ({ headings: Array.from(el.querySelectorAll(".sec-t")).map((h) => h.textContent), tables: Array.from(el.querySelectorAll("table")).map((t) => Array.from(t.querySelectorAll("th")).map((h) => h.textContent)), cards: Array.from(el.querySelectorAll(".kpi")).map((c) => ({ label: c.querySelector(".k")?.textContent, padding: getComputedStyle(c).padding, size: c.querySelector(".v") && getComputedStyle(c.querySelector(".v")!).fontSize })) }));
     writeFileSync(`${folder}/source-${id}-1440.json`, JSON.stringify(data, null, 2));
     await page.screenshot({ path: `${folder}/source-${id}-1440.png`, fullPage: true });
+    if (id === "SA-002") {
+      const performance = page.locator(".kpi").filter({ has: page.locator(".k", { hasText: "결제된 매출" }) });
+      expect(await performance.evaluate(el => ({ padding: getComputedStyle(el).padding, size: getComputedStyle(el.querySelector(".v")!).fontSize, gap: getComputedStyle(el.parentElement!).gap }))).toEqual({ padding: "16px", size: "22px", gap: "12px" });
+    }
     expect(data.tables).toContainEqual(id === "SA-002" ? ["방송", "상태", "시각", "주문", "매출", "바로 가기"] : ["순위", "파트너스", "결제 금액", "결제된 주문"]);
   }
 });
@@ -131,6 +135,8 @@ test("파트너스 정상 홈 3폭·tenant 숫자·기존 처리 링크", async 
     expect(data.taskLabels).toEqual(["입금 확인 필요", "배송 준비 필요", "문의 답변 필요", "재고 부족 상품", "반품 요청 답변 필요"]);
     expect(data.overflow).toBe(false);
     expect(data.taskColumns).toBe(width === 390 ? 1 : 5);
+    const performance = await page.getByTestId("home-performance").evaluate(el => ({ gap: getComputedStyle(el.querySelector(".sts-kpis")!).gap, padding: getComputedStyle(el.querySelector(".stat")!).padding, size: getComputedStyle(el.querySelector(".v")!).fontSize }));
+    expect(performance).toEqual(width === 390 ? { gap: "0px", padding: "12px 16px", size: "18px" } : { gap: "12px", padding: "16px", size: "22px" });
     writeFileSync(`${folder}/actual-SA-002-${width}.json`, JSON.stringify(data, null, 2));
     await page.screenshot({ path: `${folder}/actual-SA-002-${width}.png`, fullPage: true });
   }
