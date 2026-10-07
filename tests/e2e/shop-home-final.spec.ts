@@ -59,6 +59,9 @@ test("홈: 실제 진열 순서·카드·공지·채널과 3폭 안전성", asyn
     await expect(page.locator(".shop-home-kind-recommended .pc-name")).toHaveText(names);
     await expect(page.locator(".shop-home-hero b")).toHaveText("스타라이트 부스터 개봉");
     await expect(page.locator(".live-bar")).toBeVisible();
+    const menu = page.locator(width === 390 ? ".shop-mcat" : ".shop-cats");
+    await expect(menu.getByRole("link", { name:"인기 카드",exact:true })).toHaveAttribute("href",`/shop/${slug}`);
+    await expect(menu.getByRole("link", { name:"공지 · 이용안내",exact:true })).toHaveAttribute("href",`/shop/${slug}/help`);
     await expect(page.getByRole("link", { name: "카카오톡 문의", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "▶ 유튜브 채널", exact: true })).toBeVisible();
     await expect(page.getByLabel("상단 공지", { exact: true })).toBeVisible();
@@ -162,6 +165,21 @@ test("공통 머리: 비홈 3폭 LIVE 순서와 상세 56·일반 52·조작44 �
     }
   }
   writeFileSync(`${evidence}/nonhome-layout.json`,JSON.stringify(results));
+  const longName = "가나다라마바사아자차카타파하가나다라마바";
+  await db.seller.update({ where:{id:sellerId},data:{shopName:longName} });
+  try {
+    await page.setViewportSize({width:390,height:900});
+    await page.goto(`/shop/${slug}`);
+    await expect(page.locator(".shop-top .shop-name")).toHaveText(longName);
+    const nameSafety = await page.evaluate(() => {
+      const name=document.querySelector(".shop-top .shop-name")!,n=name.getBoundingClientRect(),h=document.querySelector(".shop-top")!.getBoundingClientRect();
+      const overlap=[...document.querySelectorAll(".shop-top .shop-iconbtn")].some(e=>{const r=e.getBoundingClientRect();return r.width>0&&n.left<r.right&&n.right>r.left&&n.top<r.bottom&&n.bottom>r.top;});
+      return {fullText:name.scrollWidth<=name.clientWidth&&n.top>=h.top&&n.bottom<=h.bottom,overlap};
+    });
+    expect(nameSafety).toEqual({fullText:true,overlap:false});
+    writeFileSync(`${evidence}/long-name-safety.json`,JSON.stringify(nameSafety));
+    await page.screenshot({path:`${evidence}/long-name-390.png`,fullPage:true});
+  } finally {await db.seller.update({where:{id:sellerId},data:{shopName:"카드마켓"}});}
 });
 
 test("FINAL 원본 구조 증거: 실앱 캡처와 구분", async ({ page }) => {
