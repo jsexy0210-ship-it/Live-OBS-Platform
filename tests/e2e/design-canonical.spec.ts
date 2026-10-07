@@ -7,6 +7,15 @@ const repo = path.resolve(process.cwd());
 let previewProcess: ChildProcess | undefined;
 let previewUrl = "";
 
+async function expectWantedSans(page: import("@playwright/test").Page) {
+  const font = await page.locator(".app").evaluate(async (app) => ({
+    family: getComputedStyle(app).fontFamily,
+    loadedFaces: (await document.fonts.load('400 16px "Wanted Sans Variable"', "요금")).length,
+  }));
+  expect(font.family).toContain('"Wanted Sans Variable"');
+  expect(font.loadedFaces).toBeGreaterThan(0);
+}
+
 async function freePort() {
   const server = createServer();
   await new Promise<void>((resolve, reject) => server.once("error", reject).listen(0, "127.0.0.1", resolve));
@@ -51,6 +60,8 @@ test("PF-003 TSX는 legacy v331의 문구와 1440 레이아웃을 보존한다",
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${previewUrl}/design/project/PF-003.dc.html`);
   await page.addStyleTag({ url: `${previewUrl}/design-assets/styles/wanted-sans.css` });
+  await page.addStyleTag({ content: '.app,.app *{font-family:"Wanted Sans Variable","Wanted Sans",sans-serif}' });
+  await expectWantedSans(page);
   const legacy = page.locator(".app");
   await expect(legacy).toBeVisible();
   const legacyText = (await legacy.innerText()).replace(/\s+/g, " ").trim();
@@ -65,6 +76,7 @@ test("PF-003 TSX는 legacy v331의 문구와 1440 레이아웃을 보존한다",
 
   await page.goto(previewUrl);
   const canonical = page.locator(".app");
+  await expectWantedSans(page);
   await expect(canonical).toBeVisible();
   const canonicalText = (await canonical.innerText()).replace(/\s+/g, " ").trim();
   expect(canonicalText).toBe(legacyText);
