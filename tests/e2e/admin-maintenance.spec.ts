@@ -118,7 +118,7 @@ test("마스터 점검 고정 띠는 다른 화면에도 표시되고 조회 전
       expect(banner!.y).toBe(48);
       expect(body!.y).toBeGreaterThanOrEqual(banner!.y + banner!.height);
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-      await page.screenshot({ path: `tests/e2e/screenshots/maintenance-admin-global-${width}.png`, fullPage: true });
+      await page.screenshot({ path: `tests/e2e/screenshots/maintenance-admin-global-${width}.png`, fullPage: true, animations: "disabled" });
     }
     await page.setViewportSize({ width: 1440, height: 900 });
     let requests = 0;
