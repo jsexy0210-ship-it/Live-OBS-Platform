@@ -551,3 +551,4 @@
 ## SA 모바일 React 정본 전환 (2026-10-07 KST)
 
 11개 모바일 변형의 React TSX 정본 전환은 별도 후속 PR에서 검수합니다. #1079의 HTML 검수와 구분하며 기존 HTML·생성기·원 Artifact는 이행/읽기 참조입니다. TSX와 보존 HTML의 22상태 문구·링크·요소 치수·폰트·입력값·넘침을 실제 preview에서 비교했습니다. 정본은 390px 휴대폰 상태 2개만 정의하고 1440·1024px 보드 컨테이너 확인은 제품 화면 정본 일치 판정이 아닙니다. production 기능·웹앱 3폭·배포 완료는 미판정이며 원 Artifact 새 소스 동기화는 미완료입니다.
+선택 흐름 상태: 상품 판매가 변경의 동시수정 보호 — **검증 완료**(로컬 후보, 2026-10-07). 기준 main `4bf25cc9`의 원자적 expectedPrice/409·권한·tenant 보호를 재사용해 ProductForm/QuickPrice의 기대값 누락·확인/취소·충돌 후 재조회/재입력을 연결했습니다. 실제 격리 PostgreSQL 16.15에서 병렬 4요청 중 성공 1건/충돌 3건·audit 1건, 권한/tenant·유효성·기존 주문 unitPrice/totalAmount·환불 수량·재고 불변을 포함한 통합 21건이 통과했습니다. 실제 Next 앱의 두 화면 및 가격·재고 저장 순서/되돌리기/권한 E2E 7건, 단위 8건, typecheck/build도 통과했습니다. 로컬 증거는 `%TEMP%/onq-price-target-e2e.log`, `onq-price-typecheck.log`, `onq-price-turbopack-build.log`이며 후속 PR CI·독립 검수·main 반영은 PR 1개 규칙에 따라 #1082 검수 이후 진행합니다. #1082 화면 증거와 이 후보는 별도입니다. 결제·환불 실행은 적용 대상이 아닙니다.

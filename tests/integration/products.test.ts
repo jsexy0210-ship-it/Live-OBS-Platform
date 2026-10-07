@@ -382,6 +382,24 @@ describe("재고 변경", () => {
   });
 });
 
+describe("판매가 변경과 기존 주문", () => {
+  it("판매가 정상 변경·충돌 거절은 이미 받은 주문 금액·환불 수량·옵션 재고를 바꾸지 않는다", async () => {
+    const s = await seller();
+    const p = await made(s.ctx);
+    const buyer = await createLoginBuyer(s.seller.id, s.grade.id);
+    expect(await createOrder(db, { sellerId: s.seller.id, buyerMemberId: buyer.id, items: [{ optionId: p.options[0].id, quantity: 1 }], consent, shippingAddress })).toMatchObject({ ok: true });
+    const readOrder = () => db.order.findMany({ where: { sellerId: s.seller.id }, select: { totalAmount: true, items: { select: { unitPrice: true, listUnitPrice: true, quantity: true, refundedQuantity: true } } } });
+    const orders = await readOrder();
+    const stock = await db.productOption.findUniqueOrThrow({ where: { id: p.options[0].id }, select: { stock: true } });
+    const movements = await db.stockMovement.count({ where: { sellerId: s.seller.id } });
+    expect((await updateProduct(db, s.ctx, p.id, { price: 7000, expectedPrice: 5000 })).ok).toBe(true);
+    expect(await updateProduct(db, s.ctx, p.id, { price: 8000, expectedPrice: 5000 })).toMatchObject({ ok: false, reason: "price_conflict", currentPrice: 7000 });
+    expect(await readOrder()).toEqual(orders);
+    expect(await db.productOption.findUniqueOrThrow({ where: { id: p.options[0].id }, select: { stock: true } })).toEqual(stock);
+    expect(await db.stockMovement.count({ where: { sellerId: s.seller.id } })).toBe(movements);
+  });
+});
+
 describe("소프트 삭제", () => {
   it("지운 상품·옵션은 목록·조회·새 주문에서 빠지고, 지난 주문 품목은 그대로 남는다", async () => {
     const s = await seller();

@@ -3,7 +3,7 @@
 import "./ProductPreview.css";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { FormRow, FormSection } from "../admin-ui";
+import { FormRow, FormSection, useConfirm } from "../admin-ui";
 import ProductDetailEditor, { DETAIL_TEXT_MAX, blocksToHtml, type PendingImages } from "./ProductDetailEditor";
 import ProductImages, { IMAGE_MAX_COUNT, type SlotImage } from "./ProductImages";
 import { Topbar } from "./SellerShell";
@@ -132,6 +132,7 @@ const kstInput = (value?: string) => {
 const kstIso = (value: string) => `${value}:00+09:00`;
 
 export function ProductForm({ initial }: { initial?: Product }) {
+  const { confirm } = useConfirm();
   const router = useRouter();
   const isEdit = !!initial;
   const [base, setBase] = useState<Product | undefined>(initial);
@@ -466,9 +467,17 @@ export function ProductForm({ initial }: { initial?: Product }) {
   // 수정: 바뀐 것만 하나씩 보낸다. 한 단계가 실패하면 거기서 멈추고, 이미 저장된 단계는 기준값에 반영해 다시 보내지 않는다.
   const update = async () => {
     if (!base || !checkFirst(status)) return;
+    const changingPrice = priceNum !== base.price;
     setSaving("save");
+    if (changingPrice && !(await confirm({ title: "판매가를 변경하시겠습니까?", body: `「${base.name}」 ${won(base.price)} → ${won(priceNum!)}. 이미 받은 주문 금액은 바뀌지 않습니다.`, confirmLabel: "판매가 변경" }))) {
+      setSaving(null);
+      return;
+    }
     setFailure(null);
     let current = base;
+    // 옵션 응답에 다른 직원의 새 가격이 들어와도 최초에 본 가격을 기대값으로 유지한다.
+    // 이 화면에서 가격 PATCH가 성공한 경우에만 다음 단계의 기대값을 갱신한다.
+    let expectedPrice = base.price;
     let list = rows;
     let gone = removed;
     // 서버는 단계마다 「판매가 + 추가 금액 ≥ 1원」, 「판매 중이면 옵션 1개 이상」을 검사한다. 중간 상태가 늘 올바르도록
@@ -492,11 +501,21 @@ export function ProductForm({ initial }: { initial?: Product }) {
 
     const patchProduct = async (patch: Record<string, unknown>) => {
       if (Object.keys(patch).length === 0) return true;
-      const r = await api<Product>(`/api/seller/products/${current.id}`, { method: "PATCH", body: patch });
+      const r = await api<Product>(`/api/seller/products/${current.id}`, { method: "PATCH", body: changingPrice ? { ...patch, expectedPrice } : patch });
       if (!r.ok) {
+        if (r.error === "price_conflict") {
+          const fresh = await api<Product>(`/api/seller/products/${current.id}`);
+          if (fresh.ok) {
+            setBase({ ...current, price: fresh.data.price });
+            setPrice(String(fresh.data.price));
+            fail("그사이 판매가가 바뀌었습니다. 지금 판매가를 확인한 뒤 다시 입력해 주십시오");
+            return false;
+          }
+        }
         fail(failMessage(r, "admin", "저장하지 못했습니다"));
         return false;
       }
+      if (patch.price !== undefined) expectedPrice = r.data.price;
       current = r.data;
       setBase(current);
       return true;
