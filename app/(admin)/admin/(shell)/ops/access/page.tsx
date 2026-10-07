@@ -7,15 +7,16 @@ import { ErrorState, LoadingRows, Toast } from "../../../../../../components/sel
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar } from "../../../_components/AdminShell";
 import { OVERLAY_STATE, type SellerActivity } from "../../../_components/ops";
-import { dayTime, won } from "../../../_components/partners";
+import { day, dayTime, won } from "../../../_components/partners";
 
-// MA-042 주문·오버레이 접속(GET /api/admin/ops/seller-activity?cursor=, 모든 마스터 역할, 조회만). 이용 중·정지 파트너스를 가입 최신 순으로 50곳씩.
-// 「오늘」은 KST 0시부터. 요약 숫자는 지금까지 불러온 파트너스 기준이다(전체 합계 API 없음). 방송 중·접속 안 됨 거르기는 불러온 목록 안에서 한다.
-type Page = { at: string; todayStart: string; items: SellerActivity[]; nextCursor: string | null };
-type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; items: SellerActivity[]; next: string | null };
+// MA-042 주문·오버레이 접속. 전체 이용 중·정지 파트너스 요약과 50곳 단위 목록을 조회한다.
+type PeriodKey = "today" | "7d" | "30d";
+type Page = { at: string; observedAt: string; todayStart: string; period: { key: PeriodKey; from: string; to: string; timezone: string }; summary: { created: number; paid: number; paidAmount: number }; items: SellerActivity[]; nextCursor: string | null };
+type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; at: string; observedAt: string; period: Page["period"]; summary: Page["summary"]; items: SellerActivity[]; next: string | null };
 
 export default function SellerActivityPage() {
   const [state, setState] = useState<Load>({ kind: "loading" });
+  const [period, setPeriod] = useState<PeriodKey>("today");
   const [more, setMore] = useState(false);
   const [liveOnly, setLiveOnly] = useState(false);
   const [offOnly, setOffOnly] = useState(false);
@@ -26,39 +27,44 @@ export default function SellerActivityPage() {
     const id = ++reqId.current;
     setMore(false);
     setState({ kind: "loading" });
-    const r = await adminApi<Page>("/api/admin/ops/seller-activity");
+    const r = await adminApi<Page>(`/api/admin/ops/seller-activity?period=${period}`);
     if (id !== reqId.current) return;
-    setState(r.ok ? { kind: "ok", items: r.data.items, next: r.data.nextCursor } : { kind: "error" });
-  }, []);
+    setState(r.ok ? { kind: "ok", at: r.data.at, observedAt: r.data.observedAt, period: r.data.period, summary: r.data.summary, items: r.data.items, next: r.data.nextCursor } : { kind: "error" });
+  }, [period]);
   useEffect(() => void load(), [load]);
 
   const loadMore = async () => {
-    if (state.kind !== "ok" || !state.next) return;
+    if (state.kind !== "ok") return;
+    const cursor = state.next;
+    if (!cursor) return;
     setMore(true);
     const id = reqId.current;
-    const r = await adminApi<Page>(`/api/admin/ops/seller-activity?cursor=${encodeURIComponent(state.next)}`);
+    const current = state;
+    const firstPage = await adminApi<Page>(`/api/admin/ops/seller-activity?period=${period}&asOf=${encodeURIComponent(current.at)}&cursor=${encodeURIComponent(cursor)}`);
     if (id !== reqId.current) return;
     setMore(false);
-    if (r.ok) setState({ kind: "ok", items: [...state.items, ...r.data.items], next: r.data.nextCursor });
+    if (firstPage.ok) setState({ ...current, items: [...current.items, ...firstPage.data.items], next: firstPage.data.nextCursor });
     else setToast("더 불러오지 못했습니다. 다시 눌러 주십시오.");
   };
 
   const all = state.kind === "ok" ? state.items : [];
   const items = all.filter((s) => (!liveOnly || s.live) && (!offOnly || (s.overlay.hasUrl && !s.overlay.connected)));
-  const sum = (f: (s: SellerActivity) => number) => all.reduce((a, s) => a + f(s), 0);
+  const summary = state.kind === "ok" ? state.summary : { created: 0, paid: 0, paidAmount: 0 };
+  const periodLabel = period === "today" ? "오늘" : period === "7d" ? "7일" : "30일";
+  const rangeLabel = state.kind !== "ok" ? "조회 중" : period === "today" ? day(state.period.from) : `${day(state.period.from)} ~ ${day(state.period.to)}`;
 
   return (
     <>
-      <AdminTopbar crumb="운영 › 주문 · 오버레이 접속" />
+      <AdminTopbar crumb="운영 › 주문 · 방송 화면 접속" />
       <main className="main">
-        <PageHead title="주문 · 오버레이 접속" />
+        <PageHead title="주문 · 방송 화면 접속" description="기간별 주문 현황과 방송 화면 접속 상태를 파트너스별로 확인합니다." />
         <div className="col" style={{ gap: 20 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
-            {[
-              ["오늘 주문", `${sum((s) => s.ordersToday.created).toLocaleString("ko-KR")}건`, "act-created"],
-              ["오늘 결제", `${sum((s) => s.ordersToday.paid).toLocaleString("ko-KR")}건`, "act-paid"],
-              ["오늘 결제 금액", won(sum((s) => s.ordersToday.paidAmount)), "act-amount"],
-              ["방송 화면 연결 중", `${all.filter((s) => s.overlay.connected).length}곳`, "act-connected"],
+          {[
+            [`${periodLabel} 주문`, `${summary.created.toLocaleString("ko-KR")}건`, "act-created"],
+            [`${periodLabel} 결제`, `${summary.paid.toLocaleString("ko-KR")}건`, "act-paid"],
+            [`${periodLabel} 결제 금액`, won(summary.paidAmount), "act-amount"],
+            ["불러온 목록 연결 중", `${all.filter((s) => s.overlay.connected).length}곳`, "act-connected"],
             ].map(([label, value, id]) => (
               <div key={id} className="card pad col" style={{ gap: 4 }}>
                 <span className="t-l2 c-alt">{label}</span>
@@ -68,8 +74,11 @@ export default function SellerActivityPage() {
               </div>
             ))}
           </div>
+          <div className="row" role="radiogroup" aria-label="주문 집계 기간">
+            {([["today", "오늘"], ["7d", "7일"], ["30d", "30일"]] as const).map(([key, label]) => <button key={key} className={`btn btn-sm ${period === key ? "btn-primary" : "btn-out"}`} role="radio" aria-checked={period === key} type="button" onClick={() => setPeriod(key)}>{label}</button>)}
+          </div>
           <p className="t-c1 c-alt" style={{ margin: 0 }}>
-            지금까지 불러온 파트너스 기준입니다. 환불은 결제 금액에서 뺀 값입니다.
+            {periodLabel} 기간 {rangeLabel} (KST). 주문·결제 요약은 전체 이용 중·정지 파트너스 합계이며, 방송 화면 연결 수와 표의 행은 현재 불러온 목록 기준입니다. 7일·30일은 오늘을 포함합니다. 주문은 생성일, 결제 건수와 금액은 결제일 기준이며 현재 환불을 반영합니다. 외부 주문은 포함하지 않습니다. 집계 시각 {state.kind === "ok" ? dayTime(state.observedAt) : "—"}; 파트너스와 방송 상태는 현재값입니다.
           </p>
 
           <div className="card pad row" style={{ gap: 16, flexWrap: "wrap" }}>
@@ -118,9 +127,9 @@ export default function SellerActivityPage() {
                                 {s.status === "SUSPENDED" && <span className="bdg b-fail"> 이용 정지</span>}
                               </td>
                               <td>{s.live ? <span className="bdg b-done">방송 중</span> : "-"}</td>
-                              <td>{s.ordersToday.created}</td>
-                              <td>{s.ordersToday.paid}</td>
-                              <td>{won(s.ordersToday.paidAmount)}</td>
+                              <td>{s.ordersPeriod.created}</td>
+                              <td>{s.ordersPeriod.paid}</td>
+                              <td>{won(s.ordersPeriod.paidAmount)}</td>
                               <td>
                                 <span className={`bdg ${o.cls}`}>{o.label}</span>
                               </td>

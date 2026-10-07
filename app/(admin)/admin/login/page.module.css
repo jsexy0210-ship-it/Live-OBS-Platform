@@ -1,0 +1,6 @@
+form .disabledPrimary:disabled {
+  background: var(--brand);
+  color: var(--brand-ink);
+  opacity: 0.45;
+  cursor: default;
+}

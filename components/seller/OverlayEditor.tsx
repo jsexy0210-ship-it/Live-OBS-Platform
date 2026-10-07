@@ -4,7 +4,7 @@ import "./OverlayEditor.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useUnsavedGuard } from "../../lib/client/navigation";
 import { WidgetView } from "../overlay/WidgetView";
-import { MAX_TEMPLATES, SAMPLE_DATA, SLOTS, STAGE, newWidget, slotOf, widgetLabel, type Aspect, type PropValue, type Widget } from "../overlay/layout";
+import { MAX_TEMPLATES, SAMPLE_DATA, SAMPLE_NOW, SLOTS, STAGE, newWidget, slotOf, widgetLabel, type Aspect, type PropValue, type Widget } from "../overlay/layout";
 import { PageHead, useConfirm } from "../admin-ui";
 import { api, failMessage } from "./api";
 import { Toast } from "./States";
@@ -790,7 +790,7 @@ export default function OverlayEditor() {
                 {ordered
                   .filter((w) => w.visible)
                   .map((w) => (
-                    <WidgetView key={w.id} widget={w} data={SAMPLE_DATA} now={0} editing />
+                    <WidgetView key={w.id} widget={w} data={SAMPLE_DATA} now={SAMPLE_NOW} landscape={aspect === "16x9"} editing />
                   ))}
               </div>
               {aspect === "9x16" && guides && (

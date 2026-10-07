@@ -177,6 +177,8 @@ model Seller {
   subscription             SellerSubscription?
   subscriptionPayments     SubscriptionPayment[]
   auditLogs                AuditLog[]
+  obsDevices               ObsDevice[]
+  obsPairingChallenges     ObsPairingChallenge[]
   shopBanners              ShopBanner[]
   shopPopups               ShopPopup[]
   // 「모든 팝업 잠시 끄기」(SA-065): 끈 시각과 끈 직원. null이면 켜짐.
@@ -4132,12 +4134,39 @@ model AdminImpersonationSession {
   reason    String
   ip        String?
   userAgent String?
+  // 접근 사유 분류·관련 건(문의·알림·신고, 같은 쇼핑몰 건만)·열람 범위. 이전에 열린 세션은 category null, scopes는 그때 열려 있던 범위(주문·회원)로 채웠다.
+  category    ImpersonationCategory?
+  relatedKind ImpersonationRelatedKind?
+  relatedId   String?                  @db.Uuid
+  scopes      ImpersonationScope[]     @default([])
   expiresAt DateTime  @db.Timestamptz(3)
   endedAt   DateTime? @db.Timestamptz(3)
   createdAt DateTime  @default(now()) @db.Timestamptz(3)
 
   @@index([adminId, endedAt])
   @@index([sellerId, createdAt])
+}
+
+enum ImpersonationCategory {
+  INQUIRY
+  INCIDENT
+  FINANCE_CHECK
+  AUDIT
+}
+
+enum ImpersonationRelatedKind {
+  INQUIRY
+  NOTIFICATION
+  REPORT
+}
+
+// 대리 조회로 볼 수 있는 화면 묶음. 범위 밖 파트너스 API는 403 out_of_scope.
+enum ImpersonationScope {
+  BROADCAST
+  OVERLAY
+  ORDERS
+  MEMBERS
+  SETTINGS_PG
 }
 
 // ───────────── 시작하기·온보딩(SA-003 · SA-004) ─────────────
@@ -4440,6 +4469,43 @@ model PlatformPolicy {
   intValue         Int
   updatedAt        DateTime @default(now()) @updatedAt @db.Timestamptz(3)
   updatedByAdminId String?  @db.Uuid
+}
+
+// OBS 등록은 명령 권한이 아니다. 구독/현재 유료 job 위임은 명령마다 별도 검사한다.
+model ObsDevice {
+  id             String   @id @db.Uuid
+  sellerId       String   @db.Uuid
+  tokenHash      String?  @unique
+  generation     Int      @default(1)
+  registeredById String   @db.Uuid
+  consentVersion String
+  registeredAt   DateTime @default(now()) @db.Timestamptz(3)
+  revokedAt      DateTime? @db.Timestamptz(3)
+  seller         Seller   @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+
+  @@unique([sellerId, id])
+}
+
+// PC verifier를 입증하고 대표자가 확인한 challenge만 한 번 소비한다.
+model ObsPairingChallenge {
+  id              String    @id @db.Uuid
+  deviceId        String    @db.Uuid
+  verifierHash    String    @unique
+  confirmationHash String
+  sellerId        String?   @db.Uuid
+  approvedActorId String?   @db.Uuid
+  approvedAt      DateTime? @db.Timestamptz(3)
+  installJobId    String?   @db.Uuid
+  generation      Int       @default(1)
+  consentVersion  String?
+  expiresAt       DateTime  @db.Timestamptz(3)
+  consumedAt      DateTime? @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+  seller          Seller?   @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+
+  @@index([createdAt])
+  @@index([expiresAt])
+  @@index([sellerId, deviceId])
 }
 
 // 인프라 단가 표(한 행, id = 1). 마스터 관리자(최고관리자)가 입력하는 월 단가·건당 단가·수수료율. 비밀값 없음.

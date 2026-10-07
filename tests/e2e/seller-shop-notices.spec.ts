@@ -46,12 +46,15 @@ test("공지: 추가·수정·홈 고정(새로 고정하면 이전 고정이 �
 
   // 첫 공지(홈 고정)
   await page.getByLabel("제목").fill("배송 지연 안내");
+  await page.getByTestId("notice-editor").getByLabel("분류").fill("방송");
   await page.getByLabel("내용").fill("택배사 사정으로 이틀 늦어집니다.");
   await page.getByLabel("홈 띠에 고정").check();
   const created = page.waitForResponse((r) => r.request().method() === "POST" && r.url().endsWith("/api/seller/notices"));
   await page.getByTestId("notice-save").click();
   await confirmBtn("추가").click();
-  expect((await created).status()).toBe(201);
+  const createResponse = await created;
+  expect(createResponse.status()).toBe(201);
+  expect((await createResponse.json()).notice.category).toBe("방송");
   await expect(page.getByText("추가했습니다")).toBeVisible();
   const rows = page.getByTestId("notice-row");
   await expect(rows).toHaveCount(1);
@@ -87,6 +90,10 @@ test("공지: 추가·수정·홈 고정(새로 고정하면 이전 고정이 �
   await rows.filter({ hasText: "배송 지연 안내" }).getByRole("button", { name: "공개", exact: true }).click();
   await confirmBtn("공개").click();
   await expect(rows.filter({ hasText: "배송 지연 안내" }).getByText("공개", { exact: true })).toBeVisible();
+  await withDb(async (db, sellerId) => {
+    const saved = await db.shopNotice.findFirstOrThrow({ where: { sellerId, title: "배송 지연 안내" }, select: { category: true } });
+    expect(saved.category).toBe("방송");
+  });
 
   // 삭제: 입력 표에서, 확인 창을 거친다
   await rows.filter({ hasText: "배송 지연 안내" }).getByRole("button", { name: "수정" }).click();

@@ -1,3 +1,4 @@
+import ShopLocked from "./ShopLocked";
 import ShopState from "./ShopState";
 import "./ShopLegal.css";
 
@@ -6,9 +7,9 @@ import "./ShopLegal.css";
 type Doc = { published: false } | { published: true; body: string; effectiveOn: string | null };
 const TITLE = { terms: "이용약관", privacy: "개인정보처리방침" } as const;
 
-export default function ShopLegal({ kind, doc }: { kind: keyof typeof TITLE; doc: Doc | null }) {
+export default function ShopLegal({ kind, doc, slug }: { kind: keyof typeof TITLE; doc: Doc | null; slug?: string }) {
   const title = TITLE[kind];
-  if (!doc) return <ShopState title="지금은 쇼핑몰을 이용할 수 없어요" body="쇼핑몰이 다시 문을 열면 이용할 수 있어요." />;
+  if (!doc) return slug ? <ShopLocked slug={slug} /> : <ShopState title="지금은 쇼핑몰을 이용할 수 없어요" body="쇼핑몰이 다시 문을 열면 이용할 수 있어요." />;
   if (!doc.published) return <ShopState title={`${title}을 준비하고 있어요`} body="정해지는 대로 이 페이지에서 알려 드려요. 궁금한 점은 판매자에게 문의해 주세요." />;
   return (
     <section className="card shop-card" data-testid="shop-legal">

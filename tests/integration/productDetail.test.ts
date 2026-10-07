@@ -123,8 +123,8 @@ describe("상세 페이지 블록", () => {
     expect(await uploadProductImage(db, s.ctx, p.id, png(200, 150), {}, "GALLERY")).toMatchObject({ ok: true });
     await expect(setProductDetail(db, other.ctx, p.id, { blocks: [] })).rejects.toMatchObject({ status: 404 });
     await expect(getProductDetail(db, other.ctx, p.id)).rejects.toMatchObject({ status: 404 });
-    await expect(setProductDetail(db, { ...s.ctx, readOnly: true }, p.id, { blocks: [] })).rejects.toMatchObject({ status: 403 });
-    expect((await getProductDetail(db, { ...s.ctx, readOnly: true }, p.id)).blocks).toEqual([]);
+    await expect(setProductDetail(db, { ...s.ctx, readOnly: true, impersonationScopes: ["ORDERS", "MEMBERS"] }, p.id, { blocks: [] })).rejects.toMatchObject({ status: 403 });
+    expect((await getProductDetail(db, { ...s.ctx, readOnly: true, impersonationScopes: ["ORDERS", "MEMBERS"] }, p.id)).blocks).toEqual([]);
   });
 });
 

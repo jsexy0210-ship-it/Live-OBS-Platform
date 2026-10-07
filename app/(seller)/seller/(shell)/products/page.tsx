@@ -289,6 +289,15 @@ export default function ProductListPage() {
     setToast(`상품 ${r.data.updated.length}개를 삭제했습니다.${skippedText(r.data)}`);
   };
 
+  if (state.kind === "error" && state.status === 403) {
+    return (
+      <>
+        <Topbar crumb="상품 › 상품 목록" />
+        <main className="main"><NoPermission need="상품" /></main>
+      </>
+    );
+  }
+
   const radios = <T extends string>(label: string, name: string, list: { key: T; label: string }[], value: T, set: (v: T) => void) => (
     <div role="radiogroup" aria-label={label} className="row" style={{ gap: 16, flexWrap: "wrap" }}>
       {list.map((o) => (

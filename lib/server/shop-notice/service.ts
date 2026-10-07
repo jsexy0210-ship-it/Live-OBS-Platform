@@ -54,7 +54,7 @@ function parseInput(kind: ShopNoticeKind, raw: unknown): { ok: true; v: Input } 
   const body = cleanText(b.body, BODY_MAX, "multiline");
   if (!body) return { ok: false, reason: "invalid_body" };
   let category: string | null = null;
-  if (kind === "FAQ" && b.category !== undefined && b.category !== null && !(typeof b.category === "string" && b.category.trim() === "")) {
+  if (b.category !== undefined && b.category !== null && !(typeof b.category === "string" && b.category.trim() === "")) {
     category = cleanText(b.category, CATEGORY_MAX);
     if (!category) return { ok: false, reason: "invalid_category" };
   }
@@ -178,12 +178,12 @@ export async function publicNotices(db: PrismaClient, slug: string, cursor?: str
   const where = { sellerId, kind: "NOTICE" as const, isPublished: true };
   const at = isUuid(cursor) ? await db.shopNotice.findFirst({ where: { ...where, id: cursor }, select: { id: true, createdAt: true } }) : null;
   const [pinned, rows] = await Promise.all([
-    db.shopNotice.findFirst({ where: { ...where, isPinned: true }, select: { id: true, title: true, createdAt: true } }),
+    db.shopNotice.findFirst({ where: { ...where, isPinned: true }, select: { id: true, title: true, category: true, createdAt: true } }),
     db.shopNotice.findMany({
       where: { ...where, ...(at ? { OR: [{ createdAt: { lt: at.createdAt } }, { createdAt: at.createdAt, id: { lt: at.id } }] } : {}) },
       orderBy: orderBy("NOTICE"),
       take: PUBLIC_PAGE_SIZE + 1,
-      select: { id: true, title: true, isPinned: true, createdAt: true },
+      select: { id: true, title: true, category: true, isPinned: true, createdAt: true },
     }),
   ]);
   const notices = rows.slice(0, PUBLIC_PAGE_SIZE);
@@ -193,7 +193,7 @@ export async function publicNotices(db: PrismaClient, slug: string, cursor?: str
 export async function publicNotice(db: PrismaClient, slug: string, id: string) {
   const sellerId = await openShop(db, slug);
   if (!sellerId || !isUuid(id)) return null;
-  return db.shopNotice.findFirst({ where: { id, sellerId, kind: "NOTICE", isPublished: true }, select: { id: true, title: true, body: true, isPinned: true, createdAt: true, updatedAt: true } });
+  return db.shopNotice.findFirst({ where: { id, sellerId, kind: "NOTICE", isPublished: true }, select: { id: true, title: true, body: true, category: true, isPinned: true, createdAt: true, updatedAt: true } });
 }
 
 // 자주 묻는 질문(순서대로, 본문 포함). ?q=검색어(제목·본문·분류, 2~40자)로 좁히면 문의 작성 전 제안에 쓴다. categories는 쓰인 분류(첫 등장 순).

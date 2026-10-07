@@ -12,7 +12,7 @@ import "./Cart.css";
 import "./MyMenu.css";
 
 // SH-034 찜(시안 04 SH). 로그인 구매자 전용 API(/api/shop/{slug}/wishlist)로 목록·빼기. 「담기·바로 구매」는 상품 상세·옵션 API가 생기면, 「최근 본 상품」은 상품 상세가 이 기기에 남긴 목록(RecentProducts)을 탭으로 보여 준다.
-type Item = { productId: string; name: string; price: number; listPrice: number; status: "on_sale" | "sold_out" | "unavailable"; wishedAt: string };
+type Item = { productId: string; name: string; price: number; listPrice: number; status: "on_sale" | "sold_out" | "unavailable"; wishedAt: string; isLive: boolean; eventBadge: string | null };
 type View = { kind: "loading" } | { kind: "login" } | { kind: "error" } | { kind: "ok"; items: Item[] };
 
 const card = (i: Item): ProductCardData => ({ id: i.productId, name: i.name, price: i.listPrice, salePrice: i.price < i.listPrice ? i.price : null, soldOut: i.status === "sold_out" });
@@ -106,9 +106,10 @@ export default function WishlistView({ slug }: { slug: string }) {
     ) : (
       <>
         {msgEl}
-        <ul className="pc-grid" aria-label="찜한 상품">
+        <ul className="pc-grid wishlist-grid" aria-label="찜한 상품">
           {items.map((i) => (
             <ProductCard key={i.productId} p={card(i)} href={i.status === "unavailable" ? undefined : `${base}/products/${i.productId}`}>
+              {(i.isLive || i.eventBadge) && <p className="wl-badges">{i.isLive && <span className="wl-badge wl-live">방송 중</span>}{i.eventBadge && <span className="wl-badge wl-deadline">{i.eventBadge}</span>}</p>}
               {i.status === "unavailable" && <p className="cart-tag">지금은 판매하지 않아요</p>}
               <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => void remove([i], "찜에서 뺐어요")}>
                 찜 빼기
@@ -130,7 +131,7 @@ export default function WishlistView({ slug }: { slug: string }) {
     );
 
   return (
-    <div className="shop-wrap cart-wrap">
+    <div className="shop-wrap cart-wrap wishlist-view">
       <div className="cart-head">
         <h1>찜 · 최근 본 상품</h1>
       </div>

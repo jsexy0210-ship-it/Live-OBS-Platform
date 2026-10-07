@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { ConfirmProvider, useConfirm } from "../../../../components/admin-ui";
 import IdentityCheck from "../../../../components/seller/IdentityCheck";
 import NewPasswordForm from "../../../../components/seller/NewPasswordForm";
-import { AuthFrame, FindSwitch, IdentityUnavailable, useStaffType, withType } from "../../../../components/seller/PartnersAuth";
+import { AuthFrame, IdentityUnavailable, useStaffType, withType } from "../../../../components/seller/PartnersAuth";
 import { api, failMessage } from "../../../../components/seller/api";
 import { RETRY_TEXT, stepOutcome } from "../../../../components/seller/stepFailure";
 
@@ -114,7 +114,7 @@ function FindIdPageInner() {
   };
 
   const pickedAccount = accounts.find((a) => a.accountId === picked);
-  const title = { find: "이메일(아이디) 찾기", accounts: accounts.length > 0 ? "가입한 계정을 찾았습니다" : "맞는 계정이 없습니다", password: "새 비밀번호 설정", done: "비밀번호를 변경했습니다" }[step];
+  const title = { find: "이메일(아이디)을 찾습니다", accounts: accounts.length > 0 ? "가입한 계정을 찾았습니다" : "맞는 계정이 없습니다", password: "새 비밀번호 설정", done: "비밀번호를 변경했습니다" }[step];
 
   if (step === "done") {
     return (
@@ -134,14 +134,13 @@ function FindIdPageInner() {
 
   return (
     <AuthFrame>
-      {step === "find" && <FindSwitch current="id" />}
       <div className="col" style={{ gap: 4 }}>
         <h1 className="t-t3" id="fi-title" tabIndex={-1}>
           {title}
         </h1>
         <span className="t-l2 c-alt">
           {step === "find"
-            ? "휴대폰 본인확인을 하면 가입한 로그인 이메일을 알려 드립니다."
+            ? "로그인 아이디는 가입할 때 쓴 이메일입니다. 휴대폰 본인확인을 하면 바로 보여 드립니다."
             : step === "password"
               ? `${pickedAccount?.shopName ?? ""} · ${pickedAccount?.email ?? ""}`
               : accounts.length > 0
@@ -151,6 +150,15 @@ function FindIdPageInner() {
                   : "입력한 정보와 맞는 대표자 계정이 없습니다."}
         </span>
       </div>
+      {step === "find" && (
+        <>
+          <nav className="tabs login-tabs" aria-label="계정 종류">
+            <a className={`tab${staff ? "" : " on"}`} href="/seller/find-id" aria-current={!staff ? "page" : undefined}>대표자</a>
+            <a className={`tab${staff ? " on" : ""}`} href="/seller/find-id?type=staff" aria-current={staff ? "page" : undefined}>직원</a>
+          </nav>
+          {staff && <span className="t-l2 c-alt">직원 본인 휴대폰으로 본인확인하면 대표자가 등록한 직원 정보와 맞춰 보고 로그인 이메일을 보여 드립니다.</span>}
+        </>
+      )}
       {unavailable ? (
         <IdentityUnavailable tone="admin" action="아이디를 찾을" />
       ) : (
@@ -169,21 +177,17 @@ function FindIdPageInner() {
             </div>
           )}
           {step === "find" && (
-            <>
-              <div className="msg msg-info" style={{ display: "block" }}>
-                {staff ? "직원 본인 명의의 휴대폰으로 확인합니다." : "쇼핑몰 대표자 본인 명의의 휴대폰으로 확인합니다."}
-              </div>
-              <IdentityCheck tone="admin"
-                key={idvKey}
-                label="휴대폰 본인확인"
-                base={BASE}
-                blocked={busy}
-                scope={accountType}
-                start={(person, attemptKey) => api<{ verificationId: string }>(`${BASE}/start`, { method: "POST", body: { ...person, attemptKey, accountType } })}
-                onUnavailable={toUnavailable}
-                onVerified={(id) => void loadAccounts(id)}
-              />
-            </>
+            <IdentityCheck
+              tone="admin"
+              key={idvKey}
+              label="휴대폰 본인확인"
+              base={BASE}
+              blocked={busy}
+              scope={accountType}
+              start={(person, attemptKey) => api<{ verificationId: string }>(`${BASE}/start`, { method: "POST", body: { ...person, attemptKey, accountType } })}
+              onUnavailable={toUnavailable}
+              onVerified={(id) => void loadAccounts(id)}
+            />
           )}
           {step === "accounts" &&
             (accounts.length > 0 ? (
@@ -228,6 +232,12 @@ function FindIdPageInner() {
       {!unavailable && (
         <div className="row t-l2 c-alt" style={{ justifyContent: "center", gap: 8 }}>
           <Link href={withType("/seller/login", staff)}>로그인으로 돌아가기</Link>
+          {step === "find" && (
+            <>
+              <span aria-hidden="true">·</span>
+              <Link href={withType("/seller/password-reset", staff)}>비밀번호 찾기</Link>
+            </>
+          )}
         </div>
       )}
     </AuthFrame>

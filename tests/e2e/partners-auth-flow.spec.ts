@@ -551,7 +551,7 @@ test("아이디 찾기(대표자): 본인확인하면 가입한 이메일과 쇼
   await page.goto("/seller/login");
   await page.getByRole("link", { name: "아이디/비밀번호 찾기" }).click();
   await expect(page).toHaveURL(/\/seller\/find-id$/);
-  await expect(page.getByText("쇼핑몰 대표자 본인 명의의 휴대폰으로 확인합니다.")).toBeVisible();
+  await expect(page.getByText("본인 명의의 휴대폰으로 인증해 주십시오.")).toBeVisible();
   await fillIdentity(page, a.name, randomPhone());
   await shot(page, "AU-011");
   const started = page.waitForRequest((r) => r.url().endsWith("/api/seller/find-id/start"));
@@ -669,7 +669,7 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   // 연결 전에는 아이디 찾기에서 계정이 나오지 않는다
   await signOut(page);
   await page.goto("/seller/find-id?type=staff");
-  await expect(page.getByText("직원 본인 명의의 휴대폰으로 확인합니다.")).toBeVisible();
+  await expect(page.getByText("본인 명의의 휴대폰으로 인증해 주십시오.")).toBeVisible();
   await fillIdentity(page, s.name, s.phone);
   await verify(page, false, "/api/seller/find-id/start");
   await expect(page.getByRole("heading", { name: "맞는 계정이 없습니다" })).toBeVisible();

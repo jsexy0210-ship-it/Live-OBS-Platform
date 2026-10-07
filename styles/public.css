@@ -59,7 +59,7 @@
 .pf-foot-top{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap}
 .pf-foot-brand{display:flex;flex-direction:column;gap:8px}
 .pf-foot-links{display:flex;gap:24px;flex-wrap:wrap;font-size:13px}
-.pf-foot-links a{color:inherit}
+.pf-foot-links a{color:inherit;text-decoration:underline}
 @media (max-width:900px){
   .pf-head{padding:0 16px;height:56px}
   .pf-nav{display:none}
@@ -107,29 +107,36 @@ body:has(.pf){margin:0}
 .pf-notice-row{display:flex;align-items:center;justify-content:space-between;gap:var(--ui-sp-16);padding:18px 4px;text-decoration:none;box-shadow:inset 0 -1px 0 var(--wds-line-normal-alternative);color:inherit}
 .pf-notice-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pf-notice-body{white-space:pre-wrap;line-height:1.8}
+.pf-notice-neighbors{min-width:0;gap:var(--ui-sp-16)}
+.pf-notice-neighbors>a{min-width:0;overflow-wrap:anywhere}
 @media (max-width:600px){.pf-notice-row{flex-wrap:wrap}.pf-notice-l{flex-wrap:wrap}.pf-notice-title{flex-basis:100%;white-space:normal}}
 
-/* PF-007 가입 신청 단계 틀(정본: 공개 머리 아래 가운데 640 본문, 카드 없음) */
-.pf-signup{max-width:640px;margin:0 auto;padding:56px 0 80px;display:flex;flex-direction:column;gap:var(--ui-gap-field,16px)}
-.pf-signup>h1{margin:0}
-@media (max-width:760px){.pf-signup{padding:32px var(--ui-gutter-mobile,20px) 56px}}
+/* 파트너스 가입 신청 PF-007: 페이지 배경 + 가운데 단(640/760) + 진행 표시 + 카드 밖 제목(h2) */
+.pf-su{padding:56px 64px 80px;background:var(--page)}
+.pf-su-in{max-width:760px;margin:0 auto;gap:8px}
+.pf-su-in.narrow{max-width:640px}
+.pf-su-steps{margin-bottom:20px;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.pf-su-steps>.num{margin-right:4px}
+.pf-su-steps ol{display:contents;margin:0;padding:0;list-style:none}
+.pf-su-steps li{display:flex;align-items:center;gap:6px}
+.pf-su-n{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;background:var(--wds-fill-strong);color:var(--wds-label-alternative)}
+.pf-su-n[data-on="true"]{background:var(--brand);color:var(--brand-ink)}
+.pf-su-h2{margin:0 0 4px}
+.pf-su-card{padding:28px;gap:20px}
+.pf-su-card.pf-su-center{padding:36px 28px;gap:18px;align-items:center;text-align:center}
+@media (max-width:600px){
+.pf-su{padding:20px 16px 32px}
+.pf-su-h1{font-size:28px;line-height:38px}
+.pf-su-card,.pf-su-card.pf-su-center{padding:18px 16px}
+.pf-su-steps li:not(.cur) .pf-su-lbl{display:none}
+.pf-su-steps{margin-bottom:0}
+.pf-su-h2{font-size:14px;line-height:20px;letter-spacing:.0145em;font-weight:700;margin:4px 0 0}
+}
+.pf-su-card>.pa-fs{gap:20px}
 .pf-faq-c summary,.pf-faq-mk summary{display:flex;justify-content:space-between;align-items:center;list-style:none}
 .pf-faq-c summary::-webkit-details-marker,.pf-faq-mk summary::-webkit-details-marker{display:none}
 .pf-faq-c summary::after,.pf-faq-mk summary::after{content:"+";color:var(--wds-label-alternative,#888)}
 .pf-faq-c details[open]>summary::after,.pf-faq-mk details[open]>summary::after{content:"−"}
-.pf-signup .pf-steps-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:20px}
-.pf-signup .pf-steps-row .pa-steps{flex-wrap:nowrap;gap:6px}
-.pf-signup .pf-steps-row .pa-steps>li{gap:6px}
-.pf-signup .pf-terms-h{margin:0 0 4px}
-.pf-signup .pf-terms-card{padding:28px;gap:14px}
-.pf-signup .pf-terms-card .pa-fs{gap:14px;border:0;padding:0;margin:0;min-width:0}
-.pf-signup .pf-terms-card .pa-terms-all{padding-bottom:14px;font-weight:inherit}
-@media (max-width:760px){
-  .pf-signup .pf-terms-card{padding:20px}
-  .pf-signup .pf-steps-row .pa-steps>li:not([aria-current]) .pf-step-l{display:none}
-}
-.pf-signup .pf-terms-card a{white-space:nowrap}
-@media (max-width:760px){.pf-signup .pf-terms-h{font-size:15px;line-height:22px}}
 .pf-pricing .pf-plan .pf-check{gap:var(--ui-sp-16)}
 .pf-pricing .pf-plan .pf-check li{align-items:center}
 .pf-pricing .pf-plan .pf-check li::before{font-size:16px}

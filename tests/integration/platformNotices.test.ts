@@ -159,4 +159,125 @@ describe("파트너스·공개 공지", () => {
     const upd = await json(await adminPut(req(`/api/admin/platform-notices/${pin.id}`, cs.cookie, "PUT", { ...draft, title: "고정(수정)", isPinned: true, publish: true, expectedVersion: 0 }), id(pin.id)));
     expect(upd.body.notice.publishedAt).toBe(pin.publishedAt);
   });
+
+  it("공개 번호 페이지는 고정을 한 번만 분리하고 분류별 공개 일반 공지 수를 계산한다", async () => {
+    const cs = await adminCookie("CS");
+    const now = Date.now() - 100_000;
+    const add = (title: string, options: { category?: string; audience?: string; isPinned?: boolean; publishedAt?: Date | null; deletedAt?: Date | null } = {}) =>
+      db.platformNotice.create({
+        data: {
+          ...draft,
+          title,
+          category: options.category ?? "MAINTENANCE",
+          audience: options.audience ?? "PUBLIC",
+          isPinned: options.isPinned ?? false,
+          publishedAt: options.publishedAt === undefined ? new Date(now) : options.publishedAt,
+          deletedAt: options.deletedAt ?? null,
+          createdByAdminId: cs.id,
+          updatedByAdminId: cs.id,
+        } as never,
+      });
+
+    for (let i = 0; i < 6; i++) await add(`점검 ${i}`, { publishedAt: new Date(now + i * 1000) });
+    for (let i = 0; i < 2; i++) await add(`정책 ${i}`, { category: "POLICY", publishedAt: new Date(now + 10_000 + i * 1000) });
+    const pinned = await add("고정 점검", { isPinned: true, publishedAt: new Date(now + 20_000) });
+    const partnerOnly = await add("파트너스 전용", { audience: "PARTNERS", publishedAt: new Date(now + 30_000) });
+    const draftNotice = await add("임시 저장", { publishedAt: null });
+    const deleted = await add("삭제된 공지", { publishedAt: new Date(now + 40_000), deletedAt: new Date() });
+    const future = await add("예약 기간 전 공지", { publishedAt: new Date(Date.now() + 86_400_000) });
+
+    const first = await json(await publicList(new Request(`${BASE}/api/notices?page=1&pageSize=5`)));
+    expect(first.status).toBe(200);
+    expect(first.body).toMatchObject({ page: 1, pageSize: 5, total: 8, pageCount: 2 });
+    expect(first.body.items).toHaveLength(5);
+    expect(first.body.pinned.map((n: { title: string }) => n.title)).toEqual(["고정 점검"]);
+    expect(first.body.items.map((n: { id: string }) => n.id)).not.toContain(pinned.id);
+
+    const second = await json(await publicList(new Request(`${BASE}/api/notices?page=2&pageSize=5`)));
+    expect(second.body).toMatchObject({ page: 2, pageSize: 5, total: 8, pageCount: 2, pinned: [] });
+    expect(second.body.items).toHaveLength(3);
+
+    const maintenance = await json(await publicList(new Request(`${BASE}/api/notices?page=1&category=MAINTENANCE`)));
+    expect(maintenance.body).toMatchObject({ page: 1, pageSize: 5, total: 6, pageCount: 2 });
+    expect(maintenance.body.items).toHaveLength(5);
+    expect(maintenance.body.pinned.map((n: { id: string }) => n.id)).toEqual([pinned.id]);
+    const maintenanceSecond = await json(await publicList(new Request(`${BASE}/api/notices?page=2&category=MAINTENANCE`)));
+    expect(maintenanceSecond.body).toMatchObject({ page: 2, total: 6, pageCount: 2, pinned: [] });
+    expect(maintenanceSecond.body.items).toHaveLength(1);
+
+    expect((await publicList(new Request(`${BASE}/api/notices?page=0`))).status).toBe(400);
+    for (const hidden of [partnerOnly, draftNotice, deleted, future]) {
+      expect((await publicGetOne(new Request(`${BASE}/api/notices/${hidden.id}`), id(hidden.id))).status).toBe(404);
+    }
+  });
+
+  it("공개 상세는 정본 작성자와 공개 가능한 이전·다음 제목만 주고 본문 원문을 보존한다", async () => {
+    const cs = await adminCookie("CS");
+    const now = Date.now() - 100_000;
+    const add = (title: string, publishedAt: Date | null, options: { audience?: string; deletedAt?: Date | null; body?: string } = {}) =>
+      db.platformNotice.create({
+        data: {
+          ...draft,
+          title,
+          body: options.body ?? "본문",
+          audience: options.audience ?? "PUBLIC",
+          publishedAt,
+          deletedAt: options.deletedAt ?? null,
+          createdByAdminId: cs.id,
+          updatedByAdminId: cs.id,
+        } as never,
+      });
+    const older = await add("이전 공개 공지", new Date(now));
+    const olderNear = await add("가까운 이전 공개 공지", new Date(now + 10_000));
+    const rawBody = "첫 줄\n둘째 <b>원문</b> & 그대로";
+    const current = await add("제목 원문", new Date(now + 20_000), { body: rawBody });
+    const newerNear = await add("가까운 다음 공개 공지", new Date(now + 30_000));
+    const newer = await add("가장 최근 공개 공지", new Date(now + 40_000));
+    const partner = await add("파트너 전용 최신 공지", new Date(now + 50_000), { audience: "PARTNERS" });
+    const deleted = await add("삭제된 최신 공지", new Date(now + 60_000), { deletedAt: new Date() });
+    const future = await add("게시 기간 전", new Date(Date.now() + 86_400_000));
+
+    const result = await json(await publicGetOne(new Request(`${BASE}/api/notices/${current.id}`), id(current.id)));
+    expect(result.status).toBe(200);
+    expect(result.body.notice).toMatchObject({
+      id: current.id,
+      title: "제목 원문",
+      body: rawBody,
+      author: "ONQ 운영팀",
+      prev: { id: newerNear.id, title: "가까운 다음 공개 공지" },
+      next: { id: olderNear.id, title: "가까운 이전 공개 공지" },
+    });
+    expect(result.body.notice).not.toHaveProperty("createdByAdminId");
+    expect(result.body.notice).not.toHaveProperty("audience");
+    for (const hidden of [partner, deleted, future]) {
+      expect(result.body.notice.prev.id).not.toBe(hidden.id);
+      expect(result.body.notice.next.id).not.toBe(hidden.id);
+    }
+    expect(result.body.notice.prev.id).not.toBe(newer.id);
+    expect(result.body.notice.next.id).not.toBe(older.id);
+  });
+
+  it("공개 상세 이전·다음은 같은 게시 시각이면 공개 목록의 UUID 순서상 바로 이웃을 반환한다", async () => {
+    const cs = await adminCookie("CS");
+    const publishedAt = new Date(Date.now() - 10_000);
+    const add = (noticeId: string, title: string) => db.platformNotice.create({
+      data: {
+        ...draft,
+        id: noticeId,
+        title,
+        audience: "PUBLIC",
+        publishedAt,
+        createdByAdminId: cs.id,
+        updatedByAdminId: cs.id,
+      } as never,
+    });
+    await add("00000000-0000-4000-8000-000000000101", "동일 시각 이전 이웃");
+    const current = await add("00000000-0000-4000-8000-000000000102", "동일 시각 현재 공지");
+    const next = await add("00000000-0000-4000-8000-000000000103", "동일 시각 다음 이웃");
+    await add("00000000-0000-4000-8000-000000000104", "동일 시각 더 최근 공지");
+
+    const result = await json(await publicGetOne(new Request(`${BASE}/api/notices/${current.id}`), id(current.id)));
+    expect(result.body.notice.prev).toMatchObject({ id: next.id, title: "동일 시각 다음 이웃" });
+    expect(result.body.notice.next).toMatchObject({ id: "00000000-0000-4000-8000-000000000101", title: "동일 시각 이전 이웃" });
+  });
 });

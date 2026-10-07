@@ -4,6 +4,7 @@ import "../../styles/lop.css";
 import "../../styles/public.css";
 import { MAINTENANCE_COPY, maintenanceTone } from "../../components/public/maintenanceCopy";
 import { RetryButton } from "../../components/public/RetryButton";
+import styles from "./Maintenance.module.css";
 import { prisma } from "../../lib/server/db";
 import { getPublicMaintenance } from "../../lib/server/maintenance/service";
 
@@ -20,31 +21,34 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
   const m = await getPublicMaintenance(prisma).catch(() => null);
   const active = m ? m.active : true;
   return (
-    <div className="app pf pf-mt" data-theme="light">
-      <main className="pf-mt-box" data-testid="maintenance">
-        <span className="logo pf-logo">
-          <span className="logo-sym" />
-          <span className="logo-word" />
-        </span>
-        {active ? (
-          <>
-            <h1 className="t-h2">{c.title}</h1>
-            <p className="t-b1" data-testid="maintenance-message">
-              {m?.message || c.fallback}
-            </p>
-            {m?.endsAt && <p className="t-c1 c-alt">{c.ends(KST.format(new Date(m.endsAt)))}</p>}
-            <p className="t-c1 c-alt">{c.note}</p>
-            <RetryButton />
-          </>
-        ) : (
-          <>
-            <h1 className="t-h2">{c.doneTitle}</h1>
-            <p className="t-b1">{c.doneBody}</p>
-            <a className="btn" href={c.doneHref}>
-              {c.doneCta}
-            </a>
-          </>
-        )}
+    <div className={`app pf ${styles.page}`} data-theme="light">
+      <main className={styles.main} data-testid="maintenance">
+        <div className={styles.auth}>
+          <div className={`logo-sym ${styles.logoMark}`} />
+          {active ? (
+            <>
+              <div className={styles.heading}>
+                <h1 className="t-h2">{c.title}</h1>
+                <p className="t-b1" data-testid="maintenance-message">
+                  {m?.message || c.fallback}
+                </p>
+              </div>
+              {m?.endsAt && <p className="t-c1 c-alt">{c.ends(KST.format(new Date(m.endsAt)))}</p>}
+              <p className="t-c1 c-alt">{c.note}</p>
+              <RetryButton />
+            </>
+          ) : (
+            <>
+              <div className={styles.heading}>
+                <h1 className="t-h2">{c.doneTitle}</h1>
+                <p className="t-b1">{c.doneBody}</p>
+              </div>
+              <a className="btn" href={c.doneHref}>
+                {c.doneCta}
+              </a>
+            </>
+          )}
+        </div>
       </main>
     </div>
   );
