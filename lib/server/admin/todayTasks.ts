@@ -50,11 +50,15 @@ export async function adminTodayTasks(db: PrismaClient, admin: AdminSessionConte
   const from = kstDate(sinceFailed);
   const to = kstDate(now);
   const missing = FIELDS.filter((f) => platformInfo[f].trim() === "");
-  const items: { key: TodayTaskKey; count: number; href: string; fields?: BusinessField[] }[] = [
-    { key: "signupPending", count: signupPending, href: "/admin/partners?status=PENDING" },
+  const [oldestSignup, inquiriesOverOneDay] = await Promise.all([
+    db.seller.findFirst({ where: { status: "PENDING" }, orderBy: { createdAt: "asc" }, select: { createdAt: true } }),
+    db.platformInquiry.count({ where: { status: "OPEN", createdAt: { lt: new Date(now.getTime() - DAY_MS) } } }),
+  ]);
+  const items: { key: TodayTaskKey; count: number; href: string; fields?: BusinessField[]; oldestAt?: Date | null; overOneDay?: number }[] = [
+    { key: "signupPending", count: signupPending, href: "/admin/partners?status=PENDING", oldestAt: oldestSignup?.createdAt ?? null },
     { key: "paymentFailed", count: paymentFailed, href: `/admin/billing/invoices?status=FAILED&from=${from}&to=${to}` },
     { key: "refundRequested", count: refundRequested, href: "/admin/billing/refunds?status=REQUESTED" },
-    { key: "inquiryOpen", count: inquiryOpen, href: "/admin/support/inquiries?status=OPEN" },
+    { key: "inquiryOpen", count: inquiryOpen, href: "/admin/support/inquiries?status=OPEN", overOneDay: inquiriesOverOneDay },
     { key: "pgError", count: pg[0]?.n ?? 0, href: "/admin/settlement/pg" },
     { key: "automationFailed", count: automationFailed, href: "/admin/ops/automation?filter=failed" },
     { key: "incidentCritical", count: incidentCritical, href: "/admin/ops/monitor" },

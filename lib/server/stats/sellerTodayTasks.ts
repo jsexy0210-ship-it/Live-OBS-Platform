@@ -5,6 +5,7 @@ import { LOW_STOCK_MAX } from "../products/manage";
 import { requireSellerRead, type TenantContext } from "../tenant/context";
 import type { SellerAction } from "../authz/permissions";
 import { num, statsSnapshot, type StatsDb } from "./sql";
+import { dbNow } from "../billing/subscription";
 
 // 파트너스 홈 「오늘 처리할 일」 요약(SA-002). 숫자와 처리 화면 주소만 주고 구매자 개인정보는 넣지 않는다.
 // 항목마다 { key, count, href }. href는 해당 목록 화면을 처리할 건만 걸러 연 주소다(화면 문구는 화면에서 붙인다).
@@ -54,8 +55,9 @@ export async function sellerTodayTasks(db: PrismaClient, ctx: TenantContext) {
   const allowed = TASKS.filter((t) => readable(ctx, t.action) && (!t.store || features.includes("STORE_OPERATIONS")));
   const has = (k: SellerTaskKey) => allowed.some((t) => t.key === k);
   const sellerId = ctx.sellerId;
-  const counts = await statsSnapshot(db, async (tx) => {
-    const [deposit, ship, returns, inquiry, stock] = await Promise.all([
+  const snapshot = await statsSnapshot(db, async (tx) => {
+    const at = await dbNow(tx);
+    const [deposit, ship, returns, inquiry, stock, depositOverTwoDays, oldestInquiry] = await Promise.all([
       has("depositPending")
         ? tx.order.count({
             where: { sellerId, status: "PENDING_PAYMENT", legalHoldAt: null, payments: { none: { status: { in: ["APPROVING", "PAID", "PARTIAL_CANCELLED"] } } } },
@@ -65,9 +67,11 @@ export async function sellerTodayTasks(db: PrismaClient, ctx: TenantContext) {
       has("returnRequested") ? tx.returnRequest.count({ where: { sellerId, status: "REQUESTED" } }) : 0,
       has("inquiryWaiting") ? tx.buyerInquiry.count({ where: { sellerId, status: "WAITING" } }) : 0,
       has("stockOut") || has("stockLow") ? stockCounts(tx, sellerId) : { out: 0, low: 0 },
+      has("depositPending") ? tx.order.count({ where: { sellerId, status: "PENDING_PAYMENT", legalHoldAt: null, payments: { none: { status: { in: ["APPROVING", "PAID", "PARTIAL_CANCELLED"] } } }, createdAt: { lt: new Date(at.getTime() - 2 * 86_400_000) } } }) : 0,
+      has("inquiryWaiting") ? tx.buyerInquiry.findFirst({ where: { sellerId, status: "WAITING" }, orderBy: { createdAt: "asc" }, select: { createdAt: true } }) : null,
     ]);
-    return { depositPending: deposit, shipPending: ship, returnRequested: returns, inquiryWaiting: inquiry, stockOut: stock.out, stockLow: stock.low } satisfies Record<SellerTaskKey, number>;
+    return { at, depositOverTwoDays, oldestInquiryAt: oldestInquiry?.createdAt ?? null, counts: { depositPending: deposit, shipPending: ship, returnRequested: returns, inquiryWaiting: inquiry, stockOut: stock.out, stockLow: stock.low } satisfies Record<SellerTaskKey, number> };
   });
-  const items = allowed.map((t) => ({ key: t.key, count: counts[t.key], href: t.href }));
-  return { total: items.reduce((a, i) => a + i.count, 0), items };
+  const items = allowed.map((t) => ({ key: t.key, count: snapshot.counts[t.key], href: t.href, ...(t.key === "depositPending" ? { overTwoDays: snapshot.depositOverTwoDays } : {}), ...(t.key === "inquiryWaiting" ? { oldestAt: snapshot.oldestInquiryAt } : {}) }));
+  return { at: snapshot.at, total: items.reduce((a, i) => a + i.count, 0), items };
 }

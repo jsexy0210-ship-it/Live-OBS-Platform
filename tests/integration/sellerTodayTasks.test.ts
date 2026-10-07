@@ -80,8 +80,9 @@ describe("파트너스 오늘 처리할 일", () => {
       stockLow: "/seller/products?period=all&stock=low&display=shown",
     });
     // 숫자와 주소만(구매자 정보 키 없음)
-    expect(Object.keys(body).sort()).toEqual(["items", "total"]);
-    for (const i of body.items) expect(Object.keys(i).sort()).toEqual(["count", "href", "key"]);
+    expect(Object.keys(body).sort()).toEqual(["at", "items", "total"]);
+    expect(Number.isFinite(Date.parse(body.at))).toBe(true);
+    for (const i of body.items) expect(Object.keys(i).sort()).toEqual(["count", "href", "key", ...(i.key === "depositPending" ? ["overTwoDays"] : i.key === "inquiryWaiting" ? ["oldestAt"] : [])].sort());
     expect(JSON.stringify(body)).not.toMatch(/구매자\d|010\d{8}|닉네임/);
   });
 
