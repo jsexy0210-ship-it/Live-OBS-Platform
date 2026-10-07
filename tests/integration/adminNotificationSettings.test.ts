@@ -179,7 +179,7 @@ describe("테스트 보내기", () => {
   it.each(["platformDailyLimit", "platformMonthlyLimit"] as const)("%s를 다 쓰면 공급자를 호출하지 않고 실패·미발송 기록을 남긴다", async (limit) => {
     const c = await admin();
     await put(c, { channels: { EMAIL: { target: "ops@onq.example" } } });
-    await db.platformMessageSetting.update({ where: { id: 1 }, data: { [limit]: 1 } });
+    await db.platformMessageSetting.upsert({ where: { id: 1 }, create: { id: 1, [limit]: 1 }, update: { [limit]: 1 } });
     const sender = mailSender() as FakeMailSender;
     sender.sent.length = 0;
     expect((await test(c, { channels: ["EMAIL"] })).body.results).toEqual([{ channel: "EMAIL", status: "SENT" }]);
