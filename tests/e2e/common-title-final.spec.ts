@@ -27,9 +27,9 @@ test.afterAll(async () => {
   await db.$disconnect();
 });
 
-test("FINAL SA-011·MA-013 제목 띠의 브라우저 계산 규격", async ({ page }) => {
+test("FINAL SA-002·SA-011·MA-013 제목 띠의 브라우저 계산 규격", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  for (const [id, file] of [["SA-011", "SA-011.dc.html"], ["MA-013", "MA-013-OPS.dc.html"]]) {
+  for (const [id, file] of [["SA-002", "SA-002-IA.dc.html"], ["SA-011", "SA-011.dc.html"], ["MA-013", "MA-013-OPS.dc.html"]]) {
     const source = readFileSync(`design/project/${file}`, "utf8");
     await page.setContent(source.replace(/<link[^>]+>/g, "").replace(/<script[\s\S]*?<\/script>/g, ""));
     await page.addStyleTag({ content: readFileSync("design/project/ds/wds/tokens.css", "utf8") });
@@ -44,23 +44,24 @@ test("FINAL SA-011·MA-013 제목 띠의 브라우저 계산 규격", async ({ p
   }
 });
 
-for (const surface of ["seller", "admin"] as const) {
+for (const surface of ["home", "seller", "admin"] as const) {
   test(`${surface} 제목 띠: 실제 로그인 1440 정본 규격과 1024·390 안전성`, async ({ page }) => {
-    await page.goto(`/${surface}/login`);
-    if (surface === "seller") await submitSellerLogin(page, sellerEmail, password);
+    const loginSurface = surface === "admin" ? "admin" : "seller";
+    await page.goto(`/${loginSurface}/login`);
+    if (surface !== "admin") await submitSellerLogin(page, sellerEmail, password);
     else {
       await page.getByLabel("이메일").fill(adminEmail);
       await page.getByLabel("비밀번호").fill(password);
       await page.getByRole("button", { name: "로그인", exact: true }).click();
     }
-    await expect(page).toHaveURL(new RegExp(`/${surface}$`));
+    await expect(page).toHaveURL(new RegExp(`/${loginSurface}$`));
     for (const width of [1440, 1024, 390]) {
       await page.setViewportSize({ width, height: 900 });
-      await page.goto(surface === "seller" ? "/seller/products" : "/admin/partners/applications");
-      await expect(page.getByRole("heading", { name: surface === "seller" ? "상품 목록" : "가입 신청", exact: true })).toBeVisible();
+      await page.goto(surface === "home" ? "/seller" : surface === "seller" ? "/seller/products" : "/admin/partners/applications");
+      await expect(page.getByRole("heading", { name: surface === "home" ? "홈" : surface === "seller" ? "상품 목록" : "가입 신청", exact: true })).toBeVisible();
       await page.evaluate(() => document.fonts.ready);
-      const geometry = await page.locator(".main > .au-ph").evaluate(el => {
-        const css = getComputedStyle(el), rect = el.getBoundingClientRect(), main = el.parentElement!.getBoundingClientRect();
+      const geometry = await page.locator(".main .au-ph").evaluate(el => {
+        const css = getComputedStyle(el), rect = el.getBoundingClientRect(), main = el.closest(".main")!.getBoundingClientRect();
         return { minHeight: css.minHeight, border: css.borderBottomWidth, x: rect.x, right: rect.right, mainX: main.x, mainRight: main.right, padding: css.paddingLeft, overflow: document.documentElement.scrollWidth > innerWidth };
       });
       expect(geometry.overflow).toBe(false);
