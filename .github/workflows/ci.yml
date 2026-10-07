@@ -209,7 +209,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sa-body-branch-screenshots
-          path: tests/e2e/screenshots/*.png
+          path: |
+            tests/e2e/screenshots/*.png
+            !tests/e2e/screenshots/admin-partners-list-*.png
+            tests/e2e/screenshots/current-shell-*/*
           if-no-files-found: ignore
           retention-days: 1
 
