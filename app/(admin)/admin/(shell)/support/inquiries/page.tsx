@@ -11,18 +11,19 @@ import { INQUIRY_CATEGORY, INQUIRY_STATUS, INQUIRY_TABS, type InquiryCategory, t
 import { dayTime } from "../../../_components/partners";
 import { useListFilters } from "../../../_components/useListFilters";
 
-// MA-051 파트너스 문의 목록(GET /api/admin/platform-inquiries, 모든 마스터 역할 조회). 정본: design/project/MA-051.dc.html(FINAL v310).
-// 검색 패널(상태·분류·담당) → 목록. 상태 옆 숫자는 서버의 상태별 전체 수. 조건은 「검색」을 눌러 적용하고 주소(?status=&category=&assignee=&sellerId=)에 남는다.
+// MA-051 파트너스 문의 목록(GET /api/admin/platform-inquiries, 모든 마스터 역할 조회). 정본: design/project/MA-051.dc.html(FINAL v329).
+// 검색 패널(상태·분류·담당·긴급) → 목록. 상태 옆 숫자는 서버의 상태별 전체 수. 조건은 「검색」을 눌러 적용하고 주소에 남는다.
 // 답변·종료는 상세(MA-052)에서 한다(최고관리자·CS). 마지막 글 최신 순 50건씩 이어서 불러오고, 파트너스 지정(?sellerId=)을 받는다.
-type Page = { items: InquiryRow[]; counts: InquiryCounts; nextCursor: string | null };
-type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; items: InquiryRow[]; counts: InquiryCounts; next: string | null };
+type Summary = { waiting: number; urgent: number; overdue: number; mine: number; todayReceived: number; answeredToday: number; avgFirstReplyHours: number | null; helpful7d: { answered: number; helpful: number; rate: number | null } };
+type Page = { items: InquiryRow[]; counts: InquiryCounts; summary: Summary; nextCursor: string | null };
+type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; items: InquiryRow[]; counts: InquiryCounts; summary: Summary; next: string | null };
 const CATEGORIES = ["BROADCAST", "PAYMENT_LINK", "ORDER_REFUND", "REWARD", "SUBSCRIPTION_FEE", "SHOP", "ACCOUNT", "OTHER"] as const satisfies readonly InquiryCategory[];
 const ASSIGNEES = [
   ["", "전체"],
   ["me", "나"],
   ["none", "미배정"],
 ] as const;
-const EMPTY = { status: "OPEN", category: "", assignee: "", sellerId: "" };
+const EMPTY = { status: "OPEN", category: "", assignee: "", urgent: "first", sellerId: "" };
 // 접수 뒤 지난 시간(답변을 기다리는 문의만): 「42분」「5시간 50분」「1일 2시간」
 function elapsed(from: string, now: number): string {
   const min = Math.max(0, Math.floor((now - new Date(from).getTime()) / 60_000));
@@ -39,6 +40,7 @@ function Inquiries() {
   const tab = (INQUIRY_TABS as string[]).includes(applied.status) ? (applied.status as InquiryStatus | "") : "OPEN";
   const category = (CATEGORIES as readonly string[]).includes(applied.category) ? applied.category : "";
   const assignee = ["me", "none"].includes(applied.assignee) ? applied.assignee : "";
+  const urgent = ["first", "only"].includes(applied.urgent) ? applied.urgent : "";
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [more, setMore] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -50,11 +52,12 @@ function Inquiries() {
       if (tab) p.set("status", tab);
       if (category) p.set("category", category);
       if (assignee) p.set("assignee", assignee);
+      if (urgent) p.set("urgent", urgent);
       if (sellerId) p.set("sellerId", sellerId);
       if (cursor) p.set("cursor", cursor);
       return p.toString();
     },
-    [tab, category, assignee, sellerId],
+    [tab, category, assignee, urgent, sellerId],
   );
   const load = useCallback(async () => {
     const id = ++reqId.current;
@@ -63,7 +66,7 @@ function Inquiries() {
     const r = await adminApi<Page>(`/api/admin/platform-inquiries?${qs()}`);
     if (id !== reqId.current) return;
     setNow(Date.now());
-    setState(r.ok ? { kind: "ok", items: r.data.items, counts: r.data.counts, next: r.data.nextCursor } : { kind: "error" });
+    setState(r.ok ? { kind: "ok", items: r.data.items, counts: r.data.counts, summary: r.data.summary, next: r.data.nextCursor } : { kind: "error" });
   }, [qs]);
   useEffect(() => void load(), [load]);
   useScrollRestore("admin-inquiries", state.kind === "ok");
@@ -80,9 +83,10 @@ function Inquiries() {
   };
 
   const counts = state.kind === "ok" ? state.counts : null;
+  const summary = state.kind === "ok" ? state.summary : null;
   const total = counts ? counts.OPEN + counts.ANSWERED + counts.CLOSED : null;
   const items = state.kind === "ok" ? state.items : [];
-  const filtered = category !== "" || assignee !== "";
+  const filtered = category !== "" || assignee !== "" || urgent === "only";
   const search = () => apply({ ...draft, status: draft.status || "", sellerId });
   const reset = () => apply({ ...EMPTY, sellerId });
   const radio = (name: string, key: "status" | "category" | "assignee", value: string, label: React.ReactNode) => (
@@ -98,6 +102,24 @@ function Inquiries() {
       <main className="main">
         <PageHead title="파트너스 문의" />
         <div className="col" style={{ gap: 20 }}>
+          {summary && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }} data-testid="inquiry-summary">
+              {[
+                ["답변 대기", `${summary.waiting}건`, `긴급 ${summary.urgent} · 4시간 초과 ${summary.overdue}`],
+                ["내 담당", `${summary.mine}건`, ""],
+                ["오늘 접수", `${summary.todayReceived}건`, ""],
+                ["답변 완료 (오늘)", `${summary.answeredToday}건`, ""],
+                ["평균 첫 답변", summary.avgFirstReplyHours === null ? "—" : `${summary.avgFirstReplyHours.toFixed(1)}시간`, "최근 7일 접수"],
+                ["도움됨 (7일)", summary.helpful7d.rate === null ? "—" : `${summary.helpful7d.rate}%`, `${summary.helpful7d.answered}건 평가`],
+              ].map(([label, value, hint]) => (
+                <div key={label} className="card pad col" style={{ gap: 4, minWidth: 0 }}>
+                  <span className="t-l2 c-alt">{label}</span>
+                  <span className="t-h2">{value}</span>
+                  {hint && <span className="t-l2 c-alt">{hint}</span>}
+                </div>
+              ))}
+            </div>
+          )}
           <SearchBox onSearch={search} onReset={reset} busy={state.kind === "loading"}>
             <SearchRow label="상태">
               {INQUIRY_TABS.map((t) => radio("f-status", "status", t, `${t === "" ? "전체" : INQUIRY_STATUS[t].label}${counts ? ` ${t === "" ? total : counts[t]}` : ""}`))}
@@ -107,6 +129,14 @@ function Inquiries() {
               {CATEGORIES.map((c) => radio("f-category", "category", c, INQUIRY_CATEGORY[c]))}
             </SearchRow>
             <SearchRow label="담당">{ASSIGNEES.map(([v, l]) => radio("f-assignee", "assignee", v, l))}</SearchRow>
+            <SearchRow label="긴급">
+              {([ ["first", "긴급 우선"], ["only", "긴급만"] ] as const).map(([value, label]) => (
+                <label key={value} className="chk">
+                  <input className="chkbox" type="checkbox" checked={draft.urgent === value} onChange={() => setDraft({ ...draft, urgent: draft.urgent === value ? "" : value })} />
+                  {label}
+                </label>
+              ))}
+            </SearchRow>
           </SearchBox>
           {sellerId && (
             <div className="row" style={{ gap: 8 }}>
