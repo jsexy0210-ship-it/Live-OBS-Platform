@@ -373,6 +373,9 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
 const SHOP_PAGES: Record<string, "STORE_OPERATIONS" | "OPEN"> = {
   "shop/[slug]": "STORE_OPERATIONS", // 쇼핑몰 홈(홈 배너·이벤트 팝업)
   "shop/[slug]/signup": "STORE_OPERATIONS",
+  "shop/[slug]/signup/verify": "STORE_OPERATIONS",
+  "shop/[slug]/signup/account": "STORE_OPERATIONS",
+  "shop/[slug]/signup/done": "STORE_OPERATIONS",
   "shop/[slug]/reviews": "OPEN", // SH-029 내 리뷰(받은 답글·숨김 사유는 잠긴 쇼핑몰에서도)
   "shop/[slug]/reviews/write": "OPEN", // SH-029 예전 주소 → 내 리뷰 한 화면으로 보내기만(쓰기는 API가 막음)
   "shop/[slug]/coupons": "OPEN", // SH-028 내 쿠폰함: 잠긴 쇼핑몰도 받은 쿠폰은 읽기 전용(받기는 API에서 막음)
@@ -438,7 +441,9 @@ describe("경로 목록 검사", () => {
     expect(pages.sort()).toEqual(Object.keys(SHOP_PAGES).sort());
     for (const page of pages) {
       if (SHOP_PAGES[page] !== "STORE_OPERATIONS") continue;
-      expect(readFileSync(join(SHOP_PAGES_DIR, page, "page.tsx"), "utf8"), page).toMatch(/shopOpen\(/);
+      // SH-011의 네 단계는 공통 부모 레이아웃에서 한 번만 쇼핑몰 운영 권한을 검사한다.
+      const gatedPage = (page === "shop/[slug]/signup" || page.startsWith("shop/[slug]/signup/")) ? "shop/[slug]/signup/layout.tsx" : `${page}/page.tsx`;
+      expect(readFileSync(join(SHOP_PAGES_DIR, gatedPage), "utf8"), page).toMatch(/shopOpen\(/);
     }
   });
 
