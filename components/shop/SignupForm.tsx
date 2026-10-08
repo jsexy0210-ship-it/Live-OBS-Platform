@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useConfirm } from "../admin-ui/ConfirmDialog";
 import { api, failMessage } from "../seller/api";
@@ -14,7 +14,7 @@ import TestModeNotice from "../seller/TestModeNotice";
 // 동의할 때는 서버가 준 버전이 아니라 화면에 보인 글과 묶인 이 버전을 보낸다(마케팅은 MARKETING_DOC_VERSION).
 const REJOIN_DOC_VERSION = "2026-10-03.v1";
 
-// SH-011 구매자 회원가입: 필수 약관 동의 → 휴대폰 본인확인(인증번호 받기 → 확인) → 아이디·비밀번호·방송 닉네임·(선택) 마케팅 → 가입.
+// SH-011 구매자 회원가입: 필수·선택 약관 동의 → 휴대폰 본인확인(인증번호 받기 → 확인) → 아이디·비밀번호·방송 닉네임 → 가입.
 // 실패 문구는 서버 message를 그대로 쓴다(정본: lib/server/buyers/signup.ts BUYER_SIGNUP_MESSAGES, lib/server/identity/messages.ts).
 type Carrier = "SKT" | "KT" | "LGU" | "SKT_MVNO" | "KT_MVNO" | "LGU_MVNO";
 const CARRIERS: { value: Carrier; label: string }[] = [
@@ -68,10 +68,51 @@ function toBirth7(birth: string, gender: "M" | "F", foreigner: boolean): string 
 
 const phoneText = (p: string) => (p.length === 11 ? `${p.slice(0, 3)}-${p.slice(3, 7)}-${p.slice(7)}` : `${p.slice(0, 3)}-${p.slice(3, 6)}-${p.slice(6)}`);
 
-export default function SignupForm({ slug, shopName, consent }: { slug: string; shopName: string; consent: SignupConsentInfo }) {
+export default function SignupForm({ slug, shopName, consent, identityProviderReady }: { slug: string; shopName: string; consent: SignupConsentInfo; identityProviderReady: boolean }) {
   const { confirm: askConfirm } = useConfirm();
   const base = `/api/shop/${encodeURIComponent(slug)}/signup`;
+  const signupPath = `/shop/${encodeURIComponent(slug)}/signup`;
+  const shopPath = signupPath.slice(0, -"/signup".length);
+  const returnTo = useRef<string | null>(null);
+  const pathname = usePathname();
+  const router = useRouter();
   const [step, setStep] = useState<Step>("identity");
+  const allowedStage = useRef(1);
+  const pendingStage = useRef<number | null>(null);
+  const routeStage = pathname === signupPath ? 1 : pathname === `${signupPath}/verify` ? 2 : pathname === `${signupPath}/account` ? 3 : pathname === `${signupPath}/done` ? 4 : 1;
+  const stage = step === "done" ? 4 : routeStage <= allowedStage.current && (routeStage !== 3 || step === "verified") && routeStage !== 4 ? routeStage : 1;
+  const [ageAgreed, setAgeAgreed] = useState(false);
+  const move = (next: 1 | 2 | 3 | 4) => {
+    allowedStage.current = Math.max(allowedStage.current, next);
+    pendingStage.current = next;
+    router.push(signupPath + (["", "", "/verify", "/account", "/done"][next]));
+  };
+  const backToVerify = () => {
+    setPassword("");
+    setPassword2("");
+    move(2);
+  };
+  // 서버에 저장하지 않은 본인확인 결과와 비밀번호는 새 탭·새로고침에서 복구하지 않는다.
+  useEffect(() => {
+    if (returnTo.current === null && pathname === signupPath) {
+      const next = new URLSearchParams(window.location.search).get("next");
+      if (next?.startsWith(`${shopPath}/`) && !next.startsWith(signupPath)) returnTo.current = next;
+    }
+    if (pendingStage.current !== null) {
+      if (routeStage !== pendingStage.current) return;
+      pendingStage.current = null;
+    }
+    if (routeStage !== stage) router.replace(step === "done" ? shopPath : signupPath);
+  }, [pathname, routeStage, router, shopPath, signupPath, stage, step]);
+  const previousStage = useRef(stage);
+  useEffect(() => {
+    if (previousStage.current === 3 && stage < 3) {
+      setPassword("");
+      setPassword2("");
+    }
+    if (previousStage.current !== 3 && stage === 3) document.getElementById("acc-id")?.focus();
+    previousStage.current = stage;
+  }, [stage]);
   const [unavailable, setUnavailable] = useState(false);
   // 체험 중인 쇼핑몰의 본인확인 한도를 넘어 가입이 막힘(처음부터 다시 해도 같아 상태 화면으로 보여 준다)
   const [blocked, setBlocked] = useState(false);
@@ -122,7 +163,6 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
   const [agreedRejoin, setAgreedRejoin] = useState(false);
   // 화면을 연 뒤 동의 문서가 바뀌었다(consent_outdated): 이 화면의 글은 예전 것이라 새로고침해야 한다
   const [docsOutdated, setDocsOutdated] = useState(false);
-  const router = useRouter();
   // 동의 정보를 다시 불러와 문서 버전이나 재가입 제한 기간이 바뀌면 앞 동의는 다시 받는다
   useEffect(() => {
     setAgreedTerms(false);
@@ -174,6 +214,7 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
     setUnconfirmed(null);
     setNotice(n);
     focus(n ? "signup-notice" : "idv-name");
+    if (routeStage === 3) move(2);
   };
 
   // 여러 단계에서 같은 뜻인 실패(서비스 없음·쇼핑몰 막힘·연결 끊김)
@@ -317,7 +358,7 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
     setResultPending(false);
     setStep("verified");
     setNotice(null);
-    focus("acc-id");
+    focus("signup-next");
   };
 
   // 이미 확인된 본인확인: 확인을 한 번 더 불러 서버가 확인한 결과(identity)를 받는다(이미 확인된 기록은 코드와 관계없이 저장값을 준다).
@@ -389,6 +430,7 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
       case "verification_pending":
         setStep("code");
         showNotice({ kind: "neg", text });
+        if (routeStage === 3) move(2);
         break;
       case "verification_invalid":
       case "too_many_signup_attempts":
@@ -409,6 +451,7 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
     setJoinedNickname(joined);
     setUnconfirmed(null);
     setStep("done");
+    move(4);
     focus("shop-state-title");
   };
 
@@ -441,21 +484,18 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
     return <ShopState title="본인확인 서비스 준비 중이에요" body="휴대폰 본인확인을 할 수 있게 되면 바로 가입할 수 있어요. 잠시 뒤 다시 와 주세요." />;
   }
 
-  if (step === "done") {
-    return <ShopState done title="가입했어요" body={`이제 주문할 수 있어요. 방송에서는 ${joinedNickname} 닉네임으로 보여요.`} />;
-  }
-
   // 요청 중에도 잠가 보낸 값과 화면 값이 달라지지 않게 한다
   const locked = step !== "identity" || busy;
   const nicknameError = nicknameTooLong ? `닉네임은 ${MAX_NICKNAME_LENGTH}자까지 쓸 수 있어요` : fieldErrors.nickname;
   const shown = sent ?? { name: name.trim(), phone };
   const termsAria = fieldErrors.terms ? { "aria-invalid": true, "aria-describedby": "idv-terms-err" } : {};
   return (
-    <div className="card shop-card col signup">
+    <div className="card shop-card col signup" data-stage={stage}>
       <div className="col" style={{ gap: 4 }}>
         <h1 className="t-t3">회원가입</h1>
-        <span className="t-l2 c-alt">휴대폰 본인확인을 하고 가입해요 · 주문 내역과 적립금을 모아 봐요</span>
+        <span className="t-l2 c-alt">{["", "휴대폰 본인확인으로 가입해요 · 4단계", "본인 명의 휴대폰으로 확인해요", "로그인에 쓸 정보만 입력해요", "가입이 끝났어요"][stage]}</span>
       </div>
+      <div className="signup-progress" aria-label={`가입 ${stage}/4단계`}><b>{stage} / 4</b>{["약관 동의", "본인확인", "정보 입력", "완료"].map((label, index) => <span key={label} className={index + 1 <= stage ? "on" : ""}><i>{index + 1}</i><em>{index + 1 === stage ? label : ""}</em></span>)}</div>
 
       {notice && (
         <div id="signup-notice" tabIndex={-1} className={`msg msg-${notice.kind}`} role={notice.kind === "neg" ? "alert" : "status"}>
@@ -468,23 +508,55 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
         </div>
       )}
 
-      {step === "verified" ? (
+      {stage === 1 && <section className="col signup-sec" aria-label="약관 동의">
+        <div className="signup-terms-list">
+          <label className="chk signup-all"><input type="checkbox" className="cbx" checked={agreedTerms && agreedPrivacy && ageAgreed && agreedMarketing} onChange={(e) => { setAgreedTerms(e.target.checked); setAgreedPrivacy(e.target.checked); setAgeAgreed(e.target.checked); setAgreedMarketing(e.target.checked); }} />모두 동의해요</label>
+          <label className="chk"><input type="checkbox" className="cbx" checked={agreedTerms} onChange={(e) => setAgreedTerms(e.target.checked)} />이용약관 동의 (필수) <a href={`${signupPath.replace(/\/signup$/, "")}/terms`} target="_blank" rel="noopener noreferrer">보기</a></label>
+          <label className="chk"><input type="checkbox" className="cbx" checked={agreedPrivacy} onChange={(e) => setAgreedPrivacy(e.target.checked)} />개인정보 수집 · 이용 동의 (필수) <a href={`${signupPath.replace(/\/signup$/, "")}/privacy`} target="_blank" rel="noopener noreferrer">보기</a></label>
+          <label className="chk"><input type="checkbox" className="cbx" checked={ageAgreed} onChange={(e) => setAgeAgreed(e.target.checked)} />만 14세 이상이에요 (필수)</label>
+          <label className="chk"><input type="checkbox" className="cbx" checked={agreedMarketing} onChange={(e) => setAgreedMarketing(e.target.checked)} />방송 · 혜택 알림 받기 (선택)</label>
+          <details className="signup-terms-doc"><summary>알림 동의 내용 보기</summary><MarketingConsentDoc shopName={shopName} /></details>
+          {rejoinShown && <>
+            <label className="chk"><input type="checkbox" className="cbx" checked={agreedRejoin} onChange={(e) => setAgreedRejoin(e.target.checked)} />재가입 제한 정보 보관 (선택)</label>
+            <p className="help">동의하지 않아도 가입할 수 있어요. 동의하면 탈퇴 후 {consent.rejoinDays}일 동안 재가입 제한 정보를 보관해요.</p>
+            <details className="signup-terms-doc"><summary>재가입 제한 정보 보관 내용 보기</summary>
+              <p>탈퇴한 회원이 정해진 기간 안에 다시 가입하지 못하게 하려고 아래 정보를 보관해요.</p>
+              <ul>
+                <li>보관 목적: 탈퇴 회원의 재가입 제한</li>
+                <li>보관 항목: 본인 확인 때 받은 정보를 알아볼 수 없는 값으로 바꾼 것</li>
+                <li>보관 기간: 탈퇴한 날부터 {consent.rejoinDays}일</li>
+              </ul>
+              <p>동의하지 않아도 가입할 수 있어요. 동의하지 않으면 이 정보를 보관하지 않고, 탈퇴한 뒤 다시 가입할 때 기간 제한을 받지 않아요.</p>
+            </details>
+          </>}
+        </div>
+        <p className="help">다음 단계는 휴대폰 본인확인이에요 · 배송지는 가입 때 받지 않고 첫 주문 때 입력해요</p>
+        {needsReload && <div className="msg msg-cau" role="alert">약관이 바뀌었어요. 새로고침한 뒤 다시 확인해 주세요 <button type="button" className="btn btn-sm" onClick={() => window.location.reload()}>새로고침</button></div>}
+        <div className="signup-stage-actions"><button type="button" className="btn btn-out" onClick={() => router.push(signupPath.replace(/\/signup$/, "/login"))}>취소</button><button type="button" className="btn" disabled={!agreedTerms || !agreedPrivacy || !ageAgreed || needsReload} onClick={() => move(2)}>다음</button></div>
+        <p className="help signup-login">이미 회원이에요? <a href={signupPath.replace(/\/signup$/, "/login")}>로그인</a></p>
+      </section>}
+
+      {stage === 2 && !identityProviderReady && <ShopState title="본인확인 서비스 준비 중이에요" body="휴대폰 본인확인을 할 수 있게 되면 가입할 수 있어요. 잠시 뒤 다시 와 주세요." />}
+
+      {stage === 4 && <section className="signup-finish" aria-label="가입 완료"><span aria-hidden>✓</span><h2 id="shop-state-title" tabIndex={-1}>가입했어요</h2><p>첫 주문부터 적립돼요 · 배송지는 첫 주문 때 입력해요</p><button type="button" className="btn" onClick={() => router.push(returnTo.current ?? shopPath)}>쇼핑 계속하기</button><p className="help">로그인된 상태예요 · 방송에서는 {joinedNickname} 닉네임으로 보여요</p></section>}
+
+      {stage >= 2 && stage <= 3 && (step === "verified" ? (
         <section className="col signup-sec" aria-label="본인확인">
-          <div className="signup-done">
+          <div className={`signup-done${stage === 3 ? " is-account" : ""}`}>
             <span className="tdot" aria-hidden />
             {/* 이름·번호는 다음 줄에 두고 「이름 ·」「번호」를 각각 한 덩어리로 묶어, 줄이 넘어가도 「·」로 시작하지 않게 한다 */}
             <span className="signup-done-text">
-              <b>본인확인을 마쳤어요</b>
+              <b>{stage === 3 ? "본인확인 완료" : "본인확인을 마쳤어요"}</b>
               <span className="c-alt signup-done-who">
-                <span className="nw">{shown.name} ·</span> <span className="nw">{phoneText(shown.phone)}</span>
+                <span className="nw">{shown.name} ·</span> <span className="nw">{phoneText(shown.phone)}</span>{stage === 3 && <> · <span className="nw">{birth.slice(0, 4)}년생</span></>}
               </span>
             </span>
             {/* 요청 중이거나 가입 결과가 애매한 동안에는 본인확인 요청을 지우지 않게 막는다(같은 요청으로만 다시 시도) */}
-            <button type="button" className="btn btn-sm btn-out" disabled={busy || unconfirmed !== null} onClick={() => restart(null)}>
+            {stage === 2 && <button type="button" className="btn btn-sm btn-out" disabled={busy || unconfirmed !== null} onClick={() => restart(null)}>
               본인 확인 다시 하기
-            </button>
+            </button>}
           </div>
-          <div className="signup-two">
+          {stage === 2 && <div className="signup-two">
             <div className="fld">
               <label htmlFor="v-name">이름</label>
               <input id="v-name" className="inp" value={shown.name} readOnly />
@@ -493,10 +565,11 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
               <label htmlFor="v-phone">휴대폰번호</label>
               <input id="v-phone" className="inp" value={phoneText(shown.phone)} readOnly />
             </div>
-          </div>
-          <span className="help">본인확인에서 받은 정보라 여기서는 고칠 수 없어요</span>
+          </div>}
+          {stage === 2 && <span className="help">본인확인에서 받은 정보라 여기서는 고칠 수 없어요</span>}
+          {stage === 2 && <div className="signup-stage-actions"><button type="button" className="btn btn-out" onClick={() => move(1)}>이전 단계</button><button id="signup-next" type="button" className="btn" onClick={() => move(3)}>다음</button></div>}
         </section>
-      ) : (
+      ) : stage === 2 && identityProviderReady ? (
         <form className="col signup-sec" aria-label="본인확인" onSubmit={sendCode} noValidate>
           <div className="col" style={{ gap: 2 }}>
             <h2 className="t-hl2">휴대폰 본인확인</h2>
@@ -579,71 +652,11 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
           </div>
           {step === "identity" ? (
             <>
-              {/* 가입 필수 동의는 본인확인을 요청하기 전에 받는다(PRODUCT_SCOPE 「동의 순서」). 시작 요청 중에는 보낸 값과 화면이 어긋나지 않게 잠근다 */}
-              <div className="col signup-terms">
-                <label className="chk signup-all">
-                  <input
-                    id="idv-terms-all"
-                    type="checkbox"
-                    className="cbx"
-                    disabled={busy}
-                    {...termsAria}
-                    checked={consentReady}
-                    onChange={(e) => {
-                      setAgreedTerms(e.target.checked);
-                      setAgreedPrivacy(e.target.checked);
-                      setIdvAgreed(e.target.checked);
-                    }}
-                  />
-                  필수 약관에 모두 동의해요
-                </label>
-                <label className="chk">
-                  <input type="checkbox" className="cbx" disabled={busy} {...termsAria} checked={agreedTerms} onChange={(e) => setAgreedTerms(e.target.checked)} />
-                  이용약관 (필수)
-                </label>
-                <label className="chk">
-                  <input type="checkbox" className="cbx" disabled={busy} {...termsAria} checked={agreedPrivacy} onChange={(e) => setAgreedPrivacy(e.target.checked)} />
-                  개인정보 수집 · 이용 (필수)
-                </label>
-                {rejoinShown && (
-                  <>
-                    <label className="chk">
-                      <input type="checkbox" className="cbx" disabled={busy} {...termsAria} checked={agreedRejoin} onChange={(e) => setAgreedRejoin(e.target.checked)} />
-                      재가입 제한 정보 보관 (선택)
-                    </label>
-                    {/* 본문: docs/terms/PRIVACY_CONSENT_TEMPLATE.md 하단 「재가입 제한 정보 보관 동의」 */}
-                    <details className="signup-terms-doc">
-                      <summary>보기</summary>
-                      <p>탈퇴한 회원이 정해진 기간 안에 다시 가입하지 못하게 하려고 아래 정보를 보관해요.</p>
-                      <ul>
-                        <li>보관 목적: 탈퇴 회원의 재가입 제한</li>
-                        <li>보관 항목: 본인 확인 때 받은 정보를 알아볼 수 없는 값으로 바꾼 것</li>
-                        <li>보관 기간: 탈퇴한 날부터 {consent.rejoinDays}일</li>
-                      </ul>
-                      <p>동의하지 않아도 가입할 수 있어요. 동의하지 않으면 이 정보를 보관하지 않고, 탈퇴한 뒤 다시 가입할 때 기간 제한을 받지 않아요.</p>
-                    </details>
-                  </>
-                )}
-                <label className="chk">
-                  <input type="checkbox" className="cbx" disabled={busy} checked={agreedMarketing} onChange={(e) => setAgreedMarketing(e.target.checked)} />
-                  (선택) 이벤트·할인 소식 받기
-                </label>
-                {/* 본문: docs/terms/MARKETING_CONSENT_TEMPLATE.md. 동의하기 전에 서식 전체를 볼 수 있게 한다 */}
-                <details className="signup-terms-doc">
-                  <summary>보기</summary>
-                  <MarketingConsentDoc shopName={shopName} />
-                </details>
-                <label className="chk">
-                  <input type="checkbox" className="cbx" disabled={busy} {...termsAria} checked={idvAgreed} onChange={(e) => setIdvAgreed(e.target.checked)} />
-                  위 내용에 모두 동의하고 본인 확인을 시작해요
-                </label>
-                {fieldErrors.terms && (
-                  <span id="idv-terms-err" className="err" role="alert">
-                    {fieldErrors.terms}
-                  </span>
-                )}
-              </div>
-              {needsReload && (
+              <label className="chk">
+                <input id="idv-terms-all" type="checkbox" className="cbx" disabled={busy} {...termsAria} checked={idvAgreed} onChange={(e) => setIdvAgreed(e.target.checked)} />
+                본인확인 이용 약관에 모두 동의해요
+              </label>
+              {fieldErrors.terms && <span id="idv-terms-err" className="err" role="alert">{fieldErrors.terms}</span>}              {needsReload && (
                 <div className="msg msg-cau" role="alert" style={{ display: "block" }} data-testid="idv-reload-box">
                   <span>
                     <b>새로고침이 필요해요.</b> 동의 내용이 바뀌었어요. 새로고침한 뒤 바뀐 내용을 확인하고 동의해 주세요.
@@ -663,6 +676,7 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
                   아직 입력하지 않은 것: {identityMissing.join(" · ")}
                 </p>
               )}
+              <button type="button" className="btn btn-out" disabled={busy} onClick={() => move(1)}>이전 단계</button>
             </>
           ) : (
             <div className="col" style={{ gap: 8 }}>
@@ -710,9 +724,9 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
             </div>
           )}
         </form>
-      )}
+      ) : null)}
 
-      <form className="col signup-sec" aria-label="계정 정보" onSubmit={signup} noValidate>
+      {stage === 3 && <form className="col signup-sec" aria-label="계정 정보" onSubmit={signup} noValidate>
         <fieldset className={`col signup-fs${step !== "verified" ? " is-waiting" : ""}`} disabled={step !== "verified" || busy || unconfirmed !== null}>
           <div className="fld">
             <label htmlFor="acc-id">아이디 (이메일)</label>
@@ -794,6 +808,7 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
             )}
           </div>
           <div className="signup-cta">
+            <button type="button" className="btn btn-out" disabled={busy || unconfirmed !== null} onClick={backToVerify}>이전 단계</button>
             <button className={`btn btn-lg btn-block${busy && step === "verified" ? " is-loading" : ""}`} type="submit" disabled={!accountReady || busy}>
               {busy && step === "verified" ? "가입하고 있어요" : "가입하기"}
             </button>
@@ -804,7 +819,7 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
             )}
           </div>
         </fieldset>
-      </form>
+      </form>}
     </div>
   );
 }
