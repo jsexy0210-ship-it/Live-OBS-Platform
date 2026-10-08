@@ -44,6 +44,9 @@ test("저장형 알림 8열, 검색 필터와 처리 화면 연결", async ({ pa
   await expect(row).toContainText("긴급 문의");
   await expect(page.locator("[aria-label='알림 목록'] thead th")).toHaveCount(8);
   await expect(page.getByText(/읽지 않은 알림 \d+건/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "알림 규칙 요약" })).toBeVisible();
+  await expect(page.getByText("방송 중 결제 승인 실패 3건 연속")).toBeVisible();
+  await expect(page.getByText("집계 미연결")).toHaveCount(4);
   await page.getByPlaceholder("파트너스 이름").fill("없는 파트너스");
   await page.getByRole("button", { name: "검색" }).click();
   await expect(page.getByText("검색 조건에 맞는 알림이 없습니다.")).toBeVisible();

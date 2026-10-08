@@ -13,6 +13,7 @@ type Status = "OPEN" | "IN_PROGRESS" | "RESOLVED";
 type Severity = "URGENT" | "WARNING" | "INFO";
 type Alert = { id: string; kind: string; severity: Severity; title: string; body: string | null; linkPath: string; shopName: string | null; occurredAt: string; assignee: { id: string; name: string | null } | null; status: Status; unread: boolean };
 type Data = { items: Alert[]; counts: Record<Status, number>; unreadCount: number; nextCursor: string | null };
+type Rule = { eventKey: string; label: string; severity: Severity };
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; data: Data };
 const statuses: { value: Status; label: string }[] = [{ value: "OPEN", label: "미처리" }, { value: "IN_PROGRESS", label: "처리 중" }, { value: "RESOLVED", label: "해결됨" }];
 const severities: { value: Severity; label: string }[] = [{ value: "URGENT", label: "긴급" }, { value: "WARNING", label: "주의" }, { value: "INFO", label: "정보" }];
@@ -29,6 +30,8 @@ export default function AdminNotificationsPage() {
   const [seller, setSeller] = useState("");
   const [applied, setApplied] = useState({ statuses: ["OPEN", "IN_PROGRESS"] as Status[], severities: ["URGENT", "WARNING", "INFO"] as Severity[], kind: "", seller: "" });
   const [notice, setNotice] = useState("");
+  const [rules, setRules] = useState<Rule[] | null>(null);
+  const [rulesError, setRulesError] = useState(false);
   const reqId = useRef(0);
   const load = useCallback(async (cursor?: string) => {
     const id = ++reqId.current;
@@ -46,6 +49,15 @@ export default function AdminNotificationsPage() {
     else setNotice("다음 알림을 불러오지 못했습니다. 다시 시도해 주십시오.");
   }, [applied]);
   useEffect(() => void load(), [load]);
+  useEffect(() => {
+    let active = true;
+    void adminApi<{ routes: Rule[] }>("/api/admin/settings/notifications").then((result) => {
+      if (!active) return;
+      if (result.ok) setRules(result.data.routes);
+      else setRulesError(true);
+    });
+    return () => { active = false; };
+  }, []);
 
   const toggle = <T extends string,>(values: T[], value: T, set: (next: T[]) => void) => set(values.includes(value) ? values.filter((v) => v !== value) : [...values, value]);
   const reset = () => {
@@ -86,7 +98,14 @@ export default function AdminNotificationsPage() {
         {d && (rows.length === 0 ? <div className="st"><span className="t">검색 조건에 맞는 알림이 없습니다.</span></div> : <div className="notification-table-scroll"><table className="tbl"><thead><tr><th>심각도</th><th>유형</th><th>파트너스</th><th>내용</th><th>발생 시각</th><th>담당자</th><th>상태</th><th>관리</th></tr></thead><tbody>{rows.map((a) => <tr key={a.id} data-testid="notification-row"><td>{severities.find((s) => s.value === a.severity)?.label}</td><td>{kindLabel(a.kind)}</td><td>{a.shopName ?? "공통"}</td><td className="notification-content"><strong>{a.title}</strong>{a.body && <small>{a.body}</small>}</td><td className="num">{dayTime(a.occurredAt)}</td><td>{a.assignee?.name ?? "미배정"}</td><td>{statuses.find((s) => s.value === a.status)?.label}</td><td><Link className="btn btn-sm btn-out" href={a.linkPath}>열기</Link>{me.role !== "READ_ONLY" && <select className="inp notification-status" aria-label={`${a.title} 상태 변경`} value={a.status} disabled={changing === a.id} onChange={(e) => void changeStatus(a, e.target.value as Status)}>{statuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select>}</td></tr>)}</tbody></table></div>)}
         {d?.nextCursor && <div className="pad"><button className="btn btn-out" type="button" disabled={loadingMore} onClick={() => void load(d.nextCursor!)}>{loadingMore ? "불러오는 중" : "더 보기"}</button></div>}
       </section>
-      <div className="notification-bottom"><section className="card pad"><h2 className="t-hl1">알림 규칙</h2><p className="t-l2 c-alt">알림 발생 규칙과 채널 설정은 조회 화면 연결 준비 중입니다.</p></section><section className="card pad"><h2 className="t-hl1">오늘의 알림 추이</h2><p className="t-l2 c-alt">오늘 발생 건수 집계가 연결되지 않았습니다.</p></section></div>
+      <div className="notification-bottom">
+        <section className="card pad"><h2 className="t-hl1">알림 규칙 요약</h2>
+          {rules === null ? <p className="t-l2 c-alt">{rulesError ? "규칙을 불러오지 못했습니다." : "규칙을 불러오는 중입니다."}</p> :
+            <div className="notification-table-scroll"><table className="tbl"><thead><tr><th>심각도</th><th>조건</th></tr></thead><tbody>{severities.map((severity) => <tr key={severity.value}><td>{severity.label}</td><td>{rules.filter((rule) => rule.severity === severity.value).map((rule) => rule.label).join(" · ") || "설정된 규칙 없음"}</td></tr>)}</tbody></table></div>}
+          <p className="t-c1 c-alt">채널 라우팅 설정 기준입니다. 화면 알림 생성과 외부 발송은 일부 유형만 연결되어 있습니다.</p>
+        </section>
+        <section className="card pad"><h2 className="t-hl1">오늘의 알림 추이</h2><div className="notification-trends">{["결제 연결 오류", "방송 화면 끊김", "지급 실패", "구독 결제 실패"].map((label) => <div key={label}><span>{label}</span><strong>—</strong><small>집계 미연결</small></div>)}</div></section>
+      </div>
     </main>
   </>;
 }
