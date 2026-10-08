@@ -13,6 +13,7 @@ const shopName = `청구몰 ${run}`;
 const DAY = 86_400_000;
 let db: PrismaClient;
 let sellerId = "";
+let scheduledSellerId = "";
 let paidId = "";
 let failedId = "";
 
@@ -35,6 +36,9 @@ test.beforeAll(async () => {
   await db.subscriptionPayment.create({
     data: { ...base, amount: 5_000, status: "PENDING", kind: "PRORATION", targetPlanId: overlay.id, periodStart: new Date(now - 5 * DAY), periodEnd: new Date(now + 10 * DAY), createdAt: new Date(now - 5 * DAY) },
   });
+  const scheduledSeller = await db.seller.create({ data: { slug: `pay-scheduled-${run}`, shopName: `예정 청구몰 ${run}`, status: "ACTIVE", approvedAt: new Date(), planId: overlay.id } });
+  scheduledSellerId = scheduledSeller.id;
+  await db.sellerSubscription.create({ data: { sellerId: scheduledSellerId, planId: overlay.id, status: "ACTIVE", billingKeyCipher: "test-only", nextChargeAt: new Date(now + 3 * DAY) } });
   paidId = paid.id;
   failedId = failed.id;
 });
@@ -107,6 +111,22 @@ test("CS도 청구·결제 내역을 조회한다: 월 요약·기간·상태·�
     await expect(page.getByTestId("invoice-summary")).toBeVisible();
     await page.screenshot({ path: `tests/e2e/screenshots/admin-invoices-${w}.png` });
   }
+});
+
+test("예정 청구는 파트너스 상세 CTA로 실제 대상에 이동한다", async ({ page }) => {
+  const kst = (ms: number) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul" }).format(new Date(ms));
+  await open(page, `/admin/billing/invoices?sellerId=${scheduledSellerId}&from=${kst(Date.now())}&to=${kst(Date.now() + 7 * DAY)}`);
+  const row = page.getByTestId("invoice-row");
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText("예정");
+  const link = row.getByRole("link", { name: "파트너스 상세" });
+  await expect(link).toHaveAttribute("href", `/admin/partners/${scheduledSellerId}`);
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+  }
+  await link.click();
+  await expect(page).toHaveURL(new RegExp(`/admin/partners/${scheduledSellerId}$`));
 });
 
 test("청구 상세: 결제 번호·카드 매출전표 링크·구독, 실패 청구는 실패 사유가 보인다", async ({ page }) => {

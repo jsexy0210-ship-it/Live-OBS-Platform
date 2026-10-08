@@ -357,7 +357,7 @@ function Invoices() {
                               <td>
                                 <div className="acts2">
                                   <Link className="btn btn-sm btn-out" href={detail}>
-                                    상세
+                                    {i.paymentId ? "상세" : "파트너스 상세"}
                                   </Link>
                                 </div>
                               </td>
