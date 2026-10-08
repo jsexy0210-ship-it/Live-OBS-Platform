@@ -33,7 +33,7 @@ const DEFAULT_BOX: Record<Aspect, Record<WidgetType, [number, number, number, nu
     HALL_OF_FAME: [3, 13, 46, 18],
     NOTICE: [3, 32, 94, 4],
     SHOP_INFO: [3, 32, 94, 4],
-    OPEN_TIMER: [70, 2, 27, 6],
+    OPEN_TIMER: [70, 2, 24.444, 2.292],
     NEW_ORDER_ALERT: [3, 20, 94, 10],
     EVENT_CARD: [3, 32, 94, 18],
     PURCHASE_RANKING: [50, 13, 47, 18],
@@ -44,7 +44,7 @@ const DEFAULT_BOX: Record<Aspect, Record<WidgetType, [number, number, number, nu
     HALL_OF_FAME: [72, 4, 26, 52],
     NOTICE: [72, 60, 26, 20],
     SHOP_INFO: [2, 88, 26, 8],
-    OPEN_TIMER: [72, 84, 26, 12],
+    OPEN_TIMER: [72, 84, 13.75, 4.074],
     NEW_ORDER_ALERT: [2, 30, 26, 14],
     EVENT_CARD: [72, 56, 26, 14],
     PURCHASE_RANKING: [72, 4, 26, 40],
@@ -78,7 +78,7 @@ export type LiveData = {
   alert?: OrderEvent | null;
   opening: { nickname: string; gradeSnapshot: string | null; productLabel: string; quantity: number; timerSeconds?: number | null; openingStartedAt?: string | null } | null;
   waiting: { id: string; nickname: string; productLabel: string; quantity: number }[];
-  hits: { id: string; nickname: string; cardName: string }[];
+  hits: { id: string; nickname: string; cardName: string; createdAt?: string }[];
   // 방금 새로 들어온 HIT 카드 id(명예의 전당에서 잠깐 강조)
   freshHitIds?: string[];
   live: boolean;
@@ -103,8 +103,8 @@ export const SAMPLE_DATA: LiveData = {
     { id: "s4", nickname: "구름빵", productLabel: "스페셜 팩", quantity: 1 },
   ],
   hits: [
-    { id: "h1", nickname: "별빛하늘", cardName: "리자몽 SAR" },
-    { id: "h2", nickname: "달콤곰", cardName: "피카츄 UR" },
-    { id: "h3", nickname: "하루", cardName: "뮤츠 SR" },
+    { id: "h1", nickname: "별빛하늘", cardName: "리자몽 SAR", createdAt: "2026-10-02T11:41:00.000Z" },
+    { id: "h2", nickname: "달콤곰", cardName: "피카츄 UR", createdAt: "2026-10-02T10:21:00.000Z" },
+    { id: "h3", nickname: "하루", cardName: "뮤츠 SR", createdAt: "2026-10-01T14:10:00.000Z" },
   ],
 };
