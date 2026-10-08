@@ -65,6 +65,9 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
   const lossTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const probeTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const loadRef = useRef<() => void>(() => {});
+  const versionRef = useRef<() => void>(() => {});
+  const stateFailed = useRef(false);
+  const versionFailed = useRef(false);
   const resetLoss = useCallback(() => {
     if (lossTimer.current) clearTimeout(lossTimer.current);
     if (probeTimer.current) clearInterval(probeTimer.current);
@@ -73,12 +76,26 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
     lossStartedAt.current = null;
     frozenNow.current = null;
     isOffline.current = false;
+    stateFailed.current = false;
+    versionFailed.current = false;
   }, []);
-  const markOffline = useCallback(() => {
+  const recoverChannel = useCallback((channel: "state" | "version") => {
+    if (channel === "state") stateFailed.current = false;
+    else versionFailed.current = false;
+    if (stateFailed.current || versionFailed.current || lossStartedAt.current === null) return;
+    resetLoss();
+    setView((v) => v.kind === "ok" && v.offline ? { ...v, offline: false } : v);
+  }, [resetLoss]);
+  const markOffline = useCallback((channel: "state" | "version") => {
+    if (channel === "state") stateFailed.current = true;
+    else versionFailed.current = true;
     if (lossStartedAt.current !== null) return;
     lossStartedAt.current = Date.now();
-    // 2초 안에 복구되면 안내를 보이지 않도록 짧게 다시 확인한다.
-    probeTimer.current = setInterval(() => loadRef.current(), 500);
+    // 실패한 채널을 다시 확인한다. 다른 채널의 성공만으로 끊김을 해제하지 않는다.
+    probeTimer.current = setInterval(() => {
+      if (stateFailed.current) loadRef.current();
+      if (versionFailed.current) versionRef.current();
+    }, 500);
     lossTimer.current = setTimeout(() => {
       if (lossStartedAt.current === null) return;
       frozenNow.current = lossStartedAt.current;
@@ -94,7 +111,7 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
     try {
       res = await fetch(`${base}/state`, { cache: "no-store" });
     } catch {
-      if (n > applied.current) markOffline();
+      if (n > applied.current) markOffline("state");
       return;
     }
     if (n <= applied.current) return;
@@ -104,15 +121,16 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
       resetLoss();
       return setView({ kind: "gone" });
     }
-    if (!res.ok) return markOffline();
+    if (!res.ok) return markOffline("state");
     const state = (await res.json().catch(() => null)) as State | null;
     if (n <= applied.current) return;
-    if (!state) return markOffline();
+    if (!state) return markOffline("state");
     applied.current = n;
     version.current = state.version;
-    resetLoss();
+    recoverChannel("state");
     errorReload.current.gap = ERROR_RELOAD_MIN_MS;
-    setView({ kind: "ok", state, stateReceivedAt: Date.now(), offline: false });
+    if (isOffline.current && versionFailed.current) return;
+    setView({ kind: "ok", state, stateReceivedAt: Date.now(), offline: isOffline.current });
     // 새 HIT 카드 강조: 처음 읽을 때 이미 있던 카드는 강조하지 않는다
     const hitIds = (state.hits ?? []).map((h) => h.id);
     if (seenHits.current === null) seenHits.current = new Set(hitIds);
@@ -144,8 +162,24 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
       }
       return next;
     });
-  }, [base, markOffline, resetLoss]);
+  }, [base, markOffline, recoverChannel, resetLoss]);
   loadRef.current = () => void load();
+
+  const checkVersion = useCallback(async () => {
+    try {
+      const res = await fetch(`${base}/version`, { cache: "no-store" });
+      if (res.status === 404) return void load();
+      if (!res.ok) return markOffline("version");
+      const value = ((await res.json()) as { version?: unknown }).version;
+      if (typeof value !== "number") return markOffline("version");
+      const refresh = versionFailed.current || isOffline.current || value !== version.current;
+      recoverChannel("version");
+      if (refresh) void load();
+    } catch {
+      markOffline("version");
+    }
+  }, [base, load, markOffline, recoverChannel]);
+  versionRef.current = () => void checkVersion();
 
   const layoutVersion = useRef<number | null>(null);
   const aspect = landscape ? "16x9" : "9x16";
@@ -193,16 +227,14 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
     }
     const poll = setInterval(() => {
       void loadLayout();
-      fetch(`${base}/version`, { cache: "no-store" })
-        .then(async (r) => (r.status === 404 ? onVersion(null) : r.ok ? onVersion(((await r.json()) as { version?: unknown }).version) : undefined))
-        .catch(markOffline);
+      void checkVersion();
     }, POLL_MS);
     return () => {
       es?.close();
       clearInterval(poll);
       resetLoss();
     };
-  }, [base, load, loadLayout, markOffline, resetLoss]);
+  }, [base, checkVersion, load, loadLayout, resetLoss]);
 
   // 개봉 타이머를 1초마다 갱신
   useEffect(() => {
