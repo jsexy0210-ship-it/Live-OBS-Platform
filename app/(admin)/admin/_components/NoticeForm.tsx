@@ -47,7 +47,7 @@ export function NoticeForm({ notice, onSaved, onStale }: { notice?: Notice; onSa
       }}
       noValidate
     >
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 20, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))", gap: 20, alignItems: "start" }}>
         <div>
           <FormSection title="내용">
             <FormRow label="분류" required>

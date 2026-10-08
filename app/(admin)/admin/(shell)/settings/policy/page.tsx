@@ -140,7 +140,7 @@ export default function PlatformPolicyPage() {
     if (it.kind === "int") {
       input = (
         <>
-          <span className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
+          <span className="row" style={{ gap: 6, flexWrap: "wrap" }}>
           <input className={`inp${err ? " err" : ""}`} style={{ width: 120 }} type="number" inputMode="numeric" aria-label={NAME[key]} aria-invalid={!!err} value={typeof v === "number" ? v : ""} disabled={!canEdit} onChange={(e) => set(key, e.target.value === "" ? Number.NaN : Number(e.target.value))} />
           <span className="c-alt">{suffix?.unit ?? UNIT[it.unit]}</span>
           </span>
@@ -220,7 +220,7 @@ export default function PlatformPolicyPage() {
                 조회 전용 권한입니다 · 변경 버튼은 보이지 않습니다 · 필요한 권한: 시스템 설정
               </div>
             )}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 24, alignItems: "start" }} data-testid="policy-sections">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))", gap: 24, alignItems: "start" }} data-testid="policy-sections">
               <div className="col" style={{ gap: 24 }}>
                 <FormSection title="가입 · 심사">
                   {row("가입 심사 목표 시간", "reviewTargetHours")}
