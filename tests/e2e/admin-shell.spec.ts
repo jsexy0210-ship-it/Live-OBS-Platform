@@ -10,7 +10,7 @@ import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 // 마스터 관리자 계정은 폐기용 테스트 DB(이름이 _test로 끝남)에 실행마다 새로 만든다.
 const password = randomBytes(12).toString("base64url");
 const run = randomBytes(4).toString("hex");
-const emails = { super: `shell-super-${run}@example.com`, cs: `shell-cs-${run}@example.com` };
+const emails = { super: `shell-super-${run}@example.com`, cs: `shell-cs-${run}@example.com`, readOnly: `shell-read-${run}@example.com` };
 
 test.beforeAll(async () => {
   const db = new PrismaClient({ datasources: { db: { url: assertTestDatabaseUrl(process.env.DATABASE_URL) } } });
@@ -20,6 +20,7 @@ test.beforeAll(async () => {
       data: [
         { email: emails.super, passwordHash, name: "대표", role: "SUPER_ADMIN" },
         { email: emails.cs, passwordHash, name: "상담", role: "CS" },
+        { email: emails.readOnly, passwordHash, name: "조회", role: "READ_ONLY" },
       ],
     });
   } finally {
@@ -94,19 +95,37 @@ test("최고관리자: 홈 중복 경로는 생략하고 운영 화면의 LNB �
   await expect(lnb(page).locator(".lnb-sec.on .lnb-i")).toHaveText(["요금제", "구독 현황", "청구 · 결제 내역", "구독료 수납", "환불 요청"]);
 });
 
-test("CS: 최고관리자 전용 메뉴(설정 대분류=시스템·관리자)와 로그 추적이 숨겨지고, 주소로 들어가도 권한 안내만 보인다. 실시간 감시는 조회로 보인다", async ({ page }) => {
+test("CS: 설정은 조회하고 로그 추적은 막는다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await login(page, emails.cs);
   await gnb(page).getByRole("link", { name: "운영" }).click();
   await expect(lnb(page).getByRole("link", { name: "실시간 방송" })).toBeVisible();
   await expect(lnb(page).getByRole("link", { name: "실시간 감시" })).toBeVisible();
-  await expect(gnb(page).getByRole("link", { name: "설정" })).toHaveCount(0);
-  for (const path of ["/admin/logs", "/admin/settings/branding", "/admin/settings/maintenance"]) {
+  await expect(gnb(page).getByRole("link", { name: "설정" })).toBeVisible();
+  for (const [path, title] of [["/admin/settings/branding", "파비콘 · 공유 카드"], ["/admin/settings/maintenance", "점검 모드"]]) {
     await page.goto(path);
-    const noAccess = page.getByTestId("admin-no-access");
-    await expect(noAccess.getByRole("heading", { name: "이 화면을 볼 권한이 없습니다", exact: true })).toBeVisible();
-    await expect(noAccess).toContainText("권한이 필요하면 최고관리자에게 요청해 주십시오.");
-    await expect(page.getByRole("heading", { name: "파비콘 · 공유 카드" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
+    await expect(page.getByTestId("admin-no-access")).toHaveCount(0);
+  }
+  await page.goto("/admin/logs");
+  await expect(page.getByTestId("admin-no-access")).toBeVisible();
+});
+
+test("조회 전용: 확정된 설정 6화면은 열리고 변경 버튼은 없다", async ({ page }) => {
+  await login(page, emails.readOnly);
+  const settings = [
+    ["/admin/settings/policy", "플랫폼 기본 정책"],
+    ["/admin/settings/maintenance", "점검 모드"],
+    ["/admin/settings/assistant", "도우미 설정"],
+    ["/admin/settings/branding", "파비콘 · 공유 카드"],
+    ["/admin/settings/messages", "발송 단가"],
+    ["/admin/settings/platform-business", "플랫폼 정보"],
+  ];
+  for (const [path, title] of settings) {
+    await page.goto(path);
+    await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
+    await expect(page.getByTestId("admin-no-access")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /저장|켜기|끄기|수정|등록|변경/ })).toHaveCount(0);
   }
 });
 
