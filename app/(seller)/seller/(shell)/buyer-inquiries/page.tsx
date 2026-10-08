@@ -23,6 +23,7 @@ type Inquiry = {
   id: string;
   kind: Kind;
   product: { id: string; name: string } | null;
+  order: { id: string; orderNoLabel: string } | null;
   title: string;
   body: string;
   isPrivate: boolean;
@@ -200,6 +201,7 @@ export default function BuyerInquiriesPage() {
                           {r.isPrivate && <span className="bdg b-gray nodot">비공개</span>} {r.title}
                         </button>
                         {r.product && <div className="t-c1 c-alt">{r.product.name}</div>}
+                        {r.order && <div className="t-c1 c-alt">주문 {r.order.orderNoLabel}</div>}
                       </td>
                       <td>{r.authorNickname}</td>
                       <td className="num">{formatDateTime(r.createdAt)}</td>
@@ -264,6 +266,7 @@ function InquiryDialog({ item, canEdit, onClose, onSaved }: { item: Inquiry; can
             <span className="t-c1 c-alt num">
               {KIND_LABEL[item.kind]} · {formatDateTime(item.createdAt)}
               {item.product ? ` · ${item.product.name}` : ""}
+              {item.order ? ` · 주문 ${item.order.orderNoLabel}` : ""}
             </span>
           </div>
           {failed && (

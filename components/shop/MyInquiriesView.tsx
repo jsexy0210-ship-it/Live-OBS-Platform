@@ -13,8 +13,8 @@ import "./MyInquiries.css";
 
 // SH-026 내 문의(보드 SH-026-IA FINAL): 탭(전체 · 상품 문의 · 1:1 문의, 개수) → 표(종류 · 내용 · 상태 · 날짜, 「답변 보기」로 펼침) · 「문의하기」 폼(종류 · 대상 · 제목* · 내용* · 공개).
 // API: GET /api/shop/{slug}/inquiries?cursor(20개씩, 본인 것) · POST /inquiries { kind:"PRODUCT"|"GENERAL", productId?, title(50), body(2000), isPrivate }.
-// 1:1 문의의 「주문」 대상은 서버가 아직 받지 않아(GENERAL 문의에 주문 연결 없음) 대상 없이 쓰게 둔다.
-type Item = { id: string; kind: "PRODUCT" | "GENERAL"; product: { id: string; name: string } | null; title: string; body: string; isPrivate: boolean; status: string; answer: string | null; answeredAt: string | null; createdAt: string };
+// 1:1 문의는 본인 주문을 대상으로 고를 수 있고, 기타 문의는 주문 선택 없이 남긴다.
+type Item = { id: string; kind: "PRODUCT" | "GENERAL"; product: { id: string; name: string } | null; order: { id: string; orderNoLabel: string } | null; title: string; body: string; isPrivate: boolean; status: string; answer: string | null; answeredAt: string | null; createdAt: string };
 type View = { kind: "loading" } | { kind: "login" } | { kind: "error" } | { kind: "ok"; items: Item[] };
 type Tab = "all" | "PRODUCT" | "GENERAL";
 const TABS: { key: Tab; label: string }[] = [
@@ -111,6 +111,7 @@ export default function MyInquiriesView({ slug, canWrite = true }: { slug: strin
                     <td>{i.kind === "PRODUCT" ? "상품 문의" : "1:1 문의"}</td>
                     <td>
                       {i.product && <span className="mi-target">{i.product.name}</span>}
+                      {i.order && <span className="mi-target">주문 {i.order.orderNoLabel}</span>}
                       <b className="mi-title">
                         {i.title}
                         {i.isPrivate && <span aria-label="비공개"> 🔒</span>}
@@ -172,10 +173,14 @@ export default function MyInquiriesView({ slug, canWrite = true }: { slug: strin
 }
 
 type Product = { id: string; name: string };
+type OrderTarget = { id: string; orderNoLabel: string };
 function WriteForm({ api, confirmAsk, onSaved }: { api: string; confirmAsk: ReturnType<typeof useConfirm>["confirm"]; onSaved: () => void }) {
   const [kind, setKind] = useState<"PRODUCT" | "GENERAL">("PRODUCT");
   const [products, setProducts] = useState<Product[] | null>(null);
   const [productId, setProductId] = useState("");
+  const [orders, setOrders] = useState<OrderTarget[] | null>(null);
+  const [orderError, setOrderError] = useState(false);
+  const [orderId, setOrderId] = useState("");
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const [priv, setPriv] = useState(true);
@@ -188,6 +193,12 @@ function WriteForm({ api, confirmAsk, onSaved }: { api: string; confirmAsk: Retu
     call<{ products: Product[] }>(`${api}/products?limit=60`).then((r) => {
       if (!live) return;
       setProducts(r.ok ? r.data.products : []);
+    });
+    call<{ orders: OrderTarget[] }>(`${api}/orders?limit=50`).then((r) => {
+      if (live) {
+        setOrders(r.ok ? r.data.orders : []);
+        setOrderError(!r.ok);
+      }
     });
     return () => {
       live = false;
@@ -206,12 +217,13 @@ function WriteForm({ api, confirmAsk, onSaved }: { api: string; confirmAsk: Retu
     if (!(await confirmAsk({ tone: "shop", title: "문의를 등록할까요?", body: `${priv ? "작성자와 판매자만" : "모두"} 볼 수 있어요. 답변이 달리면 고치거나 지울 수 없어요.`, confirmLabel: "등록하기" }))) return;
     setBusy(true);
     setErr(null);
-    const r = await call(`${api}/inquiries`, { method: "POST", body: { kind, ...(kind === "PRODUCT" ? { productId } : {}), title: title.trim(), body: text.trim(), isPrivate: priv } });
+    const r = await call(`${api}/inquiries`, { method: "POST", body: { kind, ...(kind === "PRODUCT" ? { productId } : orderId ? { orderId } : {}), title: title.trim(), body: text.trim(), isPrivate: priv } });
     setBusy(false);
     if (!r.ok) return setErr(r.message ?? "문의를 등록하지 못했어요. 잠시 뒤 다시 해 주세요");
     setTitle("");
     setText("");
     setProductId("");
+    setOrderId("");
     onSaved();
   }
 
@@ -253,6 +265,18 @@ function WriteForm({ api, confirmAsk, onSaved }: { api: string; confirmAsk: Retu
                   {errs.product}
                 </span>
               )}
+            </div>
+          </div>
+        )}
+        {kind === "GENERAL" && (
+          <div className="mi-row">
+            <label className="mi-th" htmlFor="mi-order">대상</label>
+            <div className="mi-td">
+              <select id="mi-order" className="inp" value={orderId} onChange={(e) => setOrderId(e.target.value)}>
+                <option value="">{orders === null ? "주문을 불러오고 있어요" : "기타 문의 · 주문 선택 안 함"}</option>
+                {(orders ?? []).map((o) => <option key={o.id} value={o.id}>주문 {o.orderNoLabel}</option>)}
+              </select>
+              {orderError && <span className="mi-err" role="alert">주문을 불러오지 못했어요. 화면을 새로고침해 주세요.</span>}
             </div>
           </div>
         )}

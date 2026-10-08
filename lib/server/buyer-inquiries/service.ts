@@ -8,6 +8,7 @@ import { checkReviewImage, type ReviewImageRejection } from "../product-reviews/
 import { SHOP_VISIBLE_PRODUCT } from "../product-reviews/service";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
 import { cleanText } from "../text/clean";
+import { orderNoLabel } from "../orders/orderNoLabel";
 
 // 구매자 문의(상품 문의·1:1 문의, SA-046·047).
 // - 구매자: 쓰기(상품 연결 선택·비공개·사진 5장까지), 내 목록, 답변 전에만 고치기·지우기. 쓰기 경로는 쇼핑몰 이용 가능 검사(shopOpen)를 거친다.
@@ -36,6 +37,7 @@ export type BuyerInquiryFailure =
   | "shop_unavailable"
   | "invalid_kind"
   | "invalid_product"
+  | "invalid_order"
   | "invalid_title"
   | "invalid_body"
   | "invalid_images"
@@ -49,6 +51,7 @@ export const BUYER_INQUIRY_MESSAGES: Record<BuyerInquiryFailure, string> = {
   shop_unavailable: "지금은 문의를 남길 수 없어요",
   invalid_kind: "문의 종류를 확인해 주세요",
   invalid_product: "문의할 상품을 확인해 주세요",
+  invalid_order: "문의할 주문을 확인해 주세요",
   invalid_title: `제목을 ${INQUIRY_TITLE_MAX}자 안으로 입력해 주세요`,
   invalid_body: `내용을 ${INQUIRY_BODY_MAX}자 안으로 입력해 주세요`,
   invalid_images: `사진은 ${INQUIRY_IMAGES_MAX}장까지 붙일 수 있어요`,
@@ -84,10 +87,11 @@ const sellerAudit = (db: Db, c: TenantContext, m: AuditMeta, action: string, id:
   writeAudit(db, { actorType: c.actorType, actorId: c.actorId, sellerId: c.sellerId, action, targetType: "BuyerInquiry", targetId: id, before, after, ip: m.ip, userAgent: m.userAgent });
 
 // ───────── 보기 ─────────
-type Row = Prisma.BuyerInquiryGetPayload<{ include: { images: { select: { id: true; width: true; height: true } }; product: { select: { id: true; name: true } } } }>;
+type Row = Prisma.BuyerInquiryGetPayload<{ include: { images: { select: { id: true; width: true; height: true } }; product: { select: { id: true; name: true } }; order: { select: { id: true; orderNo: true; createdAt: true } } } }>;
 const include = {
   images: { select: { id: true, width: true, height: true }, orderBy: [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }] },
   product: { select: { id: true, name: true } },
+  order: { select: { id: true, orderNo: true, createdAt: true } },
 };
 
 function view(r: Row, imageBase: string) {
@@ -95,6 +99,7 @@ function view(r: Row, imageBase: string) {
     id: r.id,
     kind: r.kind,
     product: r.product,
+    order: r.order ? { id: r.order.id, orderNoLabel: orderNoLabel(r.order.createdAt, r.order.orderNo) } : null,
     title: r.title,
     body: r.body,
     isPrivate: r.isPrivate,
@@ -175,13 +180,15 @@ async function attachImages(tx: Prisma.TransactionClient, scope: BuyerScope, inq
 // ───────── 구매자 ─────────
 export async function createInquiry(db: PrismaClient, scope: BuyerScope, raw: unknown, meta: AuditMeta = {}) {
   if (!(await shopOpen(db, scope.sellerId))) return { ok: false as const, reason: "shop_unavailable" as const };
-  const b = (raw && typeof raw === "object" ? raw : {}) as { kind?: unknown; productId?: unknown };
+  const b = (raw && typeof raw === "object" ? raw : {}) as { kind?: unknown; productId?: unknown; orderId?: unknown };
   if (b.kind !== "PRODUCT" && b.kind !== "GENERAL") return { ok: false as const, reason: "invalid_kind" as const };
   if (b.kind === "PRODUCT" ? !isUuid(b.productId) : b.productId !== undefined && b.productId !== null) return { ok: false as const, reason: "invalid_product" as const };
+  if (b.kind === "PRODUCT" ? b.orderId !== undefined && b.orderId !== null : b.orderId !== undefined && b.orderId !== null && !isUuid(b.orderId)) return { ok: false as const, reason: "invalid_order" as const };
   const p = parseFields(raw);
   if (!p.ok) return p;
   const kind = b.kind;
   const productId = kind === "PRODUCT" ? (b.productId as string) : null;
+  const orderId = kind === "GENERAL" && b.orderId ? (b.orderId as string) : null;
   return db.$transaction(async (tx) => {
     // 회원 행을 쓰기 잠금으로 잡아 같은 회원의 동시 작성이 한도를 넘지 않게 하고, 탈퇴(FOR UPDATE)와도 엇갈리지 않게 한다
     const [member] = await tx.$queryRaw<{ id: string; broadcastNickname: string }[]>`
@@ -190,14 +197,17 @@ export async function createInquiry(db: PrismaClient, scope: BuyerScope, raw: un
     if (productId && !(await tx.product.findFirst({ where: { id: productId, sellerId: scope.sellerId, ...SHOP_VISIBLE_PRODUCT }, select: { id: true } }))) {
       return { ok: false as const, reason: "invalid_product" as const };
     }
+    if (orderId && !(await tx.order.findFirst({ where: { id: orderId, sellerId: scope.sellerId, buyerMemberId: scope.buyerMemberId, legalHoldAt: null }, select: { id: true } }))) {
+      return { ok: false as const, reason: "invalid_order" as const };
+    }
     const now = await lockedNow(tx);
     const recent = await tx.buyerInquiry.count({ where: { ...scope, createdAt: { gt: new Date(now.getTime() - INQUIRY_RATE_WINDOW_MS) } } });
     if (recent >= INQUIRY_RATE_LIMIT) return { ok: false as const, reason: "inquiry_rate_limited" as const };
     const row = await tx.buyerInquiry.create({
-      data: { ...scope, kind, productId, authorNickname: member.broadcastNickname, title: p.v.title, body: p.v.body, isPrivate: p.v.isPrivate, createdAt: now, updatedAt: now },
+      data: { ...scope, kind, productId, orderId, authorNickname: member.broadcastNickname, title: p.v.title, body: p.v.body, isPrivate: p.v.isPrivate, createdAt: now, updatedAt: now },
     });
     if (!(await attachImages(tx, scope, row.id, p.v.imageIds))) throw new InvalidImages();
-    await buyerAudit(tx, scope, meta, "buyer_inquiry.create", row.id, { kind, productId, isPrivate: p.v.isPrivate, titleLength: p.v.title.length, bodyLength: p.v.body.length, photos: p.v.imageIds.length });
+    await buyerAudit(tx, scope, meta, "buyer_inquiry.create", row.id, { kind, productId, orderId, isPrivate: p.v.isPrivate, titleLength: p.v.title.length, bodyLength: p.v.body.length, photos: p.v.imageIds.length });
     return { ok: true as const, id: row.id };
   }).catch((e) => {
     if (e instanceof InvalidImages) return { ok: false as const, reason: "invalid_images" as const };
