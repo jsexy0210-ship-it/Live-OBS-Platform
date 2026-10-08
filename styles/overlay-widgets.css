@@ -20,6 +20,19 @@
   box-shadow: 0 0 0 3px var(--w-border, #fff);
   justify-content: center;
 }
+.ow-current-order.ow-calm-card {
+  background: var(--w-card-bg, #0c0d10e6);
+  animation: ow-calm-breathe 3s ease-in-out infinite;
+}
+.ow-calm { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; text-align: center; }
+.ow-calm b, .ow-calm span { display: block; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ow-calm b { font-size: 1.27em; }
+.ow-calm span { font-size: 0.93em; font-weight: 500; }
+@keyframes ow-calm-breathe {
+  0%, 100% { box-shadow: 0 0 0 2px #ffffff40; }
+  50% { box-shadow: 0 0 0 2px #ffffff80; }
+}
+@media (prefers-reduced-motion: reduce) { .ow-calm-card { animation: none !important; box-shadow: 0 0 0 2px #ffffff40; } }
 .ow-glow {
   box-shadow: 0 0 0 3px var(--w-border, #fff), 0 0 48px var(--w-accent, #ff9200aa);
 }
