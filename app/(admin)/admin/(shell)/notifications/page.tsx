@@ -17,6 +17,7 @@ type Rule = { eventKey: string; label: string; severity: Severity };
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; data: Data };
 const statuses: { value: Status; label: string }[] = [{ value: "OPEN", label: "미처리" }, { value: "IN_PROGRESS", label: "처리 중" }, { value: "RESOLVED", label: "해결됨" }];
 const severities: { value: Severity; label: string }[] = [{ value: "URGENT", label: "긴급" }, { value: "WARNING", label: "주의" }, { value: "INFO", label: "정보" }];
+const summaryEventKeys = new Set(["broadcast_payment_fail_streak", "broadcast_overlay_reconnect_fail", "platform_outage", "payment_callback_stall", "reward_payout_failed", "subscription_payment_failed", "application_overdue_48h", "live_payout_switch_on"]);
 const kindLabel = (kind: string) => ({ INQUIRY_URGENT: "긴급 문의", INFRA_ALERT: "인프라" })[kind] ?? kind.replaceAll("_", " ");
 
 export default function AdminNotificationsPage() {
@@ -101,7 +102,7 @@ export default function AdminNotificationsPage() {
       <div className="notification-bottom">
         <section className="card pad"><h2 className="t-hl1">알림 규칙 요약</h2>
           {rules === null ? <p className="t-l2 c-alt">{rulesError ? "규칙을 불러오지 못했습니다." : "규칙을 불러오는 중입니다."}</p> :
-            <div className="notification-table-scroll"><table className="tbl"><thead><tr><th>심각도</th><th>조건</th></tr></thead><tbody>{severities.map((severity) => <tr key={severity.value}><td>{severity.label}</td><td>{rules.filter((rule) => rule.severity === severity.value).map((rule) => rule.label).join(" · ") || "설정된 규칙 없음"}</td></tr>)}</tbody></table></div>}
+            <div className="notification-table-scroll"><table className="tbl"><thead><tr><th>심각도</th><th>조건</th></tr></thead><tbody>{severities.map((severity) => <tr key={severity.value}><td>{severity.label}</td><td>{rules.filter((rule) => rule.severity === severity.value && summaryEventKeys.has(rule.eventKey)).map((rule) => rule.label).join(" · ") || "설정된 규칙 없음"}</td></tr>)}</tbody></table></div>}
           <p className="t-c1 c-alt">채널 라우팅 설정 기준입니다. 화면 알림 생성과 외부 발송은 일부 유형만 연결되어 있습니다.</p>
         </section>
         <section className="card pad"><h2 className="t-hl1">오늘의 알림 추이</h2><div className="notification-trends">{["결제 연결 오류", "방송 화면 끊김", "지급 실패", "구독 결제 실패"].map((label) => <div key={label}><span>{label}</span><strong>—</strong><small>집계 미연결</small></div>)}</div></section>
