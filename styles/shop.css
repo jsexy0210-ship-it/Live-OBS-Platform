@@ -1733,6 +1733,9 @@ body {
   .shop-side {
     display: contents;
   }
+  .shop-sec-head h1 { min-width: 0; overflow-wrap: anywhere; }
+  .shop-sec-tools { flex: none; }
+  .fl-open, .shop-sortmenu summary { white-space: nowrap; }
   .fl .fl-pc-only {
     display: none;
   }
