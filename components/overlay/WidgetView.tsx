@@ -25,6 +25,13 @@ export function fmtTimer(sec: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
+const hitDateFormat = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", month: "2-digit", day: "2-digit" });
+const hitDate = (iso?: string): string | null => {
+  if (!iso || Number.isNaN(Date.parse(iso))) return null;
+  const parts = hitDateFormat.formatToParts(new Date(iso));
+  return `${parts.find((p) => p.type === "month")?.value}.${parts.find((p) => p.type === "day")?.value}`;
+};
+
 export function fmtEventTimer(sec: number): string {
   const s = Math.max(0, Math.ceil(sec));
   return `${Math.floor(s / 3600)}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
@@ -121,22 +128,36 @@ export function WidgetView({ widget: wd, data, now, editing, landscape = false, 
     }
     case "HALL_OF_FAME": {
       const list = data.hits.slice(0, rows);
+      const [first, ...rest] = list;
+      const firstDate = hitDate(first?.createdAt);
+      const tickerCopies = rest.length ? Math.max(1, Math.ceil(6 / rest.length)) : 0;
+      const tickerRows = p.ticker === false ? rest : Array.from({ length: tickerCopies * 2 }, () => rest).flat();
       body = (
         <>
-          <span className="ow-h">{title ?? "명예의 전당"}</span>
-          {list.length === 0 ? (
+          <span className="ow-h ow-hall-heading">{title ?? "명예의 전당"}<small>최근 당첨 순</small></span>
+          {!first ? (
             <span className="ow-empty">아직 HIT 카드가 없어요</span>
           ) : (
-            <ol className="ow-list">
-              {list.map((h) => (
-                <li key={h.id} className={`ow-row${data.freshHitIds?.includes(h.id) ? " ow-hit-new" : ""}`} data-fresh={data.freshHitIds?.includes(h.id) ? "1" : undefined}>
-                  <span className="ow-tx">
-                    <span className="ow-nm2">{h.cardName}</span>
-                    <span className="ow-pd2">{h.nickname}</span>
-                  </span>
-                </li>
-              ))}
-            </ol>
+            <>
+              <div className={`ow-hall-first${data.freshHitIds?.includes(first.id) ? " ow-hit-new" : ""}`} data-fresh={data.freshHitIds?.includes(first.id) ? "1" : undefined}>
+                <span className="ow-hall-rank">1</span>
+                <span className="ow-hall-person"><span className="ow-hall-line"><span className="ow-hall-name">{first.nickname}</span>{firstDate && <time>{firstDate}</time>}</span><span className="ow-hall-card">{first.cardName}</span></span>
+              </div>
+              {rest.length > 0 && (
+                <div className="ow-hall-ticker">
+                  <div className={`ow-hall-track${p.ticker === false ? " ow-hall-static" : ""}`} style={{ animationDuration: `${num(p, "flowSec") ?? tickerCopies * rest.length * 3.2}s` }}>
+                    {tickerRows.map((h, i) => {
+                      const date = hitDate(h.createdAt);
+                      return <div key={`${h.id}-${i}`} className={`ow-hall-row${data.freshHitIds?.includes(h.id) ? " ow-hit-new" : ""}`} aria-hidden={i >= rest.length} data-fresh={data.freshHitIds?.includes(h.id) && i < rest.length ? "1" : undefined}>
+                        <span className="ow-hall-rank">{(i % rest.length) + 2}</span>
+                        {date && <time>{date}</time>}
+                        <span className="ow-hall-name">{h.nickname}</span><span className="ow-hall-card">{h.cardName}</span>
+                      </div>;
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </>
       );
@@ -161,14 +182,16 @@ export function WidgetView({ widget: wd, data, now, editing, landscape = false, 
     case "OPEN_TIMER": {
       const o = data.opening;
       let left: number | null = null;
-      if (o?.timerSeconds) {
+      if (o?.timerSeconds && o.timerSeconds > 0) {
         const startedMs = o.openingStartedAt ? Date.parse(o.openingStartedAt) : NaN;
         left = Number.isFinite(startedMs) ? o.timerSeconds - (now - startedMs) / 1000 : o.timerSeconds;
       }
+      const progress = left === null || !o?.timerSeconds ? 0 : Math.max(0, Math.min(100, (left / o.timerSeconds) * 100));
       body = (
         <>
-          <span className="ow-h">{title ?? "개봉까지"}</span>
+          <span className="ow-timer-label">{title ?? "오픈까지"}</span>
           <span className="ow-timer">{left === null ? "--:--" : fmtTimer(left)}</span>
+          <span className="ow-timer-bar" role="progressbar" aria-label="오픈까지 남은 시간" aria-valuemin={0} aria-valuemax={100} aria-valuenow={left === null ? undefined : Math.round(progress)}><i style={{ width: `${progress}%` }} /></span>
         </>
       );
       break;

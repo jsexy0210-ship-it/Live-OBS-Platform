@@ -17,7 +17,7 @@ type State = {
   live: boolean;
   opening: Item | null;
   waiting: Item[];
-  hits?: { id: string; cardName: string; nickname: string }[];
+  hits?: { id: string; cardName: string; nickname: string; createdAt?: string }[];
   shop?: { name: string; url: string | null };
   orderEvents?: OrderEvent[];
   eventCard?: EventCardData | null;
