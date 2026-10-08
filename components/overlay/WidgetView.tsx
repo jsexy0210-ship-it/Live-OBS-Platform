@@ -1,7 +1,7 @@
 "use client";
 
 import "../../styles/overlay-widgets.css";
-import type { CSSProperties } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { type LiveData, type PropValue, type Widget } from "./layout";
 
 // 위젯 한 개를 그린다(오버레이 화면과 편집기 미리보기가 같은 그림을 쓴다). 위치·크기는 부모(1080×1920 또는 1920×1080 무대) 대비 %.
@@ -31,6 +31,38 @@ const hitDate = (iso?: string): string | null => {
   const parts = hitDateFormat.formatToParts(new Date(iso));
   return `${parts.find((p) => p.type === "month")?.value}.${parts.find((p) => p.type === "day")?.value}`;
 };
+
+function HallTicker({ hits, freshHitIds, enabled, flowSec }: { hits: LiveData["hits"]; freshHitIds?: string[]; enabled: boolean; flowSec?: number }) {
+  const viewport = useRef<HTMLDivElement>(null);
+  const cycle = useRef<HTMLDivElement>(null);
+  const [overflows, setOverflows] = useState(false);
+  useLayoutEffect(() => {
+    const view = viewport.current;
+    const content = cycle.current;
+    if (!view || !content) return;
+    const measure = () => setOverflows(content.getBoundingClientRect().height > view.getBoundingClientRect().height + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(view);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [hits.length]);
+  const scrolling = enabled && overflows;
+  const renderRows = (duplicate: boolean) => hits.map((h, i) => {
+    const date = hitDate(h.createdAt);
+    return <div key={`${h.id}-${i}`} className={`ow-hall-row${freshHitIds?.includes(h.id) ? " ow-hit-new" : ""}`} aria-hidden={duplicate || undefined} data-fresh={freshHitIds?.includes(h.id) && !duplicate ? "1" : undefined}>
+      <span className="ow-hall-rank">{i + 2}</span>
+      {date && <time>{date}</time>}
+      <span className="ow-hall-name">{h.nickname}</span><span className="ow-hall-card">{h.cardName}</span>
+    </div>;
+  });
+  return <div className="ow-hall-ticker" ref={viewport}>
+    <div className={`ow-hall-track${scrolling ? "" : " ow-hall-static"}`} style={scrolling ? { animationDuration: `${flowSec ?? hits.length * 3.2}s` } : undefined}>
+      <div ref={cycle}>{renderRows(false)}</div>
+      {scrolling && <div aria-hidden="true">{renderRows(true)}</div>}
+    </div>
+  </div>;
+}
 
 export function fmtEventTimer(sec: number): string {
   const s = Math.max(0, Math.ceil(sec));
@@ -77,7 +109,7 @@ export function WidgetView({ widget: wd, data, now, editing, landscape = false, 
   };
   for (const k of Object.keys(style)) if (style[k] === undefined) delete style[k];
   const appear = typeof p.appear === "string" && p.appear !== "none" && !editing ? ` ow-ap-${p.appear}` : "";
-  const cls = `ow ow-${wd.type.toLowerCase().replace(/_/g, "-")}${p.glow ? " ow-glow" : ""}${appear}`;
+  let cls = `ow ow-${wd.type.toLowerCase().replace(/_/g, "-")}${p.glow ? " ow-glow" : ""}${appear}`;
   const title = str(p, "title");
   const rows = Math.max(1, Math.min(10, num(p, "rows") ?? 5));
 
@@ -130,8 +162,6 @@ export function WidgetView({ widget: wd, data, now, editing, landscape = false, 
       const list = data.hits.slice(0, rows);
       const [first, ...rest] = list;
       const firstDate = hitDate(first?.createdAt);
-      const tickerCopies = rest.length ? Math.max(1, Math.ceil(6 / rest.length)) : 0;
-      const tickerRows = p.ticker === false ? rest : Array.from({ length: tickerCopies * 2 }, () => rest).flat();
       body = (
         <>
           <span className="ow-h ow-hall-heading">{title ?? "명예의 전당"}<small>최근 당첨 순</small></span>
@@ -143,20 +173,7 @@ export function WidgetView({ widget: wd, data, now, editing, landscape = false, 
                 <span className="ow-hall-rank">1</span>
                 <span className="ow-hall-person"><span className="ow-hall-line"><span className="ow-hall-name">{first.nickname}</span>{firstDate && <time>{firstDate}</time>}</span><span className="ow-hall-card">{first.cardName}</span></span>
               </div>
-              {rest.length > 0 && (
-                <div className="ow-hall-ticker">
-                  <div className={`ow-hall-track${p.ticker === false ? " ow-hall-static" : ""}`} style={{ animationDuration: `${num(p, "flowSec") ?? tickerCopies * rest.length * 3.2}s` }}>
-                    {tickerRows.map((h, i) => {
-                      const date = hitDate(h.createdAt);
-                      return <div key={`${h.id}-${i}`} className={`ow-hall-row${data.freshHitIds?.includes(h.id) ? " ow-hit-new" : ""}`} aria-hidden={i >= rest.length} data-fresh={data.freshHitIds?.includes(h.id) && i < rest.length ? "1" : undefined}>
-                        <span className="ow-hall-rank">{(i % rest.length) + 2}</span>
-                        {date && <time>{date}</time>}
-                        <span className="ow-hall-name">{h.nickname}</span><span className="ow-hall-card">{h.cardName}</span>
-                      </div>;
-                    })}
-                  </div>
-                </div>
-              )}
+              {rest.length > 0 && <HallTicker hits={rest} freshHitIds={data.freshHitIds} enabled={p.ticker !== false} flowSec={num(p, "flowSec")} />}
             </>
           )}
         </>
@@ -187,6 +204,7 @@ export function WidgetView({ widget: wd, data, now, editing, landscape = false, 
         left = Number.isFinite(startedMs) ? o.timerSeconds - (now - startedMs) / 1000 : o.timerSeconds;
       }
       const progress = left === null || !o?.timerSeconds ? 0 : Math.max(0, Math.min(100, (left / o.timerSeconds) * 100));
+      if (left !== null && left > 0 && left <= 10) cls += " ow-timer-urgent";
       body = (
         <>
           <span className="ow-timer-label">{title ?? "오픈까지"}</span>
