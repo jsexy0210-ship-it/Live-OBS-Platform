@@ -1814,6 +1814,10 @@ body {
   background: var(--cs-page);
   box-shadow: inset 0 1px 0 var(--cs-line);
 }
+@media (max-width: 767px) {
+  .notice-form .au-ff { flex-wrap: wrap; }
+  .notice-form .chk { min-height: var(--ui-hit-min); max-width: 100%; }
+}
 .au-fs {
   display: flex;
   flex-direction: column;

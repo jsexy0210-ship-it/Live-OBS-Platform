@@ -41,6 +41,7 @@ export function NoticeForm({ notice, onSaved, onStale }: { notice?: Notice; onSa
 
   return (
     <form
+      className="notice-form"
       onSubmit={(e) => {
         e.preventDefault();
         void save(true);
