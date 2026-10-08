@@ -34,6 +34,7 @@ const POLL_MS = 15_000;
 // 실시간 채널 오류로 다시 읽는 간격: 처음 오류는 바로 확인하고, 계속 실패하면 3초에서 30초까지 늘린다(서버가 죽어 있을 때 3초마다 읽지 않게)
 const ERROR_RELOAD_MIN_MS = 3_000;
 const ERROR_RELOAD_MAX_MS = 30_000;
+const OFFLINE_NOTICE_DELAY_MS = 2_000;
 
 // 연결 실패: 그린 화면이 있으면 그대로 두고 안내만 더하고, 아직 한 번도 못 그렸으면 안내만 보인다(OV-006). 주소가 바뀐 상태는 그대로 둔다
 const offline = (v: View): View => (v.kind === "ok" ? { ...v, offline: true } : v.kind === "gone" ? v : { kind: "offline" });
@@ -59,9 +60,50 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
   // 연결이 끊겼다고 표시한 동안에는 version이 그대로여도 다시 읽어 안내를 거둔다(회복 뒤 같은 version이 와도)
   const isOffline = useRef(false);
   const errorReload = useRef({ at: 0, gap: ERROR_RELOAD_MIN_MS });
-  const markOffline = useCallback(() => {
-    isOffline.current = true;
-    setView(offline);
+  const lossStartedAt = useRef<number | null>(null);
+  const frozenNow = useRef<number | null>(null);
+  const lossTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const probeTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const loadRef = useRef<() => void>(() => {});
+  const versionRef = useRef<() => void>(() => {});
+  const stateFailed = useRef(false);
+  const versionFailed = useRef(false);
+  const resetLoss = useCallback(() => {
+    if (lossTimer.current) clearTimeout(lossTimer.current);
+    if (probeTimer.current) clearInterval(probeTimer.current);
+    lossTimer.current = null;
+    probeTimer.current = null;
+    lossStartedAt.current = null;
+    frozenNow.current = null;
+    isOffline.current = false;
+    stateFailed.current = false;
+    versionFailed.current = false;
+  }, []);
+  const recoverChannel = useCallback((channel: "state" | "version") => {
+    if (channel === "state") stateFailed.current = false;
+    else versionFailed.current = false;
+    if (stateFailed.current || versionFailed.current || lossStartedAt.current === null) return;
+    resetLoss();
+    setView((v) => v.kind === "ok" && v.offline ? { ...v, offline: false } : v);
+  }, [resetLoss]);
+  const markOffline = useCallback((channel: "state" | "version") => {
+    if (channel === "state") stateFailed.current = true;
+    else versionFailed.current = true;
+    if (lossStartedAt.current !== null) return;
+    lossStartedAt.current = Date.now();
+    // 실패한 채널을 다시 확인한다. 다른 채널의 성공만으로 끊김을 해제하지 않는다.
+    probeTimer.current = setInterval(() => {
+      if (stateFailed.current) loadRef.current();
+      if (versionFailed.current) versionRef.current();
+    }, 500);
+    lossTimer.current = setTimeout(() => {
+      if (lossStartedAt.current === null) return;
+      frozenNow.current = lossStartedAt.current;
+      isOffline.current = true;
+      if (probeTimer.current) clearInterval(probeTimer.current);
+      probeTimer.current = null;
+      setView(offline);
+    }, OFFLINE_NOTICE_DELAY_MS);
   }, []);
   const load = useCallback(async () => {
     const n = ++sent.current;
@@ -69,23 +111,26 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
     try {
       res = await fetch(`${base}/state`, { cache: "no-store" });
     } catch {
-      if (n > applied.current) markOffline();
+      if (n > applied.current) markOffline("state");
       return;
     }
     if (n <= applied.current) return;
     if (res.status === 404) {
       applied.current = n;
       version.current = null;
+      resetLoss();
       return setView({ kind: "gone" });
     }
-    if (!res.ok) return markOffline();
+    if (!res.ok) return markOffline("state");
     const state = (await res.json().catch(() => null)) as State | null;
-    if (!state || n <= applied.current) return;
+    if (n <= applied.current) return;
+    if (!state) return markOffline("state");
     applied.current = n;
     version.current = state.version;
-    isOffline.current = false;
+    recoverChannel("state");
     errorReload.current.gap = ERROR_RELOAD_MIN_MS;
-    setView({ kind: "ok", state, stateReceivedAt: Date.now(), offline: false });
+    if (isOffline.current && versionFailed.current) return;
+    setView({ kind: "ok", state, stateReceivedAt: Date.now(), offline: isOffline.current });
     // 새 HIT 카드 강조: 처음 읽을 때 이미 있던 카드는 강조하지 않는다
     const hitIds = (state.hits ?? []).map((h) => h.id);
     if (seenHits.current === null) seenHits.current = new Set(hitIds);
@@ -117,11 +162,29 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
       }
       return next;
     });
-  }, [base, markOffline]);
+  }, [base, markOffline, recoverChannel, resetLoss]);
+  loadRef.current = () => void load();
+
+  const checkVersion = useCallback(async () => {
+    try {
+      const res = await fetch(`${base}/version`, { cache: "no-store" });
+      if (res.status === 404) return void load();
+      if (!res.ok) return markOffline("version");
+      const value = ((await res.json()) as { version?: unknown }).version;
+      if (typeof value !== "number") return markOffline("version");
+      const refresh = versionFailed.current || isOffline.current || value !== version.current;
+      recoverChannel("version");
+      if (refresh) void load();
+    } catch {
+      markOffline("version");
+    }
+  }, [base, load, markOffline, recoverChannel]);
+  versionRef.current = () => void checkVersion();
 
   const layoutVersion = useRef<number | null>(null);
   const aspect = landscape ? "16x9" : "9x16";
   const loadLayout = useCallback(async () => {
+    if (isOffline.current) return;
     try {
       const res = await fetch(`${base}/layout?aspect=${aspect}`, { cache: "no-store" });
       if (!res.ok) return;
@@ -164,15 +227,14 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
     }
     const poll = setInterval(() => {
       void loadLayout();
-      fetch(`${base}/version`, { cache: "no-store" })
-        .then(async (r) => (r.status === 404 ? onVersion(null) : r.ok ? onVersion(((await r.json()) as { version?: unknown }).version) : undefined))
-        .catch(markOffline);
+      void checkVersion();
     }, POLL_MS);
     return () => {
       es?.close();
       clearInterval(poll);
+      resetLoss();
     };
-  }, [base, load, loadLayout, markOffline]);
+  }, [base, checkVersion, load, loadLayout, resetLoss]);
 
   // 개봉 타이머를 1초마다 갱신
   useEffect(() => {
@@ -189,23 +251,21 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
   }, [W, H]);
 
   const state = view.kind === "ok" ? view.state : null;
-  const data: LiveData | null = state ? { live: state.live, opening: state.opening, waiting: state.waiting, hits: state.hits ?? [], eventCard: state.eventCard ?? null, purchaseRanking: state.purchaseRanking ?? [], freshHitIds: Object.keys(freshHits).filter((id) => freshHits[id]! > now), shop: state.shop ?? null, alert: null } : null;
-  // 주문이 없는 현재 주문 카드·방송이 아닐 때의 주문대기는 그리지 않는다(이전 화면과 같음). 신규 주문 알림·쇼핑몰 정보는 보낼 데이터가 없다
+  const renderNow = view.kind === "ok" && view.offline ? frozenNow.current ?? now : now;
+  const data: LiveData | null = state ? { live: state.live, opening: state.opening, waiting: state.waiting, hits: state.hits ?? [], eventCard: state.eventCard ?? null, purchaseRanking: state.purchaseRanking ?? [], freshHitIds: Object.keys(freshHits).filter((id) => freshHits[id]! > renderNow), shop: state.shop ?? null, alert: null } : null;
+  // 방송 준비 중에는 두 빈 패널을 유지하고, 방송 중 개봉 전 현재 주문 칸은 기존처럼 숨긴다.
   const shown = (layout?.widgets ?? []).filter(
     (w) =>
       w.visible &&
-      !(w.type === "CURRENT_ORDER" && !state?.opening) &&
-      !(w.type === "QUEUE" && !state?.live) &&
-      !(w.type === "NEW_ORDER_ALERT" && !(shownAlerts[w.id] && shownAlerts[w.id]!.until > now)),
+      !(w.type === "CURRENT_ORDER" && state?.live && !state.opening) &&
+      !(w.type === "NEW_ORDER_ALERT" && !(shownAlerts[w.id] && shownAlerts[w.id]!.until > renderNow)),
   );
 
   return (
     <div className="ovl-root">
-      <div className={`ovl ${landscape ? "ovl-land" : "ovl-port"}`} style={{ width: W, height: H, transform: `scale(${scale})` }} data-testid="overlay">
+      <div className={`ovl ${landscape ? "ovl-land" : "ovl-port"}${view.kind === "ok" && view.offline ? " ovl-offline" : ""}`} style={{ width: W, height: H, transform: `scale(${scale})` }} data-testid="overlay">
         {view.kind === "offline" && (
-          <div className="ovl-pill ovl-notice" role="status" data-testid="overlay-offline">
-            연결이 끊겼어요. 다시 연결하는 중이에요
-          </div>
+          <div className="ovl-disconnect" role="status"><b data-testid="overlay-offline">연결이 끊겼어요. 다시 연결하는 중이에요</b></div>
         )}
         {view.kind === "gone" && (
           <div className="ovl-pill ovl-notice" role="status" data-testid="overlay-gone">
@@ -215,8 +275,9 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
         {state && data && (
           <>
             {view.kind === "ok" && view.offline && (
-              <div className="ovl-pill ovl-top" role="status" data-testid="overlay-offline">
-                연결이 끊겼어요. 다시 연결하는 중이에요
+              <div className="ovl-disconnect" role="status">
+                <b data-testid="overlay-offline">연결이 끊겼어요. 다시 연결하는 중이에요</b>
+                <span>{Math.max(0, Math.floor((now - view.stateReceivedAt) / 1000))}초 전 화면이에요</span>
               </div>
             )}
             {!state.live && !state.opening && (
@@ -229,7 +290,7 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
                 key={`${w.id}:${w.type === "NEW_ORDER_ALERT" ? shownAlerts[w.id]?.event.id : ""}`}
                 widget={w}
                 data={w.type === "NEW_ORDER_ALERT" ? { ...data, alert: shownAlerts[w.id]?.event ?? null } : data}
-                now={now}
+                now={renderNow}
                 landscape={landscape}
                 stateReceivedAt={view.kind === "ok" ? view.stateReceivedAt : now}
               />

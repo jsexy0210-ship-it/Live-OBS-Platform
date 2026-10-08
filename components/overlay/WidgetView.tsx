@@ -109,7 +109,7 @@ export function WidgetView({ widget: wd, data, now, editing, landscape = false, 
   };
   for (const k of Object.keys(style)) if (style[k] === undefined) delete style[k];
   const appear = typeof p.appear === "string" && p.appear !== "none" && !editing ? ` ow-ap-${p.appear}` : "";
-  let cls = `ow ow-${wd.type.toLowerCase().replace(/_/g, "-")}${p.glow ? " ow-glow" : ""}${appear}`;
+  let cls = `ow ow-${wd.type.toLowerCase().replace(/_/g, "-")}${p.glow ? " ow-glow" : ""}${wd.type === "CURRENT_ORDER" && !data.live && !data.opening ? " ow-calm-card" : ""}${appear}`;
   const title = str(p, "title");
   const rows = Math.max(1, Math.min(10, num(p, "rows") ?? 5));
 
@@ -127,6 +127,11 @@ export function WidgetView({ widget: wd, data, now, editing, landscape = false, 
             {o.productLabel} ×{o.quantity}
           </span>
         </>
+      ) : !data.live ? (
+        <span className="ow-calm">
+          <b>잠시 후 방송을 시작해요</b>
+          <span>{data.shop?.url ? `주문은 ${data.shop.url.replace(/^https?:\/\//, "")}에서 할 수 있어요` : "쇼핑몰에서 주문할 수 있어요"}</span>
+        </span>
       ) : (
         <span className="ow-empty">{title ?? "현재 주문"}을 기다리고 있어요</span>
       );

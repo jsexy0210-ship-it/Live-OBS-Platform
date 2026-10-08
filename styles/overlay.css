@@ -41,6 +41,27 @@ body:has(.ovl-root) {
 .ovl-land .ovl-notice {
   top: 40px;
 }
+.ovl-disconnect {
+  position: absolute;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 680px;
+  height: 130px;
+  border-radius: 18px;
+  background: #0c0d10e8;
+  box-shadow: 0 0 0 2px #ffffff55, 0 12px 40px #0009;
+  text-align: center;
+}
+.ovl-port .ovl-disconnect { left: 200px; top: 470px; }
+.ovl-land .ovl-disconnect { left: 620px; top: 470px; }
+.ovl-disconnect b { font-size: 32px; }
+.ovl-disconnect span { color: #ffffffb3; font-size: 23px; }
+.ovl-offline .ow { opacity: 0.5; transition: opacity 0.3s ease-out; }
+.ovl-offline .ow, .ovl-offline .ow * { animation-play-state: paused !important; }
 /* 상태 안내 알약(연결 끊김·방송 준비 중): 위젯 배치와 상관없이 왼쪽 위 */
 .ovl-top {
   position: absolute;
