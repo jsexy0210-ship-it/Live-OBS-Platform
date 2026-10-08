@@ -13,7 +13,7 @@ import { PAYMENT_KIND, safeUrl } from "../../../../_components/payments";
 import { day, dayTime, won } from "../../../../_components/partners";
 import { REFUND_SOURCE, REFUND_STATUS, refundReason, type Refund } from "../../../../_components/refunds";
 
-// MA-027 환불 처리(GET /api/admin/subscription-refunds/{id}, 승인·거절). 승인(결제 취소 요청)은 최고관리자만(billing.refund), 거절은 최고관리자·운영(billing.manage).
+// MA-027 환불 처리(GET /api/admin/subscription-refunds/{id}, 승인·거절). 승인·거절은 최고관리자만(billing.refund).
 // 승인 결과: 환불 완료 / 실패(실패 사유를 보이고 다시 승인 가능) / 처리 중(응답이 끊긴 경우, 다시 승인하면 같은 환불로 한 번만 처리).
 // 다른 곳에서 먼저 처리했으면(409) 최신 상태를 다시 읽는다. 같은 청구에 이미 새 요청이 있으면(409 already_requested) 목록으로 안내한다.
 const MAX_NOTE = 200;
@@ -95,7 +95,6 @@ export default function RefundDetailPage() {
   const { refundId } = useParams<{ refundId: string }>();
   const { me } = useAdmin();
   const canApprove = adminCan(me.role, "billing.refund");
-  const canReject = adminCan(me.role, "billing.manage");
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [confirmed, setConfirmed] = useState(false);
   const [approveNote, setApproveNote] = useState("");
@@ -235,7 +234,7 @@ export default function RefundDetailPage() {
                       <button className="btn" type="button" onClick={() => void approve(rf)} disabled={!confirmed || approving}>
                         {approving ? "처리 중" : rf.status === "FAILED" || rf.status === "PROCESSING" ? "다시 승인하고 카드 결제 취소" : "환불 승인하고 카드 결제 취소"}
                       </button>
-                      {canReject && rf.status !== "PROCESSING" && (
+                      {rf.status !== "PROCESSING" && (
                         <button className="btn btn-out" type="button" onClick={() => setReject(true)} disabled={approving}>
                           거절
                         </button>
@@ -245,15 +244,8 @@ export default function RefundDetailPage() {
                 ) : (
                   <>
                     <p className="t-b2" style={{ margin: 0 }}>
-                      승인은 최고관리자만 할 수 있습니다.
+                      승인·거절은 최고관리자만 할 수 있습니다.
                     </p>
-                    {canReject && rf.status !== "PROCESSING" && (
-                      <div>
-                        <button className="btn btn-out" type="button" onClick={() => setReject(true)}>
-                          거절
-                        </button>
-                      </div>
-                    )}
                   </>
                 )}
               </section>

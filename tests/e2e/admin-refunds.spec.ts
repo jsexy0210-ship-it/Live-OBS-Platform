@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
 import { hashPassword } from "../../lib/server/auth/password";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 
-// 마스터 관리자 환불 요청 목록·처리(MA-026·027): 목록 탭·사유 문구, 거절(사유 필수), 권한(승인은 최고관리자만, 거절은 운영까지, CS·조회 전용은 보기만).
+// 마스터 관리자 환불 요청 목록·처리(MA-026·027): 목록 탭·사유 문구, 거절(사유 필수), 권한(승인·거절은 최고관리자만, 운영·CS는 보기만).
 // 승인(결제 취소 요청)은 가짜 결제 공급자가 필요해 테스트 모드 서버용 admin-refund-approve.spec.ts에서 확인한다.
 // 계정·파트너스·청구는 폐기용 테스트 DB(이름이 _test로 끝남)에 실행마다 새로 만든다.
 const password = randomBytes(12).toString("base64url");
@@ -84,22 +84,22 @@ test("최고관리자: 거절은 사유가 있어야 하고, 거절하면 상태
   expect(after.decisionNote).toBe("정책 밖 요청입니다.");
 });
 
-test("운영 담당: 거절은 할 수 있지만 승인은 못 한다(최고관리자 전용 안내)", async ({ page }) => {
+test("운영 담당: 상세는 볼 수 있지만 승인·거절 버튼과 직접 거절 권한이 없다", async ({ page }) => {
   await login(page, emails.ops);
   await page.goto(`/admin/billing/refunds/${ids.ops}`);
-  await expect(page.getByText("승인은 최고관리자만 할 수 있습니다.")).toBeVisible();
+  await expect(page.getByText("승인·거절은 최고관리자만 할 수 있습니다.")).toBeVisible();
   await expect(page.getByRole("button", { name: /환불 실행/ })).toHaveCount(0);
-  await page.getByRole("button", { name: "거절", exact: true }).click();
-  await page.getByRole("dialog").getByLabel("거절 사유").fill("운영 판단으로 거절합니다.");
-  await page.getByRole("dialog").getByRole("button", { name: "거절", exact: true }).click();
-  await expect(page.getByTestId("refund-status")).toContainText("거절");
+  await expect(page.getByRole("button", { name: "거절", exact: true })).toHaveCount(0);
+  const response = await page.request.post(`/api/admin/subscription-refunds/${ids.ops}/reject`, { data: { note: "운영 판단", expectedVersion: 0 } });
+  expect(response.status()).toBe(403);
+  expect((await db.subscriptionRefund.findUniqueOrThrow({ where: { id: ids.ops } })).status).toBe("REQUESTED");
 });
 
 test("CS: 목록·상세는 볼 수 있지만 승인·거절 버튼이 없다", async ({ page }) => {
   await login(page, emails.cs);
   await page.goto(`/admin/billing/refunds/${ids.auto}`);
   await expect(page.getByTestId("refund-status")).toContainText("처리 대기");
-  await expect(page.getByText("승인은 최고관리자만 할 수 있습니다.")).toBeVisible();
+  await expect(page.getByText("승인·거절은 최고관리자만 할 수 있습니다.")).toBeVisible();
   await expect(page.getByRole("button", { name: "거절", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /환불 실행/ })).toHaveCount(0);
 });

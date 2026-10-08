@@ -10,7 +10,7 @@ import { settlePayment } from "../../lib/server/billing/subscription";
 import { prisma } from "../../lib/server/db";
 import { createAdmin, createSeller, db, resetDb } from "./helpers";
 
-// 구독 환불 요청·처리(MA-026·027): 권한(보기 전 역할, 요청·승인·반려는 최고관리자·운영), 시스템 요청(해지 뒤 확정된 결제),
+// 구독 환불 요청·처리(MA-026·027): 권한(보기 전 역할, 요청은 최고관리자·운영, 승인·거절은 최고관리자), 시스템 요청(해지 뒤 확정된 결제),
 // 직접 요청 검사, 승인 = 가짜 공급자 취소(멱등), 실패·응답 끊김 뒤 다시 승인, 반려, version 충돌·동시 승인, 로그 추적.
 beforeAll(() => {
   process.env.BILLING_PROVIDER = "fake";
@@ -76,7 +76,7 @@ describe("시스템 환불 요청", () => {
 });
 
 describe("권한·직접 요청", () => {
-  it("보기는 모든 역할, 요청·반려는 최고관리자·운영만(CS·조회 전용 403), 승인은 최고관리자만(운영도 403). 로그인이 없으면 401", async () => {
+  it("보기는 모든 역할, 요청은 최고관리자·운영만, 승인·거절은 최고관리자만. 거절 권한 실패 시 다른 판매자 요청도 유지한다", async () => {
     const { payment } = await paidPayment();
     const ops = await adminCookie("OPERATIONS");
     for (const role of ["CS", "READ_ONLY"] as const) {
@@ -96,10 +96,19 @@ describe("권한·직접 요청", () => {
     }
     expect((await approve(ops.cookie, id, { expectedVersion: 0 })).status).toBe(403);
     expect((await db.subscriptionRefund.findUniqueOrThrow({ where: { id } })).status).toBe("REQUESTED");
-    expect((await reject(ops.cookie, id, { note: "운영 반려", expectedVersion: 0 })).body.refund).toMatchObject({ status: "REJECTED" });
+    const otherPayment = await paidPayment();
+    const su = await adminCookie("SUPER_ADMIN");
+    const other = await create(su.cookie, { paymentId: otherPayment.payment.id, amount: 1000, reason: "다른 판매자 요청" });
+    expect(other.status).toBe(201);
+    expect((await reject(ops.cookie, id, { note: "운영 반려", expectedVersion: 0 })).status).toBe(403);
+    expect((await db.subscriptionRefund.findUniqueOrThrow({ where: { id } })).status).toBe("REQUESTED");
+    expect((await db.subscriptionRefund.findUniqueOrThrow({ where: { id: other.body.refund.id } })).status).toBe("REQUESTED");
+    expect((await reject(su.cookie, id, { note: "최고관리자 판단", expectedVersion: 0 })).body.refund).toMatchObject({ status: "REJECTED", sellerId: payment.sellerId });
+    expect((await db.subscriptionRefund.findUniqueOrThrow({ where: { id: other.body.refund.id } })).status).toBe("REQUESTED");
     expect((await json(await listRoute(req("/api/admin/subscription-refunds", "")))).status).toBe(401);
     expect(await db.auditLog.count({ where: { action: "subscription.refund.request", targetId: id, actorId: ops.id } })).toBe(1);
     expect(await db.auditLog.count({ where: { action: "subscription.refund.approve", targetId: id } })).toBe(0);
+    expect(await db.auditLog.count({ where: { action: "subscription.refund.reject", targetId: id, actorId: ops.id } })).toBe(0);
   });
 
   it("금액·사유·청구 상태를 검사하고, 같은 청구에 진행 중인 요청이 있으면 409. 반려된 뒤에는 다시 요청할 수 있다", async () => {
