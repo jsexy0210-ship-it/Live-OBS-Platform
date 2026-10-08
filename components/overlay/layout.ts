@@ -35,7 +35,7 @@ const DEFAULT_BOX: Record<Aspect, Record<WidgetType, [number, number, number, nu
     SHOP_INFO: [3, 32, 94, 4],
     OPEN_TIMER: [70, 2, 27, 6],
     NEW_ORDER_ALERT: [3, 20, 94, 10],
-    EVENT_CARD: [3, 32, 94, 18],
+    EVENT_CARD: [3, 32, 39, 19],
     PURCHASE_RANKING: [50, 13, 47, 18],
   },
   "16x9": {
@@ -46,7 +46,7 @@ const DEFAULT_BOX: Record<Aspect, Record<WidgetType, [number, number, number, nu
     SHOP_INFO: [2, 88, 26, 8],
     OPEN_TIMER: [72, 84, 26, 12],
     NEW_ORDER_ALERT: [2, 30, 26, 14],
-    EVENT_CARD: [72, 56, 26, 14],
+    EVENT_CARD: [58, 56, 40, 14],
     PURCHASE_RANKING: [72, 4, 26, 40],
   },
 };

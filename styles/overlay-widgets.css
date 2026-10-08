@@ -221,8 +221,8 @@
 /* 이벤트 할인 카드(OV-007) */
 .ow-event-card {
   justify-content: center;
-  gap: calc(10px * var(--w-event-scale, 1));
-  padding: calc(22px * var(--w-event-scale, 1)) calc(24px * var(--w-event-scale, 1));
+  gap: calc(10px * var(--w-event-scale, 1) - 2px * var(--w-event-compact, 0));
+  padding: calc(22px * var(--w-event-scale, 1) - 7px * var(--w-event-compact, 0)) calc(24px * var(--w-event-scale, 1));
   border-radius: 22px;
   background: #0c0a18d1;
   box-shadow: 0 0 0 2px #ffffff24, 0 18px 40px #00000073;
@@ -306,7 +306,7 @@
   flex-direction: row;
   align-items: center;
   gap: calc(22px * var(--w-event-scale, 1));
-  padding: calc(18px * var(--w-event-scale, 1)) calc(24px * var(--w-event-scale, 1));
+  padding: calc(18px * var(--w-event-scale, 1) - 7px * var(--w-event-compact, 0)) calc(24px * var(--w-event-scale, 1));
 }
 .ovl-land .ow-ev-main { flex: 1; }
 .ovl-land .ow-ev-sub-port { display: none; }
