@@ -1,6 +1,5 @@
 import type { Prisma, PrismaClient, ShopLegalDoc, ShopLegalKind } from "@prisma/client";
 import { writeAudit } from "../audit/log";
-import { shopOpen } from "../buyers/signup";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
 import { cleanText } from "../text/clean";
 
@@ -8,7 +7,7 @@ import { cleanText } from "../text/clean";
 // - 본문은 파트너스가 입력한 글자 그대로 보여 준다(화면은 텍스트로만 그림, HTML 해석 없음). 기본 서식(docs/terms)은 게시 조건이 있어 앱이 대신 게시하지 않는다.
 // - 조회는 같은 쇼핑몰 파트너스 계정 누구나, 쓰기는 대표자·「쇼핑몰 설정」(SHOP_SETTINGS) 직원만. 쇼핑몰·종류마다 한 줄이고 저장할 때마다 version이 올라간다(다른 창 덮어쓰기 막기).
 // - 게시하려면 본문과 시행일이 있어야 한다. 게시하지 않았으면 구매자 화면은 「준비 중」 안내. 처음 게시한 시각(publishedAt)은 내용을 고쳐도 유지한다.
-// - 로그 추적에는 본문을 남기지 않고 글자 수만 남긴다. 구매자 조회는 로그인 없이, 운영 중인 쇼핑몰(shopOpen)만.
+// - 로그 추적에는 본문을 남기지 않고 글자 수만 남긴다. 구매자 조회는 로그인 없이 활성 쇼핑몰의 게시본만.
 
 type Tx = Prisma.TransactionClient;
 export type AuditMeta = { ip?: string | null; userAgent?: string | null };
@@ -103,16 +102,16 @@ export async function saveSellerLegal(db: PrismaClient, ctx: TenantContext, kind
 
 // ───────── 구매자 ─────────
 
-// 게시본 읽기(쇼핑몰이 운영 중인지는 부르는 쪽이 shopOpen으로 먼저 확인한다). 게시하지 않았으면 { published: false }(화면은 「준비 중」).
+// 게시본 읽기(부르는 쪽에서 활성 쇼핑몰 여부를 확인한다). 게시하지 않았으면 { published: false }(화면은 「준비 중」).
 export async function publicLegalOf(db: PrismaClient, sellerId: string, kind: ShopLegalKind) {
   const row = await db.shopLegalDoc.findUnique({ where: { sellerId_kind: { sellerId, kind } } });
   if (!row || !row.isPublished) return { published: false as const, kind: param(kind) };
   return { published: true as const, kind: param(kind), body: row.body, effectiveOn: dateText(row.effectiveOn), version: row.version };
 }
 
-// 쇼핑몰 주소로 읽기. 없거나 운영 중이 아닌 쇼핑몰이면 null(404).
+// 쇼핑몰 주소로 읽기. 없거나 비활성 쇼핑몰이면 null(404).
 export async function publicLegal(db: PrismaClient, slug: string, kind: ShopLegalKind) {
-  const shop = await db.seller.findUnique({ where: { slug: slug.slice(0, 60) }, select: { id: true } });
-  if (!shop || !(await shopOpen(db, shop.id))) return null;
+  const shop = await db.seller.findUnique({ where: { slug: slug.slice(0, 60) }, select: { id: true, status: true } });
+  if (!shop || shop.status !== "ACTIVE") return null;
   return publicLegalOf(db, shop.id, kind);
 }
