@@ -1137,6 +1137,9 @@ body {
   .shop-my-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; }
   .shop-my-grade { display: none; }
   .shop-my-stats a { align-items: center; text-align: center; padding: 12px 4px; border: 0; border-right: 1px solid var(--wds-line-solid-neutral); border-radius: 0; }
+  .shop-my-stats a:nth-child(1) { order: 3; border-right: 0; }
+  .shop-my-stats a:nth-child(2) { order: 1; }
+  .shop-my-stats a:nth-child(3) { order: 2; }
   .shop-my-stats a:last-child { border-right: 0; }
   .shop-my-stats strong { font-size: 16px; }
   .shop-my-recent { display: none; }
