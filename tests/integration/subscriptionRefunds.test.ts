@@ -87,6 +87,8 @@ describe("권한·직접 요청", () => {
     expect(made.status).toBe(201);
     expect(made.body.refund).toMatchObject({ source: "ADMIN", status: "REQUESTED", amount: 50_000, reason: "청약 철회", requestedByAdminId: ops.id, payment: { amount: 199_000 } });
     const id = made.body.refund.id;
+    const detail = await json(await getRoute(req(`/api/admin/subscription-refunds/${id}`, ops.cookie), p(id)));
+    expect(detail.body.refund.history.map((event: { action: string }) => event.action)).toEqual(["subscription.refund.request"]);
     for (const role of ["CS", "READ_ONLY"] as const) {
       const a = await adminCookie(role);
       expect((await json(await listRoute(req("/api/admin/subscription-refunds", a.cookie)))).status).toBe(200);
@@ -143,6 +145,11 @@ describe("승인·반려", () => {
     expect((await approve(su.cookie, id, { expectedVersion: 2 })).body.error).toBe("not_decidable");
     expect((await reject(su.cookie, id, { note: "x", expectedVersion: 2 })).body.error).toBe("not_decidable");
     expect((await db.auditLog.findMany({ where: { targetType: "SubscriptionRefund", targetId: id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] })).map((a) => a.action)).toEqual([
+      "subscription.refund.request",
+      "subscription.refund.approve",
+      "subscription.refund.refunded",
+    ]);
+    expect((await json(await getRoute(req(`/api/admin/subscription-refunds/${id}`, su.cookie), p(id)))).body.refund.history.map((event: { action: string }) => event.action)).toEqual([
       "subscription.refund.request",
       "subscription.refund.approve",
       "subscription.refund.refunded",

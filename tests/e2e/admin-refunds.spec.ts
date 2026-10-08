@@ -68,7 +68,9 @@ test("목록: 승인 대기 탭에 요청이 보이고, 시스템이 만든 요�
 test("최고관리자: 거절은 사유가 있어야 하고, 거절하면 상태와 DB에 반영된다. 승인 영역은 확인 체크 전에는 막혀 있다", async ({ page }) => {
   await login(page, emails.super);
   await page.goto(`/admin/billing/refunds/${ids.rej}`);
-  await expect(page.getByTestId("refund-status")).toContainText("처리 대기");
+  await expect(page.getByTestId("refund-status")).toContainText("승인 대기");
+  await expect(page.getByRole("heading", { name: "환불 내용" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "처리 이력" })).toBeVisible();
   await expect(page.getByRole("button", { name: "환불 승인하고 카드 결제 취소" })).toBeDisabled();
   await page.getByLabel("내용을 확인했고 환불을 승인합니다").check();
   await expect(page.getByRole("button", { name: "환불 승인하고 카드 결제 취소" })).toBeEnabled();
@@ -98,8 +100,22 @@ test("운영 담당: 상세는 볼 수 있지만 승인·거절 버튼과 직접
 test("CS: 목록·상세는 볼 수 있지만 승인·거절 버튼이 없다", async ({ page }) => {
   await login(page, emails.cs);
   await page.goto(`/admin/billing/refunds/${ids.auto}`);
-  await expect(page.getByTestId("refund-status")).toContainText("처리 대기");
+  await expect(page.getByTestId("refund-status")).toContainText("승인 대기");
   await expect(page.getByText("승인·거절은 최고관리자만 할 수 있습니다.")).toBeVisible();
   await expect(page.getByRole("button", { name: "거절", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /환불 실행/ })).toHaveCount(0);
+});
+
+test("환불 대상·금액·수단·사유·이력을 세 너비에서 읽을 수 있고 가로넘침이 없다", async ({ page }, testInfo) => {
+  await login(page, emails.cs);
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`/admin/billing/refunds/${ids.auto}`);
+    await expect(page.getByRole("heading", { name: "환불 내용" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "처리 이력" })).toBeVisible();
+    await expect(page.getByLabel("환불 내용").getByText("원결제 카드 승인 취소", { exact: true })).toBeVisible();
+    await expect(page.getByText("해지 뒤 결제됨")).toHaveCount(2);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    await page.screenshot({ path: testInfo.outputPath(`MA-027-${width}.png`), fullPage: true });
+  }
 });

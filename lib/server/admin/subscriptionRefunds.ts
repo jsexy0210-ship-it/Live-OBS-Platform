@@ -154,7 +154,12 @@ export async function getSubscriptionRefund(db: PrismaClient, admin: AdminSessio
   if (!UUID.test(id)) throw notFound();
   const row = await db.subscriptionRefund.findUnique({ where: { id }, select: VIEW });
   if (!row) throw notFound();
-  return view(row);
+  const history = await db.auditLog.findMany({
+    where: { sellerId: row.sellerId, targetType: "SubscriptionRefund", targetId: id, action: { in: ["subscription.refund.request", "subscription.refund.approve", "subscription.refund.reject", "subscription.refund.refunded", "subscription.refund.failed"] } },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { action: true, createdAt: true },
+  });
+  return { ...view(row), history: history.map(({ action, createdAt }) => ({ action, at: createdAt })) };
 }
 
 // 마스터 관리자가 직접 만드는 요청. 본문 { paymentId, amount, reason }.
