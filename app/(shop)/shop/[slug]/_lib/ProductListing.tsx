@@ -38,6 +38,7 @@ export default async function ProductListing(props: {
       limit: String(PAGE_SIZE),
       inStock: f.inStock ? "1" : undefined,
       live: f.live ? "1" : undefined,
+      rating4: f.rating4 ? "1" : undefined,
       minPrice: f.min || undefined,
       maxPrice: f.max || undefined,
     });
@@ -69,9 +70,10 @@ export default async function ProductListing(props: {
     ...f.cats.map((id) => ({ label: nameOf(id), to: { ...f, cats: f.cats.filter((c) => c !== id) } })),
     ...(f.inStock ? [{ label: "재고 있는 상품만", to: { ...f, inStock: false } }] : []),
     ...(f.live ? [{ label: "방송 중 상품만", to: { ...f, live: false } }] : []),
+    ...(f.rating4 ? [{ label: "평점 4점 이상", to: { ...f, rating4: false } }] : []),
     ...(f.min || f.max ? [{ label: priceLabel(f), to: { ...f, min: "", max: "" } }] : []),
   ].filter((c) => c.label);
-  const cleared: Filters = { cats: [], inStock: false, live: false, min: "", max: "" };
+  const cleared: Filters = { cats: [], inStock: false, live: false, rating4: false, min: "", max: "" };
   return (
     <section className="shop-sec" aria-labelledby="list-title">
       {props.crumb && <p className="shop-crumb">{props.crumb}</p>}

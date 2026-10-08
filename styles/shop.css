@@ -1733,7 +1733,7 @@ body {
   .shop-side {
     display: contents;
   }
-  .fl-pc-only {
+  .fl .fl-pc-only {
     display: none;
   }
   .fl-m-only {

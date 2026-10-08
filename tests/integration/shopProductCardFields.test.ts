@@ -10,8 +10,8 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-const list = async (slug: string) => {
-  const res = await listRoute(new Request(`http://localhost:3000/api/shop/${slug}/products`), { params: Promise.resolve({ slug }) });
+const list = async (slug: string, qs = "") => {
+  const res = await listRoute(new Request(`http://localhost:3000/api/shop/${slug}/products?${qs}`), { params: Promise.resolve({ slug }) });
   return { status: res.status, products: ((await res.json()) as { products: any[] }).products };
 };
 
@@ -37,6 +37,19 @@ async function review(s: Shop, rating: number, extra: Record<string, unknown> = 
 }
 
 describe("상품 카드 평점·리뷰 수", () => {
+  it("평점 4점 이상은 공개 리뷰 평균으로 거르고, 미평가·다른 판매자는 제외한다", async () => {
+    const a = await shop();
+    const b = await shop();
+    expect((await list(a.seller.slug, "rating4=1")).products).toEqual([]);
+    await review(a, 5, { status: "VISIBLE" }, true);
+    await review(a, 3, { status: "VISIBLE" });
+    await review(a, 1, { status: "HIDDEN", hiddenReason: "OTHER" });
+    await review(b, 3, { status: "VISIBLE" }, true);
+    expect((await list(a.seller.slug, "rating4=1")).products).toMatchObject([{ id: a.product.id, rating: 4, reviewCount: 2 }]);
+    expect((await list(b.seller.slug, "rating4=1")).products).toEqual([]);
+    expect((await list(a.seller.slug, "rating4=wrong")).status).toBe(400);
+  });
+
   it("리뷰가 없으면 rating null·reviewCount 0이다", async () => {
     const s = await shop();
     const r = await list(s.seller.slug);

@@ -76,7 +76,7 @@ const parseInt10 = (v: unknown, def: number, min: number, max: number) => {
 export async function shopProductList(
   db: PrismaClient,
   slug: string,
-  q: { categoryId?: unknown; q?: unknown; sort?: unknown; page?: unknown; limit?: unknown; inStock?: unknown; live?: unknown; minPrice?: unknown; maxPrice?: unknown },
+  q: { categoryId?: unknown; q?: unknown; sort?: unknown; page?: unknown; limit?: unknown; inStock?: unknown; live?: unknown; rating4?: unknown; minPrice?: unknown; maxPrice?: unknown },
   // 홈 진열 영역 전용(구매자 쿼리로는 받지 않음): sale = 이벤트 할인이 지금 걸린 상품만,
   // best = 최근 30일 결제 완료 판매량이 있는 상품만 판매량순(동률이면 최근 판매 순, 취소·환불 주문 제외)
   only?: "sale" | "best",
@@ -90,13 +90,14 @@ export async function shopProductList(
   const sort = q.sort === undefined || q.sort === "" || relevance ? await defaultListSort(db, shop.id) : SHOP_SORTS.includes(q.sort as ShopSort) ? (q.sort as ShopSort) : null;
   const inStock = parseFlag(q.inStock);
   const onlyLive = parseFlag(q.live);
+  const rating4 = parseFlag(q.rating4);
   const minPrice = parseInt10(q.minPrice, 0, 0, SHOP_PRICE_MAX);
   const maxPrice = q.maxPrice === undefined || q.maxPrice === "" ? SHOP_PRICE_MAX : parseInt10(q.maxPrice, SHOP_PRICE_MAX, 0, SHOP_PRICE_MAX);
   const page = parseInt10(q.page, 1, 1, 10000);
   const limit = parseInt10(q.limit, SHOP_PAGE_DEFAULT, 1, SHOP_PAGE_MAX);
   const blankQ = q.q === undefined || (typeof q.q === "string" && /^ *$/.test(q.q));
   const term = blankQ ? null : cleanText(q.q, 50);
-  if (!sort || page === null || limit === null || (!blankQ && term === null) || inStock === null || onlyLive === null || minPrice === null || maxPrice === null || minPrice > maxPrice) return { ok: false, reason: "invalid_query" };
+  if (!sort || page === null || limit === null || (!blankQ && term === null) || inStock === null || onlyLive === null || rating4 === null || minPrice === null || maxPrice === null || minPrice > maxPrice) return { ok: false, reason: "invalid_query" };
   // 카테고리: 여러 개(쉼표)면 모두에 속한 상품만. 첫 번째가 카테고리 안 진열 순서의 기준이다.
   let categoryIds: string[] | null = null;
   const categoryGroups: string[][] = [];
@@ -163,9 +164,15 @@ export async function shopProductList(
   });
   const liveIds = await liveProductIds(db, shop.id);
   const liveSet = new Set(liveIds);
+  // 상품 카드와 같은 공개 리뷰 평균(소수 첫째 자리)을 기준으로 목록을 거른다.
+  const ratedIds = rating4 && rows.length ? new Set((await db.productReview.groupBy({
+    by: ["productId"],
+    where: { sellerId: shop.id, productId: { in: rows.map((r) => r.id) }, status: "VISIBLE", deletedAt: null },
+    _avg: { rating: true },
+  })).filter((g) => Math.round((g._avg.rating ?? 0) * 10) / 10 >= 4).map((g) => g.productId)) : null;
   const base = only === "sale" ? allCards.filter((c) => c.salePrice !== null) : only === "best" ? allCards.filter((c) => sold.has(c.p.id)) : allCards;
   // 구매자 필터(SH-002-F): 재고 있는 상품만 · 방송 중 상품만 · 표시 가격 범위
-  const cards = base.filter((c) => (!inStock || !c.soldOut) && (!onlyLive || liveSet.has(c.p.id)) && c.shown >= minPrice && c.shown <= maxPrice);
+  const cards = base.filter((c) => (!inStock || !c.soldOut) && (!onlyLive || liveSet.has(c.p.id)) && (!ratedIds || ratedIds.has(c.p.id)) && c.shown >= minPrice && c.shown <= maxPrice);
   // 관련도(검색어가 있을 때): 이름이 검색어와 같음 > 이름이 검색어로 시작 > 이름에 들어 있음 > 태그가 같음 > 태그에 들어 있음.
   // 유사어로만 찾은 상품은 원래 검색어로 찾은 상품보다 모두 아래에 두고, 그 안에서는 같은 단계 순서를 지킨다.
   const relevanceOf = new Map<string, number>();
