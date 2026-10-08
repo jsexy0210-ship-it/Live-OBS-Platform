@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { createHash } from "node:crypto";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as settingsGet } from "../../app/api/admin/branding/route";
 import { PUT as textPut } from "../../app/api/admin/branding/[target]/route";
@@ -9,6 +10,7 @@ import { GET as publicFavicon } from "../../app/api/branding/[target]/favicon/ro
 import { GET as publicOg } from "../../app/api/branding/[target]/og/route";
 import { loginAdmin, loginSeller } from "../../lib/server/auth/login";
 import { brandingMetadata } from "../../lib/server/branding/metadata";
+import { renderBrandingCard } from "../../lib/server/branding/card";
 import { prisma } from "../../lib/server/db";
 import { PASSWORD, adminCredentials, createAdmin, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
@@ -142,6 +144,27 @@ describe("파비콘", () => {
 });
 
 describe("공유 카드", () => {
+  it("공개 카드와 저장 전 미리보기가 신뢰 프록시의 공인 주소를 쓰고 내부 주소를 인쇄하지 않는다", async () => {
+    const c = await adminCookie("SUPER_ADMIN");
+    const branding = (await (await settings(c)).json()).targets.find((t: { target: string }) => t.target === "admin");
+    const title = branding.defaults.title as string;
+    const oldVersion = createHash("sha256").update(`brand-card-v1\0${title}`).digest("hex").slice(0, 12);
+    expect(branding.ogImage.url).not.toContain(`v=${oldVersion}`);
+    process.env.TRUSTED_PROXY_HOPS = "1";
+    try {
+      const headers = { host: "0.0.0.0:3000", "x-forwarded-host": "test.on-aircue.com", "x-forwarded-proto": "https" };
+      const publicCard = await publicOg(new Request(`${BASE}${branding.ogImage.url}`, { headers }), ctx("admin"));
+      expect(Buffer.from(await publicCard.arrayBuffer())).toEqual(await renderBrandingCard("admin", title, "test.on-aircue.com"));
+      const noForwarded = await publicOg(new Request(`${BASE}${branding.ogImage.url}`, { headers: { host: "0.0.0.0:3000" } }), ctx("admin"));
+      expect(Buffer.from(await noForwarded.arrayBuffer())).toEqual(await renderBrandingCard("admin", title, ""));
+      const preview = await previewGet(new Request(`${BASE}/api/admin/branding/card-preview?title=${encodeURIComponent(title)}`, { headers: { ...headers, cookie: c } }));
+      expect(preview.headers.get("cache-control")).toBe("no-store");
+      expect(Buffer.from(await preview.arrayBuffer())).toEqual(await renderBrandingCard("admin", title, "test.on-aircue.com"));
+    } finally {
+      delete process.env.TRUSTED_PROXY_HOPS;
+    }
+  });
+
   it("기본값은 대상별 기본 제목으로 그린 카드(PNG 1200×630), 제목을 바꾸면 카드 주소(버전)가 바뀐다", async () => {
     const c = await adminCookie("SUPER_ADMIN");
     const before = (await (await settings(c)).json()).targets.find((t: { target: string }) => t.target === "seller");

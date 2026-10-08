@@ -2,7 +2,7 @@ import sharp from "sharp";
 import { crc32, deflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { checkFavicon, checkOgImage, detectImage, readBodyLimited } from "../../lib/server/branding/image";
-import { requestOrigin } from "../../lib/server/branding/siteUrl";
+import { requestCardSite, requestOrigin } from "../../lib/server/branding/siteUrl";
 
 const png = (w: number, h: number) => sharp({ create: { width: w, height: h, channels: 4, background: "#ff6600" } }).png().toBuffer();
 const jpg = (w: number, h: number) => sharp({ create: { width: w, height: h, channels: 3, background: "#123456" } }).jpeg().toBuffer();
@@ -226,5 +226,25 @@ describe("공유 메타 절대 주소의 기준 주소", () => {
     expect(requestOrigin(h({}))).toBeNull();
     // 정규식은 통과하지만 URL을 만들 수 없는 포트(Codex 지적)
     expect(requestOrigin(h({ host: "example.com:99999" }))).toBeNull();
+  });
+});
+
+describe("공유 카드에 인쇄하는 플랫폼 주소", () => {
+  const h = (o: Record<string, string>) => new Headers(o);
+  it("신뢰 프록시의 공인 호스트를 쓰고 내부·잘못된 호스트는 인쇄하지 않는다", () => {
+    process.env.TRUSTED_PROXY_HOPS = "1";
+    try {
+      expect(requestCardSite(h({ host: "0.0.0.0:3000", "x-forwarded-host": "test.on-aircue.com", "x-forwarded-proto": "https" }))).toBe("test.on-aircue.com");
+      expect(requestCardSite(h({ host: "0.0.0.0:3000" }))).toBe("");
+      expect(requestCardSite(h({ host: "evil.example" }))).toBe("");
+      expect(requestCardSite(h({ host: "app:3000", "x-forwarded-host": "evil.example/path" }))).toBe("");
+    } finally {
+      delete process.env.TRUSTED_PROXY_HOPS;
+    }
+  });
+  it("신뢰 프록시가 아니면 위조한 전달 호스트를 무시한다", () => {
+    delete process.env.TRUSTED_PROXY_HOPS;
+    expect(requestCardSite(h({ host: "test.on-aircue.com", "x-forwarded-host": "evil.example" }))).toBe("test.on-aircue.com");
+    expect(requestCardSite(h({ host: "192.168.1.2:3000" }))).toBe("");
   });
 });
