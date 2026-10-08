@@ -6,7 +6,7 @@ import { ModalClose } from "./ShopModal";
 
 // SH-002 필터(보드 SH-002-F 휴대폰 시트 · SH-002-PC-IA 「검색 조건」 패널). 같은 폼을 PC에서는 왼쪽 패널로, 휴대폰에서는 「필터」 버튼으로 여는 아래 시트로 보여 준다.
 // 분류(대분류마다 하위 하나) · 가격 · 재고 있는 상품만 · 방송 중 상품만 · 평점(PC) · 정렬(휴대폰). 바꿀 때마다 공개 상품 API(limit=1)로 「상품 N개」를 미리 센다.
-// 「쿠폰 적용 가능」은 비로그인 목록의 적용 범위 계약이 확정되지 않아 넣지 않았다.
+// 「쿠폰 적용 가능」은 판매자가 발급 중인 쿠폰의 상품 범위다. 보유·주문금액 등은 주문서에서 다시 확인한다.
 export const FILTER_OPEN_EVENT = "shop-filter-open";
 type Cat = { id: string; name: string; children: { id: string; name: string }[] };
 type Props = {
@@ -18,7 +18,7 @@ type Props = {
   defaultSort: string;
   sorts: { key: string; label: string }[];
   tree: Cat[];
-  initial: { cats: string[]; inStock: boolean; live: boolean; rating4: boolean; min: string; max: string };
+  initial: { cats: string[]; inStock: boolean; live: boolean; rating4: boolean; coupon: boolean; min: string; max: string };
 };
 
 export function FilterOpenButton({ count }: { count: number }) {
@@ -36,6 +36,7 @@ export default function ProductFilter({ slug, path, q, category, sort: sortNow, 
   const [inStock, setInStock] = useState(initial.inStock);
   const [live, setLive] = useState(initial.live);
   const [rating4, setRating4] = useState(initial.rating4);
+  const [coupon, setCoupon] = useState(initial.coupon);
   const [min, setMin] = useState(initial.min);
   const [max, setMax] = useState(initial.max);
   const [sort, setSort] = useState(sortNow);
@@ -48,6 +49,7 @@ export default function ProductFilter({ slug, path, q, category, sort: sortNow, 
     setInStock(initial.inStock);
     setLive(initial.live);
     setRating4(initial.rating4);
+    setCoupon(initial.coupon);
     setMin(initial.min);
     setMax(initial.max);
     setSort(sortNow);
@@ -74,10 +76,11 @@ export default function ProductFilter({ slug, path, q, category, sort: sortNow, 
     if (inStock) p.set("inStock", "1");
     if (live) p.set("live", "1");
     if (rating4) p.set("rating4", "1");
+    if (coupon) p.set("coupon", "1");
     if (!bad && min) p.set("minPrice", min);
     if (!bad && max) p.set("maxPrice", max);
     return p;
-  }, [q, category, cats, inStock, live, rating4, min, max, bad]);
+  }, [q, category, cats, inStock, live, rating4, coupon, min, max, bad]);
 
   // 조건에 맞는 상품 수(공개 상품 API, 한 개만 받아 total을 쓴다)
   useEffect(() => {
@@ -86,7 +89,7 @@ export default function ProductFilter({ slug, path, q, category, sort: sortNow, 
     if (q) api.set("q", q);
     const ids = [category, ...cats].filter(Boolean).join(",");
     if (ids) api.set("categoryId", ids);
-    for (const k of ["inStock", "live", "rating4", "minPrice", "maxPrice"]) if (query.get(k)) api.set(k, query.get(k)!);
+    for (const k of ["inStock", "live", "rating4", "coupon", "minPrice", "maxPrice"]) if (query.get(k)) api.set(k, query.get(k)!);
     api.set("limit", "1");
     let live_ = true;
     const t = setTimeout(() => {
@@ -101,7 +104,7 @@ export default function ProductFilter({ slug, path, q, category, sort: sortNow, 
     };
   }, [slug, q, category, cats, query, bad]);
 
-  const changed = JSON.stringify([cats, inStock, live, rating4, bad ? "" : min, bad ? "" : max, sort]) !== JSON.stringify([initial.cats, initial.inStock, initial.live, initial.rating4, initial.min, initial.max, sortNow]);
+  const changed = JSON.stringify([cats, inStock, live, rating4, coupon, bad ? "" : min, bad ? "" : max, sort]) !== JSON.stringify([initial.cats, initial.inStock, initial.live, initial.rating4, initial.coupon, initial.min, initial.max, sortNow]);
   const none = count === 0;
   const submitOff = bad || none;
 
@@ -116,6 +119,7 @@ export default function ProductFilter({ slug, path, q, category, sort: sortNow, 
     setInStock(false);
     setLive(false);
     setRating4(false);
+    setCoupon(false);
     setMin("");
     setMax("");
     setSort(defaultSort);
@@ -184,6 +188,10 @@ export default function ProductFilter({ slug, path, q, category, sort: sortNow, 
             <label className="chk fl-pc-only">
               <input type="checkbox" className="cbx" checked={rating4} onChange={(e) => setRating4(e.target.checked)} />
               평점 4점 이상
+            </label>
+            <label className="chk fl-pc-only" title="판매자가 발급 중인 쿠폰의 상품 범위입니다. 보유 여부와 주문 조건은 결제할 때 확인합니다.">
+              <input type="checkbox" className="cbx" checked={coupon} onChange={(e) => setCoupon(e.target.checked)} />
+              쿠폰 적용 가능
             </label>
           </div>
           <fieldset className="fl-group fl-m-only">

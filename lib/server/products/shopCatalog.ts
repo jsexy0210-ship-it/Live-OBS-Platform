@@ -71,12 +71,12 @@ const parseInt10 = (v: unknown, def: number, min: number, max: number) => {
 
 // 목록. ?categoryId(대분류는 하위 포함, 쉼표로 여러 개를 주면 모두에 속한 상품만: 「게임」+「형태」 필터 시트 SH-002-F, 최대 5개)·q(상품 이름, 50자)
 // ·sort(new 최근 등록 | recommended 판매자 진열 순서 | popular 판매량 | low·high 표시 가격 | relevance 관련도: q가 있을 때만, 없으면 목록 기본 정렬)
-// ·inStock(1이면 품절이 아닌 상품만)·live(1이면 지금 방송 중 상품만)·minPrice·maxPrice(표시 가격, 원 정수, 둘 다 주면 min ≤ max)·page·limit(1~60)
+// ·inStock(1이면 품절이 아닌 상품만)·live(1이면 지금 방송 중 상품만)·coupon(1이면 판매자의 발급 중 쿠폰 상품 범위에 포함)·minPrice·maxPrice(표시 가격, 원 정수, 둘 다 주면 min ≤ max)·page·limit(1~60)
 // 응답 { products, total, page, hasMore }. 운영 중이 아닌 쇼핑몰·보이지 않는 카테고리는 not_found, 틀린 값은 invalid_query.
 export async function shopProductList(
   db: PrismaClient,
   slug: string,
-  q: { categoryId?: unknown; q?: unknown; sort?: unknown; page?: unknown; limit?: unknown; inStock?: unknown; live?: unknown; rating4?: unknown; minPrice?: unknown; maxPrice?: unknown },
+  q: { categoryId?: unknown; q?: unknown; sort?: unknown; page?: unknown; limit?: unknown; inStock?: unknown; live?: unknown; rating4?: unknown; coupon?: unknown; minPrice?: unknown; maxPrice?: unknown },
   // 홈 진열 영역 전용(구매자 쿼리로는 받지 않음): sale = 이벤트 할인이 지금 걸린 상품만,
   // best = 최근 30일 결제 완료 판매량이 있는 상품만 판매량순(동률이면 최근 판매 순, 취소·환불 주문 제외)
   only?: "sale" | "best",
@@ -91,13 +91,14 @@ export async function shopProductList(
   const inStock = parseFlag(q.inStock);
   const onlyLive = parseFlag(q.live);
   const rating4 = parseFlag(q.rating4);
+  const coupon = parseFlag(q.coupon);
   const minPrice = parseInt10(q.minPrice, 0, 0, SHOP_PRICE_MAX);
   const maxPrice = q.maxPrice === undefined || q.maxPrice === "" ? SHOP_PRICE_MAX : parseInt10(q.maxPrice, SHOP_PRICE_MAX, 0, SHOP_PRICE_MAX);
   const page = parseInt10(q.page, 1, 1, 10000);
   const limit = parseInt10(q.limit, SHOP_PAGE_DEFAULT, 1, SHOP_PAGE_MAX);
   const blankQ = q.q === undefined || (typeof q.q === "string" && /^ *$/.test(q.q));
   const term = blankQ ? null : cleanText(q.q, 50);
-  if (!sort || page === null || limit === null || (!blankQ && term === null) || inStock === null || onlyLive === null || rating4 === null || minPrice === null || maxPrice === null || minPrice > maxPrice) return { ok: false, reason: "invalid_query" };
+  if (!sort || page === null || limit === null || (!blankQ && term === null) || inStock === null || onlyLive === null || rating4 === null || coupon === null || minPrice === null || maxPrice === null || minPrice > maxPrice) return { ok: false, reason: "invalid_query" };
   // 카테고리: 여러 개(쉼표)면 모두에 속한 상품만. 첫 번째가 카테고리 안 진열 순서의 기준이다.
   let categoryIds: string[] | null = null;
   const categoryGroups: string[][] = [];
@@ -170,9 +171,17 @@ export async function shopProductList(
     where: { sellerId: shop.id, productId: { in: rows.map((r) => r.id) }, status: "VISIBLE", deletedAt: null },
     _avg: { rating: true },
   })).filter((g) => Math.round((g._avg.rating ?? 0) * 10) / 10 >= 4).map((g) => g.productId)) : null;
+  // 비로그인 목록에서는 판매자가 발급 중인 쿠폰의 상품 범위와 할인상품 제외 설정만 판정한다.
+  // 보유 여부·최소 주문금액·배송비 등은 주문서에서 quoteCoupon으로 다시 검사한다.
+  const coupons = coupon && rows.length ? await db.coupon.findMany({
+    where: { sellerId: shop.id, isActive: true, startsAt: { lte: now }, endsAt: { gt: now } },
+    select: { productIds: true, excludeDiscounted: true },
+  }) : null;
   const base = only === "sale" ? allCards.filter((c) => c.salePrice !== null) : only === "best" ? allCards.filter((c) => sold.has(c.p.id)) : allCards;
   // 구매자 필터(SH-002-F): 재고 있는 상품만 · 방송 중 상품만 · 표시 가격 범위
-  const cards = base.filter((c) => (!inStock || !c.soldOut) && (!onlyLive || liveSet.has(c.p.id)) && (!ratedIds || ratedIds.has(c.p.id)) && c.shown >= minPrice && c.shown <= maxPrice);
+  const cards = base.filter((c) => (!inStock || !c.soldOut) && (!onlyLive || liveSet.has(c.p.id)) && (!ratedIds || ratedIds.has(c.p.id)) && (!coupons || coupons.some((offer) =>
+    (offer.productIds.length === 0 || offer.productIds.includes(c.p.id)) && !(offer.excludeDiscounted && c.salePrice !== null)
+  )) && c.shown >= minPrice && c.shown <= maxPrice);
   // 관련도(검색어가 있을 때): 이름이 검색어와 같음 > 이름이 검색어로 시작 > 이름에 들어 있음 > 태그가 같음 > 태그에 들어 있음.
   // 유사어로만 찾은 상품은 원래 검색어로 찾은 상품보다 모두 아래에 두고, 그 안에서는 같은 단계 순서를 지킨다.
   const relevanceOf = new Map<string, number>();
