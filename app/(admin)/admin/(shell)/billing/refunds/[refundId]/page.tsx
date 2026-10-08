@@ -272,7 +272,17 @@ export default function RefundDetailPage() {
                     ? rf.history.map((event) => [dayTime(event.at), HISTORY_LABEL[event.action] ?? "환불 상태 변경"] as [string, React.ReactNode])
                     : [[dayTime(rf.createdAt), "환불 요청 접수"]]}
                 />
-                {rf.decisionNote && <Info title="처리 메모" id="refund-note-detail" rows={[["메모", rf.decisionNote]]} />}
+                {(rf.decisionNote || rf.decidedAt || rf.refundedAt) && (
+                  <Info
+                    title="처리 결과"
+                    id="refund-result"
+                    rows={[
+                      ...(rf.decisionNote ? ([["처리 메모", rf.decisionNote]] as [string, React.ReactNode][]) : []),
+                      ...(rf.decidedAt ? ([["처리 시각", dayTime(rf.decidedAt)]] as [string, React.ReactNode][]) : []),
+                      ...(rf.refundedAt ? ([["환불 시각", dayTime(rf.refundedAt)]] as [string, React.ReactNode][]) : []),
+                    ]}
+                  />
+                )}
               </div>
             </div>
           </div>

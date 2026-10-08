@@ -81,6 +81,8 @@ test("최고관리자: 거절은 사유가 있어야 하고, 거절하면 상태
   await dialog.getByRole("button", { name: "거절", exact: true }).click();
   await expect(page.getByText("환불 요청을 거절했습니다.")).toBeVisible();
   await expect(page.getByTestId("refund-status")).toContainText("거절");
+  await expect(page.getByLabel("처리 결과")).toContainText("처리 시각");
+  await expect(page.getByLabel("처리 결과")).toContainText("정책 밖 요청입니다.");
   const after = await db.subscriptionRefund.findUniqueOrThrow({ where: { id: ids.rej } });
   expect(after.status).toBe("REJECTED");
   expect(after.decisionNote).toBe("정책 밖 요청입니다.");
