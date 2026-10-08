@@ -1,7 +1,7 @@
 "use client";
 
 // 관리자 상단 도구 둘: 전역 검색(돋보기)과 알림(종). 파트너스·마스터 관리자 셸이 함께 쓴다.
-// 검색: GET {scope}/search?q= → 종류별 최대 5건 [{ id, title, sub, href }]. 알림: GET {scope}/notifications → { items, unreadCount }.
+// 검색: GET {scope}/search?q= → 종류별 최대 5건. 파트너스 알림은 notifications, 마스터 알림은 저장형 alerts API를 쓴다.
 // 문구 말투는 관리자 화면(명사형·합니다체). 스타일: styles/seller.css (.gnb-ic · .gnb-pop)
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -151,6 +151,8 @@ export function NotificationBell({ scope, allHref }: { scope: "seller" | "admin"
     OUT_OF_STOCK: "재고 없음",
     RETURN_REQUESTED: "교환·반품",
     CHARGE_SHORTAGE: "충전금",
+    INQUIRY_URGENT: "긴급 문의",
+    INFRA_ALERT: "인프라",
   };
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error" } | { kind: "ok"; items: Notice[]; unreadCount: number }>({ kind: "loading" });
@@ -159,7 +161,14 @@ export function NotificationBell({ scope, allHref }: { scope: "seller" | "admin"
   const box = usePopover(open, close, wrap);
 
   const load = useCallback(async () => {
-    const r = await fetcher<{ items: Notice[]; unreadCount: number }>(`/api/${scope}/notifications`);
+    if (scope === "admin") {
+      const r = await fetcher<{ items: { id: string; kind: string; title: string; linkPath: string; occurredAt: string; unread: boolean }[]; unreadCount: number }>("/api/admin/alerts");
+      if (!r.ok) { setState({ kind: "error" }); return null; }
+      const items = r.data.items.map((a) => ({ id: a.id, kind: a.kind, title: a.title, href: a.linkPath, createdAt: a.occurredAt, unread: a.unread }));
+      setState({ kind: "ok", items, unreadCount: r.data.unreadCount });
+      return items;
+    }
+    const r = await fetcher<{ items: Notice[]; unreadCount: number }>("/api/seller/notifications");
     setState(r.ok ? { kind: "ok", items: r.data.items, unreadCount: r.data.unreadCount } : { kind: "error" });
     return r.ok ? r.data.items : null;
   }, [scope]);
@@ -169,9 +178,11 @@ export function NotificationBell({ scope, allHref }: { scope: "seller" | "admin"
     const again = () => document.visibilityState === "visible" && void load();
     window.addEventListener("focus", again);
     document.addEventListener("visibilitychange", again);
+    if (scope === "admin") window.addEventListener("admin-alerts-changed", again);
     return () => {
       window.removeEventListener("focus", again);
       document.removeEventListener("visibilitychange", again);
+      if (scope === "admin") window.removeEventListener("admin-alerts-changed", again);
     };
   }, [load]);
 

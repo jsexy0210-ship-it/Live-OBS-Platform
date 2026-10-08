@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHead } from "../../../../../components/admin-ui";
 import { ErrorState, LoadingRows } from "../../../../../components/seller/States";
 import { adminApi } from "../../_components/api";
-import { AdminTopbar } from "../../_components/AdminShell";
+import { AdminTopbar, useAdmin } from "../../_components/AdminShell";
 import { dayTime } from "../../_components/partners";
 import "./notifications.css";
 
@@ -19,7 +19,10 @@ const severities: { value: Severity; label: string }[] = [{ value: "URGENT", lab
 const kindLabel = (kind: string) => ({ INQUIRY_URGENT: "긴급 문의", INFRA_ALERT: "인프라" })[kind] ?? kind.replaceAll("_", " ");
 
 export default function AdminNotificationsPage() {
+  const { me } = useAdmin();
   const [state, setState] = useState<Load>({ kind: "loading" });
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [changing, setChanging] = useState<string | null>(null);
   const [selectedStatus, setSelectedStatus] = useState<Status[]>(["OPEN", "IN_PROGRESS"]);
   const [selectedSeverity, setSelectedSeverity] = useState<Severity[]>(["URGENT", "WARNING", "INFO"]);
   const [kind, setKind] = useState("");
@@ -27,13 +30,21 @@ export default function AdminNotificationsPage() {
   const [applied, setApplied] = useState({ statuses: ["OPEN", "IN_PROGRESS"] as Status[], severities: ["URGENT", "WARNING", "INFO"] as Severity[], kind: "", seller: "" });
   const [notice, setNotice] = useState("");
   const reqId = useRef(0);
-  const load = useCallback(async () => {
+  const load = useCallback(async (cursor?: string) => {
     const id = ++reqId.current;
-    setState({ kind: "loading" });
-    const r = await adminApi<Data>("/api/admin/alerts");
+    if (cursor) setLoadingMore(true);
+    else setState({ kind: "loading" });
+    const query = new URLSearchParams({ status: applied.statuses.join(","), severity: applied.severities.join(",") });
+    if (applied.kind) query.set("kind", applied.kind);
+    if (applied.seller.trim()) query.set("seller", applied.seller.trim());
+    if (cursor) query.set("cursor", cursor);
+    const r = await adminApi<Data>(`/api/admin/alerts?${query}`);
     if (id !== reqId.current) return;
-    setState(r.ok ? { kind: "ok", data: r.data } : { kind: "error" });
-  }, []);
+    setLoadingMore(false);
+    if (cursor && r.ok) setState((previous) => previous.kind === "ok" ? { kind: "ok", data: { ...r.data, items: [...previous.data.items, ...r.data.items] } } : { kind: "ok", data: r.data });
+    else if (!cursor) setState(r.ok ? { kind: "ok", data: r.data } : { kind: "error" });
+    else setNotice("다음 알림을 불러오지 못했습니다. 다시 시도해 주십시오.");
+  }, [applied]);
   useEffect(() => void load(), [load]);
 
   const toggle = <T extends string,>(values: T[], value: T, set: (next: T[]) => void) => set(values.includes(value) ? values.filter((v) => v !== value) : [...values, value]);
@@ -44,11 +55,18 @@ export default function AdminNotificationsPage() {
   const markAll = async () => {
     const r = await adminApi<{ marked: number }>("/api/admin/alerts/read-all", { method: "POST" });
     setNotice(r.ok ? `${r.data.marked}건을 확인 처리했습니다.` : "확인 처리하지 못했습니다. 다시 시도해 주십시오.");
-    if (r.ok) void load();
+    if (r.ok) { window.dispatchEvent(new Event("admin-alerts-changed")); void load(); }
+  };
+  const changeStatus = async (alert: Alert, status: Status) => {
+    setChanging(alert.id);
+    const r = await adminApi<{ ok: true }>(`/api/admin/alerts/${alert.id}/status`, { method: "POST", json: { status } });
+    setChanging(null);
+    setNotice(r.ok ? "알림 상태를 변경했습니다." : "알림 상태를 변경하지 못했습니다. 다시 시도해 주십시오.");
+    if (r.ok) { window.dispatchEvent(new Event("admin-alerts-changed")); void load(); }
   };
   const d = state.kind === "ok" ? state.data : null;
-  const rows = d?.items.filter((a) => applied.statuses.includes(a.status) && applied.severities.includes(a.severity) && (!applied.kind || a.kind === applied.kind) && (!applied.seller || (a.shopName ?? "").includes(applied.seller.trim()))) ?? [];
-  const kinds = [...new Set(d?.items.map((a) => a.kind) ?? [])];
+  const rows = d?.items ?? [];
+  const kinds = [...new Set(["INQUIRY_URGENT", "INFRA_ALERT", ...(d?.items.map((a) => a.kind) ?? [])])];
   return <>
     <AdminTopbar crumb="알림 센터" />
     <main className="main admin-notifications">
@@ -65,8 +83,8 @@ export default function AdminNotificationsPage() {
         <div className="pad row between"><h2 className="t-hl1">알림 목록</h2><span className="t-c1 c-alt">{d ? `읽지 않은 알림 ${d.unreadCount.toLocaleString("ko-KR")}건 · 최근 ${d.items.length}건` : ""}</span></div>
         {state.kind === "loading" && <LoadingRows rows={5} />}
         {state.kind === "error" && <ErrorState title="알림을 불러오지 못했습니다." onRetry={() => void load()} />}
-        {d && (rows.length === 0 ? <div className="st"><span className="t">{d.items.length ? "검색 조건에 맞는 알림이 없습니다." : "알림이 없습니다."}</span></div> : <div className="notification-table-scroll"><table className="tbl"><thead><tr><th>심각도</th><th>유형</th><th>파트너스</th><th>내용</th><th>발생 시각</th><th>담당자</th><th>상태</th><th>관리</th></tr></thead><tbody>{rows.map((a) => <tr key={a.id} data-testid="notification-row"><td>{severities.find((s) => s.value === a.severity)?.label}</td><td>{kindLabel(a.kind)}</td><td>{a.shopName ?? "공통"}</td><td className="notification-content"><strong>{a.title}</strong>{a.body && <small>{a.body}</small>}</td><td className="num">{dayTime(a.occurredAt)}</td><td>{a.assignee?.name ?? "미배정"}</td><td>{statuses.find((s) => s.value === a.status)?.label}</td><td><Link className="btn btn-sm btn-out" href={a.linkPath}>열기</Link></td></tr>)}</tbody></table></div>)}
-        {d?.nextCursor && <p className="pad t-c1 c-alt">최근 50건만 표시됩니다. 추가 목록 검색은 준비 중입니다.</p>}
+        {d && (rows.length === 0 ? <div className="st"><span className="t">검색 조건에 맞는 알림이 없습니다.</span></div> : <div className="notification-table-scroll"><table className="tbl"><thead><tr><th>심각도</th><th>유형</th><th>파트너스</th><th>내용</th><th>발생 시각</th><th>담당자</th><th>상태</th><th>관리</th></tr></thead><tbody>{rows.map((a) => <tr key={a.id} data-testid="notification-row"><td>{severities.find((s) => s.value === a.severity)?.label}</td><td>{kindLabel(a.kind)}</td><td>{a.shopName ?? "공통"}</td><td className="notification-content"><strong>{a.title}</strong>{a.body && <small>{a.body}</small>}</td><td className="num">{dayTime(a.occurredAt)}</td><td>{a.assignee?.name ?? "미배정"}</td><td>{statuses.find((s) => s.value === a.status)?.label}</td><td><Link className="btn btn-sm btn-out" href={a.linkPath}>열기</Link>{me.role !== "READ_ONLY" && <select className="inp notification-status" aria-label={`${a.title} 상태 변경`} value={a.status} disabled={changing === a.id} onChange={(e) => void changeStatus(a, e.target.value as Status)}>{statuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select>}</td></tr>)}</tbody></table></div>)}
+        {d?.nextCursor && <div className="pad"><button className="btn btn-out" type="button" disabled={loadingMore} onClick={() => void load(d.nextCursor!)}>{loadingMore ? "불러오는 중" : "더 보기"}</button></div>}
       </section>
       <div className="notification-bottom"><section className="card pad"><h2 className="t-hl1">알림 규칙</h2><p className="t-l2 c-alt">알림 발생 규칙과 채널 설정은 조회 화면 연결 준비 중입니다.</p></section><section className="card pad"><h2 className="t-hl1">오늘의 알림 추이</h2><p className="t-l2 c-alt">오늘 발생 건수 집계가 연결되지 않았습니다.</p></section></div>
     </main>
