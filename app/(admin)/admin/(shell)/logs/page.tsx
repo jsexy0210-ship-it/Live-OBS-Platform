@@ -141,6 +141,7 @@ function Logs() {
                         <th>대상</th>
                         <th>쇼핑몰</th>
                         <th>사유</th>
+                        <th>IP</th>
                         <th>상세</th>
                       </tr>
                     </thead>
@@ -153,6 +154,7 @@ function Logs() {
                           <td>{targetLabel(l.targetType)}</td>
                           <td>{l.seller ? <Link href={`/admin/partners/${l.seller.id}`}>{l.seller.shopName}</Link> : "-"}</td>
                           <td className="col-text" style={{ whiteSpace: "normal", maxWidth: 280 }}>{l.reason ?? "-"}</td>
+                          <td>{l.ip ?? "-"}</td>
                           <td>
                             <Link className="btn btn-sm btn-out" href={`/admin/logs/${l.id}`}>
                               보기

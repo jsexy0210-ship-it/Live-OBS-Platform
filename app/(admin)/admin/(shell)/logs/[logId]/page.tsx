@@ -65,8 +65,7 @@ export default function AuditDetailPage() {
         ["대상", targetLabel(l.targetType)],
         ["쇼핑몰", l.seller ? <Link key="s" href={`/admin/partners/${l.seller.id}`}>{l.seller.shopName}</Link> : "-"],
         ["사유", l.reason ?? "-"],
-        ["접속 주소", l.ip ?? "-"],
-        ["브라우저", l.userAgent ?? "-"],
+        ["IP · 기기", [l.ip, l.userAgent].filter(Boolean).join(" · ") || "-"],
       ]
     : [];
 
