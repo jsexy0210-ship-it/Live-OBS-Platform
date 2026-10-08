@@ -59,11 +59,12 @@ body {
 .login-links {
   justify-content: space-between;
   gap: var(--ui-sp-8);
+  flex-wrap: wrap;
 }
 .login-links > * {
-  white-space: nowrap;
+  min-width: 0;
 }
-/* 시안: 밑줄 없음(마우스를 올렸을 때만), 회원가입만 강조색 */
+/* 시안: 밑줄 없음(마우스를 올렸을 때만), 가입 신청만 강조색 */
 .login-links a {
   text-decoration: none;
 }
