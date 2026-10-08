@@ -16,7 +16,7 @@ import { PLAN_FILTER, won } from "../../../_components/partners";
 import { safeUrl } from "../../../_components/payments";
 import { useListFilters } from "../../../_components/useListFilters";
 
-// MA-024 청구·결제 내역(구독료, GET /api/admin/billing/invoices, 모든 마스터 역할 조회). 정본: design/project/MA-024.dc.html(FINAL v287).
+// MA-024 청구·결제 내역(구독료, GET /api/admin/billing/invoices, 모든 마스터 역할 조회). 정본: design/project/MA-024.dc.html(FINAL v317).
 // 월 선택(이전 달·이번 달·기간 지정) → 월 요약 5칸 → 검색(상태·요금제·파트너스·실패만) → 목록(예정 청구가 같은 표에 섞여 나옴). 조건은 주소에 남는다.
 // 「실패 건 재시도」는 최고관리자·운영만(billing.manage)이고 등록된 카드로 실제 결제를 시도하므로 확인 창을 거친다. 내보내기는 같은 조건의 CSV.
 type State = "PAID" | "PENDING" | "RETRYING" | "OVERDUE" | "FAILED" | "REFUNDED" | "SCHEDULED";
@@ -40,7 +40,7 @@ type Item = {
 type Summary = {
   total: { count: number; amount: number };
   paid: { count: number; amount: number };
-  failed: { count: number; amount: number; retrying: number; overdue: number };
+  failed: { count: number; amount: number; retrying: number; overdue: number; terminal: number };
   pending: { count: number };
   refunded: { count: number; amount: number };
   scheduled: { count: number; estimatedAmount: number };
@@ -61,7 +61,7 @@ const STATE: Record<State, { label: string; cls: string }> = {
   REFUNDED: { label: "환불 완료", cls: "b-gray" },
   SCHEDULED: { label: "예정", cls: "b-info" },
 };
-// 정본의 상태 선택지(진행 중·실패는 목록에는 나오지만 정본 선택지에는 없다)
+// 정본의 상태 선택지(진행 중은 목록에만 나오고, 종료된 실패는 「실패 · 재시도」에 포함한다)
 const STATE_OPTIONS: State[] = ["PAID", "RETRYING", "SCHEDULED", "REFUNDED", "OVERDUE"];
 const RECEIPT = { ISSUED: "발행", NOT_ISSUED: "미발행", CANCELED: "취소", SCHEDULED: "예정" } as const;
 const RETRY_REASON: Record<string, string> = {
@@ -222,7 +222,7 @@ function Invoices() {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }} data-testid="invoice-summary">
               {kpi(`${label} 청구`, `${s.total.count}건`, won(s.total.amount))}
               {kpi("결제 완료", `${s.paid.count}`, won(s.paid.amount))}
-              {kpi("실패 · 재시도 중", `${s.failed.count}`, s.failed.count > 0 ? `재시도 중 ${s.failed.retrying} · 연체 ${s.failed.overdue}` : undefined, s.failed.count > 0)}
+              {kpi("실패 · 재시도 중", `${s.failed.count}`, s.failed.count > 0 ? `재시도 중 ${s.failed.retrying} · 연체 ${s.failed.overdue} · 실패 ${s.failed.terminal}` : undefined, s.failed.count > 0)}
               {kpi("예정 (미도래)", `${s.scheduled.count}`, s.scheduled.count > 0 ? `예상 ${won(s.scheduled.estimatedAmount)}` : undefined)}
               {kpi("환불", `${s.refunded.count}`, s.refunded.count > 0 ? won(s.refunded.amount) : undefined)}
             </div>

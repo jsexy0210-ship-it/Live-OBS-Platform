@@ -62,6 +62,11 @@ test("CS도 청구·결제 내역을 조회한다: 월 요약·기간·상태·�
   await expect(rows.first()).toContainText("진행 중");
   await expect(page.locator("main")).not.toContainText("OVERLAY_ONLY");
   await expect(page.getByTestId("invoice-summary")).toContainText("결제 완료");
+  const failedSummary = page.getByText("실패 · 재시도 중", { exact: true }).locator("..");
+  const failureCount = Number(await failedSummary.locator(".t-h2").textContent());
+  const failureParts = (await failedSummary.locator(".t-c1").last().textContent())?.match(/재시도 중 (\d+) · 연체 (\d+) · 실패 (\d+)/);
+  expect(failureParts).not.toBeNull();
+  expect(Number(failureParts![1]) + Number(failureParts![2]) + Number(failureParts![3])).toBe(failureCount);
   await expect(page.getByRole("button", { name: /실패 건 재시도|환불|결제 실행/ })).toHaveCount(0); // CS는 재시도 없음
   await expect(page.getByRole("link", { name: "내보내기" })).toBeVisible();
   const align = await rows.first().locator("td").nth(4).evaluate((el) => getComputedStyle(el).textAlign);
@@ -74,8 +79,14 @@ test("CS도 청구·결제 내역을 조회한다: 월 요약·기간·상태·�
   await expect(rows).toContainText("실패");
   await expect(rows).toContainText("카드 한도 초과");
   await page.getByLabel("결제 실패 · 재시도만").uncheck();
+  await page.getByLabel("상태", { exact: true }).selectOption("RETRYING");
+  await search();
+  await expect(page).toHaveURL(/state=RETRYING/);
+  await expect(rows).toHaveCount(1);
+  await expect(rows).toContainText("카드 한도 초과");
   await page.getByLabel("상태", { exact: true }).selectOption("PAID");
   await search();
+  await expect(page).toHaveURL(/state=PAID/);
   await expect(rows).toHaveCount(1);
   await expect(rows).toContainText("결제 완료");
   await expect(rows).toContainText("발행");
