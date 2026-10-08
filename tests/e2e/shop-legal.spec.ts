@@ -66,6 +66,12 @@ test("준비 중·일시 정지에도 게시본과 고객센터를 읽고 다른
       await page.goto(`/shop/${slug}/help`);
       await expect(page.getByRole("heading", { level: 1, name: "공지 · 이용안내" })).toBeVisible();
       await expect(page.getByRole("link", { name: "첫 쇼핑몰 공지" })).toBeVisible();
+      await page.getByRole("tab", { name: "자주 묻는 질문" }).click();
+      const inquiryLink = page.getByRole("tabpanel").getByRole("link", { name: "문의하기" });
+      await expect(inquiryLink).toHaveAttribute("href", `/shop/${slug}/me/inquiries`);
+      await inquiryLink.click();
+      await expect(page.getByRole("heading", { level: 1, name: "내 문의" })).toBeVisible();
+      await expect(page.getByText("로그인하면 볼 수 있어요")).toBeVisible();
       await page.goto(`/shop/${slug}/help/notices/${notice.id}`);
       await expect(page.getByRole("heading", { name: "첫 쇼핑몰 공지" })).toBeVisible();
       expect((await page.request.get(`/api/shop/${slug}/legal/terms`)).status()).toBe(200);
