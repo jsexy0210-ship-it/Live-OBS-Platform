@@ -21,15 +21,40 @@ for (const [name, route] of [["inquiries", "/seller/inquiries"], ["notices", "/s
     });
     await page.goto(route);
     const grids = page.locator(".au-lt-wrap"); await expect(grids.first()).toBeAttached();
-    if (name === "products" && width === 390) {
-      await expect(page.getByTestId("product-card")).toBeVisible();
-      // Preserve legacy display behavior; this regression checks that the nested
-      // desktop wrapper cannot acquire the new ListTable frame on mobile.
-      await expect(grids.first()).not.toHaveClass(/au-list-grid/);
-    } else await expect(grids.first()).toBeVisible();
-    const frames = await grids.evaluateAll(els => els.map(el => ({ border: getComputedStyle(el).borderTopWidth, radius: getComputedStyle(el).borderRadius, cardShadow: getComputedStyle(el.closest(".card")!).boxShadow })));
-    expect(frames.length).toBeGreaterThan(0);
-    for (const frame of frames) { expect(frame.border).toBe("0px"); expect(frame.radius).toBe("0px"); expect(frame.cardShadow).not.toBe("none"); }
+    if (name === "products") {
+      // SA-011 / DS-PANEL: search and list header stay outside the table frame.
+      const search = page.getByRole("search", { name: "목록 조건" });
+      const list = page.locator(".au-list-section");
+      const grid = list.getByRole("region", { name: "상품 목록 표" });
+      await expect(search).toBeVisible();
+      await expect(search).toHaveCSS("border-radius", "12px");
+      expect(await search.evaluate(el => getComputedStyle(el).boxShadow)).not.toBe("none");
+      await expect(list).toHaveCSS("border-top-width", "0px");
+      await expect(list).toHaveCSS("border-radius", "0px");
+      await expect(list).toHaveCSS("box-shadow", "none");
+      await expect(list.locator(":scope > .au-lh")).toBeVisible();
+      await expect(grid).toHaveClass(/au-list-grid/);
+      await expect(grid).toHaveCSS("border-top-width", "1px");
+      await expect(grid).toHaveCSS("border-radius", "12px");
+      await expect(grid.locator(".au-sb, .au-lh, .onq-pagination")).toHaveCount(0);
+      await expect(search.locator(".au-lt-wrap")).toHaveCount(0);
+      if (width === 390) {
+        await expect(grid).toBeHidden();
+        await expect(list.getByTestId("product-card")).toBeVisible();
+      } else {
+        await expect(grid).toBeVisible();
+        await expect(list.getByTestId("product-card")).toBeHidden();
+      }
+    } else {
+      await expect(grids.first()).toBeVisible();
+      for (const grid of await grids.all()) {
+        await expect(grid).toHaveCSS("border-top-width", "0px");
+        await expect(grid).toHaveCSS("border-radius", "0px");
+        const card = grid.locator("xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' card ')][1]");
+        await expect(card).toHaveCount(1);
+        expect(await card.evaluate(el => getComputedStyle(el).boxShadow)).not.toBe("none");
+      }
+    }
     expect(await page.evaluate(() => document.body.scrollWidth)).toBeLessThanOrEqual(width);
     if (process.env.E2E_SCREENSHOTS !== "0") await page.screenshot({ path: `tests/e2e/screenshots/common-list/existing-${name}-${width}.png`, fullPage: true });
   });
