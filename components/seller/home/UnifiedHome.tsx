@@ -169,13 +169,13 @@ export function UnifiedHome() {
     };
   }, [allowed, load]);
 
-  // 채팅 수집 중에는 채팅이 계속 들어오므로 주문대기 version과 상관없이 주기적으로 다시 읽는다
   const chatOn = !!yt?.live?.chatEnabled;
+  // 유튜브 연결·해제는 주문대기 version을 바꾸지 않는다. 채팅이 꺼져도 내부 연결 정보를 주기적으로 읽는다.
   useEffect(() => {
-    if (!allowed || !chatOn) return;
+    if (!allowed) return;
     const t = setInterval(() => void loadYoutube(), CHAT_POLL_MS);
     return () => clearInterval(t);
-  }, [allowed, chatOn, loadYoutube]);
+  }, [allowed, loadYoutube]);
 
   const setChatEnabled = async (enabled: boolean) => {
     setChatBusy(true);

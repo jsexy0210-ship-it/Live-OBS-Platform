@@ -80,6 +80,38 @@ test("두 기존 홈 주소는 단일 홈으로 이동하고 유튜브 패널은
   await expect(page.getByTestId("bc-youtube-notice")).toContainText("현재 방송과 연결된");
 });
 
+test("채팅이 꺼지고 큐 버전이 같아도 유튜브 연결과 해제가 새로 고침 없이 반영된다", async ({ page }) => {
+  await login(page, "demo-owner@example.com", "/seller");
+  const snapshot = await (await page.request.get("/api/seller/queue")).json();
+  let connected = false;
+  let queueReads = 0;
+  await page.route("**/api/seller/queue", async (route) => {
+    queueReads++;
+    await route.fulfill({ json: { ...snapshot, broadcast: { id: "synthetic-current", title: "합성 방송", startedAt: "2026-10-09T00:00:00Z" } } });
+  });
+  await page.route("**/api/seller/queue/version", async (route) => route.fulfill({ json: { version: snapshot.version } }));
+  await page.route("**/api/seller/youtube", async (route) => route.fulfill({ json: {
+    configured: true,
+    live: connected ? { videoId: "synthetic01", title: "합성 방송", status: "live", broadcastSessionId: "synthetic-current", chatEnabled: false } : null,
+    chatNotice: "합성 연결 변경 검수",
+  } }));
+  await page.route("https://www.youtube.com/embed/**", async (route) => route.fulfill({ contentType: "text/html", body: "<!doctype html><title>합성 연결 변경 검수</title>" }));
+  await page.clock.install();
+  await page.reload();
+  const player = page.getByTestId("bc-youtube-player");
+  await expect(page.getByTestId("bc-youtube-notice")).toContainText("연결된 유튜브 방송이 없습니다");
+  const initialQueueReads = queueReads;
+  connected = true;
+  await page.clock.fastForward(30_000);
+  await expect(player).toHaveAttribute("src", "https://www.youtube.com/embed/synthetic01?playsinline=1&controls=1");
+  expect(queueReads).toBe(initialQueueReads);
+  connected = false;
+  await page.clock.fastForward(30_000);
+  await expect(player).toHaveCount(0);
+  await expect(page.getByTestId("bc-youtube-notice")).toContainText("연결된 유튜브 방송이 없습니다");
+  expect(queueReads).toBe(initialQueueReads);
+});
+
 test("대표자: 방송 시작부터 개봉·타이머·완료·되돌리기·취소·종료까지 실제로 처리된다", async ({ page }) => {
   await login(page, "demo-owner@example.com", "/seller/products");
   await expect(page).toHaveURL(/\/seller\/products$/);
