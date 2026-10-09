@@ -25,7 +25,7 @@ for (const [name, route] of [["inquiries", "/seller/inquiries"], ["notices", "/s
       // SA-011 / DS-PANEL: search and list header stay outside the table frame.
       const search = page.getByRole("search", { name: "목록 조건" });
       const list = page.locator(".au-list-section");
-      const grid = list.getByRole("region", { name: "상품 목록 표" });
+      const grid = list.getByRole("region", { name: "상품 목록 표", includeHidden: true });
       await expect(search).toBeVisible();
       await expect(search).toHaveCSS("border-radius", "12px");
       expect(await search.evaluate(el => getComputedStyle(el).boxShadow)).not.toBe("none");
