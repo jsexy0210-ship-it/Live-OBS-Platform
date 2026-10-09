@@ -121,6 +121,7 @@ test("오늘 처리할 일: 서버 숫자가 맨 위에 보이고, 누르면 조
   await expect(page.locator(".ma-home-grid")).toHaveCSS("grid-template-columns", /^(\d+(\.\d+)?px) (\d+(\.\d+)?px) (\d+(\.\d+)?px)$/);
   await expectChartPlacement(page, 1440);
   await expectDateAxes(page);
+  await expect(page.locator('.ma-home [aria-busy="true"]')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
   await page.screenshot({ path: "tests/e2e/screenshots/admin-home-1440.png", fullPage: true });
   for (const w of [1024, 390]) {
@@ -130,6 +131,7 @@ test("오늘 처리할 일: 서버 숫자가 맨 위에 보이고, 누르면 조
     await expect(page.locator(".ma-home-grid")).toHaveCSS("grid-template-columns", w === 390 ? /^(\d+(\.\d+)?px)$/ : /^(\d+(\.\d+)?px) (\d+(\.\d+)?px)$/);
     await expectChartPlacement(page, w);
     await expectDateAxes(page);
+    await expect(page.locator('.ma-home [aria-busy="true"]')).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
     await page.screenshot({ path: `tests/e2e/screenshots/admin-home-${w}.png`, fullPage: true });
   }
@@ -284,12 +286,14 @@ test("최고관리자: 오늘 처리할 일 아래에 인프라 · 비용 요약
   const above = await page.getByTestId("today-tasks").boundingBox();
   const at = await card.boundingBox();
   expect(at!.y).toBeGreaterThan(above!.y); // 「오늘 처리할 일」 바로 아래
+  await expect(page.locator('.ma-home [aria-busy="true"]')).toHaveCount(0);
   await page.screenshot({ path: "tests/e2e/screenshots/admin-home-infra-1440.png", fullPage: true });
   for (const w of [1024, 390]) {
     await page.setViewportSize({ width: w, height: 900 });
     await page.reload();
     await expect(page.getByTestId("infra-card")).toBeVisible();
     await expect(page.getByTestId("infra-card-cost")).toBeVisible();
+    await expect(page.locator('.ma-home [aria-busy="true"]')).toHaveCount(0);
     await page.screenshot({ path: `tests/e2e/screenshots/admin-home-infra-${w}.png`, fullPage: true });
   }
   await page.setViewportSize({ width: 1440, height: 900 });
