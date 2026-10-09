@@ -75,6 +75,10 @@ test("두 기존 홈 주소는 단일 홈으로 이동하고 유튜브 패널은
   await expect(player).toHaveAttribute("src", "https://www.youtube.com/embed/synthetic01?playsinline=1&controls=1");
   for (const width of [1440, 1024, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    if (width === 390) await expect.poll(async () => {
+      const menu = await page.locator(".lnb").boundingBox();
+      return menu ? menu.x + menu.width : Number.POSITIVE_INFINITY;
+    }).toBeLessThanOrEqual(0);
     const box = await player.boundingBox();
     expect(box).not.toBeNull();
     expect(box!.width).toBeGreaterThanOrEqual(200);
