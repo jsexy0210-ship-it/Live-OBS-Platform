@@ -514,7 +514,10 @@ for (const [email, allowed] of [[OWNER, true], [VIEWER, false]] as const) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
       const crumb = page.locator(".loc-bar .crumb");
       await expect(crumb).toHaveText("상품›재고›재고 수정");
-      await expect(crumb.locator(".crumb-now")).toHaveText("재고 수정");
+      const current = crumb.locator(".crumb-now");
+      await expect(current).toHaveText("›재고 수정");
+      await expect(current.locator(".crumb-sep")).toHaveText("›");
+      await expect(current.locator(".crumb-sep")).toHaveAttribute("aria-hidden", "true");
       await expect(crumb.getByRole("link", { name: "재고 수정", exact: true })).toHaveCount(0);
       if (allowed) {
         await expect(page.getByRole("heading", { level: 1, name: "재고 수정", exact: true })).toBeVisible();
