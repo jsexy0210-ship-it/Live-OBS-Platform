@@ -7,7 +7,7 @@ export function NoticeDetail({ notice, listHref, listState }: { notice: { title:
   const c = PUBLIC_NOTICE_CATEGORY[notice.category];
   return (
     <PublicFrame active="/notices">
-      <section className="pf-sec pf-doc">
+      <section className="pf-sec pf-doc pf-document-section">
         <article className="pf-doc-body">
           <Link className="t-l2" href={listHref}>
             ← 공지 목록
