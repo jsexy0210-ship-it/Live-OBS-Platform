@@ -97,7 +97,7 @@ test("최고관리자: 가격 변경은 전·후 금액과 30일 안내를 보�
     }
     await page.setViewportSize({ width: 1440, height: 900 });
     const dialog = page.getByRole("dialog");
-    await expect(dialog).toContainText("기존 구독자는 30일 뒤 첫 결제부터 적용됩니다");
+    await expect(dialog).toContainText("고지 전에는 기존 요금을 유지합니다.");
     await dialog.getByLabel("판매가").fill(String(before.listPrice + 1));
     await expect(dialog.getByRole("button", { name: "저장" })).toBeDisabled();
     const newList = before.listPrice + 1000;
