@@ -9,15 +9,16 @@ export const count = (n: number) => `${n.toLocaleString("ko-KR")}건`;
 export const pct = (r: number | null) => (r === null ? "—" : `${(r * 100).toFixed(1)}%`);
 
 // 직전 기간 대비. 직전 값이 0이면 비율 대신 「바로 앞 기간 0」으로 둔다. lowerIsBetter: 취소·환불처럼 줄면 좋은 값.
-function Delta({ now, prev, fmt, lowerIsBetter }: { now: number | null; prev: number | null; fmt: (n: number) => string; lowerIsBetter?: boolean }) {
-  if (now === null || prev === null) return <span className="d">바로 앞 기간 —</span>;
-  if (prev === 0) return <span className="d">바로 앞 기간 {fmt(0)}</span>;
+function Delta({ now, prev, fmt, lowerIsBetter, caption = "바로 앞 기간", compact = false, difference = false }: { now: number | null; prev: number | null; fmt: (n: number) => string; lowerIsBetter?: boolean; caption?: string; compact?: boolean; difference?: boolean }) {
+  if (now === null || prev === null) return <span className="d">{compact ? "—" : `${caption} —`}</span>;
+  if (difference) return <span className="d">{caption} 대비 {now === prev ? "0" : `${now > prev ? "▲" : "▼"} ${Math.abs(now - prev).toLocaleString("ko-KR")}`}</span>;
+  if (prev === 0) return <span className="d">{caption} {fmt(0)}</span>;
   const r = (now - prev) / Math.abs(prev);
-  if (r === 0) return <span className="d">바로 앞 기간과 같습니다</span>;
+  if (r === 0) return <span className="d">{compact ? "0.0%" : `${caption}과 같습니다`}</span>;
   const good = lowerIsBetter ? r < 0 : r > 0;
   return (
     <span className="d">
-      바로 앞 기간보다{" "}
+      {!compact && (caption === "바로 앞 기간" ? "바로 앞 기간보다 " : `${caption} 대비 `)}
       <b className={good ? "sts-up" : "sts-down"}>
         {r > 0 ? "▲" : "▼"} {Math.abs(r * 100).toFixed(1)}%
       </b>
@@ -26,16 +27,16 @@ function Delta({ now, prev, fmt, lowerIsBetter }: { now: number | null; prev: nu
 }
 
 // compare: false면 비교 줄을 빼고 note(있으면)를 둔다(비교 기간이 없는 지표)
-export type Kpi = { label: string; now: number | null; prev: number | null; fmt: (n: number) => string; lowerIsBetter?: boolean; text?: string; compare?: false; note?: string };
+export type Kpi = { label: string; labelDisplay?: React.ReactNode; now: number | null; prev: number | null; fmt: (n: number) => string; lowerIsBetter?: boolean; text?: string; compare?: false; note?: string };
 
-export function Kpis({ items }: { items: Kpi[] }) {
+export function Kpis({ items, caption, compact = false, difference = false }: { items: Kpi[]; caption?: string; compact?: boolean; difference?: boolean }) {
   return (
     <div className="sts-kpis">
       {items.map((k) => (
         <div key={k.label} className="stat" data-testid="stats-kpi">
-          <span className="t-l2 c-alt">{k.label}</span>
+          <span className="t-l2 c-alt">{k.labelDisplay ?? k.label}</span>
           <span className="v">{k.text ?? (k.now === null ? "—" : k.fmt(k.now))}</span>
-          {k.compare === false ? <span className="d">{k.note ?? "\u00a0"}</span> : <Delta now={k.now} prev={k.prev} fmt={k.fmt} lowerIsBetter={k.lowerIsBetter} />}
+          {k.compare === false ? <span className="d">{k.note ?? "\u00a0"}</span> : compact ? <span className="home-kpi-note"><Delta now={k.now} prev={k.prev} fmt={k.fmt} lowerIsBetter={k.lowerIsBetter} caption={caption} compact difference={difference} />{k.note && <> {k.note}</>}</span> : <Delta now={k.now} prev={k.prev} fmt={k.fmt} lowerIsBetter={k.lowerIsBetter} caption={caption} difference={difference} />}
         </div>
       ))}
     </div>
@@ -61,8 +62,12 @@ const short = (n: number) => (n >= 100_000_000 ? `${+(n / 100_000_000).toFixed(1
 // 단일 계열 막대 그래프. 값 이름은 제목이 말하고, 막대에 올리면 값이 보인다. 같은 값은 아래 표에도 있다.
 // 막대는 늘어나는 SVG로, 축 글자는 HTML로 그린다(SVG를 가로로 늘리면 글자가 찌그러진다).
 // bare: 카드·제목 없이 그래프만(요약 화면의 칸 안에 넣을 때)
-export function BarChart({ title, points, fmt, bare }: { title: string; points: { label: string; value: number }[]; fmt: (n: number) => string; bare?: boolean }) {
+export function BarChart({ title, points, fmt, bare, compact = false }: { title: string; points: { label: string; value: number }[]; fmt: (n: number) => string; bare?: boolean; compact?: boolean }) {
   const [hover, setHover] = useState<number | null>(null);
+  if (compact) {
+    const max = Math.max(1, ...points.map((p) => p.value));
+    return <div className="home-chart card"><div className="home-chart-head"><b>{title}</b><span>합계 {fmt(points.reduce((sum, p) => sum + p.value, 0))}</span></div><div className="home-bars" role="img" aria-label={`${title} 그래프`}>{points.map((p, i) => <div key={p.label} title={`${p.label} · ${fmt(p.value)}`}><i style={{ height: `${Math.max(0, p.value / max * 100)}%` }} /><span>{i % Math.ceil(points.length / 8) === 0 ? p.label : "\u00a0"}</span></div>)}</div></div>;
+  }
   const W = 1000;
   const H = 200;
   const top = nice(Math.max(0, ...points.map((p) => p.value)));

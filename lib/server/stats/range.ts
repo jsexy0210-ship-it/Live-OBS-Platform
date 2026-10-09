@@ -60,3 +60,9 @@ export function parseStatsRange(q: { from?: string | null; to?: string | null; u
 
 // 비율(소수 넷째 자리). 분모가 0이면 null(화면은 「—」).
 export const ratio = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 10_000) / 10_000 : null);
+
+// 홈의 「어제 같은 시각 대비」. 일반 통계의 완료된 날짜 범위는 그대로 두고 오늘 하루 요청에만 적용한다.
+export function elapsedDayRange(range: StatsRange, at: Date): StatsRange | null {
+  if (range.days !== 1 || range.from !== kstDate(at)) return null;
+  return { ...range, end: at, prev: { ...range.prev, end: new Date(at.getTime() - DAY_MS) } };
+}

@@ -5,8 +5,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHead } from "../../../../components/admin-ui";
 import { ErrorState, LoadingRows } from "../../../../components/seller/States";
 import "../../../../components/seller/stats/stats.css";
+import "./dashboard.css";
 import { BarChart, Kpis, bucketLabel, count, pct, type Kpi } from "../../../../components/seller/stats/parts";
 import { adminCan } from "../../../../lib/server/authz/permissions";
+import { formatDateTime } from "../../../../lib/client/format";
 import { allPeriodHref } from "../../../../lib/client/filterDefaults";
 import { adminApi } from "../_components/api";
 import { AdminTopbar, useAdmin } from "../_components/AdminShell";
@@ -27,7 +29,7 @@ const n = (v: number, unit: string) => `${v.toLocaleString("ko-KR")}${unit}`;
 
 function Tile({ label, value, id }: { label: string; value: string; id: string }) {
   return (
-    <div className="card pad col" style={{ gap: 4 }}>
+    <div className="admin-home-tile">
       <span className="t-l2 c-alt">{label}</span>
       <span className="t-h2" data-testid={id}>
         {value}
@@ -38,8 +40,8 @@ function Tile({ label, value, id }: { label: string; value: string; id: string }
 
 function Section({ title, href, link, children }: { title: string; href?: string; link?: string; children: React.ReactNode }) {
   return (
-    <section className="col" style={{ gap: 10 }} aria-label={title}>
-      <div className="row" style={{ justifyContent: "space-between" }}>
+    <section className="admin-home-section" aria-label={title}>
+      <div className="admin-home-section-head">
         <h2 className="t-hl1">{title}</h2>
         {href && (
           <Link className="btn btn-sm btn-out" href={href}>
@@ -47,7 +49,7 @@ function Section({ title, href, link, children }: { title: string; href?: string
           </Link>
         )}
       </div>
-      <div className="stat-row" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
+      <div className="admin-home-summary">
         {children}
       </div>
     </section>
@@ -70,10 +72,10 @@ function useApi<T>(path: string, tick: number) {
   return [state, load] as const;
 }
 
-function Panel<T>({ title, state, retry, children, id }: { title: string; state: Fetch<T>; retry: () => void; children: (d: T) => React.ReactNode; id: string }) {
+function Panel<T>({ title, state, retry, children, id, summary }: { title: string; state: Fetch<T>; retry: () => void; children: (d: T) => React.ReactNode; id: string; summary?: (d: T) => React.ReactNode }) {
   return (
-    <section className="col" style={{ gap: 10 }} aria-label={title} data-testid={id}>
-      <h2 className="t-hl1">{title}</h2>
+    <section className="admin-home-section" aria-label={title} data-testid={id}>
+      <div className="admin-home-section-head"><h2 className="t-hl1">{title}</h2>{state.kind === "ok" && summary?.(state.data)}</div>
       {state.kind === "loading" && (
         <div className="card">
           <LoadingRows rows={3} />
@@ -91,7 +93,7 @@ function Panel<T>({ title, state, retry, children, id }: { title: string; state:
 
 // ─── 오늘 처리할 일 ───
 type TaskKey = "signupPending" | "paymentFailed" | "refundRequested" | "inquiryOpen" | "pgError" | "automationFailed" | "incidentCritical" | "platformInfoMissing";
-type Tasks = { at: string; total: number; items: { key: TaskKey; count: number; href: string; fields?: string[] }[] };
+type Tasks = { at: string; total: number; items: { key: TaskKey; count: number; href: string; fields?: string[]; oldestAt?: string | null; overOneDay?: number }[] };
 // 플랫폼 정보(MA-088) 빈 항목 이름
 const INFO_FIELD: Record<string, string> = { name: "상호", representative: "대표자", businessNumber: "사업자등록번호", mailOrderNumber: "통신판매업 신고번호", address: "사업장 주소", phone: "고객센터 전화", email: "고객센터 이메일" };
 const TASK_LABEL: Record<TaskKey, string> = {
@@ -126,51 +128,43 @@ function taskHref(key: TaskKey, fallback: string): string {
       return fallback;
   }
 }
-// 「10/5 (월) 15:45」
-const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
-function shortAt(iso: string): string {
-  const k = new Date(new Date(iso).getTime() + 9 * 3_600_000);
-  return `${k.getUTCMonth() + 1}/${k.getUTCDate()} (${WEEK[k.getUTCDay()]}) ${String(k.getUTCHours()).padStart(2, "0")}:${String(k.getUTCMinutes()).padStart(2, "0")}`;
-}
-
 function TodayTasks({ tick }: { tick: number }) {
   const [state, load] = useApi<Tasks>("/api/admin/today-tasks", tick);
   const { me } = useAdmin();
   const canEditInfo = adminCan(me.role, "system.manage");
   return (
-    <Panel title="오늘 처리할 일" state={state} retry={() => void load()} id="today-tasks">
+    <Panel title="오늘 처리할 일" state={state} retry={() => void load()} id="today-tasks" summary={(d) => <span className="t-c1 c-alt" data-testid="today-tasks-at">숫자를 누르면 해당 조건이 걸린 목록으로 이동합니다 · {formatDateTime(d.at)} 집계</span>}>
       {(d) => (
         <>
-          <span className="t-c1 c-alt" data-testid="today-tasks-at">
-            숫자를 누르면 해당 조건이 걸린 목록으로 이동합니다 · {shortAt(d.at)} 집계
-          </span>
           {d.total === 0 && (
             <div className="card pad t-l2 c-alt" role="status" data-testid="today-tasks-empty">
               지금 처리할 일이 없습니다.
             </div>
           )}
-          <div className="stat-row" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
+          <div className="admin-home-tasks">
             {d.items
               // 플랫폼 정보 미입력은 한 항목이라도 비어 있을 때만 보이고 모두 채우면 사라진다(MA-088 정본)
               .filter((t) => t.key !== "platformInfoMissing" || t.count > 0)
               .map((t) => {
                 const isInfo = t.key === "platformInfoMissing";
-                const unit = isInfo ? "항목" : "건";
+                const unit = isInfo ? "항목" : t.key === "pgError" ? "곳" : "건";
                 const body = (
                   <>
                     <span className="t-l2 c-alt">{TASK_LABEL[t.key]}</span>
-                    <span className={`t-h2 ${t.count > 0 && !isInfo ? "c-neg" : ""}`}>{n(t.count, unit)}</span>
+                    <span className={`admin-home-task-value ${t.count > 0 && !isInfo ? "hot" : ""}`}>{n(t.count, unit)}</span>
+                    {t.key === "signupPending" && t.oldestAt && <span className="t-c1 c-alt">가장 오래된 신청 {Math.floor((new Date(d.at).getTime() - new Date(t.oldestAt).getTime()) / KST_DAY) > 0 ? `${Math.floor((new Date(d.at).getTime() - new Date(t.oldestAt).getTime()) / KST_DAY)}일 전` : "오늘"}</span>}
+                    {t.key === "inquiryOpen" && <span className="t-c1 c-alt">답변 대기 · 1일 넘음 {t.overOneDay ?? 0}</span>}
                     {isInfo && <span className="t-c1 c-alt">{(t.fields ?? []).map((f) => INFO_FIELD[f] ?? f).join(" · ")} 비어 있음</span>}
                     {isInfo && !canEditInfo && <span className="t-c1 c-alt">최고관리자에게 요청</span>}
                   </>
                 );
                 // 플랫폼 정보 화면은 최고관리자만 열 수 있어 다른 관리자에게는 누르는 타일이 아니라 안내로 보인다
                 return isInfo && !canEditInfo ? (
-                  <div key={t.key} className="card pad col" style={{ gap: 4 }} data-testid={`today-task-${t.key}`} aria-label={`${TASK_LABEL[t.key]} ${t.count}${unit}`}>
+                  <div key={t.key} className="admin-home-task" data-testid={`today-task-${t.key}`} aria-label={`${TASK_LABEL[t.key]} ${t.count}${unit}`}>
                     {body}
                   </div>
                 ) : (
-                  <Link key={t.key} href={taskHref(t.key, t.href)} className="card pad col" style={{ gap: 4, textDecoration: "none", color: "inherit" }} data-testid={`today-task-${t.key}`} aria-label={`${TASK_LABEL[t.key]} ${t.count}${unit}`}>
+                  <Link key={t.key} href={taskHref(t.key, t.href)} className="admin-home-task" data-testid={`today-task-${t.key}`} aria-label={`${TASK_LABEL[t.key]} ${t.count}${unit}`}>
                     {body}
                   </Link>
                 );
@@ -199,12 +193,11 @@ const WARN_LABEL: [keyof InfraSummary["warnings"], string][] = [
 function InfraBar({ label, pct }: { label: string; pct: number | null }) {
   const level = pct === null ? "" : pct >= 90 ? "var(--neg-text, #c0262c)" : pct >= 80 ? "var(--cau-text, #b25e00)" : "var(--wds-primary-normal, #0f766e)";
   return (
-    <span className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
-      <span className="t-c1 c-alt" style={{ width: 52 }}>{label}</span>
-      <span style={{ width: 90, height: 8, borderRadius: 4, background: "var(--wds-fill-normal, #eee)", overflow: "hidden", display: "inline-block" }} aria-hidden="true">
+    <span className="admin-home-infra-meter" role="group" aria-label={label}>
+      <span className="admin-home-infra-track" aria-hidden="true">
         <i style={{ display: "block", height: "100%", width: `${Math.min(100, pct ?? 0)}%`, background: level }} />
       </span>
-      <span>{pct === null ? "측정 전" : `${pct}%`}</span>
+      <span className="admin-home-infra-meter-value">{pct === null ? "측정 전" : `${pct}%`}</span>
     </span>
   );
 }
@@ -224,9 +217,8 @@ function InfraCard({ tick }: { tick: number }) {
     return () => clearInterval(t);
   }, [load, tick]);
   return (
-    <section className="col" style={{ gap: 10 }} aria-label="인프라 · 비용" data-testid="infra-card">
-      <h2 className="t-hl1">인프라 · 비용</h2>
-      <span className="t-c1 c-alt">최고관리자에게만 보입니다 · 1분마다 갱신 · 카드를 누르면 「인프라 · 비용」으로 갑니다</span>
+    <section className="admin-home-section" aria-label="인프라 · 비용" data-testid="infra-card">
+      <div className="admin-home-section-head"><h2 className="t-hl1">인프라 · 비용</h2><span className="t-c1 c-alt">최고관리자에게만 보입니다 · 1분마다 갱신 · 카드를 누르면 「인프라 · 비용」으로 갑니다</span><Link className="btn btn-sm btn-out" href="/admin/ops/infra">인프라 · 비용</Link></div>
       {state.kind === "loading" && (
         <div className="card">
           <LoadingRows rows={2} />
@@ -238,12 +230,12 @@ function InfraCard({ tick }: { tick: number }) {
         </div>
       )}
       {state.kind === "ok" && (
-        <Link href="/admin/ops/infra" className="card pad" style={{ textDecoration: "none", color: "inherit", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16 }}>
+        <Link href="/admin/ops/infra" className="admin-home-infra">
           <div className="col" style={{ gap: 6 }}>
             <span className="t-l2 c-alt">서버 디스크 · 메모리</span>
             {state.data.servers.length === 0 && <span className="c-alt">측정 전</span>}
             {state.data.servers.map((sv) => (
-              <div key={sv.instance} className="col" style={{ gap: 2 }}>
+              <div key={sv.instance} className="admin-home-infra-server">
                 <b>{sv.instance}</b>
                 <InfraBar label="디스크" pct={sv.diskPct} />
                 <InfraBar label="메모리" pct={sv.memoryPct} />
@@ -260,7 +252,7 @@ function InfraCard({ tick }: { tick: number }) {
             <span className="t-l2 c-alt">경고</span>
             <span className={`t-h2 ${state.data.warnings.total > 0 ? "c-neg" : ""}`} data-testid="infra-card-warnings">{n(state.data.warnings.total, "건")}</span>
             {WARN_LABEL.filter(([k]) => state.data.warnings[k] > 0).map(([k, label]) => (
-              <span key={k} className="t-c1">{label} {state.data.warnings[k]}</span>
+              <span key={k} className="admin-home-warning">{label} {state.data.warnings[k]}</span>
             ))}
             <span className="t-c1 c-alt">기준 초과 · 한도 정지 · 외부 연결 만료 30일 · 7일 전 · 인증 오류</span>
           </div>
@@ -297,7 +289,7 @@ const kpi = (label: string, now: number | null, prev: number | null, fmt: (v: nu
 const wonF = (v: number) => `${v.toLocaleString("ko-KR")}원`;
 const cntF = (v: number) => `${v.toLocaleString("ko-KR")}건`;
 const placeF = (v: number) => `${v.toLocaleString("ko-KR")}곳`;
-const pts = <P extends { bucket: string }>(series: P[], unit: "day" | "month", pick: (p: P) => number) => series.map((p) => ({ label: bucketLabel(p.bucket.length === 7 ? `${p.bucket}-01` : p.bucket, unit), value: pick(p) }));
+const pts = <P extends { bucket: string }>(series: P[], unit: "day" | "month", pick: (p: P) => number) => series.map((p) => ({ label: unit === "day" ? bucketLabel(p.bucket, unit).slice(5) : bucketLabel(`${p.bucket}-01`, unit), value: pick(p) }));
 
 function PeriodStats({ days, tick }: { days: number; tick: number }) {
   const q = daysQuery(days);
@@ -306,23 +298,22 @@ function PeriodStats({ days, tick }: { days: number; tick: number }) {
   const [top, loadTop] = useApi<Top>(`/api/admin/stats/top-sellers?${q}`, tick);
   return (
     <>
-      <Panel title="주문·결제" state={orders} retry={() => void loadOrders()} id="stats-orders">
+      <Panel title="주문 · 결제" state={orders} retry={() => void loadOrders()} id="stats-orders">
         {(d) => (
           <>
-            <Kpis
+            <Kpis caption={`지난 ${days}일`}
               items={[
                 kpi("결제 금액", d.current.revenue, d.previous.revenue, wonF),
-                kpi("결제된 주문", d.current.paidOrders, d.previous.paidOrders, cntF),
                 kpi("들어온 주문", d.current.orders, d.previous.orders, cntF),
-                kpi("환불 금액", d.current.refundAmount, d.previous.refundAmount, wonF, true),
+                kpi("결제된 주문", d.current.paidOrders, d.previous.paidOrders, cntF),
               ]}
             />
-            <div className="row" style={{ gap: 12, flexWrap: "wrap", alignItems: "stretch" }}>
+            <div className="admin-home-charts">
               <div style={{ flex: "1 1 360px", minWidth: 0 }}>
-                <BarChart title="일별 결제 금액" points={pts(d.series, "day", (p) => p.revenue)} fmt={wonF} />
+                <BarChart compact title="일별 결제 금액 (만 원)" points={pts(d.series, "day", (p) => p.revenue / 10000)} fmt={(v) => v.toLocaleString("ko-KR", { maximumFractionDigits: 1 })} />
               </div>
               <div style={{ flex: "1 1 360px", minWidth: 0 }}>
-                <BarChart title="일별 들어온 주문" points={pts(d.series, "day", (p) => p.orders)} fmt={count} />
+                <BarChart compact title="일별 들어온 주문" points={pts(d.series, "day", (p) => p.orders)} fmt={count} />
               </div>
             </div>
           </>
@@ -331,20 +322,18 @@ function PeriodStats({ days, tick }: { days: number; tick: number }) {
       <Panel title="파트너스 성장" state={growth} retry={() => void loadGrowth()} id="stats-growth">
         {(d) => (
           <>
-            <Kpis
+            <Kpis caption={`지난 ${days}일`} difference
               items={[
                 kpi("가입 신청", d.current.signups, d.previous.signups, placeF),
-                kpi("승인", d.current.approved, d.previous.approved, placeF),
-                kpi("시작한 방송", d.current.broadcasts, d.previous.broadcasts, cntF),
-                kpi("방송한 파트너스", d.current.broadcasters, d.previous.broadcasters, placeF),
+                kpi("시작한 방송", d.current.broadcasts, d.previous.broadcasts, (v) => n(v, "회")),
               ]}
             />
-            <div className="row" style={{ gap: 12, flexWrap: "wrap", alignItems: "stretch" }}>
+            <div className="admin-home-charts">
               <div style={{ flex: "1 1 360px", minWidth: 0 }}>
-                <BarChart title="일별 가입 신청" points={pts(d.series, "day", (p) => p.signups)} fmt={placeF} />
+                <BarChart compact title="일별 가입 신청" points={pts(d.series, "day", (p) => p.signups)} fmt={placeF} />
               </div>
               <div style={{ flex: "1 1 360px", minWidth: 0 }}>
-                <BarChart title="일별 시작한 방송" points={pts(d.series, "day", (p) => p.broadcasts)} fmt={cntF} />
+                <BarChart compact title="일별 시작한 방송" points={pts(d.series, "day", (p) => p.broadcasts)} fmt={(v) => n(v, "회")} />
               </div>
             </div>
           </>
@@ -364,13 +353,9 @@ function PeriodStats({ days, tick }: { days: number; tick: number }) {
                 <thead>
                   <tr>
                     <th>순위</th>
-                    <th>쇼핑몰</th>
-                    <th>주문</th>
-                    <th>결제된 주문</th>
+                    <th>파트너스</th>
                     <th>결제 금액</th>
-                    <th>환불 금액</th>
-                    <th>환불을 뺀 매출</th>
-                    <th>전체에서 차지하는 비율</th>
+                    <th>결제된 주문</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -382,12 +367,8 @@ function PeriodStats({ days, tick }: { days: number; tick: number }) {
                           {r.shopName}
                         </Link>
                       </td>
-                      <td>{r.orders.toLocaleString("ko-KR")}</td>
-                      <td>{r.paidOrders.toLocaleString("ko-KR")}</td>
                       <td>{wonF(r.revenue)}</td>
-                      <td>{wonF(r.refundAmount)}</td>
-                      <td>{wonF(r.netRevenue)}</td>
-                      <td>{pct(r.share)}</td>
+                      <td>{cntF(r.paidOrders)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -408,13 +389,10 @@ function SubscriptionRevenue({ tick }: { tick: number }) {
         <>
           <Kpis
             items={[
-              kpi("받은 구독료", d.current.revenue, d.previous.revenue, wonF),
-              kpi("구독료 받은 비율", d.current.collectionRate, d.previous.collectionRate, pct),
-              kpi("결제 실패", d.current.failed, d.previous.failed, cntF, true),
-              kpi("환불 금액", d.current.refundAmount, d.previous.refundAmount, wonF, true),
+              { label: "받은 구독료 (6개월)", now: d.current.revenue, prev: null, fmt: wonF, compare: false, note: `월평균 ${wonF(Math.round(d.current.revenue / 6))}` },
             ]}
           />
-          <BarChart title="월별 받은 구독료" points={pts(d.series, "month", (p) => p.revenue)} fmt={wonF} />
+          <BarChart compact title="월별 받은 구독료 (만 원)" points={pts(d.series, "month", (p) => p.revenue / 10000)} fmt={(v) => v.toLocaleString("ko-KR", { maximumFractionDigits: 1 })} />
         </>
       )}
     </Panel>
@@ -425,8 +403,8 @@ export default function AdminHome() {
   const { me } = useAdmin();
   const isSuper = adminCan(me.role, "infra.manage");
   const [state, setState] = useState<Load>({ kind: "loading" });
-  const [tick, setTick] = useState(0);
-  const [days, setDays] = useState<number>(30);
+  const tick = 0;
+  const [days, setDays] = useState<number>(7);
   const reqId = useRef(0);
   const load = useCallback(async () => {
     const id = ++reqId.current;
@@ -441,19 +419,17 @@ export default function AdminHome() {
   return (
     <>
       <AdminTopbar crumb="홈 › 통합 대시보드" />
-      <main className="main">
+      <main className="main admin-home">
         <PageHead
           title="통합 대시보드"
           actions={
             <>
-              {d && <span className="t-l2 c-alt">{dayTime(d.at)} 기준</span>}
-              <button className="btn btn-out" type="button" onClick={() => { setTick((t) => t + 1); void load(); }} disabled={state.kind === "loading"}>
-                새로 고침
-              </button>
+              <Link className="btn btn-out" href="/admin/notifications">알림</Link>
+              <Link className="btn" href="/admin/partners/applications">가입 신청 검토</Link>
             </>
           }
         />
-        <div className="col" style={{ gap: 24 }}>
+        <div className="admin-home-body">
           <TodayTasks tick={tick} />
           {isSuper && <InfraCard tick={tick} />}
           {!d ? (
