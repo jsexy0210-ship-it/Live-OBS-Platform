@@ -1,5 +1,5 @@
 import { PrismaClient } from "@prisma/client";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Response } from "@playwright/test";
 import { randomBytes } from "node:crypto";
 import { hashPassword } from "../../lib/server/auth/password";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
@@ -66,7 +66,7 @@ async function expectChartPlacement(page: Page, width: number) {
   }
 }
 
-async function expectDateAxes(page: Page) {
+async function expectDateAxes(page: Page, period?: { days: number; orders: string[]; growth: string[] }) {
   await expect(page.locator(".ma-home .sts-x")).toHaveCount(5);
   for (const [panel, title] of [
     ["stats-order-series", "일별 들어온 주문"],
@@ -80,16 +80,29 @@ async function expectDateAxes(page: Page) {
     const axis = chart.locator(".sts-x");
     const labels = axis.locator("span:visible");
     await expect(labels).toHaveCount(2);
-    // 두 눈금과 축을 같은 DOM 순간에 측정한다.
-    const { first, last, box } = await axis.evaluate((el) => {
+    // 기간 조회가 축을 교체할 수 있으므로 연결 상태·눈금·좌표를 같은 DOM 순간에 확인한다.
+    const measure = () => axis.evaluate((el) => {
       const visible = Array.from(el.querySelectorAll("span")).filter((span) => span.getClientRects().length > 0);
       const rect = (node: Element | undefined) => {
         if (!node) return null;
         const r = node.getBoundingClientRect();
         return { x: r.x, width: r.width };
       };
-      return { first: rect(visible[0]), last: rect(visible.at(-1)), box: rect(el) };
-    });
+      return { connected: el.isConnected, labels: visible.map((span) => span.textContent?.trim()), first: rect(visible[0]), last: rect(visible.at(-1)), box: rect(el) };
+    }, undefined, { timeout: 500 });
+    const expected = panel === "stats-order-series" ? period?.orders : panel === "stats-growth" ? period?.growth : undefined;
+    let snapshot: Awaited<ReturnType<typeof measure>> | undefined;
+    try {
+      await expect.poll(async () => {
+        try { snapshot = await measure(); } catch { snapshot = undefined; return false; }
+        return snapshot.connected && snapshot.labels.length === 2 &&
+          [snapshot.first, snapshot.last, snapshot.box].every((r) => r !== null && Number.isFinite(r.x) && r.width > 0) &&
+          (!expected || (snapshot.labels[0] === expected[0] && snapshot.labels[1] === expected[1]));
+      }, { timeout: 5_000 }).toBe(true);
+    } catch {
+      throw new Error(JSON.stringify({ width: page.viewportSize()?.width, days: period?.days ?? 30, title, count: snapshot?.labels.length ?? 0, connected: snapshot?.connected ?? false }));
+    }
+    const { first, last, box } = snapshot!;
     expect(first && last && box).toBeTruthy();
     expect(first!.x).toBeGreaterThanOrEqual(box!.x - 1);
     expect(last!.x + last!.width).toBeLessThanOrEqual(box!.x + box!.width + 1);
@@ -163,14 +176,38 @@ test("기간별 현황: 상위 5 파트너스에 결제된 쇼핑몰이 오르�
   await expect(page.getByTestId("stats-order-series")).toContainText("결제된 주문");
   await expect(page.getByTestId("stats-growth")).toContainText("가입 신청");
   await expect(page.getByTestId("home-month-billing")).toContainText("청구 · 결제 내역");
-  await page.getByRole("button", { name: "최근 7일" }).click();
-  await expect(page.getByRole("button", { name: "최근 7일" })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByTestId("top-seller-row").filter({ hasText: topShop })).toBeVisible();
   for (const width of [1440, 1024, 390]) {
     await page.setViewportSize({ width, height: 900 });
     for (const days of [7, 30, 90]) {
-      await page.getByRole("button", { name: `최근 ${days}일`, exact: true }).click();
-      await expectDateAxes(page);
+      const now = Date.now();
+      const kst = (ms: number) => new Date(ms + 9 * 3_600_000).toISOString().slice(0, 10);
+      const from = kst(now - (days - 1) * 86_400_000);
+      const to = kst(now);
+      const isPeriodResponse = (path: string) => (response: Response) => {
+        const url = new URL(response.url());
+        return url.pathname === path && url.searchParams.get("from") === from && url.searchParams.get("to") === to && url.searchParams.get("unit") === "day";
+      };
+      const button = page.getByRole("button", { name: `최근 ${days}일`, exact: true });
+      const [ordersResponse, growthResponse] = await Promise.all([
+        page.waitForResponse(isPeriodResponse("/api/admin/stats/orders")),
+        page.waitForResponse(isPeriodResponse("/api/admin/stats/growth")),
+        button.click(),
+      ]);
+      expect(ordersResponse.status()).toBe(200);
+      expect(growthResponse.status()).toBe(200);
+      const [orders, growth] = await Promise.all([ordersResponse.json(), growthResponse.json()]);
+      for (const data of [orders, growth]) {
+        expect(data.range).toMatchObject({ from, to, unit: "day" });
+        expect(data.series).toHaveLength(days);
+      }
+      // 기존 최대 8개 눈금에서 CSS가 남기는 첫 날짜와 끝 날짜를 응답 기간과 대조한다.
+      const endpoints = (series: { bucket: string }[]) => {
+        const sampled = series.filter((_, i) => i % Math.ceil(series.length / 8) === 0);
+        return [sampled[0].bucket.replaceAll("-", "."), sampled.at(-1)!.bucket.replaceAll("-", ".")];
+      };
+      await expect(button).toHaveAttribute("aria-pressed", "true");
+      await expect(page.getByTestId("top-seller-row").filter({ hasText: topShop })).toBeVisible();
+      await expectDateAxes(page, { days, orders: endpoints(orders.series), growth: endpoints(growth.series) });
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
     }
   }
