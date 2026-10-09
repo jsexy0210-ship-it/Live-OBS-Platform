@@ -53,7 +53,7 @@ test("자주 묻는 질문은 분류와 검색으로 좁혀진다", async ({ pag
   for (const width of [1440, 1024, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
     await expect(page.locator(".pf-info-section")).toHaveCSS("padding-top", width === 390 ? "40px" : "72px");
-    await expect(page.locator("html")).toHaveJSProperty("scrollWidth", width);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await expect(page.locator("details")).toHaveCount(8);
     await expect(page.locator("details").first()).toHaveAttribute("open", "");
