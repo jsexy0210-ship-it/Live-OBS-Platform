@@ -1,4 +1,6 @@
 /* SA-001 방송 대시보드 */
+.bc-youtube{min-width:0}
+.bc-youtube iframe{display:block;width:100%;min-height:200px;aspect-ratio:16/9;border:0}
 .bc-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 260px;

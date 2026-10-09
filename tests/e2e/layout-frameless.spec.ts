@@ -95,7 +95,7 @@ async function inspect(page: Page): Promise<Found> {
   });
 }
 
-const SELLER = ["/seller/orders", "/seller/orders/deposits", "/seller/products", "/seller/products/stock", "/seller/products/categories", "/seller/products/display", "/seller/coupons", "/seller/members", "/seller/rewards", "/seller/rewards/ledger", "/seller/staff", "/seller/shipping", "/seller/hit-cards", "/seller/broadcast", "/seller/settings/shop", "/seller/settings/order", "/seller/subscription"];
+const SELLER = ["/seller/orders", "/seller/orders/deposits", "/seller/products", "/seller/products/stock", "/seller/products/categories", "/seller/products/display", "/seller/coupons", "/seller/members", "/seller/rewards", "/seller/rewards/ledger", "/seller/staff", "/seller/shipping", "/seller/hit-cards", "/seller", "/seller/settings/shop", "/seller/settings/order", "/seller/subscription"];
 const ADMIN = ["/admin", "/admin/partners", "/admin/partners/applications", "/admin/accounts", "/admin/logs", "/admin/billing/invoices", "/admin/billing/subscriptions", "/admin/settings/messages", "/admin/support/notices", "/admin/ops/monitor"];
 
 for (const width of [1440, 1280, 1024]) {

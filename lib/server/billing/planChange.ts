@@ -1,7 +1,8 @@
 import type { Prisma, PrismaClient, SubscriptionPayment, SubscriptionPlan } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
-import { addMonthsKst, isCancelScheduled, isEndedSubscription, planChangeState } from "./access";
+import { addMonthsKst, isCancelScheduled, isEndedSubscription, planChangeState, proration } from "./access";
+export { proration } from "./access";
 import type { BillingProvider, ChargeResult } from "./provider";
 import { openBillingKey } from "./secret";
 import { chargeFor, dbNow, type PriceSubscription, lockSeller, planPeriod, sellerPlanOf, withoutLegacy, settlePayment, switchPlan } from "./subscription";
@@ -52,18 +53,6 @@ export const PLAN_CHANGE_STATUS: Record<PlanChangeFailure, number> = {
   amount_changed: 409,
   amount_required: 400,
 };
-
-const DAY_MS = 86_400_000;
-const KST_MS = 9 * 3_600_000;
-const kstDay = (d: Date) => Math.floor((d.getTime() + KST_MS) / DAY_MS);
-
-// 남은 기간 차액(MASTER 결정 2026-10-04: KST 달력 일 단위). 남은 일수 = 기간 끝 날짜 − 오늘 날짜(KST), 기간 일수 = 끝 날짜 − 시작 날짜.
-// 결제일(기간 끝 날짜) 당일은 0일, 그 전날은 1일. 원 단위 절사.
-export function proration(diff: number, start: Date, end: Date, now: Date): { amount: number; remainingDays: number } {
-  const total = Math.max(1, kstDay(end) - kstDay(start));
-  const remainingDays = Math.min(total, Math.max(0, kstDay(end) - kstDay(now)));
-  return { amount: Math.floor((Math.max(0, diff) * remainingDays) / total), remainingDays };
-}
 
 // 플랜 변경 판단(쓰기 없음). 실제 변경(changePlan)과 미리보기(previewPlanChanges)가 같은 판단을 쓴다.
 // 잠금은 부르는 쪽이 정한다(changePlan은 판매자 행을 잠근 트랜잭션 안에서 부른다).

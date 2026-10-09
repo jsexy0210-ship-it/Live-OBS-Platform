@@ -41,6 +41,91 @@ body:has(.ovl-root) {
 .ovl-land .ovl-notice {
   top: 40px;
 }
+.ovl-disconnect {
+  position: absolute;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 680px;
+  height: 130px;
+  border-radius: 18px;
+  background: #0c0d10e8;
+  box-shadow: 0 0 0 2px #ffffff55, 0 12px 40px #0009;
+  text-align: center;
+}
+.ovl-port .ovl-disconnect { left: 200px; top: 470px; }
+.ovl-land .ovl-disconnect { left: 620px; top: 470px; }
+.ovl-disconnect b { font-size: 32px; }
+.ovl-disconnect span { color: #ffffffb3; font-size: 23px; }
+.ovl-offline .ow { opacity: 0.5; transition: opacity 0.3s ease-out; }
+.ovl-offline .ow, .ovl-offline .ow * { animation-play-state: paused !important; }
+/* 새 HIT는 6초 동안 중앙에 보여 준 뒤 명예의 전당에 반영한다. */
+.ovl-hit-active .ow { opacity: 0.5; transition: opacity 0.3s ease-out; }
+.ovl-hit-card {
+  position: absolute;
+  z-index: 210;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  box-sizing: border-box;
+  padding: 28px;
+  border-radius: 36px;
+  background: linear-gradient(180deg, #2a1f05f2, #0c0d10f2);
+  color: #fff;
+  animation: ovl-hit-life 6.4s both;
+}
+.ovl-hit-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  animation: ovl-hit-gold 1.6s ease-in-out infinite alternate;
+}
+.ovl-port .ovl-hit-card { left: 48px; top: 300px; width: 984px; height: 480px; }
+.ovl-land .ovl-hit-card { left: 540px; top: 220px; width: 840px; height: 600px; }
+.ovl-hit-photo {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 318px;
+  aspect-ratio: 3 / 4;
+  border-radius: 20px;
+  background: linear-gradient(160deg, #3b3140, #1a1720);
+  box-shadow: inset 0 0 0 2px #ffffff26;
+  color: #ffffffa8;
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+}
+.ovl-land .ovl-hit-photo { width: 380px; font-size: 23px; }
+.ovl-hit-copy { display: flex; flex: 1; flex-direction: column; justify-content: center; gap: 14px; min-width: 0; }
+.ovl-hit-tag { align-self: flex-start; padding: 0.15em 0.6em; border-radius: 0.35em; background: #ffd25e; color: #2b1c00; font-size: 38px; font-weight: 900; letter-spacing: 0.06em; }
+.ovl-hit-name { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-size: 48px; font-weight: 900; line-height: 1.15; }
+.ovl-hit-grade { color: #ffd978; font-size: 24px; font-weight: 700; }
+.ovl-hit-winner { color: #ffffffd9; font-size: 30px; font-weight: 800; }
+.ovl-hit-winner b { color: #fff; }
+.ovl-hit-next { color: #ffffff99; font-size: 22px; font-weight: 600; }
+.ovl-land .ovl-hit-tag { font-size: 43px; }
+.ovl-land .ovl-hit-name { font-size: 54px; }
+.ovl-land .ovl-hit-grade { font-size: 27px; }
+.ovl-land .ovl-hit-winner { font-size: 33px; }
+.ovl-land .ovl-hit-next { font-size: 25px; }
+@keyframes ovl-hit-life {
+  0% { opacity: 0; transform: scale(0.6); }
+  7.8125%, 93.75% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.96); }
+}
+@keyframes ovl-hit-gold {
+  from { box-shadow: inset 0 0 0 3px #ffd978, 0 0 24px 6px #ffc24dcc, 0 0 70px 24px #ffb02e59; }
+  to { box-shadow: inset 0 0 0 3px #fff1c2, 0 0 38px 12px #ffd25ee6, 0 0 104px 36px #ffb02e80; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ovl-hit-card, .ovl-hit-card::before { animation: none; }
+}
 /* 상태 안내 알약(연결 끊김·방송 준비 중): 위젯 배치와 상관없이 왼쪽 위 */
 .ovl-top {
   position: absolute;

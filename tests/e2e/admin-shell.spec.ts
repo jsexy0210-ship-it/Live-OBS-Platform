@@ -38,6 +38,62 @@ async function login(page: Page, email: string) {
 const gnb = (page: Page) => page.getByRole("navigation", { name: "주 메뉴" });
 const lnb = (page: Page) => page.getByRole("complementary", { name: "마스터 관리자 메뉴" });
 
+for (const role of ["super", "cs"] as const) {
+  test(`환불 요청: ${role === "super" ? "최고관리자" : "CS"}의 승인대기 요약을 조회 전용으로 세 폭에서 확인한다`, async ({ page }) => {
+    await login(page, emails[role]);
+    const mutations: string[] = [];
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname.startsWith("/api/admin/subscription-refunds") && !["GET", "HEAD"].includes(request.method())) mutations.push(request.method());
+    });
+    for (const width of [1440, 1024, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      const [response] = await Promise.all([
+        page.waitForResponse((r) => {
+          const url = new URL(r.url());
+          return url.pathname === "/api/admin/subscription-refunds" && url.searchParams.get("status") === "pending" && r.request().method() === "GET";
+        }),
+        page.goto("/admin/billing/refunds"),
+      ]);
+      expect(response.status()).toBe(200);
+      const { counts } = await response.json() as { counts: { REQUESTED: number; PROCESSING: number; FAILED: number } };
+      expect(Number.isInteger(counts.REQUESTED)).toBe(true);
+      expect(counts.REQUESTED).toBeGreaterThanOrEqual(0);
+      await expect(page.getByRole("heading", { level: 1, name: "환불 요청", exact: true })).toBeVisible();
+      const value = page.getByTestId("refund-requested");
+      const tile = value.locator("..");
+      const summary = tile.locator("..");
+      const label = tile.locator(".t-l2");
+      await expect(label).toHaveText("승인 대기 (최고관리자)");
+      await expect(value).toHaveText(`${counts.REQUESTED}건`);
+      await expect(summary.locator(":scope > .card")).toHaveCount(4);
+      await expect(summary.getByText("검토 대기", { exact: true })).toHaveCount(0);
+      await expect(page.getByRole("radiogroup", { name: "상태" }).getByRole("radio").first()).toHaveText(`대기 ${counts.REQUESTED + counts.PROCESSING + counts.FAILED}`);
+      if (width === 390) await expect.poll(async () => {
+        const menu = await lnb(page).boundingBox();
+        return menu ? menu.x + menu.width : Number.POSITIVE_INFINITY;
+      }).toBeLessThanOrEqual(0);
+      await page.evaluate(() => document.fonts.ready);
+      const rect = await label.evaluate((el) => {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const text = range.getBoundingClientRect();
+        const tile = el.parentElement!.getBoundingClientRect();
+        return { width: text.width, height: text.height, left: text.left, right: text.right, top: text.top, bottom: text.bottom, tileLeft: tile.left, tileRight: tile.right, tileTop: tile.top, tileBottom: tile.bottom };
+      });
+      expect(rect.width).toBeGreaterThan(0);
+      expect(rect.height).toBeGreaterThan(0);
+      expect(rect.left).toBeGreaterThanOrEqual(rect.tileLeft);
+      expect(rect.right).toBeLessThanOrEqual(rect.tileRight);
+      expect(rect.top).toBeGreaterThanOrEqual(rect.tileTop);
+      expect(rect.bottom).toBeLessThanOrEqual(rect.tileBottom);
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({ path: `tests/e2e/screenshots/MA-026-summary-${role}-${width}.png`, fullPage: true });
+    }
+    expect(mutations).toEqual([]);
+  });
+}
+
 test("파트너스 목록: 실제 로그인 후 공통 틀 3폭 geometry와 이번 SHA 캡처를 확인한다", async ({ page }) => {
   const sourceSha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
   const captures = [];
