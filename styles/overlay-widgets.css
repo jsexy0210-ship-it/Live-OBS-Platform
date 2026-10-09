@@ -305,8 +305,14 @@
   0% { opacity: 0; transform: scale(0.9); }
   60% { transform: scale(1.04); }
 }
+/* 중앙 HIT 연출이 끝난 뒤 1위 띠를 0.8초씩 두 번 금색으로 강조한다. */
+.ow-hall-first.ow-hit-new { animation: ow-hit-flash 0.8s ease-in-out 2; }
+@keyframes ow-hit-flash {
+  0%, 100% { box-shadow: 0 0 0 3px var(--w-accent, #ffd23f), 0 0 12px #ffd97866; }
+  50% { box-shadow: 0 0 0 3px #fff1c2, 0 0 36px #ffd978; }
+}
 @media (prefers-reduced-motion: reduce) {
-  .ow-hit-new { animation: none; }
+  .ow-hit-new, .ow-hall-first.ow-hit-new { animation: none; }
 }
 
 /* 이벤트 할인 카드(OV-007) */

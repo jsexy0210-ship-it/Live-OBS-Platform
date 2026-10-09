@@ -12,12 +12,13 @@ import type { EventCardData, LiveData, OrderEvent, RankingRow, Widget } from "./
 // 신규 주문 알림: state.orderEvents(최근 30초 주문)에서 처음 보는 id만, 주문 종류(첫 주문·재주문·VIP)에 맞는 variant 위젯을 durationSec 동안 띄운다(그 variant 위젯이 없으면 첫 주문 위젯으로). 처음 읽을 때 이미 있던 주문은 띄우지 않는다.
 
 type Item = { id: string; nickname: string; gradeSnapshot: string | null; productLabel: string; quantity: number; timerSeconds?: number | null; openingStartedAt?: string | null };
+type Hit = { id: string; cardName: string; nickname: string; grade?: string | null; createdAt?: string };
 type State = {
   version: number;
   live: boolean;
   opening: Item | null;
   waiting: Item[];
-  hits?: { id: string; cardName: string; nickname: string; createdAt?: string }[];
+  hits?: Hit[];
   shop?: { name: string; url: string | null };
   orderEvents?: OrderEvent[];
   eventCard?: EventCardData | null;
@@ -27,6 +28,7 @@ type State = {
 type Shown = { event: OrderEvent; until: number };
 // 새 HIT 카드를 강조하는 시간
 const HIT_FRESH_MS = 8_000;
+const HIT_CARD_MS = 6_400;
 type Layout = { aspect: string; version: number; widgets: Widget[] };
 type View = { kind: "loading" } | { kind: "gone" } | { kind: "offline" } | { kind: "ok"; state: State; stateReceivedAt: number; offline: boolean };
 
@@ -48,6 +50,7 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
   const seenEvents = useRef<Set<string> | null>(null);
   const seenHits = useRef<Set<string> | null>(null);
   const [freshHits, setFreshHits] = useState<Record<string, number>>({});
+  const [activeHit, setActiveHit] = useState<{ hit: Hit; until: number } | null>(null);
   const layoutRef = useRef<Layout | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const W = landscape ? 1920 : 1080;
@@ -135,10 +138,11 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
     const hitIds = (state.hits ?? []).map((h) => h.id);
     if (seenHits.current === null) seenHits.current = new Set(hitIds);
     else {
-      const added = hitIds.filter((id) => !seenHits.current!.has(id));
+      const added = (state.hits ?? []).filter((hit) => !seenHits.current!.has(hit.id));
       if (added.length > 0) {
-        added.forEach((id) => seenHits.current!.add(id));
-        setFreshHits((cur) => ({ ...cur, ...Object.fromEntries(added.map((id) => [id, Date.now() + HIT_FRESH_MS])) }));
+        added.forEach((hit) => seenHits.current!.add(hit.id));
+        setFreshHits((cur) => ({ ...cur, ...Object.fromEntries(added.map((hit) => [hit.id, Date.now() + HIT_FRESH_MS])) }));
+        setActiveHit({ hit: added[0]!, until: Date.now() + HIT_CARD_MS });
       }
     }
     // 신규 주문 알림
@@ -180,6 +184,12 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
     }
   }, [base, load, markOffline, recoverChannel]);
   versionRef.current = () => void checkVersion();
+
+  useEffect(() => {
+    if (!activeHit) return;
+    const timer = setTimeout(() => setActiveHit((cur) => cur?.hit.id === activeHit.hit.id ? null : cur), Math.max(0, activeHit.until - Date.now()));
+    return () => clearTimeout(timer);
+  }, [activeHit]);
 
   const layoutVersion = useRef<number | null>(null);
   const aspect = landscape ? "16x9" : "9x16";
@@ -252,7 +262,8 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
 
   const state = view.kind === "ok" ? view.state : null;
   const renderNow = view.kind === "ok" && view.offline ? frozenNow.current ?? now : now;
-  const data: LiveData | null = state ? { live: state.live, opening: state.opening, waiting: state.waiting, hits: state.hits ?? [], eventCard: state.eventCard ?? null, purchaseRanking: state.purchaseRanking ?? [], freshHitIds: Object.keys(freshHits).filter((id) => freshHits[id]! > renderNow), shop: state.shop ?? null, alert: null } : null;
+  const showHit = !!(activeHit && view.kind === "ok" && !view.offline && activeHit.until > now);
+  const data: LiveData | null = state ? { live: state.live, opening: state.opening, waiting: state.waiting, hits: (state.hits ?? []).filter((hit) => !showHit || hit.id !== activeHit?.hit.id), eventCard: state.eventCard ?? null, purchaseRanking: state.purchaseRanking ?? [], freshHitIds: Object.keys(freshHits).filter((id) => freshHits[id]! > renderNow), shop: state.shop ?? null, alert: null } : null;
   // 방송 준비 중에는 두 빈 패널을 유지하고, 방송 중 개봉 전 현재 주문 칸은 기존처럼 숨긴다.
   const shown = (layout?.widgets ?? []).filter(
     (w) =>
@@ -263,7 +274,7 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
 
   return (
     <div className="ovl-root">
-      <div className={`ovl ${landscape ? "ovl-land" : "ovl-port"}${view.kind === "ok" && view.offline ? " ovl-offline" : ""}`} style={{ width: W, height: H, transform: `scale(${scale})` }} data-testid="overlay">
+      <div className={`ovl ${landscape ? "ovl-land" : "ovl-port"}${view.kind === "ok" && view.offline ? " ovl-offline" : ""}${showHit ? " ovl-hit-active" : ""}`} style={{ width: W, height: H, transform: `scale(${scale})` }} data-testid="overlay">
         {view.kind === "offline" && (
           <div className="ovl-disconnect" role="status"><b data-testid="overlay-offline">연결이 끊겼어요. 다시 연결하는 중이에요</b></div>
         )}
@@ -295,6 +306,18 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
                 stateReceivedAt={view.kind === "ok" ? view.stateReceivedAt : now}
               />
             ))}
+            {showHit && activeHit && (
+              <div className="ovl-hit-card" role="status" data-testid="overlay-hit-card">
+                <div className="ovl-hit-photo"><span>당첨 카드 사진이 없어요</span></div>
+                <div className="ovl-hit-copy">
+                  <strong className="ovl-hit-tag">HIT!</strong>
+                  <strong className="ovl-hit-name">{activeHit.hit.cardName}</strong>
+                  {activeHit.hit.grade && <span className="ovl-hit-grade">{activeHit.hit.grade}</span>}
+                  <span className="ovl-hit-winner"><b>{activeHit.hit.nickname}</b> 님, 축하해요</span>
+                  <span className="ovl-hit-next">6초 뒤 명예의 전당 1위에 올라가요</span>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
