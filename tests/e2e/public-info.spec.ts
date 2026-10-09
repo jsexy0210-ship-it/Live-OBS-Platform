@@ -50,6 +50,15 @@ test("자주 묻는 질문은 분류와 검색으로 좁혀진다", async ({ pag
   await expect(page.getByText("가입 신청은 어떻게 처리되나요?")).toBeVisible();
   await expect(page.locator("details").first()).toContainText("자동 점검을 통과하면 바로 승인돼요. 확인이 필요한 신청은 마스터 관리자가 살펴본 뒤 승인하거나, 보완을 요청하거나 반려해요.");
   await expect(page.getByText("운영팀이 평일 10~18시에 답해요. 평균 첫 답변 4시간.")).toBeVisible();
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await expect(page.locator(".pf-info-section")).toHaveCSS("padding-top", width === 390 ? "40px" : "72px");
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.locator("details")).toHaveCount(8);
+    await expect(page.locator("details").first()).toHaveAttribute("open", "");
+    await page.screenshot({ path: `tests/e2e/screenshots/pf004-faq-${width}.png`, fullPage: true });
+  }
   const all = await page.locator("details").count();
   await page.getByRole("button", { name: "적립금" }).click();
   await expect(page.locator("details")).toHaveCount(1);
