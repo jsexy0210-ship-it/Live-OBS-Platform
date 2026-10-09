@@ -11,9 +11,12 @@ import { allPeriodHref } from "../../../../lib/client/filterDefaults";
 import { adminApi } from "../_components/api";
 import { AdminTopbar, useAdmin } from "../_components/AdminShell";
 import { dayTime, won } from "../_components/partners";
+import { type Monitor } from "../_components/ops";
+import { actionLabel, ACTOR_LABEL, targetLabel, type AuditRow } from "../_components/auditLogs";
+import "./home.css";
 
-// MA-001 통합 대시보드(모든 마스터 역할, 숫자만·조회만). 맨 위 「오늘 처리할 일」(GET /api/admin/today-tasks)은 숫자를 누르면 조건이 걸린 목록으로 간다.
-// 그 아래 현황 칸(GET /api/admin/dashboard)과 기간별 주문·결제·구독 매출·성장·상위 5 파트너스(GET /api/admin/stats/*)는 각각 따로 불러와, 하나가 실패해도 나머지는 그대로 보인다.
+// MA-001: 2026-10-09 재승인 MA-001.dc.html의 6개 요약·3열 정보를 복구한다.
+// IA 필수 업무큐·최고관리자 인프라는 보존한다. 지표·감시·로그는 각 GET/권한으로 독립 조회한다.
 // 서버가 주는 값만 보여 준다(없는 칸을 만들지 않는다).
 type Summary = {
   at: string;
@@ -24,36 +27,6 @@ type Summary = {
 };
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; data: Summary };
 const n = (v: number, unit: string) => `${v.toLocaleString("ko-KR")}${unit}`;
-
-function Tile({ label, value, id }: { label: string; value: string; id: string }) {
-  return (
-    <div className="card pad col" style={{ gap: 4 }}>
-      <span className="t-l2 c-alt">{label}</span>
-      <span className="t-h2" data-testid={id}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function Section({ title, href, link, children }: { title: string; href?: string; link?: string; children: React.ReactNode }) {
-  return (
-    <section className="col" style={{ gap: 10 }} aria-label={title}>
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <h2 className="t-hl1">{title}</h2>
-        {href && (
-          <Link className="btn btn-sm btn-out" href={href}>
-            {link}
-          </Link>
-        )}
-      </div>
-      <div className="stat-row" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
-        {children}
-      </div>
-    </section>
-  );
-}
-
 
 type Fetch<T> = { kind: "loading" } | { kind: "error" } | { kind: "ok"; data: T };
 function useApi<T>(path: string, tick: number) {
@@ -66,13 +39,17 @@ function useApi<T>(path: string, tick: number) {
     if (id !== reqId.current) return;
     setState(r.ok ? { kind: "ok", data: r.data } : { kind: "error" });
   }, [path]);
-  useEffect(() => void load(), [load, tick]);
+  useEffect(() => {
+    void load();
+    const timer = setInterval(() => void load(), 60_000);
+    return () => clearInterval(timer);
+  }, [load, tick]);
   return [state, load] as const;
 }
 
 function Panel<T>({ title, state, retry, children, id }: { title: string; state: Fetch<T>; retry: () => void; children: (d: T) => React.ReactNode; id: string }) {
   return (
-    <section className="col" style={{ gap: 10 }} aria-label={title} data-testid={id}>
+    <section className="card pad col ma-home-panel" style={{ gap: 10 }} aria-label={title} data-testid={id}>
       <h2 className="t-hl1">{title}</h2>
       {state.kind === "loading" && (
         <div className="card">
@@ -299,14 +276,39 @@ const cntF = (v: number) => `${v.toLocaleString("ko-KR")}건`;
 const placeF = (v: number) => `${v.toLocaleString("ko-KR")}곳`;
 const pts = <P extends { bucket: string }>(series: P[], unit: "day" | "month", pick: (p: P) => number) => series.map((p) => ({ label: bucketLabel(p.bucket.length === 7 ? `${p.bucket}-01` : p.bucket, unit), value: pick(p) }));
 
-function PeriodStats({ days, tick }: { days: number; tick: number }) {
+function RevenueLine({ points }: { points: { label: string; value: number }[] }) {
+  if (points.length === 0) return <p className="c-alt">이 기간에 집계된 결제가 없습니다.</p>;
+  const high = Math.max(1, ...points.map((p) => p.value));
+  const low = Math.min(0, ...points.map((p) => p.value));
+  const xy = points.map((p, i) => ({ ...p, x: 24 + i * 552 / Math.max(1, points.length - 1), y: 160 - (p.value - low) * 140 / (high - low) }));
+  return <figure className="ma-home-line">
+    <svg viewBox="0 0 600 180" role="img" aria-label="일별 환불을 뺀 결제 금액 추이">
+      <path d="M24 20H576M24 90H576M24 160H576" stroke="var(--wds-line-normal-alternative)" fill="none" />
+      <path d={xy.map((p, i) => `${i ? "L" : "M"}${p.x},${p.y}`).join(" ")} fill="none" stroke="var(--wds-primary-normal)" strokeWidth="3" />
+      {xy.map((p) => <circle key={p.label} cx={p.x} cy={p.y} r="4" fill="var(--wds-primary-normal)"><title>{p.label}: {wonF(p.value)}</title></circle>)}
+    </svg>
+    <figcaption className="t-c1 c-alt">{points[0].label} ~ {points[points.length - 1].label} · 환불을 뺀 결제 금액</figcaption>
+    <details><summary>날짜별 금액 보기</summary><table className="tbl"><thead><tr><th>날짜</th><th>결제 금액</th></tr></thead><tbody>{points.map((p) => <tr key={p.label}><td>{p.label}</td><td>{wonF(p.value)}</td></tr>)}</tbody></table></details>
+  </figure>;
+}
+
+function PeriodStats({ days, tick, summary, reload }: { days: number; tick: number; summary: Load; reload: () => void }) {
   const q = daysQuery(days);
   const [orders, loadOrders] = useApi<OrderStats>(`/api/admin/stats/orders?${q}&unit=day`, tick);
   const [growth, loadGrowth] = useApi<GrowthStats>(`/api/admin/stats/growth?${q}&unit=day`, tick);
   const [top, loadTop] = useApi<Top>(`/api/admin/stats/top-sellers?${q}`, tick);
   return (
     <>
-      <Panel title="주문·결제" state={orders} retry={() => void loadOrders()} id="stats-orders">
+      <div className="ma-home-kpis">
+        <Panel title="전체 파트너스" state={summary} retry={reload} id="home-kpi-sellers">{(d) => <><strong className="t-h2" data-testid="dash-sellers-total">{n(d.sellers.total, "곳")}</strong><span className="t-c1 c-alt">운영 중 {n(d.sellers.ACTIVE, "곳")} · 승인 대기 {n(d.sellers.PENDING, "곳")}</span>{d.sellers.total === 0 && <p className="c-alt">아직 파트너스가 없습니다. 가입 신청이 들어오면 여기와 알림에 표시됩니다.</p>}</>}</Panel>
+        <Panel title="지금 방송 중" state={summary} retry={reload} id="home-kpi-live">{(d) => <strong className="t-h2" data-testid="dash-live">{n(d.liveBroadcasts, "곳")}</strong>}</Panel>
+        <Panel title="기간 주문" state={orders} retry={() => void loadOrders()} id="home-kpi-orders">{(d) => <><Kpis items={[kpi("들어온 주문", d.current.orders, d.previous.orders, cntF)]} />{summary.kind === "ok" && <span className="t-c1 c-alt">오늘 <span data-testid="dash-orders-created">{n(summary.data.ordersToday.created, "건")}</span> · 결제된 주문 <span data-testid="dash-orders-paid">{n(summary.data.ordersToday.paid, "건")}</span></span>}</>}</Panel>
+        <Panel title="기간 결제 금액" state={orders} retry={() => void loadOrders()} id="home-kpi-revenue">{(d) => <><Kpis items={[kpi("환불을 뺀 결제 금액", d.current.netRevenue, d.previous.netRevenue, wonF)]} />{summary.kind === "ok" && <span className="t-c1 c-alt">오늘 <span data-testid="dash-orders-amount">{won(summary.data.ordersToday.paidAmount)}</span></span>}</>}</Panel>
+        <Panel title="구독 이용 중" state={summary} retry={reload} id="home-kpi-subscription">{(d) => <><strong className="t-h2" data-testid="dash-sub-paid">{n(d.subscriptions.paid, "곳")}</strong><span className="t-c1 c-alt">결제 진행 중 {n(d.subscriptions.charging, "곳")} · 체험 {n(d.subscriptions.trial, "곳")}</span></>}</Panel>
+        <Panel title="연체" state={summary} retry={reload} id="home-kpi-grace">{(d) => <strong className="t-h2" data-testid="dash-sub-grace">{n(d.subscriptions.grace, "곳")}</strong>}</Panel>
+      </div>
+      <div className="ma-home-grid">
+      <Panel title="결제 금액 추이" state={orders} retry={() => void loadOrders()} id="stats-orders">
         {(d) => (
           <>
             <Kpis
@@ -317,18 +319,13 @@ function PeriodStats({ days, tick }: { days: number; tick: number }) {
                 kpi("환불 금액", d.current.refundAmount, d.previous.refundAmount, wonF, true),
               ]}
             />
-            <div className="row" style={{ gap: 12, flexWrap: "wrap", alignItems: "stretch" }}>
-              <div style={{ flex: "1 1 360px", minWidth: 0 }}>
-                <BarChart title="일별 결제 금액" points={pts(d.series, "day", (p) => p.revenue)} fmt={wonF} />
-              </div>
-              <div style={{ flex: "1 1 360px", minWidth: 0 }}>
-                <BarChart title="일별 들어온 주문" points={pts(d.series, "day", (p) => p.orders)} fmt={count} />
-              </div>
-            </div>
+            <RevenueLine points={pts(d.series, "day", (p) => p.netRevenue)} />
           </>
         )}
       </Panel>
-      <Panel title="파트너스 성장" state={growth} retry={() => void loadGrowth()} id="stats-growth">
+      <Panel title="주문 추이" state={orders} retry={() => void loadOrders()} id="stats-order-series">{(d) => <><span className="t-c1 c-alt">들어온 주문 · 결제된 주문</span><BarChart title="일별 들어온 주문" points={pts(d.series, "day", (p) => p.orders)} fmt={count} bare /><BarChart title="일별 결제된 주문" points={pts(d.series, "day", (p) => p.paidOrders)} fmt={count} bare /></>}</Panel>
+      <SubscriptionRevenue tick={tick} />
+      <Panel title="신규 가입 신청 · 방송 수" state={growth} retry={() => void loadGrowth()} id="stats-growth">
         {(d) => (
           <>
             <Kpis
@@ -350,7 +347,7 @@ function PeriodStats({ days, tick }: { days: number; tick: number }) {
           </>
         )}
       </Panel>
-      <Panel title="상위 5 파트너스" state={top} retry={() => void loadTop()} id="stats-top">
+      <Panel title="매출 상위 파트너스 5" state={top} retry={() => void loadTop()} id="stats-top">
         {(d) =>
           d.rows.length === 0 ? (
             <div className="card">
@@ -360,6 +357,7 @@ function PeriodStats({ days, tick }: { days: number; tick: number }) {
             </div>
           ) : (
             <div className="card" style={{ overflowX: "auto" }}>
+              <div className="ma-home-ranks">{d.rows.map((r) => <div key={r.sellerId}><Link href={`/admin/partners/${r.sellerId}`}>{r.rank}. {r.shopName}</Link><span>{wonF(r.netRevenue)}</span><progress aria-label={`${r.shopName} 환불을 뺀 결제 금액`} value={Math.max(0, r.netRevenue)} max={Math.max(1, ...d.rows.map((v) => v.netRevenue))} /></div>)}</div>
               <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                 <thead>
                   <tr>
@@ -396,6 +394,11 @@ function PeriodStats({ days, tick }: { days: number; tick: number }) {
           )
         }
       </Panel>
+      <Panel title="파트너스 상태" state={summary} retry={reload} id="home-seller-status">{(d) => <><Link href="/admin/partners">파트너스 목록</Link><StatusList total={d.sellers.total} items={[["운영 중", d.sellers.ACTIVE, "dash-sellers-active"], ["가입 신청 중", d.sellers.PENDING, "dash-sellers-pending"], ["이용 정지", d.sellers.SUSPENDED, "dash-sellers-suspended"], ["반려", d.sellers.REJECTED, "dash-sellers-rejected"], ["해지", d.sellers.CLOSED, "dash-sellers-closed"]]} /></>}</Panel>
+      <Panel title="구독 상태" state={summary} retry={reload} id="home-subscription-status">{(d) => <><Link href="/admin/billing/subscriptions">구독 현황</Link><StatusList items={[["무료 체험 중", d.subscriptions.trial, "dash-sub-trial"], ["이용 중", d.subscriptions.paid, ""], ["결제 진행 중", d.subscriptions.charging, "dash-sub-charging"], ["연체", d.subscriptions.grace, ""], ["해지", d.subscriptions.expired, "dash-sub-expired"]]} /></>}</Panel>
+      <MonthBilling tick={tick} />
+      <OperationsPanels tick={tick} />
+      </div>
     </>
   );
 }
@@ -421,6 +424,66 @@ function SubscriptionRevenue({ tick }: { tick: number }) {
   );
 }
 
+function StatusList({ total, items }: { total?: number; items: [string, number, string][] }) {
+  const sum = total ?? items.reduce((v, row) => v + row[1], 0);
+  const colors = ["var(--wds-primary-normal)", "var(--wds-status-positive)", "var(--wds-status-cautionary)", "var(--wds-status-negative)", "var(--wds-label-alternative)"];
+  let offset = 0;
+  const stops = items.map((row, i) => { const from = offset; offset += sum ? row[1] / sum * 100 : 0; return `${colors[i % colors.length]} ${from}% ${offset}%`; });
+  return <div className="ma-home-status">
+    <div className="ma-home-donut" role="img" aria-label={`상태별 전체 ${sum}곳`} style={{ background: sum ? `conic-gradient(${stops.join(",")})` : "var(--wds-line-normal-alternative)" }}><span>{n(sum, "곳")}</span></div>
+    <ul>{items.map(([label, value, id]) => <li key={label}><span>{label}</span><b {...(id ? { "data-testid": id } : {})}>{n(value, "곳")}</b></li>)}</ul>
+  </div>;
+}
+
+function MonthBilling({ tick }: { tick: number }) {
+  const today = kst(Date.now());
+  const [state, load] = useApi<SubStats>(`/api/admin/stats/subscriptions?from=${today.slice(0, 7)}-01&to=${today}`, tick);
+  return <Panel title="이번 달 청구 결과" state={state} retry={() => void load()} id="home-month-billing">{(d) => <>
+    <span className="t-c1 c-alt">{today.slice(0, 7)} · 서버 집계 기준</span>
+    <Link href="/admin/billing/invoices">청구 · 결제 내역</Link>
+    <dl className="ma-home-values">{[["결제 완료", count(d.current.paid)], ["결제 실패", count(d.current.failed)], ["결제 진행 중", count(d.current.pending)], ["받은 구독료", wonF(d.current.revenue)], ["환불 금액", wonF(d.current.refundAmount)]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+    {d.current.paid + d.current.failed + d.current.pending === 0 && <p className="c-alt">이번 달 청구가 아직 없습니다.</p>}
+  </>}</Panel>;
+}
+
+type Metrics = { checkedAt: string; db: { latencyMs: number; connections: { total: number; active: number; idle: number; idleInTransaction: number; waitingLock: number; max: number } }; queueBacklog: "not_measured" };
+function DatabaseMetrics({ tick }: { tick: number }) {
+  const [state, load] = useApi<Metrics>("/api/admin/ops/metrics", tick);
+  return <Panel title="DB 응답 · 연결" state={state} retry={() => void load()} id="home-db-metrics">{(d) => <>
+    <span>DB 응답 {d.db.latencyMs}ms</span>
+    <span>DB 연결 {d.db.connections.total} / {d.db.connections.max}</span>
+    <span className="t-c1 c-alt">작업 중 {d.db.connections.active} · 대기 {d.db.connections.idle} · 잠금 대기 {d.db.connections.waitingLock}</span>
+    <span className="t-c1 c-alt">대기열 길이: 측정 안 함</span>
+    <span className="t-c1 c-alt">{dayTime(d.checkedAt)} 기준</span>
+  </>}</Panel>;
+}
+function RecentActivity({ tick }: { tick: number }) {
+  const [state, load] = useApi<{ logs: AuditRow[] }>("/api/admin/audit-logs?limit=5&actorType=PLATFORM_ADMIN", tick);
+  return <Panel title="최근 관리자 활동 (로그 추적)" state={state} retry={() => void load()} id="home-admin-activity">{(d) => <>
+    <Link href="/admin/logs">로그 추적 전체</Link>
+    {d.logs.length === 0 ? <p className="c-alt">관리자 활동이 아직 없습니다.</p> : <div className="ma-home-table"><table className="tbl"><thead><tr><th>시각</th><th>행위자</th><th>행위</th><th>대상 · 사유</th></tr></thead><tbody>{d.logs.map((r) => <tr key={r.id}><td>{dayTime(r.createdAt)}</td><td>{ACTOR_LABEL[r.actorType]}</td><td><Link href={`/admin/logs/${r.id}`}>{actionLabel(r.action)}</Link></td><td>{r.seller?.shopName ?? targetLabel(r.targetType)}{r.reason && ` · ${r.reason}`}</td></tr>)}</tbody></table></div>}
+  </>}</Panel>;
+}
+function OperationsPanels({ tick }: { tick: number }) {
+  const { me } = useAdmin();
+  const [state, load] = useApi<Monitor>("/api/admin/ops/monitor", tick);
+  const [severity, setSeverity] = useState("all");
+  return <>
+    <Panel title="운영 상태" state={state} retry={() => void load()} id="home-operations">{(d) => <>
+      <Link href="/admin/ops/monitor">실시간 감시</Link>
+      <span>{d.servers.total ? `서비스 서버 ${d.servers.healthy} / ${d.servers.total} 정상` : "서비스 서버: 측정 전"}</span>
+      <span className="t-c1 c-alt">자동 연결 대기 {count(d.queue.automationQueued)} · {dayTime(d.at)} 기준</span>
+      {d.jobs.length === 0 ? <p className="c-alt">정기 작업 신호가 아직 없습니다.</p> : <div className="ma-home-table"><table className="tbl"><thead><tr><th>정기 작업</th><th>상태</th><th>마지막 실행</th><th>마지막 성공</th></tr></thead><tbody>{d.jobs.map((j) => <tr key={j.job}><td>{j.job}</td><td>{j.healthy ? "정상" : "확인 필요"}</td><td>{dayTime(j.lastRunAt)}</td><td>{j.lastOkAt ? dayTime(j.lastOkAt) : "신호 없음"}</td></tr>)}</tbody></table></div>}
+    </>}</Panel>
+    {adminCan(me.role, "system.manage") && <DatabaseMetrics tick={tick} />}
+    <Panel title="열린 장애" state={state} retry={() => void load()} id="home-incidents">{(d) => <>
+      <div className="row" style={{ gap: 8, flexWrap: "wrap" }}><Link href="/admin/ops/monitor">실시간 감시 전체</Link><label>심각도 <select value={severity} onChange={(e) => setSeverity(e.target.value)}><option value="all">전체</option><option value="critical">긴급</option><option value="warning">주의</option></select></label></div>
+      {d.incidents.filter((i) => severity === "all" || i.severity === severity).length === 0 ? <p className="c-alt">열린 장애가 없습니다.</p> : <ul className="ma-home-events">{d.incidents.filter((i) => severity === "all" || i.severity === severity).map((i) => <li key={`${i.source}:${i.key}`}><b>{i.severity === "critical" ? "긴급" : i.severity === "warning" ? "주의" : "정보"}</b><span>{i.message}</span><time>{dayTime(i.occurredAt)}</time></li>)}</ul>}
+    </>}</Panel>
+    {adminCan(me.role, "audit.read") && <RecentActivity tick={tick} />}
+  </>;
+}
+
 export default function AdminHome() {
   const { me } = useAdmin();
   const isSuper = adminCan(me.role, "infra.manage");
@@ -435,18 +498,23 @@ export default function AdminHome() {
     if (id !== reqId.current) return;
     setState(r.ok ? { kind: "ok", data: r.data } : { kind: "error" });
   }, []);
-  useEffect(() => void load(), [load]);
+  useEffect(() => {
+    void load();
+    const timer = setInterval(() => void load(), 60_000);
+    return () => clearInterval(timer);
+  }, [load]);
 
   const d = state.kind === "ok" ? state.data : null;
   return (
     <>
       <AdminTopbar crumb="홈 › 통합 대시보드" />
-      <main className="main">
+      <main className="main ma-home">
         <PageHead
           title="통합 대시보드"
           actions={
             <>
               {d && <span className="t-l2 c-alt">{dayTime(d.at)} 기준</span>}
+              {d && <Link className="btn btn-out" href={taskHref("signupPending", "/admin/partners/applications")}>가입 신청 {d.sellers.PENDING}건 검토</Link>}
               <button className="btn btn-out" type="button" onClick={() => { setTick((t) => t + 1); void load(); }} disabled={state.kind === "loading"}>
                 새로 고침
               </button>
@@ -456,34 +524,6 @@ export default function AdminHome() {
         <div className="col" style={{ gap: 24 }}>
           <TodayTasks tick={tick} />
           {isSuper && <InfraCard tick={tick} />}
-          {!d ? (
-            <div className="card">
-              {state.kind === "loading" && <LoadingRows rows={4} />}
-              {state.kind === "error" && <ErrorState title="대시보드를 불러오지 못했습니다." onRetry={() => void load()} />}
-            </div>
-          ) : (
-            <>
-              <Section title="파트너스" href="/admin/partners" link="파트너스 목록">
-                <Tile id="dash-sellers-active" label="운영 중" value={n(d.sellers.ACTIVE, "곳")} />
-                <Tile id="dash-sellers-pending" label="가입 신청 중" value={n(d.sellers.PENDING, "곳")} />
-                <Tile id="dash-sellers-suspended" label="이용 정지" value={n(d.sellers.SUSPENDED, "곳")} />
-                <Tile id="dash-sellers-total" label="전체" value={n(d.sellers.total, "곳")} />
-              </Section>
-              <Section title="오늘">
-                <Tile id="dash-live" label="지금 방송 중" value={n(d.liveBroadcasts, "곳")} />
-                <Tile id="dash-orders-created" label="들어온 주문" value={n(d.ordersToday.created, "건")} />
-                <Tile id="dash-orders-paid" label="결제된 주문" value={n(d.ordersToday.paid, "건")} />
-                <Tile id="dash-orders-amount" label="결제 금액" value={won(d.ordersToday.paidAmount)} />
-              </Section>
-              <Section title="구독" href="/admin/billing/subscriptions" link="구독 현황">
-                <Tile id="dash-sub-trial" label="무료 체험 중" value={n(d.subscriptions.trial, "곳")} />
-                <Tile id="dash-sub-paid" label="이용 중" value={n(d.subscriptions.paid, "곳")} />
-                <Tile id="dash-sub-charging" label="결제 진행 중" value={n(d.subscriptions.charging, "곳")} />
-                <Tile id="dash-sub-grace" label="연체" value={n(d.subscriptions.grace, "곳")} />
-                <Tile id="dash-sub-expired" label="해지" value={n(d.subscriptions.expired, "곳")} />
-              </Section>
-            </>
-          )}
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
             <h2 className="t-hl1">기간별 현황</h2>
             <div className="row" style={{ gap: 6 }} role="group" aria-label="기간">
@@ -494,8 +534,7 @@ export default function AdminHome() {
               ))}
             </div>
           </div>
-          <PeriodStats days={days} tick={tick} />
-          <SubscriptionRevenue tick={tick} />
+          <PeriodStats days={days} tick={tick} summary={state} reload={() => void load()} />
         </div>
       </main>
     </>

@@ -60,11 +60,19 @@ test("오늘 처리할 일: 서버 숫자가 맨 위에 보이고, 누르면 조
   await expect(tasks.getByTestId("today-task-inquiryOpen")).toContainText("파트너스 문의");
   await expect(page.getByTestId("today-tasks-at")).toContainText("집계");
   await expect(page.getByTestId("infra-card")).toHaveCount(0); // 인프라 · 비용 카드는 최고관리자에게만 보인다
+  await expect(page.locator(".ma-home-kpis > section")).toHaveCount(6);
+  await expect(page.getByTestId("home-operations")).toContainText("실시간 감시");
+  await expect(page.getByTestId("home-db-metrics")).toHaveCount(0);
+  await expect(page.getByTestId("home-admin-activity")).toHaveCount(0);
+  await expect(page.locator(".ma-home-grid")).toHaveCSS("grid-template-columns", /^(\d+(\.\d+)?px) (\d+(\.\d+)?px) (\d+(\.\d+)?px)$/);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
   await page.screenshot({ path: "tests/e2e/screenshots/admin-home-1440.png", fullPage: true });
   for (const w of [1024, 390]) {
     await page.setViewportSize({ width: w, height: 900 });
     await page.reload();
     await expect(page.getByTestId("today-tasks")).toBeVisible();
+    await expect(page.locator(".ma-home-grid")).toHaveCSS("grid-template-columns", w === 390 ? /^(\d+(\.\d+)?px)$/ : /^(\d+(\.\d+)?px) (\d+(\.\d+)?px)$/);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
     await page.screenshot({ path: `tests/e2e/screenshots/admin-home-${w}.png`, fullPage: true });
   }
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -82,6 +90,9 @@ test("기간별 현황: 상위 5 파트너스에 결제된 쇼핑몰이 오르�
   await expect(row).toContainText("123,456원");
   await expect(page.getByTestId("stats-orders")).toContainText("결제 금액");
   await expect(page.getByTestId("stats-subscriptions")).toContainText("월별 받은 구독료");
+  await expect(page.getByTestId("stats-order-series")).toContainText("결제된 주문");
+  await expect(page.getByTestId("stats-growth")).toContainText("가입 신청");
+  await expect(page.getByTestId("home-month-billing")).toContainText("청구 · 결제 내역");
   await page.getByRole("button", { name: "최근 7일" }).click();
   await expect(page.getByRole("button", { name: "최근 7일" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("top-seller-row").filter({ hasText: topShop })).toBeVisible();
@@ -99,12 +110,32 @@ test("한 통계가 실패해도 오늘 처리할 일과 나머지 통계는 그
   await expect(page.getByTestId("stats-orders")).toContainText("결제 금액");
 });
 
+test("빈 파트너스 안내와 요약 오류는 데모 수치 없이 독립적으로 보인다", async ({ page }) => {
+  let fail = false;
+  await page.route("**/api/admin/dashboard", (route) => route.fulfill({
+    status: fail ? 500 : 200,
+    contentType: "application/json",
+    body: fail ? '{"error":"x"}' : JSON.stringify({ at: new Date().toISOString(), sellers: { total: 0, PENDING: 0, ACTIVE: 0, SUSPENDED: 0, REJECTED: 0, CLOSED: 0 }, liveBroadcasts: 0, ordersToday: { created: 0, paid: 0, paidAmount: 0 }, subscriptions: { trial: 0, paid: 0, charging: 0, grace: 0, expired: 0 } }),
+  }));
+  await login(page);
+  await expect(page.getByTestId("dash-sellers-total")).toHaveText("0곳");
+  await expect(page.getByTestId("home-kpi-sellers")).toContainText("아직 파트너스가 없습니다");
+  await expect(page.getByTestId("stats-top")).toContainText(topShop);
+  fail = true;
+  await page.getByRole("button", { name: "새로 고침", exact: true }).click();
+  await expect(page.getByTestId("home-kpi-sellers")).toContainText("불러오지 못했습니다");
+  await expect(page.getByTestId("stats-top")).toContainText(topShop);
+  await expect(page.getByTestId("home-kpi-sellers")).not.toContainText("184");
+});
+
 test("최고관리자: 오늘 처리할 일 아래에 인프라 · 비용 요약 카드가 보이고 누르면 인프라 · 비용 화면으로 간다", async ({ page }) => {
   await login(page, suEmail);
   const card = page.getByTestId("infra-card");
   await expect(card).toBeVisible();
   await expect(card.getByTestId("infra-card-cost")).toBeVisible();
   await expect(card.getByTestId("infra-card-warnings")).toBeVisible();
+  await expect(page.getByTestId("home-db-metrics")).toContainText("DB 연결");
+  await expect(page.getByTestId("home-admin-activity")).toContainText("로그 추적 전체");
   const above = await page.getByTestId("today-tasks").boundingBox();
   const at = await card.boundingBox();
   expect(at!.y).toBeGreaterThan(above!.y); // 「오늘 처리할 일」 바로 아래
