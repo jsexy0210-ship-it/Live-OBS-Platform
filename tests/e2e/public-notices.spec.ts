@@ -25,7 +25,9 @@ test("공지 목록은 고정·첫·중간·마지막 페이지를 구분하고 
 
   for (const width of [1440, 1024, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await expect(page.locator(".pf-info-section")).toHaveCSS("padding-top", width === 390 ? "40px" : "72px");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `${width}px notice list overflow`).toBe(true);
+    await page.screenshot({ path: `tests/e2e/screenshots/pf005-notice-list-${width}.png`, fullPage: true });
   }
 
   await pager.getByRole("link", { name: "2", exact: true }).click();
@@ -58,6 +60,24 @@ test("분류·상세·브라우저 뒤로 가기가 원래 페이지 상태를 �
   const neighborTitle = (await longNeighbor.innerText()).replace(/^다음: /, "").replace(/ →$/, "");
   expect(neighborTitle).toHaveLength(100);
   expect(neighborTitle).toMatch(/^E2E-PF-FEATURE-04A+$/);
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    const category = page.locator(".pf-doc-body .bdg");
+    const author = page.getByText("ONQ 운영팀");
+    const title = page.getByRole("heading", { level: 1 });
+    await expect(category).toBeVisible();
+    await expect(author).toBeVisible();
+    await expect(title).toBeVisible();
+    const [categoryBox, authorBox, titleBox] = await Promise.all([category.boundingBox(), author.boundingBox(), title.boundingBox()]);
+    expect(categoryBox).not.toBeNull();
+    expect(authorBox).not.toBeNull();
+    expect(titleBox).not.toBeNull();
+    expect(categoryBox!.x + categoryBox!.width, `${width}px metadata order`).toBeLessThanOrEqual(authorBox!.x);
+    expect(Math.min(categoryBox!.y + categoryBox!.height, authorBox!.y + authorBox!.height) - Math.max(categoryBox!.y, authorBox!.y), `${width}px metadata same row`).toBeGreaterThan(0);
+    expect(titleBox!.y, `${width}px title below metadata`).toBeGreaterThanOrEqual(Math.max(categoryBox!.y + categoryBox!.height, authorBox!.y + authorBox!.height));
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `${width}px notice detail overflow`).toBe(true);
+    await page.screenshot({ path: `tests/e2e/screenshots/pf006-notice-detail-${width}.png`, fullPage: true });
+  }
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "390px notice detail overflow").toBe(true);
   expect(await longNeighbor.evaluate((el) => el.scrollWidth <= el.clientWidth), "390px unbroken neighbor title overflow").toBe(true);
