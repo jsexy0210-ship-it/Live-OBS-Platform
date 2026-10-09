@@ -11,13 +11,20 @@ import { adminApi, failMessage } from "../../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../../_components/AdminShell";
 import { PAYMENT_KIND, safeUrl } from "../../../../_components/payments";
 import { day, dayTime, won } from "../../../../_components/partners";
-import { REFUND_SOURCE, REFUND_STATUS, refundReason, type Refund } from "../../../../_components/refunds";
+import { REFUND_SOURCE, REFUND_STATUS, refundReason, type Refund, type RefundDetail } from "../../../../_components/refunds";
 
-// MA-027 환불 처리(GET /api/admin/subscription-refunds/{id}, 승인·거절). 승인(결제 취소 요청)은 최고관리자만(billing.refund), 거절은 최고관리자·운영(billing.manage).
+// MA-027 환불 처리(GET /api/admin/subscription-refunds/{id}, 승인·거절). 승인·거절은 최고관리자만(billing.refund).
 // 승인 결과: 환불 완료 / 실패(실패 사유를 보이고 다시 승인 가능) / 처리 중(응답이 끊긴 경우, 다시 승인하면 같은 환불로 한 번만 처리).
 // 다른 곳에서 먼저 처리했으면(409) 최신 상태를 다시 읽는다. 같은 청구에 이미 새 요청이 있으면(409 already_requested) 목록으로 안내한다.
 const MAX_NOTE = 200;
-type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; refund: Refund };
+type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; refund: RefundDetail };
+const HISTORY_LABEL: Record<string, string> = {
+  "subscription.refund.request": "환불 요청 접수",
+  "subscription.refund.approve": "최고관리자 승인 · 카드 결제 취소 요청",
+  "subscription.refund.reject": "환불 요청 거절",
+  "subscription.refund.refunded": "카드 결제 취소 완료",
+  "subscription.refund.failed": "카드 결제 취소 실패",
+};
 
 function RejectModal({ refund, onClose, onDone, onStale }: { refund: Refund; onClose: () => void; onDone: (r: Refund) => void; onStale: () => void }) {
   const [note, setNote] = useState("");
@@ -75,7 +82,7 @@ function RejectModal({ refund, onClose, onDone, onStale }: { refund: Refund; onC
 
 function Info({ title, id, rows }: { title: string; id: string; rows: [string, React.ReactNode][] }) {
   return (
-    <section className="card pad-l col" style={{ gap: 14 }} aria-labelledby={id}>
+    <section className="card pad-l col" style={{ gap: 14, minWidth: 0 }} aria-labelledby={id}>
       <h2 className="t-hl1" id={id}>
         {title}
       </h2>
@@ -83,7 +90,7 @@ function Info({ title, id, rows }: { title: string; id: string; rows: [string, R
         {rows.map(([k, v]) => (
           <div key={k} style={{ display: "contents" }}>
             <dt>{k}</dt>
-            <dd>{v}</dd>
+            <dd style={{ minWidth: 0, overflowWrap: "anywhere" }}>{v}</dd>
           </div>
         ))}
       </dl>
@@ -95,7 +102,6 @@ export default function RefundDetailPage() {
   const { refundId } = useParams<{ refundId: string }>();
   const { me } = useAdmin();
   const canApprove = adminCan(me.role, "billing.refund");
-  const canReject = adminCan(me.role, "billing.manage");
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [confirmed, setConfirmed] = useState(false);
   const [approveNote, setApproveNote] = useState("");
@@ -105,7 +111,7 @@ export default function RefundDetailPage() {
 
   const load = useCallback(async () => {
     setState({ kind: "loading" });
-    const r = await adminApi<{ refund: Refund }>(`/api/admin/subscription-refunds/${encodeURIComponent(refundId)}`);
+    const r = await adminApi<{ refund: RefundDetail }>(`/api/admin/subscription-refunds/${encodeURIComponent(refundId)}`);
     setState(r.ok ? { kind: "ok", refund: r.data.refund } : { kind: "error", status: r.status });
   }, [refundId]);
   useEffect(() => void load(), [load]);
@@ -127,7 +133,7 @@ export default function RefundDetailPage() {
     setConfirmed(false);
     if (r.ok) {
       const next = r.data.refund;
-      setState({ kind: "ok", refund: next });
+      void load();
       setToast(
         next.status === "REFUNDED"
           ? { text: `${won(next.amount)}을 환불했습니다.` }
@@ -176,7 +182,7 @@ export default function RefundDetailPage() {
         ) : (
           <div className="col" style={{ gap: 20 }}>
             <div className="card pad row" style={{ gap: 8, flexWrap: "wrap" }} data-testid="refund-status">
-              <span className={`bdg ${REFUND_STATUS[rf.status].cls}`}>{REFUND_STATUS[rf.status].label}</span>
+              <span className={`bdg ${REFUND_STATUS[rf.status].cls}`}>{rf.status === "REQUESTED" ? "승인 대기" : REFUND_STATUS[rf.status].label}</span>
               <span className="t-l2 c-alt">요청 {dayTime(rf.createdAt)}</span>
             </div>
             {rf.status === "FAILED" && rf.failureReason && (
@@ -189,35 +195,43 @@ export default function RefundDetailPage() {
                 결제 취소 요청을 보냈지만 결과를 확인하지 못했습니다. 다시 승인하면 같은 환불로 한 번만 처리합니다.
               </div>
             )}
-            <Info
-              title="요청 내용"
-              id="refund-request"
-              rows={[
-                ["파트너스", <Link key="s" className="fw6" href={`/admin/partners/${rf.sellerId}`}>{rf.shopName}</Link>],
-                ["요청한 곳", REFUND_SOURCE[rf.source]],
-                ["사유", refundReason(rf.reason)],
-                ["요청 금액", <b key="a">{won(rf.amount)}</b>],
-                ...(rf.decisionNote ? ([["처리 메모", rf.decisionNote]] as [string, React.ReactNode][]) : []),
-                ...(rf.decidedAt ? ([["처리 시각", dayTime(rf.decidedAt)]] as [string, React.ReactNode][]) : []),
-                ...(rf.refundedAt ? ([["환불 시각", dayTime(rf.refundedAt)]] as [string, React.ReactNode][]) : []),
-              ]}
-            />
-            <Info
-              title="환불 대상 청구"
-              id="refund-payment"
-              rows={[
-                ["청구", `${PAYMENT_KIND[rf.payment.kind]} · ${day(rf.payment.periodStart)} ~ ${day(rf.payment.periodEnd)}`],
-                ["결제 금액", won(rf.payment.amount)],
-                ["결제일", dayTime(rf.payment.paidAt)],
-                ["카드 매출전표", receipt ? <a key="r" className="fw6" href={receipt} target="_blank" rel="noopener noreferrer">보기</a> : "-"],
-                ["청구 내역", <Link key="p" className="fw6" href={`/admin/billing/invoices?sellerId=${rf.sellerId}`}>청구·결제 내역에서 보기</Link>],
-              ]}
-            />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(480px, 100%), 1fr))", gap: 20, alignItems: "start" }}>
+              <div className="col" style={{ gap: 20, minWidth: 0 }}>
+                <Info
+                  title="요청 내용"
+                  id="refund-request"
+                  rows={[
+                    ["파트너스", <Link key="s" className="fw6" href={`/admin/partners/${rf.sellerId}`}>{rf.shopName}</Link>],
+                    ["요청한 곳", REFUND_SOURCE[rf.source]],
+                    ["요청 사유", refundReason(rf.reason)],
+                    ["요청 시각", dayTime(rf.createdAt)],
+                  ]}
+                />
+                <Info
+                  title="환불 내용"
+                  id="refund-payment"
+                  rows={[
+                    ["환불 대상", `${PAYMENT_KIND[rf.payment.kind]} · ${day(rf.payment.periodStart)} ~ ${day(rf.payment.periodEnd)} · ${dayTime(rf.payment.paidAt)} 결제`],
+                    ["환불 금액", <b key="a">{won(rf.amount)}</b>],
+                    ["원결제 금액", won(rf.payment.amount)],
+                    ["환불 수단", "원결제 카드 승인 취소"],
+                    ["처리 사유", refundReason(rf.reason)],
+                    ["카드 매출전표", receipt ? <a key="r" className="fw6" href={receipt} target="_blank" rel="noopener noreferrer">보기</a> : "—"],
+                    ["청구 내역", <Link key="p" className="fw6" href={`/admin/billing/invoices?sellerId=${rf.sellerId}`}>청구·결제 내역에서 보기</Link>],
+                  ]}
+                />
+              </div>
+              <div className="col" style={{ gap: 20, minWidth: 0 }}>
             {open && (
               <section className="card pad-l col" style={{ gap: 12 }} aria-labelledby="refund-act">
                 <h2 className="t-hl1" id="refund-act">
-                  승인 · 거절
+                  최고관리자 승인 · 실행
                 </h2>
+                <dl className="kv">
+                  <dt>환불액</dt><dd>{won(rf.amount)}</dd>
+                  <dt>수단</dt><dd>원결제 카드 승인 취소</dd>
+                  <dt>승인 · 실행</dt><dd>최고관리자</dd>
+                </dl>
                 {canApprove ? (
                   <>
                     <div className="card pad" role="note">
@@ -229,13 +243,13 @@ export default function RefundDetailPage() {
                     <input id="refund-approve-note" className="inp" maxLength={MAX_NOTE} value={approveNote} onChange={(e) => setApproveNote(e.target.value)} disabled={approving} />
                     <label className="chk">
                       <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} disabled={approving} />
-                      내용을 확인했고 환불을 승인합니다
+                      요청 내용을 확인했고 환불을 승인합니다
                     </label>
                     <div className="row" style={{ gap: 8 }}>
                       <button className="btn" type="button" onClick={() => void approve(rf)} disabled={!confirmed || approving}>
                         {approving ? "처리 중" : rf.status === "FAILED" || rf.status === "PROCESSING" ? "다시 승인하고 카드 결제 취소" : "환불 승인하고 카드 결제 취소"}
                       </button>
-                      {canReject && rf.status !== "PROCESSING" && (
+                      {rf.status !== "PROCESSING" && (
                         <button className="btn btn-out" type="button" onClick={() => setReject(true)} disabled={approving}>
                           거절
                         </button>
@@ -245,19 +259,32 @@ export default function RefundDetailPage() {
                 ) : (
                   <>
                     <p className="t-b2" style={{ margin: 0 }}>
-                      승인은 최고관리자만 할 수 있습니다.
+                      승인·거절은 최고관리자만 할 수 있습니다.
                     </p>
-                    {canReject && rf.status !== "PROCESSING" && (
-                      <div>
-                        <button className="btn btn-out" type="button" onClick={() => setReject(true)}>
-                          거절
-                        </button>
-                      </div>
-                    )}
                   </>
                 )}
               </section>
             )}
+                <Info
+                  title="처리 이력"
+                  id="refund-history"
+                  rows={rf.history.length
+                    ? rf.history.map((event) => [dayTime(event.at), HISTORY_LABEL[event.action] ?? "환불 상태 변경"] as [string, React.ReactNode])
+                    : [[dayTime(rf.createdAt), "환불 요청 접수"]]}
+                />
+                {(rf.decisionNote || rf.decidedAt || rf.refundedAt) && (
+                  <Info
+                    title="처리 결과"
+                    id="refund-result"
+                    rows={[
+                      ...(rf.decisionNote ? ([["처리 메모", rf.decisionNote]] as [string, React.ReactNode][]) : []),
+                      ...(rf.decidedAt ? ([["처리 시각", dayTime(rf.decidedAt)]] as [string, React.ReactNode][]) : []),
+                      ...(rf.refundedAt ? ([["환불 시각", dayTime(rf.refundedAt)]] as [string, React.ReactNode][]) : []),
+                    ]}
+                  />
+                )}
+              </div>
+            </div>
           </div>
         )}
       </main>
@@ -265,9 +292,9 @@ export default function RefundDetailPage() {
         <RejectModal
           refund={rf}
           onClose={() => setReject(false)}
-          onDone={(next) => {
+          onDone={() => {
             setReject(false);
-            setState({ kind: "ok", refund: next });
+            void load();
             setToast({ text: "환불 요청을 거절했습니다." });
           }}
           onStale={stale}

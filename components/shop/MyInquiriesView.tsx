@@ -26,7 +26,7 @@ const TITLE_MAX = 50;
 const BODY_MAX = 2000;
 const MAX_PAGES = 10; // 20개씩 최대 200개까지 읽는다
 
-export default function MyInquiriesView({ slug }: { slug: string }) {
+export default function MyInquiriesView({ slug, canWrite = true }: { slug: string; canWrite?: boolean }) {
   const { confirm } = useConfirm();
   const base = `/shop/${encodeURIComponent(slug)}`;
   const api = `/api/shop/${encodeURIComponent(slug)}`;
@@ -142,14 +142,18 @@ export default function MyInquiriesView({ slug }: { slug: string }) {
             </tbody>
           </table>
         )}
-        <WriteForm
-          api={api}
-          confirmAsk={confirm}
-          onSaved={() => {
-            setDone("문의를 등록했어요 · 답변은 알림톡으로 알려 드려요");
-            void load();
-          }}
-        />
+        {canWrite ? (
+          <WriteForm
+            api={api}
+            confirmAsk={confirm}
+            onSaved={() => {
+              setDone("문의를 등록했어요 · 답변은 알림톡으로 알려 드려요");
+              void load();
+            }}
+          />
+        ) : (
+          <p className="cart-msg" role="status">지금은 문의를 등록할 수 없어요. 이전 문의와 답변은 확인할 수 있어요.</p>
+        )}
       </>
     );
 

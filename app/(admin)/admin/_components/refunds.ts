@@ -22,6 +22,7 @@ export type Refund = {
   decidedByAdminId: string | null;
   payment: { amount: number; kind: PaymentKind; periodStart: string; periodEnd: string; paidAt: string | null; receiptUrl: string | null };
 };
+export type RefundDetail = Refund & { history: { action: string; at: string }[] };
 export type RefundCounts = Record<RefundStatus, number>;
 export type RefundListItem = Refund & { assignee: string | null };
 export type RefundSummary = { monthRefunded: { count: number; amount: number }; avgProcessDays: number | null };

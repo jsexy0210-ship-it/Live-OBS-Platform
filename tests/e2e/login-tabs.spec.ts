@@ -53,7 +53,7 @@ test("로고는 카드 안 맨 위, 기본은 대표자 탭이고 「가입 신�
   // 마우스를 올려도 강조색으로 바뀌지 않고 회색 그대로
   expect(await find.evaluate((el) => getComputedStyle(el).color)).toBe(colors.find);
   await page.mouse.move(0, 0);
-  for (const width of [1440, 390]) {
+  for (const width of [1440, 1024, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
     const box = (await nav.boundingBox())!;
     const l = (await page.locator(".login-join").boundingBox())!;
@@ -71,11 +71,19 @@ test("로고는 카드 안 맨 위, 기본은 대표자 탭이고 「가입 신�
   await page.getByRole("tab", { name: "직원" }).click();
   await expect(page.getByRole("tab", { name: "직원" })).toHaveAttribute("aria-selected", "true");
   await expect(links(page)).toHaveText(["이메일(아이디)/비밀번호 찾기"]);
-  await expect(nav).not.toContainText("회원");
+  await expect(nav).not.toContainText("아직 파트너스가 아니십니까?");
+  await expect(nav.locator(".login-join")).toHaveCount(0);
+  await expect(nav.getByRole("link", { name: "가입 신청", exact: true })).toHaveCount(0);
   await expect(find).toHaveAttribute("href", "/seller/find-id?type=staff");
-  const box = (await nav.boundingBox())!;
-  const r = (await find.boundingBox())!;
-  expect(Math.abs(r.x + r.width - (box.x + box.width))).toBeLessThan(2);
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await expect(links(page)).toHaveText(["이메일(아이디)/비밀번호 찾기"]);
+    await expect(find).toHaveAttribute("href", "/seller/find-id?type=staff");
+    const box = (await nav.boundingBox())!;
+    const r = (await find.boundingBox())!;
+    expect(Math.abs(r.x + r.width - (box.x + box.width))).toBeLessThan(2);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+  }
   await shot(page, "AU-002-staff");
 });
 

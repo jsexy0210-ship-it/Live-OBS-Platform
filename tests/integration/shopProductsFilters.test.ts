@@ -132,10 +132,46 @@ describe("상품 목록 필터·관련도 (SH-002)", () => {
     const s = await seller();
     await made(s.ctx, { name: "상품", price: 100000 });
     await db.rewardPolicy.create({ data: { sellerId: s.seller.id, rates: { [s.grade.id]: { card: 1, bankTransfer: 2 } } } });
-    for (const qs of ["minPrice=-1", "minPrice=x", "maxPrice=1.5", "minPrice=3000&maxPrice=2000", "minPrice=100000001", "inStock=yes", "live=2", "sort=best"]) {
+    for (const qs of ["minPrice=-1", "minPrice=x", "maxPrice=1.5", "minPrice=3000&maxPrice=2000", "minPrice=100000001", "inStock=yes", "live=2", "coupon=yes", "sort=best"]) {
       expect((await get(s.seller.slug, qs)).status, qs).toBe(400);
     }
     const r = await get(s.seller.slug);
     expect(r.body.products[0]).toMatchObject({ rating: null, reviewCount: 0, isLive: false, reward: { card: { rate: 1, amount: 1000 }, bankTransfer: { rate: 2, amount: 2000 } } });
+  });
+
+  it("판매자의 발급 중 쿠폰 상품 범위·기간·이벤트 할인 제외만 목록에서 판정하고 다른 판매자는 섞지 않는다", async () => {
+    const a = await seller();
+    const b = await seller();
+    const scoped = await made(a.ctx, { name: "대상", price: 5000 });
+    await made(a.ctx, { name: "범위 밖", price: 5000 });
+    const sale = await made(a.ctx, { name: "행사 상품", price: 5000 });
+    const foreign = await made(b.ctx, { name: "다른 판매자", price: 5000 });
+    const now = new Date();
+    const past = new Date(now.getTime() - 86_400_000);
+    const future = new Date(now.getTime() + 86_400_000);
+    const later = new Date(now.getTime() + 2 * 86_400_000);
+    await db.product.update({ where: { id: sale.id }, data: {
+      eventDiscountType: "AMOUNT", eventDiscountValue: 500, eventStartsAt: past, eventEndsAt: future,
+    } });
+    const addCoupon = (sellerId: string, name: string, productIds: string[], options: {
+      startsAt?: Date; endsAt?: Date; isActive?: boolean; excludeDiscounted?: boolean;
+    } = {}) => db.coupon.create({ data: {
+      sellerId, name, issueMethod: "DOWNLOAD", benefit: "AMOUNT", value: 500,
+      startsAt: options.startsAt ?? past, endsAt: options.endsAt ?? future,
+      productIds, excludeDiscounted: options.excludeDiscounted ?? true, isActive: options.isActive ?? true,
+    } });
+    await addCoupon(a.seller.id, "선택 상품", [scoped.id]);
+    await addCoupon(a.seller.id, "시작 전", [], { startsAt: future, endsAt: later });
+    await addCoupon(a.seller.id, "발급 중지", [], { isActive: false });
+    await addCoupon(a.seller.id, "기간 종료", [], { startsAt: new Date(past.getTime() - 86_400_000), endsAt: past });
+    await addCoupon(b.seller.id, "다른 판매자 전체", []);
+    expect(await names(a, "coupon=1&sort=low")).toEqual(["대상"]);
+    expect(await names(b, "coupon=1")).toEqual(["다른 판매자"]);
+    await addCoupon(a.seller.id, "전체 상품 · 행사 제외", []);
+    expect((await names(a, "coupon=1")).sort()).toEqual(["대상", "범위 밖"]);
+    await addCoupon(a.seller.id, "행사 포함", [sale.id], { excludeDiscounted: false });
+    expect((await names(a, "coupon=1")).sort()).toEqual(["대상", "범위 밖", "행사 상품"]);
+    expect((await get(a.seller.slug, "coupon=1&limit=1&page=2")).body).toMatchObject({ total: 3, page: 2, hasMore: true });
+    expect(foreign.id).toBeTruthy();
   });
 });

@@ -47,6 +47,22 @@
   margin-bottom: 12px;
   max-width: 480px;
 }
+.help-faq-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.help-faq-head h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.help-faq-head a {
+  flex: none;
+  color: var(--brand);
+  font-weight: 600;
+}
 .help-search .inp {
   flex: 1;
 }

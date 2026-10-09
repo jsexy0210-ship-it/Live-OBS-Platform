@@ -1,5 +1,5 @@
 import { PrismaClient } from "@prisma/client";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Response } from "@playwright/test";
 import { randomBytes } from "node:crypto";
 import { hashPassword } from "../../lib/server/auth/password";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
@@ -47,6 +47,73 @@ async function login(page: Page, who = email) {
   await expect(page).toHaveURL(/\/admin$/);
 }
 
+async function expectChartPlacement(page: Page, width: number) {
+  await expect(page.locator(".ma-home-line svg")).toBeVisible();
+  const revenue = await page.getByTestId("stats-orders").boundingBox();
+  const orders = await page.getByTestId("stats-order-series").boundingBox();
+  const grid = await page.locator(".ma-home-grid").boundingBox();
+  const chart = await page.locator(".ma-home-line svg").boundingBox();
+  expect(revenue && orders && grid && chart).toBeTruthy();
+  expect(chart!.width).toBeGreaterThan(revenue!.width - 70);
+  if (width === 1440) {
+    expect(revenue!.width).toBeGreaterThan(orders!.width * 1.9);
+    expect(Math.abs(revenue!.y - orders!.y)).toBeLessThan(1);
+    expect(orders!.x).toBeGreaterThan(revenue!.x + revenue!.width);
+  } else {
+    expect(Math.abs(revenue!.width - grid!.width)).toBeLessThan(1);
+    expect(orders!.y).toBeGreaterThanOrEqual(revenue!.y + revenue!.height);
+    if (width === 390) expect(Math.abs(revenue!.width - orders!.width)).toBeLessThan(1);
+  }
+}
+
+async function expectDateAxes(page: Page, period?: { days: number; orders: string[]; growth: string[] }) {
+  await expect(page.locator(".ma-home .sts-x")).toHaveCount(5);
+  for (const [panel, title] of [
+    ["stats-order-series", "일별 들어온 주문"],
+    ["stats-order-series", "일별 결제된 주문"],
+    ["stats-growth", "일별 가입 신청"],
+    ["stats-growth", "일별 시작한 방송"],
+    ["stats-subscriptions", "월별 받은 구독료"],
+  ]) {
+    // 기간별 조회가 서로 다른 시각에 교체돼도 다른 차트의 nth로 바뀌지 않도록 고정한다.
+    const chart = page.getByTestId(panel).locator(".sts-chart").filter({ has: page.getByRole("img", { name: `${title} 그래프`, exact: true }) });
+    const axis = chart.locator(".sts-x");
+    const labels = axis.locator("span:visible");
+    await expect(labels).toHaveCount(2);
+    // 기간 조회가 축을 교체할 수 있으므로 연결 상태·눈금·좌표를 같은 DOM 순간에 확인한다.
+    const measure = () => axis.evaluate((el) => {
+      const visible = Array.from(el.querySelectorAll("span")).filter((span) => span.getClientRects().length > 0);
+      const rect = (node: Element | undefined) => {
+        if (!node) return null;
+        const r = node.getBoundingClientRect();
+        return { x: r.x, width: r.width };
+      };
+      return { connected: el.isConnected, labels: visible.map((span) => span.textContent?.trim()), first: rect(visible[0]), last: rect(visible.at(-1)), box: rect(el) };
+    }, undefined, { timeout: 500 });
+    const expected = panel === "stats-order-series" ? period?.orders : panel === "stats-growth" ? period?.growth : undefined;
+    let snapshot: Awaited<ReturnType<typeof measure>> | undefined;
+    try {
+      await expect.poll(async () => {
+        try { snapshot = await measure(); } catch { snapshot = undefined; return false; }
+        return snapshot.connected && snapshot.labels.length === 2 &&
+          [snapshot.first, snapshot.last, snapshot.box].every((r) => r !== null && Number.isFinite(r.x) && r.width > 0) &&
+          (!expected || (snapshot.labels[0] === expected[0] && snapshot.labels[1] === expected[1]));
+      }, { timeout: 5_000 }).toBe(true);
+    } catch {
+      throw new Error(JSON.stringify({ width: page.viewportSize()?.width, days: period?.days ?? 30, title, count: snapshot?.labels.length ?? 0, connected: snapshot?.connected ?? false }));
+    }
+    const { first, last, box } = snapshot!;
+    expect(first && last && box).toBeTruthy();
+    expect(first!.x).toBeGreaterThanOrEqual(box!.x - 1);
+    expect(last!.x + last!.width).toBeLessThanOrEqual(box!.x + box!.width + 1);
+    expect(first!.x + first!.width).toBeLessThanOrEqual(last!.x);
+    for (const label of await labels.all()) await expect(label).toHaveText(/^\d{4}\.\d{2}(?:\.\d{2})?$/);
+    await chart.locator("svg g").first().hover();
+    await expect(chart.locator(".sts-tip")).toContainText((await labels.first().innerText()).trim());
+  }
+  await page.getByRole("heading", { level: 1 }).hover();
+}
+
 test("오늘 처리할 일: 서버 숫자가 맨 위에 보이고, 누르면 조건이 걸린 목록으로 간다", async ({ page }) => {
   await login(page);
   const api = await (await page.request.get("/api/admin/today-tasks")).json();
@@ -60,15 +127,39 @@ test("오늘 처리할 일: 서버 숫자가 맨 위에 보이고, 누르면 조
   await expect(tasks.getByTestId("today-task-inquiryOpen")).toContainText("파트너스 문의");
   await expect(page.getByTestId("today-tasks-at")).toContainText("집계");
   await expect(page.getByTestId("infra-card")).toHaveCount(0); // 인프라 · 비용 카드는 최고관리자에게만 보인다
+  await expect(page.locator(".ma-home-kpis > section")).toHaveCount(6);
+  await expect(page.getByTestId("home-operations")).toContainText("실시간 감시");
+  await expect(page.getByTestId("home-db-metrics")).toHaveCount(0);
+  await expect(page.getByTestId("home-admin-activity")).toHaveCount(0);
+  await expect(page.locator(".ma-home-grid")).toHaveCSS("grid-template-columns", /^(\d+(\.\d+)?px) (\d+(\.\d+)?px) (\d+(\.\d+)?px)$/);
+  await expectChartPlacement(page, 1440);
+  await expectDateAxes(page);
+  await expect(page.locator('.ma-home [aria-busy="true"]')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
   await page.screenshot({ path: "tests/e2e/screenshots/admin-home-1440.png", fullPage: true });
   for (const w of [1024, 390]) {
     await page.setViewportSize({ width: w, height: 900 });
     await page.reload();
     await expect(page.getByTestId("today-tasks")).toBeVisible();
+    await expect(page.locator(".ma-home-grid")).toHaveCSS("grid-template-columns", w === 390 ? /^(\d+(\.\d+)?px)$/ : /^(\d+(\.\d+)?px) (\d+(\.\d+)?px)$/);
+    await expectChartPlacement(page, w);
+    await expectDateAxes(page);
+    await expect(page.locator('.ma-home [aria-busy="true"]')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
     await page.screenshot({ path: `tests/e2e/screenshots/admin-home-${w}.png`, fullPage: true });
   }
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.reload();
+
+  for (const [id, href] of [["sellers", "/admin/partners"], ["live", "/admin/ops/live"], ["orders", "/admin/ops/access"], ["subscription", "/admin/billing/subscriptions"], ["grace", "/admin/billing/subscriptions"]]) {
+    const link = page.getByTestId(`home-kpi-${id}`).getByRole("heading").getByRole("link");
+    await expect(link).toHaveAttribute("href", href);
+    await link.click();
+    await expect(page).toHaveURL(new RegExp(`${href}$`));
+    await page.goto("/admin");
+    await expect(page.getByTestId("today-tasks")).toBeVisible();
+  }
+  await expect(page.getByTestId("home-kpi-revenue").getByRole("link")).toHaveCount(0);
 
   await tasks.getByTestId("today-task-signupPending").click();
   await expect(page).toHaveURL(/\/admin\/partners\/applications/);
@@ -82,9 +173,113 @@ test("기간별 현황: 상위 5 파트너스에 결제된 쇼핑몰이 오르�
   await expect(row).toContainText("123,456원");
   await expect(page.getByTestId("stats-orders")).toContainText("결제 금액");
   await expect(page.getByTestId("stats-subscriptions")).toContainText("월별 받은 구독료");
-  await page.getByRole("button", { name: "최근 7일" }).click();
-  await expect(page.getByRole("button", { name: "최근 7일" })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByTestId("top-seller-row").filter({ hasText: topShop })).toBeVisible();
+  await expect(page.getByTestId("stats-order-series")).toContainText("결제된 주문");
+  await expect(page.getByTestId("stats-growth")).toContainText("가입 신청");
+  await expect(page.getByTestId("home-month-billing")).toContainText("청구 · 결제 내역");
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const days of [7, 30, 90]) {
+      const now = Date.now();
+      const kst = (ms: number) => new Date(ms + 9 * 3_600_000).toISOString().slice(0, 10);
+      const from = kst(now - (days - 1) * 86_400_000);
+      const to = kst(now);
+      const isPeriodResponse = (path: string) => (response: Response) => {
+        const url = new URL(response.url());
+        return url.pathname === path && url.searchParams.get("from") === from && url.searchParams.get("to") === to && url.searchParams.get("unit") === "day";
+      };
+      const button = page.getByRole("button", { name: `최근 ${days}일`, exact: true });
+      const [ordersResponse, growthResponse] = await Promise.all([
+        page.waitForResponse(isPeriodResponse("/api/admin/stats/orders")),
+        page.waitForResponse(isPeriodResponse("/api/admin/stats/growth")),
+        button.click(),
+      ]);
+      expect(ordersResponse.status()).toBe(200);
+      expect(growthResponse.status()).toBe(200);
+      const [orders, growth] = await Promise.all([ordersResponse.json(), growthResponse.json()]);
+      for (const data of [orders, growth]) {
+        expect(data.range).toMatchObject({ from, to, unit: "day" });
+        expect(data.series).toHaveLength(days);
+      }
+      // 기존 최대 8개 눈금에서 CSS가 남기는 첫 날짜와 끝 날짜를 응답 기간과 대조한다.
+      const endpoints = (series: { bucket: string }[]) => {
+        const sampled = series.filter((_, i) => i % Math.ceil(series.length / 8) === 0);
+        return [sampled[0].bucket.replaceAll("-", "."), sampled.at(-1)!.bucket.replaceAll("-", ".")];
+      };
+      await expect(button).toHaveAttribute("aria-pressed", "true");
+      await expect(page.getByTestId("top-seller-row").filter({ hasText: topShop })).toBeVisible();
+      await expectDateAxes(page, { days, orders: endpoints(orders.series), growth: endpoints(growth.series) });
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    }
+  }
+});
+
+test("지연된 통계 조회는 갱신에 중복되지 않고 완료되며 기간 변경의 이전 응답을 버린다", async ({ page }) => {
+  await page.clock.install();
+  const held: { url: string; release: () => void }[] = [];
+  await page.route("**/api/admin/stats/orders**", async (route) => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    held.push({ url: route.request().url(), release });
+    const response = await route.fetch();
+    await gate;
+    await route.fulfill({ response });
+  });
+  await login(page);
+  await expect.poll(() => held.length).toBe(1);
+  const refresh = page.getByRole("button", { name: "새로 고침", exact: true });
+  await expect(refresh).toBeEnabled();
+  await refresh.click();
+  await page.clock.runFor(120_001);
+  expect(held).toHaveLength(1);
+  held[0].release();
+  await expect(page.locator(".ma-home-line svg")).toBeVisible();
+
+  await expect(refresh).toBeEnabled();
+  await refresh.click();
+  await expect.poll(() => held.length).toBe(2);
+  await page.getByRole("button", { name: "최근 7일", exact: true }).click();
+  await expect.poll(() => held.length).toBe(3);
+  expect(held[2].url).not.toBe(held[1].url);
+  const oldResponse = page.waitForResponse((response) => response.url() === held[1].url);
+  held[1].release();
+  await oldResponse;
+  await expect(page.locator(".ma-home-line svg")).toHaveCount(0);
+  held[2].release();
+  await expect(page.locator(".ma-home-line svg")).toBeVisible();
+  await expect(page.getByRole("button", { name: "최근 7일", exact: true })).toHaveAttribute("aria-pressed", "true");
+  expect(held).toHaveLength(3);
+});
+
+test("지연된 홈 요약과 인프라 조회도 주기·수동 갱신에 중복되지 않고 완료된다", async ({ page }) => {
+  await page.clock.install();
+  const held: { path: string; release: () => void }[] = [];
+  for (const path of ["/api/admin/dashboard", "/api/admin/infra/summary"]) {
+    await page.route(`**${path}`, async (route) => {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      held.push({ path, release });
+      const response = await route.fetch();
+      await gate;
+      await route.fulfill({ response });
+    });
+  }
+  await login(page, suEmail);
+  await expect.poll(() => held.length).toBe(2);
+  await page.clock.runFor(120_001);
+  expect(held.map((r) => r.path).sort()).toEqual(["/api/admin/dashboard", "/api/admin/infra/summary"]);
+  held.slice().forEach((r) => r.release());
+  await expect(page.getByTestId("dash-sellers-total")).toBeVisible();
+  await expect(page.getByTestId("infra-card-cost")).toBeVisible();
+
+  const refresh = page.getByRole("button", { name: "새로 고침", exact: true });
+  await refresh.click();
+  await expect.poll(() => held.length).toBe(4);
+  await page.clock.runFor(120_001);
+  expect(held).toHaveLength(4);
+  held.slice(2).forEach((r) => r.release());
+  await expect(refresh).toBeEnabled();
+  await expect(page.getByTestId("dash-sellers-total")).toBeVisible();
+  await expect(page.getByTestId("infra-card-cost")).toBeVisible();
 });
 
 test("한 통계가 실패해도 오늘 처리할 일과 나머지 통계는 그대로 보이고, 다시 시도하면 불러온다", async ({ page }) => {
@@ -99,21 +294,43 @@ test("한 통계가 실패해도 오늘 처리할 일과 나머지 통계는 그
   await expect(page.getByTestId("stats-orders")).toContainText("결제 금액");
 });
 
+test("빈 파트너스 안내와 요약 오류는 데모 수치 없이 독립적으로 보인다", async ({ page }) => {
+  let fail = false;
+  await page.route("**/api/admin/dashboard", (route) => route.fulfill({
+    status: fail ? 500 : 200,
+    contentType: "application/json",
+    body: fail ? '{"error":"x"}' : JSON.stringify({ at: new Date().toISOString(), sellers: { total: 0, PENDING: 0, ACTIVE: 0, SUSPENDED: 0, REJECTED: 0, CLOSED: 0 }, liveBroadcasts: 0, ordersToday: { created: 0, paid: 0, paidAmount: 0 }, subscriptions: { trial: 0, paid: 0, charging: 0, grace: 0, expired: 0 } }),
+  }));
+  await login(page);
+  await expect(page.getByTestId("dash-sellers-total")).toHaveText("0곳");
+  await expect(page.getByTestId("home-kpi-sellers")).toContainText("아직 파트너스가 없습니다");
+  await expect(page.getByTestId("stats-top")).toContainText(topShop);
+  fail = true;
+  await page.getByRole("button", { name: "새로 고침", exact: true }).click();
+  await expect(page.getByTestId("home-kpi-sellers")).toContainText("불러오지 못했습니다");
+  await expect(page.getByTestId("stats-top")).toContainText(topShop);
+  await expect(page.getByTestId("home-kpi-sellers")).not.toContainText("184");
+});
+
 test("최고관리자: 오늘 처리할 일 아래에 인프라 · 비용 요약 카드가 보이고 누르면 인프라 · 비용 화면으로 간다", async ({ page }) => {
   await login(page, suEmail);
   const card = page.getByTestId("infra-card");
   await expect(card).toBeVisible();
   await expect(card.getByTestId("infra-card-cost")).toBeVisible();
   await expect(card.getByTestId("infra-card-warnings")).toBeVisible();
+  await expect(page.getByTestId("home-db-metrics")).toContainText("DB 연결");
+  await expect(page.getByTestId("home-admin-activity")).toContainText("로그 추적 전체");
   const above = await page.getByTestId("today-tasks").boundingBox();
   const at = await card.boundingBox();
   expect(at!.y).toBeGreaterThan(above!.y); // 「오늘 처리할 일」 바로 아래
+  await expect(page.locator('.ma-home [aria-busy="true"]')).toHaveCount(0);
   await page.screenshot({ path: "tests/e2e/screenshots/admin-home-infra-1440.png", fullPage: true });
   for (const w of [1024, 390]) {
     await page.setViewportSize({ width: w, height: 900 });
     await page.reload();
     await expect(page.getByTestId("infra-card")).toBeVisible();
     await expect(page.getByTestId("infra-card-cost")).toBeVisible();
+    await expect(page.locator('.ma-home [aria-busy="true"]')).toHaveCount(0);
     await page.screenshot({ path: `tests/e2e/screenshots/admin-home-infra-${w}.png`, fullPage: true });
   }
   await page.setViewportSize({ width: 1440, height: 900 });

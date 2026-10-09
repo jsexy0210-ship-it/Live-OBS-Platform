@@ -108,7 +108,8 @@ const source = (p: Parsed, now: Date) => Prisma.sql`
 
 function filters(p: Parsed): Prisma.Sql {
   const w: Prisma.Sql[] = [Prisma.sql`TRUE`];
-  if (p.state) w.push(Prisma.sql`state = ${p.state}`);
+  // FINAL의 「실패 · 재시도」 선택지는 별도 선택지가 없는 종료된 실패도 포함한다. 연체는 독립 선택지다.
+  if (p.state) w.push(p.state === "RETRYING" ? Prisma.sql`state IN ('RETRYING', 'FAILED')` : Prisma.sql`state = ${p.state}`);
   if (p.failedOnly) w.push(Prisma.sql`state IN ('RETRYING', 'OVERDUE', 'FAILED')`);
   if (p.plan) w.push(Prisma.sql`"planCode" = ${p.plan}`);
   if (p.sellerId) w.push(Prisma.sql`"sellerId" = ${p.sellerId}::uuid`);
@@ -178,6 +179,7 @@ async function summary(db: PrismaClient, p: Parsed, now: Date) {
            count(*) FILTER (WHERE state IN ('PAID', 'REFUNDED')) AS "paidCount", coalesce(sum(amount::bigint) FILTER (WHERE state IN ('PAID', 'REFUNDED')), 0) AS "paidAmount",
            count(*) FILTER (WHERE state IN ('RETRYING', 'OVERDUE', 'FAILED')) AS "failedCount", coalesce(sum(amount::bigint) FILTER (WHERE state IN ('RETRYING', 'OVERDUE', 'FAILED')), 0) AS "failedAmount",
            count(*) FILTER (WHERE state = 'RETRYING') AS "retryingCount", count(*) FILTER (WHERE state = 'OVERDUE') AS "overdueCount",
+           count(*) FILTER (WHERE state = 'FAILED') AS "terminalFailedCount",
            count(*) FILTER (WHERE state = 'PENDING') AS "pendingCount",
            count(*) FILTER (WHERE state = 'REFUNDED') AS "refundedCount", coalesce(sum("refundedAmount"::bigint) FILTER (WHERE state = 'REFUNDED'), 0) AS "refundedAmount",
            count(*) FILTER (WHERE state = 'SCHEDULED') AS "scheduledCount", coalesce(sum(amount::bigint) FILTER (WHERE state = 'SCHEDULED'), 0) AS "scheduledAmount"
@@ -186,7 +188,7 @@ async function summary(db: PrismaClient, p: Parsed, now: Date) {
   return {
     total: { count: n("totalCount"), amount: n("totalAmount") },
     paid: { count: n("paidCount"), amount: n("paidAmount") },
-    failed: { count: n("failedCount"), amount: n("failedAmount"), retrying: n("retryingCount"), overdue: n("overdueCount") },
+    failed: { count: n("failedCount"), amount: n("failedAmount"), retrying: n("retryingCount"), overdue: n("overdueCount"), terminal: n("terminalFailedCount") },
     pending: { count: n("pendingCount") },
     refunded: { count: n("refundedCount"), amount: n("refundedAmount") },
     scheduled: { count: n("scheduledCount"), estimatedAmount: n("scheduledAmount") },

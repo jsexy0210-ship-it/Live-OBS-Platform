@@ -18,7 +18,7 @@ const START_LABEL: Record<string, string> = {
 
 // 정본 PF-003: 쇼핑몰 통합 카드에만 「추천」 배지·강조 테두리
 const RECOMMENDED = "INTEGRATED";
-const DISCOUNT_NOTICE = "지금은 런칭 할인가예요.";
+const DISCOUNT_NOTICE = "지금은 런칭 할인가예요. 할인이 끝나는 날짜는 정해지면 30일 전에 알려 드리고, 바뀌는 날짜와 금액은 결제 전 화면과 구독 관리 화면에서 다시 보여 드려요.";
 
 type BillingPolicy = { paymentRetryCount: number; overdueLockDays: number; lockToCloseDays: number };
 
@@ -30,7 +30,7 @@ const QA = (billingPolicy: BillingPolicy | null, trialPlan: LandingPlan | undefi
     ? `하루 간격으로 ${billingPolicy.paymentRetryCount}번 다시 시도해요. 처음 실패한 날부터 ${billingPolicy.overdueLockDays}일까지는 그대로 쓸 수 있고, 그 뒤에는 쇼핑몰과 방송 화면이 멈춰요. 결제하면 바로 다시 열리고, 구독 기간은 원래 결제일부터 이어서 세요. 잠긴 지 ${billingPolicy.lockToCloseDays}일이 지나면 체험 종료일이 등록된 계정은 자동으로 해지돼요.`
     : "정기 결제 실패가 확인되면 정해진 유예 기간에는 계속 쓸 수 있어요. 유예가 끝나면 결제할 때까지 쇼핑몰과 방송 화면이 멈춰요. 결제하면 바로 다시 열려요."],
   ["해지하면 데이터는요?", "해지해도 남은 기간까지는 쓸 수 있어요. 해지한 뒤 내 자료가 어떻게 되는지는 정해지는 대로 알려 드려요."],
-  ["요금이 바뀌면요?", "할인 종료일과 변경 요금 안내는 아직 준비 중이에요."],
+  ["요금이 바뀌면요?", "새로 가입하는 분에게는 바뀐 요금이 바로 적용되고, 이미 구독 중이면 30일 전에 메일 · 알림톡 · 파트너스 관리자 공지로 알린 뒤 그다음 결제부터 적용돼요. 런칭 할인이 끝나는 날짜도 정해지면 30일 전에 알려 드려요."],
 ];
 
 export function Pricing({ plans, billingPolicy, companyInfo }: { plans: LandingPlan[]; billingPolicy: BillingPolicy | null; companyInfo?: PublicCompanyInfo | null }) {

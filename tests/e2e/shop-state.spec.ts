@@ -37,12 +37,23 @@ test("준비 중: 홈·상품·장바구니·회원가입 주소 모두 안내 �
   await expect(card.getByRole("link", { name: "로그인하기" })).toBeVisible();
   await expect(page.locator(".shop-util").getByRole("link", { name: "회원가입" })).toHaveCount(0);
   await page.screenshot({ path: "tests/e2e/screenshots/SH-040-prepare-1440.png" });
+  for (const [path, title] of [["/terms", /이용약관/], ["/privacy", /개인정보처리방침/], ["/help", "공지 · 이용안내"]] as const) {
+    await page.goto(`/shop/${SLUG}${path}`);
+    await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "곧 문을 열어요" })).toHaveCount(0);
+  }
+  for (const path of ["legal/terms", "legal/privacy", "notices", "faqs"]) {
+    expect((await page.request.get(`/api/shop/${SLUG}/${path}`)).status()).toBe(200);
+  }
 });
 
 test("로그인 화면은 계속 열려 있다", async ({ page }) => {
   await setOperatingState(SLUG, "PAUSED");
   await page.goto(`/shop/${SLUG}/login`);
   await expect(page.locator("form.shop-login")).toBeVisible();
+  await page.goto(`/shop/${SLUG}/help`);
+  await expect(page.getByRole("heading", { level: 1, name: "공지 · 이용안내" })).toBeVisible();
+  expect((await page.request.get(`/api/shop/${SLUG}/legal/terms`)).status()).toBe(200);
 });
 
 test("일시 정지(로그인 후): 내 주문 보기, 결제 기다리는 주문이 있으면 결제 이어하기", async ({ page, baseURL }) => {

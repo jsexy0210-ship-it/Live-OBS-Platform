@@ -1,7 +1,6 @@
 import type { Prisma, PrismaClient, ShopNotice, ShopNoticeKind } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { notFound } from "../authz/errors";
-import { shopOpen } from "../buyers/signup";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
 import { cleanText } from "../text/clean";
 
@@ -10,7 +9,7 @@ import { cleanText } from "../text/clean";
 // - 공지는 최신순. 홈 띠 고정 공지는 쇼핑몰당 1개(공개 공지만): 새로 고정하면 이전 고정은 풀린다. 비공개로 바꾸면 고정도 풀린다.
 // - 질문은 분류(선택)와 순서(sortOrder)가 있고, 구매자 화면은 순서대로 본문까지 한 번에 받는다(접고 펼치기). 검색어로 좁힐 수 있다(문의 작성 전 제안).
 // - 쓰기는 쇼핑몰 행 잠금 아래에서 개수·고정·순서를 판단한다.
-// - 구매자 조회는 로그인 없이, 운영 중인 쇼핑몰(shopOpen)의 공개 글만.
+// - 구매자 조회는 로그인 없이, 활성 쇼핑몰의 게시된 공개 글만(준비 중·일시 정지에도 고객센터 열람).
 
 type Db = PrismaClient | Prisma.TransactionClient;
 type Tx = Prisma.TransactionClient;
@@ -167,8 +166,8 @@ export async function reorderFaqs(db: PrismaClient, ctx: TenantContext, raw: unk
 // ───────── 구매자(로그인 없이) ─────────
 
 async function openShop(db: PrismaClient, slug: string) {
-  const shop = await db.seller.findUnique({ where: { slug: slug.slice(0, 60) }, select: { id: true } });
-  return shop && (await shopOpen(db, shop.id)) ? shop.id : null;
+  const shop = await db.seller.findUnique({ where: { slug: slug.slice(0, 60) }, select: { id: true, status: true } });
+  return shop?.status === "ACTIVE" ? shop.id : null;
 }
 
 // 공지 목록(최신순, ?cursor=마지막 공지 id). 고정 공지(홈 띠)는 pinned로 따로 준다. 본문은 상세에서.

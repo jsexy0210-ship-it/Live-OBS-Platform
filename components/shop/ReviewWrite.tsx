@@ -9,7 +9,7 @@ import "./Reviews.css";
 // 쓰기: GET·POST /api/shop/{slug}/reviews/items/{orderItemId}. 고치기: GET·PUT /reviews/{id}(목록에서 찾지 않고 id로 직접 읽는다).
 type Photo = { id: string; url: string };
 type Item = { productName: string; optionName: string; quantity: number; orderedAt: string; deliveredAt: string | null; reward: { text: number; photo: number } };
-type Mine = { id: string; productName: string; optionName: string; rating: number; body: string; images: Photo[]; editable: boolean };
+type Mine = { id: string; productName: string; optionName: string; rating: number; body: string; images: Photo[]; showNickname: boolean; showOpeningResult: boolean; editable: boolean };
 const MAX_PHOTOS = 5;
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 
@@ -22,6 +22,8 @@ export default function ReviewWrite({ slug, itemId, reviewId, writableUntil, rig
   const [rating, setRating] = useState(0);
   const [body, setBody] = useState("");
   const [photos, setPhotos] = useState<Photo[]>([]);
+  const [showNickname, setShowNickname] = useState(true);
+  const [showOpeningResult, setShowOpeningResult] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -42,6 +44,8 @@ export default function ReviewWrite({ slug, itemId, reviewId, writableUntil, rig
     setRating(m.rating);
     setBody(m.body);
     setPhotos(m.images);
+    setShowNickname(m.showNickname);
+    setShowOpeningResult(m.showOpeningResult);
     setView({ kind: "ok", title: m.productName, sub: `옵션 ${m.optionName} · 리뷰 고치기`, reward: null });
   }, [base, itemId, reviewId]);
 
@@ -80,10 +84,10 @@ export default function ReviewWrite({ slug, itemId, reviewId, writableUntil, rig
   const submit = async () => {
     if (!ready) return;
     const edit = !itemId;
-    if (!(await confirm({ tone: "shop", title: edit ? "고친 리뷰를 올릴까요?" : "리뷰를 올릴까요?", body: "방송 닉네임으로 공개돼요. 올린 뒤 7일 안에만 고칠 수 있어요.", confirmLabel: "올리기" }))) return;
+    if (!(await confirm({ tone: "shop", title: edit ? "고친 리뷰를 올릴까요?" : "리뷰를 올릴까요?", body: `${showNickname ? "방송 닉네임으로" : "구매자로"} 공개돼요. 올린 뒤 7일 안에만 고칠 수 있어요.`, confirmLabel: "올리기" }))) return;
     setBusy(true);
     setMsg(null);
-    const payload = { rating, body, imageIds: photos.map((p) => p.id) };
+    const payload = { rating, body, imageIds: photos.map((p) => p.id), showNickname, showOpeningResult };
     const r = itemId
       ? await call<{ status: string; grantedReward: number }>(`${base}/items/${encodeURIComponent(itemId)}`, { method: "POST", body: payload })
       : await call<{ status: string }>(`${base}/${encodeURIComponent(reviewId ?? "")}`, { method: "PUT", body: payload });
@@ -196,7 +200,14 @@ export default function ReviewWrite({ slug, itemId, reviewId, writableUntil, rig
         <div className="rv-row">
           <span className="rv-th">공개</span>
           <div className="rv-td">
-            <span className="rv-hint">방송 닉네임으로 공개돼요</span>
+            <label className="rv-public-choice">
+              <input className="cbx" type="checkbox" checked={showNickname} onChange={(e) => setShowNickname(e.target.checked)} />
+              닉네임 공개
+            </label>
+            <label className="rv-public-choice">
+              <input className="cbx" type="checkbox" checked={showOpeningResult} onChange={(e) => setShowOpeningResult(e.target.checked)} />
+              개봉 결과(카드 이름) 함께 보여 주기
+            </label>
           </div>
         </div>
         {msg && (

@@ -93,6 +93,7 @@ function Notices({ slug }: { slug: string }) {
 }
 
 function Faqs({ slug }: { slug: string }) {
+  const base = `/shop/${encodeURIComponent(slug)}`;
   const api = `/api/shop/${encodeURIComponent(slug)}/faqs`;
   const [faqs, setFaqs] = useState<Faq[] | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
@@ -117,6 +118,10 @@ function Faqs({ slug }: { slug: string }) {
   const shown = (faqs ?? []).filter((f) => !category || f.category === category);
   return (
     <>
+      <div className="help-faq-head">
+        <h2>자주 묻는 질문</h2>
+        <Link href={`${base}/me/inquiries`}>문의하기 ›</Link>
+      </div>
       <form
         className="help-search"
         role="search"

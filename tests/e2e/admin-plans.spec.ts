@@ -78,13 +78,26 @@ test("최고관리자: 월 제공량을 바로 바꾸고, 적용 예정으로 �
   expect([saved.mailMonthlyQuota, saved.nextMailQuota]).toEqual([250, 400]);
 });
 
-test("최고관리자: 가격 변경은 전·후 금액과 30일 안내를 보여 주고 한 번 더 확인한 뒤 저장한다", async ({ page }) => {
+test("최고관리자: 가격 변경은 전·후 금액과 30일 안내를 보여 주고 한 번 더 확인한 뒤 저장한다", async ({ page }, testInfo) => {
   const before = await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "INTEGRATED" } });
   try {
     await open(page, superEmail);
     await row(page, "쇼핑몰 통합").getByRole("button", { name: "가격 변경" }).click();
+    await expect(page.getByRole("dialog")).toContainText("메일·알림톡·파트너스 공지 완료 30일 뒤 첫 결제부터 적용되며, 고지 전에는 기존 요금을 유지합니다.");
+    for (const width of [1440, 1024, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      const dialog = page.getByRole("dialog");
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByRole("button", { name: "저장", exact: true })).toBeVisible();
+      expect(await dialog.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+      const box = (await dialog.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(width + 1);
+      await dialog.screenshot({ path: testInfo.outputPath(`MA022-price-notice-${width}.png`) });
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
     const dialog = page.getByRole("dialog");
-    await expect(dialog).toContainText("기존 구독자는 30일 뒤 첫 결제부터 적용됩니다");
+    await expect(dialog).toContainText("고지 전에는 기존 요금을 유지합니다.");
     await dialog.getByLabel("판매가").fill(String(before.listPrice + 1));
     await expect(dialog.getByRole("button", { name: "저장" })).toBeDisabled();
     const newList = before.listPrice + 1000;

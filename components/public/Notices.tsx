@@ -61,7 +61,7 @@ export function Notices({
   const pageHref = (n: number) => noticeListHref({ category: filterCategory, page: n, pageSize });
   return (
     <PublicFrame active="/notices">
-      <section className="pf-sec">
+      <section className="pf-sec pf-info-section">
         <h1 className="t-d2">공지</h1>
         <div className="pf-chips" role="group" aria-label="분류">
           {CHIPS.map(([label, v]) => (
