@@ -19,7 +19,7 @@ type Summary = { broadcast: { id: string; title: string | null; status: "live" |
 type Info = { lastAccessAt: string | null; lastClient: string | null; connected: boolean };
 type Shops = { connections: { id: string; status: string; lastEventAt: string | null }[] };
 
-export function OverlayHomeSections() {
+export function OverlayHomeSections({ refresh = 0 }: { refresh?: number }) {
   const { can } = useSeller();
   const run = can("BROADCAST_RUN");
   const shopRead = can("SHOP_SETTINGS");
@@ -43,7 +43,7 @@ export function OverlayHomeSections() {
       live = false;
       clearInterval(t);
     };
-  }, [run, shopRead, ovEdit]);
+  }, [run, shopRead, ovEdit, refresh]);
 
   const waiting = queue ? queue.waiting.length + queue.beforeBroadcast.length : null;
   const onAir = queue?.broadcast ?? null;

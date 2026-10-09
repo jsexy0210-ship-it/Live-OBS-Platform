@@ -102,6 +102,8 @@ test("대표자: 방송 시작부터 개봉·타이머·완료·되돌리기·�
   await page.getByRole("button", { name: "방송 시작" }).click();
   await expect(page.getByTestId("bc-live-badge")).toBeVisible();
   await expect(page.getByTestId("bc-title")).toHaveText("e2e 라이브");
+  const homeBroadcast = page.getByTestId("home-broadcasts").locator("tbody tr", { hasText: "e2e 라이브" });
+  await expect(homeBroadcast).toContainText("방송 중");
   await expect(page.getByTestId("bc-summary")).toContainText("지금 방송");
   await expect(page.getByTestId("bc-summary")).toContainText("완료 / 뺀 주문");
   await expect(page.getByRole("heading", { name: /^대기 3건/ })).toBeVisible();
@@ -156,6 +158,8 @@ test("대표자: 방송 시작부터 개봉·타이머·완료·되돌리기·�
   await expect(end).toContainText("남은 대기 1건은 다음 방송으로 넘어갑니다");
   await end.getByRole("button", { name: "방송 끝내기" }).click();
   await expect(page.getByTestId("bc-live-badge")).toHaveCount(0);
+  await expect(homeBroadcast).toBeVisible();
+  await expect(homeBroadcast.locator(".home-live")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: /방송 전 대기 1건/ })).toBeVisible();
 
   // 서버에 남은 상태

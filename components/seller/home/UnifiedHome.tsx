@@ -102,6 +102,7 @@ export function UnifiedHome() {
   // 다시 읽기 반영 규칙(latestResponse.ts): 나중에 보낸 요청의 성공만 반영하고, 실패가 앞선 성공을 버리지 않는다
   const reads = useLatestResponse();
   const version = useRef<number | null>(null);
+  const [homeRefresh, setHomeRefresh] = useState(0);
   // 되돌리기 10초 판정은 PC 시계(Date)가 아니라 이 화면이 완료를 확인한 순간의 단조 시계(performance.now) 기준이다.
   // 이 화면에서 완료했거나, 직전 화면에서 개봉 중이던 주문이 완료로 바뀐 것을 본 경우만 기록한다(언제 완료됐는지 모르는 주문은 되돌리기를 보이지 않음)
   const doneSeenAt = useRef(new Map<string, number>());
@@ -110,6 +111,8 @@ export function UnifiedHome() {
     const seen = performance.now();
     for (const d of snap.recentDone) if (d.id === lastOpeningId.current && !doneSeenAt.current.has(d.id)) doneSeenAt.current.set(d.id, seen);
     lastOpeningId.current = snap.opening?.id ?? null;
+    // 서버에서 확정된 버전 변화만 운영 구역 재조회에 연결한다. 실패를 성공으로 추정하지 않는다.
+    if (version.current !== null && version.current !== snap.version) setHomeRefresh((n) => n + 1);
     version.current = snap.version;
     setStale(false);
     setState({ kind: "ok", snap });
@@ -342,7 +345,7 @@ export function UnifiedHome() {
           }
         />
 
-        {me.features.includes("STORE_OPERATIONS") ? <StoreHomeSections /> : me.features.includes("OVERLAY") ? <OverlayHomeSections /> : null}
+        {me.features.includes("STORE_OPERATIONS") ? <StoreHomeSections refresh={homeRefresh} /> : me.features.includes("OVERLAY") ? <OverlayHomeSections refresh={homeRefresh} /> : null}
         {!allowed ? (
           null
         ) : !snap ? (

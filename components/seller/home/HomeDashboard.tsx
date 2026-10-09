@@ -40,7 +40,7 @@ const BROADCAST_ROWS = 3;
 type Part<T> = { kind: "loading" } | { kind: "hidden" } | { kind: "error" } | { kind: "ok"; data: T };
 
 // pick은 모듈 안의 고정 함수만 넘긴다(렌더마다 바뀌는 함수를 넘기지 않음). 값은 ref에 두어 의존 배열에는 path만 쓴다.
-function usePart<T>(path: string, pick: (raw: never) => T): [Part<T>, () => void] {
+function usePart<T>(path: string, pick: (raw: never) => T, refresh = 0): [Part<T>, () => void] {
   const [state, setState] = useState<Part<T>>({ kind: "loading" });
   const [n, setN] = useState(0);
   const pickRef = useRef(pick);
@@ -56,7 +56,7 @@ function usePart<T>(path: string, pick: (raw: never) => T): [Part<T>, () => void
     return () => {
       live = false;
     };
-  }, [path, n]);
+  }, [path, n, refresh]);
   return [state, useCallback(() => setN((v) => v + 1), [])];
 }
 
@@ -112,8 +112,8 @@ function OnboardingStrip() {
   );
 }
 
-function TodayTasks() {
-  const [part, retry] = usePart<Tasks>("/api/seller/today-tasks", (d) => d as Tasks);
+function TodayTasks({ refresh }: { refresh: number }) {
+  const [part, retry] = usePart<Tasks>("/api/seller/today-tasks", (d) => d as Tasks, refresh);
   if (part.kind === "hidden") return null;
   return (
     <Section title="오늘 처리할 일" sub={part.kind === "ok" && part.data.total > 0 ? `${count(part.data.total)}` : undefined}>
@@ -139,9 +139,9 @@ function TodayTasks() {
   );
 }
 
-function Performance() {
+function Performance({ refresh }: { refresh: number }) {
   const today = kstToday();
-  const [part, retry] = usePart<Overview>(`/api/seller/stats/overview?from=${today}&to=${today}`, (d) => d as Overview);
+  const [part, retry] = usePart<Overview>(`/api/seller/stats/overview?from=${today}&to=${today}`, (d) => d as Overview, refresh);
   if (part.kind === "hidden") return null;
   return (
     <Section title="오늘 성과" actions={<Link className="btn btn-out" href="/seller/stats">통계 보기</Link>}>
@@ -171,8 +171,8 @@ function Performance() {
   );
 }
 
-function Broadcasts() {
-  const [part, retry] = usePart<Broadcast[]>("/api/seller/broadcast/history", (d) => (d as { items: Broadcast[] }).items.slice(0, BROADCAST_ROWS));
+function Broadcasts({ refresh }: { refresh: number }) {
+  const [part, retry] = usePart<Broadcast[]>("/api/seller/broadcast/history", (d) => (d as { items: Broadcast[] }).items.slice(0, BROADCAST_ROWS), refresh);
   if (part.kind === "hidden") return null;
   return (
     <Section title="방송" actions={<Link className="btn btn-out" href="/seller/broadcasts">방송 기록</Link>}>
@@ -212,13 +212,13 @@ function Broadcasts() {
   );
 }
 
-export function StoreHomeSections() {
+export function StoreHomeSections({ refresh = 0 }: { refresh?: number }) {
   return (
         <div className="home">
           <OnboardingStrip />
-          <TodayTasks />
-          <Performance />
-          <Broadcasts />
+          <TodayTasks refresh={refresh} />
+          <Performance refresh={refresh} />
+          <Broadcasts refresh={refresh} />
         </div>
   );
 }
