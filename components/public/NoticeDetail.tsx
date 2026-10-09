@@ -12,9 +12,13 @@ export function NoticeDetail({ notice, listHref, listState }: { notice: { title:
           <Link className="t-l2" href={listHref}>
             ← 공지 목록
           </Link>
-          <span className={`bdg ${c.cls}`}>{c.label}</span>
-          <h1 className="t-t1">{notice.title}</h1>
-          <span className="t-l2 c-alt">{noticeDate(notice.publishedAt)} · {notice.author}</span>
+          <div className="col" style={{ gap: 10 }}>
+            <div className="row" style={{ gap: 8 }}>
+              <span className={`bdg ${c.cls}`}>{c.label}</span>
+              <span className="t-l2 c-alt num">{noticeDate(notice.publishedAt)} · {notice.author}</span>
+            </div>
+            <h1 className="t-t1">{notice.title}</h1>
+          </div>
           <p className="t-b1 pf-notice-body" data-testid="notice-body">
             {notice.body}
           </p>
