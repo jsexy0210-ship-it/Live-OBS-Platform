@@ -197,6 +197,38 @@ test("지연된 통계 조회는 갱신에 중복되지 않고 완료되며 기�
   expect(held).toHaveLength(3);
 });
 
+test("지연된 홈 요약과 인프라 조회도 주기·수동 갱신에 중복되지 않고 완료된다", async ({ page }) => {
+  await page.clock.install();
+  const held: { path: string; release: () => void }[] = [];
+  for (const path of ["/api/admin/dashboard", "/api/admin/infra/summary"]) {
+    await page.route(`**${path}`, async (route) => {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      held.push({ path, release });
+      const response = await route.fetch();
+      await gate;
+      await route.fulfill({ response });
+    });
+  }
+  await login(page, suEmail);
+  await expect.poll(() => held.length).toBe(2);
+  await page.clock.runFor(120_001);
+  expect(held.map((r) => r.path).sort()).toEqual(["/api/admin/dashboard", "/api/admin/infra/summary"]);
+  held.slice().forEach((r) => r.release());
+  await expect(page.getByTestId("dash-sellers-total")).toBeVisible();
+  await expect(page.getByTestId("infra-card-cost")).toBeVisible();
+
+  const refresh = page.getByRole("button", { name: "새로 고침", exact: true });
+  await refresh.click();
+  await expect.poll(() => held.length).toBe(4);
+  await page.clock.runFor(120_001);
+  expect(held).toHaveLength(4);
+  held.slice(2).forEach((r) => r.release());
+  await expect(refresh).toBeEnabled();
+  await expect(page.getByTestId("dash-sellers-total")).toBeVisible();
+  await expect(page.getByTestId("infra-card-cost")).toBeVisible();
+});
+
 test("한 통계가 실패해도 오늘 처리할 일과 나머지 통계는 그대로 보이고, 다시 시도하면 불러온다", async ({ page }) => {
   let fail = true;
   await page.route("**/api/admin/stats/orders**", (route) => (fail ? route.fulfill({ status: 500, contentType: "application/json", body: '{"error":"x"}' }) : route.continue()));

@@ -198,11 +198,19 @@ function InfraBar({ label, pct }: { label: string; pct: number | null }) {
 function InfraCard({ tick }: { tick: number }) {
   const [state, setState] = useState<Fetch<InfraSummary>>({ kind: "loading" });
   const reqId = useRef(0);
+  const pending = useRef(false);
   const load = useCallback(async () => {
+    if (pending.current) return;
     const id = ++reqId.current;
+    pending.current = true;
     const r = await adminApi<InfraSummary>("/api/admin/infra/summary");
     if (id !== reqId.current) return;
+    pending.current = false;
     setState((prev) => (r.ok ? { kind: "ok", data: r.data } : prev.kind === "ok" ? prev : { kind: "error" }));
+  }, []);
+  useEffect(() => () => {
+    reqId.current++;
+    pending.current = false;
   }, []);
   // 1분마다 갱신(카드 정본: 「1분마다 갱신」). 새로 고침 버튼(tick)도 다시 부른다.
   useEffect(() => {
@@ -497,22 +505,9 @@ function OperationsPanels({ tick }: { tick: number }) {
 export default function AdminHome() {
   const { me } = useAdmin();
   const isSuper = adminCan(me.role, "infra.manage");
-  const [state, setState] = useState<Load>({ kind: "loading" });
+  const [state, load] = useApi<Summary>("/api/admin/dashboard", 0);
   const [tick, setTick] = useState(0);
   const [days, setDays] = useState<number>(30);
-  const reqId = useRef(0);
-  const load = useCallback(async () => {
-    const id = ++reqId.current;
-    setState({ kind: "loading" });
-    const r = await adminApi<Summary>("/api/admin/dashboard");
-    if (id !== reqId.current) return;
-    setState(r.ok ? { kind: "ok", data: r.data } : { kind: "error" });
-  }, []);
-  useEffect(() => {
-    void load();
-    const timer = setInterval(() => void load(), 60_000);
-    return () => clearInterval(timer);
-  }, [load]);
 
   const d = state.kind === "ok" ? state.data : null;
   return (
