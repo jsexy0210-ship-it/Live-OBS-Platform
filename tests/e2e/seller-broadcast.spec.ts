@@ -30,6 +30,7 @@ async function shot(page: Page, name: string) {
 async function login(page: Page, email: string, next: string) {
   await page.goto(`/seller/login?next=${encodeURIComponent(next)}`);
   await submitSellerLogin(page, email, PASSWORD);
+  await page.waitForURL((url) => url.pathname === next);
 }
 
 const waitingNames = (page: Page) => page.getByTestId("bc-waiting").locator("tr .t-l1");
@@ -46,7 +47,10 @@ test("오버레이 전용 역할도 단일 홈에서 기존 정보와 방송을 
   await expect(page.getByRole("link", { name: "방송 대시보드", exact: true })).toHaveCount(0);
   const denied = await page.request.get("/api/seller/products");
   expect(denied.status()).toBe(403);
-  await expect(page.getByTestId("bc-waiting")).toBeVisible();
+  const waiting = page.getByRole("region", { name: "방송 전 대기 0건", exact: true });
+  await expect(waiting).toBeVisible();
+  await expect(waiting).toContainText("대기 중인 주문이 없습니다");
+  await expect(page.getByTestId("bc-waiting")).toHaveCount(0);
   await shot(page, "sa002-unified-home-overlay-owner");
 });
 
@@ -59,7 +63,9 @@ test("두 기존 홈 주소는 단일 홈으로 이동하고 유튜브 패널은
   }
   await expect(page.getByRole("link", { name: "방송 대시보드", exact: true })).toHaveCount(0);
   await expect(page.getByTestId("home-tasks")).toBeVisible();
-  const snapshot = await (await page.request.get("/api/seller/queue")).json();
+  const snapshotResponse = await page.request.get("/api/seller/queue");
+  expect(snapshotResponse.status()).toBe(200);
+  const snapshot = await snapshotResponse.json();
   await page.route("**/api/seller/queue", async (route) => route.fulfill({ json: { ...snapshot, broadcast: { id: "synthetic-current", title: "합성 방송", startedAt: "2026-10-09T00:00:00Z" } } }));
   await page.route("**/api/seller/youtube", async (route) => route.fulfill({ json: { configured: true, live: { videoId: "synthetic01", title: "합성 방송", status: "live", broadcastSessionId: "synthetic-current", chatEnabled: false }, chatNotice: "합성 UI 검수" } }));
   // 외부 영상·실방송을 호출하지 않는다. iframe의 배치·선택 계약만 합성으로 검증한다.
@@ -99,7 +105,9 @@ test("두 기존 홈 주소는 단일 홈으로 이동하고 유튜브 패널은
 
 test("채팅이 꺼지고 큐 버전이 같아도 유튜브 연결과 해제가 새로 고침 없이 반영된다", async ({ page }) => {
   await login(page, "demo-owner@example.com", "/seller");
-  const snapshot = await (await page.request.get("/api/seller/queue")).json();
+  const snapshotResponse = await page.request.get("/api/seller/queue");
+  expect(snapshotResponse.status()).toBe(200);
+  const snapshot = await snapshotResponse.json();
   let connected = false;
   let queueReads = 0;
   await page.route("**/api/seller/queue", async (route) => {
