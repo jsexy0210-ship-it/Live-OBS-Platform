@@ -3,7 +3,7 @@ import ShopState from "./ShopState";
 import "./ShopLegal.css";
 
 // 쇼핑몰 이용약관·개인정보처리방침 구매자 화면. 파트너스가 입력한 본문만 글자 그대로(텍스트로만, HTML 해석 없음) 보여 주고,
-// 게시 전에는 「준비 중」 안내만 둔다(법률 문구를 앱이 대신 쓰지 않음). doc이 null이면 운영 중이 아닌 쇼핑몰.
+// 게시 전에는 「준비 중」 안내만 둔다(법률 문구를 앱이 대신 쓰지 않음). doc이 null이면 표시할 쇼핑몰이 없음.
 type Doc = { published: false } | { published: true; body: string; effectiveOn: string | null };
 const TITLE = { terms: "이용약관", privacy: "개인정보처리방침" } as const;
 

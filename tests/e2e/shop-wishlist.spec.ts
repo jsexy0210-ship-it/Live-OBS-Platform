@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { resetWishlistInDb } from "./cartDb";
+import { resetCartInDb, resetWishlistInDb } from "./cartDb";
 import { okConfirm } from "./shopConfirm";
 
 // SH-034 찜(운영 빌드 + 데모 시드). 데모 구매자(demo-buyer1@example.com)의 찜을 시작·끝에 비운다.
@@ -15,7 +15,10 @@ async function login(page: Page, baseURL: string) {
 test.beforeAll(() => {
   if (!PASSWORD) throw new Error("E2E_PASSWORD가 없어요. dev-seed가 출력한 데모 비밀번호를 넣어 주세요");
 });
-test.afterAll(() => resetWishlistInDb(SLUG, LOGIN, []));
+test.afterAll(async () => {
+  await resetWishlistInDb(SLUG, LOGIN, []);
+  await resetCartInDb(SLUG, LOGIN, []);
+});
 
 test("비회원: 로그인 안내", async ({ page }) => {
   await page.goto(`/shop/${SLUG}/wishlist`);
@@ -48,6 +51,25 @@ test.describe.serial("로그인 구매자", () => {
   test.beforeEach(async ({ page, baseURL }) => {
     await resetWishlistInDb(SLUG, LOGIN, ["스타라이트 부스터 박스", "문라이트 컬렉션 박스", "드래곤 소울 부스터"]);
     await login(page, baseURL!);
+  });
+
+  test("찜 카드에서 옵션을 골라 담고 단일 옵션은 주문서로 간다", async ({ page }) => {
+    await resetCartInDb(SLUG, LOGIN, []);
+    await page.goto(`/shop/${SLUG}/wishlist`);
+    const cards = page.getByRole("list", { name: "찜한 상품" }).locator(".pc");
+    const sold = cards.filter({ hasText: "드래곤 소울 부스터" });
+    await expect(sold.getByRole("button", { name: "담기" })).toBeDisabled();
+    await expect(sold.getByRole("button", { name: "바로 구매" })).toBeDisabled();
+    await cards.filter({ hasText: "스타라이트 부스터 박스" }).getByRole("button", { name: "담기" }).click();
+    const choice = page.getByRole("dialog", { name: /옵션 선택/ });
+    await expect(choice.getByRole("combobox", { name: "상품 옵션" }).locator("option")).toHaveCount(2);
+    await choice.getByRole("combobox", { name: "상품 옵션" }).selectOption({ index: 1 });
+    await choice.getByRole("button", { name: "담기" }).click();
+    await expect(page.getByText("장바구니에 담았어요")).toBeVisible();
+    await cards.filter({ hasText: "문라이트 컬렉션 박스" }).getByRole("button", { name: "바로 구매" }).click();
+    await expect(page).toHaveURL(/\/checkout\?ids=/);
+    await expect(page.getByRole("heading", { name: "주문서", exact: true })).toBeVisible();
+    await expect(page.getByText("문라이트 컬렉션 박스")).toBeVisible();
   });
 
   test("PC: 머리 찜 링크로 들어와 왼쪽 메뉴·카드·품절 띠가 보인다", async ({ page }) => {

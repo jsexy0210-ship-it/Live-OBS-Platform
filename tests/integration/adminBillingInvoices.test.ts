@@ -130,7 +130,7 @@ describe("목록·월 요약 GET /api/admin/billing/invoices", () => {
     // 요약(기간 전체): 청구 8건(예정 제외): 완료·전표없음·진행 중·재시도·연체·옛실패 2·환불
     expect(b.summary.total).toEqual({ count: 8, amount: 8 * 179000 });
     expect(b.summary.paid).toEqual({ count: 4, amount: 4 * 179000 }); // 완료몰·전표없음몰·옛실패몰 PAID·환불몰(환불 포함)
-    expect(b.summary.failed).toEqual({ count: 3, amount: 3 * 179000, retrying: 1, overdue: 1 });
+    expect(b.summary.failed).toEqual({ count: 3, amount: 3 * 179000, retrying: 1, overdue: 1, terminal: 1 });
     expect(b.summary.pending).toEqual({ count: 1 });
     expect(b.summary.refunded).toEqual({ count: 1, amount: 179000 });
     expect(b.summary.scheduled).toEqual({ count: 1, estimatedAmount: plans.OVERLAY_ONLY.salePrice });
@@ -148,17 +148,23 @@ describe("목록·월 요약 GET /api/admin/billing/invoices", () => {
     await pay(a);
     const b = await shopSub({ name: "오버레이몰", plan: "OVERLAY_ONLY", sub: { status: "PAST_DUE", nextChargeAt: ahead(DAY), graceUntil: ahead(5 * DAY) } });
     await pay(b, { status: "FAILED", amount: 69000 });
+    const terminal = await shopSub({ name: "종료실패몰", plan: "OVERLAY_ONLY", sub: { status: "CANCELED", nextChargeAt: null } });
+    await pay(terminal, { status: "FAILED", amount: 69000 });
+    const overdue = await shopSub({ name: "연체몰", plan: "OVERLAY_ONLY", sub: { status: "PAST_DUE", nextChargeAt: null, graceUntil: ago(DAY) } });
+    await pay(overdue, { status: "FAILED", amount: 69000 });
     const names = async (qs: string) => (await body(await list(cookie, qs))).items.map((i) => i.seller.shopName).sort();
     expect(await names("&state=PAID")).toEqual(["100%몰"]);
-    expect(await names("&state=RETRYING")).toEqual(["오버레이몰"]);
-    expect(await names("&failedOnly=1")).toEqual(["오버레이몰"]);
-    expect(await names("&plan=OVERLAY_ONLY")).toEqual(["오버레이몰"]);
+    expect(await names("&state=RETRYING")).toEqual(["오버레이몰", "종료실패몰"]);
+    expect(await names("&state=OVERDUE")).toEqual(["연체몰"]);
+    expect(await names("&failedOnly=1")).toEqual(["연체몰", "오버레이몰", "종료실패몰"]);
+    expect(await names("&plan=OVERLAY_ONLY")).toEqual(["연체몰", "오버레이몰", "종료실패몰"]);
     expect(await names("&plan=INTEGRATED")).toEqual(["100%몰"]);
     expect(await names(`&q=${encodeURIComponent("%")}`)).toEqual(["100%몰"]);
     expect(await names(`&q=${encodeURIComponent("오버")}`)).toEqual(["오버레이몰"]);
     expect(await names(`&sellerId=${b.seller.id}`)).toEqual(["오버레이몰"]);
     const filtered = await body(await list(cookie, "&state=PAID"));
-    expect(filtered.summary.total.count).toBe(2);
+    expect(filtered.summary.total.count).toBe(4);
+    expect(filtered.summary.failed).toEqual({ count: 3, amount: 3 * 69000, retrying: 1, overdue: 1, terminal: 1 });
     expect(filtered.total).toBe(1);
     for (const qs of ["&state=NOPE", "&plan=X", "&failedOnly=2", "&sellerId=bad", "&limit=0", "&limit=101", "&cursor=-1", "&cursor=x", `&q=${"가".repeat(51)}`]) {
       expect((await list(cookie, qs)).status, qs).toBe(400);

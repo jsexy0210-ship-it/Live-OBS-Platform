@@ -54,8 +54,8 @@ export const defaultFavicon = (target: BrandingTarget) => (target === "admin" ? 
 export const faviconUrl = (target: BrandingTarget, hash: string) => `/api/branding/${target}/favicon?v=${hash}`;
 export const ogImageUrl = (target: BrandingTarget, version: string) => `/api/branding/${target}/og?v=${version}`;
 
-// 서버가 그린 카드의 버전: 그림이 바뀌는 값(제목)의 해시
-export const generatedCardVersion = (title: string) => createHash("sha256").update(`brand-card-v1\0${title}`).digest("hex").slice(0, 12);
+// 서버가 그린 카드의 버전: 제목·서체·주소 표현이 바뀌면 salt를 올려 오래 캐시된 그림을 무효화한다.
+export const generatedCardVersion = (title: string) => createHash("sha256").update(`brand-card-v2\0${title}`).digest("hex").slice(0, 12);
 
 export type BrandingView = {
   target: BrandingTarget;

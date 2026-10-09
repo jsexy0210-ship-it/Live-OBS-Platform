@@ -38,7 +38,7 @@ function footRows(info: unknown): [string, string][] {
 // [slug]/layout.tsx가 한 번만 그린다(화면마다 다시 그리지 않아 이동할 때 머리가 깜빡이지 않는다).
 // 로그인 상태는 이 쇼핑몰의 구매자 세션으로 판단한다(다른 쇼핑몰 세션은 로그인 안 함으로 본다).
 export default async function ShopFrame({ slug, shopName, operatingState = "OPEN", children }: { slug: string; shopName: string; operatingState?: "OPEN" | "PREPARING" | "PAUSED"; children: React.ReactNode }) {
-  const seller = await prisma.seller.findUnique({ where: { slug: slug.slice(0, 60) }, select: { id: true, businessInfo: true } });
+  const seller = await prisma.seller.findUnique({ where: { slug: slug.slice(0, 60) }, select: { id: true, businessInfo: true, shopTopNotice: true } });
   const token = (await cookies()).get(COOKIE_NAMES.buyer)?.value;
   const session = seller ? await resolveBuyerSession(prisma, token, seller.id) : null;
   const categories = (await publicCategories(prisma, slug.slice(0, 60))) ?? [];
@@ -49,6 +49,11 @@ export default async function ShopFrame({ slug, shopName, operatingState = "OPEN
   return (
     <ConfirmProvider defaultTone="shop">
     <div className="shop-page">
+      {text(seller?.shopTopNotice) && (
+        <div className="shop-top-notice" aria-label="상단 공지">
+          <div className="shop-wrap">{text(seller?.shopTopNotice)}</div>
+        </div>
+      )}
       <ShopChrome slug={slug} shopName={shopName} loggedIn={!!session} nickname={session?.member.broadcastNickname ?? null} categories={categories} signupOpen={operatingState === "OPEN"} />
       <LiveBar slug={slug} />
       <EventPopupForPage />

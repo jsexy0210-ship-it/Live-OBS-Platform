@@ -11,5 +11,5 @@ export const metadata: Metadata = { title: "내 문의" };
 export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
   const shop = await findActiveShop((await params).slug);
   if (!shop) notFound();
-  return <MyInquiriesView slug={shop.slug} />;
+  return <MyInquiriesView slug={shop.slug} canWrite={shop.operatingState === "OPEN"} />;
 }

@@ -44,8 +44,9 @@
   font-size: 14px;
 }
 .pf-td.pf-col {
-  flex-direction: column;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: start;
   gap: 4px;
 }
 .pf-td .inp {
@@ -58,6 +59,9 @@
   gap: 8px;
 }
 .pf-hint {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   font-size: 13px;
   color: var(--wds-label-alternative);
 }

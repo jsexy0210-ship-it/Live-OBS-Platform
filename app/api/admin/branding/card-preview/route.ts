@@ -1,4 +1,5 @@
 import { renderBrandingCard } from "../../../../../lib/server/branding/card";
+import { requestCardSite } from "../../../../../lib/server/branding/siteUrl";
 import { isBrandingTarget } from "../../../../../lib/server/branding/store";
 import { BRANDING_TITLE_MAX } from "../../../../../lib/server/branding/service";
 import { requireAdmin } from "../../../../../lib/server/authz/guards";
@@ -16,7 +17,7 @@ export async function GET(req: Request) {
     if (!target) return noStore(Response.json({ error: "invalid_branding_target" }, { status: 400 }));
     const title = cleanText(url.searchParams.get("title"), BRANDING_TITLE_MAX, "name");
     if (!title) return noStore(Response.json({ error: "invalid_branding_text" }, { status: 400 }));
-    const png = await renderBrandingCard(target, title, url.host);
+    const png = await renderBrandingCard(target, title, requestCardSite(req.headers));
     return noStore(new Response(new Uint8Array(png), { headers: { "content-type": "image/png", "x-content-type-options": "nosniff" } }));
   } catch (e) {
     return noStore(errorResponse(e));
