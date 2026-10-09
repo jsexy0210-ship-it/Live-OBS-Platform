@@ -1,6 +1,7 @@
 .ma-home { min-width: 0; }
 .ma-home-kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
 .ma-home-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.ma-home-grid > [data-testid="stats-orders"] { grid-column: span 2; }
 .ma-home-panel { min-width: 0; height: 100%; overflow-wrap: anywhere; }
 .ma-home-panel > .card { border: 0; box-shadow: none; padding: 0; min-width: 0; }
 .ma-home-panel .sts-kpis { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
@@ -28,4 +29,5 @@
 @media (max-width: 700px) {
   .ma-home-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ma-home-grid { grid-template-columns: minmax(0, 1fr); }
+  .ma-home-grid > [data-testid="stats-orders"] { grid-column: auto; }
 }

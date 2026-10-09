@@ -47,10 +47,10 @@ function useApi<T>(path: string, tick: number) {
   return [state, load] as const;
 }
 
-function Panel<T>({ title, state, retry, children, id }: { title: string; state: Fetch<T>; retry: () => void; children: (d: T) => React.ReactNode; id: string }) {
+function Panel<T>({ title, state, retry, children, id, href }: { title: string; state: Fetch<T>; retry: () => void; children: (d: T) => React.ReactNode; id: string; href?: string }) {
   return (
     <section className="card pad col ma-home-panel" style={{ gap: 10 }} aria-label={title} data-testid={id}>
-      <h2 className="t-hl1">{title}</h2>
+      <h2 className="t-hl1">{href ? <Link href={href}>{title}</Link> : title}</h2>
       {state.kind === "loading" && (
         <div className="card">
           <LoadingRows rows={3} />
@@ -300,12 +300,12 @@ function PeriodStats({ days, tick, summary, reload }: { days: number; tick: numb
   return (
     <>
       <div className="ma-home-kpis">
-        <Panel title="전체 파트너스" state={summary} retry={reload} id="home-kpi-sellers">{(d) => <><strong className="t-h2" data-testid="dash-sellers-total">{n(d.sellers.total, "곳")}</strong><span className="t-c1 c-alt">운영 중 {n(d.sellers.ACTIVE, "곳")} · 승인 대기 {n(d.sellers.PENDING, "곳")}</span>{d.sellers.total === 0 && <p className="c-alt">아직 파트너스가 없습니다. 가입 신청이 들어오면 여기와 알림에 표시됩니다.</p>}</>}</Panel>
-        <Panel title="지금 방송 중" state={summary} retry={reload} id="home-kpi-live">{(d) => <strong className="t-h2" data-testid="dash-live">{n(d.liveBroadcasts, "곳")}</strong>}</Panel>
-        <Panel title="기간 주문" state={orders} retry={() => void loadOrders()} id="home-kpi-orders">{(d) => <><Kpis items={[kpi("들어온 주문", d.current.orders, d.previous.orders, cntF)]} />{summary.kind === "ok" && <span className="t-c1 c-alt">오늘 <span data-testid="dash-orders-created">{n(summary.data.ordersToday.created, "건")}</span> · 결제된 주문 <span data-testid="dash-orders-paid">{n(summary.data.ordersToday.paid, "건")}</span></span>}</>}</Panel>
+        <Panel title="전체 파트너스" state={summary} retry={reload} id="home-kpi-sellers" href="/admin/partners">{(d) => <><strong className="t-h2" data-testid="dash-sellers-total">{n(d.sellers.total, "곳")}</strong><span className="t-c1 c-alt">운영 중 {n(d.sellers.ACTIVE, "곳")} · 승인 대기 {n(d.sellers.PENDING, "곳")}</span>{d.sellers.total === 0 && <p className="c-alt">아직 파트너스가 없습니다. 가입 신청이 들어오면 여기와 알림에 표시됩니다.</p>}</>}</Panel>
+        <Panel title="지금 방송 중" state={summary} retry={reload} id="home-kpi-live" href="/admin/ops/live">{(d) => <strong className="t-h2" data-testid="dash-live">{n(d.liveBroadcasts, "곳")}</strong>}</Panel>
+        <Panel title="기간 주문" state={orders} retry={() => void loadOrders()} id="home-kpi-orders" href="/admin/ops/access">{(d) => <><Kpis items={[kpi("들어온 주문", d.current.orders, d.previous.orders, cntF)]} />{summary.kind === "ok" && <span className="t-c1 c-alt">오늘 <span data-testid="dash-orders-created">{n(summary.data.ordersToday.created, "건")}</span> · 결제된 주문 <span data-testid="dash-orders-paid">{n(summary.data.ordersToday.paid, "건")}</span></span>}</>}</Panel>
         <Panel title="기간 결제 금액" state={orders} retry={() => void loadOrders()} id="home-kpi-revenue">{(d) => <><Kpis items={[kpi("환불을 뺀 결제 금액", d.current.netRevenue, d.previous.netRevenue, wonF)]} />{summary.kind === "ok" && <span className="t-c1 c-alt">오늘 <span data-testid="dash-orders-amount">{won(summary.data.ordersToday.paidAmount)}</span></span>}</>}</Panel>
-        <Panel title="구독 이용 중" state={summary} retry={reload} id="home-kpi-subscription">{(d) => <><strong className="t-h2" data-testid="dash-sub-paid">{n(d.subscriptions.paid, "곳")}</strong><span className="t-c1 c-alt">결제 진행 중 {n(d.subscriptions.charging, "곳")} · 체험 {n(d.subscriptions.trial, "곳")}</span></>}</Panel>
-        <Panel title="연체" state={summary} retry={reload} id="home-kpi-grace">{(d) => <strong className="t-h2" data-testid="dash-sub-grace">{n(d.subscriptions.grace, "곳")}</strong>}</Panel>
+        <Panel title="구독 이용 중" state={summary} retry={reload} id="home-kpi-subscription" href="/admin/billing/subscriptions">{(d) => <><strong className="t-h2" data-testid="dash-sub-paid">{n(d.subscriptions.paid, "곳")}</strong><span className="t-c1 c-alt">결제 진행 중 {n(d.subscriptions.charging, "곳")} · 체험 {n(d.subscriptions.trial, "곳")}</span></>}</Panel>
+        <Panel title="연체" state={summary} retry={reload} id="home-kpi-grace" href="/admin/billing/subscriptions">{(d) => <strong className="t-h2" data-testid="dash-sub-grace">{n(d.subscriptions.grace, "곳")}</strong>}</Panel>
       </div>
       <div className="ma-home-grid">
       <Panel title="결제 금액 추이" state={orders} retry={() => void loadOrders()} id="stats-orders">
@@ -461,7 +461,7 @@ function RecentActivity({ tick }: { tick: number }) {
   const [state, load] = useApi<{ logs: AuditRow[] }>("/api/admin/audit-logs?limit=5&actorType=PLATFORM_ADMIN", tick);
   return <Panel title="최근 관리자 활동 (로그 추적)" state={state} retry={() => void load()} id="home-admin-activity">{(d) => <>
     <Link href="/admin/logs">로그 추적 전체</Link>
-    {d.logs.length === 0 ? <p className="c-alt">관리자 활동이 아직 없습니다.</p> : <div className="ma-home-table"><table className="tbl"><thead><tr><th>시각</th><th>행위자</th><th>행위</th><th>대상 · 사유</th></tr></thead><tbody>{d.logs.map((r) => <tr key={r.id}><td>{dayTime(r.createdAt)}</td><td>{ACTOR_LABEL[r.actorType]}</td><td><Link href={`/admin/logs/${r.id}`}>{actionLabel(r.action)}</Link></td><td>{r.seller?.shopName ?? targetLabel(r.targetType)}{r.reason && ` · ${r.reason}`}</td></tr>)}</tbody></table></div>}
+    {d.logs.length === 0 ? <p className="c-alt">관리자 활동이 아직 없습니다.</p> : <div className="ma-home-table"><table className="tbl"><thead><tr><th>시각</th><th>행위자</th><th>행위</th><th>대상 · 사유</th></tr></thead><tbody>{d.logs.map((r) => <tr key={r.id}><td>{dayTime(r.createdAt)}</td><td><Link href={`/admin/logs/${r.id}`}>{ACTOR_LABEL[r.actorType]} · {r.actorId ? `식별자 ${r.actorId}` : "식별자 기록 없음"}</Link></td><td><Link href={`/admin/logs/${r.id}`}>{actionLabel(r.action)}</Link></td><td>{r.seller?.shopName ?? targetLabel(r.targetType)}{r.reason && ` · ${r.reason}`}</td></tr>)}</tbody></table></div>}
   </>}</Panel>;
 }
 function OperationsPanels({ tick }: { tick: number }) {

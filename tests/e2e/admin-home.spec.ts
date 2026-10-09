@@ -47,6 +47,25 @@ async function login(page: Page, who = email) {
   await expect(page).toHaveURL(/\/admin$/);
 }
 
+async function expectChartPlacement(page: Page, width: number) {
+  await expect(page.locator(".ma-home-line svg")).toBeVisible();
+  const revenue = await page.getByTestId("stats-orders").boundingBox();
+  const orders = await page.getByTestId("stats-order-series").boundingBox();
+  const grid = await page.locator(".ma-home-grid").boundingBox();
+  const chart = await page.locator(".ma-home-line svg").boundingBox();
+  expect(revenue && orders && grid && chart).toBeTruthy();
+  expect(chart!.width).toBeGreaterThan(revenue!.width - 70);
+  if (width === 1440) {
+    expect(revenue!.width).toBeGreaterThan(orders!.width * 1.9);
+    expect(Math.abs(revenue!.y - orders!.y)).toBeLessThan(1);
+    expect(orders!.x).toBeGreaterThan(revenue!.x + revenue!.width);
+  } else {
+    expect(Math.abs(revenue!.width - grid!.width)).toBeLessThan(1);
+    expect(orders!.y).toBeGreaterThanOrEqual(revenue!.y + revenue!.height);
+    if (width === 390) expect(Math.abs(revenue!.width - orders!.width)).toBeLessThan(1);
+  }
+}
+
 test("오늘 처리할 일: 서버 숫자가 맨 위에 보이고, 누르면 조건이 걸린 목록으로 간다", async ({ page }) => {
   await login(page);
   const api = await (await page.request.get("/api/admin/today-tasks")).json();
@@ -65,6 +84,7 @@ test("오늘 처리할 일: 서버 숫자가 맨 위에 보이고, 누르면 조
   await expect(page.getByTestId("home-db-metrics")).toHaveCount(0);
   await expect(page.getByTestId("home-admin-activity")).toHaveCount(0);
   await expect(page.locator(".ma-home-grid")).toHaveCSS("grid-template-columns", /^(\d+(\.\d+)?px) (\d+(\.\d+)?px) (\d+(\.\d+)?px)$/);
+  await expectChartPlacement(page, 1440);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
   await page.screenshot({ path: "tests/e2e/screenshots/admin-home-1440.png", fullPage: true });
   for (const w of [1024, 390]) {
@@ -72,11 +92,22 @@ test("오늘 처리할 일: 서버 숫자가 맨 위에 보이고, 누르면 조
     await page.reload();
     await expect(page.getByTestId("today-tasks")).toBeVisible();
     await expect(page.locator(".ma-home-grid")).toHaveCSS("grid-template-columns", w === 390 ? /^(\d+(\.\d+)?px)$/ : /^(\d+(\.\d+)?px) (\d+(\.\d+)?px)$/);
+    await expectChartPlacement(page, w);
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
     await page.screenshot({ path: `tests/e2e/screenshots/admin-home-${w}.png`, fullPage: true });
   }
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.reload();
+
+  for (const [id, href] of [["sellers", "/admin/partners"], ["live", "/admin/ops/live"], ["orders", "/admin/ops/access"], ["subscription", "/admin/billing/subscriptions"], ["grace", "/admin/billing/subscriptions"]]) {
+    const link = page.getByTestId(`home-kpi-${id}`).getByRole("heading").getByRole("link");
+    await expect(link).toHaveAttribute("href", href);
+    await link.click();
+    await expect(page).toHaveURL(new RegExp(`${href}$`));
+    await page.goto("/admin");
+    await expect(page.getByTestId("today-tasks")).toBeVisible();
+  }
+  await expect(page.getByTestId("home-kpi-revenue").getByRole("link")).toHaveCount(0);
 
   await tasks.getByTestId("today-task-signupPending").click();
   await expect(page).toHaveURL(/\/admin\/partners\/applications/);
@@ -136,6 +167,11 @@ test("최고관리자: 오늘 처리할 일 아래에 인프라 · 비용 요약
   await expect(card.getByTestId("infra-card-warnings")).toBeVisible();
   await expect(page.getByTestId("home-db-metrics")).toContainText("DB 연결");
   await expect(page.getByTestId("home-admin-activity")).toContainText("로그 추적 전체");
+  const activity = await (await page.request.get("/api/admin/audit-logs?limit=5&actorType=PLATFORM_ADMIN")).json();
+  for (const row of activity.logs) {
+    const actor = page.getByTestId("home-admin-activity").locator(`td:nth-child(2) a[href="/admin/logs/${row.id}"]`);
+    await expect(actor).toHaveText(row.actorId ? `마스터 관리자 · 식별자 ${row.actorId}` : "마스터 관리자 · 식별자 기록 없음");
+  }
   const above = await page.getByTestId("today-tasks").boundingBox();
   const at = await card.boundingBox();
   expect(at!.y).toBeGreaterThan(above!.y); // 「오늘 처리할 일」 바로 아래
