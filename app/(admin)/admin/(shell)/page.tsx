@@ -32,12 +32,22 @@ type Fetch<T> = { kind: "loading" } | { kind: "error" } | { kind: "ok"; data: T 
 function useApi<T>(path: string, tick: number) {
   const [state, setState] = useState<Fetch<T>>({ kind: "loading" });
   const reqId = useRef(0);
+  const pending = useRef<{ path: string; id: number } | null>(null);
   const load = useCallback(async () => {
+    // 같은 조회가 진행 중이면 주기·수동 갱신이 앞선 응답을 굶기지 않도록 합친다.
+    if (pending.current?.path === path) return;
     const id = ++reqId.current;
+    pending.current = { path, id };
     setState({ kind: "loading" });
     const r = await adminApi<T>(path);
     if (id !== reqId.current) return;
+    pending.current = null;
     setState(r.ok ? { kind: "ok", data: r.data } : { kind: "error" });
+  }, [path]);
+  useEffect(() => () => {
+    // 기간 변경·화면 이탈 뒤 도착한 이전 조회는 현재 상태를 덮지 않는다.
+    reqId.current++;
+    pending.current = null;
   }, [path]);
   useEffect(() => {
     void load();

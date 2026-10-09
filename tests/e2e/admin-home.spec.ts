@@ -66,6 +66,27 @@ async function expectChartPlacement(page: Page, width: number) {
   }
 }
 
+async function expectDateAxes(page: Page) {
+  const axes = page.locator(".ma-home .sts-x");
+  await expect(axes).toHaveCount(5);
+  for (const axis of await axes.all()) {
+    const labels = axis.locator("span:visible");
+    await expect(labels).toHaveCount(2);
+    const first = await labels.first().boundingBox();
+    const last = await labels.last().boundingBox();
+    const box = await axis.boundingBox();
+    expect(first && last && box).toBeTruthy();
+    expect(first!.x).toBeGreaterThanOrEqual(box!.x - 1);
+    expect(last!.x + last!.width).toBeLessThanOrEqual(box!.x + box!.width + 1);
+    expect(first!.x + first!.width).toBeLessThanOrEqual(last!.x);
+    for (const label of await labels.all()) await expect(label).toHaveText(/^\d{4}\.\d{2}(?:\.\d{2})?$/);
+    const chart = axis.locator("..");
+    await chart.locator("svg g").first().hover();
+    await expect(chart.locator(".sts-tip")).toContainText((await labels.first().innerText()).trim());
+  }
+  await page.getByRole("heading", { level: 1 }).hover();
+}
+
 test("오늘 처리할 일: 서버 숫자가 맨 위에 보이고, 누르면 조건이 걸린 목록으로 간다", async ({ page }) => {
   await login(page);
   const api = await (await page.request.get("/api/admin/today-tasks")).json();
@@ -85,6 +106,7 @@ test("오늘 처리할 일: 서버 숫자가 맨 위에 보이고, 누르면 조
   await expect(page.getByTestId("home-admin-activity")).toHaveCount(0);
   await expect(page.locator(".ma-home-grid")).toHaveCSS("grid-template-columns", /^(\d+(\.\d+)?px) (\d+(\.\d+)?px) (\d+(\.\d+)?px)$/);
   await expectChartPlacement(page, 1440);
+  await expectDateAxes(page);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
   await page.screenshot({ path: "tests/e2e/screenshots/admin-home-1440.png", fullPage: true });
   for (const w of [1024, 390]) {
@@ -93,6 +115,7 @@ test("오늘 처리할 일: 서버 숫자가 맨 위에 보이고, 누르면 조
     await expect(page.getByTestId("today-tasks")).toBeVisible();
     await expect(page.locator(".ma-home-grid")).toHaveCSS("grid-template-columns", w === 390 ? /^(\d+(\.\d+)?px)$/ : /^(\d+(\.\d+)?px) (\d+(\.\d+)?px)$/);
     await expectChartPlacement(page, w);
+    await expectDateAxes(page);
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
     await page.screenshot({ path: `tests/e2e/screenshots/admin-home-${w}.png`, fullPage: true });
   }
@@ -127,6 +150,51 @@ test("기간별 현황: 상위 5 파트너스에 결제된 쇼핑몰이 오르�
   await page.getByRole("button", { name: "최근 7일" }).click();
   await expect(page.getByRole("button", { name: "최근 7일" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("top-seller-row").filter({ hasText: topShop })).toBeVisible();
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const days of [7, 30, 90]) {
+      await page.getByRole("button", { name: `최근 ${days}일`, exact: true }).click();
+      await expectDateAxes(page);
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    }
+  }
+});
+
+test("지연된 통계 조회는 갱신에 중복되지 않고 완료되며 기간 변경의 이전 응답을 버린다", async ({ page }) => {
+  await page.clock.install();
+  const held: { url: string; release: () => void }[] = [];
+  await page.route("**/api/admin/stats/orders**", async (route) => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    held.push({ url: route.request().url(), release });
+    const response = await route.fetch();
+    await gate;
+    await route.fulfill({ response });
+  });
+  await login(page);
+  await expect.poll(() => held.length).toBe(1);
+  const refresh = page.getByRole("button", { name: "새로 고침", exact: true });
+  await expect(refresh).toBeEnabled();
+  await refresh.click();
+  await page.clock.runFor(120_001);
+  expect(held).toHaveLength(1);
+  held[0].release();
+  await expect(page.locator(".ma-home-line svg")).toBeVisible();
+
+  await expect(refresh).toBeEnabled();
+  await refresh.click();
+  await expect.poll(() => held.length).toBe(2);
+  await page.getByRole("button", { name: "최근 7일", exact: true }).click();
+  await expect.poll(() => held.length).toBe(3);
+  expect(held[2].url).not.toBe(held[1].url);
+  const oldResponse = page.waitForResponse((response) => response.url() === held[1].url);
+  held[1].release();
+  await oldResponse;
+  await expect(page.locator(".ma-home-line svg")).toHaveCount(0);
+  held[2].release();
+  await expect(page.locator(".ma-home-line svg")).toBeVisible();
+  await expect(page.getByRole("button", { name: "최근 7일", exact: true })).toHaveAttribute("aria-pressed", "true");
+  expect(held).toHaveLength(3);
 });
 
 test("한 통계가 실패해도 오늘 처리할 일과 나머지 통계는 그대로 보이고, 다시 시도하면 불러온다", async ({ page }) => {

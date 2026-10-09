@@ -8,6 +8,9 @@
 .ma-home-kpis .sts-kpis { grid-template-columns: minmax(0, 1fr); }
 .ma-home-line { margin: 0; min-width: 0; }
 .ma-home-line svg { width: 100%; height: auto; display: block; }
+.ma-home .sts-x span:not(:first-child):not(:last-child) { display: none; }
+.ma-home .sts-x span:first-child { left: 0 !important; transform: none; }
+.ma-home .sts-x span:last-child:not(:first-child) { left: auto !important; right: 0; transform: none; }
 .ma-home-table { overflow-x: auto; min-width: 0; }
 .ma-home-table table { white-space: nowrap; }
 .ma-home-status { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
