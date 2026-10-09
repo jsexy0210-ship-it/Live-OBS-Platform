@@ -656,7 +656,7 @@ function PlanFeatureRequired({ crumb, noFeatures, next }: { crumb: string; noFea
 
 // 화면마다 본문 위에 경로 줄(대분류 › 메뉴 · 오른쪽 버튼)을 넣고, 그 아래에 이용 상태 배너를 붙인다.
 // crumb: 예전 경로 문구. 경로는 메뉴 구조에서 만들고, 하위 화면(주문 상세·이벤트 팝업 등)이면 crumb 마지막 칸을 덧붙인다.
-export function Topbar({ crumb, badge, children }: { crumb: string; badge?: React.ReactNode; children?: React.ReactNode }) {
+export function Topbar({ crumb, showCurrent = false, badge, children }: { crumb: string; showCurrent?: boolean; badge?: React.ReactNode; children?: React.ReactNode }) {
   const { loc } = useSeller();
   const pathname = usePathname();
   const parts = crumb.split("›").map((p) => p.trim());
@@ -668,7 +668,7 @@ export function Topbar({ crumb, badge, children }: { crumb: string; badge?: Reac
         { t: loc.item, href: loc.itemHref },
       ]
     : parts.map((t) => ({ t, href: undefined as string | undefined }));
-  if (loc && !loc.exact && parts.length > 2 && last !== loc.item && last !== loc.group) raw.push({ t: last, href: undefined });
+  if (loc && (!loc.exact || showCurrent) && parts.length > 2 && last !== loc.item && last !== loc.group) raw.push({ t: last, href: undefined });
   // 대분류와 메뉴 이름이 같으면(통계 › 통계) 한 번만
   const shownPath = raw.filter((p, i) => i === 0 || p.t !== raw[i - 1].t);
   const hideRootPath = pathname === "/seller" && shownPath.every((p) => p.href === pathname) && !badge && !children;
