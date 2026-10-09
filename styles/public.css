@@ -19,6 +19,7 @@
 .pf-demo-q{display:flex;flex-direction:column;gap:6px;padding:14px 16px;border-radius:12px;background:#222b3d;font-size:14px}
 .pf-demo-h{font-weight:700;color:#c9b3ff}
 .pf-sec{padding:80px 64px}
+.pf-info-section{padding-top:72px}
 .pf-sec>p{margin:8px 0 36px}
 .pf-alt{background:var(--page)}
 .pf-steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:32px}
