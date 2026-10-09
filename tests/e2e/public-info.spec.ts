@@ -1,5 +1,20 @@
 import { expect, test } from "@playwright/test";
 
+test("아이디 찾기 초기 화면은 세 폭에서 통신사 선택을 안내한다", async ({ page }) => {
+  await page.goto("/seller/find-id");
+  const carrier = page.locator("#idv-carrier");
+  const send = page.getByRole("button", { name: "인증번호 문자 받기", exact: true });
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("이메일(아이디)을 찾습니다");
+    await expect(carrier).toHaveValue("");
+    await expect(carrier.locator('option[value=""]')).toHaveText("통신사 선택");
+    await expect(send).toBeDisabled();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    await page.screenshot({ path: `tests/e2e/screenshots/au011-find-id-initial-${width}.png`, fullPage: true });
+  }
+});
+
 // PF-002 기능 안내 · PF-003 요금 안내 · PF-004 자주 묻는 질문 (로그인 없이 열린다)
 test("기능 안내가 열리고 머리에서 현재 메뉴가 표시된다", async ({ page }) => {
   await page.goto("/features");
