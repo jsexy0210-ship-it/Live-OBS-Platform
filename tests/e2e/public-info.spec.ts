@@ -7,6 +7,19 @@ test("기능 안내가 열리고 머리에서 현재 메뉴가 표시된다", as
   await expect(page.getByRole("heading", { name: "OBS 방송 화면" })).toBeVisible();
   await expect(page.getByText("자동 점검을 통과하면 바로 승인돼요. 오버레이 전용은 승인되면 7일 동안 체험할 수 있어요.")).toBeVisible();
   await expect(page.getByRole("navigation", { name: "주요 메뉴" }).getByRole("link", { name: "기능" })).toHaveAttribute("aria-current", "page");
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    const checks = page.locator(".pf-chk svg");
+    await expect(checks).toHaveCount(14);
+    for (const check of await checks.all()) {
+      const box = await check.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.width).toBe(20);
+      expect(box!.height).toBe(20);
+    }
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    await page.screenshot({ path: `tests/e2e/screenshots/pf002-features-${width}.png`, fullPage: true });
+  }
 });
 
 // 요금은 서버 요금제 값이다. E2E_PLAN_PRICE가 있으면(시험 DB 값) 그 금액이 화면에 보이는지도 확인한다.
