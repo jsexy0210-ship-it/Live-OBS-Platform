@@ -16,10 +16,14 @@ test.beforeAll(() => {
 });
 test.afterAll(() => cleanupProducts(PASSWORD));
 
-async function shot(page: Page, name: string) {
+async function shot(page: Page, name: string, waitForClosedMenu = false) {
   if (!SHOTS) return;
   for (const width of [1440, 1024, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    if (width === 390 && waitForClosedMenu) await expect.poll(async () => {
+      const menu = await page.locator(".lnb").boundingBox();
+      return menu ? menu.x + menu.width : Number.POSITIVE_INFINITY;
+    }).toBeLessThanOrEqual(0);
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(150);
     await page.screenshot({ path: `tests/e2e/screenshots/${name}-${width}.png`, fullPage: true });
@@ -497,6 +501,36 @@ test("권한이 하나도 없는 직원에게는 권한이 필요한 메뉴가 �
     await expect(page.locator(".gnb").getByText(shown, { exact: true })).toBeVisible();
   }
 });
+
+for (const [email, allowed] of [[OWNER, true], [VIEWER, false]] as const) {
+  test(`재고 수정: ${allowed ? "대표자" : "상품 권한 없는 직원"}의 경로·권한과 세 폭 화면을 확인한다`, async ({ page }) => {
+    await login(page, email);
+    await page.goto("/seller/products/stock");
+    await expect(page).toHaveURL(/\/seller\/products\/stock$/);
+    const options = await page.request.get("/api/seller/products/options?limit=200");
+    expect(options.status()).toBe(allowed ? 200 : 403);
+    if (allowed) await expect(page.getByTestId("stock-row").first()).toBeVisible();
+    for (const width of [1440, 1024, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      const crumb = page.locator(".loc-bar .crumb");
+      await expect(crumb).toHaveText("상품›재고›재고 수정");
+      await expect(crumb.locator(".crumb-now")).toHaveText("재고 수정");
+      await expect(crumb.getByRole("link", { name: "재고 수정", exact: true })).toHaveCount(0);
+      if (allowed) {
+        await expect(page.getByRole("heading", { level: 1, name: "재고 수정", exact: true })).toBeVisible();
+        await expect(crumb.getByRole("link", { name: "상품", exact: true })).toHaveAttribute("href", "/seller/products");
+        await expect(crumb.getByRole("link", { name: "재고", exact: true })).toHaveAttribute("href", "/seller/products/stock");
+      } else {
+        await expect(page.getByText("이 계정은 이 일을 할 수 없습니다", { exact: true })).toBeVisible();
+        await expect(page.getByTestId("stock-row")).toHaveCount(0);
+        await expect(page.locator(".main input")).toHaveCount(0);
+        await expect(crumb.getByRole("link")).toHaveCount(0);
+      }
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    }
+    await shot(page, allowed ? "SA-014-title-owner" : "SA-014-title-no-permission", true);
+  });
+}
 
 test("상품 권한이 없는 직원은 권한 안내를 본다", async ({ page }) => {
   // 배송 담당 직원도 로그인하면 홈(/seller)이다. 상품 목록은 주소로 들어오면 권한 안내

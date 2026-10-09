@@ -6,7 +6,7 @@ import { FaqList } from "./FaqList";
 export function Faq() {
   return (
     <PublicFrame active="/faq">
-      <section className="pf-sec">
+      <section className="pf-sec pf-info-section">
         <h1 className="t-d2">자주 묻는 질문</h1>
         <FaqList />
         <div className="card row between pf-ask">

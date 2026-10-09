@@ -30,16 +30,122 @@ async function shot(page: Page, name: string) {
 async function login(page: Page, email: string, next: string) {
   await page.goto(`/seller/login?next=${encodeURIComponent(next)}`);
   await submitSellerLogin(page, email, PASSWORD);
+  await page.waitForURL((url) => url.pathname === next);
 }
 
 const waitingNames = (page: Page) => page.getByTestId("bc-waiting").locator("tr .t-l1");
 const toast = (page: Page) => page.getByRole("status").filter({ has: page.locator(".toast") });
 
+test("오버레이 전용 역할도 단일 홈에서 기존 정보와 방송을 보며 스토어 업무를 열지 않는다", async ({ page }) => {
+  await login(page, "demo-overlay-owner@example.com", "/seller");
+  await expect(page).toHaveURL(/\/seller$/);
+  await expect(page.getByRole("heading", { level: 1, name: "홈", exact: true })).toHaveCount(1);
+  await expect(page.getByTestId("oh-tiles")).toBeVisible();
+  await expect(page.getByTestId("oh-upgrade")).toBeVisible();
+  await expect(page.getByTestId("home-tasks")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "유튜브 실시간 화면", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "방송 대시보드", exact: true })).toHaveCount(0);
+  const denied = await page.request.get("/api/seller/products");
+  expect(denied.status()).toBe(403);
+  const waiting = page.getByRole("region", { name: "방송 전 대기 0건", exact: true });
+  await expect(waiting).toBeVisible();
+  await expect(waiting).toContainText("대기 중인 주문이 없습니다");
+  await expect(page.getByTestId("bc-waiting")).toHaveCount(0);
+  await shot(page, "sa002-unified-home-overlay-owner");
+});
+
+test("두 기존 홈 주소는 단일 홈으로 이동하고 유튜브 패널은 세 폭에서 현재 방송만 표시한다", async ({ page }) => {
+  await login(page, "demo-owner@example.com", "/seller");
+  for (const path of ["/seller/broadcast", "/seller/home-overlay"]) {
+    await page.goto(path);
+    await expect(page).toHaveURL(/\/seller$/);
+    await expect(page.getByRole("heading", { level: 1, name: "홈", exact: true })).toHaveCount(1);
+  }
+  await expect(page.getByRole("link", { name: "방송 대시보드", exact: true })).toHaveCount(0);
+  await expect(page.getByTestId("home-tasks")).toBeVisible();
+  const snapshotResponse = await page.request.get("/api/seller/queue");
+  expect(snapshotResponse.status()).toBe(200);
+  const snapshot = await snapshotResponse.json();
+  await page.route("**/api/seller/queue", async (route) => route.fulfill({ json: { ...snapshot, broadcast: { id: "synthetic-current", title: "합성 방송", startedAt: "2026-10-09T00:00:00Z" } } }));
+  await page.route("**/api/seller/youtube", async (route) => route.fulfill({ json: { configured: true, live: { videoId: "synthetic01", title: "합성 방송", status: "live", broadcastSessionId: "synthetic-current", chatEnabled: false }, chatNotice: "합성 UI 검수" } }));
+  // 외부 영상·실방송을 호출하지 않는다. iframe의 배치·선택 계약만 합성으로 검증한다.
+  await page.route("https://www.youtube.com/embed/**", async (route) => route.fulfill({ contentType: "text/html", body: "<!doctype html><title>합성 iframe 배치 검수</title>" }));
+  await page.reload();
+  const player = page.getByTestId("bc-youtube-player");
+  await expect(player).toHaveAttribute("src", "https://www.youtube.com/embed/synthetic01?playsinline=1&controls=1");
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    if (width === 390) await expect.poll(async () => {
+      const menu = await page.locator(".lnb").boundingBox();
+      return menu ? menu.x + menu.width : Number.POSITIVE_INFINITY;
+    }).toBeLessThanOrEqual(0);
+    const box = await player.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.width).toBeGreaterThanOrEqual(200);
+    expect(box!.height).toBeGreaterThanOrEqual(200);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    await page.screenshot({ path: `tests/e2e/screenshots/sa002-unified-home-synthetic-${width}.png`, fullPage: true });
+  }
+  await page.route("**/api/seller/youtube", async (route) => route.fulfill({ json: { configured: true, live: { videoId: "synthetic01", title: "다른 방송", status: "live", broadcastSessionId: "other", chatEnabled: false }, chatNotice: "합성 UI 검수" } }));
+  await page.reload();
+  await expect(player).toHaveCount(0);
+  await expect(page.getByTestId("bc-youtube-notice")).toContainText("현재 방송과 연결된");
+  await page.route("**/api/seller/youtube", async (route) => route.fulfill({ json: { configured: true, live: null, chatNotice: "합성 미연결 검수" } }));
+  await page.reload();
+  await expect(player).toHaveCount(0);
+  await expect(page.getByTestId("bc-youtube-notice")).toContainText("연결된 유튜브 방송이 없습니다");
+  await shot(page, "sa002-unified-home-youtube-empty");
+  await page.route("**/api/seller/youtube", async (route) => route.fulfill({ json: { configured: true, live: { videoId: "synthetic01", title: "예정된 합성 방송", status: "upcoming", broadcastSessionId: "synthetic-current", chatEnabled: false }, chatNotice: "합성 예정 검수" } }));
+  await page.reload();
+  await expect(player).toHaveCount(0);
+  await expect(page.getByTestId("bc-youtube-notice")).toContainText("예정된 유튜브 방송");
+  await shot(page, "sa002-unified-home-youtube-upcoming");
+  await page.route("**/api/seller/youtube", async (route) => route.fulfill({ status: 503, json: { error: "synthetic_unavailable" } }));
+  await page.reload();
+  await expect(player).toHaveCount(0);
+  await expect(page.getByTestId("bc-youtube-notice")).toContainText("유튜브 연결을 불러오지 못했습니다");
+  await shot(page, "sa002-unified-home-youtube-error");
+});
+
+test("채팅이 꺼지고 큐 버전이 같아도 유튜브 연결과 해제가 새로 고침 없이 반영된다", async ({ page }) => {
+  await login(page, "demo-owner@example.com", "/seller");
+  const snapshotResponse = await page.request.get("/api/seller/queue");
+  expect(snapshotResponse.status()).toBe(200);
+  const snapshot = await snapshotResponse.json();
+  let connected = false;
+  let queueReads = 0;
+  await page.route("**/api/seller/queue", async (route) => {
+    queueReads++;
+    await route.fulfill({ json: { ...snapshot, broadcast: { id: "synthetic-current", title: "합성 방송", startedAt: "2026-10-09T00:00:00Z" } } });
+  });
+  await page.route("**/api/seller/queue/version", async (route) => route.fulfill({ json: { version: snapshot.version } }));
+  await page.route("**/api/seller/youtube", async (route) => route.fulfill({ json: {
+    configured: true,
+    live: connected ? { videoId: "synthetic01", title: "합성 방송", status: "live", broadcastSessionId: "synthetic-current", chatEnabled: false } : null,
+    chatNotice: "합성 연결 변경 검수",
+  } }));
+  await page.route("https://www.youtube.com/embed/**", async (route) => route.fulfill({ contentType: "text/html", body: "<!doctype html><title>합성 연결 변경 검수</title>" }));
+  await page.clock.install();
+  await page.reload();
+  const player = page.getByTestId("bc-youtube-player");
+  await expect(page.getByTestId("bc-youtube-notice")).toContainText("연결된 유튜브 방송이 없습니다");
+  const initialQueueReads = queueReads;
+  connected = true;
+  await page.clock.fastForward(30_000);
+  await expect(player).toHaveAttribute("src", "https://www.youtube.com/embed/synthetic01?playsinline=1&controls=1");
+  expect(queueReads).toBe(initialQueueReads);
+  connected = false;
+  await page.clock.fastForward(30_000);
+  await expect(player).toHaveCount(0);
+  await expect(page.getByTestId("bc-youtube-notice")).toContainText("연결된 유튜브 방송이 없습니다");
+  expect(queueReads).toBe(initialQueueReads);
+});
+
 test("대표자: 방송 시작부터 개봉·타이머·완료·되돌리기·취소·종료까지 실제로 처리된다", async ({ page }) => {
   await login(page, "demo-owner@example.com", "/seller/products");
   await expect(page).toHaveURL(/\/seller\/products$/);
-  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "방송", exact: true }).click();
-  await expect(page).toHaveURL(/\/seller\/broadcast$/);
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "홈", exact: true }).click();
+  await expect(page).toHaveURL(/\/seller$/);
 
   // 방송 전: 대기 3건, 개봉은 방송을 시작해야 할 수 있다
   await expect(page.getByRole("heading", { name: /방송 전 대기 3건/ })).toBeVisible();
@@ -57,6 +163,8 @@ test("대표자: 방송 시작부터 개봉·타이머·완료·되돌리기·�
   await page.getByRole("button", { name: "방송 시작" }).click();
   await expect(page.getByTestId("bc-live-badge")).toBeVisible();
   await expect(page.getByTestId("bc-title")).toHaveText("e2e 라이브");
+  const homeBroadcast = page.getByTestId("home-broadcasts").locator("tbody tr", { hasText: "e2e 라이브" });
+  await expect(homeBroadcast).toContainText("방송 중");
   await expect(page.getByTestId("bc-summary")).toContainText("지금 방송");
   await expect(page.getByTestId("bc-summary")).toContainText("완료 / 뺀 주문");
   await expect(page.getByRole("heading", { name: /^대기 3건/ })).toBeVisible();
@@ -111,6 +219,8 @@ test("대표자: 방송 시작부터 개봉·타이머·완료·되돌리기·�
   await expect(end).toContainText("남은 대기 1건은 다음 방송으로 넘어갑니다");
   await end.getByRole("button", { name: "방송 끝내기" }).click();
   await expect(page.getByTestId("bc-live-badge")).toHaveCount(0);
+  await expect(homeBroadcast).toBeVisible();
+  await expect(homeBroadcast.locator(".home-live")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: /방송 전 대기 1건/ })).toBeVisible();
 
   // 서버에 남은 상태
@@ -125,10 +235,10 @@ test("대표자: 방송 시작부터 개봉·타이머·완료·되돌리기·�
 });
 
 test("다른 창에서 바꾼 내용이 새로 고침 없이 반영된다(실시간 채널)", async ({ page, context }) => {
-  await login(page, "demo-owner@example.com", "/seller/broadcast");
+  await login(page, "demo-owner@example.com", "/seller");
   await expect(page.getByRole("heading", { name: /방송 전 대기 3건/ })).toBeVisible();
   const other = await context.newPage();
-  await other.goto("/seller/broadcast");
+  await other.goto("/seller");
   await expect(other.getByRole("heading", { name: /방송 전 대기 3건/ })).toBeVisible();
 
   await page.getByRole("button", { name: "방송 시작" }).click();
@@ -141,7 +251,7 @@ test("다른 창에서 바꾼 내용이 새로 고침 없이 반영된다(실시
 });
 
 test("결과가 불분명한 요청은 성공으로 보이지 않고 서버 상태를 다시 읽는다", async ({ page }) => {
-  await login(page, "demo-owner@example.com", "/seller/broadcast");
+  await login(page, "demo-owner@example.com", "/seller");
   await expect(page.getByRole("heading", { name: /방송 전 대기 3건/ })).toBeVisible();
   await page.route("**/api/seller/broadcast/start", (r) => r.abort("connectionreset"));
   await page.getByRole("button", { name: "방송 시작" }).click();
@@ -151,19 +261,20 @@ test("결과가 불분명한 요청은 성공으로 보이지 않고 서버 상�
 });
 
 test("방송 진행 권한이 없는 직원: 메뉴가 없고 주소로 들어와도 화면이 없다", async ({ page }) => {
-  await login(page, "demo-none@example.com", "/seller/broadcast");
-  await expect(page).toHaveURL(/\/seller\/broadcast$/);
-  await expect(page.getByText("이 계정은 이 일을 할 수 없습니다")).toBeVisible();
-  await expect(page.getByText("필요한 권한: 방송 진행")).toBeVisible();
+  await login(page, "demo-none@example.com", "/seller");
+  await expect(page).toHaveURL(/\/seller$/);
+  await expect(page.getByRole("heading", { level: 1, name: "홈", exact: true })).toBeVisible();
+  await expect(page.getByTestId("bc-waiting")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "방송 대시보드" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "방송 시작" })).toHaveCount(0);
+  await shot(page, "sa002-unified-home-staff-no-broadcast");
 });
 
 const isQueueGet = (u: URL) => u.pathname === "/api/seller/queue";
 
 // 방송을 시작하고 첫 대기(A)를 개봉 중으로 둔다
 async function openFirst(page: Page) {
-  await login(page, "demo-owner@example.com", "/seller/broadcast");
+  await login(page, "demo-owner@example.com", "/seller");
   await page.getByRole("button", { name: "방송 시작" }).click();
   await expect(page.getByTestId("bc-live-badge")).toBeVisible();
   await page.getByRole("button", { name: /개봉 시작/ }).click();
@@ -288,7 +399,7 @@ test("거부(409)된 변경도 그 전에 시작된 읽기를 무효로 해, 늦
 });
 
 test("종료 확인 창이 열린 사이 다른 화면이 방송을 바꾸면 끝내지 않고 창 안에 안내하며, 새 방송은 끝나지 않는다", async ({ page, context }) => {
-  await login(page, "demo-owner@example.com", "/seller/broadcast");
+  await login(page, "demo-owner@example.com", "/seller");
   await page.getByLabel("방송 제목").fill("방송 A");
   await page.getByRole("button", { name: "방송 시작" }).click();
   await expect(page.getByTestId("bc-title")).toHaveText("방송 A");
@@ -297,7 +408,7 @@ test("종료 확인 창이 열린 사이 다른 화면이 방송을 바꾸면 �
   await expect(dialog).toBeVisible();
   // 다른 창: A를 끝내고 B를 시작
   const other = await context.newPage();
-  await other.goto("/seller/broadcast");
+  await other.goto("/seller");
   await other.getByRole("button", { name: "방송 끝내기" }).click();
   await other.getByRole("dialog").getByRole("button", { name: "방송 끝내기" }).click();
   await other.getByLabel("방송 제목").fill("방송 B");
@@ -356,7 +467,7 @@ test("PC 시계가 틀려도(1시간 빠름) 방금 완료한 주문의 되돌�
 // 휴대폰(390폭): 대기 표가 카드(DS-TABLE-CARD, 768px 미만)로 바뀐다. 가로로 밀리지 않고, 한 행 = 카드 한 장, 관리 버튼은 높이 44px 이상이 화면 안에 모두 보인다.
 test("390폭: 대기 표가 모바일 카드로 바뀌고 가로 스크롤 없이 버튼이 44px 이상으로 보인다", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await login(page, "demo-owner@example.com", "/seller/broadcast");
+  await login(page, "demo-owner@example.com", "/seller");
   await expect(waitingNames(page)).toHaveText([A, B, C]);
   if (SHOTS) await page.screenshot({ path: "tests/e2e/screenshots/SA-001-390.png", fullPage: true });
   // 화면 전체는 가로로 밀리지 않는다
@@ -390,7 +501,7 @@ test("390폭: 대기 표가 모바일 카드로 바뀌고 가로 스크롤 없�
 // 문구 교체(쉬운 말)로 대기 표 「조작」 열 폭을 240→360px, 좁은 화면(≤1280px) 표 최소 폭을 880px로 넓혔고, 금액 열(100px)을 더하며 980px로 다시 넓혔다(의도한 차이).
 // 1440·1024·390에서 대기 표 버튼이 잘리지 않고, 좁은 폭에서는 카드 안에서만 가로로 스크롤되는지 보고 캡처를 남긴다(E2E_SCREENSHOTS=1).
 test("방송 대시보드 대기 표: 1440·1024·390폭에서 조작 버튼이 잘리지 않는다", async ({ page }) => {
-  await login(page, "demo-owner@example.com", "/seller/broadcast");
+  await login(page, "demo-owner@example.com", "/seller");
   await expect(waitingNames(page)).toHaveText([A, B, C]);
   for (const width of [1440, 1024, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });

@@ -101,12 +101,13 @@ type Props = {
   onStartRefused?: (r: Fail) => boolean;
   // 말투(기본 admin). 가입 신청(PF-007)은 public
   tone: Tone;
+  carrierPlaceholder?: string;
   // 주어지면 입력한 칸(이름·생년월일·성별·내외국인·통신사·휴대폰번호·약관 동의)을 이 탭 안(sessionStorage)에 저장해 새로고침·단계 이동에도 남긴다.
   // 인증번호·확인 결과는 저장하지 않는다(가입 신청 단계 화면, PF-007-2)
   saveKey?: string;
 };
 
-export default function IdentityCheck({ label, start, scope = "", base, blocked = false, onVerified, onUnavailable, onSentChange, onStartRefused, tone, saveKey }: Props) {
+export default function IdentityCheck({ label, start, scope = "", base, blocked = false, onVerified, onUnavailable, onSentChange, onStartRefused, tone, carrierPlaceholder, saveKey }: Props) {
   const T = TEXT[tone];
   const { confirm: ask } = useConfirm();
   // 문자 발송은 횟수 한도와 비용이 있어 보내기 전에 확인한다
@@ -329,7 +330,7 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
             <label htmlFor="idv-carrier">통신사</label>
             <select id="idv-carrier" className="inp" value={carrier} disabled={locked} onChange={(e) => setCarrier(e.target.value as Carrier)}>
               <option value="" disabled>
-                {T.carrierPick}
+                {carrierPlaceholder ?? T.carrierPick}
               </option>
               {CARRIERS.map((c) => (
                 <option key={c.value} value={c.value}>

@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: "개인정보처리방침 · ONQ", de
 export default function PrivacyPage() {
   return (
     <PublicFrame>
-      <section className="pf-sec pf-doc">
+      <section className="pf-sec pf-doc pf-document-section">
         <article className="pf-doc-body">
           <h1 className="t-t1">개인정보처리방침</h1>
           <div className="msg msg-info t-l2" role="note" data-testid="privacy-pending" style={{ width: "100%", flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
