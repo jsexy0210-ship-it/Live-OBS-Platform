@@ -67,20 +67,34 @@ async function expectChartPlacement(page: Page, width: number) {
 }
 
 async function expectDateAxes(page: Page) {
-  const axes = page.locator(".ma-home .sts-x");
-  await expect(axes).toHaveCount(5);
-  for (const axis of await axes.all()) {
+  await expect(page.locator(".ma-home .sts-x")).toHaveCount(5);
+  for (const [panel, title] of [
+    ["stats-order-series", "일별 들어온 주문"],
+    ["stats-order-series", "일별 결제된 주문"],
+    ["stats-growth", "일별 가입 신청"],
+    ["stats-growth", "일별 시작한 방송"],
+    ["stats-subscriptions", "월별 받은 구독료"],
+  ]) {
+    // 기간별 조회가 서로 다른 시각에 교체돼도 다른 차트의 nth로 바뀌지 않도록 고정한다.
+    const chart = page.getByTestId(panel).locator(".sts-chart").filter({ has: page.getByRole("img", { name: `${title} 그래프`, exact: true }) });
+    const axis = chart.locator(".sts-x");
     const labels = axis.locator("span:visible");
     await expect(labels).toHaveCount(2);
-    const first = await labels.first().boundingBox();
-    const last = await labels.last().boundingBox();
-    const box = await axis.boundingBox();
+    // 두 눈금과 축을 같은 DOM 순간에 측정한다.
+    const { first, last, box } = await axis.evaluate((el) => {
+      const visible = Array.from(el.querySelectorAll("span")).filter((span) => span.getClientRects().length > 0);
+      const rect = (node: Element | undefined) => {
+        if (!node) return null;
+        const r = node.getBoundingClientRect();
+        return { x: r.x, width: r.width };
+      };
+      return { first: rect(visible[0]), last: rect(visible.at(-1)), box: rect(el) };
+    });
     expect(first && last && box).toBeTruthy();
     expect(first!.x).toBeGreaterThanOrEqual(box!.x - 1);
     expect(last!.x + last!.width).toBeLessThanOrEqual(box!.x + box!.width + 1);
     expect(first!.x + first!.width).toBeLessThanOrEqual(last!.x);
     for (const label of await labels.all()) await expect(label).toHaveText(/^\d{4}\.\d{2}(?:\.\d{2})?$/);
-    const chart = axis.locator("..");
     await chart.locator("svg g").first().hover();
     await expect(chart.locator(".sts-tip")).toContainText((await labels.first().innerText()).trim());
   }
