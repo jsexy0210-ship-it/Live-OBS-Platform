@@ -461,7 +461,7 @@ function RecentActivity({ tick }: { tick: number }) {
   const [state, load] = useApi<{ logs: AuditRow[] }>("/api/admin/audit-logs?limit=5&actorType=PLATFORM_ADMIN", tick);
   return <Panel title="최근 관리자 활동 (로그 추적)" state={state} retry={() => void load()} id="home-admin-activity">{(d) => <>
     <Link href="/admin/logs">로그 추적 전체</Link>
-    {d.logs.length === 0 ? <p className="c-alt">관리자 활동이 아직 없습니다.</p> : <div className="ma-home-table"><table className="tbl"><thead><tr><th>시각</th><th>행위자</th><th>행위</th><th>대상 · 사유</th></tr></thead><tbody>{d.logs.map((r) => <tr key={r.id}><td>{dayTime(r.createdAt)}</td><td><Link href={`/admin/logs/${r.id}`}>{ACTOR_LABEL[r.actorType]} · {r.actorId ? `식별자 ${r.actorId}` : "식별자 기록 없음"}</Link></td><td><Link href={`/admin/logs/${r.id}`}>{actionLabel(r.action)}</Link></td><td>{r.seller?.shopName ?? targetLabel(r.targetType)}{r.reason && ` · ${r.reason}`}</td></tr>)}</tbody></table></div>}
+    {d.logs.length === 0 ? <p className="c-alt">관리자 활동이 아직 없습니다.</p> : <div className="ma-home-table"><table className="tbl"><thead><tr><th>시각</th><th>행위자</th><th>행위</th><th>대상 · 사유</th></tr></thead><tbody>{d.logs.map((r) => <tr key={r.id}><td>{dayTime(r.createdAt)}</td><td>{ACTOR_LABEL[r.actorType]}</td><td><Link href={`/admin/logs/${r.id}`}>{actionLabel(r.action)}</Link></td><td>{r.seller?.shopName ?? targetLabel(r.targetType)}{r.reason && ` · ${r.reason}`}</td></tr>)}</tbody></table></div>}
   </>}</Panel>;
 }
 function OperationsPanels({ tick }: { tick: number }) {

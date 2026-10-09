@@ -167,11 +167,6 @@ test("최고관리자: 오늘 처리할 일 아래에 인프라 · 비용 요약
   await expect(card.getByTestId("infra-card-warnings")).toBeVisible();
   await expect(page.getByTestId("home-db-metrics")).toContainText("DB 연결");
   await expect(page.getByTestId("home-admin-activity")).toContainText("로그 추적 전체");
-  const activity = await (await page.request.get("/api/admin/audit-logs?limit=5&actorType=PLATFORM_ADMIN")).json();
-  for (const row of activity.logs) {
-    const actor = page.getByTestId("home-admin-activity").locator(`td:nth-child(2) a[href="/admin/logs/${row.id}"]`);
-    await expect(actor).toHaveText(row.actorId ? `마스터 관리자 · 식별자 ${row.actorId}` : "마스터 관리자 · 식별자 기록 없음");
-  }
   const above = await page.getByTestId("today-tasks").boundingBox();
   const at = await card.boundingBox();
   expect(at!.y).toBeGreaterThan(above!.y); // 「오늘 처리할 일」 바로 아래
