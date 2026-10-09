@@ -46,6 +46,8 @@ test("오버레이 전용 역할도 단일 홈에서 기존 정보와 방송을 
   await expect(page.getByRole("link", { name: "방송 대시보드", exact: true })).toHaveCount(0);
   const denied = await page.request.get("/api/seller/products");
   expect(denied.status()).toBe(403);
+  await expect(page.getByTestId("bc-waiting")).toBeVisible();
+  await shot(page, "sa002-unified-home-overlay-owner");
 });
 
 test("두 기존 홈 주소는 단일 홈으로 이동하고 유튜브 패널은 세 폭에서 현재 방송만 표시한다", async ({ page }) => {
@@ -78,6 +80,21 @@ test("두 기존 홈 주소는 단일 홈으로 이동하고 유튜브 패널은
   await page.reload();
   await expect(player).toHaveCount(0);
   await expect(page.getByTestId("bc-youtube-notice")).toContainText("현재 방송과 연결된");
+  await page.route("**/api/seller/youtube", async (route) => route.fulfill({ json: { configured: true, live: null, chatNotice: "합성 미연결 검수" } }));
+  await page.reload();
+  await expect(player).toHaveCount(0);
+  await expect(page.getByTestId("bc-youtube-notice")).toContainText("연결된 유튜브 방송이 없습니다");
+  await shot(page, "sa002-unified-home-youtube-empty");
+  await page.route("**/api/seller/youtube", async (route) => route.fulfill({ json: { configured: true, live: { videoId: "synthetic01", title: "예정된 합성 방송", status: "upcoming", broadcastSessionId: "synthetic-current", chatEnabled: false }, chatNotice: "합성 예정 검수" } }));
+  await page.reload();
+  await expect(player).toHaveCount(0);
+  await expect(page.getByTestId("bc-youtube-notice")).toContainText("예정된 유튜브 방송");
+  await shot(page, "sa002-unified-home-youtube-upcoming");
+  await page.route("**/api/seller/youtube", async (route) => route.fulfill({ status: 503, json: { error: "synthetic_unavailable" } }));
+  await page.reload();
+  await expect(player).toHaveCount(0);
+  await expect(page.getByTestId("bc-youtube-notice")).toContainText("유튜브 연결을 불러오지 못했습니다");
+  await shot(page, "sa002-unified-home-youtube-error");
 });
 
 test("채팅이 꺼지고 큐 버전이 같아도 유튜브 연결과 해제가 새로 고침 없이 반영된다", async ({ page }) => {
@@ -238,6 +255,7 @@ test("방송 진행 권한이 없는 직원: 메뉴가 없고 주소로 들어�
   await expect(page.getByTestId("bc-waiting")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "방송 대시보드" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "방송 시작" })).toHaveCount(0);
+  await shot(page, "sa002-unified-home-staff-no-broadcast");
 });
 
 const isQueueGet = (u: URL) => u.pathname === "/api/seller/queue";
