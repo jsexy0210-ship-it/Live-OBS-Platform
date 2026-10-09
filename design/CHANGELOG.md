@@ -2,6 +2,7 @@
 
 | 날짜(KST) | 캔버스 버전 | 내용 | 커밋/PR |
 |---|---|---|---|
+| 2026-10-09 KST | StreamShop PF-001 TSX FINAL | 대표님 main 반영 승인과 후보 4aa9bb7 독립 3폭·정상/빈/오류 화면 검수로 FINAL 동기화. owner 관련7시험 PASS. 픽셀 단위 미리보기·실제 reduced-motion·전역 브랜드 교체·배포 미검증은 별도 유지 | 이번 통합 |
 | 2026-10-07 KST | StreamShop PF-001 (Git 변경 정본) | Streamlabs 소개 흐름을 스트림샵 컬러·심볼·판매 기능으로 재구성. TSX/CSS 및 /landing 미리보기 추가. 기존 HTML 보존, 캔버스·브라우저 렌더 동기화 미확인 | 이번 변경 |
 | 2026-10-07 KST | SA 모바일 11개 React 정본 전환 | d8873227 HTML의 22상태를 실제 JSX로 전환. 기존 tokens/lop/Wanted Sans 및 Next preview 공유. HTML과 Artifact는 이행·읽기 참조, 원 Artifact 동기화 미완료. PC 정본·production 기능 변경 없음 | 후속 PR |
 | 2026-10-07 KST | 원 v340~v345 모바일 변형 선별 재기반 | SA 모바일 11개 보드만 최신 main에 추가. 홈 링크 SA-002-M 통일, 기본 FINAL 행/서버 60·160자 보존, SA-060 40자 및 MA/PF/SH 변경 제외. 원 PNG는 과거 산출물. 원 런타임 22상태 측정 및 기간 버튼 잘림 최소 수정·저장소 정적 렌더 확인. 원 Artifact 새 CSS 동기화 확인은 미완료 | 이번 PR |

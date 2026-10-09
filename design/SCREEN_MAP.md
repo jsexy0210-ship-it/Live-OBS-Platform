@@ -30,8 +30,8 @@
 
 | 상태 | 수 |
 |---|---|
-| FINAL | 186 |
-| DRAFT | 1 |
+| FINAL | 187 |
+| DRAFT | 0 |
 | BLOCKED | 0 |
 | GROUP | 14 |
 | MISSING | 0 |
@@ -60,7 +60,7 @@
 
 | ID | 화면 | Product Route | Design Source | Entry | Status | Artifact Version | 마지막 동기화(KST) | 비고 |
 |---|---|---|---|---|---|---|---|---|
-| PF-001 | 서비스 소개(랜딩) | /about | design/project/PF-001.dc.tsx | PF-001.dc.tsx | DRAFT | StreamShop landing 2026-10-07 | 2026-10-07 KST | 대표님 Streamlabs 벤치마킹 지시 반영 · TSX/CSS 정본 및 구현 작성 · /landing 디자인 미리보기 · 1440/1024/390 반응형 규칙 포함, 렌더 대조·테스트 미실행 · 기존 PF-001 HTML·캔버스는 이전 버전 참조 |
+| PF-001 | 서비스 소개(랜딩) | /about | design/project/PF-001.dc.tsx | PF-001.dc.tsx | FINAL | StreamShop landing 2026-10-07 | 2026-10-09 KST | 대표님 main 반영 승인 · 후보 4aa9bb7 정상/빈/오류 요금의 1440/1024/390 독립 화면 확인(21캡처, 주요 배치·문구 반례0) · owner 관련7시험 PASS · TSX/CSS 정본, 기존 HTML·캔버스 이전 참조 · 픽셀 단위 미리보기/실제 reduced-motion 미검증 · 상세 docs/STREAMSHOP_LANDING.md |
 | PF-002 | 기능 안내 | /features | design/project/PF-002.dc.html | PF-002.dc.html | FINAL | v329 (1791265128-d8ae) | 2026-10-06 14:38 KST | v329: 「운영팀 평균 첫 답변 4시간」 삭제(근거 없는 약속 수치, MASTER 승인 2026-10-06) · FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) |
 | PF-003 | 요금 안내 | /pricing | design/project/PF-003.dc.tsx | PF-003.dc.tsx | FINAL | v331 (1791266519-9c85) | 2026-10-06 15:01 KST | v331 정본 내용·상태·1440 레이아웃을 React TSX로 표현 · 실행 미리보기: `npm run design:preview` · legacy 호환만: `design/project/PF-003.dc.html` 및 `canvas.json`의 기존 엔트리(정본 아님, 삭제하지 않음) · 정본에는 1024·390 artboard 없음 · 원문 근거: v331 「요금 · 결제 질문」 접힌 3항 답변 추가(docs/PRODUCT_SCOPE.md:32-34 · :221, #928) |
 | PF-004 | 자주 묻는 질문 | /faq | design/project/PF-004.dc.html | PF-004.dc.html | FINAL | v329 (1791265128-d8ae) | 2026-10-07 06:26 KST | v329: 조사 「방송 화면가」 → 「방송 화면이」(검수 요청 #899) · FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) · 가입 FAQ를 정책/실행 분기에 맞춤(2영업일 제거, 캔버스 버전 갱신 없음) |

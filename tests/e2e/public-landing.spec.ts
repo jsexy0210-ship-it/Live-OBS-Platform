@@ -13,7 +13,7 @@ test("/about은 서비스 소개가 열리고 로그인·가입 진입이 있다
 
 test("PF-001 요금제 조회 실패에는 원인을 알려 주고 빈 이름 문구를 숨긴다", async ({ page }) => {
   await page.goto("/about");
-  await expect(page.getByRole("heading", { name: "지금 필요한 만큼,내 판매에 맞는 플랜." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "지금 필요한 만큼, 내 판매에 맞는 플랜." })).toBeVisible();
   const intro = page.getByTestId("pricing-intro");
   const message = (await intro.textContent())?.trim() ?? "";
   expect(message).not.toContain("두 가지 이용권 · 중에 골라요.");
