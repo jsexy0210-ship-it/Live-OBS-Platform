@@ -69,3 +69,17 @@ test("자주 묻는 질문은 분류와 검색으로 좁혀진다", async ({ pag
   await page.getByLabel("질문 검색").fill("없는말없는말");
   await expect(page.getByRole("status")).toContainText("맞는 질문이 없어요");
 });
+
+test("개인정보처리방침 준비 안내는 세 폭에서 정본 여백을 유지한다", async ({ page }) => {
+  await page.goto("/privacy");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("개인정보처리방침");
+  await expect(page.getByTestId("privacy-pending")).toContainText("개인정보처리방침을 아직 준비 중이에요");
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await expect(page.locator(".pf-document-section")).toHaveCSS("padding-top", width === 390 ? "40px" : "56px");
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.getByTestId("privacy-pending")).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    await page.screenshot({ path: `tests/e2e/screenshots/pf009-privacy-pending-${width}.png`, fullPage: true });
+  }
+});
