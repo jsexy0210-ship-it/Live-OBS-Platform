@@ -65,6 +65,7 @@ test("분류·상세·브라우저 뒤로 가기가 원래 페이지 상태를 �
     const category = page.locator(".pf-doc-body .bdg");
     const author = page.getByText("ONQ 운영팀");
     const title = page.getByRole("heading", { level: 1 });
+    await expect(page.locator(".pf-document-section")).toHaveCSS("padding-top", width === 390 ? "40px" : "56px");
     await expect(category).toBeVisible();
     await expect(author).toBeVisible();
     await expect(title).toBeVisible();
