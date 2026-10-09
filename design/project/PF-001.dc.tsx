@@ -2,8 +2,8 @@ import Link from "next/link";
 import Image from "next/image";
 import symbol from "../../public/branding/streamshop-symbol.png";
 import type { ReactNode } from "react";
-import { pricingIntro } from "./pricingCopy";
-import styles from "./Landing.module.css";
+import { pricingIntro } from "../../components/public/pricingCopy";
+import styles from "./PF-001.module.css";
 
 // PF-001: Streamlabs의 제품 소개 흐름을 스트림샵 판매자 경험에 맞춘 랜딩.
 // 가격·체험 일수는 서버 데이터만 표시한다. 디자인 정본: design/project/PF-001.dc.tsx.
@@ -140,4 +140,12 @@ export function Landing({ plans, pricingStatus }: { plans: LandingPlan[]; pricin
     </main>
     <footer className={styles.footer}><div className={styles.footerTop}><div><Link href="/about" aria-label="스트림샵 서비스 소개"><Brand /></Link><p>쇼핑몰부터 라이브 판매까지, 한곳에서.</p></div><nav aria-label="하단 메뉴"><Link href="/features">기능 안내</Link><Link href="/pricing">요금 안내</Link><Link href="/faq">도움말</Link><Link href="/notices">공지사항</Link></nav></div><div className={styles.footerBottom}><span>StreamShop · LIVE COMMERCE, CONNECTED</span><div><Link href="/terms">이용약관</Link><Link href="/privacy">개인정보처리방침</Link></div></div></footer>
   </div>;
+}
+
+// 디자인 미리보기 전용 샘플. 운영 가격은 /about 서버 조회를 따른다.
+export default function PF001Canonical() {
+  return <Landing plans={[
+    { code: "OVERLAY_ONLY", name: "오버레이 전용", listPrice: 99000, salePrice: 69000, trialDays: 7 },
+    { code: "INTEGRATED", name: "쇼핑몰 통합", listPrice: 249000, salePrice: 179000, trialDays: 0 },
+  ]} pricingStatus="available" />;
 }
