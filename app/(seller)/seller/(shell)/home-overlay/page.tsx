@@ -1,14 +1,4 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { OverlayHome } from "../../../../../components/seller/home/OverlayHome";
-import { Topbar } from "../../../../../components/seller/SellerShell";
-
-// SA-002-O 오버레이 전용 홈(메뉴 「홈」). 화면은 components/seller/home/OverlayHome.tsx.
-export default function OverlayHomePage() {
-  return (
-    <>
-      <Topbar crumb="홈" />
-      <OverlayHome />
-    </>
-  );
-}
+// 오버레이 전용 역할도 단일 홈에서 표시한다. 기존 주소는 보존한다.
+export default function OverlayHomeCompatibilityPage() { redirect("/seller"); }

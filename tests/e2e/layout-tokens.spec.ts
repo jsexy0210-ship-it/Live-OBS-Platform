@@ -63,7 +63,7 @@ for (const [width, inputH, inputFs, btnMin] of [
     await page.goto(`/seller/login?next=${encodeURIComponent("/seller/orders")}`);
     await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
     await expect(page).toHaveURL(/\/seller\/orders$/);
-    for (const path of ["/seller/orders", "/seller/broadcast", "/seller/hit-cards", "/seller/products", "/seller/overlay"]) {
+    for (const path of ["/seller/orders", "/seller", "/seller/hit-cards", "/seller/products", "/seller/overlay"]) {
       await page.goto(path);
       await expect(page.locator(".loc-bar")).toBeVisible();
       await noSideScroll(page);
@@ -82,10 +82,10 @@ for (const [width, inputH, inputFs, btnMin] of [
 
 test("경로는 상단 경로 줄 한 곳에만 보인다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto(`/seller/login?next=${encodeURIComponent("/seller/broadcast")}`);
+  await page.goto(`/seller/login?next=${encodeURIComponent("/seller")}`);
   await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
-  await expect(page).toHaveURL(/\/seller\/broadcast$/);
-  await expect(page.locator(".loc-bar")).toContainText("방송 대시보드");
+  await expect(page).toHaveURL(/\/seller$/);
+  await expect(page.locator(".loc-bar")).toContainText("홈");
   await expect(page.locator(".main .au-ph")).toBeVisible();
   await expect(page.locator(".main .au-ph")).not.toContainText("›");
   // 화면 제목 20px/28px

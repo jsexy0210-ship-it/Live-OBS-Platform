@@ -37,13 +37,12 @@ const MENU: Group[] = [
     key: "home",
     label: "홈",
     // 시작하기(SA-003)는 메뉴에서 빠지고 홈 아래 화면이다(첫 가입 때만 홈 위 띠로 안내)
-    items: [{ label: "홈", href: "/seller", plan: "STORE_OPERATIONS", alt: { plan: "OVERLAY", href: "/seller/home-overlay" }, also: [{ href: "/seller/onboarding", plan: "ANY" }, { href: "/seller/home-overlay", plan: "OVERLAY" }] }],
+    items: [{ label: "홈", href: "/seller", plan: "ANY", also: [{ href: "/seller/onboarding", plan: "ANY" }] }],
   },
   {
     key: "broadcast",
     label: "방송",
     items: [
-      { label: "방송 대시보드", href: "/seller/broadcast", perm: "BROADCAST_RUN", plan: "OVERLAY" },
       {
         label: "방송 화면 꾸미기",
         tabs: [

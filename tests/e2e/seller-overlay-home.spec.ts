@@ -19,10 +19,14 @@ async function login(page: Page, email: string) {
 test("오버레이 전용 대표자: /seller가 오버레이 홈으로 열리고 업무·성과·방송·스토어 안내가 보인다", async ({ page }) => {
   await login(page, "demo-overlay-owner@example.com");
   await page.goto("/seller");
-  await expect(page).toHaveURL(/\/seller\/home-overlay$/);
-  await expect(page.getByRole("heading", { name: "홈 · 오버레이 전용", level: 1 })).toBeVisible();
+  await expect(page).toHaveURL(/\/seller$/);
+  await expect(page.getByRole("heading", { name: "홈", level: 1 })).toBeVisible();
   // 머리 오른쪽 버튼 · 상태 3칸 · 지금 방송 · 스토어 안내(보드 SA-002-O)
-  await expect(page.getByRole("link", { name: "방송 대시보드" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "방송 대시보드" })).toHaveCount(0);
+  const waiting = page.getByRole("region", { name: "방송 전 대기 0건", exact: true });
+  await expect(waiting).toBeVisible();
+  await expect(waiting).toContainText("대기 중인 주문이 없습니다");
+  await expect(page.getByTestId("bc-waiting")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "방송 화면 꾸미기" }).first()).toBeVisible();
   const tiles = page.getByTestId("oh-tiles");
   await expect(tiles.getByText("외부 쇼핑몰", { exact: true })).toBeVisible();
@@ -44,9 +48,9 @@ test("오버레이 전용 대표자: /seller가 오버레이 홈으로 열리고
 
 test("메뉴 「홈」으로도 열린다", async ({ page }) => {
   await login(page, "demo-overlay-owner@example.com");
-  await page.goto("/seller/broadcast");
+  await page.goto("/seller");
   await page.getByRole("navigation", { name: "주 메뉴" }).getByText("홈", { exact: true }).click();
-  await expect(page).toHaveURL(/\/seller\/home-overlay$/);
+  await expect(page).toHaveURL(/\/seller$/);
 });
 
 test("통합 요금제 대표자는 오버레이 홈으로 가지 않는다", async ({ page }) => {
