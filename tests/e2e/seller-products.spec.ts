@@ -24,6 +24,10 @@ async function shot(page: Page, name: string, waitForClosedMenu = false) {
       const menu = await page.locator(".lnb").boundingBox();
       return menu ? menu.x + menu.width : Number.POSITIVE_INFINITY;
     }).toBeLessThanOrEqual(0);
+    await page.locator(".stock-table-wrap").evaluateAll((els) => els.forEach((el) => { el.scrollLeft = 0; }));
+    if (await page.locator(".stock-table-wrap").count()) {
+      await expect.poll(() => page.locator(".stock-table-wrap").evaluate((el) => el.scrollLeft)).toBe(0);
+    }
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(150);
     await page.screenshot({ path: `tests/e2e/screenshots/${name}-${width}.png`, fullPage: true });
@@ -523,6 +527,59 @@ for (const [email, allowed] of [[OWNER, true], [VIEWER, false]] as const) {
         await expect(page.getByRole("heading", { level: 1, name: "재고 수정", exact: true })).toBeVisible();
         await expect(crumb.getByRole("link", { name: "상품", exact: true })).toHaveAttribute("href", "/seller/products");
         await expect(crumb.getByRole("link", { name: "재고", exact: true })).toHaveAttribute("href", "/seller/products/stock");
+        const tableWrap = page.locator(".stock-table-wrap");
+        const row = page.getByTestId("stock-row").first();
+        await tableWrap.evaluate((el) => { el.scrollLeft = 0; });
+        for (const name of [row.locator(".c-name > span").first(), row.locator(".c-name > span").nth(1)]) {
+          await expect(name).toBeVisible();
+          await expect(name).not.toHaveText("");
+          const rect = await name.boundingBox();
+          expect(rect).not.toBeNull();
+          expect(rect!.width).toBeGreaterThan(0);
+          expect(rect!.height).toBeGreaterThan(0);
+        }
+        if (width >= 768) {
+          expect((await row.locator(".c-name").boundingBox())!.width).toBeGreaterThanOrEqual(160);
+          const headers = await page.locator(".stock-table th").evaluateAll((els) => els.filter((el) => el.textContent?.trim()).map((el) => {
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            const rect = range.getBoundingClientRect();
+            return { left: rect.left, right: rect.right, width: rect.width, height: rect.height };
+          }));
+          expect(headers).toHaveLength(5);
+          for (const [index, header] of headers.entries()) {
+            expect(header.width).toBeGreaterThan(0);
+            expect(header.height).toBeGreaterThan(0);
+            if (index) expect(headers[index - 1].right).toBeLessThanOrEqual(header.left);
+          }
+        }
+        if (width === 1440 || width === 390) {
+          await expect.poll(() => tableWrap.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+        }
+        if (width === 1024) {
+          expect(await tableWrap.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeGreaterThan(0);
+          await tableWrap.evaluate((el) => { el.scrollLeft = el.scrollWidth - el.clientWidth; });
+          for (const [suffix, closeLabel] of [[/ 이력$/, "닫기"], [/ 빼기 · 더하기$/, "취소"]] as const) {
+            const button = row.getByRole("button", { name: suffix });
+            await expect(button).toBeVisible();
+            await expect(button).toBeEnabled();
+            const bounds = await button.evaluate((el) => {
+              const rect = el.getBoundingClientRect();
+              const wrap = el.closest(".stock-table-wrap")!.getBoundingClientRect();
+              return { left: rect.left, right: rect.right, wrapLeft: wrap.left, wrapRight: wrap.right };
+            });
+            expect(bounds.left).toBeGreaterThanOrEqual(bounds.wrapLeft);
+            expect(bounds.right).toBeLessThanOrEqual(bounds.wrapRight);
+            await button.click();
+            const dialog = page.getByRole("dialog");
+            await expect(dialog).toBeVisible();
+            if (closeLabel === "취소") await expect(dialog.getByRole("radiogroup", { name: "빼기 또는 더하기" })).toBeVisible();
+            await dialog.getByRole("button", { name: closeLabel, exact: true }).click();
+            await expect(dialog).toHaveCount(0);
+          }
+          await tableWrap.evaluate((el) => { el.scrollLeft = 0; });
+          await expect.poll(() => tableWrap.evaluate((el) => el.scrollLeft)).toBe(0);
+        }
       } else {
         await expect(page.getByText("이 계정은 이 일을 할 수 없습니다", { exact: true })).toBeVisible();
         await expect(page.getByTestId("stock-row")).toHaveCount(0);

@@ -394,6 +394,7 @@ export default function StockPage() {
                   )}
                 </div>
               ) : (
+                <div className="stock-table-wrap">
                 <table className="tbl stock-table">
                   <thead>
                     <tr>
@@ -488,6 +489,7 @@ export default function StockPage() {
                     })}
                   </tbody>
                 </table>
+                </div>
               )}
               {!searchError && cursor && (
                 <div className="row center stock-more">
