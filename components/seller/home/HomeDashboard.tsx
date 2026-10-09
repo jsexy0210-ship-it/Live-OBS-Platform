@@ -4,8 +4,8 @@ import "../stats/stats.css";
 import "./home.css";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PageHead, useConfirm } from "../../admin-ui";
-import { Topbar, useSeller } from "../SellerShell";
+import { useConfirm } from "../../admin-ui";
+import { useSeller } from "../SellerShell";
 import { ErrorState, LoadingRows } from "../States";
 import { api } from "../api";
 import { kstDuration, type BroadcastSummary } from "../broadcast/history";
@@ -14,10 +14,10 @@ import { won } from "../format";
 import { kstToday } from "../stats/StatsFrame";
 import { Kpis, count } from "../stats/parts";
 
-// SA-002 파트너스 홈(쇼핑몰 통합 요금제). 오늘 처리할 일 → 성과(오늘) → 방송 순서(IA 개편, 대표님 지시 2026-10-05).
+// 단일 SA-002 홈의 쇼핑몰 운영 구역. 처리할 일 → 성과 → 방송 기록 순서를 보존한다.
 // API: GET /api/seller/today-tasks(항목별 권한이 없으면 서버가 뺀다), GET /api/seller/stats/overview?from=오늘&to=오늘(통계 권한),
 //      GET /api/seller/broadcast/history(방송 권한). 권한이 없거나 막힌 구역은 가짜 값 없이 구역째 감춘다.
-// 오버레이 전용 홈(SA-002-O)은 이 블록을 쓰지 않는다(화면-방송 담당). 공용 구역은 이 폴더의 컴포넌트로 가져다 쓴다.
+// STORE_OPERATIONS 역할에서만 단일 홈이 이 구역을 표시한다. 별도 홈·제목·진입 경로는 두지 않는다.
 type Onboarding = { completed: boolean; dismissed: boolean; doneCount: number; total: number };
 type Task = { key: string; count: number; href: string };
 type Tasks = { total: number; items: Task[] };
@@ -212,20 +212,13 @@ function Broadcasts() {
   );
 }
 
-export function HomeDashboard() {
-  const { me } = useSeller();
+export function StoreHomeSections() {
   return (
-    <>
-      <Topbar crumb="홈 › 홈" />
-      <main className="main">
         <div className="home">
-          <PageHead title="홈" description={`${me.shop.name}의 오늘 상황입니다`} />
           <OnboardingStrip />
           <TodayTasks />
           <Performance />
           <Broadcasts />
         </div>
-      </main>
-    </>
   );
 }

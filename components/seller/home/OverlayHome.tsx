@@ -3,7 +3,6 @@
 import "../../../styles/seller-broadcast.css";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { PageHead } from "../../admin-ui";
 import { api } from "../api";
 import { type BroadcastSummary } from "../broadcast/history";
 import { formatTime, ago } from "../../../lib/client/format";
@@ -20,7 +19,7 @@ type Summary = { broadcast: { id: string; title: string | null; status: "live" |
 type Info = { lastAccessAt: string | null; lastClient: string | null; connected: boolean };
 type Shops = { connections: { id: string; status: string; lastEventAt: string | null }[] };
 
-export function OverlayHome() {
+export function OverlayHomeSections() {
   const { can } = useSeller();
   const run = can("BROADCAST_RUN");
   const shopRead = can("SHOP_SETTINGS");
@@ -54,24 +53,7 @@ export function OverlayHome() {
   const since = minutes >= 60 ? `${Math.floor(minutes / 60)}시간 ${minutes % 60}분째` : `${minutes}분째`;
 
   return (
-    <main className="main">
-      <PageHead
-        title="홈 · 오버레이 전용"
-        actions={
-          <>
-            {run && (
-              <Link className="btn btn-out" href="/seller/broadcast">
-                방송 대시보드
-              </Link>
-            )}
-            {can("OVERLAY_EDIT") && (
-              <Link className="btn btn-out" href="/seller/overlay">
-                방송 화면 꾸미기
-              </Link>
-            )}
-          </>
-        }
-      />
+    <section className="col" style={{ gap: 16 }} aria-label="오버레이 이용 현황">
 
       <div className="bc-sum-g" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }} data-testid="oh-tiles">
         <div className="stat" data-testid="oh-shop">
@@ -159,6 +141,6 @@ export function OverlayHome() {
           </div>
         </section>
       </div>
-    </main>
+    </section>
   );
 }
