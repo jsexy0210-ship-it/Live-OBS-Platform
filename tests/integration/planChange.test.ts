@@ -359,12 +359,16 @@ describe("런칭 할인 계정당 1회(대표님 결정 2026-10-04)", () => {
     expect((await payments(s.seller.id)).map((p) => p.amount)).toEqual([50000, 249000]);
   });
 
-  it("정가 인상도 30일 고지 규칙을 따른다: 고지 직후 갱신·상위 변경 차액·구독 화면은 옛 정가, 변경 + 30일 뒤 갱신은 새 정가(#186 Codex)", async () => {
+  it("정가 인상도 고지 완료 + 30일 규칙을 따른다: 미고지 갱신·상위 변경 차액·구독 화면은 옛 정가, 완료 + 30일 뒤 갱신은 새 정가", async () => {
+    // 완료 근거는 현재보다 과거인 합성 시각을 쓴다(미래 발송을 완료로 인정하지 않음).
+    const T0 = new Date(Date.now() - 40 * DAY);
+    const at = (days: number) => new Date(+T0 + days * DAY);
+    const paying = { status: "ACTIVE", subscribedAt: at(-40), currentPeriodStart: at(-20), currentPeriodEnd: at(10), billingAnchorAt: at(-20), nextChargeAt: at(9) };
     // 관리자가 하루 전 쇼핑몰 통합 정가를 249,000 → 299,000원으로 올림(updatePlanPrice와 같은 가격 기록)
     await db.subscriptionPriceChange.create({ data: { planId: plans.INTEGRATED.id, listPrice: 249000, salePrice: 179000, changedAt: new Date("2000-01-01T00:00:00Z") } });
     const admin = await createAdmin("SUPER_ADMIN");
     const adminCtx = (await resolveAdminSession(db, (await createAdminSession(db, admin.id, {})).token))!;
-    await db.subscriptionPriceChange.create({ data: { planId: plans.INTEGRATED.id, listPrice: 299000, salePrice: 179000, changedAt: at(-1), changedByAdminId: admin.id } });
+    const change = await db.subscriptionPriceChange.create({ data: { planId: plans.INTEGRATED.id, listPrice: 299000, salePrice: 179000, changedAt: at(-1), changedByAdminId: admin.id } });
     await db.subscriptionPlan.update({ where: { id: plans.INTEGRATED.id }, data: { listPrice: 299000 } });
 
     // 고지 기간 안 갱신: 옛 정가
@@ -375,8 +379,12 @@ describe("런칭 할인 계정당 1회(대표님 결정 2026-10-04)", () => {
     await renewDueSubscriptions(db, new FakeBillingProvider(), { now: at(9) });
     expect((await payments(soon.seller.id)).map((p) => p.amount)).toEqual([249000]);
 
-    // 변경 + 30일 뒤 갱신: 새 정가
-    const later = await shop("INTEGRATED", at(-60), { status: "ACTIVE", currentPeriodStart: at(0), currentPeriodEnd: at(31), billingAnchorAt: at(0), nextChargeAt: at(30), regularPrice: true });
+    // 이 구독의 필수 고지 완료 + 30일 뒤 갱신: 새 정가
+    const later = await shop("INTEGRATED", at(-60), { status: "ACTIVE", subscribedAt: at(-40), currentPeriodStart: at(0), currentPeriodEnd: at(31), billingAnchorAt: at(0), nextChargeAt: at(30), regularPrice: true });
+    await db.subscriptionPriceNotice.createMany({ data: (["MAIL", "ALIMTALK", "PARTNERS_NOTICE"] as const).map((channel) => ({
+      subscriptionId: later.subscription!.id, subscriptionStartedAt: later.subscription!.subscribedAt,
+      priceChangeId: change.id, channel, status: "SENT" as const, completedAt: at(0), deliveryReference: `synthetic:${channel}`,
+    })) });
     await renewDueSubscriptions(db, new FakeBillingProvider(), { now: at(30) });
     expect((await payments(later.seller.id)).map((p) => p.amount)).toEqual([299000]);
 

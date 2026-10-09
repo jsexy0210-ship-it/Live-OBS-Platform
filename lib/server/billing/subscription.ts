@@ -3,12 +3,13 @@ import { policyValue } from "../admin/platformPolicy";
 import { writeAudit } from "../audit/log";
 import { effectiveMailQuota } from "../mail/quota";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
-import { addMonthsKst, canCancelSubscription, cardRegistrationCharges, isEndedSubscription, lockedSince, nextPeriodEnd, sellerAccess, type SellerAccess } from "./access";
+import { addMonthsKst, canCancelSubscription, cardRegistrationCharges, isEndedSubscription, lockedSince, nextPeriodEnd, proration, sellerAccess, type SellerAccess } from "./access";
 
 // 판정 함수는 화면과 함께 쓰려고 access.ts(순수 모듈)에 있다. 기존 import 경로를 위해 다시 내보낸다.
 export { isEndedSubscription };
 import type { BillingProvider, ChargeResult } from "./provider";
 import { BILLING_ROWS_VIEW_LIMIT, listBillingRows, scheduledBillingRow } from "./billingRows";
+import { priceNoticeCompletedAt } from "./priceNotice";
 import { assertBillingSecret, openBillingKey, sealBillingKey } from "./secret";
 
 // 플랫폼 구독(판매자 → 플랫폼). 카드 자동결제(빌링키)만 쓰고 금액은 요금제의 판매가(부가세 포함)다.
@@ -68,22 +69,30 @@ export async function sellerAccessFor(db: Db, sellerId: string, now?: Date): Pro
 }
 
 // 청구 금액의 유일한 출처(가격을 읽는 모든 경로가 이것만 쓴다, #186 Codex). 반환은 이번 청구 금액과 런칭가 여부다.
-// 가격(정가·판매가)은 가격 기록 중 「구독을 시작할 때 이미 적용되던 것」이거나 「변경 + 30일이 지난 것」 가운데 가장 최근 것이다
+// 가격(정가·판매가)은 가격 기록 중 「구독을 시작할 때 이미 적용되던 것」이거나 「필수 고지 완료 + 30일이 지난 것」 가운데 가장 최근 것이다
 // (대표님 결정 2026-10-02). 그래서 기존 구독자는 고지 기간(30일)이 끝나기 전에는 구독을 시작할 때의 가격(또는 그 뒤 고지가 끝난 가격)을
 // 내고, 새 구독자는 지금 가격을 낸다. 정가 구독도 같은 규칙으로 정가를 고른다.
 // - 정가 구독(regularPrice: 런칭 할인을 쓴 계정이 해지 뒤 다시 구독)은 정가(대표님 결정 2026-10-04, ARCHITECTURE 4.8.0).
 // - 이전 전 가격 스냅숏(STANDARD → INTEGRATED, ONQ 1-C): 고지 발송 완료 + 30일 전이거나 아직 보내지 않았으면(null) 그 금액이다.
 // - 그 밖은 판매가(= 런칭가). 스냅숏 금액과 STANDARD 플랜 결제는 런칭가로 세지 않는다.
 // 아직 구독하지 않은 판매자는 subscribedAt = at(지금 가격), 스냅숏 없음으로 부른다.
-export type PriceSubscription = Pick<SellerSubscription, "subscribedAt" | "legacyPrice" | "legacyPriceNoticeSentAt" | "regularPrice">;
+export type PriceSubscription = Pick<SellerSubscription, "subscribedAt" | "legacyPrice" | "legacyPriceNoticeSentAt" | "regularPrice"> & Partial<Pick<SellerSubscription, "id">>;
 export async function chargeFor(db: Db, plan: SubscriptionPlan, sub: PriceSubscription, at: Date): Promise<{ amount: number; launchDiscount: boolean }> {
   const legacy = !sub.regularPrice && sub.legacyPrice != null && (!sub.legacyPriceNoticeSentAt || at < after(sub.legacyPriceNoticeSentAt, PRICE_NOTICE_MS));
   if (legacy) return { amount: sub.legacyPrice!, launchDiscount: false };
-  const row = await db.subscriptionPriceChange.findFirst({
-    where: { planId: plan.id, OR: [{ changedAt: { lte: sub.subscribedAt } }, { changedAt: { lte: after(at, -PRICE_NOTICE_MS) } }] },
+  const observedAt = await dbNow(db);
+  const rows = await db.subscriptionPriceChange.findMany({
+    where: { planId: plan.id },
     orderBy: { changedAt: "desc" },
-    select: { listPrice: true, salePrice: true },
+    include: { notices: { where: { subscriptionId: sub.id ?? "00000000-0000-0000-0000-000000000000", subscriptionStartedAt: sub.subscribedAt } } },
   });
+  const row = rows.find((change) => {
+    if (change.changedAt <= sub.subscribedAt) return true;
+    const completedAt = priceNoticeCompletedAt(change.changedAt, change.notices, observedAt);
+    return !!completedAt && at >= after(completedAt, PRICE_NOTICE_MS);
+  });
+  // 변경 이력이 있는데 구독 당시 가격을 모르면 현재 가격으로 대체해 미고지 금액을 청구하지 않는다.
+  if (rows.length && !row) throw new Error("subscription_price_baseline_missing");
   const price = row ?? plan;
   if (sub.regularPrice) return { amount: price.listPrice, launchDiscount: false };
   // 이전 전 STANDARD 플랜 결제도 런칭 할인 사용으로 세지 않는다
@@ -598,7 +607,18 @@ export async function reconcileStalePayments(
         if (!p.subscription.billingKeyCipher) {
           result = { ok: false, reason: "no_card" };
         } else {
-          const plan = await db.sellerSubscription.findUniqueOrThrow({ where: { id: p.subscriptionId }, select: { plan: { select: { name: true } } } });
+          const plan = await db.sellerSubscription.findUniqueOrThrow({ where: { id: p.subscriptionId }, include: { plan: true } });
+          // 구버전이 준비한 정기 청구도 미고지 금액으로 재요청하지 않는다. PG에 이미 있는 결과는 위에서 그대로 확정한다.
+          if (plan.subscribedAt > p.createdAt) throw new Error("subscription_price_notice_required");
+          const currentAmount = (await chargeFor(db, plan.plan, plan, p.createdAt)).amount;
+          let expectedAmount = currentAmount;
+          if (p.targetPlanId) {
+            const target = await db.subscriptionPlan.findUniqueOrThrow({ where: { id: p.targetPlanId } });
+            const nextAmount = (await chargeFor(db, target, withoutLegacy(plan), p.createdAt)).amount;
+            const diff = proration(nextAmount - currentAmount, p.periodStart, p.periodEnd, p.createdAt).amount;
+            expectedAmount = p.kind === "PRORATION" ? diff : currentAmount + diff;
+          }
+          if (p.amount !== expectedAmount) throw new Error("subscription_price_notice_required");
           result = await provider.charge({
             billingKey: openBillingKey(p.subscription.billingKeyCipher, p.sellerId),
             customerKey: p.sellerId,
