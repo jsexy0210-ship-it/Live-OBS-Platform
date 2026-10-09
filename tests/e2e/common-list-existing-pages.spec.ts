@@ -34,14 +34,19 @@ for (const [name, route] of [["inquiries", "/seller/inquiries"], ["notices", "/s
       await expect(list).toHaveCSS("box-shadow", "none");
       await expect(list.locator(":scope > .au-lh")).toBeVisible();
       await expect(grid).toHaveClass(/au-list-grid/);
-      await expect(grid).toHaveCSS("border-top-width", "1px");
-      await expect(grid).toHaveCSS("border-radius", "12px");
       await expect(grid.locator(".au-sb, .au-lh, .onq-pagination")).toHaveCount(0);
       await expect(search.locator(".au-lt-wrap")).toHaveCount(0);
       if (width === 390) {
+        // DS-PANEL: mobile cards own their boundaries; no duplicate table frame.
+        await expect(grid).toHaveCSS("border-top-width", "0px");
+        await expect(grid).toHaveCSS("border-radius", "0px");
         await expect(grid).toBeHidden();
-        await expect(list.getByTestId("product-card")).toBeVisible();
+        const card = list.getByTestId("product-card");
+        await expect(card).toBeVisible();
+        expect(await card.evaluate(el => getComputedStyle(el).boxShadow)).not.toBe("none");
       } else {
+        await expect(grid).toHaveCSS("border-top-width", "1px");
+        await expect(grid).toHaveCSS("border-radius", "12px");
         await expect(grid).toBeVisible();
         await expect(list.getByTestId("product-card")).toBeHidden();
       }
