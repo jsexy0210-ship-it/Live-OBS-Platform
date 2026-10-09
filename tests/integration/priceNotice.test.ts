@@ -146,7 +146,11 @@ describe("기존 구독 가격 고지 보호", () => {
 
   it.each(["PRORATION", "PERIOD"] as const)("플랜 변경 %s 재시도도 당시 고지된 두 금액·기존 일할계산과 일치할 때만 청구한다", async (kind) => {
     const f = await fixture();
-    await db.sellerSubscription.update({ where: { id: f.sub.id }, data: { billingKeyCipher: sealBillingKey("synthetic-key", f.sub.sellerId) } });
+    await db.sellerSubscription.update({ where: { id: f.sub.id }, data: {
+      billingKeyCipher: sealBillingKey("synthetic-key", f.sub.sellerId), status: kind === "PERIOD" ? "PAST_DUE" : "ACTIVE",
+      currentPeriodStart: new Date(+f.now - (kind === "PERIOD" ? 45 : 15) * DAY),
+      currentPeriodEnd: new Date(+f.now + (kind === "PERIOD" ? -15 : 15) * DAY),
+    } });
     const target = await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "INTEGRATED" } });
     await db.subscriptionPriceChange.createMany({ data: [
       { planId: target.id, listPrice: 400000, salePrice: 299000, changedAt: new Date("2000-01-01") },

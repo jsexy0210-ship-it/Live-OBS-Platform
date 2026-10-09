@@ -3,7 +3,7 @@ import { policyValue } from "../admin/platformPolicy";
 import { writeAudit } from "../audit/log";
 import { effectiveMailQuota } from "../mail/quota";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
-import { addMonthsKst, canCancelSubscription, cardRegistrationCharges, isEndedSubscription, lockedSince, nextPeriodEnd, proration, sellerAccess, type SellerAccess } from "./access";
+import { addMonthsKst, canCancelSubscription, cardRegistrationCharges, isEndedSubscription, lockedSince, nextPeriodEnd, planChangeState, proration, sellerAccess, type SellerAccess } from "./access";
 
 // 판정 함수는 화면과 함께 쓰려고 access.ts(순수 모듈)에 있다. 기존 import 경로를 위해 다시 내보낸다.
 export { isEndedSubscription };
@@ -607,7 +607,7 @@ export async function reconcileStalePayments(
         if (!p.subscription.billingKeyCipher) {
           result = { ok: false, reason: "no_card" };
         } else {
-          const plan = await db.sellerSubscription.findUniqueOrThrow({ where: { id: p.subscriptionId }, include: { plan: true } });
+          const plan = await db.sellerSubscription.findUniqueOrThrow({ where: { id: p.subscriptionId }, include: { plan: true, seller: { select: { trialEndsAt: true } } } });
           // 구버전이 준비한 정기 청구도 미고지 금액으로 재요청하지 않는다. PG에 이미 있는 결과는 위에서 그대로 확정한다.
           if (plan.subscribedAt > p.createdAt) throw new Error("subscription_price_notice_required");
           const currentAmount = (await chargeFor(db, plan.plan, plan, p.createdAt)).amount;
@@ -616,7 +616,9 @@ export async function reconcileStalePayments(
             const target = await db.subscriptionPlan.findUniqueOrThrow({ where: { id: p.targetPlanId } });
             const nextAmount = (await chargeFor(db, target, withoutLegacy(plan), p.createdAt)).amount;
             const diff = proration(nextAmount - currentAmount, p.periodStart, p.periodEnd, p.createdAt).amount;
-            expectedAmount = p.kind === "PRORATION" ? diff : currentAmount + diff;
+            // quotePlanChange와 같은 원청구 시각의 상태·우선순위. 체험은 차액이 아니라 새 플랜 전액이다.
+            const { pastDue, inTrial } = planChangeState(plan.seller.trialEndsAt, plan, p.createdAt);
+            expectedAmount = p.kind === "PRORATION" ? diff : pastDue ? currentAmount + diff : inTrial ? nextAmount : currentAmount + diff;
           }
           if (p.amount !== expectedAmount) throw new Error("subscription_price_notice_required");
           result = await provider.charge({
