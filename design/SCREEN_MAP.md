@@ -30,12 +30,12 @@
 
 | 상태 | 수 |
 |---|---|
-| FINAL | 187 |
+| FINAL | 185 |
 | DRAFT | 0 |
 | BLOCKED | 0 |
 | GROUP | 14 |
 | MISSING | 0 |
-| SUPERSEDED | 2 |
+| SUPERSEDED | 4 |
 
 소스 파일: `design/project/` 362개 (보드 339장 · canvas.json · ds/wds 2 · lop.css · ov.css · ibgen 17 · fonts/WantedSans-OFL.txt)
 
@@ -60,7 +60,7 @@
 
 | ID | 화면 | Product Route | Design Source | Entry | Status | Artifact Version | 마지막 동기화(KST) | 비고 |
 |---|---|---|---|---|---|---|---|---|
-| PF-001 | 서비스 소개(랜딩) | /about | design/project/PF-001.dc.html | PF-001.dc.html | FINAL | v329 (1791265128-d8ae) | 2026-10-06 14:38 KST | v329: 조사 「방송 화면를」 → 「방송 화면을」(검수 요청 #899) · FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) · 결제 구조 문구 「ONQ 결제 연결로 한 번에」(플랫폼 결제대행사 키 하나 결정, 2026-10-05) · 방송 화면 · 인기 카드 용어 |
+| PF-001 | 서비스 소개(랜딩) | /about | design/project/PF-001.dc.tsx | PF-001.dc.tsx | FINAL | StreamShop landing 2026-10-07 | 2026-10-09 KST | 대표님 main 반영 승인 · 후보 4aa9bb7 정상/빈/오류 요금의 1440/1024/390 독립 화면 확인(21캡처, 주요 배치·문구 반례0) · owner 관련7시험 PASS · TSX/CSS 정본, 기존 HTML·캔버스 이전 참조 · 픽셀 단위 미리보기/실제 reduced-motion 미검증 · 상세 docs/STREAMSHOP_LANDING.md |
 | PF-002 | 기능 안내 | /features | design/project/PF-002.dc.html | PF-002.dc.html | FINAL | v329 (1791265128-d8ae) | 2026-10-06 14:38 KST | v329: 「운영팀 평균 첫 답변 4시간」 삭제(근거 없는 약속 수치, MASTER 승인 2026-10-06) · FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) |
 | PF-003 | 요금 안내 | /pricing | design/project/PF-003.dc.tsx | PF-003.dc.tsx | FINAL | v331 (1791266519-9c85) | 2026-10-06 15:01 KST | v331 정본 내용·상태·1440 레이아웃을 React TSX로 표현 · 실행 미리보기: `npm run design:preview` · legacy 호환만: `design/project/PF-003.dc.html` 및 `canvas.json`의 기존 엔트리(정본 아님, 삭제하지 않음) · 정본에는 1024·390 artboard 없음 · 원문 근거: v331 「요금 · 결제 질문」 접힌 3항 답변 추가(docs/PRODUCT_SCOPE.md:32-34 · :221, #928) |
 | PF-004 | 자주 묻는 질문 | /faq | design/project/PF-004.dc.html | PF-004.dc.html | FINAL | v329 (1791265128-d8ae) | 2026-10-07 06:26 KST | v329: 조사 「방송 화면가」 → 「방송 화면이」(검수 요청 #899) · FINAL 재확인(2026-10-06 공개 화면 묶음) · 공개 화면 해요체 확인 · 쉬운 말(방송 화면 · 인기 카드 · 결제대행사) · 가입 FAQ를 정책/실행 분기에 맞춤(2영업일 제거, 캔버스 버전 갱신 없음) |
@@ -79,7 +79,7 @@
 
 | ID | 화면 | Product Route | Design Source | Entry | Status | Artifact Version | 마지막 동기화(KST) | 비고 |
 |---|---|---|---|---|---|---|---|---|
-| MA-001 | 통합 대시보드 | /admin | design/project/MA-001-IA.dc.html | MA-001-IA.dc.html | FINAL | v308 (1791244117-7b5d) | 2026-10-06 08:49 KST | v308: 「오늘 처리할 일」 바로 아래 「인프라 · 비용」 요약 카드 1장 추가(최고관리자만 · 서버별 디스크 · 메모리 게이지 · 이번 달 누적 · 월말 예상 · 경고 칩(기준 초과 · 한도 정지 · 외부 연결 만료 30일 · 7일 · 인증 오류) · 카드 전체가 MA-120 링크) · 변형 「카드 모두 정상」 「최고관리자 아님 · 카드 없음」 · 기존 배치 유지(대표님 지시 「마스터 대시보드에도 정보 확인」). FINAL 재확인(2026-10-06 마스터 묶음) · MA-001-R2~R4 지시 반영: 「오늘 처리할 일」 유지 + 파트너스·오늘·구독 3섹션(구현 /admin과 같은 칸) + 「기간별 현황」(최근 7·30·90일 · 일별 결제 금액·들어온 주문·가입 신청·시작한 방송 · 상위 5 파트너스 · 월별 받은 구독료). 변형 MA-001(차트 초안)은 SUPERSEDED, R2~R4(역할별 홈)는 보류(후순위, 역할별 홈은 나중에 다시 꺼낼 수 있게 남김 — MASTER 2026-10-06) |
+| MA-001 | 통합 대시보드 | /admin | design/project/MA-001.dc.html | MA-001.dc.html | FINAL | 2026-10-09 사용자 재승인 | 2026-10-09 KST | 사용자가 직접 열어 본 원래 홈을 정본으로 재승인(이전 SUPERSEDED 해제). 원본 HTML 바이트는 보존한다. 6개 요약·3열 차트/상태/운영/활동 구조에 이전 MA-001-IA의 필수 업무큐 8종·최고관리자 인프라/비용·결제된 주문/가입 신청·7/30/90 기간을 추가 보존한다. 실제값은 기존 권한별 GET에서만 표시하며 정본 예시 숫자는 사용하지 않는다. MA-001-IA는 이전 필수계약 참조이며 현행 시각 정본을 대신하지 않는다. 구현·3폭 검증 상태는 docs/UI_STATUS.md 참조. |
 | MA-002 | 알림 센터 | /admin/notifications | design/project/MA-002.dc.html | MA-002.dc.html | FINAL | v291 (1791219075-ad9b) | 2026-10-06 01:51 KST | FINAL 재확인(2026-10-06 마스터 묶음) · 제목 「알림 센터」(DS-NAV) · 결제 연결 오류·방송 화면 용어 · 행 버튼 「대신 보기」 |
 | MA-010 | 파트너스(메뉴 그룹) | — | — | 메뉴 그룹 ID(화면 아님) | GROUP | 1791213911-1437 | 2026-10-06 00:27 KST | IA 그룹 헤더 · 보드 대상 아님 |
 | MA-011 | 파트너스 목록 | /admin/partners | design/project/MA-011.dc.html | MA-011.dc.html | FINAL | v287 (1791217739-ca0d) | 2026-10-06 02:08 KST | DS-PANEL 목록 패널 구조 적용(v243) · 변형: MA-011-PRE, MA-011-S |
@@ -134,9 +134,9 @@
 
 | ID | 화면 | Product Route | Design Source | Entry | Status | Artifact Version | 마지막 동기화(KST) | 비고 |
 |---|---|---|---|---|---|---|---|---|
-| SA-001 | 방송 대시보드 | /seller/broadcast | design/project/SA-001.dc.html | SA-001.dc.html | FINAL | v336 (1791268289-8313) | 2026-10-06 15:31 KST | v336: 빈 placeholder 기입(묶음 14, docs/design-gap/board-sync14/placeholders.md) · v324: 변형 SA-001-C · SA-001-M5 레이아웃 선택 「가로 사이드형 500×900」→「가로형 1920×1080 (16:9)」. v323: 공통 띠 자리를 구현(SellerShell AccessBanner)과 같은 「경로 줄 바로 아래 · 화면 제목 위」로 맞춤(최신 main 렌더 대조 결과). v322: 파트너스 공통 띠 정본(상태 변형 2장): 체험 「체험이 N일 남았습니다」(note inf · 경로 줄 · 제목 아래, 탭 위 · 본문 좌우 여백 · 버튼 없음) · 결제 실패(note cau) · 이용 종료(note neg) — 구현 SellerShell AccessBanner와 같은 자리 · 문구. v313: 상태 설명에 남은 「채팅 수집」 5곳 → 「채팅 가져오기」(#750 CHAT_NOTICE · v311 토글 문구와 통일). v311(#678 쉬운 말 반영): 「방송 끝내기」 · 「방송 화면 주소 만들기」 · 대기 표 「주문 시각」 「조작」(열 360) · 「타이머 정하기」 「주문대기에서 빼기」(개봉 중 패널 포함) · 「완료 / 뺀 주문」 · 「유튜브 채팅 가져오기」(켜짐 · 꺼짐 설명 · 마지막 채팅 시각 · 확인 창 「채팅 가져오기 켜기」) · 「HIT 카드 기록하기」 · 대기 제목에 「주문대기는 방송에서 개봉할 차례를 기다리는 주문입니다」. FINAL 재확인(2026-10-06 파트너스 묶음) · 현대화 규칙(쉬운 말 · 일시 2026.10.06 · 날짜 칸 .dt · 확인 창 [취소][실행] · 셸 재동기화) · 방송 화면 용어 · 확인 창 버튼 순서 |
-| SA-002 | 파트너스 홈 | /seller | design/project/SA-002-IA.dc.html | SA-002-IA.dc.html | FINAL | v300 (1791239970-91e4) | 2026-10-06 07:39 KST | 현대화 기준 충족(c24/sh24 토큰 · 2026-10-05 이후 작성·갱신) · 변형: SA-002 (SA-002 = SUPERSEDED) · 쉬운 말 반영(#655): 처리할 일 항목 「입금 확인 필요」 등 · 지표 「결제된 매출」「주문 1건당 평균 금액」「취소·환불 건수」 · 모바일 정본: SA-002-M.dc.tsx (아래 React 모바일 정본 표 · HTML은 이행 참조) |
-| SA-002-O | 오버레이 전용 홈 | /seller (오버레이 전용) | design/project/SA-002-O.dc.html | SA-002-O.dc.html | FINAL | v320 (1791250467-d56b) | 2026-10-06 10:45 KST | v320 FINAL(묶음 2): 「오버레이 편집기 · 오버레이(요약 칸) · OBS 오버레이 · 방송 · 오버레이」→「방송 화면」(「오버레이 전용」은 예외 유지) · 「결제(PG)」→「결제」 · 일시 「2026.10.02 21:12 기준」 「2026.10.09까지」 「2026.10.01 자동 연결」 · 띠 · 변형 버튼 6개 40 · 확인 창 [닫기][요금제 안내 보기] · 높이 1207→1690. 이전 비고: c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
+| SA-001 | 방송 대시보드(통합 전 이력) | /seller/broadcast → /seller | design/project/SA-001.dc.html | SA-001.dc.html | SUPERSEDED | 2026-10-09 단일 홈 승인 | 2026-10-09 KST | 방송 조작·큐·채팅·유튜브는 SA-002 단일 홈으로 통합. 기존 URL은 호환 redirect, 원본·모바일 변형은 역사 참조로 보존 |
+| SA-002 | 파트너스 단일 홈 | /seller | design/project/SA-002.dc.tsx | SA-002.dc.tsx | FINAL | 2026-10-09 단일 홈 승인 | 2026-10-09 KST | STORE/OVERLAY·직원 권한별 기존 운영 정보와 방송 조작·큐·채팅·현재 방송 YouTube 통합. 모바일도 같은 구현·정본(SA-002-M.dc.tsx 재사용). 실제 3폭/실재생/TEST는 검증 후 별도 기록 |
+| SA-002-O | 오버레이 전용 홈(통합 전 이력) | /seller/home-overlay → /seller | design/project/SA-002-O.dc.html | SA-002-O.dc.html | SUPERSEDED | 2026-10-09 단일 홈 승인 | 2026-10-09 KST | 전용 기능·직원 권한·구독 안내는 SA-002 역할별 구역으로 보존. 별도 홈 구현·FINAL 없음, 원본 역사 보존 |
 | SA-003 | 시작하기 | /seller/onboarding | design/project/SA-003.dc.html | SA-003.dc.html | FINAL | v302 (1791240973-f773) | 2026-10-06 07:56 KST | v302 MASTER 판정(2026-10-06): 구현 흐름 정본 — 맨 위 「쇼핑몰까지 쓰기 / 방송 화면만 쓰기」 갈래 선택(SA-004 흡수) · 단계 6(이용권 결제 · 쇼핑몰 정보 입력 · 상품 등록 · 주문 규칙 · 방송 화면 꾸미기 · 방송 화면 주소 복사) / 방송 화면만 3(다른 쇼핑몰 이어 쓰기 · 꾸미기 · 주소 복사) · 상태 3종(완료 · 지금 할 차례 · 기다리는 중) · 버튼 「다시 보기 / …으로」 · 진행률 · 「지금 상태」 · 도우미 열기 유지 · 변형: 방송 화면만 쓰기(체험) · 갈래 바꾸기 실패 · 닫음 토스트 |
 | SA-004 | 온보딩(SA-003에 흡수) | /seller/onboarding | design/project/SA-004.dc.html | SA-004.dc.html | SUPERSEDED | v302 (1791240973-f773) | 2026-10-06 07:56 KST | v302 SA-003에 흡수(MASTER 판정 2026-10-06): 쇼핑몰 여부는 가입 신청 때 정해지고 로그인 뒤에는 SA-003 맨 위 선택 칸에서 바꿈 · 주소 확인 · 연동 인증은 SA-006 · 대신 연결은 SA-150 · 보드는 안내만 남김 |
 | SA-005 | 쇼핑몰 통합 전환 | — | design/project/SA-005.dc.html | SA-005.dc.html | FINAL | v336 (1791268289-8313) | 2026-10-06 15:31 KST | v336: 빈 placeholder 기입(묶음 14, docs/design-gap/board-sync14/placeholders.md) · v320 FINAL(묶음 2): 날짜 「2026.11.10」 「2026.10.10 결제부터」 연월일 · 하위 변경 신청 · 변경 취소 · 조회 버튼 40 · 확인 창 [취소][변경 신청] [유지][변경 취소] · 결제 구조 결정(2026-10-05 플랫폼 결제대행사 하나)대로 「파트너스 명의 PG로 직접 받습니다」→「ONQ 결제대행사로 받습니다」, 「상품 등록과 PG 연결」→「상품 등록」 · 높이 1982→2260. 이전 비고: c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
@@ -333,7 +333,7 @@
 
 | 모바일 ID | Source | Entry | 상태 | 버전 | 지원 preview | 이행 참조 (정본 아님) |
 |---|---|---|---|---|---|---|
-| SA-002-M | design/project/SA-002-M.dc.tsx | SA-002-M.dc.tsx | FINAL (모바일 변형) | React 전환 · HTML d8873227 기준 | `/mobile/SA-002-M` | design/project/SA-002-M.dc.html |
+| SA-002-M | design/project/SA-002-M.dc.tsx | SA-002-M.dc.tsx | FINAL (단일 홈 반응형 참조) | SA-002.dc.tsx 재사용 · 2026-10-09 단일 홈 승인 · HTML은 통합 전 이력 | `/mobile/SA-002-M` | design/project/SA-002-M.dc.html |
 | SA-012-M | design/project/SA-012-M.dc.tsx | SA-012-M.dc.tsx | FINAL (모바일 변형) | React 전환 · HTML d8873227 기준 | `/mobile/SA-012-M` | design/project/SA-012-M.dc.html |
 | SA-021-M | design/project/SA-021-M.dc.tsx | SA-021-M.dc.tsx | FINAL (모바일 변형) | React 전환 · HTML d8873227 기준 | `/mobile/SA-021-M` | design/project/SA-021-M.dc.html |
 | SA-022-M | design/project/SA-022-M.dc.tsx | SA-022-M.dc.tsx | FINAL (모바일 변형) | React 전환 · HTML d8873227 기준 | `/mobile/SA-022-M` | design/project/SA-022-M.dc.html |

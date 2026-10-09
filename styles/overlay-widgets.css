@@ -20,6 +20,19 @@
   box-shadow: 0 0 0 3px var(--w-border, #fff);
   justify-content: center;
 }
+.ow-current-order.ow-calm-card {
+  background: var(--w-card-bg, #0c0d10e6);
+  animation: ow-calm-breathe 3s ease-in-out infinite;
+}
+.ow-calm { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; text-align: center; }
+.ow-calm b, .ow-calm span { display: block; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ow-calm b { font-size: 1.27em; }
+.ow-calm span { font-size: 0.93em; font-weight: 500; }
+@keyframes ow-calm-breathe {
+  0%, 100% { box-shadow: 0 0 0 2px #ffffff40; }
+  50% { box-shadow: 0 0 0 2px #ffffff80; }
+}
+@media (prefers-reduced-motion: reduce) { .ow-calm-card { animation: none !important; box-shadow: 0 0 0 2px #ffffff40; } }
 .ow-glow {
   box-shadow: 0 0 0 3px var(--w-border, #fff), 0 0 48px var(--w-accent, #ff9200aa);
 }
@@ -133,6 +146,82 @@
   font-variant-numeric: tabular-nums;
   color: var(--w-accent, #fff);
 }
+
+/* OV-004: 최근 당첨 1위는 금색으로 고정하고 나머지는 세로로 순환한다. */
+.ow-hall-of-fame {
+  padding: 0;
+  gap: 0;
+  background: var(--w-card-bg, #0c0d10f2);
+  box-shadow: inset 0 0 0 2px var(--w-border, #f2c14e);
+}
+.ow-hall-heading {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+  height: 40px;
+  padding: 0 20px;
+  border-radius: 0;
+  color: var(--w-title, #ffe08a);
+  font-size: 0.733em;
+}
+.ow-hall-heading small { color: #ffffffa8; font-size: 0.7em; }
+.ow-hall-first {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+  min-width: 0;
+  padding: 5px 20px;
+  background: linear-gradient(90deg, #ffe08a, #f5c451 55%, #e9ad2d);
+  color: #2b1c00;
+  font-size: 0.8em;
+}
+.ow-hall-rank { flex: none; width: 1.3em; text-align: center; font-weight: 900; }
+.ow-hall-person { display: flex; flex: 1; flex-direction: column; min-width: 0; line-height: 1.15; }
+.ow-hall-line { display: flex; align-items: center; min-width: 0; }
+.ow-hall-name, .ow-hall-card { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ow-hall-name { font-weight: 800; }
+.ow-hall-first time { flex: none; margin-left: 8px; font-size: 0.8em; opacity: 0.75; }
+.ow-hall-card { font-size: 0.8em; font-weight: 700; }
+.ow-hall-ticker {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  mask-image: linear-gradient(180deg, #000 calc(100% - 12px), transparent);
+}
+.ow-hall-track { display: flex; flex-direction: column; animation: ow-hall-scroll 19.2s linear infinite; }
+.ow-hall-static { animation: none; }
+.ow-hall-row { display: flex; align-items: center; gap: 10px; flex: none; height: 40px; padding: 0 20px; font-size: 0.667em; white-space: nowrap; }
+.ow-hall-row .ow-hall-rank { color: #ffd978; }
+.ow-hall-row time { flex: none; color: #ffffff99; font-size: 0.8em; }
+.ow-hall-row .ow-hall-name { flex: 0 1 35%; }
+.ow-hall-row .ow-hall-card { flex: 1; color: #ffffffd9; }
+@keyframes ow-hall-scroll { to { transform: translateY(-50%); } }
+
+/* OV-005: 세로·가로 모두 264×44 기본 상자에 들어가는 알약형 타이머. */
+.ow-open-timer {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 16px;
+  border-radius: var(--w-radius, 999px);
+  background: var(--w-card-bg, #0c0d10f2);
+  box-shadow: inset 0 0 0 2px var(--w-border, #ffb86b), 0 8px 24px #00000073;
+  color: var(--w-body, #ffd7a8);
+  font-size: var(--w-fs, 24px);
+  white-space: nowrap;
+}
+.ow-timer-label { flex: none; color: #ffffffb3; font-size: 0.78em; font-weight: 700; }
+.ow-open-timer .ow-timer { flex: none; font-size: 1em; color: inherit; }
+.ow-timer-bar { flex: none; display: block; width: 84px; height: 8px; overflow: hidden; border-radius: 999px; background: #ffffff26; }
+.ow-timer-bar > i { display: block; height: 100%; border-radius: 999px; background: var(--w-accent, #ffb86b); }
+.ow-open-timer.ow-timer-urgent { color: #ffb86b; }
+.ow-timer-urgent .ow-timer { animation: ow-timer-pulse 1s ease-in-out infinite alternate; }
+.ow-timer-urgent .ow-timer-bar > i { background: #ffb86b; }
+@keyframes ow-timer-pulse { to { opacity: 0.55; transform: scale(1.08); } }
 .ow-marquee > i {
   display: inline-block;
   padding-left: 100%;
@@ -180,6 +269,8 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .ow-marquee > i,
+  .ow-hall-track,
+  .ow-timer-urgent .ow-timer,
   .ow[class*="ow-ap-"] {
     animation: none;
   }
@@ -214,8 +305,14 @@
   0% { opacity: 0; transform: scale(0.9); }
   60% { transform: scale(1.04); }
 }
+/* 중앙 HIT 연출이 끝난 뒤 1위 띠를 0.8초씩 두 번 금색으로 강조한다. */
+.ow-hall-first.ow-hit-new { animation: ow-hit-flash 0.8s ease-in-out 2; }
+@keyframes ow-hit-flash {
+  0%, 100% { box-shadow: 0 0 0 3px var(--w-accent, #ffd23f), 0 0 12px #ffd97866; }
+  50% { box-shadow: 0 0 0 3px #fff1c2, 0 0 36px #ffd978; }
+}
 @media (prefers-reduced-motion: reduce) {
-  .ow-hit-new { animation: none; }
+  .ow-hit-new, .ow-hall-first.ow-hit-new { animation: none; }
 }
 
 /* 이벤트 할인 카드(OV-007) */

@@ -4,7 +4,7 @@ import { PublicFrame } from "../../../components/public/PublicFrame";
 export default function PrivacyLoading() {
   return (
     <PublicFrame>
-      <section className="pf-sec pf-doc" aria-busy="true" aria-label="개인정보처리방침 불러오는 중">
+      <section className="pf-sec pf-doc pf-document-section" aria-busy="true" aria-label="개인정보처리방침 불러오는 중">
         <article className="pf-doc-body">
           <div className="col" style={{ width: "100%", gap: 10 }}>
             <span className="sk" style={{ height: 28, width: "40%" }} />

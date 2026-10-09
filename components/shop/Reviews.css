@@ -63,6 +63,13 @@
   gap: 6px;
   min-width: 0;
 }
+.rv-public-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  font-size: 14px;
+}
 .rv-td textarea {
   width: 100%;
   min-height: 110px;
