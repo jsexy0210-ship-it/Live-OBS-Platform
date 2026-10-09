@@ -96,3 +96,17 @@ test("개인정보처리방침 준비 안내는 세 폭에서 정본 여백을 �
     await page.screenshot({ path: `tests/e2e/screenshots/pf009-privacy-pending-${width}.png`, fullPage: true });
   }
 });
+
+test("이용약관 초안 안내는 세 폭에서 정본 여백을 유지한다", async ({ page }) => {
+  await page.goto("/terms");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("이용약관");
+  await expect(page.getByTestId("terms-draft")).toContainText("시행 전 초안");
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await expect(page.locator(".pf-document-section")).toHaveCSS("padding-top", width === 390 ? "40px" : "56px");
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.getByTestId("terms-draft")).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    await page.screenshot({ path: `tests/e2e/screenshots/pf008-terms-draft-${width}.png`, fullPage: true });
+  }
+});
