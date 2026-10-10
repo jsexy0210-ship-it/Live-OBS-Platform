@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Request } from "@playwright/test";
 import { submitSellerLogin } from "./sellerLogin";
 import { RUN, cleanupProducts, track } from "./cleanup";
 
@@ -59,6 +59,71 @@ async function login(page: Page, email = OWNER) {
   await expect(page).toHaveURL(/\/seller$/);
   await page.goto("/seller/products");
   await expect(page).toHaveURL(/\/seller\/products$/);
+}
+
+// desktop 폼 배치의 반응형 검증이다. SA012-M의 읽기 전용 정책 완료 증거가 아니다.
+async function checkFormPreview(page: Page, phase: "new" | "edit", name: string, price: string) {
+  const mutations: string[] = [];
+  const observe = (request: Request) => {
+    if (new URL(request.url()).pathname.startsWith("/api/seller/products") && !["GET", "HEAD"].includes(request.method())) mutations.push(request.method());
+  };
+  page.on("request", observe);
+  try {
+    for (const width of [1440, 1024, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      if (width === 390) await expect.poll(async () => { const box = await page.locator(".lnb").boundingBox(); return box ? box.x + box.width : Infinity; }).toBeLessThanOrEqual(0);
+      const form = page.locator(".product-final-form");
+      await expect(form).toHaveCSS("display", "block");
+      await expect(form.locator('[aria-busy="true"]')).toHaveCount(0);
+      await expect(page.locator(".main.form-grid, .aside-sticky")).toHaveCount(0);
+      await expect(page.getByTestId("product-preview")).toHaveCount(0);
+      await page.evaluate(() => window.scrollTo(0, 0));
+      const actions = page.locator(".product-form-actions");
+      const fit = await actions.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        const buttons = [...element.querySelectorAll(".btn")].map((button) => { const box = button.getBoundingClientRect(); return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, height: box.height }; });
+        return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, viewport: innerWidth, height: innerHeight, center: (rect.left + rect.right) / 2, buttons };
+      });
+      expect(fit.left).toBeGreaterThanOrEqual(0);
+      expect(fit.right).toBeLessThanOrEqual(width);
+      expect(fit.top).toBeGreaterThanOrEqual(0);
+      expect(fit.bottom).toBeLessThanOrEqual(fit.height);
+      expect(fit.buttons).toHaveLength(phase === "new" ? 4 : 3);
+      for (const button of fit.buttons) {
+        expect(button.height).toBe(48);
+        expect(button.left).toBeGreaterThanOrEqual(fit.left);
+        expect(button.right).toBeLessThanOrEqual(fit.right);
+      }
+      const center = (Math.min(...fit.buttons.map((button) => button.left)) + Math.max(...fit.buttons.map((button) => button.right))) / 2;
+      expect(Math.abs(center - fit.center)).toBeLessThanOrEqual(1);
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      await expect.poll(async () => {
+        const field = await form.locator("input:visible, textarea:visible, select:visible").last().boundingBox();
+        const footer = await actions.boundingBox();
+        return field && footer ? field.y + field.height - footer.y : Infinity;
+      }).toBeLessThanOrEqual(0);
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+      if (SHOTS) await page.screenshot({ path: `tests/e2e/screenshots/SA-012-PC-form-${phase}-${width}.png`, fullPage: true });
+      const fields = form.locator("input, textarea, select");
+      const before = await fields.evaluateAll((elements) => elements.map((element) => ({ id: element.id, value: (element as HTMLInputElement).value, checked: (element as HTMLInputElement).checked })));
+      await page.getByTestId("product-form-preview").click();
+      const preview = page.getByRole("dialog", { name: "쇼핑몰 미리보기", exact: true });
+      await expect(preview).toBeVisible();
+      await expect(preview.getByTestId("preview-name")).toHaveText(name);
+      await expect(preview.getByTestId("preview-price")).toHaveText(price);
+      await expect(preview.getByTestId("preview-options").locator("li > span:first-child")).toHaveText(["1팩", "3팩 묶음"]);
+      const box = await preview.boundingBox();
+      expect(box && box.x >= 0 && box.y >= 0 && box.x + box.width <= width && box.y + box.height <= page.viewportSize()!.height).toBe(true);
+      if (SHOTS) await page.screenshot({ path: `tests/e2e/screenshots/SA-012-PC-preview-${phase}-${width}.png`, fullPage: true });
+      await preview.getByRole("button", { name: "닫기", exact: true }).click();
+      await expect(preview).toHaveCount(0);
+      expect(await fields.evaluateAll((elements) => elements.map((element) => ({ id: element.id, value: (element as HTMLInputElement).value, checked: (element as HTMLInputElement).checked })))).toEqual(before);
+    }
+    expect(mutations).toEqual([]);
+  } finally {
+    page.off("request", observe);
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
 }
 
 for (const surface of ["수정 화면", "목록 빠른 변경"] as const) {
@@ -331,6 +396,7 @@ test("상품 등록 → 목록에 바로 보인다", async ({ page }) => {
   await page.getByLabel("옵션 2 이름").fill("3팩 묶음");
   await page.getByLabel("옵션 2 추가 금액").fill("28000");
   await page.getByLabel("옵션 2 재고").fill("5");
+  await checkFormPreview(page, "new", name, "15,000원");
   await shot(page, "SA-012-new-filled");
   await page.getByRole("button", { name: "등록", exact: true }).first().click();
 
@@ -343,6 +409,21 @@ test("상품 등록 → 목록에 바로 보인다", async ({ page }) => {
   await expect(row).toContainText("15,000원");
   await expect(row).toContainText("35");
   await expect(row).toContainText("판매 중");
+  // 위에서 만든 폐기용 상품만 수정하고 새 조회로 저장 효과를 확인한다.
+  await row.getByRole("link").first().click();
+  await expect(page.getByLabel("상품명")).toHaveValue(name);
+  await page.getByLabel("판매가").fill("16000");
+  await checkFormPreview(page, "edit", name, "16,000원");
+  await page.getByRole("button", { name: "저장", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "판매가 변경", exact: true }).click();
+  await expect(page.getByText("저장했습니다", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("판매가")).toHaveValue("16000");
+  await expect(page.getByLabel("옵션 1 이름")).toHaveValue("1팩");
+  await expect(page.getByLabel("옵션 1 재고")).toHaveValue("30");
+  await expect(page.getByLabel("옵션 2 이름")).toHaveValue("3팩 묶음");
+  await expect(page.getByLabel("옵션 2 추가 금액")).toHaveValue("28000");
+  await expect(page.getByLabel("옵션 2 재고")).toHaveValue("5");
 });
 
 test("상품명 100자를 넘기면 글자 수가 빨갛게 바뀌고 안내한다(이모지도 1자, 서버와 같은 기준)", async ({ page }) => {
@@ -481,6 +562,7 @@ test("숫자·글자 입력: 전각 숫자는 받고, 음수 가격과 보이지
 
   await page.getByLabel("상품명").fill("부스터 팩");
   await page.getByLabel("판매가").fill("１５０００");
+  await page.getByTestId("product-form-preview").click();
   await expect(page.getByText("15,000원", { exact: true })).toBeVisible();
   await expect(page.getByText("가격은 1원 이상", { exact: false })).toHaveCount(0);
 });
@@ -504,6 +586,10 @@ test("권한이 하나도 없는 직원에게는 권한이 필요한 메뉴가 �
   for (const shown of ["공지 · 문의", "도우미", "내 계정"]) {
     await expect(page.locator(".gnb").getByText(shown, { exact: true })).toBeVisible();
   }
+  await page.goto("/seller/products/new");
+  await expect(page.getByText("이 계정은 이 일을 할 수 없습니다", { exact: true })).toBeVisible();
+  await expect(page.locator(".main input")).toHaveCount(0);
+  await expect(page.locator(".product-form-actions")).toHaveCount(0);
 });
 
 for (const [email, allowed] of [[OWNER, true], [VIEWER, false]] as const) {
