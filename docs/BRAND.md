@@ -23,7 +23,7 @@
 
 - **대표님 최신 확정(2026-10-09): 「이 심볼로 고정한다. 절대 임의로 바꾸지 않는다」.** 최종 정본은 `public/branding/streamshop-symbol.png`이며, 승인 원본 `output/application-assets/streamshop-symbol-generated-20261009.png`를 바이트 그대로 적용한다. 원본·정본 SHA256은 `e6ea28c6674ce1431f7fbfecb548f23c98060152186c0fc8ddff7f44bd6cfc0d`이다.
 - 심볼의 모양·비율·색·음각·방향을 사용자 명시 승인 없이 변경·재생성하지 않는다. 워드마크 편집에도 심볼을 보존한다. 이름 변경을 이유로 심볼을 재설계하거나 새 심볼을 만들지 않는다.
-- 제품 `components/public/Landing.tsx`와 디자인 정본 `design/project/PF-001.dc.tsx`는 같은 정본 PNG를 가져온다. 기존 표시 크기·레이아웃과 워드마크는 유지한다.
+- 제품 `components/public/Landing.tsx`와 디자인 정본 `design/project/PF-001.dc.tsx`는 같은 정본 PNG를 가져온다. 기존 표시 크기·레이아웃은 유지한다. 2026-10-10 대표님 최신 지시에 따라 PF-001 텍스트 워드마크는 끝 점 없이 `streamshop`으로 표시한다. 심볼·풀로고 원본은 변경하지 않는다.
 - **대표님 풀로고 확정(2026-10-09): 「우선 확정하고 남은 작업들 빨리 진행해」.** 풀로고 정본은 `public/branding/streamshop-full-logo.png`이며, 승인 원본 `output/application-assets/streamshop-full-logo-generated-together.png`를 바이트 그대로 보존한다. 원본·정본 SHA256은 `f4ad508c1e5cf048f0a4a80eb7d2d4a72ab4c156f9f52d661f1e17f1825db80a`이다. 명시 승인 없이 풀로고를 변경·재생성하거나 배경·크기·배치를 편집하지 않는다.
 - 풀로고 내부 심볼은 생성 이미지의 유사 렌더이며 별도 심볼 정본과 바이트가 같다는 뜻이 아니다. 추출해서 `streamshop-symbol.png`를 교체하지 않는다. 현재 풀로고 소비 화면은 없으며 기존 심볼·텍스트 워드마크 화면은 그대로 유지한다.
 - 키 컬러: 인디고 `#4F46E5`. 포인트: 민트 `#80E8C1`. 글자·다크 배경: 잉크 `#171A24`. 기본 배경: 클라우드 `#F7F8FC`.

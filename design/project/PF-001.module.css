@@ -14,7 +14,6 @@
 .brandLink { flex-shrink: 0; }
 .brand { display: inline-flex; align-items: center; gap: 8px; line-height: 1; font-size: 27px; letter-spacing: -1.25px; font-weight: 850; }
 .brand img { object-fit: contain; flex: none; }
-.brandDot { color: var(--indigo); }
 .inverseBrand { color: white; }
 .inverseBrand img { filter: brightness(0) invert(1); }
 .nav { display: flex; gap: 28px; font-size: 14px; font-weight: 650; }
@@ -50,7 +49,8 @@
 .liveBadge::before { content: ""; width: 4px; height: 4px; border-radius: 50%; background: white; }
 .exampleLabel { margin-left: auto; color: #b8bcc9; font-size: 10px; }
 .stage { position: relative; height: 326px; overflow: hidden; border-radius: 9px; background: #ded7cc; color: #373127; }
-.stageCaption { position: absolute; top: 26px; left: 25px; font-size: clamp(17px, 2vw, 27px); line-height: 1.15; letter-spacing: -1px; }
+.stagePhoto, .canvasPhoto { object-fit: cover; object-position: 65% 45%; }
+.stageCaption { color: white; text-shadow: 0 1px 8px #171a24b3; position: absolute; top: 26px; left: 25px; font-size: clamp(17px, 2vw, 27px); line-height: 1.15; letter-spacing: -1px; }
 .stageCaption strong { font-weight: 850; }
 .collectibles { position: absolute; inset: 0; }
 .cardBack, .cardFront { position: absolute; width: 114px; height: 156px; border-radius: 11px; top: 65px; left: 45%; box-shadow: 0 16px 20px #37312728; }
@@ -103,13 +103,12 @@
 .splitCopy .check svg { color: var(--mint); }
 .overlayIllustration { height: 390px; position: relative; }
 .wideCanvas { position: absolute; top: 55px; left: 0; width: 85%; aspect-ratio: 16/10; padding: 20px; overflow: hidden; border: 5px solid #383c4c; border-radius: 12px; background: #393763; }
-.wideCanvas::after { content: "✳"; position: absolute; right: -8px; top: 45px; color: #8178d1; font-size: 210px; line-height: 1; }
-.canvasTitle { position: relative; z-index: 1; display: block; font-size: clamp(20px, 2.4vw, 32px); font-weight: 850; line-height: 1.2; margin-top: 25px; letter-spacing: -.5px; }
+.canvasTitle { width: fit-content; padding: 4px 8px; border-radius: 4px; background: linear-gradient(90deg, #171a24cc, #171a24b3); text-shadow: 0 1px 4px #171a24; position: relative; z-index: 1; display: block; font-size: clamp(20px, 2.4vw, 32px); font-weight: 850; line-height: 1.2; margin-top: 25px; letter-spacing: -.5px; }
 .canvasOrder { position: absolute; z-index: 2; bottom: 27px; left: 17px; padding: 9px 12px; border-radius: 6px; color: white; background: #171a24e6; font-size: 10px; }
 .canvasOrder i { display: inline-block; width: 5px; height: 5px; margin-right: 5px; border-radius: 50%; background: var(--mint); }
 .canvasFormat { position: absolute; bottom: 7px; left: 17px; font-size: 9px; color: #cbd0dd; }
-.tallCanvas { position: absolute; top: 10px; right: 0; width: 32%; aspect-ratio: 9/17; background: #577c6c; border: 5px solid #383c4c; border-radius: 18px; padding: 16px 10px; box-shadow: 0 30px 60px #0004; }
-.tallStar { position: absolute; top: 23%; left: 8%; color: #ccf4dc; font-size: 115px; line-height: 1; }
+.wideCanvas .liveBadge, .tallCanvas .liveBadge { position: relative; z-index: 1; }
+.tallCanvas { overflow: hidden; position: absolute; top: 10px; right: 0; width: 32%; aspect-ratio: 9/17; background: #577c6c; border: 5px solid #383c4c; border-radius: 18px; padding: 16px 10px; box-shadow: 0 30px 60px #0004; }
 .tallOrder { position: absolute; bottom: 34px; left: 8px; right: 8px; border-radius: 8px; background: #171a24e6; padding: 11px; font-size: 9px; }
 .tallOrder strong { font-size: 12px; }
 .visualCaption { position: absolute; bottom: 5px; right: 10px; font-size: 10px; color: #a6acbe; }
@@ -169,7 +168,6 @@
   .featureCard { padding: 28px; }
   .split { gap: 30px; }
   .overlayIllustration { height: 350px; }
-  .tallStar { font-size: 90px; }
 }
 @media (max-width: 760px) {
   .header { min-height: 72px; padding: 12px 20px; }
@@ -227,7 +225,7 @@
   .splitCopy p { font-size: 14px; }
   .overlayIllustration { width: 100%; max-width: 480px; height: 330px; margin: auto; }
   .wideCanvas { top: 45px; }
-  .canvasTitle { font-size: 26px; margin-top: 16px; }
+  .canvasTitle { font-size: 20px; margin-top: 6px; }
   .tallStar { font-size: 85px; }
   .centerHeading { margin-bottom: 32px; }
   .centerHeading p { font-size: 14px; }
