@@ -2,7 +2,7 @@ import { expect, request, test, type Page } from "@playwright/test";
 import { jpeg, png } from "../unit/shopContentFixtures";
 import { submitSellerLogin } from "./sellerLogin";
 import { fillDateTime } from "./dateInput";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, type Product } from "@prisma/client";
 import { hash } from "@node-rs/argon2";
 import { randomBytes } from "node:crypto";
 
@@ -44,7 +44,7 @@ test("SH-001 홈: 소유 폐기 fixture의 방송·추천·7일 신상품·종�
     const grade = await db.memberGrade.create({ data: { sellerId, displayName: "일반", sortOrder: 0 } });
     const buyer = await db.buyerMember.create({ data: { sellerId, gradeId: grade.id, loginId: `home-${suffix}@example.test`, passwordHash: await hash(randomBytes(20).toString("hex")), name: "홈 검수", phone: "01000000000", ciHash: suffix, identityVerifiedAt: new Date(), birthDate: new Date("1990-01-01"), broadcastNickname: "검수 구매자" } });
     const session = await db.broadcastSession.create({ data: { sellerId, title: "홈 진열 방송" } });
-    const products = [];
+    const products: Product[] = [];
     for (let i = 0; i < names.length; i++) {
       const p = await db.product.create({ data: { sellerId, name: names[i], price: 1000 * (i + 1), status: i === 3 ? "SOLD_OUT" : "ON_SALE", sortOrder: i, createdAt: new Date(Date.now() - (i === 1 ? 8 * 86_400_000 : 60_000)) } });
       products.push(p);

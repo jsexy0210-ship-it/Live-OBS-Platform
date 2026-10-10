@@ -191,7 +191,7 @@ export async function publicHome(db: PrismaClient, slug: string, options: { rece
     } else if (s.kind === "HALL_OF_FAME") {
       products = fixed(await shopCardsInOrder(db, shop, await hallOfFameProductIds(db, shop.id, s.itemCount)), s.itemCount);
     } else {
-      const sort = s.kind === "NEW" ? "new" : s.kind === "BEST" ? "popular" : "recommended";
+      const sort = s.kind === "BEST" ? "popular" : "recommended";
       const only = s.kind === "SALE" ? "sale" : s.kind === "BEST" ? "best" : undefined;
       const r = await shopProductList(db, shop.slug, { sort, categoryId: s.categoryId ?? undefined, limit: String(s.itemCount) }, only);
       products = r.ok ? r.value.products : []; // 보이지 않는 카테고리는 not_found → 영역을 뺀다
