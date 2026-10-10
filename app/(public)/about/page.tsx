@@ -7,8 +7,8 @@ import { getPublicPlan } from "../../../lib/server/billing/plans";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "ONQ · 라이브 주문대기와 파트너스 쇼핑몰",
-  description: "파트너스별 쇼핑몰과 라이브 방송 주문대기를 하나로. 주문이 들어오면 방송 화면에 줄이 서요."
+  title: "스트림샵 | 쇼핑몰부터 라이브 판매까지",
+  description: "쇼핑몰부터 OBS 방송 화면, 주문과 배송까지. 스트림샵(StreamShop)으로 라이브 판매의 모든 순간을 연결하세요."
 };
 
 // PF-001 서비스 소개(랜딩). 요금을 읽지 못해도 화면은 열린다.

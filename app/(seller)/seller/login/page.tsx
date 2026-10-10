@@ -9,7 +9,7 @@ import { api, type Me } from "../../../../components/seller/api";
 
 // AU-002 파트너스 관리자 로그인(정본: docs/IA.md AU-002, 대표님 결정 2026-10-03).
 // 카드 안 맨 위 ONQ 로고 → 제목·부제 → 탭(대표자·직원, 기본 대표자) → 입력.
-// 대표자 탭: 왼쪽 끝 「아이디/비밀번호 찾기」·오른쪽 끝 「회원가입」 / 직원 탭: 「아이디/비밀번호 찾기」만(회원가입 없음).
+// 대표자 탭: 「가입 신청」과 「이메일(아이디)/비밀번호 찾기」 / 직원 탭: 계정 찾기만(가입 신청 없음).
 // 로그인 요청에 고른 탭(accountType: owner|staff)을 함께 보낸다. 서버가 wrong_account_type을 주면 맞는 탭으로 안내하고,
 // 아직 이 값을 모르는 서버는 그냥 무시하므로 지금처럼 로그인된다(하위 호환).
 // 실패 문구는 서버가 주는 message를 그대로 쓴다(정본: lib/server/auth/messages.ts). 심사 중만 안내 색으로 보여 준다.
@@ -204,16 +204,15 @@ export default function SellerLoginPage() {
               "로그인"
             )}
           </button>
-          {/* 대표자 탭: 왼쪽 「아직 회원이 아니신가요? 회원가입」(회원가입만 링크·강조색), 오른쪽 끝 「아이디/비밀번호 찾기」.
-              직원 탭은 회원가입 없이 「아이디/비밀번호 찾기」만 오른쪽 끝(찾기 화면 위쪽에서 아이디·비밀번호를 바꾼다) */}
+          {/* 대표자 탭은 가입 신청·계정 찾기, 직원 탭은 계정 찾기만 보여 준다. */}
           <nav className="row t-l2 c-alt login-links" aria-label="계정 도움">
             {tab === "owner" && (
               <span className="login-join">
-                아직 회원이 아니신가요? <Link href="/seller/signup">회원가입</Link>
+                아직 파트너스가 아니십니까? <Link href="/seller/signup">가입 신청</Link>
               </span>
             )}
             <Link className="login-find" href={`/seller/find-id${q}`}>
-              아이디/비밀번호 찾기
+              이메일(아이디)/비밀번호 찾기
             </Link>
           </nav>
         </div>

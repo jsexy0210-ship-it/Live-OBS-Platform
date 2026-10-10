@@ -23,6 +23,76 @@ async function productIdOf(page: Page, name: string) {
   return list.products.find((p) => p.name === name)!.id;
 }
 
+test("내 문의: 실제 본인 조회 뒤 합성 주문·일반 문의·빈 상태를 세 폭에서 확인한다", async ({ page, baseURL }) => {
+  await login(page, baseURL!);
+  const api = `/api/shop/${SLUG}`;
+  const inquiryResponse = await page.request.get(`${api}/inquiries`);
+  expect(inquiryResponse.status()).toBe(200);
+  const actual = await inquiryResponse.json() as { inquiries: { order: { id: string; orderNoLabel: string } | null }[] };
+  expect(Array.isArray(actual.inquiries)).toBe(true);
+  for (const item of actual.inquiries) expect(item).toHaveProperty("order");
+  const orderResponse = await page.request.get(`${api}/orders?limit=50`);
+  expect(orderResponse.status()).toBe(200);
+  const orders = (await orderResponse.json() as { orders: { id: string; orderNoLabel: string }[] }).orders;
+  expect(Array.isArray(orders)).toBe(true);
+  expect(orders.length).toBeLessThanOrEqual(50);
+  for (const order of orders) expect(order.orderNoLabel).toMatch(/^\d{8}-\d{4,}$/);
+
+  // 문서용 주문은 UI 합성값이다. 실제 주문 생성·문의 등록·답변은 실행하지 않는다.
+  const target = { id: "00000000-0000-4000-8000-000000000042", orderNoLabel: "20261010-0042" };
+  const inquiry = { id: "00000000-0000-4000-8000-000000000043", kind: "GENERAL", product: null, order: target, title: "주문 배송 문의", body: "배송 안내를 확인하고 싶어요", isPrivate: true, status: "WAITING", answer: null, answeredAt: null, createdAt: "2026-10-10T00:00:00.000Z" };
+  let items: { order: typeof target | null }[] = [inquiry];
+  let targets = [target];
+  const mutations: string[] = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if ([`${api}/inquiries`, `${api}/orders`].some((prefix) => path === prefix || path.startsWith(`${prefix}/`)) && !["GET", "HEAD"].includes(request.method())) mutations.push(request.method());
+  });
+  await page.route(`**${api}/inquiries*`, async (route) => {
+    if (route.request().method() !== "GET") return route.abort();
+    await route.fulfill({ json: { inquiries: items, nextCursor: null } });
+  });
+  await page.route(`**${api}/orders*`, async (route) => {
+    if (route.request().method() !== "GET") return route.abort();
+    await route.fulfill({ json: { orders: targets, nextCursor: null } });
+  });
+  for (const state of ["order", "null", "empty"] as const) {
+    items = state === "empty" ? [] : [{ ...inquiry, order: state === "order" ? target : null }];
+    targets = state === "order" ? [target] : [];
+    for (const width of [1440, 1024, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`/shop/${SLUG}/me/inquiries`);
+      await expect(page.getByRole("heading", { name: "내 문의", exact: true })).toBeVisible();
+      const form = page.locator("form.mi-box");
+      await form.getByLabel("1:1 문의 (주문 · 배송 · 기타)").check();
+      const select = form.locator("#mi-order");
+      await expect(select.getByRole("option")).toHaveCount(state === "order" ? 2 : 1);
+      await expect(select.getByRole("option").first()).toHaveText("기타 문의 · 주문 선택 안 함");
+      await expect(select).toHaveValue("");
+      await expect(page.locator(".mi-target")).toHaveCount(state === "order" ? 1 : 0);
+      if (state === "order") {
+        await expect(page.locator(".mi-target")).toHaveText(`주문 ${target.orderNoLabel}`);
+        await expect(page.locator(".mi-target")).toBeVisible();
+        await select.selectOption(target.id);
+        await expect(select).toHaveValue(target.id);
+        await select.selectOption("");
+        await expect(select).toHaveValue("");
+      }
+      if (state === "empty") await expect(page.getByRole("heading", { name: "아직 문의가 없어요" })).toBeVisible();
+      await expect(page.locator(".mi-tbl tbody tr:not(.mi-answer-row)")).toHaveCount(state === "empty" ? 0 : 1);
+      await page.evaluate(() => document.fonts.ready);
+      const bounds = await select.boundingBox();
+      expect(bounds).not.toBeNull();
+      expect(bounds!.width).toBeGreaterThan(0);
+      expect(bounds!.x).toBeGreaterThanOrEqual(0);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await page.screenshot({ path: `tests/e2e/screenshots/SH-026-order-target-${state}-${width}.png`, fullPage: true });
+    }
+  }
+  expect(mutations).toEqual([]);
+});
+
 async function expectInfoLayout(page: Page, width: number) {
   await expect(page.locator(".pd-price-summary")).toBeVisible();
   await expect(page.locator(".pd-rating")).toBeVisible();

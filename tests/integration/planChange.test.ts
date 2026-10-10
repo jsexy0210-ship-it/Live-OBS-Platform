@@ -4,8 +4,9 @@ import { POST as planRoute } from "../../app/api/seller/subscription/plan/route"
 import { loginSeller } from "../../lib/server/auth/login";
 import { createAdminSession, resolveAdminSession } from "../../lib/server/auth/session";
 import { sellerFeatures } from "../../lib/server/billing/features";
+import { addMonthsKst } from "../../lib/server/billing/access";
 import { changePlan, previewPlanChanges } from "../../lib/server/billing/planChange";
-import { listPriceChangeNoticeTargets } from "../../lib/server/billing/plans";
+import { listPriceChangeNoticeTargets, updatePlanPrice } from "../../lib/server/billing/plans";
 import { FakeBillingProvider } from "../../lib/server/billing/provider";
 import { sealBillingKey } from "../../lib/server/billing/secret";
 import { cancelSubscription, getSubscriptionView, reconcileStalePayments, registerCardAndPay, renewDueSubscriptions } from "../../lib/server/billing/subscription";
@@ -150,6 +151,60 @@ describe("상위 변경(오버레이 전용 → 통합)", () => {
     expect(await planOf(s.seller.id)).toBe("OVERLAY_ONLY");
     expect(await db.subscriptionPayment.count()).toBe(0);
     expect(await sellerFeatures(db, s.seller.id)).toEqual(OVERLAY);
+  });
+
+  it.each([59000, 69000, 179000])("체험 상위 변경 전액 %i원은 현재 가격보다 낮거나 같아도 NOT_FOUND 대사로 정상 재청구한다", async (targetPrice) => {
+    await db.subscriptionPlan.update({ where: { id: plans.INTEGRATED.id }, data: { salePrice: targetPrice } });
+    const s = await shop("OVERLAY_ONLY", at(5), { status: "ACTIVE", nextChargeAt: at(5) });
+    const provider = new FakeBillingProvider();
+    provider.failNext = "timeout_before_charge";
+    expect(await changePlan(db, provider, s.ctx, { planCode: "INTEGRATED", now: T0 })).toEqual({ ok: false, reason: "payment_pending" });
+    expect(await payments(s.seller.id)).toEqual([{ amount: targetPrice, status: "PENDING", kind: "PERIOD" }]);
+    expect(provider.charges).toHaveLength(0);
+    // 재시도 때 체험이 끝나도 청구를 만든 시각의 체험 전액 계약을 유지한다.
+    expect(await reconcileStalePayments(db, provider, { now: at(6), staleMs: 0 })).toMatchObject({ paid: 1, recharged: 1, unresolved: 0 });
+    expect(provider.charges[0].amount).toBe(targetPrice);
+    expect(await planOf(s.seller.id)).toBe("INTEGRATED");
+    expect(await reconcileStalePayments(db, provider, { now: at(6), staleMs: 0 })).toMatchObject({ paid: 0, recharged: 0 });
+    expect(provider.charges).toHaveLength(1);
+  });
+
+  it("연체 PERIOD가 기간 시작 시각에 생성되고 체험 날짜도 남아 있어도 낮은 target 전액으로 바꾸지 않는다", async () => {
+    await db.subscriptionPlan.update({ where: { id: plans.INTEGRATED.id }, data: { salePrice: 59000 } });
+    const s = await shop("OVERLAY_ONLY", at(5), {
+      status: "PAST_DUE", currentPeriodStart: addMonthsKst(T0, -1), currentPeriodEnd: T0,
+      billingAnchorAt: addMonthsKst(T0, -1), nextChargeAt: T0, graceUntil: at(7),
+    });
+    const provider = new FakeBillingProvider();
+    provider.failNext = "timeout_before_charge";
+    expect(await changePlan(db, provider, s.ctx, { planCode: "INTEGRATED", now: T0 })).toEqual({ ok: false, reason: "payment_pending" });
+    const payment = await db.subscriptionPayment.findFirstOrThrow({ where: { sellerId: s.seller.id } });
+    expect(payment.periodStart).toEqual(payment.createdAt);
+    expect(payment).toMatchObject({ amount: 69000, status: "PENDING", kind: "PERIOD" });
+    expect(await reconcileStalePayments(db, provider, { now: at(2), staleMs: 0 })).toMatchObject({ paid: 1, recharged: 1, unresolved: 0 });
+    expect(provider.charges[0].amount).toBe(69000);
+    expect(await planOf(s.seller.id)).toBe("INTEGRATED");
+  });
+
+  it("체험 전액 재시도도 변경 30일 경과만으로 미고지 target 가격을 사용하지 않는다", async () => {
+    const admin = await createAdmin("SUPER_ADMIN");
+    const adminCtx = (await resolveAdminSession(db, (await createAdminSession(db, admin.id, {})).token))!;
+    await updatePlanPrice(db, adminCtx, "INTEGRATED", { listPrice: 249000, salePrice: 59000 });
+    const changedAt = (await db.subscriptionPriceChange.findFirstOrThrow({ where: { planId: plans.INTEGRATED.id }, orderBy: { changedAt: "desc" } })).changedAt;
+    const quoteAt = new Date(+changedAt + 40 * DAY);
+    const s = await shop("OVERLAY_ONLY", new Date(+quoteAt + 5 * DAY), { status: "ACTIVE", nextChargeAt: new Date(+quoteAt + 5 * DAY) });
+    const provider = new FakeBillingProvider();
+    provider.failNext = "timeout_before_charge";
+    expect(await changePlan(db, provider, s.ctx, { planCode: "INTEGRATED", now: quoteAt })).toEqual({ ok: false, reason: "payment_pending" });
+    const payment = await db.subscriptionPayment.findFirstOrThrow({ where: { sellerId: s.seller.id } });
+    expect(payment).toMatchObject({ amount: 179000, kind: "PERIOD", status: "PENDING" });
+    // 구버전이 준비한 미고지 금액 스냅숏을 합성한다. 실송신/실결제는 없다.
+    await db.subscriptionPayment.update({ where: { id: payment.id }, data: { amount: 59000 } });
+    expect(await reconcileStalePayments(db, provider, { now: new Date(+quoteAt + DAY), staleMs: 0 })).toMatchObject({ unresolved: 1, recharged: 0 });
+    expect(provider.charges).toHaveLength(0);
+    await db.subscriptionPayment.update({ where: { id: payment.id }, data: { amount: 179000 } });
+    expect(await reconcileStalePayments(db, provider, { now: new Date(+quoteAt + DAY), staleMs: 0 })).toMatchObject({ paid: 1, recharged: 1, unresolved: 0 });
+    expect(provider.charges[0].amount).toBe(179000);
   });
 
   it("결제 실패 유예 중(PAST_DUE): 밀린 69,000원과 남은 기간 차액을 한 번에 결제해 확정되면 ACTIVE·통합. 거절이면 유예 그대로", async () => {
@@ -359,12 +414,16 @@ describe("런칭 할인 계정당 1회(대표님 결정 2026-10-04)", () => {
     expect((await payments(s.seller.id)).map((p) => p.amount)).toEqual([50000, 249000]);
   });
 
-  it("정가 인상도 30일 고지 규칙을 따른다: 고지 직후 갱신·상위 변경 차액·구독 화면은 옛 정가, 변경 + 30일 뒤 갱신은 새 정가(#186 Codex)", async () => {
+  it("정가 인상도 고지 완료 + 30일 규칙을 따른다: 미고지 갱신·상위 변경 차액·구독 화면은 옛 정가, 완료 + 30일 뒤 갱신은 새 정가", async () => {
+    // 완료 근거는 현재보다 과거인 합성 시각을 쓴다(미래 발송을 완료로 인정하지 않음).
+    const T0 = new Date(Date.now() - 40 * DAY);
+    const at = (days: number) => new Date(+T0 + days * DAY);
+    const paying = { status: "ACTIVE", subscribedAt: at(-40), currentPeriodStart: at(-20), currentPeriodEnd: at(10), billingAnchorAt: at(-20), nextChargeAt: at(9) };
     // 관리자가 하루 전 쇼핑몰 통합 정가를 249,000 → 299,000원으로 올림(updatePlanPrice와 같은 가격 기록)
     await db.subscriptionPriceChange.create({ data: { planId: plans.INTEGRATED.id, listPrice: 249000, salePrice: 179000, changedAt: new Date("2000-01-01T00:00:00Z") } });
     const admin = await createAdmin("SUPER_ADMIN");
     const adminCtx = (await resolveAdminSession(db, (await createAdminSession(db, admin.id, {})).token))!;
-    await db.subscriptionPriceChange.create({ data: { planId: plans.INTEGRATED.id, listPrice: 299000, salePrice: 179000, changedAt: at(-1), changedByAdminId: admin.id } });
+    const change = await db.subscriptionPriceChange.create({ data: { planId: plans.INTEGRATED.id, listPrice: 299000, salePrice: 179000, changedAt: at(-1), changedByAdminId: admin.id } });
     await db.subscriptionPlan.update({ where: { id: plans.INTEGRATED.id }, data: { listPrice: 299000 } });
 
     // 고지 기간 안 갱신: 옛 정가
@@ -375,8 +434,12 @@ describe("런칭 할인 계정당 1회(대표님 결정 2026-10-04)", () => {
     await renewDueSubscriptions(db, new FakeBillingProvider(), { now: at(9) });
     expect((await payments(soon.seller.id)).map((p) => p.amount)).toEqual([249000]);
 
-    // 변경 + 30일 뒤 갱신: 새 정가
-    const later = await shop("INTEGRATED", at(-60), { status: "ACTIVE", currentPeriodStart: at(0), currentPeriodEnd: at(31), billingAnchorAt: at(0), nextChargeAt: at(30), regularPrice: true });
+    // 이 구독의 필수 고지 완료 + 30일 뒤 갱신: 새 정가
+    const later = await shop("INTEGRATED", at(-60), { status: "ACTIVE", subscribedAt: at(-40), currentPeriodStart: at(0), currentPeriodEnd: at(31), billingAnchorAt: at(0), nextChargeAt: at(30), regularPrice: true });
+    await db.subscriptionPriceNotice.createMany({ data: (["MAIL", "ALIMTALK", "PARTNERS_NOTICE"] as const).map((channel) => ({
+      subscriptionId: later.subscription!.id, subscriptionStartedAt: later.subscription!.subscribedAt,
+      priceChangeId: change.id, channel, status: "SENT" as const, completedAt: at(0), deliveryReference: `synthetic:${channel}`,
+    })) });
     await renewDueSubscriptions(db, new FakeBillingProvider(), { now: at(30) });
     expect((await payments(later.seller.id)).map((p) => p.amount)).toEqual([299000]);
 

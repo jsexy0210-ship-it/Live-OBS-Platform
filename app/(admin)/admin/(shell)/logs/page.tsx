@@ -135,13 +135,14 @@ function Logs() {
                   <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                     <thead>
                       <tr>
-                        <th>기록 시각</th>
-                        <th>종류</th>
-                        <th>행위자</th>
-                        <th>대상</th>
-                        <th>쇼핑몰</th>
-                        <th>사유</th>
-                        <th>상세</th>
+                        <th scope="col">기록 시각</th>
+                        <th scope="col">종류</th>
+                        <th scope="col">행위자</th>
+                        <th scope="col">대상</th>
+                        <th scope="col">쇼핑몰</th>
+                        <th scope="col">사유</th>
+                        <th scope="col">IP · 기기</th>
+                        <th scope="col">상세</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -153,6 +154,7 @@ function Logs() {
                           <td>{targetLabel(l.targetType)}</td>
                           <td>{l.seller ? <Link href={`/admin/partners/${l.seller.id}`}>{l.seller.shopName}</Link> : "-"}</td>
                           <td className="col-text" style={{ whiteSpace: "normal", maxWidth: 280 }}>{l.reason ?? "-"}</td>
+                          <td style={{ whiteSpace: "normal", minWidth: 160, maxWidth: 280, overflowWrap: "anywhere" }}>{[l.ip, l.userAgent].filter(Boolean).join(" · ") || "-"}</td>
                           <td>
                             <Link className="btn btn-sm btn-out" href={`/admin/logs/${l.id}`}>
                               보기

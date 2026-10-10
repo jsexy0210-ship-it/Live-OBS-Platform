@@ -284,7 +284,7 @@ export default function InfraPage() {
               </div>
             </section>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 24, alignItems: "start" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))", gap: 24, alignItems: "start" }}>
               <section className="card" aria-labelledby="infra-db" style={{ padding: 16 }}>
                 <h2 className="t-hl1" id="infra-db">데이터베이스 · 백업</h2>
                 <dl className="col" style={{ gap: 10, margin: "12px 0 0" }}>
@@ -409,9 +409,9 @@ export default function InfraPage() {
             <section className="card" aria-labelledby="infra-price" style={{ padding: 16 }}>
               <h2 className="t-hl1" id="infra-price">단가 입력</h2>
               <span className="t-c1 c-alt">최고관리자만 · 공개 단가 기준으로 적습니다 · 바꾸면 추정 금액이 다시 계산되고 로그 추적에 남습니다</span>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12, margin: "12px 0" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 12, margin: "12px 0" }}>
                 {PRICE_FIELDS.map((f) => (
-                  <label key={f.key} className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
+                  <label key={f.key} className="row" style={{ gap: 8, flexWrap: "wrap" }}>
                     <span style={{ width: 130 }}>{f.label}</span>
                     <input className="inp" style={{ width: 120 }} type="number" min={0} step={f.pct ? 0.01 : 1} inputMode="decimal" aria-label={`${f.label} 단가`} value={prices[f.key] ?? ""} onChange={(e) => { dirty.current = true; setPrices({ ...prices, [f.key]: e.target.value }); }} />
                     <span className="t-c1 c-alt">{f.unit}</span>

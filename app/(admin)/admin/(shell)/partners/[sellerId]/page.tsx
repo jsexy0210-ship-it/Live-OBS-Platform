@@ -145,7 +145,7 @@ function PartnerDetail() {
           <div className="col" style={{ gap: 20 }}>
             {imp && (
               <div className="card pad row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }} role="status" data-testid="impersonation-active">
-                <b>{imp.sellerId === s.id ? "이 파트너스 화면을 대신 보는 중입니다." : `${imp.shopName}을(를) 대리 조회 중입니다.`}</b>
+                <b>{imp.sellerId === s.id ? "이 파트너스 화면을 대신 보는 중입니다." : `${imp.shopName} 화면을 대신 보는 중입니다.`}</b>
                 <span className="t-l2 c-alt">{dayTime(imp.expiresAt)}까지 · 사유: {imp.reason}</span>
                 <button className="btn btn-sm btn-out" type="button" onClick={() => window.open("/seller", "_blank")}>
                   파트너스 화면 열기

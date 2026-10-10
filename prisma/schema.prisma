@@ -1637,7 +1637,7 @@ model SubscriptionPlan {
 }
 
 // 판매가 변경 기록(대표님 결정 2026-10-02). 새 가입자는 바로 새 가격, 기존 구독자는 구독을 시작할 때 적용되던 가격을 내다가
-// 변경 시각 + 30일 이후 첫 결제부터 새 가격을 낸다. 청구 금액은 이 기록으로 계산한다(priceFor).
+// 메일·알림톡·파트너스 공지 완료 + 30일 이후 첫 결제부터 새 가격을 낸다. 변경 시각만으로 적용하지 않는다.
 model SubscriptionPriceChange {
   id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   planId           String   @db.Uuid
@@ -1647,8 +1647,40 @@ model SubscriptionPriceChange {
   changedByAdminId String?  @db.Uuid
 
   plan SubscriptionPlan @relation(fields: [planId], references: [id])
+  notices SubscriptionPriceNotice[]
 
   @@index([planId, changedAt])
+}
+
+enum SubscriptionPriceNoticeChannel {
+  MAIL
+  ALIMTALK
+  PARTNERS_NOTICE
+}
+
+enum SubscriptionPriceNoticeStatus {
+  PENDING
+  FAILED
+  SENT
+}
+
+// 가격 고지의 완료 근거. 대기/예약/공지 초안은 완료가 아니다. 같은 구독을 재시작해도 이전 고지를 재사용하지 않는다.
+// 실제 공급자·발송 연결은 미가용: 현재 서비스/API에는 SENT를 만드는 경로가 없다. 완료 데이터를 추정해 채우지 않는다.
+model SubscriptionPriceNotice {
+  id                    String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subscriptionId        String @db.Uuid
+  subscriptionStartedAt DateTime @db.Timestamptz(3)
+  priceChangeId         String @db.Uuid
+  channel               SubscriptionPriceNoticeChannel
+  status                SubscriptionPriceNoticeStatus @default(PENDING)
+  completedAt           DateTime? @db.Timestamptz(3)
+  deliveryReference     String?
+
+  subscription SellerSubscription @relation(fields: [subscriptionId], references: [id])
+  priceChange SubscriptionPriceChange @relation(fields: [priceChangeId], references: [id])
+
+  @@unique([subscriptionId, subscriptionStartedAt, priceChangeId, channel], map: "SubscriptionPriceNotice_receipt_key")
+  @@index([priceChangeId])
 }
 
 enum SellerSubscriptionStatus {
@@ -1695,6 +1727,7 @@ model SellerSubscription {
   plan        SubscriptionPlan      @relation(fields: [planId], references: [id])
   pendingPlan SubscriptionPlan?     @relation("PendingPlan", fields: [pendingPlanId], references: [id])
   payments    SubscriptionPayment[]
+  priceNotices SubscriptionPriceNotice[]
 
   @@unique([sellerId, id])
   @@index([status, nextChargeAt])

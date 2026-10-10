@@ -75,7 +75,7 @@ export default function RefundsPage() {
         <div className="col" style={{ gap: 20 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
             {[
-              ["검토 대기", counts ? `${counts.REQUESTED}건` : "-", "refund-requested"],
+              ["승인 대기 (최고관리자)", counts ? `${counts.REQUESTED}건` : "-", "refund-requested"],
               ["이번 달 환불 완료", sum ? `${sum.monthRefunded.count}건 · ${won(sum.monthRefunded.amount)}` : "-", "refund-month"],
               ["거절", counts ? `${counts.REJECTED}건` : "-", "refund-rejected"],
               ["평균 처리", sum ? (sum.avgProcessDays === null ? "-" : `${sum.avgProcessDays.toFixed(1)}일`) : "-", "refund-avg"],
