@@ -56,15 +56,15 @@ export const ADMIN_MENU: AdminGroup[] = [
     key: "settings",
     label: "설정",
     items: [
-      // 설정(MA-080대)은 최고관리자만(MASTER 결정 2026-10-04). 서버 조회 API는 platform.read지만 메뉴·주소는 막는다
-      { label: "플랫폼 기본 정책", href: "/admin/settings/policy", perm: "system.manage", ready: true, sub: "시스템" },
+      // 확정 설정 화면은 platform.read로 보고, 변경은 각 화면과 API의 최고관리자 권한으로 막는다.
+      { label: "플랫폼 기본 정책", href: "/admin/settings/policy", ready: true, sub: "시스템" },
       { label: "알림 채널", href: "/admin/settings/notifications", perm: "system.manage", sub: "시스템" },
-      { label: "점검 모드", href: "/admin/settings/maintenance", perm: "system.manage", ready: true, sub: "시스템" },
-      { label: "도우미 설정", href: "/admin/settings/assistant", perm: "system.manage", ready: true, sub: "시스템" },
-      { label: "파비콘 · 공유 카드", href: "/admin/settings/branding", perm: "system.manage", ready: true, sub: "시스템" },
-      { label: "발송 단가", href: "/admin/settings/messages", perm: "system.manage", ready: true, sub: "시스템" },
+      { label: "점검 모드", href: "/admin/settings/maintenance", ready: true, sub: "시스템" },
+      { label: "도우미 설정", href: "/admin/settings/assistant", ready: true, sub: "시스템" },
+      { label: "파비콘 · 공유 카드", href: "/admin/settings/branding", ready: true, sub: "시스템" },
+      { label: "발송 단가", href: "/admin/settings/messages", ready: true, sub: "시스템" },
       { label: "외부 서비스 연동", href: "/admin/settings/vendors", perm: "vendor.manage", ready: true, sub: "시스템" },
-      { label: "플랫폼 정보", href: "/admin/settings/platform-business", perm: "system.manage", ready: true, sub: "시스템" },
+      { label: "플랫폼 정보", href: "/admin/settings/platform-business", ready: true, sub: "시스템" },
       { label: "관리자 계정", href: "/admin/accounts", perm: "admin.manage", ready: true, sub: "관리자" },
       { label: "역할별 권한", href: "/admin/accounts/roles", perm: "admin.manage", ready: true, sub: "관리자" },
       // 로그 추적은 CS에 숨긴다(audit.read)
