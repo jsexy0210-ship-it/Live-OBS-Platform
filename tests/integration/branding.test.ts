@@ -1,5 +1,6 @@
 import sharp from "sharp";
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as settingsGet } from "../../app/api/admin/branding/route";
 import { PUT as textPut } from "../../app/api/admin/branding/[target]/route";
@@ -12,6 +13,7 @@ import { loginAdmin, loginSeller } from "../../lib/server/auth/login";
 import { brandingMetadata } from "../../lib/server/branding/metadata";
 import { renderBrandingCard } from "../../lib/server/branding/card";
 import { prisma } from "../../lib/server/db";
+import { BRANDING_DEFAULTS, ogImageSource } from "../../lib/server/branding/service";
 import { PASSWORD, adminCredentials, createAdmin, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
 // 화면 head 값(generateMetadata)은 요청 헤더를 읽는다: 테스트에서는 요청 헤더를 정해 준다
@@ -62,6 +64,11 @@ describe("브랜딩 권한", () => {
       expect((await remove(faviconDelete, "admin", c)).status).toBe(403);
       expect((await upload(ogPut, "seller", await png(1200, 630), c)).status).toBe(403);
       expect((await putText("seller", { title: "바꿈", description: null }, c)).status).toBe(403);
+      expect((await upload(faviconPut, "landing", icon, c)).status).toBe(403);
+      expect((await upload(ogPut, "landing", await png(1200, 630), c)).status).toBe(403);
+      expect((await putText("landing", { title: "바꿈", description: null }, c)).status).toBe(403);
+      expect((await remove(faviconDelete, "landing", c)).status).toBe(403);
+      expect((await remove(ogDelete, "landing", c)).status).toBe(403);
       expect((await previewGet(new Request(`${BASE}/api/admin/branding/card-preview?title=a`, { headers: { ...H, cookie: c } }))).status).toBe(403);
       const s = await settings(c);
       expect(s.status).toBe(200);
@@ -70,6 +77,8 @@ describe("브랜딩 권한", () => {
     const seller = await sellerCookie();
     expect((await upload(faviconPut, "seller", icon, seller)).status).toBe(401);
     expect((await putText("seller", { title: "판매자", description: null }, seller)).status).toBe(401);
+    expect((await putText("landing", { title: "파트너스 변경", description: null }, seller)).status).toBe(401);
+    expect((await upload(faviconPut, "landing", icon, "")).status).toBe(401);
     expect((await settings(seller)).status).toBe(401);
     expect((await upload(faviconPut, "seller", icon, "")).status).toBe(401);
     const cross = await faviconPut(
@@ -77,6 +86,7 @@ describe("브랜딩 권한", () => {
       ctx("admin"),
     );
     expect(cross.status).toBe(403);
+    expect((await upload(faviconPut, "landing", icon, superCookie, { origin: "https://evil.example" })).status).toBe(403);
     expect(await db.siteBranding.count()).toBe(0);
     expect(await db.auditLog.count({ where: { action: { startsWith: "branding." } } })).toBe(0);
     expect((await (await settings(superCookie)).json()).canEdit).toBe(true);
@@ -86,6 +96,102 @@ describe("브랜딩 권한", () => {
     const c = await adminCookie("SUPER_ADMIN");
     expect((await upload(faviconPut, "shop", await png(32, 32), c)).status).toBe(404);
     expect((await publicFavicon(new Request(`${BASE}/api/branding/x/favicon`), ctx("x"))).status).toBe(404);
+  });
+});
+
+describe("소개 랜딩 브랜딩", () => {
+  it("기본 심볼·카드와 저장한 파비콘·OG는 소개에만 반영되고 공개 캐시·되돌리기·감사 기록을 유지한다", async () => {
+    const c = await adminCookie("SUPER_ADMIN");
+    const targets = (await (await settings(c)).json()).targets;
+    expect(targets.map((t: { target: string }) => t.target)).toEqual(["admin", "seller", "landing"]);
+    const initial = await brandingMetadata("landing");
+    expect(initial).toMatchObject({ title: BRANDING_DEFAULTS.landing.title, description: BRANDING_DEFAULTS.landing.description });
+    expect(initial.icons).toMatchObject({ icon: [{ url: "http://test.on-aircue.com/branding/streamshop-symbol.png", type: "image/png" }] });
+    const symbol = await readFile("public/branding/streamshop-symbol.png");
+    expect(createHash("sha256").update(symbol).digest("hex")).toBe("e6ea28c6674ce1431f7fbfecb548f23c98060152186c0fc8ddff7f44bd6cfc0d");
+    const defaultCardUrl = targets.find((t: { target: string }) => t.target === "landing").ogImage.url;
+    const defaultCard = await publicOg(new Request(`${BASE}${defaultCardUrl}`), ctx("landing"));
+    expect(defaultCard.status).toBe(200);
+    expect(defaultCard.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect(await sharp(Buffer.from(await defaultCard.arrayBuffer())).metadata()).toMatchObject({ width: 1200, height: 630, format: "png" });
+
+    expect((await putText("landing", { title: "소개 공유 제목", description: "소개 공유 설명" }, c)).status).toBe(200);
+    const icon = await png(64, 64, "#80E8C1");
+    const card = await png(1200, 630, "#4F46E5");
+    expect((await upload(faviconPut, "landing", icon, c)).status).toBe(200);
+    const stored = await (await upload(ogPut, "landing", card, c)).json();
+    expect(await db.siteBranding.findUniqueOrThrow({ where: { target: "landing" } })).toMatchObject({ ogTitle: "소개 공유 제목", ogDescription: "소개 공유 설명" });
+    const meta = await brandingMetadata("landing");
+    expect(meta).toMatchObject({
+      title: "소개 공유 제목", description: "소개 공유 설명",
+      icons: { icon: [{ url: `http://test.on-aircue.com${stored.branding.favicon.url}`, type: "image/png" }] },
+      openGraph: { title: "소개 공유 제목", images: [{ url: `http://test.on-aircue.com${stored.branding.ogImage.url}`, width: 1200, height: 630 }] },
+    });
+    const favicon = await publicFavicon(new Request(`${BASE}${stored.branding.favicon.url}`), ctx("landing"));
+    expect(favicon.status).toBe(200);
+    expect(favicon.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(favicon.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect(Buffer.from(await favicon.arrayBuffer())).toEqual(icon);
+    const uploadedCard = await publicOg(new Request(`${BASE}${stored.branding.ogImage.url}`), ctx("landing"));
+    expect(uploadedCard.headers.get("etag")).toBe(`"${createHash("sha256").update(card).digest("hex").slice(0, 12)}"`);
+    expect(Buffer.from(await uploadedCard.arrayBuffer())).toEqual(card);
+    expect((await publicOg(new Request(`${BASE}/api/branding/landing/og?v=old`), ctx("landing"))).headers.get("cache-control")).toBe("public, max-age=300");
+    expect(await db.siteBranding.count({ where: { target: { in: ["admin", "seller"] } } })).toBe(0);
+    expect((await brandingMetadata("admin")).title).toBe("ONQ 마스터 관리자");
+    expect((await brandingMetadata("seller")).title).toBe("ONQ 파트너스 관리자");
+
+    expect((await remove(faviconDelete, "landing", c)).status).toBe(200);
+    expect((await remove(ogDelete, "landing", c)).status).toBe(200);
+    expect((await publicFavicon(new Request(`${BASE}${stored.branding.favicon.url}`), ctx("landing"))).status).toBe(404);
+    expect((await brandingMetadata("landing")).icons).toEqual(initial.icons);
+    const reset = (await (await settings(c)).json()).targets.find((t: { target: string }) => t.target === "landing");
+    expect(reset.ogImage.uploaded).toBe(false);
+    expect(reset.ogImage.url).not.toBe(defaultCardUrl);
+    const generated = await publicOg(new Request(`${BASE}${reset.ogImage.url}`), ctx("landing"));
+    expect(await sharp(Buffer.from(await generated.arrayBuffer())).metadata()).toMatchObject({ width: 1200, height: 630 });
+    expect((await putText("landing", { title: null, description: null }, c)).status).toBe(200);
+    expect((await brandingMetadata("landing")).title).toBe(BRANDING_DEFAULTS.landing.title);
+    expect(await db.auditLog.count({ where: { targetId: "landing", action: { startsWith: "branding." } } })).toBe(6);
+  });
+
+  it("DB 조회 실패에도 소개의 기존 제목·설명·기본 심볼과 생성 카드 소스를 유지한다", async () => {
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const unavailable = vi.spyOn(prisma.siteBranding, "findUnique").mockRejectedValueOnce(new Error("fixture unavailable"));
+      const meta = await brandingMetadata("landing");
+      unavailable.mockRestore();
+      expect(meta).toMatchObject({ title: BRANDING_DEFAULTS.landing.title, description: BRANDING_DEFAULTS.landing.description });
+      expect(meta.icons).toMatchObject({ icon: [{ url: "http://test.on-aircue.com/branding/streamshop-symbol.png" }] });
+      const imageUnavailable = vi.spyOn(db.siteBranding, "findUnique").mockRejectedValueOnce(new Error("fixture unavailable"));
+      const source = await ogImageSource(db, "landing");
+      imageUnavailable.mockRestore();
+      expect(source).toMatchObject({ kind: "generated", title: BRANDING_DEFAULTS.landing.title });
+      const publicUnavailable = vi.spyOn(prisma.siteBranding, "findUnique").mockRejectedValueOnce(new Error("fixture unavailable"));
+      const fallbackCard = (meta.openGraph as { images: { url: string }[] }).images[0].url;
+      const response = await publicOg(new Request(fallbackCard), ctx("landing"));
+      publicUnavailable.mockRestore();
+      expect(response.status).toBe(200);
+      expect(await sharp(Buffer.from(await response.arrayBuffer())).metadata()).toMatchObject({ width: 1200, height: 630, format: "png" });
+    } finally {
+      vi.restoreAllMocks();
+      errorLog.mockRestore();
+    }
+  });
+
+  it("신뢰 프록시의 소개 파비콘·OG 절대 주소는 실제 dev 요청 호스트를 따른다", async () => {
+    const originalHeaders = reqHeaders.value;
+    vi.stubEnv("TRUSTED_PROXY_HOPS", "1");
+    try {
+      reqHeaders.value = new Headers({ host: "0.0.0.0:3000", "x-forwarded-host": "dev.on-aircue.com", "x-forwarded-proto": "https" });
+      const meta = await brandingMetadata("landing");
+      expect(meta.icons).toMatchObject({ icon: [{ url: "https://dev.on-aircue.com/branding/streamshop-symbol.png" }] });
+      expect(JSON.stringify(meta.openGraph)).toContain("https://dev.on-aircue.com/api/branding/landing/og?v=");
+      expect(JSON.stringify(meta)).not.toContain("test.on-aircue.com");
+      expect(JSON.stringify(meta)).not.toContain("0.0.0.0");
+    } finally {
+      reqHeaders.value = originalHeaders;
+      vi.unstubAllEnvs();
+    }
   });
 });
 

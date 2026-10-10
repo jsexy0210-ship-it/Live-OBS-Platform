@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { prisma } from "../db";
-import { brandingMeta, defaultFavicon } from "./service";
+import { BRANDING_DEFAULTS, brandingMeta, defaultFavicon, generatedCardVersion, ogImageUrl, type BrandingMeta } from "./service";
 import { requestOrigin } from "./siteUrl";
 import type { BrandingTarget } from "./store";
 
@@ -10,26 +10,28 @@ import type { BrandingTarget } from "./store";
 // 화면마다 정한 title이 있으면 그 값이 우선한다(Next 메타데이터 병합).
 export async function brandingMetadata(target: BrandingTarget): Promise<Metadata> {
   const origin = requestOrigin(await headers());
-  let meta;
+  let meta: BrandingMeta;
   try {
     meta = await brandingMeta(prisma, target);
   } catch (e) {
     console.error(e);
-    return {};
+    if (target !== "landing") return {};
+    meta = { ...BRANDING_DEFAULTS.landing, favicon: null, image: { url: ogImageUrl(target, generatedCardVersion(BRANDING_DEFAULTS.landing.title, target)), width: 1200, height: 630 } };
   }
   const description = meta.description ?? undefined;
   const fallback = defaultFavicon(target);
+  const iconUrl = (url: string) => target === "landing" && origin ? new URL(url, origin).toString() : url;
   const images = origin ? [{ url: new URL(meta.image.url, origin).toString(), width: meta.image.width, height: meta.image.height }] : undefined;
   return {
     title: meta.title,
     description,
     // 올린 파비콘이 없으면 기본 ONQ 아이콘을 직접 넣는다(파일 기반 app/icon.*에 기대지 않음)
     icons: meta.favicon
-      ? { icon: [{ url: meta.favicon.url, type: meta.favicon.type }], shortcut: [{ url: meta.favicon.url, type: meta.favicon.type }], apple: [{ url: meta.favicon.url }] }
+      ? { icon: [{ url: iconUrl(meta.favicon.url), type: meta.favicon.type }], shortcut: [{ url: iconUrl(meta.favicon.url), type: meta.favicon.type }], apple: [{ url: iconUrl(meta.favicon.url) }] }
       : {
-          icon: [{ url: fallback.url, type: fallback.type, sizes: "32x32" }],
-          shortcut: [{ url: fallback.url, type: fallback.type }],
-          apple: [{ url: fallback.appleUrl, sizes: "180x180" }],
+          icon: [{ url: iconUrl(fallback.url), type: fallback.type, ...(target !== "landing" && { sizes: "32x32" }) }],
+          shortcut: [{ url: iconUrl(fallback.url), type: fallback.type }],
+          apple: [{ url: iconUrl(fallback.appleUrl), ...(target !== "landing" && { sizes: "180x180" }) }],
         },
     openGraph: { type: "website", title: meta.title, description, ...(images && { images }) },
     twitter: { card: "summary_large_image", title: meta.title, description, ...(images && { images: images.map((i) => i.url) }) },

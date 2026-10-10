@@ -3,9 +3,15 @@ import { crc32, deflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { checkFavicon, checkOgImage, detectImage, readBodyLimited } from "../../lib/server/branding/image";
 import { requestCardSite, requestOrigin } from "../../lib/server/branding/siteUrl";
+import { renderBrandingCard } from "../../lib/server/branding/card";
 
 const png = (w: number, h: number) => sharp({ create: { width: w, height: h, channels: 4, background: "#ff6600" } }).png().toBuffer();
 const jpg = (w: number, h: number) => sharp({ create: { width: w, height: h, channels: 3, background: "#123456" } }).jpeg().toBuffer();
+
+it("소개 기본 공유 카드는 승인 심볼을 읽어 1200×630 PNG로 렌더한다", async () => {
+  const card = await renderBrandingCard("landing", "스트림샵 | 쇼핑몰부터 라이브 판매까지", "dev.on-aircue.com");
+  expect(await sharp(card).metadata()).toMatchObject({ width: 1200, height: 630, format: "png" });
+});
 
 // PNG 한 장을 담은 ICO(Vista 이후 형식). ICO는 받지 않는다는 확인에만 쓴다
 function icoOf(inner: Buffer, side = 32): Buffer {

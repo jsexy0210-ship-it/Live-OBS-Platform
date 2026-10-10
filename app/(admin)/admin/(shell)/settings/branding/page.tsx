@@ -7,12 +7,12 @@ import { Modal } from "../../../../../../components/admin-ui/Modal";
 import { AdminTopbar } from "../../../_components/AdminShell";
 import { adminApi, failMessage } from "../../../_components/api";
 
-// 사이트 설정 > 파비콘 · 공유 카드(대표님 요구 2026-10-04). 마스터 관리자·파트너스 관리자 화면을 따로 정한다.
+// 사이트 설정 > 파비콘 · 공유 카드(대표님 요구 2026-10-04). 마스터 관리자·파트너스 관리자·소개 랜딩 화면을 따로 정한다.
 // 파비콘: PNG를 고르면 미리 보고 「바꾸기」로 올린다. 공유 카드: 제목·설명 + 이미지(제목으로 만들기 / 직접 올리기), 저장 전에 미리보기.
 // 바꾸기는 최고관리자만(서버가 canEdit으로 알려 줌). 다른 역할은 지금 값만 본다.
 // API: GET /api/admin/branding, PUT /api/admin/branding/{target}, PUT·DELETE …/favicon, …/og-image, GET …/card-preview?title=
 
-type Target = "admin" | "seller";
+type Target = "admin" | "seller" | "landing";
 type Branding = {
   target: Target;
   title: string | null;
@@ -27,6 +27,7 @@ type Settings = { canEdit: boolean; targets: Branding[] };
 const TABS: { key: Target; label: string; help: string }[] = [
   { key: "admin", label: "마스터 관리자", help: "마스터 관리자 화면에 적용됩니다." },
   { key: "seller", label: "파트너스 관리자", help: "모든 파트너스 관리자 화면에 동일하게 적용됩니다." },
+  { key: "landing", label: "소개 랜딩", help: "소개 랜딩 화면에 적용됩니다." },
 ];
 const TITLE_MAX = 60;
 const DESCRIPTION_MAX = 160;
@@ -77,7 +78,7 @@ export default function BrandingSettingsPage() {
       <main className="main">
         <PageHead title="파비콘 · 공유 카드" />
         <div className="msg msg-info" role="note">
-          <span>마스터 관리자와 파트너스 관리자에 각각 넣습니다 · 대상을 고른 뒤 바꿔 주십시오</span>
+          <span>마스터 관리자·파트너스 관리자·소개 랜딩에 각각 넣습니다 · 대상을 고른 뒤 바꿔 주십시오</span>
         </div>
         <div className="seg" role="radiogroup" aria-label="적용할 화면" style={{ alignSelf: "flex-start" }}>
           {TABS.map((t) => (
@@ -338,9 +339,9 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
             <span className="t-l2 fw6">브라우저 탭에서 이렇게 보입니다</span>
             <span className="card row t-c1" style={{ gap: 8, padding: "8px 12px", alignSelf: "flex-start", boxShadow: "none" }}>
               <img src={previewIcon} alt="" width={14} height={14} />
-              {t === "admin" ? "ONQ 마스터 관리자" : "ONQ 파트너스 관리자"} <span className="c-alt">· 브라우저 탭</span>
+              {t === "landing" ? "스트림샵" : t === "admin" ? "ONQ 마스터 관리자" : "ONQ 파트너스 관리자"} <span className="c-alt">· 브라우저 탭</span>
             </span>
-            <span className="t-c1 c-alt">{t === "admin" ? "마스터 관리자 로그인과 관리자 화면 탭에 보입니다." : "파트너스 관리자 로그인과 관리자 화면 탭에 보입니다."}</span>
+            <span className="t-c1 c-alt">{t === "landing" ? "소개 랜딩의 브라우저 탭에 보입니다." : t === "admin" ? "마스터 관리자 로그인과 관리자 화면 탭에 보입니다." : "파트너스 관리자 로그인과 관리자 화면 탭에 보입니다."}</span>
           </div>
           {canEdit && (
             <div className="row" style={{ gap: 8 }}>

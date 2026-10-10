@@ -19,6 +19,7 @@ const heavyFonts = Promise.all(([800, 900] as const).map(async (weight) => {
 const DESIGN: Record<BrandingTarget, { label: string; subtitle: string; from: string; to: string }> = {
   admin: { label: "마스터 관리자", subtitle: "파트너스 · 구독 · 결제 · 운영 상태 통합 관리", from: "#0f766e", to: "#134e4a" },
   seller: { label: "파트너스 관리자", subtitle: "방송 주문대기와 쇼핑몰 통합 운영", from: "#5b3df6", to: "#3b1fb8" },
+  landing: { label: "서비스 소개", subtitle: "쇼핑몰부터 라이브 판매까지", from: "#4F46E5", to: "#171A24" },
 };
 
 export function renderBrandingCard(target: BrandingTarget, title: string, site: string): Promise<Buffer> {
@@ -27,8 +28,11 @@ export function renderBrandingCard(target: BrandingTarget, title: string, site: 
   if (!png) {
     png = (async () => {
       const design = DESIGN[target];
+      const landing = target === "landing";
+      const brand = landing ? "StreamShop" : "ONQ";
+      const symbol = landing ? `data:image/png;base64,${(await readFile(path.join(process.cwd(), "public/branding/streamshop-symbol.png"))).toString("base64")}` : null;
       const fonts = [
-        ...await loadOgFontFiles(`${title}${design.subtitle}${design.label}ONQ Q${site}OnAirCue`),
+        ...await loadOgFontFiles(`${title}${design.subtitle}${design.label}${brand} Q${site}OnAirCue`),
         ...await heavyFonts,
       ];
       const card = h(
@@ -52,8 +56,8 @@ export function renderBrandingCard(target: BrandingTarget, title: string, site: 
         h(
           "div",
           { style: { display: "flex", alignItems: "center", gap: 14 } },
-          h("div", { style: { width: 40, height: 40, borderRadius: 12, background: "#fff", color: design.from, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 22 } }, "Q"),
-          h("span", { style: { fontWeight: 800, fontSize: 26, letterSpacing: "-0.01em" } }, "ONQ"),
+          symbol ? h("img", { src: symbol, width: 40, height: 40, style: { objectFit: "contain" } }) : h("div", { style: { width: 40, height: 40, borderRadius: 12, background: "#fff", color: design.from, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 22 } }, "Q"),
+          h("span", { style: { fontWeight: 800, fontSize: 26, letterSpacing: "-0.01em" } }, brand),
           h("span", { style: { fontSize: 18, opacity: 0.85, marginLeft: 4 } }, design.label),
         ),
         h(
@@ -62,7 +66,7 @@ export function renderBrandingCard(target: BrandingTarget, title: string, site: 
           h("span", { style: { fontWeight: 800, fontSize: 64, lineHeight: 1.15, letterSpacing: "-0.02em", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" } }, title),
           h("span", { style: { fontSize: 28, lineHeight: 1.4, opacity: 0.9, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" } }, design.subtitle),
         ),
-        h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 22, opacity: 0.8 } }, h("span", null, site), h("span", null, "OnAirCue")),
+        h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 22, opacity: 0.8 } }, h("span", null, site), h("span", null, landing ? "StreamShop" : "OnAirCue")),
         h("div", { style: { position: "absolute", right: -120, bottom: -160, width: 420, height: 420, borderRadius: 210, background: "rgba(255,255,255,0.08)" } }),
       );
       const response = new ImageResponse(card, { width: OG_WIDTH, height: OG_HEIGHT, fonts });
