@@ -13,7 +13,7 @@ const badge = (n: number) => (n > 0 ? <b className="shop-badge" aria-hidden="tru
 const cartLabel = (n: number) => (n > 0 ? `장바구니 (${n}개)` : "장바구니");
 
 type Category = { id: string; name: string; children: { id: string; name: string }[] };
-type Props = { slug: string; shopName: string; loggedIn: boolean; nickname?: string | null; categories?: Category[]; signupOpen?: boolean };
+type Props = { slug: string; shopName: string; loggedIn: boolean; nickname?: string | null; categories?: Category[]; signupOpen?: boolean; liveBar?: React.ReactNode };
 
 function Icon({ d }: { d: string }) {
   return (
@@ -34,7 +34,7 @@ const ICON = {
 };
 
 // 구매자 쇼핑몰 머리(띠·로고·검색·장바구니·카테고리)와 휴대폰 카테고리 서랍·아래 고정 바. 「전체 상품」 뒤에 쇼핑몰의 대분류 카테고리를 붙이고, 「전체 카테고리」 버튼이나 머리 줄에 마우스를 올리면(키보드 포커스도) 대분류·소분류 펼침 판이 열린다. 서랍에는 소분류까지 보인다.
-export default function ShopChrome({ slug, shopName, loggedIn, nickname, categories = [], signupOpen = true }: Props) {
+export default function ShopChrome({ slug, shopName, loggedIn, nickname, categories = [], signupOpen = true, liveBar }: Props) {
   const { confirm } = useConfirm();
   const base = `/shop/${encodeURIComponent(slug)}`;
   const path = usePathname() ?? "";
@@ -200,6 +200,7 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname, categor
             </div>
           </div>
         </div>
+        {liveBar}
         <nav
           className="shop-cats"
           aria-label="카테고리"
@@ -221,6 +222,8 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname, categor
                 {c.label}
               </Link>
             ))}
+            <Link href={base}>인기 카드</Link>
+            <Link href={`${base}/help`}>공지 · 이용안내</Link>
           </div>
           {panel && categories.length > 0 && (
             <div id="shop-catpanel" className="shop-catpanel">
@@ -250,6 +253,8 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname, categor
               {c.label}
             </Link>
           ))}
+          <Link href={base}>인기 카드</Link>
+          <Link href={`${base}/help`}>공지 · 이용안내</Link>
         </nav>
       </header>
 

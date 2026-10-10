@@ -77,6 +77,10 @@ body {
   font-size: 12px;
   line-height: 32px;
 }
+/* SH-001 모바일: 머리 → LIVE → 카테고리. PC는 기존 카테고리 뒤 위치를 유지한다. */
+.shop-head { display:flex; flex-direction:column; }
+.shop-head > .live-bar { order:1; }
+@media(max-width:767px) { .shop-head > .live-bar { order:0; } }
 .shop-util .shop-wrap {
   display: flex;
   justify-content: flex-start;
@@ -838,12 +842,13 @@ body {
     display: inline-flex;
   }
   .shop-top {
-    border-bottom: 1px solid var(--wds-line-solid-normal);
+    border-bottom: 0;
   }
   .shop-top .shop-wrap {
     gap: 4px;
     height: 52px;
     padding: 0 16px;
+    border-bottom: 1px solid var(--wds-line-solid-normal);
   }
   .shop-app a.shop-brand {
     flex: 1;

@@ -9,6 +9,7 @@ export type ProductCardData = {
   soldOut: boolean;
   thumbnailUrl?: string | null;
   isLive?: boolean; // 지금 방송에서 주문된 상품
+  unitLabel?: string | null;
   // 평점·리뷰 수·예상 적립(상품 목록·홈 API가 주는 값. 없으면 그 줄을 그리지 않는다)
   rating?: number | null;
   reviewCount?: number;
@@ -51,6 +52,7 @@ export function ProductCard({ p, href, children }: { p: ProductCardData; href?: 
         ) : (
           <strong>{won(p.price)}</strong>
         )}
+        {p.unitLabel && <span className="pc-unit">{p.unitLabel}</span>}
       </p>
       {reward > 0 && (
         <p className="pc-reward">
