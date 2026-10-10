@@ -83,7 +83,7 @@ test("로그 추적: 실제 조회 DTO 뒤 합성 IP·기기/빈 값을 목록·
     let responseRows: number | null = null;
     try {
       const [response] = await Promise.all([
-        page.waitForResponse((r) => new URL(r.url()).pathname === "/api/admin/audit-logs" && r.request().method() === "GET"),
+        page.waitForResponse((r) => new URL(r.url()).pathname === "/api/admin/audit-logs" && r.request().method() === "GET", { timeout: 5000 }),
         page.goto("/admin/logs"),
       ]);
       browserStatus = response.status();
@@ -93,22 +93,37 @@ test("로그 추적: 실제 조회 DTO 뒤 합성 IP·기기/빈 값을 목록·
       expect(responseRows).toBe(3);
       await expect(page.getByRole("columnheader", { name: "IP · 기기", exact: true })).toBeVisible();
     } catch (error) {
-      const me = await page.request.get("/api/admin/me");
-      const { role } = await me.json() as { role?: string };
-      const pathname = new URL(page.url()).pathname;
-      console.info("MA-070 목록 실패 경계", {
-        width, page: ["/admin", "/admin/logs", "/admin/login"].includes(pathname) ? pathname : "other",
-        api: "/api/admin/audit-logs", browserStatus, responseRows, roleStatus: me.status(),
-        role: ["SUPER_ADMIN", "OPERATIONS", "CS", "READ_ONLY"].includes(role ?? "") ? role : "unavailable",
-        loading: await page.locator('[aria-busy="true"]').count(),
-        error: await page.getByText("로그를 불러오지 못했습니다.", { exact: true }).count(),
-        noAccess: await page.getByTestId("admin-no-access").count(),
-        tables: await page.locator(".main .tbl").count(), headers: await page.locator(".main .tbl thead th").count(),
-        connectionHeader: await page.getByRole("columnheader", { name: "IP · 기기", exact: true }).count(),
-        rows: await page.getByTestId("audit-row").count(),
-      });
+      let roleStatus: number | null = null;
+      let role: string | undefined;
+      try {
+        const me = await page.request.get("/api/admin/me", { timeout: 2000 });
+        roleStatus = me.status();
+        role = (await me.json() as { role?: string }).role;
+      } catch {
+        // 역할 조회가 실패해도 화면 구조 진단과 원래 단언 실패는 보존한다.
+      }
+      try {
+        const pathname = new URL(page.url()).pathname;
+        console.info("MA-070 목록 실패 경계", {
+          width, page: ["/admin", "/admin/logs", "/admin/login"].includes(pathname) ? pathname : "other",
+          api: "/api/admin/audit-logs", browserStatus, responseRows, roleStatus,
+          role: ["SUPER_ADMIN", "OPERATIONS", "CS", "READ_ONLY"].includes(role ?? "") ? role : "unavailable",
+          loading: await page.locator('[aria-busy="true"]').count(),
+          error: await page.getByText("로그를 불러오지 못했습니다.", { exact: true }).count(),
+          noAccess: await page.getByTestId("admin-no-access").count(),
+          tables: await page.locator(".main .tbl").count(), headers: await page.locator(".main .tbl thead th").count(),
+          connectionHeader: await page.getByRole("columnheader", { name: "IP · 기기", exact: true }).count(),
+          rows: await page.getByTestId("audit-row").count(),
+        });
+      } catch {
+        console.info("MA-070 보조 진단 미확보", { width, browserStatus, responseRows });
+      }
       // 실패 화면의 실데이터·계정·입력값은 가리고 구조/헤더/오류만 기존 PNG lane에 남긴다.
-      await page.screenshot({ path: `tests/e2e/screenshots/MA-070-connection-failure-${width}.png`, fullPage: true, mask: [page.locator(".gnb"), page.locator(".tbl tbody"), page.locator("input")] });
+      try {
+        await page.screenshot({ path: `tests/e2e/screenshots/MA-070-connection-failure-${width}.png`, fullPage: true, timeout: 5000, mask: [page.locator(".gnb"), page.locator(".tbl tbody"), page.locator("input")] });
+      } catch {
+        console.info("MA-070 실패 PNG 미확보", { width });
+      }
       throw error;
     }
     const items = page.getByTestId("audit-row");
