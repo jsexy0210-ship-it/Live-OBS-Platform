@@ -68,6 +68,8 @@ describe("목록·읽음·상태", () => {
     expect(JSON.stringify(csList.body)).not.toMatch(/targetRoles|dedupeKey/);
     // 읽기 전용은 전 역할 알림만 본다
     expect((await list(viewer.cookie)).body.items.map((x: { id: string }) => x.id)).toEqual([info]);
+    expect((await readAll(viewer.cookie)).status).toBe(200);
+    expect((await list(viewer.cookie)).body.unreadCount).toBe(0);
     expect((await read(viewer.cookie, urgent)).status).toBe(404);
     expect((await setStatus(viewer.cookie, info, { status: "RESOLVED" })).status).toBe(403);
 
@@ -80,6 +82,14 @@ describe("목록·읽음·상태", () => {
     expect((await list(ops.cookie)).body.unreadCount).toBe(0);
     expect((await list(cs.cookie, "?severity=INFO")).body.items.map((x: { id: string }) => x.id)).toEqual([info]);
     expect((await list(cs.cookie, "?kind=BROADCAST_DOWN")).body.items.map((x: { id: string }) => x.id)).toEqual([urgent]);
+    expect((await list(cs.cookie, "?status=OPEN,IN_PROGRESS&severity=URGENT,INFO")).body.items.map((x: { id: string }) => x.id)).toEqual([urgent, info]);
+    expect((await list(cs.cookie, `?seller=${encodeURIComponent(s.seller.shopName)}`)).body.items.map((x: { id: string }) => x.id)).toEqual([urgent]);
+    expect((await list(viewer.cookie, `?seller=${encodeURIComponent(s.seller.shopName)}`)).body.items).toEqual([]);
+    expect((await list(cs.cookie, "?seller=unmatched-shop")).body).toMatchObject({ items: [], counts: { OPEN: 2, IN_PROGRESS: 0, RESOLVED: 0 }, unreadCount: 1 });
+    expect((await list(cs.cookie, "?status=&severity=")).body.items.map((x: { id: string }) => x.id)).toEqual([urgent, info]);
+    for (const [qs, error] of [["?status=OPEN,X", "invalid_status"], ["?severity=INFO,X", "invalid_severity"], [`?seller=${"x".repeat(81)}`, "invalid_seller"]]) {
+      expect((await list(cs.cookie, qs)).body.error).toBe(error);
+    }
     for (const [qs, error] of [["?status=X", "invalid_status"], ["?severity=X", "invalid_severity"], ["?assignee=x", "invalid_assignee"], ["?cursor=bad", "invalid_cursor"]] as const) {
       expect((await list(cs.cookie, qs)).body.error).toBe(error);
     }
@@ -117,6 +127,9 @@ describe("목록·읽음·상태", () => {
     expect(p2.body.items).toHaveLength(3);
     expect(p2.body.nextCursor).toBeNull();
     expect(new Set([...p1.body.items, ...p2.body.items].map((x: { id: string }) => x.id)).size).toBe(53);
+    const filtered = await list(cs.cookie, `?status=OPEN,IN_PROGRESS&severity=INFO,WARNING&cursor=${encodeURIComponent(p1.body.nextCursor)}`);
+    expect(filtered.body.items.map((item: { id: string }) => item.id)).toEqual(p2.body.items.map((item: { id: string }) => item.id));
+    expect(filtered.body.counts).toEqual({ OPEN: 53, IN_PROGRESS: 0, RESOLVED: 0 });
   });
 });
 
