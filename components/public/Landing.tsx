@@ -90,7 +90,7 @@ export function Landing({ plans, pricingStatus }: { plans: LandingPlan[]; pricin
       <nav className={styles.nav} aria-label="주요 메뉴"><a href="#features">주요 기능</a><a href="#how-it-works">시작하는 방법</a><a href="#pricing">요금 안내</a><a href="#faq">자주 묻는 질문</a></nav>
       <div className={styles.headerActions}><Link href="/seller/login" className={styles.login}>로그인</Link><Link href={SIGNUP} className={styles.headerCta}>시작하기 <span aria-hidden="true">↗</span></Link></div>
     </header>
-    <main id="main-content">
+    <main id="main-content" tabIndex={-1}>
       <section className={styles.hero}>
         <div className={styles.eyebrow}><span className={styles.mintDot} /> LIVE COMMERCE, CONNECTED</div>
         <h1>당신의 쇼핑몰이,<br /><span>라이브가 되는 순간.</span></h1>

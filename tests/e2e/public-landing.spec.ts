@@ -26,8 +26,23 @@ test("PF-001 요금 안내 문구가 실제 이용권 이름이나 상태를 반
   expect(pricingIntro([], "unavailable")).toBe("지금 가입할 수 있는 이용권이 없어요.");
 });
 
-test("PF-001 모바일 FAQ는 키보드로 열고 닫을 수 있다", async ({ page }) => {
+test("PF-001 모바일 본문 진입·FAQ 키보드와 모션 감소 설정을 지원한다", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.goto("/about");
+  const start = page.getByRole("link", { name: "스트림샵 시작하기" }).first();
+  await expect(start).toHaveCSS("transition-duration", "0.18s, 0.18s");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(start).toHaveCSS("transition-duration", "0s");
+  await expect(start).toHaveCSS("animation-name", "none");
+  await expect(start).toHaveCSS("scroll-behavior", "auto");
+  await page.keyboard.press("Tab");
+  const skipLink = page.getByRole("link", { name: "본문 바로가기" });
+  await expect(skipLink).toBeFocused();
+  await expect(skipLink).toBeInViewport();
+  await skipLink.press("Enter");
+  await expect(page).toHaveURL(/\/about#main-content$/);
+  await expect(page.locator("#main-content")).toBeFocused();
   await page.goto("/about");
   const faq = page.locator("#faq details").first();
   const summary = faq.locator("summary");
