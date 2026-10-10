@@ -1,4 +1,5 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import * as subscriptionClock from "../../lib/server/billing/subscription";
 import { GET as catProductsGet, PUT as catProductsPut } from "../../app/api/seller/categories/[categoryId]/products/route";
 import { PUT as settingsPut } from "../../app/api/seller/display/settings/route";
 import { GET as homeRoute } from "../../app/api/shop/[slug]/home/route";
@@ -11,7 +12,7 @@ import { ORDER_ERROR_MESSAGES_FORMAL } from "../../lib/server/orders/messages";
 import { createProduct, updateProduct } from "../../lib/server/products/manage";
 import { markOrderPaid } from "../../lib/server/queue/service";
 import { createCategory, listCategoryProducts, reorderCategoryProducts, setProductCategories } from "../../lib/server/shop-category/service";
-import { getDisplay, setListSort, setSections } from "../../lib/server/shop-display/service";
+import { getDisplay, publicHome, setListSort, setSections } from "../../lib/server/shop-display/service";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createLoginBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
@@ -59,6 +60,52 @@ async function paidOrder(s: Awaited<ReturnType<typeof seller>>, optionId: string
 }
 
 describe("새 진열 영역", () => {
+  it("신상품은 DB 시각 기준 7일 경계를 포함하고 미래·숨김·다른 판매자를 제외한 뒤 품절 정렬과 개수를 적용한다", async () => {
+    const s = await seller();
+    const other = await seller();
+    const now = new Date();
+    const clock = vi.spyOn(subscriptionClock, "dbNow").mockResolvedValue(now);
+    try {
+      const edge = await made(s.ctx, "7일 경계");
+      const old = await made(s.ctx, "7일 초과");
+      const future = await made(s.ctx, "미래 등록");
+      const hidden = await made(s.ctx, "숨긴 상품", { status: "HIDDEN" });
+      const out = await made(s.ctx, "품절 신상품", { status: "SOLD_OUT" });
+      const fresh = await made(s.ctx, "최근 상품");
+      await made(other.ctx, "다른 쇼핑몰");
+      for (const [id, at] of [[edge.id, now.getTime() - 7 * 86_400_000], [old.id, now.getTime() - 7 * 86_400_000 - 1], [future.id, now.getTime() + 1], [hidden.id, now.getTime() - 1], [out.id, now.getTime() - 2], [fresh.id, now.getTime() - 3]] as const) await db.product.update({ where: { id }, data: { createdAt: new Date(at) } });
+      await setSections(db, s.ctx, { sections: [{ kind: "NEW", title: "신상품", itemCount: 2 }] });
+      await setListSort(db, s.ctx, { soldOutLast: true });
+      const names = async () => (await publicHome(db, s.seller.slug))!.sections[0].products.map(p => p.name);
+      expect(await names()).toEqual(["최근 상품", "7일 경계"]);
+      await setSections(db, s.ctx, { sections: [{ kind: "NEW", title: "신상품", itemCount: 3 }] });
+      expect(await names()).toEqual(["최근 상품", "7일 경계", "품절 신상품"]);
+      await setListSort(db, s.ctx, { hideSoldOut: true });
+      expect(await names()).toEqual(["최근 상품", "7일 경계"]);
+      // 전체 상품의 최신순 계약은 7일로 제한하지 않는다.
+      expect(await listNames(s.seller.slug, "sort=new")).toContain("7일 초과");
+    } finally { clock.mockRestore(); }
+  });
+
+  it("최근 방송 opt-in은 마지막 종료 방송의 취소되지 않은 상품만 쓰며 진행 중 방송과 기존 홈 계약을 확대하지 않는다", async () => {
+    const s = await seller();
+    const a = await made(s.ctx, "방송 상품");
+    const b = await made(s.ctx, "취소 상품");
+    const ended = await db.broadcastSession.create({ data: { sellerId: s.seller.id, status: "ENDED", startedAt: new Date("2026-01-01"), endedAt: new Date("2026-01-02") } });
+    await paidOrder(s, a.options[0].id, 1, ended.id);
+    const cancelled = await paidOrder(s, b.options[0].id, 1, ended.id);
+    await db.queueItem.update({ where: { id: cancelled.id }, data: { status: "CANCELLED" } });
+    await setSections(db, s.ctx, { sections: [{ kind: "LIVE", title: "방송 중 상품" }] });
+    expect((await publicHome(db, s.seller.slug))!.sections).toEqual([]);
+    expect((await publicHome(db, s.seller.slug, { recentBroadcastProducts: true }))!.sections[0].products.map(p => p.name)).toEqual(["방송 상품"]);
+    const live = await db.broadcastSession.create({ data: { sellerId: s.seller.id, status: "LIVE" } });
+    expect((await publicHome(db, s.seller.slug, { recentBroadcastProducts: true }))!.sections).toEqual([]);
+    await paidOrder(s, b.options[0].id, 1, live.id);
+    expect((await publicHome(db, s.seller.slug, { recentBroadcastProducts: true }))!.sections[0].products.map(p => p.name)).toEqual(["취소 상품"]);
+    const other = await seller();
+    expect((await publicHome(db, other.seller.slug, { recentBroadcastProducts: true }))!.sections).toEqual([]);
+  });
+
   it("방송 상품(지금 방송 주문)·베스트(결제 완료 판매량)·할인 중(이벤트)·명예의 전당(HIT 카드)을 홈에 보이고, 종류마다 하나씩만", async () => {
     const s = await seller();
     const a = await made(s.ctx, "A");
@@ -120,12 +167,13 @@ describe("진열 옵션", () => {
     const c = await made(s.ctx, "C");
     await made(other.ctx, "X", { status: "SOLD_OUT" });
     await made(other.ctx, "Y");
-    for (const [p, t] of [
-      [a, "2026-01-03"],
-      [b, "2026-01-02"],
-      [c, "2026-01-01"],
+    const now = await subscriptionClock.dbNow(db);
+    for (const [p, days] of [
+      [a, 1],
+      [b, 2],
+      [c, 3],
     ] as const) {
-      await db.product.update({ where: { id: p.id }, data: { createdAt: new Date(`${t}T00:00:00Z`) } });
+      await db.product.update({ where: { id: p.id }, data: { createdAt: new Date(now.getTime() - days * 86_400_000) } });
     }
     expect(await listNames(s.seller.slug)).toEqual(["A", "B", "C"]);
     expect(await setListSort(db, s.ctx, { soldOutLast: true })).toMatchObject({ ok: true, value: { listSort: "new", options: { soldOutLast: true, hideSoldOut: false, liveFirst: false } } });

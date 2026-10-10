@@ -2,6 +2,9 @@ import { expect, request, test, type Page } from "@playwright/test";
 import { jpeg, png } from "../unit/shopContentFixtures";
 import { submitSellerLogin } from "./sellerLogin";
 import { fillDateTime } from "./dateInput";
+import { PrismaClient, type Product } from "@prisma/client";
+import { hash } from "@node-rs/argon2";
+import { randomBytes } from "node:crypto";
 
 // SA-064 홈 배너 관리·SA-065 이벤트 팝업 관리(파트너스 관리자, 설정 › 배너 · 팝업)와 구매자 쇼핑몰 홈 표시.
 // 실행 시작·끝에 데모 쇼핑몰의 배너·팝업을 모두 지운다.
@@ -28,6 +31,89 @@ test.beforeAll(async () => {
   await clearAll();
 });
 test.afterAll(clearAll);
+
+test("SH-001 홈: 소유 폐기 fixture의 방송·추천·7일 신상품·종료·빈 상태를 세 폭에서 확인한다", async ({ page }) => {
+  const db = new PrismaClient();
+  const suffix = randomBytes(5).toString("hex");
+  const slug = `home-final-${suffix}`;
+  let sellerId: string | undefined;
+  const names = ["방송 상품", "추천 상품", "취소된 방송 상품", "품절 상품"];
+  try {
+    const seller = await db.seller.create({ data: { slug, shopName: "홈 진열 검수", status: "ACTIVE", approvedAt: new Date(), trialEndsAt: new Date(Date.now() + 10 * 86_400_000) } });
+    sellerId = seller.id;
+    const grade = await db.memberGrade.create({ data: { sellerId, displayName: "일반", sortOrder: 0 } });
+    const buyer = await db.buyerMember.create({ data: { sellerId, gradeId: grade.id, loginId: `home-${suffix}@example.test`, passwordHash: await hash(randomBytes(20).toString("hex")), name: "홈 검수", phone: "01000000000", ciHash: suffix, identityVerifiedAt: new Date(), birthDate: new Date("1990-01-01"), broadcastNickname: "검수 구매자" } });
+    const session = await db.broadcastSession.create({ data: { sellerId, title: "홈 진열 방송" } });
+    const products: Product[] = [];
+    for (let i = 0; i < names.length; i++) {
+      const p = await db.product.create({ data: { sellerId, name: names[i], price: 1000 * (i + 1), status: i === 3 ? "SOLD_OUT" : "ON_SALE", sortOrder: i, createdAt: new Date(Date.now() - (i === 1 ? 8 * 86_400_000 : 60_000)) } });
+      products.push(p);
+      const option = await db.productOption.create({ data: { sellerId, productId: p.id, name: "기본", stock: i === 3 ? 0 : 10 } });
+      const order = await db.order.create({ data: { sellerId, buyerMemberId: buyer.id, orderNo: i + 1, broadcastNicknameSnapshot: "검수 구매자", totalAmount: p.price, status: "PAID" } });
+      const item = await db.orderItem.create({ data: { sellerId, orderId: order.id, productId: p.id, optionId: option.id, productNameSnapshot: p.name, optionNameSnapshot: "기본", unitPrice: p.price, quantity: 1 } });
+      await db.queueItem.create({ data: { sellerId, orderId: order.id, orderItemId: item.id, broadcastSessionId: session.id, status: i === 2 ? "CANCELLED" : "WAITING", position: i, receivedAt: new Date(Date.now() + i), nicknameSnapshot: "검수 구매자", productLabel: p.name, quantity: 1 } });
+    }
+    // 추천은 최신순과 다른, 판매자가 저장한 순서다.
+    await db.shopDisplayItem.createMany({ data: [1, 0, 3].map((i, sortOrder) => ({ sellerId: seller.id, productId: products[i].id, sortOrder })) });
+    for (const [i, kind] of (["LIVE", "RECOMMENDED", "NEW"] as const).entries()) await db.shopDisplaySection.create({ data: { sellerId, kind, title: ["방송 중 상품", "추천 상품", "신상품"][i], itemCount: 4, sortOrder: i } });
+    await db.shopNotice.create({ data: { sellerId, kind: "NOTICE", title: "홈 진열 공지", body: "검수 공지", isPublished: true, isPinned: true } });
+    const base = `/shop/${slug}`;
+    const response = await page.request.get(`/api/shop/${slug}/home`);
+    expect(response.status()).toBe(200);
+    const actual = await response.json() as { sections: { kind: string; products: { name: string }[] }[] };
+    expect(actual.sections.map(s => s.kind)).toEqual(["LIVE", "RECOMMENDED", "NEW"]);
+    expect(actual.sections.find(s => s.kind === "RECOMMENDED")!.products.map(p => p.name)).toEqual([names[1], names[0], names[3]]);
+    expect(actual.sections.find(s => s.kind === "NEW")!.products.map(p => p.name)).not.toContain(names[1]);
+    const mutations: string[] = [];
+    page.on("request", request => {
+      if (new URL(request.url()).pathname.startsWith(`/api/shop/${slug}/`) && !["GET", "HEAD"].includes(request.method())) mutations.push(request.method());
+    });
+    for (const state of ["live", "ended", "empty"] as const) {
+      if (state === "ended") await db.broadcastSession.update({ where: { id: session.id }, data: { status: "ENDED", endedAt: new Date() } });
+      if (state === "empty") await db.product.updateMany({ where: { sellerId }, data: { status: "HIDDEN" } });
+      for (const width of [1440, 1024, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto(base);
+        if (state === "empty") {
+          await expect(page.getByText("아직 올라온 상품이 없어요.", { exact: true })).toBeVisible();
+          await expect(page.locator(".shop-home .pc")).toHaveCount(0);
+        } else {
+          await expect(page.locator(".shop-home-kind-live h2")).toHaveText(state === "live" ? "방송 중 상품" : "최근 방송 상품");
+          await expect(page.locator(".shop-home-kind-recommended .pc-name")).toHaveText([names[1], names[0], names[3]]);
+          await expect(page.locator(".shop-home-kind-live .pc-name")).not.toContainText([names[2]]);
+          await expect(page.locator(".shop-home-kind-new .pc-name")).not.toContainText([names[1]]);
+          await expect(page.locator(".shop-home-kind-new .pc")).toHaveCount(3);
+          await expect(page.locator(".shop-home-kind-recommended .pc-out")).toHaveCount(1);
+          await expect(page.locator(".shop-home-kind-new .shop-more")).toHaveAttribute("href", `${base}/products?sort=new`);
+          if (state === "live") await expect(page.locator(".live-bar")).toBeVisible();
+          else await expect(page.locator(".live-bar")).toHaveCount(0);
+          await expect(page.locator(".shop-home .pc-name").first()).toHaveAttribute("href", new RegExp(`^${base}/products/`));
+        }
+        if (width === 390) await expect(page.locator(".shop-home-notices")).toBeHidden();
+        else await expect(page.locator(".shop-home-notices")).toContainText("홈 진열 공지");
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        // 모바일 공지 영역은 바로 위에서 숨김 계약을 검증했다. 상품·진열 제목은 계속 측정한다.
+        const measured = page.locator(width === 390 ? ".shop-home .pc-name,.shop-home .shop-sec:not(.shop-home-notices) .shop-sec-head h2" : ".shop-home .pc-name,.shop-home .shop-sec-head h2");
+        await expect(measured).toHaveCount((state === "empty" ? 1 : 12) + (width === 390 ? 0 : 1));
+        const rects = await measured.evaluateAll(nodes => nodes.map(node => { const r = node.getBoundingClientRect(); return { width: r.width, left: r.left, right: r.right }; }));
+        for (const rect of rects) { expect(rect.width).toBeGreaterThan(0); expect(rect.left).toBeGreaterThanOrEqual(0); expect(rect.right).toBeLessThanOrEqual(width); }
+        await page.screenshot({ path: `${SHOT}/SH-001-home-${state}-${width}.png`, fullPage: true });
+      }
+    }
+    expect(mutations).toEqual([]); // 세션 API 시작·종료, 장바구니·찜·외부 영상은 실행하지 않는다.
+  } finally {
+    if (sellerId) {
+      const where = { sellerId };
+      await db.queueItem.deleteMany({ where }); await db.orderItem.deleteMany({ where }); await db.order.deleteMany({ where });
+      await db.broadcastSession.deleteMany({ where }); await db.shopNotice.deleteMany({ where });
+      await db.shopDisplayItem.deleteMany({ where }); await db.shopDisplaySection.deleteMany({ where });
+      await db.productOption.deleteMany({ where }); await db.product.deleteMany({ where });
+      await db.buyerMember.deleteMany({ where }); await db.memberGrade.deleteMany({ where });
+      await db.seller.delete({ where: { id: sellerId } });
+    }
+    await db.$disconnect();
+  }
+});
 
 async function ownerOpen(page: Page, path: string) {
   await page.goto(`/seller/login?next=${encodeURIComponent(path)}`);
