@@ -7,12 +7,14 @@ import { hashPassword } from "../../lib/server/auth/password";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 import type { AuditDetail, AuditRow } from "../../app/(admin)/admin/_components/auditLogs";
 import type { InquiryCounts, InquiryRow } from "../../app/(admin)/admin/_components/inquiries";
+import { NOTIFY_EVENTS } from "../../lib/server/admin/notificationSettings";
 
 // 마스터 관리자 카페24식 틀: 청록 GNB·LNB, 역할별 메뉴 노출 차이, 로그인 → 홈 진입, 준비 중 화면.
 // 마스터 관리자 계정은 폐기용 테스트 DB(이름이 _test로 끝남)에 실행마다 새로 만든다.
 const password = randomBytes(12).toString("base64url");
 const run = randomBytes(4).toString("hex");
-const emails = { super: `shell-super-${run}@example.com`, cs: `shell-cs-${run}@example.com` };
+const emails = { super: `shell-super-${run}@example.com`, cs: `shell-cs-${run}@example.com`, viewer: `shell-viewer-${run}@example.com` };
+let privateAlertId: string;
 
 test.beforeAll(async () => {
   const db = new PrismaClient({ datasources: { db: { url: assertTestDatabaseUrl(process.env.DATABASE_URL) } } });
@@ -22,8 +24,10 @@ test.beforeAll(async () => {
       data: [
         { email: emails.super, passwordHash, name: "대표", role: "SUPER_ADMIN" },
         { email: emails.cs, passwordHash, name: "상담", role: "CS" },
+        { email: emails.viewer, passwordHash, name: "조회", role: "READ_ONLY" },
       ],
     });
+    privateAlertId = (await db.adminAlert.create({ data: { kind: "INFRA_ALERT", severity: "URGENT", title: "역할별 알림 조회 확인", linkPath: "/admin/support/inquiries", targetRoles: ["SUPER_ADMIN"] } })).id;
   } finally {
     await db.$disconnect();
   }
@@ -39,6 +43,129 @@ async function login(page: Page, email: string) {
 
 const gnb = (page: Page) => page.getByRole("navigation", { name: "주 메뉴" });
 const lnb = (page: Page) => page.getByRole("complementary", { name: "마스터 관리자 메뉴" });
+
+test("알림 센터: 실제 조회 계약 뒤 합성 요약·규칙·빈 상태를 세 폭에서 확인한다", async ({ page }) => {
+  await login(page, emails.super);
+  const actual = await page.request.get("/api/admin/alerts");
+  expect(actual.status()).toBe(200);
+  const actualBody = await actual.json();
+  expect(actualBody.items.some((item: { id: string }) => item.id === privateAlertId)).toBe(true);
+  for (const status of ["OPEN", "IN_PROGRESS", "RESOLVED"]) expect(typeof actualBody.counts[status]).toBe("number");
+  const settings = await page.request.get("/api/admin/settings/notifications");
+  expect(settings.status()).toBe(200);
+  expect((await settings.json()).routes).toHaveLength(10);
+  const mutations: string[] = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if ((path.startsWith("/api/admin/alerts") || path === "/api/admin/settings/notifications" || path.startsWith("/api/admin/impersonation")) && !["GET", "HEAD"].includes(request.method())) mutations.push(request.method());
+  });
+  const positive = { id: "00000000-0000-4000-8000-000000000091", kind: "BROADCAST_DOWN", severity: "URGENT", title: "방송 화면 연결 확인", body: "연결 상태를 확인해 주십시오. ".repeat(8) as string | null, linkPath: "/admin/support/inquiries", shopName: "검수 파트너스" as string | null, occurredAt: "2026-10-10T00:00:00.000Z", assignee: { id: "00000000-0000-4000-8000-000000000092", name: "운영 담당" } as { id: string; name: string } | null, status: "OPEN", unread: true };
+  const nullable = { ...positive, body: null, shopName: null, assignee: null };
+  let items = [positive];
+  let lastQuery = new URLSearchParams();
+  await page.route("**/api/admin/alerts**", async (route) => {
+    const request = route.request();
+    if (new URL(request.url()).pathname !== "/api/admin/alerts" || request.method() !== "GET") return route.abort();
+    lastQuery = new URL(request.url()).searchParams;
+    await route.fulfill({ json: { items, counts: { OPEN: 7, IN_PROGRESS: 4, RESOLVED: 2 }, unreadCount: 9, nextCursor: null } });
+  });
+  await page.route("**/api/admin/settings/notifications", async (route) => {
+    if (route.request().method() !== "GET") return route.abort();
+    await route.fulfill({ json: { routes: NOTIFY_EVENTS } });
+  });
+  for (const state of ["positive", "null", "empty"] as const) {
+    items = state === "positive" ? [positive] : state === "null" ? [nullable] : [];
+    for (const width of [1440, 1024, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      const [response] = await Promise.all([
+        page.waitForResponse((r) => new URL(r.url()).pathname === "/api/admin/alerts" && r.request().method() === "GET", { timeout: 5000 }),
+        page.goto("/admin/notifications"),
+      ]);
+      expect(response.status()).toBe(200);
+      await expect(page.getByRole("heading", { name: "알림 센터", exact: true })).toBeVisible();
+      for (const [status, count] of [["OPEN", 7], ["IN_PROGRESS", 4], ["RESOLVED", 2]] as const) await expect(page.getByTestId(`notification-count-${status}`)).toHaveText(`${count}건`);
+      await expect(page.locator(".notification-rule")).toHaveCount(8);
+      const keys = ["broadcast_payment_fail_streak", "broadcast_overlay_reconnect_fail", "platform_outage", "payment_callback_stall", "reward_payout_failed", "subscription_payment_failed", "application_overdue_48h", "live_payout_switch_on"];
+      const labels = ["URGENT", "WARNING", "INFO"].flatMap((severity) => NOTIFY_EVENTS.filter((event) => event.severity === severity && keys.includes(event.eventKey)).map((event) => event.label));
+      expect(labels).toHaveLength(8);
+      await expect(page.locator(".notification-rule")).toHaveText(labels);
+      await expect(page.getByRole("link", { name: "채널 · 수신자 설정", exact: true })).toHaveAttribute("href", "/admin/settings/notifications");
+      await expect(page.locator(".notification-trends strong")).toHaveText(Array(4).fill("집계 준비 중"));
+      if (state === "empty") {
+        await expect(page.getByText("검색 조건에 맞는 알림이 없습니다.", { exact: true })).toBeVisible();
+        await expect(page.getByTestId("notification-row")).toHaveCount(0);
+      } else {
+        const table = page.getByRole("region", { name: "알림 목록", exact: true }).locator("table");
+        await expect(table.getByRole("columnheader")).toHaveText(["심각도", "유형", "파트너스", "내용", "발생", "담당", "상태", "관리"]);
+        await expect(table.locator("thead th[scope=col]")).toHaveCount(8);
+        await expect(page.getByTestId("notification-row")).toContainText(state === "null" ? "공통" : "검수 파트너스");
+        await expect(page.getByTestId("notification-row")).toContainText(state === "null" ? "미배정" : "운영 담당");
+        const title = await page.getByTestId("notification-row").locator("strong").boundingBox();
+        expect(title && title.width > 0 && title.height > 0).toBe(true);
+        await table.locator(".notification-status").evaluate((element) => element.scrollIntoView({ block: "nearest", inline: "nearest" }));
+        await expect(table.locator(".notification-status")).toBeVisible();
+        await page.locator(".notification-table-scroll").first().evaluate((element) => { element.scrollLeft = 0; });
+      }
+      if (width === 390) await expect.poll(async () => { const box = await page.locator(".lnb").boundingBox(); return box ? box.x + box.width : Infinity; }).toBeLessThanOrEqual(0);
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+      if (process.env.E2E_SCREENSHOTS === "1") {
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.screenshot({ path: `tests/e2e/screenshots/MA-002-alerts-${state}-${width}.png`, fullPage: true });
+      }
+    }
+  }
+  items = [positive];
+  await page.goto("/admin/notifications");
+  await expect(page.getByTestId("notification-row")).toContainText(positive.title);
+  await expect(page.getByRole("combobox", { name: "유형", exact: true })).toHaveCount(1);
+  await page.getByLabel("유형", { exact: true }).selectOption("BROADCAST_DOWN");
+  items = [];
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page.getByText("검색 조건에 맞는 알림이 없습니다.", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("유형", { exact: true })).toHaveValue("BROADCAST_DOWN");
+  await expect(page.getByLabel("유형", { exact: true }).locator('option[value="BROADCAST_DOWN"]')).toHaveCount(1);
+  expect(lastQuery.get("kind")).toBe("BROADCAST_DOWN");
+  await page.getByRole("checkbox", { name: "해결됨", exact: true }).check();
+  await page.getByRole("checkbox", { name: "긴급", exact: true }).uncheck();
+  await page.getByPlaceholder("쇼핑몰 이름", { exact: true }).fill("검수 파트너스");
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await expect.poll(() => lastQuery.get("status")).toBe("OPEN,IN_PROGRESS,RESOLVED");
+  expect(lastQuery.get("severity")).toBe("WARNING,INFO");
+  expect(lastQuery.get("seller")).toBe("검수 파트너스");
+  await page.getByRole("button", { name: "초기화", exact: true }).click();
+  await expect.poll(() => lastQuery.get("status")).toBe("OPEN,IN_PROGRESS");
+  expect(lastQuery.get("severity")).toBe("URGENT,WARNING,INFO");
+  expect(lastQuery.has("seller")).toBe(false);
+  expect(lastQuery.has("kind")).toBe(false);
+  await expect(page.getByLabel("유형", { exact: true })).toHaveValue("");
+  expect(mutations).toEqual([]);
+});
+
+test("알림 센터: 조회 전용은 역할별 알림만 조회하고 개인 읽음과 상태 변경 권한을 구분한다", async ({ page }) => {
+  await login(page, emails.viewer);
+  const response = await page.request.get("/api/admin/alerts");
+  expect(response.status()).toBe(200);
+  expect((await response.json()).items.some((item: { id: string }) => item.id === privateAlertId)).toBe(false);
+  const mutations: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.startsWith("/api/admin/alerts") && !["GET", "HEAD"].includes(request.method())) mutations.push(request.method());
+  });
+  await page.route("**/api/admin/alerts**", (route) => route.request().method() === "GET" ? route.fulfill({ json: { items: [{ id: "00000000-0000-4000-8000-000000000093", kind: "INFRA_ALERT", severity: "INFO", title: "전체 역할 알림", body: null, linkPath: "/admin/support/inquiries", shopName: null, occurredAt: "2026-10-10T00:00:00.000Z", assignee: null, status: "OPEN", unread: true }], counts: { OPEN: 1, IN_PROGRESS: 0, RESOLVED: 0 }, unreadCount: 1, nextCursor: null } }) : route.abort());
+  await page.route("**/api/admin/settings/notifications", (route) => route.request().method() === "GET" ? route.fulfill({ json: { routes: NOTIFY_EVENTS } }) : route.abort());
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.goto("/admin/notifications");
+    await expect(page.getByTestId("notification-row")).toContainText("전체 역할 알림");
+    await expect(page.getByRole("button", { name: "모두 확인 처리", exact: true })).toBeEnabled();
+    await expect(page.locator(".notification-status")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "담당", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "채널 · 수신자 설정", exact: true })).toHaveCount(0);
+    if (width === 390) await expect.poll(async () => { const box = await page.locator(".lnb").boundingBox(); return box ? box.x + box.width : Infinity; }).toBeLessThanOrEqual(0);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+    if (process.env.E2E_SCREENSHOTS === "1") await page.screenshot({ path: `tests/e2e/screenshots/MA-002-alerts-readonly-${width}.png`, fullPage: true });
+  }
+  expect(mutations).toEqual([]);
+});
 
 test("로그 추적: 실제 조회 DTO 뒤 합성 IP·기기/빈 값을 목록·상세 세 폭에서 확인한다", async ({ page }) => {
   await login(page, emails.super);

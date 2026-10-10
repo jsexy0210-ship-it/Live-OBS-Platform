@@ -48,13 +48,14 @@ export async function createAdminAlert(db: PrismaClient | Prisma.TransactionClie
   return { created: false as const, id: cur?.id ?? null };
 }
 
-export type AdminAlertRejection = "invalid_status" | "invalid_severity" | "invalid_assignee" | "invalid_cursor" | "invalid_status_change";
+export type AdminAlertRejection = "invalid_status" | "invalid_severity" | "invalid_assignee" | "invalid_cursor" | "invalid_seller" | "invalid_status_change";
 
 export const ADMIN_ALERT_MESSAGES: Record<AdminAlertRejection, string> = {
   invalid_status: "상태를 다시 선택해 주십시오",
   invalid_severity: "심각도를 다시 선택해 주십시오",
   invalid_assignee: "담당자를 다시 선택해 주십시오",
   invalid_cursor: "목록을 다시 불러와 주십시오",
+  invalid_seller: "파트너스 검색어를 다시 입력해 주십시오",
   invalid_status_change: "상태를 다시 선택해 주십시오",
 };
 
@@ -72,28 +73,34 @@ function parseCursor(cursor: string | null | undefined): { ok: true; where: Pris
 
 const visible = (admin: AdminSessionContext): Prisma.AdminAlertWhereInput => ({ targetRoles: { has: admin.admin.role } });
 
-// MA-002: 알림 목록. 쿼리 status·severity·kind·assignee(me|none|관리자 id)·cursor. 발생 최신순 50건.
+// MA-002: 알림 목록. 쿼리 status·severity(각각 쉼표 구분 가능)·kind·seller(쇼핑몰 이름)·assignee(me|none|관리자 id)·cursor. 조건 적용 뒤 발생 최신순 50건.
 // → { items: [{ id, kind, severity, title, body, linkPath, sellerId, shopName, status, assignee: {id,name}|null, occurredAt, resolvedAt, unread }],
 //     counts: { OPEN, IN_PROGRESS, RESOLVED }(내가 볼 수 있는 알림 전체), unreadCount(안 읽은 알림 수), nextCursor }
 export async function listAdminAlerts(
   db: PrismaClient,
   admin: AdminSessionContext,
-  q: { status?: string | null; severity?: string | null; kind?: string | null; assignee?: string | null; cursor?: string | null },
+  q: { status?: string | null; severity?: string | null; kind?: string | null; assignee?: string | null; seller?: string | null; cursor?: string | null },
 ) {
   if (!adminCan(admin.admin.role, "platform.read")) throw forbidden();
-  if (q.status && !STATUSES.includes(q.status as AdminAlertStatus)) return { ok: false as const, reason: "invalid_status" as const };
-  if (q.severity && !SEVERITIES.includes(q.severity as AdminAlertSeverity)) return { ok: false as const, reason: "invalid_severity" as const };
+  const statuses = q.status ? q.status.split(",") as AdminAlertStatus[] : undefined;
+  const severities = q.severity ? q.severity.split(",") as AdminAlertSeverity[] : undefined;
+  if (statuses?.some((status) => !STATUSES.includes(status))) return { ok: false as const, reason: "invalid_status" as const };
+  if (severities?.some((severity) => !SEVERITIES.includes(severity))) return { ok: false as const, reason: "invalid_severity" as const };
+  const sellerTerm = q.seller?.trim() ?? "";
+  if (sellerTerm.length > 80) return { ok: false as const, reason: "invalid_seller" as const };
   if (q.assignee && q.assignee !== "me" && q.assignee !== "none" && !isUuid(q.assignee)) return { ok: false as const, reason: "invalid_assignee" as const };
   const c = parseCursor(q.cursor);
   if (!c.ok) return { ok: false as const, reason: "invalid_cursor" as const };
   const assignee: Prisma.AdminAlertWhereInput = !q.assignee ? {} : q.assignee === "none" ? { assignedAdminId: null } : { assignedAdminId: q.assignee === "me" ? admin.admin.id : q.assignee };
   const mine = visible(admin);
+  const filterSellerIds = sellerTerm ? (await db.seller.findMany({ where: { shopName: { contains: sellerTerm, mode: "insensitive" } }, select: { id: true } })).map((seller) => seller.id) : null;
   const rows = await db.adminAlert.findMany({
     where: {
       AND: [mine, assignee, c.where],
-      ...(q.status ? { status: q.status as AdminAlertStatus } : {}),
-      ...(q.severity ? { severity: q.severity as AdminAlertSeverity } : {}),
+      ...(statuses ? { status: { in: statuses } } : {}),
+      ...(severities ? { severity: { in: severities } } : {}),
       ...(q.kind ? { kind: q.kind } : {}),
+      ...(filterSellerIds ? { sellerId: { in: filterSellerIds } } : {}),
     },
     orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
     take: PAGE_SIZE + 1,
