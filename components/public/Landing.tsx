@@ -3,6 +3,9 @@ import Image from "next/image";
 import { StreamShopBrand } from "./StreamShopBrand";
 import landscapeHost from "../../public/landing/live-host-landscape-20261010.webp";
 import portraitHost from "../../public/landing/live-host-portrait-20261010.webp";
+import fpsScene from "../../public/landing/live-fps-20261011.webp";
+import tcgScene from "../../public/landing/live-tcg-20261011.webp";
+import { HeroSlides } from "./HeroSlides";
 import type { ReactNode } from "react";
 import { pricingIntro } from "./pricingCopy";
 import styles from "./Landing.module.css";
@@ -12,6 +15,11 @@ import styles from "./Landing.module.css";
 export type LandingPlan = { code: string; name: string; listPrice: number; salePrice: number; trialDays: number };
 const won = (value: number) => `${value.toLocaleString("ko-KR")}원`;
 const SIGNUP = "/seller/signup";
+const HERO_SLIDES = [
+  { id: "shopping", name: "쇼핑 방송", label: "쇼핑", image: landscapeHost, alt: "가상 한국인 성인 진행자가 머그를 소개하는 라이브커머스 방송 예시", position: "65% 45%" },
+  { id: "fps", name: "FPS 방송", label: "FPS", image: fpsScene, alt: "FPS 방송 장면을 바탕으로 가공한 보라색 장비의 인물과 무기 이미지", position: "50% 42%" },
+  { id: "tcg", name: "TCG 방송", label: "TCG", image: tcgScene, alt: "TCG 방송 장면을 바탕으로 가공한 손에 든 홀로 카드와 카드 팩 이미지", position: "50% 45%" },
+] as const;
 
 function Icon({ kind, className }: { kind: "arrow" | "play" | "shop" | "orders" | "screen" | "check" | "box"; className?: string }) {
   const paths = {
@@ -43,12 +51,10 @@ function BroadcastPreview() {
     <div className={styles.studio}>
       <aside className={styles.studioNav}><span className={styles.studioActive}><Icon kind="screen" /><span>방송</span></span><span><Icon kind="orders" /><span>주문</span></span><span><Icon kind="shop" /><span>상품</span></span></aside>
       <div className={styles.broadcast}>
-        <div className={styles.broadcastHeader}><span className={styles.liveBadge}>LIVE</span><span>오늘의 컬렉션을 만나는 시간</span><span className={styles.exampleLabel}>화면 예시</span></div>
-        <div className={styles.stage}>
-          <Image src={landscapeHost} alt="가상 한국인 성인 진행자가 머그를 소개하는 라이브커머스 방송 예시" fill sizes="(max-width: 760px) calc(100vw - 70px), (max-width: 1100px) 65vw, 720px" className={styles.stagePhoto} />
+        <HeroSlides slides={HERO_SLIDES} fallback={landscapeHost}>
           <span className={styles.stageCaption}>YOUR NEXT<br /><strong>FAVORITE</strong></span>
           <div className={styles.currentOrder}><span className={styles.mintDot} /><div><small>지금 진행 중</small><strong>별빛수집가 님의 주문</strong></div><span>컬렉션 박스 × 1</span></div>
-        </div>
+        </HeroSlides>
       </div>
       <aside className={styles.orderPanel}>
         <div className={styles.orderPanelTitle}><strong>주문대기</strong><span>샘플 3건</span></div>

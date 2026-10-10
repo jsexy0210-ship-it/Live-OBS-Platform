@@ -52,6 +52,16 @@
 .stagePhoto, .canvasPhoto { object-fit: cover; object-position: 65% 45%; }
 .stageCaption { color: white; text-shadow: 0 1px 8px #171a24b3; position: absolute; top: 26px; left: 25px; font-size: clamp(17px, 2vw, 27px); line-height: 1.15; letter-spacing: -1px; }
 .stageCaption strong { font-weight: 850; }
+.slidePhoto { animation: heroSlide .45s ease-out both; }
+@keyframes heroSlide { from { opacity: .5; transform: translateX(18px); } to { opacity: 1; transform: translateX(0); } }
+.slideControls { display: flex; align-items: center; gap: 5px; padding-top: 9px; }
+.slideControls button { min-height: 30px; padding: 4px 8px; border: 1px solid #ffffff30; border-radius: 6px; background: #292c39; color: white; font: inherit; font-size: 10px; cursor: pointer; white-space: nowrap; }
+.slideControls button:hover, .slideControls button[aria-pressed="true"] { background: #4f46e5; border-color: #a7a2ff; }
+.slideControls button:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+.slideControls button:disabled { opacity: .55; cursor: default; }
+.slideChoices { display: flex; gap: 4px; margin-right: auto; }
+.slideNote { display: block; margin-top: 6px; color: #bbbecd; font-size: 9px; line-height: 1.5; }
+.slideFailure { margin: 0; padding: 85px 18px; color: #373127; text-align: center; font-size: 13px; }
 .collectibles { position: absolute; inset: 0; }
 .cardBack, .cardFront { position: absolute; width: 114px; height: 156px; border-radius: 11px; top: 65px; left: 45%; box-shadow: 0 16px 20px #37312728; }
 .cardBack { transform: rotate(-19deg) translateX(-48px); background: #bbb2ee; border: 6px double #ece7ff; display: grid; place-items: center; color: #4f46e5; font-size: 75px; font-weight: 900; }

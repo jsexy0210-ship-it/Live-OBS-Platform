@@ -71,12 +71,15 @@ test("서비스 소개의 가입 신청은 파트너스 가입으로 간다", as
 
 test("PF-001 정본은 세 화면 폭과 모바일 가입·기능 진입을 지원한다", async ({ page }) => {
   const waitForPhotos = async () => {
+    const hero = page.getByRole("region", { name: "방송 예시 슬라이드" });
+    await hero.getByRole("button", { name: "쇼핑 방송 보기", exact: true }).click();
     const photos = page.getByAltText(/^가상 한국인 성인 진행자/);
     await expect(photos).toHaveCount(3);
     for (const photo of await photos.all()) {
       await photo.scrollIntoViewIfNeeded();
       await expect.poll(() => photo.evaluate((element) => element instanceof HTMLImageElement && element.complete && element.naturalWidth > 0)).toBe(true);
     }
+    await expect.poll(() => hero.locator("img").evaluate((image) => image.getAnimations().every((animation) => animation.playState === "finished"))).toBe(true);
     await page.evaluate(() => window.scrollTo(0, 0));
     const caption = await page.locator('[class*="wideCanvas"] [class*="canvasTitle"]').boundingBox();
     const order = await page.locator('[class*="wideCanvas"] [class*="canvasOrder"]').boundingBox();
@@ -105,6 +108,118 @@ test("PF-001 정본은 세 화면 폭과 모바일 가입·기능 진입을 지�
   await expect(page.locator("#faq summary")).toHaveCount(5);
   await page.getByRole("link", { name: "스트림샵 기능 자세히 보기" }).click();
   await expect(page).toHaveURL(/\/features$/);
+});
+
+test("PF-001 방송 예시 슬라이드는 수동 조작과 자동 전환의 접근성을 지원한다", async ({ page }) => {
+  await page.clock.install();
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.goto("/about");
+  const hero = page.getByRole("region", { name: "방송 예시 슬라이드" });
+  const selected = (name: string) => hero.getByRole("button", { name: `${name} 방송 보기`, exact: true });
+  await expect(selected("쇼핑")).toHaveAttribute("aria-pressed", "true");
+  await expect(hero.getByRole("button", { name: "방송 예시 자동 전환 일시정지", exact: true })).toBeEnabled();
+  await page.clock.runFor(6600);
+  await expect(selected("FPS")).toHaveAttribute("aria-pressed", "true");
+  await expect(hero.getByText("FPS 방송", { exact: true })).toBeVisible();
+  await hero.getByRole("button", { name: "방송 예시 자동 전환 일시정지", exact: true }).click();
+  await page.getByRole("link", { name: "스트림샵 시작하기", exact: true }).first().focus();
+  await page.mouse.move(0, 0);
+  await page.clock.runFor(7000);
+  await expect(selected("FPS")).toHaveAttribute("aria-pressed", "true");
+  const next = hero.getByRole("button", { name: "다음 방송 예시", exact: true });
+  await next.click();
+  await expect(selected("TCG")).toHaveAttribute("aria-pressed", "true");
+  await expect(hero.locator("img")).toHaveCSS("animation-duration", "0.45s");
+  await expect(hero.locator("img")).not.toHaveCSS("animation-name", "none");
+  await expect(next).toBeFocused();
+  await next.press("ArrowLeft");
+  await expect(selected("FPS")).toHaveAttribute("aria-pressed", "true");
+  await hero.getByRole("button", { name: "이전 방송 예시", exact: true }).press("Enter");
+  await expect(selected("쇼핑")).toHaveAttribute("aria-pressed", "true");
+  await selected("TCG").click();
+  await expect(selected("TCG")).toHaveAttribute("aria-pressed", "true");
+  await page.clock.runFor(7000);
+  await expect(selected("TCG")).toHaveAttribute("aria-pressed", "true");
+  await selected("쇼핑").click();
+  await hero.getByRole("button", { name: "방송 예시 자동 전환 재개", exact: true }).click();
+  await page.getByRole("link", { name: "스트림샵 시작하기", exact: true }).first().focus();
+  await page.mouse.move(0, 0);
+  await page.clock.runFor(6600);
+  await expect(selected("FPS")).toHaveAttribute("aria-pressed", "true");
+  await hero.hover();
+  await page.clock.runFor(7000);
+  await expect(selected("FPS")).toHaveAttribute("aria-pressed", "true");
+  await page.mouse.move(0, 0);
+  await selected("FPS").focus();
+  await page.clock.runFor(7000);
+  await expect(selected("FPS")).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("link", { name: "스트림샵 시작하기", exact: true }).first().focus();
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.clock.runFor(7000);
+  await expect(selected("FPS")).toHaveAttribute("aria-pressed", "true");
+  await page.evaluate(() => {
+    Reflect.deleteProperty(document, "visibilityState");
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(hero.getByRole("button", { name: "방송 예시 자동 전환 재개", exact: true })).toBeDisabled();
+  await expect(hero.locator("img")).toHaveCSS("animation-name", "none");
+  await expect(hero.locator("img")).toHaveCSS("animation-duration", "0s");
+  await page.clock.runFor(7000);
+  await expect(selected("FPS")).toHaveAttribute("aria-pressed", "true");
+  await selected("TCG").press("Space");
+  await expect(selected("TCG")).toHaveAttribute("aria-pressed", "true");
+  await expect(hero.locator("img")).toHaveCSS("animation-name", "none");
+});
+
+test("PF-001 FPS·TCG 예시는 세 폭에서 로드되고 이미지 실패 시 안전하게 대체된다", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/about");
+  const hero = page.getByRole("region", { name: "방송 예시 슬라이드" });
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    for (const name of ["FPS", "TCG"]) {
+      await hero.getByRole("button", { name: `${name} 방송 보기`, exact: true }).click();
+      await expect(hero.getByText(`${name} 방송`, { exact: true })).toBeVisible();
+      await expect(hero.locator("img")).toHaveAttribute("src", new RegExp(`live-${name.toLowerCase()}-20261011`));
+      await expect.poll(() => hero.locator("img").evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
+      await expect(hero.getByText(`${name} 방송 예시 · AI 이미지 · 상품과 주문 정보는 샘플이에요`, { exact: true })).toBeVisible();
+      await expect(page.locator("html")).toHaveJSProperty("scrollWidth", width);
+      await page.screenshot({ path: `tests/e2e/screenshots/PF-001-${name}-${width}.png`, fullPage: true });
+      if (width === 390) {
+        const bounds = await hero.locator("img").evaluate(async (image: HTMLImageElement) => {
+          image.scrollIntoView({ block: "center", behavior: "instant" });
+          if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+          await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+          const header = document.querySelector("header");
+          if (!header) throw new Error("소개 헤더가 없습니다");
+          const rect = image.getBoundingClientRect(), headerRect = header.getBoundingClientRect();
+          return { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right, headerTop: headerRect.top, headerBottom: headerRect.bottom, viewportHeight: innerHeight, viewportWidth: innerWidth };
+        });
+        expect(bounds.headerTop).toBe(0);
+        expect(bounds.top).toBeGreaterThanOrEqual(bounds.headerBottom);
+        expect(bounds.bottom).toBeLessThanOrEqual(bounds.viewportHeight);
+        expect(bounds.left).toBeGreaterThanOrEqual(0);
+        expect(bounds.right).toBeLessThanOrEqual(bounds.viewportWidth);
+        await page.screenshot({ path: `tests/e2e/screenshots/PF-001-${name}-390-viewport.png`, fullPage: false });
+      }
+    }
+  }
+  await page.route((url) => url.pathname === "/_next/image" && !!url.searchParams.get("url")?.includes("live-fps-20261011"), (route) => route.abort());
+  await page.reload();
+  await hero.getByRole("button", { name: "FPS 방송 보기", exact: true }).click();
+  await expect(hero.locator("img")).toHaveAttribute("src", /live-host-landscape/);
+  await expect.poll(() => hero.locator("img").evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
+  await expect(hero.getByText(/이미지를 불러오지 못해 쇼핑 방송 예시로 대신 보여줘요/)).toBeVisible();
+  await page.route((url) => url.pathname === "/_next/image" && !!url.searchParams.get("url")?.includes("live-host-landscape"), (route) => route.abort());
+  await page.reload();
+  await hero.getByRole("button", { name: "FPS 방송 보기", exact: true }).click();
+  await expect(hero.getByRole("status")).toHaveText("방송 예시 이미지를 불러오지 못했어요");
+  await expect(hero.locator("img")).toHaveCount(0);
+  await expect(page.getByText("방송 화면과 주문 관리 예시 · 상품과 주문 정보는 샘플이에요", { exact: true })).toBeVisible();
 });
 
 test("PF-007-1은 정본 헤더와 모바일 메뉴를 유지한다", async ({ page }) => {
