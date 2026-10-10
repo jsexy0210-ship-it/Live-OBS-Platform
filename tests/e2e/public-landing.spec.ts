@@ -10,7 +10,7 @@ import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 test("/about은 서비스 소개가 열리고 로그인·가입 진입이 있다", async ({ page }) => {
   await page.goto("/about");
   await expect(page).toHaveURL(/\/about$/);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("당신의 쇼핑몰이,라이브가 되는 순간.");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("당신의 쇼핑몰이,라이브가 되는 순간");
   await page.getByRole("link", { name: "로그인" }).first().click();
   await expect(page).toHaveURL(/\/seller\/login$/);
   await expect(page.locator(".login-card")).toBeVisible();
@@ -18,7 +18,7 @@ test("/about은 서비스 소개가 열리고 로그인·가입 진입이 있다
 
 test("PF-001 요금제 조회 실패에는 원인을 알려 주고 빈 이름 문구를 숨긴다", async ({ page }) => {
   await page.goto("/about");
-  await expect(page.getByRole("heading", { name: "지금 필요한 만큼, 내 판매에 맞는 플랜." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "지금 필요한 만큼, 내 판매에 맞는 플랜" })).toBeVisible();
   const intro = page.getByTestId("pricing-intro");
   const message = (await intro.textContent())?.trim() ?? "";
   expect(message).not.toContain("두 가지 이용권 · 중에 골라요.");
@@ -69,16 +69,30 @@ test("서비스 소개의 가입 신청은 파트너스 가입으로 간다", as
 });
 
 test("PF-001 정본은 세 화면 폭과 모바일 가입·기능 진입을 지원한다", async ({ page }) => {
+  const waitForPhotos = async () => {
+    const photos = page.getByAltText(/^가상 한국인 성인 진행자/);
+    await expect(photos).toHaveCount(3);
+    for (const photo of await photos.all()) {
+      await photo.scrollIntoViewIfNeeded();
+      await expect.poll(() => photo.evaluate((element) => element instanceof HTMLImageElement && element.complete && element.naturalWidth > 0)).toBe(true);
+    }
+    await page.evaluate(() => window.scrollTo(0, 0));
+  };
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/about");
+  await expect(page.locator("header").getByText("streamshop", { exact: true })).toBeVisible();
+  expect(await page.locator("main").textContent()).not.toMatch(/[↗✳]/);
+  await waitForPhotos();
   await page.screenshot({ path: "tests/e2e/screenshots/PF-001-1440.png", fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1440);
 
   await page.setViewportSize({ width: 1024, height: 768 });
+  await waitForPhotos();
   await page.screenshot({ path: "tests/e2e/screenshots/PF-001-1024.png", fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1024);
 
   await page.setViewportSize({ width: 390, height: 844 });
+  await waitForPhotos();
   await page.screenshot({ path: "tests/e2e/screenshots/PF-001-390.png", fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await expect(page.locator("header").getByRole("link", { name: "시작하기" })).toBeVisible();
