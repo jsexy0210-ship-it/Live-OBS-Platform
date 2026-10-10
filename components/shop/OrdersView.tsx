@@ -4,6 +4,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { formatDateTime } from "../../lib/client/format";
+import { addDays } from "../../lib/client/dateInput";
+import { DatePicker } from "../admin-ui/DatePicker";
 import MyMenu from "./MyMenu";
 import { call } from "./reviewShared";
 import { trackingUrl } from "./trackingLink";
@@ -83,16 +85,20 @@ export default function OrdersView({ slug }: { slug: string }) {
   const [view, setView] = useState<View>({ kind: "loading" });
   const [tab, setTab] = useState<Tab>("all");
   const [period, setPeriod] = useState<Period>("3m");
+  // 날짜 직접 고르기(보드: 시작 ~ 종료 + 「조회」). 칩을 누르면 칸이 그 기간으로 채워지고, 「조회」를 누르면 칸의 기간으로 읽는다
+  const [custom, setCustom] = useState<{ from: string; to: string } | null>(null);
+  const [draft, setDraft] = useState(() => range("3m"));
+  const [rangeErr, setRangeErr] = useState<string | null>(null);
   const [more, setMore] = useState(false);
   const [moreError, setMoreError] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const query = useCallback(
     (cursor?: string) => {
-      const r = range(period);
+      const r = custom ?? range(period);
       return `${api}?limit=${PAGE}&tab=${tab}&from=${r.from}&to=${r.to}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
     },
-    [api, tab, period],
+    [api, tab, period, custom],
   );
 
   const load = useCallback(async () => {
@@ -127,7 +133,14 @@ export default function OrdersView({ slug }: { slug: string }) {
 
   const ok = view.kind === "ok" ? view : null;
   const orders = ok?.orders ?? [];
-  const periodLabel = PERIODS.find((p) => p.key === period)!.label;
+  const periodLabel = custom ? "선택한 기간" : `최근 ${PERIODS.find((p) => p.key === period)!.label}`;
+  function applyRange() {
+    if (!draft.from || !draft.to) return setRangeErr("시작일과 종료일을 골라 주세요");
+    if (draft.to < draft.from) return setRangeErr("종료일이 시작일보다 앞이에요");
+    if (draft.to > addDays(draft.from, 365)) return setRangeErr("한 번에 1년까지만 볼 수 있어요");
+    setRangeErr(null);
+    setCustom({ ...draft });
+  }
 
   const filters = ok && (
     <>
@@ -140,22 +153,49 @@ export default function OrdersView({ slug }: { slug: string }) {
       </div>
       <div className="ol-period" role="group" aria-label="조회 기간">
         {PERIODS.map((p) => (
-          <button key={p.key} type="button" className={period === p.key ? "on" : ""} aria-pressed={period === p.key} onClick={() => setPeriod(p.key)}>
+          <button
+            key={p.key}
+            type="button"
+            className={!custom && period === p.key ? "on" : ""}
+            aria-pressed={!custom && period === p.key}
+            onClick={() => {
+              setCustom(null);
+              setRangeErr(null);
+              setPeriod(p.key);
+              setDraft(range(p.key));
+            }}
+          >
             {p.label}
           </button>
         ))}
+        <DatePicker tone="shop" aria-label="조회 시작일" value={draft.from} max={draft.to || undefined} onChange={(v) => setDraft((d) => ({ ...d, from: v }))} />
+        <span aria-hidden>~</span>
+        <DatePicker tone="shop" aria-label="조회 종료일" value={draft.to} min={draft.from || undefined} onChange={(v) => setDraft((d) => ({ ...d, to: v }))} />
+        <button type="button" onClick={applyRange}>
+          조회
+        </button>
       </div>
+      {rangeErr && (
+        <p className="cart-msg is-err" role="alert">
+          {rangeErr}
+        </p>
+      )}
     </>
   );
 
   const empty =
     ok && orders.length === 0 ? (
       ok.counts.all === 0 && tab === "all" ? (
-        period !== "1y" ? (
+        custom || period !== "1y" ? (
           <div className="cart-empty">
-            <h2>최근 {periodLabel} 주문이 없어요</h2>
+            <h2>{periodLabel} 주문이 없어요</h2>
             <p>기간을 늘려 보세요.</p>
-            <button className="btn btn-out" type="button" onClick={() => setPeriod("1y")}>
+            <button className="btn btn-out" type="button" onClick={() => {
+                setCustom(null);
+                setRangeErr(null);
+                setPeriod("1y");
+                setDraft(range("1y"));
+              }}>
               1년 보기
             </button>
           </div>
