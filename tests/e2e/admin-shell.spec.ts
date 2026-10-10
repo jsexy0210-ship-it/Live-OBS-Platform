@@ -114,10 +114,25 @@ test("로그 추적: 실제 조회 DTO 뒤 합성 IP·기기/빈 값을 목록·
           noAccess: await page.getByTestId("admin-no-access").count(),
           tables: await page.locator(".main .tbl").count(), headers: await page.locator(".main .tbl thead th").count(),
           connectionHeader: await page.getByRole("columnheader", { name: "IP · 기기", exact: true }).count(),
+          // 머리글은 정적 라벨만 포함한다. tbody의 실데이터와 속성은 진단하지 않는다.
+          headerDOM: await page.locator(".main .tbl thead th").evaluateAll((headers) => headers.map((header) => ({
+            textContent: header.textContent, role: header.getAttribute("role"), scope: header.getAttribute("scope"),
+            ariaLabel: header.getAttribute("aria-label"), ariaHidden: header.getAttribute("aria-hidden"),
+          }))),
+          headerRoles: {
+            columnheader: await page.locator(".main .tbl thead").getByRole("columnheader").count(),
+            rowheader: await page.locator(".main .tbl thead").getByRole("rowheader").count(),
+            cell: await page.locator(".main .tbl thead").getByRole("cell").count(),
+          },
           rows: await page.getByTestId("audit-row").count(),
         });
       } catch {
         console.info("MA-070 보조 진단 미확보", { width, browserStatus, responseRows });
+      }
+      try {
+        console.info("MA-070 정적 머리글 접근 이름", await page.locator(".main .tbl thead").ariaSnapshot({ timeout: 2000 }));
+      } catch {
+        console.info("MA-070 머리글 접근 이름 미확보", { width });
       }
       // 실패 화면의 실데이터·계정·입력값은 가리고 구조/헤더/오류만 기존 PNG lane에 남긴다.
       try {
