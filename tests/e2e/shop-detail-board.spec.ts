@@ -99,7 +99,33 @@ test("내 문의: 실제 본인 조회 뒤 합성 주문·일반 문의·빈 상
       expect(bounds!.width).toBeGreaterThan(0);
       expect(bounds!.x).toBeGreaterThanOrEqual(0);
       expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      try {
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      } catch (error) {
+        try {
+          const geometry = await page.locator("body").evaluate(() => {
+            const rects = (selector: string) => [...document.querySelectorAll(selector)].map((element) => {
+              const rect = element.getBoundingClientRect();
+              return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, right: rect.right, scrollWidth: element.scrollWidth, clientWidth: element.clientWidth };
+            });
+            return { viewport: window.innerWidth, scrollWidth: document.documentElement.scrollWidth,
+              table: rects(".mi-tbl"), cells: rects(".mi-tbl th, .mi-tbl td"), target: rects(".mi-target"),
+              date: rects(".mi-tbl .c-date"), radio: rects("form.mi-box .mi-radios, form.mi-box .mi-radios label"),
+            };
+          }, undefined, { timeout: 2000 });
+          console.info("SH-026 합성화면 넘침 치수", { state, width, geometry });
+        } catch {
+          console.info("SH-026 넘침 치수 미확보", { state, width });
+        }
+        try {
+          await page.screenshot({ path: `tests/e2e/screenshots/SH-026-order-target-failure-${state}-${width}.png`, fullPage: true, timeout: 5000,
+            mask: [page.locator(".shop-util"), page.locator(".shop-foot"), page.locator("input"), page.locator("textarea")],
+          });
+        } catch {
+          console.info("SH-026 넘침 PNG 미확보", { state, width });
+        }
+        throw error;
+      }
       await page.screenshot({ path: `tests/e2e/screenshots/SH-026-order-target-${state}-${width}.png`, fullPage: true });
     }
   }
