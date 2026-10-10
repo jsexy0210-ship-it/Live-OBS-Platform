@@ -39,6 +39,83 @@ async function login(page: Page, email: string) {
 const gnb = (page: Page) => page.getByRole("navigation", { name: "주 메뉴" });
 const lnb = (page: Page) => page.getByRole("complementary", { name: "마스터 관리자 메뉴" });
 
+test("다른 파트너스 대신보기 안내: 세션 상태만 모의하고 실제 로그인·파트너스 조회 후 세 폭 문구를 확인한다", async ({ page }) => {
+  type Active = { sellerId: string; shopName: string; slug: string; reason: string; startedAt: string; expiresAt: string };
+  let active: Active | null = null;
+  const mutations: string[] = [];
+  let sessionGets = 0;
+  // GET도 만료 세션을 닫을 수 있어 첫 요청부터 전부 모의한다. 실제 세션 API로 넘기지 않는다.
+  await page.route(/\/api\/admin\/impersonation(?:\?.*)?$/, (route) => {
+    if (route.request().method() !== "GET") {
+      mutations.push(route.request().method());
+      return route.abort();
+    }
+    sessionGets++;
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ active }) });
+  });
+  await page.route(/\/api\/admin\/sellers\/[^/]+\/impersonate(?:\?.*)?$/, (route) => {
+    mutations.push(route.request().method());
+    return route.abort();
+  });
+  await login(page, emails.super);
+  await page.goto("/admin/partners");
+  const partnerLink = page.getByTestId("partner-row").first().getByRole("link").first();
+  await expect(partnerLink).toBeVisible();
+  const href = await partnerLink.getAttribute("href");
+  expect(href).toMatch(/^\/admin\/partners\/[^/?]+$/);
+  const sellerId = href!.split("/").pop()!;
+  const detail = await page.request.get(`/api/admin/sellers/${encodeURIComponent(sellerId)}`);
+  expect(detail.status()).toBe(200);
+  const { seller } = await detail.json() as { seller: { id: string; shopName: string; slug: string } };
+  expect(seller.id).toBe(sellerId);
+  const other: Active = { sellerId: "ma016-other-partner", shopName: "이름 보존 확인몰", slug: "ma016-other-partner", reason: "다른 파트너스 문의 확인", startedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 30 * 60_000).toISOString() };
+  expect(other.sellerId).not.toBe(seller.id);
+  active = other;
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.goto(href!);
+    await expect(page.getByTestId("partner-badges")).toContainText(seller.shopName);
+    const strip = page.getByTestId("impersonation-active");
+    const label = strip.locator("b");
+    await expect(label).toHaveText(`${other.shopName} 화면을 대신 보는 중입니다.`);
+    await expect(strip).toContainText(other.reason);
+    await expect(strip).not.toContainText("대리 조회 중입니다.");
+    if (width === 390) await expect.poll(async () => {
+      const menu = await lnb(page).boundingBox();
+      return menu ? menu.x + menu.width : Number.POSITIVE_INFINITY;
+    }).toBeLessThanOrEqual(0);
+    await page.evaluate(() => document.fonts.ready);
+    const rect = await label.evaluate((el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const text = range.getBoundingClientRect();
+      const strip = el.parentElement!.getBoundingClientRect();
+      return { width: text.width, height: text.height, left: text.left, right: text.right, top: text.top, bottom: text.bottom, stripLeft: strip.left, stripRight: strip.right, stripTop: strip.top, stripBottom: strip.bottom };
+    });
+    expect(rect.width).toBeGreaterThan(0);
+    expect(rect.height).toBeGreaterThan(0);
+    expect(rect.left).toBeGreaterThanOrEqual(rect.stripLeft);
+    expect(rect.right).toBeLessThanOrEqual(rect.stripRight);
+    expect(rect.top).toBeGreaterThanOrEqual(rect.stripTop);
+    expect(rect.bottom).toBeLessThanOrEqual(rect.stripBottom);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: `tests/e2e/screenshots/MA-016-other-session-${width}.png`, fullPage: true });
+  }
+  active = { ...other, sellerId: seller.id, shopName: seller.shopName, slug: seller.slug };
+  await page.goto(href!);
+  await expect(page.getByTestId("impersonation-active").locator("b")).toHaveText("이 파트너스 화면을 대신 보는 중입니다.");
+  active = null;
+  await Promise.all([
+    page.waitForResponse((r) => new URL(r.url()).pathname === "/api/admin/impersonation" && r.request().method() === "GET"),
+    page.goto(href!),
+  ]);
+  await expect(page.getByTestId("partner-badges")).toContainText(seller.shopName);
+  await expect(page.getByTestId("impersonation-active")).toHaveCount(0);
+  expect(sessionGets).toBeGreaterThanOrEqual(5);
+  expect(mutations).toEqual([]);
+});
+
 test("파트너스 문의: 실제 요약·긴급 조건을 조회하고 합성 요약/준비 중/빈 상태를 세 폭에서 확인한다", async ({ page }) => {
   await login(page, emails.cs);
   const mutations: string[] = [];
