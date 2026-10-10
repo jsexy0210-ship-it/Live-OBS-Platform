@@ -158,22 +158,21 @@ describe("소개 랜딩 브랜딩", () => {
     const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
     // Prisma delegate 메서드는 Proxy로 제공되므로 속성 descriptor를 찾는 spy 대신 직접 대체한다.
     const originalRead = prisma.siteBranding.findUnique;
-    const unavailable = vi.fn<typeof originalRead>().mockRejectedValueOnce(new Error("fixture unavailable"));
+    const unavailable = vi.fn((): never => { throw new Error("fixture unavailable"); });
     prisma.siteBranding.findUnique = unavailable;
     try {
       const meta = await brandingMetadata("landing");
       expect(unavailable).toHaveBeenCalledTimes(1);
       expect(meta).toMatchObject({ title: BRANDING_DEFAULTS.landing.title, description: BRANDING_DEFAULTS.landing.description });
       expect(meta.icons).toMatchObject({ icon: [{ url: "http://test.on-aircue.com/branding/streamshop-symbol.png" }] });
-      unavailable.mockRejectedValueOnce(new Error("fixture unavailable"));
       const source = await ogImageSource(prisma, "landing");
       expect(unavailable).toHaveBeenCalledTimes(2);
       expect(source).toMatchObject({ kind: "generated", title: BRANDING_DEFAULTS.landing.title });
-      unavailable.mockRejectedValueOnce(new Error("fixture unavailable"));
       const fallbackCard = (meta.openGraph as { images: { url: string }[] }).images[0].url;
       const response = await publicOg(new Request(fallbackCard), ctx("landing"));
       expect(unavailable).toHaveBeenCalledTimes(3);
       expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe("image/png");
       expect(await sharp(Buffer.from(await response.arrayBuffer())).metadata()).toMatchObject({ width: 1200, height: 630, format: "png" });
     } finally {
       prisma.siteBranding.findUnique = originalRead;
