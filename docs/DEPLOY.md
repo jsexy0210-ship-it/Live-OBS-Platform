@@ -2,6 +2,13 @@
 
 이슈 #137. 대상은 KakaoCloud VM `obs-web-test`(Ubuntu 24.04, kr-central-2) 한 대예요. 운영(obs-web-prod) 배포는 이 문서 범위가 아니에요.
 
+2026-10-10 KST 대표님 지정 주소는 운영 `streamshop.com`, TEST `dev.streamshop.com`입니다. 아래 `test.on-aircue.com`은 기존 시험 주소 기록이며 새 주소 적용 완료를 뜻하지 않습니다. 새 호스트에서 소개 `/about`·마스터 관리자 `/admin`·파트너스 `/seller`를 연결합니다. 기존 `/` → `/seller/login` 정책은 유지합니다. 적용 전 도메인 관리 권한·DNS 대상 서버·80/443 접근을 확인하고, 해당 서버의 `OBS_SITE_ADDRESS`와 `OBS_MONITOR_TLS_HOST`를 지정 호스트에 맞춥니다. Caddy·Compose는 환경값으로 주소를 받으므로 호스트를 코드에 고정하지 않습니다. OAuth 콜백·외부 연동 리다이렉트와 CORS 허용 출처는 서비스별로 확인한 뒤 별도로 반영합니다. DNS·실환경값·HTTPS·배포는 아직 변경하지 않았습니다.
+
+| 대상 | 적용 전 계획과 남은 조건 |
+| --- | --- |
+| TEST `dev.streamshop.com` | 기존 TEST 서버 복구와 도메인 관리 권한 확인 뒤 A 레코드를 기존 TEST 공인 IP `210.109.15.68`로 연결합니다. 기존 `test.on-aircue.com` 레코드는 보존합니다. 현재 dev DNS는 미등록이며 TEST HTTPS 응답·러너 복구 전에는 적용하지 않습니다. |
+| 운영 `streamshop.com` | 현재 HTTPS에서 다른 서비스 내용이 응답합니다. 소유·관리 권한과 이관 여부, 운영 대상 서버는 미확인입니다. 기존 루트·www·A·AAAA·NS 레코드를 보존하며 운영 변경·배포를 하지 않습니다. |
+
 ## 구성
 
 | 파일 | 역할 |
@@ -180,7 +187,7 @@ sudo -u obs nano /opt/obs/.env
 | `BILLING_KEY_SECRET` | 필수 | 빌링키 암호화 키(32자 이상) |
 | `BILLING_PROVIDER` | 선택 | obs-test는 비워도 돼요(아래 `OBS_TEST_MODE=1`이면 가짜 결제 공급자를 써요). 운영 빌드에서 `fake`만 넣으면 가짜 결제 공급자 생성이 막혀 카드 등록·구독 결제가 오류로 멈춰요 |
 | `OBS_TEST_MODE` | **obs-test만** | `1`이면 테스트 서버 모드예요(대표님 지시 2026-10-03). 휴대폰 본인확인은 가짜 공급자(인증번호 `000000`, 문자·과금 없음, 포트원 설정이 있어도 테스트 모드가 우선), 구독 결제는 가짜 결제 공급자(실제 돈 이동 없음, 결제 번호 `fake-pay-…`)로 처리하고, 「시험 데이터 넣기」 명령을 쓸 수 있어요. 켜지면 서버 로그에 경고 한 줄이 남고 `GET /api/health`에 `"testMode": true`가 붙어요. **운영 서버에는 절대 넣지 않아요** |
-| `OBS_SITE_ADDRESS` | 필수(HTTPS) | obs-test는 `test.on-aircue.com`. 비우면 `:80`(HTTP만, 로그인 유지 안 됨). 아래 「HTTPS」 |
+| `OBS_SITE_ADDRESS` | 필수(HTTPS) | 새 TEST는 `dev.streamshop.com`, 운영은 `streamshop.com`(실서버 반영 전). 기존 시험 주소는 `test.on-aircue.com`. 비우면 `:80`(HTTP만, 로그인 유지 안 됨). 아래 「HTTPS」 |
 | `BUSINESS_STATUS_PROVIDER`, `NTS_BUSINESS_STATUS_API_KEY` | 선택 | 판매자 가입 사업자 상태 점검 |
 | `MAIL_ORDER_PROVIDER`, `FTC_MAIL_ORDER_API_KEY` | 선택 | 통신판매업 점검 |
 | `PORTONE_API_SECRET`, `PORTONE_STORE_ID`, `PORTONE_IDENTITY_CHANNEL_KEY` | 선택 | 휴대폰 본인확인. 없으면 가입 본인확인은 503 「준비 중」 |
@@ -193,7 +200,7 @@ sudo -u obs nano /opt/obs/.env
 | `NICEPAY_CLIENT_KEY`, `NICEPAY_SECRET_KEY` | 선택(카드 결제 시험) | 나이스페이 **샌드박스** 키(테스트 서버 전용). 없으면 결제 시작이 「결제 준비 중」으로 거절돼요. **비밀값이에요.** 코드가 샌드박스 주소만 불러 운영 결제는 나가지 않아요. 운영 키는 결제대행사 계약 뒤 운영 서버에서 따로 정해요 |
 | `YOUTUBE_API_KEY` | 선택 | YouTube Data API 키(방송·실시간 채팅 조회, 무료 한도 안에서만). 없으면 YouTube 기능이 꺼져요. **비밀값이에요.** |
 | `GEMINI_API_KEY` | 선택 | 도우미(Gemini) API 키(월 1만 원 한도 안에서만, 한도·모델은 마스터 관리자 도우미 설정). 없으면 도우미는 「준비 중」이에요. 테스트 서버는 배포 때 GitHub Secret `GEMINI_API_KEY`에서 반영해요. **비밀값이에요.** |
-| `OBS_MONITOR_TLS_HOST` | 선택 | 서버 감시가 인증서 만료일을 볼 주소(obs-test는 `test.on-aircue.com`) |
+| `OBS_MONITOR_TLS_HOST` | 선택 | 서버 감시가 인증서 만료일을 볼 주소. 새 TEST는 `dev.streamshop.com`, 운영은 `streamshop.com`(실서버 반영 전) |
 | `OBS_ALERT_URL` | 선택 | 장애 알림을 받을 주소(웹훅). 알림 채널이 정해지기 전에는 비워 둬요(기록만 남아요) |
 | `OBS_MONITOR_INTERVAL_S` | 선택 | 감시 간격(기본 15초, 1~60초. 범위 밖이거나 숫자가 아니면 감시가 시작하지 않고 로그에 이유를 남겨요) |
 | `OBS_MONITOR_KEEP_DAYS` | 선택 | 일별 표본 파일(`samples-YYYYMMDD.jsonl`)을 오늘 포함 며칠 치 남길지(기본 14, 1~3650). 지난 파일은 날짜가 바뀔 때 지워요. 상태·사건·heartbeat 파일은 지우지 않아요 |
@@ -572,7 +579,7 @@ scripts/ops/availability.sh off
 
 1. **가장 먼저**: GitHub 저장소 설정에서 Environment `production`을 만들고 **Required reviewers에 대표님**, 배포 브랜치는 `main`만 허용합니다. 환경이 없는 채로 워크플로가 돌면 보호 규칙 없이 환경이 자동으로 만들어지므로, 러너를 등록하기 전에 이 설정을 끝냅니다.
 2. VM·디스크·공인 IP·보안그룹: 인바운드 80·443은 모두, SSH(22)는 허용 IP만. VM은 Ubuntu 24.04, 데이터 디스크는 `/opt/obs`로 마운트.
-3. 운영 도메인(`on-aircue.com` 하위)의 A 레코드를 공인 IP로 연결. 인증서는 Caddy가 자동 발급합니다(80·443 열려 있어야 함).
+3. 지정 운영 도메인 `streamshop.com`의 소유와 기존 서비스 영향을 확인한 뒤 A 레코드를 운영 공인 IP로 연결합니다. TEST `dev.streamshop.com`은 시험 서버에 별도로 연결합니다. 인증서는 Caddy가 자동 발급합니다(80·443 열려 있어야 함). 아직 DNS·서버 적용은 하지 않았습니다.
 4. `/opt/obs/.env`는 서버에서 직접 만듭니다(권한 600). 값은 **테스트와 다른 새 값**을 쓰고 저장소·채팅에 붙이지 않습니다. 이 워크플로는 비밀값을 `.env`로 옮기지 않습니다. 필수: `POSTGRES_USER`·`POSTGRES_PASSWORD`·`POSTGRES_DB`·`IDENTITY_HASH_KEY`·`BILLING_KEY_SECRET`·`OBS_SITE_ADDRESS`(운영 도메인)·**`OBS_ENVIRONMENT=prod`**. **`OBS_TEST_MODE`는 넣지 않습니다**(워크플로가 막습니다). 나이스페이는 결제대행사 운영 계약 뒤에 운영 키를 따로 정합니다(지금 코드는 샌드박스 주소만 부릅니다).
 5. **마지막**: 서버에 Docker를 설치하고 GitHub Actions runner를 **라벨 `obs-prod`**로 등록(테스트 러너 `obs-kakao`와 다른 VM). 러너가 등록되면 워크플로를 실행할 수 있게 되므로 1~4가 끝난 뒤에 합니다.
 
