@@ -5,6 +5,7 @@ import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { hashPassword } from "../../lib/server/auth/password";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
+import type { AuditDetail, AuditRow } from "../../app/(admin)/admin/_components/auditLogs";
 
 // 마스터 관리자 카페24식 틀: 청록 GNB·LNB, 역할별 메뉴 노출 차이, 로그인 → 홈 진입, 준비 중 화면.
 // 마스터 관리자 계정은 폐기용 테스트 DB(이름이 _test로 끝남)에 실행마다 새로 만든다.
@@ -37,6 +38,186 @@ async function login(page: Page, email: string) {
 
 const gnb = (page: Page) => page.getByRole("navigation", { name: "주 메뉴" });
 const lnb = (page: Page) => page.getByRole("complementary", { name: "마스터 관리자 메뉴" });
+
+test("로그 추적: 실제 조회 DTO 뒤 합성 IP·기기/빈 값을 목록·상세 세 폭에서 확인한다", async ({ page }) => {
+  await login(page, emails.super);
+  const mutations: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.startsWith("/api/admin/audit-logs") && !["GET", "HEAD"].includes(request.method())) mutations.push(request.method());
+  });
+  const listResponse = await page.request.get("/api/admin/audit-logs?limit=50");
+  expect(listResponse.status()).toBe(200);
+  const actual = await listResponse.json() as { logs: AuditRow[] };
+  expect(actual.logs.length).toBeGreaterThan(0);
+  const source = actual.logs[0];
+  for (const row of actual.logs) {
+    expect(row).toHaveProperty("userAgent");
+    expect(row.userAgent === null || typeof row.userAgent === "string").toBe(true);
+    expect(row).not.toHaveProperty("before");
+    expect(row).not.toHaveProperty("after");
+  }
+  const detailResponse = await page.request.get(`/api/admin/audit-logs/${source.id}`);
+  expect(detailResponse.status()).toBe(200);
+  const actualDetail = (await detailResponse.json() as { log: AuditDetail }).log;
+  expect(actualDetail).toMatchObject({ id: source.id, ip: source.ip, userAgent: source.userAgent });
+
+  // 문서용 IP·긴 UA·별표 입력은 UI 합성값이며 서버 마스킹/실기기 판정의 증거가 아니다.
+  const agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36 " + "existing-user-agent-".repeat(8);
+  const positive: AuditRow = { ...source, createdAt: "2026-10-10T00:00:00.000Z", actorType: "SYSTEM", actorId: null, action: "auth.admin.login", targetType: null, targetId: null, reason: null, seller: null, ip: "192.0.2.17", userAgent: agent };
+  const empty = { ...positive, id: "00000000-0000-4000-8000-000000000001", ip: null, userAgent: null };
+  const masked = { ...positive, id: "00000000-0000-4000-8000-000000000002", ip: "192.0.2.***", userAgent: "agent-***" };
+  let rows: AuditRow[] = [positive, empty, masked];
+  let detail: AuditDetail = { ...positive, before: null, after: null, actorAdmin: null };
+  await page.route("**/api/admin/audit-logs**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (!["GET", "HEAD"].includes(request.method())) return route.abort();
+    if (path === "/api/admin/audit-logs") return route.fulfill({ json: { logs: rows, nextCursor: null } });
+    if (path === `/api/admin/audit-logs/${source.id}`) return route.fulfill({ json: { log: detail } });
+    return route.abort();
+  });
+  const text = `${positive.ip} · ${agent}`;
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.goto("/admin/logs");
+    await expect(page.getByRole("columnheader", { name: "IP · 기기", exact: true })).toBeVisible();
+    const items = page.getByTestId("audit-row");
+    await expect(items).toHaveCount(3);
+    const cell = items.first().getByRole("cell").nth(6);
+    await expect(cell).toHaveText(text);
+    await expect(items.nth(1).getByRole("cell").nth(6)).toHaveText("-");
+    await expect(items.nth(2).getByRole("cell").nth(6)).toHaveText("192.0.2.*** · agent-***");
+    const link = items.first().getByRole("link", { name: "보기", exact: true });
+    await expect(link).toHaveAttribute("href", `/admin/logs/${source.id}`);
+    await link.scrollIntoViewIfNeeded();
+    const linkBounds = await link.boundingBox();
+    expect(linkBounds).not.toBeNull();
+    expect(linkBounds!.x).toBeGreaterThanOrEqual(0);
+    expect(linkBounds!.x + linkBounds!.width).toBeLessThanOrEqual(width);
+    await cell.scrollIntoViewIfNeeded();
+    await capture("MA-070", cell);
+
+    await page.goto(`/admin/logs/${source.id}`);
+    const label = page.locator("dt").filter({ hasText: /^IP · 기기$/ });
+    await expect(label).toHaveCount(1);
+    const value = label.locator("+ dd");
+    await expect(value).toHaveText(text);
+    await expect(page.getByText("접속 주소", { exact: true })).toHaveCount(0);
+    await expect(page.locator("dt").filter({ hasText: /^브라우저$/ })).toHaveCount(0);
+    await capture("MA-071", value);
+  }
+  for (const entry of [empty, masked]) {
+    detail = { ...entry, before: null, after: null, actorAdmin: null };
+    await page.goto(`/admin/logs/${source.id}`);
+    await expect(page.locator("dt").filter({ hasText: /^IP · 기기$/ }).locator("+ dd")).toHaveText(entry === empty ? "-" : "192.0.2.*** · agent-***");
+  }
+  rows = [];
+  await page.goto("/admin/logs");
+  await expect(page.getByText("아직 기록이 없습니다.", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("audit-row")).toHaveCount(0);
+  expect(mutations).toEqual([]);
+
+  async function capture(screen: string, value: ReturnType<Page["locator"]>) {
+    if (page.viewportSize()!.width === 390) await expect.poll(async () => {
+      const menu = await lnb(page).boundingBox();
+      return menu ? menu.x + menu.width : Number.POSITIVE_INFINITY;
+    }).toBeLessThanOrEqual(0);
+    await page.evaluate(() => document.fonts.ready);
+    const rect = await value.evaluate((el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const text = range.getBoundingClientRect();
+      const box = el.getBoundingClientRect();
+      return { width: text.width, height: text.height, left: text.left, right: text.right, top: text.top, bottom: text.bottom, boxLeft: box.left, boxRight: box.right, boxTop: box.top, boxBottom: box.bottom };
+    });
+    expect(rect.width).toBeGreaterThan(0);
+    expect(rect.height).toBeGreaterThan(0);
+    expect(rect.left).toBeGreaterThanOrEqual(rect.boxLeft);
+    expect(rect.right).toBeLessThanOrEqual(rect.boxRight);
+    expect(rect.top).toBeGreaterThanOrEqual(rect.boxTop);
+    expect(rect.bottom).toBeLessThanOrEqual(rect.boxBottom);
+    const bounds = await value.boundingBox();
+    expect(bounds!.x).toBeGreaterThanOrEqual(0);
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: `tests/e2e/screenshots/${screen}-connection-${page.viewportSize()!.width}.png`, fullPage: true });
+  }
+});
+
+test("로그 추적: CS의 실제 목록·상세 조회는 403이며 접속 정보가 보이지 않는다", async ({ page }) => {
+  await login(page, emails.cs);
+  const mutations: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.startsWith("/api/admin/audit-logs") && !["GET", "HEAD"].includes(request.method())) mutations.push(request.method());
+  });
+  const detail = "/api/admin/audit-logs/00000000-0000-4000-8000-000000000001";
+  for (const path of ["/api/admin/audit-logs", detail]) expect((await page.request.get(path)).status()).toBe(403);
+  for (const path of ["/admin/logs", detail.replace("/api", "")]) {
+    await page.goto(path);
+    await expect(page.getByTestId("admin-no-access")).toBeVisible();
+    await expect(page.getByTestId("audit-row")).toHaveCount(0);
+    await expect(page.getByText("IP · 기기", { exact: true })).toHaveCount(0);
+    await expect(page.getByText(/192\.0\.2\.|existing-user-agent|agent-\*\*\*/)).toHaveCount(0);
+  }
+  expect(mutations).toEqual([]);
+});
+
+for (const role of ["super", "cs"] as const) {
+  test(`환불 요청: ${role === "super" ? "최고관리자" : "CS"}의 승인대기 요약을 조회 전용으로 세 폭에서 확인한다`, async ({ page }) => {
+    await login(page, emails[role]);
+    const mutations: string[] = [];
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname.startsWith("/api/admin/subscription-refunds") && !["GET", "HEAD"].includes(request.method())) mutations.push(request.method());
+    });
+    for (const width of [1440, 1024, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      const [response] = await Promise.all([
+        page.waitForResponse((r) => {
+          const url = new URL(r.url());
+          return url.pathname === "/api/admin/subscription-refunds" && url.searchParams.get("status") === "pending" && r.request().method() === "GET";
+        }),
+        page.goto("/admin/billing/refunds"),
+      ]);
+      expect(response.status()).toBe(200);
+      const { counts } = await response.json() as { counts: { REQUESTED: number; PROCESSING: number; FAILED: number } };
+      expect(Number.isInteger(counts.REQUESTED)).toBe(true);
+      expect(counts.REQUESTED).toBeGreaterThanOrEqual(0);
+      await expect(page.getByRole("heading", { level: 1, name: "환불 요청", exact: true })).toBeVisible();
+      const value = page.getByTestId("refund-requested");
+      const tile = value.locator("..");
+      const summary = tile.locator("..");
+      const label = tile.locator(".t-l2");
+      await expect(label).toHaveText("승인 대기 (최고관리자)");
+      await expect(value).toHaveText(`${counts.REQUESTED}건`);
+      await expect(summary.locator(":scope > .card")).toHaveCount(4);
+      await expect(summary.getByText("검토 대기", { exact: true })).toHaveCount(0);
+      await expect(page.getByRole("radiogroup", { name: "상태" }).getByRole("radio").first()).toHaveText(`대기 ${counts.REQUESTED + counts.PROCESSING + counts.FAILED}`);
+      if (width === 390) await expect.poll(async () => {
+        const menu = await lnb(page).boundingBox();
+        return menu ? menu.x + menu.width : Number.POSITIVE_INFINITY;
+      }).toBeLessThanOrEqual(0);
+      await page.evaluate(() => document.fonts.ready);
+      const rect = await label.evaluate((el) => {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const text = range.getBoundingClientRect();
+        const tile = el.parentElement!.getBoundingClientRect();
+        return { width: text.width, height: text.height, left: text.left, right: text.right, top: text.top, bottom: text.bottom, tileLeft: tile.left, tileRight: tile.right, tileTop: tile.top, tileBottom: tile.bottom };
+      });
+      expect(rect.width).toBeGreaterThan(0);
+      expect(rect.height).toBeGreaterThan(0);
+      expect(rect.left).toBeGreaterThanOrEqual(rect.tileLeft);
+      expect(rect.right).toBeLessThanOrEqual(rect.tileRight);
+      expect(rect.top).toBeGreaterThanOrEqual(rect.tileTop);
+      expect(rect.bottom).toBeLessThanOrEqual(rect.tileBottom);
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({ path: `tests/e2e/screenshots/MA-026-summary-${role}-${width}.png`, fullPage: true });
+    }
+    expect(mutations).toEqual([]);
+  });
+}
 
 test("파트너스 목록: 실제 로그인 후 공통 틀 3폭 geometry와 이번 SHA 캡처를 확인한다", async ({ page }) => {
   const sourceSha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();

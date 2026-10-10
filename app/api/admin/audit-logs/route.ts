@@ -5,7 +5,7 @@ import { prisma } from "../../../../lib/server/db";
 import { errorResponse, sessionToken } from "../../../../lib/server/http/route";
 
 // 로그 추적 목록(MA-070, audit.read: 최고관리자·운영·조회 전용). action(정확히, 또는 「.」으로 끝나면 접두어)·actorType·actorId·sellerId·targetId·
-// from·to(KST 날짜)·cursor·limit. 잘못된 값 400. { logs: [{ id, createdAt, actorType, actorId, action, targetType, targetId, reason, ip, seller }], nextCursor }
+// from·to(KST 날짜)·cursor·limit. 잘못된 값 400. { logs: [{ id, createdAt, actorType, actorId, action, targetType, targetId, reason, ip, userAgent, seller }], nextCursor }
 export async function GET(req: Request) {
   try {
     const admin = await requireAdmin(prisma, sessionToken(req, "admin"), "audit.read");

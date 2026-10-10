@@ -101,7 +101,7 @@ export default function AuditDetailPage() {
                 {rows.map(([k, v]) => (
                   <div key={k} style={{ display: "contents" }}>
                     <dt>{k}</dt>
-                    <dd>{v}</dd>
+                    <dd style={k === "IP · 기기" ? { minWidth: 0, overflowWrap: "anywhere" } : undefined}>{v}</dd>
                   </div>
                 ))}
               </dl>
