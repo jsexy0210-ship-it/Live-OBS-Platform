@@ -6,7 +6,7 @@
 
 | 대상 | 적용 전 계획과 남은 조건 |
 | --- | --- |
-| TEST `dev.on-aircue.com` | 기존 Cloudflare zone에서 dev A 레코드를 기존 TEST 공인 IP `210.109.15.68`로 DNS 전용·TTL 자동으로 연결하는 승인을 받았습니다. 기존 test·shops A 레코드는 보존합니다. 실제 DNS 등록과 앱 HTTPS 검증은 별도이며 TEST HTTPS 응답·러너 복구 뒤 서버 환경값을 반영합니다. |
+| TEST `dev.on-aircue.com` | 기존 Cloudflare zone에서 dev A 레코드를 기존 TEST 공인 IP `210.109.15.68`로 DNS 전용·TTL 자동으로 등록하고 공개 DNS 해석을 확인했습니다. 기존 test·shops A 레코드는 보존했습니다. DNS 확인·러너 복구 → 인가된 서버의 `OBS_SITE_ADDRESS=dev.on-aircue.com` 반영 → 새 호스트 HTTPS 검증 순서로 진행합니다. 현재 HTTPS TCP 연결은 타임아웃이며 Caddy 서버 환경값은 아직 반영하지 않았습니다. |
 | 운영 `on-aircue.com` | 운영 대상 서버는 미확인입니다. 기존 DNS 원본을 보존하며 TEST IP를 운영 루트에 복제하거나 운영 변경·배포를 하지 않습니다. |
 
 ## 구성

@@ -30,7 +30,7 @@ test("PF-001 모바일 본문 진입·FAQ 키보드와 모션 감소 설정을 �
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.goto("/about");
-  const start = page.locator("header").getByRole("link", { name: "시작하기" });
+  const start = page.getByRole("link", { name: "스트림샵 시작하기" }).first();
   await expect(start).toHaveCSS("transition-duration", "0.18s, 0.18s");
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expect(start).toHaveCSS("transition-duration", "0s");
