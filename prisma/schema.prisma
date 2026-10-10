@@ -1249,6 +1249,7 @@ model Order {
   refunds          OrderRefund[]
   refundRequests   RefundRequest[]
   receiptRequests  OrderReceiptRequest[]
+  buyerInquiries   BuyerInquiry[]
 
   @@unique([sellerId, id])
   @@unique([sellerId, orderNo])
@@ -4085,6 +4086,7 @@ model BuyerInquiry {
   buyerMemberId     String             @db.Uuid
   kind              BuyerInquiryKind
   productId         String?            @db.Uuid
+  orderId           String?            @db.Uuid
   authorNickname    String
   title             String
   body              String
@@ -4099,11 +4101,13 @@ model BuyerInquiry {
   seller      Seller              @relation(fields: [sellerId], references: [id])
   buyerMember BuyerMember         @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
   product     Product?            @relation(fields: [sellerId, productId], references: [sellerId, id])
+  order       Order?              @relation(fields: [sellerId, orderId], references: [sellerId, id], onDelete: Restrict)
   images      BuyerInquiryImage[]
 
   @@unique([sellerId, id])
   @@index([sellerId, status, createdAt(sort: Desc), id(sort: Desc)])
   @@index([sellerId, buyerMemberId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([sellerId, orderId])
 }
 
 // 문의 첨부 사진. 먼저 올리고(inquiryId 없음) 문의를 보낼 때 붙인다. 붙지 않은 사진은 회원당 10장까지 두고 오래된 것부터 지운다.
