@@ -5,6 +5,7 @@ import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { hashPassword } from "../../lib/server/auth/password";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
+import type { InquiryCounts, InquiryRow } from "../../app/(admin)/admin/_components/inquiries";
 
 // 마스터 관리자 카페24식 틀: 청록 GNB·LNB, 역할별 메뉴 노출 차이, 로그인 → 홈 진입, 준비 중 화면.
 // 마스터 관리자 계정은 폐기용 테스트 DB(이름이 _test로 끝남)에 실행마다 새로 만든다.
@@ -113,6 +114,128 @@ test("다른 파트너스 대신보기 안내: 세션 상태만 모의하고 실
   await expect(page.getByTestId("impersonation-active")).toHaveCount(0);
   expect(sessionGets).toBeGreaterThanOrEqual(5);
   expect(mutations).toEqual([]);
+});
+
+test("파트너스 문의: 실제 요약·긴급 조건을 조회하고 합성 요약/준비 중/빈 상태를 세 폭에서 확인한다", async ({ page }) => {
+  await login(page, emails.cs);
+  const mutations: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.startsWith("/api/admin/platform-inquiries") && !["GET", "HEAD"].includes(request.method())) mutations.push(request.method());
+  });
+  type Summary = { waiting: number; urgent: number; overdue: number; mine: number; todayReceived: number; answeredToday: number; avgFirstReplyHours: number | null; helpful7d: { answered: number; helpful: number; rate: number | null } };
+  type Body = { items: InquiryRow[]; counts: InquiryCounts; summary: Summary; nextCursor: string | null };
+  const responseFor = (urgent: string | null) => page.waitForResponse((r) => {
+    const url = new URL(r.url());
+    return url.pathname === "/api/admin/platform-inquiries" && url.searchParams.get("urgent") === urgent && r.request().method() === "GET";
+  });
+  for (const urgent of ["first", "only", ""] as const) {
+    const [response] = await Promise.all([responseFor(urgent || null), page.goto(`/admin/support/inquiries?urgent=${urgent}`)]);
+    expect(response.status()).toBe(200);
+    const body = await response.json() as Body;
+    for (const key of ["waiting", "urgent", "overdue", "mine", "todayReceived", "answeredToday"] as const) {
+      expect(Number.isInteger(body.summary[key])).toBe(true);
+      expect(body.summary[key]).toBeGreaterThanOrEqual(0);
+    }
+    expect(body.summary.avgFirstReplyHours === null || Number.isFinite(body.summary.avgFirstReplyHours)).toBe(true);
+    if (urgent === "only") expect(body.items.every((row) => row.urgent === true)).toBe(true);
+    if (urgent === "first") expect(body.items.map((row) => Boolean(row.urgent))).toEqual(body.items.map((row) => Boolean(row.urgent)).sort((a, b) => Number(b) - Number(a)));
+    await summaryValues(body.summary);
+  }
+  await page.getByLabel("긴급만", { exact: true }).check();
+  const [only] = await Promise.all([responseFor("only"), page.getByRole("button", { name: "검색", exact: true }).click()]);
+  expect(only.status()).toBe(200);
+  expect(new URL(page.url()).searchParams.get("urgent")).toBe("only");
+  await summaryValues((await only.json() as Body).summary);
+  await expect(page.getByLabel("긴급 우선", { exact: true })).not.toBeChecked();
+  const [reset] = await Promise.all([responseFor("first"), page.getByRole("button", { name: "초기화", exact: true }).click()]);
+  expect(reset.status()).toBe(200);
+  expect(new URL(page.url()).searchParams.has("urgent")).toBe(false);
+  await expect(page.getByLabel("긴급 우선", { exact: true })).toBeChecked();
+  await page.getByLabel("긴급 우선", { exact: true }).uncheck();
+  const [cleared] = await Promise.all([responseFor(null), page.getByRole("button", { name: "검색", exact: true }).click()]);
+  expect(cleared.status()).toBe(200);
+  expect(new URL(page.url()).searchParams.get("urgent")).toBe("");
+  await expect(page.getByLabel("긴급 우선", { exact: true })).not.toBeChecked();
+  await expect(page.getByLabel("긴급만", { exact: true })).not.toBeChecked();
+  await summaryValues((await cleared.json() as Body).summary);
+
+  const sellerId = "00000000-0000-4000-8000-000000000051";
+  const row: InquiryRow = { id: sellerId, sellerId, shopName: "조회 시험몰", slug: "summary-fixture", authorName: null, category: "BROADCAST", title: "합성 긴급 문의", status: "OPEN", urgent: true, assignee: null, createdAt: new Date().toISOString(), lastMessageAt: new Date().toISOString(), lastAdminMessageAt: null, closedAt: null, version: 1 };
+  const positive: Body = { items: [row], counts: { OPEN: 2, ANSWERED: 3, CLOSED: 4 }, nextCursor: null, summary: { waiting: 7, urgent: 1, overdue: 2, mine: 4, todayReceived: 14, answeredToday: 9, avgFirstReplyHours: 3.2, helpful7d: { answered: 2, helpful: 1, rate: 50 } } };
+  const cases: [string, Body][] = [
+    ["positive", positive],
+    ["null", { ...positive, summary: { ...positive.summary, avgFirstReplyHours: null, helpful7d: { answered: 1, helpful: 1, rate: 100 } } }],
+    ["empty", { items: [], counts: { OPEN: 0, ANSWERED: 0, CLOSED: 0 }, nextCursor: null, summary: { waiting: 0, urgent: 0, overdue: 0, mine: 0, todayReceived: 0, answeredToday: 0, avgFirstReplyHours: null, helpful7d: { answered: 0, helpful: 0, rate: null } } }],
+  ];
+  let mock = positive;
+  const requests: URL[] = [];
+  await page.route("**/api/admin/platform-inquiries?**", (route) => {
+    if (!["GET", "HEAD"].includes(route.request().method())) return route.abort();
+    const url = new URL(route.request().url());
+    requests.push(url);
+    return route.fulfill({ json: url.searchParams.has("cursor") ? { ...mock, items: [{ ...row, id: "00000000-0000-4000-8000-000000000052", title: "합성 다음 문의", urgent: false }], nextCursor: null } : mock });
+  });
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    for (const [state, body] of cases) {
+      mock = body;
+      await page.goto("/admin/support/inquiries");
+      await summaryValues(body.summary);
+      await expect(page.getByTestId("inquiry-row")).toHaveCount(body.items.length);
+      if (state === "empty") await expect(page.getByText("답변을 기다리는 문의가 없습니다.", { exact: true })).toBeVisible();
+      if (width === 390) await expect.poll(async () => {
+        const menu = await lnb(page).boundingBox();
+        return menu ? menu.x + menu.width : Number.POSITIVE_INFINITY;
+      }).toBeLessThanOrEqual(0);
+      await page.evaluate(() => document.fonts.ready);
+      const boxes = await page.getByTestId("inquiry-summary").locator(":scope > .card > span").evaluateAll((elements) => elements.map((el) => {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const text = range.getBoundingClientRect();
+        const card = el.parentElement!.getBoundingClientRect();
+        return { width: text.width, height: text.height, left: text.left, right: text.right, top: text.top, bottom: text.bottom, cardLeft: card.left, cardRight: card.right, cardTop: card.top, cardBottom: card.bottom };
+      }));
+      for (const box of boxes) {
+        expect(box.width).toBeGreaterThan(0);
+        expect(box.height).toBeGreaterThan(0);
+        expect(box.left).toBeGreaterThanOrEqual(Math.max(0, box.cardLeft));
+        expect(box.right).toBeLessThanOrEqual(Math.min(width, box.cardRight));
+        expect(box.top).toBeGreaterThanOrEqual(box.cardTop);
+        expect(box.bottom).toBeLessThanOrEqual(box.cardBottom);
+      }
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+      await page.screenshot({ path: `tests/e2e/screenshots/MA-051-summary-${state}-${width}.png`, fullPage: true });
+    }
+  }
+  // 긴급 우선의 U커서를 그대로 보내고, 재검색·초기화는 파트너스 조건을 유지한다.
+  const cursor = `U1_${row.lastMessageAt}_${row.id}`;
+  mock = { ...positive, nextCursor: cursor };
+  await page.goto(`/admin/support/inquiries?sellerId=${sellerId}`);
+  await summaryValues(positive.summary);
+  await page.getByRole("button", { name: "더 보기", exact: true }).click();
+  await expect(page.getByTestId("inquiry-row")).toHaveCount(2);
+  expect(requests.at(-1)!.searchParams.get("cursor")).toBe(cursor);
+  expect(requests.at(-1)!.searchParams.get("urgent")).toBe("first");
+  expect(requests.at(-1)!.searchParams.get("sellerId")).toBe(sellerId);
+  await page.getByLabel("긴급만", { exact: true }).check();
+  await Promise.all([responseFor("only"), page.getByRole("button", { name: "검색", exact: true }).click()]);
+  await summaryValues(positive.summary);
+  expect(new URL(page.url()).searchParams.get("sellerId")).toBe(sellerId);
+  await Promise.all([responseFor("first"), page.getByRole("button", { name: "초기화", exact: true }).click()]);
+  await summaryValues(positive.summary);
+  expect(new URL(page.url()).searchParams.get("sellerId")).toBe(sellerId);
+  expect(mutations).toEqual([]);
+
+  async function summaryValues(summary: Summary) {
+    const cards = page.getByTestId("inquiry-summary").locator(":scope > .card");
+    await expect(cards).toHaveCount(6);
+    await expect(cards.locator(":scope > span:first-child")).toHaveText(["답변 대기", "내 담당", "오늘 접수", "답변 완료 (오늘)", "평균 첫 답변", "만족도 (7일)"]);
+    await expect(cards.locator(":scope > .t-h2")).toHaveText([`${summary.waiting}건`, `${summary.mine}건`, `${summary.todayReceived}건`, `${summary.answeredToday}건`, summary.avgFirstReplyHours === null ? "—" : `${summary.avgFirstReplyHours.toFixed(1)}시간`, "집계 준비 중"]);
+    await expect(cards.first()).toContainText(`긴급 ${summary.urgent} · 4시간 초과 ${summary.overdue}`);
+    await expect(cards.last()).not.toContainText(/%|4\.6|평가/);
+    await expect(page.getByLabel("긴급 우선", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("긴급만", { exact: true })).toBeVisible();
+  }
 });
 
 for (const role of ["super", "cs"] as const) {
