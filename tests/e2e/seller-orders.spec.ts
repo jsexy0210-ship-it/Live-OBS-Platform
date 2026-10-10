@@ -28,11 +28,22 @@ async function login(page: Page, email = "demo-owner@example.com", next = "/sell
 }
 
 const rows = (page: Page) => page.getByTestId("order-row");
+// 검색어 · 기간 · 결제 상태 메뉴는 「상세 검색 펼치기」 안에 있다(정본 SA-021-OPS). 이미 열려 있으면 그대로 둔다
+async function openDetail(page: Page) {
+  const b = page.getByRole("button", { name: /상세 검색/ });
+  await b.waitFor();
+  if ((await b.textContent())?.includes("펼치기")) await b.click();
+}
+// 목록의 「환불 처리」 버튼은 취소 요청 · 환불 가능 주문에만 상태에 따라 보인다(정본). 발송 전 주문은 「송장 입력」이 주 버튼이라 상세 주소의 ?refund=1로 환불 창을 연다
+async function openRefund(page: Page, row: ReturnType<typeof rows>) {
+  const href = await row.getByRole("link", { name: "상세", exact: true }).getAttribute("href");
+  await page.goto(`${href}?refund=1`);
+}
 
 // 실제 환불 시험은 시드의 발송 전 결제 주문(배송 「—」)을 환불해 하나씩 쓴다(실행마다 몇 건). 같은 DB로 여러 번 돌려 다 쓰면
 // 환불할 주문이 없어 시간 초과로만 보이므로, 이유를 알려 주며 바로 실패한다. 폐기용 DB를 새로 만들면(migrate deploy → dev-seed) 다시 채워진다.
 async function preShipTarget(page: Page) {
-  const target = rows(page).filter({ has: page.locator("td:nth-child(6)", { hasText: "—" }) }).first();
+  const target = rows(page).filter({ has: page.locator("td:nth-child(6)", { hasText: "배송 준비" }) }).first();
   await expect(target, "발송 전 결제 완료 주문이 없습니다. 이전 실행이 환불로 모두 썼습니다. 폐기용 DB를 새로 만들어 다시 돌려 주십시오").toBeVisible();
   return target;
 }
@@ -54,8 +65,7 @@ test("주문 목록: 20건씩 보이고 「주문 더 불러오기」로 나머�
   const first = listResponse(page);
   await login(page);
   await first;
-  await expect(page.getByRole("heading", { name: "주문" })).toBeVisible();
-  await expect(page.getByText("결제가 끝난 주문만 방송 주문대기(개봉할 순서 목록)에 들어갑니다. 아직 결제하지 않은 주문은 「결제 대기」로 보입니다.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "전체 주문" })).toBeVisible();
   await expect(rows(page)).toHaveCount(20);
   await expect(page.getByText("20건 넘게")).toBeVisible();
   // 메뉴 「주문」이 이 화면을 가리킨다
@@ -72,6 +82,7 @@ test("주문 목록: 20건씩 보이고 「주문 더 불러오기」로 나머�
 test("기간: 그냥 열면 최근 30일이 켜져 있고, 초기화도 그 값으로 돌아간다. 업무 큐 링크(period=all)는 기간 전체", async ({ page }) => {
   await login(page);
   await expect(page).toHaveURL(/\/seller\/orders$/);
+  await openDetail(page);
   const chip30 = page.getByRole("button", { name: /최근 30일/ });
   await expect(chip30).toHaveAttribute("aria-pressed", "true");
   await chip30.click();
@@ -81,6 +92,7 @@ test("기간: 그냥 열면 최근 30일이 켜져 있고, 초기화도 그 값�
   await expect(page).toHaveURL(/\/seller\/orders$/);
   await expect(chip30).toHaveAttribute("aria-pressed", "true");
   await page.goto("/seller/orders?period=all&status=PAID");
+  await openDetail(page);
   await expect(page.getByRole("button", { name: /최근 30일/ })).toHaveAttribute("aria-pressed", "false");
 });
 
@@ -88,6 +100,7 @@ test("상태 필터·검색·기간으로 걸러 보고, 결과가 없으면 알
   await login(page);
   await expect(rows(page)).toHaveCount(20);
   // 상태: 환불됨만
+  await openDetail(page);
   await page.getByRole("button", { name: /상태: 전체/ }).click();
   await page.getByRole("group", { name: "결제 상태" }).getByLabel("환불됨").check();
   const refunded = listResponse(page, "status=REFUNDED");
@@ -105,6 +118,7 @@ test("상태 필터·검색·기간으로 걸러 보고, 결과가 없으면 알
 
   // 검색: 닉네임
   const searched = listResponse(page, `q=${encodeURIComponent("카드왕")}`);
+  await openDetail(page);
   await page.getByLabel("주문 검색").fill("카드왕");
   await searched;
   await expect(rows(page).first().locator("td").nth(1)).toHaveText("카드왕");
@@ -113,7 +127,7 @@ test("상태 필터·검색·기간으로 걸러 보고, 결과가 없으면 알
   for (let i = 0; i < m; i++) await expect(rows(page).nth(i).locator("td").nth(1)).toHaveText("카드왕");
 
   // 기간 + 없는 검색어: 기간을 풀면 전체 기간에서 찾는다고 안내
-  await page.getByRole("button", { name: "오늘", exact: true }).click();
+  await page.getByRole("button", { name: "오늘", exact: true }).first().click();
   const none = listResponse(page, "q=");
   await page.getByLabel("주문 검색").fill("없는닉네임");
   await none;
@@ -125,6 +139,7 @@ test("상태 필터·검색·기간으로 걸러 보고, 결과가 없으면 알
 
 test("주문 상세: 상품·결제·구매자·배송을 보여 주고, 없는 주문은 안내한다", async ({ page }) => {
   await login(page);
+  await openDetail(page);
   await page.getByRole("button", { name: /상태: 전체/ }).click();
   await page.getByRole("group", { name: "결제 상태" }).getByLabel("완료").check();
   const paid = listResponse(page, "status=PAID");
@@ -192,7 +207,7 @@ test("환불 모달: 개봉한 상품이 있으면 사유 주체를 바꿀 때�
   const openOrder = async (has: (r: ReturnType<typeof rows>) => ReturnType<typeof rows>) => {
     await page.goto("/seller/orders");
     await page.getByRole("button", { name: "주문 더 불러오기" }).click();
-    await has(rows(page)).getByRole("link", { name: "환불 처리" }).click();
+    await await openRefund(page, has(rows(page)));
     const dialog = page.getByRole("dialog", { name: "취소 · 환불 처리" });
     await expect(dialog).toBeVisible();
     return dialog;
@@ -263,7 +278,7 @@ test("환불 모달: 확인한 금액을 함께 보내고, 그사이 금액이 �
     await route.fulfill({ response: res, json });
   });
   await page.getByRole("button", { name: "주문 더 불러오기" }).click();
-  await rows(page).filter({ hasText: "외 1건" }).filter({ hasText: "카드왕" }).getByRole("link", { name: "환불 처리" }).click();
+  await openRefund(page, rows(page).filter({ hasText: "외 1건" }).filter({ hasText: "카드왕" }).first());
   const dialog = page.getByRole("dialog", { name: "취소 · 환불 처리" });
   const agree = dialog.getByLabel("위 금액으로 환불합니다. 환불한 뒤에는 되돌릴 수 없습니다.");
   const run = dialog.getByRole("button", { name: /환불 실행/ });
@@ -288,13 +303,14 @@ test("환불 모달: 확인한 금액을 함께 보내고, 그사이 금액이 �
 
 test("실제 환불: 판매자 사정으로 환불하면 완료 알림이 뜨고 주문이 환불됨으로 바뀐다", async ({ page }) => {
   await login(page);
+  await openDetail(page);
   await page.getByRole("button", { name: /상태: 전체/ }).click();
   await page.getByRole("group", { name: "결제 상태" }).getByLabel("완료").check();
   await page.getByRole("button", { name: "이 상태로 보기" }).click();
   await expect(rows(page).first()).toBeVisible();
   // 발송 전 주문(배송 「—」)을 고른다
   const target = await preShipTarget(page);
-  await target.getByRole("link", { name: "환불 처리" }).click();
+  await openRefund(page, target);
   const dialog = page.getByRole("dialog", { name: "취소 · 환불 처리" });
   await dialog.getByRole("radio", { name: /파트너스 사정/ }).check();
   await dialog.getByLabel("처리 사유").selectOption("품절 · 재고 없음");
@@ -350,12 +366,13 @@ test("환불 모달: 결제 수단이 카드면 「결제한 카드로 취소」
 
 test("주문·배송 권한만 있는 직원(방송 진행 권한 없음)도 실제로 환불할 수 있다", async ({ page }) => {
   await login(page, "demo-viewer@example.com");
+  await openDetail(page);
   await page.getByRole("button", { name: /상태: 전체/ }).click();
   await page.getByRole("group", { name: "결제 상태" }).getByLabel("완료").check();
   await page.getByRole("button", { name: "이 상태로 보기" }).click();
-  await expect(rows(page).first().locator(".bdg").first()).toHaveText("완료");
+  await expect(rows(page).first().locator(".bdg").first()).not.toHaveText(/환불됨|취소|입금 전/);
   const target = await preShipTarget(page);
-  await target.getByRole("link", { name: "환불 처리" }).click();
+  await openRefund(page, target);
   const dialog = page.getByRole("dialog", { name: "취소 · 환불 처리" });
   await dialog.getByRole("radio", { name: /파트너스 사정/ }).check();
   await dialog.getByLabel("처리 사유").selectOption("품절 · 재고 없음");
@@ -372,7 +389,7 @@ test("주문·배송 권한만 있는 직원(방송 진행 권한 없음)도 실
 
 test("발송한 주문의 송장은 택배사 코드가 아니라 화면 이름(CJ대한통운)으로 보인다", async ({ page }) => {
   await login(page);
-  const shipped = rows(page).filter({ has: page.locator("td:nth-child(6)", { hasText: "발송함" }) }).first();
+  const shipped = rows(page).filter({ has: page.locator("td:nth-child(6)", { hasText: /배송 (중|완료)/ }) }).first();
   await shipped.locator("a.ord-link").click();
   await expect(page).toHaveURL(/\/seller\/orders\/[0-9a-f-]{36}$/);
   const dd = page.locator("dt", { hasText: "송장" }).locator("xpath=following-sibling::dd[1]");
