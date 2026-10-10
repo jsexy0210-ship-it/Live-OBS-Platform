@@ -5,7 +5,7 @@ import { prisma } from "../../../../lib/server/db";
 import { getNotice } from "../../../../lib/server/platform-notices/service";
 import { noticeListHref } from "../../../../components/public/noticeView";
 
-export const metadata: Metadata = { title: "공지 · ONQ" };
+export const metadata: Metadata = { title: "공지 · 스트림샵" };
 export const dynamic = "force-dynamic";
 
 // PF-006 공지 상세. 없는·임시 저장·삭제·파트너스 전용 공지는 공통 404.

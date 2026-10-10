@@ -1,12 +1,40 @@
 import sharp from "sharp";
 import { crc32, deflateSync } from "node:zlib";
+import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { checkFavicon, checkOgImage, detectImage, readBodyLimited } from "../../lib/server/branding/image";
 import { requestCardSite, requestOrigin } from "../../lib/server/branding/siteUrl";
 import { renderBrandingCard } from "../../lib/server/branding/card";
+import { GET as designAsset } from "../../design/preview/app/design-assets/[...path]/route";
 
 const png = (w: number, h: number) => sharp({ create: { width: w, height: h, channels: 4, background: "#ff6600" } }).png().toBuffer();
 const jpg = (w: number, h: number) => sharp({ create: { width: w, height: h, channels: 3, background: "#123456" } }).jpeg().toBuffer();
+
+it("디자인 미리보기는 승인 심볼 PNG만 읽고 다른 PNG와 경로 이탈은 거부한다", async () => {
+  const get = (path: string[]) => designAsset(new Request("http://localhost/design-assets"), { params: Promise.resolve({ path }) });
+  const response = await get(["public", "branding", "streamshop-symbol.png"]);
+  expect(response.status).toBe(200);
+  expect(response.headers.get("content-type")).toBe("image/png");
+  expect(Buffer.from(await response.arrayBuffer())).toEqual(await readFile("public/branding/streamshop-symbol.png"));
+  expect((await get(["public", "branding", "onq-32.png"])).status).toBe(404);
+  expect((await get(["..", "public", "branding", "streamshop-symbol.png"])).status).toBe(404);
+  expect((await get(["styles", "public-brand.css"])).status).toBe(200);
+});
+
+it.each(["master", "partners"] as const)("%s 기본 파비콘·홈 아이콘은 정사각형 투명 PNG이며 원본 심볼을 보존한다", async (role) => {
+  const original = await readFile("public/branding/streamshop-symbol.png");
+  expect(createHash("sha256").update(original).digest("hex")).toBe("e6ea28c6674ce1431f7fbfecb548f23c98060152186c0fc8ddff7f44bd6cfc0d");
+  for (const size of [32, 180]) {
+    const data = await readFile(`public/branding/streamshop-${role}-${size}-20261010.png`);
+    expect(await sharp(data).metadata()).toMatchObject({ format: "png", width: size, height: size, hasAlpha: true });
+    const { channels } = await sharp(data).stats();
+    expect(channels[3].min).toBe(0);
+    expect(channels[3].max).toBeGreaterThan(200);
+    if (role === "master") expect(channels[1].mean).toBeGreaterThan(channels[0].mean * 2);
+    else expect(channels[0].mean).toBeGreaterThan(channels[1].mean * 2);
+  }
+});
 
 it("소개 기본 공유 카드는 승인 심볼을 읽어 1200×630 PNG로 렌더한다", async () => {
   const card = await renderBrandingCard("landing", "스트림샵 | 쇼핑몰부터 라이브 판매까지", "dev.on-aircue.com");

@@ -2,7 +2,9 @@ import Link from "next/link";
 import "../../styles/tokens.css";
 import "../../styles/lop.css";
 import "../../styles/public.css";
+import "../../styles/public-brand.css";
 import { PublicMobileMenu } from "./PublicMobileMenu";
+import { StreamShopBrand } from "./StreamShopBrand";
 import styles from "./PublicFrame.module.css";
 
 // 공개 화면(PF) 공통 머리·꼬리. 디자인 PF-001 기준.
@@ -29,12 +31,11 @@ export function PublicFrame({ children, active, mobileHeader, companyInfo }: { c
   });
   if (companyInfo?.name?.trim()) companyParts.push(`© 2026 ${companyInfo.name.trim()}`);
   return (
-    <div className="app pf" data-theme="light">
-      <header className="pf-head">
+    <div className={`app pf ${styles.page}`} data-theme="light">
+      <header className={`pf-head ${styles.header}`}>
         <div className="pf-head-l">
-          <Link className="logo pf-logo" href="/about">
-            <span className="logo-sym" />
-            <span className="logo-word" />
+          <Link className="logo pf-logo" href="/about" aria-label="스트림샵 서비스 소개">
+            <StreamShopBrand className={styles.brand} width={28} height={31} />
           </Link>
           <nav className="pf-nav" aria-label="주요 메뉴">
             {NAV.map((n) => (
@@ -45,24 +46,23 @@ export function PublicFrame({ children, active, mobileHeader, companyInfo }: { c
           </nav>
         </div>
         <div className="pf-head-r">
-          <Link className="btn btn-sm btn-out" href="/seller/login">
+          <Link className={styles.login} href="/seller/login">
             로그인
           </Link>
-          <Link className={`btn btn-sm ${mobileHeader === "compact" ? styles.compactSignup : ""}`} href="/seller/signup">
+          <Link className={`${styles.signup} ${mobileHeader === "compact" ? styles.compactSignup : ""}`} href="/seller/signup">
             파트너스 가입 신청
           </Link>
           {mobileHeader === "compact" && <PublicMobileMenu links={NAV} active={active} />}
         </div>
       </header>
       <main>{children}</main>
-      <footer className="pf-foot">
+      <footer className={`pf-foot ${styles.footer}`}>
         <div className="pf-foot-top">
           <div className="pf-foot-brand">
             <span className="logo">
-              <span className="logo-sym" />
-              <span className="logo-word" />
+              <StreamShopBrand className={styles.brand} width={28} height={31} />
             </span>
-            <span className="t-c1 c-alt">파트너스별 쇼핑몰과 라이브 방송 주문대기를 하나로.</span>
+            <span className="t-c1 c-alt">파트너스별 쇼핑몰과 라이브 방송 주문대기를 하나로</span>
           </div>
           <div className="pf-foot-links">
             <Link href="/terms">이용약관</Link>

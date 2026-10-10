@@ -3,8 +3,12 @@ import "../../../../styles/seller.css";
 import { SELLER_SIGNUP_CONSENT_VERSIONS } from "../../../../lib/server/sellers/signupConsent";
 import { SignupFlow } from "../../../../components/seller/signup/SignupFlow";
 import { PublicFrame } from "../../../../components/public/PublicFrame";
+import { brandingMetadata } from "../../../../lib/server/branding/metadata";
 
-export const metadata: Metadata = { title: "파트너스 가입 신청 · ONQ" };
+export async function generateMetadata(): Promise<Metadata> {
+  const { icons } = await brandingMetadata("seller");
+  return { title: "파트너스 가입 신청 · 스트림샵", icons };
+}
 
 // PF-007 파트너스 가입 신청 단계 화면의 틀. 정본은 공개 화면 틀(머리 · 꼬리, 보라 브랜드) 안의 단계 화면이다.
 // 필수 약관 버전은 서버 값을 화면에 넘긴다(화면과 서버가 같은 버전을 보게)

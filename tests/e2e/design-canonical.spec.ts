@@ -72,6 +72,8 @@ test("PF-003 TSX는 legacy v331의 문구와 1440 레이아웃을 보존한다",
   await expectWantedSans(page);
   const legacy = page.locator(".app");
   await expect(legacy).toBeVisible();
+  await expect(page.locator(".streamshop-footer a")).toHaveCount(4);
+  for (const link of await page.locator(".streamshop-footer a").all()) await expect(link).toHaveCSS("color", "rgb(255, 255, 255)");
   const legacyText = (await legacy.innerText()).replace(/\s+/g, " ").trim();
   const legacyBounds = await page.locator(".app").evaluate((app) => {
     const bounds = (element: Element) => {
@@ -86,6 +88,8 @@ test("PF-003 TSX는 legacy v331의 문구와 1440 레이아웃을 보존한다",
   const canonical = page.locator(".app");
   await expectWantedSans(page);
   await expect(canonical).toBeVisible();
+  await expect(page.locator(".streamshop-footer a")).toHaveCount(4);
+  for (const link of await page.locator(".streamshop-footer a").all()) await expect(link).toHaveCSS("color", "rgb(255, 255, 255)");
   const canonicalText = (await canonical.innerText()).replace(/\s+/g, " ").trim();
   expect(canonicalText).toBe(legacyText);
   const canonicalBounds = await canonical.evaluate((app) => {
@@ -124,6 +128,8 @@ test("PF-003 운영 요금은 정책과 FAQ 펼침 상태를 보존한다", asyn
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${productionUrl}/pricing`);
   const production = page.locator(".pf-pricing");
+  await expect(page.locator(".streamshop-footer a")).toHaveCount(4);
+  for (const link of await page.locator(".streamshop-footer a").all()) await expect(link).toHaveCSS("color", "rgb(255, 255, 255)");
   await expect(production.getByText("실시간 주문 알림 · 주문대기 표시", { exact: true })).toBeVisible();
   await expect(production.getByText(/결제가 끝난 주문 목록/)).toHaveCount(0);
   await expect(production.getByRole("link", { name: "오버레이 전용으로 시작하기" })).toBeVisible();

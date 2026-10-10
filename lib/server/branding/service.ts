@@ -44,10 +44,10 @@ export const imageMessage = (slot: ImageSlot, reason: ImageRejection | "empty_fi
 
 type Meta = { ip?: string | null; userAgent?: string | null };
 
-// 올린 파비콘이 없을 때 쓰는 기본 ONQ 아이콘(public/branding, 로고 심볼 .logo-sym과 같은 모양·색). 32px 탭 아이콘과 180px 홈 화면 아이콘.
-export const DEFAULT_FAVICON = { url: "/branding/onq-32.png", appleUrl: "/branding/onq-180.png", type: "image/png" } as const;
-// 마스터 관리자 기본 아이콘: 같은 모양을 마스터 식별색 틸(--master #0f766e)로 그린 것. 탭이 여러 개 열려 있어도 구분된다(대표님 지시 2026-10-04).
-export const DEFAULT_ADMIN_FAVICON = { url: "/branding/onq-admin-32.png", appleUrl: "/branding/onq-admin-180.png", type: "image/png" } as const;
+// 승인 StreamShop 심볼의 색상 파생본. 원본·업로드는 보존하며 새 파일명으로 이전 기본 아이콘 캐시와 구분한다.
+export const DEFAULT_FAVICON = { url: "/branding/streamshop-partners-32-20261010.png", appleUrl: "/branding/streamshop-partners-180-20261010.png", type: "image/png" } as const;
+// 마스터 틸 #0f766e / 파트너스 오렌지 #ea580c / 소개 원보라(대표님 지시 2026-10-10).
+export const DEFAULT_ADMIN_FAVICON = { url: "/branding/streamshop-master-32-20261010.png", appleUrl: "/branding/streamshop-master-180-20261010.png", type: "image/png" } as const;
 // 올린 파비콘이 없을 때 쓰는 기본 아이콘(대상별)
 export const DEFAULT_LANDING_FAVICON = { url: "/branding/streamshop-symbol.png", appleUrl: "/branding/streamshop-symbol.png", type: "image/png" } as const;
 export const defaultFavicon = (target: BrandingTarget) => target === "landing" ? DEFAULT_LANDING_FAVICON : target === "admin" ? DEFAULT_ADMIN_FAVICON : DEFAULT_FAVICON;

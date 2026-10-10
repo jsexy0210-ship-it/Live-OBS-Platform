@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { StreamShopBrand } from "../../components/public/StreamShopBrand";
+import "../../styles/public-brand.css";
 
 type Plan = {
   name: string;
@@ -26,17 +28,17 @@ const plans: Plan[] = [
     listPrice: "249,000원",
     price: "179,000원",
     offer: "런칭 할인가 · 체험 없이 바로 시작 · 할인이 끝나면 정가 월 249,000원",
-    features: ["오버레이 전용의 모든 기능", "ONQ 스토어 · 상품 · 주문 운영", "결제 · 배송 · 송장 · 적립금", "영수증 · 세금계산서 발행"],
+    features: ["오버레이 전용의 모든 기능", "스트림샵 스토어 · 상품 · 주문 운영", "결제 · 배송 · 송장 · 적립금", "영수증 · 세금계산서 발행"],
     recommended: true,
     startLabel: "쇼핑몰 통합으로 시작하기",
   },
 ];
 
 const questions = [
-  ["언제 결제되나요?", "오버레이 전용은 7일 체험이 끝난 다음 날, 쇼핑몰 통합은 구독을 시작한 날 첫 결제가 되고 그 뒤로 매달 같은 날에 결제돼요. 결제일은 구독 · 결제 메뉴에서 볼 수 있어요."],
-  ["결제가 실패하면 어떻게 되나요?", "결제가 실패하면 하루 간격으로 3번 다시 시도해요. 처음 실패한 날부터 7일까지는 그대로 쓸 수 있고, 그 뒤에는 결제할 때까지 쇼핑몰과 방송 화면이 멈춰요. 결제하면 바로 다시 열리고, 구독 기간은 원래 결제일부터 이어서 세요. 잠긴 지 30일이 지나면 자동으로 해지돼요."],
-  ["해지하면 데이터는요?", "해지해도 이번 결제 기간이 끝날 때까지는 그대로 쓸 수 있고, 다음 결제부터 청구하지 않아요. 해지한 뒤 90일 동안 자료를 보관하고, 그 안에 다시 구독하면 그대로 되살려요. 90일이 지나면 삭제돼요. 주문 · 결제 기록은 법에서 정한 5년 동안 따로 보관해요. 삭제 전에 메일로 미리 알려 드려요."],
-  ["요금이 바뀌면요?", "새로 가입하는 분에게는 바뀐 요금이 바로 적용되고, 이미 구독 중이면 30일 전에 메일 · 알림톡 · 파트너스 관리자 공지로 알린 뒤 그다음 결제부터 적용돼요. 런칭 할인이 끝나는 날짜도 정해지면 30일 전에 알려 드려요."],
+  ["언제 결제되나요?", "오버레이 전용은 7일 체험이 끝난 다음 날, 쇼핑몰 통합은 구독을 시작한 날 첫 결제가 되고 그 뒤로 매달 같은 날에 결제돼요 결제일은 구독 · 결제 메뉴에서 볼 수 있어요"],
+  ["결제가 실패하면 어떻게 되나요?", "결제가 실패하면 하루 간격으로 3번 다시 시도해요 처음 실패한 날부터 7일까지는 그대로 쓸 수 있고, 그 뒤에는 결제할 때까지 쇼핑몰과 방송 화면이 멈춰요 결제하면 바로 다시 열리고, 구독 기간은 원래 결제일부터 이어서 세요 잠긴 지 30일이 지나면 자동으로 해지돼요"],
+  ["해지하면 데이터는요?", "해지해도 이번 결제 기간이 끝날 때까지는 그대로 쓸 수 있고, 다음 결제부터 청구하지 않아요 해지한 뒤 90일 동안 자료를 보관하고, 그 안에 다시 구독하면 그대로 되살려요 90일이 지나면 삭제돼요 주문 · 결제 기록은 법에서 정한 5년 동안 따로 보관해요 삭제 전에 메일로 미리 알려 드려요"],
+  ["요금이 바뀌면요?", "새로 가입하는 분에게는 바뀐 요금이 바로 적용되고, 이미 구독 중이면 30일 전에 메일 · 알림톡 · 파트너스 관리자 공지로 알린 뒤 그다음 결제부터 적용돼요 런칭 할인이 끝나는 날짜도 정해지면 30일 전에 알려 드려요"],
 ] as const;
 
 const designHref = (id: string) => id === "PF-003" ? "/" : `/design/project/${id}.dc.html`;
@@ -52,11 +54,11 @@ function CheckMark() {
 }
 
 function BrandLogo({ size = 20 }: { size?: number }) {
-  return <span className="logo" style={{ fontSize: size }}><span className="logo-sym" /><span className="logo-word" /></span>;
+  return <StreamShopBrand className="logo" style={{ fontSize: size }} width={28} height={31} />;
 }
 
 function BrandMark() {
-  return <><span className="logo-sym" /><span className="logo-word" /></>;
+  return <StreamShopBrand className="logo" width={28} height={31} />;
 }
 
 function PlanCard({ plan }: { plan: Plan }) {
@@ -109,8 +111,8 @@ function PricingQuestions() {
 
 export default function PF003Canonical() {
   return (
-    <div className="app" data-theme="light" style={{ width: 1440, display: "flex", flexDirection: "column", background: "var(--surface)" }}>
-      <header className="row between" style={{ height: 72, padding: "0 64px", boxShadow: "inset 0 -1px 0 var(--wds-line-normal-alternative)", background: "var(--surface)" }}>
+    <div className="app streamshop-public" data-theme="light" style={{ width: 1440, display: "flex", flexDirection: "column", background: "var(--surface)" }}>
+      <header className="row between streamshop-header" style={{ boxShadow: "inset 0 -1px 0 var(--wds-line-normal-alternative)" }}>
         <div className="row" style={{ gap: 40 }}>
           <a className="logo" href={designHref("PF-001")} style={{ fontSize: 20 }}><BrandMark /></a>
           <nav className="row" style={{ gap: 28 }} aria-label="공개 메뉴">
@@ -120,9 +122,9 @@ export default function PF003Canonical() {
             <a className="t-l1 fw5 c-neu" href={designHref("PF-005")} style={{ color: "inherit", textDecoration: "none" }}>공지</a>
           </nav>
         </div>
-        <div className="row" style={{ gap: 8 }}>
-          <a className="btn btn-sm btn-out" href={designHref("AU-002")}>로그인</a>
-          <a className="btn btn-sm" href={designHref("PF-007-1")}>파트너스 가입 신청</a>
+        <div className="row streamshop-actions">
+          <a className="streamshop-login" href={designHref("AU-002")}>로그인</a>
+          <a className="streamshop-signup" href={designHref("PF-007-1")}>파트너스 가입 신청</a>
         </div>
       </header>
 
@@ -135,7 +137,7 @@ export default function PF003Canonical() {
           {plans.map((plan) => <PlanCard plan={plan} key={plan.name} />)}
         </div>
         <div className="col" style={{ maxWidth: 980, margin: "20px auto 0", gap: 12 }}>
-          <div className="msg msg-info t-l2" style={{ display: "block" }}>지금은 런칭 할인가예요. 할인이 끝나는 날짜는 정해지면 30일 전에 알려 드리고, 바뀌는 날짜와 금액은 결제 전 화면과 구독 관리 화면에서 다시 보여 드려요.</div>
+          <div className="msg msg-info t-l2" style={{ display: "block" }}>지금은 런칭 할인가예요 할인이 끝나는 날짜는 정해지면 30일 전에 알려 드리고, 바뀌는 날짜와 금액은 결제 전 화면과 구독 관리 화면에서 다시 보여 드려요</div>
           <div className="card row" style={{ padding: "20px 24px", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
             <div className="col" style={{ gap: 2, flex: 1, minWidth: 260 }}>
               <span className="t-hl2">자동 연결 (선택)</span>
@@ -154,7 +156,7 @@ export default function PF003Canonical() {
       <section style={{ padding: "80px 64px", background: "var(--page)" }}>
         <div className="col" style={{ alignItems: "center", gap: 16, textAlign: "center" }}>
           <h2 className="t-t1">오늘 쇼핑몰을 열고, 다음 방송부터 줄을 세워요</h2>
-          <p className="t-b1 c-neu">점검을 통과하면 바로 승인돼요. 오버레이 전용은 승인되면 7일 동안 체험할 수 있고, 쇼핑몰 통합은 체험 없이 구독으로 시작해요.</p>
+          <p className="t-b1 c-neu">점검을 통과하면 바로 승인돼요 오버레이 전용은 승인되면 7일 동안 체험할 수 있고, 쇼핑몰 통합은 체험 없이 구독으로 시작해요</p>
           <div className="row" style={{ gap: 8 }}>
             <a className="btn btn-lg" href={designHref("PF-007-1")}>파트너스 가입 신청</a>
             <a className="btn btn-lg btn-out" href={designHref("PF-003")}>요금 보기</a>
@@ -162,11 +164,11 @@ export default function PF003Canonical() {
         </div>
       </section>
 
-      <footer style={{ padding: "40px 64px", background: "var(--page)", display: "flex", flexDirection: "column", gap: 20 }}>
+      <footer className="streamshop-footer" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
         <div className="row between" style={{ alignItems: "flex-start" }}>
           <div className="col" style={{ gap: 8 }}>
             <BrandLogo size={18} />
-            <span className="t-c1 c-alt">파트너스별 쇼핑몰과 라이브 방송 주문대기를 하나로.</span>
+            <span className="t-c1 c-alt">파트너스별 쇼핑몰과 라이브 방송 주문대기를 하나로</span>
           </div>
           <div className="row" style={{ gap: 24 }}>
             <a className="t-l2" href={designHref("PF-008")}>이용약관</a>
