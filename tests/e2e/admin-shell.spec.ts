@@ -93,6 +93,8 @@ test("로그 추적: 실제 조회 DTO 뒤 합성 IP·기기/빈 값을 목록·
       expect(browserStatus).toBe(200);
       expect(responseRows).toBe(3);
       await expect(page.getByRole("columnheader", { name: "IP · 기기", exact: true })).toBeVisible();
+      await expect(page.locator(".main .tbl thead").getByRole("columnheader")).toHaveCount(8);
+      expect(await page.locator(".main .tbl thead th").evaluateAll((headers) => headers.map((header) => header.getAttribute("scope")))).toEqual(Array(8).fill("col"));
     } catch (error) {
       let roleStatus: number | null = null;
       let role: string | undefined;
