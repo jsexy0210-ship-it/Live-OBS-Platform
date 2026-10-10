@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>통합 대시보드</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body><x-dc><helmet><style>body{margin:0}.ma-home{padding:24px;flex:1;min-width:0;font-size:13px}.ma-home .card{border:1px solid var(--c24-line);border-radius:12px;background:white}.ma-home .col{display:flex;flex-direction:column}.ma-home .row{display:flex;align-items:center;gap:8px}.ma-home h1{font-size:20px;margin:0}.ma-home h2{font-size:14px;margin:0}.ma-home .t-c1{font-size:12px}.ma-home .c-alt{color:#64748b}.ma-home .sts-kpis{display:grid}.ma-home .stat{border:1px solid var(--c24-line);border-radius:12px;display:flex;flex-direction:column;gap:4px}.ma-home .stat .v{font-weight:700}.ma-home .ma-home-panel{display:flex;flex-direction:column}.ma-home .tbl{width:100%;border-collapse:collapse}.ma-home .tbl th,.ma-home .tbl td{border:1px solid var(--c24-line);padding:8px}.ma-home .sts-plot{border-bottom:1px solid var(--c24-line);background:repeating-linear-gradient(to bottom,transparent 0,transparent 58px,#e2e8f0 59px,#e2e8f0 60px)}.ma-home .ph2{margin-bottom:8px}.ma-home .ma-home-content{display:flex;flex-direction:column}.ma-home .ma-home-values dd{white-space:nowrap}.ma-home { min-width: 0; }
+.ma-home-kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+.ma-home-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.ma-home-grid > [data-testid="stats-orders"] { grid-column: span 2; }
+.ma-home-grid > [data-testid="stats-top"] { grid-column: span 2; }
+.ma-home-panel { min-width: 0; overflow-wrap: anywhere; }
+.ma-home-panel > .card { border: 0; box-shadow: none; padding: 0; min-width: 0; }
+.ma-home-panel .sts-kpis { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
+.ma-home-kpis .sts-kpis { grid-template-columns: minmax(0, 1fr); }
+.ma-home-line { margin: 0; min-width: 0; }
+.ma-home-line svg { width: 100%; height: 140px; display: block; }
+.ma-home .sts-x span:not(:first-child):not(:last-child) { display: none; }
+.ma-home .sts-x span:first-child { left: 0 !important; transform: none; }
+.ma-home .sts-x span:last-child:not(:first-child) { left: auto !important; right: 0; transform: none; }
+.ma-home-table { overflow-x: auto; min-width: 0; }
+.ma-home-table table { white-space: nowrap; }
+.ma-home-status { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+.ma-home-donut { width: 116px; height: 116px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0; }
+.ma-home-donut span { border-radius: 50%; background: var(--surface); width: 82px; height: 82px; display: grid; place-items: center; font-weight: 700; }
+.ma-home-status ul { padding: 0; margin: 0; list-style: none; flex: 1; min-width: 130px; }
+.ma-home-status li, .ma-home-values > div { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.ma-home-values { margin: 0; }
+.ma-home-values dd { margin: 0; font-weight: 700; }
+.ma-home-ranks { display: grid; gap: 12px; margin-bottom: 16px; }
+.ma-home-ranks > div { display: grid; grid-template-columns: 1fr auto; gap: 5px; }
+.ma-home-ranks progress { grid-column: 1 / -1; width: 100%; height: 10px; accent-color: var(--wds-primary-normal); }
+.ma-home-events { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+.ma-home-events li { display: grid; gap: 4px; }
+.ma-home-content { gap: 16px; }
+.ma-home .ma-home-panel { padding: 14px; gap: 8px !important; }
+.ma-home .sts-kpis { gap: 8px; }
+.ma-home .sts-kpis .stat { padding: 10px; }
+.ma-home .sts-kpis .stat .v { font-size: 20px; line-height: 26px; white-space: nowrap; overflow-wrap: normal; }
+.ma-home .sts-plot { height: 120px; }
+.ma-home .sts-chart { padding-top: 8px; padding-bottom: 6px; }
+.ma-home .sts-h { padding-top: 8px; }
+.ma-home-revenue { display: grid; grid-template-columns: 2fr 3fr; gap: 12px; }
+.ma-home-revenue > section:first-child .sts-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ma-home-revenue > section:last-child .sts-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ma-home-brief { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.ma-home-compact-values { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 16px; }
+.ma-home-compact [data-testid="today-tasks"] .stat-row { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; gap: 8px !important; }
+.ma-home-compact [data-testid="today-tasks"] .stat { padding: 10px; }
+.ma-home-detail .ma-home-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ma-home-detail .ma-home-panel .sts-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ma-home-detail [data-testid="stats-orders"] .sts-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ma-home-detail [data-testid="stats-top"] .tbl th, .ma-home-detail [data-testid="stats-top"] .tbl td { padding: 8px; font-size: 12px; }
+@media (max-width: 1200px) {
+  .ma-home-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ma-home-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ma-home-revenue { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 700px) {
+  .ma-home-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ma-home-grid { grid-template-columns: minmax(0, 1fr); }
+  .ma-home-grid > [data-testid="stats-orders"], .ma-home-grid > [data-testid="stats-top"] { grid-column: auto; }
+  .ma-home-brief { grid-template-columns: minmax(0, 1fr); }
+  .ma-home-revenue > section:last-child .sts-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ma-home-compact [data-testid="today-tasks"] .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .ma-home-detail .ma-home-kpis, .ma-home-detail [data-testid="stats-orders"] .sts-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+</style></helmet><!-- 2026-10-11 승인 파생 FINAL: 값은 기존 GET 조회로만 표시하며 —는 정본의 값 공간이다. 원 MA-001.dc.html은 보존한다. --><div class="app c24 ma" data-theme="light" style="width:100%;display:flex;flex-direction:column"><div class="gnb"><a class="brand" href="MA-001-compact.dc.html"><span class="logo-sym" style="--brand: #fff; --brand-ink: var(--c24-gnb)"></span>ONQ <small>마스터 관리자</small></a><nav class="gnb-m"><a class="on" href="MA-001-compact.dc.html">홈</a><a class="" href="MA-011.dc.html">파트너스</a><a class="" href="MA-021.dc.html">요금 · 결제</a><a class="" href="MA-041.dc.html">운영</a><a class="" href="MA-051.dc.html">고객지원</a><a class="" href="MA-081.dc.html">설정</a></nav><div class="util"><a href="MA-002.dc.html">알림</a><a href="MA-090.dc.html">내 계정</a><span class="who">[이름] · 최고관리자</span><a href="AU-001.dc.html">로그아웃</a></div></div><div class="wrap" style="min-height: 0"><aside class="lnb"><div class="lnb-t">홈</div><a class="on" href="MA-001-compact.dc.html">홈</a><a href="MA-001-status.dc.html">상세 현황</a></aside><main class="cont main ma-home ma-home-compact"><div class="ph2"><h1>통합 대시보드</h1><div class="acts"><a class="b" href="MA-001-status.dc.html">상세 현황</a><button class="b">새로 고침</button></div></div><p class="t-c1 c-alt">매출과 오늘 처리할 일을 확인합니다. 전체 정보는 홈의 상세 현황에서 확인합니다.</p><div class="ma-home-content"><div class="row" style="justify-content:space-between"><h2>매출 요약</h2><div class="seg"><button class="b">최근 7일</button><button class="b pri" aria-pressed="true">최근 30일</button><button class="b">최근 90일</button></div></div><div class="ma-home-revenue"><section class="card pad col ma-home-panel" aria-label="플랫폼 구독 매출" data-testid="home-revenue-subscriptions"><h2><a href="/admin/settlement/collection">플랫폼 구독 매출</a></h2><span class="t-c1 c-alt">이번 KST 월 · 구독 청구·환불 집계</span><div class="sts-kpis"><div class="stat"><span>수납 구독료</span><span class="v">—</span><span class="t-c1 c-alt">기존 GET 조회값</span></div><div class="stat"><span>구독 환불</span><span class="v">—</span><span class="t-c1 c-alt">기존 GET 조회값</span></div></div></section><section class="card pad col ma-home-panel" aria-label="파트너스 주문 결제액" data-testid="home-revenue-orders"><h2><a href="MA-001-status.dc.html">파트너스 주문 결제액</a></h2><span class="t-c1 c-alt">최근 30일 · KST 주문 생성일 기준</span><div class="sts-kpis"><div class="stat"><span>주문 결제액</span><span class="v">—</span><span class="t-c1 c-alt">기존 GET 조회값</span></div><div class="stat"><span>주문 환불</span><span class="v">—</span><span class="t-c1 c-alt">기존 GET 조회값</span></div><div class="stat"><span>환불 제외 결제액</span><span class="v">—</span><span class="t-c1 c-alt">기존 GET 조회값</span></div></div></section></div><section class="card pad col ma-home-panel" aria-label="오늘 처리할 일" data-testid="today-tasks"><h2>오늘 처리할 일</h2><span class="t-c1 c-alt">기존 조건 링크 · 플랫폼 정보는 누락 시 표시</span><div class="stat-row" style="display:grid"><a class="stat" href="/admin/partners/applications"><span>가입 신청 처리 대기</span><b>—</b></a><a class="stat" href="/admin/billing/invoices?failedOnly=1"><span>결제 실패</span><b>—</b></a><a class="stat" href="/admin/billing/refunds?status=REQUESTED"><span>환불 요청</span><b>—</b></a><a class="stat" href="/admin/support/inquiries?status=OPEN"><span>파트너스 문의</span><b>—</b></a><a class="stat" href="/admin/settlement/pg"><span>카드 결제 연결 오류</span><b>—</b></a><a class="stat" href="/admin/ops/automation?filter=failed"><span>자동 연결 실패</span><b>—</b></a><a class="stat" href="/admin/ops/monitor"><span>바로 확인할 문제</span><b>—</b></a><a class="stat" href="/admin/settings/platform-business"><span>플랫폼 정보 미입력</span><b>—</b></a></div></section><div class="ma-home-brief"><section class="card pad col ma-home-panel" aria-label="파트너스 · 구독" data-testid="home-brief-summary"><h2><a href="MA-001-status.dc.html">파트너스 · 구독</a></h2><div class="ma-home-compact-values"><a href="/admin/partners">전체 파트너스 —</a><a href="/admin/ops/live">방송 중 —</a><a href="/admin/billing/subscriptions">구독 이용 중 — · 연체 —</a></div></section><section class="card pad col ma-home-panel" aria-label="운영 · 장애" data-testid="home-brief-operations"><h2><a href="/admin/ops/monitor">운영 · 장애</a></h2><span>서비스 서버 — · 열린 장애 — · 자동 연결 대기 —</span><div class="ma-home-compact-values"><a href="/admin/ops/automation">자동 연결 작업</a><a href="MA-001-status.dc.html">DB 응답 · 연결</a><a href="/admin/logs">최근 관리자 활동 · 로그 추적</a></div></section></div><section class="card pad col ma-home-panel" aria-label="인프라 · 비용" data-testid="infra-card"><h2><a href="/admin/ops/infra">인프라 · 비용</a></h2><div class="ma-home-compact-values"><dl class="ma-home-values"><div><dt>이번 달 요금(추정)</dt><dd>—</dd></div><div><dt>월말 예상</dt><dd>—</dd></div><div><dt>경고</dt><dd>—</dd></div></dl></div><span>서버별 디스크 · 메모리 · 1분마다 갱신 · 최고관리자만 표시</span></section></div></main></div></div></x-dc></body></html>

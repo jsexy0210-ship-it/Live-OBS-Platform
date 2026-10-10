@@ -79,7 +79,7 @@
 
 | ID | 화면 | Product Route | Design Source | Entry | Status | Artifact Version | 마지막 동기화(KST) | 비고 |
 |---|---|---|---|---|---|---|---|---|
-| MA-001 | 통합 대시보드 | /admin | design/project/MA-001.dc.html | MA-001.dc.html | FINAL | 2026-10-09 사용자 재승인 | 2026-10-09 KST | 사용자가 직접 열어 본 원래 홈을 정본으로 재승인(이전 SUPERSEDED 해제). 원본 HTML 바이트는 보존한다. 6개 요약·3열 차트/상태/운영/활동 구조에 이전 MA-001-IA의 필수 업무큐 8종·최고관리자 인프라/비용·결제된 주문/가입 신청·7/30/90 기간을 추가 보존한다. 실제값은 기존 권한별 GET에서만 표시하며 정본 예시 숫자는 사용하지 않는다. MA-001-IA는 이전 필수계약 참조이며 현행 시각 정본을 대신하지 않는다. 구현·3폭 검증 상태는 docs/UI_STATUS.md 참조. |
+| MA-001 | 통합 대시보드 · 상세 현황 | /admin · /admin/home/status | design/project/MA-001-compact.dc.html | MA-001-compact.dc.html | FINAL | 2026-10-11 사용자 홈 축약·상세 이관 승인 | 2026-10-11 KST | 홈은 플랫폼 구독 매출·선택기간 파트너스 주문 결제액을 먼저 구분하고 업무큐 8종과 운영/활동 실링크·최고관리자 인프라 요약을 보존한다. 상세 현황 정본은 design/project/MA-001-status.dc.html이며 기존 6요약·기간/주문/6개월 구독/가입·방송/상위5/파트너스·구독·청구/운영·DB·장애·활동과 인프라 상세를 이관한다. 두 파생 정본이 최신 시각 Source of Truth다. 원 MA-001.dc.html(33b00b26…06148a)은 이전 승인 이력으로 바이트 보존하며 MA-001-IA는 필수계약·홈 메뉴 참조다. 집계·권한·API는 유지하고 값 공간은 기존 GET만 사용한다. PC 1440/1024 게이트·기존 반응형 보존, 실제 검증 상태는 docs/UI_STATUS.md 참조. |
 | MA-002 | 알림 센터 | /admin/notifications | design/project/MA-002.dc.html | MA-002.dc.html | FINAL | v291 (1791219075-ad9b) | 2026-10-06 01:51 KST | FINAL 재확인(2026-10-06 마스터 묶음) · 제목 「알림 센터」(DS-NAV) · 결제 연결 오류·방송 화면 용어 · 행 버튼 「대신 보기」 |
 | MA-010 | 파트너스(메뉴 그룹) | — | — | 메뉴 그룹 ID(화면 아님) | GROUP | 1791213911-1437 | 2026-10-06 00:27 KST | IA 그룹 헤더 · 보드 대상 아님 |
 | MA-011 | 파트너스 목록 | /admin/partners | design/project/MA-011.dc.html | MA-011.dc.html | FINAL | v287 (1791217739-ca0d) | 2026-10-06 02:08 KST | DS-PANEL 목록 패널 구조 적용(v243) · 변형: MA-011-PRE, MA-011-S |

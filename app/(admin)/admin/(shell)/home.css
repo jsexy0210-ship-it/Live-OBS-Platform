@@ -1,13 +1,14 @@
 .ma-home { min-width: 0; }
 .ma-home-kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
-.ma-home-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.ma-home-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
 .ma-home-grid > [data-testid="stats-orders"] { grid-column: span 2; }
-.ma-home-panel { min-width: 0; height: 100%; overflow-wrap: anywhere; }
+.ma-home-grid > [data-testid="stats-top"] { grid-column: span 2; }
+.ma-home-panel { min-width: 0; overflow-wrap: anywhere; }
 .ma-home-panel > .card { border: 0; box-shadow: none; padding: 0; min-width: 0; }
 .ma-home-panel .sts-kpis { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
 .ma-home-kpis .sts-kpis { grid-template-columns: minmax(0, 1fr); }
 .ma-home-line { margin: 0; min-width: 0; }
-.ma-home-line svg { width: 100%; height: auto; display: block; }
+.ma-home-line svg { width: 100%; height: 140px; display: block; }
 .ma-home .sts-x span:not(:first-child):not(:last-child) { display: none; }
 .ma-home .sts-x span:first-child { left: 0 !important; transform: none; }
 .ma-home .sts-x span:last-child:not(:first-child) { left: auto !important; right: 0; transform: none; }
@@ -25,12 +26,36 @@
 .ma-home-ranks progress { grid-column: 1 / -1; width: 100%; height: 10px; accent-color: var(--wds-primary-normal); }
 .ma-home-events { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
 .ma-home-events li { display: grid; gap: 4px; }
+.ma-home-content { gap: 16px; }
+.ma-home .ma-home-panel { padding: 14px; gap: 8px !important; }
+.ma-home .sts-kpis { gap: 8px; }
+.ma-home .sts-kpis .stat { padding: 10px; }
+.ma-home .sts-kpis .stat .v { font-size: 20px; line-height: 26px; white-space: nowrap; overflow-wrap: normal; }
+.ma-home .sts-plot { height: 120px; }
+.ma-home .sts-chart { padding-top: 8px; padding-bottom: 6px; }
+.ma-home .sts-h { padding-top: 8px; }
+.ma-home-revenue { display: grid; grid-template-columns: 2fr 3fr; gap: 12px; }
+.ma-home-revenue > section:first-child .sts-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ma-home-revenue > section:last-child .sts-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ma-home-brief { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.ma-home-compact-values { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 16px; }
+.ma-home-compact [data-testid="today-tasks"] .stat-row { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; gap: 8px !important; }
+.ma-home-compact [data-testid="today-tasks"] .stat { padding: 10px; }
+.ma-home-detail .ma-home-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ma-home-detail .ma-home-panel .sts-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ma-home-detail [data-testid="stats-orders"] .sts-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ma-home-detail [data-testid="stats-top"] .tbl th, .ma-home-detail [data-testid="stats-top"] .tbl td { padding: 8px; font-size: 12px; }
 @media (max-width: 1200px) {
   .ma-home-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .ma-home-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ma-home-revenue { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 700px) {
   .ma-home-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ma-home-grid { grid-template-columns: minmax(0, 1fr); }
-  .ma-home-grid > [data-testid="stats-orders"] { grid-column: auto; }
+  .ma-home-grid > [data-testid="stats-orders"], .ma-home-grid > [data-testid="stats-top"] { grid-column: auto; }
+  .ma-home-brief { grid-template-columns: minmax(0, 1fr); }
+  .ma-home-revenue > section:last-child .sts-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ma-home-compact [data-testid="today-tasks"] .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .ma-home-detail .ma-home-kpis, .ma-home-detail [data-testid="stats-orders"] .sts-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

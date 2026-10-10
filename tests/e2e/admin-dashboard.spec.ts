@@ -31,6 +31,10 @@ test("로그인하면 홈에 통합 대시보드가 보이고, 숫자가 API 값
   await expect(page.getByRole("heading", { name: "통합 대시보드", level: 1 })).toBeVisible();
   await expect(page.getByTestId("admin-coming-soon")).toHaveCount(0);
 
+  await page.locator(".lnb-sec.on").getByRole("link", { name: "상세 현황", exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/home\/status$/);
+  await expect(page.getByRole("heading", { name: "상세 현황", level: 1 })).toBeVisible();
+
   const api = await page.evaluate(async () => (await fetch("/api/admin/dashboard", { cache: "no-store" })).json());
   const fmt = (v: number, unit: string) => `${v.toLocaleString("ko-KR")}${unit}`;
   await expect(page.getByTestId("dash-sellers-active")).toHaveText(fmt(api.sellers.ACTIVE, "곳"));
