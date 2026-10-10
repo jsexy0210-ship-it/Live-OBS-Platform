@@ -79,7 +79,7 @@ export function Notices({
           </div>
         ) : pinned.length + items.length === 0 ? (
           <p className="t-b1 c-alt" data-testid="notices-empty">
-            아직 올라온 공지가 없어요.
+            아직 올라온 공지가 없어요
           </p>
         ) : (
           <>

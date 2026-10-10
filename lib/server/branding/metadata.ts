@@ -15,7 +15,14 @@ export async function brandingMetadata(target: BrandingTarget): Promise<Metadata
     meta = await brandingMeta(prisma, target);
   } catch (e) {
     console.error(e);
-    if (target !== "landing") return {};
+    if (target !== "landing") {
+      const fallback = defaultFavicon(target);
+      return { icons: {
+        icon: [{ url: fallback.url, type: fallback.type, sizes: "32x32" }],
+        shortcut: [{ url: fallback.url, type: fallback.type }],
+        apple: [{ url: fallback.appleUrl, sizes: "180x180" }],
+      } };
+    }
     meta = { ...BRANDING_DEFAULTS.landing, favicon: null, image: { url: ogImageUrl(target, generatedCardVersion(BRANDING_DEFAULTS.landing.title, target)), width: 1200, height: 630 } };
   }
   const description = meta.description ?? undefined;
@@ -25,7 +32,7 @@ export async function brandingMetadata(target: BrandingTarget): Promise<Metadata
   return {
     title: meta.title,
     description,
-    // 올린 파비콘이 없으면 기본 ONQ 아이콘을 직접 넣는다(파일 기반 app/icon.*에 기대지 않음)
+    // 올린 파비콘이 없으면 대상별 기본 StreamShop 아이콘을 직접 넣는다.
     icons: meta.favicon
       ? { icon: [{ url: iconUrl(meta.favicon.url), type: meta.favicon.type }], shortcut: [{ url: iconUrl(meta.favicon.url), type: meta.favicon.type }], apple: [{ url: iconUrl(meta.favicon.url) }] }
       : {

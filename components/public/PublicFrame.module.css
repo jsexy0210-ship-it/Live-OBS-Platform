@@ -1,5 +1,9 @@
+.page { composes: streamshop-public from global; }
+.header { composes: streamshop-header from global; }
+.brand { composes: streamshop-brand from global; }
+.login { composes: streamshop-login from global; }
+.signup { composes: streamshop-signup from global; }
+.footer { composes: streamshop-footer from global; }
 @media (max-width: 900px) {
-  .compactSignup {
-    display: none;
-  }
+  .compactSignup { display: none; }
 }

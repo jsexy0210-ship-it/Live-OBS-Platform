@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { expectPublicBrand } from "./publicBrand";
 import { pricingIntro } from "../../components/public/pricingCopy";
 import { PrismaClient } from "@prisma/client";
 import { randomBytes } from "node:crypto";
@@ -109,6 +110,7 @@ test("PF-001 정본은 세 화면 폭과 모바일 가입·기능 진입을 지�
 test("PF-007-1은 정본 헤더와 모바일 메뉴를 유지한다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/seller/signup");
+  await expectPublicBrand(page, "/branding/streamshop-partners-32-20261010.png");
   await expect(page.getByTestId("signup-step-count")).toHaveText("1 / 5");
   await page.screenshot({ path: "tests/e2e/screenshots/PF-007-1-1440.png", fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1440);

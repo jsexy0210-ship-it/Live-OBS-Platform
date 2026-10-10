@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { expectPublicBrand } from "./publicBrand";
 import { cleanupPublicNoticePagesInDb, seedPublicNoticePagesInDb } from "./platformDb";
 
 // PF-005·006 공개 공지 UI. 데이터는 폐기용 E2E DB에만 준비하고 종료 뒤 정리한다.
@@ -27,6 +28,7 @@ test("공지 목록은 고정·첫·중간·마지막 페이지를 구분하고 
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
     await expect(page.locator(".pf-info-section")).toHaveCSS("padding-top", width === 390 ? "40px" : "72px");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `${width}px notice list overflow`).toBe(true);
+    await expectPublicBrand(page);
     await page.screenshot({ path: `tests/e2e/screenshots/pf005-notice-list-${width}.png`, fullPage: true });
   }
 
@@ -51,7 +53,7 @@ test("분류·상세·브라우저 뒤로 가기가 원래 페이지 상태를 �
   await expect(row).toHaveCount(1);
   await row.click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("E2E-PF-FEATURE-05");
-  await expect(page.getByText("ONQ 운영팀")).toBeVisible();
+  await expect(page.getByText("스트림샵 운영팀")).toBeVisible();
   await expect(page.getByTestId("notice-body")).toContainText("첫 줄 5");
   const neighbors = page.getByRole("navigation", { name: "이전·다음 공지" });
   await expect(neighbors.getByRole("link", { name: /이전: E2E-PF-POLICY-06/ })).toHaveAttribute("href", /category=FEATURE&page=2/);
@@ -63,7 +65,7 @@ test("분류·상세·브라우저 뒤로 가기가 원래 페이지 상태를 �
   for (const width of [1440, 1024, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
     const category = page.locator(".pf-doc-body .bdg");
-    const author = page.getByText("ONQ 운영팀");
+    const author = page.getByText("스트림샵 운영팀");
     const title = page.getByRole("heading", { level: 1 });
     await expect(page.locator(".pf-document-section")).toHaveCSS("padding-top", width === 390 ? "40px" : "56px");
     await expect(category).toBeVisible();
@@ -77,6 +79,7 @@ test("분류·상세·브라우저 뒤로 가기가 원래 페이지 상태를 �
     expect(Math.min(categoryBox!.y + categoryBox!.height, authorBox!.y + authorBox!.height) - Math.max(categoryBox!.y, authorBox!.y), `${width}px metadata same row`).toBeGreaterThan(0);
     expect(titleBox!.y, `${width}px title below metadata`).toBeGreaterThanOrEqual(Math.max(categoryBox!.y + categoryBox!.height, authorBox!.y + authorBox!.height));
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `${width}px notice detail overflow`).toBe(true);
+    await expectPublicBrand(page);
     await page.screenshot({ path: `tests/e2e/screenshots/pf006-notice-detail-${width}.png`, fullPage: true });
   }
   await page.setViewportSize({ width: 390, height: 844 });
@@ -87,7 +90,7 @@ test("분류·상세·브라우저 뒤로 가기가 원래 페이지 상태를 �
   await expect(page.getByRole("link", { name: "새 기능", exact: true })).toHaveAttribute("aria-current", "true");
 
   await page.getByTestId("notices-list").getByRole("link").click();
-  await page.getByRole("link", { name: "← 공지 목록" }).click();
+  await page.getByRole("link", { name: "공지 목록" }).click();
   await expect(page).toHaveURL(/\/notices\?category=FEATURE&page=2$/);
 });
 

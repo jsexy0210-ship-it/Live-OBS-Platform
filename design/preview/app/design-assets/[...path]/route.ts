@@ -9,6 +9,11 @@ export async function GET(_request: Request, context: { params: Promise<{ path: 
   const { path: segments } = await context.params;
   if (segments.some((segment) => segment === "." || segment === "..")) return new Response(null, { status: 404 });
   const file = path.resolve(root, ...segments);
+  const symbol = path.resolve(root, "public/branding/streamshop-symbol.png");
+  if (file === symbol) {
+    try { return new Response(await readFile(file), { headers: { "content-type": "image/png" } }); }
+    catch { return new Response(null, { status: 404 }); }
+  }
   const allowed = file.startsWith(path.resolve(root, "styles") + path.sep)
     || file.startsWith(path.resolve(root, "public/fonts") + path.sep);
   if (!allowed || path.extname(file) !== ".css") return new Response(null, { status: 404 });

@@ -114,7 +114,7 @@ test("최고관리자가 파트너스 관리자 파비콘·공유 카드를 바�
   expect(admin.icons.some((h) => h?.includes("/api/branding/"))).toBe(false);
   expect(admin.ogTitle).toBe("ONQ 마스터 관리자");
   // 올린 파비콘이 없는 마스터 관리자 화면은 틸 기본 아이콘(파트너스 기본 아이콘과 다름)
-  expect(admin.icons).toEqual(["/branding/onq-admin-32.png"]);
+  expect(admin.icons).toEqual(["/branding/streamshop-master-32-20261010.png"]);
 
   // 「기본값으로 되돌리기」 뒤에는 파트너스 화면도 기본 아이콘으로 돌아오고, 그 주소가 실제 PNG를 준다
   await page.goto("/admin/settings/branding");
@@ -125,12 +125,12 @@ test("최고관리자가 파트너스 관리자 파비콘·공유 카드를 바�
   await confirm.getByRole("button", { name: "되돌리기" }).click();
   await expect(page.getByText("기본 파비콘으로 되돌렸습니다.")).toBeVisible();
   const reset = await head(page, "/seller/login");
-  expect(reset.icons).toEqual(["/branding/onq-32.png"]);
+  expect(reset.icons).toEqual(["/branding/streamshop-partners-32-20261010.png"]);
   const def = await request.get(reset.icons[0]!);
   expect(def.status()).toBe(200);
   expect(def.headers()["content-type"]).toBe("image/png");
   expect(await sharp(Buffer.from(await def.body())).metadata()).toMatchObject({ width: 32, height: 32 });
-  expect((await request.get("/branding/onq-180.png")).status()).toBe(200);
+  expect((await request.get("/branding/streamshop-partners-180-20261010.png")).status()).toBe(200);
 });
 
 test("마스터 관리자 공유 카드에 1200×630 이미지를 올리면 og:image가 그 이미지가 되고, 크기가 틀리면 막힌다", async ({ page, request }) => {
@@ -299,16 +299,16 @@ test("마스터 관리자 기본 파비콘은 틸이고, 올린 파비콘이 있
     return [data[at], data[at + 1], data[at + 2]];
   };
   const adminHead = await head(page, "/admin/login");
-  expect(adminHead.icons).toEqual(["/branding/onq-admin-32.png"]);
+  expect(adminHead.icons).toEqual(["/branding/streamshop-master-32-20261010.png"]);
   const sellerHead = await head(page, "/seller/login");
-  expect(sellerHead.icons).toEqual(["/branding/onq-32.png"]);
+  expect(sellerHead.icons).toEqual(["/branding/streamshop-partners-32-20261010.png"]);
   expect(await pixel(adminHead.icons[0]!)).toEqual([0x0f, 0x76, 0x6e]);
   expect(await pixel(sellerHead.icons[0]!)).toEqual([0x5b, 0x3d, 0xf6]);
-  expect((await request.get("/branding/onq-admin-180.png")).status()).toBe(200);
+  expect((await request.get("/branding/streamshop-master-180-20261010.png")).status()).toBe(200);
 
   // 설정 화면의 마스터 관리자 탭 「기본 아이콘」도 틸 아이콘을 보인다
   await login(page, superEmail);
-  await expect(page.getByAltText("기본 아이콘")).toHaveAttribute("src", "/branding/onq-admin-32.png");
+  await expect(page.getByAltText("기본 아이콘")).toHaveAttribute("src", "/branding/streamshop-master-32-20261010.png");
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
     if (width === 390) await expect.poll(async () => (await page.locator("aside.lnb").boundingBox())?.x ?? 0).toBeLessThan(-200);
@@ -334,5 +334,5 @@ test("마스터 관리자 기본 파비콘은 틸이고, 올린 파비콘이 있
   await page.getByRole("button", { name: "기본값으로 되돌리기" }).click();
   await page.getByRole("dialog", { name: "기본 아이콘으로 되돌리시겠습니까?" }).getByRole("button", { name: "되돌리기" }).click();
   await expect(page.getByText("기본 파비콘으로 되돌렸습니다.")).toBeVisible();
-  expect((await head(page, "/admin/login")).icons).toEqual(["/branding/onq-admin-32.png"]);
+  expect((await head(page, "/admin/login")).icons).toEqual(["/branding/streamshop-master-32-20261010.png"]);
 });

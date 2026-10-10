@@ -199,6 +199,46 @@ describe("소개 랜딩 브랜딩", () => {
 });
 
 describe("파비콘", () => {
+  it.each(["admin", "seller"] as const)("%s 기본값·DB 오류 기본 아이콘을 쓰되 업로드가 있으면 기존 해시 주소와 바이트를 우선한다", async (target) => {
+    const role = target === "admin" ? "master" : "partners";
+    const defaults = { icons: {
+      icon: [{ url: `/branding/streamshop-${role}-32-20261010.png`, type: "image/png", sizes: "32x32" }],
+      shortcut: [{ url: `/branding/streamshop-${role}-32-20261010.png`, type: "image/png" }],
+      apple: [{ url: `/branding/streamshop-${role}-180-20261010.png`, sizes: "180x180" }],
+    } };
+    expect((await brandingMetadata(target)).icons).toEqual(defaults.icons);
+    const originalRead = prisma.siteBranding.findUnique;
+    const unavailable = vi.fn((): never => { throw new Error("fixture unavailable"); });
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    prisma.siteBranding.findUnique = unavailable;
+    try {
+      expect(await brandingMetadata(target)).toEqual(defaults);
+      expect(unavailable).toHaveBeenCalledTimes(1);
+    } finally {
+      prisma.siteBranding.findUnique = originalRead;
+      errorLog.mockRestore();
+    }
+    const c = await adminCookie("SUPER_ADMIN");
+    const image = await png(64, 64);
+    const saved = await upload(faviconPut, target, image, c);
+    expect(saved.status).toBe(200);
+    const { branding } = await saved.json();
+    expect((await brandingMetadata(target)).icons).toEqual({
+      icon: [{ url: branding.favicon.url, type: "image/png" }],
+      shortcut: [{ url: branding.favicon.url, type: "image/png" }],
+      apple: [{ url: branding.favicon.url }],
+    });
+    const response = await publicFavicon(new Request(`${BASE}${branding.favicon.url}`), ctx(target));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect(response.headers.get("etag")).toBe(`"${new URL(`${BASE}${branding.favicon.url}`).searchParams.get("v")}"`);
+    expect(Buffer.from(await response.arrayBuffer())).toEqual(image);
+    expect((await remove(faviconDelete, target, c)).status).toBe(200);
+    expect((await brandingMetadata(target)).icons).toEqual(defaults.icons);
+    const empty = await publicFavicon(new Request(`${BASE}/api/branding/${target}/favicon`), ctx(target));
+    expect(empty.status).toBe(404);
+    expect(empty.headers.get("cache-control")).toBe("no-store");
+  });
   it("올리면 대상별로 저장되고 공개 주소가 그 바이트를 형식·nosniff·버전 캐시와 함께 주며, 되돌리면 404. 감사 로그에 남는다", async () => {
     const c = await adminCookie("SUPER_ADMIN");
     const icon = await png(64, 64);
@@ -338,9 +378,9 @@ describe("관리자 화면 head 값(generateMetadata)", () => {
     expect(empty).toMatchObject({ title: "ONQ 파트너스 관리자", twitter: { card: "summary_large_image" } });
     // 올린 파비콘이 없으면 기본 ONQ 아이콘(Codex 지적 6차)
     expect(empty.icons).toEqual({
-      icon: [{ url: "/branding/onq-32.png", type: "image/png", sizes: "32x32" }],
-      shortcut: [{ url: "/branding/onq-32.png", type: "image/png" }],
-      apple: [{ url: "/branding/onq-180.png", sizes: "180x180" }],
+      icon: [{ url: "/branding/streamshop-partners-32-20261010.png", type: "image/png", sizes: "32x32" }],
+      shortcut: [{ url: "/branding/streamshop-partners-32-20261010.png", type: "image/png" }],
+      apple: [{ url: "/branding/streamshop-partners-180-20261010.png", sizes: "180x180" }],
     });
     await upload(faviconPut, "seller", await png(48, 48), c);
     await putText("seller", { title: "파트너스 센터", description: "설명입니다" }, c);
@@ -358,9 +398,9 @@ describe("관리자 화면 head 값(generateMetadata)", () => {
     expect(admin).toMatchObject({ title: "ONQ 마스터 관리자" });
     // 마스터 관리자 기본 아이콘은 틸로 그린 것(대표님 지시 2026-10-04), 올린 파비콘이 있으면 그것이 우선
     const adminDefault = {
-      icon: [{ url: "/branding/onq-admin-32.png", type: "image/png", sizes: "32x32" }],
-      shortcut: [{ url: "/branding/onq-admin-32.png", type: "image/png" }],
-      apple: [{ url: "/branding/onq-admin-180.png", sizes: "180x180" }],
+      icon: [{ url: "/branding/streamshop-master-32-20261010.png", type: "image/png", sizes: "32x32" }],
+      shortcut: [{ url: "/branding/streamshop-master-32-20261010.png", type: "image/png" }],
+      apple: [{ url: "/branding/streamshop-master-180-20261010.png", sizes: "180x180" }],
     };
     expect(admin.icons).toEqual(adminDefault);
     await upload(faviconPut, "admin", await png(32, 32, "#123456"), c);

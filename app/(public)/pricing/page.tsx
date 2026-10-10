@@ -10,7 +10,7 @@ import type { PublicCompanyInfo } from "../../../components/public/PublicFrame";
 // 요금은 요청마다 서버 요금제에서 읽는다(빌드 때 고정하지 않음)
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = { title: "요금 안내 · ONQ", description: "판매 수수료 없이 월 구독료만 내요. 모두 부가세 포함이에요." };
+export const metadata: Metadata = { title: "요금 안내 · 스트림샵", description: "판매 수수료 없이 월 구독료만 내요 모두 부가세 포함이에요" };
 
 export default async function PricingPage() {
   let plans: LandingPlan[] = [];

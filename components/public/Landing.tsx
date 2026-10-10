@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import symbol from "../../public/branding/streamshop-symbol.png";
+import { StreamShopBrand } from "./StreamShopBrand";
 import landscapeHost from "../../public/landing/live-host-landscape-20261010.webp";
 import portraitHost from "../../public/landing/live-host-portrait-20261010.webp";
 import type { ReactNode } from "react";
@@ -27,11 +27,7 @@ function Icon({ kind, className }: { kind: "arrow" | "play" | "shop" | "orders" 
 }
 
 function Brand({ inverse = false }: { inverse?: boolean }) {
-  return <span className={`${styles.brand} ${inverse ? styles.inverseBrand : ""}`} aria-label="스트림샵">
-    {/* 승인된 심볼을 배경 제거한 로컬 자산. 새 심볼을 그리지 않는다. */}
-    <Image src={symbol} alt="" width={36} height={40} sizes="36px" />
-    <span>streamshop</span>
-  </span>;
+  return <StreamShopBrand className={`${styles.brand} ${inverse ? styles.inverseBrand : ""}`} />;
 }
 function Action({ href = SIGNUP, children, secondary = false }: { href?: string; children: ReactNode; secondary?: boolean }) {
   return <Link href={href} className={`${styles.button} ${secondary ? styles.secondary : ""}`}>{children}<Icon kind="arrow" /></Link>;

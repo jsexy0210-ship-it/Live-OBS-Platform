@@ -3,7 +3,7 @@ import { Notices } from "../../../components/public/Notices";
 import { prisma } from "../../../lib/server/db";
 import { listNotices, listPublicNoticesPage, parsePublicNoticePagination } from "../../../lib/server/platform-notices/service";
 
-export const metadata: Metadata = { title: "공지 · ONQ", description: "ONQ 서비스 소식과 점검·정책 안내예요." };
+export const metadata: Metadata = { title: "공지 · 스트림샵", description: "스트림샵 서비스 소식과 점검·정책 안내예요" };
 export const dynamic = "force-dynamic";
 
 // PF-005 공지 목록(로그인 없음). 공개·전체 대상의 게시 공지만 서버에서 읽는다.
