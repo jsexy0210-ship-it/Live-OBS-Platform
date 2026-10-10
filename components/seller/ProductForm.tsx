@@ -1,9 +1,11 @@
 "use client";
 
 import "./ProductPreview.css";
+import "./ProductForm.css";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { FormRow, FormSection, useConfirm } from "../admin-ui";
+import { Modal } from "../admin-ui/Modal";
 import ProductDetailEditor, { DETAIL_TEXT_MAX, blocksToHtml, type PendingImages } from "./ProductDetailEditor";
 import ProductImages, { IMAGE_MAX_COUNT, type SlotImage } from "./ProductImages";
 import { Topbar } from "./SellerShell";
@@ -136,6 +138,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
   const router = useRouter();
   const isEdit = !!initial;
   const [base, setBase] = useState<Product | undefined>(initial);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [price, setPrice] = useState(initial ? String(initial.price) : "");
@@ -649,11 +652,10 @@ export function ProductForm({ initial }: { initial?: Product }) {
     <>
       <Topbar crumb={`판매 › 상품 › ${crumbName}`} badge={badge && <span className={`bdg ${badge.cls}`}>{badge.label}</span>}>
         <SmartBackButton fallback="/seller/products" className="btn btn-sm btn-out" dirty={dirtyNow && !leaving}>
-          취소
+          목록
         </SmartBackButton>
-        {saveButtons(false)}
       </Topbar>
-      <main className="main form-grid">
+      <main className="main product-final-form">
         <div className="col" style={{ gap: 20 }} ref={topRef}>
           {failure && (
             <div className="msg msg-neg" role="alert">
@@ -968,29 +970,21 @@ export function ProductForm({ initial }: { initial?: Product }) {
               </div>
             </section>
           )}
+          {uploadNote && <span className="t-c1 c-alt" role="status">{uploadNote}</span>}
+          {!required && <span className="t-c1 c-alt">필수 항목을 채우면 {isEdit ? "저장" : "등록"}할 수 있습니다</span>}
         </div>
-
-        <aside className="col aside-sticky" style={{ gap: 16 }}>
-          <ProductPreview name={name} description={description} price={priceNum} status={status} rows={rows} image={(images.find((i) => i.id === (shownThumb ?? images[0]?.id) && i.state !== "error") ?? images.find((i) => i.state !== "error"))?.url} />
-          <div className="card pad col" style={{ gap: 8 }}>
-            <span className="t-hl2">필수 입력 항목</span>
-            <span className="t-l2 c-neu">상품명, 판매가, 옵션 이름은 비워 둘 수 없습니다</span>
-          </div>
-          <div className="col" style={{ gap: 8 }}>
-            {saveButtons(true)}
-            {uploadNote && (
-              <span className="t-c1 c-alt" style={{ textAlign: "center" }} role="status">
-                {uploadNote}
-              </span>
-            )}
-            {!required && (
-              <span className="t-c1 c-alt" style={{ textAlign: "center" }}>
-                필수 항목을 채우면 {isEdit ? "저장" : "등록"}할 수 있습니다
-              </span>
-            )}
-          </div>
-        </aside>
       </main>
+      <div className="product-form-actions">
+        <SmartBackButton fallback="/seller/products" className="btn btn-out" dirty={dirtyNow && !leaving}>취소</SmartBackButton>
+        {saveButtons(false)}
+        <button className="btn btn-out" type="button" data-testid="product-form-preview" onClick={() => setPreviewOpen(true)}>미리보기</button>
+      </div>
+      {previewOpen && (
+        <Modal labelId="product-preview-title" className="product-preview-modal" onClose={() => setPreviewOpen(false)}>
+          <div className="modal-h"><h2 className="modal-t" id="product-preview-title">쇼핑몰 미리보기</h2></div>
+          <ProductPreview name={name} description={description} price={priceNum} status={status} rows={rows} image={(images.find((i) => i.id === (shownThumb ?? images[0]?.id) && i.state !== "error") ?? images.find((i) => i.state !== "error"))?.url} />
+        </Modal>
+      )}
       {confirmDelete && base && (
         <DeleteDialog
           product={base}
