@@ -101,6 +101,21 @@ test("내 문의: 실제 본인 조회 뒤 합성 주문·일반 문의·빈 상
       expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
       try {
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+        if (state !== "empty") {
+          const dateCell = page.locator(".mi-tbl tbody .c-date");
+          await expect(dateCell).toHaveText("2026.10.10");
+          const date = await dateCell.evaluate((cell) => {
+            const range = document.createRange();
+            range.selectNodeContents(cell);
+            const text = range.getBoundingClientRect(), bounds = cell.getBoundingClientRect();
+            return { left: text.left, right: text.right, height: text.height, cellLeft: bounds.left, cellRight: bounds.right };
+          });
+          expect(date.height).toBeGreaterThan(0);
+          expect(date.left).toBeGreaterThanOrEqual(date.cellLeft);
+          expect(date.right).toBeLessThanOrEqual(date.cellRight);
+          expect(date.left).toBeGreaterThanOrEqual(0);
+          expect(date.right).toBeLessThanOrEqual(width);
+        }
       } catch (error) {
         try {
           const geometry = await page.locator("body").evaluate(() => {
@@ -113,7 +128,7 @@ test("내 문의: 실제 본인 조회 뒤 합성 주문·일반 문의·빈 상
               date: rects(".mi-tbl .c-date"), radio: rects("form.mi-box .mi-radios, form.mi-box .mi-radios label"),
             };
           }, undefined, { timeout: 2000 });
-          console.info("SH-026 합성화면 넘침 치수", { state, width, geometry });
+          console.info("SH-026 합성화면 넘침 치수", JSON.stringify({ state, width, geometry }));
         } catch {
           console.info("SH-026 넘침 치수 미확보", { state, width });
         }
