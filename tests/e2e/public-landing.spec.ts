@@ -22,7 +22,7 @@ test("PF-001 요금제 조회 실패에는 원인을 알려 주고 빈 이름 �
   const intro = page.getByTestId("pricing-intro");
   const message = (await intro.textContent())?.trim() ?? "";
   expect(message).not.toContain("두 가지 이용권 · 중에 골라요");
-  expect(["요금 정보를 불러오지 못했어요", "지금 가입할 수 있는 이용권이 없어요"].includes(message) || /이용권 · .+ 중에 골라요|두 가지 이용권 · .+ 중에 골라요/.test(message)).toBeTruthy();
+  expect(["요금 정보를 불러오지 못했어요", "지금 가입할 수 있는 이용권이 없어요"].includes(message) || /^(?:이용권 · .+ 중에 골라요|두 가지 이용권 · .+ 중에 골라요)$/.test(message)).toBeTruthy();
 });
 
 test("PF-001 요금 안내 문구가 실제 이용권 이름이나 상태를 반영한다", () => {
