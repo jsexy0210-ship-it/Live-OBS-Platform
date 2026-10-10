@@ -26,38 +26,52 @@ for (const route of ["/admin/partners?q=보존", "/admin/partners?q=보존&page=
     });
     await page.goto(route);
     const nav = page.locator(".onq-pagination"); await expect(nav).toBeVisible();
+    const listPath = route.startsWith("/admin/partners/applications") ? "/api/admin/sellers/applications"
+      : route.startsWith("/admin/partners?") ? "/api/admin/sellers"
+      : route.startsWith("/admin/billing") ? "/api/admin/billing/invoices"
+      : route.startsWith("/seller/inquiries") ? "/api/seller/platform-inquiries" : "/api/seller/platform-notices";
+    const move = async (action: () => Promise<void>, current: string) => {
+      // Current-page state can update before the list reload removes/recreates nav.
+      const [response] = await Promise.all([
+        page.waitForResponse(r => new URL(r.url()).pathname === listPath && r.request().method() === "GET"),
+        action(),
+      ]);
+      expect(response.ok()).toBe(true);
+      expect(await response.finished()).toBeNull();
+      await expect(nav.locator('[aria-current="page"]')).toHaveText(current);
+    };
     if (route.includes("page=999")) {
       await expect(page).toHaveURL(/page=13/);
       await expect(nav.locator('[aria-current="page"]')).toHaveText("13");
-      await nav.getByRole("button", { name: "처음", exact: true }).click();
-      await expect(nav.locator('[aria-current="page"]')).toHaveText("1");
+      await move(() => nav.getByRole("button", { name: "처음", exact: true }).click(), "1");
     }
     await expect(nav.getByRole("button", { name: "처음", exact: true })).toBeDisabled();
     if (route.startsWith("/admin/partners?")) {
-      await nav.getByRole("button", { name: "마지막", exact: true }).click();
-      await expect(nav.locator('[aria-current="page"]')).toHaveText("13");
+      await move(() => nav.getByRole("button", { name: "마지막", exact: true }).click(), "13");
       await expect(page).toHaveURL(/page=13/);
     } else {
       await expect(nav.getByRole("button", { name: "마지막", exact: true })).toHaveCount(0);
-      await nav.getByRole("button", { name: "다음", exact: true }).click();
-      await expect(nav.locator('[aria-current="page"]')).toHaveText("2");
+      await move(() => nav.getByRole("button", { name: "다음", exact: true }).click(), "2");
       await expect(nav.getByRole("button", { name: "다음", exact: true })).toBeDisabled();
       expect(requests.some(u => u.searchParams.get("cursor") === "next-test")).toBe(true);
     }
     expect(new URL(page.url()).searchParams.get(route.includes("inquiries") ? "status" : "q")).toBe(route.includes("inquiries") ? "OPEN" : "보존");
     const geometry = await nav.evaluate(el => { const r = el.getBoundingClientRect(); return [...el.querySelectorAll<HTMLElement>(".onq-page-control")].filter(e => getComputedStyle(e).display !== "none").map(e => { const b = e.getBoundingClientRect(); return { height: b.height, inside: b.left >= r.left && b.right <= r.right, margin: getComputedStyle(e).marginLeft }; }); });
     expect(geometry.every(g => g.height === (width < 768 ? 44 : 40) && g.inside && g.margin === "0px")).toBe(true);
-    await nav.getByRole("button", { name: "처음", exact: true }).focus(); await page.keyboard.press("Enter");
-    await expect(nav.locator('[aria-current="page"]')).toHaveText("1");
+    await nav.getByRole("button", { name: "처음", exact: true }).focus();
+    await move(() => page.keyboard.press("Enter"), "1");
     if (!route.startsWith("/admin/partners?")) {
       await expect(nav.getByRole("button", { name: "2페이지", exact: true })).toBeVisible();
-      await nav.getByRole("button", { name: "다음", exact: true }).click();
-      await expect(nav.locator('[aria-current="page"]')).toHaveText("2");
+      await move(() => nav.getByRole("button", { name: "다음", exact: true }).click(), "2");
       await expect(nav.getByRole("button", { name: "다음", exact: true })).toBeDisabled();
-      await nav.getByRole("button", { name: "처음", exact: true }).click();
-      await expect(nav.locator('[aria-current="page"]')).toHaveText("1");
+      await move(() => nav.getByRole("button", { name: "처음", exact: true }).click(), "1");
       await expect(nav.getByRole("button", { name: "2페이지", exact: true })).toBeVisible();
     }
-    await nav.screenshot({ path: `tests/e2e/screenshots/pagination/${route.split('?')[0].replaceAll('/', '-')}-${width}.png` });
+    // Re-resolve nav if the completed list render replaces it during capture.
+    await expect(async () => {
+      await expect(nav.locator('[aria-current="page"]')).toHaveText("1");
+      await expect(nav.getByRole("button", { name: "처음", exact: true })).toBeDisabled();
+      await nav.screenshot({ path: `tests/e2e/screenshots/pagination/${route.split('?')[0].replaceAll('/', '-')}-${width}.png` });
+    }).toPass({ timeout: 5_000 });
   });
 }

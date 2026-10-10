@@ -61,7 +61,7 @@ function Mock({ mock }: { mock: Row[] | "overlay" }) {
 function Check() {
   return (
     <span className="pf-chk">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M5 12l5 5L20 7" />
       </svg>
     </span>

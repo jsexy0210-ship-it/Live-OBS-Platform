@@ -1,5 +1,14 @@
 # DESIGN_SOURCE — 디자인 정본 출처와 우선순위
 
+## PF-001 스트림샵 랜딩 변경 (2026-10-07 KST)
+
+- 대표님 지시: Streamlabs 랜딩과 유사한 소개 흐름을 스트림샵 스타일로 적용한다.
+- 변경 정본: `design/project/PF-001.dc.tsx` + `PF-001.module.css`. 개발 미리보기 `/landing` (`npm run design:preview`).
+- production 대응: `components/public/Landing.tsx` + `Landing.module.css`, 경로 `/about`. 디자인 파일을 production에서 import하지 않는다.
+- 기존 PF-001 HTML과 canvas.json은 이전 디자인 참조로 보존한다. 이번 승인 대상은 Git TSX 정본이며 외부 캔버스의 새 이름 반영을 주장하지 않는다.
+- 상태: FINAL (2026-10-09 대표님 main 반영 승인). 후보 `4aa9bb7`의 정상·빈·오류 요금 상태를 1440·1024·390에서 독립 확인하고 주요 배치·문구 반례가 없었다. 정본/구현 본문·CSS 일치와 별도로 픽셀 단위 미리보기 대조·실제 reduced-motion 동작은 미검증이다. 상세 범위: `docs/STREAMSHOP_LANDING.md`.
+
+
 | 항목 | 값 |
 |---|---|
 | Artifact | https://claude.ai/artifact/YYGXZ3u4QvjQpEMUHnN4tS (Claude Design 캔버스 「ONQ (OnAirCue) 전체 화면 디자인」) |

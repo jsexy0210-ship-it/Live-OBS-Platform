@@ -18,9 +18,9 @@ test.afterAll(async () => {
 });
 
 async function login(page: Page) {
-  await page.goto("/seller/login?next=%2Fseller%2Fbroadcast");
+  await page.goto("/seller/login?next=%2Fseller");
   await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
-  await page.waitForURL((u) => u.pathname === "/seller/broadcast");
+  await page.waitForURL((u) => u.pathname === "/seller");
 }
 
 test("방송 전에는 등록할 수 없고, 방송 중 Ctrl+H로 열어 개봉 중 주문에 HIT 카드를 등록한다", async ({ page }) => {

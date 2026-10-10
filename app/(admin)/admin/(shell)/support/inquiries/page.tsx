@@ -14,7 +14,7 @@ import { useListFilters } from "../../../_components/useListFilters";
 // MA-051 파트너스 문의 목록(GET /api/admin/platform-inquiries, 모든 마스터 역할 조회). 정본: design/project/MA-051.dc.html(FINAL v329).
 // 검색 패널(상태·분류·담당·긴급) → 목록. 상태 옆 숫자는 서버의 상태별 전체 수. 조건은 「검색」을 눌러 적용하고 주소에 남는다.
 // 답변·종료는 상세(MA-052)에서 한다(최고관리자·CS). 마지막 글 최신 순 50건씩 이어서 불러오고, 파트너스 지정(?sellerId=)을 받는다.
-type Summary = { waiting: number; urgent: number; overdue: number; mine: number; todayReceived: number; answeredToday: number; avgFirstReplyHours: number | null; helpful7d: { answered: number; helpful: number; rate: number | null } };
+type Summary = { waiting: number; urgent: number; overdue: number; mine: number; todayReceived: number; answeredToday: number; avgFirstReplyHours: number | null };
 type Page = { items: InquiryRow[]; counts: InquiryCounts; summary: Summary; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; items: InquiryRow[]; counts: InquiryCounts; summary: Summary; next: string | null };
 const CATEGORIES = ["BROADCAST", "PAYMENT_LINK", "ORDER_REFUND", "REWARD", "SUBSCRIPTION_FEE", "SHOP", "ACCOUNT", "OTHER"] as const satisfies readonly InquiryCategory[];
@@ -110,7 +110,8 @@ function Inquiries() {
                 ["오늘 접수", `${summary.todayReceived}건`, ""],
                 ["답변 완료 (오늘)", `${summary.answeredToday}건`, ""],
                 ["평균 첫 답변", summary.avgFirstReplyHours === null ? "—" : `${summary.avgFirstReplyHours.toFixed(1)}시간`, "최근 7일 접수"],
-                ["도움됨 (7일)", summary.helpful7d.rate === null ? "—" : `${summary.helpful7d.rate}%`, `${summary.helpful7d.answered}건 평가`],
+                // 도움됨(예·아니요) 비율은 별점 만족도가 아니다. 확정 산식 전까지 값을 만들지 않는다.
+                ["만족도 (7일)", "집계 준비 중", ""],
               ].map(([label, value, hint]) => (
                 <div key={label} className="card pad col" style={{ gap: 4, minWidth: 0 }}>
                   <span className="t-l2 c-alt">{label}</span>
