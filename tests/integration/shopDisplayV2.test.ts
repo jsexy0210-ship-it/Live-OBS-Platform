@@ -167,12 +167,13 @@ describe("진열 옵션", () => {
     const c = await made(s.ctx, "C");
     await made(other.ctx, "X", { status: "SOLD_OUT" });
     await made(other.ctx, "Y");
-    for (const [p, t] of [
-      [a, "2026-01-03"],
-      [b, "2026-01-02"],
-      [c, "2026-01-01"],
+    const now = await subscriptionClock.dbNow(db);
+    for (const [p, days] of [
+      [a, 1],
+      [b, 2],
+      [c, 3],
     ] as const) {
-      await db.product.update({ where: { id: p.id }, data: { createdAt: new Date(`${t}T00:00:00Z`) } });
+      await db.product.update({ where: { id: p.id }, data: { createdAt: new Date(now.getTime() - days * 86_400_000) } });
     }
     expect(await listNames(s.seller.slug)).toEqual(["A", "B", "C"]);
     expect(await setListSort(db, s.ctx, { soldOutLast: true })).toMatchObject({ ok: true, value: { listSort: "new", options: { soldOutLast: true, hideSoldOut: false, liveFirst: false } } });
