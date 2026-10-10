@@ -1,7 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { expect, test, type Page, type Response } from "@playwright/test";
 import { randomBytes } from "node:crypto";
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { hashPassword } from "../../lib/server/auth/password";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
@@ -68,18 +68,21 @@ async function captureHome(page: Page, name: string, role: "CS" | "SUPER_ADMIN")
   const metrics = await page.locator("main.ma-home").evaluate((main) => {
     const rows = (selector: string) => Array.from(main.querySelectorAll(selector)).map((el) => {
       const range = document.createRange(); range.selectNodeContents(el);
-      return { text: el.textContent?.trim(), whiteSpace: getComputedStyle(el).whiteSpace, lines: range.getClientRects().length, clientWidth: el.clientWidth, scrollWidth: el.scrollWidth };
+      return { label: el.closest(".stat")?.querySelector(".t-l2")?.textContent?.trim(), panel: el.closest("section[data-testid]")?.getAttribute("data-testid"), text: el.textContent?.trim(), width: el.getBoundingClientRect().width, whiteSpace: getComputedStyle(el).whiteSpace, lines: range.getClientRects().length, clientWidth: el.clientWidth, scrollWidth: el.scrollWidth };
     });
     const top = main.querySelector('[data-testid="stats-top"] table');
     const bounds = main.getBoundingClientRect();
     return { viewport: { width: innerWidth, height: innerHeight }, documentHeight: document.documentElement.scrollHeight, mainHeight: main.scrollHeight, firstPanel: main.querySelector("section")?.getAttribute("data-testid"), amounts: rows(".sts-kpis .stat .v"), top: top ? { columns: top.querySelectorAll("thead th").length, width: top.getBoundingClientRect().width, scrollWidth: top.scrollWidth, availableWidth: top.parentElement?.clientWidth } : null, mainTop: bounds.top };
   });
+  const sourceSha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  const evidence = `tests/e2e/screenshots/current-shell-${sourceSha}`;
+  mkdirSync(evidence, { recursive: true });
+  await page.screenshot({ path: `tests/e2e/screenshots/${name}.png`, fullPage: true });
+  writeFileSync(`${evidence}/${name}.json`, JSON.stringify({ sourceSha, route: new URL(page.url()).pathname, role, ...metrics }, null, 2));
   if (metrics.viewport.width >= 1024) {
     for (const amount of metrics.amounts) { expect(amount.whiteSpace).toBe("nowrap"); expect(amount.lines).toBe(1); expect(amount.scrollWidth).toBeLessThanOrEqual(amount.clientWidth); }
     if (metrics.top) { expect(metrics.top.columns).toBe(8); expect(metrics.top.availableWidth).toBeDefined(); expect(metrics.top.scrollWidth).toBeLessThanOrEqual(metrics.top.availableWidth!); }
   }
-  await page.screenshot({ path: `tests/e2e/screenshots/${name}.png`, fullPage: true });
-  writeFileSync(`tests/e2e/screenshots/${name}.json`, JSON.stringify({ sourceSha: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), route: new URL(page.url()).pathname, role, ...metrics }, null, 2));
 }
 
 async function expectChartPlacement(page: Page, width: number) {

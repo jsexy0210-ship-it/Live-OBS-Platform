@@ -43,6 +43,7 @@
 .ma-home-compact [data-testid="today-tasks"] .stat { padding: 10px; }
 .ma-home-detail .ma-home-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .ma-home-detail .ma-home-panel .sts-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ma-home-detail .ma-home-kpis .sts-kpis { grid-template-columns: minmax(0, 1fr); }
 .ma-home-detail [data-testid="stats-orders"] .sts-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .ma-home-detail [data-testid="stats-top"] .tbl th, .ma-home-detail [data-testid="stats-top"] .tbl td { padding: 8px; font-size: 12px; }
 @media (max-width: 1200px) {
