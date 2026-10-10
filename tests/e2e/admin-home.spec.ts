@@ -1,10 +1,12 @@
 import { PrismaClient } from "@prisma/client";
 import { expect, test, type Page, type Response } from "@playwright/test";
 import { randomBytes } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { hashPassword } from "../../lib/server/auth/password";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 
-// 마스터 홈(MA-001): 맨 위 「오늘 처리할 일」(숫자·이동), 기간별 주문·결제·성장·상위 5 파트너스·구독 매출, 일부 통계가 실패해도 나머지는 보인다.
+// 마스터 홈(MA-001): 매출 요약과 「오늘 처리할 일」(숫자·이동), 기간별 주문·결제·성장·상위 5 파트너스·구독 매출, 일부 통계가 실패해도 나머지는 보인다.
 // 계정·파트너스·문의·주문은 폐기용 테스트 DB(이름이 _test로 끝남)에 실행마다 새로 만든다.
 const password = randomBytes(12).toString("base64url");
 const run = randomBytes(4).toString("hex");
@@ -32,7 +34,15 @@ test.beforeAll(async () => {
   const buyer = await db.buyerMember.create({
     data: { sellerId: seller.id, gradeId: grade.id, loginId: `hm${run}`, passwordHash: "x", name: "구매자", phone: `010${String(parseInt(run, 16)).padStart(8, "0").slice(-8)}`, broadcastNickname: "닉", ciHash: `ci-${run}`, identityVerifiedAt: new Date(), birthDate: new Date("1990-01-01") },
   });
-  await db.order.create({ data: { sellerId: seller.id, orderNo: 1, buyerMemberId: buyer.id, broadcastNicknameSnapshot: "닉", totalAmount: 123_456, paidAt: new Date() } });
+  await db.order.create({ data: { sellerId: seller.id, orderNo: 1, buyerMemberId: buyer.id, broadcastNicknameSnapshot: "닉", totalAmount: 123_456, refundAmount: 13_456, paidAt: new Date() } });
+  const plan = await db.subscriptionPlan.findFirstOrThrow({ where: { code: "INTEGRATED" }, select: { id: true } });
+  const subscription = await db.sellerSubscription.create({ data: { sellerId: seller.id, planId: plan.id } });
+  const now = new Date();
+  const payment = await db.subscriptionPayment.create({ data: {
+    sellerId: seller.id, subscriptionId: subscription.id, amount: 179_000, status: "PAID",
+    periodStart: now, periodEnd: new Date(now.getTime() + 30 * 86_400_000), createdAt: now, paidAt: now,
+  } });
+  await db.subscriptionRefund.create({ data: { sellerId: seller.id, paymentId: payment.id, amount: 50_000, source: "SYSTEM", reason: "홈·상세 현황 환불 집계 시험", status: "REFUNDED", refundedAt: now } });
 });
 test.afterAll(async () => {
   await db.$disconnect();
@@ -47,6 +57,34 @@ async function login(page: Page, who = email) {
   await expect(page).toHaveURL(/\/admin$/);
 }
 
+async function openStatus(page: Page) {
+  await page.locator(".lnb-sec.on").getByRole("link", { name: "상세 현황", exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/home\/status$/);
+  await expect(page.getByRole("heading", { name: "상세 현황", level: 1 })).toBeVisible();
+  await expect(page.locator(".lnb-sec.on").getByRole("link", { name: "상세 현황", exact: true })).toHaveAttribute("aria-current", "page");
+}
+
+async function captureHome(page: Page, name: string, role: "CS" | "SUPER_ADMIN") {
+  const metrics = await page.locator("main.ma-home").evaluate((main) => {
+    const rows = (selector: string) => Array.from(main.querySelectorAll(selector)).map((el) => {
+      const range = document.createRange(); range.selectNodeContents(el);
+      return { label: el.closest(".stat")?.querySelector(".t-l2")?.textContent?.trim(), panel: el.closest("section[data-testid]")?.getAttribute("data-testid"), text: el.textContent?.trim(), width: el.getBoundingClientRect().width, whiteSpace: getComputedStyle(el).whiteSpace, lines: range.getClientRects().length, clientWidth: el.clientWidth, scrollWidth: el.scrollWidth };
+    });
+    const top = main.querySelector('[data-testid="stats-top"] table');
+    const bounds = main.getBoundingClientRect();
+    return { viewport: { width: innerWidth, height: innerHeight }, documentHeight: document.documentElement.scrollHeight, mainHeight: main.scrollHeight, firstPanel: main.querySelector("section")?.getAttribute("data-testid"), amounts: rows(".sts-kpis .stat .v"), top: top ? { columns: top.querySelectorAll("thead th").length, width: top.getBoundingClientRect().width, scrollWidth: top.scrollWidth, availableWidth: top.parentElement?.clientWidth } : null, mainTop: bounds.top };
+  });
+  const sourceSha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  const evidence = `tests/e2e/screenshots/current-shell-${sourceSha}`;
+  mkdirSync(evidence, { recursive: true });
+  await page.screenshot({ path: `tests/e2e/screenshots/${name}.png`, fullPage: true });
+  writeFileSync(`${evidence}/${name}.json`, JSON.stringify({ sourceSha, route: new URL(page.url()).pathname, role, ...metrics }, null, 2));
+  if (metrics.viewport.width >= 1024) {
+    for (const amount of metrics.amounts) { expect(amount.whiteSpace).toBe("nowrap"); expect(amount.lines).toBe(1); expect(amount.scrollWidth).toBeLessThanOrEqual(amount.clientWidth); }
+    if (metrics.top) { expect(metrics.top.columns).toBe(8); expect(metrics.top.availableWidth).toBeDefined(); expect(metrics.top.scrollWidth).toBeLessThanOrEqual(metrics.top.availableWidth!); }
+  }
+}
+
 async function expectChartPlacement(page: Page, width: number) {
   await expect(page.locator(".ma-home-line svg")).toBeVisible();
   const revenue = await page.getByTestId("stats-orders").boundingBox();
@@ -55,15 +93,13 @@ async function expectChartPlacement(page: Page, width: number) {
   const chart = await page.locator(".ma-home-line svg").boundingBox();
   expect(revenue && orders && grid && chart).toBeTruthy();
   expect(chart!.width).toBeGreaterThan(revenue!.width - 70);
-  if (width === 1440) {
-    expect(revenue!.width).toBeGreaterThan(orders!.width * 1.9);
-    expect(Math.abs(revenue!.y - orders!.y)).toBeLessThan(1);
-    expect(orders!.x).toBeGreaterThan(revenue!.x + revenue!.width);
-  } else {
-    expect(Math.abs(revenue!.width - grid!.width)).toBeLessThan(1);
-    expect(orders!.y).toBeGreaterThanOrEqual(revenue!.y + revenue!.height);
-    if (width === 390) expect(Math.abs(revenue!.width - orders!.width)).toBeLessThan(1);
-  }
+  expect(Math.abs(revenue!.width - grid!.width)).toBeLessThan(1);
+  expect(orders!.y).toBeGreaterThanOrEqual(revenue!.y + revenue!.height);
+  expect(chart!.height).toBeLessThanOrEqual(140);
+  const top = await page.getByTestId("stats-top").boundingBox();
+  expect(top).not.toBeNull();
+  expect(Math.abs(top!.width - grid!.width)).toBeLessThan(1);
+  if (width === 390) expect(Math.abs(revenue!.width - orders!.width)).toBeLessThan(1);
 }
 
 async function expectDateAxes(page: Page, period?: { days: number; orders: string[]; growth: string[] }) {
@@ -114,7 +150,7 @@ async function expectDateAxes(page: Page, period?: { days: number; orders: strin
   await page.getByRole("heading", { level: 1 }).hover();
 }
 
-test("오늘 처리할 일: 서버 숫자가 맨 위에 보이고, 누르면 조건이 걸린 목록으로 간다", async ({ page }) => {
+test("매출이 먼저 보이고 오늘 처리할 일과 상세 현황의 정보·실링크가 유지된다", async ({ page }) => {
   await login(page);
   const api = await (await page.request.get("/api/admin/today-tasks")).json();
   const count = (key: string) => api.items.find((i: { key: string }) => i.key === key).count;
@@ -127,26 +163,93 @@ test("오늘 처리할 일: 서버 숫자가 맨 위에 보이고, 누르면 조
   await expect(tasks.getByTestId("today-task-inquiryOpen")).toContainText("파트너스 문의");
   await expect(page.getByTestId("today-tasks-at")).toContainText("집계");
   await expect(page.getByTestId("infra-card")).toHaveCount(0); // 인프라 · 비용 카드는 최고관리자에게만 보인다
+  const today = new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10);
+  const month = await page.request.get(`/api/admin/stats/subscriptions?from=${today.slice(0, 7)}-01&to=${today}`);
+  expect(month.status()).toBe(200);
+  const subscriptions = await month.json();
+  expect(subscriptions.current.revenue).toBeGreaterThanOrEqual(179_000);
+  expect(subscriptions.current.refundAmount).toBeGreaterThanOrEqual(50_000);
+  const money = (value: number) => `${value.toLocaleString("ko-KR")}원`;
+  const subscriptionPanel = page.getByTestId("home-revenue-subscriptions");
+  await expect(subscriptionPanel.locator(".stat").filter({ hasText: "수납 구독료" }).locator(".v")).toHaveText(money(subscriptions.current.revenue));
+  await expect(subscriptionPanel.locator(".stat").filter({ hasText: "구독 환불" }).locator(".v")).toHaveText(money(subscriptions.current.refundAmount));
+  let lastOrders: { revenue: number; refundAmount: number; netRevenue: number } | undefined;
+  for (const days of [7, 90, 30]) {
+    const from = new Date(Date.now() - (days - 1) * 86_400_000 + 9 * 3_600_000).toISOString().slice(0, 10);
+    const request = page.waitForResponse((response) => { const url = new URL(response.url()); return url.pathname === "/api/admin/stats/orders" && url.searchParams.get("from") === from && url.searchParams.get("to") === today; });
+    await page.getByRole("button", { name: `최근 ${days}일`, exact: true }).click();
+    const response = await request;
+    expect(response.status()).toBe(200);
+    const orders = await response.json();
+    expect(orders.current.revenue).toBeGreaterThanOrEqual(123_456);
+    expect(orders.current.refundAmount).toBeGreaterThanOrEqual(13_456);
+    lastOrders = orders.current;
+    const orderPanel = page.getByTestId("home-revenue-orders");
+    await expect(orderPanel).toContainText(`최근 ${days}일`);
+    for (const [label, value] of [["주문 결제액", orders.current.revenue], ["주문 환불", orders.current.refundAmount], ["환불 제외 결제액", orders.current.netRevenue]] as const) {
+      await expect(orderPanel.locator(".stat").filter({ hasText: label }).locator(".v")).toHaveText(money(value));
+    }
+    await expect(subscriptionPanel.locator(".stat").filter({ hasText: "수납 구독료" }).locator(".v")).toHaveText(money(subscriptions.current.revenue));
+  }
+  await expect(page.locator(".ma-home-content > .ma-home-revenue")).toBeVisible();
+  await expect(page.getByTestId("stats-orders")).toHaveCount(0);
+  const revenueBox = await page.locator(".ma-home-revenue").boundingBox();
+  const taskBox = await tasks.boundingBox();
+  expect(revenueBox && taskBox).toBeTruthy();
+  expect(revenueBox!.y + revenueBox!.height).toBeLessThanOrEqual(taskBox!.y);
+  for (const width of [1440, 1024]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(page.locator(".ma-home-revenue .stat .v")).toHaveCount(5);
+    for (const amount of await page.locator(".ma-home-revenue .stat .v").all()) {
+      await expect(amount).toHaveCSS("white-space", "nowrap");
+      expect(await amount.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    }
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+    await captureHome(page, `admin-home-compact-${width}`, "CS");
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const orderFrom = new Date(Date.now() - 29 * 86_400_000 + 9 * 3_600_000).toISOString().slice(0, 10);
+  const samePeriod = (path: string, from: string) => (response: Response) => {
+    const url = new URL(response.url());
+    return url.pathname === path && url.searchParams.get("from") === from && url.searchParams.get("to") === today;
+  };
+  const detailOrders = page.waitForResponse(samePeriod("/api/admin/stats/orders", orderFrom));
+  const detailMonth = page.waitForResponse(samePeriod("/api/admin/stats/subscriptions", `${today.slice(0, 7)}-01`));
+  await openStatus(page);
+  if (!lastOrders) throw new Error("홈의 최근 30일 주문 집계가 없습니다");
+  for (const [pending, current] of [[detailOrders, lastOrders], [detailMonth, subscriptions.current]] as const) {
+    const response = await pending;
+    expect(response.status()).toBe(200);
+    expect((await response.json()).current).toEqual(current);
+  }
+  const monthBilling = page.getByTestId("home-month-billing");
+  for (const [label, value] of [["받은 구독료", subscriptions.current.revenue], ["환불 금액", subscriptions.current.refundAmount]] as const) {
+    await expect(monthBilling.locator(".ma-home-values > div").filter({ has: page.getByText(label, { exact: true }) }).locator("dd")).toHaveText(money(value));
+  }
+  for (const [label, value] of [["결제 금액", lastOrders.revenue], ["환불 금액", lastOrders.refundAmount]] as const) {
+    await expect(page.getByTestId("stats-orders").locator(".stat").filter({ has: page.getByText(label, { exact: true }) }).locator(".v")).toHaveText(money(value));
+  }
+  await expect(page.getByTestId("home-kpi-revenue").locator(".stat .v")).toHaveText(money(lastOrders.netRevenue));
   await expect(page.locator(".ma-home-kpis > section")).toHaveCount(6);
   await expect(page.getByTestId("home-operations")).toContainText("실시간 감시");
   await expect(page.getByTestId("home-db-metrics")).toHaveCount(0);
   await expect(page.getByTestId("home-admin-activity")).toHaveCount(0);
-  await expect(page.locator(".ma-home-grid")).toHaveCSS("grid-template-columns", /^(\d+(\.\d+)?px) (\d+(\.\d+)?px) (\d+(\.\d+)?px)$/);
+  await expect(page.locator(".ma-home-grid")).toHaveCSS("grid-template-columns", /^(\d+(\.\d+)?px) (\d+(\.\d+)?px)$/);
   await expectChartPlacement(page, 1440);
   await expectDateAxes(page);
   await expect(page.locator('.ma-home [aria-busy="true"]')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
-  await page.screenshot({ path: "tests/e2e/screenshots/admin-home-1440.png", fullPage: true });
+  await captureHome(page, "admin-home-status-1440", "CS");
   for (const w of [1024, 390]) {
     await page.setViewportSize({ width: w, height: 900 });
     await page.reload();
-    await expect(page.getByTestId("today-tasks")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "상세 현황", level: 1 })).toBeVisible();
     await expect(page.locator(".ma-home-grid")).toHaveCSS("grid-template-columns", w === 390 ? /^(\d+(\.\d+)?px)$/ : /^(\d+(\.\d+)?px) (\d+(\.\d+)?px)$/);
     await expectChartPlacement(page, w);
     await expectDateAxes(page);
     await expect(page.locator('.ma-home [aria-busy="true"]')).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
-    await page.screenshot({ path: `tests/e2e/screenshots/admin-home-${w}.png`, fullPage: true });
+    await captureHome(page, `admin-home-status-${w}`, "CS");
   }
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.reload();
@@ -158,9 +261,11 @@ test("오늘 처리할 일: 서버 숫자가 맨 위에 보이고, 누르면 조
     await expect(page).toHaveURL(new RegExp(`${href}$`));
     await page.goto("/admin");
     await expect(page.getByTestId("today-tasks")).toBeVisible();
+    await openStatus(page);
   }
   await expect(page.getByTestId("home-kpi-revenue").getByRole("link")).toHaveCount(0);
 
+  await page.goto("/admin");
   await tasks.getByTestId("today-task-signupPending").click();
   await expect(page).toHaveURL(/\/admin\/partners\/applications/);
   await expect(page.getByRole("link", { name: pendingShop })).toBeVisible();
@@ -168,6 +273,7 @@ test("오늘 처리할 일: 서버 숫자가 맨 위에 보이고, 누르면 조
 
 test("기간별 현황: 상위 5 파트너스에 결제된 쇼핑몰이 오르고, 기간 버튼이 바뀐다", async ({ page }) => {
   await login(page);
+  await openStatus(page);
   await expect(page.getByRole("button", { name: "최근 30일" })).toHaveAttribute("aria-pressed", "true");
   const row = page.getByTestId("top-seller-row").filter({ hasText: topShop });
   await expect(row).toContainText("123,456원");
@@ -215,6 +321,7 @@ test("기간별 현황: 상위 5 파트너스에 결제된 쇼핑몰이 오르�
 
 test("지연된 통계 조회는 갱신에 중복되지 않고 완료되며 기간 변경의 이전 응답을 버린다", async ({ page }) => {
   await page.clock.install();
+  await login(page);
   const held: { url: string; release: () => void }[] = [];
   await page.route("**/api/admin/stats/orders**", async (route) => {
     let release!: () => void;
@@ -224,7 +331,7 @@ test("지연된 통계 조회는 갱신에 중복되지 않고 완료되며 기�
     await gate;
     await route.fulfill({ response });
   });
-  await login(page);
+  await openStatus(page);
   await expect.poll(() => held.length).toBe(1);
   const refresh = page.getByRole("button", { name: "새로 고침", exact: true });
   await expect(refresh).toBeEnabled();
@@ -286,8 +393,10 @@ test("한 통계가 실패해도 오늘 처리할 일과 나머지 통계는 그
   let fail = true;
   await page.route("**/api/admin/stats/orders**", (route) => (fail ? route.fulfill({ status: 500, contentType: "application/json", body: '{"error":"x"}' }) : route.continue()));
   await login(page);
-  await expect(page.getByTestId("stats-orders")).toContainText("불러오지 못했습니다");
+  await expect(page.getByTestId("home-revenue-orders")).toContainText("불러오지 못했습니다");
   await expect(page.getByTestId("today-task-signupPending")).toBeVisible();
+  await openStatus(page);
+  await expect(page.getByTestId("stats-orders")).toContainText("불러오지 못했습니다");
   await expect(page.getByTestId("stats-top")).toContainText(topShop);
   fail = false;
   await page.getByTestId("stats-orders").getByRole("button", { name: "다시 시도" }).click();
@@ -303,6 +412,7 @@ test("빈 파트너스 안내와 요약 오류는 데모 수치 없이 독립적
   }));
   await login(page);
   await expect(page.getByTestId("dash-sellers-total")).toHaveText("0곳");
+  await openStatus(page);
   await expect(page.getByTestId("home-kpi-sellers")).toContainText("아직 파트너스가 없습니다");
   await expect(page.getByTestId("stats-top")).toContainText(topShop);
   fail = true;
@@ -318,23 +428,31 @@ test("최고관리자: 오늘 처리할 일 아래에 인프라 · 비용 요약
   await expect(card).toBeVisible();
   await expect(card.getByTestId("infra-card-cost")).toBeVisible();
   await expect(card.getByTestId("infra-card-warnings")).toBeVisible();
-  await expect(page.getByTestId("home-db-metrics")).toContainText("DB 연결");
-  await expect(page.getByTestId("home-admin-activity")).toContainText("로그 추적 전체");
+  await expect(page.getByRole("link", { name: "DB 응답 · 연결", exact: true })).toHaveAttribute("href", "/admin/home/status");
+  await expect(page.getByRole("link", { name: "최근 관리자 활동 · 로그 추적", exact: true })).toHaveAttribute("href", "/admin/logs");
   const above = await page.getByTestId("today-tasks").boundingBox();
   const at = await card.boundingBox();
   expect(at!.y).toBeGreaterThan(above!.y); // 「오늘 처리할 일」 바로 아래
   await expect(page.locator('.ma-home [aria-busy="true"]')).toHaveCount(0);
-  await page.screenshot({ path: "tests/e2e/screenshots/admin-home-infra-1440.png", fullPage: true });
+  await captureHome(page, "admin-home-infra-1440", "SUPER_ADMIN");
   for (const w of [1024, 390]) {
     await page.setViewportSize({ width: w, height: 900 });
     await page.reload();
     await expect(page.getByTestId("infra-card")).toBeVisible();
     await expect(page.getByTestId("infra-card-cost")).toBeVisible();
     await expect(page.locator('.ma-home [aria-busy="true"]')).toHaveCount(0);
-    await page.screenshot({ path: `tests/e2e/screenshots/admin-home-infra-${w}.png`, fullPage: true });
+    await captureHome(page, `admin-home-infra-${w}`, "SUPER_ADMIN");
   }
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.reload();
+  await openStatus(page);
+  await expect(page.getByTestId("home-db-metrics")).toContainText("DB 연결");
+  await expect(page.getByTestId("home-admin-activity")).toContainText("로그 추적 전체");
+  for (const width of [1440, 1024]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(page.locator('.ma-home [aria-busy="true"]')).toHaveCount(0);
+    await captureHome(page, `admin-home-status-super-${width}`, "SUPER_ADMIN");
+  }
   await card.getByRole("link").click();
   await expect(page).toHaveURL(/\/admin\/ops\/infra$/);
 });
