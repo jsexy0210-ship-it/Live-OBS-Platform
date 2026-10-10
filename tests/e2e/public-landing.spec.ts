@@ -77,6 +77,10 @@ test("PF-001 정본은 세 화면 폭과 모바일 가입·기능 진입을 지�
       await expect.poll(() => photo.evaluate((element) => element instanceof HTMLImageElement && element.complete && element.naturalWidth > 0)).toBe(true);
     }
     await page.evaluate(() => window.scrollTo(0, 0));
+    const caption = await page.locator('[class*="wideCanvas"] [class*="canvasTitle"]').boundingBox();
+    const order = await page.locator('[class*="wideCanvas"] [class*="canvasOrder"]').boundingBox();
+    if (!caption || !order) throw new Error("가로 방송 제목과 주문 표시가 보이지 않습니다");
+    expect(caption.y + caption.height).toBeLessThanOrEqual(order.y);
   };
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/about");
