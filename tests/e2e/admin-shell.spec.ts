@@ -59,7 +59,7 @@ test("알림 센터: 실제 조회 계약 뒤 합성 요약·규칙·빈 상태�
     const path = new URL(request.url()).pathname;
     if ((path.startsWith("/api/admin/alerts") || path === "/api/admin/settings/notifications" || path.startsWith("/api/admin/impersonation")) && !["GET", "HEAD"].includes(request.method())) mutations.push(request.method());
   });
-  const positive = { id: "00000000-0000-4000-8000-000000000091", kind: "INFRA_ALERT", severity: "URGENT", title: "방송 화면 연결 확인", body: "연결 상태를 확인해 주십시오. ".repeat(8) as string | null, linkPath: "/admin/support/inquiries", shopName: "검수 파트너스" as string | null, occurredAt: "2026-10-10T00:00:00.000Z", assignee: { id: "00000000-0000-4000-8000-000000000092", name: "운영 담당" } as { id: string; name: string } | null, status: "OPEN", unread: true };
+  const positive = { id: "00000000-0000-4000-8000-000000000091", kind: "BROADCAST_DOWN", severity: "URGENT", title: "방송 화면 연결 확인", body: "연결 상태를 확인해 주십시오. ".repeat(8) as string | null, linkPath: "/admin/support/inquiries", shopName: "검수 파트너스" as string | null, occurredAt: "2026-10-10T00:00:00.000Z", assignee: { id: "00000000-0000-4000-8000-000000000092", name: "운영 담당" } as { id: string; name: string } | null, status: "OPEN", unread: true };
   const nullable = { ...positive, body: null, shopName: null, assignee: null };
   let items = [positive];
   let lastQuery = new URLSearchParams();
@@ -114,6 +114,16 @@ test("알림 센터: 실제 조회 계약 뒤 합성 요약·규칙·빈 상태�
       }
     }
   }
+  items = [positive];
+  await page.goto("/admin/notifications");
+  await expect(page.getByTestId("notification-row")).toContainText(positive.title);
+  await page.getByLabel("유형", { exact: true }).selectOption("BROADCAST_DOWN");
+  items = [];
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page.getByText("검색 조건에 맞는 알림이 없습니다.", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("유형", { exact: true })).toHaveValue("BROADCAST_DOWN");
+  await expect(page.getByLabel("유형", { exact: true }).locator('option[value="BROADCAST_DOWN"]')).toHaveCount(1);
+  expect(lastQuery.get("kind")).toBe("BROADCAST_DOWN");
   await page.getByRole("checkbox", { name: "해결됨", exact: true }).check();
   await page.getByRole("checkbox", { name: "긴급", exact: true }).uncheck();
   await page.getByPlaceholder("쇼핑몰 이름", { exact: true }).fill("검수 파트너스");
@@ -125,6 +135,8 @@ test("알림 센터: 실제 조회 계약 뒤 합성 요약·규칙·빈 상태�
   await expect.poll(() => lastQuery.get("status")).toBe("OPEN,IN_PROGRESS");
   expect(lastQuery.get("severity")).toBe("URGENT,WARNING,INFO");
   expect(lastQuery.has("seller")).toBe(false);
+  expect(lastQuery.has("kind")).toBe(false);
+  await expect(page.getByLabel("유형", { exact: true })).toHaveValue("");
   expect(mutations).toEqual([]);
 });
 

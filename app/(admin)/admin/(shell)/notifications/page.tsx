@@ -82,7 +82,7 @@ export default function AdminNotificationsPage() {
   };
   const d = state.kind === "ok" ? state.data : null;
   const rows = d?.items ?? [];
-  const kinds = [...new Set(["INQUIRY_URGENT", "INFRA_ALERT", ...(d?.items.map((a) => a.kind) ?? [])])];
+  const kinds = [...new Set(["INQUIRY_URGENT", "INFRA_ALERT", ...(kind ? [kind] : []), ...(d?.items.map((a) => a.kind) ?? [])])];
   return <>
     <AdminTopbar crumb="알림 센터" />
     <main className="main admin-notifications">
