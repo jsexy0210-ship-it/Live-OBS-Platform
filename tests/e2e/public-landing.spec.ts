@@ -189,6 +189,23 @@ test("PF-001 FPS·TCG 예시는 세 폭에서 로드되고 이미지 실패 시 
       await expect(hero.getByText(`${name} 방송 예시 · AI 이미지 · 상품과 주문 정보는 샘플이에요`, { exact: true })).toBeVisible();
       await expect(page.locator("html")).toHaveJSProperty("scrollWidth", width);
       await page.screenshot({ path: `tests/e2e/screenshots/PF-001-${name}-${width}.png`, fullPage: true });
+      if (width === 390) {
+        const bounds = await hero.locator("img").evaluate(async (image: HTMLImageElement) => {
+          image.scrollIntoView({ block: "center", behavior: "instant" });
+          if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+          await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+          const header = document.querySelector("header");
+          if (!header) throw new Error("소개 헤더가 없습니다");
+          const rect = image.getBoundingClientRect(), headerRect = header.getBoundingClientRect();
+          return { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right, headerTop: headerRect.top, headerBottom: headerRect.bottom, viewportHeight: innerHeight, viewportWidth: innerWidth };
+        });
+        expect(bounds.headerTop).toBe(0);
+        expect(bounds.top).toBeGreaterThanOrEqual(bounds.headerBottom);
+        expect(bounds.bottom).toBeLessThanOrEqual(bounds.viewportHeight);
+        expect(bounds.left).toBeGreaterThanOrEqual(0);
+        expect(bounds.right).toBeLessThanOrEqual(bounds.viewportWidth);
+        await page.screenshot({ path: `tests/e2e/screenshots/PF-001-${name}-390-viewport.png`, fullPage: false });
+      }
     }
   }
   await page.route((url) => url.pathname === "/_next/image" && !!url.searchParams.get("url")?.includes("live-fps-20261011"), (route) => route.abort());
