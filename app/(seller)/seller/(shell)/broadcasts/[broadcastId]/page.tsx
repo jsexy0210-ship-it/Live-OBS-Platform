@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import "../../../../../../styles/seller-broadcast.css";
-import { ListHead, PageHead } from "../../../../../../components/admin-ui";
+import { PageHead } from "../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { SmartBackButton } from "../../../../../../components/seller/SmartBackButton";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
@@ -30,6 +30,7 @@ type Order = {
   createdAt: string;
   paidAt: string | null;
   completedAt: string | null;
+  openSeconds?: number | null;
 };
 type Hit = { id: string; cardName: string; note: string | null; nickname: string; order: { id: string; orderNo: string } | null; source?: "INTERNAL" | "EXTERNAL" | null; createdAt: string };
 // 외부 쇼핑몰 주문(내부 주문 행이 없어 orders와 따로 온다, 금액·결제 정보 없음)
@@ -46,6 +47,7 @@ type Detail = {
 };
 type Load = { kind: "loading" } | { kind: "error"; status: number; error: string } | { kind: "ok"; data: Detail };
 
+const EVENT_BADGE = { connected: "b-done", live: "b-live", disconnected: "b-fail", recovered: "b-done", ended: "b-wait" } as const;
 const EVENT_LABEL = { connected: "연결", live: "LIVE", disconnected: "끊김", recovered: "복구", ended: "종료" } as const;
 function eventText(e: Detail["events"][number], layout: string | null): string {
   const t = formatTime(e.at);
@@ -56,6 +58,16 @@ function eventText(e: Detail["events"][number], layout: string | null): string {
   return `${t} 방송 끝냄${e.waiting != null ? ` · 대기 ${e.waiting}건` : ""}`;
 }
 const openText = (sec: number | null) => (sec == null ? "-" : sec >= 60 ? `${Math.floor(sec / 60)}분 ${sec % 60}초` : `${sec}초`);
+
+function OrderTags({ o, hit }: { o: Order; hit: boolean }) {
+  const gone = o.status === "CANCELLED" || o.status === "REFUNDED";
+  return (
+    <span className="row" style={{ gap: 4, flexWrap: "wrap" }}>
+      {gone ? <span className="bdg b-wait">뺀 주문</span> : o.completedAt ? <span className="bdg b-done">완료</span> : <span className="bdg b-open">{STATUS_TEXT[o.status]}</span>}
+      {hit && <span className="bdg b-warn">HIT</span>}
+    </span>
+  );
+}
 
 const STATUS_TEXT: Record<OrderStatus, string> = { PENDING_PAYMENT: "결제 대기", PAID: "결제 완료", CANCELLED: "취소", REFUNDED: "환불" };
 
@@ -115,6 +127,8 @@ export default function BroadcastDetailPage() {
   };
 
   const d = state.kind === "ok" ? state.data : null;
+  const hasOpen = (d?.orders ?? []).some((o) => o.openSeconds != null);
+  const hitOrders = new Set((d?.hits ?? []).map((h) => h.order?.id).filter(Boolean) as string[]);
   const b = d?.broadcast;
   return (
     <>
@@ -134,11 +148,11 @@ export default function BroadcastDetailPage() {
               )}
               {b && (
                 b.status === "live" ? (
-                  <button className="btn btn-out" type="button" disabled title="방송이 끝난 뒤에 내보낼 수 있습니다">
+                  <button className="btn" type="button" disabled title="방송이 끝난 뒤에 내보낼 수 있습니다">
                     리포트 내보내기
                   </button>
                 ) : (
-                  <a className="btn btn-out" href={`/api/seller/broadcast/${encodeURIComponent(b.id)}/report`} data-testid="bd-report">
+                  <a className="btn" href={`/api/seller/broadcast/${encodeURIComponent(b.id)}/report`} data-testid="bd-report">
                     리포트 내보내기
                   </a>
                 )
@@ -178,165 +192,154 @@ export default function BroadcastDetailPage() {
           d &&
           b && (
             <>
-              <section className="card pad col" style={{ gap: 12 }} aria-label="방송 정보">
-                <table className="au-ft">
-                  <tbody>
-                    <tr>
-                      <th scope="row">방송 제목</th>
-                      <td>
-                        <div className="au-ft-v" data-testid="bd-title">
-                          {b.title || "제목 없는 방송"}
-                        </div>
-                      </td>
-                    </tr>
-                    <tr>
-                      <th scope="row">일시</th>
-                      <td>
-                        <div className="au-ft-v">
-                          {formatDateTime(b.startedAt)} ~ {b.endedAt ? formatDateTime(b.endedAt) : "진행 중"} · {kstDuration(b.startedAt, b.endedAt)}
-                        </div>
-                      </td>
-                    </tr>
-                    <tr>
-                      <th scope="row">상태</th>
-                      <td>
-                        <div className="au-ft-v">{b.status === "live" ? <span className="bdg b-live">진행 중</span> : <span className="bdg b-done">종료</span>}</div>
-                      </td>
-                    </tr>
-                    <tr>
-                      <th scope="row">레이아웃 · 타이머</th>
-                      <td>
-                        <div className="au-ft-v" data-testid="bd-layout">
-                          {b.layoutAspect || b.timerSeconds != null ? [b.layoutAspect ? LAYOUT_LABEL[b.layoutAspect] : null, b.timerSeconds != null ? `타이머 ${b.timerSeconds}초` : null].filter(Boolean).join(" · ") : "-"}
-                        </div>
-                      </td>
-                    </tr>
-                    <tr>
-                      <th scope="row">진행</th>
-                      <td>
-                        <div className="au-ft-v">{b.hostName ?? "-"}</div>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-                <div className="bc-sum-g bd-sum6" data-testid="bd-summary">
-                  <Tile label="주문" value={`${d.summary.orders.toLocaleString("ko-KR")}건`} />
-                  <Tile label="완료 / 뺀 주문" value={`${d.summary.completed} / ${d.summary.cancelled}`} />
-                  <Tile label="매출" value={won(d.summary.sales)} />
-                  <Tile label="HIT" value={`${d.summary.hits}장`} />
-                  <Tile label="평균 오픈" value={openText(d.summary.avgOpenSeconds)} />
-                  <Tile label="최대 대기" value={d.summary.maxWaiting == null ? "-" : `${d.summary.maxWaiting}건`} />
-                </div>
-              </section>
+              <table className="au-ft bd-info" aria-label="방송 정보">
+                <tbody>
+                  <tr>
+                    <th scope="row">방송 제목</th>
+                    <td colSpan={3} data-testid="bd-title">
+                      {b.title || "제목 없는 방송"}
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">일시</th>
+                    <td>
+                      {formatDateTime(b.startedAt)} ~ {b.endedAt ? formatDateTime(b.endedAt) : "진행 중"} · {kstDuration(b.startedAt, b.endedAt)}
+                    </td>
+                    <th scope="row">상태</th>
+                    <td>{b.status === "live" ? <span className="bdg b-live">진행 중</span> : <span className="bdg b-wait">종료</span>}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">레이아웃 · 타이머</th>
+                    <td data-testid="bd-layout">
+                      {b.layoutAspect || b.timerSeconds != null ? [b.layoutAspect ? LAYOUT_LABEL[b.layoutAspect] : null, b.timerSeconds != null ? `타이머 ${b.timerSeconds}초` : null].filter(Boolean).join(" · ") : "-"}
+                    </td>
+                    <th scope="row">진행</th>
+                    <td>{b.hostName ?? "-"}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div className="bc-sum-g bd-sum6" data-testid="bd-summary">
+                <Tile label="주문" value={`${d.summary.orders.toLocaleString("ko-KR")}건`} />
+                <Tile label="완료 / 뺀 주문" value={`${d.summary.completed} / ${d.summary.cancelled}`} />
+                <Tile label="매출" value={won(d.summary.sales)} />
+                <Tile label="HIT" value={`${d.summary.hits}장`} />
+                <Tile label="평균 오픈" value={openText(d.summary.avgOpenSeconds)} />
+                <Tile label="최대 대기" value={d.summary.maxWaiting == null ? "-" : `${d.summary.maxWaiting}건`} />
+              </div>
 
-              <section className="card pad col" style={{ gap: 12 }} aria-labelledby="bd-hour-h">
-                <h2 className="t-hl1" id="bd-hour-h">
-                  시간대별 주문 <span className="c-alt fw5 t-l2">10분 단위 · 막대 = 주문 수</span>
-                </h2>
-                {d.hourly.length === 0 ? (
-                  <span className="t-l2 c-alt" data-testid="bd-hour-empty">
-                    이 방송에는 들어온 주문이 없습니다
-                  </span>
-                ) : (
-                  <div className="bd-bars" data-testid="bd-hourly" role="img" aria-label="시간대별 주문 수">
-                    {(() => {
-                      const max = Math.max(1, ...d.hourly.map((h) => h.orders));
-                      return d.hourly.map((h) => (
-                        <div className="bd-bar" key={h.at}>
-                          <span className="t-c1 num">{h.orders}</span>
-                          <i style={{ height: `calc((100% - 44px) * ${(h.orders / max).toFixed(3)})` }} />
-                          <span className="t-c1 c-alt num">{formatTime(h.at)}</span>
-                        </div>
-                      ));
-                    })()}
-                  </div>
-                )}
-              </section>
-
-              <section className="card pad col" style={{ gap: 12 }} aria-labelledby="bd-hit-h">
-                <div className="row" style={{ justifyContent: "space-between" }}>
-                  <h2 className="t-hl1" id="bd-hit-h">
-                    HIT 카드 <span className="c-alt fw5">{d.hits.length}장</span>
+              <div className="bd-two">
+                <section className="col" style={{ gap: 8 }} aria-labelledby="bd-hour-h">
+                  <h2 className="t-hl1" id="bd-hour-h">
+                    시간대별 주문 <span className="c-alt fw5 t-l2">10분 단위 · 막대 = 주문 수</span>
                   </h2>
-                  <Link className="btn btn-sm btn-out" href="/seller/hit-cards">
-                    HIT 카드 기록 전체
-                  </Link>
+                  {d.hourly.length === 0 ? (
+                    <span className="t-l2 c-alt" data-testid="bd-hour-empty">
+                      이 방송에는 들어온 주문이 없습니다
+                    </span>
+                  ) : (
+                    <div className="bd-bars" data-testid="bd-hourly" role="img" aria-label="시간대별 주문 수">
+                      {(() => {
+                        const max = Math.max(1, ...d.hourly.map((h) => h.orders));
+                        return d.hourly.map((h) => (
+                          <div className="bd-bar" key={h.at}>
+                            <span className="t-c1 num">{h.orders}</span>
+                            <i style={{ height: `calc((100% - 44px) * ${(h.orders / max).toFixed(3)})` }} />
+                            <span className="t-c1 c-alt num">{formatTime(h.at)}</span>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  )}
+                </section>
+
+                <div className="col" style={{ gap: 16 }}>
+                  <section className="col" style={{ gap: 8 }} aria-labelledby="bd-hit-h">
+                    <div className="row" style={{ justifyContent: "space-between" }}>
+                      <h2 className="t-hl1" id="bd-hit-h">
+                        HIT 카드 {d.hits.length}건
+                      </h2>
+                      <Link className="btn btn-sm btn-out" href="/seller/hit-cards">
+                        HIT 카드 기록 전체
+                      </Link>
+                    </div>
+                    {d.hits.length === 0 ? (
+                      <span className="t-l2 c-alt" data-testid="bd-hit-empty">
+                        이 방송에서 기록한 HIT 카드가 없습니다
+                      </span>
+                    ) : (
+                      <table className="tbl">
+                        <thead>
+                          <tr>
+                            <th style={{ width: 50 }}>순위</th>
+                            <th>카드</th>
+                            <th style={{ width: 150 }}>구매자 · 시각</th>
+                          </tr>
+                        </thead>
+                        <tbody data-testid="bd-hits">
+                          {d.hits.map((h, i) => (
+                            <tr key={h.id}>
+                              <td className="num">{i + 1}</td>
+                              <td className="col-text">
+                                <span className="fw6">{h.cardName}</span>
+                                {h.source === "EXTERNAL" && (
+                                  <>
+                                    {" "}
+                                    <SourceBadge source={h.source} />
+                                  </>
+                                )}
+                                {h.note && <div className="t-c1 c-alt">{h.note}</div>}
+                              </td>
+                              <td className="col-text">
+                                {h.nickname} · <span className="num">{formatTime(h.createdAt)}</span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </section>
+
+                  <section className="col" style={{ gap: 8 }} aria-labelledby="bd-log-h">
+                    <h2 className="t-hl1" id="bd-log-h">
+                      방송 화면 · 연결 로그
+                    </h2>
+                    {d.events.length === 0 ? (
+                      <span className="t-l2 c-alt" data-testid="bd-log-empty">
+                        이 방송의 연결 기록이 없습니다
+                      </span>
+                    ) : (
+                      <table className="tbl">
+                        <thead>
+                          <tr>
+                            <th style={{ width: 80 }}>상태</th>
+                            <th>내용</th>
+                          </tr>
+                        </thead>
+                        <tbody data-testid="bd-log">
+                          {d.events.map((e, i) => (
+                            <tr key={i}>
+                              <td>
+                                <span className={`bdg ${EVENT_BADGE[e.kind]}`}>{EVENT_LABEL[e.kind]}</span>
+                              </td>
+                              <td className="col-text">{eventText(e, b.layoutAspect ? LAYOUT_LABEL[b.layoutAspect] : null)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </section>
                 </div>
-                {d.hits.length === 0 ? (
-                  <span className="t-l2 c-alt" data-testid="bd-hit-empty">
-                    이 방송에서 기록한 HIT 카드가 없습니다
-                  </span>
-                ) : (
-                  <div className="au-lt-wrap">
-                    <table className="tbl">
-                      <thead>
-                        <tr>
-                          <th>순위</th>
-                          <th>카드</th>
-                          <th>구매자 · 시각</th>
-                          <th>주문</th>
-                        </tr>
-                      </thead>
-                      <tbody data-testid="bd-hits">
-                        {d.hits.map((h, i) => (
-                          <tr key={h.id}>
-                            <td className="num">{i + 1}</td>
-                            <td className="col-title">
-                              <span className="fw6">{h.cardName}</span>
-                              {h.note && <div className="t-c1 c-alt">{h.note}</div>}
-                            </td>
-                            <td>
-                              {h.nickname} · <span className="num">{formatTime(h.createdAt)}</span>
-                            </td>
-                            <td>{h.order ? h.order.orderNo : h.source === "EXTERNAL" ? <SourceBadge source={h.source} /> : "-"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </section>
+              </div>
 
-              <section className="card pad col" style={{ gap: 12 }} aria-labelledby="bd-log-h">
-                <h2 className="t-hl1" id="bd-log-h">
-                  방송 화면 · 연결 로그
-                </h2>
-                {d.events.length === 0 ? (
-                  <span className="t-l2 c-alt" data-testid="bd-log-empty">
-                    이 방송의 연결 기록이 없습니다
-                  </span>
-                ) : (
-                  <div className="au-lt-wrap">
-                    <table className="tbl">
-                      <thead>
-                        <tr>
-                          <th>상태</th>
-                          <th>내용</th>
-                        </tr>
-                      </thead>
-                      <tbody data-testid="bd-log">
-                        {d.events.map((e, i) => (
-                          <tr key={i}>
-                            <td>{EVENT_LABEL[e.kind]}</td>
-                            <td>{eventText(e, b.layoutAspect ? LAYOUT_LABEL[b.layoutAspect] : null)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </section>
-
-              <section className="card pad col" style={{ gap: 12 }} aria-labelledby="bd-order-h">
+              <section className="col" style={{ gap: 8 }} aria-labelledby="bd-order-h">
                 <div className="row" style={{ justifyContent: "space-between" }}>
                   <h2 className="t-hl1" id="bd-order-h">
-                    주문 <span className="c-alt fw5">{d.summary.orders}건</span>
+                    주문 {d.summary.orders}건
                   </h2>
                   <Link className="btn btn-sm btn-out" href="/seller/orders">
                     주문 관리에서 보기
                   </Link>
                 </div>
-                <ListHead total={d.orders.length} loaded />
                 {d.orders.length === 0 ? (
                   <span className="t-l2 c-alt" data-testid="bd-order-empty">
                     이 방송에는 들어온 주문이 없습니다
@@ -346,24 +349,27 @@ export default function BroadcastDetailPage() {
                     <table className="tbl">
                       <thead>
                         <tr>
-                          <th>접수 시각</th>
-                          <th>구매자</th>
+                          <th style={{ width: 80 }}>주문 시각</th>
+                          <th style={{ width: 110 }}>구매자</th>
                           <th>상품</th>
-                          <th>금액</th>
-                          <th>개봉 완료</th>
-                          <th>상태</th>
+                          <th className="num" style={{ width: 120 }}>
+                            금액
+                          </th>
+                          <th style={{ width: 90 }}>{hasOpen ? "오픈 시간" : "개봉 완료"}</th>
+                          <th style={{ width: 130 }}>상태</th>
                         </tr>
                       </thead>
                       <tbody data-testid="bd-orders">
                         {d.orders.map((o) => (
                           <tr key={o.id}>
-                            <td className="num">{formatDateTime(o.createdAt)}</td>
-                            <td>{o.nickname}</td>
+                            <td className="num">{formatTime(o.createdAt)}</td>
+                            <td className="fw6">{o.nickname}</td>
                             <td className="col-product">
                               {o.items.map((i, k) => (
                                 <div key={k}>
                                   {i.productName}
-                                  {i.optionName ? ` ${i.optionName}` : ""} ×{i.quantity}
+                                  {i.optionName ? ` ${i.optionName}` : ""}
+                                  {i.quantity > 1 ? ` ×${i.quantity}` : ""}
                                 </div>
                               ))}
                             </td>
@@ -371,8 +377,18 @@ export default function BroadcastDetailPage() {
                               {won(o.totalAmount)}
                               {o.refundAmount ? <div className="t-c1 c-alt">환불 {won(o.refundAmount)}</div> : null}
                             </td>
-                            <td className="num">{o.completedAt ? formatDateTime(o.completedAt) : "-"}</td>
-                            <td>{STATUS_TEXT[o.status]}</td>
+                            <td className="num">
+                              {hasOpen
+                                ? o.openSeconds != null
+                                  ? `${Math.floor(o.openSeconds / 60)}:${String(o.openSeconds % 60).padStart(2, "0")}`
+                                  : "—"
+                                : o.completedAt
+                                  ? formatTime(o.completedAt)
+                                  : "—"}
+                            </td>
+                            <td>
+                              <OrderTags o={o} hit={hitOrders.has(o.id)} />
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -394,17 +410,25 @@ export default function BroadcastDetailPage() {
                 )}
               </section>
 
-              <section className="card pad col" style={{ gap: 12 }} aria-labelledby="bd-memo-h">
+              <section className="col" style={{ gap: 8 }} aria-labelledby="bd-memo-h">
                 <h2 className="t-hl1" id="bd-memo-h">
                   메모
                 </h2>
-                <textarea className="inp" rows={4} maxLength={1000} value={memo} onChange={(e) => setMemo(e.target.value)} aria-label="메모" data-testid="bd-memo" />
-                <div className="row" style={{ justifyContent: "space-between" }}>
-                  <span className="t-c1 c-alt">{memo.length.toLocaleString("ko-KR")} / 1,000자</span>
-                  <button className="btn btn-pri" type="button" disabled={saving || memo === (b.memo ?? "")} onClick={() => void saveMemo()} data-testid="bd-memo-save">
-                    저장
-                  </button>
-                </div>
+                <table className="au-ft">
+                  <tbody>
+                    <tr>
+                      <th scope="row">메모</th>
+                      <td>
+                        <div className="au-ft-v" style={{ alignItems: "flex-start" }}>
+                          <textarea className="inp" style={{ flex: "1 1 360px", minHeight: 48 }} maxLength={1000} value={memo} placeholder="방송 메모 (파트너스만 봅니다)" onChange={(e) => setMemo(e.target.value)} aria-label="메모" data-testid="bd-memo" />
+                          <button className="btn btn-sm btn-out" type="button" disabled={saving || memo === (b.memo ?? "")} onClick={() => void saveMemo()} data-testid="bd-memo-save">
+                            저장
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </section>
 
               {(d.externalOrders?.length ?? 0) > 0 && (
