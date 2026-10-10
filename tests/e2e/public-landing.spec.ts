@@ -121,6 +121,11 @@ test("PF-001 방송 예시 슬라이드는 수동 조작과 자동 전환의 접
   await page.clock.runFor(6600);
   await expect(selected("FPS")).toHaveAttribute("aria-pressed", "true");
   await expect(hero.getByText("FPS 방송", { exact: true })).toBeVisible();
+  await hero.getByRole("button", { name: "방송 예시 자동 전환 일시정지", exact: true }).click();
+  await page.getByRole("link", { name: "스트림샵 시작하기", exact: true }).first().focus();
+  await page.mouse.move(0, 0);
+  await page.clock.runFor(7000);
+  await expect(selected("FPS")).toHaveAttribute("aria-pressed", "true");
   const next = hero.getByRole("button", { name: "다음 방송 예시", exact: true });
   await next.click();
   await expect(selected("TCG")).toHaveAttribute("aria-pressed", "true");
