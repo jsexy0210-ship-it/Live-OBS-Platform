@@ -117,6 +117,7 @@ test("알림 센터: 실제 조회 계약 뒤 합성 요약·규칙·빈 상태�
   items = [positive];
   await page.goto("/admin/notifications");
   await expect(page.getByTestId("notification-row")).toContainText(positive.title);
+  await expect(page.getByRole("combobox", { name: "유형", exact: true })).toHaveCount(1);
   await page.getByLabel("유형", { exact: true }).selectOption("BROADCAST_DOWN");
   items = [];
   await page.getByRole("button", { name: "검색", exact: true }).click();
