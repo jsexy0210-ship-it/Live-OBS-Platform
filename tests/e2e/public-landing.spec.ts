@@ -133,8 +133,8 @@ test("최고관리자가 소개 파비콘·공유 카드를 저장하면 공개 
     await expect(page.locator('img[src="/branding/streamshop-symbol.png"]').first()).toBeVisible();
     const icon = await sharp({ create: { width: 64, height: 64, channels: 4, background: "#80E8C1" } }).png().toBuffer();
     await page.getByLabel("파비콘 파일").setInputFiles({ name: "landing.png", mimeType: "image/png", buffer: icon });
-    await page.getByRole("button", { name: "파비콘 변경", exact: true }).click();
-    await expect(page.getByText("파비콘을 변경했습니다.", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "파비콘 저장", exact: true }).click();
+    await expect(page.getByText("파비콘을 저장했습니다.", { exact: true })).toBeVisible();
     await page.getByLabel("제목", { exact: true }).fill(title);
     await page.getByLabel("설명", { exact: true }).fill("소개 공유 설명");
     await page.getByRole("button", { name: "공유 카드 저장", exact: true }).click();

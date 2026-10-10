@@ -156,23 +156,27 @@ describe("소개 랜딩 브랜딩", () => {
 
   it("DB 조회 실패에도 소개의 기존 제목·설명·기본 심볼과 생성 카드 소스를 유지한다", async () => {
     const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    // Prisma delegate 메서드는 Proxy로 제공되므로 속성 descriptor를 찾는 spy 대신 직접 대체한다.
+    const originalRead = prisma.siteBranding.findUnique;
+    const unavailable = vi.fn<typeof originalRead>().mockRejectedValueOnce(new Error("fixture unavailable"));
+    prisma.siteBranding.findUnique = unavailable;
     try {
-      const unavailable = vi.spyOn(prisma.siteBranding, "findUnique").mockRejectedValueOnce(new Error("fixture unavailable"));
       const meta = await brandingMetadata("landing");
-      unavailable.mockRestore();
+      expect(unavailable).toHaveBeenCalledTimes(1);
       expect(meta).toMatchObject({ title: BRANDING_DEFAULTS.landing.title, description: BRANDING_DEFAULTS.landing.description });
       expect(meta.icons).toMatchObject({ icon: [{ url: "http://test.on-aircue.com/branding/streamshop-symbol.png" }] });
-      const imageUnavailable = vi.spyOn(db.siteBranding, "findUnique").mockRejectedValueOnce(new Error("fixture unavailable"));
-      const source = await ogImageSource(db, "landing");
-      imageUnavailable.mockRestore();
+      unavailable.mockRejectedValueOnce(new Error("fixture unavailable"));
+      const source = await ogImageSource(prisma, "landing");
+      expect(unavailable).toHaveBeenCalledTimes(2);
       expect(source).toMatchObject({ kind: "generated", title: BRANDING_DEFAULTS.landing.title });
-      const publicUnavailable = vi.spyOn(prisma.siteBranding, "findUnique").mockRejectedValueOnce(new Error("fixture unavailable"));
+      unavailable.mockRejectedValueOnce(new Error("fixture unavailable"));
       const fallbackCard = (meta.openGraph as { images: { url: string }[] }).images[0].url;
       const response = await publicOg(new Request(fallbackCard), ctx("landing"));
-      publicUnavailable.mockRestore();
+      expect(unavailable).toHaveBeenCalledTimes(3);
       expect(response.status).toBe(200);
       expect(await sharp(Buffer.from(await response.arrayBuffer())).metadata()).toMatchObject({ width: 1200, height: 630, format: "png" });
     } finally {
+      prisma.siteBranding.findUnique = originalRead;
       vi.restoreAllMocks();
       errorLog.mockRestore();
     }
