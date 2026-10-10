@@ -79,8 +79,38 @@ test("로그 추적: 실제 조회 DTO 뒤 합성 IP·기기/빈 값을 목록·
   const text = `${positive.ip} · ${agent}`;
   for (const width of [1440, 1024, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
-    await page.goto("/admin/logs");
-    await expect(page.getByRole("columnheader", { name: "IP · 기기", exact: true })).toBeVisible();
+    let browserStatus: number | null = null;
+    let responseRows: number | null = null;
+    try {
+      const [response] = await Promise.all([
+        page.waitForResponse((r) => new URL(r.url()).pathname === "/api/admin/audit-logs" && r.request().method() === "GET"),
+        page.goto("/admin/logs"),
+      ]);
+      browserStatus = response.status();
+      const body = await response.json() as { logs?: unknown[] };
+      responseRows = Array.isArray(body.logs) ? body.logs.length : null;
+      expect(browserStatus).toBe(200);
+      expect(responseRows).toBe(3);
+      await expect(page.getByRole("columnheader", { name: "IP · 기기", exact: true })).toBeVisible();
+    } catch (error) {
+      const me = await page.request.get("/api/admin/me");
+      const { role } = await me.json() as { role?: string };
+      const pathname = new URL(page.url()).pathname;
+      console.info("MA-070 목록 실패 경계", {
+        width, page: ["/admin", "/admin/logs", "/admin/login"].includes(pathname) ? pathname : "other",
+        api: "/api/admin/audit-logs", browserStatus, responseRows, roleStatus: me.status(),
+        role: ["SUPER_ADMIN", "OPERATIONS", "CS", "READ_ONLY"].includes(role ?? "") ? role : "unavailable",
+        loading: await page.locator('[aria-busy="true"]').count(),
+        error: await page.getByText("로그를 불러오지 못했습니다.", { exact: true }).count(),
+        noAccess: await page.getByTestId("admin-no-access").count(),
+        tables: await page.locator(".main .tbl").count(), headers: await page.locator(".main .tbl thead th").count(),
+        connectionHeader: await page.getByRole("columnheader", { name: "IP · 기기", exact: true }).count(),
+        rows: await page.getByTestId("audit-row").count(),
+      });
+      // 실패 화면의 실데이터·계정·입력값은 가리고 구조/헤더/오류만 기존 PNG lane에 남긴다.
+      await page.screenshot({ path: `tests/e2e/screenshots/MA-070-connection-failure-${width}.png`, fullPage: true, mask: [page.locator(".gnb"), page.locator(".tbl tbody"), page.locator("input")] });
+      throw error;
+    }
     const items = page.getByTestId("audit-row");
     await expect(items).toHaveCount(3);
     const cell = items.first().getByRole("cell").nth(6);
@@ -153,7 +183,7 @@ test("로그 추적: CS의 실제 목록·상세 조회는 403이며 접속 정�
   });
   const detail = "/api/admin/audit-logs/00000000-0000-4000-8000-000000000001";
   for (const path of ["/api/admin/audit-logs", detail]) expect((await page.request.get(path)).status()).toBe(403);
-  for (const path of ["/admin/logs", detail.replace("/api", "")]) {
+  for (const path of ["/admin/logs", "/admin/logs/00000000-0000-4000-8000-000000000001"]) {
     await page.goto(path);
     await expect(page.getByTestId("admin-no-access")).toBeVisible();
     await expect(page.getByTestId("audit-row")).toHaveCount(0);
