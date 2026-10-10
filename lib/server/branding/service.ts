@@ -6,7 +6,7 @@ import { adminCan } from "../authz/permissions";
 import { forbidden } from "../authz/errors";
 import { cleanText } from "../text/clean";
 import { checkFavicon, checkOgImage, OG_IMAGE_HEIGHT, OG_IMAGE_WIDTH, type ImageRejection } from "./image";
-import { imageHash, readImage, removeImage, writeImage, type BrandingTarget, type ImageSlot } from "./store";
+import { BRANDING_TARGETS, imageHash, readImage, removeImage, writeImage, type BrandingTarget, type ImageSlot } from "./store";
 
 // 관리자 화면 브랜딩(대표님 요구 2026-10-04): 마스터 관리자·파트너스 관리자 화면 각각의 파비콘과 공유 카드(제목·설명·이미지).
 // 공유 카드 이미지는 직접 올린 1200×630 이미지가 있으면 그것, 없으면 제목으로 서버가 그린 카드(card.ts)를 쓴다.
@@ -18,6 +18,7 @@ export const BRANDING_DESCRIPTION_MAX = 160;
 export const BRANDING_DEFAULTS: Record<BrandingTarget, { title: string; description: string | null }> = {
   admin: { title: "ONQ 마스터 관리자", description: null },
   seller: { title: "ONQ 파트너스 관리자", description: "쇼핑몰 운영과 방송 주문대기를 한곳에서 관리합니다." },
+  landing: { title: "스트림샵 | 쇼핑몰부터 라이브 판매까지", description: "쇼핑몰부터 OBS 방송 화면, 주문과 배송까지. 스트림샵(StreamShop)으로 라이브 판매의 모든 순간을 연결하세요." },
 };
 
 export const BRANDING_MESSAGES = {
@@ -48,14 +49,15 @@ export const DEFAULT_FAVICON = { url: "/branding/onq-32.png", appleUrl: "/brandi
 // 마스터 관리자 기본 아이콘: 같은 모양을 마스터 식별색 틸(--master #0f766e)로 그린 것. 탭이 여러 개 열려 있어도 구분된다(대표님 지시 2026-10-04).
 export const DEFAULT_ADMIN_FAVICON = { url: "/branding/onq-admin-32.png", appleUrl: "/branding/onq-admin-180.png", type: "image/png" } as const;
 // 올린 파비콘이 없을 때 쓰는 기본 아이콘(대상별)
-export const defaultFavicon = (target: BrandingTarget) => (target === "admin" ? DEFAULT_ADMIN_FAVICON : DEFAULT_FAVICON);
+export const DEFAULT_LANDING_FAVICON = { url: "/branding/streamshop-symbol.png", appleUrl: "/branding/streamshop-symbol.png", type: "image/png" } as const;
+export const defaultFavicon = (target: BrandingTarget) => target === "landing" ? DEFAULT_LANDING_FAVICON : target === "admin" ? DEFAULT_ADMIN_FAVICON : DEFAULT_FAVICON;
 
 // 주소: 파비콘 /api/branding/{target}/favicon?v=해시, 공유 카드 /api/branding/{target}/og?v=버전
 export const faviconUrl = (target: BrandingTarget, hash: string) => `/api/branding/${target}/favicon?v=${hash}`;
 export const ogImageUrl = (target: BrandingTarget, version: string) => `/api/branding/${target}/og?v=${version}`;
 
 // 서버가 그린 카드의 버전: 제목·서체·주소 표현이 바뀌면 salt를 올려 오래 캐시된 그림을 무효화한다.
-export const generatedCardVersion = (title: string) => createHash("sha256").update(`brand-card-v2\0${title}`).digest("hex").slice(0, 12);
+export const generatedCardVersion = (title: string, target?: BrandingTarget) => createHash("sha256").update(`${target === "landing" ? "brand-card-landing-v1" : "brand-card-v2"}\0${title}`).digest("hex").slice(0, 12);
 
 export type BrandingView = {
   target: BrandingTarget;
@@ -83,7 +85,7 @@ async function view(db: PrismaClient, target: BrandingTarget): Promise<BrandingV
     favicon: row?.faviconHash && row.faviconType ? { url: faviconUrl(target, row.faviconHash), type: row.faviconType } : null,
     defaultFaviconUrl: defaultFavicon(target).url,
     ogImage: {
-      url: ogImageUrl(target, row?.ogImageHash ?? generatedCardVersion(cardTitle)),
+      url: ogImageUrl(target, row?.ogImageHash ?? generatedCardVersion(cardTitle, target)),
       uploaded: !!row?.ogImageHash,
       width: OG_IMAGE_WIDTH,
       height: OG_IMAGE_HEIGHT,
@@ -94,7 +96,7 @@ async function view(db: PrismaClient, target: BrandingTarget): Promise<BrandingV
 
 // 설정 화면용: 두 대상의 현재 값과 이 관리자가 바꿀 수 있는지. 호출 전에 platform.read 확인(라우트).
 export async function readBrandingSettings(db: PrismaClient, admin: AdminSessionContext) {
-  return { canEdit: adminCan(admin.admin.role, "system.manage"), targets: await Promise.all((["admin", "seller"] as const).map((t) => view(db, t))) };
+  return { canEdit: adminCan(admin.admin.role, "system.manage"), targets: await Promise.all(BRANDING_TARGETS.map((t) => view(db, t))) };
 }
 
 function requireEditor(admin: AdminSessionContext) {
@@ -198,9 +200,15 @@ export async function brandingMeta(db: PrismaClient, target: BrandingTarget): Pr
 
 // 공개 이미지 응답에 쓰는 값: 올린 공유 카드 이미지, 없으면 그릴 카드 제목과 버전
 export async function ogImageSource(db: PrismaClient, target: BrandingTarget) {
-  const uploaded = await readImage(db, target, "ogImage");
-  if (uploaded) return { kind: "uploaded" as const, image: uploaded };
-  const row = await db.siteBranding.findUnique({ where: { target }, select: { ogTitle: true } });
-  const title = row?.ogTitle ?? BRANDING_DEFAULTS[target].title;
-  return { kind: "generated" as const, title, version: generatedCardVersion(title) };
+  let title = BRANDING_DEFAULTS[target].title;
+  try {
+    const uploaded = await readImage(db, target, "ogImage");
+    if (uploaded) return { kind: "uploaded" as const, image: uploaded };
+    const row = await db.siteBranding.findUnique({ where: { target }, select: { ogTitle: true } });
+    title = row?.ogTitle ?? title;
+  } catch (e) {
+    if (target !== "landing") throw e;
+    console.error(e);
+  }
+  return { kind: "generated" as const, title, version: generatedCardVersion(title, target) };
 }
