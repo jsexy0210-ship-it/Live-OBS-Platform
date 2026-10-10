@@ -137,7 +137,7 @@ export default function PF003Canonical() {
           {plans.map((plan) => <PlanCard plan={plan} key={plan.name} />)}
         </div>
         <div className="col" style={{ maxWidth: 980, margin: "20px auto 0", gap: 12 }}>
-          <div className="msg msg-info t-l2" style={{ display: "block" }}>지금은 런칭 할인가예요 할인이 끝나는 날짜는 정해지면 30일 전에 알려 드리고, 바뀌는 날짜와 금액은 결제 전 화면과 구독 관리 화면에서 다시 보여 드려요.</div>
+          <div className="msg msg-info t-l2" style={{ display: "block" }}>지금은 런칭 할인가예요 할인이 끝나는 날짜는 정해지면 30일 전에 알려 드리고, 바뀌는 날짜와 금액은 결제 전 화면과 구독 관리 화면에서 다시 보여 드려요</div>
           <div className="card row" style={{ padding: "20px 24px", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
             <div className="col" style={{ gap: 2, flex: 1, minWidth: 260 }}>
               <span className="t-hl2">자동 연결 (선택)</span>
@@ -156,7 +156,7 @@ export default function PF003Canonical() {
       <section style={{ padding: "80px 64px", background: "var(--page)" }}>
         <div className="col" style={{ alignItems: "center", gap: 16, textAlign: "center" }}>
           <h2 className="t-t1">오늘 쇼핑몰을 열고, 다음 방송부터 줄을 세워요</h2>
-          <p className="t-b1 c-neu">점검을 통과하면 바로 승인돼요 오버레이 전용은 승인되면 7일 동안 체험할 수 있고, 쇼핑몰 통합은 체험 없이 구독으로 시작해요.</p>
+          <p className="t-b1 c-neu">점검을 통과하면 바로 승인돼요 오버레이 전용은 승인되면 7일 동안 체험할 수 있고, 쇼핑몰 통합은 체험 없이 구독으로 시작해요</p>
           <div className="row" style={{ gap: 8 }}>
             <a className="btn btn-lg" href={designHref("PF-007-1")}>파트너스 가입 신청</a>
             <a className="btn btn-lg btn-out" href={designHref("PF-003")}>요금 보기</a>
