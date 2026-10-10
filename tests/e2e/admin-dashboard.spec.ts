@@ -21,7 +21,7 @@ test.beforeAll(async () => {
 
 test("로그인하면 홈에 통합 대시보드가 보이고, 숫자가 API 값과 같으며, 목록 화면으로 이어진다", async ({ page }) => {
   const protectedGets: string[] = [];
-  page.on("request", (request) => { if (/\/api\/admin\/(ops\/metrics|audit-logs)(\?|$)/.test(request.url())) protectedGets.push(request.url()); });
+  page.on("request", (request) => { if (/\/api\/admin\/(ops\/metrics|audit-logs|infra\/summary)(\?|$)/.test(request.url())) protectedGets.push(request.url()); });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/admin/login");
   await page.getByLabel("이메일").fill(cs);
@@ -34,6 +34,7 @@ test("로그인하면 홈에 통합 대시보드가 보이고, 숫자가 API 값
   await page.locator(".lnb-sec.on").getByRole("link", { name: "상세 현황", exact: true }).click();
   await expect(page).toHaveURL(/\/admin\/home\/status$/);
   await expect(page.getByRole("heading", { name: "상세 현황", level: 1 })).toBeVisible();
+  await expect(page.locator(".lnb-sec.on").getByRole("link", { name: "상세 현황", exact: true })).toHaveAttribute("aria-current", "page");
 
   const api = await page.evaluate(async () => (await fetch("/api/admin/dashboard", { cache: "no-store" })).json());
   const fmt = (v: number, unit: string) => `${v.toLocaleString("ko-KR")}${unit}`;
@@ -45,7 +46,7 @@ test("로그인하면 홈에 통합 대시보드가 보이고, 숫자가 API 값
   await expect(page.getByTestId("dash-orders-amount")).toHaveText(`${api.ordersToday.paidAmount.toLocaleString("ko-KR")}원`);
   await expect(page.getByTestId("dash-live")).toHaveText(fmt(api.liveBroadcasts, "곳"));
   await expect(page.locator(".ma-home-kpis > section")).toHaveCount(6);
-  expect(protectedGets).toEqual([]); // CS는 DB 운영 지표·관리자 활동 조회를 요청하지 않는다.
+  expect(protectedGets).toEqual([]); // CS는 DB 운영 지표·관리자 활동·인프라 조회를 요청하지 않는다.
 
   await page.getByRole("button", { name: "새로 고침" }).click();
   await expect(page.getByTestId("dash-sellers-total")).toBeVisible();

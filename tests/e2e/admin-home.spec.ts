@@ -34,7 +34,15 @@ test.beforeAll(async () => {
   const buyer = await db.buyerMember.create({
     data: { sellerId: seller.id, gradeId: grade.id, loginId: `hm${run}`, passwordHash: "x", name: "구매자", phone: `010${String(parseInt(run, 16)).padStart(8, "0").slice(-8)}`, broadcastNickname: "닉", ciHash: `ci-${run}`, identityVerifiedAt: new Date(), birthDate: new Date("1990-01-01") },
   });
-  await db.order.create({ data: { sellerId: seller.id, orderNo: 1, buyerMemberId: buyer.id, broadcastNicknameSnapshot: "닉", totalAmount: 123_456, paidAt: new Date() } });
+  await db.order.create({ data: { sellerId: seller.id, orderNo: 1, buyerMemberId: buyer.id, broadcastNicknameSnapshot: "닉", totalAmount: 123_456, refundAmount: 13_456, paidAt: new Date() } });
+  const plan = await db.subscriptionPlan.findFirstOrThrow({ where: { code: "INTEGRATED" }, select: { id: true } });
+  const subscription = await db.sellerSubscription.create({ data: { sellerId: seller.id, planId: plan.id } });
+  const now = new Date();
+  const payment = await db.subscriptionPayment.create({ data: {
+    sellerId: seller.id, subscriptionId: subscription.id, amount: 179_000, status: "PAID",
+    periodStart: now, periodEnd: new Date(now.getTime() + 30 * 86_400_000), createdAt: now, paidAt: now,
+  } });
+  await db.subscriptionRefund.create({ data: { sellerId: seller.id, paymentId: payment.id, amount: 50_000, source: "SYSTEM", reason: "홈·상세 현황 환불 집계 시험", status: "REFUNDED", refundedAt: now } });
 });
 test.afterAll(async () => {
   await db.$disconnect();
@@ -53,6 +61,7 @@ async function openStatus(page: Page) {
   await page.locator(".lnb-sec.on").getByRole("link", { name: "상세 현황", exact: true }).click();
   await expect(page).toHaveURL(/\/admin\/home\/status$/);
   await expect(page.getByRole("heading", { name: "상세 현황", level: 1 })).toBeVisible();
+  await expect(page.locator(".lnb-sec.on").getByRole("link", { name: "상세 현황", exact: true })).toHaveAttribute("aria-current", "page");
 }
 
 async function captureHome(page: Page, name: string, role: "CS" | "SUPER_ADMIN") {
@@ -155,10 +164,13 @@ test("매출이 먼저 보이고 오늘 처리할 일과 상세 현황의 정보
   const month = await page.request.get(`/api/admin/stats/subscriptions?from=${today.slice(0, 7)}-01&to=${today}`);
   expect(month.status()).toBe(200);
   const subscriptions = await month.json();
+  expect(subscriptions.current.revenue).toBeGreaterThanOrEqual(179_000);
+  expect(subscriptions.current.refundAmount).toBeGreaterThanOrEqual(50_000);
   const money = (value: number) => `${value.toLocaleString("ko-KR")}원`;
   const subscriptionPanel = page.getByTestId("home-revenue-subscriptions");
   await expect(subscriptionPanel.locator(".stat").filter({ hasText: "수납 구독료" }).locator(".v")).toHaveText(money(subscriptions.current.revenue));
   await expect(subscriptionPanel.locator(".stat").filter({ hasText: "구독 환불" }).locator(".v")).toHaveText(money(subscriptions.current.refundAmount));
+  let lastOrders: { revenue: number; refundAmount: number; netRevenue: number } | undefined;
   for (const days of [7, 90, 30]) {
     const from = new Date(Date.now() - (days - 1) * 86_400_000 + 9 * 3_600_000).toISOString().slice(0, 10);
     const request = page.waitForResponse((response) => { const url = new URL(response.url()); return url.pathname === "/api/admin/stats/orders" && url.searchParams.get("from") === from && url.searchParams.get("to") === today; });
@@ -166,6 +178,9 @@ test("매출이 먼저 보이고 오늘 처리할 일과 상세 현황의 정보
     const response = await request;
     expect(response.status()).toBe(200);
     const orders = await response.json();
+    expect(orders.current.revenue).toBeGreaterThanOrEqual(123_456);
+    expect(orders.current.refundAmount).toBeGreaterThanOrEqual(13_456);
+    lastOrders = orders.current;
     const orderPanel = page.getByTestId("home-revenue-orders");
     await expect(orderPanel).toContainText(`최근 ${days}일`);
     for (const [label, value] of [["주문 결제액", orders.current.revenue], ["주문 환불", orders.current.refundAmount], ["환불 제외 결제액", orders.current.netRevenue]] as const) {
@@ -190,7 +205,28 @@ test("매출이 먼저 보이고 오늘 처리할 일과 상세 현황의 정보
     await captureHome(page, `admin-home-compact-${width}`, "CS");
   }
   await page.setViewportSize({ width: 1440, height: 900 });
+  const orderFrom = new Date(Date.now() - 29 * 86_400_000 + 9 * 3_600_000).toISOString().slice(0, 10);
+  const samePeriod = (path: string, from: string) => (response: Response) => {
+    const url = new URL(response.url());
+    return url.pathname === path && url.searchParams.get("from") === from && url.searchParams.get("to") === today;
+  };
+  const detailOrders = page.waitForResponse(samePeriod("/api/admin/stats/orders", orderFrom));
+  const detailMonth = page.waitForResponse(samePeriod("/api/admin/stats/subscriptions", `${today.slice(0, 7)}-01`));
   await openStatus(page);
+  if (!lastOrders) throw new Error("홈의 최근 30일 주문 집계가 없습니다");
+  for (const [pending, current] of [[detailOrders, lastOrders], [detailMonth, subscriptions.current]] as const) {
+    const response = await pending;
+    expect(response.status()).toBe(200);
+    expect((await response.json()).current).toEqual(current);
+  }
+  const monthBilling = page.getByTestId("home-month-billing");
+  for (const [label, value] of [["받은 구독료", subscriptions.current.revenue], ["환불 금액", subscriptions.current.refundAmount]] as const) {
+    await expect(monthBilling.locator(".ma-home-values > div").filter({ has: page.getByText(label, { exact: true }) }).locator("dd")).toHaveText(money(value));
+  }
+  for (const [label, value] of [["결제 금액", lastOrders.revenue], ["환불 금액", lastOrders.refundAmount]] as const) {
+    await expect(page.getByTestId("stats-orders").locator(".stat").filter({ has: page.getByText(label, { exact: true }) }).locator(".v")).toHaveText(money(value));
+  }
+  await expect(page.getByTestId("home-kpi-revenue").locator(".stat .v")).toHaveText(money(lastOrders.netRevenue));
   await expect(page.locator(".ma-home-kpis > section")).toHaveCount(6);
   await expect(page.getByTestId("home-operations")).toContainText("실시간 감시");
   await expect(page.getByTestId("home-db-metrics")).toHaveCount(0);
