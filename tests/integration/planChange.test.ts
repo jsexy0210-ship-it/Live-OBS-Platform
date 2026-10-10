@@ -471,7 +471,7 @@ describe("런칭 할인 계정당 1회(대표님 결정 2026-10-04)", () => {
     const declined = await registerCardAndPay(db, declining(), s.ctx, { authKey: "auth", now: T0 });
     expect(declined).toMatchObject({ ok: false, reason: "payment_failed" });
     expect(await used(s.seller.id)).toBeNull();
-    expect(await registerCardAndPay(db, new FakeBillingProvider(), s.ctx, { authKey: "auth", now: T0 })).toMatchObject({ ok: true });
+    expect(await registerCardAndPay(db, new FakeBillingProvider(), s.ctx, { authKey: "auth", now: new Date(T0.getTime() + 1) })).toMatchObject({ ok: true });
     expect((await payments(s.seller.id)).map((p) => [p.amount, p.status])).toEqual([[179000, "FAILED"], [179000, "PAID"]]);
   });
 });
