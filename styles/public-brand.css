@@ -8,6 +8,7 @@
 .streamshop-login { padding: 10px 0; color: #171a24; }
 .streamshop-signup { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 20px; border-radius: 8px; background: #4f46e5; color: white !important; white-space: nowrap; }
 .streamshop-public .streamshop-footer { background: #171a24; color: white; padding: 48px max(32px, calc((100vw - 1240px) / 2)); }
+.streamshop-public .streamshop-footer a, .streamshop-public .streamshop-footer a:hover { color: inherit; }
 .streamshop-footer .c-alt { color: #a8aebf; }
 .streamshop-footer .streamshop-brand img { filter: brightness(0) invert(1); }
 .streamshop-header a:focus-visible, .streamshop-footer a:focus-visible { outline: 3px solid #4f46e5; outline-offset: 5px; border-radius: 6px; }
