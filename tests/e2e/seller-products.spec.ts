@@ -30,7 +30,7 @@ async function shot(page: Page, name: string, waitForClosedMenu = false) {
     }
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(150);
-    await page.screenshot({ path: `tests/e2e/screenshots/${name}-${width}.png`, fullPage: true });
+    await page.screenshot({ path: `${process.env.E2E_EVIDENCE_DIR ?? "tests/e2e/screenshots"}/${name}-${width}.png`, fullPage: true });
   }
   await page.setViewportSize({ width: 1440, height: 900 });
 }
@@ -481,6 +481,7 @@ test("숫자·글자 입력: 전각 숫자는 받고, 음수 가격과 보이지
 
   await page.getByLabel("상품명").fill("부스터 팩");
   await page.getByLabel("판매가").fill("１５０００");
+  await page.locator(".product-form-actions").getByRole("button", { name: "미리보기" }).click();
   await expect(page.getByText("15,000원", { exact: true })).toBeVisible();
   await expect(page.getByText("가격은 1원 이상", { exact: false })).toHaveCount(0);
 });

@@ -79,6 +79,8 @@ describe("목록·읽음·상태", () => {
     expect((await readAll(ops.cookie)).body.marked).toBe(0);
     expect((await list(ops.cookie)).body.unreadCount).toBe(0);
     expect((await list(cs.cookie, "?severity=INFO")).body.items.map((x: { id: string }) => x.id)).toEqual([info]);
+    expect((await list(cs.cookie, "?severity=URGENT,INFO&status=OPEN,IN_PROGRESS")).body.items.map((x: { id: string }) => x.id)).toEqual([urgent, info]);
+    expect((await list(cs.cookie, `?seller=${encodeURIComponent(s.seller.shopName)}`)).body.items.map((x: { id: string }) => x.id)).toEqual([urgent]);
     expect((await list(cs.cookie, "?kind=BROADCAST_DOWN")).body.items.map((x: { id: string }) => x.id)).toEqual([urgent]);
     for (const [qs, error] of [["?status=X", "invalid_status"], ["?severity=X", "invalid_severity"], ["?assignee=x", "invalid_assignee"], ["?cursor=bad", "invalid_cursor"]] as const) {
       expect((await list(cs.cookie, qs)).body.error).toBe(error);
@@ -117,6 +119,10 @@ describe("목록·읽음·상태", () => {
     expect(p2.body.items).toHaveLength(3);
     expect(p2.body.nextCursor).toBeNull();
     expect(new Set([...p1.body.items, ...p2.body.items].map((x: { id: string }) => x.id)).size).toBe(53);
+    await db.adminAlert.updateMany({ where: { title: { not: "알림 0" } }, data: { status: "RESOLVED" } });
+    const filtered = await list(cs.cookie, "?status=OPEN,IN_PROGRESS&severity=INFO");
+    expect(filtered.body.items.map((x: { title: string }) => x.title)).toEqual(["알림 0"]);
+    expect(filtered.body.nextCursor).toBeNull();
   });
 });
 
