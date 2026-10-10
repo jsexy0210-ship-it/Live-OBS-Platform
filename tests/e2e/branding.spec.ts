@@ -289,21 +289,38 @@ test("저장 전 입력값이 미리보기에 바로 반영된다(제목·설명
 });
 
 test("마스터 관리자 기본 파비콘은 틸이고, 올린 파비콘이 있으면 그것이 우선한다(대표님 지시 2026-10-04)", async ({ page, request }) => {
-  // 기본 아이콘 PNG의 바탕 색(왼쪽 위 안쪽 화소): 마스터는 틸(#0f766e), 파트너스는 보라(#5b3df6)
-  const pixel = async (url: string) => {
+  // 같은 S 심볼의 외곽은 투명하고, 불투명한 내부는 마스터 틸·파트너스 오렌지다
+  const symbolPixels = async (url: string) => {
     const res = await request.get(url);
     expect(res.status()).toBe(200);
     expect(res.headers()["content-type"]).toBe("image/png");
-    const { data, info } = await sharp(Buffer.from(await res.body())).raw().toBuffer({ resolveWithObject: true });
-    const at = (6 * info.width + 3) * info.channels;
-    return [data[at], data[at + 1], data[at + 2]];
+    const { data, info } = await sharp(Buffer.from(await res.body())).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    expect([info.width, info.height, info.channels]).toEqual([32, 32, 4]);
+    const pixel = (x: number, y: number) => {
+      const at = (y * info.width + x) * info.channels;
+      return Array.from(data.subarray(at, at + 4));
+    };
+    expect(pixel(3, 6)).toEqual([0, 0, 0, 0]);
+    return [pixel(16, 9), pixel(16, 23)];
   };
   const adminHead = await head(page, "/admin/login");
   expect(adminHead.icons).toEqual(["/branding/streamshop-master-32-20261010.png"]);
   const sellerHead = await head(page, "/seller/login");
   expect(sellerHead.icons).toEqual(["/branding/streamshop-partners-32-20261010.png"]);
-  expect(await pixel(adminHead.icons[0]!)).toEqual([0x0f, 0x76, 0x6e]);
-  expect(await pixel(sellerHead.icons[0]!)).toEqual([0x5b, 0x3d, 0xf6]);
+  for (const [red, green, blue, alpha] of await symbolPixels(adminHead.icons[0]!)) {
+    expect(alpha).toBeGreaterThan(200);
+    expect(red).toBeLessThan(40);
+    expect(green).toBeGreaterThan(90);
+    expect(blue).toBeGreaterThan(90);
+    expect(Math.abs(green - blue)).toBeLessThanOrEqual(20);
+  }
+  for (const [red, green, blue, alpha] of await symbolPixels(sellerHead.icons[0]!)) {
+    expect(alpha).toBeGreaterThan(200);
+    expect(red).toBeGreaterThan(200);
+    expect(green).toBeGreaterThan(50);
+    expect(green).toBeLessThan(120);
+    expect(blue).toBeLessThan(40);
+  }
   expect((await request.get("/branding/streamshop-master-180-20261010.png")).status()).toBe(200);
 
   // 설정 화면의 마스터 관리자 탭 「기본 아이콘」도 틸 아이콘을 보인다
