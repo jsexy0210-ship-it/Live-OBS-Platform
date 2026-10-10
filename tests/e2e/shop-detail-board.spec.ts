@@ -62,7 +62,20 @@ test("내 문의: 실제 본인 조회 뒤 합성 주문·일반 문의·빈 상
     for (const width of [1440, 1024, 390]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(`/shop/${SLUG}/me/inquiries`);
-      await expect(page.getByRole("heading", { name: "내 문의", exact: true })).toBeVisible();
+      const desktopTitle = page.locator(".cart-head h1");
+      const mobileTitle = page.locator(".my-back");
+      await expect(desktopTitle).toHaveText("내 문의");
+      await expect(mobileTitle).toHaveCount(1);
+      if (width === 390) {
+        await expect(desktopTitle).toBeHidden();
+        await expect(mobileTitle).toBeVisible();
+        await expect(mobileTitle.locator("b")).toHaveText("내 문의");
+        await expect(mobileTitle.locator("span")).toHaveText("활동");
+        await expect(mobileTitle.getByRole("link", { name: "내 정보로 돌아가기", exact: true })).toHaveAttribute("href", `/shop/${SLUG}/me`);
+      } else {
+        await expect(page.getByRole("heading", { name: "내 문의", exact: true })).toBeVisible();
+        await expect(mobileTitle).toBeHidden();
+      }
       const form = page.locator("form.mi-box");
       await form.getByLabel("1:1 문의 (주문 · 배송 · 기타)").check();
       const select = form.locator("#mi-order");
