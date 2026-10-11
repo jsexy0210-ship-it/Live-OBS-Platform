@@ -8,15 +8,8 @@ import { StreamShopBrand } from "./StreamShopBrand";
 import styles from "./PublicFrame.module.css";
 
 // 공개 화면(PF) 공통 머리·꼬리. 디자인 PF-001 기준.
-export type PublicCompanyInfo = Partial<Record<"name" | "representative" | "businessNumber" | "mailOrderNumber" | "address" | "phone", string | null>>;
-const COMPANY_FIELDS = [
-  ["상호", "name"],
-  ["대표", "representative"],
-  ["사업자등록번호", "businessNumber"],
-  ["통신판매업 신고", "mailOrderNumber"],
-  ["주소", "address"],
-  ["고객센터", "phone"],
-] as const;
+export type { PublicCompanyInfo } from "./companyInfo";
+import { publicCompanyParts, type PublicCompanyInfo } from "./companyInfo";
 const NAV = [
   { href: "/features", label: "기능" },
   { href: "/pricing", label: "요금" },
@@ -25,10 +18,7 @@ const NAV = [
 ];
 
 export function PublicFrame({ children, active, mobileHeader, companyInfo }: { children: React.ReactNode; active?: string; mobileHeader?: "compact"; companyInfo?: PublicCompanyInfo | null }) {
-  const companyParts = COMPANY_FIELDS.flatMap(([label, key]) => {
-    const value = companyInfo?.[key]?.trim();
-    return value ? [`${label} ${value}`] : [];
-  });
+  const companyParts = publicCompanyParts(companyInfo);
   if (companyInfo?.name?.trim()) companyParts.push(`© 2026 ${companyInfo.name.trim()}`);
   return (
     <div className={`app pf ${styles.page}`} data-theme="light">

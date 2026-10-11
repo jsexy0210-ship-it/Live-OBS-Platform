@@ -163,6 +163,7 @@
 .finalCta p { color: var(--muted); font-size: 15px; margin-bottom: 28px; }
 .footer { max-width: 1240px; padding: 50px 32px 25px; margin: auto; }
 .footerTop, .footerBottom { display: flex; justify-content: space-between; gap: 25px; }
+.companyInfo { color: var(--muted); font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; margin-top: 20px; }
 .footerTop p { color: var(--muted); font-size: 12px; margin-top: 14px; }
 .footerTop nav { display: flex; flex-wrap: wrap; gap: 25px; align-items: flex-start; font-size: 13px; font-weight: 650; }
 .footerBottom { border-top: 1px solid #eaeaf2; margin-top: 38px; padding-top: 22px; font-size: 10px; color: var(--muted); }

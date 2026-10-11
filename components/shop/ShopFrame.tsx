@@ -10,7 +10,7 @@ import { EventPopupForPage } from "./EventPopup";
 import LiveBar from "./LiveBar";
 import ShopChrome from "./ShopChrome";
 import ShopClosedGate from "./ShopClosedGate";
-import { noticeRows, type FootRow } from "./footNotice";
+import { HOSTING_DESCRIPTION, noticeRows, type FootRow } from "./footNotice";
 import "./ShopLegal.css";
 
 type BusinessInfo = { companyName?: unknown; representativeName?: unknown; businessNumber?: unknown; mailOrderNumber?: unknown };
@@ -85,7 +85,7 @@ export default async function ShopFrame({ slug, shopName, operatingState = "OPEN
             <Link href={`/shop/${encodeURIComponent(slug)}/privacy`}>개인정보처리방침</Link>
           </p>
           <p className="shop-foot-by">
-            <span className="logo-word" />로 운영하는 쇼핑몰이에요
+            {HOSTING_DESCRIPTION}
           </p>
         </div>
       </footer>
