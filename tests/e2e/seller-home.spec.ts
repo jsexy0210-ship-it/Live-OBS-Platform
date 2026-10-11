@@ -1,4 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
+import { PrismaClient } from "@prisma/client";
+import { randomBytes } from "node:crypto";
 import { submitSellerLogin } from "./sellerLogin";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -238,6 +240,60 @@ test("주문 권한 음성: 기존 주문·배송 권한 없는 직원은 조회
   await expect(page.getByText("이 계정은 이 일을 할 수 없습니다", { exact: true })).toBeVisible();
   await expect(page.getByText("대표자에게 허용해 달라고 요청해 주십시오 · 필요한 권한: 주문·배송", { exact: true })).toBeVisible();
   await expect(page.getByTestId("order-row")).toHaveCount(0);
+});
+
+test("주문 목록: 고유 조회 fixture를 10개씩 바꾸고 검색·끝·이전·처음을 보존한다", async ({ page }) => {
+  const db = new PrismaClient({ datasources: { db: { url: assertTestDatabaseUrl(process.env.DATABASE_URL) } } });
+  const prefix = `pages-${randomBytes(6).toString("hex")}`;
+  const ids: string[] = [];
+  try {
+    const source = await db.order.findFirstOrThrow({ where: { seller: { slug: "demo-shop" } }, select: { sellerId: true, buyerMemberId: true } });
+    const firstNo = 100_000_000 + parseInt(randomBytes(3).toString("hex"), 16);
+    for (let i = 0; i < 23; i++) ids.push((await db.order.create({ data: { ...source, orderNo: firstNo + i, status: "PAID", broadcastNicknameSnapshot: `${prefix}-${i}`, totalAmount: 1000 + i, createdAt: new Date(Date.now() - i * 1000), paidAt: new Date() } })).id);
+    await open(page, "demo-owner@example.com");
+    await page.goto(`/seller/orders?period=all&q=${prefix}`);
+    const rows = page.getByTestId("order-row"); const nav = page.getByRole("navigation", { name: "페이지 이동", exact: true });
+    const fetchPage = async (cursor?: string) => {
+      const params = new URLSearchParams({ q: prefix }); if (cursor) params.set("cursor", cursor);
+      const response = await page.request.get(`/api/seller/orders?${params}`); expect(response.status()).toBe(200);
+      const body: { orders: OrderRow[]; nextCursor: string | null } = await response.json(); return body;
+    };
+    const first = await fetchPage(); const second = await fetchPage(first.nextCursor!); const last = await fetchPage(second.nextCursor!);
+    expect(first.orders).toHaveLength(10); expect(second.orders).toHaveLength(10); expect(last.orders).toHaveLength(3); expect(last.nextCursor).toBeNull();
+    expect(new Set([...first.orders, ...second.orders, ...last.orders].map((r) => r.id))).toEqual(new Set(ids));
+    await expect(nav.getByRole("button", { name: "마지막", exact: true })).toHaveCount(0);
+    const check = async (expected: OrderRow[], n: number) => {
+      await expect(rows).toHaveCount(expected.length);
+      await expect(nav.getByRole("button", { name: `${n}페이지`, exact: true })).toHaveAttribute("aria-current", "page");
+      await expect.poll(() => rows.locator("a.ord-link").evaluateAll((links) => links.map((a) => a.getAttribute("href")?.split("/").pop()))).toEqual(expected.map((r) => r.id));
+    };
+    await check(first.orders, 1);
+    const requests: string[] = [];
+    const listener = (r: import("@playwright/test").Request) => { const u = new URL(r.url()); if (u.pathname === "/api/seller/orders" && u.searchParams.has("cursor")) requests.push(r.url()); };
+    page.on("request", listener);
+    await nav.getByRole("button", { name: "다음", exact: true }).evaluate((button) => { if (button instanceof HTMLButtonElement) { button.click(); button.click(); } });
+    await check(second.orders, 2); expect(requests).toHaveLength(1); page.off("request", listener);
+    await nav.getByRole("button", { name: "다음", exact: true }).click(); await check(last.orders, 3);
+    await expect(nav.getByRole("button", { name: "다음", exact: true })).toBeDisabled();
+    await nav.getByRole("button", { name: "이전", exact: true }).click(); await check(second.orders, 2);
+    await nav.getByRole("button", { name: "처음", exact: true }).click(); await check(first.orders, 1);
+    for (const width of [1440, 1024]) { await page.setViewportSize({ width, height: 900 }); await captureMobileHome(page, `list10-orders-${width}`, "STORE_OWNER"); }
+    await nav.getByRole("button", { name: "다음", exact: true }).click(); await check(second.orders, 2);
+    await page.getByRole("button", { name: /^상태: 전체/ }).click();
+    await page.getByRole("group", { name: "결제 상태" }).getByLabel("완료", { exact: true }).check();
+    await page.getByRole("group", { name: "결제 상태" }).getByRole("button", { name: "이 상태로 보기", exact: true }).click();
+    await check(first.orders, 1);
+    await expect(page).toHaveURL(/status=PAID/);
+    await nav.getByRole("button", { name: "다음", exact: true }).click(); await check(second.orders, 2);
+    const input = page.getByRole("searchbox", { name: "주문 검색", exact: true }); await input.fill(`${prefix}-22`);
+    await expect(rows).toHaveCount(1); await expect(nav).toHaveCount(0);
+    await input.fill(prefix); await check(first.orders, 1);
+    await expect(page).toHaveURL(/period=all/);
+    await expect(page.getByRole("button", { name: /최근 30일/ })).toHaveAttribute("aria-pressed", "false");
+  } catch (error) {
+    try { await captureMobileHome(page, "list10-orders-failed", "STORE_OWNER", { error }); } catch { /* 최초 오류 보존 */ }
+    throw error;
+  } finally { await db.order.deleteMany({ where: { id: { in: ids } } }); await db.$disconnect(); }
 });
 
 test("시작하기 띠: 온보딩이 끝나지 않았을 때만 진행 N/M을 보이고, 닫으면 서버에 저장돼 사라지고, 다시 열면 돌아온다", async ({ page }) => {
