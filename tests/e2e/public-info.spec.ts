@@ -9,7 +9,7 @@ test("아이디 찾기 초기 화면은 세 폭에서 통신사 선택을 안내
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("이메일(아이디)을 찾습니다");
     await expect(carrier).toHaveValue("");
-    await expect(carrier.locator('option[value=""]')).toHaveText("통신사 선택");
+    await expect(carrier.locator('option[value=""]')).toHaveText("선택");
     await expect(send).toBeDisabled();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
     await page.screenshot({ path: `tests/e2e/screenshots/au011-find-id-initial-${width}.png`, fullPage: true });
