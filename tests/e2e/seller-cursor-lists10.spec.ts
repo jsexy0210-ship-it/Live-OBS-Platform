@@ -112,9 +112,14 @@ for (const target of targets) test(`${target.id}: 조회 목록 10개와 커서 
   let width = 1440;
   try {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto(`/seller/login?next=${encodeURIComponent(target.route)}`);
+    const pathname = target.route.split("?")[0];
+    await page.goto(`/seller/login?next=${encodeURIComponent(pathname)}`);
     await submitSellerLogin(page, email, password);
-    await expect(page).toHaveURL(new RegExp(target.route.split("?")[0].replaceAll("/", "\\/") + "(?:\\?|$)"));
+    await expect.poll(() => new URL(page.url()).pathname).toBe(pathname);
+    if (target.route.includes("?")) {
+      await page.goto(target.route);
+      await expect.poll(() => { const url = new URL(page.url()); return url.pathname + url.search; }).toBe(target.route);
+    }
     const fetchPage = async (cursor?: string) => {
       const p = new URLSearchParams(target.query);
       if (cursor) p.set("cursor", cursor);
