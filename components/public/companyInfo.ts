@@ -14,4 +14,3 @@ export function publicCompanyParts(companyInfo?: PublicCompanyInfo | null): stri
     return value ? [`${label} ${value}`] : [];
   });
 }
-
