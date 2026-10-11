@@ -21,10 +21,14 @@ export const PERMISSION_LABEL: Record<string, string> = {
   "seller.moderate": "파트너스 이용 정지·해제",
   "billing.manage": "청구·요금 관리",
   "billing.price": "요금제 가격 변경",
+  "billing.refund": "구독 환불 승인",
   "support.manage": "고객지원 관리",
+  "support.assign": "파트너스 문의 담당 배정",
   "seller.impersonate": "파트너스 화면 대신 보기",
   "admin.manage": "관리자 계정 관리",
   "system.manage": "서비스 설정 바꾸기",
+  "infra.manage": "인프라 · 비용",
   "audit.read": "로그 추적 조회",
+  "vendor.manage": "외부 서비스 업체 관리",
 };
 export const MIN_PASSWORD = 8;
