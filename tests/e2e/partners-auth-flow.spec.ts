@@ -241,7 +241,11 @@ test("파트너스 가입 신청 → 바로 승인 → 로그인 → 비밀번�
   const findLink = page.getByRole("link", { name: "이메일(아이디)/비밀번호 찾기", exact: true });
   await expect(findLink).toHaveAttribute("href", "/seller/find-id");
   await findLink.click();
-  await page.getByRole("navigation", { name: "아이디·비밀번호 찾기" }).getByRole("link", { name: "비밀번호 찾기" }).click();
+  const passwordLink = page.getByRole("link", { name: "비밀번호 찾기", exact: true });
+  await expect(passwordLink).toHaveCount(1);
+  await expect(passwordLink).toBeVisible();
+  await expect(passwordLink).toHaveAttribute("href", "/seller/password-reset");
+  await passwordLink.click();
   await expect(page).toHaveURL(/\/seller\/password-reset$/);
   await page.getByLabel("이메일").fill(a.email);
   await page.getByLabel("쇼핑몰 주소").fill(a.slug);
@@ -527,7 +531,11 @@ test("비밀번호 찾기(직원 탭에서 옴): 본인확인이 등록된 직�
   const findLink = page.getByRole("link", { name: "이메일(아이디)/비밀번호 찾기", exact: true });
   await expect(findLink).toHaveAttribute("href", "/seller/find-id?type=staff");
   await findLink.click();
-  await page.getByRole("navigation", { name: "아이디·비밀번호 찾기" }).getByRole("link", { name: "비밀번호 찾기" }).click();
+  const passwordLink = page.getByRole("link", { name: "비밀번호 찾기", exact: true });
+  await expect(passwordLink).toHaveCount(1);
+  await expect(passwordLink).toBeVisible();
+  await expect(passwordLink).toHaveAttribute("href", "/seller/password-reset?type=staff");
+  await passwordLink.click();
   await expect(page).toHaveURL(/\/seller\/password-reset\?type=staff$/);
   await expect(page.getByText("직원 본인 명의의 휴대폰으로 확인합니다.")).toBeVisible();
   await page.getByLabel("이메일").fill("demo-staff@example.com");
