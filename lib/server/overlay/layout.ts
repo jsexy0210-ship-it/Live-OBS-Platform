@@ -168,7 +168,7 @@ const notice = (x: number, y: number, wd: number, h: number) => [
 
 export const BUILTIN_TEMPLATES: Record<string, { name: string; layouts: Record<Aspect, Widget[]> }> = {
   queue_focus: {
-    name: "줄서기형",
+    name: "대기열형",
     layouts: {
       "9x16": [
         w("hall", "HALL_OF_FAME", 56.7, 23.4, 38.9, 19.9, 2, { rows: 5, ticker: true }),

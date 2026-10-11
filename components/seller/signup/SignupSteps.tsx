@@ -146,6 +146,7 @@ export function VerifyStep() {
         <IdentityCheck
           key={again}
           tone="public"
+          initialGender="M"
           saveKey="onq-partners-signup-identity-v1"
           label="대표자 휴대폰 본인확인"
           base={BASE}

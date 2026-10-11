@@ -304,8 +304,10 @@ test("마스터 관리자 기본 파비콘은 틸이고, 올린 파비콘이 있
     return [pixel(16, 9), pixel(16, 23)];
   };
   const adminHead = await head(page, "/admin/login");
+  await expect(page).toHaveTitle("StreamShop 마스터 관리자");
   expect(adminHead.icons).toEqual(["/branding/streamshop-master-32-20261010.png"]);
   const sellerHead = await head(page, "/seller/login");
+  await expect(page).toHaveTitle("StreamShop 파트너스 관리자");
   expect(sellerHead.icons).toEqual(["/branding/streamshop-partners-32-20261010.png"]);
   for (const [red, green, blue, alpha] of await symbolPixels(adminHead.icons[0]!)) {
     expect(alpha).toBeGreaterThan(200);

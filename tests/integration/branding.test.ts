@@ -13,7 +13,7 @@ import { loginAdmin, loginSeller } from "../../lib/server/auth/login";
 import { brandingMetadata } from "../../lib/server/branding/metadata";
 import { renderBrandingCard } from "../../lib/server/branding/card";
 import { prisma } from "../../lib/server/db";
-import { BRANDING_DEFAULTS, ogImageSource } from "../../lib/server/branding/service";
+import { BRANDING_DEFAULTS, generatedCardVersion, ogImageSource } from "../../lib/server/branding/service";
 import { PASSWORD, adminCredentials, createAdmin, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
 // 화면 head 값(generateMetadata)은 요청 헤더를 읽는다: 테스트에서는 요청 헤더를 정해 준다
@@ -201,12 +201,16 @@ describe("소개 랜딩 브랜딩", () => {
 describe("파비콘", () => {
   it.each(["admin", "seller"] as const)("%s 기본값·DB 오류 기본 아이콘을 쓰되 업로드가 있으면 기존 해시 주소와 바이트를 우선한다", async (target) => {
     const role = target === "admin" ? "master" : "partners";
-    const defaults = { icons: {
+    const title = target === "admin" ? "StreamShop 마스터 관리자" : "StreamShop 파트너스 관리자";
+    const defaults = { title, icons: {
       icon: [{ url: `/branding/streamshop-${role}-32-20261010.png`, type: "image/png", sizes: "32x32" }],
       shortcut: [{ url: `/branding/streamshop-${role}-32-20261010.png`, type: "image/png" }],
       apple: [{ url: `/branding/streamshop-${role}-180-20261010.png`, sizes: "180x180" }],
     } };
-    expect((await brandingMetadata(target)).icons).toEqual(defaults.icons);
+    const initial = await brandingMetadata(target);
+    expect(initial.title).toBe(title);
+    expect(initial.openGraph).toMatchObject({ title, images: [{ url: expect.stringContaining(`/api/branding/${target}/og?v=${generatedCardVersion(title, target)}`) }] });
+    expect(initial.icons).toEqual(defaults.icons);
     const originalRead = prisma.siteBranding.findUnique;
     const unavailable = vi.fn((): never => { throw new Error("fixture unavailable"); });
     const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -219,6 +223,12 @@ describe("파비콘", () => {
       errorLog.mockRestore();
     }
     const c = await adminCookie("SUPER_ADMIN");
+    expect((await putText(target, { title: "저장한 역할 제목", description: null }, c)).status).toBe(200);
+    expect((await brandingMetadata(target)).title).toBe("저장한 역할 제목");
+    expect(await ogImageSource(prisma, target)).toMatchObject({ kind: "generated", title: "저장한 역할 제목", version: generatedCardVersion("저장한 역할 제목", target) });
+    expect((await putText(target, { title: null, description: null }, c)).status).toBe(200);
+    expect((await brandingMetadata(target)).title).toBe(title);
+    expect(await ogImageSource(prisma, target)).toMatchObject({ kind: "generated", title, version: generatedCardVersion(title, target) });
     const image = await png(64, 64);
     const saved = await upload(faviconPut, target, image, c);
     expect(saved.status).toBe(200);

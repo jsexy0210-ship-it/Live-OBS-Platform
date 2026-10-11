@@ -62,7 +62,7 @@ test("위치·크기·속성을 고쳐 저장하면 서버에 남고, 오버레�
   expect(after!.y).toBeGreaterThan(before!.y + 20);
   await expect(page.getByTestId("ove-dirty")).toHaveText("저장 안 한 변경 2개");
 
-  // 위젯 끄기: 기본 템플릿(줄서기형)에는 명예의 전당이 보인다 → 끈다
+  // 위젯 끄기: 기본 템플릿(대기열형)에는 명예의 전당이 보인다 → 끈다
   await page.getByLabel("명예의 전당 보이기").uncheck();
   await expect(page.getByTestId("ove-dirty")).toHaveText("저장 안 한 변경 3개");
 
@@ -141,7 +141,7 @@ test("템플릿으로 초기화(초안)하고 되돌릴 수 있으며, 내 템�
   await page.reload();
   await expect(page.getByTestId("ove-canvas")).toBeVisible();
 
-  // 스포트라이트형으로 초기화: 확인 창 → 초안(저장 전)으로 바뀌고, 되돌리기로 돌아간다(현재 주문 x: 줄서기형 4.4 → 스포트라이트형 43)
+  // 스포트라이트형으로 초기화: 확인 창 → 초안(저장 전)으로 바뀌고, 되돌리기로 돌아간다(현재 주문 x: 대기열형 4.4 → 스포트라이트형 43)
   await page.getByRole("button", { name: "스포트라이트형" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "이 템플릿으로 바꾸기" }).click();
   await expect(toast(page)).toContainText("템플릿으로 초기화했습니다");
@@ -164,8 +164,8 @@ test("템플릿으로 초기화(초안)하고 되돌릴 수 있으며, 내 템�
   const row = page.getByTestId("ove-mine-row").filter({ hasText: NAME });
   await expect(row).toHaveCount(1);
 
-  // 줄서기형으로 돌린 뒤 저장, 내 템플릿 적용 후 저장
-  await page.getByRole("button", { name: "줄서기형" }).click();
+  // 대기열형으로 돌린 뒤 저장, 내 템플릿 적용 후 저장
+  await page.getByRole("button", { name: "대기열형" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "이 템플릿으로 바꾸기" }).click();
   await page.getByRole("button", { name: "저장하기" }).click();
   await page.getByRole("dialog", { name: "변경 사항을 저장하시겠습니까?" }).getByRole("button", { name: "저장", exact: true }).click();

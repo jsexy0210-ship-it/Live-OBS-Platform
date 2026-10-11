@@ -42,7 +42,7 @@ const widget = (over: Record<string, unknown> = {}) => ({ id: "current", type: "
 describe("기본 템플릿", () => {
   it("비율마다 3종이고 모두 검사를 통과한다. 7종 위젯을 하나씩, 화면 안에 둔다", () => {
     expect(Object.keys(BUILTIN_TEMPLATES)).toEqual(["queue_focus", "spotlight", "minimal"]);
-    expect(Object.values(BUILTIN_TEMPLATES).map((t) => t.name)).toEqual(["줄서기형", "스포트라이트형", "미니형"]);
+    expect(Object.values(BUILTIN_TEMPLATES).map((t) => t.name)).toEqual(["대기열형", "스포트라이트형", "미니형"]);
     expect(DEFAULT_TEMPLATE).toBe("queue_focus");
     for (const t of Object.values(BUILTIN_TEMPLATES)) {
       for (const aspect of ASPECTS) {
@@ -69,7 +69,7 @@ describe("기본 템플릿", () => {
     }
   });
 
-  it("줄서기형 세로는 디자인 수치표 그대로", () => {
+  it("대기열형 세로는 디자인 수치표 그대로", () => {
     const rect = (type: string) => {
       const w = BUILTIN_TEMPLATES.queue_focus.layouts["9x16"].find((v) => v.type === type)!;
       return [w.x, w.y, w.w, w.h, w.z];
