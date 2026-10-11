@@ -79,6 +79,7 @@ test.afterAll(async () => {
       await db.memberGrade.deleteMany({ where });
       await db.productOption.deleteMany({ where });
       await db.product.deleteMany({ where });
+      if (ownerId) await db.sellerSession.deleteMany({ where: { sellerId, sellerUserId: ownerId } });
       if (ownerId) await db.sellerUser.deleteMany({ where: { id: ownerId, sellerId } });
       await db.seller.deleteMany({ where: { id: sellerId } });
     }
