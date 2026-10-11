@@ -252,7 +252,7 @@ jobs:
           # setsid로 만든 이 단계 소유 그룹만 종료하며 기존 start 서버는 건드리지 않는다.
           node -e 'const s=require("node:net").createServer(); s.once("error",()=>process.exit(1)); s.listen(3101,"127.0.0.1",()=>s.close())'
           test_hash="$(openssl rand -hex 24)"
-          IDENTITY_HASH_KEY="$test_hash" setsid node node_modules/next/dist/bin/next dev -p 3101 > "$RUNNER_TEMP/signup-dev.log" 2>&1 &
+          IDENTITY_HASH_KEY="$test_hash" setsid node node_modules/next/dist/bin/next dev -p 3101 --hostname 127.0.0.1 > "$RUNNER_TEMP/signup-dev.log" 2>&1 &
           dev_pid=$!
           ready=false
           for i in $(seq 1 90); do
