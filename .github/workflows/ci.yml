@@ -204,6 +204,66 @@ jobs:
           E2E_SCREENSHOTS: "1"
         run: npx playwright test -c tests/e2e/playwright.config.ts --project=start $SMOKE_SPECS
 
+      # 기존 nightly의 dev 가입 harness만 같은 폐기 DB에서 두 파일로 한정한다.
+      - name: E2E signup flows
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          NODE_ENV: development
+          SCHEDULER_DISABLED: "1"
+          BUSINESS_STATUS_PROVIDER: fake
+          MAIL_ORDER_PROVIDER: fake
+          E2E_DEV_BASE_URL: http://localhost:3101
+          E2E_SCREENSHOTS: "1"
+        run: |
+          set -euo pipefail
+          node -e 'const u=new URL(process.env.DATABASE_URL); if(process.env.NODE_ENV!=="development" || u.protocol!=="postgresql:" || !["localhost","127.0.0.1"].includes(u.hostname) || u.port!=="5432" || u.pathname!=="/live_obs_test") throw new Error("Owned loopback test DB and development mode required")'
+          dev_pid=""
+          cleanup() {
+            result=$?
+            trap - EXIT
+            set +e
+            if [ -n "$dev_pid" ]; then
+              if kill -0 -- "-$dev_pid" 2>/dev/null; then
+                kill -TERM -- "-$dev_pid" 2>/dev/null
+                for i in $(seq 1 5); do
+                  kill -0 -- "-$dev_pid" 2>/dev/null || break
+                  sleep 1
+                done
+                if kill -0 -- "-$dev_pid" 2>/dev/null; then
+                  kill -KILL -- "-$dev_pid" 2>/dev/null
+                fi
+              fi
+              for i in $(seq 1 5); do
+                kill -0 -- "-$dev_pid" 2>/dev/null || break
+                sleep 1
+              done
+              if kill -0 -- "-$dev_pid" 2>/dev/null; then
+                echo "Owned signup dev process group did not stop."
+                [ "$result" -ne 0 ] || result=1
+              else
+                wait "$dev_pid" 2>/dev/null
+              fi
+            fi
+            exit "$result"
+          }
+          trap cleanup EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          # setsid로 만든 이 단계 소유 그룹만 종료하며 기존 start 서버는 건드리지 않는다.
+          node -e 'const s=require("node:net").createServer(); s.once("error",()=>process.exit(1)); s.listen(3101,"127.0.0.1",()=>s.close())'
+          test_hash="$(openssl rand -hex 24)"
+          IDENTITY_HASH_KEY="$test_hash" setsid node node_modules/next/dist/bin/next dev -p 3101 > "$RUNNER_TEMP/signup-dev.log" 2>&1 &
+          dev_pid=$!
+          ready=false
+          for i in $(seq 1 90); do
+            kill -0 "$dev_pid" 2>/dev/null || break
+            if curl -sf -o /dev/null "$E2E_DEV_BASE_URL/"; then ready=true; break; fi
+            sleep 1
+          done
+          [ "$ready" = true ] || { echo "Owned signup dev server did not become ready."; exit 1; }
+          mkdir -p "tests/e2e/screenshots/current-shell-$GITHUB_SHA"
+          PLAYWRIGHT_JSON_OUTPUT_NAME="tests/e2e/screenshots/current-shell-$GITHUB_SHA/signup-flows.json" npx playwright test -c tests/e2e/playwright.config.ts --project=dev shop-signup-flow partners-auth-flow --reporter=list,json
+
       - name: Upload branch screenshots
         if: always() && steps.gate.outputs.skip != 'true'
         uses: actions/upload-artifact@v4
