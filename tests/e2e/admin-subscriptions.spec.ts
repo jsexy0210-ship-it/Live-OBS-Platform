@@ -100,7 +100,7 @@ test("CS도 구독 현황을 조회한다: 탭별로 맞는 파트너스만 보�
     let failure: { error: unknown } | undefined;
     let api: { subscriptions: { seller: { id: string; shopName: string; slug: string }; access: string }[] } | undefined;
     try {
-      const response = await page.request.get(`/api/admin/subscriptions?limit=50&q=${encodeURIComponent(run)}`);
+      const response = await page.request.get(`/api/admin/subscriptions?limit=10&q=${encodeURIComponent(run)}`);
       expect(response.status()).toBe(200);
       api = await response.json();
       await expect(rows).toHaveCount(4);
@@ -145,4 +145,75 @@ test("CS도 구독 현황을 조회한다: 탭별로 맞는 파트너스만 보�
   await rows.filter({ hasText: names.paid }).getByRole("link", { name: names.paid }).click();
   await expect(page).toHaveURL(/\/admin\/partners\/[0-9a-f-]{36}$/);
   expect(mutations).toEqual([]);
+});
+
+test("파트너스·구독 목록: 서버 10개 페이지와 끝·이전·처음·검색 초기화를 보존한다", async ({ page }) => {
+  const prefix = `pages-${run}`;
+  const plan = await db.subscriptionPlan.findFirstOrThrow({ where: { code: "INTEGRATED" } });
+  const ids: string[] = [];
+  const evidence = `tests/e2e/screenshots/current-shell-${execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim()}`;
+  mkdirSync(evidence, { recursive: true });
+  try {
+    for (let i = 0; i < 23; i++) ids.push((await db.seller.create({ data: {
+      slug: `${prefix}-${i}`, shopName: `${prefix}-${i}`, status: "ACTIVE", approvedAt: new Date(), planId: plan.id,
+      trialEndsAt: new Date(Date.now() + 5 * DAY), createdAt: new Date(Date.now() - i * 1000),
+    } })).id);
+    await open(page);
+    for (const target of ["partners", "subscriptions"] as const) {
+      const route = target === "partners" ? "/admin/partners" : "/admin/billing/subscriptions";
+      const endpoint = target === "partners" ? "/api/admin/sellers" : "/api/admin/subscriptions";
+      const rows = page.getByTestId(target === "partners" ? "partner-row" : "subscription-row");
+      await page.goto(route);
+      const search = page.getByLabel(target === "partners" ? "검색어" : "쇼핑몰 이름 · 주소", { exact: true });
+      await search.fill(prefix);
+      await page.getByRole("button", { name: "검색", exact: true }).click();
+      const nav = page.getByRole("navigation", { name: "페이지 이동", exact: true });
+      const fetchPage = async (cursor?: string) => {
+        const params = new URLSearchParams({ q: prefix, ...(target === "partners" ? { sort: "joined" } : {}) });
+        if (cursor) params.set("cursor", cursor);
+        const response = await page.request.get(`${endpoint}?${params}`);
+        expect(response.status()).toBe(200);
+        const body: { sellers?: { id: string }[]; subscriptions?: { seller: { id: string } }[]; total?: number; nextCursor: string | null } = await response.json();
+        return { ids: target === "partners" ? body.sellers!.map((r) => r.id) : body.subscriptions!.map((r) => r.seller.id), next: body.nextCursor, total: body.total };
+      };
+      const first = await fetchPage(); const second = await fetchPage(first.next!); const last = await fetchPage(second.next!);
+      expect(first.ids).toHaveLength(10); expect(second.ids).toHaveLength(10); expect(last.ids).toHaveLength(3); expect(last.next).toBeNull();
+      expect(new Set([...first.ids, ...second.ids, ...last.ids])).toEqual(new Set(ids));
+      if (target === "partners") expect(first.total).toBe(23);
+      else await expect(nav.getByRole("button", { name: "마지막", exact: true })).toHaveCount(0);
+      const check = async (expected: string[], n: number) => {
+        await expect(rows).toHaveCount(expected.length);
+        await expect(nav.getByRole("button", { name: `${n}페이지`, exact: true })).toHaveAttribute("aria-current", "page");
+        const shopLinks = rows.locator('td:first-child > a.fw6[href^="/admin/partners/"]');
+        await expect(shopLinks).toHaveCount(expected.length);
+        await expect.poll(() => shopLinks.evaluateAll((links) => links.map((a) => a.getAttribute("href")?.split("/").pop()))).toEqual(expected);
+      };
+      await check(first.ids, 1);
+      const requests: string[] = [];
+      const listener = (request: import("@playwright/test").Request) => { const u = new URL(request.url()); if (u.pathname === endpoint && u.searchParams.has("cursor")) requests.push(request.url()); };
+      page.on("request", listener);
+      await nav.getByRole("button", { name: "다음", exact: true }).evaluate((button) => { if (button instanceof HTMLButtonElement) { button.click(); button.click(); } });
+      await check(second.ids, 2); expect(requests).toHaveLength(1); page.off("request", listener);
+      await nav.getByRole("button", { name: "다음", exact: true }).click(); await check(last.ids, 3);
+      await expect(nav.getByRole("button", { name: "다음", exact: true })).toBeDisabled();
+      await nav.getByRole("button", { name: "이전", exact: true }).click(); await check(second.ids, 2);
+      await nav.getByRole("button", { name: "처음", exact: true }).click(); await check(first.ids, 1);
+      if (target === "partners") { await nav.getByRole("button", { name: "마지막", exact: true }).click(); await check(last.ids, 3); }
+      else { await nav.getByRole("button", { name: "다음", exact: true }).click(); await check(second.ids, 2); }
+      await page.getByRole("button", { name: target === "partners" ? /^체험 중/ : /^체험(?:\s|$)/ }).click();
+      await check(first.ids, 1);
+      await nav.getByRole("button", { name: "다음", exact: true }).click(); await check(second.ids, 2);
+      await search.fill(`${prefix}-22`); await page.getByRole("button", { name: "검색", exact: true }).click();
+      await expect(rows).toHaveCount(1); await expect(nav).toHaveCount(0);
+      await search.fill(prefix); await page.getByRole("button", { name: "검색", exact: true }).click(); await check(first.ids, 1);
+      for (const width of [1440, 1024]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.screenshot({ path: `${evidence}/list10-${target}-${width}.png`, fullPage: true });
+        writeFileSync(`${evidence}/list10-${target}-${width}.json`, JSON.stringify({ role: "CS", route, sourceSha: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), first, second, last, ...await page.evaluate(() => ({ width: innerWidth, height: innerHeight, dpr: devicePixelRatio, scale: visualViewport?.scale ?? null, browserZoom: "unverified" })) }, null, 2));
+      }
+    }
+  } catch (error) {
+    try { await page.screenshot({ path: `${evidence}/list10-admin-failed.png`, fullPage: true }); writeFileSync(`${evidence}/list10-admin-failed.json`, JSON.stringify({ url: page.url(), rows: await page.locator("tbody tr").allTextContents() })); } catch { /* 최초 오류 보존 */ }
+    throw error;
+  } finally { await db.seller.deleteMany({ where: { id: { in: ids } } }); }
 });
