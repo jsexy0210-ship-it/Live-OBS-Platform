@@ -281,7 +281,7 @@ function PartnerList() {
                   <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                     <thead>
                       <tr>
-                        <th>파트너스 · 쇼핑몰</th>
+                        <th className="col-text">파트너스 · 쇼핑몰</th>
                         <th>번호</th>
                         <th>상태</th>
                         <th>구독</th>
@@ -299,7 +299,7 @@ function PartnerList() {
                         const overlayOnly = s.plan?.code === "OVERLAY_ONLY";
                         return (
                           <tr key={s.id} data-testid="partner-row">
-                            <td>
+                            <td className="col-text">
                               <Link className="fw6" href={`/admin/partners/${s.id}`}>
                                 {s.shopName}
                               </Link>

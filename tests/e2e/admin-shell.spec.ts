@@ -2,12 +2,13 @@ import { PrismaClient } from "@prisma/client";
 import { expect, test, type Page } from "@playwright/test";
 import { createHash, randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { hashPassword } from "../../lib/server/auth/password";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 import type { AuditDetail, AuditRow } from "../../app/(admin)/admin/_components/auditLogs";
 import type { InquiryCounts, InquiryRow } from "../../app/(admin)/admin/_components/inquiries";
 import { NOTIFY_EVENTS } from "../../lib/server/admin/notificationSettings";
+import type { SellerListRow } from "../../app/(admin)/admin/_components/partners";
 
 // 마스터 관리자 카페24식 틀: 청록 GNB·LNB, 역할별 메뉴 노출 차이, 로그인 → 홈 진입, 준비 중 화면.
 // 마스터 관리자 계정은 폐기용 테스트 DB(이름이 _test로 끝남)에 실행마다 새로 만든다.
@@ -610,26 +611,72 @@ for (const role of ["super", "cs"] as const) {
 
 test("파트너스 목록: 실제 로그인 후 공통 틀 3폭 geometry와 이번 SHA 캡처를 확인한다", async ({ page }) => {
   const sourceSha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  const evidence = `tests/e2e/screenshots/current-shell-${sourceSha}`;
+  mkdirSync(evidence, { recursive: true });
   const captures = [];
   await login(page, emails.super);
+  const mutations: string[] = [];
+  page.on("request", (r) => { if (new URL(r.url()).pathname.startsWith("/api/admin/sellers") && !["GET", "HEAD"].includes(r.method())) mutations.push(r.method()); });
   for (const width of [1440, 1024, 390]) {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto("/admin/partners");
-    await expect(page.getByRole("heading", { name: "파트너스 목록", exact: true })).toBeVisible();
-    await expect(page.getByTestId("partner-row").first()).toBeVisible();
-    await page.evaluate(() => document.fonts.ready);
-    const geometry = await page.evaluate(() => {
-      const main = document.querySelector(".main")!.getBoundingClientRect();
-      const head = document.querySelector(".au-ph")!.getBoundingClientRect();
-      return { mainX: main.x, headY: head.y, overflow: document.documentElement.scrollWidth > innerWidth };
-    });
-    expect(geometry).toEqual({ mainX: width < 768 ? 0 : 196, headY: 112, overflow: false });
-    const path = `tests/e2e/screenshots/current-shell-${sourceSha}/admin-partners-list-${width}.png`;
-    const png = await page.screenshot({ path, fullPage: true });
-    captures.push({ width, path, geometry, sha256: createHash("sha256").update(png).digest("hex") });
+    let failure: { error: unknown } | undefined;
+    let data: { sellers: SellerListRow[] } | undefined;
+    try {
+      const [response] = await Promise.all([page.waitForResponse((r) => new URL(r.url()).pathname === "/api/admin/sellers" && r.request().method() === "GET"), page.goto("/admin/partners")]);
+      expect(response.status()).toBe(200);
+      data = await response.json();
+      await expect(page.getByRole("heading", { name: "파트너스 목록", exact: true })).toBeVisible();
+      await expect(page.getByTestId("partner-row").first()).toBeVisible();
+      await page.evaluate(() => document.fonts.ready);
+    } catch (error) { failure = { error }; }
+    try {
+      const geometry = await page.evaluate(() => {
+        const main = document.querySelector(".main")?.getBoundingClientRect();
+        const head = document.querySelector(".au-ph")?.getBoundingClientRect();
+        return { mainX: main?.x, headY: head?.y, overflow: document.documentElement.scrollWidth > innerWidth };
+      });
+      const metrics = await page.evaluate(() => {
+        const box = (el: Element) => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height }; };
+        const table = document.querySelector("main .tbl");
+        const scroll = table?.parentElement;
+        return { viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio, scale: visualViewport?.scale ?? null }, height: document.documentElement.scrollHeight,
+          table: table ? { ...box(table), scrollWidth: table.scrollWidth, columns: Array.from(table.querySelectorAll("thead th")).map((el) => ({ text: el.textContent?.trim(), align: getComputedStyle(el).textAlign, ...box(el) })) } : null,
+          scroll: scroll ? { ...box(scroll), overflowX: getComputedStyle(scroll).overflowX, clientWidth: scroll.clientWidth, scrollWidth: scroll.scrollWidth, scrollLeft: scroll.scrollLeft } : null,
+          rows: Array.from(document.querySelectorAll('[data-testid="partner-row"]')).map((row) => ({ text: row.textContent?.trim(), ...box(row), cells: Array.from(row.querySelectorAll("td")).map((el) => ({ text: el.textContent?.trim(), align: getComputedStyle(el).textAlign, ...box(el) })), actions: Array.from(row.querySelectorAll("a,button")).map((el) => ({ text: el.textContent?.trim(), href: el.getAttribute("href"), ...box(el) })) })) };
+      });
+      const path = `${evidence}/admin-partners-list-${width}.png`;
+      const png = await page.screenshot({ path, fullPage: true });
+      const diagnostic = { sourceSha, route: "/admin/partners", role: "SUPER_ADMIN", state: failure ? "not-ready" : "list", geometry, ...metrics };
+      writeFileSync(`${evidence}/admin-partners-list-${width}.json`, JSON.stringify(diagnostic, null, 2));
+      captures.push({ width, path, geometry, sha256: createHash("sha256").update(png).digest("hex") });
+      if (failure) throw failure.error;
+      expect(geometry).toEqual({ mainX: width < 768 ? 0 : 196, headY: 112, overflow: false });
+      if (width >= 1024) {
+        expect(metrics.table?.columns[0].align).toBe("left");
+        for (const row of metrics.rows) expect(row.cells[0].align).toBe("left");
+        expect(metrics.scroll?.overflowX).toBe("auto");
+        if (!data?.sellers.length) throw new Error("파트너스 조회 응답에 대상 행이 없습니다");
+        const target = data.sellers.reduce((a, b) => a.shopName.length >= b.shopName.length ? a : b);
+        const row = page.getByTestId("partner-row").filter({ has: page.locator(`a[href="/admin/partners/${target.id}"]`) });
+        await expect(row.locator("td").first().getByRole("link", { name: target.shopName, exact: true })).toBeVisible();
+        await expect(row.locator("td").first()).toContainText(`쇼핑몰 주소 ${target.slug}`);
+        await page.locator("main .tbl").evaluate((el) => { if (el.parentElement) el.parentElement.scrollLeft = el.parentElement.scrollWidth; });
+        const action = row.getByRole("link", { name: "상세", exact: true });
+        await action.focus();
+        await expect(action).toBeFocused();
+        const access = await action.evaluate((el) => { const r = el.getBoundingClientRect(); const container = el.closest("table")?.parentElement; const scroll = container?.getBoundingClientRect(); return { viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio, scale: visualViewport?.scale ?? null }, actionLeft: r.left, actionRight: r.right, containerLeft: scroll?.left, containerRight: scroll?.right, scrollLeft: container?.scrollLeft, focused: document.activeElement === el, text: el.textContent, href: el.getAttribute("href") }; });
+        await page.screenshot({ path: `${evidence}/admin-partners-actions-${width}.png`, fullPage: false });
+        writeFileSync(`${evidence}/admin-partners-actions-${width}.json`, JSON.stringify({ sourceSha, role: "SUPER_ADMIN", route: new URL(page.url()).pathname, state: "actions-focused", targetName: target.shopName, ...access }, null, 2));
+        expect(access.containerLeft).toBeDefined(); expect(access.containerRight).toBeDefined();
+        expect(access.actionLeft).toBeGreaterThanOrEqual(access.containerLeft!); expect(access.actionRight).toBeLessThanOrEqual(access.containerRight!);
+        await action.press("Enter");
+        await expect(page).toHaveURL(new RegExp(`/admin/partners/${target.id}$`));
+      }
+    } catch (error) { throw failure ? failure.error : error; }
   }
   const manifest = { sourceSha, route: "/admin/partners", state: "CI seeded test DB, authenticated SUPER_ADMIN", captures };
   writeFileSync(`tests/e2e/screenshots/current-shell-${sourceSha}/manifest.json`, JSON.stringify(manifest, null, 2));
+  expect(mutations).toEqual([]);
   console.info("Current shell captures:", JSON.stringify(manifest));
 });
 
