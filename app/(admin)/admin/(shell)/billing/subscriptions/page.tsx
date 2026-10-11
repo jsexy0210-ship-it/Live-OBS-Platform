@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { CursorPagination } from "../../../../../../components/Pagination";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
@@ -38,7 +39,7 @@ type Row = {
 type Page = { counts: Record<Access, number>; subscriptions: Row[]; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; items: Row[]; next: string | null };
 type Filters = { access: Access | ""; q: string; plan: string };
-const PAGE = 50;
+const PAGE = 10;
 const EMPTY: Filters = { access: "", q: "", plan: "" };
 
 function query(f: Filters, cursor?: string) {
@@ -56,12 +57,18 @@ export default function SubscriptionsPage() {
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [counts, setCounts] = useState<Record<Access, number> | null>(null);
   const [more, setMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const paging = useRef(false);
   const [toast, setToast] = useState<string | null>(null);
 
   // 조건을 빨리 바꾸면 이전 응답이 늦게 올 수 있다. 마지막으로 보낸 조건의 응답만 반영한다
   const reqId = useRef(0);
   const load = useCallback(async (f: Filters) => {
     const id = ++reqId.current;
+    paging.current = false;
+    setPage(1);
+    setCursors([undefined]);
     setMore(false);
     setState({ kind: "loading" });
     const r = await adminApi<Page>(`/api/admin/subscriptions?${query(f)}`);
@@ -71,14 +78,23 @@ export default function SubscriptionsPage() {
   }, []);
   useEffect(() => void load(applied), [applied, load]);
 
-  const loadMore = async () => {
-    if (state.kind !== "ok" || !state.next) return;
+  const changePage = async (target: number) => {
+    if (state.kind !== "ok" || paging.current || target === page || target < 1 || target > cursors.length + 1) return;
+    const cursor = target <= cursors.length ? cursors[target - 1] : state.next;
+    if (target > 1 && !cursor) return;
+    paging.current = true;
     setMore(true);
-    const id = reqId.current;
-    const r = await adminApi<Page>(`/api/admin/subscriptions?${query(applied, state.next)}`);
+    const id = ++reqId.current;
+    const r = await adminApi<Page>(`/api/admin/subscriptions?${query(applied, cursor ?? undefined)}`);
     if (id !== reqId.current) return;
+    paging.current = false;
     setMore(false);
-    if (r.ok) setState({ kind: "ok", items: [...state.items, ...r.data.subscriptions], next: r.data.nextCursor });
+    if (r.ok) {
+      setCounts(r.data.counts);
+      setState({ kind: "ok", items: r.data.subscriptions, next: r.data.nextCursor });
+      setPage(target);
+      if (target > cursors.length) setCursors([...cursors, cursor ?? undefined]);
+    }
     else setToast("더 불러오지 못했습니다. 다시 눌러 주십시오.");
   };
 
@@ -189,11 +205,9 @@ export default function SubscriptionsPage() {
                   </table>
                 </div>
                 <div className="row" style={{ justifyContent: "space-between", padding: "12px 16px" }}>
-                  <span className="t-c1 c-alt">{state.next ? `${items.length}곳 넘게` : `${items.length}곳`}</span>
-                  {state.next && (
-                    <button className="btn btn-sm btn-out" type="button" onClick={() => void loadMore()} disabled={more}>
-                      {more ? "불러오는 중" : "더 보기"}
-                    </button>
+                  <span className="t-c1 c-alt">{page}페이지 · {items.length}곳{state.next ? " · 다음 페이지 있음" : ""}</span>
+                  {(state.next || page > 1) && (
+                    <div aria-busy={more}><CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={(n) => void changePage(n)} onNext={() => void changePage(page + 1)} /></div>
                   )}
                 </div>
               </>

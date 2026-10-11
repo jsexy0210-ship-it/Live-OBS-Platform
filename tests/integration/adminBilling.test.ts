@@ -53,7 +53,7 @@ describe("구독 현황 GET /api/admin/subscriptions", () => {
     const pending = (await createSeller()).seller;
     await db.seller.update({ where: { id: pending.id }, data: { status: "PENDING", approvedAt: null } });
 
-    const r = await listAdminSubscriptions(db, ctx, {}, { now: NOW });
+    const r = await listAdminSubscriptions(db, ctx, { limit: "11" }, { now: NOW });
     if (!r.ok) throw new Error("bad");
     expect(r.subscriptions.map((s) => s.seller.id)).not.toContain(pending.id);
     for (const [name, id] of Object.entries(ids)) {
