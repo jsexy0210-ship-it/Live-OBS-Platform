@@ -1081,9 +1081,10 @@ body {
 .shop-login,
 .shop-my {
   align-self: flex-start;
-  width: 440px;
   gap: 16px;
 }
+.shop-login { width: 440px; }
+.shop-my { width: min(1168px, 100%); min-width: 0; }
 .shop-login .msg {
   margin: 0;
 }
@@ -1091,25 +1092,57 @@ body {
   margin: 0;
   text-align: center;
 }
-.shop-my-list {
-  display: flex;
-  flex-direction: column;
-  border-top: 1px solid var(--wds-line-solid-neutral);
-}
-.shop-my-g {
-  margin: 8px 0 0;
-  font-size: 12px;
-  color: var(--wds-label-alternative);
-}
-.shop-my-list {
-  border-top: 0;
-}
-.shop-app .shop-my-list a {
-  padding: 14px 4px;
-  border-bottom: 1px solid var(--wds-line-solid-neutral);
-  color: var(--wds-label-normal);
-  text-decoration: none;
-  font-weight: 600;
+.shop-my-layout { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 24px; margin-top: 16px; }
+.shop-my-menu { border: 1px solid var(--wds-line-solid-neutral); align-self: start; }
+.shop-my-menu > strong { display: block; padding: 14px; border-bottom: 1px solid var(--wds-line-solid-neutral); }
+.shop-my-list { display: flex; flex-direction: column; }
+.shop-my-g { margin: 0; padding: 10px 14px 4px; font-size: 12px; font-weight: 700; color: var(--wds-label-alternative); }
+.shop-app .shop-my-list a { padding: 8px 14px; color: var(--wds-label-normal); text-decoration: none; font-weight: 600; font-size: 13px; }
+.shop-app .shop-my-list a:hover { text-decoration: underline; }
+.shop-my-logout { width: 100%; padding: 12px 14px; border: 0; border-top: 1px solid var(--wds-line-solid-neutral); background: transparent; color: var(--wds-label-normal); text-align: left; font: inherit; font-weight: 600; cursor: pointer; }
+.shop-my-main { min-width: 0; }
+.shop-my-profile { display: flex; align-items: center; gap: 12px; padding: 12px 0 18px; }
+.shop-my-profile > div:nth-child(2) { flex: 1; min-width: 0; }
+.shop-my-profile p { margin: 3px 0 0; color: var(--wds-label-alternative); font-size: 13px; }
+.shop-my-avatar { width: 48px; height: 48px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--shop, #e8edff); color: var(--shop-ink, #3c55a3); font-weight: 800; }
+.shop-my-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.shop-my-stats a { display: flex; flex-direction: column; gap: 5px; min-width: 0; padding: 16px; border: 1px solid var(--wds-line-solid-neutral); border-radius: var(--ui-r-card); color: var(--wds-label-normal); text-decoration: none; }
+.shop-my-stats .mgc { height: 100%; box-sizing: border-box; border: 1px solid var(--wds-line-solid-neutral); background: #fff; }
+.shop-my-stats span, .shop-my-stats small { color: var(--wds-label-alternative); font-size: 12px; }
+.shop-my-stats strong { font-size: 18px; }
+.shop-my-queue { margin: 14px 0; padding: 12px 16px; border: 1px solid #c8d8ff; border-radius: var(--ui-r-card); background: #edf3ff; color: #2858a8; }
+.shop-my-recent { margin-top: 22px; }
+.shop-my-recent > div { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--wds-line-solid-neutral); }
+.shop-my-recent h2 { font-size: 16px; }
+.shop-my-orders { width: 100%; border-collapse: collapse; font-size: 13px; }
+.shop-my-orders th { padding: 10px; background: var(--wds-fill-alternative); text-align: left; }
+.shop-my-orders td { padding: 12px 10px; border-bottom: 1px solid var(--wds-line-solid-neutral); vertical-align: top; }
+.shop-my-orders td:first-child { width: 140px; }
+.shop-my-orders td:nth-child(3) { width: 130px; }
+.shop-my-orders td:last-child { width: 92px; }
+.shop-my-orders td:first-child > * { display: block; }
+.shop-my-orders small { display: block; color: var(--wds-label-alternative); }
+.shop-my-order-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.shop-my-order-thumb { width: 44px; height: 44px; flex: none; display: grid; place-items: center; background: var(--wds-fill-alternative); color: var(--wds-label-alternative); font-size: 11px; }
+.shop-my-order-thumb img { width: 44px; height: 44px; object-fit: cover; }
+@media (max-width: 700px) {
+  .shop-my { box-sizing: border-box; padding: 0 16px; }
+  .shop-my-layout { display: flex; flex-direction: column-reverse; gap: 16px; }
+  .shop-my-menu { width: 100%; border: 0; }
+  .shop-my-menu > strong { display: none; }
+  .shop-my-list { border-top: 1px solid var(--wds-line-solid-neutral); }
+  .shop-my-g { padding: 12px 0 4px; }
+  .shop-app .shop-my-list a { padding: 12px 0; border-bottom: 1px solid var(--wds-line-solid-neutral); }
+  .shop-my-profile { border-bottom: 1px solid var(--wds-line-solid-neutral); }
+  .shop-my-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; }
+  .shop-my-grade { display: none; }
+  .shop-my-stats a { align-items: center; text-align: center; padding: 12px 4px; border: 0; border-right: 1px solid var(--wds-line-solid-neutral); border-radius: 0; }
+  .shop-my-stats a:nth-child(1) { order: 3; border-right: 0; }
+  .shop-my-stats a:nth-child(2) { order: 1; }
+  .shop-my-stats a:nth-child(3) { order: 2; }
+  .shop-my-stats a:last-child { border-right: 0; }
+  .shop-my-stats strong { font-size: 16px; }
+  .shop-my-recent { display: none; }
 }
 
 /* 공통 모달: 제목 줄 오른쪽 위에 X. 휴대폰에서는 아래에서 올라오는 시트 대신 가운데 카드(좌우 여백 16px) */
