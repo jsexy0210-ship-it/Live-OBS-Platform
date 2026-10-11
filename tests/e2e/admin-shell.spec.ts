@@ -527,8 +527,12 @@ test("파트너스 문의: 실제 요약·긴급 조건을 조회하고 합성 �
   mock = { ...positive, nextCursor: cursor };
   await page.goto(`/admin/support/inquiries?sellerId=${sellerId}`);
   await summaryValues(positive.summary);
-  await page.getByRole("button", { name: "더 보기", exact: true }).click();
-  await expect(page.getByTestId("inquiry-row")).toHaveCount(2);
+  const inquiryPages = page.getByRole("navigation", { name: "페이지 이동", exact: true });
+  await inquiryPages.getByRole("button", { name: "다음", exact: true }).click();
+  await expect(inquiryPages.getByRole("button", { name: "2페이지", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByTestId("inquiry-row")).toHaveCount(1);
+  await expect(page.getByTestId("inquiry-row")).toContainText("합성 다음 문의");
+  await expect(page.getByTestId("inquiry-row").getByRole("link", { name: "답변", exact: true })).toHaveAttribute("href", "/admin/support/inquiries/00000000-0000-4000-8000-000000000052");
   expect(requests.at(-1)!.searchParams.get("cursor")).toBe(cursor);
   expect(requests.at(-1)!.searchParams.get("urgent")).toBe("first");
   expect(requests.at(-1)!.searchParams.get("sellerId")).toBe(sellerId);

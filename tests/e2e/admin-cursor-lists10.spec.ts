@@ -17,6 +17,7 @@ const evidence = `tests/e2e/screenshots/current-shell-${sha}`;
 let db: PrismaClient;
 let adminId: string | undefined;
 let sellerId: string | undefined;
+let ownerId: string | undefined;
 let subscriptionId: string | undefined;
 const owned = { alerts: [] as string[], refunds: [] as string[], inquiries: [] as string[], payments: [] as string[] };
 
@@ -36,6 +37,7 @@ test.beforeAll(async ({}, info) => {
   adminId = (await db.platformAdmin.create({ data: { email, passwordHash: await hashPassword(password), name: "목록 조회", role: "READ_ONLY" } })).id;
   sellerId = (await db.seller.create({ data: { slug: `cursor-${run}`, shopName, status: "ACTIVE", approvedAt: new Date() } })).id;
   const user = await db.sellerUser.create({ data: { sellerId, email: `cursor-owner-${run}@example.com`, passwordHash: "unused", name: "대표", isOwner: true } });
+  ownerId = user.id;
   const plan = await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "STANDARD" } });
   subscriptionId = (await db.sellerSubscription.create({ data: { sellerId, planId: plan.id } })).id;
   const start = new Date();
@@ -46,7 +48,7 @@ test.beforeAll(async ({}, info) => {
     expect(alert.created).toBe(true);
     expect(alert.id).not.toBeNull();
     if (alert.id) owned.alerts.push(alert.id);
-    const payment = await db.subscriptionPayment.create({ data: { sellerId, subscriptionId, amount: 1000 + i, status: "PAID", periodStart: start, periodEnd: new Date(start.getTime() + 30 * 86_400_000), paidAt: start } });
+    const payment = await db.subscriptionPayment.create({ data: { sellerId, subscriptionId, amount: 1000 + i, status: "PAID", periodStart: new Date(start.getTime() - i * 30 * 86_400_000), periodEnd: new Date(start.getTime() + (1 - i) * 30 * 86_400_000), paidAt: start } });
     owned.payments.push(payment.id);
     owned.refunds.push((await db.subscriptionRefund.create({ data: { sellerId, paymentId: payment.id, amount: 1000 + i, source: "ADMIN", reason: `커서 요청 ${run}-${i}`, createdAt: at } })).id);
   }
@@ -60,6 +62,7 @@ test.afterAll(async () => {
     await db.subscriptionRefund.deleteMany({ where: { id: { in: owned.refunds } } });
     await db.subscriptionPayment.deleteMany({ where: { id: { in: owned.payments } } });
     if (subscriptionId) await db.sellerSubscription.deleteMany({ where: { id: subscriptionId } });
+    if (ownerId && sellerId) await db.sellerUser.deleteMany({ where: { id: ownerId, sellerId } });
     if (sellerId) await db.seller.deleteMany({ where: { id: sellerId } });
     if (adminId) await db.platformAdmin.deleteMany({ where: { id: adminId } });
   } finally { await db.$disconnect(); }
