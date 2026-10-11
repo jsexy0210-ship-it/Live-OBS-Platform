@@ -26,6 +26,7 @@ async function captureMobileHome(page: Page, name: string, role: "STORE_OWNER" |
   let geometryFailure = readinessFailure;
   let drawerOpen = false;
   try {
+    await expect.poll(() => page.locator(".gnb-logo img").evaluate((el) => el instanceof HTMLImageElement && el.complete && el.naturalWidth > 0)).toBe(true);
     drawerOpen = await page.locator(".cs").evaluate((el) => el.classList.contains("nav-open"));
     if (page.viewportSize()?.width === 390) await expect.poll(() => page.locator(".lnb").evaluate((el, open) => {
       const r = el.getBoundingClientRect();
@@ -49,13 +50,28 @@ async function captureMobileHome(page: Page, name: string, role: "STORE_OWNER" |
         rows: table ? Array.from(table.querySelectorAll("tbody tr")).map((row) => ({ text: row.textContent?.trim(), ...box(row), cells: Array.from(row.querySelectorAll("td")).map((el) => ({ text: el.textContent?.trim(), whiteSpace: getComputedStyle(el).whiteSpace, ...box(el) })), actions: Array.from(row.querySelectorAll("a,button")).map((el) => ({ text: el.textContent?.trim(), href: el.getAttribute("href"), ...box(el) })) })) : [],
       };
     });
+    const brand = await page.evaluate(() => {
+      const logo = document.querySelector(".gnb-logo"); const header = logo?.closest(".gnb"); const image = logo?.querySelector("img"); const word = logo?.querySelector("span:not(.gnb-sub)");
+      const box = (el: Element) => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height }; };
+      const range = document.createRange(); if (word) range.selectNodeContents(word);
+      return logo && header && image instanceof HTMLImageElement && word ? { href: logo.getAttribute("href"), role: logo.querySelector(".gnb-sub")?.textContent, word: word.textContent, wordLines: range.getClientRects().length, color: getComputedStyle(word).color, background: getComputedStyle(image).backgroundColor, src: image.getAttribute("src"), loaded: image.complete && image.naturalWidth > 0, naturalWidth: image.naturalWidth, legacy: logo.querySelectorAll(".logo-sym,.logo-word").length, headerText: header instanceof HTMLElement ? header.innerText : header.textContent, image: box(image), wordBox: box(word), logo: box(logo), header: box(header) } : null;
+    });
     const sourceSha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
     const evidence = `tests/e2e/screenshots/current-shell-${sourceSha}`;
     mkdirSync(evidence, { recursive: true });
     await page.screenshot({ path: `tests/e2e/screenshots/${name}.png`, fullPage: true });
     if (drawerOpen) await page.screenshot({ path: `tests/e2e/screenshots/${name}-viewport.png`, fullPage: false });
-    writeFileSync(`${evidence}/${name}.json`, JSON.stringify({ sourceSha, route: new URL(page.url()).pathname, role, state: geometryFailure || !metrics.main ? "not-ready" : drawerOpen ? "drawer-open" : "content", sidebar, ...metrics }, null, 2));
+    writeFileSync(`${evidence}/${name}.json`, JSON.stringify({ sourceSha, route: new URL(page.url()).pathname, role, state: geometryFailure || !metrics.main ? "not-ready" : drawerOpen ? "drawer-open" : "content", sidebar, brand, ...metrics }, null, 2));
     if (geometryFailure) throw geometryFailure.error;
+    expect(brand).not.toBeNull();
+    if (!brand) throw new Error("공통 헤더 로고가 없습니다");
+    expect(brand.href).toBe("/seller"); expect(brand.role).toBe("파트너스"); expect(brand.word).toBe("streamshop");
+    expect(brand.src).toContain("streamshop-partners-180-20261010"); expect(brand.loaded).toBe(true); expect(brand.legacy).toBe(0);
+    expect(brand.headerText).not.toMatch(/\bONQ\b|OnAirCue|온에어큐/); expect(brand.wordLines).toBe(1);
+    expect(brand.color).toBe("rgb(255, 255, 255)"); expect(brand.background).toBe("rgb(255, 255, 255)");
+    expect(brand.image.width).toBe(22); expect(brand.image.height).toBe(22);
+    for (const box of [brand.image, brand.wordBox]) { expect(box.left).toBeGreaterThanOrEqual(brand.logo.left); expect(box.right).toBeLessThanOrEqual(brand.logo.right); expect(box.top).toBeGreaterThanOrEqual(brand.header.top); expect(box.bottom).toBeLessThanOrEqual(brand.header.bottom); }
+    expect(brand.logo.left).toBeGreaterThanOrEqual(0); expect(brand.logo.right).toBeLessThanOrEqual(metrics.viewport.width);
     expect(metrics.main).not.toBeNull();
     return metrics;
   } catch (error) { throw geometryFailure ? geometryFailure.error : error; }

@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
+import headerSymbol from "../../public/branding/streamshop-partners-180-20261010.png";
 import { GlobalSearch, NotificationBell } from "../admin-ui/GnbTools";
 import { ConfirmProvider, useConfirm } from "../admin-ui/ConfirmDialog";
 import { ShellNavProvider, type ShellNav } from "../admin-ui/shellNav";
@@ -544,8 +546,8 @@ function SellerShellContent({ children }: { children: React.ReactNode }) {
             </svg>
           </button>
           <Link className="logo gnb-logo" href="/seller">
-            <span className="logo-sym" />
-            <span className="logo-word" />
+            <Image src={headerSymbol} alt="" width={22} height={22} sizes="22px" style={{ flexShrink: 0, borderRadius: 4, background: "#fff" }} />
+            <span style={{ fontWeight: 800, letterSpacing: "-.02em" }}>streamshop</span>
             <span className="gnb-sub">파트너스</span>
           </Link>
           <nav className="gnb-nav" aria-label="주 메뉴">
