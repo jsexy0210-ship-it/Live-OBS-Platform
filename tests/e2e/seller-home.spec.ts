@@ -54,7 +54,7 @@ async function captureMobileHome(page: Page, name: string, role: "STORE_OWNER" |
       const logo = document.querySelector(".gnb-logo"); const header = logo?.closest(".gnb"); const image = logo?.querySelector("img"); const word = logo?.querySelector("span:not(.gnb-sub)");
       const box = (el: Element) => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height }; };
       const range = document.createRange(); if (word) range.selectNodeContents(word);
-      return logo && header && image instanceof HTMLImageElement && word ? { href: logo.getAttribute("href"), role: logo.querySelector(".gnb-sub")?.textContent, word: word.textContent, wordLines: range.getClientRects().length, color: getComputedStyle(word).color, background: getComputedStyle(image).backgroundColor, src: image.getAttribute("src"), loaded: image.complete && image.naturalWidth > 0, naturalWidth: image.naturalWidth, legacy: logo.querySelectorAll(".logo-sym,.logo-word").length, headerText: header instanceof HTMLElement ? header.innerText : header.textContent, image: box(image), wordBox: box(word), logo: box(logo), header: box(header) } : null;
+      return logo && header && image instanceof HTMLImageElement && word ? { href: logo.getAttribute("href"), subLabels: logo.querySelectorAll(".gnb-sub").length, word: word.textContent, wordLines: range.getClientRects().length, color: getComputedStyle(word).color, background: getComputedStyle(image).backgroundColor, src: image.getAttribute("src"), loaded: image.complete && image.naturalWidth > 0, naturalWidth: image.naturalWidth, legacy: logo.querySelectorAll(".logo-sym,.logo-word").length, headerText: header instanceof HTMLElement ? header.innerText : header.textContent, image: box(image), wordBox: box(word), logo: box(logo), header: box(header) } : null;
     });
     const headerLayout = await page.evaluate(() => {
       const header = document.querySelector(".gnb"); const logo = header?.querySelector(".gnb-logo"); const nav = header?.querySelector(".gnb-nav"); const util = header?.querySelector(".gnb-util"); const logout = util?.querySelector(".util-desk .util-btn");
@@ -72,7 +72,7 @@ async function captureMobileHome(page: Page, name: string, role: "STORE_OWNER" |
     if (geometryFailure) throw geometryFailure.error;
     expect(brand).not.toBeNull();
     if (!brand) throw new Error("공통 헤더 로고가 없습니다");
-    expect(brand.href).toBe("/seller"); expect(brand.role).toBe("파트너스"); expect(brand.word).toBe("streamshop");
+    expect(brand.href).toBe("/seller"); expect(brand.subLabels).toBe(0); expect(brand.word).toBe("파트너스 관리자");
     expect(brand.src).toContain("streamshop-partners-180-20261010"); expect(brand.loaded).toBe(true); expect(brand.legacy).toBe(0);
     expect(brand.headerText).not.toMatch(/\bONQ\b|OnAirCue|온에어큐/); expect(brand.wordLines).toBe(1);
     expect(brand.color).toBe("rgb(255, 255, 255)"); expect(brand.background).toBe("rgb(255, 255, 255)");
