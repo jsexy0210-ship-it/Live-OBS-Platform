@@ -191,11 +191,11 @@ function NoticeList() {
               <>
                 <ListHead total={items.length} loaded />
                 <div style={{ overflowX: "auto" }}>
-                  <table className="tbl">
+                  <table className="tbl" style={{ minWidth: 800 }}>
                     <thead>
                       <tr>
                         <th>분류</th>
-                        <th>제목</th>
+                        <th style={{ minWidth: 240 }}>제목</th>
                         <th>대상</th>
                         <th>게시일</th>
                         <th>상태</th>
