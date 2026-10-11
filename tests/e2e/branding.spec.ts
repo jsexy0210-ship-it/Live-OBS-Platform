@@ -81,7 +81,12 @@ test("최고관리자가 파트너스 관리자 파비콘·공유 카드를 바�
   await page.getByLabel("설명").fill("방송 주문을 한곳에서 관리합니다");
   // 저장 전 미리보기: 입력한 제목으로 그린 카드
   const preview = page.getByAltText("공유 카드 이미지 미리보기");
-  await expect(preview).toHaveAttribute("src", /card-preview\?title=%EC%98%A8%ED%81%90/);
+  await expect.poll(async () => {
+    const src = await preview.getAttribute("src");
+    if (!src) return null;
+    const url = new URL(src, page.url());
+    return { pathname: url.pathname, target: url.searchParams.getAll("target"), title: url.searchParams.getAll("title") };
+  }).toEqual({ pathname: "/api/admin/branding/card-preview", target: ["seller"], title: ["온큐 파트너스 센터"] });
   await expect.poll(() => preview.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(1200);
   await expect(page.getByText("파비콘을 저장했습니다.")).toBeHidden();
   await page.setViewportSize({ width: 1440, height: 1000 });
