@@ -35,6 +35,7 @@
 .ma-home .sts-chart { padding-top: 8px; padding-bottom: 6px; }
 .ma-home .sts-h { padding-top: 8px; }
 .ma-home-revenue { display: grid; grid-template-columns: 2fr 3fr; gap: 12px; }
+.ma-home-mobile-notice { display: none; margin: 0; }
 .ma-home-revenue > section:first-child .sts-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .ma-home-revenue > section:last-child .sts-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .ma-home-brief { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
@@ -52,6 +53,7 @@
   .ma-home-revenue { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 700px) {
+  .ma-home-mobile-notice { display: block; }
   .ma-home-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ma-home-grid { grid-template-columns: minmax(0, 1fr); }
   .ma-home-grid > [data-testid="stats-orders"], .ma-home-grid > [data-testid="stats-top"] { grid-column: auto; }
