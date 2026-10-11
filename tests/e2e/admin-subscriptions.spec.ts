@@ -184,7 +184,9 @@ test("파트너스·구독 목록: 서버 10개 페이지와 끝·이전·처음
       const check = async (expected: string[], n: number) => {
         await expect(rows).toHaveCount(expected.length);
         await expect(nav.getByRole("button", { name: `${n}페이지`, exact: true })).toHaveAttribute("aria-current", "page");
-        await expect.poll(() => rows.locator('a[href^="/admin/partners/"]').evaluateAll((links) => links.map((a) => a.getAttribute("href")?.split("/").pop()))).toEqual(expected);
+        const shopLinks = rows.locator('td:first-child > a.fw6[href^="/admin/partners/"]');
+        await expect(shopLinks).toHaveCount(expected.length);
+        await expect.poll(() => shopLinks.evaluateAll((links) => links.map((a) => a.getAttribute("href")?.split("/").pop()))).toEqual(expected);
       };
       await check(first.ids, 1);
       const requests: string[] = [];
