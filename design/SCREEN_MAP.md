@@ -305,7 +305,7 @@
 
 | 컴포넌트 | 소스 |
 |---|---|
-| AdminShell / SellerShell (관리자 공통 틀: GNB + LNB + 경로 줄 + ← 버튼) | **메뉴 구조 정본 DS-NAV(확정 2026-10-06) · 파트너스·마스터 LNB 정본 design/project/SA-LNB.dc.html(v279) · ← 버튼 lop.css `.c24 .bk`** · 파트너스 공통 띠(체험 N일 · 결제 실패 · 이용 종료) 정본 design/project/SA-001.dc.html 상태 변형 「공통 띠」(v323: 경로 줄 아래 · 제목 위) · design/project/lop.css (`.c24 .gnb` `.lnb` `.pathbar` `.ph2` `.rtabs`) · 휴대폰 틀 design/project/SA-FRAME-M.dc.html · 마스터 메뉴는 design/project/MA-001-IA.dc.html의 GNB·LNB |
+| AdminShell / SellerShell (관리자 공통 틀: GNB + LNB + 경로 줄 + ← 버튼) | **메뉴 구조 정본 DS-NAV(확정 2026-10-06) · 파트너스·마스터 LNB 정본 design/project/SA-LNB.dc.html(v279) · ← 버튼 lop.css `.c24 .bk`** · 파트너스 공통 띠(체험 N일 · 결제 실패 · 이용 종료) 정본 design/project/SA-001.dc.html 상태 변형 「공통 띠」(v323: 경로 줄 아래 · 제목 위) · design/project/lop.css (`.c24 .gnb` `.lnb` `.pathbar` `.ph2` `.rtabs`) · 휴대폰 틀 design/project/SA-FRAME-M.dc.html · 마스터 메뉴는 design/project/MA-001-IA.dc.html의 GNB·LNB. 2026-10-11 승인 공통 헤더 S 심볼·점 없는 streamshop 계약은 SA-LNB 규칙 ⑦이며 기존 역할·홈 링크·접근성 구조·테마를 유지한다. MA001 active 두 HTML과 IA 헤더만 동기화하며 SA002는 같은 runtime 셸을 재사용한다 |
 | ShopHeader / ShopFrame (구매자 공통 머리 · 바닥 · 탭바) | design/project/lop.css (`.sh24 .topn`(상단 공지 한 줄, v322) `.tb` `.hd` `.cat` `.ft`(`.cs .sns` 카카오톡 문의 · 유튜브 채널, v322) `.m .mh` `.tabbar`) · 정본 예시 design/project/SH-001-PC-IA.dc.html · SH-001-IA.dc.html |
 | SearchBox · ListPanel (검색 패널 3층 · 목록 패널 2층 · 외곽 프레임 완전성) | design/project/DS-PANEL.dc.html · lop.css (`.c24 .box.dense` `.ft` `.sbtn` `.lpanel` `.ltop` `.lt`) |
 | 행 동작 · 칩 · 일괄 고정 줄 · 사이드 패널 · 확인 3단계 (관리자 목록 즉시 처리) | design/project/DS-ROW-ACTION.dc.html · 적용 예 MA-013-OPS.dc.html · SA-021-OPS.dc.html · 정본 규칙 docs/ADMIN_OPS_UX.md |

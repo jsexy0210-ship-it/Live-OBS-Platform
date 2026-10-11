@@ -68,6 +68,7 @@ async function captureHome(page: Page, name: string, role: "CS" | "SUPER_ADMIN")
   const drawerOpen = await page.locator(".cs").evaluate((el) => el.classList.contains("nav-open"));
   let geometryFailure: { error: unknown } | undefined;
   try {
+    await expect.poll(() => page.locator(".gnb-logo img").evaluate((el) => el instanceof HTMLImageElement && el.complete && el.naturalWidth > 0)).toBe(true);
     if (page.viewportSize()?.width === 390) await expect.poll(() => page.locator(".lnb").evaluate((el, open) => {
       const r = el.getBoundingClientRect();
       const width = parseFloat(getComputedStyle(el).width);
@@ -87,13 +88,28 @@ async function captureHome(page: Page, name: string, role: "CS" | "SUPER_ADMIN")
       const sidebarBounds = sidebar?.getBoundingClientRect();
       return { viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio, scale: visualViewport?.scale ?? null }, sidebar: sidebar && sidebarBounds ? { left: sidebarBounds.left, right: sidebarBounds.right, width: parseFloat(getComputedStyle(sidebar).width), transitions: sidebar.getAnimations().filter((a) => a instanceof CSSTransition && a.playState === "running").length } : null, documentHeight: document.documentElement.scrollHeight, mainHeight: main.scrollHeight, firstPanel: main.querySelector("section")?.getAttribute("data-testid"), amounts: rows(".sts-kpis .stat .v"), top: top ? { columns: top.querySelectorAll("thead th").length, width: top.getBoundingClientRect().width, scrollWidth: top.scrollWidth, availableWidth: top.parentElement?.clientWidth } : null, mainTop: bounds.top };
     });
+    const brand = await page.evaluate(() => {
+      const logo = document.querySelector(".gnb-logo"); const header = logo?.closest(".gnb"); const image = logo?.querySelector("img"); const word = logo?.querySelector("span:not(.gnb-sub)");
+      const box = (el: Element) => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height }; };
+      const range = document.createRange(); if (word) range.selectNodeContents(word);
+      return logo && header && image instanceof HTMLImageElement && word ? { href: logo.getAttribute("href"), role: logo.querySelector(".gnb-sub")?.textContent, word: word.textContent, wordLines: range.getClientRects().length, color: getComputedStyle(word).color, background: getComputedStyle(image).backgroundColor, src: image.getAttribute("src"), loaded: image.complete && image.naturalWidth > 0, naturalWidth: image.naturalWidth, legacy: logo.querySelectorAll(".logo-sym,.logo-word").length, headerText: header instanceof HTMLElement ? header.innerText : header.textContent, image: box(image), wordBox: box(word), logo: box(logo), header: box(header) } : null;
+    });
     const sourceSha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
     const evidence = `tests/e2e/screenshots/current-shell-${sourceSha}`;
     mkdirSync(evidence, { recursive: true });
     await page.screenshot({ path: `tests/e2e/screenshots/${name}.png`, fullPage: true });
     if (drawerOpen) await page.screenshot({ path: `tests/e2e/screenshots/${name}-viewport.png`, fullPage: false });
-    writeFileSync(`${evidence}/${name}.json`, JSON.stringify({ sourceSha, route: new URL(page.url()).pathname, role, state: drawerOpen ? "drawer-open" : "content", ...metrics }, null, 2));
+    writeFileSync(`${evidence}/${name}.json`, JSON.stringify({ sourceSha, route: new URL(page.url()).pathname, role, state: geometryFailure ? "not-ready" : drawerOpen ? "drawer-open" : "content", brand, ...metrics }, null, 2));
     if (geometryFailure) throw geometryFailure.error;
+    expect(brand).not.toBeNull();
+    if (!brand) throw new Error("공통 헤더 로고가 없습니다");
+    expect(brand.href).toBe("/admin"); expect(brand.role).toBe("마스터 관리자"); expect(brand.word).toBe("streamshop");
+    expect(brand.src).toContain("streamshop-master-180-20261010"); expect(brand.loaded).toBe(true); expect(brand.legacy).toBe(0);
+    expect(brand.headerText).not.toMatch(/\bONQ\b|OnAirCue|온에어큐/); expect(brand.wordLines).toBe(1);
+    expect(brand.color).toBe("rgb(255, 255, 255)"); expect(brand.background).toBe("rgb(255, 255, 255)");
+    expect(brand.image.width).toBe(22); expect(brand.image.height).toBe(22);
+    for (const box of [brand.image, brand.wordBox]) { expect(box.left).toBeGreaterThanOrEqual(brand.logo.left); expect(box.right).toBeLessThanOrEqual(brand.logo.right); expect(box.top).toBeGreaterThanOrEqual(brand.header.top); expect(box.bottom).toBeLessThanOrEqual(brand.header.bottom); }
+    expect(brand.logo.left).toBeGreaterThanOrEqual(0); expect(brand.logo.right).toBeLessThanOrEqual(metrics.viewport.width);
     if (metrics.viewport.width >= 1024) {
       for (const amount of metrics.amounts) { expect(amount.whiteSpace).toBe("nowrap"); expect(amount.lines).toBe(1); expect(amount.scrollWidth).toBeLessThanOrEqual(amount.clientWidth); }
       if (metrics.top) { expect(metrics.top.columns).toBe(8); expect(metrics.top.availableWidth).toBeDefined(); expect(metrics.top.scrollWidth).toBeLessThanOrEqual(metrics.top.availableWidth!); }

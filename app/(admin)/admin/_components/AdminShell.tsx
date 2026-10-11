@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
+import headerSymbol from "../../../../public/branding/streamshop-master-180-20261010.png";
 import { GlobalSearch, NotificationBell } from "../../../../components/admin-ui/GnbTools";
 import { ConfirmProvider } from "../../../../components/admin-ui/ConfirmDialog";
 import { PARTNER_NAV_ITEMS, ShellNavProvider, type PartnerNavIndicators, type ShellNav } from "../../../../components/admin-ui/shellNav";
@@ -130,8 +132,8 @@ function AdminShellContent({ children }: { children: React.ReactNode }) {
             </svg>
           </button>
           <Link className="logo gnb-logo" href="/admin">
-            <span className="logo-sym" />
-            <span className="logo-word" />
+            <Image src={headerSymbol} alt="" width={22} height={22} sizes="22px" style={{ flexShrink: 0, borderRadius: 4, background: "#fff" }} />
+            <span style={{ fontWeight: 800, letterSpacing: "-.02em" }}>streamshop</span>
             <span className="gnb-sub">마스터 관리자</span>
           </Link>
           <nav className="gnb-nav" aria-label="주 메뉴">
