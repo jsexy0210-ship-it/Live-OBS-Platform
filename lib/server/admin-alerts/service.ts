@@ -10,7 +10,7 @@ import { adminCan } from "../authz/permissions";
 // - targetRoles에 든 역할만 그 알림을 보고, 담당·상태(미처리 OPEN·처리 중 IN_PROGRESS·해결됨 RESOLVED)는 모두 같은 값을 본다. 읽음은 관리자마다.
 // - 변경(처리 중·해결됨·미처리로 되돌림)은 support.assign(최고관리자·운영·CS), 처리 중으로 바꾸면 담당이 없을 때 바꾼 사람이 담당이 된다.
 
-export const PAGE_SIZE = 50;
+export const PAGE_SIZE = 10;
 export const TITLE_MAX = 120;
 export const BODY_MAX = 500;
 export const ALERT_ROLES: readonly PlatformAdminRole[] = ["SUPER_ADMIN", "OPERATIONS", "CS", "READ_ONLY"];
@@ -73,7 +73,7 @@ function parseCursor(cursor: string | null | undefined): { ok: true; where: Pris
 
 const visible = (admin: AdminSessionContext): Prisma.AdminAlertWhereInput => ({ targetRoles: { has: admin.admin.role } });
 
-// MA-002: 알림 목록. 쿼리 status·severity(각각 쉼표 구분 가능)·kind·seller(쇼핑몰 이름)·assignee(me|none|관리자 id)·cursor. 조건 적용 뒤 발생 최신순 50건.
+// MA-002: 알림 목록. 쿼리 status·severity(각각 쉼표 구분 가능)·kind·seller(쇼핑몰 이름)·assignee(me|none|관리자 id)·cursor. 조건 적용 뒤 발생 최신순 10건.
 // → { items: [{ id, kind, severity, title, body, linkPath, sellerId, shopName, status, assignee: {id,name}|null, occurredAt, resolvedAt, unread }],
 //     counts: { OPEN, IN_PROGRESS, RESOLVED }(내가 볼 수 있는 알림 전체), unreadCount(안 읽은 알림 수), nextCursor }
 export async function listAdminAlerts(
