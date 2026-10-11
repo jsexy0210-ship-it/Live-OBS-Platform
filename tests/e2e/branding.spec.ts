@@ -61,7 +61,7 @@ test("최고관리자가 파트너스 관리자 파비콘·공유 카드를 바�
   await expect(page.getByText("파비콘은 PNG 파일만 업로드할 수 있습니다.")).toBeVisible();
   // 안내가 떠 있는 동안에는 다시 올릴 수 없다
   await expect(page.getByRole("button", { name: "파비콘 저장", exact: true })).toBeDisabled();
-  await page.getByRole("button", { name: "취소" }).click();
+  await page.getByRole("region", { name: "탭 아이콘(파비콘)", exact: true }).getByRole("button", { name: "취소", exact: true }).click();
 
   const icon = await sharp({ create: { width: 64, height: 64, channels: 4, background: "#ff3b30" } }).png().toBuffer();
   // 맞는 파일을 고른 뒤 너무 큰 파일로 바꾸면 이전 선택도 지워진다(Codex 지적: 안내와 다른 파일이 올라가지 않게)
