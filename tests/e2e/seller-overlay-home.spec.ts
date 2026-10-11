@@ -79,10 +79,13 @@ test("오버레이 전용 대표자: /seller가 오버레이 홈으로 열리고
       await expect(page).toHaveURL(/\/seller$/);
       await expect(page.getByRole("heading", { name: "홈", level: 1 })).toBeVisible();
       await expect(tiles).toBeVisible();
-      await expect.poll(() => page.locator("main.main img").evaluateAll((images) => images.every((img) => img instanceof HTMLImageElement && img.complete && img.naturalWidth > 0))).toBe(true);
+      try { await expect(waiting).toBeVisible(); }
+      catch (error) { geometryFailure = { error }; }
+      if (!geometryFailure) await expect.poll(() => page.locator("main.main img").evaluateAll((images) => images.every((img) => img instanceof HTMLImageElement && img.complete && img.naturalWidth > 0))).toBe(true);
       const desktopMetrics = await page.evaluate(() => ({ viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio, scale: visualViewport?.scale ?? null }, height: document.documentElement.scrollHeight }));
       await page.screenshot({ path: "tests/e2e/screenshots/SA-002-O-1440.png", fullPage: true });
-      writeFileSync(`${evidence}/SA-002-O-1440.json`, JSON.stringify({ sourceSha, route: new URL(page.url()).pathname, role: "OVERLAY_OWNER", state: "content", ...desktopMetrics }, null, 2));
+      writeFileSync(`${evidence}/SA-002-O-1440.json`, JSON.stringify({ sourceSha, route: new URL(page.url()).pathname, role: "OVERLAY_OWNER", state: geometryFailure ? "snapshot-not-ready" : "content", ...desktopMetrics }, null, 2));
+      if (geometryFailure) throw geometryFailure.error;
     }
   } catch (error) { throw geometryFailure ? geometryFailure.error : error; }
 });
