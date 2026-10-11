@@ -88,7 +88,7 @@ const targets = [
   { id: "SA-025", route: "/seller/shipping", api: "/api/seller/shipments", field: "shipments", rows: '[data-testid="shipment-row"]', query: { tab: "ready" }, text: (r: Row) => String(r.orderNo) },
   { id: "SA-029", route: "/seller/returns", api: "/api/seller/returns", field: "returns", rows: '[data-testid="return-row"]', query: {}, text: (r: Row) => String(r.orderNo) },
   { id: "SA-032", route: "/seller/rewards/ledger?period=all", api: "/api/seller/reward-ledger", field: "entries", rows: '[data-testid="ledger-row"]', query: {}, text: (r: Row) => `${r.amount}원` },
-  { id: "SA-033", route: "/seller/rewards/balances", api: "/api/seller/reward-balances", field: "balances", rows: '[data-testid="balance-row"]', query: {}, text: (r: Row) => r.member?.broadcastNickname ?? "" },
+  { id: "SA-033", route: "/seller/rewards/balances", api: "/api/seller/reward-balances", field: "balances", rows: '[data-testid="balance-row"]', query: { sort: "balance" }, text: (r: Row) => r.member?.broadcastNickname ?? "" },
   { id: "SA-034", route: "/seller/rewards/live-payout", api: "/api/seller/reward-live-payout/history", field: "history", rows: '[data-testid="live-history"] tbody tr', query: {}, text: (r: Row) => formatDateTime(r.at ?? "") },
   { id: "SA-046", route: "/seller/buyer-inquiries?period=all", api: "/api/seller/inquiries", field: "inquiries", rows: '[data-testid="inquiry-row"]', query: {}, text: (r: Row) => r.title ?? "" },
   { id: "SA-048", route: "/seller/reviews", api: "/api/seller/reviews", field: "reviews", rows: '[data-testid="review-row"]', query: {}, text: (r: Row) => r.body ?? "" },
