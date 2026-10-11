@@ -101,8 +101,13 @@ test("MA-021: 전체 catalog와 owned 설정을 보존하며 10개·끝·한 쪽
     await expect(page.getByText(`전체 요금제 ${plans.length}개`, { exact: true })).toBeVisible();
     for (const width of [1440, 1024]) { await page.setViewportSize({ width, height: 900 }); await capture(page, "MA-021", "READ_ONLY", "page2-real-catalog"); }
     // 한 쪽 표시 경계는 GET 합성 응답으로만 확인하며 catalog 행은 바꾸지 않는다.
-    await page.route("**/api/admin/plans", route => { expect(route.request().method()).toBe("GET"); return route.fulfill({ json: { plans: plans.slice(0, 10) } }); });
+    let shownPlans = plans.slice(0, 10);
+    await page.route("**/api/admin/plans", route => { expect(route.request().method()).toBe("GET"); return route.fulfill({ json: { plans: shownPlans } }); });
     await page.reload(); await expect(page.getByTestId("plan-row")).toHaveCount(10);
+    await expect(page.getByRole("navigation", { name: "페이지 이동", exact: true })).toHaveCount(0);
+    shownPlans = []; await page.reload();
+    await expect(page.getByText("등록된 요금제가 없습니다.", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("plan-row")).toHaveCount(0);
     await expect(page.getByRole("navigation", { name: "페이지 이동", exact: true })).toHaveCount(0);
   } catch (error) { try { await capture(page, "MA-021", "READ_ONLY", "failed"); } catch {} throw error; }
 });
@@ -154,6 +159,10 @@ test("SA-065: 페이지 경계 순서 변경은 전체 ID를 저장하고 삭제
     await expect(rows.locator("td:first-child > b")).toHaveText(popups.map(p => p.title));
     await page.reload(); await expect(rows).toHaveCount(10);
     await expect(rows.locator("td:first-child > b")).toHaveText(popups.map(p => p.title));
+    await expect(nav).toHaveCount(0);
+    popups = []; await page.reload();
+    await expect(page.getByText("등록한 팝업이 없습니다", { exact: true })).toBeVisible();
+    await expect(rows).toHaveCount(0);
     await expect(nav).toHaveCount(0);
   } catch (error) { try { await capture(page, "SA-065", "seeded-owner", "failed"); } catch {} throw error; }
 });
