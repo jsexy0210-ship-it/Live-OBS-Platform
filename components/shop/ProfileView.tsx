@@ -112,7 +112,7 @@ export default function ProfileView({ slug, shopName }: { slug: string; shopName
         )}
         <div className="pf-rows">
           <div className="pf-row">
-            <span className="pf-th">아이디 (이메일)</span>
+            <span className="pf-th">이메일</span>
             <div className="pf-td">
               {p.loginId} <span className="pf-hint">바꿀 수 없어요</span>
             </div>

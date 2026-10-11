@@ -16,8 +16,8 @@ export const BRANDING_TITLE_MAX = 60;
 export const BRANDING_DESCRIPTION_MAX = 160;
 
 export const BRANDING_DEFAULTS: Record<BrandingTarget, { title: string; description: string | null }> = {
-  admin: { title: "ONQ 마스터 관리자", description: null },
-  seller: { title: "ONQ 파트너스 관리자", description: "쇼핑몰 운영과 방송 주문대기를 한곳에서 관리합니다." },
+  admin: { title: "StreamShop 마스터 관리자", description: null },
+  seller: { title: "StreamShop 파트너스 관리자", description: "쇼핑몰 운영과 방송 주문대기를 한곳에서 관리합니다." },
   landing: { title: "스트림샵 | 쇼핑몰부터 라이브 판매까지", description: "쇼핑몰부터 OBS 방송 화면, 주문과 배송까지. 스트림샵(StreamShop)으로 라이브 판매의 모든 순간을 연결하세요." },
 };
 

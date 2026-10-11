@@ -42,7 +42,7 @@ const TEXT = {
     codeSent: "인증번호를 보냈습니다. 문자로 받은 6자리를 입력해 주십시오",
     codeResent: "인증번호를 다시 보냈습니다",
     help: "본인 명의의 휴대폰으로 인증해 주십시오.",
-    carrierPick: "선택해 주십시오",
+    carrierPick: "선택",
     agree: "본인확인 이용 약관에 모두 동의합니다",
     sending: "인증번호 보내는 중",
     done: "본인확인을 마쳤습니다",
@@ -55,7 +55,7 @@ const TEXT = {
     codeSent: "인증번호를 보냈어요. 문자로 받은 6자리를 넣어 주세요",
     codeResent: "인증번호를 다시 보냈어요",
     help: "본인 명의의 휴대폰으로 인증해 주세요.",
-    carrierPick: "골라 주세요",
+    carrierPick: "선택",
     agree: "본인확인 이용 약관에 모두 동의해요",
     sending: "인증번호를 보내고 있어요",
     done: "본인확인을 마쳤어요",
@@ -102,12 +102,14 @@ type Props = {
   // 말투(기본 admin). 가입 신청(PF-007)은 public
   tone: Tone;
   carrierPlaceholder?: string;
+  // 신규 가입 호출에만 지정한다. 저장된 입력과 계정 복구 기본값은 바꾸지 않는다.
+  initialGender?: "M" | "F";
   // 주어지면 입력한 칸(이름·생년월일·성별·내외국인·통신사·휴대폰번호·약관 동의)을 이 탭 안(sessionStorage)에 저장해 새로고침·단계 이동에도 남긴다.
   // 인증번호·확인 결과는 저장하지 않는다(가입 신청 단계 화면, PF-007-2)
   saveKey?: string;
 };
 
-export default function IdentityCheck({ label, start, scope = "", base, blocked = false, onVerified, onUnavailable, onSentChange, onStartRefused, tone, carrierPlaceholder, saveKey }: Props) {
+export default function IdentityCheck({ label, start, scope = "", base, blocked = false, onVerified, onUnavailable, onSentChange, onStartRefused, tone, carrierPlaceholder, initialGender, saveKey }: Props) {
   const T = TEXT[tone];
   const { confirm: ask } = useConfirm();
   // 문자 발송은 횟수 한도와 비용이 있어 보내기 전에 확인한다
@@ -118,7 +120,7 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
   const [notice, setNotice] = useState<{ kind: "neg" | "info"; text: string } | null>(null);
   const [name, setName] = useState("");
   const [birth, setBirth] = useState("");
-  const [gender, setGender] = useState<"M" | "F" | null>(null);
+  const [gender, setGender] = useState<"M" | "F" | null>(initialGender ?? null);
   const [foreigner, setForeigner] = useState(false);
   const [carrier, setCarrier] = useState<Carrier | "">("");
   const [phone, setPhone] = useState("");

@@ -57,32 +57,38 @@ test("최고관리자가 파트너스 관리자 파비콘·공유 카드를 바�
 
   // SVG(스크립트 위험)는 안내만 보이고 바뀌지 않는다
   await page.getByLabel("파비콘 파일").setInputFiles({ name: "icon.png", mimeType: "image/png", buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>') });
-  await page.getByRole("button", { name: "파비콘 변경" }).click();
+  await page.getByRole("button", { name: "파비콘 저장", exact: true }).click();
   await expect(page.getByText("파비콘은 PNG 파일만 업로드할 수 있습니다.")).toBeVisible();
   // 안내가 떠 있는 동안에는 다시 올릴 수 없다
-  await expect(page.getByRole("button", { name: "파비콘 변경" })).toBeDisabled();
-  await page.getByRole("button", { name: "취소" }).click();
+  await expect(page.getByRole("button", { name: "파비콘 저장", exact: true })).toBeDisabled();
+  await page.getByRole("region", { name: "탭 아이콘(파비콘)", exact: true }).getByRole("button", { name: "취소", exact: true }).click();
 
   const icon = await sharp({ create: { width: 64, height: 64, channels: 4, background: "#ff3b30" } }).png().toBuffer();
   // 맞는 파일을 고른 뒤 너무 큰 파일로 바꾸면 이전 선택도 지워진다(Codex 지적: 안내와 다른 파일이 올라가지 않게)
   await page.getByLabel("파비콘 파일").setInputFiles({ name: "first.png", mimeType: "image/png", buffer: icon });
-  await expect(page.getByRole("button", { name: "파비콘 변경" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "파비콘 저장", exact: true })).toBeEnabled();
   await page.getByLabel("파비콘 파일").setInputFiles({ name: "big.png", mimeType: "image/png", buffer: Buffer.concat([icon, Buffer.alloc(300 * 1024)]) });
   await expect(page.getByText("파비콘이 256KB를 넘습니다. 256KB 이하 PNG로 줄여 주십시오.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "파비콘 변경" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "파비콘 저장", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "파비콘 저장", exact: true })).toBeDisabled();
   await expect(page.getByText("first.png")).toHaveCount(0);
 
   await page.getByLabel("파비콘 파일").setInputFiles({ name: "partners.png", mimeType: "image/png", buffer: icon });
-  await page.getByRole("button", { name: "파비콘 변경" }).click();
-  await expect(page.getByText("파비콘을 변경했습니다.")).toBeVisible();
+  await page.getByRole("button", { name: "파비콘 저장", exact: true }).click();
+  await expect(page.getByText("파비콘을 저장했습니다.")).toBeVisible();
 
   await page.getByLabel("제목").fill("온큐 파트너스 센터");
   await page.getByLabel("설명").fill("방송 주문을 한곳에서 관리합니다");
   // 저장 전 미리보기: 입력한 제목으로 그린 카드
   const preview = page.getByAltText("공유 카드 이미지 미리보기");
-  await expect(preview).toHaveAttribute("src", /card-preview\?title=%EC%98%A8%ED%81%90/);
+  await expect.poll(async () => {
+    const src = await preview.getAttribute("src");
+    if (!src) return null;
+    const url = new URL(src, page.url());
+    return { pathname: url.pathname, target: url.searchParams.getAll("target"), title: url.searchParams.getAll("title") };
+  }).toEqual({ pathname: "/api/admin/branding/card-preview", target: ["seller"], title: ["온큐 파트너스 센터"] });
   await expect.poll(() => preview.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(1200);
-  await expect(page.getByText("파비콘을 변경했습니다.")).toBeHidden();
+  await expect(page.getByText("파비콘을 저장했습니다.")).toBeHidden();
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.screenshot({ path: "tests/e2e/screenshots/branding-settings-1440.png", fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -112,7 +118,7 @@ test("최고관리자가 파트너스 관리자 파비콘·공유 카드를 바�
   // 마스터 관리자 화면은 그대로(기본값)
   const admin = await head(page, "/admin/login");
   expect(admin.icons.some((h) => h?.includes("/api/branding/"))).toBe(false);
-  expect(admin.ogTitle).toBe("ONQ 마스터 관리자");
+  expect(admin.ogTitle).toBe("StreamShop 마스터 관리자");
   // 올린 파비콘이 없는 마스터 관리자 화면은 틸 기본 아이콘(파트너스 기본 아이콘과 다름)
   expect(admin.icons).toEqual(["/branding/streamshop-master-32-20261010.png"]);
 
@@ -289,67 +295,84 @@ test("저장 전 입력값이 미리보기에 바로 반영된다(제목·설명
 });
 
 test("마스터 관리자 기본 파비콘은 틸이고, 올린 파비콘이 있으면 그것이 우선한다(대표님 지시 2026-10-04)", async ({ page, request }) => {
-  // 같은 S 심볼의 외곽은 투명하고, 불투명한 내부는 마스터 틸·파트너스 오렌지다
-  const symbolPixels = async (url: string) => {
-    const res = await request.get(url);
-    expect(res.status()).toBe(200);
-    expect(res.headers()["content-type"]).toBe("image/png");
-    const { data, info } = await sharp(Buffer.from(await res.body())).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-    expect([info.width, info.height, info.channels]).toEqual([32, 32, 4]);
-    const pixel = (x: number, y: number) => {
-      const at = (y * info.width + x) * info.channels;
-      return Array.from(data.subarray(at, at + 4));
-    };
-    expect(pixel(3, 6)).toEqual([0, 0, 0, 0]);
-    return [pixel(16, 9), pixel(16, 23)];
-  };
-  const adminHead = await head(page, "/admin/login");
-  expect(adminHead.icons).toEqual(["/branding/streamshop-master-32-20261010.png"]);
-  const sellerHead = await head(page, "/seller/login");
-  expect(sellerHead.icons).toEqual(["/branding/streamshop-partners-32-20261010.png"]);
-  for (const [red, green, blue, alpha] of await symbolPixels(adminHead.icons[0]!)) {
-    expect(alpha).toBeGreaterThan(200);
-    expect(red).toBeLessThan(40);
-    expect(green).toBeGreaterThan(90);
-    expect(blue).toBeGreaterThan(90);
-    expect(Math.abs(green - blue)).toBeLessThanOrEqual(20);
-  }
-  for (const [red, green, blue, alpha] of await symbolPixels(sellerHead.icons[0]!)) {
-    expect(alpha).toBeGreaterThan(200);
-    expect(red).toBeGreaterThan(200);
-    expect(green).toBeGreaterThan(50);
-    expect(green).toBeLessThan(120);
-    expect(blue).toBeLessThan(40);
-  }
-  expect((await request.get("/branding/streamshop-master-180-20261010.png")).status()).toBe(200);
+  const db = new PrismaClient({ datasources: { db: { url: assertTestDatabaseUrl(process.env.DATABASE_URL) } } });
+  const targets = ["admin", "seller"];
+  try {
+    const originals = await db.siteBranding.findMany({ where: { target: { in: targets } } });
+    try {
+      await db.siteBranding.deleteMany({ where: { target: { in: targets } } });
+      // 같은 S 심볼의 외곽은 투명하고, 불투명한 내부는 마스터 틸·파트너스 오렌지다
+      const symbolPixels = async (url: string) => {
+        const res = await request.get(url);
+        expect(res.status()).toBe(200);
+        expect(res.headers()["content-type"]).toBe("image/png");
+        const { data, info } = await sharp(Buffer.from(await res.body())).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+        expect([info.width, info.height, info.channels]).toEqual([32, 32, 4]);
+        const pixel = (x: number, y: number) => {
+          const at = (y * info.width + x) * info.channels;
+          return Array.from(data.subarray(at, at + 4));
+        };
+        expect(pixel(3, 6)).toEqual([0, 0, 0, 0]);
+        return [pixel(16, 9), pixel(16, 23)];
+      };
+      const adminHead = await head(page, "/admin/login");
+      await expect(page).toHaveTitle("StreamShop 마스터 관리자");
+      expect(adminHead.icons).toEqual(["/branding/streamshop-master-32-20261010.png"]);
+      const sellerHead = await head(page, "/seller/login");
+      await expect(page).toHaveTitle("StreamShop 파트너스 관리자");
+      expect(sellerHead.icons).toEqual(["/branding/streamshop-partners-32-20261010.png"]);
+      for (const [red, green, blue, alpha] of await symbolPixels(adminHead.icons[0]!)) {
+        expect(alpha).toBeGreaterThan(200);
+        expect(red).toBeLessThan(40);
+        expect(green).toBeGreaterThan(90);
+        expect(blue).toBeGreaterThan(90);
+        expect(Math.abs(green - blue)).toBeLessThanOrEqual(20);
+      }
+      for (const [red, green, blue, alpha] of await symbolPixels(sellerHead.icons[0]!)) {
+        expect(alpha).toBeGreaterThan(200);
+        expect(red).toBeGreaterThan(200);
+        expect(green).toBeGreaterThan(50);
+        expect(green).toBeLessThan(120);
+        expect(blue).toBeLessThan(40);
+      }
+      expect((await request.get("/branding/streamshop-master-180-20261010.png")).status()).toBe(200);
 
-  // 설정 화면의 마스터 관리자 탭 「기본 아이콘」도 틸 아이콘을 보인다
-  await login(page, superEmail);
-  await expect(page.getByAltText("기본 아이콘")).toHaveAttribute("src", "/branding/streamshop-master-32-20261010.png");
-  for (const width of [1440, 390]) {
-    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
-    if (width === 390) await expect.poll(async () => (await page.locator("aside.lnb").boundingBox())?.x ?? 0).toBeLessThan(-200);
-    await page.screenshot({ path: `tests/e2e/screenshots/branding-master-favicon-${width}.png`, fullPage: true });
-  }
-  await page.setViewportSize({ width: 1440, height: 900 });
+      // 설정 화면의 마스터 관리자 탭 「기본 아이콘」도 틸 아이콘을 보인다
+      await login(page, superEmail);
+      await expect(page.getByAltText("기본 아이콘")).toHaveAttribute("src", "/branding/streamshop-master-32-20261010.png");
+      for (const width of [1440, 390]) {
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+        if (width === 390) await expect.poll(async () => (await page.locator("aside.lnb").boundingBox())?.x ?? 0).toBeLessThan(-200);
+        await page.screenshot({ path: `tests/e2e/screenshots/branding-master-favicon-${width}.png`, fullPage: true });
+      }
+      await page.setViewportSize({ width: 1440, height: 900 });
 
-  // 올린 파비콘이 있으면 그것이 우선, 되돌리면 다시 틸 기본 아이콘
-  const icon = await sharp({ create: { width: 64, height: 64, channels: 4, background: "#ffaa00" } }).png().toBuffer();
-  await page.getByLabel("파비콘 파일").setInputFiles({ name: "master.png", mimeType: "image/png", buffer: icon });
-  await page.getByRole("button", { name: "파비콘 변경" }).click();
-  await expect(page.getByText("파비콘을 변경했습니다.")).toBeVisible();
-  const uploaded = await head(page, "/admin/login");
-  expect(uploaded.icons).toEqual([expect.stringMatching(/^\/api\/branding\/admin\/favicon\?v=[0-9a-f]{12}$/)]);
-  await page.goto("/admin/settings/branding");
-  await page.getByRole("button", { name: "기본값으로 되돌리기" }).click();
-  // 확인 창에서 취소하면 올린 파비콘이 그대로 남는다
-  const confirm = page.getByRole("dialog", { name: "기본 아이콘으로 되돌리시겠습니까?" });
-  await confirm.getByRole("button", { name: "취소" }).click();
-  await expect(confirm).toHaveCount(0);
-  expect((await head(page, "/admin/login")).icons).toEqual([expect.stringMatching(/^\/api\/branding\/admin\/favicon\?v=[0-9a-f]{12}$/)]);
-  await page.goto("/admin/settings/branding");
-  await page.getByRole("button", { name: "기본값으로 되돌리기" }).click();
-  await page.getByRole("dialog", { name: "기본 아이콘으로 되돌리시겠습니까?" }).getByRole("button", { name: "되돌리기" }).click();
-  await expect(page.getByText("기본 파비콘으로 되돌렸습니다.")).toBeVisible();
-  expect((await head(page, "/admin/login")).icons).toEqual(["/branding/streamshop-master-32-20261010.png"]);
+      // 올린 파비콘이 있으면 그것이 우선, 되돌리면 다시 틸 기본 아이콘
+      const icon = await sharp({ create: { width: 64, height: 64, channels: 4, background: "#ffaa00" } }).png().toBuffer();
+      await page.getByLabel("파비콘 파일").setInputFiles({ name: "master.png", mimeType: "image/png", buffer: icon });
+      await page.getByRole("button", { name: "파비콘 저장", exact: true }).click();
+      await expect(page.getByText("파비콘을 저장했습니다.")).toBeVisible();
+      const uploaded = await head(page, "/admin/login");
+      expect(uploaded.icons).toEqual([expect.stringMatching(/^\/api\/branding\/admin\/favicon\?v=[0-9a-f]{12}$/)]);
+      await page.goto("/admin/settings/branding");
+      await page.getByRole("button", { name: "기본값으로 되돌리기" }).click();
+      // 확인 창에서 취소하면 올린 파비콘이 그대로 남는다
+      const confirm = page.getByRole("dialog", { name: "기본 아이콘으로 되돌리시겠습니까?" });
+      await confirm.getByRole("button", { name: "취소" }).click();
+      await expect(confirm).toHaveCount(0);
+      expect((await head(page, "/admin/login")).icons).toEqual([expect.stringMatching(/^\/api\/branding\/admin\/favicon\?v=[0-9a-f]{12}$/)]);
+      await page.goto("/admin/settings/branding");
+      await page.getByRole("button", { name: "기본값으로 되돌리기" }).click();
+      await page.getByRole("dialog", { name: "기본 아이콘으로 되돌리시겠습니까?" }).getByRole("button", { name: "되돌리기" }).click();
+      await expect(page.getByText("기본 파비콘으로 되돌렸습니다.")).toBeVisible();
+      expect((await head(page, "/admin/login")).icons).toEqual(["/branding/streamshop-master-32-20261010.png"]);
+    } finally {
+      await db.$transaction(async (tx) => {
+        await tx.siteBranding.deleteMany({ where: { target: { in: targets } } });
+        if (originals.length) await tx.siteBranding.createMany({ data: originals });
+      });
+    }
+  } finally {
+    await db.$disconnect();
+  }
 });
