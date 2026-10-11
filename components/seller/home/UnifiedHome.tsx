@@ -345,7 +345,7 @@ export function UnifiedHome() {
           }
         />
 
-        <p className="seller-home-mobile-notice t-c1 c-alt" data-testid="seller-home-mobile-notice">모바일에서는 홈 화면을 제공합니다 상세 관리 업무는 PC에서 이용해 주세요</p>
+        <p className="seller-home-mobile-notice t-c1 c-alt" data-testid="seller-home-mobile-notice">모바일에서는 홈 화면을 제공합니다 상세 관리 업무는 PC에서 이용해 주십시오</p>
         {me.features.includes("STORE_OPERATIONS") ? <StoreHomeSections refresh={homeRefresh} /> : me.features.includes("OVERLAY") ? <OverlayHomeSections refresh={homeRefresh} /> : null}
         {!allowed ? (
           null

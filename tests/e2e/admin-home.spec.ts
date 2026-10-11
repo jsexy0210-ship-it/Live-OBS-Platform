@@ -111,7 +111,7 @@ for (const [role, who] of [["CS", email], ["SUPER_ADMIN", suEmail]] as const) {
     await expect(notice).toBeHidden();
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(notice).toBeVisible();
-    await expect(notice).toHaveText("모바일에서는 홈 화면을 제공합니다 상세 관리 업무는 PC에서 이용해 주세요");
+    await expect(notice).toHaveText("모바일에서는 홈 화면을 제공합니다 상세 관리 업무는 PC에서 이용해 주십시오");
     await expect(page.locator(".ma-home-revenue .stat .v")).toHaveCount(5);
     await expect(page.locator('.ma-home [aria-busy="true"]')).toHaveCount(0);
     await captureHome(page, `admin-home-mobile-${role}-390`, role);
