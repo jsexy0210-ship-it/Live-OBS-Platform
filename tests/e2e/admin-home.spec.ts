@@ -65,6 +65,13 @@ async function openStatus(page: Page) {
 }
 
 async function captureHome(page: Page, name: string, role: "CS" | "SUPER_ADMIN") {
+  const drawerOpen = await page.locator(".cs").evaluate((el) => el.classList.contains("nav-open"));
+  if (page.viewportSize()?.width === 390) await expect.poll(() => page.locator(".lnb").evaluate((el, open) => {
+    const r = el.getBoundingClientRect();
+    const width = parseFloat(getComputedStyle(el).width);
+    const moving = el.getAnimations().some((a) => a instanceof CSSTransition && a.playState === "running");
+    return !moving && (open ? r.left === 0 && r.right === width : r.right <= 0);
+  }, drawerOpen)).toBe(true);
   const metrics = await page.locator("main.ma-home").evaluate((main) => {
     const rows = (selector: string) => Array.from(main.querySelectorAll(selector)).map((el) => {
       const range = document.createRange(); range.selectNodeContents(el);
@@ -72,13 +79,16 @@ async function captureHome(page: Page, name: string, role: "CS" | "SUPER_ADMIN")
     });
     const top = main.querySelector('[data-testid="stats-top"] table');
     const bounds = main.getBoundingClientRect();
-    return { viewport: { width: innerWidth, height: innerHeight }, documentHeight: document.documentElement.scrollHeight, mainHeight: main.scrollHeight, firstPanel: main.querySelector("section")?.getAttribute("data-testid"), amounts: rows(".sts-kpis .stat .v"), top: top ? { columns: top.querySelectorAll("thead th").length, width: top.getBoundingClientRect().width, scrollWidth: top.scrollWidth, availableWidth: top.parentElement?.clientWidth } : null, mainTop: bounds.top };
+    const sidebar = document.querySelector(".lnb");
+    const sidebarBounds = sidebar?.getBoundingClientRect();
+    return { viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio, scale: visualViewport?.scale ?? null }, sidebar: sidebar && sidebarBounds ? { left: sidebarBounds.left, right: sidebarBounds.right, width: parseFloat(getComputedStyle(sidebar).width), transitions: sidebar.getAnimations().filter((a) => a instanceof CSSTransition && a.playState === "running").length } : null, documentHeight: document.documentElement.scrollHeight, mainHeight: main.scrollHeight, firstPanel: main.querySelector("section")?.getAttribute("data-testid"), amounts: rows(".sts-kpis .stat .v"), top: top ? { columns: top.querySelectorAll("thead th").length, width: top.getBoundingClientRect().width, scrollWidth: top.scrollWidth, availableWidth: top.parentElement?.clientWidth } : null, mainTop: bounds.top };
   });
   const sourceSha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
   const evidence = `tests/e2e/screenshots/current-shell-${sourceSha}`;
   mkdirSync(evidence, { recursive: true });
   await page.screenshot({ path: `tests/e2e/screenshots/${name}.png`, fullPage: true });
-  writeFileSync(`${evidence}/${name}.json`, JSON.stringify({ sourceSha, route: new URL(page.url()).pathname, role, ...metrics }, null, 2));
+  if (drawerOpen) await page.screenshot({ path: `tests/e2e/screenshots/${name}-viewport.png`, fullPage: false });
+  writeFileSync(`${evidence}/${name}.json`, JSON.stringify({ sourceSha, route: new URL(page.url()).pathname, role, state: drawerOpen ? "drawer-open" : "content", ...metrics }, null, 2));
   if (metrics.viewport.width >= 1024) {
     for (const amount of metrics.amounts) { expect(amount.whiteSpace).toBe("nowrap"); expect(amount.lines).toBe(1); expect(amount.scrollWidth).toBeLessThanOrEqual(amount.clientWidth); }
     if (metrics.top) { expect(metrics.top.columns).toBe(8); expect(metrics.top.availableWidth).toBeDefined(); expect(metrics.top.scrollWidth).toBeLessThanOrEqual(metrics.top.availableWidth!); }
@@ -129,7 +139,7 @@ for (const [role, who] of [["CS", email], ["SUPER_ADMIN", suEmail]] as const) {
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
     await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
     await expect(page.locator(".cs")).toHaveClass(/nav-open/);
-    if (role === "CS") await page.screenshot({ path: "tests/e2e/screenshots/admin-home-mobile-CS-drawer-390.png", fullPage: true });
+    if (role === "CS") await captureHome(page, "admin-home-mobile-CS-drawer-390", role);
     const link = page.locator(".lnb-sec.on").getByRole("link", { name: "상세 현황", exact: true });
     await expect(link).toHaveAttribute("href", "/admin/home/status");
     await link.click();

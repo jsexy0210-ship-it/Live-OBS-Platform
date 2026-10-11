@@ -20,15 +20,24 @@ async function open(page: Page, email: string) {
 type Tasks = { total: number; items: { key: string; count: number; href: string }[] };
 
 async function captureMobileHome(page: Page, name: string, role: "STORE_OWNER" | "STAFF") {
+  const drawerOpen = await page.locator(".cs").evaluate((el) => el.classList.contains("nav-open"));
+  if (page.viewportSize()?.width === 390) await expect.poll(() => page.locator(".lnb").evaluate((el, open) => {
+    const r = el.getBoundingClientRect();
+    const width = parseFloat(getComputedStyle(el).width);
+    const moving = el.getAnimations().some((a) => a instanceof CSSTransition && a.playState === "running");
+    return !moving && (open ? r.left === 0 && r.right === width : r.right <= 0);
+  }, drawerOpen)).toBe(true);
+  const sidebar = await page.locator(".lnb").evaluate((el) => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, width: parseFloat(getComputedStyle(el).width), transitions: el.getAnimations().filter((a) => a instanceof CSSTransition && a.playState === "running").length }; });
   const metrics = await page.locator("main.main").evaluate((main) => ({
-    viewport: { width: innerWidth, height: innerHeight }, height: document.documentElement.scrollHeight, drawerOpen: !!document.querySelector(".cs.nav-open"),
+    viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio, scale: visualViewport?.scale ?? null }, height: document.documentElement.scrollHeight, drawerOpen: !!document.querySelector(".cs.nav-open"),
     amounts: Array.from(main.querySelectorAll(".stat .v")).map((el) => { const range = document.createRange(); range.selectNodeContents(el); return { text: el.textContent?.trim(), label: el.closest(".stat")?.querySelector(".t-l2")?.textContent?.trim(), lines: range.getClientRects().length, client: el.clientWidth, scroll: el.scrollWidth }; }),
   }));
   const sourceSha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
   const evidence = `tests/e2e/screenshots/current-shell-${sourceSha}`;
   mkdirSync(evidence, { recursive: true });
   await page.screenshot({ path: `tests/e2e/screenshots/${name}.png`, fullPage: true });
-  writeFileSync(`${evidence}/${name}.json`, JSON.stringify({ sourceSha, route: new URL(page.url()).pathname, role, ...metrics }, null, 2));
+  if (drawerOpen) await page.screenshot({ path: `tests/e2e/screenshots/${name}-viewport.png`, fullPage: false });
+  writeFileSync(`${evidence}/${name}.json`, JSON.stringify({ sourceSha, route: new URL(page.url()).pathname, role, state: drawerOpen ? "drawer-open" : "content", sidebar, ...metrics }, null, 2));
   return metrics;
 }
 
@@ -51,6 +60,10 @@ test("대표자: 오늘 처리할 일 → 오늘 성과 → 방송 순서로 보
   await expect(page.getByTestId("home-performance")).toBeVisible();
   await expect(page.getByTestId("home-performance").locator(".stat")).toHaveCount(4);
   await expect(page.getByTestId("seller-home-mobile-notice")).toBeHidden();
+  for (const width of [1440, 1024]) {
+    await page.setViewportSize({ width, height: 900 });
+    await captureMobileHome(page, `seller-home-store-owner-${width}`, "STORE_OWNER");
+  }
 });
 
 test("처리할 일을 누르면 그 처리 화면으로 간다", async ({ page }) => {
