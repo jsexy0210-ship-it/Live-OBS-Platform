@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
-import { PageHead } from "../../../../../../components/admin-ui";
+import { PageHead, Pagination } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
@@ -22,6 +22,7 @@ export default function PlansPage() {
   const canEdit = adminCan(me.role, "billing.price");
   const canTrial = adminCan(me.role, "billing.manage");
   const [state, setState] = useState<Load>({ kind: "loading" });
+  const [page, setPage] = useState(1);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -33,6 +34,10 @@ export default function PlansPage() {
     setState(r.ok ? { kind: "ok", plans: r.data.plans } : { kind: "error" });
   }, []);
   useEffect(() => void load(), [load]);
+  const plans = state.kind === "ok" ? state.plans : [];
+  const pageCount = Math.ceil(plans.length / 10);
+  const currentPage = Math.min(page, pageCount || 1);
+  useEffect(() => { if (state.kind === "ok") setPage(p => Math.min(p, Math.max(1, Math.ceil(state.plans.length / 10)))); }, [state]);
 
   return (
     <>
@@ -49,7 +54,7 @@ export default function PlansPage() {
               </div>
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))", gap: 12 }}>
-                {state.plans.map((p) => (
+                {plans.slice((currentPage - 1) * 10, currentPage * 10).map((p) => (
                   <article key={p.code} className="card pad col" data-testid="plan-row" style={{ gap: 12, minWidth: 0 }}>
                     <div>
                       <h2 className="t-l1 fw6" style={{ margin: 0 }}>{p.name}</h2>
@@ -105,6 +110,8 @@ export default function PlansPage() {
               </div>
             ))}
         </div>
+        {state.kind === "ok" && <span className="t-c1 c-alt">전체 요금제 {plans.length}개</span>}
+        {pageCount > 1 && <Pagination page={currentPage} pageCount={pageCount} onChange={setPage} />}
         <p className="t-c1 c-alt">무료 수량은 한 달 단위(한국 시간)이며 남아도 다음 달로 넘어가지 않습니다. 무료 수량을 넘는 메일은 파트너스의 충전 잔액에서 빠집니다.</p>
       </main>
       {dialog?.kind === "price" && (
