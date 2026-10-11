@@ -54,8 +54,9 @@ async function captureMobileHome(page: Page, name: string, role: "STORE_OWNER" |
     mkdirSync(evidence, { recursive: true });
     await page.screenshot({ path: `tests/e2e/screenshots/${name}.png`, fullPage: true });
     if (drawerOpen) await page.screenshot({ path: `tests/e2e/screenshots/${name}-viewport.png`, fullPage: false });
-    writeFileSync(`${evidence}/${name}.json`, JSON.stringify({ sourceSha, route: new URL(page.url()).pathname, role, state: geometryFailure ? "not-ready" : drawerOpen ? "drawer-open" : "content", sidebar, ...metrics }, null, 2));
+    writeFileSync(`${evidence}/${name}.json`, JSON.stringify({ sourceSha, route: new URL(page.url()).pathname, role, state: geometryFailure || !metrics.main ? "not-ready" : drawerOpen ? "drawer-open" : "content", sidebar, ...metrics }, null, 2));
     if (geometryFailure) throw geometryFailure.error;
+    expect(metrics.main).not.toBeNull();
     return metrics;
   } catch (error) { throw geometryFailure ? geometryFailure.error : error; }
 }
@@ -202,7 +203,7 @@ test("주문 권한 음성: 기존 주문·배송 권한 없는 직원은 조회
   await expect(page.getByRole("link", { name: "주문", exact: true })).toHaveCount(0);
   await page.goto("/seller/orders");
   await expect(page.getByText("이 계정은 이 일을 할 수 없습니다", { exact: true })).toBeVisible();
-  await expect(page.getByText("필요한 권한: 주문·배송", { exact: true })).toBeVisible();
+  await expect(page.getByText("대표자에게 허용해 달라고 요청해 주십시오 · 필요한 권한: 주문·배송", { exact: true })).toBeVisible();
   await expect(page.getByTestId("order-row")).toHaveCount(0);
 });
 
