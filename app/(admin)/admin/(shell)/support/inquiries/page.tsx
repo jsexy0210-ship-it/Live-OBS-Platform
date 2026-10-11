@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { CursorPagination } from "../../../../../../components/Pagination";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { ListHead, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
@@ -13,7 +14,7 @@ import { useListFilters } from "../../../_components/useListFilters";
 
 // MA-051 파트너스 문의 목록(GET /api/admin/platform-inquiries, 모든 마스터 역할 조회). 정본: design/project/MA-051.dc.html(FINAL v329).
 // 검색 패널(상태·분류·담당·긴급) → 목록. 상태 옆 숫자는 서버의 상태별 전체 수. 조건은 「검색」을 눌러 적용하고 주소에 남는다.
-// 답변·종료는 상세(MA-052)에서 한다(최고관리자·CS). 마지막 글 최신 순 50건씩 이어서 불러오고, 파트너스 지정(?sellerId=)을 받는다.
+// 답변·종료는 상세(MA-052)에서 한다(최고관리자·CS). 마지막 글 최신 순 10건씩 현재 페이지를 불러오고, 파트너스 지정(?sellerId=)을 받는다.
 type Summary = { waiting: number; urgent: number; overdue: number; mine: number; todayReceived: number; answeredToday: number; avgFirstReplyHours: number | null };
 type Page = { items: InquiryRow[]; counts: InquiryCounts; summary: Summary; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; items: InquiryRow[]; counts: InquiryCounts; summary: Summary; next: string | null };
@@ -43,6 +44,9 @@ function Inquiries() {
   const urgent = ["first", "only"].includes(applied.urgent) ? applied.urgent : "";
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [more, setMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const paging = useRef(false);
   const [toast, setToast] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const reqId = useRef(0);
@@ -61,6 +65,9 @@ function Inquiries() {
   );
   const load = useCallback(async () => {
     const id = ++reqId.current;
+    paging.current = false;
+    setPage(1);
+    setCursors([undefined]);
     setMore(false);
     setState({ kind: "loading" });
     const r = await adminApi<Page>(`/api/admin/platform-inquiries?${qs()}`);
@@ -71,15 +78,22 @@ function Inquiries() {
   useEffect(() => void load(), [load]);
   useScrollRestore("admin-inquiries", state.kind === "ok");
 
-  const loadMore = async () => {
-    if (state.kind !== "ok" || !state.next) return;
+  const changePage = async (target: number) => {
+    if (state.kind !== "ok" || paging.current || target === page || target < 1 || target > cursors.length + 1) return;
+    const cursor = target <= cursors.length ? cursors[target - 1] : state.next;
+    if (target > 1 && !cursor) return;
+    paging.current = true;
     setMore(true);
-    const id = reqId.current;
-    const r = await adminApi<Page>(`/api/admin/platform-inquiries?${qs(state.next)}`);
+    const id = ++reqId.current;
+    const r = await adminApi<Page>(`/api/admin/platform-inquiries?${qs(cursor ?? undefined)}`);
     if (id !== reqId.current) return;
+    paging.current = false;
     setMore(false);
-    if (r.ok) setState({ ...state, items: [...state.items, ...r.data.items], next: r.data.nextCursor });
-    else setToast("더 불러오지 못했습니다. 다시 눌러 주십시오.");
+    if (r.ok) {
+      setState({ kind: "ok", items: r.data.items, counts: r.data.counts, summary: r.data.summary, next: r.data.nextCursor });
+      setPage(target);
+      if (target > cursors.length) setCursors([...cursors, cursor ?? undefined]);
+    } else setToast("더 불러오지 못했습니다. 다시 눌러 주십시오.");
   };
 
   const counts = state.kind === "ok" ? state.counts : null;
@@ -157,7 +171,7 @@ function Inquiries() {
                 </div>
               ) : (
                 <>
-                  <ListHead total={items.length} loaded={state.next !== null} />
+                  <ListHead total={items.length} loaded />
                   <div style={{ overflowX: "auto" }}>
                     <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                       <thead>
@@ -198,11 +212,9 @@ function Inquiries() {
                       </tbody>
                     </table>
                   </div>
-                  {state.next && (
-                    <div className="row" style={{ justifyContent: "center", padding: "12px 16px" }}>
-                      <button className="btn btn-sm btn-out" type="button" onClick={() => void loadMore()} disabled={more}>
-                        {more ? "불러오는 중" : "더 보기"}
-                      </button>
+                  {(state.next || page > 1) && (
+                    <div className="row" style={{ justifyContent: "center", padding: "12px 16px" }} aria-busy={more}>
+                      <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={(n) => void changePage(n)} onNext={() => void changePage(page + 1)} />
                     </div>
                   )}
                 </>

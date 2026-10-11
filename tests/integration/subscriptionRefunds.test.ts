@@ -214,7 +214,7 @@ describe("승인·반려", () => {
 });
 
 describe("목록", () => {
-  it("요청 최신 순 50건씩 커서, 상태로 거르고 상태별 수를 준다. 쇼핑몰 이름·주소와 청구 기간이 함께 온다", async () => {
+  it("요청 최신 순 10건씩 커서, 상태로 거르고 상태별 수를 준다. 쇼핑몰 이름·주소와 청구 기간이 함께 온다", async () => {
     const su = await adminCookie("SUPER_ADMIN");
     const ids: string[] = [];
     for (let i = 0; i < 52; i++) {
@@ -226,11 +226,23 @@ describe("목록", () => {
     }
     await db.subscriptionRefund.update({ where: { id: ids[0] }, data: { status: "REJECTED" } });
     const first = await json(await listRoute(req("/api/admin/subscription-refunds", su.cookie)));
-    expect(first.body.items).toHaveLength(50);
+    expect(first.body.items).toHaveLength(10);
     expect(first.body.items[0]).toMatchObject({ id: ids[51], shopName: expect.any(String), slug: expect.any(String), payment: { amount: 199_000, kind: "PERIOD" } });
     expect(first.body.counts).toEqual({ REQUESTED: 51, PROCESSING: 0, REFUNDED: 0, FAILED: 0, REJECTED: 1 });
     const second = await json(await listRoute(req(`/api/admin/subscription-refunds?cursor=${encodeURIComponent(first.body.nextCursor)}`, su.cookie)));
-    expect(second.body.items.map((r: { id: string }) => r.id)).toEqual([ids[1], ids[0]]);
+    expect(second.body.items.map((r: { id: string }) => r.id)).toEqual(ids.slice(32, 42).reverse());
+    const sizes = [first.body.items.length, second.body.items.length];
+    const allIds: string[] = [...first.body.items, ...second.body.items].map((r: { id: string }) => r.id);
+    let cursor = second.body.nextCursor;
+    while (cursor) {
+      const next = await json(await listRoute(req(`/api/admin/subscription-refunds?cursor=${encodeURIComponent(cursor)}`, su.cookie)));
+      sizes.push(next.body.items.length);
+      allIds.push(...next.body.items.map((r: { id: string }) => r.id));
+      expect(next.body.nextCursor).not.toBe(cursor);
+      cursor = next.body.nextCursor;
+    }
+    expect(sizes).toEqual([10, 10, 10, 10, 10, 2]);
+    expect(allIds).toEqual([...ids].reverse());
     const rejected = await json(await listRoute(req("/api/admin/subscription-refunds?status=REJECTED", su.cookie)));
     expect(rejected.body.items.map((r: { id: string }) => r.id)).toEqual([ids[0]]);
     expect((await listRoute(req("/api/admin/subscription-refunds?status=NOPE", su.cookie))).status).toBe(400);
