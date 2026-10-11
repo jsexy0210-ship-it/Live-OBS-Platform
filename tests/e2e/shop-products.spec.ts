@@ -39,6 +39,7 @@ test("PC: 머리 카테고리 → 분류 목록(하위 분류 상품 포함)·�
   await side.getByRole("link", { name: "프리미엄" }).click();
   await expect(page.getByRole("heading", { level: 1, name: /^프리미엄 1개$/ })).toBeVisible();
   await expectNames(page, ["문라이트 컬렉션 박스"]);
+  await expect(page.getByRole("navigation", { name: "쪽 이동" })).toHaveCount(0);
   await expect(nav.getByRole("link", { name: "부스터 박스" })).toHaveAttribute("aria-current", "page");
   if (SHOT) await page.screenshot({ path: "tests/e2e/screenshots/SH-002-list-1440.png" });
   // 전체 상품

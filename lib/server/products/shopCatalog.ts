@@ -22,7 +22,7 @@ export type ShopSort = (typeof SHOP_SORTS)[number];
 export const SHOP_PAGE_MAX = 60;
 // 베스트 영역 판매량 기간(MASTER 결정 2026-10-05)
 export const BEST_WINDOW_MS = 30 * 86_400_000;
-const SHOP_PAGE_DEFAULT = 24;
+export const SHOP_PAGE_DEFAULT = 10;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const VISIBLE = ["ON_SALE", "SOLD_OUT"] as const;
 
