@@ -129,7 +129,7 @@ test("SH-028: 기존 두 탭 전체 배열을 보존하며 10개·끝·빈 상�
   const at="2026-10-01T00:00:00Z", end="2099-10-01T00:00:00Z";
   const coupons=(past=false)=>Array.from({length:23},(_,i)=>({couponId:"synthetic-"+past+"-"+i,name:(past?"지난 쿠폰 ":"사용 쿠폰 ")+i,benefit:"AMOUNT",value:1000,maxDiscount:null,minOrderAmount:0,excludeDiscounted:false,allowWithReward:true,productScoped:false,startsAt:at,endsAt:end,validDays:null,issuedAt:at,expiresAt:end,usedAt:past?at:null,state:past?"used":"usable"}));
   let usable=coupons(),past=coupons(true);
-  await page.route("**/api/shop/"+slug+"/coupons",route=>{expect(route.request().method()).toBe("GET");return route.fulfill({json:{usable,past,claimable:[],claimableMore:false,now:at,shopOpen:true}});});
+  await page.route(url=>url.pathname==="/api/shop/"+slug+"/coupons" && JSON.stringify(url.searchParams.getAll("claimable"))===JSON.stringify(["1"]),route=>{expect(route.request().method()).toBe("GET");return route.fulfill({json:{usable,past,claimable:[],claimableMore:false,now:at,shopOpen:true}});});
   try {
     await page.goto("/shop/"+slug+"/coupons");
     const rows=page.locator(".cb-list > .cb-item"), text=rows.locator(".cb-body > .t-b2");
