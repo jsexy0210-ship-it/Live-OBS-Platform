@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { CursorPagination } from "../../../../../components/Pagination";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHead } from "../../../../../components/admin-ui";
 import { ErrorState, LoadingRows } from "../../../../../components/seller/States";
@@ -27,6 +28,9 @@ export default function AdminNotificationsPage() {
   const canAssign = adminCan(me.role, "support.assign");
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const paging = useRef(false);
   const [changing, setChanging] = useState<string | null>(null);
   const [selectedStatus, setSelectedStatus] = useState<Status[]>(["OPEN", "IN_PROGRESS"]);
   const [selectedSeverity, setSelectedSeverity] = useState<Severity[]>(["URGENT", "WARNING", "INFO"]);
@@ -37,21 +41,41 @@ export default function AdminNotificationsPage() {
   const [rules, setRules] = useState<Rule[] | null>(null);
   const [rulesError, setRulesError] = useState(false);
   const reqId = useRef(0);
-  const load = useCallback(async (cursor?: string) => {
-    const id = ++reqId.current;
-    if (cursor) setLoadingMore(true);
-    else setState({ kind: "loading" });
+  const qs = useCallback((cursor?: string) => {
     const query = new URLSearchParams({ status: applied.statuses.join(","), severity: applied.severities.join(",") });
     if (applied.kind) query.set("kind", applied.kind);
     if (applied.seller.trim()) query.set("seller", applied.seller.trim());
     if (cursor) query.set("cursor", cursor);
-    const r = await adminApi<Data>(`/api/admin/alerts?${query}`);
-    if (id !== reqId.current) return;
-    setLoadingMore(false);
-    if (cursor && r.ok) setState((previous) => previous.kind === "ok" ? { kind: "ok", data: { ...r.data, items: [...previous.data.items, ...r.data.items] } } : { kind: "ok", data: r.data });
-    else if (!cursor) setState(r.ok ? { kind: "ok", data: r.data } : { kind: "error" });
-    else setNotice("다음 알림을 불러오지 못했습니다. 다시 시도해 주십시오.");
+    return query.toString();
   }, [applied]);
+  const load = useCallback(async () => {
+    const id = ++reqId.current;
+    paging.current = false;
+    setPage(1);
+    setCursors([undefined]);
+    setLoadingMore(false);
+    setState({ kind: "loading" });
+    const r = await adminApi<Data>(`/api/admin/alerts?${qs()}`);
+    if (id !== reqId.current) return;
+    setState(r.ok ? { kind: "ok", data: r.data } : { kind: "error" });
+  }, [qs]);
+  const changePage = async (target: number) => {
+    if (state.kind !== "ok" || paging.current || target === page || target < 1 || target > cursors.length + 1) return;
+    const cursor = target <= cursors.length ? cursors[target - 1] : state.data.nextCursor;
+    if (target > 1 && !cursor) return;
+    paging.current = true;
+    setLoadingMore(true);
+    const id = ++reqId.current;
+    const r = await adminApi<Data>(`/api/admin/alerts?${qs(cursor ?? undefined)}`);
+    if (id !== reqId.current) return;
+    paging.current = false;
+    setLoadingMore(false);
+    if (r.ok) {
+      setState({ kind: "ok", data: r.data });
+      setPage(target);
+      if (target > cursors.length) setCursors([...cursors, cursor ?? undefined]);
+    } else setNotice("다음 알림을 불러오지 못했습니다. 다시 시도해 주십시오.");
+  };
   useEffect(() => void load(), [load]);
   useEffect(() => {
     let active = true;
@@ -105,7 +129,7 @@ export default function AdminNotificationsPage() {
         {state.kind === "loading" && <LoadingRows rows={5} />}
         {state.kind === "error" && <ErrorState title="알림을 불러오지 못했습니다." onRetry={() => void load()} />}
         {d && (rows.length === 0 ? <div className="st"><span className="t">검색 조건에 맞는 알림이 없습니다.</span></div> : <div className="notification-table-scroll"><table className="tbl"><thead><tr>{["심각도", "유형", "파트너스", "내용", "발생", "담당", "상태", "관리"].map((label) => <th key={label} scope="col">{label}</th>)}</tr></thead><tbody>{rows.map((a) => <tr key={a.id} data-testid="notification-row"><td>{severities.find((s) => s.value === a.severity)?.label}</td><td>{kindLabel(a.kind)}</td><td>{a.shopName ?? "공통"}</td><td className="notification-content"><strong>{a.title}</strong>{a.body && <small>{a.body}</small>}</td><td className="num">{dayTime(a.occurredAt)}</td><td>{a.assignee?.name ?? "미배정"}</td><td>{statuses.find((s) => s.value === a.status)?.label}</td><td><Link className="btn btn-sm btn-out" href={a.linkPath}>열기</Link>{canAssign && <>{!a.assignee && <button className="btn btn-sm btn-out" type="button" disabled={changing === a.id} onClick={() => void changeStatus(a, "IN_PROGRESS")}>담당</button>}<select className="inp notification-status" aria-label={`${a.title} 상태 변경`} value={a.status} disabled={changing === a.id} onChange={(e) => void changeStatus(a, e.target.value as Status)}>{statuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select></>}</td></tr>)}</tbody></table></div>)}
-        {d?.nextCursor && <div className="pad"><button className="btn btn-out" type="button" disabled={loadingMore} onClick={() => void load(d.nextCursor!)}>{loadingMore ? "불러오는 중" : "더 보기"}</button></div>}
+        {d && (d.nextCursor || page > 1) && <div className="pad" aria-busy={loadingMore}><CursorPagination page={page} visited={cursors.length} hasNext={!!d.nextCursor} onChange={(n) => void changePage(n)} onNext={() => void changePage(page + 1)} /></div>}
       </section>
       <div className="notification-bottom">
         <section className="card pad"><h2 className="t-hl1">알림 규칙 요약</h2>

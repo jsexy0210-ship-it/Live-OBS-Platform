@@ -118,15 +118,25 @@ describe("목록·읽음·상태", () => {
     expect((await db.adminAlert.findUniqueOrThrow({ where: { id } })).resolvedAt).toBeNull();
   });
 
-  it("50건씩 커서로 빠짐·겹침 없이 이어진다", async () => {
+  it("10건씩 커서로 빠짐·겹침 없이 이어진다", async () => {
     const cs = await admin("CS");
     for (let i = 0; i < 53; i++) await createAdminAlert(db, { kind: "BULK", severity: "INFO", title: `알림 ${i}`, linkPath: "/admin", occurredAt: new Date(Date.UTC(2026, 9, 1, 0, i)) });
     const p1 = await list(cs.cookie);
-    expect(p1.body.items).toHaveLength(50);
+    expect(p1.body.items).toHaveLength(10);
     const p2 = await list(cs.cookie, `?cursor=${encodeURIComponent(p1.body.nextCursor)}`);
-    expect(p2.body.items).toHaveLength(3);
-    expect(p2.body.nextCursor).toBeNull();
-    expect(new Set([...p1.body.items, ...p2.body.items].map((x: { id: string }) => x.id)).size).toBe(53);
+    expect(p2.body.items).toHaveLength(10);
+    const sizes = [10, 10];
+    const allIds: string[] = [...p1.body.items, ...p2.body.items].map((x: { id: string }) => x.id);
+    let cursor = p2.body.nextCursor;
+    while (cursor) {
+      const next = await list(cs.cookie, `?cursor=${encodeURIComponent(cursor)}`);
+      sizes.push(next.body.items.length);
+      allIds.push(...next.body.items.map((x: { id: string }) => x.id));
+      expect(next.body.nextCursor).not.toBe(cursor);
+      cursor = next.body.nextCursor;
+    }
+    expect(sizes).toEqual([10, 10, 10, 10, 10, 3]);
+    expect(new Set(allIds).size).toBe(53);
     const filtered = await list(cs.cookie, `?status=OPEN,IN_PROGRESS&severity=INFO,WARNING&cursor=${encodeURIComponent(p1.body.nextCursor)}`);
     expect(filtered.body.items.map((item: { id: string }) => item.id)).toEqual(p2.body.items.map((item: { id: string }) => item.id));
     expect(filtered.body.counts).toEqual({ OPEN: 53, IN_PROGRESS: 0, RESOLVED: 0 });

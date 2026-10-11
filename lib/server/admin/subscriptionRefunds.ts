@@ -20,7 +20,7 @@ import { cleanText } from "../text/clean";
 type Db = PrismaClient | Prisma.TransactionClient;
 export type AuditMeta = { ip?: string | null; userAgent?: string | null };
 
-export const REFUND_PAGE_SIZE = 50;
+export const REFUND_PAGE_SIZE = 10;
 export const REASON_MAX = 200;
 const STATUSES: readonly SubscriptionRefundStatus[] = ["REQUESTED", "PROCESSING", "REFUNDED", "FAILED", "REJECTED"];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -105,7 +105,7 @@ const requireWrite = (admin: AdminSessionContext) => {
   if (!adminCan(admin.admin.role, "billing.manage")) throw forbidden();
 };
 
-// MA-026: 환불 요청 목록. ?status=(없으면 전부)&cursor=. 요청 최신 순 50건.
+// MA-026: 환불 요청 목록. ?status=(없으면 전부)&cursor=. 요청 최신 순 10건.
 export async function listSubscriptionRefunds(db: PrismaClient, admin: AdminSessionContext, q: { status?: string | null; cursor?: string | null }) {
   requireRead(admin);
   // 화면 탭 묶음: pending(처리 대기·처리 중·실패), done(환불 완료), rejected(거절). 개별 상태도 그대로 받는다.
