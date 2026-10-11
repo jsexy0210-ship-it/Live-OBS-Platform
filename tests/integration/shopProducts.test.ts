@@ -46,6 +46,23 @@ const detail = async (slug: string, productId: string, cookie?: string) => {
 };
 
 describe("구매자 상품 목록", () => {
+  it("기본 10개씩 전체·검색·정렬 결과의 total과 hasMore를 보존한다", async () => {
+    const s = await seller();
+    for (let i = 1; i <= 23; i++) await made(s.ctx, { name: `목록 상품 ${i}`, price: i * 1000 });
+    const seen: string[] = [];
+    for (const [page, count] of [[1, 10], [2, 10], [3, 3]]) {
+      const result = await list(s.seller.slug, `q=${encodeURIComponent("목록 상품")}&sort=low&page=${page}`);
+      expect(result.status).toBe(200);
+      expect(result.body).toMatchObject({ total: 23, page, hasMore: page < 3 });
+      expect(result.body.products).toHaveLength(count);
+      expect(result.body.products.map((p: { price: number }) => p.price)).toEqual(Array.from({ length: count }, (_, i) => ((page - 1) * 10 + i + 1) * 1000));
+      seen.push(...result.body.products.map((p: { id: string }) => p.id));
+    }
+    expect(new Set(seen).size).toBe(23);
+    expect((await list(s.seller.slug)).body.products).toHaveLength(10);
+    expect((await list(s.seller.slug, "limit=1")).body).toMatchObject({ total: 23, page: 1, hasMore: true });
+    expect((await list(s.seller.slug, "limit=60")).body.products).toHaveLength(23);
+  });
   it("보이는 상품(판매 중·품절)만, 카테고리(하위 포함)·검색·정렬·쪽 나누기, 다른 쇼핑몰은 섞이지 않는다", async () => {
     const s = await seller();
     const other = await seller();
