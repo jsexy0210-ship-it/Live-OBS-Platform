@@ -16,6 +16,7 @@ const sha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).tri
 const evidence = `tests/e2e/screenshots/current-shell-${sha}`;
 let db: PrismaClient;
 let sellerId: string | undefined;
+let ownerId: string | undefined;
 
 test.beforeAll(async ({}, info) => {
   expect(process.env.CI).toBe("true");
@@ -33,6 +34,7 @@ test.beforeAll(async ({}, info) => {
   const now = new Date();
   sellerId = (await db.seller.create({ data: { slug: `cursor-eight-${run}`, shopName: `커서 조회 ${run}`, status: "ACTIVE", approvedAt: now, trialEndsAt: new Date(now.getTime() + 7 * 86_400_000) } })).id;
   const owner = await db.sellerUser.create({ data: { sellerId, email, passwordHash: await hashPassword(password), name: "목록 조회", isOwner: true } });
+  ownerId = owner.id;
   const grade = await db.memberGrade.create({ data: { sellerId, displayName: "일반", sortOrder: 0, systemKey: "BASIC" } });
   const product = await db.product.create({ data: { sellerId, name: `커서 상품 ${run}`, price: 1000, status: "ON_SALE" } });
   const option = await db.productOption.create({ data: { sellerId, productId: product.id, name: "기본", stock: 100 } });
@@ -52,7 +54,7 @@ test.beforeAll(async ({}, info) => {
     await db.buyerInquiry.create({ data: { sellerId, buyerMemberId: buyer.id, kind: "GENERAL", authorNickname: nickname, title: `커서 문의 ${run}-${i}`, body: "합성 조회 내용", status: i === 22 ? "ANSWERED" : "WAITING", createdAt: at } });
     await db.rewardLedger.create({ data: { sellerId, buyerMemberId: buyer.id, type: "ADJUST", amount: 100 + i, status: "SUCCEEDED", testMode: false, idempotencyKey: `cursor-${run}-${i}`, createdAt: at, processedAt: at } });
     await db.rewardBalance.create({ data: { sellerId, buyerMemberId: buyer.id, balance: 100 + i, updatedAt: at } });
-    await db.memberMessage.create({ data: { sellerId, title: `커서 발송 ${run}-${i}`, kind: "INFO", channel: "MAIL", body: "합성 기록", renderedBody: "합성 기록", targetType: "ALL", status: "RECORDED", estimatedCount: 0, createdAt: at, recordedAt: at } });
+    await db.memberMessage.create({ data: { sellerId, title: `커서 발송 ${run}-${i}`, kind: "INFO", channel: "MAIL", body: "합성 기록", renderedBody: "합성 기록", targetType: "ALL", status: "RECORDED", estimatedCount: 0, recipientCount: 0, createdAt: at, recordedAt: at } });
     await db.auditLog.create({ data: { sellerId, actorType: "SELLER_USER", actorId: owner.id, action: "reward_policy.live_payout", after: { enabled: i % 2 === 0 }, createdAt: at } });
   }
 });
@@ -77,6 +79,7 @@ test.afterAll(async () => {
       await db.memberGrade.deleteMany({ where });
       await db.productOption.deleteMany({ where });
       await db.product.deleteMany({ where });
+      if (ownerId) await db.sellerUser.deleteMany({ where: { id: ownerId, sellerId } });
       await db.seller.deleteMany({ where: { id: sellerId } });
     }
   } finally { await db.$disconnect(); }
