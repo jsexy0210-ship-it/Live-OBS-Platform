@@ -83,9 +83,17 @@ async function capture(page: Page, target: Locator, ids: string[], role: string,
       const r = node.getBoundingClientRect();
       return { text: node.textContent, left: r.left, right: r.right, top: r.top, bottom: r.bottom, scrollWidth: node.scrollWidth, clientWidth: node.clientWidth };
     }));
+    const headerDiagnostics = ids.includes("ADM03") ? {
+      dom: await page.locator('section[aria-labelledby="infra-cap"] thead th').evaluateAll((nodes) => nodes.map((node) => ({
+        text: node.textContent, role: node.getAttribute("role"), scope: node.getAttribute("scope"),
+        ariaLabel: node.getAttribute("aria-label"), ariaHidden: node.getAttribute("aria-hidden"),
+        display: getComputedStyle(node).display, visibility: getComputedStyle(node).visibility,
+      }))),
+      ariaSnapshot: await page.locator('section[aria-labelledby="infra-cap"]').ariaSnapshot().catch(() => "UNAVAILABLE"),
+    } : null;
     const saved = await Promise.allSettled([
       page.screenshot({ path: path.join(shots, `${file}.png`), fullPage: false }),
-      writeFile(path.join(diagnostics, `${file}.json`), JSON.stringify({ actualGitSha: sha, candidateSha, tree, ids, role, state, fixtureSource: "current-job-owned-synthetic", fixture, browserZoom: "UNVERIFIED", failed, metrics, bounds }, null, 2)),
+      writeFile(path.join(diagnostics, `${file}.json`), JSON.stringify({ actualGitSha: sha, candidateSha, tree, ids, role, state, fixtureSource: "current-job-owned-synthetic", fixture, browserZoom: "UNVERIFIED", failed, metrics, bounds, headerDiagnostics }, null, 2)),
     ]);
     const saveFailure = saved.find((result) => result.status === "rejected");
     if (saveFailure?.status === "rejected") throw saveFailure.reason;
@@ -140,7 +148,10 @@ test("ADM03·ADM04: 코어 대비 100 초과 부하, 수집 실패 우선, 미�
     await capture(page, cpu, ["ADM03", "ADM04"], "SUPER_ADMIN", state.name, width, { response, nonfiniteInput: ["Infinity", "NaN"], nonfiniteWire: serializedNonfinite }, async () => {
       await page.goto("/admin/ops/infra");
       await expect(page.getByTestId("infra-status").locator("b")).toHaveText(state.banner);
-      await expect(page.getByRole("columnheader", { name: "CPU 1분 부하(코어 대비)", exact: true })).toHaveCount(1);
+      const header = page.locator('section[aria-labelledby="infra-cap"] thead th').filter({ hasText: /^CPU 1분 부하\(코어 대비\)$/ });
+      await expect(header).toHaveCount(1);
+      await expect(header).toHaveText("CPU 1분 부하(코어 대비)");
+      await expect(header).toBeVisible();
       await expect(row).toHaveCount(1);
       await expect(cpu).toHaveText(state.cpu);
       await expect(row.getByRole("cell").nth(4)).toHaveText(state.rowStatus);
