@@ -6,7 +6,7 @@ import { requestOrigin } from "./siteUrl";
 import type { BrandingTarget } from "./store";
 
 // 관리자 화면 layout의 generateMetadata: 파비콘(<link rel="icon">)·og:title·og:description·og:image·twitter:card.
-// 요청 헤더를 읽으므로 화면은 요청마다 그린다(빌드 때 DB를 읽지 않음). DB를 못 읽으면 기본값(앱 공통 메타)을 그대로 쓴다.
+// 요청 헤더를 읽으므로 화면은 요청마다 그린다(빌드 때 DB를 읽지 않음). DB를 못 읽으면 역할별 기본 제목과 아이콘을 쓴다.
 // 화면마다 정한 title이 있으면 그 값이 우선한다(Next 메타데이터 병합).
 export async function brandingMetadata(target: BrandingTarget): Promise<Metadata> {
   const origin = requestOrigin(await headers());
@@ -17,7 +17,7 @@ export async function brandingMetadata(target: BrandingTarget): Promise<Metadata
     console.error(e);
     if (target !== "landing") {
       const fallback = defaultFavicon(target);
-      return { icons: {
+      return { title: BRANDING_DEFAULTS[target].title, icons: {
         icon: [{ url: fallback.url, type: fallback.type, sizes: "32x32" }],
         shortcut: [{ url: fallback.url, type: fallback.type }],
         apple: [{ url: fallback.appleUrl, sizes: "180x180" }],

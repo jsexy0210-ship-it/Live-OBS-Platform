@@ -38,7 +38,7 @@ async function fillIdentity(page: Page, name: string, phone = "01012345678") {
 }
 
 async function fillAccount(page: Page, id: string, nickname: string) {
-  await page.getByLabel("아이디 (이메일)").fill(`buyer-${id}@example.com`);
+  await page.getByLabel("이메일").fill(`buyer-${id}@example.com`);
   const password = `pw-${id}1-long`;
   await page.getByLabel("비밀번호", { exact: true }).fill(password);
   await page.getByLabel("비밀번호 확인").fill(password);
@@ -76,7 +76,9 @@ test("버튼이 잠긴 이유를 보여 준다: 인증번호 받기·가입하�
   const send = page.getByRole("button", { name: "인증번호 받기" });
   const missing = page.locator("#idv-missing");
   await expect(send).toBeDisabled();
-  await expect(missing).toContainText("이름 · 생년월일 8자리 · 성별 · 통신사 · 휴대폰번호 · 필수 약관 동의");
+  await expect(page.getByRole("button", { name: "남", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "여", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await expect(missing).toContainText("이름 · 생년월일 8자리 · 통신사 · 휴대폰번호 · 필수 약관 동의");
   await page.getByLabel("이름", { exact: true }).fill("김별빛");
   await expect(missing).not.toContainText("이름");
   await fillIdentity(page, "김별빛");
@@ -87,7 +89,7 @@ test("버튼이 잠긴 이유를 보여 준다: 인증번호 받기·가입하�
   const join = page.getByRole("button", { name: "가입하기" });
   await expect(join).toBeDisabled();
   await expect(page.locator("#acc-missing")).toContainText("아이디 · 비밀번호 · 방송 닉네임");
-  await page.getByLabel("아이디 (이메일)").fill("a@example.com");
+  await page.getByLabel("이메일").fill("a@example.com");
   await page.getByLabel("비밀번호", { exact: true }).fill("password-1234");
   await page.getByLabel("방송 닉네임").fill("별빛");
   await expect(page.locator("#acc-missing")).toContainText("비밀번호 확인");
@@ -106,7 +108,7 @@ test("본인확인 → 틀린 인증번호 → 맞는 인증번호 → 가입까
   await page.goto(`/shop/${SLUG}/signup`);
   await expect(page.getByRole("heading", { name: "회원가입" })).toBeVisible();
   // 본인확인 전에는 계정 칸을 쓸 수 없다
-  await expect(page.getByLabel("아이디 (이메일)")).toBeDisabled();
+  await expect(page.getByLabel("이메일")).toBeDisabled();
   await expect(page.getByRole("button", { name: "인증번호 받기" })).toBeDisabled();
   await shot(page, "SH-011");
 
@@ -326,7 +328,7 @@ test("가입 실패는 서버 문구를 해당 칸 아래나 위 안내에 보�
     [fail(400, "weak_password", BUYER_SIGNUP_MESSAGES.weak_password), "password"],
     [fail(409, "already_member", BUYER_SIGNUP_MESSAGES.already_member), "notice"],
   ];
-  const field = { nickname: "방송 닉네임", loginId: "아이디 (이메일)", password: "비밀번호" } as const;
+  const field = { nickname: "방송 닉네임", loginId: "이메일", password: "비밀번호" } as const;
   for (const [reply, where] of cases) {
     await page.unrouteAll();
     await mockApi(page, { signup: reply });
@@ -357,7 +359,7 @@ test("본인확인이 무효가 되면 처음부터 다시 하게 한다", async
   await okConfirm(page, "가입하기");
   await expect(page.getByRole("alert").filter({ hasText: BUYER_SIGNUP_MESSAGES.verification_invalid })).toBeVisible();
   await expect(page.getByRole("button", { name: "인증번호 받기" })).toBeVisible();
-  await expect(page.getByLabel("아이디 (이메일)")).toBeDisabled();
+  await expect(page.getByLabel("이메일")).toBeDisabled();
 });
 
 test("중간에 본인확인 서비스가 막히면(503) 준비 중 상태 화면으로 바꾼다", async ({ page }) => {
@@ -425,7 +427,7 @@ test("가입을 요청하는 동안에는 계정 칸을 고칠 수 없고, 완�
   await page.getByRole("button", { name: "가입하기" }).click();
   await okConfirm(page, "가입하기");
   await expect(page.getByLabel("방송 닉네임")).toBeDisabled();
-  await expect(page.getByLabel("아이디 (이메일)")).toBeDisabled();
+  await expect(page.getByLabel("이메일")).toBeDisabled();
   release();
   await expect(page.getByText("이제 주문할 수 있어요. 방송에서는 보낸닉네임 닉네임으로 보여요.")).toBeVisible();
 });
@@ -677,7 +679,7 @@ test("재전송이 보통의 가입 오류(409 아이디 중복)면 칸 오류�
   await okConfirm(page, "가입하기");
   await expect(page.getByRole("alert").filter({ hasText: BUYER_SIGNUP_MESSAGES.login_id_taken })).toBeVisible();
   await expect(page.getByText("가입이 끝났는지 확인하지 못했어요")).toHaveCount(0);
-  const id = page.getByLabel("아이디 (이메일)");
+  const id = page.getByLabel("이메일");
   await expect(id).toBeEnabled();
   await expect.poll(() => focusedId(page)).toBe("acc-id");
   await id.fill("buyer-xd2@example.com");
@@ -811,6 +813,12 @@ test("390px: 본인확인 완료 줄은 글자와 버튼이 겹치지 않고, �
   // 통신사 첫 항목 글자가 잘리지 않는다
   const carrier = page.getByLabel("통신사");
   await expect(carrier).toHaveValue("");
+  await expect(carrier.locator("option").first()).toHaveText("선택");
+  await expect(carrier.locator("option").first()).toHaveAttribute("value", "");
+  await expect(carrier.locator("option").first()).toBeDisabled();
+  await expect(page.getByRole("button", { name: "남", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await shot(page, "SH-011-identity-default");
+  await page.setViewportSize({ width: 390, height: 844 });
   expect(await carrier.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
   await toVerified(page, "가나다라마바사아자차");
   const text = page.locator(".signup-done-text");
@@ -828,6 +836,9 @@ test("390px: 본인확인 완료 줄은 글자와 버튼이 겹치지 않고, �
   }
   await expect(text.locator(".nw").first()).toHaveText("가나다라마바사아자차 ·");
   await expect(text.locator(".nw")).toHaveCount(2);
+  await page.getByRole("button", { name: "본인 확인 다시 하기", exact: true }).click();
+  await expect(page.getByRole("button", { name: "여", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "남", exact: true })).toHaveAttribute("aria-pressed", "false");
 });
 
 test("다시 받기가 이미 확인됨이면 확인 결과를 다시 불러와 서버가 확인한 이름을 보여 주고, 못 불러오면 가입 단계로 넘어가지 않는다", async ({ page }) => {
@@ -849,7 +860,7 @@ test("다시 받기가 이미 확인됨이면 확인 결과를 다시 불러와 
   // 결과를 못 불러오면 입력값을 확정 결과처럼 보이지 않고, 가입 단계로 넘어가지 않는다
   await expect(page.getByText("본인확인 결과를 불러오지 못했어요. 다시 시도해 주세요")).toBeVisible();
   await expect(page.locator("#v-name")).toHaveCount(0);
-  await expect(page.getByLabel("아이디 (이메일)")).toBeDisabled();
+  await expect(page.getByLabel("이메일")).toBeDisabled();
   await page.getByRole("button", { name: "다시 불러오기" }).click();
   await expect(page.locator("#v-name")).toHaveValue("Kim정규");
   await expect(page.locator("#v-phone")).toHaveValue("010-5555-6666");

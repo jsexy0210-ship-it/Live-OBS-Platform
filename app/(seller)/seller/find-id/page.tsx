@@ -179,7 +179,7 @@ function FindIdPageInner() {
           {step === "find" && (
             <IdentityCheck
               tone="admin"
-              carrierPlaceholder="통신사 선택"
+              carrierPlaceholder="선택"
               key={idvKey}
               label="휴대폰 본인확인"
               base={BASE}

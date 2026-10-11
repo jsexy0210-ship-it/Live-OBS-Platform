@@ -365,17 +365,33 @@ test("가입 신청 단계: 동의 없이 다음을 누르면 막고, 앞 단계
   await expect(page.getByText("앞 단계부터 진행해 주세요")).toBeVisible();
   await toVerifyStep(page);
   await expect(page.getByTestId("signup-step-count")).toHaveText("2 / 5");
+  await expect(page.getByRole("button", { name: "남", exact: true })).toHaveAttribute("aria-pressed", "true");
+  const carrier = page.getByLabel("통신사");
+  await expect(carrier).toHaveValue("");
+  await expect(carrier.locator("option").first()).toHaveText("선택");
+  await expect(carrier.locator("option").first()).toHaveAttribute("value", "");
+  await expect(carrier.locator("option").first()).toBeDisabled();
+  await shot(page, "PF-007-2-identity-default");
   // 2/5: 입력한 칸은 이전 단계로 갔다 와도, 새로고침해도 남는다
   const who = `윤${letters(uniq())}`;
   await fillIdentity(page, who);
+  await page.getByRole("button", { name: "여", exact: true }).click();
   await page.getByRole("button", { name: "이전 단계" }).click();
   await expect(page).toHaveURL(/\/seller\/signup$/);
   await expect(page.getByLabel("모두 동의해요", { exact: true })).toBeChecked();
   await page.getByRole("button", { name: "다음", exact: true }).click();
   await expect(page.locator("#idv-name")).toHaveValue(who);
+  await expect(page.getByRole("button", { name: "여", exact: true })).toHaveAttribute("aria-pressed", "true");
   await page.reload();
   await expect(page.locator("#idv-name")).toHaveValue(who);
   await expect(page).toHaveURL(/\/seller\/signup\/verify$/);
+  await expect(page.getByRole("button", { name: "여", exact: true })).toHaveAttribute("aria-pressed", "true");
+  for (const gender of [null, "invalid"]) {
+    await page.evaluate((gender) => { const key = "onq-partners-signup-identity-v1"; const saved = JSON.parse(sessionStorage.getItem(key) ?? "{}"); sessionStorage.setItem(key, JSON.stringify({ ...saved, gender })); }, gender);
+    await page.reload();
+    await expect(page.getByRole("button", { name: "남", exact: true })).toHaveAttribute("aria-pressed", "false");
+    await expect(page.getByRole("button", { name: "여", exact: true })).toHaveAttribute("aria-pressed", "false");
+  }
   // 본인확인 전에는 다음으로 갈 수 없다
   await expect(page.getByRole("button", { name: "다음", exact: true })).toBeDisabled();
 });

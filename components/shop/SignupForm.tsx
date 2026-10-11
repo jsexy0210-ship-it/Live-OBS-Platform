@@ -94,7 +94,7 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
   // 본인확인
   const [name, setName] = useState("");
   const [birth, setBirth] = useState("");
-  const [gender, setGender] = useState<"M" | "F" | null>(null);
+  const [gender, setGender] = useState<"M" | "F" | null>("M");
   const [foreigner, setForeigner] = useState(false);
   const [carrier, setCarrier] = useState<Carrier | "">("");
   const [phone, setPhone] = useState("");
@@ -555,7 +555,7 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
             <label htmlFor="idv-carrier">통신사</label>
             <select id="idv-carrier" className="inp" value={carrier} disabled={locked} onChange={(e) => setCarrier(e.target.value as Carrier)}>
               <option value="" disabled>
-                통신사를 골라 주세요
+                선택
               </option>
               {CARRIERS.map((c) => (
                 <option key={c.value} value={c.value}>
@@ -715,7 +715,7 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
       <form className="col signup-sec" aria-label="계정 정보" onSubmit={signup} noValidate>
         <fieldset className={`col signup-fs${step !== "verified" ? " is-waiting" : ""}`} disabled={step !== "verified" || busy || unconfirmed !== null}>
           <div className="fld">
-            <label htmlFor="acc-id">아이디 (이메일)</label>
+            <label htmlFor="acc-id">이메일</label>
             <input
               id="acc-id"
               className={`inp${fieldErrors.loginId ? " is-error" : ""}`}
