@@ -547,8 +547,7 @@ function SellerShellContent({ children }: { children: React.ReactNode }) {
           </button>
           <Link className="logo gnb-logo" href="/seller">
             <Image src={headerSymbol} alt="" width={22} height={22} sizes="22px" style={{ flexShrink: 0, borderRadius: 4, background: "#fff" }} />
-            <span style={{ fontWeight: 800, letterSpacing: "-.02em" }}>streamshop</span>
-            <span className="gnb-sub">파트너스</span>
+            <span style={{ fontWeight: 800, letterSpacing: "-.02em" }}>파트너스 관리자</span>
           </Link>
           <nav className="gnb-nav" aria-label="주 메뉴">
             {gnbMenu.map((g) => {

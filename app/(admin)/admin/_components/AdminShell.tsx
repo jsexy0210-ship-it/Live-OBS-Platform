@@ -133,8 +133,7 @@ function AdminShellContent({ children }: { children: React.ReactNode }) {
           </button>
           <Link className="logo gnb-logo" href="/admin">
             <Image src={headerSymbol} alt="" width={22} height={22} sizes="22px" style={{ flexShrink: 0, borderRadius: 4, background: "#fff" }} />
-            <span style={{ fontWeight: 800, letterSpacing: "-.02em" }}>streamshop</span>
-            <span className="gnb-sub">마스터 관리자</span>
+            <span style={{ fontWeight: 800, letterSpacing: "-.02em" }}>마스터 관리자</span>
           </Link>
           <nav className="gnb-nav" aria-label="주 메뉴">
             {menu.map((g) => (
@@ -145,7 +144,7 @@ function AdminShellContent({ children }: { children: React.ReactNode }) {
           </nav>
           <div className="gnb-util">
             <span className="gnb-shop ell" title={me.email}>
-              {me.name} · {ROLE_LABEL[me.role]}
+              {me.name === ROLE_LABEL[me.role] ? me.name : `${me.name} · ${ROLE_LABEL[me.role]}`}
             </span>
             <GlobalSearch scope="admin" />
             <NotificationBell scope="admin" allHref="/admin/notifications" />
