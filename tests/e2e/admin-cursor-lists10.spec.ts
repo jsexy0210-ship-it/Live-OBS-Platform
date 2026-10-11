@@ -64,6 +64,7 @@ test.afterAll(async () => {
     if (subscriptionId) await db.sellerSubscription.deleteMany({ where: { id: subscriptionId } });
     if (ownerId && sellerId) await db.sellerUser.deleteMany({ where: { id: ownerId, sellerId } });
     if (sellerId) await db.seller.deleteMany({ where: { id: sellerId } });
+    if (adminId) await db.adminSession.deleteMany({ where: { adminId } });
     if (adminId) await db.platformAdmin.deleteMany({ where: { id: adminId } });
   } finally { await db.$disconnect(); }
 });
