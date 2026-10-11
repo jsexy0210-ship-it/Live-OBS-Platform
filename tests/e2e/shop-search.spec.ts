@@ -8,12 +8,14 @@ test("검색 화면: 자동완성으로 검색 → 최근·인기 검색어에 �
   await expect(page.getByRole("heading", { name: "최근 검색어" })).toHaveCount(0); // 처음에는 없음
 
   const box = page.getByRole("combobox", { name: "검색어" });
-  await box.fill("박스");
+  const term = "문라이트 컬렉션 박스";
+  await box.fill(term);
   const list = page.getByRole("listbox", { name: "검색어 추천" });
   await expect(list).toBeVisible();
-  const first = list.getByRole("option").first();
-  const term = ((await first.locator("span").innerText()) ?? "").trim();
-  expect(term.length).toBeGreaterThan(0);
+  const first = list.getByRole("option");
+  await expect(first).toHaveCount(1);
+  await expect(first).toBeVisible();
+  await expect(first.locator("span")).toHaveText(term);
   await first.getByRole("button").click();
   await expect(page).toHaveURL(new RegExp(`/search\\?q=${encodeURIComponent(term).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`));
   await expect(page.getByRole("heading", { name: `‘${term}’ 검색 결과` })).toBeVisible();

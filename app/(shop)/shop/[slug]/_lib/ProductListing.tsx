@@ -2,16 +2,16 @@ import Link from "next/link";
 import { Pagination } from "../../../../../components/Pagination";
 import { ProductGrid } from "../../../../../components/shop/ProductCard";
 import { prisma } from "../../../../../lib/server/db";
-import { shopProductList } from "../../../../../lib/server/products/shopCatalog";
+import { SHOP_PAGE_DEFAULT, shopProductList } from "../../../../../lib/server/products/shopCatalog";
 import { defaultSort, sortChoices, type ListSort } from "./catalog";
 import { filterCount, filterParams, priceLabel, type Filters } from "./filters";
 import type { PublicCategory } from "../../../../../lib/server/shop-category/service";
 import { FilterOpenButton } from "../../../../../components/shop/ProductFilter";
 import SortMenu from "../../../../../components/shop/SortMenu";
 
-const PAGE_SIZE = 24;
+const PAGE_SIZE = SHOP_PAGE_DEFAULT;
 
-// SH-002 상품 목록·검색 결과: 제목·상품 수·정렬 → 격자(한 쪽 24개) → 이전·다음. 공개 상품 API와 같은 조회(shopProductList)를 쓴다.
+// SH-002 상품 목록·검색 결과: 제목·상품 수·정렬 → 격자(한 쪽 10개) → 이전·다음. 공개 상품 API와 같은 조회(shopProductList)를 쓴다.
 // 없는 분류·보이지 않는 분류는 notFound를 돌려 주는 쪽(페이지)이 처리하도록 null을 돌려 준다.
 export default async function ProductListing(props: {
   slug: string;
@@ -107,17 +107,17 @@ export default async function ProductListing(props: {
       )}
       {products.length === 0 ? (
         filterCount(f) > 0 ? (
-          <div className="shop-empty">
+          <div className="shop-empty" role="status">
             <p>필터 조건에 맞는 상품이 없어요. 필터를 줄여 보세요</p>
             <Link className="btn btn-sm btn-out" href={href({ filters: cleared })}>
               필터 모두 지우기
             </Link>
           </div>
         ) : (
-          <p className="shop-empty">{props.empty}</p>
+          <p className="shop-empty" role="status">{props.empty}</p>
         )
       ) : <ProductGrid products={products} label={props.title} hrefBase={`/shop/${encodeURIComponent(props.slug)}/products`} />}
-      <Pagination page={page} pageCount={Math.ceil(total / PAGE_SIZE)} href={n => href({ page: n })} label="쪽 이동" />
+      {pages > 1 && <Pagination page={page} pageCount={pages} href={n => href({ page: n })} label="쪽 이동" />}
       {pages > 1 && page === pages && (
         <div className="shop-listend">
           <p className="t-l2 c-alt">상품을 모두 봤어요 · {total.toLocaleString("ko-KR")}개</p>

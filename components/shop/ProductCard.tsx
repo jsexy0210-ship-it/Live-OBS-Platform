@@ -1,6 +1,7 @@
 import Link from "next/link";
+import ProductImage from "./ProductImage";
 // 구매자 쇼핑몰 상품 카드·격자(SH-001 홈·SH-002 목록). 격자는 PC 4열·태블릿 3열·휴대폰 2열(styles/shop.css .pc-grid).
-// 사진(thumbnailUrl)이 없는 상품은 빈 사진 칸으로 둔다.
+// 사진이 없거나 로드에 실패하면 기존 사진 자리의 대체 그림을 유지한다.
 export type ProductCardData = {
   id: string;
   name: string;
@@ -34,7 +35,7 @@ export function ProductCard({ p, href, children }: { p: ProductCardData; href?: 
   return (
     <li className="pc">
       <Wrap href={href} className="pc-photo">
-        {p.thumbnailUrl && <img src={p.thumbnailUrl} alt="" loading="lazy" />}
+        <ProductImage key={p.thumbnailUrl ?? "missing"} src={p.thumbnailUrl} name={p.name} />
         {p.isLive && <span className="pc-live">LIVE</span>}
         {p.soldOut && <span className="pc-out" role="img" aria-label="품절">품절</span>}
       </Wrap>
