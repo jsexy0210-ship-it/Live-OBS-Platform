@@ -125,10 +125,11 @@ for (const vp of [
 test("검색도 10개씩 이동하며 상품명 alt·이미지 실패 fallback·빈 결과 접근성을 유지한다", async ({ page }) => {
   test.setTimeout(60_000);
   const product = await db.product.findFirstOrThrow({ where: { sellerId, name: "채움상품 01" } });
-  const image = await db.productImage.create({ data: { sellerId: product.sellerId, productId: product.id, storageKey: `list-ten-${product.id}`, contentType: "image/png", byteSize: 0, width: 200, height: 200, sha256: "0".repeat(64), thumbnail: true } });
+  const imageBytes = png(200, 200);
+  const image = await db.productImage.create({ data: { sellerId: product.sellerId, productId: product.id, storageKey: `list-ten-${product.id}`, contentType: "image/png", byteSize: imageBytes.length, width: 200, height: 200, sha256: "0".repeat(64), thumbnail: true } });
   const path = `/api/shop/${SLUG}/products/${product.id}/images/${image.id}`;
   try {
-    await page.route(`**${path}*`, route => route.fulfill({ contentType: "image/png", body: png(200, 200) }));
+    await page.route(`**${path}*`, route => route.fulfill({ contentType: "image/png", body: imageBytes }));
     for (const width of [1440, 1024, 390]) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
       await page.goto(`/shop/${SLUG}/search?q=${encodeURIComponent("채움상품")}&sort=low`);
