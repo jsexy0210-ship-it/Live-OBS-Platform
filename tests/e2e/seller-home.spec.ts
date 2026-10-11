@@ -277,7 +277,27 @@ test("주문 목록: 고유 조회 fixture를 10개씩 바꾸고 검색·끝·�
     await expect(nav.getByRole("button", { name: "다음", exact: true })).toBeDisabled();
     await nav.getByRole("button", { name: "이전", exact: true }).click(); await check(second.orders, 2);
     await nav.getByRole("button", { name: "처음", exact: true }).click(); await check(first.orders, 1);
-    for (const width of [1440, 1024]) { await page.setViewportSize({ width, height: 900 }); await captureMobileHome(page, `list10-orders-${width}`, "STORE_OWNER"); }
+    for (const width of [1440, 1024]) {
+      await page.setViewportSize({ width, height: 900 });
+      await captureMobileHome(page, `list10-orders-${width}`, "STORE_OWNER");
+      const evidence = `tests/e2e/screenshots/current-shell-${execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim()}`;
+      const sourceSha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+      const measure = () => page.evaluate((id) => {
+        const rect = (el: Element | null) => { if (!el) return null; const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom }; };
+        return { route: location.pathname + location.search, width: innerWidth, height: innerHeight, dpr: devicePixelRatio, scale: visualViewport?.scale ?? null, scrollY, header: rect(document.querySelector("header.gnb")), firstRow: rect(document.querySelector(`a.ord-link[href="/seller/orders/${id}"]`)?.closest('[data-testid="order-row"]') ?? null) };
+      }, first.orders[0].id);
+      let viewportFailure: { error: unknown } | undefined;
+      try {
+        await page.evaluate(() => { window.scrollTo({ top: 0, behavior: "instant" }); if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); });
+        await expect.poll(async () => { const m = await measure(); return !!m.header && !!m.firstRow && m.scrollY === 0 && m.header.top === 0 && m.header.left >= 0 && m.header.right <= m.width && m.firstRow.top >= m.header.bottom && m.firstRow.bottom <= m.height && m.firstRow.left >= 0 && m.firstRow.right <= m.width; }).toBe(true);
+      } catch (error) { viewportFailure = { error }; }
+      try {
+        const metrics = await measure();
+        await page.screenshot({ path: `${evidence}/list10-orders-${width}-viewport.png`, fullPage: false });
+        writeFileSync(`${evidence}/list10-orders-${width}-viewport.json`, JSON.stringify({ sourceSha, role: "STORE_OWNER", state: "first-row-viewport", firstId: first.orders[0].id, browserZoom: "UNVERIFIED", failed: !!viewportFailure, ...metrics }, null, 2));
+      } catch (error) { throw viewportFailure ? viewportFailure.error : error; }
+      if (viewportFailure) throw viewportFailure.error;
+    }
     await nav.getByRole("button", { name: "다음", exact: true }).click(); await check(second.orders, 2);
     await page.getByRole("button", { name: /^상태: 전체/ }).click();
     await page.getByRole("group", { name: "결제 상태" }).getByLabel("완료", { exact: true }).check();
