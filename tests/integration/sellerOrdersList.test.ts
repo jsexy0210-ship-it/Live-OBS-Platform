@@ -169,12 +169,12 @@ describe("판매자 주문 목록 GET /api/seller/orders", () => {
     expect((await list(s.cookie, "?to=2026/10/02")).status).toBe(400);
   });
 
-  it("limit은 기본 50·최대 200이고, 0·음수·숫자 아님은 400", async () => {
+  it("limit은 기본 10·최대 200이고, 0·음수·숫자 아님은 400", async () => {
     const s = await shop();
     await db.order.createMany({
       data: Array.from({ length: 205 }, (_, i) => ({ sellerId: s.seller.id, orderNo: 1000 + i, buyerMemberId: s.buyer.id, broadcastNicknameSnapshot: "닉", totalAmount: 1000 })),
     });
-    expect((await list(s.cookie)).body.orders).toHaveLength(50);
+    expect((await list(s.cookie)).body.orders).toHaveLength(10);
     const max = await list(s.cookie, "?limit=1000");
     expect(max.body.orders).toHaveLength(200);
     expect(max.body.nextCursor).not.toBeNull();
