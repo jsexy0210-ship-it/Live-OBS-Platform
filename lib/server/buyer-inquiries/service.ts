@@ -24,7 +24,7 @@ export const INQUIRY_BODY_MAX = 2000;
 export const INQUIRY_ANSWER_MAX = 1000;
 export const INQUIRY_IMAGES_MAX = 5;
 export const INQUIRY_PAGE = 20;
-export const SELLER_INQUIRY_PAGE = 30;
+export const SELLER_INQUIRY_PAGE = 10;
 export const INQUIRY_SEARCH_MAX = 50;
 // 같은 구매자가 한 쇼핑몰에 1시간에 쓸 수 있는 문의 수
 export const INQUIRY_RATE_LIMIT = 10;
