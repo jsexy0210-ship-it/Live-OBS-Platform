@@ -961,8 +961,25 @@ body {
 
 .signup {
   align-self: flex-start;
+  width: 480px;
   gap: 24px;
 }
+.signup-progress { display:flex; align-items:center; gap:8px; color:var(--wds-label-alternative); font-size:12px; }
+.signup-progress > b { color:var(--brand); margin-right:4px; }
+.signup-progress span { display:inline-flex; align-items:center; gap:4px; min-width:0; }
+.signup-progress i { display:grid; place-items:center; width:24px; height:24px; flex:none; border-radius:50%; background:#e8eaee; color:#777; font-style:normal; font-weight:700; }
+.signup-progress .on i { background:var(--brand); color:white; }
+.signup-progress em { color:#222; font-style:normal; font-weight:700; white-space:nowrap; }
+.signup-terms-list { display:flex; flex-direction:column; gap:12px; border:1px solid var(--wds-line-solid-neutral); border-radius:12px; padding:16px; }
+.signup-terms-list .chk { display:flex; align-items:center; gap:8px; }
+.signup-terms-list .chk a { margin-left:auto; font-size:12px; color:var(--wds-label-alternative); }
+.signup-stage-actions { display:flex; gap:12px; }
+.signup-stage-actions > .btn { flex:1; min-height:48px; }
+.signup-login { text-align:center; }
+.signup-finish { display:flex; flex-direction:column; align-items:center; text-align:center; gap:12px; padding:64px 0 24px; }
+.signup-finish > span { display:grid; place-items:center; width:56px; height:56px; border:1px solid var(--wds-line-solid-neutral); border-radius:50%; font-size:28px; }
+.signup-finish h2 { margin:0; font-size:24px; }
+.signup-finish p { margin:0; }
 .signup-sec {
   gap: 14px;
 }
@@ -1004,6 +1021,10 @@ body {
   padding: 12px 14px;
   border-radius: 12px;
   background: var(--wds-background-status-positive);
+}
+.signup-done.is-account {
+  border: 1px solid var(--wds-line-solid-neutral);
+  background: #fff;
 }
 /* 글자가 220px보다 좁아지면 「다시 확인」 버튼은 아래 줄 오른쪽으로 내려간다 */
 .signup-done-text {

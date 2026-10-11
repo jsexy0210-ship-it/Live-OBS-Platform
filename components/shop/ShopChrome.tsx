@@ -40,6 +40,7 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname, categor
   const path = usePathname() ?? "";
   const productPrefix = `${base}/products/`;
   const productDetail = path.startsWith(productPrefix) && !!path.slice(productPrefix.length) && !path.slice(productPrefix.length).includes("/");
+  const signupFlow = path === `${base}/signup` || path.startsWith(`${base}/signup/`);
   const router = useRouter();
   const [drawer, setDrawer] = useState(false);
   const entryRef = useRef(false); // 서랍을 열 때 기록 한 칸을 쌓았는지(UX-11: Back으로 서랍부터 닫는다)
@@ -139,11 +140,11 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname, categor
 
   return (
     <>
-      <header className={`shop-head${productDetail ? " shop-product-head" : ""}`}>
-        {productDetail && (
-          <div className="shop-product-header" aria-label="상품 상세 머리">
-            <ShopBack fallback={`${base}/products`} label="목록" />
-            <span className="shop-product-title">상품 상세</span>
+      <header className={`shop-head${productDetail || signupFlow ? " shop-product-head" : ""}`}>
+        {(productDetail || signupFlow) && (
+          <div className="shop-product-header" aria-label={signupFlow ? "회원가입 머리" : "상품 상세 머리"}>
+            <ShopBack fallback={signupFlow ? `${base}/login` : `${base}/products`} label={signupFlow ? "로그인" : "목록"} />
+            <span className="shop-product-title">{signupFlow ? "회원가입" : "상품 상세"}</span>
             <div className="shop-product-links">
               <Link href={base} className="shop-iconbtn" aria-label="홈"><Icon d={ICON.home} /></Link>
               <Link href={`${base}/cart`} className="shop-iconbtn" aria-label={cartLabel(cartCount)}><Icon d={ICON.cart} />{badge(cartCount)}</Link>
