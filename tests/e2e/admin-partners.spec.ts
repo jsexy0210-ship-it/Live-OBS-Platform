@@ -178,9 +178,9 @@ test("목록: 요약 칩 건수가 서버 값과 같고, 칩·정렬·쪽 크기
   for (const text of await page.getByTestId("partner-row").locator("td:nth-child(3)").allInnerTexts()) expect(text).toBe("정상");
 
   await page.getByLabel("정렬").selectOption("orders");
-  await page.getByLabel("쪽 크기").selectOption("50");
+  await page.getByLabel("쪽 크기").selectOption("10");
   await expect(page).toHaveURL(/sort=orders/);
-  await expect(page).toHaveURL(/limit=50/);
+  await expect(page.getByLabel("쪽 크기")).toHaveValue("10");
   await page.reload();
   await expect(page.getByLabel("정렬")).toHaveValue("orders");
 

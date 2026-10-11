@@ -33,7 +33,7 @@ type Filters = {
   limit: string;
   page: string;
 };
-const EMPTY: Filters = { q: "", field: "all", state: "", plan: "", pg: "", live: "", payout: "", note: "", joinedFrom: "", joinedTo: "", active: "", sort: "joined", limit: "20", page: "1" };
+const EMPTY: Filters = { q: "", field: "all", state: "", plan: "", pg: "", live: "", payout: "", note: "", joinedFrom: "", joinedTo: "", active: "", sort: "joined", limit: "10", page: "1" };
 // 「초기화」는 검색 조건만 비우고 정렬·쪽 크기는 그대로 둔다
 const SEARCH_KEYS = ["q", "field", "state", "plan", "pg", "live", "payout", "note", "joinedFrom", "joinedTo", "active"] as const;
 type Data = { sellers: SellerListRow[]; total: number; summary: SellerListSummary };
@@ -72,7 +72,7 @@ function params(f: Filters, withPaging: boolean) {
   }
   p.set("sort", f.sort);
   if (withPaging) {
-    const limit = Number(f.limit);
+    const limit = 10;
     p.set("limit", String(limit));
     const offset = (Math.max(1, Number(f.page) || 1) - 1) * limit;
     if (offset > 0) p.set("cursor", String(offset));
@@ -98,7 +98,10 @@ function PartnerList() {
     if (id !== reqId.current) return;
     setState(r.ok ? { kind: "ok", data: r.data } : { kind: "error" });
   }, []);
-  useEffect(() => void load(applied), [applied, load]);
+  useEffect(() => {
+    if (applied.limit !== "10") { apply({ ...applied, limit: "10" }); return; }
+    void load(applied);
+  }, [applied, load]);
   useScrollRestore("admin-partners", state.kind === "ok");
 
   // 정렬·쪽 크기를 연달아 바꿔도 앞의 변경이 사라지지 않게, 마지막으로 보낸 조건을 따로 들고 있다가 거기에 얹는다
@@ -107,12 +110,13 @@ function PartnerList() {
     latest.current = applied;
   }, [applied]);
   const go = (patch: Partial<Filters>) => {
-    const next = { ...latest.current, ...patch };
+    const next = { ...latest.current, ...patch, limit: "10" };
+    if ((Object.keys(next) as (keyof Filters)[]).every((key) => next[key] === latest.current[key])) return;
     latest.current = next;
     apply(next);
   };
   const set = (patch: Partial<Filters>) => go({ ...patch, page: "1" });
-  const limit = Number(applied.limit) || 20;
+  const limit = 10;
   const page = Math.max(1, Number(applied.page) || 1);
   const data = state.kind === "ok" ? state.data : null;
   useEffect(() => {
@@ -270,9 +274,8 @@ function PartnerList() {
                           </option>
                         ))}
                       </select>
-                      <select className="inp" aria-label="쪽 크기" value={applied.limit} onChange={(e) => set({ limit: e.target.value })}>
-                        <option value="20">20개씩</option>
-                        <option value="50">50개씩</option>
+                      <select className="inp" aria-label="쪽 크기" value="10" onChange={() => set({ limit: "10" })}>
+                        <option value="10">10개씩</option>
                       </select>
                     </span>
                   }
@@ -336,9 +339,9 @@ function PartnerList() {
                     </tbody>
                   </table>
                 </div>
-                <div style={{ maxWidth: "100%", overflowX: "auto" }}>
+                {data.total > limit && <div style={{ maxWidth: "100%", overflowX: "auto" }}>
                   <Pagination page={page} pageCount={Math.ceil(data.total / limit)} onChange={(n) => go({ page: String(n) })} />
-                </div>
+                </div>}
               </>
             ))}
         </div>

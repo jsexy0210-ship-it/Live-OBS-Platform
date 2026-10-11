@@ -156,7 +156,7 @@ export const refundedAmountOf = (o: { status: OrderStatus; totalAmount: number; 
 
 const rewardReturnedOf = (o: { refunds: { rewardReturn: number }[] }) => o.refunds.reduce((a, r) => a + r.rewardReturn, 0);
 
-export const SELLER_ORDER_PAGE_DEFAULT = 50;
+export const SELLER_ORDER_PAGE_DEFAULT = 10;
 export const SELLER_ORDER_PAGE_MAX = 200;
 const ORDER_STATUSES: readonly OrderStatus[] = ["PENDING_PAYMENT", "PAID", "CANCELLED", "REFUNDED"];
 const KST_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;

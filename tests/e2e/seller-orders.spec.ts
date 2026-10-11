@@ -50,23 +50,27 @@ async function confirmOpenedIfAsked(dialog: Locator) {
 const listResponse = (page: Page, has?: string) =>
   page.waitForResponse((r) => r.url().includes("/api/seller/orders?") && r.request().method() === "GET" && (!has || r.url().includes(has)));
 
-test("주문 목록: 20건씩 보이고 「주문 더 불러오기」로 나머지를 이어서 불러온다", async ({ page }) => {
+test("주문 목록: 10건씩 바꾸고 서버 커서의 마지막 페이지까지 이동한다", async ({ page }) => {
   const first = listResponse(page);
   await login(page);
   await first;
   await expect(page.getByRole("heading", { name: "주문" })).toBeVisible();
   await expect(page.getByText("결제가 끝난 주문만 방송 주문대기(개봉할 순서 목록)에 들어갑니다. 아직 결제하지 않은 주문은 「결제 대기」로 보입니다.")).toBeVisible();
-  await expect(rows(page)).toHaveCount(20);
-  await expect(page.getByText("20건 넘게")).toBeVisible();
+  await expect(rows(page)).toHaveCount(10);
+  await expect(page.getByText("1페이지 · 10건 · 다음 페이지 있음", { exact: true })).toBeVisible();
   // 메뉴 「주문」이 이 화면을 가리킨다
   await expect(page.getByLabel("주 메뉴").getByRole("link", { name: "주문", exact: true })).toHaveAttribute("href", "/seller/orders");
   await shot(page, "SA-021");
   const next = listResponse(page, "cursor=");
-  await page.getByRole("button", { name: "주문 더 불러오기" }).click();
+  await page.getByRole("navigation", { name: "페이지 이동" }).getByRole("button", { name: "다음", exact: true }).click();
   await next;
   // 다시 돌릴 때 앞선 실행의 실제 환불로 상태만 바뀔 뿐 건수는 같다
-  await expect(rows(page)).toHaveCount(27);
-  await expect(page.getByRole("button", { name: "주문 더 불러오기" })).toHaveCount(0);
+  await expect(rows(page)).toHaveCount(10);
+  const end = listResponse(page, "cursor=");
+  await page.getByRole("navigation", { name: "페이지 이동" }).getByRole("button", { name: "다음", exact: true }).click();
+  await end;
+  await expect(rows(page)).toHaveCount(7);
+  await expect(page.getByRole("navigation", { name: "페이지 이동" }).getByRole("button", { name: "다음", exact: true })).toBeDisabled();
 });
 
 test("기간: 그냥 열면 최근 30일이 켜져 있고, 초기화도 그 값으로 돌아간다. 업무 큐 링크(period=all)는 기간 전체", async ({ page }) => {
@@ -86,7 +90,7 @@ test("기간: 그냥 열면 최근 30일이 켜져 있고, 초기화도 그 값�
 
 test("상태 필터·검색·기간으로 걸러 보고, 결과가 없으면 알맞은 안내를 보여 준다", async ({ page }) => {
   await login(page);
-  await expect(rows(page)).toHaveCount(20);
+  await expect(rows(page)).toHaveCount(10);
   // 상태: 환불됨만
   await page.getByRole("button", { name: /상태: 전체/ }).click();
   await page.getByRole("group", { name: "결제 상태" }).getByLabel("환불됨").check();
@@ -101,7 +105,7 @@ test("상태 필터·검색·기간으로 걸러 보고, 결과가 없으면 알
   await expect(page.getByRole("button", { name: /상태: 환불됨/ })).toBeVisible();
   await shot(page, "SA-021-filter");
   await page.getByRole("button", { name: "필터 초기화" }).first().click();
-  await expect(rows(page)).toHaveCount(20);
+  await expect(rows(page)).toHaveCount(10);
 
   // 검색: 닉네임
   const searched = listResponse(page, `q=${encodeURIComponent("카드왕")}`);
@@ -191,7 +195,14 @@ test("환불 모달: 개봉한 상품이 있으면 사유 주체를 바꿀 때�
   //           1번(민트컨디션, 스타라이트 낱개 1팩 ×2 = 12,000원 개봉, 배송비 3,000원, 발송함)
   const openOrder = async (has: (r: ReturnType<typeof rows>) => ReturnType<typeof rows>) => {
     await page.goto("/seller/orders");
-    await page.getByRole("button", { name: "주문 더 불러오기" }).click();
+    await expect(rows(page).first()).toBeVisible();
+    let pageNo = 1;
+    while (await has(rows(page)).count() === 0) {
+      const next = listResponse(page, "cursor=");
+      await page.getByRole("navigation", { name: "페이지 이동" }).getByRole("button", { name: "다음", exact: true }).click();
+      await next;
+      await expect(page.getByRole("button", { name: `${++pageNo}페이지`, exact: true })).toHaveAttribute("aria-current", "page");
+    }
     await has(rows(page)).getByRole("link", { name: "환불 처리" }).click();
     const dialog = page.getByRole("dialog", { name: "취소 · 환불 처리" });
     await expect(dialog).toBeVisible();
@@ -262,7 +273,14 @@ test("환불 모달: 확인한 금액을 함께 보내고, 그사이 금액이 �
     if (changed && json.refundPreview) json.refundPreview.byFault.BUYER.refundAmount = 120000;
     await route.fulfill({ response: res, json });
   });
-  await page.getByRole("button", { name: "주문 더 불러오기" }).click();
+  await expect(rows(page).first()).toBeVisible();
+  let pageNo = 1;
+  while (await rows(page).filter({ hasText: "외 1건" }).filter({ hasText: "카드왕" }).count() === 0) {
+    const next = listResponse(page, "cursor=");
+    await page.getByRole("navigation", { name: "페이지 이동" }).getByRole("button", { name: "다음", exact: true }).click();
+    await next;
+    await expect(page.getByRole("button", { name: `${++pageNo}페이지`, exact: true })).toHaveAttribute("aria-current", "page");
+  }
   await rows(page).filter({ hasText: "외 1건" }).filter({ hasText: "카드왕" }).getByRole("link", { name: "환불 처리" }).click();
   const dialog = page.getByRole("dialog", { name: "취소 · 환불 처리" });
   const agree = dialog.getByLabel("위 금액으로 환불합니다. 환불한 뒤에는 되돌릴 수 없습니다.");

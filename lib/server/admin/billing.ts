@@ -22,8 +22,8 @@ function requireRead(admin: AdminSessionContext) {
   if (!adminCan(admin.admin.role, "platform.read")) throw forbidden();
 }
 
-function pageSize(limit: string | null | undefined) {
-  const n = limit == null || limit === "" ? ADMIN_BILLING_PAGE_DEFAULT : Number(limit);
+function pageSize(limit: string | null | undefined, fallback = ADMIN_BILLING_PAGE_DEFAULT) {
+  const n = limit == null || limit === "" ? fallback : Number(limit);
   return Number.isInteger(n) && n >= 1 ? Math.min(n, ADMIN_BILLING_PAGE_MAX) : null;
 }
 
@@ -74,7 +74,7 @@ type SubscriptionRow = {
 // 구독 현황: 승인된 파트너스(승인 대기·반려 제외)마다 이용 상태와 구독. 가입 시각 내림차순 커서. counts는 필터 전 상태별 수.
 export async function listAdminSubscriptions(db: PrismaClient, admin: AdminSessionContext, query: AdminSubscriptionQuery, opts: { now?: Date } = {}) {
   requireRead(admin);
-  const take = pageSize(query.limit);
+  const take = pageSize(query.limit, 10);
   if (!take) return { ok: false as const };
   const cursor = query.cursor ? decodeCursor(query.cursor) : null;
   if (query.cursor && !cursor) return { ok: false as const };
