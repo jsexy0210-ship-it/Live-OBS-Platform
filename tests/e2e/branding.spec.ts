@@ -112,7 +112,7 @@ test("최고관리자가 파트너스 관리자 파비콘·공유 카드를 바�
   // 마스터 관리자 화면은 그대로(기본값)
   const admin = await head(page, "/admin/login");
   expect(admin.icons.some((h) => h?.includes("/api/branding/"))).toBe(false);
-  expect(admin.ogTitle).toBe("ONQ 마스터 관리자");
+  expect(admin.ogTitle).toBe("StreamShop 마스터 관리자");
   // 올린 파비콘이 없는 마스터 관리자 화면은 틸 기본 아이콘(파트너스 기본 아이콘과 다름)
   expect(admin.icons).toEqual(["/branding/streamshop-master-32-20261010.png"]);
 

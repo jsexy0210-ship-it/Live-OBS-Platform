@@ -137,8 +137,8 @@ describe("소개 랜딩 브랜딩", () => {
     expect(Buffer.from(await uploadedCard.arrayBuffer())).toEqual(card);
     expect((await publicOg(new Request(`${BASE}/api/branding/landing/og?v=old`), ctx("landing"))).headers.get("cache-control")).toBe("public, max-age=300");
     expect(await db.siteBranding.count({ where: { target: { in: ["admin", "seller"] } } })).toBe(0);
-    expect((await brandingMetadata("admin")).title).toBe("ONQ 마스터 관리자");
-    expect((await brandingMetadata("seller")).title).toBe("ONQ 파트너스 관리자");
+    expect((await brandingMetadata("admin")).title).toBe("StreamShop 마스터 관리자");
+    expect((await brandingMetadata("seller")).title).toBe("StreamShop 파트너스 관리자");
 
     expect((await remove(faviconDelete, "landing", c)).status).toBe(200);
     expect((await remove(ogDelete, "landing", c)).status).toBe(200);
@@ -385,7 +385,7 @@ describe("관리자 화면 head 값(generateMetadata)", () => {
   it("올린 파비콘·제목·설명·카드가 대상 화면에만 들어가고, og:image는 요청 호스트 기준 절대 주소", async () => {
     const c = await adminCookie("SUPER_ADMIN");
     const empty = await brandingMetadata("seller");
-    expect(empty).toMatchObject({ title: "ONQ 파트너스 관리자", twitter: { card: "summary_large_image" } });
+    expect(empty).toMatchObject({ title: "StreamShop 파트너스 관리자", twitter: { card: "summary_large_image" } });
     // 올린 파비콘이 없으면 기본 ONQ 아이콘(Codex 지적 6차)
     expect(empty.icons).toEqual({
       icon: [{ url: "/branding/streamshop-partners-32-20261010.png", type: "image/png", sizes: "32x32" }],
@@ -405,7 +405,7 @@ describe("관리자 화면 head 값(generateMetadata)", () => {
     });
     // 마스터 관리자 쪽은 기본값 그대로
     const admin = await brandingMetadata("admin");
-    expect(admin).toMatchObject({ title: "ONQ 마스터 관리자" });
+    expect(admin).toMatchObject({ title: "StreamShop 마스터 관리자" });
     // 마스터 관리자 기본 아이콘은 틸로 그린 것(대표님 지시 2026-10-04), 올린 파비콘이 있으면 그것이 우선
     const adminDefault = {
       icon: [{ url: "/branding/streamshop-master-32-20261010.png", type: "image/png", sizes: "32x32" }],
