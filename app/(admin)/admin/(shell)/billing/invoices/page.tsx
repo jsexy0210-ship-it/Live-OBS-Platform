@@ -48,7 +48,7 @@ type Summary = {
 type Data = { range: { from: string; to: string }; summary: Summary; items: Item[]; total: number; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; data: Data };
 // 기간은 이 화면의 월 선택(이전 달·이번 달·기간 지정)이 정본이라 공통 기본 기간(최근 1개월)을 쓰지 않는다. 최신순은 서버 고정, 쪽 크기는 공통 20.
-const EMPTY = listDefaults({ month: "", from: "", to: "", state: "", plan: "", q: "", failedOnly: "", sellerId: "" }, { period: null });
+const EMPTY = listDefaults({ size: "10", month: "", from: "", to: "", state: "", plan: "", q: "", failedOnly: "", sellerId: "" }, { period: null });
 type Filters = typeof EMPTY;
 const SEARCH_KEYS = ["state", "plan", "q", "failedOnly"] as const;
 
@@ -99,6 +99,7 @@ function Invoices() {
   const { applied, draft, setDraft, apply } = useListFilters<Filters>(EMPTY);
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const [cursorPage, setCursorPage] = useState(1);
+  const paging = useRef(false);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [custom, setCustom] = useState(false);
   const [rangeError, setRangeError] = useState(false);
@@ -110,11 +111,13 @@ function Invoices() {
   const load = useCallback(
     async (silent = false) => {
       const id = ++reqId.current;
+      paging.current = true;
       if (!silent) setState({ kind: "loading" });
-      const p = params(applied, { limit: applied.size });
+      const p = params(applied, { limit: "10" });
       if (cursor) p.set("cursor", cursor);
       const r = await adminApi<Data>(`/api/admin/billing/invoices?${p}`);
       if (id !== reqId.current) return;
+      paging.current = false;
       if (r.ok) setState({ kind: "ok", data: r.data });
       else if (!silent) setState({ kind: "error" });
     },
@@ -368,7 +371,7 @@ function Invoices() {
                     </table>
                   </div>
                   {(cursors.length > 1 || state.data.nextCursor) && (
-                    <CursorPagination page={cursorPage} visited={cursors.length} hasNext={!!state.data.nextCursor} onChange={setCursorPage} onNext={() => { if (state.data.nextCursor) { setCursors(c => c.length === cursorPage ? [...c, state.data.nextCursor] : c); setCursorPage(cursorPage + 1); } }} />
+                    <CursorPagination page={cursorPage} visited={cursors.length} hasNext={!!state.data.nextCursor} onChange={(page) => { if (state.kind !== "ok" || paging.current || page === cursorPage) return; paging.current = true; setCursorPage(page); }} onNext={() => { if (state.kind === "ok" && !paging.current && state.data.nextCursor) { paging.current = true; setCursors(c => c.length === cursorPage ? [...c, state.data.nextCursor] : c); setCursorPage(cursorPage + 1); } }} />
                   )}
                 </>
               ))}

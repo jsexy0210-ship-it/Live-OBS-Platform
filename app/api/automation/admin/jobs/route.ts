@@ -10,8 +10,9 @@ export async function GET(req: Request) {
     await requireAdmin(prisma, sessionToken(req, "admin"), "platform.read");
     const f = new URL(req.url).searchParams.get("filter") ?? "all";
     if (!isAdminJobFilter(f)) return noStore(NextResponse.json({ error: "bad_filter" }, { status: 400 }));
-    const [summary, jobs] = await Promise.all([adminJobSummary(prisma), adminJobList(prisma, f)]);
-    return noStore(NextResponse.json({ summary, jobs }));
+    const [summary, page] = await Promise.all([adminJobSummary(prisma), adminJobList(prisma, f, new URL(req.url).searchParams.get("cursor"))]);
+    if (!page.ok) return noStore(NextResponse.json({ error: page.reason }, { status: 400 }));
+    return noStore(NextResponse.json({ summary, jobs: page.jobs, nextCursor: page.nextCursor }));
   } catch (e) {
     return noStore(errorResponse(e));
   }
