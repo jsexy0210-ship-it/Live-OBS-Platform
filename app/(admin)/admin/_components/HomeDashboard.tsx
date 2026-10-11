@@ -563,6 +563,7 @@ export default function HomeDashboard({ detail = false }: { detail?: boolean }) 
             </>
           }
         />
+        {!detail && <p className="ma-home-mobile-notice t-c1 c-alt" data-testid="admin-home-mobile-notice">모바일에서는 홈 화면을 제공합니다 상세 관리 업무는 PC에서 이용해 주세요</p>}
         <div className="col ma-home-content">
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
             <h2 className="t-hl1">{detail ? "기간별 현황" : "매출 요약"}</h2>

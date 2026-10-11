@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { submitSellerLogin } from "./sellerLogin";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 
 // SA-002-O 오버레이 전용 홈: 오버레이 전용 대표자는 /seller에서 이 홈으로 오고(업무 → 성과 → 방송, 스토어 기능 안내),
 // 통합 요금제 대표자는 이 홈으로 보내지 않는다. dev-seed의 데모 쇼핑몰(통합 · demo-overlay)로 확인한다.
@@ -38,6 +40,30 @@ test("오버레이 전용 대표자: /seller가 오버레이 홈으로 열리고
   const up = page.getByTestId("oh-upgrade");
   await expect(up).toContainText("스토어 메뉴는 쇼핑몰 통합에서 열립니다");
   await expect(up).toContainText("통합 구독");
+  const notice = page.getByTestId("seller-home-mobile-notice");
+  await expect(notice).toBeHidden();
+  const desktopViewport = page.viewportSize();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(notice).toBeVisible();
+  await expect(page.getByTestId("home-tasks")).toHaveCount(0);
+  expect((await page.request.get("/api/seller/products")).status()).toBe(403);
+  const metrics = await tiles.evaluate((el) => ({ viewport: { width: innerWidth, height: innerHeight }, height: document.documentElement.scrollHeight, values: Array.from(el.querySelectorAll(".stat .v")).map((v) => ({ text: v.textContent?.trim(), label: v.closest(".stat")?.querySelector(".t-l2")?.textContent?.trim(), client: v.clientWidth, scroll: v.scrollWidth })) }));
+  const sourceSha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  const evidence = `tests/e2e/screenshots/current-shell-${sourceSha}`;
+  mkdirSync(evidence, { recursive: true });
+  await page.screenshot({ path: "tests/e2e/screenshots/seller-home-mobile-overlay-owner-390.png", fullPage: true });
+  writeFileSync(`${evidence}/seller-home-mobile-overlay-owner-390.json`, JSON.stringify({ sourceSha, route: new URL(page.url()).pathname, role: "OVERLAY_OWNER", ...metrics }, null, 2));
+  expect(metrics.values).toHaveLength(3);
+  for (const value of metrics.values) expect(value.scroll).toBeLessThanOrEqual(value.client);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+  await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
+  await expect(page.locator(".cs")).toHaveClass(/nav-open/);
+  await page.getByRole("complementary", { name: "파트너스 메뉴" }).locator('a[href="/seller/overlay/address"]').click();
+  await expect(page).toHaveURL(/\/seller\/overlay\/address$/);
+  await expect(page.locator(".cs")).not.toHaveClass(/nav-open/);
+  await expect(notice).toHaveCount(0);
+  await page.goto("/seller");
+  if (desktopViewport) await page.setViewportSize(desktopViewport);
   await up.getByRole("link", { name: "쇼핑몰 통합으로 바꾸기" }).click();
   await expect(page).toHaveURL(/\/seller\/subscription/);
   if (SHOTS) {

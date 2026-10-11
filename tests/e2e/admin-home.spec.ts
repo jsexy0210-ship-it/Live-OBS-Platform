@@ -102,6 +102,43 @@ async function expectChartPlacement(page: Page, width: number) {
   if (width === 390) expect(Math.abs(revenue!.width - orders!.width)).toBeLessThan(1);
 }
 
+for (const [role, who] of [["CS", email], ["SUPER_ADMIN", suEmail]] as const) {
+  test(`${role}: 홈 390의 매출·업무·모바일 안내와 기존 메뉴 이동을 제공한다`, async ({ page }) => {
+    const protectedRequests: string[] = [];
+    page.on("request", (request) => { if (/\/api\/admin\/(ops\/metrics|audit-logs|infra\/summary)(\?|$)/.test(request.url())) protectedRequests.push(request.url()); });
+    await login(page, who);
+    const notice = page.getByTestId("admin-home-mobile-notice");
+    await expect(notice).toBeHidden();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(notice).toBeVisible();
+    await expect(notice).toHaveText("모바일에서는 홈 화면을 제공합니다 상세 관리 업무는 PC에서 이용해 주세요");
+    await expect(page.locator(".ma-home-revenue .stat .v")).toHaveCount(5);
+    await expect(page.locator('.ma-home [aria-busy="true"]')).toHaveCount(0);
+    await captureHome(page, `admin-home-mobile-${role}-390`, role);
+    for (const amount of await page.locator(".ma-home-revenue .stat .v").all()) {
+      await expect(amount).toHaveCSS("white-space", "nowrap");
+      const size = await amount.evaluate((el) => { const range = document.createRange(); range.selectNodeContents(el); return { lines: range.getClientRects().length, client: el.clientWidth, scroll: el.scrollWidth }; });
+      expect(size.lines).toBe(1); expect(size.scroll).toBeLessThanOrEqual(size.client);
+    }
+    const revenue = await page.locator(".ma-home-revenue").boundingBox();
+    const tasks = await page.getByTestId("today-tasks").boundingBox();
+    expect(revenue && tasks).toBeTruthy();
+    expect(revenue!.y + revenue!.height).toBeLessThanOrEqual(tasks!.y);
+    await expect(page.getByTestId("infra-card")).toHaveCount(role === "SUPER_ADMIN" ? 1 : 0);
+    if (role === "CS") expect(protectedRequests).toEqual([]);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+    await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
+    await expect(page.locator(".cs")).toHaveClass(/nav-open/);
+    if (role === "CS") await page.screenshot({ path: "tests/e2e/screenshots/admin-home-mobile-CS-drawer-390.png", fullPage: true });
+    const link = page.locator(".lnb-sec.on").getByRole("link", { name: "상세 현황", exact: true });
+    await expect(link).toHaveAttribute("href", "/admin/home/status");
+    await link.click();
+    await expect(page).toHaveURL(/\/admin\/home\/status$/);
+    await expect(page.locator(".cs")).not.toHaveClass(/nav-open/);
+    await expect(notice).toHaveCount(0);
+  });
+}
+
 async function expectDateAxes(page: Page, period?: { days: number; orders: string[]; growth: string[] }) {
   await expect(page.locator(".ma-home .sts-x")).toHaveCount(5);
   for (const [panel, title] of [
