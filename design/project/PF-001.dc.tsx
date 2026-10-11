@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
+import { publicCompanyParts, type PublicCompanyInfo } from "../../components/public/companyInfo";
 import { StreamShopBrand } from "../../components/public/StreamShopBrand";
 import landscapeHost from "../../public/landing/live-host-landscape-20261010.webp";
 import portraitHost from "../../public/landing/live-host-portrait-20261010.webp";
@@ -84,7 +85,8 @@ const PLAN_CONTENT: Record<string, { description: string; features: string[] }> 
   INTEGRATED: { description: "쇼핑몰부터 라이브 운영까지 함께 시작해요", features: ["오버레이 전용의 모든 기능", "내 브랜드의 쇼핑몰", "상품·재고·주문 관리", "배송·회원 운영"] },
 };
 
-export function Landing({ plans, pricingStatus }: { plans: LandingPlan[]; pricingStatus: "available" | "unavailable" | "error" }) {
+export function Landing({ plans, pricingStatus, companyInfo }: { plans: LandingPlan[]; pricingStatus: "available" | "unavailable" | "error"; companyInfo?: PublicCompanyInfo | null }) {
+  const companyParts = publicCompanyParts(companyInfo);
   const trial = plans.find((plan) => plan.trialDays > 0);
   const pricingMessage = pricingIntro(plans.map((plan) => plan.name), pricingStatus);
   return <div className={styles.page}>
@@ -142,7 +144,7 @@ export function Landing({ plans, pricingStatus }: { plans: LandingPlan[]; pricin
       <section className={`${styles.section} ${styles.faqSection}`} id="faq"><div><span className={styles.kicker}>GOOD TO KNOW</span><h2>궁금한 점이<br />있으신가요?</h2><Link href="/faq" className={styles.textLink}>자주 묻는 질문 더 보기 <Icon kind="arrow" /></Link></div><div className={styles.faqList}>{FAQ.map(([question, answer]) => <details key={question}><summary>{question}<span aria-hidden="true">+</span></summary><p>{answer}</p></details>)}</div></section>
       <section className={styles.finalCta}><span className={styles.eyebrow}>YOUR SHOP YOUR SHOW</span><h2>다음 라이브는,<br />스트림샵과 함께</h2><p>내 쇼핑몰과 방송이 만나는 새로운 판매의 시작</p><Action>스트림샵 시작하기</Action></section>
     </main>
-    <footer className={styles.footer}><div className={styles.footerTop}><div><Link href="/about" aria-label="스트림샵 서비스 소개"><Brand /></Link><p>쇼핑몰부터 라이브 판매까지, 한곳에서</p></div><nav aria-label="하단 메뉴"><Link href="/features">기능 안내</Link><Link href="/pricing">요금 안내</Link><Link href="/faq">도움말</Link><Link href="/notices">공지사항</Link></nav></div><div className={styles.footerBottom}><span>StreamShop · LIVE COMMERCE, CONNECTED</span><div><Link href="/terms">이용약관</Link><Link href="/privacy">개인정보처리방침</Link></div></div></footer>
+    <footer className={styles.footer}><div className={styles.footerTop}><div><Link href="/about" aria-label="스트림샵 서비스 소개"><Brand /></Link><p>쇼핑몰부터 라이브 판매까지, 한곳에서</p></div><nav aria-label="하단 메뉴"><Link href="/features">기능 안내</Link><Link href="/pricing">요금 안내</Link><Link href="/faq">도움말</Link><Link href="/notices">공지사항</Link></nav></div><div className={styles.footerBottom}><span>StreamShop · LIVE COMMERCE, CONNECTED</span><div><Link href="/terms">이용약관</Link><Link href="/privacy">개인정보처리방침</Link></div></div>{companyParts.length > 0 && <p className={styles.companyInfo}>{companyParts.join(" · ")}</p>}</footer>
   </div>;
 }
 

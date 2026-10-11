@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Landing, type LandingPlan } from "../../../components/public/Landing";
+import { readPlatformBusinessInfo } from "../../../lib/server/admin/platformBusinessInfo";
+import type { PublicCompanyInfo } from "../../../components/public/PublicFrame";
 import { prisma } from "../../../lib/server/db";
 import { getPublicPlan } from "../../../lib/server/billing/plans";
 import { brandingMetadata } from "../../../lib/server/branding/metadata";
@@ -22,5 +24,11 @@ export default async function AboutPage() {
   } catch {
     pricingStatus = "error";
   }
-  return <Landing plans={plans} pricingStatus={pricingStatus} />;
+  let companyInfo: PublicCompanyInfo | null = null;
+  try {
+    companyInfo = await readPlatformBusinessInfo(prisma);
+  } catch {
+    // 기존 설정을 읽지 못해도 소개와 요금 상태는 그대로 제공한다
+  }
+  return <Landing plans={plans} pricingStatus={pricingStatus} companyInfo={companyInfo} />;
 }
