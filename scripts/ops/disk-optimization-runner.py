@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+import socket
 import stat
 import subprocess
 import sys
@@ -64,12 +65,28 @@ def post(payload):
     except Exception:
         raise Rejected("CALLBACK_REJECTED") from None
 
+def docker_environment():
+    # 허용 여부를 먼저 확인한 뒤 CLI context 환경의 host 우선순위 개입을 제거한다.
+    return {key: value for key, value in os.environ.items() if key not in {"DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH"}}
+
+def verify_docker_host():
+    endpoint = "unix:///var/run/docker.sock"
+    if os.environ.get("DOCKER_HOST", endpoint) != endpoint or os.environ.get("DOCKER_CONTEXT", "default") != "default" or os.environ.get("DOCKER_TLS_VERIFY") or os.environ.get("DOCKER_CERT_PATH"):
+        raise Rejected("DOCKER_ENDPOINT_DENIED")
+    if socket.gethostname().split(".")[0] != "obs-web-test":
+        raise Rejected("DOCKER_HOST_UNVERIFIED")
+    for args, expected in [(["context", "inspect", "default", "--format", "{{.Endpoints.docker.Host}}"], endpoint), (["info", "--format", "{{.Name}}"], "obs-web-test")]:
+        result = subprocess.run(["docker", "--host", endpoint] + args, capture_output=True, check=False, env=docker_environment())
+        if result.returncode or result.stdout.decode().strip() != expected:
+            raise Rejected("DOCKER_HOST_UNVERIFIED")
+
 def remove_candidate(candidate):
     if candidate["category"] == IMAGE:
         if not re.fullmatch(r"sha256:[0-9a-f]{64}", candidate["id"]) or candidate["contentHash"] != candidate["id"][7:]:
             raise Rejected("TARGET_DENIED")
         # 강제 삭제/다른 별명 제거/prune는 없다. Docker가 사용 중·다중 별명을 거부하면 중단한다.
-        result = subprocess.run(["docker", "image", "rm", "--no-prune", candidate["id"]], capture_output=True, check=False)
+        verify_docker_host()
+        result = subprocess.run(["docker", "--host", "unix:///var/run/docker.sock", "image", "rm", "--no-prune", candidate["id"]], capture_output=True, check=False, env=docker_environment())
         if result.returncode:
             raise Rejected("IMAGE_REMOVAL_REJECTED")
         return
@@ -94,14 +111,15 @@ def remove_candidate(candidate):
             after = os.fstat(handle.fileno())
             current = os.stat(candidate["id"], dir_fd=directory, follow_symlinks=False)
             identity = lambda s: (s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns)
-            if not stat.S_ISREG(before.st_mode) or identity(before) != identity(after) or identity(after) != identity(current) or before.st_size != candidate["bytes"] or digest != candidate["contentHash"] or dt.datetime.now().timestamp() - before.st_mtime <= 14 * 24 * 3600:
+            if before.st_uid != os.geteuid() or after.st_uid != os.geteuid() or current.st_uid != os.geteuid() or not stat.S_ISREG(before.st_mode) or identity(before) != identity(after) or identity(after) != identity(current) or before.st_size != candidate["bytes"] or digest != candidate["contentHash"] or dt.datetime.now().timestamp() - before.st_mtime <= 14 * 24 * 3600:
                 raise Rejected("LOG_CHANGED_OR_PROTECTED")
             os.unlink(candidate["id"], dir_fd=directory)
     finally:
         os.close(directory)
 
 def measured_available():
-    result = subprocess.run(["docker", "info", "--format", "{{.DockerRootDir}}"], capture_output=True, check=False)
+    verify_docker_host()
+    result = subprocess.run(["docker", "--host", "unix:///var/run/docker.sock", "info", "--format", "{{.DockerRootDir}}"], capture_output=True, check=False, env=docker_environment())
     if result.returncode:
         raise Rejected("DISK_MEASUREMENT_UNAVAILABLE")
     paths = [result.stdout.decode().strip(), os.path.join(os.environ.get("OBS_RUNNER_ROOT", ""), "_diag")]

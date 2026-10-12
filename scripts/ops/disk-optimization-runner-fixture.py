@@ -6,6 +6,9 @@ import importlib.util
 import os
 from pathlib import Path
 import tempfile
+import io
+import stat
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -15,6 +18,10 @@ spec.loader.exec_module(runner)
 REQUEST = "00000000-0000-4000-8000-000000000001"
 IMAGE = {"category": runner.IMAGE, "id": "sha256:" + "a" * 64, "bytes": 100, "contentHash": "a" * 64}
 LOG = {"category": runner.LOG, "id": "Worker_owned.log", "bytes": 3, "contentHash": hashlib.sha256(b"old").hexdigest()}
+
+class OwnedHandle(io.BytesIO):
+    def fileno(self):
+        return 10
 
 class Fixture(unittest.TestCase):
     def owned(self):
@@ -105,13 +112,43 @@ class Fixture(unittest.TestCase):
         self.assertFalse(any(r["action"] == "result" for r in requests))
 
     def test_image_delete_only_approved_id_and_nonforce_no_prune(self):
-        with patch.object(runner.subprocess, "run") as call:
+        with patch.object(runner, "verify_docker_host"), patch.object(runner.subprocess, "run") as call:
             call.return_value.returncode = 0
             runner.remove_candidate(IMAGE)
-            self.assertEqual(call.call_args.args[0], ["docker", "image", "rm", "--no-prune", IMAGE["id"]])
+            self.assertEqual(call.call_args.args[0], ["docker", "--host", "unix:///var/run/docker.sock", "image", "rm", "--no-prune", IMAGE["id"]])
             call.return_value.returncode = 1
             with self.assertRaisesRegex(runner.Rejected, "IMAGE_REMOVAL_REJECTED"):
                 runner.remove_candidate(IMAGE)
+
+    def test_foreign_file_owner_at_every_stat_mutation_zero(self):
+        at = (dt.datetime.now() - dt.timedelta(days=16)).timestamp()
+        def snapshot(uid):
+            return SimpleNamespace(st_uid=uid, st_mode=stat.S_IFREG | 0o600, st_dev=1, st_ino=2, st_size=3, st_mtime_ns=1, st_mtime=at)
+        for foreign in range(3):
+            snapshots = [snapshot(7), snapshot(7), snapshot(7)]
+            snapshots[foreign].st_uid = 8
+            with patch.dict(os.environ, {"OBS_RUNNER_ROOT": "/owned/runner"}), patch.object(runner.os.path, "islink", return_value=False), patch.object(runner.os.path, "realpath", side_effect=lambda p: p), patch.object(runner.os, "geteuid", return_value=7, create=True), patch.object(runner.os, "O_DIRECTORY", 0, create=True), patch.object(runner.os, "O_NOFOLLOW", 0, create=True), patch.object(runner.os, "open", return_value=10), patch.object(runner.os, "close"), patch.object(runner.os, "fdopen", return_value=OwnedHandle(b"old")), patch.object(runner.os, "fstat", side_effect=snapshots[:2]), patch.object(runner.os, "stat", side_effect=[SimpleNamespace(st_uid=7, st_mode=0o700), snapshots[2]]), patch.object(runner.os, "unlink") as mutation:
+                with self.assertRaisesRegex(runner.Rejected, "LOG_CHANGED_OR_PROTECTED"):
+                    runner.remove_candidate(LOG)
+                mutation.assert_not_called()
+
+    def test_foreign_endpoint_context_host_daemon_mutation_zero(self):
+        endpoint = "unix:///var/run/docker.sock"
+        normal = {"DOCKER_HOST": endpoint, "DOCKER_CONTEXT": "default", "DOCKER_TLS_VERIFY": "", "DOCKER_CERT_PATH": ""}
+        for key, value in [("DOCKER_HOST", "tcp://other:2375"), ("DOCKER_CONTEXT", "other"), ("DOCKER_TLS_VERIFY", "1"), ("DOCKER_CERT_PATH", "/other")]:
+            with patch.dict(os.environ, {**normal, key: value}), patch.object(runner.subprocess, "run") as call:
+                with self.assertRaisesRegex(runner.Rejected, "DOCKER_ENDPOINT_DENIED"):
+                    runner.remove_candidate(IMAGE)
+                call.assert_not_called()
+        for host, context, daemon in [("other-host", endpoint, "obs-web-test"), ("obs-web-test", "tcp://other:2375", "obs-web-test"), ("obs-web-test", endpoint, "other-daemon")]:
+            with patch.dict(os.environ, normal), patch.object(runner.socket, "gethostname", return_value=host), patch.object(runner.subprocess, "run", side_effect=[SimpleNamespace(returncode=0, stdout=context.encode()), SimpleNamespace(returncode=0, stdout=daemon.encode())]) as call:
+                with self.assertRaisesRegex(runner.Rejected, "DOCKER_HOST_UNVERIFIED"):
+                    runner.remove_candidate(IMAGE)
+                self.assertFalse(any("rm" in c.args[0] for c in call.call_args_list))
+        with patch.dict(os.environ, normal), patch.object(runner.socket, "gethostname", return_value="obs-web-test"), patch.object(runner.subprocess, "run", side_effect=[SimpleNamespace(returncode=0, stdout=endpoint.encode()), SimpleNamespace(returncode=0, stdout=b"obs-web-test"), SimpleNamespace(returncode=0, stdout=b"")]) as call:
+            runner.remove_candidate(IMAGE)
+            self.assertEqual(call.call_args.args[0], ["docker", "--host", endpoint, "image", "rm", "--no-prune", IMAGE["id"]])
+            self.assertFalse({"DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH"} & call.call_args.kwargs["env"].keys())
 
     def test_owned_posix_log_and_protected_hashes(self):
         supported = hasattr(os, "O_NOFOLLOW") and os.unlink in os.supports_dir_fd and os.open in os.supports_dir_fd

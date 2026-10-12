@@ -17,11 +17,21 @@ touch -d '16 days ago' "$OBS_RUNNER_ROOT/_diag/Worker_owned.log" "$OBS_RUNNER_RO
 ln -s "$tmp/protected/backup/manual.dump" "$OBS_RUNNER_ROOT/_diag/Worker_link.log"
 hashes() { find "$tmp/protected" -type f -exec sha256sum {} + | sort; }
 before="$(hashes)"
-export CASE_MODE=normal
+export CASE_MODE=normal DOCKER_HOST=unix:///var/run/docker.sock DOCKER_CONTEXT=default
+unset DOCKER_TLS_VERIFY DOCKER_CERT_PATH
+hostname() { [ "$CASE_MODE" != host ] && printf 'obs-web-test\n' || printf 'other-host\n'; }
+export -f hostname
+stat() {
+  if [ "$CASE_MODE" = foreign_owner ] && [ "$1 ${2:-}" = '-c %u' ] && [ "${@: -1}" = "$OBS_RUNNER_ROOT/_diag/Worker_owned.log" ]; then printf '%s\n' "$(($(id -u) + 1))"; else command stat "$@"; fi
+}
+export -f stat
 docker() {
   local tag sha id
+  [ "$1 ${2:-}" = '--host unix:///var/run/docker.sock' ] || return 92
+  shift 2
   case "$1 ${2:-}" in
-    'info ') return 0 ;;
+    'context inspect') [ "$CASE_MODE" != endpoint ] && printf 'unix:///var/run/docker.sock\n' || printf 'tcp://other:2375\n' ;;
+    'info --format') [ "$CASE_MODE" != daemon ] && printf 'obs-web-test\n' || printf 'other-daemon\n' ;;
     'ps -aq') printf 'owned-container\n' ;;
     'inspect --format') printf 'sha256:%064d\n' 2 ;;
     'image ls') for n in 1 2 3 4 5 6; do printf 'obs-web-app:%040d\n' "$n"; done; printf 'obs-web-migrate:%040d\n' 1; printf 'other:latest\n' ;;
@@ -42,6 +52,22 @@ bash "$script" --preview > "$tmp/normal.tsv"
 [ "$(grep -c '^RUNNER_DIAGNOSTIC_LOGS_OLDER_THAN_14_DAYS' "$tmp/normal.tsv")" = 1 ]
 grep -q $'^RUNNER_DIAGNOSTIC_LOGS_OLDER_THAN_14_DAYS\tWorker_owned.log\t3\t' "$tmp/normal.tsv"
 ! grep -qE 'backup|cache|migrate|recent|customer|link' "$tmp/normal.tsv"
+# 환경/context와 실제 daemon/host가 다르면 후보를 발급하지 않고 mutation0을 유지한다.
+for rejected in env context tls endpoint host daemon; do
+  export CASE_MODE="$rejected"
+  case "$rejected" in
+    env) if DOCKER_HOST=tcp://other:2375 bash "$script" --preview > "$tmp/denied.tsv" 2> "$tmp/denied.err"; then exit 1; fi ;;
+    context) if DOCKER_CONTEXT=other bash "$script" --preview > "$tmp/denied.tsv" 2> "$tmp/denied.err"; then exit 1; fi ;;
+    tls) if DOCKER_TLS_VERIFY=1 bash "$script" --preview > "$tmp/denied.tsv" 2> "$tmp/denied.err"; then exit 1; fi ;;
+    *) if bash "$script" --preview > "$tmp/denied.tsv" 2> "$tmp/denied.err"; then exit 1; fi ;;
+  esac
+  grep -qE '^DOCKER_(ENDPOINT_DENIED|HOST_UNVERIFIED)$' "$tmp/denied.err"
+  [ ! -s "$tmp/denied.tsv" ] && [ ! -e "$tmp/mutation" ] && [ "$(hashes)" = "$before" ]
+done
+export CASE_MODE=foreign_owner
+bash "$script" --preview > "$tmp/foreign-owner.tsv"
+! grep -q '^RUNNER_DIAGNOSTIC_LOGS_OLDER_THAN_14_DAYS' "$tmp/foreign-owner.tsv"
+[ ! -e "$tmp/mutation" ] && [ "$(hashes)" = "$before" ]
 export CASE_MODE=alias
 bash "$script" --preview > "$tmp/alias.tsv"
 ! grep -q '^OLD_ONQ_NON_ROLLBACK_IMAGES' "$tmp/alias.tsv"

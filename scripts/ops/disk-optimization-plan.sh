@@ -12,25 +12,31 @@ keep="${OBS_IMAGE_KEEP:-5}"
 [ -n "$runner" ] && [ -d "$runner/_diag" ] && [ ! -L "$runner" ] && [ ! -L "$runner/_diag" ] || fail RUNNER_UNVERIFIED
 root="$(realpath -e -- "$runner")"; diag="$(realpath -e -- "$runner/_diag")"
 [ "$diag" = "$root/_diag" ] || fail RUNNER_UNVERIFIED
-docker info >/dev/null 2>&1 || fail DOCKER_UNVERIFIED
+# runner 라벨만으로 daemon 귀속을 추정하지 않는다. 고정 local socket/TEST host만 허용한다.
+[ "${DOCKER_HOST:-unix:///var/run/docker.sock}" = unix:///var/run/docker.sock ] && [ "${DOCKER_CONTEXT:-default}" = default ] || fail DOCKER_ENDPOINT_DENIED
+[ -z "${DOCKER_TLS_VERIFY:-}" ] && [ -z "${DOCKER_CERT_PATH:-}" ] || fail DOCKER_ENDPOINT_DENIED
+[ "$(hostname -s)" = obs-web-test ] || fail DOCKER_HOST_UNVERIFIED
+d() { (unset DOCKER_HOST DOCKER_CONTEXT DOCKER_TLS_VERIFY DOCKER_CERT_PATH; docker --host unix:///var/run/docker.sock "$@"); }
+[ "$(d context inspect default --format '{{.Endpoints.docker.Host}}')" = unix:///var/run/docker.sock ] || fail DOCKER_ENDPOINT_DENIED
+[ "$(d info --format '{{.Name}}')" = obs-web-test ] || fail DOCKER_HOST_UNVERIFIED
 all_versions="$(grep -o 'sha=[0-9a-f]\{40\}' "$history" | cut -d= -f2 | sort -u)" || fail HISTORY_UNVERIFIED
 protected_versions="$(tac -- "$history" | grep -o 'sha=[0-9a-f]\{40\}' | cut -d= -f2 | awk '!seen[$0]++' | sed -n "1,${keep}p")"
 [ -n "$all_versions" ] && [ -n "$protected_versions" ] || fail HISTORY_UNVERIFIED
-containers="$(docker ps -aq)" || fail CONTAINERS_UNVERIFIED
+containers="$(d ps -aq)" || fail CONTAINERS_UNVERIFIED
 protected_ids=""
 for container in $containers; do
-  id="$(docker inspect --format '{{.Image}}' "$container")" || fail CONTAINERS_UNVERIFIED
+  id="$(d inspect --format '{{.Image}}' "$container")" || fail CONTAINERS_UNVERIFIED
   [[ "$id" =~ ^sha256:[0-9a-f]{64}$ ]] || fail CONTAINERS_UNVERIFIED
   protected_ids+="$id"$'\n'
 done
-tags="$(docker image ls --format '{{.Repository}}:{{.Tag}}')" || fail IMAGES_UNVERIFIED
+tags="$(d image ls --format '{{.Repository}}:{{.Tag}}')" || fail IMAGES_UNVERIFIED
 rows=""; seen=""
 while IFS= read -r tag; do
   [[ "$tag" =~ ^obs-web-app:[0-9a-f]{40}$ ]] || continue
   sha="${tag##*:}"
   grep -qxF -- "$sha" <<<"$all_versions" || continue
   grep -qxF -- "$sha" <<<"$protected_versions" && continue
-  info="$(docker image inspect --format '{{.Id}}|{{.Size}}|{{range .RepoTags}}{{.}} {{end}}' "$tag")" || fail IMAGES_UNVERIFIED
+  info="$(d image inspect --format '{{.Id}}|{{.Size}}|{{range .RepoTags}}{{.}} {{end}}' "$tag")" || fail IMAGES_UNVERIFIED
   IFS='|' read -r id size aliases <<<"$info"
   [[ "$id" =~ ^sha256:[0-9a-f]{64}$ && "$size" =~ ^[0-9]+$ ]] || fail IMAGES_UNVERIFIED
   grep -qxF -- "$id" <<<"$protected_ids" && continue
@@ -51,10 +57,11 @@ while IFS= read -r file; do
   name="${file##*/}"
   [[ "$name" =~ ^(Runner|Worker)_[A-Za-z0-9_.-]+\.log$ ]] || continue
   [ ! -L "$file" ] && [ "$(realpath -e -- "$file")" = "$diag/$name" ] || continue
-  before="$(stat -c '%s:%Y:%i' -- "$file")" || fail LOGS_UNVERIFIED
+  [ "$(stat -c '%u' -- "$file")" = "$(id -u)" ] || continue
+  before="$(stat -c '%s:%Y:%i:%u' -- "$file")" || fail LOGS_UNVERIFIED
   digest="$(sha256sum -- "$file")" || fail LOGS_UNVERIFIED
-  after="$(stat -c '%s:%Y:%i' -- "$file")" || fail LOGS_UNVERIFIED
-  [ "$before" = "$after" ] || fail LOG_CHANGED_DURING_PREVIEW
+  after="$(stat -c '%s:%Y:%i:%u' -- "$file")" || fail LOGS_UNVERIFIED
+  [ "$before" = "$after" ] && [ "${after##*:}" = "$(id -u)" ] || fail LOG_CHANGED_DURING_PREVIEW
   rows+="RUNNER_DIAGNOSTIC_LOGS_OLDER_THAN_14_DAYS"$'\t'"$name"$'\t'"${before%%:*}"$'\t'"${digest%% *}"$'\n'
 done <<<"$files"
 printf 'ONQ_DISK_SAFE_V1\n'
