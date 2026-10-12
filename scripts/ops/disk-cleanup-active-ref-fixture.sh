@@ -96,3 +96,43 @@ grep -Fq 'if: always() && steps.checkout.outcome == '\''success'\''' "$workflow"
 grep -Fq 'path: ${{ steps.isolated_checkout.outputs.checkout_path }}' "$workflow"
 [ "$(grep -Fc 'working-directory: ${{ github.workspace }}/${{ steps.isolated_checkout.outputs.checkout_path }}' "$workflow")" -eq 3 ]
 printf 'checkout workflow fixture PASS (isolated path, no clean, no persisted credentials)\n'
+
+# 실제 배포 명령을 소유 합성 경로/도커 응답으로 실행해 자동 삭제 재발을 막는다.
+deploy_workflow="$root/.github/workflows/deploy-obs-test.yml"
+post_check="$(awk '
+  /^      - name: Check disk after deploy$/ { in_step=1; next }
+  in_step && /^      - name:/ { exit }
+  in_step && /^        run: / { sub(/^        run: /, ""); print }
+' "$deploy_workflow")"
+[ "$post_check" = 'scripts/ops/disk-cleanup.sh --check' ]
+! grep -Fq 'disk-cleanup.sh --apply' "$deploy_workflow"
+[ "$(grep -Fc 'run: scripts/ops/disk-cleanup.sh --check' "$deploy_workflow")" -eq 2 ]
+(
+  owned="$tmp/deploy-protected"
+  mutations="$tmp/deploy-mutations"
+  mkdir -p "$owned/backups" "$owned/docker" "$owned/runner/_diag"
+  for n in {1..11}; do printf 'owned backup evidence\n' > "$owned/backups/obs-20260101-$(printf '%06d' "$n")-before-abcdef0.dump"; done
+  printf 'owned rollback image\n' > "$owned/docker/rollback-app.image"
+  printf 'owned rollback image\n' > "$owned/docker/rollback-migrate.image"
+  printf 'owned dangling image\n' > "$owned/docker/dangling.image"
+  printf 'owned shared cache\n' > "$owned/docker/shared-builder.cache"
+  printf 'owned old runner log\n' > "$owned/runner/_diag/Runner_fixture.log"
+  printf 'sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n' > "$owned/history"
+  before="$(find "$owned" -type f -exec sha256sum {} \; | sort)"
+  docker() {
+    if [ "$*" = "info --format {{.DockerRootDir}}" ]; then printf '%s\n' "$owned/docker"; return; fi
+    printf 'unexpected docker call\n' >> "$mutations"; return 97
+  }
+  rm() { printf 'unexpected delete\n' >> "$mutations"; return 97; }
+  df() { printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\nfixture 20000000 1000000 %s 5%% /fixture\n' "$FIXTURE_FREE_KIB"; }
+  export -f docker rm df
+  export owned mutations OBS_BACKUP_DIR="$owned/backups" OBS_RUNNER_ROOT="$owned/runner" OBS_HISTORY_FILE="$owned/history"
+  cd "$root"
+  export FIXTURE_FREE_KIB=10000000
+  bash -euo pipefail -c "$post_check" >/dev/null
+  export FIXTURE_FREE_KIB=1000
+  if bash -euo pipefail -c "$post_check" >/dev/null; then echo 'low disk check unexpectedly passed' >&2; exit 1; fi
+  [ ! -e "$mutations" ]
+  [ "$(find "$owned" -type f -exec sha256sum {} \; | sort)" = "$before" ]
+)
+printf 'deploy disk check fixture PASS (normal/low space, backup/image/cache/log preservation, no apply)\n'
