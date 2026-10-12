@@ -6,6 +6,12 @@ import { randomBytes } from "node:crypto";
 import sharp from "sharp";
 import { hashPassword } from "../../lib/server/auth/password";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
+import { captureBrandingFailure, observeBrandingReads, recordBrandingRead } from "./brandingFailureDiagnostics";
+
+test.beforeEach(async ({ page }) => { observeBrandingReads(page); });
+test.afterEach(async ({ page }, info) => {
+  if (info.title.startsWith("최고관리자가 소개 파비콘")) await captureBrandingFailure(page, info, `landing-branding-${info.line}`);
+});
 
 // /about은 서비스 소개(PF-001)다(루트 /는 로그인 이동 유지, 대표님 지시 2026-10-04). 로그인·가입 진입이 보인다.
 test("/about은 서비스 소개가 열리고 로그인·가입 진입이 있다", async ({ page }) => {
@@ -287,9 +293,11 @@ test("최고관리자가 소개 파비콘·공유 카드를 저장하면 공개 
     await expect(og).toHaveAttribute("content", /^http:\/\/localhost:\d+\/api\/branding\/landing\/og\?v=[0-9a-f]{12}$/);
     await expect(page.locator('meta[property="og:description"]')).toHaveAttribute("content", "소개 공유 설명");
     const favicon = await request.get((await iconLink.getAttribute("href"))!);
+    await recordBrandingRead(page, favicon);
     expect(favicon.status()).toBe(200);
     expect(Buffer.from(await favicon.body())).toEqual(icon);
     const card = await request.get((await og.getAttribute("content"))!);
+    await recordBrandingRead(page, card);
     expect(card.status()).toBe(200);
     expect(card.headers()["content-type"]).toBe("image/png");
     expect(await sharp(await card.body()).metadata()).toMatchObject({ width: 1200, height: 630 });

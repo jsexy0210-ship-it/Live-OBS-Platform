@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { mobileDesignHref as designHref } from "./sa-mobile-links";
 
+// 2026-10-12 승인: 실제 목록 기본 10개. total/offset은 전체 쪽·끝 이동, cursor는 방문한 쪽·이전·다음만 표시. 한 쪽이면 숨김. 조건 변경 시 1쪽과 커서 초기화. 명시 limit·API 최대값과 권한·집계는 보존.
 // React canonical preserves the two 390px states from the retained HTML reference.
 export default function SA053MobileCanonical() {
   return <>

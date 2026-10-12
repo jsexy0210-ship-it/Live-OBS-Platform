@@ -16,7 +16,7 @@ import { kstDayStart } from "../orders/read";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const DEPOSIT_CONFIRM_MAX = 50;
-export const DEPOSIT_PAGE_DEFAULT = 20;
+export const DEPOSIT_PAGE_DEFAULT = 10;
 export const DEPOSIT_PAGE_MAX = 50;
 
 export type BankAccount = { bankName: string; accountNumber: string; accountHolder: string };
