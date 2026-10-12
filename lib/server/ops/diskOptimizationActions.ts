@@ -3,7 +3,8 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { adminCan } from "../authz/permissions";
 import { diskCandidateFingerprint, validDiskActualJob, validDiskPreview, type DiskActualJob, type DiskOptimizationBridge, type DiskPreviewEvidence } from "./diskOptimizationBridge";
 
-export const DISK_ACTIONS_REPO = "jsexy0210-ship-it/Live-OBS-Platform";
+import { configuredDiskAppToken, DISK_ACTIONS_REPO, type DiskAppInstallationToken } from "./diskOptimizationAppAuth";
+export { DISK_ACTIONS_REPO } from "./diskOptimizationAppAuth";
 export const DISK_PREVIEW_WORKFLOW = "disk-optimization-preview-obs-test.yml";
 export const DISK_EXECUTE_WORKFLOW = "disk-optimization-approved-obs-test.yml";
 const SOURCE = "disk_actions_transport", CLAIM = "disk_actions_claim";
@@ -15,11 +16,11 @@ const where = (source: string, eventId: string) => ({ source_eventId: { source, 
 type Db = PrismaClient | Prisma.TransactionClient;
 const currentTime = async (db: Db) => (await db.$queryRaw<{ now: Date }[]>`SELECT clock_timestamp() AS now`)[0].now;
 const actionsTime = (value: unknown) => typeof value === "string" && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : fail("ACTIONS_TIME_UNVERIFIED");
-export type DiskActionsTransport = (method: "GET" | "POST", path: string, body?: unknown) => Promise<{ status: number; data: unknown }>;
+export type DiskActionsTransport = ((method: "GET" | "POST", path: string, body?: unknown) => Promise<{ status: number; data: unknown }>) & { prepareAuth?(): Promise<void> };
 
 /** path만 주입받는다. 다른 저장소/host로 자격을 전달하거나 응답 원문을 오류에 싣지 않는다. */
-export function diskActionsTransport(token: string): DiskActionsTransport {
-  return async (method, path, body) => {
+export function diskActionsTransport(token: string | DiskAppInstallationToken): DiskActionsTransport {
+  const transport: DiskActionsTransport = async (method, path, body) => {
     const prefix = `/repos/${DISK_ACTIONS_REPO}/actions/`;
     const suffix = path.startsWith(prefix) ? path.slice(prefix.length) : "";
     const workflows = [DISK_PREVIEW_WORKFLOW, DISK_EXECUTE_WORKFLOW];
@@ -29,15 +30,21 @@ export function diskActionsTransport(token: string): DiskActionsTransport {
         || workflows.some(name => suffix === `workflows/${name}/runs?branch=main&event=workflow_dispatch&per_page=100`)
         || suffix === "workflows/deploy-obs-test.yml/runs?branch=main&status=in_progress&per_page=100";
     if (!allowed) fail("ACTIONS_TARGET_DENIED");
-    const response = await fetch(`https://api.github.com${path}`, { method, redirect: "error", cache: "no-store", signal: AbortSignal.timeout(15_000), headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", ...(body ? { "content-type": "application/json" } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
+    const credential = typeof token === "string" ? token : await token.token();
+    const response = await fetch(`https://api.github.com${path}`, { method, redirect: "error", cache: "no-store", signal: AbortSignal.timeout(15_000), headers: { authorization: `Bearer ${credential}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", ...(body ? { "content-type": "application/json" } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
+    if ((response.status === 401 || response.status === 403) && typeof token !== "string") token.invalidate();
     return { status: response.status, data: response.status === 204 ? null : await response.json() };
   };
+  transport.prepareAuth = async () => { if (typeof token !== "string") await token.token(); };
+  return transport;
 }
 
 /** 읽기 연결용 factory. 자격이 있어도 transport/bridge 양쪽에서 실행 접수는 차단한다. */
 export function configuredDiskActions(db: PrismaClient): DiskActionsBridge | null {
-  const token = process.env.ONQ_DISK_ACTIONS_TOKEN, callbackToken = process.env.ONQ_DISK_CALLBACK_TOKEN;
-  if (process.env.ONQ_DISK_ACTIONS_MODE !== "preview" || !token || !callbackToken || callbackToken.length < 32) return null;
+  const callbackToken = process.env.ONQ_DISK_CALLBACK_TOKEN;
+  if (process.env.ONQ_DISK_ACTIONS_MODE !== "preview" || !callbackToken || callbackToken.length < 32) return null;
+  const token = configuredDiskAppToken();
+  if (!token) return null;
   return new DiskActionsBridge(db, diskActionsTransport(token), callbackToken, false);
 }
 
@@ -75,6 +82,8 @@ export class DiskActionsBridge implements DiskOptimizationBridge {
     if (!Array.isArray(jobs.jobs) || !jobs.jobs.some(j => { const labels = object(j).labels; return Array.isArray(labels) && labels.includes("self-hosted") && labels.includes("obs-kakao"); })) fail("RUNNER_UNVERIFIED");
   }
   private async submit(mode: "preview" | "execute", requestId: string, detail: Record<string, unknown>) {
+    // 발급/설치 검증 실패는 workflow 송신이 아니다. 재조정 불가한 예약으로 남기지 않는다.
+    await this.transport.prepareAuth?.();
     await this.db.$transaction(async tx => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('disk_actions_transport'))`;
       if (await tx.opsEvent.findUnique({ where: where(SOURCE, `${mode}:${requestId}`) })) fail("ACTIONS_ALREADY_SUBMITTED");

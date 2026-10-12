@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { generateKeyPairSync } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 import { configuredDiskActions, diskActionsTransport, DiskActionsBridge, DISK_ACTIONS_REPO, DISK_EXECUTE_WORKFLOW, DISK_PREVIEW_WORKFLOW, type DiskActionsTransport } from "../../lib/server/ops/diskOptimizationActions";
 import { diskCandidateFingerprint, type DiskPreviewEvidence } from "../../lib/server/ops/diskOptimizationBridge";
 
+const ownedPem = Buffer.from(generateKeyPairSync("rsa", { modulusLength: 2048, privateKeyEncoding: { type: "pkcs8", format: "pem" }, publicKeyEncoding: { type: "spki", format: "pem" } }).privateKey).toString("base64");
 const id = "00000000-0000-4000-8000-000000000001", fp = "a".repeat(64), token = "owned-callback-fixture-".repeat(3);
 const expires = "2026-10-13T00:05:00.000Z";
 const preview = (): DiskPreviewEvidence => ({ target: "OBS_TEST", policyVersion: "ONQ_DISK_SAFE_V1", checkedAt: "2026-10-13T00:00:00.000Z", expiresAt: expires, hostValidated: true, runnerValidated: true, deploymentConcurrencyVerified: true, candidates: [{ category: "RUNNER_DIAGNOSTIC_LOGS_OLDER_THAN_14_DAYS", id: "Worker_owned.log", bytes: 20, contentHash: fp }] });
@@ -65,7 +67,7 @@ describe("ONQ 전용 실제 Actions 응답 계약", () => {
     expect(fetch).toHaveBeenCalledWith(`https://api.github.com${prefix}workflows/${DISK_PREVIEW_WORKFLOW}/dispatches`, expect.objectContaining({ method: "POST", redirect: "error", cache: "no-store" }));
   });
   it("읽기 자격이 구성돼도 production factory의 실행 승인과 POST는 열리지 않는다", async () => {
-    vi.stubEnv("ONQ_DISK_ACTIONS_MODE", "preview"); vi.stubEnv("ONQ_DISK_ACTIONS_TOKEN", "owned-transport-fixture"); vi.stubEnv("ONQ_DISK_CALLBACK_TOKEN", token);
+    vi.stubEnv("ONQ_DISK_ACTIONS_MODE", "preview"); vi.stubEnv("ONQ_DISK_APP_ID", "1"); vi.stubEnv("ONQ_DISK_INSTALLATION_ID", "2"); vi.stubEnv("ONQ_DISK_APP_PRIVATE_KEY_BASE64", ownedPem); vi.stubEnv("ONQ_DISK_CALLBACK_TOKEN", token);
     const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
     const bridge = configuredDiskActions(fixture().db);
     expect(bridge?.executionReady).toBe(false);
@@ -82,6 +84,15 @@ describe("ONQ 전용 실제 Actions 응답 계약", () => {
     expect(f.bridge.authorized("Bearer wrong")).toBe(false);
     await expect(f.bridge.dispatch(f.input)).rejects.toThrow("EXECUTION_NOT_APPROVED");
     expect(f.transport).not.toHaveBeenCalled();
+  });
+  it("App 자격 사전검증 실패는 workflow POST나 불확실 송신 예약을 남기지 않는다", async () => {
+    vi.stubEnv("ONQ_DISK_ACTIONS_MODE", "preview"); vi.stubEnv("ONQ_DISK_APP_ID", "1"); vi.stubEnv("ONQ_DISK_INSTALLATION_ID", "2"); vi.stubEnv("ONQ_DISK_APP_PRIVATE_KEY_BASE64", ownedPem); vi.stubEnv("ONQ_DISK_CALLBACK_TOKEN", token);
+    const fetch = vi.fn(async (_url: string, _init: RequestInit) => Response.json({ error: "owned auth unavailable" }, { status: 403 })); vi.stubGlobal("fetch", fetch);
+    const f = fixture(), bridge = configuredDiskActions(f.db)!;
+    await expect(bridge.preview()).rejects.toThrow("ACTIONS_APP_AUTH_UNAVAILABLE");
+    expect(f.rows.size).toBe(0);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledWith(`https://api.github.com/repos/${DISK_ACTIONS_REPO}/installation`, expect.objectContaining({ method: "GET" }));
   });
   it("앱의 durable 예약 없는 접수는 POST0이다", async () => {
     const f = fixture();
