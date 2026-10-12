@@ -6,7 +6,7 @@ import { decodeCursor, encodeCursor, kstDayStart } from "../orders/read";
 
 // 마스터 관리자 로그 추적(MA-070·071, 코드·DB 이름은 audit). audit.read(최고관리자·운영·조회 전용, CS 제외). 조회만 한다.
 // 목록은 기록 시각 내림차순 (createdAt, id) 커서이고 바뀐 값(before·after)은 넣지 않는다(상세에서만).
-export const AUDIT_PAGE_DEFAULT = 50;
+export const AUDIT_PAGE_DEFAULT = 10;
 export const AUDIT_PAGE_MAX = 200;
 const ACTOR_TYPES: readonly ActorType[] = ["PLATFORM_ADMIN", "SELLER_USER", "BUYER", "SYSTEM"];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
