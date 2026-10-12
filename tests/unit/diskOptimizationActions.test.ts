@@ -52,17 +52,27 @@ function fixture(approved = true) {
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 describe("ONQ 전용 실제 Actions 응답 계약", () => {
-  it("실제 transport는 고정 API와 두 workflow만 접수하고 경로 탈출과 배포 접수는 거부한다", async () => {
+  it("실제 transport는 고정 API의 preview만 접수하고 실행·경로 탈출·배포 접수는 거부한다", async () => {
     const fetch = vi.fn(async () => new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetch);
     const transport = diskActionsTransport("owned-transport-fixture");
     const prefix = `/repos/${DISK_ACTIONS_REPO}/actions/`;
-    for (const path of [`${prefix}../../other`, `${prefix}workflows/deploy-obs-test.yml/dispatches`, `${prefix}workflows/unapproved.yml/dispatches`, `${prefix}runs/101#fragment`, `/repos/other/repo/actions/runs/101`]) {
+    for (const path of [`${prefix}workflows/${DISK_EXECUTE_WORKFLOW}/dispatches`, `${prefix}../../other`, `${prefix}workflows/deploy-obs-test.yml/dispatches`, `${prefix}workflows/unapproved.yml/dispatches`, `${prefix}runs/101#fragment`, `/repos/other/repo/actions/runs/101`]) {
       await expect(transport("POST", path)).rejects.toThrow("ACTIONS_TARGET_DENIED");
     }
     expect(fetch).not.toHaveBeenCalled();
     await expect(transport("POST", `${prefix}workflows/${DISK_PREVIEW_WORKFLOW}/dispatches`, { ref: "main" })).resolves.toEqual({ status: 204, data: null });
     expect(fetch).toHaveBeenCalledWith(`https://api.github.com${prefix}workflows/${DISK_PREVIEW_WORKFLOW}/dispatches`, expect.objectContaining({ method: "POST", redirect: "error", cache: "no-store" }));
+  });
+  it("읽기 자격이 구성돼도 production factory의 실행 승인과 POST는 열리지 않는다", async () => {
+    vi.stubEnv("ONQ_DISK_ACTIONS_MODE", "preview"); vi.stubEnv("ONQ_DISK_ACTIONS_TOKEN", "owned-transport-fixture"); vi.stubEnv("ONQ_DISK_CALLBACK_TOKEN", token);
+    const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+    const bridge = configuredDiskActions(fixture().db);
+    expect(bridge?.executionReady).toBe(false);
+    await expect(bridge!.dispatch(fixture().input)).rejects.toThrow("EXECUTION_NOT_APPROVED");
+    expect(fetch).not.toHaveBeenCalled();
+    vi.stubEnv("ONQ_DISK_ACTIONS_MODE", "execute");
+    expect(configuredDiskActions(fixture().db)).toBeNull();
   });
   it("미설정과 preview-only 설정은 실행 권한을 만들지 않는다", async () => {
     vi.stubEnv("ONQ_DISK_ACTIONS_MODE", ""); vi.stubEnv("ONQ_DISK_ACTIONS_TOKEN", ""); vi.stubEnv("ONQ_DISK_CALLBACK_TOKEN", "");

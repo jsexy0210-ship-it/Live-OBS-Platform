@@ -13,7 +13,9 @@
 
 최소 외부 조치와 비삭제 검증: ① exact 두 workflow와 callback/provider 소스를 승인된 main에서 확인 ② 기존 ONQ 최소권한 App이 실제 존재하면 설치·권한·토큰 종류·만료/회전 및 갱신 방법을 확인 후 이용하고, 없으면 ONQ 저장소 전용 App 설치·자격 구성부터 별도 승인 ③ 앱 서버·obs-test 환경에 같은 전용 callback 자격만 별도 승인해 구성(값은 보고하지 않음) ④ 실제 TEST runner 귀속/diag 소유·권한/history·DockerRootDir/TLS를 읽기로 확인 ⑤ `preview`만 연결해 실제 run/후보와 UI 실행 disabled를 확인한다. 실제 인증 실패/만료/회전과 동일 UUID 재POST0도 이 별도 연결 게이트에서 검증해야 한다. 새 App/자격/env/서버 변경·실 dispatch/SSH는 이번 소스 작업에서 수행하지 않는다.
 
-실제 삭제의 별도 게이트는 검수한 후보/보호목록을 제시하고 production factory의 execution 승인 및 obs-test의 `ONQ_DISK_EXECUTION_APPROVED`를 명시 승인하는 것이다. 둘 중 하나가 닫히거나 callback claim이 거부되면 실행0이다. 이 소스의 production factory는 계속 false이며 임의로 권한을 추정해 열지 않는다.
+2026-10-13 KST 읽기 전용 연결·검증은 승인됐으며 위 App/자격·서버 설정과 귀속 확인을 보호 조건에 따라 순차 진행한다. 로컬 exact repo admin 접근과 TEST 환경 Secret 이름조회는 가능하지만 전용 연결 이름은 없었다. App installation은 CLI로 확인되지 않아 정상 GitHub UI에서 별도로 확인했고 ONQ 전용 설치·계정 소유 App은 없었다. 신규 App 생성은 GitHub 본인 재인증에서 사용자 직접 확인이 필요해 중단했으며 우회0이다. 현재 main d447에는 전용 preview workflow가 없어 독립 소스 게이트 후 정상 main 반영·서버 반영 경계도 필요하다. App/자격·앱 서버 설정·runner 귀속 측정·preview 실 dispatch는 아직0이다.
+
+실제 삭제의 별도 게이트는 검수한 후보/보호목록을 제시하고 production factory의 execution 승인·실제 transport의 실행 workflow 접수 허용 및 obs-test의 `ONQ_DISK_EXECUTION_APPROVED`를 명시 승인하는 것이다. 현재 실제 transport는 preview workflow POST만 허용하며 실행 workflow/배포 접수는 자격이 있어도 거부한다. 어느 경계가 닫히거나 callback claim이 거부되면 실행0이다. 이 소스의 production factory는 계속 false이며 임의로 권한을 추정해 열지 않는다.
 
 검증 순서:
 

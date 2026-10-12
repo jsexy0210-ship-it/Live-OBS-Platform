@@ -24,7 +24,7 @@ export function diskActionsTransport(token: string): DiskActionsTransport {
     const suffix = path.startsWith(prefix) ? path.slice(prefix.length) : "";
     const workflows = [DISK_PREVIEW_WORKFLOW, DISK_EXECUTE_WORKFLOW];
     const allowed = method === "POST"
-      ? workflows.some(name => suffix === `workflows/${name}/dispatches`)
+      ? suffix === `workflows/${DISK_PREVIEW_WORKFLOW}/dispatches`
       : /^runs\/[1-9][0-9]{0,19}(?:\/jobs\?per_page=100)?$/.test(suffix)
         || workflows.some(name => suffix === `workflows/${name}/runs?branch=main&event=workflow_dispatch&per_page=100`)
         || suffix === "workflows/deploy-obs-test.yml/runs?branch=main&status=in_progress&per_page=100";
@@ -34,7 +34,7 @@ export function diskActionsTransport(token: string): DiskActionsTransport {
   };
 }
 
-/** 실제 설정은 별도 승인 대상이다. preview 설정만으로 삭제 경로는 열리지 않는다. */
+/** 읽기 연결용 factory. 자격이 있어도 transport/bridge 양쪽에서 실행 접수는 차단한다. */
 export function configuredDiskActions(db: PrismaClient): DiskActionsBridge | null {
   const token = process.env.ONQ_DISK_ACTIONS_TOKEN, callbackToken = process.env.ONQ_DISK_CALLBACK_TOKEN;
   if (process.env.ONQ_DISK_ACTIONS_MODE !== "preview" || !token || !callbackToken || callbackToken.length < 32) return null;
