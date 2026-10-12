@@ -85,13 +85,27 @@ it("MA042 전체 합계는 50건 밖과 정지 판매자를 포함하고 승인 
   vi.spyOn(clock, "dbNow").mockResolvedValue(at);
   const first = await listSellerActivity(db, v.ctx, { period: "7d" });
   if (!first.ok) throw new Error("first");
-  expect(first.items).toHaveLength(50);
+  expect(first.items).toHaveLength(10);
   expect(first.items.every((r) => r.ordersPeriod.created === 0)).toBe(true);
   expect(first.summary).toEqual({ scope: "CURRENT_ACTIVE_AND_SUSPENDED_SELLERS", created: 2, paid: 2, paidAmount: 17500 });
-  const next = await listSellerActivity(db, v.ctx, { period: "7d", cursor: first.nextCursor });
-  if (!next.ok) throw new Error("next");
-  expect(next.summary).toEqual(first.summary);
-  expect(next.items.find((r) => r.sellerId === suspended.seller.id)?.ordersPeriod.paidAmount).toBe(7500);
+  const items = [...first.items];
+  const cursors = new Set<string>();
+  let cursor = first.nextCursor;
+  while (cursor) {
+    expect(cursors.has(cursor)).toBe(false);
+    cursors.add(cursor);
+    const next = await listSellerActivity(db, v.ctx, { period: "7d", cursor });
+    if (!next.ok) throw new Error("next");
+    expect(next.items.length).toBeGreaterThan(0);
+    expect(next.items.length).toBeLessThanOrEqual(10);
+    expect(next.summary).toEqual(first.summary);
+    items.push(...next.items);
+    expect(new Set(items.map(r => r.sellerId)).size).toBe(items.length);
+    cursor = next.nextCursor;
+  }
+  expect(items).toHaveLength(53);
+  expect(items.some(r => r.sellerId === pending.seller.id)).toBe(false);
+  expect(items.find((r) => r.sellerId === suspended.seller.id)?.ordersPeriod.paidAmount).toBe(7500);
 });
 
 it("MA043 월 paidAt 분모·25% 경계·양수 실성공 조정과 모의/일시 불확실 실패를 구분하며 잔액/원장을 바꾸지 않는다", async () => {

@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import type { AdminSessionContext } from "../auth/session";
+import { decodeCursor, encodeCursor } from "../orders/read";
 import { monthlyLimitWon } from "./budget";
 import { publicError } from "./jobs";
 import { STEPS } from "./steps";
@@ -88,16 +89,20 @@ export async function adminJobSummary(db: PrismaClient) {
   };
 }
 
-export async function adminJobList(db: PrismaClient, filter: AdminJobFilter) {
+export async function adminJobList(db: PrismaClient, filter: AdminJobFilter, cursor?: string | null) {
+  const after = cursor ? decodeCursor(cursor) : null;
+  if (cursor && !after) return { ok: false as const, reason: "bad_cursor" as const };
   const rows = await db.automationJob.findMany({
-    where: FILTER_WHERE[filter],
+    where: { AND: [FILTER_WHERE[filter], ...(after ? [{ OR: [{ createdAt: { lt: after.createdAt } }, { createdAt: after.createdAt, id: { lt: after.id } }] }] : [])] },
     include: { payment: { select: { status: true, amount: true } } },
-    orderBy: { createdAt: "desc" },
-    take: 100,
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: 11,
   });
   const sellers = await db.seller.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.sellerId))] } }, select: { id: true, shopName: true } });
   const names = new Map(sellers.map((s) => [s.id, s.shopName]));
-  return rows.map((j) => ({
+  const page = rows.slice(0, 10);
+  const last = page[page.length - 1];
+  return { ok: true as const, nextCursor: rows.length > 10 && last ? encodeCursor(last.createdAt, last.id) : null, jobs: page.map((j) => ({
     id: j.id,
     sellerId: j.sellerId,
     shopName: names.get(j.sellerId) ?? "",
@@ -114,7 +119,7 @@ export async function adminJobList(db: PrismaClient, filter: AdminJobFilter) {
     queuedAt: j.queuedAt,
     createdAt: j.createdAt,
     finishedAt: j.finishedAt,
-  }));
+  })) };
 }
 
 export async function adminJobDetail(db: PrismaClient, jobId: string) {

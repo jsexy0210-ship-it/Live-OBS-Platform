@@ -63,8 +63,8 @@ const FIELDS = [
   ["applicant", "신청자"],
   ["biz", "사업자등록번호"],
 ] as const;
-// 승인 대기 업무 큐라 공통 기본 기간(최근 1개월)을 쓰지 않는다(오래 기다린 신청이 가려지면 안 됨, period: null). 정렬은 큐 정본대로 오래된 순이 기본, 쪽 크기는 공통 20.
-const EMPTY = listDefaults({ tab: "all", sort: "oldest", q: "", field: "all", industry: "", receivedFrom: "", receivedTo: "" }, { period: null });
+// 승인 대기 업무 큐라 공통 기본 기간(최근 1개월)을 쓰지 않는다(오래 기다린 신청이 가려지면 안 됨, period: null). 정렬은 큐 정본대로 오래된 순이 기본, 현재 쪽 크기는 10.
+const EMPTY = listDefaults({ size: "10", tab: "all", sort: "oldest", q: "", field: "all", industry: "", receivedFrom: "", receivedTo: "" }, { period: null });
 type Filters = typeof EMPTY;
 const SEARCH_KEYS = ["q", "field", "industry", "receivedFrom", "receivedTo"] as const;
 
@@ -243,6 +243,7 @@ function Applications() {
   const [searchOpen, setSearchOpen] = useState(hasSearchFilters);
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const [cursorPage, setCursorPage] = useState(1);
+  const paging = useRef(false);
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [rejecting, setRejecting] = useState<Row | null>(null);
@@ -263,12 +264,14 @@ function Applications() {
   const load = useCallback(
     async (silent = false) => {
       const id = ++reqId.current;
+      paging.current = true;
       if (!silent) setState({ kind: "loading" });
-      const p = new URLSearchParams({ tab, sort: applied.sort === "newest" ? "newest" : "oldest", limit: applied.size });
+      const p = new URLSearchParams({ tab, sort: applied.sort === "newest" ? "newest" : "oldest", limit: "10" });
       for (const k of SEARCH_KEYS) if (applied[k] && !(k === "field" && !applied.q)) p.set(k, applied[k]);
       if (cursor) p.set("cursor", cursor);
       const r = await adminApi<Data>(`/api/admin/sellers/applications?${p}`);
       if (id !== reqId.current) return;
+      paging.current = false;
       if (r.ok) setState({ kind: "ok", data: r.data, rows: r.data.applications });
       else if (!silent) setState({ kind: "error" });
     },
@@ -640,7 +643,7 @@ function Applications() {
                 </div>
               ))}
             {state.kind === "ok" && (cursors.length > 1 || data?.nextCursor) && (
-              <CursorPagination page={cursorPage} visited={cursors.length} hasNext={!!data?.nextCursor} onChange={setCursorPage} onNext={() => { if (data?.nextCursor) { setCursors(c => c.length === cursorPage ? [...c, data.nextCursor] : c); setCursorPage(cursorPage + 1); } }} />
+              <CursorPagination page={cursorPage} visited={cursors.length} hasNext={!!data?.nextCursor} onChange={(page) => { if (state.kind !== "ok" || paging.current || page === cursorPage) return; paging.current = true; setCursorPage(page); }} onNext={() => { if (state.kind === "ok" && !paging.current && data?.nextCursor) { paging.current = true; setCursors(c => c.length === cursorPage ? [...c, data.nextCursor] : c); setCursorPage(cursorPage + 1); } }} />
             )}
           </div>
           {reviewing && (
