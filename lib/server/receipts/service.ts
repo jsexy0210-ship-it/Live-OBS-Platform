@@ -18,7 +18,7 @@ import { orderNoLabel } from "../orders/orderNoLabel";
 type Tx = Prisma.TransactionClient;
 export type AuditMeta = { ip?: string | null; userAgent?: string | null };
 export type BuyerScope = { sellerId: string; buyerMemberId: string };
-const PAGE = 30;
+const PAGE = 10;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const isUuid = (v: unknown): v is string => typeof v === "string" && UUID.test(v);
 const isUniqueViolation = (e: unknown) => e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";

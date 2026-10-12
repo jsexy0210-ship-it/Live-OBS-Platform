@@ -8,7 +8,7 @@ import { canViewCustomerPii, requireSellerRead, type TenantContext } from "../te
 // 탈퇴한 회원(deletedAt, 분리 보관)은 일반 목록·상세에서 없는 회원으로 다룬다(PRODUCT_SCOPE 탈퇴 규칙, buyers/withdraw.ts).
 // 이름·휴대폰은 CUSTOMER_PII_VIEW가 있을 때만 응답에 넣고 검색하며, 넣었거나 그것으로 찾았으면 customer.pii.view를 남긴다
 // (orders/read.ts와 같은 기준, 대표님 결정 2026-10-02).
-export const SELLER_MEMBER_PAGE_DEFAULT = 50;
+export const SELLER_MEMBER_PAGE_DEFAULT = 10;
 export const SELLER_MEMBER_PAGE_MAX = 200;
 const LIST_STATUSES: readonly BuyerMemberStatus[] = ["ACTIVE", "DORMANT"];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

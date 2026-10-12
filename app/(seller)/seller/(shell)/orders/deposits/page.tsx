@@ -3,8 +3,8 @@
 import { formatDateTime } from "../../../../../../lib/client/format";
 import "../../../../../../styles/seller-orders.css";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
-import { DatePicker, ListHead, Modal, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { DatePicker, Pagination, ListHead, Modal, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { useScrollRestore } from "../../../../../../lib/client/navigation";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
@@ -15,7 +15,7 @@ import { won } from "../../../../../../components/seller/format";
 // API: GET /api/seller/payments/deposits(from/to/status/q/searchBy, summary는 판매자 전체), POST /api/seller/payments/deposits/confirm(확인 직전 /api/seller/queue/version 값을 함께 보냄).
 // 확인에 보내는 expectedVersion은 목록을 불러올 때 함께 읽어 둔 값이다(보낸 사이 바뀌었으면 서버가 409로 막는다).
 // 실제 입금자명은 수집하지 않는다. legacy depositorName이 있어도 구매자 실명이므로 입금자명으로 표시하지 않는다.
-const PAGE = 20;
+const PAGE = 10;
 type DepositStatus = "PENDING_PAYMENT" | "OVERDUE" | "PAID" | "AUTO_CANCELLED";
 type Row = { orderId: string; orderNo: number; amount: number; nickname: string; buyerName?: string; depositorName?: string; depositorNameSource?: "BUYER_MEMBER_NAME_LEGACY"; depositorNameStatus?: "NOT_COLLECTED"; status?: string; depositStatus?: DepositStatus; paidAt?: string | null; autoCancelledAt?: string | null; paymentMethod: "CARD" | "BANK_TRANSFER" | null; paymentDueAt: string | null; createdAt: string };
 type Summary = { pendingCount: number; pendingAmount: number; dueWithinHourCount: number; confirmedTodayCount: number; overdueCount: number; autoCancelledTodayCount: number };
@@ -46,7 +46,8 @@ export default function DepositsPage() {
   const [picked, setPicked] = useState<string[]>([]);
   const [confirm, setConfirm] = useState<Row[] | null>(null);
   const [busy, setBusy] = useState(false);
-  const [more, setMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const reqId = useRef(0), paging = useRef(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [from, setFrom] = useState("");
@@ -61,30 +62,37 @@ export default function DepositsPage() {
     return () => clearInterval(t);
   }, []);
 
-  const load = useCallback(async (filter = applied, append = false, offset = 0) => {
+  const load = useCallback(async (filter = applied, target = 1) => {
+    const id = ++reqId.current; paging.current = true;
+    if (target === 1) setState({ kind: "loading" });
+    setPicked([]);
     // 버전을 먼저 읽는다: 읽은 뒤 목록이 바뀌면 확인할 때 서버가 409로 알려 준다
     const v = await api<{ version: number }>("/api/seller/queue/version");
-    if (!v.ok) return setState({ kind: "error", status: v.status });
-    const q = new URLSearchParams({ limit: String(PAGE), ...(append ? { offset: String(offset) } : {}) });
+    if (id !== reqId.current) return;
+    if (!v.ok) { paging.current = false; return setState({ kind: "error", status: v.status }); }
+    const q = new URLSearchParams({ limit: String(PAGE), offset: String((target - 1) * PAGE) });
     if (filter.from) q.set("from", filter.from);
     if (filter.to) q.set("to", filter.to);
     if (filter.statuses.length !== 1 || filter.statuses[0] !== "PENDING_PAYMENT") q.set("status", filter.statuses.length ? filter.statuses.join(",") : "ALL");
     if (filter.term.trim()) { q.set("q", filter.term.trim()); q.set("searchBy", filter.searchBy); }
     const r = await api<{ deposits: Row[]; total: number; summary?: Summary; capabilities?: { depositorSearch: boolean } }>(`/api/seller/payments/deposits?${q}`);
+    if (id !== reqId.current) return;
+    paging.current = false;
     if (!r.ok) return setState({ kind: "error", status: r.status });
     setPicked([]);
-    setState((prev) => ({ kind: "ok", rows: append && prev.kind === "ok" ? [...prev.rows, ...r.data.deposits.filter((x) => !prev.rows.some((old) => old.orderId === x.orderId))] : r.data.deposits, total: r.data.total, version: v.data.version, summary: r.data.summary, depositorSearch: r.data.capabilities?.depositorSearch === true }));
+    const pages = Math.ceil(r.data.total / PAGE);
+    if (target > (pages || 1)) { void load(filter, pages || 1); return; }
+    setPage(target);
+    setState({ kind: "ok", rows: r.data.deposits, total: r.data.total, version: v.data.version, summary: r.data.summary, depositorSearch: r.data.capabilities?.depositorSearch === true });
   }, []);
   useEffect(() => {
     void load({ from: "", to: "", statuses: ["PENDING_PAYMENT"], searchBy: "buyer", term: "" });
   }, [load]);
   useScrollRestore("seller-deposits", state.kind === "ok");
 
-  const loadMore = async () => {
-    if (state.kind !== "ok") return;
-    setMore(true);
-    await load(applied, true, state.rows.length);
-    setMore(false);
+  const turnPage = (target: number) => {
+    if (state.kind !== "ok" || paging.current || target === page || target < 1 || target > Math.ceil(state.total / PAGE)) return;
+    void load(applied, target);
   };
 
   const send = async () => {
@@ -224,13 +232,7 @@ export default function DepositsPage() {
               </table>
             </div>
           )}
-          {state.kind === "ok" && state.rows.length < state.total && (
-            <div className="row dep-more">
-              <button className={`btn btn-dense btn-out btn-level-secondary${more ? " is-loading" : ""}`} type="button" disabled={more} onClick={() => void loadMore()}>
-                더 불러오기
-              </button>
-            </div>
-          )}
+          {state.kind === "ok" && state.total > PAGE && <Pagination page={page} pageCount={Math.ceil(state.total / PAGE)} onChange={turnPage} />}
         </div>
       </main>
 
