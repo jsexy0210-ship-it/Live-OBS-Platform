@@ -259,7 +259,8 @@ test("SH029: 쓰기 상품·내 리뷰 각각 23개·독립 이동·고른 상�
   const seen: string[] = [];
   for (let n = 1; n <= 3; n++) {
     await expect(options).toHaveCount(n < 3 ? 10 : 3);
-    expect((await options.allTextContents()).map(s => s.trim().split(" · ")[0])).toEqual(names.slice((n - 1) * 10, n * 10));
+    await expect.poll(async () => (await options.allTextContents()).map(s => s.trim().split(" · ")[0])).toEqual(names.slice((n - 1) * 10, n * 10));
+    await expect(writeNav.getByRole("button", { name: `${n}페이지`, exact: true })).toHaveAttribute("aria-current", "page");
     seen.push(...(await options.allTextContents()).map(s => s.trim().split(" · ")[0]));
     await expect(select).toHaveValue(chosen); await expect(draft).toHaveValue("쪽을 바꿔도 유지할 작성 중인 리뷰입니다.");
     await expect(rows).toHaveCount(10);
