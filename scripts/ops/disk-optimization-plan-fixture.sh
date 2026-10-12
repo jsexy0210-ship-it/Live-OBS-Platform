@@ -54,3 +54,38 @@ if OBS_HISTORY_FILE="$tmp/missing" bash "$script" --preview > "$tmp/missing.tsv"
 grep -qx HISTORY_UNVERIFIED "$tmp/missing.err"
 [ ! -e "$tmp/mutation" ] && [ "$(hashes)" = "$before" ]
 printf 'disk optimization preview fixture PASS (two categories, rollback/alias/in-use/backup/cache/log preservation, unconnected execute rejected)\n'
+
+# 실제 CI guard를 소유 복사본에서 실행한다. 새 이름만 허용하며 조건 이탈과 별도 self-hosted는 계속 차단한다.
+root="$(cd -- "$(dirname -- "$script")/../.." && pwd)"
+guard="$tmp/ci-guard.sh"
+awk '
+  /^      - name: No deploy workflows$/ { in_step=1; next }
+  in_step && /^      - name:/ { exit }
+  in_step && /^        run: \|$/ { in_run=1; next }
+  in_run { sub(/^          /, ""); print }
+' "$root/.github/workflows/ci.yml" > "$guard"
+work="$tmp/guard-work"
+mkdir -p "$work/.github/workflows"
+cp -- "$root"/.github/workflows/*.yml "$work/.github/workflows/"
+target="$work/.github/workflows/disk-optimization-preview-obs-test.yml"
+cp -- "$target" "$tmp/preview-original.yml"
+(cd -- "$work" && bash "$guard")
+reject_guard() { if (cd -- "$work" && bash "$guard") > "$tmp/guard-output" 2>&1; then echo 'unsafe workflow unexpectedly passed' >&2; exit 1; fi; }
+for change in trigger main repo environment runner concurrency preview delete; do
+  cp -- "$tmp/preview-original.yml" "$target"
+  case "$change" in
+    trigger) printf '\npush:\n' >> "$target" ;;
+    main) sed -i "s@refs/heads/main@refs/heads/other@" "$target" ;;
+    repo) sed -i 's@jsexy0210-ship-it/Live-OBS-Platform@other/repository@' "$target" ;;
+    environment) sed -i 's/environment: obs-test/environment: other/' "$target" ;;
+    runner) sed -i 's/self-hosted, obs-kakao/self-hosted, other/' "$target" ;;
+    concurrency) sed -i 's/group: deploy-obs-test/group: other/' "$target" ;;
+    preview) sed -i 's/--preview/--execute/' "$target" ;;
+    delete) printf '\n          docker image prune -f\n' >> "$target" ;;
+  esac
+  reject_guard
+done
+cp -- "$tmp/preview-original.yml" "$target"
+printf 'runs-on: self-hosted\n' > "$work/.github/workflows/unapproved.yml"
+reject_guard
+printf 'disk optimization CI guard fixture PASS (exact allowlist, manual/main/repo/environment/runner/concurrency/readonly, unapproved self-hosted blocked)\n'
