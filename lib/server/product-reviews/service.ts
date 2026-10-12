@@ -177,7 +177,7 @@ export async function revokeReviewRewardsForOrder(tx: Tx, sellerId: string, orde
 // ───────── 파트너스 관리자 ─────────
 const sellerImageUrl = (id: string) => `/api/seller/reviews/images/${id}`;
 const STATUSES: readonly ProductReviewStatus[] = ["VISIBLE", "PENDING", "HELD", "HIDDEN"];
-export const SELLER_PAGE = 50;
+export const SELLER_PAGE = 10;
 
 export type SellerReviewQuery = { status?: string | null; rating?: string | null; waiting?: string | null; cursor?: string | null };
 

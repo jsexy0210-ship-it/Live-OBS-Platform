@@ -329,7 +329,7 @@ function view(m: MemberMessage) {
 }
 export type MessageView = ReturnType<typeof view>;
 
-const PAGE = 30;
+const PAGE = 10;
 
 export async function listMessages(db: PrismaClient, ctx: TenantContext, q: { cursor?: unknown } = {}) {
   requireSellerRead(ctx, "MEMBER_POINTS");
