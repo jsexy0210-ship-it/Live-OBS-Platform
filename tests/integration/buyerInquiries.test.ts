@@ -242,12 +242,18 @@ describe("파트너스 목록·상세·답변", () => {
       data: Array.from({ length: 35 }, (_, i) => ({ sellerId: s.seller.id, buyerMemberId: s.buyer.id, kind: "GENERAL" as const, authorNickname: "닉", title: `문의 ${i}`, body: "내용", createdAt: new Date(t0 - i * 1000), updatedAt: new Date(t0 - i * 1000) })),
     });
     const first = await list(s);
-    expect(first.body.inquiries).toHaveLength(30);
+    expect(first.body.inquiries).toHaveLength(10);
     expect(first.body.nextCursor).toBeTruthy();
     const second = await list(s, `?cursor=${first.body.nextCursor}`);
-    expect(second.body.inquiries).toHaveLength(5);
-    expect(second.body.nextCursor).toBeNull();
-    expect(new Set([...first.body.inquiries, ...second.body.inquiries].map((x: any) => x.id)).size).toBe(35);
+    expect(second.body.inquiries).toHaveLength(10);
+    expect(second.body.nextCursor).toBeTruthy();
+    const third = await list(s, `?cursor=${second.body.nextCursor}`);
+    expect(third.body.inquiries).toHaveLength(10);
+    expect(third.body.nextCursor).toBeTruthy();
+    const last = await list(s, `?cursor=${third.body.nextCursor}`);
+    expect(last.body.inquiries).toHaveLength(5);
+    expect(last.body.nextCursor).toBeNull();
+    expect(new Set([...first.body.inquiries, ...second.body.inquiries, ...third.body.inquiries, ...last.body.inquiries].map((x: { id: string }) => x.id)).size).toBe(35);
   });
 
   it("상세에 사진·작성자 닉네임이 있고, 다른 판매자 문의·사진은 404이다", async () => {

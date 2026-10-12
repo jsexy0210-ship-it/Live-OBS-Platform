@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { CursorPagination } from "../../../../../components/Pagination";
+
+import { useCallback, useEffect, useState, useRef } from "react";
 import { Modal, PageHead } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../components/seller/States";
@@ -79,14 +81,32 @@ export default function MemberMessagesPage() {
   const tab = query.section === "new" && canEdit ? "new" : "list";
   const setTab = (section: "list" | "new") => setQuery({ section });
   const [toast, setToast] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const reqId = useRef(0);
+  const paging = useRef(false);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [editing, setEditing] = useState<Msg | null>(null);
 
+  const listUrl = useCallback((cursor?: string) => `/api/seller/member-messages${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`, []);
   const load = useCallback(async () => {
-    const r = await api<Data>("/api/seller/member-messages");
+    const id = ++reqId.current; paging.current = true;
+    const r = await api<Data>(listUrl());
+    if (id !== reqId.current) return;
+    paging.current = false;
     if (!r.ok) return setState({ kind: "error", status: r.status, error: r.error });
+    setState({ kind: "ok", data: r.data }); setPage(1); setCursors([undefined]);
+  }, [listUrl]);
+  const goPage = async (target: number, cursor = cursors[target - 1]) => {
+    if (state.kind !== "ok" || paging.current || target < 1 || target > cursors.length + 1) return;
+    paging.current = true;
+    const id = reqId.current; const r = await api<Data>(listUrl(cursor));
+    if (id !== reqId.current) return;
+    paging.current = false;
+    if (!r.ok) return setToast("목록을 불러오지 못했습니다. 다시 눌러 주십시오");
     setState({ kind: "ok", data: r.data });
-  }, []);
+    setCursors((prev) => [...prev.slice(0, target - 1), cursor]); setPage(target);
+  };
   useEffect(() => {
     void load();
   }, [load]);
@@ -207,6 +227,7 @@ export default function MemberMessagesPage() {
                 )}
               </section>
             )}
+            {data && tab === "list" && (page > 1 || data.nextCursor) && <CursorPagination page={page} visited={cursors.length} hasNext={!!data.nextCursor} onChange={(target) => void goPage(target)} onNext={() => { if (data.nextCursor) void goPage(page + 1, data.nextCursor); }} />}
             {canEdit && (
               <div hidden={tab !== "new"}>
               <NewMessage
