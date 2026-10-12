@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Pagination } from "../Pagination";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useConfirm } from "../admin-ui/ConfirmDialog";
@@ -29,6 +30,7 @@ export default function WishlistView({ slug }: { slug: string }) {
   const api = `${shopApi}/wishlist`;
   const [view, setView] = useState<View>({ kind: "loading" });
   const [busy, setBusy] = useState(false);
+  const [page, setPage] = useState(1);
   const [confirming, setConfirming] = useState(false);
   const [action, setAction] = useState<Action | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string; undo?: string[] } | null>(null);
@@ -105,6 +107,10 @@ export default function WishlistView({ slug }: { slug: string }) {
   );
 
   const items = view.kind === "ok" ? view.items : [];
+  const pageCount = Math.ceil(items.length / 10);
+  const currentPage = Math.min(page, pageCount || 1);
+  const pageItems = items.slice((currentPage - 1) * 10, currentPage * 10);
+  useEffect(() => { if (view.kind === "ok") setPage(p => Math.min(p, pageCount || 1)); }, [view.kind, pageCount]);
   const out = items.filter((i) => i.status !== "on_sale");
   const body =
     view.kind === "loading" ? (
@@ -138,7 +144,7 @@ export default function WishlistView({ slug }: { slug: string }) {
       <>
         {msgEl}
         <ul className="pc-grid wishlist-grid" aria-label="찜한 상품">
-          {items.map((i) => (
+          {pageItems.map((i) => (
             <ProductCard key={i.productId} p={card(i)} href={i.status === "unavailable" ? undefined : `${base}/products/${i.productId}`}>
               {(i.isLive || i.eventBadge) && <p className="wl-badges">{i.isLive && <span className="wl-badge wl-live">방송 중</span>}{i.eventBadge && <span className="wl-badge wl-deadline">{i.eventBadge}</span>}</p>}
               {i.status === "unavailable" && <p className="cart-tag">지금은 판매하지 않아요</p>}
@@ -152,6 +158,7 @@ export default function WishlistView({ slug }: { slug: string }) {
             </ProductCard>
           ))}
         </ul>
+        {pageCount > 1 && <Pagination page={currentPage} pageCount={pageCount} onChange={setPage} label="찜 페이지 이동" />}
         <div className="cart-tools">
           <button className="btn btn-sm btn-out" type="button" disabled={busy || out.length === 0} onClick={async () => {
               if (await confirm({ tone: "shop", title: `품절 상품 ${out.length}개를 뺄까요?`, body: "찜 목록에서만 빠져요.", confirmLabel: "빼기" })) void remove(out, `${out.length}개를 찜에서 뺐어요`);
@@ -181,7 +188,7 @@ export default function WishlistView({ slug }: { slug: string }) {
                   ["recent", "최근 본 상품", recent.length],
                 ] as const
               ).map(([k, label, n]) => (
-                <button key={k} className={`tab${tab === k ? " on" : ""}`} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>
+                <button key={k} className={`tab${tab === k ? " on" : ""}`} type="button" role="tab" aria-selected={tab === k} onClick={() => { setPage(1); setTab(k); }}>
                   {label}
                   <span className="cnt">{n}</span>
                 </button>

@@ -14,7 +14,7 @@ export const noticeListHref = (state: NoticeListState = {}) => {
   if (state.cursor) params.set("cursor", state.cursor);
   else {
     if (state.page && state.page > 1) params.set("page", String(state.page));
-    if (state.pageSize && state.pageSize !== 5) params.set("pageSize", String(state.pageSize));
+    if (state.pageSize && state.pageSize !== 10) params.set("pageSize", String(state.pageSize));
   }
   const query = params.toString();
   return query ? `/notices?${query}` : "/notices";

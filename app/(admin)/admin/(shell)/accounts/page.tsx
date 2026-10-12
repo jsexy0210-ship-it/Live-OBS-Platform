@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { PageHead } from "../../../../../components/admin-ui";
+import { PageHead, Pagination } from "../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../components/seller/States";
 import { adminApi } from "../../_components/api";
 import { AccountDialog } from "../../_components/AccountDialog";
@@ -16,6 +16,7 @@ type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; items: Admin
 
 export default function AccountsPage() {
   const [state, setState] = useState<Load>({ kind: "loading" });
+  const [page, setPage] = useState(1);
   const [dialog, setDialog] = useState<{ account: AdminAccount | null } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -33,6 +34,10 @@ export default function AccountsPage() {
   };
 
   const items = state.kind === "ok" ? state.items : [];
+  const pageCount = Math.ceil(items.length / 10);
+  const currentPage = Math.min(page, pageCount || 1);
+  const pageItems = items.slice((currentPage - 1) * 10, currentPage * 10);
+  useEffect(() => { if (state.kind === "ok") setPage(p => Math.min(p, pageCount || 1)); }, [state.kind, pageCount]);
   return (
     <>
       <AdminTopbar crumb="관리자 › 관리자 계정" />
@@ -82,7 +87,7 @@ export default function AccountsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map((a) => (
+                    {pageItems.map((a) => (
                       <tr key={a.id} data-testid="account-row">
                         <td className="fw6">{a.name}</td>
                         <td>{a.email}</td>
@@ -102,6 +107,7 @@ export default function AccountsPage() {
                   </tbody>
                 </table>
               </div>
+              {pageCount > 1 && <Pagination page={currentPage} pageCount={pageCount} onChange={setPage} label="관리자 계정 페이지 이동" />}
               <div className="row" style={{ padding: "12px 16px" }}>
                 <span className="t-c1 c-alt">{items.length}명</span>
               </div>
