@@ -273,6 +273,9 @@ test("SH029: 쓰기 상품·내 리뷰 각각 23개·독립 이동·고른 상�
   }
   expect(seen).toEqual(names); await expect(writeNav.getByRole("button", { name: "다음", exact: true })).toBeDisabled();
   await traverse(rows, rows.locator("td:first-child b"), reviewNav, reviewNames);
+  await reviewNav.getByRole("button", { name: "3페이지", exact: true }).click();
+  await expect(reviewNav.getByRole("button", { name: "3페이지", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(rows).toHaveCount(3);
   await expect(page.locator(".rv-st span")).toHaveText("현재 쪽 3건");
   await expect(writeNav.getByRole("button", { name: "3페이지", exact: true })).toHaveAttribute("aria-current", "page");
   await expect(select).toHaveValue(chosen); await expect(draft).toHaveValue("쪽을 바꿔도 유지할 작성 중인 리뷰입니다.");
