@@ -32,7 +32,7 @@ test.beforeAll(async ({}, info) => {
   db = new PrismaClient({ datasources: { db: { url } } });
   mkdirSync(evidence, { recursive: true });
   const plan = await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "INTEGRATED" } });
-  sellerId = (await db.seller.create({ data: { slug: `query-${run}`, shopName: `합성 목록 ${run}`, status: "ACTIVE", approvedAt: new Date(), planId: plan.id } })).id;
+  sellerId = (await db.seller.create({ data: { slug: `query-${run}`, shopName: `합성 목록 ${run}`, status: "ACTIVE", approvedAt: new Date(), planId: plan.id, trialEndsAt: new Date(Date.now() + 10 * 86_400_000) } })).id;
   userId = (await db.sellerUser.create({ data: { sellerId, email, passwordHash: await hashPassword(password), name: "합성 대표", isOwner: true } })).id;
   await db.sellerSubscription.create({ data: { sellerId, planId: plan.id, currentPeriodStart: new Date(), currentPeriodEnd: new Date(Date.now() + 30 * 86_400_000) } });
   const grade = await db.memberGrade.create({ data: { sellerId, displayName: "합성 등급", sortOrder: 0 } });
@@ -251,6 +251,7 @@ test("SA-023: 처리한 행만 거두고 현재 쪽·스크롤을 보존하며 �
 });
 
 test("SA-024: 미결제 후속 처리와 영수증 권한을 보존한다", async ({ page }) => {
+  await db.seller.update({ where: { id: sellerId! }, data: { trialEndsAt: new Date(Date.now() - 86_400_000) } });
   await db.sellerSubscription.update({ where: { sellerId }, data: { currentPeriodEnd: new Date(Date.now() - 86_400_000), status: "CANCELED" } });
   const receiptEmail = `query-${run}-receipt@example.com`;
   const deniedEmail = `query-${run}-denied@example.com`;

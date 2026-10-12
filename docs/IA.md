@@ -352,3 +352,5 @@ EM-101 판매자 가입 승인 안내 (플랫폼 → 판매자: 판매자 관리
 9. (2026-10-05 대표님 지시) 최상위 메뉴 화면을 뺀 모든 화면은 진입 즉시 화면 ← 버튼이 보인다. 화면마다 「들어오는 길 → 돌아가는 곳」을 전부 계산해 `docs/BACK_ROUTES.md` 경로표로 관리하고, 구현은 이 표를 따른다. 새 화면을 만들면 경로표에 같은 PR로 추가한다.
 
 공통 Navigation 도우미 사용법: `lib/client/navigation/` — `useSmartBack(parent)`(1항), `useUrlState(defaults)`·`useScrollRestore(key, ready)`(3항), `useUnsavedGuard(dirty)`·`confirmLeave`(7항), `sanitizeNext(raw, NEXT_SCOPE.*)`(6항). 앱 안 이동 기록은 루트 레이아웃의 `<NavigationTracker />`가 쌓으며, 없으면 화면 ←는 항상 부모로 replace한다.
+
+2026-10-11 목록 10개 후속: SA-044 등급 설정·요약과 선택기는 유지하고 최근 변경/고정 회원/승급·강등 변동 회원만 생성 시각·ID 커서의 현재 10개와 방문한 쪽 이동을 제공한다. SH-028 쿠폰함은 기존 usable/past 원배열(지난 쿠폰 최근 50개)을 두 탭에서 각각 10개씩, SA-130 알림은 기존 최근 30개 feed·14일/읽음 기준을 유지하며 10개씩 표시하고 새로 고침은 첫 쪽으로 돌아간다. 한 쪽 이동은 숨기며 커서에서 전체 건수·마지막 쪽을 추정하지 않는다. 전체 목록 후속은 별도로 남는다.

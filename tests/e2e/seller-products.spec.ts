@@ -356,6 +356,7 @@ test("상품 목록 제목 안내·검색 두 쌍·표 경계가 1440·1024·390
 
 test("옵션 이름이 길어도 표는 내부에서 스크롤되고 페이지 폭을 밀지 않는다(1440·1024)", async ({ page }) => {
   await login(page);
+  await searchFor(page, "보관용 카드 바인더");
   const row = page.getByTestId("product-row").filter({ hasText: "보관용 카드 바인더" });
   for (const width of [1440, 1024]) {
     await page.setViewportSize({ width, height: 900 });
