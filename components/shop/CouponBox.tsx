@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { Pagination } from "../Pagination";
 import MyMenu from "./MyMenu";
 import ShopState from "./ShopState";
 import "./Cart.css";
@@ -116,12 +117,16 @@ export default function CouponBox({ slug }: { slug: string }) {
   const base = `/api/shop/${encodeURIComponent(slug)}/coupons`;
   const [view, setView] = useState<{ kind: "loading" } | { kind: "login" } | { kind: "error" } | { kind: "ok"; box: Box }>({ kind: "loading" });
   const [tab, setTab] = useState<Tab>("usable");
+  const [pages, setPages] = useState<Record<Tab, number>>({ usable: 1, past: 1 });
+  const requestId = useRef(0);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const load = useCallback(async () => {
+    const id = ++requestId.current;
     const r = await call<Box>(`${base}?claimable=1`);
+    if (id !== requestId.current) return;
     if (r.ok) return setView({ kind: "ok", box: r.data });
     setView(r.status === 401 || r.status === 404 ? { kind: "login" } : { kind: "error" });
   }, [base]);
@@ -129,6 +134,11 @@ export default function CouponBox({ slug }: { slug: string }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (view.kind !== "ok") return;
+    setPages(p => ({ usable: Math.min(p.usable, Math.max(1, Math.ceil(view.box.usable.length / 10))), past: Math.min(p.past, Math.max(1, Math.ceil(view.box.past.length / 10))) }));
+  }, [view]);
 
   const take = async (key: string, path: string, body: unknown) => {
     if (busy) return;
@@ -140,6 +150,7 @@ export default function CouponBox({ slug }: { slug: string }) {
       setMsg({ ok: true, text: "쿠폰을 받았어요 · 주문서에서 바로 쓸 수 있어요" });
       setCode("");
       setTab("usable");
+      setPages(p => ({ ...p, usable: 1 }));
       return load();
     }
     if (r.status === 401) return setView({ kind: "login" });
@@ -176,6 +187,7 @@ export default function CouponBox({ slug }: { slug: string }) {
   const { box } = view;
   const now = new Date(box.now).getTime();
   const list = tab === "usable" ? box.usable : box.past;
+  const pageCount = Math.ceil(list.length / 10), page = Math.min(pages[tab], pageCount || 1);
   return (
     <Frame slug={slug}>
       <section className="col cb">
@@ -204,11 +216,12 @@ export default function CouponBox({ slug }: { slug: string }) {
           </div>
         ) : (
           <ul className="cb-list">
-            {list.map((c) => (
+            {list.slice((page - 1) * 10, page * 10).map((c) => (
               <MineItem key={c.couponId} c={c} now={now} slug={slug} />
             ))}
           </ul>
         )}
+        {pageCount > 1 && <Pagination page={page} pageCount={pageCount} onChange={n => setPages(p => ({ ...p, [tab]: n }))} />}
         {box.shopOpen && (
           <form
             onSubmit={(e) => {
