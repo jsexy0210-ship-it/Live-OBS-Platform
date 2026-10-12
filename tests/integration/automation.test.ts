@@ -3904,7 +3904,15 @@ describe("Codex 47차 반영(외부 의존 전체로 계약 확대)", () => {
       expect(await claimNext(db, "w-other")).toBeNull();
       release();
       await lateOpen;
-      await new Promise((r) => setTimeout(r, 50));
+      // 브라우저 Promise 뒤의 비동기 DB 종료 확인까지 기다린다(기존 100회·20ms bounded 조회 패턴).
+      let ended = await job(a.jobId);
+      for (let i = 0; i < 100 && !(ended.lastActionStartedAt && ended.lastActionEndedAt && ended.lastActionEndedAt >= ended.lastActionStartedAt); i++) {
+        await new Promise((r) => setTimeout(r, 20));
+        ended = await job(a.jobId);
+      }
+      expect(ended.lastActionStartedAt).not.toBeNull();
+      expect(ended.lastActionEndedAt).not.toBeNull();
+      expect(ended.lastActionEndedAt!.getTime()).toBeGreaterThanOrEqual(ended.lastActionStartedAt!.getTime());
       // 중단 신호를 받은 열기는 보관본을 복원(소비)하지 않았고, 끝났다는 확인이 남아 시간이 지나지 않아도 이어받는다
       expect(rt.browser.saved.has(a.jobId)).toBe(true);
       expect((await claimNext(db, "w-other"))?.job.id).toBe(a.jobId);
