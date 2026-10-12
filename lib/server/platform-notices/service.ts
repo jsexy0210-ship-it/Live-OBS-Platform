@@ -23,6 +23,7 @@ export type AuditMeta = { ip?: string | null; userAgent?: string | null };
 export const TITLE_MAX = 100;
 export const BODY_MAX = 10_000;
 export const PAGE_SIZE = 20;
+const ADMIN_NOTICE_PAGE_SIZE = 10;
 export const PUBLIC_NOTICE_PAGE_SIZE = 5;
 const MAX_PUBLIC_NOTICE_PAGE_SIZE = 20;
 export const CATEGORIES = ["MAINTENANCE", "POLICY", "FEATURE", "GENERAL"] as const satisfies readonly PlatformNoticeCategory[];
@@ -113,18 +114,21 @@ const cursorOf = (at: Date, id: string) => `${at.toISOString()}_${id}`;
 
 // ───────── 마스터 관리자 ─────────
 
-export async function listAdminNotices(db: PrismaClient, admin: AdminSessionContext, q: { status?: string | null; cursor?: string | null }) {
+export async function listAdminNotices(db: PrismaClient, admin: AdminSessionContext, q: { status?: string | null; cursor?: string | null; category?: string | null; q?: string | null }) {
   const c = parseCursor(q.cursor);
   if (c === "invalid") return { ok: false as const, reason: "invalid_cursor" as const };
+  if (q.category && !CATEGORIES.includes(q.category as PlatformNoticeCategory)) return { ok: false as const, reason: "invalid_category" as const };
   const where: Prisma.PlatformNoticeWhereInput = {
     deletedAt: null,
+    ...(q.category ? { category: q.category as PlatformNoticeCategory } : {}),
+    ...(q.q ? { title: { contains: q.q } } : {}),
     ...(q.status === "draft" ? { publishedAt: null } : q.status === "published" ? { publishedAt: { not: null } } : {}),
     ...(c ? { OR: [{ createdAt: { lt: c.at } }, { createdAt: c.at, id: { lt: c.id } }] } : {}),
   };
-  const rows = await db.platformNotice.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: PAGE_SIZE + 1 });
-  const page = rows.slice(0, PAGE_SIZE);
+  const rows = await db.platformNotice.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: ADMIN_NOTICE_PAGE_SIZE + 1 });
+  const page = rows.slice(0, ADMIN_NOTICE_PAGE_SIZE);
   const last = page[page.length - 1];
-  return { ok: true as const, items: page.map(adminView), nextCursor: rows.length > PAGE_SIZE && last ? cursorOf(last.createdAt, last.id) : null };
+  return { ok: true as const, items: page.map(adminView), nextCursor: rows.length > ADMIN_NOTICE_PAGE_SIZE && last ? cursorOf(last.createdAt, last.id) : null };
 }
 
 const FILE_SELECT = { id: true, name: true, byteSize: true } as const;

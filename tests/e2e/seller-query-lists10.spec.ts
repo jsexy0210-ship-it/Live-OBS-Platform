@@ -181,6 +181,7 @@ for (const t of targets) test(`${t.id}: 실제 목록 10개·끝·앞뒤·필터
 });
 
 test("SA-023: 처리한 행만 거두고 현재 쪽·스크롤을 보존하며 빈 끝 쪽을 보정한다", async ({ page }) => {
+  test.setTimeout(60_000);
   await page.goto("/seller/login"); await submitSellerLogin(page, email, password);
   await expect(page).toHaveURL(/\/seller$/);
   const api = "/api/seller/refund-requests";
@@ -193,11 +194,13 @@ test("SA-023: 처리한 행만 거두고 현재 쪽·스크롤을 보존하며 �
   } while (cursor);
   expect(original.map(r => r.id)).toEqual(owned.refunds.slice(0, 22).reverse());
   const removed = new Set<string>();
+  let failPrevious = false;
   // 화면 처리 응답만 합성한다. 실제 환불·거절 POST를 서버에 보내지 않는다.
   await page.route(`**${api}?*`, route => {
     expect(route.request().method()).toBe("GET");
     const q = new URL(route.request().url()).searchParams;
     const after = q.get("cursor") ? original.findIndex(r => r.id === q.get("cursor")) : -1;
+    if (failPrevious && after === 9) { failPrevious = false; return route.fulfill({ status: 503, json: { error: "synthetic_previous_failed" } }); }
     const remaining = original.slice(after + 1).filter(r => !removed.has(r.id));
     const requests = remaining.slice(0, 10);
     return route.fulfill({ json: { requests, nextCursor: remaining.length > 10 ? requests.at(-1)!.id : null, counts: { REQUESTED: original.length - removed.size, REJECTED: 1 + removed.size } } });
@@ -209,7 +212,6 @@ test("SA-023: 처리한 행만 거두고 현재 쪽·스크롤을 보존하며 �
     expect(owned.refunds).toContain(id); removed.add(id);
     return route.fulfill({ json: { ok: true } });
   });
-  await page.goto("/seller/orders/refund-requests");
   const rows = page.getByTestId("refund-request-row");
   const nav = page.getByRole("navigation", { name: "페이지 이동", exact: true });
   const current = (n: number) => expect(nav.getByRole("button", { name: `${n}페이지`, exact: true })).toHaveAttribute("aria-current", "page");
@@ -223,18 +225,29 @@ test("SA-023: 처리한 행만 거두고 현재 쪽·스크롤을 보존하며 �
     await expect(dialog).toHaveCount(0);
     return scroll;
   };
-  await nav.getByRole("button", { name: "다음", exact: true }).click(); await current(2);
-  const before = await rows.allTextContents();
-  const scroll = await rejectFirst();
-  await current(2); await expect(rows).toHaveCount(9);
-  await expect(rows).toHaveText(before.slice(1));
-  expect(await page.evaluate(() => scrollY)).toBe(scroll);
-  await expect(page.getByTestId("refund-summary")).toContainText("21건");
-  await nav.getByRole("button", { name: "다음", exact: true }).click(); await current(3); await expect(rows).toHaveCount(2);
-  await rejectFirst(); await current(3); await expect(rows).toHaveCount(1);
-  await rejectFirst(); await current(2); await expect(rows).toHaveCount(9);
-  await expect(nav.getByRole("button", { name: "다음", exact: true })).toBeDisabled();
-  await expect(page.getByTestId("refund-summary")).toContainText("19건");
+  for (const previousFails of [false, true]) {
+    removed.clear();
+    await page.goto("/seller/orders/refund-requests");
+    await nav.getByRole("button", { name: "다음", exact: true }).click(); await current(2);
+    const before = await rows.allTextContents();
+    const scroll = await rejectFirst();
+    await current(2); await expect(rows).toHaveCount(9);
+    await expect(rows).toHaveText(before.slice(1));
+    expect(await page.evaluate(() => scrollY)).toBe(scroll);
+    await expect(page.getByTestId("refund-summary")).toContainText("21건");
+    await nav.getByRole("button", { name: "다음", exact: true }).click(); await current(3); await expect(rows).toHaveCount(2);
+    await rejectFirst(); await current(3); await expect(rows).toHaveCount(1);
+    failPrevious = previousFails;
+    await rejectFirst();
+    if (previousFails) {
+      await current(3); await expect(rows).toHaveCount(0);
+      await expect(page.getByText("불러오지 못했습니다. 다시 눌러 주십시오", { exact: true })).toBeVisible();
+      await nav.getByRole("button", { name: "이전", exact: true }).click();
+    }
+    await current(2); await expect(rows).toHaveCount(9);
+    await expect(nav.getByRole("button", { name: "다음", exact: true })).toBeDisabled();
+    await expect(page.getByTestId("refund-summary")).toContainText("19건");
+  }
 });
 
 test("SA-024: 미결제 후속 처리와 영수증 권한을 보존한다", async ({ page }) => {
