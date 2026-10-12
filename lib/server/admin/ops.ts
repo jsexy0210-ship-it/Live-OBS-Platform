@@ -13,7 +13,7 @@ import { RATE_MAX } from "../rewards/policyAdmin";
 // - 오늘: KST 0시부터. 결제 금액은 환불액을 뺀다(대시보드 MA-001과 같은 기준).
 const DAY_MS = 86_400_000;
 const KST_MS = 9 * 3_600_000;
-export const ACTIVITY_PAGE_SIZE = 50;
+export const ACTIVITY_PAGE_SIZE = 10;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function requireRead(admin: AdminSessionContext) {
@@ -93,8 +93,8 @@ export async function listLiveBroadcasts(db: PrismaClient, admin: AdminSessionCo
   } };
 }
 
-// MA-042: 승인된 파트너스(이용 중·정지)별 오늘 주문·결제와 방송·오버레이 접속. 가입 순 최신 50곳씩 커서.
-export async function listSellerActivity(db: PrismaClient, admin: AdminSessionContext, q: { cursor?: string | null; period?: string | null; asOf?: string | null }) {
+// MA-042: 승인된 파트너스(이용 중·정지)별 오늘 주문·결제와 방송·오버레이 접속. 가입 순 최신 10곳씩 커서.
+export async function listSellerActivity(db: PrismaClient, admin: AdminSessionContext, q: { cursor?: string | null; period?: string | null; asOf?: string | null; liveOnly?: boolean; offOnly?: boolean }) {
   requireRead(admin);
   const period = q.period ?? "today";
   if (!["today", "7d", "30d"].includes(period)) return { ok: false as const, reason: "invalid_period" as const };
@@ -113,12 +113,24 @@ export async function listSellerActivity(db: PrismaClient, admin: AdminSessionCo
     if (i <= 0 || Number.isNaN(at.getTime()) || !UUID.test(id)) return { ok: false as const, reason: "invalid_cursor" as const };
     after = { OR: [{ createdAt: { lt: at } }, { createdAt: at, id: { lt: id } }] };
   }
-  const rows = await db.seller.findMany({
-    where: { status: { in: ["ACTIVE", "SUSPENDED"] }, ...after },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    take: ACTIVITY_PAGE_SIZE + 1,
-    select: { id: true, shopName: true, slug: true, status: true, createdAt: true },
-  });
+  const select = { id: true, shopName: true, slug: true, status: true, createdAt: true } as const;
+  const rows: Awaited<ReturnType<typeof readBatch>> = [];
+  async function readBatch(after: Prisma.SellerWhereInput) {
+    return db.seller.findMany({
+      where: { status: { in: ["ACTIVE", "SUSPENDED"] }, ...(q.liveOnly ? { broadcastSessions: { some: { status: "LIVE" } } } : {}), ...after },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: ACTIVITY_PAGE_SIZE + 1, select,
+    });
+  }
+  // 연결 끊김 조건은 기존 overlaySeen 판정 그대로 적용하며, 일치하는 다음 행까지 서버에서 이어서 찾는다.
+  while (rows.length <= ACTIVITY_PAGE_SIZE) {
+    const batch = await readBatch(after);
+    if (!batch.length) break;
+    const connected = q.offOnly ? await overlaySeen(db, batch.map(s => s.id), observedAt) : null;
+    rows.push(...batch.filter(s => !connected || (connected(s.id).hasUrl && !connected(s.id).connected)));
+    if (!q.offOnly || batch.length <= ACTIVITY_PAGE_SIZE) break;
+    const last = batch[batch.length - 1];
+    after = { OR: [{ createdAt: { lt: last.createdAt } }, { createdAt: last.createdAt, id: { lt: last.id } }] };
+  }
   const page = rows.slice(0, ACTIVITY_PAGE_SIZE);
   const ids = page.map((s) => s.id);
   const [activity, live] = await Promise.all([

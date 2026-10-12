@@ -12,7 +12,7 @@ import { formatCsv, guardText } from "../shop-bulk-io/csv";
 // - 조회·내보내기는 platform.read(모든 마스터 역할), 재시도는 billing.manage(최고관리자·운영). 키·카드번호 원문은 어디에도 없다(카드 표시 이름 cardLabel만).
 // - 목록은 기간(KST 날짜, 청구 시각 기준)으로 항상 제한하고 새 표 없이 SubscriptionPayment·SellerSubscription에서 계산한다(기간 인덱스 SubscriptionPayment_createdAt_idx).
 // - 「예정」은 아직 청구가 생기지 않은 다음 자동결제(구독의 nextChargeAt이 기간 안이고 아직 안 지남)를 같은 표에 한 줄로 보여 준다(paymentId null, 금액은 예상).
-export const BILLING_INVOICE_PAGE_DEFAULT = 20;
+export const BILLING_INVOICE_PAGE_DEFAULT = 10;
 export const BILLING_INVOICE_PAGE_MAX = 100;
 export const BILLING_INVOICE_RANGE_MAX_DAYS = 366;
 export const BILLING_INVOICE_EXPORT_MAX = 5000;

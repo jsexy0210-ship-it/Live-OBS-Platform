@@ -152,10 +152,11 @@ test("SA-130: 최근 30개 feed와 읽음 계약을 보존하며 10개 이동·�
   try {
     await login(page);await page.goto("/seller/notifications");
     const rows=page.getByTestId("notif-row"),text=rows.locator("td > a");
+    await expect.poll(()=>reads).toBe(1);
     await numbered(page,rows,text,items.map(i=>i.title));await expect(page.getByTestId("notif-unread")).toHaveText("읽지 않은 알림 30건");
     await shots(page,"SA-130","page2-recent30");
-    const count=gets;await page.getByRole("button",{name:"새로 고침",exact:true}).click();await expect(text).toHaveText(items.slice(0,10).map(i=>i.title));
-    expect(gets).toBe(count+1);await expect.poll(()=>reads).toBe(gets);
+    const count=gets,readCount=reads;await page.getByRole("button",{name:"새로 고침",exact:true}).click();await expect(text).toHaveText(items.slice(0,10).map(i=>i.title));
+    await expect.poll(()=>gets).toBe(count+1);await expect.poll(()=>reads).toBe(readCount+1);
     items=[];await page.getByRole("button",{name:"새로 고침",exact:true}).click();await expect(page.getByText("새 알림이 없습니다",{exact:true})).toBeVisible();
     await expect(rows).toHaveCount(0);await expect(page.getByRole("navigation",{name:"페이지 이동",exact:true})).toHaveCount(0);
   } catch(error) {try{await capture(page,"SA-130","failed");}catch{}throw error;}
