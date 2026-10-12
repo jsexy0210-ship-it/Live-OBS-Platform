@@ -23,6 +23,7 @@ function fixture() {
   const raw = { transactionStartedAt: undefined as Date | undefined, $queryRaw: vi.fn(async () => [{ now: clock.at }]), adminSession: { findUnique: vi.fn(async () => session) }, $executeRaw: vi.fn(async () => 1), opsEvent: {
     findUnique: vi.fn(async ({ where }) => events.get(key(where)) ?? null),
     upsert: vi.fn(async ({ where, create }) => { if (!events.has(key(where))) events.set(key(where), create); return events.get(key(where)); }),
+    update: vi.fn(async ({ where, data }) => { const found = events.get(key(where)); if (!found) throw new Error("missing"); Object.assign(found, data); return found; }),
     create: vi.fn(async ({ data }) => { const k = `${data.source}:${data.eventId}`; if (events.has(k)) throw new Error("duplicate"); events.set(k, data); return data; }),
   }, $transaction: async <T>(fn: (db: unknown) => Promise<T>) => {
     raw.transactionStartedAt = clock.at;
@@ -30,7 +31,7 @@ function fixture() {
   } };
   const db = raw as unknown as PrismaClient;
   const bridge: DiskOptimizationBridge = { preview: vi.fn(async () => preview()), dispatch: vi.fn(async () => job()), job: vi.fn(async () => job()) };
-  return { db, bridge, session, events };
+  return { db, bridge, session, events, transactionActive: () => raw.transactionStartedAt !== undefined };
 }
 const input = () => ({ actionId: policy.actionId, policyVersion: policy.version, idempotencyKey: requestId, candidateFingerprint: diskCandidateFingerprint(preview().candidates), previewExpiresAt: preview().expiresAt });
 beforeEach(() => { clock.at = new Date("2026-10-13T00:00:00Z"); });
@@ -56,6 +57,19 @@ describe("전용 두 범주 실제 증거 계약", () => {
     expect(await previewApprovedDiskOptimization(db, admin, { actionId: policy.actionId, policyVersion: policy.version }, null)).toMatchObject({ status: 503, job: null, candidates: null });
     expect(await readApprovedDiskOptimizationJob(db, admin, "12345", null)).toMatchObject({ status: 404, job: null });
   });
+  it("읽기 연결만 허용된 후보는 실행503이며 예약/dispatch0이다", async () => {
+    const f = fixture();
+    Object.defineProperty(f.bridge, "executionReady", { value: false });
+    expect(await previewApprovedDiskOptimization(f.db, admin, { actionId: policy.actionId, policyVersion: policy.version }, f.bridge)).toMatchObject({ status: 200, executionEnabled: false });
+    expect(await executeApprovedDiskOptimization(f.db, admin, input(), {}, f.bridge)).toMatchObject({ status: 503, reason: "disk_execution_not_approved" });
+    expect([...f.events.keys()].some(key => key.startsWith("disk_optimization_request:"))).toBe(false);
+    expect(f.bridge.dispatch).not.toHaveBeenCalled();
+  });
+  it("아직 확인하지 못한 Actions preview는 성공 대신 pending503이다", async () => {
+    const f = fixture(); vi.mocked(f.bridge.preview).mockRejectedValueOnce(new Error("PREVIEW_PENDING"));
+    expect(await previewApprovedDiskOptimization(f.db, admin, { actionId: policy.actionId, policyVersion: policy.version }, f.bridge)).toMatchObject({ status: 503, reason: "disk_preview_pending" });
+    expect(f.events.size).toBe(0);
+  });
 });
 describe("발급 preview와 실행 직전 원천 재검사", () => {
   async function issued() {
@@ -74,6 +88,24 @@ describe("발급 preview와 실행 직전 원천 재검사", () => {
     expect(await executeApprovedDiskOptimization(f.db, admin, input(), {}, f.bridge)).toMatchObject({ status: 200, replayed: true });
     expect(f.bridge.dispatch).toHaveBeenCalledTimes(1);
     expect(await executeApprovedDiskOptimization(f.db, admin, { ...input(), candidateFingerprint: "c".repeat(64) }, {}, f.bridge)).toMatchObject({ status: 409, reason: "idempotency_conflict" });
+  });
+  it("외부 dispatch 전 예약을 커밋해 callback이 읽을 수 있다", async () => {
+    const f = await issued();
+    vi.mocked(f.bridge.dispatch).mockImplementationOnce(async () => {
+      expect(f.transactionActive()).toBe(false);
+      expect(f.events.get(`disk_optimization_request:${requestId}`)?.detail).toMatchObject({ result: "RESERVED", adminSessionId: admin.sessionId, previewExpiresAt: preview().expiresAt });
+      return job();
+    });
+    expect(await executeApprovedDiskOptimization(f.db, admin, input(), {}, f.bridge)).toMatchObject({ status: 202, job: { id: "12345" } });
+  });
+  it("접수 응답 유실의 동일키 반복은 실제 run 조정만 하고 재dispatch0이다", async () => {
+    const f = await issued();
+    vi.mocked(f.bridge.dispatch).mockRejectedValueOnce(new Error("owned response lost"));
+    f.bridge.resolve = vi.fn(async () => job());
+    expect(await executeApprovedDiskOptimization(f.db, admin, input(), {}, f.bridge)).toMatchObject({ status: 503, job: null });
+    expect(await executeApprovedDiskOptimization(f.db, admin, input(), {}, f.bridge)).toMatchObject({ status: 200, replayed: true, job: { id: "12345" } });
+    expect(f.bridge.dispatch).toHaveBeenCalledTimes(1);
+    expect(f.bridge.resolve).toHaveBeenCalledTimes(1);
   });
   it("대상 변화나 만료는 실행0으로 거부한다", async () => {
     const f = await issued();

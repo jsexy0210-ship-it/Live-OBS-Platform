@@ -86,6 +86,26 @@ for change in trigger main repo environment runner concurrency preview delete; d
   reject_guard
 done
 cp -- "$tmp/preview-original.yml" "$target"
+approved="$work/.github/workflows/disk-optimization-approved-obs-test.yml"
+cp -- "$approved" "$tmp/approved-original.yml"
+for change in trigger main repo environment runner concurrency approval callback execute cancel delete; do
+  cp -- "$tmp/approved-original.yml" "$approved"
+  case "$change" in
+    trigger) printf '\npush:\n' >> "$approved" ;;
+    main) sed -i "s@refs/heads/main@refs/heads/other@" "$approved" ;;
+    repo) sed -i 's@jsexy0210-ship-it/Live-OBS-Platform@other/repository@' "$approved" ;;
+    environment) sed -i 's/environment: obs-test/environment: other/' "$approved" ;;
+    runner) sed -i 's/self-hosted, obs-kakao/self-hosted, other/' "$approved" ;;
+    concurrency) sed -i 's/group: deploy-obs-test/group: other/' "$approved" ;;
+    approval) sed -i 's/vars.ONQ_DISK_EXECUTION_APPROVED/vars.OTHER/' "$approved" ;;
+    callback) sed -i 's/secrets.ONQ_DISK_CALLBACK_TOKEN/secrets.OTHER/' "$approved" ;;
+    execute) sed -i 's/--approved-execution/--other/' "$approved" ;;
+    cancel) sed -i 's/cancel-in-progress: false/cancel-in-progress: true/' "$approved" ;;
+    delete) printf '\n          docker image prune -f\n' >> "$approved" ;;
+  esac
+  reject_guard
+done
+cp -- "$tmp/approved-original.yml" "$approved"
 printf 'runs-on: self-hosted\n' > "$work/.github/workflows/unapproved.yml"
 reject_guard
 printf 'disk optimization CI guard fixture PASS (exact allowlist, manual/main/repo/environment/runner/concurrency/readonly, unapproved self-hosted blocked)\n'

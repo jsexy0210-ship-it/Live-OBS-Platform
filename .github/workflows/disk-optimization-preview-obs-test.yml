@@ -1,7 +1,13 @@
 # MA120 전용 읽기 원천. 앱 dispatch/실행 인증 bridge 검증 전에는 삭제 모드를 제공하지 않는다.
 name: Disk optimization preview obs-test
+run-name: MA120 PREVIEW ${{ inputs.request_id }}
 on:
   workflow_dispatch:
+    inputs:
+      request_id:
+        description: App correlation ID (manual read-only preview may omit it)
+        required: false
+        type: string
 permissions:
   contents: read
 concurrency:
@@ -67,3 +73,13 @@ jobs:
           name: disk-optimization-preview-${{ github.run_id }}
           path: ${{ github.workspace }}/${{ steps.isolated_checkout.outputs.checkout_path }}/evidence/
           if-no-files-found: error
+      - name: Return authenticated preview evidence
+        if: inputs.request_id != ''
+        working-directory: ${{ github.workspace }}/${{ steps.isolated_checkout.outputs.checkout_path }}
+        env:
+          DISK_REQUEST_ID: ${{ inputs.request_id }}
+          ONQ_DISK_CALLBACK_TOKEN: ${{ secrets.ONQ_DISK_CALLBACK_TOKEN }}
+        run: |
+          set -euo pipefail
+          export OBS_RUNNER_ROOT="$(dirname -- "$(dirname -- "${RUNNER_TEMP:?}")")"
+          python3 scripts/ops/disk-optimization-runner.py --preview-callback

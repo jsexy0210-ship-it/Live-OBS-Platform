@@ -5,7 +5,7 @@ import { useConfirm } from "../../../../../../components/admin-ui";
 import { adminApi, failMessage } from "../../../_components/api";
 import { formatDateTime } from "../../../../../../lib/client/format";
 
-type Preview = { candidateFingerprint: string; expiresAt: string; estimatedReclaimedBytes: number; candidates: { category: string; bytes: number }[] };
+type Preview = { candidateFingerprint: string; expiresAt: string; estimatedReclaimedBytes: number; executionEnabled?: boolean; candidates: { category: string; bytes: number }[] };
 type Job = { id: string; state: "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED"; completedAt: string | null; reclaimedBytes: number | null; errorCode: string | null };
 const policy = { actionId: "OPTIMIZE_APPROVED_ARTIFACTS_V1", policyVersion: "ONQ_DISK_SAFE_V1" };
 const base = "/api/admin/infra/disk-optimization";
@@ -52,11 +52,11 @@ export default function DiskOptimization() {
     const r = await adminApi<Preview>(`${base}/preview`, { method: "POST", json: policy });
     if (sequence.current !== seq) return;
     inFlight.current = false; setBusy(false);
-    if (r.ok) { setPreview(r.data); setMessage("아래 두 범주만 정리합니다. 실행 직전에 같은 대상을 다시 확인합니다."); }
-    else setMessage(r.status === 503 ? "테스트 서버와 전용 작업 연결이 아직 확인되지 않아 대상 확인과 실행을 사용할 수 없습니다." : failMessage(r));
+    if (r.ok) { setPreview(r.data); setMessage(r.data.executionEnabled === false ? "정리 대상을 확인했습니다. 실행 연결은 별도 승인이 필요해 실행할 수 없습니다." : "아래 두 범주만 정리합니다. 실행 직전에 같은 대상을 다시 확인합니다."); }
+    else setMessage(r.error === "disk_preview_pending" ? "대상 조회 결과를 아직 확인하지 못했습니다. 잠시 후 다시 확인해 주십시오." : r.status === 503 ? "테스트 서버와 전용 작업 연결이 아직 확인되지 않아 대상 확인과 실행을 사용할 수 없습니다." : failMessage(r));
   }
   function execute() {
-    if (!preview || expired || busy || pending) return;
+    if (!preview || preview.executionEnabled === false || expired || busy || pending) return;
     const snapshot = preview;
     confirm({ title: "확인한 대상만 정리할까요?", body: "롤백에 필요하지 않은 오래된 ONQ 앱 이미지와 14일을 넘긴 러너 진단 로그만 정리합니다. 백업·데이터베이스·롤백 이미지·공유 캐시·작업 폴더는 보존합니다.", confirmLabel: "정리 실행", run: async () => {
       if (inFlight.current || busy || pending || preview !== snapshot || Date.parse(snapshot.expiresAt) <= Date.now()) { setMessage("대상 확인 시간이 지났습니다. 다시 확인해 주십시오."); return; }
@@ -85,7 +85,7 @@ export default function DiskOptimization() {
     </>}
     <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
       <button className="btn" disabled={busy || pending} onClick={check}>{busy ? "확인 중…" : "정리 대상 확인"}</button>
-      <button className="btn pri" disabled={!preview || !preview.candidates.length || expired || busy || pending} onClick={execute}>정리 실행</button>
+      <button className="btn pri" disabled={!preview || preview.executionEnabled === false || !preview.candidates.length || expired || busy || pending} onClick={execute}>정리 실행</button>
     </div>
     {job && <p role="status">작업 {job.id} · {stateLabel[job.state]}{job.state === "SUCCEEDED" && job.reclaimedBytes !== null ? ` · 실제 회수 ${bytes(job.reclaimedBytes)} · ${formatDateTime(job.completedAt)}` : ""}{job.state === "FAILED" ? ` · ${job.errorCode ?? "결과 오류"}` : ""}</p>}
   </section>;

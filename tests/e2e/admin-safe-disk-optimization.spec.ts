@@ -79,3 +79,16 @@ test("owned mock만으로 두 범주 확인·정확 요청·실제job 상태 표
   await expect(section).toContainText("작업 12345 · 완료 · 실제 회수"); expect(executeCount).toBe(1);
   await capture(page, "owned-result");
 });
+test("owned 읽기 전용 후보는 실행 승인 전 CTA를 막고 완료를 표시하지 않는다", async ({ page }) => {
+  let executeCount = 0;
+  await page.route("**/api/admin/infra/disk-optimization/preview", route => route.fulfill({ status: 200, json: { executionEnabled: false, candidates: [{ category: "RUNNER_DIAGNOSTIC_LOGS_OLDER_THAN_14_DAYS", bytes: 20 }], candidateFingerprint: "a".repeat(64), expiresAt: new Date(Date.now() + 60_000).toISOString(), estimatedReclaimedBytes: 20 } }));
+  await page.route("**/api/admin/infra/disk-optimization/execute", route => { executeCount++; return route.fulfill({ status: 503, json: { error: "disk_execution_not_approved" } }); });
+  await login(page); await page.goto("/admin/ops/infra");
+  const section = page.getByRole("region", { name: "디스크 수동 정리", exact: true });
+  await section.getByRole("button", { name: "정리 대상 확인", exact: true }).click();
+  await expect(section).toContainText("실행 연결은 별도 승인이 필요해 실행할 수 없습니다");
+  await expect(section.getByRole("button", { name: "정리 실행", exact: true })).toBeDisabled();
+  await expect(section).not.toContainText("실제 회수");
+  expect(executeCount).toBe(0);
+  await capture(page, "owned-readonly");
+});

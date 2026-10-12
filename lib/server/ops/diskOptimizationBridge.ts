@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import type { PrismaClient } from "@prisma/client";
+import { configuredDiskActions } from "./diskOptimizationActions";
 
 export type DiskCandidate = {
   category: "OLD_ONQ_NON_ROLLBACK_IMAGES" | "RUNNER_DIAGNOSTIC_LOGS_OLDER_THAN_14_DAYS";
@@ -31,13 +33,16 @@ export type DiskActualJob = {
 
 /** 전용 runner의 실제 증거만 읽는 경계. 인증과 호스트 연결은 별도 검증 게이트에서 구성한다. */
 export interface DiskOptimizationBridge {
+  readonly executionReady?: boolean;
   preview(): Promise<DiskPreviewEvidence>;
   dispatch(input: { requestId: string; requestedByAdminId: string; candidateFingerprint: string; previewExpiresAt: string }): Promise<DiskActualJob>;
   job(id: string): Promise<DiskActualJob | null>;
+  /** 접수 응답 유실은 기존 요청의 실제 run만 조회한다. 재dispatch하지 않는다. */
+  resolve?(requestId: string): Promise<DiskActualJob | null>;
 }
 
-// 현재 bridge는 미연결이다. 원천이나 성공 job을 만들어 readiness를 열지 않는다.
-export const configuredDiskOptimizationBridge = (): DiskOptimizationBridge | null => null;
+// 자격 미설정은 null이다. preview 자격만으로 실행 readiness를 열지 않는다.
+export const configuredDiskOptimizationBridge = (db?: PrismaClient): DiskOptimizationBridge | null => db ? configuredDiskActions(db) : null;
 
 const HASH = /^[0-9a-f]{64}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;

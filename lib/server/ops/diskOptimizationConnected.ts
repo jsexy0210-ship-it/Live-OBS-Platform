@@ -26,7 +26,7 @@ async function revalidate(db: PrismaClient | Prisma.TransactionClient, admin: Ad
 const previewKey = (admin: AdminSessionContext, fingerprint: string, expiresAt: string) => hash([admin.admin.id, fingerprint, expiresAt]);
 
 /** 미연결 기본값은 기존 503 그대로다. 후보는 검증된 runner 증거가 있을 때만 발급한다. */
-export async function previewApprovedDiskOptimization(db: PrismaClient, admin: AdminSessionContext, input: unknown, bridge: DiskOptimizationBridge | null = configuredDiskOptimizationBridge()) {
+export async function previewApprovedDiskOptimization(db: PrismaClient, admin: AdminSessionContext, input: unknown, bridge: DiskOptimizationBridge | null = configuredDiskOptimizationBridge(db)) {
   const initial = previewDiskOptimization(admin, input);
   if (initial.status === 400 || !bridge) return initial;
   try {
@@ -42,28 +42,36 @@ export async function previewApprovedDiskOptimization(db: PrismaClient, admin: A
       source: PREVIEW, eventId: previewKey(admin, candidateFingerprint, evidence.expiresAt), kind: "info", key: policy.target, severity: "info", message: "승인 범주의 정리 후보를 확인했습니다", occurredAt: at,
       detail: { requestedByAdminId: admin.admin.id, candidateFingerprint, expiresAt: evidence.expiresAt, policyVersion: policy.version } as Prisma.InputJsonValue,
     } });
-    return { ok: true as const, status: 200, reason: undefined, policy, candidates: evidence.candidates, candidateFingerprint, expiresAt: evidence.expiresAt, estimatedReclaimedBytes, job: null };
+    return { ok: true as const, status: 200, reason: undefined, policy, candidates: evidence.candidates, candidateFingerprint, expiresAt: evidence.expiresAt, estimatedReclaimedBytes, executionEnabled: bridge.executionReady !== false, job: null };
   } catch (e) {
     if (e instanceof Error && e.message === "forbidden") throw e;
+    if (e instanceof Error && ["PREVIEW_PENDING", "PREVIEW_SUBMISSION_UNCERTAIN"].includes(e.message)) return error(503, "disk_preview_pending");
     return unavailable();
   }
 }
 
-export async function executeApprovedDiskOptimization(db: PrismaClient, admin: AdminSessionContext, input: unknown, meta: { ip?: string | null; userAgent?: string | null } = {}, bridge: DiskOptimizationBridge | null = configuredDiskOptimizationBridge()) {
+export async function executeApprovedDiskOptimization(db: PrismaClient, admin: AdminSessionContext, input: unknown, meta: { ip?: string | null; userAgent?: string | null } = {}, bridge: DiskOptimizationBridge | null = configuredDiskOptimizationBridge(db)) {
   requireInfra(admin);
   if (!bridge) return requestDiskOptimization(db, admin, input, meta);
+  if (bridge.executionReady === false) return error(503, "disk_execution_not_approved");
   const b = body(input, ["actionId", "policyVersion", "idempotencyKey", "candidateFingerprint", "previewExpiresAt"]);
   if (!b || b.actionId !== policy.actionId || b.policyVersion !== policy.version || typeof b.idempotencyKey !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(b.idempotencyKey) || typeof b.candidateFingerprint !== "string" || !/^[0-9a-f]{64}$/.test(b.candidateFingerprint) || typeof b.previewExpiresAt !== "string" || !Number.isFinite(Date.parse(b.previewExpiresAt)) || new Date(b.previewExpiresAt).toISOString() !== b.previewExpiresAt) return error(400, "invalid_input");
   const requestId = b.idempotencyKey, candidateFingerprint = b.candidateFingerprint, previewExpiresAt = b.previewExpiresAt;
   const requestDigest = hash([b.actionId, b.policyVersion, candidateFingerprint, previewExpiresAt]);
-  return db.$transaction(async tx => {
+  const prepared = await db.$transaction(async tx => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('disk_optimization_requests'))`;
     const at = await dbNow(tx);
     await revalidate(tx, admin, at);
     const prior = await tx.opsEvent.findUnique({ where: { source_eventId: { source: REQUEST, eventId: requestId } } });
     if (prior) {
-      const d = body(prior.detail, ["requestDigest", "requestedByAdminId", "result", "jobId", "candidateFingerprint", "policyVersion", "actionId", "reasons"]);
+      const d = body(prior.detail, ["requestDigest", "requestedByAdminId", "result", "jobId", "candidateFingerprint", "policyVersion", "actionId", "reasons", "adminSessionId", "previewExpiresAt"]);
       if (!d || d.requestDigest !== requestDigest || d.requestedByAdminId !== admin.admin.id) return error(409, "idempotency_conflict");
+      if (["RESERVED", "DISPATCH_UNCERTAIN"].includes(String(d.result))) {
+        try {
+          const job = await bridge.resolve?.(requestId);
+          return job && validDiskActualJob(job, { requestId, candidateFingerprint }) ? { ok: true as const, status: 200, job, requestId, replayed: true } : { ...unavailable(), requestId, replayed: true };
+        } catch { return { ...unavailable(), requestId, replayed: true }; }
+      }
       if (d.result !== "DISPATCHED" || typeof d.jobId !== "string") return { ...unavailable(), requestId, replayed: true };
       try {
         const job = await bridge.job(d.jobId);
@@ -73,7 +81,6 @@ export async function executeApprovedDiskOptimization(db: PrismaClient, admin: A
     if (Date.parse(previewExpiresAt) <= at.getTime()) return error(409, "preview_expired");
     const issued = await tx.opsEvent.findUnique({ where: { source_eventId: { source: PREVIEW, eventId: previewKey(admin, candidateFingerprint, previewExpiresAt) } } });
     if (!issued) return error(409, "preview_not_issued");
-    let acceptedJob: Awaited<ReturnType<DiskOptimizationBridge["dispatch"]>>;
     let acceptedAt = at;
     try {
       const fresh = await bridge.preview();
@@ -85,10 +92,7 @@ export async function executeApprovedDiskOptimization(db: PrismaClient, admin: A
       if (diskCandidateFingerprint(fresh.candidates) !== candidateFingerprint) return error(409, "candidate_changed");
       if (fresh.candidates.length === 0) return error(409, "no_candidates");
       await revalidate(tx, admin, now);
-      // bridge는 requestId로 원자적 중복 방지를 수행해야 한다. 불확실한 응답을 새 요청으로 재발행하지 않는다.
-      const job = await bridge.dispatch({ requestId, requestedByAdminId: admin.admin.id, candidateFingerprint, previewExpiresAt });
-      if (!validDiskActualJob(job, { requestId, candidateFingerprint })) throw new Error("invalid_job_evidence");
-      acceptedJob = job; acceptedAt = now;
+      acceptedAt = now;
     } catch (e) {
       if (e instanceof Error && e.message === "forbidden") throw e;
       // 연결/응답 실패는 완료가 아니다. 동일 키 재시도는 이 거부 기록을 읽으며 재dispatch하지 않는다.
@@ -97,14 +101,27 @@ export async function executeApprovedDiskOptimization(db: PrismaClient, admin: A
       await writeAudit(tx, { actorType: "PLATFORM_ADMIN", actorId: admin.admin.id, action: "admin.infra.disk_execute_rejected", targetType: "DiskOptimizationRequest", targetId: requestId, after: { result: "REJECTED_UNAVAILABLE", beforeBytes: null, afterBytes: null }, ...meta });
       return { ...unavailable(), requestId, replayed: false };
     }
-    await tx.opsEvent.create({ data: { source: REQUEST, eventId: requestId, kind: "info", key: policy.target, severity: "info", message: "전용 runner 작업을 접수했습니다", occurredAt: acceptedAt,
-      detail: { requestDigest, requestedByAdminId: admin.admin.id, result: "DISPATCHED", jobId: acceptedJob.id, candidateFingerprint, policyVersion: policy.version, actionId: policy.actionId } as Prisma.InputJsonValue } });
-    await writeAudit(tx, { actorType: "PLATFORM_ADMIN", actorId: admin.admin.id, action: "admin.infra.disk_dispatched", targetType: "DiskOptimizationRequest", targetId: requestId, after: { jobId: acceptedJob.id, candidateFingerprint, policyVersion: policy.version }, ...meta });
-    return { ok: true as const, status: 202, reason: undefined, job: acceptedJob, requestId, replayed: false };
+    // callback의 claim이 볼 수 있도록 외부 dispatch 전에 예약을 커밋한다.
+    const detail = { requestDigest, requestedByAdminId: admin.admin.id, adminSessionId: admin.sessionId, previewExpiresAt, result: "RESERVED", candidateFingerprint, policyVersion: policy.version, actionId: policy.actionId };
+    await tx.opsEvent.create({ data: { source: REQUEST, eventId: requestId, kind: "info", key: policy.target, severity: "info", message: "전용 runner 요청을 예약했습니다", occurredAt: acceptedAt, detail } });
+    return { reserved: true as const, detail, acceptedAt };
   });
+  if (!("reserved" in prepared)) return prepared;
+  let acceptedJob: Awaited<ReturnType<DiskOptimizationBridge["dispatch"]>>;
+  try {
+    acceptedJob = await bridge.dispatch({ requestId, requestedByAdminId: admin.admin.id, candidateFingerprint, previewExpiresAt });
+    if (!validDiskActualJob(acceptedJob, { requestId, candidateFingerprint })) throw new Error("invalid_job_evidence");
+  } catch {
+    await db.opsEvent.update({ where: { source_eventId: { source: REQUEST, eventId: requestId } }, data: { detail: { ...prepared.detail, result: "DISPATCH_UNCERTAIN" } } });
+    await writeAudit(db, { actorType: "PLATFORM_ADMIN", actorId: admin.admin.id, action: "admin.infra.disk_execute_rejected", targetType: "DiskOptimizationRequest", targetId: requestId, after: { result: "DISPATCH_UNCERTAIN", beforeBytes: null, afterBytes: null }, ...meta });
+    return { ...unavailable(), requestId, replayed: false };
+  }
+  await db.opsEvent.update({ where: { source_eventId: { source: REQUEST, eventId: requestId } }, data: { detail: { ...prepared.detail, result: "DISPATCHED", jobId: acceptedJob.id } } });
+  await writeAudit(db, { actorType: "PLATFORM_ADMIN", actorId: admin.admin.id, action: "admin.infra.disk_dispatched", targetType: "DiskOptimizationRequest", targetId: requestId, after: { jobId: acceptedJob.id, candidateFingerprint, policyVersion: policy.version }, ...meta });
+  return { ok: true as const, status: 202, reason: undefined, job: acceptedJob, requestId, replayed: false };
 }
 
-export async function readApprovedDiskOptimizationJob(db: PrismaClient, admin: AdminSessionContext, id: string, bridge: DiskOptimizationBridge | null = configuredDiskOptimizationBridge()) {
+export async function readApprovedDiskOptimizationJob(db: PrismaClient, admin: AdminSessionContext, id: string, bridge: DiskOptimizationBridge | null = configuredDiskOptimizationBridge(db)) {
   requireInfra(admin);
   if (!/^[1-9][0-9]{0,19}$/.test(id)) return diskOptimizationJob(admin, id);
   if (!bridge) return error(404, "disk_optimization_job_not_found");
@@ -114,8 +131,8 @@ export async function readApprovedDiskOptimizationJob(db: PrismaClient, admin: A
     if (!job) return error(404, "disk_optimization_job_not_found");
     if (!validDiskActualJob(job) || job.id !== id) return unavailable();
     const request = await db.opsEvent.findUnique({ where: { source_eventId: { source: REQUEST, eventId: job.requestId } } });
-    const d = body(request?.detail, ["requestDigest", "requestedByAdminId", "result", "jobId", "candidateFingerprint", "policyVersion", "actionId"]);
-    if (!d || d.result !== "DISPATCHED" || d.jobId !== id || d.candidateFingerprint !== job.candidateFingerprint) return error(404, "disk_optimization_job_not_found");
+    const d = body(request?.detail, ["requestDigest", "requestedByAdminId", "result", "jobId", "candidateFingerprint", "policyVersion", "actionId", "adminSessionId", "previewExpiresAt"]);
+    if (!d || !["DISPATCHED", "DISPATCH_UNCERTAIN", "RESERVED"].includes(String(d.result)) || (d.jobId && d.jobId !== id) || d.candidateFingerprint !== job.candidateFingerprint) return error(404, "disk_optimization_job_not_found");
     return { ok: true as const, status: 200, reason: undefined, job };
   } catch { return unavailable(); }
 }

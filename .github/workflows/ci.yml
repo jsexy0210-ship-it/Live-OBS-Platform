@@ -27,11 +27,11 @@ jobs:
           # self-hosted 러너는 obs-test 수동 배포(deploy-obs-test.yml, 대표님 승인 2026-10-03, 이슈 #137)와
           # obs-test 시험 데이터(seed-obs-test.yml, 대표님 승인 2026-10-04), 운영 수동 배포(deploy-obs-prod.yml, 대표님 승인 2026-10-05),
           # obs-test 디스크 점검·정리(disk-cleanup-obs-test.yml, 대표님 지시 2026-10-06),
-          # MA120 승인 두 범주 읽기 원천(disk-optimization-preview-obs-test.yml)만 허용한다.
+          # MA120 승인 두 범주 전용 원천(preview/approved)만 추가 허용한다.
           # 그 밖의 워크플로가 self-hosted를 쓰면 실패한다.
           # `! cmd`는 set -e에서 실패로 잡히지 않으므로 if로 멈춘다
-          if grep -RIl 'self-hosted' .github/workflows/ --exclude=ci.yml --exclude=deploy-obs-test.yml --exclude=seed-obs-test.yml --exclude=deploy-obs-prod.yml --exclude=disk-cleanup-obs-test.yml --exclude=disk-optimization-preview-obs-test.yml; then exit 1; fi
-          for f in .github/workflows/deploy-obs-test.yml .github/workflows/seed-obs-test.yml .github/workflows/disk-cleanup-obs-test.yml .github/workflows/disk-optimization-preview-obs-test.yml; do
+          if grep -RIl 'self-hosted' .github/workflows/ --exclude=ci.yml --exclude=deploy-obs-test.yml --exclude=seed-obs-test.yml --exclude=deploy-obs-prod.yml --exclude=disk-cleanup-obs-test.yml --exclude=disk-optimization-preview-obs-test.yml --exclude=disk-optimization-approved-obs-test.yml; then exit 1; fi
+          for f in .github/workflows/deploy-obs-test.yml .github/workflows/seed-obs-test.yml .github/workflows/disk-cleanup-obs-test.yml .github/workflows/disk-optimization-preview-obs-test.yml .github/workflows/disk-optimization-approved-obs-test.yml; do
             [ -f "$f" ] || continue
             # 수동 실행 전용: workflow_dispatch 말고 다른 트리거가 있으면 실패
             if grep -Eq '^[[:space:]]*(push|pull_request|pull_request_target|schedule|workflow_run|workflow_call|repository_dispatch|issue_comment|issues|release|merge_group)[[:space:]]*:' "$f"; then echo "$f: 수동 실행 말고 다른 트리거가 있어요"; exit 1; fi
@@ -47,6 +47,16 @@ jobs:
           grep -q '^  cancel-in-progress: false$' "$f"
           grep -Fq 'bash scripts/ops/disk-optimization-plan.sh --preview > evidence/candidates.tsv' "$f"
           if grep -Eq -- '--(apply|execute)|docker[[:space:]].*(prune|rmi)|(^|[[:space:]])rm[[:space:]]|disk-cleanup\.sh' "$f"; then echo "$f: 읽기 원천 외 실행이 있어요"; exit 1; fi
+          # 전용 실행 workflow도 exact 허용한다. 실제 실행은 앱 승인 및 원자 claim 전에는 차단한다.
+          f=.github/workflows/disk-optimization-approved-obs-test.yml
+          grep -q '^    runs-on: \[self-hosted, obs-kakao\]$' "$f"
+          grep -q '^  group: deploy-obs-test$' "$f"
+          grep -q '^  cancel-in-progress: false$' "$f"
+          grep -Fq 'run-name: MA120 EXECUTE ${{ inputs.request_id }}' "$f"
+          grep -Fq 'ONQ_DISK_EXECUTION_APPROVED: ${{ vars.ONQ_DISK_EXECUTION_APPROVED }}' "$f"
+          grep -Fq 'ONQ_DISK_CALLBACK_TOKEN: ${{ secrets.ONQ_DISK_CALLBACK_TOKEN }}' "$f"
+          grep -Fq 'python3 scripts/ops/disk-optimization-runner.py --approved-execution' "$f"
+          if grep -Eq -- '--(apply|execute)|docker[[:space:]].*(prune|rmi)|(^|[[:space:]])rm[[:space:]]|disk-cleanup\.sh' "$f"; then echo "$f: 전용 실행 원천 밖 명령이 있어요"; exit 1; fi
           # 운영 배포는 같은 조건에 더해 Environment production(Required reviewer)과 운영 전용 러너 라벨 obs-prod로만 돈다.
           f=.github/workflows/deploy-obs-prod.yml
           if [ -f "$f" ]; then
@@ -60,7 +70,9 @@ jobs:
       - name: Disk cleanup workflow safety fixtures
         run: bash scripts/ops/disk-cleanup-active-ref-fixture.sh
       - name: Approved disk preview safety fixture
-        run: bash scripts/ops/disk-optimization-plan-fixture.sh
+        run: |
+          bash scripts/ops/disk-optimization-plan-fixture.sh
+          python3 scripts/ops/disk-optimization-runner-fixture.py
 
       - name: Node
         uses: actions/setup-node@v4
