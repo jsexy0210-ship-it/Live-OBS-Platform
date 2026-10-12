@@ -10,7 +10,7 @@ import { requireSellerRead, type TenantContext } from "../tenant/context";
 // 소멸 예정(expiry): 잔액이 있고 마지막 적립(실지급 PENDING·SUCCEEDED 양수 EARN·보너스·조정)이 있는 회원의 소멸 시각 = 마지막 적립 + 3년(rewards/expire.ts)과 그때 사라질 금액(지금 잔액).
 // soon = 30일 안에 소멸(소멸 30일 전 안내와 같은 기준). 「소멸 예정 있음」 조건은 soon인 회원이다. 정렬 expiring은 소멸 시각이 이른 순(소멸 예정이 없는 회원은 뒤).
 // summary: 조건에 맞는 전체의 회원 수와 합계 잔액(「N명 · 합계 잔액 X원」). pending: 쇼핑몰 전체 지급 대기 줄 수·지급 예정 금액(빈 상태 「실제 지급을 켜면 대기 중 N건이 반영됩니다」).
-export const REWARD_BALANCE_PAGE_DEFAULT = 50;
+export const REWARD_BALANCE_PAGE_DEFAULT = 10;
 export const REWARD_BALANCE_PAGE_MAX = 200;
 
 export const REWARD_BALANCE_SORTS = ["recent", "balance", "expiring"] as const;
