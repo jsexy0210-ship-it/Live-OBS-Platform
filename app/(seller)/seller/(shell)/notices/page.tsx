@@ -12,7 +12,7 @@ import { useListFilters } from "../../../../(admin)/admin/_components/useListFil
 
 // SA-111 공지사항 목록(파트너스 관리자, 공지 · 문의, 정본 v302). 플랫폼이 보낸 점검·정책·기능 안내. 고정 공지는 첫 쪽 위에 따로 보인다.
 // 누구나 볼 수 있고 구독이 잠기거나 이용 정지 중에도 열린다. API: GET /api/seller/platform-notices?cursor=&q=&category=&unread=1 → { pinned, items, nextCursor, unreadCount }.
-// 쪽은 서버가 20개씩 주는 cursor를 쌓아 이전·다음으로 오간다. 조건(분류·안 읽은 것만·검색어)은 주소에 둔다(docs/IA.md Back 규칙 3항).
+// 쪽은 서버가 10개씩 주는 cursor를 쌓아 이전·다음으로 오간다. 조건(분류·안 읽은 것만·검색어)은 주소에 둔다(docs/IA.md Back 규칙 3항).
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; pinned: NoticeItem[]; items: NoticeItem[]; next: string | null; unread: number };
 const DEFAULTS = { category: "", unread: "", q: "" };
 
@@ -22,18 +22,38 @@ export default function NoticesPage() {
   // 지금까지 거쳐 온 쪽의 cursor(첫 쪽은 null). 마지막 원소가 지금 쪽이다
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const [cursorPage, setCursorPage] = useState(1);
+  const cursorHistory = useRef(cursors);
+  cursorHistory.current = cursors;
   const seq = useRef(0);
+  const paging = useRef(false);
+  const [pageError, setPageError] = useState(false);
 
-  const load = useCallback(async (cursor: string | null) => {
+  const load = useCallback(async (cursor: string | null, target = 1) => {
     const n = ++seq.current;
-    setState({ kind: "loading" });
+    paging.current = true;
+    setPageError(false);
+    if (target === 1) setState({ kind: "loading" });
     const q = new URLSearchParams();
     if (applied.category) q.set("category", applied.category);
     if (applied.unread) q.set("unread", "1");
     if (applied.q.trim()) q.set("q", applied.q.trim());
     if (cursor) q.set("cursor", cursor);
-    const r = await api<{ pinned: NoticeItem[]; items: NoticeItem[]; nextCursor: string | null; unreadCount: number }>(`/api/seller/platform-notices${q.size ? `?${q}` : ""}`);
+    let actualTarget = target;
+    const read = () => api<{ pinned: NoticeItem[]; items: NoticeItem[]; nextCursor: string | null; unreadCount: number }>(`/api/seller/platform-notices${q.size ? `?${q}` : ""}`);
+    let r = await read();
+    while (n === seq.current && r.ok && r.data.items.length === 0 && actualTarget > 1) {
+      actualTarget -= 1;
+      cursor = cursorHistory.current[actualTarget - 1];
+      if (cursor) q.set("cursor", cursor); else q.delete("cursor");
+      r = await read();
+    }
     if (n !== seq.current) return;
+    paging.current = false;
+    if (!r.ok && actualTarget > 1) return setPageError(true);
+    if (r.ok) {
+      setCursorPage(actualTarget);
+      setCursors(c => { const next = c.slice(0, actualTarget); next[actualTarget - 1] = cursor; return c[actualTarget] === r.data.nextCursor ? c : next; });
+    }
     if (!r.ok) return setState({ kind: "error" });
     setState({ kind: "ok", pinned: r.data.pinned, items: r.data.items, next: r.data.nextCursor, unread: r.data.unreadCount });
   }, [applied]);
@@ -45,13 +65,13 @@ export default function NoticesPage() {
   }, [load]);
 
   const go = (next: number) => {
-    setCursorPage(next);
-    void load(cursors[next - 1]);
+    if (paging.current || next < 1 || next > cursors.length) return;
+    void load(cursors[next - 1], next);
   };
   const filtered = !!(applied.category || applied.unread || applied.q.trim());
   const rows = state.kind === "ok" ? [...state.pinned, ...state.items] : [];
   const page = cursorPage;
-  const first = (page - 1) * 20 + 1;
+  const first = (page - 1) * 10 + 1;
 
   return (
     <>
@@ -95,6 +115,7 @@ export default function NoticesPage() {
               </button>
             </form>
           </div>
+          {pageError && <p className="msg msg-neg" role="alert">목록을 불러오지 못했습니다. 다시 시도해 주십시오.</p>}
           {state.kind === "loading" && <LoadingRows rows={5} />}
           {state.kind === "error" && <ErrorState title="목록을 불러오지 못했습니다" onRetry={() => void load(cursors[cursorPage - 1])} />}
           {state.kind === "ok" && rows.length === 0 && (
@@ -147,9 +168,9 @@ export default function NoticesPage() {
           {state.kind === "ok" && rows.length > 0 && (
             <div className="au-lh">
               <span className="t-l2 c-alt">
-                20개씩 · {first}–{first + rows.length - 1} 표시
+                일반 공지 10개씩 · {state.items.length ? `${first}–${first + state.items.length - 1} 표시` : "일반 공지 없음"}{state.pinned.length > 0 && ` · 고정 ${state.pinned.length}개`}
               </span>
-              <CursorPagination page={cursorPage} visited={cursors.length} hasNext={!!state.next} onChange={go} onNext={() => { if (state.next) { setCursors(c => c.length === cursorPage ? [...c, state.next] : c); setCursorPage(cursorPage + 1); void load(state.next); } }} />
+              {(cursors.length > 1 || state.next) && <CursorPagination page={cursorPage} visited={cursors.length} hasNext={!!state.next} onChange={go} onNext={() => { if (!paging.current && state.next) void load(state.next, cursorPage + 1); }} />}
             </div>
           )}
         </div>

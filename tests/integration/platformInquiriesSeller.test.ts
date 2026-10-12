@@ -286,19 +286,36 @@ describe("목록: 상태·분류 필터, 건수, 마지막 답변", () => {
     expect(await db.platformInquiryDraft.count()).toBe(0);
   });
 
-  it("필터와 커서를 함께 써도 20건씩 빠짐·겹침 없이 이어진다", async () => {
+  it("필터와 커서를 함께 써도 10건씩 빠짐·겹침 없이 이어진다", async () => {
     const s = await shop();
     for (let i = 0; i < 23; i++) {
       await db.platformInquiry.create({ data: { sellerId: s.seller.id, createdBySellerUserId: s.owner.id, category: "OTHER", title: `문의 ${i}`, status: i % 2 === 0 ? "OPEN" : "ANSWERED", lastMessageAt: new Date(2026, 8, 1, 0, i) } });
     }
     const first = await list(s.owner.cookie, "?status=OPEN");
-    expect(first.body.items).toHaveLength(12);
-    expect(first.body.nextCursor).toBeNull();
+    expect(first.body.items).toHaveLength(10);
+    expect(first.body.nextCursor).not.toBeNull();
+    const openSecond = await list(s.owner.cookie, `?status=OPEN&cursor=${encodeURIComponent(first.body.nextCursor)}`);
+    expect(openSecond.body.items).toHaveLength(2);
+    expect(openSecond.body.nextCursor).toBeNull();
+    const openItems = [...first.body.items, ...openSecond.body.items];
+    expect(openItems).toHaveLength(12);
+    expect(openItems.every((x: { status: string }) => x.status === "OPEN")).toBe(true);
+    expect(new Set(openItems.map((x: { id: string }) => x.id)).size).toBe(12);
     const all = await list(s.owner.cookie);
-    expect(all.body.items).toHaveLength(20);
+    expect(all.body.items).toHaveLength(10);
+    expect(all.body.nextCursor).not.toBeNull();
     const second = await list(s.owner.cookie, `?cursor=${encodeURIComponent(all.body.nextCursor)}`);
-    expect(new Set([...all.body.items, ...second.body.items].map((x: { id: string }) => x.id)).size).toBe(23);
-    expect(all.body.counts).toEqual({ all: 23, open: 12, answered: 11, closed: 0 });
+    expect(second.body.items).toHaveLength(10);
+    expect(second.body.nextCursor).not.toBeNull();
+    const third = await list(s.owner.cookie, `?cursor=${encodeURIComponent(second.body.nextCursor)}`);
+    expect(third.body.items).toHaveLength(3);
+    expect(third.body.nextCursor).toBeNull();
+    const allItems = [...all.body.items, ...second.body.items, ...third.body.items];
+    expect(allItems).toHaveLength(23);
+    expect(new Set(allItems.map((x: { id: string }) => x.id)).size).toBe(23);
+    for (const page of [first, openSecond, all, second, third]) {
+      expect(page.body.counts).toEqual({ all: 23, open: 12, answered: 11, closed: 0 });
+    }
   });
 });
 
