@@ -64,7 +64,7 @@ test("공지 상세: 첨부가 있으면 이름·크기와 다운로드가 보�
   await download;
 });
 
-test("공지 목록: 분류·안 읽은 것만·검색으로 걸러 보고, 열면 읽음이 되며, 20개씩 이전·다음으로 넘긴다", async ({ page }) => {
+test("공지 목록: 분류·안 읽은 것만·검색으로 걸러 보고, 열면 읽음이 되며, 10개씩 이전·다음으로 넘긴다", async ({ page }) => {
   await createNoticeInDb("기능 공지", { category: "FEATURE" });
   await createNoticeInDb("점검 공지", { category: "MAINTENANCE" });
   const policy = await createNoticeInDb("정책 공지", { category: "POLICY" });
@@ -99,15 +99,15 @@ test("공지 목록: 분류·안 읽은 것만·검색으로 걸러 보고, 열�
   await expect(row("정책 공지")).toContainText("읽음");
 });
 
-test("공지 목록: 20개를 넘으면 다음 쪽으로 넘기고, 이전으로 돌아온다", async ({ page }) => {
+test("공지 목록: 10개를 넘으면 다음 쪽으로 넘기고, 이전으로 돌아온다", async ({ page }) => {
   for (let i = 0; i < 22; i++) await createNoticeInDb(`쪽 공지 ${String(i).padStart(2, "0")}`);
   await login(page, "/seller/notices");
-  await expect(page.getByText(/20개씩 · 1–\d+ 표시/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "‹ 이전" })).toBeDisabled();
-  await page.getByRole("button", { name: "다음 ›" }).click();
-  await expect(page.getByText(/20개씩 · 21–\d+ 표시/)).toBeVisible();
-  await page.getByRole("button", { name: "‹ 이전" }).click();
-  await expect(page.getByText(/20개씩 · 1–\d+ 표시/)).toBeVisible();
+  await expect(page.getByText(/10개씩 · 1–\d+ 표시/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "이전", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "다음", exact: true }).click();
+  await expect(page.getByText(/10개씩 · 11–\d+ 표시/)).toBeVisible();
+  await page.getByRole("button", { name: "이전", exact: true }).click();
+  await expect(page.getByText(/10개씩 · 1–\d+ 표시/)).toBeVisible();
 });
 
 test("문의: 공지에서 관련 문의를 보내고, 사진을 붙이고, 답변을 확인한 뒤 추가 문의를 보내며, 종료되면 입력란이 사라진다", async ({ page }) => {

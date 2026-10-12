@@ -9,7 +9,7 @@ import { COURIERS, isCourier } from "./shipping";
 // 다른 구매자·다른 쇼핑몰 주문은 없는 주문(404)으로 본다. 잠긴 쇼핑몰이어도 기존 주문 조회는 연다(PRODUCT_SCOPE 「잠금 중 허용 범위」).
 // 내부 값(결제사 거래 번호, 재고 부족 시각, 판매자·회원 id)은 내려주지 않는다. 응답은 캐시하지 않는다(no-store). 배송지는 본인 상세 조회에서만 준다.
 
-export const BUYER_ORDER_PAGE_SIZE = 20;
+export const BUYER_ORDER_PAGE_SIZE = 10;
 export const BUYER_ORDER_MAX_PAGE_SIZE = 50;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

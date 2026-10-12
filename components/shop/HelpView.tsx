@@ -1,7 +1,8 @@
 "use client";
 
+import { CursorPagination, Pagination } from "../Pagination";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { kstDate } from "./kstDate";
 import { call } from "./reviewShared";
 import "./Cart.css";
@@ -19,25 +20,30 @@ function Notices({ slug }: { slug: string }) {
   const [items, setItems] = useState<Notice[] | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [error, setError] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const seq = useRef(0);
+  const paging = useRef(false);
+  const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | null)[]>([null]);
+  const cursorHistory = useRef(cursors); cursorHistory.current = cursors;
 
-  const load = useCallback(
-    async (next?: string | null) => {
-      setBusy(true);
-      const r = await call<{ notices: Notice[]; nextCursor: string | null }>(next ? `${api}?cursor=${encodeURIComponent(next)}` : api);
-      if (!r.ok) setError(true);
-      else {
-        setError(false);
-        setItems((prev) => (next && prev ? [...prev, ...r.data.notices] : r.data.notices));
-        setCursor(r.data.nextCursor);
-      }
-      setBusy(false);
-    },
-    [api],
-  );
-  useEffect(() => void load(), [load]);
+  const load = useCallback(async (next: string | null = null, target = 1) => {
+    const n = ++seq.current; paging.current = true;
+    let actualPage = target; let actualCursor = next;
+    const read = () => call<{ notices: Notice[]; nextCursor: string | null }>(actualCursor ? `${api}?cursor=${encodeURIComponent(actualCursor)}` : api);
+    let r = await read();
+    while (n === seq.current && r.ok && r.data.notices.length === 0 && actualPage > 1) {
+      actualPage -= 1; actualCursor = cursorHistory.current[actualPage - 1]; r = await read();
+    }
+    if (n !== seq.current) return;
+    paging.current = false;
+    if (!r.ok) return setError(true);
+    setError(false); setItems(r.data.notices); setCursor(r.data.nextCursor); setPage(actualPage);
+    setCursors(c => { const visited = c.slice(0, actualPage); visited[actualPage - 1] = actualCursor; return c[actualPage] === r.data.nextCursor ? c : visited; });
+  }, [api]);
+  useEffect(() => { setItems(null); setPage(1); setCursors([null]); void load(); return () => { seq.current += 1; }; }, [load]);
+  const go = (target: number, next: string | null) => { if (!paging.current) void load(next, target); };
 
-  if (error)
+  if (error && items === null)
     return (
       <div className="cart-empty">
         <p>공지를 불러오지 못했어요. 연결을 확인하고 다시 시도해 주세요.</p>
@@ -81,13 +87,8 @@ function Notices({ slug }: { slug: string }) {
           ))}
         </tbody>
       </table>
-      {cursor && (
-        <div className="cart-tools">
-          <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => void load(cursor)}>
-            더 보기
-          </button>
-        </div>
-      )}
+      {error && <p className="cart-msg is-err" role="alert">공지를 불러오지 못했어요. 다시 시도해 주세요.</p>}
+      {(cursors.length > 1 || cursor) && <CursorPagination page={page} visited={cursors.length} hasNext={!!cursor} onChange={n => go(n, cursors[n - 1])} onNext={() => { if (cursor) go(page + 1, cursor); }} />}
     </>
   );
 }
@@ -102,10 +103,14 @@ function Faqs({ slug }: { slug: string }) {
   const [q, setQ] = useState("");
   const [error, setError] = useState(false);
   const [tooShort, setTooShort] = useState(false);
+  const [page, setPage] = useState(1);
+  const seq = useRef(0);
 
   const load = useCallback(
     async (query: string) => {
+      const n = ++seq.current;
       const r = await call<{ faqs: Faq[]; categories: string[] }>(query ? `${api}?q=${encodeURIComponent(query)}` : api);
+      if (n !== seq.current) return;
       if (!r.ok) return setError(true);
       setError(false);
       setFaqs(r.data.faqs);
@@ -116,6 +121,11 @@ function Faqs({ slug }: { slug: string }) {
   useEffect(() => void load(q), [load, q]);
 
   const shown = (faqs ?? []).filter((f) => !category || f.category === category);
+  const pageCount = Math.ceil(shown.length / 10);
+  const currentPage = Math.min(page, pageCount || 1);
+  const pageItems = shown.slice((currentPage - 1) * 10, currentPage * 10);
+  useEffect(() => setPage(1), [q, category]);
+  useEffect(() => { if (faqs) setPage(p => Math.min(p, pageCount || 1)); }, [faqs, pageCount]);
   return (
     <>
       <div className="help-faq-head">
@@ -165,7 +175,7 @@ function Faqs({ slug }: { slug: string }) {
         </div>
       ) : (
         <div className="help-faqs">
-          {shown.map((f) => (
+          {pageItems.map((f) => (
             <details key={f.id} className="help-faq">
               <summary>
                 <span className="help-tag">{f.category}</span>
@@ -176,6 +186,7 @@ function Faqs({ slug }: { slug: string }) {
           ))}
         </div>
       )}
+      {!error && pageCount > 1 && <Pagination page={currentPage} pageCount={pageCount} onChange={setPage} label="자주 묻는 질문 페이지 이동" />}
     </>
   );
 }

@@ -24,6 +24,7 @@ export const TITLE_MAX = 100;
 export const BODY_MAX = 10_000;
 export const PAGE_SIZE = 20;
 const ADMIN_NOTICE_PAGE_SIZE = 10;
+const SELLER_NOTICE_PAGE_SIZE = 10;
 export const PUBLIC_NOTICE_PAGE_SIZE = 5;
 const MAX_PUBLIC_NOTICE_PAGE_SIZE = 20;
 export const CATEGORIES = ["MAINTENANCE", "POLICY", "FEATURE", "GENERAL"] as const satisfies readonly PlatformNoticeCategory[];
@@ -363,9 +364,9 @@ export async function listSellerNotices(db: PrismaClient, ctx: TenantContext, q:
   const rows = await db.platformNotice.findMany({
     where: { AND: [where, { isPinned: false }, ...(c ? [{ OR: [{ publishedAt: { lt: c.at } }, { publishedAt: c.at, id: { lt: c.id } }] }] : [])] },
     orderBy: order,
-    take: PAGE_SIZE + 1,
+    take: SELLER_NOTICE_PAGE_SIZE + 1,
   });
-  const page = rows.slice(0, PAGE_SIZE);
+  const page = rows.slice(0, SELLER_NOTICE_PAGE_SIZE);
   const last = page[page.length - 1];
   const read = await readSet(db, ctx, [...pinned, ...page].map((r) => r.id));
   const item = (r: PlatformNotice) => ({ ...listView(readerView(r)), read: read.has(r.id) });
@@ -373,7 +374,7 @@ export async function listSellerNotices(db: PrismaClient, ctx: TenantContext, q:
     ok: true as const,
     pinned: pinned.map(item),
     items: page.map(item),
-    nextCursor: rows.length > PAGE_SIZE && last ? cursorOf(last.publishedAt!, last.id) : null,
+    nextCursor: rows.length > SELLER_NOTICE_PAGE_SIZE && last ? cursorOf(last.publishedAt!, last.id) : null,
     unreadCount: await unreadCountOf(db, ctx),
   };
 }
