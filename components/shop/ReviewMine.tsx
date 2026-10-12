@@ -173,7 +173,7 @@ export default function ReviewMine({ slug, initialItem, initialReview }: { slug:
         ) : (
           <p className="rv-hint">지금 리뷰를 쓸 수 있는 상품이 없어요. 배송이 끝난 상품은 정해진 기간 안에 리뷰를 쓸 수 있어요.</p>
         )}
-        {(cursors.writable.length > 1 || data.writableNextCursor) && <CursorPagination page={pages.writable} visited={cursors.writable.length} hasNext={!!data.writableNextCursor} onChange={n => void go("writable", n, cursors.writable[n - 1])} onNext={() => { if (data.writableNextCursor) void go("writable", pages.writable + 1, data.writableNextCursor); }} />}
+        {(cursors.writable.length > 1 || data.writableNextCursor) && <div role="group" aria-label="리뷰 쓸 상품 페이지"><CursorPagination page={pages.writable} visited={cursors.writable.length} hasNext={!!data.writableNextCursor} onChange={n => void go("writable", n, cursors.writable[n - 1])} onNext={() => { if (data.writableNextCursor) void go("writable", pages.writable + 1, data.writableNextCursor); }} /></div>}
         <section aria-labelledby="rv-mine-title">
           <div className="rv-st">
             <h2 id="rv-mine-title">내 리뷰</h2>
@@ -239,7 +239,7 @@ export default function ReviewMine({ slug, initialItem, initialReview }: { slug:
               </tbody>
             </table>
           )}
-          {(cursors.reviews.length > 1 || data.nextCursor) && <CursorPagination page={pages.reviews} visited={cursors.reviews.length} hasNext={!!data.nextCursor} onChange={n => void go("reviews", n, cursors.reviews[n - 1])} onNext={() => { if (data.nextCursor) void go("reviews", pages.reviews + 1, data.nextCursor); }} />}
+          {(cursors.reviews.length > 1 || data.nextCursor) && <div role="group" aria-label="내 리뷰 페이지"><CursorPagination page={pages.reviews} visited={cursors.reviews.length} hasNext={!!data.nextCursor} onChange={n => void go("reviews", n, cursors.reviews[n - 1])} onNext={() => { if (data.nextCursor) void go("reviews", pages.reviews + 1, data.nextCursor); }} /></div>}
         </section>
       </>
     );
