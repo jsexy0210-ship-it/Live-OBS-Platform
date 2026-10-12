@@ -88,7 +88,7 @@ test("owned 읽기 전용 후보는 실행 승인 전 CTA를 막고 완료를 �
   await section.getByRole("button", { name: "정리 대상 확인", exact: true }).click();
   await expect(section).toContainText("실행 연결은 별도 승인이 필요해 실행할 수 없습니다");
   await expect(section.getByRole("button", { name: "정리 실행", exact: true })).toBeDisabled();
-  await expect(section).not.toContainText("실제 회수");
+  await expect(section.locator('p[role="status"]').filter({ hasText: /^작업 / })).toHaveCount(0);
   expect(executeCount).toBe(0);
   await capture(page, "owned-readonly");
 });
