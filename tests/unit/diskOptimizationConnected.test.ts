@@ -6,7 +6,7 @@ import { diskCandidateFingerprint, validDiskActualJob, validDiskPreview, type Di
 import { executeApprovedDiskOptimization, previewApprovedDiskOptimization, readApprovedDiskOptimizationJob } from "../../lib/server/ops/diskOptimizationConnected";
 
 const { clock } = vi.hoisted(() => ({ clock: { at: new Date("2026-10-13T00:00:00.000Z") } }));
-vi.mock("../../lib/server/billing/subscription", () => ({ dbNow: async () => clock.at }));
+vi.mock("../../lib/server/billing/subscription", () => ({ dbNow: async (db: { transactionStartedAt?: Date }) => db.transactionStartedAt ?? clock.at }));
 vi.mock("../../lib/server/audit/log", () => ({ writeAudit: vi.fn(async () => undefined) }));
 const admin = { admin: { id: "synthetic-admin", role: "SUPER_ADMIN" }, sessionId: "synthetic-session" } as AdminSessionContext;
 const requestId = "00000000-0000-4000-8000-000000000001";
@@ -20,11 +20,14 @@ function fixture() {
   const events = new Map<string, { detail: unknown }>();
   const session = { adminId: admin.admin.id, revokedAt: null as Date | null, expiresAt: new Date("2026-10-14T00:00:00Z"), admin: { status: "ACTIVE", role: "SUPER_ADMIN" } };
   const key = (x: { source_eventId: { source: string; eventId: string } }) => `${x.source_eventId.source}:${x.source_eventId.eventId}`;
-  const raw = { adminSession: { findUnique: vi.fn(async () => session) }, $executeRaw: vi.fn(async () => 1), opsEvent: {
+  const raw = { transactionStartedAt: undefined as Date | undefined, $queryRaw: vi.fn(async () => [{ now: clock.at }]), adminSession: { findUnique: vi.fn(async () => session) }, $executeRaw: vi.fn(async () => 1), opsEvent: {
     findUnique: vi.fn(async ({ where }) => events.get(key(where)) ?? null),
     upsert: vi.fn(async ({ where, create }) => { if (!events.has(key(where))) events.set(key(where), create); return events.get(key(where)); }),
     create: vi.fn(async ({ data }) => { const k = `${data.source}:${data.eventId}`; if (events.has(k)) throw new Error("duplicate"); events.set(k, data); return data; }),
-  }, $transaction: async <T>(fn: (db: unknown) => Promise<T>) => fn(raw) };
+  }, $transaction: async <T>(fn: (db: unknown) => Promise<T>) => {
+    raw.transactionStartedAt = clock.at;
+    try { return await fn(raw); } finally { raw.transactionStartedAt = undefined; }
+  } };
   const db = raw as unknown as PrismaClient;
   const bridge: DiskOptimizationBridge = { preview: vi.fn(async () => preview()), dispatch: vi.fn(async () => job()), job: vi.fn(async () => job()) };
   return { db, bridge, session, events };
@@ -78,6 +81,21 @@ describe("발급 preview와 실행 직전 원천 재검사", () => {
     expect(await executeApprovedDiskOptimization(f.db, admin, input(), {}, f.bridge)).toMatchObject({ status: 409, reason: "candidate_changed" });
     clock.at = new Date(preview().expiresAt);
     expect(await executeApprovedDiskOptimization(f.db, admin, input(), {}, f.bridge)).toMatchObject({ status: 409, reason: "preview_expired" });
+    expect(f.bridge.dispatch).not.toHaveBeenCalled();
+  });
+  it("fresh 조회 중 preview 만료시각에 도달하면 트랜잭션 시작시각과 무관하게 dispatch0이다", async () => {
+    const f = await issued();
+    vi.mocked(f.bridge.preview).mockImplementationOnce(async () => { clock.at = new Date(preview().expiresAt); return preview(); });
+    expect(await executeApprovedDiskOptimization(f.db, admin, input(), {}, f.bridge)).toMatchObject({ status: 409, reason: "preview_expired" });
+    expect(f.db.$queryRaw).toHaveBeenCalledWith(["SELECT clock_timestamp() AS now"]);
+    expect(f.bridge.dispatch).not.toHaveBeenCalled();
+  });
+  it("fresh 조회 중 활성 세션 만료시각에 도달해도 dispatch0이다", async () => {
+    const f = await issued();
+    f.session.expiresAt = new Date("2026-10-13T00:01:00.000Z");
+    vi.mocked(f.bridge.preview).mockImplementationOnce(async () => { clock.at = f.session.expiresAt; return preview(); });
+    await expect(executeApprovedDiskOptimization(f.db, admin, input(), {}, f.bridge)).rejects.toThrow("forbidden");
+    expect(f.db.$queryRaw).toHaveBeenCalledWith(["SELECT clock_timestamp() AS now"]);
     expect(f.bridge.dispatch).not.toHaveBeenCalled();
   });
   it("fresh 조회 동안 SUPER 권한/세션이 바뀌면 실제접수를 막는다", async () => {

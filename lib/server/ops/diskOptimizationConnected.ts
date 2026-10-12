@@ -77,7 +77,9 @@ export async function executeApprovedDiskOptimization(db: PrismaClient, admin: A
     let acceptedAt = at;
     try {
       const fresh = await bridge.preview();
-      const now = await dbNow(tx);
+      // now()는 트랜잭션 시작시각이므로 외부 조회 뒤의 만료 재검사는 실제 DB 시각을 쓴다.
+      const [currentTime] = await tx.$queryRaw<{ now: Date }[]>`SELECT clock_timestamp() AS now`;
+      const now = currentTime.now;
       if (Date.parse(previewExpiresAt) <= now.getTime()) return error(409, "preview_expired");
       if (!validDiskPreview(fresh, now)) return unavailable();
       if (diskCandidateFingerprint(fresh.candidates) !== candidateFingerprint) return error(409, "candidate_changed");
