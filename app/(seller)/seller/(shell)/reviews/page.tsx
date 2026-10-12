@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { CursorPagination } from "../../../../../components/Pagination";
+
+import { useCallback, useEffect, useState, useRef } from "react";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -97,8 +99,11 @@ export default function ReviewsPage() {
   const rating = ["5", "4", "low"].includes(u.rating) ? u.rating : "";
   const setTab = (t: Tab) => setU({ tab: t });
   const setRating = (v: string) => setU({ rating: v });
-  const [more, setMore] = useState<Row[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const reqId = useRef(0);
+  const paging = useRef(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [settings, setSettings] = useState(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
@@ -116,11 +121,13 @@ export default function ReviewsPage() {
   );
 
   const load = useCallback(async () => {
+    const id = ++reqId.current; paging.current = true;
     const r = await api<Data>(query());
+    if (id !== reqId.current) return;
+    paging.current = false;
     if (!r.ok) return setState({ kind: "error", status: r.status, error: r.error });
-    setMore([]);
     setCursor(r.data.nextCursor);
-    setState({ kind: "ok", data: r.data });
+    setState({ kind: "ok", data: r.data }); setPage(1); setCursors([undefined]);
   }, [query]);
 
   useEffect(() => {
@@ -129,16 +136,20 @@ export default function ReviewsPage() {
 
   useScrollRestore("seller-reviews", state.kind === "ok");
 
-  const loadMore = async () => {
-    if (!cursor) return;
-    const r = await api<Data>(query(cursor));
-    if (!r.ok) return setToast({ text: errorText(r, "더 불러오지 못했습니다"), neg: true });
-    setMore((m) => [...m, ...r.data.reviews]);
-    setCursor(r.data.nextCursor);
+  const goPage = async (target: number, next = cursors[target - 1]) => {
+    if (state.kind !== "ok" || paging.current || target < 1 || target > cursors.length + 1) return;
+    paging.current = true;
+    const id = reqId.current;
+    const r = await api<Data>(query(next));
+    if (id !== reqId.current) return;
+    paging.current = false;
+    if (!r.ok) return setToast({ text: "목록을 불러오지 못했습니다. 다시 눌러 주십시오", neg: true });
+    setState({ kind: "ok", data: r.data }); setCursor(r.data.nextCursor);
+    setCursors((prev) => [...prev.slice(0, target - 1), next]); setPage(target);
   };
 
   const data = state.kind === "ok" ? state.data : null;
-  const rows = data ? [...data.reviews, ...more] : [];
+  const rows = data?.reviews ?? [];
   const s = data?.summary;
   const distMax = s ? Math.max(1, ...s.distribution.map((d) => d.count)) : 1;
 
@@ -265,13 +276,7 @@ export default function ReviewsPage() {
                   </table>
                 </div>
               )}
-              {cursor && (
-                <div style={{ padding: 12 }}>
-                  <button className="btn btn-out btn-block" type="button" onClick={() => void loadMore()}>
-                    더 보기
-                  </button>
-                </div>
-              )}
+              {(page > 1 || cursor) && <CursorPagination page={page} visited={cursors.length} hasNext={!!cursor} onChange={(target) => void goPage(target)} onNext={() => { if (cursor) void goPage(page + 1, cursor); }} />}
             </>
           )}
         </section>

@@ -2,6 +2,7 @@
 
 import { formatDateTime } from "../../../../../lib/client/format";
 import Link from "next/link";
+import { CursorPagination } from "../../../../../components/Pagination";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHead, useConfirm } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
@@ -24,7 +25,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "in_transit", label: "배송 중" },
   { key: "delivered", label: "배송 완료" },
 ];
-const PAGE = 50;
+const PAGE = 10;
 const SEARCH_DELAY_MS = 300;
 
 type Row = {
@@ -74,7 +75,9 @@ export default function ShippingPage() {
     setSearch((cur) => (cur.trim() === q ? cur : q));
   }, [q]);
   const [state, setState] = useState<Load>({ kind: "loading" });
-  const [more, setMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const paging = useRef(false);
   const [courier, setCourier] = useState<Courier>("CJ");
   // 줄마다 택배사를 바꿀 수 있다(없으면 위에서 고른 택배사)
   const [courierOf, setCourierOf] = useState<Record<string, Courier>>({});
@@ -88,10 +91,12 @@ export default function ShippingPage() {
   const reqId = useRef(0);
   const load = useCallback(async (t: Tab, s: string, quiet = false) => {
     const id = ++reqId.current;
+    paging.current = false;
+    if (!quiet) { setPage(1); setCursors([undefined]); }
     if (!quiet) setState({ kind: "loading" });
     const r = await api<Page>(`/api/seller/shipments?${query(t, s)}`);
     if (id !== reqId.current) return false;
-    if (r.ok) setState({ kind: "ok", items: r.data.shipments, next: r.data.nextCursor });
+    if (r.ok) { setState({ kind: "ok", items: r.data.shipments, next: r.data.nextCursor }); setPage(1); setCursors([undefined]); }
     else if (!quiet) setState({ kind: "error", status: r.status });
     return r.ok;
   }, []);
@@ -103,15 +108,18 @@ export default function ShippingPage() {
 
   useScrollRestore("seller-shipping", state.kind === "ok");
 
-  const loadMore = async () => {
-    if (state.kind !== "ok" || !state.next) return;
-    setMore(true);
+  const goPage = async (target: number, cursor = cursors[target - 1]) => {
+    if (state.kind !== "ok" || paging.current || target < 1 || target > cursors.length + 1) return;
+    paging.current = true;
     const id = reqId.current;
-    const r = await api<Page>(`/api/seller/shipments?${query(tab, q, state.next)}`);
-    setMore(false);
+    const r = await api<Page>(`/api/seller/shipments?${query(tab, q, cursor)}`);
     if (id !== reqId.current) return;
-    if (r.ok) setState({ kind: "ok", items: [...state.items, ...r.data.shipments], next: r.data.nextCursor });
-    else setToast({ text: "더 불러오지 못했습니다. 다시 눌러 주십시오", neg: true });
+    paging.current = false;
+    if (r.ok) {
+      setState({ kind: "ok", items: r.data.shipments, next: r.data.nextCursor });
+      setCursors((prev) => [...prev.slice(0, target - 1), cursor]); setPage(target);
+      setPicked(new Set()); setErrors({});
+    } else setToast({ text: "목록을 불러오지 못했습니다. 다시 눌러 주십시오", neg: true });
   };
 
   // 주문별 결과를 화면에 그대로 반영한다: 실패한 주문은 그 줄에 사유를 남기고, 성공 건수만 성공으로 알린다.
@@ -329,15 +337,12 @@ export default function ShippingPage() {
                   </table>
                 </div>
                 <div className="row" style={{ justifyContent: "space-between", padding: "12px 16px" }}>
-                  <span className="t-c1 c-alt">{state.next ? `${items.length}건 넘게` : `${items.length}건`}</span>
-                  {state.next && (
-                    <button className="btn btn-sm btn-out" type="button" onClick={() => void loadMore()} disabled={more}>
-                      {more ? "불러오는 중" : "더 보기"}
-                    </button>
-                  )}
+                  <span className="t-c1 c-alt">{`${items.length}건 표시`}</span>
+
                 </div>
               </>
             ))}
+          {state.kind === "ok" && (page > 1 || state.next) && <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={(target) => void goPage(target)} onNext={() => { if (state.next) void goPage(page + 1, state.next); }} />}
         </div>
       </main>
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
