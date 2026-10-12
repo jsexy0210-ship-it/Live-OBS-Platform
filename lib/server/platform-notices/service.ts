@@ -25,7 +25,7 @@ export const BODY_MAX = 10_000;
 export const PAGE_SIZE = 20;
 const ADMIN_NOTICE_PAGE_SIZE = 10;
 const SELLER_NOTICE_PAGE_SIZE = 10;
-export const PUBLIC_NOTICE_PAGE_SIZE = 5;
+export const PUBLIC_NOTICE_PAGE_SIZE = 10;
 const MAX_PUBLIC_NOTICE_PAGE_SIZE = 20;
 export const CATEGORIES = ["MAINTENANCE", "POLICY", "FEATURE", "GENERAL"] as const satisfies readonly PlatformNoticeCategory[];
 export const AUDIENCES = ["PARTNERS", "PUBLIC", "ALL"] as const satisfies readonly PlatformNoticeAudience[];
@@ -287,16 +287,18 @@ export async function listPublicNoticesPage(db: PrismaClient, page: number, page
   const base = { ...readerWhere("public"), ...(cat ? { category: cat } : {}) };
   const itemsWhere = { ...base, isPinned: false };
   const order: Prisma.PlatformNoticeOrderByWithRelationInput[] = [{ publishedAt: "desc" }, { id: "desc" }];
-  const [total, rows, pinned] = await Promise.all([
-    db.platformNotice.count({ where: itemsWhere }),
-    db.platformNotice.findMany({ where: itemsWhere, orderBy: order, skip: (page - 1) * pageSize, take: pageSize }),
-    page === 1 ? db.platformNotice.findMany({ where: { ...base, isPinned: true }, orderBy: order }) : Promise.resolve([]),
+  const total = await db.platformNotice.count({ where: itemsWhere });
+  const pageCount = Math.ceil(total / pageSize);
+  const currentPage = Math.min(page, pageCount || 1);
+  const [rows, pinned] = await Promise.all([
+    db.platformNotice.findMany({ where: itemsWhere, orderBy: order, skip: (currentPage - 1) * pageSize, take: pageSize }),
+    currentPage === 1 ? db.platformNotice.findMany({ where: { ...base, isPinned: true }, orderBy: order }) : Promise.resolve([]),
   ]);
   return {
-    page,
+    page: currentPage,
     pageSize,
     total,
-    pageCount: Math.ceil(total / pageSize),
+    pageCount,
     pinned: pinned.map((r) => listView(readerView(r))),
     items: rows.map((r) => listView(readerView(r))),
   };
