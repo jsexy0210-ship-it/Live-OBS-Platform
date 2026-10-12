@@ -104,9 +104,10 @@ post_check="$(awk '
   in_step && /^      - name:/ { exit }
   in_step && /^        run: / { sub(/^        run: /, ""); print }
 ' "$deploy_workflow")"
-[ "$post_check" = 'scripts/ops/disk-cleanup.sh --check' ]
+[ "$post_check" = 'scripts/ops/disk-cleanup.sh --check-after-deploy' ]
 ! grep -Fq 'disk-cleanup.sh --apply' "$deploy_workflow"
-[ "$(grep -Fc 'run: scripts/ops/disk-cleanup.sh --check' "$deploy_workflow")" -eq 2 ]
+[ "$(grep -Fxc '        run: scripts/ops/disk-cleanup.sh --check' "$deploy_workflow")" -eq 1 ]
+[ "$(grep -Fxc '        run: scripts/ops/disk-cleanup.sh --check-after-deploy' "$deploy_workflow")" -eq 1 ]
 (
   owned="$tmp/deploy-protected"
   mutations="$tmp/deploy-mutations"
@@ -129,9 +130,19 @@ post_check="$(awk '
   export owned mutations OBS_BACKUP_DIR="$owned/backups" OBS_RUNNER_ROOT="$owned/runner" OBS_HISTORY_FILE="$owned/history"
   cd "$root"
   export FIXTURE_FREE_KIB=10000000
-  bash -euo pipefail -c "$post_check" >/dev/null
+  normal="$(bash -euo pipefail -c "$post_check" 2>&1)"
+  grep -q '디스크 여유 점검' <<<"$normal"
+  ! grep -qE '배포를 시작하지|배포를 다시|--apply|디스크 여유가 부족' <<<"$normal"
   export FIXTURE_FREE_KIB=1000
-  if bash -euo pipefail -c "$post_check" >/dev/null; then echo 'low disk check unexpectedly passed' >&2; exit 1; fi
+  if low="$(bash -euo pipefail -c "$post_check" 2>&1)"; then echo 'low disk check unexpectedly passed' >&2; exit 1; else low_exit=$?; fi
+  [ "$low_exit" = 1 ]
+  grep -q '배포는 성공했지만 배포 후 점검에서 디스크 여유가 부족합니다' <<<"$low"
+  grep -q '자료를 삭제하지 않으며 배포 결과를 바꾸지 않습니다' <<<"$low"
+  ! grep -qE '배포를 시작하지|배포를 다시|--apply' <<<"$low"
+  if preflight="$(bash scripts/ops/disk-cleanup.sh --check 2>&1)"; then exit 1; else preflight_exit=$?; fi
+  [ "$preflight_exit" = 1 ]
+  grep -q '배포를 시작하지 않았어요' <<<"$preflight"
+  grep -q '정리가 끝나면 배포를 다시 실행' <<<"$preflight"
   [ ! -e "$mutations" ]
   [ "$(find "$owned" -type f -exec sha256sum {} \; | sort)" = "$before" ]
 )

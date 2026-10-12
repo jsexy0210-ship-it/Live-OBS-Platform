@@ -280,7 +280,7 @@ jobs:
       - name: Check disk after deploy
         if: success()
         continue-on-error: true
-        run: scripts/ops/disk-cleanup.sh --check
+        run: scripts/ops/disk-cleanup.sh --check-after-deploy
 
       - name: Show status on failure
         if: failure()
