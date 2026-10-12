@@ -111,7 +111,7 @@ async function productView(tx: Tx | PrismaClient, sellerId: string, productId: s
   return { ...rest, code: productCode(p.codeNo), event, images: await listProductImages(tx, sellerId, productId), options: (await liveOptions(tx, sellerId, productId)).map(({ deletedAt: _o, ...o }) => o) };
 }
 
-export const DEFAULT_PAGE_SIZE = 50;
+export const DEFAULT_PAGE_SIZE = 10;
 export const MAX_PAGE_SIZE = 200;
 export const MAX_SEARCH_LENGTH = 50;
 // 재고 기준 필터(화면 「재고 없음」·「재고 적음」 배지·탭과 같은 기준). 지운 옵션은 빼고 살아 있는 옵션 재고를 더한다.
@@ -120,7 +120,7 @@ export const LOW_STOCK_MAX = 5;
 const STOCK_FILTERS = { out: [0, 0], low: [1, LOW_STOCK_MAX] } as const;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// 쪽 크기: 숫자 또는 숫자만 있는 문자열(1~200)만 받는다("1e2", "0x10", " 5 "는 거부). 빼면 기본 50. 틀리면 null.
+// 쪽 크기: 숫자 또는 숫자만 있는 문자열(1~200)만 받는다("1e2", "0x10", " 5 "는 거부). 빼면 기본 10. 틀리면 null.
 export function parsePageLimit(raw: unknown): number | null {
   const limit = raw === undefined ? DEFAULT_PAGE_SIZE : typeof raw === "string" && /^\d+$/.test(raw) ? Number(raw) : typeof raw === "number" ? raw : NaN;
   return Number.isInteger(limit) && limit >= 1 && limit <= MAX_PAGE_SIZE ? limit : null;

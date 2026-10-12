@@ -19,7 +19,7 @@ export type AuditMeta = { ip?: string | null; userAgent?: string | null };
 export const CARD_NAME_MAX = 60;
 export const NOTE_MAX = 200;
 export const NICKNAME_MAX = 30;
-export const HIT_PAGE_SIZE = 50;
+export const HIT_PAGE_SIZE = 10;
 export const GRADE_MAX = 12;
 // 등급 추천 값(SA-001-M4 HIT 기록 창·SA-053 목록). 화면의 「직접 입력」을 받으므로 등급은 자유 입력이고, 이 목록은 추천 값일 뿐이다. 비워 둘 수 있다.
 export const HIT_GRADES = ["SAR", "SR", "UR", "SE", "SP", "AA"] as const;

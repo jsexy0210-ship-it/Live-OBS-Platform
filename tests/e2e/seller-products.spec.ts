@@ -356,6 +356,7 @@ test("상품 목록 제목 안내·검색 두 쌍·표 경계가 1440·1024·390
 
 test("옵션 이름이 길어도 표는 내부에서 스크롤되고 페이지 폭을 밀지 않는다(1440·1024)", async ({ page }) => {
   await login(page);
+  await searchFor(page, "보관용 카드 바인더");
   const row = page.getByTestId("product-row").filter({ hasText: "보관용 카드 바인더" });
   for (const width of [1440, 1024]) {
     await page.setViewportSize({ width, height: 900 });
@@ -699,6 +700,7 @@ test("상품 권한이 없는 직원은 권한 안내를 본다", async ({ page 
 test("휴대폰 폭(390)에서는 메뉴가 서랍으로 열리고 상품이 카드로 보인다", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await login(page);
+  await searchFor(page, "박스"); // 짧은 seed 이름과 100자 seed 이름을 같은 검증 집합으로 찾는다
   await expect(page.getByTestId("product-card").first()).toBeVisible();
   await expect(page.locator(".tbl.p-table")).toBeHidden();
   await expect(page.locator(".p-cards")).toBeVisible();
