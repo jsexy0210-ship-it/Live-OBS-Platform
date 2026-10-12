@@ -3,6 +3,7 @@
 # 사용: scripts/ops/disk-cleanup.sh            → 무엇을 지울지만 보여 줌(아무것도 지우지 않음)
 #       scripts/ops/disk-cleanup.sh --apply    → 실제로 정리
 #       scripts/ops/disk-cleanup.sh --check    → 남은 용량만 검사(기준 미만이면 0이 아닌 코드). 배포 전에 워크플로가 부른다
+#       scripts/ops/disk-cleanup.sh --check-after-deploy → 같은 읽기 점검, 배포 성공 후 문맥으로 안내
 # 정리 대상(이 네 가지만, 나머지는 건드리지 않는다):
 #  1) 배포 전 자동 백업(obs-<날짜>-<시각>-before-<커밋7자리>.dump): 최근 OBS_BACKUP_KEEP개(기본 10)만 남김.
 #     수동 백업·복원 안전 백업(다른 이름표)은 지우지 않는다. 쓰다 만 .dump.part는 하루가 지나면 지운다.
@@ -14,15 +15,17 @@
 set -euo pipefail
 
 MODE=dry
+CHECK_CONTEXT=preflight
 DETAILS=0
 CHECKOUT_DETAILS=0
 case "${1:-}" in
   --apply) MODE=apply ;;
   --check) MODE=check ;;
+  --check-after-deploy) MODE=check; CHECK_CONTEXT=postdeploy ;;
   --details) DETAILS=1 ;;
   --checkout-details) CHECKOUT_DETAILS=1 ;;
   ""|--dry-run) ;;
-  *) echo "사용법: disk-cleanup.sh [--check | --apply | --details | --checkout-details]   (아무 옵션 없으면 지울 목록만 보여 줘요)" >&2; exit 2 ;;
+  *) echo "사용법: disk-cleanup.sh [--check | --check-after-deploy | --apply | --details | --checkout-details]   (아무 옵션 없으면 지울 목록만 보여 줘요)" >&2; exit 2 ;;
 esac
 
 kst() { TZ=Asia/Seoul date "$@"; }
@@ -330,6 +333,10 @@ check_disk() {
     fi
   done
   if [ "$bad" = 1 ]; then
+    if [ "$CHECK_CONTEXT" = postdeploy ]; then
+      warn "배포는 성공했지만 배포 후 점검에서 디스크 여유가 부족합니다. 이 점검은 자료를 삭제하지 않으며 배포 결과를 바꾸지 않습니다. 백업·롤백 이미지·공유 캐시를 보존하고 승인된 수동 정리 대상을 별도로 확인해 주세요."
+      return 1
+    fi
     cat <<EOF
 
 서버 디스크 여유가 부족해서 배포를 시작하지 않았어요. 이대로 배포하면 빌드 도중 디스크가 가득 차 러너가 멈출 수 있어요.

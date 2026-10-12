@@ -276,11 +276,11 @@ jobs:
           echo "$line" >> /opt/obs/deploy-history.log
           { echo "### obs-test 배포 완료"; echo; echo "- 커밋: \`$GITHUB_SHA\`"; echo "- 시각: $(TZ=Asia/Seoul date '+%F %T') KST"; } >> "$GITHUB_STEP_SUMMARY"
 
-      # 배포가 성공한 뒤에만 오래된 백업·이미지·캐시·러너 로그를 정리한다. 정리가 실패해도 배포 결과는 바꾸지 않는다.
-      - name: Clean up disk
+      # 배포 뒤에는 여유 용량만 확인한다. 백업·롤백 이미지·공유 캐시·러너 로그를 자동 삭제하지 않는다.
+      - name: Check disk after deploy
         if: success()
         continue-on-error: true
-        run: scripts/ops/disk-cleanup.sh --apply
+        run: scripts/ops/disk-cleanup.sh --check-after-deploy
 
       - name: Show status on failure
         if: failure()

@@ -376,9 +376,9 @@ $C start obs-web-app
 | 시점 | 동작 |
 | --- | --- |
 | 배포 시작(Checkout 직후) | 도커 이미지·백업·러너 폴더 디스크의 남은 용량이 5GB 미만이면 배포를 멈추고 정리 방법을 안내합니다. |
-| 배포 성공 뒤 | 아래 기준으로 오래된 것만 정리합니다. 정리가 실패해도 배포 결과는 바뀌지 않습니다. |
+| 배포 성공 뒤 | `--check-after-deploy`로 여유 용량만 읽습니다. 자동 삭제는 없으며 용량 부족 안내가 나와도 성공한 배포 결과는 바뀌지 않습니다. |
 
-서버에 접속하지 않고 정리하려면 `Disk cleanup obs-test` 워크플로(`.github/workflows/disk-cleanup-obs-test.yml`)를 실행합니다. 먼저 `mode=list`로 지울 후보를 확인하고(결과는 실행 요약의 알림으로 남음), 확인한 뒤 `mode=apply`로 정리합니다. 배포와 같은 동시 실행 그룹이라 배포 중에는 기다립니다.
+기존 `Disk cleanup obs-test` 워크플로(`.github/workflows/disk-cleanup-obs-test.yml`)는 아래 네 범주를 처리하는 도구이며, 이번에 승인된 두 범주 수동 정리 경로로 재사용하지 않습니다. `mode=list`는 조회만 하고 `mode=apply`는 별도 범위 승인 없이 실행하지 않습니다. 배포와 같은 동시 실행 그룹을 유지합니다. MA120 수동 정리는 롤백 보호 밖 오래된 ONQ 앱 이미지와 14일 초과 runner 진단 로그만 대상으로 하며, 전용 연결·실행 인증·같은 후보 재검증 게이트를 통과하기 전에는 실행을 차단합니다. 백업·DB·롤백 이미지·공유 builder cache·checkout은 승인 대상에서 제외합니다.
 
 mode=list에서 `include_readonly_details`를 선택하면 공간·inode 사용량, 허용된 Buildx 캐시 필드, 로컬 빌드 기록의 저장소(ONQ/OTHER/UNKNOWN)·축약 리비전·컨텍스트 분류를 추가로 표시합니다. 필요한 명령이나 귀속 메타데이터가 없으면 UNKNOWN으로 남기며, 빌드 기록과 캐시 ID의 연결이 확인되지 않으면 캐시 소유권은 미확인으로 남깁니다. 이 옵션은 조회만 하며 정리 동작이나 `mode=apply`에는 영향을 주지 않습니다.
 
