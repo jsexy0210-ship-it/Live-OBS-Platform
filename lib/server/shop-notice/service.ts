@@ -20,7 +20,7 @@ export const FAQ_LIMIT = 100;
 export const TITLE_MAX = 60;
 export const BODY_MAX = 5000;
 export const CATEGORY_MAX = 20;
-export const PUBLIC_PAGE_SIZE = 20;
+export const PUBLIC_PAGE_SIZE = 10;
 
 export type NoticeRejection = "invalid_kind" | "invalid_title" | "invalid_body" | "invalid_category" | "invalid_pin" | "too_many" | "order_conflict";
 

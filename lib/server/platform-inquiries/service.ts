@@ -28,7 +28,7 @@ export const BODY_MAX = 5_000;
 export const IMAGES_PER_MESSAGE = 5;
 export const UNATTACHED_KEEP = 10;
 export const DAILY_LIMIT = 20;
-export const SELLER_PAGE_SIZE = 20;
+export const SELLER_PAGE_SIZE = 10;
 export const ADMIN_PAGE_SIZE = 10;
 export const SELLER_SEARCH_MAX = 50;
 // SA-114 문의 종류(방송 화면·결제 연결·주문/환불·적립금·구독/요금·쇼핑몰·계정/직원·기타). BILLING·FEATURE·BUG는 예전 문의에만 남아 있어 새로 보낼 수 없고 필터로는 볼 수 있다.

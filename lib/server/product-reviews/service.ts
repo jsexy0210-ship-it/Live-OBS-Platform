@@ -458,7 +458,7 @@ export async function publicReviewImage(db: PrismaClient, sellerId: string, imag
 
 // 쓸 수 있는 주문 품목: 본인 주문, 결제 완료(취소·환불 아님), 배송 완료 뒤 설정 기간 안, 리뷰 없음(지운 리뷰의 묘비가 있으면 작성 완료로 본다)
 // 목록은 (createdAt, id) 커서로 MY_PAGE개씩 준다.
-export const MY_PAGE = 50;
+export const MY_PAGE = 10;
 type Cursor = { createdAt: Date; id: string } | null;
 const afterCursor = (c: Cursor) => (c ? { OR: [{ createdAt: { lt: c.createdAt } }, { createdAt: c.createdAt, id: { lt: c.id } }] } : {});
 async function writableItems(db: Db, scope: BuyerScope, now: Date, writableDays: number, opts: { orderItemId?: string; after?: Cursor } = {}) {
