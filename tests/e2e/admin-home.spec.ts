@@ -390,41 +390,82 @@ test("기간별 현황: 상위 5 파트너스에 결제된 쇼핑몰이 오르�
 });
 
 test("지연된 통계 조회는 갱신에 중복되지 않고 완료되며 기간 변경의 이전 응답을 버린다", async ({ page }) => {
-  await page.clock.install();
-  await login(page);
-  const held: { url: string; release: () => void }[] = [];
-  await page.route("**/api/admin/stats/orders**", async (route) => {
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
-    held.push({ url: route.request().url(), release });
-    const response = await route.fetch();
-    await gate;
-    await route.fulfill({ response });
-  });
-  await openStatus(page);
-  await expect.poll(() => held.length).toBe(1);
-  const refresh = page.getByRole("button", { name: "새로 고침", exact: true });
-  await expect(refresh).toBeEnabled();
-  await refresh.click();
-  await page.clock.runFor(120_001);
-  expect(held).toHaveLength(1);
-  held[0].release();
-  await expect(page.locator(".ma-home-line svg")).toBeVisible();
+  const startedAt = performance.now();
+  let phase = "home";
+  const diagnostics: { atMs: number; phase: string; kind: string; path?: string; query?: Record<string, string>; heldIndex?: number }[] = [];
+  const record = (kind: string, path?: string, query?: Record<string, string>, heldIndex?: number) => {
+    if (diagnostics.length < 32) diagnostics.push({ atMs: Math.round(performance.now() - startedAt), phase, kind, path, query, heldIndex });
+  };
+  const onNavigation = (frame: ReturnType<Page["mainFrame"]>) => {
+    if (frame === page.mainFrame()) {
+      const path = new URL(frame.url()).pathname;
+      record("navigation", ["/admin", "/admin/home/status"].includes(path) ? path : "other");
+    }
+  };
+  page.on("framenavigated", onNavigation);
+  try {
+    await page.clock.install();
+    await login(page);
+    record("home-ready");
+    const held: { url: string; release: () => void }[] = [];
+    await page.route("**/api/admin/stats/orders**", async (route) => {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      held.push({ url: route.request().url(), release });
+      const url = new URL(route.request().url());
+      const query: Record<string, string> = {};
+      for (const key of ["from", "to", "unit"]) {
+        const value = url.searchParams.get(key);
+        if (value !== null) query[key] = /^(?:\d{4}-\d{2}-\d{2}|day|week|month)$/.test(value) ? value : "redacted";
+      }
+      record("held-request", url.pathname, query, held.length - 1);
+      const response = await route.fetch();
+      await gate;
+      await route.fulfill({ response });
+    });
+    phase = "home-route-installed";
+    record("route-installed");
+    phase = "home-to-detail";
+    record("detail-navigation-start");
+    await openStatus(page);
+    phase = "detail-ready";
+    record("detail-navigation-ready");
+    await expect.poll(() => held.length).toBe(1);
+    const refresh = page.getByRole("button", { name: "새로 고침", exact: true });
+    await expect(refresh).toBeEnabled();
+    await refresh.click();
+    await page.clock.runFor(120_001);
+    expect(held).toHaveLength(1);
+    held[0].release();
+    await expect(page.locator(".ma-home-line svg")).toBeVisible();
 
-  await expect(refresh).toBeEnabled();
-  await refresh.click();
-  await expect.poll(() => held.length).toBe(2);
-  await page.getByRole("button", { name: "최근 7일", exact: true }).click();
-  await expect.poll(() => held.length).toBe(3);
-  expect(held[2].url).not.toBe(held[1].url);
-  const oldResponse = page.waitForResponse((response) => response.url() === held[1].url);
-  held[1].release();
-  await oldResponse;
-  await expect(page.locator(".ma-home-line svg")).toHaveCount(0);
-  held[2].release();
-  await expect(page.locator(".ma-home-line svg")).toBeVisible();
-  await expect(page.getByRole("button", { name: "최근 7일", exact: true })).toHaveAttribute("aria-pressed", "true");
-  expect(held).toHaveLength(3);
+    await expect(refresh).toBeEnabled();
+    await refresh.click();
+    await expect.poll(() => held.length).toBe(2);
+    await page.getByRole("button", { name: "최근 7일", exact: true }).click();
+    await expect.poll(() => held.length).toBe(3);
+    expect(held[2].url).not.toBe(held[1].url);
+    const oldResponse = page.waitForResponse((response) => response.url() === held[1].url);
+    held[1].release();
+    await oldResponse;
+    await expect(page.locator(".ma-home-line svg")).toHaveCount(0);
+    held[2].release();
+    await expect(page.locator(".ma-home-line svg")).toBeVisible();
+    await expect(page.getByRole("button", { name: "최근 7일", exact: true })).toHaveAttribute("aria-pressed", "true");
+    expect(held).toHaveLength(3);
+  } catch (error) {
+    // 진단 실패가 원 시험 오류를 덮지 않도록 로그와 기존 업로드 경로를 각각 best-effort로 남긴다.
+    try { console.error("admin-home-held-request-diagnostics", JSON.stringify(diagnostics)); } catch { /* 원 오류 보존 */ }
+    try {
+      const sourceSha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+      const evidence = `tests/e2e/screenshots/current-shell-${sourceSha}`;
+      mkdirSync(evidence, { recursive: true });
+      writeFileSync(`${evidence}/admin-home-held-request-diagnostics.json`, JSON.stringify({ sourceSha, diagnostics }, null, 2));
+    } catch { /* 원 오류 보존 */ }
+    throw error;
+  } finally {
+    page.off("framenavigated", onNavigation);
+  }
 });
 
 test("지연된 홈 요약과 인프라 조회도 주기·수동 갱신에 중복되지 않고 완료된다", async ({ page }) => {
