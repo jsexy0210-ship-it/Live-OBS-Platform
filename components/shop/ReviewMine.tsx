@@ -143,7 +143,7 @@ export default function ReviewMine({ slug, initialItem, initialReview }: { slug:
             reviewId={"review" in target ? target.review : null}
             writableUntil={w?.writableUntil}
             right={
-              "item" in target && (data.writable.length > 1 || (w && !data.writable.some(x => x.orderItemId === w.orderItemId))) ? (
+              "item" in target && w && (data.writable.length > 1 || !data.writable.some(x => x.orderItemId === w.orderItemId)) ? (
                 <select className="inp rv-pick" aria-label="리뷰 쓸 상품" value={target.item} onChange={(e) => { setPicked({ item: e.target.value }); setSelectedWritable(data.writable.find(x => x.orderItemId === e.target.value) ?? null); }}>
                   {w && !data.writable.some(x => x.orderItemId === w.orderItemId) && <option hidden value={w.orderItemId}>{w.productName}</option>}
                   {data.writable.map((x) => (
@@ -162,7 +162,7 @@ export default function ReviewMine({ slug, initialItem, initialReview }: { slug:
           <div className="rv-box">
             <div className="rv-box-h">
               <h2>리뷰 쓰기</h2>
-              <span className="rv-box-r">리뷰를 기다리는 상품 {data.writable.length}개</span>
+              <span className="rv-box-r">현재 쪽에서 리뷰를 기다리는 상품 {data.writable.length}개</span>
             </div>
             <div className="rv-box-b">
               <button className="btn" type="button" onClick={() => setPicked({ item: data.writable[0].orderItemId })}>
@@ -177,7 +177,7 @@ export default function ReviewMine({ slug, initialItem, initialReview }: { slug:
         <section aria-labelledby="rv-mine-title">
           <div className="rv-st">
             <h2 id="rv-mine-title">내 리뷰</h2>
-            <span>{data.reviews.length}건{data.nextCursor ? " 이상" : ""}</span>
+            <span>현재 쪽 {data.reviews.length}건</span>
           </div>
           {data.reviews.length === 0 ? (
             <p className="rv-hint" style={{ padding: "16px 0" }}>

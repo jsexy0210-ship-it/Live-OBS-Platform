@@ -244,9 +244,13 @@ test("SH029: 쓰기 상품·내 리뷰 각각 23개·독립 이동·고른 상�
     const w = part(writable, start(q, "writableCursor")); const r = part(reviews, start(q));
     return { writable: w.items, writableNextCursor: w.next, reviews: r.items, nextCursor: r.next, reward: { text: 100, photo: 200 } };
   });
+  const itemReads: string[] = [];
   await page.route(url => url.pathname.startsWith(`${shop}/reviews/items/${run}-item-`), route => {
     expect(route.request().method()).toBe("GET");
-    return route.fulfill({ json: { item: { productName: names[0], optionName: "기본", quantity: 1, orderedAt: iso, deliveredAt: iso, reward: { text: 100, photo: 200 } } } });
+    const itemId = new URL(route.request().url()).pathname.split("/").at(-1)!;
+    const item = writable.find(x => x.orderItemId === itemId);
+    expect(item).toBeDefined(); itemReads.push(itemId);
+    return route.fulfill({ json: { item: { productName: item!.productName, optionName: "기본", quantity: 1, orderedAt: iso, deliveredAt: iso, reward: { text: 100, photo: 200 } } } });
   });
   await buyer(page); await page.goto(`/shop/${slug}/reviews`);
   const select = page.getByLabel("리뷰 쓸 상품", { exact: true }); const options = select.locator("option:not([hidden])");
@@ -254,6 +258,7 @@ test("SH029: 쓰기 상품·내 리뷰 각각 23개·독립 이동·고른 상�
   const reviewNav = page.getByRole("group", { name: "내 리뷰 페이지", exact: true }).getByRole("navigation");
   const rows = page.getByTestId("my-review");
   await capture(page, "SH-029", rows, "buyer", "first / 10 writable options + 10 own reviews");
+  await expect(page.locator(".rv-st span")).toHaveText("현재 쪽 10건");
   const draft = page.locator("#rv-body"); await draft.fill("쪽을 바꿔도 유지할 작성 중인 리뷰입니다.");
   const chosen = await select.inputValue();
   const seen: string[] = [];
@@ -268,9 +273,22 @@ test("SH029: 쓰기 상품·내 리뷰 각각 23개·독립 이동·고른 상�
   }
   expect(seen).toEqual(names); await expect(writeNav.getByRole("button", { name: "다음", exact: true })).toBeDisabled();
   await traverse(rows, rows.locator("td:first-child b"), reviewNav, reviewNames);
+  await expect(page.locator(".rv-st span")).toHaveText("현재 쪽 3건");
   await expect(writeNav.getByRole("button", { name: "3페이지", exact: true })).toHaveAttribute("aria-current", "page");
   await expect(select).toHaveValue(chosen); await expect(draft).toHaveValue("쪽을 바꿔도 유지할 작성 중인 리뷰입니다.");
   await writeNav.getByRole("button", { name: "처음", exact: true }).click(); await expect(options).toHaveCount(10);
+  const itemReadBaseline = itemReads.length;
+  await page.goto(`/shop/${slug}/reviews?item=${encodeURIComponent(writable[11].orderItemId)}`);
+  await expect(page.locator(".rv-box-r")).toContainText(names[11]);
+  await expect(select).toHaveCount(0);
+  await expect.poll(() => itemReads.slice(itemReadBaseline)).toEqual([writable[11].orderItemId]);
+  await draft.fill("직접 연 작성 상품을 유지하는 리뷰 초안입니다.");
+  await writeNav.getByRole("button", { name: "다음", exact: true }).click();
+  await expect(writeNav.getByRole("button", { name: "2페이지", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(options).toHaveCount(10);
+  await expect(select).toHaveValue(writable[11].orderItemId);
+  await expect(select.locator("option:checked")).toContainText(names[11]);
+  await expect(draft).toHaveValue("직접 연 작성 상품을 유지하는 리뷰 초안입니다.");
 });
 
 test("SH030: 고정 포함 공지 23개 커서·FAQ 전체 배열 23개·분류/검색 첫 쪽", async ({ page }) => {
