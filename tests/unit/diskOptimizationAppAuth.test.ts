@@ -31,6 +31,29 @@ function fixture() {
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe("preview 전용 App 설치 자격", () => {
+  it("구형과 긴 JWT형·짧은 dot형 설치 토큰을 해석 없이 헤더와 캐시에 보존한다", async () => {
+    for (const token of ["ghs_" + "a".repeat(36), "ghs_1_" + "a".repeat(170) + "." + "b".repeat(170) + "." + "c".repeat(180), "ghs_1_" + "a".repeat(12) + "." + "b".repeat(12) + "." + "c".repeat(12)]) {
+      const f = fixture(), original = f.fetch.getMockImplementation()!;
+      f.issued.token = token;
+      f.fetch.mockImplementation(async (url, init) => {
+        if (url.includes("/actions/")) {
+          expect((init.headers as Record<string, string>).authorization).toBe(`Bearer ${token}`);
+          return Response.json({ workflow_runs: [] });
+        }
+        return original(url, init);
+      });
+      expect(await f.source.token()).toBe(token);
+      await diskActionsTransport(f.source)("GET", `/repos/${DISK_ACTIONS_REPO}/actions/workflows/${DISK_PREVIEW_WORKFLOW}/runs?branch=main&event=workflow_dispatch&per_page=100`);
+      expect(await f.source.token()).toBe(token); expect(f.fetch).toHaveBeenCalledTimes(3);
+    }
+  });
+  it("설치 토큰의 헤더 주입·공백·비ASCII·과도한 크기는 workflow 요청 전에 거부한다", async () => {
+    for (const token of ["a".repeat(19), "a".repeat(4097), value + "\r\nother: owned", value + "\n", value + " ", value + "\x7f", value + "한"]) {
+      const f = fixture(); f.issued.token = token;
+      await expect(diskActionsTransport(f.source)("POST", `/repos/${DISK_ACTIONS_REPO}/actions/workflows/${DISK_PREVIEW_WORKFLOW}/dispatches`, { ref: "main" })).rejects.toThrow("ACTIONS_APP_AUTH_UNAVAILABLE");
+      expect(f.fetch).toHaveBeenCalledTimes(2);
+    }
+  });
   it("서명·정확 설치·축소 권한과 repo1개를 검증하고 토큰을 동시 요청에 한 번만 발급한다", async () => {
     const f = fixture();
     expect(await Promise.all([f.source.token(), f.source.token()])).toEqual([value, value]);

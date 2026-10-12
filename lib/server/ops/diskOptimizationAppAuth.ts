@@ -48,7 +48,8 @@ export class DiskAppInstallationToken {
       const token = await this.request("POST", `/app/installations/${this.installationId}/access_tokens`, jwt, { repositories: [DISK_ACTIONS_REPO.split("/")[1]], permissions: { actions: "write", contents: "read" } });
       const expires = typeof token.expires_at === "string" ? Date.parse(token.expires_at) : NaN;
       const repositories = Array.isArray(token.repositories) ? token.repositories : [];
-      if (typeof token.token !== "string" || !/^[A-Za-z0-9_]{20,512}$/.test(token.token) || !Number.isFinite(expires) || expires - this.clock() <= 60_000 || expires - this.clock() > 3_660_000 || !exactPermissions(token.permissions) || repositories.length !== 1 || object(repositories[0]).full_name !== DISK_ACTIONS_REPO) fail();
+      // 설치 토큰은 opaque 값이다. 신규 JWT형도 수용하되 헤더 주입·과도한 크기는 거부한다.
+      if (typeof token.token !== "string" || token.token.length < 20 || token.token.length > 4096 || /[^A-Za-z0-9._~+\/=-]/.test(token.token) || !Number.isFinite(expires) || expires - this.clock() <= 60_000 || expires - this.clock() > 3_660_000 || !exactPermissions(token.permissions) || repositories.length !== 1 || object(repositories[0]).full_name !== DISK_ACTIONS_REPO) fail();
       this.cached = { value: token.token, expires };
       return this.cached.value;
     } catch { return fail(); }
