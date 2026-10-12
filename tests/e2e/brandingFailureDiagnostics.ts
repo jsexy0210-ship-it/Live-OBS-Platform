@@ -7,15 +7,18 @@ const reads = new WeakMap<Page, Read[]>();
 export async function recordBrandingRead(page: Page, response: Response | APIResponse) {
   try {
     const row: Read = { pathname: new URL(response.url()).pathname, status: response.status(), contentType: response.headers()["content-type"] ?? null };
+    const list = reads.get(page) ?? [];
+    list.push(row); reads.set(page, list.slice(-12));
     if (row.status >= 400) {
       row.shortError = "non-json-error";
       if (row.contentType?.includes("application/json")) {
-        const error = (await response.json()).error;
-        row.shortError = typeof error === "string" && /^[a-z0-9_-]{1,80}$/i.test(error) ? error : "non-code-json-error";
+        row.shortError = "body-unavailable";
+        try {
+          const error = (await response.json()).error;
+          row.shortError = typeof error === "string" && /^[a-z0-9_-]{1,80}$/i.test(error) ? error : "non-code-json-error";
+        } catch { /* 알려진 status·content-type은 본문 수명/파싱 실패에도 보존한다. */ }
       }
     }
-    const list = reads.get(page) ?? [];
-    list.push(row); reads.set(page, list.slice(-12));
   } catch { /* 진단 실패가 원 시험 실패를 바꾸지 않는다. */ }
 }
 export function observeBrandingReads(page: Page) {
