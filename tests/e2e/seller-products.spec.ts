@@ -700,6 +700,7 @@ test("상품 권한이 없는 직원은 권한 안내를 본다", async ({ page 
 test("휴대폰 폭(390)에서는 메뉴가 서랍으로 열리고 상품이 카드로 보인다", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await login(page);
+  await searchFor(page, "박스"); // 짧은 seed 이름과 100자 seed 이름을 같은 검증 집합으로 찾는다
   await expect(page.getByTestId("product-card").first()).toBeVisible();
   await expect(page.locator(".tbl.p-table")).toBeHidden();
   await expect(page.locator(".p-cards")).toBeVisible();

@@ -99,7 +99,7 @@ for (const t of targets) test(`${t.id}: 실제 목록 10개·끝·앞뒤·필터
   await submitSellerLogin(page, email, password);
   await expect(page).toHaveURL(/\/seller$/);
   await page.goto(t.route);
-  const rows = t.key === "hits" ? page.getByTestId(t.row).locator("tbody tr") : page.getByTestId(t.row);
+  const rows = t.key === "hits" ? page.getByTestId(t.row).locator("tr") : page.getByTestId(t.row);
   const nav = page.getByRole("navigation", { name: "페이지 이동", exact: true });
   let release: () => void = () => {};
   try {
@@ -215,12 +215,15 @@ test("SA-023: 처리한 행만 거두고 현재 쪽·스크롤을 보존하며 �
   const rows = page.getByTestId("refund-request-row");
   const nav = page.getByRole("navigation", { name: "페이지 이동", exact: true });
   const current = (n: number) => expect(nav.getByRole("button", { name: `${n}페이지`, exact: true })).toHaveAttribute("aria-current", "page");
-  const rejectFirst = async () => {
+  const scrollMetrics = () => page.evaluate(() => ({ scrollY, scrollHeight: document.documentElement.scrollHeight, innerHeight, maxScroll: Math.max(0, document.documentElement.scrollHeight - innerHeight) }));
+  const rejectFirst = async (keepMiddle = false) => {
     await rows.first().getByRole("button", { name: "처리", exact: true }).click();
     const dialog = page.getByRole("dialog");
     await dialog.getByRole("button", { name: "거절", exact: true }).click();
     await dialog.getByLabel("거절 사유", { exact: true }).fill("합성 쪽 보존");
-    const scroll = await page.evaluate(() => scrollY);
+    // 한 행 제거 뒤에도 가능한 중간 위치를 고른다. 끝 위치의 브라우저 자동 clamp를 보존 실패와 섞지 않는다.
+    if (keepMiddle) await page.evaluate(() => window.scrollTo(0, Math.floor(Math.max(0, document.documentElement.scrollHeight - innerHeight) / 2)));
+    const scroll = await scrollMetrics();
     await dialog.getByRole("button", { name: "거절 처리", exact: true }).click();
     await expect(dialog).toHaveCount(0);
     return scroll;
@@ -230,10 +233,14 @@ test("SA-023: 처리한 행만 거두고 현재 쪽·스크롤을 보존하며 �
     await page.goto("/seller/orders/refund-requests");
     await nav.getByRole("button", { name: "다음", exact: true }).click(); await current(2);
     const before = await rows.allTextContents();
-    const scroll = await rejectFirst();
+    const scroll = await rejectFirst(true);
     await current(2); await expect(rows).toHaveCount(9);
     await expect(rows).toHaveText(before.slice(1));
-    expect(await page.evaluate(() => scrollY)).toBe(scroll);
+    const afterScroll = await scrollMetrics();
+    writeFileSync(`${evidence}/SA-023-scroll-${previousFails ? "previous-error" : "previous-ok"}.json`, JSON.stringify({ actualGitSha: sha, route: "/seller/orders/refund-requests", state: "page2-row-removed", before: scroll, after: afterScroll }, null, 2));
+    expect(scroll.scrollY).toBeGreaterThan(0);
+    expect(scroll.scrollY).toBeLessThan(afterScroll.maxScroll);
+    expect(afterScroll.scrollY).toBe(scroll.scrollY);
     await expect(page.getByTestId("refund-summary")).toContainText("21건");
     await nav.getByRole("button", { name: "다음", exact: true }).click(); await current(3); await expect(rows).toHaveCount(2);
     await rejectFirst(); await current(3); await expect(rows).toHaveCount(1);

@@ -4,6 +4,12 @@ import { randomBytes } from "node:crypto";
 import sharp from "sharp";
 import { hashPassword } from "../../lib/server/auth/password";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
+import { captureBrandingFailure, observeBrandingReads, recordBrandingRead } from "./brandingFailureDiagnostics";
+
+test.beforeEach(async ({ page }) => { observeBrandingReads(page); });
+test.afterEach(async ({ page }, info) => {
+  if (info.title.startsWith("최고관리자가 파트너스 관리자 파비콘") || info.title.startsWith("마스터 관리자 공유 카드에") || info.title.startsWith("저장 전 입력값")) await captureBrandingFailure(page, info, `branding-${info.line}`);
+});
 
 // 사이트 설정 > 파비콘·공유 카드(마스터 관리자). 마스터 관리자 계정은 시드에 없어 폐기용 테스트 DB(이름이 _test로 끝남)에
 // 실행마다 새로 만든다(비밀번호도 실행마다 새로). 브랜딩 값은 처음 상태(기본값)로 지우고 시작한다.
@@ -105,10 +111,12 @@ test("최고관리자가 파트너스 관리자 파비콘·공유 카드를 바�
   expect(seller).toMatchObject({ ogTitle: "온큐 파트너스 센터", ogDescription: "방송 주문을 한곳에서 관리합니다", twitterCard: "summary_large_image" });
   expect(seller.ogImage).toMatch(/^http:\/\/localhost:\d+\/api\/branding\/seller\/og\?v=[0-9a-f]{12}$/);
   const fav = await request.get(seller.icons[0]!);
+  await recordBrandingRead(page, fav);
   expect(fav.headers()["content-type"]).toBe("image/png");
   expect(fav.headers()["x-content-type-options"]).toBe("nosniff");
   expect(Buffer.from(await fav.body()).equals(icon)).toBe(true);
   const card = await request.get(seller.ogImage!);
+  await recordBrandingRead(page, card);
   expect(card.headers()["content-type"]).toBe("image/png");
   const png = Buffer.from(await card.body());
   expect(await sharp(png).metadata()).toMatchObject({ width: 1200, height: 630 });
@@ -155,6 +163,7 @@ test("마스터 관리자 공유 카드에 1200×630 이미지를 올리면 og:i
   const admin = await head(page, "/admin/login");
   expect(admin.ogImage).toMatch(/\/api\/branding\/admin\/og\?v=[0-9a-f]{12}$/);
   const got = await request.get(admin.ogImage!);
+  await recordBrandingRead(page, got);
   expect(got.headers()["content-type"]).toBe("image/png");
   expect(Buffer.from(await got.body()).equals(image)).toBe(true);
   // 제목으로 만들기로 돌리면 다시 그린 카드
@@ -163,6 +172,7 @@ test("마스터 관리자 공유 카드에 1200×630 이미지를 올리면 og:i
   await page.getByRole("button", { name: "공유 카드 저장" }).click();
   await expect(page.getByText("공유 카드를 저장했습니다.")).toBeVisible();
   const back = await request.get((await head(page, "/admin/login")).ogImage!);
+  await recordBrandingRead(page, back);
   expect(back.headers()["content-type"]).toBe("image/png");
 });
 
