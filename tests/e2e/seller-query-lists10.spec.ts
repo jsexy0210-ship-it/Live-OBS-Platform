@@ -180,6 +180,63 @@ for (const t of targets) test(`${t.id}: 실제 목록 10개·끝·앞뒤·필터
   } catch (error) { release(); try { await capture(page, t.id, "failed"); } catch {} throw error; }
 });
 
+test("SA-023: 처리한 행만 거두고 현재 쪽·스크롤을 보존하며 빈 끝 쪽을 보정한다", async ({ page }) => {
+  await page.goto("/seller/login"); await submitSellerLogin(page, email, password);
+  await expect(page).toHaveURL(/\/seller$/);
+  const api = "/api/seller/refund-requests";
+  const original: { id: string; [key: string]: unknown }[] = [];
+  let cursor: string | null = null;
+  do {
+    const response = await page.request.get(`${api}?status=REQUESTED${cursor ? `&cursor=${cursor}` : ""}`);
+    expect(response.status()).toBe(200);
+    const body = await response.json(); original.push(...body.requests); cursor = body.nextCursor;
+  } while (cursor);
+  expect(original.map(r => r.id)).toEqual(owned.refunds.slice(0, 22).reverse());
+  const removed = new Set<string>();
+  // 화면 처리 응답만 합성한다. 실제 환불·거절 POST를 서버에 보내지 않는다.
+  await page.route(`**${api}?*`, route => {
+    expect(route.request().method()).toBe("GET");
+    const q = new URL(route.request().url()).searchParams;
+    const after = q.get("cursor") ? original.findIndex(r => r.id === q.get("cursor")) : -1;
+    const remaining = original.slice(after + 1).filter(r => !removed.has(r.id));
+    const requests = remaining.slice(0, 10);
+    return route.fulfill({ json: { requests, nextCursor: remaining.length > 10 ? requests.at(-1)!.id : null, counts: { REQUESTED: original.length - removed.size, REJECTED: 1 + removed.size } } });
+  });
+  await page.route(`**${api}/*/reject`, route => {
+    expect(route.request().method()).toBe("POST");
+    expect(route.request().postDataJSON()).toEqual({ reason: "합성 쪽 보존" });
+    const id = new URL(route.request().url()).pathname.split("/").at(-2)!;
+    expect(owned.refunds).toContain(id); removed.add(id);
+    return route.fulfill({ json: { ok: true } });
+  });
+  await page.goto("/seller/orders/refund-requests");
+  const rows = page.getByTestId("refund-request-row");
+  const nav = page.getByRole("navigation", { name: "페이지 이동", exact: true });
+  const current = (n: number) => expect(nav.getByRole("button", { name: `${n}페이지`, exact: true })).toHaveAttribute("aria-current", "page");
+  const rejectFirst = async () => {
+    await rows.first().getByRole("button", { name: "처리", exact: true }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("button", { name: "거절", exact: true }).click();
+    await dialog.getByLabel("거절 사유", { exact: true }).fill("합성 쪽 보존");
+    const scroll = await page.evaluate(() => scrollY);
+    await dialog.getByRole("button", { name: "거절 처리", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    return scroll;
+  };
+  await nav.getByRole("button", { name: "다음", exact: true }).click(); await current(2);
+  const before = await rows.allTextContents();
+  const scroll = await rejectFirst();
+  await current(2); await expect(rows).toHaveCount(9);
+  await expect(rows).toHaveText(before.slice(1));
+  expect(await page.evaluate(() => scrollY)).toBe(scroll);
+  await expect(page.getByTestId("refund-summary")).toContainText("21건");
+  await nav.getByRole("button", { name: "다음", exact: true }).click(); await current(3); await expect(rows).toHaveCount(2);
+  await rejectFirst(); await current(3); await expect(rows).toHaveCount(1);
+  await rejectFirst(); await current(2); await expect(rows).toHaveCount(9);
+  await expect(nav.getByRole("button", { name: "다음", exact: true })).toBeDisabled();
+  await expect(page.getByTestId("refund-summary")).toContainText("19건");
+});
+
 test("SA-024: 미결제 후속 처리와 영수증 권한을 보존한다", async ({ page }) => {
   await db.sellerSubscription.update({ where: { sellerId }, data: { currentPeriodEnd: new Date(Date.now() - 86_400_000), status: "CANCELED" } });
   const receiptEmail = `query-${run}-receipt@example.com`;

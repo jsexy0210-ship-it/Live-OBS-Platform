@@ -230,10 +230,22 @@ export default function RefundRequestsPage() {
           canEdit={canEdit}
           onClose={() => setOpenId(null)}
           onDone={(text) => {
+            const doneId = openId;
             setOpenId(null);
             setToast({ text });
-            // 처리 뒤 첫 쪽과 커서를 새로 조회해 빈 쪽·낡은 다음 경계를 남기지 않는다.
-            void load(tab);
+            if (state.kind !== "ok") return;
+            const id = ++reqId.current;
+            paging.current = false;
+            // 처리한 행만 거둬 현재 쪽과 스크롤을 보존한다. 끝 쪽의 마지막 행만 이전 쪽으로 보정한다.
+            if (page > 1 && !state.next && state.rows.length === 1 && state.rows[0].id === doneId) {
+              void turnPage(page - 1);
+              return;
+            }
+            setState(s => s.kind === "ok" ? { ...s, rows: s.rows.filter(r => r.id !== doneId) } : s);
+            void api<List>(`/api/seller/refund-requests?status=${tab}`).then(r => {
+              if (id !== reqId.current) return;
+              if (r.ok) setState(s => s.kind === "ok" ? { ...s, counts: r.data.counts } : s);
+            });
           }}
         />
       )}
