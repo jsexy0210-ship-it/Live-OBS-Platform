@@ -19,12 +19,12 @@ export default async function NoticePage({ params, searchParams }: { params: Pro
   const pageRaw = first(q.page);
   const pageSizeRaw = first(q.pageSize);
   const page = pageRaw && /^\d+$/.test(pageRaw) ? Number(pageRaw) : 1;
-  const size = pageSizeRaw && /^\d+$/.test(pageSizeRaw) ? Number(pageSizeRaw) : 5;
+  const size = pageSizeRaw && /^\d+$/.test(pageSizeRaw) ? Number(pageSizeRaw) : 10;
   const state = {
     category: first(q.category),
     cursor: !pageRaw && !pageSizeRaw ? first(q.cursor) : null,
     page: Number.isSafeInteger(page) && page > 0 ? page : 1,
-    pageSize: Number.isSafeInteger(size) && size >= 1 && size <= 20 ? size : 5,
+    pageSize: Number.isSafeInteger(size) && size >= 1 && size <= 20 ? size : 10,
   };
   return <NoticeDetail notice={n} listHref={noticeListHref(state)} listState={state} />;
 }

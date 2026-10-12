@@ -91,8 +91,9 @@ export function Notices({
                 <Row key={n.id} n={n} state={state} />
               ))}
             </ul>
-            {pageCount !== undefined && pageCount > 0 && (
+            {pageCount !== undefined && pageCount > 1 && (
               <nav className="pg" aria-label="공지 페이지 이동" data-testid="notice-pagination">
+                {activePage > 1 && <Link href={pageHref(1)} aria-label="처음 페이지">처음</Link>}
                 {activePage > 1 && <Link href={pageHref(activePage - 1)} aria-label="이전 페이지">이전</Link>}
                 {pages.map((n) => (
                   <Link key={n} className={n === activePage ? "on" : ""} href={pageHref(n)} aria-current={n === activePage ? "page" : undefined} data-testid={`notice-page-${n}`}>
@@ -100,6 +101,7 @@ export function Notices({
                   </Link>
                 ))}
                 {activePage < pageCount && <Link href={pageHref(activePage + 1)} aria-label="다음 페이지">다음</Link>}
+                {activePage < pageCount && <Link href={pageHref(pageCount)} aria-label="마지막 페이지">마지막</Link>}
               </nav>
             )}
             {nextCursor && (

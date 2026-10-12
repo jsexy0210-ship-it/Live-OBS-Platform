@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ListHead, PageHead } from "../../../../../../components/admin-ui";
+import { ListHead, PageHead, Pagination } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows } from "../../../../../../components/seller/States";
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar } from "../../../_components/AdminShell";
@@ -16,6 +16,7 @@ type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; at: string; 
 
 export default function LivePayoutPage() {
   const [state, setState] = useState<Load>({ kind: "loading" });
+  const [page, setPage] = useState(1);
   const load = useCallback(async () => {
     setState({ kind: "loading" });
     const r = await adminApi<{ at: string; items: PayoutSeller[] }>("/api/admin/ops/live-payout-sellers");
@@ -24,6 +25,10 @@ export default function LivePayoutPage() {
   useEffect(() => void load(), [load]);
 
   const items = state.kind === "ok" ? state.items : [];
+  const pageCount = Math.ceil(items.length / 10);
+  const currentPage = Math.min(page, pageCount || 1);
+  const pageItems = items.slice((currentPage - 1) * 10, currentPage * 10);
+  useEffect(() => { if (state.kind === "ok") setPage(p => Math.min(p, pageCount || 1)); }, [state.kind, pageCount]);
   return (
     <>
       <AdminTopbar crumb="파트너스 › 적립금 실제 지급 켠 파트너스" />
@@ -79,7 +84,7 @@ export default function LivePayoutPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {items.map((s) => (
+                        {pageItems.map((s) => (
                           <tr key={s.sellerId} data-testid="payout-row">
                             <td>
                               <b>{s.shopName}</b> <span className="c-alt">· 쇼핑몰 주소 {s.slug}</span>
@@ -104,6 +109,7 @@ export default function LivePayoutPage() {
                       </tbody>
                     </table>
                   </div>
+                  {pageCount > 1 && <Pagination page={currentPage} pageCount={pageCount} onChange={setPage} label="실지급 파트너스 페이지 이동" />}
                 </>
               ))}
           </div>

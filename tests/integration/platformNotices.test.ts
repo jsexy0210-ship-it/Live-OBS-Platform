@@ -197,11 +197,11 @@ describe("파트너스·공개 공지", () => {
     expect(second.body).toMatchObject({ page: 2, pageSize: 5, total: 8, pageCount: 2, pinned: [] });
     expect(second.body.items).toHaveLength(3);
 
-    const maintenance = await json(await publicList(new Request(`${BASE}/api/notices?page=1&category=MAINTENANCE`)));
+    const maintenance = await json(await publicList(new Request(`${BASE}/api/notices?page=1&category=MAINTENANCE&pageSize=5`)));
     expect(maintenance.body).toMatchObject({ page: 1, pageSize: 5, total: 6, pageCount: 2 });
     expect(maintenance.body.items).toHaveLength(5);
     expect(maintenance.body.pinned.map((n: { id: string }) => n.id)).toEqual([pinned.id]);
-    const maintenanceSecond = await json(await publicList(new Request(`${BASE}/api/notices?page=2&category=MAINTENANCE`)));
+    const maintenanceSecond = await json(await publicList(new Request(`${BASE}/api/notices?page=2&category=MAINTENANCE&pageSize=5`)));
     expect(maintenanceSecond.body).toMatchObject({ page: 2, total: 6, pageCount: 2, pinned: [] });
     expect(maintenanceSecond.body.items).toHaveLength(1);
 

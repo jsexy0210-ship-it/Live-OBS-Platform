@@ -16,7 +16,7 @@ test("공지 목록은 고정·첫·중간·마지막 페이지를 구분하고 
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("공지");
   await expect(page.getByRole("navigation", { name: "주요 메뉴" }).getByRole("link", { name: "공지" })).toHaveAttribute("aria-current", "page");
   const rows = page.getByTestId("notices-list").getByRole("link");
-  await expect(rows).toHaveCount(6);
+  await expect(rows).toHaveCount(11);
   await expect(rows.first()).toContainText("E2E-PF-PIN");
   await expect(rows.first()).toContainText("고정");
   const pager = page.getByRole("navigation", { name: "공지 페이지 이동" });
@@ -34,21 +34,34 @@ test("공지 목록은 고정·첫·중간·마지막 페이지를 구분하고 
 
   await pager.getByRole("link", { name: "2", exact: true }).click();
   await expect(page).toHaveURL(/\/notices\?page=2$/);
-  await expect(page.getByTestId("notices-list").getByRole("link")).toHaveCount(5);
+  await expect(page.getByTestId("notices-list").getByRole("link")).toHaveCount(1);
   await expect(page.getByText("E2E-PF-PIN")).toHaveCount(0);
-  await page.getByRole("navigation", { name: "공지 페이지 이동" }).getByRole("link", { name: "3", exact: true }).click();
-  await expect(page).toHaveURL(/\/notices\?page=3$/);
+  const lastRow = page.getByTestId("notices-list").getByRole("link");
+  await expect(lastRow).toContainText("E2E-PF-MAINTENANCE-10");
+  const detailHref = await lastRow.getAttribute("href");
+  expect(detailHref).toMatch(/^\/notices\/[^?]+\?page=2$/);
+  await lastRow.click();
+  await expect(page).toHaveURL(new URL(detailHref!, page.url()).href);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("E2E-PF-MAINTENANCE-10");
+  await expect(page.getByRole("link", { name: "공지 목록", exact: true })).toHaveAttribute("href", "/notices?page=2");
+  await page.getByRole("link", { name: "공지 목록", exact: true }).click();
+  await expect(page).toHaveURL(/\/notices\?page=2$/);
+  await expect(page.getByTestId("notice-page-2")).toHaveAttribute("aria-current", "page");
+  await expect(page.getByTestId("notices-list").getByRole("link")).toHaveCount(1);
+  await expect(page.getByTestId("notices-list")).toContainText("E2E-PF-MAINTENANCE-10");
+  await page.goto("/notices?page=999");
+  await expect(page.getByTestId("notice-page-2")).toHaveAttribute("aria-current", "page");
   await expect(page.getByTestId("notices-list").getByRole("link")).toHaveCount(1);
   await expect(page.getByTestId("notices-list")).toContainText("E2E-PF-MAINTENANCE-10");
 });
 
 test("분류·상세·브라우저 뒤로 가기가 원래 페이지 상태를 보존한다", async ({ page }) => {
-  await page.goto("/notices?category=FEATURE");
+  await page.goto("/notices?category=FEATURE&pageSize=5");
   await expect(page.getByRole("link", { name: "새 기능", exact: true })).toHaveAttribute("aria-current", "true");
   const pager = page.getByRole("navigation", { name: "공지 페이지 이동" });
-  await expect(pager.getByRole("link", { name: "2", exact: true })).toHaveAttribute("href", "/notices?category=FEATURE&page=2");
+  await expect(pager.getByRole("link", { name: "2", exact: true })).toHaveAttribute("href", "/notices?category=FEATURE&page=2&pageSize=5");
   await pager.getByRole("link", { name: "2", exact: true }).click();
-  await expect(page).toHaveURL(/\/notices\?category=FEATURE&page=2$/);
+  await expect(page).toHaveURL(/\/notices\?category=FEATURE&page=2&pageSize=5$/);
   const row = page.getByTestId("notices-list").getByRole("link");
   await expect(row).toHaveCount(1);
   await row.click();
@@ -86,12 +99,15 @@ test("분류·상세·브라우저 뒤로 가기가 원래 페이지 상태를 �
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "390px notice detail overflow").toBe(true);
   expect(await longNeighbor.evaluate((el) => el.scrollWidth <= el.clientWidth), "390px unbroken neighbor title overflow").toBe(true);
   await page.goBack();
-  await expect(page).toHaveURL(/\/notices\?category=FEATURE&page=2$/);
+  await expect(page).toHaveURL(/\/notices\?category=FEATURE&page=2&pageSize=5$/);
   await expect(page.getByRole("link", { name: "새 기능", exact: true })).toHaveAttribute("aria-current", "true");
 
   await page.getByTestId("notices-list").getByRole("link").click();
   await page.getByRole("link", { name: "공지 목록" }).click();
-  await expect(page).toHaveURL(/\/notices\?category=FEATURE&page=2$/);
+  await expect(page).toHaveURL(/\/notices\?category=FEATURE&page=2&pageSize=5$/);
+  await page.goto("/notices?category=FEATURE");
+  await expect(page.getByTestId("notices-list").getByRole("link")).toHaveCount(6);
+  await expect(page.getByTestId("notice-pagination")).toHaveCount(0);
 });
 
 test("공개 공지는 직접 열리고, 파트너스 전용·임시·삭제·미래 공지는 404다", async ({ page }) => {
