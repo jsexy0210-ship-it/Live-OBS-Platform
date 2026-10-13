@@ -76,6 +76,7 @@
   justify-content: space-between;
   gap: 8px;
 }
+.shop-app a.sg-view,
 .sg-view {
   border: 0;
   background: none;
@@ -85,6 +86,9 @@
   color: var(--wds-label-alternative);
   text-decoration: underline;
   cursor: pointer;
+}
+.shop-app a.sg-view:hover {
+  color: var(--wds-label-normal);
 }
 .sg-doc {
   margin: 0;

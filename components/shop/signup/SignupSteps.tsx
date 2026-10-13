@@ -466,6 +466,7 @@ export function AccountStep() {
               className={`inp${f.fieldErrors.password ? " is-error" : ""}`}
               type="password"
               autoComplete="new-password"
+              placeholder="8자 이상"
               value={f.password}
               onChange={(e) => f.setPassword(e.target.value)}
               aria-invalid={!!f.fieldErrors.password}
@@ -490,6 +491,7 @@ export function AccountStep() {
               className={`inp${f.passwordMismatch ? " is-error" : ""}`}
               type="password"
               autoComplete="new-password"
+              placeholder="한 번 더 입력"
               value={f.password2}
               onChange={(e) => f.setPassword2(e.target.value)}
               aria-invalid={f.passwordMismatch}
@@ -508,6 +510,7 @@ export function AccountStep() {
             <input
               id="acc-nick"
               className={`inp${nickError ? " is-error" : ""}`}
+              placeholder="방송에서 보일 이름"
               value={f.nickname}
               onChange={(e) => f.setNickname(e.target.value)}
               aria-invalid={!!nickError}

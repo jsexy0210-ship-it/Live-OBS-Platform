@@ -235,19 +235,17 @@ function useFlowState({ slug, shopName, consent, identityReady }: { slug: string
     }
   }, [hydrated, storeKey, terms, privacy, age14, marketing, rejoin, idvAgreed, name, birth, gender, foreigner, carrier, phone, loginId, nickname, verificationId, sent, verified, next]);
 
-  // 동의 정보를 다시 불러와 문서 버전이나 재가입 제한 기간이 바뀌면 앞 동의는 다시 받는다
-  const firstRender = useRef(true);
+  // 동의 정보를 다시 불러와 문서 버전이나 재가입 제한 기간이 바뀌면 앞 동의는 다시 받는다(값이 실제로 달라졌을 때만)
+  const seen = useRef({ terms: consent.termsVersion, privacy: consent.privacyVersion, rejoinDays: consent.rejoinDays, rejoinVersion: consent.rejoinRetentionVersion });
   useEffect(() => {
-    if (firstRender.current) {
-      firstRender.current = false;
-      return;
+    const prev = seen.current;
+    if (prev.terms !== consent.termsVersion || prev.privacy !== consent.privacyVersion) {
+      setTerms(false);
+      setPrivacy(false);
     }
-    setTerms(false);
-    setPrivacy(false);
-  }, [consent.termsVersion, consent.privacyVersion]);
-  useEffect(() => {
-    setRejoin(false);
-  }, [consent.rejoinDays, consent.rejoinRetentionVersion]);
+    if (prev.rejoinDays !== consent.rejoinDays || prev.rejoinVersion !== consent.rejoinRetentionVersion) setRejoin(false);
+    seen.current = { terms: consent.termsVersion, privacy: consent.privacyVersion, rejoinDays: consent.rejoinDays, rejoinVersion: consent.rejoinRetentionVersion };
+  }, [consent.termsVersion, consent.privacyVersion, consent.rejoinDays, consent.rejoinRetentionVersion]);
 
   const go = (s: StepKey) => {
     setGuardNotice(null);
@@ -573,7 +571,7 @@ export function useStepGuard(step: StepKey): boolean {
       return;
     }
     if (STEP_ORDER.indexOf(step) > STEP_ORDER.indexOf(first)) {
-      setGuardNotice(`앞 단계부터 진행해 주세요. ${first === "terms" ? "약관 동의" : first === "verify" ? "휴대폰 본인확인" : "정보 입력"}로 돌아가요`);
+      setGuardNotice(`앞 단계부터 진행해 주세요. ${first === "terms" ? "약관 동의로" : first === "verify" ? "휴대폰 본인확인으로" : "정보 입력으로"} 돌아가요`);
       router.replace(stepPath(first));
     }
   }, [hydrated, loggedIn, step, first, joinedNickname, home, stepPath, setGuardNotice, router, pathname]);

@@ -36,7 +36,7 @@ const F = {
   phone: /^휴대폰번호/,
   code: /^인증번호/,
   id: /^이메일/,
-  pw: /^비밀번호$/,
+  pw: /^비밀번호(?! 확인)/,
   pw2: /^비밀번호 확인/,
   nick: /^방송 닉네임/,
 };
@@ -149,7 +149,7 @@ test("1단계: 필수 약관 셋이 모두 켜져야 다음이 열리고, 모두
   await expect(page.getByText("재가입 제한 정보 보관", { exact: false })).toHaveCount(0);
   // 취소·로그인 링크
   await expect(page.getByRole("link", { name: "취소" })).toHaveAttribute("href", `/shop/${SLUG}`);
-  await expect(page.getByRole("link", { name: "로그인" })).toHaveAttribute("href", `/shop/${SLUG}/login`);
+  await expect(page.getByRole("main").getByRole("link", { name: "로그인" })).toHaveAttribute("href", `/shop/${SLUG}/login`);
 });
 
 test("앞 단계 없이 주소로 바로 들어오면 첫 미완료 단계로 보내고, 끝낸 단계의 입력값은 그대로 둔다", async ({ page }) => {
@@ -463,6 +463,9 @@ test("가입 실패는 서버 문구를 해당 칸 아래나 위 안내에 보�
   for (const [reply, where] of cases) {
     await page.unrouteAll();
     await mockApi(page, { signup: reply });
+    // 앞 반복의 가입 기록(세션 저장소)을 비우고 처음부터 시작한다
+    await page.goto(`/shop/${SLUG}/signup`);
+    await page.evaluate(() => sessionStorage.clear());
     await toAccount(page);
     await fillAccount(page, "x1", "별빛");
     await submitSignup(page);
@@ -942,6 +945,8 @@ test("재가입 제한을 켠 쇼핑몰의 보관 동의는 선택(본인확인 
   try {
     for (const agree of [false, true]) {
       const id = uniq();
+      // 앞 반복에서 가입해 로그인된 상태를 지운다(로그인 상태로는 가입 주소가 홈으로 보낸다)
+      await page.context().clearCookies();
       await page.goto(`/shop/${SLUG}/signup`);
       await page.evaluate(() => sessionStorage.clear());
       await fillIdentity(page, `제한${id}`, uniqPhone());
