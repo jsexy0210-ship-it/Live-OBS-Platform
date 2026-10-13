@@ -78,6 +78,27 @@ class Fixture(unittest.TestCase):
             measured.assert_not_called()
             self.assertEqual(err.getvalue(), "HISTORY_UNVERIFIED\n")
 
+    def test_partial_preview_excludes_only_observed_unsafe_log_mode_and_denies_other_unsafe_evidence(self):
+        evidence = {key: True for key in source.PREVIEW_IDENTITY_CHECKS}
+        evidence.update(runnerDiagOwned=False, runnerRootAbsolute=True, runnerRootExists=True, runnerRootDirectory=True, runnerRootOwnerMatchesEuid=True, runnerDiagExists=True, runnerDiagDirectory=True, runnerDiagOwnerMatchesEuid=True, runnerDiagGroupOrOtherWritable=True, runnerRootSymlink=False, runnerRootGroupOrOtherWritable=False, runnerDiagSymlink=False)
+        self.assertEqual(source.preview_scope(evidence), [source.LOG_EXCLUSION])
+        for key in ("runnerRootExists", "runnerRootOwnerMatchesEuid", "runnerDiagExists", "runnerDiagOwnerMatchesEuid", "runnerDiagDirectory", "oneLocalApp", "localSocketRootOwned", "historyOwned", "localHealthTestMode"):
+            self.assertIsNone(source.preview_scope({**evidence, key: False}))
+        for key in ("runnerRootSymlink", "runnerRootGroupOrOtherWritable", "runnerDiagSymlink"):
+            self.assertIsNone(source.preview_scope({**evidence, key: True}))
+        for writable in (False, None, 1, "true"):
+            self.assertIsNone(source.preview_scope({**evidence, "runnerDiagGroupOrOtherWritable": writable}))
+        def measured(env, history_reader):
+            history_reader(Path("/owned/history"))
+            return evidence
+        with patch.object(source, "collect", side_effect=measured), patch.object(source, "read_history", return_value=(True, [SHA])), contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(source.main(["--verify-preview-history"], ENV), 0)
+        self.assertEqual(out.getvalue(), source.LOG_EXCLUSION + "\n" + SHA + "\n")
+        with patch.object(source, "collect", side_effect=measured), patch.object(source, "read_history", return_value=(True, [SHA])), contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(source.main(["--verify-preview-host"], ENV), 1)
+        self.assertEqual(out.getvalue(), "")
+        self.assertEqual(err.getvalue(), "TEST_ATTESTATION_UNVERIFIED match=false\n")
+
     def test_complete_history_snapshot_keeps_chunk_edges_and_rejects_replacement(self):
         # 64KiB 앞의 오래된 버전도 all_versions에 남고, chunk 경계의 버전도 한번만 남는다.
         content = b"sha=" + b"b" * 40 + b"\n" + b"x" * (65536 - 45 - 20) + b"sha=" + SHA.encode() + b"\n"

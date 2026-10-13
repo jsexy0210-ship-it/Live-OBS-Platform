@@ -50,6 +50,25 @@ class Fixture(unittest.TestCase):
         self.assertEqual(requests[0]["evidence"]["candidates"], [IMAGE, LOG])
         self.assertEqual(mutations, [])
 
+    def test_partial_manifest_exclusion_is_readonly_and_never_claims_or_mutates(self):
+        marker = "EXCLUDED_CATEGORY\t" + runner.LOG + "\tRUNNER_DIAG_WRITABLE_BY_GROUP_OR_OTHER\tREADONLY_ONLY\n"
+        image = "\t".join([runner.IMAGE, IMAGE["id"], str(IMAGE["bytes"]), IMAGE["contentHash"]]) + "\n"
+        for rows, expected in ((image, [IMAGE]), ("", [])):
+            with patch.object(runner.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout=(runner.POLICY + "\n" + marker + rows).encode())):
+                candidates = runner.plan()
+            sent, mutations = [], []
+            runner.run("preview", REQUEST, "101", read=lambda: candidates, send=lambda payload: sent.append(payload), remove=lambda c: mutations.append(c))
+            self.assertFalse(sent[0]["evidence"]["runnerValidated"])
+            self.assertEqual(sent[0]["evidence"]["candidates"], expected)
+            self.assertEqual(sent[0]["evidence"]["excludedCategories"], [{"category": runner.LOG, "reason": "RUNNER_DIAG_WRITABLE_BY_GROUP_OR_OTHER"}])
+            with self.assertRaisesRegex(runner.Rejected, "PARTIAL_PREVIEW_EXECUTION_DENIED"):
+                runner.run("execute", REQUEST, "101", read=lambda: candidates, send=lambda payload: self.fail("no claim"), remove=lambda c: mutations.append(c))
+            self.assertEqual(mutations, [])
+        log = "\t".join([runner.LOG, LOG["id"], str(LOG["bytes"]), LOG["contentHash"]]) + "\n"
+        for rows in (marker + marker, marker + log, marker.replace("READONLY_ONLY", "OTHER")):
+            with patch.object(runner.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout=(runner.POLICY + "\n" + rows).encode())), self.assertRaises(runner.Rejected):
+                runner.plan()
+
     def test_claim_precedes_each_mutation_and_result_is_measured(self):
         args, mutations, requests, _ = self.owned()
         original = args["remove"]

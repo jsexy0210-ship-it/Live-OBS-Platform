@@ -158,6 +158,18 @@ PREVIEW_IDENTITY_CHECKS = (
 def preview_identity_verified(evidence):
     return all(evidence.get(key) is True for key in PREVIEW_IDENTITY_CHECKS)
 
+LOG_EXCLUSION = "EXCLUDED_CATEGORY\tRUNNER_DIAGNOSTIC_LOGS_OLDER_THAN_14_DAYS\tRUNNER_DIAG_WRITABLE_BY_GROUP_OR_OTHER\tREADONLY_ONLY"
+
+def preview_scope(evidence):
+    if preview_identity_verified(evidence):
+        return []
+    # 관측된 unsafe mode만 제외한다. owner/type/symlink·TEST 근거 부족은 허용하지 않는다.
+    required = [key for key in PREVIEW_IDENTITY_CHECKS if key != "runnerDiagOwned"] + ["runnerRootAbsolute", "runnerRootExists", "runnerRootDirectory", "runnerRootOwnerMatchesEuid", "runnerDiagExists", "runnerDiagDirectory", "runnerDiagOwnerMatchesEuid", "runnerDiagGroupOrOtherWritable"]
+    denied = ["runnerRootSymlink", "runnerRootGroupOrOtherWritable", "runnerDiagSymlink"]
+    if all(evidence.get(key) is True for key in required) and all(evidence.get(key) is False for key in denied):
+        return [LOG_EXCLUSION]
+    return None
+
 def main(args, env):
     if args not in ([], ["--verify-preview-host"], ["--verify-preview-history"]):
         print("HOST_ATTESTATION_ARGUMENT_DENIED", file=sys.stderr)
@@ -173,10 +185,13 @@ def main(args, env):
         return verified, versions[-1].split()[-1] if versions else None
     evidence = collect(env, history_reader=snapshot) if args else collect(env)
     if args:
-        if not preview_identity_verified(evidence):
+        scope = preview_scope(evidence) if args == ["--verify-preview-history"] else ([] if preview_identity_verified(evidence) else None)
+        if scope is None:
             print("TEST_ATTESTATION_UNVERIFIED match=false", file=sys.stderr)
             return 1
         if args == ["--verify-preview-history"]:
+            for exclusion in scope:
+                print(exclusion)
             for version in versions:
                 print(version)
     else:

@@ -5,7 +5,7 @@ import { useConfirm } from "../../../../../../components/admin-ui";
 import { adminApi, failMessage } from "../../../_components/api";
 import { formatDateTime } from "../../../../../../lib/client/format";
 
-type Preview = { candidateFingerprint: string; expiresAt: string; estimatedReclaimedBytes: number; executionEnabled?: boolean; candidates: { category: string; bytes: number }[] };
+type Preview = { candidateFingerprint: string; expiresAt: string; estimatedReclaimedBytes: number; executionEnabled?: boolean; excludedCategories?: { category: string; reason: string }[]; candidates: { category: string; bytes: number }[] };
 type Job = { id: string; state: "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED"; completedAt: string | null; reclaimedBytes: number | null; errorCode: string | null };
 const policy = { actionId: "OPTIMIZE_APPROVED_ARTIFACTS_V1", policyVersion: "ONQ_DISK_SAFE_V1" };
 const base = "/api/admin/infra/disk-optimization";
@@ -52,11 +52,11 @@ export default function DiskOptimization() {
     const r = await adminApi<Preview>(`${base}/preview`, { method: "POST", json: policy });
     if (sequence.current !== seq) return;
     inFlight.current = false; setBusy(false);
-    if (r.ok) { setPreview(r.data); setMessage(r.data.executionEnabled === false ? "정리 대상을 확인했습니다. 실행 연결은 별도 승인이 필요해 실행할 수 없습니다." : "아래 두 범주만 정리합니다. 실행 직전에 같은 대상을 다시 확인합니다."); }
+    if (r.ok) { setPreview(r.data); setMessage(r.data.excludedCategories?.length ? "앱 이미지 범주만 확인했습니다. 진단 로그는 보호 조건이 맞지 않아 제외했으며 실행할 수 없습니다." : r.data.executionEnabled === false ? "정리 대상을 확인했습니다. 실행 연결은 별도 승인이 필요해 실행할 수 없습니다." : "아래 두 범주만 정리합니다. 실행 직전에 같은 대상을 다시 확인합니다."); }
     else setMessage(r.error === "disk_preview_pending" ? "대상 조회 결과를 아직 확인하지 못했습니다. 잠시 후 다시 확인해 주십시오." : r.status === 503 ? "테스트 서버와 전용 작업 연결이 아직 확인되지 않아 대상 확인과 실행을 사용할 수 없습니다." : failMessage(r));
   }
   function execute() {
-    if (!preview || preview.executionEnabled === false || expired || busy || pending) return;
+    if (!preview || preview.executionEnabled === false || !!preview.excludedCategories?.length || expired || busy || pending) return;
     const snapshot = preview;
     confirm({ title: "확인한 대상만 정리할까요?", body: "롤백에 필요하지 않은 오래된 ONQ 앱 이미지와 14일을 넘긴 러너 진단 로그만 정리합니다. 백업·데이터베이스·롤백 이미지·공유 캐시·작업 폴더는 보존합니다.", confirmLabel: "정리 실행", run: async () => {
       if (inFlight.current || busy || pending || preview !== snapshot || Date.parse(snapshot.expiresAt) <= Date.now()) { setMessage("대상 확인 시간이 지났습니다. 다시 확인해 주십시오."); return; }
@@ -78,14 +78,14 @@ export default function DiskOptimization() {
     {preview && <>
       <dl className="col" style={{ gap: 8 }}>
         <div><dt>롤백 보호 밖 오래된 앱 이미지</dt><dd>{preview.candidates.filter(c => c.category === "OLD_ONQ_NON_ROLLBACK_IMAGES").length}개</dd></div>
-        <div><dt>14일 초과 러너 진단 로그</dt><dd>{preview.candidates.filter(c => c.category === "RUNNER_DIAGNOSTIC_LOGS_OLDER_THAN_14_DAYS").length}개</dd></div>
+        <div><dt>14일 초과 러너 진단 로그</dt><dd>{preview.excludedCategories?.some(c => c.category === "RUNNER_DIAGNOSTIC_LOGS_OLDER_THAN_14_DAYS") ? "조회 제외 · 진단 폴더의 그룹 또는 다른 사용자 쓰기 권한이 열려 있어 보호합니다" : `${preview.candidates.filter(c => c.category === "RUNNER_DIAGNOSTIC_LOGS_OLDER_THAN_14_DAYS").length}개`}</dd></div>
         <div><dt>예상 정리 크기</dt><dd>{bytes(preview.estimatedReclaimedBytes)} · 공유 레이어로 실제 회수량과 다를 수 있습니다</dd></div>
         <div><dt>확인 유효 시각</dt><dd>{formatDateTime(preview.expiresAt)}{expired && " · 다시 확인 필요"}</dd></div>
       </dl>
     </>}
     <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
       <button className="btn" disabled={busy || pending} onClick={check}>{busy ? "확인 중…" : "정리 대상 확인"}</button>
-      <button className="btn pri" disabled={!preview || preview.executionEnabled === false || !preview.candidates.length || expired || busy || pending} onClick={execute}>정리 실행</button>
+      <button className="btn pri" disabled={!preview || preview.executionEnabled === false || !!preview.excludedCategories?.length || !preview.candidates.length || expired || busy || pending} onClick={execute}>정리 실행</button>
     </div>
     {job && <p role="status">작업 {job.id} · {stateLabel[job.state]}{job.state === "SUCCEEDED" && job.reclaimedBytes !== null ? ` · 실제 회수 ${bytes(job.reclaimedBytes)} · ${formatDateTime(job.completedAt)}` : ""}{job.state === "FAILED" ? ` · ${job.errorCode ?? "결과 오류"}` : ""}</p>}
   </section>;

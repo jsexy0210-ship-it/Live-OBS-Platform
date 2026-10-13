@@ -31,6 +31,12 @@ fi
 # 과거 artifact/환경 boolean을 신뢰하지 않고 후보 읽기 및 callback 때마다 다시 측정한다.
 # 소유 확인한 같은 fd의 전체 history snapshot만 쓰고 pathname을 다시 열지 않는다.
 verified_history="$(python3 "$(dirname -- "${BASH_SOURCE[0]}")/disk-optimization-host-diagnostics.py" --verify-preview-history)"
+log_exclusion=$'EXCLUDED_CATEGORY\tRUNNER_DIAGNOSTIC_LOGS_OLDER_THAN_14_DAYS\tRUNNER_DIAG_WRITABLE_BY_GROUP_OR_OTHER\tREADONLY_ONLY'
+log_enabled=yes; exclusion_rows=""
+if [ "${verified_history%%$'\n'*}" = "$log_exclusion" ]; then
+  log_enabled=no; exclusion_rows="$log_exclusion"$'\n'
+  verified_history="${verified_history#*$'\n'}"
+fi
 all_versions="$(tr ' ' '\n' <<<"$verified_history" | sort -u)"
 protected_versions="$(tac <<<"$verified_history" | tr ' ' '\n' | awk '!seen[$0]++' | sed -n "1,${keep}p")"
 [ -n "$all_versions" ] && [ -n "$protected_versions" ] || fail HISTORY_UNVERIFIED
@@ -63,6 +69,7 @@ while IFS= read -r tag; do
   rows+="OLD_ONQ_NON_ROLLBACK_IMAGES"$'\t'"$id"$'\t'"$size"$'\t'"${id#sha256:}"$'\n'
   seen+="$id"$'\n'
 done <<<"$tags"
+if [ "$log_enabled" = yes ]; then
 files="$(find "$diag" -maxdepth 1 -type f -mmin +20160 -print)" || fail LOGS_UNVERIFIED
 while IFS= read -r file; do
   [ -n "$file" ] || continue
@@ -76,5 +83,7 @@ while IFS= read -r file; do
   [ "$before" = "$after" ] && [ "${after##*:}" = "$(id -u)" ] || fail LOG_CHANGED_DURING_PREVIEW
   rows+="RUNNER_DIAGNOSTIC_LOGS_OLDER_THAN_14_DAYS"$'\t'"$name"$'\t'"${before%%:*}"$'\t'"${digest%% *}"$'\n'
 done <<<"$files"
+fi
 printf 'ONQ_DISK_SAFE_V1\n'
+[ -z "$exclusion_rows" ] || printf '%s' "$exclusion_rows"
 [ -z "$rows" ] || printf '%s' "$rows" | sort
