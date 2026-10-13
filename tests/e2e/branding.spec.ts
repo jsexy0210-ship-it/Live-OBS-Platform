@@ -37,12 +37,14 @@ test.beforeAll(async () => {
   }
 });
 
-async function login(page: Page, email: string) {
+async function login(page: Page, email: string, observe?: (phase: "after-fill" | "click-failed") => Promise<void>) {
   await page.goto("/admin/settings/branding");
   await expect(page).toHaveURL(/\/admin\/login\?next=/);
   await page.getByLabel("이메일").fill(email);
   await page.getByLabel("비밀번호").fill(password);
-  await page.getByRole("button", { name: "로그인" }).click();
+  if (observe) await observe("after-fill");
+  try { await page.getByRole("button", { name: "로그인" }).click(); }
+  catch (error) { if (observe) await observe("click-failed"); throw error; }
   await expect(page.getByRole("heading", { name: "파비콘 · 공유 카드" })).toBeVisible();
 }
 
@@ -219,7 +221,32 @@ test("이미지를 연달아 고르면 앞 선택의 크기 확인이 늦게 끝
       return img;
     } as unknown as typeof Image;
   });
-  await login(page, superEmail);
+  const loginStartedAt = performance.now();
+  const loginStates: object[] = [];
+  await login(page, superEmail, async phase => {
+    // DOM 관찰만 남기며 React 상태·실패 원인으로 단정하지 않는다. 값과 원 class는 기록하지 않는다.
+    const row = { phase, elapsedMs: Math.round(performance.now() - loginStartedAt) };
+    try {
+      const state = await page.evaluate(() => {
+        const email = document.querySelector<HTMLInputElement>("#email");
+        const password = document.querySelector<HTMLInputElement>("#password");
+        const button = document.querySelector<HTMLButtonElement>('form.login-card button[type="submit"]');
+        const visible = (element: HTMLElement | null) => !!element && element.getClientRects().length > 0 && getComputedStyle(element).visibility !== "hidden";
+        return {
+          emailVisible: visible(email), emailNonempty: !!email?.value.trim(),
+          passwordVisible: visible(password), passwordNonempty: !!password?.value,
+          buttonVisible: visible(button), buttonDisabled: button?.disabled ?? null,
+          disabledPrimaryClass: button ? Array.from(button.classList).some(name => name.includes("disabledPrimary")) : null,
+          busyClass: button?.classList.contains("is-loading") ?? null,
+        };
+      });
+      loginStates.push({ ...row, ...state });
+    } catch { loginStates.push({ ...row, observationUnavailable: true }); }
+    if (phase === "click-failed") {
+      try { console.error("branding-login-state-diagnostics", JSON.stringify({ states: loginStates })); }
+      catch { /* 진단 실패가 원 click 오류를 바꾸지 않는다. */ }
+    }
+  });
 
   // 파비콘: 늦게 끝나는 앞 파일 → 바로 다음 파일
   const red = await sharp({ create: { width: 64, height: 64, channels: 4, background: "#ff0000" } }).png().toBuffer();
