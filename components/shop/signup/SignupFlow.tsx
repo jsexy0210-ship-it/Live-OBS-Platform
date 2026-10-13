@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useConfirm } from "../../admin-ui/ConfirmDialog";
 import { api, failMessage } from "../../seller/api";
 import { textLength } from "../../seller/format";
@@ -75,6 +75,8 @@ type Saved = {
   phone: string;
   loginId: string;
   nickname: string;
+  // 동의를 받았을 때의 문서 버전(지금 버전과 다르면 복원하지 않는다: 본 적 없는 글에 동의한 것으로 보내지 않게)
+  v: { terms: string; privacy: string; marketing: string; rejoin: string | null; rejoinDays: number | null } | null;
   verificationId: string | null;
   sent: { name: string; phone: string } | null;
   verified: { name: string; phone: string } | null;
@@ -113,7 +115,7 @@ function useFlowState({ slug, shopName, consent, identityReady }: { slug: string
     document.getElementById(focusTo.id)?.focus();
     setFocusTo(null);
   }, [focusTo]);
-  const focus = (id: string) => setFocusTo({ id });
+  const focus = useCallback((id: string) => setFocusTo({ id }), []);
   const showNotice = (n: Notice) => {
     setNotice(n);
     focus("signup-notice");
@@ -189,11 +191,18 @@ function useFlowState({ slug, shopName, consent, identityReady }: { slug: string
       if (raw) {
         const s = JSON.parse(raw) as Partial<Saved>;
         // 동의 문서 버전이 바뀌었으면 앞 동의는 다시 받는다(저장된 동의는 지금 글에 대한 것이 아니다)
-        setTerms(!!s.terms);
-        setPrivacy(!!s.privacy);
+        const v = s.v;
+        const same = {
+          terms: !!v && v.terms === consent.termsVersion,
+          privacy: !!v && v.privacy === consent.privacyVersion,
+          marketing: !!v && v.marketing === consent.marketingVersion,
+          rejoin: !!v && v.rejoin === consent.rejoinRetentionVersion && v.rejoinDays === consent.rejoinDays,
+        };
+        setTerms(!!s.terms && same.terms);
+        setPrivacy(!!s.privacy && same.privacy);
         setAge14(!!s.age14);
-        setMarketing(!!s.marketing);
-        setRejoin(!!s.rejoin);
+        setMarketing(!!s.marketing && same.marketing);
+        setRejoin(!!s.rejoin && same.rejoin);
         setIdvAgreed(!!s.idvAgreed);
         setName(s.name ?? "");
         setBirth(s.birth ?? "");
@@ -227,13 +236,13 @@ function useFlowState({ slug, shopName, consent, identityReady }: { slug: string
   }, []);
   useEffect(() => {
     if (!hydrated) return;
-    const s: Saved = { terms, privacy, age14, marketing, rejoin, idvAgreed, name, birth, gender, foreigner, carrier, phone, loginId, nickname, verificationId, sent, verified, next };
+    const s: Saved = { v: { terms: consent.termsVersion, privacy: consent.privacyVersion, marketing: consent.marketingVersion, rejoin: consent.rejoinRetentionVersion, rejoinDays: consent.rejoinDays }, terms, privacy, age14, marketing, rejoin, idvAgreed, name, birth, gender, foreigner, carrier, phone, loginId, nickname, verificationId, sent, verified, next };
     try {
       sessionStorage.setItem(storeKey, JSON.stringify(s));
     } catch {
       // 저장소를 못 쓰면 건너뛴다
     }
-  }, [hydrated, storeKey, terms, privacy, age14, marketing, rejoin, idvAgreed, name, birth, gender, foreigner, carrier, phone, loginId, nickname, verificationId, sent, verified, next]);
+  }, [hydrated, storeKey, consent, terms, privacy, age14, marketing, rejoin, idvAgreed, name, birth, gender, foreigner, carrier, phone, loginId, nickname, verificationId, sent, verified, next]);
 
   // 동의 정보를 다시 불러와 문서 버전이나 재가입 제한 기간이 바뀌면 앞 동의는 다시 받는다(값이 실제로 달라졌을 때만)
   const seen = useRef({ terms: consent.termsVersion, privacy: consent.privacyVersion, rejoinDays: consent.rejoinDays, rejoinVersion: consent.rejoinRetentionVersion });
@@ -246,6 +255,20 @@ function useFlowState({ slug, shopName, consent, identityReady }: { slug: string
     if (prev.rejoinDays !== consent.rejoinDays || prev.rejoinVersion !== consent.rejoinRetentionVersion) setRejoin(false);
     seen.current = { terms: consent.termsVersion, privacy: consent.privacyVersion, rejoinDays: consent.rejoinDays, rejoinVersion: consent.rejoinRetentionVersion };
   }, [consent.termsVersion, consent.privacyVersion, consent.rejoinDays, consent.rejoinRetentionVersion]);
+
+  // 본인확인을 시작한 뒤 약관 동의를 바꾸면 서버에 남은 동의 기록과 달라지므로, 그 본인확인은 버리고 2단계에서 다시 하게 한다
+  const consentChanged = () => {
+    if (verificationId === null && verified === null) return;
+    setVerificationId(null);
+    setSent(null);
+    setVerified(null);
+    setResultPending(false);
+    setCode("");
+    setCodeError(null);
+    setUnconfirmed(null);
+    attempt.current = null;
+    setNotice({ kind: "cau", text: "동의 내용을 바꿔서 본인확인을 다시 해야 해요" });
+  };
 
   const go = (s: StepKey) => {
     setGuardNotice(null);
@@ -543,7 +566,7 @@ function useFlowState({ slug, shopName, consent, identityReady }: { slug: string
     // 2단계
     name, setName, birth, setBirth, gender, setGender, foreigner, setForeigner, carrier, setCarrier, phone, setPhone, idvAgreed, setIdvAgreed, rejoin, setRejoin,
     birthError, setBirthError, identityMissing, identityFilled, verificationId, sent, verified, resultPending, code, setCode, codeError, setCodeError, codeStage,
-    sendCode, resend, confirm, restart, loadVerified,
+    sendCode, resend, confirm, restart, loadVerified, consentChanged,
     // 3단계
     loginId, setLoginId, password, setPassword, password2, setPassword2, nickname, setNickname, nicknameTooLong, passwordMismatch, accountReady, accountMissing, unconfirmed, signup, retry,
     // 4단계

@@ -1034,3 +1034,37 @@ test("들어오기 전 화면(next)이 있으면 가입을 마치고 그 화면�
   await page.goto(`/shop/${SLUG}/signup?next=${encodeURIComponent("https://evil.example.com/x")}`);
   await expect(page.getByLabel("이용약관 동의 (필수)")).not.toBeChecked();
 });
+
+test("본인확인을 마친 뒤 약관 동의를 바꾸면 그 본인확인은 버리고 다시 하게 한다(서버에 남은 동의와 어긋나지 않게)", async ({ page }) => {
+  await mockApi(page);
+  await fillIdentity(page, "김동의", "01012345678", { marketing: true });
+  await page.getByRole("button", { name: SEND }).click();
+  await page.getByLabel(F.code).fill("000000");
+  await page.getByRole("button", { name: "인증번호 확인하기", exact: true }).click();
+  await expect(page.locator(".sg-verified")).toBeVisible();
+  // 약관 단계로 돌아가 선택 동의를 끄면 본인확인이 사라지고 안내가 뜬다
+  await page.getByRole("button", { name: "이전 단계" }).click();
+  await page.getByLabel("방송 · 혜택 알림 받기 (선택)").uncheck();
+  await expect(page.getByText("동의 내용을 바꿔서 본인확인을 다시 해야 해요")).toBeVisible();
+  await page.getByRole("button", NEXT).click();
+  await expect(page.locator(".sg-verified")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: SEND })).toBeVisible();
+  // 입력한 인적사항은 남는다
+  await expect(page.getByLabel(F.name)).toHaveValue("김동의");
+});
+
+test("새로고침 때 저장된 동의는 받았을 때의 문서 버전이 지금과 같을 때만 복원한다", async ({ page }) => {
+  await mockApi(page);
+  await page.goto(`/shop/${SLUG}/signup`);
+  await agreeTerms(page);
+  // 예전 버전에 동의한 기록으로 바꿔 둔다
+  await page.evaluate((slug) => {
+    const raw = sessionStorage.getItem(`signup:${slug}`)!;
+    const s = JSON.parse(raw);
+    s.v.terms = "1999-01-01.v0";
+    sessionStorage.setItem(`signup:${slug}`, JSON.stringify(s));
+  }, SLUG);
+  await page.goto(`/shop/${SLUG}/signup`);
+  await expect(page.getByLabel("이용약관 동의 (필수)")).not.toBeChecked();
+  await expect(page.getByLabel("개인정보 수집 · 이용 동의 (필수)")).toBeChecked();
+});

@@ -82,6 +82,7 @@ export function TermsStep() {
   const all = f.terms && f.privacy && f.age14 && f.marketing;
   const toggleAll = (v: boolean) => {
     f.setTermsTouched(true);
+    f.consentChanged();
     f.setTerms(v);
     f.setPrivacy(v);
     f.setAge14(v);
@@ -97,6 +98,7 @@ export function TermsStep() {
           checked={checked}
           onChange={(e) => {
             f.setTermsTouched(true);
+            if (id !== "sg-age") f.consentChanged();
             set(e.target.checked);
           }}
         />

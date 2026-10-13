@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 import { PLAN_FEATURES, planFeatures } from "../../lib/server/billing/features";
@@ -372,7 +372,10 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
 // 판정은 shopOpen(운영 중·잠김·스토어 운영 권한)이 하고, 렌더 결과는 tests/integration/planFeatures.test.ts가 확인한다.
 const SHOP_PAGES: Record<string, "STORE_OPERATIONS" | "OPEN"> = {
   "shop/[slug]": "STORE_OPERATIONS", // 쇼핑몰 홈(홈 배너·이벤트 팝업)
-  "shop/[slug]/signup": "STORE_OPERATIONS",
+  "shop/[slug]/signup": "STORE_OPERATIONS", // SH-011 1단계 약관(4단계 모두 signup/layout.tsx가 shopOpen으로 막음)
+  "shop/[slug]/signup/verify": "STORE_OPERATIONS", // 2단계 본인확인
+  "shop/[slug]/signup/account": "STORE_OPERATIONS", // 3단계 정보 입력
+  "shop/[slug]/signup/done": "STORE_OPERATIONS", // 4단계 완료
   "shop/[slug]/reviews": "OPEN", // SH-029 내 리뷰(받은 답글·숨김 사유는 잠긴 쇼핑몰에서도)
   "shop/[slug]/reviews/write": "OPEN", // SH-029 예전 주소 → 내 리뷰 한 화면으로 보내기만(쓰기는 API가 막음)
   "shop/[slug]/coupons": "OPEN", // SH-028 내 쿠폰함: 잠긴 쇼핑몰도 받은 쿠폰은 읽기 전용(받기는 API에서 막음)
@@ -438,7 +441,10 @@ describe("경로 목록 검사", () => {
     expect(pages.sort()).toEqual(Object.keys(SHOP_PAGES).sort());
     for (const page of pages) {
       if (SHOP_PAGES[page] !== "STORE_OPERATIONS") continue;
-      expect(readFileSync(join(SHOP_PAGES_DIR, page, "page.tsx"), "utf8"), page).toMatch(/shopOpen\(/);
+      // 판정은 화면(page.tsx) 또는 그 위 틀(layout.tsx, 예: 가입 4단계의 signup/layout.tsx)에 있다
+      const dirs = page.split("/").map((_, i, a) => a.slice(0, a.length - i).join("/"));
+      const files = [join(SHOP_PAGES_DIR, page, "page.tsx"), ...dirs.map((d) => join(SHOP_PAGES_DIR, d, "layout.tsx")).filter((f) => existsSync(f))];
+      expect(files.some((f) => /shopOpen\(/.test(readFileSync(f, "utf8"))), page).toBe(true);
     }
   });
 
