@@ -78,7 +78,7 @@ export default function DiskOptimization() {
     {preview && <>
       <dl className="col" style={{ gap: 8 }}>
         <div><dt>롤백 보호 밖 오래된 앱 이미지</dt><dd>{preview.candidates.filter(c => c.category === "OLD_ONQ_NON_ROLLBACK_IMAGES").length}개</dd></div>
-        <div><dt>14일 초과 러너 진단 로그</dt><dd>{preview.excludedCategories?.some(c => c.category === "RUNNER_DIAGNOSTIC_LOGS_OLDER_THAN_14_DAYS") ? "조회 제외 · 진단 폴더의 그룹 또는 다른 사용자 쓰기 권한이 열려 있어 보호합니다" : `${preview.candidates.filter(c => c.category === "RUNNER_DIAGNOSTIC_LOGS_OLDER_THAN_14_DAYS").length}개`}</dd></div>
+        <div><dt>14일 초과 러너 진단 로그</dt><dd>{preview.excludedCategories?.some(c => c.category === "RUNNER_DIAGNOSTIC_LOGS_OLDER_THAN_14_DAYS") ? "조회 제외 · 앞서 확인한 진단 폴더에 그룹 또는 다른 사용자 쓰기 권한이 있어 보호합니다" : `${preview.candidates.filter(c => c.category === "RUNNER_DIAGNOSTIC_LOGS_OLDER_THAN_14_DAYS").length}개`}</dd></div>
         <div><dt>예상 정리 크기</dt><dd>{bytes(preview.estimatedReclaimedBytes)} · 공유 레이어로 실제 회수량과 다를 수 있습니다</dd></div>
         <div><dt>확인 유효 시각</dt><dd>{formatDateTime(preview.expiresAt)}{expired && " · 다시 확인 필요"}</dd></div>
       </dl>

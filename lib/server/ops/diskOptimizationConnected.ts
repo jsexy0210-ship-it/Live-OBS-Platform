@@ -39,11 +39,14 @@ export async function previewApprovedDiskOptimization(db: PrismaClient, admin: A
     const candidateFingerprint = diskCandidateFingerprint(evidence.candidates);
     // 브라우저가 보낸 임의 fingerprint/만료시각은 서버가 발급한 preview를 대신하지 못한다.
     const previewDetail = { requestedByAdminId: admin.admin.id, candidateFingerprint, expiresAt: evidence.expiresAt, policyVersion: policy.version, readonlyOnly: !!evidence.excludedCategories?.length };
-    await db.opsEvent.upsert({ where: { source_eventId: { source: PREVIEW, eventId: previewKey(admin, candidateFingerprint, evidence.expiresAt) } }, update: evidence.excludedCategories?.length ? { detail: previewDetail } : {}, create: {
+    const issued = await db.opsEvent.upsert({ where: { source_eventId: { source: PREVIEW, eventId: previewKey(admin, candidateFingerprint, evidence.expiresAt) } }, update: evidence.excludedCategories?.length ? { detail: previewDetail } : {}, create: {
       source: PREVIEW, eventId: previewKey(admin, candidateFingerprint, evidence.expiresAt), kind: "info", key: policy.target, severity: "info", message: "승인 범주의 정리 후보를 확인했습니다", occurredAt: at,
       detail: previewDetail as Prisma.InputJsonValue,
     } });
-    return { ok: true as const, status: 200, reason: undefined, policy, candidates: evidence.candidates, candidateFingerprint, expiresAt: evidence.expiresAt, estimatedReclaimedBytes, executionEnabled: bridge.executionReady !== false && !evidence.excludedCategories?.length, excludedCategories: evidence.excludedCategories ?? [], job: null };
+    // 같은 발급키에 이미 고정된 partial 제한은 재조회 응답에서도 지우지 않는다.
+    const readonlyOnly = issued.detail && typeof issued.detail === "object" && !Array.isArray(issued.detail) && issued.detail.readonlyOnly === true;
+    const excludedCategories = readonlyOnly ? [{ category: "RUNNER_DIAGNOSTIC_LOGS_OLDER_THAN_14_DAYS" as const, reason: "RUNNER_DIAG_WRITABLE_BY_GROUP_OR_OTHER" as const }] : evidence.excludedCategories ?? [];
+    return { ok: true as const, status: 200, reason: undefined, policy, candidates: evidence.candidates, candidateFingerprint, expiresAt: evidence.expiresAt, estimatedReclaimedBytes, executionEnabled: bridge.executionReady !== false && !excludedCategories.length, excludedCategories, job: null };
   } catch (e) {
     if (e instanceof Error && e.message === "forbidden") throw e;
     if (e instanceof Error && ["PREVIEW_PENDING", "PREVIEW_SUBMISSION_UNCERTAIN"].includes(e.message)) return error(503, "disk_preview_pending");

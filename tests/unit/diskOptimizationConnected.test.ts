@@ -59,7 +59,8 @@ describe("전용 두 범주 실제 증거 계약", () => {
       const issued = await previewApprovedDiskOptimization(f.db, admin, { actionId: policy.actionId, policyVersion: policy.version }, f.bridge);
       expect(issued).toMatchObject({ ok: true, candidates, excludedCategories: partial.excludedCategories, executionEnabled: false, estimatedReclaimedBytes: candidates.reduce((n, c) => n + c.bytes, 0), job: null });
       vi.mocked(f.bridge.preview).mockResolvedValue({ ...preview(), candidates });
-      await previewApprovedDiskOptimization(f.db, admin, { actionId: policy.actionId, policyVersion: policy.version }, f.bridge);
+      const again = await previewApprovedDiskOptimization(f.db, admin, { actionId: policy.actionId, policyVersion: policy.version }, f.bridge);
+      expect(again).toMatchObject({ ok: true, candidates, excludedCategories: partial.excludedCategories, executionEnabled: false, job: null });
       expect(await executeApprovedDiskOptimization(f.db, admin, { ...input(), candidateFingerprint: diskCandidateFingerprint(candidates) }, {}, f.bridge)).toMatchObject({ status: 503, reason: "disk_execution_not_approved" });
       expect([...f.events.keys()].some(key => key.startsWith("disk_optimization_request:"))).toBe(false);
       expect(f.bridge.dispatch).not.toHaveBeenCalled();
