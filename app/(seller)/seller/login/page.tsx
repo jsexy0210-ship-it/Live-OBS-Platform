@@ -38,6 +38,18 @@ export default function SellerLoginPage() {
     if (p.get("type") === "staff") setTab("staff");
     // 로그인이 풀려 이리로 온 경우(AU-007): 이유를 알려 준다
     if (p.get("reason") === "expired") setNotice({ kind: "info", text: "로그인 시간이 지나 로그아웃되었습니다. 다시 로그인해 주십시오." });
+    // 이미 로그인한 채 이 화면을 열면 로그인 화면을 보이지 않고 착지 화면으로 보낸다(MASTER 승인 2026-10-06).
+    // 주소에 아무 값도 없을 때만: ?reason(만료 안내)·?type·?next(「다른 계정으로 로그인」 등 일부러 연 흐름)는 폼을 그대로 보인다
+    if (window.location.search === "") {
+      // api() 도우미는 401이면 만료 안내로 보내므로 여기서는 fetch로 조용히 확인한다
+      void fetch("/api/seller/me", { credentials: "same-origin" })
+        .then((r) => (r.ok ? (r.json() as Promise<Me>) : null))
+        .then((me) => {
+          if (me) router.replace(me.suspended ? "/seller/suspended" : landingFor(me, safeNext()));
+        })
+        .catch(() => undefined);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 화면을 열 때 한 번만 확인한다
   }, []);
 
   const ready = email.trim() !== "" && password !== "" && (!needShop || shopSlug.trim() !== "");
@@ -121,15 +133,16 @@ export default function SellerLoginPage() {
   return (
     <div className="login-page">
       <form className="card col login-card" onSubmit={submit} noValidate>
-        <span className="logo login-logo" aria-label="ONQ">
+        <span className="logo login-logo" aria-label="ONQ 파트너스 관리자">
           <span className="logo-sym" />
           <span className="logo-word" />
+          <small>파트너스 관리자</small>
         </span>
         <div className="col login-head">
           <h1 className="t-t3">파트너스 관리자</h1>
           <span className="t-l2 c-alt">라이브 방송과 주문을 한곳에서 관리합니다</span>
         </div>
-        <div className="tabs login-tabs" role="tablist" aria-label="계정 종류">
+        <div className="login-seg" role="tablist" aria-label="계정 종류">
           {TABS.map((t, i) => (
             <button
               key={t.key}
@@ -142,7 +155,7 @@ export default function SellerLoginPage() {
               aria-selected={tab === t.key}
               aria-controls="login-panel"
               tabIndex={tab === t.key ? 0 : -1}
-              className={`tab${tab === t.key ? " on" : ""}`}
+              className={tab === t.key ? "on" : ""}
               disabled={busy}
               onClick={() => choose(t.key)}
               onKeyDown={(e) => onTabKey(e, i)}
@@ -205,7 +218,7 @@ export default function SellerLoginPage() {
             )}
           </button>
           {/* 대표자 탭은 가입 신청·계정 찾기, 직원 탭은 계정 찾기만 보여 준다. */}
-          <nav className="row t-l2 c-alt login-links" aria-label="계정 도움">
+          <nav className="row t-c1 c-alt login-links" aria-label="계정 도움">
             {tab === "owner" && (
               <span className="login-join">
                 아직 파트너스가 아니십니까? <Link href="/seller/signup">가입 신청</Link>
