@@ -29,7 +29,7 @@ export async function syncMirror(tx: Tx, adminId: string) {
   await tx.platformMaintenance.update({
     where: { id: 1 },
     data: first
-      ? { enabled: true, message: first.message, startsAt: first.startsAt, endsAt: first.endsAt, updatedByAdminId: adminId, version: { increment: 1 } }
-      : { enabled: false, message: "", startsAt: null, endsAt: null, updatedByAdminId: adminId, version: { increment: 1 } },
+      ? { enabled: true, message: first.message, reason: first.reason, startsAt: first.startsAt, endsAt: first.endsAt, updatedByAdminId: adminId, version: { increment: 1 } }
+      : { enabled: false, message: "", reason: "", startsAt: null, endsAt: null, updatedByAdminId: adminId, version: { increment: 1 } },
   });
 }

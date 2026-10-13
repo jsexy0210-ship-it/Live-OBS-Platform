@@ -10,7 +10,7 @@ import { clearMaintenanceCache, MESSAGE_MAX, type AuditMeta } from "./service";
 
 // 점검 예약·이력(MA-083). 보기는 마스터 관리자 전 역할(platform.read), 예약·즉시 켜기·예약 취소·점검 종료는 최고관리자만(system.manage). 모두 로그 추적에 남긴다.
 // 확정 결정: 점검이 시작돼도 방송을 자동으로 끝내거나 대기 주문을 옮기지 않는다(종료 예정 시각은 안내용). 시작 전 10분 경고·종료 알림 같은 자동 처리와 점검 공지 연결은 후속 작업이다.
-export const REASON_MAX = 200;
+export const REASON_MAX = 100; // 기존 점검 설정(PUT)의 사유 한도와 같다
 export const HISTORY_DEFAULT = 20;
 export const HISTORY_MAX = 100;
 

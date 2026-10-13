@@ -141,8 +141,7 @@ export async function updateMaintenance(db: PrismaClient, admin: AdminSessionCon
       await closeWindow(tx, w, w.startsAt <= now ? "ENDED" : "CANCELED", admin.admin.id, now);
     }
     if (enabled) {
-      const reason = cleanText(b.reason, 200, "memo") || "점검 모드 설정";
-      await tx.platformMaintenanceWindow.create({ data: { message, reason, startsAt: startsAt ?? now, endsAt, immediate: !startsAt, createdByAdminId: admin.admin.id } });
+      await tx.platformMaintenanceWindow.create({ data: { message, reason: reason || "점검 모드 설정", startsAt: startsAt ?? now, endsAt, immediate: !startsAt, createdByAdminId: admin.admin.id } });
     }
     const row = await tx.platformMaintenance.findUniqueOrThrow({ where: { id: 1 } });
     const pick = (x: Row) => ({ enabled: x.enabled, message: x.message, reason: x.reason, startsAt: x.startsAt, endsAt: x.endsAt });
