@@ -1,0 +1,25 @@
+.admin-notifications { display: flex; flex-direction: column; gap: 16px; }
+.admin-notifications > * { min-width: 0; }
+.notification-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.notification-summary > div { display: flex; justify-content: space-between; gap: 8px; padding: 12px; border: 1px solid var(--wds-line-normal-alternative); border-radius: 8px; }
+.notification-list-head { margin-bottom: 12px; }
+.notification-rule { display: block; overflow-wrap: anywhere; }
+.notification-search { display: grid; grid-template-columns: 1.25fr 1fr 1fr 1.3fr auto; gap: 16px; align-items: end; }
+.notification-filter-group { display: flex; flex-direction: column; gap: 9px; min-width: 0; font-size: 13px; }
+.notification-checks { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+.notification-checks label { white-space: nowrap; }
+.notification-search-actions { display: flex; gap: 8px; }
+.notification-table-scroll { overflow-x: auto; }
+.notification-table-scroll .tbl { min-width: 980px; }
+.notification-content { min-width: 220px; max-width: 340px; white-space: normal; }
+.notification-content small { display: block; color: var(--wds-text-neutral-subtle, #777); }
+.notification-status { display: block; min-width: 96px; margin-top: 6px; font-size: 12px; }
+.notification-bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.notification-bottom .tbl { min-width: 0; }
+.notification-bottom .tbl td:last-child { white-space: normal; text-align: left; }
+.notification-trends { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.notification-trends > div { display: flex; flex-direction: column; gap: 4px; padding: 12px; border: 1px solid var(--wds-line-normal-alternative); border-radius: 8px; }
+.notification-trends strong { font-size: 14px; }
+.notification-trends small { color: var(--wds-text-neutral-subtle, #777); }
+@media (max-width: 1100px) { .notification-search { grid-template-columns: repeat(2, minmax(0, 1fr)); } .notification-search-actions { grid-column: 1 / -1; } }
+@media (max-width: 640px) { .notification-search, .notification-bottom { grid-template-columns: 1fr; } .notification-search-actions { grid-column: auto; } .notification-trends { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

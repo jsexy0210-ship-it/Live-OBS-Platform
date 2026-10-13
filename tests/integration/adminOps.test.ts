@@ -182,7 +182,10 @@ describe("적립금 실지급 켜진 파트너스(MA-043)", () => {
     });
     const r = await get(payoutGet, "/api/admin/ops/live-payout-sellers", await adminCookie());
     expect(r.body.items).toEqual([
-      { sellerId: a.seller.id, shopName: a.seller.shopName, slug: a.seller.slug, status: "ACTIVE", enabledAt: enabledAt.toISOString(), earnTiming: "ON_DELIVERY", outstanding: { amount: 1500, members: 2 } },
+      { sellerId: a.seller.id, shopName: a.seller.shopName, slug: a.seller.slug, status: "ACTIVE", enabledAt: enabledAt.toISOString(), earnTiming: "ON_DELIVERY", outstanding: { amount: 1500, members: 2 },
+        monthTradingAmount: 0, balanceRatioPercent: null, maxConfiguredRewardRatePercent: 0, manualGrant30DaysAmount: 0,
+        payoutToday: { succeeded: 0, failed: 0, observedFailed: 0, uncertainModeFailed: 0, undatedFailed: 0 },
+        signals: { balanceRatio: { thresholdPercent: 25, state: "UNAVAILABLE" }, payoutFailure: { state: "OK" }, manualConcentration: { state: "NOT_DEFINED" } } },
     ]);
   });
 });

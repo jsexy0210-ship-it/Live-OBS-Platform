@@ -1,0 +1,9 @@
+.shell:has(.banner) {--maintenance-h:36px;padding-top:calc(48px + var(--imp-h) + var(--maintenance-h))}
+.shell:has(.banner) :global(.lnb) {top:calc(48px + var(--imp-h) + var(--maintenance-h));height:calc(100dvh - 48px - var(--imp-h) - var(--maintenance-h))}
+.shell:has(.banner) :global(.cs-wrap) {min-height:calc(100dvh - 48px - var(--imp-h) - var(--maintenance-h))}
+.shell:has(.banner) :global(.cs-dim) {top:calc(48px + var(--imp-h) + var(--maintenance-h))}
+.shell:has(.banner) :global(.au-ph.has-bk .au-ph-l) {top:calc(48px + var(--imp-h) + var(--maintenance-h))}
+.banner {position:fixed;top:calc(48px + var(--imp-h));left:0;right:0;z-index:38;height:var(--maintenance-h);display:flex;align-items:center;gap:12px;padding:6px 16px;background:#b45309;color:#fff;font-size:12px;line-height:18px;box-sizing:border-box}
+.text {flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.action {flex:none;color:#fff;text-decoration:underline;min-height:24px;display:flex;align-items:center}
+@media(max-width:767px){.shell:has(.banner){--maintenance-h:44px}.banner{padding:4px 12px}.text{white-space:normal}}

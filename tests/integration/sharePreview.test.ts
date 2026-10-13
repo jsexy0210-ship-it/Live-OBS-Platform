@@ -97,25 +97,56 @@ describe("공개 공유 미리보기 값·기본 카드", () => {
     expect((await share(seller.slug)).status).toBe(404);
   });
 
-  it("기본 카드는 1200×630 PNG이고 한글 쇼핑몰 이름 글자가 그려진다. 이름을 바꾸면 카드 주소(v)가 바뀐다", async () => {
+  it("기본 카드는 1200×630 PNG이고 한글 쇼핑몰 이름 글자가 그려진다. 이름을 바꾸면 카드 주소(v)가 바뀐다", async ({ onTestFailed }) => {
+    const startedAt = performance.now();
+    let phase = "seller-create";
+    const events: { phase: string; elapsedMs: number; status?: number }[] = [];
+    const mark = (next: string, status?: number) => {
+      phase = next;
+      if (events.length < 24) events.push({ phase, elapsedMs: Math.round(performance.now() - startedAt), ...(status === undefined ? {} : { status }) });
+    };
+    // 전체 시험 timeout은 await에 예외를 주입하지 않으므로 실패 hook에서 현재 단계를 남긴다.
+    onTestFailed(() => {
+      try { console.error("share-preview-timeout-diagnostics", JSON.stringify({ phase, elapsedMs: Math.round(performance.now() - startedAt), events })); }
+      catch { /* 진단 실패가 원 오류를 덮지 않는다. */ }
+    });
+    mark("seller-create");
     const { seller } = await createSeller();
+    mark("initial-name-save");
     await db.seller.update({ where: { id: seller.id }, data: { shopName: "망고 카드샵" } });
-    const { image } = await (await share(seller.slug)).json();
+    mark("initial-share-request");
+    const shared = await share(seller.slug);
+    mark("initial-share-json", shared.status);
+    const { image } = await shared.json();
+    mark("current-og-request");
     const res = await ogGet(new Request(`${BASE}${image.url}`), ctx(seller.slug));
+    mark("current-og-assert", res.status);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("image/png");
     expect(res.headers.get("cache-control")).toContain("immutable");
+    mark("png-body");
     const png = Buffer.from(await res.arrayBuffer());
+    mark("png-metadata");
     const { width, height } = await sharp(png).metadata();
     expect([width, height]).toEqual([1200, 630]);
     // 이름 자리(왼쪽 위)에 밝은 글자 픽셀이 있다(서체가 없으면 빈 카드가 된다)
+    mark("png-pixels");
     const { data } = await sharp(png).extract({ left: 96, top: 88, width: 600, height: 140 }).greyscale().raw().toBuffer({ resolveWithObject: true });
     expect(data.filter((v) => v > 200).length).toBeGreaterThan(500);
     // 한글 글자는 기본 라틴 밖의 서체 파일에서 온다
+    mark("glyphs-assert");
     expect(splitsFor("망고 카드샵").length).toBeGreaterThan(1);
+    mark("updated-name-save");
     await db.seller.update({ where: { id: seller.id }, data: { shopName: "새 이름" } });
-    expect((await (await share(seller.slug)).json()).image.url).not.toBe(image.url);
+    mark("updated-share-request");
+    const updated = await share(seller.slug);
+    mark("updated-share-json", updated.status);
+    expect((await updated.json()).image.url).not.toBe(image.url);
     // 옛 주소(v가 지금 이름과 다름)는 짧게만 캐시한다
-    expect((await ogGet(new Request(`${BASE}${image.url}`), ctx(seller.slug))).headers.get("cache-control")).toBe("public, max-age=300");
+    mark("old-og-request");
+    const old = await ogGet(new Request(`${BASE}${image.url}`), ctx(seller.slug));
+    mark("old-og-assert", old.status);
+    expect(old.headers.get("cache-control")).toBe("public, max-age=300");
+    mark("complete");
   });
 });

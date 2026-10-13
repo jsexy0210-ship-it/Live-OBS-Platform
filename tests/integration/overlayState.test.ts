@@ -119,11 +119,12 @@ describe("쇼핑몰·명예의 전당", () => {
     const session = await db.broadcastSession.findFirstOrThrow({ where: { sellerId: s.seller.id, status: "LIVE" } });
     const base = Date.now();
     for (let i = 0; i < HALL_MAX + 2; i++) {
-      await db.hitCard.create({ data: { sellerId: s.seller.id, broadcastSessionId: session.id, nicknameSnapshot: `당첨${i}`, cardName: `카드${i}`, createdAt: new Date(base - (HALL_MAX + 2 - i) * 1000) } });
+      await db.hitCard.create({ data: { sellerId: s.seller.id, broadcastSessionId: session.id, nicknameSnapshot: `당첨${i}`, cardName: `카드${i}`, grade: i === HALL_MAX + 1 ? "SR" : null, createdAt: new Date(base - (HALL_MAX + 2 - i) * 1000) } });
     }
     const hits = (await s.get()).hits;
     expect(hits).toHaveLength(HALL_MAX);
     expect(hits.map((h: { cardName: string }) => h.cardName)).toEqual(Array.from({ length: HALL_MAX }, (_, i) => `카드${HALL_MAX + 1 - i}`));
+    expect(hits[0].grade).toBe("SR");
   });
 });
 

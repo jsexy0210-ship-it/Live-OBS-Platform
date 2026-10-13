@@ -1,5 +1,7 @@
 import { Prisma, PrismaClient } from "@prisma/client";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Request, type Response } from "@playwright/test";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 import { submitSellerLogin } from "./sellerLogin";
 
@@ -53,7 +55,9 @@ test("게시하려면 시행일·본문이 필요하고, 저장하면 구매자 
   await expect(page.getByTestId("legal-save-terms")).toBeDisabled(); // 바뀐 것이 없으면 저장 못 함
 
   // 게시를 켜고 비워 둔 채 저장하면 칸 가까이에 이유가 나온다
-  await page.getByRole("switch", { name: "이용약관 구매자에게 공개" }).click();
+  const publishTerms = page.getByRole("checkbox", { name: "이용약관 구매자에게 공개" });
+  await expect(publishTerms).not.toBeChecked();
+  await publishTerms.check();
   await page.getByTestId("legal-save-terms").click();
   await expect(page.getByText("공개하려면 본문을 써 주십시오")).toBeVisible();
   await expect(page.getByText("공개하려면 시작하는 날을 정해 주십시오")).toBeVisible();
@@ -73,25 +77,84 @@ test("게시하려면 시행일·본문이 필요하고, 저장하면 구매자 
   await expect(buyer.getByRole("heading", { level: 1 })).toHaveText("개인정보처리방침을 준비하고 있어요");
 
   // 게시를 끄고 저장하면 구매자 화면은 다시 준비 중
-  await page.getByRole("switch", { name: "이용약관 구매자에게 공개" }).click();
+  await publishTerms.uncheck();
   await page.getByTestId("legal-save-terms").click();
   await expect(page.getByTestId("legal-status-terms")).toContainText("아직 공개 안 함");
   await buyer.goto(`/shop/${SLUG}/terms`);
   await expect(buyer.getByRole("heading", { level: 1 })).toHaveText("이용약관을 준비하고 있어요");
 });
 
-test("탭을 옮겨도 입력 중인 내용이 남는다", async ({ page }) => {
+test("사이드 메뉴로 문서를 바꿔도 입력 중인 내용이 남는다", async ({ page }) => {
   await login(page, "/seller/settings/legal");
+  const menu = page.getByRole("complementary", { name: "파트너스 메뉴" });
+  const confirmDirtyNavigation = () => page.once("dialog", async (dialog) => {
+    expect(dialog.type()).toBe("confirm");
+    expect(dialog.message()).toContain("저장하지 않은 변경");
+    await dialog.accept();
+  });
   await page.getByLabel("이용약관 본문").fill("입력 중인 약관");
-  await page.getByRole("tab", { name: "개인정보처리방침" }).click();
+  confirmDirtyNavigation();
+  await menu.getByRole("link", { name: "개인정보처리방침", exact: true }).click();
+  await expect(page).toHaveURL(/section=privacy/);
   await expect(page.getByLabel("개인정보처리방침 본문")).toBeVisible();
-  await page.getByRole("tab", { name: "이용약관" }).click();
+  confirmDirtyNavigation();
+  await menu.getByRole("link", { name: "이용약관", exact: true }).click();
+  await expect(page).toHaveURL((url) => url.searchParams.get("section") === "terms");
   await expect(page.getByLabel("이용약관 본문")).toHaveValue("입력 중인 약관");
 });
 
 test("사업자 정보·고지: 검사 오류가 칸 가까이에 보이고, 저장하면 구매자 바닥글에 입력한 항목만 표시된다", async ({ page, context }) => {
+  const startedAt = performance.now();
+  let phase = "seller-login";
+  const diagnostics: { atMs: number; phase: string; kind: string; requestId?: number; path?: string; method?: string; status?: number; finished?: boolean; finishedAtMs?: number; finishedPhase?: string; body?: "pending" | "unavailable" | "read" | "not-read"; bodyAtMs?: number; bodyPhase?: string; json?: boolean; hasNotice?: boolean; addressMatchesOwnedInput?: boolean }[] = [];
+  const requests = new Map<Request, number>();
+  const record = (entry: Omit<(typeof diagnostics)[number], "atMs" | "phase">) => {
+    const row = { atMs: Math.round(performance.now() - startedAt), phase, ...entry };
+    if (diagnostics.length < 32) diagnostics.push(row);
+    return row;
+  };
+  const allowed = (request: Request) => {
+    const path = new URL(request.url()).pathname;
+    return (path === "/api/seller/shop-legal-notice" && ["GET", "PUT"].includes(request.method())) || (path === `/shop/${SLUG}/terms` && request.method() === "GET") ? path : null;
+  };
+  const onRequest = (request: Request) => {
+    const path = allowed(request);
+    if (!path || requests.size >= 16) return;
+    requests.set(request, requests.size + 1);
+    record({ kind: "request", requestId: requests.get(request), path, method: request.method() });
+  };
+  const onResponse = (response: Response) => {
+    const request = response.request(), requestId = requests.get(request);
+    if (!requestId) return;
+    const path = allowed(request)!;
+    const row = record({ kind: "response", requestId, path, method: request.method(), status: response.status(), body: "pending" });
+    // 원문·주소·오류 메시지는 기록하지 않는다. 응답 수신 정보는 본문 읽기 실패에도 남긴다.
+    void (async () => {
+      try {
+        row.finished = (await response.finished()) === null;
+        row.finishedAtMs = Math.round(performance.now() - startedAt); row.finishedPhase = phase;
+        row.body = "not-read";
+        row.json = !!response.headers()["content-type"]?.includes("application/json");
+        if (path === "/api/seller/shop-legal-notice" && row.json) {
+          const data: unknown = await response.json();
+          const notice = data && typeof data === "object" && "notice" in data ? data.notice : null;
+          row.hasNotice = !!notice && typeof notice === "object";
+          row.addressMatchesOwnedInput = !!notice && typeof notice === "object" && "address" in notice && notice.address === "서울시 중구 세종대로 1 <b>3층</b>";
+          row.body = "read";
+        }
+      } catch { row.body = "unavailable"; }
+      finally { row.bodyAtMs = Math.round(performance.now() - startedAt); row.bodyPhase = phase; }
+    })();
+  };
+  const onFailed = (request: Request) => {
+    const requestId = requests.get(request);
+    if (requestId) record({ kind: "request-failed", requestId });
+  };
+  context.on("request", onRequest); context.on("response", onResponse); context.on("requestfailed", onFailed);
+  try {
   await login(page, "/seller/settings/legal");
-  await page.getByRole("tab", { name: "사업자 정보·고지" }).click();
+  phase = "seller-notice-tab"; record({ kind: "phase" });
+  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "사업자정보 고지", exact: true }).click();
   // 입점 신청 때 받은 값은 읽기 전용으로 보인다
   await expect(page.getByTestId("legal-biz")).toContainText("별빛상사");
   await expect(page.getByTestId("legal-biz")).toContainText("123-45-67890");
@@ -112,12 +175,16 @@ test("사업자 정보·고지: 검사 오류가 칸 가까이에 보이고, 저
   await page.getByLabel("가입한 업체").fill("시험결제");
   await page.getByLabel("확인 주소").fill("https://pay.example.com/escrow");
   await page.getByLabel("미성년자 구매 안내").fill("미성년자는 법정대리인 동의가 필요해요.\n안내 글은 파트너스가 입력해요.");
+  phase = "save-click"; record({ kind: "phase" });
   await page.getByTestId("legal-save-notice").click();
   await expect(page.getByTestId("legal-save-notice")).toBeDisabled();
+  phase = "save-disabled"; record({ kind: "phase" });
 
   // 구매자 바닥글: 입력한 항목만, 값은 텍스트로만, 링크는 새 창
   const buyer = await context.newPage();
+  phase = "buyer-navigation"; record({ kind: "phase" });
   await buyer.goto(`/shop/${SLUG}/terms`);
+  phase = "buyer-footer"; record({ kind: "phase" });
   const foot = buyer.locator(".shop-foot");
   await expect(foot).toContainText("서울시 중구 세종대로 1 <b>3층</b>");
   expect(await foot.locator("b").count()).toBe(0);
@@ -132,4 +199,16 @@ test("사업자 정보·고지: 검사 오류가 칸 가까이에 보이고, 저
   await expect(foot).toContainText("별빛상사");
   await expect(foot).toContainText("123-45-67890");
   await expect(foot).toContainText("2026-서울-0001");
+  } catch (error) {
+    try { console.error("seller-legal-save-diagnostics", JSON.stringify(diagnostics)); } catch { /* 원 오류 보존 */ }
+    try {
+      const sourceSha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+      const evidence = `tests/e2e/screenshots/current-shell-${sourceSha}`;
+      mkdirSync(evidence, { recursive: true });
+      writeFileSync(`${evidence}/seller-legal-save-diagnostics.json`, JSON.stringify({ sourceSha, diagnostics }, null, 2));
+    } catch { /* 원 오류 보존 */ }
+    throw error;
+  } finally {
+    context.off("request", onRequest); context.off("response", onResponse); context.off("requestfailed", onFailed);
+  }
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { HOSTING_PROVIDER, noticeRows } from "../../components/shop/footNotice";
+import { HOSTING_DESCRIPTION, HOSTING_PROVIDER, noticeRows } from "../../components/shop/footNotice";
 import { bizInfoUrl, BIZ_INFO_URL } from "../../lib/server/shop-legal/notice";
 
 // 쇼핑몰 바닥글 법정 표시 행: 입력한 항목만 행으로 만들고, 사업자정보 확인 링크는 10자리 사업자등록번호일 때만, 호스팅 제공은 늘 표시.
@@ -35,4 +35,9 @@ describe("bizInfoUrl", () => {
     expect(bizInfoUrl("1234567890")).toBe(BIZ_INFO_URL + "1234567890");
     for (const v of ["123-45-67890", "123456789", "12345678901", "abcdefghij", "", null, undefined, 1234567890]) expect(bizInfoUrl(v), String(v)).toBeNull();
   });
+});
+
+it("호스팅 안내는 기존 제공자 이름을 명시한 완전한 문장이다", () => {
+  expect(HOSTING_DESCRIPTION).toBe(`${HOSTING_PROVIDER}로 운영하는 쇼핑몰이에요`);
+  expect(HOSTING_DESCRIPTION).toBe("ONQ로 운영하는 쇼핑몰이에요");
 });

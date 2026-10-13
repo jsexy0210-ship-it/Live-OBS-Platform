@@ -26,6 +26,28 @@ export async function deliveredItemInDb(slug: string, loginId: string): Promise<
   }
 }
 
+export async function reviewInDb(itemId: string): Promise<void> {
+  const db = open();
+  try {
+    const item = await db.orderItem.findUniqueOrThrow({ where: { id: itemId }, include: { order: true } });
+    const buyer = await db.buyerMember.findUniqueOrThrow({ where: { id: item.order.buyerMemberId } });
+    await db.productReview.create({
+      data: {
+        sellerId: item.sellerId,
+        orderId: item.orderId,
+        orderItemId: item.id,
+        productId: item.productId,
+        buyerMemberId: buyer.id,
+        authorNickname: buyer.broadcastNickname,
+        rating: 5,
+        body: "브레이크 때 뽑힌 카드 상태가 정말 좋았어요. 포장도 꼼꼼하고 배송도 빨랐어요.",
+      },
+    });
+  } finally {
+    await db.$disconnect();
+  }
+}
+
 export async function clearReviewsInDb(slug: string) {
   const db = open();
   try {
