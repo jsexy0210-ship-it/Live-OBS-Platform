@@ -64,6 +64,7 @@ for (const vp of [
     await expect(pager.getByRole("button", { name: "처음", exact: true })).toBeDisabled();
     await expect(pager.getByRole("link", { name: "마지막", exact: true })).toBeVisible();
     await expect(page.getByText("상품을 모두 봤어요")).toHaveCount(0); // 첫 쪽에는 끝 안내 없음
+    if (vp.name === "390") { // 휴대폰만 「신상품 ▾」 드롭다운
     // 정렬 드롭다운 열린 상태
     await page.getByRole("navigation", { name: "정렬" }).locator("summary").click();
     await expect(page.getByRole("navigation", { name: "정렬" }).getByRole("link", { name: "높은 가격" })).toBeVisible();
@@ -76,6 +77,9 @@ for (const vp of [
     await page.getByRole("heading", { name: /전체 상품/ }).click(); // 바깥을 누르면 닫힘
     await expect(page.getByRole("navigation", { name: "정렬" }).getByRole("link", { name: "높은 가격" })).toBeHidden();
     await page.getByRole("navigation", { name: "정렬" }).locator("summary").click(); // 연 채로 쪽을 옮겨도 새 쪽에서는 닫혀 있다
+    } else {
+      await expect(page.getByRole("group", { name: "정렬 기준" }).getByRole("link")).toHaveText(["추천순", "인기순", "신상품", "낮은 가격", "높은 가격"]); // PC는 묶음 버튼(보드 SH-002-PC-IA)
+    }
     // 중간 쪽도 10개, 끝 쪽은 8개
     await pager.getByRole("link", { name: "2페이지" }).click();
     await expect(page).toHaveURL(/page=2/);
@@ -99,7 +103,7 @@ for (const vp of [
     await expect(pager.getByRole("link", { name: "3페이지" })).toHaveAttribute("aria-current", "page");
     await expect(pager.getByRole("button", { name: "다음", exact: true })).toBeDisabled();
     await expect(pager.getByRole("button", { name: "마지막", exact: true })).toBeDisabled();
-    await expect(page.getByRole("navigation", { name: "정렬" }).getByRole("link", { name: "높은 가격" })).toBeHidden();
+    if (vp.name === "390") await expect(page.getByRole("navigation", { name: "정렬" }).getByRole("link", { name: "높은 가격" })).toBeHidden();
     await expect(page.getByText("상품을 모두 봤어요 · 28개")).toBeVisible();
     await expect(page.getByRole("link", { name: "홈으로" })).toHaveAttribute("href", `/shop/${SLUG}`);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

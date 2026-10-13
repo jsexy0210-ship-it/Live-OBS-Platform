@@ -72,7 +72,8 @@ test("방송을 끝낸 뒤 이력 목록에서 찾아 상세로 들어가 요약
   // 상세: 요약(주문 2건·HIT 1장), HIT 카드, 주문 2건
   await row.getByTestId("bh-link").click();
   await expect(page).toHaveURL(/\/seller\/broadcasts\/[0-9a-f-]+$/);
-  await expect(page.getByTestId("bd-title")).toHaveText(title);
+  // 정본(SA-055)에는 「방송 제목」 행이 없다: 상세에서는 일시 · 상태 · 레이아웃 · 타이머 · 진행만 보인다
+  await expect(page.getByTestId("bd-layout")).toBeVisible();
   await expect(page.getByTestId("bd-summary")).toContainText("2건");
   await expect(page.getByTestId("bd-summary")).toContainText("1장");
   await expect(page.getByTestId("bd-hits")).toContainText(card);
