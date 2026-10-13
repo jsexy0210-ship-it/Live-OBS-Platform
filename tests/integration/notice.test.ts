@@ -68,6 +68,7 @@ describe("파트너스 관리자 공지·질문", () => {
       [{ kind: "notice", title: "가".repeat(61), body: "b" }, "invalid_title"],
       [{ kind: "notice", title: "a", body: "" }, "invalid_body"],
       [{ kind: "faq", title: "a", body: "b", category: "가".repeat(21) }, "invalid_category"],
+      [{ kind: "notice", title: "a", body: "b", category: "가".repeat(21) }, "invalid_category"],
       [{ kind: "faq", title: "a", body: "b", isPinned: true }, "invalid_pin"],
       [{ kind: "notice", title: "a", body: "b", isPinned: true, isPublished: false }, "invalid_pin"],
     ];
@@ -75,8 +76,7 @@ describe("파트너스 관리자 공지·질문", () => {
       const r = await create(s.owner, body);
       expect([r.res.status, r.body]).toEqual([400, { error, message: NOTICE_MESSAGES[error as keyof typeof NOTICE_MESSAGES] }]);
     }
-    // 공지에 분류를 보내도 남기지 않는다
-    expect((await create(s.owner, { kind: "notice", title: "a", body: "b", category: "배송" })).body.notice?.category).toBeNull();
+    expect((await create(s.owner, { kind: "notice", title: "a", body: "b", category: "배송" })).body.notice?.category).toBe("배송");
   });
 
   it("홈 띠 고정은 1개: 새로 고정하면 이전 고정이 풀리고, 비공개로 바꾸면 고정도 풀린다", async () => {
@@ -126,7 +126,7 @@ describe("구매자 공지·질문 조회", () => {
     const r1 = await pubNotices(s.seller.slug);
     expect(r1.headers.get("cache-control")).toBe("public, max-age=30");
     const b1 = await r1.json();
-    expect(b1.pinned).toEqual({ id: pinned.id, title: "고정", createdAt: expect.any(String) });
+    expect(b1.pinned).toEqual({ id: pinned.id, title: "고정", category: null, createdAt: expect.any(String) });
     expect(b1.notices).toHaveLength(PUBLIC_PAGE_SIZE);
     expect(b1.notices[0].title).toBe(`공지${PUBLIC_PAGE_SIZE - 1}`);
     const b2 = await (await pubNotices(s.seller.slug, `?cursor=${b1.nextCursor}`)).json();
@@ -136,6 +136,39 @@ describe("구매자 공지·질문 조회", () => {
     expect((await noticeRoute(get("/x"), p({ slug: s.seller.slug, noticeId: hidden.id }))).status).toBe(404);
     expect((await noticeRoute(get("/x"), p({ slug: t.seller.slug, noticeId: pinned.id }))).status).toBe(404);
     expect((await (await pubNotices(t.seller.slug)).json()).notices).toEqual([]);
+  });
+
+  it("공개 공지의 분류를 목록·상세에 싣고 비공개·미래 시각 초안은 숨긴다", async () => {
+    const s = await shop();
+    const created = await create(s.owner, { kind: "notice", title: "방송 공지", body: "방송 안내", category: "방송", isPinned: true });
+    expect(created.res.status).toBe(201);
+    const published = created.body.notice!;
+    expect((await put(s.owner, published.id, { title: "방송 공지", body: "방송 안내", category: "이벤트", isPinned: true })).status).toBe(200);
+    const draft = await db.shopNotice.create({
+      data: { sellerId: s.seller.id, kind: "NOTICE", title: "초안", body: "미공개", category: "안내", isPublished: false },
+    });
+    const futureDraft = await db.shopNotice.create({
+      data: {
+        sellerId: s.seller.id,
+        kind: "NOTICE",
+        title: "미래 시각 초안",
+        body: "예약 전 초안",
+        category: "배송",
+        isPublished: false,
+        createdAt: new Date(Date.now() + 86_400_000),
+      },
+    });
+
+    const listing = await (await pubNotices(s.seller.slug)).json();
+    expect(listing.pinned).toMatchObject({ id: published.id, category: "이벤트" });
+    expect(listing.notices).toContainEqual(expect.objectContaining({ id: published.id, category: "이벤트" }));
+    expect(listing.notices.map((notice: { id: string }) => notice.id)).not.toContain(draft.id);
+    expect(listing.notices.map((notice: { id: string }) => notice.id)).not.toContain(futureDraft.id);
+
+    const detail = await (await noticeRoute(get(`/api/shop/${s.seller.slug}/notices/${published.id}`), p({ slug: s.seller.slug, noticeId: published.id }))).json();
+    expect(detail.notice).toMatchObject({ id: published.id, category: "이벤트" });
+    expect((await noticeRoute(get("/x"), p({ slug: s.seller.slug, noticeId: draft.id }))).status).toBe(404);
+    expect((await noticeRoute(get("/x"), p({ slug: s.seller.slug, noticeId: futureDraft.id }))).status).toBe(404);
   });
 
   it("질문은 순서대로 본문까지, 분류 목록, 검색어로 좁힌다. 비공개는 빠진다", async () => {

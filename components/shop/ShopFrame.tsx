@@ -10,7 +10,7 @@ import { EventPopupForPage } from "./EventPopup";
 import LiveBar from "./LiveBar";
 import ShopChrome from "./ShopChrome";
 import ShopClosedGate from "./ShopClosedGate";
-import { noticeRows, type FootRow } from "./footNotice";
+import { HOSTING_DESCRIPTION, noticeRows, type FootRow } from "./footNotice";
 import "./ShopLegal.css";
 
 type BusinessInfo = { companyName?: unknown; representativeName?: unknown; businessNumber?: unknown; mailOrderNumber?: unknown };
@@ -38,7 +38,7 @@ function footRows(info: unknown): [string, string][] {
 // [slug]/layout.tsx가 한 번만 그린다(화면마다 다시 그리지 않아 이동할 때 머리가 깜빡이지 않는다).
 // 로그인 상태는 이 쇼핑몰의 구매자 세션으로 판단한다(다른 쇼핑몰 세션은 로그인 안 함으로 본다).
 export default async function ShopFrame({ slug, shopName, operatingState = "OPEN", children }: { slug: string; shopName: string; operatingState?: "OPEN" | "PREPARING" | "PAUSED"; children: React.ReactNode }) {
-  const seller = await prisma.seller.findUnique({ where: { slug: slug.slice(0, 60) }, select: { id: true, businessInfo: true } });
+  const seller = await prisma.seller.findUnique({ where: { slug: slug.slice(0, 60) }, select: { id: true, businessInfo: true, shopTopNotice: true } });
   const token = (await cookies()).get(COOKIE_NAMES.buyer)?.value;
   const session = seller ? await resolveBuyerSession(prisma, token, seller.id) : null;
   const categories = (await publicCategories(prisma, slug.slice(0, 60))) ?? [];
@@ -49,6 +49,11 @@ export default async function ShopFrame({ slug, shopName, operatingState = "OPEN
   return (
     <ConfirmProvider defaultTone="shop">
     <div className="shop-page">
+      {text(seller?.shopTopNotice) && (
+        <div className="shop-top-notice" aria-label="상단 공지">
+          <div className="shop-wrap">{text(seller?.shopTopNotice)}</div>
+        </div>
+      )}
       <ShopChrome slug={slug} shopName={shopName} loggedIn={!!session} nickname={session?.member.broadcastNickname ?? null} categories={categories} signupOpen={operatingState === "OPEN"} />
       <LiveBar slug={slug} />
       <EventPopupForPage />
@@ -80,7 +85,7 @@ export default async function ShopFrame({ slug, shopName, operatingState = "OPEN
             <Link href={`/shop/${encodeURIComponent(slug)}/privacy`}>개인정보처리방침</Link>
           </p>
           <p className="shop-foot-by">
-            <span className="logo-word" />로 운영하는 쇼핑몰이에요
+            {HOSTING_DESCRIPTION}
           </p>
         </div>
       </footer>

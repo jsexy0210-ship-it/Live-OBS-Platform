@@ -12,12 +12,12 @@ export type AuditRow = {
   targetId: string | null;
   reason: string | null;
   ip: string | null;
+  userAgent: string | null;
   seller: { id: string; slug: string; shopName: string } | null;
 };
 export type AuditDetail = AuditRow & {
   before: unknown;
   after: unknown;
-  userAgent: string | null;
   actorAdmin: { name: string; email: string; role: AdminRoleCode } | null;
 };
 

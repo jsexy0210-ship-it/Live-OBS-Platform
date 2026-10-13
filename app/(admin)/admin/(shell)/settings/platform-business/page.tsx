@@ -28,6 +28,7 @@ const ROWS: { key: Key; label: string; cls: string; placeholder?: string; help?:
   { key: "phone", label: "고객센터 전화", cls: "w-m", placeholder: "예: 1588-0000", help: "구매자 화면 바닥글과 메일에 표시", empty: "고객센터 전화를 입력해 주십시오" },
   { key: "email", label: "고객센터 이메일", cls: "w-l", placeholder: "example@email.com", help: "구매자 · 파트너스 문의 회신 주소", empty: "이메일 형식을 확인해 주십시오" },
 ];
+const WIDTH: Record<string, number> = { "w-l": 320, "w-m": 184, "w-xl": 520 };
 const LABEL = Object.fromEntries(ROWS.map((r) => [r.key, r.label])) as Record<Key, string>;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const digits = (v: string) => v.replace(/\D/g, "");
@@ -138,6 +139,7 @@ export default function PlatformBusinessPage() {
           {state.kind === "ok" && form && (
             <>
               <form
+                id="pb-form"
                 onSubmit={(e) => {
                   e.preventDefault();
                   if (canEdit && changed.length > 0) void save();
@@ -150,7 +152,8 @@ export default function PlatformBusinessPage() {
                         <>
                           <input
                             id={`pb-${r.key}`}
-                            className={`inp ${r.cls}${errors[r.key] ? " is-error" : ""}`}
+                            className={`inp${errors[r.key] ? " is-error" : ""}`}
+                            style={{ flex: `0 1 ${WIDTH[r.cls]}px`, maxWidth: "100%" }}
                             value={form[r.key]}
                             placeholder={r.placeholder}
                             onChange={(e) => setForm({ ...form, [r.key]: e.target.value })}
@@ -168,16 +171,6 @@ export default function PlatformBusinessPage() {
                     </FormRow>
                   ))}
                 </FormSection>
-                {canEdit && (
-                  <FormFoot>
-                    <button className="btn btn-lg" type="submit" disabled={changed.length === 0}>
-                      저장
-                    </button>
-                    <button className="btn btn-lg btn-out" type="button" disabled={changed.length === 0} onClick={() => (setForm(toForm(state.info)), setErrors({}))}>
-                      취소
-                    </button>
-                  </FormFoot>
-                )}
               </form>
               {canAudit && (
                 <FormSection
@@ -193,33 +186,45 @@ export default function PlatformBusinessPage() {
                 >
                   <tr>
                     <td colSpan={2}>
-                      {history === null ? (
-                        <span className="c-alt">불러오는 중</span>
-                      ) : history.length === 0 ? (
-                        <span className="c-alt">아직 변경 기록이 없습니다</span>
-                      ) : (
-                        <table className="tbl" data-testid="pb-history">
-                          <thead>
+                      <table className="tbl" data-testid="pb-history">
+                        <thead>
+                          <tr>
+                            <th>일시</th>
+                            <th>변경 항목</th>
+                            <th>처리</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {history === null || history.length === 0 ? (
                             <tr>
-                              <th>일시</th>
-                              <th>변경 항목</th>
-                              <th>처리</th>
+                              <td colSpan={3} className="c-alt">
+                                {history === null ? "불러오는 중" : "아직 변경 기록이 없습니다"}
+                              </td>
                             </tr>
-                          </thead>
-                          <tbody>
-                            {history.map((h) => (
+                          ) : (
+                            history.map((h) => (
                               <tr key={h.id}>
                                 <td>{formatDateTime(h.at, "-")}</td>
                                 <td className="col-text">{h.fields.map((f) => LABEL[f as Key] ?? f).join(" · ") || "-"}</td>
                                 <td>{h.actor}</td>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      )}
+                            ))
+                          )}
+                        </tbody>
+                      </table>
                     </td>
                   </tr>
                 </FormSection>
+              )}
+              {canEdit && (
+                <FormFoot>
+                  <button className="btn btn-lg" type="submit" form="pb-form" disabled={changed.length === 0}>
+                    저장
+                  </button>
+                  <button className="btn btn-lg btn-out" type="button" disabled={changed.length === 0} onClick={() => (setForm(toForm(state.info)), setErrors({}))}>
+                    취소
+                  </button>
+                </FormFoot>
               )}
             </>
           )}

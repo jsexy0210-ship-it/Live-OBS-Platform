@@ -48,10 +48,8 @@ test("CS는 요금제별 월 제공량을 보기만 한다(이름으로, 변경 
   await expect(page.getByRole("button", { name: "월 무료 메일 수량 변경" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "가격 변경" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "체험 한도 변경" })).toHaveCount(0);
-  await expect(row(page, "쇼핑몰 통합").locator("td").nth(1)).toHaveText(/\d원$/);
-  await expect(page.getByRole("columnheader", { name: "작업" })).toHaveCount(0);
-  const align = await page.locator(".tbl td").first().evaluate((el) => getComputedStyle(el).textAlign);
-  expect(align).toBe("center"); // 표 정렬 새 규칙(2026-10-05): 글 열(.col-text)이 아니면 데이터는 가운데
+  await expect(row(page, "쇼핑몰 통합").getByTestId("plan-sale-price")).toHaveText(/^179,000원/);
+  await expect(row(page, "쇼핑몰 통합").getByTestId("plan-trial-limits")).toHaveText("— (체험 없음)");
 });
 
 test("최고관리자: 월 제공량을 바로 바꾸고, 적용 예정으로 걸면 현재 값은 그대로이며, 잘못된 값은 막는다", async ({ page }) => {
@@ -63,7 +61,7 @@ test("최고관리자: 월 제공량을 바로 바꾸고, 적용 예정으로 �
   await dialog.getByLabel("월 주문·배송 안내 메일 무료 수량").fill("250");
   await dialog.getByRole("button", { name: "저장" }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(row(page, "쇼핑몰 통합").locator("td").nth(7)).toHaveText("250통");
+  await expect(row(page, "쇼핑몰 통합")).toContainText("250통");
   expect((await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "INTEGRATED" } })).mailMonthlyQuota).toBe(250);
 
   const future = new Date(Date.now() + 3 * 86_400_000 + 9 * 3_600_000).toISOString().slice(0, 16);
@@ -73,20 +71,33 @@ test("최고관리자: 월 제공량을 바로 바꾸고, 적용 예정으로 �
   await dialog.getByRole("button", { name: "저장" }).click();
   await expect(dialog).toHaveCount(0);
   const r = row(page, "쇼핑몰 통합");
-  await expect(r.locator("td").nth(7)).toHaveText("250통");
-  await expect(r.locator("td").nth(8)).toHaveText("400통");
-  await expect(r.locator("td").nth(9)).not.toHaveText("-");
+  await expect(r).toContainText("250통");
+  await expect(r.getByTestId("plan-next-quota")).toContainText("400통 (적용 예정)");
+  await expect(r.getByTestId("plan-next-quota")).toContainText("부터");
   const saved = await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "INTEGRATED" } });
   expect([saved.mailMonthlyQuota, saved.nextMailQuota]).toEqual([250, 400]);
 });
 
-test("최고관리자: 가격 변경은 전·후 금액과 30일 안내를 보여 주고 한 번 더 확인한 뒤 저장한다", async ({ page }) => {
+test("최고관리자: 가격 변경은 전·후 금액과 30일 안내를 보여 주고 한 번 더 확인한 뒤 저장한다", async ({ page }, testInfo) => {
   const before = await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "INTEGRATED" } });
   try {
     await open(page, superEmail);
     await row(page, "쇼핑몰 통합").getByRole("button", { name: "가격 변경" }).click();
+    await expect(page.getByRole("dialog")).toContainText("메일·알림톡·파트너스 공지 완료 30일 뒤 첫 결제부터 적용되며, 고지 전에는 기존 요금을 유지합니다.");
+    for (const width of [1440, 1024, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      const dialog = page.getByRole("dialog");
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByRole("button", { name: "저장", exact: true })).toBeVisible();
+      expect(await dialog.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+      const box = (await dialog.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(width + 1);
+      await dialog.screenshot({ path: testInfo.outputPath(`MA022-price-notice-${width}.png`) });
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
     const dialog = page.getByRole("dialog");
-    await expect(dialog).toContainText("기존 구독자는 30일 뒤 첫 결제부터 적용됩니다");
+    await expect(dialog).toContainText("고지 전에는 기존 요금을 유지합니다.");
     await dialog.getByLabel("판매가").fill(String(before.listPrice + 1));
     await expect(dialog.getByRole("button", { name: "저장" })).toBeDisabled();
     const newList = before.listPrice + 1000;
@@ -99,7 +110,7 @@ test("최고관리자: 가격 변경은 전·후 금액과 30일 안내를 보�
     expect((await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "INTEGRATED" } })).salePrice).toBe(before.salePrice);
     await dialog.getByRole("button", { name: "가격 변경 확정" }).click();
     await expect(dialog).toHaveCount(0);
-    await expect(row(page, "쇼핑몰 통합").locator("td").nth(2)).toHaveText(`${newSale.toLocaleString("ko-KR")}원`);
+    await expect(row(page, "쇼핑몰 통합").getByTestId("plan-sale-price")).toContainText(`${newSale.toLocaleString("ko-KR")}원`);
     const saved = await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "INTEGRATED" } });
     expect([saved.listPrice, saved.salePrice]).toEqual([newList, newSale]);
   } finally {
@@ -122,8 +133,8 @@ test("운영 담당: 체험 한도만 바꿀 수 있고(가격·제공량 버튼
     await dialog.getByLabel("저장 용량").fill("2048");
     await dialog.getByRole("button", { name: "저장" }).click();
     await expect(dialog).toHaveCount(0);
-    await expect(row(page, "오버레이 전용").locator("td").nth(4)).toHaveText("120건");
-    await expect(row(page, "오버레이 전용").locator("td").nth(6)).toHaveText("2,048MB");
+    await expect(row(page, "오버레이 전용").getByTestId("plan-trial-limits")).toContainText("120건");
+    await expect(row(page, "오버레이 전용").getByTestId("plan-trial-limits")).toContainText("2,048MB");
     const saved = await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "OVERLAY_ONLY" } });
     expect([saved.trialMessageLimit, saved.trialIdentityLimit, saved.trialStorageMb]).toEqual([120, 60, 2048]);
   } finally {
