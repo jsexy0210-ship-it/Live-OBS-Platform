@@ -57,6 +57,12 @@ docker() {
   esac
 }
 export -f docker
+# planner의 새 fresh 검증 호출을 owned 대역으로 확인한다. 복합 검증 자체는 Python fixture에서 각 필수근거를 거부한다.
+python3() {
+  [ "$#" = 2 ] && [ "${1##*/}" = disk-optimization-host-diagnostics.py ] && [ "$2" = --verify-preview-host ] || return 93
+  if [ "$CASE_MODE" = attestation ]; then printf 'TEST_ATTESTATION_UNVERIFIED match=false\n' >&2; return 1; fi
+}
+export -f python3
 script="$(cd -- "$(dirname -- "$0")" && pwd)/disk-optimization-plan.sh"
 bash "$script" --preview > "$tmp/normal.tsv"
 [ "$(grep -c '^OLD_ONQ_NON_ROLLBACK_IMAGES' "$tmp/normal.tsv")" = 1 ]
@@ -64,7 +70,7 @@ bash "$script" --preview > "$tmp/normal.tsv"
 grep -q $'^RUNNER_DIAGNOSTIC_LOGS_OLDER_THAN_14_DAYS\tWorker_owned.log\t3\t' "$tmp/normal.tsv"
 ! grep -qE 'backup|cache|migrate|recent|customer|link' "$tmp/normal.tsv"
 # 환경/context와 실제 daemon/host가 다르면 후보를 발급하지 않고 mutation0을 유지한다.
-for rejected in env context tls endpoint host daemon host_cmd daemon_cmd; do
+for rejected in env context tls endpoint host daemon host_cmd daemon_cmd attestation; do
   export CASE_MODE="$rejected"
   case "$rejected" in
     env) if DOCKER_HOST=tcp://other:2375 bash "$script" --preview > "$tmp/denied.tsv" 2> "$tmp/denied.err"; then exit 1; fi ;;
@@ -73,10 +79,11 @@ for rejected in env context tls endpoint host daemon host_cmd daemon_cmd; do
     *) if bash "$script" --preview > "$tmp/denied.tsv" 2> "$tmp/denied.err"; then exit 1; fi ;;
   esac
   case "$rejected" in
-    host) grep -qx 'HOSTNAME_MISMATCH match=false' "$tmp/denied.err" ;;
+    host) grep -qx 'DOCKER_DAEMON_MISMATCH match=false' "$tmp/denied.err" ;;
     daemon) grep -qx 'DOCKER_DAEMON_MISMATCH match=false' "$tmp/denied.err" ;;
     host_cmd) grep -qx 'HOSTNAME_QUERY_FAILED exit=41' "$tmp/denied.err" ;;
     daemon_cmd) grep -qx 'DOCKER_DAEMON_QUERY_FAILED exit=42' "$tmp/denied.err" ;;
+    attestation) grep -qx 'TEST_ATTESTATION_UNVERIFIED match=false' "$tmp/denied.err" ;;
     *) grep -qx DOCKER_ENDPOINT_DENIED "$tmp/denied.err" ;;
   esac
   [ "$(wc -l < "$tmp/denied.err")" = 1 ]

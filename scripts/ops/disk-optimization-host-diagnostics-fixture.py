@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """서버 접근 없이 owned 응답만 관찰한다."""
 import importlib.util
+import contextlib
+import io
 import json
 from pathlib import Path
 import stat
@@ -43,11 +45,62 @@ class Fixture(unittest.TestCase):
         with patch.object(source.os, "geteuid", return_value=123, create=True), patch.object(source.Path, "is_absolute", return_value=True), patch.object(source.Path, "lstat", info), patch.object(source, "read_history", return_value=(True, SHA)):
             result = source.collect({**ENV, "DOCKER_HOST": source.LOCAL}, run, lambda: {"status": "ok", "db": "ok", "testMode": True, "version": SHA, "other": "owned-sensitive-health"})
         self.assertFalse(result["identityVerified"])
+        self.assertTrue(source.preview_identity_verified(result))
         self.assertFalse(result["hostnameMatchesExpected"]); self.assertFalse(result["daemonMatchesExpected"])
         for key in ("daemonMatchesOSHostname", "localSocketRootOwned", "dockerRootRootOwned", "runnerDiagOwned", "historyOwned", "historyHasCommit", "oneLocalApp", "appComposeLabelsMatch", "appImageOnqCommit", "appImageMatchesHistory", "localHealthOk", "localHealthTestMode", "localHealthMatchesAppImage"): self.assertTrue(result[key], key)
         encoded = json.dumps(result)
         for hidden in ("owned-os-private", "/owned", SHA, "owned-sensitive", "unix://"): self.assertNotIn(hidden, encoded)
         self.assertTrue(all(isinstance(value, (bool, int)) for key, value in result.items() if key != "protocol"))
+
+    def test_preview_attestation_requires_every_fresh_boolean_not_vm_name(self):
+        normal = {key: True for key in source.PREVIEW_IDENTITY_CHECKS}
+        normal.update(identityVerified=False, hostnameMatchesExpected=False, daemonMatchesExpected=False)
+        self.assertTrue(source.preview_identity_verified(normal))
+        for key in source.PREVIEW_IDENTITY_CHECKS:
+            for denied in (False, None, 1, "true"):
+                with self.subTest(key=key, denied=denied):
+                    self.assertFalse(source.preview_identity_verified({**normal, key: denied}))
+            self.assertFalse(source.preview_identity_verified({k: v for k, v in normal.items() if k != key}))
+        with patch.object(source, "collect", return_value=normal) as measured, contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(source.main(["--verify-preview-host"], ENV), 0)
+            measured.assert_called_once_with(ENV)
+            self.assertEqual(out.getvalue(), "")
+        with patch.object(source, "collect", return_value={**normal, "runnerDiagOwned": False}) as measured, contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(source.main(["--verify-preview-host"], ENV), 1)
+            measured.assert_called_once_with(ENV)
+            self.assertEqual(err.getvalue(), "TEST_ATTESTATION_UNVERIFIED match=false\n")
+        with patch.object(source, "collect") as measured, contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(source.main(["--verify-preview-host"], {**ENV, "OBS_HISTORY_FILE": "/owned/other"}), 1)
+            measured.assert_not_called()
+            self.assertEqual(err.getvalue(), "HISTORY_UNVERIFIED\n")
+
+    def test_runner_directory_false_reasons_are_booleans_and_never_accepted(self):
+        def run(args, env):
+            if args[0] == "hostname" or args[-1] == "{{.Name}}": return 0, "owned-private-name"
+            if args[3:5] == ["context", "inspect"]: return 0, source.LOCAL
+            return 0, ""
+        baseline = dict(st_mode=stat.S_IFDIR | 0o755, st_uid=123, st_nlink=1)
+        for prefix, target in (("runnerRoot", "/owned/runner"), ("runnerDiag", "/owned/runner/_diag")):
+            for case, delta, reason in [
+                ("missing", None, "Exists"),
+                ("file", {"st_mode": stat.S_IFREG | 0o644}, "Directory"),
+                ("symlink", {"st_mode": stat.S_IFLNK | 0o777}, "Symlink"),
+                ("owner", {"st_uid": 999}, "OwnerMatchesEuid"),
+                ("group-write", {"st_mode": stat.S_IFDIR | 0o775}, "GroupOrOtherWritable"),
+                ("other-write", {"st_mode": stat.S_IFDIR | 0o757}, "GroupOrOtherWritable"),
+            ]:
+                def info(path):
+                    if path.as_posix() == target:
+                        if delta is None: raise FileNotFoundError()
+                        return SimpleNamespace(**{**baseline, **delta})
+                    return SimpleNamespace(**baseline)
+                with self.subTest(prefix=prefix, case=case), patch.object(source.os, "geteuid", return_value=123, create=True), patch.object(source.Path, "lstat", info), patch.object(source, "read_history", return_value=(False, None)):
+                    result = source.collect(ENV, run, lambda: {})
+                self.assertFalse(result["runnerDiagOwned"])
+                self.assertIs(result[prefix + reason], reason in ("Symlink", "GroupOrOtherWritable"))
+                self.assertFalse(source.preview_identity_verified(result))
+                encoded = json.dumps(result)
+                for hidden in ("owned-private-name", "/owned", "999", "123"): self.assertNotIn(hidden, encoded)
 
     def test_query_failures_keep_exit_status_without_raw_error_or_health_probe(self):
         def run(args, env): return (41, "owned-private-error") if args[0] == "hostname" else (42, "owned-private-error")
