@@ -13,3 +13,8 @@ export async function submitSellerLogin(page: Page, email: string, password: str
   await page.waitForURL((u) => u.pathname !== "/seller/login");
   if (new URL(page.url()).pathname === "/seller/identity-link") await page.getByRole("button", { name: "나중에 하기" }).click();
 }
+
+// 로그아웃은 확인 창을 거친다(「로그아웃하시겠습니까?」): 창의 [로그아웃]을 눌러 마친다. 창 밖 버튼(상단 유틸)은 이름이 같아 창 안에서만 찾는다.
+export async function confirmLogout(page: Page) {
+  await page.getByRole("dialog").getByRole("button", { name: "로그아웃", exact: true }).click();
+}
