@@ -34,6 +34,34 @@ def health():
     except Exception:
         return {}
 
+def read_history(path):
+    descriptor = None
+    try:
+        if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "geteuid"):
+            return False, None
+        def valid(info):
+            return stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and info.st_uid == os.geteuid() and not info.st_mode & 0o022
+        def identity(info):
+            return (info.st_dev, info.st_ino, info.st_uid, info.st_gid, info.st_mode, info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+        before = path.lstat()
+        if not valid(before):
+            return False, None
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        opened = os.fstat(descriptor)
+        if not valid(opened) or identity(opened) != identity(before) or identity(path.lstat()) != identity(opened):
+            return False, None
+        os.lseek(descriptor, max(0, opened.st_size - 65536), os.SEEK_SET)
+        content = os.read(descriptor, 65536)
+        if identity(os.fstat(descriptor)) != identity(opened) or identity(path.lstat()) != identity(opened):
+            return False, None
+        versions = re.findall(rb"sha=([0-9a-f]{40})", content)
+        return True, versions[-1].decode("ascii") if versions else None
+    except Exception:
+        return False, None
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
 def collect(env, run=command, read_health=health):
     evidence = {"protocol": "ONQ_HOST_READONLY_V1", "identityVerified": False}
     if env.get("GITHUB_REPOSITORY") != REPO or env.get("GITHUB_REF") != "refs/heads/main" or env.get("RUNNER_OS") != "Linux":
@@ -71,16 +99,7 @@ def collect(env, run=command, read_health=health):
     runner = Path(env.get("OBS_RUNNER_ROOT", ""))
     evidence["runnerDiagOwned"] = runner.is_absolute() and owned(runner, True) and owned(runner / "_diag", True)
     history = Path("/opt/obs/deploy-history.log")
-    evidence["historyOwned"] = owned(history)
-    latest = None
-    if evidence["historyOwned"]:
-        try:
-            with history.open("rb") as file:
-                file.seek(0, 2); file.seek(max(0, file.tell() - 65536))
-                versions = re.findall(rb"sha=([0-9a-f]{40})", file.read(65536))
-            latest = versions[-1].decode("ascii") if versions else None
-        except Exception:
-            pass
+    evidence["historyOwned"], latest = read_history(history)
     evidence["historyHasCommit"] = latest is not None
     app_exit, ids = docker("ps", "-q", "--filter", "label=com.docker.compose.project=obs-web", "--filter", "label=com.docker.compose.service=obs-web-app")
     evidence["appLookupExit"] = app_exit

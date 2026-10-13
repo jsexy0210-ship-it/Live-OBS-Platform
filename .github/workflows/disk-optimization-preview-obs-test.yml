@@ -69,7 +69,7 @@ jobs:
           date -u +%Y-%m-%dT%H:%M:%S.000Z > evidence/checked-at.txt
           printf '%s\n' "$GITHUB_RUN_ID" > evidence/preview-run-id.txt
       - name: Save host diagnostics
-        if: always()
+        if: always() && steps.isolated_checkout.outcome == 'success' && steps.checkout.outcome == 'success' && steps.isolated_checkout.outputs.checkout_path != ''
         uses: actions/upload-artifact@v4
         with:
           name: disk-optimization-host-diagnostics-${{ github.run_id }}
