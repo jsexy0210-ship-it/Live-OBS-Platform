@@ -1,0 +1,80 @@
+{
+  "sha": "1a5dd61c04584982f1341bc05a18448e75c5bf13",
+  "role": "anonymous buyer",
+  "tenant": "list-ten-17963bb3dc",
+  "state": "list-p2-end-1024",
+  "browserZoom": "unverified",
+  "url": "/shop/list-ten-17963bb3dc/products?page=3",
+  "innerWidth": 1024,
+  "innerHeight": 800,
+  "dpr": 1,
+  "scale": 1,
+  "scrollWidth": 1024,
+  "heading": "전체 상품 28개",
+  "cards": [
+    {
+      "name": "채움상품 08",
+      "price": "1,008원",
+      "left": 248,
+      "right": 423,
+      "top": -39,
+      "bottom": 196.875
+    },
+    {
+      "name": "채움상품 07",
+      "price": "1,007원",
+      "left": 443,
+      "right": 618,
+      "top": -39,
+      "bottom": 196.875
+    },
+    {
+      "name": "채움상품 06",
+      "price": "1,006원",
+      "left": 638,
+      "right": 813,
+      "top": -39,
+      "bottom": 196.875
+    },
+    {
+      "name": "채움상품 05",
+      "price": "1,005원",
+      "left": 833,
+      "right": 1008,
+      "top": -39,
+      "bottom": 196.875
+    },
+    {
+      "name": "채움상품 04",
+      "price": "1,004원",
+      "left": 248,
+      "right": 423,
+      "top": 228.875,
+      "bottom": 464.75
+    },
+    {
+      "name": "채움상품 03",
+      "price": "1,003원",
+      "left": 443,
+      "right": 618,
+      "top": 228.875,
+      "bottom": 464.75
+    },
+    {
+      "name": "채움상품 02",
+      "price": "1,002원",
+      "left": 638,
+      "right": 813,
+      "top": 228.875,
+      "bottom": 464.75
+    },
+    {
+      "name": "채움상품 01",
+      "price": "1,001원",
+      "left": 833,
+      "right": 1008,
+      "top": 228.875,
+      "bottom": 464.75
+    }
+  ]
+}
