@@ -52,12 +52,6 @@ const payMethodText = (p: NonNullable<Order["paymentInfo"]>) => {
   const inst = p.card.installment && p.card.installment > 1 ? `${p.card.installment}개월 할부` : p.card.installment !== null ? "일시불" : "";
   return [`카드${p.card.last4 ? ` ****-${p.card.last4}` : ""}`, inst].filter(Boolean).join(" · ");
 };
-// KST 날짜·시각(서버 값은 UTC ISO)
-const kst = (iso: string) => {
-  const d = new Date(new Date(iso).getTime() + 9 * 3600_000);
-  return `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
-};
-
 export default function OrderView({ slug, orderId }: { slug: string; orderId: string }) {
   const base = `/shop/${encodeURIComponent(slug)}`;
   const sp = useSearchParams();
@@ -156,7 +150,7 @@ export default function OrderView({ slug, orderId }: { slug: string; orderId: st
             주문번호를 복사했어요
           </p>
         )}
-        {o.status === "PENDING_PAYMENT" && o.paymentDueAt && <p className="cart-hint">결제 기한 {kst(o.paymentDueAt)}</p>}
+        {o.status === "PENDING_PAYMENT" && o.paymentDueAt && <p className="cart-hint">결제 기한 {formatDateTime(o.paymentDueAt)}</p>}
       </section>
       {o.status === "PENDING_PAYMENT" && <OrderPay slug={slug} orderId={o.id} amount={o.totalAmount} dueAt={o.paymentDueAt} />}
       {o.status === "PAID" && o.queue && (

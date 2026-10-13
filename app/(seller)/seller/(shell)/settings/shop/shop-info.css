@@ -9,8 +9,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--wds-fill-alternative);
+  background: var(--wds-blue-50);
   box-shadow: inset 0 0 0 1px var(--wds-line-normal-alternative);
+}
+.si-logo.has-logo {
+  background: var(--wds-fill-alternative);
 }
 .si-logo.is-editable {
   cursor: pointer;
@@ -32,7 +35,7 @@
 .si-letter {
   font-size: 48px;
   font-weight: 800;
-  color: var(--wds-label-assistive);
+  color: #ffffff;
 }
 .si-hint {
   position: absolute;
@@ -40,7 +43,7 @@
   right: 0;
   bottom: 10px;
   text-align: center;
-  color: var(--wds-label-alternative);
+  color: #ffffff;
 }
 .si-preview {
   display: flex;
@@ -65,8 +68,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--brand);
-  color: var(--brand-ink);
+  background: var(--wds-blue-50);
+  color: #ffffff;
   font-size: 14px;
   font-weight: 800;
 }

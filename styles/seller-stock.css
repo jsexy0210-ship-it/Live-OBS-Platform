@@ -10,8 +10,17 @@
   gap: 8px;
   margin-left: auto;
 }
+.stock-table-wrap {
+  overflow-x: auto;
+}
 .stock-table {
   table-layout: fixed;
+}
+@media (min-width: 768px) {
+  .stock-table {
+    /* 고정 열 686px에 상품·옵션 이름 160px를 남긴다. */
+    min-width: 846px;
+  }
 }
 .stock-table td {
   overflow: hidden;

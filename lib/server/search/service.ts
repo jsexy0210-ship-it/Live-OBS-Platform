@@ -2,8 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import type { AdminSessionContext } from "../auth/session";
 import { forbidden } from "../authz/errors";
 import { adminCan } from "../authz/permissions";
-import { sellerCan, IMPERSONATION_READ_ACTIONS, type SellerAction } from "../authz/permissions";
-import type { TenantContext } from "../tenant/context";
+import { canReadAction, type TenantContext } from "../tenant/context";
 import { orderNoLabel, parseOrderNoLabel } from "../orders/orderNoLabel";
 
 // 전역 검색(마스터 MA-001 상단 · 파트너스 SA 상단). 항목마다 { id, title, sub, href }, 종류별 최대 5건. 조회만, 로그 추적 없음.
@@ -88,7 +87,7 @@ export async function adminSearch(db: PrismaClient, admin: AdminSessionContext, 
   };
 }
 
-const canRead = (ctx: TenantContext, action: SellerAction) => (ctx.readOnly ? IMPERSONATION_READ_ACTIONS.includes(action) : sellerCan(ctx, action));
+const canRead = canReadAction;
 
 export async function sellerSearch(db: PrismaClient, ctx: TenantContext, q: string) {
   const empty = { products: [], orders: [], members: [], inquiries: [] };

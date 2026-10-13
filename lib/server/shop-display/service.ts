@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient, ShopDisplayKind } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { shopOpen } from "../buyers/signup";
+import { dbNow } from "../billing/subscription";
 import { productCode } from "../products/manage";
 import { thumbnailUrls } from "../products/images";
 import {
@@ -159,12 +160,22 @@ export async function setRecommended(db: PrismaClient, ctx: TenantContext, raw: 
 export type HomeSection = { kind: ShopDisplayKind; title: string; categoryId: string | null; products: ShopProductCard[] };
 
 // 구매자 홈 진열. 운영 중이 아닌 쇼핑몰은 null(404).
-export async function publicHome(db: PrismaClient, slug: string): Promise<{ sections: HomeSection[]; listSort: ShopSort } | null> {
+export async function publicHome(db: PrismaClient, slug: string, options: { recentBroadcastProducts?: boolean } = {}): Promise<{ sections: HomeSection[]; listSort: ShopSort } | null> {
   const shop = await db.seller.findUnique({ where: { slug: slug.slice(0, 60) }, select: { id: true, slug: true } });
   if (!shop || !(await shopOpen(db, shop.id))) return null;
   const out: HomeSection[] = [];
   const opts = await displayOptions(db, shop.id);
-  const live = await liveProductIds(db, shop.id);
+  const liveNow = await liveProductIds(db, shop.id);
+  let live = liveNow;
+  if (options.recentBroadcastProducts && !live.length && !(await db.broadcastSession.findFirst({ where: { sellerId: shop.id, status: "LIVE" }, select: { id: true } }))) {
+    const recent = await db.broadcastSession.findFirst({ where: { sellerId: shop.id, status: "ENDED" }, orderBy: [{ startedAt: "desc" }, { id: "desc" }], select: { id: true } });
+    if (recent) {
+      const items = await db.queueItem.findMany({ where: { sellerId: shop.id, broadcastSessionId: recent.id, status: { not: "CANCELLED" }, orderItemId: { not: null } }, orderBy: [{ receivedAt: "desc" }, { id: "asc" }], select: { orderItem: { select: { productId: true } } } });
+      live = [...new Set(items.flatMap(i => i.orderItem ? [i.orderItem.productId] : []))];
+    }
+  }
+  // 서버 시각으로 지난 7일을 포함한다. 진열 개수·품절 순서를 적용하기 전에 기간을 제한한다.
+  const now = await dbNow(db);
   // 정한 순서를 그대로 쓰는 영역(추천·방송·명예의 전당)은 방송 상품 앞으로를 걸지 않는다
   const fixed = (cards: ShopProductCard[], n: number) => arrange(cards, opts, null, (c) => c.id).slice(0, n);
   for (const s of (await sections(db, shop.id)).filter((x) => x.visible)) {
@@ -172,12 +183,15 @@ export async function publicHome(db: PrismaClient, slug: string): Promise<{ sect
     if (s.kind === "RECOMMENDED") {
       const items = await db.shopDisplayItem.findMany({ where: { sellerId: shop.id }, orderBy: [{ sortOrder: "asc" }], select: { productId: true } });
       products = fixed(await shopCardsInOrder(db, shop, items.map((i) => i.productId)), s.itemCount);
+    } else if (s.kind === "NEW") {
+      const rows = await db.product.findMany({ where: { sellerId: shop.id, deletedAt: null, status: { in: ["ON_SALE", "SOLD_OUT"] }, createdAt: { gte: new Date(now.getTime() - 7 * 86_400_000), lte: now } }, orderBy: [{ createdAt: "desc" }, { id: "asc" }], select: { id: true } });
+      products = arrange(await shopCardsInOrder(db, shop, rows.map(p => p.id)), opts, liveNow, p => p.id).slice(0, s.itemCount);
     } else if (s.kind === "LIVE") {
       products = fixed(await shopCardsInOrder(db, shop, live), s.itemCount);
     } else if (s.kind === "HALL_OF_FAME") {
       products = fixed(await shopCardsInOrder(db, shop, await hallOfFameProductIds(db, shop.id, s.itemCount)), s.itemCount);
     } else {
-      const sort = s.kind === "NEW" ? "new" : s.kind === "BEST" ? "popular" : "recommended";
+      const sort = s.kind === "BEST" ? "popular" : "recommended";
       const only = s.kind === "SALE" ? "sale" : s.kind === "BEST" ? "best" : undefined;
       const r = await shopProductList(db, shop.slug, { sort, categoryId: s.categoryId ?? undefined, limit: String(s.itemCount) }, only);
       products = r.ok ? r.value.products : []; // 보이지 않는 카테고리는 not_found → 영역을 뺀다

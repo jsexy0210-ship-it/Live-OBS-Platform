@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { CursorPagination } from "../Pagination";
 import Link from "next/link";
 import MyMenu from "./MyMenu";
 import ReviewWrite from "./ReviewWrite";
@@ -40,13 +41,21 @@ export default function ReviewMine({ slug, initialItem, initialReview }: { slug:
   const [view, setView] = useState<{ kind: "loading" } | { kind: "login" } | { kind: "error" } | { kind: "ok"; data: Data }>({ kind: "loading" });
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [deleting, setDeleting] = useState<Mine | null>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const seq = useRef(0);
+  const paging = useRef(false);
+  const [pages, setPages] = useState({ writable: 1, reviews: 1 });
+  const [cursors, setCursors] = useState<{ writable: (string | null)[]; reviews: (string | null)[] }>({ writable: [null], reviews: [null] });
+  const [selectedWritable, setSelectedWritable] = useState<Writable | null>(null);
   const [removing, setRemoving] = useState(false);
   // 고르지 않았으면(undefined) 처음 리뷰를 기다리는 상품을 쓴다. 취소하면 null(상자를 접는다)
   const [picked, setPicked] = useState<Target | undefined>(initialReview ? { review: initialReview } : initialItem ? { item: initialItem } : undefined);
 
   const load = useCallback(async () => {
+    const n = ++seq.current; paging.current = true;
+    setPages({ writable: 1, reviews: 1 }); setCursors({ writable: [null], reviews: [null] });
     const r = await call<Data>(base);
+    if (n !== seq.current) return;
+    paging.current = false;
     if (r.ok) return setView({ kind: "ok", data: r.data });
     setView(r.status === 401 || r.status === 404 ? { kind: "login" } : { kind: "error" });
   }, [base]);
@@ -55,26 +64,27 @@ export default function ReviewMine({ slug, initialItem, initialReview }: { slug:
     void load();
   }, [load]);
 
-  // 더 보기: 리뷰를 기다리는 상품(writable) 또는 내가 쓴 리뷰(reviews)의 다음 쪽을 이어 붙인다
-  const more = async (list: "writable" | "reviews") => {
-    if (view.kind !== "ok" || loadingMore) return;
-    const cursor = list === "writable" ? view.data.writableNextCursor : view.data.nextCursor;
-    if (!cursor) return;
-    setLoadingMore(true);
-    const r = await call<Data>(`${base}?${list === "writable" ? "writableCursor" : "cursor"}=${cursor}`);
-    setLoadingMore(false);
-    if (!r.ok) return setMsg({ ok: false, text: r.message ?? "더 불러오지 못했어요. 잠시 뒤 다시 해 주세요" });
-    setView((v) =>
-      v.kind !== "ok"
-        ? v
-        : {
-            kind: "ok",
-            data:
-              list === "writable"
-                ? { ...v.data, writable: [...v.data.writable, ...r.data.writable], writableNextCursor: r.data.writableNextCursor }
-                : { ...v.data, reviews: [...v.data.reviews, ...r.data.reviews], nextCursor: r.data.nextCursor },
-          },
-    );
+  const go = async (list: "writable" | "reviews", target: number, cursor: string | null) => {
+    if (view.kind !== "ok" || paging.current) return;
+    if (list === "writable") {
+      const id = picked && "item" in picked ? picked.item : picked === undefined ? view.data.writable[0]?.orderItemId : undefined;
+      const selected = view.data.writable.find(x => x.orderItemId === id);
+      if (selected) { setSelectedWritable(selected); if (picked === undefined) setPicked({ item: selected.orderItemId }); }
+    }
+    const n = ++seq.current; paging.current = true;
+    let actualPage = target; let actualCursor = cursor;
+    const read = () => call<Data>(actualCursor ? `${base}?${list === "writable" ? "writableCursor" : "cursor"}=${encodeURIComponent(actualCursor)}` : base);
+    let r = await read();
+    while (n === seq.current && r.ok && r.data[list].length === 0 && actualPage > 1) {
+      actualPage -= 1; actualCursor = cursors[list][actualPage - 1]; r = await read();
+    }
+    if (n !== seq.current) return;
+    paging.current = false;
+    if (!r.ok) return setMsg({ ok: false, text: r.message ?? "불러오지 못했어요. 다시 시도해 주세요" });
+    setView(v => v.kind !== "ok" ? v : { kind: "ok", data: list === "writable" ? { ...v.data, writable: r.data.writable, writableNextCursor: r.data.writableNextCursor } : { ...v.data, reviews: r.data.reviews, nextCursor: r.data.nextCursor } });
+    setPages(p => ({ ...p, [list]: actualPage }));
+    const next = list === "writable" ? r.data.writableNextCursor : r.data.nextCursor;
+    setCursors(c => { const visited = c[list].slice(0, actualPage); visited[actualPage - 1] = actualCursor; return { ...c, [list]: c[list][actualPage] === next ? c[list] : visited }; });
   };
 
   const remove = async () => {
@@ -117,7 +127,7 @@ export default function ReviewMine({ slug, initialItem, initialReview }: { slug:
   else {
     const { data } = view;
     const target: Target = picked === undefined ? (data.writable[0] ? { item: data.writable[0].orderItemId } : null) : picked;
-    const w = target && "item" in target ? data.writable.find((x) => x.orderItemId === target.item) : undefined;
+    const w = target && "item" in target ? data.writable.find((x) => x.orderItemId === target.item) ?? (selectedWritable?.orderItemId === target.item ? selectedWritable : undefined) : undefined;
     content = (
       <>
         {msg && (
@@ -133,8 +143,9 @@ export default function ReviewMine({ slug, initialItem, initialReview }: { slug:
             reviewId={"review" in target ? target.review : null}
             writableUntil={w?.writableUntil}
             right={
-              "item" in target && data.writable.length > 1 ? (
-                <select className="inp rv-pick" aria-label="리뷰 쓸 상품" value={target.item} onChange={(e) => setPicked({ item: e.target.value })}>
+              "item" in target && w && (data.writable.length > 1 || !data.writable.some(x => x.orderItemId === w.orderItemId)) ? (
+                <select className="inp rv-pick" aria-label="리뷰 쓸 상품" value={target.item} onChange={(e) => { setPicked({ item: e.target.value }); setSelectedWritable(data.writable.find(x => x.orderItemId === e.target.value) ?? null); }}>
+                  {w && !data.writable.some(x => x.orderItemId === w.orderItemId) && <option hidden value={w.orderItemId}>{w.productName}</option>}
                   {data.writable.map((x) => (
                     <option key={x.orderItemId} value={x.orderItemId}>
                       {x.productName}
@@ -151,7 +162,7 @@ export default function ReviewMine({ slug, initialItem, initialReview }: { slug:
           <div className="rv-box">
             <div className="rv-box-h">
               <h2>리뷰 쓰기</h2>
-              <span className="rv-box-r">리뷰를 기다리는 상품 {data.writable.length}개</span>
+              <span className="rv-box-r">현재 쪽에서 리뷰를 기다리는 상품 {data.writable.length}개</span>
             </div>
             <div className="rv-box-b">
               <button className="btn" type="button" onClick={() => setPicked({ item: data.writable[0].orderItemId })}>
@@ -162,15 +173,11 @@ export default function ReviewMine({ slug, initialItem, initialReview }: { slug:
         ) : (
           <p className="rv-hint">지금 리뷰를 쓸 수 있는 상품이 없어요. 배송이 끝난 상품은 정해진 기간 안에 리뷰를 쓸 수 있어요.</p>
         )}
-        {data.writableNextCursor && target && "item" in target && (
-          <button className="btn btn-sm btn-out rv-more" type="button" disabled={loadingMore} onClick={() => void more("writable")}>
-            리뷰를 기다리는 상품 더 보기
-          </button>
-        )}
+        {(cursors.writable.length > 1 || data.writableNextCursor) && <div role="group" aria-label="리뷰 쓸 상품 페이지"><CursorPagination page={pages.writable} visited={cursors.writable.length} hasNext={!!data.writableNextCursor} onChange={n => void go("writable", n, cursors.writable[n - 1])} onNext={() => { if (data.writableNextCursor) void go("writable", pages.writable + 1, data.writableNextCursor); }} /></div>}
         <section aria-labelledby="rv-mine-title">
           <div className="rv-st">
             <h2 id="rv-mine-title">내 리뷰</h2>
-            <span>{data.reviews.length}건{data.nextCursor ? " 이상" : ""}</span>
+            <span>현재 쪽 {data.reviews.length}건</span>
           </div>
           {data.reviews.length === 0 ? (
             <p className="rv-hint" style={{ padding: "16px 0" }}>
@@ -232,11 +239,7 @@ export default function ReviewMine({ slug, initialItem, initialReview }: { slug:
               </tbody>
             </table>
           )}
-          {data.nextCursor && (
-            <button className="btn btn-sm btn-out rv-more" type="button" disabled={loadingMore} onClick={() => void more("reviews")}>
-              더 보기 ›
-            </button>
-          )}
+          {(cursors.reviews.length > 1 || data.nextCursor) && <div role="group" aria-label="내 리뷰 페이지"><CursorPagination page={pages.reviews} visited={cursors.reviews.length} hasNext={!!data.nextCursor} onChange={n => void go("reviews", n, cursors.reviews[n - 1])} onNext={() => { if (data.nextCursor) void go("reviews", pages.reviews + 1, data.nextCursor); }} /></div>}
         </section>
       </>
     );

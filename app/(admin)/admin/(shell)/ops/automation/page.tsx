@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useEffect, useState } from "react";
-import { PageHead } from "../../../../../../components/admin-ui";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { CursorPagination, PageHead } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows } from "../../../../../../components/seller/States";
 import { useUrlState } from "../../../../../../lib/client/navigation";
 import { adminApi } from "../../../_components/api";
@@ -28,6 +28,7 @@ type Row = {
 type Data = {
   summary: { running: number; queued: number; customerWaiting: number; doneToday: number; failedToday: number; costTodayWon: number; monthly: { usedWon: number; limitWon: number; stopped: boolean } };
   jobs: Row[];
+  nextCursor: string | null;
 };
 const FILTERS: [Filter, string][] = [["all", "전체"], ["customer", "고객이 할 일 기다림"], ["failed", "실패"], ["done", "완료"]];
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
@@ -39,14 +40,41 @@ function AutomationJobsPageInner() {
   const setFilter = (f: Filter) => setQ({ filter: f });
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error" } | { kind: "ok"; data: Data }>({ kind: "loading" });
   const [tick, setTick] = useState(0);
+  const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const paging = useRef(false);
+  const reqId = useRef(0);
   useEffect(() => {
     let live = true;
-    void adminApi<Data>(`/api/automation/admin/jobs?filter=${filter}`).then((r) => live && setState(r.ok ? { kind: "ok", data: r.data } : { kind: "error" }));
+    const id = ++reqId.current;
+    paging.current = true; setPage(1); setCursors([undefined]);
+    setState({ kind: "loading" });
+    void adminApi<Data>(`/api/automation/admin/jobs?filter=${filter}`).then((r) => {
+      if (!live || id !== reqId.current) return;
+      paging.current = false;
+      setState(r.ok ? { kind: "ok", data: r.data } : { kind: "error" });
+    });
     return () => {
       live = false;
     };
   }, [filter, tick]);
 
+  const changePage = async (target: number) => {
+    if (state.kind !== "ok" || paging.current || target === page || target < 1 || target > cursors.length + 1) return;
+    const cursor = target <= cursors.length ? cursors[target - 1] : state.data.nextCursor ?? undefined;
+    if (target > 1 && !cursor) return;
+    paging.current = true;
+    const id = ++reqId.current;
+    const params = new URLSearchParams({ filter });
+    if (cursor) params.set("cursor", cursor);
+    const r = await adminApi<Data>(`/api/automation/admin/jobs?${params}`);
+    if (id !== reqId.current) return;
+    paging.current = false;
+    if (r.ok) {
+      if (target > cursors.length) setCursors(c => [...c, cursor]);
+      setPage(target); setState({ kind: "ok", data: r.data });
+    } else setState({ kind: "error" });
+  };
   const d = state.kind === "ok" ? state.data : null;
   return (
     <>
@@ -110,6 +138,7 @@ function AutomationJobsPageInner() {
                   </div>
                 )}
               </section>
+              {(cursors.length > 1 || d.nextCursor) && <CursorPagination page={page} visited={cursors.length} hasNext={!!d.nextCursor} onChange={(n) => void changePage(n)} onNext={() => void changePage(page + 1)} />}
               <span className="t-c1 c-alt">결제가 확인되어야 작업을 시작합니다.</span>
             </>
           )}

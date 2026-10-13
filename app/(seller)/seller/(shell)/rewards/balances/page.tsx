@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { CursorPagination } from "../../../../../../components/Pagination";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Modal, PageHead, SearchBox, SearchRow, useConfirm } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
@@ -11,7 +12,7 @@ import { useScrollRestore, useUrlState } from "../../../../../../lib/client/navi
 import { formatDate, formatDateTime } from "../../../../../../lib/client/format";
 
 // SA-033 회원별 잔액(정본 SA-033 FINAL, 회원·적립금 권한). API: GET /api/seller/reward-balances(+export), POST …/{memberId}/adjust, GET reward-policy(등급 목록)·reward-live-payout(켜짐 여부).
-// 검색(닉네임·이름)·등급·조건(잔액 있음/소멸 예정/지급 대기)·정렬은 주소가 기준이고 20명씩 「더 보기」. 「수동 조정」은 확인 창을 거쳐 한 건씩 지급·회수한다(사유 필수, 원장에 남음).
+// 검색(닉네임·이름)·등급·조건(잔액 있음/소멸 예정/지급 대기)·정렬은 주소가 기준이고 10명씩 현재 쪽을 조회합니다. 「수동 조정」은 확인 창을 거쳐 한 건씩 지급·회수한다(사유 필수, 원장에 남음).
 type Row = {
   member: { id: string; broadcastNickname: string | null };
   grade: { id: string; name: string } | null;
@@ -25,7 +26,7 @@ type Row = {
 type Summary = { count: number; totalBalance: number };
 type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; rows: Row[]; next: string | null; summary: Summary; pending: { count: number; amount: number } };
 
-const PAGE = 20;
+const PAGE = 10;
 const SORTS = [
   { key: "balance", label: "잔액 많은 순" },
   { key: "expiring", label: "소멸 예정 가까운 순" },
@@ -65,7 +66,9 @@ export default function RewardBalancesPage() {
   );
   const [filter, setFilter] = useState<Cond>(applied);
   const [state, setState] = useState<Load>({ kind: "loading" });
-  const [more, setMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const paging = useRef(false);
   const [toast, setToast] = useState<string | null>(null);
   const [grades, setGrades] = useState<{ id: string; name: string }[]>([]);
   const [live, setLive] = useState<boolean | null>(null);
@@ -82,7 +85,8 @@ export default function RewardBalancesPage() {
   type Res = { balances: Row[]; summary: Summary; pending: { count: number; amount: number }; nextCursor: string | null };
   const load = useCallback(async (c: Cond) => {
     const id = ++reqId.current;
-    setMore(false);
+    paging.current = false; setPage(1); setCursors([undefined]);
+
     setState({ kind: "loading" });
     const r = await api<Res>(url(c));
     if (id !== reqId.current) return;
@@ -99,15 +103,18 @@ export default function RewardBalancesPage() {
     })();
   }, []);
 
-  const loadMore = async () => {
-    if (state.kind !== "ok" || !state.next) return;
-    setMore(true);
+  const goPage = async (target: number, cursor = cursors[target - 1]) => {
+    if (state.kind !== "ok" || paging.current || target < 1 || target > cursors.length + 1) return;
+    paging.current = true;
     const id = reqId.current;
-    const r = await api<Res>(url(applied, state.next));
+    const r = await api<Res>(url(applied, cursor));
     if (id !== reqId.current) return;
-    setMore(false);
-    if (r.ok) setState({ ...state, rows: [...state.rows, ...r.data.balances], next: r.data.nextCursor });
-    else setToast("회원별 잔액을 더 불러오지 못했습니다. 다시 눌러 주십시오");
+    paging.current = false;
+    if (r.ok) {
+      setState({ kind: "ok", rows: r.data.balances, next: r.data.nextCursor, summary: r.data.summary, pending: r.data.pending });
+      setCursors((prev) => [...prev.slice(0, target - 1), cursor]); setPage(target);
+
+    } else setToast("목록을 불러오지 못했습니다. 다시 눌러 주십시오");
   };
 
   const rows = state.kind === "ok" ? state.rows : [];
@@ -243,15 +250,10 @@ export default function RewardBalancesPage() {
                     </tbody>
                   </table>
                 </div>
-                {state.next && (
-                  <div className="row" style={{ justifyContent: "center", marginTop: 16 }}>
-                    <button className="btn btn-sm btn-out" type="button" onClick={() => void loadMore()} disabled={more}>
-                      {more ? "불러오는 중" : "더 보기"}
-                    </button>
-                  </div>
-                )}
+
               </>
             ))}
+          {state.kind === "ok" && (page > 1 || state.next) && <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={(target) => void goPage(target)} onNext={() => { if (state.next) void goPage(page + 1, state.next); }} />}
         </div>
         <p className="help" style={{ marginTop: 16 }}>
           누적 값은 처리에 성공한 내역만 더한 것입니다. 탈퇴한 회원은 나오지 않습니다. 소멸 예정은 30일 안에 사라질 적립금입니다.

@@ -17,7 +17,7 @@ export async function GET(req: Request) {
   }
 }
 
-// 추가. 본문: { kind: "notice"|"faq", title(60자), body(5000자), category?(질문만, 20자), isPinned?(공지만, 홈 띠 고정 1개), isPublished?(기본 true) }
+// 추가. 본문: { kind: "notice"|"faq", title(60자), body(5000자), category?(선택, 20자), isPinned?(공지만, 홈 띠 고정 1개), isPublished?(기본 true) }
 export const POST = mutation(async (req: Request) => {
   const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "STORE_OPERATIONS" });
   const r = await createNotice(prisma, ctx, await readJson(req), requestMeta(req));

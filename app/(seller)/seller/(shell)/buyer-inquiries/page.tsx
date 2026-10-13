@@ -1,7 +1,9 @@
 "use client";
 
+import { CursorPagination } from "../../../../../components/Pagination";
+
 import { formatDateTime } from "../../../../../lib/client/format";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { Modal, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
@@ -23,6 +25,7 @@ type Inquiry = {
   id: string;
   kind: Kind;
   product: { id: string; name: string } | null;
+  order: { id: string; orderNoLabel: string } | null;
   title: string;
   body: string;
   isPrivate: boolean;
@@ -65,9 +68,11 @@ export default function BuyerInquiriesPage() {
     [url.status, url.kind, url.from, url.to, url.q, url.period],
   );
   const [draft, setDraft] = useState<Filter>(filter);
-  const [more, setMore] = useState<Inquiry[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const reqId = useRef(0);
+  const paging = useRef(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
 
@@ -86,32 +91,34 @@ export default function BuyerInquiriesPage() {
   );
 
   const load = useCallback(async () => {
+    const id = ++reqId.current; paging.current = true;
     const r = await api<Data>(query());
+    if (id !== reqId.current) return;
+    paging.current = false;
     if (!r.ok) return setState({ kind: "error", status: r.status });
-    setMore([]);
     setCursor(r.data.nextCursor);
-    setState({ kind: "ok", data: r.data });
+    setState({ kind: "ok", data: r.data }); setPage(1); setCursors([undefined]);
   }, [query]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const loadMore = async () => {
-    if (!cursor) return;
-    setLoadingMore(true);
-    const r = await api<Data>(query(cursor));
-    setLoadingMore(false);
-    if (!r.ok) return setToast({ text: "더 불러오지 못했습니다. 다시 눌러 주십시오", neg: true });
-    const seen = new Set(more.map((x) => x.id));
-    setMore((m) => [...m, ...r.data.inquiries.filter((x) => !seen.has(x.id))]);
-    setCursor(r.data.nextCursor);
+  const goPage = async (target: number, next = cursors[target - 1]) => {
+    if (state.kind !== "ok" || paging.current || target < 1 || target > cursors.length + 1) return;
+    paging.current = true;
+    const id = reqId.current;
+    const r = await api<Data>(query(next));
+    if (id !== reqId.current) return;
+    paging.current = false;
+    if (!r.ok) return setToast({ text: "목록을 불러오지 못했습니다. 다시 눌러 주십시오", neg: true });
+    setState({ kind: "ok", data: r.data }); setCursor(r.data.nextCursor);
+    setCursors((prev) => [...prev.slice(0, target - 1), next]); setPage(target);
   };
 
   useScrollRestore("seller-buyer-inquiries", state.kind === "ok");
   const data = state.kind === "ok" ? state.data : null;
-  const seen = new Set<string>();
-  const rows = data ? [...data.inquiries, ...more].filter((x) => !seen.has(x.id) && seen.add(x.id)) : [];
+  const rows = data?.inquiries ?? [];
   const open = rows.find((x) => x.id === openId) ?? null;
   const invalidRange = draft.from !== "" && draft.to !== "" && draft.from > draft.to;
 
@@ -200,6 +207,7 @@ export default function BuyerInquiriesPage() {
                           {r.isPrivate && <span className="bdg b-gray nodot">비공개</span>} {r.title}
                         </button>
                         {r.product && <div className="t-c1 c-alt">{r.product.name}</div>}
+                        {r.order && <div className="t-c1 c-alt">주문 {r.order.orderNoLabel}</div>}
                       </td>
                       <td>{r.authorNickname}</td>
                       <td className="num">{formatDateTime(r.createdAt)}</td>
@@ -209,13 +217,7 @@ export default function BuyerInquiriesPage() {
               </table>
             </div>
           )}
-          {cursor && (
-            <div className="bi-more">
-              <button className={`btn btn-sm btn-out${loadingMore ? " is-loading" : ""}`} type="button" disabled={loadingMore} onClick={() => void loadMore()}>
-                더 불러오기
-              </button>
-            </div>
-          )}
+          {(page > 1 || cursor) && <CursorPagination page={page} visited={cursors.length} hasNext={!!cursor} onChange={(target) => void goPage(target)} onNext={() => { if (cursor) void goPage(page + 1, cursor); }} />}
         </div>
       </main>
       {open && data && (
@@ -264,6 +266,7 @@ function InquiryDialog({ item, canEdit, onClose, onSaved }: { item: Inquiry; can
             <span className="t-c1 c-alt num">
               {KIND_LABEL[item.kind]} · {formatDateTime(item.createdAt)}
               {item.product ? ` · ${item.product.name}` : ""}
+              {item.order ? ` · 주문 ${item.order.orderNoLabel}` : ""}
             </span>
           </div>
           {failed && (

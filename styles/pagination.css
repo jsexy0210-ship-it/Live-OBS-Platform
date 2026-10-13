@@ -1,0 +1,9 @@
+/* DS-PANEL / SH-002: existing button and brand tokens, pagination-only geometry. */
+.onq-pagination{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:12px;padding:12px 0;max-width:100%}
+.onq-pagination .onq-page-arrows,.onq-pagination .onq-page-numbers{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:4px;max-width:100%}
+.onq-pagination .btn.onq-page-control{display:inline-flex;align-items:center;justify-content:center;min-width:40px;height:40px;min-height:40px;margin:0;padding:0 8px;font-size:14px;flex:none;text-decoration:none}
+.onq-pagination .btn.onq-page-control.on{background:var(--shop,var(--cs-primary,var(--wds-primary-normal)));border-color:var(--shop,var(--cs-primary,var(--wds-primary-normal)));color:#fff;font-weight:700}
+.onq-pagination .onq-page-control:disabled{opacity:.35;cursor:not-allowed}
+.au-lh:has(>.onq-pagination){flex-wrap:wrap}
+.au-lh>.onq-pagination{flex-basis:100%;width:100%}
+@media(max-width:767px){.onq-pagination{gap:8px}.onq-pagination .btn.onq-page-control{min-width:44px;height:44px;min-height:44px}.onq-pagination .onq-page-numbers{order:1;flex-basis:100%}.onq-pagination .btn.onq-page-desktop{display:none}}

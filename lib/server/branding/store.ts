@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
-export const BRANDING_TARGETS = ["admin", "seller"] as const;
+export const BRANDING_TARGETS = ["admin", "seller", "landing"] as const;
 export type BrandingTarget = (typeof BRANDING_TARGETS)[number];
 export const isBrandingTarget = (v: unknown): v is BrandingTarget => typeof v === "string" && (BRANDING_TARGETS as readonly string[]).includes(v);
 

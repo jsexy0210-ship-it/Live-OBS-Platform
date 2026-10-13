@@ -25,6 +25,7 @@ export default function DetailTabs() {
       {tab("pd-info", "상세 정보")}
       {tab("pd-reviews", "리뷰", n.reviews)}
       {tab("pd-qna", "상품 문의", n.inquiries)}
+      {tab("pd-shipping-refund", "배송 · 환불")}
     </nav>
   );
 }
