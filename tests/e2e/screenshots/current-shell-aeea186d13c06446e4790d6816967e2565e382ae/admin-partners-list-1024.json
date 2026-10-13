@@ -1,0 +1,459 @@
+{
+  "sourceSha": "aeea186d13c06446e4790d6816967e2565e382ae",
+  "route": "/admin/partners",
+  "role": "SUPER_ADMIN",
+  "state": "list",
+  "geometry": {
+    "mainX": 196,
+    "headY": 112,
+    "overflow": false
+  },
+  "viewport": {
+    "width": 1024,
+    "height": 900,
+    "dpr": 1,
+    "scale": 1
+  },
+  "height": 1069,
+  "table": {
+    "left": 220,
+    "right": 1336.40625,
+    "top": 876,
+    "bottom": 1036.5,
+    "width": 1116.40625,
+    "height": 160.5,
+    "scrollWidth": 1116,
+    "columns": [
+      {
+        "text": "파트너스 · 쇼핑몰",
+        "align": "left",
+        "left": 220,
+        "right": 384.8125,
+        "top": 876.5,
+        "bottom": 916.5,
+        "width": 164.8125,
+        "height": 40
+      },
+      {
+        "text": "번호",
+        "align": "center",
+        "left": 384.8125,
+        "right": 431.296875,
+        "top": 876.5,
+        "bottom": 916.5,
+        "width": 46.484375,
+        "height": 40
+      },
+      {
+        "text": "상태",
+        "align": "center",
+        "left": 431.296875,
+        "right": 548.796875,
+        "top": 876.5,
+        "bottom": 916.5,
+        "width": 117.5,
+        "height": 40
+      },
+      {
+        "text": "구독",
+        "align": "center",
+        "left": 548.796875,
+        "right": 648.90625,
+        "top": 876.5,
+        "bottom": 916.5,
+        "width": 100.109375,
+        "height": 40
+      },
+      {
+        "text": "카드 결제 연결",
+        "align": "center",
+        "left": 648.90625,
+        "right": 746.6875,
+        "top": 876.5,
+        "bottom": 916.5,
+        "width": 97.78125,
+        "height": 40
+      },
+      {
+        "text": "방송",
+        "align": "center",
+        "left": 746.6875,
+        "right": 793.171875,
+        "top": 876.5,
+        "bottom": 916.5,
+        "width": 46.484375,
+        "height": 40
+      },
+      {
+        "text": "이번 달 주문",
+        "align": "center",
+        "left": 793.171875,
+        "right": 879.71875,
+        "top": 876.5,
+        "bottom": 916.5,
+        "width": 86.546875,
+        "height": 40
+      },
+      {
+        "text": "회원",
+        "align": "center",
+        "left": 879.71875,
+        "right": 926.203125,
+        "top": 876.5,
+        "bottom": 916.5,
+        "width": 46.484375,
+        "height": 40
+      },
+      {
+        "text": "가입일",
+        "align": "center",
+        "left": 926.203125,
+        "right": 1027.203125,
+        "top": 876.5,
+        "bottom": 916.5,
+        "width": 101,
+        "height": 40
+      },
+      {
+        "text": "최근 활동",
+        "align": "center",
+        "left": 1027.203125,
+        "right": 1099.328125,
+        "top": 876.5,
+        "bottom": 916.5,
+        "width": 72.125,
+        "height": 40
+      },
+      {
+        "text": "관리",
+        "align": "center",
+        "left": 1099.328125,
+        "right": 1336.40625,
+        "top": 876.5,
+        "bottom": 916.5,
+        "width": 237.078125,
+        "height": 40
+      }
+    ]
+  },
+  "scroll": {
+    "left": 220,
+    "right": 1000,
+    "top": 876,
+    "bottom": 1036.5,
+    "width": 780,
+    "height": 160.5,
+    "overflowX": "auto",
+    "clientWidth": 780,
+    "scrollWidth": 1116,
+    "scrollLeft": 0
+  },
+  "rows": [
+    {
+      "text": "방송숍 달빛쇼핑몰 주소 demo-overlay2이용 기간 끝오버레이 전용——0—2026.10.067일 전상세이 파트너스 화면 대신 보기",
+      "left": 220,
+      "right": 1336.40625,
+      "top": 916.5,
+      "bottom": 976.5,
+      "width": 1116.40625,
+      "height": 60,
+      "cells": [
+        {
+          "text": "방송숍 달빛쇼핑몰 주소 demo-overlay",
+          "align": "left",
+          "left": 220,
+          "right": 384.8125,
+          "top": 916.5,
+          "bottom": 976.5,
+          "width": 164.8125,
+          "height": 60
+        },
+        {
+          "text": "2",
+          "align": "center",
+          "left": 384.8125,
+          "right": 431.296875,
+          "top": 916.5,
+          "bottom": 976.5,
+          "width": 46.484375,
+          "height": 60
+        },
+        {
+          "text": "이용 기간 끝",
+          "align": "center",
+          "left": 431.296875,
+          "right": 548.796875,
+          "top": 916.5,
+          "bottom": 976.5,
+          "width": 117.5,
+          "height": 60
+        },
+        {
+          "text": "오버레이 전용",
+          "align": "center",
+          "left": 548.796875,
+          "right": 648.90625,
+          "top": 916.5,
+          "bottom": 976.5,
+          "width": 100.109375,
+          "height": 60
+        },
+        {
+          "text": "—",
+          "align": "center",
+          "left": 648.90625,
+          "right": 746.6875,
+          "top": 916.5,
+          "bottom": 976.5,
+          "width": 97.78125,
+          "height": 60
+        },
+        {
+          "text": "—",
+          "align": "center",
+          "left": 746.6875,
+          "right": 793.171875,
+          "top": 916.5,
+          "bottom": 976.5,
+          "width": 46.484375,
+          "height": 60
+        },
+        {
+          "text": "0",
+          "align": "center",
+          "left": 793.171875,
+          "right": 879.71875,
+          "top": 916.5,
+          "bottom": 976.5,
+          "width": 86.546875,
+          "height": 60
+        },
+        {
+          "text": "—",
+          "align": "center",
+          "left": 879.71875,
+          "right": 926.203125,
+          "top": 916.5,
+          "bottom": 976.5,
+          "width": 46.484375,
+          "height": 60
+        },
+        {
+          "text": "2026.10.06",
+          "align": "center",
+          "left": 926.203125,
+          "right": 1027.203125,
+          "top": 916.5,
+          "bottom": 976.5,
+          "width": 101,
+          "height": 60
+        },
+        {
+          "text": "7일 전",
+          "align": "center",
+          "left": 1027.203125,
+          "right": 1099.328125,
+          "top": 916.5,
+          "bottom": 976.5,
+          "width": 72.125,
+          "height": 60
+        },
+        {
+          "text": "상세이 파트너스 화면 대신 보기",
+          "align": "center",
+          "left": 1099.328125,
+          "right": 1336.40625,
+          "top": 916.5,
+          "bottom": 976.5,
+          "width": 237.078125,
+          "height": 60
+        }
+      ],
+      "actions": [
+        {
+          "text": "방송숍 달빛",
+          "href": "/admin/partners/6b1e4e19-e589-445b-9d27-aa1d378f0770",
+          "left": 232,
+          "right": 295.9375,
+          "top": 930.5,
+          "bottom": 946.5,
+          "width": 63.9375,
+          "height": 16
+        },
+        {
+          "text": "상세",
+          "href": "/admin/partners/6b1e4e19-e589-445b-9d27-aa1d378f0770",
+          "left": 1111.328125,
+          "right": 1157.8125,
+          "top": 930.5,
+          "bottom": 962.5,
+          "width": 46.484375,
+          "height": 32
+        },
+        {
+          "text": "이 파트너스 화면 대신 보기",
+          "href": null,
+          "left": 1163.8125,
+          "right": 1324.40625,
+          "top": 930.5,
+          "bottom": 962.5,
+          "width": 160.59375,
+          "height": 32
+        }
+      ]
+    },
+    {
+      "text": "카드숍 별빛쇼핑몰 주소 demo-shop1체험 중-미연결—1732026.10.067일 전상세이 파트너스 화면 대신 보기",
+      "left": 220,
+      "right": 1336.40625,
+      "top": 976.5,
+      "bottom": 1036.5,
+      "width": 1116.40625,
+      "height": 60,
+      "cells": [
+        {
+          "text": "카드숍 별빛쇼핑몰 주소 demo-shop",
+          "align": "left",
+          "left": 220,
+          "right": 384.8125,
+          "top": 976.5,
+          "bottom": 1036.5,
+          "width": 164.8125,
+          "height": 60
+        },
+        {
+          "text": "1",
+          "align": "center",
+          "left": 384.8125,
+          "right": 431.296875,
+          "top": 976.5,
+          "bottom": 1036.5,
+          "width": 46.484375,
+          "height": 60
+        },
+        {
+          "text": "체험 중",
+          "align": "center",
+          "left": 431.296875,
+          "right": 548.796875,
+          "top": 976.5,
+          "bottom": 1036.5,
+          "width": 117.5,
+          "height": 60
+        },
+        {
+          "text": "-",
+          "align": "center",
+          "left": 548.796875,
+          "right": 648.90625,
+          "top": 976.5,
+          "bottom": 1036.5,
+          "width": 100.109375,
+          "height": 60
+        },
+        {
+          "text": "미연결",
+          "align": "center",
+          "left": 648.90625,
+          "right": 746.6875,
+          "top": 976.5,
+          "bottom": 1036.5,
+          "width": 97.78125,
+          "height": 60
+        },
+        {
+          "text": "—",
+          "align": "center",
+          "left": 746.6875,
+          "right": 793.171875,
+          "top": 976.5,
+          "bottom": 1036.5,
+          "width": 46.484375,
+          "height": 60
+        },
+        {
+          "text": "17",
+          "align": "center",
+          "left": 793.171875,
+          "right": 879.71875,
+          "top": 976.5,
+          "bottom": 1036.5,
+          "width": 86.546875,
+          "height": 60
+        },
+        {
+          "text": "3",
+          "align": "center",
+          "left": 879.71875,
+          "right": 926.203125,
+          "top": 976.5,
+          "bottom": 1036.5,
+          "width": 46.484375,
+          "height": 60
+        },
+        {
+          "text": "2026.10.06",
+          "align": "center",
+          "left": 926.203125,
+          "right": 1027.203125,
+          "top": 976.5,
+          "bottom": 1036.5,
+          "width": 101,
+          "height": 60
+        },
+        {
+          "text": "7일 전",
+          "align": "center",
+          "left": 1027.203125,
+          "right": 1099.328125,
+          "top": 976.5,
+          "bottom": 1036.5,
+          "width": 72.125,
+          "height": 60
+        },
+        {
+          "text": "상세이 파트너스 화면 대신 보기",
+          "align": "center",
+          "left": 1099.328125,
+          "right": 1336.40625,
+          "top": 976.5,
+          "bottom": 1036.5,
+          "width": 237.078125,
+          "height": 60
+        }
+      ],
+      "actions": [
+        {
+          "text": "카드숍 별빛",
+          "href": "/admin/partners/6047c65f-7367-4980-9051-33a2d8719d15",
+          "left": 232,
+          "right": 295.9375,
+          "top": 990.5,
+          "bottom": 1006.5,
+          "width": 63.9375,
+          "height": 16
+        },
+        {
+          "text": "상세",
+          "href": "/admin/partners/6047c65f-7367-4980-9051-33a2d8719d15",
+          "left": 1111.328125,
+          "right": 1157.8125,
+          "top": 990.5,
+          "bottom": 1022.5,
+          "width": 46.484375,
+          "height": 32
+        },
+        {
+          "text": "이 파트너스 화면 대신 보기",
+          "href": null,
+          "left": 1163.8125,
+          "right": 1324.40625,
+          "top": 990.5,
+          "bottom": 1022.5,
+          "width": 160.59375,
+          "height": 32
+        }
+      ]
+    }
+  ]
+}

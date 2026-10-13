@@ -48,7 +48,8 @@ export default function SellerLoginPage() {
         })
         .catch(() => undefined);
     }
-  }, [router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 화면을 열 때 한 번만 확인한다
+  }, []);
 
   const ready = email.trim() !== "" && password !== "" && (!needShop || shopSlug.trim() !== "");
   // 찾기 화면은 대표자·직원 공통이고 계정 종류만 넘긴다
@@ -216,7 +217,7 @@ export default function SellerLoginPage() {
             )}
           </button>
           {/* 대표자 탭은 가입 신청·계정 찾기, 직원 탭은 계정 찾기만 보여 준다. */}
-          <nav className="row t-l2 c-alt login-links" aria-label="계정 도움">
+          <nav className="row t-c1 c-alt login-links" aria-label="계정 도움">
             {tab === "owner" && (
               <span className="login-join">
                 아직 파트너스가 아니십니까? <Link href="/seller/signup">가입 신청</Link>

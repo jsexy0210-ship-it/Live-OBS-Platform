@@ -1,0 +1,21 @@
+{
+  "sourceSha": "aeea186d13c06446e4790d6816967e2565e382ae",
+  "role": "SUPER_ADMIN",
+  "route": "/admin/partners",
+  "state": "actions-focused",
+  "targetName": "방송숍 달빛",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "dpr": 1,
+    "scale": 1
+  },
+  "actionLeft": 1182.4375,
+  "actionRight": 1228.921875,
+  "containerLeft": 220,
+  "containerRight": 1416,
+  "scrollLeft": 0,
+  "focused": true,
+  "text": "상세",
+  "href": "/admin/partners/6b1e4e19-e589-445b-9d27-aa1d378f0770"
+}
