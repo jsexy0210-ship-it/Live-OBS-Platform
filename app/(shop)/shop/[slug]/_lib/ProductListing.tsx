@@ -88,6 +88,13 @@ export default async function ProductListing(props: {
           {total > 0 && (
             <nav className="shop-sort" aria-label="정렬">
               <SortMenu current={props.sort} items={sortChoices(!!props.q).map((x) => ({ key: x.key, label: x.label, href: href({ sort: x.key as ListSort }) }))} />
+              <div className="shop-sortseg" role="group" aria-label="정렬 기준">
+                {sortChoices(!!props.q).map((x) => (
+                  <Link key={x.key} href={href({ sort: x.key as ListSort })} aria-current={x.key === props.sort ? "page" : undefined}>
+                    {x.label}
+                  </Link>
+                ))}
+              </div>
             </nav>
           )}
         </div>

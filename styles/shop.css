@@ -529,6 +529,36 @@ body {
   position: relative;
   font-size: 13px;
 }
+/* 보드 SH-002-PC-IA: PC는 정렬 5개를 한 줄 묶음 버튼으로(관련도순 · 인기순 · 신상품 · 낮은 가격 · 높은 가격), 휴대폰은 「관련도순 ▾」 드롭다운 */
+.shop-sortseg {
+  display: none;
+}
+@media (min-width: 768px) {
+  .shop-sortmenu {
+    display: none;
+  }
+  .shop-sortseg {
+    display: inline-flex;
+    border: 1px solid var(--wds-line-solid-neutral);
+  }
+  .shop-app .shop-sortseg a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 0 16px;
+    color: var(--wds-label-alternative);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .shop-app .shop-sortseg a + a {
+    border-left: 1px solid var(--wds-line-solid-neutral);
+  }
+  .shop-app .shop-sortseg a[aria-current="page"] {
+    background: var(--wds-label-normal);
+    color: #fff;
+    font-weight: 700;
+  }
+}
 /* 보드 SH-002: 「인기순 ▾」 한 칸을 누르면 정렬 목록이 펼쳐진다 */
 .shop-sortmenu summary {
   display: inline-flex;
