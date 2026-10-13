@@ -34,7 +34,7 @@ type Order = {
 };
 type Hit = { id: string; cardName: string; note: string | null; nickname: string; order: { id: string; orderNo: string } | null; source?: "INTERNAL" | "EXTERNAL" | null; createdAt: string };
 // 외부 쇼핑몰 주문(내부 주문 행이 없어 orders와 따로 온다, 금액·결제 정보 없음)
-type ExternalOrder = { id: string; nickname: string; items: { productName: string; quantity: number; status: string }[]; createdAt: string; cancelledAt: string | null; completedAt: string | null };
+type ExternalOrder = { id: string; nickname: string; items: { productName: string; quantity: number; status: string }[]; createdAt: string; cancelledAt: string | null; completedAt: string | null; openSeconds?: number | null };
 type Detail = {
   broadcast: { id: string; title: string | null; status: "live" | "ended"; startedAt: string; endedAt: string | null; memo: string | null; hostName: string | null; layoutAspect: "9x16" | "16x9" | null; timerSeconds: number | null };
   summary: BroadcastSummary & { avgOpenSeconds: number | null; maxWaiting: number | null };
@@ -135,7 +135,7 @@ export default function BroadcastDetailPage() {
     return [...d.orders.map((o) => ({ at: o.createdAt, in: o as Order | null, ext: null as ExternalOrder | null })), ...ext.map((e) => ({ at: e.createdAt, in: null as Order | null, ext: e }))].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
   })();
   const extCount = (d?.externalOrders ?? []).length;
-  const hasOpen = (d?.orders ?? []).some((o) => o.openSeconds != null);
+  const hasOpen = (d?.orders ?? []).some((o) => o.openSeconds != null) || (d?.externalOrders ?? []).some((o) => o.openSeconds != null);
   const hitOrders = new Set((d?.hits ?? []).map((h) => h.order?.id).filter(Boolean) as string[]);
   const b = d?.broadcast;
   return (
@@ -417,7 +417,15 @@ export default function BroadcastDetailPage() {
                                   ))}
                                 </td>
                                 <td className="num">—</td>
-                                <td className="num">{!hasOpen && r.ext.completedAt ? formatTime(r.ext.completedAt) : "—"}</td>
+                                <td className="num">
+                                  {hasOpen
+                                    ? r.ext.openSeconds != null
+                                      ? `${Math.floor(r.ext.openSeconds / 60)}:${String(r.ext.openSeconds % 60).padStart(2, "0")}`
+                                      : "—"
+                                    : r.ext.completedAt
+                                      ? formatTime(r.ext.completedAt)
+                                      : "—"}
+                                </td>
                                 <td>
                                   <span className="row" style={{ gap: 4, flexWrap: "wrap" }}>
                                     {r.ext.cancelledAt ? <span className="bdg b-wait">뺀 주문</span> : r.ext.completedAt ? <span className="bdg b-done">완료</span> : <span className="bdg b-open">진행 중</span>}
