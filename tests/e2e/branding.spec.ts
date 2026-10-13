@@ -37,14 +37,14 @@ test.beforeAll(async () => {
   }
 });
 
-async function login(page: Page, email: string, observe?: (phase: "after-fill" | "click-failed") => Promise<void>) {
+async function login(page: Page, email: string, observe?: (phase: "after-fill" | "click-failed") => void) {
   await page.goto("/admin/settings/branding");
   await expect(page).toHaveURL(/\/admin\/login\?next=/);
   await page.getByLabel("이메일").fill(email);
   await page.getByLabel("비밀번호").fill(password);
-  if (observe) await observe("after-fill");
+  if (observe) observe("after-fill");
   try { await page.getByRole("button", { name: "로그인" }).click(); }
-  catch (error) { if (observe) await observe("click-failed"); throw error; }
+  catch (error) { if (observe) observe("click-failed"); throw error; }
   await expect(page.getByRole("heading", { name: "파비콘 · 공유 카드" })).toBeVisible();
 }
 
@@ -223,11 +223,16 @@ test("이미지를 연달아 고르면 앞 선택의 크기 확인이 늦게 끝
   });
   const loginStartedAt = performance.now();
   const loginStates: object[] = [];
-  await login(page, superEmail, async phase => {
+  await login(page, superEmail, phase => {
     // DOM 관찰만 남기며 React 상태·실패 원인으로 단정하지 않는다. 값과 원 class는 기록하지 않는다.
-    const row = { phase, elapsedMs: Math.round(performance.now() - loginStartedAt) };
-    try {
-      const state = await page.evaluate(() => {
+    const row = { phase, elapsedMs: Math.round(performance.now() - loginStartedAt), observation: "pending" };
+    loginStates.push(row);
+    const report = () => {
+      try { console.error("branding-login-state-diagnostics", JSON.stringify({ states: loginStates })); }
+      catch { /* 진단 실패가 원 click 오류를 바꾸지 않는다. */ }
+    };
+    // 관찰 응답을 기다리지 않는다. 완료되지 않은 관찰은 pending으로 남긴다.
+    void page.evaluate(() => {
         const email = document.querySelector<HTMLInputElement>("#email");
         const password = document.querySelector<HTMLInputElement>("#password");
         const button = document.querySelector<HTMLButtonElement>('form.login-card button[type="submit"]');
@@ -239,13 +244,9 @@ test("이미지를 연달아 고르면 앞 선택의 크기 확인이 늦게 끝
           disabledPrimaryClass: button ? Array.from(button.classList).some(name => name.includes("disabledPrimary")) : null,
           busyClass: button?.classList.contains("is-loading") ?? null,
         };
-      });
-      loginStates.push({ ...row, ...state });
-    } catch { loginStates.push({ ...row, observationUnavailable: true }); }
-    if (phase === "click-failed") {
-      try { console.error("branding-login-state-diagnostics", JSON.stringify({ states: loginStates })); }
-      catch { /* 진단 실패가 원 click 오류를 바꾸지 않는다. */ }
-    }
+    }).then(state => { Object.assign(row, state, { observation: "available" }); }, () => { row.observation = "unavailable"; })
+      .then(() => { if (phase === "click-failed") report(); }).catch(() => { /* 관찰 거절은 원 시험으로 전파하지 않는다. */ });
+    if (phase === "click-failed") report();
   });
 
   // 파비콘: 늦게 끝나는 앞 파일 → 바로 다음 파일
