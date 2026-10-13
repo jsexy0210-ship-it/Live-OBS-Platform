@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
-import { ListHead, Modal, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
+import { CursorPagination, ListHead, Modal, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { MAX_SEARCH_LENGTH } from "../../../../../../components/seller/format";
 import { useScrollRestore, useUrlState } from "../../../../../../lib/client/navigation";
@@ -12,7 +12,7 @@ import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
 import { NOTICE_AUDIENCE, NOTICE_CATEGORY, NOTICE_STATUS, type Notice, type NoticeCategory, type NoticeStatus } from "../../../_components/notices";
 import { day } from "../../../_components/partners";
 
-// MA-053 공지사항 목록(GET /api/admin/platform-notices, 모든 마스터 역할). 상태는 서버 조건, 분류·제목은 불러온 목록 안에서 거른다(서버에 검색 조건 없음).
+// MA-053 공지사항 목록(GET /api/admin/platform-notices, 모든 마스터 역할). 상태·분류·제목을 서버 조건으로 적용한 뒤 현재 쪽 10개를 조회한다.
 // 작성·수정·삭제 버튼은 최고관리자·CS만 보인다(support.manage).
 // 적용된 조건(상태·분류·제목)은 주소 쿼리가 기준이라 상세·작성 화면에서 돌아와도 그대로이고 스크롤도 복원한다(UX-03).
 type Filters = { status: NoticeStatus | ""; category: NoticeCategory | ""; q: string };
@@ -82,6 +82,9 @@ function NoticeList() {
   const apply = (f: Filters) => setUrl({ ...f, saved: "", stale: "" });
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [more, setMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const paging = useRef(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
   const [target, setTarget] = useState<Notice | null>(null);
 
@@ -94,35 +97,45 @@ function NoticeList() {
   }, [url.saved, url.stale, setUrl]);
 
   const reqId = useRef(0);
-  const qs = (status: string, cursor?: string) => {
+  const qs = useCallback((status: string, cursor?: string) => {
     const p = new URLSearchParams();
     if (status) p.set("status", status);
+    if (applied.category) p.set("category", applied.category);
+    if (applied.q) p.set("q", applied.q);
     if (cursor) p.set("cursor", cursor);
     return p.toString();
-  };
+  }, [applied.category, applied.q]);
   const load = useCallback(async (status: string) => {
     const id = ++reqId.current;
+    paging.current = false;
+    setPage(1);
+    setCursors([undefined]);
     setMore(false);
     setState({ kind: "loading" });
     const r = await adminApi<Page>(`/api/admin/platform-notices?${qs(status)}`);
     if (id !== reqId.current) return;
     setState(r.ok ? { kind: "ok", items: r.data.items, next: r.data.nextCursor } : { kind: "error" });
-  }, []);
+  }, [qs]);
   useEffect(() => void load(applied.status), [applied.status, load]);
   useScrollRestore("admin-notices", state.kind === "ok");
 
-  const loadMore = async () => {
-    if (state.kind !== "ok" || !state.next) return;
-    setMore(true);
-    const id = reqId.current;
-    const r = await adminApi<Page>(`/api/admin/platform-notices?${qs(applied.status, state.next)}`);
+  const changePage = async (target: number) => {
+    if (state.kind !== "ok" || paging.current || target === page || target < 1 || target > cursors.length + 1) return;
+    const cursor = target <= cursors.length ? cursors[target - 1] : state.next ?? undefined;
+    if (target > 1 && !cursor) return;
+    paging.current = true; setMore(true);
+    const id = ++reqId.current;
+    const r = await adminApi<Page>(`/api/admin/platform-notices?${qs(applied.status, cursor)}`);
     if (id !== reqId.current) return;
-    setMore(false);
-    if (r.ok) setState({ kind: "ok", items: [...state.items, ...r.data.items], next: r.data.nextCursor });
-    else setToast({ text: "더 불러오지 못했습니다. 다시 눌러 주십시오.", neg: true });
+    paging.current = false; setMore(false);
+    if (r.ok) {
+      if (target > cursors.length) setCursors(c => [...c, cursor]);
+      setPage(target);
+      setState({ kind: "ok", items: r.data.items, next: r.data.nextCursor });
+    } else setToast({ text: "목록을 불러오지 못했습니다. 다시 눌러 주십시오.", neg: true });
   };
 
-  const items = state.kind === "ok" ? state.items.filter((n) => (!applied.category || n.category === applied.category) && (!applied.q || n.title.includes(applied.q))) : [];
+  const items = state.kind === "ok" ? state.items : [];
   const filtered = applied.status !== "" || applied.category !== "" || applied.q !== "";
   const reset = () => {
     apply(EMPTY);
@@ -240,13 +253,7 @@ function NoticeList() {
                     </tbody>
                   </table>
                 </div>
-                {state.next && (
-                  <div className="row" style={{ justifyContent: "center", padding: "12px 16px" }}>
-                    <button className="btn btn-sm btn-out" type="button" onClick={() => void loadMore()} disabled={more}>
-                      {more ? "불러오는 중" : "더 보기"}
-                    </button>
-                  </div>
-                )}
+                <div aria-busy={more}>{(cursors.length > 1 || state.next) && <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={(n) => void changePage(n)} onNext={() => void changePage(page + 1)} />}</div>
               </>
             ))}
         </div>

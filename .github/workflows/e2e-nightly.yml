@@ -9,6 +9,14 @@ on:
   schedule:
     - cron: "17 18 * * *"
   workflow_dispatch:
+    inputs:
+      suite:
+        description: "시험 묶음 (list-pagination은 start 프로젝트 21건)"
+        type: choice
+        default: full
+        options:
+          - full
+          - list-pagination
 
 permissions:
   contents: read
@@ -41,7 +49,15 @@ jobs:
       DATABASE_URL: postgresql://live_obs:live_obs@localhost:5432/live_obs_test
       # seller-youtube·broadcast-chat 시험은 서버와 시험 프로세스 양쪽에 같은 YOUTUBE_API_KEY(아무 값)를 요구한다. 실제 호출은 없다.
       YOUTUBE_API_KEY: e2e-dummy
+      E2E_SUITE: ${{ inputs.suite || 'full' }}
     steps:
+      - name: Validate suite
+        run: |
+          case "$E2E_SUITE" in
+            full|list-pagination) ;;
+            *) echo "지원하지 않는 시험 묶음입니다."; exit 1 ;;
+          esac
+
       - name: Checkout
         uses: actions/checkout@v5
 
@@ -80,9 +96,13 @@ jobs:
           set -euo pipefail
           # seller-youtube·broadcast-chat 시험은 서버에 SCHEDULER_DISABLED=1도 있어야 한다(YOUTUBE_API_KEY는 작업 환경변수).
           SCHEDULER_DISABLED=1 nohup npx next start -p 3100 > "$RUNNER_TEMP/start.log" 2>&1 &
-          BILLING_PROVIDER=fake BUSINESS_STATUS_PROVIDER=fake MAIL_ORDER_PROVIDER=fake nohup npx next dev -p 3101 > "$RUNNER_TEMP/dev.log" 2>&1 &
-          OBS_TEST_MODE=1 BILLING_PROVIDER=fake nohup npx next start -p 3102 > "$RUNNER_TEMP/testmode.log" 2>&1 &
-          for port in 3100 3101 3102; do
+          ports="3100"
+          if [ "$E2E_SUITE" = full ]; then
+            BILLING_PROVIDER=fake BUSINESS_STATUS_PROVIDER=fake MAIL_ORDER_PROVIDER=fake nohup npx next dev -p 3101 > "$RUNNER_TEMP/dev.log" 2>&1 &
+            OBS_TEST_MODE=1 BILLING_PROVIDER=fake nohup npx next start -p 3102 > "$RUNNER_TEMP/testmode.log" 2>&1 &
+            ports="3100 3101 3102"
+          fi
+          for port in $ports; do
             ok=false
             for i in $(seq 1 90); do
               if curl -sf -o /dev/null "http://localhost:$port/"; then ok=true; break; fi
@@ -92,9 +112,28 @@ jobs:
           done
 
       - name: E2E full
+        if: env.E2E_SUITE == 'full'
         run: |
           set -o pipefail
           npx playwright test -c tests/e2e/playwright.config.ts 2>&1 | tee "$RUNNER_TEMP/e2e.log"
+
+      - name: E2E list-pagination (21 tests)
+        if: env.E2E_SUITE == 'list-pagination'
+        run: |
+          set -o pipefail
+          npx playwright test -c tests/e2e/playwright.config.ts --project=start common-list-existing-pages pagination-existing-pages --grep 'existing products|/admin/partners|/admin/billing/invoices|/seller/inquiries|/seller/notices' 2>&1 | tee "$RUNNER_TEMP/e2e.log"
+
+      - name: Upload list-pagination evidence
+        if: always() && env.E2E_SUITE == 'list-pagination'
+        uses: actions/upload-artifact@v4
+        with:
+          name: list-pagination-${{ github.sha }}
+          path: |
+            tests/e2e/screenshots/common-list/existing-products-*.png
+            tests/e2e/screenshots/pagination/*.png
+            test-results/
+          retention-days: 3
+          if-no-files-found: warn
 
       # 아침에 로그 끝부분만 봐도 결과를 알 수 있게 실패·통과 건수와 실패 시험 목록을 요약으로 남긴다(실패 여부는 위 단계가 정함).
       - name: E2E summary

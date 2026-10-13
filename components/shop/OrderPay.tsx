@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useConfirm } from "../admin-ui/ConfirmDialog";
+import { formatDateTime } from "../../lib/client/format";
 import { call } from "./reviewShared";
 
 // SH-007 결제(주문 상세의 결제 대기 주문): 결제 수단(카드·무통장 입금) → 「n원 결제하기」.
@@ -18,10 +19,6 @@ declare global {
 }
 
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
-const kst = (iso: string) => {
-  const d = new Date(new Date(iso).getTime() + 9 * 3600_000);
-  return `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
-};
 
 function loadSdk(): Promise<Nice> {
   if (window.AUTHNICE) return Promise.resolve(window.AUTHNICE);
@@ -114,7 +111,7 @@ export default function OrderPay({ slug, orderId, amount, dueAt }: { slug: strin
           </span>
         </label>
       </div>
-      {due && <p className="cart-hint">결제 기한 {kst(due)}까지예요. 기한이 지나면 주문이 자동으로 취소돼요.</p>}
+      {due && <p className="cart-hint">결제 기한 {formatDateTime(due)}까지예요. 기한이 지나면 주문이 자동으로 취소돼요.</p>}
       {bank && (
         <dl className="od-dl" aria-label="입금 계좌 안내">
           <div>

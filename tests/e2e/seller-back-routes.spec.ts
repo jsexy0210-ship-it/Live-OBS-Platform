@@ -20,7 +20,9 @@ test("회원 상세: 직접 진입 → 「회원 목록」은 부모로 replace(
   await expect(page.getByTestId("member-row").first()).toBeVisible();
   await page.getByRole("button", { name: /^활동/ }).click();
   await expect(page).toHaveURL(/\/seller\/members\?status=ACTIVE$/);
-  const detail = await page.getByTestId("member-row").first().getByRole("link").getAttribute("href");
+  const memberLink = page.getByTestId("member-row").first().getByRole("link");
+  await expect(memberLink).toHaveAttribute("href", /\/seller\/members\/[0-9a-f-]{36}$/);
+  const detail = await memberLink.getAttribute("href");
 
   // 목록 → 상세 → ←
   await page.getByTestId("member-row").first().getByRole("link").click();
@@ -39,16 +41,19 @@ test("회원 상세: 직접 진입 → 「회원 목록」은 부모로 replace(
   await expect(page).toHaveURL("about:blank");
 });
 
-test("통계 하위 화면: 기간은 주소에 남고 ←는 통계 요약으로, 직접 진입도 같다", async ({ page }) => {
+test("통계 메뉴: 기간은 주소에 남고 요약 메뉴 이동 뒤 브라우저 Back에서도 유지된다", async ({ page }) => {
   await login(page, "/seller/stats/orders");
   await expect(page).toHaveURL(/\/seller\/stats\/orders$/);
   await page.getByRole("button", { name: "7일", exact: true }).click();
   await expect(page).toHaveURL(/\/seller\/stats\/orders\?preset=7d$/);
   await page.reload();
   await expect(page.getByRole("button", { name: "7일", exact: true })).toHaveAttribute("aria-pressed", "true");
-  // 직접 진입(이 영역의 이전 화면이 없음) → 부모로 replace
-  await page.getByRole("button", { name: "뒤로" }).click();
+  // 최신 IA: 통계 화면 각각은 왼쪽 메뉴의 독립 링크다. 메뉴 이동 뒤 Back으로 기간을 복원한다.
+  await page.getByRole("navigation", { name: "통계", exact: true }).getByRole("link", { name: "요약", exact: true }).click();
   await expect(page).toHaveURL(/\/seller\/stats$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/seller\/stats\/orders\?preset=7d$/);
+  await expect(page.getByRole("button", { name: "7일", exact: true })).toHaveAttribute("aria-pressed", "true");
 });
 
 test("문의하기: 입력 중 ←는 확인을 묻고, 취소하면 머물고 확인하면 내 문의로 간다", async ({ page }) => {
@@ -86,11 +91,20 @@ test("상품 수정: 목록 → 수정 → 취소는 목록 조건으로 돌아�
 
 test("목록 조건은 주소에 남아 새로고침·다른 화면 → Back에서도 유지된다(적립금 원장 상태·방송 이력 기간)", async ({ page }) => {
   await login(page, "/seller/rewards/ledger");
-  await page.getByLabel("처리 상태").selectOption("SUCCEEDED");
+  await page.getByLabel("상태", { exact: true }).selectOption("SUCCEEDED");
   await page.getByRole("button", { name: "검색" }).click();
-  await expect(page).toHaveURL(/\/seller\/rewards\/ledger\?status=SUCCEEDED$/);
+  // 기본 기간은 주소에서 생략하고, 선택한 상태 조건은 주소에 남는다.
+  await expect.poll(() => {
+    const url = new URL(page.url());
+    return url.pathname === "/seller/rewards/ledger" && url.searchParams.get("status") === "SUCCEEDED";
+  }).toBe(true);
+  const ledgerUrl = new URL(page.url());
+  expect(ledgerUrl.pathname).toBe("/seller/rewards/ledger");
+  expect(ledgerUrl.searchParams.get("status")).toBe("SUCCEEDED");
+  expect(ledgerUrl.searchParams.has("from")).toBe(false);
+  expect(ledgerUrl.searchParams.has("to")).toBe(false);
   await page.reload();
-  await expect(page.getByLabel("처리 상태")).toHaveValue("SUCCEEDED");
+  await expect(page.getByLabel("상태", { exact: true })).toHaveValue("SUCCEEDED");
 
   await page.goto("/seller/broadcasts");
   await page.getByLabel("시작일").fill("2026-09-01");
@@ -112,23 +126,25 @@ test("설정 폼: 바꾼 것이 있으면 메뉴 이동·브라우저 Back에서
     void (answer ? d.accept() : d.dismiss());
   });
   await title.fill(`${await title.inputValue()}수정`);
-  await page.getByRole("link", { name: "주문 · 배송 설정" }).first().click();
+  await page.getByRole("navigation", { name: "주문 · 배송 설정", exact: true }).getByRole("link", { name: "주문 설정", exact: true }).click();
   await expect.poll(() => seen.length).toBe(1);
   await expect(page).toHaveURL(/\/seller\/settings\/shop$/);
   answer = true;
-  await page.getByRole("link", { name: "주문 · 배송 설정" }).first().click();
+  await page.getByRole("navigation", { name: "주문 · 배송 설정", exact: true }).getByRole("link", { name: "주문 설정", exact: true }).click();
   await expect(page).toHaveURL(/\/seller\/settings\/order$/);
 });
 
-test("쿠폰 상태 탭은 주소(?tab=)에 남아 새로고침해도 유지된다", async ({ page }) => {
+test("쿠폰 상태 검색은 주소(?state=)에 남아 새로고침해도 유지된다", async ({ page }) => {
   await createClaimableCouponInDb("demo-shop", "Back 시험 쿠폰", 1000);
   try {
     await login(page, "/seller/coupons");
-    await page.getByRole("tab", { name: /^발급 중/ }).click();
-    await expect(page).toHaveURL(/\/seller\/coupons\?tab=live$/);
+    await page.getByRole("checkbox", { name: "발급 중", exact: true }).check();
+    await page.getByRole("button", { name: "검색", exact: true }).click();
+    await expect(page).toHaveURL(/\/seller\/coupons\?state=live$/);
     await page.reload();
-    await expect(page.getByRole("tab", { name: /^발급 중/ })).toHaveAttribute("aria-selected", "true");
-    await page.getByRole("tab", { name: /^전체/ }).click();
+    await expect(page.getByRole("checkbox", { name: "발급 중", exact: true })).toBeChecked();
+    await page.getByRole("checkbox", { name: "전체", exact: true }).check();
+    await page.getByRole("button", { name: "검색", exact: true }).click();
     await expect(page).toHaveURL(/\/seller\/coupons$/);
   } finally {
     await clearCouponsInDb("demo-shop");

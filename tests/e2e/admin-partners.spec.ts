@@ -178,9 +178,9 @@ test("목록: 요약 칩 건수가 서버 값과 같고, 칩·정렬·쪽 크기
   for (const text of await page.getByTestId("partner-row").locator("td:nth-child(3)").allInnerTexts()) expect(text).toBe("정상");
 
   await page.getByLabel("정렬").selectOption("orders");
-  await page.getByLabel("쪽 크기").selectOption("50");
+  await page.getByLabel("쪽 크기").selectOption("10");
   await expect(page).toHaveURL(/sort=orders/);
-  await expect(page).toHaveURL(/limit=50/);
+  await expect(page.getByLabel("쪽 크기")).toHaveValue("10");
   await page.reload();
   await expect(page.getByLabel("정렬")).toHaveValue("orders");
 
@@ -219,7 +219,7 @@ test("상세 탭: 구독(상태 이력·청구 상세·누적), 쇼핑몰(설정
   await expect(sub.getByTestId("sub-totals")).toContainText("누적 결제");
   await expect(page.getByRole("link", { name: "청구 상세", exact: true })).toHaveAttribute("href", `/admin/billing/invoices?sellerId=${idA}`);
 
-  await page.getByRole("button", { name: "쇼핑몰", exact: true }).click();
+  await page.getByRole("link", { name: "쇼핑몰", exact: true }).click();
   await expect(page).toHaveURL(/tab=shop/);
   const shop = page.getByTestId("tab-shop");
   await expect(shop).toContainText(nameA);
@@ -227,7 +227,7 @@ test("상세 탭: 구독(상태 이력·청구 상세·누적), 쇼핑몰(설정
   await expect(shop.getByRole("table", { name: "정책 점검" })).toContainText("전자상거래법");
   await expect(shop.getByRole("heading", { name: "상품 상위 5" })).toBeVisible();
 
-  await page.getByRole("button", { name: "주문 현황", exact: true }).click();
+  await page.getByRole("link", { name: "주문 현황", exact: true }).click();
   await expect(page).toHaveURL(/tab=orders/);
   const ord = page.getByTestId("tab-orders");
   await expect(ord.getByTestId("orders-today")).toBeVisible();

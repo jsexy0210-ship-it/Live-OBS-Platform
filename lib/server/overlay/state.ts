@@ -165,7 +165,7 @@ export async function getOverlayState(db: PrismaClient, sellerId: string, opts: 
             where: { sellerId, broadcastSessionId: live.id },
             orderBy: [{ createdAt: "desc" }, { id: "desc" }],
             take: HALL_MAX,
-            select: { id: true, cardName: true, nicknameSnapshot: true, createdAt: true },
+            select: { id: true, cardName: true, grade: true, nicknameSnapshot: true, createdAt: true },
           })
         : [];
       const path = `/shop/${encodeURIComponent(seller.slug)}`;

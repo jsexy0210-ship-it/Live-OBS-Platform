@@ -21,6 +21,7 @@ export const GRADE_MESSAGES: Record<string, string> = {
   duplicate_name: "같은 이름의 등급이 있습니다",
   base_grade_amount: "첫 등급의 기준 금액은 0원입니다",
   invalid_body: "입력을 확인해 주십시오",
+  invalid_cursor: "페이지를 다시 조회해 주십시오",
   invalid_benefit: "배송비 혜택을 확인해 주십시오. 정액 할인은 1원 이상 100,000원 이하로 입력합니다",
   invalid_coupon: "승급 쿠폰은 직접 지급 방식으로 만든 쿠폰만 고를 수 있습니다",
   invalid_setting: "산정 기준을 확인해 주십시오",
@@ -43,18 +44,27 @@ async function clockNow(db: Db): Promise<Date> {
 }
 
 type Rates = Record<string, { card?: number; bankTransfer?: number }>;
+export class GradeCursorError extends Error {}
+function gradeCursor(raw: unknown) {
+  if (raw == null || raw === "") return {};
+  if (typeof raw !== "string") throw new GradeCursorError("invalid_cursor");
+  const i = raw.lastIndexOf("_"), at = new Date(raw.slice(0, i)), id = raw.slice(i + 1);
+  if (i < 1 || Number.isNaN(at.getTime()) || !isUuid(id)) throw new GradeCursorError("invalid_cursor");
+  return { OR: [{ createdAt: { lt: at } }, { createdAt: at, id: { lt: id } }] };
+}
+const nextGradeCursor = <T extends { id: string; createdAt: Date }>(rows: T[]) => rows.length > 10 ? `${rows[9].createdAt.toISOString()}_${rows[9].id}` : null;
 const activeLock = (now: Date): Prisma.MemberGradeOverrideWhereInput => ({ OR: [{ until: null }, { until: { gt: now } }] });
 
 // 화면 데이터: 등급(회원 수·적립률), 산정 기준, 지난·다음 재산정, 최근 변경, 고정한 회원
-export async function getMemberGrades(db: PrismaClient, ctx: TenantContext, now = new Date()) {
+export async function getMemberGrades(db: PrismaClient, ctx: TenantContext, now = new Date(), q: { recentCursor?: unknown; lockedCursor?: unknown } = {}) {
   requireSellerRead(ctx, "MEMBER_POINTS");
   const [grades, policy, lastRun, reward, history, locked, lockedCount, counts, couponRows] = await Promise.all([
     db.memberGrade.findMany({ where: { sellerId: ctx.sellerId }, orderBy: { sortOrder: "asc" } }),
     db.memberGradePolicy.findUnique({ where: { sellerId: ctx.sellerId } }),
     db.memberGradeRun.findFirst({ where: { sellerId: ctx.sellerId }, orderBy: { ranAt: "desc" } }),
     db.rewardPolicy.findUnique({ where: { sellerId: ctx.sellerId }, select: { rates: true } }),
-    db.memberGradeHistory.findMany({ where: { sellerId: ctx.sellerId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 20, include: { buyerMember: { select: { broadcastNickname: true } } } }),
-    db.memberGradeOverride.findMany({ where: { sellerId: ctx.sellerId, ...activeLock(now) }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 50, include: { buyerMember: { select: { id: true, broadcastNickname: true, gradeId: true } } } }),
+    db.memberGradeHistory.findMany({ where: { sellerId: ctx.sellerId, ...gradeCursor(q.recentCursor) }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 11, include: { buyerMember: { select: { broadcastNickname: true } } } }),
+    db.memberGradeOverride.findMany({ where: { sellerId: ctx.sellerId, AND: [activeLock(now), gradeCursor(q.lockedCursor)] }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 11, include: { buyerMember: { select: { id: true, broadcastNickname: true, gradeId: true } } } }),
     db.memberGradeOverride.count({ where: { sellerId: ctx.sellerId, ...activeLock(now) } }),
     db.buyerMember.groupBy({ by: ["gradeId"], where: { sellerId: ctx.sellerId, deletedAt: null, status: "ACTIVE" }, _count: { _all: true } }),
     // 승급 쿠폰으로 고를 수 있는 쿠폰: 직접 지급 방식(종료된 쿠폰은 화면에서 이름 옆에 표시)
@@ -85,8 +95,10 @@ export async function getMemberGrades(db: PrismaClient, ctx: TenantContext, now 
     lockedCount,
     lastRun: lastRun ? { key: lastRun.monthKey, promoted: lastRun.promoted, demoted: lastRun.demoted, ranAt: lastRun.ranAt } : null,
     nextRunAt: nextRunAt(cadence, now),
-    recent: history.map((h) => ({ id: h.id, nickname: h.buyerMember.broadcastNickname, fromName: h.fromName, toName: h.toName, reason: h.reason, amount: h.amount, createdAt: h.createdAt })),
-    locked: locked.map((l) => ({ memberId: l.buyerMember.id, nickname: l.buyerMember.broadcastNickname, gradeId: l.buyerMember.gradeId, until: l.until, reason: l.reason })),
+    recentNextCursor: nextGradeCursor(history),
+    lockedNextCursor: nextGradeCursor(locked),
+    recent: history.slice(0, 10).map((h) => ({ id: h.id, nickname: h.buyerMember.broadcastNickname, fromName: h.fromName, toName: h.toName, reason: h.reason, amount: h.amount, createdAt: h.createdAt })),
+    locked: locked.slice(0, 10).map((l) => ({ memberId: l.buyerMember.id, nickname: l.buyerMember.broadcastNickname, gradeId: l.buyerMember.gradeId, until: l.until, reason: l.reason })),
   };
 }
 
@@ -282,17 +294,17 @@ export async function setMemberGrade(db: PrismaClient, ctx: TenantContext, membe
   });
 }
 
-// 「변동 회원 보기」: 최근 변경(승급·강등·직접 조정) 목록. kind: up(승급) / down(강등) / 없으면 전체. 최근 100건.
-export async function listGradeChanges(db: PrismaClient, ctx: TenantContext, q: { kind?: unknown } = {}) {
+// 「변동 회원 보기」: kind 조건과 최신순을 유지하며 안정된 생성 시각·ID 커서로 현재 10건을 조회한다.
+export async function listGradeChanges(db: PrismaClient, ctx: TenantContext, q: { kind?: unknown; cursor?: unknown } = {}) {
   requireSellerRead(ctx, "MEMBER_POINTS");
   const reasons = q.kind === "up" ? (["AUTO_UP"] as const) : q.kind === "down" ? (["AUTO_DOWN"] as const) : undefined;
   const rows = await db.memberGradeHistory.findMany({
-    where: { sellerId: ctx.sellerId, ...(reasons ? { reason: { in: [...reasons] } } : {}) },
+    where: { sellerId: ctx.sellerId, ...(reasons ? { reason: { in: [...reasons] } } : {}), ...gradeCursor(q.cursor) },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    take: 100,
+    take: 11,
     include: { buyerMember: { select: { id: true, broadcastNickname: true } } },
   });
-  return { changes: rows.map((h) => ({ id: h.id, memberId: h.buyerMember.id, nickname: h.buyerMember.broadcastNickname, fromName: h.fromName, toName: h.toName, reason: h.reason, amount: h.amount, createdAt: h.createdAt })) };
+  return { nextCursor: nextGradeCursor(rows), changes: rows.slice(0, 10).map((h) => ({ id: h.id, memberId: h.buyerMember.id, nickname: h.buyerMember.broadcastNickname, fromName: h.fromName, toName: h.toName, reason: h.reason, amount: h.amount, createdAt: h.createdAt })) };
 }
 
 // 탈퇴 때: 그 회원의 고정 표시·등급 변경 기록을 지운다(개인정보는 없지만 회원에 딸린 기록이라 남기지 않는다)

@@ -14,14 +14,15 @@ describe("점검 중 화면 문구 말투", () => {
     for (const m of strings("friendly")) expect(m, m).not.toMatch(/(니다|십시오)/);
   });
 
-  it("구역 값: partners일 때만 관리자 말투, 그 밖의 값·없음·여러 값은 해요체", () => {
+  it("구역 값: partners·admin일 때 관리자 말투, 그 밖의 값·없음·여러 값은 해요체", () => {
     expect(maintenanceTone(PARTNERS_AREA)).toBe("formal");
-    for (const v of [undefined, "", "admin", "PARTNERS", "partners ", ["partners"], ["partners", "x"]]) expect(maintenanceTone(v), String(v)).toBe("friendly");
+    expect(maintenanceTone("admin")).toBe("formal");
+    for (const v of [undefined, "", "PARTNERS", "partners ", ["partners"], ["partners", "x"]]) expect(maintenanceTone(v), String(v)).toBe("friendly");
   });
 
-  it("관리자 말투에는 해요체 전용 안내(구매자 결제·주문 내역)가 없고, 시각 문구가 끝에 붙는다", () => {
+  it("관리자 말투에 점검 뒤 확인할 주문 정보를 안내하고 시각 문구가 끝에 붙는다", () => {
     const f = MAINTENANCE_COPY.formal;
-    expect(f.note).not.toContain("주문");
+    expect(f.note).toBe("결제가 끝난 주문은 점검이 끝난 뒤 주문 목록에서 확인할 수 있습니다");
     expect(f.ends(TIME)).toBe(`${TIME}에 끝날 예정입니다`);
     expect(MAINTENANCE_COPY.friendly.ends(TIME)).toBe(`${TIME}에 끝날 예정이에요`);
     expect(f.doneHref).toBe("/seller");

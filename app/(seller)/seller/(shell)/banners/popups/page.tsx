@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { PageHead, useConfirm } from "../../../../../../components/admin-ui";
+import { Pagination, PageHead, useConfirm } from "../../../../../../components/admin-ui";
 import { DateTimePicker } from "../../../../../../components/admin-ui/DatePicker";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../../components/seller/States";
@@ -139,6 +139,7 @@ export default function PopupsPage() {
   const { confirm } = useConfirm();
   const editable = can("SHOP_SETTINGS");
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number; error?: string } | { kind: "ok"; list: Popup[]; paused: { on: boolean; at: string | null; by: string | null } }>({ kind: "loading" });
+  const [page, setPage] = useState(1);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
 
@@ -153,6 +154,10 @@ export default function PopupsPage() {
   }, [load]);
 
   const list = state.kind === "ok" ? state.list : [];
+  const pageCount = Math.ceil(list.length / 10);
+  const currentPage = Math.min(page, pageCount || 1);
+  const offset = (currentPage - 1) * 10;
+  useEffect(() => { if (state.kind === "ok") setPage(p => Math.min(p, Math.max(1, Math.ceil(state.list.length / 10)))); }, [state]);
   const { move } = useSortable(list, async (next) => {
     setState((s) => (s.kind === "ok" ? { ...s, list: next } : s));
     const r = await api("/api/seller/shop-content/popups/reorder", { method: "PUT", body: { ids: next.map((p) => p.id) } });
@@ -286,7 +291,9 @@ export default function PopupsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {list.map((p, i) => (
+                  {list.slice(offset, offset + 10).map((p, pageIndex) => {
+                    const i = offset + pageIndex;
+                    return (
                     <tr key={p.id} data-testid="popup-row" className={draft?.id === p.id ? "is-sel" : undefined}>
                       <td className="col-text">
                         <b className="ell">{p.title}</b>
@@ -335,10 +342,12 @@ export default function PopupsPage() {
                         </td>
                       )}
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
+            {pageCount > 1 && <Pagination page={currentPage} pageCount={pageCount} onChange={setPage} />}
             <span className="t-c1 c-alt">같은 페이지에는 한 번에 1개씩 표시 · 우선순위는 목록 순서 · 상단 띠는 맨 위 1개만</span>
           </>
         )}

@@ -26,3 +26,19 @@ export function requestOrigin(h: HeaderReader): URL | null {
     return null;
   }
 }
+
+// 카드 안에는 공인 플랫폼 주소만 쓴다. 프록시 헤더가 없거나 잘못되어 내부 서비스 주소로 떨어지면 비워 둔다.
+export function requestCardSite(h: HeaderReader): string {
+  if (trustedProxy() && !h.get("x-forwarded-host")) return "";
+  const origin = requestOrigin(h);
+  if (!origin) return "";
+  const host = origin.hostname.toLowerCase();
+  if (
+    !host.includes(".") ||
+    host === "0.0.0.0" ||
+    host === "localhost" ||
+    host.endsWith(".local") ||
+    /^127\.|^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\./.test(host)
+  ) return "";
+  return origin.host;
+}

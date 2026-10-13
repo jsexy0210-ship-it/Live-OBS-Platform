@@ -1,9 +1,11 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import * as audit from "../../lib/server/audit/log";
 import { PATCH as patchRoute } from "../../app/api/seller/products/[productId]/route";
 import { loginSeller } from "../../lib/server/auth/login";
 import { prisma } from "../../lib/server/db";
 import { ORDER_ERROR_MESSAGES_FORMAL } from "../../lib/server/orders/messages";
 import { createProduct, updateProduct } from "../../lib/server/products/manage";
+import { setProductEvent } from "../../lib/server/products/event";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
@@ -24,6 +26,85 @@ async function shop() {
 }
 const row = (id: string) => db.product.findUniqueOrThrow({ where: { id }, select: { price: true, status: true, name: true } });
 const updates = (sellerId: string) => db.auditLog.count({ where: { sellerId, action: "product.update" } });
+
+describe("가격과 이벤트의 원자적 수정", () => {
+  const event = (value = 20) => ({ type: "RATE", value, startsAt: new Date(Date.now() - 60_000).toISOString(), endsAt: new Date(Date.now() + 3600_000).toISOString() });
+  const snapshot = (id: string) => db.product.findUniqueOrThrow({ where: { id }, select: { price: true, eventDiscountType: true, eventDiscountValue: true, eventStartsAt: true, eventEndsAt: true } });
+  const audits = (id: string) => db.auditLog.count({ where: { targetId: id } });
+
+  it("활성 할인 변경·해제 요청이 가격 충돌이면 기존 가격·이벤트 4필드·audit를 유지한다", async () => {
+    const s = await shop();
+    expect((await setProductEvent(db, s.ctx, s.productId, event(10))).ok).toBe(true);
+    await updateProduct(db, s.ctx, s.productId, { price: 2000, expectedPrice: 1000 });
+    const before = await snapshot(s.productId), count = await audits(s.productId);
+    for (const next of [event(), null]) {
+      expect(await updateProduct(db, s.ctx, s.productId, { price: 1500, expectedPrice: 1000, event: next })).toMatchObject({ reason: "price_conflict", currentPrice: 2000 });
+      expect(await snapshot(s.productId)).toEqual(before);
+      expect(await audits(s.productId)).toBe(count);
+    }
+  });
+
+  it("이벤트 형식·기간·최종 단가가 잘못되면 가격·할인·audit를 바꾸지 않는다", async () => {
+    const s = await shop();
+    await setProductEvent(db, s.ctx, s.productId, event(10));
+    const before = await snapshot(s.productId), count = await audits(s.productId);
+    const invalid = [[], "20", event(91), { ...event(), value: "20" }, { ...event(), endsAt: new Date(Date.now() - 1000).toISOString() }, { ...event(), type: "AMOUNT", value: 1900 }];
+    for (const next of invalid) {
+      expect((await updateProduct(db, s.ctx, s.productId, { price: 1500, expectedPrice: 1000, event: next })).ok).toBe(false);
+      expect(await snapshot(s.productId)).toEqual(before);
+      expect(await audits(s.productId)).toBe(count);
+    }
+    expect(await updateProduct(db, s.ctx, s.productId, { name: "x", event: event() })).toMatchObject({ reason: "invalid_product" });
+    expect(await updateProduct(db, s.ctx, s.productId, { price: 1500, event: event() })).toMatchObject({ reason: "invalid_product" });
+  });
+
+  it("낮춘 가격과 새 할인을 최종값으로 함께 검증해 저장하고, 해제도 함께 저장한다", async () => {
+    const s = await shop();
+    await setProductEvent(db, s.ctx, s.productId, { ...event(), type: "AMOUNT", value: 800 });
+    expect(await updateProduct(db, s.ctx, s.productId, { price: 500, expectedPrice: 1000, event: { ...event(), type: "AMOUNT", value: 200 } })).toMatchObject({ ok: true, value: { price: 500, event: { value: 200, discountedPrice: 300 } } });
+    expect(await updates(s.seller.id)).toBe(1);
+    expect(await db.auditLog.count({ where: { targetId: s.productId, action: "product.event_set" } })).toBe(2);
+    expect(await updateProduct(db, s.ctx, s.productId, { price: 100, expectedPrice: 500, event: null })).toMatchObject({ ok: true, value: { price: 100, event: null } });
+    expect(await db.auditLog.count({ where: { targetId: s.productId, action: "product.event_clear" } })).toBe(1);
+  });
+
+  it("같은 기대값의 병렬 가격+할인 요청은 하나만 저장하고 audit도 그 한 쌍만 남긴다", async () => {
+    const s = await shop();
+    await setProductEvent(db, s.ctx, s.productId, event(10));
+    const rs = await Promise.all([20, 30, 40, 50].map(value => updateProduct(db, s.ctx, s.productId, { price: value * 100, expectedPrice: 1000, event: event(value) })));
+    expect(rs.filter(r => r.ok)).toHaveLength(1);
+    expect(rs.filter(r => !r.ok && r.reason === "price_conflict")).toHaveLength(3);
+    const after = await snapshot(s.productId);
+    expect(after.price).toBe(after.eventDiscountValue! * 100);
+    expect(await updates(s.seller.id)).toBe(1);
+    expect(await db.auditLog.count({ where: { targetId: s.productId, action: "product.event_set" } })).toBe(2);
+  });
+
+  it("이벤트 audit 저장이 실패하면 앞선 가격·이벤트 update와 상품 audit도 롤백한다", async () => {
+    const s = await shop();
+    await setProductEvent(db, s.ctx, s.productId, event(10));
+    const before = await snapshot(s.productId), count = await audits(s.productId);
+    const original = audit.writeAudit;
+    const spy = vi.spyOn(audit, "writeAudit").mockImplementation(async (tx, entry) => {
+      if (entry.action === "product.event_set") throw new Error("event audit test failure");
+      return original(tx, entry);
+    });
+    try { await expect(updateProduct(db, s.ctx, s.productId, { price: 1500, expectedPrice: 1000, event: event() })).rejects.toThrow("event audit test failure"); }
+    finally { spy.mockRestore(); }
+    expect(await snapshot(s.productId)).toEqual(before);
+    expect(await audits(s.productId)).toBe(count);
+  });
+
+  it("새 혼합 payload도 상품 권한·조회 전용·다른 tenant를 우회하지 못한다", async () => {
+    const s = await shop(), other = await shop();
+    const before = await snapshot(s.productId), count = await audits(s.productId);
+    for (const [ctx, status] of [[{ ...s.ctx, isOwner: false, permissions: [] }, 403], [{ ...s.ctx, readOnly: true }, 403], [other.ctx, 404]] as [TenantContext, number][]) {
+      await expect(updateProduct(db, ctx, s.productId, { price: 1500, expectedPrice: 1000, event: event() })).rejects.toMatchObject({ status });
+    }
+    expect(await snapshot(s.productId)).toEqual(before);
+    expect(await audits(s.productId)).toBe(count);
+  });
+});
 
 describe("expectedPrice", () => {
   it("지금 판매가와 같으면 바꾸고, 다르면 바꾸지 않고 지금 판매가를 돌려준다", async () => {
@@ -140,5 +221,12 @@ describe("권한·격리·API", () => {
     expect((await patch({ expectedStatus: "nope", status: "HIDDEN" })).status).toBe(400);
     expect((await patch({ price: 2600 })).status).toBe(200);
     expect((await row(s.productId)).price).toBe(2600);
+    const event = { type: "RATE", value: 20, startsAt: new Date(Date.now() - 60_000).toISOString(), endsAt: new Date(Date.now() + 3600_000).toISOString() };
+    expect((await patch({ price: 2800, expectedPrice: 2600, event })).status).toBe(200);
+    expect((await patch({ price: 3000, expectedPrice: 2800, event: { ...event, value: 91 } })).status).toBe(400);
+    expect((await patch({ price: 3000, expectedPrice: 2600, event: null })).status).toBe(409);
+    expect(await db.product.findUniqueOrThrow({ where: { id: s.productId } })).toMatchObject({ price: 2800, eventDiscountType: "RATE", eventDiscountValue: 20 });
+    expect((await patch({ price: 3000, expectedPrice: 2800, event: null })).status).toBe(200);
+    expect(await db.product.findUniqueOrThrow({ where: { id: s.productId } })).toMatchObject({ price: 3000, eventDiscountType: null, eventDiscountValue: null });
   });
 });

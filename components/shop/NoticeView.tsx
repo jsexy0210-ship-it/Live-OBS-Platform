@@ -8,7 +8,7 @@ import "./Cart.css";
 import "./Help.css";
 
 // 공지 상세. 본문은 글자 그대로 그린다(HTML 아님, 줄바꿈 유지).
-type Notice = { id: string; title: string; body: string; isPinned: boolean; createdAt: string };
+type Notice = { id: string; title: string; body: string; category: string | null; isPinned: boolean; createdAt: string };
 type View = { kind: "loading" } | { kind: "missing" } | { kind: "error" } | { kind: "ok"; notice: Notice };
 
 export default function NoticeView({ slug, noticeId }: { slug: string; noticeId: string }) {
@@ -40,6 +40,7 @@ export default function NoticeView({ slug, noticeId }: { slug: string; noticeId:
       ) : (
         <article className="help-notice">
           <h2>
+            {view.notice.category && <span className="help-tag">{view.notice.category}</span>}
             {view.notice.isPinned && <span className="help-tag">고정</span>}
             {view.notice.title}
           </h2>

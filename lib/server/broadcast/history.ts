@@ -8,7 +8,7 @@ import { aggregateBroadcasts } from "./summary";
 
 // 방송 이력(SA-054): 시작 시각 최신순 50개, 기간(KST 날짜, 끝 포함)은 방송 시작일 기준, cursor(마지막 방송 id).
 // 방송마다 집계는 요약·상세와 같은 함수(aggregateBroadcasts). 다른 판매자 방송은 보이지 않는다.
-export const HISTORY_PAGE = 50;
+export const HISTORY_PAGE = 10;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUuid = (v: unknown): v is string => typeof v === "string" && UUID.test(v);

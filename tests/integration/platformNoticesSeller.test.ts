@@ -111,12 +111,19 @@ describe("목록: 읽음·검색·분류·안 읽은 것만", () => {
     // 커서와 함께: 검색 결과 안에서 이어진다
     for (let i = 0; i < 22; i++) await notice({ title: `점검 ${i}`, category: "MAINTENANCE" }, `2026-08-${String(1 + (i % 28)).padStart(2, "0")}T0${i % 10}:00:00Z`);
     const first = await q(`category=MAINTENANCE`);
-    expect(first.body.items).toHaveLength(20);
+    expect(first.body.items).toHaveLength(10);
+    expect(first.body.nextCursor).not.toBeNull();
     const second = await q(`category=MAINTENANCE&cursor=${encodeURIComponent(first.body.nextCursor)}`);
+    expect(second.body.items).toHaveLength(10);
     expect(second.body.pinned).toEqual([]);
-    expect(second.body.items.length + first.body.items.length).toBe(23);
-    expect(new Set([...first.body.items, ...second.body.items].map((x: { id: string }) => x.id)).size).toBe(23);
-    expect(second.body.nextCursor).toBeNull();
+    expect(second.body.nextCursor).not.toBeNull();
+    const third = await q(`category=MAINTENANCE&cursor=${encodeURIComponent(second.body.nextCursor)}`);
+    expect(third.body.items).toHaveLength(3);
+    expect(third.body.pinned).toEqual([]);
+    const items = [...first.body.items, ...second.body.items, ...third.body.items];
+    expect(items).toHaveLength(23);
+    expect(new Set(items.map((x: { id: string }) => x.id)).size).toBe(23);
+    expect(third.body.nextCursor).toBeNull();
   });
 });
 

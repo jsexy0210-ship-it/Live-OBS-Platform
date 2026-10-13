@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { CursorPagination } from "../../../../../../components/Pagination";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
@@ -38,7 +39,7 @@ type Row = {
 type Page = { counts: Record<Access, number>; subscriptions: Row[]; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; items: Row[]; next: string | null };
 type Filters = { access: Access | ""; q: string; plan: string };
-const PAGE = 50;
+const PAGE = 10;
 const EMPTY: Filters = { access: "", q: "", plan: "" };
 
 function query(f: Filters, cursor?: string) {
@@ -56,12 +57,18 @@ export default function SubscriptionsPage() {
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [counts, setCounts] = useState<Record<Access, number> | null>(null);
   const [more, setMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const paging = useRef(false);
   const [toast, setToast] = useState<string | null>(null);
 
   // 조건을 빨리 바꾸면 이전 응답이 늦게 올 수 있다. 마지막으로 보낸 조건의 응답만 반영한다
   const reqId = useRef(0);
   const load = useCallback(async (f: Filters) => {
     const id = ++reqId.current;
+    paging.current = false;
+    setPage(1);
+    setCursors([undefined]);
     setMore(false);
     setState({ kind: "loading" });
     const r = await adminApi<Page>(`/api/admin/subscriptions?${query(f)}`);
@@ -71,14 +78,23 @@ export default function SubscriptionsPage() {
   }, []);
   useEffect(() => void load(applied), [applied, load]);
 
-  const loadMore = async () => {
-    if (state.kind !== "ok" || !state.next) return;
+  const changePage = async (target: number) => {
+    if (state.kind !== "ok" || paging.current || target === page || target < 1 || target > cursors.length + 1) return;
+    const cursor = target <= cursors.length ? cursors[target - 1] : state.next;
+    if (target > 1 && !cursor) return;
+    paging.current = true;
     setMore(true);
-    const id = reqId.current;
-    const r = await adminApi<Page>(`/api/admin/subscriptions?${query(applied, state.next)}`);
+    const id = ++reqId.current;
+    const r = await adminApi<Page>(`/api/admin/subscriptions?${query(applied, cursor ?? undefined)}`);
     if (id !== reqId.current) return;
+    paging.current = false;
     setMore(false);
-    if (r.ok) setState({ kind: "ok", items: [...state.items, ...r.data.subscriptions], next: r.data.nextCursor });
+    if (r.ok) {
+      setCounts(r.data.counts);
+      setState({ kind: "ok", items: r.data.subscriptions, next: r.data.nextCursor });
+      setPage(target);
+      if (target > cursors.length) setCursors([...cursors, cursor ?? undefined]);
+    }
     else setToast("더 불러오지 못했습니다. 다시 눌러 주십시오.");
   };
 
@@ -93,7 +109,7 @@ export default function SubscriptionsPage() {
     <>
       <AdminTopbar crumb="구독·요금 › 구독 현황" />
       <main className="main">
-        <PageHead title="구독 현황" />
+        <PageHead title="구독 현황" description="파트너스별 구독 상태와 다음 결제 일정을 확인합니다." />
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
           {(["trial", "paid", "grace", "expired"] as Access[]).map((a) => (
             <div key={a} className="card pad col" style={{ gap: 4 }}>
@@ -104,22 +120,21 @@ export default function SubscriptionsPage() {
             </div>
           ))}
         </div>
-        <nav className="tabs" aria-label="이용 상태">
-          <button type="button" className={`tab${applied.access === "" ? " on" : ""}`} aria-pressed={applied.access === ""} onClick={() => setApplied({ ...applied, access: "" })}>
-            전체{counts ? ` ${TABS.reduce((n, a) => n + counts[a], 0).toLocaleString("ko-KR")}` : ""}
-          </button>
-          {TABS.map((a) => (
-            <button key={a} type="button" className={`tab${applied.access === a ? " on" : ""}`} aria-pressed={applied.access === a} onClick={() => setApplied({ ...applied, access: a })}>
-              {ACCESS[a].label}
-              {counts ? ` ${counts[a].toLocaleString("ko-KR")}` : ""}
+        <div style={{ maxWidth: "100%", overflowX: "auto" }}>
+          <nav className="tabs" aria-label="이용 상태" style={{ minWidth: "max-content" }}>
+            <button type="button" className={`tab${applied.access === "" ? " on" : ""}`} aria-pressed={applied.access === ""} onClick={() => setApplied({ ...applied, access: "" })}>
+              전체{counts ? ` ${TABS.reduce((n, a) => n + counts[a], 0).toLocaleString("ko-KR")}` : ""}
             </button>
-          ))}
-        </nav>
+            {TABS.map((a) => (
+              <button key={a} type="button" className={`tab${applied.access === a ? " on" : ""}`} aria-pressed={applied.access === a} onClick={() => setApplied({ ...applied, access: a })}>
+                {ACCESS[a].label}
+                {counts ? ` ${counts[a].toLocaleString("ko-KR")}` : ""}
+              </button>
+            ))}
+          </nav>
+        </div>
         <SearchBox onSearch={() => setApplied({ ...applied, q: draft.q.trim(), plan: draft.plan })} onReset={reset} busy={state.kind === "loading"}>
-          <SearchRow label="검색어">
-            <input className="inp" type="search" aria-label="쇼핑몰 이름 · 주소" placeholder="쇼핑몰 이름 · 주소" maxLength={MAX_SEARCH_LENGTH} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
-          </SearchRow>
-          <SearchRow label="요금제">
+          <SearchRow label="검색어" label2="요금제" children2={
             <select className="inp" aria-label="요금제" value={draft.plan} onChange={(e) => setDraft({ ...draft, plan: e.target.value })}>
               <option value="">전체</option>
               {PLAN_FILTER.map((p) => (
@@ -128,6 +143,8 @@ export default function SubscriptionsPage() {
                 </option>
               ))}
             </select>
+          }>
+            <input className="inp" type="search" aria-label="쇼핑몰 이름 · 주소" placeholder="쇼핑몰 이름 · 주소" maxLength={MAX_SEARCH_LENGTH} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
           </SearchRow>
         </SearchBox>
 
@@ -188,11 +205,9 @@ export default function SubscriptionsPage() {
                   </table>
                 </div>
                 <div className="row" style={{ justifyContent: "space-between", padding: "12px 16px" }}>
-                  <span className="t-c1 c-alt">{state.next ? `${items.length}곳 넘게` : `${items.length}곳`}</span>
-                  {state.next && (
-                    <button className="btn btn-sm btn-out" type="button" onClick={() => void loadMore()} disabled={more}>
-                      {more ? "불러오는 중" : "더 보기"}
-                    </button>
+                  <span className="t-c1 c-alt">{page}페이지 · {items.length}곳{state.next ? " · 다음 페이지 있음" : ""}</span>
+                  {(state.next || page > 1) && (
+                    <div aria-busy={more}><CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={(n) => void changePage(n)} onNext={() => void changePage(page + 1)} /></div>
                   )}
                 </div>
               </>

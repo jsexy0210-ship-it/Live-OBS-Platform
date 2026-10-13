@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import ShopLegal from "../../../../../components/shop/ShopLegal";
-import { shopOpen } from "../../../../../lib/server/buyers/signup";
 import { prisma } from "../../../../../lib/server/db";
 import { publicLegalOf } from "../../../../../lib/server/shop-legal/service";
 import { findActiveShop } from "../_lib/shop";
@@ -14,6 +13,6 @@ export const metadata: Metadata = { title: "개인정보처리방침" };
 export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
   const shop = await findActiveShop((await params).slug);
   if (!shop) notFound();
-  // 운영 중이 아닌 쇼핑몰은 안내만(API와 같은 기준)
-  return <ShopLegal kind="privacy" slug={shop.slug} doc={(await shopOpen(prisma, shop.id)) ? await publicLegalOf(prisma, shop.id, "PRIVACY") : null} />;
+  // 준비 중·일시 정지 중에도 게시된 법정 고지는 읽을 수 있다.
+  return <ShopLegal kind="privacy" slug={shop.slug} doc={await publicLegalOf(prisma, shop.id, "PRIVACY")} />;
 }
