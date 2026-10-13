@@ -102,6 +102,27 @@ class Fixture(unittest.TestCase):
                 runner.run("execute", REQUEST, "101", **args)
             self.assertEqual(mutations, [])
 
+    def test_partial_after_claim_or_before_second_candidate_stops_with_failed_result(self):
+        images = [dict(IMAGE), {**IMAGE, "id": "sha256:" + "b" * 64, "contentHash": "b" * 64}]
+        exclusion = [{"category": runner.LOG, "reason": "RUNNER_DIAG_WRITABLE_BY_GROUP_OR_OTHER"}]
+        for boundary in (0, 1):
+            mutations, requests = [], []
+            reads = iter([images, *([images] if boundary else []), runner.PlanCandidates(images[boundary:], exclusion)])
+            expected = runner.fingerprint(images)
+            def send(payload):
+                requests.append(payload)
+                if payload["action"] == "claim":
+                    return {"ok": True, "job": {"id": "101", "requestId": REQUEST, "candidateFingerprint": expected, "state": "RUNNING"}}
+                return {"ok": True}
+            with self.subTest(boundary=boundary), self.assertRaisesRegex(runner.Rejected, "PARTIAL_PREVIEW_EXECUTION_DENIED"):
+                runner.run("execute", REQUEST, "101", expected=expected, expires_at=(dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=5)).isoformat(), read=lambda: next(reads), send=send, remove=lambda c: mutations.append(c), measure=lambda: 1000)
+            self.assertEqual(mutations, images[:boundary])
+            self.assertNotIn(images[boundary], mutations)
+            self.assertEqual([r["action"] for r in requests], ["claim", "result"])
+            self.assertEqual(requests[-1]["errorCode"], "PARTIAL_PREVIEW_EXECUTION_DENIED")
+            self.assertEqual(requests[-1]["reclaimedBytes"], 0)
+            self.assertEqual(requests[-1]["candidateFingerprint"], expected)
+
     def test_changed_after_claim_mutation_zero_and_failed_result(self):
         args, mutations, requests, _ = self.owned()
         reads = iter([[IMAGE, LOG], [IMAGE]])

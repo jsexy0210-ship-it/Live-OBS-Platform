@@ -173,7 +173,10 @@ def run(mode, request_id, run_id, expected=None, expires_at=None, read=plan, sen
     try:
         remaining = list(candidates)
         for candidate in candidates:
-            if fingerprint(read()) != fingerprint(remaining):
+            fresh = read()
+            if getattr(fresh, "exclusions", []):
+                raise Rejected("PARTIAL_PREVIEW_EXECUTION_DENIED")
+            if fingerprint(fresh) != fingerprint(remaining):
                 raise Rejected("CANDIDATE_CHANGED")
             remove(candidate)
             remaining.remove(candidate)
