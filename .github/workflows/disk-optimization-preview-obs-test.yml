@@ -63,10 +63,18 @@ jobs:
           runner_root="$(dirname -- "$(dirname -- "${RUNNER_TEMP:?}")")"
           [[ -d "$runner_root/_diag" && ! -L "$runner_root" && ! -L "$runner_root/_diag" ]] || { echo RUNNER_UNVERIFIED >&2; exit 1; }
           mkdir -- evidence
+          OBS_RUNNER_ROOT="$runner_root" python3 scripts/ops/disk-optimization-host-diagnostics.py > evidence/host-diagnostics.json
           OBS_RUNNER_ROOT="$runner_root" bash scripts/ops/disk-optimization-plan.sh --preview > evidence/candidates.tsv
           sha256sum evidence/candidates.tsv | cut -d' ' -f1 > evidence/fingerprint.txt
           date -u +%Y-%m-%dT%H:%M:%S.000Z > evidence/checked-at.txt
           printf '%s\n' "$GITHUB_RUN_ID" > evidence/preview-run-id.txt
+      - name: Save host diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: disk-optimization-host-diagnostics-${{ github.run_id }}
+          path: ${{ github.workspace }}/${{ steps.isolated_checkout.outputs.checkout_path }}/evidence/host-diagnostics.json
+          if-no-files-found: warn
       - name: Save candidate evidence
         uses: actions/upload-artifact@v4
         with:

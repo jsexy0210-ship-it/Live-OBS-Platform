@@ -74,6 +74,7 @@ jobs:
           bash scripts/ops/disk-optimization-plan-fixture.sh
           python3 scripts/ops/disk-optimization-runner-fixture.py
           python3 scripts/ops/disk-optimization-env-sync-fixture.py
+          python3 scripts/ops/disk-optimization-host-diagnostics-fixture.py
 
       - name: Node
         uses: actions/setup-node@v4
