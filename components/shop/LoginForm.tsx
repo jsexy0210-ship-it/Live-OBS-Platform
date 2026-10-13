@@ -43,9 +43,11 @@ export default function LoginForm({ slug, shopName, next }: { slug: string; shop
   }
 
   return (
-    <form className="card shop-card shop-login col" onSubmit={submit} noValidate>
-      <h1 className="t-h1">로그인</h1>
-      <p className="t-l2 c-alt">{shopName} 회원으로 들어가요</p>
+    <form className="shop-login shop-login-open col" onSubmit={submit} noValidate>
+      <div className="shop-login-head">
+        <h1 className="t-h1">로그인</h1>
+        <p className="t-l2 c-alt">{shopName} 회원으로 들어가요</p>
+      </div>
       <div className="fld">
         <label htmlFor="login-id">이메일</label>
         <input id="login-id" className="inp" type="email" autoComplete="username" maxLength={254} value={loginId} onChange={(e) => setLoginId(e.target.value)} />
