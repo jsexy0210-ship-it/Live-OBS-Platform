@@ -2,11 +2,11 @@
 // 쇼핑몰 이름(externalShopName)은 지금 몰 ID라 화면에 보이지 않는다(별칭이 생기면 title로 붙인다).
 export type OrderSource = "INTERNAL" | "EXTERNAL";
 
-export function SourceBadge({ source }: { source?: OrderSource | null }) {
+export function SourceBadge({ source, label = "다른 쇼핑몰 주문" }: { source?: OrderSource | null; label?: string }) {
   if (source !== "EXTERNAL") return null;
   return (
     <span className="bdg b-info" data-testid="source-badge">
-      다른 쇼핑몰 주문
+      {label}
     </span>
   );
 }
