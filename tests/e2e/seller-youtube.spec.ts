@@ -86,6 +86,8 @@ test("수집 기본값(기본 꺼짐)을 바꾸고, 이번 달 현황을 보고,
   const usage = page.getByTestId("yt-usage");
   await expect(usage).toContainText("이번 달 가져온 채팅3건");
   await expect(usage).toContainText("저장해 둔 채팅3건");
+  await expect(page.getByTestId("yt-usage-tiles").locator(".stat")).toHaveCount(4);
+  await expect(page.getByTestId("yt-how").locator("tbody tr")).toHaveCount(4);
 
   // 지금 삭제: 취소는 그대로, 삭제하면 보관 0건·이번 달 수집 건수는 그대로
   await page.getByTestId("yt-purge-open").click();
