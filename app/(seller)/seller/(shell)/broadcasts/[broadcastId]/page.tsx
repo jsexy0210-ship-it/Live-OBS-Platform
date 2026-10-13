@@ -195,12 +195,6 @@ export default function BroadcastDetailPage() {
               <table className="au-ft bd-info" aria-label="방송 정보">
                 <tbody>
                   <tr>
-                    <th scope="row">방송 제목</th>
-                    <td colSpan={3} data-testid="bd-title">
-                      {b.title || "제목 없는 방송"}
-                    </td>
-                  </tr>
-                  <tr>
                     <th scope="row">일시</th>
                     <td>
                       {formatDateTime(b.startedAt)} ~ {b.endedAt ? formatDateTime(b.endedAt) : "진행 중"} · {kstDuration(b.startedAt, b.endedAt)}
