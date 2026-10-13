@@ -29,9 +29,10 @@ else
   daemon_status=$?; fail "DOCKER_DAEMON_QUERY_FAILED exit=$daemon_status"
 fi
 # 과거 artifact/환경 boolean을 신뢰하지 않고 후보 읽기 및 callback 때마다 다시 측정한다.
-python3 "$(dirname -- "${BASH_SOURCE[0]}")/disk-optimization-host-diagnostics.py" --verify-preview-host
-all_versions="$(grep -o 'sha=[0-9a-f]\{40\}' "$history" | cut -d= -f2 | sort -u)" || fail HISTORY_UNVERIFIED
-protected_versions="$(tac -- "$history" | grep -o 'sha=[0-9a-f]\{40\}' | cut -d= -f2 | awk '!seen[$0]++' | sed -n "1,${keep}p")"
+# 소유 확인한 같은 fd의 전체 history snapshot만 쓰고 pathname을 다시 열지 않는다.
+verified_history="$(python3 "$(dirname -- "${BASH_SOURCE[0]}")/disk-optimization-host-diagnostics.py" --verify-preview-history)"
+all_versions="$(tr ' ' '\n' <<<"$verified_history" | sort -u)"
+protected_versions="$(tac <<<"$verified_history" | tr ' ' '\n' | awk '!seen[$0]++' | sed -n "1,${keep}p")"
 [ -n "$all_versions" ] && [ -n "$protected_versions" ] || fail HISTORY_UNVERIFIED
 containers="$(d ps -aq)" || fail CONTAINERS_UNVERIFIED
 protected_ids=""

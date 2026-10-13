@@ -63,16 +63,53 @@ class Fixture(unittest.TestCase):
             self.assertFalse(source.preview_identity_verified({k: v for k, v in normal.items() if k != key}))
         with patch.object(source, "collect", return_value=normal) as measured, contextlib.redirect_stdout(io.StringIO()) as out:
             self.assertEqual(source.main(["--verify-preview-host"], ENV), 0)
-            measured.assert_called_once_with(ENV)
+            self.assertEqual(measured.call_args.args, (ENV,))
+            self.assertTrue(callable(measured.call_args.kwargs["history_reader"]))
+            self.assertEqual(measured.call_count, 1)
             self.assertEqual(out.getvalue(), "")
         with patch.object(source, "collect", return_value={**normal, "runnerDiagOwned": False}) as measured, contextlib.redirect_stderr(io.StringIO()) as err:
             self.assertEqual(source.main(["--verify-preview-host"], ENV), 1)
-            measured.assert_called_once_with(ENV)
+            self.assertEqual(measured.call_args.args, (ENV,))
+            self.assertTrue(callable(measured.call_args.kwargs["history_reader"]))
+            self.assertEqual(measured.call_count, 1)
             self.assertEqual(err.getvalue(), "TEST_ATTESTATION_UNVERIFIED match=false\n")
         with patch.object(source, "collect") as measured, contextlib.redirect_stderr(io.StringIO()) as err:
             self.assertEqual(source.main(["--verify-preview-host"], {**ENV, "OBS_HISTORY_FILE": "/owned/other"}), 1)
             measured.assert_not_called()
             self.assertEqual(err.getvalue(), "HISTORY_UNVERIFIED\n")
+
+    def test_complete_history_snapshot_keeps_chunk_edges_and_rejects_replacement(self):
+        # 64KiB 앞의 오래된 버전도 all_versions에 남고, chunk 경계의 버전도 한번만 남는다.
+        content = b"sha=" + b"b" * 40 + b"\n" + b"x" * (65536 - 45 - 20) + b"sha=" + SHA.encode() + b"\n"
+        attrs = dict(st_dev=1, st_ino=2, st_uid=123, st_gid=123, st_mode=stat.S_IFREG | 0o644, st_nlink=1, st_size=len(content), st_mtime_ns=1, st_ctime_ns=1)
+        base = SimpleNamespace(**attrs)
+        for changed in (None, {"st_ino": 3}, {"st_uid": 999}, {"st_ctime_ns": 2}, {"st_mode": stat.S_IFLNK | 0o777}):
+            final = SimpleNamespace(**{**attrs, **(changed or {})})
+            with self.subTest(changed=changed), patch.object(source.os, "O_NOFOLLOW", 512, create=True), patch.object(source.os, "geteuid", return_value=123, create=True), patch.object(source.Path, "lstat", side_effect=[base, base, final]), patch.object(source.os, "open", return_value=7), patch.object(source.os, "fstat", side_effect=[base, base]), patch.object(source.os, "lseek"), patch.object(source.os, "read", side_effect=[content[:65536], content[65536:], b""]), patch.object(source.os, "close"):
+                verified, versions = source.read_history(Path("/owned/history"), full=True)
+            self.assertEqual(verified, changed is None)
+            self.assertEqual(versions, ["b" * 40, SHA] if changed is None else None)
+        # 원 tac→grep처럼 최신 줄부터 읽되 한 줄 안의 여러 SHA 순서는 유지한다.
+        multiple = b"sha=" + b"b" * 40 + b" sha=" + SHA.encode() + b"\n"
+        multi_stat = SimpleNamespace(**{**attrs, "st_size": len(multiple)})
+        with patch.object(source.os, "O_NOFOLLOW", 512, create=True), patch.object(source.os, "geteuid", return_value=123, create=True), patch.object(source.Path, "lstat", return_value=multi_stat), patch.object(source.os, "open", return_value=7), patch.object(source.os, "fstat", return_value=multi_stat), patch.object(source.os, "lseek"), patch.object(source.os, "read", side_effect=[multiple, b""]), patch.object(source.os, "close"):
+            self.assertEqual(source.read_history(Path("/owned/history"), full=True), (True, ["b" * 40 + " " + SHA]))
+        normal = {key: True for key in source.PREVIEW_IDENTITY_CHECKS}
+        def collect(env, history_reader):
+            owned, latest = history_reader(Path("/owned/history"))
+            return {**normal, "historyOwned": owned, "historyHasCommit": latest is not None}
+        for owned, versions in ((True, ["b" * 40, SHA]), (False, None)):
+            with patch.object(source, "read_history", return_value=(owned, versions)) as opened, patch.object(source, "collect", side_effect=collect), contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()) as err:
+                status = source.main(["--verify-preview-history"], ENV)
+            opened.assert_called_once_with(Path("/owned/history"), full=True)
+            self.assertEqual(status, 0 if owned else 1)
+            self.assertEqual(out.getvalue(), "b" * 40 + "\n" + SHA + "\n" if owned else "")
+            self.assertEqual(err.getvalue(), "" if owned else "TEST_ATTESTATION_UNVERIFIED match=false\n")
+        plan = Path(__file__).with_name("disk-optimization-plan.sh").read_text(encoding="utf-8")
+        self.assertIn('--verify-preview-history)', plan)
+        self.assertIn('tac <<<"$verified_history"', plan)
+        self.assertNotIn('tac -- "$history"', plan)
+        self.assertNotIn("grep -o 'sha=", plan)
 
     def test_runner_directory_false_reasons_are_booleans_and_never_accepted(self):
         def run(args, env):

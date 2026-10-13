@@ -59,8 +59,11 @@ docker() {
 export -f docker
 # planner의 새 fresh 검증 호출을 owned 대역으로 확인한다. 복합 검증 자체는 Python fixture에서 각 필수근거를 거부한다.
 python3() {
-  [ "$#" = 2 ] && [ "${1##*/}" = disk-optimization-host-diagnostics.py ] && [ "$2" = --verify-preview-host ] || return 93
+  [ "$#" = 2 ] && [ "${1##*/}" = disk-optimization-host-diagnostics.py ] && [ "$2" = --verify-preview-history ] || return 93
   if [ "$CASE_MODE" = attestation ]; then printf 'TEST_ATTESTATION_UNVERIFIED match=false\n' >&2; return 1; fi
+  # 실제 Python의 fd snapshot 계약은 별도 fixture가 검증한다. planner에는 승인된 버전만 반환한다.
+  # 이 fixture의 history는 한 줄에 SHA 한 개씩이다.
+  grep -o 'sha=[0-9a-f]\{40\}' "$OBS_HISTORY_FILE" | cut -d= -f2
 }
 export -f python3
 script="$(cd -- "$(dirname -- "$0")" && pwd)/disk-optimization-plan.sh"
