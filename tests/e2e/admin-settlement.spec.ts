@@ -55,7 +55,9 @@ test("PG 연결 상태: 게이트웨이 카드와 파트너스 표가 보이고,
 
 test("구독료 수납: 오늘 청구가 요약·일별 표에 보이고, 시작일이 종료일보다 늦으면 막힌다", async ({ page }) => {
   await login(page);
-  await page.goto("/admin/settlement/collection");
+  // 기본 기간은 이번 달이라, 오늘 하루로 좁혀 이 시험이 만든 청구 한 줄만 본다
+  const today = new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10);
+  await page.goto(`/admin/settlement/collection?from=${today}&to=${today}`);
   await expect(page.getByTestId("collection-paid")).toContainText(/[1-9]\d*건 · [\d,]*199,000원|[1-9]\d*건 · [\d,]+원/);
   await expect(page.getByTestId("collection-row")).toHaveCount(1);
   await page.getByLabel("시작일").fill("2026-10-05");

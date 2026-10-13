@@ -26,7 +26,7 @@ type Tx = Prisma.TransactionClient;
 export type AuditMeta = { ip?: string | null; userAgent?: string | null };
 export type BuyerScope = { sellerId: string; buyerMemberId: string };
 const UNATTACHED_KEEP = 10;
-const PAGE = 30;
+const PAGE = 10;
 const isUniqueViolation = (e: unknown) => e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
 
 export type ReturnFailure =
@@ -364,7 +364,7 @@ const STATUS_FILTER = new Set<string>(["REQUESTED", "ACCEPTED", "RECEIVED", "COM
 // 목록·상태별 건수. ?status, ?kind, 커서(createdAt 내림, id 내림). 접수 대기 건수가 위쪽 요약에 쓰인다.
 export async function listSellerReturns(db: PrismaClient, ctx: TenantContext, q: { status?: unknown; kind?: unknown; cursor?: unknown } = {}) {
   requireSellerRead(ctx, "ORDER_SHIPPING");
-  const status = typeof q.status === "string" && STATUS_FILTER.has(q.status) ? (q.status as ReturnStatus) : undefined;
+  const status = q.status === "closed" ? { in: ["COMPLETED", "REJECTED", "CANCELLED"] satisfies ReturnStatus[] } : typeof q.status === "string" && STATUS_FILTER.has(q.status) ? (q.status as ReturnStatus) : undefined;
   const kind = q.kind === "RETURN" || q.kind === "EXCHANGE" ? q.kind : undefined;
   let after: Prisma.ReturnRequestWhereInput = {};
   if (typeof q.cursor === "string" && isUuid(q.cursor)) {

@@ -1,0 +1,93 @@
+# MA120 전용 읽기 원천. 앱 dispatch/실행 인증 bridge 검증 전에는 삭제 모드를 제공하지 않는다.
+name: Disk optimization preview obs-test
+run-name: MA120 PREVIEW ${{ inputs.request_id }}
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: App correlation ID (manual read-only preview may omit it)
+        required: false
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: deploy-obs-test
+  cancel-in-progress: false
+jobs:
+  preview:
+    if: github.ref == 'refs/heads/main' && github.repository == 'jsexy0210-ship-it/Live-OBS-Platform'
+    runs-on: [self-hosted, obs-kakao]
+    environment: obs-test
+    timeout-minutes: 15
+    steps:
+      - name: Verify isolated checkout path
+        id: isolated_checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          workspace="$(realpath -e -- "${GITHUB_WORKSPACE:?}")"
+          [[ -d "$workspace" && "$workspace" != / ]] || { echo "GITHUB_WORKSPACE 확인 실패" >&2; exit 1; }
+          checkout_name="disk-optimization-${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}"
+          [[ "$checkout_name" =~ ^disk-optimization-[0-9]+-[0-9]+$ ]] || { echo "진단 checkout 이름이 안전하지 않아요" >&2; exit 1; }
+          target="${workspace%/}/$checkout_name"
+          resolved="$(realpath -m -- "$target")"
+          workspace_prefix="${workspace%/}/"
+          [[ "$resolved" == "$workspace_prefix"* ]] || { echo "진단 checkout 경로가 workspace 밖이에요" >&2; exit 1; }
+          if [[ -e "$target" || -L "$target" ]]; then
+            echo "진단 checkout 경로가 이미 있어 기존 runner 자료를 보존합니다" >&2
+            exit 1
+          fi
+          if ! mkdir -- "$target"; then
+            echo "진단 checkout 경로를 독점할 수 없어 기존 runner 자료를 보존합니다" >&2
+            exit 1
+          fi
+          target_real="$(realpath -e -- "$target")"
+          [[ "$target_real" == "$target" ]] || { echo "진단 checkout 경로가 안전하지 않아요" >&2; exit 1; }
+          printf 'checkout_path=%s\n' "$checkout_name" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          path: ${{ steps.isolated_checkout.outputs.checkout_path }}
+          clean: false
+          persist-credentials: false
+
+      - name: Read approved candidates
+        working-directory: ${{ github.workspace }}/${{ steps.isolated_checkout.outputs.checkout_path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 명시된 기존 runner root만 읽는다. HOME이나 불명확한 폴더로 탐색하지 않는다.
+          runner_root="$(dirname -- "$(dirname -- "${RUNNER_TEMP:?}")")"
+          [[ -d "$runner_root/_diag" && ! -L "$runner_root" && ! -L "$runner_root/_diag" ]] || { echo RUNNER_UNVERIFIED >&2; exit 1; }
+          mkdir -- evidence
+          OBS_RUNNER_ROOT="$runner_root" python3 scripts/ops/disk-optimization-host-diagnostics.py > evidence/host-diagnostics.json
+          OBS_RUNNER_ROOT="$runner_root" bash scripts/ops/disk-optimization-plan.sh --preview > evidence/candidates.tsv
+          sha256sum evidence/candidates.tsv | cut -d' ' -f1 > evidence/fingerprint.txt
+          date -u +%Y-%m-%dT%H:%M:%S.000Z > evidence/checked-at.txt
+          printf '%s\n' "$GITHUB_RUN_ID" > evidence/preview-run-id.txt
+      - name: Save host diagnostics
+        if: always() && steps.isolated_checkout.outcome == 'success' && steps.checkout.outcome == 'success' && steps.isolated_checkout.outputs.checkout_path != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: disk-optimization-host-diagnostics-${{ github.run_id }}
+          path: ${{ github.workspace }}/${{ steps.isolated_checkout.outputs.checkout_path }}/evidence/host-diagnostics.json
+          if-no-files-found: warn
+      - name: Save candidate evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: disk-optimization-preview-${{ github.run_id }}
+          path: ${{ github.workspace }}/${{ steps.isolated_checkout.outputs.checkout_path }}/evidence/
+          if-no-files-found: error
+      - name: Return authenticated preview evidence
+        if: inputs.request_id != ''
+        working-directory: ${{ github.workspace }}/${{ steps.isolated_checkout.outputs.checkout_path }}
+        env:
+          DISK_REQUEST_ID: ${{ inputs.request_id }}
+          ONQ_DISK_CALLBACK_TOKEN: ${{ secrets.ONQ_DISK_CALLBACK_TOKEN }}
+        run: |
+          set -euo pipefail
+          export OBS_RUNNER_ROOT="$(dirname -- "$(dirname -- "${RUNNER_TEMP:?}")")"
+          python3 scripts/ops/disk-optimization-runner.py --preview-callback

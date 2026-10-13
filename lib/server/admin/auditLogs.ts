@@ -6,7 +6,7 @@ import { decodeCursor, encodeCursor, kstDayStart } from "../orders/read";
 
 // 마스터 관리자 로그 추적(MA-070·071, 코드·DB 이름은 audit). audit.read(최고관리자·운영·조회 전용, CS 제외). 조회만 한다.
 // 목록은 기록 시각 내림차순 (createdAt, id) 커서이고 바뀐 값(before·after)은 넣지 않는다(상세에서만).
-export const AUDIT_PAGE_DEFAULT = 50;
+export const AUDIT_PAGE_DEFAULT = 10;
 export const AUDIT_PAGE_MAX = 200;
 const ACTOR_TYPES: readonly ActorType[] = ["PLATFORM_ADMIN", "SELLER_USER", "BUYER", "SYSTEM"];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -39,6 +39,7 @@ const LIST_SELECT = {
   targetId: true,
   reason: true,
   ip: true,
+  userAgent: true,
   seller: { select: { id: true, slug: true, shopName: true } },
 } as const satisfies Prisma.AuditLogSelect;
 
@@ -73,10 +74,10 @@ export async function listAuditLogs(db: PrismaClient, admin: AdminSessionContext
   return { ok: true as const, logs: page, nextCursor: rows.length > take && last ? encodeCursor(last.createdAt, last.id) : null };
 }
 
-// 상세: 목록 항목 + 바뀐 값(before·after)·브라우저. 행위자가 관리자면 이름·이메일을 붙인다. 없으면 null.
+// 상세: 목록 항목 + 바뀐 값(before·after). 행위자가 관리자면 이름·이메일을 붙인다. 없으면 null.
 export async function getAuditLog(db: PrismaClient, admin: AdminSessionContext, id: string) {
   requireRead(admin);
-  const log = await db.auditLog.findUnique({ where: { id }, select: { ...LIST_SELECT, before: true, after: true, userAgent: true } });
+  const log = await db.auditLog.findUnique({ where: { id }, select: { ...LIST_SELECT, before: true, after: true } });
   if (!log) return null;
   const actor =
     log.actorType === "PLATFORM_ADMIN" && log.actorId

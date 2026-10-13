@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { SignupProvider } from "../../../../../components/shop/signup/SignupFlow";
-import ShopState from "../../../../../components/shop/ShopState";
+import ShopLocked from "../../../../../components/shop/ShopLocked";
 import { SIGNUP_CONSENT_VERSIONS, currentConsentDocs } from "../../../../../lib/server/buyers/consent";
 import { rejoinDaysToAgree } from "../../../../../lib/server/buyers/rejoin";
 import { shopOpen } from "../../../../../lib/server/buyers/signup";
@@ -30,7 +30,7 @@ export default async function SignupLayout({ params, children }: Params) {
   const shop = await findShop(slug);
   if (!shop) notFound();
   const open = await shopOpen(prisma, shop.id);
-  if (!open) return <ShopState title="지금은 쇼핑몰을 이용할 수 없어요" body="쇼핑몰이 다시 문을 열면 가입할 수 있어요." />;
+  if (!open) return <ShopLocked slug={slug} />;
   const identityReady = identityProvider() !== null;
   // 가입 필수 동의 문서 버전과 재가입 제한 기간(켠 쇼핑몰만). 화면은 본인확인 전에 동의를 받아 함께 보낸다.
   const docs = await currentConsentDocs(prisma, shop.id);

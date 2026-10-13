@@ -267,7 +267,7 @@ export function VerifyStep() {
             </label>
             <select id="idv-carrier" className="inp" value={f.carrier} disabled={locked} onChange={(e) => f.setCarrier(e.target.value as Carrier)}>
               <option value="" disabled>
-                통신사 선택
+                선택
               </option>
               {CARRIERS.map((c) => (
                 <option key={c.value} value={c.value}>
@@ -428,7 +428,7 @@ export function AccountStep() {
         <fieldset className="col signup-fs" disabled={f.busy || f.unconfirmed !== null}>
           <div className="fld">
             <label htmlFor="acc-id">
-              아이디 (이메일)<i aria-hidden="true">*</i>
+              이메일<i aria-hidden="true">*</i>
             </label>
             <input
               id="acc-id"

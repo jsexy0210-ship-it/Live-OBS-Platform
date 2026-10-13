@@ -129,13 +129,20 @@ export async function updateShopProfile(db: PrismaClient, ctx: TenantContext, ra
 export async function publicShopProfile(db: PrismaClient, slug: string) {
   const s = await db.seller.findUnique({ where: { slug: slug.slice(0, 60) }, select: { id: true, status: true, ...SELECT } });
   if (!s || s.status !== "ACTIVE") return null;
-  const domain = s.primaryAddressKind === "CUSTOM" ? await verifiedDomain(db, s.id) : null;
+  const [domain, policy] = await Promise.all([
+    s.primaryAddressKind === "CUSTOM" ? verifiedDomain(db, s.id) : null,
+    db.rewardPolicy.findUnique({ where: { sellerId: s.id }, select: { livePayoutEnabled: true } }),
+  ]);
+  // 적립금 실제 지급이 꺼져 있으면 구매자에게 적립 혜택을 알리지 않는다: 혜택 배너는 「파트너스가 켠 설정 AND 실제 지급 켜짐」일 때만 보인다.
+  // 저장된 설정 값은 그대로 두어(파트너스용 응답은 설정 값) 실제 지급을 다시 켜면 원래대로 돌아온다.
+  const rewardsEnabled = policy?.livePayoutEnabled === true;
   return {
     shopName: s.shopName,
     shopTagline: s.shopTagline,
     operatingState: s.operatingState,
     topNotice: s.shopTopNotice,
-    homeBenefitBannerVisible: s.homeBenefitBannerVisible,
+    homeBenefitBannerVisible: s.homeBenefitBannerVisible && rewardsEnabled,
+    rewardsEnabled,
     usageGuide: s.shopUsageGuide,
     primaryDomain: domain,
   };

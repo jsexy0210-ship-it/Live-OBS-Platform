@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { clearCouponsInDb, createClaimableCouponInDb } from "./couponDb";
 import { okConfirm } from "./shopConfirm";
 
-// 보드 SH-003-IA 맞춤: 탭(리뷰·상품 문의 개수), 상품 문의 목록·쓰기, 쿠폰 받기 줄, 공유, 최근 본 상품, 버튼 순서(장바구니·찜·공유·구매하기).
+// SH-003 FINAL v284: 정보 순서·상품 문의·쿠폰·공유·최근 본 상품과 모바일 고정 구매 바.
 const SLUG = "demo-shop";
 const LOGIN = "demo-buyer1@example.com";
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
@@ -21,6 +21,188 @@ async function login(page: Page, baseURL: string) {
 async function productIdOf(page: Page, name: string) {
   const list = (await (await page.request.get(`/api/shop/${SLUG}/products`)).json()) as { products: { id: string; name: string }[] };
   return list.products.find((p) => p.name === name)!.id;
+}
+
+test("내 문의: 실제 본인 조회 뒤 합성 주문·일반 문의·빈 상태를 세 폭에서 확인한다", async ({ page, baseURL }) => {
+  await login(page, baseURL!);
+  const api = `/api/shop/${SLUG}`;
+  const inquiryResponse = await page.request.get(`${api}/inquiries`);
+  expect(inquiryResponse.status()).toBe(200);
+  const actual = await inquiryResponse.json() as { inquiries: { order: { id: string; orderNoLabel: string } | null }[] };
+  expect(Array.isArray(actual.inquiries)).toBe(true);
+  for (const item of actual.inquiries) expect(item).toHaveProperty("order");
+  const orderResponse = await page.request.get(`${api}/orders?limit=50`);
+  expect(orderResponse.status()).toBe(200);
+  const orders = (await orderResponse.json() as { orders: { id: string; orderNoLabel: string }[] }).orders;
+  expect(Array.isArray(orders)).toBe(true);
+  expect(orders.length).toBeLessThanOrEqual(50);
+  for (const order of orders) expect(order.orderNoLabel).toMatch(/^\d{8}-\d{4,}$/);
+
+  // 문서용 주문은 UI 합성값이다. 실제 주문 생성·문의 등록·답변은 실행하지 않는다.
+  const target = { id: "00000000-0000-4000-8000-000000000042", orderNoLabel: "20261010-0042" };
+  const inquiry = { id: "00000000-0000-4000-8000-000000000043", kind: "GENERAL", product: null, order: target, title: "주문 배송 문의", body: "배송 안내를 확인하고 싶어요", isPrivate: true, status: "WAITING", answer: null, answeredAt: null, createdAt: "2026-10-10T00:00:00.000Z" };
+  let items: { order: typeof target | null }[] = [inquiry];
+  let targets = [target];
+  const mutations: string[] = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if ([`${api}/inquiries`, `${api}/orders`].some((prefix) => path === prefix || path.startsWith(`${prefix}/`)) && !["GET", "HEAD"].includes(request.method())) mutations.push(request.method());
+  });
+  await page.route(`**${api}/inquiries*`, async (route) => {
+    if (route.request().method() !== "GET") return route.abort();
+    await route.fulfill({ json: { inquiries: items, nextCursor: null } });
+  });
+  await page.route(`**${api}/orders*`, async (route) => {
+    if (route.request().method() !== "GET") return route.abort();
+    await route.fulfill({ json: { orders: targets, nextCursor: null } });
+  });
+  for (const state of ["order", "null", "empty"] as const) {
+    items = state === "empty" ? [] : [{ ...inquiry, order: state === "order" ? target : null }];
+    targets = state === "order" ? [target] : [];
+    for (const width of [1440, 1024, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`/shop/${SLUG}/me/inquiries`);
+      const desktopTitle = page.locator(".cart-head h1");
+      const mobileTitle = page.locator(".my-back");
+      await expect(desktopTitle).toHaveText("내 문의");
+      await expect(mobileTitle).toHaveCount(1);
+      if (width === 390) {
+        await expect(desktopTitle).toBeHidden();
+        await expect(mobileTitle).toBeVisible();
+        await expect(mobileTitle.locator("b")).toHaveText("내 문의");
+        await expect(mobileTitle.locator("span")).toHaveText("활동");
+        await expect(mobileTitle.getByRole("link", { name: "내 정보로 돌아가기", exact: true })).toHaveAttribute("href", `/shop/${SLUG}/me`);
+      } else {
+        await expect(page.getByRole("heading", { name: "내 문의", exact: true })).toBeVisible();
+        await expect(mobileTitle).toBeHidden();
+      }
+      const form = page.locator("form.mi-box");
+      await form.getByLabel("1:1 문의 (주문 · 배송 · 기타)").check();
+      const select = form.locator("#mi-order");
+      await expect(select.getByRole("option")).toHaveCount(state === "order" ? 2 : 1);
+      await expect(select.getByRole("option").first()).toHaveText("기타 문의 · 주문 선택 안 함");
+      await expect(select).toHaveValue("");
+      await expect(page.locator(".mi-target")).toHaveCount(state === "order" ? 1 : 0);
+      if (state === "order") {
+        await expect(page.locator(".mi-target")).toHaveText(`주문 ${target.orderNoLabel}`);
+        await expect(page.locator(".mi-target")).toBeVisible();
+        await select.selectOption(target.id);
+        await expect(select).toHaveValue(target.id);
+        await select.selectOption("");
+        await expect(select).toHaveValue("");
+      }
+      if (state === "empty") await expect(page.getByRole("heading", { name: "아직 문의가 없어요" })).toBeVisible();
+      await expect(page.locator(".mi-tbl tbody tr:not(.mi-answer-row)")).toHaveCount(state === "empty" ? 0 : 1);
+      await page.evaluate(() => document.fonts.ready);
+      const bounds = await select.boundingBox();
+      expect(bounds).not.toBeNull();
+      expect(bounds!.width).toBeGreaterThan(0);
+      expect(bounds!.x).toBeGreaterThanOrEqual(0);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+      try {
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+        if (state !== "empty") {
+          const dateCell = page.locator(".mi-tbl tbody .c-date");
+          await expect(dateCell).toHaveText("2026.10.10");
+          const date = await dateCell.evaluate((cell) => {
+            const range = document.createRange();
+            range.selectNodeContents(cell);
+            const text = range.getBoundingClientRect(), bounds = cell.getBoundingClientRect();
+            return { left: text.left, right: text.right, height: text.height, cellLeft: bounds.left, cellRight: bounds.right };
+          });
+          expect(date.height).toBeGreaterThan(0);
+          expect(date.left).toBeGreaterThanOrEqual(date.cellLeft);
+          expect(date.right).toBeLessThanOrEqual(date.cellRight);
+          expect(date.left).toBeGreaterThanOrEqual(0);
+          expect(date.right).toBeLessThanOrEqual(width);
+        }
+      } catch (error) {
+        try {
+          const geometry = await page.locator("body").evaluate(() => {
+            const rects = (selector: string) => [...document.querySelectorAll(selector)].map((element) => {
+              const rect = element.getBoundingClientRect();
+              return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, right: rect.right, scrollWidth: element.scrollWidth, clientWidth: element.clientWidth };
+            });
+            return { viewport: window.innerWidth, scrollWidth: document.documentElement.scrollWidth,
+              table: rects(".mi-tbl"), cells: rects(".mi-tbl th, .mi-tbl td"), target: rects(".mi-target"),
+              date: rects(".mi-tbl .c-date"), radio: rects("form.mi-box .mi-radios, form.mi-box .mi-radios label"),
+            };
+          }, undefined, { timeout: 2000 });
+          console.info("SH-026 합성화면 넘침 치수", JSON.stringify({ state, width, geometry }));
+        } catch {
+          console.info("SH-026 넘침 치수 미확보", { state, width });
+        }
+        try {
+          await page.screenshot({ path: `tests/e2e/screenshots/SH-026-order-target-failure-${state}-${width}.png`, fullPage: true, timeout: 5000,
+            mask: [page.locator(".shop-util"), page.locator(".shop-foot"), page.locator("input"), page.locator("textarea")],
+          });
+        } catch {
+          console.info("SH-026 넘침 PNG 미확보", { state, width });
+        }
+        throw error;
+      }
+      await page.screenshot({ path: `tests/e2e/screenshots/SH-026-order-target-${state}-${width}.png`, fullPage: true });
+    }
+  }
+  expect(mutations).toEqual([]);
+});
+
+async function expectInfoLayout(page: Page, width: number) {
+  await expect(page.locator(".pd-price-summary")).toBeVisible();
+  await expect(page.locator(".pd-rating")).toBeVisible();
+  await expect(page.locator(".pd-coupon-row")).toContainText("세 폭 화면 검수 쿠폰");
+  await page.evaluate(() => document.fonts.ready);
+  const actionOrder = await page.locator(".pd-actions button").evaluateAll((els) =>
+    els.map((el) => ({ name: (el.textContent ?? "").trim(), left: el.getBoundingClientRect().left }))
+      .sort((a, b) => a.left - b.left)
+      .map(({ name }) => name),
+  );
+  expect(actionOrder).toEqual(["♡", "공유", "장바구니에 담기", "바로 주문하기"]);
+  const infoOrder = await page.locator(".pd-info").evaluate((info) => {
+    const children = [...info.children];
+    return [".pd-crumb", "h1", ".pd-social-summary", ".pd-desc", ".pd-price-summary"]
+      .map((selector) => children.findIndex((el) => el.matches(selector)))
+      .filter((index) => index >= 0);
+  });
+  expect(infoOrder).toEqual([...infoOrder].sort((a, b) => a - b));
+  const geometry = await page.locator(".pd-top").evaluate((top) => {
+    const rect = (element: Element) => {
+      const box = element.getBoundingClientRect();
+      return { left: box.left, right: box.right, width: box.width };
+    };
+    return {
+      container: rect(top),
+      gallery: rect(top.querySelector(".pd-gallery")!),
+      info: rect(top.querySelector(".pd-info")!),
+    };
+  });
+  expect(Math.abs(geometry.info.right - geometry.container.right)).toBeLessThanOrEqual(1);
+  if (width <= 767) {
+    // FINAL v284: 사진은 390 본판 전체 폭, 정보·표는 좌우 16px 안쪽이다.
+    expect(Math.abs(geometry.gallery.width - width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.info.left - geometry.gallery.left - 16)).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.gallery.right - geometry.info.right - 16)).toBeLessThanOrEqual(1);
+    await expect(page.locator(".pd-info h1")).toHaveCSS("font-size", "24px");
+    await expect(page.locator(".pd-info h1")).toHaveCSS("line-height", "32px");
+    await expect(page.locator(".pd-info h1")).toHaveCSS("font-weight", "700");
+  } else {
+    expect(Math.abs(geometry.gallery.left - geometry.container.left)).toBeLessThanOrEqual(1);
+  }
+  const priceBottom = await page.locator(".pd-price-summary").evaluate((el) => el.getBoundingClientRect().bottom);
+  const rows = await page.locator(".pd-info .pd-form-row").evaluateAll((els) =>
+    els.map((el) => {
+      const rect = el.getBoundingClientRect();
+      return { name: ["pd-coupon-row", "pd-reward-row", "pd-stock-row", "pd-shipping-row", "pd-receive-row", "pd-option-row", "pd-quantity-row"].find((name) => el.classList.contains(name))!, top: rect.top, bottom: rect.bottom };
+    }),
+  );
+  const order = ["pd-coupon-row", "pd-reward-row", "pd-stock-row", "pd-shipping-row", "pd-receive-row", "pd-option-row", "pd-quantity-row"];
+  const ranks = rows.map((row) => order.indexOf(row.name));
+  expect(ranks.every((rank) => rank >= 0)).toBe(true);
+  expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
+  expect(priceBottom).toBeLessThanOrEqual(rows[0].top + 1);
+  for (let i = 0; i < rows.length - 1; i++) expect(rows[i].bottom).toBeLessThanOrEqual(rows[i + 1].top + 1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  if (process.env.E2E_SCREENSHOTS === "1" && width !== 390) await page.screenshot({ path: `tests/e2e/screenshots/SH-003-info-${width}.png`, fullPage: true });
 }
 
 test("상품 문의: 쓰기(공개·비공개) → 목록·탭 개수 → 지우기, 비회원은 로그인 안내", async ({ page, baseURL }) => {
@@ -69,19 +251,77 @@ test("쿠폰 받기 줄·버튼 순서·공유(주소 복사)", async ({ page, b
   await login(page, baseURL!);
   const id = await productIdOf(page, "탑로더 25장");
   await page.goto(`/shop/${SLUG}/products/${id}`);
-  const row = page.locator("tr", { has: page.getByRole("rowheader", { name: "쿠폰" }) });
+  const row = page.locator(".pd-coupon-row");
   await expect(row).toContainText("상세 시험 쿠폰");
   await row.getByRole("button", { name: "쿠폰 받기" }).click();
   await expect(row.getByText("쿠폰을 받았어요")).toBeVisible();
 
   const names = await page.locator(".pd-actions button").allInnerTexts();
   expect(names.map((n) => n.trim())).toEqual(["♡", "공유", "장바구니에 담기", "바로 주문하기"]);
-  // PC는 장바구니에 담기 · 찜 · 공유 · 바로 주문하기 순서로 보인다(보드 SH-003-PC-IA)
-  const xs = await page.locator(".pd-actions button").evaluateAll((els) => els.map((e) => ({ t: (e.textContent ?? "").trim(), x: e.getBoundingClientRect().left })));
-  expect(xs.sort((a, b) => a.x - b.x).map((e) => e.t)).toEqual(["장바구니에 담기", "♡", "공유", "바로 주문하기"]);
+  const actionBoxes = await page.locator(".pd-actions button").evaluateAll((els) => els.map((e) => {
+    const r = e.getBoundingClientRect();
+    return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+  }));
+  expect(actionBoxes).toHaveLength(4);
+  expect(new Set(actionBoxes.map((b) => Math.round(b.top))).size).toBe(1);
+  const visualOrder = [...actionBoxes].sort((a, b) => a.left - b.left);
+  for (let i = 0; i < visualOrder.length - 1; i++) expect(visualOrder[i].right).toBeLessThanOrEqual(visualOrder[i + 1].left + 1);
   await page.getByRole("button", { name: "공유" }).click();
   await expect(page.getByText("상품 주소를 복사했어요")).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(`/products/${id}`);
+});
+
+test("상품 상세: 실제 받는 방법·배송환불 정책과 찜 총수 변경을 표시한다", async ({ page, baseURL }) => {
+  await login(page, baseURL!);
+  const id = await productIdOf(page, "탑로더 25장");
+  await page.request.delete(`/api/shop/${SLUG}/wishlist/${id}`, { headers: { origin: baseURL! } });
+  const product = (await (await page.request.get(`/api/shop/${SLUG}/products/${id}`)).json()).product;
+  await page.goto(`/shop/${SLUG}/products/${id}`);
+  await expect(page.locator(".pd-receive-row")).toContainText("택배 · 즉시 발송");
+  await expect(page.locator(".pd-opening-notice")).toContainText(product.openingNotice);
+  await page.getByRole("navigation", { name: "상품 상세 메뉴" }).getByRole("link", { name: "배송 · 환불" }).click();
+  const policy = page.getByRole("region", { name: "배송 · 환불" });
+  await expect(policy).toContainText(`결제 확인 뒤 ${product.shipping.dispatchDeadlineDays}일 이내`);
+  await expect(policy).toContainText(`${product.shipping.returnFee.toLocaleString("ko-KR")}원 · 편도`);
+  await expect(policy).toContainText(`${product.shipping.exchangeFee.toLocaleString("ko-KR")}원 · 왕복`);
+  await expect(page.locator(".pd-wish-count")).toHaveText(`· 찜 ${product.wishCount.toLocaleString("ko-KR")}`);
+  await page.getByRole("button", { name: "찜하기", exact: true }).click();
+  await expect(page.locator(".pd-wish-count")).toHaveText(`· 찜 ${(product.wishCount + 1).toLocaleString("ko-KR")}`);
+  const persisted = (await (await page.request.get(`/api/shop/${SLUG}/products/${id}`)).json()).product;
+  expect(persisted.wishCount).toBe(product.wishCount + 1);
+  await page.getByRole("button", { name: "찜 빼기", exact: true }).click();
+  await expect(page.locator(".pd-wish-count")).toHaveText(`· 찜 ${product.wishCount.toLocaleString("ko-KR")}`);
+});
+
+test("상품 상세만 56px 모바일 헤더를 쓰고 홈·목록·장바구니 헤더는 유지한다", async ({ page, baseURL }) => {
+  await login(page, baseURL!);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const id = await productIdOf(page, "탑로더 25장");
+  await page.goto(`/shop/${SLUG}/products/${id}`);
+  const head = page.locator(".shop-product-header");
+  await expect(head).toBeVisible();
+  await expect(head).toHaveCSS("height", "56px");
+  await expect(head.locator(".shop-product-title")).toHaveText("상품 상세");
+  await expect(head.getByRole("button", { name: "목록 화면으로" })).toHaveCSS("width", "44px");
+  await expect(head.getByRole("button", { name: "목록 화면으로" })).toHaveCSS("height", "44px");
+  await expect(head.getByRole("link", { name: "홈", exact: true })).toHaveAttribute("href", `/shop/${SLUG}`);
+  await expect(head.getByRole("link", { name: /^장바구니/ })).toHaveAttribute("href", `/shop/${SLUG}/cart`);
+  await expect(page.locator(".shop-top")).toBeHidden();
+  if (process.env.E2E_SCREENSHOTS === "1") await page.screenshot({ path: "tests/e2e/screenshots/SH-003-top-390.png" });
+  await head.getByRole("button", { name: "목록 화면으로" }).click();
+  await expect(page).toHaveURL(new RegExp(`/shop/${SLUG}/products$`));
+  for (const route of ["", "/products", "/cart"]) {
+    await page.goto(`/shop/${SLUG}${route}`);
+    await expect(page.locator(".shop-product-header")).toHaveCount(0);
+    await expect(page.locator(".shop-top")).toBeVisible();
+    await expect(page.getByRole("button", { name: "카테고리 메뉴" })).toBeVisible();
+  }
+  for (const width of [1024, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`/shop/${SLUG}/products/${id}`);
+    await expect(head).toBeHidden();
+    await expect(page.locator(".shop-top")).toBeVisible();
+  }
 });
 
 test("최근 본 상품: 다른 상품을 본 뒤 상세에 보이고, 지금 상품은 빠진다", async ({ page }) => {
@@ -97,10 +337,32 @@ test("최근 본 상품: 다른 상품을 본 뒤 상세에 보이고, 지금 �
 });
 
 test("휴대폰 390: 찜 · 공유 · 장바구니에 담기 · 바로 주문하기가 한 줄에 들어가고 가로 스크롤이 없다(보드 SH-003-IA)", async ({ page, baseURL }) => {
+  await createClaimableCouponInDb(SLUG, "세 폭 화면 검수 쿠폰", 2000);
   await page.setViewportSize({ width: 390, height: 844 });
   await login(page, baseURL!);
   const id = await productIdOf(page, "탑로더 25장");
   await page.goto(`/shop/${SLUG}/products/${id}`);
+  await expectInfoLayout(page, 390);
+  await page.locator(".pd-shipping-row").scrollIntoViewIfNeeded();
+  await page.evaluate(() => {
+    const quantity = document.querySelector(".pd-quantity-row")!.getBoundingClientRect();
+    const actions = document.querySelector(".pd-actions")!.getBoundingClientRect();
+    const overlap = quantity.bottom - actions.top + 8;
+    if (overlap > 0) window.scrollBy(0, Math.ceil(overlap));
+  });
+  const visibleRows = await page.locator(".pd-shipping-row, .pd-option-row, .pd-quantity-row").evaluateAll((els) =>
+    els.map((el) => {
+      const rect = el.getBoundingClientRect();
+      return { top: rect.top, bottom: rect.bottom };
+    }),
+  );
+  expect(visibleRows).toHaveLength(3);
+  const actionTop = await page.locator(".pd-actions").evaluate((el) => el.getBoundingClientRect().top);
+  for (const row of visibleRows) {
+    expect(row.top).toBeGreaterThanOrEqual(0);
+    expect(row.bottom).toBeLessThanOrEqual(actionTop - 8);
+  }
+  if (process.env.E2E_SCREENSHOTS === "1") await page.screenshot({ path: "tests/e2e/screenshots/SH-003-info-390.png" });
   const boxes = await page.locator(".pd-actions button").evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return { t: (e.textContent ?? "").trim(), x: r.left, y: r.top, w: r.width, h: r.height, sw: e.scrollWidth, cw: e.clientWidth }; }));
   expect(boxes.map((b) => b.t)).toEqual(["♡", "공유", "장바구니에 담기", "바로 주문하기"]);
   expect(new Set(boxes.map((b) => Math.round(b.y))).size).toBe(1); // 한 줄
@@ -122,11 +384,13 @@ test("휴대폰 390: 찜 · 공유 · 장바구니에 담기 · 바로 주문하
 });
 
 test("PC·태블릿: 하단 바는 고정되지 않고 상품 정보 아래에 있다", async ({ page, baseURL }) => {
+  await createClaimableCouponInDb(SLUG, "세 폭 화면 검수 쿠폰", 2000);
   await login(page, baseURL!);
   const id = await productIdOf(page, "탑로더 25장");
   for (const [w, name] of [[1024, "1024"], [1440, "1440"]] as const) {
     await page.setViewportSize({ width: w, height: 900 });
     await page.goto(`/shop/${SLUG}/products/${id}`);
+    await expectInfoLayout(page, w);
     expect(await page.locator(".pd-actions").evaluate((el) => getComputedStyle(el).position)).not.toBe("fixed");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     if (process.env.E2E_SCREENSHOTS === "1") await page.screenshot({ path: `tests/e2e/screenshots/SH-003-pd-bar-${name}.png` });

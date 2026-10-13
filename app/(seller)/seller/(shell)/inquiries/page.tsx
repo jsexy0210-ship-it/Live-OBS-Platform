@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PageHead } from "../../../../../components/admin-ui";
+import { CursorPagination, PageHead } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -11,7 +11,7 @@ import { formatDate, formatDateTime } from "../../../../../lib/client/format";
 import { useListFilters } from "../../../../(admin)/admin/_components/useListFilters";
 
 // SA-113 내 문의 목록(파트너스 관리자, 공지 · 문의 › 내 문의, 정본 v310). 보낸 문의와 상태. 대표자는 쇼핑몰 문의 전부, 직원은 자기가 쓴 것만(서버 기준).
-// API: GET /api/seller/platform-inquiries?cursor=&status=&category= → { items, counts, newReplyCount, avgFirstReplyMinutes, nextCursor }. 마지막 글 최신 순 20건.
+// API: GET /api/seller/platform-inquiries?cursor=&status=&category= → { items, counts, newReplyCount, avgFirstReplyMinutes, nextCursor }. 마지막 글 최신 순 10건.
 // 쪽은 서버 cursor를 쌓아 이전·다음으로 오간다. 조건(상태·문의 종류)은 주소에 둔다(docs/IA.md Back 규칙 3항).
 type Row = { id: string; category: InquiryCategory; title: string; status: InquiryStatus; createdAt: string; lastMessageAt: string; lastReplyAt: string | null; hasNewReply: boolean };
 type Counts = { all: number; open: number; answered: number; closed: number };
@@ -31,33 +31,55 @@ export default function InquiriesPage() {
   const [state, setState] = useState<Load>({ kind: "loading" });
   // 지금까지 거쳐 온 쪽의 cursor(첫 쪽은 null). 마지막 원소가 지금 쪽이다
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
+  const [cursorPage, setCursorPage] = useState(1);
+  const cursorHistory = useRef(cursors);
+  cursorHistory.current = cursors;
   const seq = useRef(0);
+  const paging = useRef(false);
+  const [pageError, setPageError] = useState(false);
 
-  const load = useCallback(async (cursor: string | null) => {
+  const load = useCallback(async (cursor: string | null, target = 1) => {
     const n = ++seq.current;
-    setState({ kind: "loading" });
+    paging.current = true;
+    setPageError(false);
+    if (target === 1) setState({ kind: "loading" });
     const q = new URLSearchParams();
     if (applied.status) q.set("status", applied.status);
     if (applied.category) q.set("category", applied.category);
     if (cursor) q.set("cursor", cursor);
-    const r = await api<Page>(`/api/seller/platform-inquiries${q.size ? `?${q}` : ""}`);
+    let actualTarget = target;
+    const read = () => api<Page>(`/api/seller/platform-inquiries${q.size ? `?${q}` : ""}`);
+    let r = await read();
+    while (n === seq.current && r.ok && r.data.items.length === 0 && actualTarget > 1) {
+      actualTarget -= 1;
+      cursor = cursorHistory.current[actualTarget - 1];
+      if (cursor) q.set("cursor", cursor); else q.delete("cursor");
+      r = await read();
+    }
     if (n !== seq.current) return;
+    paging.current = false;
+    if (!r.ok && actualTarget > 1) return setPageError(true);
+    if (r.ok) {
+      setCursorPage(actualTarget);
+      setCursors(c => { const next = c.slice(0, actualTarget); next[actualTarget - 1] = cursor; return c[actualTarget] === r.data.nextCursor ? c : next; });
+    }
     setState(r.ok ? { kind: "ok", page: r.data } : { kind: "error" });
   }, [applied]);
   useEffect(() => {
     setCursors([null]);
+    setCursorPage(1);
     void load(null);
   }, [load]);
 
-  const go = (next: (string | null)[]) => {
-    setCursors(next);
-    void load(next[next.length - 1]);
+  const go = (next: number) => {
+    if (paging.current || next < 1 || next > cursors.length) return;
+    void load(cursors[next - 1], next);
   };
   const page = state.kind === "ok" ? state.page : null;
   const rows = page?.items ?? [];
   const filtered = !!(applied.status || applied.category);
-  const no = cursors.length;
-  const first = (no - 1) * 20 + 1;
+  const no = cursorPage;
+  const first = (no - 1) * 10 + 1;
 
   return (
     <>
@@ -97,8 +119,9 @@ export default function InquiriesPage() {
               </select>
             </div>
           </div>
+          {pageError && <p className="msg msg-neg" role="alert">목록을 불러오지 못했습니다. 다시 시도해 주십시오.</p>}
           {state.kind === "loading" && <LoadingRows rows={5} />}
-          {state.kind === "error" && <ErrorState title="목록을 불러오지 못했습니다" onRetry={() => void load(cursors[cursors.length - 1])} />}
+          {state.kind === "error" && <ErrorState title="목록을 불러오지 못했습니다" onRetry={() => void load(cursors[cursorPage - 1])} />}
           {page && rows.length === 0 && (
             <div className="st" style={{ boxShadow: "none" }}>
               {filtered ? (
@@ -155,17 +178,10 @@ export default function InquiriesPage() {
           {page && rows.length > 0 && (
             <div className="au-lh">
               <span className="t-l2 c-alt">
-                20개씩 · {first}–{first + rows.length - 1} 표시
+                10개씩 · {first}–{first + rows.length - 1} 표시
                 {page.avgFirstReplyMinutes !== null && ` · 평균 첫 답변 ${avgText(page.avgFirstReplyMinutes)} (평일 10~18시)`}
               </span>
-              <div className="au-lh-act">
-                <button className="btn btn-sm btn-out" type="button" disabled={no === 1} onClick={() => go(cursors.slice(0, -1))}>
-                  ‹ 이전
-                </button>
-                <button className="btn btn-sm btn-out" type="button" disabled={!page.nextCursor} onClick={() => page.nextCursor && go([...cursors, page.nextCursor])}>
-                  다음 ›
-                </button>
-              </div>
+              {(cursors.length > 1 || page.nextCursor) && <CursorPagination page={cursorPage} visited={cursors.length} hasNext={!!page.nextCursor} onChange={go} onNext={() => { if (!paging.current && page.nextCursor) void load(page.nextCursor, cursorPage + 1); }} />}
             </div>
           )}
         </div>

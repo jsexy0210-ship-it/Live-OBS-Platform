@@ -2,10 +2,26 @@
 
 > 기준일: 2026-10-02 (KST)
 
+## 최신 제품 방향 추가 (2026-10-07 KST)
+
+- **랜딩 구현:** 대표님 지시 「Streamlabs를 벤치마킹해서 거의 비슷하게 만들되 우리 스타일」에 따라 PF-001 `/about`의 TSX/CSS를 재구성했다. 2026-10-09 대표님 main 반영 승인에 따라 최신 main과 통합했고 정본·구현 및 독립 3폭 검수 범위는 `docs/STREAMSHOP_LANDING.md`에 기록했다. main 병합·배포는 별도다.
+
+- **심볼 유지 확정:** 대표님 지시 「심볼은 그대로 쓴다」. 승인된 S·재생 버튼 심볼은 그대로 사용하고 워드마크만 스트림샵 / StreamShop으로 바꾼다. 승인 컬러와 랜딩·파트너스·마스터 용도 구분을 유지한다.
+- **이전 명칭 이력:** 샵캐스트는 https://www.shopcast.kr/ 동명 사이트 제보 후 스트림샵으로 변경됐다. 상세 이력은 `docs/BRAND.md`에 보존한다.
+- **최신 서비스명 확정: 스트림샵(StreamShop).** 대표님이 「스트림샵으로 확정한다」고 지시했다. 이전 ONQ / OnAirCue·샵캐스트 / Shopcast 명칭보다 이 결정이 우선한다. [브랜드 기준](docs/BRAND.md)에 적용 범위와 남은 화면·로고 반영을 기록했다.
+- 대표님 지시: **Streamlabs를 기억하고, 비슷한 방향으로 최대한 벤치마킹한다. 웹을 먼저 진행하고 OBS 플러그인은 다음 단계로 이어간다.**
+- 다음 설계·개발 작업에서 `docs/PRODUCT_SCOPE.md`와 [Streamlabs 벤치마킹 기준](docs/REFERENCE_STREAMLABS.md)을 함께 읽는다. 공개 사이트·가입 및 시작 흐름·요금 안내·오버레이와 방송 도구의 사용 경험을 참고한다.
+- 이번 기록은 제품 방향 확정이다. 개별 화면의 구현·디자인 동기화 완료를 뜻하지 않으며, 로그인 후 Streamlabs 화면과 실제 결제 흐름은 아직 검증하지 않았다.
+- 대표님 추가 지시 「벤치마킹할 사이트 다 기록」: [전체 목록](docs/REFERENCE_SERVICES.md)에 방송·판매·후원·쇼핑몰 후보 16개, 국내/해외 구분, 비교 항목과 미확인 사항을 기록했다. 다음 설계·개발 시 함께 참고한다.
+
 ## 세션
 
 | 세션 | ID | 담당 |
 |---|---|---|
+| Codex ONQ MASTER | `01a10187-33d2-70d0-951f-e2d69fdd2dc1` | 2026-10-06 대표님 지정 인계 문서 확인 후 인수. 개발 배정·감시·상태 문서·테스트 배포 담당. 기존 `/workspace`와 다른 Windows 실행 환경이므로 로컬 WIP는 인계 assets와 원격 refs로 복구. 기존 세션의 실행·인증이 이전됐다고 간주하지 않음 |
+| 날짜·시간 복구 전담 | `/root/date_recovery` | 독립 worktree `onq-datetime`, `codex/datetime-picker-boundaries`. 공통 날짜/범위/시간 부품과 해당 디자인·전용 검증 소유. 이전 dirty 초안은 참조이며 완료 코드 아님 |
+| Codex 독립 검수 전담 | `/root/independent_review` | 이벤트 참가 WIP 복구·Prisma 및 통합 검증 조건 확인, 구현 PR 독립 검수. 병합은 기존 CI·디자인·검수 조건 충족 후만 |
+| Codex 인계 감시 전담 | `/root/watchdog` | 원격 refs·인계 assets 보존, 작업 소유 충돌·누락·허위 완료 감시. 읽기 전용, 정기 자동화 신규 생성 없음 |
 | Live-OBS-Platform MASTER (4) | `session_01WVYfLxEbKvL8U1WR3ZcjSh` | (보관, 2026-10-06 인계 완료) 대표님 지시 전달 · 세션 배정·교체·보관 · 상태 문서 관리 · 테스트 서버 배포 실행(2026-10-04 대표님 지시로 검수·병합은 검수 전담에 넘김). 2026-10-06 MASTER (3) `session_01CEyJ4JsJ28uLVRMoFzD2u1`(컨텍스트 55%)에서 교체 |
 | Live-OBS-Platform MASTER (3) | `session_01CEyJ4JsJ28uLVRMoFzD2u1` | (교체됨 → `session_01WVYfLxEbKvL8U1WR3ZcjSh`, 2026-10-06) 대표님 지시 전달 · 세션 배정·교체 · 상태 문서 관리. 컨텍스트 55%로 교체 |
 | 검수 전담 (10) | `session_01RwaCLVjHMTGQwWTR9QDdHW` | (교체됨 → `session_01CsbbusRMeNLAR9C8WCAoPg`, 2026-10-06 14:21 KST, 컨텍스트 65%) 2026-10-06 10:53 KST MASTER 생성(Sonnet 5.5). (9)를 컨텍스트 66%로 교체. 변경 파일 요약부터·CI 묶음 조회 지침. 역할·소유는 전임 행과 같음 |

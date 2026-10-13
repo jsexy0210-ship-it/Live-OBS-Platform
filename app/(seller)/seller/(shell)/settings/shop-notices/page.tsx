@@ -99,7 +99,7 @@ export default function ShopNoticesPage() {
         const body = {
           title: draft.title.trim(),
           body: draft.body.trim(),
-          category: draft.kind === "faq" ? draft.category.trim() || null : undefined,
+          category: draft.category.trim() || null,
           isPinned: willPin,
           isPublished: draft.isPublished,
         };
@@ -138,7 +138,7 @@ export default function ShopNoticesPage() {
       body: next ? `「${it.title}」가 구매자 화면에 바로 보입니다.` : `「${it.title}」가 구매자 화면에서 바로 사라집니다.${it.isPinned ? " 홈 고정도 풀립니다." : ""}`,
       confirmLabel: next ? "공개" : "숨기기",
       run: async () => {
-        const r = await api<unknown>(`/api/seller/notices/${it.id}`, { method: "PUT", body: { title: it.title, body: it.body, category: undefined, isPinned: next && it.isPinned, isPublished: next } });
+        const r = await api<unknown>(`/api/seller/notices/${it.id}`, { method: "PUT", body: { title: it.title, body: it.body, category: it.category, isPinned: next && it.isPinned, isPublished: next } });
         if (!r.ok) return failMessage(r, "admin", "바꾸지 못했습니다. 잠시 후 다시 시도해 주십시오");
         setToast({ text: next ? "공지를 공개했습니다" : "공지를 숨겼습니다" });
         await load("notice");
@@ -360,22 +360,22 @@ export default function ShopNoticesPage() {
                     {showError && titleError ? <span className="err">{titleError}</span> : <span className="help">구매자에게 보이는 글 {isFaq ? "· 해요체 " : ""}· {titleLen} / {TITLE_MAX}자</span>}
                   </td>
                 </tr>
-                {isFaq && (
-                  <tr>
-                    <th>
-                      <label htmlFor="notice-category">분류</label>
-                    </th>
-                    <td>
-                      <input id="notice-category" className={`inp${showError && categoryError ? " is-error" : ""}`} style={{ maxWidth: 240 }} list="notice-categories" value={draft.category} aria-invalid={showError && !!categoryError} onChange={(e) => setDraft({ ...draft, category: e.target.value })} />
+                <tr>
+                  <th>
+                    <label htmlFor="notice-category">분류</label>
+                  </th>
+                  <td>
+                    <input id="notice-category" className={`inp${showError && categoryError ? " is-error" : ""}`} style={{ maxWidth: 240 }} list={isFaq ? "notice-categories" : undefined} value={draft.category} aria-invalid={showError && !!categoryError} onChange={(e) => setDraft({ ...draft, category: e.target.value })} />
+                    {isFaq && (
                       <datalist id="notice-categories">
                         {categories.map((c) => (
                           <option key={c} value={c} />
                         ))}
                       </datalist>
-                      {showError && categoryError ? <span className="err">{categoryError}</span> : <span className="help">선택 · 비우면 분류 없음 · 목록에서 고르거나 새로 입력</span>}
-                    </td>
-                  </tr>
-                )}
+                    )}
+                    {showError && categoryError ? <span className="err">{categoryError}</span> : <span className="help">선택 · 비우면 분류 없음 · {isFaq ? "목록에서 고르거나 새로 입력" : `${CATEGORY_MAX}자까지 입력`}</span>}
+                  </td>
+                </tr>
                 <tr>
                   <th>
                     <label htmlFor="notice-body">{isFaq ? "답변" : "내용"}</label> <span className="sc-rq">*</span>

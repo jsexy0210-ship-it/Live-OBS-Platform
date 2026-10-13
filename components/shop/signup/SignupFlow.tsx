@@ -5,6 +5,7 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { useConfirm } from "../../admin-ui/ConfirmDialog";
 import { api, failMessage } from "../../seller/api";
 import { textLength } from "../../seller/format";
+import { formatDate } from "../../../lib/client/format";
 import { MARKETING_DOC_VERSION } from "../MarketingConsentDoc";
 
 // SH-011 구매자 회원가입 4단계(보드 SH-011-1~4): 약관 동의(/signup) → 휴대폰 본인확인(/signup/verify) → 정보 입력(/signup/account) → 가입 완료(/signup/done).
@@ -37,13 +38,10 @@ type Fail = { status: number; error: string; message?: string; body?: Record<str
 type SignupBody = { verificationId: string; loginId: string; password: string; broadcastNickname: string };
 export type SignupConsentInfo = { termsVersion: string; privacyVersion: string; rejoinRetentionVersion: string; marketingVersion: string; rejoinDays: number | null };
 
-// rejoinAvailableAt(ISO) → 「11월 2일」(KST)
+// 재가입 가능 날짜는 구매자 공용 KST 연월일 서식을 쓴다.
 const kstDate = (iso: unknown): string | null => {
   if (typeof iso !== "string") return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric" }).formatToParts(d).map((x) => [x.type, x.value]));
-  return `${p.month}월 ${p.day}일`;
+  return formatDate(iso) || null;
 };
 
 // 가입 결과를 알 수 없는 응답: 끊김(0)이나 5xx. 503(본인확인 서비스 없음)은 처리 전에 막힌 것이라 상태 화면으로 보낸다.
@@ -131,7 +129,7 @@ function useFlowState({ slug, shopName, consent, identityReady }: { slug: string
   // 2단계: 본인확인
   const [name, setName] = useState("");
   const [birth, setBirth] = useState("");
-  const [gender, setGender] = useState<"M" | "F" | null>(null);
+  const [gender, setGender] = useState<"M" | "F" | null>("M");
   const [foreigner, setForeigner] = useState(false);
   const [carrier, setCarrier] = useState<Carrier | "">("");
   const [phone, setPhone] = useState("");
@@ -165,7 +163,6 @@ function useFlowState({ slug, shopName, consent, identityReady }: { slug: string
   const identityMissing = [
     name.trim() === "" && "이름",
     birth.length !== 8 && "생년월일 8자리",
-    gender === null && "성별",
     carrier === "" && "통신사",
     phone.length < 10 && "휴대폰번호",
     !idvAgreed && "본인확인 이용 약관 동의",

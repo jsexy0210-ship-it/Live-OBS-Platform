@@ -44,7 +44,7 @@ export async function getOnboarding(db: PrismaClient, ctx: TenantContext) {
     db.seller.findUniqueOrThrow({ where: { id: sid }, select: { shareTitle: true, shopTagline: true, slug: true, trialEndsAt: true } }),
     db.subscriptionPayment.count({ where: { sellerId: sid, status: "PAID" } }),
     db.product.count({ where: { sellerId: sid, deletedAt: null } }),
-    db.sellerOrderPolicy.count({ where: { sellerId: sid } }),
+    db.sellerOrderPolicy.count({ where: { sellerId: sid, savedAt: { not: null } } }),
     db.overlayLayout.count({ where: { sellerId: sid } }),
     db.externalShopConnection.count({ where: { sellerId: sid, status: "CONNECTED" } }),
     db.sellerSubscription.findUnique({ where: { sellerId: sid }, select: { status: true, billingKeyCipher: true } }),

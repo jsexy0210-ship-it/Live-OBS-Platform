@@ -9,7 +9,7 @@ import { formatCsv, guardText } from "../shop-bulk-io/csv";
 
 // 마스터 관리자 파트너스 목록(MA-011, platform.read 모든 마스터 역할). 요약 건수·추가 열·검색·필터·정렬·엑셀(CSV) 내려받기.
 // 모든 값은 지금 있는 표에서 계산한다(새 표 없음). 대표자 연락처(전화·이메일)는 목록·내려받기에 넣지 않는다(검색어로만 이메일을 찾을 수 있다).
-export const ADMIN_SELLER_PAGE_DEFAULT = 50;
+export const ADMIN_SELLER_PAGE_DEFAULT = 10;
 export const ADMIN_SELLER_PAGE_MAX = 200;
 export const ADMIN_SELLER_EXPORT_MAX = 5000;
 const STATUSES = ["PENDING", "ACTIVE", "SUSPENDED", "REJECTED", "CLOSED"] as const;

@@ -1,5 +1,6 @@
 import type { AdminAlertSeverity, Prisma, PrismaClient } from "@prisma/client";
 import { createAdminAlert } from "../admin-alerts/service";
+import { CPU_LOAD_LABEL } from "../../client/infraDisplay";
 import { readConnections } from "./connections";
 import { computeInfraCost } from "./infraCost";
 import { INFRA_THRESHOLDS, infraSignals, measureInfra, type InfraSignal } from "./infra";
@@ -16,7 +17,7 @@ const LINK = "/admin/ops/infra";
 const SIGNAL_KIND: Record<InfraSignal["key"], { kind: string; label: string; unit: string }> = {
   disk: { kind: "INFRA_DISK", label: "디스크 사용률", unit: "%" },
   memory: { kind: "INFRA_MEMORY", label: "메모리 사용률", unit: "%" },
-  cpu: { kind: "INFRA_CPU", label: "CPU 사용률", unit: "%" },
+  cpu: { kind: "INFRA_CPU", label: CPU_LOAD_LABEL, unit: "%" },
   dbConnections: { kind: "INFRA_DB_CONNECTIONS", label: "DB 연결 사용률", unit: "%" },
   backupStale: { kind: "INFRA_BACKUP_STALE", label: "마지막 백업 경과", unit: "시간" },
 };

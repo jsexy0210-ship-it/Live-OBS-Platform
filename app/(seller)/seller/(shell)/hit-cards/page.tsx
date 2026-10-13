@@ -2,7 +2,7 @@
 
 import "../../../../../styles/seller-broadcast.css";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ListHead, Modal, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
+import { CursorPagination, ListHead, Modal, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { HitCardModal } from "../../../../../components/seller/broadcast/HitCardModal";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { useScrollRestore } from "../../../../../lib/client/navigation";
@@ -16,7 +16,7 @@ import { formatDateTime } from "../../../../../lib/client/format";
 import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
 
 // SA-053 HIT 카드 기록(방송 중 등록한 당첨 카드). 조회·등록·해제.
-// API: GET /api/seller/hit-cards?from=&to=&cursor=(KST 날짜, 최신순 50개) · POST /api/seller/hit-cards { cardName, note?, nickname } · DELETE /api/seller/hit-cards/{id}
+// API: GET /api/seller/hit-cards?from=&to=&cursor=(KST 날짜, 최신순 10개) · POST /api/seller/hit-cards { cardName, note?, nickname } · DELETE /api/seller/hit-cards/{id}
 // 해제하면 오버레이에서도 사라진다. 방송별 걸러 보기·카드 등급·갤러리 보기는 서버에 자료가 없어 두지 않았다.
 
 type Card = {
@@ -58,7 +58,9 @@ export default function HitCardsPage() {
   useEffect(() => {
     if (applied.period === "all") setDraft((d) => ({ ...d, from: "", to: "" }));
   }, [applied, setDraft]);
-  const [more, setMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const paging = useRef(false);
   const [modal, setModal] = useState<{ kind: "add" } | { kind: "delete"; card: Card } | null>(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
@@ -67,6 +69,7 @@ export default function HitCardsPage() {
 
   const load = useCallback(async (f: Filter) => {
     const n = ++seq.current;
+    setPage(1); setCursors([undefined]); paging.current = false;
     setState({ kind: "loading" });
     const r = await api<Page>(query(f));
     if (n !== seq.current) return;
@@ -77,15 +80,20 @@ export default function HitCardsPage() {
     if (allowed) void load(applied);
   }, [allowed, applied, load]);
 
-  const loadMore = async () => {
-    if (state.kind !== "ok" || !state.next) return;
-    const n = seq.current;
-    setMore(true);
-    const r = await api<Page>(query(applied, state.next));
-    setMore(false);
+  const turnPage = async (target: number) => {
+    if (state.kind !== "ok" || paging.current || target === page || target < 1 || target > cursors.length + 1) return;
+    const cursor = target <= cursors.length ? cursors[target - 1] : state.next;
+    if (target > 1 && !cursor) return;
+    paging.current = true; const n = ++seq.current;
+    const r = await api<Page>(query(applied, cursor));
     if (n !== seq.current) return;
+    paging.current = false;
     if (!r.ok) return setToast({ text: failMessage(r, "admin"), neg: true });
-    setState({ kind: "ok", items: [...state.items, ...r.data.items.filter((c) => !state.items.some((o) => o.id === c.id))], next: r.data.nextCursor });
+    setState({ kind: "ok", items: r.data.items, next: r.data.nextCursor });
+    setPage(target); setCursors(c => {
+      const visited = target > c.length ? [...c, cursor ?? undefined] : c;
+      return visited[target] && visited[target] !== r.data.nextCursor ? visited.slice(0, target) : visited;
+    });
   };
 
   const invalidRange = draft.from !== "" && draft.to !== "" && draft.from > draft.to;
@@ -163,7 +171,7 @@ export default function HitCardsPage() {
                 ))}
               {state.kind === "ok" && (
                 <>
-                  <ListHead total={items.length} unit={state.next ? "건 이상" : "건"} />
+                  <ListHead total={items.length} unit="건 (현재 쪽)" />
                   {items.length === 0 ? (
                     <div className="st" style={{ boxShadow: "none" }} data-testid="hit-empty">
                       <span className="t">{applied.period !== "all" && !applied.grade && applied.from === defaults.from && applied.to === defaults.to ? "최근 1개월에는 HIT 카드 기록이 없습니다. 기간을 바꿔 다시 찾아 주십시오" : applied.grade || (applied.period !== "all" && (applied.from || applied.to)) ? "조건에 맞는 HIT 카드가 없습니다" : "아직 HIT 카드가 없습니다"}</span>
@@ -210,13 +218,7 @@ export default function HitCardsPage() {
                       </table>
                     </div>
                   )}
-                  {state.next && (
-                    <div className="row" style={{ justifyContent: "center", padding: 12 }}>
-                      <button className="btn btn-out" type="button" disabled={more} onClick={() => void loadMore()}>
-                        더 보기
-                      </button>
-                    </div>
-                  )}
+                  {(page > 1 || state.next) && <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={n => void turnPage(n)} onNext={() => void turnPage(page + 1)} />}
                 </>
               )}
             </div>

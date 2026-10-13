@@ -84,6 +84,39 @@ describe("구매자 쓰기·내 문의", () => {
     expect(l[0].product).toBeNull();
   });
 
+  it("본인 주문 대상 1:1 문의를 저장·답변하고 다른 구매자·판매자 주문은 거절한다", async () => {
+    const s = await shop();
+    const other = await shop();
+    const order = await db.order.create({ data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, orderNo: 1, broadcastNicknameSnapshot: s.buyer.broadcastNickname, totalAmount: 0 } });
+    const anotherBuyerOrder = await db.order.create({ data: { sellerId: s.seller.id, buyerMemberId: s.buyer2.id, orderNo: 2, broadcastNicknameSnapshot: s.buyer2.broadcastNickname, totalAmount: 0 } });
+    const heldOrder = await db.order.create({ data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, orderNo: 3, broadcastNicknameSnapshot: s.buyer.broadcastNickname, totalAmount: 0, legalHoldAt: new Date() } });
+    const otherSellerOrder = await db.order.create({ data: { sellerId: other.seller.id, buyerMemberId: other.buyer.id, orderNo: 1, broadcastNicknameSnapshot: other.buyer.broadcastNickname, totalAmount: 0 } });
+    const before = await db.buyerInquiry.count();
+    for (const orderId of [anotherBuyerOrder.id, otherSellerOrder.id, heldOrder.id, "11111111-1111-4111-8111-111111111111", "invalid-order-id"]) {
+      const denied = await write(s, general({ orderId }));
+      expect(denied.status).toBe(400);
+      expect(denied.body.error).toBe("invalid_order");
+    }
+    const productOrder = await write(s, productQ(s, { orderId: order.id }));
+    expect(productOrder.status).toBe(400);
+    expect(productOrder.body.error).toBe("invalid_order");
+    expect(await db.buyerInquiry.count()).toBe(before);
+    const made = await write(s, general({ orderId: order.id }));
+    expect(made.status).toBe(201);
+    const own = (await mine(s))[0];
+    expect(own).toMatchObject({ id: made.body.id, kind: "GENERAL", product: null, order: { id: order.id } });
+    expect(own.order.orderNoLabel).toMatch(/^\d{8}-0001$/);
+    const sellerRow = (await list(s)).body.inquiries[0];
+    expect(sellerRow.order).toEqual(own.order);
+    expect((await list(other)).body.inquiries).toHaveLength(0);
+    expect((await answer(s, made.body.id as string, "확인했습니다")).status).toBe(200);
+    expect((await mine(s))[0]).toMatchObject({ order: own.order, answer: "확인했습니다" });
+    expect((await write(s, general())).status).toBe(201);
+    expect((await mine(s))[0].order).toBeNull();
+    expect((await write(s, general({ orderId: null }))).status).toBe(201);
+    expect((await mine(s))[0].order).toBeNull();
+  });
+
   it("종류·상품·제목·내용·사진 입력을 검사한다", async () => {
     const s = await shop();
     expect((await write(s, { ...general(), kind: "X" })).body.error).toBe("invalid_kind");
@@ -209,12 +242,18 @@ describe("파트너스 목록·상세·답변", () => {
       data: Array.from({ length: 35 }, (_, i) => ({ sellerId: s.seller.id, buyerMemberId: s.buyer.id, kind: "GENERAL" as const, authorNickname: "닉", title: `문의 ${i}`, body: "내용", createdAt: new Date(t0 - i * 1000), updatedAt: new Date(t0 - i * 1000) })),
     });
     const first = await list(s);
-    expect(first.body.inquiries).toHaveLength(30);
+    expect(first.body.inquiries).toHaveLength(10);
     expect(first.body.nextCursor).toBeTruthy();
     const second = await list(s, `?cursor=${first.body.nextCursor}`);
-    expect(second.body.inquiries).toHaveLength(5);
-    expect(second.body.nextCursor).toBeNull();
-    expect(new Set([...first.body.inquiries, ...second.body.inquiries].map((x: any) => x.id)).size).toBe(35);
+    expect(second.body.inquiries).toHaveLength(10);
+    expect(second.body.nextCursor).toBeTruthy();
+    const third = await list(s, `?cursor=${second.body.nextCursor}`);
+    expect(third.body.inquiries).toHaveLength(10);
+    expect(third.body.nextCursor).toBeTruthy();
+    const last = await list(s, `?cursor=${third.body.nextCursor}`);
+    expect(last.body.inquiries).toHaveLength(5);
+    expect(last.body.nextCursor).toBeNull();
+    expect(new Set([...first.body.inquiries, ...second.body.inquiries, ...third.body.inquiries, ...last.body.inquiries].map((x: { id: string }) => x.id)).size).toBe(35);
   });
 
   it("상세에 사진·작성자 닉네임이 있고, 다른 판매자 문의·사진은 404이다", async () => {
