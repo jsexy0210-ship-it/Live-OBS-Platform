@@ -634,6 +634,11 @@ body {
 .shop-listend p {
   margin: 0;
 }
+@media (min-width: 768px) {
+  .shop-sbwrap.has-q {
+    display: none;
+  }
+}
 .shop-searchbox {
   display: flex;
   gap: 8px;
