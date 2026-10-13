@@ -39,6 +39,8 @@ test.describe("PC 1440", () => {
     await expect(page.getByRole("button", { name: "카테고리 메뉴" })).toBeHidden();
 
     // 판매 중·품절만 보이고 숨김·임시 저장 상품은 보이지 않는다. 품절은 표시가 붙는다.
+    // 홈 진열은 판매자 설정·데이터 시각에 따라 달라지므로, 상품 격자는 전체 상품 화면에서 본다
+    await page.goto(`/shop/${SLUG}/products?sort=recommended`);
     const grid = page.getByRole("list", { name: "전체 상품" });
     await expect(grid.getByText("스타라이트 부스터 박스")).toBeVisible();
     await expect(grid.locator(".pc", { hasText: "드래곤 소울 부스터" }).locator(".pc-out")).toHaveText("품절");

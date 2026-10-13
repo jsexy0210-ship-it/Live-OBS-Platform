@@ -198,12 +198,5 @@ export async function publicHome(db: PrismaClient, slug: string, options: { rece
     }
     if (products.length) out.push({ kind: s.kind, title: s.title, categoryId: s.categoryId, products });
   }
-  // 보일 진열이 하나도 없고 기본 영역(추천·신상품) 그대로이며 추천 상품도 고르지 않았으면 공개 상품 전체를 한 영역으로 보여 준다(진열을 바꾼 쇼핑몰은 그대로)
-  const configured = await sections(db, shop.id);
-  const isDefault = configured.length === DEFAULT_SECTIONS.length && DEFAULT_SECTIONS.every((d, i) => configured[i].kind === d.kind && configured[i].title === d.title && configured[i].visible && configured[i].itemCount === d.itemCount);
-  if (!out.length && isDefault && !(await db.shopDisplayItem.count({ where: { sellerId: shop.id } }))) {
-    const r = await shopProductList(db, shop.slug, { sort: "recommended", limit: "8" });
-    if (r.ok && r.value.products.length) out.push({ kind: "CATEGORY", title: "전체 상품", categoryId: null, products: r.value.products });
-  }
   return { sections: out, listSort: await defaultListSort(db, shop.id) };
 }
