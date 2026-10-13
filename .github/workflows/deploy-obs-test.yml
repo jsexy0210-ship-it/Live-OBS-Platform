@@ -215,6 +215,16 @@ jobs:
             echo "키를 .env에 반영했어요: ${put[*]:-없음}(이름만 표시)."
           fi
 
+      # 전용 App 키는 단일 base64 입력이다. 값/길이/본문 출력과 기존 비밀 변경은 없다.
+      # 전용 입력 전체가 없으면 원환경 보존, 일부/귀속 검증 실패는 다음 앱 기동 전에 중단한다.
+      - name: Sync MA120 preview-only env
+        env:
+          ONQ_DISK_APP_ID: ${{ secrets.ONQ_DISK_APP_ID }}
+          ONQ_DISK_INSTALLATION_ID: ${{ secrets.ONQ_DISK_INSTALLATION_ID }}
+          ONQ_DISK_APP_PRIVATE_KEY_BASE64: ${{ secrets.ONQ_DISK_APP_PRIVATE_KEY_BASE64 }}
+          ONQ_DISK_CALLBACK_TOKEN: ${{ secrets.ONQ_DISK_CALLBACK_TOKEN }}
+        run: python3 scripts/ops/disk-optimization-env-sync.py
+
       - name: Build and start
         env:
           APP_VERSION: ${{ github.sha }}

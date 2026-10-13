@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import DiskOptimization from "./DiskOptimization";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHead, useConfirm } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
@@ -287,6 +288,8 @@ export default function InfraPage() {
                 </table>
               </div>
             </section>
+
+            <DiskOptimization />
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))", gap: 24, alignItems: "start" }}>
               <section className="card" aria-labelledby="infra-db" style={{ padding: 16 }}>
