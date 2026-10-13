@@ -69,6 +69,19 @@ test("상단 유틸 화면은 GNB 선택 없이 자기 LNB를 쓴다(SA-LNB ⑤)
   await expect(lnb(page).locator(".lnb-sec.on .lnb-i")).toHaveText(["도우미"]);
 });
 
+test("로그인하면 홈(/seller)으로 가고, GNB 「홈」은 링크로 홈을 켠다", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/seller/login");
+  await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
+  await page.waitForURL((u) => u.pathname === "/seller");
+  await expect(gnb(page).getByRole("link", { name: "홈", exact: true })).toHaveAttribute("href", "/seller");
+  await expect(gnb(page).locator(".gnb-i.on")).toHaveText("홈");
+  await page.goto("/seller/products");
+  await gnb(page).getByRole("link", { name: "홈", exact: true }).click();
+  await expect(page).toHaveURL(/\/seller$/);
+  await expect(page.getByRole("heading", { level: 1, name: "홈" })).toBeVisible();
+});
+
 for (const width of [1024, 1100, 1280, 1440]) {
   test(`${width}px에서 GNB 메뉴·검색·알림·상단 유틸이 겹치지 않고 잘리지 않는다`, async ({ page }) => {
     await page.setViewportSize({ width, height: 800 });
@@ -178,7 +191,8 @@ test("모바일(390): 검색·알림 버튼이 보이고 패널이 화면 안에
 
 test("화면이 생긴 메뉴가 연결된다: 외부 채널 연결 탭(유튜브·외부 쇼핑몰·자동 연결)과 홈 아래 시작하기", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await login(page, "/seller/broadcast");
+  await login(page, "/seller");
+  await gnb(page).getByRole("link", { name: "방송", exact: true }).click();
   await expect(lnb(page).getByRole("link", { name: "외부 채널 연결" })).toHaveAttribute("href", "/seller/youtube");
   await lnb(page).getByRole("link", { name: "외부 채널 연결" }).click();
   const tabs = page.getByRole("navigation", { name: "화면 탭" });
@@ -192,9 +206,9 @@ test("화면이 생긴 메뉴가 연결된다: 외부 채널 연결 탭(유튜�
 
 test("자동 연결 메뉴는 대표자에게만 보인다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto(`/seller/login?next=${encodeURIComponent("/seller/broadcast")}`);
+  await page.goto(`/seller/login?next=${encodeURIComponent("/seller")}`);
   await submitSellerLogin(page, "demo-staff@example.com", PASSWORD);
-  await page.waitForURL(/\/seller\//);
+  await page.waitForURL(/\/seller$/);
   await page.goto("/seller/settings/shop");
   await expect(page.getByRole("navigation", { name: "화면 탭" }).getByRole("link", { name: "자동 연결" })).toHaveCount(0);
   await expect(lnb(page).getByText("자동 연결")).toHaveCount(0);

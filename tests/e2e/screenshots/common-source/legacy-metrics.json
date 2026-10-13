@@ -1,0 +1,407 @@
+{
+  "records": [
+    {
+      "id": "MA-011",
+      "width": 1440,
+      "baseline": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": {
+            "padding": "12px 16px",
+            "border": "1px"
+          }
+        }
+      ],
+      "current": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": {
+            "padding": "12px 16px",
+            "border": "1px"
+          }
+        }
+      ]
+    },
+    {
+      "id": "MA-011",
+      "width": 1024,
+      "baseline": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": {
+            "padding": "12px 16px",
+            "border": "1px"
+          }
+        }
+      ],
+      "current": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": {
+            "padding": "12px 16px",
+            "border": "1px"
+          }
+        }
+      ]
+    },
+    {
+      "id": "MA-011",
+      "width": 390,
+      "baseline": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": {
+            "padding": "12px 16px",
+            "border": "1px"
+          }
+        }
+      ],
+      "current": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": {
+            "padding": "12px 16px",
+            "border": "1px"
+          }
+        }
+      ]
+    },
+    {
+      "id": "MA-013-OPS",
+      "width": 1440,
+      "baseline": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": null
+        }
+      ],
+      "current": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": null
+        }
+      ]
+    },
+    {
+      "id": "MA-013-OPS",
+      "width": 1024,
+      "baseline": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": null
+        }
+      ],
+      "current": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": null
+        }
+      ]
+    },
+    {
+      "id": "MA-013-OPS",
+      "width": 390,
+      "baseline": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": null
+        }
+      ],
+      "current": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": null
+        }
+      ]
+    },
+    {
+      "id": "SA-011",
+      "width": 1440,
+      "baseline": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": {
+            "padding": "12px 16px",
+            "border": "1px"
+          }
+        }
+      ],
+      "current": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": {
+            "padding": "12px 16px",
+            "border": "1px"
+          }
+        }
+      ]
+    },
+    {
+      "id": "SA-011",
+      "width": 1024,
+      "baseline": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": {
+            "padding": "12px 16px",
+            "border": "1px"
+          }
+        }
+      ],
+      "current": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": {
+            "padding": "12px 16px",
+            "border": "1px"
+          }
+        }
+      ]
+    },
+    {
+      "id": "SA-011",
+      "width": 390,
+      "baseline": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": {
+            "padding": "12px 16px",
+            "border": "1px"
+          }
+        }
+      ],
+      "current": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": {
+            "padding": "12px 16px",
+            "border": "1px"
+          }
+        }
+      ]
+    },
+    {
+      "id": "SA-023",
+      "width": 1440,
+      "baseline": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": {
+            "padding": "12px 16px",
+            "border": "1px"
+          }
+        }
+      ],
+      "current": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": {
+            "padding": "12px 16px",
+            "border": "1px"
+          }
+        }
+      ]
+    },
+    {
+      "id": "SA-023",
+      "width": 1024,
+      "baseline": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": {
+            "padding": "12px 16px",
+            "border": "1px"
+          }
+        }
+      ],
+      "current": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": {
+            "padding": "12px 16px",
+            "border": "1px"
+          }
+        }
+      ]
+    },
+    {
+      "id": "SA-023",
+      "width": 390,
+      "baseline": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": {
+            "padding": "12px 16px",
+            "border": "1px"
+          }
+        }
+      ],
+      "current": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": {
+            "padding": "12px 16px",
+            "border": "1px"
+          }
+        }
+      ]
+    },
+    {
+      "id": "SA-082",
+      "width": 1440,
+      "baseline": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": {
+            "padding": "12px 16px",
+            "border": "1px"
+          }
+        }
+      ],
+      "current": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": {
+            "padding": "12px 16px",
+            "border": "1px"
+          }
+        }
+      ]
+    },
+    {
+      "id": "SA-082",
+      "width": 1024,
+      "baseline": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": {
+            "padding": "12px 16px",
+            "border": "1px"
+          }
+        }
+      ],
+      "current": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": {
+            "padding": "12px 16px",
+            "border": "1px"
+          }
+        }
+      ]
+    },
+    {
+      "id": "SA-082",
+      "width": 390,
+      "baseline": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": {
+            "padding": "12px 16px",
+            "border": "1px"
+          }
+        }
+      ],
+      "current": [
+        {
+          "border": "1px",
+          "radius": "12px",
+          "overflow": "clip",
+          "background": "rgb(255, 255, 255)",
+          "header": {
+            "padding": "12px 16px",
+            "border": "1px"
+          }
+        }
+      ]
+    }
+  ],
+  "invoice": "숫자 10~14자리"
+}

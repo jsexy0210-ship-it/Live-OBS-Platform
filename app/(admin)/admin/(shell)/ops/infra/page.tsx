@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import DiskOptimization from "./DiskOptimization";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHead, useConfirm } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { formatDate, formatDateTime } from "../../../../../../lib/client/format";
+import { CPU_LOAD_LABEL, infraCollectionFailed, infraDisplayLevel, infraPercentText } from "../../../../../../lib/client/infraDisplay";
 import { adminApi, failMessage } from "../../../_components/api";
 import { AdminTopbar } from "../../../_components/AdminShell";
 
@@ -33,13 +35,13 @@ const REFRESH_MS = 60_000;
 const GIB = 1024 ** 3;
 const gib = (b: number | null) => (b === null ? "-" : `${Math.round((b / GIB) * 10) / 10}`);
 const won = (n: number | null) => (n === null ? "-" : `${n.toLocaleString("ko-KR")}원`);
-const pctText = (n: number | null) => (n === null ? "측정 전" : `${n}%`);
+const pctText = infraPercentText;
 const LEVEL = { ok: { label: "정상", cls: "b-done" }, warn: { label: "경고", cls: "b-warn" }, crit: { label: "위험", cls: "b-fail" }, lost: { label: "수집 실패", cls: "b-gray" } } as const;
 const levelOf = (st: Status, ...v: (number | null)[]): keyof typeof LEVEL => {
-  const m = Math.max(...v.map((x) => x ?? 0));
+  const m = Math.max(0, ...v.filter((x): x is number => x !== null && Number.isFinite(x)));
   return m >= st.thresholds.criticalPct ? "crit" : m >= st.thresholds.warnPct ? "warn" : "ok";
 };
-const SIGNAL_TEXT: Record<Signal["key"], string> = { disk: "디스크", memory: "메모리", cpu: "CPU", dbConnections: "DB 연결", backupStale: "백업" };
+const SIGNAL_TEXT: Record<Signal["key"], string> = { disk: "디스크", memory: "메모리", cpu: CPU_LOAD_LABEL, dbConnections: "DB 연결", backupStale: "백업" };
 const SIGNAL_NOTE: Record<Signal["key"], string> = {
   disk: "디스크 기준 초과 · 오래된 로그 · 임시 파일 정리 또는 디스크 증설(승인 필요)",
   memory: "메모리 기준 초과 · 사용량이 큰 작업을 확인해 주십시오",
@@ -69,7 +71,7 @@ function Bar({ pct, level }: { pct: number | null; level: keyof typeof LEVEL }) 
   return (
     <span className="row" style={{ gap: 8, flexWrap: "nowrap", justifyContent: "center" }}>
       <span style={{ width: 90, height: 8, borderRadius: 4, background: "var(--wds-fill-normal, #eee)", overflow: "hidden", display: "inline-block" }} aria-hidden="true">
-        <i style={{ display: "block", height: "100%", width: `${Math.min(100, pct ?? 0)}%`, background: level === "crit" ? "var(--neg-text, #c0262c)" : level === "warn" ? "var(--cau-text, #b25e00)" : "var(--wds-primary-normal, #0f766e)" }} />
+        <i style={{ display: "block", height: "100%", width: `${Math.min(100, pct !== null && Number.isFinite(pct) ? pct : 0)}%`, background: level === "crit" ? "var(--neg-text, #c0262c)" : level === "warn" ? "var(--cau-text, #b25e00)" : "var(--wds-primary-normal, #0f766e)" }} />
       </span>
       <span>{pctText(pct)}</span>
     </span>
@@ -175,6 +177,8 @@ export default function InfraPage() {
   const critical = signals.filter((s) => s.level === "critical").length + connWarn.filter((c) => c.status === "auth_error" || (c.daysLeft !== null && c.daysLeft <= 7)).length;
   const warning = signals.filter((s) => s.level === "warning").length + limitStopped.length + connWarn.length - (critical - signals.filter((s) => s.level === "critical").length);
   const cur = data?.status.current;
+  const failedServers = servers.filter((s) => infraCollectionFailed(s, s.instance === cur?.instance, now)).length;
+  const bannerLevel = infraDisplayLevel(failedServers, critical, warning);
   const diskLevel = data && cur ? levelOf(data.status, cur.disk.usedPct) : "ok";
 
   return (
@@ -196,10 +200,11 @@ export default function InfraPage() {
               <span className="t-c1 c-alt">최고관리자만 볼 수 있습니다 · 조회 전용 · 각 서버가 스스로 재서 보고합니다(외부 유료 감시 서비스 없음) · 기준을 넘으면 홈 「오늘 처리할 일」과 알림에 올라갑니다</span>
             </div>
 
-            <div className={`note ${critical > 0 ? "neg" : warning > 0 ? "cau" : "pos"}`} data-testid="infra-status">
-              <b>{critical + warning === 0 ? "정상" : `${critical > 0 ? `긴급 ${critical}` : ""}${critical > 0 && warning > 0 ? " · " : ""}${warning > 0 ? `경고 ${warning}` : ""}`}</b>{" "}
+            <div className={`note ${bannerLevel === "lost" || bannerLevel === "crit" ? "neg" : bannerLevel === "warn" ? "cau" : "pos"}`} data-testid="infra-status">
+              <b>{failedServers > 0 ? `수집 실패 ${failedServers}` : critical + warning === 0 ? "정상" : `${critical > 0 ? `긴급 ${critical}` : ""}${critical > 0 && warning > 0 ? " · " : ""}${warning > 0 ? `경고 ${warning}` : ""}`}</b>{" "}
+              {failedServers > 0 && <span>보고가 오래됐거나 용량 측정값이 없습니다 · 최신 상태를 확인할 수 없습니다 </span>}
               {critical + warning === 0
-                ? "모든 항목이 기준 아래입니다 · 홈 「오늘 처리할 일」에 올라가지 않습니다"
+                ? failedServers > 0 ? "" : "모든 항목이 기준 아래입니다 · 홈 「오늘 처리할 일」에 올라가지 않습니다"
                 : [
                     ...signals.map((s) => `${SIGNAL_TEXT[s.key]} ${s.value}${s.key === "backupStale" ? "시간" : "%"}`),
                     ...connWarn.map((c) => `${c.name} ${c.status === "auth_error" ? "인증 오류" : `만료 ${c.daysLeft}일 남음`}`),
@@ -211,16 +216,16 @@ export default function InfraPage() {
               <div className="card" style={{ padding: 16 }}>
                 <div className="t-c1 c-alt">{cur.instance} 디스크</div>
                 <div className={`t-h2 fw6 ${diskLevel === "crit" ? "c-neg" : diskLevel === "warn" ? "c-cau" : ""}`}>{pctText(cur.disk.usedPct)}</div>
-                <div className="t-c1 c-alt">{diskLevel === "ok" ? "기준 아래" : `기준 ${data.status.thresholds.warnPct}% 초과`}</div>
+                <div className="t-c1 c-alt">{cur.disk.usedPct === null ? "측정 전" : diskLevel === "ok" ? "기준 아래" : `기준 ${data.status.thresholds.warnPct}% 초과`}</div>
               </div>
               <div className="card" style={{ padding: 16 }}>
                 <div className="t-c1 c-alt">DB 크기 · 연결</div>
-                <div className="t-h2 fw6">{cur.db.sizeBytes === null ? "측정 전" : `${gib(cur.db.sizeBytes)} GiB`}</div>
+                <div className="t-h2 fw6">{cur.db.sizeBytes === null ? "—" : `${gib(cur.db.sizeBytes)} GiB`}</div>
                 <div className="t-c1 c-alt">{cur.db.connections === null ? "연결 수 측정 전" : `연결 ${cur.db.connections} / ${cur.db.maxConnections ?? "-"}`}</div>
               </div>
               <div className="card" style={{ padding: 16 }}>
                 <div className="t-c1 c-alt">마지막 백업</div>
-                <div className="t-h2 fw6">{cur.backup.lastAt ? formatDateTime(cur.backup.lastAt).slice(11) : "측정 전"}</div>
+                <div className="t-h2 fw6">{cur.backup.lastAt ? formatDateTime(cur.backup.lastAt).slice(11) : "—"}</div>
                 <div className="t-c1 c-alt">{cur.backup.lastAt ? formatDate(cur.backup.lastAt) : "백업 폴더를 읽을 수 없습니다"}</div>
               </div>
               <div className="card" style={{ padding: 16 }}>
@@ -247,7 +252,7 @@ export default function InfraPage() {
                       <th>서버</th>
                       <th>디스크</th>
                       <th>메모리</th>
-                      <th>CPU (1분 부하)</th>
+                      <th>{CPU_LOAD_LABEL}</th>
                       <th>상태</th>
                       <th>마지막 보고</th>
                       <th>비고</th>
@@ -256,7 +261,7 @@ export default function InfraPage() {
                   <tbody>
                     {servers.map((s) => {
                       const isCur = s.instance === cur.instance;
-                      const lost = !isCur && now - new Date(s.takenAt).getTime() > 3 * 3_600_000;
+                      const lost = infraCollectionFailed(s, isCur, now);
                       const lv = lost ? "lost" : levelOf(data.status, s.disk.usedPct, s.memory.usedPct, s.cpu.usedPct);
                       return (
                         <tr key={s.instance} data-testid="infra-server-row">
@@ -266,16 +271,16 @@ export default function InfraPage() {
                           </td>
                           <td>
                             <Bar pct={lost ? null : s.disk.usedPct} level={levelOf(data.status, s.disk.usedPct)} />
-                            <span className="t-c1 c-alt" style={{ display: "block" }}>{gib(s.disk.usedBytes)} / {gib(s.disk.totalBytes)} GiB</span>
+                            <span className="t-c1 c-alt" style={{ display: "block" }}>{lost ? "—" : `${gib(s.disk.usedBytes)} / ${gib(s.disk.totalBytes)} GiB`}</span>
                           </td>
                           <td>
                             <Bar pct={lost ? null : s.memory.usedPct} level={levelOf(data.status, s.memory.usedPct)} />
-                            <span className="t-c1 c-alt" style={{ display: "block" }}>{gib(s.memory.usedBytes)} / {gib(s.memory.totalBytes)} GiB</span>
+                            <span className="t-c1 c-alt" style={{ display: "block" }}>{lost ? "—" : `${gib(s.memory.usedBytes)} / ${gib(s.memory.totalBytes)} GiB`}</span>
                           </td>
                           <td><Bar pct={lost ? null : s.cpu.usedPct} level={levelOf(data.status, s.cpu.usedPct)} /></td>
                           <td><span className={`bdg ${LEVEL[lv].cls}`}>{LEVEL[lv].label}</span></td>
                           <td className="num">{isCur ? formatDateTime(data.status.checkedAt) : formatDateTime(s.takenAt)}</td>
-                          <td className="col-text">{lost ? "보고가 3시간 넘게 없습니다 · 서버가 멈췄거나 보고 작업이 죽었을 수 있습니다" : isCur ? data.status.signals.filter((g) => g.key !== "dbConnections" && g.key !== "backupStale").map((g) => SIGNAL_NOTE[g.key]).join(" · ") || "-" : "-"}</td>
+                          <td className="col-text">{lost ? "보고가 오래됐거나 용량 측정값이 없습니다 · 최신 상태를 확인해 주십시오" : isCur ? data.status.signals.filter((g) => g.key !== "dbConnections" && g.key !== "backupStale").map((g) => SIGNAL_NOTE[g.key]).join(" · ") || "-" : "-"}</td>
                         </tr>
                       );
                     })}
@@ -284,7 +289,9 @@ export default function InfraPage() {
               </div>
             </section>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 24, alignItems: "start" }}>
+            <DiskOptimization />
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))", gap: 24, alignItems: "start" }}>
               <section className="card" aria-labelledby="infra-db" style={{ padding: 16 }}>
                 <h2 className="t-hl1" id="infra-db">데이터베이스 · 백업</h2>
                 <dl className="col" style={{ gap: 10, margin: "12px 0 0" }}>
@@ -409,9 +416,9 @@ export default function InfraPage() {
             <section className="card" aria-labelledby="infra-price" style={{ padding: 16 }}>
               <h2 className="t-hl1" id="infra-price">단가 입력</h2>
               <span className="t-c1 c-alt">최고관리자만 · 공개 단가 기준으로 적습니다 · 바꾸면 추정 금액이 다시 계산되고 로그 추적에 남습니다</span>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12, margin: "12px 0" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 12, margin: "12px 0" }}>
                 {PRICE_FIELDS.map((f) => (
-                  <label key={f.key} className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
+                  <label key={f.key} className="row" style={{ gap: 8, flexWrap: "wrap" }}>
                     <span style={{ width: 130 }}>{f.label}</span>
                     <input className="inp" style={{ width: 120 }} type="number" min={0} step={f.pct ? 0.01 : 1} inputMode="decimal" aria-label={`${f.label} 단가`} value={prices[f.key] ?? ""} onChange={(e) => { dirty.current = true; setPrices({ ...prices, [f.key]: e.target.value }); }} />
                     <span className="t-c1 c-alt">{f.unit}</span>

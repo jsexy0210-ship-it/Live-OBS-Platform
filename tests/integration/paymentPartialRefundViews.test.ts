@@ -140,6 +140,10 @@ describe("부분 환불 뒤 수량 표시", () => {
   it.each(CLOCKS)("통계: 결제 완료로 남은 부분 환불액도 환불액에 넣고 순매출에서 뺀다(%s)", async (_label, at) => {
     setClock(at);
     const s = await setup();
+    // 주문 생성은 DB 시계를 쓰므로 fake Date와 별개다. 통계 fixture의 주문 시각을 시험 날짜에 맞춘다.
+    const fixtureCreatedAt = new Date();
+    const fixtureOrder = await db.order.update({ where: { id: s.order.id }, data: { createdAt: fixtureCreatedAt } });
+    expect(fixtureOrder.createdAt).toEqual(fixtureCreatedAt);
     await s.refund([{ orderItemId: s.boxItem.id, quantity: 1 }]);
     const range = parseStatsRange({ from: today(), to: today() })!;
     const os = await orderStats(db, s.ctx, range);

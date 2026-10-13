@@ -16,6 +16,8 @@ test.afterAll(() => clearInquiriesInDb(SLUG));
 const login = async (page: Page, target: string) => {
   await page.goto("/seller/login");
   await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
+  await expect(page).toHaveURL(/\/seller$/);
+  await page.goto("/seller/products");
   await expect(page).toHaveURL(/\/seller\/products$/);
   await page.goto(target);
 };

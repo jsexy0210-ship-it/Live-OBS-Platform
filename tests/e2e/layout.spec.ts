@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { submitSellerLogin } from "./sellerLogin";
 
 // 파트너스 관리자 업무용 틀(대표님 지시 2026-10-04): 상단 GNB(대분류) + 왼쪽 LNB(하위 메뉴), 좁은 화면에서는 햄버거 + 서랍.
-// E2E_SCREENSHOTS=1이면 홈(상품 목록)·주문 목록·쇼핑몰 설정을 PC(1440)·모바일(390), 라이트·다크로 tests/e2e/screenshots에 남긴다.
+// E2E_SCREENSHOTS=1이면 파트너스 주요 화면을 PC(1440)·모바일(390), 라이트·다크로 tests/e2e/screenshots에 남긴다.
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
 const SHOTS = process.env.E2E_SCREENSHOTS === "1";
 
@@ -36,12 +36,12 @@ test("대분류를 누르면 왼쪽 메뉴가 그 대분류의 하위 메뉴로 
   await expect(lnb(page).getByRole("link", { name: "상품 목록" })).toHaveAttribute("aria-current", "page");
   await expect(page.locator(".loc-bar")).toContainText("상품›상품 목록");
 
-  // 화면이 없는 대분류(홈): 화면은 그대로, 왼쪽 메뉴만 바뀌고 메뉴는 「준비 중」으로 흐리다
-  await gnb(page).getByRole("button", { name: "홈", exact: true }).click();
-  await expect(page).toHaveURL(/\/seller\/products$/);
+  // 홈은 실제 SA-002 화면이다. GNB에서 바로 이동하고 LNB 홈이 켜진다
+  await gnb(page).getByRole("link", { name: "홈", exact: true }).click();
+  await expect(page).toHaveURL(/\/seller$/);
   await expect(lnb(page).locator(".lnb-sec.on .lnb-h")).toHaveText("홈");
-  await expect(lnb(page).getByText("홈", { exact: true }).last()).toHaveAttribute("aria-disabled", "true");
-  await expect(lnb(page).getByRole("link", { name: "상품 목록" })).toBeHidden();
+  await expect(lnb(page).getByRole("link", { name: "홈", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("heading", { name: "홈", exact: true })).toBeVisible();
 
   // 화면이 있는 대분류(주문): 첫 화면으로 옮기고 왼쪽 메뉴가 주문 하위 메뉴가 된다
   await gnb(page).getByRole("link", { name: "주문", exact: true }).click();

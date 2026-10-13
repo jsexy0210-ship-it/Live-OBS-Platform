@@ -1,6 +1,16 @@
 # Project Status
 
-> 기준일: 2026-10-03
+> 기준일: 2026-10-06 (KST)
+
+## 마스터 인수 시 재확인
+
+- 대표님 지정 인계 브랜치 `docs/onq-master-handoff-01a10187`의 `docs/ONQ_MASTER_HANDOFF_20261006.md` 및 checkpoint를 확인하고 Codex MASTER가 인수했습니다. main 직접 수정·배포 없이 독립 checkout에서 재개했습니다.
+- 재확인 main: `4a06ba9016dae9784774329c1e253ecc92b0c9d3`, CI run `37439099514` 성공. 열린 PR 24개(초안 7개), 열린 Issue #137·#150입니다. 이 수치는 인수 시 스냅샷입니다.
+- GitHub API는 현재 Windows 실행 환경에서 정상 접근됩니다. 이전 클라우드의 API 차단은 현재 차단으로 간주하지 않습니다.
+- runner `obs-web-test`: online, 조회 시 idle. 최근 수동 테스트 배포 run `37435312037` 성공.
+- 공개 `/api/health`: HTTP 200, `status=ok`, `db=ok`, `testMode=true`, 배포 version `ed429d3519dfa60bd7ef76f8e94f633b12521273`. 최신 main 배포·인증된 사용자 기능·실제 OBS 검증 성공은 아닙니다.
+- 날짜·시간 7결함 복구, 이벤트 참가 WIP/검증 환경 독립 확인, 원격 보존·소유 충돌 감시를 별도 전담에 배정했습니다. 아직 구현·검수 완료가 아닙니다.
+- 자동배포·정리와 할인·이벤트·공통 UI의 보존 feature/WIP는 인계 자료를 기준으로 검수하며, 기존 테스트 숫자를 현재 환경 재실행 성공으로 재사용하지 않습니다.
 
 ## 단계
 
@@ -11,8 +21,8 @@
 
 ## 현재 저장소
 
-- Next.js 최소 앱 (`app/layout.tsx`, `app/page.tsx`)
-- CI: typecheck + build, 배포 워크플로 재유입 검사
+- Next.js 앱에는 관리자·파트너스·쇼핑몰·오버레이 화면 및 주문·구독·재고 등 서버 구현과 시험이 존재합니다. 기능별 완료 여부는 실제 검증으로 판정하며 최소 앱 단계 문구는 과거 기록입니다.
+- CI 및 배포 정의는 최신 `.github/workflows/`를 기준으로 확인합니다. CI 성공과 전체 기능·디자인·배포 검증을 구분합니다.
 - 배포 워크플로: `.github/workflows/deploy-obs-test.yml`(테스트 서버 obs-test, 수동 실행만, main만, Environment `obs-test`(main만, 승인자 대표님), 상시 self-hosted runner `obs-web-test`(라벨 `obs-kakao`, 서버의 `/home/obs`에 설치·서비스 등록). 2026-10-03 첫 배포 성공: `https://test.on-aircue.com/api/health` → status ok, db ok, version c37492f. 대표님 결정 2026-10-03: 공개 저장소 + 상시 runner, 「Require approval for all external contributors」 필수). 테스트 도메인 `test.on-aircue.com`(Cloudflare DNS 전용). 절차: `docs/DEPLOY.md`
 
 ## 인프라 방향

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { MESSAGE_FEE_NOTICE } from "../../components/seller/messageFeeNotice";
+import { MESSAGE_FEE_NOTICE, messagePriceNotice } from "../../components/seller/messageFeeNotice";
 
 // 화면의 비용 안내 문구는 서식(docs/terms/SELLER_MESSAGE_FEE_NOTICE.md)이 정본이다. 서식을 고치면 이 시험이 알려 준다.
 const md = readFileSync("docs/terms/SELLER_MESSAGE_FEE_NOTICE.md", "utf8");
@@ -24,5 +24,16 @@ describe("발송 비용 안내 문구가 서식과 같다", () => {
 
   it("서식의 7개 절이 모두 있다", () => {
     expect(MESSAGE_FEE_NOTICE.map((s) => s.n)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+  });
+});
+
+describe("요금표 단가 표시", () => {
+  it("미확정 단가는 단위나 부분 가격 문장 없이 안내한다", () => {
+    expect(messagePriceNotice("1통당 [확정 전]원")).toBe("단가 확정 후 안내");
+    expect(messagePriceNotice("1건당 10원(긴 문자는 [확정 전]원)")).toBe("단가 확정 후 안내");
+  });
+  it("확정된 0원과 유료 단가는 변경하지 않는다", () => {
+    expect(messagePriceNotice("1통당 0원")).toBe("1통당 0원");
+    expect(messagePriceNotice("1통당 1,000원")).toBe("1통당 1,000원");
   });
 });

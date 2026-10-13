@@ -353,6 +353,7 @@ export async function updateOrderPolicy(db: PrismaClient, ctx: TenantContext, ra
     const at = unpaidOn || paidOn ? await sellerEventClock(tx, ctx.sellerId) : null;
     const data = {
       ...policy,
+      savedAt: await dbClock(tx),
       ...(unpaidOn ? { unpaidRestrictionEnabledAt: at } : {}),
       ...(paidOn ? { paidCancelRestrictionEnabledAt: at } : {}),
     };

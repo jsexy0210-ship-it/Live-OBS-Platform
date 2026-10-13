@@ -22,9 +22,9 @@ test.afterAll(async () => {
 });
 
 async function openAndStart(page: Page) {
-  await page.goto("/seller/login?next=%2Fseller%2Fbroadcast");
+  await page.goto("/seller/login?next=%2Fseller");
   await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
-  await page.waitForURL((u) => u.pathname === "/seller/broadcast");
+  await page.waitForURL((u) => u.pathname === "/seller");
   await page.getByRole("button", { name: "방송 시작" }).click();
   await expect(page.getByTestId("bc-live-badge")).toBeVisible();
 }

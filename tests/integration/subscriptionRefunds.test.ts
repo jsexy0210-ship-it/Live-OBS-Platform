@@ -10,7 +10,7 @@ import { settlePayment } from "../../lib/server/billing/subscription";
 import { prisma } from "../../lib/server/db";
 import { createAdmin, createSeller, db, resetDb } from "./helpers";
 
-// 구독 환불 요청·처리(MA-026·027): 권한(보기 전 역할, 요청·승인·반려는 최고관리자·운영), 시스템 요청(해지 뒤 확정된 결제),
+// 구독 환불 요청·처리(MA-026·027): 권한(보기 전 역할, 요청은 최고관리자·운영, 승인·거절은 최고관리자), 시스템 요청(해지 뒤 확정된 결제),
 // 직접 요청 검사, 승인 = 가짜 공급자 취소(멱등), 실패·응답 끊김 뒤 다시 승인, 반려, version 충돌·동시 승인, 로그 추적.
 beforeAll(() => {
   process.env.BILLING_PROVIDER = "fake";
@@ -76,7 +76,7 @@ describe("시스템 환불 요청", () => {
 });
 
 describe("권한·직접 요청", () => {
-  it("보기는 모든 역할, 요청·반려는 최고관리자·운영만(CS·조회 전용 403), 승인은 최고관리자만(운영도 403). 로그인이 없으면 401", async () => {
+  it("보기는 모든 역할, 요청은 최고관리자·운영만, 승인·거절은 최고관리자만. 거절 권한 실패 시 다른 판매자 요청도 유지한다", async () => {
     const { payment } = await paidPayment();
     const ops = await adminCookie("OPERATIONS");
     for (const role of ["CS", "READ_ONLY"] as const) {
@@ -87,6 +87,8 @@ describe("권한·직접 요청", () => {
     expect(made.status).toBe(201);
     expect(made.body.refund).toMatchObject({ source: "ADMIN", status: "REQUESTED", amount: 50_000, reason: "청약 철회", requestedByAdminId: ops.id, payment: { amount: 199_000 } });
     const id = made.body.refund.id;
+    const detail = await json(await getRoute(req(`/api/admin/subscription-refunds/${id}`, ops.cookie), p(id)));
+    expect(detail.body.refund.history.map((event: { action: string }) => event.action)).toEqual(["subscription.refund.request"]);
     for (const role of ["CS", "READ_ONLY"] as const) {
       const a = await adminCookie(role);
       expect((await json(await listRoute(req("/api/admin/subscription-refunds", a.cookie)))).status).toBe(200);
@@ -96,10 +98,19 @@ describe("권한·직접 요청", () => {
     }
     expect((await approve(ops.cookie, id, { expectedVersion: 0 })).status).toBe(403);
     expect((await db.subscriptionRefund.findUniqueOrThrow({ where: { id } })).status).toBe("REQUESTED");
-    expect((await reject(ops.cookie, id, { note: "운영 반려", expectedVersion: 0 })).body.refund).toMatchObject({ status: "REJECTED" });
+    const otherPayment = await paidPayment();
+    const su = await adminCookie("SUPER_ADMIN");
+    const other = await create(su.cookie, { paymentId: otherPayment.payment.id, amount: 1000, reason: "다른 판매자 요청" });
+    expect(other.status).toBe(201);
+    expect((await reject(ops.cookie, id, { note: "운영 반려", expectedVersion: 0 })).status).toBe(403);
+    expect((await db.subscriptionRefund.findUniqueOrThrow({ where: { id } })).status).toBe("REQUESTED");
+    expect((await db.subscriptionRefund.findUniqueOrThrow({ where: { id: other.body.refund.id } })).status).toBe("REQUESTED");
+    expect((await reject(su.cookie, id, { note: "최고관리자 판단", expectedVersion: 0 })).body.refund).toMatchObject({ status: "REJECTED", sellerId: payment.sellerId });
+    expect((await db.subscriptionRefund.findUniqueOrThrow({ where: { id: other.body.refund.id } })).status).toBe("REQUESTED");
     expect((await json(await listRoute(req("/api/admin/subscription-refunds", "")))).status).toBe(401);
     expect(await db.auditLog.count({ where: { action: "subscription.refund.request", targetId: id, actorId: ops.id } })).toBe(1);
     expect(await db.auditLog.count({ where: { action: "subscription.refund.approve", targetId: id } })).toBe(0);
+    expect(await db.auditLog.count({ where: { action: "subscription.refund.reject", targetId: id, actorId: ops.id } })).toBe(0);
   });
 
   it("금액·사유·청구 상태를 검사하고, 같은 청구에 진행 중인 요청이 있으면 409. 반려된 뒤에는 다시 요청할 수 있다", async () => {
@@ -134,6 +145,11 @@ describe("승인·반려", () => {
     expect((await approve(su.cookie, id, { expectedVersion: 2 })).body.error).toBe("not_decidable");
     expect((await reject(su.cookie, id, { note: "x", expectedVersion: 2 })).body.error).toBe("not_decidable");
     expect((await db.auditLog.findMany({ where: { targetType: "SubscriptionRefund", targetId: id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] })).map((a) => a.action)).toEqual([
+      "subscription.refund.request",
+      "subscription.refund.approve",
+      "subscription.refund.refunded",
+    ]);
+    expect((await json(await getRoute(req(`/api/admin/subscription-refunds/${id}`, su.cookie), p(id)))).body.refund.history.map((event: { action: string }) => event.action)).toEqual([
       "subscription.refund.request",
       "subscription.refund.approve",
       "subscription.refund.refunded",
@@ -198,7 +214,7 @@ describe("승인·반려", () => {
 });
 
 describe("목록", () => {
-  it("요청 최신 순 50건씩 커서, 상태로 거르고 상태별 수를 준다. 쇼핑몰 이름·주소와 청구 기간이 함께 온다", async () => {
+  it("요청 최신 순 10건씩 커서, 상태로 거르고 상태별 수를 준다. 쇼핑몰 이름·주소와 청구 기간이 함께 온다", async () => {
     const su = await adminCookie("SUPER_ADMIN");
     const ids: string[] = [];
     for (let i = 0; i < 52; i++) {
@@ -210,11 +226,23 @@ describe("목록", () => {
     }
     await db.subscriptionRefund.update({ where: { id: ids[0] }, data: { status: "REJECTED" } });
     const first = await json(await listRoute(req("/api/admin/subscription-refunds", su.cookie)));
-    expect(first.body.items).toHaveLength(50);
+    expect(first.body.items).toHaveLength(10);
     expect(first.body.items[0]).toMatchObject({ id: ids[51], shopName: expect.any(String), slug: expect.any(String), payment: { amount: 199_000, kind: "PERIOD" } });
     expect(first.body.counts).toEqual({ REQUESTED: 51, PROCESSING: 0, REFUNDED: 0, FAILED: 0, REJECTED: 1 });
     const second = await json(await listRoute(req(`/api/admin/subscription-refunds?cursor=${encodeURIComponent(first.body.nextCursor)}`, su.cookie)));
-    expect(second.body.items.map((r: { id: string }) => r.id)).toEqual([ids[1], ids[0]]);
+    expect(second.body.items.map((r: { id: string }) => r.id)).toEqual(ids.slice(32, 42).reverse());
+    const sizes = [first.body.items.length, second.body.items.length];
+    const allIds: string[] = [...first.body.items, ...second.body.items].map((r: { id: string }) => r.id);
+    let cursor = second.body.nextCursor;
+    while (cursor) {
+      const next = await json(await listRoute(req(`/api/admin/subscription-refunds?cursor=${encodeURIComponent(cursor)}`, su.cookie)));
+      sizes.push(next.body.items.length);
+      allIds.push(...next.body.items.map((r: { id: string }) => r.id));
+      expect(next.body.nextCursor).not.toBe(cursor);
+      cursor = next.body.nextCursor;
+    }
+    expect(sizes).toEqual([10, 10, 10, 10, 10, 2]);
+    expect(allIds).toEqual([...ids].reverse());
     const rejected = await json(await listRoute(req("/api/admin/subscription-refunds?status=REJECTED", su.cookie)));
     expect(rejected.body.items.map((r: { id: string }) => r.id)).toEqual([ids[0]]);
     expect((await listRoute(req("/api/admin/subscription-refunds?status=NOPE", su.cookie))).status).toBe(400);

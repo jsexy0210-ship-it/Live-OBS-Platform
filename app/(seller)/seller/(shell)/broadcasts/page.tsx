@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ListHead, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
+import { ListHead, PageHead, CursorPagination, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { useScrollRestore } from "../../../../../lib/client/navigation";
 import { effectiveRange, listDefaults, type PeriodFilter } from "../../../../../lib/client/filterDefaults";
@@ -16,7 +16,7 @@ import { formatDateTime } from "../../../../../lib/client/format";
 import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
 
 // SA-054 방송 기록(방송별). 방송 시작일(KST) 기간으로 검색하고, 한 줄을 누르면 방송 상세(SA-055)로 간다.
-// API: GET /api/seller/broadcast/history?from=&to=&cursor=(시작 최신순 50개)
+// API: GET /api/seller/broadcast/history?from=&to=&cursor=(시작 최신순 10개)
 // 시안의 이번 달 요약·레이아웃 검색·내보내기는 서버에 자료·API가 없어 두지 않았다.
 
 type Item = { id: string; title: string | null; status: "live" | "ended"; startedAt: string; endedAt: string | null; layout: "9x16" | "16x9" | null; summary: BroadcastSummary };
@@ -47,31 +47,44 @@ export default function BroadcastHistoryPage() {
   useEffect(() => {
     if (applied.period === "all") setDraft((d) => ({ ...d, from: "", to: "" }));
   }, [applied, setDraft]);
-  const [more, setMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | null)[]>([null]);
+  const paging = useRef(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
   // 조건이 바뀌면 마지막으로 보낸 조건의 응답만 반영한다
   const seq = useRef(0);
 
   const load = useCallback(async (f: Filter) => {
     const n = ++seq.current;
+    paging.current = true;
+    setPage(1); setCursors([null]);
     setState({ kind: "loading" });
     const r = await api<Page>(query(f));
     if (n !== seq.current) return;
+    paging.current = false;
     setState(r.ok ? { kind: "ok", items: r.data.items, next: r.data.nextCursor } : { kind: "error", status: r.status, error: r.error });
   }, []);
   useEffect(() => {
     if (allowed) void load(applied);
   }, [allowed, applied, load]);
 
-  const loadMore = async () => {
-    if (state.kind !== "ok" || !state.next) return;
-    const n = seq.current;
-    setMore(true);
-    const r = await api<Page>(query(applied, state.next));
-    setMore(false);
+  const go = async (target: number, cursor: string | null) => {
+    if (state.kind !== "ok" || paging.current) return;
+    const n = ++seq.current;
+    paging.current = true;
+    let actualPage = target;
+    let actualCursor = cursor;
+    let r = await api<Page>(query(applied, actualCursor));
+    while (n === seq.current && r.ok && r.data.items.length === 0 && actualPage > 1) {
+      actualPage -= 1; actualCursor = cursors[actualPage - 1];
+      r = await api<Page>(query(applied, actualCursor));
+    }
     if (n !== seq.current) return;
+    paging.current = false;
     if (!r.ok) return setToast({ text: failMessage(r, "admin"), neg: true });
-    setState({ kind: "ok", items: [...state.items, ...r.data.items.filter((c) => !state.items.some((o) => o.id === c.id))], next: r.data.nextCursor });
+    setState({ kind: "ok", items: r.data.items, next: r.data.nextCursor });
+    setPage(actualPage);
+    setCursors(c => { const next = c.slice(0, actualPage); next[actualPage - 1] = actualCursor; return c[actualPage] === r.data.nextCursor ? c : next; });
   };
 
   useScrollRestore("seller-broadcasts", state.kind === "ok");
@@ -172,13 +185,7 @@ export default function BroadcastHistoryPage() {
                       </table>
                     </div>
                   )}
-                  {state.next && (
-                    <div className="row" style={{ justifyContent: "center", padding: 12 }}>
-                      <button className="btn btn-out" type="button" disabled={more} onClick={() => void loadMore()}>
-                        더 보기
-                      </button>
-                    </div>
-                  )}
+                  {(cursors.length > 1 || state.next) && <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={n => void go(n, cursors[n - 1])} onNext={() => { if (state.next) void go(page + 1, state.next); }} />}
                 </>
               )}
             </div>

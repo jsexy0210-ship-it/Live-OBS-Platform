@@ -3,6 +3,7 @@
 import { formatDateTimeParts } from "../../../../../lib/client/format";
 import "../../../../../styles/seller-orders.css";
 import Link from "next/link";
+import { CursorPagination } from "../../../../../components/Pagination";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
 import { PageHead } from "../../../../../components/admin-ui";
@@ -12,9 +13,9 @@ import { api } from "../../../../../components/seller/api";
 import { MAX_SEARCH_LENGTH, won } from "../../../../../components/seller/format";
 import { STATUS_BADGE, itemSummaryText, kstDaysAgo, payBadge, type OrderRow, type OrderStatus } from "../../../../../components/seller/orders";
 
-// SA-021 판매자 주문 목록. 결제 상태·기간·검색으로 걸러 보고, 20건씩 이어서 불러온다(GET /api/seller/orders).
+// SA-021 판매자 주문 목록. 서버 커서로 10건씩 조회하며 방문한 페이지로 돌아간다(GET /api/seller/orders).
 // 환불할 수 있는 주문(refundable)만 「환불 처리」 버튼이 있고, 발송 여부(shipped)는 「배송」 열에 따로 보인다.
-const PAGE = 20;
+const PAGE = 10;
 const SEARCH_DELAY_MS = 300;
 const STATUSES: OrderStatus[] = ["PENDING_PAYMENT", "PAID", "CANCELLED", "REFUNDED"];
 type Period = "today" | "7d" | "30d";
@@ -116,6 +117,9 @@ export default function OrderListPage() {
   const [draft, setDraft] = useState<OrderStatus[]>([]);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [more, setMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const paging = useRef(false);
   const [toast, setToast] = useState<string | null>(null);
 
   // 필터를 빨리 바꾸면 이전 응답이 늦게 올 수 있다. 마지막으로 보낸 요청의 응답만 반영한다
@@ -123,6 +127,10 @@ export default function OrderListPage() {
   const filters: Filters = { statuses, period, q, shipped };
   const load = useCallback(async (f: Filters) => {
     const id = ++reqId.current;
+    paging.current = false;
+    setMore(false);
+    setPage(1);
+    setCursors([undefined]);
     setState({ kind: "loading" });
     const r = await api<Page>(`/api/seller/orders?${query(f)}`);
     if (id !== reqId.current) return;
@@ -131,14 +139,22 @@ export default function OrderListPage() {
   useEffect(() => void load({ statuses: statusKey ? (statusKey.split(",") as OrderStatus[]) : [], period, q, shipped }), [statusKey, period, q, shipped, load]);
   useScrollRestore("seller-orders", state.kind === "ok");
 
-  const loadMore = async () => {
-    if (state.kind !== "ok" || !state.next) return;
+  const changePage = async (target: number) => {
+    if (state.kind !== "ok" || paging.current || target === page || target < 1 || target > cursors.length + 1) return;
+    const cursor = target <= cursors.length ? cursors[target - 1] : state.next;
+    if (target > 1 && !cursor) return;
+    paging.current = true;
     setMore(true);
-    const id = reqId.current;
-    const r = await api<Page>(`/api/seller/orders?${query(filters, state.next)}`);
-    setMore(false);
+    const id = ++reqId.current;
+    const r = await api<Page>(`/api/seller/orders?${query(filters, cursor ?? undefined)}`);
     if (id !== reqId.current) return;
-    if (r.ok) setState({ kind: "ok", items: [...state.items, ...r.data.orders], next: r.data.nextCursor });
+    paging.current = false;
+    setMore(false);
+    if (r.ok) {
+      setState({ kind: "ok", items: r.data.orders, next: r.data.nextCursor });
+      setPage(target);
+      if (target > cursors.length) setCursors([...cursors, cursor ?? undefined]);
+    }
     else setToast("더 불러오지 못했습니다. 다시 눌러 주십시오");
   };
 
@@ -170,7 +186,7 @@ export default function OrderListPage() {
     return u.status === c.status && u.shipped === c.shipped && (k === "today" ? period === "today" : true);
   };
   const items = state.kind === "ok" ? state.items : [];
-  const countText = state.kind === "ok" ? (state.next ? `${items.length}건 넘게` : `${items.length}건`) : "";
+  const countText = state.kind === "ok" ? `${page}페이지 · ${items.length}건${state.next ? " · 다음 페이지 있음" : ""}` : "";
   const periodLabel = PERIODS.find((p) => p.key === period)?.label;
 
   return (
@@ -179,6 +195,7 @@ export default function OrderListPage() {
       <main className="main">
         <PageHead
           title="전체 주문"
+          description="결제·배송 상태로 주문을 찾고 입금 확인·송장 입력·환불 처리를 진행합니다."
           back={false}
           actions={
             <>
@@ -363,11 +380,9 @@ export default function OrderListPage() {
               </table>
             </div>
           )}
-          {state.kind === "ok" && state.next && (
-            <div className="row ord-more">
-              <button className={`btn btn-dense btn-out btn-w-xl${more ? " is-loading" : ""}`} type="button" disabled={more} onClick={() => void loadMore()}>
-                주문 더 불러오기
-              </button>
+          {state.kind === "ok" && (state.next || page > 1) && (
+            <div className="row ord-more" aria-busy={more}>
+              <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={(n) => void changePage(n)} onNext={() => void changePage(page + 1)} />
             </div>
           )}
         </div>

@@ -22,7 +22,7 @@ const blocks = (lines: string[]): Block[] =>
 export function Terms() {
   return (
     <PublicFrame>
-      <section className="pf-sec pf-doc">
+      <section className="pf-sec pf-doc pf-document-section">
         <nav className="pf-toc" aria-label="목차">
           {SELLER_TERMS.map((s, i) => (
             <a key={s.heading} href={`#s${i}`}>

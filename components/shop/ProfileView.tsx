@@ -7,6 +7,7 @@ import MyMenu from "./MyMenu";
 import ShopBack from "./ShopBack";
 import ShopModal from "./ShopModal";
 import { call } from "./reviewShared";
+import { formatDate } from "../../lib/client/format";
 import "./Cart.css";
 import "./MyMenu.css";
 import "./Profile.css";
@@ -17,10 +18,7 @@ import "./Profile.css";
 type Profile = { loginId: string; name: string; phoneMasked: string; broadcastNickname: string; nextNicknameChangeAt: string | null };
 type Consent = { agreed: boolean; currentVersion: string };
 type View = { kind: "loading" } | { kind: "login" } | { kind: "error" } | { kind: "ok"; p: Profile; c: Consent | null };
-const md = (iso: string) => {
-  const d = new Date(new Date(iso).getTime() + 9 * 3600_000);
-  return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
-};
+const md = (iso: string) => formatDate(iso);
 
 export default function ProfileView({ slug, shopName }: { slug: string; shopName: string }) {
   const base = `/shop/${encodeURIComponent(slug)}`;
@@ -114,7 +112,7 @@ export default function ProfileView({ slug, shopName }: { slug: string; shopName
         )}
         <div className="pf-rows">
           <div className="pf-row">
-            <span className="pf-th">아이디 (이메일)</span>
+            <span className="pf-th">이메일</span>
             <div className="pf-td">
               {p.loginId} <span className="pf-hint">바꿀 수 없어요</span>
             </div>

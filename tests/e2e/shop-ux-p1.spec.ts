@@ -12,8 +12,8 @@ test.beforeAll(() => {
 test("없는 상품 주소는 상품 단위 안내와 목록 링크를 보여 준다(404)", async ({ page }) => {
   const res = await page.goto(`/shop/${SLUG}/products/00000000-0000-0000-0000-000000000000`);
   expect(res?.status()).toBe(404);
-  await expect(page.getByRole("heading", { name: "상품을 찾을 수 없어요" })).toBeVisible();
-  await page.getByRole("link", { name: "상품 목록으로" }).click();
+  await expect(page.getByRole("heading", { name: "판매가 끝난 상품이에요" })).toBeVisible();
+  await page.getByRole("link", { name: "상품 목록" }).click();
   await expect(page).toHaveURL(new RegExp(`/shop/${SLUG}/products$`));
 });
 
