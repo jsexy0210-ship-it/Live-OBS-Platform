@@ -19,6 +19,8 @@
 | 세션 | ID | 담당 |
 |---|---|---|
 | Codex ONQ MASTER | `01a10187-33d2-70d0-951f-e2d69fdd2dc1` | 2026-10-06 대표님 지정 인계 문서 확인 후 인수. 개발 배정·감시·상태 문서·테스트 배포 담당. 기존 `/workspace`와 다른 Windows 실행 환경이므로 로컬 WIP는 인계 assets와 원격 refs로 복구. 기존 세션의 실행·인증이 이전됐다고 간주하지 않음 |
+| Live-OBS-Platform MASTER (5) | `session_01DVZasVut4sjfohfpjDzKo9` | 2026-10-13 대표님 지시로 감시 세션이 생성(Sonnet 5.5). 정식 MASTER는 Codex ONQ MASTER이며 이 세션은 클라우드 전담 세션 조율(PR 분류·세션 재개·보고 중계)만 맡는다. 병합은 검수 전담만. |
+| 디자인 전담 (8) · Fable | `session_01VgTwBky9tKGWHcZugUAu3c` | 2026-10-13 MASTER (5) 생성. 디자인 정본 동기화 복구(#1008 병합 main c604fbd), SA-055 정본 반영. 소유: design/**, docs/UI_STATUS.md 디자인 동기화 기록. |
 | 날짜·시간 복구 전담 | `/root/date_recovery` | 독립 worktree `onq-datetime`, `codex/datetime-picker-boundaries`. 공통 날짜/범위/시간 부품과 해당 디자인·전용 검증 소유. 이전 dirty 초안은 참조이며 완료 코드 아님 |
 | Codex 독립 검수 전담 | `/root/independent_review` | 이벤트 참가 WIP 복구·Prisma 및 통합 검증 조건 확인, 구현 PR 독립 검수. 병합은 기존 CI·디자인·검수 조건 충족 후만 |
 | Codex 인계 감시 전담 | `/root/watchdog` | 원격 refs·인계 assets 보존, 작업 소유 충돌·누락·허위 완료 감시. 읽기 전용, 정기 자동화 신규 생성 없음 |
