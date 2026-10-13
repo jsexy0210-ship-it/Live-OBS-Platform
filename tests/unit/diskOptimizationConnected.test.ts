@@ -22,7 +22,7 @@ function fixture() {
   const key = (x: { source_eventId: { source: string; eventId: string } }) => `${x.source_eventId.source}:${x.source_eventId.eventId}`;
   const raw = { transactionStartedAt: undefined as Date | undefined, $queryRaw: vi.fn(async () => [{ now: clock.at }]), adminSession: { findUnique: vi.fn(async () => session) }, $executeRaw: vi.fn(async () => 1), opsEvent: {
     findUnique: vi.fn(async ({ where }) => events.get(key(where)) ?? null),
-    upsert: vi.fn(async ({ where, create }) => { if (!events.has(key(where))) events.set(key(where), create); return events.get(key(where)); }),
+    upsert: vi.fn(async ({ where, create, update }) => { if (!events.has(key(where))) events.set(key(where), create); else Object.assign(events.get(key(where))!, update); return events.get(key(where)); }),
     update: vi.fn(async ({ where, data }) => { const found = events.get(key(where)); if (!found) throw new Error("missing"); Object.assign(found, data); return found; }),
     create: vi.fn(async ({ data }) => { const k = `${data.source}:${data.eventId}`; if (events.has(k)) throw new Error("duplicate"); events.set(k, data); return data; }),
   }, $transaction: async <T>(fn: (db: unknown) => Promise<T>) => {
@@ -44,6 +44,35 @@ describe("전용 두 범주 실제 증거 계약", () => {
     expect(diskCandidateFingerprint([{ ...p.candidates[0], bytes: 101 }, p.candidates[1]])).not.toBe(diskCandidateFingerprint(p.candidates));
     for (const candidates of [[...p.candidates, p.candidates[0]], [{ ...p.candidates[1], id: "../Worker_owned.log" }], [{ ...p.candidates[0], path: "/backup" }], [{ ...p.candidates[0], category: "BACKUPS" }]]) expect(validDiskPreview({ ...p, candidates } as DiskPreviewEvidence, clock.at)).toBe(false);
     expect(validDiskPreview({ ...p, deploymentConcurrencyVerified: false } as unknown as DiskPreviewEvidence, clock.at)).toBe(false);
+  });
+  it("unsafe diag는 Docker-only와 빈 후보를 readonly로 발급하며 원 partial의 실행/예약/dispatch는0이다", async () => {
+    const partial: DiskPreviewEvidence = { ...preview(), runnerValidated: false, excludedCategories: [{ category: "RUNNER_DIAGNOSTIC_LOGS_OLDER_THAN_14_DAYS", reason: "RUNNER_DIAG_WRITABLE_BY_GROUP_OR_OTHER" }], candidates: [preview().candidates[0]] };
+    expect(validDiskPreview(partial, clock.at)).toBe(true);
+    expect(validDiskPreview({ ...partial, candidates: [] }, clock.at)).toBe(true);
+    for (const bad of [{ ...partial, runnerValidated: true }, { ...partial, excludedCategories: [] }, { ...partial, candidates: preview().candidates }, { ...partial, excludedCategories: [{ category: "BACKUPS", reason: "RUNNER_DIAG_WRITABLE_BY_GROUP_OR_OTHER" }] }, { ...partial, excludedCategories: [{ ...partial.excludedCategories![0], reason: "other" }] }, { ...preview(), runnerValidated: false }]) expect(validDiskPreview(bad as DiskPreviewEvidence, clock.at)).toBe(false);
+    for (const candidates of [partial.candidates, []]) {
+      const f = fixture();
+      // 같은 fingerprint/유효시각의 full 발급 전후에도 partial을 readonly로 고정한다.
+      vi.mocked(f.bridge.preview).mockResolvedValue({ ...preview(), candidates });
+      await previewApprovedDiskOptimization(f.db, admin, { actionId: policy.actionId, policyVersion: policy.version }, f.bridge);
+      vi.mocked(f.bridge.preview).mockResolvedValue({ ...partial, candidates });
+      const issued = await previewApprovedDiskOptimization(f.db, admin, { actionId: policy.actionId, policyVersion: policy.version }, f.bridge);
+      expect(issued).toMatchObject({ ok: true, candidates, excludedCategories: partial.excludedCategories, executionEnabled: false, estimatedReclaimedBytes: candidates.reduce((n, c) => n + c.bytes, 0), job: null });
+      vi.mocked(f.bridge.preview).mockResolvedValue({ ...preview(), candidates });
+      const again = await previewApprovedDiskOptimization(f.db, admin, { actionId: policy.actionId, policyVersion: policy.version }, f.bridge);
+      expect(again).toMatchObject({ ok: true, candidates, excludedCategories: partial.excludedCategories, executionEnabled: false, job: null });
+      expect(await executeApprovedDiskOptimization(f.db, admin, { ...input(), candidateFingerprint: diskCandidateFingerprint(candidates) }, {}, f.bridge)).toMatchObject({ status: 503, reason: "disk_execution_not_approved" });
+      expect([...f.events.keys()].some(key => key.startsWith("disk_optimization_request:"))).toBe(false);
+      expect(f.bridge.dispatch).not.toHaveBeenCalled();
+    }
+    const f = fixture();
+    const full = { ...preview(), candidates: partial.candidates };
+    vi.mocked(f.bridge.preview).mockResolvedValueOnce(full);
+    await previewApprovedDiskOptimization(f.db, admin, { actionId: policy.actionId, policyVersion: policy.version }, f.bridge);
+    vi.mocked(f.bridge.preview).mockResolvedValueOnce(partial);
+    expect(await executeApprovedDiskOptimization(f.db, admin, { ...input(), candidateFingerprint: diskCandidateFingerprint(partial.candidates) }, {}, f.bridge)).toMatchObject({ status: 503, reason: "disk_execution_not_approved" });
+    expect(f.bridge.dispatch).not.toHaveBeenCalled();
+    expect([...f.events.keys()].some(key => key.startsWith("disk_optimization_request:"))).toBe(false);
   });
   it("요청UUID를 실제job으로 바꾸거나 완료 증거 없이 성공하지 않는다", () => {
     expect(validDiskActualJob(job())).toBe(true);

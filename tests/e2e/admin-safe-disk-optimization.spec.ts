@@ -92,3 +92,32 @@ test("owned 읽기 전용 후보는 실행 승인 전 CTA를 막고 완료를 �
   expect(executeCount).toBe(0);
   await capture(page, "owned-readonly");
 });
+
+test("owned unsafe diag는 앱 이미지만 확인하고 로그 제외 사유·빈 후보·실행불가를 표시한다", async ({ page }) => {
+  let count = 2, executeCount = 0;
+  const expiresAt = new Date(Date.now() + 60_000).toISOString();
+  await page.route("**/api/admin/infra/disk-optimization/preview", route => route.fulfill({ status: 200, json: { candidateFingerprint: "b".repeat(64), expiresAt, estimatedReclaimedBytes: count * 1024, executionEnabled: false, excludedCategories: [{ category: "RUNNER_DIAGNOSTIC_LOGS_OLDER_THAN_14_DAYS", reason: "RUNNER_DIAG_WRITABLE_BY_GROUP_OR_OTHER" }], candidates: Array.from({ length: count }, () => ({ category: "OLD_ONQ_NON_ROLLBACK_IMAGES", bytes: 1024 })) } }));
+  await page.route("**/api/admin/infra/disk-optimization/execute", route => { executeCount++; return route.fulfill({ status: 503, json: { error: "disk_execution_not_approved" } }); });
+  await login(page); await page.goto("/admin/ops/infra");
+  const section = page.getByRole("region", { name: "디스크 수동 정리", exact: true });
+  for (const total of [2, 0]) {
+    count = total;
+    await section.getByRole("button", { name: "정리 대상 확인", exact: true }).click();
+    await expect(section).toContainText("앱 이미지 범주만 확인했습니다");
+    await expect(section.locator("dl div").filter({ hasText: "롤백 보호 밖 오래된 앱 이미지" })).toContainText(`${total}개`);
+    await expect(section.locator("dl div").filter({ hasText: "14일 초과 러너 진단 로그" })).toContainText("조회 제외 · 앞서 확인한 진단 폴더에 그룹 또는 다른 사용자 쓰기 권한이 있어 보호합니다");
+    await expect(section.getByRole("button", { name: "정리 실행", exact: true })).toBeDisabled();
+    await expect(section.locator('p[role="status"]').filter({ hasText: /^작업 / })).toHaveCount(0);
+    expect(executeCount).toBe(0);
+    await capture(page, total ? "unsafe-diag-image-only" : "unsafe-diag-zero");
+    // 서버의 같은 발급키 monotonic 제한 응답을 재조회해도 제외 사유와 CTA를 유지한다.
+    const refreshed = page.waitForResponse(r => new URL(r.url()).pathname === "/api/admin/infra/disk-optimization/preview" && r.request().method() === "POST");
+    await section.getByRole("button", { name: "정리 대상 확인", exact: true }).click();
+    expect((await refreshed).status()).toBe(200);
+    await expect(section.getByRole("button", { name: "정리 대상 확인", exact: true })).toBeEnabled();
+    await expect(section.locator("dl div").filter({ hasText: "14일 초과 러너 진단 로그" })).toContainText("조회 제외");
+    await expect(section.getByRole("button", { name: "정리 실행", exact: true })).toBeDisabled();
+    await expect(section.locator('p[role="status"]').filter({ hasText: /^작업 / })).toHaveCount(0);
+    expect(executeCount).toBe(0);
+  }
+});

@@ -24,6 +24,11 @@ def fingerprint(candidates):
     rows = sorted(f"{c['category']}\t{c['id']}\t{c['bytes']}\t{c['contentHash']}\n" for c in candidates)
     return hashlib.sha256((POLICY + "\n" + "".join(rows)).encode()).hexdigest()
 
+class PlanCandidates(list):
+    def __init__(self, candidates, exclusions):
+        super().__init__(candidates)
+        self.exclusions = exclusions
+
 def plan():
     result = subprocess.run(["bash", "scripts/ops/disk-optimization-plan.sh", "--preview"], capture_output=True, check=False)
     if result.returncode or len(result.stdout) > 64 * 1024:
@@ -31,9 +36,14 @@ def plan():
     lines = result.stdout.decode("utf-8").splitlines()
     if not lines or lines[0] != POLICY:
         raise Rejected("PREVIEW_UNVERIFIED")
-    candidates, seen = [], set()
+    candidates, seen, exclusions = [], set(), []
     for line in lines[1:]:
         parts = line.split("\t")
+        if parts == ["EXCLUDED_CATEGORY", LOG, "RUNNER_DIAG_WRITABLE_BY_GROUP_OR_OTHER", "READONLY_ONLY"]:
+            if exclusions:
+                raise Rejected("INVALID_MANIFEST")
+            exclusions.append({"category": LOG, "reason": "RUNNER_DIAG_WRITABLE_BY_GROUP_OR_OTHER"})
+            continue
         if len(parts) != 4:
             raise Rejected("INVALID_MANIFEST")
         category, identifier, size, digest = parts
@@ -42,7 +52,9 @@ def plan():
             raise Rejected("INVALID_MANIFEST")
         seen.add((category, identifier))
         candidates.append({"category": category, "id": identifier, "bytes": int(size), "contentHash": digest})
-    return candidates
+    if exclusions and any(candidate["category"] == LOG for candidate in candidates):
+        raise Rejected("INVALID_MANIFEST")
+    return PlanCandidates(candidates, exclusions)
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
@@ -140,8 +152,14 @@ def run(mode, request_id, run_id, expected=None, expires_at=None, read=plan, sen
     candidates = read()
     now = dt.datetime.now(dt.timezone.utc)
     iso = lambda value: value.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    exclusions = getattr(candidates, "exclusions", [])
     if mode == "preview":
-        return send({"action": "preview", "requestId": request_id, "runId": run_id, "evidence": {"target": "OBS_TEST", "policyVersion": POLICY, "checkedAt": iso(now), "expiresAt": iso(now + dt.timedelta(minutes=5)), "hostValidated": True, "runnerValidated": True, "deploymentConcurrencyVerified": True, "candidates": candidates}})
+        evidence = {"target": "OBS_TEST", "policyVersion": POLICY, "checkedAt": iso(now), "expiresAt": iso(now + dt.timedelta(minutes=5)), "hostValidated": True, "runnerValidated": not exclusions, "deploymentConcurrencyVerified": True, "candidates": candidates}
+        if exclusions:
+            evidence["excludedCategories"] = exclusions
+        return send({"action": "preview", "requestId": request_id, "runId": run_id, "evidence": evidence})
+    if exclusions:
+        raise Rejected("PARTIAL_PREVIEW_EXECUTION_DENIED")
     if mode != "execute" or not re.fullmatch(r"[0-9a-f]{64}", expected or "") or fingerprint(candidates) != expected or not candidates:
         raise Rejected("CANDIDATE_CHANGED")
     if not expires_at or dt.datetime.fromisoformat(expires_at.replace("Z", "+00:00")) <= now:
@@ -155,7 +173,10 @@ def run(mode, request_id, run_id, expected=None, expires_at=None, read=plan, sen
     try:
         remaining = list(candidates)
         for candidate in candidates:
-            if fingerprint(read()) != fingerprint(remaining):
+            fresh = read()
+            if getattr(fresh, "exclusions", []):
+                raise Rejected("PARTIAL_PREVIEW_EXECUTION_DENIED")
+            if fingerprint(fresh) != fingerprint(remaining):
                 raise Rejected("CANDIDATE_CHANGED")
             remove(candidate)
             remaining.remove(candidate)

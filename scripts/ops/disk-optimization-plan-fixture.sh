@@ -49,7 +49,7 @@ docker() {
     'image inspect')
       tag="${@: -1}"; sha="${tag##*:}"; id="sha256:$(printf '%064d' "$(sed "s/^0*//" <<<"$sha")")"
       # 고정 old tag가 다른 소유 별명 또는 사용 중 ID를 가지면 후보에서 제외한다.
-      if [ "$CASE_MODE" = in_use ] && [ "$sha" = "$(printf '%040d' 1)" ]; then id="sha256:$(printf '%064d' 2)"; fi
+      if { [ "$CASE_MODE" = in_use ] || [ "$CASE_MODE" = unsafe_diag_zero ]; } && [ "$sha" = "$(printf '%040d' 1)" ]; then id="sha256:$(printf '%064d' 2)"; fi
       printf '%s|100|%s' "$id" "$tag"
       [ "$CASE_MODE" != alias ] || printf ' other:latest'
       printf '\n' ;;
@@ -61,11 +61,17 @@ export -f docker
 python3() {
   [ "$#" = 2 ] && [ "${1##*/}" = disk-optimization-host-diagnostics.py ] && [ "$2" = --verify-preview-history ] || return 93
   if [ "$CASE_MODE" = attestation ]; then printf 'TEST_ATTESTATION_UNVERIFIED match=false\n' >&2; return 1; fi
+  if [ "$CASE_MODE" = unsafe_diag ] || [ "$CASE_MODE" = unsafe_diag_zero ]; then printf 'EXCLUDED_CATEGORY\tRUNNER_DIAGNOSTIC_LOGS_OLDER_THAN_14_DAYS\tRUNNER_DIAG_WRITABLE_BY_GROUP_OR_OTHER\tREADONLY_ONLY\n'; fi
   # 실제 Python의 fd snapshot 계약은 별도 fixture가 검증한다. planner에는 승인된 버전만 반환한다.
   # 이 fixture의 history는 한 줄에 SHA 한 개씩이다.
   grep -o 'sha=[0-9a-f]\{40\}' "$OBS_HISTORY_FILE" | cut -d= -f2
 }
 export -f python3
+find() {
+  if { [ "$CASE_MODE" = unsafe_diag ] || [ "$CASE_MODE" = unsafe_diag_zero ]; } && [ "$1" = "$OBS_RUNNER_ROOT/_diag" ]; then printf denied > "$tmp/unsafe-log-read"; return 94; fi
+  command find "$@"
+}
+export -f find
 script="$(cd -- "$(dirname -- "$0")" && pwd)/disk-optimization-plan.sh"
 bash "$script" --preview > "$tmp/normal.tsv"
 [ "$(grep -c '^OLD_ONQ_NON_ROLLBACK_IMAGES' "$tmp/normal.tsv")" = 1 ]
@@ -91,6 +97,14 @@ for rejected in env context tls endpoint host daemon host_cmd daemon_cmd attesta
   esac
   [ "$(wc -l < "$tmp/denied.err")" = 1 ]
   [ ! -s "$tmp/denied.tsv" ] && [ ! -e "$tmp/mutation" ] && [ "$(hashes)" = "$before" ]
+done
+for scope in unsafe_diag unsafe_diag_zero; do
+  export CASE_MODE="$scope"
+  bash "$script" --preview > "$tmp/partial.tsv"
+  grep -qx $'EXCLUDED_CATEGORY\tRUNNER_DIAGNOSTIC_LOGS_OLDER_THAN_14_DAYS\tRUNNER_DIAG_WRITABLE_BY_GROUP_OR_OTHER\tREADONLY_ONLY' "$tmp/partial.tsv"
+  ! grep -q '^RUNNER_DIAGNOSTIC_LOGS_OLDER_THAN_14_DAYS' "$tmp/partial.tsv"
+  if [ "$scope" = unsafe_diag ]; then [ "$(grep -c '^OLD_ONQ_NON_ROLLBACK_IMAGES' "$tmp/partial.tsv")" = 1 ]; else ! grep -q '^OLD_ONQ_NON_ROLLBACK_IMAGES' "$tmp/partial.tsv"; fi
+  [ ! -e "$tmp/mutation" ] && [ ! -e "$tmp/unsafe-log-read" ] && [ "$(hashes)" = "$before" ]
 done
 export CASE_MODE=foreign_owner
 bash "$script" --preview > "$tmp/foreign-owner.tsv"

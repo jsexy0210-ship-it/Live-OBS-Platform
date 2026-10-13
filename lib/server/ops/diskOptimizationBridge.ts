@@ -14,7 +14,8 @@ export type DiskPreviewEvidence = {
   checkedAt: string;
   expiresAt: string;
   hostValidated: true;
-  runnerValidated: true;
+  runnerValidated: boolean;
+  excludedCategories?: { category: "RUNNER_DIAGNOSTIC_LOGS_OLDER_THAN_14_DAYS"; reason: "RUNNER_DIAG_WRITABLE_BY_GROUP_OR_OTHER" }[];
   deploymentConcurrencyVerified: true;
   candidates: DiskCandidate[];
 };
@@ -49,7 +50,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const exact = (v: unknown, keys: string[]) => !!v && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === keys.length && Object.keys(v).every(k => keys.includes(k));
 const iso = (v: unknown): v is string => typeof v === "string" && Number.isFinite(Date.parse(v)) && new Date(v).toISOString() === v;
 export function validDiskPreview(v: DiskPreviewEvidence, now: Date): boolean {
-  if (!exact(v, ["target", "policyVersion", "checkedAt", "expiresAt", "hostValidated", "runnerValidated", "deploymentConcurrencyVerified", "candidates"]) || v.target !== "OBS_TEST" || v.policyVersion !== "ONQ_DISK_SAFE_V1" || v.hostValidated !== true || v.runnerValidated !== true || v.deploymentConcurrencyVerified !== true || !iso(v.checkedAt) || !iso(v.expiresAt) || Date.parse(v.checkedAt) > now.getTime() || Date.parse(v.expiresAt) <= now.getTime() || Date.parse(v.checkedAt) >= Date.parse(v.expiresAt) || !Array.isArray(v.candidates)) return false;
+  const partial = !!v && typeof v === "object" && "excludedCategories" in v;
+  if (!exact(v, ["target", "policyVersion", "checkedAt", "expiresAt", "hostValidated", "runnerValidated", "deploymentConcurrencyVerified", "candidates", ...(partial ? ["excludedCategories"] : [])]) || v.target !== "OBS_TEST" || v.policyVersion !== "ONQ_DISK_SAFE_V1" || v.hostValidated !== true || v.runnerValidated !== !partial || v.deploymentConcurrencyVerified !== true || !iso(v.checkedAt) || !iso(v.expiresAt) || Date.parse(v.checkedAt) > now.getTime() || Date.parse(v.expiresAt) <= now.getTime() || Date.parse(v.checkedAt) >= Date.parse(v.expiresAt) || !Array.isArray(v.candidates)) return false;
+  if (partial && (!Array.isArray(v.excludedCategories) || v.excludedCategories.length !== 1 || !exact(v.excludedCategories[0], ["category", "reason"]) || v.excludedCategories[0].category !== "RUNNER_DIAGNOSTIC_LOGS_OLDER_THAN_14_DAYS" || v.excludedCategories[0].reason !== "RUNNER_DIAG_WRITABLE_BY_GROUP_OR_OTHER" || v.candidates.some(c => c?.category !== "OLD_ONQ_NON_ROLLBACK_IMAGES"))) return false;
   const seen = new Set<string>();
   return v.candidates.every(c => {
     if (!exact(c, ["category", "id", "bytes", "contentHash"]) || !Number.isSafeInteger(c.bytes) || c.bytes < 0 || typeof c.id !== "string" || typeof c.contentHash !== "string" || !HASH.test(c.contentHash)) return false;
