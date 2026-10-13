@@ -250,6 +250,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/broadcast/[broadcastId]": "OVERLAY",
   "seller/broadcast/[broadcastId]/report": "OVERLAY",
   "seller/broadcast/history": "OVERLAY",
+  "seller/broadcast/history/export": "OVERLAY",
   "seller/broadcast/summary": "OVERLAY",
   "seller/external-shops": "EXTERNAL_INTEGRATION",
   "seller/external-shops/oauth-done": "EXTERNAL_INTEGRATION",
