@@ -33,9 +33,10 @@ export default function AdminLoginPage() {
   return (
     <div className="login-page">
       <form className="card col login-card" onSubmit={submit} noValidate>
-        <span className="logo login-logo" aria-label="ONQ">
+        <span className="logo login-logo" aria-label="ONQ 마스터 관리자">
           <span className="logo-sym" />
           <span className="logo-word" />
+          <small>마스터 관리자</small>
         </span>
         <div className="col login-head">
           <h1 className="t-t3">마스터 관리자</h1>
