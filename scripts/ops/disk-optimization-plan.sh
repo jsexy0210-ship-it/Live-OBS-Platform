@@ -15,10 +15,19 @@ root="$(realpath -e -- "$runner")"; diag="$(realpath -e -- "$runner/_diag")"
 # runner 라벨만으로 daemon 귀속을 추정하지 않는다. 고정 local socket/TEST host만 허용한다.
 [ "${DOCKER_HOST:-unix:///var/run/docker.sock}" = unix:///var/run/docker.sock ] && [ "${DOCKER_CONTEXT:-default}" = default ] || fail DOCKER_ENDPOINT_DENIED
 [ -z "${DOCKER_TLS_VERIFY:-}" ] && [ -z "${DOCKER_CERT_PATH:-}" ] || fail DOCKER_ENDPOINT_DENIED
-[ "$(hostname -s)" = obs-web-test ] || fail DOCKER_HOST_UNVERIFIED
+# 값/명령 stderr는 남기지 않고 조회 실패와 귀속 불일치를 구분한다.
+if host_name="$(hostname -s 2>/dev/null)"; then
+  [ "$host_name" = obs-web-test ] || fail 'HOSTNAME_MISMATCH match=false'
+else
+  host_status=$?; fail "HOSTNAME_QUERY_FAILED exit=$host_status"
+fi
 d() { (unset DOCKER_HOST DOCKER_CONTEXT DOCKER_TLS_VERIFY DOCKER_CERT_PATH; docker --host unix:///var/run/docker.sock "$@"); }
 [ "$(d context inspect default --format '{{.Endpoints.docker.Host}}')" = unix:///var/run/docker.sock ] || fail DOCKER_ENDPOINT_DENIED
-[ "$(d info --format '{{.Name}}')" = obs-web-test ] || fail DOCKER_HOST_UNVERIFIED
+if daemon_name="$(d info --format '{{.Name}}' 2>/dev/null)"; then
+  [ "$daemon_name" = obs-web-test ] || fail 'DOCKER_DAEMON_MISMATCH match=false'
+else
+  daemon_status=$?; fail "DOCKER_DAEMON_QUERY_FAILED exit=$daemon_status"
+fi
 all_versions="$(grep -o 'sha=[0-9a-f]\{40\}' "$history" | cut -d= -f2 | sort -u)" || fail HISTORY_UNVERIFIED
 protected_versions="$(tac -- "$history" | grep -o 'sha=[0-9a-f]\{40\}' | cut -d= -f2 | awk '!seen[$0]++' | sed -n "1,${keep}p")"
 [ -n "$all_versions" ] && [ -n "$protected_versions" ] || fail HISTORY_UNVERIFIED
