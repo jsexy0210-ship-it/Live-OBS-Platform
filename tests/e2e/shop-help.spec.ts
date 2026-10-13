@@ -18,6 +18,7 @@ test("홈: 고정 공지 띠가 공지 상세로 이어진다", async ({ page })
   await expect(page).toHaveURL(new RegExp(`/shop/${SLUG}/help/notices/[0-9a-f-]+$`));
   const article = page.locator("article");
   await expect(article.getByRole("heading", { level: 2 })).toContainText("문라이트 브레이크");
+  await expect(article.locator(".help-tag").first()).toHaveText("방송");
   await expect(article).toContainText("고정");
   expect(await article.locator(".help-body").evaluate((el) => getComputedStyle(el).whiteSpace)).toBe("pre-wrap"); // 글자 그대로(줄바꿈 유지)
   await expect(article).toContainText("미리 주문하면 방송에서 먼저 열어 드려요.");
@@ -32,8 +33,10 @@ test("고객센터: 공지 표(열 제목·값 왼쪽)·비공개 공지 숨김,
   await expect(page.getByRole("heading", { name: "공지 · 이용안내", level: 1 })).toBeVisible();
   const rows = page.locator(".help-tbl tbody tr");
   await expect(rows).toHaveCount(2);
+  await expect(rows.first().locator(".c-date")).toHaveText(/^\d{4}\.\d{2}\.\d{2}$/);
   await expect(page.getByText("비공개 공지는 보이지 않아요")).toHaveCount(0);
   await expect(rows.first()).toContainText("고정"); // 고정 공지가 먼저
+  await expect(rows.first().locator(".help-tag").first()).toHaveText("방송");
   expect(await page.locator(".help-tbl th").first().evaluate((el) => getComputedStyle(el).textAlign)).toBe("center");
   expect(await rows.first().locator("td").first().evaluate((el) => getComputedStyle(el).textAlign)).toBe("left");
   await page.screenshot({ path: "tests/e2e/screenshots/SH-030-help-1440.png", fullPage: true });
@@ -61,10 +64,36 @@ test("고객센터: 공지 표(열 제목·값 왼쪽)·비공개 공지 숨김,
 test("휴대폰 390: 가로 스크롤 없음, 없는 공지는 안내", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/shop/${SLUG}/help`);
-  await expect(page.locator(".help-tbl tbody tr")).toHaveCount(2);
+  const rows = page.locator(".help-tbl tbody tr");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first().locator(".c-date")).toHaveCSS("white-space", "nowrap");
+  expect(await rows.first().locator("td").first().evaluate((el) => el.clientWidth)).toBeGreaterThan(160);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.goto(`/shop/${SLUG}/help/notices/00000000-0000-4000-8000-000000000000`);
   await expect(page.getByText("찾을 수 없는 공지예요.")).toBeVisible();
+});
+
+test("같은 공지 목록의 분류·제목·날짜가 휴대폰·중간 화면·PC 세 폭에서 읽힌다", async ({ page }) => {
+  let expectedTitles: string[] | undefined;
+  let expectedDates: string[] | undefined;
+  for (const width of [390, 1024, 1440]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+    await page.goto(`/shop/${SLUG}/help`);
+    const rows = page.locator(".help-tbl tbody tr");
+    await expect(rows).toHaveCount(2);
+    const titles = await rows.locator("td a").allTextContents();
+    const dates = await rows.locator(".c-date").allTextContents();
+    await expect(rows.first().locator(".help-tag").first()).toHaveText("방송");
+    await expect(rows.nth(1).locator(".help-tag").first()).toHaveText("안내");
+    if (expectedTitles) expect(titles).toEqual(expectedTitles);
+    if (expectedDates) expect(dates).toEqual(expectedDates);
+    expectedTitles = titles;
+    expectedDates = dates;
+    await expect(rows.first().locator(".c-date")).toHaveCSS("white-space", "nowrap");
+    expect(await rows.first().locator("td").first().evaluate((el) => el.clientWidth)).toBeGreaterThan(160);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: `tests/e2e/screenshots/SH-030-notice-list-${width}.png`, fullPage: true });
+  }
 });
 
 // 이용안내 탭: 파트너스가 쓴 안내 글을 줄바꿈 그대로, 없으면 빈 상태(보드 SH-030 v320).

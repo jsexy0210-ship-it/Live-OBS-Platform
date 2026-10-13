@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useConfirm } from "../admin-ui";
 import { api, failMessage, type Product, type ProductStatus } from "./api";
 import { INT4_MAX, parseAmount, won } from "./format";
 import "./ProductQuick.css";
@@ -131,6 +132,8 @@ export function QuickStock({ product, onDone, onFail }: { product: Product; onDo
 // 판매가(접근성 이름은 「가격」: 상품 수정 화면의 「판매가」 칸 이름과 겹치지 않게). 평소에는 금액 글자로 보이고(목록 글자 검색·읽기 그대로), 누르면 입력 칸이 된다.
 // 옵션 추가금을 더한 단가·이벤트 할인 규칙은 서버가 검사하고, 막으면 원래 값으로 되돌리고 이유를 알린다
 export function QuickPrice({ product, onDone, onFail }: { product: Product; onDone: QuickDone; onFail: QuickFail }) {
+  const { confirm } = useConfirm();
+  const committing = useRef(false);
   const current = String(product.price);
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(current);
@@ -142,18 +145,33 @@ export function QuickPrice({ product, onDone, onFail }: { product: Product; onDo
     setEditing(false);
   };
   const commit = async () => {
+    if (committing.current) return;
     const next = parseAmount(text);
     if (next === null || next < 1 || next > INT4_MAX) {
       close();
       return onFail("판매가는 1원 이상의 숫자로 입력해 주십시오. 원래 값으로 되돌렸습니다");
     }
     if (next === product.price) return close();
+    committing.current = true;
     setBusy(true);
-    const r = await api<Product>(`/api/seller/products/${product.id}`, { method: "PATCH", body: { price: next } });
+    if (!(await confirm({ title: "판매가를 변경하시겠습니까?", body: `「${product.name}」 ${won(product.price)} → ${won(next)}. 이미 받은 주문 금액은 바뀌지 않습니다.`, confirmLabel: "판매가 변경" }))) {
+      setBusy(false);
+      committing.current = false;
+      return close();
+    }
+    const r = await api<Product>(`/api/seller/products/${product.id}`, { method: "PATCH", body: { price: next, expectedPrice: product.price } });
     setBusy(false);
     setEditing(false);
+    committing.current = false;
     if (!r.ok) {
       setText(current);
+      if (r.error === "price_conflict") {
+        const fresh = await api<Product>(`/api/seller/products/${product.id}`);
+        if (fresh.ok) {
+          onDone(fresh.data);
+          return onFail("그사이 판매가가 바뀌었습니다. 지금 판매가를 확인한 뒤 다시 입력해 주십시오");
+        }
+      }
       return onFail(failMessage(r, "admin", "판매가를 바꾸지 못했습니다. 원래 값으로 되돌렸습니다"));
     }
     const before = product.price;
@@ -184,7 +202,7 @@ export function QuickPrice({ product, onDone, onFail }: { product: Product; onDo
       onChange={(e) => setText(e.target.value)}
       onBlur={() => void commit()}
       onKeyDown={(e) => {
-        if (e.key === "Enter") e.currentTarget.blur();
+        if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); }
         if (e.key === "Escape") close();
       }}
     />

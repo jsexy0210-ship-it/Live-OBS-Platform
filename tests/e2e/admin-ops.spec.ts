@@ -56,6 +56,62 @@ test("실시간 방송: 방송 중인 파트너스만 오버레이 상태와 함
   await page.screenshot({ path: "tests/e2e/screenshots/admin-ops-live-1440.png" });
 });
 
+test("실시간 방송: 최근 60초 내부 주문 계약을 전체 KPI와 행에 표시한다", async ({ page }) => {
+  await login(page);
+  const at = new Date();
+  await page.route("**/api/admin/ops/live-broadcasts", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        at: at.toISOString(),
+        items: [
+          {
+            sellerId: "seller-rate",
+            shopName: "최근 주문 검수몰",
+            slug: "recent-order-review",
+            sellerStatus: "ACTIVE",
+            broadcastId: "broadcast-rate",
+            title: "최근 주문 검수 방송",
+            startedAt: new Date(at.getTime() - 75 * 60_000).toISOString(),
+            queue: { waiting: 1, opening: 0, done: 7, cancelled: 0 },
+            orders: 61,
+            ordersLast60Seconds: 8,
+            overlay: { hasUrl: false, connected: false, lastSeenAt: null },
+            layoutAspect: null,
+            paymentError: false,
+          },
+        ],
+        orderRate: {
+          source: "INTERNAL_ORDER_CREATED_DURING_LIVE_SESSION",
+          association: "SELLER_AND_TIME_WINDOW",
+          externalOrders: "NOT_MEASURED",
+          scope: "ALL_LIVE_SESSIONS",
+          windowSeconds: 60,
+          from: new Date(at.getTime() - 60_000).toISOString(),
+          to: at.toISOString(),
+          total: 23,
+        },
+      }),
+    }),
+  );
+
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/admin/ops/live");
+    await expect(page.getByTestId("live-rate")).toHaveText("23");
+    await expect(page.getByText("분당 주문 (전체 · 내부)")).toBeVisible();
+    await expect(page.getByTestId("live-order-rate-scope")).toContainText("모든 LIVE 방송");
+    await expect(page.getByTestId("live-order-rate-scope")).toContainText("외부 주문은 측정하지 않습니다");
+    const row = page.getByTestId("live-row").filter({ hasText: "최근 주문 검수몰" });
+    await expect(row).toContainText("8");
+    await expect(row).not.toContainText("0.8");
+    await expect(page.getByRole("radio", { name: width < 640 ? "카드" : "표" })).toHaveAttribute("aria-checked", "true");
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    await page.screenshot({ path: `tests/e2e/screenshots/admin-ops-order-rate-${width}.png` });
+  }
+});
+
 test("실시간 방송: 읽지 못하면 「갱신 끊김」을 알리고 마지막으로 읽은 내용은 그대로 둔다", async ({ page }) => {
   await login(page);
   await page.goto("/admin/ops/live");

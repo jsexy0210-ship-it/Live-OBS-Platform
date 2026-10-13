@@ -36,12 +36,26 @@ const lnbItem = (page: Page, label: string) => lnb(page).locator(".lnb-i").filte
 // 스토어 운영(쇼핑몰 기능) 권한이 있어야 보이는 하위 메뉴
 const STORE_MENUS = ["상품 목록", "재고", "쿠폰", "회원 목록", "홈 배너", "알림 설정"];
 // 오버레이 전용에서도 보이는 하위 메뉴(오버레이 권한·기존 주문 처리·계정·구독)
-const COMMON_MENUS = ["전체 주문", "구매 제한", "방송 대시보드", "방송 화면 꾸미기", "방송 기록", "구독 · 결제", "직원 계정"];
+const COMMON_MENUS = ["전체 주문", "구매 제한", "홈", "방송 화면 꾸미기", "방송 기록", "구독 · 결제", "직원 계정"];
 const overlayMe = (orderFollowup: boolean) => async (route: import("@playwright/test").Route) => {
   const res = await route.fetch();
   const body = await res.json();
   await route.fulfill({ response: res, json: { ...body, orderFollowup } });
 };
+
+// 구독이 없거나 대신 보기 범위가 좁아 상단 메뉴(GNB) 묶음이 하나도 안 남아도 셸이 죽지 않고 안내 화면이 열려야 한다(#911 회귀)
+test("상단 메뉴 묶음이 하나도 안 남는 파트너스(기능·권한 없음): 셸이 열리고 요금제 안내를 보인다", async ({ page }) => {
+  await page.route("**/api/seller/me", async (route) => {
+    const res = await route.fetch();
+    const body = await res.json();
+    await route.fulfill({ response: res, json: { ...body, features: [], isOwner: false, permissions: [], orderFollowup: false } });
+  });
+  await login(page, INTEGRATED, "/seller/orders");
+  await expect(page.getByText("This page couldn't load")).toHaveCount(0);
+  await expect(gnb(page).locator(".gnb-i")).toHaveCount(0);
+  await expect(lnb(page)).toBeVisible();
+  await expect(page.locator(".util-desk").getByRole("link", { name: "공지 · 문의" })).toBeVisible();
+});
 
 test("쇼핑몰 통합은 쇼핑몰 기능 메뉴가 모두 보인다", async ({ page }) => {
   await login(page, INTEGRATED, "/seller/orders");
@@ -70,9 +84,11 @@ test("오버레이 전용은 쇼핑몰 기능 메뉴를 숨기고, 오버레이�
   await shot(page, "plan-menu-overlay");
 });
 
-test("로그인 뒤 기본 화면: 통합은 지금처럼 상품, 오버레이 전용은 안내 화면 대신 오버레이 홈", async ({ page }) => {
+test("로그인 뒤 기본 화면: 통합은 홈, 오버레이 전용은 오버레이 홈", async ({ page }) => {
   await page.goto("/seller/login");
   await submitSellerLogin(page, INTEGRATED, PASSWORD);
+  await expect(page).toHaveURL(/\/seller$/);
+  await page.goto("/seller/products");
   await expect(page).toHaveURL(/\/seller\/products$/);
   await page.context().clearCookies();
 
@@ -82,7 +98,7 @@ test("로그인 뒤 기본 화면: 통합은 지금처럼 상품, 오버레이 �
     await page.goto("/seller/login");
   });
   await submitSellerLogin(page, OVERLAY, PASSWORD);
-  await expect(page).toHaveURL(/\/seller\/home-overlay$/);
+  await expect(page).toHaveURL(/\/seller$/);
   await expect(page.getByTestId("plan-feature-required")).toHaveCount(0);
   await shot(page, "plan-overlay-landing");
 
@@ -116,7 +132,7 @@ test("오버레이 전용이 쇼핑몰 기능 주소로 바로 들어오면 안�
 
   // 열 수 있는 첫 메뉴(홈 = 오버레이 홈)로 보낸다
   await guide.getByRole("link", { name: "홈 화면으로 이동" }).click();
-  await expect(page).toHaveURL(/\/seller\/home-overlay$/);
+  await expect(page).toHaveURL(/\/seller$/);
   await expect(page.getByTestId("plan-feature-required")).toHaveCount(0);
 });
 
@@ -241,7 +257,7 @@ test("오버레이 전용: 후속 처리 대상이 남아 있으면 주문·회�
 
   await page.unroute("**/api/seller/me");
   await page.route("**/api/seller/me", overlayMe(false));
-  await page.goto("/seller/broadcast");
+  await page.goto("/seller");
   await expect(gnb(page).locator(".gnb-i")).toHaveText(["홈", "방송", "통계", "설정"]);
   await expect(lnbItem(page, "전체 주문")).toHaveCount(0);
   await expect(lnbItem(page, "구매 제한")).toHaveCount(0);

@@ -5,7 +5,7 @@ import { prisma } from "../../../../../lib/server/db";
 
 export const dynamic = "force-dynamic";
 
-type Params = { params: Promise<{ slug: string }> };
+type Params = { params: Promise<{ slug: string }>; searchParams: Promise<{ item?: string; review?: string }> };
 
 async function findShop(slug: string) {
   const shop = await prisma.seller.findUnique({ where: { slug: slug.slice(0, 60) }, select: { slug: true, shopName: true, status: true } });
@@ -17,13 +17,10 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   return { title: shop ? `내 리뷰 · ${shop.shopName}` : "내 리뷰" };
 }
 
-// SH-029 내 리뷰(마이페이지). 잠긴 쇼핑몰이어도 받은 답글·숨김 사유는 본다(쓰기·신고는 API가 막음). 쇼핑몰이 없거나 운영 중이 아니면 404.
-export default async function ShopReviewsPage({ params }: Params) {
+// SH-029 리뷰 쓰기·내 리뷰(마이페이지, 한 화면; ?item=주문 상품 · ?review=고칠 리뷰). 잠긴 쇼핑몰이어도 받은 답글·숨김 사유는 본다(쓰기·신고는 API가 막음). 쇼핑몰이 없거나 운영 중이 아니면 404.
+export default async function ShopReviewsPage({ params, searchParams }: Params) {
   const shop = await findShop((await params).slug);
   if (!shop) notFound();
-  return (
-    <>
-      <ReviewMine slug={shop.slug} />
-    </>
-  );
+  const q = await searchParams;
+  return <ReviewMine slug={shop.slug} initialItem={typeof q.item === "string" ? q.item : null} initialReview={typeof q.review === "string" ? q.review : null} />;
 }

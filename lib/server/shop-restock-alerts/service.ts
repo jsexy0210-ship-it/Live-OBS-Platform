@@ -5,7 +5,7 @@ import { requireSellerPermission, type TenantContext } from "../tenant/context";
 
 // 재입고 알림(SA-017). 규칙:
 // - 구매자(로그인 회원)는 지금 품절인 상품에만 신청한다. 회원당 MAX_RESTOCK_ALERTS개, 상품마다 한 줄(다시 신청하면 그대로 성공).
-// - 흐름: WAITING(품절 기다림) → QUEUED(재고가 들어와 발송 대기) → SENT(발송 기록). 실제 발송은 아직 없고 기록만 남긴다.
+// - 흐름: WAITING(품절 기다림) → QUEUED(재고가 들어와 미발송 대기). 실제 발송은 아직 없으므로 SENT/notifiedAt를 만들지 않는다.
 // - 재고가 들어오는 길이 여럿(수동 증감·일괄·취소 복구)이라 훑기(sweepRestock)로 판단한다: 판매 중이고 재고가 있는 상품의 WAITING을 QUEUED로.
 //   훑기는 판매자 목록을 열 때와 구매자 신청·조회 때 돈다. 멱등이라 여러 번 돌아도 같다.
 // - 21~08시(KST)에 들어온 재고는 아침 8시(KST)로 미룬다(notifyAt). 야간 「바로 보내기」 허용은 대표님 결정 대기라 만들지 않았다.
@@ -53,9 +53,7 @@ export async function sweepRestock(db: PrismaClient, sellerId: string) {
     WHERE a."sellerId" = ${sellerId}::uuid AND a."status" = 'WAITING' AND p."sellerId" = a."sellerId" AND p."id" = a."productId"
       AND p."deletedAt" IS NULL AND p."status" = 'ON_SALE'
       AND EXISTS (SELECT 1 FROM "ProductOption" o WHERE o."productId" = p."id" AND o."deletedAt" IS NULL AND o."stock" > 0)`;
-  await db.$executeRaw`
-    UPDATE "RestockAlert" SET "status" = 'SENT', "notifiedAt" = ${now}
-    WHERE "sellerId" = ${sellerId}::uuid AND "status" = 'QUEUED' AND "notifyAt" <= ${now}`;
+  // notifyAt가 지나도 공급자 성공 근거 없이 발송 완료로 바꾸지 않는다. 과거 SENT는 그대로 둔다.
 }
 
 type Result<T> = { ok: true; value: T } | { ok: false; reason: RestockFailure };

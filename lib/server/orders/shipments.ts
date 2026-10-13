@@ -3,7 +3,7 @@ import { writeAudit } from "../audit/log";
 import { canViewCustomerPii, requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { completeDelivery } from "./delivery";
 import { orderErrorBody } from "./messages";
-import { decodeCursor, encodeCursor, itemSummary, itemSummarySelect, kstDayStart, SELLER_ORDER_PAGE_DEFAULT, SELLER_ORDER_PAGE_MAX } from "./read";
+import { decodeCursor, encodeCursor, itemSummary, itemSummarySelect, kstDayStart, SELLER_ORDER_PAGE_MAX } from "./read";
 import { shipOrder } from "./ship";
 import { SHIPMENT_BATCH_MAX } from "./shipping";
 import { orderNoLabel } from "./orderNoLabel";
@@ -18,7 +18,7 @@ export const SHIPMENT_TABS = ["ready", "in_transit", "delivered"] as const;
 export type ShipmentTab = (typeof SHIPMENT_TABS)[number];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const TAB_WHERE: Record<ShipmentTab, Prisma.OrderWhereInput> = {
+export const TAB_WHERE: Record<ShipmentTab, Prisma.OrderWhereInput> = {
   ready: { status: "PAID", fulfillmentType: "IMMEDIATE", stockShortageAt: null, shippingAddress: { isNot: null }, OR: [{ shipment: { is: null } }, { shipment: { is: { status: "READY" } } }] },
   in_transit: { status: "PAID", shipment: { status: "IN_TRANSIT" } },
   delivered: { shipment: { status: "DELIVERED" } },
@@ -52,7 +52,7 @@ export async function listShipments(db: PrismaClient, ctx: TenantContext, query:
   requireSellerRead(ctx, "ORDER_SHIPPING");
   const tab = (query.tab || "ready") as ShipmentTab;
   if (!SHIPMENT_TABS.includes(tab)) return { ok: false as const };
-  const limit = query.limit == null || query.limit === "" ? SELLER_ORDER_PAGE_DEFAULT : Number(query.limit);
+  const limit = query.limit == null || query.limit === "" ? 10 : Number(query.limit);
   if (!Number.isInteger(limit) || limit < 1) return { ok: false as const };
   const take = Math.min(limit, SELLER_ORDER_PAGE_MAX);
   const from = query.from ? kstDayStart(query.from) : null;

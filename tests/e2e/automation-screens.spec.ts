@@ -156,8 +156,8 @@ test("파트너스: 다른 카드로 결제 — 서버가 준 결제창 값을 �
   });
   await page.goto(`/seller/automation/pay?shop=${encodeURIComponent(SHOP)}`);
   await expect(page.getByTestId("pay-card")).toContainText("구독에 쓰는 카드 · 테스트카드 1234");
-  await page.getByTestId("pay-other").click();
-  await expect(page.getByTestId("pay-card")).toContainText("다른 카드로 결제");
+  await page.getByTestId("pay-other").check();
+  await expect(page.getByTestId("pay-other")).toBeChecked();
   await expect(page.getByText("이번 한 번만 씁니다 · 저장하지 않습니다")).toBeVisible();
   await shotAll(page, "automation-sa151-other");
   for (let i = 0; i < 5; i++) await page.getByTestId(`pay-check-${i}`).check();
@@ -172,7 +172,7 @@ test("파트너스: 다른 카드로 결제 — 서버가 준 결제창 값을 �
   // 결제창에서 실패하고 돌아오면(?payment=failed) 안내와 함께 다른 카드가 골라져 있다
   await page.goto(`/seller/automation/pay?shop=${encodeURIComponent(SHOP)}&payment=failed`);
   await expect(page.getByTestId("pay-failed")).toContainText("결제되지 않았습니다. 카드사에서 승인을 거절했습니다");
-  await expect(page.getByTestId("pay-card")).toContainText("다른 카드로 결제");
+  await expect(page.getByTestId("pay-other")).toBeChecked();
   await shotAll(page, "automation-sa151-failed");
 
   // 결제됨·확인 중 결과는 진행 화면 위에 한 줄로 뜬다

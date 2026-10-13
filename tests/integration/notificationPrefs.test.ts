@@ -113,6 +113,16 @@ describe("혜택·이벤트 = 마케팅 수신 동의", () => {
     expect(await notifyEnabled(db, s.scope, "BROADCAST_START", "MESSAGE")).toBe(false); // 광고성 알림톡·문자 금지
   });
 
+  it("혜택을 끄면서 방송 시작을 켜는 요청은 409이고 동의 상태는 바뀌지 않는다", async () => {
+    const s = await shop();
+    const r = await s.put({ prefs: { BENEFIT: { email: false }, BROADCAST_START: { email: true } } });
+    expect(r.status).toBe(409);
+    expect((await r.json()).error).toBe("marketing_consent_required");
+    const m = await db.buyerMember.findUniqueOrThrow({ where: { id: s.buyer.id } });
+    expect(m.marketingConsentAt).not.toBeNull();
+    expect(await db.auditLog.count({ where: { action: { startsWith: "buyer.marketing_consent" } } })).toBe(0);
+  });
+
   it("방송 시작만 끄면 동의는 유지되고 그 칸만 꺼진다(다른 광고성 줄은 그대로)", async () => {
     const s = await shop();
     const j = (await (await s.put({ prefs: { BROADCAST_START: { email: false } } })).json()) as Items & { marketing: { agreed: boolean } };

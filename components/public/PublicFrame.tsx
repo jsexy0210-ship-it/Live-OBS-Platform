@@ -2,18 +2,14 @@ import Link from "next/link";
 import "../../styles/tokens.css";
 import "../../styles/lop.css";
 import "../../styles/public.css";
+import "../../styles/public-brand.css";
+import { PublicMobileMenu } from "./PublicMobileMenu";
+import { StreamShopBrand } from "./StreamShopBrand";
+import styles from "./PublicFrame.module.css";
 
 // 공개 화면(PF) 공통 머리·꼬리. 디자인 PF-001 기준.
-// 플랫폼 사업자 정보는 아직 정해진 값이 없다. 값이 없는 동안은 하단 정보 줄을 숨기고, 값이 정해지면 COMPANY에 넣는다(이 한 곳만 고친다).
-const COMPANY: { label: string; value: string | null }[] = [
-  { label: "상호", value: null },
-  { label: "대표", value: null },
-  { label: "사업자등록번호", value: null },
-  { label: "통신판매업 신고", value: null },
-  { label: "주소", value: null },
-  { label: "고객센터", value: null },
-];
-const COMPANY_ROWS = COMPANY.filter((c) => c.value);
+export type { PublicCompanyInfo } from "./companyInfo";
+import { publicCompanyParts, type PublicCompanyInfo } from "./companyInfo";
 const NAV = [
   { href: "/features", label: "기능" },
   { href: "/pricing", label: "요금" },
@@ -21,14 +17,15 @@ const NAV = [
   { href: "/notices", label: "공지" },
 ];
 
-export function PublicFrame({ children, active }: { children: React.ReactNode; active?: string }) {
+export function PublicFrame({ children, active, mobileHeader, companyInfo }: { children: React.ReactNode; active?: string; mobileHeader?: "compact"; companyInfo?: PublicCompanyInfo | null }) {
+  const companyParts = publicCompanyParts(companyInfo);
+  if (companyInfo?.name?.trim()) companyParts.push(`© 2026 ${companyInfo.name.trim()}`);
   return (
-    <div className="app pf" data-theme="light">
-      <header className="pf-head">
+    <div className={`app pf ${styles.page}`} data-theme="light">
+      <header className={`pf-head ${styles.header}`}>
         <div className="pf-head-l">
-          <Link className="logo pf-logo" href="/about">
-            <span className="logo-sym" />
-            <span className="logo-word" />
+          <Link className="logo pf-logo" href="/about" aria-label="스트림샵 서비스 소개">
+            <StreamShopBrand className={styles.brand} width={28} height={31} />
           </Link>
           <nav className="pf-nav" aria-label="주요 메뉴">
             {NAV.map((n) => (
@@ -39,23 +36,23 @@ export function PublicFrame({ children, active }: { children: React.ReactNode; a
           </nav>
         </div>
         <div className="pf-head-r">
-          <Link className="btn btn-sm btn-out" href="/seller/login">
+          <Link className={styles.login} href="/seller/login">
             로그인
           </Link>
-          <Link className="btn btn-sm" href="/seller/signup">
+          <Link className={`${styles.signup} ${mobileHeader === "compact" ? styles.compactSignup : ""}`} href="/seller/signup">
             파트너스 가입 신청
           </Link>
+          {mobileHeader === "compact" && <PublicMobileMenu links={NAV} active={active} />}
         </div>
       </header>
       <main>{children}</main>
-      <footer className="pf-foot">
+      <footer className={`pf-foot ${styles.footer}`}>
         <div className="pf-foot-top">
           <div className="pf-foot-brand">
             <span className="logo">
-              <span className="logo-sym" />
-              <span className="logo-word" />
+              <StreamShopBrand className={styles.brand} width={28} height={31} />
             </span>
-            <span className="t-c1 c-alt">파트너스별 쇼핑몰과 라이브 방송 주문대기를 하나로.</span>
+            <span className="t-c1 c-alt">파트너스별 쇼핑몰과 라이브 방송 주문대기를 하나로</span>
           </div>
           <div className="pf-foot-links">
             <Link href="/terms">이용약관</Link>
@@ -66,9 +63,9 @@ export function PublicFrame({ children, active }: { children: React.ReactNode; a
             <Link href="/faq">자주 묻는 질문</Link>
           </div>
         </div>
-        {COMPANY_ROWS.length > 0 && (
+        {companyParts.length > 0 && (
           <span className="t-c1 c-alt">
-            {COMPANY_ROWS.map((c) => `${c.label} ${c.value}`).join(" · ")} · © 2026 {COMPANY.find((c) => c.label === "상호")?.value}
+            {companyParts.join(" · ")}
           </span>
         )}
       </footer>

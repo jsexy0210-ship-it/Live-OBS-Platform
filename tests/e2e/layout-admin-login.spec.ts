@@ -13,6 +13,7 @@ for (const width of WIDTHS) {
     await page.goto("/admin/login");
     const card = page.locator(".login-card");
     await expect(card).toBeVisible();
+    await expect(card.getByText("이메일과 비밀번호로 로그인합니다.")).toBeVisible();
 
     const { sw, cw } = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }));
     expect(sw).toBeLessThanOrEqual(cw);
@@ -34,6 +35,16 @@ for (const width of WIDTHS) {
     if (SHOTS) await page.screenshot({ path: `tests/e2e/screenshots/ui-stage2/admin-login-${width}.png` });
   });
 }
+
+test("마스터 관리자 로그인 390px: 비활성 버튼 색과 투명도를 정본에 맞춘다", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/admin/login");
+  const button = page.getByRole("button", { name: "로그인", exact: true });
+  await expect(button).toBeDisabled();
+  await expect(button).toHaveCSS("background-color", "rgb(15, 118, 110)");
+  await expect(button).toHaveCSS("color", "rgb(255, 255, 255)");
+  await expect(button).toHaveCSS("opacity", "0.45");
+});
 
 test("키보드만으로 입력·로그인 시도, 실패 문구는 비밀번호 칸 아래에 보이고 버튼 폭은 그대로다", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });

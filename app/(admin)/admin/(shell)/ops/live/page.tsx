@@ -7,7 +7,7 @@ import { ListHead, PageHead } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
 import { ImpersonateDialog } from "../../../_components/ImpersonateDialog";
-import { clock, elapsed, usePoll, type LiveBroadcast } from "../../../_components/ops";
+import { clock, elapsed, usePoll, type LiveBroadcast, type LiveOrderRate } from "../../../_components/ops";
 
 // MA-041 실시간 방송(GET /api/admin/ops/live-broadcasts, 모든 마스터 역할, 조회만). 10초마다 다시 읽는다. 대신 보기(MA-016)는 최고관리자·운영·고객 지원만.
 // 「방송 화면 불안정」은 방송 화면(오버레이) 주소를 발급했는데 접속하지 않은 방송, 「결제 연결 오류」는 최근 24시간 결제 실패 뒤 성공이 없는 파트너스다.
@@ -15,12 +15,10 @@ import { clock, elapsed, usePoll, type LiveBroadcast } from "../../../_component
 const LAYOUT: Record<string, string> = { "9x16": "세로형", "16x9": "가로형" };
 const unstable = (b: LiveBroadcast) => b.overlay.hasUrl && !b.overlay.connected;
 const problem = (b: LiveBroadcast) => unstable(b) || b.paymentError;
-const perMinute = (b: LiveBroadcast, now: number) => b.orders / Math.max(1, (now - new Date(b.startedAt).getTime()) / 60_000);
-
 export default function LiveBroadcastsPage() {
   const { me } = useAdmin();
   const canImpersonate = adminCan(me.role, "seller.impersonate");
-  const { data, failed, first, lastOk, reload } = usePoll<{ items: LiveBroadcast[] }>("/api/admin/ops/live-broadcasts", 10_000);
+  const { data, failed, first, lastOk, reload } = usePoll<{ items: LiveBroadcast[]; orderRate: LiveOrderRate }>("/api/admin/ops/live-broadcasts", 10_000);
   const [problemOnly, setProblemOnly] = useState(false);
   const [view, setView] = useState<"table" | "card">("table");
   const [viewing, setViewing] = useState<LiveBroadcast | null>(null);
@@ -32,7 +30,7 @@ export default function LiveBroadcastsPage() {
   const all = data?.items ?? [];
   const now = Date.now();
   const items = (problemOnly ? all.filter(problem) : all).slice().sort((a, b) => Number(problem(b)) - Number(problem(a)));
-  const rate = all.reduce((s, b) => s + perMinute(b, now), 0);
+  const rate = data?.orderRate.total ?? 0;
 
   const overlayTag = (b: LiveBroadcast) =>
     !b.overlay.hasUrl ? <span className="bdg b-gray">주소 없음</span> : unstable(b) ? <span className="bdg b-warn">불안정</span> : <span className="bdg b-done">정상</span>;
@@ -54,7 +52,7 @@ export default function LiveBroadcastsPage() {
     <>
       <AdminTopbar crumb="운영 › 실시간 방송" />
       <main className="main">
-        <PageHead title="실시간 방송" />
+        <PageHead title="실시간 방송" description="방송 중인 파트너스의 주문 현황과 방송 화면·결제 연결 상태를 확인합니다." />
         <div className="col" style={{ gap: 20 }}>
           <div className="row" style={{ justifyContent: "space-between", gap: 12, flexWrap: "wrap" }} role="status" data-testid="live-status">
             <span className="row" style={{ gap: 8 }}>
@@ -86,7 +84,7 @@ export default function LiveBroadcastsPage() {
             {[
               ["방송 중", `${all.length}곳`, "live-count"],
               ["총 대기 주문", `${all.reduce((s, b) => s + b.queue.waiting, 0).toLocaleString("ko-KR")}건`, "live-waiting"],
-              ["분당 주문 (전체)", rate.toFixed(1), "live-rate"],
+              ["분당 주문 (전체 · 내부)", rate.toLocaleString("ko-KR"), "live-rate"],
               ["방송 화면 불안정", `${all.filter(unstable).length}곳`, "live-problem"],
               ["결제 연결 오류 중 방송", `${all.filter((b) => b.paymentError).length}곳`, "live-payment"],
             ].map(([label, value, id]) => (
@@ -98,6 +96,9 @@ export default function LiveBroadcastsPage() {
               </div>
             ))}
           </div>
+          <p className="t-c1 c-alt" data-testid="live-order-rate-scope">
+            최근 60초 내부 주문 생성 수입니다. 전체는 모든 LIVE 방송, 각 행은 파트너스와 방송 시간 기준입니다. 주문 상태와 관계없이 세며 외부 주문은 측정하지 않습니다.
+          </p>
 
           <div className="card">
             {first && <LoadingRows rows={4} />}
@@ -114,7 +115,7 @@ export default function LiveBroadcastsPage() {
                       <b>{b.shopName}</b>
                       <span className="t-c1 c-alt">{b.title ?? "-"}</span>
                       <span className="t-l2">
-                        {elapsed(b.startedAt, now)} · 대기 {b.queue.waiting} · 완료 {b.queue.done} · 분당 {perMinute(b, now).toFixed(1)}
+                        {elapsed(b.startedAt, now)} · 대기 {b.queue.waiting} · 완료 {b.queue.done} · 분당 (내부) {b.ordersLast60Seconds.toLocaleString("ko-KR")}
                       </span>
                       <span className="row" style={{ gap: 6, flexWrap: "wrap" }}>
                         {overlayTag(b)}
@@ -137,7 +138,7 @@ export default function LiveBroadcastsPage() {
                           <th>시간</th>
                           <th>대기</th>
                           <th>완료</th>
-                          <th>분당</th>
+                          <th>분당 (내부)</th>
                           <th>방송 화면</th>
                           <th>결제대행사</th>
                           <th>레이아웃</th>
@@ -154,7 +155,7 @@ export default function LiveBroadcastsPage() {
                             <td>{elapsed(b.startedAt, now)}</td>
                             <td>{b.queue.waiting}</td>
                             <td>{b.queue.done}</td>
-                            <td>{perMinute(b, now).toFixed(1)}</td>
+                            <td>{b.ordersLast60Seconds.toLocaleString("ko-KR")}</td>
                             <td>{overlayTag(b)}</td>
                             <td>{payTag(b)}</td>
                             <td>{b.layoutAspect ? (LAYOUT[b.layoutAspect] ?? "-") : "-"}</td>

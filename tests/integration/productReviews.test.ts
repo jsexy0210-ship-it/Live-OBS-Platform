@@ -858,14 +858,18 @@ describe("내 리뷰 목록 쪽 나눔(Codex 4176954762)", () => {
           nextCursor: string | null;
           writableNextCursor: string | null;
         };
-        seen.push(...(key === "writable" ? d.writable.map((w) => w.orderItemId) : d.reviews.map((r) => r.id)));
+        const batch = key === "writable" ? d.writable.map((w) => w.orderItemId) : d.reviews.map((r) => r.id);
+        expect(batch).toHaveLength(pages < 10 ? 10 : 1);
+        seen.push(...batch);
         cursor = key === "writable" ? d.writableNextCursor : d.nextCursor;
         pages++;
-      } while (cursor && pages < 10);
+        if (pages < 11) expect(cursor).not.toBeNull();
+        else expect(cursor).toBeNull();
+      } while (cursor && pages < 11);
       return { seen, pages };
     };
     const w = await readAll("writable");
-    expect([w.seen.length, new Set(w.seen).size, w.pages]).toEqual([101, 101, 3]);
+    expect([w.seen.length, new Set(w.seen).size, w.pages]).toEqual([101, 101, 11]);
     await db.productReview.createMany({
       data: items.map((it, i) => ({
         sellerId: s.seller.id, orderId: it.orderId, orderItemId: it.id, productId: s.product.id, buyerMemberId: s.buyer.id,
@@ -873,7 +877,7 @@ describe("내 리뷰 목록 쪽 나눔(Codex 4176954762)", () => {
       })),
     });
     const r = await readAll("reviews");
-    expect([r.seen.length, new Set(r.seen).size, r.pages]).toEqual([101, 101, 3]);
+    expect([r.seen.length, new Set(r.seen).size, r.pages]).toEqual([101, 101, 11]);
   });
 });
 

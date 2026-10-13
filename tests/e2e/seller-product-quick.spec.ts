@@ -12,6 +12,8 @@ test.beforeAll(() => {
 const login = async (page: Page, email = "demo-owner@example.com") => {
   await page.goto("/seller/login");
   await submitSellerLogin(page, email, PASSWORD);
+  await expect(page).toHaveURL(/\/seller$/);
+  await page.goto("/seller/products");
   await expect(page).toHaveURL(/\/seller\/products$/);
 };
 type Made = { id: string; optionId: string | null };
@@ -108,6 +110,7 @@ test("판매가를 목록에서 바꾸고, 판매가·판매 상태·재고 변�
   await expect(price).toHaveValue("1000");
   await price.fill("2500");
   await price.press("Enter");
+  await page.getByRole("dialog").getByRole("button", { name: "판매가 변경", exact: true }).click();
   await expect(page.getByText("판매가를 2,500원으로 바꿨습니다")).toBeVisible();
   expect((await serverProduct(page, p.id)).price).toBe(2500);
   await undo.click();
@@ -191,6 +194,7 @@ test("되돌리기: 그사이 다른 사람이 판매가·판매 상태를 또 �
   const price = r.getByRole("textbox", { name: /가격$/ });
   await price.fill("2500");
   await price.press("Enter");
+  await page.getByRole("dialog").getByRole("button", { name: "판매가 변경", exact: true }).click();
   await expect(page.getByText("판매가를 2,500원으로 바꿨습니다")).toBeVisible();
   expect(await patch({ price: 3000 })).toBe(200);
   await undo.click();

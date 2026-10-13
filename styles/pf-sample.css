@@ -1,0 +1,147 @@
+/* PF-001 방송 화면 견본: design/project/ov.css 이식(글꼴 선언 제외). 랜딩 머리 견본에만 쓴다. */
+/* Live OBS Platform — OBS 오버레이 위젯 공용 스타일 (ov.css)
+   실제 송출 배경은 투명. 캔버스에서는 .bg-sample(어두운 영상 느낌)으로 확인하고, 트윅 「bg」로 투명 전환.
+   패널: #0c0d10 85% + 2px 테두리(위젯별 색) → 어떤 영상 위에서도 글자 대비 4.5:1 이상. 서체: Wanted Sans(변수 서체, 로컬 파일)
+   1위 금색 · 현재 주문 불꽃 발광은 기본값이며 오버레이 편집기에서 파트너스가 바꿀 수 있음(대표님 확정 19:40 KST) */
+.o-root{position:relative;overflow:hidden;color:#fff;font-family:"Wanted Sans","Pretendard JP","Apple SD Gothic Neo",sans-serif;letter-spacing:-.01em;line-height:1.2;-webkit-font-smoothing:antialiased;font-size:16px}
+.o-root *,.o-root *::before,.o-root *::after{box-sizing:border-box}
+.o-root p,.o-root h1,.o-root h2,.o-root h3{margin:0}
+.o-root.bg-sample{background:radial-gradient(120% 80% at 50% 72%,#3d302b 0%,#1e1a1a 52%,#0d0d0f 100%)}
+.o-root.bg-clear{background:transparent}
+/* 패널 */
+.o-p{position:absolute;display:flex;flex-direction:column;overflow:hidden;background:#0c0d10d9;border-radius:28px;box-shadow:inset 0 0 0 2px var(--ln,#ffffff40),0 12px 32px #00000059}
+.o-h{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 20px;flex:none;font-weight:800;white-space:nowrap}
+.o-h .s{font-size:.8em;font-weight:600;color:#ffffff99}
+.o-h .c{display:inline-flex;align-items:center;height:1.45em;padding:0 .6em;border-radius:999px;font-size:.78em;font-weight:800;color:#14102b;background:#8f78ff}
+/* 쇼핑몰 주소 · 날짜 · 시각 */
+.o-bar{position:absolute;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 22px;border-radius:999px;background:#0c0d10d9;box-shadow:inset 0 0 0 2px #ffffff33,0 12px 32px #00000059;font-weight:700;white-space:nowrap}
+.o-bar .ad{font-weight:800;letter-spacing:0;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.o-bar .tm{display:inline-flex;align-items:center;gap:.6em;flex:none}
+.o-bar .dt{color:#ffffffb3;font-weight:600;font-size:.9em}
+.o-bar .ck{font-variant-numeric:tabular-nums;font-weight:800;letter-spacing:.02em}
+/* 공지 배너 */
+.o-note{--ln:#ffffff40;justify-content:center;padding:10px 26px}
+.o-note p{font-weight:800;line-height:1.3;white-space:pre-line;letter-spacing:-.015em;overflow:hidden}
+/* 현재 주문 카드 — 불꽃 발광 */
+.o-cur{position:absolute;display:flex;flex-direction:column;overflow:hidden;border-radius:30px;background:linear-gradient(180deg,#2a120a 0%,#140e0d 50%,#0c0d10 100%);box-shadow:inset 0 0 0 2px #ff8a4c,0 0 24px 6px #ff4d1acc,0 0 60px 20px #ff7a0059;animation:oIn .48s cubic-bezier(.2,.8,.2,1) both,oFire 2.4s ease-in-out infinite alternate}
+.o-cur::before{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(70% 55% at 50% 112%,#ff6a2b73 0%,#ff3b0026 45%,transparent 72%);animation:oFlick 1.3s ease-in-out infinite alternate}
+.o-cur>*{position:relative}
+.o-cur.calm{background:#0c0d10d9;box-shadow:inset 0 0 0 2px #ffffff40,0 12px 32px #00000059;animation:oBreath 3s ease-in-out infinite alternate}
+.o-cur.calm::before{display:none}
+.o-calm{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:16px}
+.o-calm b{font-weight:800;letter-spacing:-.02em}.o-calm span{color:#ffffffb3;font-weight:600}
+.o-strip{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 20px;flex:none;background:#ffffff14;box-shadow:inset 0 -1px 0 #ffffff1f;white-space:nowrap}
+.o-strip .l{display:inline-flex;align-items:center;gap:.5em;min-width:0;overflow:hidden}
+.o-strip .gt{font-weight:700;color:#ffe3d1;overflow:hidden;text-overflow:ellipsis}
+.o-strip .ot{font-weight:600;color:#ffffffb3;font-variant-numeric:tabular-nums;font-size:.9em;flex:none}
+.o-body{flex:1;min-height:0;display:flex;flex-direction:column;gap:6px}
+.o-nick{font-weight:900;line-height:1.18;letter-spacing:-.02em}
+.o-prod{font-weight:600;color:#ffffffd9;line-height:1.25}
+.o-chips{display:flex;align-items:center;gap:10px;margin-top:auto;flex:none}
+.o-row2{display:flex;align-items:center;gap:8px;margin-top:auto;flex:none}.o-row2 .o-mq{flex:1;min-width:0}
+.o-chip{display:inline-flex;align-items:center;height:100%;padding:0 .7em;border-radius:999px;font-weight:800;background:#ffffff1f;color:#fff;flex:none}
+.o-chip.new{color:#14102b;animation:oPulse 1.2s ease-in-out infinite}
+.o-gr{display:inline-flex;align-items:center;height:1.45em;padding:0 .5em;border-radius:.35em;font-weight:900;font-size:.85em;letter-spacing:.02em;flex:none;white-space:nowrap}
+/* 가로 흐름(마키): 영역을 넘칠 때만(.flow) 글자 두 벌을 이어 붙여 -50% 이동. 한 바퀴 기본 20초(편집기에서 조절) */
+.o-mq{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.o-mq.flow{-webkit-mask-image:linear-gradient(90deg,transparent,#000 20px,#000 calc(100% - 20px),transparent);mask-image:linear-gradient(90deg,transparent,#000 20px,#000 calc(100% - 20px),transparent)}
+.o-mq.flow>i{display:inline-flex;gap:72px;padding-right:72px;font-style:normal;animation:oMq 20s linear infinite;will-change:transform}
+/* 주문 대기 */
+.o-q{display:flex;align-items:center;gap:12px;padding:0 20px;flex:none;white-space:nowrap}
+.o-q .n{font-weight:700;flex:none;max-width:52%;overflow:hidden;text-overflow:ellipsis}
+.o-q .pr{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;color:#ffffffb3;font-weight:600}
+.o-empty{flex:1;display:flex;align-items:center;justify-content:center;color:#ffffffb3;font-weight:600;padding:0 20px;text-align:center}
+.o-qs{flex-direction:row;align-items:center;gap:14px;padding:0 20px;white-space:nowrap}
+.o-qs .o-h2{font-weight:800;flex:none}
+.o-qs .c{display:inline-flex;align-items:center;height:1.4em;padding:0 .55em;border-radius:999px;font-size:.8em;font-weight:800;color:#14102b;flex:none}
+.o-qs .f{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font-weight:600;color:#ffffffd9}
+.o-qs .f b{color:#fff;font-weight:800;margin-right:.4em}
+.o-qs .m{color:#ffffff99;font-size:.85em;font-weight:600;flex:none}
+.o-qs .e{color:#ffffffb3;font-weight:600}
+/* 명예의 전당 — 1위 금색 고정, 2위 이하 세로 티커 */
+.o-hall{--ln:#f2c14e}.o-hall .o-h{color:#ffe08a}
+.o-r1{display:flex;align-items:center;gap:.5em;padding:0 20px;flex:none;background:linear-gradient(90deg,#ffe08a 0%,#f5c451 55%,#e9ad2d 100%);color:#2b1c00;white-space:nowrap}
+.o-r1 .rk{font-weight:900;width:1.3em;text-align:center;font-size:1.1em;flex:none}
+.o-r1 .dt{font-weight:700;opacity:.75;font-size:.8em;flex:none}
+.o-r1 .n{font-weight:900;flex:none}
+.o-r1 .c{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font-weight:700;font-size:.92em}
+.o-tk{flex:1;min-height:0;overflow:hidden;position:relative;-webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 12px),transparent);mask-image:linear-gradient(180deg,#000 calc(100% - 12px),transparent)}
+.o-tk>i{display:flex;flex-direction:column;font-style:normal;animation:oTick 19.2s steps(6,end) infinite;will-change:transform}
+.o-rr{display:flex;align-items:center;gap:.5em;padding:0 20px;flex:none;white-space:nowrap}
+.o-rr .rk{font-weight:800;width:1.3em;text-align:center;color:#ffd978;flex:none}
+.o-rr .dt{color:#ffffff99;font-size:.8em;font-weight:600;flex:none}
+.o-rr .n{font-weight:700;flex:none}
+.o-rr .c{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;color:#ffffffd9;font-size:.92em}
+/* 오픈 타이머 (선택 위젯, 기본 꺼짐) */
+.o-tm{position:absolute;display:flex;align-items:center;gap:10px;padding:0 16px;border-radius:999px;background:#0c0d10f2;box-shadow:inset 0 0 0 2px #ffb86b,0 8px 24px #00000073;font-weight:800;color:#ffd7a8;font-variant-numeric:tabular-nums;white-space:nowrap}
+.o-tm .lb{font-size:.78em;font-weight:700;color:#ffffffb3}
+.o-tm .bar{width:84px;height:8px;border-radius:999px;background:#ffffff26;overflow:hidden;flex:none}.o-tm .bar>i{display:block;height:100%;width:70%;background:#ffb86b;border-radius:999px}
+/* HIT 등록 순간 */
+.o-hit{position:absolute;display:flex;gap:28px;padding:28px;border-radius:36px;background:linear-gradient(180deg,#2a1f05f2,#0c0d10f2);box-shadow:inset 0 0 0 3px #ffd978,0 0 30px 8px #ffc24dcc,0 0 80px 28px #ffb02e59;animation:oHitIn .5s cubic-bezier(.34,1.56,.64,1) both,oGold 1.6s ease-in-out infinite alternate}
+.o-hit .img{flex:none;border-radius:20px;background:linear-gradient(160deg,#3b3140,#1a1720);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:#ffffff8c;font-weight:700;box-shadow:inset 0 0 0 2px #ffffff26;text-align:center}
+.o-hit .tx{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:14px}
+.o-hit .tag{display:inline-flex;align-self:flex-start;align-items:center;height:1.5em;padding:0 .6em;border-radius:.35em;background:#ffd25e;color:#2b1c00;font-weight:900;letter-spacing:.06em}
+.o-hit .cn{font-weight:900;line-height:1.15;letter-spacing:-.02em}
+.o-hit .cs{font-weight:700;color:#ffd978}
+.o-hit .wn{font-weight:800}
+.o-hit .wn b{color:#fff}.o-hit .wn{color:#ffffffd9}
+.o-hit .nx{font-weight:600;color:#ffffff99}
+/* 연결 끊김 */
+.o-dis{position:absolute;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:20px 32px;border-radius:22px;background:#0c0d10f2;box-shadow:inset 0 0 0 2px #ffb020,0 12px 32px #00000073;text-align:center;white-space:nowrap}
+.o-dis b{font-weight:800;color:#ffd27a}.o-dis span{color:#ffffffb3;font-weight:600}
+.o-dim{opacity:.5}
+/* 가림 영역 가이드 (아트보드 위 별도 레이어, 송출물 아님) */
+.o-zone{position:absolute;background:repeating-linear-gradient(135deg,#ff3b3b33 0 14px,#ff3b3b14 14px 28px);box-shadow:inset 0 0 0 3px #ff5a5a;pointer-events:none}
+.o-zone>b{position:absolute;left:24px;top:20px;display:inline-flex;flex-direction:column;gap:4px;padding:10px 16px;border-radius:12px;background:#b3261ee6;color:#fff;font-size:22px;font-weight:800;line-height:1.3;max-width:calc(100% - 48px);white-space:normal}
+.o-zone>b>small{font-size:17px;font-weight:600;opacity:.92}
+.o-zone.lite{background:repeating-linear-gradient(135deg,#ff3b3b1f 0 14px,#ff3b3b0a 14px 28px);box-shadow:inset 0 0 0 2px #ff5a5a99}
+.o-safe{position:absolute;box-shadow:inset 0 0 0 4px #37d67a;border-radius:10px;pointer-events:none}
+.o-safe>b{position:absolute;left:0;top:-46px;padding:7px 14px;border-radius:10px;background:#1f8f4f;color:#fff;font-size:22px;font-weight:800;white-space:nowrap}
+.o-cam{position:absolute;display:flex;align-items:center;justify-content:center;text-align:center;color:#ffffff8c;font-size:28px;font-weight:700;pointer-events:none;border:3px dashed #ffffff40;border-radius:24px;padding:16px}
+.o-zone.ph>b{left:8px;top:8px;padding:5px 8px;border-radius:6px;font-size:11px;gap:1px}.o-zone.ph>b>small{font-size:9px}
+.o-safe.ph{box-shadow:inset 0 0 0 2px #37d67a;border-radius:4px}.o-safe.ph>b{top:-20px;font-size:10px;padding:3px 6px;border-radius:5px}
+.o-cam.ph{font-size:11px;border-width:1.5px;border-radius:10px;padding:6px}
+/* 설명용 보드 (효과 명세 · 위젯 해부 · 휴대폰 미리보기) */
+.o-doc{background:#141416;color:#f2f2f4}
+.o-doc .hd{position:absolute;left:64px;top:48px;display:flex;flex-direction:column;gap:8px;max-width:1500px}
+.o-doc h1{font-size:38px;font-weight:900;letter-spacing:-.02em}
+.o-doc .sub{font-size:19px;color:#ffffffa6;font-weight:500;line-height:1.5}
+.o-tbl{position:absolute;border-collapse:collapse;font-size:17px;line-height:1.45}
+.o-tbl th{text-align:left;font-weight:800;color:#ffffff99;font-size:14px;letter-spacing:.04em;padding:10px 12px;border-bottom:2px solid #ffffff26;white-space:nowrap}
+.o-tbl td{padding:11px 12px;border-bottom:1px solid #ffffff14;vertical-align:top;color:#e6e6ea}
+.o-tbl td:first-child{font-weight:800;white-space:nowrap;color:#fff}
+.o-tbl em{font-style:normal;color:#ffd978;font-weight:700}
+.o-cap{position:absolute;display:flex;flex-direction:column;gap:7px;font-size:16px;line-height:1.45;color:#e6e6ea}
+.o-cap b{display:block;font-size:22px;font-weight:900;color:#fff;margin-bottom:2px}
+.o-cap span{display:flex;gap:10px;align-items:flex-start}
+.o-cap span i{flex:none;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:#ffd978;color:#2b1c00;font-style:normal;font-weight:900;font-size:13px;margin-top:1px}
+.o-mk{position:absolute;width:30px;height:30px;border-radius:50%;background:#ffd978;color:#2b1c00;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:16px;box-shadow:0 0 0 3px #141416;z-index:2}
+.o-lbl{position:absolute;font-size:15px;font-weight:700;color:#ffffff99;letter-spacing:.02em}
+.o-phone{position:absolute;width:390px;height:844px;border-radius:44px;background:#000;box-shadow:0 0 0 10px #2a2a2e,0 0 0 12px #4a4a50,0 30px 60px #00000080;overflow:hidden}
+.o-vid{position:absolute;left:0;top:75px;width:390px;height:693px;overflow:hidden}
+.o-blk{position:absolute;left:0;right:0;display:flex;align-items:center;justify-content:center;color:#ffffff66;font-size:11px;font-weight:600}
+/* 실제 크기 미리보기 도구 막대 (파트너스 화면 UI) */
+.o-tool{position:absolute;display:flex;align-items:center;gap:10px;padding:10px;border-radius:16px;background:#ffffffeb;color:#191f28;box-shadow:0 8px 24px #0000004d;z-index:5}
+.o-tool .sg{display:flex;background:#f2f4f6;border-radius:10px;padding:3px}
+.o-tool .sg>button{height:36px;padding:0 14px;border:0;border-radius:8px;background:transparent;font:700 15px/1 "Wanted Sans","Pretendard JP","Apple SD Gothic Neo",sans-serif;color:#4e5968;cursor:pointer;white-space:nowrap}
+.o-tool .sg>button.on{background:#fff;color:#191f28;box-shadow:0 1px 3px #0000001f}
+.o-tool>button,.o-tool>a{display:inline-flex;align-items:center;height:42px;padding:0 16px;border:0;border-radius:10px;background:#191f28;color:#fff;font:700 15px/1 "Wanted Sans","Pretendard JP","Apple SD Gothic Neo",sans-serif;cursor:pointer;text-decoration:none;white-space:nowrap}
+.o-tool>a.lite{background:#f2f4f6;color:#191f28}
+.o-tool .tx{font-size:14px;font-weight:600;color:#4e5968;padding:0 6px;white-space:nowrap}
+/* 움직임 */
+@keyframes oFire{0%{box-shadow:inset 0 0 0 2px #ff8a4c,0 0 18px 4px #ff4d1acc,0 0 48px 16px #ff7a0059,0 0 96px 32px #ff3b0033}40%{box-shadow:inset 0 0 0 2px #ffb073,0 0 28px 9px #ff5a1fe6,0 0 70px 24px #ff8c0073,0 0 118px 44px #ff3b0047}65%{box-shadow:inset 0 0 0 2px #ff9a5c,0 0 22px 6px #ff4d1acc,0 0 56px 18px #ff7a0066,0 0 100px 36px #ff3b003d}100%{box-shadow:inset 0 0 0 2px #ffa865,0 0 32px 10px #ff6a2bf2,0 0 78px 28px #ff8c0080,0 0 126px 48px #ff3b004d}}
+@keyframes oFlick{from{opacity:.45}to{opacity:1}}
+@keyframes oMq{to{transform:translateX(-50%)}}
+@keyframes oTick{to{transform:translateY(-50%)}}
+@keyframes oPulse{0%,100%{opacity:1}50%{opacity:.55}}
+@keyframes oBreath{from{box-shadow:inset 0 0 0 2px #ffffff40,0 12px 32px #00000059}to{box-shadow:inset 0 0 0 2px #ffffff80,0 12px 32px #00000059,0 0 40px 8px #ffffff1a}}
+@keyframes oGold{from{box-shadow:inset 0 0 0 3px #ffd978,0 0 24px 6px #ffc24dcc,0 0 70px 24px #ffb02e59}to{box-shadow:inset 0 0 0 3px #fff1c2,0 0 38px 12px #ffd25ee6,0 0 104px 36px #ffb02e80}}
+@keyframes oHitIn{from{transform:scale(.6);opacity:0}to{transform:none;opacity:1}}
+@keyframes oIn{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.o-root *{animation:none!important}}
+
+.o-r1.two{height:auto;padding:5px 20px}.o-r1.two .tx{display:flex;flex-direction:column;min-width:0;line-height:1.15}.o-r1.two .n{white-space:nowrap}.o-r1.two .n .dt{margin-left:.35em}.o-r1.two .c{font-size:.8em;white-space:normal;overflow:visible;text-overflow:clip;line-height:1.15}
+.o-qs .f.o-mq{text-overflow:clip;white-space:nowrap}.o-qs .f.o-mq>i>span b{margin-right:.4em}
+
+/* 줄바꿈: 단어 중간에서 끊지 않음 (2026-10-03, 전 화면 공통) */
+.o-root{word-break:keep-all;overflow-wrap:break-word}

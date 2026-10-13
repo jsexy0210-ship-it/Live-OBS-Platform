@@ -58,7 +58,7 @@ test("파트너스 로그인·주문 화면, 쇼핑몰 화면, 루트(/)가 원�
   await page.getByLabel("이메일").fill("demo-owner@example.com");
   await page.getByLabel("비밀번호").fill(PASSWORD);
   await page.getByRole("button", { name: "로그인" }).click();
-  await expect(page).toHaveURL(/\/seller\/products$/);
+  await expect(page).toHaveURL(/\/seller$/);
   await page.goto("/seller/orders");
   await expect(page.getByTestId("order-row").first()).toBeVisible();
   await expectWantedSans(page);
