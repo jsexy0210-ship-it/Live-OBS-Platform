@@ -1,7 +1,9 @@
 "use client";
 
+import { CursorPagination } from "../../../../../../components/Pagination";
+
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FormFoot, FormRow, FormSection, PageHead, useConfirm } from "../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
@@ -34,11 +36,25 @@ export default function LivePayoutPage() {
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [history, setHistory] = useState<{ rows: HistoryRow[]; next: string | null } | "error" | null>(null);
 
-  const loadHistory = useCallback(async (cursor?: string) => {
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyCursors, setHistoryCursors] = useState<(string | undefined)[]>([undefined]);
+  const historyReq = useRef(0);
+  const historyPaging = useRef(false);
+
+  const loadHistory = useCallback(async (cursor?: string, target = 1) => {
+    const id = ++historyReq.current;
+    historyPaging.current = true;
     const r = await api<{ history: HistoryRow[]; nextCursor: string | null }>(`/api/seller/reward-live-payout/history?limit=10${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
-    if (!r.ok) return cursor ? undefined : setHistory("error");
-    setHistory((prev) => ({ rows: cursor && prev && prev !== "error" ? [...prev.rows, ...r.data.history] : r.data.history, next: r.data.nextCursor }));
+    if (id !== historyReq.current) return;
+    historyPaging.current = false;
+    if (!r.ok) return target === 1 ? setHistory("error") : setToast("이력을 불러오지 못했습니다. 다시 눌러 주십시오");
+    setHistory({ rows: r.data.history, next: r.data.nextCursor });
+    setHistoryCursors((prev) => [...prev.slice(0, target - 1), cursor]); setHistoryPage(target);
   }, []);
+  const goHistoryPage = (target: number, cursor = historyCursors[target - 1]) => {
+    if (!history || history === "error" || historyPaging.current || target < 1 || target > historyCursors.length + 1) return;
+    void loadHistory(cursor, target);
+  };
   const load = useCallback(async () => {
     setState({ kind: "loading" });
     const r = await api<Data>("/api/seller/reward-live-payout");
@@ -246,13 +262,7 @@ export default function LivePayoutPage() {
                   </table>
                 )}
               </div>
-              {history && history !== "error" && history.next && (
-                <div className="row" style={{ justifyContent: "center", marginTop: 8 }}>
-                  <button className="btn btn-out" type="button" onClick={() => void loadHistory(history.next!)}>
-                    이력 더 보기
-                  </button>
-                </div>
-              )}
+              {history && history !== "error" && (historyPage > 1 || history.next) && <CursorPagination page={historyPage} visited={historyCursors.length} hasNext={!!history.next} onChange={(target) => goHistoryPage(target)} onNext={() => { if (history.next) goHistoryPage(historyPage + 1, history.next); }} />}
             </section>
 
             <FormFoot>

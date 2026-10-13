@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 
 // 마스터 청구·결제 내역(MA-024, 구독료, 모든 마스터 역할 조회). ?month=YYYY-MM(없으면 이번 달 KST) 또는 from·to(KST 날짜, 최대 366일)
 // &state=PAID|PENDING|RETRYING|OVERDUE|FAILED|REFUNDED|SCHEDULED&failedOnly=1&plan=&q=(쇼핑몰 이름·주소)&sellerId=&cursor=(건너뛸 개수)&limit=(기본 20·최대 100)
+// state=RETRYING은 FINAL의 「실패 · 재시도」 선택지로, RETRYING과 종료된 FAILED를 함께 조회한다. OVERDUE는 별도 선택지다.
 // → { range, summary { total, paid, failed { retrying, overdue }, pending, refunded, scheduled { estimatedAmount } }, items[], total, nextCursor }
 export async function GET(req: Request) {
   try {

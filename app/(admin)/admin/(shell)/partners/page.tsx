@@ -33,7 +33,7 @@ type Filters = {
   limit: string;
   page: string;
 };
-const EMPTY: Filters = { q: "", field: "all", state: "", plan: "", pg: "", live: "", payout: "", note: "", joinedFrom: "", joinedTo: "", active: "", sort: "joined", limit: "20", page: "1" };
+const EMPTY: Filters = { q: "", field: "all", state: "", plan: "", pg: "", live: "", payout: "", note: "", joinedFrom: "", joinedTo: "", active: "", sort: "joined", limit: "10", page: "1" };
 // 「초기화」는 검색 조건만 비우고 정렬·쪽 크기는 그대로 둔다
 const SEARCH_KEYS = ["q", "field", "state", "plan", "pg", "live", "payout", "note", "joinedFrom", "joinedTo", "active"] as const;
 type Data = { sellers: SellerListRow[]; total: number; summary: SellerListSummary };
@@ -72,7 +72,7 @@ function params(f: Filters, withPaging: boolean) {
   }
   p.set("sort", f.sort);
   if (withPaging) {
-    const limit = Number(f.limit);
+    const limit = 10;
     p.set("limit", String(limit));
     const offset = (Math.max(1, Number(f.page) || 1) - 1) * limit;
     if (offset > 0) p.set("cursor", String(offset));
@@ -98,7 +98,10 @@ function PartnerList() {
     if (id !== reqId.current) return;
     setState(r.ok ? { kind: "ok", data: r.data } : { kind: "error" });
   }, []);
-  useEffect(() => void load(applied), [applied, load]);
+  useEffect(() => {
+    if (applied.limit !== "10") { apply({ ...applied, limit: "10" }); return; }
+    void load(applied);
+  }, [applied, load]);
   useScrollRestore("admin-partners", state.kind === "ok");
 
   // 정렬·쪽 크기를 연달아 바꿔도 앞의 변경이 사라지지 않게, 마지막으로 보낸 조건을 따로 들고 있다가 거기에 얹는다
@@ -107,14 +110,25 @@ function PartnerList() {
     latest.current = applied;
   }, [applied]);
   const go = (patch: Partial<Filters>) => {
-    const next = { ...latest.current, ...patch };
+    const next = { ...latest.current, ...patch, limit: "10" };
+    if ((Object.keys(next) as (keyof Filters)[]).every((key) => next[key] === latest.current[key])) return;
     latest.current = next;
     apply(next);
   };
   const set = (patch: Partial<Filters>) => go({ ...patch, page: "1" });
-  const limit = Number(applied.limit) || 20;
+  const limit = 10;
   const page = Math.max(1, Number(applied.page) || 1);
   const data = state.kind === "ok" ? state.data : null;
+  useEffect(() => {
+    if (!data) return;
+    const last = Math.max(1, Math.ceil(data.total / limit));
+    const normalized = Math.min(last, Math.max(1, Number.isFinite(Number(applied.page)) ? Math.floor(Number(applied.page)) : 1));
+    if (applied.page !== String(normalized)) {
+      const next = { ...latest.current, page: String(normalized) };
+      latest.current = next;
+      apply(next);
+    }
+  }, [data?.total, limit, applied.page, apply]);
   const sum = data?.summary ?? null;
   const filtered = SEARCH_KEYS.some((k) => k !== "field" && applied[k] !== "");
 
@@ -138,6 +152,7 @@ function PartnerList() {
       <main className="main">
         <PageHead
           title="파트너스 목록"
+          description="검색 조건을 표 밖에 두고, 건수와 일괄 작업을 확인한 뒤 목록을 처리합니다."
           actions={
             <>
               <Link className="btn btn-out" href="/admin/partners/applications">
@@ -169,7 +184,16 @@ function PartnerList() {
           ))}
         </div>
         <SearchBox onSearch={search} onReset={reset} busy={state.kind === "loading"}>
-          <SearchRow label="검색어">
+          <SearchRow
+            label="검색어"
+            label2="상태"
+            children2={[["", "전체"], ...STATES.map((x) => [x, DISPLAY_STATUS[x].label])].map(([v, l]) => (
+              <label key={v} className="chk">
+                <input className="chkbox" type="radio" name="f-state" checked={draft.state === v} onChange={() => setDraft({ ...draft, state: v })} />
+                {l}
+              </label>
+            ))}
+          >
             <select className="inp" aria-label="검색 칸" value={draft.field} onChange={(e) => setDraft({ ...draft, field: e.target.value })}>
               {FIELDS.map(([v, l]) => (
                 <option key={v} value={v}>
@@ -179,15 +203,16 @@ function PartnerList() {
             </select>
             <input className="inp" type="search" aria-label="검색어" placeholder="검색어" maxLength={MAX_SEARCH_LENGTH} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
           </SearchRow>
-          <SearchRow label="상태">
-            {[["", "전체"], ...STATES.map((x) => [x, DISPLAY_STATUS[x].label])].map(([v, l]) => (
+          <SearchRow
+            label="구독"
+            label2="카드 결제 연결"
+            children2={[["", "전체"], ...PG_STATUS.map(([v, l]) => [v, l])].map(([v, l]) => (
               <label key={v} className="chk">
-                <input className="chkbox" type="radio" name="f-state" checked={draft.state === v} onChange={() => setDraft({ ...draft, state: v })} />
+                <input className="chkbox" type="radio" name="f-pg" checked={draft.pg === v} onChange={() => setDraft({ ...draft, pg: v })} />
                 {l}
               </label>
             ))}
-          </SearchRow>
-          <SearchRow label="구독">
+          >
             {[["", "전체"], ...PLAN_FILTER.map((p) => [p.code, p.label])].map(([v, l]) => (
               <label key={v} className="chk">
                 <input className="chkbox" type="radio" name="f-plan" checked={draft.plan === v} onChange={() => setDraft({ ...draft, plan: v })} />
@@ -195,15 +220,16 @@ function PartnerList() {
               </label>
             ))}
           </SearchRow>
-          <SearchRow label="카드 결제 연결">
-            {[["", "전체"], ...PG_STATUS.map(([v, l]) => [v, l])].map(([v, l]) => (
-              <label key={v} className="chk">
-                <input className="chkbox" type="radio" name="f-pg" checked={draft.pg === v} onChange={() => setDraft({ ...draft, pg: v })} />
-                {l}
-              </label>
-            ))}
-          </SearchRow>
-          <SearchRow label="기타">
+          <SearchRow label="기타" label2="최근 활동" children2={(
+            <select className="inp" aria-label="최근 활동" value={draft.active} onChange={(e) => setDraft({ ...draft, active: e.target.value })}>
+              <option value="">전체</option>
+              {ACTIVE.map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          )}>
             {(
               [
                 ["live", "방송 중만"],
@@ -219,16 +245,6 @@ function PartnerList() {
           </SearchRow>
           <SearchRow label="가입일">
             <DateRangePicker className="dt-sm" quick fromLabel="가입일 시작" toLabel="가입일 끝" from={draft.joinedFrom} to={draft.joinedTo} onChange={(r) => setDraft({ ...draft, joinedFrom: r.from, joinedTo: r.to })} />
-          </SearchRow>
-          <SearchRow label="최근 활동">
-            <select className="inp" aria-label="최근 활동" value={draft.active} onChange={(e) => setDraft({ ...draft, active: e.target.value })}>
-              <option value="">전체</option>
-              {ACTIVE.map(([v, l]) => (
-                <option key={v} value={v}>
-                  {l}
-                </option>
-              ))}
-            </select>
           </SearchRow>
         </SearchBox>
 
@@ -258,9 +274,8 @@ function PartnerList() {
                           </option>
                         ))}
                       </select>
-                      <select className="inp" aria-label="쪽 크기" value={applied.limit} onChange={(e) => set({ limit: e.target.value })}>
-                        <option value="20">20개씩</option>
-                        <option value="50">50개씩</option>
+                      <select className="inp" aria-label="쪽 크기" value="10" onChange={() => set({ limit: "10" })}>
+                        <option value="10">10개씩</option>
                       </select>
                     </span>
                   }
@@ -269,7 +284,7 @@ function PartnerList() {
                   <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                     <thead>
                       <tr>
-                        <th>파트너스 · 쇼핑몰</th>
+                        <th className="col-text">파트너스 · 쇼핑몰</th>
                         <th>번호</th>
                         <th>상태</th>
                         <th>구독</th>
@@ -287,7 +302,7 @@ function PartnerList() {
                         const overlayOnly = s.plan?.code === "OVERLAY_ONLY";
                         return (
                           <tr key={s.id} data-testid="partner-row">
-                            <td>
+                            <td className="col-text">
                               <Link className="fw6" href={`/admin/partners/${s.id}`}>
                                 {s.shopName}
                               </Link>
@@ -324,7 +339,9 @@ function PartnerList() {
                     </tbody>
                   </table>
                 </div>
-                <Pagination page={page} pageCount={Math.max(1, Math.ceil(data.total / limit))} onChange={(n) => go({ page: String(n) })} />
+                {data.total > limit && <div style={{ maxWidth: "100%", overflowX: "auto" }}>
+                  <Pagination page={page} pageCount={Math.ceil(data.total / limit)} onChange={(n) => go({ page: String(n) })} />
+                </div>}
               </>
             ))}
         </div>

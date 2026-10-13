@@ -113,7 +113,7 @@ export type InfraSignal = { key: "disk" | "memory" | "cpu" | "dbConnections" | "
 
 const pct = (used: number | null, total: number | null) => (used !== null && total ? Math.round((used / total) * 1000) / 10 : null);
 
-// CPU 사용률 = 1분 부하 ÷ 코어 수(%)
+// CPU 1분 부하(코어 대비) = loadavg(1분) ÷ 코어 수(%), 대기 작업을 포함하므로 100%를 넘을 수 있다
 const cpuPct = (m: Pick<InfraMeasure, "load1" | "cpuCount">) => (m.load1 !== null && m.cpuCount ? Math.round((m.load1 / m.cpuCount) * 1000) / 10 : null);
 
 // 기준 초과 신호: 디스크·메모리·CPU·DB 연결 80% 경고·90% 위험, 마지막 백업 36시간 경고·72시간 위험.

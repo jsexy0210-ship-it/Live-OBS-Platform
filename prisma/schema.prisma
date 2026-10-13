@@ -177,6 +177,8 @@ model Seller {
   subscription             SellerSubscription?
   subscriptionPayments     SubscriptionPayment[]
   auditLogs                AuditLog[]
+  obsDevices               ObsDevice[]
+  obsPairingChallenges     ObsPairingChallenge[]
   shopBanners              ShopBanner[]
   shopPopups               ShopPopup[]
   // 「모든 팝업 잠시 끄기」(SA-065): 끈 시각과 끈 직원. null이면 켜짐.
@@ -1247,6 +1249,7 @@ model Order {
   refunds          OrderRefund[]
   refundRequests   RefundRequest[]
   receiptRequests  OrderReceiptRequest[]
+  buyerInquiries   BuyerInquiry[]
 
   @@unique([sellerId, id])
   @@unique([sellerId, orderNo])
@@ -1634,7 +1637,7 @@ model SubscriptionPlan {
 }
 
 // 판매가 변경 기록(대표님 결정 2026-10-02). 새 가입자는 바로 새 가격, 기존 구독자는 구독을 시작할 때 적용되던 가격을 내다가
-// 변경 시각 + 30일 이후 첫 결제부터 새 가격을 낸다. 청구 금액은 이 기록으로 계산한다(priceFor).
+// 메일·알림톡·파트너스 공지 완료 + 30일 이후 첫 결제부터 새 가격을 낸다. 변경 시각만으로 적용하지 않는다.
 model SubscriptionPriceChange {
   id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   planId           String   @db.Uuid
@@ -1644,8 +1647,40 @@ model SubscriptionPriceChange {
   changedByAdminId String?  @db.Uuid
 
   plan SubscriptionPlan @relation(fields: [planId], references: [id])
+  notices SubscriptionPriceNotice[]
 
   @@index([planId, changedAt])
+}
+
+enum SubscriptionPriceNoticeChannel {
+  MAIL
+  ALIMTALK
+  PARTNERS_NOTICE
+}
+
+enum SubscriptionPriceNoticeStatus {
+  PENDING
+  FAILED
+  SENT
+}
+
+// 가격 고지의 완료 근거. 대기/예약/공지 초안은 완료가 아니다. 같은 구독을 재시작해도 이전 고지를 재사용하지 않는다.
+// 실제 공급자·발송 연결은 미가용: 현재 서비스/API에는 SENT를 만드는 경로가 없다. 완료 데이터를 추정해 채우지 않는다.
+model SubscriptionPriceNotice {
+  id                    String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subscriptionId        String @db.Uuid
+  subscriptionStartedAt DateTime @db.Timestamptz(3)
+  priceChangeId         String @db.Uuid
+  channel               SubscriptionPriceNoticeChannel
+  status                SubscriptionPriceNoticeStatus @default(PENDING)
+  completedAt           DateTime? @db.Timestamptz(3)
+  deliveryReference     String?
+
+  subscription SellerSubscription @relation(fields: [subscriptionId], references: [id])
+  priceChange SubscriptionPriceChange @relation(fields: [priceChangeId], references: [id])
+
+  @@unique([subscriptionId, subscriptionStartedAt, priceChangeId, channel], map: "SubscriptionPriceNotice_receipt_key")
+  @@index([priceChangeId])
 }
 
 enum SellerSubscriptionStatus {
@@ -1692,6 +1727,7 @@ model SellerSubscription {
   plan        SubscriptionPlan      @relation(fields: [planId], references: [id])
   pendingPlan SubscriptionPlan?     @relation("PendingPlan", fields: [pendingPlanId], references: [id])
   payments    SubscriptionPayment[]
+  priceNotices SubscriptionPriceNotice[]
 
   @@unique([sellerId, id])
   @@index([status, nextChargeAt])
@@ -2664,6 +2700,10 @@ model RestockAlert {
 // payload는 미리보기에서 통과한 상품 입력, errors는 행별 오류(shop-bulk-io/service.ts).
 enum BulkJobKind {
   PRODUCT_IMPORT
+  // 내보내기 이력(SA-018 처리 이력): 내려받은 사실만 남긴다(status COMMITTED, 되돌리기 없음). 회원 내보내기는 reason(사유) 필수.
+  PRODUCT_EXPORT
+  ORDER_EXPORT
+  MEMBER_EXPORT
 }
 
 enum BulkJobStatus {
@@ -2686,6 +2726,9 @@ model BulkJob {
   createdProductIds Json          @default("[]")
   failures          Json          @default("[]")
   keptCount         Int           @default(0)
+  // 내보내기: 내보내는 사유(회원 내보내기), 기간·개인정보 포함 여부 등 조건(meta)
+  reason            String?
+  meta              Json          @default("{}")
   actorType         ActorType
   actorId           String?       @db.Uuid
   createdAt         DateTime      @default(now()) @db.Timestamptz(3)
@@ -3874,6 +3917,7 @@ model PlatformMaintenance {
   id               Int       @id @default(1)
   enabled          Boolean   @default(false)
   message          String    @default("")
+  reason           String    @default("")
   startsAt         DateTime? @db.Timestamptz(3)
   endsAt           DateTime? @db.Timestamptz(3)
   version          Int       @default(0)
@@ -4042,6 +4086,7 @@ model BuyerInquiry {
   buyerMemberId     String             @db.Uuid
   kind              BuyerInquiryKind
   productId         String?            @db.Uuid
+  orderId           String?            @db.Uuid
   authorNickname    String
   title             String
   body              String
@@ -4056,11 +4101,13 @@ model BuyerInquiry {
   seller      Seller              @relation(fields: [sellerId], references: [id])
   buyerMember BuyerMember         @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
   product     Product?            @relation(fields: [sellerId, productId], references: [sellerId, id])
+  order       Order?              @relation(fields: [sellerId, orderId], references: [sellerId, id], onDelete: Restrict)
   images      BuyerInquiryImage[]
 
   @@unique([sellerId, id])
   @@index([sellerId, status, createdAt(sort: Desc), id(sort: Desc)])
   @@index([sellerId, buyerMemberId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([sellerId, orderId])
 }
 
 // 문의 첨부 사진. 먼저 올리고(inquiryId 없음) 문의를 보낼 때 붙인다. 붙지 않은 사진은 회원당 10장까지 두고 오래된 것부터 지운다.
@@ -4469,6 +4516,43 @@ model PlatformPolicy {
   updatedByAdminId String?  @db.Uuid
 }
 
+// OBS 등록은 명령 권한이 아니다. 구독/현재 유료 job 위임은 명령마다 별도 검사한다.
+model ObsDevice {
+  id             String   @id @db.Uuid
+  sellerId       String   @db.Uuid
+  tokenHash      String?  @unique
+  generation     Int      @default(1)
+  registeredById String   @db.Uuid
+  consentVersion String
+  registeredAt   DateTime @default(now()) @db.Timestamptz(3)
+  revokedAt      DateTime? @db.Timestamptz(3)
+  seller         Seller   @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+
+  @@unique([sellerId, id])
+}
+
+// PC verifier를 입증하고 대표자가 확인한 challenge만 한 번 소비한다.
+model ObsPairingChallenge {
+  id              String    @id @db.Uuid
+  deviceId        String    @db.Uuid
+  verifierHash    String    @unique
+  confirmationHash String
+  sellerId        String?   @db.Uuid
+  approvedActorId String?   @db.Uuid
+  approvedAt      DateTime? @db.Timestamptz(3)
+  installJobId    String?   @db.Uuid
+  generation      Int       @default(1)
+  consentVersion  String?
+  expiresAt       DateTime  @db.Timestamptz(3)
+  consumedAt      DateTime? @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+  seller          Seller?   @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+
+  @@index([createdAt])
+  @@index([expiresAt])
+  @@index([sellerId, deviceId])
+}
+
 // 인프라 단가 표(한 행, id = 1). 마스터 관리자(최고관리자)가 입력하는 월 단가·건당 단가·수수료율. 비밀값 없음.
 // prices는 키(serverMonthlyWon 등) → 숫자. 입력하지 않은 키는 없다(비용 추정에서 「단가 없음」). 변경은 version으로 겹침을 막고 로그 추적에 남긴다.
 model InfraPriceSetting {
@@ -4508,4 +4592,37 @@ model PlatformBusinessInfo {
   email            String   @default("")
   updatedAt        DateTime @default(now()) @updatedAt @db.Timestamptz(3)
   updatedByAdminId String?  @db.Uuid
+}
+
+enum AdminNotifyChannel {
+  SLACK
+  EMAIL
+  SMS
+  EXTERNAL_MONITOR
+}
+
+// 마스터 관리자 운영팀 수신 채널 설정(MA-082). 채널마다 한 줄. target은 화면에 보이는 표시용 값(슬랙 채널 이름·이메일 주소·문자 「당직 번호」 같은 이름·감시 주소)이고
+// 웹훅 주소·API 키·실제 전화번호 같은 비밀값은 저장하지 않는다(연동 때 비밀 저장소·환경변수로, 승인 필요). 연결 여부는 저장하지 않고 조회 때 계산한다(실제 공급자가 있는 채널만 연결됨).
+model AdminNotificationChannel {
+  channel          AdminNotifyChannel  @id
+  target           String              @default("")
+  minSeverity      AdminAlertSeverity  @default(URGENT)
+  includeNight     Boolean             @default(false)
+  lastSentAt       DateTime?           @db.Timestamptz(3)
+  lastError        String?
+  updatedByAdminId String?             @db.Uuid
+  updatedAt        DateTime            @updatedAt @db.Timestamptz(3)
+}
+
+// 이벤트별 라우팅(MA-082) 바꾼 값. 이벤트 10개의 기본값은 코드(lib/server/admin/notificationSettings.ts)에 있고, 바꾼 이벤트만 한 줄이 생긴다. 「기본값 복원」은 이 표를 비운다.
+// roles: PlatformAdminRole 이름 목록, 빈 목록이면 「전체」.
+model AdminNotificationRoute {
+  eventKey         String   @id
+  slack            Boolean
+  email            Boolean
+  sms              Boolean
+  roles            String[]
+  nightSuppress    Boolean
+  updatedByAdminId String?  @db.Uuid
+  updatedAt        DateTime @updatedAt @db.Timestamptz(3)
 }

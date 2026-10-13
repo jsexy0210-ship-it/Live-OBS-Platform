@@ -48,6 +48,47 @@ test("게시하면 본문이 텍스트로만 보이고 시행일이 보인다", 
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("개인정보처리방침을 준비하고 있어요");
 });
 
+test("준비 중·일시 정지에도 게시본과 고객센터를 읽고 다른 쇼핑몰의 자료는 섞이지 않는다", async ({ page }) => {
+  const otherSlug = `${slug}-other`;
+  const other = await db.seller.create({ data: { slug: otherSlug, shopName: "다른 약관 시험 쇼핑몰", status: "ACTIVE", trialEndsAt: new Date("2999-12-31T00:00:00Z") } });
+  try {
+    await db.shopLegalDoc.upsert({
+      where: { sellerId_kind: { sellerId, kind: "TERMS" } },
+      create: { sellerId, kind: "TERMS", body: "첫 쇼핑몰 전용 약관", effectiveOn: new Date("2026-11-01T00:00:00Z"), isPublished: true, publishedAt: new Date(), version: 1 },
+      update: { body: "첫 쇼핑몰 전용 약관", isPublished: true },
+    });
+    const notice = await db.shopNotice.create({ data: { sellerId, kind: "NOTICE", title: "첫 쇼핑몰 공지", body: "휴무 안내" } });
+    await db.shopNotice.create({ data: { sellerId, kind: "FAQ", title: "첫 쇼핑몰 질문", body: "답변", category: "이용" } });
+    for (const state of ["PREPARING", "PAUSED"] as const) {
+      await db.seller.update({ where: { id: sellerId }, data: { operatingState: state } });
+      await page.goto(`/shop/${slug}/terms`);
+      await expect(page.getByTestId("shop-legal-body")).toHaveText("첫 쇼핑몰 전용 약관");
+      await page.goto(`/shop/${slug}/help`);
+      await expect(page.getByRole("heading", { level: 1, name: "공지 · 이용안내" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "첫 쇼핑몰 공지" })).toBeVisible();
+      await page.getByRole("tab", { name: "자주 묻는 질문" }).click();
+      const inquiryLink = page.getByRole("tabpanel").getByRole("link", { name: "문의하기" });
+      await expect(inquiryLink).toHaveAttribute("href", `/shop/${slug}/me/inquiries`);
+      await inquiryLink.click();
+      await expect(page.getByRole("heading", { level: 1, name: "내 문의" })).toBeVisible();
+      await expect(page.getByText("로그인하면 볼 수 있어요")).toBeVisible();
+      await page.goto(`/shop/${slug}/help/notices/${notice.id}`);
+      await expect(page.getByRole("heading", { name: "첫 쇼핑몰 공지" })).toBeVisible();
+      expect((await page.request.get(`/api/shop/${slug}/legal/terms`)).status()).toBe(200);
+      expect((await page.request.get(`/api/shop/${slug}/faqs`)).status()).toBe(200);
+      const otherLegal = await page.request.get(`/api/shop/${otherSlug}/legal/terms`);
+      expect(otherLegal.status()).toBe(200);
+      expect((await otherLegal.json()).published).toBe(false);
+      expect((await (await page.request.get(`/api/shop/${otherSlug}/notices`)).json()).notices).toEqual([]);
+      expect((await (await page.request.get(`/api/shop/${otherSlug}/faqs`)).json()).faqs).toEqual([]);
+    }
+  } finally {
+    await db.seller.update({ where: { id: sellerId }, data: { operatingState: "OPEN" } });
+    await db.shopNotice.deleteMany({ where: { sellerId } });
+    await db.seller.delete({ where: { id: other.id } });
+  }
+});
+
 test("없는 쇼핑몰은 404", async ({ page }) => {
   expect((await page.goto(`/shop/no-such-shop-${run}/terms`))?.status()).toBe(404);
 });

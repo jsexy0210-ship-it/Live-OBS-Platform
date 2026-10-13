@@ -24,6 +24,21 @@ body {
   flex-direction: column;
   background: var(--wds-background-normal-normal);
 }
+/* SH-001 FINAL v322: 설정한 공지는 모든 쇼핑몰 화면 맨 위의 32px 한 줄 띠로 표시한다. */
+.shop-top-notice {
+  height: 32px;
+  flex: none;
+  background: #222;
+  color: #fff;
+  font-size: 12px;
+  line-height: 32px;
+  text-align: center;
+}
+.shop-top-notice .shop-wrap {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 /* 일반 쇼핑몰 공통 틀: 흰 바탕·옅은 회색 구분선. 판매자 대표 색(--brand)은 강조(가격·선택 표시·버튼)에만 */
 .shop-wrap {
   width: 1200px;
@@ -78,7 +93,7 @@ body {
 .shop-top .shop-wrap {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 24px;
   height: 88px;
 }
 .shop-app a.shop-brand {
@@ -113,7 +128,7 @@ body {
   border: 0;
   outline: 0;
   font: inherit;
-  font-size: 14px;
+  font-size: 13px;
   background: transparent;
   color: var(--wds-label-normal);
 }
@@ -133,7 +148,7 @@ body {
 .shop-hics {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 24px;
 }
 .shop-app a.shop-hic {
   display: flex;
@@ -827,8 +842,8 @@ body {
   }
   .shop-top .shop-wrap {
     gap: 4px;
-    height: 56px;
-    padding: 0 8px;
+    height: 52px;
+    padding: 0 16px;
   }
   .shop-app a.shop-brand {
     flex: 1;
@@ -1718,7 +1733,10 @@ body {
   .shop-side {
     display: contents;
   }
-  .fl-pc-only {
+  .shop-sec-head h1 { min-width: 0; overflow-wrap: anywhere; }
+  .shop-sec-tools { flex: none; }
+  .fl-open, .shop-sortmenu summary { white-space: nowrap; }
+  .fl .fl-pc-only {
     display: none;
   }
   .fl-m-only {

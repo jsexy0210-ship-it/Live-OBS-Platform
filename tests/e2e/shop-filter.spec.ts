@@ -52,6 +52,8 @@ test("PC: 최대가 최소보다 작으면 오류·적용 꺼짐, 맞는 상품�
   // 맞는 상품이 없는 조건은 주소로 들어와도 안내와 「필터 모두 지우기」
   await page.goto(`/shop/${SLUG}/products?minPrice=90000000`);
   await expect(page.getByText("필터 조건에 맞는 상품이 없어요. 필터를 줄여 보세요")).toBeVisible();
+  await expect(page.getByRole("status").locator("p")).toHaveText("필터 조건에 맞는 상품이 없어요. 필터를 줄여 보세요");
+  await expect(page.getByRole("navigation", { name: "쪽 이동" })).toHaveCount(0);
   await page.getByRole("link", { name: "필터 모두 지우기" }).click();
   await expect(page).not.toHaveURL(/minPrice/);
   expect((await names(page)).length).toBeGreaterThan(0);

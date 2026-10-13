@@ -18,10 +18,11 @@ export type AuditMeta = { ip?: string | null; userAgent?: string | null };
 export const MESSAGE_MAX = 500;
 export const CACHE_MS = 5_000;
 
-export type MaintenanceRejection = "invalid_message" | "invalid_time" | "version_conflict";
+export type MaintenanceRejection = "invalid_message" | "invalid_reason" | "invalid_time" | "version_conflict";
 // 마스터 관리자 화면 문구(합니다체)
 export const MAINTENANCE_MESSAGES: Record<MaintenanceRejection, string> = {
   invalid_message: `안내 문구를 ${MESSAGE_MAX}자 안에서 입력해 주십시오`,
+  invalid_reason: "점검 사유를 100자 안에서 입력해 주십시오",
   invalid_time: "종료 예정 시각은 시작 시각보다 뒤여야 합니다",
   version_conflict: "다른 곳에서 먼저 고쳤습니다. 새로고침한 뒤 다시 시도해 주십시오",
 };
@@ -30,8 +31,8 @@ export const MAINTENANCE_NOTICE_FORMAL = "지금은 서비스 점검 중입니�
 export const MAINTENANCE_NOTICE = "지금은 서비스 점검 중이에요. 잠시 뒤에 다시 이용해 주세요";
 export const maintenanceNotice = (pathname: string) => (/^\/api\/(seller|automation)(\/|$)/.test(pathname) ? MAINTENANCE_NOTICE_FORMAL : MAINTENANCE_NOTICE);
 
-type Row = Pick<PlatformMaintenance, "enabled" | "message" | "startsAt" | "endsAt" | "version" | "updatedByAdminId" | "updatedAt">;
-const OFF: Row = { enabled: false, message: "", startsAt: null, endsAt: null, version: 0, updatedByAdminId: null, updatedAt: new Date(0) };
+type Row = Pick<PlatformMaintenance, "enabled" | "message" | "reason" | "startsAt" | "endsAt" | "version" | "updatedByAdminId" | "updatedAt">;
+const OFF: Row = { enabled: false, message: "", reason: "", startsAt: null, endsAt: null, version: 0, updatedByAdminId: null, updatedAt: new Date(0) };
 
 async function read(db: Db): Promise<Row> {
   return (await db.platformMaintenance.findUnique({ where: { id: 1 } })) ?? OFF;
@@ -44,6 +45,7 @@ export function publicView(r: Row, now = new Date()) {
   return {
     active,
     message: r.enabled ? r.message : "",
+    ...(r.enabled && r.reason ? { reason: r.reason } : {}),
     startsAt: r.enabled ? r.startsAt : null,
     endsAt: r.enabled ? r.endsAt : null,
     scheduled: r.enabled && !active,
@@ -78,7 +80,23 @@ export function maintenanceTarget(pathname: string): "api" | "page" | null {
 
 const adminView = async (db: Db, r: Row) => {
   const by = r.updatedByAdminId ? await db.platformAdmin.findUnique({ where: { id: r.updatedByAdminId }, select: { name: true } }) : null;
-  return { ...publicView(r), enabled: r.enabled, message: r.message, startsAt: r.startsAt, endsAt: r.endsAt, version: r.version, updatedAt: r.updatedByAdminId ? r.updatedAt : null, updatedByAdminName: by?.name ?? null };
+  const [logs, liveBroadcasts, waitingOrders] = await Promise.all([
+    db.auditLog.findMany({ where: { action: "platform.maintenance.update", targetType: "PlatformMaintenance", targetId: "1" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 30, select: { id: true, createdAt: true, before: true, after: true } }),
+    db.broadcastSession.count({ where: { status: "LIVE" } }),
+    db.queueItem.count({ where: { status: "WAITING" } }),
+  ]);
+  const history = logs.map((log) => {
+    const before = log.before && typeof log.before === "object" && !Array.isArray(log.before) ? log.before as Record<string, Prisma.JsonValue> : {};
+    const after = log.after && typeof log.after === "object" && !Array.isArray(log.after) ? log.after as Record<string, Prisma.JsonValue> : {};
+    const beforeScheduled = before.enabled === true && typeof before.startsAt === "string" && new Date(before.startsAt) > log.createdAt;
+    const afterScheduled = after.enabled === true && typeof after.startsAt === "string" && new Date(after.startsAt) > log.createdAt;
+    const action = after.enabled === false
+      ? before.enabled === true ? beforeScheduled ? "예약 취소" : "점검 종료" : "설정 변경"
+      : afterScheduled ? beforeScheduled ? "설정 변경" : "예약 저장"
+        : before.enabled !== true || beforeScheduled ? "즉시 켬" : "설정 변경";
+    return { id: log.id, at: log.createdAt, action, reason: typeof after.reason === "string" && after.reason ? after.reason : typeof before.reason === "string" ? before.reason : "", message: typeof after.message === "string" ? after.message : "" };
+  });
+  return { ...publicView(r), enabled: r.enabled, message: r.message, reason: r.reason, startsAt: r.startsAt, endsAt: r.endsAt, version: r.version, updatedAt: r.updatedByAdminId ? r.updatedAt : null, updatedByAdminName: by?.name ?? null, history, liveBroadcasts, waitingOrders };
 };
 
 export async function getMaintenance(db: PrismaClient, admin: AdminSessionContext) {
@@ -98,6 +116,8 @@ export async function updateMaintenance(db: PrismaClient, admin: AdminSessionCon
   if (!adminCan(admin.admin.role, "system.manage")) throw forbidden();
   const b = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
   const enabled = b.enabled === true;
+  const reason = b.reason === undefined ? undefined : cleanText(b.reason, 100);
+  if (reason === null || (enabled && b.reason !== undefined && !reason)) return { ok: false as const, reason: "invalid_reason" as const };
   const message = b.message === undefined || b.message === "" ? "" : cleanText(b.message, MESSAGE_MAX, "multiline");
   if (message === null || (enabled && !message)) return { ok: false as const, reason: "invalid_message" as const };
   const startsAt = parseTime(b.startsAt);
@@ -109,13 +129,13 @@ export async function updateMaintenance(db: PrismaClient, admin: AdminSessionCon
     if (!(await tx.platformMaintenance.findUnique({ where: { id: 1 }, select: { id: true } }))) {
       await tx.$executeRaw`INSERT INTO "PlatformMaintenance" ("id") VALUES (1) ON CONFLICT ("id") DO NOTHING`;
     }
-    const [cur] = await tx.$queryRaw<Row[]>`SELECT "enabled", "message", "startsAt", "endsAt", "version", "updatedByAdminId", "updatedAt" FROM "PlatformMaintenance" WHERE "id" = 1 FOR UPDATE`;
+    const [cur] = await tx.$queryRaw<Row[]>`SELECT "enabled", "message", "reason", "startsAt", "endsAt", "version", "updatedByAdminId", "updatedAt" FROM "PlatformMaintenance" WHERE "id" = 1 FOR UPDATE`;
     if (b.expectedVersion !== cur.version) return { ok: false as const, reason: "version_conflict" as const, currentVersion: cur.version };
     // version 조건을 함께 걸어, 잠금과 상관없이 같은 version으로 두 번 바뀌지 않게 한다
-    const done = await tx.platformMaintenance.updateMany({ where: { id: 1, version: cur.version }, data: { enabled, message, startsAt, endsAt, updatedByAdminId: admin.admin.id, version: { increment: 1 } } });
+    const done = await tx.platformMaintenance.updateMany({ where: { id: 1, version: cur.version }, data: { enabled, message, reason, startsAt, endsAt, updatedByAdminId: admin.admin.id, version: { increment: 1 } } });
     if (done.count !== 1) return { ok: false as const, reason: "version_conflict" as const, currentVersion: cur.version + 1 };
     const row = await tx.platformMaintenance.findUniqueOrThrow({ where: { id: 1 } });
-    const pick = (x: Row) => ({ enabled: x.enabled, message: x.message, startsAt: x.startsAt, endsAt: x.endsAt });
+    const pick = (x: Row) => ({ enabled: x.enabled, message: x.message, reason: x.reason, startsAt: x.startsAt, endsAt: x.endsAt });
     await writeAudit(tx, {
       actorType: "PLATFORM_ADMIN",
       actorId: admin.admin.id,

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Pagination } from "../../../../../components/admin-ui";
 import { useCallback, useEffect, useState } from "react";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
@@ -42,6 +43,7 @@ type Group = ReturnType<typeof byBuyer>[number];
 
 export default function PurchaseRestrictionsPage() {
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number; error?: string } | { kind: "ok"; rows: Restriction[] }>({ kind: "loading" });
+  const [page, setPage] = useState(1);
   const [lifting, setLifting] = useState<Group | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
@@ -94,6 +96,10 @@ export default function PurchaseRestrictionsPage() {
   };
 
   const groups = state.kind === "ok" ? byBuyer(state.rows) : [];
+  const pageCount = Math.ceil(groups.length / 10);
+  const currentPage = Math.min(page, pageCount || 1);
+  const pageGroups = groups.slice((currentPage - 1) * 10, currentPage * 10);
+  useEffect(() => { if (state.kind === "ok") setPage(p => Math.min(p, pageCount || 1)); }, [state.kind, pageCount]);
 
   return (
     <>
@@ -156,7 +162,7 @@ export default function PurchaseRestrictionsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {groups.map((g) => (
+                    {pageGroups.map((g) => (
                       <tr key={g.buyerMemberId} data-testid="restriction-row">
                         <td className="col-text">
                           <div className="col" style={{ gap: 2 }}>
@@ -179,6 +185,7 @@ export default function PurchaseRestrictionsPage() {
               </div>
             ))}
         </section>
+        {pageCount > 1 && <Pagination page={currentPage} pageCount={pageCount} onChange={setPage} label="구매 제한 페이지 이동" />}
       </main>
       {lifting && <LiftModal group={lifting} onClose={() => setLifting(null)} onDone={() => void lifted(lifting)} onGone={() => void goneRefresh()} />}
       {toast && <Toast text={toast} onDone={() => setToast(null)} />}

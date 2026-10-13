@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { CursorPagination } from "../../../../../../components/Pagination";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DateRangePicker, ListHead, PageHead, SearchBox, SearchRow, useConfirm } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
@@ -12,7 +13,7 @@ import { effectiveRange, listDefaults } from "../../../../../../lib/client/filte
 import { formatDate, formatDateTime } from "../../../../../../lib/client/format";
 
 // SA-032 적립금 지급·회수 원장(정본 SA-032 FINAL). 회원·적립금 권한. API: GET /api/seller/reward-ledger(+summary·export·retry), GET /api/seller/reward-live-payout.
-// 기간(기본 최근 1개월)·상태·유형·검색어는 주소가 기준이고, 20건씩 「더 보기」. 요약 카드는 쇼핑몰 전체 기준(기간과 무관).
+// 기간(기본 최근 1개월)·상태·유형·검색어는 주소가 기준이고, 10건씩 현재 쪽을 조회합니다. 요약 카드는 쇼핑몰 전체 기준(기간과 무관).
 type Status = "PENDING" | "SUCCEEDED" | "FAILED";
 type Kind = "EARN_DELIVERY" | "EARN_PAYMENT" | "REVIEW" | "REVOKE" | "ADJUST_GRANT" | "ADJUST_REVOKE" | "BONUS" | "USE" | "EXPIRE";
 type Entry = {
@@ -32,7 +33,7 @@ type Sum = { count: number; amount: number };
 type Summary = { pending: Sum; todaySucceeded: Sum; failed: Sum; todayRevoked: Sum; issuedBalance: number };
 type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; entries: Entry[]; next: string | null };
 
-const PAGE = 20;
+const PAGE = 10;
 const KIND: Record<Kind, string> = {
   EARN_DELIVERY: "배송 완료 적립",
   EARN_PAYMENT: "결제 적립",
@@ -98,7 +99,9 @@ export default function RewardLedgerPage() {
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [summary, setSummary] = useState<Summary | null>(null);
   const [live, setLive] = useState<boolean | null>(null);
-  const [more, setMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const paging = useRef(false);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const { confirm } = useConfirm();
@@ -113,7 +116,8 @@ export default function RewardLedgerPage() {
   };
   const load = useCallback(async (cond: Cond) => {
     const id = ++reqId.current;
-    setMore(false);
+    paging.current = false; setPage(1); setCursors([undefined]);
+
     setState({ kind: "loading" });
     const r = await api<{ entries: Entry[]; nextCursor: string | null }>(url(cond));
     if (id !== reqId.current) return;
@@ -130,15 +134,18 @@ export default function RewardLedgerPage() {
   useEffect(() => setFilter(applied), [applied]);
   useScrollRestore("seller-reward-ledger", state.kind === "ok");
 
-  const loadMore = async () => {
-    if (state.kind !== "ok" || !state.next) return;
-    setMore(true);
+  const goPage = async (target: number, cursor = cursors[target - 1]) => {
+    if (state.kind !== "ok" || paging.current || target < 1 || target > cursors.length + 1) return;
+    paging.current = true;
     const id = reqId.current;
-    const r = await api<{ entries: Entry[]; nextCursor: string | null }>(url(applied, state.next));
+    const r = await api<{ entries: Entry[]; nextCursor: string | null }>(url(applied, cursor));
     if (id !== reqId.current) return;
-    setMore(false);
-    if (r.ok) setState({ kind: "ok", entries: [...state.entries, ...r.data.entries], next: r.data.nextCursor });
-    else setToast("내역을 더 불러오지 못했습니다. 다시 눌러 주십시오");
+    paging.current = false;
+    if (r.ok) {
+      setState({ kind: "ok", entries: r.data.entries, next: r.data.nextCursor });
+      setCursors((prev) => [...prev.slice(0, target - 1), cursor]); setPage(target);
+
+    } else setToast("목록을 불러오지 못했습니다. 다시 눌러 주십시오");
   };
 
   // 실패 재시도: 한 줄이면 ids, 전체면 본문 없이. 결과는 성공·다시 실패 건수로 알린다
@@ -311,15 +318,10 @@ export default function RewardLedgerPage() {
                     </tbody>
                   </table>
                 </div>
-                {state.next && (
-                  <div className="row" style={{ justifyContent: "center", marginTop: 16 }}>
-                    <button className="btn btn-sm btn-out" type="button" onClick={() => void loadMore()} disabled={more}>
-                      {more ? "불러오는 중" : "더 보기"}
-                    </button>
-                  </div>
-                )}
+
               </>
             ))}
+          {state.kind === "ok" && (page > 1 || state.next) && <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={(target) => void goPage(target)} onNext={() => { if (state.next) void goPage(page + 1, state.next); }} />}
         </div>
         <p className="help" style={{ marginTop: 16 }}>
           실제 지급이 꺼져 있으면 모든 지급은 「대기」로만 기록되고, 켜는 순간 대기분이 일괄 지급됩니다.

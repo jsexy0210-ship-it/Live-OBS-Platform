@@ -1,12 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { CursorPagination } from "../../../../../components/Pagination";
+
+import { useCallback, useEffect, useState, useRef } from "react";
 import { Modal, PageHead } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
 import { StateBox, errorText, kstText, stateKind } from "../banners/_shared/ui";
 import "./member-messages.css";
+import { useUrlState, useUnsavedGuard } from "../../../../../lib/client/navigation";
 import { DateTimePicker } from "../../../../../components/admin-ui/DatePicker";
 
 // SA-049 회원 알림 발송(파트너스 관리자, 고객 › 회원 알림 발송). 실제 발송 채널(알림톡·문자·메일)과 충전 잔액 차감은 정해지기 전이라 발송 「기록」만 남긴다.
@@ -74,16 +77,36 @@ export default function MemberMessagesPage() {
   const { can } = useSeller();
   const canEdit = can("MEMBER_POINTS");
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number; error?: string } | { kind: "ok"; data: Data }>({ kind: "loading" });
-  const [tab, setTab] = useState<"list" | "new">("list");
+  const [query, setQuery] = useUrlState({ section: "list" });
+  const tab = query.section === "new" && canEdit ? "new" : "list";
+  const setTab = (section: "list" | "new") => setQuery({ section });
   const [toast, setToast] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const reqId = useRef(0);
+  const paging = useRef(false);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [editing, setEditing] = useState<Msg | null>(null);
 
+  const listUrl = useCallback((cursor?: string) => `/api/seller/member-messages${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`, []);
   const load = useCallback(async () => {
-    const r = await api<Data>("/api/seller/member-messages");
+    const id = ++reqId.current; paging.current = true;
+    const r = await api<Data>(listUrl());
+    if (id !== reqId.current) return;
+    paging.current = false;
     if (!r.ok) return setState({ kind: "error", status: r.status, error: r.error });
+    setState({ kind: "ok", data: r.data }); setPage(1); setCursors([undefined]);
+  }, [listUrl]);
+  const goPage = async (target: number, cursor = cursors[target - 1]) => {
+    if (state.kind !== "ok" || paging.current || target < 1 || target > cursors.length + 1) return;
+    paging.current = true;
+    const id = reqId.current; const r = await api<Data>(listUrl(cursor));
+    if (id !== reqId.current) return;
+    paging.current = false;
+    if (!r.ok) return setToast("목록을 불러오지 못했습니다. 다시 눌러 주십시오");
     setState({ kind: "ok", data: r.data });
-  }, []);
+    setCursors((prev) => [...prev.slice(0, target - 1), cursor]); setPage(target);
+  };
   useEffect(() => {
     void load();
   }, [load]);
@@ -154,16 +177,6 @@ export default function MemberMessagesPage() {
                 </b>
               </div>
             </section>
-            <div className="tabs" role="tablist">
-              <button className={`tab${tab === "list" ? " on" : ""}`} type="button" role="tab" aria-selected={tab === "list"} onClick={() => setTab("list")}>
-                발송 내역
-              </button>
-              {canEdit && (
-                <button className={`tab${tab === "new" ? " on" : ""}`} type="button" role="tab" aria-selected={tab === "new"} onClick={() => setTab("new")}>
-                  새 발송
-                </button>
-              )}
-            </div>
             {tab === "list" && (
               <section className="card" style={{ overflow: "hidden" }} aria-label="발송 내역">
                 <div className="mm-row mm-head">
@@ -214,7 +227,9 @@ export default function MemberMessagesPage() {
                 )}
               </section>
             )}
-            {tab === "new" && canEdit && (
+            {data && tab === "list" && (page > 1 || data.nextCursor) && <CursorPagination page={page} visited={cursors.length} hasNext={!!data.nextCursor} onChange={(target) => void goPage(target)} onNext={() => { if (data.nextCursor) void goPage(page + 1, data.nextCursor); }} />}
+            {canEdit && (
+              <div hidden={tab !== "new"}>
               <NewMessage
                 onDone={async (text) => {
                   setToast(text);
@@ -222,6 +237,7 @@ export default function MemberMessagesPage() {
                   await load();
                 }}
               />
+              </div>
             )}
             <section className="card pad col" style={{ gap: 8 }} aria-label="법규 · 운영 규칙">
               <span className="t-hl2">법규 · 운영 규칙</span>
@@ -382,6 +398,7 @@ function NewMessage({ onDone }: { onDone: (text: string) => void | Promise<void>
   const [error, setError] = useState<{ text: string; suggestedAt?: string } | null>(null);
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
+  const releaseDraftGuard = useUnsavedGuard(!!title.trim() || !!body.trim());
 
   useEffect(() => {
     void api<{ grades: Grade[] }>("/api/seller/member-grades").then((r) => r.ok && setGrades(r.data.grades));
@@ -432,6 +449,9 @@ function NewMessage({ onDone }: { onDone: (text: string) => void | Promise<void>
     setBusy(false);
     setConfirm(false);
     if (!r.ok) return setError({ text: errorText(r, "저장하지 못했습니다. 잠시 뒤 다시 시도해 주십시오"), suggestedAt: (r.body?.suggestedAt as string | undefined) });
+    await releaseDraftGuard();
+    setTitle("");
+    setBody("");
     await onDone(r.data.message.status === "SCHEDULED" ? (r.data.rescheduled ? `광고성 시간이 아니라 ${kstText(r.data.message.scheduledAt ?? "").slice(5, 16)}에 예약했습니다` : "예약했습니다") : `${r.data.message.recipientCount}명 발송을 기록했습니다 · 실제 발송 전`);
   };
 

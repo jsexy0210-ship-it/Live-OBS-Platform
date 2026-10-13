@@ -1,0 +1,33 @@
+/* SA012 desktop 단일 열과 하단 행동 줄. 모바일 읽기 전용 정책은 별도 범위다. */
+.product-final-form {
+  display: block;
+  padding-bottom: calc(var(--ui-h-touch) + 48px);
+}
+.product-final-form > .col { min-width: 0; }
+.product-form-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border-top: 1px solid var(--wds-line-normal-alternative);
+  border-radius: 8px 8px 0 0;
+  background: var(--surface);
+}
+.product-form-actions .btn {
+  min-height: var(--ui-h-touch);
+  height: var(--ui-h-touch);
+  padding: 0 var(--ui-sp-24);
+  font-size: var(--ui-fs-touch);
+  line-height: var(--ui-lh-touch);
+  flex-shrink: 0;
+}
+.product-preview-modal { width: min(560px, calc(100vw - 32px)); }
+@media (max-width: 640px) {
+  .product-final-form { padding-bottom: calc(2 * var(--ui-h-touch) + 48px); }
+  .product-form-actions { padding: 12px 16px; }
+}
