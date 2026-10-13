@@ -1,5 +1,14 @@
 # DESIGN_SOURCE — 디자인 정본 출처와 우선순위
 
+## PF-001 스트림샵 랜딩 변경 (2026-10-07 KST)
+
+- 대표님 지시: Streamlabs 랜딩과 유사한 소개 흐름을 스트림샵 스타일로 적용한다.
+- 변경 정본: `design/project/PF-001.dc.tsx` + `PF-001.module.css`. 개발 미리보기 `/landing` (`npm run design:preview`).
+- production 대응: `components/public/Landing.tsx` + `Landing.module.css`, 경로 `/about`. 디자인 파일을 production에서 import하지 않는다.
+- 기존 PF-001 HTML과 canvas.json은 이전 디자인 참조로 보존한다. 이번 승인 대상은 Git TSX 정본이며 외부 캔버스의 새 이름 반영을 주장하지 않는다.
+- 상태: FINAL (2026-10-09 대표님 main 반영 승인). 후보 `4aa9bb7`의 정상·빈·오류 요금 상태를 1440·1024·390에서 독립 확인하고 주요 배치·문구 반례가 없었다. 정본/구현 본문·CSS 일치와 별도로 픽셀 단위 미리보기 대조·실제 reduced-motion 동작은 미검증이다. 상세 범위: `docs/STREAMSHOP_LANDING.md`.
+
+
 | 항목 | 값 |
 |---|---|
 | Artifact | https://claude.ai/artifact/YYGXZ3u4QvjQpEMUHnN4tS (Claude Design 캔버스 「ONQ (OnAirCue) 전체 화면 디자인」) |
@@ -30,7 +39,13 @@
 
 - **고아 파일**: 캔버스의 `project/SA-045.dc.html`(옛 틀의 회원 알림 발송 보드)은 `canvas.json` 인덱스 밖이고 SA-049로 이동된 보드가 따로 있어 복사하지 않았다(MASTER 결정 2026-10-05). MASTER가 캔버스에서 삭제함(v257 `1791209877-f282`, canvas.json 변경 없음) — 이 시점부터 `design/project`는 캔버스 `project/`와 서체 파일 외 1:1이다.
 - **서체**: 캔버스의 `project/fonts/WantedSansVariable.woff2`(1.2MB)는 복사하지 않았다. 저장소에 이미 있는 `public/fonts/wanted-sans/split/WantedSansVariable.split.*.woff2`(92개 unicode-range 분할, `styles/wanted-sans.css`)가 같은 서체(Wanted Sans Variable, SIL OFL 1.1)다. 디자인 `lop.css`·`ov.css`의 `@font-face`는 `fonts/WantedSansVariable.woff2`를 가리키므로 저장소 안에서 정적으로 열면 시스템 서체로 대체된다.
-- **런타임**: 보드가 참조하는 `./support.js`와 캔버스의 `artifact-type/**` · `index.html` · `SKILL.md` · 루트의 `*.dc.html`은 Artifact 유형 소유라 이관 대상이 아니다. 따라서 Build는 NOT_APPLICABLE이다.
+- **런타임**: 아직 HTML 정본인 보드가 참조하는 `./support.js`와 캔버스의 `artifact-type/**` · `index.html` · `SKILL.md` · 루트의 `*.dc.html`은 Artifact 유형 소유라 이관 대상이 아니다. 단, PF-003 v331은 `design/project/PF-003.dc.tsx`를 유일한 정본으로 전환했고 `design/preview`에서만 기존 Next.js 개발 서버로 렌더한다. `PF-003.dc.html`과 `canvas.json` 항목은 기존 링크·캔버스 호환용 legacy 참조이며 정본이 아니다. 앱 production 빌드·Docker에는 preview 앱을 포함하지 않는다.
 - **업로드 이미지**(`/_blob/…`): 2026-10-05 기준 보드가 참조하는 블롭이 없다(스크립트 검사 0건). 생기면 `design/project/` 안에 받아 두고 경로 대응을 여기에 적는다.
 - **외부 의존**: Google Fonts 등 외부 CDN 참조 없음(검사 0건). `ibgen/shot_board.mjs.txt`의 `localhost:8000`은 생성 스크립트 기록이다.
 - **비밀값**: 파일 내용을 검사했다. 사람 이름·번호·이메일은 모두 자리표시자(`[휴대폰 번호]` · `010-0000-0000` · `byulbit@mail.com` 등 가상 값)다.
+
+## 승인된 React 모바일 정본 전환
+
+대표님 최신 지시에 따라 SCREEN_MAP의 React 모바일 정본 표에 등록된 SA 11개 모바일 변형은 해당 `.dc.tsx`를 유일한 정본으로 사용한다. 출발점은 #1079 d8873227의 11보드/22상태이고, Git 이력이 이후 버전의 권위다. HTML·생성기·canvas 인덱스는 이행 참조로 보존하며 모바일 TSX를 다시 생성하거나 덮어쓰는 정본이 아니다. PC FINAL 소스는 변경하지 않는다.
+
+원 Artifact 표시 업데이트 2026-10-06 17:56:43 KST는 기존 읽기 참조다. 새 기간 버튼 CSS 및 React 소스 동기화는 미완료이며, 연결 세션은 주간 한도 100%로 차단됐다. 요소별 inline 편집이나 비용 활성화로 우회하지 않았다. 전환된 모바일 정본에는 Artifact/Git 1:1 동기화 규칙 대신 SCREEN_MAP의 TSX Source/Entry와 최신 Git 버전을 적용한다. 그 밖의 HTML 정본에는 기존 캔버스 버전/1:1 규칙이 계속 적용된다.

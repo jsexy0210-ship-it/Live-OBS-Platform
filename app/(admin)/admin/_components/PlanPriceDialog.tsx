@@ -7,7 +7,7 @@ import { PRICE_MAX, type AdminPlan } from "./messageFees";
 import { won } from "./partners";
 
 // 요금제 가격 변경(MA-022, 최고관리자만). 돈과 관련되고 되돌리기 어려워 바꾸기 전·후 금액을 함께 보여 주고 한 번 더 확인한다.
-// 새 가입자는 바로, 기존 구독자는 30일 뒤 첫 결제부터 적용된다(서버 규칙).
+// 새 가입자는 바로, 기존 구독자는 필수 고지 완료 + 30일 뒤 첫 결제부터 적용된다(서버 규칙).
 const ERROR: Record<string, string> = {
   invalid_price: `정가는 판매가 이상, 두 금액 모두 1원 이상 ${PRICE_MAX.toLocaleString("ko-KR")}원 이하의 정수여야 합니다.`,
   not_found: "요금제를 찾을 수 없습니다. 목록을 새로 불러와 주십시오.",
@@ -78,7 +78,7 @@ export function PlanPriceDialog({ plan, onClose, onDone }: { plan: AdminPlan; on
                 </dd>
               </dl>
             )}
-            <span className="t-c1 c-alt">새 가입자는 바로 적용되고, 기존 구독자는 30일 뒤 첫 결제부터 적용됩니다.</span>
+            <span className="t-c1 c-alt">새 가입자는 바로 적용됩니다. 기존 구독자는 메일·알림톡·파트너스 공지 완료 30일 뒤 첫 결제부터 적용되며, 고지 전에는 기존 요금을 유지합니다.</span>
             {confirming && (
               <span className="err" role="alert">
                 {plan.name}의 가격을 위 금액으로 바꾸시겠습니까?

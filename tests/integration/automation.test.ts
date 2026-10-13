@@ -828,10 +828,59 @@ describe("Codex 리뷰 반영", () => {
     expect(await db.automationJob.count({ where: { kind: "RECONNECT_FREE" } })).toBe(1);
   });
 
-  it("검증 단계를 마친 뒤 완료 기록 전에 작업자가 멈춰도, 다시 잡은 작업자가 검증부터 다시 해 증거와 함께 완료한다", async () => {
+  it("검증 단계를 마친 뒤 완료 기록 전에 작업자가 멈춰도, 다시 잡은 작업자가 검증부터 다시 해 증거와 함께 완료한다", async ({ onTestFailed }) => {
     const a = await bought();
     const claimed = await claimNext(db, "crashing", { leaseMs: 200 });
     if (!claimed) throw new Error("no claim");
+    const startedAt = performance.now();
+    const events: { phase: string; elapsedMs: number; tokenMatches?: boolean | null; statusAllowed?: boolean | null; leaseAliveAtDbNow?: boolean | null; updatedOne?: boolean; curAvailable?: boolean }[] = [];
+    const observe = (record: Omit<(typeof events)[number], "elapsedMs">) => {
+      try { if (events.length === 32) events.shift(); events.push({ ...record, elapsedMs: Math.round(performance.now() - startedAt) }); }
+      catch { /* 관찰이 원 tx/오류를 바꾸지 않는다. */ }
+    };
+    onTestFailed(() => {
+      try { console.error("automation-fencing-passive-diagnostics", JSON.stringify({ events })); }
+      catch { /* 원 시험 실패를 보존한다. */ }
+    });
+    type Tx = import("@prisma/client").Prisma.TransactionClient;
+    // touch가 이미 실행하는 tx/query의 응답만 본다. 추가 DB조회·대기·민감값 기록은 없다.
+    const observedDb = new Proxy(db, { get(target, key) {
+      if (key !== "$transaction") { const value = Reflect.get(target, key, target); return typeof value === "function" ? value.bind(target) : value; }
+      return <T>(callback: (tx: Tx) => Promise<T>) => target.$transaction(async tx => {
+        observe({ phase: "touch-tx" });
+        let cur: { token: unknown; status: unknown; lease: unknown } | null = null;
+        const jobs = new Proxy(tx.automationJob, { get(delegate, method) {
+          if (method === "findUnique") return (args: import("@prisma/client").Prisma.AutomationJobFindUniqueArgs) => delegate.findUnique(args).then(row => {
+            if (args.where.id === a.jobId) {
+              try {
+                if (row && "fencingToken" in row && "status" in row && "leaseExpiresAt" in row) cur = { token: row.fencingToken, status: row.status, lease: row.leaseExpiresAt };
+                observe({ phase: "touch-cur-read", curAvailable: cur !== null });
+              } catch { /* 원 응답을 그대로 돌려준다. */ }
+            }
+            return row;
+          });
+          if (method === "updateMany") return (args: import("@prisma/client").Prisma.AutomationJobUpdateManyArgs) => {
+            if (args.where?.id === a.jobId) {
+              try {
+                const state = args.where.status, lease = args.where.leaseExpiresAt;
+                const permitted = state && typeof state === "object" && "in" in state && Array.isArray(state.in) ? state.in : null;
+                const dbNow = lease && typeof lease === "object" && "gt" in lease ? lease.gt : null;
+                observe({ phase: "touch-update-predicate", curAvailable: cur !== null, tokenMatches: cur ? cur.token === args.where.fencingToken : null, statusAllowed: cur && permitted ? permitted.some(status => status === cur!.status) : null, leaseAliveAtDbNow: cur && cur.lease instanceof Date && dbNow instanceof Date ? cur.lease.getTime() > dbNow.getTime() : null });
+              } catch { observe({ phase: "touch-predicate-unavailable" }); }
+            }
+            return delegate.updateMany(args).then(result => {
+              if (args.where?.id === a.jobId) observe({ phase: "touch-update-result", updatedOne: result.count === 1 });
+              return result;
+            });
+          };
+          const value = Reflect.get(delegate, method, delegate); return typeof value === "function" ? value.bind(delegate) : value;
+        } });
+        return callback(new Proxy(tx, { get(original, property) {
+          if (property === "automationJob") return jobs;
+          const value = Reflect.get(original, property, original); return typeof value === "function" ? value.bind(original) : value;
+        } }));
+      });
+    } });
     const nextIndexes: number[] = [];
     // 완료 기록(finishJob) 없이 엔진만 돌리고 멈춘 작업자
     const r = await runSteps(
@@ -839,7 +888,7 @@ describe("Codex 리뷰 반영", () => {
       { sellerId: a.seller.id, jobId: a.jobId },
       { startIndex: 0, verifying: false, stats: { costUsed: 0, plannerCalls: 0, playbookActions: 0, deviatedSteps: [] }, costLimit: 3000, maxActionsPerStep: 12, playbook: cafe24Playbook, shopHost: "myshop.cafe24.com" },
       {
-        touch: (st) => touch(db, claimed.claim, st, 200),
+        touch: (st) => touch(observedDb, claimed.claim, st, 200),
         enterVerify: () => toVerifying(db, claimed.claim),
         stepDone: (next, facts) => (nextIndexes.push(next), advanceStep(db, claimed.claim, next, facts)),
       },
@@ -3904,7 +3953,15 @@ describe("Codex 47차 반영(외부 의존 전체로 계약 확대)", () => {
       expect(await claimNext(db, "w-other")).toBeNull();
       release();
       await lateOpen;
-      await new Promise((r) => setTimeout(r, 50));
+      // 브라우저 Promise 뒤의 비동기 DB 종료 확인까지 기다린다(기존 100회·20ms bounded 조회 패턴).
+      let ended = await job(a.jobId);
+      for (let i = 0; i < 100 && !(ended.lastActionStartedAt && ended.lastActionEndedAt && ended.lastActionEndedAt >= ended.lastActionStartedAt); i++) {
+        await new Promise((r) => setTimeout(r, 20));
+        ended = await job(a.jobId);
+      }
+      expect(ended.lastActionStartedAt).not.toBeNull();
+      expect(ended.lastActionEndedAt).not.toBeNull();
+      expect(ended.lastActionEndedAt!.getTime()).toBeGreaterThanOrEqual(ended.lastActionStartedAt!.getTime());
       // 중단 신호를 받은 열기는 보관본을 복원(소비)하지 않았고, 끝났다는 확인이 남아 시간이 지나지 않아도 이어받는다
       expect(rt.browser.saved.has(a.jobId)).toBe(true);
       expect((await claimNext(db, "w-other"))?.job.id).toBe(a.jobId);

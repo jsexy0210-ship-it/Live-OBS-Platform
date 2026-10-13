@@ -92,6 +92,41 @@ describe("점검 모드 설정", () => {
   });
 });
 
+describe("점검 사유·예약 취소·다건 이력", () => {
+  it("저장된 미래 예약을 즉시 켜면 설정 변경이 아닌 즉시 켬으로 표시하고 감사 원문을 보존한다", async () => {
+    const su = await adminCookie("SUPER_ADMIN");
+    const startsAt = new Date(Date.now() + 3600_000).toISOString();
+    const endsAt = new Date(Date.now() + 7200_000).toISOString();
+    await put(su.cookie, { ...ON, reason: "긴급 점검", startsAt, endsAt, expectedVersion: 0 });
+    const started = await put(su.cookie, { ...ON, reason: "긴급 점검", startsAt: null, endsAt, expectedVersion: 1 });
+    expect(started.body.maintenance).toMatchObject({ active: true, scheduled: false, startsAt: null });
+    expect(started.body.maintenance.history[0].action).toBe("즉시 켬");
+    const log = await db.auditLog.findFirstOrThrow({ where: { action: "platform.maintenance.update" }, orderBy: { createdAt: "desc" } });
+    expect(log.before).toMatchObject({ enabled: true, startsAt });
+    expect(log.after).toMatchObject({ enabled: true, startsAt: null });
+  });
+
+  it("사유 검증·예약 취소를 버전 잠금 안에서 기록하고 이전 사유를 보존한다", async () => {
+    const su = await adminCookie("SUPER_ADMIN");
+    expect((await put(su.cookie, { ...ON, reason: "", expectedVersion: 0 })).body.error).toBe("invalid_reason");
+    expect((await put(su.cookie, { ...ON, reason: "가".repeat(101), expectedVersion: 0 })).body.error).toBe("invalid_reason");
+    const start = new Date(Date.now() + 3600_000);
+    const scheduled = await put(su.cookie, { ...ON, reason: "서버 점검", startsAt: start.toISOString(), endsAt: new Date(start.getTime() + 3600_000).toISOString(), expectedVersion: 0 });
+    expect(scheduled.body.maintenance).toMatchObject({ reason: "서버 점검", scheduled: true, liveBroadcasts: 0, waitingOrders: 0 });
+    expect(scheduled.body.maintenance.history).toHaveLength(1);
+    expect((await json(await publicGet())).body.reason).toBe("서버 점검");
+    const cancelled = await put(su.cookie, { enabled: false, expectedVersion: 1 });
+    expect(cancelled.body.maintenance).toMatchObject({ enabled: false, scheduled: false, reason: "서버 점검" });
+    expect(cancelled.body.maintenance.history).toHaveLength(2);
+    expect(cancelled.body.maintenance.history[0]).toMatchObject({ reason: "서버 점검", action: "예약 취소" });
+    expect(await put(su.cookie, { enabled: false, expectedVersion: 1 })).toMatchObject({ status: 409 });
+    expect(await db.auditLog.count({ where: { action: "platform.maintenance.update" } })).toBe(2);
+    const ro = await adminCookie("READ_ONLY");
+    expect((await put(ro.cookie, { ...ON, reason: "권한 없음", expectedVersion: 2 })).status).toBe(403);
+    expect((await json(await adminGet(req("/api/admin/settings/maintenance", ro.cookie)))).body.maintenance.history).toHaveLength(2);
+  });
+});
+
 describe("점검 중 막기(proxy)", () => {
   const BLOCKED_API = ["/api/seller/me", "/api/seller/orders/abc", "/api/seller-signup/apply", "/api/shop/shop-1/cart", "/api/automation/purchase", "/api/automation/reconnect"];
   const BLOCKED_PAGE = ["/seller", "/seller/orders", "/shop/shop-1", "/shop/shop-1/products/x"];

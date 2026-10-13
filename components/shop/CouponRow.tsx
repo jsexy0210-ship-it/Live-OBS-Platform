@@ -33,9 +33,9 @@ export default function CouponRow({ slug, loggedIn }: { slug: string; loggedIn: 
     setBusy(false);
   }
   return (
-    <tr>
-      <th scope="row">쿠폰</th>
-      <td>
+    <div className="pd-form-row pd-coupon-row">
+      <dt>쿠폰</dt>
+      <dd>
         {first && (
           <>
             <button type="button" className="btn btn-sm" disabled={busy} onClick={() => void take()}>
@@ -52,7 +52,7 @@ export default function CouponRow({ slug, loggedIn }: { slug: string; loggedIn: 
             {msg}
           </span>
         )}
-      </td>
-    </tr>
+      </dd>
+    </div>
   );
 }

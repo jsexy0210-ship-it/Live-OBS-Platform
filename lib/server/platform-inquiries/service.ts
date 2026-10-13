@@ -28,8 +28,8 @@ export const BODY_MAX = 5_000;
 export const IMAGES_PER_MESSAGE = 5;
 export const UNATTACHED_KEEP = 10;
 export const DAILY_LIMIT = 20;
-export const SELLER_PAGE_SIZE = 20;
-export const ADMIN_PAGE_SIZE = 50;
+export const SELLER_PAGE_SIZE = 10;
+export const ADMIN_PAGE_SIZE = 10;
 export const SELLER_SEARCH_MAX = 50;
 // SA-114 문의 종류(방송 화면·결제 연결·주문/환불·적립금·구독/요금·쇼핑몰·계정/직원·기타). BILLING·FEATURE·BUG는 예전 문의에만 남아 있어 새로 보낼 수 없고 필터로는 볼 수 있다.
 export const CATEGORIES: readonly PlatformInquiryCategory[] = ["BROADCAST", "PAYMENT_LINK", "ORDER_REFUND", "REWARD", "SUBSCRIPTION_FEE", "SHOP", "ACCOUNT", "OTHER"];
@@ -632,7 +632,7 @@ const ADMIN_LIST_SELECT = {
   seller: { select: { shopName: true, slug: true } },
 } as const satisfies Prisma.PlatformInquirySelect;
 
-// MA-051: 문의 목록. ?status=OPEN|ANSWERED|CLOSED&sellerId=&cursor=. 마지막 글 최신 순 50건, 상태별 수.
+// MA-051: 문의 목록. ?status=OPEN|ANSWERED|CLOSED&sellerId=&cursor=. 마지막 글 최신 순 10건, 상태별 수.
 // ?assignee=me(내 담당)|none(미배정)|관리자 id, ?category. 담당·분류 조건은 건수(counts)에 넣지 않는다.
 // ?urgent=first(긴급 먼저, 그 안에서 마지막 글 최신 순)|only(긴급만), ?seller=파트너스 이름(또는 주소) 일부(대소문자 무시). 파트너스 검색은 건수(counts)에도 적용한다.
 // 응답 summary는 필터와 무관한 전체 요약(상단 카드). 상태 이름은 현행(OPEN 답변 대기 · ANSWERED 답변 완료 · CLOSED 종료).

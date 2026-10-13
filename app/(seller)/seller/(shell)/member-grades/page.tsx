@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Modal, PageHead } from "../../../../../components/admin-ui";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { CursorPagination, Modal, PageHead } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -29,7 +29,12 @@ type Grade = {
 };
 type Benefit = { id: string; shippingBenefit: ShippingBenefit; shippingDiscount: string; promotionCouponId: string };
 type Change = { id: string; memberId: string; nickname: string; fromName: string; toName: string; reason: string; amount: number | null; createdAt: string };
+type ListKey = "recent" | "locked" | "changes";
+type History = { page: number; cursors: (string | undefined)[] };
+const firstPage = (): History => ({ page: 1, cursors: [undefined] });
 type Data = {
+  recentNextCursor: string | null;
+  lockedNextCursor: string | null;
   grades: Grade[];
   couponOptions: { id: string; name: string; usable: boolean }[];
   memberTotal: number;
@@ -81,7 +86,9 @@ export default function MemberGradesPage() {
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number; error?: string } | { kind: "ok"; data: Data }>({ kind: "loading" });
   const [edit, setEdit] = useState<{ id: string; displayName: string; minAmount: string }[]>([]);
   const [benefit, setBenefit] = useState<Benefit[]>([]);
-  const [changes, setChanges] = useState<{ kind: "up" | "down"; rows: Change[] } | null>(null);
+  const [changes, setChanges] = useState<{ kind: "up" | "down"; rows: Change[]; nextCursor: string | null } | null>(null);
+  const [history, setHistory] = useState<Record<ListKey, History>>({ recent: firstPage(), locked: firstPage(), changes: firstPage() });
+  const readId = useRef(0), paging = useRef(false);
   const [auto, setAuto] = useState(false);
   const [windowMonths, setWindowMonths] = useState(6);
   const [cadence, setCadence] = useState<Cadence>("MONTHLY");
@@ -94,7 +101,12 @@ export default function MemberGradesPage() {
   const [confirm, setConfirm] = useState<"recalc" | { grade: Grade } | null>(null);
 
   const load = useCallback(async () => {
+    const id = ++readId.current;
+    paging.current = false;
+    setHistory({ recent: firstPage(), locked: firstPage(), changes: firstPage() });
+    setChanges(null);
     const r = await api<Data>("/api/seller/member-grades");
+    if (id !== readId.current) return;
     if (!r.ok) return setState({ kind: "error", status: r.status, error: r.error });
     setState({ kind: "ok", data: r.data });
     setEdit(r.data.grades.map((g) => ({ id: g.id, displayName: g.displayName, minAmount: String(g.minAmount) })));
@@ -128,10 +140,41 @@ export default function MemberGradesPage() {
   const save = () =>
     void run("/api/seller/member-grades", "PUT", { autoEnabled: auto, windowMonths, cadence, demotion, grades: edit.map((e, i) => ({ id: e.id, displayName: e.displayName, minAmount: Number(e.minAmount || 0), ...benefitBody(benefit[i]) })) }, () => "등급 설정을 저장했습니다");
   const showChanges = async (kind: "up" | "down") => {
-    const r = await api<{ changes: Change[] }>(`/api/seller/member-grades/changes?kind=${kind}`);
+    if (paging.current) return;
+    paging.current = true;
+    const id = ++readId.current;
+    const r = await api<{ changes: Change[]; nextCursor: string | null }>(`/api/seller/member-grades/changes?kind=${kind}`);
+    if (id !== readId.current) return;
+    paging.current = false;
     if (!r.ok) return setFailure(errorText(r, "변동 회원을 불러오지 못했습니다. 잠시 뒤 다시 시도해 주십시오"));
-    setChanges({ kind, rows: r.data.changes });
+    setHistory(h => ({ ...h, changes: firstPage() }));
+    setChanges({ kind, rows: r.data.changes, nextCursor: r.data.nextCursor });
   };
+  const turnList = async (key: ListKey, target: number) => {
+    const h = history[key];
+    if (!data || paging.current || target === h.page || target < 1 || target > h.cursors.length + 1) return;
+    const next = key === "changes" ? changes?.nextCursor : key === "recent" ? data.recentNextCursor : data.lockedNextCursor;
+    const cursor = target <= h.cursors.length ? h.cursors[target - 1] : next;
+    if (target > 1 && !cursor) return;
+    paging.current = true;
+    const id = ++readId.current;
+    if (key === "changes") {
+      if (!changes) { paging.current = false; return; }
+      const r = await api<{ changes: Change[]; nextCursor: string | null }>(`/api/seller/member-grades/changes?kind=${changes.kind}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
+      if (id !== readId.current) return;
+      paging.current = false;
+      if (!r.ok) return setFailure(errorText(r, "변동 회원을 불러오지 못했습니다"));
+      setChanges({ kind: changes.kind, rows: r.data.changes, nextCursor: r.data.nextCursor });
+    } else {
+      const r = await api<Data>(`/api/seller/member-grades?${key}Cursor=${encodeURIComponent(cursor ?? "")}`);
+      if (id !== readId.current) return;
+      paging.current = false;
+      if (!r.ok) return setFailure(errorText(r, "목록을 불러오지 못했습니다"));
+      setState({ kind: "ok", data: { ...data, ...(key === "recent" ? { recent: r.data.recent, recentNextCursor: r.data.recentNextCursor } : { locked: r.data.locked, lockedNextCursor: r.data.lockedNextCursor }) } });
+    }
+    setHistory(all => ({ ...all, [key]: { page: target, cursors: target > h.cursors.length ? [...h.cursors, cursor ?? undefined] : h.cursors } }));
+  };
+  const listPager = (key: ListKey, next: string | null | undefined) => history[key].page > 1 || next ? <CursorPagination page={history[key].page} visited={history[key].cursors.length} hasNext={!!next} onChange={n => void turnList(key, n)} onNext={() => void turnList(key, history[key].page + 1)} /> : null;
   const add = async () => {
     if (await run("/api/seller/member-grades", "POST", { displayName: newName, minAmount: Number(newAmount || 0) }, () => "등급을 추가했습니다")) {
       setNewName("");
@@ -351,7 +394,7 @@ export default function MemberGradesPage() {
                 </div>
               ) : (
                 data.locked.map((l) => (
-                  <div key={l.memberId} className="mg-log">
+                  <div key={l.memberId} className="mg-log" data-testid="grade-locked-row">
                     <span className="col" style={{ gap: 2 }}>
                       <span>
                         {l.nickname} · <span className="c-alt">{data.grades.find((g) => g.id === l.gradeId)?.displayName}</span>
@@ -364,12 +407,13 @@ export default function MemberGradesPage() {
                   </div>
                 ))
               )}
+              {listPager("locked", data.lockedNextCursor)}
             </section>
 
             {changes && (
               <section className="card" aria-label={changes.kind === "up" ? "승급 회원" : "강등 회원"} data-testid="grade-changes">
                 <div className="row between" style={{ padding: "12px 16px" }}>
-                  <span className="t-hl2">{changes.kind === "up" ? "승급 회원" : "강등 회원"} 최근 {changes.rows.length}명</span>
+                  <span className="t-hl2">{changes.kind === "up" ? "승급 회원" : "강등 회원"} 현재 {changes.rows.length}명</span>
                   <button className="btn btn-sm btn-text" type="button" onClick={() => setChanges(null)}>
                     닫기
                   </button>
@@ -380,7 +424,7 @@ export default function MemberGradesPage() {
                   </div>
                 ) : (
                   changes.rows.map((h) => (
-                    <div key={h.id} className="mg-log">
+                    <div key={h.id} className="mg-log" data-testid="grade-change-row">
                       <span>
                         {h.nickname} · {h.fromName} → {h.toName}
                       </span>
@@ -388,6 +432,7 @@ export default function MemberGradesPage() {
                     </div>
                   ))
                 )}
+                {listPager("changes", changes.nextCursor)}
               </section>
             )}
 
@@ -415,6 +460,7 @@ export default function MemberGradesPage() {
                   </div>
                 ))
               )}
+              {listPager("recent", data.recentNextCursor)}
             </section>
           </>
         )}

@@ -3,7 +3,7 @@ import { writeAudit } from "../audit/log";
 import { canViewCustomerPii, requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { completeDelivery } from "./delivery";
 import { orderErrorBody } from "./messages";
-import { decodeCursor, encodeCursor, itemSummary, itemSummarySelect, kstDayStart, SELLER_ORDER_PAGE_DEFAULT, SELLER_ORDER_PAGE_MAX } from "./read";
+import { decodeCursor, encodeCursor, itemSummary, itemSummarySelect, kstDayStart, SELLER_ORDER_PAGE_MAX } from "./read";
 import { shipOrder } from "./ship";
 import { SHIPMENT_BATCH_MAX } from "./shipping";
 import { orderNoLabel } from "./orderNoLabel";
@@ -52,7 +52,7 @@ export async function listShipments(db: PrismaClient, ctx: TenantContext, query:
   requireSellerRead(ctx, "ORDER_SHIPPING");
   const tab = (query.tab || "ready") as ShipmentTab;
   if (!SHIPMENT_TABS.includes(tab)) return { ok: false as const };
-  const limit = query.limit == null || query.limit === "" ? SELLER_ORDER_PAGE_DEFAULT : Number(query.limit);
+  const limit = query.limit == null || query.limit === "" ? 10 : Number(query.limit);
   if (!Number.isInteger(limit) || limit < 1) return { ok: false as const };
   const take = Math.min(limit, SELLER_ORDER_PAGE_MAX);
   const from = query.from ? kstDayStart(query.from) : null;

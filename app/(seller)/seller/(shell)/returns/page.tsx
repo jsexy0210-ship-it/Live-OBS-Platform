@@ -1,7 +1,9 @@
 "use client";
 
+import { CursorPagination } from "../../../../../components/Pagination";
+
 import { formatDateTime } from "../../../../../lib/client/format";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { useConfirm } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../components/seller/States";
@@ -81,7 +83,6 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "closed", label: "완료 · 거절" },
 ];
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
-const inTab = (tab: Tab, s: Status) => tab === "all" || (tab === "closed" ? s === "COMPLETED" || s === "REJECTED" || s === "CANCELLED" : s === tab);
 
 export default function ReturnsPage() {
   const { can } = useSeller();
@@ -91,21 +92,39 @@ export default function ReturnsPage() {
   const [urlState, setUrlState] = useUrlState({ status: "all" });
   const tab: Tab = TABS.some((t) => t.key === urlState.status) ? (urlState.status as Tab) : "all";
   const setTab = (t: Tab) => setUrlState({ status: t });
+  const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const reqId = useRef(0);
+  const paging = useRef(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
+  const query = useCallback((cursor?: string) => `/api/seller/returns?${new URLSearchParams({ ...(tab !== "all" ? { status: tab } : {}), ...(cursor ? { cursor } : {}) })}`, [tab]);
   const load = useCallback(async () => {
-    const r = await api<Data>("/api/seller/returns");
+    const id = ++reqId.current; paging.current = true;
+    const r = await api<Data>(query());
+    if (id !== reqId.current) return;
+    paging.current = false;
     if (!r.ok) return setState({ kind: "error", status: r.status, error: r.error });
+    setState({ kind: "ok", data: r.data }); setPage(1); setCursors([undefined]);
+  }, [query]);
+  const goPage = async (target: number, cursor = cursors[target - 1]) => {
+    if (state.kind !== "ok" || paging.current || target < 1 || target > cursors.length + 1) return;
+    paging.current = true;
+    const id = reqId.current; const r = await api<Data>(query(cursor));
+    if (id !== reqId.current) return;
+    paging.current = false;
+    if (!r.ok) return setToast("목록을 불러오지 못했습니다. 다시 눌러 주십시오");
     setState({ kind: "ok", data: r.data });
-  }, []);
+    setCursors((prev) => [...prev.slice(0, target - 1), cursor]); setPage(target);
+  };
   useEffect(() => {
     void load();
   }, [load]);
 
   useScrollRestore("seller-returns", state.kind === "ok");
   const data = state.kind === "ok" ? state.data : null;
-  const rows = data ? data.returns.filter((r) => inTab(tab, r.status)) : [];
+  const rows = data?.returns ?? [];
   const c = data?.counts ?? {};
 
   return (
@@ -185,6 +204,7 @@ export default function ReturnsPage() {
             </>
           )}
         </section>
+        {data && (page > 1 || data.nextCursor) && <CursorPagination page={page} visited={cursors.length} hasNext={!!data.nextCursor} onChange={(target) => void goPage(target)} onNext={() => { if (data.nextCursor) void goPage(page + 1, data.nextCursor); }} />}
         {data && !canEdit && (
           <div className="msg msg-info" role="status">
             <span>신청 처리는 대표자나 주문 · 배송 권한이 있는 직원만 할 수 있습니다.</span>

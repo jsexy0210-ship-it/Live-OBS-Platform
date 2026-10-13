@@ -44,7 +44,7 @@ test("AU-006 이용 정지: 로그인·/seller·막힌 화면 모두 정지 안�
   await expect(box.getByRole("link", { name: "주문 처리" })).toHaveAttribute("href", "/seller/orders");
   await expect(box.getByRole("link", { name: "문의하기" })).toHaveAttribute("href", "/seller/inquiries/new");
   // 서버가 막는 화면(방송)을 열면 안내로 돌아온다
-  await page.goto("/seller/broadcast");
+  await page.goto("/seller");
   await expect(page).toHaveURL(/\/seller\/suspended$/);
   await page.goto("/seller");
   await expect(page).toHaveURL(/\/seller\/suspended$/);
@@ -62,11 +62,11 @@ test("AU-007 세션 만료: 로그인이 풀린 채 화면을 열면 로그인�
   await page.context().clearCookies();
   // 열자마자 클라이언트가 로그인으로 보내므로 이동이 끝나길 기다리지 않는다
   // 클라이언트가 곧바로 로그인으로 보내 이 이동이 끊기면(ERR_ABORTED) 정상이다. 결과는 아래 주소·문구로 확인한다
-  await page.goto("/seller/broadcast", { waitUntil: "commit" }).catch((e: Error) => {
+  await page.goto("/seller", { waitUntil: "commit" }).catch((e: Error) => {
     if (!e.message.includes("ERR_ABORTED")) throw e;
   });
-  await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fbroadcast/);
+  await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller/);
   await expect(page.getByText("로그인 시간이 지나 로그아웃되었습니다. 다시 로그인해 주십시오.")).toBeVisible();
   await submitSellerLogin(page, OWNER, PASSWORD);
-  await expect(page).toHaveURL(/\/seller\/broadcast$/);
+  await expect(page).toHaveURL(/\/seller$/);
 });

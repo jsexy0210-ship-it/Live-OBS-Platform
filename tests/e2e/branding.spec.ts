@@ -4,6 +4,12 @@ import { randomBytes } from "node:crypto";
 import sharp from "sharp";
 import { hashPassword } from "../../lib/server/auth/password";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
+import { captureBrandingFailure, observeBrandingReads, recordBrandingRead } from "./brandingFailureDiagnostics";
+
+test.beforeEach(async ({ page }) => { observeBrandingReads(page); });
+test.afterEach(async ({ page }, info) => {
+  if (info.title.startsWith("최고관리자가 파트너스 관리자 파비콘") || info.title.startsWith("마스터 관리자 공유 카드에") || info.title.startsWith("저장 전 입력값")) await captureBrandingFailure(page, info, `branding-${info.line}`);
+});
 
 // 사이트 설정 > 파비콘·공유 카드(마스터 관리자). 마스터 관리자 계정은 시드에 없어 폐기용 테스트 DB(이름이 _test로 끝남)에
 // 실행마다 새로 만든다(비밀번호도 실행마다 새로). 브랜딩 값은 처음 상태(기본값)로 지우고 시작한다.
@@ -31,12 +37,14 @@ test.beforeAll(async () => {
   }
 });
 
-async function login(page: Page, email: string) {
+async function login(page: Page, email: string, observe?: (phase: "after-fill" | "click-failed") => void) {
   await page.goto("/admin/settings/branding");
   await expect(page).toHaveURL(/\/admin\/login\?next=/);
   await page.getByLabel("이메일").fill(email);
   await page.getByLabel("비밀번호").fill(password);
-  await page.getByRole("button", { name: "로그인" }).click();
+  if (observe) observe("after-fill");
+  try { await page.getByRole("button", { name: "로그인" }).click(); }
+  catch (error) { if (observe) observe("click-failed"); throw error; }
   await expect(page.getByRole("heading", { name: "파비콘 · 공유 카드" })).toBeVisible();
 }
 
@@ -57,32 +65,38 @@ test("최고관리자가 파트너스 관리자 파비콘·공유 카드를 바�
 
   // SVG(스크립트 위험)는 안내만 보이고 바뀌지 않는다
   await page.getByLabel("파비콘 파일").setInputFiles({ name: "icon.png", mimeType: "image/png", buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>') });
-  await page.getByRole("button", { name: "파비콘 변경" }).click();
+  await page.getByRole("button", { name: "파비콘 저장", exact: true }).click();
   await expect(page.getByText("파비콘은 PNG 파일만 업로드할 수 있습니다.")).toBeVisible();
   // 안내가 떠 있는 동안에는 다시 올릴 수 없다
-  await expect(page.getByRole("button", { name: "파비콘 변경" })).toBeDisabled();
-  await page.getByRole("button", { name: "취소" }).click();
+  await expect(page.getByRole("button", { name: "파비콘 저장", exact: true })).toBeDisabled();
+  await page.getByRole("region", { name: "탭 아이콘(파비콘)", exact: true }).getByRole("button", { name: "취소", exact: true }).click();
 
   const icon = await sharp({ create: { width: 64, height: 64, channels: 4, background: "#ff3b30" } }).png().toBuffer();
   // 맞는 파일을 고른 뒤 너무 큰 파일로 바꾸면 이전 선택도 지워진다(Codex 지적: 안내와 다른 파일이 올라가지 않게)
   await page.getByLabel("파비콘 파일").setInputFiles({ name: "first.png", mimeType: "image/png", buffer: icon });
-  await expect(page.getByRole("button", { name: "파비콘 변경" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "파비콘 저장", exact: true })).toBeEnabled();
   await page.getByLabel("파비콘 파일").setInputFiles({ name: "big.png", mimeType: "image/png", buffer: Buffer.concat([icon, Buffer.alloc(300 * 1024)]) });
   await expect(page.getByText("파비콘이 256KB를 넘습니다. 256KB 이하 PNG로 줄여 주십시오.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "파비콘 변경" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "파비콘 저장", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "파비콘 저장", exact: true })).toBeDisabled();
   await expect(page.getByText("first.png")).toHaveCount(0);
 
   await page.getByLabel("파비콘 파일").setInputFiles({ name: "partners.png", mimeType: "image/png", buffer: icon });
-  await page.getByRole("button", { name: "파비콘 변경" }).click();
-  await expect(page.getByText("파비콘을 변경했습니다.")).toBeVisible();
+  await page.getByRole("button", { name: "파비콘 저장", exact: true }).click();
+  await expect(page.getByText("파비콘을 저장했습니다.")).toBeVisible();
 
   await page.getByLabel("제목").fill("온큐 파트너스 센터");
   await page.getByLabel("설명").fill("방송 주문을 한곳에서 관리합니다");
   // 저장 전 미리보기: 입력한 제목으로 그린 카드
   const preview = page.getByAltText("공유 카드 이미지 미리보기");
-  await expect(preview).toHaveAttribute("src", /card-preview\?title=%EC%98%A8%ED%81%90/);
+  await expect.poll(async () => {
+    const src = await preview.getAttribute("src");
+    if (!src) return null;
+    const url = new URL(src, page.url());
+    return { pathname: url.pathname, target: url.searchParams.getAll("target"), title: url.searchParams.getAll("title") };
+  }).toEqual({ pathname: "/api/admin/branding/card-preview", target: ["seller"], title: ["온큐 파트너스 센터"] });
   await expect.poll(() => preview.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(1200);
-  await expect(page.getByText("파비콘을 변경했습니다.")).toBeHidden();
+  await expect(page.getByText("파비콘을 저장했습니다.")).toBeHidden();
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.screenshot({ path: "tests/e2e/screenshots/branding-settings-1440.png", fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -99,10 +113,12 @@ test("최고관리자가 파트너스 관리자 파비콘·공유 카드를 바�
   expect(seller).toMatchObject({ ogTitle: "온큐 파트너스 센터", ogDescription: "방송 주문을 한곳에서 관리합니다", twitterCard: "summary_large_image" });
   expect(seller.ogImage).toMatch(/^http:\/\/localhost:\d+\/api\/branding\/seller\/og\?v=[0-9a-f]{12}$/);
   const fav = await request.get(seller.icons[0]!);
+  await recordBrandingRead(page, fav);
   expect(fav.headers()["content-type"]).toBe("image/png");
   expect(fav.headers()["x-content-type-options"]).toBe("nosniff");
   expect(Buffer.from(await fav.body()).equals(icon)).toBe(true);
   const card = await request.get(seller.ogImage!);
+  await recordBrandingRead(page, card);
   expect(card.headers()["content-type"]).toBe("image/png");
   const png = Buffer.from(await card.body());
   expect(await sharp(png).metadata()).toMatchObject({ width: 1200, height: 630 });
@@ -112,9 +128,9 @@ test("최고관리자가 파트너스 관리자 파비콘·공유 카드를 바�
   // 마스터 관리자 화면은 그대로(기본값)
   const admin = await head(page, "/admin/login");
   expect(admin.icons.some((h) => h?.includes("/api/branding/"))).toBe(false);
-  expect(admin.ogTitle).toBe("ONQ 마스터 관리자");
+  expect(admin.ogTitle).toBe("StreamShop 마스터 관리자");
   // 올린 파비콘이 없는 마스터 관리자 화면은 틸 기본 아이콘(파트너스 기본 아이콘과 다름)
-  expect(admin.icons).toEqual(["/branding/onq-admin-32.png"]);
+  expect(admin.icons).toEqual(["/branding/streamshop-master-32-20261010.png"]);
 
   // 「기본값으로 되돌리기」 뒤에는 파트너스 화면도 기본 아이콘으로 돌아오고, 그 주소가 실제 PNG를 준다
   await page.goto("/admin/settings/branding");
@@ -125,12 +141,12 @@ test("최고관리자가 파트너스 관리자 파비콘·공유 카드를 바�
   await confirm.getByRole("button", { name: "되돌리기" }).click();
   await expect(page.getByText("기본 파비콘으로 되돌렸습니다.")).toBeVisible();
   const reset = await head(page, "/seller/login");
-  expect(reset.icons).toEqual(["/branding/onq-32.png"]);
+  expect(reset.icons).toEqual(["/branding/streamshop-partners-32-20261010.png"]);
   const def = await request.get(reset.icons[0]!);
   expect(def.status()).toBe(200);
   expect(def.headers()["content-type"]).toBe("image/png");
   expect(await sharp(Buffer.from(await def.body())).metadata()).toMatchObject({ width: 32, height: 32 });
-  expect((await request.get("/branding/onq-180.png")).status()).toBe(200);
+  expect((await request.get("/branding/streamshop-partners-180-20261010.png")).status()).toBe(200);
 });
 
 test("마스터 관리자 공유 카드에 1200×630 이미지를 올리면 og:image가 그 이미지가 되고, 크기가 틀리면 막힌다", async ({ page, request }) => {
@@ -149,6 +165,7 @@ test("마스터 관리자 공유 카드에 1200×630 이미지를 올리면 og:i
   const admin = await head(page, "/admin/login");
   expect(admin.ogImage).toMatch(/\/api\/branding\/admin\/og\?v=[0-9a-f]{12}$/);
   const got = await request.get(admin.ogImage!);
+  await recordBrandingRead(page, got);
   expect(got.headers()["content-type"]).toBe("image/png");
   expect(Buffer.from(await got.body()).equals(image)).toBe(true);
   // 제목으로 만들기로 돌리면 다시 그린 카드
@@ -157,6 +174,7 @@ test("마스터 관리자 공유 카드에 1200×630 이미지를 올리면 og:i
   await page.getByRole("button", { name: "공유 카드 저장" }).click();
   await expect(page.getByText("공유 카드를 저장했습니다.")).toBeVisible();
   const back = await request.get((await head(page, "/admin/login")).ogImage!);
+  await recordBrandingRead(page, back);
   expect(back.headers()["content-type"]).toBe("image/png");
 });
 
@@ -203,7 +221,33 @@ test("이미지를 연달아 고르면 앞 선택의 크기 확인이 늦게 끝
       return img;
     } as unknown as typeof Image;
   });
-  await login(page, superEmail);
+  const loginStartedAt = performance.now();
+  const loginStates: object[] = [];
+  await login(page, superEmail, phase => {
+    // DOM 관찰만 남기며 React 상태·실패 원인으로 단정하지 않는다. 값과 원 class는 기록하지 않는다.
+    const row = { phase, elapsedMs: Math.round(performance.now() - loginStartedAt), observation: "pending" };
+    loginStates.push(row);
+    const report = () => {
+      try { console.error("branding-login-state-diagnostics", JSON.stringify({ states: loginStates })); }
+      catch { /* 진단 실패가 원 click 오류를 바꾸지 않는다. */ }
+    };
+    // 관찰 응답을 기다리지 않는다. 완료되지 않은 관찰은 pending으로 남긴다.
+    void page.evaluate(() => {
+        const email = document.querySelector<HTMLInputElement>("#email");
+        const password = document.querySelector<HTMLInputElement>("#password");
+        const button = document.querySelector<HTMLButtonElement>('form.login-card button[type="submit"]');
+        const visible = (element: HTMLElement | null) => !!element && element.getClientRects().length > 0 && getComputedStyle(element).visibility !== "hidden";
+        return {
+          emailVisible: visible(email), emailNonempty: !!email?.value.trim(),
+          passwordVisible: visible(password), passwordNonempty: !!password?.value,
+          buttonVisible: visible(button), buttonDisabled: button?.disabled ?? null,
+          disabledPrimaryClass: button ? Array.from(button.classList).some(name => name.includes("disabledPrimary")) : null,
+          busyClass: button?.classList.contains("is-loading") ?? null,
+        };
+    }).then(state => { Object.assign(row, state, { observation: "available" }); }, () => { row.observation = "unavailable"; })
+      .then(() => { if (phase === "click-failed") report(); }).catch(() => { /* 관찰 거절은 원 시험으로 전파하지 않는다. */ });
+    if (phase === "click-failed") report();
+  });
 
   // 파비콘: 늦게 끝나는 앞 파일 → 바로 다음 파일
   const red = await sharp({ create: { width: 64, height: 64, channels: 4, background: "#ff0000" } }).png().toBuffer();
@@ -269,12 +313,12 @@ test("저장 전 입력값이 미리보기에 바로 반영된다(제목·설명
   await page.getByLabel("설명").fill("미리보기 확인 설명");
   await expect(card.getByText("미리보기 확인 제목")).toBeVisible();
   await expect(card.getByText("미리보기 확인 설명")).toBeVisible();
-  await expect(image).toHaveAttribute("src", `/api/admin/branding/card-preview?title=${encodeURIComponent("미리보기 확인 제목")}`);
+  await expect(image).toHaveAttribute("src", `/api/admin/branding/card-preview?target=seller&title=${encodeURIComponent("미리보기 확인 제목")}`);
   await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(1200);
   // 글자 수를 넘으면 마지막으로 그릴 수 있던 카드를 그대로 두고 깨진 그림을 보이지 않는다
   await page.getByLabel("제목").fill("가".repeat(61));
   await page.waitForTimeout(600);
-  await expect(image).toHaveAttribute("src", `/api/admin/branding/card-preview?title=${encodeURIComponent("미리보기 확인 제목")}`);
+  await expect(image).toHaveAttribute("src", `/api/admin/branding/card-preview?target=seller&title=${encodeURIComponent("미리보기 확인 제목")}`);
   // 파비콘: 고르기만 해도 공유 카드의 사이트 아이콘이 고른 파일로 바뀐다(저장 전)
   const iconBefore = await icon.getAttribute("src");
   await page.getByLabel("파비콘 파일").setInputFiles({ name: "preview.png", mimeType: "image/png", buffer: await sharp({ create: { width: 64, height: 64, channels: 4, background: "#00aaff" } }).png().toBuffer() });
@@ -289,50 +333,84 @@ test("저장 전 입력값이 미리보기에 바로 반영된다(제목·설명
 });
 
 test("마스터 관리자 기본 파비콘은 틸이고, 올린 파비콘이 있으면 그것이 우선한다(대표님 지시 2026-10-04)", async ({ page, request }) => {
-  // 기본 아이콘 PNG의 바탕 색(왼쪽 위 안쪽 화소): 마스터는 틸(#0f766e), 파트너스는 보라(#5b3df6)
-  const pixel = async (url: string) => {
-    const res = await request.get(url);
-    expect(res.status()).toBe(200);
-    expect(res.headers()["content-type"]).toBe("image/png");
-    const { data, info } = await sharp(Buffer.from(await res.body())).raw().toBuffer({ resolveWithObject: true });
-    const at = (6 * info.width + 3) * info.channels;
-    return [data[at], data[at + 1], data[at + 2]];
-  };
-  const adminHead = await head(page, "/admin/login");
-  expect(adminHead.icons).toEqual(["/branding/onq-admin-32.png"]);
-  const sellerHead = await head(page, "/seller/login");
-  expect(sellerHead.icons).toEqual(["/branding/onq-32.png"]);
-  expect(await pixel(adminHead.icons[0]!)).toEqual([0x0f, 0x76, 0x6e]);
-  expect(await pixel(sellerHead.icons[0]!)).toEqual([0x5b, 0x3d, 0xf6]);
-  expect((await request.get("/branding/onq-admin-180.png")).status()).toBe(200);
+  const db = new PrismaClient({ datasources: { db: { url: assertTestDatabaseUrl(process.env.DATABASE_URL) } } });
+  const targets = ["admin", "seller"];
+  try {
+    const originals = await db.siteBranding.findMany({ where: { target: { in: targets } } });
+    try {
+      await db.siteBranding.deleteMany({ where: { target: { in: targets } } });
+      // 같은 S 심볼의 외곽은 투명하고, 불투명한 내부는 마스터 틸·파트너스 오렌지다
+      const symbolPixels = async (url: string) => {
+        const res = await request.get(url);
+        expect(res.status()).toBe(200);
+        expect(res.headers()["content-type"]).toBe("image/png");
+        const { data, info } = await sharp(Buffer.from(await res.body())).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+        expect([info.width, info.height, info.channels]).toEqual([32, 32, 4]);
+        const pixel = (x: number, y: number) => {
+          const at = (y * info.width + x) * info.channels;
+          return Array.from(data.subarray(at, at + 4));
+        };
+        expect(pixel(3, 6)).toEqual([0, 0, 0, 0]);
+        return [pixel(16, 9), pixel(16, 23)];
+      };
+      const adminHead = await head(page, "/admin/login");
+      await expect(page).toHaveTitle("StreamShop 마스터 관리자");
+      expect(adminHead.icons).toEqual(["/branding/streamshop-master-32-20261010.png"]);
+      const sellerHead = await head(page, "/seller/login");
+      await expect(page).toHaveTitle("StreamShop 파트너스 관리자");
+      expect(sellerHead.icons).toEqual(["/branding/streamshop-partners-32-20261010.png"]);
+      for (const [red, green, blue, alpha] of await symbolPixels(adminHead.icons[0]!)) {
+        expect(alpha).toBeGreaterThan(200);
+        expect(red).toBeLessThan(40);
+        expect(green).toBeGreaterThan(90);
+        expect(blue).toBeGreaterThan(90);
+        expect(Math.abs(green - blue)).toBeLessThanOrEqual(20);
+      }
+      for (const [red, green, blue, alpha] of await symbolPixels(sellerHead.icons[0]!)) {
+        expect(alpha).toBeGreaterThan(200);
+        expect(red).toBeGreaterThan(200);
+        expect(green).toBeGreaterThan(50);
+        expect(green).toBeLessThan(120);
+        expect(blue).toBeLessThan(40);
+      }
+      expect((await request.get("/branding/streamshop-master-180-20261010.png")).status()).toBe(200);
 
-  // 설정 화면의 마스터 관리자 탭 「기본 아이콘」도 틸 아이콘을 보인다
-  await login(page, superEmail);
-  await expect(page.getByAltText("기본 아이콘")).toHaveAttribute("src", "/branding/onq-admin-32.png");
-  for (const width of [1440, 390]) {
-    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
-    if (width === 390) await expect.poll(async () => (await page.locator("aside.lnb").boundingBox())?.x ?? 0).toBeLessThan(-200);
-    await page.screenshot({ path: `tests/e2e/screenshots/branding-master-favicon-${width}.png`, fullPage: true });
+      // 설정 화면의 마스터 관리자 탭 「기본 아이콘」도 틸 아이콘을 보인다
+      await login(page, superEmail);
+      await expect(page.getByAltText("기본 아이콘")).toHaveAttribute("src", "/branding/streamshop-master-32-20261010.png");
+      for (const width of [1440, 390]) {
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+        if (width === 390) await expect.poll(async () => (await page.locator("aside.lnb").boundingBox())?.x ?? 0).toBeLessThan(-200);
+        await page.screenshot({ path: `tests/e2e/screenshots/branding-master-favicon-${width}.png`, fullPage: true });
+      }
+      await page.setViewportSize({ width: 1440, height: 900 });
+
+      // 올린 파비콘이 있으면 그것이 우선, 되돌리면 다시 틸 기본 아이콘
+      const icon = await sharp({ create: { width: 64, height: 64, channels: 4, background: "#ffaa00" } }).png().toBuffer();
+      await page.getByLabel("파비콘 파일").setInputFiles({ name: "master.png", mimeType: "image/png", buffer: icon });
+      await page.getByRole("button", { name: "파비콘 저장", exact: true }).click();
+      await expect(page.getByText("파비콘을 저장했습니다.")).toBeVisible();
+      const uploaded = await head(page, "/admin/login");
+      expect(uploaded.icons).toEqual([expect.stringMatching(/^\/api\/branding\/admin\/favicon\?v=[0-9a-f]{12}$/)]);
+      await page.goto("/admin/settings/branding");
+      await page.getByRole("button", { name: "기본값으로 되돌리기" }).click();
+      // 확인 창에서 취소하면 올린 파비콘이 그대로 남는다
+      const confirm = page.getByRole("dialog", { name: "기본 아이콘으로 되돌리시겠습니까?" });
+      await confirm.getByRole("button", { name: "취소" }).click();
+      await expect(confirm).toHaveCount(0);
+      expect((await head(page, "/admin/login")).icons).toEqual([expect.stringMatching(/^\/api\/branding\/admin\/favicon\?v=[0-9a-f]{12}$/)]);
+      await page.goto("/admin/settings/branding");
+      await page.getByRole("button", { name: "기본값으로 되돌리기" }).click();
+      await page.getByRole("dialog", { name: "기본 아이콘으로 되돌리시겠습니까?" }).getByRole("button", { name: "되돌리기" }).click();
+      await expect(page.getByText("기본 파비콘으로 되돌렸습니다.")).toBeVisible();
+      expect((await head(page, "/admin/login")).icons).toEqual(["/branding/streamshop-master-32-20261010.png"]);
+    } finally {
+      await db.$transaction(async (tx) => {
+        await tx.siteBranding.deleteMany({ where: { target: { in: targets } } });
+        if (originals.length) await tx.siteBranding.createMany({ data: originals });
+      });
+    }
+  } finally {
+    await db.$disconnect();
   }
-  await page.setViewportSize({ width: 1440, height: 900 });
-
-  // 올린 파비콘이 있으면 그것이 우선, 되돌리면 다시 틸 기본 아이콘
-  const icon = await sharp({ create: { width: 64, height: 64, channels: 4, background: "#ffaa00" } }).png().toBuffer();
-  await page.getByLabel("파비콘 파일").setInputFiles({ name: "master.png", mimeType: "image/png", buffer: icon });
-  await page.getByRole("button", { name: "파비콘 변경" }).click();
-  await expect(page.getByText("파비콘을 변경했습니다.")).toBeVisible();
-  const uploaded = await head(page, "/admin/login");
-  expect(uploaded.icons).toEqual([expect.stringMatching(/^\/api\/branding\/admin\/favicon\?v=[0-9a-f]{12}$/)]);
-  await page.goto("/admin/settings/branding");
-  await page.getByRole("button", { name: "기본값으로 되돌리기" }).click();
-  // 확인 창에서 취소하면 올린 파비콘이 그대로 남는다
-  const confirm = page.getByRole("dialog", { name: "기본 아이콘으로 되돌리시겠습니까?" });
-  await confirm.getByRole("button", { name: "취소" }).click();
-  await expect(confirm).toHaveCount(0);
-  expect((await head(page, "/admin/login")).icons).toEqual([expect.stringMatching(/^\/api\/branding\/admin\/favicon\?v=[0-9a-f]{12}$/)]);
-  await page.goto("/admin/settings/branding");
-  await page.getByRole("button", { name: "기본값으로 되돌리기" }).click();
-  await page.getByRole("dialog", { name: "기본 아이콘으로 되돌리시겠습니까?" }).getByRole("button", { name: "되돌리기" }).click();
-  await expect(page.getByText("기본 파비콘으로 되돌렸습니다.")).toBeVisible();
-  expect((await head(page, "/admin/login")).icons).toEqual(["/branding/onq-admin-32.png"]);
 });

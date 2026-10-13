@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
+import { CursorPagination, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../components/seller/States";
 import { adminApi } from "../../_components/api";
 import { useListFilters } from "../../_components/useListFilters";
@@ -13,8 +13,8 @@ import { dayTime } from "../../_components/partners";
 import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
 
 // MA-070 로그 추적(GET /api/admin/audit-logs, 최고관리자·운영·조회 전용, 조회만). 종류·행위자·기간(KST 날짜) 필터, 파트너스 지정(?sellerId=).
-// 50건씩 이어서 불러온다. 바뀐 값은 상세(MA-071)에서만 본다.
-const PAGE = 50;
+// 10건씩 쪽을 이동한다. 바뀐 값은 상세(MA-071)에서만 본다.
+const PAGE = 10;
 type Filters = { action: string; actorType: string; from: string; to: string; sellerId: string };
 type Page = { logs: AuditRow[]; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; items: AuditRow[]; next: string | null };
@@ -32,12 +32,18 @@ function Logs() {
   const [rangeError, setRangeError] = useState(false);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [more, setMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const paging = useRef(false);
   const [toast, setToast] = useState<string | null>(null);
 
   // 조건을 빨리 바꾸면 이전 응답이 늦게 올 수 있다. 마지막으로 보낸 조건의 응답만 반영한다
   const reqId = useRef(0);
   const load = useCallback(async (f: Filters) => {
     const id = ++reqId.current;
+    paging.current = false;
+    setPage(1);
+    setCursors([undefined]);
     setMore(false);
     setState({ kind: "loading" });
     const r = await adminApi<Page>(`/api/admin/audit-logs?${query(f)}`);
@@ -56,15 +62,20 @@ function Logs() {
     setRangeError(false);
     apply({ ...empty, sellerId: applied.sellerId });
   };
-  const loadMore = async () => {
-    if (state.kind !== "ok" || !state.next) return;
-    setMore(true);
-    const id = reqId.current;
-    const r = await adminApi<Page>(`/api/admin/audit-logs?${query(applied, state.next)}`);
+  const changePage = async (target: number) => {
+    if (state.kind !== "ok" || paging.current || target === page || target < 1 || target > cursors.length + 1) return;
+    const cursor = target <= cursors.length ? cursors[target - 1] : state.next ?? undefined;
+    if (target > 1 && !cursor) return;
+    paging.current = true; setMore(true);
+    const id = ++reqId.current;
+    const r = await adminApi<Page>(`/api/admin/audit-logs?${query(applied, cursor)}`);
     if (id !== reqId.current) return;
-    setMore(false);
-    if (r.ok) setState({ kind: "ok", items: [...state.items, ...r.data.logs], next: r.data.nextCursor });
-    else setToast("더 불러오지 못했습니다. 다시 눌러 주십시오.");
+    paging.current = false; setMore(false);
+    if (r.ok) {
+      if (target > cursors.length) setCursors(c => [...c, cursor]);
+      setPage(target);
+      setState({ kind: "ok", items: r.data.logs, next: r.data.nextCursor });
+    } else setToast("목록을 불러오지 못했습니다. 다시 눌러 주십시오.");
   };
 
   const items = state.kind === "ok" ? state.items : [];
@@ -135,13 +146,14 @@ function Logs() {
                   <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                     <thead>
                       <tr>
-                        <th>기록 시각</th>
-                        <th>종류</th>
-                        <th>행위자</th>
-                        <th>대상</th>
-                        <th>쇼핑몰</th>
-                        <th>사유</th>
-                        <th>상세</th>
+                        <th scope="col">기록 시각</th>
+                        <th scope="col">종류</th>
+                        <th scope="col">행위자</th>
+                        <th scope="col">대상</th>
+                        <th scope="col">쇼핑몰</th>
+                        <th scope="col">사유</th>
+                        <th scope="col">IP · 기기</th>
+                        <th scope="col">상세</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -153,6 +165,7 @@ function Logs() {
                           <td>{targetLabel(l.targetType)}</td>
                           <td>{l.seller ? <Link href={`/admin/partners/${l.seller.id}`}>{l.seller.shopName}</Link> : "-"}</td>
                           <td className="col-text" style={{ whiteSpace: "normal", maxWidth: 280 }}>{l.reason ?? "-"}</td>
+                          <td style={{ whiteSpace: "normal", minWidth: 160, maxWidth: 280, overflowWrap: "anywhere" }}>{[l.ip, l.userAgent].filter(Boolean).join(" · ") || "-"}</td>
                           <td>
                             <Link className="btn btn-sm btn-out" href={`/admin/logs/${l.id}`}>
                               보기
@@ -164,12 +177,8 @@ function Logs() {
                   </table>
                 </div>
                 <div className="row" style={{ justifyContent: "space-between", padding: "12px 16px" }}>
-                  <span className="t-c1 c-alt">{state.next ? `${items.length}건 넘게` : `${items.length}건`}</span>
-                  {state.next && (
-                    <button className="btn btn-sm btn-out" type="button" onClick={() => void loadMore()} disabled={more}>
-                      {more ? "불러오는 중" : "더 보기"}
-                    </button>
-                  )}
+                  <span className="t-c1 c-alt">현재 쪽 {items.length}건</span>
+                  {(cursors.length > 1 || state.next) && <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={(n) => void changePage(n)} onNext={() => void changePage(page + 1)} />}
                 </div>
               </>
             ))}

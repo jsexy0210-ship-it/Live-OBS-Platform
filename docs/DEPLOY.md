@@ -2,6 +2,13 @@
 
 이슈 #137. 대상은 KakaoCloud VM `obs-web-test`(Ubuntu 24.04, kr-central-2) 한 대예요. 운영(obs-web-prod) 배포는 이 문서 범위가 아니에요.
 
+2026-10-10 KST 대표님 최종 지정 주소는 기존 운영 `on-aircue.com`, TEST `dev.on-aircue.com`입니다. `streamshop.com` 구매·전환은 보류합니다. 아래 `test.on-aircue.com`은 기존 시험 주소이며 새 TEST 주소 적용 완료를 뜻하지 않습니다. 양 호스트에서 소개 `/about`·마스터 관리자 `/admin`·파트너스 `/seller`를 연결합니다. 기존 `/` → `/seller/login` 정책은 유지합니다. 해당 서버의 `OBS_SITE_ADDRESS`와 `OBS_MONITOR_TLS_HOST`를 지정 호스트에 맞춥니다. Caddy·Compose는 환경값으로 주소를 받으므로 호스트를 코드에 고정하지 않습니다. OAuth 콜백·외부 연동 리다이렉트와 CORS 허용 출처는 서비스별로 확인한 뒤 별도로 반영합니다. 이 코드 변경에서는 DNS·실환경값·HTTPS·배포를 변경하지 않았습니다.
+
+| 대상 | 적용 전 계획과 남은 조건 |
+| --- | --- |
+| TEST `dev.on-aircue.com` | 기존 Cloudflare zone에서 dev A 레코드를 기존 TEST 공인 IP `210.109.15.68`로 DNS 전용·TTL 자동으로 등록하고 공개 DNS 해석을 확인했습니다. 기존 test·shops A 레코드는 보존했습니다. DNS 확인·러너 복구 → 인가된 서버의 `OBS_SITE_ADDRESS=dev.on-aircue.com` 반영 → 새 호스트 HTTPS 검증 순서로 진행합니다. 현재 HTTPS TCP 연결은 타임아웃이며 Caddy 서버 환경값은 아직 반영하지 않았습니다. |
+| 운영 `on-aircue.com` | 운영 대상 서버는 미확인입니다. 기존 DNS 원본을 보존하며 TEST IP를 운영 루트에 복제하거나 운영 변경·배포를 하지 않습니다. |
+
 ## 구성
 
 | 파일 | 역할 |
@@ -180,7 +187,7 @@ sudo -u obs nano /opt/obs/.env
 | `BILLING_KEY_SECRET` | 필수 | 빌링키 암호화 키(32자 이상) |
 | `BILLING_PROVIDER` | 선택 | obs-test는 비워도 돼요(아래 `OBS_TEST_MODE=1`이면 가짜 결제 공급자를 써요). 운영 빌드에서 `fake`만 넣으면 가짜 결제 공급자 생성이 막혀 카드 등록·구독 결제가 오류로 멈춰요 |
 | `OBS_TEST_MODE` | **obs-test만** | `1`이면 테스트 서버 모드예요(대표님 지시 2026-10-03). 휴대폰 본인확인은 가짜 공급자(인증번호 `000000`, 문자·과금 없음, 포트원 설정이 있어도 테스트 모드가 우선), 구독 결제는 가짜 결제 공급자(실제 돈 이동 없음, 결제 번호 `fake-pay-…`)로 처리하고, 「시험 데이터 넣기」 명령을 쓸 수 있어요. 켜지면 서버 로그에 경고 한 줄이 남고 `GET /api/health`에 `"testMode": true`가 붙어요. **운영 서버에는 절대 넣지 않아요** |
-| `OBS_SITE_ADDRESS` | 필수(HTTPS) | obs-test는 `test.on-aircue.com`. 비우면 `:80`(HTTP만, 로그인 유지 안 됨). 아래 「HTTPS」 |
+| `OBS_SITE_ADDRESS` | 필수(HTTPS) | 새 TEST는 `dev.on-aircue.com`, 운영은 `on-aircue.com`(실서버 반영 전). 기존 시험 주소는 `test.on-aircue.com`. 비우면 `:80`(HTTP만, 로그인 유지 안 됨). 아래 「HTTPS」 |
 | `BUSINESS_STATUS_PROVIDER`, `NTS_BUSINESS_STATUS_API_KEY` | 선택 | 판매자 가입 사업자 상태 점검 |
 | `MAIL_ORDER_PROVIDER`, `FTC_MAIL_ORDER_API_KEY` | 선택 | 통신판매업 점검 |
 | `PORTONE_API_SECRET`, `PORTONE_STORE_ID`, `PORTONE_IDENTITY_CHANNEL_KEY` | 선택 | 휴대폰 본인확인. 없으면 가입 본인확인은 503 「준비 중」 |
@@ -193,7 +200,7 @@ sudo -u obs nano /opt/obs/.env
 | `NICEPAY_CLIENT_KEY`, `NICEPAY_SECRET_KEY` | 선택(카드 결제 시험) | 나이스페이 **샌드박스** 키(테스트 서버 전용). 없으면 결제 시작이 「결제 준비 중」으로 거절돼요. **비밀값이에요.** 코드가 샌드박스 주소만 불러 운영 결제는 나가지 않아요. 운영 키는 결제대행사 계약 뒤 운영 서버에서 따로 정해요 |
 | `YOUTUBE_API_KEY` | 선택 | YouTube Data API 키(방송·실시간 채팅 조회, 무료 한도 안에서만). 없으면 YouTube 기능이 꺼져요. **비밀값이에요.** |
 | `GEMINI_API_KEY` | 선택 | 도우미(Gemini) API 키(월 1만 원 한도 안에서만, 한도·모델은 마스터 관리자 도우미 설정). 없으면 도우미는 「준비 중」이에요. 테스트 서버는 배포 때 GitHub Secret `GEMINI_API_KEY`에서 반영해요. **비밀값이에요.** |
-| `OBS_MONITOR_TLS_HOST` | 선택 | 서버 감시가 인증서 만료일을 볼 주소(obs-test는 `test.on-aircue.com`) |
+| `OBS_MONITOR_TLS_HOST` | 선택 | 서버 감시가 인증서 만료일을 볼 주소. 새 TEST는 `dev.on-aircue.com`, 운영은 `on-aircue.com`(실서버 반영 전) |
 | `OBS_ALERT_URL` | 선택 | 장애 알림을 받을 주소(웹훅). 알림 채널이 정해지기 전에는 비워 둬요(기록만 남아요) |
 | `OBS_MONITOR_INTERVAL_S` | 선택 | 감시 간격(기본 15초, 1~60초. 범위 밖이거나 숫자가 아니면 감시가 시작하지 않고 로그에 이유를 남겨요) |
 | `OBS_MONITOR_KEEP_DAYS` | 선택 | 일별 표본 파일(`samples-YYYYMMDD.jsonl`)을 오늘 포함 며칠 치 남길지(기본 14, 1~3650). 지난 파일은 날짜가 바뀔 때 지워요. 상태·사건·heartbeat 파일은 지우지 않아요 |
@@ -369,9 +376,13 @@ $C start obs-web-app
 | 시점 | 동작 |
 | --- | --- |
 | 배포 시작(Checkout 직후) | 도커 이미지·백업·러너 폴더 디스크의 남은 용량이 5GB 미만이면 배포를 멈추고 정리 방법을 안내합니다. |
-| 배포 성공 뒤 | 아래 기준으로 오래된 것만 정리합니다. 정리가 실패해도 배포 결과는 바뀌지 않습니다. |
+| 배포 성공 뒤 | `--check-after-deploy`로 여유 용량만 읽습니다. 자동 삭제는 없으며 용량 부족 안내가 나와도 성공한 배포 결과는 바뀌지 않습니다. |
 
-서버에 접속하지 않고 정리하려면 `Disk cleanup obs-test` 워크플로(`.github/workflows/disk-cleanup-obs-test.yml`)를 실행합니다. 먼저 `mode=list`로 지울 후보를 확인하고(결과는 실행 요약의 알림으로 남음), 확인한 뒤 `mode=apply`로 정리합니다. 배포와 같은 동시 실행 그룹이라 배포 중에는 기다립니다.
+기존 `Disk cleanup obs-test` 워크플로(`.github/workflows/disk-cleanup-obs-test.yml`)는 아래 네 범주를 처리하는 도구이며, 이번에 승인된 두 범주 수동 정리 경로로 재사용하지 않습니다. `mode=list`는 조회만 하고 `mode=apply`는 별도 범위 승인 없이 실행하지 않습니다. 배포와 같은 동시 실행 그룹을 유지합니다. MA120 수동 정리는 롤백 보호 밖 오래된 ONQ 앱 이미지와 14일 초과 runner 진단 로그만 대상으로 하며, 전용 연결·실행 인증·같은 후보 재검증 게이트를 통과하기 전에는 실행을 차단합니다. 백업·DB·롤백 이미지·공유 builder cache·checkout은 승인 대상에서 제외합니다.
+
+mode=list에서 `include_readonly_details`를 선택하면 공간·inode 사용량, 허용된 Buildx 캐시 필드, 로컬 빌드 기록의 저장소(ONQ/OTHER/UNKNOWN)·축약 리비전·컨텍스트 분류를 추가로 표시합니다. 필요한 명령이나 귀속 메타데이터가 없으면 UNKNOWN으로 남기며, 빌드 기록과 캐시 ID의 연결이 확인되지 않으면 캐시 소유권은 미확인으로 남깁니다. 이 옵션은 조회만 하며 정리 동작이나 `mode=apply`에는 영향을 주지 않습니다.
+
+`include_onq_checkout_artifact_details`는 별도의 list 전용 읽기 옵션입니다. 문서상 ONQ checkout(`/opt/obs/src`)의 `.next`와 `node_modules` 두 경로만 상태·용량을 요약하며 Buildx cache/history 조회는 하지 않습니다. 두 읽기 옵션을 함께 선택해도 이 artifact 전용 조회가 우선되어 캐시는 다시 조회하지 않습니다. 마운트·소유권·Git dirty 상태·현재 작업공간 또는 프로세스 참조를 확인할 수 없으면 UNKNOWN으로 표시합니다. 이 정보는 삭제 후보나 회수량을 확정하지 않으며 삭제 기능도 추가하지 않습니다. 현재 서버의 빌드·앱·롤백 구성이 저장소 소스와 다른지는 별도 확인 전까지 UNKNOWN입니다.
 
 정리 기준(환경변수로 조정, 서버 값은 모두 추정치이므로 실제 사용량을 본 뒤 조정):
 
@@ -568,7 +579,7 @@ scripts/ops/availability.sh off
 
 1. **가장 먼저**: GitHub 저장소 설정에서 Environment `production`을 만들고 **Required reviewers에 대표님**, 배포 브랜치는 `main`만 허용합니다. 환경이 없는 채로 워크플로가 돌면 보호 규칙 없이 환경이 자동으로 만들어지므로, 러너를 등록하기 전에 이 설정을 끝냅니다.
 2. VM·디스크·공인 IP·보안그룹: 인바운드 80·443은 모두, SSH(22)는 허용 IP만. VM은 Ubuntu 24.04, 데이터 디스크는 `/opt/obs`로 마운트.
-3. 운영 도메인(`on-aircue.com` 하위)의 A 레코드를 공인 IP로 연결. 인증서는 Caddy가 자동 발급합니다(80·443 열려 있어야 함).
+3. 지정 운영 도메인 `on-aircue.com`은 운영 대상 서버를 확인한 뒤 A 레코드를 운영 공인 IP로 연결합니다. TEST `dev.on-aircue.com`은 시험 서버에 별도로 연결합니다. TEST IP를 운영 루트에 복제하지 않습니다. 인증서는 Caddy가 자동 발급합니다(80·443 열려 있어야 함). DNS 등록과 서버 HTTPS 적용은 각각 확인합니다.
 4. `/opt/obs/.env`는 서버에서 직접 만듭니다(권한 600). 값은 **테스트와 다른 새 값**을 쓰고 저장소·채팅에 붙이지 않습니다. 이 워크플로는 비밀값을 `.env`로 옮기지 않습니다. 필수: `POSTGRES_USER`·`POSTGRES_PASSWORD`·`POSTGRES_DB`·`IDENTITY_HASH_KEY`·`BILLING_KEY_SECRET`·`OBS_SITE_ADDRESS`(운영 도메인)·**`OBS_ENVIRONMENT=prod`**. **`OBS_TEST_MODE`는 넣지 않습니다**(워크플로가 막습니다). 나이스페이는 결제대행사 운영 계약 뒤에 운영 키를 따로 정합니다(지금 코드는 샌드박스 주소만 부릅니다).
 5. **마지막**: 서버에 Docker를 설치하고 GitHub Actions runner를 **라벨 `obs-prod`**로 등록(테스트 러너 `obs-kakao`와 다른 VM). 러너가 등록되면 워크플로를 실행할 수 있게 되므로 1~4가 끝난 뒤에 합니다.
 
