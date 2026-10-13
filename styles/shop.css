@@ -529,11 +529,11 @@ body {
   position: relative;
   font-size: 13px;
 }
-/* 보드 SH-002-PC-IA: PC는 정렬 5개를 한 줄 묶음 버튼으로(관련도순 · 인기순 · 신상품 · 낮은 가격 · 높은 가격), 휴대폰은 「관련도순 ▾」 드롭다운 */
+/* 보드 SH-002-PC-IA: PC(1024 이상)는 정렬 5~6개를 한 줄 묶음 버튼으로, 그보다 좁으면(태블릿 · 휴대폰) 「관련도순 ▾」 드롭다운 — 왼쪽 열 때문에 768~1023에서는 묶음이 넘쳐서 드롭다운을 유지한다 */
 .shop-sortseg {
   display: none;
 }
-@media (min-width: 768px) {
+@media (min-width: 1024px) {
   .shop-sortmenu {
     display: none;
   }
