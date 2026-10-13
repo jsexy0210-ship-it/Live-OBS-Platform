@@ -6,7 +6,7 @@ import { Topbar, useSeller } from "../../../../../../components/seller/SellerShe
 import { ErrorState, LoadingRows, Locked, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import "./legal.css";
-import { useUnsavedGuard } from "../../../../../../lib/client/navigation";
+import { useUnsavedGuard, useUrlState } from "../../../../../../lib/client/navigation";
 import { DatePicker } from "../../../../../../components/admin-ui/DatePicker";
 
 // SA-062 법정 고지·약관(파트너스 관리자, 설정 › 쇼핑몰 설정): 쇼핑몰 이용약관·개인정보처리방침 입력.
@@ -162,7 +162,10 @@ function LegalPanel({ kind, label, slug, editable, visible }: { kind: Kind; labe
             </div>
           </FormRow>
           <FormRow label="구매자에게 공개" help={published ? "저장하면 구매자 화면에 바로 보입니다" : "꺼 두면 구매자에게는 「준비 중」으로 보입니다 · 기본 꺼짐"}>
-            <button className={`sw${published ? " on" : ""}`} type="button" role="switch" aria-checked={published} aria-label={`${label} 구매자에게 공개`} disabled={!editable} onClick={() => setPublished((v) => !v)} />
+            <label className="chk">
+              <input className="cbx" type="checkbox" checked={published} aria-label={`${label} 구매자에게 공개`} disabled={!editable} onChange={(e) => setPublished(e.target.checked)} />
+              구매자에게 공개
+            </label>
           </FormRow>
         </FormSection>
       </fieldset>
@@ -400,7 +403,8 @@ function NoticePanel({ editable, visible }: { editable: boolean; visible: boolea
 export default function LegalSettingsPage() {
   const { me, can } = useSeller();
   const editable = can("SHOP_SETTINGS");
-  const [tab, setTab] = useState<Tab>("terms");
+  const [query] = useUrlState({ section: "terms" });
+  const tab: Tab = TABS.some((t) => t.key === query.section) ? query.section as Tab : "terms";
   return (
     <>
       <Topbar crumb="설정 › 쇼핑몰 설정 › 법정 고지 · 약관" />
@@ -411,13 +415,6 @@ export default function LegalSettingsPage() {
             <span>보기만 할 수 있습니다. 변경은 대표자나 쇼핑몰 설정 권한이 있는 직원에게 요청해 주십시오.</span>
           </div>
         )}
-        <div className="tabs" role="tablist" style={{ marginBottom: 16 }}>
-          {TABS.map((t) => (
-            <button key={t.key} className={`tab${tab === t.key ? " on" : ""}`} type="button" role="tab" aria-selected={tab === t.key} onClick={() => setTab(t.key)}>
-              {t.label}
-            </button>
-          ))}
-        </div>
         {/* 두 문서를 모두 불러 두고 탭은 보이는 쪽만 바꾼다(탭을 옮겨도 입력 중인 내용이 사라지지 않게) */}
         {DOC_TABS.map((t) => (
           <LegalPanel key={t.key} kind={t.key} label={t.label} slug={me.shop.slug} editable={editable} visible={tab === t.key} />

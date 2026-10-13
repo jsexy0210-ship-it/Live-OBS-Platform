@@ -11,7 +11,7 @@ HEAD = ('<!doctype html>\n<html lang="ko">\n<head>\n<meta charset="utf-8">\n<tit
         '<div class="app c24 mob" data-theme="light" style="width: 884px">\n<div class="mobs">')
 TAIL = ('</div>\n</div>\n</x-dc>\n<script type="text/x-dc" data-dc-script data-props=\'{{"$preview":{{"width":884,"height":{h}}}}}\'>\n'
         'class Component extends DCLogic {{ renderVals() {{ return {{}}; }} }}\n</script>\n</body>\n</html>\n')
-TOP = ('<div class="top"><button class="mn" type="button" aria-label="메뉴"><i></i><i></i><i></i></button><a class="brand" href="SA-002.dc.html">'
+TOP = ('<div class="top"><button class="mn" type="button" aria-label="메뉴"><i></i><i></i><i></i></button><a class="brand" href="SA-002-M.dc.html">'
        '<span class="logo-sym" style="--brand: #fff; --brand-ink: var(--c24-gnb)"></span>ONQ <small>파트너스 관리자</small></a>'
        '<a class="bell" href="SA-130.dc.html" aria-label="알림 센터">알림<em>3</em></a></div>')
 def mph(h1, path, acts='', back=None):
@@ -73,7 +73,7 @@ body113b = (mph('문의 상세', '공지 · 문의 › 내 문의 › 상세', '
             + box(f1('답변이 도움이 됐습니까?', '<div class="row"><button class="b" type="button" style="flex: 1">도움됨</button><button class="b" type="button" style="flex: 1">아니요</button></div>'))
             + box(f1('추가 문의 보내기', '<textarea class="i w-f" placeholder="추가로 궁금한 내용을 적어 주십시오"></textarea><div class="row" style="margin-top: 8px"><button class="b" type="button">사진 첨부</button><button class="b pri" type="button" style="flex: 1">추가 문의 보내기</button></div>'))
             + kvbox('처리 이력', [('15:20', '답변 완료 · ONQ 운영팀'), ('14:40', '담당자 배정됨'), ('14:35', '문의 보냄')])
-            + kvbox('관련 공지', [('공지', '<a href="SA-110.dc.html">10월 5일(월) 서비스 점검 안내</a>')]) + '</div>')
+            + kvbox('관련 공지', [('공지', '<a href="SA-112.dc.html">10월 5일(월) 서비스 점검 안내</a>')]) + '</div>')
 bar113b = '<div class="m-bar save"><button class="b" type="button">해결됐습니다 · 종료</button></div>'
 s = (HEAD.format(title='내 문의 (휴대폰)').replace('</style>', CFM_STYLE + '</style>')
      + phone('① 상태 칩(전체 · 접수 · 답변 완료 · 종료) · 문의 종류 선택 · 행 = 카드(제목 · 종류 · 작성일 · 마지막 글 · 상태, 새 답변 배지) · 「문의하기」는 머리 버튼', 1700, body113a)

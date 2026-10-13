@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 import { PLAN_FEATURES, planFeatures } from "../../lib/server/billing/features";
 
@@ -11,7 +11,7 @@ function filesNamed(dir: string, file: string, root: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const p = join(dir, name);
     if (statSync(p).isDirectory()) return filesNamed(p, file, root);
-    return name === file ? [relative(root, p).slice(0, -(file.length + 1))] : [];
+    return name === file ? [relative(root, p).split(sep).join("/").slice(0, -(file.length + 1))] : [];
   });
 }
 const routeFiles = (dir: string) => filesNamed(dir, "route.ts", dir);
@@ -63,6 +63,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/today-tasks": "ORDER_FOLLOWUP", // 홈 「오늘 처리할 일」(SA-002): 잠금 중에도 이미 받은 주문 처리 항목은 보임
   "seller/search": "ORDER_FOLLOWUP", // 전역 검색: 이미 받은 주문·문의를 잠김·정지 중에도 찾는다
   "seller/orders/[orderId]": "ORDER_FOLLOWUP",
+  "seller/orders/[orderId]/items/[itemId]/image": "ORDER_FOLLOWUP",
   "seller/orders/[orderId]/cancel": "ORDER_FOLLOWUP",
   "seller/orders/[orderId]/deliver": "ORDER_FOLLOWUP",
   "seller/orders/[orderId]/refund": "ORDER_FOLLOWUP",
@@ -141,6 +142,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/broadcast/start": "OVERLAY",
   "seller/broadcast/end": "OVERLAY",
   "seller/overlay/token": "OVERLAY",
+  "seller/obs/pairing/challenges/[id]/approve": "OVERLAY",
+  "seller/obs/devices/[id]/revoke": "BILLING",
   "seller/overlay/address-info": "OVERLAY",
   "seller/overlay/layout": "OVERLAY",
   "seller/overlay/layout/reset": "OVERLAY",
@@ -175,6 +178,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/bulk-io/products/template": "STORE_OPERATIONS",
   "seller/bulk-io/products/preview": "STORE_OPERATIONS",
   "seller/bulk-io/products/export": "STORE_OPERATIONS",
+  "seller/bulk-io/orders/export": "ORDER_FOLLOWUP",
+  "seller/bulk-io/members/export": "STORE_OPERATIONS",
   "seller/bulk-io/jobs": "STORE_OPERATIONS",
   "seller/bulk-io/jobs/[jobId]": "STORE_OPERATIONS",
   "seller/bulk-io/jobs/[jobId]/commit": "STORE_OPERATIONS",
@@ -346,10 +351,10 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/wishlist/[productId]": "OPEN", // 찜 빼기
   "shop/[slug]/restock-alerts": "STORE_OPERATIONS", // 재입고 알림: 신청(POST)은 shopOpen으로 막음, 목록은 열림
   "shop/[slug]/restock-alerts/[productId]": "OPEN", // 신청 취소
-  "shop/[slug]/notices": "STORE_OPERATIONS", // 쇼핑몰 공지(운영 중이 아니면 404)
-  "shop/[slug]/notices/[noticeId]": "STORE_OPERATIONS",
-  "shop/[slug]/faqs": "STORE_OPERATIONS",
-  "shop/[slug]/legal/[kind]": "STORE_OPERATIONS", // 쇼핑몰 이용약관·개인정보처리방침(운영 중이 아니면 404)
+  "shop/[slug]/notices": "OPEN", // 준비 중·일시 정지에도 고객센터 공개 글을 읽는다
+  "shop/[slug]/notices/[noticeId]": "OPEN",
+  "shop/[slug]/faqs": "OPEN",
+  "shop/[slug]/legal/[kind]": "OPEN", // 준비 중·일시 정지에도 법정 고지를 읽는다
   "shop/[slug]/me/marketing-consent": "OPEN",
   "shop/[slug]/me/notification-prefs": "OPEN",
   "shop/[slug]/me/withdraw": "OPEN",
@@ -369,7 +374,7 @@ const SHOP_PAGES: Record<string, "STORE_OPERATIONS" | "OPEN"> = {
   "shop/[slug]": "STORE_OPERATIONS", // 쇼핑몰 홈(홈 배너·이벤트 팝업)
   "shop/[slug]/signup": "STORE_OPERATIONS",
   "shop/[slug]/reviews": "OPEN", // SH-029 내 리뷰(받은 답글·숨김 사유는 잠긴 쇼핑몰에서도)
-  "shop/[slug]/reviews/write": "STORE_OPERATIONS", // SH-029 리뷰 쓰기
+  "shop/[slug]/reviews/write": "OPEN", // SH-029 예전 주소 → 내 리뷰 한 화면으로 보내기만(쓰기는 API가 막음)
   "shop/[slug]/coupons": "OPEN", // SH-028 내 쿠폰함: 잠긴 쇼핑몰도 받은 쿠폰은 읽기 전용(받기는 API에서 막음)
   "shop/[slug]/products": "STORE_OPERATIONS", // SH-002 전체 상품(상품 격자)
   "shop/[slug]/search": "STORE_OPERATIONS", // SH-002 상품 검색
@@ -386,10 +391,10 @@ const SHOP_PAGES: Record<string, "STORE_OPERATIONS" | "OPEN"> = {
   "shop/[slug]/orders/[orderId]": "OPEN", // SH-007 주문 완료·상세: 기존 주문 조회는 잠긴 쇼핑몰에서도 열림(API와 같은 기준)
   "shop/[slug]/wishlist": "OPEN", // SH-034 찜: 목록·빼기는 잠긴 쇼핑몰에서도 열림(찜하기만 API가 막음)
   "shop/[slug]/orders": "OPEN", // 주문 조회 준비 중 안내(기능 없음)
-  "shop/[slug]/terms": "STORE_OPERATIONS", // 쇼핑몰 이용약관: shopOpen으로 막고, 막히면 안내 화면
-  "shop/[slug]/privacy": "STORE_OPERATIONS", // 쇼핑몰 개인정보처리방침(같은 기준)
-  "shop/[slug]/help": "STORE_OPERATIONS", // SH-030 고객센터: 공지·FAQ API가 운영 중인 쇼핑몰만 열어 줌 → shopOpen으로 막고, 막히면 안내 화면
-  "shop/[slug]/help/notices/[noticeId]": "STORE_OPERATIONS", // 공지 상세(같은 기준)
+  "shop/[slug]/terms": "OPEN", // SH-040: 준비 중·일시 정지에도 법정 고지 열람
+  "shop/[slug]/privacy": "OPEN",
+  "shop/[slug]/help": "OPEN", // SH-040: 준비 중·일시 정지에도 고객센터 열람
+  "shop/[slug]/help/notices/[noticeId]": "OPEN",
   "shop/[slug]/me/notifications": "OPEN", // SH-025 알림 설정: 마케팅 수신 철회는 잠긴 쇼핑몰에서도 연다(API me/marketing-consent와 같은 기준)
 };
 

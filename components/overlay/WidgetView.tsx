@@ -1,7 +1,7 @@
 "use client";
 
 import "../../styles/overlay-widgets.css";
-import type { CSSProperties } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { type LiveData, type PropValue, type Widget } from "./layout";
 
 // 위젯 한 개를 그린다(오버레이 화면과 편집기 미리보기가 같은 그림을 쓴다). 위치·크기는 부모(1080×1920 또는 1920×1080 무대) 대비 %.
@@ -25,7 +25,57 @@ export function fmtTimer(sec: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-export function WidgetView({ widget: wd, data, now, editing }: { widget: Widget; data: LiveData; now: number; editing?: boolean }) {
+const hitDateFormat = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", month: "2-digit", day: "2-digit" });
+const hitDate = (iso?: string): string | null => {
+  if (!iso || Number.isNaN(Date.parse(iso))) return null;
+  const parts = hitDateFormat.formatToParts(new Date(iso));
+  return `${parts.find((p) => p.type === "month")?.value}.${parts.find((p) => p.type === "day")?.value}`;
+};
+
+function HallTicker({ hits, freshHitIds, enabled, flowSec }: { hits: LiveData["hits"]; freshHitIds?: string[]; enabled: boolean; flowSec?: number }) {
+  const viewport = useRef<HTMLDivElement>(null);
+  const cycle = useRef<HTMLDivElement>(null);
+  const [overflows, setOverflows] = useState(false);
+  useLayoutEffect(() => {
+    const view = viewport.current;
+    const content = cycle.current;
+    if (!view || !content) return;
+    const measure = () => setOverflows(content.getBoundingClientRect().height > view.getBoundingClientRect().height + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(view);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [hits.length]);
+  const scrolling = enabled && overflows;
+  const renderRows = (duplicate: boolean) => hits.map((h, i) => {
+    const date = hitDate(h.createdAt);
+    return <div key={`${h.id}-${i}`} className={`ow-hall-row${freshHitIds?.includes(h.id) ? " ow-hit-new" : ""}`} aria-hidden={duplicate || undefined} data-fresh={freshHitIds?.includes(h.id) && !duplicate ? "1" : undefined}>
+      <span className="ow-hall-rank">{i + 2}</span>
+      {date && <time>{date}</time>}
+      <span className="ow-hall-name">{h.nickname}</span><span className="ow-hall-card">{h.cardName}</span>
+    </div>;
+  });
+  return <div className="ow-hall-ticker" ref={viewport}>
+    <div className={`ow-hall-track${scrolling ? "" : " ow-hall-static"}`} style={scrolling ? { animationDuration: `${flowSec ?? hits.length * 3.2}s` } : undefined}>
+      <div ref={cycle}>{renderRows(false)}</div>
+      {scrolling && <div aria-hidden="true">{renderRows(true)}</div>}
+    </div>
+  </div>;
+}
+
+export function fmtEventTimer(sec: number): string {
+  const s = Math.max(0, Math.ceil(sec));
+  return `${Math.floor(s / 3600)}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+}
+
+const kstDay = (ms: number) => Math.floor(Date.parse(new Date(ms + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)) / 86_400_000);
+const kstDateTime = (ms: number) => {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(ms)).map(({ type, value }) => [type, value]));
+  return `${parts.year}.${parts.month}.${parts.day} ${parts.hour}:${parts.minute}`;
+};
+
+export function WidgetView({ widget: wd, data, now, editing, landscape = false, stateReceivedAt = now }: { widget: Widget; data: LiveData; now: number; editing?: boolean; landscape?: boolean; stateReceivedAt?: number }) {
   const p = wd.props;
   const style: Record<string, string | number | undefined> = {
     left: `${wd.x}%`,
@@ -45,6 +95,7 @@ export function WidgetView({ widget: wd, data, now, editing }: { widget: Widget;
     "--w-fw": num(p, "fontWeight"),
     "--w-appear": num(p, "appearSec") === undefined ? undefined : `${num(p, "appearSec")}s`,
     "--w-flow": num(p, "flowSec") === undefined ? undefined : `${num(p, "flowSec")}s`,
+    "--w-event-scale": wd.type === "EVENT_CARD" ? Math.min(1, wd.h / (landscape ? 14 : 18)) : undefined,
     "--w-q-open-title": str(p, "openTitleColor"),
     "--w-q-open-nick": str(p, "openNicknameColor"),
     "--w-q-open-prod": str(p, "openProductColor"),
@@ -58,7 +109,7 @@ export function WidgetView({ widget: wd, data, now, editing }: { widget: Widget;
   };
   for (const k of Object.keys(style)) if (style[k] === undefined) delete style[k];
   const appear = typeof p.appear === "string" && p.appear !== "none" && !editing ? ` ow-ap-${p.appear}` : "";
-  const cls = `ow ow-${wd.type.toLowerCase().replace(/_/g, "-")}${p.glow ? " ow-glow" : ""}${appear}`;
+  let cls = `ow ow-${wd.type.toLowerCase().replace(/_/g, "-")}${p.glow ? " ow-glow" : ""}${wd.type === "CURRENT_ORDER" && !data.live && !data.opening ? " ow-calm-card" : ""}${appear}`;
   const title = str(p, "title");
   const rows = Math.max(1, Math.min(10, num(p, "rows") ?? 5));
 
@@ -76,6 +127,11 @@ export function WidgetView({ widget: wd, data, now, editing }: { widget: Widget;
             {o.productLabel} ×{o.quantity}
           </span>
         </>
+      ) : !data.live ? (
+        <span className="ow-calm">
+          <b>잠시 후 방송을 시작해요</b>
+          <span>{data.shop?.url ? `주문은 ${data.shop.url.replace(/^https?:\/\//, "")}에서 할 수 있어요` : "쇼핑몰에서 주문할 수 있어요"}</span>
+        </span>
       ) : (
         <span className="ow-empty">{title ?? "현재 주문"}을 기다리고 있어요</span>
       );
@@ -109,22 +165,21 @@ export function WidgetView({ widget: wd, data, now, editing }: { widget: Widget;
     }
     case "HALL_OF_FAME": {
       const list = data.hits.slice(0, rows);
+      const [first, ...rest] = list;
+      const firstDate = hitDate(first?.createdAt);
       body = (
         <>
-          <span className="ow-h">{title ?? "명예의 전당"}</span>
-          {list.length === 0 ? (
+          <span className="ow-h ow-hall-heading">{title ?? "명예의 전당"}<small>최근 당첨 순</small></span>
+          {!first ? (
             <span className="ow-empty">아직 HIT 카드가 없어요</span>
           ) : (
-            <ol className="ow-list">
-              {list.map((h) => (
-                <li key={h.id} className={`ow-row${data.freshHitIds?.includes(h.id) ? " ow-hit-new" : ""}`} data-fresh={data.freshHitIds?.includes(h.id) ? "1" : undefined}>
-                  <span className="ow-tx">
-                    <span className="ow-nm2">{h.cardName}</span>
-                    <span className="ow-pd2">{h.nickname}</span>
-                  </span>
-                </li>
-              ))}
-            </ol>
+            <>
+              <div className={`ow-hall-first${data.freshHitIds?.includes(first.id) ? " ow-hit-new" : ""}`} data-fresh={data.freshHitIds?.includes(first.id) ? "1" : undefined}>
+                <span className="ow-hall-rank">1</span>
+                <span className="ow-hall-person"><span className="ow-hall-line"><span className="ow-hall-name">{first.nickname}</span>{firstDate && <time>{firstDate}</time>}</span><span className="ow-hall-card">{first.cardName}</span></span>
+              </div>
+              {rest.length > 0 && <HallTicker hits={rest} freshHitIds={data.freshHitIds} enabled={p.ticker !== false} flowSec={num(p, "flowSec")} />}
+            </>
           )}
         </>
       );
@@ -149,14 +204,17 @@ export function WidgetView({ widget: wd, data, now, editing }: { widget: Widget;
     case "OPEN_TIMER": {
       const o = data.opening;
       let left: number | null = null;
-      if (o?.timerSeconds) {
+      if (o?.timerSeconds && o.timerSeconds > 0) {
         const startedMs = o.openingStartedAt ? Date.parse(o.openingStartedAt) : NaN;
         left = Number.isFinite(startedMs) ? o.timerSeconds - (now - startedMs) / 1000 : o.timerSeconds;
       }
+      const progress = left === null || !o?.timerSeconds ? 0 : Math.max(0, Math.min(100, (left / o.timerSeconds) * 100));
+      if (left !== null && left > 0 && left <= 10) cls += " ow-timer-urgent";
       body = (
         <>
-          <span className="ow-h">{title ?? "개봉까지"}</span>
+          <span className="ow-timer-label">{title ?? "오픈까지"}</span>
           <span className="ow-timer">{left === null ? "--:--" : fmtTimer(left)}</span>
+          <span className="ow-timer-bar" role="progressbar" aria-label="오픈까지 남은 시간" aria-valuemin={0} aria-valuemax={100} aria-valuenow={left === null ? undefined : Math.round(progress)}><i style={{ width: `${progress}%` }} /></span>
         </>
       );
       break;
@@ -164,20 +222,37 @@ export function WidgetView({ widget: wd, data, now, editing }: { widget: Widget;
     case "EVENT_CARD": {
       const e = data.eventCard;
       if (!e) break;
+      const remainingSeconds = editing
+        ? e.remainingSeconds
+        : Math.max(0, e.remainingSeconds - Math.floor(Math.max(0, now - stateReceivedAt) / 1000));
+      const active = remainingSeconds > 0;
+      const endAt = Date.parse(e.endsAt);
+      const daysLeft = Math.max(0, kstDay(endAt - 1) - kstDay(now));
+      const urgency = remainingSeconds < 3600 ? "soon" : daysLeft === 0 ? "today" : "days";
+      const badge = urgency === "soon" ? "곧 끝나요" : daysLeft === 0 ? "오늘 마감" : `${daysLeft}일 남음`;
+      const endDate = kstDateTime(endAt - 1);
       body = (
         <>
-          <span className="ow-h">{title ?? "이벤트 할인"}</span>
-          <span className="ow-ev-name">{e.productName}</span>
+          <span className="ow-ev-main">
+            {active && <span className="ow-ev-sub ow-ev-sub-port">{title ?? "지금 방송 상품 · 이벤트 할인"}</span>}
+            {active && <span className="ow-ev-sub ow-ev-sub-land">{title ?? `이벤트 할인 · ${daysLeft === 1 ? "내일까지" : badge}`}</span>}
+            <span className="ow-ev-name">{e.productName}</span>
+            {active && <s className="ow-ev-was">정가 {e.price.toLocaleString("ko-KR")}원</s>}
+          </span>
           <span className="ow-ev-price">
-            {e.discountRate !== null && <b className="ow-ev-rate">{e.discountRate}%</b>}
-            <b className="ow-ev-now">{e.discountedPrice.toLocaleString("ko-KR")}원</b>
-            <s className="ow-ev-was">{e.price.toLocaleString("ko-KR")}원</s>
+            {active && e.discountRate !== null && <b className="ow-ev-rate">{e.discountRate}%</b>}
+            <b className="ow-ev-now">{(active ? e.discountedPrice : e.price).toLocaleString("ko-KR")}원</b>
           </span>
-          <span className="ow-ev-meta">
-            {e.badge && <span className="ow-grade">{e.badge === "오늘 마감" ? "오늘 마감이에요" : e.badge}</span>}
-            {e.remainingLabel && <span>{e.remainingLabel}</span>}
-            {e.moreCount > 0 && <span>{e.moreCount}개 더 있어요</span>}
-          </span>
+          {active && (
+            <span className={`ow-ev-meta ${urgency}`}>
+              <span className={`ow-ev-clock ${urgency}`}>
+                <span className="ow-ev-badge">{badge}</span>
+                <b className="ow-ev-timer">{fmtEventTimer(remainingSeconds)}</b>
+                <span className="ow-ev-countdown-suffix">남았어요</span>
+              </span>
+              <span className="ow-ev-remaining">{endDate}까지</span>
+            </span>
+          )}
         </>
       );
       break;

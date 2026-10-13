@@ -151,8 +151,8 @@ describe("에디터 HTML 저장", () => {
     await expect(setProductDetail(db, other.ctx, p.id, { html: "<p>x</p>" })).rejects.toMatchObject({ status: 404 });
     await expect(getProductDetail(db, other.ctx, p.id)).rejects.toMatchObject({ status: 404 });
     await expect(setProductDetail(db, { ...s.ctx, isOwner: false, permissions: [] }, p.id, { html: "<p>x</p>" })).rejects.toBeDefined();
-    await expect(setProductDetail(db, { ...s.ctx, readOnly: true }, p.id, { html: "<p>x</p>" })).rejects.toMatchObject({ status: 403 });
-    expect((await getProductDetail(db, { ...s.ctx, readOnly: true }, p.id)).html).toBe("<p>비공개 글</p>");
+    await expect(setProductDetail(db, { ...s.ctx, readOnly: true, impersonationScopes: ["ORDERS", "MEMBERS"] }, p.id, { html: "<p>x</p>" })).rejects.toMatchObject({ status: 403 });
+    expect((await getProductDetail(db, { ...s.ctx, readOnly: true, impersonationScopes: ["ORDERS", "MEMBERS"] }, p.id)).html).toBe("<p>비공개 글</p>");
     expect((await stored(p.id)).html).toBe("<p>비공개 글</p>");
   });
 });

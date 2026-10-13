@@ -2,6 +2,13 @@
 
 | 날짜(KST) | 캔버스 버전 | 내용 | 커밋/PR |
 |---|---|---|---|
+| 2026-10-13 KST | v338~v345 체인 병합 (#1008) + SA-055 Git 변경 | 열린 디자인 PR 누적 체인(#974 · #978 · #983 · #986 · #995 · #1002 · #1004 · #1005)을 #1008 하나로 최신 main에 병합. 충돌 24파일: SA 모바일 11장 · 생성 스크립트 4개는 main(2026-10-07 재기반 · TSX 전환)이 정본, MA-023 · MA-041 · MA-051 · PF-008 · SH-011-2는 v339 · v338 · v341 변경을 main 위에 재적용, PF-004는 Git 2026-10-07 문구 유지 + 「평균 첫 답변 4시간」 삭제, lop.css는 인증 카드(v342) + 페이지 이동 둘 다 유지, SCREEN_MAP · UI_STATUS는 행별 합침. SA-060 한 줄 소개 placeholder (40자)(v340) 포함. SA-055 방송 상세: 정보 표 첫 행 「방송 제목」 · 주문 표에 다른 쇼핑몰 주문 행(「다른 쇼핑몰」 배지 · 금액 「—」) 추가(대표님 지시 2026-10-13, Git 변경 정본 · 캔버스 미반영). 캔버스 표시 `1791793563-13ea`는 내용상 v345와 동일(DESIGN_SOURCE) | PR #1008 |
+| 2026-10-09 KST | StreamShop PF-001 TSX FINAL | 대표님 main 반영 승인과 후보 4aa9bb7 독립 3폭·정상/빈/오류 화면 검수로 FINAL 동기화. owner 관련7시험 PASS. 픽셀 단위 미리보기·실제 reduced-motion·전역 브랜드 교체·배포 미검증은 별도 유지 | 이번 통합 |
+| 2026-10-07 KST | StreamShop PF-001 (Git 변경 정본) | Streamlabs 소개 흐름을 스트림샵 컬러·심볼·판매 기능으로 재구성. TSX/CSS 및 /landing 미리보기 추가. 기존 HTML 보존, 캔버스·브라우저 렌더 동기화 미확인 | 이번 변경 |
+| 2026-10-07 KST | SA 모바일 11개 React 정본 전환 | d8873227 HTML의 22상태를 실제 JSX로 전환. 기존 tokens/lop/Wanted Sans 및 Next preview 공유. HTML과 Artifact는 이행·읽기 참조, 원 Artifact 동기화 미완료. PC 정본·production 기능 변경 없음 | 후속 PR |
+| 2026-10-07 KST | 원 v340~v345 모바일 변형 선별 재기반 | SA 모바일 11개 보드만 최신 main에 추가. 홈 링크 SA-002-M 통일, 기본 FINAL 행/서버 60·160자 보존, SA-060 40자 및 MA/PF/SH 변경 제외. 원 PNG는 과거 산출물. 원 런타임 22상태 측정 및 기간 버튼 잘림 최소 수정·저장소 정적 렌더 확인. 원 Artifact 새 CSS 동기화 확인은 미완료 | 이번 PR |
+| 2026-10-07 | v331 (표현 형식 전환 · canvas version unchanged) | PF-003 정본을 React TSX로 전환. 기존 HTML/canvas 참조는 호환용 legacy로 보존하고 Next.js 개발 전용 미리보기를 추가 | 이번 PR |
+| 2026-10-07 06:26 | v329 (정본 소스 문구 보완) | PF-004 가입 FAQ의 근거 없는 2영업일 안내를 제거하고, 가입 코드의 자동 승인·수동 검토 분기로 수정. 자동 승인 실행 경로 확인; 캔버스 버전은 갱신하지 않음 | 이번 PR |
 | 2026-10-05 22:20 | v256 (`1791205180-4bb0`) | 최초 이관: `project/` 전체(보드 340장 · 인덱스 · 토큰 · 공통 CSS · ibgen) · SCREEN_MAP 189개 IA 화면 등록(후속 193개) · 상태 FINAL 27 / DRAFT 147 / BLOCKED 1 / MISSING 13(메뉴 그룹) / SUPERSEDED 1 | PR: design: Claude Artifact 실제 소스를 Git 디자인 정본으로 이관 |
 | 2026-10-05 23:00 | v256 (`1791205180-4bb0`) | MASTER 결정 반영: 고아 파일 SA-045.dc.html 제외(SA-049로 이동된 보드가 정본) · MA-086·MA-087·SA-081·SA-082 IA 등재 · SA-070 폐지 표시 · SCREEN_MAP 193개(FINAL 28 / DRAFT 150 / MISSING 14 / SUPERSEDED 1) | PR #599 |
 | 2026-10-05 23:18 | v257 (`1791209877-f282`) | MASTER가 캔버스 고아 파일 project/SA-045.dc.html 삭제(canvas.json 변경 없음) — 저장소와 캔버스 일치, 소스 변경 없음 | PR #599 |

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useConfirm } from "../admin-ui/ConfirmDialog";
 import { api, failMessage } from "../seller/api";
 import { textLength } from "../seller/format";
+import { formatDate } from "../../lib/client/format";
 import MarketingConsentDoc, { MARKETING_DOC_VERSION } from "./MarketingConsentDoc";
 import ShopState from "./ShopState";
 import TestModeNotice from "../seller/TestModeNotice";
@@ -35,13 +36,10 @@ type SignupBody = {
   broadcastNickname: string;
 };
 
-// rejoinAvailableAt(ISO) → 「11월 2일」(KST)
+// 재가입 가능 날짜는 구매자 공용 KST 연월일 서식을 쓴다.
 const kstDate = (iso: unknown): string | null => {
   if (typeof iso !== "string") return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric" }).formatToParts(d).map((x) => [x.type, x.value]));
-  return `${p.month}월 ${p.day}일`;
+  return formatDate(iso) || null;
 };
 
 // 가입 필수 동의 문서 버전과 재가입 제한 기간(서버 페이지가 lib/server/buyers/consent.ts·rejoin.ts에서 넘긴다).
@@ -96,7 +94,7 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
   // 본인확인
   const [name, setName] = useState("");
   const [birth, setBirth] = useState("");
-  const [gender, setGender] = useState<"M" | "F" | null>(null);
+  const [gender, setGender] = useState<"M" | "F" | null>("M");
   const [foreigner, setForeigner] = useState(false);
   const [carrier, setCarrier] = useState<Carrier | "">("");
   const [phone, setPhone] = useState("");
@@ -557,7 +555,7 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
             <label htmlFor="idv-carrier">통신사</label>
             <select id="idv-carrier" className="inp" value={carrier} disabled={locked} onChange={(e) => setCarrier(e.target.value as Carrier)}>
               <option value="" disabled>
-                통신사를 골라 주세요
+                선택
               </option>
               {CARRIERS.map((c) => (
                 <option key={c.value} value={c.value}>
@@ -717,7 +715,7 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
       <form className="col signup-sec" aria-label="계정 정보" onSubmit={signup} noValidate>
         <fieldset className={`col signup-fs${step !== "verified" ? " is-waiting" : ""}`} disabled={step !== "verified" || busy || unconfirmed !== null}>
           <div className="fld">
-            <label htmlFor="acc-id">아이디 (이메일)</label>
+            <label htmlFor="acc-id">이메일</label>
             <input
               id="acc-id"
               className={`inp${fieldErrors.loginId ? " is-error" : ""}`}

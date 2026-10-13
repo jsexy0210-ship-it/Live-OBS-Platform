@@ -374,7 +374,7 @@ export function PartnerOrdersTab({ sellerId }: { sellerId: string }) {
                   </tbody>
                 </table>
               </div>
-              <Pagination page={d.page} pageCount={Math.max(1, Math.ceil(d.total / d.pageSize))} onChange={setPage} />
+              <Pagination page={d.page} pageCount={Math.ceil(d.total / d.pageSize)} onChange={setPage} />
             </>
           ))}
       </div>

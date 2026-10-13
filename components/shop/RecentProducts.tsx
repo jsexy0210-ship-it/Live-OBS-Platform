@@ -7,7 +7,7 @@ import { ProductGrid, type ProductCardData } from "./ProductCard";
 const key = (slug: string) => `shop-recent-products:${slug}`;
 const MAX = 10;
 
-function read(slug: string): ProductCardData[] {
+export function readRecent(slug: string): ProductCardData[] {
   try {
     const v = JSON.parse(window.localStorage.getItem(key(slug)) ?? "[]") as unknown;
     return Array.isArray(v) ? (v as ProductCardData[]).filter((x) => x && typeof x.id === "string" && typeof x.name === "string") : [];
@@ -22,7 +22,7 @@ export default function RecentProducts({ slug, current }: { slug: string; curren
   const { id, name, price, salePrice, soldOut, thumbnailUrl } = current;
   const card = useMemo<ProductCardData>(() => ({ id, name, price, salePrice, soldOut, thumbnailUrl }), [id, name, price, salePrice, soldOut, thumbnailUrl]);
   useEffect(() => {
-    const prev = read(slug);
+    const prev = readRecent(slug);
     const next = [card, ...prev.filter((x) => x.id !== card.id)].slice(0, MAX);
     try {
       window.localStorage.setItem(key(slug), JSON.stringify(next));

@@ -10,7 +10,7 @@ export async function GET(req: Request) {
   try {
     const admin = await requireAdmin(prisma, sessionToken(req, "admin"), "platform.read");
     const url = new URL(req.url);
-    const r = await listAdminNotices(prisma, admin, { status: url.searchParams.get("status"), cursor: url.searchParams.get("cursor") });
+    const r = await listAdminNotices(prisma, admin, { status: url.searchParams.get("status"), cursor: url.searchParams.get("cursor"), category: url.searchParams.get("category"), q: url.searchParams.get("q") });
     if (!r.ok) return NextResponse.json({ error: r.reason, message: PLATFORM_NOTICE_MESSAGES[r.reason] }, { status: 400 });
     return NextResponse.json({ items: r.items, nextCursor: r.nextCursor }, { headers: { "cache-control": "no-store" } });
   } catch (e) {

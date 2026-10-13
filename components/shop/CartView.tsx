@@ -362,7 +362,7 @@ export default function CartView({ slug }: { slug: string }) {
                 <span>{quote.kind === "ok" ? won(quote.shippingFee) : quote.kind === "error" ? "주문서에서 알려 드려요" : "계산하고 있어요"}</span>
               </div>
               <div className="cart-row cart-total">
-                <span>결제 예정 금액</span>
+                <span>최종 금액</span>
                 <b>{quote.kind === "ok" ? won(quote.total) : "—"}</b>
               </div>
             </>

@@ -77,7 +77,7 @@ export function eventView(e: ProductEvent | null, price: number, now: Date) {
 
 export type EventFailure = "invalid_event" | "invalid_event_period" | "event_price_too_low";
 
-function parseEvent(raw: unknown, now: Date): ProductEvent | EventFailure {
+export function parseEvent(raw: unknown, now: Date): ProductEvent | EventFailure {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "invalid_event";
   const b = raw as Record<string, unknown>;
   const type = b.type === "RATE" || b.type === "AMOUNT" ? b.type : null;

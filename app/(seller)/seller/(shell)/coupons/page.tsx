@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { DateRangePicker, ListHead, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
+import { DateRangePicker, ListHead, PageHead, Pagination, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { listDefaults } from "../../../../../lib/client/filterDefaults";
 import { useListFilters } from "../../../../(admin)/admin/_components/useListFilters";
 import { Topbar } from "../../../../../components/seller/SellerShell";
@@ -157,6 +157,7 @@ export default function CouponsPage() {
   const [deleting, setDeleting] = useState<Coupon | null>(null);
   const [busy, setBusy] = useState(false);
   const [picked, setPicked] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
   const [bulkStopping, setBulkStopping] = useState(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
 
@@ -170,6 +171,8 @@ export default function CouponsPage() {
     void load();
   }, [load]);
 
+  useEffect(() => setPage(1), [applied]);
+
   const data = state.kind === "ok" ? state.data : null;
   const list = data?.coupons ?? [];
   const states = applied.state.split(",").filter((x): x is Status => (STATES as string[]).includes(x));
@@ -182,6 +185,10 @@ export default function CouponsPage() {
       (!applied.to || dayKst(c.startsAt) <= applied.to) &&
       (!applied.from || dayKst(c.endsAt) >= applied.from),
   );
+  const pageCount = Math.ceil(shown.length / 10);
+  const currentPage = Math.min(page, pageCount || 1);
+  const pageItems = shown.slice((currentPage - 1) * 10, currentPage * 10);
+  useEffect(() => { if (state.kind === "ok") setPage(p => Math.min(p, pageCount || 1)); }, [state.kind, pageCount]);
   const editable = !!data?.canEdit;
   const filtered = applied.q !== "" || applied.state !== "" || applied.method !== "" || applied.from !== DEFAULTS.from || applied.to !== DEFAULTS.to;
   const toggleState = (k: "all" | Status) => {
@@ -266,8 +273,8 @@ export default function CouponsPage() {
         )}
         {data && list.length > 0 && (
           <SearchBox
-            onSearch={() => apply({ ...cond, q: cond.q.trim() })}
-            onReset={reset}
+            onSearch={() => { setPage(1); apply({ ...cond, q: cond.q.trim() }); }}
+            onReset={() => { setPage(1); reset(); }}
           >
             <SearchRow label="검색어" label2="상태" children2={
               <span className="row" style={{ gap: 16, flexWrap: "wrap" }}>
@@ -357,7 +364,7 @@ export default function CouponsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {shown.map((c) => (
+                    {pageItems.map((c) => (
                       <tr key={c.id} data-testid="coupon-row" className={c.status === "ended" ? "faded" : undefined}>
                         {editable && (
                           <td data-card="check">
@@ -425,6 +432,7 @@ export default function CouponsPage() {
                   </tbody>
                 </table>
               </div>
+              {pageCount > 1 && <Pagination page={currentPage} pageCount={pageCount} onChange={setPage} label="쿠폰 페이지 이동" />}
             </>
           )}
         </section>

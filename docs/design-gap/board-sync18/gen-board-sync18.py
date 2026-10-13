@@ -3,7 +3,6 @@
 SA-021-M(전체 주문) · SA-022-M(주문 상세) · SA-023-M(취소 · 환불 요청) · SA-025-M(배송) 신설 — 틀은 SA-FRAME-M · 목록 카드는 SA-011-M(DS-TABLE-CARD) 규격 그대로,
 내용(칩 · 검색 조건 · 열 · 상태 · 관리 버튼 · 문구)은 각 PC 정본(SA-021-OPS v287 · SA-022 v337 · SA-023 v316 · SA-025 v336)에서 가져온다. 새 정보 · 새 CTA 없음.
 휴대폰 규칙: 상단 띠(메뉴 · 로고 · 알림) · 제목 줄 · 검색 조건은 접힘(fold) → 펼치면 1열 · 행 = 카드(제목 · 상태 · 「항목명 : 값」 · 관리 버튼) · 선택하면 아래 띠에 일괄 처리 · 상세 화면은 ← 버튼 + 1열 kv.
-⑤ SA-060 한 줄 소개 한도 60 → 40(서버 shopTagline 40자, 화면-설정 (4) 확인).
 사용: gen-board-sync18.py <아티팩트 사본 project/ 디렉터리> <출력 디렉터리>"""
 import sys, pathlib
 src, out = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
@@ -19,7 +18,7 @@ HEAD = ('<!doctype html>\n<html lang="ko">\n<head>\n<meta charset="utf-8">\n<tit
         '<div class="app c24 mob" data-theme="light" style="width: 884px">\n<div class="mobs">')
 TAIL = ('</div>\n</div>\n</x-dc>\n<script type="text/x-dc" data-dc-script data-props=\'{{"$preview":{{"width":884,"height":{h}}}}}\'>\n'
         'class Component extends DCLogic {{ renderVals() {{ return {{}}; }} }}\n</script>\n</body>\n</html>\n')
-TOP = ('<div class="top"><button class="mn" type="button" aria-label="메뉴"><i></i><i></i><i></i></button><a class="brand" href="SA-002.dc.html">'
+TOP = ('<div class="top"><button class="mn" type="button" aria-label="메뉴"><i></i><i></i><i></i></button><a class="brand" href="SA-002-M.dc.html">'
        '<span class="logo-sym" style="--brand: #fff; --brand-ink: var(--c24-gnb)"></span>ONQ <small>파트너스 관리자</small></a>'
        '<a class="bell" href="SA-130.dc.html" aria-label="알림 센터">알림<em>3</em></a></div>')
 def mph(h1, path, acts='', back=None):
@@ -69,7 +68,7 @@ body21b = (mph('전체 주문', '주문 › 전체 주문', ACTS21) + '<div clas
            + f1('방송', sel(['전체 방송', '10.02 스타라이트 · 문라이트 브레이크', '10.01 151 케이스 오픈']))
            + f1('접수 기간', PRE) + SBTN + '</div></div>')
 CUR = 'SA-021-M'; _ph.clear()
-s = (HEAD.format(title='전체 주문 (휴대폰)') + phone('① 칩으로 거르기(홈 「오늘 처리할 일」과 같은 주소) · 상세 검색 접힘 · 행 = 카드(상품 · 주문번호 · 구매자 · 상태 · 금액 · 결제 · 경과) · 관리 버튼은 상태별(입금 확인 · 환불 처리 · 배송 준비 · 송장 입력) + 상세 + ··· · 선택하면 아래 띠에 일괄 처리', 2500, body21a, bar21)
+s = (HEAD.format(title='전체 주문 (휴대폰)').replace('</style>', '.c24.mob .f1 .pre .b{min-width:0}</style>') + phone('① 칩으로 거르기(홈 「오늘 처리할 일」과 같은 주소) · 상세 검색 접힘 · 행 = 카드(상품 · 주문번호 · 구매자 · 상태 · 금액 · 결제 · 경과) · 관리 버튼은 상태별(입금 확인 · 환불 처리 · 배송 준비 · 송장 입력) + 상세 + ··· · 선택하면 아래 띠에 일괄 처리', 2500, body21a, bar21)
      + phone('② 상세 검색 펼침 · 1열 · 「검색 · 초기화」는 폭 전체 · 조건은 주소에 보존(Back · 새로고침)', 2500, body21b) + TAIL.format(h=H.get(CUR + '/preview', 2550)))
 wr('SA-021-M.dc.html', s)
 
@@ -141,12 +140,6 @@ body25b = (mph('배송', '주문 › 배송 · 송장 › 배송', ACTS25) + '<d
            + f1('검색어', '<div class="row">' + sel(['닉네임', '받는 분', '송장번호', '상품명'], 'i w-s') + '<input class="i " type="text" value="" placeholder="검색어 입력"></div>')
            + f1('기타', '<div class="cks"><label class="ck"><input type="checkbox" name="r">도서산간만</label></div>') + SBTN + '</div></div>')
 CUR = 'SA-025-M'; _ph.clear()
-s = (HEAD.format(title='배송 (휴대폰)') + phone('① 탭(배송 준비 / 송장 발급 / 출력 · 추적) · 요약 2×2 · 검색 조건 접힘 · 행 = 카드(주문자 · 상품 · 받는 분 · 주소 · 택배사 · 송장번호 입력) · 「발송 처리」 · 선택하면 아래 띠에 택배사 일괄 지정 · 송장 일괄 입력 · 선택 발송', 2700, body25a, bar25)
+s = (HEAD.format(title='배송 (휴대폰)').replace('</style>', '.c24.mob .f1 .pre .b{min-width:0}</style>') + phone('① 탭(배송 준비 / 송장 발급 / 출력 · 추적) · 요약 2×2 · 검색 조건 접힘 · 행 = 카드(주문자 · 상품 · 받는 분 · 주소 · 택배사 · 송장번호 입력) · 「발송 처리」 · 선택하면 아래 띠에 택배사 일괄 지정 · 송장 일괄 입력 · 선택 발송', 2700, body25a, bar25)
      + phone('② 검색 조건 펼침 · 1열 · 기간 기준(개봉 완료일 · 주문일 · 발송일) · 「검색 · 초기화」 폭 전체', 1900, body25b) + TAIL.format(h=H.get(CUR + '/preview', 2750)))
 wr('SA-025-M.dc.html', s)
-
-# ---------- ⑤ SA-060 한 줄 소개 40자 ----------
-s = rd('SA-060.dc.html')
-s = rep(s, '26 / 60', '26 / 40')
-s = rep(s, 'placeholder="한 줄 소개 (60자)"', 'placeholder="한 줄 소개 (40자)"')
-wr('SA-060.dc.html', s)

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import ShopState from "../../../../../components/shop/ShopState";
+import ShopLocked from "../../../../../components/shop/ShopLocked";
 import { shopOpen } from "../../../../../lib/server/buyers/signup";
 import { prisma } from "../../../../../lib/server/db";
 import { publicCategories } from "../../../../../lib/server/shop-category/service";
@@ -13,7 +13,7 @@ import { findActiveShop } from "../_lib/shop";
 
 export const dynamic = "force-dynamic";
 
-type Props = { params: Promise<{ slug: string }>; searchParams: Promise<{ category?: string; sort?: string; page?: string; cats?: string; inStock?: string; live?: string; minPrice?: string; maxPrice?: string }> };
+type Props = { params: Promise<{ slug: string }>; searchParams: Promise<{ category?: string; sort?: string; page?: string; cats?: string; inStock?: string; live?: string; rating4?: string; coupon?: string; minPrice?: string; maxPrice?: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const shop = await findActiveShop((await params).slug);
@@ -26,7 +26,7 @@ export default async function ShopProductsPage({ params, searchParams }: Props) 
   if (!shop) notFound();
   const sp = await searchParams;
   const open = await shopOpen(prisma, shop.id);
-  if (!open) return <ShopState title="지금은 쇼핑몰을 이용할 수 없어요" body="쇼핑몰이 다시 문을 열면 이용할 수 있어요." />;
+  if (!open) return <ShopLocked slug={shop.slug} />;
   const base = `/shop/${encodeURIComponent(shop.slug)}`;
   const categories = (await publicCategories(prisma, shop.slug)) ?? [];
   const categoryId = categoryParam(sp.category);

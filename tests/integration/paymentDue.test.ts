@@ -70,6 +70,8 @@ describe("입금 기한", () => {
     expect(b.paymentDueAt!.getTime() - b.createdAt.getTime()).toBe(2 * HOUR);
     expect((await db.order.findUniqueOrThrow({ where: { id: a.id } })).paymentDueAt).toEqual(a.paymentDueAt);
     expect(await db.auditLog.count({ where: { action: "order_policy.update" } })).toBe(1);
+    // 파트너스가 저장하면 「저장한 시각」이 남는다(온보딩 설정 완료 판정)
+    expect((await db.sellerOrderPolicy.findUniqueOrThrow({ where: { sellerId: s.seller.id } })).savedAt).not.toBeNull();
   });
 
   it("자동 취소를 「사용 안 함」으로 끄면 새 주문에 기한이 없어 자동 취소되지 않고, 끄기 전 주문은 기한대로 취소된다", async () => {

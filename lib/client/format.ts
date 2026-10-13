@@ -34,3 +34,12 @@ export function formatDateTimeParts(v: Input): { date: string; time: string } | 
   const t = kstParts(v);
   return t ? { date: `${t.y}.${t.mo}.${t.d}`, time: `${t.hh}:${t.mm}` } : null;
 }
+
+// 「방금」「2분 전」「3시간 전」「2일 전」
+export function ago(iso: string, now = Date.now()): string {
+  const s = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 1000));
+  if (s < 60) return "방금";
+  if (s < 3600) return `${Math.floor(s / 60)}분 전`;
+  if (s < 86400) return `${Math.floor(s / 3600)}시간 전`;
+  return `${Math.floor(s / 86400)}일 전`;
+}
