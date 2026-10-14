@@ -10,7 +10,7 @@ export default function GradeCard({ status }: { status: Status }) {
   return (
     <div className="mgc" data-testid="grade-card">
       <p className="mgc-t">
-        내 등급 <b>{status.gradeName}</b>
+        회원 등급 <b>{status.gradeName}</b>
       </p>
       {status.benefits.length > 0 && <p className="mgc-s">{status.benefits.join(" · ")} 혜택을 받고 있어요</p>}
       {status.nextGrade ? (
