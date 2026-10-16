@@ -105,6 +105,8 @@ test("파트너스: 주소 확인 → 결제 동의 5개 → 결제 → 진행 �
   await db.automationJob.update({ where: { id: job.id }, data: { status: "NEEDS_CUSTOMER", customerAction: "TWO_FACTOR", actionDeadlineAt: new Date(Date.now() + 3600_000) } });
   await page.goto(`/seller/automation/${job.id}`);
   await expect(page.getByTestId("job-action")).toContainText("2단계 인증을 완료해 주십시오");
+  // 고객 확인 대기 중에는 서버가 멈추기를 받지 않아(409) 버튼이 비활성이다
+  await expect(page.getByRole("button", { name: "잠시 멈추기" })).toBeDisabled();
   await page.screenshot({ path: "tests/e2e/screenshots/automation-sa152-1440.png", fullPage: true });
   // 390은 폭을 바꾼 뒤 다시 불러와 찍는다(열린 메뉴 서랍이 찍히지 않게)
   await page.setViewportSize({ width: 390, height: 844 });
