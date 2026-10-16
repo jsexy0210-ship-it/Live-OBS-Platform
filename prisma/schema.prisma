@@ -1478,6 +1478,8 @@ model HitCard {
   note               String?
   createdByUserId    String?  @db.Uuid
   createdAt          DateTime @default(now()) @db.Timestamptz(3)
+  // 방송 화면(오버레이)이 이 카드를 읽어 간 시각(SA-053 「방송 화면」 열). 비어 있으면 아직 안 나갔거나 생략. 「다시 연출」은 이 값을 새 시각으로 바꾸고, 오버레이는 값이 바뀌면 카드를 다시 보여 준다.
+  overlayShownAt     DateTime? @db.Timestamptz(3)
 
   seller           Seller            @relation(fields: [sellerId], references: [id])
   broadcastSession BroadcastSession? @relation(fields: [sellerId, broadcastSessionId], references: [sellerId, id])

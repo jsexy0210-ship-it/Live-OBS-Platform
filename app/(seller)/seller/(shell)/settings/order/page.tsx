@@ -176,9 +176,9 @@ export default function OrderSettingsPage() {
     </label>
   );
   // 기간(일) 칸: 값은 왼쪽 정렬, 단위는 칸 오른쪽
-  const daysInput = (id: string, value: string, set: (v: string) => void, err: string | null) => (
+  const daysInput = (id: string, value: string, set: (v: string) => void, err: string | null, placeholder = "0") => (
     <>
-      <input id={id} className={`inp num${err ? " is-error" : ""}`} type="text" inputMode="numeric" value={value} onChange={(e) => set(e.target.value)} style={{ width: 160 }} aria-invalid={!!err} />
+      <input id={id} className={`inp num${err ? " is-error" : ""}`} type="text" inputMode="numeric" placeholder={placeholder} value={value} onChange={(e) => set(e.target.value)} style={{ width: 160 }} aria-invalid={!!err} />
       <span className="t-l2 c-alt">일</span>
       {err && <span className="err">{err}</span>}
     </>
@@ -261,6 +261,7 @@ export default function OrderSettingsPage() {
                   >
                     <input
                       id="due"
+                      placeholder="0"
                       className={`inp num${showError && dueError ? " is-error" : ""}`}
                       type="text"
                       inputMode="numeric"
@@ -359,7 +360,7 @@ export default function OrderSettingsPage() {
                 </FormRow>
                 {deliverOn && (
                   <FormRow label="자동 배송 완료 기간" htmlFor="deliver-days" help={showError && deliverError ? undefined : `1~${MAX_AUTO_DAYS}일 · 기본 7일`}>
-                    {daysInput("deliver-days", deliverDays, setDeliverDays, showError ? deliverError : null)}
+                    {daysInput("deliver-days", deliverDays, setDeliverDays, showError ? deliverError : null, "일수")}
                   </FormRow>
                 )}
                 <FormRow
@@ -382,7 +383,7 @@ export default function OrderSettingsPage() {
                       )
                     }
                   >
-                    {daysInput("confirm-days", confirmDays, setConfirmDays, showError ? confirmError : null)}
+                    {daysInput("confirm-days", confirmDays, setConfirmDays, showError ? confirmError : null, "일수 (1~30)")}
                   </FormRow>
                 )}
               </FormSection>
