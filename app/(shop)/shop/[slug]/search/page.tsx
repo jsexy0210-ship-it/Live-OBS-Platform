@@ -4,6 +4,7 @@ import SearchBox from "../../../../../components/shop/SearchBox";
 import ShopLocked from "../../../../../components/shop/ShopLocked";
 import { shopOpen } from "../../../../../lib/server/buyers/signup";
 import { prisma } from "../../../../../lib/server/db";
+import { defaultListSort } from "../../../../../lib/server/products/shopCatalog";
 import { publicCategories } from "../../../../../lib/server/shop-category/service";
 import { sortKey } from "../_lib/catalog";
 import { parseFilters } from "../_lib/filters";
@@ -30,7 +31,8 @@ export default async function ShopSearchPage({ params, searchParams }: Props) {
   const path = `/shop/${encodeURIComponent(shop.slug)}/search`;
   const categories = (await publicCategories(prisma, shop.slug)) ?? [];
   const filters = parseFilters(sp, categories);
-  const sort = sortKey(sp.sort, !!q);
+  const sortDefault = await defaultListSort(prisma, shop.id);
+  const sort = sortKey(sp.sort, !!q, sortDefault);
   return (
     <>
       {!open ? (
@@ -43,7 +45,7 @@ export default async function ShopSearchPage({ params, searchParams }: Props) {
           </div>
           {q && (
             <div className="shop-plist">
-              <ListSide slug={shop.slug} tree={categories} path={path} q={q} sort={sort} filters={filters} />
+              <ListSide slug={shop.slug} tree={categories} path={path} q={q} sort={sort} sortDefault={sortDefault} filters={filters} />
               <div className="shop-plist-main">
                 <ProductListing
                   slug={shop.slug}

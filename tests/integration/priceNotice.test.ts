@@ -35,7 +35,7 @@ describe("기존 구독 가격 고지 보호", () => {
     const f = await fixture();
     if (state !== "missing") {
       await receipts(f);
-      await db.subscriptionPriceNotice.updateMany({ where: { subscriptionId: f.sub.id, ...(state === "partial" ? { channel: "ALIMTALK" as const } : {}) }, data: { status: state === "failed" || state === "partial" ? "FAILED" : "PENDING" } });
+      await db.subscriptionPriceNotice.updateMany({ where: { subscriptionId: f.sub.id, ...(state === "partial" ? { channel: "PARTNERS_NOTICE" as const } : {}) }, data: { status: state === "failed" || state === "partial" ? "FAILED" : "PENDING" } });
     }
     expect((await chargeFor(db, f.plan, f.sub, f.now)).amount).toBe(199000);
   });
@@ -44,11 +44,23 @@ describe("기존 구독 가격 고지 보호", () => {
     const f = await fixture();
     await receipts(f);
     const latest = new Date(+f.completedAt + 2 * DAY);
-    await db.subscriptionPriceNotice.updateMany({ where: { subscriptionId: f.sub.id, channel: "ALIMTALK" }, data: { completedAt: latest } });
+    await db.subscriptionPriceNotice.updateMany({ where: { subscriptionId: f.sub.id, channel: "PARTNERS_NOTICE" }, data: { completedAt: latest } });
     const boundary = new Date(+latest + 30 * DAY);
     expect((await chargeFor(db, f.plan, f.sub, new Date(+boundary - 1))).amount).toBe(199000);
     expect((await chargeFor(db, f.plan, f.sub, boundary)).amount).toBe(249000);
     expect(await chargeFor(db, f.plan, { ...f.sub, regularPrice: true }, boundary)).toMatchObject({ amount: 350000, launchDiscount: false });
+  });
+
+  it("알림톡은 선택 채널이다: 없거나 실패·대기여도 메일·파트너스 공지가 끝나면 완료이고, 늦게 끝난 알림톡이 30일 시각을 미루지 않는다", async () => {
+    const f = await fixture();
+    await receipts(f);
+    await db.subscriptionPriceNotice.updateMany({ where: { subscriptionId: f.sub.id, channel: "ALIMTALK" }, data: { status: "FAILED", completedAt: null, deliveryReference: null } });
+    expect((await chargeFor(db, f.plan, f.sub, f.now)).amount).toBe(249000);
+    await db.subscriptionPriceNotice.deleteMany({ where: { subscriptionId: f.sub.id, channel: "ALIMTALK" } });
+    expect((await chargeFor(db, f.plan, f.sub, f.now)).amount).toBe(249000);
+    // 필수 채널 하나가 비면 알림톡이 있어도 구가
+    await db.subscriptionPriceNotice.updateMany({ where: { subscriptionId: f.sub.id, channel: "MAIL" }, data: { status: "PENDING" } });
+    expect((await chargeFor(db, f.plan, f.sub, f.now)).amount).toBe(199000);
   });
 
   it.each(["before_change", "future", "no_time", "no_reference"] as const)("%s 완료 근거는 성공으로 인정하지 않는다", async (state) => {

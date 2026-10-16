@@ -84,3 +84,25 @@ export function partnerRejectedMail(i: PartnerRejectedInput): MailBody {
     { t: "buttons", buttons: [{ label: "고쳐서 다시 신청하기", url: i.reapplyUrl }, { label: "신청 상태 보기", url: i.statusUrl, secondary: true }] },
   ]);
 }
+
+// ─── 구독 요금 변경 안내(30일 전 고지) ───
+// 기존 구독자에게 새 요금이 적용되기 전에 알리는 메일. 이 안내(메일·파트너스 공지)가 모두 전달된 날부터 30일이 지난 뒤 결제부터 새 요금이 적용돼요.
+export type PriceChangeMailInput = {
+  platform: PlatformInfo;
+  representative: string;
+  shopName: string;
+  planName: string;
+  oldMonthly: number;
+  newMonthly: number;
+  subscriptionUrl: string; // 구독 · 결제 화면
+};
+
+export function priceChangeMail(i: PriceChangeMailInput): MailBody {
+  return make(i.platform, "구독 요금이 바뀌어요", [
+    { t: "h1", text: "구독 요금이 바뀌어요" },
+    { t: "p", text: `${i.representative}님, ${i.shopName}의 ${i.planName} 구독 요금이 바뀌어요. 이 안내를 드린 날부터 30일이 지난 뒤 결제부터 새 요금이 적용돼요.` },
+    { t: "box", accent: true, title: "요금 변경", rows: [["지금 요금", `월 ${won(i.oldMonthly)} (부가세 포함)`], ["바뀌는 요금", `월 ${won(i.newMonthly)} (부가세 포함)`]], muted: "30일이 지나기 전 결제는 지금 요금 그대로예요" },
+    { t: "p", text: "구독을 계속 쓰지 않으려면 새 요금이 적용되기 전에 「구독 · 결제」에서 해지할 수 있어요.", muted: true },
+    { t: "buttons", buttons: [{ label: "구독 · 결제 보기", url: i.subscriptionUrl }] },
+  ]);
+}

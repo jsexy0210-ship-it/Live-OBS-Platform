@@ -464,7 +464,7 @@ test("올해가 아닌 이력은 연도를 붙여 보여 준다", async ({ page 
   });
   await openAs(page);
   await expect(page.getByTestId("history-item").first()).not.toContainText("2024");
-  await expect(page.getByTestId("history-item").filter({ hasText: "작년 이력" })).toContainText("2024. 12. 31. 12:00");
+  await expect(page.getByTestId("history-item").filter({ hasText: "작년 이력" })).toContainText("2024.12.31 12:00");
 });
 
 test("직접 쓴 사유는 서버와 같은 기준(코드포인트 100자)으로 검사한다", async ({ page }) => {
