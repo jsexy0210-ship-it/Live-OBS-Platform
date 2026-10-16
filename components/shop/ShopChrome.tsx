@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { useConfirm } from "../admin-ui/ConfirmDialog";
+import { LogoutButton } from "../admin-ui/LogoutButton";
 import ShopLogo from "./ShopLogo";
+import ShopBack from "./ShopBack";
+import "./ShopProductHeader.css";
 
 export const CART_COUNT_EVENT = "shop-cart-count";
 const badge = (n: number) => (n > 0 ? <b className="shop-badge" aria-hidden="true">{n > 99 ? "99+" : n}</b> : null);
@@ -33,9 +35,10 @@ const ICON = {
 
 // 구매자 쇼핑몰 머리(띠·로고·검색·장바구니·카테고리)와 휴대폰 카테고리 서랍·아래 고정 바. 「전체 상품」 뒤에 쇼핑몰의 대분류 카테고리를 붙이고, 「전체 카테고리」 버튼이나 머리 줄에 마우스를 올리면(키보드 포커스도) 대분류·소분류 펼침 판이 열린다. 서랍에는 소분류까지 보인다.
 export default function ShopChrome({ slug, shopName, loggedIn, nickname, categories = [], signupOpen = true }: Props) {
-  const { confirm } = useConfirm();
   const base = `/shop/${encodeURIComponent(slug)}`;
   const path = usePathname() ?? "";
+  const productPrefix = `${base}/products/`;
+  const productDetail = path.startsWith(productPrefix) && !!path.slice(productPrefix.length) && !path.slice(productPrefix.length).includes("/");
   const router = useRouter();
   const [drawer, setDrawer] = useState(false);
   const entryRef = useRef(false); // 서랍을 열 때 기록 한 칸을 쌓았는지(UX-11: Back으로 서랍부터 닫는다)
@@ -109,18 +112,17 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname, categor
     return () => window.removeEventListener("keydown", onKey);
   }, [drawer]);
 
+  // 세션을 실제로 끊었을 때만 쇼핑몰 홈으로 보낸다. 실패하면 확인 창 안에 오류를 보이고 다시 시도하게 한다
   async function logout() {
-    if (!(await confirm({ tone: "shop", title: "로그아웃할까요?", body: "장바구니와 찜은 그대로 남아요. 다시 로그인하면 이어서 쓸 수 있어요.", confirmLabel: "로그아웃" }))) return;
-    await fetch(`/api/shop/${encodeURIComponent(slug)}/auth/logout`, { method: "POST" }).catch(() => null);
-    window.location.assign(base);
+    const r = await fetch(`/api/shop/${encodeURIComponent(slug)}/auth/logout`, { method: "POST" }).catch(() => null);
+    if (r?.ok) window.location.assign(base);
+    return !!r?.ok;
   }
 
   const account = loggedIn ? (
     <>
       <Link href={`${base}/me`}>내 정보</Link>
-      <button type="button" className="shop-linkbtn" onClick={logout}>
-        로그아웃
-      </button>
+      <LogoutButton tone="shop" className="shop-linkbtn" onLogout={logout} />
     </>
   ) : (
     <>
@@ -135,7 +137,17 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname, categor
 
   return (
     <>
-      <header className="shop-head">
+      <header className={`shop-head${productDetail ? " shop-product-head" : ""}`}>
+        {productDetail && (
+          <div className="shop-product-header" aria-label="상품 상세 머리">
+            <ShopBack fallback={`${base}/products`} label="목록" />
+            <span className="shop-product-title">상품 상세</span>
+            <div className="shop-product-links">
+              <Link href={base} className="shop-iconbtn" aria-label="홈"><Icon d={ICON.home} /></Link>
+              <Link href={`${base}/cart`} className="shop-iconbtn" aria-label={cartLabel(cartCount)}><Icon d={ICON.cart} />{badge(cartCount)}</Link>
+            </div>
+          </div>
+        )}
         <div className="shop-util">
           <div className="shop-wrap">
             {account}

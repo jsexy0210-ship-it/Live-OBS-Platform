@@ -13,7 +13,7 @@ import { findActiveShop } from "../_lib/shop";
 
 export const dynamic = "force-dynamic";
 
-type Props = { params: Promise<{ slug: string }>; searchParams: Promise<{ q?: string; sort?: string; page?: string; cats?: string; inStock?: string; live?: string; minPrice?: string; maxPrice?: string }> };
+type Props = { params: Promise<{ slug: string }>; searchParams: Promise<{ q?: string; sort?: string; page?: string; cats?: string; inStock?: string; live?: string; rating4?: string; coupon?: string; minPrice?: string; maxPrice?: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const shop = await findActiveShop((await params).slug);
@@ -37,7 +37,10 @@ export default async function ShopSearchPage({ params, searchParams }: Props) {
         <ShopLocked slug={shop.slug} />
       ) : (
         <div className="shop-wrap">
-          <SearchBox slug={shop.slug} q={q} path={path} />
+          {/* 보드 SH-002-PC-IA: PC 결과 화면에는 본문 검색줄이 없고 머리 검색만 쓴다(휴대폰과 검색어가 없는 첫 화면은 그대로) */}
+          <div className={q ? "shop-sbwrap has-q" : "shop-sbwrap"}>
+            <SearchBox slug={shop.slug} q={q} path={path} />
+          </div>
           {q && (
             <div className="shop-plist">
               <ListSide slug={shop.slug} tree={categories} path={path} q={q} sort={sort} filters={filters} />

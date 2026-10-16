@@ -71,3 +71,6 @@ export const MESSAGE_FEE_NOTICE: NoticeSection[] = [
     ]
   }
 ];
+
+// 요금표의 단가 미확정은 금액이나 부분 문장으로 보이지 않게 안내한다
+export const messagePriceNotice = (text: string) => text.includes("[확정 전]") ? "단가 확정 후 안내" : text;

@@ -1,0 +1,41 @@
+/* SH-003 FINAL v284: 상품 상세 경로의 모바일 머리만 바꾼다. */
+.shop-product-header {
+  display: none;
+}
+@media (max-width: 767px) {
+  .shop-product-head > .shop-util,
+  .shop-product-head > .shop-top,
+  .shop-product-head > .shop-cats,
+  .shop-product-head > .shop-mcat {
+    display: none;
+  }
+  .shop-product-header {
+    display: flex;
+    align-items: center;
+    position: relative;
+    height: 56px;
+    box-sizing: border-box;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--wds-line-solid-neutral);
+    background: var(--wds-background-normal-normal);
+  }
+  .shop-product-header .shop-back {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    justify-content: center;
+    flex: none;
+    font-size: 0;
+  }
+  .shop-product-title {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 16px;
+    font-weight: 700;
+  }
+  .shop-product-links {
+    display: flex;
+    margin-left: auto;
+  }
+}

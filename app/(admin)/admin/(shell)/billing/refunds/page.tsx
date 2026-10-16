@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { CursorPagination } from "../../../../../../components/Pagination";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ListHead, PageHead } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
@@ -11,7 +12,7 @@ import { day, dayTime, won } from "../../../_components/partners";
 import { REFUND_STATUS, refundReason, type RefundCounts, type RefundListItem, type RefundSummary } from "../../../_components/refunds";
 
 // MA-026 환불 요청 목록(GET /api/admin/subscription-refunds, 모든 마스터 역할, 조회만). 탭의 숫자는 서버의 상태별 전체 수를 묶은 값.
-// 대기 = 처리 대기·처리 중·실패, 완료 = 환불 완료. 승인·거절은 상세(MA-027)에서 한다. 요청 최신 순 50건씩 이어서 불러온다.
+// 대기 = 처리 대기·처리 중·실패, 완료 = 환불 완료. 승인·거절은 상세(MA-027)에서 한다. 요청 최신 순 10건씩 현재 페이지를 불러온다.
 type Page = { items: RefundListItem[]; counts: RefundCounts; summary: RefundSummary; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; items: RefundListItem[]; counts: RefundCounts; summary: RefundSummary; next: string | null };
 type Tab = "pending" | "done" | "rejected" | "";
@@ -31,6 +32,9 @@ export default function RefundsPage() {
   const [tab, setTab] = useState<Tab>("pending");
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [more, setMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const paging = useRef(false);
   const [toast, setToast] = useState<string | null>(null);
   const reqId = useRef(0);
   const qs = (status: string, cursor?: string) => {
@@ -41,6 +45,9 @@ export default function RefundsPage() {
   };
   const load = useCallback(async (status: string) => {
     const id = ++reqId.current;
+    paging.current = false;
+    setPage(1);
+    setCursors([undefined]);
     setMore(false);
     setState({ kind: "loading" });
     const r = await adminApi<Page>(`/api/admin/subscription-refunds?${qs(status)}`);
@@ -49,15 +56,22 @@ export default function RefundsPage() {
   }, []);
   useEffect(() => void load(tab), [tab, load]);
 
-  const loadMore = async () => {
-    if (state.kind !== "ok" || !state.next) return;
+  const changePage = async (target: number) => {
+    if (state.kind !== "ok" || paging.current || target === page || target < 1 || target > cursors.length + 1) return;
+    const cursor = target <= cursors.length ? cursors[target - 1] : state.next;
+    if (target > 1 && !cursor) return;
+    paging.current = true;
     setMore(true);
-    const id = reqId.current;
-    const r = await adminApi<Page>(`/api/admin/subscription-refunds?${qs(tab, state.next)}`);
+    const id = ++reqId.current;
+    const r = await adminApi<Page>(`/api/admin/subscription-refunds?${qs(tab, cursor ?? undefined)}`);
     if (id !== reqId.current) return;
+    paging.current = false;
     setMore(false);
-    if (r.ok) setState({ ...state, items: [...state.items, ...r.data.items], next: r.data.nextCursor });
-    else setToast("더 불러오지 못했습니다. 다시 눌러 주십시오.");
+    if (r.ok) {
+      setState({ kind: "ok", items: r.data.items, counts: r.data.counts, summary: r.data.summary, next: r.data.nextCursor });
+      setPage(target);
+      if (target > cursors.length) setCursors([...cursors, cursor ?? undefined]);
+    } else setToast("더 불러오지 못했습니다. 다시 눌러 주십시오.");
   };
 
   const counts = state.kind === "ok" ? state.counts : null;
@@ -75,7 +89,7 @@ export default function RefundsPage() {
         <div className="col" style={{ gap: 20 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
             {[
-              ["검토 대기", counts ? `${counts.REQUESTED}건` : "-", "refund-requested"],
+              ["승인 대기 (최고관리자)", counts ? `${counts.REQUESTED}건` : "-", "refund-requested"],
               ["이번 달 환불 완료", sum ? `${sum.monthRefunded.count}건 · ${won(sum.monthRefunded.amount)}` : "-", "refund-month"],
               ["거절", counts ? `${counts.REJECTED}건` : "-", "refund-rejected"],
               ["평균 처리", sum ? (sum.avgProcessDays === null ? "-" : `${sum.avgProcessDays.toFixed(1)}일`) : "-", "refund-avg"],
@@ -106,7 +120,7 @@ export default function RefundsPage() {
                 </div>
               ) : (
                 <>
-                  <ListHead total={items.length} loaded={state.next !== null} />
+                  <ListHead total={items.length} loaded />
                   <div style={{ overflowX: "auto" }}>
                     <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                       <thead>
@@ -149,11 +163,9 @@ export default function RefundsPage() {
                       </tbody>
                     </table>
                   </div>
-                  {state.next && (
-                    <div className="row" style={{ justifyContent: "center", padding: "12px 16px" }}>
-                      <button className="btn btn-sm btn-out" type="button" onClick={() => void loadMore()} disabled={more}>
-                        {more ? "불러오는 중" : "더 보기"}
-                      </button>
+                  {(state.next || page > 1) && (
+                    <div className="row" style={{ justifyContent: "center", padding: "12px 16px" }} aria-busy={more}>
+                      <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={(n) => void changePage(n)} onNext={() => void changePage(page + 1)} />
                     </div>
                   )}
                 </>

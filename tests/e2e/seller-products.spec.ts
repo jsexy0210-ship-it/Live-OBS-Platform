@@ -1,9 +1,9 @@
-import { expect, test, type Page } from "@playwright/test";
-import { submitSellerLogin } from "./sellerLogin";
+import { expect, test, type Page, type Request } from "@playwright/test";
+import { confirmLogout, submitSellerLogin } from "./sellerLogin";
 import { RUN, cleanupProducts, track } from "./cleanup";
 
 // 판매자 로그인 → 상품 목록 → 등록 → 수정 → 숨김·삭제를 실제로 눌러 확인한다.
-// E2E_SCREENSHOTS=1이면 390·1440 화면을 tests/e2e/screenshots에 남긴다.
+// E2E_SCREENSHOTS=1이면 390·1024·1440 화면을 tests/e2e/screenshots에 남긴다.
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
 const OWNER = "demo-owner@example.com";
 const VIEWER = "demo-viewer@example.com";
@@ -16,10 +16,18 @@ test.beforeAll(() => {
 });
 test.afterAll(() => cleanupProducts(PASSWORD));
 
-async function shot(page: Page, name: string) {
+async function shot(page: Page, name: string, waitForClosedMenu = false) {
   if (!SHOTS) return;
-  for (const width of [1440, 390]) {
+  for (const width of [1440, 1024, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    if (width === 390 && waitForClosedMenu) await expect.poll(async () => {
+      const menu = await page.locator(".lnb").boundingBox();
+      return menu ? menu.x + menu.width : Number.POSITIVE_INFINITY;
+    }).toBeLessThanOrEqual(0);
+    await page.locator(".stock-table-wrap").evaluateAll((els) => els.forEach((el) => { el.scrollLeft = 0; }));
+    if (await page.locator(".stock-table-wrap").count()) {
+      await expect.poll(() => page.locator(".stock-table-wrap").evaluate((el) => el.scrollLeft)).toBe(0);
+    }
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(150);
     await page.screenshot({ path: `tests/e2e/screenshots/${name}-${width}.png`, fullPage: true });
@@ -52,6 +60,191 @@ async function login(page: Page, email = OWNER) {
   await page.goto("/seller/products");
   await expect(page).toHaveURL(/\/seller\/products$/);
 }
+
+// desktop 폼 배치의 반응형 검증이다. SA012-M의 읽기 전용 정책 완료 증거가 아니다.
+async function checkFormPreview(page: Page, phase: "new" | "edit", name: string, price: string) {
+  const mutations: string[] = [];
+  const observe = (request: Request) => {
+    if (new URL(request.url()).pathname.startsWith("/api/seller/products") && !["GET", "HEAD"].includes(request.method())) mutations.push(request.method());
+  };
+  page.on("request", observe);
+  try {
+    for (const width of [1440, 1024, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      if (width === 390) await expect.poll(async () => { const box = await page.locator(".lnb").boundingBox(); return box ? box.x + box.width : Infinity; }).toBeLessThanOrEqual(0);
+      const form = page.locator(".product-final-form");
+      await expect(form).toHaveCSS("display", "block");
+      await expect(form.locator('[aria-busy="true"]')).toHaveCount(0);
+      await expect(page.locator(".main.form-grid, .aside-sticky")).toHaveCount(0);
+      await expect(page.getByTestId("product-preview")).toHaveCount(0);
+      await page.evaluate(() => window.scrollTo(0, 0));
+      const actions = page.locator(".product-form-actions");
+      const fit = await actions.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        const buttons = [...element.querySelectorAll(".btn")].map((button) => { const box = button.getBoundingClientRect(); return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, height: box.height }; });
+        return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, viewport: innerWidth, height: innerHeight, center: (rect.left + rect.right) / 2, buttons };
+      });
+      expect(fit.left).toBeGreaterThanOrEqual(0);
+      expect(fit.right).toBeLessThanOrEqual(width);
+      expect(fit.top).toBeGreaterThanOrEqual(0);
+      expect(fit.bottom).toBeLessThanOrEqual(fit.height);
+      expect(fit.buttons).toHaveLength(phase === "new" ? 4 : 3);
+      for (const button of fit.buttons) {
+        expect(button.height).toBe(48);
+        expect(button.left).toBeGreaterThanOrEqual(fit.left);
+        expect(button.right).toBeLessThanOrEqual(fit.right);
+      }
+      const center = (Math.min(...fit.buttons.map((button) => button.left)) + Math.max(...fit.buttons.map((button) => button.right))) / 2;
+      expect(Math.abs(center - fit.center)).toBeLessThanOrEqual(1);
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      await expect.poll(async () => {
+        const field = await form.locator("input:visible, textarea:visible, select:visible").last().boundingBox();
+        const footer = await actions.boundingBox();
+        return field && footer ? field.y + field.height - footer.y : Infinity;
+      }).toBeLessThanOrEqual(0);
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+      if (SHOTS) await page.screenshot({ path: `tests/e2e/screenshots/SA-012-PC-form-${phase}-${width}.png`, fullPage: true });
+      const fields = form.locator("input, textarea, select");
+      const before = await fields.evaluateAll((elements) => elements.map((element) => ({ id: element.id, value: (element as HTMLInputElement).value, checked: (element as HTMLInputElement).checked })));
+      await page.getByTestId("product-form-preview").click();
+      const preview = page.getByRole("dialog", { name: "쇼핑몰 미리보기", exact: true });
+      await expect(preview).toBeVisible();
+      await expect(preview.getByTestId("preview-name")).toHaveText(name);
+      await expect(preview.getByTestId("preview-price")).toHaveText(price);
+      await expect(preview.getByTestId("preview-options").locator("li > span:first-child")).toHaveText(["1팩", "3팩 묶음"]);
+      const box = await preview.boundingBox();
+      expect(box && box.x >= 0 && box.y >= 0 && box.x + box.width <= width && box.y + box.height <= page.viewportSize()!.height).toBe(true);
+      if (SHOTS) await page.screenshot({ path: `tests/e2e/screenshots/SA-012-PC-preview-${phase}-${width}.png`, fullPage: true });
+      await preview.getByRole("button", { name: "닫기", exact: true }).click();
+      await expect(preview).toHaveCount(0);
+      expect(await fields.evaluateAll((elements) => elements.map((element) => ({ id: element.id, value: (element as HTMLInputElement).value, checked: (element as HTMLInputElement).checked })))).toEqual(before);
+    }
+    expect(mutations).toEqual([]);
+  } finally {
+    page.off("request", observe);
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+}
+
+for (const surface of ["수정 화면", "목록 빠른 변경"] as const) {
+  test(`상품 판매가 ${surface}: 오래된 값은 덮어쓰지 않고 재조회 후 다시 저장한다`, async ({ page }) => {
+    await login(page);
+    const name = track(`가격충돌 ${surface} ${stamp}`);
+    const product = await page.evaluate(async name => {
+      const r = await fetch("/api/seller/products", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, price: 1000, status: "ON_SALE", options: [{ name: "기본", stock: 10 }] }) });
+      if (!r.ok) throw new Error(`상품 fixture 생성 실패: ${r.status}`);
+      return await r.json() as { id: string };
+    }, name);
+    const isForm = surface === "수정 화면";
+    await page.goto(isForm ? `/seller/products/${product.id}` : `/seller/products?q=${encodeURIComponent(name)}`);
+    const row = page.getByTestId("product-row").filter({ hasText: name });
+    const input = isForm ? page.getByLabel("판매가") : row.getByRole("textbox", { name: /가격$/ });
+    if (!isForm) await row.getByRole("button", { name: /가격 변경/ }).click();
+    await expect(input).toHaveValue("1000");
+    await input.fill("1500");
+    if (isForm) await page.getByRole("button", { name: "저장", exact: true }).first().click();
+    else await input.press("Enter");
+    const confirmation = page.getByRole("dialog", { name: "판매가를 변경하시겠습니까?" });
+    await expect(confirmation).toContainText("이미 받은 주문 금액은 바뀌지 않습니다");
+    await confirmation.getByRole("button", { name: "취소", exact: true }).click();
+    expect((await (await page.request.get(`/api/seller/products/${product.id}`)).json()).price).toBe(1000);
+    if (!isForm) {
+      await row.getByRole("button", { name: /가격 변경/ }).click();
+      await input.fill("1500");
+    }
+    // 같은 상품을 다른 요청에서 먼저 바꾼다. 화면은 최초 판매가 1000을 유지한다.
+    const other = await page.request.patch(`/api/seller/products/${product.id}`, { headers: { origin: new URL(page.url()).origin }, data: { price: 2000, expectedPrice: 1000 } });
+    expect(other.status()).toBe(200);
+    const saved = page.waitForResponse(r => new URL(r.url()).pathname === `/api/seller/products/${product.id}` && r.request().method() === "PATCH");
+    if (isForm) await page.getByRole("button", { name: "저장", exact: true }).first().click();
+    else await input.press("Enter");
+    await page.getByRole("dialog").getByRole("button", { name: "판매가 변경", exact: true }).click();
+    const conflict = await saved;
+    expect(conflict.request().postDataJSON()).toMatchObject({ price: 1500, expectedPrice: 1000 });
+    expect(conflict.status()).toBe(409);
+    await expect(page.getByText("그사이 판매가가 바뀌었습니다. 지금 판매가를 확인한 뒤 다시 입력해 주십시오")).toBeVisible();
+    if (isForm) await expect(input).toHaveValue("2000");
+    else {
+      await expect(row.getByRole("button", { name: /가격 변경/ })).toHaveText("2,000원");
+      await row.getByRole("button", { name: /가격 변경/ }).click();
+    }
+    await input.fill("2500");
+    const retried = page.waitForResponse(r => new URL(r.url()).pathname === `/api/seller/products/${product.id}` && r.request().method() === "PATCH");
+    if (isForm) await page.getByRole("button", { name: "저장", exact: true }).first().click();
+    else await input.press("Enter");
+    await page.getByRole("dialog").getByRole("button", { name: "판매가 변경", exact: true }).click();
+    const response = await retried;
+    expect(response.request().postDataJSON()).toMatchObject({ price: 2500, expectedPrice: 2000 });
+    expect(response.status()).toBe(200);
+    const latest = await (await page.request.get(`/api/seller/products/${product.id}`)).json();
+    expect(latest.price).toBe(2500);
+    expect(latest.options[0].stock).toBe(10);
+  });
+}
+
+for (const eventChange of ["변경", "해제"] as const) {
+  test(`판매가와 이벤트 할인 ${eventChange}: 충돌이면 기존 할인을 유지하고 함께 다시 저장한다`, async ({ page }) => {
+    await login(page);
+    const name = track(`가격이벤트 ${eventChange} ${stamp}`);
+    const product = await page.request.post("/api/seller/products", { headers: { origin: new URL(page.url()).origin }, data: { name, price: 1000, status: "ON_SALE", options: [{ name: "기본", stock: 10 }] } });
+    expect(product.status()).toBe(201);
+    const { id } = await product.json();
+    const event = { type: "RATE", value: 10, startsAt: new Date(Date.now() - 60_000).toISOString(), endsAt: new Date(Date.now() + 3600_000).toISOString() };
+    expect((await page.request.put(`/api/seller/products/${id}/event`, { headers: { origin: new URL(page.url()).origin }, data: event })).status()).toBe(200);
+    await page.goto(`/seller/products/${id}`);
+    await page.getByLabel("판매가").fill("1500");
+    if (eventChange === "변경") await page.getByLabel("할인 값").fill("20");
+    else await page.getByRole("radiogroup", { name: "이벤트 할인 사용" }).getByRole("radio", { name: "사용 안 함", exact: true }).click();
+    expect((await page.request.patch(`/api/seller/products/${id}`, { headers: { origin: new URL(page.url()).origin }, data: { price: 2000, expectedPrice: 1000 } })).status()).toBe(200);
+    const before = await (await page.request.get(`/api/seller/products/${id}`)).json();
+    const preservedEvent = expect.objectContaining({ type: before.event.type, value: before.event.value, startsAt: before.event.startsAt, endsAt: before.event.endsAt, active: true, discountedPrice: 1800 });
+    await page.getByRole("button", { name: "저장", exact: true }).first().click();
+    await page.getByRole("dialog").getByRole("button", { name: "취소", exact: true }).click();
+    expect(await (await page.request.get(`/api/seller/products/${id}`)).json()).toMatchObject({ price: 2000, event: preservedEvent });
+    const saved = page.waitForResponse(r => new URL(r.url()).pathname === `/api/seller/products/${id}` && r.request().method() === "PATCH");
+    await page.getByRole("button", { name: "저장", exact: true }).first().click();
+    await page.getByRole("dialog").getByRole("button", { name: "판매가 변경", exact: true }).click();
+    expect((await saved).status()).toBe(409);
+    await expect(page.getByText("그사이 판매가가 바뀌었습니다. 지금 판매가를 확인한 뒤 다시 입력해 주십시오")).toBeVisible();
+    expect(await (await page.request.get(`/api/seller/products/${id}`)).json()).toMatchObject({ price: 2000, event: preservedEvent, options: [{ stock: 10 }] });
+    await expect(page.getByLabel("판매가")).toHaveValue("2000");
+    await page.getByLabel("판매가").fill("2500");
+    await page.getByRole("button", { name: "저장", exact: true }).first().click();
+    await page.getByRole("dialog").getByRole("button", { name: "판매가 변경", exact: true }).click();
+    await expect(page.getByText("저장했습니다")).toBeVisible();
+    const after = await (await page.request.get(`/api/seller/products/${id}`)).json();
+    expect(after.price).toBe(2500);
+    expect(after.event).toEqual(eventChange === "해제" ? null : expect.objectContaining({ type: "RATE", value: 20, active: true, discountedPrice: 2000 }));
+  });
+}
+
+test("이벤트만 수정하다 서버가 거절해도 기존 할인은 지우지 않는다", async ({ page }) => {
+  await login(page);
+  const name = track(`이벤트실패 ${stamp}`);
+  const origin = new URL(page.url()).origin;
+  const created = await page.request.post("/api/seller/products", { headers: { origin }, data: { name, price: 1000, status: "ON_SALE", options: [{ name: "기본", stock: 10 }] } });
+  expect(created.status()).toBe(201);
+  const { id } = await created.json();
+  const eventPath = `/api/seller/products/${id}/event`;
+  const event = { type: "RATE", value: 10, startsAt: new Date(Date.now() - 60_000).toISOString(), endsAt: new Date(Date.now() + 3600_000).toISOString() };
+  expect((await page.request.put(eventPath, { headers: { origin }, data: event })).status()).toBe(200);
+  await page.goto(`/seller/products/${id}`);
+  await page.getByLabel("할인 값").fill("20");
+  const eventWrites: string[] = [];
+  page.on("request", r => { if (new URL(r.url()).pathname === eventPath) eventWrites.push(r.method()); });
+  // 화면 검증은 통과시키고 실제 서버에 잘못된 할인율을 보내 거절 경계를 확인한다.
+  await page.route(`**${eventPath}`, r => r.continue({ postData: JSON.stringify({ ...r.request().postDataJSON(), value: 91 }) }));
+  const rejected = page.waitForResponse(r => new URL(r.url()).pathname === eventPath && r.request().method() === "PUT");
+  await page.getByRole("button", { name: "저장", exact: true }).first().click();
+  expect((await rejected).status()).toBe(400);
+  await expect(page.locator(".msg-neg[role=alert]")).toBeVisible();
+  expect(await (await page.request.get(`/api/seller/products/${id}`)).json()).toMatchObject({ price: 1000, event: { ...event, active: true, discountedPrice: 900 }, options: [{ stock: 10 }] });
+  expect(eventWrites).toEqual(["PUT"]);
+  await page.unroute(`**${eventPath}`);
+  await page.getByRole("button", { name: "저장", exact: true }).first().click();
+  await expect(page.getByText("저장했습니다")).toBeVisible();
+  expect(await (await page.request.get(`/api/seller/products/${id}`)).json()).toMatchObject({ price: 1000, event: { value: 20, active: true, discountedPrice: 800 } });
+});
 
 test("로그인 안 한 채로 상품 화면에 오면 로그인으로 보낸다", async ({ page }) => {
   await page.goto("/seller/products");
@@ -106,14 +299,74 @@ test("상품 목록: 데모 상품·상태 배지·필터, 체험 배너가 보�
   await expect(rows.filter({ hasText: "스타라이트 부스터 박스" })).toHaveCount(0);
 });
 
-test("옵션 이름이 길고 많아도 목록 표가 카드 밖으로 넘치지 않는다(1440·1024)", async ({ page }) => {
+test("상품 목록 제목 안내·검색 두 쌍·표 경계가 1440·1024·390에서 맞는다", async ({ page }) => {
   await login(page);
+  await expect(page.getByTestId("product-row").first()).toBeVisible();
+  const description = page.locator(".au-ph-description");
+  await expect(description).toHaveText("상품을 검색하고 판매 상태와 재고를 관리합니다.");
+  await expect(page.getByLabel("상품 검색")).toHaveAttribute("placeholder", "검색어 입력");
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    const layout = await page.evaluate(() => {
+      const title = document.querySelector(".au-ph-title")!;
+      const description = document.querySelector(".au-ph-description")!;
+      const grid = document.querySelector('[aria-label="상품 목록 표"]')!;
+      const head = document.querySelector(".au-lh")!;
+      const style = getComputedStyle(title);
+      return {
+        font: style.fontSize, line: style.lineHeight,
+        descriptionBelow: description.getBoundingClientRect().top >= title.getBoundingClientRect().bottom,
+        descriptionFont: getComputedStyle(description).fontSize,
+        descriptionLine: getComputedStyle(description).lineHeight,
+        headOutside: !grid.contains(head),
+        twoPairs: [...document.querySelectorAll(".au-ft tr")].filter(row => row.querySelectorAll("th").length === 2).length,
+        radioLabelsReadable: [...document.querySelectorAll(".au-ft .chk")].every(label => label.getBoundingClientRect().height <= 28),
+        gridVisible: getComputedStyle(grid).display !== "none",
+        overflow: document.documentElement.scrollWidth > innerWidth,
+      };
+    });
+    expect(layout).toMatchObject({ font: "20px", line: "28px", descriptionBelow: true, descriptionFont: "14px", descriptionLine: "20px", headOutside: true, twoPairs: 2, radioLabelsReadable: true, gridVisible: width >= 768, overflow: false });
+    if (SHOTS) await page.screenshot({ path: `tests/e2e/screenshots/SA-011-alignment-${width}.png`, fullPage: true, animations: "disabled" });
+  }
+
+  // 상품 조회·인증은 실제 Next/격리 DB를 사용한다. 공통 배너 표시 상태만 주입하며,
+  // 점검 예약·tenant LIVE 판정 API 자체는 admin-maintenance의 실제 DB 시험이 검증한다.
+  await page.route("**/api/maintenance", route => route.fulfill({ json: {
+    active: false, scheduled: true,
+    startsAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+    endsAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+  } }));
+  await page.route("**/api/seller/broadcast/summary", route => route.fulfill({ json: { broadcast: { status: "live" } } }));
+  await page.evaluate(() => window.dispatchEvent(new Event("onq:maintenance-changed")));
+  const banner = page.getByTestId("maintenance-seller-banner");
+  await expect(banner).toContainText("방송을 끝내 주십시오");
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await expect(description).toBeVisible();
+    const fit = await banner.evaluate(e => ({
+      bottom: e.getBoundingClientRect().bottom,
+      titleTop: document.querySelector(".au-ph-title")!.getBoundingClientRect().top,
+      overflow: document.documentElement.scrollWidth > innerWidth,
+    }));
+    expect(fit.titleTop).toBeGreaterThanOrEqual(fit.bottom);
+    expect(fit.overflow).toBe(false);
+    if (SHOTS) await page.screenshot({ path: `tests/e2e/screenshots/SA-011-maintenance-${width}.png`, fullPage: true, animations: "disabled" });
+  }
+});
+
+test("옵션 이름이 길어도 표는 내부에서 스크롤되고 페이지 폭을 밀지 않는다(1440·1024)", async ({ page }) => {
+  await login(page);
+  await searchFor(page, "보관용 카드 바인더");
   const row = page.getByTestId("product-row").filter({ hasText: "보관용 카드 바인더" });
   for (const width of [1440, 1024]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(row).toBeVisible();
-    const fit = await page.locator(".p-table").evaluate((t) => ({ table: t.scrollWidth, card: t.parentElement!.clientWidth }));
-    expect(fit.table).toBeLessThanOrEqual(fit.card);
+    const fit = await page.locator(".p-table").evaluate((t) => {
+      const wrap = t.closest(".p-tbl-wrap")!;
+      return { table: t.scrollWidth, wrap: wrap.scrollWidth, page: document.documentElement.scrollWidth, client: document.documentElement.clientWidth };
+    });
+    expect(fit.table).toBeLessThanOrEqual(fit.wrap);
+    expect(fit.page).toBeLessThanOrEqual(fit.client);
     // 판매가·재고·상태 열이 화면 안에 보인다(세로로는 그 줄까지 내려서 본다)
     await row.scrollIntoViewIfNeeded();
     await expect(row.getByText("18,000원")).toBeInViewport();
@@ -144,6 +397,7 @@ test("상품 등록 → 목록에 바로 보인다", async ({ page }) => {
   await page.getByLabel("옵션 2 이름").fill("3팩 묶음");
   await page.getByLabel("옵션 2 추가 금액").fill("28000");
   await page.getByLabel("옵션 2 재고").fill("5");
+  await checkFormPreview(page, "new", name, "15,000원");
   await shot(page, "SA-012-new-filled");
   await page.getByRole("button", { name: "등록", exact: true }).first().click();
 
@@ -156,6 +410,21 @@ test("상품 등록 → 목록에 바로 보인다", async ({ page }) => {
   await expect(row).toContainText("15,000원");
   await expect(row).toContainText("35");
   await expect(row).toContainText("판매 중");
+  // 위에서 만든 폐기용 상품만 수정하고 새 조회로 저장 효과를 확인한다.
+  await row.getByRole("link").first().click();
+  await expect(page.getByLabel("상품명")).toHaveValue(name);
+  await page.getByLabel("판매가").fill("16000");
+  await checkFormPreview(page, "edit", name, "16,000원");
+  await page.getByRole("button", { name: "저장", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "판매가 변경", exact: true }).click();
+  await expect(page.getByText("저장했습니다", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("판매가")).toHaveValue("16000");
+  await expect(page.getByLabel("옵션 1 이름")).toHaveValue("1팩");
+  await expect(page.getByLabel("옵션 1 재고")).toHaveValue("30");
+  await expect(page.getByLabel("옵션 2 이름")).toHaveValue("3팩 묶음");
+  await expect(page.getByLabel("옵션 2 추가 금액")).toHaveValue("28000");
+  await expect(page.getByLabel("옵션 2 재고")).toHaveValue("5");
 });
 
 test("상품명 100자를 넘기면 글자 수가 빨갛게 바뀌고 안내한다(이모지도 1자, 서버와 같은 기준)", async ({ page }) => {
@@ -194,6 +463,7 @@ test("상품 수정: 가격·재고를 바꾸면 저장되고 목록에도 반�
   await page.getByLabel("판매가").fill("129000");
   await page.getByLabel("옵션 1 재고").fill("9");
   await page.getByRole("button", { name: "저장", exact: true }).first().click();
+  await page.getByRole("dialog").getByRole("button", { name: "판매가 변경", exact: true }).click();
   await expect(page.getByText("저장했습니다")).toBeVisible();
 
   await page.reload();
@@ -210,6 +480,7 @@ test("상품 수정: 가격·재고를 바꾸면 저장되고 목록에도 반�
   await page.getByLabel("판매가").fill("132000");
   await page.getByLabel("옵션 1 재고").fill("5");
   await page.getByRole("button", { name: "저장", exact: true }).first().click();
+  await page.getByRole("dialog").getByRole("button", { name: "판매가 변경", exact: true }).click();
   await expect(page.getByText("저장했습니다")).toBeVisible();
 });
 
@@ -241,7 +512,7 @@ test("상품 삭제: 숨김을 먼저 권하고, 완전 삭제는 상품명을 �
   await expect(page).toHaveURL(/\/seller\/products$/);
   await expect(page.getByText("상품을 삭제했습니다")).toBeVisible();
   await searchFor(page, name);
-  await expect(page.getByText(`「${name}」에 해당하는 상품이 없습니다`)).toBeVisible();
+  await expect(page.getByText(new RegExp(`^「${name} · \\d{4}-\\d{2}-\\d{2} ~ \\d{4}-\\d{2}-\\d{2}」에 해당하는 상품이 없습니다$`))).toBeVisible();
   await expect(page.getByTestId("product-row").filter({ hasText: name })).toHaveCount(0);
 });
 
@@ -262,6 +533,7 @@ test("판매가를 내리면서 추가 금액을 바꿔도 저장된다(중간 �
   await page.getByLabel("판매가").fill("5000");
   await page.getByLabel("옵션 1 추가 금액").fill("-4000");
   await page.getByRole("button", { name: "저장", exact: true }).first().click();
+  await page.getByRole("dialog").getByRole("button", { name: "판매가 변경", exact: true }).click();
   await expect(page.getByText("저장했습니다", { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByLabel("판매가")).toHaveValue("5000");
@@ -271,6 +543,7 @@ test("판매가를 내리면서 추가 금액을 바꿔도 저장된다(중간 �
   await page.getByLabel("판매가").fill("10000");
   await page.getByLabel("옵션 1 추가 금액").fill("-9000");
   await page.getByRole("button", { name: "저장", exact: true }).first().click();
+  await page.getByRole("dialog").getByRole("button", { name: "판매가 변경", exact: true }).click();
   await expect(page.getByText("저장했습니다", { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByLabel("판매가")).toHaveValue("10000");
@@ -290,6 +563,7 @@ test("숫자·글자 입력: 전각 숫자는 받고, 음수 가격과 보이지
 
   await page.getByLabel("상품명").fill("부스터 팩");
   await page.getByLabel("판매가").fill("１５０００");
+  await page.getByTestId("product-form-preview").click();
   await expect(page.getByText("15,000원", { exact: true })).toBeVisible();
   await expect(page.getByText("가격은 1원 이상", { exact: false })).toHaveCount(0);
 });
@@ -313,7 +587,97 @@ test("권한이 하나도 없는 직원에게는 권한이 필요한 메뉴가 �
   for (const shown of ["공지 · 문의", "도우미", "내 계정"]) {
     await expect(page.locator(".gnb").getByText(shown, { exact: true })).toBeVisible();
   }
+  await page.goto("/seller/products/new");
+  await expect(page.getByText("이 계정은 이 일을 할 수 없습니다", { exact: true })).toBeVisible();
+  await expect(page.locator(".main input")).toHaveCount(0);
+  await expect(page.locator(".product-form-actions")).toHaveCount(0);
 });
+
+for (const [email, allowed] of [[OWNER, true], [VIEWER, false]] as const) {
+  test(`재고 수정: ${allowed ? "대표자" : "상품 권한 없는 직원"}의 경로·권한과 세 폭 화면을 확인한다`, async ({ page }) => {
+    await login(page, email);
+    await page.goto("/seller/products/stock");
+    await expect(page).toHaveURL(/\/seller\/products\/stock$/);
+    const options = await page.request.get("/api/seller/products/options?limit=200");
+    expect(options.status()).toBe(allowed ? 200 : 403);
+    if (allowed) await expect(page.getByTestId("stock-row").first()).toBeVisible();
+    for (const width of [1440, 1024, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      const crumb = page.locator(".loc-bar .crumb");
+      await expect(crumb).toHaveText("상품›재고›재고 수정");
+      const current = crumb.locator(".crumb-now");
+      await expect(current).toHaveText("›재고 수정");
+      await expect(current.locator(".crumb-sep")).toHaveText("›");
+      await expect(current.locator(".crumb-sep")).toHaveAttribute("aria-hidden", "true");
+      await expect(crumb.getByRole("link", { name: "재고 수정", exact: true })).toHaveCount(0);
+      if (allowed) {
+        await expect(page.getByRole("heading", { level: 1, name: "재고 수정", exact: true })).toBeVisible();
+        await expect(crumb.getByRole("link", { name: "상품", exact: true })).toHaveAttribute("href", "/seller/products");
+        await expect(crumb.getByRole("link", { name: "재고", exact: true })).toHaveAttribute("href", "/seller/products/stock");
+        const tableWrap = page.locator(".stock-table-wrap");
+        const row = page.getByTestId("stock-row").first();
+        await tableWrap.evaluate((el) => { el.scrollLeft = 0; });
+        for (const name of [row.locator(".c-name > span").first(), row.locator(".c-name > span").nth(1)]) {
+          await expect(name).toBeVisible();
+          await expect(name).not.toHaveText("");
+          const rect = await name.boundingBox();
+          expect(rect).not.toBeNull();
+          expect(rect!.width).toBeGreaterThan(0);
+          expect(rect!.height).toBeGreaterThan(0);
+        }
+        if (width >= 768) {
+          expect((await row.locator(".c-name").boundingBox())!.width).toBeGreaterThanOrEqual(160);
+          const headers = await page.locator(".stock-table th").evaluateAll((els) => els.filter((el) => el.textContent?.trim()).map((el) => {
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            const rect = range.getBoundingClientRect();
+            return { left: rect.left, right: rect.right, width: rect.width, height: rect.height };
+          }));
+          expect(headers).toHaveLength(5);
+          for (const [index, header] of headers.entries()) {
+            expect(header.width).toBeGreaterThan(0);
+            expect(header.height).toBeGreaterThan(0);
+            if (index) expect(headers[index - 1].right).toBeLessThanOrEqual(header.left);
+          }
+        }
+        if (width === 1440 || width === 390) {
+          await expect.poll(() => tableWrap.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+        }
+        if (width === 1024) {
+          expect(await tableWrap.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeGreaterThan(0);
+          await tableWrap.evaluate((el) => { el.scrollLeft = el.scrollWidth - el.clientWidth; });
+          for (const [suffix, closeLabel] of [[/ 이력$/, "닫기"], [/ 빼기 · 더하기$/, "취소"]] as const) {
+            const button = row.getByRole("button", { name: suffix });
+            await expect(button).toBeVisible();
+            await expect(button).toBeEnabled();
+            const bounds = await button.evaluate((el) => {
+              const rect = el.getBoundingClientRect();
+              const wrap = el.closest(".stock-table-wrap")!.getBoundingClientRect();
+              return { left: rect.left, right: rect.right, wrapLeft: wrap.left, wrapRight: wrap.right };
+            });
+            expect(bounds.left).toBeGreaterThanOrEqual(bounds.wrapLeft);
+            expect(bounds.right).toBeLessThanOrEqual(bounds.wrapRight);
+            await button.click();
+            const dialog = page.getByRole("dialog");
+            await expect(dialog).toBeVisible();
+            if (closeLabel === "취소") await expect(dialog.getByRole("radiogroup", { name: "빼기 또는 더하기" })).toBeVisible();
+            await dialog.getByRole("button", { name: closeLabel, exact: true }).click();
+            await expect(dialog).toHaveCount(0);
+          }
+          await tableWrap.evaluate((el) => { el.scrollLeft = 0; });
+          await expect.poll(() => tableWrap.evaluate((el) => el.scrollLeft)).toBe(0);
+        }
+      } else {
+        await expect(page.getByText("이 계정은 이 일을 할 수 없습니다", { exact: true })).toBeVisible();
+        await expect(page.getByTestId("stock-row")).toHaveCount(0);
+        await expect(page.locator(".main input")).toHaveCount(0);
+        await expect(crumb.getByRole("link")).toHaveCount(0);
+      }
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    }
+    await shot(page, allowed ? "SA-014-title-owner" : "SA-014-title-no-permission", true);
+  });
+}
 
 test("상품 권한이 없는 직원은 권한 안내를 본다", async ({ page }) => {
   // 배송 담당 직원도 로그인하면 홈(/seller)이다. 상품 목록은 주소로 들어오면 권한 안내
@@ -336,7 +700,10 @@ test("상품 권한이 없는 직원은 권한 안내를 본다", async ({ page 
 test("휴대폰 폭(390)에서는 메뉴가 서랍으로 열리고 상품이 카드로 보인다", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await login(page);
+  await searchFor(page, "박스"); // 짧은 seed 이름과 100자 seed 이름을 같은 검증 집합으로 찾는다
   await expect(page.getByTestId("product-card").first()).toBeVisible();
+  await expect(page.locator(".tbl.p-table")).toBeHidden();
+  await expect(page.locator(".p-cards")).toBeVisible();
   await expect(page.getByTestId("product-row").first()).toBeHidden();
   // 가로 스크롤이 생기지 않는다
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
@@ -358,6 +725,9 @@ test("휴대폰 폭(390)에서는 메뉴가 서랍으로 열리고 상품이 카
 
   await expect(page.getByRole("link", { name: "상품 목록", exact: true })).not.toBeInViewport();
   await page.getByRole("button", { name: "메뉴 열기" }).click();
+  await expect(page.locator(".lnb")).toHaveCSS("transform", "none");
+  await page.getByRole("link", { name: "상품 목록", exact: true }).scrollIntoViewIfNeeded();
+  await expect.poll(() => page.locator(".lnb").evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
   await expect(page.getByRole("link", { name: "상품 목록", exact: true })).toBeInViewport();
   if (SHOTS) await page.screenshot({ path: "tests/e2e/screenshots/SA-shell-drawer-390.png" });
   await page.getByRole("button", { name: "메뉴 닫기" }).click();
@@ -370,15 +740,35 @@ test("휴대폰 폭(390)에서는 메뉴가 서랍으로 열리고 상품이 카
   await expect(page.getByRole("link", { name: "상품 목록", exact: true })).not.toBeInViewport();
 });
 
-test("로그아웃 요청이 실패하면 화면에 남아 다시 시도하게 한다", async ({ page }) => {
+test("로그아웃 요청이 실패하면 확인 창 안에 오류를 보이고 화면에 남아 다시 시도하게 한다", async ({ page }) => {
   await login(page);
   await page.route("**/api/seller/auth/logout", (r) => r.fulfill({ status: 500, contentType: "application/json", body: "{}" }));
   await page.getByRole("button", { name: "로그아웃" }).click();
-  await expect(page.getByText("로그아웃하지 못했습니다. 다시 시도해 주십시오")).toBeVisible();
+  await confirmLogout(page);
+  await expect(page.getByRole("dialog").getByText("로그아웃하지 못했습니다. 다시 시도해 주십시오")).toBeVisible();
   await expect(page).toHaveURL(/\/seller\/products$/);
   await page.unroute("**/api/seller/auth/logout");
-  await page.getByRole("button", { name: "로그아웃" }).click();
+  await confirmLogout(page);
   await expect(page).toHaveURL(/\/seller\/login$/);
+});
+
+test("로그아웃은 확인 전에는 실행되지 않고, 취소하면 로그인이 유지된다", async ({ page }) => {
+  await login(page);
+  let called = 0;
+  await page.route("**/api/seller/auth/logout", (r) => {
+    called += 1;
+    return r.continue();
+  });
+  await page.getByRole("button", { name: "로그아웃" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("로그아웃하시겠습니까?")).toBeVisible();
+  await expect(dialog.getByText("이 기기에서 로그아웃됩니다")).toBeVisible();
+  expect(called).toBe(0);
+  await dialog.getByRole("button", { name: "취소" }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(called).toBe(0);
+  await expect(page).toHaveURL(/\/seller\/products$/);
+  expect((await page.request.get("/api/seller/me")).status()).toBe(200);
 });
 
 test("로그인이 풀린 뒤 다른 탭·화면을 열면 로그인으로 보낸다", async ({ page }) => {
@@ -418,7 +808,7 @@ test("「재고 없음」·「재고 부족」으로 걸러 보면 서버 기준
   await expect(page.getByTestId("product-row").filter({ hasText: "드래곤 소울 부스터" })).toHaveCount(0);
   // 판매 상태 탭과 함께 쓴다: 「숨김」 + 「재고 부족」은 해당 없음
   await applyStatus(page, "숨김", "재고 부족");
-  await expect(page.getByText("「숨김 · 재고 부족」에 해당하는 상품이 없습니다")).toBeVisible();
+  await expect(page.getByText(/^「숨김 · 재고 부족 · \d{4}-\d{2}-\d{2} ~ \d{4}-\d{2}-\d{2}」에 해당하는 상품이 없습니다$/)).toBeVisible();
 });
 
 test("「품절로 설정」 탭은 판매 상태가 품절인 상품만, 배지와 이름이 맞는다", async ({ page }) => {
@@ -433,6 +823,7 @@ test("「품절로 설정」 탭은 판매 상태가 품절인 상품만, 배지
 test("로그아웃하면 로그인 화면으로 가고 다시 들어갈 수 없다", async ({ page }) => {
   await login(page);
   await page.getByRole("button", { name: "로그아웃" }).click();
+  await confirmLogout(page);
   await expect(page).toHaveURL(/\/seller\/login$/);
   await page.goto("/seller/products");
   await expect(page).toHaveURL(/\/seller\/login\?next=/);
@@ -453,7 +844,7 @@ test("상품 검색: 상품·옵션 이름으로 서버에서 찾고(대소문�
   await expect(page.getByTestId("product-row").first()).toContainText("문라이트 1탄 박스");
   // 없는 이름은 안내하고, 「전체 보기」로 검색까지 지운다
   await searchFor(page, "없는상품이름");
-  await expect(page.getByText("「없는상품이름 · 숨김」에 해당하는 상품이 없습니다")).toBeVisible();
+  await expect(page.getByText(/^「없는상품이름 · 숨김 · \d{4}-\d{2}-\d{2} ~ \d{4}-\d{2}-\d{2}」에 해당하는 상품이 없습니다$/)).toBeVisible();
   await page.getByRole("button", { name: "전체 보기" }).click();
   await expect(page.getByLabel("상품 검색")).toHaveValue("");
   await expect(page.getByTestId("product-row").filter({ hasText: "스타라이트 부스터 박스" })).toBeVisible();

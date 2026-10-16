@@ -12,7 +12,7 @@ import { formatCsv, guardText } from "../shop-bulk-io/csv";
 // - 조회·내보내기는 platform.read(모든 마스터 역할), 재시도는 billing.manage(최고관리자·운영). 키·카드번호 원문은 어디에도 없다(카드 표시 이름 cardLabel만).
 // - 목록은 기간(KST 날짜, 청구 시각 기준)으로 항상 제한하고 새 표 없이 SubscriptionPayment·SellerSubscription에서 계산한다(기간 인덱스 SubscriptionPayment_createdAt_idx).
 // - 「예정」은 아직 청구가 생기지 않은 다음 자동결제(구독의 nextChargeAt이 기간 안이고 아직 안 지남)를 같은 표에 한 줄로 보여 준다(paymentId null, 금액은 예상).
-export const BILLING_INVOICE_PAGE_DEFAULT = 20;
+export const BILLING_INVOICE_PAGE_DEFAULT = 10;
 export const BILLING_INVOICE_PAGE_MAX = 100;
 export const BILLING_INVOICE_RANGE_MAX_DAYS = 366;
 export const BILLING_INVOICE_EXPORT_MAX = 5000;
@@ -108,7 +108,8 @@ const source = (p: Parsed, now: Date) => Prisma.sql`
 
 function filters(p: Parsed): Prisma.Sql {
   const w: Prisma.Sql[] = [Prisma.sql`TRUE`];
-  if (p.state) w.push(Prisma.sql`state = ${p.state}`);
+  // FINAL의 「실패 · 재시도」 선택지는 별도 선택지가 없는 종료된 실패도 포함한다. 연체는 독립 선택지다.
+  if (p.state) w.push(p.state === "RETRYING" ? Prisma.sql`state IN ('RETRYING', 'FAILED')` : Prisma.sql`state = ${p.state}`);
   if (p.failedOnly) w.push(Prisma.sql`state IN ('RETRYING', 'OVERDUE', 'FAILED')`);
   if (p.plan) w.push(Prisma.sql`"planCode" = ${p.plan}`);
   if (p.sellerId) w.push(Prisma.sql`"sellerId" = ${p.sellerId}::uuid`);
@@ -178,6 +179,7 @@ async function summary(db: PrismaClient, p: Parsed, now: Date) {
            count(*) FILTER (WHERE state IN ('PAID', 'REFUNDED')) AS "paidCount", coalesce(sum(amount::bigint) FILTER (WHERE state IN ('PAID', 'REFUNDED')), 0) AS "paidAmount",
            count(*) FILTER (WHERE state IN ('RETRYING', 'OVERDUE', 'FAILED')) AS "failedCount", coalesce(sum(amount::bigint) FILTER (WHERE state IN ('RETRYING', 'OVERDUE', 'FAILED')), 0) AS "failedAmount",
            count(*) FILTER (WHERE state = 'RETRYING') AS "retryingCount", count(*) FILTER (WHERE state = 'OVERDUE') AS "overdueCount",
+           count(*) FILTER (WHERE state = 'FAILED') AS "terminalFailedCount",
            count(*) FILTER (WHERE state = 'PENDING') AS "pendingCount",
            count(*) FILTER (WHERE state = 'REFUNDED') AS "refundedCount", coalesce(sum("refundedAmount"::bigint) FILTER (WHERE state = 'REFUNDED'), 0) AS "refundedAmount",
            count(*) FILTER (WHERE state = 'SCHEDULED') AS "scheduledCount", coalesce(sum(amount::bigint) FILTER (WHERE state = 'SCHEDULED'), 0) AS "scheduledAmount"
@@ -186,7 +188,7 @@ async function summary(db: PrismaClient, p: Parsed, now: Date) {
   return {
     total: { count: n("totalCount"), amount: n("totalAmount") },
     paid: { count: n("paidCount"), amount: n("paidAmount") },
-    failed: { count: n("failedCount"), amount: n("failedAmount"), retrying: n("retryingCount"), overdue: n("overdueCount") },
+    failed: { count: n("failedCount"), amount: n("failedAmount"), retrying: n("retryingCount"), overdue: n("overdueCount"), terminal: n("terminalFailedCount") },
     pending: { count: n("pendingCount") },
     refunded: { count: n("refundedCount"), amount: n("refundedAmount") },
     scheduled: { count: n("scheduledCount"), estimatedAmount: n("scheduledAmount") },
@@ -292,6 +294,20 @@ export async function exportBillingInvoices(db: PrismaClient, admin: AdminSessio
 
 export type RetryResult = { paymentId: string; ok: boolean; reason?: string; result?: "PAID" | "FAILED" | "PENDING" };
 
+// 기존 재시도 판정만 분리한다. 상세 조회도 같은 순서·5분 경계를 쓰며 잠금/예약/결제 실행은 retryOne에 남긴다.
+export function invoiceRetryReason(
+  pay: { id: string; status: string; scheduled: boolean; kind: string },
+  latest: { id: string; createdAt: Date } | null,
+  sub: { status: string; cancelAtPeriodEnd: boolean; billingKeyCipher: string | null; seller: { status: string } },
+  now: Date,
+) {
+  if (pay.status !== "FAILED") return "not_failed" as const;
+  if (latest?.id !== pay.id || !pay.scheduled || pay.kind !== "PERIOD") return "not_latest" as const;
+  if (!["ACTIVE", "PAST_DUE"].includes(sub.status) || sub.cancelAtPeriodEnd || !sub.billingKeyCipher || sub.seller.status === "SUSPENDED") return "not_retryable" as const;
+  if (now.getTime() - latest.createdAt.getTime() < RETRY_MIN_GAP_MS) return "too_soon" as const;
+  return null;
+}
+
 // 실패 건 재시도(billing.manage = 최고관리자·운영). 실패한 자동결제(구독료) 청구 중 그 구독의 최신 청구이고, 구독이 살아 있고(해지 예약·정지 아님) 카드가 있는 것만.
 // 자동결제 예약 실행과 같은 경로(renewDueSubscriptions)로 그 구독만 지금 결제한다 → 같은 잠금·중복 방지·결제 결과 반영. 5분 안에 만든 청구가 있으면 too_soon.
 // 한 건이 실패해도 나머지는 계속한다(건별 결과, 1~50건). 결제 공급자는 부르는 쪽이 넘긴다(시험 환경은 가짜 공급자).
@@ -325,10 +341,8 @@ async function retryOne(db: PrismaClient, provider: BillingProvider, admin: Admi
     const cur = await tx.subscriptionPayment.findUniqueOrThrow({ where: { id: paymentId }, select: { status: true } });
     const latest = await tx.subscriptionPayment.findFirst({ where: { subscriptionId: pay.subscriptionId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true, createdAt: true } });
     const sub = await tx.sellerSubscription.findUniqueOrThrow({ where: { id: pay.subscriptionId }, select: { status: true, cancelAtPeriodEnd: true, billingKeyCipher: true, seller: { select: { status: true } } } });
-    if (cur.status !== "FAILED") return { reason: "not_failed" as const };
-    if (latest?.id !== paymentId || !pay.scheduled || pay.kind !== "PERIOD") return { reason: "not_latest" as const };
-    if (!["ACTIVE", "PAST_DUE"].includes(sub.status) || sub.cancelAtPeriodEnd || !sub.billingKeyCipher || sub.seller.status === "SUSPENDED") return { reason: "not_retryable" as const };
-    if (now.getTime() - latest.createdAt.getTime() < RETRY_MIN_GAP_MS) return { reason: "too_soon" as const };
+    const reason = invoiceRetryReason({ ...pay, id: paymentId, status: cur.status }, latest, sub, now);
+    if (reason) return { reason };
     await tx.sellerSubscription.update({ where: { id: pay.subscriptionId }, data: { nextChargeAt: now } });
     return { subscriptionId: pay.subscriptionId, sellerId: pay.sellerId };
   });

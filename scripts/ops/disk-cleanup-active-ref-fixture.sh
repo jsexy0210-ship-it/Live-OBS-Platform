@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script="$(dirname "$0")/disk-cleanup.sh"
+source <(sed -n '/^readonly_path_within()/,/^}/p; /^readonly_exact_active_ref()/,/^}/p; /^readonly_space_details()/,/^}/p' "$script")
+
+readonly_path_within / /opt/obs/src/.next && exit 1
+readonly_path_within /opt/obs/src /opt/obs/src/.next && exit 1
+readonly_path_within /opt/obs/src/.next /opt/obs/src/.next
+readonly_path_within /opt/obs/src/.next/cache /opt/obs/src/.next
+! readonly_path_within /opt/obs/src/.nextish /opt/obs/src/.next
+
+printf 'active-ref path fixture PASS (root/parent=no, exact/descendant=yes, prefix sibling=no)\n'
+
+log() { printf '%s\n' "$*"; }
+df() {
+  case "$1" in
+    -hP) printf 'Filesystem Size Used Avail Use%% Mounted on\n/dev/private 60G 20G 39G 34%% /private/mount\n' ;;
+    -iP) printf 'Filesystem Inodes IUsed IFree IUse%% Mounted on\n/dev/private 100 20 80 20%% /private/mount\n' ;;
+    *) return 1 ;;
+  esac
+}
+space_output="$(readonly_space_details fixture /)"
+grep -Fq 'fixture 공간(총량/사용/남음/사용률): 60G 20G 39G 34%' <<<"$space_output"
+! grep -Eq '/dev/private|/private/mount' <<<"$space_output"
+printf 'filesystem detail fixture PASS (total/used/free/percent only)\n'
+
+root="$(cd "$(dirname "$0")/../.." && pwd -P)"
+workflow="$root/.github/workflows/disk-cleanup-obs-test.yml"
+preflight="$(awk '
+  /^      - name: Verify isolated checkout path$/ { in_step=1; next }
+  in_step && /^        run: \|$/ { in_run=1; next }
+  in_run && /^      - name:/ { exit }
+  in_run { sub(/^          /, ""); print }
+' "$workflow")"
+[ -n "$preflight" ] || { echo 'checkout preflight block missing' >&2; exit 1; }
+
+tmp="$(mktemp -d)"
+trap 'rm -rf -- "$tmp"' EXIT
+workspace="$tmp/workspace"
+mkdir "$workspace"
+git -C "$workspace" init --quiet
+git -C "$workspace" config user.name fixture
+git -C "$workspace" config user.email fixture@example.invalid
+printf 'parent repository evidence\n' > "$workspace/runner-evidence"
+git -C "$workspace" add runner-evidence
+git -C "$workspace" commit --quiet -m fixture
+printf 'preserve this dirty parent file\n' > "$workspace/runner-evidence"
+parent_head="$(git -C "$workspace" rev-parse HEAD)"
+parent_status="$(git -C "$workspace" status --porcelain --untracked-files=no)"
+output="$tmp/github-output"
+: > "$output"
+run_preflight() {
+  env GITHUB_WORKSPACE="$1" GITHUB_RUN_ID="$2" GITHUB_RUN_ATTEMPT=2 GITHUB_OUTPUT="$3" bash -euo pipefail -c "$preflight"
+}
+
+run_preflight "$workspace" 12345 "$output"
+[ "$(cat "$output")" = 'checkout_path=disk-cleanup-12345-2' ]
+[ -d "$workspace/disk-cleanup-12345-2" ]
+[ -z "$(ls -A "$workspace/disk-cleanup-12345-2")" ]
+# Before checkout initializes its target, Git can discover the parent repository.
+[ "$(git -C "$workspace/disk-cleanup-12345-2" rev-parse --show-prefix)" = 'disk-cleanup-12345-2/' ]
+# actions/checkout@v5 sees no target/.git, clears only the reserved target, then initializes there.
+git -C "$workspace/disk-cleanup-12345-2" init --quiet
+[ -z "$(git -C "$workspace/disk-cleanup-12345-2" rev-parse --show-prefix)" ]
+[ "$(git -C "$workspace" rev-parse HEAD)" = "$parent_head" ]
+[ "$(git -C "$workspace" status --porcelain --untracked-files=no)" = "$parent_status" ]
+grep -Fxq 'preserve this dirty parent file' "$workspace/runner-evidence"
+printf 'checkout preflight fixture PASS (checkout initializes a separate repository and preserves parent state)\n'
+
+: > "$output"
+existing_workspace="$tmp/existing-workspace"
+mkdir "$existing_workspace"
+printf 'preserve this runner evidence\n' > "$existing_workspace/disk-cleanup-12346-2"
+if run_preflight "$existing_workspace" 12346 "$output" 2>/dev/null; then echo 'existing checkout path was accepted' >&2; exit 1; fi
+grep -Fxq 'preserve this runner evidence' "$existing_workspace/disk-cleanup-12346-2"
+[ ! -s "$output" ]
+printf 'checkout preflight fixture PASS (existing file is rejected and preserved)\n'
+
+: > "$output"
+symlink_workspace="$tmp/symlink-workspace"
+mkdir "$symlink_workspace"
+outside="$tmp/outside"
+mkdir "$outside"
+printf 'preserve symlink target\n' > "$outside/evidence"
+ln -s "$outside" "$symlink_workspace/disk-cleanup-12347-2"
+if run_preflight "$symlink_workspace" 12347 "$output" 2>/dev/null; then echo 'symlink checkout path was accepted' >&2; exit 1; fi
+grep -Fxq 'preserve symlink target' "$outside/evidence"
+[ ! -s "$output" ]
+printf 'checkout preflight fixture PASS (symlink target is rejected and preserved)\n'
+
+grep -Fq 'path: ${{ steps.isolated_checkout.outputs.checkout_path }}' "$workflow"
+grep -Fq 'clean: false' "$workflow"
+grep -Fq 'persist-credentials: false' "$workflow"
+grep -Fq 'if: always() && steps.checkout.outcome == '\''success'\''' "$workflow"
+grep -Fq 'path: ${{ steps.isolated_checkout.outputs.checkout_path }}' "$workflow"
+[ "$(grep -Fc 'working-directory: ${{ github.workspace }}/${{ steps.isolated_checkout.outputs.checkout_path }}' "$workflow")" -eq 3 ]
+printf 'checkout workflow fixture PASS (isolated path, no clean, no persisted credentials)\n'
+
+# 실제 배포 명령을 소유 합성 경로/도커 응답으로 실행해 자동 삭제 재발을 막는다.
+deploy_workflow="$root/.github/workflows/deploy-obs-test.yml"
+post_check="$(awk '
+  /^      - name: Check disk after deploy$/ { in_step=1; next }
+  in_step && /^      - name:/ { exit }
+  in_step && /^        run: / { sub(/^        run: /, ""); print }
+' "$deploy_workflow")"
+[ "$post_check" = 'scripts/ops/disk-cleanup.sh --check-after-deploy' ]
+! grep -Fq 'disk-cleanup.sh --apply' "$deploy_workflow"
+[ "$(grep -Fxc '        run: scripts/ops/disk-cleanup.sh --check' "$deploy_workflow")" -eq 1 ]
+[ "$(grep -Fxc '        run: scripts/ops/disk-cleanup.sh --check-after-deploy' "$deploy_workflow")" -eq 1 ]
+(
+  owned="$tmp/deploy-protected"
+  mutations="$tmp/deploy-mutations"
+  mkdir -p "$owned/backups" "$owned/docker" "$owned/runner/_diag"
+  for n in {1..11}; do printf 'owned backup evidence\n' > "$owned/backups/obs-20260101-$(printf '%06d' "$n")-before-abcdef0.dump"; done
+  printf 'owned rollback image\n' > "$owned/docker/rollback-app.image"
+  printf 'owned rollback image\n' > "$owned/docker/rollback-migrate.image"
+  printf 'owned dangling image\n' > "$owned/docker/dangling.image"
+  printf 'owned shared cache\n' > "$owned/docker/shared-builder.cache"
+  printf 'owned old runner log\n' > "$owned/runner/_diag/Runner_fixture.log"
+  printf 'sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n' > "$owned/history"
+  before="$(find "$owned" -type f -exec sha256sum {} \; | sort)"
+  docker() {
+    if [ "$*" = "info --format {{.DockerRootDir}}" ]; then printf '%s\n' "$owned/docker"; return; fi
+    printf 'unexpected docker call\n' >> "$mutations"; return 97
+  }
+  rm() { printf 'unexpected delete\n' >> "$mutations"; return 97; }
+  df() { printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\nfixture 20000000 1000000 %s 5%% /fixture\n' "$FIXTURE_FREE_KIB"; }
+  export -f docker rm df
+  export owned mutations OBS_BACKUP_DIR="$owned/backups" OBS_RUNNER_ROOT="$owned/runner" OBS_HISTORY_FILE="$owned/history"
+  cd "$root"
+  export FIXTURE_FREE_KIB=10000000
+  normal="$(bash -euo pipefail -c "$post_check" 2>&1)"
+  grep -q '디스크 여유 점검' <<<"$normal"
+  ! grep -qE '배포를 시작하지|배포를 다시|--apply|디스크 여유가 부족' <<<"$normal"
+  export FIXTURE_FREE_KIB=1000
+  if low="$(bash -euo pipefail -c "$post_check" 2>&1)"; then echo 'low disk check unexpectedly passed' >&2; exit 1; else low_exit=$?; fi
+  [ "$low_exit" = 1 ]
+  grep -q '배포는 성공했지만 배포 후 점검에서 디스크 여유가 부족합니다' <<<"$low"
+  grep -q '자료를 삭제하지 않으며 배포 결과를 바꾸지 않습니다' <<<"$low"
+  ! grep -qE '배포를 시작하지|배포를 다시|--apply' <<<"$low"
+  if preflight="$(bash scripts/ops/disk-cleanup.sh --check 2>&1)"; then exit 1; else preflight_exit=$?; fi
+  [ "$preflight_exit" = 1 ]
+  grep -q '배포를 시작하지 않았어요' <<<"$preflight"
+  grep -q '정리가 끝나면 배포를 다시 실행' <<<"$preflight"
+  [ ! -e "$mutations" ]
+  [ "$(find "$owned" -type f -exec sha256sum {} \; | sort)" = "$before" ]
+)
+printf 'deploy disk check fixture PASS (normal/low space, backup/image/cache/log preservation, no apply)\n'

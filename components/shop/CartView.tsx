@@ -362,14 +362,14 @@ export default function CartView({ slug }: { slug: string }) {
                 <span>{quote.kind === "ok" ? won(quote.shippingFee) : quote.kind === "error" ? "주문서에서 알려 드려요" : "계산하고 있어요"}</span>
               </div>
               <div className="cart-row cart-total">
-                <span>결제 예정 금액</span>
+                <span><span className="shop-pc">결제 예정 금액</span><span className="shop-m">최종 금액</span></span>
                 <b>{quote.kind === "ok" ? won(quote.total) : "—"}</b>
               </div>
             </>
           )}
           {chosen.length > 0 ? (
             <Link className="btn btn-lg btn-block" href={orderHref}>
-              {won(finalTotal)} 주문하기
+              <span className="shop-m">{won(finalTotal)} </span>주문하기
             </Link>
           ) : (
             <button className="btn btn-lg btn-block" type="button" disabled>

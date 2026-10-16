@@ -2,8 +2,8 @@
 
 import "../../../../../../styles/seller-orders.css";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
-import { Modal, PageHead } from "../../../../../../components/admin-ui";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { CursorPagination, Modal, PageHead } from "../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
@@ -74,12 +74,18 @@ export default function RefundRequestsPage() {
   const tab: Status = TABS.some((t) => t.key === u.status) ? (u.status as Status) : "REQUESTED";
   const setTab = (t: Status) => setU({ status: t });
   const [state, setState] = useState<Load>({ kind: "loading" });
-  const [more, setMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const paging = useRef(false);
+  const reqId = useRef(0);
   const [openId, setOpenId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
 
   const load = useCallback(async (status: Status) => {
+    const id = ++reqId.current; setPage(1); setCursors([undefined]); paging.current = false;
+    setState({ kind: "loading" });
     const r = await api<List>(`/api/seller/refund-requests?status=${status}`);
+    if (id !== reqId.current) return;
     if (!r.ok) return setState({ kind: "error", status: r.status });
     setState({ kind: "ok", rows: r.data.requests, next: r.data.nextCursor, counts: r.data.counts });
   }, []);
@@ -90,14 +96,20 @@ export default function RefundRequestsPage() {
 
   useScrollRestore("seller-refund-requests", state.kind === "ok");
 
-  const loadMore = async () => {
-    if (state.kind !== "ok" || !state.next) return;
-    setMore(true);
-    const r = await api<List>(`/api/seller/refund-requests?status=${tab}&cursor=${state.next}`);
-    setMore(false);
-    if (!r.ok) return setToast({ text: "더 불러오지 못했습니다. 다시 눌러 주십시오", neg: true });
-    const seen = new Set(state.rows.map((x) => x.id));
-    setState({ ...state, rows: [...state.rows, ...r.data.requests.filter((x) => !seen.has(x.id))], next: r.data.nextCursor, counts: r.data.counts });
+  const turnPage = async (target: number) => {
+    if (state.kind !== "ok" || paging.current || target === page || target < 1 || target > cursors.length + 1) return;
+    const cursor = target <= cursors.length ? cursors[target - 1] : state.next;
+    if (target > 1 && !cursor) return;
+    paging.current = true; const id = ++reqId.current;
+    const r = await api<List>("/api/seller/refund-requests?status=" + tab + "&" + (cursor ? "cursor=" + encodeURIComponent(cursor) : ""));
+    if (id !== reqId.current) return;
+    paging.current = false;
+    if (!r.ok) return setToast({ text: "불러오지 못했습니다. 다시 눌러 주십시오", neg: true });
+    setState({ kind: "ok", rows: r.data.requests, next: r.data.nextCursor, counts: r.data.counts });
+    setPage(target); setCursors(c => {
+      const visited = target > c.length ? [...c, cursor ?? undefined] : c;
+      return visited[target] && visited[target] !== r.data.nextCursor ? visited.slice(0, target) : visited;
+    });
   };
 
   const counts = state.kind === "ok" ? state.counts : {};
@@ -204,13 +216,7 @@ export default function RefundRequestsPage() {
               </table>
             </div>
           )}
-          {state.kind === "ok" && state.next && (
-            <div className="row" style={{ padding: "12px 20px", justifyContent: "center" }}>
-              <button className={`btn btn-sm btn-out${more ? " is-loading" : ""}`} type="button" disabled={more} onClick={() => void loadMore()}>
-                더 보기
-              </button>
-            </div>
-          )}
+          {state.kind === "ok" && (page > 1 || state.next) && <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={n => void turnPage(n)} onNext={() => void turnPage(page + 1)} />}
         </div>
         {state.kind === "ok" && !canEdit && (
           <div className="msg msg-info" role="status">
@@ -227,10 +233,18 @@ export default function RefundRequestsPage() {
             const doneId = openId;
             setOpenId(null);
             setToast({ text });
-            // 처리한 행만 뺀다(불러온 쪽수·스크롤 유지). 탭별 건수만 새로 읽는다
-            setState((s) => (s.kind === "ok" ? { ...s, rows: s.rows.filter((r) => r.id !== doneId) } : s));
-            void api<List>(`/api/seller/refund-requests?status=${tab}`).then((r) => {
-              if (r.ok) setState((s) => (s.kind === "ok" ? { ...s, counts: r.data.counts } : s));
+            if (state.kind !== "ok") return;
+            const id = ++reqId.current;
+            paging.current = false;
+            // 처리한 행만 거둬 현재 쪽과 스크롤을 보존한다. 끝 쪽의 마지막 행만 이전 쪽으로 보정한다.
+            setState(s => s.kind === "ok" ? { ...s, rows: s.rows.filter(r => r.id !== doneId) } : s);
+            if (page > 1 && !state.next && state.rows.length === 1 && state.rows[0].id === doneId) {
+              void turnPage(page - 1);
+              return;
+            }
+            void api<List>(`/api/seller/refund-requests?status=${tab}`).then(r => {
+              if (id !== reqId.current) return;
+              if (r.ok) setState(s => s.kind === "ok" ? { ...s, counts: r.data.counts } : s);
             });
           }}
         />

@@ -3,14 +3,15 @@ import { requireSeller } from "../../../../lib/server/authz/guards";
 import { prisma } from "../../../../lib/server/db";
 import { errorResponse, mutation, noStore, readJson, sessionToken } from "../../../../lib/server/http/route";
 import { gradeError } from "../../../../lib/server/shop-member-grades/http";
-import { addMemberGrade, getMemberGrades, saveMemberGrades } from "../../../../lib/server/shop-member-grades/service";
+import { GradeCursorError, addMemberGrade, getMemberGrades, saveMemberGrades } from "../../../../lib/server/shop-member-grades/service";
 
 // 회원 등급(SA-044). 조회는 MEMBER_POINTS(대표자·회원 · 적립금 권한 직원): 등급별 이름 · 승급 기준액 · 회원 수 · 적립률, 자동 재산정 설정, 지난 재산정, 최근 변경, 고정한 회원.
 export async function GET(req: Request) {
   try {
     const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "STORE_OPERATIONS" });
-    return noStore(NextResponse.json(await getMemberGrades(prisma, ctx)));
+    return noStore(NextResponse.json(await getMemberGrades(prisma, ctx, new Date(), { recentCursor: new URL(req.url).searchParams.get("recentCursor"), lockedCursor: new URL(req.url).searchParams.get("lockedCursor") })));
   } catch (e) {
+    if (e instanceof GradeCursorError) return gradeError("invalid_cursor");
     return errorResponse(e);
   }
 }

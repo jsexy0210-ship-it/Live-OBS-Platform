@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminSeller } from "../../../../../lib/server/admin/sellers";
 import { requireAdmin } from "../../../../../lib/server/authz/guards";
 import { prisma } from "../../../../../lib/server/db";
-import { errorResponse, requestMeta, sessionToken } from "../../../../../lib/server/http/route";
+import { errorResponse, noStore, requestMeta, sessionToken } from "../../../../../lib/server/http/route";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -12,9 +12,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ sellerId
     const admin = await requireAdmin(prisma, sessionToken(req, "admin"), "platform.read");
     const { sellerId } = await params;
     const s = UUID.test(sellerId) ? await getAdminSeller(prisma, admin, sellerId, requestMeta(req)) : null;
-    if (!s) return NextResponse.json({ error: "not_found" }, { status: 404 });
-    return NextResponse.json({ seller: s });
+    if (!s) return noStore(NextResponse.json({ error: "not_found" }, { status: 404 }));
+    return noStore(NextResponse.json({ seller: s }));
   } catch (e) {
-    return errorResponse(e);
+    return noStore(errorResponse(e));
   }
 }
