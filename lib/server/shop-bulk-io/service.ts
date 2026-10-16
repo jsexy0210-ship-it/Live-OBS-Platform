@@ -6,7 +6,7 @@ import { ORDER_ERROR_MESSAGES_FORMAL } from "../orders/messages";
 import { MAX_OPTIONS_PER_PRODUCT, PRODUCT_NAME_MAX, createProduct, deleteProduct, parseNewProduct, type ProductFailure } from "../products/manage";
 import { MAX_CATEGORIES_PER_PRODUCT, listCategories, setProductCategories } from "../shop-category/service";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
-import { formatCsv, guardText, parseCsv, unguardText } from "./csv";
+import { formatCsv, guardText as guardCsv, parseCsv, unguardText } from "./csv";
 import { recordExport } from "./exports";
 import { XLSX_MAX_BYTES, readXlsx, writeXlsx } from "./xlsx";
 
@@ -425,18 +425,20 @@ export async function getBulkJob(db: PrismaClient, ctx: TenantContext, jobId: st
 
 // 상품 내보내기: 양식과 같은 열이라 고쳐서 다시 올리는 데 쓸 수 있다(올리면 새 상품으로 등록된다). 지운 상품은 뺀다. 개인정보 없음.
 export async function exportProductsCsv(db: PrismaClient, ctx: TenantContext): Promise<Result<{ csv: string; count: number }>> {
-  const r = await exportProductRows(db, ctx);
+  const r = await exportProductRows(db, ctx, true);
   return r.ok ? { ok: true, value: { csv: formatCsv(r.value.rows), count: r.value.count } } : r;
 }
 
-// 같은 내용을 엑셀(.xlsx)로. 수식처럼 보이는 글자 앞의 작은따옴표 보호는 CSV와 같아 다시 올리면 그대로 돌아온다.
+// 같은 내용을 엑셀(.xlsx)로. 엑셀 칸은 글자 형식이라 수식으로 실행되지 않아 CSV처럼 작은따옴표를 붙이지 않는다(붙이면 화면에 그대로 보인다).
 export async function exportProductsXlsx(db: PrismaClient, ctx: TenantContext): Promise<Result<{ xlsx: Buffer; count: number }>> {
-  const r = await exportProductRows(db, ctx);
+  const r = await exportProductRows(db, ctx, false);
   return r.ok ? { ok: true, value: { xlsx: writeXlsx(r.value.rows, "상품 목록"), count: r.value.count } } : r;
 }
 
-async function exportProductRows(db: PrismaClient, ctx: TenantContext): Promise<Result<{ rows: string[][]; count: number }>> {
+// guard: CSV는 수식처럼 보이는 글자 앞에 작은따옴표를 붙여 엑셀에서 열 때 수식이 실행되지 않게 한다(guardText)
+async function exportProductRows(db: PrismaClient, ctx: TenantContext, guard: boolean): Promise<Result<{ rows: string[][]; count: number }>> {
   requireSellerPermission(ctx, "PRODUCT_MANAGE");
+  const guardText = (v: string) => (guard ? guardCsv(v) : v);
   const count = await db.product.count({ where: { sellerId: ctx.sellerId, deletedAt: null } });
   if (count > MAX_EXPORT_PRODUCTS) return { ok: false, reason: "too_many_products" };
   const tree = await listCategories(db, ctx);

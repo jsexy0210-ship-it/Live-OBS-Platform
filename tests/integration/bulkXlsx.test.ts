@@ -4,7 +4,7 @@ import { POST as previewRoute } from "../../app/api/seller/bulk-io/products/prev
 import { GET as templateRoute } from "../../app/api/seller/bulk-io/products/template/route";
 import { loginSeller } from "../../lib/server/auth/login";
 import { prisma } from "../../lib/server/db";
-import { COLUMNS, commitProductImport, exportProductsXlsx, previewProductImportXlsx } from "../../lib/server/shop-bulk-io/service";
+import { COLUMNS, commitProductImport, exportProductsCsv, exportProductsXlsx, previewProductImportXlsx } from "../../lib/server/shop-bulk-io/service";
 import { XLSX_MAX_BYTES, readXlsx, writeXlsx } from "../../lib/server/shop-bulk-io/xlsx";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { createCategory } from "../../lib/server/shop-category/service";
@@ -112,7 +112,7 @@ describe("엑셀 양식·내보내기", () => {
     expect(await res.json()).toMatchObject({ totalRows: 3, productCount: 2, errorTotal: 0 });
   });
 
-  it("상품 내보내기(.xlsx)는 다시 올려도 같은 상품으로 읽힌다(수식처럼 보이는 글자 보호 포함)", async () => {
+  it("상품 내보내기(.xlsx)는 다시 올려도 같은 상품으로 읽히고, 수식처럼 보이는 글자에 작은따옴표를 붙이지 않는다(CSV만 붙임)", async () => {
     const s = await shop();
     const c = await s.cookie();
     const seed = await post(
@@ -130,8 +130,12 @@ describe("엑셀 양식·내보내기", () => {
     const sheet = readXlsx(bytes);
     if (!sheet.ok) throw new Error(sheet.reason);
     expect(sheet.rows[0]).toEqual(head);
-    const danger = sheet.rows.find((r) => r[0] === "'=위험 수식");
+    // 엑셀 칸은 글자 형식이라 보호용 작은따옴표 없이 그대로
+    const danger = sheet.rows.find((r) => r[0] === "=위험 수식");
     expect(danger?.[9]).toBe("00123");
+    expect(sheet.rows.some((r) => r[0].startsWith("'"))).toBe(false);
+    const csvExport = await exportProductsCsv(db, s.ctx);
+    expect(csvExport.ok && csvExport.value.csv).toContain("'=위험 수식");
     // 그대로 다시 올리면 같은 상품 2개로 통과(작은따옴표 보호는 읽을 때 벗겨진다)
     const again = await post(c, new Uint8Array(bytes), { "content-type": XLSX });
     const body = await again.json();
