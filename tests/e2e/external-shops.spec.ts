@@ -48,13 +48,16 @@ test("대표자: 목록·상태, 새 연결 시작(지원 밖 주소 거절 포�
   const rows = page.getByTestId("external-row");
   await expect(rows).toHaveCount(3);
   await expect(rows.filter({ hasText: "e2e-connected" })).toContainText("이어짐");
-  await expect(rows.filter({ hasText: "e2e-connected" })).toContainText(/\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}/);
+  // 마지막으로 받은 주문 알림은 상대 시각(2분 전), 연결일은 날짜만 보인다
+  await expect(rows.filter({ hasText: "e2e-connected" })).toContainText(/\d+분 전/);
+  await expect(rows.filter({ hasText: "e2e-connected" })).toContainText(/\d{4}\.\d{2}\.\d{2}/);
+  await expect(rows.filter({ hasText: "e2e-reauth" })).toContainText("허용이 풀려 주문 알림이 멈췄습니다");
   await expect(rows.filter({ hasText: "e2e-reauth" })).toContainText("다시 이어야 함");
   await expect(rows.filter({ hasText: "e2e-pending" })).toContainText("끊는 중");
   await page.screenshot({ path: "tests/e2e/screenshots/external-shops-sa006-1440.png", fullPage: true });
 
   // 지원 밖 주소는 인증으로 넘어가기 전에 거절
-  await page.getByRole("button", { name: "쇼핑몰 더 이어 두기" }).click();
+  await page.getByRole("button", { name: "쇼핑몰 추가 연결" }).click();
   await page.getByLabel("쇼핑몰 주소").fill("https://evil.example.com");
   await page.getByRole("button", { name: "이 주소로 연결 시작하기" }).click();
   const startDialog = page.getByRole("dialog", { name: "이 쇼핑몰을 연결하시겠습니까?" });
@@ -111,7 +114,7 @@ test("쇼핑몰 설정 권한이 없는 직원은 목록을 받지 못하고 연
   await expect(page.getByTestId("external-forbidden")).toContainText("쇼핑몰 설정 권한이 있는 직원만 볼 수 있습니다");
   await expect(page.getByText("연동 정보를 불러오지 못했습니다")).toHaveCount(0);
   await expect(page.getByTestId("external-row")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "쇼핑몰 더 이어 두기" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "쇼핑몰 추가 연결" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "연결 해제" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "다시 연결" })).toHaveCount(0);
 });
