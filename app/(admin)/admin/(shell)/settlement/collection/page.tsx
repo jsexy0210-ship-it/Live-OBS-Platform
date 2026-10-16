@@ -12,7 +12,7 @@ import { DatePicker } from "../../../../../../components/admin-ui/DatePicker";
 
 // MA-032 구독료 수납(GET /api/admin/subscription-billing, 모든 마스터 역할, 조회만). 정본: design/project/MA-032.dc.html(FINAL v295). 기간(KST 날짜, 청구 시각 기준)이 기본 「이번 달」.
 // 빠른 선택(오늘 · 7일 · 이번 달 · 지난 달 · 직접 입력)과 날짜 칸을 바꾸면 바로 다시 읽는다. 결제 목록은 청구 내역(MA-024), 연체·유예·잠금 파트너스는 구독 현황(MA-023)에서 본다.
-// 정본의 「유예 전환」 열은 서버가 연체 발생과 구분하지 못해(연체 직후가 유예) 넣지 않았다(정본 수정 요청 중). 요약 「청구」 금액은 서버에 없어 건수만 보인다.
+// 유예는 결제 실패 당일부터라 정본(v339)도 「유예 전환」 열 없이 「연체 발생 (유예 시작)」 한 열이다. 요약 「청구」 금액은 서버에 없어 건수만 보인다.
 type Summary = {
   charged: number;
   paid: number;
@@ -180,7 +180,7 @@ function CollectionPageInner() {
                             <th>대기</th>
                             <th>수납 금액</th>
                             <th>재시도</th>
-                            <th>연체 발생</th>
+                            <th>연체 발생 (유예 시작)</th>
                           </tr>
                         </thead>
                         <tbody>
