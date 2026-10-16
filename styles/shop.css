@@ -1147,6 +1147,13 @@ body {
   font-weight: 600;
 }
 
+.shop-my-out {
+  padding: 16px 0 0;
+}
+.shop-my-out .my-logout {
+  width: 100%;
+}
+
 /* 공통 모달: 제목 줄 오른쪽 위에 X. 휴대폰에서는 아래에서 올라오는 시트 대신 가운데 카드(좌우 여백 16px) */
 .shop-modal-bg {
   position: fixed;

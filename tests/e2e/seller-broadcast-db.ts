@@ -135,3 +135,16 @@ export async function moveQueueOrdersToNow(nicks: readonly string[], slug = "dem
     await db.$disconnect();
   }
 }
+
+// 방송 화면 접속 신호가 5분 넘게 없어진 상태로 만든다(BROADCAST_STALE_MS). 방송 중 재발급 차단(SA-052)을 풀고 같은 방송 상태로 재발급 흐름을 시험할 때 쓴다.
+export async function makeBroadcastSignalStale(slug = "demo-shop") {
+  const db = open();
+  try {
+    const { id: sellerId } = await db.seller.findUniqueOrThrow({ where: { slug }, select: { id: true } });
+    const old = new Date(Date.now() - 10 * 60_000);
+    await db.broadcastSession.updateMany({ where: { sellerId, status: "LIVE" }, data: { startedAt: old } });
+    await db.overlayToken.updateMany({ where: { sellerId, revokedAt: null }, data: { lastSeenAt: old } });
+  } finally {
+    await db.$disconnect();
+  }
+}
