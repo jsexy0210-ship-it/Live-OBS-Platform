@@ -20,6 +20,11 @@ export type OrderRow = {
   itemSummary: { firstProductName: string | null; otherCount: number };
   shipped: boolean;
   refundable: boolean;
+  // 목록 API가 함께 주는 값(결제 수단 · 입금 기한 · 발송 상태 · 대기 중인 환불 요청 수)
+  paymentMethod?: "CARD" | "BANK_TRANSFER" | null;
+  paymentDueAt?: string | null;
+  shipment?: { state: "none" | "in_transit" | "delivered"; courier: string | null; trackingNumber: string | null; deliveredAt: string | null };
+  refundRequest?: { pendingCount: number };
 };
 
 export type OrderItem = { id: string; productNameSnapshot: string; optionNameSnapshot: string; unitPrice: number; quantity: number };
