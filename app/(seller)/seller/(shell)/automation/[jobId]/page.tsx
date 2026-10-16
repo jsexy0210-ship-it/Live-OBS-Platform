@@ -89,6 +89,8 @@ export default function AutomationProgressPage() {
   const idx = j.stepNumber - 1;
   const terminal = j.status === "FAILED" || j.status === "CANCELED";
   const cancelable = ["QUEUED", "RUNNING", "NEEDS_CUSTOMER", "VERIFYING"].includes(j.status);
+  // 멈춘 표시(pausedAt)는 취소·실패 뒤에도 남지만 이어 하기는 서버가 QUEUED에서만 받는다
+  const pausedQueued = j.paused && j.status === "QUEUED";
   const pausable = !j.paused && ["QUEUED", "RUNNING", "VERIFYING"].includes(j.status);
   const refundable = j.paymentStatus === "PAID" && (j.status === "FAILED" || (j.status === "CANCELED" && !j.verifiedAt));
 
@@ -99,10 +101,10 @@ export default function AutomationProgressPage() {
         <PageHead
           title="자동 연결 진행"
           actions={
-            (pausable || j.paused || cancelable) && (
+            (pausable || pausedQueued || cancelable) && (
               <>
                 {pausable && <button className="btn btn-out" type="button" onClick={() => void act("pause", "잠시 멈췄습니다", { title: "잠시 멈추시겠습니까?", body: "지금 단계에서 멈춰 둡니다. 이어 하면 멈춘 단계부터 다시 시작합니다.", confirmLabel: "잠시 멈추기" })}>잠시 멈추기</button>}
-                {j.paused && <button className="btn" type="button" onClick={() => void act("continue", "이어서 진행합니다", { title: "이어 하시겠습니까?", body: "멈춘 단계부터 다시 시작합니다.", confirmLabel: "이어 하기" })}>이어 하기</button>}
+                {pausedQueued && <button className="btn" type="button" onClick={() => void act("continue", "이어서 진행합니다", { title: "이어 하시겠습니까?", body: "멈춘 단계부터 다시 시작합니다.", confirmLabel: "이어 하기" })}>이어 하기</button>}
                 {cancelable && <button className="btn btn-out" type="button" onClick={() => void act("cancel", "자동 연결을 취소했습니다", { title: "자동 연결을 취소하시겠습니까?", body: j.status === "QUEUED" ? "아직 연결을 시작하지 않았습니다. 취소한 뒤 환불을 요청할 수 있습니다." : "진행을 멈추고 지금까지 바꾼 설정을 되돌립니다. 설정을 시작한 뒤라 환불되지 않습니다 · 결제 전에 동의하신 내용입니다.", confirmLabel: "그만두기", danger: true })}>자동 설정 그만두기</button>}
               </>
             )
@@ -170,8 +172,8 @@ export default function AutomationProgressPage() {
               <div><button className="btn" type="button" onClick={() => void act("resume", "이어서 진행합니다", { title: "이어서 진행하시겠습니까?", body: "직접 해 주실 일을 마쳤다면 자동 설정을 다시 시작합니다.", confirmLabel: "이어서 진행하기" })}>이어서 진행하기</button></div>
             </section>
           )}
-          {j.paused && <div className="msg msg-info" role="note" data-testid="job-paused"><span><b>잠시 멈춰 두었습니다.</b> {j.pausedAt ? `${stamp(j.pausedAt)} · ` : ""}{STEPS[idx] ? `${j.stepNumber}단계(${STEP_LABEL[STEPS[idx]]})에서 멈췄습니다 · ` : ""}이어 하면 멈춘 단계부터 다시 시작합니다</span></div>}
-          {!j.paused && j.status === "QUEUED" && <div className="msg msg-info" role="note"><span><b>순서를 기다리고 있습니다</b> · {j.queue ? (j.queue.ahead === 0 ? "곧 시작합니다" : `앞에 ${j.queue.ahead}개 · 약 ${j.queue.etaMinutes}분 뒤 시작합니다`) : "창을 닫아도 진행됩니다"} · 창을 닫아도 알림으로 알려 드립니다 · 결제가 확인되기 전에는 작업이 시작되지 않습니다</span></div>}
+          {pausedQueued && <div className="msg msg-info" role="note" data-testid="job-paused"><span><b>잠시 멈춰 두었습니다.</b> {j.pausedAt ? `${stamp(j.pausedAt)} · ` : ""}{STEPS[idx] ? `${j.stepNumber}단계(${STEP_LABEL[STEPS[idx]]})에서 멈췄습니다 · ` : ""}이어 하면 멈춘 단계부터 다시 시작합니다</span></div>}
+          {!pausedQueued && j.status === "QUEUED" && <div className="msg msg-info" role="note"><span><b>순서를 기다리고 있습니다</b> · {j.queue ? (j.queue.ahead === 0 ? "곧 시작합니다" : `앞에 ${j.queue.ahead}개 · 약 ${j.queue.etaMinutes}분 뒤 시작합니다`) : "창을 닫아도 진행됩니다"} · 창을 닫아도 알림으로 알려 드립니다 · 결제가 확인되기 전에는 작업이 시작되지 않습니다</span></div>}
           {j.status === "AWAITING_PAYMENT" && <div className="msg msg-info" role="note"><span><b>결제를 확인하고 있습니다</b> · 창을 닫아도 진행됩니다 · 결제가 확인되기 전에는 작업이 시작되지 않습니다</span></div>}
           {j.status === "VERIFYING" && <div className="msg msg-info" role="note"><span><b>테스트 주문 이벤트를 보냈습니다</b> · OBS 오버레이에 「테스트 주문」이 보이는지 확인하고 있습니다</span></div>}
           {j.status === "CLEANUP_NEEDED" && <div className="msg msg-cau" role="note"><span><b>바꾼 설정을 원래대로 되돌리고 있습니다.</b> 끝나면 알려 드립니다</span></div>}

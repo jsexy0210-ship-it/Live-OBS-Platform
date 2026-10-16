@@ -77,6 +77,10 @@ export function timelineText(e: TimelineEntry): string {
     case "resumed": return `이어서 진행합니다${step}`;
     case "verifying": return "테스트 주문 이벤트를 보냈습니다 · 방송 화면 확인 중";
     case "retry": return `다시 시도합니다${step}${e.reason ? ` · ${errorText(e.reason)}` : ""}`;
+    case "step_done": {
+      const label = e.stepNumber ? STEP_LABEL[Object.keys(STEP_LABEL)[e.stepNumber - 1]] : undefined;
+      return e.stepNumber ? `${e.stepNumber}단계${label ? `(${label})` : ""} 완료` : "단계를 마쳤습니다";
+    }
     case "paused": return `잠시 멈췄습니다${step}`;
     case "continued": return `이어 했습니다${step}`;
     case "succeeded": return "완료 · 실제 표시까지 확인했습니다";
