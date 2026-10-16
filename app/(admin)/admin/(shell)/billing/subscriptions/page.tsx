@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { CursorPagination } from "../../../../../../components/Pagination";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { MAX_SEARCH_LENGTH } from "../../../../../../components/seller/format";
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar } from "../../../_components/AdminShell";
+import { useUrlState } from "../../../../../../lib/client/navigation";
 import { PLAN_FILTER, SUBSCRIPTION_STATUS, day, dayTime, type PlanRef, type SubscriptionStatus } from "../../../_components/partners";
 
 // MA-023 구독 현황(GET /api/admin/subscriptions, 모든 마스터 역할, 조회만). 이용 상태별 탭과 쇼핑몰 이름·주소 검색, 요금제 필터.
@@ -38,7 +39,10 @@ type Row = {
 };
 type Page = { counts: Record<Access, number>; subscriptions: Row[]; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; items: Row[]; next: string | null };
-type Filters = { access: Access | ""; q: string; plan: string };
+// locked = 연체 유예가 끝나 이용이 막힌 건(서버 access=locked, 건수는 따로 없음). 조건은 주소에 보존돼 MA-032 수납 현황의 연체·잠금 링크로도 들어온다.
+type Filters = { access: Access | "locked" | ""; q: string; plan: string };
+const STATUS_CHIPS: (Access | "locked")[] = ["trial", "paid", "charging", "grace", "locked", "expired"];
+const VALID_ACCESS = new Set<string>(STATUS_CHIPS);
 const PAGE = 10;
 const EMPTY: Filters = { access: "", q: "", plan: "" };
 
@@ -52,8 +56,28 @@ function query(f: Filters, cursor?: string) {
 }
 
 export default function SubscriptionsPage() {
-  const [draft, setDraft] = useState({ q: "", plan: "" });
-  const [applied, setApplied] = useState<Filters>(EMPTY);
+  // 적용된 조건은 주소에 두고(Back · 새로고침 · MA-032 링크 보존), 검색 상자에 쓰는 중인 값은 화면 안에만 둔다.
+  // 주소가 바뀌는 사이에 입력이 지워지지 않게, 내가 만든 주소 변경은 draft에 다시 덮어쓰지 않는다(Back · 링크로 바뀐 주소만 반영).
+  const [urlApplied, setUrl] = useUrlState<Filters>(EMPTY);
+  const [draft, setDraft] = useState<Filters>(urlApplied);
+  const mine = useRef<string | null>(null);
+  const urlKey = JSON.stringify(urlApplied);
+  useEffect(() => {
+    if (mine.current === urlKey) {
+      mine.current = null;
+      return;
+    }
+    setDraft(JSON.parse(urlKey) as Filters);
+  }, [urlKey]);
+  const setApplied = (next: Filters) => {
+    mine.current = JSON.stringify(next);
+    setUrl(next);
+  };
+  // 주소에 알 수 없는 상태 값이 있으면 전체로 본다(서버가 400을 주지 않게). 값이 같으면 같은 객체를 유지해 불필요한 재조회를 막는다.
+  const applied = useMemo(() => {
+    const u = JSON.parse(urlKey) as Filters;
+    return u.access === "" || VALID_ACCESS.has(u.access) ? u : { ...u, access: "" as const };
+  }, [urlKey]);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [counts, setCounts] = useState<Record<Access, number> | null>(null);
   const [more, setMore] = useState(false);
@@ -101,7 +125,7 @@ export default function SubscriptionsPage() {
   const items = state.kind === "ok" ? state.items : [];
   const filtered = applied.access !== "" || applied.q !== "" || applied.plan !== "";
   const reset = () => {
-    setDraft({ q: "", plan: "" });
+    setDraft(EMPTY);
     setApplied(EMPTY);
   };
 
@@ -120,20 +144,20 @@ export default function SubscriptionsPage() {
             </div>
           ))}
         </div>
-        <div style={{ maxWidth: "100%", overflowX: "auto" }}>
-          <nav className="tabs" aria-label="이용 상태" style={{ minWidth: "max-content" }}>
-            <button type="button" className={`tab${applied.access === "" ? " on" : ""}`} aria-pressed={applied.access === ""} onClick={() => setApplied({ ...applied, access: "" })}>
-              전체{counts ? ` ${TABS.reduce((n, a) => n + counts[a], 0).toLocaleString("ko-KR")}` : ""}
-            </button>
-            {TABS.map((a) => (
-              <button key={a} type="button" className={`tab${applied.access === a ? " on" : ""}`} aria-pressed={applied.access === a} onClick={() => setApplied({ ...applied, access: a })}>
-                {ACCESS[a].label}
-                {counts ? ` ${counts[a].toLocaleString("ko-KR")}` : ""}
-              </button>
-            ))}
-          </nav>
-        </div>
         <SearchBox onSearch={() => setApplied({ ...applied, q: draft.q.trim(), plan: draft.plan })} onReset={reset} busy={state.kind === "loading"}>
+          <SearchRow label="상태">
+            <div className="row" style={{ gap: 6, flexWrap: "wrap" }} role="group" aria-label="이용 상태">
+              <button type="button" className={`btn btn-dense ${applied.access === "" ? "" : "btn-out"}`} aria-pressed={applied.access === ""} onClick={() => setApplied({ ...applied, access: "" })}>
+                전체{counts ? ` ${TABS.reduce((n, a) => n + counts[a], 0).toLocaleString("ko-KR")}` : ""}
+              </button>
+              {STATUS_CHIPS.map((a) => (
+                <button key={a} type="button" className={`btn btn-dense ${applied.access === a ? "" : "btn-out"}`} aria-pressed={applied.access === a} onClick={() => setApplied({ ...applied, access: a })}>
+                  {a === "locked" ? "잠금" : ACCESS[a].label}
+                  {counts && a !== "locked" ? ` ${counts[a].toLocaleString("ko-KR")}` : ""}
+                </button>
+              ))}
+            </div>
+          </SearchRow>
           <SearchRow label="검색어" label2="요금제" children2={
             <select className="inp" aria-label="요금제" value={draft.plan} onChange={(e) => setDraft({ ...draft, plan: e.target.value })}>
               <option value="">전체</option>
