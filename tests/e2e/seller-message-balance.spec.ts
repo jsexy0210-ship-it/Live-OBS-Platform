@@ -65,8 +65,8 @@ test("충전 기능이 꺼져 있으면 준비 중 안내를 보이고 충전·�
   await expect(page.getByTestId("free-balance")).toHaveText("0원");
   await expect(page.getByTestId("mail-quota")).toContainText("/");
   await expect(page.getByTestId("skipped")).toHaveText("0건");
-  // 단가가 정해지지 않았으면 「[확정 전]」, 서식 문구가 그대로 보인다
-  await expect(page.getByTestId("price-table")).toContainText("1통당 [확정 전]원");
+  // 단가가 정해지지 않았으면 「단가 확정 후 안내」로 보인다
+  await expect(page.getByTestId("price-table")).toContainText("단가 확정 후 안내");
   await expect(page.getByText("후불 청구, 외상, 잔액이 마이너스가 되는 일은 없습니다.", { exact: false })).toBeAttached();
   await expect(page.getByTestId("charge-button")).toBeDisabled();
   await expect(page.getByText("충전 기능 준비 중")).toBeVisible();
