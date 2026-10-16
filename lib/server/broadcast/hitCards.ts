@@ -234,7 +234,7 @@ export async function exportHitCards(db: PrismaClient, ctx: TenantContext, f: Hi
   return { ok: true as const, csv, truncated };
 }
 
-// 다시 연출(SA-053): 지금 방송의 카드만(오버레이는 지금 방송 카드만 보여 준다, 아니면 409 not_live). 노출 기록을 비우고 replayedAt을 올려 liveVersion으로 오버레이에 알린다. 다른 판매자 카드는 404.
+// 다시 연출(SA-053): 지금 방송의 카드만(오버레이는 지금 방송 카드만 보여 준다, 아니면 409 not_live). 노출 시각(overlayShownAt)을 새 시각으로 바꾸고 liveVersion으로 오버레이에 알린다(오버레이는 값이 바뀐 카드를 다시 보여 준다). 다른 판매자 카드는 404.
 export async function replayHitCard(db: PrismaClient, ctx: TenantContext, id: string, meta: AuditMeta = {}) {
   requireSellerPermission(ctx, "BROADCAST_RUN");
   if (!isUuid(id)) throw notFound();
@@ -243,7 +243,7 @@ export async function replayHitCard(db: PrismaClient, ctx: TenantContext, id: st
     const card = await tx.hitCard.findFirst({ where: { id, sellerId: ctx.sellerId }, select: { id: true, broadcastSession: { select: { status: true } } } });
     if (!card) throw notFound();
     if (card.broadcastSession?.status !== "LIVE") return { ok: false as const, reason: "not_live" as const };
-    await tx.hitCard.update({ where: { id }, data: { replayedAt: new Date(), overlayShownAt: null } });
+    await tx.hitCard.update({ where: { id }, data: { overlayShownAt: new Date() } });
     await writeAudit(tx, { actorType: ctx.actorType, actorId: ctx.actorId, sellerId: ctx.sellerId, action: "hit_card.replay", targetType: "HitCard", targetId: id, ip: meta.ip, userAgent: meta.userAgent });
     return { ok: true as const, version };
   });

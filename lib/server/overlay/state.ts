@@ -175,7 +175,7 @@ export async function getOverlayState(db: PrismaClient, sellerId: string, opts: 
             where: { sellerId, broadcastSessionId: live.id },
             orderBy: [{ createdAt: "desc" }, { id: "desc" }],
             take: HALL_MAX,
-            select: { id: true, cardName: true, grade: true, nicknameSnapshot: true, createdAt: true, replayedAt: true, overlayShownAt: true },
+            select: { id: true, cardName: true, grade: true, nicknameSnapshot: true, createdAt: true, overlayShownAt: true },
           })
         : [];
       const path = `/shop/${encodeURIComponent(seller.slug)}`;
@@ -186,8 +186,8 @@ export async function getOverlayState(db: PrismaClient, sellerId: string, opts: 
         shop: { name: seller.shopName, url: opts.origin ? new URL(path, opts.origin).toString() : null },
         opening: opening ? toPublic(opening) : null,
         waiting: waiting.map(toPublic),
-        // replayedAt: 「다시 연출」을 요청한 시각(바뀌면 화면이 카드를 다시 보여 준다). overlayShownAt은 화면에 내보내지 않는다(markHitsShown이 쓴다)
-        hits: hits.map(({ nicknameSnapshot, overlayShownAt: _shown, ...h }) => ({ ...h, nickname: overlayNickname(nicknameSnapshot) })),
+        // shownAt: 화면이 이 카드를 읽어 간 시각. 처음 읽을 땐 null이고(읽은 뒤 기록), 「다시 연출」을 누르면 새 시각으로 바뀐다 — 이미 값이 있던 카드의 shownAt이 바뀌면 화면이 카드를 다시 보여 준다.
+        hits: hits.map(({ nicknameSnapshot, overlayShownAt, ...h }) => ({ ...h, shownAt: overlayShownAt, nickname: overlayNickname(nicknameSnapshot) })),
         unshownHitIds: hits.filter((h) => !h.overlayShownAt).map((h) => h.id),
         eventCard: await eventCard(tx, sellerId),
         purchaseRanking: live ? await purchaseRanking(tx, sellerId, live.id) : [],

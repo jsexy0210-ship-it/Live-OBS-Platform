@@ -206,7 +206,7 @@ describe("HIT 카드 기록 쪽 이동·내보내기(SA-053)", () => {
 });
 
 describe("HIT 카드 방송 화면 노출·다시 연출(SA-053)", () => {
-  it("오버레이가 카드를 읽어 가면 노출 기록(pending→shown), 방송이 끝나도 안 읽혔으면 skipped. 다시 연출하면 비우고 replayedAt을 올린다", async () => {
+  it("오버레이가 카드를 읽어 가면 노출 기록(pending→shown), 방송이 끝나도 안 읽혔으면 skipped. 다시 연출하면 노출 시각을 새로 바꾼다", async () => {
     const s = await shop();
     const t = await shop();
     const live = await db.broadcastSession.create({ data: { sellerId: s.seller.id, status: "LIVE" } });
@@ -223,11 +223,12 @@ describe("HIT 카드 방송 화면 노출·다시 연출(SA-053)", () => {
     const token = await issueOverlayToken(db, ctx);
     const read = async () => {
       const res = await overlayStateRoute(new Request(`http://localhost:3000/api/overlay/${token}/state`), { params: Promise.resolve({ token }) });
-      return (await res.json()) as { hits: { id: string; replayedAt: string | null }[]; unshownHitIds?: unknown; version: number };
+      return (await res.json()) as { hits: { id: string; shownAt: string | null }[]; unshownHitIds?: unknown; version: number };
     };
     const first = await read();
     expect(first.hits.map((h) => h.id)).toEqual([a.id]);
     expect(first.unshownHitIds).toBeUndefined(); // 내부 값은 화면에 나가지 않는다
+    expect(first.hits[0].shownAt).toBeNull(); // 처음 읽을 땐 null, 읽은 뒤에 기록
     const shown = (await list(s.owner)).body.items.find((c: { cardName: string }) => c.cardName === "A 카드");
     expect(shown.overlay.status).toBe("shown");
     const at = shown.overlay.shownAt;
@@ -236,15 +237,15 @@ describe("HIT 카드 방송 화면 노출·다시 연출(SA-053)", () => {
     // 다른 쇼핑몰 오버레이는 이 카드를 읽지도 노출 기록도 바꾸지 못한다(판매자 격리)
     expect((await list(t.owner)).body.items).toEqual([]);
 
-    // 다시 연출: 노출 기록 비움 + replayedAt + 버전 증가 + 감사. 오버레이가 다시 읽으면 shown
+    // 다시 연출: 노출 시각을 새 시각으로 바꾸고 버전 증가 + 감사. 오버레이는 값이 바뀐 것으로 알아챈다
     const v0 = (await db.seller.findUniqueOrThrow({ where: { id: s.seller.id } })).liveVersion;
+    await new Promise((r) => setTimeout(r, 20));
     const rp = await replayRoute(json(`/api/seller/hit-cards/${a.id}/replay`, "POST", s.runner), { params: Promise.resolve({ hitCardId: a.id }) });
     expect(rp.status).toBe(200);
     expect((await db.seller.findUniqueOrThrow({ where: { id: s.seller.id } })).liveVersion).toBe(v0 + 1);
-    expect((await list(s.owner)).body.items.find((c: { cardName: string }) => c.cardName === "A 카드").overlay.status).toBe("pending");
-    const again = await read();
-    expect(again.hits[0].replayedAt).not.toBeNull();
-    expect((await list(s.owner)).body.items.find((c: { cardName: string }) => c.cardName === "A 카드").overlay.status).toBe("shown");
+    const after = (await list(s.owner)).body.items.find((c: { cardName: string }) => c.cardName === "A 카드");
+    expect([after.overlay.status, new Date(after.overlay.shownAt).getTime() > new Date(at).getTime()]).toEqual(["shown", true]);
+    expect((await read()).hits[0].shownAt).toBe(after.overlay.shownAt); // 오버레이가 보는 값이 바뀌었다
     expect(await db.auditLog.count({ where: { sellerId: s.seller.id, action: "hit_card.replay" } })).toBe(1);
 
     // 지난 방송 카드는 409, 다른 쇼핑몰은 404, 권한 없는 직원은 403
