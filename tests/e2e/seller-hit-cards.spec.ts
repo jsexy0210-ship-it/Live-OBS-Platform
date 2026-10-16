@@ -20,9 +20,8 @@ test("대표자: 메뉴에서 들어가 HIT 카드를 등록하고, 기간으로
   const card = `e2e-card-${Date.now()}`;
   await login(page, "demo-owner@example.com", "/seller/products");
   await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "방송", exact: true }).click();
-  // 새 메뉴: 왼쪽 「방송 기록」(방송별 · HIT 카드 화면 탭)에서 HIT 카드 탭으로 간다
-  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "방송 기록" }).click();
-  await page.getByRole("navigation", { name: "화면 탭" }).getByRole("link", { name: "HIT 카드" }).click();
+  // 새 메뉴: 왼쪽 「방송 기록」 아래 하위 링크(방송별 · HIT 카드)에서 HIT 카드로 간다
+  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("navigation", { name: "방송 기록" }).getByRole("link", { name: "HIT 카드" }).click();
   await expect(page).toHaveURL(/\/seller\/hit-cards$/);
 
   // 등록: 대상 주문이 없으면 「직접 입력」(닉네임을 적음). 필수 칸이 비면 등록 버튼이 꺼져 있다
