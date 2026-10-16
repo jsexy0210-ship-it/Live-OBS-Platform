@@ -419,22 +419,22 @@ function AddStaff({ onAdded, onChanged }: { onAdded: (name: string) => void; onC
         )
       )}
       <div className="staff-add-grid">
-      {field("name", "이름", <input {...inputProps("name")} value={name} onChange={(e) => setName(e.target.value)} />)}
+      {field("name", "이름", <input {...inputProps("name")} placeholder="이름" value={name} onChange={(e) => setName(e.target.value)} />)}
       {field(
         "phone",
         "휴대폰 번호",
-        <input {...inputProps("phone")} className={`${inputProps("phone").className} num`} inputMode="numeric" placeholder="숫자만 입력" value={phone} onChange={(e) => setPhone(e.target.value)} />,
+        <input {...inputProps("phone")} className={`${inputProps("phone").className} num`} inputMode="numeric" placeholder="010-0000-0000" value={phone} onChange={(e) => setPhone(e.target.value)} />,
         "직원이 아이디나 비밀번호를 찾을 때 본인 확인에 씁니다",
       )}
       {field(
         "email",
         "이메일 (로그인 아이디)",
-        <input {...inputProps("email")} type="text" inputMode="email" autoCapitalize="none" spellCheck={false} autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />,
+        <input {...inputProps("email")} placeholder="name@example.com" type="text" inputMode="email" autoCapitalize="none" spellCheck={false} autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />,
       )}
       {field(
         "password",
         "처음 쓸 비밀번호",
-        <SecretInput {...inputProps("password")} maxLength={200} value={password} onChange={(e) => setPassword(e.target.value)} />,
+        <SecretInput {...inputProps("password")} placeholder="8자 이상 · 영문과 숫자" maxLength={200} value={password} onChange={(e) => setPassword(e.target.value)} />,
         `${MIN_PASSWORD_LENGTH}자 이상으로 정해 직원에게 직접 전달해 주십시오`,
       )}
       </div>
