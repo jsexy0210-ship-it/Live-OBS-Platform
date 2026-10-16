@@ -25,5 +25,5 @@ CREATE INDEX "PlatformMaintenanceWindow_endedAt_id_idx" ON "PlatformMaintenanceW
 
 -- 지금 켜져 있는 점검(이전 방식으로 켠 것)을 창으로 옮겨 이력에 남긴다
 INSERT INTO "PlatformMaintenanceWindow" ("message", "reason", "startsAt", "endsAt", "immediate", "status", "createdByAdminId")
-SELECT "message", '이전 설정에서 가져옴', COALESCE("startsAt", "updatedAt"), "endsAt", ("startsAt" IS NULL), 'SCHEDULED', "updatedByAdminId"
+SELECT "message", COALESCE(NULLIF("reason", ''), '이전 설정에서 가져옴'), COALESCE("startsAt", "updatedAt"), "endsAt", ("startsAt" IS NULL), 'SCHEDULED', "updatedByAdminId"
 FROM "PlatformMaintenance" WHERE "id" = 1 AND "enabled" = true AND ("endsAt" IS NULL OR "endsAt" > COALESCE("startsAt", "updatedAt"));
