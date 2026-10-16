@@ -238,15 +238,21 @@ export async function exportHitCards(db: PrismaClient, ctx: TenantContext, f: Hi
 export async function replayHitCard(db: PrismaClient, ctx: TenantContext, id: string, meta: AuditMeta = {}) {
   requireSellerPermission(ctx, "BROADCAST_RUN");
   if (!isUuid(id)) throw notFound();
+  class NotLive extends Error {}
   const result = await db.$transaction(async (tx) => {
     const version = await bump(tx, ctx.sellerId);
     const card = await tx.hitCard.findFirst({ where: { id, sellerId: ctx.sellerId }, select: { id: true, broadcastSession: { select: { status: true } } } });
     if (!card) throw notFound();
-    if (card.broadcastSession?.status !== "LIVE") return { ok: false as const, reason: "not_live" as const };
+    // 거절이면 던져서 앞에서 올린 liveVersion도 되돌린다(바뀐 게 없는데 버전만 오르지 않게)
+    if (card.broadcastSession?.status !== "LIVE") throw new NotLive();
     await tx.hitCard.update({ where: { id }, data: { overlayShownAt: new Date() } });
     await writeAudit(tx, { actorType: ctx.actorType, actorId: ctx.actorId, sellerId: ctx.sellerId, action: "hit_card.replay", targetType: "HitCard", targetId: id, ip: meta.ip, userAgent: meta.userAgent });
-    return { ok: true as const, version };
+    return version;
+  }).catch((e) => {
+    if (e instanceof NotLive) return null;
+    throw e;
   });
-  if (result.ok) await notifySellerChanged(db, ctx.sellerId, result.version);
-  return result.ok ? ({ ok: true as const }) : result;
+  if (result === null) return { ok: false as const, reason: "not_live" as const };
+  await notifySellerChanged(db, ctx.sellerId, result);
+  return { ok: true as const };
 }

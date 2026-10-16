@@ -251,7 +251,9 @@ describe("HIT 카드 방송 화면 노출·다시 연출(SA-053)", () => {
     // 지난 방송 카드는 409, 다른 쇼핑몰은 404, 권한 없는 직원은 403
     const oldCard = await db.hitCard.findFirstOrThrow({ where: { cardName: "지난 카드" } });
     const call = (id: string, cookie: string) => replayRoute(json(`/api/seller/hit-cards/${id}/replay`, "POST", cookie), { params: Promise.resolve({ hitCardId: id }) });
+    const vBefore = (await db.seller.findUniqueOrThrow({ where: { id: s.seller.id } })).liveVersion;
     expect((await call(oldCard.id, s.owner)).status).toBe(409);
+    expect((await db.seller.findUniqueOrThrow({ where: { id: s.seller.id } })).liveVersion).toBe(vBefore); // 거절된 요청은 버전을 올리지 않는다
     expect((await call(a.id, t.owner)).status).toBe(404);
     expect((await call(a.id, s.noPerm)).status).toBe(403);
     expect(live.id).toBeTruthy();
