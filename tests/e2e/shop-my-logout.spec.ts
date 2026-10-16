@@ -54,3 +54,11 @@ test("PC 1440: 왼쪽 메뉴 맨 아래 「로그아웃」도 같은 확인 창�
   await okConfirm(page, "로그아웃");
   await expect(page).toHaveURL(new RegExp(`/shop/${SLUG}/?$`));
 });
+
+test("비회원 PC: 로그인 전 화면의 왼쪽 메뉴에는 「로그아웃」이 없다", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/shop/${SLUG}/me/rewards`);
+  const menu = page.getByRole("navigation", { name: "내 정보 메뉴" });
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("button", { name: "로그아웃" })).toHaveCount(0);
+});
