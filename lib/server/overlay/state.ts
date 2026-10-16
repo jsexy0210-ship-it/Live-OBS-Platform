@@ -146,6 +146,16 @@ async function eventCard(tx: Tx, sellerId: string) {
   };
 }
 
+// 방송 화면(오버레이)이 카드를 처음 읽어 간 시각 기록(SA-053 「방송 화면」 열). 이미 기록된 카드는 건드리지 않는다. 실패해도 오버레이 응답에는 영향이 없다.
+export async function markHitsShown(db: PrismaClient, sellerId: string, ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  try {
+    await db.hitCard.updateMany({ where: { sellerId, id: { in: ids }, overlayShownAt: null }, data: { overlayShownAt: new Date() } });
+  } catch (e) {
+    console.error("HIT 노출 기록 실패", e);
+  }
+}
+
 export async function getOverlayState(db: PrismaClient, sellerId: string, opts: { origin?: URL | null } = {}) {
   return db.$transaction(
     async (tx) => {
@@ -165,7 +175,7 @@ export async function getOverlayState(db: PrismaClient, sellerId: string, opts: 
             where: { sellerId, broadcastSessionId: live.id },
             orderBy: [{ createdAt: "desc" }, { id: "desc" }],
             take: HALL_MAX,
-            select: { id: true, cardName: true, grade: true, nicknameSnapshot: true, createdAt: true },
+            select: { id: true, cardName: true, grade: true, nicknameSnapshot: true, createdAt: true, overlayShownAt: true },
           })
         : [];
       const path = `/shop/${encodeURIComponent(seller.slug)}`;
@@ -176,7 +186,9 @@ export async function getOverlayState(db: PrismaClient, sellerId: string, opts: 
         shop: { name: seller.shopName, url: opts.origin ? new URL(path, opts.origin).toString() : null },
         opening: opening ? toPublic(opening) : null,
         waiting: waiting.map(toPublic),
-        hits: hits.map(({ nicknameSnapshot, ...h }) => ({ ...h, nickname: overlayNickname(nicknameSnapshot) })),
+        // shownAt: 화면이 이 카드를 읽어 간 시각. 처음 읽을 땐 null이고(읽은 뒤 기록), 「다시 연출」을 누르면 새 시각으로 바뀐다 — 이미 값이 있던 카드의 shownAt이 바뀌면 화면이 카드를 다시 보여 준다.
+        hits: hits.map(({ nicknameSnapshot, overlayShownAt, ...h }) => ({ ...h, shownAt: overlayShownAt, nickname: overlayNickname(nicknameSnapshot) })),
+        unshownHitIds: hits.filter((h) => !h.overlayShownAt).map((h) => h.id),
         eventCard: await eventCard(tx, sellerId),
         purchaseRanking: live ? await purchaseRanking(tx, sellerId, live.id) : [],
         orderEvents: live ? await recentOrderEvents(tx, sellerId, live) : [],
