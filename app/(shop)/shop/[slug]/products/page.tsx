@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import ShopLocked from "../../../../../components/shop/ShopLocked";
 import { shopOpen } from "../../../../../lib/server/buyers/signup";
 import { prisma } from "../../../../../lib/server/db";
+import { defaultListSort } from "../../../../../lib/server/products/shopCatalog";
 import { publicCategories } from "../../../../../lib/server/shop-category/service";
 import { categoryParam, sortKey } from "../_lib/catalog";
 import { parseFilters } from "../_lib/filters";
@@ -37,7 +38,8 @@ export default async function ShopProductsPage({ params, searchParams }: Props) 
   const current = top ?? sibling;
   if (categoryId && !current) notFound();
   const filters = parseFilters(sp, categories);
-  const sort = sortKey(sp.sort);
+  const sortDefault = await defaultListSort(prisma, shop.id);
+  const sort = sortKey(sp.sort, false, sortDefault);
   const group = top ?? parent; // 칩으로 보여 줄 묶음(대분류와 그 소분류)
   const crumb = parent && sibling ? `${parent.name} › ${sibling.name}` : undefined;
   const chipLink = (id: string | null, label: string, on: boolean) => (
@@ -60,6 +62,7 @@ export default async function ShopProductsPage({ params, searchParams }: Props) 
       chips={chips}
       path={`${base}/products`}
       sort={sort}
+      sortDefault={sortDefault}
       filters={filters}
       tree={categories}
       page={pageNumber(sp.page)}
@@ -69,7 +72,7 @@ export default async function ShopProductsPage({ params, searchParams }: Props) 
   );
   return (
     <div className="shop-wrap shop-plist">
-      <ListSide slug={shop.slug} tree={categories} currentId={current?.id} path={`${base}/products`} sort={sort} filters={filters} />
+      <ListSide slug={shop.slug} tree={categories} currentId={current?.id} path={`${base}/products`} sort={sort} sortDefault={sortDefault} filters={filters} />
       <div className="shop-plist-main">{list}</div>
     </div>
   );
