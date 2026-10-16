@@ -34,7 +34,7 @@ type Order = {
 };
 type Hit = { id: string; cardName: string; note: string | null; nickname: string; order: { id: string; orderNo: string } | null; source?: "INTERNAL" | "EXTERNAL" | null; createdAt: string };
 // 외부 쇼핑몰 주문(내부 주문 행이 없어 orders와 따로 온다, 금액·결제 정보 없음)
-type ExternalOrder = { id: string; nickname: string; items: { productName: string; quantity: number; status: string }[]; createdAt: string; cancelledAt: string | null; completedAt: string | null };
+type ExternalOrder = { id: string; nickname: string; items: { productName: string; quantity: number; status: string }[]; createdAt: string; cancelledAt: string | null; completedAt: string | null; openSeconds?: number | null };
 type Detail = {
   broadcast: { id: string; title: string | null; status: "live" | "ended"; startedAt: string; endedAt: string | null; memo: string | null; hostName: string | null; layoutAspect: "9x16" | "16x9" | null; timerSeconds: number | null };
   summary: BroadcastSummary & { avgOpenSeconds: number | null; maxWaiting: number | null };
@@ -127,7 +127,15 @@ export default function BroadcastDetailPage() {
   };
 
   const d = state.kind === "ok" ? state.data : null;
-  const hasOpen = (d?.orders ?? []).some((o) => o.openSeconds != null);
+  // 정본(SA-055): 다른 쇼핑몰 주문도 주문 표의 같은 행(시간순). 안 불러온 내부 주문 뒤에 끼지 않게, 다 불러왔을 때만 마지막 내부 주문 뒤 외부 주문을 넣는다.
+  const rows = (() => {
+    if (!d) return [];
+    const last = d.orders.length > 0 ? d.orders[d.orders.length - 1].createdAt : null;
+    const ext = (d.externalOrders ?? []).filter((e) => !d.nextCursor || (last !== null && e.createdAt <= last));
+    return [...d.orders.map((o) => ({ at: o.createdAt, in: o as Order | null, ext: null as ExternalOrder | null })), ...ext.map((e) => ({ at: e.createdAt, in: null as Order | null, ext: e }))].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+  })();
+  const extCount = (d?.externalOrders ?? []).length;
+  const hasOpen = (d?.orders ?? []).some((o) => o.openSeconds != null) || (d?.externalOrders ?? []).some((o) => o.openSeconds != null);
   const hitOrders = new Set((d?.hits ?? []).map((h) => h.order?.id).filter(Boolean) as string[]);
   const b = d?.broadcast;
   return (
@@ -194,6 +202,13 @@ export default function BroadcastDetailPage() {
             <>
               <table className="au-ft bd-info" aria-label="방송 정보">
                 <tbody>
+                  <tr>
+                    <th scope="row">방송 제목</th>
+                    <td colSpan={3}>
+                      <span data-testid="bd-title">{b.title || "제목 없는 방송"}</span>
+                      <span className="t-c1 c-alt"> 제목을 비우면 「제목 없는 방송」</span>
+                    </td>
+                  </tr>
                   <tr>
                     <th scope="row">일시</th>
                     <td>
@@ -328,13 +343,14 @@ export default function BroadcastDetailPage() {
               <section className="col" style={{ gap: 8 }} aria-labelledby="bd-order-h">
                 <div className="row" style={{ justifyContent: "space-between" }}>
                   <h2 className="t-hl1" id="bd-order-h">
-                    주문 {d.summary.orders}건
+                    주문 {d.summary.orders + extCount}건
+                    {extCount > 0 && <span className="t-l2 c-alt fw5"> 다른 쇼핑몰 주문 {extCount}건 포함 · 금액 · 결제는 알 수 없어 「—」</span>}
                   </h2>
                   <Link className="btn btn-sm btn-out" href="/seller/orders">
                     주문 관리에서 보기
                   </Link>
                 </div>
-                {d.orders.length === 0 ? (
+                {rows.length === 0 ? (
                   <span className="t-l2 c-alt" data-testid="bd-order-empty">
                     이 방송에는 들어온 주문이 없습니다
                   </span>
@@ -354,37 +370,71 @@ export default function BroadcastDetailPage() {
                         </tr>
                       </thead>
                       <tbody data-testid="bd-orders">
-                        {d.orders.map((o) => (
-                          <tr key={o.id}>
-                            <td className="num">{formatTime(o.createdAt)}</td>
-                            <td className="fw6">{o.nickname}</td>
-                            <td className="col-product">
-                              {o.items.map((i, k) => (
-                                <div key={k}>
-                                  {i.productName}
-                                  {i.optionName ? ` ${i.optionName}` : ""}
-                                  {i.quantity > 1 ? ` ×${i.quantity}` : ""}
-                                </div>
-                              ))}
-                            </td>
-                            <td className="num">
-                              {won(o.totalAmount)}
-                              {o.refundAmount ? <div className="t-c1 c-alt">환불 {won(o.refundAmount)}</div> : null}
-                            </td>
-                            <td className="num">
-                              {hasOpen
-                                ? o.openSeconds != null
-                                  ? `${Math.floor(o.openSeconds / 60)}:${String(o.openSeconds % 60).padStart(2, "0")}`
-                                  : "—"
-                                : o.completedAt
-                                  ? formatTime(o.completedAt)
-                                  : "—"}
-                            </td>
-                            <td>
-                              <OrderTags o={o} hit={hitOrders.has(o.id)} />
-                            </td>
-                          </tr>
-                        ))}
+                        {rows.map((r) =>
+                          r.in ? (
+                            <tr key={r.in.id}>
+                              <td className="num">{formatTime(r.in.createdAt)}</td>
+                              <td className="fw6">{r.in.nickname}</td>
+                              <td className="col-product">
+                                {r.in.items.map((i, k) => (
+                                  <div key={k}>
+                                    {i.productName}
+                                    {i.optionName ? ` ${i.optionName}` : ""}
+                                    {i.quantity > 1 ? ` ×${i.quantity}` : ""}
+                                  </div>
+                                ))}
+                              </td>
+                              <td className="num">
+                                {won(r.in.totalAmount)}
+                                {r.in.refundAmount ? <div className="t-c1 c-alt">환불 {won(r.in.refundAmount)}</div> : null}
+                              </td>
+                              <td className="num">
+                                {hasOpen
+                                  ? r.in.openSeconds != null
+                                    ? `${Math.floor(r.in.openSeconds / 60)}:${String(r.in.openSeconds % 60).padStart(2, "0")}`
+                                    : "—"
+                                  : r.in.completedAt
+                                    ? formatTime(r.in.completedAt)
+                                    : "—"}
+                              </td>
+                              <td>
+                                <OrderTags o={r.in} hit={hitOrders.has(r.in.id)} />
+                              </td>
+                            </tr>
+                          ) : (
+                            r.ext && (
+                              <tr key={r.ext.id} data-testid="bd-ext-row">
+                                <td className="num">{formatTime(r.ext.createdAt)}</td>
+                                <td className="fw6">
+                                  {r.ext.nickname} <SourceBadge source="EXTERNAL" label="다른 쇼핑몰" />
+                                </td>
+                                <td className="col-product">
+                                  {r.ext.items.map((i, k) => (
+                                    <div key={k}>
+                                      {i.productName}
+                                      {i.quantity > 1 ? ` ×${i.quantity}` : ""}
+                                    </div>
+                                  ))}
+                                </td>
+                                <td className="num">—</td>
+                                <td className="num">
+                                  {hasOpen
+                                    ? r.ext.openSeconds != null
+                                      ? `${Math.floor(r.ext.openSeconds / 60)}:${String(r.ext.openSeconds % 60).padStart(2, "0")}`
+                                      : "—"
+                                    : r.ext.completedAt
+                                      ? formatTime(r.ext.completedAt)
+                                      : "—"}
+                                </td>
+                                <td>
+                                  <span className="row" style={{ gap: 4, flexWrap: "wrap" }}>
+                                    {r.ext.cancelledAt ? <span className="bdg b-wait">뺀 주문</span> : r.ext.completedAt ? <span className="bdg b-done">완료</span> : <span className="bdg b-open">진행 중</span>}
+                                  </span>
+                                </td>
+                              </tr>
+                            )
+                          ),
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -425,44 +475,6 @@ export default function BroadcastDetailPage() {
                 </table>
               </section>
 
-              {(d.externalOrders?.length ?? 0) > 0 && (
-                <section className="card pad col" style={{ gap: 12 }} aria-labelledby="bd-ext-h" data-testid="bd-external">
-                  <h2 className="t-hl1" id="bd-ext-h">
-                    다른 쇼핑몰 주문 <span className="c-alt fw5">{d.externalOrders!.length}건</span>
-                  </h2>
-                  <div className="au-lt-wrap">
-                    <table className="tbl">
-                      <thead>
-                        <tr>
-                          <th>접수 시각</th>
-                          <th>구매자</th>
-                          <th>상품</th>
-                          <th>상태</th>
-                        </tr>
-                      </thead>
-                      <tbody data-testid="bd-external-orders">
-                        {d.externalOrders!.map((o) => (
-                          <tr key={o.id}>
-                            <td className="num">{formatDateTime(o.createdAt)}</td>
-                            <td>
-                              {o.nickname} <SourceBadge source="EXTERNAL" />
-                            </td>
-                            <td className="col-product">
-                              {o.items.map((i, k) => (
-                                <div key={k}>
-                                  {i.productName} ×{i.quantity}
-                                </div>
-                              ))}
-                            </td>
-                            <td>{o.cancelledAt ? "취소" : o.completedAt ? "개봉 완료" : "진행 중"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <span className="t-c1 c-alt">다른 쇼핑몰에서 들어온 주문은 금액과 결제 내용을 알 수 없어 이 표에 보이지 않습니다.</span>
-                </section>
-              )}
             </>
           )
         )}
