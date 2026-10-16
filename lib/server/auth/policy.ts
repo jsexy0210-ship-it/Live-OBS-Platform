@@ -51,12 +51,12 @@ export function isSessionActive(realm: Realm, s: SessionTimes, now: Date, broadc
   return true;
 }
 
-// 구매자 「로그인 유지」를 끈 로그인(기본)의 세션 기간. 쿠키는 브라우저를 닫으면 사라지고, 서버 쪽도 이 기간이 지나면 끝난다.
-// 켜면 SESSION_POLICY.buyer(30일)다.
+// 구매자·파트너스 「로그인 유지」를 끈 로그인(기본)의 세션 기간. 쿠키는 브라우저를 닫으면 사라지고, 서버 쪽도 이 기간이 지나면 끝난다.
+// 켜면 SESSION_POLICY의 최대 기간(30일)이다. 마스터 관리자 로그인에는 적용하지 않는다(세션 시간 정책을 따름).
 export const BUYER_SHORT_SESSION_MS = DAY;
 
 // maxMs: 마스터 관리자 정책(MA-081 adminSessionHours)처럼 기본 표를 덮어쓸 최대 유지 시간.
 export function sessionExpiry(realm: Realm, now: Date, opts: { short?: boolean; maxMs?: number } = {}): Date {
-  const ms = opts.maxMs ?? (realm === "buyer" && opts.short ? BUYER_SHORT_SESSION_MS : SESSION_POLICY[realm].maxMs);
+  const ms = opts.maxMs ?? (realm !== "admin" && opts.short ? BUYER_SHORT_SESSION_MS : SESSION_POLICY[realm].maxMs);
   return new Date(now.getTime() + ms);
 }
