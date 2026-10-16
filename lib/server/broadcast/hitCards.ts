@@ -57,7 +57,8 @@ const cardSelect = {
   note: true,
   nicknameSnapshot: true,
   createdAt: true,
-  broadcastSession: { select: { id: true, title: true } },
+  overlayShownAt: true,
+  broadcastSession: { select: { id: true, title: true, status: true } },
   queueItem: { select: { id: true, productLabel: true, receivedAt: true, order: { select: { id: true, orderNo: true, createdAt: true } }, externalOrderId: true, externalOrder: { select: { connection: { select: { shopKey: true } } } } } },
 } satisfies Prisma.HitCardSelect;
 type CardRow = Prisma.HitCardGetPayload<{ select: typeof cardSelect }>;
@@ -77,10 +78,13 @@ const view = (r: CardRow) => ({
   // 주문대기 접수 시각(SA-053 「주문」 열 「14:12 접수」). 직접 입력한 카드는 null
   orderReceivedAt: r.queueItem?.receivedAt ?? null,
   createdAt: r.createdAt,
+  // 방송 화면 노출(SA-053 「방송 화면」 열): shown=오버레이가 읽어 감(shownAt), pending=지금 방송 중이라 아직 안 나감, skipped=안 나가고 방송이 끝났거나 방송 없이 등록(노출 생략)
+  overlay: r.overlayShownAt ? ({ status: "shown" as const, shownAt: r.overlayShownAt }) : { status: r.broadcastSession?.status === "LIVE" ? ("pending" as const) : ("skipped" as const), shownAt: null },
 });
 
 export type HitFilter = { broadcastId?: string | null; from?: string | null; to?: string | null; cursor?: string | null; grade?: string | null; offset?: string | null };
 export const HIT_EXPORT_MAX = 5_000;
+
 const OFFSET_MAX = 1_000_000;
 
 function hitWhere(sellerId: string, f: HitFilter): Prisma.HitCardWhereInput | null {
@@ -228,4 +232,27 @@ export async function exportHitCards(db: PrismaClient, ctx: TenantContext, f: Hi
   ]);
   await writeAudit(db, { actorType: ctx.actorType, actorId: ctx.actorId, sellerId: ctx.sellerId, action: "hit_card.export", targetType: "HitCard", after: { rows: items.length, truncated }, ip: meta.ip, userAgent: meta.userAgent });
   return { ok: true as const, csv, truncated };
+}
+
+// 다시 연출(SA-053): 지금 방송의 카드만(오버레이는 지금 방송 카드만 보여 준다, 아니면 409 not_live). 노출 시각(overlayShownAt)을 새 시각으로 바꾸고 liveVersion으로 오버레이에 알린다(오버레이는 값이 바뀐 카드를 다시 보여 준다). 다른 판매자 카드는 404.
+export async function replayHitCard(db: PrismaClient, ctx: TenantContext, id: string, meta: AuditMeta = {}) {
+  requireSellerPermission(ctx, "BROADCAST_RUN");
+  if (!isUuid(id)) throw notFound();
+  class NotLive extends Error {}
+  const result = await db.$transaction(async (tx) => {
+    const version = await bump(tx, ctx.sellerId);
+    const card = await tx.hitCard.findFirst({ where: { id, sellerId: ctx.sellerId }, select: { id: true, broadcastSession: { select: { status: true } } } });
+    if (!card) throw notFound();
+    // 거절이면 던져서 앞에서 올린 liveVersion도 되돌린다(바뀐 게 없는데 버전만 오르지 않게)
+    if (card.broadcastSession?.status !== "LIVE") throw new NotLive();
+    await tx.hitCard.update({ where: { id }, data: { overlayShownAt: new Date() } });
+    await writeAudit(tx, { actorType: ctx.actorType, actorId: ctx.actorId, sellerId: ctx.sellerId, action: "hit_card.replay", targetType: "HitCard", targetId: id, ip: meta.ip, userAgent: meta.userAgent });
+    return version;
+  }).catch((e) => {
+    if (e instanceof NotLive) return null;
+    throw e;
+  });
+  if (result === null) return { ok: false as const, reason: "not_live" as const };
+  await notifySellerChanged(db, ctx.sellerId, result);
+  return { ok: true as const };
 }

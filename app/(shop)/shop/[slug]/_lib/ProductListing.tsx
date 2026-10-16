@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Pagination } from "../../../../../components/Pagination";
 import { ProductGrid } from "../../../../../components/shop/ProductCard";
 import { prisma } from "../../../../../lib/server/db";
-import { SHOP_PAGE_DEFAULT, shopProductList } from "../../../../../lib/server/products/shopCatalog";
+import { SHOP_PAGE_DEFAULT, shopProductList, type ShopSort } from "../../../../../lib/server/products/shopCatalog";
 import { defaultSort, sortChoices, type ListSort } from "./catalog";
 import { filterCount, filterParams, priceLabel, type Filters } from "./filters";
 import type { PublicCategory } from "../../../../../lib/server/shop-category/service";
@@ -18,6 +18,7 @@ export default async function ProductListing(props: {
   title: string;
   path: string;
   sort: ListSort;
+  sortDefault?: ShopSort; // 파트너스가 정한 목록 기본 정렬
   filters: Filters;
   tree: PublicCategory[]; // 필터 칩 이름용
   page: number;
@@ -52,7 +53,7 @@ export default async function ProductListing(props: {
     if (!r.ok) return null;
   }
   const { products, total } = r.value;
-  const dflt = defaultSort(!!props.q);
+  const dflt = defaultSort(!!props.q, props.sortDefault);
   // 주소 만들기: 검색어·분류·필터·정렬·쪽을 모두 이어 간다(바꾸는 것만 덮어쓴다)
   const href = (p: Partial<{ sort: ListSort; page: number; filters: Filters }>) => {
     const qs = new URLSearchParams();

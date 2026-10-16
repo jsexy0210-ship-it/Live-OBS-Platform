@@ -78,6 +78,8 @@ test("X·Esc·바깥 클릭은 취소와 같고, 포커스는 첫 입력으로 �
 test("값을 바꾸면 X·Esc·바깥 클릭·취소 모두 같은 미저장 확인을 거치고, 계속 작성하면 값이 남는다", async ({ page }) => {
   await open(page, 1440);
   const dialog = page.getByRole("dialog");
+  // 데모 시드에는 발송 단가 행이 없다: 이 시험이 쓸 문자 단가 행만 없을 때 만든다(있으면 그대로)
+  await db.messageChannelPrice.upsert({ where: { channel: "SMS" }, create: { channel: "SMS", unitPrice: 9 }, update: {} });
   const before = (await db.messageChannelPrice.findUniqueOrThrow({ where: { channel: "SMS" } })).unitPrice;
 
   await opener(page).click();
