@@ -179,6 +179,8 @@ test("사업자 정보·고지: 검사 오류가 칸 가까이에 보이고, 저
   await page.getByTestId("legal-save-notice").click();
   await expect(page.getByTestId("legal-save-notice")).toBeDisabled();
   phase = "save-disabled"; record({ kind: "phase" });
+  // 저장이 끝난 뒤에 구매자 화면을 연다(저장 중에 이동하면 바닥글이 아직 비어 있다)
+  await expect(page.getByText("사업자 정보·고지를 저장했습니다")).toBeVisible();
 
   // 구매자 바닥글: 입력한 항목만, 값은 텍스트로만, 링크는 새 창
   const buyer = await context.newPage();
