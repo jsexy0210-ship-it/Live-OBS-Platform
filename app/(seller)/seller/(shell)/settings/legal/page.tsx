@@ -170,7 +170,7 @@ function LegalPanel({ kind, label, slug, editable, visible }: { kind: Kind; labe
           </FormRow>
         </FormSection>
         <p className="help" style={{ marginTop: 8 }}>
-          저장할 때마다 내부 버전이 올라가고 로그 추적에는 글자 수만 남습니다 · 저장하지 않은 변경이 있으면 창을 닫을 때 브라우저 확인이 뜹니다
+          본문이나 시작하는 날을 바꿔 저장할 때 내부 버전이 올라가고(공개 여부만 바꾸면 그대로), 로그 추적에는 글자 수만 남습니다 · 저장하지 않은 변경이 있으면 창을 닫을 때 브라우저 확인이 뜹니다
         </p>
         <h2 className="t-hl1" style={{ marginTop: 32 }}>
           후속 (법률 검토 뒤)
