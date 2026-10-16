@@ -61,8 +61,11 @@ export default function MaintenancePage() {
     setEndsAt(toLocal(m.endsAt));
   };
   const [windows, setWindows] = useState<WindowHistory[] | null>(null);
+  const windowsReqId = useRef(0);
   const loadWindows = useCallback(async () => {
-    const r = await adminApi<{ history: WindowHistory[] }>("/api/admin/settings/maintenance/windows");
+    const id = ++windowsReqId.current;
+    const r = await adminApi<{ history: WindowHistory[] }>("/api/admin/settings/maintenance/windows?limit=100");
+    if (id !== windowsReqId.current) return;
     setWindows(r.ok ? r.data.history : null);
   }, []);
   const reqId = useRef(0);
@@ -163,7 +166,7 @@ export default function MaintenancePage() {
                 <section aria-labelledby="mt-history" data-testid="maintenance-history">
                   <h2 className={styles.section} id="mt-history">점검 이력</h2>
                   <table className={styles.table}><thead><tr><th className={styles.time}>일시</th><th>내용</th></tr></thead><tbody>
-                    {windows
+                    {windows && (windows.length > 0 || m.history.length === 0)
                       ? windows.length ? windows.map((w) => <tr key={w.id}><td>{dayTime(w.startsAt)} ~ {w.endedAt ? dayTime(w.endedAt) : "—"}</td><td>{w.reason || w.message || "점검"} ({w.phase === "CANCELED" ? "예약 취소" : w.kind === "IMMEDIATE" ? `즉시 켬${w.createdByName ? ` · ${w.createdByName}` : ""}` : "예약"}){w.affectedBroadcasts !== null && ` · 영향 방송 ${w.affectedBroadcasts}`}</td></tr>) : <tr><td colSpan={2}>변경 기록이 없습니다.</td></tr>
                       : m.history.length ? m.history.map((h) => <tr key={h.id}><td>{dayTime(h.at)}</td><td>{h.reason || h.message || "점검 설정"} · {h.action}</td></tr>) : <tr><td colSpan={2}>변경 기록이 없습니다.</td></tr>}
                   </tbody></table>
