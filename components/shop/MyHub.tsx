@@ -18,7 +18,7 @@ type Order = {
   items: { productNameSnapshot: string; optionNameSnapshot: string; quantity: number }[];
   shipment: { status: "READY" | "IN_TRANSIT" | "DELIVERED" } | null;
 };
-type Orders = { orders: Order[]; counts: { inProgress: number } };
+type Orders = { orders: Order[]; nextCursor?: string | null; counts: { inProgress: number } };
 type Rewards = { balance: number; expiringSoon: { amount: number; expiresAt: string } | null };
 type Coupons = { usable: { state: string; expiresAt: string }[] };
 
@@ -41,30 +41,34 @@ export default function MyHub({ slug, grade }: { slug: string; grade: { name: st
   const base = `/shop/${encodeURIComponent(slug)}`;
   const api = `/api/shop/${encodeURIComponent(slug)}`;
   const [orders, setOrders] = useState<Orders | null>(null);
+  const [active, setActive] = useState<Orders | null>(null);
   const [rewards, setRewards] = useState<Rewards | null>(null);
   const [coupons, setCoupons] = useState<Coupons | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let live = true;
-    void Promise.all([call<Orders>(`${api}/orders?limit=20`), call<Rewards>(`${api}/me/rewards`), call<Coupons>(`${api}/coupons`)]).then(([o, r, c]) => {
+    // 최근 주문 표는 최근 5건, 기다리는 주문은 진행 중 탭 전체(1년 안, 최대 50건)에서 센다(최근 몇 건만 보고 총계로 쓰지 않는다)
+    const from = new Date(Date.now() + 9 * 3600_000 - 364 * 86_400_000).toISOString().slice(0, 10);
+    void Promise.all([call<Orders>(`${api}/orders?limit=${RECENT}`), call<Orders>(`${api}/orders?tab=inProgress&limit=50&from=${from}`), call<Rewards>(`${api}/me/rewards`), call<Coupons>(`${api}/coupons`)]).then(([o, a, r, c]) => {
       if (!live) return;
       if (o.ok) setOrders(o.data);
+      if (a.ok) setActive(a.data);
       if (r.ok) setRewards(r.data);
       if (c.ok) setCoupons(c.data);
-      setFailed(!o.ok || !r.ok || !c.ok);
+      setFailed(!o.ok || !a.ok || !r.ok || !c.ok);
     });
     return () => {
       live = false;
     };
   }, [api]);
 
-  const waiting = orders?.orders.filter((o) => !o.shipment && o.queue?.status === "WAITING") ?? [];
+  const waiting = active?.orders.filter((o) => !o.shipment && o.queue?.status === "WAITING") ?? [];
   const ahead = waiting.length ? Math.min(...waiting.map((o) => o.queue!.aheadCount)) : null;
   const usable = coupons?.usable.filter((c) => c.state === "usable") ?? [];
   const soonest = usable.length ? usable.map((c) => c.expiresAt).sort()[0] : null;
   const soonestN = soonest ? usable.filter((c) => c.expiresAt.slice(0, 10) === soonest.slice(0, 10)).length : 0;
-  const recent = orders?.orders.slice(0, RECENT) ?? [];
+  const recent = orders?.orders ?? [];
   const dash = "–";
 
   return (
@@ -72,8 +76,8 @@ export default function MyHub({ slug, grade }: { slug: string; grade: { name: st
       <div className="hub-stats" aria-label="내 요약">
         <Link className="hub-stat" href={`${base}/orders`}>
           <span className="hub-k">기다리는 주문</span>
-          <b className="hub-v">{orders ? `${waiting.length}건` : dash}</b>
-          <span className="hub-s">{orders ? (ahead !== null ? `앞에 ${ahead}명` : orders.counts.inProgress ? `진행 중 ${orders.counts.inProgress}건` : "기다리는 주문이 없어요") : ""}</span>
+          <b className="hub-v">{active ? `${waiting.length}${active.nextCursor ? "건 이상" : "건"}` : dash}</b>
+          <span className="hub-s">{active ? (ahead !== null ? `앞에 ${ahead}명` : active.counts.inProgress ? `진행 중 ${active.counts.inProgress}건` : "기다리는 주문이 없어요") : ""}</span>
         </Link>
         <Link className="hub-stat" href={`${base}/me/rewards`}>
           <span className="hub-k">적립금</span>

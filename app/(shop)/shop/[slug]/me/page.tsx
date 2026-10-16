@@ -7,6 +7,7 @@ import { resolveBuyerSession } from "../../../../../lib/server/auth/session";
 import { myGroups } from "../../../../../components/shop/myGroups";
 import MyHub from "../../../../../components/shop/MyHub";
 import MyMenu from "../../../../../components/shop/MyMenu";
+import "../../../../../components/shop/Cart.css";
 import ShopLogout from "../../../../../components/shop/ShopLogout";
 import { prisma } from "../../../../../lib/server/db";
 import { buyerGradeStatus } from "../../../../../lib/server/shop-member-grades/benefits";
