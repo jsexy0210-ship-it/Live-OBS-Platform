@@ -120,6 +120,9 @@ describe("칩 건수", () => {
     // 건수와 같은 필터의 목록 건수가 같다
     expect((await list(s, { trackingMissing: "true" })).orders).toHaveLength(c.trackingMissing);
     expect((await list(s, { queue: "done" })).orders).toHaveLength(c.queueDone);
+    expect(c.queueDonePending).toBe(2);
+    expect((await list(s, { queue: "done", prepared: "false" })).orders).toHaveLength(c.queueDonePending);
+    expect(await listSellerOrders(db, s.ctx, { prepared: "maybe" })).toEqual({ ok: false });
     const staff = await createSellerUser(s.seller.id, { permissions: ["PRODUCT_MANAGE"] });
     await expect(countSellerOrders(db, { ...s.ctx, actorId: staff.id, isOwner: false, permissions: ["PRODUCT_MANAGE"] })).rejects.toThrow();
   });
@@ -158,6 +161,14 @@ describe("선택 일괄: 배송 준비로 변경", () => {
     // 두 번째는 이미 변경됨
     expect(await prepareShipping(db, s.ctx, [done.id])).toMatchObject({ ok: true, prepared: 0, results: [{ orderId: done.id, ok: false, reason: "already_prepared" }] });
     expect((await list(s)).orders.find((o) => o.id === done.id)?.shippingPreparedAt).toBeInstanceOf(Date);
+    // 배송 준비로 바꾸면 「배송 준비 전」에서 빠지지만 개봉 완료(queueDone)에는 남는다
+    expect((await list(s, { queue: "done", prepared: "false" })).orders.map((o) => o.id)).not.toContain(done.id);
+    expect((await list(s, { queue: "done", prepared: "true" })).orders.map((o) => o.id)).toEqual([done.id]);
+    const after = await countSellerOrders(db, s.ctx);
+    expect((await list(s, { queue: "done" })).orders.map((o) => o.id)).toContain(done.id);
+    expect(after.queueDone).toBe((await list(s, { queue: "done", status: ["PAID"] })).orders.length);
+    expect(after.queueDonePending).toBe((await list(s, { queue: "done", prepared: "false", status: ["PAID"] })).orders.length);
+    expect(after.queueDonePending).toBe(after.queueDone - 1);
     // 본문 검사·권한
     expect(await prepareShipping(db, s.ctx, [])).toEqual({ ok: false });
     expect(await prepareShipping(db, s.ctx, [done.id, done.id])).toEqual({ ok: false });
