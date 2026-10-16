@@ -189,6 +189,7 @@ export default function ShippingSettingsPage() {
         className={`inp num${err ? " is-error" : ""}`}
         type="text"
         inputMode="numeric"
+        placeholder="0"
         value={value}
         onChange={(e) => set(e.target.value)}
         style={{ width: 160 }}
@@ -322,6 +323,7 @@ export default function ShippingSettingsPage() {
                     className={`inp num${shown.deadline ? " is-error" : ""}`}
                     type="text"
                     inputMode="numeric"
+                    placeholder="0"
                     value={deadline}
                     onChange={(e) => setDeadline(e.target.value)}
                     style={{ width: 120 }}

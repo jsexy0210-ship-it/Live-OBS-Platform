@@ -146,6 +146,7 @@ function LegalPanel({ kind, label, slug, editable, visible }: { kind: Kind; labe
                 className={`inp${showError && bodyError ? " is-error" : ""}`}
                 style={{ width: "100%" }}
                 rows={20}
+                placeholder={label === "이용약관" ? "약관 본문 (표준 약관 불러오기 또는 직접 입력)" : undefined}
                 readOnly={!editable}
                 aria-label={`${label} 본문`}
                 aria-invalid={showError && !!bodyError}
@@ -168,6 +169,18 @@ function LegalPanel({ kind, label, slug, editable, visible }: { kind: Kind; labe
             </label>
           </FormRow>
         </FormSection>
+        <p className="help" style={{ marginTop: 8 }}>
+          저장할 때마다 내부 버전이 올라가고 로그 추적에는 글자 수만 남습니다 · 저장하지 않은 변경이 있으면 창을 닫을 때 브라우저 확인이 뜹니다
+        </p>
+        <h2 className="t-hl1" style={{ marginTop: 32 }}>
+          후속 (법률 검토 뒤)
+        </h2>
+        <div className="msg msg-info" role="note" style={{ marginTop: 8 }}>
+          <span>
+            미성년자 구매 정책 · 구매 안전 서비스 · 에스크로(결제 대금을 맡아 주는 서비스) 표시 · 개인정보 수집 · 이용 동의 · 마케팅 수신 동의 · 처리 위탁 문서 · 기본 서식 불러오기 · 이전 버전 보기는 법률 검토를 출시 뒤로 미룬 결정에 따라 지금 만들지 않습니다. 쇼핑몰
+            하단 사업자 정보는 쇼핑몰 정보(SA-060)에서 채웁니다.
+          </span>
+        </div>
       </fieldset>
       {editable && (
         <FormFoot>
