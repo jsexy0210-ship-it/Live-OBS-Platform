@@ -95,7 +95,8 @@ jobs:
         run: |
           set -euo pipefail
           # seller-youtube·broadcast-chat 시험은 서버에 SCHEDULER_DISABLED=1도 있어야 한다(YOUTUBE_API_KEY는 작업 환경변수).
-          SCHEDULER_DISABLED=1 nohup npx next start -p 3100 > "$RUNNER_TEMP/start.log" 2>&1 &
+          # external-shops 시험은 서버에 외부 쇼핑몰 연동 키(아무 값)와 https 리디렉션 주소가 있어야 「연결 켜짐」으로 뜬다(없으면 「준비 중」). 실제 호출은 없다.
+          EXTERNAL_SHOP_CLIENT_ID=e2e-client EXTERNAL_SHOP_CLIENT_SECRET=e2e-secret EXTERNAL_SHOP_REDIRECT_URI=https://example.test/cb SCHEDULER_DISABLED=1 nohup npx next start -p 3100 > "$RUNNER_TEMP/start.log" 2>&1 &
           ports="3100"
           if [ "$E2E_SUITE" = full ]; then
             BILLING_PROVIDER=fake BUSINESS_STATUS_PROVIDER=fake MAIL_ORDER_PROVIDER=fake nohup npx next dev -p 3101 > "$RUNNER_TEMP/dev.log" 2>&1 &
