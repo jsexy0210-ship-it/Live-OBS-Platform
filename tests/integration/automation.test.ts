@@ -23,7 +23,7 @@ import { markConnectionRevoked } from "../../lib/server/automation/connection";
 import { POST as pauseRoute } from "../../app/api/automation/jobs/[jobId]/pause/route";
 import { POST as continueRoute } from "../../app/api/automation/jobs/[jobId]/continue/route";
 import { GET as timelineRoute } from "../../app/api/automation/jobs/[jobId]/timeline/route";
-import { cancelJob, continueJob, getJob, pauseJob, requestRefund, resumeJob } from "../../lib/server/automation/jobs";
+import { PLATFORM_NAME_PATTERN, cancelJob, continueJob, getJob, pauseJob, requestRefund, resumeJob } from "../../lib/server/automation/jobs";
 import { purchaseAutomation, reconcileAutomationPayments, reconnectAutomation } from "../../lib/server/automation/purchase";
 import { EngineAborted, actionKeyOf, callPort, insidePortCall, runSteps, trackedWindow } from "../../lib/server/automation/engine";
 import { FencingError, RunTimeExceeded, advanceStep, claimNext, extendLease, finishJob, lockJob, markActionEnded, markActionStarted, markBrowserStateHeld, markChanged, markReleaseStarted, parkForCustomer, reapExpired, toVerifying, touch, unmarkChanged } from "../../lib/server/automation/queue";
@@ -147,9 +147,13 @@ describe("자동 연결 결제와 실행 권한", () => {
     expect((await db.automationPayment.findFirstOrThrow()).status).toBe("PAID");
   });
 
-  it("작업 조회에 결제 때 저장된 쇼핑몰 호스트가 실리고, 값이 없으면 null이다", async () => {
+  it("작업 조회의 shopHost: 파트너스 자기 도메인은 그대로, 플랫폼 이름이 든 주소와 값 없음은 null이다", async () => {
     const { jobId, ctx } = await bought();
-    expect((await getJob(db, ctx, jobId)).shopHost).toBe("myshop.cafe24.com");
+    // bought()는 플랫폼 기본 주소(myshop.cafe24.com)로 결제한다 → 이름 노출 금지라 null
+    expect((await job(jobId)).shopHost).toBe("myshop.cafe24.com");
+    expect((await getJob(db, ctx, jobId)).shopHost).toBeNull();
+    await db.automationJob.update({ where: { id: jobId }, data: { shopHost: "shop.example.kr" } });
+    expect((await getJob(db, ctx, jobId)).shopHost).toBe("shop.example.kr");
     await db.automationJob.update({ where: { id: jobId }, data: { shopHost: null } });
     expect((await getJob(db, ctx, jobId)).shopHost).toBeNull();
   });
@@ -674,7 +678,11 @@ describe("재연결·재설치(확정 ②)", () => {
 });
 
 describe("외부 쇼핑몰 플랫폼 이름 비노출(2026-10-04 대표님 결정)", () => {
-  const PLATFORM = /cafe24|카페24|imweb|아임웹|smartstore|스마트스토어|godo|고도몰|makeshop|메이크샵/i;
+  const PLATFORM = PLATFORM_NAME_PATTERN;
+
+  it("플랫폼 이름 목록이 줄지 않았다(상수가 아래 이름을 모두 잡는다)", () => {
+    for (const name of ["cafe24", "카페24", "imweb", "아임웹", "smartstore", "스마트스토어", "godo", "고도몰", "makeshop", "메이크샵"]) expect(PLATFORM_NAME_PATTERN.test(`my-${name}.com`)).toBe(true);
+  });
 
   it("구매·재연결 안내·작업 조회 응답과 결제 전 동의 문구에 플랫폼 이름이 0건이다(실행기 오류 원문도 싣지 않음)", async () => {
     const rt = runtime();
