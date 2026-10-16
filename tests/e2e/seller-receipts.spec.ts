@@ -23,6 +23,9 @@ async function withDb<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
 }
 const cleanup = () =>
   withDb(async (db) => {
+    // 발행 완료 처리는 주문마다 한 건뿐인 구매자 안내 기록(RECEIPT_ISSUED)도 만든다. 남기면 다음 실행이 낡은 기록을 재사용한다
+    const orderIds = (await db.orderReceiptRequest.findMany({ where: { id: { in: created } }, select: { orderId: true } })).map((r) => r.orderId);
+    await db.orderNotification.deleteMany({ where: { orderId: { in: orderIds }, kind: "RECEIPT_ISSUED" } });
     await db.receiptIssue.deleteMany({ where: { requestId: { in: created } } });
     await db.orderReceiptRequest.deleteMany({ where: { id: { in: created } } });
   });
@@ -66,6 +69,8 @@ test("신청 목록: 요약·검색·비고가 보이고, 실패 건은 다시 �
   const rows = page.getByTestId("receipt-row");
   await expect(rows.filter({ hasText: "발행 업체 응답 오류" })).toContainText("실패");
   await expect(rows.filter({ hasText: "충전금 잔액이 부족" })).toContainText("별빛상사");
+  // 머리의 건수: 조건이 없으면 「총」, 기간·종류·검색어를 걸면 서버가 전체 건수를 주지 않아 「불러온」 줄 수로 보인다
+  await expect(page.locator(".au-lh-total")).toContainText("총");
   const sum = page.getByTestId("receipt-summary");
   for (const k of ["발행 대기", "발행 완료 (이번 달)", "실패", "취소", "발행 금액 합계"]) await expect(sum).toContainText(k);
   await expect(page.getByRole("button", { name: "이번 달 내려받기" }).or(page.getByRole("link", { name: "이번 달 내려받기" }))).toBeVisible();
@@ -85,6 +90,14 @@ test("신청 목록: 요약·검색·비고가 보이고, 실패 건은 다시 �
   await expect(page).toHaveURL(/status=ISSUED/);
   await expect(rows.filter({ hasText: "발행 업체 응답 오류" })).toHaveCount(0);
   await expect(rows.first()).toContainText("발행 완료");
+  await page.getByRole("button", { name: "초기화" }).click();
+  await expect(page).not.toHaveURL(/status=ISSUED/);
+  await expect(rows.filter({ hasText: "발행 업체 응답 오류" })).toHaveCount(1);
+  await page.getByLabel("검색어").fill("없는닉네임");
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await expect(rows).toHaveCount(0);
+  await expect(page.locator(".au-lh-total")).toContainText("불러온");
+  await expect(page.locator(".au-lh-total")).toContainText("0");
   await page.getByRole("button", { name: "초기화" }).click();
   await expect(rows.filter({ hasText: "발행 업체 응답 오류" })).toHaveCount(1);
 

@@ -186,8 +186,12 @@ export default function ReceiptsPage() {
 
   const summary = state.kind === "ok" ? state.summary : null;
   const counts = state.kind === "ok" ? state.counts : {};
-  const total = (Object.values(counts) as number[]).reduce((a, b) => a + b, 0);
   const rows = state.kind === "ok" ? state.rows : [];
+  const rowsLoaded = rows.length;
+  // 서버의 counts는 조건과 상관없는 전체 건수다. 상태만 걸었을 때는 그 건수가 맞고, 기간 · 종류 · 검색어를 걸면 알 수 없어 불러온 줄 수로 보여 준다
+  const narrowed = !!(applied.from || applied.to || applied.kind || applied.q);
+  const statusCount = applied.status ? (counts[applied.status as Status] ?? 0) : (Object.values(counts) as number[]).reduce((a, b) => a + b, 0);
+  const total = narrowed ? rowsLoaded : statusCount;
   const pendingRows = rows.filter((r) => r.issue?.status === "PENDING");
   const allPicked = pendingRows.length > 0 && pendingRows.every((r) => picked.has(r.id));
   const exportParams = new URLSearchParams(Object.entries(applied).filter(([k, v]) => v && !(k === "field" && !applied.q)));
@@ -268,6 +272,7 @@ export default function ReceiptsPage() {
         <div style={{ marginTop: 16 }}>
           <ListHead
             total={total}
+            loaded={narrowed}
             actions={
               <>
                 {canEdit && (
