@@ -345,7 +345,7 @@ function PeriodStats({ days, tick, summary, reload }: { days: number; tick: numb
           </>
         )}
       </Panel>
-      <Panel title="주문 추이" state={orders} retry={() => void loadOrders()} id="stats-order-series">{(d) => <><span className="t-c1 c-alt">들어온 주문 · 결제된 주문</span><BarChart title="일별 들어온 주문" points={pts(d.series, "day", (p) => p.orders)} fmt={count} bare /><BarChart title="일별 결제된 주문" points={pts(d.series, "day", (p) => p.paidOrders)} fmt={count} bare /></>}</Panel>
+      <Panel title="주문 추이" state={orders} retry={() => void loadOrders()} id="stats-order-series">{(d) => <><span className="t-c1 c-alt">들어온 주문 · 결제된 주문</span><BarChart fixedTicks title="일별 들어온 주문" points={pts(d.series, "day", (p) => p.orders)} fmt={count} bare /><BarChart fixedTicks title="일별 결제된 주문" points={pts(d.series, "day", (p) => p.paidOrders)} fmt={count} bare /></>}</Panel>
       <SubscriptionRevenue tick={tick} />
       <Panel title="신규 가입 신청 · 방송 수" state={growth} retry={() => void loadGrowth()} id="stats-growth">
         {(d) => (
@@ -360,10 +360,10 @@ function PeriodStats({ days, tick, summary, reload }: { days: number; tick: numb
             />
             <div className="row" style={{ gap: 12, flexWrap: "wrap", alignItems: "stretch" }}>
               <div style={{ flex: "1 1 360px", minWidth: 0 }}>
-                <BarChart title="일별 가입 신청" points={pts(d.series, "day", (p) => p.signups)} fmt={placeF} />
+                <BarChart fixedTicks title="일별 가입 신청" points={pts(d.series, "day", (p) => p.signups)} fmt={placeF} />
               </div>
               <div style={{ flex: "1 1 360px", minWidth: 0 }}>
-                <BarChart title="일별 시작한 방송" points={pts(d.series, "day", (p) => p.broadcasts)} fmt={cntF} />
+                <BarChart fixedTicks title="일별 시작한 방송" points={pts(d.series, "day", (p) => p.broadcasts)} fmt={cntF} />
               </div>
             </div>
           </>
@@ -439,7 +439,7 @@ function SubscriptionRevenue({ tick }: { tick: number }) {
               kpi("환불 금액", d.current.refundAmount, d.previous.refundAmount, wonF, true),
             ]}
           />
-          <BarChart title="월별 받은 구독료" points={pts(d.series, "month", (p) => p.revenue)} fmt={wonF} />
+          <BarChart fixedTicks title="월별 받은 구독료" points={pts(d.series, "month", (p) => p.revenue)} fmt={wonF} />
         </>
       )}
     </Panel>
