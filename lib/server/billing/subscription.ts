@@ -367,10 +367,6 @@ export async function settlePayment(
       }
       return { nextChargeAt: null };
     }
-    // 런칭가 청구가 처음 확정되면(해지 뒤 확정돼 환불 대상인 청구는 빼고) 계정에 런칭 할인 사용을 남긴다(대표님 결정 2026-10-04)
-    if (result.ok && payment.launchDiscount) {
-      await tx.seller.updateMany({ where: { id: payment.sellerId, launchDiscountUsedAt: null }, data: { launchDiscountUsedAt: now } });
-    }
     // 오버레이 전용 → 통합 상위 변경은 확정 시점에도 사업자·정산 정보 게이트를 다시 본다(요청 뒤 정보가 바뀌거나 조회가 만료됐을 수 있음, SA-005).
     // 막히면 플랜·기간을 바꾸지 않고, 이미 결제된 건은 마스터 관리자 환불 요청으로만 남긴다(처리는 사람이 승인한다, paid_after_cancel과 같은 방식).
     if (result.ok && payment.targetPlanId) {
@@ -394,6 +390,10 @@ export async function settlePayment(
         }
         return { nextChargeAt: sub.nextChargeAt };
       }
+    }
+    // 런칭가 청구가 처음 확정되면(해지 뒤 확정돼 환불 대상인 청구는 빼고) 계정에 런칭 할인 사용을 남긴다(대표님 결정 2026-10-04)
+    if (result.ok && payment.launchDiscount) {
+      await tx.seller.updateMany({ where: { id: payment.sellerId, launchDiscountUsedAt: null }, data: { launchDiscountUsedAt: now } });
     }
     // 결제 중 상위 변경의 차액(ONQ 1-C-2): 확정되면 플랜만 바꾸고 기간·결제일은 그대로, 실패·거절이면 지금 플랜 그대로(유예 없음)
     if (payment.kind === "PRORATION") {

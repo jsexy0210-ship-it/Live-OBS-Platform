@@ -136,7 +136,7 @@ describe("상위 변경(오버레이 전용 → 통합)", () => {
     provider.failNext = "timeout_after_charge";
     expect(await changePlan(db, provider, s.ctx, { planCode: "INTEGRATED", now: T0 })).toEqual({ ok: false, reason: "payment_pending" });
     await db.sellerIntegrationProfile.update({ where: { sellerId: s.seller.id }, data: { checkedAt: null } });
-    await db.subscriptionPayment.updateMany({ where: { sellerId: s.seller.id }, data: { createdAt: new Date(Date.now() - 3_600_000) } });
+    await db.subscriptionPayment.updateMany({ where: { sellerId: s.seller.id }, data: { createdAt: new Date(Date.now() - 3_600_000), launchDiscount: true } });
     await reconcileStalePayments(db, provider);
     expect(await payments(s.seller.id)).toEqual([{ amount: 36666, status: "PAID", kind: "PRORATION" }]);
     expect(await planOf(s.seller.id)).toBe("OVERLAY_ONLY");
@@ -145,6 +145,8 @@ describe("상위 변경(오버레이 전용 → 통합)", () => {
       { amount: 36666, status: "REQUESTED", source: "SYSTEM", reason: "upgrade_gate_failed" },
     ]);
     expect(await db.auditLog.count({ where: { sellerId: s.seller.id, action: "subscription.plan_upgrade_blocked", reason: "business_unchecked" } })).toBe(1);
+    // 막힌 청구는 런칭 할인을 쓴 것으로 남기지 않는다(환불 요청된 청구)
+    expect((await db.seller.findUniqueOrThrow({ where: { id: s.seller.id }, select: { launchDiscountUsedAt: true } })).launchDiscountUsedAt).toBeNull();
   });
 
   it("결제 전 재시도 때 게이트가 막히면 돈을 청구하지 않고 실패로 닫는다(환불 요청 없음)", async () => {
