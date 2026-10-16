@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 const DEFAULT_MESSAGE = "저장하지 않은 변경이 있습니다. 이 화면을 나가시겠습니까?";
 
@@ -9,6 +9,7 @@ const DEFAULT_MESSAGE = "저장하지 않은 변경이 있습니다. 이 화면�
  * 화면 ← 버튼(useSmartBack)·router.push 호출은 아래 `confirmLeave()`로 직접 묻는다.
  */
 export function useUnsavedGuard(dirty: boolean, message: string = DEFAULT_MESSAGE) {
+  const release = useRef<() => Promise<void>>(async () => {});
   useEffect(() => {
     if (!dirty) return;
 
@@ -30,7 +31,8 @@ export function useUnsavedGuard(dirty: boolean, message: string = DEFAULT_MESSAG
       }
     };
     // 브라우저 Back: 같은 주소의 기록 한 칸을 얹어 두고, popstate에서 확인 후 취소하면 다시 얹는다
-    history.pushState({ unsavedGuard: true }, "", location.href);
+    const guardedUrl = location.href;
+    history.pushState({ ...history.state, unsavedGuard: true }, "", guardedUrl);
     let released = false;
     const onPop = () => {
       if (released) return;
@@ -46,12 +48,24 @@ export function useUnsavedGuard(dirty: boolean, message: string = DEFAULT_MESSAG
     window.addEventListener("beforeunload", onBeforeUnload);
     document.addEventListener("click", onClick, true);
     window.addEventListener("popstate", onPop);
+    // 저장 성공은 확인 없이 보호용 기록만 소비한 뒤 URL을 바꾼다.
+    release.current = async () => {
+      released = true;
+      window.removeEventListener("popstate", onPop);
+      if (!history.state?.unsavedGuard || location.href !== guardedUrl) return;
+      await new Promise<void>((resolve) => {
+        window.addEventListener("popstate", () => resolve(), { once: true });
+        history.back();
+      });
+    };
     return () => {
+      release.current = async () => {};
       window.removeEventListener("beforeunload", onBeforeUnload);
       document.removeEventListener("click", onClick, true);
       window.removeEventListener("popstate", onPop);
     };
   }, [dirty, message]);
+  return useCallback(() => release.current(), []);
 }
 
 /** 화면 ←·취소 버튼 등 코드로 나가는 경로에서 쓴다. 변경이 없으면 바로 true */

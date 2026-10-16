@@ -16,6 +16,13 @@ export const DETAIL_HIT_LIMIT = 200;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUuid = (v: unknown): v is string => typeof v === "string" && UUID.test(v);
 
+// 개봉을 모두 마친 주문의 개봉 시간 합(초, 반올림). 한 항목이라도 안 끝났거나 시작 기록이 없으면 null.
+export function openSecondsOf(items: { doneAt: Date | null; openingStartedAt: Date | null }[]): number | null {
+  if (items.length === 0 || items.some((q) => !q.doneAt || !q.openingStartedAt)) return null;
+  const ms = items.reduce((sum, q) => sum + Math.max(0, q.doneAt!.getTime() - q.openingStartedAt!.getTime()), 0);
+  return Math.round(ms / 1000);
+}
+
 export async function broadcastDetail(db: PrismaClient, ctx: TenantContext, id: string, cursor?: string | null) {
   requireSellerRead(ctx, "BROADCAST_RUN");
   if (!isUuid(id)) throw notFound();
@@ -27,7 +34,7 @@ export async function broadcastDetail(db: PrismaClient, ctx: TenantContext, id: 
   const at = isUuid(cursor)
     ? await db.order.findFirst({ where: { id: cursor, sellerId: ctx.sellerId, createdAt: window }, select: { id: true, createdAt: true } })
     : null;
-  const [agg, insights, events, rows, hits, externals] = await Promise.all([
+  const [agg, insights, events, rows, hits, externals, externalCount] = await Promise.all([
     aggregateBroadcasts(db, ctx.sellerId, [session.id]),
     broadcastInsights(db, ctx.sellerId, session.id, session.startedAt, session.endedAt),
     listBroadcastEvents(db, ctx.sellerId, session.id, session.startedAt),
@@ -50,7 +57,7 @@ export async function broadcastDetail(db: PrismaClient, ctx: TenantContext, id: 
         createdAt: true,
         paidAt: true,
         items: { select: { productNameSnapshot: true, optionNameSnapshot: true, quantity: true, unitPrice: true, refundedQuantity: true }, orderBy: { id: "asc" } },
-        queueItems: { select: { doneAt: true } },
+        queueItems: { select: { doneAt: true, openingStartedAt: true } },
       },
     }),
     db.hitCard.findMany({
@@ -64,14 +71,16 @@ export async function broadcastDetail(db: PrismaClient, ctx: TenantContext, id: 
       where: { sellerId: ctx.sellerId, receivedAt: window },
       orderBy: [{ receivedAt: "asc" }, { id: "asc" }],
       take: DETAIL_HIT_LIMIT,
-      select: { id: true, buyerLabel: true, receivedAt: true, cancelledAt: true, connection: { select: { shopKey: true } }, queueItems: { orderBy: { externalLineNo: "asc" }, select: { productLabel: true, quantity: true, doneAt: true, status: true } } },
+      select: { id: true, buyerLabel: true, receivedAt: true, cancelledAt: true, connection: { select: { shopKey: true } }, queueItems: { orderBy: { externalLineNo: "asc" }, select: { productLabel: true, quantity: true, doneAt: true, openingStartedAt: true, status: true } } },
     }),
+    db.externalOrder.count({ where: { sellerId: ctx.sellerId, receivedAt: window } }),
   ]);
   const page = rows.slice(0, DETAIL_ORDER_PAGE);
   const doneTimes = (o: (typeof page)[number]) => o.queueItems.map((q) => q.doneAt).filter((d): d is Date => !!d);
   return {
     broadcast: { id: session.id, title: session.title, status: session.status === "LIVE" ? ("live" as const) : ("ended" as const), startedAt: session.startedAt, endedAt: session.endedAt, memo: session.memo, hostName: session.hostName, layoutAspect: session.layoutAspect, timerSeconds: insights.timerSeconds },
-    summary: { ...agg.get(session.id)!, avgOpenSeconds: insights.avgOpenSeconds, maxWaiting: insights.maxWaiting },
+    // externalOrders: 방송 중 들어온 다른 쇼핑몰 주문 수(orders는 내부 주문만). 화면 「주문 N건(다른 쇼핑몰 포함)」 = orders + externalOrders
+    summary: { ...agg.get(session.id)!, externalOrders: externalCount, avgOpenSeconds: insights.avgOpenSeconds, maxWaiting: insights.maxWaiting },
     hourly: insights.hourly,
     events,
     orders: page.map((o) => {
@@ -89,6 +98,8 @@ export async function broadcastDetail(db: PrismaClient, ctx: TenantContext, id: 
         createdAt: o.createdAt,
         paidAt: o.paidAt,
         completedAt: done.length > 0 && done.length === o.queueItems.length ? new Date(Math.max(...done.map((d) => d.getTime()))) : null,
+        // 주문별 개봉에 걸린 시간(초): 개봉을 모두 마친 주문만, 항목별 (완료 − 개봉 시작)의 합. 시작 기록이 없으면 null(SA-055 「오픈 시간」)
+        openSeconds: openSecondsOf(o.queueItems),
       };
     }),
     nextCursor: rows.length > DETAIL_ORDER_PAGE ? page[page.length - 1].id : null,
@@ -102,6 +113,8 @@ export async function broadcastDetail(db: PrismaClient, ctx: TenantContext, id: 
         items: e.queueItems.map((q) => ({ productName: q.productLabel, quantity: q.quantity, status: q.status })),
         createdAt: e.receivedAt,
         cancelledAt: e.cancelledAt,
+        // 내부 주문과 같은 계산(완료 − 개봉 시작 합). 안 끝났거나 시작 기록이 없으면 null
+        openSeconds: openSecondsOf(e.queueItems),
         completedAt: done.length > 0 && done.length === e.queueItems.length ? new Date(Math.max(...done.map((x) => x.getTime()))) : null,
       };
     }),

@@ -4,7 +4,7 @@ import { prisma } from "../../../../../lib/server/db";
 import { errorResponse, sessionToken } from "../../../../../lib/server/http/route";
 import { listLivePayoutHistory } from "../../../../../lib/server/rewards/livePayoutAdmin";
 
-// 실제 지급 전환 이력(SA-034). 쿼리 cursor, limit(기본 20, 최대 100). 응답 { history: [{ id, at, enabled, actorName, settled: null | { count, amount }(켠 줄: 일괄 지급한 건수·금액) }], nextCursor }. MEMBER_POINTS 조회.
+// 실제 지급 전환 이력(SA-034). 쿼리 cursor, limit(기본 10, 최대 100). 응답 { history: [{ id, at, enabled, actorName, settled: null | { count, amount }(켠 줄: 일괄 지급한 건수·금액) }], nextCursor }. MEMBER_POINTS 조회.
 export async function GET(req: Request) {
   try {
     const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "STORE_OPERATIONS" });

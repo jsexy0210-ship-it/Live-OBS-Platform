@@ -91,7 +91,7 @@ describe("재입고 알림", () => {
     expect([r.status, (await r.json()).message]).toEqual([409, RESTOCK_MESSAGES.restock_full]);
   });
 
-  it("재고가 들어오면 대기 → 발송 대기, 야간 예약은 시각이 지나야 발송 기록", async () => {
+  it("재고가 들어오면 미발송 대기, 예약 시각이 지나고 조회가 겹쳐도 발송 완료가 되지 않는다", async () => {
     const s = await shop();
     const x = await product(s.seller.id);
     await add(s.seller.slug, s.cookie, x.p.id);
@@ -102,14 +102,36 @@ describe("재입고 알림", () => {
     await sweepRestock(db, s.seller.id);
     const rows = await db.restockAlert.findMany({ orderBy: { createdAt: "asc" } });
     expect(rows.every((r) => r.restockedAt && r.notifyAt)).toBe(true);
-    expect(rows.every((r) => r.status === "QUEUED" || r.status === "SENT")).toBe(true);
+    expect(rows.every((r) => r.status === "QUEUED" && r.notifiedAt === null)).toBe(true);
     // 첫 건은 미래 예약(야간), 둘째는 지난 예약으로 맞춘다
     await db.restockAlert.update({ where: { id: rows[0].id }, data: { status: "QUEUED", notifyAt: new Date(Date.now() + 3600_000), notifiedAt: null } });
     await db.restockAlert.update({ where: { id: rows[1].id }, data: { status: "QUEUED", notifyAt: new Date(Date.now() - 1000), notifiedAt: null } });
-    await sweepRestock(db, s.seller.id);
+    await Promise.all([sweepRestock(db, s.seller.id), list(s.seller.slug, s.cookie), listRestockAlerts(db, s.ctx)]);
     const after = await db.restockAlert.findMany({ orderBy: { createdAt: "asc" } });
     expect([after[0].status, after[0].notifiedAt]).toEqual(["QUEUED", null]);
-    expect([after[1].status, after[1].notifiedAt === null]).toEqual(["SENT", false]);
+    expect([after[1].status, after[1].notifiedAt]).toEqual(["QUEUED", null]);
+    const mine = await (await list(s.seller.slug, s.cookie)).json();
+    expect(mine.items[0]).toMatchObject({ status: "QUEUED", notifiedAt: null });
+    const sellerView = (await listRestockAlerts(db, s.ctx)).items[0];
+    expect(sellerView).toMatchObject({ waiting: 0, queued: 2, sent: 0, lastNotifiedAt: null });
+    expect(sellerView.nextNotifyAt?.getTime()).toBe(after[1].notifyAt?.getTime());
+  });
+
+  it("과거 SENT와 다른 판매자의 WAITING은 신규 훑기로 수정하지 않는다", async () => {
+    const s = await shop(), other = await shop();
+    const old = await product(s.seller.id), fresh = await product(other.seller.id);
+    await add(s.seller.slug, s.cookie, old.p.id);
+    await add(other.seller.slug, other.cookie, fresh.p.id);
+    const notifiedAt = new Date("2026-10-01T00:00:00Z");
+    const row = await db.restockAlert.findFirstOrThrow({ where: { sellerId: s.seller.id } });
+    await db.restockAlert.update({ where: { id: row.id }, data: { status: "SENT", notifiedAt } });
+    const before = await db.restockAlert.findUniqueOrThrow({ where: { id: row.id } });
+    await db.productOption.updateMany({ data: { stock: 3 } });
+    await sweepRestock(db, s.seller.id);
+    await list(s.seller.slug, s.cookie);
+    await listRestockAlerts(db, s.ctx);
+    expect(await db.restockAlert.findUniqueOrThrow({ where: { id: row.id } })).toEqual(before);
+    expect((await db.restockAlert.findFirstOrThrow({ where: { sellerId: other.seller.id } })).status).toBe("WAITING");
   });
 
   it("판매 중지·품절 표시 상품은 재고가 있어도 보내지 않고, 보낸 뒤 품절이 되어 다시 신청하면 처음부터", async () => {

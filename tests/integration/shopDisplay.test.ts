@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { dbNow } from "../../lib/server/billing/subscription";
 import { PUT as recommendedPut } from "../../app/api/seller/display/recommended/route";
 import { GET as displayGet } from "../../app/api/seller/display/route";
 import { GET as homeRoute } from "../../app/api/shop/[slug]/home/route";
@@ -43,7 +44,7 @@ describe("진열 설정", () => {
     const s = await seller();
     const a = await made(s.ctx, "A");
     const b = await made(s.ctx, "B");
-    await db.product.update({ where: { id: a.id }, data: { createdAt: new Date("2026-01-01T00:00:00Z") } });
+    await db.product.update({ where: { id: a.id }, data: { createdAt: new Date((await dbNow(db)).getTime() - 86_400_000) } });
     expect(await getDisplay(db, s.ctx)).toMatchObject({ listSort: "new", sections: [{ kind: "RECOMMENDED", title: "추천 상품" }, { kind: "NEW", title: "신상품" }], recommended: [] });
     // 추천이 비어 있으면 그 영역은 빠진다
     expect(titles((await home(s.seller.slug)).body)).toEqual([["신상품", ["B", "A"]]]);
@@ -124,9 +125,9 @@ describe("진열 설정", () => {
     }
     expect(await setSections(db, s.ctx, { sections: [] })).toMatchObject({ ok: true, value: { sections: [{ kind: "RECOMMENDED" }, { kind: "NEW" }] } }); // 비우면 기본
     expect(await setListSort(db, s.ctx, { listSort: "name" })).toEqual({ ok: false, reason: "invalid_display_settings" });
-    await expect(setRecommended(db, { ...s.ctx, readOnly: true }, { productIds: [] })).rejects.toMatchObject({ status: 403 });
-    await expect(setSections(db, { ...s.ctx, readOnly: true }, { sections: [] })).rejects.toMatchObject({ status: 403 });
-    expect(await getDisplay(db, { ...s.ctx, readOnly: true })).toMatchObject({ listSort: "new" });
+    await expect(setRecommended(db, { ...s.ctx, readOnly: true, impersonationScopes: ["ORDERS", "MEMBERS"] }, { productIds: [] })).rejects.toMatchObject({ status: 403 });
+    await expect(setSections(db, { ...s.ctx, readOnly: true, impersonationScopes: ["ORDERS", "MEMBERS"] }, { sections: [] })).rejects.toMatchObject({ status: 403 });
+    expect(await getDisplay(db, { ...s.ctx, readOnly: true, impersonationScopes: ["ORDERS", "MEMBERS"] })).toMatchObject({ listSort: "new" });
     expect(await getDisplay(db, other.ctx)).toMatchObject({ recommended: [] });
   });
 });

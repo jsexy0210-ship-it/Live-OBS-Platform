@@ -17,6 +17,8 @@ async function login(page: Page, next: string) {
 
 const gnb = (page: Page) => page.getByRole("navigation", { name: "주 메뉴" });
 const lnb = (page: Page) => page.getByRole("complementary", { name: "파트너스 메뉴" });
+// 하위 화면(예전 화면 안 탭)이 있는 메뉴는 왼쪽 메뉴에서 제목 아래 하위 링크로 펼쳐진다(2026-10-06 대표님 결정: 페이지 이동용 탭은 왼쪽 사이드바)
+const sub = (page: Page, menu: string) => lnb(page).getByRole("navigation", { name: menu, exact: true });
 
 test("GNB는 8개이고 고객·마케팅·통계·설정 묶음에 메뉴가 들어 있다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -28,8 +30,10 @@ test("GNB는 8개이고 고객·마케팅·통계·설정 묶음에 메뉴가 �
     await expect(lnb(page).locator(".lnb-sec.on .lnb-h")).toHaveText(name);
     return lnb(page).locator(".lnb-sec.on .lnb-i").allTextContents();
   };
-  // 통합 화면(적립금·문의·리뷰)은 메뉴 한 항목이고, 화면 안 탭으로 나뉜다
-  expect(await items("고객")).toEqual(["회원 목록", "회원 등급", "구매 제한", "회원에게 알림 보내기", "적립금", "문의 · 리뷰"]);
+  const branches = () => lnb(page).locator(".lnb-sec.on .lnb-parent").allTextContents();
+  // 통합 화면(적립금·문의·리뷰)은 메뉴 한 항목이고, 하위 화면은 그 아래 링크로 나뉜다
+  expect(await items("고객")).toEqual(["회원 목록", "회원 등급", "구매 제한"]);
+  expect(await branches()).toEqual(["회원에게 알림 보내기", "적립금", "문의 · 리뷰"]);
   expect(await items("마케팅")).toEqual(["쿠폰", "홈 배너", "이벤트 팝업", "쇼핑몰 공지 · 자주 묻는 질문"]);
 });
 
@@ -37,10 +41,9 @@ test("취소 · 교환 · 반품은 한 메뉴이고, 하위 화면에서 부모
   await page.setViewportSize({ width: 1440, height: 900 });
   await login(page, "/seller/orders/refund-requests");
   await expect(gnb(page).getByRole("link", { name: "주문", exact: true })).toHaveClass(/\bon\b/);
-  await expect(lnb(page).getByRole("link", { name: "취소 · 교환 · 반품" })).toHaveAttribute("aria-current", "page");
-  await expect(lnb(page).getByRole("link", { name: "전체 주문" })).not.toHaveAttribute("aria-current", "page");
-  const tabs = page.getByRole("navigation", { name: "화면 탭" });
+  const tabs = sub(page, "취소 · 교환 · 반품");
   await expect(tabs.getByRole("link", { name: "취소 · 환불" })).toHaveAttribute("aria-current", "page");
+  await expect(lnb(page).getByRole("link", { name: "전체 주문" })).not.toHaveAttribute("aria-current", "page");
   await expect(tabs.getByRole("link", { name: "교환 · 반품" })).toHaveAttribute("href", "/seller/returns");
 });
 
@@ -129,13 +132,14 @@ test("서랍이 열린 채 Back을 누르면 페이지를 떠나지 않고 서�
 test("고객 그룹 「문의 · 리뷰」는 /seller/buyer-inquiries(문의 탭)로 연결되고 그 화면에서 켜져 있다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await login(page, "/seller/members");
-  const link = lnb(page).getByRole("link", { name: "문의 · 리뷰" });
-  await expect(link).toHaveAttribute("href", "/seller/buyer-inquiries");
-  await link.click();
+  const tabs = sub(page, "문의 · 리뷰");
+  const inquiry = tabs.getByRole("link", { name: "문의", exact: true });
+  await expect(inquiry).toHaveAttribute("href", "/seller/buyer-inquiries");
+  await inquiry.click();
   await expect(page).toHaveURL(/\/seller\/buyer-inquiries$/);
   await expect(gnb(page).getByRole("link", { name: "고객", exact: true })).toHaveClass(/\bon\b/);
-  await expect(lnb(page).getByRole("link", { name: "문의 · 리뷰" })).toHaveAttribute("aria-current", "page");
-  await expect(page.getByRole("navigation", { name: "화면 탭" }).getByRole("link", { name: "리뷰" })).toHaveAttribute("href", "/seller/reviews");
+  await expect(tabs.getByRole("link", { name: "문의", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(tabs.getByRole("link", { name: "리뷰", exact: true })).toHaveAttribute("href", "/seller/reviews");
 });
 
 test("상단 전역 검색: 상품을 찾아 이동하고, 결과가 없으면 안내하며, Esc로 닫힌다", async ({ page }) => {
@@ -175,9 +179,9 @@ test("상단 알림: 종 버튼이 열리고(목록 또는 빈 안내), 바깥�
 test("상품 그룹 「재고」 메뉴의 탭으로 「재입고 알림」(/seller/products/restock-alerts)이 연결된다(머리를 아직 안 쓰는 재고 화면은 경로 줄 아래 탭)", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await login(page, "/seller/products");
-  await expect(lnb(page).getByRole("link", { name: "재고" })).toHaveAttribute("href", "/seller/products/stock");
-  await lnb(page).getByRole("link", { name: "재고" }).click();
-  await expect(page.getByRole("navigation", { name: "화면 탭" }).getByRole("link", { name: "재입고 알림" })).toHaveAttribute("href", "/seller/products/restock-alerts");
+  const stock = sub(page, "재고");
+  await expect(stock.getByRole("link", { name: "재고 수정" })).toHaveAttribute("href", "/seller/products/stock");
+  await expect(stock.getByRole("link", { name: "재입고 알림" })).toHaveAttribute("href", "/seller/products/restock-alerts");
 });
 
 test("모바일(390): 검색·알림 버튼이 보이고 패널이 화면 안에 열린다", async ({ page }) => {
@@ -191,11 +195,13 @@ test("모바일(390): 검색·알림 버튼이 보이고 패널이 화면 안에
 
 test("화면이 생긴 메뉴가 연결된다: 외부 채널 연결 탭(유튜브·외부 쇼핑몰·자동 연결)과 홈 아래 시작하기", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await login(page, "/seller/broadcast");
-  await expect(lnb(page).getByRole("link", { name: "외부 채널 연결" })).toHaveAttribute("href", "/seller/youtube");
-  await lnb(page).getByRole("link", { name: "외부 채널 연결" }).click();
-  const tabs = page.getByRole("navigation", { name: "화면 탭" });
+  await login(page, "/seller");
+  await gnb(page).getByRole("link", { name: "방송", exact: true }).click();
+  const tabs = sub(page, "외부 채널 연결");
   await expect(tabs.getByRole("link")).toHaveText(["유튜브", "외부 쇼핑몰", "자동 연결"]);
+  await expect(tabs.getByRole("link", { name: "유튜브" })).toHaveAttribute("href", "/seller/youtube");
+  await tabs.getByRole("link", { name: "유튜브" }).click();
+  await expect(page).toHaveURL(/\/seller\/youtube$/);
   await expect(tabs.getByRole("link", { name: "외부 쇼핑몰" })).toHaveAttribute("href", "/seller/external-shops");
   await expect(tabs.getByRole("link", { name: "자동 연결" })).toHaveAttribute("href", "/seller/automation");
   // 시작하기는 메뉴에서 빠지고 홈 아래 화면이다(주소로 열어도 홈 대분류가 켜진다)
@@ -205,9 +211,9 @@ test("화면이 생긴 메뉴가 연결된다: 외부 채널 연결 탭(유튜�
 
 test("자동 연결 메뉴는 대표자에게만 보인다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto(`/seller/login?next=${encodeURIComponent("/seller/broadcast")}`);
+  await page.goto(`/seller/login?next=${encodeURIComponent("/seller")}`);
   await submitSellerLogin(page, "demo-staff@example.com", PASSWORD);
-  await page.waitForURL(/\/seller\//);
+  await page.waitForURL(/\/seller$/);
   await page.goto("/seller/settings/shop");
   await expect(page.getByRole("navigation", { name: "화면 탭" }).getByRole("link", { name: "자동 연결" })).toHaveCount(0);
   await expect(lnb(page).getByText("자동 연결")).toHaveCount(0);
@@ -218,11 +224,9 @@ test("화면이 생긴 설정·고객 메뉴가 연결된다: 검색 노출·적
   await login(page, "/seller/settings/shop");
   await expect(lnb(page).getByRole("link", { name: "검색 노출" })).toHaveAttribute("href", "/seller/settings/seo");
   await gnb(page).getByRole("link", { name: "고객", exact: true }).click();
-  await lnb(page).getByRole("link", { name: "적립금" }).click();
-  const tabs = page.getByRole("navigation", { name: "화면 탭" });
+  const tabs = sub(page, "적립금");
   await expect(tabs.getByRole("link", { name: "실제 지급 켜기" })).toHaveAttribute("href", "/seller/rewards/live-payout");
   await tabs.getByRole("link", { name: "실제 지급 켜기" }).click();
   await expect(page).toHaveURL(/\/seller\/rewards\/live-payout$/);
   await expect(tabs.getByRole("link", { name: "실제 지급 켜기" })).toHaveAttribute("aria-current", "page");
-  await expect(lnb(page).getByRole("link", { name: "적립금" })).toHaveAttribute("aria-current", "page");
 });

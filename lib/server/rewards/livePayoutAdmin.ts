@@ -41,7 +41,7 @@ export const LIVE_HISTORY_DEFAULT = 20;
 export const LIVE_HISTORY_MAX = 100;
 export async function listLivePayoutHistory(db: PrismaClient, ctx: TenantContext, query: { cursor?: string | null; limit?: string | null }) {
   requireSellerRead(ctx, "MEMBER_POINTS");
-  return listLivePayoutHistoryOf(db, ctx.sellerId, query);
+  return listLivePayoutHistoryOf(db, ctx.sellerId, { ...query, limit: query.limit == null || query.limit === "" ? "10" : query.limit });
 }
 
 // 권한 검사는 호출한 쪽이 한다(파트너스 SA-034 · 마스터 관리자 MA-012-7 읽기 전용).

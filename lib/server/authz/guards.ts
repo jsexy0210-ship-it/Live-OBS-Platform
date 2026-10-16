@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
-import { isImpersonationToken, resolveImpersonation } from "../auth/impersonation";
+import { IMPERSONATION_LEGACY_SCOPES, isImpersonationToken, resolveImpersonation } from "../auth/impersonation";
 import { resolveAdminSession, resolveSellerSession, type AdminSessionContext } from "../auth/session";
 import { sellerFeatures, type Feature } from "../billing/features";
 import { sellerAccessFor } from "../billing/subscription";
@@ -43,7 +43,7 @@ export async function requireSeller(
   if (isImpersonationToken(token)) {
     const imp = await resolveImpersonation(db, token, now ?? new Date());
     if (!imp) throw unauthenticated();
-    return { sellerId: imp.seller.id, actorType: "PLATFORM_ADMIN", actorId: imp.adminId, isOwner: false, permissions: [], readOnly: true };
+    return { sellerId: imp.seller.id, actorType: "PLATFORM_ADMIN", actorId: imp.adminId, isOwner: false, permissions: [], readOnly: true, impersonationScopes: imp.scopes };
   }
   const ctx = await resolveSellerSession(db, token, now ?? new Date());
   if (!ctx) throw unauthenticated();
@@ -90,5 +90,5 @@ export async function impersonateSeller(
     ip: meta.ip,
     userAgent: meta.userAgent,
   });
-  return { sellerId, actorType: "PLATFORM_ADMIN", actorId: admin.admin.id, isOwner: false, permissions: [], readOnly: true };
+  return { sellerId, actorType: "PLATFORM_ADMIN", actorId: admin.admin.id, isOwner: false, permissions: [], readOnly: true, impersonationScopes: IMPERSONATION_LEGACY_SCOPES };
 }

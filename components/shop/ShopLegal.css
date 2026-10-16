@@ -1,9 +1,13 @@
 /* 쇼핑몰 이용약관·개인정보처리방침(ShopLegal.tsx)과 바닥글 링크 */
+/* 보드 SH-031 · SH-032: 카드 없이 본문 폭 전체, 제목 옆에 시행일, 아래 굵은 줄 */
 .shop-legal-head {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 16px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  padding-bottom: 12px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--wds-label-normal);
 }
 .shop-legal-head h1,
 .shop-legal-head p {

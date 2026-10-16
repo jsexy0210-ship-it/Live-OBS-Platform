@@ -27,18 +27,17 @@ test("PC: 머리 카테고리 → 분류 목록(하위 분류 상품 포함)·�
   await expect(side.getByRole("link", { name: "프리미엄" })).toBeVisible();
   await expect(side.getByRole("link", { name: "비공개 분류" })).toHaveCount(0);
   // 낮은 가격 순: 문라이트(132,000) → 스타라이트(189,000)
-  await page.getByRole("navigation", { name: "정렬" }).locator("summary").click();
-  await page.getByRole("navigation", { name: "정렬" }).getByRole("link", { name: "낮은 가격" }).click();
+  await page.getByRole("navigation", { name: "정렬" }).getByRole("link", { name: "낮은 가격" }).click(); // PC는 묶음 버튼
   await expect(page).toHaveURL(/sort=low/);
   await expect(page).toHaveURL(/category=/);
   await expectNames(page, ["문라이트 컬렉션 박스", "스타라이트 부스터 박스"]);
-  await page.getByRole("navigation", { name: "정렬" }).locator("summary").click();
   await page.getByRole("navigation", { name: "정렬" }).getByRole("link", { name: "높은 가격" }).click();
   await expectNames(page, ["스타라이트 부스터 박스", "문라이트 컬렉션 박스"]);
   // 소분류
   await side.getByRole("link", { name: "프리미엄" }).click();
   await expect(page.getByRole("heading", { level: 1, name: /^프리미엄 1개$/ })).toBeVisible();
   await expectNames(page, ["문라이트 컬렉션 박스"]);
+  await expect(page.getByRole("navigation", { name: "쪽 이동" })).toHaveCount(0);
   await expect(nav.getByRole("link", { name: "부스터 박스" })).toHaveAttribute("aria-current", "page");
   if (SHOT) await page.screenshot({ path: "tests/e2e/screenshots/SH-002-list-1440.png" });
   // 전체 상품
@@ -73,12 +72,18 @@ test("PC: 전체 카테고리 펼침(대분류·소분류)·하위 칩·경로, 
   await expect(page.getByRole("heading", { level: 1, name: /^팩 1개$/ })).toBeVisible();
   await expect(page.getByRole("navigation", { name: /하위 카테고리/ })).toHaveCount(0);
   if (SHOT) await page.screenshot({ path: "tests/e2e/screenshots/SH-002-tree-1440.png" });
-  // 상품 상세 경로: 소분류에 묶인 상품은 「전체 상품 › 대분류 › 소분류」
+  // 상품 상세 경로: 소분류에 묶인 상품은 실제 대분류·소분류를 표시한다
   await page.goto(`/shop/${SLUG}/products`);
   await page.getByRole("list", { name: "전체 상품" }).getByRole("link", { name: "문라이트 컬렉션 박스" }).first().click();
   const crumb = page.getByRole("navigation", { name: "상품 경로" });
-  await expect(crumb).toHaveText("전체 상품 › 부스터 박스 › 프리미엄");
-  await crumb.getByRole("link", { name: "부스터 박스" }).click();
+  await expect(crumb).toHaveText("부스터 박스 › 프리미엄");
+  await expect(crumb.getByRole("link")).toHaveCount(2);
+  for (const name of ["부스터 박스", "프리미엄"]) await expect(crumb.getByRole("link", { name, exact: true })).toHaveAttribute("href", new RegExp(`^/shop/${SLUG}/products\\?category=[0-9a-f-]{36}$`));
+  await crumb.getByRole("link", { name: "프리미엄", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1, name: /^프리미엄 1개$/ })).toBeVisible();
+  await page.goBack();
+  await expect(crumb).toHaveText("부스터 박스 › 프리미엄");
+  await crumb.getByRole("link", { name: "부스터 박스", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1, name: /^부스터 박스 2개$/ })).toBeVisible();
 });
 
@@ -108,8 +113,8 @@ test("휴대폰 390: 메뉴 탭·서랍에 카테고리, 왼쪽 메뉴는 숨김
 });
 
 // 보드 SH-002: 정렬은 「신상품 ▾」 한 칸을 누르면 펼쳐지는 목록(현재 정렬 강조), 고르면 주소에 sort가 붙는다.
-test("정렬 드롭다운: 현재 정렬이 보이고 펼쳐서 고른다", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
+test("정렬 드롭다운(휴대폰): 현재 정렬이 보이고 펼쳐서 고른다", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/shop/${SLUG}/products`);
   const nav = page.getByRole("navigation", { name: "정렬" });
   await expect(nav.locator("summary")).toHaveText("신상품");
@@ -117,7 +122,7 @@ test("정렬 드롭다운: 현재 정렬이 보이고 펼쳐서 고른다", asyn
   await nav.locator("summary").click();
   await expect(nav.getByRole("link")).toHaveText(["추천순", "인기순", "신상품", "낮은 가격", "높은 가격"]);
   await expect(nav.getByRole("link", { name: "신상품" })).toHaveAttribute("aria-current", "page");
-  await page.screenshot({ path: "tests/e2e/screenshots/SH-002-sort-1440.png" });
+  await page.screenshot({ path: "tests/e2e/screenshots/SH-002-sort-390.png" });
   await nav.getByRole("link", { name: "높은 가격" }).click();
   await expect(page).toHaveURL(/sort=high/);
   await expect(page.getByRole("navigation", { name: "정렬" }).locator("summary")).toHaveText("높은 가격");

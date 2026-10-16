@@ -148,7 +148,8 @@ describe("로그 추적 MA-070·071", () => {
       await db.auditLog.update({ where: { id: row.id }, data: { createdAt } });
       return row.id;
     };
-    const l1 = await mk("admin.seller.suspend", at("2026-10-04T15:00:00.000Z")); // KST 10/5 0시
+    const connection = { ip: "192.0.2.17", userAgent: "Mozilla/5.0 Chrome/130.0" };
+    const l1 = await mk("admin.seller.suspend", at("2026-10-04T15:00:00.000Z"), connection); // KST 10/5 0시
     const l2 = await mk("admin.seller.unsuspend", at("2026-10-05T14:59:59.999Z")); // KST 10/5 끝
     await writeAudit(db, { actorType: "SYSTEM", action: "subscription.canceled", targetType: "SellerSubscription", targetId: "s1" });
     const l3 = (await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "subscription.canceled" } })).id;
@@ -171,6 +172,15 @@ describe("로그 추적 MA-070·071", () => {
     const first = (await (await get(logsRoute, "/api/admin/audit-logs?limit=2", ops.cookie)).json()) as { logs: Record<string, unknown>[]; nextCursor: string };
     expect(first.logs.map((l) => l.id)).toEqual([l3, l2]);
     expect(Object.keys(first.logs[0])).not.toContain("before");
+    for (const row of first.logs) {
+      expect(Object.keys(row)).not.toContain("after");
+      expect(row).toMatchObject({ ip: null, userAgent: null });
+    }
+    const filtered = await (await get(logsRoute, `/api/admin/audit-logs?sellerId=${seller.id}&action=admin.seller.suspend`, ops.cookie)).json();
+    expect(filtered.logs).toHaveLength(1);
+    expect(filtered.logs[0]).toMatchObject({ id: l1, ...connection });
+    expect(Object.keys(filtered.logs[0])).not.toContain("before");
+    expect(Object.keys(filtered.logs[0])).not.toContain("after");
     expect(await ids(`?limit=2&cursor=${first.nextCursor}`)).toEqual([l1]);
     for (const qs of ["?action=Bad Action", "?actorType=ROBOT", "?actorId=x", "?sellerId=x", "?from=2026-13-01", "?limit=0", "?cursor=x"]) {
       expect((await get(logsRoute, `/api/admin/audit-logs${qs}`, ops.cookie)).status, qs).toBe(400);
@@ -180,6 +190,7 @@ describe("로그 추적 MA-070·071", () => {
       logRoute(new Request(`http://localhost:3000/api/admin/audit-logs/${id}`, { headers: { ...H, cookie } }), { params: Promise.resolve({ logId: id }) });
     expect(((await (await detail(l1)).json()) as { log: unknown }).log).toMatchObject({
       id: l1,
+      ...connection,
       before: { a: 1 },
       after: { a: 2 },
       seller: { id: seller.id },
@@ -189,7 +200,17 @@ describe("로그 추적 MA-070·071", () => {
   });
 
   it("최고관리자·운영·조회 전용은 보고, CS는 403(audit.read). 파트너스 세션은 401", async () => {
-    for (const role of ["SUPER_ADMIN", "OPERATIONS", "READ_ONLY"] as const) expect((await get(logsRoute, "/api/admin/audit-logs", (await signedIn(role)).cookie)).status, role).toBe(200);
+    await writeAudit(db, { actorType: "SYSTEM", action: "auth.login", ip: "192.0.2.18", userAgent: "existing-agent" });
+    const row = await db.auditLog.findFirstOrThrow({ where: { action: "auth.login" } });
+    for (const role of ["SUPER_ADMIN", "OPERATIONS", "READ_ONLY"] as const) {
+      const { cookie } = await signedIn(role);
+      const list = await get(logsRoute, "/api/admin/audit-logs?action=auth.login", cookie);
+      expect(list.status, role).toBe(200);
+      expect((await list.json()).logs).toEqual([expect.objectContaining({ id: row.id, ip: row.ip, userAgent: row.userAgent })]);
+      const detail = await logRoute(new Request(`http://localhost:3000/api/admin/audit-logs/${row.id}`, { headers: { ...H, cookie } }), { params: Promise.resolve({ logId: row.id }) });
+      expect(detail.status, role).toBe(200);
+      expect((await detail.json()).log).toMatchObject({ ip: row.ip, userAgent: row.userAgent });
+    }
     const cs = await signedIn("CS");
     expect((await get(logsRoute, "/api/admin/audit-logs", cs.cookie)).status).toBe(403);
     expect(
@@ -200,5 +221,6 @@ describe("로그 추적 MA-070·071", () => {
     const login = await loginSeller(db, { email: owner.email, password: PASSWORD }, {});
     if (!login.ok) throw new Error(login.reason);
     expect((await get(logsRoute, "/api/admin/audit-logs", `lo_seller=${login.token}`)).status).toBe(401);
+    expect((await logRoute(new Request(`http://localhost:3000/api/admin/audit-logs/${row.id}`, { headers: { ...H, cookie: `lo_seller=${login.token}` } }), { params: Promise.resolve({ logId: row.id }) })).status).toBe(401);
   });
 });

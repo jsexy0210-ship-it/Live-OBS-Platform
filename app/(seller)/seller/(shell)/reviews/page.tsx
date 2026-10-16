@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { CursorPagination } from "../../../../../components/Pagination";
+
+import { useCallback, useEffect, useState, useRef } from "react";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -97,8 +99,11 @@ export default function ReviewsPage() {
   const rating = ["5", "4", "low"].includes(u.rating) ? u.rating : "";
   const setTab = (t: Tab) => setU({ tab: t });
   const setRating = (v: string) => setU({ rating: v });
-  const [more, setMore] = useState<Row[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const reqId = useRef(0);
+  const paging = useRef(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [settings, setSettings] = useState(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
@@ -116,11 +121,13 @@ export default function ReviewsPage() {
   );
 
   const load = useCallback(async () => {
+    const id = ++reqId.current; paging.current = true;
     const r = await api<Data>(query());
+    if (id !== reqId.current) return;
+    paging.current = false;
     if (!r.ok) return setState({ kind: "error", status: r.status, error: r.error });
-    setMore([]);
     setCursor(r.data.nextCursor);
-    setState({ kind: "ok", data: r.data });
+    setState({ kind: "ok", data: r.data }); setPage(1); setCursors([undefined]);
   }, [query]);
 
   useEffect(() => {
@@ -129,16 +136,20 @@ export default function ReviewsPage() {
 
   useScrollRestore("seller-reviews", state.kind === "ok");
 
-  const loadMore = async () => {
-    if (!cursor) return;
-    const r = await api<Data>(query(cursor));
-    if (!r.ok) return setToast({ text: errorText(r, "더 불러오지 못했습니다"), neg: true });
-    setMore((m) => [...m, ...r.data.reviews]);
-    setCursor(r.data.nextCursor);
+  const goPage = async (target: number, next = cursors[target - 1]) => {
+    if (state.kind !== "ok" || paging.current || target < 1 || target > cursors.length + 1) return;
+    paging.current = true;
+    const id = reqId.current;
+    const r = await api<Data>(query(next));
+    if (id !== reqId.current) return;
+    paging.current = false;
+    if (!r.ok) return setToast({ text: "목록을 불러오지 못했습니다. 다시 눌러 주십시오", neg: true });
+    setState({ kind: "ok", data: r.data }); setCursor(r.data.nextCursor);
+    setCursors((prev) => [...prev.slice(0, target - 1), next]); setPage(target);
   };
 
   const data = state.kind === "ok" ? state.data : null;
-  const rows = data ? [...data.reviews, ...more] : [];
+  const rows = data?.reviews ?? [];
   const s = data?.summary;
   const distMax = s ? Math.max(1, ...s.distribution.map((d) => d.count)) : 1;
 
@@ -148,7 +159,7 @@ export default function ReviewsPage() {
       <main className="main">
         <div className="ph">
           <div className="col" style={{ gap: 6 }}>
-            <h1 className="t-t3">리뷰 관리</h1>
+            <h1 className="t-t3">리뷰</h1>
             <span className="t-l2 c-alt">구매자 상품 리뷰 확인 · 답글 · 숨김 · 신고 처리 · 리뷰 적립금 · 작성 조건 설정</span>
           </div>
           {data && (
@@ -200,7 +211,7 @@ export default function ReviewsPage() {
                   ))}
                 </div>
                 <select className="inp inp-sm" style={{ width: 120 }} aria-label="별점" value={rating} onChange={(e) => setRating(e.target.value)}>
-                  <option value="">별점 전체</option>
+                  <option value="">전체</option>
                   <option value="5">5점</option>
                   <option value="4">4점</option>
                   <option value="low">3점 이하</option>
@@ -212,43 +223,60 @@ export default function ReviewsPage() {
                   <span className="s">배송 완료 뒤 구매자가 리뷰를 쓸 수 있습니다 · 리뷰 적립금을 켜면 작성률이 올라갑니다</span>
                 </div>
               ) : (
-                <div role="list">
-                  {rows.map((r) => (
-                    <div key={r.id} className="rv-row" role="listitem" tabIndex={0} data-testid="review-row" onClick={() => setOpenId(r.id)} onKeyDown={(e) => e.key === "Enter" && setOpenId(r.id)}>
-                      <span className="col" style={{ gap: 2, minWidth: 0 }}>
-                        <span className="t-l2 fw6 ell">{r.productName}</span>
-                        <span className="t-c1 c-alt">
-                          {r.author}
-                          {r.grade ? ` (${r.grade})` : ""}
-                        </span>
-                      </span>
-                      <span className="rv-star rv-hide-m" aria-label={`${r.rating}점`}>
-                        {stars(r.rating)}
-                      </span>
-                      <span className="col rv-hide-m" style={{ gap: 2, minWidth: 0 }}>
-                        <span className="t-l2 rv-body">{r.status === "HELD" && r.heldLabel ? `[${r.heldLabel}] ` : ""}{r.body}</span>
-                        <span className="t-c1 c-alt num">
-                          {kstText(r.createdAt).slice(5, 10)} · {r.photos > 0 ? `사진 ${r.photos}장` : "사진 없음"}
-                          {r.replied ? " · 답글 완료" : ""}
-                          {r.reportCount > 0 ? ` · 신고 ${r.reportCount}건` : ""}
-                          {r.revokePending > 0 ? ` · 환불된 주문 · 적립금 수동 회수 필요 ${won(r.revokePending)}` : ""}
-                        </span>
-                      </span>
-                      <span>
-                        <span className={`bdg ${STATUS[r.status].cls}`}>{STATUS[r.status].label}</span>
-                      </span>
-                      <span className="t-c1 c-alt">{r.replied ? "답글 보기" : "답글"}</span>
-                    </div>
-                  ))}
+                <div className="rv-table-scroll">
+                  <table className="rv-table">
+                    <thead>
+                      <tr>
+                        <th scope="col" className="rv-select" />
+                        <th scope="col">상품 · 작성자</th>
+                        <th scope="col">별점</th>
+                        <th scope="col">내용 · 작성일</th>
+                        <th scope="col">상태</th>
+                        <th scope="col">관리</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((r) => (
+                        <tr
+                          key={r.id}
+                          data-testid="review-row"
+                          tabIndex={0}
+                          onClick={() => setOpenId(r.id)}
+                          onKeyDown={(e) => {
+                            if (e.currentTarget === e.target && e.key === "Enter") setOpenId(r.id);
+                          }}
+                        >
+                          <td className="rv-select" />
+                          <td className="rv-item">
+                            <span className="t-l2 fw6 ell">{r.productName}</span>
+                            <span className="t-c1 c-alt">{r.author}{r.grade ? ` (${r.grade})` : ""}</span>
+                          </td>
+                          <td className="rv-rating"><span className="rv-star" aria-label={`${r.rating}점`}>{stars(r.rating)}</span></td>
+                          <td className="rv-content">
+                            <span className="t-l2 rv-body">{r.status === "HELD" && r.heldLabel ? `[${r.heldLabel}] ` : ""}{r.body}</span>
+                            <span className="t-c1 c-alt num">
+                              {kstText(r.createdAt).slice(5, 10)} · {r.photos > 0 ? `사진 ${r.photos}장` : "사진 없음"}
+                              {r.replied ? " · 답글 완료" : ""}
+                              {r.reportCount > 0 ? ` · 신고 ${r.reportCount}건` : ""}
+                              {r.revokePending > 0 ? ` · 환불된 주문 · 적립금 수동 회수 필요 ${won(r.revokePending)}` : ""}
+                            </span>
+                          </td>
+                          <td className="rv-status"><span className={`bdg ${STATUS[r.status].cls}`}>{STATUS[r.status].label}</span></td>
+                          <td className="rv-actions">
+                            <button className="btn btn-out" type="button" onClick={() => setOpenId(r.id)} aria-label={`${r.productName} 리뷰 답글 관리`}>
+                              {r.replied ? "답글 보기" : "답글"}
+                            </button>
+                            <button className="btn btn-out" type="button" onClick={() => setOpenId(r.id)} aria-label={`${r.productName} 리뷰 숨기기`}>
+                              숨기기
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
-              {cursor && (
-                <div style={{ padding: 12 }}>
-                  <button className="btn btn-out btn-block" type="button" onClick={() => void loadMore()}>
-                    더 보기
-                  </button>
-                </div>
-              )}
+              {(page > 1 || cursor) && <CursorPagination page={page} visited={cursors.length} hasNext={!!cursor} onChange={(target) => void goPage(target)} onNext={() => { if (cursor) void goPage(page + 1, cursor); }} />}
             </>
           )}
         </section>

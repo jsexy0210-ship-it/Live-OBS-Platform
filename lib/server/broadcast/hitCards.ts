@@ -5,6 +5,7 @@ import { notifySellerChanged } from "../realtime/notify";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { cleanText } from "../text/clean";
 import { orderNoLabel } from "../orders/orderNoLabel";
+import { formatCsv, guardText } from "../shop-bulk-io/csv";
 
 // HIT 카드(SA-053 이력, 방송 대시보드 「HIT 카드 등록」). 규칙:
 // - 조회는 대표자·「방송 진행」(BROADCAST_RUN) 직원(마스터 대리 조회 포함), 등록·해제는 BROADCAST_RUN 쓰기 권한.
@@ -19,7 +20,7 @@ export type AuditMeta = { ip?: string | null; userAgent?: string | null };
 export const CARD_NAME_MAX = 60;
 export const NOTE_MAX = 200;
 export const NICKNAME_MAX = 30;
-export const HIT_PAGE_SIZE = 50;
+export const HIT_PAGE_SIZE = 10;
 export const GRADE_MAX = 12;
 // 등급 추천 값(SA-001-M4 HIT 기록 창·SA-053 목록). 화면의 「직접 입력」을 받으므로 등급은 자유 입력이고, 이 목록은 추천 값일 뿐이다. 비워 둘 수 있다.
 export const HIT_GRADES = ["SAR", "SR", "UR", "SE", "SP", "AA"] as const;
@@ -57,7 +58,7 @@ const cardSelect = {
   nicknameSnapshot: true,
   createdAt: true,
   broadcastSession: { select: { id: true, title: true } },
-  queueItem: { select: { id: true, productLabel: true, order: { select: { id: true, orderNo: true, createdAt: true } }, externalOrderId: true, externalOrder: { select: { connection: { select: { shopKey: true } } } } } },
+  queueItem: { select: { id: true, productLabel: true, receivedAt: true, order: { select: { id: true, orderNo: true, createdAt: true } }, externalOrderId: true, externalOrder: { select: { connection: { select: { shopKey: true } } } } } },
 } satisfies Prisma.HitCardSelect;
 type CardRow = Prisma.HitCardGetPayload<{ select: typeof cardSelect }>;
 
@@ -73,36 +74,53 @@ const view = (r: CardRow) => ({
   // 출처: 외부 쇼핑몰 주문에서 나온 카드면 EXTERNAL(externalShopName은 지금은 몰 ID). 직접 입력한 카드는 queueItem이 없어 null
   source: r.queueItem ? (r.queueItem.externalOrderId ? ("EXTERNAL" as const) : ("INTERNAL" as const)) : null,
   externalShopName: r.queueItem?.externalOrder?.connection.shopKey ?? null,
+  // 주문대기 접수 시각(SA-053 「주문」 열 「14:12 접수」). 직접 입력한 카드는 null
+  orderReceivedAt: r.queueItem?.receivedAt ?? null,
   createdAt: r.createdAt,
 });
 
-export type HitFilter = { broadcastId?: string | null; from?: string | null; to?: string | null; cursor?: string | null; grade?: string | null };
+export type HitFilter = { broadcastId?: string | null; from?: string | null; to?: string | null; cursor?: string | null; grade?: string | null; offset?: string | null };
+export const HIT_EXPORT_MAX = 5_000;
+const OFFSET_MAX = 1_000_000;
 
-export async function listHitCards(db: PrismaClient, ctx: TenantContext, f: HitFilter) {
-  requireSellerRead(ctx, "BROADCAST_RUN");
-  const where: Prisma.HitCardWhereInput = { sellerId: ctx.sellerId };
+function hitWhere(sellerId: string, f: HitFilter): Prisma.HitCardWhereInput | null {
+  const where: Prisma.HitCardWhereInput = { sellerId };
   if (f.broadcastId) {
-    if (!isUuid(f.broadcastId)) return { ok: false as const, reason: "invalid_filter" as const };
+    if (!isUuid(f.broadcastId)) return null;
     where.broadcastSessionId = f.broadcastId;
   }
   if (f.grade) {
     const g = cleanText(f.grade, GRADE_MAX);
-    if (!g) return { ok: false as const, reason: "invalid_filter" as const };
+    if (!g) return null;
     where.grade = g;
   }
   const from = f.from ? kstStart(f.from) : null;
   const to = f.to ? kstStart(f.to) : null;
-  if ((f.from && !from) || (f.to && !to) || (from && to && from > to)) return { ok: false as const, reason: "invalid_filter" as const };
+  if ((f.from && !from) || (f.to && !to) || (from && to && from > to)) return null;
   if (from || to) where.createdAt = { ...(from ? { gte: from } : {}), ...(to ? { lt: new Date(to.getTime() + 86_400_000) } : {}) };
-  const at = isUuid(f.cursor) ? await db.hitCard.findFirst({ where: { id: f.cursor, sellerId: ctx.sellerId }, select: { id: true, createdAt: true } }) : null;
-  const rows = await db.hitCard.findMany({
+  return where;
+}
+
+export async function listHitCards(db: PrismaClient, ctx: TenantContext, f: HitFilter) {
+  requireSellerRead(ctx, "BROADCAST_RUN");
+  const where = hitWhere(ctx.sellerId, f);
+  if (!where) return { ok: false as const, reason: "invalid_filter" as const };
+  // offset(쪽 번호 이동·끝 이동)을 주면 cursor보다 우선한다. 숫자가 아니거나 음수·너무 크면 invalid_filter
+  let offset: number | null = null;
+  if (f.offset !== undefined && f.offset !== null && f.offset !== "") {
+    offset = /^\d+$/.test(f.offset) ? Number(f.offset) : -1;
+    if (offset < 0 || offset > OFFSET_MAX) return { ok: false as const, reason: "invalid_filter" as const };
+  }
+  const at = offset === null && isUuid(f.cursor) ? await db.hitCard.findFirst({ where: { id: f.cursor, sellerId: ctx.sellerId }, select: { id: true, createdAt: true } }) : null;
+  const [total, rows] = await Promise.all([db.hitCard.count({ where }), db.hitCard.findMany({
     where: at ? { AND: [where, { OR: [{ createdAt: { lt: at.createdAt } }, { createdAt: at.createdAt, id: { lt: at.id } }] }] } : where,
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    ...(offset ? { skip: offset } : {}),
     take: HIT_PAGE_SIZE + 1,
     select: cardSelect,
-  });
+  })]);
   const items = rows.slice(0, HIT_PAGE_SIZE).map(view);
-  return { ok: true as const, value: { items, grades: [...HIT_GRADES], nextCursor: rows.length > HIT_PAGE_SIZE ? items[items.length - 1].id : null } };
+  return { ok: true as const, value: { items, total, grades: [...HIT_GRADES], nextCursor: rows.length > HIT_PAGE_SIZE ? items[items.length - 1].id : null } };
 }
 
 // 판매자 행을 잠그고 liveVersion을 올린다(오버레이가 새 카드를 다시 읽게)
@@ -188,4 +206,26 @@ export async function deleteHitCard(db: PrismaClient, ctx: TenantContext, id: st
     return v;
   });
   await notifySellerChanged(db, ctx.sellerId, version);
+}
+
+const pad = (n: number) => String(n).padStart(2, "0");
+const kstText = (d: Date) => {
+  const t = new Date(d.getTime() + 9 * 3_600_000);
+  return `${t.getUTCFullYear()}.${pad(t.getUTCMonth() + 1)}.${pad(t.getUTCDate())} ${pad(t.getUTCHours())}:${pad(t.getUTCMinutes())}`;
+};
+
+// 내보내기(SA-053 「내보내기」, CSV): 지금 방송·등급·기간 조건에 맞는 카드 전체(쪽과 상관없이 최신순, 최대 5,000건). BROADCAST_RUN 권한.
+export async function exportHitCards(db: PrismaClient, ctx: TenantContext, f: HitFilter, meta: AuditMeta = {}) {
+  requireSellerRead(ctx, "BROADCAST_RUN");
+  const where = hitWhere(ctx.sellerId, f);
+  if (!where) return { ok: false as const, reason: "invalid_filter" as const };
+  const rows = await db.hitCard.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: HIT_EXPORT_MAX + 1, select: cardSelect });
+  const truncated = rows.length > HIT_EXPORT_MAX;
+  const items = rows.slice(0, HIT_EXPORT_MAX).map(view);
+  const csv = formatCsv([
+    ["카드", "일시", "등급", "구매자", "주문 접수", "방송", "메모"],
+    ...items.map((c) => [guardText(c.cardName), kstText(c.createdAt), guardText(c.grade ?? ""), guardText(c.nickname), c.orderReceivedAt ? kstText(c.orderReceivedAt) : "", guardText(c.broadcast?.title ?? ""), guardText(c.note ?? "")]),
+  ]);
+  await writeAudit(db, { actorType: ctx.actorType, actorId: ctx.actorId, sellerId: ctx.sellerId, action: "hit_card.export", targetType: "HitCard", after: { rows: items.length, truncated }, ip: meta.ip, userAgent: meta.userAgent });
+  return { ok: true as const, csv, truncated };
 }

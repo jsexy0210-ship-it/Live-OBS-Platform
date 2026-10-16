@@ -1,16 +1,17 @@
 import Link from "next/link";
+import { Pagination } from "../../../../../components/Pagination";
 import { ProductGrid } from "../../../../../components/shop/ProductCard";
 import { prisma } from "../../../../../lib/server/db";
-import { shopProductList } from "../../../../../lib/server/products/shopCatalog";
+import { SHOP_PAGE_DEFAULT, shopProductList } from "../../../../../lib/server/products/shopCatalog";
 import { defaultSort, sortChoices, type ListSort } from "./catalog";
 import { filterCount, filterParams, priceLabel, type Filters } from "./filters";
 import type { PublicCategory } from "../../../../../lib/server/shop-category/service";
 import { FilterOpenButton } from "../../../../../components/shop/ProductFilter";
 import SortMenu from "../../../../../components/shop/SortMenu";
 
-const PAGE_SIZE = 24;
+const PAGE_SIZE = SHOP_PAGE_DEFAULT;
 
-// SH-002 상품 목록·검색 결과: 제목·상품 수·정렬 → 격자(한 쪽 24개) → 이전·다음. 공개 상품 API와 같은 조회(shopProductList)를 쓴다.
+// SH-002 상품 목록·검색 결과: 제목·상품 수·정렬 → 격자(한 쪽 10개) → 이전·다음. 공개 상품 API와 같은 조회(shopProductList)를 쓴다.
 // 없는 분류·보이지 않는 분류는 notFound를 돌려 주는 쪽(페이지)이 처리하도록 null을 돌려 준다.
 export default async function ProductListing(props: {
   slug: string;
@@ -37,6 +38,8 @@ export default async function ProductListing(props: {
       limit: String(PAGE_SIZE),
       inStock: f.inStock ? "1" : undefined,
       live: f.live ? "1" : undefined,
+      rating4: f.rating4 ? "1" : undefined,
+      coupon: f.coupon ? "1" : undefined,
       minPrice: f.min || undefined,
       maxPrice: f.max || undefined,
     });
@@ -68,9 +71,11 @@ export default async function ProductListing(props: {
     ...f.cats.map((id) => ({ label: nameOf(id), to: { ...f, cats: f.cats.filter((c) => c !== id) } })),
     ...(f.inStock ? [{ label: "재고 있는 상품만", to: { ...f, inStock: false } }] : []),
     ...(f.live ? [{ label: "방송 중 상품만", to: { ...f, live: false } }] : []),
+    ...(f.rating4 ? [{ label: "평점 4점 이상", to: { ...f, rating4: false } }] : []),
+    ...(f.coupon ? [{ label: "쿠폰 적용 가능", to: { ...f, coupon: false } }] : []),
     ...(f.min || f.max ? [{ label: priceLabel(f), to: { ...f, min: "", max: "" } }] : []),
   ].filter((c) => c.label);
-  const cleared: Filters = { cats: [], inStock: false, live: false, min: "", max: "" };
+  const cleared: Filters = { cats: [], inStock: false, live: false, rating4: false, coupon: false, min: "", max: "" };
   return (
     <section className="shop-sec" aria-labelledby="list-title">
       {props.crumb && <p className="shop-crumb">{props.crumb}</p>}
@@ -83,6 +88,13 @@ export default async function ProductListing(props: {
           {total > 0 && (
             <nav className="shop-sort" aria-label="정렬">
               <SortMenu current={props.sort} items={sortChoices(!!props.q).map((x) => ({ key: x.key, label: x.label, href: href({ sort: x.key as ListSort }) }))} />
+              <div className="shop-sortseg" role="group" aria-label="정렬 기준">
+                {sortChoices(!!props.q).map((x) => (
+                  <Link key={x.key} href={href({ sort: x.key as ListSort })} aria-current={x.key === props.sort ? "page" : undefined}>
+                    {x.label}
+                  </Link>
+                ))}
+              </div>
             </nav>
           )}
         </div>
@@ -102,43 +114,17 @@ export default async function ProductListing(props: {
       )}
       {products.length === 0 ? (
         filterCount(f) > 0 ? (
-          <div className="shop-empty">
+          <div className="shop-empty" role="status">
             <p>필터 조건에 맞는 상품이 없어요. 필터를 줄여 보세요</p>
             <Link className="btn btn-sm btn-out" href={href({ filters: cleared })}>
               필터 모두 지우기
             </Link>
           </div>
         ) : (
-          <p className="shop-empty">{props.empty}</p>
+          <p className="shop-empty" role="status">{props.empty}</p>
         )
       ) : <ProductGrid products={products} label={props.title} hrefBase={`/shop/${encodeURIComponent(props.slug)}/products`} />}
-      {pages > 1 && (
-        <nav className="shop-pager" aria-label="쪽 이동">
-          {page > 1 ? (
-            <Link href={href({ page: page - 1 })} aria-label="이전 쪽">
-              ‹
-            </Link>
-          ) : (
-            <span aria-hidden="true" className="is-off">
-              ‹
-            </span>
-          )}
-          {pageNumbers(page, pages).map((n) => (
-            <Link key={n} href={href({ page: n })} aria-current={n === page ? "page" : undefined} aria-label={`${n}쪽`}>
-              {n}
-            </Link>
-          ))}
-          {page < pages ? (
-            <Link href={href({ page: page + 1 })} aria-label="다음 쪽">
-              ›
-            </Link>
-          ) : (
-            <span aria-hidden="true" className="is-off">
-              ›
-            </span>
-          )}
-        </nav>
-      )}
+      {pages > 1 && <Pagination page={page} pageCount={pages} href={n => href({ page: n })} label="쪽 이동" />}
       {pages > 1 && page === pages && (
         <div className="shop-listend">
           <p className="t-l2 c-alt">상품을 모두 봤어요 · {total.toLocaleString("ko-KR")}개</p>
@@ -151,12 +137,7 @@ export default async function ProductListing(props: {
   );
 }
 
-// 쪽 번호: 7쪽까지는 모두, 그보다 많으면 지금 쪽 둘레 5개(첫 쪽·끝 쪽 쪽으로 붙여 보여 준다)
-export function pageNumbers(page: number, pages: number): number[] {
-  if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1);
-  const start = Math.min(Math.max(1, page - 2), pages - 4);
-  return Array.from({ length: 5 }, (_, i) => start + i);
-}
+export { pageNumbers } from "../../../../../components/Pagination";
 
 export const pageNumber = (v: string | undefined) => {
   const n = Number(v);

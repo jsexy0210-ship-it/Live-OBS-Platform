@@ -49,7 +49,7 @@ describe("방송 상세", () => {
     await order(s.seller.id, s.buyer.id, at(start, 30), { legalHoldAt: new Date() }); // 분리 보관(목록 제외)
     await order(s.seller.id, s.buyer.id, at(start, 90)); // 방송 뒤
     await db.queueItem.create({
-      data: { sellerId: s.seller.id, orderId: a.order.id, orderItemId: a.item.id, status: "DONE", position: 1, receivedAt: at(start, 10), nicknameSnapshot: "닉네임", productLabel: "부스터 팩", quantity: 1, doneAt: at(start, 15) },
+      data: { sellerId: s.seller.id, orderId: a.order.id, orderItemId: a.item.id, status: "DONE", position: 1, receivedAt: at(start, 10), nicknameSnapshot: "닉네임", productLabel: "부스터 팩", quantity: 1, openingStartedAt: at(start, 14), doneAt: at(start, 15) },
     });
     await db.hitCard.create({ data: { sellerId: s.seller.id, nicknameSnapshot: "닉네임", cardName: "리자몽", createdAt: at(start, 16) } });
     await db.hitCard.create({ data: { sellerId: s.seller.id, nicknameSnapshot: "닉네임", cardName: "방송 뒤", createdAt: at(start, 70) } });
@@ -58,11 +58,12 @@ describe("방송 상세", () => {
       const r = await detail(cookie, b.id);
       expect(r.status).toBe(200);
       expect(r.body.broadcast).toMatchObject({ id: b.id, title: "목요 방송", status: "ended" });
-      expect(r.body.summary).toEqual({ orders: 3, paidOrders: 2, sales: 10000, completed: 1, cancelled: 1, hits: 1, avgOpenSeconds: null, maxWaiting: 1 });
+      expect(r.body.summary).toEqual({ orders: 3, paidOrders: 2, sales: 10000, completed: 1, cancelled: 1, hits: 1, externalOrders: 0, avgOpenSeconds: 60, maxWaiting: 1 });
       expect(r.body.orders.map((o: { id: string; status: string; completedAt: string | null }) => [o.id, o.status, o.completedAt])).toEqual([
         [a.order.id, "PAID", at(start, 15).toISOString()],
         [expect.any(String), "CANCELLED", null],
       ]);
+      expect(r.body.orders.map((o: { openSeconds: number | null }) => o.openSeconds)).toEqual([60, null]); // 개봉을 마친 주문만 개봉 시간(초), 취소 주문은 null
       expect(r.body.orders[0]).toMatchObject({ orderNoLabel: expect.stringMatching(/^\d{8}-\d{4,}$/), nickname: "닉네임", totalAmount: 5000, items: [{ productName: "부스터 팩", optionName: "1팩", quantity: 1, unitPrice: 5000 }] });
       expect(r.body.hits.map((h: { cardName: string }) => h.cardName)).toEqual(["리자몽"]);
       expect(r.body.nextCursor).toBeNull();
@@ -83,5 +84,33 @@ describe("방송 상세", () => {
     const p2 = await detail(s.owner, b.id, `?cursor=${p1.body.nextCursor}`);
     expect([p2.body.orders.length, p2.body.nextCursor]).toEqual([2, null]);
     expect(new Set([...p1.body.orders, ...p2.body.orders].map((o: { id: string }) => o.id)).size).toBe(DETAIL_ORDER_PAGE + 2);
+  });
+
+  it("다른 쇼핑몰 주문은 개봉 시간(openSeconds)을 내부 주문과 같게 계산하고 요약에는 externalOrders로 센다", async () => {
+    const s = await shop();
+    const start = new Date(Date.now() - 120 * MIN);
+    const b = await db.broadcastSession.create({ data: { sellerId: s.seller.id, status: "ENDED", startedAt: start, endedAt: at(start, 100) } });
+    const conn = await db.externalShopConnection.create({ data: { sellerId: s.seller.id, shopKey: "other-shop", status: "CONNECTED" } });
+    const ext = (externalOrderId: string, receivedAt: Date) => db.externalOrder.create({ data: { sellerId: s.seller.id, connectionId: conn.id, externalOrderId, buyerLabel: externalOrderId, receivedAt } });
+    const line = (e: { id: string }, n: number, opening: Date | null, done: Date | null) =>
+      db.queueItem.create({
+        data: { sellerId: s.seller.id, externalOrderId: e.id, externalLineNo: n, status: done ? "DONE" : "WAITING", position: 900 + n, receivedAt: start, nicknameSnapshot: "외부", productLabel: "박스", quantity: 1, openingStartedAt: opening, doneAt: done },
+      });
+    const e1 = await ext("E1", at(start, 10));
+    await line(e1, 1, at(start, 20), new Date(at(start, 20).getTime() + 72_000)); // 1:12
+    const e2 = await ext("E2", at(start, 11)); // 아직 안 끝남 → null
+    await line(e2, 1, null, null);
+    const e3 = await ext("E3", at(start, 12)); // 완료지만 시작 기록 없음 → null
+    await line(e3, 1, null, at(start, 30));
+    await ext("OUT", at(start, 110)); // 방송이 끝난 뒤 들어온 주문은 세지 않는다
+    // 다른 쇼핑몰(판매자)의 주문은 세지 않는다
+    const t = await shop();
+    const tc = await db.externalShopConnection.create({ data: { sellerId: t.seller.id, shopKey: "other-two", status: "CONNECTED" } });
+    await db.externalOrder.create({ data: { sellerId: t.seller.id, connectionId: tc.id, externalOrderId: "T1", receivedAt: at(start, 10) } });
+
+    const r = await detail(s.owner, b.id);
+    expect(r.status).toBe(200);
+    expect(r.body.externalOrders.map((e: { nickname: string; openSeconds: number | null }) => [e.nickname, e.openSeconds])).toEqual([["E1", 72], ["E2", null], ["E3", null]]);
+    expect([r.body.summary.orders, r.body.summary.externalOrders]).toEqual([0, 3]);
   });
 });

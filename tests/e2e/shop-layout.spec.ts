@@ -39,6 +39,8 @@ test.describe("PC 1440", () => {
     await expect(page.getByRole("button", { name: "카테고리 메뉴" })).toBeHidden();
 
     // 판매 중·품절만 보이고 숨김·임시 저장 상품은 보이지 않는다. 품절은 표시가 붙는다.
+    // 홈 진열은 판매자 설정·데이터 시각에 따라 달라지므로, 상품 격자는 전체 상품 화면에서 본다
+    await page.goto(`/shop/${SLUG}/products?sort=recommended`);
     const grid = page.getByRole("list", { name: "전체 상품" });
     await expect(grid.getByText("스타라이트 부스터 박스")).toBeVisible();
     await expect(grid.locator(".pc", { hasText: "드래곤 소울 부스터" }).locator(".pc-out")).toHaveText("품절");
@@ -73,11 +75,9 @@ test.describe("PC 1440", () => {
 
     await page.getByRole("navigation", { name: "카테고리" }).getByRole("link", { name: "전체 상품" }).click();
     await expect(page.getByRole("heading", { name: /전체 상품/ })).toBeVisible();
-    await page.getByRole("navigation", { name: "정렬" }).locator("summary").click();
     await page.getByRole("navigation", { name: "정렬" }).getByRole("link", { name: "낮은 가격" }).click();
     await expect(page).toHaveURL(/sort=low/);
     await expect(page.locator(".pc-grid .pc").first()).toContainText("탑로더 25장");
-    await page.getByRole("navigation", { name: "정렬" }).locator("summary").click();
     await page.getByRole("navigation", { name: "정렬" }).getByRole("link", { name: "높은 가격" }).click();
     await expect(page.locator(".pc-grid .pc").first()).toContainText("스타라이트 부스터 박스");
   });
@@ -122,8 +122,8 @@ test("크기 규칙(2026-10-05 시각 규격): 입력·검색 44px, 주요 버�
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/shop/${SLUG}/login`);
   expect(await box(".shop-search")).toEqual({ h: 44, r: "8px" });
-  expect(await box(".shop-card .inp")).toEqual({ h: 44, r: "8px" });
-  expect(await box(".shop-card .btn-lg")).toEqual({ h: 48, r: "8px" }); // 주요 버튼(로그인)은 48px
+  expect(await box(".shop-login .inp")).toEqual({ h: 44, r: "8px" });
+  expect(await box(".shop-login .btn-lg")).toEqual({ h: 48, r: "8px" }); // 주요 버튼(로그인)은 48px
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/shop/${SLUG}`);
   const bar = await page.locator(".shop-tabbar").evaluate((el) => ({ h: Math.round(el.getBoundingClientRect().height), r: getComputedStyle(el).borderTopLeftRadius }));

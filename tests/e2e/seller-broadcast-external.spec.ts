@@ -29,7 +29,7 @@ async function login(page: Page, next: string) {
 test("외부 주문은 대기 줄·방송 상세·HIT 카드 기록에 「외부 주문」으로 표시되고 내부 주문에는 없다", async ({ page }) => {
   const title = `e2e-외부-${Date.now()}`;
   const card = `${EXT_CARD_PREFIX}-${Date.now()}`;
-  await login(page, "/seller/broadcast");
+  await login(page, "/seller");
 
   // 대시보드 대기: 외부 주문 줄에만 배지가 있다
   const waiting = page.getByTestId("bc-waiting");
@@ -49,11 +49,10 @@ test("외부 주문은 대기 줄·방송 상세·HIT 카드 기록에 「외부
   // 방송 상세: 외부 주문 목록(금액 없음)과 HIT 표의 주문 칸
   await page.goto("/seller/broadcasts");
   await page.getByTestId("bh-list").locator("tr", { hasText: title }).getByTestId("bh-link").click();
-  const ext = page.getByTestId("bd-external");
-  await expect(ext).toContainText("다른 쇼핑몰 주문 1건");
-  const row = page.getByTestId("bd-external-orders").locator("tr", { hasText: EXT_NICK });
+  await expect(page.getByRole("heading", { name: /주문 .*다른 쇼핑몰 주문 1건 포함/ })).toBeVisible();
+  const row = page.getByTestId("bd-orders").locator("tr", { hasText: EXT_NICK });
   await expect(row).toContainText(EXT_PRODUCT);
-  await expect(row).toContainText("다른 쇼핑몰 주문");
+  await expect(row).toContainText("다른 쇼핑몰");
   await expect(page.getByTestId("bd-hits").locator("tr", { hasText: card }).getByTestId("source-badge")).toBeVisible();
 
   // HIT 카드 기록: 주문 번호가 없는 외부 주문 카드는 배지로 표시

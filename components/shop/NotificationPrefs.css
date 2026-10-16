@@ -1,0 +1,75 @@
+/* SH-025 알림 설정 */
+.np-main {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+.np-tbl th.np-l,
+.np-tbl td.np-l {
+  text-align: left;
+}
+.np-tbl th.np-c,
+.np-tbl td.np-c {
+  width: 120px;
+  text-align: center;
+}
+.np-tbl td b {
+  display: block;
+}
+.np-sub {
+  display: block;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--wds-label-alternative);
+}
+.np-tbl input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
+.np-actions {
+  display: flex;
+  justify-content: center;
+}
+.np-btns {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.np-terms {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--wds-line-solid-neutral);
+  border-radius: var(--shop-r);
+}
+@media (max-width: 767px) {
+  .cart-tbl.np-tbl {
+    display: table;
+  }
+  .cart-tbl.np-tbl thead {
+    display: table-header-group;
+  }
+  .cart-tbl.np-tbl tbody {
+    display: table-row-group;
+  }
+  .cart-tbl.np-tbl tr {
+    display: table-row;
+    padding: 0;
+  }
+  .cart-tbl.np-tbl th,
+  .cart-tbl.np-tbl td {
+    display: table-cell;
+    padding: 10px 6px;
+    border-bottom: 1px solid var(--wds-line-solid-neutral);
+    font-size: 13px;
+  }
+  .cart-tbl.np-tbl th {
+    height: 36px;
+  }
+  .np-tbl th.np-c,
+  .np-tbl td.np-c {
+    width: 64px;
+  }
+}

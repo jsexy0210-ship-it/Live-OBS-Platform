@@ -66,7 +66,7 @@ test("PC: 주문 내역 표(열 제목 가운데·값 왼쪽)·상태 탭·결�
   expect(tabNames).toEqual(["전체", "결제 전", "진행 중", "완료", "취소", "환불"]);
   // 기간 칩(3개월 · 6개월 · 1년): 처음은 3개월이고 한 번에 하나만 눌린다. 탭 개수는 서버가 센 값이다
   const chips = page.getByRole("group", { name: "조회 기간" }).getByRole("button");
-  await expect(chips).toHaveText(["3개월", "6개월", "1년"]);
+  await expect(chips).toHaveText(["3개월", "6개월", "1년", "조회"]);
   await expect(chips.nth(0)).toHaveAttribute("aria-pressed", "true");
   const apiAll = (await (await page.request.get(`/api/shop/${SLUG}/orders?tab=all&limit=1`)).json()) as { counts: { all: number; pending: number } };
   await expect(page.getByRole("tab", { name: /^전체/ })).toContainText(String(apiAll.counts.all));

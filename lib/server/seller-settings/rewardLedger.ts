@@ -9,7 +9,7 @@ import { orderNoLabel, parseOrderNoLabel } from "../orders/orderNoLabel";
 // balanceAfter(「잔액(후)」): 그 회원의 성공(SUCCEEDED) 원장을 처리 시각 순으로 더한 그 줄까지의 잔액. 성공이 아닌 줄은 null(잔액에 반영 전·안 됨).
 // q: 방송 닉네임 부분 일치 또는 주문번호(「20261005-0004」 형식이나 숫자 순번). order에는 첫 상품 이름과 품목 수를 함께 준다.
 // 항상 ctx.sellerId 범위만 본다. 탈퇴 회원의 줄은 닉네임이 「탈퇴회원-…」으로 바뀐 채 남는다(buyers/withdraw.ts).
-export const REWARD_LEDGER_PAGE_DEFAULT = 50;
+export const REWARD_LEDGER_PAGE_DEFAULT = 10;
 export const REWARD_LEDGER_PAGE_MAX = 200;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STATUSES: readonly RewardLedgerStatus[] = ["PENDING", "SUCCEEDED", "FAILED"];

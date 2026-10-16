@@ -23,32 +23,25 @@ export function AuthFrame({ children, wide = false }: { children: React.ReactNod
   const staff = useStaffType();
   return (
     <div className="login-page">
-      <Link className="logo" href={withType("/seller/login", staff)} style={{ fontSize: 22 }} aria-label="파트너스 로그인으로">
-        <span className="logo-sym" />
-        <span className="logo-word" />
-        <span className="t-l1 c-alt" style={{ marginLeft: 6 }}>
-          파트너스
-        </span>
-      </Link>
-      <div className={`card col login-card${wide ? " pa-wide" : ""}`}>{children}</div>
+      <div className={`card col login-card${wide ? " pa-wide" : ""}`}>
+        <Link className="logo login-logo" href={withType("/seller/login", staff)} aria-label="파트너스 로그인으로">
+          <span className="logo-sym" />
+          <span className="logo-word" />
+          <small>파트너스 관리자</small>
+        </Link>
+        {children}
+      </div>
     </div>
   );
 }
 
-// 아이디 찾기(AU-011) | 비밀번호 찾기(AU-003) 전환. 로그인 화면의 「아이디/비밀번호 찾기」 하나로 들어와 화면 위쪽에서 바꾼다
-export function FindSwitch({ current }: { current: "id" | "password" }) {
+// 계정 종류 「대표자 | 직원」 전환(AU-003·011). 같은 화면 주소에서 ?type=staff만 바꾼다
+export function AccountSeg({ path }: { path: string }) {
   const staff = useStaffType();
-  const items = [
-    { key: "id", label: "아이디 찾기", href: withType("/seller/find-id", staff) },
-    { key: "password", label: "비밀번호 찾기", href: withType("/seller/password-reset", staff) },
-  ] as const;
   return (
-    <nav className="tabs find-switch" aria-label="아이디·비밀번호 찾기">
-      {items.map((t) => (
-        <Link key={t.key} href={t.href} className={`tab${current === t.key ? " on" : ""}`} aria-current={current === t.key ? "page" : undefined}>
-          {t.label}
-        </Link>
-      ))}
+    <nav className="login-seg" aria-label="계정 종류">
+      <a className={staff ? "" : "on"} href={path} aria-current={staff ? undefined : "page"}>대표자</a>
+      <a className={staff ? "on" : ""} href={`${path}?type=staff`} aria-current={staff ? "page" : undefined}>직원</a>
     </nav>
   );
 }

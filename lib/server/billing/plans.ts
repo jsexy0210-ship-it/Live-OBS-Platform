@@ -4,6 +4,7 @@ import { writeAudit } from "../audit/log";
 import { forbidden } from "../authz/errors";
 import { adminCan } from "../authz/permissions";
 import { DEFAULT_PLAN_CODE, PRICE_NOTICE_MS, chargeFor, dbNow } from "./subscription";
+import { priceNoticeCompletedAt } from "./priceNotice";
 
 // 요금 안내·구독 화면에 보여 줄 가격(부가세 포함). 정가는 취소선, 판매가가 실제 청구액이다.
 // 기본은 신규 가입 기본 플랜. plans에는 지금 가입할 수 있는 두 플랜(오버레이 전용·쇼핑몰 통합)을 함께 준다(ONQ 1-C).
@@ -19,7 +20,7 @@ export async function getPublicPlan(db: PrismaClient, code: string = DEFAULT_PLA
 const isPrice = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v > 0 && v <= 100_000_000;
 
 // 가격 변경(최고관리자만, 대표님 결정 2026-10-02). 코드 수정 없이 바꾼다.
-// 새 가입자에게는 바로 새 판매가, 기존 구독자에게는 변경 시각 + 30일 이후 첫 결제부터 적용한다(chargeFor가 가격 기록으로 계산, 정가 구독은 정가).
+// 새 가입자는 바로 새 판매가, 기존 구독자는 필수 고지 완료 + 30일 이후 첫 결제부터 적용한다.
 // 가격 변경·가격 기록·감사 기록은 한 트랜잭션이다.
 export async function updatePlanPrice(
   db: PrismaClient,
@@ -47,7 +48,7 @@ export async function updatePlanPrice(
     }
     const plan = await tx.subscriptionPlan.update({ where: { code }, data: { listPrice, salePrice } });
     await tx.subscriptionPriceChange.create({ data: { planId: plan.id, listPrice, salePrice, changedAt: now, changedByAdminId: admin.admin.id } });
-    const appliesToExistingFrom = new Date(now.getTime() + PRICE_NOTICE_MS);
+    const appliesToExistingFrom = null;
     await writeAudit(tx, {
       actorType: "PLATFORM_ADMIN",
       actorId: admin.admin.id,
@@ -55,11 +56,11 @@ export async function updatePlanPrice(
       targetType: "SubscriptionPlan",
       targetId: plan.id,
       before: { listPrice: before.listPrice, salePrice: before.salePrice },
-      after: { listPrice, salePrice, appliesToExistingFrom },
+      after: { listPrice, salePrice, appliesToExistingFrom, noticeStatus: "PENDING" },
       ip: meta.ip,
       userAgent: meta.userAgent,
     });
-    return { ok: true as const, plan: { code: plan.code, name: plan.name, listPrice, salePrice, appliesToExistingFrom } };
+    return { ok: true as const, plan: { code: plan.code, name: plan.name, listPrice, salePrice, appliesToExistingFrom, noticeStatus: "PENDING" as const } };
   });
 }
 
@@ -67,7 +68,7 @@ export async function updatePlanPrice(
 const PRICE_HISTORY_START = new Date("2000-01-01T00:00:00Z");
 
 // 가장 최근 가격 변경의 고지 대상: 그 변경 전에 구독을 시작해 아직 구독 중인 판매자의 대표자.
-// 메일·알림톡 발송은 알림 기능이 생길 때 연결한다.
+// 실제 발송은 billing/priceNoticeSend.ts(메일·파트너스 공지, 수동 실행)가 하고 수령 기록을 남긴다. 알림톡은 연결된 발송 경로가 없어 만들지 않는다.
 export async function listPriceChangeNoticeTargets(db: PrismaClient, admin: AdminSessionContext, code = "STANDARD") {
   if (!adminCan(admin.admin.role, "billing.price")) throw forbidden();
   const plan = await db.subscriptionPlan.findUnique({ where: { code } });
@@ -80,19 +81,22 @@ export async function listPriceChangeNoticeTargets(db: PrismaClient, admin: Admi
   const now = await dbNow(db);
   const subs = await db.sellerSubscription.findMany({
     where: { planId: plan.id, status: { in: ["ACTIVE", "PAST_DUE"] }, cancelAtPeriodEnd: false, subscribedAt: { lt: latest.changedAt } },
-    select: { sellerId: true, subscribedAt: true, legacyPrice: true, legacyPriceNoticeSentAt: true, regularPrice: true, seller: { select: { shopName: true, users: { where: { isOwner: true }, select: { email: true } } } } },
+    select: { id: true, sellerId: true, subscribedAt: true, legacyPrice: true, legacyPriceNoticeSentAt: true, regularPrice: true, priceNotices: { where: { priceChangeId: latest.id } }, seller: { select: { shopName: true, users: { where: { isOwner: true }, select: { email: true } } } } },
   });
-  const appliesFrom = new Date(latest.changedAt.getTime() + PRICE_NOTICE_MS);
   return Promise.all(
-    subs.map(async (s) => ({
-      sellerId: s.sellerId,
-      shopName: s.seller.shopName,
-      ownerEmails: s.seller.users.map((u) => u.email),
-      oldPrice: (await chargeFor(db, plan, s, now)).amount,
-      // 정가 구독(regularPrice)은 정가가 바뀐다
-      newPrice: s.regularPrice ? latest.listPrice : latest.salePrice,
-      appliesFrom,
-    })),
+    subs.map(async (s) => {
+      const completedAt = priceNoticeCompletedAt(latest.changedAt, s.priceNotices.filter((r) => +r.subscriptionStartedAt === +s.subscribedAt), now);
+      return {
+        sellerId: s.sellerId,
+        shopName: s.seller.shopName,
+        ownerEmails: s.seller.users.map((u) => u.email),
+        oldPrice: (await chargeFor(db, plan, s, now)).amount,
+        // 정가 구독(regularPrice)은 정가가 바뀐다
+        newPrice: s.regularPrice ? latest.listPrice : latest.salePrice,
+        appliesFrom: completedAt ? new Date(completedAt.getTime() + PRICE_NOTICE_MS) : null,
+        noticeStatus: completedAt ? "SENT" as const : "PENDING" as const,
+      };
+    }),
   );
 }
 
