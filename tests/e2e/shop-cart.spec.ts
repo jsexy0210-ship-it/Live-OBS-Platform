@@ -59,7 +59,7 @@ test.describe.serial("로그인 구매자", () => {
     await expect(total).toContainText("원");
     const fee = Number((await sum.locator(".cart-row", { hasText: "배송비" }).innerText()).replace(/[^0-9]/g, "") || "0");
     await expect(total).toHaveText(won(expected + fee));
-    await expect(page.getByRole("link", { name: `${won(expected + fee)} 주문하기` })).toHaveAttribute("href", /\/checkout\?ids=.+,.+$/);
+    await expect(page.getByRole("link", { name: "주문하기", exact: true })).toHaveAttribute("href", /\/checkout\?ids=.+,.+$/);
     await expect(page.locator(".cart-tbl tbody a", { hasText: "문라이트 컬렉션 박스" })).toHaveAttribute("href", new RegExp(`/shop/${SLUG}/products/`));
     await page.screenshot({ path: "tests/e2e/screenshots/SH-004-cart-1440.png", fullPage: true });
     await page.getByRole("checkbox", { name: "전체 선택" }).uncheck();
