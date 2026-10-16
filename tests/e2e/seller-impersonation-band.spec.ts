@@ -51,6 +51,11 @@ test("띠에 고른 범위가 보이고, 범위 밖 화면은 「볼 수 없는 
   await page.goto("/seller/overlay");
   await expect(page.locator(".imp-bar")).toBeVisible();
   await expect(page.getByTestId("imp-out-of-scope")).toHaveCount(0);
+  // 표에 없는 화면(연동)과 복수형 방송 이력도 고르지 않은 범위면 막는다
+  for (const path of ["/seller/external-shops", "/seller/broadcasts"]) {
+    await page.goto(path);
+    await expect(page.getByTestId("imp-out-of-scope")).toBeVisible();
+  }
 });
 
 test("끝나기 2분 전부터 「N분 후 대신 보기가 종료됩니다」가 보이고, 그 전에는 보이지 않는다", async ({ page, baseURL }) => {

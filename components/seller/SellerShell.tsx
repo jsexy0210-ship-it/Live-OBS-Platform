@@ -218,11 +218,12 @@ function leavesOf(item: Item): Leaf[] {
   return item.tabs ?? [item];
 }
 
-// 대신 보기(MA-016) 범위: 마스터가 사유를 적을 때 고른 범위. 화면 이름과 화면 → 범위 표(표에 없는 틀 화면·내 계정·공지는 범위와 무관하게 연다).
+// 대신 보기(MA-016) 범위: 마스터가 사유를 적을 때 고른 범위. 화면 이름과 화면 → 범위 표(홈·내 계정·공지·문의·알림·도우미는 범위와 무관하게 열고, 표에 없는 그 밖의 화면은 열지 않는다).
 // 주문 범위는 주문·배송·상품·통계 화면을, 회원 범위는 회원·적립금 화면을 연다(범위가 따로 없는 이전 방식 세션의 기본 범위 주문·회원과 같다).
 const SCOPE_LABEL: Record<string, string> = { BROADCAST: "방송 대시보드", OVERLAY: "오버레이", ORDERS: "주문", MEMBERS: "회원", SETTINGS_PG: "결제 연결" };
 const ROUTE_SCOPE: [string, string][] = [
   ["/seller/broadcast", "BROADCAST"],
+  ["/seller/broadcasts", "BROADCAST"],
   ["/seller/hit-cards", "BROADCAST"],
   ["/seller/overlay", "OVERLAY"],
   ["/seller/home-overlay", "OVERLAY"],
@@ -236,8 +237,13 @@ const ROUTE_SCOPE: [string, string][] = [
   ["/seller/purchase-restrictions", "MEMBERS"],
   ["/seller/rewards", "MEMBERS"],
 ];
+// 범위와 무관하게 여는 화면: 홈·내 계정·공지·문의·알림·도우미. 이 밖에 표에 없는 화면은 어떤 범위로도 열지 않는다(NO_SCOPE).
+const SCOPE_NEUTRAL = ["/seller", "/seller/account", "/seller/notices", "/seller/inquiries", "/seller/notifications", "/seller/assistant", "/seller/onboarding", "/seller/suspended"];
+const NO_SCOPE = "NONE";
 function routeScope(pathname: string): string | undefined {
-  return ROUTE_SCOPE.find(([p]) => pathname === p || pathname.startsWith(`${p}/`))?.[1];
+  const hit = ROUTE_SCOPE.find(([p]) => pathname === p || pathname.startsWith(`${p}/`))?.[1];
+  if (hit) return hit;
+  return SCOPE_NEUTRAL.some((p) => pathname === p || (p !== "/seller" && pathname.startsWith(`${p}/`))) ? undefined : NO_SCOPE;
 }
 
 // 주소로 바로 들어와도 요금제에 없는 화면은 안내 화면을 보인다. 메뉴 묶음과 다른 하위 화면만 따로 적는다(긴 주소가 먼저)
