@@ -218,6 +218,34 @@ function leavesOf(item: Item): Leaf[] {
   return item.tabs ?? [item];
 }
 
+// 대신 보기(MA-016) 범위: 마스터가 사유를 적을 때 고른 범위. 화면 이름과 화면 → 범위 표(홈·내 계정·공지·문의·알림·도우미는 범위와 무관하게 열고, 표에 없는 그 밖의 화면은 열지 않는다).
+// 주문 범위는 주문·배송·상품·통계 화면을, 회원 범위는 회원·적립금 화면을 연다(범위가 따로 없는 이전 방식 세션의 기본 범위 주문·회원과 같다).
+const SCOPE_LABEL: Record<string, string> = { BROADCAST: "방송 대시보드", OVERLAY: "오버레이", ORDERS: "주문", MEMBERS: "회원", SETTINGS_PG: "결제 연결" };
+const ROUTE_SCOPE: [string, string][] = [
+  ["/seller/broadcast", "BROADCAST"],
+  ["/seller/broadcasts", "BROADCAST"],
+  ["/seller/hit-cards", "BROADCAST"],
+  ["/seller/overlay", "OVERLAY"],
+  ["/seller/home-overlay", "OVERLAY"],
+  ["/seller/orders", "ORDERS"],
+  ["/seller/shipping", "ORDERS"],
+  ["/seller/returns", "ORDERS"],
+  ["/seller/products", "ORDERS"],
+  ["/seller/stats", "ORDERS"],
+  ["/seller/members", "MEMBERS"],
+  ["/seller/member-grades", "MEMBERS"],
+  ["/seller/purchase-restrictions", "MEMBERS"],
+  ["/seller/rewards", "MEMBERS"],
+];
+// 범위와 무관하게 여는 화면: 홈·내 계정·공지·문의·알림·도우미. 이 밖에 표에 없는 화면은 어떤 범위로도 열지 않는다(NO_SCOPE).
+const SCOPE_NEUTRAL = ["/seller", "/seller/account", "/seller/notices", "/seller/inquiries", "/seller/notifications", "/seller/assistant", "/seller/onboarding", "/seller/suspended"];
+const NO_SCOPE = "NONE";
+function routeScope(pathname: string): string | undefined {
+  const hit = ROUTE_SCOPE.find(([p]) => pathname === p || pathname.startsWith(`${p}/`))?.[1];
+  if (hit) return hit;
+  return SCOPE_NEUTRAL.some((p) => pathname === p || (p !== "/seller" && pathname.startsWith(`${p}/`))) ? undefined : NO_SCOPE;
+}
+
 // 주소로 바로 들어와도 요금제에 없는 화면은 안내 화면을 보인다. 메뉴 묶음과 다른 하위 화면만 따로 적는다(긴 주소가 먼저)
 const ROUTE_PLAN: [string, PlanNeed][] = [["/seller/stats/broadcasts", "OVERLAY"]];
 // 쇼핑몰 설정 하위 화면(/seller/settings/…)은 메뉴마다 따로 주소가 있어 접두어가 길게 맞는 메뉴를 고른다
@@ -509,6 +537,9 @@ function SellerShellContent({ children }: { children: React.ReactNode }) {
     backHref: active && !active.exactHref ? (shownItem?.shownTabs.find((t) => t.href && pathname.startsWith(`${t.href}/`))?.href ?? shownItem?.href ?? null) : null,
     tabs: [],
   };
+  // 대신 보기: 고른 범위 밖 화면은 「볼 수 없는 화면입니다」 안내만 보인다
+  const need = routeScope(pathname);
+  const outOfScope = !!me.impersonation && !!need && !me.impersonation.scopes.includes(need);
   const blocked = (planBlocked?.path === pathname && planBlocked.visit === currentNavGeneration()) || !menuAllows(me, routePlan(pathname));
   // 안내 화면에서 갈 수 있는 첫 화면(만든 메뉴 중 지금 열리는 것)
   const nextNav = gnbMenu.flatMap((g) => g.items).find((n) => !!n.href && n.href !== "/seller" && !pathname.startsWith(n.href));
@@ -607,7 +638,8 @@ function SellerShellContent({ children }: { children: React.ReactNode }) {
           </aside>
           <button className="cs-dim" type="button" aria-label="메뉴 닫기" onClick={closeNav} />
           <div className="col cs-body">
-            {blocked ? <PlanFeatureRequired crumb={routeCrumb(pathname)} noFeatures={features.length === 0} next={nextNav} /> : children}
+            {me.impersonation && <ImpersonationSoon expiresAt={me.impersonation.expiresAt} />}
+            {outOfScope ? <ScopeBlocked crumb={routeCrumb(pathname)} /> : blocked ? <PlanFeatureRequired crumb={routeCrumb(pathname)} noFeatures={features.length === 0} next={nextNav} /> : children}
           </div>
         </div>
       </div>
@@ -694,14 +726,19 @@ export function Topbar({ crumb, showCurrent = false, badge, children }: { crumb:
 
 // 마스터 대리 조회 배너(MA-016 정본): GNB 아래 고정, 쇼핑몰·운영자·사유·남은 시간·종료. 종료는 관리자 세션으로 끝내고 파트너스 목록으로 돌아간다.
 // 끝나는 시각이 지나면 /me를 다시 읽어 세션 만료(401)를 로그인 화면으로 처리한다.
-function ImpersonationBar({ shop, imp }: { shop: string; imp: NonNullable<Me["impersonation"]> }) {
+// 끝나는 시각까지 남은 초(1초마다 갱신)
+function useImpLeft(expiresAt: string) {
   const [now, setNow] = useState(() => Date.now());
-  const [ending, setEnding] = useState(false);
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
-  const left = Math.max(0, Math.floor((new Date(imp.expiresAt).getTime() - now) / 1000));
+  return Math.max(0, Math.floor((new Date(expiresAt).getTime() - now) / 1000));
+}
+
+function ImpersonationBar({ shop, imp }: { shop: string; imp: NonNullable<Me["impersonation"]> }) {
+  const [ending, setEnding] = useState(false);
+  const left = useImpLeft(imp.expiresAt);
   const { confirm } = useConfirm();
   // 대리 조회 끝내기: 서버에 쓰는 행동이라 확인 창을 거친다(읽기 전용 중에도 되는 행동이라 allowReadOnly)
   const end = async () => {
@@ -718,17 +755,45 @@ function ImpersonationBar({ shop, imp }: { shop: string; imp: NonNullable<Me["im
   };
   const mm = String(Math.floor(left / 60)).padStart(2, "0");
   const ss = String(left % 60).padStart(2, "0");
+  const scopes = imp.scopes.map((x) => SCOPE_LABEL[x] ?? x).join(" · ");
   return (
     <div className="imp-bar" role="status">
       <b>읽기 전용 · 대신 보기</b>
       <span className="imp-txt ell">
         「{shop}」 화면을 보는 중 · 운영 {imp.adminName} · 사유 {imp.reason}
+        {scopes && ` · 범위: ${scopes}`}
       </span>
       <span className="imp-left">{left === 0 ? "시간이 끝났습니다" : `남은 시간 ${mm}:${ss}`}</span>
       <button className="btn btn-sm imp-end" type="button" disabled={ending} onClick={() => void end()}>
         종료
       </button>
     </div>
+  );
+}
+
+// 세션 만료 임박(MA-016): 끝나기 2분 전부터 본문 맨 위에 알린다
+function ImpersonationSoon({ expiresAt }: { expiresAt: string }) {
+  const left = useImpLeft(expiresAt);
+  if (left <= 0 || left > 120) return null;
+  return (
+    <div className="msg msg-cau access-banner imp-soon" role="status">
+      <b>{Math.ceil(left / 60)}분 후 대신 보기가 종료됩니다</b>
+    </div>
+  );
+}
+
+// 대신 보기 범위 밖 화면(MA-016): 고른 범위만 볼 수 있다
+function ScopeBlocked({ crumb }: { crumb: string }) {
+  return (
+    <>
+      <Topbar crumb={crumb} />
+      <main className="main">
+        <div className="msg msg-info" role="status" data-testid="imp-out-of-scope">
+          <b>볼 수 없는 화면입니다.</b>
+          <span>사유를 적을 때 고른 범위만 볼 수 있습니다 · 범위를 넓히려면 세션을 끝내고 다시 신청해 주십시오</span>
+        </div>
+      </main>
+    </>
   );
 }
 
