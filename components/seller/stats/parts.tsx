@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 // 통계 부품: 지표 칸(직전 기간 대비) · 막대 그래프(SVG, 의존성 없음) · CSV 내려받기.
 
@@ -70,11 +70,26 @@ export function BarChart({ title, points, fmt, bare }: { title: string; points: 
   const slot = W / n;
   const bw = Math.max(2, Math.min(36, slot * 0.7));
   const y = (v: number) => H * (1 - v / top);
-  const every = Math.ceil(n / 8);
+  // 날짜 축 글자가 겹치지 않게: 그래프 폭과 글자 길이로 한 번에 보일 수 있는 개수를 정해 그만큼만 건너뛰며 보인다
+  const plotRef = useRef<HTMLDivElement>(null);
+  const [plotW, setPlotW] = useState(0);
+  useEffect(() => {
+    const el = plotRef.current;
+    if (!el) return;
+    const read = () => setPlotW(el.getBoundingClientRect().width);
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const longest = Math.max(1, ...points.map((p) => p.label.length));
+  const tickW = longest * 6.6 + 18;
+  const fit = plotW > 0 ? Math.max(1, Math.floor(plotW / tickW)) : 8;
+  const every = Math.ceil(n / Math.min(8, fit));
   const pctX = (i: number) => `${((slot * i + slot / 2) / W) * 100}%`;
   const chart = (
       <div className="sts-chart">
-        <div className="sts-plot" onMouseLeave={() => setHover(null)}>
+        <div className="sts-plot" ref={plotRef} onMouseLeave={() => setHover(null)}>
           {[0, 0.5, 1].map((f) => (
             <span key={f} className="sts-y" style={{ top: `${(1 - f) * 100}%` }}>
               {short(top * f)}
