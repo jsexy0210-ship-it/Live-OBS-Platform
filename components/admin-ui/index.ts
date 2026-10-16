@@ -11,3 +11,4 @@ export { ConfirmDialog, ConfirmProvider, useConfirm, type ConfirmOptions } from 
 export { DatePicker, DateRangePicker, DateTimePicker, TimePicker } from "./DatePicker";
 
 export { CursorPagination } from "../Pagination";
+export { LogoutButton } from "./LogoutButton";

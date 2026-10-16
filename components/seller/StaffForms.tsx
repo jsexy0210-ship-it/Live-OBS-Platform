@@ -327,7 +327,7 @@ export function EditStaffModal({ staff, onClose, onSaved, onChanged, onApply }: 
               id="se-phone"
               className={`inp num${phoneError ? " is-error" : ""}`}
               inputMode="numeric"
-              placeholder="숫자만 입력"
+              placeholder="010-0000-0000"
               value={phone}
               disabled={locked}
               onChange={(e) => {
