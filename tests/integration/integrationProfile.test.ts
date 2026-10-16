@@ -145,6 +145,17 @@ describe("사업자 상태 조회", () => {
     expect((await (await signed.check({ businessNumber: "2208162517", representativeName: "김대표" })).json()).error).toBe("opened_on_required");
   });
 
+  it("동시에 와도 하루 한도를 넘겨 조회하지 않는다", async () => {
+    const s = await shop();
+    const provider = businessStatusProvider() as FakeBusinessStatusProvider;
+    provider.fail(FAILING_BN);
+    const body = { businessNumber: FAILING_BN, representativeName: "김대표", openedOn: "20200101" };
+    const results = await Promise.all(Array.from({ length: BUSINESS_CHECK_DAILY_LIMIT + 6 }, () => s.check(body)));
+    const codes = await Promise.all(results.map(async (r) => (await r.json()).error));
+    expect(codes.filter((c) => c === "daily_limit_exceeded")).toHaveLength(6);
+    expect(await db.auditLog.count({ where: { sellerId: s.seller.id, action: "seller.integration.business_check" } })).toBe(BUSINESS_CHECK_DAILY_LIMIT);
+  });
+
   it(`조회 실패는 502(횟수에는 셈), 하루 ${BUSINESS_CHECK_DAILY_LIMIT}번을 넘으면 429이고 공급자를 부르지 않는다`, async () => {
     const s = await shop();
     const provider = businessStatusProvider() as FakeBusinessStatusProvider;

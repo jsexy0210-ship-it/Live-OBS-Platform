@@ -187,23 +187,29 @@ export async function checkBusiness(db: PrismaClient, provider: BusinessStatusPr
     if (typeof info.openedOn === "string" && info.businessNumber === businessNumber) openedOn = normalizeOpenedOn(info.openedOn);
     if (!openedOn) return { ok: false as const, reason: "opened_on_required" as const };
   }
-  const [{ n }] = await db.$queryRaw<{ n: bigint }[]>`
-    SELECT count(*)::bigint AS n FROM "AuditLog"
-    WHERE "sellerId" = ${ctx.sellerId}::uuid AND "action" = 'seller.integration.business_check'
-      AND "createdAt" >= (date_trunc('day', now() AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'Asia/Seoul')`;
-  if (Number(n) >= BUSINESS_CHECK_DAILY_LIMIT) return { ok: false as const, reason: "daily_limit_exceeded" as const };
-  // 조회를 시도하면(실패 포함) 횟수에 센다(외부 호출 비용). 조회 전에 먼저 남긴다.
-  await writeAudit(db, {
-    actorType: ctx.actorType,
-    actorId: ctx.actorId,
-    sellerId: ctx.sellerId,
-    action: "seller.integration.business_check",
-    targetType: "Seller",
-    targetId: ctx.sellerId,
-    after: { businessNumberLast4: businessNumber.slice(-4) },
-    ip: meta.ip,
-    userAgent: meta.userAgent,
+  // 횟수 확인과 기록을 쇼핑몰별 잠금 아래 한 트랜잭션으로 묶는다(동시에 와도 한도를 넘겨 공급자를 부르지 못한다).
+  // 조회를 시도하면(실패 포함) 횟수에 센다(외부 호출 비용). 공급자를 부르기 전에 먼저 남기고, 잠금은 외부 호출 전에 풀린다.
+  const reserved = await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`business_check:${ctx.sellerId}`}, 0))`;
+    const [{ n }] = await tx.$queryRaw<{ n: bigint }[]>`
+      SELECT count(*)::bigint AS n FROM "AuditLog"
+      WHERE "sellerId" = ${ctx.sellerId}::uuid AND "action" = 'seller.integration.business_check'
+        AND "createdAt" >= (date_trunc('day', now() AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'Asia/Seoul')`;
+    if (Number(n) >= BUSINESS_CHECK_DAILY_LIMIT) return false;
+    await writeAudit(tx, {
+      actorType: ctx.actorType,
+      actorId: ctx.actorId,
+      sellerId: ctx.sellerId,
+      action: "seller.integration.business_check",
+      targetType: "Seller",
+      targetId: ctx.sellerId,
+      after: { businessNumberLast4: businessNumber.slice(-4) },
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
+    return true;
   });
+  if (!reserved) return { ok: false as const, reason: "daily_limit_exceeded" as const };
   const r = await provider.verify({ businessNumber, representativeName, openedOn });
   if (!r.ok) return { ok: false as const, reason: "lookup_failed" as const };
   const status: BusinessStatus = r.status;
