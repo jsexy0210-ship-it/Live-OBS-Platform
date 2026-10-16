@@ -23,14 +23,14 @@ export function AuthFrame({ children, wide = false }: { children: React.ReactNod
   const staff = useStaffType();
   return (
     <div className="login-page">
-      <Link className="logo" href={withType("/seller/login", staff)} style={{ fontSize: 22 }} aria-label="파트너스 로그인으로">
-        <span className="logo-sym" />
-        <span className="logo-word" />
-        <span className="t-l1 c-alt" style={{ marginLeft: 6 }}>
-          파트너스
-        </span>
-      </Link>
-      <div className={`card col login-card${wide ? " pa-wide" : ""}`}>{children}</div>
+      <div className={`card col login-card${wide ? " pa-wide" : ""}`}>
+        <Link className="logo login-logo" href={withType("/seller/login", staff)} aria-label="파트너스 로그인으로">
+          <span className="logo-sym" />
+          <span className="logo-word" />
+          <small>파트너스 관리자</small>
+        </Link>
+        {children}
+      </div>
     </div>
   );
 }

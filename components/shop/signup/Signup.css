@@ -1,0 +1,161 @@
+/* SH-011 회원가입 4단계 */
+.sg-card {
+  align-self: center;
+  width: 100%;
+  max-width: 480px;
+  gap: 16px;
+}
+.sg-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.sg-count {
+  font-size: 13px;
+  color: var(--brand);
+}
+.sg-progress ol {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sg-progress li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--wds-label-alternative);
+}
+.sg-progress li + li::before {
+  content: "";
+  width: 12px;
+  height: 1px;
+  background: var(--wds-line-solid-neutral);
+}
+.sg-progress li:not(:first-child) {
+  gap: 6px;
+}
+.sg-dot {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--wds-fill-normal);
+  font-size: 13px;
+  font-weight: 700;
+}
+.sg-progress li.is-now .sg-dot,
+.sg-progress li.is-done .sg-dot {
+  background: var(--brand);
+  color: #fff;
+}
+.sg-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--wds-label-normal);
+}
+.sg-terms {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--wds-line-solid-neutral);
+  border-radius: 16px;
+}
+.sg-all {
+  padding-bottom: 10px;
+  font-weight: 700;
+  box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative);
+}
+.sg-chk {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.shop-app a.sg-view,
+.sg-view {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--wds-label-alternative);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.shop-app a.sg-view:hover {
+  color: var(--wds-label-normal);
+}
+.sg-doc {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--shop-r);
+  background: var(--wds-fill-alternative);
+  font-size: 13px;
+}
+.sg-btns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.sg-btns .btn {
+  width: 100%;
+}
+.sg-login {
+  margin: 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--wds-label-alternative);
+}
+.sg-login a {
+  font-weight: 700;
+  color: var(--wds-label-normal);
+  text-decoration: underline;
+}
+.sg-form {
+  gap: 14px;
+}
+.sg-form .fld label i {
+  margin-left: 2px;
+  font-style: normal;
+  color: var(--wds-status-negative);
+}
+.sg-verified {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--wds-line-solid-neutral);
+  border-radius: 12px;
+}
+.sg-verified-text {
+  display: flex;
+  flex: 1 1 200px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 14px;
+}
+.sg-verified-text .c-alt {
+  font-size: 13px;
+}
+.sg-code {
+  gap: 12px;
+}
+.sg-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 0;
+  text-align: center;
+}
+.sg-done h2,
+.sg-done p {
+  margin: 0;
+}
