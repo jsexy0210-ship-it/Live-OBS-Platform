@@ -13,7 +13,7 @@ test.afterAll(() => cleanupProducts(PASSWORD));
 async function openNew(page: Page) {
   await page.goto("/seller/login");
   await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
-  await page.waitForURL(/\/seller\/(?!login)/);
+  await page.waitForURL((u) => !u.pathname.startsWith("/seller/login"));
   await page.goto("/seller/products/new");
   await expect(page.getByLabel("상품명")).toBeVisible();
 }
@@ -137,8 +137,8 @@ test("상세 설명 에디터: 제목·글 꾸미기·표·구분선을 쓰고 �
   await page.getByRole("button", { name: "구분선" }).click();
   await expect(body.locator("hr")).toHaveCount(1);
   await expect(page.getByText(/글자 \d+ \/ 20,000자/)).toBeVisible();
-  // 미리보기
-  await page.getByRole("button", { name: "미리보기", exact: true }).click();
+  // 미리보기(상세 설명 에디터의 단추. 폼 아래 「쇼핑몰 미리보기」 단추 product-form-preview와 구분)
+  await page.locator('button:not([data-testid="product-form-preview"])', { hasText: /^미리보기$/ }).click();
   const pv = page.getByTestId("detail-preview");
   await expect(pv.locator("h1")).toHaveText("스타라이트 첫 번째 박스");
   await expect(pv.locator("table")).toHaveCount(1);
