@@ -216,7 +216,7 @@ function CollectionPageInner() {
                     </Link>
                   ))}
                 </div>
-                <span className="t-c1 c-alt">연체 · 유예 · 잠금 처리는 청구 내역에서 합니다 (하루 간격 3번 재시도 → 7일 유예 → 잠금 · 30일 뒤 자동 해지)</span>
+                <span className="t-c1 c-alt">연체 · 유예 · 잠금 처리는 청구 내역에서 합니다 (하루 간격 재시도 → 유예 → 잠금 · 30일 뒤 자동 해지)</span>
               </div>
             </>
           )}
