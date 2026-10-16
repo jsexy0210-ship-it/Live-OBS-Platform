@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import ShopLogout from "./ShopLogout";
 import "./MyMenu.css";
 
 // 내 정보 왼쪽 메뉴(SH-020-IA·SH-027-IA). 지금 있는 화면만 넣고, 적립금·배송지 같은 화면이 생기면 해당 그룹에 더한다.
@@ -66,6 +67,9 @@ export default function MyMenu({ slug }: { slug: string }) {
             ))}
           </div>
         ))}
+        <div className="my-menu-out">
+          <ShopLogout slug={slug} size="sm" />
+        </div>
       </nav>
     </>
   );
