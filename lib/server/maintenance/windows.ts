@@ -94,7 +94,7 @@ export async function listWindows(db: PrismaClient, admin: AdminSessionContext, 
 
 // 예약·즉시 켜기. 본문 { message(안내 문구, 필수 500자), reason(사유, 필수 200자), startsAt?(ISO, 지금보다 뒤, 없으면 즉시), endsAt?(ISO, 종료 예정·안내용) }.
 // 즉시 켜기는 이미 점검 중이면 already_active. 예약은 열려 있는 것이 20건을 넘으면 too_many.
-export async function createWindow(db: PrismaClient, admin: AdminSessionContext, raw: unknown, meta: AuditMeta = {}, now = new Date()) {
+export async function createWindow(db: PrismaClient, admin: AdminSessionContext, raw: unknown, meta: AuditMeta = {}, nowArg?: Date) {
   requireManage(admin);
   const b = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
   const message = cleanText(b.message, MESSAGE_MAX, "multiline");
@@ -105,10 +105,14 @@ export async function createWindow(db: PrismaClient, admin: AdminSessionContext,
   const endsAt = parseTime(b.endsAt);
   if (start === undefined || endsAt === undefined) return { ok: false as const, reason: "invalid_time" as const };
   const immediate = start === null;
-  const startsAt = start ?? now;
-  if ((!immediate && startsAt <= now) || (endsAt && endsAt <= startsAt)) return { ok: false as const, reason: "invalid_time" as const };
+  // 시각은 락을 잡은 뒤에 읽는다(다른 점검 변경을 기다리는 사이 예약이 시작됐을 수 있다). 시험은 nowArg로 고정한다.
+  let now = nowArg ?? new Date();
+  if ((!immediate && start! <= now) || (endsAt && endsAt <= (start ?? now))) return { ok: false as const, reason: "invalid_time" as const };
   const r = await db.$transaction(async (tx) => {
     await lockMirror(tx);
+    now = nowArg ?? new Date();
+    const startsAt = start ?? now;
+    if ((!immediate && startsAt <= now) || (endsAt && endsAt <= startsAt)) return { ok: false as const, reason: "invalid_time" as const };
     const open = await tx.platformMaintenanceWindow.findMany({ where: { status: "SCHEDULED" }, select: { startsAt: true } });
     if (immediate && open.some((w) => w.startsAt <= now)) return { ok: false as const, reason: "already_active" as const };
     if (open.length >= OPEN_MAX) return { ok: false as const, reason: "too_many" as const };
@@ -134,10 +138,12 @@ export async function createWindow(db: PrismaClient, admin: AdminSessionContext,
 
 type CloseResult = { ok: true; window: Awaited<ReturnType<typeof view>>[number] } | { ok: false; reason: "not_found" | "not_open" };
 // 예약 취소(시작 전만) · 점검 종료(진행 중만). 시작이 지난 예약은 취소가 아니라 점검 종료로 닫는다.
-async function close(db: PrismaClient, admin: AdminSessionContext, id: string, mode: "cancel" | "end", meta: AuditMeta, now: Date): Promise<CloseResult> {
+async function close(db: PrismaClient, admin: AdminSessionContext, id: string, mode: "cancel" | "end", meta: AuditMeta, nowArg?: Date): Promise<CloseResult> {
   requireManage(admin);
+  let now = nowArg ?? new Date();
   const r = await db.$transaction(async (tx) => {
     await lockMirror(tx);
+    now = nowArg ?? new Date(); // 락을 기다린 뒤의 시각으로 시작 여부를 판단한다
     const w = await tx.platformMaintenanceWindow.findUnique({ where: { id } });
     if (!w) return { ok: false as const, reason: "not_found" as const };
     const started = w.startsAt <= now;
@@ -160,5 +166,5 @@ async function close(db: PrismaClient, admin: AdminSessionContext, id: string, m
   clearMaintenanceCache();
   return { ok: true, window: (await view(db, [r.w], now))[0] };
 }
-export const cancelWindow = (db: PrismaClient, admin: AdminSessionContext, id: string, meta: AuditMeta = {}, now = new Date()) => close(db, admin, id, "cancel", meta, now);
-export const endWindow = (db: PrismaClient, admin: AdminSessionContext, id: string, meta: AuditMeta = {}, now = new Date()) => close(db, admin, id, "end", meta, now);
+export const cancelWindow = (db: PrismaClient, admin: AdminSessionContext, id: string, meta: AuditMeta = {}, now?: Date) => close(db, admin, id, "cancel", meta, now);
+export const endWindow = (db: PrismaClient, admin: AdminSessionContext, id: string, meta: AuditMeta = {}, now?: Date) => close(db, admin, id, "end", meta, now);

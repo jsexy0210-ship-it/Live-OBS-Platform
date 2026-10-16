@@ -6,13 +6,15 @@ import { prisma } from "../../../../../lib/server/db";
 import { clearImpersonationCookie, isString, loginFailureStatus, mutation, readJson, requestMeta, setSessionCookie } from "../../../../../lib/server/http/route";
 
 export const POST = mutation(async (req: Request) => {
-  const body = await readJson<{ email: string; password: string; shopSlug: string; accountType?: unknown }>(req);
+  const body = await readJson<{ email: string; password: string; shopSlug: string; accountType?: unknown; remember?: unknown }>(req);
   if (!isString(body.email) || !isString(body.password)) return NextResponse.json(loginErrorBody("bad_request"), { status: 400 });
   // accountType: 로그인 탭(owner|staff). 빠지면 종류를 보지 않고, 그 밖의 값은 400.
   if (body.accountType !== undefined && body.accountType !== "owner" && body.accountType !== "staff") return NextResponse.json(loginErrorBody("bad_request"), { status: 400 });
+  // remember(로그인 유지, 선택): 켜면 30일, 빼거나 false면 브라우저를 닫으면 끝나는 세션(서버 24시간). boolean이 아니면 400.
+  if (body.remember !== undefined && typeof body.remember !== "boolean") return NextResponse.json(loginErrorBody("bad_request"), { status: 400 });
   const result = await loginSeller(
     prisma,
-    { email: body.email, password: body.password, shopSlug: isString(body.shopSlug) ? body.shopSlug : undefined, accountType: body.accountType },
+    { email: body.email, password: body.password, shopSlug: isString(body.shopSlug) ? body.shopSlug : undefined, accountType: body.accountType, remember: body.remember === true },
     requestMeta(req),
   );
   // 실패는 { error, message(화면 문구) }. 이메일·비밀번호 중 무엇이 틀렸는지는 구분하지 않는다.
@@ -32,7 +34,7 @@ export const POST = mutation(async (req: Request) => {
     return res;
   }
   const res = NextResponse.json({ ok: true });
-  setSessionCookie(res, "seller", result.token, result.expiresAt);
+  setSessionCookie(res, "seller", result.token, result.expiresAt, result.persistent);
   // 같은 브라우저에 마스터 대리 조회 쿠키가 남아 있으면 지운다(남기면 로그인한 뒤에도 대리 조회 화면이 우선한다)
   clearImpersonationCookie(res);
   return res;
