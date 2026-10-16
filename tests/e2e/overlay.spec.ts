@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { submitSellerLogin } from "./sellerLogin";
-import { NICKS, cleanupBroadcastQueue, resetBroadcastQueue } from "./seller-broadcast-db";
+import { NICKS, cleanupBroadcastQueue, makeBroadcastSignalStale, resetBroadcastQueue } from "./seller-broadcast-db";
 
 // OV-001·OV-002 기본 오버레이(/overlay/{token}): 발급한 토큰 주소가 열리고, 방송 시작·개봉 시작이 새로 고침 없이 반영되며,
 // 재발급하면 옛 주소는 주문 표시가 지워지고 주소 확인 안내만 남는다. 모두 실제 API(발급·방송·주문대기)를 부른다.
@@ -69,7 +69,10 @@ test("발급한 주소가 열리고 방송·개봉 변화가 바로 반영되며
   if (SHOTS) await land.screenshot({ path: "tests/e2e/screenshots/OV-002-1920x1080.png", omitBackground: true });
   await land.close();
 
-  // 재발급 → 옛 주소 API는 404, 열려 있던 옛 오버레이는 주문을 지우고 안내만(15초 확인 주기 안)
+  // 방송 중(방송 화면 접속 신호가 최근 5분 안)에는 재발급할 수 없다(SA-052)
+  expect((await call(page, "/api/seller/overlay/token", "POST", {})).status).toBe(409);
+  // 접속 신호가 끊겨 오래된 방송이면 재발급할 수 있다 → 옛 주소 API는 404, 열려 있던 옛 오버레이는 주문을 지우고 안내만(15초 확인 주기 안)
+  await makeBroadcastSignalStale();
   const next = await issue(page);
   expect(next).not.toBe(token);
   expect((await call(page, `/api/overlay/${token}/state`)).status).toBe(404);
