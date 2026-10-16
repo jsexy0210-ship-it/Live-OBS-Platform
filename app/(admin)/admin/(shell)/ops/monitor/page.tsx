@@ -7,7 +7,7 @@ import { AdminTopbar } from "../../../_components/AdminShell";
 import { PAYMENT_CHECK, clock, usePoll, type Monitor } from "../../../_components/ops";
 import { dayTime } from "../../../_components/partners";
 
-// MA-100 실시간 감시(GET /api/admin/ops/monitor, 모든 마스터 역할이 API를 볼 수 있으나 메뉴·화면은 최고관리자만 — 셸이 막는다). 10초마다 다시 읽는다.
+// MA-100 실시간 감시(GET /api/admin/ops/monitor, platform.read: 모든 마스터 역할이 메뉴·화면을 볼 수 있다 — 정본 「조회 전용 권한」 변형, 오류 문구만 최고관리자에게). 10초마다 다시 읽는다.
 // 「감시 끊김」: 읽지 못하면 마지막으로 읽은 내용과 시각을 그대로 두고 알린다. 웹훅은 서버가 재지 않아(not_measured) 「측정 안 함」으로 보인다.
 // 보드에 있고 서버에 없는 것(웹훅·결제 검증 지연, 오늘 비용, 자동 조치 결과, 자동 연결 결제 막기)은 넣지 않는다.
 const SEVERITY: Record<string, { label: string; cls: string }> = {

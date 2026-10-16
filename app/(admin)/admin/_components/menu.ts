@@ -10,7 +10,7 @@ export type AdminGroup = { key: string; label: string; items: AdminItem[] };
 
 export const ADMIN_MENU: AdminGroup[] = [
   // 메뉴 이름은 「홈」, 화면 제목은 「통합 대시보드」
-  { key: "home", label: "홈", items: [{ label: "홈", href: "/admin" }] },
+  { key: "home", label: "홈", items: [{ label: "홈", href: "/admin" }, { label: "상세 현황", href: "/admin/home/status", ready: true }] },
   {
     key: "partners",
     label: "파트너스",
@@ -38,7 +38,7 @@ export const ADMIN_MENU: AdminGroup[] = [
     items: [
       { label: "실시간 방송", href: "/admin/ops/live", ready: true },
       { label: "주문 · 방송 화면 접속", href: "/admin/ops/access", ready: true },
-      { label: "실시간 감시", href: "/admin/ops/monitor", perm: "system.manage", ready: true },
+      { label: "실시간 감시", href: "/admin/ops/monitor", ready: true },
       { label: "자동 연결 작업", href: "/admin/ops/automation", ready: true },
       { label: "인프라 · 비용", href: "/admin/ops/infra", perm: "infra.manage", ready: true },
     ],

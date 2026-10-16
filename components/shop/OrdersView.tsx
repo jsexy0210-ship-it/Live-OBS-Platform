@@ -1,8 +1,9 @@
 "use client";
 
+import { CursorPagination } from "../Pagination";
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { formatDateTime } from "../../lib/client/format";
 import MyMenu from "./MyMenu";
 import { call } from "./reviewShared";
@@ -34,7 +35,7 @@ type Period = "3m" | "6m" | "1y";
 type Data = { orders: Order[]; next: string | null; counts: Counts };
 type View = { kind: "loading" } | { kind: "login" } | { kind: "error" } | { kind: "ok" } & Data;
 
-const PAGE = 20;
+const PAGE = 10;
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 const TABS: { key: Tab; label: string }[] = [
   { key: "all", label: "전체" },
@@ -83,7 +84,10 @@ export default function OrdersView({ slug }: { slug: string }) {
   const [view, setView] = useState<View>({ kind: "loading" });
   const [tab, setTab] = useState<Tab>("all");
   const [period, setPeriod] = useState<Period>("3m");
-  const [more, setMore] = useState(false);
+  const seq = useRef(0);
+  const paging = useRef(false);
+  const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const [moreError, setMoreError] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -96,21 +100,32 @@ export default function OrdersView({ slug }: { slug: string }) {
   );
 
   const load = useCallback(async () => {
+    const n = ++seq.current; paging.current = true;
+    setPage(1); setCursors([null]);
     setView({ kind: "loading" });
     setMoreError(false);
     const r = await call<{ orders: Order[]; nextCursor: string | null; counts: Counts }>(query());
+    if (n !== seq.current) return;
+    paging.current = false;
     setView(r.ok ? { kind: "ok", orders: r.data.orders, next: r.data.nextCursor, counts: r.data.counts } : { kind: r.status === 401 ? "login" : "error" });
   }, [query]);
   useEffect(() => void load(), [load]);
 
-  async function loadMore() {
-    if (view.kind !== "ok" || !view.next || more) return;
-    setMore(true);
-    setMoreError(false);
-    const r = await call<{ orders: Order[]; nextCursor: string | null; counts: Counts }>(query(view.next));
-    if (r.ok) setView({ kind: "ok", orders: [...view.orders, ...r.data.orders], next: r.data.nextCursor, counts: r.data.counts });
-    else setMoreError(true);
-    setMore(false);
+  async function go(target: number, cursor: string | null) {
+    if (view.kind !== "ok" || paging.current) return;
+    const n = ++seq.current; paging.current = true; setMoreError(false);
+    let actualPage = target; let actualCursor = cursor;
+    let r = await call<{ orders: Order[]; nextCursor: string | null; counts: Counts }>(query(actualCursor ?? undefined));
+    while (n === seq.current && r.ok && r.data.orders.length === 0 && actualPage > 1) {
+      actualPage -= 1; actualCursor = cursors[actualPage - 1];
+      r = await call<{ orders: Order[]; nextCursor: string | null; counts: Counts }>(query(actualCursor ?? undefined));
+    }
+    if (n !== seq.current) return;
+    paging.current = false;
+    if (!r.ok) return setMoreError(true);
+    setView({ kind: "ok", orders: r.data.orders, next: r.data.nextCursor, counts: r.data.counts });
+    setPage(actualPage);
+    setCursors(c => { const next = c.slice(0, actualPage); next[actualPage - 1] = actualCursor; return c[actualPage] === r.data.nextCursor ? c : next; });
   }
 
   // 취소·환불한 주문의 상품을 장바구니에 다시 담는다(옵션이 아직 있는 것만, 가벼운 쇼핑 행동이라 바로 실행하고 결과만 알린다)
@@ -278,13 +293,7 @@ export default function OrdersView({ slug }: { slug: string }) {
             </tbody>
           </table>
         )}
-        {ok?.next && (
-          <div className="cart-tools" style={{ justifyContent: "center" }}>
-            <button className="btn btn-out" type="button" disabled={more} aria-busy={more} onClick={() => void loadMore()}>
-              {more ? "불러오고 있어요" : "더 보기"}
-            </button>
-          </div>
-        )}
+        {ok && (cursors.length > 1 || ok.next) && <CursorPagination page={page} visited={cursors.length} hasNext={!!ok.next} onChange={n => void go(n, cursors[n - 1])} onNext={() => { if (ok.next) void go(page + 1, ok.next); }} />}
         {moreError && (
           <p className="cart-msg is-err" role="alert">
             더 불러오지 못했어요. 잠시 뒤 다시 해 주세요

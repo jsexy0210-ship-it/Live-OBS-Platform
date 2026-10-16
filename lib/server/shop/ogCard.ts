@@ -41,6 +41,11 @@ function loadSplit(n: number): Promise<Buffer> {
   return p;
 }
 
+export async function loadOgFontFiles(text: string, bold = false) {
+  const files = await Promise.all(splitsFor(text).map(async (n) => ({ name: FONT_NAME, data: await loadSplit(n), weight: 400 as const, style: "normal" as const })));
+  return bold ? [...files, ...files.map((font) => ({ ...font, weight: 700 as const }))] : files;
+}
+
 // TrueType(sfnt) 파일에서 지정한 표를 뺀 새 파일. 표 디렉터리를 다시 쓰고 각 표를 4바이트 경계로 맞춘다(표 내용·체크섬은 그대로).
 export function withoutTables(font: Buffer, drop: ReadonlySet<string>): Buffer {
   const count = font.readUInt16BE(4);
@@ -81,9 +86,7 @@ const nameSize = (name: string) => {
 };
 
 export async function renderShopOgCard(shopName: string): Promise<Buffer> {
-  const fonts = await Promise.all(
-    splitsFor(`${shopName}ONQ`).map(async (n) => ({ name: FONT_NAME, data: await loadSplit(n), weight: 400 as const, style: "normal" as const })),
-  );
+  const fonts = await loadOgFontFiles(`${shopName}ONQ`);
   const card = h(
     "div",
     {

@@ -4,7 +4,7 @@ import { formatDateTimeParts } from "../../../../../lib/client/format";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
-import { ListHead, PageHead, SearchBox, SearchRow, useConfirm } from "../../../../../components/admin-ui";
+import { CursorPagination, ListHead, ListTable, PageHead, SearchBox, SearchRow, useConfirm } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { QuickPrice, QuickStatus, QuickStock, type QuickDone, type QuickUndo } from "../../../../../components/seller/ProductQuick";
 import { categoryLabel, categoryOptions, type CategoryNode } from "../../../../../components/seller/ProductCategoryPicker";
@@ -14,8 +14,9 @@ import { LOW_STOCK, MAX_SEARCH_LENGTH, statusBadge, textLength, totalStock, won 
 import { recentRange } from "../../../../../lib/client/dateInput";
 import { PERIOD_ALL } from "../../../../../lib/client/filterDefaults";
 import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
+import styles from "./products.module.css";
 
-// SA-011 상품 목록(업무용 관리 화면). 위쪽 표형 검색 상자에서 조건을 정해 「검색」을 누르면 걸러 보고, 이어서 불러온다(기본 50개씩).
+// SA-011 상품 목록(업무용 관리 화면). 위쪽 표형 검색 상자에서 조건을 정해 「검색」을 누르면 걸러 보고, 이어서 불러온다(현재 10개씩).
 // 정렬·페이지 크기는 바꾸는 즉시 적용한다. 체크한 상품은 판매 상태 변경·삭제를 한 번에 처리한다(POST /api/seller/products/bulk).
 const FILTERS: { key: ProductStatus | "ALL"; label: string }[] = [
   { key: "ALL", label: "전체" },
@@ -51,7 +52,7 @@ const SORTS: { key: Sort; label: string }[] = [
   { key: "price_desc", label: "판매가 높은순" },
   { key: "price_asc", label: "판매가 낮은순" },
 ];
-const LIMITS = [20, 50, 100];
+const LIMITS = [10];
 
 
 // 검색 상자에 정하는 조건. 입력 중인 값(draft)과 「검색」을 눌러 적용한 값(applied)을 따로 둔다
@@ -81,13 +82,13 @@ const query = (f: Filters, sort: Sort, limit: number) =>
     f.from ? `createdFrom=${f.from}` : "",
     f.to ? `createdTo=${f.to}` : "",
     sort === "newest" ? "" : `sort=${sort}`,
-    limit === 50 ? "" : `limit=${limit}`,
+    `limit=${limit}`,
   ]
     .filter(Boolean)
     .join("&");
 
 // 주소에 싣는 값(기본값과 같으면 쿼리에서 뺀다). 알 수 없는 값은 읽을 때 기본값으로 돌린다
-const urlDefaults = () => ({ q: "", mode: "name", status: "ALL", stock: "", categoryId: "", display: "", deduct: "", ...recentRange(1), period: "", sort: "newest", limit: "50" });
+const urlDefaults = () => ({ q: "", mode: "name", status: "ALL", stock: "", categoryId: "", display: "", deduct: "", ...recentRange(1), period: "", sort: "newest", limit: "10" });
 const oneOf = <T extends string>(v: string, list: readonly T[], fallback: T): T => ((list as readonly string[]).includes(v) ? (v as T) : fallback);
 
 const TOASTS: Record<string, string> = {
@@ -129,7 +130,7 @@ export default function ProductListPage() {
     ...(u.period === PERIOD_ALL ? { from: "", to: "" } : { from: u.from, to: u.to }),
   };
   const sort = oneOf(u.sort, SORTS.map((x) => x.key), "newest");
-  const limit = Number(oneOf(u.limit, LIMITS.map(String), "50"));
+  const limit = Number(oneOf(u.limit, LIMITS.map(String), "10"));
   const key = query(applied, sort, limit);
   const appliedJson = JSON.stringify(applied);
   const [draft, setDraft] = useState<Filters>(applied);
@@ -143,7 +144,9 @@ export default function ProductListPage() {
   }, [appliedJson]);
   const [cats, setCats] = useState<CategoryNode[]>([]);
   const [state, setState] = useState<Load>({ kind: "loading" });
-  const [more, setMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const paging = useRef(false);
   const [toast, setToast] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -185,6 +188,7 @@ export default function ProductListPage() {
   const reqId = useRef(0);
   const load = useCallback(async (qs: string) => {
     const id = ++reqId.current;
+    setPage(1); setCursors([undefined]); paging.current = false;
     setState({ kind: "loading" });
     setSelected(new Set());
     const r = await api<Page>(`/api/seller/products${qs ? `?${qs}` : ""}`);
@@ -208,24 +212,30 @@ export default function ProductListPage() {
     }
   }, []);
 
-  const loadMore = async () => {
-    if (state.kind !== "ok" || !state.next) return;
-    setMore(true);
-    const id = reqId.current;
-    const qs = `${key}${key ? "&" : ""}cursor=${state.next}`;
-    const r = await api<Page>(`/api/seller/products?${qs}`);
-    setMore(false);
+  const turnPage = async (target: number) => {
+    if (state.kind !== "ok" || paging.current || target === page || target < 1 || target > cursors.length + 1) return;
+    const cursor = target <= cursors.length ? cursors[target - 1] : state.next;
+    if (target > 1 && !cursor) return;
+    paging.current = true;
+    const id = ++reqId.current;
+    const qs = key + (cursor ? "&cursor=" + encodeURIComponent(cursor) : "");
+    const r = await api<Page>("/api/seller/products?" + qs);
     if (id !== reqId.current) return;
-    if (r.ok) setState({ kind: "ok", items: [...state.items, ...r.data.products], next: r.data.nextCursor });
-    else setToast("더 불러오지 못했습니다. 다시 눌러 주십시오");
+    paging.current = false;
+    if (!r.ok) return setToast("불러오지 못했습니다. 다시 눌러 주십시오");
+    setSelected(new Set()); setState({ kind: "ok", items: r.data.products, next: r.data.nextCursor });
+    setPage(target); setCursors(c => {
+      const visited = target > c.length ? [...c, cursor ?? undefined] : c;
+      return visited[target] && visited[target] !== r.data.nextCursor ? visited.slice(0, target) : visited;
+    });
   };
 
   const canManage = can("PRODUCT_MANAGE");
   const items = state.kind === "ok" ? state.items : [];
   const appliedCat = applied.categoryId ? categoryLabel(cats, applied.categoryId) : null;
   const isApplied = JSON.stringify(applied) !== JSON.stringify(emptyFilters());
-  // 목록 위 「총 n건」: 이어서 불러오는 목록이라 다 불러오기 전에는 「이상」
-  const countUnit = state.kind === "ok" && state.next ? "건 이상" : "건";
+  // 커서 API는 전체 건수를 주지 않으므로 현재 쪽의 건수만 표시한다
+  const countUnit = "건 (현재 쪽)";
   const allChecked = items.length > 0 && items.every((p) => selected.has(p.id));
   const toggle = (id: string) =>
     setSelected((cur) => {
@@ -289,6 +299,15 @@ export default function ProductListPage() {
     setToast(`상품 ${r.data.updated.length}개를 삭제했습니다.${skippedText(r.data)}`);
   };
 
+  if (state.kind === "error" && state.status === 403) {
+    return (
+      <>
+        <Topbar crumb="상품 › 상품 목록" />
+        <main className="main"><NoPermission need="상품" /></main>
+      </>
+    );
+  }
+
   const radios = <T extends string>(label: string, name: string, list: { key: T; label: string }[], value: T, set: (v: T) => void) => (
     <div role="radiogroup" aria-label={label} className="row" style={{ gap: 16, flexWrap: "wrap" }}>
       {list.map((o) => (
@@ -303,9 +322,10 @@ export default function ProductListPage() {
   return (
     <>
       <Topbar crumb="상품 › 상품 목록" />
-      <main className="main">
+      <main className={`main ${styles.page}`}>
         <PageHead
           title="상품 목록"
+          description="상품을 검색하고 판매 상태와 재고를 관리합니다."
           actions={
             canManage && (
               <>
@@ -329,7 +349,7 @@ export default function ProductListPage() {
             <input
               className="inp inp-sm"
               type="search"
-              placeholder={draft.mode === "name" ? "상품명 · 선택 항목 이름 입력" : "상품 코드 입력(예: P12)"}
+              placeholder="검색어 입력"
               aria-label="상품 검색"
               value={draft.text}
               onChange={(e) => setDraft({ ...draft, text: e.target.value })}
@@ -348,10 +368,11 @@ export default function ProductListPage() {
               </select>
             </SearchRow>
           )}
-          <SearchRow label="판매 상태">{radios("판매 상태", "status", FILTERS, draft.status, (v) => setDraft({ ...draft, status: v }))}</SearchRow>
-          <SearchRow label="쇼핑몰 노출">{radios("쇼핑몰 노출", "display", DISPLAYS, draft.display, (v) => setDraft({ ...draft, display: v }))}</SearchRow>
+          <SearchRow label="판매 상태" label2="쇼핑몰 노출" children2={radios("쇼핑몰 노출", "display", DISPLAYS, draft.display, (v) => setDraft({ ...draft, display: v }))}>
+            {radios("판매 상태", "status", FILTERS, draft.status, (v) => setDraft({ ...draft, status: v }))}
+          </SearchRow>
           <SearchRow label="재고가 줄어드는 때">{radios("재고가 줄어드는 때", "deduct", DEDUCTS, draft.deduct, (v) => setDraft({ ...draft, deduct: v }))}</SearchRow>
-          <SearchRow label="등록일">
+          <SearchRow label="등록일" label2="재고" children2={radios("재고", "stock", [{ key: "", label: "전체" }, ...STOCK_FILTERS] as { key: StockFilter | ""; label: string }[], draft.stock ?? "", (v) => setDraft({ ...draft, stock: v === "" ? null : v }))}>
             <span className="row wrap" style={{ gap: 8 }}>
               <button className="btn btn-dense btn-out btn-w-xs" type="button" onClick={() => setDraft({ ...draft, from: kstDate(), to: kstDate() })}>
                 오늘
@@ -375,12 +396,9 @@ export default function ProductListPage() {
               <DatePicker className="dt-sm" aria-label="등록일 끝" value={draft.to} onChange={(v) => setDraft({ ...draft, to: v })} />
             </span>
           </SearchRow>
-          <SearchRow label="재고">
-            {radios("재고", "stock", [{ key: "", label: "전체" }, ...STOCK_FILTERS] as { key: StockFilter | ""; label: string }[], draft.stock ?? "", (v) => setDraft({ ...draft, stock: v === "" ? null : v }))}
-          </SearchRow>
         </SearchBox>
 
-        <div className="card" style={{ overflow: "hidden" }}>
+        <div className="au-list-section">
           <ListHead
             total={items.length}
             unit={countUnit}
@@ -490,8 +508,7 @@ export default function ProductListPage() {
           )}
           {state.kind === "ok" && items.length > 0 && (
             <>
-              <div className="au-lt-wrap">
-                <div className="p-tbl-wrap">
+              <ListTable className={`p-tbl-wrap ${styles.grid}`} aria-label="상품 목록 표">
                 <table className="tbl p-table">
                   <thead>
                     <tr>
@@ -558,8 +575,7 @@ export default function ProductListPage() {
                     })}
                   </tbody>
                 </table>
-                </div>
-              </div>
+              </ListTable>
               <ul className="p-cards">
                 {items.map((p) => {
                   const b = statusBadge(p);
@@ -586,15 +602,7 @@ export default function ProductListPage() {
                   );
                 })}
               </ul>
-              <div className="row center p-more">
-                {state.next ? (
-                  <button className="btn btn-dense btn-out btn-level-secondary" type="button" onClick={() => void loadMore()} disabled={more}>
-                    {more ? "불러오는 중" : "더 보기"}
-                  </button>
-                ) : (
-                  <span className="t-l2 c-alt">모두 불러왔습니다</span>
-                )}
-              </div>
+              {(page > 1 || state.next) && <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={n => void turnPage(n)} onNext={() => void turnPage(page + 1)} />}
             </>
           )}
         </div>

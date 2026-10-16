@@ -8,8 +8,8 @@ import { dbNow } from "../billing/subscription";
 import { cleanText } from "../text/clean";
 
 // 구독 환불 요청·처리(MA-026 목록 · MA-027 처리). 규칙:
-// - 보기는 마스터 관리자 전 역할(platform.read), 요청 만들기·반려는 요금·청구 변경 권한(billing.manage: 최고관리자·운영),
-//   승인(결제 취소 요청)은 최고관리자만(billing.refund, MASTER 결정 2026-10-05).
+// - 보기는 마스터 관리자 전 역할(platform.read), 요청 만들기는 요금·청구 변경 권한(billing.manage: 최고관리자·운영),
+//   승인·거절은 최고관리자만(billing.refund, MA-027 FINAL v327).
 //   바꿀 때마다 로그 추적에 남긴다.
 // - 요청은 두 곳에서 생긴다. 시스템: 해지 뒤 확정된 결제(subscription.ts settlePayment, 사유 paid_after_cancel).
 //   마스터 관리자: 결제된(PAID) 청구에 직접(법이 요구하는 환불 등, 사유 필수). 결제당 진행 중이거나 끝난 환불은 하나(DB 부분 유니크).
@@ -20,7 +20,7 @@ import { cleanText } from "../text/clean";
 type Db = PrismaClient | Prisma.TransactionClient;
 export type AuditMeta = { ip?: string | null; userAgent?: string | null };
 
-export const REFUND_PAGE_SIZE = 50;
+export const REFUND_PAGE_SIZE = 10;
 export const REASON_MAX = 200;
 const STATUSES: readonly SubscriptionRefundStatus[] = ["REQUESTED", "PROCESSING", "REFUNDED", "FAILED", "REJECTED"];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -105,7 +105,7 @@ const requireWrite = (admin: AdminSessionContext) => {
   if (!adminCan(admin.admin.role, "billing.manage")) throw forbidden();
 };
 
-// MA-026: 환불 요청 목록. ?status=(없으면 전부)&cursor=. 요청 최신 순 50건.
+// MA-026: 환불 요청 목록. ?status=(없으면 전부)&cursor=. 요청 최신 순 10건.
 export async function listSubscriptionRefunds(db: PrismaClient, admin: AdminSessionContext, q: { status?: string | null; cursor?: string | null }) {
   requireRead(admin);
   // 화면 탭 묶음: pending(처리 대기·처리 중·실패), done(환불 완료), rejected(거절). 개별 상태도 그대로 받는다.
@@ -154,7 +154,12 @@ export async function getSubscriptionRefund(db: PrismaClient, admin: AdminSessio
   if (!UUID.test(id)) throw notFound();
   const row = await db.subscriptionRefund.findUnique({ where: { id }, select: VIEW });
   if (!row) throw notFound();
-  return view(row);
+  const history = await db.auditLog.findMany({
+    where: { sellerId: row.sellerId, targetType: "SubscriptionRefund", targetId: id, action: { in: ["subscription.refund.request", "subscription.refund.approve", "subscription.refund.reject", "subscription.refund.refunded", "subscription.refund.failed"] } },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { action: true, createdAt: true },
+  });
+  return { ...view(row), history: history.map(({ action, createdAt }) => ({ action, at: createdAt })) };
 }
 
 // 마스터 관리자가 직접 만드는 요청. 본문 { paymentId, amount, reason }.
@@ -188,7 +193,7 @@ export async function createSubscriptionRefund(db: PrismaClient, admin: AdminSes
 
 // 반려. REQUESTED·FAILED만. 본문 { note, expectedVersion }.
 export async function rejectSubscriptionRefund(db: PrismaClient, admin: AdminSessionContext, id: string, raw: unknown, meta: AuditMeta = {}) {
-  requireWrite(admin);
+  if (!adminCan(admin.admin.role, "billing.refund")) throw forbidden();
   if (!UUID.test(id)) throw notFound();
   const b = obj(raw);
   const note = cleanText(b.note, REASON_MAX, "memo");

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import SearchBox from "../../../../../components/shop/SearchBox";
-import ShopState from "../../../../../components/shop/ShopState";
+import ShopLocked from "../../../../../components/shop/ShopLocked";
 import { shopOpen } from "../../../../../lib/server/buyers/signup";
 import { prisma } from "../../../../../lib/server/db";
 import { publicCategories } from "../../../../../lib/server/shop-category/service";
@@ -13,7 +13,7 @@ import { findActiveShop } from "../_lib/shop";
 
 export const dynamic = "force-dynamic";
 
-type Props = { params: Promise<{ slug: string }>; searchParams: Promise<{ q?: string; sort?: string; page?: string; cats?: string; inStock?: string; live?: string; minPrice?: string; maxPrice?: string }> };
+type Props = { params: Promise<{ slug: string }>; searchParams: Promise<{ q?: string; sort?: string; page?: string; cats?: string; inStock?: string; live?: string; rating4?: string; coupon?: string; minPrice?: string; maxPrice?: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const shop = await findActiveShop((await params).slug);
@@ -34,7 +34,7 @@ export default async function ShopSearchPage({ params, searchParams }: Props) {
   return (
     <>
       {!open ? (
-        <ShopState title="지금은 쇼핑몰을 이용할 수 없어요" body="쇼핑몰이 다시 문을 열면 이용할 수 있어요." />
+        <ShopLocked slug={shop.slug} />
       ) : (
         <div className="shop-wrap">
           <SearchBox slug={shop.slug} q={q} path={path} />

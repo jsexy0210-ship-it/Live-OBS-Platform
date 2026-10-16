@@ -26,7 +26,7 @@ test("점검 중에는 쇼핑몰 주소에서도 점검 화면이 보인다", as
 test("/maintenance는 구역에 따라 합니다체·해요체로 보인다", async ({ page }) => {
   await page.goto("/maintenance?area=partners");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(/^(지금은 점검 중입니다|점검이 끝났습니다)$/);
-  await expect(page.getByTestId("maintenance")).not.toContainText("결제가 끝난 주문");
+  await expect(page.getByTestId("maintenance")).toContainText("결제가 끝난 주문은 점검이 끝난 뒤 주문 목록에서 확인할 수 있습니다");
   await page.goto("/maintenance");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(/^(지금은 점검 중이에요|점검이 끝났어요)$/);
 });
@@ -37,7 +37,7 @@ test("점검 중에는 /seller는 합니다체, /shop은 해요체로 보인다"
   await page.goto("/seller/login");
   await expect(page).toHaveURL(/\/seller\/login$/);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("지금은 점검 중입니다");
-  await expect(page.getByTestId("maintenance")).toContainText("점검 중에는 파트너스 관리자를 이용할 수 없습니다");
+  await expect(page.getByTestId("maintenance")).toContainText("결제가 끝난 주문은 점검이 끝난 뒤 주문 목록에서 확인할 수 있습니다");
   await expect(page.getByRole("button", { name: "다시 시도" })).toBeVisible();
   await page.goto("/shop/none");
   await expect(page).toHaveURL(/\/shop\/none$/);

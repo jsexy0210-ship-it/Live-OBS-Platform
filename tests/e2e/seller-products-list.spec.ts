@@ -12,7 +12,7 @@ const box = (page: Page) => page.getByRole("search", { name: "목록 조건" });
 async function open(page: Page) {
   await page.goto("/seller/login");
   await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
-  await page.waitForURL(/\/seller\/(?!login)/);
+  await page.waitForURL((url) => url.pathname === "/seller" || (url.pathname.startsWith("/seller/") && url.pathname !== "/seller/login"));
   await page.goto("/seller/products");
   await expect(rows(page).first()).toBeVisible();
 }
@@ -48,8 +48,8 @@ test("정렬: 판매가 낮은순·높은순으로 바로 바뀌고, 판매량 �
     return p.length > 1 && p.every((v, i) => i === 0 || v <= p[i - 1]!);
   }).toBe(true);
   await expect(page.locator("th", { hasText: /^판매$/ })).toBeVisible();
-  // 목록 개수
-  await Promise.all([page.waitForResponse((r) => r.url().includes("limit=20")), page.getByLabel("목록 개수").selectOption("20")]);
+  // 목록 개수(기본 10개)
+  await expect(page.getByLabel("목록 개수")).toHaveValue("10");
 });
 
 test("검색 조건: 상품 코드·노출 상태·재고 차감·등록일로 걸러 본다", async ({ page }) => {

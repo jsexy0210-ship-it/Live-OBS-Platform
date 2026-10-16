@@ -58,7 +58,10 @@ describe("시작하기 체크리스트 GET /api/seller/onboarding", () => {
     await db.product.create({ data: { sellerId: seller.id, name: "카드2", price: 1000 } });
     await db.subscriptionPayment.create({ data: { sellerId: seller.id, subscriptionId: sub.id, amount: 1000, status: "PAID", periodStart: new Date(), periodEnd: new Date(Date.now() + 86_400_000) } });
     await db.seller.update({ where: { id: seller.id }, data: { shareTitle: "우리 가게" } });
+    // 쇼핑몰 만들 때 기본값으로 생긴 행(savedAt 없음)은 「설정 완료」가 아니다. 파트너스가 저장해야 완료
     await db.sellerOrderPolicy.create({ data: { sellerId: seller.id } });
+    expect(doneKeys(await get(owner))).toEqual(["subscription", "shop_info", "products"]);
+    await db.sellerOrderPolicy.update({ where: { sellerId: seller.id }, data: { savedAt: new Date() } });
     b = await get(owner);
     expect(doneKeys(b)).toEqual(["subscription", "shop_info", "products", "order_policy"]);
     expect(b).toMatchObject({ currentStep: "overlay", doneCount: 4, completed: false });

@@ -1,16 +1,20 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
+import headerSymbol from "../../public/branding/streamshop-partners-180-20261010.png";
 import { GlobalSearch, NotificationBell } from "../admin-ui/GnbTools";
 import { ConfirmProvider, useConfirm } from "../admin-ui/ConfirmDialog";
-import { RouteTabs, ShellNavProvider, type ShellNav } from "../admin-ui/shellNav";
+import { ShellNavProvider, type ShellNav } from "../admin-ui/shellNav";
 import { useWholeDateClick } from "../admin-ui/useWholeDateClick";
-import { usePathname, useRouter } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useLatestResponse, type ReadTicket } from "./latestResponse";
 import { api, currentNavGeneration, nextNavGeneration, PLAN_FEATURE_EVENT, type Me, type PlanFeatureEventDetail } from "./api";
 import { useEllipsisTitle } from "../admin-ui/useEllipsisTitle";
 import { useTableCards } from "../admin-ui/useTableCards";
+import { MaintenanceBanner } from "../public/MaintenanceBanner";
+import maintenanceStyles from "../public/MaintenanceBanner.module.css";
 
 // 파트너스 관리자 공통 틀(업무용 관리 화면 틀, 대표님 지시 2026-10-04): 상단 고정 GNB(대분류 8개) + 왼쪽 LNB(고른 대분류의 하위 메뉴) + 본문.
 // 메뉴 구조는 확정안(2026-10-06 대표님 「그대로 진행」, docs/IA.md 「확정 메뉴 구조」·design/project/SA-LNB.dc.html)을 따른다. 좁은 화면에서는 GNB가 햄버거로 접히고 LNB가 서랍으로 열린다(서랍에는 전체 메뉴).
@@ -26,7 +30,7 @@ import { useTableCards } from "../admin-ui/useTableCards";
 // also: 메뉴에는 없지만 이 항목을 켠 채 열리는 화면 주소(예: 시작하기). plan·perm을 따로 줄 수 있다(없으면 항목 것)
 // 하위 메뉴가 모두 숨겨진 대분류는 GNB에서도 숨긴다.
 type PlanNeed = "ANY" | "OVERLAY" | "EXTERNAL_INTEGRATION" | "STORE_OPERATIONS" | "FOLLOWUP";
-type Leaf = { label: string; href?: string; perm?: string; plan?: PlanNeed; alt?: { plan: PlanNeed; href: string } };
+type Leaf = { label: string; href?: string; perm?: string; plan?: PlanNeed; alt?: { plan: PlanNeed; href: string }; sections?: { key: string; label: string }[] };
 type Item = Leaf & { tabs?: Leaf[]; also?: { href: string; plan?: PlanNeed; perm?: string }[]; hidden?: boolean };
 // util: 상단 유틸(공지 · 문의·도우미)로 여는 화면의 묶음. GNB에는 올리지 않고 그 화면에서만 자기 LNB로 보인다(SA-LNB ⑤)
 type Group = { key: string; label: string; items: Item[]; util?: boolean };
@@ -35,13 +39,12 @@ const MENU: Group[] = [
     key: "home",
     label: "홈",
     // 시작하기(SA-003)는 메뉴에서 빠지고 홈 아래 화면이다(첫 가입 때만 홈 위 띠로 안내)
-    items: [{ label: "홈", plan: "STORE_OPERATIONS", alt: { plan: "OVERLAY", href: "/seller/home-overlay" }, also: [{ href: "/seller/onboarding", plan: "ANY" }] }],
+    items: [{ label: "홈", href: "/seller", plan: "ANY", also: [{ href: "/seller/onboarding", plan: "ANY" }] }],
   },
   {
     key: "broadcast",
     label: "방송",
     items: [
-      { label: "방송 대시보드", href: "/seller/broadcast", perm: "BROADCAST_RUN", plan: "OVERLAY" },
       {
         label: "방송 화면 꾸미기",
         tabs: [
@@ -107,7 +110,7 @@ const MENU: Group[] = [
           { label: "홈 진열", href: "/seller/products/display", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
         ],
       },
-      { label: "엑셀로 올리기 · 내려받기", href: "/seller/products/bulk", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
+      { label: "엑셀로 올리기 · 내려받기", href: "/seller/products/bulk", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS", sections: [{ key: "register", label: "상품 일괄 등록 · 수정" }, { key: "export", label: "내보내기" }, { key: "history", label: "처리 이력" }] },
     ],
   },
   {
@@ -118,7 +121,7 @@ const MENU: Group[] = [
       { label: "회원 목록", href: "/seller/members", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       { label: "회원 등급", href: "/seller/member-grades", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       { label: "구매 제한", href: "/seller/purchase-restrictions", perm: "MEMBER_POINTS", plan: "FOLLOWUP" },
-      { label: "회원에게 알림 보내기", href: "/seller/member-messages", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
+      { label: "회원에게 알림 보내기", href: "/seller/member-messages", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS", sections: [{ key: "list", label: "발송 기록" }, { key: "new", label: "새 발송" }] },
       {
         label: "적립금",
         tabs: [
@@ -157,7 +160,14 @@ const MENU: Group[] = [
     key: "stats",
     label: "통계",
     // 오버레이 전용은 방송 통계만(매출·상품 등은 스토어 운영, MASTER 결정 2026-10-04)
-    items: [{ label: "통계", href: "/seller/stats", perm: "SALES_VIEW", plan: "STORE_OPERATIONS", alt: { plan: "OVERLAY", href: "/seller/stats/broadcasts" } }],
+    items: [{ label: "통계", tabs: [
+      { label: "요약", href: "/seller/stats", perm: "SALES_VIEW", plan: "STORE_OPERATIONS" },
+      { label: "주문", href: "/seller/stats/orders", perm: "SALES_VIEW", plan: "STORE_OPERATIONS" },
+      { label: "매출", href: "/seller/stats/sales", perm: "SALES_VIEW", plan: "STORE_OPERATIONS" },
+      { label: "상품", href: "/seller/stats/products", perm: "SALES_VIEW", plan: "STORE_OPERATIONS" },
+      { label: "회원", href: "/seller/stats/members", perm: "SALES_VIEW", plan: "STORE_OPERATIONS" },
+      { label: "방송", href: "/seller/stats/broadcasts", perm: "SALES_VIEW", plan: "OVERLAY" },
+    ] }],
   },
   {
     key: "settings",
@@ -175,7 +185,7 @@ const MENU: Group[] = [
       {
         label: "약관 · 회원 정책",
         tabs: [
-          { label: "약관", href: "/seller/settings/legal", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
+          { label: "약관", href: "/seller/settings/legal", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS", sections: [{ key: "terms", label: "이용약관" }, { key: "privacy", label: "개인정보처리방침" }, { key: "notice", label: "사업자정보 고지" }] },
           { label: "회원 정책", href: "/seller/settings/member", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
         ],
       },
@@ -220,7 +230,8 @@ function routeNav(pathname: string): { group: Group; item: Item; leaf: Leaf; exa
         ...(item.also ?? []).map((a) => ({ href: a.href, leaf: { ...leavesOf(item)[0], href: a.href, plan: a.plan ?? leavesOf(item)[0].plan, perm: a.perm ?? leavesOf(item)[0].perm } })),
       ];
       for (const { href, leaf } of cands) {
-        if (href && (pathname === href || pathname.startsWith(`${href}/`)) && (!best || href.length > best.len)) best = { group, item, leaf, len: href.length };
+        // 홈(/seller)은 정확히 같을 때만: 접두어로 보면 메뉴 밖 모든 화면이 홈으로 잡힌다
+        if (href && (pathname === href || (href !== "/seller" && pathname.startsWith(`${href}/`))) && (!best || href.length > best.len)) best = { group, item, leaf, len: href.length };
       }
     }
   if (!best) return null;
@@ -234,6 +245,8 @@ function routeCrumb(pathname: string): string {
 }
 // FOLLOWUP은 메뉴를 숨길 때만 쓴다. 주소로 들어온 화면은 서버(ORDER_FOLLOWUP 경로는 기능 권한이 하나라도 있으면 열림)가 막는지에 따른다
 function routePlan(pathname: string): PlanNeed | undefined {
+  // /seller는 요금제에 맞는 홈·첫 메뉴로 보내는 화면이 스스로 판단한다
+  if (pathname === "/seller") return undefined;
   const r = routeNav(pathname);
   const need = ROUTE_PLAN.find(([p]) => pathname.startsWith(p))?.[1] ?? r?.leaf.plan;
   return need === "FOLLOWUP" ? "ANY" : need;
@@ -273,7 +286,8 @@ function visibleMenu(me: Me): ShownGroup[] {
 export function landingFor(me: Me, href: string): string {
   const perm = routeNav(href)?.leaf.perm;
   if (menuAllows(me, routePlan(href)) && (!perm || canFor(me, perm))) return href;
-  return visibleMenu(me).flatMap((g) => g.items).find((n) => !!n.href)?.href ?? href;
+  // 홈(/seller)은 이 판단을 하는 화면 자신이라 건너뛴다(자기에게 다시 보내면 끝없이 돈다)
+  return visibleMenu(me).flatMap((g) => g.items).find((n) => !!n.href && n.href !== "/seller")?.href ?? href;
 }
 
 // loc: 지금 화면의 대분류 · 메뉴 이름(본문 위 경로 줄에 쓴다)
@@ -294,12 +308,17 @@ export function useSeller(): ShellCtx {
 }
 
 export function SellerShell({ children }: { children: React.ReactNode }) {
+  return <Suspense fallback={<div className="st" aria-busy="true"><span className="spin" /></div>}><SellerShellContent>{children}</SellerShellContent></Suspense>;
+}
+
+function SellerShellContent({ children }: { children: React.ReactNode }) {
   useEllipsisTitle();
   useTableCards();
   // 날짜 칸 어디를 눌러도 달력이 열린다(화면마다 따로 걸지 않는다)
   useWholeDateClick();
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [me, setMe] = useState<Me | null>(null);
   const [failed, setFailed] = useState(false);
   const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
@@ -489,11 +508,11 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   // 화면 ←·통합 화면 탭(PageHead가 읽는다): ←는 메뉴로 바로 여는 화면이 아닐 때만, 부모는 그 화면이 속한 메뉴 화면
   const shellNav: ShellNav = {
     backHref: active && !active.exactHref ? (shownItem?.shownTabs.find((t) => t.href && pathname.startsWith(`${t.href}/`))?.href ?? shownItem?.href ?? null) : null,
-    tabs: shownItem && shownItem.shownTabs.length >= 2 ? shownItem.shownTabs.map((t) => ({ label: t.label, href: t.href ?? "", on: t.href === active?.leaf.href })) : [],
+    tabs: [],
   };
   const blocked = (planBlocked?.path === pathname && planBlocked.visit === currentNavGeneration()) || !menuAllows(me, routePlan(pathname));
   // 안내 화면에서 갈 수 있는 첫 화면(만든 메뉴 중 지금 열리는 것)
-  const nextNav = gnbMenu.flatMap((g) => g.items).find((n) => !!n.href && !pathname.startsWith(n.href));
+  const nextNav = gnbMenu.flatMap((g) => g.items).find((n) => !!n.href && n.href !== "/seller" && !pathname.startsWith(n.href));
 
   const utilities = (
     <>
@@ -519,17 +538,16 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
     <Ctx.Provider value={{ me, trialDaysLeft, openNav, can, loc }}>
       <ShellNavProvider value={shellNav}>
       <ConfirmProvider readOnly={!!me.readOnly}>
-      <div className={`cs${navOpen ? " nav-open" : ""}${me.impersonation ? " imp" : ""}`} data-readonly={me.readOnly ? "true" : undefined}>
+      <div className={`cs ${maintenanceStyles.shell}${navOpen ? " nav-open" : ""}${me.impersonation ? " imp" : ""}`} data-readonly={me.readOnly ? "true" : undefined}>
         <header className="gnb">
           <button className="gnb-menu" type="button" aria-label="메뉴 열기" onClick={openNav}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
               <path d="M4 7h16M4 12h16M4 17h16" />
             </svg>
           </button>
-          <Link className="logo gnb-logo" href="/seller/products">
-            <span className="logo-sym" />
-            <span className="logo-word" />
-            <span className="gnb-sub">파트너스</span>
+          <Link className="logo gnb-logo" href="/seller">
+            <Image src={headerSymbol} alt="" width={22} height={22} sizes="22px" style={{ flexShrink: 0, borderRadius: 4, background: "#fff" }} />
+            <span style={{ fontWeight: 800, letterSpacing: "-.02em" }}>파트너스 관리자</span>
           </Link>
           <nav className="gnb-nav" aria-label="주 메뉴">
             {gnbMenu.map((g) => {
@@ -555,6 +573,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
             <span className="util-desk">{utilities}</span>
           </div>
         </header>
+        <MaintenanceBanner key={me.sellerId} scope="seller" checkLive={features.includes("OVERLAY") && can("BROADCAST_RUN")} />
         {me.impersonation && <ImpersonationBar shop={me.shop.name} imp={me.impersonation} />}
         {logoutError && (
           <div className="msg msg-neg logout-err" role="alert">
@@ -566,23 +585,29 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
             {menu.map((g) => (
               <section key={g.key} className={`lnb-sec${g.key === shown?.key ? " on" : ""}`}>
                 <strong className="lnb-h">{g.label}</strong>
-                {g.items.filter((n) => !n.hidden).map((n) =>
-                  n.href ? (
-                    <Link
-                      key={n.label}
-                      className={`lnb-i${active?.item.label === n.label ? " on" : ""}`}
-                      href={n.href}
-                      aria-current={active?.item.label === n.label ? "page" : undefined}
-                      onClick={leaveNav}
-                    >
-                      {n.label}
-                    </Link>
-                  ) : (
-                    <a key={n.label} className="lnb-i off" aria-disabled="true" title="준비 중입니다">
-                      {n.label}
-                    </a>
-                  ),
-                )}
+                {g.items.filter((n) => !n.hidden).map((n) => {
+                  const children = (n.shownTabs.length ? n.shownTabs : [n]).flatMap((leaf) => {
+                    if (!leaf.sections) return [{ label: leaf.label, href: leaf.href, on: active?.item.label === n.label && active.leaf.href === leaf.href }];
+                    const value = searchParams.get("section");
+                    const selected = leaf.sections.some((section) => section.key === value) ? value : leaf.sections[0].key;
+                    return leaf.sections.map((section) => {
+                      const query = new URLSearchParams(pathname === leaf.href ? searchParams.toString() : "");
+                      query.set("section", section.key);
+                      return { label: section.label, href: `${leaf.href}?${query}`, on: pathname === leaf.href && selected === section.key };
+                    });
+                  });
+                  const expanded = n.shownTabs.length > 0 || !!n.sections;
+                  return expanded ? (
+                    <div key={n.label} className="lnb-branch">
+                      <strong className="lnb-parent">{n.label}</strong>
+                      <nav className="lnb-subnav" aria-label={n.label}>
+                        {children.map((leaf) => <Link key={leaf.href} className={`lnb-sub-i${leaf.on ? " on" : ""}`} href={leaf.href ?? ""} aria-current={leaf.on ? "page" : undefined} onClick={leaveNav}>{leaf.label}</Link>)}
+                      </nav>
+                    </div>
+                  ) : n.href ? (
+                    <Link key={n.label} className={`lnb-i${active?.item.label === n.label ? " on" : ""}`} href={n.href} aria-current={active?.item.label === n.label ? "page" : undefined} onClick={leaveNav}>{n.label}</Link>
+                  ) : <a key={n.label} className="lnb-i off" aria-disabled="true" title="준비 중입니다">{n.label}</a>;
+                })}
               </section>
             ))}
             <div className="lnb-util">{utilities}</div>
@@ -632,8 +657,9 @@ function PlanFeatureRequired({ crumb, noFeatures, next }: { crumb: string; noFea
 
 // 화면마다 본문 위에 경로 줄(대분류 › 메뉴 · 오른쪽 버튼)을 넣고, 그 아래에 이용 상태 배너를 붙인다.
 // crumb: 예전 경로 문구. 경로는 메뉴 구조에서 만들고, 하위 화면(주문 상세·이벤트 팝업 등)이면 crumb 마지막 칸을 덧붙인다.
-export function Topbar({ crumb, badge, children }: { crumb: string; badge?: React.ReactNode; children?: React.ReactNode }) {
+export function Topbar({ crumb, showCurrent = false, badge, children }: { crumb: string; showCurrent?: boolean; badge?: React.ReactNode; children?: React.ReactNode }) {
   const { loc } = useSeller();
+  const pathname = usePathname();
   const parts = crumb.split("›").map((p) => p.trim());
   const last = parts[parts.length - 1];
   // 경로 줄: 「대분류 › 메뉴 › 현재 화면」. 앞 항목은 눌러서 갈 수 있다(메뉴 구조에서 만든 경로만 링크)
@@ -643,9 +669,11 @@ export function Topbar({ crumb, badge, children }: { crumb: string; badge?: Reac
         { t: loc.item, href: loc.itemHref },
       ]
     : parts.map((t) => ({ t, href: undefined as string | undefined }));
-  if (loc && !loc.exact && parts.length > 2 && last !== loc.item && last !== loc.group) raw.push({ t: last, href: undefined });
+  if (loc && (!loc.exact || showCurrent) && parts.length > 2 && last !== loc.item && last !== loc.group) raw.push({ t: last, href: undefined });
   // 대분류와 메뉴 이름이 같으면(통계 › 통계) 한 번만
   const shownPath = raw.filter((p, i) => i === 0 || p.t !== raw[i - 1].t);
+  const hideRootPath = pathname === "/seller" && shownPath.every((p) => p.href === pathname) && !badge && !children;
+  if (hideRootPath) return <AccessBanner />;
   return (
     <>
       <div className="loc-bar">
@@ -667,7 +695,6 @@ export function Topbar({ crumb, badge, children }: { crumb: string; badge?: Reac
         <div className="row tb-actions">{children}</div>
       </div>
       <AccessBanner />
-      <RouteTabs className="rtabs-top" />
     </>
   );
 }

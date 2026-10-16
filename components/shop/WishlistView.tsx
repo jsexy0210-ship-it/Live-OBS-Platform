@@ -1,29 +1,43 @@
 "use client";
 
 import Link from "next/link";
+import { Pagination } from "../Pagination";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useConfirm } from "../admin-ui/ConfirmDialog";
 import MyMenu from "./MyMenu";
-import { ProductCard, type ProductCardData } from "./ProductCard";
+import { ProductCard, ProductGrid, type ProductCardData } from "./ProductCard";
+import type { ShopProduct } from "./ProductDetail";
+import { readRecent } from "./RecentProducts";
 import { call } from "./reviewShared";
+import { CART_COUNT_EVENT } from "./ShopChrome";
 import ShopModal from "./ShopModal";
 import "./Cart.css";
 import "./MyMenu.css";
 
-// SH-034 찜(시안 04 SH). 로그인 구매자 전용 API(/api/shop/{slug}/wishlist)로 목록·빼기. 「담기·바로 구매」는 상품 상세·옵션 API가 생기면, 「최근 본 상품」은 그 API가 생기면 붙인다.
-type Item = { productId: string; name: string; price: number; listPrice: number; status: "on_sale" | "sold_out" | "unavailable"; wishedAt: string };
+// SH-034 찜(시안 04 SH). 로그인 구매자 전용 API(/api/shop/{slug}/wishlist)로 목록·빼기. 상품 옵션은 상세 API에서 최신 값을 받아 장바구니에 담는다. 「최근 본 상품」은 상품 상세가 이 기기에 남긴 목록을 탭으로 보여 준다.
+type Item = { productId: string; name: string; price: number; listPrice: number; status: "on_sale" | "sold_out" | "unavailable"; wishedAt: string; isLive: boolean; eventBadge: string | null };
 type View = { kind: "loading" } | { kind: "login" } | { kind: "error" } | { kind: "ok"; items: Item[] };
+type Action = { item: Item; buy: boolean; options: ShopProduct["options"]; optionId: string };
 
 const card = (i: Item): ProductCardData => ({ id: i.productId, name: i.name, price: i.listPrice, salePrice: i.price < i.listPrice ? i.price : null, soldOut: i.status === "sold_out" });
 
 export default function WishlistView({ slug }: { slug: string }) {
   const { confirm } = useConfirm();
+  const router = useRouter();
   const base = `/shop/${encodeURIComponent(slug)}`;
-  const api = `/api/shop/${encodeURIComponent(slug)}/wishlist`;
+  const shopApi = `/api/shop/${encodeURIComponent(slug)}`;
+  const api = `${shopApi}/wishlist`;
   const [view, setView] = useState<View>({ kind: "loading" });
   const [busy, setBusy] = useState(false);
+  const [page, setPage] = useState(1);
   const [confirming, setConfirming] = useState(false);
+  const [action, setAction] = useState<Action | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string; undo?: string[] } | null>(null);
+  const [tab, setTab] = useState<"wish" | "recent">("wish");
+  // 최근 본 상품은 이 기기 localStorage(상품 상세가 남김, 서버 값 없음)
+  const [recent, setRecent] = useState<ProductCardData[]>([]);
+  useEffect(() => setRecent(readRecent(slug)), [slug]);
 
   const load = useCallback(async () => {
     const r = await call<{ items: Item[] }>(api);
@@ -57,6 +71,30 @@ export default function WishlistView({ slug }: { slug: string }) {
     setBusy(false);
   }
 
+  async function addToCart(optionId: string, buy: boolean) {
+    setBusy(true);
+    setMsg(null);
+    const r = await call<{ item: { id: string }; count: number }>(`${shopApi}/cart`, { method: "POST", body: { optionId, quantity: 1 } });
+    setBusy(false);
+    setAction(null);
+    if (!r.ok) return setMsg({ ok: false, text: r.message ?? "담지 못했어요. 잠시 뒤 다시 해 주세요" });
+    window.dispatchEvent(new CustomEvent(CART_COUNT_EVENT, { detail: r.data.count }));
+    if (buy) router.push(`${base}/checkout?ids=${r.data.item.id}`);
+    else setMsg({ ok: true, text: "장바구니에 담았어요" });
+  }
+
+  async function prepareAction(item: Item, buy: boolean) {
+    if (busy || item.status !== "on_sale") return;
+    setBusy(true);
+    setMsg(null);
+    const r = await call<{ product: ShopProduct }>(`${shopApi}/products/${item.productId}`);
+    const options = r.ok ? r.data.product.options.filter((o) => !o.soldOut) : [];
+    setBusy(false);
+    if (!r.ok || options.length === 0) return setMsg({ ok: false, text: r.ok ? "담을 수 있는 옵션이 없어요" : r.message ?? "상품을 불러오지 못했어요" });
+    if (options.length === 1) return void addToCart(options[0].id, buy);
+    setAction({ item, buy, options, optionId: options[0].id });
+  }
+
   const msgEl = msg && (
     <p className={`cart-msg${msg.ok ? "" : " is-err"}`} role="status">
       {msg.text}
@@ -69,6 +107,10 @@ export default function WishlistView({ slug }: { slug: string }) {
   );
 
   const items = view.kind === "ok" ? view.items : [];
+  const pageCount = Math.ceil(items.length / 10);
+  const currentPage = Math.min(page, pageCount || 1);
+  const pageItems = items.slice((currentPage - 1) * 10, currentPage * 10);
+  useEffect(() => { if (view.kind === "ok") setPage(p => Math.min(p, pageCount || 1)); }, [view.kind, pageCount]);
   const out = items.filter((i) => i.status !== "on_sale");
   const body =
     view.kind === "loading" ? (
@@ -100,20 +142,23 @@ export default function WishlistView({ slug }: { slug: string }) {
       </div>
     ) : (
       <>
-        <h2 className="wl-tab">
-          찜 <span>{items.length}</span>
-        </h2>
         {msgEl}
-        <ul className="pc-grid" aria-label="찜한 상품">
-          {items.map((i) => (
+        <ul className="pc-grid wishlist-grid" aria-label="찜한 상품">
+          {pageItems.map((i) => (
             <ProductCard key={i.productId} p={card(i)} href={i.status === "unavailable" ? undefined : `${base}/products/${i.productId}`}>
+              {(i.isLive || i.eventBadge) && <p className="wl-badges">{i.isLive && <span className="wl-badge wl-live">방송 중</span>}{i.eventBadge && <span className="wl-badge wl-deadline">{i.eventBadge}</span>}</p>}
               {i.status === "unavailable" && <p className="cart-tag">지금은 판매하지 않아요</p>}
+              <div className="wl-actions">
+                <button className="btn btn-sm btn-out" type="button" disabled={busy || i.status !== "on_sale"} onClick={() => void prepareAction(i, false)}>담기</button>
+                <button className="btn btn-sm" type="button" disabled={busy || i.status !== "on_sale"} onClick={() => void prepareAction(i, true)}>바로 구매</button>
+              </div>
               <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => void remove([i], "찜에서 뺐어요")}>
                 찜 빼기
               </button>
             </ProductCard>
           ))}
         </ul>
+        {pageCount > 1 && <Pagination page={currentPage} pageCount={pageCount} onChange={setPage} label="찜 페이지 이동" />}
         <div className="cart-tools">
           <button className="btn btn-sm btn-out" type="button" disabled={busy || out.length === 0} onClick={async () => {
               if (await confirm({ tone: "shop", title: `품절 상품 ${out.length}개를 뺄까요?`, body: "찜 목록에서만 빠져요.", confirmLabel: "빼기" })) void remove(out, `${out.length}개를 찜에서 뺐어요`);
@@ -128,14 +173,62 @@ export default function WishlistView({ slug }: { slug: string }) {
     );
 
   return (
-    <div className="shop-wrap cart-wrap">
+    <div className="shop-wrap cart-wrap wishlist-view">
       <div className="cart-head">
-        <h1>찜</h1>
+        <h1>찜 · 최근 본 상품</h1>
       </div>
       <div className="my-wrap">
         <MyMenu slug={slug} />
-        <div>{body}</div>
+        <div>
+          {view.kind === "ok" && (
+            <div className="tabs wl-tabs" role="tablist">
+              {(
+                [
+                  ["wish", "찜", items.length],
+                  ["recent", "최근 본 상품", recent.length],
+                ] as const
+              ).map(([k, label, n]) => (
+                <button key={k} className={`tab${tab === k ? " on" : ""}`} type="button" role="tab" aria-selected={tab === k} onClick={() => { setPage(1); setTab(k); }}>
+                  {label}
+                  <span className="cnt">{n}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {view.kind === "ok" && tab === "recent" ? (
+            recent.length === 0 ? (
+              <div className="cart-empty">
+                <h2>최근 본 상품이 없어요</h2>
+                <p>상품을 둘러보면 이곳에 모여요.</p>
+                <Link className="btn" href={`${base}/products`}>
+                  상품 보러 가기
+                </Link>
+              </div>
+            ) : (
+              <ProductGrid products={recent} label="최근 본 상품" hrefBase={`${base}/products`} />
+            )
+          ) : (
+            body
+          )}
+        </div>
       </div>
+      {action && (
+        <ShopModal
+          title={`${action.item.name} 옵션 선택`}
+          onClose={() => setAction(null)}
+          busy={busy}
+          footer={
+            <>
+              <button className="btn btn-out" type="button" disabled={busy} onClick={() => setAction(null)}>취소</button>
+              <button className="btn" type="button" disabled={busy} onClick={() => void addToCart(action.optionId, action.buy)}>{action.buy ? "바로 구매" : "담기"}</button>
+            </>
+          }
+        >
+          <select className="inp" aria-label="상품 옵션" value={action.optionId} onChange={(e) => setAction({ ...action, optionId: e.target.value })}>
+            {action.options.map((o) => <option key={o.id} value={o.id}>{o.name} · {(o.salePrice ?? o.price).toLocaleString("ko-KR")}원</option>)}
+          </select>
+        </ShopModal>
+      )}
       {confirming && (
         <ShopModal
           title={`${items.length}개를 모두 뺄까요?`}

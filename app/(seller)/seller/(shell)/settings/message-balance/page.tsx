@@ -6,7 +6,7 @@ import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { parseAmount, won } from "../../../../../../components/seller/format";
-import { MESSAGE_FEE_NOTICE } from "../../../../../../components/seller/messageFeeNotice";
+import { MESSAGE_FEE_NOTICE, messagePriceNotice } from "../../../../../../components/seller/messageFeeNotice";
 
 // SA-081 발송·이용 충전(대표자 전용). API: GET·PUT /api/seller/message-balance, POST …/consent, GET …/ledger.
 // 충전: POST …/charges(구독 결제 카드). 금액은 비워 두고 시작하며 확인 창을 거친다. 충전 스위치가 꺼져 있으면 잠근다. 유료 잔액 환불 API는 아직 없다.
@@ -159,7 +159,7 @@ export default function MessageBalancePage() {
     ],
     ["송장 발급·송장 라벨 API", "발송·이용 충전금에서 차감", "외부 업체가 건당 요금을 받는 경우에만 건당 차감합니다. 송장번호 직접 입력과 송장 관리 화면은 비용이 없습니다."],
     ["현금영수증·전자세금계산서 API", "발송·이용 충전금에서 차감", "외부 업체가 건당 요금을 받는 경우에만 건당 차감합니다."],
-  ];
+  ].map(([label, source, description]): [string, string, string] => [label, source, messagePriceNotice(description)]);
 
   const consented = !!b.consent;
   const thresholdNum = parseAmount(threshold);
@@ -239,7 +239,14 @@ export default function MessageBalancePage() {
     <>
       <Topbar crumb="설정 › 쇼핑몰 설정 › 발송·이용 충전" />
       <main className="main">
-        <PageHead title="발송·이용 충전" />
+        <PageHead
+          title="충전금"
+          actions={
+            <button className="btn" type="button" disabled={!b.chargingEnabled || !consented || busy} onClick={openCharge}>
+              충전하기
+            </button>
+          }
+        />
 
         {!b.chargingEnabled && (
           <div className="msg msg-cau" role="note" data-testid="charging-off" style={{ marginBottom: 16 }}>
@@ -267,26 +274,40 @@ export default function MessageBalancePage() {
         )}
 
         <FormSection title="잔액">
-          <FormRow label="유료 잔액" help="직접 충전한 금액 · 환불 신청 가능">
-            <b className="num" data-testid="paid-balance">
-              {won(b.paidBalance)}
-            </b>
-          </FormRow>
-          <FormRow label="무상 잔액" help="이벤트·보상 지급 · 환불 안 됨 · 유료를 먼저 차감">
-            <b className="num" data-testid="free-balance">
-              {won(b.freeBalance)}
-            </b>
-          </FormRow>
-          <FormRow label="거래 메일 제공량" help="플랜 포함 · 이번 달 · 남은 제공량은 이월되지 않습니다">
-            <b className="num" data-testid="mail-quota">
-              {b.mail.sent.toLocaleString("ko-KR")} / {b.mail.quota.toLocaleString("ko-KR")}통
-            </b>
-          </FormRow>
-          <FormRow label="잔액 부족 미발송" help="주문·배송 처리는 그대로 진행됩니다">
-            <b className="num" data-testid="skipped">
-              {b.mail.skippedBalance.toLocaleString("ko-KR")}건
-            </b>
-          </FormRow>
+          <tr>
+            <td colSpan={2} style={{ padding: 0 }}>
+              <div className="bal-cards">
+                <div className="bal-card">
+                  <span className="t-c1 c-alt">유료 잔액</span>
+                  <b className="num t-hl1" data-testid="paid-balance">
+                    {won(b.paidBalance)}
+                  </b>
+                  <span className="t-c1 c-alt">직접 충전한 금액 · 환불 신청 가능</span>
+                </div>
+                <div className="bal-card">
+                  <span className="t-c1 c-alt">무상 잔액</span>
+                  <b className="num t-hl1" data-testid="free-balance">
+                    {won(b.freeBalance)}
+                  </b>
+                  <span className="t-c1 c-alt">이벤트·보상 지급 · 환불 안 됨 · 유료를 먼저 차감</span>
+                </div>
+                <div className="bal-card">
+                  <span className="t-c1 c-alt">거래 메일 제공량 (이번 달)</span>
+                  <b className="num t-hl1" data-testid="mail-quota">
+                    {b.mail.sent.toLocaleString("ko-KR")} / {b.mail.quota.toLocaleString("ko-KR")}통
+                  </b>
+                  <span className="t-c1 c-alt">플랜 포함 · 남은 제공량은 이월되지 않습니다</span>
+                </div>
+                <div className="bal-card">
+                  <span className="t-c1 c-alt">잔액 부족 미발송</span>
+                  <b className="num t-hl1" data-testid="skipped">
+                    {b.mail.skippedBalance.toLocaleString("ko-KR")}건
+                  </b>
+                  <span className="t-c1 c-alt">주문·배송 처리는 그대로 진행됩니다</span>
+                </div>
+              </div>
+            </td>
+          </tr>
         </FormSection>
 
         <div style={{ marginTop: 32 }}>

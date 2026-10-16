@@ -1,12 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import ShopState from "./ShopState";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { CursorPagination } from "../Pagination";
+import Link from "next/link";
+import MyMenu from "./MyMenu";
+import ReviewWrite from "./ReviewWrite";
 import { call, md, stars } from "./reviewShared";
-import "./Reviews.css";
+import ShopBack from "./ShopBack";
 import ShopModal from "./ShopModal";
+import "./Cart.css";
+import "./MyMenu.css";
+import "./Reviews.css";
 
-// SH-029 내 리뷰: 쓸 수 있는 상품(리뷰 쓰기)과 내가 쓴 리뷰(공개 상태·숨김 사유·판매자 답글, 고치기·지우기). API: /api/shop/{slug}/reviews.
+// SH-029 리뷰 쓰기·내 리뷰(한 화면): 위쪽에 리뷰 쓰기·고치기 상자, 아래쪽에 내가 쓴 리뷰 표(공개 상태·숨김 사유·판매자 답글, 고치기·지우기). API: /api/shop/{slug}/reviews.
 type Writable = { orderItemId: string; productName: string; optionName: string; deliveredAt: string | null; writableUntil: string | null };
 type Mine = {
   id: string;
@@ -24,24 +30,32 @@ type Mine = {
   editable: boolean;
 };
 type Data = { writable: Writable[]; writableNextCursor: string | null; reviews: Mine[]; nextCursor: string | null; reward: { text: number; photo: number } };
-const STATUS: Record<Mine["status"], { label: string; cls: string }> = {
-  VISIBLE: { label: "공개", cls: "b-done" },
-  PENDING: { label: "확인 중", cls: "b-wait" },
-  HELD: { label: "확인 중", cls: "b-wait" },
-  HIDDEN: { label: "숨김", cls: "b-cancel" },
-};
+const STATUS: Record<Mine["status"], string> = { VISIBLE: "공개", PENDING: "확인 중", HELD: "확인 중", HIDDEN: "숨김" };
+// 쓰는 중인 대상: 주문 상품(item) 또는 고칠 리뷰(review)
+type Target = { item: string } | { review: string } | null;
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 
-export default function ReviewMine({ slug }: { slug: string }) {
+export default function ReviewMine({ slug, initialItem, initialReview }: { slug: string; initialItem?: string | null; initialReview?: string | null }) {
   const base = `/api/shop/${encodeURIComponent(slug)}/reviews`;
+  const shop = `/shop/${encodeURIComponent(slug)}`;
   const [view, setView] = useState<{ kind: "loading" } | { kind: "login" } | { kind: "error" } | { kind: "ok"; data: Data }>({ kind: "loading" });
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [deleting, setDeleting] = useState<Mine | null>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const seq = useRef(0);
+  const paging = useRef(false);
+  const [pages, setPages] = useState({ writable: 1, reviews: 1 });
+  const [cursors, setCursors] = useState<{ writable: (string | null)[]; reviews: (string | null)[] }>({ writable: [null], reviews: [null] });
+  const [selectedWritable, setSelectedWritable] = useState<Writable | null>(null);
   const [removing, setRemoving] = useState(false);
+  // 고르지 않았으면(undefined) 처음 리뷰를 기다리는 상품을 쓴다. 취소하면 null(상자를 접는다)
+  const [picked, setPicked] = useState<Target | undefined>(initialReview ? { review: initialReview } : initialItem ? { item: initialItem } : undefined);
 
   const load = useCallback(async () => {
+    const n = ++seq.current; paging.current = true;
+    setPages({ writable: 1, reviews: 1 }); setCursors({ writable: [null], reviews: [null] });
     const r = await call<Data>(base);
+    if (n !== seq.current) return;
+    paging.current = false;
     if (r.ok) return setView({ kind: "ok", data: r.data });
     setView(r.status === 401 || r.status === 404 ? { kind: "login" } : { kind: "error" });
   }, [base]);
@@ -50,26 +64,27 @@ export default function ReviewMine({ slug }: { slug: string }) {
     void load();
   }, [load]);
 
-  // 더 보기: 리뷰를 기다리는 상품(writable) 또는 내가 쓴 리뷰(reviews)의 다음 쪽을 이어 붙인다
-  const more = async (list: "writable" | "reviews") => {
-    if (view.kind !== "ok" || loadingMore) return;
-    const cursor = list === "writable" ? view.data.writableNextCursor : view.data.nextCursor;
-    if (!cursor) return;
-    setLoadingMore(true);
-    const r = await call<Data>(`${base}?${list === "writable" ? "writableCursor" : "cursor"}=${cursor}`);
-    setLoadingMore(false);
-    if (!r.ok) return setMsg({ ok: false, text: r.message ?? "더 불러오지 못했어요. 잠시 뒤 다시 해 주세요" });
-    setView((v) =>
-      v.kind !== "ok"
-        ? v
-        : {
-            kind: "ok",
-            data:
-              list === "writable"
-                ? { ...v.data, writable: [...v.data.writable, ...r.data.writable], writableNextCursor: r.data.writableNextCursor }
-                : { ...v.data, reviews: [...v.data.reviews, ...r.data.reviews], nextCursor: r.data.nextCursor },
-          },
-    );
+  const go = async (list: "writable" | "reviews", target: number, cursor: string | null) => {
+    if (view.kind !== "ok" || paging.current) return;
+    if (list === "writable") {
+      const id = picked && "item" in picked ? picked.item : picked === undefined ? view.data.writable[0]?.orderItemId : undefined;
+      const selected = view.data.writable.find(x => x.orderItemId === id);
+      if (selected) { setSelectedWritable(selected); if (picked === undefined) setPicked({ item: selected.orderItemId }); }
+    }
+    const n = ++seq.current; paging.current = true;
+    let actualPage = target; let actualCursor = cursor;
+    const read = () => call<Data>(actualCursor ? `${base}?${list === "writable" ? "writableCursor" : "cursor"}=${encodeURIComponent(actualCursor)}` : base);
+    let r = await read();
+    while (n === seq.current && r.ok && r.data[list].length === 0 && actualPage > 1) {
+      actualPage -= 1; actualCursor = cursors[list][actualPage - 1]; r = await read();
+    }
+    if (n !== seq.current) return;
+    paging.current = false;
+    if (!r.ok) return setMsg({ ok: false, text: r.message ?? "불러오지 못했어요. 다시 시도해 주세요" });
+    setView(v => v.kind !== "ok" ? v : { kind: "ok", data: list === "writable" ? { ...v.data, writable: r.data.writable, writableNextCursor: r.data.writableNextCursor } : { ...v.data, reviews: r.data.reviews, nextCursor: r.data.nextCursor } });
+    setPages(p => ({ ...p, [list]: actualPage }));
+    const next = list === "writable" ? r.data.writableNextCursor : r.data.nextCursor;
+    setCursors(c => { const visited = c[list].slice(0, actualPage); visited[actualPage - 1] = actualCursor; return { ...c, [list]: c[list][actualPage] === next ? c[list] : visited }; });
   };
 
   const remove = async () => {
@@ -82,114 +97,163 @@ export default function ReviewMine({ slug }: { slug: string }) {
     await load();
   };
 
-  if (view.kind === "loading") return <section className="card shop-card" aria-busy="true"><span className="t-l1 c-alt">내 리뷰를 불러오고 있어요</span></section>;
-  if (view.kind === "login") return <ShopState title="로그인이 필요해요" body="이 쇼핑몰에 로그인하면 내 리뷰를 볼 수 있어요." />;
-  if (view.kind === "error")
-    return (
-      <section className="card shop-card col" style={{ gap: 12 }}>
-        <span className="t-l1">내 리뷰를 불러오지 못했어요</span>
-        <button className="btn btn-sm" type="button" style={{ alignSelf: "flex-start" }} onClick={() => void load()}>
+  const saved = (text: string) => {
+    setMsg({ ok: true, text });
+    setPicked(null);
+    void load();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  let content: React.ReactNode;
+  if (view.kind === "loading") content = <p className="shop-empty" aria-busy="true">내 리뷰를 불러오고 있어요</p>;
+  else if (view.kind === "login")
+    content = (
+      <div className="cart-empty">
+        <p>로그인하면 내 리뷰를 볼 수 있어요.</p>
+        <Link className="btn" href={`${shop}/login?next=${encodeURIComponent(`${shop}/reviews`)}`}>
+          로그인
+        </Link>
+      </div>
+    );
+  else if (view.kind === "error")
+    content = (
+      <div className="cart-empty">
+        <p>내 리뷰를 불러오지 못했어요. 연결을 확인하고 다시 시도해 주세요.</p>
+        <button className="btn" type="button" onClick={() => void load()}>
           다시 불러오기
         </button>
-      </section>
+      </div>
     );
-
-  const { data } = view;
-  const rewardHint = data.reward.photo > 0 || data.reward.text > 0 ? `리뷰 쓰면 ${won(Math.max(data.reward.photo, data.reward.text))}까지` : null;
-  return (
-    <section className="card shop-card col rv" aria-labelledby="rv-mine-title">
-      <h1 id="rv-mine-title" className="t-h1">
-        내 리뷰
-      </h1>
-      {msg && (
-        <p className={`msg ${msg.ok ? "msg-pos" : "msg-neg"} t-l2`} role={msg.ok ? "status" : "alert"}>
-          {msg.text}
-        </p>
-      )}
-      {data.writable.length > 0 && (
-        <div className="col" style={{ gap: 4 }}>
-          <span className="t-hl2">리뷰를 기다리는 상품</span>
-          <ul className="rv-list">
-            {data.writable.map((w) => (
-              <li key={w.orderItemId} className="rv-item" style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                <span className="col" style={{ gap: 2 }}>
-                  <span className="t-l1 fw6">{w.productName}</span>
-                  <span className="t-c1 c-alt">
-                    {w.writableUntil ? `${md(w.writableUntil)}까지 쓸 수 있어요` : ""}
-                    {rewardHint ? ` · ${rewardHint}` : ""}
-                  </span>
-                </span>
-                <a className="btn btn-sm" href={`/shop/${encodeURIComponent(slug)}/reviews/write?item=${w.orderItemId}`}>
-                  리뷰 쓰기
-                </a>
-              </li>
-            ))}
-          </ul>
-          {data.writableNextCursor && (
-            <button className="btn btn-sm" type="button" style={{ alignSelf: "center" }} disabled={loadingMore} onClick={() => void more("writable")}>
-              더 보기
-            </button>
-          )}
-        </div>
-      )}
-      <div className="col" style={{ gap: 4 }}>
-        <span className="t-hl2">내가 쓴 리뷰</span>
-        {data.reviews.length === 0 ? (
-          <span className="t-l2 c-alt" style={{ padding: "16px 0" }}>
-            아직 쓴 리뷰가 없어요
-          </span>
+  else {
+    const { data } = view;
+    const target: Target = picked === undefined ? (data.writable[0] ? { item: data.writable[0].orderItemId } : null) : picked;
+    const w = target && "item" in target ? data.writable.find((x) => x.orderItemId === target.item) ?? (selectedWritable?.orderItemId === target.item ? selectedWritable : undefined) : undefined;
+    content = (
+      <>
+        {msg && (
+          <p className={`msg ${msg.ok ? "msg-pos" : "msg-neg"} t-l2`} role={msg.ok ? "status" : "alert"} style={{ display: "block" }}>
+            {msg.text}
+          </p>
+        )}
+        {target ? (
+          <ReviewWrite
+            key={"item" in target ? `i${target.item}` : `r${target.review}`}
+            slug={slug}
+            itemId={"item" in target ? target.item : null}
+            reviewId={"review" in target ? target.review : null}
+            writableUntil={w?.writableUntil}
+            right={
+              "item" in target && w && (data.writable.length > 1 || !data.writable.some(x => x.orderItemId === w.orderItemId)) ? (
+                <select className="inp rv-pick" aria-label="리뷰 쓸 상품" value={target.item} onChange={(e) => { setPicked({ item: e.target.value }); setSelectedWritable(data.writable.find(x => x.orderItemId === e.target.value) ?? null); }}>
+                  {w && !data.writable.some(x => x.orderItemId === w.orderItemId) && <option hidden value={w.orderItemId}>{w.productName}</option>}
+                  {data.writable.map((x) => (
+                    <option key={x.orderItemId} value={x.orderItemId}>
+                      {x.productName}
+                      {x.deliveredAt ? ` · ${md(x.deliveredAt)} 배송` : ""}
+                    </option>
+                  ))}
+                </select>
+              ) : undefined
+            }
+            onSaved={saved}
+            onCancel={"review" in target ? () => setPicked(null) : undefined}
+          />
+        ) : data.writable.length > 0 ? (
+          <div className="rv-box">
+            <div className="rv-box-h">
+              <h2>리뷰 쓰기</h2>
+              <span className="rv-box-r">현재 쪽에서 리뷰를 기다리는 상품 {data.writable.length}개</span>
+            </div>
+            <div className="rv-box-b">
+              <button className="btn" type="button" onClick={() => setPicked({ item: data.writable[0].orderItemId })}>
+                리뷰 쓰기
+              </button>
+            </div>
+          </div>
         ) : (
-          <ul className="rv-list">
-            {data.reviews.map((r) => (
-              <li key={r.id} className="rv-item" data-testid="my-review">
-                <div className="row between">
-                  <span className="t-l1 fw6">{r.productName}</span>
-                  <span className={`bdg ${STATUS[r.status].cls}`}>{STATUS[r.status].label}</span>
-                </div>
-                <span className="t-c1 c-alt">
-                  <span className="rv-mini-stars" aria-label={`${r.rating}점`}>
-                    {stars(r.rating)}
-                  </span>{" "}
-                  · {md(r.createdAt)}
-                  {r.images.length > 0 ? ` · 사진 ${r.images.length}장` : ""}
-                </span>
-                <span className="t-l2" style={{ whiteSpace: "pre-line" }}>
-                  {r.body}
-                </span>
-                {r.status === "HIDDEN" && (
-                  <div className="msg msg-cau t-l2" style={{ display: "block" }}>
-                    <b>이 리뷰는 판매자가 숨겼어요.</b> 사유: {r.hiddenReason}
-                    {r.hiddenNote ? ` (${r.hiddenNote})` : ""}. 궁금하면 판매자에게 문의해 주세요.
-                  </div>
-                )}
-                {(r.status === "PENDING" || r.status === "HELD") && <span className="t-c1 c-alt">판매자가 확인하면 공개돼요</span>}
-                {r.reply && (
-                  <div className="rv-reply">
-                    <span className="t-c1 fw6">판매자{r.repliedAt ? ` · ${md(r.repliedAt)}` : ""}</span>
-                    <span className="t-l2" style={{ whiteSpace: "pre-line" }}>
-                      {r.reply}
-                    </span>
-                  </div>
-                )}
-                <div className="row" style={{ gap: 8 }}>
-                  {r.editable && (
-                    <a className="btn btn-sm btn-out" href={`/shop/${encodeURIComponent(slug)}/reviews/write?review=${r.id}`}>
-                      고치기
-                    </a>
-                  )}
-                  <button className="btn btn-sm btn-text" type="button" onClick={() => setDeleting(r)}>
-                    지우기
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <p className="rv-hint">지금 리뷰를 쓸 수 있는 상품이 없어요. 배송이 끝난 상품은 정해진 기간 안에 리뷰를 쓸 수 있어요.</p>
         )}
-        {data.nextCursor && (
-          <button className="btn btn-sm" type="button" style={{ alignSelf: "center" }} disabled={loadingMore} onClick={() => void more("reviews")}>
-            더 보기
-          </button>
-        )}
+        {(cursors.writable.length > 1 || data.writableNextCursor) && <div role="group" aria-label="리뷰 쓸 상품 페이지"><CursorPagination page={pages.writable} visited={cursors.writable.length} hasNext={!!data.writableNextCursor} onChange={n => void go("writable", n, cursors.writable[n - 1])} onNext={() => { if (data.writableNextCursor) void go("writable", pages.writable + 1, data.writableNextCursor); }} /></div>}
+        <section aria-labelledby="rv-mine-title">
+          <div className="rv-st">
+            <h2 id="rv-mine-title">내 리뷰</h2>
+            <span>현재 쪽 {data.reviews.length}건</span>
+          </div>
+          {data.reviews.length === 0 ? (
+            <p className="rv-hint" style={{ padding: "16px 0" }}>
+              아직 쓴 리뷰가 없어요
+            </p>
+          ) : (
+            <table className="cart-tbl rv-tbl">
+              <thead>
+                <tr>
+                  <th>상품 · 내용</th>
+                  <th className="c-star">별점</th>
+                  <th className="c-st">상태</th>
+                  <th className="c-dt">날짜</th>
+                  <th className="c-act">관리</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.reviews.map((r) => (
+                  <tr key={r.id} data-testid="my-review">
+                    <td>
+                      <b>{r.productName}</b>
+                      <span className="rv-line">{r.body}</span>
+                      {r.images.length > 0 && <span className="rv-line">사진 {r.images.length}장</span>}
+                      {r.status === "HIDDEN" && (
+                        <span className="rv-line rv-hidden">
+                          이 리뷰는 숨겨졌어요 · 사유: {r.hiddenReason}
+                          {r.hiddenNote ? ` (${r.hiddenNote})` : ""}
+                        </span>
+                      )}
+                      {(r.status === "PENDING" || r.status === "HELD") && <span className="rv-line">판매자가 확인하면 공개돼요</span>}
+                      {r.reply && <span className="rv-line">↳ 판매자 답글 · {r.reply}</span>}
+                    </td>
+                    <td className="c-star rv-mini-stars" aria-label={`${r.rating}점`}>
+                      {stars(r.rating)}
+                    </td>
+                    <td className="c-st">{STATUS[r.status]}</td>
+                    <td className="c-dt">{md(r.createdAt)}</td>
+                    <td className="c-act">
+                      {r.editable ? (
+                        <>
+                          <button className="btn btn-sm btn-out" type="button" onClick={() => { setMsg(null); setPicked({ review: r.id }); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+                            고치기
+                          </button>{" "}
+                          <button className="btn btn-sm btn-out" type="button" onClick={() => setDeleting(r)}>
+                            지우기
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="rv-line">{r.status === "HIDDEN" ? "숨김" : "7일 지남"} · 지우기만</span>
+                          <button className="btn btn-sm btn-out" type="button" onClick={() => setDeleting(r)}>
+                            지우기
+                          </button>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {(cursors.reviews.length > 1 || data.nextCursor) && <div role="group" aria-label="내 리뷰 페이지"><CursorPagination page={pages.reviews} visited={cursors.reviews.length} hasNext={!!data.nextCursor} onChange={n => void go("reviews", n, cursors.reviews[n - 1])} onNext={() => { if (data.nextCursor) void go("reviews", pages.reviews + 1, data.nextCursor); }} /></div>}
+        </section>
+      </>
+    );
+  }
+
+  return (
+    <div className="shop-wrap cart-wrap">
+      <ShopBack fallback={`${shop}/me`} label="내 정보" />
+      <div className="cart-head">
+        <h1>내 리뷰</h1>
+      </div>
+      <div className="my-wrap">
+        <MyMenu slug={slug} />
+        <div className="rv-main">{content}</div>
       </div>
       {deleting && (
         <ShopModal
@@ -207,9 +271,9 @@ export default function ReviewMine({ slug }: { slug: string }) {
             </>
           }
         >
-          지운 리뷰는 되돌릴 수 없고, 이 상품 리뷰는 다시 쓸 수 없어요.{deleting.rewardedAmount > 0 ? ` 받은 적립금 ${won(deleting.rewardedAmount)}은 돌려받아요.` : ""}
+          지운 리뷰는 되돌릴 수 없고, 이 상품 리뷰는 다시 쓸 수 없어요.{deleting.rewardedAmount > 0 ? ` 지우면 받은 적립금 ${won(deleting.rewardedAmount)}은 돌려받아요.` : ""}
         </ShopModal>
       )}
-    </section>
+    </div>
   );
 }

@@ -64,8 +64,7 @@ test("기본은 꺼짐. 켜기·끄기 모두 확인 창을 거치고(켤 때 co
   await expect(page.getByRole("heading", { name: "실제 지급 켜기" })).toBeVisible();
   await expect(page.getByTestId("live-pending")).toContainText("건");
   await expect(page.getByTestId("live-conditions")).toContainText("적립 정책 설정 완료");
-  await expect(page.getByTestId("live-status")).toHaveText("꺼짐");
-  await expect(page.getByTestId("live-changed")).toHaveText("변경한 적 없음");
+  await expect(page.getByTestId("live-status")).toContainText("현재 꺼짐");
   await expect(page.getByTestId("live-on")).toHaveCount(0);
 
   await shot(page, "SA-034");
@@ -76,7 +75,7 @@ test("기본은 꺼짐. 켜기·끄기 모두 확인 창을 거치고(켤 때 co
   await expect(dialog).toContainText("로그 추적에 남습니다");
   await dialog.getByRole("button", { name: "취소" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page.getByTestId("live-status")).toHaveText("꺼짐");
+  await expect(page.getByTestId("live-status")).toContainText("현재 꺼짐");
 
   // 확인 창에서 켠다
   await page.getByTestId("live-on-button").click();
@@ -86,14 +85,12 @@ test("기본은 꺼짐. 켜기·끄기 모두 확인 창을 거치고(켤 때 co
   expect(res.status()).toBe(200);
   expect(res.request().postDataJSON()).toEqual({ enabled: true, confirm: true });
   await expect(page.getByText("실제 지급을 켰습니다")).toBeVisible();
-  await expect(page.getByTestId("live-status")).toHaveText("켜짐");
-  await expect(page.getByTestId("live-on")).toBeVisible();
-  await expect(page.getByTestId("live-changed")).toContainText("·");
-  await expect(page.getByTestId("live-changed")).toContainText(/\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}/);
+  await expect(page.getByTestId("live-on")).toContainText("실제 지급 켜짐");
+  await expect(page.getByTestId("live-on")).toContainText(/\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}부터/);
 
   // 다시 열어도 켜져 있다
   await page.reload();
-  await expect(page.getByTestId("live-status")).toHaveText("켜짐");
+  await expect(page.getByTestId("live-on")).toContainText("실제 지급 켜짐");
 
   // 끄기도 확인 창을 거쳐 {enabled:false}
   await page.getByTestId("live-off").click();
@@ -101,7 +98,7 @@ test("기본은 꺼짐. 켜기·끄기 모두 확인 창을 거치고(켤 때 co
   await page.getByRole("dialog", { name: "적립금 실제 지급을 끄시겠습니까?" }).getByRole("button", { name: "실제 지급 끄기" }).click();
   expect((await off).request().postDataJSON()).toEqual({ enabled: false });
   await expect(page.getByText("실제 지급을 껐습니다")).toBeVisible();
-  await expect(page.getByTestId("live-status")).toHaveText("꺼짐");
+  await expect(page.getByTestId("live-status")).toContainText("현재 꺼짐");
   await expect(page.getByTestId("live-on")).toHaveCount(0);
   // 전환 이력: 끔 · 켬이 최근 순으로 남는다
   await expect(page.getByTestId("live-history").locator("tbody tr").first()).toContainText("끔");

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import MarketingConsent from "../../../../../../components/shop/MarketingConsent";
+import NotificationPrefs from "../../../../../../components/shop/NotificationPrefs";
 import { prisma } from "../../../../../../lib/server/db";
 
 export const dynamic = "force-dynamic";
@@ -17,13 +17,9 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   return { title: shop ? `알림 설정 · ${shop.shopName}` : "알림 설정" };
 }
 
-// SH-025 알림 설정(마이페이지): 마케팅 정보 수신 동의를 켜고 끈다. API: GET·PUT /api/shop/{slug}/me/marketing-consent(로그인한 회원만).
+// SH-025 알림 설정(마이페이지): 알림 종류 × 알림톡·문자/이메일. API: GET·PUT /api/shop/{slug}/me/notification-prefs(로그인한 회원만).
 export default async function ShopNotificationsPage({ params }: Params) {
   const shop = await findShop((await params).slug);
   if (!shop) notFound();
-  return (
-    <>
-      <MarketingConsent slug={shop.slug} shopName={shop.shopName} />
-    </>
-  );
+  return <NotificationPrefs slug={shop.slug} shopName={shop.shopName} />;
 }

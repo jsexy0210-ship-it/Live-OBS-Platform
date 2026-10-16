@@ -1,7 +1,6 @@
 import type { Prisma, PrismaClient, ShopNotice, ShopNoticeKind } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { notFound } from "../authz/errors";
-import { shopOpen } from "../buyers/signup";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
 import { cleanText } from "../text/clean";
 
@@ -10,7 +9,7 @@ import { cleanText } from "../text/clean";
 // - 공지는 최신순. 홈 띠 고정 공지는 쇼핑몰당 1개(공개 공지만): 새로 고정하면 이전 고정은 풀린다. 비공개로 바꾸면 고정도 풀린다.
 // - 질문은 분류(선택)와 순서(sortOrder)가 있고, 구매자 화면은 순서대로 본문까지 한 번에 받는다(접고 펼치기). 검색어로 좁힐 수 있다(문의 작성 전 제안).
 // - 쓰기는 쇼핑몰 행 잠금 아래에서 개수·고정·순서를 판단한다.
-// - 구매자 조회는 로그인 없이, 운영 중인 쇼핑몰(shopOpen)의 공개 글만.
+// - 구매자 조회는 로그인 없이, 활성 쇼핑몰의 게시된 공개 글만(준비 중·일시 정지에도 고객센터 열람).
 
 type Db = PrismaClient | Prisma.TransactionClient;
 type Tx = Prisma.TransactionClient;
@@ -21,7 +20,7 @@ export const FAQ_LIMIT = 100;
 export const TITLE_MAX = 60;
 export const BODY_MAX = 5000;
 export const CATEGORY_MAX = 20;
-export const PUBLIC_PAGE_SIZE = 20;
+export const PUBLIC_PAGE_SIZE = 10;
 
 export type NoticeRejection = "invalid_kind" | "invalid_title" | "invalid_body" | "invalid_category" | "invalid_pin" | "too_many" | "order_conflict";
 
@@ -54,7 +53,7 @@ function parseInput(kind: ShopNoticeKind, raw: unknown): { ok: true; v: Input } 
   const body = cleanText(b.body, BODY_MAX, "multiline");
   if (!body) return { ok: false, reason: "invalid_body" };
   let category: string | null = null;
-  if (kind === "FAQ" && b.category !== undefined && b.category !== null && !(typeof b.category === "string" && b.category.trim() === "")) {
+  if (b.category !== undefined && b.category !== null && !(typeof b.category === "string" && b.category.trim() === "")) {
     category = cleanText(b.category, CATEGORY_MAX);
     if (!category) return { ok: false, reason: "invalid_category" };
   }
@@ -167,8 +166,8 @@ export async function reorderFaqs(db: PrismaClient, ctx: TenantContext, raw: unk
 // ───────── 구매자(로그인 없이) ─────────
 
 async function openShop(db: PrismaClient, slug: string) {
-  const shop = await db.seller.findUnique({ where: { slug: slug.slice(0, 60) }, select: { id: true } });
-  return shop && (await shopOpen(db, shop.id)) ? shop.id : null;
+  const shop = await db.seller.findUnique({ where: { slug: slug.slice(0, 60) }, select: { id: true, status: true } });
+  return shop?.status === "ACTIVE" ? shop.id : null;
 }
 
 // 공지 목록(최신순, ?cursor=마지막 공지 id). 고정 공지(홈 띠)는 pinned로 따로 준다. 본문은 상세에서.
@@ -178,12 +177,12 @@ export async function publicNotices(db: PrismaClient, slug: string, cursor?: str
   const where = { sellerId, kind: "NOTICE" as const, isPublished: true };
   const at = isUuid(cursor) ? await db.shopNotice.findFirst({ where: { ...where, id: cursor }, select: { id: true, createdAt: true } }) : null;
   const [pinned, rows] = await Promise.all([
-    db.shopNotice.findFirst({ where: { ...where, isPinned: true }, select: { id: true, title: true, createdAt: true } }),
+    db.shopNotice.findFirst({ where: { ...where, isPinned: true }, select: { id: true, title: true, category: true, createdAt: true } }),
     db.shopNotice.findMany({
       where: { ...where, ...(at ? { OR: [{ createdAt: { lt: at.createdAt } }, { createdAt: at.createdAt, id: { lt: at.id } }] } : {}) },
       orderBy: orderBy("NOTICE"),
       take: PUBLIC_PAGE_SIZE + 1,
-      select: { id: true, title: true, isPinned: true, createdAt: true },
+      select: { id: true, title: true, category: true, isPinned: true, createdAt: true },
     }),
   ]);
   const notices = rows.slice(0, PUBLIC_PAGE_SIZE);
@@ -193,7 +192,7 @@ export async function publicNotices(db: PrismaClient, slug: string, cursor?: str
 export async function publicNotice(db: PrismaClient, slug: string, id: string) {
   const sellerId = await openShop(db, slug);
   if (!sellerId || !isUuid(id)) return null;
-  return db.shopNotice.findFirst({ where: { id, sellerId, kind: "NOTICE", isPublished: true }, select: { id: true, title: true, body: true, isPinned: true, createdAt: true, updatedAt: true } });
+  return db.shopNotice.findFirst({ where: { id, sellerId, kind: "NOTICE", isPublished: true }, select: { id: true, title: true, body: true, category: true, isPinned: true, createdAt: true, updatedAt: true } });
 }
 
 // 자주 묻는 질문(순서대로, 본문 포함). ?q=검색어(제목·본문·분류, 2~40자)로 좁히면 문의 작성 전 제안에 쓴다. categories는 쓰인 분류(첫 등장 순).

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
-import { PageHead, SearchBox, SearchRow, useConfirm } from "../../../../../../components/admin-ui";
+import { CursorPagination, PageHead, SearchBox, SearchRow, useConfirm } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { DatePicker } from "../../../../../../components/admin-ui/DatePicker";
 import { MAX_SEARCH_LENGTH } from "../../../../../../components/seller/format";
@@ -16,7 +16,7 @@ import { PLAN_FILTER, won } from "../../../_components/partners";
 import { safeUrl } from "../../../_components/payments";
 import { useListFilters } from "../../../_components/useListFilters";
 
-// MA-024 청구·결제 내역(구독료, GET /api/admin/billing/invoices, 모든 마스터 역할 조회). 정본: design/project/MA-024.dc.html(FINAL v287).
+// MA-024 청구·결제 내역(구독료, GET /api/admin/billing/invoices, 모든 마스터 역할 조회). 정본: design/project/MA-024.dc.html(FINAL v317).
 // 월 선택(이전 달·이번 달·기간 지정) → 월 요약 5칸 → 검색(상태·요금제·파트너스·실패만) → 목록(예정 청구가 같은 표에 섞여 나옴). 조건은 주소에 남는다.
 // 「실패 건 재시도」는 최고관리자·운영만(billing.manage)이고 등록된 카드로 실제 결제를 시도하므로 확인 창을 거친다. 내보내기는 같은 조건의 CSV.
 type State = "PAID" | "PENDING" | "RETRYING" | "OVERDUE" | "FAILED" | "REFUNDED" | "SCHEDULED";
@@ -40,7 +40,7 @@ type Item = {
 type Summary = {
   total: { count: number; amount: number };
   paid: { count: number; amount: number };
-  failed: { count: number; amount: number; retrying: number; overdue: number };
+  failed: { count: number; amount: number; retrying: number; overdue: number; terminal: number };
   pending: { count: number };
   refunded: { count: number; amount: number };
   scheduled: { count: number; estimatedAmount: number };
@@ -48,7 +48,7 @@ type Summary = {
 type Data = { range: { from: string; to: string }; summary: Summary; items: Item[]; total: number; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; data: Data };
 // 기간은 이 화면의 월 선택(이전 달·이번 달·기간 지정)이 정본이라 공통 기본 기간(최근 1개월)을 쓰지 않는다. 최신순은 서버 고정, 쪽 크기는 공통 20.
-const EMPTY = listDefaults({ month: "", from: "", to: "", state: "", plan: "", q: "", failedOnly: "", sellerId: "" }, { period: null });
+const EMPTY = listDefaults({ size: "10", month: "", from: "", to: "", state: "", plan: "", q: "", failedOnly: "", sellerId: "" }, { period: null });
 type Filters = typeof EMPTY;
 const SEARCH_KEYS = ["state", "plan", "q", "failedOnly"] as const;
 
@@ -61,7 +61,7 @@ const STATE: Record<State, { label: string; cls: string }> = {
   REFUNDED: { label: "환불 완료", cls: "b-gray" },
   SCHEDULED: { label: "예정", cls: "b-info" },
 };
-// 정본의 상태 선택지(진행 중·실패는 목록에는 나오지만 정본 선택지에는 없다)
+// 정본의 상태 선택지(진행 중은 목록에만 나오고, 종료된 실패는 「실패 · 재시도」에 포함한다)
 const STATE_OPTIONS: State[] = ["PAID", "RETRYING", "SCHEDULED", "REFUNDED", "OVERDUE"];
 const RECEIPT = { ISSUED: "발행", NOT_ISSUED: "미발행", CANCELED: "취소", SCHEDULED: "예정" } as const;
 const RETRY_REASON: Record<string, string> = {
@@ -98,22 +98,26 @@ function Invoices() {
   const { confirm } = useConfirm();
   const { applied, draft, setDraft, apply } = useListFilters<Filters>(EMPTY);
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
+  const [cursorPage, setCursorPage] = useState(1);
+  const paging = useRef(false);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [custom, setCustom] = useState(false);
   const [rangeError, setRangeError] = useState(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
-  const cursor = cursors[cursors.length - 1];
+  const cursor = cursors[cursorPage - 1];
   const key = JSON.stringify({ applied, cursor });
   const reqId = useRef(0);
 
   const load = useCallback(
     async (silent = false) => {
       const id = ++reqId.current;
+      paging.current = true;
       if (!silent) setState({ kind: "loading" });
-      const p = params(applied, { limit: applied.size });
+      const p = params(applied, { limit: "10" });
       if (cursor) p.set("cursor", cursor);
       const r = await adminApi<Data>(`/api/admin/billing/invoices?${p}`);
       if (id !== reqId.current) return;
+      paging.current = false;
       if (r.ok) setState({ kind: "ok", data: r.data });
       else if (!silent) setState({ kind: "error" });
     },
@@ -131,6 +135,7 @@ function Invoices() {
   const activeMonth = customActive ? "" : applied.month || thisMonth;
   const go = (next: Filters) => {
     setCursors([null]);
+    setCursorPage(1);
     apply(next);
   };
   const pickMonth = (m: string) => {
@@ -191,6 +196,7 @@ function Invoices() {
       <main className="main">
         <PageHead
           title="청구 · 결제"
+          description="기간별 청구 내역과 결제 결과를 확인합니다."
           actions={
             <>
               {canRetry && (
@@ -219,7 +225,7 @@ function Invoices() {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }} data-testid="invoice-summary">
               {kpi(`${label} 청구`, `${s.total.count}건`, won(s.total.amount))}
               {kpi("결제 완료", `${s.paid.count}`, won(s.paid.amount))}
-              {kpi("실패 · 재시도 중", `${s.failed.count}`, s.failed.count > 0 ? `재시도 중 ${s.failed.retrying} · 연체 ${s.failed.overdue}` : undefined, s.failed.count > 0)}
+              {kpi("실패 · 재시도 중", `${s.failed.count}`, s.failed.count > 0 ? `재시도 중 ${s.failed.retrying} · 연체 ${s.failed.overdue} · 실패 ${s.failed.terminal}` : undefined, s.failed.count > 0)}
               {kpi("예정 (미도래)", `${s.scheduled.count}`, s.scheduled.count > 0 ? `예상 ${won(s.scheduled.estimatedAmount)}` : undefined)}
               {kpi("환불", `${s.refunded.count}`, s.refunded.count > 0 ? won(s.refunded.amount) : undefined)}
             </div>
@@ -237,7 +243,16 @@ function Invoices() {
                 )}
               </SearchRow>
             )}
-            <SearchRow label="상태">
+            <SearchRow label="상태" label2="요금제" children2={
+              <select className="inp" aria-label="요금제" value={draft.plan} onChange={(e) => setDraft({ ...draft, plan: e.target.value })}>
+                <option value="">전체</option>
+                {PLAN_FILTER.map((p) => (
+                  <option key={p.code} value={p.code}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            }>
               <select className="inp" aria-label="상태" value={draft.state} onChange={(e) => setDraft({ ...draft, state: e.target.value })}>
                 <option value="">전체</option>
                 {STATE_OPTIONS.map((v) => (
@@ -247,24 +262,13 @@ function Invoices() {
                 ))}
               </select>
             </SearchRow>
-            <SearchRow label="요금제">
-              <select className="inp" aria-label="요금제" value={draft.plan} onChange={(e) => setDraft({ ...draft, plan: e.target.value })}>
-                <option value="">전체</option>
-                {PLAN_FILTER.map((p) => (
-                  <option key={p.code} value={p.code}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
-            </SearchRow>
-            <SearchRow label="파트너스">
-              <input className="inp" type="search" aria-label="파트너스" placeholder="쇼핑몰 이름 · 주소" maxLength={MAX_SEARCH_LENGTH} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
-            </SearchRow>
-            <SearchRow label="기타">
+            <SearchRow label="파트너스" label2="기타" children2={
               <label className="chk">
                 <input className="chkbox" type="checkbox" checked={draft.failedOnly === "1"} onChange={(e) => setDraft({ ...draft, failedOnly: e.target.checked ? "1" : "" })} />
                 결제 실패 · 재시도만
               </label>
+            }>
+              <input className="inp" type="search" aria-label="파트너스" placeholder="쇼핑몰 이름 · 주소" maxLength={MAX_SEARCH_LENGTH} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
             </SearchRow>
           </SearchBox>
           {applied.sellerId && (
@@ -356,7 +360,7 @@ function Invoices() {
                               <td>
                                 <div className="acts2">
                                   <Link className="btn btn-sm btn-out" href={detail}>
-                                    상세
+                                    {i.paymentId ? "상세" : "파트너스 상세"}
                                   </Link>
                                 </div>
                               </td>
@@ -367,14 +371,7 @@ function Invoices() {
                     </table>
                   </div>
                   {(cursors.length > 1 || state.data.nextCursor) && (
-                    <div className="row" style={{ gap: 8, justifyContent: "center", padding: 12 }}>
-                      <button className="btn btn-sm btn-out" type="button" disabled={cursors.length <= 1} onClick={() => setCursors((c) => c.slice(0, -1))}>
-                        ‹ 이전
-                      </button>
-                      <button className="btn btn-sm btn-out" type="button" disabled={!state.data.nextCursor} onClick={() => state.data.nextCursor && setCursors((c) => [...c, state.data.nextCursor])}>
-                        다음 ›
-                      </button>
-                    </div>
+                    <CursorPagination page={cursorPage} visited={cursors.length} hasNext={!!state.data.nextCursor} onChange={(page) => { if (state.kind !== "ok" || paging.current || page === cursorPage) return; paging.current = true; setCursorPage(page); }} onNext={() => { if (state.kind === "ok" && !paging.current && state.data.nextCursor) { paging.current = true; setCursors(c => c.length === cursorPage ? [...c, state.data.nextCursor] : c); setCursorPage(cursorPage + 1); } }} />
                   )}
                 </>
               ))}

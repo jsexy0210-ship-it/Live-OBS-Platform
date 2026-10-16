@@ -111,35 +111,57 @@ export default function MemberSettingsPage() {
                     <span id="rj-help">
                       {!available && !enabled
                         ? "회원이 보관 동의를 취소할 수 있는 화면이 준비되면 켤 수 있습니다"
-                        : enabled
-                          ? `정한 기간(${label(days)}) 동안 같은 사람이 다시 가입할 수 없습니다`
-                          : "꺼 두면 탈퇴한 사람도 바로 다시 가입할 수 있습니다 · 기본 꺼짐"}
+                        : "켜면 정한 기간 동안 같은 사람(본인인증 기준)이 다시 가입할 수 없습니다 · 가입 화면에는 「지금은 다시 가입할 수 없어요」"}
                     </span>
                   }
                 >
-                  <button
-                    className={`sw${enabled ? " on" : ""}`}
-                    type="button"
-                    role="switch"
-                    aria-checked={enabled}
-                    aria-label="탈퇴한 사람 다시 가입 막기"
-                    aria-describedby="rj-help"
-                    disabled={!available && !enabled}
-                    onClick={() => setEnabled((v) => !v)}
-                  />
+                  <div className="row" style={{ gap: 16 }} role="radiogroup" aria-label="탈퇴한 사람 다시 가입 막기" aria-describedby="rj-help">
+                    <label className="chk">
+                      <input type="radio" name="rj" checked={!enabled} onChange={() => setEnabled(false)} />
+                      끔 (기본)
+                    </label>
+                    <label className="chk">
+                      <input type="radio" name="rj" checked={enabled} disabled={!available && !enabled} onChange={() => setEnabled(true)} />켬
+                    </label>
+                  </div>
                 </FormRow>
-                {enabled && (
-                  <FormRow label="제한 기간">
-                    <div className="seg" role="radiogroup" aria-label="제한 기간">
-                      {choices.map((d) => (
-                        <button key={d} type="button" role="radio" aria-checked={days === d} className={days === d ? "on" : ""} onClick={() => setDays(d)}>
-                          {label(d)}
-                        </button>
-                      ))}
-                    </div>
-                  </FormRow>
-                )}
+                <FormRow label="제한 기간" htmlFor="rj-days" help="기간이 지나면 다시 가입 가능">
+                  <select id="rj-days" className="inp" style={{ width: 120 }} value={days} disabled={!enabled} onChange={(e) => setDays(Number(e.target.value))}>
+                    {choices.map((d) => (
+                      <option key={d} value={d}>
+                        {label(d)}
+                      </option>
+                    ))}
+                  </select>
+                </FormRow>
+                <FormRow label="보관 동의">
+                  <span className="t-l2">켜면 회원가입 동의 항목에 「재가입 제한 정보 보관」 줄이 추가됩니다 · 개인정보처리방침 2-(3) 항목 자동 표시</span>
+                </FormRow>
               </FormSection>
+
+              <div style={{ marginTop: 32 }}>
+                <FormSection title="탈퇴 회원 처리">
+                  <FormRow label="탈퇴 즉시" help="결제를 마쳤는데 배송이 끝나지 않은 주문이 있으면 탈퇴가 보류됩니다 · 배송이 끝난 뒤 다시 신청">
+                    <span className="t-l2">로그인 차단 · 적립금 · 쿠폰 소멸 · 결제 대기 주문은 취소</span>
+                  </FormRow>
+                  <FormRow label="기록 보관">
+                    <span className="t-l2">주문 · 결제 기록은 전자상거래법 기간(5년) 보관 · 조회만 가능</span>
+                  </FormRow>
+                </FormSection>
+              </div>
+
+              <div style={{ marginTop: 32 }}>
+                <FormSection title="구매자에게 보이는 안내">
+                  <tr>
+                    <td colSpan={2} style={{ padding: 0 }}>
+                      <div className="card pad col" style={{ gap: 4, maxWidth: 420 }}>
+                        <span className="t-l1 fw6">지금은 다시 가입할 수 없어요</span>
+                        <span className="t-c1 c-alt">탈퇴한 날부터 {days}일이 지나면 다시 가입할 수 있어요</span>
+                      </div>
+                    </td>
+                  </tr>
+                </FormSection>
+              </div>
               <p className="help" style={{ marginTop: 16 }}>
                 이 기능을 켜면 가입할 때 「탈퇴 기록 보관」에 동의를 따로 받습니다. 이미 가입한 회원은 가입할 때 동의한 기간까지만 막습니다. 이 기능을 끄면 보관하던 탈퇴 회원 기록이 바로 지워집니다.
               </p>
