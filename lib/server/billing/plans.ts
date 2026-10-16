@@ -68,7 +68,7 @@ export async function updatePlanPrice(
 const PRICE_HISTORY_START = new Date("2000-01-01T00:00:00Z");
 
 // 가장 최근 가격 변경의 고지 대상: 그 변경 전에 구독을 시작해 아직 구독 중인 판매자의 대표자.
-// 메일·알림톡 발송은 알림 기능이 생길 때 연결한다.
+// 실제 발송은 billing/priceNoticeSend.ts(메일·파트너스 공지, 수동 실행)가 하고 수령 기록을 남긴다. 알림톡은 연결된 발송 경로가 없어 만들지 않는다.
 export async function listPriceChangeNoticeTargets(db: PrismaClient, admin: AdminSessionContext, code = "STANDARD") {
   if (!adminCan(admin.admin.role, "billing.price")) throw forbidden();
   const plan = await db.subscriptionPlan.findUnique({ where: { code } });
