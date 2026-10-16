@@ -8,6 +8,7 @@ import { MAX_CATEGORIES_PER_PRODUCT, listCategories, setProductCategories } from
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { formatCsv, guardText, parseCsv, unguardText } from "./csv";
 import { recordExport } from "./exports";
+import { XLSX_MAX_BYTES, readXlsx, writeXlsx } from "./xlsx";
 
 // 엑셀(CSV) 일괄 등록·내보내기(SA-018, PRODUCT_MANAGE). 규칙:
 // - 파일은 UTF-8 CSV(엑셀에서 「CSV UTF-8」로 저장). 열: 상품명·판매가·상태·설명·차감시점·카테고리·옵션명·옵션추가금·재고·SKU. 옵션마다 한 줄이고, 상품명을 비운 줄은 앞 상품의 옵션이다.
@@ -35,6 +36,8 @@ const LABEL_BY_DEDUCT: Record<StockDeductMode, string> = { PAYMENT: "결제 시"
 // 화면 문구(파트너스 관리자: 합니다체)
 export const BULK_MESSAGES = {
   file_too_large: "파일이 너무 큽니다. 1MB 이하로 나누어 올려 주십시오",
+  xlsx_too_large: "파일이 너무 큽니다. 5MB 이하로 나누어 올려 주십시오",
+  invalid_xlsx: "엑셀 파일을 읽을 수 없습니다. .xlsx 형식의 파일인지 확인해 주십시오",
   invalid_csv: "파일을 읽을 수 없습니다. 엑셀에서 「CSV UTF-8」로 저장했는지 확인해 주십시오",
   invalid_header: "첫 줄의 열 이름이 양식과 다릅니다. 양식을 다시 내려받아 사용해 주십시오",
   too_many_rows: `한 번에 ${MAX_IMPORT_ROWS}줄까지 올릴 수 있습니다. 나누어 올려 주십시오`,
@@ -53,9 +56,9 @@ export const bulkErrorBody = (reason: BulkFailure) => ({ error: reason, message:
 export const bulkFailureStatus = (reason: BulkFailure) =>
   reason === "job_not_found"
     ? 404
-    : reason === "file_too_large"
+    : reason === "file_too_large" || reason === "xlsx_too_large"
       ? 413
-      : reason === "invalid_csv" || reason === "invalid_header" || reason === "too_many_rows" || reason === "empty_file"
+      : reason === "invalid_csv" || reason === "invalid_xlsx" || reason === "invalid_header" || reason === "too_many_rows" || reason === "empty_file"
         ? 400
         : 409;
 
@@ -78,14 +81,14 @@ export type RowError = { row: number; column: Column | null; message: string };
 type ImportProduct = { row: number; input: Record<string, unknown>; categoryIds: string[]; categories: string[] };
 type Result<T> = { ok: true; value: T } | { ok: false; reason: BulkFailure };
 
-export function templateCsv(): string {
-  return formatCsv([
-    [...COLUMNS],
-    ["부스터 팩", "5000", "판매중", "신상 부스터 팩입니다", "결제 시", "카드>부스터", "기본", "0", "30", "BP-001"],
-    ["슬리브 세트", "3000", "판매중", "", "결제 시", "", "검정", "0", "10", "SL-B"],
-    ["", "", "", "", "", "", "흰색", "500", "5", "SL-W"],
-  ]);
-}
+const TEMPLATE_ROWS: string[][] = [
+  [...COLUMNS],
+  ["부스터 팩", "5000", "판매중", "신상 부스터 팩입니다", "결제 시", "카드>부스터", "기본", "0", "30", "BP-001"],
+  ["슬리브 세트", "3000", "판매중", "", "결제 시", "", "검정", "0", "10", "SL-B"],
+  ["", "", "", "", "", "", "흰색", "500", "5", "SL-W"],
+];
+export const templateCsv = (): string => formatCsv(TEMPLATE_ROWS);
+export const templateXlsx = (): Buffer => writeXlsx(TEMPLATE_ROWS, "상품 일괄 등록");
 
 // 카테고리 이름 → id. 「상위>하위」 또는 「상위」, 여러 개는 「|」로 잇는다. 같은 이름이 여럿이면 어느 것인지 알 수 없어 오류.
 function categoryIndex(tree: Awaited<ReturnType<typeof listCategories>>) {
@@ -105,14 +108,18 @@ const intCell = (raw: string, money: boolean): number | null => {
   return Number.isSafeInteger(n) ? n : null;
 };
 
-export function parseProductCsv(
-  text: string,
-  categories: Map<string, string[]>,
-): Result<{ totalRows: number; products: ImportProduct[]; errors: RowError[]; skippedProducts: number }> {
+type Parsed = { totalRows: number; products: ImportProduct[]; errors: RowError[]; skippedProducts: number };
+
+export function parseProductCsv(text: string, categories: Map<string, string[]>): Result<Parsed> {
   if (text.length > MAX_IMPORT_CHARS) return { ok: false, reason: "file_too_large" };
   const csv = parseCsv(text);
   if (!csv.ok) return { ok: false, reason: "invalid_csv" };
-  const [head, ...body] = csv.rows;
+  return parseProductRows(csv.rows, categories);
+}
+
+// 파일 형식(CSV·엑셀)과 상관없는 검증. rows[0]이 열 이름, 이후 줄 번호는 위치 + 1(엑셀 화면의 행 번호).
+export function parseProductRows(rows: string[][], categories: Map<string, string[]>): Result<Parsed> {
+  const [head, ...body] = rows;
   if (!head) return { ok: false, reason: "invalid_header" };
   const names = head.map((h) => h.trim());
   const index = new Map<string, number>();
@@ -220,10 +227,22 @@ type Failure = { row: number; name: string; message: string };
 export async function previewProductImport(db: PrismaClient, ctx: TenantContext, raw: { csv: unknown; fileName?: unknown }): Promise<Result<unknown>> {
   requireSellerPermission(ctx, "PRODUCT_MANAGE");
   if (typeof raw.csv !== "string") return { ok: false, reason: "invalid_csv" };
-  const parsed = parseProductCsv(raw.csv, categoryIndex(await listCategories(db, ctx)));
+  return createPreview(db, ctx, parseProductCsv(raw.csv, categoryIndex(await listCategories(db, ctx))), raw.fileName);
+}
+
+// 엑셀(.xlsx, 5MB까지) 미리보기. 첫 시트의 첫 줄이 열 이름이고, 검증·응답은 CSV와 같다(parseProductRows).
+export async function previewProductImportXlsx(db: PrismaClient, ctx: TenantContext, raw: { bytes: Buffer; fileName?: unknown }): Promise<Result<unknown>> {
+  requireSellerPermission(ctx, "PRODUCT_MANAGE");
+  if (raw.bytes.length > XLSX_MAX_BYTES) return { ok: false, reason: "xlsx_too_large" };
+  const sheet = readXlsx(raw.bytes);
+  if (!sheet.ok) return { ok: false, reason: sheet.reason === "too_many_rows" ? "too_many_rows" : sheet.reason };
+  return createPreview(db, ctx, parseProductRows(sheet.rows, categoryIndex(await listCategories(db, ctx))), raw.fileName);
+}
+
+async function createPreview(db: PrismaClient, ctx: TenantContext, parsed: Result<Parsed>, rawName: unknown): Promise<Result<unknown>> {
   if (!parsed.ok) return parsed;
   const { totalRows, products, errors, skippedProducts } = parsed.value;
-  const fileName = typeof raw.fileName === "string" && raw.fileName.trim() ? raw.fileName.trim().slice(0, 100) : null;
+  const fileName = typeof rawName === "string" && rawName.trim() ? rawName.trim().slice(0, 100) : null;
   const job = await db.bulkJob.create({
     data: {
       sellerId: ctx.sellerId,
@@ -406,6 +425,17 @@ export async function getBulkJob(db: PrismaClient, ctx: TenantContext, jobId: st
 
 // 상품 내보내기: 양식과 같은 열이라 고쳐서 다시 올리는 데 쓸 수 있다(올리면 새 상품으로 등록된다). 지운 상품은 뺀다. 개인정보 없음.
 export async function exportProductsCsv(db: PrismaClient, ctx: TenantContext): Promise<Result<{ csv: string; count: number }>> {
+  const r = await exportProductRows(db, ctx);
+  return r.ok ? { ok: true, value: { csv: formatCsv(r.value.rows), count: r.value.count } } : r;
+}
+
+// 같은 내용을 엑셀(.xlsx)로. 수식처럼 보이는 글자 앞의 작은따옴표 보호는 CSV와 같아 다시 올리면 그대로 돌아온다.
+export async function exportProductsXlsx(db: PrismaClient, ctx: TenantContext): Promise<Result<{ xlsx: Buffer; count: number }>> {
+  const r = await exportProductRows(db, ctx);
+  return r.ok ? { ok: true, value: { xlsx: writeXlsx(r.value.rows, "상품 목록"), count: r.value.count } } : r;
+}
+
+async function exportProductRows(db: PrismaClient, ctx: TenantContext): Promise<Result<{ rows: string[][]; count: number }>> {
   requireSellerPermission(ctx, "PRODUCT_MANAGE");
   const count = await db.product.count({ where: { sellerId: ctx.sellerId, deletedAt: null } });
   if (count > MAX_EXPORT_PRODUCTS) return { ok: false, reason: "too_many_products" };
@@ -438,5 +468,5 @@ export async function exportProductsCsv(db: PrismaClient, ctx: TenantContext): P
     });
   }
   await recordExport(db, ctx, { kind: "PRODUCT_EXPORT", rows: products.length, action: "bulk_io.product_export", targetType: "BulkJob" });
-  return { ok: true, value: { csv: formatCsv(rows), count: products.length } };
+  return { ok: true, value: { rows, count: products.length } };
 }
