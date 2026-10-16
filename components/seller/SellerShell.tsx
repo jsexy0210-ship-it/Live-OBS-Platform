@@ -196,7 +196,7 @@ const MENU: Group[] = [
       { label: "충전금", href: "/seller/settings/message-balance", perm: "OWNER", plan: "ANY" },
       { label: "직원 계정", href: "/seller/staff", perm: "OWNER", plan: "ANY" },
       { label: "구독 · 결제", href: "/seller/subscription", perm: "OWNER" },
-      { label: "쇼핑몰 통합 전환", perm: "OWNER" },
+      { label: "쇼핑몰 통합 전환", href: "/seller/settings/upgrade", perm: "OWNER" },
     ],
   },
   {
