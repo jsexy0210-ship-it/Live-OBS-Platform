@@ -60,8 +60,9 @@ const short = (n: number) => (n >= 100_000_000 ? `${+(n / 100_000_000).toFixed(1
 
 // 단일 계열 막대 그래프. 값 이름은 제목이 말하고, 막대에 올리면 값이 보인다. 같은 값은 아래 표에도 있다.
 // 막대는 늘어나는 SVG로, 축 글자는 HTML로 그린다(SVG를 가로로 늘리면 글자가 찌그러진다).
+// fixedTicks: 마스터 대시보드처럼 CSS가 첫·끝 눈금만 남기는 곳은 기존 최대 8개 간격을 유지
 // bare: 카드·제목 없이 그래프만(요약 화면의 칸 안에 넣을 때)
-export function BarChart({ title, points, fmt, bare }: { title: string; points: { label: string; value: number }[]; fmt: (n: number) => string; bare?: boolean }) {
+export function BarChart({ title, points, fmt, bare, fixedTicks }: { title: string; fixedTicks?: boolean; points: { label: string; value: number }[]; fmt: (n: number) => string; bare?: boolean }) {
   const [hover, setHover] = useState<number | null>(null);
   const W = 1000;
   const H = 200;
@@ -84,7 +85,7 @@ export function BarChart({ title, points, fmt, bare }: { title: string; points: 
   }, []);
   const longest = Math.max(1, ...points.map((p) => p.label.length));
   const tickW = longest * 6.6 + 18;
-  const fit = plotW > 0 ? Math.max(1, Math.floor(plotW / tickW)) : 8;
+  const fit = fixedTicks ? 8 : plotW > 0 ? Math.max(1, Math.floor(plotW / tickW)) : 8;
   const every = Math.ceil(n / Math.min(8, fit));
   const pctX = (i: number) => `${((slot * i + slot / 2) / W) * 100}%`;
   const chart = (
