@@ -16,6 +16,9 @@ import { chargeFor, dbNow } from "./subscription";
 //   메일 비용은 기본 「마스터 관리자 부담」(sellerId 없는 플랫폼 메일 = 가입 승인 안내와 같음): 파트너스 잔액이 없다고 법정 고지가 막혀 요금 인상이
 //   영영 적용되지 않거나, 파트너스 충전금이 이 고지로 줄어들지 않게 한다. 파트너스 제공량·충전금 정책으로 보내려면 bearer: "seller"(수동).
 export const PRICE_NOTICE_MAIL_KIND = "price_change.notice";
+// 메일 비용 부담 기본값: "platform" = 마스터 관리자 부담(sellerId 없는 메일), "seller" = 파트너스 월 제공량 안 무료·초과는 발송·이용 충전금 차감(잔액 없으면 중지).
+// 대표님 결정에 따라 이 한 줄만 바꾸면 된다(둘 다 시험으로 확인).
+export const DEFAULT_PRICE_NOTICE_BEARER: "platform" | "seller" = "platform";
 
 export type PriceNoticeSendResult = { considered: number; mailSent: number; mailBlocked: number; noticeCreated: number; completed: number };
 
@@ -104,7 +107,7 @@ export async function sendPriceChangeNotices(
               subscriptionUrl: `${origin}/seller/subscription`,
             });
             const r = await sendMail(db, sender, {
-              sellerId: opts.bearer === "seller" ? sub.sellerId : null,
+              sellerId: (opts.bearer ?? DEFAULT_PRICE_NOTICE_BEARER) === "seller" ? sub.sellerId : null,
               kind: PRICE_NOTICE_MAIL_KIND,
               refId,
               message: { to, subject: body.subject, html: body.html, text: body.text },

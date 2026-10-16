@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { POST as sendRoute } from "../../app/api/admin/plans/[code]/price-notice/route";
 import { createAdminSession } from "../../lib/server/auth/session";
-import { PRICE_NOTICE_MAIL_KIND, sendPriceChangeNotices } from "../../lib/server/billing/priceNoticeSend";
+import { DEFAULT_PRICE_NOTICE_BEARER, PRICE_NOTICE_MAIL_KIND, sendPriceChangeNotices } from "../../lib/server/billing/priceNoticeSend";
 import { chargeFor, dbNow } from "../../lib/server/billing/subscription";
 import { FakeMailSender } from "../../lib/server/mail/registry";
 import { PASSWORD, createAdmin, createSeller, createSellerUser, db, resetDb } from "./helpers";
@@ -94,20 +94,32 @@ describe("요금 변경 고지 발송 작업", () => {
     expect(ok).toMatchObject({ mailSent: 1, completed: 1 });
   });
 
-  it("메일 비용은 기본 플랫폼 부담이라 파트너스 잔액·제공량과 상관없이 간다. bearer: seller면 제공량 안은 무료, 넘으면 충전금이 없을 때 멈춘다", async () => {
+  it.each(["platform", "seller"] as const)("메일 비용 부담 %s: 발송 기록의 부담 주체와 파트너스 제공량·충전금 영향이 정책대로다", async (bearer) => {
     const f = await fixture();
     const sender = new FakeMailSender();
-    await db.subscriptionPlan.update({ where: { id: f.plan.id }, data: { mailMonthlyQuota: 0 } });
-    // 제공량 0·잔액 0인 파트너스도 플랫폼 부담이면 고지가 나간다
-    const platform = await sendPriceChangeNotices(db, { sender, now: f.now });
-    expect(platform).toMatchObject({ mailSent: 1, completed: 1 });
-    expect((await db.mailDelivery.findFirstOrThrow({ where: { kind: PRICE_NOTICE_MAIL_KIND } })).sellerId).toBeNull();
-    // 파트너스 부담으로 바꾸면 제공량 0·잔액 0이라 발송이 멈추고 수령 기록을 만들지 않는다
+    // 제공량 안(100통)이면 두 경우 모두 무료로 나가고, 발송 기록의 sellerId만 다르다(마스터 관리자 부담 = 없음)
+    const free = await sendPriceChangeNotices(db, { sender, now: f.now, bearer });
+    expect(free).toMatchObject({ mailSent: 1, mailBlocked: 0, completed: 1 });
+    const delivery = await db.mailDelivery.findFirstOrThrow({ where: { kind: PRICE_NOTICE_MAIL_KIND } });
+    expect(delivery.sellerId).toBe(bearer === "seller" ? f.subs[0]!.seller.id : null);
+    expect(delivery.charged).toBe(false);
+    // 제공량 0·충전금 0: 마스터 관리자 부담은 그래도 나가고, 파트너스 부담은 멈춰 수령 기록을 만들지 않는다(후불 없음)
     await db.subscriptionPriceNotice.deleteMany({ where: { channel: "MAIL" } });
     await db.mailDelivery.deleteMany({});
-    const seller = await sendPriceChangeNotices(db, { sender, now: new Date(+f.now + 1000), bearer: "seller" });
-    expect(seller).toMatchObject({ mailSent: 0, mailBlocked: 1 });
-    expect(await db.subscriptionPriceNotice.count({ where: { channel: "MAIL" } })).toBe(0);
+    await db.subscriptionPlan.update({ where: { id: f.plan.id }, data: { mailMonthlyQuota: 0 } });
+    const none = await sendPriceChangeNotices(db, { sender, now: new Date(+f.now + 1000), bearer });
+    if (bearer === "platform") expect(none).toMatchObject({ mailSent: 1, mailBlocked: 0, completed: 1 });
+    else {
+      expect(none).toMatchObject({ mailSent: 0, mailBlocked: 1 });
+      expect(await db.subscriptionPriceNotice.count({ where: { channel: "MAIL" } })).toBe(0);
+    }
+  });
+
+  it("bearer를 생략하면 DEFAULT_PRICE_NOTICE_BEARER(마스터 관리자 부담)를 쓴다", async () => {
+    expect(DEFAULT_PRICE_NOTICE_BEARER).toBe("platform");
+    const f = await fixture();
+    await sendPriceChangeNotices(db, { sender: new FakeMailSender(), now: f.now });
+    expect((await db.mailDelivery.findFirstOrThrow({ where: { kind: PRICE_NOTICE_MAIL_KIND } })).sellerId).toBeNull();
   });
 
   it("대상이 아닌 구독(해지 예약·이미 해지·변경 뒤 시작)과 마스터 기록이 없는 변경은 건너뛴다", async () => {
