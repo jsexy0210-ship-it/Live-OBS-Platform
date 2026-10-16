@@ -2,6 +2,7 @@ import { Prisma, type ActorType, type PrismaClient, type SellerSubscription, typ
 import { policyValue } from "../admin/platformPolicy";
 import { writeAudit } from "../audit/log";
 import { effectiveMailQuota } from "../mail/quota";
+import { integrationGateForUpgrade } from "../sellers/integrationProfile";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { addMonthsKst, canCancelSubscription, cardRegistrationCharges, isEndedSubscription, lockedSince, nextPeriodEnd, planChangeState, proration, sellerAccess, type SellerAccess } from "./access";
 
@@ -370,6 +371,30 @@ export async function settlePayment(
     if (result.ok && payment.launchDiscount) {
       await tx.seller.updateMany({ where: { id: payment.sellerId, launchDiscountUsedAt: null }, data: { launchDiscountUsedAt: now } });
     }
+    // 오버레이 전용 → 통합 상위 변경은 확정 시점에도 사업자·정산 정보 게이트를 다시 본다(요청 뒤 정보가 바뀌거나 조회가 만료됐을 수 있음, SA-005).
+    // 막히면 플랜·기간을 바꾸지 않고, 이미 결제된 건은 마스터 관리자 환불 요청으로만 남긴다(처리는 사람이 승인한다, paid_after_cancel과 같은 방식).
+    if (result.ok && payment.targetPlanId) {
+      const gate = await integrationGateForUpgrade(tx, payment.sellerId, sub.planId, payment.targetPlanId, new Date());
+      if (gate) {
+        await writeAudit(tx, {
+          actorType: opts.actorType,
+          actorId: opts.actorId,
+          sellerId: payment.sellerId,
+          action: "subscription.plan_upgrade_blocked",
+          targetType: "SubscriptionPayment",
+          targetId: payment.id,
+          after: { amount: payment.amount, targetPlanId: payment.targetPlanId },
+          reason: gate,
+        });
+        if (payment.amount > 0) {
+          await tx.subscriptionRefund.createMany({
+            data: [{ sellerId: payment.sellerId, paymentId: payment.id, amount: payment.amount, source: "SYSTEM", reason: "upgrade_gate_failed", createdAt: now }],
+            skipDuplicates: true,
+          });
+        }
+        return { nextChargeAt: sub.nextChargeAt };
+      }
+    }
     // 결제 중 상위 변경의 차액(ONQ 1-C-2): 확정되면 플랜만 바꾸고 기간·결제일은 그대로, 실패·거절이면 지금 플랜 그대로(유예 없음)
     if (payment.kind === "PRORATION") {
       if (result.ok && payment.targetPlanId) await switchPlan(tx, sub.id, payment.sellerId, payment.targetPlanId);
@@ -608,6 +633,12 @@ export async function reconcileStalePayments(
           result = { ok: false, reason: "no_card" };
         } else {
           const plan = await db.sellerSubscription.findUniqueOrThrow({ where: { id: p.subscriptionId }, include: { plan: true, seller: { select: { trialEndsAt: true } } } });
+          // 오버레이 전용 → 통합 상위 변경은 돈이 나가기 전에 게이트를 다시 본다(PG에 이미 결과가 있는 건은 위에서 확정되므로 여기까지 오지 않는다, SA-005).
+          if (await integrationGateForUpgrade(db, p.sellerId, plan.planId, p.targetPlanId, new Date())) {
+            await settlePayment(db, p.id, { ok: false, reason: "integration_gate" }, { actorType: "SYSTEM", actorId: null, now: input.now });
+            summary.failed++;
+            continue;
+          }
           // 구버전이 준비한 정기 청구도 미고지 금액으로 재요청하지 않는다. PG에 이미 있는 결과는 위에서 그대로 확정한다.
           if (plan.subscribedAt > p.createdAt) throw new Error("subscription_price_notice_required");
           const currentAmount = (await chargeFor(db, plan.plan, plan, p.createdAt)).amount;
