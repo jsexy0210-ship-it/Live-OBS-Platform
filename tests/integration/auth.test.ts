@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { loginAdmin, loginBuyer, loginSeller } from "../../lib/server/auth/login";
+import { POST as sellerLoginPost } from "../../app/api/seller/auth/login/route";
 import { POST as buyerLoginPost } from "../../app/api/shop/[slug]/auth/login/route";
 import { POST as buyerLogoutPost } from "../../app/api/shop/[slug]/auth/logout/route";
 import { resolveAdminSession, resolveBuyerSession, resolveSellerSession } from "../../lib/server/auth/session";
@@ -327,5 +328,41 @@ describe("마스터 대리 조회", () => {
     };
     await expect(impersonateSeller(db, await ctxOf(ro), seller.id, "확인")).rejects.toMatchObject({ status: 403 });
     await expect(impersonateSeller(db, await ctxOf(ops), seller.id, "  ")).rejects.toMatchObject({ status: 403 });
+  });
+});
+
+describe("파트너스 로그인 유지", () => {
+  const DAY_MIN = 24 * 60;
+  const H = { "content-type": "application/json", host: "localhost:3000", origin: "http://localhost:3000" };
+  const loginReq = (body: unknown) => sellerLoginPost(new Request("http://localhost:3000/api/seller/auth/login", { method: "POST", headers: H, body: JSON.stringify(body) }));
+
+  const sellerCookie = (r: Response) => r.headers.getSetCookie().find((c) => c.startsWith("lo_seller=")) ?? "";
+
+  it("끄면(기본) 서버 세션 24시간, 켜면 30일", async () => {
+    const { seller } = await createSeller();
+    const staff = await createSellerUser(seller.id, "OWNER");
+    const off = await loginSeller(db, { email: staff.email, password: PASSWORD }, { now: t0 });
+    const on = await loginSeller(db, { email: staff.email, password: PASSWORD, remember: true }, { now: t0 });
+    if (!off.ok || !on.ok) throw new Error("login failed");
+    expect([off.persistent, on.persistent]).toEqual([false, true]);
+    expect([off.expiresAt, on.expiresAt]).toEqual([at(DAY_MIN), at(30 * DAY_MIN)]);
+    expect(await resolveSellerSession(db, off.token, at(60))).not.toBeNull();
+  });
+
+  it("로그인 API: remember 켜면 쿠키 만료일, 끄거나 빼면 세션 쿠키. boolean이 아니면 400", async () => {
+    const { seller } = await createSeller();
+    const staff = await createSellerUser(seller.id, "OWNER");
+    const base = { email: staff.email, password: PASSWORD };
+    const kept = await loginReq({ ...base, remember: true });
+    expect(kept.status).toBe(200);
+    expect(sellerCookie(kept)).toMatch(/expires=/i);
+    for (const body of [base, { ...base, remember: false }]) {
+      const r = await loginReq(body);
+      expect(r.status).toBe(200);
+      const c = sellerCookie(r);
+      expect(c).toContain("lo_seller=");
+      expect(c).not.toMatch(/expires=|max-age=/i);
+    }
+    for (const bad of ["true", 1, null]) expect((await loginReq({ ...base, remember: bad })).status).toBe(400);
   });
 });

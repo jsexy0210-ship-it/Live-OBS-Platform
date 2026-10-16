@@ -31,7 +31,7 @@ export async function GET(req: Request) {
         // 대리 조회는 조회가 열린 화면(주문·상품·회원·통계)의 메뉴만 보이게 하는 표시용 권한이다. 변경은 서버가 readOnly로 모두 거부한다.
         permissions: imp ? [...IMPERSONATION_VIEW_PERMISSIONS] : ctx.permissions,
         readOnly: ctx.readOnly,
-        impersonation: imp ? { adminName: imp.adminName, reason: imp.reason, startedAt: imp.startedAt, expiresAt: imp.expiresAt } : null,
+        impersonation: imp ? { adminName: imp.adminName, reason: imp.reason, scopes: [...imp.scopes], startedAt: imp.startedAt, expiresAt: imp.expiresAt } : null,
         access,
         // 플랜이 준 기능 권한(OVERLAY·EXTERNAL_INTEGRATION·STORE_OPERATIONS). 화면은 메뉴를 고르는 데만 쓰고, 막는 것은 서버가 한다.
         features,

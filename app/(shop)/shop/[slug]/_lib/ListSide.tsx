@@ -1,11 +1,12 @@
 import Link from "next/link";
 import ProductFilter from "../../../../../components/shop/ProductFilter";
 import type { PublicCategory } from "../../../../../lib/server/shop-category/service";
+import type { ShopSort } from "../../../../../lib/server/products/shopCatalog";
 import { defaultSort, sortChoices, type ListSort } from "./catalog";
 import type { Filters } from "./filters";
 
 // SH-002 상품 목록·검색의 왼쪽 열(PC): 전체 카테고리(휴대폰에서는 숨김) + 「검색 조건」 패널(휴대폰에서는 「필터」 아래 시트). 두 화면이 같은 것을 쓴다.
-export default function ListSide(props: { slug: string; tree: PublicCategory[]; currentId?: string; path: string; q?: string; sort: ListSort; filters: Filters }) {
+export default function ListSide(props: { slug: string; tree: PublicCategory[]; currentId?: string; path: string; q?: string; sort: ListSort; sortDefault?: ShopSort; filters: Filters }) {
   const base = `/shop/${encodeURIComponent(props.slug)}`;
   const hasQuery = !!props.q;
   return (
@@ -34,7 +35,7 @@ export default function ListSide(props: { slug: string; tree: PublicCategory[]; 
         q={props.q}
         category={props.currentId}
         sort={props.sort}
-        defaultSort={defaultSort(hasQuery)}
+        defaultSort={defaultSort(hasQuery, props.sortDefault)}
         sorts={sortChoices(hasQuery)}
         tree={props.tree}
         initial={props.filters}
