@@ -270,7 +270,8 @@ body {
     padding: var(--ui-sp-24) var(--ui-gutter-mobile);
   }
   .pa-two,
-  .pa-carrier {
+  .pa-carrier,
+  .pa-admin .pa-idv {
     grid-template-columns: 1fr;
   }
 }
