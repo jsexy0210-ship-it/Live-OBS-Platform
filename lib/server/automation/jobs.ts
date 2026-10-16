@@ -23,6 +23,8 @@ export type JobView = {
   customerAction: AutomationJob["customerAction"];
   actionDeadlineAt: Date | null;
   lastError: string | null;
+  // 결제 때 저장된 쇼핑몰 주소의 호스트(SA-152 표시용). 없으면 null. 외부 쇼핑몰 플랫폼 이름은 담지 않는다
+  shopHost: string | null;
   verifiedAt: Date | null;
   // 「잠시 멈추기」(SA-152): 멈춘 상태면 paused=true·pausedAt, 멈춘 단계는 stepNumber(상태는 QUEUED로 보인다). 이어 하기로 풀린다
   paused: boolean;
@@ -99,6 +101,7 @@ const toView = (j: AutomationJob & { payment: AutomationPayment | null }): JobVi
   customerAction: j.customerAction,
   actionDeadlineAt: j.actionDeadlineAt,
   lastError: publicError(j.lastError),
+  shopHost: j.shopHost,
   verifiedAt: j.verifiedAt,
   paused: j.pausedAt !== null,
   pausedAt: j.pausedAt,

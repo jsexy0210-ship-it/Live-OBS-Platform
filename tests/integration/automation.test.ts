@@ -147,6 +147,13 @@ describe("자동 연결 결제와 실행 권한", () => {
     expect((await db.automationPayment.findFirstOrThrow()).status).toBe("PAID");
   });
 
+  it("작업 조회에 결제 때 저장된 쇼핑몰 호스트가 실리고, 값이 없으면 null이다", async () => {
+    const { jobId, ctx } = await bought();
+    expect((await getJob(db, ctx, jobId)).shopHost).toBe("myshop.cafe24.com");
+    await db.automationJob.update({ where: { id: jobId }, data: { shopHost: null } });
+    expect((await getJob(db, ctx, jobId)).shopHost).toBeNull();
+  });
+
   it("결제 응답이 끊기면 바로 PG에 조회해 확정하고, 조회도 안 되면 결제 대기로 남아 실행되지 않는다(대사에서 확인 뒤 대기열)", async () => {
     const provider = new FlakyLookupProvider();
     const first = await shopWithCard();
