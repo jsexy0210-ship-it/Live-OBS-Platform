@@ -106,3 +106,22 @@ export function priceChangeMail(i: PriceChangeMailInput): MailBody {
     { t: "buttons", buttons: [{ label: "구독 · 결제 보기", url: i.subscriptionUrl }] },
   ]);
 }
+
+// ─── 삭제 전 안내 ───
+// 해지 뒤 보관 기간이 끝나기 전에 알리는 메일. 다시 구독하면 보관된 쇼핑몰을 그대로 이어 쓸 수 있어요.
+export type RetentionNoticeMailInput = {
+  platform: PlatformInfo;
+  representative: string;
+  shopName: string;
+  deleteOn: string; // 삭제 예정일(KST, 표시용)
+  subscriptionUrl: string; // 구독 · 결제 화면
+};
+
+export function retentionNoticeMail(i: RetentionNoticeMailInput): MailBody {
+  return make(i.platform, "쇼핑몰 데이터가 곧 삭제돼요", [
+    { t: "h1", text: "쇼핑몰 데이터가 곧 삭제돼요" },
+    { t: "p", text: `${i.representative}님, 해지한 ${i.shopName}의 보관 기간이 끝나가요. ${i.deleteOn}이 지나면 보관 중인 쇼핑몰 데이터가 삭제될 수 있어요.` },
+    { t: "p", text: "그 전에 다시 구독하면 보관된 쇼핑몰을 그대로 이어 쓸 수 있어요. 주문·결제 기록처럼 법에 따라 보관하는 자료는 따로 보관돼요.", muted: true },
+    { t: "buttons", buttons: [{ label: "구독 · 결제 보기", url: i.subscriptionUrl }] },
+  ]);
+}

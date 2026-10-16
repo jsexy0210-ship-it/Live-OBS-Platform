@@ -44,6 +44,12 @@
   font-weight: 700;
   color: var(--brand);
 }
+.my-menu-out {
+  padding: 12px 16px;
+}
+.my-logout {
+  width: 100%;
+}
 @media (max-width: 767px) {
   .my-wrap {
     grid-template-columns: minmax(0, 1fr);
