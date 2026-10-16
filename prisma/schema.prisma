@@ -1202,6 +1202,8 @@ model Order {
   pgTxId                    String?
   paidAt                    DateTime?         @db.Timestamptz(3)
   stockShortageAt           DateTime?         @db.Timestamptz(3)
+  // 파트너스가 개봉 완료 주문을 「배송 준비로 변경」한 시각(SA-021 선택 일괄). 표시용 표식이라 발송 가능 조건은 바꾸지 않는다.
+  shippingPreparedAt        DateTime?         @db.Timestamptz(3)
   cancelledAt               DateTime?         @db.Timestamptz(3)
   refundedAt                DateTime?         @db.Timestamptz(3)
   // 구매 확정 시각(배송 완료 n일 뒤 자동). 주문 상태(status)는 결제 완료(PAID) 그대로 둔다.
@@ -2043,6 +2045,8 @@ enum OrderNotificationKind {
   PAYMENT_DUE_SOON
   // 파트너스가 현금영수증·세금계산서를 직접 발행하고 완료 처리했을 때 구매자 안내(SA-024). 발송 채널 연동 전이라 기록만(PENDING).
   RECEIPT_ISSUED
+  // 파트너스가 주문을 배송 준비로 바꿨을 때 구매자 안내(SA-021). 발송 채널 연동 전이라 기록만(PENDING).
+  SHIPPING_PREPARED
 }
 
 enum OrderNotificationStatus {

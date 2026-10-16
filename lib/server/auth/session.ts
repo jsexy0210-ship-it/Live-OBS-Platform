@@ -37,12 +37,14 @@ export async function createSellerSession(
   db: PrismaClient,
   sellerId: string,
   sellerUserId: string,
-  meta: SessionMeta,
+  meta: SessionMeta & { remember?: boolean },
   credentialVersion: number,
 ): Promise<IssuedSession> {
   const now = meta.now ?? new Date();
   const token = generateToken();
-  const expiresAt = sessionExpiry("seller", now);
+  // remember(로그인 유지): 켜면 30일, 빼거나 false면 브라우저를 닫으면 끝나는 세션(서버 24시간) — 구매자와 같은 방식
+  const remember = meta.remember === true;
+  const expiresAt = sessionExpiry("seller", now, { short: !remember });
   await db.sellerSession.create({
     data: {
       sellerId,
@@ -56,7 +58,7 @@ export async function createSellerSession(
       createdAt: now,
     },
   });
-  return { token, expiresAt };
+  return { token, expiresAt, persistent: remember };
 }
 
 export async function createBuyerSession(
