@@ -6,6 +6,7 @@ import { Topbar, useSeller } from "../../../../../components/seller/SellerShell"
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
 import { chatNotice, type ChatStatus } from "../../../../../components/seller/broadcast/chatStatus";
+import "../../../../../styles/seller-broadcast.css";
 import { formatDateTime } from "../../../../../lib/client/format";
 
 // SA-057 유튜브 연결(방송 › 연동). 채널 주소·방송 주소 연결/해제, 연결 상태, 연결한 방송의 채팅 수집 켜기·끄기.
@@ -155,7 +156,8 @@ export default function YoutubePage() {
               </div>
             )}
             {data && (
-              <section className="card pad col" style={{ gap: 12 }} aria-label="유튜브 이어 두기">
+              <div className="col" style={{ gap: 16 }} aria-label="유튜브 이어 두기">
+                <h2 className="t-hl1">연결</h2>
                 <table className="au-ft">
                   <tbody>
                     <tr>
@@ -331,34 +333,74 @@ export default function YoutubePage() {
                   </tbody>
                 </table>
                 <div className="msg msg-inf">공개 방송만 지원합니다. 비공개·일부 공개 방송의 채팅은 가져올 수 없습니다.</div>
+
+                <h2 className="t-hl1">이렇게 씁니다</h2>
+                <table className="tbl" data-testid="yt-how">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 60 }}>순서</th>
+                      <th>내용</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td className="num">1</td>
+                      <td className="col-text">내 유튜브 채널 주소를 넣고 「채널 이어 두기」를 누릅니다 · 채널이 맞는지 이름을 보여 드립니다</td>
+                    </tr>
+                    <tr>
+                      <td className="num">2</td>
+                      <td className="col-text">방송 주소를 넣고 「방송 이어 두기」를 누르거나, 「지금 하는 방송 찾아서 이어 두기」로 진행 중인 공개 방송을 찾습니다</td>
+                    </tr>
+                    <tr>
+                      <td className="num">3</td>
+                      <td className="col-text">방송이 이어지면(예정 · 진행 중) 이 화면이나 방송 대시보드에서 「채팅 가져오기」를 켭니다 · 처음에는 꺼져 있습니다</td>
+                    </tr>
+                    <tr>
+                      <td className="num">4</td>
+                      <td className="col-text">주문대기에 「채팅 확인됨 · 마지막 채팅 시각」 또는 「채팅 없음」이 표시만 됩니다 · 순서 · 개봉에는 영향이 없습니다 · 비공개 · 일부 공개 방송은 모두 「채팅 없음」으로 보입니다</td>
+                    </tr>
+                  </tbody>
+                </table>
+
                 {usage && (
-                  <div className="col" style={{ gap: 12 }} data-testid="yt-usage">
-                    <h2 className="t-hl2">채팅 가져오기 현황 ({usage.month.replace(/^(\d{4})-0?(\d{1,2})$/, "$1년 $2월")})</h2>
+                  <div className="col" style={{ gap: 8 }} data-testid="yt-usage">
+                    <div className="row" style={{ justifyContent: "space-between" }}>
+                      <h2 className="t-hl1">채팅 가져오기 현황 ({usage.month.replace(/^(\d{4})-0?(\d{1,2})$/, "$1년 $2월")})</h2>
+                      {me.isOwner && (
+                        <button className="btn btn-sm btn-out" type="button" data-testid="yt-purge-open" disabled={busy || usage.storedMessages === 0} onClick={() => setConfirm("purge")}>
+                          저장해 둔 채팅 지금 지우기
+                        </button>
+                      )}
+                    </div>
                     {!usage.collecting && usage.stoppedReason && (
                       <div className="msg msg-cau" role="status" data-testid="yt-usage-stopped">
                         {STOP_TEXT[usage.stoppedReason]}
                       </div>
                     )}
-                    <dl className="kv">
-                      <dt>이번 달 가져온 채팅</dt>
-                      <dd>{usage.messages.toLocaleString("ko-KR")}건</dd>
-                      <dt>저장해 둔 채팅</dt>
-                      <dd>{usage.storedMessages.toLocaleString("ko-KR")}건 · 30일이 지나면 자동으로 지웁니다</dd>
-                      <dt>오늘 쓸 수 있는 무료 분량 중 사용</dt>
-                      <dd>{pct(usage.units.today, usage.units.todayLimit)}% · 다 쓰면 내일까지 쉽니다</dd>
-                      <dt>이번 달 무료 분량 중 사용</dt>
-                      <dd>{pct(usage.units.month, usage.units.monthLimit)}%</dd>
-                    </dl>
-                    {me.isOwner && (
-                      <div>
-                        <button className="btn btn-out" type="button" data-testid="yt-purge-open" disabled={busy || usage.storedMessages === 0} onClick={() => setConfirm("purge")}>
-                          저장해 둔 채팅 지금 지우기
-                        </button>
+                    <div className="bc-sum-g" data-testid="yt-usage-tiles">
+                      <div className="stat">
+                        <span className="t-l2 c-alt">이번 달 가져온 채팅</span>
+                        <span className="v">{usage.messages.toLocaleString("ko-KR")}건</span>
                       </div>
-                    )}
+                      <div className="stat">
+                        <span className="t-l2 c-alt">저장해 둔 채팅</span>
+                        <span className="v">{usage.storedMessages.toLocaleString("ko-KR")}건</span>
+                        <span className="d">30일이 지나면 자동으로 지웁니다</span>
+                      </div>
+                      <div className="stat">
+                        <span className="t-l2 c-alt">오늘 쓸 수 있는 무료 분량 중 사용</span>
+                        <span className="v">{pct(usage.units.today, usage.units.todayLimit)}%</span>
+                        <span className="d">다 쓰면 내일까지 쉽니다</span>
+                      </div>
+                      <div className="stat">
+                        <span className="t-l2 c-alt">이번 달 무료 분량 중 사용</span>
+                        <span className="v">{pct(usage.units.month, usage.units.monthLimit)}%</span>
+                      </div>
+                    </div>
+                    {me.isOwner && <span className="t-c1 c-alt">「저장해 둔 채팅 지금 지우기」는 대표자에게만 보입니다 · 저장해 둔 채팅이 없으면 비활성</span>}
                   </div>
                 )}
-              </section>
+              </div>
             )}
           </>
         )}
