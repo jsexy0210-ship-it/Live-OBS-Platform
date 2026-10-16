@@ -166,6 +166,12 @@ export type SellerOrderListQuery = {
   q?: string | null;
   memberId?: string | null;
   shipped?: string | null;
+  // 방송 큐 상태(개봉 대기 waiting · 개봉 중 opening · 개봉 완료 done, 아래 queueStateOf와 같은 기준)
+  queue?: string | null;
+  // true면 처리 대기 중인 환불 요청이 있는 주문만(「취소 · 환불 요청」 칩)
+  refundRequested?: string | null;
+  // true면 결제 완료·아직 발송 전 주문만(「송장 미입력」 칩)
+  trackingMissing?: string | null;
   from?: string | null;
   to?: string | null;
   cursor?: string | null;
@@ -195,6 +201,27 @@ export function decodeCursor(s: string): { createdAt: Date; id: string } | null 
 }
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// 방송 큐 상태(주문의 취소되지 않은 큐 항목 기준): 하나라도 개봉 중이면 opening, 아니고 대기가 하나라도 있으면 waiting, 전부 끝났으면 done. 큐 항목이 없으면 null.
+export const QUEUE_STATES = ["waiting", "opening", "done"] as const;
+export type QueueState = (typeof QUEUE_STATES)[number];
+export function queueStateOf(items: { status: string }[]): QueueState | null {
+  const live = items.filter((i) => i.status !== "CANCELLED");
+  if (live.length === 0) return null;
+  if (live.some((i) => i.status === "OPENING")) return "opening";
+  if (live.some((i) => i.status === "WAITING")) return "waiting";
+  return "done";
+}
+// queueStateOf와 같은 기준의 DB 조건
+export const queueStateWhere = (q: QueueState): Prisma.OrderWhereInput =>
+  q === "opening"
+    ? { queueItems: { some: { status: "OPENING" } } }
+    : q === "waiting"
+      ? { queueItems: { some: { status: "WAITING" }, none: { status: "OPENING" } } }
+      : { queueItems: { some: { status: "DONE" }, none: { status: { in: ["WAITING", "OPENING"] } } } };
+// 결제 완료 주문 중 아직 발송 전(발송 정보가 없거나 준비 상태 READY)
+export const trackingMissingWhere: Prisma.OrderWhereInput = { status: "PAID", OR: [{ shipment: { is: null } }, { shipment: { is: { status: "READY" } } }] };
+export const refundRequestedWhere: Prisma.OrderWhereInput = { refundRequests: { some: { status: "REQUESTED" } } };
+
 // 판매자 주문 목록(주문 시각 내림차순, 커서 페이지). 항상 ctx.sellerId 범위만 본다.
 // q는 주문번호(숫자 전체 일치)·방송 닉네임(부분 일치)을 찾고, 받는 분 이름은 CUSTOMER_PII_VIEW가 있을 때만 찾는다
 // (권한 없는 직원이 검색 결과로 개인정보를 알아내지 못하게). 받는 분 이름으로 찾았으면 customer.pii.view를 남긴다. 잘못된 값이면 { ok: false }.
@@ -215,12 +242,17 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
   if (query.memberId && !UUID_RE.test(query.memberId)) return { ok: false as const };
   // 발송 여부(배송 정보가 있고 발송 전 준비 상태 READY가 아님). 「배송 준비」 = status=PAID&shipped=false. 비어 있으면 거르지 않는다.
   if (query.shipped && query.shipped !== "true" && query.shipped !== "false") return { ok: false as const };
+  if (query.queue && !(QUEUE_STATES as readonly string[]).includes(query.queue)) return { ok: false as const };
+  for (const flag of [query.refundRequested, query.trackingMissing]) if (flag && flag !== "true") return { ok: false as const };
 
   const searchesPii = q !== "" && canViewCustomerPii(ctx);
   const and: Prisma.OrderWhereInput[] = [{ sellerId: ctx.sellerId, legalHoldAt: null }];
   if (query.memberId) and.push({ buyerMemberId: query.memberId });
   if (query.shipped) and.push(query.shipped === "true" ? { shipment: { is: { status: { not: "READY" } } } } : { OR: [{ shipment: { is: null } }, { shipment: { is: { status: "READY" } } }] });
   if (statuses.length) and.push({ status: { in: statuses as OrderStatus[] } });
+  if (query.queue) and.push(queueStateWhere(query.queue as QueueState));
+  if (query.refundRequested) and.push(refundRequestedWhere);
+  if (query.trackingMissing) and.push(trackingMissingWhere);
   if (from) and.push({ createdAt: { gte: from } });
   if (toStart) and.push({ createdAt: { lt: new Date(toStart.getTime() + 24 * 3600_000) } });
   if (q) {
@@ -251,8 +283,10 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
       refundAmount: true,
       paymentMethod: true,
       paymentDueAt: true,
-      buyerMember: { select: { id: true, broadcastNickname: true } },
+      shippingPreparedAt: true,
+      buyerMember: { select: { id: true, broadcastNickname: true, grade: { select: { id: true, displayName: true } } } },
       items: itemSummarySelect,
+      queueItems: { select: { status: true } },
       shipment: { select: { id: true, status: true, courier: true, trackingNumber: true, deliveredAt: true } },
       refunds: { select: { rewardReturn: true } },
       // 처리 대기 중(REQUESTED) 환불 요청 수. 한 번의 조회에서 같이 센다(주문마다 따로 묻지 않음).
@@ -282,7 +316,11 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
       status: o.status,
       createdAt: o.createdAt,
       paidAt: o.paidAt,
-      buyer: o.buyerMember,
+      // 구매자: 방송 닉네임과 등급(grade.displayName)
+      buyer: { id: o.buyerMember.id, broadcastNickname: o.buyerMember.broadcastNickname, grade: o.buyerMember.grade },
+      // 방송 큐 상태(waiting 개봉 대기 · opening 개봉 중 · done 개봉 완료, 큐 항목이 없으면 null)와 「배송 준비로 변경」한 시각
+      queueState: queueStateOf(o.queueItems),
+      shippingPreparedAt: o.shippingPreparedAt,
       totalAmount: o.totalAmount,
       // 환불 현황(주문 합계, 현금 환불은 반품 배송비·적립금 반환을 뺀 돌려준 금액). 환불이 없으면 0.
       // 금액이 비어 있는 옛 전액 환불 주문(REFUNDED)은 합계 전부를 돌려준 것으로 본다(통계와 같은 기준).
