@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { submitSellerLogin } from "./sellerLogin";
 
 // SA-060 쇼핑몰 정보(②구역: 공유 제목·설명·미리보기, 옛 /seller/settings/share는 이 화면으로 이동): 대표자가 제목·설명을 정하면 쇼핑몰 공개 페이지의 og:title·og:description에 쓰이고,
-// og:image는 서버가 그린 기본 카드(/api/shop/{slug}/og.png), 파비콘은 ONQ 기본(/branding/onq-32.png)이다. 운영 빌드(데모 시드)로 확인한다.
+// og:image는 서버가 그린 기본 카드(/api/shop/{slug}/og.png), 파비콘은 스트림샵 기본(/branding/streamshop-partners-32-*.png)이다. 운영 빌드(데모 시드)로 확인한다.
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
 const SHOTS = process.env.E2E_SCREENSHOTS === "1";
 
@@ -64,7 +64,7 @@ test("대표자: 공유 미리보기 제목·설명을 저장하면 쇼핑몰 �
   await expect(meta(page, "og:image")).toHaveAttribute("content", /^https?:\/\/[^/]+\/api\/shop\/demo-shop\/og\.png\?v=[0-9a-f]{12}$/);
   await expect(meta(page, "og:image:width")).toHaveAttribute("content", "1200");
   await expect(meta(page, "twitter:card")).toHaveAttribute("content", "summary_large_image");
-  await expect(page.locator('link[rel="icon"]').first()).toHaveAttribute("href", /\/branding\/onq-32\.png/);
+  await expect(page.locator('link[rel="icon"]').first()).toHaveAttribute("href", /\/branding\/streamshop-partners-32-\d+\.png/);
   // 화면 제목은 그 화면 것이 우선한다
   await expect(page).toHaveTitle("회원가입 · 카드숍 별빛");
 
@@ -120,7 +120,7 @@ test("공유 이미지 주소는 신뢰 프록시가 없으면 요청자가 보�
 test("없는 쇼핑몰 주소는 공유 정보를 만들지 않고 기본값을 쓴다", async ({ page }) => {
   await page.goto("/shop/no-such-shop-zz/signup");
   // 메타데이터가 다 들어온 뒤(아이콘이 보인 뒤)에 og:image가 없는지 본다
-  await expect(page.locator('link[rel="icon"]').first()).toHaveAttribute("href", /\/branding\/onq-32\.png/);
+  await expect(page.locator('link[rel="icon"]').first()).toHaveAttribute("href", /\/branding\/streamshop-partners-32-\d+\.png/);
   await expect(page.locator('meta[property="og:image"]')).toHaveCount(0);
 });
 
@@ -160,15 +160,18 @@ test("옛 공유 설정 주소는 쇼핑몰 정보로 이동하고, 주문 · �
   // 옛 공유 설정 주소는 쇼핑몰 정보로 이동한다
   await page.goto("/seller/settings/share");
   await expect(page).toHaveURL(/\/seller\/settings\/shop$/);
-  await lnb.getByRole("link", { name: "주문 · 배송 설정" }).click();
+  // 같은 메뉴의 화면 탭은 왼쪽 메뉴 아래 하위 링크(메뉴 이름으로 묶인 내비게이션)로 보인다
+  const order = lnb.getByRole("navigation", { name: "주문 · 배송 설정" });
+  await expect(order.getByRole("link", { name: "주문 설정" })).toHaveAttribute("href", "/seller/settings/order");
+  await order.getByRole("link", { name: "주문 설정" }).click();
   await expect(page).toHaveURL(/\/seller\/settings\/order$/);
-  const tabs = page.getByRole("navigation", { name: "화면 탭" });
-  await expect(tabs.getByRole("link", { name: "주문 설정" })).toHaveAttribute("aria-current", "page");
-  await tabs.getByRole("link", { name: "배송 설정" }).click();
+  await expect(order.getByRole("link", { name: "주문 설정" })).toHaveAttribute("aria-current", "page");
+  await order.getByRole("link", { name: "배송 설정" }).click();
   await expect(page).toHaveURL(/\/seller\/settings\/shipping$/);
-  await lnb.getByRole("link", { name: "약관 · 회원 정책" }).click();
-  await expect(page).toHaveURL(/\/seller\/settings\/legal$/);
-  await page.getByRole("navigation", { name: "화면 탭" }).getByRole("link", { name: "회원 정책" }).click();
+  const legal = lnb.getByRole("navigation", { name: "약관 · 회원 정책" });
+  await legal.getByRole("link", { name: "이용약관" }).click();
+  await expect(page).toHaveURL(/\/seller\/settings\/legal(\?section=terms)?$/);
+  await legal.getByRole("link", { name: "회원 정책" }).click();
   await expect(page).toHaveURL(/\/seller\/settings\/member$/);
 });
 
