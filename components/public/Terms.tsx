@@ -5,6 +5,8 @@ import { SELLER_TERMS } from "./sellerTerms";
 // {{ }} 값이 하나라도 비어 있으면 「시행 전 초안」으로 표시하고, 빈 값은 「정해지는 대로 알려 드려요」로 보인다.
 const fill = (s: string) => s.replace(/`/g, "").replace(/\{\{[^}]*\}\}/g, "정해지는 대로 알려 드려요");
 const isDraft = SELLER_TERMS.some((s) => [s.heading, ...s.lines].some((l) => l.includes("{{")));
+const tocLabel = (h: string) => fill(h).replace(/^제\d+조\(/, "").replace(/\)$/, "");
+const fullText = SELLER_TERMS.map((s) => [fill(s.heading), ...s.lines.map(fill)].join("\n")).join("\n\n");
 const isSub = (l: string) => /^\d+\.\s/.test(l);
 
 type Block = { kind: "p"; text: string } | { kind: "ol"; items: string[] };
@@ -26,13 +28,24 @@ export function Terms() {
         <nav className="pf-toc" aria-label="목차">
           {SELLER_TERMS.map((s, i) => (
             <a key={s.heading} href={`#s${i}`}>
-              {fill(s.heading)}
+              {tocLabel(s.heading)}
             </a>
           ))}
         </nav>
         <article className="pf-doc-body">
           <h1 className="t-t1">이용약관</h1>
-          <p className="t-l2 c-alt">파트너스(판매자) 이용약관이에요.</p>
+          <div className="pf-doc-meta">
+            <span className="t-l2 c-alt num">
+              제4판 · 시행일 정해지는 대로 알려 드려요{isDraft ? " · 시행 전 초안" : ""}
+            </span>
+            <a
+              className="btn btn-sm btn-out"
+              href={`data:text/plain;charset=utf-8,${encodeURIComponent(fullText)}`}
+              download="이용약관.txt"
+            >
+              내려받기
+            </a>
+          </div>
           {isDraft && (
             <div className="msg msg-info t-l2" role="note" data-testid="terms-draft">
               시행 전 초안이에요. 아직 정해지지 않은 항목은 「정해지는 대로 알려 드려요」로 적어 두었어요.
