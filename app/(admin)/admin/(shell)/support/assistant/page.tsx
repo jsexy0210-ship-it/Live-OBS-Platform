@@ -126,7 +126,7 @@ export default function AssistantDocsPage() {
                 도우미 설정
               </Link>
               {canEdit && (
-                <button className="btn" type="button" onClick={() => { setTab("docs"); setError(null); setDraft(EMPTY); }}>
+                <button className="btn" type="button" disabled={!!draft} onClick={() => { setTab("docs"); setError(null); setDraft(EMPTY); }}>
                   문서 등록
                 </button>
               )}
@@ -135,7 +135,11 @@ export default function AssistantDocsPage() {
         />
         <div className="seg" role="tablist" aria-label="도우미 자료" style={{ alignSelf: "flex-start" }}>
           {TABS.map(([k, label]) => (
-            <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => { if (k !== "docs") setQs("loading"); setTab(k); }}>
+            <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => {
+                if (k === tab) return;
+                if (k !== "docs") setQs("loading");
+                setTab(k);
+              }}>
               {label}
             </button>
           ))}
