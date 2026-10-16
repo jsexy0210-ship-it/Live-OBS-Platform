@@ -12,7 +12,7 @@ export default function ShopLegal({ kind, doc, slug }: { kind: keyof typeof TITL
   if (!doc) return slug ? <ShopLocked slug={slug} /> : <ShopState title="지금은 쇼핑몰을 이용할 수 없어요" body="쇼핑몰이 다시 문을 열면 이용할 수 있어요." />;
   if (!doc.published) return <ShopState title={`${title}을 준비하고 있어요`} body="정해지는 대로 이 페이지에서 알려 드려요. 궁금한 점은 판매자에게 문의해 주세요." />;
   return (
-    <section className="card shop-card" data-testid="shop-legal">
+    <section className="shop-wrap cart-wrap" data-testid="shop-legal">
       <header className="shop-legal-head">
         <h1 className="t-h1">{title}</h1>
         {doc.effectiveOn && <p className="t-c1 c-alt">시행일 {doc.effectiveOn.replace(/^(\d{4})-(\d{2})-(\d{2})$/, (_m, y, mo, d) => `${y}년 ${+mo}월 ${+d}일`)}</p>}
