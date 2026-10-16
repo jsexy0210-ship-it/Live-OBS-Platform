@@ -88,7 +88,9 @@ describe("요금 변경 고지 발송 작업", () => {
     const blocked = await sendPriceChangeNotices(db, { sender, now: f.now });
     expect(blocked).toMatchObject({ mailSent: 0, mailBlocked: 1, completed: 0 });
     expect(sender.sent).toHaveLength(0);
-    expect(await db.subscriptionPriceNotice.count({ where: { channel: "MAIL" } })).toBe(0);
+    // 못 보낸 메일은 SENT가 아니다: 선점을 풀어 FAILED(완료 시각·근거 없음)로 두고 다음 실행에서 다시 시도한다
+    expect(await db.subscriptionPriceNotice.count({ where: { channel: "MAIL", status: "SENT" } })).toBe(0);
+    expect(await db.subscriptionPriceNotice.findFirstOrThrow({ where: { channel: "MAIL" } })).toMatchObject({ status: "FAILED", completedAt: null, deliveryReference: null });
     await db.platformMessageSetting.update({ where: { id: 1 }, data: { platformDailyLimit: 1000 } });
     const ok = await sendPriceChangeNotices(db, { sender, now: new Date(+f.now + 1000) });
     expect(ok).toMatchObject({ mailSent: 1, completed: 1 });
@@ -111,7 +113,7 @@ describe("요금 변경 고지 발송 작업", () => {
     if (bearer === "platform") expect(none).toMatchObject({ mailSent: 1, mailBlocked: 0, completed: 1 });
     else {
       expect(none).toMatchObject({ mailSent: 0, mailBlocked: 1 });
-      expect(await db.subscriptionPriceNotice.count({ where: { channel: "MAIL" } })).toBe(0);
+      expect(await db.subscriptionPriceNotice.count({ where: { channel: "MAIL", status: "SENT" } })).toBe(0);
     }
   });
 
@@ -120,6 +122,43 @@ describe("요금 변경 고지 발송 작업", () => {
     const f = await fixture();
     await sendPriceChangeNotices(db, { sender: new FakeMailSender(), now: f.now });
     expect((await db.mailDelivery.findFirstOrThrow({ where: { kind: PRICE_NOTICE_MAIL_KIND } })).sellerId).toBeNull();
+  });
+
+  it("구독이 한 번에 읽는 수보다 많아도 한 번 실행에 모두 처리하고, 끝난 구독이 앞을 차지해 뒤 구독이 밀리지 않는다", async () => {
+    const f = await fixture({ subscribers: 5 });
+    const sender = new FakeMailSender();
+    const r = await sendPriceChangeNotices(db, { sender, now: f.now, limit: 2 });
+    expect(r).toMatchObject({ considered: 5, mailSent: 5, noticeCreated: 1, completed: 5 });
+    expect(sender.sent).toHaveLength(5);
+    // 다시 실행해도 같은 5건을 모두 훑을 뿐 더 보내지 않는다
+    const again = await sendPriceChangeNotices(db, { sender, now: new Date(+f.now + 1000), limit: 2 });
+    expect(again).toMatchObject({ considered: 5, mailSent: 0, noticeCreated: 0, completed: 5 });
+    expect(sender.sent).toHaveLength(5);
+  });
+
+  it("두 번이 동시에 실행돼도 같은 구독의 메일은 한 통만 나간다", async () => {
+    const f = await fixture({ subscribers: 3 });
+    const sender = new FakeMailSender();
+    const [a, b] = await Promise.all([sendPriceChangeNotices(db, { sender, now: f.now }), sendPriceChangeNotices(db, { sender, now: f.now })]);
+    expect(sender.sent).toHaveLength(3);
+    expect(a.mailSent + b.mailSent).toBe(3);
+    expect(await db.mailDelivery.count({ where: { kind: PRICE_NOTICE_MAIL_KIND, status: "SENT" } })).toBe(3);
+    expect(await db.platformNotice.count()).toBe(1);
+    expect(await db.subscriptionPriceNotice.count({ where: { channel: "MAIL", status: "SENT" } })).toBe(3);
+  });
+
+  it("멈춘 실행이 남긴 오래된 선점은 다시 선점해 보내고, 방금 선점한 건은 건드리지 않는다", async () => {
+    const f = await fixture();
+    const sub = f.subs[0]!.sub;
+    const key = { subscriptionId: sub.id, subscriptionStartedAt: sub.subscribedAt, priceChangeId: f.change.id, channel: "MAIL" as const };
+    const sender = new FakeMailSender();
+    await db.subscriptionPriceNotice.create({ data: { ...key, status: "PENDING", deliveryReference: `claim:${f.now.toISOString()}` } });
+    const fresh = await sendPriceChangeNotices(db, { sender, now: new Date(+f.now + 60_000) });
+    expect(fresh).toMatchObject({ mailSent: 0 });
+    expect(sender.sent).toHaveLength(0);
+    const stale = await sendPriceChangeNotices(db, { sender, now: new Date(+f.now + 11 * 60_000) });
+    expect(stale).toMatchObject({ mailSent: 1, completed: 1 });
+    expect(sender.sent).toHaveLength(1);
   });
 
   it("대상이 아닌 구독(해지 예약·이미 해지·변경 뒤 시작)과 마스터 기록이 없는 변경은 건너뛴다", async () => {

@@ -16,6 +16,7 @@ import { chargeFor, dbNow } from "./subscription";
 //   메일 비용은 기본 「마스터 관리자 부담」(sellerId 없는 플랫폼 메일 = 가입 승인 안내와 같음): 파트너스 잔액이 없다고 법정 고지가 막혀 요금 인상이
 //   영영 적용되지 않거나, 파트너스 충전금이 이 고지로 줄어들지 않게 한다. 파트너스 제공량·충전금 정책으로 보내려면 bearer: "seller"(수동).
 export const PRICE_NOTICE_MAIL_KIND = "price_change.notice";
+const CLAIM_STALE_MS = 10 * 60_000; // 메일 선점이 이만큼 지나도 PENDING이면 멈춘 실행으로 본다
 // 메일 비용 부담 기본값: "platform" = 마스터 관리자 부담(sellerId 없는 메일), "seller" = 파트너스 월 제공량 안 무료·초과는 발송·이용 충전금 차감(잔액 없으면 중지).
 // 대표님 결정에 따라 이 한 줄만 바꾸면 된다(둘 다 시험으로 확인).
 export const DEFAULT_PRICE_NOTICE_BEARER: "platform" | "seller" = "platform";
@@ -35,99 +36,127 @@ export async function sendPriceChangeNotices(
   for (const plan of plans) {
     const change = await db.subscriptionPriceChange.findFirst({ where: { planId: plan.id, changedByAdminId: { not: null } }, orderBy: { changedAt: "desc" } });
     if (!change || !change.changedByAdminId) continue;
-    const subs = await db.sellerSubscription.findMany({
-      where: { planId: plan.id, status: { in: ["ACTIVE", "PAST_DUE"] }, cancelAtPeriodEnd: false, subscribedAt: { lt: change.changedAt } },
-      orderBy: [{ subscribedAt: "asc" }, { id: "asc" }],
-      take: opts.limit ?? 200,
-      select: {
-        id: true, sellerId: true, subscribedAt: true, legacyPrice: true, legacyPriceNoticeSentAt: true, regularPrice: true,
-        priceNotices: { where: { priceChangeId: change.id } },
-        seller: { select: { shopName: true, businessInfo: true, users: { where: { isOwner: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: 1, select: { email: true } } } },
-      },
-    });
-    for (const sub of subs) {
-      result.considered += 1;
-      const receipts = sub.priceNotices.filter((r) => +r.subscriptionStartedAt === +sub.subscribedAt);
-      const sent = (channel: (typeof REQUIRED_PRICE_NOTICE_CHANNELS)[number]) => receipts.some((r) => r.channel === channel && r.status === "SENT" && r.deliveryReference && r.completedAt);
-      const key = { subscriptionId: sub.id, subscriptionStartedAt: sub.subscribedAt, priceChangeId: change.id };
+    // 구독이 많아도 한 번 실행에 모두 보도록 id 순서로 limit개씩 이어서 읽는다(끝난 구독이 앞을 차지해 뒤 구독이 영영 안 보이는 일이 없게).
+    const batch = opts.limit ?? 200;
+    const loadSubs = (afterId: string | null) =>
+      db.sellerSubscription.findMany({
+        where: { planId: plan.id, status: { in: ["ACTIVE", "PAST_DUE"] }, cancelAtPeriodEnd: false, subscribedAt: { lt: change.changedAt }, ...(afterId ? { id: { gt: afterId } } : {}) },
+        orderBy: { id: "asc" },
+        take: batch,
+        select: {
+          id: true, sellerId: true, subscribedAt: true, legacyPrice: true, legacyPriceNoticeSentAt: true, regularPrice: true,
+          priceNotices: { where: { priceChangeId: change.id } },
+          seller: { select: { shopName: true, businessInfo: true, users: { where: { isOwner: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: 1, select: { email: true } } } },
+        },
+      });
+    let lastId: string | null = null;
+    for (;;) {
+      const subs = await loadSubs(lastId);
+      if (subs.length === 0) break;
+      lastId = subs[subs.length - 1]!.id;
+      for (const sub of subs) {
+        result.considered += 1;
+        const receipts = sub.priceNotices.filter((r) => +r.subscriptionStartedAt === +sub.subscribedAt);
+        const sent = (channel: (typeof REQUIRED_PRICE_NOTICE_CHANNELS)[number]) => receipts.some((r) => r.channel === channel && r.status === "SENT" && r.deliveryReference && r.completedAt);
+        const key = { subscriptionId: sub.id, subscriptionStartedAt: sub.subscribedAt, priceChangeId: change.id };
 
-      // 파트너스 공지: 변경마다 공지 1건. 잠금 아래에서 이미 만든 공지를 찾고 없을 때만 만든다(동시에 돌려도 한 건).
-      if (!sent("PARTNERS_NOTICE")) {
-        const created = await db.$transaction(async (tx) => {
-          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`price_notice:${change.id}`}))`;
-          const existing = await tx.subscriptionPriceNotice.findFirst({
-            where: { priceChangeId: change.id, channel: "PARTNERS_NOTICE", status: "SENT", deliveryReference: { startsWith: "notice:" } },
-            select: { deliveryReference: true },
-          });
-          let noticeId = existing?.deliveryReference?.slice("notice:".length) ?? null;
-          let made = false;
-          if (!noticeId) {
-            const notice = await tx.platformNotice.create({
-              data: {
-                title: `${plan.name} 구독 요금 변경 안내`,
-                body: `${plan.name} 구독 요금이 바뀝니다. 정가 월 ${plan.listPrice.toLocaleString("ko-KR")}원, 런칭 할인가 월 ${plan.salePrice.toLocaleString("ko-KR")}원(부가세 포함)입니다. 이미 구독 중인 파트너스에는 이 안내를 받은 날부터 30일이 지난 뒤 결제부터 적용되고, 그 전 결제는 지금 요금 그대로입니다. 적용 전 해지는 「구독 · 결제」에서 할 수 있습니다.`,
-                category: "POLICY",
-                audience: "PARTNERS",
-                publishedAt: now,
-                createdByAdminId: change.changedByAdminId!,
-                updatedByAdminId: change.changedByAdminId!,
-              },
+        // 파트너스 공지: 변경마다 공지 1건. 잠금 아래에서 이미 만든 공지를 찾고 없을 때만 만든다(동시에 돌려도 한 건).
+        if (!sent("PARTNERS_NOTICE")) {
+          const created = await db.$transaction(async (tx) => {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`price_notice:${change.id}`}))`;
+            const existing = await tx.subscriptionPriceNotice.findFirst({
+              where: { priceChangeId: change.id, channel: "PARTNERS_NOTICE", status: "SENT", deliveryReference: { startsWith: "notice:" } },
+              select: { deliveryReference: true },
             });
-            noticeId = notice.id;
-            made = true;
-          }
-          await tx.subscriptionPriceNotice.upsert({
-            where: { subscriptionId_subscriptionStartedAt_priceChangeId_channel: { ...key, channel: "PARTNERS_NOTICE" } },
-            create: { ...key, channel: "PARTNERS_NOTICE", status: "SENT", completedAt: now, deliveryReference: `notice:${noticeId}` },
-            update: { status: "SENT", completedAt: now, deliveryReference: `notice:${noticeId}` },
+            let noticeId = existing?.deliveryReference?.slice("notice:".length) ?? null;
+            let made = false;
+            if (!noticeId) {
+              const notice = await tx.platformNotice.create({
+                data: {
+                  title: `${plan.name} 구독 요금 변경 안내`,
+                  body: `${plan.name} 구독 요금이 바뀝니다. 정가 월 ${plan.listPrice.toLocaleString("ko-KR")}원, 런칭 할인가 월 ${plan.salePrice.toLocaleString("ko-KR")}원(부가세 포함)입니다. 이미 구독 중인 파트너스에는 이 안내를 받은 날부터 30일이 지난 뒤 결제부터 적용되고, 그 전 결제는 지금 요금 그대로입니다. 적용 전 해지는 「구독 · 결제」에서 할 수 있습니다.`,
+                  category: "POLICY",
+                  audience: "PARTNERS",
+                  publishedAt: now,
+                  createdByAdminId: change.changedByAdminId!,
+                  updatedByAdminId: change.changedByAdminId!,
+                },
+              });
+              noticeId = notice.id;
+              made = true;
+            }
+            await tx.subscriptionPriceNotice.upsert({
+              where: { subscriptionId_subscriptionStartedAt_priceChangeId_channel: { ...key, channel: "PARTNERS_NOTICE" } },
+              create: { ...key, channel: "PARTNERS_NOTICE", status: "SENT", completedAt: now, deliveryReference: `notice:${noticeId}` },
+              update: { status: "SENT", completedAt: now, deliveryReference: `notice:${noticeId}` },
+            });
+            return made;
           });
-          return made;
-        });
-        if (created) result.noticeCreated += 1;
-      }
+          if (created) result.noticeCreated += 1;
+        }
 
-      // 메일: 공급자·플랫폼 정보·APP_ORIGIN이 없으면 보내지도 기록하지도 않는다.
-      if (!sent("MAIL") && sender && platform && origin) {
-        const to = sub.seller.users[0]?.email;
-        const refId = `${sub.id}:${change.id}`;
-        if (to) {
-          const done = await db.mailDelivery.findFirst({ where: { kind: PRICE_NOTICE_MAIL_KIND, refId, status: "SENT" }, select: { id: true } });
-          const inFlight = done ? null : await db.mailDelivery.findFirst({ where: { kind: PRICE_NOTICE_MAIL_KIND, refId, status: "PENDING" }, select: { id: true } });
-          let deliveryId = done?.id ?? null;
-          if (!done && !inFlight) {
-            const oldMonthly = (await chargeFor(db, plan, sub, now)).amount;
-            const rep = sub.seller.businessInfo && typeof sub.seller.businessInfo === "object" ? (sub.seller.businessInfo as Record<string, unknown>).representativeName : null;
-            const body = priceChangeMail({
-              platform,
-              representative: typeof rep === "string" && rep.trim() ? rep.trim() : "대표자",
-              shopName: sub.seller.shopName,
-              planName: plan.name,
-              oldMonthly,
-              newMonthly: sub.regularPrice ? change.listPrice : change.salePrice,
-              subscriptionUrl: `${origin}/seller/subscription`,
-            });
-            const r = await sendMail(db, sender, {
-              sellerId: (opts.bearer ?? DEFAULT_PRICE_NOTICE_BEARER) === "seller" ? sub.sellerId : null,
-              kind: PRICE_NOTICE_MAIL_KIND,
-              refId,
-              message: { to, subject: body.subject, html: body.html, text: body.text },
-            });
-            if (r.status === "SENT") deliveryId = r.deliveryId;
-            else result.mailBlocked += 1;
-          }
-          if (deliveryId) {
-            await db.subscriptionPriceNotice.upsert({
-              where: { subscriptionId_subscriptionStartedAt_priceChangeId_channel: { ...key, channel: "MAIL" } },
-              create: { ...key, channel: "MAIL", status: "SENT", completedAt: now, deliveryReference: `mail:${deliveryId}` },
-              update: { status: "SENT", completedAt: now, deliveryReference: `mail:${deliveryId}` },
-            });
-            if (!done) result.mailSent += 1;
+        // 메일: 공급자·플랫폼 정보·APP_ORIGIN이 없으면 보내지도 기록하지도 않는다.
+        // 동시에 두 번 실행돼도 한 통만 나가게 수령 기록(구독·변경·채널 유일)을 먼저 PENDING으로 선점한다. 선점한 쪽만 보내고,
+        // 선점 시각(deliveryReference `claim:{시각}`)이 오래된(10분) PENDING은 멈춘 실행으로 보고 다시 선점한다.
+        if (!sent("MAIL") && sender && platform && origin) {
+          const to = sub.seller.users[0]?.email;
+          const refId = `${sub.id}:${change.id}`;
+          if (to) {
+            const claimRef = `claim:${now.toISOString()}`;
+            const where = { subscriptionId_subscriptionStartedAt_priceChangeId_channel: { ...key, channel: "MAIL" as const } };
+            let mine = (await db.subscriptionPriceNotice.createMany({ data: [{ ...key, channel: "MAIL", status: "PENDING", deliveryReference: claimRef }], skipDuplicates: true })).count === 1;
+            if (!mine) {
+              const cur = await db.subscriptionPriceNotice.findUnique({ where });
+              if (cur?.status === "FAILED") mine = (await db.subscriptionPriceNotice.updateMany({ where: { id: cur.id, status: "FAILED" }, data: { status: "PENDING", deliveryReference: claimRef, completedAt: null } })).count === 1;
+              else if (cur?.status === "PENDING") {
+                const at = Date.parse(cur.deliveryReference?.startsWith("claim:") ? cur.deliveryReference.slice("claim:".length) : "");
+                const stale = Number.isNaN(at) || now.getTime() - at > CLAIM_STALE_MS;
+                if (stale) mine = (await db.subscriptionPriceNotice.updateMany({ where: { id: cur.id, status: "PENDING", deliveryReference: cur.deliveryReference }, data: { deliveryReference: claimRef } })).count === 1;
+              }
+            }
+            if (mine) {
+              // 선점한 쪽: 이미 나간 메일(수령 기록만 못 남기고 멈춘 경우)이 있으면 다시 보내지 않고 기록만 맞춘다. 보내는 중인 건은 건드리지 않는다.
+              const done = await db.mailDelivery.findFirst({ where: { kind: PRICE_NOTICE_MAIL_KIND, refId, status: "SENT" }, select: { id: true } });
+              const inFlight = done ? null : await db.mailDelivery.findFirst({ where: { kind: PRICE_NOTICE_MAIL_KIND, refId, status: "PENDING" }, select: { id: true } });
+              let deliveryId = done?.id ?? null;
+              let attempted = false;
+              if (!done && !inFlight) {
+                attempted = true;
+                const oldMonthly = (await chargeFor(db, plan, sub, now)).amount;
+                const rep = sub.seller.businessInfo && typeof sub.seller.businessInfo === "object" ? (sub.seller.businessInfo as Record<string, unknown>).representativeName : null;
+                const body = priceChangeMail({
+                  platform,
+                  representative: typeof rep === "string" && rep.trim() ? rep.trim() : "대표자",
+                  shopName: sub.seller.shopName,
+                  planName: plan.name,
+                  oldMonthly,
+                  newMonthly: sub.regularPrice ? change.listPrice : change.salePrice,
+                  subscriptionUrl: `${origin}/seller/subscription`,
+                });
+                const r = await sendMail(db, sender, {
+                  sellerId: (opts.bearer ?? DEFAULT_PRICE_NOTICE_BEARER) === "seller" ? sub.sellerId : null,
+                  kind: PRICE_NOTICE_MAIL_KIND,
+                  refId,
+                  message: { to, subject: body.subject, html: body.html, text: body.text },
+                });
+                if (r.status === "SENT") deliveryId = r.deliveryId;
+                else result.mailBlocked += 1;
+              }
+              if (deliveryId) {
+                await db.subscriptionPriceNotice.update({ where, data: { status: "SENT", completedAt: now, deliveryReference: `mail:${deliveryId}` } });
+                if (attempted) result.mailSent += 1;
+              } else if (attempted) {
+                // 못 보냄(한도·잔액·실패): 선점을 풀고 다음 실행에서 다시 시도한다
+                await db.subscriptionPriceNotice.update({ where, data: { status: "FAILED", completedAt: null, deliveryReference: null } });
+              }
+            }
           }
         }
-      }
 
-      const after = await db.subscriptionPriceNotice.findMany({ where: { ...key } });
-      if (priceNoticeCompletedAt(change.changedAt, after, new Date(now.getTime() + 1))) result.completed += 1;
+        const after = await db.subscriptionPriceNotice.findMany({ where: { ...key } });
+        if (priceNoticeCompletedAt(change.changedAt, after, new Date(now.getTime() + 1))) result.completed += 1;
+      }
+      if (subs.length < batch) break;
     }
   }
   return result;
