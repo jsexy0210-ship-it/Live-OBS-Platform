@@ -4,6 +4,8 @@ import { randomBytes } from "node:crypto";
 import { hashPassword } from "../../lib/server/auth/password";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 
+const partnerTab = (page: Page, name: string) => page.getByRole("navigation", { name: "파트너스 정보" }).getByRole("link", { name, exact: true });
+
 // 마스터 관리자 청구·결제 내역(MA-024)·청구 상세(MA-025). 계정·파트너스·청구는 폐기용 테스트 DB(이름이 _test로 끝남)에 실행마다 새로 만든다.
 // CS 계정으로 조회만 한다(결제 실행·환불 버튼이 없어야 한다).
 const password = randomBytes(12).toString("base64url");
@@ -141,7 +143,7 @@ test("청구 상세: 결제 번호·카드 매출전표 링크·구독, 실패 �
   await expect(page.locator(".loc-bar .crumb")).toContainText("청구 상세");
   await page.getByRole("link", { name: shopName }).click();
   await expect(page).toHaveURL(new RegExp(`/admin/partners/${sellerId}$`));
-  await page.getByRole("button", { name: "구독", exact: true }).click();
+  await partnerTab(page, "구독").click();
   await page.getByRole("link", { name: "청구 상세", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/admin/billing/invoices\\?sellerId=${sellerId}`));
 
