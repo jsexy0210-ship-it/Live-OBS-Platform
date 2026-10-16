@@ -46,8 +46,8 @@ test("파트너스 로그인: 제목·설명이 파트너스 관리자이고, �
   await page.getByRole("link", { name: "이메일(아이디)/비밀번호 찾기" }).click();
   await page.getByRole("link", { name: "비밀번호 찾기", exact: true }).click();
   await expect(page).toHaveURL(/\/seller\/password-reset$/);
-  await expect(page.getByRole("heading", { name: "비밀번호 찾기" })).toBeVisible();
-  await expect(page.getByText("쇼핑몰 대표자 본인 명의의 휴대폰으로 확인합니다.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "이메일(아이디)/비밀번호 찾기" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "계정 종류" }).getByRole("link")).toHaveText(["대표자", "직원"]);
   await noSellerWord(page);
 });
 
