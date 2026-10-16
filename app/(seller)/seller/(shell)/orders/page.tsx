@@ -151,6 +151,9 @@ export default function OrderListPage() {
   const refundRequested = u.refundRequested === "true";
   const trackingMissing = u.trackingMissing === "true";
   const filters: Filters = { statuses, period, q, shipped, queue, refundRequested, trackingMissing };
+  // 일괄 처리 응답이 늦게 와도 그 사이 바뀐 조건으로 다시 불러오도록 최신 조건을 따로 들고 있는다
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
   const load = useCallback(async (f: Filters) => {
     const id = ++reqId.current;
     paging.current = false;
@@ -194,7 +197,7 @@ export default function OrderListPage() {
     const failed = r.data.results.filter((x) => !x.ok).length;
     setToast(failed === 0 ? `${r.data.prepared}건을 배송 준비로 바꿨습니다` : `${r.data.prepared}건을 바꿨고 ${failed}건은 바꾸지 못했습니다`, failed > 0);
     setPicked([]);
-    void load(filters);
+    void load(filtersRef.current);
     void loadCounts();
   };
 
@@ -467,9 +470,12 @@ export default function OrderListPage() {
                                 </button>
                                 {rowMenu === o.id && (
                                   <div className="menu ord-menu ord-row-menu" role="menu" onMouseLeave={() => setRowMenu(null)}>
-                                    <Link role="menuitem" href="/seller/member-messages">구매자에게 알림</Link>
                                     <Link role="menuitem" href="/seller/orders/receipts">영수증 발급</Link>
-                                    <Link role="menuitem" className="c-neg" href={`/seller/orders/${o.id}?refund=1`}>주문 취소</Link>
+                                    {o.status === "PAID" && (
+                                      <Link role="menuitem" className="c-neg" href={`/seller/orders/${o.id}?refund=1`}>
+                                        주문 취소
+                                      </Link>
+                                    )}
                                   </div>
                                 )}
                               </span>
