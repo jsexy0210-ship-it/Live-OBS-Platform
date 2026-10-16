@@ -6,10 +6,11 @@ import { adminCan } from "../../../../../../lib/server/authz/permissions";
 import { ListHead, PageHead } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
+import { ForceEndDialog } from "../../../_components/ForceEndDialog";
 import { ImpersonateDialog } from "../../../_components/ImpersonateDialog";
 import { clock, elapsed, usePoll, type LiveBroadcast, type LiveOrderRate } from "../../../_components/ops";
 
-// MA-041 실시간 방송(GET /api/admin/ops/live-broadcasts, 모든 마스터 역할, 조회만). 10초마다 다시 읽는다. 대신 보기(MA-016)는 최고관리자·운영·고객 지원만.
+// MA-041 실시간 방송(GET /api/admin/ops/live-broadcasts, 모든 마스터 역할, 조회만). 10초마다 다시 읽는다. 대신 보기(MA-016)는 최고관리자·운영·고객 지원만, 강제 종료는 최고관리자·운영만(seller.moderate).
 // 「방송 화면 불안정」은 방송 화면(오버레이) 주소를 발급했는데 접속하지 않은 방송, 「결제 연결 오류」는 최근 24시간 결제 실패 뒤 성공이 없는 파트너스다.
 // 읽지 못하면 마지막으로 읽은 내용과 시각을 그대로 두고 알린다. 문제가 있는 방송이 위로 온다.
 const LAYOUT: Record<string, string> = { "9x16": "세로형", "16x9": "가로형" };
@@ -18,10 +19,12 @@ const problem = (b: LiveBroadcast) => unstable(b) || b.paymentError;
 export default function LiveBroadcastsPage() {
   const { me } = useAdmin();
   const canImpersonate = adminCan(me.role, "seller.impersonate");
+  const canEnd = adminCan(me.role, "seller.moderate");
   const { data, failed, first, lastOk, reload } = usePoll<{ items: LiveBroadcast[]; orderRate: LiveOrderRate }>("/api/admin/ops/live-broadcasts", 10_000);
   const [problemOnly, setProblemOnly] = useState(false);
   const [view, setView] = useState<"table" | "card">("table");
   const [viewing, setViewing] = useState<LiveBroadcast | null>(null);
+  const [ending, setEnding] = useState<LiveBroadcast | null>(null);
   // 휴대폰에서는 표 대신 카드로 시작한다(표 가로 스크롤을 피함)
   useEffect(() => {
     if (window.matchMedia("(max-width: 639px)").matches) setView("card");
@@ -45,6 +48,11 @@ export default function LiveBroadcastsPage() {
       <Link className="btn btn-sm btn-out" href={`/admin/partners/${b.sellerId}`}>
         상세
       </Link>
+      {canEnd && (
+        <button className="btn btn-sm btn-out" type="button" onClick={() => setEnding(b)}>
+          강제 종료
+        </button>
+      )}
     </span>
   );
 
@@ -177,6 +185,22 @@ export default function LiveBroadcastsPage() {
           onDone={(r) => {
             setViewing(null);
             setToast(r.opened ? "대신 보기를 시작했습니다. 새 창에서 파트너스 화면을 읽기 전용으로 봅니다." : "대신 보기를 시작했습니다. 새 창이 막혀 열지 못했습니다. 파트너스 상세에서 다시 열어 주십시오.");
+          }}
+        />
+      )}
+      {ending && (
+        <ForceEndDialog
+          broadcast={ending}
+          onClose={() => setEnding(null)}
+          onDone={() => {
+            setEnding(null);
+            setToast("방송을 종료했습니다");
+            void reload();
+          }}
+          onStale={() => {
+            setEnding(null);
+            setToast("이미 끝난 방송입니다. 목록을 다시 불러옵니다.");
+            void reload();
           }}
         />
       )}
