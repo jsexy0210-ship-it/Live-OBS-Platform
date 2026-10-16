@@ -16,7 +16,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
   }
 }
 
-// 문의 쓰기. 본문 { kind: "PRODUCT"|"GENERAL", productId?(상품 문의만), title(50자), body(2000자), isPrivate?, imageIds?(올린 사진 id, 5장까지) }. 응답 201 { id }.
+// 문의 쓰기. 본문 { kind: "PRODUCT"|"GENERAL", productId?(상품 문의만), orderId?(1:1 문의의 본인 주문), title(50자), body(2000자), isPrivate?, imageIds?(올린 사진 id, 5장까지) }. 응답 201 { id }.
 export const POST = mutation(async (req: Request, { params }: { params: Promise<{ slug: string }> }) => {
   const { slug } = await params;
   const b = await buyerScope(req, slug);

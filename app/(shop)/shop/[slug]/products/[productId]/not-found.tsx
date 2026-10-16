@@ -10,10 +10,10 @@ export default function ProductNotFound() {
   const list = path.replace(/\/products\/[^/]*$/, "/products");
   return (
     <>
-      <ShopState title="상품을 찾을 수 없어요" body="판매가 끝났거나 주소가 바뀐 상품이에요. 다른 상품을 둘러보세요." />
+      <ShopState title="판매가 끝난 상품이에요" body="비슷한 상품을 보여 드릴게요" />
       <p className="shop-state-act">
         <Link className="btn btn-lg" href={list}>
-          상품 목록으로
+          상품 목록
         </Link>
       </p>
     </>

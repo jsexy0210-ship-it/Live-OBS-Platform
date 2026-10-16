@@ -29,7 +29,7 @@ async function login(page: Page, next: string) {
 test("외부 주문은 대기 줄·방송 상세·HIT 카드 기록에 「외부 주문」으로 표시되고 내부 주문에는 없다", async ({ page }) => {
   const title = `e2e-외부-${Date.now()}`;
   const card = `${EXT_CARD_PREFIX}-${Date.now()}`;
-  await login(page, "/seller/broadcast");
+  await login(page, "/seller");
 
   // 대시보드 대기: 외부 주문 줄에만 배지가 있다
   const waiting = page.getByTestId("bc-waiting");

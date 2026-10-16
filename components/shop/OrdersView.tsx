@@ -1,9 +1,12 @@
 "use client";
 
+import { CursorPagination } from "../Pagination";
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { formatDateTime } from "../../lib/client/format";
+import { addDays } from "../../lib/client/dateInput";
+import { DatePicker } from "../admin-ui/DatePicker";
 import MyMenu from "./MyMenu";
 import { call } from "./reviewShared";
 import { trackingUrl } from "./trackingLink";
@@ -34,7 +37,7 @@ type Period = "3m" | "6m" | "1y";
 type Data = { orders: Order[]; next: string | null; counts: Counts };
 type View = { kind: "loading" } | { kind: "login" } | { kind: "error" } | { kind: "ok" } & Data;
 
-const PAGE = 20;
+const PAGE = 10;
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 const TABS: { key: Tab; label: string }[] = [
   { key: "all", label: "전체" },
@@ -83,34 +86,52 @@ export default function OrdersView({ slug }: { slug: string }) {
   const [view, setView] = useState<View>({ kind: "loading" });
   const [tab, setTab] = useState<Tab>("all");
   const [period, setPeriod] = useState<Period>("3m");
-  const [more, setMore] = useState(false);
+  // 날짜 직접 고르기(보드: 시작 ~ 종료 + 「조회」). 칩을 누르면 칸이 그 기간으로 채워지고, 「조회」를 누르면 칸의 기간으로 읽는다
+  const [custom, setCustom] = useState<{ from: string; to: string } | null>(null);
+  const [draft, setDraft] = useState(() => range("3m"));
+  const [rangeErr, setRangeErr] = useState<string | null>(null);
+  const seq = useRef(0);
+  const paging = useRef(false);
+  const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const [moreError, setMoreError] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const query = useCallback(
     (cursor?: string) => {
-      const r = range(period);
+      const r = custom ?? range(period);
       return `${api}?limit=${PAGE}&tab=${tab}&from=${r.from}&to=${r.to}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
     },
-    [api, tab, period],
+    [api, tab, period, custom],
   );
 
   const load = useCallback(async () => {
+    const n = ++seq.current; paging.current = true;
+    setPage(1); setCursors([null]);
     setView({ kind: "loading" });
     setMoreError(false);
     const r = await call<{ orders: Order[]; nextCursor: string | null; counts: Counts }>(query());
+    if (n !== seq.current) return;
+    paging.current = false;
     setView(r.ok ? { kind: "ok", orders: r.data.orders, next: r.data.nextCursor, counts: r.data.counts } : { kind: r.status === 401 ? "login" : "error" });
   }, [query]);
   useEffect(() => void load(), [load]);
 
-  async function loadMore() {
-    if (view.kind !== "ok" || !view.next || more) return;
-    setMore(true);
-    setMoreError(false);
-    const r = await call<{ orders: Order[]; nextCursor: string | null; counts: Counts }>(query(view.next));
-    if (r.ok) setView({ kind: "ok", orders: [...view.orders, ...r.data.orders], next: r.data.nextCursor, counts: r.data.counts });
-    else setMoreError(true);
-    setMore(false);
+  async function go(target: number, cursor: string | null) {
+    if (view.kind !== "ok" || paging.current) return;
+    const n = ++seq.current; paging.current = true; setMoreError(false);
+    let actualPage = target; let actualCursor = cursor;
+    let r = await call<{ orders: Order[]; nextCursor: string | null; counts: Counts }>(query(actualCursor ?? undefined));
+    while (n === seq.current && r.ok && r.data.orders.length === 0 && actualPage > 1) {
+      actualPage -= 1; actualCursor = cursors[actualPage - 1];
+      r = await call<{ orders: Order[]; nextCursor: string | null; counts: Counts }>(query(actualCursor ?? undefined));
+    }
+    if (n !== seq.current) return;
+    paging.current = false;
+    if (!r.ok) return setMoreError(true);
+    setView({ kind: "ok", orders: r.data.orders, next: r.data.nextCursor, counts: r.data.counts });
+    setPage(actualPage);
+    setCursors(c => { const next = c.slice(0, actualPage); next[actualPage - 1] = actualCursor; return c[actualPage] === r.data.nextCursor ? c : next; });
   }
 
   // 취소·환불한 주문의 상품을 장바구니에 다시 담는다(옵션이 아직 있는 것만, 가벼운 쇼핑 행동이라 바로 실행하고 결과만 알린다)
@@ -127,7 +148,14 @@ export default function OrdersView({ slug }: { slug: string }) {
 
   const ok = view.kind === "ok" ? view : null;
   const orders = ok?.orders ?? [];
-  const periodLabel = PERIODS.find((p) => p.key === period)!.label;
+  const periodLabel = custom ? "선택한 기간" : `최근 ${PERIODS.find((p) => p.key === period)!.label}`;
+  function applyRange() {
+    if (!draft.from || !draft.to) return setRangeErr("시작일과 종료일을 골라 주세요");
+    if (draft.to < draft.from) return setRangeErr("종료일이 시작일보다 앞이에요");
+    if (draft.to > addDays(draft.from, 365)) return setRangeErr("한 번에 1년까지만 볼 수 있어요");
+    setRangeErr(null);
+    setCustom({ ...draft });
+  }
 
   const filters = ok && (
     <>
@@ -140,22 +168,49 @@ export default function OrdersView({ slug }: { slug: string }) {
       </div>
       <div className="ol-period" role="group" aria-label="조회 기간">
         {PERIODS.map((p) => (
-          <button key={p.key} type="button" className={period === p.key ? "on" : ""} aria-pressed={period === p.key} onClick={() => setPeriod(p.key)}>
+          <button
+            key={p.key}
+            type="button"
+            className={!custom && period === p.key ? "on" : ""}
+            aria-pressed={!custom && period === p.key}
+            onClick={() => {
+              setCustom(null);
+              setRangeErr(null);
+              setPeriod(p.key);
+              setDraft(range(p.key));
+            }}
+          >
             {p.label}
           </button>
         ))}
+        <DatePicker tone="shop" aria-label="조회 시작일" value={draft.from} max={draft.to || undefined} onChange={(v) => setDraft((d) => ({ ...d, from: v }))} />
+        <span aria-hidden>~</span>
+        <DatePicker tone="shop" aria-label="조회 종료일" value={draft.to} min={draft.from || undefined} onChange={(v) => setDraft((d) => ({ ...d, to: v }))} />
+        <button type="button" onClick={applyRange}>
+          조회
+        </button>
       </div>
+      {rangeErr && (
+        <p className="cart-msg is-err" role="alert">
+          {rangeErr}
+        </p>
+      )}
     </>
   );
 
   const empty =
     ok && orders.length === 0 ? (
       ok.counts.all === 0 && tab === "all" ? (
-        period !== "1y" ? (
+        custom || period !== "1y" ? (
           <div className="cart-empty">
-            <h2>최근 {periodLabel} 주문이 없어요</h2>
+            <h2>{periodLabel} 주문이 없어요</h2>
             <p>기간을 늘려 보세요.</p>
-            <button className="btn btn-out" type="button" onClick={() => setPeriod("1y")}>
+            <button className="btn btn-out" type="button" onClick={() => {
+                setCustom(null);
+                setRangeErr(null);
+                setPeriod("1y");
+                setDraft(range("1y"));
+              }}>
               1년 보기
             </button>
           </div>
@@ -278,13 +333,7 @@ export default function OrdersView({ slug }: { slug: string }) {
             </tbody>
           </table>
         )}
-        {ok?.next && (
-          <div className="cart-tools" style={{ justifyContent: "center" }}>
-            <button className="btn btn-out" type="button" disabled={more} aria-busy={more} onClick={() => void loadMore()}>
-              {more ? "불러오고 있어요" : "더 보기"}
-            </button>
-          </div>
-        )}
+        {ok && (cursors.length > 1 || ok.next) && <CursorPagination page={page} visited={cursors.length} hasNext={!!ok.next} onChange={n => void go(n, cursors[n - 1])} onNext={() => { if (ok.next) void go(page + 1, ok.next); }} />}
         {moreError && (
           <p className="cart-msg is-err" role="alert">
             더 불러오지 못했어요. 잠시 뒤 다시 해 주세요

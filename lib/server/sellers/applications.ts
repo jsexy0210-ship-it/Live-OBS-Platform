@@ -122,7 +122,7 @@ export async function listApplications(db: PrismaClient, admin: AdminSessionCont
   const tab = one(TABS, query.tab, "all");
   const sort = one(SORTS, query.sort, "oldest");
   const field = one(FIELDS, query.field, "all");
-  const limit = query.limit == null || query.limit === "" ? 20 : Number(query.limit);
+  const limit = query.limit == null || query.limit === "" ? 10 : Number(query.limit);
   const offset = query.cursor == null || query.cursor === "" ? 0 : /^\d{1,9}$/.test(query.cursor) ? Number(query.cursor) : NaN;
   const q = query.q?.trim() ?? "";
   const from = query.receivedFrom ? kstDayStart(query.receivedFrom) : null;

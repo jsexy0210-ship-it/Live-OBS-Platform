@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { PageHead, useConfirm } from "../../../../../components/admin-ui";
+import { Pagination, PageHead, useConfirm } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
@@ -37,6 +37,7 @@ const RESULT_ERROR: Record<string, string> = {
 };
 export default function ExternalShopsPage() {
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; data: Data }>({ kind: "loading" });
+  const [page, setPage] = useState(1);
   const [adding, setAdding] = useState(false);
   const [url, setUrl] = useState("");
   const { confirm } = useConfirm();
@@ -84,6 +85,9 @@ export default function ExternalShopsPage() {
   };
 
   const d = state.kind === "ok" ? state.data : null;
+  const pageCount = Math.ceil((d?.connections.length ?? 0) / 10);
+  const currentPage = Math.min(page, pageCount || 1);
+  useEffect(() => { if (state.kind === "ok") setPage(p => Math.min(p, Math.max(1, Math.ceil(state.data.connections.length / 10)))); }, [state]);
   return (
     <>
       <Topbar crumb="방송 › 연동 › 외부 쇼핑몰 연동" />
@@ -136,7 +140,7 @@ export default function ExternalShopsPage() {
                     <table className="tbl">
                       <thead><tr><th>쇼핑몰</th><th>상태</th><th>마지막으로 받은 주문 알림</th><th>연결일</th><th>관리</th></tr></thead>
                       <tbody>
-                        {d.connections.map((c) => (
+                        {d.connections.slice((currentPage - 1) * 10, currentPage * 10).map((c) => (
                           <tr key={c.id} data-testid="external-row">
                             <td><b>{c.shopKey}</b></td>
                             <td><span className={`bdg ${TAG[c.status].cls}`}>{TAG[c.status].label}</span><div className="t-c1 c-alt">{HELP[c.status]}</div></td>
@@ -154,6 +158,8 @@ export default function ExternalShopsPage() {
                   </div>
                 </section>
               )}
+              <span className="t-c1 c-alt">전체 연결 {d.connections.length}곳</span>
+              {pageCount > 1 && <Pagination page={currentPage} pageCount={pageCount} onChange={setPage} />}
               <span className="t-c1 c-alt">다시 연결 필요: 쇼핑몰 관리자에서 앱 권한이 바뀌거나 만료되면 생깁니다 · 해제 대기: 쇼핑몰 응답이 늦어 연결을 끊는 중입니다 · 그동안 주문은 받지 않습니다</span>
             </>
           )}

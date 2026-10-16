@@ -52,6 +52,8 @@ test("PC: 최대가 최소보다 작으면 오류·적용 꺼짐, 맞는 상품�
   // 맞는 상품이 없는 조건은 주소로 들어와도 안내와 「필터 모두 지우기」
   await page.goto(`/shop/${SLUG}/products?minPrice=90000000`);
   await expect(page.getByText("필터 조건에 맞는 상품이 없어요. 필터를 줄여 보세요")).toBeVisible();
+  await expect(page.getByRole("status").locator("p")).toHaveText("필터 조건에 맞는 상품이 없어요. 필터를 줄여 보세요");
+  await expect(page.getByRole("navigation", { name: "쪽 이동" })).toHaveCount(0);
   await page.getByRole("link", { name: "필터 모두 지우기" }).click();
   await expect(page).not.toHaveURL(/minPrice/);
   expect((await names(page)).length).toBeGreaterThan(0);
@@ -63,17 +65,15 @@ test("PC: 최대가 최소보다 작으면 오류·적용 꺼짐, 맞는 상품�
 test("검색: 기본 정렬은 관련도순, 필터가 검색어와 함께 이어진다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/shop/${SLUG}/search?q=${encodeURIComponent("부스터")}`);
-  const nav = page.getByRole("navigation", { name: "정렬" });
-  await expect(nav.locator("summary")).toHaveText("관련도순");
-  await nav.locator("summary").click();
+  const nav = page.getByRole("group", { name: "정렬 기준" });
+  await expect(nav.getByRole("link", { name: "관련도순" })).toHaveAttribute("aria-current", "page"); // PC 묶음 버튼(보드 SH-002-PC-IA)
   await expect(nav.getByRole("link")).toHaveText(["관련도순", "추천순", "인기순", "신상품", "낮은 가격", "높은 가격"]);
-  await page.keyboard.press("Escape");
   await panel(page).getByLabel("재고 있는 상품만").check();
   await panel(page).getByRole("button", { name: "적용" }).click();
   await expect(page).toHaveURL(/q=%EB%B6%80%EC%8A%A4%ED%84%B0/);
   await expect(page).toHaveURL(/inStock=1/);
   expect(await names(page)).not.toContain("드래곤 소울 부스터");
-  await expect(page.getByRole("navigation", { name: "정렬" }).locator("summary")).toHaveText("관련도순");
+  await expect(page.getByRole("group", { name: "정렬 기준" }).getByRole("link", { name: "관련도순" })).toHaveAttribute("aria-current", "page");
   await shot(page, "search-1440");
 });
 

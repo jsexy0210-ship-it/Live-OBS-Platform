@@ -1,11 +1,45 @@
 import sharp from "sharp";
 import { crc32, deflateSync } from "node:zlib";
+import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { checkFavicon, checkOgImage, detectImage, readBodyLimited } from "../../lib/server/branding/image";
-import { requestOrigin } from "../../lib/server/branding/siteUrl";
+import { requestCardSite, requestOrigin } from "../../lib/server/branding/siteUrl";
+import { renderBrandingCard } from "../../lib/server/branding/card";
+import { GET as designAsset } from "../../design/preview/app/design-assets/[...path]/route";
 
 const png = (w: number, h: number) => sharp({ create: { width: w, height: h, channels: 4, background: "#ff6600" } }).png().toBuffer();
 const jpg = (w: number, h: number) => sharp({ create: { width: w, height: h, channels: 3, background: "#123456" } }).jpeg().toBuffer();
+
+it("디자인 미리보기는 승인 심볼 PNG만 읽고 다른 PNG와 경로 이탈은 거부한다", async () => {
+  const get = (path: string[]) => designAsset(new Request("http://localhost/design-assets"), { params: Promise.resolve({ path }) });
+  const response = await get(["public", "branding", "streamshop-symbol.png"]);
+  expect(response.status).toBe(200);
+  expect(response.headers.get("content-type")).toBe("image/png");
+  expect(Buffer.from(await response.arrayBuffer())).toEqual(await readFile("public/branding/streamshop-symbol.png"));
+  expect((await get(["public", "branding", "onq-32.png"])).status).toBe(404);
+  expect((await get(["..", "public", "branding", "streamshop-symbol.png"])).status).toBe(404);
+  expect((await get(["styles", "public-brand.css"])).status).toBe(200);
+});
+
+it.each(["master", "partners"] as const)("%s 기본 파비콘·홈 아이콘은 정사각형 투명 PNG이며 원본 심볼을 보존한다", async (role) => {
+  const original = await readFile("public/branding/streamshop-symbol.png");
+  expect(createHash("sha256").update(original).digest("hex")).toBe("e6ea28c6674ce1431f7fbfecb548f23c98060152186c0fc8ddff7f44bd6cfc0d");
+  for (const size of [32, 180]) {
+    const data = await readFile(`public/branding/streamshop-${role}-${size}-20261010.png`);
+    expect(await sharp(data).metadata()).toMatchObject({ format: "png", width: size, height: size, hasAlpha: true });
+    const { channels } = await sharp(data).stats();
+    expect(channels[3].min).toBe(0);
+    expect(channels[3].max).toBeGreaterThan(200);
+    if (role === "master") expect(channels[1].mean).toBeGreaterThan(channels[0].mean * 2);
+    else expect(channels[0].mean).toBeGreaterThan(channels[1].mean * 2);
+  }
+});
+
+it("소개 기본 공유 카드는 승인 심볼을 읽어 1200×630 PNG로 렌더한다", async () => {
+  const card = await renderBrandingCard("landing", "스트림샵 | 쇼핑몰부터 라이브 판매까지", "dev.on-aircue.com");
+  expect(await sharp(card).metadata()).toMatchObject({ width: 1200, height: 630, format: "png" });
+});
 
 // PNG 한 장을 담은 ICO(Vista 이후 형식). ICO는 받지 않는다는 확인에만 쓴다
 function icoOf(inner: Buffer, side = 32): Buffer {
@@ -226,5 +260,25 @@ describe("공유 메타 절대 주소의 기준 주소", () => {
     expect(requestOrigin(h({}))).toBeNull();
     // 정규식은 통과하지만 URL을 만들 수 없는 포트(Codex 지적)
     expect(requestOrigin(h({ host: "example.com:99999" }))).toBeNull();
+  });
+});
+
+describe("공유 카드에 인쇄하는 플랫폼 주소", () => {
+  const h = (o: Record<string, string>) => new Headers(o);
+  it("신뢰 프록시의 공인 호스트를 쓰고 내부·잘못된 호스트는 인쇄하지 않는다", () => {
+    process.env.TRUSTED_PROXY_HOPS = "1";
+    try {
+      expect(requestCardSite(h({ host: "0.0.0.0:3000", "x-forwarded-host": "test.on-aircue.com", "x-forwarded-proto": "https" }))).toBe("test.on-aircue.com");
+      expect(requestCardSite(h({ host: "0.0.0.0:3000" }))).toBe("");
+      expect(requestCardSite(h({ host: "evil.example" }))).toBe("");
+      expect(requestCardSite(h({ host: "app:3000", "x-forwarded-host": "evil.example/path" }))).toBe("");
+    } finally {
+      delete process.env.TRUSTED_PROXY_HOPS;
+    }
+  });
+  it("신뢰 프록시가 아니면 위조한 전달 호스트를 무시한다", () => {
+    delete process.env.TRUSTED_PROXY_HOPS;
+    expect(requestCardSite(h({ host: "test.on-aircue.com", "x-forwarded-host": "evil.example" }))).toBe("test.on-aircue.com");
+    expect(requestCardSite(h({ host: "192.168.1.2:3000" }))).toBe("");
   });
 });

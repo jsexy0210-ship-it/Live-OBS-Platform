@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { adminApi, safeAdminNext } from "../_components/api";
+import styles from "./page.module.css";
 
 // 마스터 관리자 로그인(이메일 + 비밀번호, POST /api/admin/auth/login). 파트너스 관리자 로그인 화면과 같은 카드 모양을 쓴다.
 // 실패 문구는 서버가 주는 message를 그대로 쓴다(마스터 관리자는 합니다체, 정본: lib/server/auth/messages.ts).
@@ -32,13 +33,14 @@ export default function AdminLoginPage() {
   return (
     <div className="login-page">
       <form className="card col login-card" onSubmit={submit} noValidate>
-        <span className="logo login-logo" aria-label="ONQ">
+        <span className="logo login-logo" aria-label="ONQ 마스터 관리자">
           <span className="logo-sym" />
           <span className="logo-word" />
+          <small>마스터 관리자</small>
         </span>
         <div className="col login-head">
           <h1 className="t-t3">마스터 관리자</h1>
-          <span className="t-l2 c-alt">마스터 관리자 계정으로 로그인해 주십시오.</span>
+          <span className="t-l2 c-alt">이메일과 비밀번호로 로그인합니다.</span>
         </div>
         <div className="col" style={{ gap: 16 }}>
           <div className="fld">
@@ -63,7 +65,7 @@ export default function AdminLoginPage() {
               </span>
             )}
           </div>
-          <button className={`btn btn-lg btn-block${busy ? " is-loading" : ""}`} type="submit" disabled={!ready || busy}>
+          <button className={`btn btn-lg btn-block${busy ? " is-loading" : ""}${!ready && !busy ? ` ${styles.disabledPrimary}` : ""}`} type="submit" disabled={!ready || busy}>
             {busy ? (
               <>
                 <span className="spin" style={{ width: 18, height: 18 }} />

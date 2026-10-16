@@ -3,7 +3,7 @@
 import { formatDateTime } from "../../../../../../lib/client/format";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { PageHead } from "../../../../../../components/admin-ui";
+import { PageHead, Pagination } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
@@ -17,6 +17,7 @@ type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "o
 
 export default function RestockAlertsPage() {
   const [state, setState] = useState<Load>({ kind: "loading" });
+  const [page, setPage] = useState(1);
 
   const load = useCallback(async () => {
     const r = await api<{ items: Item[] }>("/api/seller/restock-alerts");
@@ -29,6 +30,10 @@ export default function RestockAlertsPage() {
   }, [load]);
 
   const items = state.kind === "ok" ? state.items : [];
+  const pageCount = Math.ceil(items.length / 10);
+  const currentPage = Math.min(page, pageCount || 1);
+  const pageItems = items.slice((currentPage - 1) * 10, currentPage * 10);
+  useEffect(() => { if (state.kind === "ok") setPage(p => Math.min(p, pageCount || 1)); }, [state.kind, pageCount]);
   const waitingTotal = items.reduce((s, x) => s + x.waiting, 0);
 
   return (
@@ -38,7 +43,7 @@ export default function RestockAlertsPage() {
         <PageHead title="재입고 알림" />
         {state.kind === "ok" && (
           <div className="msg msg-info" role="status">
-            <span>재고가 들어오면 신청한 구매자에게 알림이 갑니다. 밤 9시부터 아침 8시 사이에 들어온 재고는 아침 8시에 보냅니다. 지금은 알림 발송이 연결되지 않아 발송 기록만 남습니다.</span>
+            <span>재고가 들어오면 알림은 미발송 대기 상태로 바뀝니다. 실제 발송은 아직 연결되지 않았습니다.</span>
           </div>
         )}
         <div className="card">
@@ -68,7 +73,7 @@ export default function RestockAlertsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map((x) => (
+                    {pageItems.map((x) => (
                       <tr key={x.productId} data-testid="restock-row">
                         <td className="col-text">
                           <Link href={`/seller/products/${x.productId}`} className="fw6">
@@ -86,6 +91,7 @@ export default function RestockAlertsPage() {
                   </tbody>
                 </table>
               </div>
+              {pageCount > 1 && <Pagination page={currentPage} pageCount={pageCount} onChange={setPage} label="재입고 알림 페이지 이동" />}
               <div className="t-c1 c-alt" style={{ padding: "12px 20px" }}>
                 재고를 기다리는 구매자 {waitingTotal.toLocaleString("ko-KR")}명 · 신청한 구매자 정보는 표시하지 않습니다
               </div>

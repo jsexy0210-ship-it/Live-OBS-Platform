@@ -1,9 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import NoticeView from "../../../../../../../components/shop/NoticeView";
-import ShopLocked from "../../../../../../../components/shop/ShopLocked";
-import { shopOpen } from "../../../../../../../lib/server/buyers/signup";
-import { prisma } from "../../../../../../../lib/server/db";
 import { findActiveShop } from "../../../_lib/shop";
 
 export const dynamic = "force-dynamic";
@@ -15,9 +12,5 @@ export default async function Page({ params }: { params: Promise<{ slug: string;
   const { slug, noticeId } = await params;
   const shop = await findActiveShop(slug);
   if (!shop) notFound();
-  return (await shopOpen(prisma, shop.id)) ? (
-    <NoticeView slug={shop.slug} noticeId={noticeId} />
-  ) : (
-    <ShopLocked slug={shop.slug} />
-  );
+  return <NoticeView slug={shop.slug} noticeId={noticeId} />;
 }

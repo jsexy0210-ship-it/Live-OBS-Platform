@@ -215,6 +215,16 @@ jobs:
             echo "키를 .env에 반영했어요: ${put[*]:-없음}(이름만 표시)."
           fi
 
+      # 전용 App 키는 단일 base64 입력이다. 값/길이/본문 출력과 기존 비밀 변경은 없다.
+      # 전용 입력 전체가 없으면 원환경 보존, 일부/귀속 검증 실패는 다음 앱 기동 전에 중단한다.
+      - name: Sync MA120 preview-only env
+        env:
+          ONQ_DISK_APP_ID: ${{ secrets.ONQ_DISK_APP_ID }}
+          ONQ_DISK_INSTALLATION_ID: ${{ secrets.ONQ_DISK_INSTALLATION_ID }}
+          ONQ_DISK_APP_PRIVATE_KEY_BASE64: ${{ secrets.ONQ_DISK_APP_PRIVATE_KEY_BASE64 }}
+          ONQ_DISK_CALLBACK_TOKEN: ${{ secrets.ONQ_DISK_CALLBACK_TOKEN }}
+        run: python3 scripts/ops/disk-optimization-env-sync.py
+
       - name: Build and start
         env:
           APP_VERSION: ${{ github.sha }}
@@ -276,11 +286,11 @@ jobs:
           echo "$line" >> /opt/obs/deploy-history.log
           { echo "### obs-test 배포 완료"; echo; echo "- 커밋: \`$GITHUB_SHA\`"; echo "- 시각: $(TZ=Asia/Seoul date '+%F %T') KST"; } >> "$GITHUB_STEP_SUMMARY"
 
-      # 배포가 성공한 뒤에만 오래된 백업·이미지·캐시·러너 로그를 정리한다. 정리가 실패해도 배포 결과는 바꾸지 않는다.
-      - name: Clean up disk
+      # 배포 뒤에는 여유 용량만 확인한다. 백업·롤백 이미지·공유 캐시·러너 로그를 자동 삭제하지 않는다.
+      - name: Check disk after deploy
         if: success()
         continue-on-error: true
-        run: scripts/ops/disk-cleanup.sh --apply
+        run: scripts/ops/disk-cleanup.sh --check-after-deploy
 
       - name: Show status on failure
         if: failure()

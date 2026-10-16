@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
-import { ListHead, PageHead } from "../../../../../components/admin-ui";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ListHead, PageHead, Pagination } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -28,9 +28,14 @@ const KIND: Record<Item["kind"], { label: string; cls: string }> = {
 export default function NotificationsPage() {
   const [state, setState] = useState<Load>({ kind: "loading" });
 
+  const [page, setPage] = useState(1);
+  const requestId = useRef(0);
   const load = useCallback(async () => {
+    const id = ++requestId.current;
+    setPage(1);
     setState({ kind: "loading" });
     const r = await api<{ items: Item[]; unreadCount: number }>("/api/seller/notifications");
+    if (id !== requestId.current) return;
     if (!r.ok) return setState({ kind: "error" });
     setState({ kind: "ok", items: r.data.items, unreadCount: r.data.unreadCount });
     // 목록을 받은 뒤에 연 것으로 남긴다(실패해도 목록은 그대로)
@@ -41,6 +46,7 @@ export default function NotificationsPage() {
   }, [load]);
 
   const items = state.kind === "ok" ? state.items : [];
+  const pageCount = Math.ceil(items.length / 10);
 
   return (
     <>
@@ -49,9 +55,12 @@ export default function NotificationsPage() {
         <PageHead
           title="알림"
           actions={
+            <>
+            <button className="btn btn-out" type="button" onClick={() => void load()}>새로 고침</button>
             <Link className="btn btn-out" href="/seller/notices">
               공지 · 문의
             </Link>
+            </>
           }
         />
         <span className="t-c1 c-alt">새 공지(최근 14일), 문의 답변, 입금 확인 요청, 결제 완료, 품절, 반품·교환 요청이 보입니다. 누르면 해당 화면으로 갑니다.</span>
@@ -77,7 +86,7 @@ export default function NotificationsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((n) => (
+                  {items.slice((page - 1) * 10, page * 10).map((n) => (
                     <tr key={n.id} data-testid="notif-row" data-unread={n.unread ? "true" : "false"}>
                       <td>
                         <span className={`bdg ${KIND[n.kind].cls}`}>{KIND[n.kind].label}</span>
@@ -96,6 +105,7 @@ export default function NotificationsPage() {
             </div>
           )}
         </div>
+        {pageCount > 1 && <Pagination page={page} pageCount={pageCount} onChange={setPage} />}
       </main>
     </>
   );

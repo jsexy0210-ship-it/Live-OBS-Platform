@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { call } from "./reviewShared";
 
-// SH-040 쇼핑몰 준비 중 · 일시 정지 안내. 운영 상태가 OPEN이 아니면 로그인·비밀번호 찾기 · 주문 내역/상세 · 약관 · 고객센터 외 주소는 모두 이 안내를 보여 준다(판매자 사정은 적지 않는다).
+// SH-040 쇼핑몰 준비 중 · 일시 정지 안내. 운영 상태가 OPEN이 아니면 로그인·비밀번호 찾기 · 주문 내역/상세 · 약관 · 고객센터 · 기존 문의 조회 외 주소는 모두 이 안내를 보여 준다(판매자 사정은 적지 않는다).
 // 서버(#748)도 새 주문·장바구니·가입은 막는다. 이미 만든 결제 대기 주문의 결제는 열려 있어 주문 상세에서 이어서 할 수 있다.
 type State = "OPEN" | "PREPARING" | "PAUSED";
 type Orders = { orders: { id: string }[]; counts: { pending: number } };
@@ -14,7 +14,7 @@ const iGa = (name: string) => {
   const c = name.trim().charCodeAt(name.trim().length - 1);
   return c >= 0xac00 && c <= 0xd7a3 ? ((c - 0xac00) % 28 === 0 ? "가" : "이") : "이(가)";
 };
-const OPEN_PATH = /^\/(login|password-reset|orders|terms|privacy|help)(\/|$)/;
+const OPEN_PATH = /^\/(login|password-reset|orders|terms|privacy|help)(\/|$)|^\/me\/inquiries(?:\/|$)/;
 
 export default function ShopClosedGate({ slug, shopName, state, children }: { slug: string; shopName: string; state: State; children: React.ReactNode }) {
   const base = `/shop/${encodeURIComponent(slug)}`;

@@ -56,6 +56,13 @@ afterAll(async () => {
 });
 
 const DAY = 86_400_000;
+async function syntheticPriceNotice(subscriptionId: string, priceChangeId: string, completedAt: Date) {
+  const sub = await db.sellerSubscription.findUniqueOrThrow({ where: { id: subscriptionId } });
+  await db.subscriptionPriceNotice.createMany({ data: (["MAIL", "ALIMTALK", "PARTNERS_NOTICE"] as const).map((channel) => ({
+    subscriptionId, subscriptionStartedAt: sub.subscribedAt, priceChangeId, channel,
+    status: "SENT" as const, completedAt, deliveryReference: `synthetic:${channel}`,
+  })) });
+}
 const ownerCtx = (sellerId: string, actorId: string): TenantContext => ({
   sellerId,
   actorType: "SELLER_USER",
@@ -234,7 +241,7 @@ describe("카드 등록·결제", () => {
 });
 
 describe("가격", () => {
-  it("가격을 바꾸면 새 가입자는 바로, 기존 구독자는 변경 + 30일 이후 첫 결제부터 새 가격이다", async () => {
+  it("가격을 바꾸면 새 가입자는 바로, 기존 구독자는 필수 고지 완료 + 30일 이후 첫 결제부터 새 가격이다", async () => {
     const provider = new FakeBillingProvider();
     const old = await shop(new Date(Date.now() - DAY));
     await registerCardAndPay(db, provider, old.ctx, { authKey: "old" });
@@ -244,13 +251,17 @@ describe("가격", () => {
     const r = await updatePlanPrice(db, admin, "STANDARD", { listPrice: 300000, salePrice: 249000 });
     expect(r).toMatchObject({ ok: true, plan: { salePrice: 249000 } });
     const changedAt = (await db.subscriptionPriceChange.findFirstOrThrow({ orderBy: { changedAt: "desc" } })).changedAt;
+    const change = await db.subscriptionPriceChange.findFirstOrThrow({ orderBy: { changedAt: "desc" } });
+    expect(r).toMatchObject({ plan: { appliesToExistingFrom: null, noticeStatus: "PENDING" } });
+    expect((await listPriceChangeNoticeTargets(db, admin))[0]).toMatchObject({ appliesFrom: null, noticeStatus: "PENDING" });
+    await syntheticPriceNotice(oldSub.id, change.id, changedAt);
 
     // 새 가입자: 바로 새 가격
     const fresh = await shop(new Date(Date.now() - DAY));
     await registerCardAndPay(db, provider, fresh.ctx, { authKey: "new" });
     expect(provider.charges.at(-1)!.amount).toBe(249000);
 
-    // 기존 구독자: 변경 뒤 30일 안의 결제는 이전 가격, 30일이 지난 뒤 결제는 새 가격
+    // 기존 구독자: 합성 필수 고지 완료 뒤 30일 안에는 이전 가격, 지난 뒤에는 새 가격
     // (기존 구독자의 기간 끝을 변경 + 10일로 옮겨 30일 안에 다음 결제가 오게 한다)
     const end = new Date(changedAt.getTime() + 10 * DAY);
     await db.sellerSubscription.update({
@@ -748,7 +759,7 @@ describe("MASTER 재검수 3차 재현", () => {
     });
   });
 
-  it("3-1: 30일 안에 가격을 두 번 바꿔도, 첫 변경 뒤 가입한 판매자는 가입 때 가격(250,000원)을 내다가 30일 뒤 새 가격을 낸다", async () => {
+  it("3-1: 두 번째 가격 변경의 고지를 완료한 뒤 30일이 지나야 가입 때 가격(250,000원)에서 새 가격으로 바뀐다", async () => {
     const admin = await adminCtx("SUPER_ADMIN");
     const provider = new FakeBillingProvider();
     await updatePlanPrice(db, admin, "STANDARD", { listPrice: 300000, salePrice: 250000 });
@@ -756,6 +767,7 @@ describe("MASTER 재검수 3차 재현", () => {
     expect(provider.charges.at(-1)!.amount).toBe(250000);
     await updatePlanPrice(db, admin, "STANDARD", { listPrice: 300000, salePrice: 280000 });
     const c2 = (await db.subscriptionPriceChange.findFirstOrThrow({ orderBy: { changedAt: "desc" } })).changedAt;
+    await syntheticPriceNotice(sub.id, (await db.subscriptionPriceChange.findFirstOrThrow({ orderBy: { changedAt: "desc" } })).id, c2);
 
     // 두 번째 변경 + 10일에 다음 결제가 오게 기간 끝을 옮긴다
     const end = new Date(c2.getTime() + 10 * DAY);

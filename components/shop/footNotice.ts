@@ -3,6 +3,7 @@ import { bizInfoUrl } from "../../lib/server/shop-legal/notice";
 // 쇼핑몰 바닥글 법정 표시 행(SA-062 「사업자 정보·고지」에서 파트너스가 입력한 값). 입력한 항목만 행으로 만든다(없으면 줄을 뺌).
 // 호스팅 제공자: 플랫폼 운영사 상호가 마스터 관리자 설정으로 정해지기 전까지는 서비스 이름을 쓴다(FEATURE_GAP L-1 「ONQ 표기」).
 export const HOSTING_PROVIDER = "ONQ";
+export const HOSTING_DESCRIPTION = `${HOSTING_PROVIDER}로 운영하는 쇼핑몰이에요`;
 
 export type FootRow = { label: string; value: string; href?: string };
 type Notice = { address: string; csPhone: string; csEmail: string; csHours: string; escrowKind: "none" | "escrow" | "insurance"; escrowProvider: string; escrowUrl: string };
