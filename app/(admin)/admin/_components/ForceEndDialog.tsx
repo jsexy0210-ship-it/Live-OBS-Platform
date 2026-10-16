@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { textLength } from "../../../../lib/server/text/clean";
 import { Modal } from "../../../../components/admin-ui/Modal";
 import { adminApi } from "./api";
 import { MAX_REASON } from "./SuspendDialog";
@@ -22,7 +21,8 @@ export function ForceEndDialog({
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const count = textLength(reason.trim());
+  // 서버(forceEndBroadcast)가 trim().length(UTF-16 단위)로 검사하므로 같은 방식으로 센다
+  const count = reason.trim().length;
   const tooLong = count > MAX_REASON;
   const missing = count === 0;
 

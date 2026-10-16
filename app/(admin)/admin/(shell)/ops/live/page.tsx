@@ -25,12 +25,14 @@ export default function LiveBroadcastsPage() {
   const [view, setView] = useState<"table" | "card">("table");
   const [viewing, setViewing] = useState<LiveBroadcast | null>(null);
   const [ending, setEnding] = useState<LiveBroadcast | null>(null);
+  // 방금 끝낸 방송은 진행 중이던 10초 갱신이 옛 값을 돌려줘도 다시 보이지 않게 거른다
+  const [endedIds, setEndedIds] = useState<string[]>([]);
   // 휴대폰에서는 표 대신 카드로 시작한다(표 가로 스크롤을 피함)
   useEffect(() => {
     if (window.matchMedia("(max-width: 639px)").matches) setView("card");
   }, []);
   const [toast, setToast] = useState<string | null>(null);
-  const all = data?.items ?? [];
+  const all = (data?.items ?? []).filter((b) => !endedIds.includes(b.broadcastId));
   const now = Date.now();
   const items = (problemOnly ? all.filter(problem) : all).slice().sort((a, b) => Number(problem(b)) - Number(problem(a)));
   const rate = data?.orderRate.total ?? 0;
@@ -193,11 +195,13 @@ export default function LiveBroadcastsPage() {
           broadcast={ending}
           onClose={() => setEnding(null)}
           onDone={() => {
+            setEndedIds((ids) => [...ids, ending.broadcastId]);
             setEnding(null);
             setToast("방송을 종료했습니다");
             void reload();
           }}
           onStale={() => {
+            setEndedIds((ids) => [...ids, ending.broadcastId]);
             setEnding(null);
             setToast("이미 끝난 방송입니다. 목록을 다시 불러옵니다.");
             void reload();
