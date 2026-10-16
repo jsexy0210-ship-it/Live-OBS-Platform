@@ -28,7 +28,7 @@ test("도우미 답변 자료 삭제: 공통 확인 창, 취소하면 남고 지
   await page.getByRole("button", { name: "로그인" }).click();
   await expect(page).toHaveURL(/\/admin$/);
   await page.goto("/admin/support/assistant");
-  await page.getByRole("button", { name: "자료 추가" }).click();
+  await page.getByRole("button", { name: "문서 등록" }).click();
   await page.getByLabel("제목").fill(title);
   await page.getByLabel("내용").fill("시험용 내용입니다.");
   await page.getByRole("button", { name: "저장", exact: true }).click();

@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { DELETE as deleteRoute } from "../../app/api/seller/hit-cards/[hitCardId]/route";
+import { GET as exportRoute } from "../../app/api/seller/hit-cards/export/route";
 import { GET as listRoute, POST as createRoute } from "../../app/api/seller/hit-cards/route";
 import { loginSeller } from "../../lib/server/auth/login";
 import { HIT_MESSAGES, HIT_PAGE_SIZE } from "../../lib/server/broadcast/hitCards";
@@ -145,5 +146,57 @@ describe("HIT 카드 등급(SA-053)", () => {
     expect((await list(s.owner, "?grade=L-P")).body.items.map((x: { cardName: string }) => x.cardName)).toEqual(["루피"]);
     expect((await list(s.owner, `?grade=${"가".repeat(13)}`)).status).toBe(400);
     expect(await db.auditLog.count({ where: { action: "hit_card.create", sellerId: s.seller.id } })).toBe(5);
+  });
+});
+
+describe("HIT 카드 기록 쪽 이동·내보내기(SA-053)", () => {
+  const exportCsv = (cookie: string, q = "") => exportRoute(new Request(BASE + "/api/seller/hit-cards/export" + q, { headers: { ...H, cookie } }));
+
+  it("total은 조건에 맞는 전체 건수이고 offset으로 쪽을 바로 옮긴다(cursor보다 우선). 잘못된 offset은 400이다", async () => {
+    const s = await shop();
+    const t = await shop();
+    for (let i = 0; i < HIT_PAGE_SIZE + 3; i++) await db.hitCard.create({ data: { sellerId: s.seller.id, nicknameSnapshot: "a", grade: i % 2 ? "SR" : "SAR", cardName: `카드${i}`, createdAt: new Date(Date.UTC(2026, 9, 2, 0, i)) } });
+    await db.hitCard.create({ data: { sellerId: t.seller.id, nicknameSnapshot: "a", cardName: "남의 카드" } });
+    const p1 = await list(s.owner);
+    expect([p1.body.total, p1.body.items.length]).toEqual([HIT_PAGE_SIZE + 3, HIT_PAGE_SIZE]);
+    const last = await list(s.owner, `?offset=${HIT_PAGE_SIZE}&cursor=${p1.body.nextCursor}`);
+    expect([last.body.items.map((c: { cardName: string }) => c.cardName), last.body.nextCursor]).toEqual([["카드2", "카드1", "카드0"], null]);
+    // 등급 조건이 있으면 total도 그 조건의 건수
+    const sr = await list(s.owner, "?grade=SR&offset=0");
+    expect([sr.body.total, sr.body.items.length]).toEqual([6, 6]);
+    expect((await list(t.owner)).body.total).toBe(1);
+    expect((await list(s.owner, `?offset=${HIT_PAGE_SIZE * 100}`)).body.items).toEqual([]);
+    for (const q of ["?offset=-1", "?offset=abc", "?offset=1.5", "?offset=9999999"]) expect((await list(s.owner, q)).status).toBe(400);
+  });
+
+  it("목록에 주문대기 접수 시각(orderReceivedAt)이 있고 직접 입력한 카드는 null이다", async () => {
+    const s = await shop();
+    const q = await queueItem(s.seller.id, s.buyer.id, null);
+    await create(s.owner, { cardName: "주문 카드", queueItemId: q.id });
+    await create(s.owner, { cardName: "직접 카드", nickname: "가" });
+    const items = (await list(s.owner)).body.items as { cardName: string; orderReceivedAt: string | null }[];
+    expect(items.map((c) => [c.cardName, c.orderReceivedAt])).toEqual([["직접 카드", null], ["주문 카드", q.receivedAt.toISOString()]]);
+  });
+
+  it("내보내기: 조건에 맞는 카드 전체를 최신순 CSV로. 권한·격리·잘못된 조건·감사", async () => {
+    const s = await shop();
+    const t = await shop();
+    const b = await db.broadcastSession.create({ data: { sellerId: s.seller.id, status: "ENDED", title: "10/2 방송", startedAt: new Date("2026-10-02T10:00:00+09:00"), endedAt: new Date("2026-10-02T12:00:00+09:00") } });
+    await db.hitCard.create({ data: { sellerId: s.seller.id, broadcastSessionId: b.id, nicknameSnapshot: "별빛", grade: "SAR", cardName: "=SUM(1)", note: "메모, 쉼표", createdAt: new Date("2026-10-02T11:03:00+09:00") } });
+    await db.hitCard.create({ data: { sellerId: s.seller.id, nicknameSnapshot: "가나", cardName: "피카츄", createdAt: new Date("2026-10-03T09:00:00+09:00") } });
+    await db.hitCard.create({ data: { sellerId: t.seller.id, nicknameSnapshot: "x", cardName: "남의 카드" } });
+    const res = await exportCsv(s.runner);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/csv; charset=utf-8");
+    const lines = (await res.text()).replace(/^\uFEFF/, "").trim().split(/\r?\n/);
+    expect(lines).toEqual([
+      "카드,일시,등급,구매자,주문 접수,방송,메모",
+      "피카츄,2026.10.03 09:00,,가나,,,",
+      "'=SUM(1),2026.10.02 11:03,SAR,별빛,,10/2 방송,\"메모, 쉼표\"",
+    ]);
+    expect((await (await exportCsv(s.owner, `?broadcastId=${b.id}`)).text()).trim().split(/\r?\n/)).toHaveLength(2);
+    expect((await exportCsv(s.noPerm)).status).toBe(403);
+    for (const q of ["?from=2026-02-30", "?broadcastId=x"]) expect((await exportCsv(s.owner, q)).status).toBe(400);
+    expect(await db.auditLog.count({ where: { sellerId: s.seller.id, action: "hit_card.export" } })).toBe(2);
   });
 });

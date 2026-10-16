@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { ConfirmProvider, useConfirm } from "../../../../components/admin-ui";
 import IdentityCheck from "../../../../components/seller/IdentityCheck";
 import NewPasswordForm from "../../../../components/seller/NewPasswordForm";
-import { AuthFrame, IdentityUnavailable, useStaffType, withType } from "../../../../components/seller/PartnersAuth";
+import { AccountSeg, AuthFrame, IdentityUnavailable, useStaffType, withType } from "../../../../components/seller/PartnersAuth";
 import { api, failMessage } from "../../../../components/seller/api";
 import { RETRY_TEXT, stepOutcome } from "../../../../components/seller/stepFailure";
 
@@ -152,10 +152,7 @@ function FindIdPageInner() {
       </div>
       {step === "find" && (
         <>
-          <nav className="tabs login-tabs" aria-label="계정 종류">
-            <a className={`tab${staff ? "" : " on"}`} href="/seller/find-id" aria-current={!staff ? "page" : undefined}>대표자</a>
-            <a className={`tab${staff ? " on" : ""}`} href="/seller/find-id?type=staff" aria-current={staff ? "page" : undefined}>직원</a>
-          </nav>
+          <AccountSeg path="/seller/find-id" />
           {staff && <span className="t-l2 c-alt">직원 본인 휴대폰으로 본인확인하면 대표자가 등록한 직원 정보와 맞춰 보고 로그인 이메일을 보여 드립니다.</span>}
         </>
       )}
@@ -231,7 +228,7 @@ function FindIdPageInner() {
         </>
       )}
       {!unavailable && (
-        <div className="row t-l2 c-alt" style={{ justifyContent: "center", gap: 8 }}>
+        <div className="row t-c1 c-alt login-links" style={{ justifyContent: "center" }}>
           <Link href={withType("/seller/login", staff)}>로그인으로 돌아가기</Link>
           {step === "find" && (
             <>

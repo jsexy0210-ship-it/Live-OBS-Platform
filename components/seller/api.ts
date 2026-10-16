@@ -118,7 +118,7 @@ export type Me = { sellerId: string; userId: string; isOwner: boolean; permissio
   trialEndsAt: string | null;
   // 마스터 대리 조회(MA-016)면 true. impersonation은 누가·왜·언제까지 보는지(배너용)
   readOnly?: boolean;
-  impersonation?: { adminName: string; reason: string; startedAt: string; expiresAt: string } | null;
+  impersonation?: { adminName: string; reason: string; scopes: string[]; startedAt: string; expiresAt: string } | null;
 };
 
 // 재고 차감 시점: ORDER=주문하면 바로, PAYMENT=결제하면(기본)
