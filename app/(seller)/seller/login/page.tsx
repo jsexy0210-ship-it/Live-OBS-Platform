@@ -30,6 +30,7 @@ export default function SellerLoginPage() {
   const [needShop, setNeedShop] = useState(false);
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [remember, setRemember] = useState(false);
   const [busy, setBusy] = useState(false);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   // 직원 탭에서 계정 찾기로 갔다가 돌아오면(?type=staff) 직원 탭으로 연다
@@ -82,7 +83,7 @@ export default function SellerLoginPage() {
     setNotice(null);
     const r = await api("/api/seller/auth/login", {
       method: "POST",
-      body: { email: email.trim(), password, accountType: tab, ...(needShop ? { shopSlug: shopSlug.trim() } : {}) },
+      body: { email: email.trim(), password, accountType: tab, remember, ...(needShop ? { shopSlug: shopSlug.trim() } : {}) },
     });
     if (r.ok) {
       // 갈 곳(next)을 받지 않았고 기본 화면(상품)이 요금제에 없으면 지금 열 수 있는 첫 메뉴로 보낸다
@@ -207,6 +208,10 @@ export default function SellerLoginPage() {
               <span className="help">이 이메일로 쓰는 쇼핑몰이 여러 곳입니다. 가입할 때 정한 쇼핑몰 주소(영문)를 입력해 주십시오</span>
             </div>
           )}
+          <label className="chk">
+            <input type="checkbox" className="cbx" checked={remember} disabled={busy} onChange={(e) => setRemember(e.target.checked)} />
+            이 기기에서 로그인 유지
+          </label>
           <button className={`btn btn-lg btn-block${busy ? " is-loading" : ""}`} type="submit" disabled={!ready || busy}>
             {busy ? (
               <>
