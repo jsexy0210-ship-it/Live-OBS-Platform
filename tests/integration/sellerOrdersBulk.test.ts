@@ -121,7 +121,7 @@ describe("칩 건수", () => {
     expect((await list(s, { trackingMissing: "true" })).orders).toHaveLength(c.trackingMissing);
     expect((await list(s, { queue: "done" })).orders).toHaveLength(c.queueDone);
     expect(c.queueDonePending).toBe(2);
-    expect((await list(s, { queue: "done", prepared: "false" })).orders).toHaveLength(c.queueDonePending);
+    expect((await list(s, { queue: "done", prepared: "false" })).orders).toHaveLength(c.queueDonePending); // 상태 조건 없이도 건수와 같다(결제 완료만)
     expect(await listSellerOrders(db, s.ctx, { prepared: "maybe" })).toEqual({ ok: false });
     const staff = await createSellerUser(s.seller.id, { permissions: ["PRODUCT_MANAGE"] });
     await expect(countSellerOrders(db, { ...s.ctx, actorId: staff.id, isOwner: false, permissions: ["PRODUCT_MANAGE"] })).rejects.toThrow();
@@ -167,7 +167,7 @@ describe("선택 일괄: 배송 준비로 변경", () => {
     const after = await countSellerOrders(db, s.ctx);
     expect((await list(s, { queue: "done" })).orders.map((o) => o.id)).toContain(done.id);
     expect(after.queueDone).toBe((await list(s, { queue: "done", status: ["PAID"] })).orders.length);
-    expect(after.queueDonePending).toBe((await list(s, { queue: "done", prepared: "false", status: ["PAID"] })).orders.length);
+    expect(after.queueDonePending).toBe((await list(s, { queue: "done", prepared: "false" })).orders.length);
     expect(after.queueDonePending).toBe(after.queueDone - 1);
     // 본문 검사·권한
     expect(await prepareShipping(db, s.ctx, [])).toEqual({ ok: false });
