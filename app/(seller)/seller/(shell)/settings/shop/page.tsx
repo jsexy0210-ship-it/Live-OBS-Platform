@@ -322,7 +322,7 @@ export default function ShopInfoPage() {
   useUnsavedGuard(dirty); // 링크·브라우저 Back·새로고침에 같은 확인(docs/IA.md Back 규칙 7항)
   const previewTitle = cleanText(shareTitle, SHARE_TITLE_MAX, "name") ?? shownName;
   const previewDesc = cleanText(shareDesc, SHARE_DESC_MAX, "memo") ?? (tagline.trim() || "");
-  const faviconUrl = favicon?.urls?.["32"] ?? "/branding/onq-32.png";
+  const faviconUrl = favicon?.urls?.["32"] ?? "/branding/streamshop-partners-32-20261010.png"; // 서버 기본 파비콘(lib/server/branding/service.ts DEFAULT_FAVICON)과 같은 파일
   const shopUrl = `${host}/shop/${me.shop.slug}`;
 
   const save = async () => {
