@@ -1,0 +1,515 @@
+{
+  "sourceSha": "15692824d72ef2e9bf3a77cb90adacf57ec4569c",
+  "route": "/seller",
+  "role": "STORE_OWNER",
+  "state": "content",
+  "sidebar": {
+    "left": 0,
+    "right": 196,
+    "width": 196,
+    "transitions": 0
+  },
+  "brand": {
+    "href": "/seller",
+    "subLabels": 0,
+    "word": "파트너스 관리자",
+    "wordLines": 1,
+    "color": "rgb(255, 255, 255)",
+    "background": "rgb(255, 255, 255)",
+    "src": "/_next/image?url=%2F_next%2Fstatic%2Fmedia%2Fstreamshop-partners-180-20261010.27d0ea2g-d5q3.png&w=3840&q=75",
+    "loaded": true,
+    "naturalWidth": 22,
+    "legacy": 0,
+    "headerText": "파트너스 관리자\n홈\n방송\n주문\n상품\n고객\n마케팅\n통계\n설정\n카드숍 별빛\n11\n쇼핑몰 보기\n공지 · 문의\n도우미\n내 계정\n로그아웃",
+    "image": {
+      "left": 16,
+      "right": 38,
+      "top": 13,
+      "bottom": 35,
+      "width": 22,
+      "height": 22
+    },
+    "wordBox": {
+      "left": 44,
+      "right": 142.078125,
+      "top": 14,
+      "bottom": 34,
+      "width": 98.078125,
+      "height": 20
+    },
+    "logo": {
+      "left": 16,
+      "right": 142.078125,
+      "top": 13,
+      "bottom": 35,
+      "width": 126.078125,
+      "height": 22
+    },
+    "header": {
+      "left": 0,
+      "right": 1440,
+      "top": 0,
+      "bottom": 48,
+      "width": 1440,
+      "height": 48
+    }
+  },
+  "headerLayout": {
+    "header": {
+      "left": 0,
+      "right": 1440,
+      "width": 1440,
+      "height": 48
+    },
+    "client": 1440,
+    "scroll": 1440,
+    "logoMarginRight": "20px",
+    "nav": {
+      "left": 162.078125,
+      "right": 579.71875,
+      "width": 417.640625,
+      "height": 48
+    },
+    "menuPadding": [
+      {
+        "left": "14px",
+        "right": "14px"
+      },
+      {
+        "left": "14px",
+        "right": "14px"
+      },
+      {
+        "left": "14px",
+        "right": "14px"
+      },
+      {
+        "left": "14px",
+        "right": "14px"
+      },
+      {
+        "left": "14px",
+        "right": "14px"
+      },
+      {
+        "left": "14px",
+        "right": "14px"
+      },
+      {
+        "left": "14px",
+        "right": "14px"
+      },
+      {
+        "left": "14px",
+        "right": "14px"
+      }
+    ],
+    "util": {
+      "left": 934.859375,
+      "right": 1440,
+      "width": 505.140625,
+      "height": 48
+    },
+    "controls": [
+      {
+        "text": "홈",
+        "lines": 1,
+        "textLeft": 176.078125,
+        "textRight": 188.1875,
+        "left": 162.078125,
+        "right": 202.1875,
+        "width": 40.109375,
+        "height": 48
+      },
+      {
+        "text": "방송",
+        "lines": 1,
+        "textLeft": 216.1875,
+        "textRight": 240.390625,
+        "left": 202.1875,
+        "right": 254.390625,
+        "width": 52.203125,
+        "height": 48
+      },
+      {
+        "text": "주문",
+        "lines": 1,
+        "textLeft": 268.390625,
+        "textRight": 292.59375,
+        "left": 254.390625,
+        "right": 306.59375,
+        "width": 52.203125,
+        "height": 48
+      },
+      {
+        "text": "상품",
+        "lines": 1,
+        "textLeft": 320.59375,
+        "textRight": 344.796875,
+        "left": 306.59375,
+        "right": 358.796875,
+        "width": 52.203125,
+        "height": 48
+      },
+      {
+        "text": "고객",
+        "lines": 1,
+        "textLeft": 372.796875,
+        "textRight": 397,
+        "left": 358.796875,
+        "right": 411,
+        "width": 52.203125,
+        "height": 48
+      },
+      {
+        "text": "마케팅",
+        "lines": 1,
+        "textLeft": 425,
+        "textRight": 461.3125,
+        "left": 411,
+        "right": 475.3125,
+        "width": 64.3125,
+        "height": 48
+      },
+      {
+        "text": "통계",
+        "lines": 1,
+        "textLeft": 489.3125,
+        "textRight": 513.515625,
+        "left": 475.3125,
+        "right": 527.515625,
+        "width": 52.203125,
+        "height": 48
+      },
+      {
+        "text": "설정",
+        "lines": 1,
+        "textLeft": 541.515625,
+        "textRight": 565.71875,
+        "left": 527.515625,
+        "right": 579.71875,
+        "width": 52.203125,
+        "height": 48
+      },
+      {
+        "text": "",
+        "lines": 1,
+        "textLeft": 1020.65625,
+        "textRight": 1038.65625,
+        "left": 1013.65625,
+        "right": 1045.65625,
+        "width": 32,
+        "height": 32
+      },
+      {
+        "text": "11",
+        "lines": 3,
+        "textLeft": 1056.65625,
+        "textRight": 1083.65625,
+        "left": 1049.65625,
+        "right": 1081.65625,
+        "width": 32,
+        "height": 32
+      },
+      {
+        "text": "쇼핑몰 보기",
+        "lines": 1,
+        "textLeft": 1094.65625,
+        "textRight": 1158.65625,
+        "left": 1085.65625,
+        "right": 1167.65625,
+        "width": 82,
+        "height": 24
+      },
+      {
+        "text": "공지 · 문의",
+        "lines": 1,
+        "textLeft": 1176.65625,
+        "textRight": 1235.5625,
+        "left": 1167.65625,
+        "right": 1244.5625,
+        "width": 76.90625,
+        "height": 24
+      },
+      {
+        "text": "도우미",
+        "lines": 1,
+        "textLeft": 1253.5625,
+        "textRight": 1289.875,
+        "left": 1244.5625,
+        "right": 1298.875,
+        "width": 54.3125,
+        "height": 24
+      },
+      {
+        "text": "내 계정",
+        "lines": 1,
+        "textLeft": 1307.875,
+        "textRight": 1347.6875,
+        "left": 1298.875,
+        "right": 1356.6875,
+        "width": 57.8125,
+        "height": 24
+      },
+      {
+        "text": "로그아웃",
+        "lines": 1,
+        "textLeft": 1365.6875,
+        "textRight": 1419,
+        "left": 1356.6875,
+        "right": 1428,
+        "width": 71.3125,
+        "height": 24
+      }
+    ],
+    "logout": {
+      "text": "로그아웃",
+      "lines": 1,
+      "textLeft": 1365.6875,
+      "textRight": 1419,
+      "left": 1356.6875,
+      "right": 1428,
+      "width": 71.3125,
+      "height": 24
+    }
+  },
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "dpr": 1,
+    "scale": 1
+  },
+  "height": 1463,
+  "drawerOpen": false,
+  "amounts": [
+    {
+      "text": "207,000원",
+      "label": "결제된 매출",
+      "lines": 1,
+      "client": 157,
+      "scroll": 157
+    },
+    {
+      "text": "3건",
+      "label": "주문",
+      "lines": 1,
+      "client": 157,
+      "scroll": 157
+    },
+    {
+      "text": "69,000원",
+      "label": "주문 1건당 평균 금액",
+      "lines": 1,
+      "client": 157,
+      "scroll": 157
+    },
+    {
+      "text": "0건",
+      "label": "취소·환불 건수",
+      "lines": 1,
+      "client": 157,
+      "scroll": 157
+    },
+    {
+      "text": "0건",
+      "label": "주문",
+      "lines": 1,
+      "client": 198,
+      "scroll": 198
+    },
+    {
+      "text": "0원",
+      "label": "매출",
+      "lines": 1,
+      "client": 197,
+      "scroll": 197
+    },
+    {
+      "text": "0 / 0",
+      "label": "완료 / 뺀 주문",
+      "lines": 1,
+      "client": 197,
+      "scroll": 197
+    },
+    {
+      "text": "0장",
+      "label": "HIT",
+      "lines": 1,
+      "client": 197,
+      "scroll": 197
+    }
+  ],
+  "main": {
+    "left": 196,
+    "right": 1440,
+    "top": 104,
+    "bottom": 1462.5,
+    "width": 1244,
+    "height": 1358.5
+  },
+  "overflow": false,
+  "table": {
+    "left": 236,
+    "right": 1124,
+    "top": 1266,
+    "bottom": 1414.5,
+    "width": 888,
+    "height": 148.5,
+    "headers": [
+      {
+        "text": "시각",
+        "left": 236,
+        "right": 306,
+        "top": 1266.5,
+        "bottom": 1306.5,
+        "width": 70,
+        "height": 40
+      },
+      {
+        "text": "구매자 · 상품",
+        "left": 306,
+        "right": 964,
+        "top": 1266.5,
+        "bottom": 1306.5,
+        "width": 658,
+        "height": 40
+      },
+      {
+        "text": "결과",
+        "left": 964,
+        "right": 1034,
+        "top": 1266.5,
+        "bottom": 1306.5,
+        "width": 70,
+        "height": 40
+      },
+      {
+        "text": "조작",
+        "left": 1034,
+        "right": 1124,
+        "top": 1266.5,
+        "bottom": 1306.5,
+        "width": 90,
+        "height": 40
+      }
+    ]
+  },
+  "scroll": {
+    "left": 236,
+    "right": 1124,
+    "top": 1266,
+    "bottom": 1414.5,
+    "width": 888,
+    "height": 148.5,
+    "overflowX": "auto",
+    "clientWidth": 888,
+    "scrollWidth": 888,
+    "scrollLeft": 0
+  },
+  "rows": [
+    {
+      "text": "16:47카드왕 스타라이트 부스터 박스 1박스 (36팩) ×1완료",
+      "left": 236,
+      "right": 1124,
+      "top": 1306.5,
+      "bottom": 1360.5,
+      "width": 888,
+      "height": 54,
+      "cells": [
+        {
+          "text": "16:47",
+          "whiteSpace": "nowrap",
+          "left": 236,
+          "right": 306,
+          "top": 1306.5,
+          "bottom": 1360.5,
+          "width": 70,
+          "height": 54
+        },
+        {
+          "text": "카드왕 스타라이트 부스터 박스 1박스 (36팩) ×1",
+          "whiteSpace": "normal",
+          "left": 306,
+          "right": 964,
+          "top": 1306.5,
+          "bottom": 1360.5,
+          "width": 658,
+          "height": 54
+        },
+        {
+          "text": "완료",
+          "whiteSpace": "normal",
+          "left": 964,
+          "right": 1034,
+          "top": 1306.5,
+          "bottom": 1360.5,
+          "width": 70,
+          "height": 54
+        },
+        {
+          "text": "",
+          "whiteSpace": "normal",
+          "left": 1034,
+          "right": 1124,
+          "top": 1306.5,
+          "bottom": 1360.5,
+          "width": 90,
+          "height": 54
+        }
+      ],
+      "actions": []
+    },
+    {
+      "text": "09:47민트컨디션 스타라이트 부스터 박스 낱개 1팩 ×2완료",
+      "left": 236,
+      "right": 1124,
+      "top": 1360.5,
+      "bottom": 1414.5,
+      "width": 888,
+      "height": 54,
+      "cells": [
+        {
+          "text": "09:47",
+          "whiteSpace": "nowrap",
+          "left": 236,
+          "right": 306,
+          "top": 1360.5,
+          "bottom": 1414.5,
+          "width": 70,
+          "height": 54
+        },
+        {
+          "text": "민트컨디션 스타라이트 부스터 박스 낱개 1팩 ×2",
+          "whiteSpace": "normal",
+          "left": 306,
+          "right": 964,
+          "top": 1360.5,
+          "bottom": 1414.5,
+          "width": 658,
+          "height": 54
+        },
+        {
+          "text": "완료",
+          "whiteSpace": "normal",
+          "left": 964,
+          "right": 1034,
+          "top": 1360.5,
+          "bottom": 1414.5,
+          "width": 70,
+          "height": 54
+        },
+        {
+          "text": "",
+          "whiteSpace": "normal",
+          "left": 1034,
+          "right": 1124,
+          "top": 1360.5,
+          "bottom": 1414.5,
+          "width": 90,
+          "height": 54
+        }
+      ],
+      "actions": []
+    }
+  ]
+}

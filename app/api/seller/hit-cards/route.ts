@@ -5,7 +5,7 @@ import { prisma } from "../../../../lib/server/db";
 import { errorResponse, mutation, noStore, readJson, requestMeta, sessionToken } from "../../../../lib/server/http/route";
 
 // HIT 카드 이력(SA-053). GET ?broadcastId=&grade=SAR|SR|UR|SE|SP|AA&from=YYYY-MM-DD&to=YYYY-MM-DD(KST, 끝 포함)&cursor=|offset=(쪽 번호·끝 이동, 주면 cursor보다 우선) →
-// { total(조건에 맞는 전체 건수), items: [{ id, cardName, grade(없으면 null), note, nickname, broadcast: { id, title } | null, order: { id, orderNo, productLabel } | null, orderReceivedAt(주문대기 접수 시각|null), createdAt }], grades(등급 선택지 목록), nextCursor }(최신순 10개).
+// { total(조건에 맞는 전체 건수), items: [{ id, cardName, grade(없으면 null), note, nickname, broadcast: { id, title } | null, order: { id, orderNo, productLabel } | null, orderReceivedAt(주문대기 접수 시각|null), overlay: { status: shown(방송 화면이 읽어 감)|pending(지금 방송 중, 아직)|skipped(노출 생략), shownAt|null }, createdAt }], grades(등급 선택지 목록), nextCursor }(최신순 10개).
 // 대표자·「방송 진행」(BROADCAST_RUN) 직원만(그 밖 403), 플랜 기능 OVERLAY.
 export async function GET(req: Request) {
   try {
