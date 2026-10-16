@@ -4,7 +4,7 @@ MA-002 알림 센터 · MA-100 실시간 감시 · MA-120 인프라 · 비용 ·
 범위(제안 순서 5): 마스터 관리자는 PC 중심 · 휴대폰은 알림에서 바로 열리는 「조회 · 승인 · 자동 연결 결제 잠시 막기」까지만. 그래서 390 블록은
 요약 타일 · 목록 카드(DS-TABLE-CARD, SA-021-M 규격) · 긴급 창만 담고, 상세 검색 · 일괄 처리 · 설정 입력 · 긴 기록 표는 PC로 둔다(블록 안 안내문 한 줄).
 내용(숫자 · 문구 · 상태 · 버튼 이름)은 PC 정본의 표 행에서 그대로 읽어 카드로 옮긴다. 새 정보 · 새 CTA 없음. 틀은 .c24.mob(SA-FRAME-M)와 같고 색만 .ma(마스터 관리자).
-새 파일 · canvas.json 변경 없음. 사용: gen-board-sync27.py <design/project 디렉터리> (제자리 수정)"""
+새 파일 · canvas.json 변경 없음. 사용: gen-board-sync27.py <design/project 디렉터리> (제자리 수정 · 다시 돌리면 표식 <!-- m390 --> 사이 블록을 지우고 새로 만든다)"""
 import re, sys, pathlib
 src = pathlib.Path(sys.argv[1])
 
@@ -37,12 +37,19 @@ def frame(h1, path, body, cap, acts='', h=1500):
     return ('<div class="st" style="grid-column: 1 / -1"><span class="st-tag">휴대폰 390</span>'
             f'<div class="app c24 ma mob" data-theme="light" style="width: 390px; margin: 0 auto; text-align: left"><div class="m-ph" style="width: 390px; min-height: {h}px">'
             + TOP + mph(h1, path, acts) + f'<div class="body"><div class="note inf" style="width: 100%">{cap}</div>' + body + '</div></div></div></div>')
+MARK_A, MARK_B = '<!-- m390 -->', '<!-- /m390 -->'
+def strip_prev(t):
+    """이전 실행이 남긴 「휴대폰 390」 블록(표식 사이)을 지워 다시 돌려도 결과가 같게 한다."""
+    while MARK_A in t:
+        a = t.index(MARK_A); b = t.index(MARK_B, a) + len(MARK_B); t = t[:a] + t[b:]
+    return t
 def add_state(t, block, old_h, new_h):
-    t = rep(t, '</div>\n</div>\n</x-dc>', block + '</div>\n</div>\n</x-dc>')
-    return rep(t, f'"height":{old_h}', f'"height":{new_h}')
+    t = strip_prev(t)
+    t = rep(t, '</div>\n</div>\n</x-dc>', MARK_A + block + MARK_B + '</div>\n</div>\n</x-dc>')
+    return re.sub(r'"height":\d+', f'"height":{new_h}', t, count=1)
 
 # ---------- MA-002 알림 센터 ----------
-t = rd('MA-002.dc.html')
+t = strip_prev(rd('MA-002.dc.html'))
 cards = []
 for r in rows(t, '<table class="lt">'):
     c = cells(r)  # [체크, 심각도, 유형, 파트너스, 내용, 발생, 담당, 상태, 관리]
@@ -58,7 +65,7 @@ t = add_state(t, frame('알림 센터', '홈 › 알림 센터', body, '휴대�
 wr('MA-002.dc.html', t)
 
 # ---------- MA-100 실시간 감시 ----------
-t = rd('MA-100.dc.html')
+t = strip_prev(rd('MA-100.dc.html'))
 sum_items = re.findall(r'<div><div class="k">(.*?)</div><div class="v">(.*?)</div></div>', t[t.index('<div class="sum'):t.index('<div class="sec-t">장애')], re.S)
 cards = []
 for r in rows(t, '<div class="sec-t">장애'):
@@ -73,7 +80,7 @@ t = add_state(t, frame('실시간 감시', '운영 › 실시간 감시', body, 
 wr('MA-100.dc.html', t)
 
 # ---------- MA-120 인프라 · 비용 ----------
-t = rd('MA-120.dc.html')
+t = strip_prev(rd('MA-120.dc.html'))
 sum_items = re.findall(r'<div><div class="k">(.*?)</div><div class="v">(.*?)</div></div>', t[t.index('<div class="sum'):t.index('<div class="sec-t">용량')], re.S)
 cards = []
 for r in rows(t, '<th style="width: 200px">서버</th>'):
@@ -87,7 +94,7 @@ t = add_state(t, frame('인프라 · 비용', '운영 › 인프라 · 비용', 
 wr('MA-120.dc.html', t)
 
 # ---------- MA-013-OPS 가입 신청 ----------
-t = rd('MA-013-OPS.dc.html')
+t = strip_prev(rd('MA-013-OPS.dc.html'))
 sum_items = re.findall(r'<div><div class="k">(.*?)</div><div class="v">(.*?)</div></div>', t[t.index('<div class="sum'):t.index('<div class="chips">')], re.S)
 cards = []
 for r in rows(t, '<table class="lt">'):
