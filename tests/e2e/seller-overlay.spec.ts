@@ -47,12 +47,13 @@ test("대표자: 메뉴에서 들어가 주소를 발급·복사하면 실제 �
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await login(page, "demo-owner@example.com", "/seller/products");
   await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "방송", exact: true }).click();
-  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "방송 화면 꾸미기" }).click();
+  const lnb = page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("navigation", { name: "방송 화면 꾸미기" });
+  await lnb.getByRole("link", { name: "편집기" }).click();
   await expect(page).toHaveURL(/\/seller\/overlay$/);
   await expect(page.getByTestId("ove")).toBeVisible();
   // 둘째 탭 「방송 프로그램에 넣기」(SA-052)에서 주소를 만든다. 편집기에는 주소 칸이 없다
   await expect(page.getByTestId("ovu-urls")).toHaveCount(0);
-  await page.getByRole("navigation", { name: "화면 탭" }).getByRole("link", { name: "방송 프로그램에 넣기" }).click();
+  await lnb.getByRole("link", { name: "방송 프로그램에 넣기" }).click();
   await expect(page).toHaveURL(/\/seller\/overlay\/address$/);
   await expect(page.getByRole("heading", { name: "방송 프로그램에 넣기", level: 1 })).toBeVisible();
   await expect(page.getByTestId("ove")).toHaveCount(0);
@@ -83,7 +84,7 @@ test("대표자: 메뉴에서 들어가 주소를 발급·복사하면 실제 �
   await ov.goto(first);
   await expect(ov.getByTestId("overlay")).toBeVisible();
   await expect(ov.getByTestId("overlay-gone")).toHaveCount(0);
-  await expect(ov.getByTestId("overlay-idle").or(ov.getByTestId("overlay-queue"))).toBeVisible();
+  await expect(ov.getByTestId("overlay-idle").or(ov.getByTestId("overlay-queue")).first()).toBeVisible();
 
   // 다시 발급 → 새 주소, 이전 주소는 끊김
   await issueVia(page, "재발급");
@@ -93,7 +94,7 @@ test("대표자: 메뉴에서 들어가 주소를 발급·복사하면 실제 �
   await expect(ov.getByTestId("overlay-gone")).toBeVisible();
   await ov.goto(second);
   await expect(ov.getByTestId("overlay-gone")).toHaveCount(0);
-  await expect(ov.getByTestId("overlay-idle").or(ov.getByTestId("overlay-queue"))).toBeVisible();
+  await expect(ov.getByTestId("overlay-idle").or(ov.getByTestId("overlay-queue")).first()).toBeVisible();
   await ov.close();
 
   // 발급 정보: 연결 상태 · 재발급 이력 · 접속 기록(없으면 안내)
