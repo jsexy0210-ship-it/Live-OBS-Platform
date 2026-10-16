@@ -137,6 +137,7 @@ test("마스터 점검 고정 띠는 다른 화면에도 표시되고 조회 전
     await expect(page).toHaveURL(/\/admin$/); // 표시용 요청 실패가 기존 화면을 막거나 이동시키지 않는다.
     await expect.poll(() => requests).toBe(2); // 신호는 요청 종료 뒤 한 번만 다시 읽는다.
     await page.locator(".gnb").getByRole("button", { name: "로그아웃" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "로그아웃", exact: true }).click();
     await expect(page).toHaveURL(/\/admin\/login$/);
     const afterUnmount = requests;
     await page.clock.runFor(31_000);
