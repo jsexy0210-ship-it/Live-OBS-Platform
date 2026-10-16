@@ -28,8 +28,8 @@ const HELP: Record<Exclude<Status, "DISCONNECTED">, string> = {
 };
 const KIND: Record<string, string> = { ORDER_CREATED: "주문 생성", ORDER_CANCELED: "주문 취소", OTHER: "그 밖의 알림" };
 // 「마지막으로 받은 주문 알림」 칸: 이어짐은 받은 시각 · 종류, 멈춘 상태는 멈춘 이유
-const lastNotice = (c: Conn) =>
-  c.status === "REAUTH_REQUIRED" ? "허용이 풀려 주문 알림이 멈췄습니다" : c.status === "DISCONNECT_PENDING" ? "쇼핑몰 응답을 기다리는 중" : c.lastEventAt ? `${ago(c.lastEventAt)}${c.lastEventKind ? ` · ${KIND[c.lastEventKind]}` : ""}` : "아직 없습니다";
+const lastNotice = (c: Conn, now: number) =>
+  c.status === "REAUTH_REQUIRED" ? "허용이 풀려 주문 알림이 멈췄습니다" : c.status === "DISCONNECT_PENDING" ? "쇼핑몰 응답을 기다리는 중" : c.lastEventAt ? `${ago(c.lastEventAt, now)}${c.lastEventKind ? ` · ${KIND[c.lastEventKind]}` : ""}` : "아직 없습니다";
 const RESULT_ERROR: Record<string, string> = {
   login_required: "로그인이 풀렸습니다. 다시 로그인한 뒤 연결해 주십시오",
   denied: "쇼핑몰에서 연결을 허용하지 않았습니다. 다시 시도해 주십시오",
@@ -45,6 +45,12 @@ export default function ExternalShopsPage() {
   const [adding, setAdding] = useState(false);
   const [url, setUrl] = useState("");
   const { confirm } = useConfirm();
+  // 상대 시각(「2분 전」)이 화면을 열어 둔 동안에도 흘러가도록 30초마다 현재 시각을 갱신한다
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
 
   const load = useCallback(async () => {
@@ -149,7 +155,7 @@ export default function ExternalShopsPage() {
                           <tr key={c.id} data-testid="external-row">
                             <td><b>{c.shopKey}</b></td>
                             <td><span className={`bdg nodot ${TAG[c.status].cls}`}>{TAG[c.status].label}</span></td>
-                            <td>{lastNotice(c)}</td>
+                            <td>{lastNotice(c, now)}</td>
                             <td className="num" style={{ whiteSpace: "nowrap" }}>{formatDate(c.connectedAt, "—")}</td>
                             <td>
                               <div className="row" style={{ gap: 8, justifyContent: "center", flexWrap: "wrap" }}>

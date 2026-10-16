@@ -41,6 +41,18 @@ async function login(page: Page, email = "demo-owner@example.com") {
 }
 const fakeShopSide = (page: Page) => page.route("**/*.cafe24api.com/**", (r) => r.fulfill({ status: 200, contentType: "text/html", body: "<title>가짜 인증 화면</title>인증" }));
 
+test("마지막으로 받은 주문 알림의 상대 시각은 화면을 열어 둔 동안에도 흘러간다", async ({ page }) => {
+  await login(page);
+  // 화면이 열리기 전에 시계를 가짜로 바꿔 두면(시간은 그대로 흐른다) 화면의 주기 갱신도 이 시계를 따른다
+  await page.clock.install();
+  await page.goto("/seller/external-shops");
+  const row = page.getByTestId("external-row").filter({ hasText: "e2e-connected" });
+  await expect(row).toContainText(/\d+분 전/);
+  // 불러온 뒤 시계만 2시간 앞당기면 다시 불러오지 않아도 「N시간 전」으로 바뀐다
+  await page.clock.fastForward("02:00:00");
+  await expect(row).toContainText(/2시간 전/);
+});
+
 test("대표자: 목록·상태, 새 연결 시작(지원 밖 주소 거절 포함), 다시 연결, 해제 확인과 해제 대기", async ({ page }) => {
   await fakeShopSide(page);
   await login(page);
