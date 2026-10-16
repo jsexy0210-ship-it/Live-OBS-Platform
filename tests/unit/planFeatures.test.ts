@@ -41,6 +41,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/subscription/card": "BILLING",
   "seller/subscription/cancel": "BILLING",
   "seller/subscription/payments/export": "BILLING",
+  "seller/integration-profile": "BILLING", // 쇼핑몰 통합 전환용 사업자·정산 정보(SA-005): 첫 결제 전·잠김 중에도 열림(플랜 변경과 같음)
+  "seller/integration-profile/business-check": "BILLING",
   "seller/subscription/plan": "BILLING",
   "seller/subscription/plan/preview": "BILLING",
   "seller/message-balance": "BILLING",
