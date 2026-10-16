@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { ConfirmProvider } from "../../../../components/admin-ui";
 import IdentityCheck from "../../../../components/seller/IdentityCheck";
 import NewPasswordForm from "../../../../components/seller/NewPasswordForm";
-import { AuthFrame, FindSwitch, IdentityUnavailable, useStaffType, withType } from "../../../../components/seller/PartnersAuth";
+import { AccountSeg, AuthFrame, IdentityUnavailable, useStaffType, withType } from "../../../../components/seller/PartnersAuth";
 import { api, failMessage } from "../../../../components/seller/api";
 import { RETRY_TEXT, stepOutcome } from "../../../../components/seller/stepFailure";
 
@@ -106,12 +106,11 @@ function PasswordResetPageInner() {
         </div>
       ) : (
         <>
-          {step === "find" && <FindSwitch current="password" />}
           <div className="col" style={{ gap: 4 }}>
-            <h1 className="t-t3">{step === "find" ? "비밀번호 찾기" : "새 비밀번호 설정"}</h1>
+            <h1 className="t-t3">{step === "find" ? "이메일(아이디)/비밀번호 찾기" : "새 비밀번호 설정"}</h1>
             <span className="t-l2 c-alt">
               {step === "find"
-                ? "가입한 이메일과 쇼핑몰 주소를 입력하고 휴대폰으로 본인 확인을 하면 새 비밀번호를 정할 수 있습니다."
+                ? "가입한 이메일과 휴대폰 본인확인으로 아이디를 확인하거나 새 비밀번호를 정할 수 있습니다."
                 : `${email.trim()} · 휴대폰 본인확인 완료`}
             </span>
           </div>
@@ -140,9 +139,8 @@ function PasswordResetPageInner() {
               )}
               {step === "find" ? (
                 <>
-                  <div className="msg msg-info" style={{ display: "block" }}>
-                    {staff ? "직원 본인 명의의 휴대폰으로 확인합니다." : "쇼핑몰 대표자 본인 명의의 휴대폰으로 확인합니다."}
-                  </div>
+                  <AccountSeg path="/seller/password-reset" />
+                  {staff && <span className="t-l2 c-alt">직원 본인 명의의 휴대폰으로 확인합니다.</span>}
                   <div className="fld">
                     <label htmlFor="pr-email">이메일</label>
                     <input id="pr-email" className="inp" type="text" inputMode="email" autoCapitalize="none" spellCheck={false} autoComplete="username" value={email} disabled={busy || codeSent} onChange={(e) => setEmail(e.target.value)} />
@@ -186,8 +184,14 @@ function PasswordResetPageInner() {
             </>
           )}
           {!unavailable && (
-            <div className="row t-l2 c-alt" style={{ justifyContent: "center" }}>
+            <div className="row t-c1 c-alt login-links" style={{ justifyContent: "center" }}>
               <Link href={withType("/seller/login", staff)}>로그인으로 돌아가기</Link>
+              {step === "find" && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <Link href={withType("/seller/find-id", staff)}>이메일(아이디) 찾기</Link>
+                </>
+              )}
             </div>
           )}
         </>
