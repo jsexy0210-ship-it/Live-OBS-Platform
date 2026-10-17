@@ -112,12 +112,21 @@ test("일반 계정 수정: 역할·상태를 바꾸면 목록과 DB에 반영�
   expect(row.status).toBe("SUSPENDED");
 });
 
-test("역할별 권한 표: 관리자 계정 관리는 최고관리자만 가능으로 보이고, 권한 이름 열(글 열)만 왼쪽 정렬이다", async ({ page }) => {
+test("역할별 권한 표: 서버 권한 전부가 5묶음으로 보이고, 관리자 계정 관리는 최고관리자만 「가능」이며, 기능 이름 열(글 열)만 왼쪽 정렬이다", async ({ page }) => {
   await open(page, "/admin/accounts/roles");
-  await expect(page.locator(".tbl thead th")).toHaveText(["권한", "최고관리자", "운영", "고객 지원", "조회 전용"]);
+  // 정본 MA-063 v329: 기능 묶음 · 서버 권한 키 · 역할별 이용 중 계정 수 · 「가능」과 「—」 두 값
+  await expect(page.locator(".tbl thead th")).toHaveText([/^기능/, /^최고관리자 \(\d+\)$/, /^운영 \(\d+\)$/, /^CS \(\d+\)$/, /^조회 전용 \(\d+\)$/]);
+  for (const g of ["화면 보기 · 기록", "파트너스", "요금 · 결제", "고객지원", "설정 · 관리"]) await expect(page.locator(".tbl tbody td.fw6", { hasText: g })).toBeVisible();
+  // 권한 개수는 서버 표의 값이다(정본 안내문의 「14개」는 보드 오기, 보드 표는 13행): 화면 행 수 · 안내문 개수가 API와 같다
+  const api = (await (await page.request.get("/api/admin/permissions")).json()) as { permissions: unknown[] };
+  await expect(page.getByTestId("permission-row")).toHaveCount(api.permissions.length);
+  await expect(page.getByRole("note")).toContainText(`서버의 권한 표(${api.permissions.length}개)`);
   const manage = page.getByTestId("permission-row").filter({ hasText: "관리자 계정 관리" });
-  await expect(manage.locator("td")).toHaveText(["관리자 계정 관리", "가능", "-", "-", "-"]);
-  await expect(page.locator("main")).not.toContainText("admin.manage");
+  await expect(manage.locator("td")).toHaveText([/^관리자 계정 관리\s+admin\.manage$/, "가능", "—", "—", "—"]);
+  const refund = page.getByTestId("permission-row").filter({ hasText: "구독 환불 승인" });
+  await expect(refund.locator("td")).toHaveText([/^구독 환불 승인\s+billing\.refund$/, "가능", "—", "—", "—"]);
+  await expect(page.getByTestId("permission-row").filter({ hasText: "모든 화면 보기" }).locator("td")).toHaveText([/모든 화면 보기/, "가능", "가능", "가능", "가능"]);
+  await expect(page.getByText("그 밖의 기능")).toHaveCount(0);
   const align = await page.locator(".tbl td").first().evaluate((el) => getComputedStyle(el).textAlign);
   expect(["left", "start"]).toContain(align);
 });
