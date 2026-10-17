@@ -24,9 +24,14 @@ export async function minorPurchaseBlocked(db: Db, sellerId: string): Promise<bo
   return row?.minorPolicy === "BLOCK";
 }
 
-// 이 회원이 지금 구매할 수 없으면 사유, 아니면 null (쓰기 없음)
-export async function minorPurchaseCheck(db: Db, sellerId: string, member: { birthDate: Date | null }, now: Date): Promise<MinorPurchaseBlock | null> {
-  if (!(await minorPurchaseBlocked(db, sellerId))) return null;
+// 정책을 이미 읽은 값(blocking)으로 판정한다. 같은 응답에서 정책과 결과가 어긋나지 않게 한 번만 읽고 이 함수로 낸다.
+export function minorPurchaseDecision(blocking: boolean, member: { birthDate: Date | null }, now: Date): MinorPurchaseBlock | null {
+  if (!blocking) return null;
   if (!member.birthDate) return "identity_reverify_required";
   return isMinor(member.birthDate, now) ? "minor_blocked" : null;
+}
+
+// 이 회원이 지금 구매할 수 없으면 사유, 아니면 null (쓰기 없음)
+export async function minorPurchaseCheck(db: Db, sellerId: string, member: { birthDate: Date | null }, now: Date): Promise<MinorPurchaseBlock | null> {
+  return minorPurchaseDecision(await minorPurchaseBlocked(db, sellerId), member, now);
 }

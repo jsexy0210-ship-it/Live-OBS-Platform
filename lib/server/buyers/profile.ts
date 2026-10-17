@@ -3,7 +3,7 @@ import { writeAudit } from "../audit/log";
 import { hashPassword, verifyPassword } from "../auth/password";
 import { BUYER_PASSWORD_MAX, isAcceptableBuyerPassword } from "./passwordPolicy";
 import { cleanText } from "../text/clean";
-import { minorPurchaseBlocked, minorPurchaseCheck } from "./minor";
+import { minorPurchaseBlocked, minorPurchaseDecision } from "./minor";
 import { MAX_NICKNAME_LENGTH } from "./signup";
 
 // 구매자 회원정보 수정(SH-024): 내 정보 조회, 방송 닉네임 변경(30일에 1번), 비밀번호 변경(현재 비밀번호 확인).
@@ -67,8 +67,9 @@ export async function readMemberProfile(db: PrismaClient, scope: Scope, now = ne
   const m = await db.buyerMember.findFirst({ where: { id: scope.buyerMemberId, sellerId: scope.sellerId, deletedAt: null, status: "ACTIVE" }, select: SELECT });
   if (!m) return null;
   // 미성년자 구매 막기(SH-009): 이 쇼핑몰이 막는지(policy), 이 회원이 지금 막히는지(blocked), 나이를 몰라 본인확인을 다시 해야 하는지(reverifyRequired)
-  const check = await minorPurchaseCheck(db, scope.sellerId, m, now);
-  const policy = (await minorPurchaseBlocked(db, scope.sellerId)) ? ("block" as const) : ("notice" as const);
+  const blocking = await minorPurchaseBlocked(db, scope.sellerId); // 정책은 한 번만 읽어 세 값이 어긋나지 않게 한다
+  const check = minorPurchaseDecision(blocking, m, now);
+  const policy = blocking ? ("block" as const) : ("notice" as const);
   return { ...viewOf(m, now), minorPurchase: { policy, blocked: check === "minor_blocked", reverifyRequired: check === "identity_reverify_required" } };
 }
 
