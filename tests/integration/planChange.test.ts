@@ -527,6 +527,29 @@ describe("플랜별 금액·변경 미리보기(GET /api/seller/subscription/pla
     return { preview, row };
   }
 
+  it("사업자·정산 정보 게이트에 걸려도 정보를 채운 뒤 낼 금액을 quote로 함께 준다(읽기 전용, 채운 뒤 실제 결제와 같다)", async () => {
+    const s = await shop("OVERLAY_ONLY", at(-30), paying, { profile: false });
+    const counts = async () => [await db.subscriptionPayment.count(), await db.auditLog.count(), await planOf(s.seller.id)];
+    const before = await counts();
+    const blocked = (await previewPlanChanges(db, s.ctx, { now: T0 })).plans.find((p) => p.planCode === "INTEGRATED")!.change;
+    expect(blocked).toEqual({ ok: false, reason: "profile_incomplete", quote: { chargeNow: 36666, remainingDays: 10, periodDays: 30 } });
+    expect(await counts()).toEqual(before);
+    // 게이트 판정·실제 변경은 그대로 막힌다
+    expect(await changePlan(db, new FakeBillingProvider(), s.ctx, { planCode: "INTEGRATED", now: T0 })).toEqual({ ok: false, reason: "profile_incomplete" });
+    // 정보를 채우면 같은 금액으로 열린다
+    await completeIntegrationProfile(s.seller.id);
+    const open = (await previewPlanChanges(db, s.ctx, { now: T0 })).plans.find((p) => p.planCode === "INTEGRATED")!.change;
+    expect(open).toEqual({ ok: true, applied: "now", chargeNow: 36666, remainingDays: 10, effectiveAt: T0 });
+  });
+
+  it("게이트가 아닌 거절과 결제 없는 변경에는 quote가 없다", async () => {
+    const same = await shop("OVERLAY_ONLY", at(-30), paying, { profile: false });
+    const plansOf = (await previewPlanChanges(db, same.ctx, { now: T0 })).plans;
+    expect(plansOf.find((p) => p.planCode === "OVERLAY_ONLY")!.change).toEqual({ ok: false, reason: "same_plan" });
+    const noPay = await shop("OVERLAY_ONLY", null, undefined, { profile: false });
+    expect((await previewPlanChanges(db, noPay.ctx, { now: T0 })).plans.find((p) => p.planCode === "INTEGRATED")!.change).toEqual({ ok: false, reason: "profile_incomplete" });
+  });
+
   it("결제한 기간 중 상위 변경: 남은 10일분 차액 36,666원, 플랜별 다음 결제 금액(지금 69,000원·통합 179,000원)", async () => {
     const s = await shop("OVERLAY_ONLY", at(-30), paying);
     const { preview, row } = await previewThenChange(s, "INTEGRATED", T0);
