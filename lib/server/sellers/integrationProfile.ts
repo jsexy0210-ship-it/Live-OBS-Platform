@@ -87,6 +87,16 @@ export async function integrationGate(db: Db, sellerId: string, now: Date): Prom
   return c === "ok" ? null : c === "unchecked" ? "business_unchecked" : "business_not_active";
 }
 
+// 상위 변경 결제를 확정(정산)하는 시점의 게이트: 요청 뒤 확정 전에 사업자 정보가 바뀌거나 조회가 만료됐으면 막는다.
+// 오버레이 전용 → 통합 변경일 때만 본다. null이면 통과(다른 변경이거나 게이트 통과).
+export async function integrationGateForUpgrade(db: Db, sellerId: string, currentPlanId: string | null, targetPlanId: string | null, now: Date) {
+  if (!currentPlanId || !targetPlanId || currentPlanId === targetPlanId) return null;
+  const plans = await db.subscriptionPlan.findMany({ where: { id: { in: [currentPlanId, targetPlanId] } }, select: { id: true, code: true } });
+  const code = (id: string) => plans.find((p) => p.id === id)?.code;
+  if (code(currentPlanId) !== "OVERLAY_ONLY" || code(targetPlanId) !== "INTEGRATED") return null;
+  return integrationGate(db, sellerId, now);
+}
+
 export async function readIntegrationProfile(db: PrismaClient, ctx: TenantContext, now = new Date()) {
   requireSellerPermission(ctx, "SUBSCRIPTION_MANAGE");
   const [row, seller] = await Promise.all([
@@ -144,6 +154,8 @@ export async function saveIntegrationProfile(db: PrismaClient, ctx: TenantContex
   }
   const data = { companyName, representativeName, businessNumber, mailOrderNumber, businessAddress, bankName, accountCipher, accountLast4: digits.slice(-4), accountHolder };
   await db.$transaction(async (tx) => {
+    // 결제 확정과 같은 Seller 잠금 순서로 게이트 입력 변경을 직렬화한다(순환 import 방지).
+    await tx.$queryRaw`SELECT id FROM "Seller" WHERE id = ${ctx.sellerId}::uuid FOR UPDATE`;
     const before = await tx.sellerIntegrationProfile.findUnique({ where: { sellerId: ctx.sellerId } });
     // 저장하는 사업자번호·대표자명이 조회한 것과 다르면 앞의 조회 결과는 다른 사업자에 대한 것이라 지운다(조회를 먼저 하고 저장해도 같으면 유지)
     const sameBusiness = before?.checkBusinessNumber === businessNumber && before?.checkRepresentativeName === representativeName;
@@ -213,10 +225,14 @@ export async function checkBusiness(db: PrismaClient, provider: BusinessStatusPr
   const r = await provider.verify({ businessNumber, representativeName, openedOn });
   if (!r.ok) return { ok: false as const, reason: "lookup_failed" as const };
   const status: BusinessStatus = r.status;
-  await db.sellerIntegrationProfile.upsert({
-    where: { sellerId: ctx.sellerId },
-    create: { sellerId: ctx.sellerId, checkBusinessNumber: businessNumber, checkRepresentativeName: representativeName, checkStatus: status, checkValid: r.valid, checkedAt: new Date() },
-    update: { checkBusinessNumber: businessNumber, checkRepresentativeName: representativeName, checkStatus: status, checkValid: r.valid, checkedAt: new Date() },
+  // 외부 조회 중에는 Seller 잠금을 잡지 않고 결과 저장만 결제 확정과 직렬화한다.
+  await db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Seller" WHERE id = ${ctx.sellerId}::uuid FOR UPDATE`;
+    await tx.sellerIntegrationProfile.upsert({
+      where: { sellerId: ctx.sellerId },
+      create: { sellerId: ctx.sellerId, checkBusinessNumber: businessNumber, checkRepresentativeName: representativeName, checkStatus: status, checkValid: r.valid, checkedAt: new Date() },
+      update: { checkBusinessNumber: businessNumber, checkRepresentativeName: representativeName, checkStatus: status, checkValid: r.valid, checkedAt: new Date() },
+    });
   });
   return { ok: true as const, status, valid: r.valid };
 }
