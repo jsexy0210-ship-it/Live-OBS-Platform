@@ -1,7 +1,7 @@
 "use client";
 
 import { CursorPagination } from "../../../../../components/Pagination";
-import { Modal } from "../../../../../components/admin-ui";
+import { Modal, useConfirm } from "../../../../../components/admin-ui";
 
 import { useCallback, useEffect, useState, useRef } from "react";
 import { Topbar } from "../../../../../components/seller/SellerShell";
@@ -113,6 +113,7 @@ export default function ReviewsPage() {
   const [bulkReason, setBulkReason] = useState<Reason | null>(null);
   const [bulkNote, setBulkNote] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
+  const { confirm } = useConfirm();
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
 
   const query = useCallback(
@@ -163,6 +164,16 @@ export default function ReviewsPage() {
   // 선택한 리뷰를 하나씩 처리한다. 일부만 실패해도 된 것은 그대로 두고 결과를 알린다.
   // 공개는 이미 공개여도 서버가 그대로 성공으로 돌려주므로(다른 직원이 그 사이 바꿨을 수 있음) 고른 건을 모두 보낸다.
   // 숨김은 이미 숨긴 건에 다시 보내면 먼저 적은 사유가 덮이므로 화면에서 숨김인 건만 뺀다.
+  // 공개하면 리뷰 적립금이 설정대로 지급될 수 있으므로 실행 전에 확인을 받는다(DS-CONFIRM: 일괄 처리 앞). 서버는 건별로 한 번만 지급한다
+  const publishPicked = async () => {
+    if (bulkBusy || pickedRows.length === 0) return;
+    const ok = await confirm({
+      title: `선택한 ${pickedRows.length}건을 공개하시겠습니까?`,
+      body: "상품 리뷰와 별점 평균에 들어가고, 리뷰 적립금 설정에 따라 작성자에게 적립금이 지급될 수 있습니다 · 이미 공개된 리뷰는 그대로입니다.",
+      confirmLabel: "공개",
+    });
+    if (ok) await runBulk("publish");
+  };
   const runBulk = async (kind: "publish" | "hide") => {
     if (bulkBusy) return;
     if (paging.current) return setToast({ text: "목록을 불러오는 중입니다. 잠시 뒤 다시 눌러 주십시오", neg: true });
@@ -267,7 +278,7 @@ export default function ReviewsPage() {
                   <div className="row between" role="region" aria-label="선택한 리뷰 처리" style={{ padding: "8px 12px", gap: 8, flexWrap: "wrap" }}>
                     <span className="t-l2">선택 {picked.length}건</span>
                     <span className="row" style={{ gap: 8 }}>
-                      <button className="btn btn-sm btn-out" type="button" disabled={bulkBusy} onClick={() => void runBulk("publish")}>
+                      <button className="btn btn-sm btn-out" type="button" disabled={bulkBusy} onClick={() => void publishPicked()}>
                         선택 공개
                       </button>
                       <button className="btn btn-sm btn-out" type="button" disabled={bulkBusy} onClick={() => setBulkHide(true)}>
