@@ -1,6 +1,7 @@
 "use client";
 
 import { CursorPagination } from "../../../../../components/Pagination";
+import { Modal } from "../../../../../components/admin-ui";
 
 import { useCallback, useEffect, useState, useRef } from "react";
 import { Topbar } from "../../../../../components/seller/SellerShell";
@@ -97,8 +98,8 @@ export default function ReviewsPage() {
   const [u, setU] = useUrlState({ tab: "all", rating: "" });
   const tab: Tab = TABS.some((t) => t.key === u.tab) ? (u.tab as Tab) : "all";
   const rating = ["5", "4", "low"].includes(u.rating) ? u.rating : "";
-  const setTab = (t: Tab) => setU({ tab: t });
-  const setRating = (v: string) => setU({ rating: v });
+  const setTab = (t: Tab) => { setPicked([]); setU({ tab: t }); };
+  const setRating = (v: string) => { setPicked([]); setU({ rating: v }); };
   const [cursor, setCursor] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
@@ -106,6 +107,12 @@ export default function ReviewsPage() {
   const paging = useRef(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [settings, setSettings] = useState(false);
+  // 현재 쪽에서 고른 리뷰(선택 공개·선택 숨김). 건별 publish·hide API를 차례로 부른다
+  const [picked, setPicked] = useState<string[]>([]);
+  const [bulkHide, setBulkHide] = useState(false);
+  const [bulkReason, setBulkReason] = useState<Reason | null>(null);
+  const [bulkNote, setBulkNote] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
 
   const query = useCallback(
@@ -127,7 +134,7 @@ export default function ReviewsPage() {
     paging.current = false;
     if (!r.ok) return setState({ kind: "error", status: r.status, error: r.error });
     setCursor(r.data.nextCursor);
-    setState({ kind: "ok", data: r.data }); setPage(1); setCursors([undefined]);
+    setState({ kind: "ok", data: r.data }); setPage(1); setCursors([undefined]); setPicked([]);
   }, [query]);
 
   useEffect(() => {
@@ -144,12 +151,44 @@ export default function ReviewsPage() {
     if (id !== reqId.current) return;
     paging.current = false;
     if (!r.ok) return setToast({ text: "목록을 불러오지 못했습니다. 다시 눌러 주십시오", neg: true });
-    setState({ kind: "ok", data: r.data }); setCursor(r.data.nextCursor);
+    setState({ kind: "ok", data: r.data }); setCursor(r.data.nextCursor); setPicked([]);
     setCursors((prev) => [...prev.slice(0, target - 1), next]); setPage(target);
   };
 
   const data = state.kind === "ok" ? state.data : null;
   const rows = data?.reviews ?? [];
+  const pickedRows = rows.filter((r) => picked.includes(r.id));
+  const allPicked = rows.length > 0 && pickedRows.length === rows.length;
+  const togglePick = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  // 선택한 리뷰를 하나씩 처리한다. 일부만 실패해도 된 것은 그대로 두고 결과를 알린다.
+  // 공개는 이미 공개여도 서버가 그대로 성공으로 돌려주므로(다른 직원이 그 사이 바꿨을 수 있음) 고른 건을 모두 보낸다.
+  // 숨김은 이미 숨긴 건에 다시 보내면 먼저 적은 사유가 덮이므로 화면에서 숨김인 건만 뺀다.
+  const runBulk = async (kind: "publish" | "hide") => {
+    if (bulkBusy) return;
+    if (paging.current) return setToast({ text: "목록을 불러오는 중입니다. 잠시 뒤 다시 눌러 주십시오", neg: true });
+    const targets = kind === "publish" ? pickedRows : pickedRows.filter((r) => r.status !== "HIDDEN");
+    if (targets.length === 0) return setToast({ text: "선택한 리뷰가 모두 이미 숨김 상태입니다", neg: true });
+    setBulkBusy(true);
+    let done = 0;
+    let revoked = 0;
+    let granted = 0;
+    for (const r of targets) {
+      const res = await api<{ revokedReward?: number; grantedReward?: number }>(`/api/seller/reviews/${r.id}/${kind}`, { method: "POST", body: kind === "hide" ? { reason: bulkReason, note: bulkNote.trim() || null } : {} });
+      if (res.ok) {
+        done += 1;
+        revoked += res.data.revokedReward ?? 0;
+        granted += res.data.grantedReward ?? 0;
+      }
+    }
+    setBulkBusy(false);
+    setBulkHide(false);
+    setBulkReason(null);
+    setBulkNote("");
+    const failed = targets.length - done;
+    const extra = revoked ? ` · 리뷰 적립금 ${won(revoked)} 회수` : granted ? ` · 리뷰 적립금 ${won(granted)} 지급` : "";
+    setToast({ text: failed ? `${done}건을 ${kind === "publish" ? "공개" : "숨김 처리"}했고 ${failed}건은 처리하지 못했습니다${extra}` : `선택한 ${done}건을 ${kind === "publish" ? "공개" : "숨김 처리"}했습니다${extra}`, neg: failed > 0 });
+    await load();
+  };
   const s = data?.summary;
   const distMax = s ? Math.max(1, ...s.distribution.map((d) => d.count)) : 1;
 
@@ -223,11 +262,30 @@ export default function ReviewsPage() {
                   <span className="s">배송 완료 뒤 구매자가 리뷰를 쓸 수 있습니다 · 리뷰 적립금을 켜면 작성률이 올라갑니다</span>
                 </div>
               ) : (
+                <>
+                {data.canEdit && picked.length > 0 && (
+                  <div className="row between" role="region" aria-label="선택한 리뷰 처리" style={{ padding: "8px 12px", gap: 8, flexWrap: "wrap" }}>
+                    <span className="t-l2">선택 {picked.length}건</span>
+                    <span className="row" style={{ gap: 8 }}>
+                      <button className="btn btn-sm btn-out" type="button" disabled={bulkBusy} onClick={() => void runBulk("publish")}>
+                        선택 공개
+                      </button>
+                      <button className="btn btn-sm btn-out" type="button" disabled={bulkBusy} onClick={() => setBulkHide(true)}>
+                        선택 숨김
+                      </button>
+                      <button className="btn btn-sm btn-text" type="button" disabled={bulkBusy} onClick={() => setPicked([])}>
+                        선택 해제
+                      </button>
+                    </span>
+                  </div>
+                )}
                 <div className="rv-table-scroll">
                   <table className="rv-table">
                     <thead>
                       <tr>
-                        <th scope="col" className="rv-select" />
+                        <th scope="col" className="rv-select">
+                          {data.canEdit && <input type="checkbox" aria-label="이 쪽 리뷰 모두 선택" checked={allPicked} onChange={() => setPicked(allPicked ? [] : rows.map((r) => r.id))} />}
+                        </th>
                         <th scope="col">상품 · 작성자</th>
                         <th scope="col">별점</th>
                         <th scope="col">내용 · 작성일</th>
@@ -246,7 +304,9 @@ export default function ReviewsPage() {
                             if (e.currentTarget === e.target && e.key === "Enter") setOpenId(r.id);
                           }}
                         >
-                          <td className="rv-select" />
+                          <td className="rv-select" onClick={(e) => e.stopPropagation()}>
+                            {data.canEdit && <input type="checkbox" aria-label={`${r.productName} · ${r.author} 리뷰 선택`} checked={picked.includes(r.id)} onChange={() => togglePick(r.id)} />}
+                          </td>
                           <td className="rv-item">
                             <span className="t-l2 fw6 ell">{r.productName}</span>
                             <span className="t-c1 c-alt">{r.author}{r.grade ? ` (${r.grade})` : ""}</span>
@@ -275,6 +335,7 @@ export default function ReviewsPage() {
                     </tbody>
                   </table>
                 </div>
+                </>
               )}
               {(page > 1 || cursor) && <CursorPagination page={page} visited={cursors.length} hasNext={!!cursor} onChange={(target) => void goPage(target)} onNext={() => { if (cursor) void goPage(page + 1, cursor); }} />}
             </>
@@ -318,6 +379,38 @@ export default function ReviewsPage() {
             await load();
           }}
         />
+      )}
+      {bulkHide && (
+        <Modal labelId="rv-bulk-hide-title" busy={bulkBusy} dirty={bulkReason !== null || bulkNote !== ""} onClose={() => { setBulkHide(false); setBulkReason(null); setBulkNote(""); }}>
+          {(requestClose) => (
+            <>
+              <div className="modal-h">
+                <h2 className="modal-t" id="rv-bulk-hide-title">
+                  선택한 리뷰를 숨기시겠습니까?
+                </h2>
+              </div>
+              <div className="col" style={{ gap: 8 }}>
+                <span className="t-c1 c-alt">선택한 {picked.length}건이 상품 리뷰와 별점 평균에서 빠지고 작성자에게만 보입니다. 이미 지급한 리뷰 적립금은 회수됩니다. 사유는 작성자의 내 리뷰에 표시됩니다.</span>
+                <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                  {REASONS.map((x) => (
+                    <button key={x.key} type="button" className={`chip${bulkReason === x.key ? " on" : ""}`} aria-pressed={bulkReason === x.key} onClick={() => setBulkReason(x.key)}>
+                      {x.label}
+                    </button>
+                  ))}
+                </div>
+                <input className="inp" aria-label="사유 설명" placeholder="사유 설명 (선택, 200자)" maxLength={200} value={bulkNote} onChange={(e) => setBulkNote(e.target.value)} />
+              </div>
+              <div className="modal-f">
+                <button className="btn btn-out" type="button" onClick={requestClose}>
+                  취소
+                </button>
+                <button className="btn btn-neg" type="button" disabled={!bulkReason || bulkBusy} onClick={() => void runBulk("hide")}>
+                  {bulkBusy ? "숨기는 중" : "숨기기"}
+                </button>
+              </div>
+            </>
+          )}
+        </Modal>
       )}
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
     </>
