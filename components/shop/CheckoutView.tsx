@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useConfirm } from "../admin-ui/ConfirmDialog";
+import { MINOR_NOTICE, MinorState, minorModeOf, minorModeOfProfile, type MinorMode, type MinorPurchase } from "./MinorPurchase";
 import { CART_COUNT_EVENT } from "./ShopChrome";
 import { call } from "./reviewShared";
 import "./Cart.css";
@@ -17,7 +18,7 @@ type Addr = { id: string; label: string | null; recipientName: string; phone: st
 type Coupon = { couponId: string; name: string; benefitText: string; minOrderAmount: number | null; state: string };
 type Consent = { version: string; text: string };
 type Data = { checkout: Checkout; addresses: Addr[]; coupons: Coupon[]; consent: Consent; balance: number | null };
-type View = { kind: "loading" } | { kind: "login" } | { kind: "noids" } | { kind: "blocked"; message: string; names: string[] } | { kind: "error"; message?: string } | { kind: "ok"; data: Data };
+type View = { kind: "loading" } | { kind: "login" } | { kind: "noids" } | { kind: "blocked"; message: string; names: string[] } | { kind: "minor"; mode: MinorMode } | { kind: "error"; message?: string } | { kind: "ok"; data: Data };
 type Preview = { kind: "idle" } | { kind: "loading" } | { kind: "error"; message: string } | { kind: "ok"; shippingFee: number; isRemote: boolean; total: number; couponDiscount: number; withAddress: boolean };
 type Form = { recipientName: string; phone: string; zipCode: string; address1: string; address2: string; memo: string };
 
@@ -57,6 +58,7 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
   const [rewardGone, setRewardGone] = useState(false); // 서버가 「이 쇼핑몰은 적립금을 쓸 수 없어요」로 거절하면 영역을 숨긴다
   const [rewardServerError, setRewardServerError] = useState<string | null>(null);
   const [agreed, setAgreed] = useState(false);
+  const [minorNotice, setMinorNotice] = useState(false);
   const [busy, setBusy] = useState(false);
   const [tried, setTried] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,12 +68,13 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
     if (!idsKey) return setView({ kind: "noids" });
     let live = true;
     (async () => {
-      const [co, ad, cp, cs, rw] = await Promise.all([
+      const [co, ad, cp, cs, rw, pf] = await Promise.all([
         call<Checkout>(`${api}/cart/checkout?ids=${encodeURIComponent(idsKey)}`),
         call<{ addresses: Addr[] }>(`${api}/addresses`),
         call<{ usable: Coupon[] }>(`${api}/coupons`),
         call<{ consents: Consent[] }>(`${api}/order-consent`),
         call<{ balance: number; useEnabled?: boolean }>(`${api}/me/rewards`),
+        call<{ minorPurchase?: MinorPurchase }>(`${api}/me/profile`),
       ]);
       if (!live) return;
       if (!co.ok) {
@@ -79,6 +82,10 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
         const lines = (co as { lines?: { productName: string }[] }).lines;
         return setView(co.status === 409 && lines ? { kind: "blocked", message: co.message ?? "주문할 수 없는 상품이 있어요", names: lines.map((l) => l.productName) } : { kind: "error", message: co.message });
       }
+      // SH-009: 미성년자 구매를 막는 쇼핑몰이면 주문서 대신 안내 화면, 고지 후 허용이면 주문서에 고지 한 줄
+      const minorMode = pf.ok ? minorModeOfProfile(pf.data.minorPurchase) : null;
+      if (minorMode) return setView({ kind: "minor", mode: minorMode });
+      setMinorNotice(pf.ok && pf.data.minorPurchase?.policy === "notice");
       if (!cs.ok || cs.data.consents.length === 0) return setView({ kind: "error", message: cs.ok ? undefined : cs.message });
       const addresses = ad.ok ? ad.data.addresses : [];
       setAddrId(addresses[0]?.id ?? NEW); // 기본 배송지가 맨 앞
@@ -174,6 +181,12 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
         </Link>
       </div>,
     );
+  if (view.kind === "minor")
+    return (
+      <div className="shop-wrap cart-wrap">
+        <MinorState mode={view.mode} base={base} />
+      </div>
+    );
   if (view.kind === "noids" || view.kind === "blocked" || view.kind === "error")
     return wrap(
       <div className="cart-empty">
@@ -225,6 +238,11 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
       } else if (r.error === "invalid_reward_use" || r.error === "reward_use_over_limit" || r.error === "reward_balance_insufficient") {
         setRewardServerError(r.message ?? null);
         return setBusy(false);
+      }
+      const mm = minorModeOf(r);
+      if (mm) {
+        setBusy(false);
+        return setView({ kind: "minor", mode: mm }); // 주문하는 사이 제한이 걸렸다: 안내 화면으로
       }
       setError(r.message ?? "주문하지 못했어요. 잠시 뒤 다시 해 주세요");
       return setBusy(false);
@@ -467,7 +485,11 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
             ‘주문 내용을 확인했어요’에 체크해 주세요
           </span>
         )}
-        <p className="cart-hint">만 19세 미만이 보호자 동의 없이 주문하면 본인이나 보호자가 취소할 수 있어요. 나이는 가입할 때 확인한 생년월일로 알아봐요.</p>
+        {minorNotice && (
+          <p className="msg msg-info t-l2" style={{ display: "block" }}>
+            {MINOR_NOTICE}
+          </p>
+        )}
         {error && (
           <p className="cart-msg is-err" role="alert">
             {error}

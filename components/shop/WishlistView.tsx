@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useConfirm } from "../admin-ui/ConfirmDialog";
 import MyMenu from "./MyMenu";
+import { minorModeOf, useMinorToast } from "./MinorPurchase";
 import { ProductCard, ProductGrid, type ProductCardData } from "./ProductCard";
 import type { ShopProduct } from "./ProductDetail";
 import { readRecent } from "./RecentProducts";
@@ -34,6 +35,7 @@ export default function WishlistView({ slug }: { slug: string }) {
   const [confirming, setConfirming] = useState(false);
   const [action, setAction] = useState<Action | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string; undo?: string[] } | null>(null);
+  const minor = useMinorToast();
   const [tab, setTab] = useState<"wish" | "recent">("wish");
   // 최근 본 상품은 이 기기 localStorage(상품 상세가 남김, 서버 값 없음)
   const [recent, setRecent] = useState<ProductCardData[]>([]);
@@ -77,6 +79,8 @@ export default function WishlistView({ slug }: { slug: string }) {
     const r = await call<{ item: { id: string }; count: number }>(`${shopApi}/cart`, { method: "POST", body: { optionId, quantity: 1 } });
     setBusy(false);
     setAction(null);
+    const mm = minorModeOf(r);
+    if (mm) return minor.show(mm);
     if (!r.ok) return setMsg({ ok: false, text: r.message ?? "담지 못했어요. 잠시 뒤 다시 해 주세요" });
     window.dispatchEvent(new CustomEvent(CART_COUNT_EVENT, { detail: r.data.count }));
     if (buy) router.push(`${base}/checkout?ids=${r.data.item.id}`);
@@ -248,6 +252,7 @@ export default function WishlistView({ slug }: { slug: string }) {
           찜 목록에서만 빠져요. 상품은 그대로예요.
         </ShopModal>
       )}
+      {minor.node}
     </div>
   );
 }
