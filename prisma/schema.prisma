@@ -3457,11 +3457,25 @@ model PlatformNotice {
   updatedAt        DateTime               @default(now()) @updatedAt @db.Timestamptz(3)
   deletedAt        DateTime?              @db.Timestamptz(3)
 
-  reads PlatformNoticeRead[]
-  files PlatformNoticeFile[]
+  reads   PlatformNoticeRead[]
+  files   PlatformNoticeFile[]
+  targets PlatformNoticeTarget[]
 
   @@index([publishedAt(sort: Desc), id(sort: Desc)])
   @@index([createdAt(sort: Desc), id(sort: Desc)])
+}
+
+// 공지 대상 파트너스(MA-053·054). 보는 곳이 PARTNERS인 공지에 한 줄이라도 있으면 그 파트너스에게만 보인다(없으면 모든 파트너스).
+// 공지를 지우면(하드 삭제) 같이 지운다. 파트너스는 소프트 삭제라 따로 정리하지 않는다.
+model PlatformNoticeTarget {
+  noticeId  String   @db.Uuid
+  sellerId  String   @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  notice PlatformNotice @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+
+  @@id([noticeId, sellerId])
+  @@index([sellerId, noticeId])
 }
 
 // 공지 첨부 파일(MA-053·054, 마스터 관리자 중 공지 작성 권한자가 올리고 파트너스는 받기만). .png·.jpg·.pdf, 파일당 5MB·공지당 5개, DB 저장.

@@ -32,9 +32,10 @@ export const AUDIENCES = ["PARTNERS", "PUBLIC", "ALL"] as const satisfies readon
 export const CHANNELS = ["IN_APP"] as const;
 
 export const SEARCH_MAX = 50;
+export const TARGETS_MAX = 200;
 export const RELATED_COUNT = 3;
 
-export type PlatformNoticeRejection = "unsupported_file" | "too_many_files" | "invalid_title" | "invalid_body" | "invalid_category" | "invalid_audience" | "invalid_cursor" | "invalid_query" | "version_conflict";
+export type PlatformNoticeRejection = "unsupported_file" | "too_many_files" | "invalid_title" | "invalid_body" | "invalid_category" | "invalid_audience" | "invalid_targets" | "invalid_cursor" | "invalid_query" | "version_conflict";
 
 // 마스터 관리자 화면 문구(명사형·합니다체)
 export const PLATFORM_NOTICE_MESSAGES: Record<PlatformNoticeRejection, string> = {
@@ -44,6 +45,7 @@ export const PLATFORM_NOTICE_MESSAGES: Record<PlatformNoticeRejection, string> =
   invalid_body: `내용을 ${BODY_MAX}자 안에서 입력해 주십시오`,
   invalid_category: "분류를 선택해 주십시오",
   invalid_audience: "보는 곳을 선택해 주십시오",
+  invalid_targets: `대상 파트너스는 보는 곳이 파트너스일 때만, 존재하는 파트너스 ${TARGETS_MAX}곳 안에서 골라 주십시오`,
   invalid_cursor: "목록을 다시 불러와 주십시오",
   invalid_query: `검색어는 ${SEARCH_MAX}자 안에서 입력해 주십시오`,
   version_conflict: "다른 곳에서 먼저 고쳤습니다. 새로고침한 뒤 다시 시도해 주십시오",
@@ -53,7 +55,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUuid = (v: unknown): v is string => typeof v === "string" && UUID.test(v);
 const obj = (raw: unknown) => (raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {});
 
-type Input = { title: string; body: string; category: PlatformNoticeCategory; audience: PlatformNoticeAudience; isPinned: boolean; publish: boolean };
+type Input = { title: string; body: string; category: PlatformNoticeCategory; audience: PlatformNoticeAudience; isPinned: boolean; publish: boolean; targetSellerIds: string[] };
 
 function parseInput(raw: unknown): { ok: true; v: Input } | { ok: false; reason: PlatformNoticeRejection } {
   const b = obj(raw);
@@ -63,18 +65,36 @@ function parseInput(raw: unknown): { ok: true; v: Input } | { ok: false; reason:
   if (!body) return { ok: false, reason: "invalid_body" };
   if (!CATEGORIES.includes(b.category as PlatformNoticeCategory)) return { ok: false, reason: "invalid_category" };
   if (!AUDIENCES.includes(b.audience as PlatformNoticeAudience)) return { ok: false, reason: "invalid_audience" };
+  // 대상 파트너스(선택): 없거나 빈 배열이면 모든 파트너스. 있으면 보는 곳이 PARTNERS일 때만, uuid(대소문자 무관, 중복 제거) 최대 TARGETS_MAX곳
+  let targetSellerIds: string[] = [];
+  if (b.targetSellerIds !== undefined && b.targetSellerIds !== null) {
+    const t = b.targetSellerIds;
+    if (!Array.isArray(t) || t.length > TARGETS_MAX || !t.every(isUuid)) return { ok: false, reason: "invalid_targets" };
+    targetSellerIds = [...new Set((t as string[]).map((x) => x.toLowerCase()))];
+    if (targetSellerIds.length && b.audience !== "PARTNERS") return { ok: false, reason: "invalid_targets" };
+  }
   return {
     ok: true,
-    v: { title, body, category: b.category as PlatformNoticeCategory, audience: b.audience as PlatformNoticeAudience, isPinned: b.isPinned === true, publish: b.publish === true },
+    v: { title, body, category: b.category as PlatformNoticeCategory, audience: b.audience as PlatformNoticeAudience, isPinned: b.isPinned === true, publish: b.publish === true, targetSellerIds },
   };
 }
 
-const adminView = (r: PlatformNotice) => ({
+// 대상 파트너스가 모두 있는 파트너스(지운 쇼핑몰 제외 없음: 종료 쇼핑몰도 이력상 대상일 수 있다)인지. 하나라도 없으면 false.
+async function targetsExist(db: Db, ids: string[]) {
+  if (!ids.length) return true;
+  return (await db.seller.count({ where: { id: { in: ids } } })) === ids.length;
+}
+const withTargets = { targets: { select: { sellerId: true }, orderBy: { sellerId: "asc" as const } } } as const;
+type NoticeRow = PlatformNotice & { targets?: { sellerId: string }[] };
+
+const adminView = (r: NoticeRow) => ({
   id: r.id,
   title: r.title,
   body: r.body,
   category: r.category,
   audience: r.audience,
+  // 비어 있으면 모든 파트너스, 있으면 그 파트너스에게만 보인다(보는 곳이 PARTNERS일 때만)
+  targetSellerIds: (r.targets ?? []).map((t) => t.sellerId),
   isPinned: r.isPinned,
   status: r.publishedAt ? ("published" as const) : ("draft" as const),
   publishedAt: r.publishedAt,
@@ -93,7 +113,7 @@ const readerView = (r: PlatformNotice) => ({
   channels: [...CHANNELS],
 });
 const listView = ({ body: _body, ...rest }: ReturnType<typeof readerView>) => rest;
-const auditView = (r: PlatformNotice) => ({ title: r.title, category: r.category, audience: r.audience, isPinned: r.isPinned, published: !!r.publishedAt, deleted: !!r.deletedAt });
+const auditView = (r: NoticeRow) => ({ title: r.title, category: r.category, audience: r.audience, targetCount: r.targets?.length ?? 0, isPinned: r.isPinned, published: !!r.publishedAt, deleted: !!r.deletedAt });
 
 function audit(db: Db, admin: AdminSessionContext, meta: AuditMeta, action: string, targetId: string, before: unknown, after: unknown) {
   return writeAudit(db, { actorType: "PLATFORM_ADMIN", actorId: admin.admin.id, action, targetType: "PlatformNotice", targetId, before, after, ip: meta.ip, userAgent: meta.userAgent });
@@ -126,7 +146,7 @@ export async function listAdminNotices(db: PrismaClient, admin: AdminSessionCont
     ...(q.status === "draft" ? { publishedAt: null } : q.status === "published" ? { publishedAt: { not: null } } : {}),
     ...(c ? { OR: [{ createdAt: { lt: c.at } }, { createdAt: c.at, id: { lt: c.id } }] } : {}),
   };
-  const rows = await db.platformNotice.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: ADMIN_NOTICE_PAGE_SIZE + 1 });
+  const rows = await db.platformNotice.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: ADMIN_NOTICE_PAGE_SIZE + 1, include: withTargets });
   const page = rows.slice(0, ADMIN_NOTICE_PAGE_SIZE);
   const last = page[page.length - 1];
   return { ok: true as const, items: page.map(adminView), nextCursor: rows.length > ADMIN_NOTICE_PAGE_SIZE && last ? cursorOf(last.createdAt, last.id) : null };
@@ -137,7 +157,7 @@ const filesOf = (db: Db, noticeId: string) => db.platformNoticeFile.findMany({ w
 
 export async function getAdminNotice(db: PrismaClient, _admin: AdminSessionContext, id: string) {
   if (!isUuid(id)) throw notFound();
-  const row = await db.platformNotice.findFirst({ where: { id, deletedAt: null } });
+  const row = await db.platformNotice.findFirst({ where: { id, deletedAt: null }, include: withTargets });
   if (!row) throw notFound();
   const files = await filesOf(db, id);
   return { ...adminView(row), files: files.map((f) => ({ ...f, url: `/api/admin/platform-notices/${id}/files/${f.id}` })) };
@@ -184,19 +204,21 @@ export async function adminNoticeFile(db: PrismaClient, _admin: AdminSessionCont
 }
 
 // 파트너스가 받는 공지 첨부: 파트너스에게 게시된 공지의 파일만(임시 저장·지운 공지·공개 전용 공지는 null).
-export async function sellerNoticeFile(db: PrismaClient, id: string, fileId: string) {
+export async function sellerNoticeFile(db: PrismaClient, sellerId: string, id: string, fileId: string) {
   if (!isUuid(id) || !isUuid(fileId)) return null;
-  return db.platformNoticeFile.findFirst({ where: { id: fileId, noticeId: id, notice: readerWhere("partners") }, select: { data: true, contentType: true, name: true } });
+  return db.platformNoticeFile.findFirst({ where: { id: fileId, noticeId: id, notice: readerWhere("partners", new Date(), sellerId) }, select: { data: true, contentType: true, name: true } });
 }
 
 export async function createPlatformNotice(db: PrismaClient, admin: AdminSessionContext, raw: unknown, meta: AuditMeta = {}) {
   requireWriter(admin);
   const p = parseInput(raw);
   if (!p.ok) return p;
-  const { publish, ...data } = p.v;
+  const { publish, targetSellerIds, ...data } = p.v;
   return db.$transaction(async (tx) => {
+    if (!(await targetsExist(tx, targetSellerIds))) return { ok: false as const, reason: "invalid_targets" as const };
     const row = await tx.platformNotice.create({
-      data: { ...data, publishedAt: publish ? new Date() : null, createdByAdminId: admin.admin.id, updatedByAdminId: admin.admin.id },
+      data: { ...data, publishedAt: publish ? new Date() : null, createdByAdminId: admin.admin.id, updatedByAdminId: admin.admin.id, targets: { create: targetSellerIds.map((sellerId) => ({ sellerId })) } },
+      include: withTargets,
     });
     await audit(tx, admin, meta, "platform.notice.create", row.id, undefined, auditView(row));
     return { ok: true as const, notice: adminView(row) };
@@ -210,14 +232,19 @@ export async function updatePlatformNotice(db: PrismaClient, admin: AdminSession
   const p = parseInput(raw);
   if (!p.ok) return p;
   const expected = obj(raw).expectedVersion;
-  const { publish, ...data } = p.v;
+  const { publish, targetSellerIds, ...data } = p.v;
   return db.$transaction(async (tx) => {
-    const [before] = await tx.$queryRaw<PlatformNotice[]>`SELECT * FROM "PlatformNotice" WHERE "id" = ${id}::uuid AND "deletedAt" IS NULL FOR UPDATE`;
-    if (!before) throw notFound();
+    const [lockedRow] = await tx.$queryRaw<PlatformNotice[]>`SELECT * FROM "PlatformNotice" WHERE "id" = ${id}::uuid AND "deletedAt" IS NULL FOR UPDATE`;
+    if (!lockedRow) throw notFound();
+    const before: NoticeRow = { ...lockedRow, targets: await tx.platformNoticeTarget.findMany({ where: { noticeId: id }, select: { sellerId: true } }) };
     if (expected !== before.version) return { ok: false as const, reason: "version_conflict" as const, currentVersion: before.version };
+    if (!(await targetsExist(tx, targetSellerIds))) return { ok: false as const, reason: "invalid_targets" as const };
+    // 대상은 보낸 목록으로 통째로 바꾼다(빈 배열이면 모든 파트너스로 되돌림)
+    await tx.platformNoticeTarget.deleteMany({ where: { noticeId: id } });
     const row = await tx.platformNotice.update({
       where: { id },
-      data: { ...data, publishedAt: publish ? (before.publishedAt ?? new Date()) : null, version: { increment: 1 }, updatedByAdminId: admin.admin.id },
+      data: { ...data, publishedAt: publish ? (before.publishedAt ?? new Date()) : null, version: { increment: 1 }, updatedByAdminId: admin.admin.id, targets: { create: targetSellerIds.map((sellerId) => ({ sellerId })) } },
+      include: withTargets,
     });
     await audit(tx, admin, meta, "platform.notice.update", id, auditView(before), auditView(row));
     return { ok: true as const, notice: adminView(row) };
@@ -240,10 +267,16 @@ export async function deletePlatformNotice(db: PrismaClient, admin: AdminSession
 // ───────── 파트너스 관리자·공개 ─────────
 
 export type NoticeReader = "partners" | "public";
-const readerWhere = (reader: NoticeReader, now = new Date()): Prisma.PlatformNoticeWhereInput => ({
+// 파트너스는 sellerId를 줘야 한다: 대상이 없는 공지(모든 파트너스)와 그 파트너스가 대상인 공지만 보인다. sellerId가 없으면 대상이 지정된 공지는 빼고 준다.
+// (호출하는 쪽이 OR·AND 키를 따로 쓰므로 합쳐 쓸 때 덮어쓰지 않게 NOT 키 하나로 표현한다: 「대상이 있는데 이 파트너스는 없는」 공지를 뺀다)
+export const targetedFor = (sellerId?: string): Prisma.PlatformNoticeWhereInput => ({
+  NOT: sellerId ? { AND: [{ targets: { some: {} } }, { targets: { none: { sellerId } } }] } : { targets: { some: {} } },
+});
+const readerWhere = (reader: NoticeReader, now = new Date(), sellerId?: string): Prisma.PlatformNoticeWhereInput => ({
   deletedAt: null,
   publishedAt: reader === "public" ? { not: null, lte: now } : { not: null },
   audience: { in: reader === "partners" ? ["PARTNERS", "ALL"] : ["PUBLIC", "ALL"] },
+  ...(reader === "partners" ? targetedFor(sellerId) : {}),
 });
 
 // 첫 쪽(cursor 없음)에만 고정 공지(pinned, 최신순)를 따로 주고, items는 고정이 아닌 공지 게시일 최신순 20건
@@ -344,10 +377,10 @@ function parseSellerQuery(ctx: TenantContext, q: SellerNoticeQuery): Parsed | { 
   if (text) and.push({ OR: [{ title: { contains: like, mode: "insensitive" } }, { body: { contains: like, mode: "insensitive" } }] });
   if (q.category) and.push({ category: q.category as PlatformNoticeCategory });
   if (q.unread === "1" || q.unread === "true") and.push({ reads: { none: { sellerUserId: ctx.actorId ?? "" } } });
-  return { c, where: { ...readerWhere("partners"), ...(and.length ? { AND: and } : {}) } };
+  return { c, where: { ...readerWhere("partners", new Date(), ctx.sellerId), ...(and.length ? { AND: and } : {}) } };
 }
 
-const unreadCountOf = (db: PrismaClient, ctx: TenantContext) => db.platformNotice.count({ where: { ...readerWhere("partners"), reads: { none: { sellerUserId: ctx.actorId ?? "" } } } });
+const unreadCountOf = (db: PrismaClient, ctx: TenantContext) => db.platformNotice.count({ where: { ...readerWhere("partners", new Date(), ctx.sellerId), reads: { none: { sellerUserId: ctx.actorId ?? "" } } } });
 
 async function readSet(db: PrismaClient, ctx: TenantContext, ids: string[]): Promise<Set<string>> {
   if (ctx.readOnly || !ctx.actorId || ids.length === 0) return new Set();
@@ -385,7 +418,7 @@ export async function listSellerNotices(db: PrismaClient, ctx: TenantContext, q:
 // related(같은 분류의 다른 공지 최근 3개). 상세를 열기만 해서는 읽음 처리하지 않는다(화면이 읽음 API를 부른다).
 export async function getSellerNotice(db: PrismaClient, ctx: TenantContext, id: string) {
   if (!isUuid(id)) throw notFound();
-  const base = readerWhere("partners");
+  const base = readerWhere("partners", new Date(), ctx.sellerId);
   const row = await db.platformNotice.findFirst({ where: { id, ...base } });
   if (!row) throw notFound();
   const at = row.publishedAt!;
@@ -404,7 +437,7 @@ export async function getSellerNotice(db: PrismaClient, ctx: TenantContext, id: 
 export async function markNoticeRead(db: PrismaClient, ctx: TenantContext, id: string) {
   assertWritable(ctx);
   if (!isUuid(id)) throw notFound();
-  const row = await db.platformNotice.findFirst({ where: { id, ...readerWhere("partners") }, select: { id: true } });
+  const row = await db.platformNotice.findFirst({ where: { id, ...readerWhere("partners", new Date(), ctx.sellerId) }, select: { id: true } });
   if (!row || !ctx.actorId) throw notFound();
   await db.platformNoticeRead.createMany({ data: [{ sellerUserId: ctx.actorId, noticeId: id }], skipDuplicates: true });
   return { read: true as const, unreadCount: await unreadCountOf(db, ctx) };
