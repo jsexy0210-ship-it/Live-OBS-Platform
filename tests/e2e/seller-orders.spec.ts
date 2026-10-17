@@ -43,7 +43,7 @@ async function openRefund(page: Page, row: ReturnType<typeof rows>) {
 // 실제 환불 시험은 시드의 발송 전 결제 주문(배송 「—」)을 환불해 하나씩 쓴다(실행마다 몇 건). 같은 DB로 여러 번 돌려 다 쓰면
 // 환불할 주문이 없어 시간 초과로만 보이므로, 이유를 알려 주며 바로 실패한다. 폐기용 DB를 새로 만들면(migrate deploy → dev-seed) 다시 채워진다.
 async function preShipTarget(page: Page) {
-  const target = rows(page).filter({ has: page.locator("td:nth-child(6)", { hasText: "배송 준비" }) }).first();
+  const target = rows(page).filter({ has: page.locator("td:nth-child(7)", { hasText: "배송 준비" }) }).first();
   await expect(target, "발송 전 결제 완료 주문이 없습니다. 이전 실행이 환불로 모두 썼습니다. 폐기용 DB를 새로 만들어 다시 돌려 주십시오").toBeVisible();
   return target;
 }
@@ -125,10 +125,10 @@ test("상태 필터·검색·기간으로 걸러 보고, 결과가 없으면 알
   await openDetail(page);
   await page.getByLabel("주문 검색").fill("카드왕");
   await searched;
-  await expect(rows(page).first().locator("td").nth(1)).toHaveText("카드왕");
+  await expect(rows(page).first().locator("td").nth(2).locator(".fw6")).toHaveText("카드왕");
   const m = await rows(page).count();
   expect(m).toBeGreaterThan(0);
-  for (let i = 0; i < m; i++) await expect(rows(page).nth(i).locator("td").nth(1)).toHaveText("카드왕");
+  for (let i = 0; i < m; i++) await expect(rows(page).nth(i).locator("td").nth(2).locator(".fw6")).toHaveText("카드왕");
 
   // 기간 + 없는 검색어: 기간을 풀면 전체 기간에서 찾는다고 안내
   await page.getByRole("button", { name: "오늘", exact: true }).first().click();
@@ -151,7 +151,7 @@ test("주문 상세: 상품·결제·구매자·배송을 보여 주고, 없는 
   await paid;
   await expect(rows(page).first()).toBeVisible();
   // 구매자 이름과 주소를 한 번에 읽어, 목록이 다시 그려지는 사이 다른 행의 이름이 섞이지 않게 한다
-  const { nick, href } = await rows(page).first().evaluate((tr) => ({ nick: tr.querySelectorAll("td")[1].textContent ?? "", href: tr.querySelector("a.ord-link")!.getAttribute("href")! }));
+  const { nick, href } = await rows(page).first().evaluate((tr) => ({ nick: tr.querySelectorAll("td")[2].querySelector(".fw6")?.textContent ?? "", href: tr.querySelector("a.ord-link")!.getAttribute("href")! }));
   await page.goto(href);
   await expect(page).toHaveURL(/\/seller\/orders\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("heading", { level: 1 })).toContainText(`${nick} · `);
@@ -407,7 +407,7 @@ test("주문·배송 권한만 있는 직원(방송 진행 권한 없음)도 실
 
 test("발송한 주문의 송장은 택배사 코드가 아니라 화면 이름(CJ대한통운)으로 보인다", async ({ page }) => {
   await login(page);
-  const shipped = rows(page).filter({ has: page.locator("td:nth-child(6)", { hasText: /배송 (중|완료)/ }) }).first();
+  const shipped = rows(page).filter({ has: page.locator("td:nth-child(7)", { hasText: /배송 (중|완료)/ }) }).first();
   await shipped.locator("a.ord-link").click();
   await expect(page).toHaveURL(/\/seller\/orders\/[0-9a-f-]{36}$/);
   const dd = page.locator("dt", { hasText: "송장" }).locator("xpath=following-sibling::dd[1]");

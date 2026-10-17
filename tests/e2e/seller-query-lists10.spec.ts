@@ -169,6 +169,10 @@ for (const t of targets) test(`${t.id}: 실제 목록 10개·끝·앞뒤·필터
     else if (t.key === "hits") {
       await page.getByRole("combobox", { name: "등급", exact: true }).fill("UR");
       await page.getByRole("button", { name: "검색", exact: true }).click();
+    } else if (t.key === "receipts") {
+      // SA-024는 상태를 검색 패널의 라디오로 고르고 「검색」을 눌러 건다
+      await page.getByRole("radio", { name: "실패", exact: true }).check();
+      await page.getByRole("button", { name: "검색", exact: true }).click();
     } else await page.getByRole("tab", { name: t.key === "refunds" ? /^거절/ : /^실패/ }).click();
     await expect(rows).toHaveCount(1); await expect(rows.first()).toContainText(t.label(t.filteredIndex));
     await expect(nav).toHaveCount(0);

@@ -172,6 +172,7 @@ export type SellerOrderListQuery = {
   refundRequested?: string | null;
   // true면 결제 완료·아직 발송 전 주문만(「송장 미입력」 칩)
   trackingMissing?: string | null;
+  prepared?: string | null;
   from?: string | null;
   to?: string | null;
   cursor?: string | null;
@@ -243,6 +244,8 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
   // 발송 여부(배송 정보가 있고 발송 전 준비 상태 READY가 아님). 「배송 준비」 = status=PAID&shipped=false. 비어 있으면 거르지 않는다.
   if (query.shipped && query.shipped !== "true" && query.shipped !== "false") return { ok: false as const };
   if (query.queue && !(QUEUE_STATES as readonly string[]).includes(query.queue)) return { ok: false as const };
+  // 배송 준비 표식(shippingPreparedAt) 여부. false는 결제 완료 주문만(칩 건수 queueDonePending과 같은 기준). 칩 「배송 준비 전」 = queue=done&prepared=false. 비어 있으면 거르지 않는다.
+  if (query.prepared && query.prepared !== "true" && query.prepared !== "false") return { ok: false as const };
   for (const flag of [query.refundRequested, query.trackingMissing]) if (flag && flag !== "true") return { ok: false as const };
 
   const searchesPii = q !== "" && canViewCustomerPii(ctx);
@@ -251,6 +254,7 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
   if (query.shipped) and.push(query.shipped === "true" ? { shipment: { is: { status: { not: "READY" } } } } : { OR: [{ shipment: { is: null } }, { shipment: { is: { status: "READY" } } }] });
   if (statuses.length) and.push({ status: { in: statuses as OrderStatus[] } });
   if (query.queue) and.push(queueStateWhere(query.queue as QueueState));
+  if (query.prepared) and.push(query.prepared === "true" ? { shippingPreparedAt: { not: null } } : { status: "PAID", shippingPreparedAt: null });
   if (query.refundRequested) and.push(refundRequestedWhere);
   if (query.trackingMissing) and.push(trackingMissingWhere);
   if (from) and.push({ createdAt: { gte: from } });

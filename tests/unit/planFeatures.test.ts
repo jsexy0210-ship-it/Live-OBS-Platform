@@ -41,6 +41,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/subscription/card": "BILLING",
   "seller/subscription/cancel": "BILLING",
   "seller/subscription/payments/export": "BILLING",
+  "seller/integration-profile": "BILLING", // 쇼핑몰 통합 전환용 사업자·정산 정보(SA-005): 첫 결제 전·잠김 중에도 열림(플랜 변경과 같음)
+  "seller/integration-profile/business-check": "BILLING",
   "seller/subscription/plan": "BILLING",
   "seller/subscription/plan/preview": "BILLING",
   "seller/message-balance": "BILLING",
@@ -76,6 +78,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/purchase-restrictions": "ORDER_FOLLOWUP",
   "seller/purchase-restrictions/[buyerMemberId]": "ORDER_FOLLOWUP",
   "seller/members/[memberId]/memo": "ORDER_FOLLOWUP",
+  "seller/orders/[orderId]/memo": "ORDER_FOLLOWUP",
   "seller/shipments": "ORDER_FOLLOWUP",
   "seller/shipments/deliver": "ORDER_FOLLOWUP",
   "seller/invoices": "ORDER_FOLLOWUP",
@@ -158,6 +161,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/stream": "OVERLAY",
   "seller/member-policy": "STORE_OPERATIONS",
   "seller/order-policy": "STORE_OPERATIONS",
+  "seller/shipping-automation": "STORE_OPERATIONS",
   "seller/order-notification-policy": "STORE_OPERATIONS",
   "seller/payments/bank-account": "STORE_OPERATIONS", // 무통장 입금 계좌
   "seller/payments/deposits": "ORDER_FOLLOWUP", // 입금 대기 목록(잠금 중에도 이미 받은 주문 처리)
@@ -270,6 +274,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/hit-cards": "OVERLAY",
   "seller/hit-cards/[hitCardId]": "OVERLAY",
   "seller/hit-cards/[hitCardId]/replay": "OVERLAY",
+  "seller/hit-cards/bulk-delete": "OVERLAY",
   "seller/hit-cards/export": "OVERLAY",
   "seller/stats/broadcasts": "OVERLAY",
   "seller/stats/funnel": "STORE_OPERATIONS",

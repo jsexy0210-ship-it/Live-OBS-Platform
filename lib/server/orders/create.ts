@@ -11,6 +11,7 @@ import { activeRestriction, dbClock, getOrderPolicy, lockSellerOrders } from "./
 import { INT4_MAX, parseShippingAddress } from "./shipping";
 import { priceOrder } from "./pricing";
 import { CouponTaken, useOrderCoupon, type OrderCouponFailure } from "../shop-coupons/service";
+import { minorPurchaseCheck } from "../buyers/minor";
 
 // 구매자 주문 생성(결제 대기까지). 실제 PG 결제 호출은 없다.
 // - 결제 전 개봉 고지(OPENED_NO_REFUND_CONSENT) 동의 필수(체크 기본 해제, 동의 없으면 주문을 만들지 않음). 동의 시각(DB 시계)·문구 버전을 기록.
@@ -54,6 +55,8 @@ export type CreateOrderFailure =
   | "invalid_shipping_address"
   | "invalid_order_nickname" // 주문 닉네임이 1~20자가 아니거나 쓸 수 없는 글자
   | "invalid_amount" // 단가 1원 미만(음수 추가금 등)·합계가 정수 범위를 넘음
+  | "minor_blocked" // 미성년자 구매 막기를 켠 쇼핑몰의 만 19세 미만 회원(buyers/minor.ts)
+  | "identity_reverify_required" // 미성년자 구매 막기를 켠 쇼핑몰인데 생년월일이 없어 나이를 확인할 수 없는 회원
   | "purchase_restricted" // 미입금 자동 취소가 쌓여 주문이 막힌 구매자(overdue.ts)
   | OrderCouponFailure // 쿠폰을 쓸 수 없음·적용 상품 없음·최소 주문 금액 미달(shop-coupons)
   | "order_rate_limited"; // 같은 구매자가 이 쇼핑몰에서 1분에 10건 넘게 주문
@@ -144,11 +147,14 @@ async function createInTransaction(
     // 잠금을 잡은 뒤의 실제 DB 시각(주문 시각·입금 기한·횟수 제한 창의 기준)
     const now = await dbClock(tx);
     // 회원 행을 공유 잠금으로 잡아, 주문을 쓰는 동안 탈퇴(buyers/withdraw, FOR UPDATE)가 끼어들지 못하게 한다
-    const [member] = await tx.$queryRaw<{ id: string; broadcastNickname: string }[]>`
-      SELECT "id", "broadcastNickname" FROM "BuyerMember"
+    const [member] = await tx.$queryRaw<{ id: string; broadcastNickname: string; birthDate: Date | null }[]>`
+      SELECT "id", "broadcastNickname", "birthDate" FROM "BuyerMember"
       WHERE "id" = ${input.buyerMemberId}::uuid AND "sellerId" = ${input.sellerId}::uuid AND "status" = 'ACTIVE' AND "deletedAt" IS NULL
       FOR SHARE`;
     if (!member) return { ok: false as const, reason: "shop_unavailable" as const };
+    // 미성년자 구매 막기(SH-009): 막는 쇼핑몰이면 만 19세 미만, 생년월일을 모르는 회원은 주문할 수 없다
+    const minor = await minorPurchaseCheck(tx, input.sellerId, member, now);
+    if (minor) return { ok: false as const, reason: minor };
     // 구매 제한·횟수 제한은 같은 잠금 아래에서 세므로 동시 주문에도 한도를 넘지 않는다
     const restriction = await activeRestriction(tx, input.sellerId, member.id, now);
     if (restriction) return { ok: false as const, reason: "purchase_restricted" as const, endsAt: restriction.endsAt };

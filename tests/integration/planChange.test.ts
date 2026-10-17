@@ -1,3 +1,4 @@
+import { PrismaClient, type Prisma } from "@prisma/client";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { GET as previewRoute } from "../../app/api/seller/subscription/plan/preview/route";
 import { POST as planRoute } from "../../app/api/seller/subscription/plan/route";
@@ -9,10 +10,13 @@ import { changePlan, previewPlanChanges } from "../../lib/server/billing/planCha
 import { listPriceChangeNoticeTargets, updatePlanPrice } from "../../lib/server/billing/plans";
 import { FakeBillingProvider } from "../../lib/server/billing/provider";
 import { sealBillingKey } from "../../lib/server/billing/secret";
-import { cancelSubscription, getSubscriptionView, reconcileStalePayments, registerCardAndPay, renewDueSubscriptions } from "../../lib/server/billing/subscription";
+import { cancelSubscription, getSubscriptionView, reconcileStalePayments, registerCardAndPay, renewDueSubscriptions, settlePayment } from "../../lib/server/billing/subscription";
 import { prisma } from "../../lib/server/db";
+import { FakeBusinessStatusProvider } from "../../lib/server/sellers/businessCheck";
+import { checkBusiness, saveIntegrationProfile } from "../../lib/server/sellers/integrationProfile";
+import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 import type { TenantContext } from "../../lib/server/tenant/context";
-import { PASSWORD, createAdmin, createSeller, createSellerUser, db, resetDb, seedPlans } from "./helpers";
+import { PASSWORD, completeIntegrationProfile, createAdmin, createSeller, createSellerUser, db, resetDb, seedPlans } from "./helpers";
 
 // ONQ 1-C-2 플랜 변경(ONQ_PLAN E1-B, ARCHITECTURE 4.8.0 결제 규칙). 실제 PG 없이 가짜 공급자로 확인한다.
 beforeAll(() => {
@@ -44,8 +48,10 @@ const declining = () =>
 
 type PlanKey = "OVERLAY_ONLY" | "INTEGRATED";
 // 판매자(플랜)와 구독 상태. sub가 없으면 구독 행 없음.
-async function shop(plan: PlanKey, trialEndsAt: Date | null, sub?: Record<string, unknown>) {
+async function shop(plan: PlanKey, trialEndsAt: Date | null, sub?: Record<string, unknown>, opts: { profile?: boolean } = {}) {
   const { seller } = await createSeller();
+  // 오버레이 전용 → 통합은 사업자·정산 정보와 사업자 조회가 있어야 열린다(SA-005). 게이트 시험만 profile:false로 뺀다
+  if (opts.profile !== false) await completeIntegrationProfile(seller.id);
   await db.seller.update({ where: { id: seller.id }, data: { trialEndsAt, planId: plans[plan].id } });
   const owner = await createSellerUser(seller.id, "OWNER");
   const ctx: TenantContext = { sellerId: seller.id, actorType: "SELLER_USER", actorId: owner.id, isOwner: true, permissions: [], readOnly: false };
@@ -126,6 +132,158 @@ describe("상위 변경(오버레이 전용 → 통합)", () => {
     expect(await payments(s.seller.id)).toEqual([{ amount: 36666, status: "PAID", kind: "PRORATION" }]);
     expect(await planOf(s.seller.id)).toBe("INTEGRATED");
     expect(await sellerFeatures(db, s.seller.id)).toEqual(ALL);
+  });
+
+  it("결제 대기 중 사업자 조회가 무효가 되면(PG엔 결제됨) 확정해도 통합으로 바꾸지 않고 환불 요청만 남긴다", async () => {
+    const s = await shop("OVERLAY_ONLY", at(-30), paying);
+    const provider = new FakeBillingProvider();
+    provider.failNext = "timeout_after_charge";
+    expect(await changePlan(db, provider, s.ctx, { planCode: "INTEGRATED", now: T0 })).toEqual({ ok: false, reason: "payment_pending" });
+    await db.sellerIntegrationProfile.update({ where: { sellerId: s.seller.id }, data: { checkedAt: null } });
+    await db.subscriptionPayment.updateMany({ where: { sellerId: s.seller.id }, data: { createdAt: new Date(Date.now() - 3_600_000), launchDiscount: true } });
+    await reconcileStalePayments(db, provider);
+    expect(await payments(s.seller.id)).toEqual([{ amount: 36666, status: "PAID", kind: "PRORATION" }]);
+    expect(await planOf(s.seller.id)).toBe("OVERLAY_ONLY");
+    expect(await sellerFeatures(db, s.seller.id)).toEqual(OVERLAY);
+    expect(await db.subscriptionRefund.findMany({ where: { sellerId: s.seller.id }, select: { amount: true, status: true, source: true, reason: true } })).toEqual([
+      { amount: 36666, status: "REQUESTED", source: "SYSTEM", reason: "upgrade_gate_failed" },
+    ]);
+    expect(await db.auditLog.count({ where: { sellerId: s.seller.id, action: "subscription.plan_upgrade_blocked", reason: "business_unchecked" } })).toBe(1);
+    // 막힌 청구는 런칭 할인을 쓴 것으로 남기지 않는다(환불 요청된 청구)
+    expect((await db.seller.findUniqueOrThrow({ where: { id: s.seller.id }, select: { launchDiscountUsedAt: true } })).launchDiscountUsedAt).toBeNull();
+  });
+
+  it.each(["business-check", "profile-save"] as const)("결제 게이트 읽기 뒤의 %s 갱신은 확정 트랜잭션이 끝날 때까지 Seller 잠금에서 기다린다", async (writerKind) => {
+    const s = await shop("OVERLAY_ONLY", at(-30), paying);
+    const provider = new FakeBillingProvider();
+    provider.failNext = "timeout_after_charge";
+    expect(await changePlan(db, provider, s.ctx, { planCode: "INTEGRATED", now: T0 })).toEqual({ ok: false, reason: "payment_pending" });
+    const payment = await db.subscriptionPayment.findFirstOrThrow({ where: { sellerId: s.seller.id } });
+    const writer = new PrismaClient({ datasources: { db: { url: assertTestDatabaseUrl(process.env.DATABASE_URL) } } });
+    let releaseGate!: () => void;
+    let reachedGate!: () => void;
+    const gateRelease = new Promise<void>((resolve) => { releaseGate = resolve; });
+    const gateRead = new Promise<void>((resolve) => { reachedGate = resolve; });
+    let settlementPid = 0;
+    let writerPid = 0;
+    // 실제 settlePayment의 조회 결과를 읽은 직후 멈춘다. DB 쿼리·커밋은 모두 실제 연결에서 실행한다.
+    const settlementDb = new Proxy(db, {
+      get(target, key, receiver) {
+        if (key !== "$transaction") return Reflect.get(target, key, receiver);
+        return <T>(run: (tx: Prisma.TransactionClient) => Promise<T>) => target.$transaction(async (tx) => {
+          [{ pid: settlementPid }] = await tx.$queryRawUnsafe<{ pid: number }[]>("SELECT pg_backend_pid() AS pid");
+          return run(new Proxy(tx, {
+            get(transaction, property, transactionReceiver) {
+              if (property !== "sellerIntegrationProfile") return Reflect.get(transaction, property, transactionReceiver);
+              return new Proxy(transaction.sellerIntegrationProfile, {
+                get(model, operation, modelReceiver) {
+                  if (operation !== "findUnique") return Reflect.get(model, operation, modelReceiver);
+                  return async (args: Prisma.SellerIntegrationProfileFindUniqueArgs) => {
+                    const row = await model.findUnique(args);
+                    reachedGate();
+                    await gateRelease;
+                    return row;
+                  };
+                },
+              });
+            },
+          }));
+        });
+      },
+    });
+    const writerDb = new Proxy(writer, {
+      get(target, key, receiver) {
+        if (key !== "$transaction") return Reflect.get(target, key, receiver);
+        return <T>(run: (tx: Prisma.TransactionClient) => Promise<T>) => target.$transaction(async (tx) => {
+          [{ pid: writerPid }] = await tx.$queryRawUnsafe<{ pid: number }[]>("SELECT pg_backend_pid() AS pid");
+          return run(tx);
+        });
+      },
+    });
+    let releaseProvider!: () => void;
+    let reachedProvider!: () => void;
+    const providerRelease = new Promise<void>((resolve) => { releaseProvider = resolve; });
+    const providerRead = new Promise<void>((resolve) => { reachedProvider = resolve; });
+    const businessProvider = new (class extends FakeBusinessStatusProvider {
+      async verify(input: Parameters<FakeBusinessStatusProvider["verify"]>[0]) {
+        reachedProvider();
+        await providerRelease;
+        return super.verify(input);
+      }
+    })();
+    businessProvider.set("1234567891", "CLOSED");
+    let writing: Promise<unknown> | undefined;
+    let writerFinished = false;
+    // 예약 트랜잭션 종료를 먼저 확정해 AuditLog 등 다른 잠금 대기로 잘못 통과하지 않게 한다.
+    if (writerKind === "business-check") {
+      writing = checkBusiness(writerDb, businessProvider, s.ctx, { businessNumber: "1234567891", representativeName: "김대표", openedOn: "20200101" }).finally(() => { writerFinished = true; });
+    }
+    const settling = (async () => {
+      if (writerKind === "business-check") await Promise.race([providerRead, writing!.then(() => { throw new Error("공급자 barrier에 도달하지 않았습니다"); })]);
+      return settlePayment(settlementDb, payment.id, { ok: true, paymentId: "fake-race-payment", receiptUrl: null }, { actorType: "SYSTEM", actorId: null, now: T0 });
+    })();
+    try {
+      await Promise.race([gateRead, settling.then(() => { throw new Error("결제 게이트 barrier에 도달하지 않았습니다"); })]);
+      if (writerKind === "business-check") releaseProvider();
+      else writing = saveIntegrationProfile(writerDb, s.ctx, { companyName: "별빛카드", representativeName: "박대표", businessNumber: "1234567891", businessAddress: "서울시 강남구 1", bankName: "국민은행", accountNumber: "123456789012", accountHolder: "박대표" }).finally(() => { writerFinished = true; });
+      // PostgreSQL이 알려 주는 실제 잠금 대기를 관찰한다. 수정 전에는 writer가 먼저 커밋하므로 실패한다.
+      const deadline = Date.now() + 2_000;
+      let blocked = false;
+      let blockedQuery: string | null = null;
+      while (Date.now() < deadline && !writerFinished) {
+        const [{ waiting, statement }] = await db.$queryRawUnsafe<{ waiting: boolean; statement: string | null }[]>("SELECT $1::int = ANY(pg_blocking_pids($2::int)) AS waiting, (SELECT query FROM pg_stat_activity WHERE pid = $2::int) AS statement", settlementPid, writerPid);
+        if (waiting) { blocked = true; blockedQuery = statement; break; }
+      }
+      expect(writerFinished).toBe(false);
+      expect(blocked).toBe(true);
+      // profile 쓰기 뒤 AuditLog FK에서 기다린 경우는 실패해야 한다(구코드 회귀).
+      expect(blockedQuery).toBe('SELECT id FROM "Seller" WHERE id = $1::uuid FOR UPDATE');
+      expect(await planOf(s.seller.id)).toBe("OVERLAY_ONLY");
+      expect(await db.sellerIntegrationProfile.findUniqueOrThrow({ where: { sellerId: s.seller.id } })).toMatchObject({ checkStatus: "ACTIVE", checkValid: true, representativeName: "김대표" });
+      releaseGate();
+      expect(await settling).toEqual({ nextChargeAt: at(9) });
+      expect(await writing).toMatchObject({ ok: true });
+      expect(await planOf(s.seller.id)).toBe("INTEGRATED");
+      expect(await payments(s.seller.id)).toEqual([{ amount: 36666, status: "PAID", kind: "PRORATION" }]);
+      expect(await db.subscriptionRefund.count({ where: { sellerId: s.seller.id } })).toBe(0);
+      const row = await db.sellerIntegrationProfile.findUniqueOrThrow({ where: { sellerId: s.seller.id } });
+      expect(row).toMatchObject(writerKind === "business-check" ? { checkStatus: "CLOSED" } : { representativeName: "박대표", checkStatus: null });
+    } finally {
+      releaseProvider();
+      releaseGate();
+      await Promise.allSettled([settling, ...(writing ? [writing] : [])]);
+      await writer.$disconnect();
+    }
+  });
+
+
+  it("외부 조회 중 사업자 정보를 바꿀 수 있고 늦게 온 이전 정보의 조회 결과로 새 사업자를 승인하지 않는다", async () => {
+    const s = await shop("OVERLAY_ONLY", at(-30), paying);
+    const provider = new (class extends FakeBusinessStatusProvider {
+      async verify(input: Parameters<FakeBusinessStatusProvider["verify"]>[0]) {
+        // 공급자가 응답하기 전에 같은 쇼핑몰 저장이 완료되어야 한다(Seller 잠금을 외부 호출 동안 잡지 않는다).
+        expect(await saveIntegrationProfile(db, s.ctx, { companyName: "별빛카드", representativeName: "박대표", businessNumber: "1234567891", businessAddress: "서울시 강남구 1", bankName: "국민은행", accountNumber: "123456789012", accountHolder: "박대표" })).toEqual({ ok: true });
+        return super.verify(input);
+      }
+    })();
+    expect(await checkBusiness(db, provider, s.ctx, { businessNumber: "1234567891", representativeName: "김대표", openedOn: "20200101" })).toMatchObject({ ok: true, valid: true });
+    expect(await db.sellerIntegrationProfile.findUniqueOrThrow({ where: { sellerId: s.seller.id } })).toMatchObject({ representativeName: "박대표", checkRepresentativeName: "김대표" });
+    expect(await changePlan(db, new FakeBillingProvider(), s.ctx, { planCode: "INTEGRATED", now: T0 })).toEqual({ ok: false, reason: "business_unchecked" });
+    expect(await payments(s.seller.id)).toEqual([]);
+  });
+
+  it("결제 전 재시도 때 게이트가 막히면 돈을 청구하지 않고 실패로 닫는다(환불 요청 없음)", async () => {
+    const s = await shop("OVERLAY_ONLY", at(-30), paying);
+    const provider = new FakeBillingProvider();
+    provider.failNext = "timeout_before_charge";
+    expect(await changePlan(db, provider, s.ctx, { planCode: "INTEGRATED", now: T0 })).toEqual({ ok: false, reason: "payment_pending" });
+    await db.sellerIntegrationProfile.update({ where: { sellerId: s.seller.id }, data: { checkedAt: null } });
+    await db.subscriptionPayment.updateMany({ where: { sellerId: s.seller.id }, data: { createdAt: new Date(Date.now() - 3_600_000) } });
+    expect(await reconcileStalePayments(db, provider)).toMatchObject({ paid: 0, recharged: 0, failed: 1 });
+    expect(provider.charges).toHaveLength(0);
+    expect(await payments(s.seller.id)).toEqual([{ amount: 36666, status: "FAILED", kind: "PRORATION" }]);
+    expect(await planOf(s.seller.id)).toBe("OVERLAY_ONLY");
+    expect(await db.subscriptionRefund.count({ where: { sellerId: s.seller.id } })).toBe(0);
   });
 
   it("체험 중(카드 등록): 체험을 끝내고 179,000원을 바로 결제, 결제일을 그날로 새로 잡는다. 거절이면 체험·플랜 그대로", async () => {
@@ -491,6 +649,29 @@ describe("플랜별 금액·변경 미리보기(GET /api/seller/subscription/pla
     } else expect(r).toEqual({ ok: false, reason: row.change.reason });
     return { preview, row };
   }
+
+  it("사업자·정산 정보 게이트에 걸려도 정보를 채운 뒤 낼 금액을 quote로 함께 준다(읽기 전용, 채운 뒤 실제 결제와 같다)", async () => {
+    const s = await shop("OVERLAY_ONLY", at(-30), paying, { profile: false });
+    const counts = async () => [await db.subscriptionPayment.count(), await db.auditLog.count(), await planOf(s.seller.id)];
+    const before = await counts();
+    const blocked = (await previewPlanChanges(db, s.ctx, { now: T0 })).plans.find((p) => p.planCode === "INTEGRATED")!.change;
+    expect(blocked).toEqual({ ok: false, reason: "profile_incomplete", quote: { chargeNow: 36666, remainingDays: 10, periodDays: 30 } });
+    expect(await counts()).toEqual(before);
+    // 게이트 판정·실제 변경은 그대로 막힌다
+    expect(await changePlan(db, new FakeBillingProvider(), s.ctx, { planCode: "INTEGRATED", now: T0 })).toEqual({ ok: false, reason: "profile_incomplete" });
+    // 정보를 채우면 같은 금액으로 열린다
+    await completeIntegrationProfile(s.seller.id);
+    const open = (await previewPlanChanges(db, s.ctx, { now: T0 })).plans.find((p) => p.planCode === "INTEGRATED")!.change;
+    expect(open).toEqual({ ok: true, applied: "now", chargeNow: 36666, remainingDays: 10, effectiveAt: T0 });
+  });
+
+  it("게이트가 아닌 거절과 결제 없는 변경에는 quote가 없다", async () => {
+    const same = await shop("OVERLAY_ONLY", at(-30), paying, { profile: false });
+    const plansOf = (await previewPlanChanges(db, same.ctx, { now: T0 })).plans;
+    expect(plansOf.find((p) => p.planCode === "OVERLAY_ONLY")!.change).toEqual({ ok: false, reason: "same_plan" });
+    const noPay = await shop("OVERLAY_ONLY", null, undefined, { profile: false });
+    expect((await previewPlanChanges(db, noPay.ctx, { now: T0 })).plans.find((p) => p.planCode === "INTEGRATED")!.change).toEqual({ ok: false, reason: "profile_incomplete" });
+  });
 
   it("결제한 기간 중 상위 변경: 남은 10일분 차액 36,666원, 플랜별 다음 결제 금액(지금 69,000원·통합 179,000원)", async () => {
     const s = await shop("OVERLAY_ONLY", at(-30), paying);
