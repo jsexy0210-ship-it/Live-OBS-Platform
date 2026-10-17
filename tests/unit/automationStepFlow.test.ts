@@ -24,6 +24,10 @@ describe("자동 연결 작업 흐름 표(MA-111)", () => {
       expect(r.slice(2).every((s) => s === "pending")).toBe(true);
     }
   });
+  it("시작한 적 없는 작업(결제 실패·시작 전 취소)은 멈춘 단계 없이 전부 대기", () => {
+    for (const st of ["FAILED", "CANCELED", "AWAITING_PAYMENT"]) expect(stepFlow(0, st, false).every((s) => s.state === "pending")).toBe(true);
+    expect(stepFlow(0, "FAILED", true)[0].state).toBe("stopped");
+  });
   it("단계 키·종류는 steps.ts 그대로", () => {
     expect(stepFlow(0, "RUNNING").map((s) => [s.key, s.kind])).toEqual(STEPS.map((s) => [s.key, s.kind]));
   });
