@@ -216,7 +216,7 @@ test("대표자: 방송 시작부터 개봉·타이머·완료·되돌리기·�
   // 방송 종료 → 남은 B는 방송 전 대기로
   await page.getByRole("button", { name: "방송 끝내기" }).click();
   const end = page.getByRole("dialog", { name: "방송을 끝낼까요?" });
-  await expect(end).toContainText("남은 대기 1건은 다음 방송으로 넘어갑니다");
+  await expect(end).toContainText("남은 대기 1건은 다음 방송으로 넘어가요");
   await end.getByRole("button", { name: "방송 끝내기" }).click();
   await expect(page.getByTestId("bc-live-badge")).toHaveCount(0);
   await expect(homeBroadcast).toBeVisible();
