@@ -239,12 +239,39 @@ body {
 .pa-reasons > li + li {
   margin-top: 4px;
 }
+/* 관리자 인증 화면(AU-003·011·012) 본인확인: 상자 안 제목 · 이름 한 줄 · 생년월일|성별 · 내·외국인 · 통신사 · 휴대폰번호 세로 */
+.pa-admin .pa-idv {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 16px;
+  padding: 12px;
+}
+.pa-admin .pa-idv > .pa-two {
+  display: contents;
+}
+.pa-admin .pa-idv > .col,
+.pa-admin .pa-idv > .chk,
+.pa-admin .pa-idv > .btn,
+.pa-admin .pa-idv > .pa-f-wide,
+.pa-admin .pa-idv .pa-f-wide,
+.pa-admin .pa-idv > :not(.pa-two) {
+  grid-column: 1 / -1;
+}
+.pa-admin .pa-idv .lbl {
+  font-size: 12px;
+  line-height: 18px;
+}
+.pa-admin .pa-idv-title {
+  font-size: 14px;
+  line-height: 20px;
+}
 @media (max-width: 767px) {
   .login-card {
     padding: var(--ui-sp-24) var(--ui-gutter-mobile);
   }
   .pa-two,
-  .pa-carrier {
+  .pa-carrier,
+  .pa-admin .pa-idv {
     grid-template-columns: 1fr;
   }
 }
