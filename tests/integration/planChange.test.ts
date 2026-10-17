@@ -549,6 +549,24 @@ describe("하위 변경(통합 → 오버레이 전용)", () => {
     expect(await changePlan(db, new FakeBillingProvider(), s.ctx, { planCode: "OVERLAY_ONLY", now: T0 })).toMatchObject({ ok: true, applied: "now" });
     expect(await planOf(s.seller.id)).toBe("OVERLAY_ONLY");
   });
+
+  it.each([
+    { state: "결제 기간 중", subscription: paying, applied: "next_payment" },
+    { state: "첫 결제 전", subscription: undefined, applied: "now" },
+    { state: "결제 기간 만료", subscription: { ...paying, currentPeriodEnd: at(-1) }, applied: "now" },
+  ] as const)("$state 하향 변경 미리보기와 실제 응답의 적용 시점이 일치한다(결제 없음)", async ({ subscription, applied }) => {
+    const s = await shop("INTEGRATED", null, subscription);
+    const preview = await previewPlanChanges(db, s.ctx, { now: T0 });
+    const down = preview.plans.find((p) => p.planCode === "OVERLAY_ONLY")!;
+    expect(down.change).toMatchObject({ ok: true, applied, chargeNow: 0 });
+    const provider = new FakeBillingProvider();
+    const charge = vi.spyOn(provider, "charge");
+    expect(await changePlan(db, provider, s.ctx, { planCode: "OVERLAY_ONLY", expectedAmount: 0, requireExpectedAmount: true, now: T0 })).toMatchObject({ ok: true, applied, charged: 0, planCode: "OVERLAY_ONLY" });
+    expect(await planOf(s.seller.id)).toBe(applied === "now" ? "OVERLAY_ONLY" : "INTEGRATED");
+    if (s.subscription) expect((await subOf(s.seller.id)).pendingPlanId).toBe(applied === "next_payment" ? plans.OVERLAY_ONLY.id : null);
+    expect(charge).not.toHaveBeenCalled();
+    expect(await payments(s.seller.id)).toEqual([]);
+  });
 });
 
 describe("입력·권한", () => {
