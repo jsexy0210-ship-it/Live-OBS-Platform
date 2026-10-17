@@ -4286,6 +4286,15 @@ describe("잠시 멈추기·이어 하기·작업 기록 시각표(SA-152)", () 
     expect(await db.auditLog.count({ where: { action: { in: ["automation.pause", "automation.continue"] }, sellerId: c.seller.id } })).toBe(2);
   });
 
+  it("운영 상세의 workerAssigned는 유효한 실행 자리가 있을 때만 true다(만료된 자리는 false)", async () => {
+    const a = await bought();
+    expect((await adminJobDetail(db, a.jobId))!.workerAssigned).toBe(false);
+    await db.automationJob.update({ where: { id: a.jobId }, data: { status: "RUNNING", leaseOwner: "w-test", leaseExpiresAt: new Date(Date.now() + 60_000) } });
+    expect((await adminJobDetail(db, a.jobId))!.workerAssigned).toBe(true);
+    await db.automationJob.update({ where: { id: a.jobId }, data: { leaseExpiresAt: new Date(Date.now() - 60_000) } });
+    expect((await adminJobDetail(db, a.jobId))!.workerAssigned).toBe(false);
+  });
+
   it("작업 기록 시각표: 상태 변화를 오래된 순 코드로 주고(단계 번호 포함), 비밀·내부 값은 내보내지 않으며, 다른 판매자는 404", async () => {
     const a = await bought();
     await pauseJob(db, a.ctx, a.jobId);

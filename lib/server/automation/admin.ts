@@ -138,6 +138,7 @@ export function stepFlow(stepIndex: number, status: string, started = true): { k
 export async function adminJobDetail(db: PrismaClient, jobId: string) {
   const j = await db.automationJob.findUnique({ where: { id: jobId }, include: { payment: true } });
   if (!j) return null;
+  const now = await dbNow(db);
   const [seller, events] = await Promise.all([
     db.seller.findUnique({ where: { id: j.sellerId }, select: { shopName: true } }),
     db.automationJobEvent.findMany({ where: { jobId }, orderBy: { createdAt: "asc" }, take: 200, select: { id: true, fromStatus: true, toStatus: true, detail: true, createdAt: true } }),
@@ -158,8 +159,8 @@ export async function adminJobDetail(db: PrismaClient, jobId: string) {
     maxAttempts: j.maxAttempts,
     attemptsLeft: Math.max(0, j.maxAttempts - j.attempts),
     steps: stepFlow(j.stepIndex, j.status, !!j.startedAt),
-    // 작업 서버를 잡고 있는지만 준다(서버 이름은 내부 값이라 내보내지 않음)
-    workerAssigned: !!j.leaseOwner,
+    // 작업 서버가 지금 유효한 실행 자리를 잡고 있는지만 준다(만료된 자리는 제외, 서버 이름은 내부 값이라 내보내지 않음)
+    workerAssigned: !!j.leaseOwner && !!j.leaseExpiresAt && j.leaseExpiresAt > now,
     cancelRequestedAt: j.cancelRequestedAt,
     changedAt: j.changedAt,
     lastError: publicError(j.lastError),
