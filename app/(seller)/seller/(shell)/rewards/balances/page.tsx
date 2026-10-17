@@ -135,7 +135,20 @@ export default function RewardBalancesPage() {
             setUrlState(defaults);
           }}
         >
-          <SearchRow label="검색어">
+          <SearchRow
+            label="검색어"
+            label2="등급"
+            children2={
+              <select className="inp" aria-label="등급" value={filter.gradeId} onChange={(e) => setFilter({ ...filter, gradeId: e.target.value })}>
+                <option value="">전체</option>
+                {grades.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
+            }
+          >
             <div className="row" style={{ gap: 8 }}>
               <select className="inp" style={{ width: 110, flex: "none" }} aria-label="검색 대상" value={filter.field} onChange={(e) => setFilter({ ...filter, field: e.target.value as Cond["field"] })}>
                 <option value="nickname">닉네임</option>
@@ -155,31 +168,24 @@ export default function RewardBalancesPage() {
               />
             </div>
           </SearchRow>
-          <SearchRow label="등급">
-            <select className="inp" aria-label="등급" value={filter.gradeId} onChange={(e) => setFilter({ ...filter, gradeId: e.target.value })}>
-              <option value="">전체</option>
-              {grades.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name}
-                </option>
-              ))}
-            </select>
-          </SearchRow>
-          <SearchRow label="조건">
+          <SearchRow
+            label="조건"
+            label2="정렬"
+            children2={
+              <select className="inp" aria-label="정렬" value={filter.sort} onChange={(e) => setFilter({ ...filter, sort: e.target.value })}>
+                {SORTS.map((s) => (
+                  <option key={s.key} value={s.key}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            }
+          >
             <select className="inp" aria-label="조건" value={filter.condition} onChange={(e) => setFilter({ ...filter, condition: e.target.value })}>
               <option value="">전체</option>
               {CONDITIONS.map((c) => (
                 <option key={c.key} value={c.key}>
                   {c.label}
-                </option>
-              ))}
-            </select>
-          </SearchRow>
-          <SearchRow label="정렬">
-            <select className="inp" aria-label="정렬" value={filter.sort} onChange={(e) => setFilter({ ...filter, sort: e.target.value })}>
-              {SORTS.map((s) => (
-                <option key={s.key} value={s.key}>
-                  {s.label}
                 </option>
               ))}
             </select>

@@ -147,21 +147,23 @@ export async function changePlan(
   provider: BillingProvider,
   ctx: TenantContext,
   // requireExpectedAmount: HTTP 경로는 확인 금액을 꼭 받는다(화면은 미리보기 chargeNow를 보냄, #253). 판단 실패 사유가 먼저고, 그다음 없으면 amount_required
-  input: { planCode: unknown; expectedAmount?: number; requireExpectedAmount?: boolean; now?: Date },
+  input: { planCode?: unknown; action?: unknown; expectedAmount?: number; requireExpectedAmount?: boolean; now?: Date },
 ): Promise<PlanChangeResult> {
   requireSellerPermission(ctx, "SUBSCRIPTION_MANAGE");
   const code = typeof input.planCode === "string" ? input.planCode : "";
-  if (!(CHANGEABLE_PLANS as readonly string[]).includes(code)) return { ok: false, reason: "invalid_plan" };
+  const cancelPending = input.action === "cancel_pending";
+  if ((input.action !== undefined && !cancelPending) || (!cancelPending && !(CHANGEABLE_PLANS as readonly string[]).includes(code))) return { ok: false, reason: "invalid_plan" };
 
   const prepared = await db.$transaction(async (tx): Promise<Prepared> => {
     await lockSeller(tx, ctx.sellerId);
     const now = input.now ?? (await dbNow(tx));
-    const target = await tx.subscriptionPlan.findUnique({ where: { code } });
-    if (!target) return { kind: "done", result: { ok: false, reason: "plan_missing" } };
     const seller = await tx.seller.findUniqueOrThrow({ where: { id: ctx.sellerId }, select: { trialEndsAt: true } });
     const sub = await tx.sellerSubscription.findUnique({ where: { sellerId: ctx.sellerId }, include: { plan: true } });
     const current = sub?.plan ?? (await sellerPlanOf(tx, ctx.sellerId));
     if (!current) return { kind: "done", result: { ok: false, reason: "plan_missing" } };
+    // 취소는 잠금 안에서 읽은 현 이용권을 유지한다. STANDARD도 새 전환·가격 계산 없이 pending만 비운다.
+    const target = cancelPending ? current : await tx.subscriptionPlan.findUnique({ where: { code } });
+    if (!target) return { kind: "done", result: { ok: false, reason: "plan_missing" } };
     const audit = (action: string, after: Record<string, unknown>) =>
       writeAudit(tx, {
         actorType: ctx.actorType,
