@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FormFoot, PageHead } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
@@ -67,6 +67,7 @@ export default function UpgradePage() {
   const [toast, setToast] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<"down" | "undo" | null>(null);
+  const baseline = useRef<Form>(EMPTY); // 불러온 값(저장 안 한 변경 확인의 기준)
 
   const read = useCallback(async () => {
     const [v, p, pr, pub] = await Promise.all([
@@ -78,7 +79,10 @@ export default function UpgradePage() {
     if (!v.ok) return setLoad({ kind: "error", status: v.status });
     const profile = pr.ok ? pr.data : null;
     if (profile) {
-      setForm((f) => ({ ...f, companyName: profile.business.companyName, representativeName: profile.business.representativeName, businessNumber: profile.business.businessNumber, mailOrderNumber: profile.business.mailOrderNumber ?? "", businessAddress: profile.business.businessAddress, bankName: profile.settlement?.bankName ?? "", accountHolder: profile.settlement?.accountHolder ?? "" }));
+      // 서버가 주지 않는 값(계좌번호 전체 · 개업일자)은 입력한 그대로 둔다
+      const loaded = { companyName: profile.business.companyName, representativeName: profile.business.representativeName, businessNumber: profile.business.businessNumber, mailOrderNumber: profile.business.mailOrderNumber ?? "", businessAddress: profile.business.businessAddress, bankName: profile.settlement?.bankName ?? "", accountHolder: profile.settlement?.accountHolder ?? "" };
+      setForm((f) => ({ ...f, ...loaded }));
+      baseline.current = { ...baseline.current, ...loaded };
       if (profile.businessCheck.status === "ok") {
         setCheck("ok");
         setChecked(`${profile.business.businessNumber}|${profile.business.representativeName}`);
@@ -97,7 +101,9 @@ export default function UpgradePage() {
       setChecked(null);
     }
   };
-  const dirty = load.kind === "ok" && !done && (form.companyName !== "" || form.accountNumber !== "");
+  // 바꿀 수 있는 입력 화면(오버레이 전용)에서만, 불러온 값과 달라졌을 때
+  const editable = load.kind === "ok" && load.view.plan?.code === "OVERLAY_ONLY" && !done;
+  const dirty = editable && (Object.keys(EMPTY) as (keyof Form)[]).some((k) => form[k] !== baseline.current[k]);
   useUnsavedGuard(dirty && !busy);
 
   const required = !!form.companyName.trim() && !!form.representativeName.trim() && !!form.businessNumber.trim() && !!form.businessAddress.trim() && !!form.bankName && !!form.accountNumber.trim() && !!form.accountHolder.trim();
@@ -197,7 +203,9 @@ export default function UpgradePage() {
     const overlay = code === "OVERLAY_ONLY";
     const target = preview?.plans.find((p) => p.planCode === "INTEGRATED");
     const down = preview?.plans.find((p) => p.planCode === "OVERLAY_ONLY");
-    const nextDate = day(view.subscription?.currentPeriodEnd ?? view.subscription?.nextChargeAt);
+    // 서버가 적용하는 날: 미리보기 effectiveAt, 없으면 다음 결제일(nextChargeAt, 결제 기간 끝보다 하루 빠름)
+    const downEffective = down?.change.ok ? down.change.effectiveAt : null;
+    const nextDate = day(downEffective ?? view.subscription?.nextChargeAt ?? view.subscription?.currentPeriodEnd);
     const pendingDown = view.subscription?.pendingPlanCode === "OVERLAY_ONLY";
     const cur = preview?.plans.find((p) => p.current);
 
