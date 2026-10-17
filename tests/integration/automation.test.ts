@@ -4307,6 +4307,10 @@ describe("잠시 멈추기·이어 하기·작업 기록 시각표(SA-152)", () 
     expect(done).toEqual([...done].sort((x: number, y: number) => x - y));
     expect(new Set(done).size).toBe(done.length);
     expect((await adminJobDetail(db, a.jobId))!.events).toHaveLength((await db.automationJobEvent.count({ where: { jobId: a.jobId } })) - done.length);
+    const det = (await adminJobDetail(db, a.jobId))!;
+    expect(det.steps).toHaveLength(det.stepCount);
+    expect(det.attemptsLeft).toBe(Math.max(0, det.maxAttempts - det.attempts));
+    expect(typeof det.workerAssigned).toBe("boolean");
     for (const t of body.timeline) expect(Object.keys(t).sort()).toEqual(["at", "kind", "reason", "stepNumber"]);
     expect(JSON.stringify(body.timeline)).not.toMatch(/workerId|w1|by"/);
     const b = await bought();

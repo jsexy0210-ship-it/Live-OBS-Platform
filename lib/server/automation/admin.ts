@@ -122,6 +122,17 @@ export async function adminJobList(db: PrismaClient, filter: AdminJobFilter, cur
   })) };
 }
 
+// 흐름 표(MA-111): 단계마다 완료·진행 중·대기. 끝난 작업은 성공이면 전부 완료, 실패·취소는 멈춘 단계까지 완료로 보고 그 단계를 stopped로 보인다.
+export type StepState = "done" | "current" | "stopped" | "pending";
+export function stepFlow(stepIndex: number, status: string): { key: string; kind: string; state: StepState }[] {
+  const finished = status === "FAILED" || status === "CANCELED" || status === "CLEANUP_NEEDED";
+  return STEPS.map((st, i) => ({
+    key: st.key,
+    kind: st.kind,
+    state: status === "SUCCEEDED" || i < stepIndex ? "done" : i === stepIndex ? (finished ? "stopped" : status === "AWAITING_PAYMENT" || status === "QUEUED" ? "pending" : "current") : "pending",
+  }));
+}
+
 export async function adminJobDetail(db: PrismaClient, jobId: string) {
   const j = await db.automationJob.findUnique({ where: { id: jobId }, include: { payment: true } });
   if (!j) return null;
@@ -143,6 +154,12 @@ export async function adminJobDetail(db: PrismaClient, jobId: string) {
     actionDeadlineAt: j.actionDeadlineAt,
     attempts: j.attempts,
     maxAttempts: j.maxAttempts,
+    attemptsLeft: Math.max(0, j.maxAttempts - j.attempts),
+    steps: stepFlow(j.stepIndex, j.status),
+    // 작업 서버를 잡고 있는지만 준다(서버 이름은 내부 값이라 내보내지 않음)
+    workerAssigned: !!j.leaseOwner,
+    cancelRequestedAt: j.cancelRequestedAt,
+    changedAt: j.changedAt,
     lastError: publicError(j.lastError),
     plannerCalls: j.plannerCalls,
     costUsed: j.costUsed,
