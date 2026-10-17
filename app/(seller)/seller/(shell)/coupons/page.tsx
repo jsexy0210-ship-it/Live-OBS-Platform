@@ -632,7 +632,7 @@ function CouponEditor({ draft: initial, products, current, onClose, onSaved, onS
               <label htmlFor="cp-name" className="req">
                 쿠폰 이름
               </label>
-              <input id="cp-name" className="inp" value={d.name} maxLength={30} placeholder="예: 10월 스타라이트 오픈 기념" onChange={(e) => set({ name: e.target.value })} />
+              <input id="cp-name" className="inp" value={d.name} maxLength={30} placeholder="쿠폰 이름" onChange={(e) => set({ name: e.target.value })} />
               <span className="help">구매자 쿠폰함에 그대로 표시 · 30자</span>
             </div>
             <div className="fld">
@@ -654,7 +654,7 @@ function CouponEditor({ draft: initial, products, current, onClose, onSaved, onS
                   쿠폰 코드
                 </label>
                 <div className="row" style={{ gap: 8 }}>
-                  <input id="cp-code" className="inp" style={{ textTransform: "uppercase" }} value={d.code} maxLength={16} disabled={locked} onChange={(e) => set({ code: e.target.value.replace(/[^A-Za-z0-9]/g, "") })} />
+                  <input id="cp-code" className="inp" style={{ textTransform: "uppercase" }} value={d.code} maxLength={16} disabled={locked} placeholder="영문 · 숫자 4~12자" onChange={(e) => set({ code: e.target.value.replace(/[^A-Za-z0-9]/g, "") })} />
                   <button className="btn btn-out" type="button" disabled={locked} onClick={() => set({ code: randomCode() })}>
                     자동 생성
                   </button>
@@ -681,13 +681,13 @@ function CouponEditor({ draft: initial, products, current, onClose, onSaved, onS
                   <label htmlFor="cp-value" className="req">
                     {d.benefit === "AMOUNT" ? "할인 금액 (원)" : "할인율 (%)"}
                   </label>
-                  <input id="cp-value" className="inp num" inputMode="numeric" value={d.value} disabled={locked} onChange={(e) => set({ value: e.target.value.replace(/[^0-9]/g, "") })} />
+                  <input id="cp-value" className="inp num" inputMode="numeric" value={d.value} disabled={locked} placeholder="0" onChange={(e) => set({ value: e.target.value.replace(/[^0-9]/g, "") })} />
                 </div>
               )}
               {d.benefit === "RATE" && (
                 <div className="fld">
                   <label htmlFor="cp-max">최대 할인 (원)</label>
-                  <input id="cp-max" className="inp num" inputMode="numeric" value={d.maxDiscount} disabled={locked} placeholder="비우면 제한 없음" onChange={(e) => set({ maxDiscount: e.target.value.replace(/[^0-9]/g, "") })} />
+                  <input id="cp-max" className="inp num" inputMode="numeric" value={d.maxDiscount} disabled={locked} placeholder="0" onChange={(e) => set({ maxDiscount: e.target.value.replace(/[^0-9]/g, "") })} />
                 </div>
               )}
               <div className="fld">
@@ -713,7 +713,7 @@ function CouponEditor({ draft: initial, products, current, onClose, onSaved, onS
             </div>
             <div className="fld">
               <label htmlFor="cp-limit">발급 수량 한도</label>
-              <input id="cp-limit" className="inp num" inputMode="numeric" value={d.issueLimit} placeholder="비우면 제한 없음" onChange={(e) => set({ issueLimit: e.target.value.replace(/[^0-9]/g, "") })} />
+              <input id="cp-limit" className="inp num" inputMode="numeric" value={d.issueLimit} placeholder="0" onChange={(e) => set({ issueLimit: e.target.value.replace(/[^0-9]/g, "") })} />
               <span className="help">비우면 제한 없음 · 1인 1장{d.id && d.issued > 0 ? ` · 지금까지 ${d.issued.toLocaleString("ko-KR")}장 발급` : ""}</span>
             </div>
             <div className="fld">
