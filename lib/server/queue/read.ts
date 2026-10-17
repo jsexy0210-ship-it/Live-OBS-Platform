@@ -69,13 +69,15 @@ export async function getQueueSnapshot(db: PrismaClient, ctx: TenantContext) {
           select: ITEM_FIELDS,
         }),
       ]);
+      // 마스터 대리 조회(읽기 전용)는 금액을 보지 못한다(정본 MA-016: 금액은 가립니다)
+      const shape = <T extends ShapeIn>(i: T) => (ctx.readOnly ? { ...shapeQueueItem(i), amount: null } : shapeQueueItem(i));
       return {
         version: seller.liveVersion,
         broadcast: live,
-        opening: opening ? shapeQueueItem(opening) : null,
-        waiting: waiting.map(shapeQueueItem),
-        beforeBroadcast: beforeBroadcast.map(shapeQueueItem),
-        recentDone: recentDone.map(shapeQueueItem),
+        opening: opening ? shape(opening) : null,
+        waiting: waiting.map(shape),
+        beforeBroadcast: beforeBroadcast.map(shape),
+        recentDone: recentDone.map(shape),
       };
     },
     { isolationLevel: "RepeatableRead" },
