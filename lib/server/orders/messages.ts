@@ -72,6 +72,7 @@ export const ORDER_ERROR_MESSAGES = {
   already_restricted: "이미 주문이 제한된 회원이에요",
   invalid_restriction: "제한 기간(1~365일)과 사유(200자 이내)를 확인해 주세요",
   invalid_memo: "메모는 1,000자 이내로 적어 주세요",
+  memo_member_withdrawn: "탈퇴한 회원의 주문에는 메모를 남길 수 없어요",
   invalid_reason: "사유를 다시 확인해 주세요",
   // 수동 재고 증감
   invalid_stock_adjust: "바꿀 수량(0이 아닌 정수)과 사유(100자 이내)를 확인해 주세요",
@@ -163,6 +164,7 @@ export const ORDER_ERROR_MESSAGES_FORMAL: Record<OrderErrorCode, string> = {
   already_restricted: "이미 주문이 제한된 회원입니다",
   invalid_restriction: "제한 기간(1~365일)과 사유(200자 이내)를 확인해 주십시오",
   invalid_memo: "메모는 1,000자 이내로 적어 주십시오",
+  memo_member_withdrawn: "탈퇴한 회원의 주문에는 메모를 남길 수 없습니다",
   invalid_reason: "사유를 다시 확인해 주십시오",
   invalid_stock_adjust: "바꿀 수량(0이 아닌 정수)과 사유(100자 이내)를 확인해 주십시오",
   insufficient_stock: "재고가 모자라 뺄 수 없습니다",

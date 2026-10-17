@@ -25,7 +25,7 @@ export async function getOrderMemo(db: PrismaClient, ctx: TenantContext, orderId
   return { body: memo.body, createdAt: memo.createdAt, updatedAt: memo.updatedAt, updatedBy: author ? { name: author.name } : null };
 }
 
-// 메모 저장. 빈 글(공백만 포함)이면 지운다. 글자가 잘못됐거나 1,000자를 넘으면 { ok: false }.
+// 메모 저장. 빈 글(공백만 포함)이면 지운다. 글자가 잘못됐거나 1,000자를 넘거나 탈퇴 회원의 주문이면 { ok: false }.
 export async function putOrderMemo(db: PrismaClient, ctx: TenantContext, orderId: string, raw: unknown) {
   requireSellerPermission(ctx, "ORDER_SHIPPING");
   const clear = typeof raw === "string" && raw.trim() === "";
@@ -33,9 +33,18 @@ export async function putOrderMemo(db: PrismaClient, ctx: TenantContext, orderId
   if (!clear && body === null) return { ok: false as const, reason: "invalid_memo" as const };
   const sellerId = ctx.sellerId;
   const key = { sellerId_orderId: { sellerId, orderId } };
+  let withdrawn = false;
   const by = ctx.actorType === "SELLER_USER" ? ctx.actorId : null;
   await db.$transaction(async (tx) => {
     await requireOrder(tx, ctx, orderId);
+    // 탈퇴한 회원의 주문에는 새로 쓰지 못한다(탈퇴 때 지운 메모가 배송 완료·구매 확정 전 주문에 다시 쌓이지 않게). 지우기는 허용.
+    if (body !== null) {
+      const o = await tx.order.findFirst({ where: { id: orderId, sellerId }, select: { buyerMember: { select: { deletedAt: true } } } });
+      if (o?.buyerMember.deletedAt) {
+        withdrawn = true;
+        return;
+      }
+    }
     const base = { actorType: ctx.actorType, actorId: ctx.actorId, sellerId, targetType: "Order", targetId: orderId };
     if (body === null) {
       const gone = await tx.orderMemo.deleteMany({ where: { sellerId, orderId } });
@@ -50,5 +59,6 @@ export async function putOrderMemo(db: PrismaClient, ctx: TenantContext, orderId
     });
     await writeAudit(tx, { ...base, action: "order.memo.update", before: before ? { length: [...before.body].length } : null, after: { length: [...body].length } });
   });
+  if (withdrawn) return { ok: false as const, reason: "memo_member_withdrawn" as const };
   return { ok: true as const, memo: await getOrderMemo(db, ctx, orderId) };
 }

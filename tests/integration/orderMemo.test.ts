@@ -95,4 +95,16 @@ describe("주문 메모", () => {
     expect(await withdrawBuyer(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id }, { password: PASSWORD })).toEqual({ ok: true });
     expect(await db.orderMemo.count()).toBe(0);
   });
+
+  it("탈퇴한 회원의 주문에는 새로 쓰지 못하고(409) 지우기만 된다", async () => {
+    const s = await shop();
+    const o = await s.place();
+    await putMemo(s.cookie, o.id, "탈퇴 전 메모");
+    await db.buyerMember.update({ where: { id: s.buyer.id }, data: { status: "WITHDRAWN", deletedAt: new Date() } });
+    const r = await putMemo(s.cookie, o.id, "탈퇴 뒤 메모");
+    expect(r.status).toBe(409);
+    expect(r.body.error).toBe("memo_member_withdrawn");
+    expect((await db.orderMemo.findFirstOrThrow()).body).toBe("탈퇴 전 메모");
+    expect((await putMemo(s.cookie, o.id, "")).body).toEqual({ memo: null });
+  });
 });

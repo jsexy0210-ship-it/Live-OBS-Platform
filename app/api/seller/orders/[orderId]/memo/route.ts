@@ -16,11 +16,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ orderId:
   }
 }
 
-// PUT 본문: { body: string(1,000자 이하, 줄바꿈 허용) }. 빈 글이면 메모를 지우고 { memo: null }. 글자가 잘못되면 400 invalid_memo.
+// PUT 본문: { body: string(1,000자 이하, 줄바꿈 허용) }. 빈 글이면 메모를 지우고 { memo: null }. 글자가 잘못되면 400 invalid_memo, 탈퇴한 회원의 주문이면 409 memo_member_withdrawn(지우기는 허용).
 export const PUT = mutation(async (req: Request, { params }: { params: Promise<{ orderId: string }> }) => {
   const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { allowUnpaid: true, feature: "ORDER_FOLLOWUP" });
   const b = await readJson<{ body: unknown }>(req);
   const r = await putOrderMemo(prisma, ctx, (await params).orderId, b.body);
-  if (!r.ok) return NextResponse.json(orderErrorBody(r.reason, "formal"), { status: 400 });
+  if (!r.ok) return NextResponse.json(orderErrorBody(r.reason, "formal"), { status: r.reason === "invalid_memo" ? 400 : 409 });
   return noStore(NextResponse.json({ memo: r.memo }));
 });
