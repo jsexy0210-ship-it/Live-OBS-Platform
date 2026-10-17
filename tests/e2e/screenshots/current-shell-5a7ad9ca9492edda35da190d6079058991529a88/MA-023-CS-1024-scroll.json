@@ -1,0 +1,18 @@
+{
+  "sourceSha": "5a7ad9ca9492edda35da190d6079058991529a88",
+  "role": "CS",
+  "route": "/admin/billing/subscriptions",
+  "state": "last-column",
+  "viewport": {
+    "width": 1024,
+    "height": 900,
+    "dpr": 1,
+    "scale": 1
+  },
+  "text": "2026.10.19 03:38 · 결제 2번 다시 시도",
+  "left": 742.46875,
+  "right": 999.921875,
+  "containerLeft": 220,
+  "containerRight": 1000,
+  "scrollLeft": 548
+}

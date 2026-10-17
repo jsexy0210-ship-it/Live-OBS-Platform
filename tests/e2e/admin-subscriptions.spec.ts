@@ -217,3 +217,22 @@ test("파트너스·구독 목록: 서버 10개 페이지와 끝·이전·처음
     throw error;
   } finally { await db.seller.deleteMany({ where: { id: { in: ids } } }); }
 });
+
+test("구독 현황: 상태 조건은 주소에 보존돼 연체·잠금 링크로 켠 채 열리고, 알 수 없는 값은 전체로 보며, 초기화는 주소에서 지운다", async ({ page }) => {
+  await open(page);
+  const chip = (name: RegExp) => page.getByRole("group", { name: "이용 상태" }).getByRole("button", { name });
+  await page.goto(`/admin/billing/subscriptions?access=grace`);
+  await expect(chip(/^연체/)).toHaveAttribute("aria-pressed", "true");
+  await expect(chip(/^전체/)).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByTestId("subscription-row").filter({ hasText: names.grace })).toHaveCount(1);
+  await page.reload();
+  await expect(chip(/^연체/)).toHaveAttribute("aria-pressed", "true");
+  await page.goto(`/admin/billing/subscriptions?access=locked`);
+  await expect(chip(/^잠금/)).toHaveAttribute("aria-pressed", "true");
+  await page.goto(`/admin/billing/subscriptions?access=nope`);
+  await expect(chip(/^전체/)).toHaveAttribute("aria-pressed", "true");
+  await page.goto(`/admin/billing/subscriptions?access=grace`);
+  await page.getByRole("button", { name: "초기화", exact: true }).click();
+  await expect(page).not.toHaveURL(/access=/);
+  await expect(chip(/^전체/)).toHaveAttribute("aria-pressed", "true");
+});

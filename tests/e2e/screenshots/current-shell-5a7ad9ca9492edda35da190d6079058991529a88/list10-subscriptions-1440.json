@@ -1,0 +1,48 @@
+{
+  "role": "CS",
+  "route": "/admin/billing/subscriptions",
+  "sourceSha": "5a7ad9ca9492edda35da190d6079058991529a88",
+  "first": {
+    "ids": [
+      "60aa5771-3a8c-4642-a401-d8b013518644",
+      "a61c8df0-4d81-4563-b46e-63bfc70244ef",
+      "d9937e6e-4e12-4d66-af93-7ba3afa1f5a6",
+      "079ba92a-bc21-4931-a626-1f5381283127",
+      "15d066b3-43a3-4586-9561-821754a49889",
+      "38777505-05a6-4b67-b7a6-edb7b2ce13ea",
+      "9cd62110-a80f-4526-a581-cc1f2bcb0bb8",
+      "991a0599-856f-47ec-a984-58bb9231453e",
+      "78c8f0f8-4f3f-4c5b-8810-32aef744e276",
+      "a16d5a94-1757-4506-bdfb-6e44ccb59001"
+    ],
+    "next": "MjAyNi0xMC0xNlQxODozODoyOC43MTBafGExNmQ1YTk0LTE3NTctNDUwNi1iZGZiLTZlNDRjY2I1OTAwMQ"
+  },
+  "second": {
+    "ids": [
+      "b06c8c87-0c80-4e29-886d-47fd725b3798",
+      "60f53661-4e83-4af5-80db-a757cb9fd5a9",
+      "5a42e17a-7819-4eac-a7bd-66462af6f294",
+      "7aa9da21-be7c-4a77-855f-496afbe2942c",
+      "18bfecea-ff22-4d96-b9e8-f03e47ddbfb7",
+      "beb8cc7f-bc6b-4adb-a949-73dce592ad81",
+      "e9f5c9b6-ab34-445b-8795-0b95f0999484",
+      "dac2c75d-5da4-4204-bd6b-066b1d7dbbe9",
+      "c7835292-f4dc-4ab3-b61e-d5e16e2ccd02",
+      "d5c214c8-4396-4a1e-a613-f522ef3bc0c7"
+    ],
+    "next": "MjAyNi0xMC0xNlQxODozODoxOC43NDFafGQ1YzIxNGM4LTQzOTYtNGExZS1hNjEzLWY1MjJlZjNiYzBjNw"
+  },
+  "last": {
+    "ids": [
+      "0a2b1c49-d691-482c-a214-72d035e9d9b5",
+      "215d855d-7214-4b6b-abe6-408910b302e6",
+      "868d38b4-f23a-41df-a0ec-003d4151b94c"
+    ],
+    "next": null
+  },
+  "width": 1440,
+  "height": 900,
+  "dpr": 1,
+  "scale": 1,
+  "browserZoom": "unverified"
+}
