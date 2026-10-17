@@ -1,0 +1,177 @@
+/* SH-020 내 정보 허브(MyHub.tsx · app/(shop)/shop/[slug]/me/page.tsx). 휴대폰: 프로필 줄 + 요약 3칸 + 메뉴 목록 · PC: 왼쪽 4그룹 메뉴 + 요약 4칸 + 최근 주문 표 */
+.hub-profile {
+  display: none;
+}
+.hub-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+.shop-app .hub-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 92px;
+  padding: 16px;
+  border: 1px solid var(--wds-line-solid-neutral);
+  color: var(--wds-label-normal);
+  text-decoration: none;
+}
+.hub-k {
+  font-size: 11px;
+  color: var(--wds-label-alternative);
+}
+.hub-v {
+  font-size: 22px;
+  line-height: 30px;
+  font-weight: 800;
+}
+.hub-s {
+  font-size: 11px;
+  color: var(--wds-label-alternative);
+}
+.hub-recent {
+  margin-top: 32px;
+}
+.hub-recent-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--wds-label-normal);
+}
+.hub-recent-head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+}
+.shop-app .hub-recent-head a {
+  font-size: 12px;
+  color: var(--wds-label-alternative);
+  text-decoration: none;
+}
+.hub-tbl {
+  width: 100%;
+  border-collapse: collapse;
+}
+.hub-tbl th {
+  padding: 10px 12px;
+  background: var(--wds-fill-normal);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--wds-label-alternative);
+  text-align: left;
+}
+.hub-tbl td {
+  padding: 14px 12px;
+  border-bottom: 1px solid var(--wds-line-solid-neutral);
+  font-size: 13px;
+  vertical-align: middle;
+}
+.hub-tbl .r {
+  text-align: right;
+}
+.hub-when,
+.hub-time,
+.hub-no,
+.hub-opt,
+.hub-name {
+  display: block;
+}
+.hub-when {
+  font-weight: 700;
+}
+.hub-time,
+.hub-opt {
+  font-size: 11px;
+  color: var(--wds-label-alternative);
+}
+.shop-app .hub-no {
+  font-size: 11px;
+  color: var(--wds-label-alternative);
+}
+.hub-st {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--wds-fill-normal);
+}
+.hub-st-bl {
+  color: var(--wds-primary-normal);
+}
+.hub-st-gr {
+  color: var(--wds-status-positive, #1a8d4b);
+}
+.hub-st-y {
+  color: var(--wds-status-cautionary, #b06b00);
+}
+.hub-empty {
+  margin: 0;
+  padding: 32px 0;
+  text-align: center;
+  color: var(--wds-label-alternative);
+}
+.hub-mlist {
+  display: none;
+}
+.shop-my-list a span {
+  float: right;
+  color: var(--wds-label-alternative);
+}
+@media (max-width: 767px) {
+  .hub-profile {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0 16px;
+  }
+  .hub-ava {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--brand);
+    color: #fff;
+    font-weight: 800;
+  }
+  .hub-who {
+    flex: 1;
+    min-width: 0;
+  }
+  .hub-tag {
+    margin-left: 6px;
+    padding: 1px 6px;
+    font-size: 11px;
+    background: var(--wds-fill-normal);
+  }
+  .hub-gline {
+    margin: 2px 0 0;
+    font-size: 11px;
+    color: var(--wds-label-alternative);
+  }
+  .hub-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .shop-app .hub-stat.hub-grade,
+  .hub-recent {
+    display: none;
+  }
+  .hub-mlist .shop-my-g {
+    margin-top: 16px;
+  }
+  .shop-app .hub-stat {
+    min-height: 84px;
+    padding: 12px;
+  }
+  .hub-v {
+    font-size: 18px;
+  }
+  .hub-mlist {
+    display: block;
+    margin-top: 16px;
+  }
+}

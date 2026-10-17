@@ -182,6 +182,7 @@ model Seller {
   shopBanners              ShopBanner[]
   shopPopups               ShopPopup[]
   integrationProfile       SellerIntegrationProfile?
+  shippingAutomation       SellerShippingAutomation?
   // 「모든 팝업 잠시 끄기」(SA-065): 끈 시각과 끈 직원. null이면 켜짐.
   popupsPausedAt           DateTime?    @db.Timestamptz(3)
   popupsPausedById         String?      @db.Uuid
@@ -4481,6 +4482,18 @@ enum ShopEscrowKind {
 // 입점 신청 때 받은 검증 값(Seller.businessInfo)을 그대로 읽어 보여 주고 여기서 바꾸지 않는다. 입력한 항목만 구매자 화면에 보인다.
 // escrowKind: 구매안전서비스 가입 종류(없음·에스크로·소비자피해보상보험). 가입 정보는 파트너스가 쓴 그대로 표시한다(법률 문구를 앱이 짓지 않음).
 // minorNotice: 미성년자 구매 안내 글(파트너스 입력). version은 저장할 때마다 올라가고 다른 창 덮어쓰기를 막는다(shop-legal/notice.ts).
+// 배송 자동화 기능별 켜기/끄기(SA-082). 배송 자동 조회는 주문 정책(SellerOrderPolicy.autoTrackingEnabled)이 정본이라 여기에 두지 않는다.
+// 켜면 건당 단가가 발송·이용 충전금에서 차감된다(messaging/balance.ts 채널 단가). 실제 송장 발급·출력·반품 송장 연동 실행은 외부 업체 연결 뒤 이 스위치를 본다.
+model SellerShippingAutomation {
+  sellerId             String   @id @db.Uuid
+  invoiceIssueEnabled  Boolean  @default(false)
+  invoiceLabelEnabled  Boolean  @default(false)
+  returnInvoiceEnabled Boolean  @default(false)
+  updatedAt            DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+}
+
 // 미성년자(만 19세 미만) 구매 정책(SH-009): NOTICE = 고지 후 허용(기본), BLOCK = 구매 막기
 enum MinorPurchasePolicy {
   NOTICE

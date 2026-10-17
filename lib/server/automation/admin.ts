@@ -122,9 +122,23 @@ export async function adminJobList(db: PrismaClient, filter: AdminJobFilter, cur
   })) };
 }
 
+// 흐름 표(MA-111): 단계마다 완료·진행 중·대기. 끝난 작업은 성공이면 전부 완료, 실패·취소는 멈춘 단계까지 완료로 보고 그 단계를 stopped로 보인다.
+export type StepState = "done" | "current" | "stopped" | "pending";
+export function stepFlow(stepIndex: number, status: string, started = true): { key: string; kind: string; state: StepState }[] {
+  const finished = status === "FAILED" || status === "CANCELED" || status === "CLEANUP_NEEDED";
+  // 시작한 적 없는 작업(결제 실패·시작 전 취소)은 어느 단계도 시도하지 않았으므로 전부 대기
+  if (!started && status !== "SUCCEEDED") return STEPS.map((st) => ({ key: st.key, kind: st.kind, state: "pending" as StepState }));
+  return STEPS.map((st, i) => ({
+    key: st.key,
+    kind: st.kind,
+    state: status === "SUCCEEDED" || i < stepIndex ? "done" : i === stepIndex ? (finished ? "stopped" : status === "AWAITING_PAYMENT" || status === "QUEUED" ? "pending" : "current") : "pending",
+  }));
+}
+
 export async function adminJobDetail(db: PrismaClient, jobId: string) {
   const j = await db.automationJob.findUnique({ where: { id: jobId }, include: { payment: true } });
   if (!j) return null;
+  const now = await dbNow(db);
   const [seller, events] = await Promise.all([
     db.seller.findUnique({ where: { id: j.sellerId }, select: { shopName: true } }),
     db.automationJobEvent.findMany({ where: { jobId }, orderBy: { createdAt: "asc" }, take: 200, select: { id: true, fromStatus: true, toStatus: true, detail: true, createdAt: true } }),
@@ -143,6 +157,12 @@ export async function adminJobDetail(db: PrismaClient, jobId: string) {
     actionDeadlineAt: j.actionDeadlineAt,
     attempts: j.attempts,
     maxAttempts: j.maxAttempts,
+    attemptsLeft: Math.max(0, j.maxAttempts - j.attempts),
+    steps: stepFlow(j.stepIndex, j.status, !!j.startedAt),
+    // 작업 서버가 지금 유효한 실행 자리를 잡고 있는지만 준다(만료된 자리는 제외, 서버 이름은 내부 값이라 내보내지 않음)
+    workerAssigned: !!j.leaseOwner && !!j.leaseExpiresAt && j.leaseExpiresAt > now,
+    cancelRequestedAt: j.cancelRequestedAt,
+    changedAt: j.changedAt,
     lastError: publicError(j.lastError),
     plannerCalls: j.plannerCalls,
     costUsed: j.costUsed,
