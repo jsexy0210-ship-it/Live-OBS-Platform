@@ -2,10 +2,26 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
-// 파트너스 관리자 화면 문구 말투(CLAUDE.md 2026-10-04): 버튼·라벨은 명사형, 문장은 합니다체. 해요체 어미(「~요」)를 화면 소스에서 잡는다.
+// 파트너스 관리자 화면 문구 말투: 2026-10-17 승인된 홈 3파일은 해요체, 나머지는 CLAUDE.md 2026-10-04의 합니다체를 유지한다.
 // 제외: 파트너스 가입 신청(signup, 공개 화면이라 해요체), 공개·관리자 두 말투를 함께 가진 공용 파일(말투표는 messageTone.test.ts가 본다).
 const ROOT = join(__dirname, "../..");
 const DIRS = ["app/(seller)/seller", "components/seller"];
+// 디렉터리 예외로 넓히지 않고 승인된 파일과 대표 화면 문구를 함께 고정한다.
+const APPROVED_HOME_COPY = {
+  "components/seller/home/UnifiedHome.tsx": [
+    "의 운영 현황과 방송을 한곳에서 확인해요.",
+    "방송을 끝낼까요?",
+  ],
+  "components/seller/home/HomeDashboard.tsx": [
+    "처리할 일을 불러오지 못했어요",
+    "지금 처리할 일이 없어요",
+  ],
+  "components/seller/broadcast/YoutubeLivePlayer.tsx": [
+    "유튜브 연결을 불러오고 있어요.",
+    "연결된 유튜브 방송이 없어요. 유튜브 연결에서 방송을 선택해 주세요.",
+  ],
+};
+const APPROVED_HOME_FILES = new Set(Object.keys(APPROVED_HOME_COPY));
 const EXCLUDE = [
   "app/(public)/seller/signup/",
   "components/seller/signup/", // 가입 신청 단계 화면 본문(위 signup 화면에서 옮김, 공개 화면이라 해요체)
@@ -40,11 +56,12 @@ function files(dir: string): string[] {
 const FRIENDLY = /[가-힣](?<![필중주수])요[.?!…~」』”’]*(?=["'`<]|\s*$|\s*\}|\s*·)/;
 
 describe("파트너스 관리자 화면 말투", () => {
-  it("화면 소스에 해요체 문장이 없다", () => {
+  it("승인된 홈 3파일 밖 화면 소스에 해요체 문장이 없다", () => {
     const found: string[] = [];
     for (const dir of DIRS) {
       for (const file of files(join(ROOT, dir))) {
         const rel = relative(ROOT, file).split("\\").join("/");
+        if (APPROVED_HOME_FILES.has(rel)) continue;
         if (EXCLUDE.some((x) => rel.startsWith(x))) continue;
         readFileSync(file, "utf8")
           .split("\n")
@@ -58,6 +75,14 @@ describe("파트너스 관리자 화면 말투", () => {
       }
     }
     expect(found).toEqual([]);
+  });
+
+  it.each(Object.entries(APPROVED_HOME_COPY))("%s는 승인된 해요체 화면 문구를 유지한다", (file, copies) => {
+    const source = readFileSync(join(ROOT, file), "utf8");
+    for (const copy of copies) {
+      expect(source).toContain(copy);
+      expect(FRIENDLY.test(JSON.stringify(copy))).toBe(true);
+    }
   });
 
   it("검사기가 해요체를 실제로 잡는다", () => {
