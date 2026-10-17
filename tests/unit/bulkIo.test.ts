@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatCsv, guardText, parseCsv, unguardText } from "../../lib/server/shop-bulk-io/csv";
-import { COLUMNS, MAX_IMPORT_ROWS, parseProductCsv, templateCsv } from "../../lib/server/shop-bulk-io/service";
+import { COLUMNS, MAX_IMPORT_ROWS, headerMismatchMessage, parseProductCsv, templateCsv } from "../../lib/server/shop-bulk-io/service";
 
 // 엑셀(CSV) 일괄 등록(SA-018): CSV 읽기·쓰기와 행 검증(DB 없음)
 const cats = new Map([["카드", ["c1"]], ["카드>부스터", ["c2"]], ["중복", ["c3", "c4"]]]);
@@ -88,8 +88,31 @@ describe("상품 CSV 검증", () => {
     expect(fail(`${HEAD}\r\n${"A,1\r\n".repeat(MAX_IMPORT_ROWS + 1)}`)).toBe("too_many_rows");
     expect(fail("x".repeat(1_000_001))).toBe("file_too_large");
   });
-  it("열 순서가 달라도, 선택 열이 없어도 읽는다", () => {
-    const v = parse("1000,A\r\n", "판매가,상품명");
-    expect(v.products[0].input).toMatchObject({ name: "A", price: 1000, status: "DRAFT" });
+  it("열 순서가 달라도, 필수 열(상품명·카테고리·판매가·재고)만 있으면 읽는다. 「옵션」은 「옵션명」과 같은 열", () => {
+    const v = parse("1000,A,,3\r\n", "판매가,상품명,카테고리,재고");
+    // 옵션 열이 없으면 상품마다 옵션 하나(기본)이고 재고 칸이 그 재고, 상태 열이 없으면 새 상품은 숨김
+    expect(v.products[0].input).toMatchObject({ name: "A", price: 1000, status: "HIDDEN", options: [{ name: "기본", priceDelta: 0, stock: 3, sku: null }] });
+    expect(v.products[0].defaultOption).toBe(true);
+    const w = parse("A,1000,카드,빨강,4\r\n", "상품명,판매가,카테고리,옵션,재고");
+    expect(w.errors).toEqual([]);
+    expect(w.products[0].input.options).toEqual([{ name: "빨강", priceDelta: 0, stock: 4, sku: null }]);
+  });
+  it("양식과 다른 열은 어느 열이 어떻게 다른지 알려 준다(필수 열 누락·모르는 열·같은 열 두 번)", () => {
+    const head = (t: string) => {
+      const r = parseProductCsv(`${t}\r\nA,1,카드,1`, cats);
+      if (r.ok) throw new Error("ok");
+      return r;
+    };
+    expect(head("상품명,가격,카테고리,재고").columns).toEqual([{ found: "가격", expected: "판매가" }]);
+    expect(head("상품명,가격,카테고리").columns).toEqual([{ found: "가격", expected: "판매가" }, { found: null, expected: "재고" }]);
+    expect(head("상품명,판매가,카테고리,재고,메모").columns).toEqual([{ found: "메모", expected: null }]);
+    expect(head("상품명,판매가,카테고리,재고,재고").columns).toEqual([{ found: "재고", expected: null }]);
+    expect(head("판매가").columns?.map((c) => c.expected)).toEqual(["상품명", "카테고리", "재고"]);
+  });
+  it("열 이름 안내 문구: 바꿀 열·개수를 알려 주고 조사를 맞춘다", () => {
+    expect(headerMismatchMessage([{ found: "가격", expected: "판매가" }, { found: null, expected: "재고" }])).toBe("양식과 열 이름이 다릅니다 · 「가격」 열을 「판매가」로 바꿔 주십시오 (2개 열 불일치)");
+    expect(headerMismatchMessage([{ found: "이름", expected: "상품명" }])).toBe("양식과 열 이름이 다릅니다 · 「이름」 열을 「상품명」으로 바꿔 주십시오 (1개 열 불일치)");
+    expect(headerMismatchMessage([{ found: "메모", expected: null }])).toContain("「메모」 열은 양식에 없습니다");
+    expect(headerMismatchMessage([{ found: null, expected: "재고" }])).toContain("「재고」 열이 없습니다");
   });
 });
