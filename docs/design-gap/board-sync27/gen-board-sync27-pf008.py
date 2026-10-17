@@ -13,6 +13,10 @@ m = rep(body, '<section style="padding: 56px 64px 80px; background: var(--surfac
         '<section style="padding: 24px 16px 40px; background: var(--surface)"><div class="col" style="gap: 16px; align-items: stretch"><nav class="row" aria-label="목차" style="flex-wrap: wrap; gap: 8px 16px">')
 m = rep(m, '</aside><article class="col" style="flex: 1; max-width: 820px; gap: 28px">', '</nav><article class="col" style="gap: 24px">')
 m = rep(m, '<div class="row" style="gap: 10px"><span class="t-l2 c-alt num">제4판', '<div class="row" style="gap: 10px; flex-wrap: wrap"><span class="t-l2 c-alt num">제4판')
+# 휴대폰 본문의 절 id · 목차 링크는 m- 접두사로 바꿔 PC 본문(id="s0"~)과 겹치지 않게 한다(Codex 리뷰 2026-10-17: 같은 id가 두 번 있으면 목차가 PC 쪽으로 튐)
+import re
+m = re.sub(r'id="s(\d+)"', r'id="m-s\1"', m); m = re.sub(r'href="#s(\d+)"', r'href="#m-s\1"', m)
+assert len(re.findall(r'id="m-s\d+"', m)) == len(re.findall(r'href="#m-s\d+"', m)) > 0 and 'id="s' not in m
 # 묶음 26 공개 블록과 같은 머리 · 바닥글 · 상태 격자
 g26_src = (pathlib.Path(__file__).parent.parent / 'board-sync26' / 'gen-board-sync26.py').read_text(encoding='utf-8')
 ns = {'re': __import__('re'), 'sys': sys, 'pathlib': pathlib}
