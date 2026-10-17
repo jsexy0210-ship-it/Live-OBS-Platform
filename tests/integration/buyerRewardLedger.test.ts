@@ -42,7 +42,7 @@ describe("구매자 적립금 내역 GET /api/shop/{slug}/me/reward-ledger", () 
   it("본인의 처리 끝난 실지급 원장만 최신순으로 문구·상품 요약·부호 있는 금액과 준다. 대기·실패·시험 모드·내부 사유는 나오지 않는다", async () => {
     const s = await shop();
     const { order, item } = await createPaidOrderItem(s.seller.id, s.buyer.id);
-    await db.orderItem.create({ data: { ...{ sellerId: s.seller.id, orderId: order.id, productId: item.productId, optionId: item.optionId, productNameSnapshot: "슬리브", optionNameSnapshot: "x", unitPrice: 1000, quantity: 1 } } });
+    await db.orderItem.create({ data: { ...{ sellerId: s.seller.id, orderId: order.id, productId: item.productId, optionId: item.optionId, productNameSnapshot: "슬리브", optionNameSnapshot: "x", unitPrice: 1000, quantity: 1, createdAt: new Date(item.createdAt.getTime() + 1000) } } });
     const gold = await db.memberGrade.create({ data: { sellerId: s.seller.id, displayName: "골드", sortOrder: 9 } });
     await db.order.update({ where: { id: order.id }, data: { rewardGradeId: gold.id, rewardRate: 2, rewardEarnTiming: "ON_DELIVERY", rewardEarnAmount: 100 } });
     await row(s, { type: "EARN", amount: 100, at: "2026-10-01T00:00:00Z", orderId: order.id, key: `earn:${order.id}` });

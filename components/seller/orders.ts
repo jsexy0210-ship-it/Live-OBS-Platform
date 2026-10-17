@@ -11,7 +11,7 @@ export type OrderRow = {
   status: OrderStatus;
   createdAt: string;
   paidAt: string | null;
-  buyer: { id: string; broadcastNickname: string };
+  buyer: { id: string; broadcastNickname: string; grade?: { id: string; displayName: string } | null };
   totalAmount: number;
   // 현금 환불 합계(없으면 0)·환불한 품목 수량·남은 금액(totalAmount − refundedAmount)
   refundedAmount: number;
@@ -25,6 +25,9 @@ export type OrderRow = {
   paymentDueAt?: string | null;
   shipment?: { state: "none" | "in_transit" | "delivered"; courier: string | null; trackingNumber: string | null; deliveredAt: string | null };
   refundRequest?: { pendingCount: number };
+  // 서버가 주문 목록에 함께 주는 값(SA-021): 개봉 상태(waiting 개봉 대기 · opening 개봉 중 · done 개봉 완료 · null 큐 없음) · 배송 준비로 바꾼 시각
+  queueState?: "waiting" | "opening" | "done" | null;
+  shippingPreparedAt?: string | null;
 };
 
 export type OrderItem = { id: string; productNameSnapshot: string; optionNameSnapshot: string; unitPrice: number; quantity: number };

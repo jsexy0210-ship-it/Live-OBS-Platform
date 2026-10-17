@@ -196,11 +196,11 @@ export default function UpgradePage() {
     // 예약 취소는 현 이용권·가격을 유지하는 별도 의도다. 내리는 변경만 미리보기 금액을 보낸다.
     const code = "OVERLAY_ONLY";
     const row = load.kind === "ok" ? load.preview?.plans.find((p) => p.planCode === code) : undefined;
-    const r = await api<{ ok: true }>("/api/seller/subscription/plan", { method: "POST", body: undo ? { action: "cancel_pending" } : row?.change.ok ? { planCode: code, expectedAmount: row.change.chargeNow } : { planCode: code } });
+    const r = await api<{ ok: true; applied: "now" | "next_payment" | "canceled_pending" }>("/api/seller/subscription/plan", { method: "POST", body: undo ? { action: "cancel_pending" } : row?.change.ok ? { planCode: code, expectedAmount: row.change.chargeNow } : { planCode: code } });
     setBusy(false);
     setConfirm(null);
     if (!r.ok) return setFailure(FAIL[r.error] ?? failMessage(r, "admin"));
-    setToast(undo ? "변경 신청을 취소했습니다" : "변경을 신청했습니다");
+    setToast(r.data.applied === "canceled_pending" ? "변경 신청을 취소했습니다" : r.data.applied === "next_payment" ? "변경을 신청했습니다 · 다음 결제일부터 적용됩니다" : "오버레이 전용으로 바꿨습니다 · ONQ 스토어 새 주문은 받지 않습니다");
     await read();
   };
 
@@ -217,6 +217,8 @@ export default function UpgradePage() {
     const downEffective = down?.change.ok ? down.change.effectiveAt : null;
     const nextDate = day(downEffective ?? view.subscription?.nextChargeAt ?? view.subscription?.currentPeriodEnd);
     const pendingDown = view.subscription?.pendingPlanCode === "OVERLAY_ONLY";
+    const downApplied = down?.change.ok ? down.change.applied : null;
+    const scheduledDown = pendingDown || downApplied === "next_payment";
     const cur = preview?.plans.find((p) => p.current);
 
     if (done) {
@@ -232,7 +234,7 @@ export default function UpgradePage() {
       return (
         <>
           {failure && <div className="msg msg-neg" role="alert"><span>{failure}</span></div>}
-          <h2 className="up-st">오버레이 전용으로 바꾸기 (아래 이용권)<span className="up-nt">다음 결제일부터</span></h2>
+          <h2 className="up-st">오버레이 전용으로 바꾸기 (아래 이용권)<span className="up-nt">{scheduledDown ? "다음 결제일부터" : downApplied === "now" ? "바로 적용" : "적용 시점 확인 필요"}</span></h2>
           {pendingDown ? (
             <div className="up-pend">
               <div className="msg msg-info" role="status"><b>오버레이 전용으로 바뀔 예정입니다</b> · {nextDate}부터 · 그때까지는 쇼핑몰 통합 그대로입니다 · 이전 주문의 배송 · 환불은 바뀐 뒤에도 계속 할 수 있습니다</div>
@@ -241,11 +243,11 @@ export default function UpgradePage() {
           ) : (
             <>
               <div className="card up-notes">
-                <p>다음 결제일({nextDate})부터 적용됩니다 · 그때까지는 쇼핑몰 통합 그대로 쓸 수 있습니다</p>
+                <p>{scheduledDown ? `다음 결제일(${nextDate})부터 적용됩니다 · 그때까지는 쇼핑몰 통합 그대로 쓸 수 있습니다` : downApplied === "now" ? "변경하면 바로 적용됩니다 · ONQ 스토어에서 새 주문을 받지 않습니다" : "적용 시점을 확인하지 못했습니다 · 새로고침 후 다시 확인해 주십시오"}</p>
                 <p>적용되면 ONQ 스토어에서 새 주문은 받지 않습니다 · 이전 주문의 배송 · 환불 · 문의는 계속 할 수 있습니다</p>
-                <p>적용 뒤 월 {won(down?.price ?? 0)}입니다 · 이번 결제 기간 요금은 돌려드리지 않습니다 · 적용 전까지는 언제든 취소할 수 있습니다</p>
+                <p>적용 뒤 월 {won(down?.price ?? 0)}입니다 · {scheduledDown ? "이번 결제 기간 요금은 돌려드리지 않습니다 · 적용 전까지는 언제든 취소할 수 있습니다" : "다음 결제부터 적용된 이용권 요금을 냅니다"}</p>
               </div>
-              <button className="btn btn-out up-down" type="button" onClick={() => setConfirm("down")}>오버레이 전용으로 변경 신청</button>
+              <button className="btn btn-out up-down" type="button" disabled={downApplied !== "now" && downApplied !== "next_payment"} onClick={() => setConfirm("down")}>오버레이 전용으로 변경 신청</button>
             </>
           )}
           {confirm && (
@@ -255,7 +257,7 @@ export default function UpgradePage() {
                   <h2 className="t-h2" id="up-confirm-title">{confirm === "down" ? "오버레이 전용으로 바꾸시겠습니까?" : "변경을 취소하시겠습니까?"}</h2>
                   <span className="t-l2 c-alt">
                     {confirm === "down"
-                      ? `${nextDate} 결제부터 오버레이 전용 월 ${won(down?.price ?? 0)}으로 바뀝니다. 그날부터 ONQ 스토어 새 주문은 받지 않고, 이전 주문의 배송 · 환불은 계속 할 수 있습니다.`
+                      ? `${scheduledDown ? `${nextDate} 결제부터` : "변경하면 바로"} 오버레이 전용 월 ${won(down?.price ?? 0)}으로 바뀝니다. ${scheduledDown ? "그날부터" : "지금부터"} ONQ 스토어 새 주문은 받지 않고, 이전 주문의 배송 · 환불은 계속 할 수 있습니다.`
                       : `취소하면 쇼핑몰 통합 그대로 유지됩니다. ${cur ? `다음 결제도 ${won(cur.price)}입니다.` : "다음 결제 금액은 변경 취소 후 구독 관리에서 확인해 주십시오."}`}
                   </span>
                 </div>

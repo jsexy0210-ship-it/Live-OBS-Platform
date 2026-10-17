@@ -1,0 +1,26 @@
+{
+  "sourceSha": "01fae378844352d642dec630c9cfbcf4d59dc61f",
+  "role": "STORE_OWNER",
+  "state": "first-row-viewport",
+  "firstId": "0693f3fc-a4b9-4c34-b6c0-94b01b488e9a",
+  "browserZoom": "UNVERIFIED",
+  "failed": false,
+  "route": "/seller/orders?period=all&q=pages-fd0a4698f291",
+  "width": 1440,
+  "height": 900,
+  "dpr": 1,
+  "scale": 1,
+  "scrollY": 0,
+  "header": {
+    "left": 0,
+    "right": 1440,
+    "top": 0,
+    "bottom": 48
+  },
+  "firstRow": {
+    "left": 220,
+    "right": 1416,
+    "top": 453.5,
+    "bottom": 531.5
+  }
+}

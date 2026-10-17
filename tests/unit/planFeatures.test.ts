@@ -78,6 +78,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/purchase-restrictions": "ORDER_FOLLOWUP",
   "seller/purchase-restrictions/[buyerMemberId]": "ORDER_FOLLOWUP",
   "seller/members/[memberId]/memo": "ORDER_FOLLOWUP",
+  "seller/orders/[orderId]/memo": "ORDER_FOLLOWUP",
   "seller/shipments": "ORDER_FOLLOWUP",
   "seller/shipments/deliver": "ORDER_FOLLOWUP",
   "seller/invoices": "ORDER_FOLLOWUP",
@@ -160,6 +161,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/stream": "OVERLAY",
   "seller/member-policy": "STORE_OPERATIONS",
   "seller/order-policy": "STORE_OPERATIONS",
+  "seller/shipping-automation": "STORE_OPERATIONS",
   "seller/order-notification-policy": "STORE_OPERATIONS",
   "seller/payments/bank-account": "STORE_OPERATIONS", // 무통장 입금 계좌
   "seller/payments/deposits": "ORDER_FOLLOWUP", // 입금 대기 목록(잠금 중에도 이미 받은 주문 처리)

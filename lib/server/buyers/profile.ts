@@ -3,6 +3,7 @@ import { writeAudit } from "../audit/log";
 import { hashPassword, verifyPassword } from "../auth/password";
 import { BUYER_PASSWORD_MAX, isAcceptableBuyerPassword } from "./passwordPolicy";
 import { cleanText } from "../text/clean";
+import { minorPurchaseBlocked, minorPurchaseDecision } from "./minor";
 import { MAX_NICKNAME_LENGTH } from "./signup";
 
 // 구매자 회원정보 수정(SH-024): 내 정보 조회, 방송 닉네임 변경(30일에 1번), 비밀번호 변경(현재 비밀번호 확인).
@@ -47,8 +48,8 @@ export function maskPhone(phone: string): string {
 
 const nextChangeAt = (changedAt: Date | null): Date | null => (changedAt ? new Date(changedAt.getTime() + NICKNAME_CHANGE_INTERVAL_DAYS * DAY_MS) : null);
 
-const SELECT = { loginId: true, name: true, phone: true, broadcastNickname: true, broadcastNicknameChangedAt: true } as const;
-type Row = { loginId: string; name: string; phone: string; broadcastNickname: string; broadcastNicknameChangedAt: Date | null };
+const SELECT = { loginId: true, name: true, phone: true, broadcastNickname: true, broadcastNicknameChangedAt: true, birthDate: true } as const;
+type Row = { loginId: string; name: string; phone: string; broadcastNickname: string; broadcastNicknameChangedAt: Date | null; birthDate: Date | null };
 
 // nextNicknameChangeAt: 닉네임을 다시 바꿀 수 있는 시각(ISO). 지금 바꿀 수 있으면 null.
 function viewOf(m: Row, now: Date) {
@@ -64,7 +65,12 @@ function viewOf(m: Row, now: Date) {
 
 export async function readMemberProfile(db: PrismaClient, scope: Scope, now = new Date()) {
   const m = await db.buyerMember.findFirst({ where: { id: scope.buyerMemberId, sellerId: scope.sellerId, deletedAt: null, status: "ACTIVE" }, select: SELECT });
-  return m ? viewOf(m, now) : null;
+  if (!m) return null;
+  // 미성년자 구매 막기(SH-009): 이 쇼핑몰이 막는지(policy), 이 회원이 지금 막히는지(blocked), 나이를 몰라 본인확인을 다시 해야 하는지(reverifyRequired)
+  const blocking = await minorPurchaseBlocked(db, scope.sellerId); // 정책은 한 번만 읽어 세 값이 어긋나지 않게 한다
+  const check = minorPurchaseDecision(blocking, m, now);
+  const policy = blocking ? ("block" as const) : ("notice" as const);
+  return { ...viewOf(m, now), minorPurchase: { policy, blocked: check === "minor_blocked", reverifyRequired: check === "identity_reverify_required" } };
 }
 
 // 본문 { broadcastNickname }. 지금과 같으면 바꾸지 않고(30일 제한도 쓰지 않고) 그대로 돌려준다. 같은 쇼핑몰 회원 사이에서 겹치면 409.
