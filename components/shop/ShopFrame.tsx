@@ -10,6 +10,7 @@ import { EventPopupForPage } from "./EventPopup";
 import LiveBar from "./LiveBar";
 import ShopChrome from "./ShopChrome";
 import ShopClosedGate from "./ShopClosedGate";
+import { ShopSessionProvider } from "./ShopSession";
 import { HOSTING_DESCRIPTION, noticeRows, type FootRow } from "./footNotice";
 import "./ShopLegal.css";
 
@@ -58,9 +59,11 @@ export default async function ShopFrame({ slug, shopName, operatingState = "OPEN
       <LiveBar slug={slug} />
       <EventPopupForPage />
       <main className="shop-main">
-        <ShopClosedGate slug={slug} shopName={shopName} state={operatingState}>
-          {children}
-        </ShopClosedGate>
+        <ShopSessionProvider loggedIn={!!session}>
+          <ShopClosedGate slug={slug} shopName={shopName} state={operatingState}>
+            {children}
+          </ShopClosedGate>
+        </ShopSessionProvider>
       </main>
       <footer className="shop-foot">
         <div className="shop-wrap">

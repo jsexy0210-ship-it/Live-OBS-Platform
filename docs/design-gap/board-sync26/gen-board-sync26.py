@@ -113,13 +113,16 @@ wr('PF-004.dc.html', t)
 def frame_au(card_inner):
     return ('<div class="st" style="grid-column: 1 / -1"><span class="st-tag">휴대폰 390</span>'
             '<div class="app c24" data-theme="light" style="width: 390px; margin: 0 auto; box-shadow: 0 0 0 1px var(--c24-line); text-align: left">'
-            '<div class="authwrap" style="min-height: 0; padding: 24px 16px"><div class="auth" style="width: 100%">' + card_inner + '</div></div></div></div>')
+            '<div class="authwrap" style="min-height: 0; padding: 24px 16px"><div class="auth" style="width: 100%; padding: 32px 16px">' + card_inner + '</div></div></div></div>')
 for f in ('AU-003', 'AU-011', 'AU-012'):
     t = strip_prev(rd(f + '.dc.html'))
     a = t.index('<div class="auth" style="width: 420px">') + len('<div class="auth" style="width: 420px">')
     b = t.index('</div></div>\n<div class="states">')
     card_inner = t[a:b]
+    card_inner = rep(card_inner, '<label class="ck"><input type="checkbox" name="r">', '<label class="ck" style="white-space: normal; flex-wrap: wrap; margin-right: 0"><input style="flex-shrink: 0" type="checkbox" name="r">')
+    card_inner = rep(card_inner, '<a href="#">보기</a>', '<a href="#" style="white-space: nowrap; flex-shrink: 0">보기</a>')
     assert card_inner.count('<div class="auth"') == 0
-    t = put_au(t, card_inner, 3200)
+    t = put_au(t, card_inner, 3200 if f == 'AU-012' else 4000)
     wr(f + '.dc.html', t)
 print('done')
+
