@@ -1,3 +1,4 @@
+import { PrismaClient, type Prisma } from "@prisma/client";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { GET as previewRoute } from "../../app/api/seller/subscription/plan/preview/route";
 import { POST as planRoute } from "../../app/api/seller/subscription/plan/route";
@@ -9,8 +10,11 @@ import { changePlan, previewPlanChanges } from "../../lib/server/billing/planCha
 import { listPriceChangeNoticeTargets, updatePlanPrice } from "../../lib/server/billing/plans";
 import { FakeBillingProvider } from "../../lib/server/billing/provider";
 import { sealBillingKey } from "../../lib/server/billing/secret";
-import { cancelSubscription, getSubscriptionView, reconcileStalePayments, registerCardAndPay, renewDueSubscriptions } from "../../lib/server/billing/subscription";
+import { cancelSubscription, getSubscriptionView, reconcileStalePayments, registerCardAndPay, renewDueSubscriptions, settlePayment } from "../../lib/server/billing/subscription";
 import { prisma } from "../../lib/server/db";
+import { FakeBusinessStatusProvider } from "../../lib/server/sellers/businessCheck";
+import { checkBusiness, saveIntegrationProfile } from "../../lib/server/sellers/integrationProfile";
+import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, completeIntegrationProfile, createAdmin, createSeller, createSellerUser, db, resetDb, seedPlans } from "./helpers";
 
@@ -147,6 +151,126 @@ describe("상위 변경(오버레이 전용 → 통합)", () => {
     expect(await db.auditLog.count({ where: { sellerId: s.seller.id, action: "subscription.plan_upgrade_blocked", reason: "business_unchecked" } })).toBe(1);
     // 막힌 청구는 런칭 할인을 쓴 것으로 남기지 않는다(환불 요청된 청구)
     expect((await db.seller.findUniqueOrThrow({ where: { id: s.seller.id }, select: { launchDiscountUsedAt: true } })).launchDiscountUsedAt).toBeNull();
+  });
+
+
+  it.each(["business-check", "profile-save"] as const)("결제 게이트 읽기 뒤의 %s 갱신은 확정 트랜잭션이 끝날 때까지 Seller 잠금에서 기다린다", async (writerKind) => {
+    const s = await shop("OVERLAY_ONLY", at(-30), paying);
+    const provider = new FakeBillingProvider();
+    provider.failNext = "timeout_after_charge";
+    expect(await changePlan(db, provider, s.ctx, { planCode: "INTEGRATED", now: T0 })).toEqual({ ok: false, reason: "payment_pending" });
+    const payment = await db.subscriptionPayment.findFirstOrThrow({ where: { sellerId: s.seller.id } });
+    const writer = new PrismaClient({ datasources: { db: { url: assertTestDatabaseUrl(process.env.DATABASE_URL) } } });
+    let releaseGate!: () => void;
+    let reachedGate!: () => void;
+    const gateRelease = new Promise<void>((resolve) => { releaseGate = resolve; });
+    const gateRead = new Promise<void>((resolve) => { reachedGate = resolve; });
+    let settlementPid = 0;
+    let writerPid = 0;
+    // 실제 settlePayment의 조회 결과를 읽은 직후 멈춘다. DB 쿼리·커밋은 모두 실제 연결에서 실행한다.
+    const settlementDb = new Proxy(db, {
+      get(target, key, receiver) {
+        if (key !== "$transaction") return Reflect.get(target, key, receiver);
+        return <T>(run: (tx: Prisma.TransactionClient) => Promise<T>) => target.$transaction(async (tx) => {
+          [{ pid: settlementPid }] = await tx.$queryRawUnsafe<{ pid: number }[]>("SELECT pg_backend_pid() AS pid");
+          return run(new Proxy(tx, {
+            get(transaction, property, transactionReceiver) {
+              if (property !== "sellerIntegrationProfile") return Reflect.get(transaction, property, transactionReceiver);
+              return new Proxy(transaction.sellerIntegrationProfile, {
+                get(model, operation, modelReceiver) {
+                  if (operation !== "findUnique") return Reflect.get(model, operation, modelReceiver);
+                  return async (args: Prisma.SellerIntegrationProfileFindUniqueArgs) => {
+                    const row = await model.findUnique(args);
+                    reachedGate();
+                    await gateRelease;
+                    return row;
+                  };
+                },
+              });
+            },
+          }));
+        });
+      },
+    });
+    const writerDb = new Proxy(writer, {
+      get(target, key, receiver) {
+        if (key !== "$transaction") return Reflect.get(target, key, receiver);
+        return <T>(run: (tx: Prisma.TransactionClient) => Promise<T>) => target.$transaction(async (tx) => {
+          [{ pid: writerPid }] = await tx.$queryRawUnsafe<{ pid: number }[]>("SELECT pg_backend_pid() AS pid");
+          return run(tx);
+        });
+      },
+    });
+    let releaseProvider!: () => void;
+    let reachedProvider!: () => void;
+    const providerRelease = new Promise<void>((resolve) => { releaseProvider = resolve; });
+    const providerRead = new Promise<void>((resolve) => { reachedProvider = resolve; });
+    const businessProvider = new (class extends FakeBusinessStatusProvider {
+      async verify(input: Parameters<FakeBusinessStatusProvider["verify"]>[0]) {
+        reachedProvider();
+        await providerRelease;
+        return super.verify(input);
+      }
+    })();
+    businessProvider.set("1234567891", "CLOSED");
+    let writing: Promise<unknown> | undefined;
+    let writerFinished = false;
+    // 예약 트랜잭션 종료를 먼저 확정해 AuditLog 등 다른 잠금 대기로 잘못 통과하지 않게 한다.
+    if (writerKind === "business-check") {
+      writing = checkBusiness(writerDb, businessProvider, s.ctx, { businessNumber: "1234567891", representativeName: "김대표", openedOn: "20200101" }).finally(() => { writerFinished = true; });
+    }
+    const settling = (async () => {
+      if (writerKind === "business-check") await Promise.race([providerRead, writing!.then(() => { throw new Error("공급자 barrier에 도달하지 않았습니다"); })]);
+      return settlePayment(settlementDb, payment.id, { ok: true, paymentId: "fake-race-payment", receiptUrl: null }, { actorType: "SYSTEM", actorId: null, now: T0 });
+    })();
+    try {
+      await Promise.race([gateRead, settling.then(() => { throw new Error("결제 게이트 barrier에 도달하지 않았습니다"); })]);
+      if (writerKind === "business-check") releaseProvider();
+      else writing = saveIntegrationProfile(writerDb, s.ctx, { companyName: "별빛카드", representativeName: "박대표", businessNumber: "1234567891", businessAddress: "서울시 강남구 1", bankName: "국민은행", accountNumber: "123456789012", accountHolder: "박대표" }).finally(() => { writerFinished = true; });
+      // PostgreSQL이 알려 주는 실제 잠금 대기를 관찰한다. 수정 전에는 writer가 먼저 커밋하므로 실패한다.
+      const deadline = Date.now() + 2_000;
+      let blocked = false;
+      let blockedQuery: string | null = null;
+      while (Date.now() < deadline && !writerFinished) {
+        const [{ waiting, statement }] = await db.$queryRawUnsafe<{ waiting: boolean; statement: string | null }[]>("SELECT $1::int = ANY(pg_blocking_pids($2::int)) AS waiting, (SELECT query FROM pg_stat_activity WHERE pid = $2::int) AS statement", settlementPid, writerPid);
+        if (waiting) { blocked = true; blockedQuery = statement; break; }
+      }
+      expect(writerFinished).toBe(false);
+      expect(blocked).toBe(true);
+      // profile 쓰기 뒤 AuditLog FK에서 기다린 경우는 실패해야 한다(구코드 회귀).
+      expect(blockedQuery).toBe('SELECT id FROM "Seller" WHERE id = $1::uuid FOR UPDATE');
+      expect(await planOf(s.seller.id)).toBe("OVERLAY_ONLY");
+      expect(await db.sellerIntegrationProfile.findUniqueOrThrow({ where: { sellerId: s.seller.id } })).toMatchObject({ checkStatus: "ACTIVE", checkValid: true, representativeName: "김대표" });
+      releaseGate();
+      expect(await settling).toEqual({ nextChargeAt: at(9) });
+      expect(await writing).toMatchObject({ ok: true });
+      expect(await planOf(s.seller.id)).toBe("INTEGRATED");
+      expect(await payments(s.seller.id)).toEqual([{ amount: 36666, status: "PAID", kind: "PRORATION" }]);
+      expect(await db.subscriptionRefund.count({ where: { sellerId: s.seller.id } })).toBe(0);
+      const row = await db.sellerIntegrationProfile.findUniqueOrThrow({ where: { sellerId: s.seller.id } });
+      expect(row).toMatchObject(writerKind === "business-check" ? { checkStatus: "CLOSED" } : { representativeName: "박대표", checkStatus: null });
+    } finally {
+      releaseProvider();
+      releaseGate();
+      await Promise.allSettled([settling, ...(writing ? [writing] : [])]);
+      await writer.$disconnect();
+    }
+  });
+
+
+  it("외부 조회 중 사업자 정보를 바꿀 수 있고 늦게 온 이전 정보의 조회 결과로 새 사업자를 승인하지 않는다", async () => {
+    const s = await shop("OVERLAY_ONLY", at(-30), paying);
+    const provider = new (class extends FakeBusinessStatusProvider {
+      async verify(input: Parameters<FakeBusinessStatusProvider["verify"]>[0]) {
+        // 공급자가 응답하기 전에 같은 쇼핑몰 저장이 완료되어야 한다(Seller 잠금을 외부 호출 동안 잡지 않는다).
+        expect(await saveIntegrationProfile(db, s.ctx, { companyName: "별빛카드", representativeName: "박대표", businessNumber: "1234567891", businessAddress: "서울시 강남구 1", bankName: "국민은행", accountNumber: "123456789012", accountHolder: "박대표" })).toEqual({ ok: true });
+        return super.verify(input);
+      }
+    })();
+    expect(await checkBusiness(db, provider, s.ctx, { businessNumber: "1234567891", representativeName: "김대표", openedOn: "20200101" })).toMatchObject({ ok: true, valid: true });
+    expect(await db.sellerIntegrationProfile.findUniqueOrThrow({ where: { sellerId: s.seller.id } })).toMatchObject({ representativeName: "박대표", checkRepresentativeName: "김대표" });
+    expect(await changePlan(db, new FakeBillingProvider(), s.ctx, { planCode: "INTEGRATED", now: T0 })).toEqual({ ok: false, reason: "business_unchecked" });
+    expect(await payments(s.seller.id)).toEqual([]);
   });
 
   it("결제 전 재시도 때 게이트가 막히면 돈을 청구하지 않고 실패로 닫는다(환불 요청 없음)", async () => {
