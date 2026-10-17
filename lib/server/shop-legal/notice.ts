@@ -29,6 +29,7 @@ export type NoticeRejection =
   | "invalid_escrow_provider"
   | "invalid_escrow_url"
   | "invalid_minor_notice"
+  | "invalid_minor_policy"
   | "invalid_kakao_url"
   | "invalid_youtube_url"
   | "version_conflict";
@@ -42,6 +43,7 @@ export const NOTICE_MESSAGES: Record<NoticeRejection, string> = {
   invalid_escrow_kind: "구매안전서비스 종류를 다시 선택해 주십시오",
   invalid_escrow_provider: `가입한 업체 이름을 ${PROVIDER_MAX}자 안에서 입력해 주십시오`,
   invalid_escrow_url: "확인 주소는 https로 시작하는 주소만 입력할 수 있습니다",
+  invalid_minor_policy: "미성년자 구매 정책을 다시 선택해 주십시오",
   invalid_minor_notice: `미성년자 구매 안내를 ${MINOR_NOTICE_MAX.toLocaleString("ko-KR")}자 안에서 입력해 주십시오`,
   invalid_kakao_url: "카카오톡 채널 주소는 https로 시작하는 주소만 입력할 수 있습니다",
   invalid_youtube_url: "유튜브 채널 주소는 https로 시작하는 주소만 입력할 수 있습니다",
@@ -76,7 +78,7 @@ function httpsUrl(v: unknown): string | null {
   }
 }
 
-type Input = Pick<ShopLegalNotice, "address" | "csPhone" | "csEmail" | "csHours" | "escrowKind" | "escrowProvider" | "escrowUrl" | "minorNotice" | "kakaoChannelUrl" | "youtubeChannelUrl">;
+type Input = Pick<ShopLegalNotice, "address" | "csPhone" | "csEmail" | "csHours" | "escrowKind" | "escrowProvider" | "escrowUrl" | "minorNotice" | "kakaoChannelUrl" | "youtubeChannelUrl"> & { minorPolicy?: ShopLegalNotice["minorPolicy"] };
 
 function parseInput(raw: unknown): { ok: true; v: Input } | { ok: false; reason: Exclude<NoticeRejection, "version_conflict"> } {
   const b = obj(raw);
@@ -96,11 +98,14 @@ function parseInput(raw: unknown): { ok: true; v: Input } | { ok: false; reason:
   if (escrowUrl === null) return { ok: false, reason: "invalid_escrow_url" };
   const minorNotice = isEmpty(b.minorNotice) ? "" : cleanText(b.minorNotice, MINOR_NOTICE_MAX, "multiline");
   if (minorNotice === null) return { ok: false, reason: "invalid_minor_notice" };
+  // 미성년자 구매 정책(notice | block). 보내지 않으면 지금 값을 유지한다(저장할 때 정함)
+  const minorPolicy = b.minorPolicy === undefined ? undefined : b.minorPolicy === "block" ? "BLOCK" : b.minorPolicy === "notice" ? "NOTICE" : null;
+  if (minorPolicy === null) return { ok: false, reason: "invalid_minor_policy" };
   const kakaoChannelUrl = httpsUrl(b.kakaoChannelUrl);
   if (kakaoChannelUrl === null) return { ok: false, reason: "invalid_kakao_url" };
   const youtubeChannelUrl = httpsUrl(b.youtubeChannelUrl);
   if (youtubeChannelUrl === null) return { ok: false, reason: "invalid_youtube_url" };
-  return { ok: true, v: { address, csPhone: csPhoneRaw, csEmail: csEmailRaw, csHours, escrowKind: KIND_TO_DB[kind], escrowProvider, escrowUrl, minorNotice, kakaoChannelUrl, youtubeChannelUrl } };
+  return { ok: true, v: { address, csPhone: csPhoneRaw, csEmail: csEmailRaw, csHours, escrowKind: KIND_TO_DB[kind], escrowProvider, escrowUrl, minorNotice, ...(minorPolicy ? { minorPolicy } : {}), kakaoChannelUrl, youtubeChannelUrl } };
 }
 
 const view = (r: ShopLegalNotice | null) => ({
@@ -112,13 +117,15 @@ const view = (r: ShopLegalNotice | null) => ({
   escrowProvider: r?.escrowProvider ?? "",
   escrowUrl: r?.escrowUrl ?? "",
   minorNotice: r?.minorNotice ?? "",
+  minorPolicy: (r?.minorPolicy ?? "NOTICE") === "BLOCK" ? ("block" as const) : ("notice" as const),
   kakaoChannelUrl: r?.kakaoChannelUrl ?? "",
   youtubeChannelUrl: r?.youtubeChannelUrl ?? "",
   version: r?.version ?? 0,
 });
 
-const FIELDS = ["address", "csPhone", "csEmail", "csHours", "escrowKind", "escrowProvider", "escrowUrl", "minorNotice", "kakaoChannelUrl", "youtubeChannelUrl"] as const;
-const changedFields = (before: ShopLegalNotice | null, after: Input) => FIELDS.filter((f) => (before?.[f] ?? (f === "escrowKind" ? "NONE" : "")) !== after[f]);
+const FIELDS = ["address", "csPhone", "csEmail", "csHours", "escrowKind", "escrowProvider", "escrowUrl", "minorNotice", "minorPolicy", "kakaoChannelUrl", "youtubeChannelUrl"] as const;
+const changedFields = (before: ShopLegalNotice | null, after: Input) =>
+  FIELDS.filter((f) => (before?.[f] ?? (f === "escrowKind" ? "NONE" : f === "minorPolicy" ? "NOTICE" : "")) !== after[f]);
 
 const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
 // 입점 신청 때 받은 검증 값(읽기 전용 표시)
@@ -148,7 +155,8 @@ export async function saveSellerNotice(db: PrismaClient, ctx: TenantContext, raw
     const before = await tx.shopLegalNotice.findUnique({ where: { sellerId: ctx.sellerId } });
     const current = before?.version ?? 0;
     if (expected !== current) return { ok: false as const, reason: "version_conflict" as const, currentVersion: current };
-    const data = { ...p.v, version: current + 1 };
+    const v = { ...p.v, minorPolicy: p.v.minorPolicy ?? before?.minorPolicy ?? ("NOTICE" as const) };
+    const data = { ...v, version: current + 1 };
     const row = before ? await tx.shopLegalNotice.update({ where: { id: before.id }, data }) : await tx.shopLegalNotice.create({ data: { sellerId: ctx.sellerId, ...data } });
     await writeAudit(tx, {
       actorType: ctx.actorType,
@@ -158,7 +166,7 @@ export async function saveSellerNotice(db: PrismaClient, ctx: TenantContext, raw
       targetType: "ShopLegalNotice",
       targetId: row.id,
       before: { version: current },
-      after: { version: row.version, changed: changedFields(before, p.v), escrowKind: row.escrowKind },
+      after: { version: row.version, changed: changedFields(before, v), escrowKind: row.escrowKind },
       ip: meta.ip,
       userAgent: meta.userAgent,
     });
