@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CursorPagination, Modal, PageHead } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
-import { api } from "../../../../../components/seller/api";
+import { api, apiDownload } from "../../../../../components/seller/api";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
 import { MAX_SEARCH_LENGTH } from "../../../../../components/seller/format";
 import { MEMBER_STATUS, memberDay, phoneText, type MemberRow, type MemberStatus } from "../../../../../components/seller/members/types";
@@ -118,17 +118,9 @@ export default function MemberListPage() {
   const downloadMembers = async () => {
     if (!exporting || exporting.busy || !exportReason) return;
     setExporting({ ...exporting, busy: true, error: "" });
-    let res: Response | null = null;
-    try {
-      res = await fetch("/api/seller/bulk-io/members/export", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reason: exportReason, includePii: true }), cache: "no-store" });
-    } catch {
-      res = null;
-    }
-    if (!res || !res.ok) {
-      const body = res ? ((await res.json().catch(() => ({}))) as { message?: string }) : {};
-      return setExporting((x) => (x ? { ...x, busy: false, error: body.message ?? "내려받지 못했습니다. 잠시 뒤 다시 시도해 주십시오" } : x));
-    }
-    const url = URL.createObjectURL(await res.blob());
+    const r = await apiDownload("/api/seller/bulk-io/members/export", { method: "POST", body: { reason: exportReason, includePii: true } });
+    if (!r.ok) return setExporting((x) => (x ? { ...x, busy: false, error: r.message ?? "내려받지 못했습니다. 잠시 뒤 다시 시도해 주십시오" } : x));
+    const url = URL.createObjectURL(r.blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = "members.csv";
