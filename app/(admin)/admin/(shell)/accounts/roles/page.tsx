@@ -8,7 +8,7 @@ import { AdminTopbar } from "../../../_components/AdminShell";
 import { type PermissionTable } from "../../../_components/accounts";
 
 // MA-063 역할별 권한 표(GET /api/admin/permissions, 최고관리자만, 조회만). 정본: design/project/MA-063.dc.html(FINAL v329).
-// 권한 정본은 서버의 권한 표(14개)이며 「가능」과 「—」 두 값뿐이다. 기능 묶음 6그룹과 라벨은 정본, 작은 글자는 서버 권한 키.
+// 권한 정본은 서버의 권한 표이며 「가능」과 「—」 두 값뿐이다. 기능 묶음 6그룹과 라벨은 정본, 작은 글자는 서버 권한 키.
 // 역할 머리의 (n)은 이용 중인 관리자 계정 수(GET /api/admin/admins, 같은 최고관리자 권한). 못 불러오면 수만 뺀다.
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; table: PermissionTable; counts: Record<string, number> | null };
 const GROUPS: { title: string; items: [string, string][] }[] = [
@@ -56,7 +56,7 @@ export default function RolesPage() {
                 <span className="bdg b-done">가능</span> 할 수 있음
               </span>
               <span>
-                <span className="bdg b-gray">—</span> 할 수 없음 · 메뉴가 보이지 않습니다
+                <span className="bdg b-gray">—</span> 할 수 없음 · 메뉴나 버튼이 보이지 않거나 서버가 막습니다
               </span>
             </div>
             <div className="card">
