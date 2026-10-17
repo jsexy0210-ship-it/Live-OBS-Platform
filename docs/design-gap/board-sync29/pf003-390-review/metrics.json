@@ -1,0 +1,111 @@
+[
+  {
+    "version": "original",
+    "width": 1440,
+    "sha256": "b0c2fd780c70a0c00d3bf6e15297e67aec125cbf7654b6706450cd33b011b98a",
+    "height": 2129
+  },
+  {
+    "version": "candidate",
+    "width": 1440,
+    "sha256": "b0c2fd780c70a0c00d3bf6e15297e67aec125cbf7654b6706450cd33b011b98a",
+    "height": 2129
+  },
+  {
+    "version": "original",
+    "width": 1024,
+    "sha256": "103685edab82a6eef8910188cf6526ab76a1f2cf4502ef6c8f3b096b11abd035",
+    "height": 2129
+  },
+  {
+    "version": "candidate",
+    "width": 1024,
+    "sha256": "103685edab82a6eef8910188cf6526ab76a1f2cf4502ef6c8f3b096b11abd035",
+    "height": 2129
+  },
+  {
+    "state": "plans",
+    "width": 390,
+    "height": 3153,
+    "overflow": [
+      {
+        "client": 390,
+        "scroll": 390
+      }
+    ],
+    "outside": [],
+    "anchors": [
+      "/design/project/PF-001.dc.html",
+      "/design/project/AU-002.dc.html",
+      "/design/project/PF-007-1.dc.html",
+      "/design/project/PF-007-1.dc.html",
+      "/design/project/PF-007-1.dc.html",
+      "/",
+      "/design/project/PF-008.dc.html",
+      "/design/project/PF-009.dc.html",
+      "/design/project/PF-005.dc.html",
+      "/design/project/PF-004.dc.html"
+    ],
+    "font": true
+  },
+  {
+    "state": "unavailable",
+    "width": 390,
+    "height": 1759,
+    "overflow": [
+      {
+        "client": 390,
+        "scroll": 390
+      }
+    ],
+    "outside": [],
+    "anchors": [
+      "/design/project/PF-001.dc.html",
+      "/design/project/AU-002.dc.html",
+      "/design/project/PF-007-1.dc.html",
+      "/",
+      "/design/project/PF-008.dc.html",
+      "/design/project/PF-009.dc.html",
+      "/design/project/PF-005.dc.html",
+      "/design/project/PF-004.dc.html"
+    ],
+    "font": true
+  },
+  {
+    "state": "board",
+    "width": 884,
+    "height": 3273,
+    "overflow": [
+      {
+        "client": 390,
+        "scroll": 390
+      },
+      {
+        "client": 390,
+        "scroll": 390
+      }
+    ],
+    "outside": [],
+    "anchors": [
+      "/design/project/PF-001.dc.html",
+      "/design/project/AU-002.dc.html",
+      "/design/project/PF-007-1.dc.html",
+      "/design/project/PF-007-1.dc.html",
+      "/design/project/PF-007-1.dc.html",
+      "/",
+      "/design/project/PF-008.dc.html",
+      "/design/project/PF-009.dc.html",
+      "/design/project/PF-005.dc.html",
+      "/design/project/PF-004.dc.html",
+      "/design/project/PF-001.dc.html",
+      "/design/project/AU-002.dc.html",
+      "/design/project/PF-007-1.dc.html",
+      "/",
+      "/design/project/PF-008.dc.html",
+      "/design/project/PF-009.dc.html",
+      "/design/project/PF-005.dc.html",
+      "/design/project/PF-004.dc.html"
+    ],
+    "font": true
+  }
+]
