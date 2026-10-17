@@ -61,17 +61,17 @@ describe("구독 현황 GET /api/admin/subscriptions", () => {
       const row = r.subscriptions.find((x) => x.seller.id === id)!;
       expect([name, row.access]).toEqual([name, sellerAccess({ trialEndsAt: s.trialEndsAt, subscription: s.subscription }, NOW)]);
     }
-    expect(r.counts).toEqual({ trial: 2, paid: 3, charging: 1, grace: 1, expired: 4, locked: 1, cancelling: 2 });
+    expect(r.counts).toEqual({ trial: 2, paid: 3, charging: 1, grace: 1, expired: 4, locked: 1, cancelling: 1 });
     const graceOnly = await listAdminSubscriptions(db, ctx, { access: "grace" }, { now: NOW });
     expect(graceOnly.ok && graceOnly.subscriptions.map((s) => [s.seller.id, s.subscription?.retryCount])).toEqual([[ids.grace, 1]]);
     // 필터와 상관없이 counts는 전체 기준
     expect(graceOnly.ok && graceOnly.counts).toEqual(r.counts);
 
-    // 상태를 여럿 고르면 하나라도 맞는 건(OR). 잠금(locked)·해지 예정(cancelling)은 이용 상태와 겹쳐도 된다. 해지 완료는 해지 예정이 아니다.
+    // 상태를 여럿 고르면 하나라도 맞는 건(OR). 잠금(locked)·해지 예정(cancelling)은 이용 상태와 겹쳐도 된다. 해지 완료와 기간 끝이 지난 해지 예약(graceCancel)은 해지 예정이 아니다.
     const ids2 = (res: Awaited<ReturnType<typeof listAdminSubscriptions>>) => (res.ok ? res.subscriptions.map((s) => s.seller.id).sort() : null);
     expect(ids2(await listAdminSubscriptions(db, ctx, { access: "locked" }, { now: NOW }))).toEqual([ids.graceOver]);
-    expect(ids2(await listAdminSubscriptions(db, ctx, { access: "cancelling" }, { now: NOW }))).toEqual([ids.graceCancel, ids.cancelScheduled].sort());
-    expect(ids2(await listAdminSubscriptions(db, ctx, { access: "grace,locked,cancelling" }, { now: NOW }))).toEqual([ids.grace, ids.graceOver, ids.graceCancel, ids.cancelScheduled].sort());
+    expect(ids2(await listAdminSubscriptions(db, ctx, { access: "cancelling" }, { now: NOW }))).toEqual([ids.cancelScheduled]);
+    expect(ids2(await listAdminSubscriptions(db, ctx, { access: "grace,locked,cancelling" }, { now: NOW }))).toEqual([ids.grace, ids.graceOver, ids.cancelScheduled].sort());
     expect(await listAdminSubscriptions(db, ctx, { access: "grace,bogus" }, { now: NOW })).toEqual({ ok: false });
 
     // 다음 결제일 범위(KST 날짜, 끝 날짜 포함): paid(at(19)=2026-11-20 09:00 KST)·paidDuringTrial(at(28)=11-29)

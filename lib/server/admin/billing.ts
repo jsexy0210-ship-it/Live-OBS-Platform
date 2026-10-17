@@ -52,14 +52,14 @@ export async function subscriptionAccessCounts(db: PrismaClient, now: Date): Pro
   return Object.fromEntries(ACCESS.map((a) => [a, rows.find((r) => r.access === a)?.n ?? 0])) as Record<SellerAccess, number>;
 }
 
-// 해지 예정: 구독이 있고 기간 끝에 해지하기로 한 건(이미 해지된 건 제외). 이용 상태와 겹칠 수 있어 따로 센다(MA-023 상태 체크 「해지 예정」).
-export const cancellingSql = Prisma.sql`(sub."id" IS NOT NULL AND sub."cancelAtPeriodEnd" AND sub."status" <> 'CANCELED')`;
+// 해지 예정: 기간 끝에 해지하기로 했고 아직 끝나지 않은 구독(isCancelScheduled와 같은 기준: 해지 완료·기간 끝이 지난 건 제외). 이용 상태와 겹칠 수 있어 따로 센다(MA-023 상태 체크 「해지 예정」).
+export const cancellingSql = (now: Date) => Prisma.sql`(sub."id" IS NOT NULL AND sub."cancelAtPeriodEnd" AND sub."status" <> 'CANCELED' AND (sub."currentPeriodEnd" IS NULL OR sub."currentPeriodEnd" > ${now}))`;
 
 export type SubscriptionCounts = Record<SellerAccess, number> & { locked: number; cancelling: number };
 
 async function subscriptionExtraCounts(db: PrismaClient, now: Date): Promise<{ locked: number; cancelling: number }> {
   const [r] = await db.$queryRaw<{ locked: number; cancelling: number }[]>`SELECT
-    (count(*) FILTER (WHERE ${lockedSql(now)}))::int AS "locked", (count(*) FILTER (WHERE ${cancellingSql}))::int AS "cancelling" ${subscriptionBase}`;
+    (count(*) FILTER (WHERE ${lockedSql(now)}))::int AS "locked", (count(*) FILTER (WHERE ${cancellingSql(now)}))::int AS "cancelling" ${subscriptionBase}`;
   return { locked: r?.locked ?? 0, cancelling: r?.cancelling ?? 0 };
 }
 
@@ -116,7 +116,7 @@ export async function listAdminSubscriptions(db: PrismaClient, admin: AdminSessi
     ${subscriptionWhere}`;
   const conds: Prisma.Sql[] = [];
   if (accessList.length) {
-    const any = accessList.map((a) => (a === "locked" ? lockedSql(now) : a === "cancelling" ? cancellingSql : Prisma.sql`(${access}) = ${a}`));
+    const any = accessList.map((a) => (a === "locked" ? lockedSql(now) : a === "cancelling" ? cancellingSql(now) : Prisma.sql`(${access}) = ${a}`));
     conds.push(Prisma.sql`(${Prisma.join(any, " OR ")})`);
   }
   if (nextFrom) conds.push(Prisma.sql`sub."nextChargeAt" >= ${nextFrom}`);
