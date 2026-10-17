@@ -128,3 +128,29 @@ test("목록: 긴급 배지·분류·접수·경과·담당 열이 보이고, �
   await expect(urgent).toBeVisible();
   await expect(plain).toBeVisible();
 });
+
+test("목록: 파트너스 이름 검색이 그 파트너스의 문의만 남기고, 맞는 곳이 없으면 안내하며, 초기화하면 돌아온다", async ({ page }) => {
+  // 다른 파트너스의 문의를 하나 더 만들어, 이름 일부로 거를 때 이쪽 문의가 빠지는 것을 본다
+  const other = await db.seller.create({ data: { slug: `iqo-${run}`, shopName: `다른몰 ${run}`, status: "ACTIVE", approvedAt: new Date() } });
+  const otherUser = await db.sellerUser.create({ data: { sellerId: other.id, email: `iqo-owner-${run}@example.com`, passwordHash: await hashPassword(password), name: "대표", isOwner: true } });
+  const i = await db.platformInquiry.create({ data: { sellerId: other.id, createdBySellerUserId: otherUser.id, category: "OTHER", title: `다른몰 문의 ${run}`, lastMessageAt: new Date() } });
+  await db.platformInquiryMessage.create({ data: { sellerId: other.id, inquiryId: i.id, authorType: "SELLER_USER", sellerUserId: otherUser.id, body: "다른몰 문의 내용입니다." } });
+  await login(page, emails.cs);
+  await page.goto("/admin/support/inquiries");
+  const mine = page.getByTestId("inquiry-row").filter({ hasText: `조회 문의 ${run}` });
+  const theirs = page.getByTestId("inquiry-row").filter({ hasText: `다른몰 문의 ${run}` });
+  await expect(theirs).toBeVisible();
+  await page.getByLabel("파트너스 검색").fill(`다른몰 ${run}`);
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page).toHaveURL(/seller=/);
+  await expect(theirs).toBeVisible();
+  await expect(mine).toHaveCount(0);
+  await page.getByLabel("파트너스 검색").fill(`없는몰 ${run}`);
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page.getByTestId("inquiry-row")).toHaveCount(0);
+  await expect(page.getByText("조건에 맞는 문의가 없습니다.")).toBeVisible();
+  await page.getByRole("button", { name: "초기화" }).click();
+  await expect(page).not.toHaveURL(/seller=/);
+  await expect(theirs).toBeVisible();
+  await expect(page.getByLabel("파트너스 검색")).toHaveValue("");
+});
