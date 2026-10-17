@@ -26,18 +26,18 @@ const PERIODS: { key: Period; label: string; days: number }[] = [
 ];
 type Shipped = "true" | "false";
 // 상태 칩(정본 SA-021-OPS): 서버 필터·건수(GET /api/seller/orders/counts)와 같은 기준. warn은 정본에서 건수를 빨간색으로 보이는 칩
-type Counts = { total: number; today: number; unpaid: number; trackingMissing: number; queueWaiting: number; queueDone: number; refundRequested: number };
-const NO: Record<string, string> = { status: "", shipped: "", queue: "", refundRequested: "", trackingMissing: "" };
+type Counts = { total: number; today: number; unpaid: number; trackingMissing: number; queueWaiting: number; queueDone: number; queueDonePending: number; refundRequested: number };
+const NO: Record<string, string> = { status: "", shipped: "", queue: "", prepared: "", refundRequested: "", trackingMissing: "" };
 const CHIPS = [
   { key: "today", label: "오늘", count: "today", warn: false, set: { ...NO, period: "today" } },
   { key: "unpaid", label: "입금 전", count: "unpaid", warn: true, set: { ...NO, period: "all", status: "PENDING_PAYMENT" } },
-  { key: "done", label: "배송 준비 전", count: "queueDone", warn: false, set: { ...NO, period: "all", queue: "done" } },
+  { key: "done", label: "배송 준비 전", count: "queueDonePending", warn: false, set: { ...NO, period: "all", queue: "done", prepared: "false" } },
   { key: "tracking", label: "송장 미입력", count: "trackingMissing", warn: true, set: { ...NO, period: "all", trackingMissing: "true" } },
   { key: "refund", label: "취소 · 환불 요청", count: "refundRequested", warn: true, set: { ...NO, period: "all", refundRequested: "true" } },
   { key: "waiting", label: "개봉 대기", count: "queueWaiting", warn: false, set: { ...NO, period: "all", queue: "waiting" } },
   { key: "all", label: "전체", count: "total", warn: false, set: { ...NO, period: "all" } },
 ] as const;
-type Filters = { statuses: OrderStatus[]; period: Period | null; q: string; shipped: Shipped | null; queue: string; refundRequested: boolean; trackingMissing: boolean };
+type Filters = { statuses: OrderStatus[]; period: Period | null; q: string; shipped: Shipped | null; queue: string; prepared: boolean; refundRequested: boolean; trackingMissing: boolean };
 type Page = { orders: OrderRow[]; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; items: OrderRow[]; next: string | null };
 
@@ -48,6 +48,7 @@ function query(f: Filters, cursor?: string) {
   if (f.q) p.set("q", f.q);
   if (f.shipped) p.set("shipped", f.shipped);
   if (f.queue) p.set("queue", f.queue);
+  if (f.prepared) p.set("prepared", "false");
   if (f.refundRequested) p.set("refundRequested", "true");
   if (f.trackingMissing) p.set("trackingMissing", "true");
   if (cursor) p.set("cursor", cursor);
@@ -97,7 +98,7 @@ function mainAction(o: OrderRow): { label: string; href: string; neg?: boolean }
 
 export default function OrderListPage() {
   // 검색어·기간·결제 상태는 주소(쿼리)가 기준이다. 상세에 갔다 Back으로 돌아와도 그대로 복원된다(IA Back 규칙 3항)
-  const [u, setU] = useUrlState({ q: "", period: "30d", status: "", shipped: "", queue: "", refundRequested: "", trackingMissing: "" });
+  const [u, setU] = useUrlState({ q: "", period: "30d", status: "", shipped: "", queue: "", prepared: "", refundRequested: "", trackingMissing: "" });
   const q = u.q;
   // 기본 최근 30일(≈1개월). 홈 「처리할 일」 같은 업무 큐 링크는 ?period=all(기간 전체)로 들어온다. 칩을 눌러 해제해도 전체 기간(정본 lib/client/filterDefaults.ts)
   const period = u.period === "all" ? null : (PERIODS.find((p) => p.key === u.period)?.key ?? "30d");
@@ -148,9 +149,10 @@ export default function OrderListPage() {
   // 필터를 빨리 바꾸면 이전 응답이 늦게 올 수 있다. 마지막으로 보낸 요청의 응답만 반영한다
   const reqId = useRef(0);
   const queue = u.queue === "waiting" || u.queue === "opening" || u.queue === "done" ? u.queue : "";
+  const prepared = u.prepared === "false";
   const refundRequested = u.refundRequested === "true";
   const trackingMissing = u.trackingMissing === "true";
-  const filters: Filters = { statuses, period, q, shipped, queue, refundRequested, trackingMissing };
+  const filters: Filters = { statuses, period, q, shipped, queue, prepared, refundRequested, trackingMissing };
   // 일괄 처리 응답이 늦게 와도 그 사이 바뀐 조건으로 다시 불러오도록 최신 조건을 따로 들고 있는다
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
@@ -165,7 +167,7 @@ export default function OrderListPage() {
     if (id !== reqId.current) return;
     setState(r.ok ? { kind: "ok", items: r.data.orders, next: r.data.nextCursor } : { kind: "error", status: r.status });
   }, []);
-  useEffect(() => void load({ statuses: statusKey ? (statusKey.split(",") as OrderStatus[]) : [], period, q, shipped, queue, refundRequested, trackingMissing }), [statusKey, period, q, shipped, queue, refundRequested, trackingMissing, load]);
+  useEffect(() => void load({ statuses: statusKey ? (statusKey.split(",") as OrderStatus[]) : [], period, q, shipped, queue, prepared, refundRequested, trackingMissing }), [statusKey, period, q, shipped, queue, prepared, refundRequested, trackingMissing, load]);
   useScrollRestore("seller-orders", state.kind === "ok");
 
   const changePage = async (target: number) => {
@@ -216,18 +218,18 @@ export default function OrderListPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [menuOpen]);
 
-  const filtered = statuses.length > 0 || period !== "30d" || q !== "" || shipped !== null || queue !== "" || refundRequested || trackingMissing;
+  const filtered = statuses.length > 0 || period !== "30d" || q !== "" || shipped !== null || queue !== "" || prepared || refundRequested || trackingMissing;
   const reset = () => {
     setSearch("");
     sent.current = "";
-    setU({ q: "", period: "30d", status: "", shipped: "", queue: "", refundRequested: "", trackingMissing: "" });
+    setU({ q: "", period: "30d", status: "", shipped: "", queue: "", prepared: "", refundRequested: "", trackingMissing: "" });
   };
   const statusText = statuses.length === 0 ? "전체" : statuses.length === 1 ? STATUS_BADGE[statuses[0]].label : `${STATUS_BADGE[statuses[0]].label} 외 ${statuses.length - 1}개`;
   const chipOn = (k: (typeof CHIPS)[number]["key"]) => {
     const c = CHIPS.find((x) => x.key === k)!.set as Record<string, string>;
-    if (k === "all") return statuses.length === 0 && !shipped && !queue && !refundRequested && !trackingMissing && period !== "today";
-    if (k === "today") return period === "today" && !statuses.length && !shipped && !queue && !refundRequested && !trackingMissing;
-    return u.status === c.status && u.shipped === c.shipped && u.queue === c.queue && u.refundRequested === c.refundRequested && u.trackingMissing === c.trackingMissing;
+    if (k === "all") return statuses.length === 0 && !shipped && !queue && !prepared && !refundRequested && !trackingMissing && period !== "today";
+    if (k === "today") return period === "today" && !statuses.length && !shipped && !queue && !prepared && !refundRequested && !trackingMissing;
+    return u.status === c.status && u.shipped === c.shipped && u.queue === c.queue && u.prepared === c.prepared && u.refundRequested === c.refundRequested && u.trackingMissing === c.trackingMissing;
   };
   const items = state.kind === "ok" ? state.items : [];
   const countText = state.kind === "ok" ? `${page}페이지 · ${items.length}건${state.next ? " · 다음 페이지 있음" : ""}` : "";
