@@ -510,26 +510,37 @@ export default function StockPage() {
               </div>
             </div>
 
-            <aside className="col aside-sticky" style={{ gap: 16 }}>
-              <div className="card pad col" style={{ gap: 10 }}>
-                <span className="t-hl2">바뀐 내용</span>
-                <dl className="kv" style={{ margin: 0 }}>
-                  <dt>바꿀 옵션</dt>
-                  <dd className="num" data-testid="sum-count">
+            {/* 정본: 표 아래 「변경 요약」 4칸(변경 상품 · 증가 · 감소 · 품절 해제). 정본의 오른쪽 「CSV 양식」은 CSV 올리기 API가 생기면 붙인다 */}
+            <section className="col stock-summary" aria-labelledby="stock-sum-title" style={{ gap: 12 }}>
+              <h2 id="stock-sum-title" className="t-hl2">
+                변경 요약
+              </h2>
+              <dl className="card stock-sum">
+                <div>
+                  <dt className="t-c1 c-alt">바꿀 옵션</dt>
+                  <dd className="num t-hl2" data-testid="sum-count">
                     {valid.length}개
                   </dd>
-                  <dt>늘어나는 재고</dt>
-                  <dd className={`num${up ? " c-pos" : " c-ast"}`}>{signed(up)}</dd>
-                  <dt>줄어드는 재고</dt>
-                  <dd className={`num${down ? " c-neg" : " c-ast"}`}>{signed(-down)}</dd>
-                  <dt>품절 해제</dt>
-                  <dd className="num">{unsold}개</dd>
-                </dl>
-                <button className="btn btn-block" type="button" disabled={valid.length === 0 || applying} onClick={() => setConfirm(true)}>
+                </div>
+                <div>
+                  <dt className="t-c1 c-alt">늘어나는 재고</dt>
+                  <dd className={`num t-hl2${up ? " c-pos" : " c-ast"}`}>{signed(up)}</dd>
+                </div>
+                <div>
+                  <dt className="t-c1 c-alt">줄어드는 재고</dt>
+                  <dd className={`num t-hl2${down ? " c-neg" : " c-ast"}`}>{signed(-down)}</dd>
+                </div>
+                <div>
+                  <dt className="t-c1 c-alt">품절 해제</dt>
+                  <dd className="num t-hl2">{unsold}개</dd>
+                </div>
+              </dl>
+              <div className="row" style={{ justifyContent: "flex-end" }}>
+                <button className="btn" type="button" disabled={valid.length === 0 || applying} onClick={() => setConfirm(true)}>
                   {applyLabel}
                 </button>
               </div>
-            </aside>
+            </section>
           </div>
         )}
         {state.kind === "ok" && (

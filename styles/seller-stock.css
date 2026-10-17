@@ -1,6 +1,32 @@
 /* SA-014 재고 관리 화면 배치. 색·부품은 시안(lop.css) 그대로, 여기에는 배치만 둔다. */
 .stock-grid {
-  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-columns: minmax(0, 1fr);
+}
+.stock-sum {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+}
+.stock-sum > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 20px;
+  min-width: 0;
+}
+.stock-sum > div + div {
+  box-shadow: inset 1px 0 0 var(--wds-line-normal-alternative);
+}
+.stock-sum dd {
+  margin: 0;
+}
+@media (max-width: 767px) {
+  .stock-sum {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .stock-sum > div:nth-child(3) {
+    box-shadow: none;
+  }
 }
 .stock-search {
   width: 260px;
