@@ -144,7 +144,7 @@ for (const [role, who] of [["CS", email], ["SUPER_ADMIN", suEmail]] as const) {
     await expect(notice).toBeHidden();
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(notice).toBeVisible();
-    await expect(notice).toHaveText("모바일에서는 홈 화면을 제공합니다 상세 관리 업무는 PC에서 이용해 주십시오");
+    await expect(notice).toHaveText("모바일에서는 홈을 볼 수 있어요. 상세 관리는 PC에서 이용해 주세요.");
     await expect(page.locator(".ma-home-revenue .stat .v")).toHaveCount(5);
     await expect(page.locator('.ma-home [aria-busy="true"]')).toHaveCount(0);
     await captureHome(page, `admin-home-mobile-${role}-390`, role);
@@ -504,10 +504,10 @@ test("한 통계가 실패해도 오늘 처리할 일과 나머지 통계는 그
   let fail = true;
   await page.route("**/api/admin/stats/orders**", (route) => (fail ? route.fulfill({ status: 500, contentType: "application/json", body: '{"error":"x"}' }) : route.continue()));
   await login(page);
-  await expect(page.getByTestId("home-revenue-orders")).toContainText("불러오지 못했습니다");
+  await expect(page.getByTestId("home-revenue-orders")).toContainText("불러오지 못했어요");
   await expect(page.getByTestId("today-task-signupPending")).toBeVisible();
   await openStatus(page);
-  await expect(page.getByTestId("stats-orders")).toContainText("불러오지 못했습니다");
+  await expect(page.getByTestId("stats-orders")).toContainText("불러오지 못했어요");
   await expect(page.getByTestId("stats-top")).toContainText(topShop);
   fail = false;
   await page.getByTestId("stats-orders").getByRole("button", { name: "다시 시도" }).click();
@@ -528,7 +528,7 @@ test("빈 파트너스 안내와 요약 오류는 데모 수치 없이 독립적
   await expect(page.getByTestId("stats-top")).toContainText(topShop);
   fail = true;
   await page.getByRole("button", { name: "새로 고침", exact: true }).click();
-  await expect(page.getByTestId("home-kpi-sellers")).toContainText("불러오지 못했습니다");
+  await expect(page.getByTestId("home-kpi-sellers")).toContainText("불러오지 못했어요");
   await expect(page.getByTestId("stats-top")).toContainText(topShop);
   await expect(page.getByTestId("home-kpi-sellers")).not.toContainText("184");
 });

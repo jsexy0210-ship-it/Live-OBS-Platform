@@ -73,6 +73,33 @@ async function geometryAndFont(page: Page) {
 }
 
 for (const width of [1440, 1024, 390]) {
+  test(`마스터 홈 ${width}: 양수 업무 우선·0건 접기·매출 구분·8개 접근`, async ({ page }) => {
+    const writes = await mock(page);
+    await page.setViewportSize({ width, height: 960 });
+    await page.goto("/admin");
+    const tasks = page.getByTestId("today-tasks");
+    await expect(tasks.getByTestId("today-task-signupPending")).toContainText("3건");
+    await expect(tasks.getByTestId("today-task-inquiryOpen")).toBeHidden();
+    await expect(tasks.locator('[data-testid^="today-task-"]')).toHaveCount(8);
+    const idle = tasks.locator("details");
+    await idle.locator("summary").focus();
+    await page.keyboard.press("Enter");
+    await expect(tasks.getByTestId("today-task-inquiryOpen")).toBeVisible();
+    await expect(tasks.getByTestId("today-task-refundRequested")).toHaveAttribute("href", /status=REQUESTED/);
+    await expect(tasks.getByTestId("today-task-inquiryOpen")).toHaveAttribute("href", /status=OPEN/);
+    await page.getByRole("button", { name: "최근 7일", exact: true }).click();
+    await expect(page.getByTestId("home-revenue-subscriptions")).toContainText("777,000원");
+    await expect(page.getByTestId("home-revenue-orders")).toContainText("888,000원");
+    await expect(page.getByTestId("home-revenue-orders")).toContainText("최근 7일");
+    await geometryAndFont(page);
+    expect(writes).toEqual([]);
+    if (process.env.CAPTURE_HOME_UX === "1") {
+      await idle.locator("summary").click();
+      mkdirSync("tests/e2e/screenshots", { recursive: true });
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({ path: `tests/e2e/screenshots/MA-001-ux-${width}.png`, fullPage: true });
+    }
+  });
 
   test(`파트너스 홈 ${width}: 방송 조작·개봉·대기가 성과보다 먼저`, async ({ page }) => {
     const writes = await mock(page);
@@ -98,6 +125,27 @@ for (const width of [1440, 1024, 390]) {
     }
   });
 }
+
+test("마스터 홈: 로딩·실패·권한 오류를 0건으로 표시하지 않고, 실제 0건만 접는다", async ({ page }) => {
+  let release!: () => void;
+  const scenario: Scenario = { taskWait: new Promise<void>((resolve) => { release = resolve; }) };
+  await mock(page, scenario);
+  await page.goto("/admin");
+  await expect(page.getByTestId("today-tasks").locator('[data-testid^="today-task-"]')).toHaveCount(0);
+  scenario.taskError = 500;
+  release();
+  await expect(page.getByTestId("today-tasks")).toContainText("불러오지 못했어요");
+  await expect(page.getByTestId("today-tasks-empty")).toHaveCount(0);
+  scenario.taskError = 403;
+  await page.getByTestId("today-tasks").getByRole("button", { name: "다시 시도" }).click();
+  await expect(page.getByTestId("today-tasks")).toContainText("조회 권한이 필요해요");
+  scenario.taskError = undefined;
+  scenario.zero = true;
+  await page.getByTestId("today-tasks").getByRole("button", { name: "다시 불러오기" }).click();
+  await expect(page.getByTestId("today-tasks-empty")).toContainText("지금 처리할 일이 없어요");
+  await expect(page.getByTestId("today-tasks").locator("summary")).toContainText("7개");
+  await expect(page.getByTestId("today-task-platformInfoMissing")).toHaveCount(0);
+});
 
 test("파트너스 홈: 오버레이 전용·운영 직원의 기존 기능 범위를 유지한다", async ({ page }) => {
   const scenario: Scenario = { seller: { ...owner, features: ["OVERLAY"] } };
@@ -126,6 +174,14 @@ test("파트너스 홈: 빈 대기열과 조회 실패를 구분하고 요약 �
   await expect(page.getByText("주문대기를 불러오지 못했어요", { exact: true })).toBeVisible();
   await expect(page.getByTestId("bc-opening-empty")).toHaveCount(0);
   await expect(page.getByTestId("bc-waiting")).toHaveCount(0);
+});
+
+test("마스터 홈: 고객지원 역할은 플랫폼 정보 변경 링크와 인프라를 열지 않는다", async ({ page }) => {
+  await mock(page, { role: "CS" });
+  await page.goto("/admin");
+  await expect(page.getByTestId("today-task-platformInfoMissing")).toContainText("최고관리자에게 요청해 주세요");
+  await expect(page.getByTestId("today-task-platformInfoMissing")).not.toHaveAttribute("href");
+  await expect(page.getByTestId("infra-card")).toHaveCount(0);
 });
 
 test("파트너스 홈: 최신 대기열 조회가 끊기면 이전 값을 보존하고 변경을 막는다", async ({ page }) => {
