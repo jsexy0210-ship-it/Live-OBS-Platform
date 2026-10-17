@@ -84,10 +84,32 @@ describe("상품 상세 미리보기(SA-013)", () => {
     const o = await (await s.get(out.id)).json();
     expect([o.product.soldOut, o.open.canOpen]).toEqual([true, true]);
     expect(o.checks.find((c: { key: string }) => c.key === "stock")).toMatchObject({ status: "warn", detail: "재고가 없습니다" });
-    const basic = await db.memberGrade.findFirstOrThrow({ where: { sellerId: s.seller.id, systemKey: "BASIC" } });
-    expect(o.earn).toEqual({ gradeName: basic.displayName, card: 0, bankTransfer: 0 });
-    await db.rewardPolicy.create({ data: { sellerId: s.seller.id, rates: { [basic.id]: { card: 1, bankTransfer: 2 } } } });
-    expect((await (await s.get(out.id)).json()).earn).toEqual({ gradeName: basic.displayName, card: 1, bankTransfer: 2 });
+    // 적립 예정은 구매자 상세와 같은 규칙: 정책이 없으면 null, 시작 전이면 null, 시작 뒤 적립률이 있으면 표시 가격 기준
+    expect(o.reward).toBeNull();
+    const first = await db.memberGrade.findFirstOrThrow({ where: { sellerId: s.seller.id }, orderBy: { sortOrder: "asc" } });
+    const future = new Date(Date.now() + 86_400_000);
+    await db.rewardPolicy.create({ data: { sellerId: s.seller.id, rates: { [first.id]: { card: 1, bankTransfer: 2 } }, earnStartsAt: future } });
+    expect((await (await s.get(out.id)).json()).reward).toBeNull();
+    await db.rewardPolicy.update({ where: { sellerId: s.seller.id }, data: { earnStartsAt: null } });
+    expect((await (await s.get(out.id)).json()).reward).toEqual({ card: { rate: 1, amount: 990 }, bankTransfer: { rate: 2, amount: 1980 } });
+  });
+
+  it("짧은 설명이 비어도 상세 글(HTML)이 있으면 설명 점검은 ok이고 상세가 함께 나온다. 숨긴 카테고리(부모가 숨겨진 것 포함)는 빼고, 방송 중 여부가 나온다", async () => {
+    const s = await shop();
+    const p = await product(s, { description: null });
+    await db.productDetail.create({ data: { sellerId: s.seller.id, productId: p.id, blocks: [], html: "<p>상세 글이에요</p>" } });
+    const parent = await db.shopCategory.create({ data: { sellerId: s.seller.id, name: "숨긴 부모", visible: false } });
+    const child = await db.shopCategory.create({ data: { sellerId: s.seller.id, name: "보이는 자식", parentId: parent.id } });
+    const hiddenOwn = await db.shopCategory.create({ data: { sellerId: s.seller.id, name: "숨긴 카테고리", visible: false } });
+    const shownCat = await db.shopCategory.create({ data: { sellerId: s.seller.id, name: "보이는 카테고리" } });
+    await db.productCategory.createMany({ data: [child, hiddenOwn, shownCat].map((c) => ({ sellerId: s.seller.id, productId: p.id, categoryId: c.id })) });
+    const body = await (await s.get(p.id)).json();
+    expect(body.product.detailHtml).toContain("상세 글이에요");
+    expect(body.product.description).toBe("");
+    expect(body.checks.find((c: { key: string }) => c.key === "description")).toMatchObject({ status: "ok" });
+    expect(body.product.categories).toEqual(["보이는 카테고리"]);
+    expect(body.checks.find((c: { key: string }) => c.key === "categories")).toMatchObject({ status: "ok", detail: "보이는 카테고리" });
+    expect(body.product.isLive).toBe(false);
   });
 
   it("다른 쇼핑몰·지운·잘못된 id는 404, 상품 관리 권한이 없는 직원은 403", async () => {
