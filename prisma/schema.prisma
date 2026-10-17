@@ -1279,6 +1279,7 @@ model Order {
   refundRequests   RefundRequest[]
   receiptRequests  OrderReceiptRequest[]
   buyerInquiries   BuyerInquiry[]
+  memo             OrderMemo?
 
   @@unique([sellerId, id])
   @@unique([sellerId, orderNo])
@@ -2066,6 +2067,22 @@ model MemberMemo {
   buyerMember BuyerMember @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
 
   @@unique([sellerId, buyerMemberId])
+}
+
+// 파트너스 주문 메모(SA-021 「메모 남기기」, ORDER_SHIPPING). 주문마다 1건을 덮어쓰고 작성자·수정 시각을 남긴다.
+// 자유 입력이라 개인정보가 섞일 수 있어 회원 탈퇴 때 그 회원의 주문 메모를 지운다(buyers/withdraw.ts).
+model OrderMemo {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId    String   @db.Uuid
+  orderId     String   @db.Uuid
+  body        String
+  updatedById String?  @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  order Order @relation(fields: [sellerId, orderId], references: [sellerId, id], onDelete: Cascade)
+
+  @@unique([sellerId, orderId])
 }
 
 // 주문 알림 발송 기록(중복 발송 방지). 주문·종류마다 1행. 보내기 전에 PENDING으로 먼저 잡고(claim), 보낸 뒤 SENT·FAILED로 바꾼다.
