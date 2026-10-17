@@ -114,7 +114,8 @@ test("기간으로 걸러 보고, 잘못된 기간은 조회하지 않으며, �
   await expect(page.getByTestId("bh-empty")).toContainText("조건에 맞는 방송이 없습니다");
   await page.getByLabel("시작일").fill("2020-02-01");
   await page.getByRole("button", { name: "검색" }).click();
-  await expect(page.getByText("시작일을 끝일보다 앞 날짜로 바꿔 주십시오")).toBeVisible();
+  // 기간 선택 부품이 잘못된 기간을 스스로 막고 안내한다(검색 요청은 나가지 않는다)
+  await expect(page.getByText("종료일은 시작일 이후로 선택하십시오.")).toBeVisible();
 
   await page.goto("/seller/broadcasts/00000000-0000-4000-8000-000000000000");
   await expect(page.getByTestId("bd-notfound")).toContainText("방송을 찾을 수 없습니다");
