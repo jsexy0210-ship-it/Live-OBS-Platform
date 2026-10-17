@@ -110,7 +110,7 @@ for (const surface of ["home", "seller", "admin"] as const) {
       if (surface === "home") {
         await expect(page.getByTestId("home-tasks")).toBeVisible();
         await expect(page.locator(".home-sec")).toHaveCount(3);
-        await expect(page.getByText("아직 진행한 방송이 없습니다", { exact: true })).toBeVisible();
+        await expect(page.getByText("아직 진행한 방송이 없어요", { exact: true })).toBeVisible();
       } else if (surface === "admin") await expect(page.getByTestId("application-kpi")).toBeVisible();
       else await expect(page.getByTestId(width >= 768 ? "product-row" : "product-card").first()).toBeVisible();
       await page.evaluate(() => document.fonts.ready);

@@ -149,13 +149,13 @@ test("대표자: 방송 시작부터 개봉·타이머·완료·되돌리기·�
 
   // 방송 전: 대기 3건, 개봉은 방송을 시작해야 할 수 있다
   await expect(page.getByRole("heading", { name: /방송 전 대기 3건/ })).toBeVisible();
-  await expect(page.getByTestId("bc-opening-empty")).toHaveText("방송을 시작하면 개봉할 수 있습니다");
+  await expect(page.getByTestId("bc-opening-empty")).toHaveText("방송을 시작하면 개봉할 수 있어요");
   await expect(waitingNames(page)).toHaveText([A, B, C]);
   await shot(page, "SA-001-before");
 
   // 순서 변경: C를 위로 → A, C, B
   await page.getByRole("button", { name: `${C} 위로` }).click();
-  await expect(toast(page)).toContainText("순서를 바꿨습니다");
+  await expect(toast(page)).toContainText("순서를 바꿨어요");
   await expect(waitingNames(page)).toHaveText([A, C, B]);
 
   // 방송 시작
@@ -185,7 +185,7 @@ test("대표자: 방송 시작부터 개봉·타이머·완료·되돌리기·�
 
   // 단축키 Ctrl+Enter: 개봉 완료 → 최근 완료에 A, 10초 안 되돌리기
   await page.keyboard.press("Control+Enter");
-  await expect(toast(page)).toContainText("개봉을 완료했습니다");
+  await expect(toast(page)).toContainText("개봉을 완료했어요");
   const done = page.getByTestId("bc-done").locator("tr", { hasText: A });
   await expect(done).toBeVisible();
   await done.getByRole("button", { name: "되돌리기" }).click();
@@ -255,7 +255,7 @@ test("결과가 불분명한 요청은 성공으로 보이지 않고 서버 상�
   await expect(page.getByRole("heading", { name: /방송 전 대기 3건/ })).toBeVisible();
   await page.route("**/api/seller/broadcast/start", (r) => r.abort("connectionreset"));
   await page.getByRole("button", { name: "방송 시작" }).click();
-  await expect(toast(page)).toContainText("처리 결과를 확인하지 못했습니다");
+  await expect(toast(page)).toContainText("처리 결과를 확인하지 못했어요");
   await expect(page.getByTestId("bc-live-badge")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: /방송 전 대기 3건/ })).toBeVisible();
 });
@@ -349,7 +349,7 @@ test("변경 뒤 다시 읽기가 실패하면 변경 조작을 모두 끄고, �
   const complete = page.getByRole("button", { name: /개봉 완료/ });
   await page.route(isQueueGet, (r) => r.abort("connectionreset"));
   await page.keyboard.press("Control+ArrowUp");
-  await expect(page.getByTestId("bc-stale")).toContainText("다시 불러오기 전까지 변경할 수 없습니다");
+  await expect(page.getByTestId("bc-stale")).toContainText("다시 불러오기 전까지 주문을 변경할 수 없어요");
   // 옛 version을 가진 화면에서는 버튼·단축키·창 확인이 모두 막힌다
   await expect(complete).toBeDisabled();
   await expect(page.getByRole("button", { name: "방송 끝내기" })).toBeDisabled();
@@ -366,7 +366,7 @@ test("변경 뒤 다시 읽기가 실패하면 변경 조작을 모두 끄고, �
   await expect(complete).toBeEnabled();
   await expect(page.getByTestId("bc-opening").locator(".num")).toHaveText(/^0:(2\d|30)$/);
   await page.keyboard.press("Control+ArrowUp");
-  await expect(toast(page)).toContainText("타이머를 1:00로 정했습니다");
+  await expect(toast(page)).toContainText("타이머를 1:00로 설정했어요");
   expect((await queueStatuses())[A].timerSeconds).toBe(60);
 });
 
@@ -417,7 +417,7 @@ test("종료 확인 창이 열린 사이 다른 화면이 방송을 바꾸면 �
   // 처음 창: 확인 창이 열려 있어도, 「방송 끝내기」를 누르면 지금 방송(B)이 그 방송이 아니라서 보내지 않고 창 안에 안내한다
   await page.bringToFront();
   await dialog.getByRole("button", { name: "방송 끝내기" }).click();
-  await expect(dialog).toContainText("다른 화면에서 방송이 바뀌었습니다", { timeout: 5000 });
+  await expect(dialog).toContainText("다른 화면에서 방송이 바뀌었어요", { timeout: 5000 });
   await dialog.getByRole("button", { name: "취소" }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByTestId("bc-title")).toHaveText("방송 B", { timeout: 5000 });
@@ -446,7 +446,7 @@ test("Ctrl+Enter를 누른 채 있어도(자동 반복) 완료는 한 번만, �
   }
   await page.keyboard.up("Enter");
   await page.keyboard.up("Control");
-  await expect(toast(page)).toContainText("개봉을 완료했습니다");
+  await expect(toast(page)).toContainText("개봉을 완료했어요");
   await expect(page.getByTestId("bc-opening")).toHaveCount(0);
   const s = await queueStatuses();
   expect(s[A].status).toBe("DONE");
