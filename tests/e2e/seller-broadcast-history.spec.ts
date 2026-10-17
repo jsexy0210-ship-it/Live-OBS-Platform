@@ -153,3 +153,15 @@ test("방송 진행 권한이 없는 직원: 메뉴가 없고 주소로 들어�
   await expect(page.getByText("필요한 권한: 방송 진행")).toBeVisible();
   await expect(page.getByRole("link", { name: "방송 기록" })).toHaveCount(0);
 });
+
+// 검수 증거: E2E_SCREENSHOTS=1일 때만 방송 기록(SA-054)을 1440·1024로 캡처한다.
+test("방송 기록 화면 캡처(SA-054, E2E_SCREENSHOTS=1일 때만)", async ({ page }) => {
+  test.skip(process.env.E2E_SCREENSHOTS !== "1", "E2E_SCREENSHOTS=1일 때만 캡처합니다");
+  for (const width of [1440, 1024]) {
+    await page.setViewportSize({ width, height: 900 });
+    await login(page, "demo-owner@example.com", "/seller/broadcasts");
+    await expect(page.getByRole("heading", { name: "방송 기록", level: 1 })).toBeVisible();
+    await expect(page.getByTestId("bh-month")).toBeVisible();
+    await page.screenshot({ path: `tests/e2e/screenshots/SA-054-${width}.png`, fullPage: true });
+  }
+});
