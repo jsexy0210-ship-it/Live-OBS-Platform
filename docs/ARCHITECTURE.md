@@ -489,6 +489,7 @@ PG 연결 정보, 구매자 문의·공지, 알림 발송 기록, 도우미 자�
 - 배송: 즉시 발송은 4.10에서 만들었다. 보관(`STORAGE`)·합배송은 출시 후 1차.
 - 무통장 입금: 4.11에서 만들었다.
 - 법정 동의 기록: 회원 가입 시 약관·처리방침 버전과 마케팅 동의 시각·철회 시각(`MemberConsent`). 주문 단위 「개봉하면 취소·환불 불가」 결제 전 동의를 기록한다(`OrderConsent`: 주문, 동의 시각, 고지 문구 버전. 대표님 결정 2026-10-02, 개봉 전 취소 규칙은 그대로). 구매자 「내 차례 N건 전」 알림도 두지 않는다(주문·결제·발송 알림만).
+- 배송 자동화(SA-082, `lib/server/sellers/shippingAutomation.ts`, 마이그레이션 `20261017120000_seller_shipping_automation`): `GET·PUT /api/seller/shipping-automation`(「쇼핑몰 설정」 권한, 쇼핑몰 통합 요금제). 기능 4개(송장 자동 발급·송장 출력·배송 자동 조회·반품 송장 연동) 켜기/끄기 — 배송 자동 조회는 `SellerOrderPolicy.autoTrackingEnabled`가 정본(주문 정책 화면과 같은 값), 나머지는 `SellerShippingAutomation`(행이 없으면 모두 꺼짐). 건당 단가는 마스터 관리자 채널 단가(송장 발급·반품 송장=`INVOICE_ISSUE`, 출력=`INVOICE_LABEL`, 조회=`DELIVERY_TRACKING`), 이번 달(KST) 사용 건수·금액은 원장 성공 차감에서 센다(반품 송장 연동은 따로 세지 않아 0). 켜고 끄는 것만으로 충전금을 쓰지 않는다. 실제 송장 발급·출력·반품 송장 실행은 외부 업체 연결 뒤 이 스위치를 본다(현재 스위치·집계만).
 - 미성년자 정책(SH-009): `ShopLegalNotice.minorPolicy`(`NOTICE`=고지 후 허용(기본) | `BLOCK`=구매 막기, 마이그레이션 `20261017100000_minor_purchase_policy`, 설정은 `PUT /api/seller/shop-legal-notice`의 `minorPolicy`, 빼면 유지), `BuyerMember.birthDate`(휴대폰 본인확인)로 만 19세 미만(KST, 생일 당일부터 성인)을 판정(`lib/server/buyers/minor.ts`). 막는 쇼핑몰에서 만 19세 미만은 장바구니 담기·주문이 403 `minor_blocked`, 생년월일이 없는 회원은 403 `identity_reverify_required`(본인확인을 다시 해야 함). 내 정보(`GET /me/profile`)에 `minorPurchase{policy,blocked,reverifyRequired}`.
 - 판매자 직원 개인정보 접속기록: 기존 `AuditLog`를 확장해 기록하고 1년 보관.
 - 보존 기간: 거래기록(주문·결제·원장)은 5년 보존, 탈퇴 회원 개인정보는 탈퇴 시 비식별(4.3)하고 거래기록과 분리해 파기 일정 적용.
