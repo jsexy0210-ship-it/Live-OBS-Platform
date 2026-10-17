@@ -82,6 +82,7 @@ test("오버레이 전용: 사업자·정산 정보를 채워 쇼핑몰 통합�
   const go = page.getByRole("button", { name: "쇼핑몰 통합으로 바꾸기" });
   await expect(go).toBeDisabled();
   await expect(page.getByText("필수 항목을 모두 채우면 버튼이 켜집니다")).toBeVisible();
+  await expect(page.getByText("이번 결제 기간에 남은 7일 차액")).toBeVisible();
   await shot(page, "SA-005-empty");
 
   await page.getByLabel("상호").fill("달빛상회");
@@ -101,11 +102,8 @@ test("오버레이 전용: 사업자·정산 정보를 채워 쇼핑몰 통합�
   await expect(page.getByRole("button", { name: "조회됨" })).toBeVisible();
   await shot(page, "SA-005-filled");
 
-  // 서버가 정보를 채우기 전에는 차액을 알려 주지 않아(미리보기 profile_incomplete) 저장 뒤 금액을 확인받고, 한 번 더 눌러야 결제된다
-  await go.click();
-  await expect(page.locator(".msg-neg")).toContainText("차액");
-  await expect(page.getByText("이번 결제 기간에 남은")).toBeVisible();
-  expect(await withDb((db, sellerId) => db.subscriptionPayment.count({ where: { sellerId, kind: "PRORATION" } }))).toBe(0);
+  // 정보를 채우기 전에도 서버 견적이 와서 차액과 산식이 보이고, 한 번 눌러 결제된다(금액은 서버 chargeNow와 같을 때만 결제)
+  await expect(page.getByText("이번 결제 기간에 남은 7일 차액")).toBeVisible();
   await go.click();
   await expect(page.getByRole("status").filter({ hasText: "쇼핑몰 통합으로 바꿨습니다" })).toBeVisible();
   await shot(page, "SA-005-done");
