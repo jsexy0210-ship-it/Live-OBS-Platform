@@ -1,0 +1,1680 @@
+{
+  "sourceSha": "d0102f89de4463ea9d3c549ba055ae83323173f5",
+  "route": "/seller/orders",
+  "role": "STORE_OWNER",
+  "state": "content",
+  "sidebar": {
+    "left": 0,
+    "right": 196,
+    "width": 196,
+    "transitions": 0
+  },
+  "brand": {
+    "href": "/seller",
+    "subLabels": 0,
+    "word": "파트너스 관리자",
+    "wordLines": 1,
+    "color": "rgb(255, 255, 255)",
+    "background": "rgb(255, 255, 255)",
+    "src": "/_next/image?url=%2F_next%2Fstatic%2Fmedia%2Fstreamshop-partners-180-20261010.27d0ea2g-d5q3.png&w=3840&q=75",
+    "loaded": true,
+    "naturalWidth": 22,
+    "legacy": 0,
+    "headerText": "파트너스 관리자\n홈\n방송\n주문\n상품\n고객\n마케팅\n통계\n설정\n11\n쇼핑몰 보기\n공지 · 문의\n도우미\n내 계정\n로그아웃",
+    "image": {
+      "left": 16,
+      "right": 38,
+      "top": 13,
+      "bottom": 35,
+      "width": 22,
+      "height": 22
+    },
+    "wordBox": {
+      "left": 44,
+      "right": 142.078125,
+      "top": 14,
+      "bottom": 34,
+      "width": 98.078125,
+      "height": 20
+    },
+    "logo": {
+      "left": 16,
+      "right": 142.078125,
+      "top": 13,
+      "bottom": 35,
+      "width": 126.078125,
+      "height": 22
+    },
+    "header": {
+      "left": 0,
+      "right": 1024,
+      "top": 0,
+      "bottom": 48,
+      "width": 1024,
+      "height": 48
+    }
+  },
+  "headerLayout": {
+    "header": {
+      "left": 0,
+      "right": 1024,
+      "width": 1024,
+      "height": 48
+    },
+    "client": 1024,
+    "scroll": 1024,
+    "logoMarginRight": "20px",
+    "nav": {
+      "left": 162.078125,
+      "right": 515.71875,
+      "width": 353.640625,
+      "height": 48
+    },
+    "menuPadding": [
+      {
+        "left": "10px",
+        "right": "10px"
+      },
+      {
+        "left": "10px",
+        "right": "10px"
+      },
+      {
+        "left": "10px",
+        "right": "10px"
+      },
+      {
+        "left": "10px",
+        "right": "10px"
+      },
+      {
+        "left": "10px",
+        "right": "10px"
+      },
+      {
+        "left": "10px",
+        "right": "10px"
+      },
+      {
+        "left": "10px",
+        "right": "10px"
+      },
+      {
+        "left": "10px",
+        "right": "10px"
+      }
+    ],
+    "util": {
+      "left": 597.65625,
+      "right": 1024,
+      "width": 426.34375,
+      "height": 48
+    },
+    "controls": [
+      {
+        "text": "홈",
+        "lines": 1,
+        "textLeft": 172.078125,
+        "textRight": 184.1875,
+        "left": 162.078125,
+        "right": 194.1875,
+        "width": 32.109375,
+        "height": 48
+      },
+      {
+        "text": "방송",
+        "lines": 1,
+        "textLeft": 204.1875,
+        "textRight": 228.390625,
+        "left": 194.1875,
+        "right": 238.390625,
+        "width": 44.203125,
+        "height": 48
+      },
+      {
+        "text": "주문",
+        "lines": 1,
+        "textLeft": 248.390625,
+        "textRight": 272.59375,
+        "left": 238.390625,
+        "right": 282.59375,
+        "width": 44.203125,
+        "height": 48
+      },
+      {
+        "text": "상품",
+        "lines": 1,
+        "textLeft": 292.59375,
+        "textRight": 316.796875,
+        "left": 282.59375,
+        "right": 326.796875,
+        "width": 44.203125,
+        "height": 48
+      },
+      {
+        "text": "고객",
+        "lines": 1,
+        "textLeft": 336.796875,
+        "textRight": 361,
+        "left": 326.796875,
+        "right": 371,
+        "width": 44.203125,
+        "height": 48
+      },
+      {
+        "text": "마케팅",
+        "lines": 1,
+        "textLeft": 381,
+        "textRight": 417.3125,
+        "left": 371,
+        "right": 427.3125,
+        "width": 56.3125,
+        "height": 48
+      },
+      {
+        "text": "통계",
+        "lines": 1,
+        "textLeft": 437.3125,
+        "textRight": 461.515625,
+        "left": 427.3125,
+        "right": 471.515625,
+        "width": 44.203125,
+        "height": 48
+      },
+      {
+        "text": "설정",
+        "lines": 1,
+        "textLeft": 481.515625,
+        "textRight": 505.71875,
+        "left": 471.515625,
+        "right": 515.71875,
+        "width": 44.203125,
+        "height": 48
+      },
+      {
+        "text": "",
+        "lines": 1,
+        "textLeft": 604.65625,
+        "textRight": 622.65625,
+        "left": 597.65625,
+        "right": 629.65625,
+        "width": 32,
+        "height": 32
+      },
+      {
+        "text": "11",
+        "lines": 3,
+        "textLeft": 640.65625,
+        "textRight": 667.65625,
+        "left": 633.65625,
+        "right": 665.65625,
+        "width": 32,
+        "height": 32
+      },
+      {
+        "text": "쇼핑몰 보기",
+        "lines": 1,
+        "textLeft": 678.65625,
+        "textRight": 742.65625,
+        "left": 669.65625,
+        "right": 751.65625,
+        "width": 82,
+        "height": 24
+      },
+      {
+        "text": "공지 · 문의",
+        "lines": 1,
+        "textLeft": 760.65625,
+        "textRight": 819.5625,
+        "left": 751.65625,
+        "right": 828.5625,
+        "width": 76.90625,
+        "height": 24
+      },
+      {
+        "text": "도우미",
+        "lines": 1,
+        "textLeft": 837.5625,
+        "textRight": 873.875,
+        "left": 828.5625,
+        "right": 882.875,
+        "width": 54.3125,
+        "height": 24
+      },
+      {
+        "text": "내 계정",
+        "lines": 1,
+        "textLeft": 891.875,
+        "textRight": 931.6875,
+        "left": 882.875,
+        "right": 940.6875,
+        "width": 57.8125,
+        "height": 24
+      },
+      {
+        "text": "로그아웃",
+        "lines": 1,
+        "textLeft": 949.6875,
+        "textRight": 1003,
+        "left": 940.6875,
+        "right": 1012,
+        "width": 71.3125,
+        "height": 24
+      }
+    ],
+    "logout": {
+      "text": "로그아웃",
+      "lines": 1,
+      "textLeft": 949.6875,
+      "textRight": 1003,
+      "left": 940.6875,
+      "right": 1012,
+      "width": 71.3125,
+      "height": 24
+    }
+  },
+  "viewport": {
+    "width": 1024,
+    "height": 900,
+    "dpr": 1,
+    "scale": 1
+  },
+  "height": 1490,
+  "drawerOpen": false,
+  "amounts": [],
+  "main": {
+    "left": 196,
+    "right": 1024,
+    "top": 152,
+    "bottom": 1489.5,
+    "width": 828,
+    "height": 1337.5
+  },
+  "overflow": false,
+  "table": {
+    "left": 220,
+    "right": 1158.984375,
+    "top": 385,
+    "bottom": 1369.5,
+    "width": 938.984375,
+    "height": 984.5,
+    "headers": [
+      {
+        "text": "",
+        "left": 220,
+        "right": 264,
+        "top": 385.5,
+        "bottom": 425.5,
+        "width": 44,
+        "height": 40
+      },
+      {
+        "text": "접수 · 경과",
+        "left": 264,
+        "right": 412.3125,
+        "top": 385.5,
+        "bottom": 425.5,
+        "width": 148.3125,
+        "height": 40
+      },
+      {
+        "text": "구매자",
+        "left": 412.3125,
+        "right": 470.03125,
+        "top": 385.5,
+        "bottom": 425.5,
+        "width": 57.71875,
+        "height": 40
+      },
+      {
+        "text": "상품",
+        "left": 470.03125,
+        "right": 730.03125,
+        "top": 385.5,
+        "bottom": 425.5,
+        "width": 260,
+        "height": 40
+      },
+      {
+        "text": "금액",
+        "left": 730.03125,
+        "right": 836.15625,
+        "top": 385.5,
+        "bottom": 425.5,
+        "width": 106.125,
+        "height": 40
+      },
+      {
+        "text": "결제",
+        "left": 836.15625,
+        "right": 882.640625,
+        "top": 385.5,
+        "bottom": 425.5,
+        "width": 46.484375,
+        "height": 40
+      },
+      {
+        "text": "주문 상태",
+        "left": 882.640625,
+        "right": 974.546875,
+        "top": 385.5,
+        "bottom": 425.5,
+        "width": 91.90625,
+        "height": 40
+      },
+      {
+        "text": "관리",
+        "left": 974.546875,
+        "right": 1158.984375,
+        "top": 385.5,
+        "bottom": 425.5,
+        "width": 184.4375,
+        "height": 40
+      }
+    ]
+  },
+  "scroll": {
+    "left": 220,
+    "right": 1000,
+    "top": 385,
+    "bottom": 1369.5,
+    "width": 780,
+    "height": 984.5,
+    "overflowX": "auto",
+    "clientWidth": 780,
+    "scrollWidth": 939,
+    "scrollLeft": 0
+  },
+  "rows": [
+    {
+      "text": "2026.10.17 03:0420261017-0027방금 접수별빛사냥꾼일반스타라이트 부스터 박스189,000원카드배송 준비송장 입력상세······",
+      "left": 220,
+      "right": 1158.984375,
+      "top": 425.5,
+      "bottom": 525.5,
+      "width": 938.984375,
+      "height": 100,
+      "cells": [
+        {
+          "text": "",
+          "whiteSpace": "normal",
+          "left": 220,
+          "right": 264,
+          "top": 425.5,
+          "bottom": 525.5,
+          "width": 44,
+          "height": 100
+        },
+        {
+          "text": "2026.10.17 03:0420261017-0027방금 접수",
+          "whiteSpace": "nowrap",
+          "left": 264,
+          "right": 412.3125,
+          "top": 425.5,
+          "bottom": 525.5,
+          "width": 148.3125,
+          "height": 100
+        },
+        {
+          "text": "별빛사냥꾼일반",
+          "whiteSpace": "normal",
+          "left": 412.3125,
+          "right": 470.03125,
+          "top": 425.5,
+          "bottom": 525.5,
+          "width": 57.71875,
+          "height": 100
+        },
+        {
+          "text": "스타라이트 부스터 박스",
+          "whiteSpace": "nowrap",
+          "left": 470.03125,
+          "right": 730.03125,
+          "top": 425.5,
+          "bottom": 525.5,
+          "width": 260,
+          "height": 100
+        },
+        {
+          "text": "189,000원",
+          "whiteSpace": "nowrap",
+          "left": 730.03125,
+          "right": 836.15625,
+          "top": 425.5,
+          "bottom": 525.5,
+          "width": 106.125,
+          "height": 100
+        },
+        {
+          "text": "카드",
+          "whiteSpace": "normal",
+          "left": 836.15625,
+          "right": 882.640625,
+          "top": 425.5,
+          "bottom": 525.5,
+          "width": 46.484375,
+          "height": 100
+        },
+        {
+          "text": "배송 준비",
+          "whiteSpace": "normal",
+          "left": 882.640625,
+          "right": 974.546875,
+          "top": 425.5,
+          "bottom": 525.5,
+          "width": 91.90625,
+          "height": 100
+        },
+        {
+          "text": "송장 입력상세······",
+          "whiteSpace": "normal",
+          "left": 974.546875,
+          "right": 1158.984375,
+          "top": 425.5,
+          "bottom": 525.5,
+          "width": 184.4375,
+          "height": 100
+        }
+      ],
+      "actions": [
+        {
+          "text": "2026.10.17 03:04",
+          "href": "/seller/orders/4f96ed28-20be-438a-82f6-cd6749918510",
+          "left": 276,
+          "right": 400.3125,
+          "top": 450.5,
+          "bottom": 466.5,
+          "width": 124.3125,
+          "height": 16
+        },
+        {
+          "text": "송장 입력",
+          "href": "/seller/shipping",
+          "left": 986.546875,
+          "right": 1058.75,
+          "top": 459.5,
+          "bottom": 491.5,
+          "width": 72.203125,
+          "height": 32
+        },
+        {
+          "text": "상세",
+          "href": "/seller/orders/4f96ed28-20be-438a-82f6-cd6749918510",
+          "left": 1062.75,
+          "right": 1109.234375,
+          "top": 459.5,
+          "bottom": 491.5,
+          "width": 46.484375,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 1113.234375,
+          "right": 1146.984375,
+          "top": 459.5,
+          "bottom": 491.5,
+          "width": 33.75,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 0,
+          "right": 0,
+          "top": 0,
+          "bottom": 0,
+          "width": 0,
+          "height": 0
+        }
+      ]
+    },
+    {
+      "text": "2026.10.16 20:0420261016-00267시간 전 접수카드왕일반스타라이트 부스터 박스12,000원카드배송 중환불 처리상세",
+      "left": 220,
+      "right": 1158.984375,
+      "top": 525.5,
+      "bottom": 605.5,
+      "width": 938.984375,
+      "height": 80,
+      "cells": [
+        {
+          "text": "",
+          "whiteSpace": "normal",
+          "left": 220,
+          "right": 264,
+          "top": 525.5,
+          "bottom": 605.5,
+          "width": 44,
+          "height": 80
+        },
+        {
+          "text": "2026.10.16 20:0420261016-00267시간 전 접수",
+          "whiteSpace": "nowrap",
+          "left": 264,
+          "right": 412.3125,
+          "top": 525.5,
+          "bottom": 605.5,
+          "width": 148.3125,
+          "height": 80
+        },
+        {
+          "text": "카드왕일반",
+          "whiteSpace": "normal",
+          "left": 412.3125,
+          "right": 470.03125,
+          "top": 525.5,
+          "bottom": 605.5,
+          "width": 57.71875,
+          "height": 80
+        },
+        {
+          "text": "스타라이트 부스터 박스",
+          "whiteSpace": "nowrap",
+          "left": 470.03125,
+          "right": 730.03125,
+          "top": 525.5,
+          "bottom": 605.5,
+          "width": 260,
+          "height": 80
+        },
+        {
+          "text": "12,000원",
+          "whiteSpace": "nowrap",
+          "left": 730.03125,
+          "right": 836.15625,
+          "top": 525.5,
+          "bottom": 605.5,
+          "width": 106.125,
+          "height": 80
+        },
+        {
+          "text": "카드",
+          "whiteSpace": "normal",
+          "left": 836.15625,
+          "right": 882.640625,
+          "top": 525.5,
+          "bottom": 605.5,
+          "width": 46.484375,
+          "height": 80
+        },
+        {
+          "text": "배송 중",
+          "whiteSpace": "normal",
+          "left": 882.640625,
+          "right": 974.546875,
+          "top": 525.5,
+          "bottom": 605.5,
+          "width": 91.90625,
+          "height": 80
+        },
+        {
+          "text": "환불 처리상세",
+          "whiteSpace": "normal",
+          "left": 974.546875,
+          "right": 1158.984375,
+          "top": 525.5,
+          "bottom": 605.5,
+          "width": 184.4375,
+          "height": 80
+        }
+      ],
+      "actions": [
+        {
+          "text": "2026.10.16 20:04",
+          "href": "/seller/orders/9890fe1e-5c87-4d62-a3c1-c94db09694b0",
+          "left": 276,
+          "right": 400.3125,
+          "top": 540.5,
+          "bottom": 556.5,
+          "width": 124.3125,
+          "height": 16
+        },
+        {
+          "text": "환불 처리",
+          "href": "/seller/orders/9890fe1e-5c87-4d62-a3c1-c94db09694b0?refund=1",
+          "left": 1024.296875,
+          "right": 1096.5,
+          "top": 549.5,
+          "bottom": 581.5,
+          "width": 72.203125,
+          "height": 32
+        },
+        {
+          "text": "상세",
+          "href": "/seller/orders/9890fe1e-5c87-4d62-a3c1-c94db09694b0",
+          "left": 1100.5,
+          "right": 1146.984375,
+          "top": 549.5,
+          "bottom": 581.5,
+          "width": 46.484375,
+          "height": 32
+        }
+      ]
+    },
+    {
+      "text": "2026.10.16 13:0420261016-0025입금 기한 9시간 남음민트컨디션일반문라이트 컬렉션 박스396,000원카드입금 전상세···",
+      "left": 220,
+      "right": 1158.984375,
+      "top": 605.5,
+      "bottom": 705.5,
+      "width": 938.984375,
+      "height": 100,
+      "cells": [
+        {
+          "text": "",
+          "whiteSpace": "normal",
+          "left": 220,
+          "right": 264,
+          "top": 605.5,
+          "bottom": 705.5,
+          "width": 44,
+          "height": 100
+        },
+        {
+          "text": "2026.10.16 13:0420261016-0025입금 기한 9시간 남음",
+          "whiteSpace": "nowrap",
+          "left": 264,
+          "right": 412.3125,
+          "top": 605.5,
+          "bottom": 705.5,
+          "width": 148.3125,
+          "height": 100
+        },
+        {
+          "text": "민트컨디션일반",
+          "whiteSpace": "normal",
+          "left": 412.3125,
+          "right": 470.03125,
+          "top": 605.5,
+          "bottom": 705.5,
+          "width": 57.71875,
+          "height": 100
+        },
+        {
+          "text": "문라이트 컬렉션 박스",
+          "whiteSpace": "nowrap",
+          "left": 470.03125,
+          "right": 730.03125,
+          "top": 605.5,
+          "bottom": 705.5,
+          "width": 260,
+          "height": 100
+        },
+        {
+          "text": "396,000원",
+          "whiteSpace": "nowrap",
+          "left": 730.03125,
+          "right": 836.15625,
+          "top": 605.5,
+          "bottom": 705.5,
+          "width": 106.125,
+          "height": 100
+        },
+        {
+          "text": "카드",
+          "whiteSpace": "normal",
+          "left": 836.15625,
+          "right": 882.640625,
+          "top": 605.5,
+          "bottom": 705.5,
+          "width": 46.484375,
+          "height": 100
+        },
+        {
+          "text": "입금 전",
+          "whiteSpace": "normal",
+          "left": 882.640625,
+          "right": 974.546875,
+          "top": 605.5,
+          "bottom": 705.5,
+          "width": 91.90625,
+          "height": 100
+        },
+        {
+          "text": "상세···",
+          "whiteSpace": "normal",
+          "left": 974.546875,
+          "right": 1158.984375,
+          "top": 605.5,
+          "bottom": 705.5,
+          "width": 184.4375,
+          "height": 100
+        }
+      ],
+      "actions": [
+        {
+          "text": "2026.10.16 13:04",
+          "href": "/seller/orders/137f3cec-d012-47d6-9a71-ee357567b28b",
+          "left": 276,
+          "right": 400.3125,
+          "top": 630.5,
+          "bottom": 646.5,
+          "width": 124.3125,
+          "height": 16
+        },
+        {
+          "text": "상세",
+          "href": "/seller/orders/137f3cec-d012-47d6-9a71-ee357567b28b",
+          "left": 1062.75,
+          "right": 1109.234375,
+          "top": 639.5,
+          "bottom": 671.5,
+          "width": 46.484375,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 1113.234375,
+          "right": 1146.984375,
+          "top": 639.5,
+          "bottom": 671.5,
+          "width": 33.75,
+          "height": 32
+        }
+      ]
+    },
+    {
+      "text": "2026.10.16 06:0420261016-002421시간 전 접수별빛사냥꾼일반탑로더 25장6,000원무통장배송 중환불 처리상세",
+      "left": 220,
+      "right": 1158.984375,
+      "top": 705.5,
+      "bottom": 805.5,
+      "width": 938.984375,
+      "height": 100,
+      "cells": [
+        {
+          "text": "",
+          "whiteSpace": "normal",
+          "left": 220,
+          "right": 264,
+          "top": 705.5,
+          "bottom": 805.5,
+          "width": 44,
+          "height": 100
+        },
+        {
+          "text": "2026.10.16 06:0420261016-002421시간 전 접수",
+          "whiteSpace": "nowrap",
+          "left": 264,
+          "right": 412.3125,
+          "top": 705.5,
+          "bottom": 805.5,
+          "width": 148.3125,
+          "height": 100
+        },
+        {
+          "text": "별빛사냥꾼일반",
+          "whiteSpace": "normal",
+          "left": 412.3125,
+          "right": 470.03125,
+          "top": 705.5,
+          "bottom": 805.5,
+          "width": 57.71875,
+          "height": 100
+        },
+        {
+          "text": "탑로더 25장",
+          "whiteSpace": "nowrap",
+          "left": 470.03125,
+          "right": 730.03125,
+          "top": 705.5,
+          "bottom": 805.5,
+          "width": 260,
+          "height": 100
+        },
+        {
+          "text": "6,000원",
+          "whiteSpace": "nowrap",
+          "left": 730.03125,
+          "right": 836.15625,
+          "top": 705.5,
+          "bottom": 805.5,
+          "width": 106.125,
+          "height": 100
+        },
+        {
+          "text": "무통장",
+          "whiteSpace": "normal",
+          "left": 836.15625,
+          "right": 882.640625,
+          "top": 705.5,
+          "bottom": 805.5,
+          "width": 46.484375,
+          "height": 100
+        },
+        {
+          "text": "배송 중",
+          "whiteSpace": "normal",
+          "left": 882.640625,
+          "right": 974.546875,
+          "top": 705.5,
+          "bottom": 805.5,
+          "width": 91.90625,
+          "height": 100
+        },
+        {
+          "text": "환불 처리상세",
+          "whiteSpace": "normal",
+          "left": 974.546875,
+          "right": 1158.984375,
+          "top": 705.5,
+          "bottom": 805.5,
+          "width": 184.4375,
+          "height": 100
+        }
+      ],
+      "actions": [
+        {
+          "text": "2026.10.16 06:04",
+          "href": "/seller/orders/a5a2e821-7b62-4f0d-892e-7bc5b90021e2",
+          "left": 276,
+          "right": 400.3125,
+          "top": 730.5,
+          "bottom": 746.5,
+          "width": 124.3125,
+          "height": 16
+        },
+        {
+          "text": "환불 처리",
+          "href": "/seller/orders/a5a2e821-7b62-4f0d-892e-7bc5b90021e2?refund=1",
+          "left": 1024.296875,
+          "right": 1096.5,
+          "top": 739.5,
+          "bottom": 771.5,
+          "width": 72.203125,
+          "height": 32
+        },
+        {
+          "text": "상세",
+          "href": "/seller/orders/a5a2e821-7b62-4f0d-892e-7bc5b90021e2",
+          "left": 1100.5,
+          "right": 1146.984375,
+          "top": 739.5,
+          "bottom": 771.5,
+          "width": 46.484375,
+          "height": 32
+        }
+      ]
+    },
+    {
+      "text": "2026.10.15 23:0420261015-00231일 전 접수카드왕일반포켓몬 카드 게임 스칼렛 바이올렛 확장팩 레이징 서프 부스터 박스 30팩 세트 한글판 정품 미개봉 초회 생산 한정 프로모 카드 1장 동봉 특별 사은품 증정 2026 한정 추가 구성108,000원환불 108,000원카드환불됨상세",
+      "left": 220,
+      "right": 1158.984375,
+      "top": 805.5,
+      "bottom": 885.5,
+      "width": 938.984375,
+      "height": 80,
+      "cells": [
+        {
+          "text": "",
+          "whiteSpace": "normal",
+          "left": 220,
+          "right": 264,
+          "top": 805.5,
+          "bottom": 885.5,
+          "width": 44,
+          "height": 80
+        },
+        {
+          "text": "2026.10.15 23:0420261015-00231일 전 접수",
+          "whiteSpace": "nowrap",
+          "left": 264,
+          "right": 412.3125,
+          "top": 805.5,
+          "bottom": 885.5,
+          "width": 148.3125,
+          "height": 80
+        },
+        {
+          "text": "카드왕일반",
+          "whiteSpace": "normal",
+          "left": 412.3125,
+          "right": 470.03125,
+          "top": 805.5,
+          "bottom": 885.5,
+          "width": 57.71875,
+          "height": 80
+        },
+        {
+          "text": "포켓몬 카드 게임 스칼렛 바이올렛 확장팩 레이징 서프 부스터 박스 30팩 세트 한글판 정품 미개봉 초회 생산 한정 프로모 카드 1장 동봉 특별 사은품 증정 2026 한정 추가 구성",
+          "whiteSpace": "nowrap",
+          "left": 470.03125,
+          "right": 730.03125,
+          "top": 805.5,
+          "bottom": 885.5,
+          "width": 260,
+          "height": 80
+        },
+        {
+          "text": "108,000원환불 108,000원",
+          "whiteSpace": "nowrap",
+          "left": 730.03125,
+          "right": 836.15625,
+          "top": 805.5,
+          "bottom": 885.5,
+          "width": 106.125,
+          "height": 80
+        },
+        {
+          "text": "카드",
+          "whiteSpace": "normal",
+          "left": 836.15625,
+          "right": 882.640625,
+          "top": 805.5,
+          "bottom": 885.5,
+          "width": 46.484375,
+          "height": 80
+        },
+        {
+          "text": "환불됨",
+          "whiteSpace": "normal",
+          "left": 882.640625,
+          "right": 974.546875,
+          "top": 805.5,
+          "bottom": 885.5,
+          "width": 91.90625,
+          "height": 80
+        },
+        {
+          "text": "상세",
+          "whiteSpace": "normal",
+          "left": 974.546875,
+          "right": 1158.984375,
+          "top": 805.5,
+          "bottom": 885.5,
+          "width": 184.4375,
+          "height": 80
+        }
+      ],
+      "actions": [
+        {
+          "text": "2026.10.15 23:04",
+          "href": "/seller/orders/6cfdb247-9829-4a50-8686-ffcf84637b95",
+          "left": 276,
+          "right": 400.3125,
+          "top": 820.5,
+          "bottom": 836.5,
+          "width": 124.3125,
+          "height": 16
+        },
+        {
+          "text": "상세",
+          "href": "/seller/orders/6cfdb247-9829-4a50-8686-ffcf84637b95",
+          "left": 1100.5,
+          "right": 1146.984375,
+          "top": 829.5,
+          "bottom": 861.5,
+          "width": 46.484375,
+          "height": 32
+        }
+      ]
+    },
+    {
+      "text": "2026.10.15 16:0420261015-00221일 전 접수민트컨디션일반보관용 카드 바인더54,000원카드배송 준비송장 입력상세······",
+      "left": 220,
+      "right": 1158.984375,
+      "top": 885.5,
+      "bottom": 985.5,
+      "width": 938.984375,
+      "height": 100,
+      "cells": [
+        {
+          "text": "",
+          "whiteSpace": "normal",
+          "left": 220,
+          "right": 264,
+          "top": 885.5,
+          "bottom": 985.5,
+          "width": 44,
+          "height": 100
+        },
+        {
+          "text": "2026.10.15 16:0420261015-00221일 전 접수",
+          "whiteSpace": "nowrap",
+          "left": 264,
+          "right": 412.3125,
+          "top": 885.5,
+          "bottom": 985.5,
+          "width": 148.3125,
+          "height": 100
+        },
+        {
+          "text": "민트컨디션일반",
+          "whiteSpace": "normal",
+          "left": 412.3125,
+          "right": 470.03125,
+          "top": 885.5,
+          "bottom": 985.5,
+          "width": 57.71875,
+          "height": 100
+        },
+        {
+          "text": "보관용 카드 바인더",
+          "whiteSpace": "nowrap",
+          "left": 470.03125,
+          "right": 730.03125,
+          "top": 885.5,
+          "bottom": 985.5,
+          "width": 260,
+          "height": 100
+        },
+        {
+          "text": "54,000원",
+          "whiteSpace": "nowrap",
+          "left": 730.03125,
+          "right": 836.15625,
+          "top": 885.5,
+          "bottom": 985.5,
+          "width": 106.125,
+          "height": 100
+        },
+        {
+          "text": "카드",
+          "whiteSpace": "normal",
+          "left": 836.15625,
+          "right": 882.640625,
+          "top": 885.5,
+          "bottom": 985.5,
+          "width": 46.484375,
+          "height": 100
+        },
+        {
+          "text": "배송 준비",
+          "whiteSpace": "normal",
+          "left": 882.640625,
+          "right": 974.546875,
+          "top": 885.5,
+          "bottom": 985.5,
+          "width": 91.90625,
+          "height": 100
+        },
+        {
+          "text": "송장 입력상세······",
+          "whiteSpace": "normal",
+          "left": 974.546875,
+          "right": 1158.984375,
+          "top": 885.5,
+          "bottom": 985.5,
+          "width": 184.4375,
+          "height": 100
+        }
+      ],
+      "actions": [
+        {
+          "text": "2026.10.15 16:04",
+          "href": "/seller/orders/e7f921a7-e1e8-426e-a577-b2a32c13f623",
+          "left": 276,
+          "right": 400.3125,
+          "top": 910.5,
+          "bottom": 926.5,
+          "width": 124.3125,
+          "height": 16
+        },
+        {
+          "text": "송장 입력",
+          "href": "/seller/shipping",
+          "left": 986.546875,
+          "right": 1058.75,
+          "top": 919.5,
+          "bottom": 951.5,
+          "width": 72.203125,
+          "height": 32
+        },
+        {
+          "text": "상세",
+          "href": "/seller/orders/e7f921a7-e1e8-426e-a577-b2a32c13f623",
+          "left": 1062.75,
+          "right": 1109.234375,
+          "top": 919.5,
+          "bottom": 951.5,
+          "width": 46.484375,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 1113.234375,
+          "right": 1146.984375,
+          "top": 919.5,
+          "bottom": 951.5,
+          "width": 33.75,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 0,
+          "right": 0,
+          "top": 0,
+          "bottom": 0,
+          "width": 0,
+          "height": 0
+        }
+      ]
+    },
+    {
+      "text": "2026.10.15 09:0420261015-00211일 전 접수별빛사냥꾼일반보관용 카드 바인더18,000원카드취소상세",
+      "left": 220,
+      "right": 1158.984375,
+      "top": 985.5,
+      "bottom": 1085.5,
+      "width": 938.984375,
+      "height": 100,
+      "cells": [
+        {
+          "text": "",
+          "whiteSpace": "normal",
+          "left": 220,
+          "right": 264,
+          "top": 985.5,
+          "bottom": 1085.5,
+          "width": 44,
+          "height": 100
+        },
+        {
+          "text": "2026.10.15 09:0420261015-00211일 전 접수",
+          "whiteSpace": "nowrap",
+          "left": 264,
+          "right": 412.3125,
+          "top": 985.5,
+          "bottom": 1085.5,
+          "width": 148.3125,
+          "height": 100
+        },
+        {
+          "text": "별빛사냥꾼일반",
+          "whiteSpace": "normal",
+          "left": 412.3125,
+          "right": 470.03125,
+          "top": 985.5,
+          "bottom": 1085.5,
+          "width": 57.71875,
+          "height": 100
+        },
+        {
+          "text": "보관용 카드 바인더",
+          "whiteSpace": "nowrap",
+          "left": 470.03125,
+          "right": 730.03125,
+          "top": 985.5,
+          "bottom": 1085.5,
+          "width": 260,
+          "height": 100
+        },
+        {
+          "text": "18,000원",
+          "whiteSpace": "nowrap",
+          "left": 730.03125,
+          "right": 836.15625,
+          "top": 985.5,
+          "bottom": 1085.5,
+          "width": 106.125,
+          "height": 100
+        },
+        {
+          "text": "카드",
+          "whiteSpace": "normal",
+          "left": 836.15625,
+          "right": 882.640625,
+          "top": 985.5,
+          "bottom": 1085.5,
+          "width": 46.484375,
+          "height": 100
+        },
+        {
+          "text": "취소",
+          "whiteSpace": "normal",
+          "left": 882.640625,
+          "right": 974.546875,
+          "top": 985.5,
+          "bottom": 1085.5,
+          "width": 91.90625,
+          "height": 100
+        },
+        {
+          "text": "상세",
+          "whiteSpace": "normal",
+          "left": 974.546875,
+          "right": 1158.984375,
+          "top": 985.5,
+          "bottom": 1085.5,
+          "width": 184.4375,
+          "height": 100
+        }
+      ],
+      "actions": [
+        {
+          "text": "2026.10.15 09:04",
+          "href": "/seller/orders/7173b130-32c5-491f-be5f-ec541798b3bf",
+          "left": 276,
+          "right": 400.3125,
+          "top": 1010.5,
+          "bottom": 1026.5,
+          "width": 124.3125,
+          "height": 16
+        },
+        {
+          "text": "상세",
+          "href": "/seller/orders/7173b130-32c5-491f-be5f-ec541798b3bf",
+          "left": 1100.5,
+          "right": 1146.984375,
+          "top": 1019.5,
+          "bottom": 1051.5,
+          "width": 46.484375,
+          "height": 32
+        }
+      ]
+    },
+    {
+      "text": "2026.10.15 02:0420261015-00202일 전 접수카드왕일반보관용 카드 바인더28,000원무통장배송 준비송장 입력상세······",
+      "left": 220,
+      "right": 1158.984375,
+      "top": 1085.5,
+      "bottom": 1169.5,
+      "width": 938.984375,
+      "height": 84,
+      "cells": [
+        {
+          "text": "",
+          "whiteSpace": "normal",
+          "left": 220,
+          "right": 264,
+          "top": 1085.5,
+          "bottom": 1169.5,
+          "width": 44,
+          "height": 84
+        },
+        {
+          "text": "2026.10.15 02:0420261015-00202일 전 접수",
+          "whiteSpace": "nowrap",
+          "left": 264,
+          "right": 412.3125,
+          "top": 1085.5,
+          "bottom": 1169.5,
+          "width": 148.3125,
+          "height": 84
+        },
+        {
+          "text": "카드왕일반",
+          "whiteSpace": "normal",
+          "left": 412.3125,
+          "right": 470.03125,
+          "top": 1085.5,
+          "bottom": 1169.5,
+          "width": 57.71875,
+          "height": 84
+        },
+        {
+          "text": "보관용 카드 바인더",
+          "whiteSpace": "nowrap",
+          "left": 470.03125,
+          "right": 730.03125,
+          "top": 1085.5,
+          "bottom": 1169.5,
+          "width": 260,
+          "height": 84
+        },
+        {
+          "text": "28,000원",
+          "whiteSpace": "nowrap",
+          "left": 730.03125,
+          "right": 836.15625,
+          "top": 1085.5,
+          "bottom": 1169.5,
+          "width": 106.125,
+          "height": 84
+        },
+        {
+          "text": "무통장",
+          "whiteSpace": "normal",
+          "left": 836.15625,
+          "right": 882.640625,
+          "top": 1085.5,
+          "bottom": 1169.5,
+          "width": 46.484375,
+          "height": 84
+        },
+        {
+          "text": "배송 준비",
+          "whiteSpace": "normal",
+          "left": 882.640625,
+          "right": 974.546875,
+          "top": 1085.5,
+          "bottom": 1169.5,
+          "width": 91.90625,
+          "height": 84
+        },
+        {
+          "text": "송장 입력상세······",
+          "whiteSpace": "normal",
+          "left": 974.546875,
+          "right": 1158.984375,
+          "top": 1085.5,
+          "bottom": 1169.5,
+          "width": 184.4375,
+          "height": 84
+        }
+      ],
+      "actions": [
+        {
+          "text": "2026.10.15 02:04",
+          "href": "/seller/orders/38d046fc-8379-43fa-8a76-a04f1de1ec0f",
+          "left": 276,
+          "right": 400.3125,
+          "top": 1102.5,
+          "bottom": 1118.5,
+          "width": 124.3125,
+          "height": 16
+        },
+        {
+          "text": "송장 입력",
+          "href": "/seller/shipping",
+          "left": 986.546875,
+          "right": 1058.75,
+          "top": 1111.5,
+          "bottom": 1143.5,
+          "width": 72.203125,
+          "height": 32
+        },
+        {
+          "text": "상세",
+          "href": "/seller/orders/38d046fc-8379-43fa-8a76-a04f1de1ec0f",
+          "left": 1062.75,
+          "right": 1109.234375,
+          "top": 1111.5,
+          "bottom": 1143.5,
+          "width": 46.484375,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 1113.234375,
+          "right": 1146.984375,
+          "top": 1111.5,
+          "bottom": 1143.5,
+          "width": 33.75,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 0,
+          "right": 0,
+          "top": 0,
+          "bottom": 0,
+          "width": 0,
+          "height": 0
+        }
+      ]
+    },
+    {
+      "text": "2026.10.14 19:0420261014-00192일 전 접수민트컨디션일반보관용 카드 바인더72,000원카드배송 준비송장 입력상세······",
+      "left": 220,
+      "right": 1158.984375,
+      "top": 1169.5,
+      "bottom": 1269.5,
+      "width": 938.984375,
+      "height": 100,
+      "cells": [
+        {
+          "text": "",
+          "whiteSpace": "normal",
+          "left": 220,
+          "right": 264,
+          "top": 1169.5,
+          "bottom": 1269.5,
+          "width": 44,
+          "height": 100
+        },
+        {
+          "text": "2026.10.14 19:0420261014-00192일 전 접수",
+          "whiteSpace": "nowrap",
+          "left": 264,
+          "right": 412.3125,
+          "top": 1169.5,
+          "bottom": 1269.5,
+          "width": 148.3125,
+          "height": 100
+        },
+        {
+          "text": "민트컨디션일반",
+          "whiteSpace": "normal",
+          "left": 412.3125,
+          "right": 470.03125,
+          "top": 1169.5,
+          "bottom": 1269.5,
+          "width": 57.71875,
+          "height": 100
+        },
+        {
+          "text": "보관용 카드 바인더",
+          "whiteSpace": "nowrap",
+          "left": 470.03125,
+          "right": 730.03125,
+          "top": 1169.5,
+          "bottom": 1269.5,
+          "width": 260,
+          "height": 100
+        },
+        {
+          "text": "72,000원",
+          "whiteSpace": "nowrap",
+          "left": 730.03125,
+          "right": 836.15625,
+          "top": 1169.5,
+          "bottom": 1269.5,
+          "width": 106.125,
+          "height": 100
+        },
+        {
+          "text": "카드",
+          "whiteSpace": "normal",
+          "left": 836.15625,
+          "right": 882.640625,
+          "top": 1169.5,
+          "bottom": 1269.5,
+          "width": 46.484375,
+          "height": 100
+        },
+        {
+          "text": "배송 준비",
+          "whiteSpace": "normal",
+          "left": 882.640625,
+          "right": 974.546875,
+          "top": 1169.5,
+          "bottom": 1269.5,
+          "width": 91.90625,
+          "height": 100
+        },
+        {
+          "text": "송장 입력상세······",
+          "whiteSpace": "normal",
+          "left": 974.546875,
+          "right": 1158.984375,
+          "top": 1169.5,
+          "bottom": 1269.5,
+          "width": 184.4375,
+          "height": 100
+        }
+      ],
+      "actions": [
+        {
+          "text": "2026.10.14 19:04",
+          "href": "/seller/orders/a9b811cc-299a-4094-a3d7-ec723edb7f01",
+          "left": 276,
+          "right": 400.3125,
+          "top": 1194.5,
+          "bottom": 1210.5,
+          "width": 124.3125,
+          "height": 16
+        },
+        {
+          "text": "송장 입력",
+          "href": "/seller/shipping",
+          "left": 986.546875,
+          "right": 1058.75,
+          "top": 1203.5,
+          "bottom": 1235.5,
+          "width": 72.203125,
+          "height": 32
+        },
+        {
+          "text": "상세",
+          "href": "/seller/orders/a9b811cc-299a-4094-a3d7-ec723edb7f01",
+          "left": 1062.75,
+          "right": 1109.234375,
+          "top": 1203.5,
+          "bottom": 1235.5,
+          "width": 46.484375,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 1113.234375,
+          "right": 1146.984375,
+          "top": 1203.5,
+          "bottom": 1235.5,
+          "width": 33.75,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 0,
+          "right": 0,
+          "top": 0,
+          "bottom": 0,
+          "width": 0,
+          "height": 0
+        }
+      ]
+    },
+    {
+      "text": "2026.10.14 12:0420261014-0018입금 기한 지남별빛사냥꾼일반스타라이트 부스터 박스189,000원카드입금 전상세···",
+      "left": 220,
+      "right": 1158.984375,
+      "top": 1269.5,
+      "bottom": 1369.5,
+      "width": 938.984375,
+      "height": 100,
+      "cells": [
+        {
+          "text": "",
+          "whiteSpace": "normal",
+          "left": 220,
+          "right": 264,
+          "top": 1269.5,
+          "bottom": 1369.5,
+          "width": 44,
+          "height": 100
+        },
+        {
+          "text": "2026.10.14 12:0420261014-0018입금 기한 지남",
+          "whiteSpace": "nowrap",
+          "left": 264,
+          "right": 412.3125,
+          "top": 1269.5,
+          "bottom": 1369.5,
+          "width": 148.3125,
+          "height": 100
+        },
+        {
+          "text": "별빛사냥꾼일반",
+          "whiteSpace": "normal",
+          "left": 412.3125,
+          "right": 470.03125,
+          "top": 1269.5,
+          "bottom": 1369.5,
+          "width": 57.71875,
+          "height": 100
+        },
+        {
+          "text": "스타라이트 부스터 박스",
+          "whiteSpace": "nowrap",
+          "left": 470.03125,
+          "right": 730.03125,
+          "top": 1269.5,
+          "bottom": 1369.5,
+          "width": 260,
+          "height": 100
+        },
+        {
+          "text": "189,000원",
+          "whiteSpace": "nowrap",
+          "left": 730.03125,
+          "right": 836.15625,
+          "top": 1269.5,
+          "bottom": 1369.5,
+          "width": 106.125,
+          "height": 100
+        },
+        {
+          "text": "카드",
+          "whiteSpace": "normal",
+          "left": 836.15625,
+          "right": 882.640625,
+          "top": 1269.5,
+          "bottom": 1369.5,
+          "width": 46.484375,
+          "height": 100
+        },
+        {
+          "text": "입금 전",
+          "whiteSpace": "normal",
+          "left": 882.640625,
+          "right": 974.546875,
+          "top": 1269.5,
+          "bottom": 1369.5,
+          "width": 91.90625,
+          "height": 100
+        },
+        {
+          "text": "상세···",
+          "whiteSpace": "normal",
+          "left": 974.546875,
+          "right": 1158.984375,
+          "top": 1269.5,
+          "bottom": 1369.5,
+          "width": 184.4375,
+          "height": 100
+        }
+      ],
+      "actions": [
+        {
+          "text": "2026.10.14 12:04",
+          "href": "/seller/orders/d70e6ad0-57ab-4c5b-bf29-d34215970881",
+          "left": 276,
+          "right": 400.3125,
+          "top": 1294.5,
+          "bottom": 1310.5,
+          "width": 124.3125,
+          "height": 16
+        },
+        {
+          "text": "상세",
+          "href": "/seller/orders/d70e6ad0-57ab-4c5b-bf29-d34215970881",
+          "left": 1062.75,
+          "right": 1109.234375,
+          "top": 1303.5,
+          "bottom": 1335.5,
+          "width": 46.484375,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 1113.234375,
+          "right": 1146.984375,
+          "top": 1303.5,
+          "bottom": 1335.5,
+          "width": 33.75,
+          "height": 32
+        }
+      ]
+    }
+  ]
+}

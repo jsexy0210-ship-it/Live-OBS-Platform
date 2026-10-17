@@ -1,0 +1,146 @@
+{
+  "sourceSha": "01fae378844352d642dec630c9cfbcf4d59dc61f",
+  "route": "/seller",
+  "role": "STAFF",
+  "state": "content",
+  "sidebar": {
+    "left": -260,
+    "right": 0,
+    "width": 260,
+    "transitions": 0
+  },
+  "brand": {
+    "href": "/seller",
+    "subLabels": 0,
+    "word": "파트너스 관리자",
+    "wordLines": 1,
+    "color": "rgb(255, 255, 255)",
+    "background": "rgb(255, 255, 255)",
+    "src": "/_next/image?url=%2F_next%2Fstatic%2Fmedia%2Fstreamshop-partners-180-20261010.27d0ea2g-d5q3.png&w=3840&q=75",
+    "loaded": true,
+    "naturalWidth": 22,
+    "legacy": 0,
+    "headerText": "파트너스 관리자\n카드숍 별빛\n11",
+    "image": {
+      "left": 48,
+      "right": 70,
+      "top": 13,
+      "bottom": 35,
+      "width": 22,
+      "height": 22
+    },
+    "wordBox": {
+      "left": 76,
+      "right": 174.078125,
+      "top": 14,
+      "bottom": 34,
+      "width": 98.078125,
+      "height": 20
+    },
+    "logo": {
+      "left": 48,
+      "right": 174.078125,
+      "top": 13,
+      "bottom": 35,
+      "width": 126.078125,
+      "height": 22
+    },
+    "header": {
+      "left": 0,
+      "right": 390,
+      "top": 0,
+      "bottom": 48,
+      "width": 390,
+      "height": 48
+    }
+  },
+  "headerLayout": {
+    "header": {
+      "left": 0,
+      "right": 390,
+      "width": 390,
+      "height": 48
+    },
+    "client": 390,
+    "scroll": 390,
+    "logoMarginRight": "20px",
+    "nav": {
+      "left": 0,
+      "right": 0,
+      "width": 0,
+      "height": 0
+    },
+    "menuPadding": [
+      {
+        "left": "14px",
+        "right": "14px"
+      },
+      {
+        "left": "14px",
+        "right": "14px"
+      },
+      {
+        "left": "14px",
+        "right": "14px"
+      },
+      {
+        "left": "14px",
+        "right": "14px"
+      },
+      {
+        "left": "14px",
+        "right": "14px"
+      }
+    ],
+    "util": {
+      "left": 231.203125,
+      "right": 390,
+      "width": 158.796875,
+      "height": 48
+    },
+    "controls": [
+      {
+        "text": "",
+        "lines": 1,
+        "textLeft": 317,
+        "textRight": 335,
+        "left": 310,
+        "right": 342,
+        "width": 32,
+        "height": 32
+      },
+      {
+        "text": "11",
+        "lines": 3,
+        "textLeft": 353,
+        "textRight": 380,
+        "left": 346,
+        "right": 378,
+        "width": 32,
+        "height": 32
+      }
+    ],
+    "logout": null
+  },
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "dpr": 1,
+    "scale": 1
+  },
+  "height": 844,
+  "drawerOpen": false,
+  "amounts": [],
+  "main": {
+    "left": 0,
+    "right": 390,
+    "top": 146,
+    "bottom": 689,
+    "width": 390,
+    "height": 543
+  },
+  "overflow": false,
+  "table": null,
+  "scroll": null,
+  "rows": []
+}

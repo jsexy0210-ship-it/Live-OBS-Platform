@@ -195,20 +195,20 @@ test("주문 목록: 기존 STORE 대표자가 두 PC 폭에서 실제 행·금�
       await page.evaluate(() => document.fonts.ready);
     } catch (error) { failure = { error }; }
     const metrics = await captureMobileHome(page, `SA-021-STORE-${width}`, "STORE_OWNER", failure);
-    expect(metrics.overflow).toBe(false); expect(metrics.table?.headers).toHaveLength(7);
+    expect(metrics.overflow).toBe(false); expect(metrics.table?.headers).toHaveLength(8);
     expect(metrics.scroll?.overflowX).toBe("auto");
     if (!data?.orders.length) throw new Error("주문 조회 응답에 대상 행이 없습니다");
     await expect(page.getByTestId("order-row")).toHaveCount(data.orders.length);
     for (const order of data.orders) {
       const row = page.getByTestId("order-row").filter({ has: page.locator(`a.ord-link[href="/seller/orders/${order.id}"]`) });
-      await expect(row.locator("td").nth(1)).toHaveText(order.buyer.broadcastNickname);
-      await expect(row.locator("td").nth(2)).toHaveText(itemSummaryText(order.itemSummary));
-      expect(await row.locator("td").nth(3).evaluate((el) => Array.from(el.childNodes).filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent).join("").trim())).toBe(won(order.totalAmount));
+      await expect(row.locator("td").nth(2).locator(".fw6")).toHaveText(order.buyer.broadcastNickname);
+      await expect(row.locator("td").nth(3)).toHaveText(itemSummaryText(order.itemSummary));
+      expect(await row.locator("td").nth(4).evaluate((el) => Array.from(el.childNodes).filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent).join("").trim())).toBe(won(order.totalAmount));
       if (order.refundedAmount > 0) await expect(row.locator(".ord-rf")).toHaveText(`환불 ${won(order.refundedAmount)}`);
       else await expect(row.locator(".ord-rf")).toHaveCount(0);
       // 정본 SA-021-OPS: 결제 칸은 수단(+부분 환불 배지), 주문 상태 칸에 상태 배지, 관리 칸은 상태별 주 버튼 + 「상세」. 발송 전 주문의 환불은 상세에서(?refund=1)
-      await expect(row.locator("td").nth(4)).toContainText(order.paymentMethod === "CARD" ? "카드" : order.paymentMethod === "BANK_TRANSFER" ? "무통장" : "—");
-      await expect(row.locator("td").nth(5).locator(".bdg")).toHaveCount(1);
+      await expect(row.locator("td").nth(5)).toContainText(order.paymentMethod === "CARD" ? "카드" : order.paymentMethod === "BANK_TRANSFER" ? "무통장" : "—");
+      await expect(row.locator("td").nth(6).locator(".bdg")).toHaveCount(1);
       await expect(row.getByRole("link", { name: "상세", exact: true })).toHaveAttribute("href", `/seller/orders/${order.id}`);
     }
     const refundable = data.orders.find((o) => o.refundable && o.shipped && !(o.refundRequest?.pendingCount));

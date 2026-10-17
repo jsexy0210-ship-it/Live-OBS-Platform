@@ -1,0 +1,19 @@
+{
+  "sourceSha": "01fae378844352d642dec630c9cfbcf4d59dc61f",
+  "role": "STORE_OWNER",
+  "route": "/seller/orders",
+  "state": "actions-focused",
+  "viewport": {
+    "width": 1024,
+    "height": 900,
+    "dpr": 1,
+    "scale": 1
+  },
+  "left": 865.296875,
+  "right": 937.5,
+  "containerLeft": 220,
+  "containerRight": 1000,
+  "scrollLeft": 159,
+  "focused": true,
+  "href": "/seller/orders/9736d4ee-eca0-4425-9e5e-f4b27380b419?refund=1"
+}

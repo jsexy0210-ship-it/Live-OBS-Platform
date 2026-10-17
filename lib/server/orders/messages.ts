@@ -66,6 +66,8 @@ export const ORDER_ERROR_MESSAGES = {
   invalid_display_settings: "진열 설정을 다시 확인해 주세요",
   // 무통장 입금·구매 제한
   purchase_restricted: "입금하지 않은 주문이 쌓여서 지금은 주문할 수 없어요. 판매자에게 문의해 주세요",
+  minor_blocked: "이 쇼핑몰은 만 19세 미만은 구매할 수 없어요",
+  identity_reverify_required: "나이를 확인할 수 없어요. 본인확인을 다시 해 주세요",
   order_rate_limited: "잠시 뒤 다시 주문해 주세요",
   invalid_order_policy: "자동 취소 기간은 1시간에서 30일, 자동 배송 완료·구매 확정은 1일에서 30일 사이로 정해 주세요",
   no_restriction: "주문 제한이 걸려 있지 않아요",
@@ -157,6 +159,8 @@ export const ORDER_ERROR_MESSAGES_FORMAL: Record<OrderErrorCode, string> = {
   invalid_query: "검색 조건을 다시 확인해 주십시오",
   invalid_display_settings: "진열 설정을 다시 확인해 주십시오. 영역은 10개, 추천 상품은 20개까지입니다",
   purchase_restricted: "입금하지 않은 주문이 쌓여 지금은 주문할 수 없습니다",
+  minor_blocked: "이 쇼핑몰은 만 19세 미만은 구매할 수 없습니다",
+  identity_reverify_required: "나이를 확인할 수 없습니다. 본인확인을 다시 해 주십시오",
   order_rate_limited: "잠시 뒤 다시 주문해 주십시오",
   invalid_order_policy: "자동 취소 기간은 1시간에서 30일, 자동 배송 완료·구매 확정은 1일에서 30일 사이로 정해 주십시오",
   no_restriction: "주문 제한이 걸려 있지 않습니다",

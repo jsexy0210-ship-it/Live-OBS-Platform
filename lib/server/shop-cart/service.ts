@@ -1,3 +1,4 @@
+import { minorPurchaseCheck } from "../buyers/minor";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { shopOpen } from "../buyers/signup";
 import { MAX_LINE_QUANTITY, MAX_ORDER_LINES } from "../orders/create";
@@ -30,6 +31,8 @@ export const CART_MESSAGES = {
   out_of_stock: "남은 수량이 모자라요. 수량을 줄이거나 장바구니를 확인해 주세요",
   quantity_limit: `한 상품은 ${MAX_LINE_QUANTITY}개까지 담을 수 있어요`,
   cart_full: `장바구니에는 ${MAX_CART_ITEMS}개 상품까지 담을 수 있어요`,
+  minor_blocked: "이 쇼핑몰은 만 19세 미만은 구매할 수 없어요",
+  identity_reverify_required: "나이를 확인할 수 없어요. 본인확인을 다시 해 주세요",
   checkout_empty: "주문할 상품을 골라 주세요",
   checkout_too_many: `한 번에 ${MAX_ORDER_LINES}개 상품까지 주문할 수 있어요`,
   checkout_unavailable: "지금은 주문할 수 없는 상품이 있어요. 장바구니를 확인해 주세요",
@@ -37,7 +40,7 @@ export const CART_MESSAGES = {
 export type CartFailure = keyof typeof CART_MESSAGES;
 export const cartErrorBody = (reason: CartFailure) => ({ error: reason, message: CART_MESSAGES[reason] });
 export const cartFailureStatus = (reason: CartFailure) =>
-  reason === "shop_unavailable" ? 402 : reason === "cart_item_not_found" ? 404 : reason === "invalid_cart_item" || reason === "checkout_empty" || reason === "checkout_too_many" ? 400 : 409;
+  reason === "shop_unavailable" ? 402 : reason === "cart_item_not_found" ? 404 : reason === "minor_blocked" || reason === "identity_reverify_required" ? 403 : reason === "invalid_cart_item" || reason === "checkout_empty" || reason === "checkout_too_many" ? 400 : 409;
 
 type Result<T> = { ok: true; value: T } | { ok: false; reason: CartFailure };
 
@@ -161,6 +164,10 @@ export async function addToCart(db: PrismaClient, s: CartScope, input: { optionI
   if (!(await shopOpen(db, s.sellerId))) return { ok: false, reason: "shop_unavailable" };
   const added = await db.$transaction(async (tx): Promise<Result<{ id: string; quantity: number; count: number }>> => {
     if (!(await lockActive(tx, s))) return { ok: false, reason: "cart_item_not_found" };
+    // 미성년자 구매 막기(SH-009): 막는 쇼핑몰이면 만 19세 미만·나이를 모르는 회원은 담지 못한다(주문 때도 다시 막는다)
+    const member = await tx.buyerMember.findUniqueOrThrow({ where: { id: s.buyerMemberId }, select: { birthDate: true } });
+    const minor = await minorPurchaseCheck(tx, s.sellerId, member, await dbClock(tx));
+    if (minor) return { ok: false, reason: minor };
     const option = await sellableOption(tx, s, optionId);
     if (!option.ok) return option;
     const existing = await tx.cartItem.findUnique({ where: { buyerMemberId_optionId: { buyerMemberId: s.buyerMemberId, optionId } }, select: { id: true, quantity: true } });
