@@ -77,7 +77,7 @@ cfm = ('<div class="cfm" style="max-width: none; width: 100%"><div class="h">결
        '<div class="f" style="flex-direction: column; gap: 8px"><button class="b pri neg" type="button" style="width: 100%">자동 연결 결제 잠시 막기</button><button class="b " type="button" style="width: 100%">10분 더 지켜보기</button></div></div>')
 body = ('<div class="note neg" style="width: 100%"><b>긴급 1</b> · 결제 검증 지연 4.8초(임계 2초) · 사람 판단 필요</div>' + cfm + tiles(sum_items)
         + '<div class="sec-t">장애 · 이상 목록<span class="nt">긴급 · 주의 · 정보</span></div><div class="m-cards">' + ''.join(cards) + '</div>')
-t = add_state(t, frame('실시간 감시', '운영 › 실시간 감시', body, '휴대폰에서는 상태 확인과 긴급 창의 「자동 연결 결제 잠시 막기」까지 합니다 · 자동 조치 기록 · 안전 규칙 · 결제 결과 확인 대기 · 자동으로 도는 작업 표는 PC에서', '<button class="b " type="button">지금 갱신</button>', 2300), 1250, 4800)
+t = add_state(t, frame('실시간 감시', '운영 › 실시간 감시', body, '휴대폰에서는 상태 확인과 긴급 창의 「자동 연결 결제 잠시 막기」까지 합니다 · 자동 조치 기록 · 안전 규칙 · 결제 결과 확인 대기 · 자동으로 도는 작업 표는 PC에서', '<button class="b " type="button">지금 갱신</button>', 2300), 1250, 5200)
 wr('MA-100.dc.html', t)
 
 # ---------- MA-120 인프라 · 비용 ----------
@@ -91,7 +91,7 @@ for r in rows(t, '<th style="width: 200px">서버</th>'):
     cards.append(card(name, spec, c[4], [kv('디스크', pct(c[1])), kv('메모리', pct(c[2])), kv('CPU', pct(c[3])), kv('마지막 보고', strip(c[5]))] + ([kv('비고', strip(c[6]))] if strip(c[6]) else [])))
 body = ('<div class="note inf" style="width: 100%">최고관리자만 볼 수 있습니다 · 휴대폰에서는 조회만</div>' + tiles(sum_items)
         + '<div class="sec-t">용량 · 서버<span class="nt">80% 경고 · 90% 위험</span></div><div class="m-cards">' + ''.join(cards) + '</div>')
-t = add_state(t, frame('인프라 · 비용', '운영 › 인프라 · 비용', body, '휴대폰에서는 상태 · 용량 · 요금 조회까지 합니다 · 정리 실행 · 만료일 저장 · 단가 입력 · 데이터베이스 · 저장소 · 외부 연결 · 요금 표는 PC에서', '<button class="b " type="button">지금 새로고침</button>', 2100), 2600, 5600)
+t = add_state(t, frame('인프라 · 비용', '운영 › 인프라 · 비용', body, '휴대폰에서는 상태 · 용량 · 요금 조회까지 합니다 · 정리 실행 · 만료일 저장 · 단가 입력 · 데이터베이스 · 저장소 · 외부 연결 · 요금 표는 PC에서', '<button class="b " type="button">지금 새로고침</button>', 2100), 2600, 6600)
 wr('MA-120.dc.html', t)
 
 # ---------- MA-013-OPS 가입 신청 ----------
