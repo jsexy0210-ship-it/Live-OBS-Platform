@@ -113,7 +113,7 @@ export default function UpgradePage() {
   // 바꿀 수 있는 입력 화면(오버레이 전용)에서만, 불러온 값과 달라졌을 때
   const editable = load.kind === "ok" && load.view.plan?.code === "OVERLAY_ONLY" && !done;
   const dirty = editable && (Object.keys(EMPTY) as (keyof Form)[]).some((k) => form[k] !== baseline.current[k]);
-  useUnsavedGuard(dirty && !busy);
+  const releaseGuard = useUnsavedGuard(dirty);
 
   const required = !!form.companyName.trim() && !!form.representativeName.trim() && !!form.businessNumber.trim() && !!form.businessAddress.trim() && !!form.bankName && !!form.accountNumber.trim() && !!form.accountHolder.trim();
   const key = `${form.businessNumber}|${form.representativeName}`;
@@ -181,6 +181,7 @@ export default function UpgradePage() {
         return setFailure(FAIL[r.error] ?? failMessage(r, "admin"));
       }
       if ("error" in r.data) return setFailure("차액 결제 결과를 확인하고 있습니다. 확인될 때까지 지금 이용권을 그대로 씁니다");
+      await releaseGuard();
       setDone(r.data.charged > 0 ? `쇼핑몰 통합으로 바꿨습니다 · 차액 ${won(r.data.charged)}을 결제했습니다` : "쇼핑몰 통합으로 바꿨습니다");
       window.dispatchEvent(new Event("focus"));
       await read();
@@ -192,10 +193,10 @@ export default function UpgradePage() {
   const changeDown = async (undo: boolean) => {
     setBusy(true);
     setFailure(null);
-    // 서버는 확인 금액을 꼭 받는다: 내리는 변경·예약 취소는 결제가 없어 0(미리보기 chargeNow)
-    const code = undo ? "INTEGRATED" : "OVERLAY_ONLY";
+    // 예약 취소는 현 이용권·가격을 유지하는 별도 의도다. 내리는 변경만 미리보기 금액을 보낸다.
+    const code = "OVERLAY_ONLY";
     const row = load.kind === "ok" ? load.preview?.plans.find((p) => p.planCode === code) : undefined;
-    const r = await api<{ ok: true }>("/api/seller/subscription/plan", { method: "POST", body: row?.change.ok ? { planCode: code, expectedAmount: row.change.chargeNow } : { planCode: code } });
+    const r = await api<{ ok: true }>("/api/seller/subscription/plan", { method: "POST", body: undo ? { action: "cancel_pending" } : row?.change.ok ? { planCode: code, expectedAmount: row.change.chargeNow } : { planCode: code } });
     setBusy(false);
     setConfirm(null);
     if (!r.ok) return setFailure(FAIL[r.error] ?? failMessage(r, "admin"));
@@ -255,7 +256,7 @@ export default function UpgradePage() {
                   <span className="t-l2 c-alt">
                     {confirm === "down"
                       ? `${nextDate} 결제부터 오버레이 전용 월 ${won(down?.price ?? 0)}으로 바뀝니다. 그날부터 ONQ 스토어 새 주문은 받지 않고, 이전 주문의 배송 · 환불은 계속 할 수 있습니다.`
-                      : `취소하면 쇼핑몰 통합 그대로 유지됩니다. 다음 결제도 ${won(cur?.price ?? 0)}입니다.`}
+                      : `취소하면 쇼핑몰 통합 그대로 유지됩니다. ${cur ? `다음 결제도 ${won(cur.price)}입니다.` : "다음 결제 금액은 변경 취소 후 구독 관리에서 확인해 주십시오."}`}
                   </span>
                 </div>
                 <div className="modal-f">

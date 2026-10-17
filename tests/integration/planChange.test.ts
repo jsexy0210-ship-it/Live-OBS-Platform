@@ -1,5 +1,5 @@
 import { PrismaClient, type Prisma } from "@prisma/client";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as previewRoute } from "../../app/api/seller/subscription/plan/preview/route";
 import { POST as planRoute } from "../../app/api/seller/subscription/plan/route";
 import { loginSeller } from "../../lib/server/auth/login";
@@ -46,7 +46,7 @@ const declining = () =>
     }
   })();
 
-type PlanKey = "OVERLAY_ONLY" | "INTEGRATED";
+type PlanKey = "OVERLAY_ONLY" | "INTEGRATED" | "STANDARD";
 // 판매자(플랜)와 구독 상태. sub가 없으면 구독 행 없음.
 async function shop(plan: PlanKey, trialEndsAt: Date | null, sub?: Record<string, unknown>, opts: { profile?: boolean } = {}) {
   const { seller } = await createSeller();
@@ -482,6 +482,53 @@ describe("하위 변경(통합 → 오버레이 전용)", () => {
     expect(await changePlan(db, new FakeBillingProvider(), s.ctx, { planCode: "INTEGRATED", now: T0 })).toMatchObject({ ok: true, applied: "canceled_pending" });
     await renewDueSubscriptions(db, new FakeBillingProvider(), { now: at(9) });
     expect(await payments(s.seller.id)).toEqual([{ amount: 179000, status: "PAID", kind: "PERIOD" }]);
+  });
+
+  it.each(["STANDARD", "INTEGRATED"] as const)("%s 예약 취소는 pending만 비우고 계약·가격·할인과 현 이용권을 유지한다(동시 요청도 결제 없음)", async (plan) => {
+    const s = await shop(plan, at(-30), { ...paying, legacyPrice: 59000, legacyPriceNoticeSentAt: at(-5), regularPrice: plan === "INTEGRATED", pendingPlanId: plans.OVERLAY_ONLY.id }, { profile: false });
+    await db.seller.update({ where: { id: s.seller.id }, data: { launchDiscountUsedAt: at(-40) } });
+    const before = await subOf(s.seller.id);
+    const sellerBefore = await db.seller.findUniqueOrThrow({ where: { id: s.seller.id } });
+    const provider = new FakeBillingProvider();
+    const charge = vi.spyOn(provider, "charge");
+    const results = await Promise.all([1, 2].map(() => changePlan(db, provider, s.ctx, { action: "cancel_pending", requireExpectedAmount: true, now: T0 })));
+    expect(results).toContainEqual({ ok: true, applied: "canceled_pending", charged: 0, planCode: plan, effectiveAt: null });
+    expect(results).toContainEqual({ ok: false, reason: "same_plan" });
+    const after = await subOf(s.seller.id);
+    expect(after).toEqual({ ...before, pendingPlanId: null, pendingPlan: null, updatedAt: after.updatedAt });
+    expect(await db.seller.findUniqueOrThrow({ where: { id: s.seller.id } })).toEqual(sellerBefore);
+    expect(charge).not.toHaveBeenCalled();
+    expect(await payments(s.seller.id)).toEqual([]);
+    expect(await changePlan(db, provider, s.ctx, { planCode: "STANDARD", now: T0 })).toEqual({ ok: false, reason: "invalid_plan" });
+    expect(await changePlan(db, provider, s.ctx, { action: "cancel_typo", planCode: "INTEGRATED", now: T0 })).toEqual({ ok: false, reason: "invalid_plan" });
+    expect(await subOf(s.seller.id)).toEqual(after);
+    expect(charge).not.toHaveBeenCalled();
+  });
+
+  it("HTTP STANDARD 예약 취소는 명시 action만 받고 가격 확인 불일치·해지 예약·권한도 보존한다", async () => {
+    const s = await shop("STANDARD", at(-30), { ...paying, legacyPrice: 59000, pendingPlanId: plans.OVERLAY_ONLY.id }, { profile: false });
+    const login = await loginSeller(db, { email: s.owner.email, password: PASSWORD }, {});
+    if (!login.ok) throw new Error(login.reason);
+    const post = (body: unknown) => planRoute(new Request("http://localhost:3000/api/seller/subscription/plan", {
+      method: "POST", headers: { "content-type": "application/json", host: "localhost:3000", origin: "http://localhost:3000", cookie: `lo_seller=${login.token}` }, body: JSON.stringify(body),
+    }));
+    const before = await subOf(s.seller.id);
+    const wrong = await post({ action: "cancel_pending", expectedAmount: 1 });
+    expect(wrong.status).toBe(409);
+    expect(await wrong.json()).toEqual({ error: "amount_changed" });
+    expect(await subOf(s.seller.id)).toEqual(before);
+    const undo = await post({ action: "cancel_pending" });
+    expect(undo.status).toBe(200);
+    expect(await undo.json()).toMatchObject({ ok: true, applied: "canceled_pending", charged: 0, planCode: "STANDARD" });
+    const after = await subOf(s.seller.id);
+    expect(after).toEqual({ ...before, pendingPlanId: null, pendingPlan: null, updatedAt: after.updatedAt });
+    expect(await payments(s.seller.id)).toEqual([]);
+    await db.sellerSubscription.update({ where: { id: after.id }, data: { pendingPlanId: plans.OVERLAY_ONLY.id, cancelAtPeriodEnd: true } });
+    const canceled = await post({ action: "cancel_pending" });
+    expect(canceled.status).toBe(409);
+    expect(await canceled.json()).toEqual({ error: "cancel_scheduled" });
+    expect((await subOf(s.seller.id)).pendingPlanId).toBe(plans.OVERLAY_ONLY.id);
+    await expect(changePlan(db, new FakeBillingProvider(), { ...s.ctx, isOwner: false, permissions: ["PRODUCT_MANAGE"] }, { action: "cancel_pending", now: T0 })).rejects.toMatchObject({ status: 403 });
   });
 
   it("해지 예약 구독은 플랜을 바꿀 수 없고(409 cancel_scheduled, 상위·하위 모두), 기간 끝에 그대로 해지(갱신 결제 0건)", async () => {
