@@ -165,6 +165,7 @@ export async function withdrawBuyer(
     });
     const hitCards = await tx.hitCard.updateMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id }, data: { nicknameSnapshot: WITHDRAWN_DISPLAY_NAME } });
     const memo = await tx.memberMemo.deleteMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id } });
+    await tx.orderMemo.deleteMany({ where: { sellerId: scope.sellerId, order: { buyerMemberId: member.id } } });
     const restrictions = await tx.buyerPurchaseRestriction.deleteMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id } });
     const rejoinBlockedUntil = await recordRejoinBlock(tx, scope.sellerId, { ciHash: member.ciHash, rejoinRestrictionDaysAgreed }, now);
     const addresses = await tx.buyerAddress.deleteMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id } });

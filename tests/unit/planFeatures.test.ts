@@ -78,6 +78,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/purchase-restrictions": "ORDER_FOLLOWUP",
   "seller/purchase-restrictions/[buyerMemberId]": "ORDER_FOLLOWUP",
   "seller/members/[memberId]/memo": "ORDER_FOLLOWUP",
+  "seller/orders/[orderId]/memo": "ORDER_FOLLOWUP",
   "seller/shipments": "ORDER_FOLLOWUP",
   "seller/shipments/deliver": "ORDER_FOLLOWUP",
   "seller/invoices": "ORDER_FOLLOWUP",
