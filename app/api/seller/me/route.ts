@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { IMPERSONATION_COOKIE, IMPERSONATION_VIEW_PERMISSIONS, resolveImpersonation } from "../../../../lib/server/auth/impersonation";
+import { IMPERSONATION_COOKIE, impersonationViewPermissions, resolveImpersonation } from "../../../../lib/server/auth/impersonation";
 import { unauthenticated } from "../../../../lib/server/authz/errors";
 import { requireSeller } from "../../../../lib/server/authz/guards";
 import { sellerFeatures } from "../../../../lib/server/billing/features";
@@ -29,7 +29,7 @@ export async function GET(req: Request) {
         userId: ctx.actorId,
         isOwner: ctx.isOwner,
         // 대리 조회는 조회가 열린 화면(주문·상품·회원·통계)의 메뉴만 보이게 하는 표시용 권한이다. 변경은 서버가 readOnly로 모두 거부한다.
-        permissions: imp ? [...IMPERSONATION_VIEW_PERMISSIONS] : ctx.permissions,
+        permissions: imp ? impersonationViewPermissions(imp.scopes) : ctx.permissions,
         readOnly: ctx.readOnly,
         impersonation: imp ? { adminName: imp.adminName, reason: imp.reason, scopes: [...imp.scopes], startedAt: imp.startedAt, expiresAt: imp.expiresAt } : null,
         access,

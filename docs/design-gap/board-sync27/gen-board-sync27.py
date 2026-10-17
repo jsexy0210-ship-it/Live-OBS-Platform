@@ -60,7 +60,8 @@ for r in rows(t, '<table class="lt">'):
                       '<button class="b sm" type="button">담당</button><button class="b sm" type="button">대신 보기</button>'))
 chips = ('<div class="chips" style="overflow-x: auto; white-space: nowrap; display: flex; gap: 6px; padding: 4px 0"><button class="chip on" type="button">미처리 <span class="n">4</span></button>'
          '<button class="chip" type="button">처리 중 <span class="n">2</span></button><button class="chip hot" type="button">긴급</button><button class="chip" type="button">주의</button><button class="chip" type="button">정보</button><button class="chip" type="button">전체 <span class="n">21</span></button></div>')
-body = chips + '<a class="fold" href="#">상세 검색 <span>미처리 · 긴급 · 주의 · 정보 · 유형 전체</span></a><div class="m-cards">' + ''.join(cards) + '</div><div class="pg2"><a href="#" class="b">‹ 이전</a><a href="#" class="b">다음 ›</a></div>'
+# 상세 검색은 PC 전용(블록 안 안내문) — 휴대폰 출력에 상세 검색 링크를 두지 않는다(Codex 리뷰 2026-10-17)
+body = chips + '<div class="m-cards">' + ''.join(cards) + '</div><div class="pg2"><a href="#" class="b">‹ 이전</a><a href="#" class="b">다음 ›</a></div>'
 t = add_state(t, frame('알림 센터', '홈 › 알림 센터', body, '휴대폰에서는 알림 확인 · 담당 · 대신 보기까지 합니다 · 모두 확인 처리 · 채널 설정 · 알림 규칙 요약은 PC에서', '', 2200), 1300, 4800)
 wr('MA-002.dc.html', t)
 
@@ -107,6 +108,10 @@ for r in rows(t, '<table class="lt">'):
                   '<a class="b sm" href="MA-014.dc.html">상세</a>' if a == '상세' else '') for a in acts)
     cards.append(card(shop, f'{who} · {strip(c[3])}', c[6], [kv('신청', when), kv('경과', ago or '—'), kv('사업자', strip(c[2])), kv('확인', strip(c[5]))], ac))
 chips_src = t[t.index('<div class="chips">'):t.index('</div>', t.index('<div class="chips">')) + 6]
+# PC 전용 「상세 검색 펼치기」 버튼(과 빈 .sp 묶음)은 휴대폰 칩 줄에서 뺀다 — 상세 검색은 PC(블록 안 안내문) (Codex 리뷰 2026-10-17)
+chips_src = rep(chips_src, '<button class="b sm" type="button">상세 검색 펼치기</button>', '')
+chips_src = re.sub(r'<span class="sp"[^>]*>\s*</span>', '', chips_src)
+assert '상세 검색' not in chips_src
 body = (tiles(sum_items) + chips_src.replace('<div class="chips">', '<div class="chips" style="overflow-x: auto; white-space: nowrap; display: flex; gap: 6px; padding: 4px 0">')
         + '<div class="m-cards">' + ''.join(cards) + '</div><div class="pg2"><a href="#" class="b">‹ 이전</a><a href="#" class="b">다음 ›</a></div>')
 t = add_state(t, frame('가입 신청', '파트너스 › 가입 신청', body, '휴대폰에서는 조회 · 건별 승인 · 상세까지 합니다 · 반려(사유 창) · 선택 일괄 승인 · 보완 요청 · 상세 검색은 PC에서', '', 2600), 2950, 6800)

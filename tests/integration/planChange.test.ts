@@ -130,6 +130,39 @@ describe("상위 변경(오버레이 전용 → 통합)", () => {
     expect(await sellerFeatures(db, s.seller.id)).toEqual(ALL);
   });
 
+  it("결제 대기 중 사업자 조회가 무효가 되면(PG엔 결제됨) 확정해도 통합으로 바꾸지 않고 환불 요청만 남긴다", async () => {
+    const s = await shop("OVERLAY_ONLY", at(-30), paying);
+    const provider = new FakeBillingProvider();
+    provider.failNext = "timeout_after_charge";
+    expect(await changePlan(db, provider, s.ctx, { planCode: "INTEGRATED", now: T0 })).toEqual({ ok: false, reason: "payment_pending" });
+    await db.sellerIntegrationProfile.update({ where: { sellerId: s.seller.id }, data: { checkedAt: null } });
+    await db.subscriptionPayment.updateMany({ where: { sellerId: s.seller.id }, data: { createdAt: new Date(Date.now() - 3_600_000), launchDiscount: true } });
+    await reconcileStalePayments(db, provider);
+    expect(await payments(s.seller.id)).toEqual([{ amount: 36666, status: "PAID", kind: "PRORATION" }]);
+    expect(await planOf(s.seller.id)).toBe("OVERLAY_ONLY");
+    expect(await sellerFeatures(db, s.seller.id)).toEqual(OVERLAY);
+    expect(await db.subscriptionRefund.findMany({ where: { sellerId: s.seller.id }, select: { amount: true, status: true, source: true, reason: true } })).toEqual([
+      { amount: 36666, status: "REQUESTED", source: "SYSTEM", reason: "upgrade_gate_failed" },
+    ]);
+    expect(await db.auditLog.count({ where: { sellerId: s.seller.id, action: "subscription.plan_upgrade_blocked", reason: "business_unchecked" } })).toBe(1);
+    // 막힌 청구는 런칭 할인을 쓴 것으로 남기지 않는다(환불 요청된 청구)
+    expect((await db.seller.findUniqueOrThrow({ where: { id: s.seller.id }, select: { launchDiscountUsedAt: true } })).launchDiscountUsedAt).toBeNull();
+  });
+
+  it("결제 전 재시도 때 게이트가 막히면 돈을 청구하지 않고 실패로 닫는다(환불 요청 없음)", async () => {
+    const s = await shop("OVERLAY_ONLY", at(-30), paying);
+    const provider = new FakeBillingProvider();
+    provider.failNext = "timeout_before_charge";
+    expect(await changePlan(db, provider, s.ctx, { planCode: "INTEGRATED", now: T0 })).toEqual({ ok: false, reason: "payment_pending" });
+    await db.sellerIntegrationProfile.update({ where: { sellerId: s.seller.id }, data: { checkedAt: null } });
+    await db.subscriptionPayment.updateMany({ where: { sellerId: s.seller.id }, data: { createdAt: new Date(Date.now() - 3_600_000) } });
+    expect(await reconcileStalePayments(db, provider)).toMatchObject({ paid: 0, recharged: 0, failed: 1 });
+    expect(provider.charges).toHaveLength(0);
+    expect(await payments(s.seller.id)).toEqual([{ amount: 36666, status: "FAILED", kind: "PRORATION" }]);
+    expect(await planOf(s.seller.id)).toBe("OVERLAY_ONLY");
+    expect(await db.subscriptionRefund.count({ where: { sellerId: s.seller.id } })).toBe(0);
+  });
+
   it("체험 중(카드 등록): 체험을 끝내고 179,000원을 바로 결제, 결제일을 그날로 새로 잡는다. 거절이면 체험·플랜 그대로", async () => {
     const card = { status: "ACTIVE", nextChargeAt: at(5) };
     const failed = await shop("OVERLAY_ONLY", at(5), card);
@@ -493,6 +526,29 @@ describe("플랜별 금액·변경 미리보기(GET /api/seller/subscription/pla
     } else expect(r).toEqual({ ok: false, reason: row.change.reason });
     return { preview, row };
   }
+
+  it("사업자·정산 정보 게이트에 걸려도 정보를 채운 뒤 낼 금액을 quote로 함께 준다(읽기 전용, 채운 뒤 실제 결제와 같다)", async () => {
+    const s = await shop("OVERLAY_ONLY", at(-30), paying, { profile: false });
+    const counts = async () => [await db.subscriptionPayment.count(), await db.auditLog.count(), await planOf(s.seller.id)];
+    const before = await counts();
+    const blocked = (await previewPlanChanges(db, s.ctx, { now: T0 })).plans.find((p) => p.planCode === "INTEGRATED")!.change;
+    expect(blocked).toEqual({ ok: false, reason: "profile_incomplete", quote: { chargeNow: 36666, remainingDays: 10, periodDays: 30 } });
+    expect(await counts()).toEqual(before);
+    // 게이트 판정·실제 변경은 그대로 막힌다
+    expect(await changePlan(db, new FakeBillingProvider(), s.ctx, { planCode: "INTEGRATED", now: T0 })).toEqual({ ok: false, reason: "profile_incomplete" });
+    // 정보를 채우면 같은 금액으로 열린다
+    await completeIntegrationProfile(s.seller.id);
+    const open = (await previewPlanChanges(db, s.ctx, { now: T0 })).plans.find((p) => p.planCode === "INTEGRATED")!.change;
+    expect(open).toEqual({ ok: true, applied: "now", chargeNow: 36666, remainingDays: 10, effectiveAt: T0 });
+  });
+
+  it("게이트가 아닌 거절과 결제 없는 변경에는 quote가 없다", async () => {
+    const same = await shop("OVERLAY_ONLY", at(-30), paying, { profile: false });
+    const plansOf = (await previewPlanChanges(db, same.ctx, { now: T0 })).plans;
+    expect(plansOf.find((p) => p.planCode === "OVERLAY_ONLY")!.change).toEqual({ ok: false, reason: "same_plan" });
+    const noPay = await shop("OVERLAY_ONLY", null, undefined, { profile: false });
+    expect((await previewPlanChanges(db, noPay.ctx, { now: T0 })).plans.find((p) => p.planCode === "INTEGRATED")!.change).toEqual({ ok: false, reason: "profile_incomplete" });
+  });
 
   it("결제한 기간 중 상위 변경: 남은 10일분 차액 36,666원, 플랜별 다음 결제 금액(지금 69,000원·통합 179,000원)", async () => {
     const s = await shop("OVERLAY_ONLY", at(-30), paying);
