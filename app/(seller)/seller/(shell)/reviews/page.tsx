@@ -98,8 +98,8 @@ export default function ReviewsPage() {
   const [u, setU] = useUrlState({ tab: "all", rating: "" });
   const tab: Tab = TABS.some((t) => t.key === u.tab) ? (u.tab as Tab) : "all";
   const rating = ["5", "4", "low"].includes(u.rating) ? u.rating : "";
-  const setTab = (t: Tab) => setU({ tab: t });
-  const setRating = (v: string) => setU({ rating: v });
+  const setTab = (t: Tab) => { setPicked([]); setU({ tab: t }); };
+  const setRating = (v: string) => { setPicked([]); setU({ rating: v }); };
   const [cursor, setCursor] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
@@ -160,11 +160,14 @@ export default function ReviewsPage() {
   const pickedRows = rows.filter((r) => picked.includes(r.id));
   const allPicked = rows.length > 0 && pickedRows.length === rows.length;
   const togglePick = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
-  // 이미 그 상태인 리뷰는 건너뛰고, 나머지를 하나씩 처리한다. 일부만 실패해도 된 것은 그대로 두고 결과를 알린다
+  // 선택한 리뷰를 하나씩 처리한다. 일부만 실패해도 된 것은 그대로 두고 결과를 알린다.
+  // 공개는 이미 공개여도 서버가 그대로 성공으로 돌려주므로(다른 직원이 그 사이 바꿨을 수 있음) 고른 건을 모두 보낸다.
+  // 숨김은 이미 숨긴 건에 다시 보내면 먼저 적은 사유가 덮이므로 화면에서 숨김인 건만 뺀다.
   const runBulk = async (kind: "publish" | "hide") => {
     if (bulkBusy) return;
-    const targets = pickedRows.filter((r) => (kind === "publish" ? r.status !== "VISIBLE" : r.status !== "HIDDEN"));
-    if (targets.length === 0) return setToast({ text: kind === "publish" ? "선택한 리뷰가 모두 이미 공개 상태입니다" : "선택한 리뷰가 모두 이미 숨김 상태입니다", neg: true });
+    if (paging.current) return setToast({ text: "목록을 불러오는 중입니다. 잠시 뒤 다시 눌러 주십시오", neg: true });
+    const targets = kind === "publish" ? pickedRows : pickedRows.filter((r) => r.status !== "HIDDEN");
+    if (targets.length === 0) return setToast({ text: "선택한 리뷰가 모두 이미 숨김 상태입니다", neg: true });
     setBulkBusy(true);
     let done = 0;
     let revoked = 0;
@@ -183,7 +186,7 @@ export default function ReviewsPage() {
     setBulkNote("");
     const failed = targets.length - done;
     const extra = revoked ? ` · 리뷰 적립금 ${won(revoked)} 회수` : granted ? ` · 리뷰 적립금 ${won(granted)} 지급` : "";
-    setToast({ text: `${done}건을 ${kind === "publish" ? "공개" : "숨김 처리"}했습니다${failed ? ` · ${failed}건은 처리하지 못했습니다` : ""}${extra}`, neg: failed > 0 });
+    setToast({ text: failed ? `${done}건을 ${kind === "publish" ? "공개" : "숨김 처리"}했고 ${failed}건은 처리하지 못했습니다${extra}` : `선택한 ${done}건을 ${kind === "publish" ? "공개" : "숨김 처리"}했습니다${extra}`, neg: failed > 0 });
     await load();
   };
   const s = data?.summary;

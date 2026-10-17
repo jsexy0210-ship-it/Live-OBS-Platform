@@ -45,15 +45,15 @@ test("선택 숨김은 사유를 고른 뒤 선택한 리뷰만 숨기고, 선�
   await dialog.getByRole("button", { name: "욕설 · 비방" }).click();
   await shot(page, "SA-048-bulk-hide");
   await dialog.getByRole("button", { name: "숨기기", exact: true }).click();
-  await expect(page.getByText("2건을 숨김 처리했습니다")).toBeVisible();
+  await expect(page.getByText("선택한 2건을 숨김 처리했습니다")).toBeVisible();
   await expect(rows.filter({ hasText: "숨김" })).toHaveCount(2);
   await expect(page.getByRole("region", { name: "선택한 리뷰 처리" })).toHaveCount(0);
 
-  // 이 쪽 모두 선택 → 선택 공개: 이미 공개인 1건은 건너뛰고 숨긴 2건만 공개한다
+  // 이 쪽 모두 선택 → 선택 공개: 이미 공개인 1건도 함께 보내 3건 모두 공개 상태로 맞춘다
   await page.getByRole("checkbox", { name: "이 쪽 리뷰 모두 선택" }).check();
   await expect(page.getByRole("region", { name: "선택한 리뷰 처리" })).toContainText("선택 3건");
   await page.getByRole("button", { name: "선택 공개" }).click();
-  await expect(page.getByText("2건을 공개했습니다")).toBeVisible();
+  await expect(page.getByText("선택한 3건을 공개했습니다")).toBeVisible();
   await expect(rows.filter({ hasText: "숨김" })).toHaveCount(0);
 });
 
