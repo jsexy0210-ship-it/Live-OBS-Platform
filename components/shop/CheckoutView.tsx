@@ -83,9 +83,10 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
         return setView(co.status === 409 && lines ? { kind: "blocked", message: co.message ?? "주문할 수 없는 상품이 있어요", names: lines.map((l) => l.productName) } : { kind: "error", message: co.message });
       }
       // SH-009: 미성년자 구매를 막는 쇼핑몰이면 주문서 대신 안내 화면, 고지 후 허용이면 주문서에 고지 한 줄
-      const minorMode = pf.ok ? minorModeOfProfile(pf.data.minorPurchase) : null;
+      if (!pf.ok) return setView({ kind: "error", message: pf.message }); // 나이 제한을 알 수 없으면 주문서를 열지 않는다
+      const minorMode = minorModeOfProfile(pf.data.minorPurchase);
       if (minorMode) return setView({ kind: "minor", mode: minorMode });
-      setMinorNotice(pf.ok && pf.data.minorPurchase?.policy === "notice");
+      setMinorNotice(pf.data.minorPurchase?.policy !== "block"); // 정책 값이 없으면 고지를 보여 준다(막는 쇼핑몰만 고지 없음)
       if (!cs.ok || cs.data.consents.length === 0) return setView({ kind: "error", message: cs.ok ? undefined : cs.message });
       const addresses = ad.ok ? ad.data.addresses : [];
       setAddrId(addresses[0]?.id ?? NEW); // 기본 배송지가 맨 앞

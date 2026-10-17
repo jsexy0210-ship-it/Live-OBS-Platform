@@ -94,3 +94,13 @@ test("담기 403 identity_reverify_required: 판매자에게 문의해 달라는
   await page.getByRole("button", { name: "장바구니에 담기" }).click();
   await expect(page.getByRole("status").filter({ hasText: "나이를 확인할 수 없어요. 판매자에게 문의해 주세요" })).toBeVisible();
 });
+
+test("나이 제한을 알 수 없으면(프로필 실패) 주문서를 열지 않는다", async ({ page, baseURL }) => {
+  await login(page, baseURL!);
+  await resetCartInDb(SLUG, LOGIN, [{ productName: "탑로더 25장", quantity: 1 }]);
+  const cart = (await (await page.request.get(`/api/shop/${SLUG}/cart`)).json()) as { items: { id: string }[] };
+  await page.route(`**/api/shop/${SLUG}/me/profile`, (route) => route.fulfill({ status: 500, json: { error: "server_error" } }));
+  await page.goto(`/shop/${SLUG}/checkout?ids=${cart.items[0].id}`);
+  await expect(page.getByText("주문서를 불러오지 못했어요.")).toBeVisible();
+  await expect(page.getByRole("button", { name: /주문하기/ })).toHaveCount(0);
+});
