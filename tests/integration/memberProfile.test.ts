@@ -50,7 +50,7 @@ describe("내 정보 조회", () => {
     const s = await shop();
     const r = await s.get();
     expect(r.status).toBe(200);
-    expect(await r.json()).toEqual({ loginId: s.buyer.loginId, name: "김별빛", phoneMasked: "010-****-5678", broadcastNickname: s.buyer.broadcastNickname, nextNicknameChangeAt: null });
+    expect(await r.json()).toEqual({ loginId: s.buyer.loginId, name: "김별빛", phoneMasked: "010-****-5678", broadcastNickname: s.buyer.broadcastNickname, nextNicknameChangeAt: null, minorPurchase: { policy: "notice", blocked: false, reverifyRequired: false } });
     expect((await s.get("")).status).toBe(401);
     await db.buyerMember.update({ where: { id: s.buyer.id }, data: { phone: "0111234567" } });
     expect((await (await s.get()).json()).phoneMasked).toBe("011-***-4567");
