@@ -84,10 +84,11 @@ export async function readShippingAutomation(db: PrismaClient, ctx: TenantContex
     enabledCount: features.filter((f) => f.enabled).length,
     monthCount: features.reduce((n, f) => n + f.monthCount, 0),
     monthAmount: features.reduce((n, f) => n + f.monthAmount, 0),
-    // 발송·이용 충전금 잔액과 충전 기능 켜짐 여부. 부족해 멈춘 기능은 shortage에(주문 처리는 계속)
+    // 발송·이용 충전금 잔액과 충전 기능 켜짐 여부. 켜 둔 기능 중 부족해 멈춘 것은 shortage에(주문 처리는 계속)
     balance: balance.total,
     chargingEnabled: settings.chargingEnabled,
-    shortage: AUTOMATION_FEATURES.filter((f) => shortages.some((s) => s.channel === CHANNEL[f])),
+    // 꺼 둔 기능은 멈춘 것이 아니므로 뺀다(열린 부족 기록이 남아 있어도)
+    shortage: AUTOMATION_FEATURES.filter((f) => on[f] && shortages.some((s) => s.channel === CHANNEL[f])),
   };
 }
 

@@ -95,12 +95,16 @@ describe("배송 자동화(SA-082)", () => {
     expect(body).toMatchObject({ monthCount: 5, monthAmount: 190, balance: 1000, chargingEnabled: true });
   });
 
-  it("충전금이 모자라 멈춘 기능은 shortage에 나온다(해결되면 사라짐)", async () => {
+  it("충전금이 모자라 멈춘 기능은 켜 둔 것만 shortage에 나온다(해결되면 사라짐)", async () => {
     const s = await shop();
     const at = new Date();
     await db.messageShortage.create({ data: { sellerId: s.seller.id, channel: "DELIVERY_TRACKING", reason: "INSUFFICIENT_BALANCE", count: 1, firstAt: at, lastAt: at } });
     await db.messageShortage.create({ data: { sellerId: s.seller.id, channel: "INVOICE_LABEL", reason: "CHARGING_DISABLED", count: 1, firstAt: at, lastAt: at, resolvedAt: at } });
-    expect((await (await s.get()).json()).shortage).toEqual(["deliveryTracking"]);
+    // 꺼 둔 기능은 열린 부족 기록이 남아 있어도 멈춘 것으로 보이지 않는다
+    expect((await (await s.get()).json()).shortage).toEqual([]);
+    const on = await (await s.put({ deliveryTracking: true })).json();
+    expect(on.shortage).toEqual(["deliveryTracking"]);
+    expect((await (await s.put({ deliveryTracking: false })).json()).shortage).toEqual([]);
   });
 
   it("쇼핑몰 설정 권한이 없는 직원은 보기·바꾸기 403, 오버레이 전용 요금제는 403 plan_feature_required(바꾸지 않음)", async () => {
