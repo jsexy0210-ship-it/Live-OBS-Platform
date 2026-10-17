@@ -22,10 +22,11 @@ export const NOTE_MAX = 200;
 export const NICKNAME_MAX = 30;
 export const HIT_PAGE_SIZE = 10;
 export const GRADE_MAX = 12;
+export const BULK_DELETE_MAX = 100;
 // 등급 추천 값(SA-001-M4 HIT 기록 창·SA-053 목록). 화면의 「직접 입력」을 받으므로 등급은 자유 입력이고, 이 목록은 추천 값일 뿐이다. 비워 둘 수 있다.
 export const HIT_GRADES = ["SAR", "SR", "UR", "SE", "SP", "AA"] as const;
 
-export type HitRejection = "invalid_card_name" | "invalid_grade" | "invalid_note" | "invalid_nickname" | "invalid_queue_item" | "invalid_filter";
+export type HitRejection = "invalid_card_name" | "invalid_grade" | "invalid_note" | "invalid_nickname" | "invalid_queue_item" | "invalid_filter" | "invalid_ids";
 
 // 파트너스 관리자 화면 문구(명사형·합니다체)
 export const HIT_MESSAGES: Record<HitRejection, string> = {
@@ -35,6 +36,7 @@ export const HIT_MESSAGES: Record<HitRejection, string> = {
   invalid_nickname: `닉네임을 ${NICKNAME_MAX}자 안에서 입력해 주십시오`,
   invalid_queue_item: "주문대기 항목을 찾을 수 없습니다. 새로고침한 뒤 다시 시도해 주십시오",
   invalid_filter: "조회 조건을 다시 확인해 주십시오",
+  invalid_ids: `지울 카드를 1~${BULK_DELETE_MAX}개 선택해 주십시오`,
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -255,4 +257,42 @@ export async function replayHitCard(db: PrismaClient, ctx: TenantContext, id: st
   if (result === null) return { ok: false as const, reason: "not_live" as const };
   await notifySellerChanged(db, ctx.sellerId, result);
   return { ok: true as const };
+}
+
+// 선택 삭제(SA-053 「선택한 카드 지우기」): 한 번에 1~100장, 복구 없는 영구 삭제, 방송 화면에 나가 있는 카드도 지울 수 있다(이미 나간 연출에는 영향 없음, 오버레이는 다음 읽기부터 빠짐).
+// 본문: { ids: string[] }. 형식이 틀리거나(배열 아님·0장·100장 초과·uuid 아님·중복) 비면 invalid_ids. 내 몰에 없는 id(다른 몰 카드 포함)는 없는 것으로 보고 missing으로만 센다.
+// 하나도 지우지 못하면 liveVersion을 올리지 않는다. 지운 카드 정보는 감사 기록 하나에 모아 남긴다.
+export async function deleteHitCards(db: PrismaClient, ctx: TenantContext, raw: unknown, meta: AuditMeta = {}) {
+  requireSellerPermission(ctx, "BROADCAST_RUN");
+  const ids = obj(raw).ids;
+  if (!Array.isArray(ids) || ids.length === 0 || ids.length > BULK_DELETE_MAX || !ids.every(isUuid) || new Set(ids.map((i) => i.toLowerCase())).size !== ids.length) {
+    return { ok: false as const, reason: "invalid_ids" as const };
+  }
+  class NothingDeleted extends Error {}
+  const result = await db
+    .$transaction(async (tx) => {
+      const version = await bump(tx, ctx.sellerId);
+      const cards = await tx.hitCard.findMany({ where: { sellerId: ctx.sellerId, id: { in: ids as string[] } }, select: { id: true, cardName: true, grade: true, broadcastSessionId: true } });
+      if (cards.length === 0) throw new NothingDeleted();
+      await tx.hitCard.deleteMany({ where: { sellerId: ctx.sellerId, id: { in: cards.map((c) => c.id) } } });
+      await writeAudit(tx, {
+        actorType: ctx.actorType,
+        actorId: ctx.actorId,
+        sellerId: ctx.sellerId,
+        action: "hit_card.bulk_delete",
+        targetType: "HitCard",
+        before: { cards: cards.map((c) => ({ id: c.id, cardName: c.cardName, grade: c.grade, broadcastSessionId: c.broadcastSessionId })) },
+        after: { requested: ids.length, deleted: cards.length },
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+      });
+      return { version, deleted: cards.length };
+    })
+    .catch((e) => {
+      if (e instanceof NothingDeleted) return null;
+      throw e;
+    });
+  if (result === null) return { ok: true as const, deleted: 0, missing: ids.length };
+  await notifySellerChanged(db, ctx.sellerId, result.version);
+  return { ok: true as const, deleted: result.deleted, missing: ids.length - result.deleted };
 }

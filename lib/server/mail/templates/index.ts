@@ -3,5 +3,5 @@
 export { renderMail, type MailBody } from "./layout";
 export { cancelledMail, deliveredMail, orderCompletedMail, shippedMail } from "./shopMails";
 export type { CancelledInput, DeliveredInput, OrderBase, OrderCompletedInput, ShippedInput, ShopMailBrand } from "./shopMails";
-export { partnerApprovedMail, partnerRejectedMail, priceChangeMail } from "./partnerMails";
+export { partnerApprovedMail, partnerRejectedMail, priceChangeMail, retentionNoticeMail } from "./partnerMails";
 export type { PartnerApprovedInput, PartnerRejectedInput, PlatformInfo, PriceChangeMailInput } from "./partnerMails";

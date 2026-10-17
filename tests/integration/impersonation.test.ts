@@ -243,7 +243,7 @@ describe("외부 쇼핑몰 연동 조회 GET /api/seller/external-shops (대리 
     await db.externalShopConnection.create({ data: { sellerId: seller.id, shopKey: "my-mall", accessTokenCipher: "secret-cipher-value", refreshTokenCipher: "secret-refresh-value" } });
     await db.externalShopConnection.create({ data: { sellerId: other.seller.id, shopKey: "other-mall" } });
     const su = await admin("SUPER_ADMIN");
-    const { imp } = await start(su.cookie, seller.id);
+    const { imp } = await start(su.cookie, seller.id, { reason: "고객 문의 확인", category: "AUDIT", scopes: ["BROADCAST"] });
     const cookie = `lo_imp=${imp}`;
     const through = await proxy(new NextRequest(BASE + "/api/seller/external-shops", { headers: { cookie } }));
     expect(through.headers.get("x-middleware-next")).toBe("1");
