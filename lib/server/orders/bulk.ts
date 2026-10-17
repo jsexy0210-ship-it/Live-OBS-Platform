@@ -29,7 +29,7 @@ export async function countSellerOrders(db: PrismaClient, ctx: TenantContext) {
   const today = kstTodayRange(now);
   const base = { sellerId: ctx.sellerId, legalHoldAt: null } as const;
   const paid = { ...base, status: "PAID" as const };
-  const [total, todayCount, sales, unpaid, trackingMissing, queueWaiting, queueOpening, queueDone, refundRequested, cancelled, refunded] = await Promise.all([
+  const [total, todayCount, sales, unpaid, trackingMissing, queueWaiting, queueOpening, queueDone, queueDonePending, refundRequested, cancelled, refunded] = await Promise.all([
     db.order.count({ where: base }),
     db.order.count({ where: { ...base, createdAt: { gte: today.from, lt: today.to } } }),
     db.order.aggregate({ where: { ...base, paidAt: { gte: today.from, lt: today.to } }, _sum: { totalAmount: true, refundAmount: true } }),
@@ -38,6 +38,7 @@ export async function countSellerOrders(db: PrismaClient, ctx: TenantContext) {
     db.order.count({ where: { AND: [paid, queueStateWhere("waiting")] } }),
     db.order.count({ where: { AND: [paid, queueStateWhere("opening")] } }),
     db.order.count({ where: { AND: [paid, queueStateWhere("done")] } }),
+    db.order.count({ where: { AND: [paid, queueStateWhere("done"), { shippingPreparedAt: null }] } }),
     db.order.count({ where: { AND: [base, refundRequestedWhere] } }),
     db.order.count({ where: { ...base, status: "CANCELLED" } }),
     db.order.count({ where: { ...base, status: "REFUNDED" } }),
@@ -51,6 +52,7 @@ export async function countSellerOrders(db: PrismaClient, ctx: TenantContext) {
     queueWaiting,
     queueOpening,
     queueDone,
+    queueDonePending,
     refundRequested,
     cancelled,
     refunded,
