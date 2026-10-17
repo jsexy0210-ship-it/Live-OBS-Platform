@@ -87,6 +87,16 @@ export async function integrationGate(db: Db, sellerId: string, now: Date): Prom
   return c === "ok" ? null : c === "unchecked" ? "business_unchecked" : "business_not_active";
 }
 
+// 상위 변경 결제를 확정(정산)하는 시점의 게이트: 요청 뒤 확정 전에 사업자 정보가 바뀌거나 조회가 만료됐으면 막는다.
+// 오버레이 전용 → 통합 변경일 때만 본다. null이면 통과(다른 변경이거나 게이트 통과).
+export async function integrationGateForUpgrade(db: Db, sellerId: string, currentPlanId: string | null, targetPlanId: string | null, now: Date) {
+  if (!currentPlanId || !targetPlanId || currentPlanId === targetPlanId) return null;
+  const plans = await db.subscriptionPlan.findMany({ where: { id: { in: [currentPlanId, targetPlanId] } }, select: { id: true, code: true } });
+  const code = (id: string) => plans.find((p) => p.id === id)?.code;
+  if (code(currentPlanId) !== "OVERLAY_ONLY" || code(targetPlanId) !== "INTEGRATED") return null;
+  return integrationGate(db, sellerId, now);
+}
+
 export async function readIntegrationProfile(db: PrismaClient, ctx: TenantContext, now = new Date()) {
   requireSellerPermission(ctx, "SUBSCRIPTION_MANAGE");
   const [row, seller] = await Promise.all([
