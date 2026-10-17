@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CursorPagination, PageHead } from "../../../../../components/admin-ui";
+import { CursorPagination, Modal, PageHead } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -39,7 +39,7 @@ const writeState = (q: string) => {
 };
 
 export default function MemberListPage() {
-  const { can } = useSeller();
+  const { can, me } = useSeller();
   const piiSearch = can("CUSTOMER_PII_VIEW");
   const [u, setU] = useUrlState({ q: "", status: "" });
   const status: MemberStatus | null = u.status === "ACTIVE" || u.status === "DORMANT" ? u.status : null;
@@ -79,6 +79,8 @@ export default function MemberListPage() {
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
   const paging = useRef(false);
   const [toast, setToast] = useState<string | null>(null);
+  // 엑셀 내려받기(대표자만, 정본 「엑셀 내려받기 · 사유」): 사유(1~100자)를 고른 뒤 이름·연락처가 담긴 CSV를 내려받는다. 사유와 받은 사실은 로그 추적에 남는다
+  const [exporting, setExporting] = useState<{ reason: string; custom: string; busy: boolean; error: string } | null>(null);
 
   // 조건을 빨리 바꾸면 이전 응답이 늦게 올 수 있다. 마지막으로 보낸 조건의 응답만 반영한다
   const reqId = useRef(0);
@@ -112,6 +114,32 @@ export default function MemberListPage() {
     });
   };
 
+  const exportReason = exporting ? (exporting.reason === "직접 입력" ? exporting.custom.trim() : exporting.reason) : "";
+  const downloadMembers = async () => {
+    if (!exporting || exporting.busy || !exportReason) return;
+    setExporting({ ...exporting, busy: true, error: "" });
+    let res: Response | null = null;
+    try {
+      res = await fetch("/api/seller/bulk-io/members/export", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reason: exportReason, includePii: true }), cache: "no-store" });
+    } catch {
+      res = null;
+    }
+    if (!res || !res.ok) {
+      const body = res ? ((await res.json().catch(() => ({}))) as { message?: string }) : {};
+      return setExporting((x) => (x ? { ...x, busy: false, error: body.message ?? "내려받지 못했습니다. 잠시 뒤 다시 시도해 주십시오" } : x));
+    }
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "members.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // 내려받기가 시작된 뒤에 주소를 거둔다(바로 거두면 파일 이름이 사라진다)
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    setExporting(null);
+  };
+
   // 이름·휴대폰 끝자리 검색은 개인정보 열람 권한이 있을 때만 서버가 찾는다
   const searchHint = can("CUSTOMER_PII_VIEW") ? "닉네임 · 이름 · 휴대폰 끝자리" : "방송 닉네임";
   const items = state.kind === "ok" ? state.items : [];
@@ -143,6 +171,11 @@ export default function MemberListPage() {
                 {status === s && <span className="x">×</span>}
               </button>
             ))}
+            {me.isOwner && (
+              <button className="btn btn-sm btn-out" type="button" style={{ marginLeft: "auto" }} onClick={() => setExporting({ reason: "", custom: "", busy: false, error: "" })}>
+                엑셀 내려받기 (대표자)
+              </button>
+            )}
           </div>
 
           {state.kind === "loading" && <LoadingRows rows={5} />}
@@ -214,6 +247,46 @@ export default function MemberListPage() {
             ))}
         </div>
       </main>
+      {exporting && (
+        <Modal labelId="member-export-title" busy={exporting.busy} dirty={exporting.reason !== "" || exporting.custom !== ""} onClose={() => setExporting(null)}>
+          {(requestClose) => (
+            <>
+              <div className="modal-h">
+                <h2 className="modal-t" id="member-export-title">
+                  엑셀 내려받기
+                </h2>
+              </div>
+              <div className="col" style={{ gap: 12 }}>
+                <select className="inp" aria-label="내보내는 사유" value={exporting.reason} onChange={(e) => setExporting({ ...exporting, reason: e.target.value })}>
+                  <option value="">내보내는 사유 선택</option>
+                  <option value="적립금 소멸 안내">적립금 소멸 안내</option>
+                  <option value="세무 · 회계 자료">세무 · 회계 자료</option>
+                  <option value="직접 입력">직접 입력</option>
+                </select>
+                {exporting.reason === "직접 입력" && (
+                  <input className="inp" aria-label="사유 직접 입력" placeholder="사유 입력" maxLength={100} value={exporting.custom} onChange={(e) => setExporting({ ...exporting, custom: e.target.value })} />
+                )}
+                <div className="msg msg-cau" role="note">
+                  <span>개인정보가 담긴 파일입니다 · 사용 뒤 삭제 · 내려받은 사실과 사유는 로그 추적에 남습니다</span>
+                </div>
+                {exporting.error && (
+                  <div className="msg msg-neg" role="alert">
+                    <span>{exporting.error}</span>
+                  </div>
+                )}
+              </div>
+              <div className="modal-f">
+                <button className="btn btn-out" type="button" onClick={requestClose}>
+                  취소
+                </button>
+                <button className="btn" type="button" disabled={!exportReason || exporting.busy} onClick={() => void downloadMembers()}>
+                  {exporting.busy ? "내려받는 중" : "내려받기"}
+                </button>
+              </div>
+            </>
+          )}
+        </Modal>
+      )}
       {toast && <Toast text={toast} onDone={() => setToast(null)} neg />}
     </>
   );
