@@ -654,7 +654,7 @@ function CouponEditor({ draft: initial, products, current, onClose, onSaved, onS
                   쿠폰 코드
                 </label>
                 <div className="row" style={{ gap: 8 }}>
-                  <input id="cp-code" className="inp" style={{ textTransform: "uppercase" }} value={d.code} maxLength={16} disabled={locked} placeholder="영문 · 숫자 4~12자" onChange={(e) => set({ code: e.target.value.replace(/[^A-Za-z0-9]/g, "") })} />
+                  <input id="cp-code" className="inp" style={{ textTransform: "uppercase" }} value={d.code} maxLength={16} disabled={locked} placeholder="영문 · 숫자 4~16자" onChange={(e) => set({ code: e.target.value.replace(/[^A-Za-z0-9]/g, "") })} />
                   <button className="btn btn-out" type="button" disabled={locked} onClick={() => set({ code: randomCode() })}>
                     자동 생성
                   </button>
