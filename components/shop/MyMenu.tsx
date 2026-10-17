@@ -8,7 +8,7 @@ import "./MyMenu.css";
 
 // 내 정보 왼쪽 메뉴(SH-020-IA·SH-027-IA). 지금 있는 화면만 넣고, 적립금·배송지 같은 화면이 생기면 해당 그룹에 더한다.
 // PC는 왼쪽에 4그룹(쇼핑·혜택·활동·내 정보)을 계속 보인다. 휴대폰은 메뉴를 펼치지 않고 하위 화면 위에 「‹ 제목 · 그룹」 한 줄만 둔다(메뉴는 「내 정보」 탭에서 고른다).
-export default function MyMenu({ slug, who }: { slug: string; who?: string }) {
+export default function MyMenu({ slug, who, current }: { slug: string; who?: string; current?: string }) {
   const base = `/shop/${encodeURIComponent(slug)}`;
   const path = usePathname() ?? "";
   const loggedIn = useShopLoggedIn();
@@ -51,7 +51,7 @@ export default function MyMenu({ slug, who }: { slug: string; who?: string }) {
           <Link href={`${base}/me`} aria-label="내 정보로 돌아가기">
             ‹
           </Link>
-          <b>{"short" in now ? now.short : now.label}</b>
+          <b>{current ?? ("short" in now ? now.short : now.label)}</b>
           <span>{now.group}</span>
         </div>
       )}

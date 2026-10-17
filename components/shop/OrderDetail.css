@@ -1,0 +1,59 @@
+/* SH-022 주문 상세(OrderView.tsx, 보드 SH-022-IA): 머리글 한 줄 · 진행 4칸 · 결제 정보/배송 정보 두 칸 */
+.od-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+.od-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  border: 1px solid var(--wds-line-solid-normal);
+}
+.od-steps li {
+  align-items: center;
+  padding: 12px;
+  text-align: center;
+  border-right: 1px solid var(--wds-line-solid-neutral);
+}
+.od-steps li:last-child {
+  border-right: 0;
+}
+.od-steps li.is-now {
+  background: var(--wds-label-strong, #171717);
+}
+.od-steps li.is-now b,
+.od-steps li.is-now span {
+  color: #fff;
+}
+.od-steps li span {
+  font-size: 12px;
+}
+.od-two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.od-two > .co-box {
+  min-width: 0;
+}
+@media (max-width: 767px) {
+  .od-two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .od-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .od-steps li {
+    padding: 12px;
+  }
+  .od-steps li:nth-child(2n) {
+    border-right: 0;
+  }
+  .od-steps li:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--wds-line-solid-neutral);
+  }
+}

@@ -548,10 +548,12 @@ test("파트너스 문의: 실제 요약·긴급 조건을 조회하고 합성 �
   async function summaryValues(summary: Summary) {
     const cards = page.getByTestId("inquiry-summary").locator(":scope > .card");
     await expect(cards).toHaveCount(6);
-    await expect(cards.locator(":scope > span:first-child")).toHaveText(["답변 대기", "내 담당", "오늘 접수", "답변 완료 (오늘)", "평균 첫 답변", "만족도 (7일)"]);
-    await expect(cards.locator(":scope > .t-h2")).toHaveText([`${summary.waiting}건`, `${summary.mine}건`, `${summary.todayReceived}건`, `${summary.answeredToday}건`, summary.avgFirstReplyHours === null ? "—" : `${summary.avgFirstReplyHours.toFixed(1)}시간`, "집계 준비 중"]);
+    await expect(cards.locator(":scope > span:first-child")).toHaveText(["답변 대기", "내 담당", "오늘 접수", "답변 완료 (오늘)", "평균 첫 답변", "도움됨 (7일)"]);
+    await expect(cards.locator(":scope > .t-h2")).toHaveText([`${summary.waiting}건`, `${summary.mine}건`, `${summary.todayReceived}건`, `${summary.answeredToday}건`, summary.avgFirstReplyHours === null ? "—" : `${summary.avgFirstReplyHours.toFixed(1)}시간`, summary.helpful7d.rate === null ? "—" : `${summary.helpful7d.rate}%`]);
     await expect(cards.first()).toContainText(`긴급 ${summary.urgent} · 4시간 초과 ${summary.overdue}`);
-    await expect(cards.last()).not.toContainText(/%|4\.6|평가/);
+    // 별점 만족도는 없다: 「도움이 됐습니까?」 예 비율만 보이고(답한 문의가 없으면 「—」), 별점·「평가」 문구는 만들지 않는다
+    await expect(cards.last()).toContainText("「도움이 됐습니까?」 예 비율");
+    await expect(cards.last()).not.toContainText(/4\.6|평가|준비 중/);
     await expect(page.getByLabel("긴급 우선", { exact: true })).toBeVisible();
     await expect(page.getByLabel("긴급만", { exact: true })).toBeVisible();
   }
