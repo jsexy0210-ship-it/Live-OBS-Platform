@@ -58,7 +58,7 @@ export const ADMIN_MENU: AdminGroup[] = [
     items: [
       // 설정(MA-080대)은 최고관리자만(MASTER 결정 2026-10-04). 서버 조회 API는 platform.read지만 메뉴·주소는 막는다
       { label: "플랫폼 기본 정책", href: "/admin/settings/policy", perm: "system.manage", ready: true, sub: "시스템" },
-      { label: "알림 채널", href: "/admin/settings/notifications", perm: "system.manage", sub: "시스템" },
+      { label: "알림 채널", href: "/admin/settings/notifications", perm: "system.manage", ready: true, sub: "시스템" },
       { label: "점검 모드", href: "/admin/settings/maintenance", perm: "system.manage", ready: true, sub: "시스템" },
       { label: "도우미 설정", href: "/admin/settings/assistant", perm: "system.manage", ready: true, sub: "시스템" },
       { label: "파비콘 · 공유 카드", href: "/admin/settings/branding", perm: "system.manage", ready: true, sub: "시스템" },

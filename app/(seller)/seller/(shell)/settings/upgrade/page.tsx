@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { FormFoot, PageHead } from "../../../../../../components/admin-ui";
-import { Topbar } from "../../../../../../components/seller/SellerShell";
+import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { won } from "../../../../../../components/seller/format";
@@ -10,10 +11,10 @@ import { formatDate } from "../../../../../../lib/client/format";
 import { useUnsavedGuard } from "../../../../../../lib/client/navigation";
 import "../../../../../../styles/seller-settings2.css";
 
-// SA-005 쇼핑몰 통합으로 바꾸기(대표자 전용). 오버레이 전용 → 쇼핑몰 통합(사업자·정산 정보 입력 뒤 차액만 결제),
+// SA-005 쇼핑몰 통합으로 바꾸기(대표자 전용). 오버레이 전용 → 쇼핑몰 통합(사업자·정산 정보 입력 뒤 서버 견적 확인),
 // 쇼핑몰 통합 → 오버레이 전용(다음 결제일부터, 신청·취소).
 // API: GET·PUT /api/seller/integration-profile, POST …/business-check, GET /api/seller/subscription, GET …/plan/preview, POST …/plan, GET /api/plans.
-// 차액은 서버 미리보기(chargeNow)와 POST의 expectedAmount로 맞춘다. 금액을 화면에서 계산하지 않는다.
+// 결제 금액은 서버 미리보기(chargeNow)와 POST의 expectedAmount로 맞춘다. 금액을 화면에서 계산하지 않는다.
 
 type View = {
   plan: { code: string; name: string } | null;
@@ -50,13 +51,13 @@ const FAIL: Record<string, string> = {
   business_not_active: "영업 중인 사업자만 쇼핑몰 통합으로 바꿀 수 있습니다",
   card_required: "결제 카드를 먼저 등록해 주십시오",
   payment_in_progress: "결제를 처리하고 있습니다. 잠시 후 다시 확인해 주십시오",
-  payment_failed: "차액 결제가 거절되어 이용권을 바꾸지 않았습니다. 결제 카드를 확인해 주십시오",
+  payment_failed: "결제가 거절되어 이용권을 바꾸지 않았습니다. 결제 카드를 확인해 주십시오",
   not_activated: "결제는 되었지만 이용권에 반영되지 않았습니다. 문의하기로 알려 주십시오",
   cancel_scheduled: "해지 예정인 구독은 이용권을 바꿀 수 없습니다. 결제 카드를 다시 등록해 해지를 취소한 뒤 바꿔 주십시오",
   same_plan: "이미 이용 중인 이용권입니다",
 };
 const EMPTY: Form = { companyName: "", representativeName: "", businessNumber: "", mailOrderNumber: "", businessAddress: "", bankName: "", accountNumber: "", accountHolder: "", openedOn: "" };
-// 지금 바꿀 때 낼 차액: 변경이 되는 경우 chargeNow, 게이트에 걸린 경우 서버 견적(quote). 둘 다 없으면 null
+// 지금 바꿀 때 낼 금액: 변경이 되는 경우 chargeNow, 게이트에 걸린 경우 서버 견적(quote). 둘 다 없으면 null
 const quoteOf = (row: PlanRow | undefined): { chargeNow: number; remainingDays: number | null; periodDays: number | null } | null => {
   const c = row?.change;
   if (!c) return null;
@@ -66,6 +67,9 @@ const quoteOf = (row: PlanRow | undefined): { chargeNow: number; remainingDays: 
 const day = (iso: string | null | undefined) => (iso ? formatDate(iso, ".") : "");
 
 export default function UpgradePage() {
+  const { me } = useSeller();
+  const shopSlug = typeof me.shop.slug === "string" ? me.shop.slug.trim() : "";
+  const shopHref = shopSlug ? `/shop/${encodeURIComponent(shopSlug)}` : null;
   const [load, setLoad] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; view: View; preview: Preview | null; profile: Profile | null; listPrice: number | null }>({ kind: "loading" });
   const [form, setForm] = useState<Form>(EMPTY);
   const [check, setCheck] = useState<Check>("idle");
@@ -155,19 +159,19 @@ export default function UpgradePage() {
         body: { companyName: form.companyName, representativeName: form.representativeName, businessNumber: form.businessNumber, mailOrderNumber: form.mailOrderNumber || undefined, businessAddress: form.businessAddress, bankName: form.bankName, accountNumber: form.accountNumber, accountHolder: form.accountHolder },
       });
       if (!saved.ok) return setFailure(FAIL[saved.error] ?? failMessage(saved, "admin"));
-      // 저장하면 게이트가 풀려 서버가 차액을 알려 준다: 미리보기를 다시 읽는다. 화면에 보인 금액과 다르면(처음에 금액이 없던 경우 포함) 확인받고 결제하지 않는다
+      // 저장하면 게이트가 풀려 서버가 결제 금액을 알려 준다: 미리보기를 다시 읽는다. 화면에 보인 금액과 다르면(처음에 금액이 없던 경우 포함) 확인받고 결제하지 않는다
       const fresh = await api<Preview>("/api/seller/subscription/plan/preview");
       const target = fresh.ok ? fresh.data.plans.find((p) => p.planCode === "INTEGRATED") : undefined;
       if (!target || !target.change.ok) {
         await read();
-        return setFailure(target && !target.change.ok ? (FAIL[target.change.reason] ?? "이용권을 바꿀 수 없습니다") : "차액을 확인하지 못했습니다. 잠시 뒤 다시 시도해 주십시오");
+        return setFailure(target && !target.change.ok ? (FAIL[target.change.reason] ?? "이용권을 바꿀 수 없습니다") : "결제 금액을 확인하지 못했습니다. 잠시 뒤 다시 시도해 주십시오");
       }
       const expected = target.change.chargeNow;
       const shown = load.preview?.plans.find((p) => p.planCode === "INTEGRATED");
       const shownAmount = quoteOf(shown)?.chargeNow ?? null;
       if (shownAmount !== expected) {
         await read();
-        return setFailure(expected > 0 ? `차액 ${won(expected)}을 지금 결제합니다. 안내의 금액을 확인한 뒤 다시 눌러 주십시오` : "안내의 내용을 확인한 뒤 다시 눌러 주십시오");
+        return setFailure(`지금 결제할 금액은 ${won(expected)}입니다. 안내의 금액을 확인한 뒤 다시 눌러 주십시오`);
       }
       const r = await api<{ ok: true; applied: string; charged: number } | { error: string }>("/api/seller/subscription/plan", {
         method: "POST",
@@ -176,13 +180,13 @@ export default function UpgradePage() {
       if (!r.ok) {
         if (r.error === "amount_changed") {
           await read();
-          return setFailure("차액이 바뀌었습니다. 안내의 금액을 확인한 뒤 다시 눌러 주십시오");
+          return setFailure("결제 금액이 바뀌었습니다. 안내의 금액을 확인한 뒤 다시 눌러 주십시오");
         }
         return setFailure(FAIL[r.error] ?? failMessage(r, "admin"));
       }
-      if ("error" in r.data) return setFailure("차액 결제 결과를 확인하고 있습니다. 확인될 때까지 지금 이용권을 그대로 씁니다");
+      if ("error" in r.data) return setFailure("결제 결과를 확인하고 있습니다. 확인될 때까지 지금 이용권을 그대로 씁니다");
       await releaseGuard();
-      setDone(r.data.charged > 0 ? `쇼핑몰 통합으로 바꿨습니다 · 차액 ${won(r.data.charged)}을 결제했습니다` : "쇼핑몰 통합으로 바꿨습니다");
+      setDone(`쇼핑몰 통합으로 바꿨습니다 · 지금 결제 금액 ${won(r.data.charged)}`);
       window.dispatchEvent(new Event("focus"));
       await read();
     } finally {
@@ -224,8 +228,8 @@ export default function UpgradePage() {
     if (done) {
       return (
         <div className="up-done" role="status">
-          <span>{done}{target ? ` · ${day(nextDate)}결제부터 ${won(target.price)}` : ""}</span>
-          <a className="up-done-a" href="/shop" target="_blank" rel="noreferrer">스토어 열기</a>
+          <span>{done}{target ? ` · 이후 월 ${won(target.price)}` : ""}</span>
+          {shopHref && <Link className="up-done-a" href={shopHref} target="_blank" rel="noreferrer">스토어 열기</Link>}
         </div>
       );
     }
@@ -245,7 +249,7 @@ export default function UpgradePage() {
               <div className="card up-notes">
                 <p>{scheduledDown ? `다음 결제일(${nextDate})부터 적용됩니다 · 그때까지는 쇼핑몰 통합 그대로 쓸 수 있습니다` : downApplied === "now" ? "변경하면 바로 적용됩니다 · ONQ 스토어에서 새 주문을 받지 않습니다" : "적용 시점을 확인하지 못했습니다 · 새로고침 후 다시 확인해 주십시오"}</p>
                 <p>적용되면 ONQ 스토어에서 새 주문은 받지 않습니다 · 이전 주문의 배송 · 환불 · 문의는 계속 할 수 있습니다</p>
-                <p>적용 뒤 월 {won(down?.price ?? 0)}입니다 · {scheduledDown ? "이번 결제 기간 요금은 돌려드리지 않습니다 · 적용 전까지는 언제든 취소할 수 있습니다" : "다음 결제부터 적용된 이용권 요금을 냅니다"}</p>
+                <p>{down ? `적용 뒤 월 ${won(down.price)}입니다` : "적용 뒤 요금 확인이 필요합니다"} · {scheduledDown ? "이번 결제 기간 요금은 돌려드리지 않습니다 · 적용 전까지는 언제든 취소할 수 있습니다" : "다음 결제부터 적용된 이용권 요금을 냅니다"}</p>
               </div>
               <button className="btn btn-out up-down" type="button" disabled={downApplied !== "now" && downApplied !== "next_payment"} onClick={() => setConfirm("down")}>오버레이 전용으로 변경 신청</button>
             </>
@@ -257,7 +261,7 @@ export default function UpgradePage() {
                   <h2 className="t-h2" id="up-confirm-title">{confirm === "down" ? "오버레이 전용으로 바꾸시겠습니까?" : "변경을 취소하시겠습니까?"}</h2>
                   <span className="t-l2 c-alt">
                     {confirm === "down"
-                      ? `${scheduledDown ? `${nextDate} 결제부터` : "변경하면 바로"} 오버레이 전용 월 ${won(down?.price ?? 0)}으로 바뀝니다. ${scheduledDown ? "그날부터" : "지금부터"} ONQ 스토어 새 주문은 받지 않고, 이전 주문의 배송 · 환불은 계속 할 수 있습니다.`
+                      ? `${scheduledDown ? `${nextDate} 결제부터` : "변경하면 바로"} 오버레이 전용${down ? ` 월 ${won(down.price)}으로` : " 이용권으로"} 바뀝니다.${down ? "" : " 요금 확인이 필요합니다."} ${scheduledDown ? "그날부터" : "지금부터"} ONQ 스토어 새 주문은 받지 않고, 이전 주문의 배송 · 환불은 계속 할 수 있습니다.`
                       : `취소하면 쇼핑몰 통합 그대로 유지됩니다. ${cur ? `다음 결제도 ${won(cur.price)}입니다.` : "다음 결제 금액은 변경 취소 후 구독 관리에서 확인해 주십시오."}`}
                   </span>
                 </div>
@@ -275,25 +279,23 @@ export default function UpgradePage() {
     if (!overlay) return <div className="msg msg-info">현재 이용권에서는 바꿀 수 없습니다</div>;
 
     const q = quoteOf(target);
-    const charge = q && q.chargeNow > 0 ? q.chargeNow : null;
-    const diff = target && cur ? target.price - cur.price : null;
     return (
       <form onSubmit={(e) => { e.preventDefault(); void upgrade(); }} noValidate>
         {failure && <div className="msg msg-neg" role="alert"><span>{failure}</span></div>}
         <div className="msg msg-info">오버레이 전용에서는 받지 않았던 정보입니다 · 실제 판매 · 결제 · 정산을 켤 때 필요합니다</div>
-        <h2 className="up-st">이용권 전환<span className="up-nt">바로 적용 · 차액만 결제</span></h2>
+        <h2 className="up-st">이용권 전환<span className="up-nt">바로 적용 · 결제 금액 확인</span></h2>
         <div className="card up-now">
-          <div><div className="k up-nt">지금</div><b>{view.plan?.name} · {won(cur?.price ?? 0)}</b></div>
+          <div><div className="k up-nt">지금</div><b>{view.plan?.name} · {cur ? won(cur.price) : "요금 확인 필요"}</b></div>
           <span className="up-arrow" aria-hidden="true">→</span>
           <div>
             <div className="k up-nt">지금부터</div>
-            <b className="up-to">쇼핑몰 통합 · {won(target?.price ?? 0)}</b>
+            <b className="up-to">쇼핑몰 통합 · {target ? won(target.price) : "요금 확인 필요"}</b>
             {listPrice && target && listPrice > target.price && <span className="up-nt"> (런칭 할인가 · 정가 {won(listPrice)})</span>}
           </div>
         </div>
         <p className="up-expl up-nt">
-          바꾸면 바로 적용됩니다 · {charge && q?.remainingDays ? `이번 결제 기간에 남은 ${q.remainingDays}일 차액 ${won(charge)}${q.periodDays && diff ? `(${won(diff)} × ${q.remainingDays} / ${q.periodDays}일)` : ""}을 지금 결제하고, ` : ""}
-          {nextDate}부터 월 {won(target?.price ?? 0)}입니다 · 오버레이와 외부 쇼핑몰 연결은 그대로 유지됩니다
+          바꾸면 바로 적용됩니다 · {q !== null ? `지금 결제할 금액은 ${won(q.chargeNow)}입니다${q.remainingDays !== null ? ` · 남은 기간 ${q.remainingDays}일` : ""}` : "정보를 저장한 뒤 결제 금액을 확인합니다"}
+          {target ? ` · 이후 월 ${won(target.price)}입니다` : ""} · 다음 결제일은 전환 후 구독 · 결제에서 확인해 주십시오 · 오버레이와 외부 쇼핑몰 연결은 그대로 유지됩니다
         </p>
         <section className="up-sec"><h2 className="up-st">사업자 정보</h2>
           <div className="up-grid" role="group" aria-label="사업자 정보">
