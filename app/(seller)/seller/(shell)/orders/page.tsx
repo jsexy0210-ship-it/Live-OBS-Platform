@@ -10,7 +10,7 @@ import { Modal, PageHead } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
-import { MAX_SEARCH_LENGTH, won } from "../../../../../components/seller/format";
+import { MAX_SEARCH_LENGTH, textLength, won } from "../../../../../components/seller/format";
 import { STATUS_BADGE, itemSummaryText, kstDaysAgo, payBadge, type OrderRow, type OrderStatus } from "../../../../../components/seller/orders";
 
 // SA-021 판매자 주문 목록. 서버 커서로 10건씩 조회하며 방문한 페이지로 돌아간다(GET /api/seller/orders).
@@ -141,7 +141,7 @@ export default function OrderListPage() {
   const [busy, setBusy] = useState(false);
   const [rowMenu, setRowMenu] = useState<string | null>(null);
   // 주문 메모 창(행 「···」 → 「메모 남기기」). 서버 #1233: 1,000자, 빈 글이면 삭제
-  const [memo, setMemo] = useState<{ order: OrderRow; text: string; saved: string; loading: boolean; saving: boolean; error: string } | null>(null);
+  const [memo, setMemo] = useState<{ order: OrderRow; text: string; saved: string; loaded: boolean; loading: boolean; saving: boolean; error: string } | null>(null);
   const loadCounts = useCallback(async () => {
     const r = await api<{ counts: Counts }>("/api/seller/orders/counts");
     if (r.ok) setCounts(r.data.counts);
@@ -207,12 +207,12 @@ export default function OrderListPage() {
 
   const openMemo = async (order: OrderRow) => {
     setRowMenu(null);
-    setMemo({ order, text: "", saved: "", loading: true, saving: false, error: "" });
+    setMemo({ order, text: "", saved: "", loaded: false, loading: true, saving: false, error: "" });
     const r = await api<{ memo: { body: string } | null }>(`/api/seller/orders/${order.id}/memo`);
-    setMemo((m) => (m && m.order.id === order.id ? (r.ok ? { ...m, text: r.data.memo?.body ?? "", saved: r.data.memo?.body ?? "", loading: false } : { ...m, loading: false, error: "메모를 불러오지 못했습니다. 다시 시도해 주십시오" }) : m));
+    setMemo((m) => (m && m.order.id === order.id ? (r.ok ? { ...m, text: r.data.memo?.body ?? "", saved: r.data.memo?.body ?? "", loaded: true, loading: false } : { ...m, loading: false, error: "메모를 불러오지 못했습니다. 다시 시도해 주십시오" }) : m));
   };
   const saveMemo = async () => {
-    if (!memo || memo.loading || memo.saving) return;
+    if (!memo || !memo.loaded || memo.saving) return;
     setMemo({ ...memo, saving: true, error: "" });
     const r = await api<{ memo: unknown }>(`/api/seller/orders/${memo.order.id}/memo`, { method: "PUT", body: { body: memo.text } });
     if (!r.ok) {
@@ -522,7 +522,7 @@ export default function OrderListPage() {
         </div>
       </main>
       {memo && (
-        <Modal labelId="ord-memo-title" busy={memo.saving} dirty={!memo.loading && memo.text !== memo.saved} onClose={() => setMemo(null)}>
+        <Modal labelId="ord-memo-title" busy={memo.saving} dirty={memo.loaded && memo.text !== memo.saved} onClose={() => setMemo(null)}>
           {(requestClose) => (
             <>
               <div className="modal-h">
@@ -532,8 +532,8 @@ export default function OrderListPage() {
               </div>
               <div className="col" style={{ gap: 8 }}>
                 <p className="help">{memo.order.orderNoLabel} · 구매자에게는 보이지 않는 내부 메모입니다.</p>
-                <textarea className="inp" rows={5} maxLength={1000} aria-label="메모" placeholder="메모 입력" disabled={memo.loading} value={memo.text} onChange={(e) => setMemo({ ...memo, text: e.target.value })} />
-                <span className="help">{memo.text.length}/1,000자</span>
+                <textarea className="inp" rows={5} aria-label="메모" placeholder="메모 입력" disabled={!memo.loaded || memo.saving} value={memo.text} onChange={(e) => textLength(e.target.value) <= 1000 && setMemo({ ...memo, text: e.target.value })} />
+                <span className="help">{textLength(memo.text)}/1,000자</span>
                 {memo.error && (
                   <p className="c-neg" role="alert">
                     {memo.error}
@@ -544,7 +544,7 @@ export default function OrderListPage() {
                 <button className="btn btn-out" type="button" onClick={requestClose}>
                   취소
                 </button>
-                <button className="btn btn-pri" type="button" disabled={memo.loading || memo.saving || memo.text === memo.saved} onClick={() => void saveMemo()}>
+                <button className="btn btn-pri" type="button" disabled={!memo.loaded || memo.saving || memo.text === memo.saved} onClick={() => void saveMemo()}>
                   저장
                 </button>
               </div>
