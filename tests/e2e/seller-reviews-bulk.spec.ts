@@ -53,6 +53,11 @@ test("선택 숨김은 사유를 고른 뒤 선택한 리뷰만 숨기고, 선�
   await page.getByRole("checkbox", { name: "이 쪽 리뷰 모두 선택" }).check();
   await expect(page.getByRole("region", { name: "선택한 리뷰 처리" })).toContainText("선택 3건");
   await page.getByRole("button", { name: "선택 공개" }).click();
+  const confirmBox = page.getByRole("dialog");
+  await expect(confirmBox).toContainText("선택한 3건을 공개하시겠습니까?");
+  await expect(confirmBox).toContainText("적립금이 지급될 수 있습니다");
+  await shot(page, "SA-048-bulk-publish-confirm");
+  await confirmBox.getByRole("button", { name: "공개", exact: true }).click();
   await expect(page.getByText("선택한 3건을 공개했습니다")).toBeVisible();
   await expect(rows.filter({ hasText: "숨김" })).toHaveCount(0);
 });
