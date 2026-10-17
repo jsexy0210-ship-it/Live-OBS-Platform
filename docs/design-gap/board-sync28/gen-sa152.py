@@ -77,5 +77,5 @@ t = rep(t, '<div class="note inf" style="width: 100%"><b>잠시 멈춰 두었습
 t = rep(t, '<div class="st"><span class="st-tag">대기 중</span>',
         '<div class="st"><span class="st-tag">결제 확인 중 · 결제창에서 돌아옴</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><span class="tag n">결제 확인 중</span><div class="note pos" style="width: 100%"><b>결제됐습니다</b> · 자동 연결을 시작합니다</div><div class="note inf" style="width: 100%"><b>결제를 확인하고 있습니다</b> · 카드사 승인 뒤 서버가 한 번 더 확인합니다 · 창을 닫아도 진행됩니다 · 결제가 확인되기 전에는 작업이 시작되지 않습니다</div></div></div><div class="st"><span class="st-tag">대기 중</span>')
 t = rep(t, '대기 중 · 14분', '대기 중 · 14분 <span class="nt">(경과 분은 서버에 없음 · 구현 미확인 2026-10-16)</span>')
-t = rep(t, '"height":1250', '"height":1500')
+t = rep(t, '"height":1250', '"height":3800')
 p.write_text(t, encoding='utf-8'); print('wrote SA-152.dc.html', len(t))
