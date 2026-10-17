@@ -5,6 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import { COOKIE_NAMES } from "../../../../../lib/server/auth/policy";
 import { resolveBuyerSession } from "../../../../../lib/server/auth/session";
 import { myGroups } from "../../../../../components/shop/myGroups";
+import ShopLogout from "../../../../../components/shop/ShopLogout";
 import GradeCard from "../../../../../components/shop/member-grades/GradeCard";
 import { prisma } from "../../../../../lib/server/db";
 import { buyerGradeStatus } from "../../../../../lib/server/shop-member-grades/benefits";
@@ -49,6 +50,9 @@ export default async function ShopMyPage({ params }: Params) {
             ))}
           </nav>
         ))}
+        <div className="shop-my-out">
+          <ShopLogout slug={shop.slug} />
+        </div>
       </section>
     </>
   );

@@ -180,6 +180,28 @@ describe("화면 틀이 읽는 내 정보 GET /api/seller/me (대리 조회)", (
   });
 });
 
+describe("내 정보에 대신 보기 범위(MA-016)", () => {
+  it("대신 보기 세션이면 고른 범위(scopes)를 내려주고, 범위를 안 고른 이전 방식은 기본 범위(주문·회원)이며, 일반 파트너스 세션 응답에는 대신 보기 정보가 없다", async () => {
+    const { seller } = await shopWithOrder("범위 몰");
+    const su = await admin("SUPER_ADMIN");
+    const picked = await start(su.cookie, seller.id, { reason: "방송 화면 확인", scopes: ["BROADCAST", "OVERLAY"] });
+    expect(picked.status).toBe(200);
+    const chosen = await json(await meRoute(req("/api/seller/me", `lo_imp=${picked.imp}`)));
+    expect(chosen.body.impersonation.scopes).toEqual(["BROADCAST", "OVERLAY"]);
+    expect(Object.keys(chosen.body.impersonation).sort()).toEqual(["adminName", "expiresAt", "reason", "scopes", "startedAt"]);
+    const legacy = await start(su.cookie, seller.id, { reason: "이전 방식" });
+    const old = await json(await meRoute(req("/api/seller/me", `lo_imp=${legacy.imp}`)));
+    expect(old.body.impersonation.scopes).toEqual(["ORDERS", "MEMBERS"]);
+    // 일반 파트너스 로그인 응답은 그대로(대신 보기 정보 없음)
+    const user = await createSellerUser(seller.id, "OWNER");
+    const login = await loginRoute(req("/api/seller/auth/login", "", "POST", { email: user.email, password: PASSWORD, shopSlug: seller.slug }));
+    const real = /lo_seller=([^;]+)/.exec(login.headers.get("set-cookie") ?? "")?.[1];
+    const plain = await json(await meRoute(req("/api/seller/me", `lo_seller=${real}`)));
+    expect(plain.body.impersonation).toBeNull();
+    expect(plain.body).not.toHaveProperty("scopes");
+  });
+});
+
 describe("대리 조회 쿠키가 남은 브라우저의 파트너스 로그인·로그아웃", () => {
   it("로그인은 성공하고 응답이 대리 조회 쿠키를 지운다. 이후 같은 브라우저는 로그인한 파트너스로 동작하고, 로그아웃은 진짜 세션을 끊는다", async () => {
     const { seller } = await shopWithOrder("로그인 몰");
@@ -221,7 +243,7 @@ describe("외부 쇼핑몰 연동 조회 GET /api/seller/external-shops (대리 
     await db.externalShopConnection.create({ data: { sellerId: seller.id, shopKey: "my-mall", accessTokenCipher: "secret-cipher-value", refreshTokenCipher: "secret-refresh-value" } });
     await db.externalShopConnection.create({ data: { sellerId: other.seller.id, shopKey: "other-mall" } });
     const su = await admin("SUPER_ADMIN");
-    const { imp } = await start(su.cookie, seller.id);
+    const { imp } = await start(su.cookie, seller.id, { reason: "고객 문의 확인", category: "AUDIT", scopes: ["BROADCAST"] });
     const cookie = `lo_imp=${imp}`;
     const through = await proxy(new NextRequest(BASE + "/api/seller/external-shops", { headers: { cookie } }));
     expect(through.headers.get("x-middleware-next")).toBe("1");

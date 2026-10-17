@@ -23,6 +23,8 @@ export type JobView = {
   customerAction: AutomationJob["customerAction"];
   actionDeadlineAt: Date | null;
   lastError: string | null;
+  // 결제 때 저장된 쇼핑몰 주소의 호스트(SA-152 표시용). 값이 없거나 플랫폼 이름이 든 주소(예: 플랫폼이 준 기본 주소)면 null. 파트너스 자기 도메인만 그대로
+  shopHost: string | null;
   verifiedAt: Date | null;
   // 「잠시 멈추기」(SA-152): 멈춘 상태면 paused=true·pausedAt, 멈춘 단계는 stepNumber(상태는 QUEUED로 보인다). 이어 하기로 풀린다
   paused: boolean;
@@ -46,6 +48,10 @@ export const ETA_MAX_MINUTES = 24 * 60;
 
 // 화면에 내보내는 실패 사유는 정해 둔 코드만. 실행기·외부 화면에서 온 원문(외부 쇼핑몰 플랫폼 이름 등)은
 // 응답에 싣지 않는다(2026-10-04 대표님 결정: 외부 쇼핑몰 플랫폼 이름 화면 노출 금지). 원문은 작업 기록에만 남는다.
+// 외부 쇼핑몰 플랫폼 이름(화면·응답 노출 금지). 목록이 줄지 않았는지는 통합시험이 각 이름을 확인한다.
+export const PLATFORM_NAME_PATTERN = /cafe24|카페24|imweb|아임웹|smartstore|스마트스토어|godo|고도몰|makeshop|메이크샵/i;
+export const publicShopHost = (host: string | null): string | null => (host && !PLATFORM_NAME_PATTERN.test(host) ? host : null);
+
 const PUBLIC_ERRORS = new Set([
   "payment_failed",
   "lease_expired",
@@ -99,6 +105,7 @@ const toView = (j: AutomationJob & { payment: AutomationPayment | null }): JobVi
   customerAction: j.customerAction,
   actionDeadlineAt: j.actionDeadlineAt,
   lastError: publicError(j.lastError),
+  shopHost: publicShopHost(j.shopHost),
   verifiedAt: j.verifiedAt,
   paused: j.pausedAt !== null,
   pausedAt: j.pausedAt,

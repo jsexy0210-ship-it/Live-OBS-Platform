@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 // 통계 부품: 지표 칸(직전 기간 대비) · 막대 그래프(SVG, 의존성 없음) · CSV 내려받기.
 
@@ -60,8 +60,9 @@ const short = (n: number) => (n >= 100_000_000 ? `${+(n / 100_000_000).toFixed(1
 
 // 단일 계열 막대 그래프. 값 이름은 제목이 말하고, 막대에 올리면 값이 보인다. 같은 값은 아래 표에도 있다.
 // 막대는 늘어나는 SVG로, 축 글자는 HTML로 그린다(SVG를 가로로 늘리면 글자가 찌그러진다).
+// fixedTicks: 마스터 대시보드처럼 CSS가 첫·끝 눈금만 남기는 곳은 기존 최대 8개 간격을 유지
 // bare: 카드·제목 없이 그래프만(요약 화면의 칸 안에 넣을 때)
-export function BarChart({ title, points, fmt, bare }: { title: string; points: { label: string; value: number }[]; fmt: (n: number) => string; bare?: boolean }) {
+export function BarChart({ title, points, fmt, bare, fixedTicks }: { title: string; fixedTicks?: boolean; points: { label: string; value: number }[]; fmt: (n: number) => string; bare?: boolean }) {
   const [hover, setHover] = useState<number | null>(null);
   const W = 1000;
   const H = 200;
@@ -70,11 +71,26 @@ export function BarChart({ title, points, fmt, bare }: { title: string; points: 
   const slot = W / n;
   const bw = Math.max(2, Math.min(36, slot * 0.7));
   const y = (v: number) => H * (1 - v / top);
-  const every = Math.ceil(n / 8);
+  // 날짜 축 글자가 겹치지 않게: 그래프 폭과 글자 길이로 한 번에 보일 수 있는 개수를 정해 그만큼만 건너뛰며 보인다
+  const plotRef = useRef<HTMLDivElement>(null);
+  const [plotW, setPlotW] = useState(0);
+  useEffect(() => {
+    const el = plotRef.current;
+    if (!el) return;
+    const read = () => setPlotW(el.getBoundingClientRect().width);
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const longest = Math.max(1, ...points.map((p) => p.label.length));
+  const tickW = longest * 6.6 + 18;
+  const fit = fixedTicks ? 8 : plotW > 0 ? Math.max(1, Math.floor(plotW / tickW)) : 8;
+  const every = Math.ceil(n / Math.min(8, fit));
   const pctX = (i: number) => `${((slot * i + slot / 2) / W) * 100}%`;
   const chart = (
       <div className="sts-chart">
-        <div className="sts-plot" onMouseLeave={() => setHover(null)}>
+        <div className="sts-plot" ref={plotRef} onMouseLeave={() => setHover(null)}>
           {[0, 0.5, 1].map((f) => (
             <span key={f} className="sts-y" style={{ top: `${(1 - f) * 100}%` }}>
               {short(top * f)}

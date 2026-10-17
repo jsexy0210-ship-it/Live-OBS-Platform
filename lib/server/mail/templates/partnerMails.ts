@@ -84,3 +84,44 @@ export function partnerRejectedMail(i: PartnerRejectedInput): MailBody {
     { t: "buttons", buttons: [{ label: "고쳐서 다시 신청하기", url: i.reapplyUrl }, { label: "신청 상태 보기", url: i.statusUrl, secondary: true }] },
   ]);
 }
+
+// ─── 구독 요금 변경 안내(30일 전 고지) ───
+// 기존 구독자에게 새 요금이 적용되기 전에 알리는 메일. 이 안내(메일·파트너스 공지)가 모두 전달된 날부터 30일이 지난 뒤 결제부터 새 요금이 적용돼요.
+export type PriceChangeMailInput = {
+  platform: PlatformInfo;
+  representative: string;
+  shopName: string;
+  planName: string;
+  oldMonthly: number;
+  newMonthly: number;
+  subscriptionUrl: string; // 구독 · 결제 화면
+};
+
+export function priceChangeMail(i: PriceChangeMailInput): MailBody {
+  return make(i.platform, "구독 요금이 바뀌어요", [
+    { t: "h1", text: "구독 요금이 바뀌어요" },
+    { t: "p", text: `${i.representative}님, ${i.shopName}의 ${i.planName} 구독 요금이 바뀌어요. 이 안내를 드린 날부터 30일이 지난 뒤 결제부터 새 요금이 적용돼요.` },
+    { t: "box", accent: true, title: "요금 변경", rows: [["지금 요금", `월 ${won(i.oldMonthly)} (부가세 포함)`], ["바뀌는 요금", `월 ${won(i.newMonthly)} (부가세 포함)`]], muted: "30일이 지나기 전 결제는 지금 요금 그대로예요" },
+    { t: "p", text: "구독을 계속 쓰지 않으려면 새 요금이 적용되기 전에 「구독 · 결제」에서 해지할 수 있어요.", muted: true },
+    { t: "buttons", buttons: [{ label: "구독 · 결제 보기", url: i.subscriptionUrl }] },
+  ]);
+}
+
+// ─── 삭제 전 안내 ───
+// 해지 뒤 보관 기간이 끝나기 전에 알리는 메일. 다시 구독하면 보관된 쇼핑몰을 그대로 이어 쓸 수 있어요.
+export type RetentionNoticeMailInput = {
+  platform: PlatformInfo;
+  representative: string;
+  shopName: string;
+  deleteOn: string; // 삭제 예정일(KST, 표시용)
+  subscriptionUrl: string; // 구독 · 결제 화면
+};
+
+export function retentionNoticeMail(i: RetentionNoticeMailInput): MailBody {
+  return make(i.platform, "쇼핑몰 데이터가 곧 삭제돼요", [
+    { t: "h1", text: "쇼핑몰 데이터가 곧 삭제돼요" },
+    { t: "p", text: `${i.representative}님, 해지한 ${i.shopName}의 보관 기간이 끝나가요. ${i.deleteOn}이 지나면 보관 중인 쇼핑몰 데이터가 삭제될 수 있어요.` },
+    { t: "p", text: "그 전에 다시 구독하면 보관된 쇼핑몰을 그대로 이어 쓸 수 있어요. 주문·결제 기록처럼 법에 따라 보관하는 자료는 따로 보관돼요.", muted: true },
+    { t: "buttons", buttons: [{ label: "구독 · 결제 보기", url: i.subscriptionUrl }] },
+  ]);
+}
