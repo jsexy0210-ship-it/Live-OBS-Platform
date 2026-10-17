@@ -1,0 +1,1820 @@
+{
+  "sourceSha": "d0102f89de4463ea9d3c549ba055ae83323173f5",
+  "route": "/seller/orders",
+  "role": "STORE_OWNER",
+  "state": "content",
+  "sidebar": {
+    "left": 0,
+    "right": 196,
+    "width": 196,
+    "transitions": 0
+  },
+  "brand": {
+    "href": "/seller",
+    "subLabels": 0,
+    "word": "파트너스 관리자",
+    "wordLines": 1,
+    "color": "rgb(255, 255, 255)",
+    "background": "rgb(255, 255, 255)",
+    "src": "/_next/image?url=%2F_next%2Fstatic%2Fmedia%2Fstreamshop-partners-180-20261010.27d0ea2g-d5q3.png&w=3840&q=75",
+    "loaded": true,
+    "naturalWidth": 22,
+    "legacy": 0,
+    "headerText": "파트너스 관리자\n홈\n방송\n주문\n상품\n고객\n마케팅\n통계\n설정\n11\n쇼핑몰 보기\n공지 · 문의\n도우미\n내 계정\n로그아웃",
+    "image": {
+      "left": 16,
+      "right": 38,
+      "top": 13,
+      "bottom": 35,
+      "width": 22,
+      "height": 22
+    },
+    "wordBox": {
+      "left": 44,
+      "right": 142.078125,
+      "top": 14,
+      "bottom": 34,
+      "width": 98.078125,
+      "height": 20
+    },
+    "logo": {
+      "left": 16,
+      "right": 142.078125,
+      "top": 13,
+      "bottom": 35,
+      "width": 126.078125,
+      "height": 22
+    },
+    "header": {
+      "left": 0,
+      "right": 1024,
+      "top": 0,
+      "bottom": 48,
+      "width": 1024,
+      "height": 48
+    }
+  },
+  "headerLayout": {
+    "header": {
+      "left": 0,
+      "right": 1024,
+      "width": 1024,
+      "height": 48
+    },
+    "client": 1024,
+    "scroll": 1024,
+    "logoMarginRight": "20px",
+    "nav": {
+      "left": 162.078125,
+      "right": 515.71875,
+      "width": 353.640625,
+      "height": 48
+    },
+    "menuPadding": [
+      {
+        "left": "10px",
+        "right": "10px"
+      },
+      {
+        "left": "10px",
+        "right": "10px"
+      },
+      {
+        "left": "10px",
+        "right": "10px"
+      },
+      {
+        "left": "10px",
+        "right": "10px"
+      },
+      {
+        "left": "10px",
+        "right": "10px"
+      },
+      {
+        "left": "10px",
+        "right": "10px"
+      },
+      {
+        "left": "10px",
+        "right": "10px"
+      },
+      {
+        "left": "10px",
+        "right": "10px"
+      }
+    ],
+    "util": {
+      "left": 597.65625,
+      "right": 1024,
+      "width": 426.34375,
+      "height": 48
+    },
+    "controls": [
+      {
+        "text": "홈",
+        "lines": 1,
+        "textLeft": 172.078125,
+        "textRight": 184.1875,
+        "left": 162.078125,
+        "right": 194.1875,
+        "width": 32.109375,
+        "height": 48
+      },
+      {
+        "text": "방송",
+        "lines": 1,
+        "textLeft": 204.1875,
+        "textRight": 228.390625,
+        "left": 194.1875,
+        "right": 238.390625,
+        "width": 44.203125,
+        "height": 48
+      },
+      {
+        "text": "주문",
+        "lines": 1,
+        "textLeft": 248.390625,
+        "textRight": 272.59375,
+        "left": 238.390625,
+        "right": 282.59375,
+        "width": 44.203125,
+        "height": 48
+      },
+      {
+        "text": "상품",
+        "lines": 1,
+        "textLeft": 292.59375,
+        "textRight": 316.796875,
+        "left": 282.59375,
+        "right": 326.796875,
+        "width": 44.203125,
+        "height": 48
+      },
+      {
+        "text": "고객",
+        "lines": 1,
+        "textLeft": 336.796875,
+        "textRight": 361,
+        "left": 326.796875,
+        "right": 371,
+        "width": 44.203125,
+        "height": 48
+      },
+      {
+        "text": "마케팅",
+        "lines": 1,
+        "textLeft": 381,
+        "textRight": 417.3125,
+        "left": 371,
+        "right": 427.3125,
+        "width": 56.3125,
+        "height": 48
+      },
+      {
+        "text": "통계",
+        "lines": 1,
+        "textLeft": 437.3125,
+        "textRight": 461.515625,
+        "left": 427.3125,
+        "right": 471.515625,
+        "width": 44.203125,
+        "height": 48
+      },
+      {
+        "text": "설정",
+        "lines": 1,
+        "textLeft": 481.515625,
+        "textRight": 505.71875,
+        "left": 471.515625,
+        "right": 515.71875,
+        "width": 44.203125,
+        "height": 48
+      },
+      {
+        "text": "",
+        "lines": 1,
+        "textLeft": 604.65625,
+        "textRight": 622.65625,
+        "left": 597.65625,
+        "right": 629.65625,
+        "width": 32,
+        "height": 32
+      },
+      {
+        "text": "11",
+        "lines": 3,
+        "textLeft": 640.65625,
+        "textRight": 667.65625,
+        "left": 633.65625,
+        "right": 665.65625,
+        "width": 32,
+        "height": 32
+      },
+      {
+        "text": "쇼핑몰 보기",
+        "lines": 1,
+        "textLeft": 678.65625,
+        "textRight": 742.65625,
+        "left": 669.65625,
+        "right": 751.65625,
+        "width": 82,
+        "height": 24
+      },
+      {
+        "text": "공지 · 문의",
+        "lines": 1,
+        "textLeft": 760.65625,
+        "textRight": 819.5625,
+        "left": 751.65625,
+        "right": 828.5625,
+        "width": 76.90625,
+        "height": 24
+      },
+      {
+        "text": "도우미",
+        "lines": 1,
+        "textLeft": 837.5625,
+        "textRight": 873.875,
+        "left": 828.5625,
+        "right": 882.875,
+        "width": 54.3125,
+        "height": 24
+      },
+      {
+        "text": "내 계정",
+        "lines": 1,
+        "textLeft": 891.875,
+        "textRight": 931.6875,
+        "left": 882.875,
+        "right": 940.6875,
+        "width": 57.8125,
+        "height": 24
+      },
+      {
+        "text": "로그아웃",
+        "lines": 1,
+        "textLeft": 949.6875,
+        "textRight": 1003,
+        "left": 940.6875,
+        "right": 1012,
+        "width": 71.3125,
+        "height": 24
+      }
+    ],
+    "logout": {
+      "text": "로그아웃",
+      "lines": 1,
+      "textLeft": 949.6875,
+      "textRight": 1003,
+      "left": 940.6875,
+      "right": 1012,
+      "width": 71.3125,
+      "height": 24
+    }
+  },
+  "viewport": {
+    "width": 1024,
+    "height": 900,
+    "dpr": 1,
+    "scale": 1
+  },
+  "height": 1414,
+  "drawerOpen": false,
+  "amounts": [],
+  "main": {
+    "left": 196,
+    "right": 1024,
+    "top": 152,
+    "bottom": 1413.5,
+    "width": 828,
+    "height": 1261.5
+  },
+  "overflow": false,
+  "table": {
+    "left": 220,
+    "right": 1000,
+    "top": 453,
+    "bottom": 1293.5,
+    "width": 780,
+    "height": 840.5,
+    "headers": [
+      {
+        "text": "",
+        "left": 220,
+        "right": 264,
+        "top": 453.5,
+        "bottom": 493.5,
+        "width": 44,
+        "height": 40
+      },
+      {
+        "text": "접수 · 경과",
+        "left": 264,
+        "right": 420.65625,
+        "top": 453.5,
+        "bottom": 493.5,
+        "width": 156.65625,
+        "height": 40
+      },
+      {
+        "text": "구매자",
+        "left": 420.65625,
+        "right": 498.953125,
+        "top": 453.5,
+        "bottom": 493.5,
+        "width": 78.296875,
+        "height": 40
+      },
+      {
+        "text": "상품",
+        "left": 498.953125,
+        "right": 602.5625,
+        "top": 453.5,
+        "bottom": 493.5,
+        "width": 103.609375,
+        "height": 40
+      },
+      {
+        "text": "금액",
+        "left": 602.5625,
+        "right": 677.171875,
+        "top": 453.5,
+        "bottom": 493.5,
+        "width": 74.609375,
+        "height": 40
+      },
+      {
+        "text": "결제",
+        "left": 677.171875,
+        "right": 723.65625,
+        "top": 453.5,
+        "bottom": 493.5,
+        "width": 46.484375,
+        "height": 40
+      },
+      {
+        "text": "주문 상태",
+        "left": 723.65625,
+        "right": 815.5625,
+        "top": 453.5,
+        "bottom": 493.5,
+        "width": 91.90625,
+        "height": 40
+      },
+      {
+        "text": "관리",
+        "left": 815.5625,
+        "right": 1000,
+        "top": 453.5,
+        "bottom": 493.5,
+        "width": 184.4375,
+        "height": 40
+      }
+    ]
+  },
+  "scroll": {
+    "left": 220,
+    "right": 1000,
+    "top": 453,
+    "bottom": 1293.5,
+    "width": 780,
+    "height": 840.5,
+    "overflowX": "auto",
+    "clientWidth": 780,
+    "scrollWidth": 780,
+    "scrollLeft": 0
+  },
+  "rows": [
+    {
+      "text": "2026.10.17 03:1420261017-105085103방금 접수민트컨디션일반상품 정보 없음1,000원—배송 준비송장 입력상세······",
+      "left": 220,
+      "right": 1000,
+      "top": 493.5,
+      "bottom": 573.5,
+      "width": 780,
+      "height": 80,
+      "cells": [
+        {
+          "text": "",
+          "whiteSpace": "normal",
+          "left": 220,
+          "right": 264,
+          "top": 493.5,
+          "bottom": 573.5,
+          "width": 44,
+          "height": 80
+        },
+        {
+          "text": "2026.10.17 03:1420261017-105085103방금 접수",
+          "whiteSpace": "nowrap",
+          "left": 264,
+          "right": 420.65625,
+          "top": 493.5,
+          "bottom": 573.5,
+          "width": 156.65625,
+          "height": 80
+        },
+        {
+          "text": "민트컨디션일반",
+          "whiteSpace": "normal",
+          "left": 420.65625,
+          "right": 498.953125,
+          "top": 493.5,
+          "bottom": 573.5,
+          "width": 78.296875,
+          "height": 80
+        },
+        {
+          "text": "상품 정보 없음",
+          "whiteSpace": "nowrap",
+          "left": 498.953125,
+          "right": 602.5625,
+          "top": 493.5,
+          "bottom": 573.5,
+          "width": 103.609375,
+          "height": 80
+        },
+        {
+          "text": "1,000원",
+          "whiteSpace": "nowrap",
+          "left": 602.5625,
+          "right": 677.171875,
+          "top": 493.5,
+          "bottom": 573.5,
+          "width": 74.609375,
+          "height": 80
+        },
+        {
+          "text": "—",
+          "whiteSpace": "normal",
+          "left": 677.171875,
+          "right": 723.65625,
+          "top": 493.5,
+          "bottom": 573.5,
+          "width": 46.484375,
+          "height": 80
+        },
+        {
+          "text": "배송 준비",
+          "whiteSpace": "normal",
+          "left": 723.65625,
+          "right": 815.5625,
+          "top": 493.5,
+          "bottom": 573.5,
+          "width": 91.90625,
+          "height": 80
+        },
+        {
+          "text": "송장 입력상세······",
+          "whiteSpace": "normal",
+          "left": 815.5625,
+          "right": 1000,
+          "top": 493.5,
+          "bottom": 573.5,
+          "width": 184.4375,
+          "height": 80
+        }
+      ],
+      "actions": [
+        {
+          "text": "2026.10.17 03:14",
+          "href": "/seller/orders/817247a7-d210-45fc-9cb1-9fc894ec1ef2",
+          "left": 280.171875,
+          "right": 404.484375,
+          "top": 508.5,
+          "bottom": 524.5,
+          "width": 124.3125,
+          "height": 16
+        },
+        {
+          "text": "송장 입력",
+          "href": "/seller/shipping",
+          "left": 827.5625,
+          "right": 899.765625,
+          "top": 517.5,
+          "bottom": 549.5,
+          "width": 72.203125,
+          "height": 32
+        },
+        {
+          "text": "상세",
+          "href": "/seller/orders/817247a7-d210-45fc-9cb1-9fc894ec1ef2",
+          "left": 903.765625,
+          "right": 950.25,
+          "top": 517.5,
+          "bottom": 549.5,
+          "width": 46.484375,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 954.25,
+          "right": 988,
+          "top": 517.5,
+          "bottom": 549.5,
+          "width": 33.75,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 0,
+          "right": 0,
+          "top": 0,
+          "bottom": 0,
+          "width": 0,
+          "height": 0
+        }
+      ]
+    },
+    {
+      "text": "2026.10.17 03:1420261017-105085104방금 접수민트컨디션일반상품 정보 없음1,001원—배송 준비송장 입력상세······",
+      "left": 220,
+      "right": 1000,
+      "top": 573.5,
+      "bottom": 653.5,
+      "width": 780,
+      "height": 80,
+      "cells": [
+        {
+          "text": "",
+          "whiteSpace": "normal",
+          "left": 220,
+          "right": 264,
+          "top": 573.5,
+          "bottom": 653.5,
+          "width": 44,
+          "height": 80
+        },
+        {
+          "text": "2026.10.17 03:1420261017-105085104방금 접수",
+          "whiteSpace": "nowrap",
+          "left": 264,
+          "right": 420.65625,
+          "top": 573.5,
+          "bottom": 653.5,
+          "width": 156.65625,
+          "height": 80
+        },
+        {
+          "text": "민트컨디션일반",
+          "whiteSpace": "normal",
+          "left": 420.65625,
+          "right": 498.953125,
+          "top": 573.5,
+          "bottom": 653.5,
+          "width": 78.296875,
+          "height": 80
+        },
+        {
+          "text": "상품 정보 없음",
+          "whiteSpace": "nowrap",
+          "left": 498.953125,
+          "right": 602.5625,
+          "top": 573.5,
+          "bottom": 653.5,
+          "width": 103.609375,
+          "height": 80
+        },
+        {
+          "text": "1,001원",
+          "whiteSpace": "nowrap",
+          "left": 602.5625,
+          "right": 677.171875,
+          "top": 573.5,
+          "bottom": 653.5,
+          "width": 74.609375,
+          "height": 80
+        },
+        {
+          "text": "—",
+          "whiteSpace": "normal",
+          "left": 677.171875,
+          "right": 723.65625,
+          "top": 573.5,
+          "bottom": 653.5,
+          "width": 46.484375,
+          "height": 80
+        },
+        {
+          "text": "배송 준비",
+          "whiteSpace": "normal",
+          "left": 723.65625,
+          "right": 815.5625,
+          "top": 573.5,
+          "bottom": 653.5,
+          "width": 91.90625,
+          "height": 80
+        },
+        {
+          "text": "송장 입력상세······",
+          "whiteSpace": "normal",
+          "left": 815.5625,
+          "right": 1000,
+          "top": 573.5,
+          "bottom": 653.5,
+          "width": 184.4375,
+          "height": 80
+        }
+      ],
+      "actions": [
+        {
+          "text": "2026.10.17 03:14",
+          "href": "/seller/orders/41aa0c84-1631-4511-92bf-e1d37f38c4fc",
+          "left": 280.171875,
+          "right": 404.484375,
+          "top": 588.5,
+          "bottom": 604.5,
+          "width": 124.3125,
+          "height": 16
+        },
+        {
+          "text": "송장 입력",
+          "href": "/seller/shipping",
+          "left": 827.5625,
+          "right": 899.765625,
+          "top": 597.5,
+          "bottom": 629.5,
+          "width": 72.203125,
+          "height": 32
+        },
+        {
+          "text": "상세",
+          "href": "/seller/orders/41aa0c84-1631-4511-92bf-e1d37f38c4fc",
+          "left": 903.765625,
+          "right": 950.25,
+          "top": 597.5,
+          "bottom": 629.5,
+          "width": 46.484375,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 954.25,
+          "right": 988,
+          "top": 597.5,
+          "bottom": 629.5,
+          "width": 33.75,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 0,
+          "right": 0,
+          "top": 0,
+          "bottom": 0,
+          "width": 0,
+          "height": 0
+        }
+      ]
+    },
+    {
+      "text": "2026.10.17 03:1420261017-105085105방금 접수민트컨디션일반상품 정보 없음1,002원—배송 준비송장 입력상세······",
+      "left": 220,
+      "right": 1000,
+      "top": 653.5,
+      "bottom": 733.5,
+      "width": 780,
+      "height": 80,
+      "cells": [
+        {
+          "text": "",
+          "whiteSpace": "normal",
+          "left": 220,
+          "right": 264,
+          "top": 653.5,
+          "bottom": 733.5,
+          "width": 44,
+          "height": 80
+        },
+        {
+          "text": "2026.10.17 03:1420261017-105085105방금 접수",
+          "whiteSpace": "nowrap",
+          "left": 264,
+          "right": 420.65625,
+          "top": 653.5,
+          "bottom": 733.5,
+          "width": 156.65625,
+          "height": 80
+        },
+        {
+          "text": "민트컨디션일반",
+          "whiteSpace": "normal",
+          "left": 420.65625,
+          "right": 498.953125,
+          "top": 653.5,
+          "bottom": 733.5,
+          "width": 78.296875,
+          "height": 80
+        },
+        {
+          "text": "상품 정보 없음",
+          "whiteSpace": "nowrap",
+          "left": 498.953125,
+          "right": 602.5625,
+          "top": 653.5,
+          "bottom": 733.5,
+          "width": 103.609375,
+          "height": 80
+        },
+        {
+          "text": "1,002원",
+          "whiteSpace": "nowrap",
+          "left": 602.5625,
+          "right": 677.171875,
+          "top": 653.5,
+          "bottom": 733.5,
+          "width": 74.609375,
+          "height": 80
+        },
+        {
+          "text": "—",
+          "whiteSpace": "normal",
+          "left": 677.171875,
+          "right": 723.65625,
+          "top": 653.5,
+          "bottom": 733.5,
+          "width": 46.484375,
+          "height": 80
+        },
+        {
+          "text": "배송 준비",
+          "whiteSpace": "normal",
+          "left": 723.65625,
+          "right": 815.5625,
+          "top": 653.5,
+          "bottom": 733.5,
+          "width": 91.90625,
+          "height": 80
+        },
+        {
+          "text": "송장 입력상세······",
+          "whiteSpace": "normal",
+          "left": 815.5625,
+          "right": 1000,
+          "top": 653.5,
+          "bottom": 733.5,
+          "width": 184.4375,
+          "height": 80
+        }
+      ],
+      "actions": [
+        {
+          "text": "2026.10.17 03:14",
+          "href": "/seller/orders/d071eee3-b3e1-4b88-af46-b918c77b1752",
+          "left": 280.171875,
+          "right": 404.484375,
+          "top": 668.5,
+          "bottom": 684.5,
+          "width": 124.3125,
+          "height": 16
+        },
+        {
+          "text": "송장 입력",
+          "href": "/seller/shipping",
+          "left": 827.5625,
+          "right": 899.765625,
+          "top": 677.5,
+          "bottom": 709.5,
+          "width": 72.203125,
+          "height": 32
+        },
+        {
+          "text": "상세",
+          "href": "/seller/orders/d071eee3-b3e1-4b88-af46-b918c77b1752",
+          "left": 903.765625,
+          "right": 950.25,
+          "top": 677.5,
+          "bottom": 709.5,
+          "width": 46.484375,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 954.25,
+          "right": 988,
+          "top": 677.5,
+          "bottom": 709.5,
+          "width": 33.75,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 0,
+          "right": 0,
+          "top": 0,
+          "bottom": 0,
+          "width": 0,
+          "height": 0
+        }
+      ]
+    },
+    {
+      "text": "2026.10.17 03:1420261017-105085106방금 접수민트컨디션일반상품 정보 없음1,003원—배송 준비송장 입력상세······",
+      "left": 220,
+      "right": 1000,
+      "top": 733.5,
+      "bottom": 813.5,
+      "width": 780,
+      "height": 80,
+      "cells": [
+        {
+          "text": "",
+          "whiteSpace": "normal",
+          "left": 220,
+          "right": 264,
+          "top": 733.5,
+          "bottom": 813.5,
+          "width": 44,
+          "height": 80
+        },
+        {
+          "text": "2026.10.17 03:1420261017-105085106방금 접수",
+          "whiteSpace": "nowrap",
+          "left": 264,
+          "right": 420.65625,
+          "top": 733.5,
+          "bottom": 813.5,
+          "width": 156.65625,
+          "height": 80
+        },
+        {
+          "text": "민트컨디션일반",
+          "whiteSpace": "normal",
+          "left": 420.65625,
+          "right": 498.953125,
+          "top": 733.5,
+          "bottom": 813.5,
+          "width": 78.296875,
+          "height": 80
+        },
+        {
+          "text": "상품 정보 없음",
+          "whiteSpace": "nowrap",
+          "left": 498.953125,
+          "right": 602.5625,
+          "top": 733.5,
+          "bottom": 813.5,
+          "width": 103.609375,
+          "height": 80
+        },
+        {
+          "text": "1,003원",
+          "whiteSpace": "nowrap",
+          "left": 602.5625,
+          "right": 677.171875,
+          "top": 733.5,
+          "bottom": 813.5,
+          "width": 74.609375,
+          "height": 80
+        },
+        {
+          "text": "—",
+          "whiteSpace": "normal",
+          "left": 677.171875,
+          "right": 723.65625,
+          "top": 733.5,
+          "bottom": 813.5,
+          "width": 46.484375,
+          "height": 80
+        },
+        {
+          "text": "배송 준비",
+          "whiteSpace": "normal",
+          "left": 723.65625,
+          "right": 815.5625,
+          "top": 733.5,
+          "bottom": 813.5,
+          "width": 91.90625,
+          "height": 80
+        },
+        {
+          "text": "송장 입력상세······",
+          "whiteSpace": "normal",
+          "left": 815.5625,
+          "right": 1000,
+          "top": 733.5,
+          "bottom": 813.5,
+          "width": 184.4375,
+          "height": 80
+        }
+      ],
+      "actions": [
+        {
+          "text": "2026.10.17 03:14",
+          "href": "/seller/orders/a0fbab66-679c-4f7e-90a1-622a99247151",
+          "left": 280.171875,
+          "right": 404.484375,
+          "top": 748.5,
+          "bottom": 764.5,
+          "width": 124.3125,
+          "height": 16
+        },
+        {
+          "text": "송장 입력",
+          "href": "/seller/shipping",
+          "left": 827.5625,
+          "right": 899.765625,
+          "top": 757.5,
+          "bottom": 789.5,
+          "width": 72.203125,
+          "height": 32
+        },
+        {
+          "text": "상세",
+          "href": "/seller/orders/a0fbab66-679c-4f7e-90a1-622a99247151",
+          "left": 903.765625,
+          "right": 950.25,
+          "top": 757.5,
+          "bottom": 789.5,
+          "width": 46.484375,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 954.25,
+          "right": 988,
+          "top": 757.5,
+          "bottom": 789.5,
+          "width": 33.75,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 0,
+          "right": 0,
+          "top": 0,
+          "bottom": 0,
+          "width": 0,
+          "height": 0
+        }
+      ]
+    },
+    {
+      "text": "2026.10.17 03:1420261017-105085107방금 접수민트컨디션일반상품 정보 없음1,004원—배송 준비송장 입력상세······",
+      "left": 220,
+      "right": 1000,
+      "top": 813.5,
+      "bottom": 893.5,
+      "width": 780,
+      "height": 80,
+      "cells": [
+        {
+          "text": "",
+          "whiteSpace": "normal",
+          "left": 220,
+          "right": 264,
+          "top": 813.5,
+          "bottom": 893.5,
+          "width": 44,
+          "height": 80
+        },
+        {
+          "text": "2026.10.17 03:1420261017-105085107방금 접수",
+          "whiteSpace": "nowrap",
+          "left": 264,
+          "right": 420.65625,
+          "top": 813.5,
+          "bottom": 893.5,
+          "width": 156.65625,
+          "height": 80
+        },
+        {
+          "text": "민트컨디션일반",
+          "whiteSpace": "normal",
+          "left": 420.65625,
+          "right": 498.953125,
+          "top": 813.5,
+          "bottom": 893.5,
+          "width": 78.296875,
+          "height": 80
+        },
+        {
+          "text": "상품 정보 없음",
+          "whiteSpace": "nowrap",
+          "left": 498.953125,
+          "right": 602.5625,
+          "top": 813.5,
+          "bottom": 893.5,
+          "width": 103.609375,
+          "height": 80
+        },
+        {
+          "text": "1,004원",
+          "whiteSpace": "nowrap",
+          "left": 602.5625,
+          "right": 677.171875,
+          "top": 813.5,
+          "bottom": 893.5,
+          "width": 74.609375,
+          "height": 80
+        },
+        {
+          "text": "—",
+          "whiteSpace": "normal",
+          "left": 677.171875,
+          "right": 723.65625,
+          "top": 813.5,
+          "bottom": 893.5,
+          "width": 46.484375,
+          "height": 80
+        },
+        {
+          "text": "배송 준비",
+          "whiteSpace": "normal",
+          "left": 723.65625,
+          "right": 815.5625,
+          "top": 813.5,
+          "bottom": 893.5,
+          "width": 91.90625,
+          "height": 80
+        },
+        {
+          "text": "송장 입력상세······",
+          "whiteSpace": "normal",
+          "left": 815.5625,
+          "right": 1000,
+          "top": 813.5,
+          "bottom": 893.5,
+          "width": 184.4375,
+          "height": 80
+        }
+      ],
+      "actions": [
+        {
+          "text": "2026.10.17 03:14",
+          "href": "/seller/orders/f9f46644-64c8-4216-9443-9ca830ad8f57",
+          "left": 280.171875,
+          "right": 404.484375,
+          "top": 828.5,
+          "bottom": 844.5,
+          "width": 124.3125,
+          "height": 16
+        },
+        {
+          "text": "송장 입력",
+          "href": "/seller/shipping",
+          "left": 827.5625,
+          "right": 899.765625,
+          "top": 837.5,
+          "bottom": 869.5,
+          "width": 72.203125,
+          "height": 32
+        },
+        {
+          "text": "상세",
+          "href": "/seller/orders/f9f46644-64c8-4216-9443-9ca830ad8f57",
+          "left": 903.765625,
+          "right": 950.25,
+          "top": 837.5,
+          "bottom": 869.5,
+          "width": 46.484375,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 954.25,
+          "right": 988,
+          "top": 837.5,
+          "bottom": 869.5,
+          "width": 33.75,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 0,
+          "right": 0,
+          "top": 0,
+          "bottom": 0,
+          "width": 0,
+          "height": 0
+        }
+      ]
+    },
+    {
+      "text": "2026.10.17 03:1420261017-105085108방금 접수민트컨디션일반상품 정보 없음1,005원—배송 준비송장 입력상세······",
+      "left": 220,
+      "right": 1000,
+      "top": 893.5,
+      "bottom": 973.5,
+      "width": 780,
+      "height": 80,
+      "cells": [
+        {
+          "text": "",
+          "whiteSpace": "normal",
+          "left": 220,
+          "right": 264,
+          "top": 893.5,
+          "bottom": 973.5,
+          "width": 44,
+          "height": 80
+        },
+        {
+          "text": "2026.10.17 03:1420261017-105085108방금 접수",
+          "whiteSpace": "nowrap",
+          "left": 264,
+          "right": 420.65625,
+          "top": 893.5,
+          "bottom": 973.5,
+          "width": 156.65625,
+          "height": 80
+        },
+        {
+          "text": "민트컨디션일반",
+          "whiteSpace": "normal",
+          "left": 420.65625,
+          "right": 498.953125,
+          "top": 893.5,
+          "bottom": 973.5,
+          "width": 78.296875,
+          "height": 80
+        },
+        {
+          "text": "상품 정보 없음",
+          "whiteSpace": "nowrap",
+          "left": 498.953125,
+          "right": 602.5625,
+          "top": 893.5,
+          "bottom": 973.5,
+          "width": 103.609375,
+          "height": 80
+        },
+        {
+          "text": "1,005원",
+          "whiteSpace": "nowrap",
+          "left": 602.5625,
+          "right": 677.171875,
+          "top": 893.5,
+          "bottom": 973.5,
+          "width": 74.609375,
+          "height": 80
+        },
+        {
+          "text": "—",
+          "whiteSpace": "normal",
+          "left": 677.171875,
+          "right": 723.65625,
+          "top": 893.5,
+          "bottom": 973.5,
+          "width": 46.484375,
+          "height": 80
+        },
+        {
+          "text": "배송 준비",
+          "whiteSpace": "normal",
+          "left": 723.65625,
+          "right": 815.5625,
+          "top": 893.5,
+          "bottom": 973.5,
+          "width": 91.90625,
+          "height": 80
+        },
+        {
+          "text": "송장 입력상세······",
+          "whiteSpace": "normal",
+          "left": 815.5625,
+          "right": 1000,
+          "top": 893.5,
+          "bottom": 973.5,
+          "width": 184.4375,
+          "height": 80
+        }
+      ],
+      "actions": [
+        {
+          "text": "2026.10.17 03:14",
+          "href": "/seller/orders/d4117266-3936-4a21-a332-887277e61444",
+          "left": 280.171875,
+          "right": 404.484375,
+          "top": 908.5,
+          "bottom": 924.5,
+          "width": 124.3125,
+          "height": 16
+        },
+        {
+          "text": "송장 입력",
+          "href": "/seller/shipping",
+          "left": 827.5625,
+          "right": 899.765625,
+          "top": 917.5,
+          "bottom": 949.5,
+          "width": 72.203125,
+          "height": 32
+        },
+        {
+          "text": "상세",
+          "href": "/seller/orders/d4117266-3936-4a21-a332-887277e61444",
+          "left": 903.765625,
+          "right": 950.25,
+          "top": 917.5,
+          "bottom": 949.5,
+          "width": 46.484375,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 954.25,
+          "right": 988,
+          "top": 917.5,
+          "bottom": 949.5,
+          "width": 33.75,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 0,
+          "right": 0,
+          "top": 0,
+          "bottom": 0,
+          "width": 0,
+          "height": 0
+        }
+      ]
+    },
+    {
+      "text": "2026.10.17 03:1420261017-105085109방금 접수민트컨디션일반상품 정보 없음1,006원—배송 준비송장 입력상세······",
+      "left": 220,
+      "right": 1000,
+      "top": 973.5,
+      "bottom": 1053.5,
+      "width": 780,
+      "height": 80,
+      "cells": [
+        {
+          "text": "",
+          "whiteSpace": "normal",
+          "left": 220,
+          "right": 264,
+          "top": 973.5,
+          "bottom": 1053.5,
+          "width": 44,
+          "height": 80
+        },
+        {
+          "text": "2026.10.17 03:1420261017-105085109방금 접수",
+          "whiteSpace": "nowrap",
+          "left": 264,
+          "right": 420.65625,
+          "top": 973.5,
+          "bottom": 1053.5,
+          "width": 156.65625,
+          "height": 80
+        },
+        {
+          "text": "민트컨디션일반",
+          "whiteSpace": "normal",
+          "left": 420.65625,
+          "right": 498.953125,
+          "top": 973.5,
+          "bottom": 1053.5,
+          "width": 78.296875,
+          "height": 80
+        },
+        {
+          "text": "상품 정보 없음",
+          "whiteSpace": "nowrap",
+          "left": 498.953125,
+          "right": 602.5625,
+          "top": 973.5,
+          "bottom": 1053.5,
+          "width": 103.609375,
+          "height": 80
+        },
+        {
+          "text": "1,006원",
+          "whiteSpace": "nowrap",
+          "left": 602.5625,
+          "right": 677.171875,
+          "top": 973.5,
+          "bottom": 1053.5,
+          "width": 74.609375,
+          "height": 80
+        },
+        {
+          "text": "—",
+          "whiteSpace": "normal",
+          "left": 677.171875,
+          "right": 723.65625,
+          "top": 973.5,
+          "bottom": 1053.5,
+          "width": 46.484375,
+          "height": 80
+        },
+        {
+          "text": "배송 준비",
+          "whiteSpace": "normal",
+          "left": 723.65625,
+          "right": 815.5625,
+          "top": 973.5,
+          "bottom": 1053.5,
+          "width": 91.90625,
+          "height": 80
+        },
+        {
+          "text": "송장 입력상세······",
+          "whiteSpace": "normal",
+          "left": 815.5625,
+          "right": 1000,
+          "top": 973.5,
+          "bottom": 1053.5,
+          "width": 184.4375,
+          "height": 80
+        }
+      ],
+      "actions": [
+        {
+          "text": "2026.10.17 03:14",
+          "href": "/seller/orders/d0cfb5a9-607a-4c1e-8d86-35f7604528a1",
+          "left": 280.171875,
+          "right": 404.484375,
+          "top": 988.5,
+          "bottom": 1004.5,
+          "width": 124.3125,
+          "height": 16
+        },
+        {
+          "text": "송장 입력",
+          "href": "/seller/shipping",
+          "left": 827.5625,
+          "right": 899.765625,
+          "top": 997.5,
+          "bottom": 1029.5,
+          "width": 72.203125,
+          "height": 32
+        },
+        {
+          "text": "상세",
+          "href": "/seller/orders/d0cfb5a9-607a-4c1e-8d86-35f7604528a1",
+          "left": 903.765625,
+          "right": 950.25,
+          "top": 997.5,
+          "bottom": 1029.5,
+          "width": 46.484375,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 954.25,
+          "right": 988,
+          "top": 997.5,
+          "bottom": 1029.5,
+          "width": 33.75,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 0,
+          "right": 0,
+          "top": 0,
+          "bottom": 0,
+          "width": 0,
+          "height": 0
+        }
+      ]
+    },
+    {
+      "text": "2026.10.17 03:1420261017-105085110방금 접수민트컨디션일반상품 정보 없음1,007원—배송 준비송장 입력상세······",
+      "left": 220,
+      "right": 1000,
+      "top": 1053.5,
+      "bottom": 1133.5,
+      "width": 780,
+      "height": 80,
+      "cells": [
+        {
+          "text": "",
+          "whiteSpace": "normal",
+          "left": 220,
+          "right": 264,
+          "top": 1053.5,
+          "bottom": 1133.5,
+          "width": 44,
+          "height": 80
+        },
+        {
+          "text": "2026.10.17 03:1420261017-105085110방금 접수",
+          "whiteSpace": "nowrap",
+          "left": 264,
+          "right": 420.65625,
+          "top": 1053.5,
+          "bottom": 1133.5,
+          "width": 156.65625,
+          "height": 80
+        },
+        {
+          "text": "민트컨디션일반",
+          "whiteSpace": "normal",
+          "left": 420.65625,
+          "right": 498.953125,
+          "top": 1053.5,
+          "bottom": 1133.5,
+          "width": 78.296875,
+          "height": 80
+        },
+        {
+          "text": "상품 정보 없음",
+          "whiteSpace": "nowrap",
+          "left": 498.953125,
+          "right": 602.5625,
+          "top": 1053.5,
+          "bottom": 1133.5,
+          "width": 103.609375,
+          "height": 80
+        },
+        {
+          "text": "1,007원",
+          "whiteSpace": "nowrap",
+          "left": 602.5625,
+          "right": 677.171875,
+          "top": 1053.5,
+          "bottom": 1133.5,
+          "width": 74.609375,
+          "height": 80
+        },
+        {
+          "text": "—",
+          "whiteSpace": "normal",
+          "left": 677.171875,
+          "right": 723.65625,
+          "top": 1053.5,
+          "bottom": 1133.5,
+          "width": 46.484375,
+          "height": 80
+        },
+        {
+          "text": "배송 준비",
+          "whiteSpace": "normal",
+          "left": 723.65625,
+          "right": 815.5625,
+          "top": 1053.5,
+          "bottom": 1133.5,
+          "width": 91.90625,
+          "height": 80
+        },
+        {
+          "text": "송장 입력상세······",
+          "whiteSpace": "normal",
+          "left": 815.5625,
+          "right": 1000,
+          "top": 1053.5,
+          "bottom": 1133.5,
+          "width": 184.4375,
+          "height": 80
+        }
+      ],
+      "actions": [
+        {
+          "text": "2026.10.17 03:14",
+          "href": "/seller/orders/59f9982f-8150-4c43-9e78-0b6f588174b7",
+          "left": 280.171875,
+          "right": 404.484375,
+          "top": 1068.5,
+          "bottom": 1084.5,
+          "width": 124.3125,
+          "height": 16
+        },
+        {
+          "text": "송장 입력",
+          "href": "/seller/shipping",
+          "left": 827.5625,
+          "right": 899.765625,
+          "top": 1077.5,
+          "bottom": 1109.5,
+          "width": 72.203125,
+          "height": 32
+        },
+        {
+          "text": "상세",
+          "href": "/seller/orders/59f9982f-8150-4c43-9e78-0b6f588174b7",
+          "left": 903.765625,
+          "right": 950.25,
+          "top": 1077.5,
+          "bottom": 1109.5,
+          "width": 46.484375,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 954.25,
+          "right": 988,
+          "top": 1077.5,
+          "bottom": 1109.5,
+          "width": 33.75,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 0,
+          "right": 0,
+          "top": 0,
+          "bottom": 0,
+          "width": 0,
+          "height": 0
+        }
+      ]
+    },
+    {
+      "text": "2026.10.17 03:1420261017-105085111방금 접수민트컨디션일반상품 정보 없음1,008원—배송 준비송장 입력상세······",
+      "left": 220,
+      "right": 1000,
+      "top": 1133.5,
+      "bottom": 1213.5,
+      "width": 780,
+      "height": 80,
+      "cells": [
+        {
+          "text": "",
+          "whiteSpace": "normal",
+          "left": 220,
+          "right": 264,
+          "top": 1133.5,
+          "bottom": 1213.5,
+          "width": 44,
+          "height": 80
+        },
+        {
+          "text": "2026.10.17 03:1420261017-105085111방금 접수",
+          "whiteSpace": "nowrap",
+          "left": 264,
+          "right": 420.65625,
+          "top": 1133.5,
+          "bottom": 1213.5,
+          "width": 156.65625,
+          "height": 80
+        },
+        {
+          "text": "민트컨디션일반",
+          "whiteSpace": "normal",
+          "left": 420.65625,
+          "right": 498.953125,
+          "top": 1133.5,
+          "bottom": 1213.5,
+          "width": 78.296875,
+          "height": 80
+        },
+        {
+          "text": "상품 정보 없음",
+          "whiteSpace": "nowrap",
+          "left": 498.953125,
+          "right": 602.5625,
+          "top": 1133.5,
+          "bottom": 1213.5,
+          "width": 103.609375,
+          "height": 80
+        },
+        {
+          "text": "1,008원",
+          "whiteSpace": "nowrap",
+          "left": 602.5625,
+          "right": 677.171875,
+          "top": 1133.5,
+          "bottom": 1213.5,
+          "width": 74.609375,
+          "height": 80
+        },
+        {
+          "text": "—",
+          "whiteSpace": "normal",
+          "left": 677.171875,
+          "right": 723.65625,
+          "top": 1133.5,
+          "bottom": 1213.5,
+          "width": 46.484375,
+          "height": 80
+        },
+        {
+          "text": "배송 준비",
+          "whiteSpace": "normal",
+          "left": 723.65625,
+          "right": 815.5625,
+          "top": 1133.5,
+          "bottom": 1213.5,
+          "width": 91.90625,
+          "height": 80
+        },
+        {
+          "text": "송장 입력상세······",
+          "whiteSpace": "normal",
+          "left": 815.5625,
+          "right": 1000,
+          "top": 1133.5,
+          "bottom": 1213.5,
+          "width": 184.4375,
+          "height": 80
+        }
+      ],
+      "actions": [
+        {
+          "text": "2026.10.17 03:14",
+          "href": "/seller/orders/7db85e32-c479-4cad-b039-bb9fc3033685",
+          "left": 280.171875,
+          "right": 404.484375,
+          "top": 1148.5,
+          "bottom": 1164.5,
+          "width": 124.3125,
+          "height": 16
+        },
+        {
+          "text": "송장 입력",
+          "href": "/seller/shipping",
+          "left": 827.5625,
+          "right": 899.765625,
+          "top": 1157.5,
+          "bottom": 1189.5,
+          "width": 72.203125,
+          "height": 32
+        },
+        {
+          "text": "상세",
+          "href": "/seller/orders/7db85e32-c479-4cad-b039-bb9fc3033685",
+          "left": 903.765625,
+          "right": 950.25,
+          "top": 1157.5,
+          "bottom": 1189.5,
+          "width": 46.484375,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 954.25,
+          "right": 988,
+          "top": 1157.5,
+          "bottom": 1189.5,
+          "width": 33.75,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 0,
+          "right": 0,
+          "top": 0,
+          "bottom": 0,
+          "width": 0,
+          "height": 0
+        }
+      ]
+    },
+    {
+      "text": "2026.10.17 03:1420261017-105085112방금 접수민트컨디션일반상품 정보 없음1,009원—배송 준비송장 입력상세······",
+      "left": 220,
+      "right": 1000,
+      "top": 1213.5,
+      "bottom": 1293.5,
+      "width": 780,
+      "height": 80,
+      "cells": [
+        {
+          "text": "",
+          "whiteSpace": "normal",
+          "left": 220,
+          "right": 264,
+          "top": 1213.5,
+          "bottom": 1293.5,
+          "width": 44,
+          "height": 80
+        },
+        {
+          "text": "2026.10.17 03:1420261017-105085112방금 접수",
+          "whiteSpace": "nowrap",
+          "left": 264,
+          "right": 420.65625,
+          "top": 1213.5,
+          "bottom": 1293.5,
+          "width": 156.65625,
+          "height": 80
+        },
+        {
+          "text": "민트컨디션일반",
+          "whiteSpace": "normal",
+          "left": 420.65625,
+          "right": 498.953125,
+          "top": 1213.5,
+          "bottom": 1293.5,
+          "width": 78.296875,
+          "height": 80
+        },
+        {
+          "text": "상품 정보 없음",
+          "whiteSpace": "nowrap",
+          "left": 498.953125,
+          "right": 602.5625,
+          "top": 1213.5,
+          "bottom": 1293.5,
+          "width": 103.609375,
+          "height": 80
+        },
+        {
+          "text": "1,009원",
+          "whiteSpace": "nowrap",
+          "left": 602.5625,
+          "right": 677.171875,
+          "top": 1213.5,
+          "bottom": 1293.5,
+          "width": 74.609375,
+          "height": 80
+        },
+        {
+          "text": "—",
+          "whiteSpace": "normal",
+          "left": 677.171875,
+          "right": 723.65625,
+          "top": 1213.5,
+          "bottom": 1293.5,
+          "width": 46.484375,
+          "height": 80
+        },
+        {
+          "text": "배송 준비",
+          "whiteSpace": "normal",
+          "left": 723.65625,
+          "right": 815.5625,
+          "top": 1213.5,
+          "bottom": 1293.5,
+          "width": 91.90625,
+          "height": 80
+        },
+        {
+          "text": "송장 입력상세······",
+          "whiteSpace": "normal",
+          "left": 815.5625,
+          "right": 1000,
+          "top": 1213.5,
+          "bottom": 1293.5,
+          "width": 184.4375,
+          "height": 80
+        }
+      ],
+      "actions": [
+        {
+          "text": "2026.10.17 03:14",
+          "href": "/seller/orders/70399763-f9bd-4dce-9436-d00d337f5f7c",
+          "left": 280.171875,
+          "right": 404.484375,
+          "top": 1228.5,
+          "bottom": 1244.5,
+          "width": 124.3125,
+          "height": 16
+        },
+        {
+          "text": "송장 입력",
+          "href": "/seller/shipping",
+          "left": 827.5625,
+          "right": 899.765625,
+          "top": 1237.5,
+          "bottom": 1269.5,
+          "width": 72.203125,
+          "height": 32
+        },
+        {
+          "text": "상세",
+          "href": "/seller/orders/70399763-f9bd-4dce-9436-d00d337f5f7c",
+          "left": 903.765625,
+          "right": 950.25,
+          "top": 1237.5,
+          "bottom": 1269.5,
+          "width": 46.484375,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 954.25,
+          "right": 988,
+          "top": 1237.5,
+          "bottom": 1269.5,
+          "width": 33.75,
+          "height": 32
+        },
+        {
+          "text": "···",
+          "href": null,
+          "left": 0,
+          "right": 0,
+          "top": 0,
+          "bottom": 0,
+          "width": 0,
+          "height": 0
+        }
+      ]
+    }
+  ]
+}
