@@ -660,14 +660,17 @@ test("파트너스 목록: 실제 로그인 후 공통 틀 3폭 geometry와 이�
       if (failure) throw failure.error;
       expect(geometry).toEqual({ mainX: width < 768 ? 0 : 196, headY: 112, overflow: false });
       if (width >= 1024) {
-        expect(metrics.table?.columns[0].align).toBe("left");
-        for (const row of metrics.rows) expect(row.cells[0].align).toBe("left");
+        // 최고관리자 목록은 첫 칸이 선택 체크 열이므로 이름 칸은 머리글 「파트너스 · 쇼핑몰」로 찾는다(위치 가정 금지)
+        const nameCol = metrics.table?.columns.findIndex((c) => c.text === "파트너스 · 쇼핑몰") ?? -1;
+        expect(nameCol).toBeGreaterThanOrEqual(0);
+        expect(metrics.table?.columns[nameCol].align).toBe("left");
+        for (const row of metrics.rows) expect(row.cells[nameCol].align).toBe("left");
         expect(metrics.scroll?.overflowX).toBe("auto");
         if (!data?.sellers.length) throw new Error("파트너스 조회 응답에 대상 행이 없습니다");
         const target = data.sellers.reduce((a, b) => a.shopName.length >= b.shopName.length ? a : b);
         const row = page.getByTestId("partner-row").filter({ has: page.locator(`a[href="/admin/partners/${target.id}"]`) });
-        await expect(row.locator("td").first().getByRole("link", { name: target.shopName, exact: true })).toBeVisible();
-        await expect(row.locator("td").first()).toContainText(`쇼핑몰 주소 ${target.slug}`);
+        await expect(row.locator("td").nth(nameCol).getByRole("link", { name: target.shopName, exact: true })).toBeVisible();
+        await expect(row.locator("td").nth(nameCol)).toContainText(`쇼핑몰 주소 ${target.slug}`);
         await page.locator("main .tbl").evaluate((el) => { if (el.parentElement) el.parentElement.scrollLeft = el.parentElement.scrollWidth; });
         const action = row.getByRole("link", { name: "상세", exact: true });
         await action.focus();
