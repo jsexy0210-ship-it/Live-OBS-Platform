@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import "../../../../../styles/seller-broadcast.css";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ListHead, PageHead, CursorPagination, SearchBox, SearchRow } from "../../../../../components/admin-ui";
+import { PageHead, CursorPagination, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { useScrollRestore } from "../../../../../lib/client/navigation";
 import { effectiveRange, listDefaults, type PeriodFilter } from "../../../../../lib/client/filterDefaults";
@@ -13,17 +14,36 @@ import { won } from "../../../../../components/seller/format";
 import { kstDuration, type BroadcastSummary } from "../../../../../components/seller/broadcast/history";
 import { LAYOUT_LABEL } from "../../../../../components/seller/broadcast/hit";
 import { formatDateTime } from "../../../../../lib/client/format";
-import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
+import { DateRangePicker } from "../../../../../components/admin-ui/DatePicker";
 
 // SA-054 방송 기록(방송별). 방송 시작일(KST) 기간으로 검색하고, 한 줄을 누르면 방송 상세(SA-055)로 간다.
 // API: GET /api/seller/broadcast/history?from=&to=&cursor=(시작 최신순 10개)
-// 시안의 이번 달 요약·레이아웃 검색·내보내기는 서버에 자료·API가 없어 두지 않았다.
+// 이번 달 요약 4칸은 응답의 monthSummary(필터와 상관없음), 「내보내기」는 GET …/history/export(같은 기간·레이아웃 조건, CSV, 최대 5,000건).
 
 type Item = { id: string; title: string | null; status: "live" | "ended"; startedAt: string; endedAt: string | null; layout: "9x16" | "16x9" | null; summary: BroadcastSummary };
-type Page = { items: Item[]; nextCursor: string | null };
+type MonthSummary = { broadcasts: number; seconds: number; orders: number; avgSales: number; avgOpenSeconds: number | null };
+type Page = { items: Item[]; nextCursor: string | null; monthSummary?: MonthSummary };
 type Load = { kind: "loading" } | { kind: "error"; status: number; error: string } | { kind: "ok"; items: Item[]; next: string | null };
+
+// 방송 시간 합: 「21시간」 · 「1시간 20분」 · 「35분」
+function hoursText(sec: number): string {
+  const min = Math.floor(sec / 60);
+  const h = Math.floor(min / 60);
+  return h > 0 ? `${h}시간${min % 60 ? ` ${min % 60}분` : ""}` : `${min}분`;
+}
+const openText = (sec: number | null) => (sec == null ? "-" : sec >= 60 ? `${Math.floor(sec / 60)}분 ${sec % 60}초` : `${sec}초`);
+function Tile({ label, value, note }: { label: string; value: string; note?: string }) {
+  return (
+    <div className="stat">
+      <span className="t-l2 c-alt">{label}</span>
+      <span className="v">{value}</span>
+      {note && <span className="d">{note}</span>}
+    </div>
+  );
+}
 type Filter = PeriodFilter & { layout?: string };
 
+const exportHref = (f: Filter) => query(f).replace("/history", "/history/export");
 const query = (f: Filter, cursor?: string | null) => {
   const q = new URLSearchParams();
   const { from, to } = effectiveRange(f);
@@ -50,6 +70,7 @@ export default function BroadcastHistoryPage() {
   const [page, setPage] = useState(1);
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const paging = useRef(false);
+  const [month, setMonth] = useState<MonthSummary | null>(null);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
   // 조건이 바뀌면 마지막으로 보낸 조건의 응답만 반영한다
   const seq = useRef(0);
@@ -62,6 +83,7 @@ export default function BroadcastHistoryPage() {
     const r = await api<Page>(query(f));
     if (n !== seq.current) return;
     paging.current = false;
+    if (r.ok && r.data.monthSummary) setMonth(r.data.monthSummary);
     setState(r.ok ? { kind: "ok", items: r.data.items, next: r.data.nextCursor } : { kind: "error", status: r.status, error: r.error });
   }, []);
   useEffect(() => {
@@ -99,29 +121,47 @@ export default function BroadcastHistoryPage() {
     <>
       <Topbar crumb="방송 › 방송 기록" />
       <main className="main">
-        <PageHead title="방송 기록" />
+        <PageHead
+          title="방송 기록"
+          actions={
+            allowed && (
+              <a className="btn btn-out" href={exportHref(applied)} data-testid="bh-export">
+                내보내기
+              </a>
+            )
+          }
+        />
         {!allowed ? (
           <div className="card">
             <NoPermission need="방송 진행" />
           </div>
         ) : (
           <>
+            {month && (
+              <div className="bc-sum-g" data-testid="bh-month">
+                <Tile label="이번 달 방송" value={`${month.broadcasts.toLocaleString("ko-KR")}회`} note={month.broadcasts > 0 ? hoursText(month.seconds) : undefined} />
+                <Tile label="이번 달 주문" value={month.orders.toLocaleString("ko-KR")} />
+                <Tile label="방송당 평균 매출" value={won(month.avgSales)} />
+                <Tile label="평균 오픈 시간" value={openText(month.avgOpenSeconds)} />
+              </div>
+            )}
             <SearchBox onSearch={search} onReset={reset} busy={state.kind === "loading"}>
-              <SearchRow label="기간">
-                <DatePicker aria-label="시작일" value={draft.from} onChange={(v) => setDraft({ ...draft, from: v })} />
-                <span aria-hidden="true"> ~ </span>
-                <DatePicker aria-label="종료일" value={draft.to} onChange={(v) => setDraft({ ...draft, to: v })} />
-              </SearchRow>
-              <SearchRow label="레이아웃">
-                <select className="inp" aria-label="레이아웃" value={draft.layout} onChange={(e) => setDraft({ ...draft, layout: e.target.value })}>
-                  <option value="">전체</option>
-                  <option value="9x16">{LAYOUT_LABEL["9x16"]}</option>
-                  <option value="16x9">{LAYOUT_LABEL["16x9"]}</option>
-                </select>
+              <SearchRow
+                label="기간"
+                label2="레이아웃"
+                children2={
+                  <select className="inp" aria-label="레이아웃" value={draft.layout} onChange={(e) => setDraft({ ...draft, layout: e.target.value })}>
+                    <option value="">전체</option>
+                    <option value="9x16">{LAYOUT_LABEL["9x16"]}</option>
+                    <option value="16x9">{LAYOUT_LABEL["16x9"]}</option>
+                  </select>
+                }
+              >
+                <DateRangePicker fromLabel="시작일" toLabel="종료일" from={draft.from} to={draft.to} onChange={(r) => setDraft({ ...draft, from: r.from, to: r.to })} quick />
               </SearchRow>
             </SearchBox>
 
-            <div className="card">
+            <div className="col" style={{ gap: 8 }}>
               {state.kind === "loading" && <LoadingRows rows={4} />}
               {state.kind === "error" &&
                 (state.status === 402 ? (
@@ -137,7 +177,6 @@ export default function BroadcastHistoryPage() {
                 ))}
               {state.kind === "ok" && (
                 <>
-                  <ListHead total={items.length} loaded />
                   {items.length === 0 ? (
                     <div className="st" style={{ boxShadow: "none" }} data-testid="bh-empty">
                       <span className="t">{applied.period !== "all" && !applied.layout && applied.from === defaults.from && applied.to === defaults.to ? "최근 1개월에는 방송 기록이 없습니다. 기간을 바꿔 다시 찾아 주십시오" : applied.layout || (applied.period !== "all" && (applied.from || applied.to)) ? "조건에 맞는 방송이 없습니다" : "아직 방송 기록이 없습니다"}</span>
@@ -169,7 +208,7 @@ export default function BroadcastHistoryPage() {
                                   {b.title || "제목 없는 방송"}
                                 </Link>
                               </td>
-                              <td className="num">{formatDateTime(b.startedAt)}</td>
+                              <td className="num">{formatDateTime(b.startedAt)}{b.status === "live" ? "~" : ""}</td>
                               <td className="num">{kstDuration(b.startedAt, b.endedAt)}</td>
                               <td className="num">{b.summary.orders.toLocaleString("ko-KR")}</td>
                               <td className="num">
@@ -178,7 +217,7 @@ export default function BroadcastHistoryPage() {
                               <td className="num">{b.summary.hits}</td>
                               <td className="num">{won(b.summary.sales)}</td>
                               <td data-testid="bh-layout">{b.layout ? LAYOUT_LABEL[b.layout] : "—"}</td>
-                              <td>{b.status === "live" ? <span className="bdg b-live">진행 중</span> : <span className="bdg b-done">종료</span>}</td>
+                              <td>{b.status === "live" ? <span className="bdg b-live">진행 중</span> : b.summary.orders === 0 ? <span className="bdg b-wait">종료 · 주문 없음</span> : <span className="bdg b-done">종료</span>}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -186,6 +225,7 @@ export default function BroadcastHistoryPage() {
                     </div>
                   )}
                   {(cursors.length > 1 || state.next) && <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={n => void go(n, cursors[n - 1])} onNext={() => { if (state.next) void go(page + 1, state.next); }} />}
+                  <span className="t-c1 c-alt">방송 시작부터 종료까지를 한 건으로 기록합니다 · 진행 중인 방송은 맨 위에 보입니다</span>
                 </>
               )}
             </div>

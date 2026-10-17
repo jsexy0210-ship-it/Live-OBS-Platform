@@ -114,7 +114,8 @@ test("기간으로 걸러 보고, 잘못된 기간은 조회하지 않으며, �
   await expect(page.getByTestId("bh-empty")).toContainText("조건에 맞는 방송이 없습니다");
   await page.getByLabel("시작일").fill("2020-02-01");
   await page.getByRole("button", { name: "검색" }).click();
-  await expect(page.getByText("시작일을 끝일보다 앞 날짜로 바꿔 주십시오")).toBeVisible();
+  // 기간 선택 부품이 잘못된 기간을 스스로 막고 안내한다(검색 요청은 나가지 않는다)
+  await expect(page.getByText("종료일은 시작일 이후로 선택하십시오.")).toBeVisible();
 
   await page.goto("/seller/broadcasts/00000000-0000-4000-8000-000000000000");
   await expect(page.getByTestId("bd-notfound")).toContainText("방송을 찾을 수 없습니다");
@@ -152,4 +153,16 @@ test("방송 진행 권한이 없는 직원: 메뉴가 없고 주소로 들어�
   await login(page, "demo-none@example.com", "/seller/broadcasts");
   await expect(page.getByText("필요한 권한: 방송 진행")).toBeVisible();
   await expect(page.getByRole("link", { name: "방송 기록" })).toHaveCount(0);
+});
+
+// 검수 증거: E2E_SCREENSHOTS=1일 때만 방송 기록(SA-054)을 1440·1024로 캡처한다.
+test("방송 기록 화면 캡처(SA-054, E2E_SCREENSHOTS=1일 때만)", async ({ page }) => {
+  test.skip(process.env.E2E_SCREENSHOTS !== "1", "E2E_SCREENSHOTS=1일 때만 캡처합니다");
+  for (const width of [1440, 1024]) {
+    await page.setViewportSize({ width, height: 900 });
+    await login(page, "demo-owner@example.com", "/seller/broadcasts");
+    await expect(page.getByRole("heading", { name: "방송 기록", level: 1 })).toBeVisible();
+    await expect(page.getByTestId("bh-month")).toBeVisible();
+    await page.screenshot({ path: `tests/e2e/screenshots/SA-054-${width}.png`, fullPage: true });
+  }
 });
