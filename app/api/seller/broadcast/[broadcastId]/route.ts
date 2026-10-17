@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSeller } from "../../../../../lib/server/authz/guards";
 import { broadcastDetail } from "../../../../../lib/server/broadcast/detail";
+import { maskBroadcastDetail } from "../../../../../lib/server/broadcast/maskReadOnly";
 import { prisma } from "../../../../../lib/server/db";
 import { saveBroadcastMemo } from "../../../../../lib/server/broadcast/insights";
 import { errorResponse, mutation, noStore, readJson, requestMeta, sessionToken } from "../../../../../lib/server/http/route";
@@ -13,7 +14,7 @@ import { errorResponse, mutation, noStore, readJson, requestMeta, sessionToken }
 export async function GET(req: Request, { params }: { params: Promise<{ broadcastId: string }> }) {
   try {
     const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "OVERLAY" });
-    return noStore(NextResponse.json(await broadcastDetail(prisma, ctx, (await params).broadcastId, new URL(req.url).searchParams.get("cursor"))));
+    return noStore(NextResponse.json((ctx.readOnly ? maskBroadcastDetail : (v: unknown) => v)(await broadcastDetail(prisma, ctx, (await params).broadcastId, new URL(req.url).searchParams.get("cursor")))));
   } catch (e) {
     return errorResponse(e);
   }
