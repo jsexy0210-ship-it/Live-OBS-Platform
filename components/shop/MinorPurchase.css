@@ -1,0 +1,22 @@
+/* SH-009 미성년자 구매 제한: 아래 토스트 · 안내 화면 버튼 줄 */
+.minor-toast {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 24px;
+  z-index: 90;
+  display: flex;
+  justify-content: center;
+  padding: 0 16px;
+  pointer-events: none;
+}
+.minor-btns {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+@media (max-width: 767px) {
+  .minor-toast {
+    bottom: 80px;
+  }
+}
