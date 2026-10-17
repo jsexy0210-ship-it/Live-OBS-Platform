@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FormFoot, PageHead } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
@@ -25,7 +25,9 @@ type Profile = {
   complete: boolean;
   businessCheck: { status: "ok" | "unchecked" | "not_active"; checkedAt: string | null };
 };
-type PlanRow = { planCode: string; name: string; current: boolean; price: number; change: { ok: true; applied: string; chargeNow: number; remainingDays: number | null; effectiveAt: string | null } | { ok: false; reason: string } };
+// 게이트에 걸려도 서버가 주는 읽기 전용 견적(결제가 있는 변경일 때만)
+type Quote = { chargeNow: number; remainingDays: number | null; periodDays: number };
+type PlanRow = { planCode: string; name: string; current: boolean; price: number; change: { ok: true; applied: string; chargeNow: number; remainingDays: number | null; effectiveAt: string | null } | { ok: false; reason: string; quote?: Quote } };
 type Preview = { currentPlanCode: string | null; pendingPlanCode: string | null; plans: PlanRow[] };
 type PublicPlans = { plans: { code: string; listPrice: number; salePrice: number }[] };
 type Form = { companyName: string; representativeName: string; businessNumber: string; mailOrderNumber: string; businessAddress: string; bankName: string; accountNumber: string; accountHolder: string; openedOn: string };
@@ -54,6 +56,13 @@ const FAIL: Record<string, string> = {
   same_plan: "이미 이용 중인 이용권입니다",
 };
 const EMPTY: Form = { companyName: "", representativeName: "", businessNumber: "", mailOrderNumber: "", businessAddress: "", bankName: "", accountNumber: "", accountHolder: "", openedOn: "" };
+// 지금 바꿀 때 낼 차액: 변경이 되는 경우 chargeNow, 게이트에 걸린 경우 서버 견적(quote). 둘 다 없으면 null
+const quoteOf = (row: PlanRow | undefined): { chargeNow: number; remainingDays: number | null; periodDays: number | null } | null => {
+  const c = row?.change;
+  if (!c) return null;
+  if (c.ok) return { chargeNow: c.chargeNow, remainingDays: c.remainingDays, periodDays: null };
+  return c.quote ?? null;
+};
 const day = (iso: string | null | undefined) => (iso ? formatDate(iso, ".") : "");
 
 export default function UpgradePage() {
@@ -67,6 +76,7 @@ export default function UpgradePage() {
   const [toast, setToast] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<"down" | "undo" | null>(null);
+  const baseline = useRef<Form>(EMPTY); // 불러온 값(저장 안 한 변경 확인의 기준)
 
   const read = useCallback(async () => {
     const [v, p, pr, pub] = await Promise.all([
@@ -78,7 +88,10 @@ export default function UpgradePage() {
     if (!v.ok) return setLoad({ kind: "error", status: v.status });
     const profile = pr.ok ? pr.data : null;
     if (profile) {
-      setForm((f) => ({ ...f, companyName: profile.business.companyName, representativeName: profile.business.representativeName, businessNumber: profile.business.businessNumber, mailOrderNumber: profile.business.mailOrderNumber ?? "", businessAddress: profile.business.businessAddress, bankName: profile.settlement?.bankName ?? "", accountHolder: profile.settlement?.accountHolder ?? "" }));
+      // 서버가 주지 않는 값(계좌번호 전체 · 개업일자)은 입력한 그대로 둔다
+      const loaded = { companyName: profile.business.companyName, representativeName: profile.business.representativeName, businessNumber: profile.business.businessNumber, mailOrderNumber: profile.business.mailOrderNumber ?? "", businessAddress: profile.business.businessAddress, bankName: profile.settlement?.bankName ?? "", accountHolder: profile.settlement?.accountHolder ?? "" };
+      setForm((f) => ({ ...f, ...loaded }));
+      baseline.current = { ...baseline.current, ...loaded };
       if (profile.businessCheck.status === "ok") {
         setCheck("ok");
         setChecked(`${profile.business.businessNumber}|${profile.business.representativeName}`);
@@ -97,7 +110,9 @@ export default function UpgradePage() {
       setChecked(null);
     }
   };
-  const dirty = load.kind === "ok" && !done && (form.companyName !== "" || form.accountNumber !== "");
+  // 바꿀 수 있는 입력 화면(오버레이 전용)에서만, 불러온 값과 달라졌을 때
+  const editable = load.kind === "ok" && load.view.plan?.code === "OVERLAY_ONLY" && !done;
+  const dirty = editable && (Object.keys(EMPTY) as (keyof Form)[]).some((k) => form[k] !== baseline.current[k]);
   useUnsavedGuard(dirty && !busy);
 
   const required = !!form.companyName.trim() && !!form.representativeName.trim() && !!form.businessNumber.trim() && !!form.businessAddress.trim() && !!form.bankName && !!form.accountNumber.trim() && !!form.accountHolder.trim();
@@ -149,7 +164,7 @@ export default function UpgradePage() {
       }
       const expected = target.change.chargeNow;
       const shown = load.preview?.plans.find((p) => p.planCode === "INTEGRATED");
-      const shownAmount = shown?.change.ok ? shown.change.chargeNow : null;
+      const shownAmount = quoteOf(shown)?.chargeNow ?? null;
       if (shownAmount !== expected) {
         await read();
         return setFailure(expected > 0 ? `차액 ${won(expected)}을 지금 결제합니다. 안내의 금액을 확인한 뒤 다시 눌러 주십시오` : "안내의 내용을 확인한 뒤 다시 눌러 주십시오");
@@ -197,7 +212,9 @@ export default function UpgradePage() {
     const overlay = code === "OVERLAY_ONLY";
     const target = preview?.plans.find((p) => p.planCode === "INTEGRATED");
     const down = preview?.plans.find((p) => p.planCode === "OVERLAY_ONLY");
-    const nextDate = day(view.subscription?.currentPeriodEnd ?? view.subscription?.nextChargeAt);
+    // 서버가 적용하는 날: 미리보기 effectiveAt, 없으면 다음 결제일(nextChargeAt, 결제 기간 끝보다 하루 빠름)
+    const downEffective = down?.change.ok ? down.change.effectiveAt : null;
+    const nextDate = day(downEffective ?? view.subscription?.nextChargeAt ?? view.subscription?.currentPeriodEnd);
     const pendingDown = view.subscription?.pendingPlanCode === "OVERLAY_ONLY";
     const cur = preview?.plans.find((p) => p.current);
 
@@ -254,8 +271,9 @@ export default function UpgradePage() {
 
     if (!overlay) return <div className="msg msg-info">현재 이용권에서는 바꿀 수 없습니다</div>;
 
-    const ch = target?.change;
-    const charge = ch && ch.ok ? ch.chargeNow : null;
+    const q = quoteOf(target);
+    const charge = q && q.chargeNow > 0 ? q.chargeNow : null;
+    const diff = target && cur ? target.price - cur.price : null;
     return (
       <form onSubmit={(e) => { e.preventDefault(); void upgrade(); }} noValidate>
         {failure && <div className="msg msg-neg" role="alert"><span>{failure}</span></div>}
@@ -271,7 +289,7 @@ export default function UpgradePage() {
           </div>
         </div>
         <p className="up-expl up-nt">
-          바꾸면 바로 적용됩니다 · {charge ? `이번 결제 기간에 남은 ${ch && ch.ok ? ch.remainingDays : ""}일 차액 ${won(charge)}을 지금 결제하고, ` : ""}
+          바꾸면 바로 적용됩니다 · {charge && q?.remainingDays ? `이번 결제 기간에 남은 ${q.remainingDays}일 차액 ${won(charge)}${q.periodDays && diff ? `(${won(diff)} × ${q.remainingDays} / ${q.periodDays}일)` : ""}을 지금 결제하고, ` : ""}
           {nextDate}부터 월 {won(target?.price ?? 0)}입니다 · 오버레이와 외부 쇼핑몰 연결은 그대로 유지됩니다
         </p>
         <section className="up-sec"><h2 className="up-st">사업자 정보</h2>
