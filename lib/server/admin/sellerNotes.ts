@@ -94,18 +94,19 @@ export async function deleteSellerNote(db: PrismaClient, admin: AdminSessionCont
   });
 }
 
-// 선택 메모 일괄(MA-012 목록 선택 작업): 고른 파트너스마다 같은 메모를 한 건씩 남긴다. 권한은 단건 추가와 같다(canWrite).
+// 선택 메모 일괄(MA-012 목록 선택 작업): 고른 파트너스마다 같은 메모를 한 건씩 남긴다. 권한은 seller.moderate(최고관리자·운영)만이다(MASTER 배정). 단건 추가(CS 포함)보다 좁다.
 // sellerIds 1~SELLER_NOTE_BULK_MAX개(중복은 한 번만), 본문은 단건과 같은 규칙. 파트너스마다 따로 처리해 한 곳이 없어도 나머지는 남기고, 로그 추적도 한 건씩(admin.seller.note.create) 남는다.
 export const SELLER_NOTE_BULK_MAX = 50;
 export type BulkNoteResult = { sellerId: string; ok: boolean; error?: "not_found" };
 export async function addSellerNotesBulk(db: PrismaClient, admin: AdminSessionContext, sellerIds: unknown, raw: unknown, meta: Meta = {}) {
-  if (!canWrite(admin)) throw forbidden();
+  if (!adminCan(admin.admin.role, "seller.moderate")) throw forbidden();
   if (!Array.isArray(sellerIds) || sellerIds.length < 1 || sellerIds.length > SELLER_NOTE_BULK_MAX || !sellerIds.every((id) => typeof id === "string" && UUID_RE.test(id))) {
     return { ok: false as const, reason: "invalid_sellers" as const };
   }
   if (cleanText(raw, SELLER_NOTE_MAX, "multiline") === null) return { ok: false as const, reason: "invalid_note" as const };
   const results: BulkNoteResult[] = [];
-  for (const sellerId of [...new Set(sellerIds as string[])]) {
+  // uuid는 대소문자를 가리지 않으므로 소문자로 맞춘 뒤 중복을 뺀다
+  for (const sellerId of [...new Set((sellerIds as string[]).map((id) => id.toLowerCase()))]) {
     const r = await addSellerNote(db, admin, sellerId, raw, meta);
     results.push(r.ok ? { sellerId, ok: true } : { sellerId, ok: false, error: "not_found" });
   }

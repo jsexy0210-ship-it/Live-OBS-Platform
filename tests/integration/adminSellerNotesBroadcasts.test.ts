@@ -145,14 +145,22 @@ describe("선택 메모 일괄 POST /api/admin/sellers/notes/bulk", () => {
     expect(JSON.stringify(logs.map((l) => l.after))).not.toContain("정산");
   });
 
-  it("권한은 단건 추가와 같다(최고관리자·운영·CS 가능, 조회 전용 403), 파트너스 수·글자·형식 검사는 400, 로그인 없음은 401", async () => {
+  it("권한은 seller.moderate(최고관리자·운영 가능, CS·조회 전용 403), 파트너스 수·글자·형식 검사는 400, 로그인 없음은 401", async () => {
     const a = (await createSeller()).seller;
     const cs = await admin("CS");
     const ro = await admin("READ_ONLY");
-    expect((await bulkNote(cs.cookie, { sellerIds: [a.id], body: "CS 메모" })).status).toBe(200);
+    const op = await admin("OPERATIONS");
+    const su = await admin("SUPER_ADMIN");
+    expect((await bulkNote(cs.cookie, { sellerIds: [a.id], body: "CS 메모" })).status).toBe(403);
     expect((await bulkNote(ro.cookie, { sellerIds: [a.id], body: "x" })).status).toBe(403);
-    expect(await db.sellerAdminNote.count({ where: { sellerId: a.id } })).toBe(1);
-    const bad = async (payload: unknown) => (await bulkNote(cs.cookie, payload)).body.error;
+    expect(await db.sellerAdminNote.count({ where: { sellerId: a.id } })).toBe(0);
+    expect((await bulkNote(su.cookie, { sellerIds: [a.id], body: "최고관리자 메모" })).status).toBe(200);
+    // 같은 uuid를 대소문자만 달리 줘도 한 번만 처리한다
+    const dup = await bulkNote(op.cookie, { sellerIds: [a.id, a.id.toUpperCase()], body: "중복" });
+    expect(dup.body.created).toBe(1);
+    expect(dup.body.results).toHaveLength(1);
+    expect(await db.sellerAdminNote.count({ where: { sellerId: a.id, body: "중복" } })).toBe(1);
+    const bad = async (payload: unknown) => (await bulkNote(op.cookie, payload)).body.error;
     expect(await bad({ sellerIds: [], body: "x" })).toBe("invalid_sellers");
     expect(await bad({ body: "x" })).toBe("invalid_sellers");
     expect(await bad({ sellerIds: "abc", body: "x" })).toBe("invalid_sellers");
@@ -161,7 +169,7 @@ describe("선택 메모 일괄 POST /api/admin/sellers/notes/bulk", () => {
     expect(await bad({ sellerIds: many, body: "x" })).toBe("invalid_sellers");
     expect(await bad({ sellerIds: [a.id], body: "" })).toBe("invalid_note");
     expect(await bad({ sellerIds: [a.id], body: "가".repeat(1001) })).toBe("invalid_note");
-    expect(await db.sellerAdminNote.count({ where: { sellerId: a.id } })).toBe(1);
+    expect(await db.sellerAdminNote.count({ where: { sellerId: a.id } })).toBe(2);
     const anon = await notesBulk(new Request("http://localhost:3000/x", { method: "POST", headers: H, body: JSON.stringify({ sellerIds: [a.id], body: "x" }) }));
     expect(anon.status).toBe(401);
   });

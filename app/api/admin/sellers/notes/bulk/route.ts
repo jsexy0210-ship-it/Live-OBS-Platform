@@ -9,7 +9,7 @@ const MESSAGE = {
   invalid_note: "메모는 1~1,000자로 적어 주십시오",
 } as const;
 
-// 선택 메모 일괄(MA-012). 본문 { sellerIds: uuid[](1~50, 중복은 한 번만), body(1~1,000자, 줄바꿈 허용) }. 권한은 메모 추가와 같다(최고관리자·운영·CS, 조회 전용 403).
+// 선택 메모 일괄(MA-012). 본문 { sellerIds: uuid[](1~50, 중복은 한 번만), body(1~1,000자, 줄바꿈 허용) }. 권한은 seller.moderate(최고관리자·운영, CS·조회 전용 403).
 // 200 { created, results: [{ sellerId, ok, error?: "not_found" }] }(파트너스마다 따로 처리, 로그 추적 admin.seller.note.create 한 건씩) · 400 invalid_sellers·invalid_note
 export const POST = mutation(async (req: Request) => {
   const admin = await requireAdmin(prisma, sessionToken(req, "admin"), "platform.read");
