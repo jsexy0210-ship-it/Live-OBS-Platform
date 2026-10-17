@@ -626,13 +626,13 @@ test("파트너스 목록: 실제 로그인 후 공통 틀 3폭 geometry와 이�
     let failure: { error: unknown } | undefined;
     let data: { sellers: SellerListRow[] } | undefined;
     try {
-      const responseBody = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/admin/sellers" && r.request().method() === "GET")
-        .then(async response => {
-          expect(response.status()).toBe(200);
-          expect(await response.finished()).toBeNull();
-          return response.json();
-        });
-      [data] = await Promise.all([responseBody, page.goto("/admin/partners")]);
+      const listed = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/admin/sellers" && r.request().method() === "GET");
+      const [response] = await Promise.all([listed, page.goto("/admin/partners")]);
+      expect(response.status()).toBe(200);
+      // 화면이 가져간 응답 본문은 이동 중 해제될 수 있어, 같은 조회를 다시 받아 대상 행을 정한다
+      const again = await page.request.get("/api/admin/sellers");
+      expect(again.status()).toBe(200);
+      data = await again.json();
       await expect(page.getByRole("heading", { name: "파트너스 목록", exact: true })).toBeVisible();
       await expect(page.getByTestId("partner-row").first()).toBeVisible();
       await page.evaluate(() => document.fonts.ready);
