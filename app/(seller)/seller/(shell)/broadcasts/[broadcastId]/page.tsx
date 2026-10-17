@@ -37,7 +37,7 @@ type Hit = { id: string; cardName: string; note: string | null; nickname: string
 type ExternalOrder = { id: string; nickname: string; items: { productName: string; quantity: number; status: string }[]; createdAt: string; cancelledAt: string | null; completedAt: string | null; openSeconds?: number | null };
 type Detail = {
   broadcast: { id: string; title: string | null; status: "live" | "ended"; startedAt: string; endedAt: string | null; memo: string | null; hostName: string | null; layoutAspect: "9x16" | "16x9" | null; timerSeconds: number | null };
-  summary: BroadcastSummary & { avgOpenSeconds: number | null; maxWaiting: number | null };
+  summary: BroadcastSummary & { avgOpenSeconds: number | null; maxWaiting: number | null; externalOrders?: number };
   hourly: { at: string; orders: number }[];
   events: { at: string; kind: "connected" | "live" | "disconnected" | "recovered" | "ended"; downSeconds: number | null; waiting: number | null }[];
   orders: Order[];
@@ -134,7 +134,7 @@ export default function BroadcastDetailPage() {
     const ext = (d.externalOrders ?? []).filter((e) => !d.nextCursor || (last !== null && e.createdAt <= last));
     return [...d.orders.map((o) => ({ at: o.createdAt, in: o as Order | null, ext: null as ExternalOrder | null })), ...ext.map((e) => ({ at: e.createdAt, in: null as Order | null, ext: e }))].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
   })();
-  const extCount = (d?.externalOrders ?? []).length;
+  const extCount = d?.summary.externalOrders ?? (d?.externalOrders ?? []).length;
   const hasOpen = (d?.orders ?? []).some((o) => o.openSeconds != null) || (d?.externalOrders ?? []).some((o) => o.openSeconds != null);
   const hitOrders = new Set((d?.hits ?? []).map((h) => h.order?.id).filter(Boolean) as string[]);
   const b = d?.broadcast;
