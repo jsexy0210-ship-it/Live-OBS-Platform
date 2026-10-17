@@ -2774,6 +2774,8 @@ model BulkJob {
   errors            Json          @default("{}")
   payload           Json          @default("[]")
   createdProductIds Json          @default("[]")
+  // 확정으로 기존 상품의 판매가·재고를 바꾼 기록 [{ productId, name, price: { before, after } | null, stock: [{ optionId, name, delta }] }]. 되돌릴 때 쓴다.
+  updatedProducts   Json          @default("[]")
   failures          Json          @default("[]")
   keptCount         Int           @default(0)
   // 내보내기: 내보내는 사유(회원 내보내기), 기간·개인정보 포함 여부 등 조건(meta)
