@@ -85,3 +85,74 @@
     margin-left: 0;
   }
 }
+
+/* SA-005 쇼핑몰 통합으로 바꾸기: 정본 SA-005.dc.html (2열 표형 입력: 150px 회색 항목 칸) */
+.main .up-st {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 32px 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--wds-line-normal-neutral);
+  font-size: 16px;
+  font-weight: 700;
+}
+.up-nt { font-size: 12px; font-weight: 400; color: var(--wds-label-alternative); }
+.up-now { display: flex; align-items: center; gap: 24px; padding: 12px 16px; }
+
+.up-to { color: var(--wds-primary-normal, #0066ff); }
+.up-arrow { color: var(--wds-label-alternative); }
+.main .up-expl { margin: 12px 0 0; font-size: 12px; }
+.up-pay, .up-notes { padding: 12px 16px; margin-top: 16px; }
+.up-notes { margin-top: 0; }
+.up-notes p { margin: 0; line-height: 1.6; }
+.up-down { width: 100%; margin-top: 16px; }
+.up-pend { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.up-hint { text-align: center; margin: 8px 0 0; }
+.up-bn { display: flex; gap: 8px; align-items: center; }
+.up-bn .inp { flex: 0 1 240px; }
+.up-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid var(--wds-line-normal-neutral);
+  border-left: 1px solid var(--wds-line-normal-neutral);
+}
+.up-grid > .fld {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
+  border-right: 1px solid var(--wds-line-normal-neutral);
+  border-bottom: 1px solid var(--wds-line-normal-neutral);
+}
+.up-grid > .fld.wide { grid-column: 1 / -1; }
+.up-grid.up-settlement { grid-template-columns: minmax(0, 1fr); }
+.up-grid > .fld > label {
+  grid-row: 1 / span 2;
+  display: flex;
+  align-items: flex-start;
+  padding: 14px 12px;
+  background: var(--wds-fill-alternative);
+  border-right: 1px solid var(--wds-line-normal-neutral);
+  font-weight: 600;
+}
+.up-grid > .fld > .inp,
+.up-grid > .fld > .up-bn { grid-column: 2; margin: 10px 12px 0; width: auto; }
+.up-grid > .fld > .help,
+.up-grid > .fld > .err { grid-column: 2; margin: 4px 12px 10px; }
+.up-done {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: 8px;
+  background: #1c1c1e;
+  color: #fff;
+}
+.up-done-a { color: #9cc2ff; }
+@media (max-width: 767px) {
+  .up-grid { grid-template-columns: minmax(0, 1fr); }
+  .up-grid > .fld { grid-template-columns: 110px minmax(0, 1fr); }
+  .up-now { flex-wrap: wrap; }
+}
