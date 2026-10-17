@@ -146,18 +146,18 @@ export default function BuyerInquiriesPage() {
             setDraft(empty);
             setUrl(empty);
           }} label="문의 검색">
+          <SearchRow label="작성일">
+            <DatePicker aria-label="작성일 시작" value={draft.from} onChange={(v) => setDraft({ ...draft, from: v })} />
+            <span aria-hidden="true">~</span>
+            <DatePicker aria-label="작성일 끝" value={draft.to} onChange={(v) => setDraft({ ...draft, to: v })} />
+            {invalidRange && <span className="help bi-neg">시작일이 끝일보다 늦습니다</span>}
+          </SearchRow>
           <SearchRow label="종류">
             <select className="inp" aria-label="문의 종류" value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value as "" | Kind })}>
               <option value="">전체</option>
               <option value="PRODUCT">상품 문의</option>
               <option value="GENERAL">1:1 문의</option>
             </select>
-          </SearchRow>
-          <SearchRow label="작성일">
-            <DatePicker aria-label="작성일 시작" value={draft.from} onChange={(v) => setDraft({ ...draft, from: v })} />
-            <span aria-hidden="true">~</span>
-            <DatePicker aria-label="작성일 끝" value={draft.to} onChange={(v) => setDraft({ ...draft, to: v })} />
-            {invalidRange && <span className="help bi-neg">시작일이 끝일보다 늦습니다</span>}
           </SearchRow>
           <SearchRow label="검색어">
             <input className="inp" aria-label="검색어" placeholder="제목 · 내용 · 작성자 · 상품명" maxLength={50} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
