@@ -413,3 +413,26 @@ test("발송한 주문의 송장은 택배사 코드가 아니라 화면 이름(
   const dd = page.locator("dt", { hasText: "송장" }).locator("xpath=following-sibling::dd[1]");
   await expect(dd).toHaveText(/^CJ대한통운 \d+$/);
 });
+
+test("행 「···」 → 「메모 남기기」: 저장하면 다시 열었을 때 남아 있고, 비워서 저장하면 지워진다", async ({ page }) => {
+  await login(page);
+  const row = rows(page).filter({ has: page.getByRole("button", { name: /더보기/ }) }).first();
+  const open = async () => {
+    await row.getByRole("button", { name: /더보기/ }).click();
+    await page.getByRole("menuitem", { name: "메모 남기기" }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+  };
+  await open();
+  const box = page.getByLabel("메모", { exact: true });
+  await expect(box).toBeEnabled();
+  await box.fill("선물 포장 요청 확인");
+  await page.getByRole("button", { name: "저장", exact: true }).click();
+  await expect(page.getByText("메모를 저장했습니다")).toBeVisible();
+  await open();
+  await expect(page.getByLabel("메모", { exact: true })).toHaveValue("선물 포장 요청 확인");
+  await page.getByLabel("메모", { exact: true }).fill("");
+  await page.getByRole("button", { name: "저장", exact: true }).click();
+  await expect(page.getByText("메모를 지웠습니다")).toBeVisible();
+  await open();
+  await expect(page.getByLabel("메모", { exact: true })).toHaveValue("");
+});
