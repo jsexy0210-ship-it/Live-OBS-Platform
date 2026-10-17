@@ -120,6 +120,20 @@ describe("기존 상품 수정", () => {
     expect(await priceOf(s.seller.id, "슬리브")).toBe(3100); // 판매가는 이름이 같아 반영, 이름이 바뀐 옵션 재고만 건너뜀
   });
 
+  it("필수 열만 쓴 파일: 새 상품은 옵션 하나(기본)·숨김으로 등록하고, 기존 상품은 옵션이 하나일 때만 그 재고를 수정한다", async () => {
+    const s = await shop();
+    await seed(s.ctx);
+    const min = (...rows: string[]) => ["상품명,카테고리,판매가,재고", ...rows].join("\r\n");
+    const p = await preview(s.ctx, min("부스터 팩,,6000,45", "슬리브,,3100,9", "신상,,1200,7"));
+    expect([p.createCount, p.updateCount, p.skippedProductCount]).toEqual([1, 1, 1]);
+    expect(p.errors).toMatchObject([{ row: 3, column: "재고" }]); // 슬리브는 옵션 둘이라 어느 옵션인지 알 수 없음
+    await commit(s.ctx, p.jobId);
+    expect(await priceOf(s.seller.id, "부스터 팩")).toBe(6000);
+    expect(await stockOf(s.seller.id, "부스터 팩")).toEqual({ 기본: 45 });
+    const created = await db.product.findFirstOrThrow({ where: { sellerId: s.seller.id, name: "신상" }, include: { options: true } });
+    expect([created.status, created.options.map((o) => [o.name, o.stock])]).toEqual(["HIDDEN", [["기본", 7]]]);
+  });
+
   it("지운 상품과는 이름이 같아도 새 상품으로 등록한다", async () => {
     const s = await shop();
     await seed(s.ctx);
