@@ -5,7 +5,7 @@ import { prisma } from "../../../../../../lib/server/db";
 import { noStore } from "../../../../../../lib/server/http/route";
 
 // 회원정보 수정(SH-024) 내 정보 조회(로그인한 쇼핑몰 회원만).
-// GET → { loginId, name, phoneMasked(010-****-1234), broadcastNickname, nextNicknameChangeAt(ISO | null: 닉네임을 다시 바꿀 수 있는 시각, 지금 바꿀 수 있으면 null) }.
+// GET → { loginId, name, phoneMasked(010-****-1234), broadcastNickname, nextNicknameChangeAt(ISO | null: 닉네임을 다시 바꿀 수 있는 시각, 지금 바꿀 수 있으면 null), minorPurchase: { policy("notice" | "block"), blocked(막는 쇼핑몰이고 만 19세 미만), reverifyRequired(막는 쇼핑몰인데 생년월일이 없어 본인확인을 다시 해야 함) } }.
 // 아이디·이름은 바꿀 수 없다. 마케팅 수신 동의는 /me/marketing-consent.
 export async function GET(req: Request, { params }: { params: Promise<{ slug: string }> }) {
   const b = await buyerScope(req, (await params).slug);
