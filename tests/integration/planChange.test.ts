@@ -294,7 +294,12 @@ describe("상위 변경(오버레이 전용 → 통합)", () => {
     expect(await subOf(failed.seller.id)).toMatchObject({ status: "ACTIVE", nextChargeAt: at(5), currentPeriodEnd: null, plan: { code: "OVERLAY_ONLY" } });
 
     const s = await shop("OVERLAY_ONLY", at(5), card);
-    expect(await changePlan(db, new FakeBillingProvider(), s.ctx, { planCode: "INTEGRATED", now: T0 })).toMatchObject({ ok: true, applied: "now", charged: 179000 });
+    const preview = await previewPlanChanges(db, s.ctx, { now: T0 });
+    const quote = preview.plans.find((p) => p.planCode === "INTEGRATED")!.change;
+    expect(quote).toMatchObject({ ok: true, applied: "now", chargeNow: 179000, remainingDays: null });
+    if (!quote.ok) throw new Error(quote.reason);
+    expect(await changePlan(db, new FakeBillingProvider(), s.ctx, { planCode: "INTEGRATED", expectedAmount: quote.chargeNow, requireExpectedAmount: true, now: T0 })).toMatchObject({ ok: true, applied: "now", charged: quote.chargeNow });
+    expect(await payments(s.seller.id)).toEqual([{ amount: 179000, status: "PAID", kind: "PERIOD" }]);
     expect((await db.seller.findUniqueOrThrow({ where: { id: s.seller.id } })).trialEndsAt).toEqual(T0);
     const sub = await subOf(s.seller.id);
     expect(sub).toMatchObject({ status: "ACTIVE", currentPeriodStart: T0, billingAnchorAt: T0, plan: { code: "INTEGRATED" } });

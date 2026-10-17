@@ -176,6 +176,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/products/[productId]/categories": "STORE_OPERATIONS",
   "seller/products/[productId]/images": "STORE_OPERATIONS",
   "seller/products/[productId]/detail": "STORE_OPERATIONS",
+  "seller/products/[productId]/preview": "STORE_OPERATIONS",
   "seller/display": "STORE_OPERATIONS",
   "seller/display/sections": "STORE_OPERATIONS",
   "seller/display/recommended": "STORE_OPERATIONS",

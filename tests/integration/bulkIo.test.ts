@@ -110,7 +110,7 @@ describe("일괄 등록", () => {
     const o = await createOrder(db, { sellerId: s.seller.id, buyerMemberId: buyer.id, items: [{ optionId: sold.options[0].id, quantity: 1 }], consent, shippingAddress });
     expect(o.ok).toBe(true);
     const r = await undoProductImport(db, s.ctx, p.jobId);
-    expect(r).toEqual({ ok: true, value: { removedCount: 1, keptCount: 1, kept: [{ productId: sold.id, name: "주문됨" }] } });
+    expect(r).toEqual({ ok: true, value: { removedCount: 1, restoredCount: 0, keptCount: 1, kept: [{ productId: sold.id, name: "주문됨" }] } });
     expect((await liveProducts(s.seller.id)).map((x) => x.name)).toEqual(["주문됨"]);
     expect(await undoProductImport(db, s.ctx, p.jobId)).toEqual({ ok: false, reason: "not_undoable" });
     expect((await getBulkJob(db, s.ctx, p.jobId)).status).toBe("UNDONE");
@@ -168,9 +168,12 @@ describe("상품 내보내기", () => {
     expect(rows[2].slice(0, 6)).toEqual(["", "", "", "", "", ""]);
     const again = await preview(s.ctx, r.value.csv);
     expect([again.productCount, again.errorTotal]).toEqual([1, 0]);
-    await commit(s.ctx, again.jobId);
+    // 내보낸 파일을 그대로 다시 올리면 이름이 같은 기존 상품의 수정으로 읽는다(새 상품이 생기지 않는다). 값이 같아 바뀌는 것은 없다.
+    expect(again).toMatchObject({ createCount: 0, updateCount: 1 });
+    const c = await commit(s.ctx, again.jobId);
+    expect(c).toMatchObject({ createdCount: 0, updatedCount: 0, failedCount: 0 });
     const names = (await liveProducts(s.seller.id)).map((x) => x.name);
-    expect(names).toEqual(['=위험, "이름"', '=위험, "이름"']);
+    expect(names).toEqual(['=위험, "이름"']);
   });
 
   it("내보내기는 로그 추적에 남고 다른 파트너스 상품은 섞이지 않으며 개인정보 열이 없다", async () => {
