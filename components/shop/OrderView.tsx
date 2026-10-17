@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import MyMenu from "./MyMenu";
 import OrderPay from "./OrderPay";
 import RefundRequestSection from "./returns/RefundRequestSection";
 import ReturnSection from "./returns/ReturnSection";
@@ -14,6 +15,7 @@ import { qtyText } from "./orderFormat";
 import { formatDateTime } from "../../lib/client/format";
 import "./Cart.css";
 import "./Checkout.css";
+import "./OrderDetail.css";
 
 // SH-007 주문 완료 · 주문 상세(시안 04 SH). 본인 주문을 /api/shop/{slug}/orders/{id}로 읽는다. ?done=1이면 방금 주문한 안내를 위에 둔다.
 type Order = {
@@ -81,9 +83,10 @@ export default function OrderView({ slug, orderId }: { slug: string; orderId: st
     }
   }
 
+  // 주문 상세는 내 정보 하위 화면이라 PC는 왼쪽 4그룹 메뉴, 휴대폰은 「‹ 주문 상세 · 쇼핑」 한 줄(보드 SH-022-IA). 방금 주문한 완료 화면(?done=1)은 장바구니 흐름의 3단계라 메뉴 없이 그린다.
   const wrap = (body: React.ReactNode, title = "주문 상세") => (
     <div className="shop-wrap cart-wrap">
-      <ShopBack fallback={`/shop/${encodeURIComponent(slug)}/orders`} label="주문 내역" />
+      {done && <ShopBack fallback={`/shop/${encodeURIComponent(slug)}/orders`} label="주문 내역" />}
       <div className="cart-head">
         <h1>{title}</h1>
         {done && (
@@ -100,7 +103,14 @@ export default function OrderView({ slug, orderId }: { slug: string; orderId: st
           </ol>
         )}
       </div>
-      {body}
+      {done ? (
+        body
+      ) : (
+        <div className="my-wrap">
+          <MyMenu slug={slug} current="주문 상세" />
+          <div>{body}</div>
+        </div>
+      )}
     </div>
   );
 
@@ -135,16 +145,18 @@ export default function OrderView({ slug, orderId }: { slug: string; orderId: st
         </p>
       )}
       <section className="co-box od-head" aria-label="주문 요약">
-        <p className="od-headline">
-          <span>{formatDateTime(o.createdAt)} 주문</span>
-          <span className="od-chip">{STATUS[o.status]}</span>
-        </p>
-        <p className="od-no">
-          주문번호 <b>{o.orderNoLabel}</b>
-          <button type="button" className="shop-linkbtn" onClick={() => void copyNo(o.orderNoLabel)}>
-            복사
-          </button>
-        </p>
+        <div className="od-top">
+          <p className="od-headline">
+            <span>{formatDateTime(o.createdAt)} 주문</span>
+            <span className="od-chip">{STATUS[o.status]}</span>
+          </p>
+          <p className="od-no">
+            주문번호 <b>{o.orderNoLabel}</b>
+            <button type="button" className="shop-linkbtn" onClick={() => void copyNo(o.orderNoLabel)}>
+              복사
+            </button>
+          </p>
+        </div>
         {copied && (
           <p className="cart-hint" role="status">
             주문번호를 복사했어요
@@ -167,6 +179,10 @@ export default function OrderView({ slug, orderId }: { slug: string; orderId: st
             <li className={o.queue.status === "OPENING" ? "is-now" : o.queue.status === "DONE" ? "is-done" : ""}>
               <b>개봉 · 결과</b>
               <span>{o.queue.status === "DONE" ? "개봉이 끝났어요" : o.queue.status === "OPENING" ? "방송에서 열고 있어요" : "방송에서 열어요"}</span>
+            </li>
+            <li className={o.shipment?.status === "DELIVERED" ? "is-done" : o.shipment ? "is-now" : ""}>
+              <b>배송</b>
+              <span>{o.shipment ? SHIP[o.shipment.status] : "개봉이 끝나면 보내요"}</span>
             </li>
           </ol>
         </section>
@@ -193,6 +209,7 @@ export default function OrderView({ slug, orderId }: { slug: string; orderId: st
           ))}
         </ul>
       </section>
+      <div className="od-two">
       <section className="co-box" aria-labelledby="od-sum">
         <h2 id="od-sum">결제 정보</h2>
         <div className="cart-row">
@@ -293,6 +310,7 @@ export default function OrderView({ slug, orderId }: { slug: string; orderId: st
           )}
         </section>
       )}
+      </div>
       {(o.status === "PAID" || o.status === "REFUNDED") && <RefundRequestSection slug={slug} orderId={o.id} onChanged={() => setTick((t) => t + 1)} />}
       {(o.status === "PAID" || o.status === "REFUNDED") && <ReturnSection slug={slug} orderId={o.id} />}
       <div className="cart-tools">
