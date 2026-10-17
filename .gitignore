@@ -10,3 +10,5 @@ out
 
 # Playwright 실행 부산물
 /test-results/
+# e2e가 커밋마다 만드는 진단·증거 폴더(CI는 아티팩트로만 올린다)
+/tests/e2e/screenshots/current-shell-*/
