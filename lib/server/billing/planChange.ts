@@ -1,7 +1,7 @@
 import type { Prisma, PrismaClient, SubscriptionPayment, SubscriptionPlan } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
-import { addMonthsKst, isCancelScheduled, isEndedSubscription, planChangeState, proration } from "./access";
+import { addMonthsKst, isCancelScheduled, isEndedSubscription, periodDays, planChangeState, proration } from "./access";
 export { proration } from "./access";
 import type { BillingProvider, ChargeResult } from "./provider";
 import { integrationGate } from "../sellers/integrationProfile";
@@ -86,13 +86,13 @@ type Sub = Prisma.SellerSubscriptionGetPayload<{ include: { plan: true } }>;
 
 export async function quotePlanChange(
   tx: Tx,
-  input: { sellerId: string; trialEndsAt: Date | null; sub: Sub | null; current: SubscriptionPlan; target: SubscriptionPlan; now: Date },
+  input: { sellerId: string; trialEndsAt: Date | null; sub: Sub | null; current: SubscriptionPlan; target: SubscriptionPlan; now: Date; skipIntegrationGate?: boolean },
 ): Promise<PlanChangeQuote> {
   const { sub, current, target, now } = input;
   if (isCancelScheduled(sub, now)) return { type: "fail", reason: "cancel_scheduled" };
   if (current.id === target.id) return sub?.pendingPlanId ? { type: "cancel_pending" } : { type: "fail", reason: "same_plan" };
   // 오버레이 전용 → 통합: 사업자·정산 정보와 사업자 조회 게이트(SA-005)
-  if (current.code === "OVERLAY_ONLY" && target.code === "INTEGRATED") {
+  if (!input.skipIntegrationGate && current.code === "OVERLAY_ONLY" && target.code === "INTEGRATED") {
     // 조회 유효 시간은 실제 시계로 잰다(계산 기준 시각 now는 시험에서 앞당길 수 있음)
     const gate = await integrationGate(tx, input.sellerId, new Date());
     if (gate) return { type: "fail", reason: gate };
@@ -258,9 +258,20 @@ export type PlanChangePreview = {
     price: number;
     change:
       | { ok: true; applied: "now" | "next_payment" | "canceled_pending"; chargeNow: number; remainingDays: number | null; effectiveAt: Date | null }
-      | { ok: false; reason: PlanChangeFailure };
+      // quote: 사업자·정산 정보 게이트(SA-005)에 걸려도 정보를 채운 뒤 내게 될 금액을 미리 보여 주는 읽기 전용 견적(결제가 있는 변경일 때만).
+      // 게이트 판정·실제 변경(changePlan)은 그대로이고, 금액은 변경하는 순간 다시 정해진다.
+      | { ok: false; reason: PlanChangeFailure; quote?: { chargeNow: number; remainingDays: number | null; periodDays: number } };
   }[];
 };
+
+const GATE_REASONS: readonly PlanChangeFailure[] = ["profile_incomplete", "business_unchecked", "business_not_active"];
+// 게이트 실패 때만, 게이트를 빼고 다시 판단해 결제가 있는 변경이면 견적을 붙인다(쓰기 없음).
+async function gateQuote(tx: Tx, reason: PlanChangeFailure, input: Parameters<typeof quotePlanChange>[1]) {
+  if (!GATE_REASONS.includes(reason)) return {};
+  const q = await quotePlanChange(tx, { ...input, skipIntegrationGate: true });
+  if (q.type !== "charge") return {};
+  return { quote: { chargeNow: q.amount, remainingDays: q.remainingDays, periodDays: periodDays(q.periodStart, q.periodEnd) } };
+}
 
 export async function previewPlanChanges(db: PrismaClient, ctx: TenantContext, input: { now?: Date } = {}): Promise<PlanChangePreview> {
   requireSellerRead(ctx, "SUBSCRIPTION_MANAGE");
@@ -286,7 +297,7 @@ export async function previewPlanChanges(db: PrismaClient, ctx: TenantContext, i
         const q = await quotePlanChange(tx, { sellerId: ctx.sellerId, trialEndsAt: seller.trialEndsAt, sub, current, target, now });
         change =
           q.type === "fail"
-            ? { ok: false, reason: q.reason }
+            ? { ok: false, reason: q.reason, ...(await gateQuote(tx, q.reason, { sellerId: ctx.sellerId, trialEndsAt: seller.trialEndsAt, sub, current, target, now })) }
             : q.type === "cancel_pending"
               ? { ok: true, applied: "canceled_pending", chargeNow: 0, remainingDays: null, effectiveAt: null }
               : q.type === "schedule"
