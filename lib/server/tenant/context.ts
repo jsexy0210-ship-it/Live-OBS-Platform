@@ -22,8 +22,15 @@ const IMPERSONATION_ACTION_SCOPE: Partial<Record<SellerAction, ImpersonationScop
   SALES_VIEW: "ORDERS",
   PRODUCT_MANAGE: "ORDERS",
   MEMBER_POINTS: "MEMBERS",
+  BROADCAST_RUN: "BROADCAST",
+  OVERLAY_EDIT: "OVERLAY",
 };
 export const outOfScope = () => new AuthError(403, "out_of_scope");
+
+// 조회 권한 표를 거치지 않는 읽기(예: 외부 쇼핑몰 연동 목록)가 대리 조회일 때 열람 범위만 확인한다. 범위 밖이면 403 out_of_scope.
+export function requireImpersonationScope(ctx: TenantContext, scope: ImpersonationScope): void {
+  if (ctx.readOnly && !ctx.impersonationScopes?.includes(scope)) throw outOfScope();
+}
 
 // 변경 작업 권한 확인. 마스터 대리 조회(읽기 전용)는 항상 거부한다.
 export function requireSellerPermission(ctx: TenantContext, action: SellerAction): void {

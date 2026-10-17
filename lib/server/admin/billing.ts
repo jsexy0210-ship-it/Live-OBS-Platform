@@ -40,17 +40,31 @@ export const lockedSql = (now: Date) => Prisma.sql`(sub."status" = 'PAST_DUE' AN
   AND sub."currentPeriodEnd" <= ${now} AND (se."trialEndsAt" IS NULL OR se."trialEndsAt" <= ${now}))`;
 
 // 구독 현황 대상(승인된 파트너스: 운영 중·정지·종료)과 이용 상태별 수. 구독 현황 탭 숫자와 대시보드(MA-001)가 같은 기준을 쓴다.
-const subscriptionBase = Prisma.sql`FROM "Seller" se
+const subscriptionFrom = Prisma.sql`FROM "Seller" se
     LEFT JOIN "SellerSubscription" sub ON sub."sellerId" = se."id"
-    LEFT JOIN "SubscriptionPlan" p ON p."id" = COALESCE(sub."planId", se."planId")
-    WHERE se."approvedAt" IS NOT NULL AND se."status" IN ('ACTIVE', 'SUSPENDED', 'CLOSED')`;
+    LEFT JOIN "SubscriptionPlan" p ON p."id" = COALESCE(sub."planId", se."planId")`;
+const subscriptionWhere = Prisma.sql`WHERE se."approvedAt" IS NOT NULL AND se."status" IN ('ACTIVE', 'SUSPENDED', 'CLOSED')`;
+const subscriptionBase = Prisma.sql`${subscriptionFrom}
+    ${subscriptionWhere}`;
 
 export async function subscriptionAccessCounts(db: PrismaClient, now: Date): Promise<Record<SellerAccess, number>> {
   const rows = await db.$queryRaw<{ access: SellerAccess; n: number }[]>`SELECT ${accessSql(now)} AS "access", count(*)::int AS "n" ${subscriptionBase} GROUP BY 1`;
   return Object.fromEntries(ACCESS.map((a) => [a, rows.find((r) => r.access === a)?.n ?? 0])) as Record<SellerAccess, number>;
 }
 
-export type AdminSubscriptionQuery = { access?: string | null; plan?: string | null; q?: string | null; cursor?: string | null; limit?: string | null };
+// 해지 예정: 기간 끝에 해지하기로 했고 아직 끝나지 않은 구독(isCancelScheduled와 같은 기준: 해지 완료·기간 끝이 지난 건 제외). 이용 상태와 겹칠 수 있어 따로 센다(MA-023 상태 체크 「해지 예정」).
+export const cancellingSql = (now: Date) => Prisma.sql`(sub."id" IS NOT NULL AND sub."cancelAtPeriodEnd" AND sub."status" <> 'CANCELED' AND (sub."currentPeriodEnd" IS NULL OR sub."currentPeriodEnd" > ${now}))`;
+
+export type SubscriptionCounts = Record<SellerAccess, number> & { locked: number; cancelling: number };
+
+async function subscriptionExtraCounts(db: PrismaClient, now: Date): Promise<{ locked: number; cancelling: number }> {
+  const [r] = await db.$queryRaw<{ locked: number; cancelling: number }[]>`SELECT
+    (count(*) FILTER (WHERE ${lockedSql(now)}))::int AS "locked", (count(*) FILTER (WHERE ${cancellingSql(now)}))::int AS "cancelling" ${subscriptionBase}`;
+  return { locked: r?.locked ?? 0, cancelling: r?.cancelling ?? 0 };
+}
+
+export type AdminSubscriptionQuery = { access?: string | null; plan?: string | null; q?: string | null; nextFrom?: string | null; nextTo?: string | null; cursor?: string | null; limit?: string | null };
+const ACCESS_FILTERS = [...ACCESS, "locked", "cancelling"] as const;
 
 type SubscriptionRow = {
   sellerId: string;
@@ -69,6 +83,12 @@ type SubscriptionRow = {
   cancelAtPeriodEnd: boolean | null;
   graceUntil: Date | null;
   retryCount: number | null;
+  planListPrice: number | null;
+  planSalePrice: number | null;
+  payAmount: number | null;
+  payStatus: string | null;
+  payPaidAt: Date | null;
+  payCreatedAt: Date | null;
 };
 
 // 구독 현황: 승인된 파트너스(승인 대기·반려 제외)마다 이용 상태와 구독. 가입 시각 내림차순 커서. counts는 필터 전 상태별 수.
@@ -78,16 +98,29 @@ export async function listAdminSubscriptions(db: PrismaClient, admin: AdminSessi
   if (!take) return { ok: false as const };
   const cursor = query.cursor ? decodeCursor(query.cursor) : null;
   if (query.cursor && !cursor) return { ok: false as const };
-  if (query.access && query.access !== "locked" && !ACCESS.includes(query.access as SellerAccess)) return { ok: false as const };
+  // access는 쉼표로 여러 개(체험,연체 유예 …)를 고를 수 있다: 하나라도 맞으면 나온다. locked(잠금)·cancelling(해지 예정)은 이용 상태와 겹칠 수 있다.
+  const accessList = query.access ? [...new Set(query.access.split(",").map((a) => a.trim()))] : [];
+  if (accessList.some((a) => !(ACCESS_FILTERS as readonly string[]).includes(a))) return { ok: false as const };
+  const nextFrom = query.nextFrom ? kstDayStart(query.nextFrom) : null;
+  const nextTo = query.nextTo ? kstDayStart(query.nextTo) : null;
+  if ((query.nextFrom && !nextFrom) || (query.nextTo && !nextTo)) return { ok: false as const };
+  if (nextFrom && nextTo && nextTo < nextFrom) return { ok: false as const };
   if (query.plan && !PLAN_CODES.includes(query.plan)) return { ok: false as const };
   const q = query.q?.trim() ?? "";
   if (q.length > 50) return { ok: false as const };
   const now = opts.now ?? (await dbNow(db));
   const access = accessSql(now);
-  const base = subscriptionBase;
+  // 최근 결제: 이 파트너스의 가장 최근 구독 청구(상태 무관, 청구 시각 기준)
+  const base = Prisma.sql`${subscriptionFrom}
+    LEFT JOIN LATERAL (SELECT sp."amount", sp."status", sp."paidAt", sp."createdAt" FROM "SubscriptionPayment" sp WHERE sp."sellerId" = se."id" ORDER BY sp."createdAt" DESC, sp."id" DESC LIMIT 1) lp ON true
+    ${subscriptionWhere}`;
   const conds: Prisma.Sql[] = [];
-  if (query.access === "locked") conds.push(lockedSql(now));
-  else if (query.access) conds.push(Prisma.sql`(${access}) = ${query.access}`);
+  if (accessList.length) {
+    const any = accessList.map((a) => (a === "locked" ? lockedSql(now) : a === "cancelling" ? cancellingSql(now) : Prisma.sql`(${access}) = ${a}`));
+    conds.push(Prisma.sql`(${Prisma.join(any, " OR ")})`);
+  }
+  if (nextFrom) conds.push(Prisma.sql`sub."nextChargeAt" >= ${nextFrom}`);
+  if (nextTo) conds.push(Prisma.sql`sub."nextChargeAt" < ${new Date(nextTo.getTime() + DAY_MS)}`);
   if (query.plan) conds.push(Prisma.sql`p."code" = ${query.plan}`);
   if (q) conds.push(Prisma.sql`(se."shopName" ILIKE ${`%${q}%`} OR se."slug" LIKE ${`%${q.toLowerCase()}%`})`);
   if (cursor) conds.push(Prisma.sql`(se."createdAt" < ${cursor.createdAt} OR (se."createdAt" = ${cursor.createdAt} AND se."id" < ${cursor.id}::uuid))`);
@@ -95,10 +128,12 @@ export async function listAdminSubscriptions(db: PrismaClient, admin: AdminSessi
   const rows = await db.$queryRaw<SubscriptionRow[]>`
     SELECT se."id" AS "sellerId", se."slug", se."shopName", se."status"::text AS "sellerStatus", se."createdAt", se."trialEndsAt",
       ${access} AS "access", p."code" AS "planCode", p."name" AS "planName",
-      sub."status"::text AS "subStatus", sub."cardLabel", sub."currentPeriodEnd", sub."nextChargeAt", sub."cancelAtPeriodEnd", sub."graceUntil", sub."retryCount"
+      sub."status"::text AS "subStatus", sub."cardLabel", sub."currentPeriodEnd", sub."nextChargeAt", sub."cancelAtPeriodEnd", sub."graceUntil", sub."retryCount",
+      p."listPrice" AS "planListPrice", p."salePrice" AS "planSalePrice",
+      lp."amount" AS "payAmount", lp."status"::text AS "payStatus", lp."paidAt" AS "payPaidAt", lp."createdAt" AS "payCreatedAt"
     ${base}${extra}
     ORDER BY se."createdAt" DESC, se."id" DESC LIMIT ${take + 1}`;
-  const counts = await subscriptionAccessCounts(db, now);
+  const counts: SubscriptionCounts = { ...(await subscriptionAccessCounts(db, now)), ...(await subscriptionExtraCounts(db, now)) };
   const page = rows.slice(0, take);
   const last = page[page.length - 1];
   return {
@@ -107,8 +142,9 @@ export async function listAdminSubscriptions(db: PrismaClient, admin: AdminSessi
     subscriptions: page.map((r) => ({
       seller: { id: r.sellerId, slug: r.slug, shopName: r.shopName, status: r.sellerStatus },
       access: r.access,
-      plan: r.planCode ? { code: r.planCode, name: r.planName } : null,
+      plan: r.planCode ? { code: r.planCode, name: r.planName, listPrice: r.planListPrice, salePrice: r.planSalePrice } : null,
       trialEndsAt: r.trialEndsAt,
+      lastPayment: r.payCreatedAt ? { amount: r.payAmount, status: r.payStatus, paidAt: r.payPaidAt, createdAt: r.payCreatedAt } : null,
       subscription: r.subStatus
         ? {
             status: r.subStatus,
