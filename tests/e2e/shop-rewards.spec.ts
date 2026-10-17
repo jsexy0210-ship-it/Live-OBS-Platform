@@ -28,7 +28,7 @@ test("PC: 카드·탭별 내역·금액 부호, 메뉴로 들어와 지급 대�
   await login(page, baseURL!);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/shop/${SLUG}/me`);
-  await page.getByRole("navigation", { name: "혜택" }).getByRole("link", { name: "내 적립금" }).click();
+  await page.getByRole("navigation", { name: "내 정보 메뉴" }).getByRole("link", { name: "내 적립금" }).click();
   await expect(page).toHaveURL(new RegExp(`/shop/${SLUG}/me/rewards$`));
   const cards = page.locator(".rw-cards");
   await expect(cards).toContainText("쓸 수 있는 적립금");

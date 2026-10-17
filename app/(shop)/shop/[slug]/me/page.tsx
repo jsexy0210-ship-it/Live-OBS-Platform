@@ -5,8 +5,10 @@ import { notFound, redirect } from "next/navigation";
 import { COOKIE_NAMES } from "../../../../../lib/server/auth/policy";
 import { resolveBuyerSession } from "../../../../../lib/server/auth/session";
 import { myGroups } from "../../../../../components/shop/myGroups";
+import MyHub from "../../../../../components/shop/MyHub";
+import MyMenu from "../../../../../components/shop/MyMenu";
+import "../../../../../components/shop/Cart.css";
 import ShopLogout from "../../../../../components/shop/ShopLogout";
-import GradeCard from "../../../../../components/shop/member-grades/GradeCard";
 import { prisma } from "../../../../../lib/server/db";
 import { buyerGradeStatus } from "../../../../../lib/server/shop-member-grades/benefits";
 
@@ -34,26 +36,54 @@ export default async function ShopMyPage({ params }: Params) {
   if (!session) redirect(`${base}/login?next=${encodeURIComponent(`${base}/me`)}`);
   const groups = myGroups(base);
   const grade = await buyerGradeStatus(prisma, { sellerId: shop.id, buyerMemberId: session.member.id });
+  const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
+  const hubGrade = grade ? { name: grade.gradeName, sub: grade.nextGrade ? `${grade.nextGrade.name}까지 ${won(grade.nextGrade.remaining)}` : grade.benefits.length ? grade.benefits.join(" · ") : "" } : null;
+  const who = `${session.member.broadcastNickname}${grade ? ` 님 · ${grade.gradeName}` : " 님"}`;
   return (
-    <>
-      <section className="card shop-card col shop-my">
-        <h1 className="t-h1">내 정보</h1>
-        <p className="t-l1 c-alt">{session.member.name}님, 반가워요.</p>
-        {grade && <GradeCard status={grade} />}
-        {groups.map((g) => (
-          <nav key={g.title} aria-label={g.title} className="shop-my-list">
-            <p className="shop-my-g">{g.title}</p>
-            {g.links.map((l) => (
-              <Link key={l.href} href={l.href}>
-                {l.label}
-              </Link>
-            ))}
-          </nav>
-        ))}
-        <div className="shop-my-out">
-          <ShopLogout slug={shop.slug} />
+    <div className="shop-wrap cart-wrap">
+      <div className="cart-head">
+        <h1>내 정보</h1>
+      </div>
+      <div className="hub-profile" data-testid={grade ? "grade-card" : undefined}>
+        <span className="hub-ava" aria-hidden>
+          {session.member.broadcastNickname.slice(0, 1)}
+        </span>
+        <div className="hub-who">
+          <b>{session.member.broadcastNickname}</b>
+          {grade && <span className="hub-tag">{grade.gradeName}</span>}
+          {hubGrade && (
+            <p className="hub-gline">
+              내 등급 <b>{hubGrade.name}</b>
+              {hubGrade.sub ? ` · ${hubGrade.sub}` : ""}
+            </p>
+          )}
         </div>
-      </section>
-    </>
+        <Link className="btn btn-out btn-sm" href={`${base}/me/profile`}>
+          수정
+        </Link>
+      </div>
+      <div className="my-wrap">
+        <MyMenu slug={shop.slug} who={who} />
+        <div>
+          <MyHub slug={shop.slug} grade={hubGrade} />
+          <div className="hub-mlist">
+            {groups.map((g) => (
+              <nav key={g.title} aria-label={g.title} className="shop-my-list">
+                <p className="shop-my-g">{g.title}</p>
+                {g.links.map((l) => (
+                  <Link key={l.href} href={l.href}>
+                    {l.label}
+                    <span aria-hidden>›</span>
+                  </Link>
+                ))}
+              </nav>
+            ))}
+            <div className="shop-my-out">
+              <ShopLogout slug={shop.slug} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
