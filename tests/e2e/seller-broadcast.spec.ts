@@ -49,7 +49,7 @@ test("오버레이 전용 역할도 단일 홈에서 기존 정보와 방송을 
   expect(denied.status()).toBe(403);
   const waiting = page.getByRole("region", { name: "방송 전 대기 0건", exact: true });
   await expect(waiting).toBeVisible();
-  await expect(waiting).toContainText("대기 중인 주문이 없습니다");
+  await expect(waiting).toContainText("대기 중인 주문이 없어요");
   await expect(page.getByTestId("bc-waiting")).toHaveCount(0);
   await shot(page, "sa002-unified-home-overlay-owner");
 });
@@ -93,7 +93,7 @@ test("두 기존 홈 주소는 단일 홈으로 이동하고 유튜브 패널은
   await page.route("**/api/seller/youtube", async (route) => route.fulfill({ json: { configured: true, live: null, chatNotice: "합성 미연결 검수" } }));
   await page.reload();
   await expect(player).toHaveCount(0);
-  await expect(page.getByTestId("bc-youtube-notice")).toContainText("연결된 유튜브 방송이 없습니다");
+  await expect(page.getByTestId("bc-youtube-notice")).toContainText("연결된 유튜브 방송이 없어요");
   await shot(page, "sa002-unified-home-youtube-empty");
   await page.route("**/api/seller/youtube", async (route) => route.fulfill({ json: { configured: true, live: { videoId: "synthetic01", title: "예정된 합성 방송", status: "upcoming", broadcastSessionId: "synthetic-current", chatEnabled: false }, chatNotice: "합성 예정 검수" } }));
   await page.reload();
@@ -103,7 +103,7 @@ test("두 기존 홈 주소는 단일 홈으로 이동하고 유튜브 패널은
   await page.route("**/api/seller/youtube", async (route) => route.fulfill({ status: 503, json: { error: "synthetic_unavailable" } }));
   await page.reload();
   await expect(player).toHaveCount(0);
-  await expect(page.getByTestId("bc-youtube-notice")).toContainText("유튜브 연결을 불러오지 못했습니다");
+  await expect(page.getByTestId("bc-youtube-notice")).toContainText("유튜브 연결을 불러오지 못했어요");
   await shot(page, "sa002-unified-home-youtube-error");
 });
 
@@ -128,7 +128,7 @@ test("채팅이 꺼지고 큐 버전이 같아도 유튜브 연결과 해제가 
   await page.clock.install();
   await page.reload();
   const player = page.getByTestId("bc-youtube-player");
-  await expect(page.getByTestId("bc-youtube-notice")).toContainText("연결된 유튜브 방송이 없습니다");
+  await expect(page.getByTestId("bc-youtube-notice")).toContainText("연결된 유튜브 방송이 없어요");
   const initialQueueReads = queueReads;
   connected = true;
   await page.clock.fastForward(30_000);
@@ -137,7 +137,7 @@ test("채팅이 꺼지고 큐 버전이 같아도 유튜브 연결과 해제가 
   connected = false;
   await page.clock.fastForward(30_000);
   await expect(player).toHaveCount(0);
-  await expect(page.getByTestId("bc-youtube-notice")).toContainText("연결된 유튜브 방송이 없습니다");
+  await expect(page.getByTestId("bc-youtube-notice")).toContainText("연결된 유튜브 방송이 없어요");
   expect(queueReads).toBe(initialQueueReads);
 });
 
@@ -215,7 +215,7 @@ test("대표자: 방송 시작부터 개봉·타이머·완료·되돌리기·�
 
   // 방송 종료 → 남은 B는 방송 전 대기로
   await page.getByRole("button", { name: "방송 끝내기" }).click();
-  const end = page.getByRole("dialog", { name: "방송을 끝내시겠습니까?" });
+  const end = page.getByRole("dialog", { name: "방송을 끝낼까요?" });
   await expect(end).toContainText("남은 대기 1건은 다음 방송으로 넘어갑니다");
   await end.getByRole("button", { name: "방송 끝내기" }).click();
   await expect(page.getByTestId("bc-live-badge")).toHaveCount(0);
@@ -404,7 +404,7 @@ test("종료 확인 창이 열린 사이 다른 화면이 방송을 바꾸면 �
   await page.getByRole("button", { name: "방송 시작" }).click();
   await expect(page.getByTestId("bc-title")).toHaveText("방송 A");
   await page.getByRole("button", { name: "방송 끝내기" }).click();
-  const dialog = page.getByRole("dialog", { name: "방송을 끝내시겠습니까?" });
+  const dialog = page.getByRole("dialog", { name: "방송을 끝낼까요?" });
   await expect(dialog).toBeVisible();
   // 다른 창: A를 끝내고 B를 시작
   const other = await context.newPage();
@@ -551,7 +551,7 @@ test("방송 대시보드 대기 표: 1440·1024·390폭에서 조작 버튼이 
 test("방송 종료 확인 창: 떠 있는 동안 Ctrl+Enter가 먹히지 않고, 폭마다 창이 화면 안에 보인다", async ({ page }) => {
   await openFirst(page);
   await page.getByRole("button", { name: "방송 끝내기" }).click();
-  const dlg = page.getByRole("dialog", { name: "방송을 끝내시겠습니까?" });
+  const dlg = page.getByRole("dialog", { name: "방송을 끝낼까요?" });
   await expect(dlg).toBeVisible();
   await page.keyboard.press("Control+Enter");
   await page.waitForTimeout(400);

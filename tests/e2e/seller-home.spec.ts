@@ -148,7 +148,7 @@ test("390 폭에서도 가로 스크롤 없이 보인다", async ({ page }) => {
   await open(page, "demo-owner@example.com");
   await expect(page.getByTestId("home-tasks")).toBeVisible();
   const notice = page.getByTestId("seller-home-mobile-notice");
-  await expect(notice).toHaveText("모바일에서는 홈 화면을 제공합니다 상세 관리 업무는 PC에서 이용해 주십시오");
+  await expect(notice).toHaveText("모바일에서는 홈을 볼 수 있어요. 상세 관리는 PC에서 이용해 주세요.");
   await expect(notice).toBeVisible();
   const today = new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10);
   const overview = await page.request.get(`/api/seller/stats/overview?from=${today}&to=${today}`);
@@ -336,7 +336,7 @@ test("시작하기 띠: 온보딩이 끝나지 않았을 때만 진행 N/M을 �
   await expect(strip).toContainText(`${state.doneCount}/${state.total} 완료`);
   await expect(strip.getByRole("link", { name: "이어서 하기" })).toHaveAttribute("href", "/seller/onboarding");
   await strip.getByRole("button", { name: "시작하기 안내 숨기기" }).click();
-  await page.getByRole("dialog", { name: "시작하기 안내를 숨기시겠습니까?" }).getByRole("button", { name: "숨기기" }).click();
+  await page.getByRole("dialog", { name: "시작하기 안내를 숨길까요?" }).getByRole("button", { name: "숨기기" }).click();
   await expect(strip).toHaveCount(0);
   expect(((await page.request.get("/api/seller/onboarding").then((r) => r.json())) as Onboarding).dismissed).toBe(true);
   await page.reload();
