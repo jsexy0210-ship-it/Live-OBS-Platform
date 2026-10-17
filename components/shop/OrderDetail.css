@@ -44,7 +44,16 @@
   .od-two {
     grid-template-columns: minmax(0, 1fr);
   }
+  .od-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .od-steps li {
-    padding: 10px 4px;
+    padding: 12px;
+  }
+  .od-steps li:nth-child(2n) {
+    border-right: 0;
+  }
+  .od-steps li:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--wds-line-solid-neutral);
   }
 }

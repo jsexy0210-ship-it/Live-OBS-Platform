@@ -180,7 +180,7 @@ export default function OrderView({ slug, orderId }: { slug: string; orderId: st
               <b>개봉 · 결과</b>
               <span>{o.queue.status === "DONE" ? "개봉이 끝났어요" : o.queue.status === "OPENING" ? "방송에서 열고 있어요" : "방송에서 열어요"}</span>
             </li>
-            <li className={o.shipment?.status === "DELIVERED" ? "is-done" : o.shipment ? "is-now" : ""}>
+            <li className={o.shipment?.status === "DELIVERED" ? "is-done" : o.shipment || o.queue.status === "DONE" ? "is-now" : ""}>
               <b>배송</b>
               <span>{o.shipment ? SHIP[o.shipment.status] : "개봉이 끝나면 보내요"}</span>
             </li>
