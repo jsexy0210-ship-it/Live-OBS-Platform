@@ -1,4 +1,4 @@
-import type { ImpersonationCategory, ImpersonationRelatedKind, ImpersonationScope, Prisma, PrismaClient, Seller } from "@prisma/client";
+import type { ImpersonationCategory, ImpersonationRelatedKind, ImpersonationScope, Prisma, PrismaClient, Seller, SellerStaffPermission } from "@prisma/client";
 import { policyValue } from "../admin/platformPolicy";
 import { writeAudit } from "../audit/log";
 import { forbidden, notFound } from "../authz/errors";
@@ -31,20 +31,40 @@ export const IMPERSONATION_LEGACY_SCOPES: readonly ImpersonationScope[] = ["ORDE
 export const IMPERSONATION_API_PREFIXES = ["/api/seller/orders", "/api/seller/members", "/api/seller/products", "/api/seller/stats", "/api/seller/impersonation"] as const;
 // 파트너스 화면 틀(SellerShell)이 처음에 읽는 내 정보. 하위 경로(/me/password 등)는 열지 않는 정확 일치만 허용한다.
 // 외부 쇼핑몰 연동 조회(GET /api/seller/external-shops 목록만, 하위 경로 [id]·oauth-done은 열지 않는다)도 같은 정확 일치.
-export const IMPERSONATION_API_EXACT = ["/api/seller/me", "/api/seller/external-shops"] as const;
+export const IMPERSONATION_API_EXACT = ["/api/seller/me"] as const;
+// 열람 범위로 여는 읽기 전용 GET(접두어 전체가 아니라 이 라우트만). 내보내기(CSV)·실시간 스트림·토큰 발급·변경은 열지 않는다.
+// 범위 검사는 각 라우트가 읽는 서비스(requireSellerRead → tenant/context.ts IMPERSONATION_ACTION_SCOPE, 외부 쇼핑몰 연동은 requireImpersonationScope)가 한다. 프록시는 경로만 거른다.
+const UUID_PATH = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+export const IMPERSONATION_API_SCOPED_GET: readonly RegExp[] = [
+  /^\/api\/seller\/broadcast\/(summary|history)$/, // BROADCAST
+  new RegExp(`^/api/seller/broadcast/${UUID_PATH}$`, "i"), // BROADCAST (방송 상세)
+  /^\/api\/seller\/hit-cards$/, // BROADCAST
+  /^\/api\/seller\/queue$/, // BROADCAST (방송 대시보드 대기열, 금액은 가림)
+  /^\/api\/seller\/external-shops$/, // BROADCAST (연결 목록만, 토큰·웹훅 값 없음)
+  /^\/api\/seller\/overlay\/(address-info|layout|templates)$/, // OVERLAY (주소 토큰은 돌려주지 않는다)
+];
 // 로그인 전 흐름(로그인·로그아웃·비밀번호 재설정·아이디 찾기)은 세션 없이 자격 증명으로 동작하므로, 같은 브라우저에 대리 조회 쿠키가 남아 있어도 proxy가 막지 않는다.
 // (로그인 성공·로그아웃 때 라우트가 대리 조회 쿠키를 지워 대리 조회가 파트너스 로그인을 가리지 않게 한다)
 export const IMPERSONATION_PUBLIC_PREFIXES = ["/api/seller/auth/login", "/api/seller/auth/logout", "/api/seller/password-reset", "/api/seller/find-id"] as const;
 export const isImpersonationPublicPath = (pathname: string) => IMPERSONATION_PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 // 대리 조회에서 화면 틀이 메뉴를 고르는 데만 쓰는 권한 표시(IMPERSONATION_READ_ACTIONS 중 화면 권한). 서버 권한은 이 값과 무관하게 readOnly 컨텍스트가 정한다.
 export const IMPERSONATION_VIEW_PERMISSIONS = ["ORDER_SHIPPING", "PRODUCT_MANAGE", "MEMBER_POINTS", "SALES_VIEW"] as const;
+// 열람 범위별 화면 권한(me 응답이 메뉴를 고르는 데 쓴다). 설정·PG 범위는 읽기 API가 아직 없어 비어 있다. tenant/context.ts의 범위 매핑과 맞춘다.
+const SCOPE_VIEW_PERMISSIONS: Record<ImpersonationScope, readonly SellerStaffPermission[]> = {
+  ORDERS: ["ORDER_SHIPPING", "PRODUCT_MANAGE", "SALES_VIEW"],
+  MEMBERS: ["MEMBER_POINTS"],
+  BROADCAST: ["BROADCAST_RUN"],
+  OVERLAY: ["OVERLAY_EDIT"],
+  SETTINGS_PG: [],
+};
+export const impersonationViewPermissions = (scopes: readonly ImpersonationScope[]): SellerStaffPermission[] => [...new Set(scopes.flatMap((s) => SCOPE_VIEW_PERMISSIONS[s]))];
 
 export const isImpersonationToken = (t: string | undefined): t is string => !!t && t.startsWith(IMPERSONATION_PREFIX);
 
 // proxy가 쓴다: 대리 조회 쿠키가 있는 요청이 이 경로·방식이면 통과
 export function impersonationRequestAllowed(method: string, pathname: string): boolean {
   if (method !== "GET" && method !== "HEAD") return false;
-  return (IMPERSONATION_API_EXACT as readonly string[]).includes(pathname) || IMPERSONATION_API_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  return (IMPERSONATION_API_EXACT as readonly string[]).includes(pathname) || IMPERSONATION_API_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`)) || IMPERSONATION_API_SCOPED_GET.some((r) => r.test(pathname));
 }
 
 type Meta = { ip?: string | null; userAgent?: string | null };

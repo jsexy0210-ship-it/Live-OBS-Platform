@@ -195,3 +195,53 @@
   padding: 12px 20px;
   justify-content: center;
 }
+
+/* SA-021 상태 칩 줄(정본 SA-021-OPS): 칩 · 건수 안내 · 오른쪽 「상세 검색」 */
+.ord-chips {
+  flex-wrap: wrap;
+}
+.ord-chips .ord-count-note {
+  margin-left: 8px;
+}
+.ord-chips .ord-detail-btn {
+  margin-left: auto;
+}
+.ord-tbl2 td.date {
+  white-space: nowrap;
+}
+
+/* SA-021 선택 일괄 바(정본 SA-021-OPS): 개봉 완료 주문을 고르면 표 위에 뜬다 */
+.ord-bulk {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+  margin: 0 0 8px;
+  border-radius: 8px;
+  background: var(--wds-fill-alternative, #f4f6fb);
+}
+.ord-bulk-act {
+  display: inline-flex;
+  gap: 8px;
+  margin-left: auto;
+}
+.ord-chip-n {
+  margin-left: 4px;
+}
+.ord-row-menu {
+  position: absolute;
+  right: 0;
+  z-index: 5;
+  min-width: 132px;
+  padding: 4px;
+}
+.ord-row-menu a {
+  display: block;
+  padding: 8px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.ord-row-menu a:hover {
+  background: var(--wds-fill-alternative, #f4f6fb);
+}

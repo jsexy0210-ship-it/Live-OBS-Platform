@@ -2,13 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import ShopLogout from "./ShopLogout";
+import { useShopLoggedIn } from "./ShopSession";
 import "./MyMenu.css";
 
 // 내 정보 왼쪽 메뉴(SH-020-IA·SH-027-IA). 지금 있는 화면만 넣고, 적립금·배송지 같은 화면이 생기면 해당 그룹에 더한다.
 // PC는 왼쪽에 4그룹(쇼핑·혜택·활동·내 정보)을 계속 보인다. 휴대폰은 메뉴를 펼치지 않고 하위 화면 위에 「‹ 제목 · 그룹」 한 줄만 둔다(메뉴는 「내 정보」 탭에서 고른다).
-export default function MyMenu({ slug }: { slug: string }) {
+export default function MyMenu({ slug, who }: { slug: string; who?: string }) {
   const base = `/shop/${encodeURIComponent(slug)}`;
   const path = usePathname() ?? "";
+  const loggedIn = useShopLoggedIn();
   const groups = [
     {
       title: "쇼핑",
@@ -55,6 +58,7 @@ export default function MyMenu({ slug }: { slug: string }) {
       <nav className="my-menu" aria-label="내 정보 메뉴">
         <p className="my-menu-h">
           <Link href={`${base}/me`}>내 정보</Link>
+          {who && <span className="my-menu-who">{who}</span>}
         </p>
         {groups.map((g) => (
           <div key={g.title}>
@@ -66,6 +70,11 @@ export default function MyMenu({ slug }: { slug: string }) {
             ))}
           </div>
         ))}
+        {loggedIn && (
+          <div className="my-menu-out">
+            <ShopLogout slug={slug} size="sm" />
+          </div>
+        )}
       </nav>
     </>
   );

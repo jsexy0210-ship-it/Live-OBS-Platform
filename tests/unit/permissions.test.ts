@@ -71,7 +71,9 @@ describe("테넌트 컨텍스트", () => {
   it("대리 조회(읽기 전용)는 정해 둔 조회만 허용하고 변경은 403", () => {
     const ro: TenantContext = { ...base, actorType: "PLATFORM_ADMIN", permissions: [], readOnly: true, impersonationScopes: ["ORDERS"] };
     expect(() => requireSellerRead(ro, "ORDER_SHIPPING")).not.toThrow();
-    expect(() => requireSellerRead(ro, "BROADCAST_RUN")).toThrow("forbidden");
+    expect(() => requireSellerRead({ ...ro, impersonationScopes: ["BROADCAST"] }, "BROADCAST_RUN")).not.toThrow();
+    expect(() => requireSellerRead(ro, "BROADCAST_RUN")).toThrow("out_of_scope");
+    expect(() => requireSellerRead(ro, "STAFF_MANAGE")).toThrow("forbidden");
     expect(() => requireSellerPermission(ro, "ORDER_SHIPPING")).toThrow("forbidden");
     expect(() => assertWritable(ro)).toThrow("forbidden");
   });

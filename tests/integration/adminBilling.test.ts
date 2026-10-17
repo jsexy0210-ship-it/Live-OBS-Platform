@@ -61,11 +61,48 @@ describe("구독 현황 GET /api/admin/subscriptions", () => {
       const row = r.subscriptions.find((x) => x.seller.id === id)!;
       expect([name, row.access]).toEqual([name, sellerAccess({ trialEndsAt: s.trialEndsAt, subscription: s.subscription }, NOW)]);
     }
-    expect(r.counts).toEqual({ trial: 2, paid: 3, charging: 1, grace: 1, expired: 4 });
+    expect(r.counts).toEqual({ trial: 2, paid: 3, charging: 1, grace: 1, expired: 4, locked: 1, cancelling: 1 });
     const graceOnly = await listAdminSubscriptions(db, ctx, { access: "grace" }, { now: NOW });
     expect(graceOnly.ok && graceOnly.subscriptions.map((s) => [s.seller.id, s.subscription?.retryCount])).toEqual([[ids.grace, 1]]);
     // 필터와 상관없이 counts는 전체 기준
     expect(graceOnly.ok && graceOnly.counts).toEqual(r.counts);
+
+    // 상태를 여럿 고르면 하나라도 맞는 건(OR). 잠금(locked)·해지 예정(cancelling)은 이용 상태와 겹쳐도 된다. 해지 완료와 기간 끝이 지난 해지 예약(graceCancel)은 해지 예정이 아니다.
+    const ids2 = (res: Awaited<ReturnType<typeof listAdminSubscriptions>>) => (res.ok ? res.subscriptions.map((s) => s.seller.id).sort() : null);
+    expect(ids2(await listAdminSubscriptions(db, ctx, { access: "locked" }, { now: NOW }))).toEqual([ids.graceOver]);
+    expect(ids2(await listAdminSubscriptions(db, ctx, { access: "cancelling" }, { now: NOW }))).toEqual([ids.cancelScheduled]);
+    expect(ids2(await listAdminSubscriptions(db, ctx, { access: "grace,locked,cancelling" }, { now: NOW }))).toEqual([ids.grace, ids.graceOver, ids.cancelScheduled].sort());
+    expect(await listAdminSubscriptions(db, ctx, { access: "grace,bogus" }, { now: NOW })).toEqual({ ok: false });
+
+    // 다음 결제일 범위(KST 날짜, 끝 날짜 포함): paid(at(19)=2026-11-20 09:00 KST)·paidDuringTrial(at(28)=11-29)
+    const nextOf = async (nextFrom?: string, nextTo?: string) => ids2(await listAdminSubscriptions(db, ctx, { nextFrom, nextTo }, { now: NOW }));
+    expect(await nextOf("2026-11-20", "2026-11-20")).toEqual([ids.paid]);
+    expect(await nextOf("2026-11-29")).toEqual([ids.paidDuringTrial]);
+    expect(await nextOf(undefined, "2026-11-04")).toEqual([ids.trialWithCard].concat([ids.charging]).sort());
+    expect(await listAdminSubscriptions(db, ctx, { nextFrom: "2026-11-05", nextTo: "2026-11-01" }, { now: NOW })).toEqual({ ok: false });
+    expect(await listAdminSubscriptions(db, ctx, { nextFrom: "2026-13-40" }, { now: NOW })).toEqual({ ok: false });
+  });
+
+  it("행에 요금제 가격과 최근 결제(가장 최근 청구, 상태 무관)가 나오고, 청구가 없으면 lastPayment는 null", async () => {
+    const plans = await seedPlans();
+    const { ctx } = await admin();
+    const a = (await createSeller()).seller;
+    const b = (await createSeller()).seller;
+    for (const s of [a, b]) await db.seller.update({ where: { id: s.id }, data: { approvedAt: at(-40), trialEndsAt: at(-30), planId: plans.INTEGRATED.id } });
+    const sub = await db.sellerSubscription.create({ data: { sellerId: a.id, planId: plans.INTEGRATED.id, status: "ACTIVE", currentPeriodEnd: at(10), nextChargeAt: at(9), subscribedAt: at(-40) } });
+    const pay = (amount: number, status: "PAID" | "FAILED", createdAt: Date, paidAt: Date | null) =>
+      db.subscriptionPayment.create({ data: { sellerId: a.id, subscriptionId: sub.id, amount, status, periodStart: createdAt, periodEnd: at(10), createdAt, paidAt } });
+    await pay(11000, "PAID", at(-20), at(-20));
+    await pay(12000, "FAILED", at(-2), null);
+    const r = await listAdminSubscriptions(db, ctx, {}, { now: NOW });
+    if (!r.ok) throw new Error("bad");
+    const rowA = r.subscriptions.find((x) => x.seller.id === a.id)!;
+    const rowB = r.subscriptions.find((x) => x.seller.id === b.id)!;
+    expect(rowA.lastPayment).toMatchObject({ amount: 12000, status: "FAILED", paidAt: null });
+    expect(rowB.lastPayment).toBeNull();
+    expect(rowA.plan).toMatchObject({ code: "INTEGRATED", listPrice: plans.INTEGRATED.listPrice, salePrice: plans.INTEGRATED.salePrice });
+    // 청구가 여럿이어도 파트너스당 한 줄
+    expect(r.subscriptions.filter((x) => x.seller.id === a.id)).toHaveLength(1);
   });
 
   it("요금제·이름 검색·커서(같은 가입 시각 포함)로 끝까지 빠짐·겹침 없음, 잘못된 값 400, 조회 전용도 열람, 파트너스 세션은 401", async () => {

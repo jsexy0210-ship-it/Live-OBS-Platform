@@ -4,6 +4,8 @@ import { randomBytes } from "node:crypto";
 import { hashPassword } from "../../lib/server/auth/password";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 
+const partnerTab = (page: Page, name: string) => page.getByRole("navigation", { name: "파트너스 정보" }).getByRole("link", { name, exact: true });
+
 // 마스터 관리자 파트너스 목록·상세·이용 정지(MA-011·012·015). 계정·파트너스는 폐기용 테스트 DB(이름이 _test로 끝남)에 실행마다 새로 만든다.
 const password = randomBytes(12).toString("base64url");
 const run = randomBytes(4).toString("hex");
@@ -108,11 +110,11 @@ test("상세: 기본 정보·대표자·사업자·구독·최근 30일 주문�
   await expect(page).toHaveURL(new RegExp(`/admin/partners/${idA}$`));
   await expect(page.getByRole("heading", { name: /^파트너스 상세 · /, level: 1 })).toBeVisible();
   await expect(page.getByTestId("partner-badges")).toContainText(nameA);
-  for (const t of ["기본 정보", "대표자", "사업자 정보"]) await expect(page.getByRole("heading", { name: t, level: 2 })).toBeVisible();
+  for (const t of ["사업자 정보", "담당자 · 연락처", "계정 상태", "도메인"]) await expect(page.getByRole("heading", { name: t, level: 2 })).toBeVisible();
   await expect(page.getByText("시험상사")).toBeVisible();
-  await page.getByRole("button", { name: "주문 현황", exact: true }).click();
+  await partnerTab(page, "주문 현황").click();
   await expect(page.getByTestId("orders-today")).toBeVisible();
-  await page.getByRole("button", { name: "구독", exact: true }).click();
+  await partnerTab(page, "구독").click();
   await expect(page.getByRole("heading", { name: "요금제", level: 2 })).toBeVisible();
   // 요금제는 코드가 아니라 이름으로 보인다(코드성 표기 금지)
   const pending = page.locator("th", { hasText: "바뀔 요금제" }).locator("xpath=following-sibling::td[1]");
@@ -123,7 +125,7 @@ test("상세: 기본 정보·대표자·사업자·구독·최근 30일 주문�
   const align = (sel: string) => page.locator(sel).first().evaluate((el) => getComputedStyle(el).textAlign);
   expect(["left", "start"]).toContain(await align("dl.kv dd"));
   await page.goto("/admin/partners");
-  expect(await align(".tbl td")).toBe("center"); // 표 정렬 새 규칙(2026-10-05): 글 열(.col-text)이 아니면 데이터는 가운데
+  expect(await align(".tbl td:not(.col-text)")).toBe("center"); // 표 정렬 새 규칙(2026-10-05): 글 열(.col-text)이 아니면 데이터는 가운데
   await page.goto("/admin/partners/applications"); // 상세 [sellerId]가 아니라 가입 신청 목록(MA-013)
   await expect(page.getByRole("heading", { name: "가입 신청" })).toBeVisible();
 });
@@ -202,8 +204,8 @@ test("상세 머리: 승인자·담당 CS가 메타 줄에, 답변 대기 문의
   await expect(badges).toContainText("담당 CS 상담");
   const inq = page.getByRole("link", { name: "문의 1건" });
   await expect(inq).toHaveAttribute("href", `/admin/support/inquiries?sellerId=${idA}`);
-  await expect(page.getByRole("button", { name: "메모 1", exact: true })).toBeVisible(); // 탭 이름에 건수
-  await page.getByRole("button", { name: "메모", exact: true }).first().click();
+  await expect(partnerTab(page, "메모 1")).toBeVisible(); // 탭 이름에 건수
+  await partnerTab(page, "메모 1").click();
   await expect(page).toHaveURL(/tab=notes/);
   await expect(page.getByTestId("tab-notes")).toContainText(`머리 시험 메모 ${run}`);
   await page.getByRole("link", { name: "문의 1건" }).click();
