@@ -95,31 +95,43 @@ test("잔액: 현재 잔액과 성공 내역 누적(지급·사용)이 보이고
   await expect(rows).toHaveCount(1);
 });
 
-test("잔액이 없으면 안내하고, 20명을 넘으면 「더 보기」로 이어서 불러온다", async ({ page }) => {
+test("잔액이 없으면 안내하고, 10명을 넘으면 페이지 이동으로 다음 쪽 커서를 이어서 불러온다", async ({ page }) => {
   await reset();
   await open(page);
   await expect(page.getByText("잔액이 있는 회원이 없습니다")).toBeVisible();
 
-  // 다음 쪽 커서가 오는 응답으로 「더 보기」 흐름을 확인한다(서버 쪽 커서 시험은 통합 시험이 맡는다)
+  // 쪽마다 10명과 다음 쪽 커서가 오는 응답으로 페이지 이동 흐름을 확인한다(서버 쪽 커서 시험은 통합 시험이 맡는다)
   const item = (i: number) => ({
     member: { id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`, broadcastNickname: `회원${i}` },
     grade: { id: "00000000-0000-4000-8000-0000000000aa", name: "일반" },
     balance: 100 + i, totalEarned: 200 + i, totalUsed: 0, expiry: null, pendingCount: 0,
     updatedAt: new Date(Date.now() - i * 60_000).toISOString(),
   });
+  const pages: Record<string, { from: number; to: number; next: string | null }> = {
+    first: { from: 1, to: 10, next: "cursor-2" },
+    "cursor-2": { from: 11, to: 20, next: "cursor-3" },
+    "cursor-3": { from: 21, to: 22, next: null },
+  };
   await page.route("**/api/seller/reward-balances?*", (route) => {
     const cursor = new URL(route.request().url()).searchParams.get("cursor");
+    const spec = pages[cursor ?? "first"];
     const summary = { count: 22, totalBalance: 5000 };
     const pending = { count: 0, amount: 0 };
-    const body = cursor ? { balances: [item(21), item(22)], summary, pending, nextCursor: null } : { balances: Array.from({ length: 20 }, (_, i) => item(i + 1)), summary, pending, nextCursor: "next-cursor" };
-    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+    const balances = Array.from({ length: spec.to - spec.from + 1 }, (_, i) => item(spec.from + i));
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ balances, summary, pending, nextCursor: spec.next }) });
   });
   await page.reload();
   const rows = page.getByTestId("balance-row");
-  await expect(rows).toHaveCount(20);
-  await page.getByRole("button", { name: "더 보기" }).click();
-  await expect(rows).toHaveCount(22);
-  await expect(page.getByRole("button", { name: "더 보기" })).toHaveCount(0);
+  const nav = page.getByRole("navigation", { name: "페이지 이동", exact: true });
+  await expect(rows).toHaveCount(10);
+  await expect(nav.getByRole("button", { name: "1페이지", exact: true })).toHaveAttribute("aria-current", "page");
+  await nav.getByRole("button", { name: "다음", exact: true }).click();
+  await expect(rows).toHaveCount(10);
+  await expect(nav.getByRole("button", { name: "2페이지", exact: true })).toHaveAttribute("aria-current", "page");
+  await nav.getByRole("button", { name: "다음", exact: true }).click();
+  await expect(rows).toHaveCount(2);
+  await expect(nav.getByRole("button", { name: "3페이지", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(nav.getByRole("button", { name: "다음", exact: true })).toBeDisabled();
 });
 
 test("회원·적립금 권한이 없는 직원은 권한 안내를 본다", async ({ page }) => {
