@@ -96,6 +96,30 @@ describe("기존 상품 수정", () => {
     expect(await priceOf(s.seller.id, "부스터 팩")).toBe(5000);
   });
 
+  it("같은 이름 옵션이 둘인 기존 상품은 어느 옵션인지 알 수 없어 오류로 건너뛴다", async () => {
+    const s = await shop();
+    await seed(s.ctx);
+    const slv = await db.product.findFirstOrThrow({ where: { sellerId: s.seller.id, name: "슬리브" } });
+    await db.productOption.create({ data: { sellerId: s.seller.id, productId: slv.id, name: "검정", stock: 1 } });
+    const p = await preview(s.ctx, csv("슬리브,3100,판매중,,,,검정,0,11,"));
+    expect([p.productCount, p.skippedProductCount]).toEqual([0, 1]);
+    expect(p.errors).toMatchObject([{ row: 2, column: "옵션명" }]);
+  });
+
+  it("미리보기 뒤 상품이나 옵션 이름이 바뀌었으면 그 상품은 건드리지 않고 실패로 알린다", async () => {
+    const s = await shop();
+    await seed(s.ctx);
+    const p = await preview(s.ctx, csv("부스터 팩,6000,판매중,,,,기본,0,50,", "슬리브,3100,판매중,,,,검정,0,11,"));
+    await db.product.updateMany({ where: { sellerId: s.seller.id, name: "부스터 팩" }, data: { name: "부스터 팩 개정" } });
+    await db.productOption.updateMany({ where: { sellerId: s.seller.id, name: "검정" }, data: { name: "블랙" } });
+    const c = await commit(s.ctx, p.jobId);
+    expect(c).toMatchObject({ updatedCount: 1, failedCount: 2 });
+    expect(await priceOf(s.seller.id, "부스터 팩 개정")).toBe(5000);
+    expect(await stockOf(s.seller.id, "부스터 팩 개정")).toEqual({ 기본: 30 });
+    expect(await stockOf(s.seller.id, "슬리브")).toEqual({ 블랙: 10, 흰색: 5 });
+    expect(await priceOf(s.seller.id, "슬리브")).toBe(3100); // 판매가는 이름이 같아 반영, 이름이 바뀐 옵션 재고만 건너뜀
+  });
+
   it("지운 상품과는 이름이 같아도 새 상품으로 등록한다", async () => {
     const s = await shop();
     await seed(s.ctx);

@@ -285,9 +285,11 @@ async function classifyProducts(db: PrismaClient, ctx: TenantContext, parsed: Pa
       seen.add(cur.id);
       const stock: StockChange[] = [];
       for (const [i, o] of (p.input.options as { name: string; stock: number }[]).entries()) {
-        const found = cur.options.find((x) => x.name === o.name);
+        const matches = cur.options.filter((x) => x.name === o.name);
+        const found = matches[0];
         const meta = p.optionMeta?.[i];
-        if (!found) errs.push({ row: meta?.line ?? p.row, column: "옵션명", message: `상품 「${name}」에 옵션 「${o.name}」이 없습니다. 기존 상품은 옵션을 새로 만들지 않습니다` });
+        if (matches.length > 1) errs.push({ row: meta?.line ?? p.row, column: "옵션명", message: `상품 「${name}」에 옵션 「${o.name}」이 여러 개입니다. 옵션 이름을 서로 다르게 바꾼 뒤 올려 주십시오` });
+        else if (!found) errs.push({ row: meta?.line ?? p.row, column: "옵션명", message: `상품 「${name}」에 옵션 「${o.name}」이 없습니다. 기존 상품은 옵션을 새로 만들지 않습니다` });
         else if (meta?.hasStock) stock.push({ optionId: found.id, name: found.name, before: found.stock, target: o.stock });
       }
       if (errs.length === 0) products.push({ ...p, update: { productId: cur.id, currentPrice: cur.price, stock } });
@@ -367,12 +369,10 @@ export async function commitProductImport(db: PrismaClient, ctx: TenantContext, 
   for (const p of products) {
     const name = String(p.input.name ?? "");
     if (p.update) {
-      const rec = await applyUpdate(db, ctx, p, p.update, failures);
-      // 되돌리기 대상은 바꾸자마자 기록해 둔다(중간에 끊겨도 되돌릴 수 있게)
-      if (rec) {
-        updates.push(rec);
+      await applyUpdate(db, ctx, p, p.update, failures, async (rec) => {
+        if (!updates.includes(rec)) updates.push(rec);
         await db.bulkJob.update({ where: { id: jobId }, data: { updatedProducts: updates as unknown as Prisma.InputJsonValue } });
-      }
+      });
       continue;
     }
     const r = await createProduct(db, ctx, p.input);
@@ -405,46 +405,55 @@ export async function commitProductImport(db: PrismaClient, ctx: TenantContext, 
   return { ok: true, value: commitView(done) };
 }
 
-// 기존 상품 수정 반영: 판매가가 다르면 바꾸고, 재고는 지금 재고와의 차이만큼 증감한다(직접 바꾼 재고와 같은 기록·검증, adjustStock). 바뀐 것이 없으면 null.
-async function applyUpdate(db: PrismaClient, ctx: TenantContext, p: ImportProduct, u: NonNullable<ImportProduct["update"]>, failures: Failure[]): Promise<UpdateRecord | null> {
+// 기존 상품 수정 반영: 판매가가 다르면 바꾸고, 재고는 지금 재고와의 차이만큼 증감한다(직접 바꾼 재고와 같은 기록·검증, adjustStock).
+// 미리보기 뒤 이름이 바뀐 상품·옵션은 건드리지 않는다. 판매가는 읽은 값(expectedPrice)과 같을 때만 바꿔 그사이의 직접 수정을 덮지 않는다.
+// 바꿀 때마다 되돌리기 기록(save)을 바로 남겨 중간에 끊겨도 이미 바꾼 것은 되돌릴 수 있다.
+async function applyUpdate(
+  db: PrismaClient,
+  ctx: TenantContext,
+  p: ImportProduct,
+  u: NonNullable<ImportProduct["update"]>,
+  failures: Failure[],
+  save: (rec: UpdateRecord) => Promise<void>,
+): Promise<void> {
   const name = String(p.input.name ?? "");
   const rec: UpdateRecord = { productId: u.productId, name, price: null, stock: [] };
   const fail = (message: string) => failures.push({ row: p.row, name, message });
   try {
     const cur = await db.product.findFirst({
       where: { id: u.productId, sellerId: ctx.sellerId, deletedAt: null },
-      select: { price: true, options: { where: { deletedAt: null }, select: { id: true, stock: true } } },
+      select: { name: true, price: true, options: { where: { deletedAt: null }, select: { id: true, name: true, stock: true } } },
     });
-    if (!cur) {
+    if (!cur || cur.name !== name) {
       fail("상품을 찾을 수 없습니다. 삭제되었거나 이름이 바뀌었습니다");
-      return null;
+      return;
     }
     const price = Number(p.input.price);
     if (cur.price !== price) {
-      const r = await updateProduct(db, ctx, u.productId, { price });
-      if (r.ok) rec.price = { before: cur.price, after: price };
-      else fail(PRODUCT_FAILURE_MESSAGES[r.reason] ?? "판매가를 바꾸지 못했습니다");
+      const r = await updateProduct(db, ctx, u.productId, { price, expectedPrice: cur.price });
+      if (r.ok) {
+        rec.price = { before: cur.price, after: price };
+        await save(rec);
+      } else fail(r.reason === "price_conflict" ? "판매가가 그사이 바뀌어 수정하지 못했습니다" : (PRODUCT_FAILURE_MESSAGES[r.reason] ?? "판매가를 바꾸지 못했습니다"));
     }
     for (const s of u.stock) {
       const o = cur.options.find((x) => x.id === s.optionId);
-      if (!o) {
-        fail(`옵션 「${s.name}」을 찾을 수 없습니다`);
+      if (!o || o.name !== s.name) {
+        fail(`옵션 「${s.name}」을 찾을 수 없습니다. 삭제되었거나 이름이 바뀌었습니다`);
         continue;
       }
       const delta = s.target - o.stock;
       if (delta === 0) continue;
       const r = await adjustStock(db, ctx, u.productId, s.optionId, { delta, reason: STOCK_NOTES.bulkEdit });
-      if (r.ok) rec.stock.push({ optionId: s.optionId, name: s.name, delta });
-      else fail(`옵션 「${s.name}」 재고를 바꾸지 못했습니다`);
+      if (r.ok) {
+        rec.stock.push({ optionId: s.optionId, name: s.name, delta });
+        await save(rec);
+      } else fail(`옵션 「${s.name}」 재고를 바꾸지 못했습니다`);
     }
   } catch (e) {
-    if (e instanceof AuthError && e.status === 404) {
-      fail("상품을 찾을 수 없습니다. 삭제되었거나 이름이 바뀌었습니다");
-      return rec.price || rec.stock.length ? rec : null;
-    }
-    throw e;
+    if (e instanceof AuthError && e.status === 404) fail("상품을 찾을 수 없습니다. 삭제되었거나 이름이 바뀌었습니다");
+    else throw e;
   }
-  return rec.price || rec.stock.length ? rec : null;
 }
 
 function commitView(j: { id: string; status: string; createdProductIds: Prisma.JsonValue; updatedProducts: Prisma.JsonValue; failures: Prisma.JsonValue; undoUntil: Date | null }) {
@@ -484,9 +493,8 @@ export async function undoProductImport(db: PrismaClient, ctx: TenantContext, jo
         if (!r.ok) all = false;
       }
       if (u.price) {
-        const cur = await db.product.findFirst({ where: { id: u.productId, sellerId: ctx.sellerId, deletedAt: null }, select: { price: true } });
-        if (!cur || cur.price !== u.price.after) all = false;
-        else if (!(await updateProduct(db, ctx, u.productId, { price: u.price.before })).ok) all = false;
+        // 지금도 반영한 값일 때만(expectedPrice, 상품 잠금 안에서 비교) 되돌린다
+        if (!(await updateProduct(db, ctx, u.productId, { price: u.price.before, expectedPrice: u.price.after })).ok) all = false;
       }
     } catch (e) {
       if (!(e instanceof AuthError && e.status === 404)) throw e;
