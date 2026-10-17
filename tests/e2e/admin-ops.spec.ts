@@ -121,7 +121,7 @@ test("실시간 방송: 읽지 못하면 「갱신 끊김」을 알리고 마지
   await expect(page.getByTestId("live-row").filter({ hasText: names.on })).toBeVisible();
 });
 
-test("주문·오버레이 접속: 이용 중 파트너스가 보이고 「방송 중만」「오버레이 접속 안 됨」으로 거른다", async ({ page }) => {
+test("주문·방송 화면 접속: 이용 중 파트너스가 보이고 「방송 중만」「방송 화면 연결 안 됨」으로 거른다", async ({ page }) => {
   await login(page);
   await page.goto("/admin/ops/access");
   const row = (n: string) => page.getByTestId("activity-row").filter({ hasText: n });
