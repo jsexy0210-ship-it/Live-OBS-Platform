@@ -22,14 +22,14 @@ const TAG: Record<Status, { label: string; cls: string }> = {
 };
 // 「상태 안내」 표의 설명(정본 SA-006). 끊어짐은 목록에서 곧 사라지는 마무리 상태라 안내 표에 넣지 않는다
 const HELP: Record<Exclude<Status, "DISCONNECTED">, string> = {
-  CONNECTED: "이어진 쇼핑몰의 주문이 들어오고 있습니다",
-  REAUTH_REQUIRED: "허용이 풀려 주문 알림이 멈췄습니다 · 다시 이으면 바로 이어집니다",
-  DISCONNECT_PENDING: "연결을 끊고 있습니다 · 쇼핑몰 응답을 기다리는 중 · 주문은 받지 않습니다 · 끝나면 「끊어짐」",
+  CONNECTED: "연결한 쇼핑몰의 주문이 들어오고 있어요",
+  REAUTH_REQUIRED: "허용이 풀려 주문 알림이 멈췄어요 · 다시 연결해 주세요",
+  DISCONNECT_PENDING: "연결을 끊고 있어요 · 쇼핑몰 응답을 기다리는 중에는 주문을 받지 않아요 · 끝나면 「끊어짐」",
 };
 const KIND: Record<string, string> = { ORDER_CREATED: "주문 생성", ORDER_CANCELED: "주문 취소", OTHER: "그 밖의 알림" };
 // 「마지막으로 받은 주문 알림」 칸: 이어짐은 받은 시각 · 종류, 멈춘 상태는 멈춘 이유
 const lastNotice = (c: Conn, now: number) =>
-  c.status === "REAUTH_REQUIRED" ? "허용이 풀려 주문 알림이 멈췄습니다" : c.status === "DISCONNECT_PENDING" ? "쇼핑몰 응답을 기다리는 중" : c.lastEventAt ? `${ago(c.lastEventAt, now)}${c.lastEventKind ? ` · ${KIND[c.lastEventKind]}` : ""}` : "아직 없습니다";
+  c.status === "REAUTH_REQUIRED" ? "허용이 풀려 주문 알림이 멈췄어요" : c.status === "DISCONNECT_PENDING" ? "쇼핑몰 응답을 기다리는 중" : c.lastEventAt ? `${ago(c.lastEventAt, now)}${c.lastEventKind ? ` · ${KIND[c.lastEventKind]}` : ""}` : "아직 받은 주문 알림이 없어요";
 const RESULT_ERROR: Record<string, string> = {
   login_required: "로그인이 풀렸습니다. 다시 로그인한 뒤 연결해 주십시오",
   denied: "쇼핑몰에서 연결을 허용하지 않았습니다. 다시 시도해 주십시오",
@@ -122,7 +122,7 @@ export default function ExternalShopsPage() {
             ) : <ErrorState title="연동 정보를 불러오지 못했습니다" onRetry={() => void load()} />}</div>}
           {d && (
             <>
-              <div className="msg msg-info" role="note"><span>연결한 쇼핑몰의 주문 이벤트가 방송 주문대기와 방송 화면으로 들어옵니다 · 플랫폼 이름은 표시하지 않습니다</span></div>
+              <div className="msg msg-info" role="note"><span>연결한 쇼핑몰의 주문 알림이 주문대기와 방송 화면으로 들어와요 · 플랫폼 이름은 표시하지 않아요</span></div>
               {!d.enabled && (
                 <div className="msg msg-cau" role="status" data-testid="external-disabled"><span><b>외부 쇼핑몰 연결을 준비하고 있습니다.</b> 열리면 이 화면에서 연결할 수 있습니다</span></div>
               )}
@@ -173,7 +173,7 @@ export default function ExternalShopsPage() {
               )}
               <span className="t-c1 c-alt">전체 연결 {d.connections.length}곳</span>
               {pageCount > 1 && <Pagination page={currentPage} pageCount={pageCount} onChange={setPage} />}
-              <span className="t-c1 c-alt">다시 이어야 함: 쇼핑몰 관리자에서 앱 권한이 바뀌거나 만료되면 생깁니다 · 끊는 중: 쇼핑몰 응답이 늦어 연결을 끊는 중입니다 · 그동안 주문은 받지 않습니다</span>
+              <span className="t-c1 c-alt">쇼핑몰 앱 권한이 바뀌거나 만료되면 다시 연결해야 해요 · 끊는 중에는 쇼핑몰 응답을 기다려요. 그동안 주문은 받지 않아요</span>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
                 <section className="au-fs" data-testid="external-status-guide">
                   <div className="au-fs-h"><h2 className="au-fs-t">상태 안내</h2></div>
@@ -191,7 +191,7 @@ export default function ExternalShopsPage() {
                 </section>
                 <section className="au-fs">
                   <div className="au-fs-h"><h2 className="au-fs-t">변경 권한</h2></div>
-                  <div className="msg" role="note" style={{ display: "block" }}>대표자와 「쇼핑몰 설정」 권한이 있는 직원만 연결 · 해제할 수 있습니다 · 목록 조회도 같은 권한이 필요합니다</div>
+                  <div className="msg" role="note" style={{ display: "block" }}>대표자와 「쇼핑몰 설정」 권한이 있는 직원만 연결 · 해제할 수 있어요 · 목록 조회도 같은 권한이 필요해요</div>
                 </section>
               </div>
             </>

@@ -4,6 +4,8 @@ import type { Me } from "../../components/seller/api";
 
 // 실제 PC 페이지를 렌더링하되 모든 API·외부 이동을 가로채 DB와 외부 쇼핑몰에 접근하지 않는다.
 test.use({ channel: process.platform === "win32" ? "chrome" : undefined, viewport: { width: 1440, height: 960 } });
+const base = new URL(process.env.E2E_BASE_URL ?? "http://localhost:3100");
+if (!["localhost", "127.0.0.1"].includes(base.hostname)) throw new Error("loopback UI fixture only");
 const me: Me = { sellerId: "ui-seller", userId: "ui-owner", isOwner: true, permissions: [], access: "paid", features: ["OVERLAY", "EXTERNAL_INTEGRATION"], shop: { name: "검증 스토어", slug: "ui-store" }, user: { name: "검증 대표", email: "ui@example.com" }, trialEndsAt: null };
 const now = new Date("2026-10-18T03:00:00Z");
 const connections = [
@@ -14,9 +16,11 @@ const connections = [
 type Scenario = { connections: typeof connections; enabled: boolean; canManage: boolean; status?: number };
 async function mock(page: Page, scenario: Scenario) {
   const writes: string[] = [];
-  await page.route("https://**/*", (route) => route.abort());
-  await page.route("**/api/**", (route) => {
-    const path = new URL(route.request().url()).pathname;
+  await page.route("**/*", (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== base.origin) return route.abort();
+    const path = url.pathname;
+    if (!path.startsWith("/api/")) return route.continue();
     if (route.request().method() !== "GET") {
       writes.push(path);
       return route.fulfill({ status: 409, json: { error: "ui_test_write_blocked" } });
@@ -39,11 +43,11 @@ test("SA006 PC: 상태·주문 알림·안내와 기존 확인 동작을 보존�
   await expect(rows).toHaveCount(3);
   await expect(rows.nth(0)).toContainText("2분 전 · 주문 생성");
   await expect(rows.nth(0)).toContainText("2026.10.01");
-  await expect(rows.nth(1)).toContainText("허용이 풀려 주문 알림이 멈췄습니다");
+  await expect(rows.nth(1)).toContainText("허용이 풀려 주문 알림이 멈췄어요");
   await expect(rows.nth(2)).toContainText("쇼핑몰 응답을 기다리는 중");
   await expect(page.getByTestId("external-status-guide").locator("tbody tr")).toHaveCount(3);
   const guide = page.locator("section.au-fs").filter({ has: page.getByRole("heading", { name: "변경 권한" }) });
-  await expect(guide).toContainText("목록 조회도 같은 권한이 필요합니다");
+  await expect(guide).toContainText("목록 조회도 같은 권한이 필요해요");
   const left = await page.getByTestId("external-status-guide").boundingBox(), right = await guide.boundingBox();
   expect(left && right).toBeTruthy();
   expect(Math.abs(left!.y - right!.y)).toBeLessThan(1);
@@ -58,7 +62,7 @@ test("SA006 PC: 상태·주문 알림·안내와 기존 확인 동작을 보존�
   expect(fonts.length).toBeGreaterThan(0);
   expect(fonts.every((font) => font.isCustomFont && font.familyName.includes("Wanted Sans"))).toBe(true);
   await cdp.detach();
-  if (process.env.CAPTURE_EXTERNAL_UI === "1") {
+  if (process.env.CAPTURE_EXTERNAL_UI === "1" || process.env.E2E_SCREENSHOTS === "1") {
     mkdirSync("tests/e2e/screenshots", { recursive: true });
     await page.screenshot({ path: "tests/e2e/screenshots/SA-006-ux-1440.png", fullPage: true });
   }
