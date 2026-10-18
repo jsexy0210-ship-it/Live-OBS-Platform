@@ -142,7 +142,7 @@ function Subscriptions() {
           ))}
         </div>
         <SearchBox onSearch={() => {
-          if (draft.period !== "all" && draft.nextFrom && draft.nextTo && draft.nextFrom > draft.nextTo) return setToast("시작일을 종료일보다 앞 날짜로 바꿔 주십시오.");
+          if (draft.period !== "all" && draft.nextFrom && draft.nextTo && draft.nextFrom > draft.nextTo) return setToast("시작일을 종료일보다 앞 날짜로 바꿔 주세요.");
           setApplied({ ...draft, access: applied.access, q: draft.q.trim() });
         }} onReset={reset} busy={state.kind === "loading"}>
           <SearchRow label="상태">
