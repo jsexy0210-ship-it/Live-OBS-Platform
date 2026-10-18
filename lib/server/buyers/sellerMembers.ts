@@ -85,6 +85,17 @@ export async function listSellerMembers(db: PrismaClient, ctx: TenantContext, qu
   });
   const page = rows.slice(0, take);
   const last = page[page.length - 1];
+  // 상세와 같은 집계 범위를 현재 페이지에만 적용해 회원별 추가 조회를 피한다.
+  const memberIds = page.map((m) => m.id);
+  const orders = { sellerId: ctx.sellerId, buyerMemberId: { in: memberIds }, legalHoldAt: null } as const;
+  const [counts, paid, balances] = memberIds.length ? await Promise.all([
+    db.order.groupBy({ by: ["buyerMemberId"], where: orders, _count: { _all: true } }),
+    db.order.groupBy({ by: ["buyerMemberId"], where: { ...orders, paidAt: { not: null } }, _sum: { totalAmount: true, refundAmount: true } }),
+    db.rewardBalance.findMany({ where: { sellerId: ctx.sellerId, buyerMemberId: { in: memberIds } }, select: { buyerMemberId: true, balance: true } }),
+  ]) : [[], [], []];
+  const countByMember = new Map(counts.map((r) => [r.buyerMemberId, r._count._all]));
+  const paidByMember = new Map(paid.map((r) => [r.buyerMemberId, (r._sum.totalAmount ?? 0) - (r._sum.refundAmount ?? 0)]));
+  const balanceByMember = new Map(balances.map((r) => [r.buyerMemberId, r.balance]));
   // 이름·휴대폰을 내보냈거나 그것으로 찾았으면 열람 기록. 검색어는 남기지 않고 돌려준 회원 id·건수만 남긴다.
   // 개인정보로 찾았으면 결과가 0건이어도 남긴다(일치 여부도 개인정보 확인이다, #209 Codex).
   if (searchesPii || (pii && page.length > 0)) {
@@ -100,7 +111,7 @@ export async function listSellerMembers(db: PrismaClient, ctx: TenantContext, qu
   }
   return {
     ok: true as const,
-    members: page.map((m) => view(m, pii)),
+    members: page.map((m) => ({ ...view(m, pii), orderCount: countByMember.get(m.id) ?? 0, totalPaid: paidByMember.get(m.id) ?? 0, rewardBalance: balanceByMember.get(m.id) ?? 0 })),
     nextCursor: rows.length > take && last ? encodeCursor(last.createdAt, last.id) : null,
   };
 }

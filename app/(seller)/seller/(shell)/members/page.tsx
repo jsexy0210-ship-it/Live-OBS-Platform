@@ -7,7 +7,7 @@ import { Topbar, useSeller } from "../../../../../components/seller/SellerShell"
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, apiDownload } from "../../../../../components/seller/api";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
-import { MAX_SEARCH_LENGTH } from "../../../../../components/seller/format";
+import { MAX_SEARCH_LENGTH, won } from "../../../../../components/seller/format";
 import { MEMBER_STATUS, memberDay, phoneText, type MemberRow, type MemberStatus } from "../../../../../components/seller/members/types";
 
 // SA-041 회원 목록·검색(GET /api/seller/members, 회원·적립금 권한). 현재 10명씩 커서로 조회한다.
@@ -205,6 +205,9 @@ export default function MemberListPage() {
                         <th>등급</th>
                         <th>상태</th>
                         <th>가입일</th>
+                        <th>주문</th>
+                        <th>누적 구매</th>
+                        <th>적립금</th>
                         <th>최근 로그인</th>
                       </tr>
                     </thead>
@@ -227,6 +230,9 @@ export default function MemberListPage() {
                             <span className={`bdg ${MEMBER_STATUS[m.status].cls}`}>{MEMBER_STATUS[m.status].label}</span>
                           </td>
                           <td className="num">{memberDay(m.createdAt)}</td>
+                          <td className="num">{m.orderCount.toLocaleString("ko-KR")}건</td>
+                          <td className="num">{won(m.totalPaid)}</td>
+                          <td className="num">{won(m.rewardBalance)}</td>
                           <td className="num">{memberDay(m.lastLoginAt)}</td>
                         </tr>
                       ))}
