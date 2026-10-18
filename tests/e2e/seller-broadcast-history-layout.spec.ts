@@ -9,9 +9,9 @@ test.use({ channel: process.platform === "win32" ? "chrome" : undefined });
 const me: Me = { sellerId: "ui-seller", userId: "ui-owner", isOwner: true, permissions: [], access: "paid", features: ["OVERLAY"], shop: { name: "검증 스토어", slug: "ui-store" }, user: { name: "검증 대표", email: "ui@example.com" }, trialEndsAt: null };
 const row = (index: number) => ({ id: `ui-${index}`, title: `검증 방송 ${index}`, status: "ended", startedAt: new Date(Date.now() - index * 86_400_000).toISOString(), endedAt: new Date(Date.now() - index * 86_400_000 + 3_600_000).toISOString(), layout: "9x16", summary: { orders: 5, paidOrders: 5, sales: 240_000, completed: 4, cancelled: 1, hits: 2 } });
 
-async function mock(page: Page, count: number) {
+async function mock(page: Page, count: number, state?: { wait: Promise<void>; status: number; error?: string }) {
   const reads: URL[] = [], writes: string[] = [];
-  await page.route("**/*", (route) => {
+  await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
     if (url.origin !== base.origin) return route.abort();
     if (!url.pathname.startsWith("/api/")) return route.continue();
@@ -23,11 +23,57 @@ async function mock(page: Page, count: number) {
     if (url.pathname === "/api/maintenance") return route.fulfill({ json: { active: false, scheduled: null } });
     if (url.pathname === "/api/seller/broadcast/history") {
       reads.push(url);
-      return route.fulfill({ json: { items: Array.from({ length: url.searchParams.has("cursor") ? 1 : count }, (_, index) => row(index)), nextCursor: url.searchParams.has("cursor") ? null : "ui-next" } });
+      if (state) {
+        await state.wait;
+        if (state.status !== 200) return route.fulfill({ status: state.status, json: { error: state.error } });
+      }
+      return route.fulfill({ json: { items: Array.from({ length: url.searchParams.has("cursor") ? 1 : count }, (_, index) => row(index)), nextCursor: count === 0 || url.searchParams.has("cursor") ? null : "ui-next" } });
     }
     return route.fulfill({ json: { items: [], notices: [], unreadCount: 0, total: 0 } });
   });
   return { reads, writes };
+}
+
+for (const state of [
+  { name: "조회 오류", status: 500, error: "internal", text: "방송 기록을 불러오지 못했습니다" },
+  { name: "이용 잠금", status: 402, error: "access_expired", text: "이용 기간이 끝나 지금은 사용할 수 없습니다" },
+  { name: "권한 없음", status: 403, error: "forbidden", text: "이 계정은 이 일을 할 수 없습니다" },
+  { name: "빈 목록", status: 200, text: "최근 1개월에는 방송 기록이 없습니다" },
+]) {
+  test(`SA054 PC 1440: 로딩과 ${state.name}의 기존 상태 프레임을 보존한다`, async ({ page }) => {
+    let release!: () => void;
+    const wait = new Promise<void>((resolve) => { release = resolve; });
+    const { writes } = await mock(page, 0, { ...state, wait });
+    await page.setViewportSize({ width: 1440, height: 960 });
+    await page.goto("/seller/broadcasts");
+    const section = page.locator(".au-list-section");
+    const loading = section.getByLabel("불러오는 중");
+    await expect(loading).toBeVisible();
+    const loadingFrame = section.locator(":scope > .card");
+    await expect(loadingFrame).toHaveCount(1);
+    await expect(loadingFrame).not.toHaveCSS("box-shadow", "none");
+    await expect(loading).toHaveCSS("box-shadow", "none");
+    release();
+    await expect(loading).toHaveCount(0);
+    await expect(section).toContainText(state.text);
+    const frame = section.locator(".card");
+    await expect(frame).toHaveCount(1);
+    await expect(frame).not.toHaveCSS("box-shadow", "none");
+    await expect(frame).toHaveCSS("border-radius", "12px");
+    await expect(frame.locator(".au-lh, .onq-pagination, .card")).toHaveCount(0);
+    await expect(section.getByRole("region", { name: "방송 기록 표" })).toHaveCount(0);
+    if (state.status === 200) {
+      await expect(section.locator(".au-lh")).toContainText("불러온 0건");
+      await expect(frame.getByTestId("bh-empty")).toBeVisible();
+      await expect(frame.getByRole("link", { name: "방송 대시보드" })).toHaveAttribute("href", "/seller/broadcast");
+    } else if (state.status === 500) {
+      await expect(frame.getByRole("button", { name: "다시 시도" })).toBeEnabled();
+    } else if (state.status === 403) {
+      await expect(frame).toHaveAttribute("data-testid", "permission-card");
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
+    expect(writes).toEqual([]);
+  });
 }
 
 for (const [count, height] of [[5, 960], [10, 650]]) {

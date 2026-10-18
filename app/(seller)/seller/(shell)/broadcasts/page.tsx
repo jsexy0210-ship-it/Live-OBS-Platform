@@ -122,29 +122,29 @@ export default function BroadcastHistoryPage() {
             </SearchBox>
 
             <section className="au-list-section">
-              {state.kind === "loading" && <LoadingRows rows={4} />}
+              {state.kind === "loading" && <div className="card"><LoadingRows rows={4} /></div>}
               {state.kind === "error" &&
                 (state.status === 402 ? (
-                  <Locked />
+                  <div className="card"><Locked /></div>
                 ) : state.status === 403 && state.error === "plan_feature_required" ? (
-                  <div className="st" style={{ boxShadow: "none" }}>
+                  <div className="card"><div className="st" style={{ boxShadow: "none" }}>
                     <span className="t">지금 이용 중인 이용권에는 이 기능이 없습니다. 구독 화면에서 이용권을 바꾸면 사용할 수 있습니다</span>
-                  </div>
+                  </div></div>
                 ) : state.status === 403 ? (
                   <NoPermission need="방송 진행" />
                 ) : (
-                  <ErrorState title="방송 기록을 불러오지 못했습니다" onRetry={() => void load(applied)} />
+                  <div className="card"><ErrorState title="방송 기록을 불러오지 못했습니다" onRetry={() => void load(applied)} /></div>
                 ))}
               {state.kind === "ok" && (
                 <>
                   <ListHead total={items.length} loaded />
                   {items.length === 0 ? (
-                    <div className="st" style={{ boxShadow: "none" }} data-testid="bh-empty">
+                    <div className="card"><div className="st" style={{ boxShadow: "none" }} data-testid="bh-empty">
                       <span className="t">{applied.period !== "all" && !applied.layout && applied.from === defaults.from && applied.to === defaults.to ? "최근 1개월에는 방송 기록이 없습니다. 기간을 바꿔 다시 찾아 주십시오" : applied.layout || (applied.period !== "all" && (applied.from || applied.to)) ? "조건에 맞는 방송이 없습니다" : "아직 방송 기록이 없습니다"}</span>
                       <Link className="btn btn-sm" href="/seller/broadcast">
                         방송 대시보드
                       </Link>
-                    </div>
+                    </div></div>
                   ) : (
                     <ListTable aria-label="방송 기록 표">
                       <table className="tbl">
