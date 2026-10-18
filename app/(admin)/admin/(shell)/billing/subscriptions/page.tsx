@@ -47,8 +47,10 @@ type Page = { counts: Record<Status, number>; subscriptions: Row[]; nextCursor: 
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; items: Row[]; next: string | null };
 type Filters = { access: string; q: string; plan: string; nextFrom: string; nextTo: string; period: string };
 const PAGE = 10;
-const range = recentRange(1);
-const EMPTY: Filters = { access: "", q: "", plan: "", nextFrom: range.from, nextTo: range.to, period: "" };
+function defaultFilters(): Filters {
+  const range = recentRange(1);
+  return { access: "", q: "", plan: "", nextFrom: range.from, nextTo: range.to, period: "" };
+}
 
 function query(f: Filters, cursor?: string) {
   const p = new URLSearchParams({ limit: String(PAGE) });
@@ -62,7 +64,8 @@ function query(f: Filters, cursor?: string) {
 }
 
 function Subscriptions() {
-  const [urlApplied, setUrl] = useUrlState<Filters>(EMPTY);
+  const [defaults] = useState(defaultFilters);
+  const [urlApplied, setUrl] = useUrlState<Filters>(defaults);
   const [selectedAccess, setSelectedAccess] = useState(urlApplied.access);
   const selected = useRef(urlApplied.access);
   const [pending, startTransition] = useTransition();
@@ -134,8 +137,9 @@ function Subscriptions() {
   const items = state.kind === "ok" ? state.items : [];
   const filtered = applied.access !== "" || applied.q !== "" || applied.plan !== "" || applied.period !== "all";
   const reset = () => {
-    setDraft(EMPTY);
-    setApplied(EMPTY);
+    const next = defaultFilters();
+    setDraft(next);
+    setApplied(next);
   };
 
   return (
