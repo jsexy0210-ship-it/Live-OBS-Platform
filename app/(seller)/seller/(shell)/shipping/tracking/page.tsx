@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { PageHead } from "../../../../../../components/admin-ui";
+import { ListTable, PageHead } from "../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
@@ -196,7 +196,7 @@ export default function InvoiceTrackingPage() {
           </div>
         ))}
 
-        <div className="card">
+        <section className="au-list-section">
           <div className="toolbar" style={{ padding: 16 }}>
             <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
               {canEdit && (
@@ -221,15 +221,15 @@ export default function InvoiceTrackingPage() {
             </span>
           </div>
 
-          {state.kind === "loading" && <LoadingRows rows={5} />}
-          {state.kind === "error" && (state.status === 403 ? <NoPermission need="주문·배송" /> : <ErrorState title="송장 목록을 불러오지 못했습니다" onRetry={() => void load(tab.status)} />)}
+          {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
+          {state.kind === "error" && (state.status === 403 ? <NoPermission need="주문·배송" /> : <div className="card"><ErrorState title="송장 목록을 불러오지 못했습니다" onRetry={() => void load(tab.status)} /></div>)}
           {state.kind === "ok" &&
             (items.length === 0 ? (
               <div className="st">
                 <span className="t">{tab.status ? "이 상태의 송장이 없습니다" : "발급한 송장이 없습니다"}</span>
               </div>
             ) : (
-              <div style={{ overflowX: "auto" }}>
+              <ListTable>
                 <table className="tbl">
                   <thead>
                     <tr>
@@ -322,9 +322,9 @@ export default function InvoiceTrackingPage() {
                     })}
                   </tbody>
                 </table>
-              </div>
+              </ListTable>
             ))}
-        </div>
+        </section>
         {page?.nextCursor && (
           <div style={{ textAlign: "center", marginTop: 12 }}>
             <button className="btn btn-out" type="button" onClick={() => void loadMore()}>

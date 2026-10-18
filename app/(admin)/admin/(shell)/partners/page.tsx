@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { adminCan } from "../../../../../lib/server/authz/permissions";
-import { DateRangePicker, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
+import { ListTable, DateRangePicker, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { ListHead, Pagination } from "../../../../../components/admin-ui/ListTable";
 import { ErrorState, LoadingRows, Toast } from "../../../../../components/seller/States";
 import { MAX_SEARCH_LENGTH } from "../../../../../components/seller/format";
@@ -257,9 +257,9 @@ function PartnerList() {
           </SearchRow>
         </SearchBox>
 
-        <div className="card">
-          {state.kind === "loading" && <LoadingRows rows={5} />}
-          {state.kind === "error" && <ErrorState title="파트너스 목록을 불러오지 못했습니다." onRetry={() => void load(applied)} />}
+        <section className="au-list-section">
+          {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
+          {state.kind === "error" && <div className="card"><ErrorState title="파트너스 목록을 불러오지 못했습니다." onRetry={() => void load(applied)} /></div>}
           {data &&
             (data.sellers.length === 0 ? (
               <div className="st">
@@ -294,7 +294,7 @@ function PartnerList() {
                     </span>
                   }
                 />
-                <div style={{ overflowX: "auto" }}>
+                <ListTable>
                   <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                     <thead>
                       <tr>
@@ -362,13 +362,13 @@ function PartnerList() {
                       })}
                     </tbody>
                   </table>
-                </div>
+                </ListTable>
                 {data.total > limit && <div style={{ maxWidth: "100%", overflowX: "auto" }}>
                   <Pagination page={page} pageCount={Math.ceil(data.total / limit)} onChange={(n) => go({ page: String(n) })} />
                 </div>}
               </>
             ))}
-        </div>
+        </section>
       </main>
       {viewing && (
         <ImpersonateDialog

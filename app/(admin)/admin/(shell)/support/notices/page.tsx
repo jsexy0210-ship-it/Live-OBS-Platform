@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
-import { CursorPagination, ListHead, Modal, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
+import { ListTable, CursorPagination, ListHead, Modal, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { MAX_SEARCH_LENGTH } from "../../../../../../components/seller/format";
 import { useScrollRestore, useUrlState } from "../../../../../../lib/client/navigation";
@@ -181,9 +181,9 @@ function NoticeList() {
           </SearchRow>
         </SearchBox>
 
-        <div className="card">
-          {state.kind === "loading" && <LoadingRows rows={5} />}
-          {state.kind === "error" && <ErrorState title="공지를 불러오지 못했습니다." onRetry={() => void load(applied.status)} />}
+        <section className="au-list-section">
+          {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
+          {state.kind === "error" && <div className="card"><ErrorState title="공지를 불러오지 못했습니다." onRetry={() => void load(applied.status)} /></div>}
           {state.kind === "ok" &&
             (items.length === 0 ? (
               <div className="st">
@@ -203,7 +203,7 @@ function NoticeList() {
             ) : (
               <>
                 <ListHead total={items.length} loaded />
-                <div style={{ overflowX: "auto" }}>
+                <ListTable>
                   <table className="tbl">
                     <thead>
                       <tr>
@@ -252,11 +252,11 @@ function NoticeList() {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </ListTable>
                 <div aria-busy={more}>{(cursors.length > 1 || state.next) && <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={(n) => void changePage(n)} onNext={() => void changePage(page + 1)} />}</div>
               </>
             ))}
-        </div>
+        </section>
       </main>
       {target && (
         <DeleteDialog

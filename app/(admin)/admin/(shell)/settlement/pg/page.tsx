@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { ListHead, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
+import { ListTable, ListHead, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { useScrollRestore } from "../../../../../../lib/client/navigation";
 import { adminApi } from "../../../_components/api";
@@ -211,9 +211,9 @@ function PgStatusPageInner() {
               <input className="inp" aria-label="쇼핑몰 이름 또는 주소" placeholder="쇼핑몰 이름" value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
             </SearchRow>
           </SearchBox>
-          <div className="card">
-            {state.kind === "loading" && <LoadingRows rows={5} />}
-            {state.kind === "error" && <ErrorState title="결제 연결 상태를 불러오지 못했습니다." onRetry={() => void load(applied)} />}
+          <section className="au-list-section">
+            {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
+            {state.kind === "error" && <div className="card"><ErrorState title="결제 연결 상태를 불러오지 못했습니다." onRetry={() => void load(applied)} /></div>}
             {state.kind === "ok" &&
               (state.items.length === 0 ? (
                 <div className="st">
@@ -222,7 +222,7 @@ function PgStatusPageInner() {
               ) : (
                 <>
                   <ListHead total={state.items.length} loaded={state.next !== null} />
-                  <div style={{ overflowX: "auto" }}>
+                  <ListTable>
                     <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                       <thead>
                         <tr>
@@ -258,7 +258,7 @@ function PgStatusPageInner() {
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </ListTable>
                   {state.next && (
                     <div className="row" style={{ justifyContent: "center", padding: "12px 16px" }}>
                       <button className="btn btn-sm btn-out" type="button" onClick={() => void loadMore()} disabled={more}>
@@ -268,7 +268,7 @@ function PgStatusPageInner() {
                   )}
                 </>
               ))}
-          </div>
+          </section>
           <span className="t-c1 c-alt">실패 코드는 나이스페이 응답 코드 그대로 기록합니다 · 재시도 · 유예 · 잠금 처리는 청구 내역에서 합니다 · 취소 대기 = 승인 취소 요청 뒤 결제대행사 응답 대기</span>
         </div>
       </main>

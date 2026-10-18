@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CursorPagination, Modal, PageHead } from "../../../../../components/admin-ui";
+import { ListTable, CursorPagination, Modal, PageHead } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, apiDownload } from "../../../../../components/seller/api";
@@ -144,7 +144,7 @@ export default function MemberListPage() {
       <main className="main">
         <PageHead title="회원" />
 
-        <div className="card">
+        <section className="au-list-section">
           <div className="toolbar" style={{ padding: 16 }}>
             <div className="search" style={{ flex: "1 1 220px" }}>
               <input
@@ -170,9 +170,9 @@ export default function MemberListPage() {
             )}
           </div>
 
-          {state.kind === "loading" && <LoadingRows rows={5} />}
+          {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
           {state.kind === "error" &&
-            (state.status === 403 ? <NoPermission need="회원·적립금" /> : <ErrorState title="회원 목록을 불러오지 못했습니다" onRetry={() => void load({ q, status })} />)}
+            (state.status === 403 ? <NoPermission need="회원·적립금" /> : <div className="card"><ErrorState title="회원 목록을 불러오지 못했습니다" onRetry={() => void load({ q, status })} /></div>)}
           {state.kind === "ok" &&
             (items.length === 0 ? (
               <div className="st">
@@ -196,7 +196,7 @@ export default function MemberListPage() {
               </div>
             ) : (
               <>
-                <div style={{ overflowX: "auto" }}>
+                <ListTable>
                   <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                     <thead>
                       <tr>
@@ -232,12 +232,12 @@ export default function MemberListPage() {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </ListTable>
                 <span className="t-c1 c-alt">현재 {items.length}명</span>
                 {(page > 1 || state.next) && <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={n => void turnPage(n)} onNext={() => void turnPage(page + 1)} />}
               </>
             ))}
-        </div>
+        </section>
       </main>
       {exporting && (
         <Modal labelId="member-export-title" busy={exporting.busy} dirty={exporting.reason !== "" || exporting.custom !== ""} onClose={() => setExporting(null)}>

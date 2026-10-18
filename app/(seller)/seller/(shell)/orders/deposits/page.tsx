@@ -4,7 +4,7 @@ import { formatDateTime } from "../../../../../../lib/client/format";
 import "../../../../../../styles/seller-orders.css";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { DatePicker, Pagination, ListHead, Modal, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
+import { ListTable, DatePicker, Pagination, ListHead, Modal, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { useScrollRestore } from "../../../../../../lib/client/navigation";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
@@ -160,7 +160,7 @@ export default function DepositsPage() {
           <SearchRow label="검색"><div className="row" style={{ gap: 8, flexWrap: "wrap" }}><select className="inp" aria-label="검색 기준" value={searchBy} onChange={(e) => setSearchBy(e.target.value as typeof searchBy)}><option value="buyer">구매자</option><option value="amount">금액</option><option value="depositor" disabled={!canSearchDepositor}>입금자명</option></select><input className="inp" aria-label="검색어" value={term} onChange={(e) => setTerm(e.target.value)} placeholder={searchBy === "depositor" && !canSearchDepositor ? "실제 입금자명 미수집 · 검색할 수 없음" : searchBy === "amount" ? "정확한 금액" : "검색어"} disabled={searchBy === "depositor" && !canSearchDepositor} />{!canSearchDepositor && <span className="t-c1 c-alt">실제 입금자명을 수집하지 않아 검색할 수 없습니다</span>}</div></SearchRow>
         </SearchBox>
 
-        <div className="card" style={{ overflow: "visible" }}>
+        <section className="au-list-section" style={{ overflow: "visible" }}>
           {state.kind === "ok" && (
             <ListHead
               total={state.total}
@@ -175,18 +175,18 @@ export default function DepositsPage() {
             />
           )}
 
-          {state.kind === "loading" && <LoadingRows rows={5} />}
+          {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
           {state.kind === "error" &&
-            (state.status === 403 ? <NoPermission need="주문 · 배송" /> : state.status === 402 ? <Locked /> : <ErrorState title="입금 대기 주문을 불러오지 못했습니다" onRetry={() => void load(applied)} />)}
+            (state.status === 403 ? <NoPermission need="주문 · 배송" /> : state.status === 402 ? <div className="card"><Locked /></div> : <div className="card"><ErrorState title="입금 대기 주문을 불러오지 못했습니다" onRetry={() => void load(applied)} /></div>)}
           {state.kind === "ok" && rows.length === 0 && (
-            <div className="st" style={{ boxShadow: "none" }}>
+            <div className="card"><div className="st" style={{ boxShadow: "none" }}>
               <div className="st-ic">0</div>
               <span className="t">입금 전 주문이 없습니다</span>
               <span className="s">무통장 주문이 들어오면 여기에 표시됩니다.</span>
-            </div>
+            </div></div>
           )}
           {state.kind === "ok" && rows.length > 0 && (
-            <div className="au-lt-wrap">
+            <ListTable>
               <table className="tbl">
                 <thead>
                   <tr>
@@ -230,10 +230,10 @@ export default function DepositsPage() {
                   })}
                 </tbody>
               </table>
-            </div>
+            </ListTable>
           )}
           {state.kind === "ok" && state.total > PAGE && <Pagination page={page} pageCount={Math.ceil(state.total / PAGE)} onChange={turnPage} />}
-        </div>
+        </section>
       </main>
 
       {confirm && (

@@ -4,7 +4,7 @@ import { CursorPagination } from "../../../../../components/Pagination";
 
 import { formatDateTime } from "../../../../../lib/client/format";
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
-import { Modal, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
+import { ListTable, Modal, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
@@ -164,7 +164,7 @@ export default function BuyerInquiriesPage() {
           </SearchRow>
         </SearchBox>
 
-        <div className="card">
+        <section className="au-list-section">
           <div className="tabs" role="tablist">
             {TABS.map((t) => (
               <button key={t.key || "all"} className={`tab${filter.status === t.key ? " on" : ""}`} type="button" role="tab" aria-selected={filter.status === t.key} onClick={() => setTab(t.key)}>
@@ -173,18 +173,18 @@ export default function BuyerInquiriesPage() {
               </button>
             ))}
           </div>
-          {state.kind === "loading" && <LoadingRows rows={5} />}
+          {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
           {state.kind === "error" &&
-            (state.status === 403 ? <NoPermission need="구매자 문의" /> : state.status === 402 ? <Locked /> : <ErrorState title="구매자 문의를 불러오지 못했습니다" onRetry={() => void load()} />)}
+            (state.status === 403 ? <NoPermission need="구매자 문의" /> : state.status === 402 ? <div className="card"><Locked /></div> : <div className="card"><ErrorState title="구매자 문의를 불러오지 못했습니다" onRetry={() => void load()} /></div>)}
           {data && rows.length === 0 && (
-            <div className="st" style={{ boxShadow: "none" }}>
+            <div className="card"><div className="st" style={{ boxShadow: "none" }}>
               <div className="st-ic">0</div>
               <span className="t">{filter.status || filter.kind || filter.from || filter.to || filter.q ? "조건에 맞는 문의가 없습니다" : "아직 문의가 없습니다"}</span>
               <span className="s">구매자가 상품 문의나 1:1 문의를 남기면 여기에 표시됩니다.</span>
-            </div>
+            </div></div>
           )}
           {data && rows.length > 0 && (
-            <div className="au-lt-wrap">
+            <ListTable>
               <table className="tbl">
                 <thead>
                   <tr>
@@ -215,10 +215,10 @@ export default function BuyerInquiriesPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ListTable>
           )}
           {(page > 1 || cursor) && <CursorPagination page={page} visited={cursors.length} hasNext={!!cursor} onChange={(target) => void goPage(target)} onNext={() => { if (cursor) void goPage(page + 1, cursor); }} />}
-        </div>
+        </section>
       </main>
       {open && data && (
         <InquiryDialog
