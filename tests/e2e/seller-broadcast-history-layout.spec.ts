@@ -111,7 +111,7 @@ for (const [count, height] of [[5, 960], [10, 650]]) {
       await page.screenshot({ path: "tests/e2e/screenshots/sa054-after-1440.png", fullPage: true });
     }
 
-    const start = form.getByRole("button", { name: "시작일", exact: true });
+    const start = form.getByRole("textbox", { name: "시작일", exact: true });
     await start.click();
     await expect(page.getByRole("dialog")).toBeVisible();
     const dropdown = await page.getByRole("dialog").boundingBox();
