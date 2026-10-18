@@ -214,8 +214,8 @@ export default function PlatformBusinessPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {historyState === "error" && <tr><td colSpan={3}><span role="alert">변경 이력을 불러오지 못했습니다.{history !== null && " 마지막으로 불러온 기록을 표시합니다."} </span><button className="btn btn-sm" type="button" onClick={() => void loadHistory()}>다시 시도</button></td></tr>}
-                          {historyState === "loading" && history !== null && <tr><td colSpan={3} role="status">변경 이력을 불러오는 중입니다.</td></tr>}
+                          {historyState === "error" && <tr><td colSpan={3}><span role="alert">변경 이력을 불러오지 못했어요.{history !== null && " 이전 기록을 보여드려요."} </span><button className="btn btn-sm" type="button" onClick={() => void loadHistory()}>다시 시도</button></td></tr>}
+                          {historyState === "loading" && history !== null && <tr><td colSpan={3} role="status">변경 이력을 불러오고 있어요.</td></tr>}
                           {history === null ? (
                             historyState !== "error" && <tr><td colSpan={3} className="c-alt">불러오는 중</td></tr>
                           ) : history.length === 0 ? (

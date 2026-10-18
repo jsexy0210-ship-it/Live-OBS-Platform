@@ -40,7 +40,7 @@ test("SA052: 조회 실패는 미발급·OBS 미접속으로 표시하지 않고
   let attempts = 0;
   const result = await mock(page, (url) => url.pathname === "/api/seller/overlay/address-info" ? ++attempts === 1 ? failed : { json: { issuedAt: null, lastAccessAt: null, lastClient: null, connected: false, openSources: 0, live: false, accesses: [], reissues: [] } } : undefined);
   await page.goto("/seller/overlay/address");
-  await expect(page.getByText("주소 정보를 불러오지 못했습니다", { exact: true })).toBeVisible();
+  await expect(page.getByText("주소 정보를 불러오지 못했어요", { exact: true })).toBeVisible();
   await expect(page.getByTestId("ovu-ac-empty")).toHaveCount(0);
   await expect(page.getByText("아직 발급 기록이 없습니다", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "다시 시도", exact: true }).click();
@@ -56,7 +56,7 @@ test("SA060: 로고 성공과 설정 조회 실패를 구분하고 재시도로 
     if (url.pathname === "/api/seller/shop-profile") return ++attempts === 1 ? failed : { json: { profile: { shopName: "검증 이름", shopTagline: "", operatingState: "PAUSED", topNotice: null, homeBenefitBannerVisible: true, usageGuide: null, primaryAddress: "DEFAULT", primaryDomain: null } } };
   });
   await page.goto("/seller/settings/shop");
-  const error = page.getByRole("alert").filter({ hasText: "쇼핑몰 설정을 불러오지 못했습니다" });
+  const error = page.getByRole("alert").filter({ hasText: "쇼핑몰 설정을 불러오지 못했어요" });
   await expect(error).toBeVisible();
   await expect(page.getByTestId("logo-box")).toBeVisible();
   await expect(page.getByRole("radiogroup", { name: "운영 상태" })).toHaveCount(0);
@@ -76,7 +76,7 @@ test("MA088: 상세 로그 404를 빈 변경 이력으로 만들지 않고 전�
   });
   await page.goto("/admin/settings/platform-business");
   const history = page.getByTestId("pb-history");
-  await expect(history).toContainText("변경 이력을 불러오지 못했습니다");
+  await expect(history).toContainText("변경 이력을 불러오지 못했어요");
   await expect(history).not.toContainText("아직 변경 기록이 없습니다");
   await history.getByRole("button", { name: "다시 시도" }).click();
   await expect(history).toContainText("검증 담당자");
@@ -93,7 +93,7 @@ test("MA083: 이력 GET 실패를 빈 기록으로 표시하지 않고 기존 �
   });
   await page.goto("/admin/settings/maintenance");
   const history = page.getByTestId("maintenance-history");
-  await expect(history).toContainText("점검 이력을 불러오지 못했습니다");
+  await expect(history).toContainText("점검 이력을 불러오지 못했어요");
   await expect(history).not.toContainText("변경 기록이 없습니다");
   await expect(page.getByTestId("maintenance-form")).toBeVisible();
   await history.getByRole("button", { name: "다시 시도" }).click();
@@ -118,13 +118,13 @@ test("MA013: 메모 GET 404 재시도와 검토 행 전환에서 다른 행의 �
   await page.goto("/admin/partners/applications");
   await page.getByTestId("application-row").first().getByRole("button", { name: "확인할 내용 보기" }).click();
   const panel = page.getByTestId("review-panel");
-  await expect(panel).toContainText("메모를 불러오지 못했습니다");
+  await expect(panel).toContainText("메모를 불러오지 못했어요");
   await panel.getByRole("button", { name: "다시 시도" }).click();
   await expect(panel.getByTestId("review-note")).toHaveText(/첫 행 메모/);
   await panel.getByRole("button", { name: "다음 ›", exact: true }).click();
   await expect(panel).toHaveAttribute("aria-label", "검증 b 검토");
   await expect(panel.getByTestId("review-note")).toHaveCount(0);
-  await expect(panel).toContainText("메모를 불러오는 중입니다");
+  await expect(panel).toContainText("메모를 불러오고 있어요");
   release();
   await expect(panel.getByRole("status")).toHaveCount(0);
   await expect(panel.getByTestId("review-note")).toHaveCount(0);
