@@ -6,7 +6,7 @@ import Link from "next/link";
 import { CursorPagination } from "../../../../../components/Pagination";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
-import { Modal, PageHead } from "../../../../../components/admin-ui";
+import { ListTable, Modal, PageHead } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -275,7 +275,7 @@ export default function OrderListPage() {
           }
         />
 
-        <div className="card" style={{ overflow: "visible" }}>
+        <section className="au-list-section" style={{ overflow: "visible" }}>
           <div className="toolbar ord-toolbar ord-chips" role="group" aria-label="주문 상태">
             {CHIPS.map((c) => (
               <button key={c.key} type="button" className={`chip${chipOn(c.key) ? " on" : ""}`} aria-pressed={chipOn(c.key)} onClick={() => setU(c.set)}>
@@ -359,11 +359,11 @@ export default function OrderListPage() {
           </div>
           )}
 
-          {state.kind === "loading" && <LoadingRows rows={5} />}
+          {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
           {state.kind === "error" &&
-            (state.status === 403 ? <NoPermission need="주문·배송" /> : <ErrorState title="주문을 불러오지 못했습니다" onRetry={() => void load(filters)} />)}
+            (state.status === 403 ? <NoPermission need="주문·배송" /> : <div className="card"><ErrorState title="주문을 불러오지 못했습니다" onRetry={() => void load(filters)} /></div>)}
           {state.kind === "ok" && items.length === 0 && (
-            <div className="st" style={{ boxShadow: "none" }}>
+            <div className="card"><div className="st" style={{ boxShadow: "none" }}>
               {!filtered ? (
                 <>
                   <div className="st-ic">0</div>
@@ -388,7 +388,7 @@ export default function OrderListPage() {
                   </button>
                 </>
               )}
-            </div>
+            </div></div>
           )}
           {picked.length > 0 && (
             <div className="ord-bulk" role="region" aria-label="선택한 주문">
@@ -408,7 +408,7 @@ export default function OrderListPage() {
             </div>
           )}
           {state.kind === "ok" && items.length > 0 && (
-            <div className="ord-scroll">
+            <ListTable className="ord-scroll">
               <table className="tbl tbl-card ord-tbl2" data-testid="orders-table">
                 <thead>
                   <tr>
@@ -512,14 +512,14 @@ export default function OrderListPage() {
                   })}
                 </tbody>
               </table>
-            </div>
+            </ListTable>
           )}
           {state.kind === "ok" && (state.next || page > 1) && (
             <div className="row ord-more" aria-busy={more}>
               <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={(n) => void changePage(n)} onNext={() => void changePage(page + 1)} />
             </div>
           )}
-        </div>
+        </section>
       </main>
       {memo && (
         <Modal labelId="ord-memo-title" busy={memo.saving} dirty={memo.loaded && memo.text !== memo.saved} onClose={() => setMemo(null)}>

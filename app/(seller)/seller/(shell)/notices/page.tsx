@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CursorPagination, PageHead } from "../../../../../components/admin-ui";
+import { ListTable, CursorPagination, PageHead } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -89,7 +89,7 @@ export default function NoticesPage() {
             </>
           }
         />
-        <div className="card" style={{ overflow: "visible" }}>
+        <section className="au-list-section" style={{ overflow: "visible" }}>
           <div className="au-lh">
             <div className="seg" role="group" aria-label="분류">
               {NOTICE_FILTERS.map((f) => (
@@ -116,10 +116,10 @@ export default function NoticesPage() {
             </form>
           </div>
           {pageError && <p className="msg msg-neg" role="alert">목록을 불러오지 못했습니다. 다시 시도해 주십시오.</p>}
-          {state.kind === "loading" && <LoadingRows rows={5} />}
-          {state.kind === "error" && <ErrorState title="목록을 불러오지 못했습니다" onRetry={() => void load(cursors[cursorPage - 1])} />}
+          {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
+          {state.kind === "error" && <div className="card"><ErrorState title="목록을 불러오지 못했습니다" onRetry={() => void load(cursors[cursorPage - 1])} /></div>}
           {state.kind === "ok" && rows.length === 0 && (
-            <div className="st" style={{ boxShadow: "none" }}>
+            <div className="card"><div className="st" style={{ boxShadow: "none" }}>
               {filtered ? (
                 <>
                   <span className="t">{applied.q.trim() ? `「${applied.q.trim()}」 검색 결과가 없습니다` : "조건에 맞는 공지가 없습니다"}</span>
@@ -130,10 +130,10 @@ export default function NoticesPage() {
               ) : (
                 <span className="t">아직 공지가 없습니다</span>
               )}
-            </div>
+            </div></div>
           )}
           {state.kind === "ok" && rows.length > 0 && (
-            <div className="au-lt-wrap">
+            <ListTable>
               <table className="tbl">
                 <thead>
                   <tr>
@@ -163,7 +163,7 @@ export default function NoticesPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ListTable>
           )}
           {state.kind === "ok" && rows.length > 0 && (
             <div className="au-lh">
@@ -173,7 +173,7 @@ export default function NoticesPage() {
               {(cursors.length > 1 || state.next) && <CursorPagination page={cursorPage} visited={cursors.length} hasNext={!!state.next} onChange={go} onNext={() => { if (!paging.current && state.next) void load(state.next, cursorPage + 1); }} />}
             </div>
           )}
-        </div>
+        </section>
       </main>
     </>
   );

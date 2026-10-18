@@ -4,7 +4,7 @@ import { formatDateTime } from "../../../../../lib/client/format";
 import Link from "next/link";
 import { CursorPagination } from "../../../../../components/Pagination";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PageHead, useConfirm } from "../../../../../components/admin-ui";
+import { ListTable, PageHead, useConfirm } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
@@ -192,7 +192,7 @@ export default function ShippingPage() {
       <main className="main">
         <PageHead title="배송" />
 
-        <div className="card">
+        <section className="au-list-section">
           <nav className="tabs" aria-label="배송 상태" style={{ padding: "0 16px" }}>
             {TABS.map((t) => (
               <button key={t.key} type="button" className={`tab${tab === t.key ? " on" : ""}`} aria-pressed={tab === t.key} disabled={busy} onClick={() => setTab(t.key)}>
@@ -239,9 +239,9 @@ export default function ShippingPage() {
           </div>
           {tab === "ready" && missing > 0 && <span className="t-c1 c-alt" style={{ padding: "0 16px 12px", display: "block" }}>송장번호를 적지 않은 {missing}건은 저장하지 않습니다.</span>}
 
-          {state.kind === "loading" && <LoadingRows rows={5} />}
+          {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
           {state.kind === "error" &&
-            (state.status === 403 ? <NoPermission need="주문·배송" /> : <ErrorState title="배송 목록을 불러오지 못했습니다" onRetry={() => void load(tab, q)} />)}
+            (state.status === 403 ? <NoPermission need="주문·배송" /> : <div className="card"><ErrorState title="배송 목록을 불러오지 못했습니다" onRetry={() => void load(tab, q)} /></div>)}
           {state.kind === "ok" &&
             (items.length === 0 ? (
               <div className="st">
@@ -249,7 +249,7 @@ export default function ShippingPage() {
               </div>
             ) : (
               <>
-                <div style={{ overflowX: "auto" }}>
+                <ListTable>
                   <table className={`tbl ship-tbl${selectable ? " ship-sel" : ""}`}>
                     <thead>
                       <tr>
@@ -335,7 +335,7 @@ export default function ShippingPage() {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </ListTable>
                 <div className="row" style={{ justifyContent: "space-between", padding: "12px 16px" }}>
                   <span className="t-c1 c-alt">{`${items.length}건 표시`}</span>
 
@@ -343,7 +343,7 @@ export default function ShippingPage() {
               </>
             ))}
           {state.kind === "ok" && (page > 1 || state.next) && <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={(target) => void goPage(target)} onNext={() => { if (state.next) void goPage(page + 1, state.next); }} />}
-        </div>
+        </section>
       </main>
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
     </>
