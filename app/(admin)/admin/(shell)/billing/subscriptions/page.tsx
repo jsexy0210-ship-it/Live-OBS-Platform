@@ -222,7 +222,7 @@ function Subscriptions() {
                           <td>{r.plan?.name ?? "-"}</td>
                           <td className="num">{day(r.trialEndsAt)}</td>
                           <td className="num">{day(r.subscription?.currentPeriodEnd ?? null)}</td>
-                          <td className="num">{r.subscription?.cancelAtPeriodEnd ? "해지 예정" : dayTime(r.subscription?.nextChargeAt ?? null)}</td>
+                          <td className="num">{r.cancelling ? "해지 예정" : dayTime(r.subscription?.nextChargeAt ?? null)}</td>
                           <td>{r.subscription?.cardLabel ?? "-"}</td>
                           <td>{r.subscription ? <span className={`bdg ${SUBSCRIPTION_STATUS[r.subscription.status].cls}`}>{SUBSCRIPTION_STATUS[r.subscription.status].label}</span> : "구독 없음"}</td>
                           <td className="num">

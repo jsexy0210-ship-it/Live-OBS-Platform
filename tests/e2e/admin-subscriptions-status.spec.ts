@@ -5,12 +5,12 @@ import { recentRange } from "../../lib/client/dateInput";
 const base = new URL(process.env.E2E_BASE_URL ?? "http://localhost:3100");
 if (!["localhost", "127.0.0.1"].includes(base.hostname)) throw new Error("loopback 주소에서만 실행합니다.");
 test.use({ channel: process.platform === "win32" ? "chrome" : undefined });
-const counts = { trial: 0, paid: 1, charging: 0, grace: 9, expired: 1, locked: 1, cancelling: 1 };
-const rows = Array.from({ length: 11 }, (_, index) => ({
+const counts = { trial: 0, paid: 1, charging: 0, grace: 9, expired: 2, locked: 1, cancelling: 1 };
+const rows = Array.from({ length: 12 }, (_, index) => ({
   seller: { id: `ui-${index}`, slug: `ui-${index}`, shopName: `검증 ${index}`, status: "ACTIVE" },
-  access: index === 0 ? "expired" : index === 1 ? "paid" : "grace", locked: index === 0, cancelling: index === 1,
+  access: index === 0 || index === 2 ? "expired" : index === 1 ? "paid" : "grace", locked: index === 0, cancelling: index === 1,
   plan: { code: "INTEGRATED", name: "통합", listPrice: 179000, salePrice: null }, trialEndsAt: null,
-  subscription: { status: index === 1 ? "ACTIVE" : "PAST_DUE", cardLabel: null, currentPeriodEnd: null, nextChargeAt: null, cancelAtPeriodEnd: index === 1, graceUntil: null, retryCount: 0 },
+  subscription: { status: index === 1 ? "ACTIVE" : index === 2 ? "CANCELED" : "PAST_DUE", cardLabel: null, currentPeriodEnd: index === 1 ? "2099-01-01T00:00:00Z" : "2000-01-01T00:00:00Z", nextChargeAt: null, cancelAtPeriodEnd: index === 1 || index === 2, graceUntil: index === 0 ? "2000-01-01T00:00:00Z" : "2099-01-01T00:00:00Z", retryCount: 0 },
 }));
 async function mock(page: Page) {
   const reads: URL[] = [], writes: string[] = [], errors: string[] = [];
@@ -45,8 +45,8 @@ test("MA023: 겹치는 상태를 중복 합산하지 않고 행 flag·복수 상
   await expect(list.nth(1).locator("td").nth(1)).toContainText("해지 예정");
   const statuses = page.getByRole("group", { name: "이용 상태", exact: true });
   await expect(statuses.getByRole("checkbox")).toHaveCount(7);
-  await expect(statuses.locator("label")).toHaveText(["체험 0", "이용 중 1", "결제 진행 중 0", "유예 9", "잠금 1", "해지 예정 1", "해지 1"]);
-  await expect(statuses.getByRole("button", { name: "전체 11", exact: true })).toBeVisible();
+  await expect(statuses.locator("label")).toHaveText(["체험 0", "이용 중 1", "결제 진행 중 0", "유예 9", "잠금 1", "해지 예정 1", "해지 2"]);
+  await expect(statuses.getByRole("button", { name: "전체 12", exact: true })).toBeVisible();
   await expect(statuses.getByRole("checkbox", { name: /^잠금\s/ })).toBeChecked();
   await expect(statuses.getByRole("checkbox", { name: /^해지 예정\s/ })).toBeChecked();
   const q = page.getByLabel("쇼핑몰 이름 · 주소");
@@ -80,6 +80,7 @@ test("MA023: 기본·초기화는 최근 1개월이고 전체 기간 선택만 �
   const result = await mock(page);
   await page.goto("/admin/billing/subscriptions");
   await expect(page.getByTestId("subscription-row")).toHaveCount(10);
+  await expect(page.getByTestId("subscription-row").filter({ hasText: "검증 2" }).locator("td").nth(5)).not.toContainText("해지 예정");
   const range = recentRange(1);
   expect(result.reads.at(-1)?.searchParams.get("nextFrom")).toBe(range.from);
   expect(result.reads.at(-1)?.searchParams.get("nextTo")).toBe(range.to);
