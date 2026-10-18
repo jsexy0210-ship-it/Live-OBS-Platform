@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Modal, PageHead } from "../../../../../../components/admin-ui";
+import { ListTable, Modal, PageHead } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
@@ -179,7 +179,7 @@ export default function CategoriesPage() {
           </div>
         )}
 
-        <div className="card" style={{ overflow: "visible" }}>
+        <section className="au-list-section" style={{ overflow: "visible" }}>
           <div className="toolbar">
             <span className="t-l2 c-alt" data-testid="category-count">
               {state.kind === "ok" ? `대분류 ${tree.length} · 하위 ${childCount}` : ""}
@@ -195,21 +195,21 @@ export default function CategoriesPage() {
             </div>
           )}
 
-          {state.kind === "loading" && <LoadingRows rows={5} />}
+          {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
           {state.kind === "error" &&
-            (state.status === 403 ? <NoPermission need="상품" /> : state.status === 402 ? <Locked /> : <ErrorState title="카테고리를 불러오지 못했습니다" onRetry={() => void load()} />)}
+            (state.status === 403 ? <NoPermission need="상품" /> : state.status === 402 ? <div className="card"><Locked /></div> : <div className="card"><ErrorState title="카테고리를 불러오지 못했습니다" onRetry={() => void load()} /></div>)}
           {state.kind === "ok" && tree.length === 0 && (
-            <div className="st" style={{ boxShadow: "none" }}>
+            <div className="card"><div className="st" style={{ boxShadow: "none" }}>
               <div className="st-ic">+</div>
               <span className="t">카테고리가 없습니다</span>
               <span className="s">없어도 상품은 「전체」에 보입니다.</span>
               <button className="btn btn-sm" type="button" onClick={() => openAdd(null)}>
                 대분류 추가
               </button>
-            </div>
+            </div></div>
           )}
           {state.kind === "ok" && tree.length > 0 && (
-            <div className="au-lt-wrap">
+            <ListTable>
               <table className="tbl">
                 <thead>
                   <tr>
@@ -279,9 +279,9 @@ export default function CategoriesPage() {
                   })}
                 </tbody>
               </table>
-            </div>
+            </ListTable>
           )}
-        </div>
+        </section>
         {state.kind === "ok" && tree.length > 0 && (
           <span className="t-c1 c-alt">대분류는 쇼핑몰 상단 메뉴, 하위는 그 아래 목록 · 칩이 됩니다 · 대분류를 끄면 그 아래 하위도 쇼핑몰에서 함께 사라집니다 · 순서는 같은 대분류 안에서만 바꿀 수 있고 바꾼 뒤 「순서 저장」을 누릅니다 · 상품은 대분류와 하위 어느 쪽이든 고를 수 있습니다.</span>
         )}
