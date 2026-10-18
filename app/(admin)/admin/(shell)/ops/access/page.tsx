@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CursorPagination, ListHead, PageHead } from "../../../../../../components/admin-ui";
+import { ListTable, CursorPagination, ListHead, PageHead } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar } from "../../../_components/AdminShell";
@@ -103,9 +103,9 @@ export default function SellerActivityPage() {
             </label>
           </div>
 
-          <div className="card">
-            {state.kind === "loading" && <LoadingRows rows={5} />}
-            {state.kind === "error" && <ErrorState title="주문·방송 화면 접속 현황을 불러오지 못했습니다." onRetry={() => void load()} />}
+          <section className="au-list-section">
+            {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
+            {state.kind === "error" && <div className="card"><ErrorState title="주문·방송 화면 접속 현황을 불러오지 못했습니다." onRetry={() => void load()} /></div>}
             {state.kind === "ok" &&
               (items.length === 0 ? (
                 <div className="st">
@@ -114,7 +114,7 @@ export default function SellerActivityPage() {
               ) : (
                 <>
                   <ListHead total={items.length} unit="곳" loaded />
-                  <div style={{ overflowX: "auto" }}>
+                  <ListTable>
                     <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                       <thead>
                         <tr>
@@ -155,11 +155,11 @@ export default function SellerActivityPage() {
                         })}
                       </tbody>
                     </table>
-                  </div>
+                  </ListTable>
                   <div aria-busy={more}>{(cursors.length > 1 || state.next) && <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={(n) => void changePage(n)} onNext={() => void changePage(page + 1)} />}</div>
                 </>
               ))}
-          </div>
+          </section>
         </div>
       </main>
       {toast && <Toast text={toast} neg onDone={() => setToast(null)} />}

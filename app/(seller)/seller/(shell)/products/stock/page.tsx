@@ -1,6 +1,7 @@
 "use client";
 
 import { formatDateTime } from "../../../../../../lib/client/format";
+import { ListTable } from "../../../../../../components/admin-ui";
 import "../../../../../../styles/seller-stock.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
@@ -323,7 +324,7 @@ export default function StockPage() {
           </div>
         ) : (
           <div className="form-grid stock-grid">
-            <div className="card" style={{ overflow: "hidden" }}>
+            <section className="au-list-section">
               <div className="toolbar" style={{ padding: "14px 20px", boxShadow: "inset 0 -1px 0 var(--wds-line-normal-alternative)" }}>
                 <div className="search stock-search">
                   <input
@@ -375,7 +376,7 @@ export default function StockPage() {
                 </div>
               )}
               {searchError ? null : visible.length === 0 ? (
-                <div className="st" style={{ boxShadow: "none" }}>
+                <div className="card"><div className="st" style={{ boxShadow: "none" }}>
                   <div className="st-ic">?</div>
                   <span className="t">
                     {loadedFilter !== "all" ? "조건에 맞는 옵션이 없습니다" : loadedQ ? `「${loadedQ}」에 해당하는 상품이 없습니다` : "아직 재고를 관리할 상품이 없습니다"}
@@ -392,9 +393,9 @@ export default function StockPage() {
                       조건 지우기
                     </button>
                   )}
-                </div>
+                </div></div>
               ) : (
-                <div className="stock-table-wrap">
+                <ListTable className="stock-table-wrap">
                 <table className="tbl stock-table">
                   <thead>
                     <tr>
@@ -489,7 +490,7 @@ export default function StockPage() {
                     })}
                   </tbody>
                 </table>
-                </div>
+                </ListTable>
               )}
               {!searchError && cursor && (
                 <div className="row center stock-more">
@@ -508,7 +509,7 @@ export default function StockPage() {
                 </span>
                 {invalid.length > 0 && <span className="err">고칠 칸이 {invalid.length}개 있습니다. 그 칸은 빼고 적용합니다</span>}
               </div>
-            </div>
+            </section>
 
             {/* 정본: 표 아래 「변경 요약」 4칸(변경 상품 · 증가 · 감소 · 품절 해제). 정본의 오른쪽 「CSV 양식」은 CSV 올리기 API가 생기면 붙인다 */}
             <section className="col stock-summary" aria-labelledby="stock-sum-title" style={{ gap: 12 }}>

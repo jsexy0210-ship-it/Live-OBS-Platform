@@ -1,7 +1,7 @@
 "use client";
 
 import { CursorPagination } from "../../../../../components/Pagination";
-import { Modal, useConfirm } from "../../../../../components/admin-ui";
+import { ListTable, Modal, useConfirm } from "../../../../../components/admin-ui";
 
 import { useCallback, useEffect, useState, useRef } from "react";
 import { Topbar } from "../../../../../components/seller/SellerShell";
@@ -247,9 +247,9 @@ export default function ReviewsPage() {
             </div>
           </section>
         )}
-        <section className="card" style={{ overflow: "hidden" }}>
-          {state.kind === "loading" && <StateBox kind="loading" what="리뷰" />}
-          {state.kind === "error" && <StateBox kind={stateKind(state.status, state.error)} what="리뷰" onRetry={() => void load()} />}
+        <section className="au-list-section">
+          {state.kind === "loading" && <div className="card"><StateBox kind="loading" what="리뷰" /></div>}
+          {state.kind === "error" && <div className="card"><StateBox kind={stateKind(state.status, state.error)} what="리뷰" onRetry={() => void load()} /></div>}
           {data && (
             <>
               <div className="row between" style={{ padding: "0 12px", flexWrap: "wrap", gap: 8 }}>
@@ -268,10 +268,10 @@ export default function ReviewsPage() {
                 </select>
               </div>
               {rows.length === 0 ? (
-                <div className="st" style={{ boxShadow: "none" }}>
+                <div className="card"><div className="st" style={{ boxShadow: "none" }}>
                   <span className="t">아직 리뷰가 없습니다</span>
                   <span className="s">배송 완료 뒤 구매자가 리뷰를 쓸 수 있습니다 · 리뷰 적립금을 켜면 작성률이 올라갑니다</span>
-                </div>
+                </div></div>
               ) : (
                 <>
                 {data.canEdit && picked.length > 0 && (
@@ -290,7 +290,7 @@ export default function ReviewsPage() {
                     </span>
                   </div>
                 )}
-                <div className="rv-table-scroll">
+                <ListTable className="rv-table-scroll">
                   <table className="rv-table">
                     <thead>
                       <tr>
@@ -345,7 +345,7 @@ export default function ReviewsPage() {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </ListTable>
                 </>
               )}
               {(page > 1 || cursor) && <CursorPagination page={page} visited={cursors.length} hasNext={!!cursor} onChange={(target) => void goPage(target)} onNext={() => { if (cursor) void goPage(page + 1, cursor); }} />}

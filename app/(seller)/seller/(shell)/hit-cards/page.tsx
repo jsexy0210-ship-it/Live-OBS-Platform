@@ -2,7 +2,7 @@
 
 import "../../../../../styles/seller-broadcast.css";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CursorPagination, ListHead, Modal, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
+import { ListTable, CursorPagination, ListHead, Modal, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { HitCardModal } from "../../../../../components/seller/broadcast/HitCardModal";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { useScrollRestore } from "../../../../../lib/client/navigation";
@@ -155,30 +155,30 @@ export default function HitCardsPage() {
               </SearchRow>
             </SearchBox>
 
-            <div className="card">
-              {state.kind === "loading" && <LoadingRows rows={4} />}
+            <section className="au-list-section">
+              {state.kind === "loading" && <div className="card"><LoadingRows rows={4} /></div>}
               {state.kind === "error" &&
                 (state.status === 402 ? (
-                  <Locked />
+                  <div className="card"><Locked /></div>
                 ) : state.status === 403 && state.error === "plan_feature_required" ? (
-                  <div className="st" style={{ boxShadow: "none" }}>
+                  <div className="card"><div className="st" style={{ boxShadow: "none" }}>
                     <span className="t">지금 이용 중인 이용권에는 이 기능이 없습니다. 구독 화면에서 이용권을 바꾸면 사용할 수 있습니다</span>
-                  </div>
+                  </div></div>
                 ) : state.status === 403 ? (
                   <NoPermission need="방송 진행" />
                 ) : (
-                  <ErrorState title="HIT 카드 기록을 불러오지 못했습니다" onRetry={() => void load(applied)} />
+                  <div className="card"><ErrorState title="HIT 카드 기록을 불러오지 못했습니다" onRetry={() => void load(applied)} /></div>
                 ))}
               {state.kind === "ok" && (
                 <>
                   <ListHead total={items.length} unit="건 (현재 쪽)" />
                   {items.length === 0 ? (
-                    <div className="st" style={{ boxShadow: "none" }} data-testid="hit-empty">
+                    <div className="card"><div className="st" style={{ boxShadow: "none" }} data-testid="hit-empty">
                       <span className="t">{applied.period !== "all" && !applied.grade && applied.from === defaults.from && applied.to === defaults.to ? "최근 1개월에는 HIT 카드 기록이 없습니다. 기간을 바꿔 다시 찾아 주십시오" : applied.grade || (applied.period !== "all" && (applied.from || applied.to)) ? "조건에 맞는 HIT 카드가 없습니다" : "아직 HIT 카드가 없습니다"}</span>
                       <span className="t-c1 c-alt">방송 대시보드에서 「HIT 카드 기록하기」로 추가해 주십시오</span>
-                    </div>
+                    </div></div>
                   ) : (
-                    <div className="au-lt-wrap">
+                    <ListTable>
                       <table className="tbl bc-tbl">
                         <thead>
                           <tr>
@@ -216,12 +216,12 @@ export default function HitCardsPage() {
                           ))}
                         </tbody>
                       </table>
-                    </div>
+                    </ListTable>
                   )}
                   {(page > 1 || state.next) && <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={n => void turnPage(n)} onNext={() => void turnPage(page + 1)} />}
                 </>
               )}
-            </div>
+            </section>
           </>
         )}
       </main>

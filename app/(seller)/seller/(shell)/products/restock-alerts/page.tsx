@@ -3,7 +3,7 @@
 import { formatDateTime } from "../../../../../../lib/client/format";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { PageHead, Pagination } from "../../../../../../components/admin-ui";
+import { ListTable, PageHead, Pagination } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
@@ -46,20 +46,20 @@ export default function RestockAlertsPage() {
             <span>재고가 들어오면 알림은 미발송 대기 상태로 바뀝니다. 실제 발송은 아직 연결되지 않았습니다.</span>
           </div>
         )}
-        <div className="card">
-          {state.kind === "loading" && <LoadingRows rows={5} />}
+        <section className="au-list-section">
+          {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
           {state.kind === "error" &&
-            (state.status === 403 ? <NoPermission need="상품 관리" /> : state.status === 402 ? <Locked /> : <ErrorState title="재입고 알림을 불러오지 못했습니다" onRetry={() => void load()} />)}
+            (state.status === 403 ? <NoPermission need="상품 관리" /> : state.status === 402 ? <div className="card"><Locked /></div> : <div className="card"><ErrorState title="재입고 알림을 불러오지 못했습니다" onRetry={() => void load()} /></div>)}
           {state.kind === "ok" && items.length === 0 && (
-            <div className="st" style={{ boxShadow: "none" }}>
+            <div className="card"><div className="st" style={{ boxShadow: "none" }}>
               <div className="st-ic">0</div>
               <span className="t">재입고 알림 신청이 없습니다</span>
               <span className="s">구매자가 품절 상품에서 알림을 신청하면 여기에 상품별 수가 표시됩니다.</span>
-            </div>
+            </div></div>
           )}
           {state.kind === "ok" && items.length > 0 && (
             <>
-              <div className="au-lt-wrap">
+              <ListTable>
                 <table className="tbl">
                   <thead>
                     <tr>
@@ -90,14 +90,14 @@ export default function RestockAlertsPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </ListTable>
               {pageCount > 1 && <Pagination page={currentPage} pageCount={pageCount} onChange={setPage} label="재입고 알림 페이지 이동" />}
               <div className="t-c1 c-alt" style={{ padding: "12px 20px" }}>
                 재고를 기다리는 구매자 {waitingTotal.toLocaleString("ko-KR")}명 · 신청한 구매자 정보는 표시하지 않습니다
               </div>
             </>
           )}
-        </div>
+        </section>
       </main>
     </>
   );

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
-import { ListHead, PageHead } from "../../../../../../components/admin-ui";
+import { ListTable, ListHead, PageHead } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
 import { ForceEndDialog } from "../../../_components/ForceEndDialog";
@@ -110,9 +110,9 @@ export default function LiveBroadcastsPage() {
             최근 60초 내부 주문 생성 수입니다. 전체는 모든 LIVE 방송, 각 행은 파트너스와 방송 시간 기준입니다. 주문 상태와 관계없이 세며 외부 주문은 측정하지 않습니다.
           </p>
 
-          <div className="card">
-            {first && <LoadingRows rows={4} />}
-            {!first && !data && <ErrorState title="실시간 방송을 불러오지 못했습니다." onRetry={() => void reload()} />}
+          <section className="au-list-section">
+            {first && <div className="card"><LoadingRows rows={4} /></div>}
+            {!first && !data && <div className="card"><ErrorState title="실시간 방송을 불러오지 못했습니다." onRetry={() => void reload()} /></div>}
             {data &&
               (items.length === 0 ? (
                 <div className="st">
@@ -139,7 +139,7 @@ export default function LiveBroadcastsPage() {
               ) : (
                 <>
                   <ListHead total={items.length} unit="곳" />
-                  <div style={{ overflowX: "auto" }}>
+                  <ListTable>
                     <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                       <thead>
                         <tr>
@@ -174,10 +174,10 @@ export default function LiveBroadcastsPage() {
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </ListTable>
                 </>
               ))}
-          </div>
+          </section>
         </div>
       </main>
       {viewing && (

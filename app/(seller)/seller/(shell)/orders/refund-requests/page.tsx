@@ -3,7 +3,7 @@
 import "../../../../../../styles/seller-orders.css";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CursorPagination, Modal, PageHead } from "../../../../../../components/admin-ui";
+import { ListTable, CursorPagination, Modal, PageHead } from "../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
@@ -128,7 +128,7 @@ export default function RefundRequestsPage() {
           }
         />
         <span className="t-c1 c-alt">발송 전 주문에서 구매자가 보낸 환불 요청입니다. 승인하면 요청한 상품으로 바로 환불되고, 거절하면 사유가 구매자에게 보입니다. 발송 뒤 요청은 「교환 · 반품」 탭에서 처리합니다.</span>
-        <div className="card" style={{ overflow: "visible" }}>
+        <section className="au-list-section" style={{ overflow: "visible" }}>
           <div className="row" role="tablist" aria-label="처리 상태" style={{ gap: 8, flexWrap: "wrap", padding: "12px 20px" }}>
             {TABS.map((t) => (
               <button key={t.key} className={`chip${tab === t.key ? " on" : ""}`} type="button" role="tab" aria-selected={tab === t.key} onClick={() => setTab(t.key)}>
@@ -145,18 +145,18 @@ export default function RefundRequestsPage() {
               <span className="t-c1 c-alt">요청 시각 최신순</span>
             </div>
           )}
-          {state.kind === "loading" && <LoadingRows rows={5} />}
+          {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
           {state.kind === "error" &&
-            (state.status === 403 ? <NoPermission need="주문 · 배송" /> : state.status === 402 ? <Locked /> : <ErrorState title="환불 요청을 불러오지 못했습니다" onRetry={() => void load(tab)} />)}
+            (state.status === 403 ? <NoPermission need="주문 · 배송" /> : state.status === 402 ? <div className="card"><Locked /></div> : <div className="card"><ErrorState title="환불 요청을 불러오지 못했습니다" onRetry={() => void load(tab)} /></div>)}
           {state.kind === "ok" && rows.length === 0 && (
-            <div className="st" style={{ boxShadow: "none" }}>
+            <div className="card"><div className="st" style={{ boxShadow: "none" }}>
               <div className="st-ic">0</div>
               <span className="t">{tab === "REQUESTED" ? "처리할 환불 요청이 없습니다" : "해당하는 환불 요청이 없습니다"}</span>
               <span className="s">결제 완료 뒤 발송 전의 주문에서 구매자가 요청할 수 있습니다</span>
-            </div>
+            </div></div>
           )}
           {state.kind === "ok" && rows.length > 0 && (
-            <div className="au-lt-wrap">
+            <ListTable>
               <table className="tbl">
                 <thead>
                   <tr>
@@ -214,10 +214,10 @@ export default function RefundRequestsPage() {
                   })}
                 </tbody>
               </table>
-            </div>
+            </ListTable>
           )}
           {state.kind === "ok" && (page > 1 || state.next) && <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={n => void turnPage(n)} onNext={() => void turnPage(page + 1)} />}
-        </div>
+        </section>
         {state.kind === "ok" && !canEdit && (
           <div className="msg msg-info" role="status">
             <span>보기만 할 수 있습니다. 바꾸려면 대표자에게 「주문·배송」 허용을 요청해 주십시오.</span>
