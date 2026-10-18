@@ -91,7 +91,7 @@ test("MA023: 겹치는 상태를 중복 합산하지 않고 행 flag·복수 상
   await expect(statuses.getByRole("checkbox", { name: /^이용 중\s/ })).toBeChecked();
   await page.goto("/admin/billing/subscriptions?access=expired&period=all");
   await expect(list).toHaveCount(2);
-  await expect(statuses.getByRole("checkbox", { name: /^해지\s/ })).toBeChecked();
+  await expect(statuses.getByRole("checkbox", { name: /^해지\s+\d/ })).toBeChecked();
   await expect(statuses.getByRole("checkbox", { name: /^유예\s/ })).not.toBeChecked();
   await page.goBack();
   await expect(list).toHaveCount(10);
