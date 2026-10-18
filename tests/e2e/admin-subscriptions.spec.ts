@@ -56,7 +56,7 @@ async function open(page: Page) {
   await page.getByLabel("비밀번호").fill(password);
   await page.getByRole("button", { name: "로그인" }).click();
   await expect(page).toHaveURL(/\/admin$/);
-  await page.goto("/admin/billing/subscriptions");
+  await page.goto("/admin/billing/subscriptions?period=all");
   await page.getByLabel("쇼핑몰 이름 · 주소").fill(run);
   await page.getByRole("button", { name: "검색", exact: true }).click();
 }
@@ -67,16 +67,17 @@ test("CS도 구독 현황을 조회한다: 탭별로 맞는 파트너스만 보�
   page.on("request", (r) => { if (new URL(r.url()).pathname.startsWith("/api/admin/subscriptions") && !["GET", "HEAD"].includes(r.method())) mutations.push(r.method()); });
   const rows = page.getByTestId("subscription-row");
   await expect(rows).toHaveCount(4);
-  const tab = (name: string) => page.getByRole("button", { name: new RegExp(`^${name}`) });
+  const tab = (name: string) => page.getByRole("group", { name: "이용 상태", exact: true }).getByRole("button", { name: new RegExp(`^${name}`) });
   const expectOnly = async (label: string, key: keyof typeof names) => {
-    await tab(label).click();
+    await tab("전체").click();
+    await page.getByRole("checkbox", { name: new RegExp(`^${label}\\s+\\d`) }).check();
     await expect(rows).toHaveCount(1);
     await expect(rows).toContainText(names[key]);
   };
   await expectOnly("체험", "trial");
   await expectOnly("이용 중", "paid");
   await expect(rows).toContainText("시험카드 1234");
-  await expectOnly("연체", "grace");
+  await expectOnly("유예", "grace");
   await expect(rows).toContainText("결제 2번 다시 시도");
   await expectOnly("해지", "expired");
   await expect(rows).toContainText("구독 없음");
@@ -89,6 +90,7 @@ test("CS도 구독 현황을 조회한다: 탭별로 맞는 파트너스만 보�
   await page.getByRole("button", { name: "검색", exact: true }).click();
   await expect(page.getByText("조건에 맞는 구독이 없습니다.")).toBeVisible();
   await page.getByRole("button", { name: "조건 초기화" }).first().click();
+  await page.getByRole("group", { name: "기간 빠른 선택" }).getByRole("button", { name: "전체", exact: true }).click();
   await page.getByLabel("쇼핑몰 이름 · 주소").fill(run);
   await page.getByRole("button", { name: "검색", exact: true }).click();
   await expect(rows).toHaveCount(4);
@@ -160,7 +162,7 @@ test("파트너스·구독 목록: 서버 10개 페이지와 끝·이전·처음
     } })).id);
     await open(page);
     for (const target of ["partners", "subscriptions"] as const) {
-      const route = target === "partners" ? "/admin/partners" : "/admin/billing/subscriptions";
+      const route = target === "partners" ? "/admin/partners" : "/admin/billing/subscriptions?period=all";
       const endpoint = target === "partners" ? "/api/admin/sellers" : "/api/admin/subscriptions";
       const rows = page.getByTestId(target === "partners" ? "partner-row" : "subscription-row");
       await page.goto(route);
@@ -200,7 +202,8 @@ test("파트너스·구독 목록: 서버 10개 페이지와 끝·이전·처음
       await nav.getByRole("button", { name: "처음", exact: true }).click(); await check(first.ids, 1);
       if (target === "partners") { await nav.getByRole("button", { name: "마지막", exact: true }).click(); await check(last.ids, 3); }
       else { await nav.getByRole("button", { name: "다음", exact: true }).click(); await check(second.ids, 2); }
-      await page.getByRole("button", { name: target === "partners" ? /^체험 중/ : /^체험(?:\s|$)/ }).click();
+      if (target === "partners") await page.getByRole("button", { name: /^체험 중/ }).click();
+      else await page.getByRole("checkbox", { name: /^체험\s+\d/ }).check();
       await check(first.ids, 1);
       await nav.getByRole("button", { name: "다음", exact: true }).click(); await check(second.ids, 2);
       await search.fill(`${prefix}-22`); await page.getByRole("button", { name: "검색", exact: true }).click();
