@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ListHead, PageHead, CursorPagination, SearchBox, SearchRow } from "../../../../../components/admin-ui";
+import { ListHead, ListTable, PageHead, CursorPagination, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { useScrollRestore } from "../../../../../lib/client/navigation";
 import { effectiveRange, listDefaults, type PeriodFilter } from "../../../../../lib/client/filterDefaults";
@@ -121,7 +121,7 @@ export default function BroadcastHistoryPage() {
               </SearchRow>
             </SearchBox>
 
-            <div className="card">
+            <section className="au-list-section">
               {state.kind === "loading" && <LoadingRows rows={4} />}
               {state.kind === "error" &&
                 (state.status === 402 ? (
@@ -146,7 +146,7 @@ export default function BroadcastHistoryPage() {
                       </Link>
                     </div>
                   ) : (
-                    <div className="au-lt-wrap">
+                    <ListTable aria-label="방송 기록 표">
                       <table className="tbl">
                         <thead>
                           <tr>
@@ -183,12 +183,12 @@ export default function BroadcastHistoryPage() {
                           ))}
                         </tbody>
                       </table>
-                    </div>
+                    </ListTable>
                   )}
                   {(cursors.length > 1 || state.next) && <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={n => void go(n, cursors[n - 1])} onNext={() => { if (state.next) void go(page + 1, state.next); }} />}
                 </>
               )}
-            </div>
+            </section>
           </>
         )}
       </main>
