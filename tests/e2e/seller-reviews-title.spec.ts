@@ -53,6 +53,19 @@ test("SA-048 리뷰 표와 행 정보가 1440·1024·390 화면에서 보인다"
       await expect(row.locator(".rv-actions button")).toHaveCount(2);
       await expect(row.getByRole("button", { name: /리뷰 답글 관리/ })).toBeVisible();
       await expect(row.getByRole("button", { name: /리뷰 숨기기/ })).toBeVisible();
+      const lastTab = page.getByRole("tab", { name: "숨김", exact: true });
+      await lastTab.scrollIntoViewIfNeeded();
+      await lastTab.focus();
+      await expect(lastTab).toBeFocused();
+      const lastTabBox = await lastTab.boundingBox();
+      expect(lastTabBox).not.toBeNull();
+      expect(lastTabBox!.x).toBeGreaterThanOrEqual(0);
+      expect(lastTabBox!.x + lastTabBox!.width).toBeLessThanOrEqual(width);
+      const tabsBox = await page.getByRole("tablist").boundingBox();
+      expect(tabsBox).not.toBeNull();
+      expect(tabsBox!.x).toBeGreaterThanOrEqual(0);
+      expect(tabsBox!.x + tabsBox!.width).toBeLessThanOrEqual(width);
+      console.log(JSON.stringify(await page.getByRole("tablist").evaluate((element) => ({ route: "/seller/reviews", viewport: innerWidth, documentWidth: document.documentElement.scrollWidth, tabsWidth: element.clientWidth, tabsScrollWidth: element.scrollWidth, tabsLeft: element.getBoundingClientRect().left, tabsRight: element.getBoundingClientRect().right }))));
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
     }
     await page.screenshot({ path: `tests/e2e/screenshots/sa048-table-${width}.png`, fullPage: true });

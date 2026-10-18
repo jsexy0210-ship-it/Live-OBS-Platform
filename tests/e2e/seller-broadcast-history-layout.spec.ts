@@ -134,6 +134,8 @@ for (const [count, height] of [[5, 960], [10, 650]]) {
 
     // 표 내부가 좁아져도 문서 전체를 숨기지 않고 가로 스크롤·키보드 포커스를 유지한다.
     await grid.evaluate((element) => { element.style.maxWidth = "700px"; });
+    // 표 내용이 가용 폭에 맞춰 줄어드는 경우와 구분해, 시험용 표를 명시적으로 넓힌다.
+    await grid.locator("table").evaluate((element) => { element.style.minWidth = "1000px"; });
     await grid.focus();
     await expect(grid).toBeFocused();
     expect(await grid.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
