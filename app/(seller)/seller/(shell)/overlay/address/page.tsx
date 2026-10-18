@@ -144,12 +144,12 @@ export default function OverlayPage() {
           <NoPermission need="오버레이 편집" />
         ) : (
           <div className="card">
-            {infoBlocked === 402 ? <Locked /> : infoState === "error" ? <ErrorState title="주소 정보를 불러오지 못했습니다" onRetry={() => void loadInfo()} /> : <LoadingRows rows={4} />}
+            {infoBlocked === 402 ? <Locked /> : infoState === "error" ? <ErrorState title="주소 정보를 불러오지 못했어요" onRetry={() => void loadInfo()} /> : <LoadingRows rows={4} />}
           </div>
         ) : (
           <div className="col" style={{ gap: 20 }}>
-            {infoState === "loading" && <span role="status">주소 정보를 불러오는 중입니다.</span>}
-            {infoState === "error" && <div className="msg msg-neg" role="alert">주소 정보를 불러오지 못했습니다. 마지막으로 불러온 정보를 표시합니다. <button className="btn btn-sm" type="button" onClick={() => void loadInfo()}>다시 시도</button></div>}
+            {infoState === "loading" && <span role="status">주소 정보를 불러오고 있어요.</span>}
+            {infoState === "error" && <div className="msg msg-neg" role="alert">주소 정보를 불러오지 못했어요. 이전 정보를 보여드려요. <button className="btn btn-sm" type="button" onClick={() => void loadInfo()}>다시 시도</button></div>}
             <div className="msg msg-cau" role="note">
               파트너스 전용 비공개 주소입니다 · 이 주소를 아는 사람은 누구나 주문대기를 볼 수 있으니 방송 화면에 노출하지 마십시오
             </div>

@@ -208,8 +208,8 @@ function ReviewPanel({ row, pos, total, busy, canModerate, onNav, onClose, onApp
           <label className="lbl" htmlFor="review-memo">
             내부 메모
           </label>
-          {notesOwner === row.id && notesState === "error" && <div className="msg msg-neg" role="alert">메모를 불러오지 못했습니다. <button className="btn btn-sm" type="button" onClick={() => setNotesRetry((n) => n + 1)}>다시 시도</button></div>}
-          {(notesOwner !== row.id || notesState === "loading") && <span className="t-c1 c-alt" role="status">메모를 불러오는 중입니다.</span>}
+          {notesOwner === row.id && notesState === "error" && <div className="msg msg-neg" role="alert">메모를 불러오지 못했어요. <button className="btn btn-sm" type="button" onClick={() => setNotesRetry((n) => n + 1)}>다시 시도</button></div>}
+          {(notesOwner !== row.id || notesState === "loading") && <span className="t-c1 c-alt" role="status">메모를 불러오고 있어요.</span>}
           {visibleNotes?.map((n) => (
               <span key={n.id} className="t-l2" data-testid="review-note">
                 {n.body}

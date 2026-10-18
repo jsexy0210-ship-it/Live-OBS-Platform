@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
-// 파트너스 관리자 화면 문구 말투: 2026-10-17 승인된 홈 3파일은 해요체, 나머지는 CLAUDE.md 2026-10-04의 합니다체를 유지한다.
+// 파트너스 관리자 화면 문구 말투: 승인된 홈 3파일과 2026-10-18 승인된 신규 조회 상태 문구만 해요체다.
 // 제외: 파트너스 가입 신청(signup, 공개 화면이라 해요체), 공개·관리자 두 말투를 함께 가진 공용 파일(말투표는 messageTone.test.ts가 본다).
 const ROOT = join(__dirname, "../..");
 const DIRS = ["app/(seller)/seller", "components/seller"];
@@ -22,6 +22,23 @@ const APPROVED_HOME_COPY = {
   ],
 };
 const APPROVED_HOME_FILES = new Set(Object.keys(APPROVED_HOME_COPY));
+// 조회 상태는 파일 전체를 제외하지 않고 승인된 문구만 정확히 구분한다.
+const APPROVED_READ_COPY: Record<string, readonly string[]> = {
+  "app/(seller)/seller/(shell)/overlay/address/page.tsx": [
+    "주소 정보를 불러오지 못했어요. 이전 정보를 보여드려요.",
+    "주소 정보를 불러오지 못했어요",
+    "주소 정보를 불러오고 있어요.",
+  ],
+  "app/(seller)/seller/(shell)/settings/shop/page.tsx": [
+    "쇼핑몰 설정을 불러오고 있어요.",
+    "쇼핑몰 설정을 불러오지 못했어요.",
+  ],
+};
+const withoutApprovedReadCopy = (file: string, text: string) =>
+  (APPROVED_READ_COPY[file] ?? []).reduce((remaining, copy) => {
+    const escaped = copy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return remaining.split(JSON.stringify(copy)).join('""').replace(new RegExp(`(?<=>)\\s*${escaped}\\s*(?=<)`, "g"), "");
+  }, text);
 const EXCLUDE = [
   "app/(public)/seller/signup/",
   "components/seller/signup/", // 가입 신청 단계 화면 본문(위 signup 화면에서 옮김, 공개 화면이라 해요체)
@@ -56,7 +73,7 @@ function files(dir: string): string[] {
 const FRIENDLY = /[가-힣](?<![필중주수])요[.?!…~」』”’]*(?=["'`<]|\s*$|\s*\}|\s*·)/;
 
 describe("파트너스 관리자 화면 말투", () => {
-  it("승인된 홈 3파일 밖 화면 소스에 해요체 문장이 없다", () => {
+  it("승인된 홈 3파일과 신규 조회 상태 문구 밖 소스에 해요체 문장이 없다", () => {
     const found: string[] = [];
     for (const dir of DIRS) {
       for (const file of files(join(ROOT, dir))) {
@@ -69,7 +86,7 @@ describe("파트너스 관리자 화면 말투", () => {
             const code = line.trim();
             if (code.startsWith("//") || code.startsWith("*") || code.startsWith("/*") || code.startsWith("{/*")) return;
             const text = line.replace(/\/\/.*$/, "");
-            if (!FRIENDLY.test(text) || ALLOW.some((a) => text.includes(a))) return;
+            if (!FRIENDLY.test(withoutApprovedReadCopy(rel, text)) || ALLOW.some((a) => text.includes(a))) return;
             found.push(`${rel}:${i + 1}: ${code}`);
           });
       }
@@ -83,6 +100,19 @@ describe("파트너스 관리자 화면 말투", () => {
       expect(source).toContain(copy);
       expect(FRIENDLY.test(JSON.stringify(copy))).toBe(true);
     }
+  });
+
+  it.each(Object.entries(APPROVED_READ_COPY))("%s는 승인된 신규 조회 상태 문구만 해요체로 허용한다", (file, copies) => {
+    const source = readFileSync(join(ROOT, file), "utf8");
+    for (const copy of copies) {
+      expect(source).toContain(copy);
+      expect(FRIENDLY.test(JSON.stringify(copy))).toBe(true);
+      expect(FRIENDLY.test(withoutApprovedReadCopy(file, JSON.stringify(copy)))).toBe(false);
+      expect(FRIENDLY.test(withoutApprovedReadCopy(file, `<span>${copy}</span>`))).toBe(false);
+    }
+    expect(FRIENDLY.test(withoutApprovedReadCopy(file, `<span>${copies[0]}</span><span>다른 문구를 추가했어요</span>`))).toBe(true);
+    expect(FRIENDLY.test(withoutApprovedReadCopy(file, `<span>${copies[0]} 다른 문구를 추가했어요</span>`))).toBe(true);
+    expect(FRIENDLY.test(withoutApprovedReadCopy("다른/파일.tsx", JSON.stringify(copies[0])))).toBe(true);
   });
 
   it("검사기가 해요체를 실제로 잡는다", () => {

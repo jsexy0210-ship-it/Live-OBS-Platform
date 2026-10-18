@@ -446,8 +446,8 @@ export default function ShopInfoPage() {
         )}
         {state.kind === "ok" && (
           <>
-            {editable && profileState === "loading" && <div className="msg msg-info" role="status">쇼핑몰 설정을 불러오는 중입니다.</div>}
-            {editable && profileState === "error" && <div className="msg msg-neg" role="alert">쇼핑몰 설정을 불러오지 못했습니다. <button className="btn btn-sm" type="button" onClick={() => void loadProfile()}>다시 시도</button></div>}
+            {editable && profileState === "loading" && <div className="msg msg-info" role="status">쇼핑몰 설정을 불러오고 있어요.</div>}
+            {editable && profileState === "error" && <div className="msg msg-neg" role="alert">쇼핑몰 설정을 불러오지 못했어요. <button className="btn btn-sm" type="button" onClick={() => void loadProfile()}>다시 시도</button></div>}
             {!editable && (
               <div className="msg msg-info" role="status">
                 <span>보기만 할 수 있습니다. 로고 변경은 대표자나 쇼핑몰 설정 권한이 있는 직원에게 요청해 주십시오.</span>
