@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { CursorPagination } from "../../../../../../components/Pagination";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DateRangePicker, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { MAX_SEARCH_LENGTH } from "../../../../../../components/seller/format";
@@ -12,7 +12,7 @@ import { PLAN_FILTER, SUBSCRIPTION_STATUS, day, dayTime, type PlanRef, type Subs
 import { useUrlState } from "../../../../../../lib/client/navigation";
 import { recentRange } from "../../../../../../lib/client/dateInput";
 
-// MA-023 구독 현황(GET /api/admin/subscriptions, 모든 마스터 역할, 조회만). 이용 상태별 탭과 쇼핑몰 이름·주소 검색, 요금제 필터.
+// MA-023 구독 현황(GET /api/admin/subscriptions, 모든 마스터 역할, 조회만). 복수 상태·다음 결제일·쇼핑몰 이름·주소·요금제 필터.
 // 상태 체크는 서버의 7가지 필터를 OR로 조회한다. 잠금·해지 예정은 이용 상태와 겹치므로 전체 수에는 기본 5상태만 더한다.
 type Access = "trial" | "paid" | "charging" | "grace" | "expired";
 const ACCESS: Record<Access, { label: string; cls: string }> = {
@@ -61,7 +61,7 @@ function query(f: Filters, cursor?: string) {
   return p.toString();
 }
 
-export default function SubscriptionsPage() {
+function Subscriptions() {
   const [urlApplied, setUrl] = useUrlState<Filters>(EMPTY);
   const [draft, setDraft] = useState<Filters>(urlApplied);
   const mine = useRef<string | null>(null);
@@ -246,4 +246,8 @@ export default function SubscriptionsPage() {
       {toast && <Toast text={toast} neg onDone={() => setToast(null)} />}
     </>
   );
+}
+
+export default function SubscriptionsPage() {
+  return <Suspense fallback={null}><Subscriptions /></Suspense>;
 }

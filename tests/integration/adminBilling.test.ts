@@ -62,6 +62,10 @@ describe("구독 현황 GET /api/admin/subscriptions", () => {
       expect([name, row.access]).toEqual([name, sellerAccess({ trialEndsAt: s.trialEndsAt, subscription: s.subscription }, NOW)]);
     }
     expect(r.counts).toEqual({ trial: 2, paid: 3, charging: 1, grace: 1, expired: 4, locked: 1, cancelling: 1 });
+    expect(r.subscriptions.filter((row) => row.locked).map((row) => row.seller.id)).toEqual([ids.graceOver]);
+    expect(r.subscriptions.filter((row) => row.cancelling).map((row) => row.seller.id)).toEqual([ids.cancelScheduled]);
+    expect(r.subscriptions.filter((row) => row.locked)).toHaveLength(r.counts.locked);
+    expect(r.subscriptions.filter((row) => row.cancelling)).toHaveLength(r.counts.cancelling);
     const graceOnly = await listAdminSubscriptions(db, ctx, { access: "grace" }, { now: NOW });
     expect(graceOnly.ok && graceOnly.subscriptions.map((s) => [s.seller.id, s.subscription?.retryCount])).toEqual([[ids.grace, 1]]);
     // 필터와 상관없이 counts는 전체 기준
