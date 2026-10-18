@@ -1,0 +1,659 @@
+{
+  "sourceSha": "5a7ad9ca9492edda35da190d6079058991529a88",
+  "route": "/admin/billing/subscriptions",
+  "role": "CS",
+  "state": "four-access-states",
+  "api": {
+    "counts": {
+      "trial": 12,
+      "paid": 12,
+      "charging": 0,
+      "grace": 12,
+      "expired": 23
+    },
+    "subscriptions": [
+      {
+        "seller": {
+          "id": "1278595d-e976-4132-8481-d6f688bc0a0a",
+          "slug": "subexpired-2359fa42",
+          "shopName": "해지몰 2359fa42",
+          "status": "ACTIVE"
+        },
+        "access": "expired",
+        "plan": {
+          "code": "INTEGRATED",
+          "name": "쇼핑몰 통합"
+        },
+        "trialEndsAt": null,
+        "subscription": null
+      },
+      {
+        "seller": {
+          "id": "aeaddaa2-09e7-4491-9f86-313478b6a92c",
+          "slug": "subgrace-2359fa42",
+          "shopName": "연체몰 2359fa42",
+          "status": "ACTIVE"
+        },
+        "access": "grace",
+        "plan": {
+          "code": "INTEGRATED",
+          "name": "쇼핑몰 통합"
+        },
+        "trialEndsAt": null,
+        "subscription": {
+          "status": "PAST_DUE",
+          "cardLabel": "연체카드 9999",
+          "currentPeriodEnd": "2026-10-11T18:38:54.300Z",
+          "nextChargeAt": "2026-10-17T18:38:54.300Z",
+          "cancelAtPeriodEnd": false,
+          "graceUntil": "2026-10-18T18:38:54.300Z",
+          "retryCount": 2
+        }
+      },
+      {
+        "seller": {
+          "id": "5d8ee801-9f13-4f5b-bbbc-eb9480031a37",
+          "slug": "subpaid-2359fa42",
+          "shopName": "이용몰 2359fa42",
+          "status": "ACTIVE"
+        },
+        "access": "paid",
+        "plan": {
+          "code": "INTEGRATED",
+          "name": "쇼핑몰 통합"
+        },
+        "trialEndsAt": null,
+        "subscription": {
+          "status": "ACTIVE",
+          "cardLabel": "시험카드 1234",
+          "currentPeriodEnd": "2026-11-10T18:38:54.300Z",
+          "nextChargeAt": "2026-11-10T18:38:54.300Z",
+          "cancelAtPeriodEnd": false,
+          "graceUntil": null,
+          "retryCount": 0
+        }
+      },
+      {
+        "seller": {
+          "id": "4879850f-6b43-4636-9c2b-3226d7ea546e",
+          "slug": "subtrial-2359fa42",
+          "shopName": "체험몰 2359fa42",
+          "status": "ACTIVE"
+        },
+        "access": "trial",
+        "plan": {
+          "code": "INTEGRATED",
+          "name": "쇼핑몰 통합"
+        },
+        "trialEndsAt": "2026-10-21T18:38:54.300Z",
+        "subscription": null
+      }
+    ],
+    "nextCursor": null
+  },
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "dpr": 1,
+    "scale": 1
+  },
+  "height": 900,
+  "overflow": false,
+  "table": {
+    "left": 220,
+    "right": 1547.921875,
+    "top": 488,
+    "bottom": 720,
+    "width": 1327.921875,
+    "height": 232,
+    "headers": [
+      {
+        "text": "쇼핑몰",
+        "left": 220,
+        "right": 568.03125,
+        "top": 488,
+        "bottom": 528,
+        "width": 348.03125,
+        "height": 40
+      },
+      {
+        "text": "이용 단계",
+        "left": 568.03125,
+        "right": 657.84375,
+        "top": 488,
+        "bottom": 528,
+        "width": 89.8125,
+        "height": 40
+      },
+      {
+        "text": "요금제",
+        "left": 657.84375,
+        "right": 745.84375,
+        "top": 488,
+        "bottom": 528,
+        "width": 88,
+        "height": 40
+      },
+      {
+        "text": "체험 종료",
+        "left": 745.84375,
+        "right": 846.84375,
+        "top": 488,
+        "bottom": 528,
+        "width": 101,
+        "height": 40
+      },
+      {
+        "text": "이용 기간 끝",
+        "left": 846.84375,
+        "right": 947.84375,
+        "top": 488,
+        "bottom": 528,
+        "width": 101,
+        "height": 40
+      },
+      {
+        "text": "다음 결제",
+        "left": 947.84375,
+        "right": 1090.84375,
+        "top": 488,
+        "bottom": 528,
+        "width": 143,
+        "height": 40
+      },
+      {
+        "text": "결제 카드",
+        "left": 1090.84375,
+        "right": 1200.65625,
+        "top": 488,
+        "bottom": 528,
+        "width": 109.8125,
+        "height": 40
+      },
+      {
+        "text": "결제 상태",
+        "left": 1200.65625,
+        "right": 1290.46875,
+        "top": 488,
+        "bottom": 528,
+        "width": 89.8125,
+        "height": 40
+      },
+      {
+        "text": "결제 못 한 뒤 기다려 주는 날짜",
+        "left": 1290.46875,
+        "right": 1547.921875,
+        "top": 488,
+        "bottom": 528,
+        "width": 257.453125,
+        "height": 40
+      }
+    ]
+  },
+  "scroll": {
+    "left": 220,
+    "right": 1416,
+    "top": 488,
+    "bottom": 720,
+    "width": 1196,
+    "height": 232,
+    "overflowX": "auto",
+    "clientWidth": 1196,
+    "scrollWidth": 1328,
+    "scrollLeft": 0
+  },
+  "rows": [
+    {
+      "text": "해지몰 2359fa42 · 쇼핑몰 주소 subexpired-2359fa42해지쇼핑몰 통합----구독 없음-",
+      "left": 220,
+      "right": 1547.921875,
+      "top": 528,
+      "bottom": 576,
+      "width": 1327.921875,
+      "height": 48,
+      "cells": [
+        {
+          "text": "해지몰 2359fa42 · 쇼핑몰 주소 subexpired-2359fa42",
+          "align": "center",
+          "left": 220,
+          "right": 568.03125,
+          "top": 528,
+          "bottom": 576,
+          "width": 348.03125,
+          "height": 48
+        },
+        {
+          "text": "해지",
+          "align": "center",
+          "left": 568.03125,
+          "right": 657.84375,
+          "top": 528,
+          "bottom": 576,
+          "width": 89.8125,
+          "height": 48
+        },
+        {
+          "text": "쇼핑몰 통합",
+          "align": "center",
+          "left": 657.84375,
+          "right": 745.84375,
+          "top": 528,
+          "bottom": 576,
+          "width": 88,
+          "height": 48
+        },
+        {
+          "text": "-",
+          "align": "center",
+          "left": 745.84375,
+          "right": 846.84375,
+          "top": 528,
+          "bottom": 576,
+          "width": 101,
+          "height": 48
+        },
+        {
+          "text": "-",
+          "align": "center",
+          "left": 846.84375,
+          "right": 947.84375,
+          "top": 528,
+          "bottom": 576,
+          "width": 101,
+          "height": 48
+        },
+        {
+          "text": "-",
+          "align": "center",
+          "left": 947.84375,
+          "right": 1090.84375,
+          "top": 528,
+          "bottom": 576,
+          "width": 143,
+          "height": 48
+        },
+        {
+          "text": "-",
+          "align": "center",
+          "left": 1090.84375,
+          "right": 1200.65625,
+          "top": 528,
+          "bottom": 576,
+          "width": 109.8125,
+          "height": 48
+        },
+        {
+          "text": "구독 없음",
+          "align": "center",
+          "left": 1200.65625,
+          "right": 1290.46875,
+          "top": 528,
+          "bottom": 576,
+          "width": 89.8125,
+          "height": 48
+        },
+        {
+          "text": "-",
+          "align": "center",
+          "left": 1290.46875,
+          "right": 1547.921875,
+          "top": 528,
+          "bottom": 576,
+          "width": 257.453125,
+          "height": 48
+        }
+      ],
+      "actions": [
+        {
+          "text": "해지몰 2359fa42",
+          "href": "/admin/partners/1278595d-e976-4132-8481-d6f688bc0a0a",
+          "left": 232,
+          "right": 338.03125,
+          "top": 544,
+          "bottom": 560,
+          "width": 106.03125,
+          "height": 16
+        }
+      ]
+    },
+    {
+      "text": "연체몰 2359fa42 · 쇼핑몰 주소 subgrace-2359fa42연체쇼핑몰 통합-2026.10.122026.10.18 03:38연체카드 9999연체2026.10.19 03:38 · 결제 2번 다시 시도",
+      "left": 220,
+      "right": 1547.921875,
+      "top": 576,
+      "bottom": 624,
+      "width": 1327.921875,
+      "height": 48,
+      "cells": [
+        {
+          "text": "연체몰 2359fa42 · 쇼핑몰 주소 subgrace-2359fa42",
+          "align": "center",
+          "left": 220,
+          "right": 568.03125,
+          "top": 576,
+          "bottom": 624,
+          "width": 348.03125,
+          "height": 48
+        },
+        {
+          "text": "연체",
+          "align": "center",
+          "left": 568.03125,
+          "right": 657.84375,
+          "top": 576,
+          "bottom": 624,
+          "width": 89.8125,
+          "height": 48
+        },
+        {
+          "text": "쇼핑몰 통합",
+          "align": "center",
+          "left": 657.84375,
+          "right": 745.84375,
+          "top": 576,
+          "bottom": 624,
+          "width": 88,
+          "height": 48
+        },
+        {
+          "text": "-",
+          "align": "center",
+          "left": 745.84375,
+          "right": 846.84375,
+          "top": 576,
+          "bottom": 624,
+          "width": 101,
+          "height": 48
+        },
+        {
+          "text": "2026.10.12",
+          "align": "center",
+          "left": 846.84375,
+          "right": 947.84375,
+          "top": 576,
+          "bottom": 624,
+          "width": 101,
+          "height": 48
+        },
+        {
+          "text": "2026.10.18 03:38",
+          "align": "center",
+          "left": 947.84375,
+          "right": 1090.84375,
+          "top": 576,
+          "bottom": 624,
+          "width": 143,
+          "height": 48
+        },
+        {
+          "text": "연체카드 9999",
+          "align": "center",
+          "left": 1090.84375,
+          "right": 1200.65625,
+          "top": 576,
+          "bottom": 624,
+          "width": 109.8125,
+          "height": 48
+        },
+        {
+          "text": "연체",
+          "align": "center",
+          "left": 1200.65625,
+          "right": 1290.46875,
+          "top": 576,
+          "bottom": 624,
+          "width": 89.8125,
+          "height": 48
+        },
+        {
+          "text": "2026.10.19 03:38 · 결제 2번 다시 시도",
+          "align": "center",
+          "left": 1290.46875,
+          "right": 1547.921875,
+          "top": 576,
+          "bottom": 624,
+          "width": 257.453125,
+          "height": 48
+        }
+      ],
+      "actions": [
+        {
+          "text": "연체몰 2359fa42",
+          "href": "/admin/partners/aeaddaa2-09e7-4491-9f86-313478b6a92c",
+          "left": 236.96875,
+          "right": 343,
+          "top": 592,
+          "bottom": 608,
+          "width": 106.03125,
+          "height": 16
+        }
+      ]
+    },
+    {
+      "text": "이용몰 2359fa42 · 쇼핑몰 주소 subpaid-2359fa42이용 중쇼핑몰 통합-2026.11.112026.11.11 03:38시험카드 1234이용 중-",
+      "left": 220,
+      "right": 1547.921875,
+      "top": 624,
+      "bottom": 672,
+      "width": 1327.921875,
+      "height": 48,
+      "cells": [
+        {
+          "text": "이용몰 2359fa42 · 쇼핑몰 주소 subpaid-2359fa42",
+          "align": "center",
+          "left": 220,
+          "right": 568.03125,
+          "top": 624,
+          "bottom": 672,
+          "width": 348.03125,
+          "height": 48
+        },
+        {
+          "text": "이용 중",
+          "align": "center",
+          "left": 568.03125,
+          "right": 657.84375,
+          "top": 624,
+          "bottom": 672,
+          "width": 89.8125,
+          "height": 48
+        },
+        {
+          "text": "쇼핑몰 통합",
+          "align": "center",
+          "left": 657.84375,
+          "right": 745.84375,
+          "top": 624,
+          "bottom": 672,
+          "width": 88,
+          "height": 48
+        },
+        {
+          "text": "-",
+          "align": "center",
+          "left": 745.84375,
+          "right": 846.84375,
+          "top": 624,
+          "bottom": 672,
+          "width": 101,
+          "height": 48
+        },
+        {
+          "text": "2026.11.11",
+          "align": "center",
+          "left": 846.84375,
+          "right": 947.84375,
+          "top": 624,
+          "bottom": 672,
+          "width": 101,
+          "height": 48
+        },
+        {
+          "text": "2026.11.11 03:38",
+          "align": "center",
+          "left": 947.84375,
+          "right": 1090.84375,
+          "top": 624,
+          "bottom": 672,
+          "width": 143,
+          "height": 48
+        },
+        {
+          "text": "시험카드 1234",
+          "align": "center",
+          "left": 1090.84375,
+          "right": 1200.65625,
+          "top": 624,
+          "bottom": 672,
+          "width": 109.8125,
+          "height": 48
+        },
+        {
+          "text": "이용 중",
+          "align": "center",
+          "left": 1200.65625,
+          "right": 1290.46875,
+          "top": 624,
+          "bottom": 672,
+          "width": 89.8125,
+          "height": 48
+        },
+        {
+          "text": "-",
+          "align": "center",
+          "left": 1290.46875,
+          "right": 1547.921875,
+          "top": 624,
+          "bottom": 672,
+          "width": 257.453125,
+          "height": 48
+        }
+      ],
+      "actions": [
+        {
+          "text": "이용몰 2359fa42",
+          "href": "/admin/partners/5d8ee801-9f13-4f5b-bbbc-eb9480031a37",
+          "left": 241.703125,
+          "right": 347.734375,
+          "top": 640,
+          "bottom": 656,
+          "width": 106.03125,
+          "height": 16
+        }
+      ]
+    },
+    {
+      "text": "체험몰 2359fa42 · 쇼핑몰 주소 subtrial-2359fa42체험쇼핑몰 통합2026.10.22---구독 없음-",
+      "left": 220,
+      "right": 1547.921875,
+      "top": 672,
+      "bottom": 720,
+      "width": 1327.921875,
+      "height": 48,
+      "cells": [
+        {
+          "text": "체험몰 2359fa42 · 쇼핑몰 주소 subtrial-2359fa42",
+          "align": "center",
+          "left": 220,
+          "right": 568.03125,
+          "top": 672,
+          "bottom": 720,
+          "width": 348.03125,
+          "height": 48
+        },
+        {
+          "text": "체험",
+          "align": "center",
+          "left": 568.03125,
+          "right": 657.84375,
+          "top": 672,
+          "bottom": 720,
+          "width": 89.8125,
+          "height": 48
+        },
+        {
+          "text": "쇼핑몰 통합",
+          "align": "center",
+          "left": 657.84375,
+          "right": 745.84375,
+          "top": 672,
+          "bottom": 720,
+          "width": 88,
+          "height": 48
+        },
+        {
+          "text": "2026.10.22",
+          "align": "center",
+          "left": 745.84375,
+          "right": 846.84375,
+          "top": 672,
+          "bottom": 720,
+          "width": 101,
+          "height": 48
+        },
+        {
+          "text": "-",
+          "align": "center",
+          "left": 846.84375,
+          "right": 947.84375,
+          "top": 672,
+          "bottom": 720,
+          "width": 101,
+          "height": 48
+        },
+        {
+          "text": "-",
+          "align": "center",
+          "left": 947.84375,
+          "right": 1090.84375,
+          "top": 672,
+          "bottom": 720,
+          "width": 143,
+          "height": 48
+        },
+        {
+          "text": "-",
+          "align": "center",
+          "left": 1090.84375,
+          "right": 1200.65625,
+          "top": 672,
+          "bottom": 720,
+          "width": 109.8125,
+          "height": 48
+        },
+        {
+          "text": "구독 없음",
+          "align": "center",
+          "left": 1200.65625,
+          "right": 1290.46875,
+          "top": 672,
+          "bottom": 720,
+          "width": 89.8125,
+          "height": 48
+        },
+        {
+          "text": "-",
+          "align": "center",
+          "left": 1290.46875,
+          "right": 1547.921875,
+          "top": 672,
+          "bottom": 720,
+          "width": 257.453125,
+          "height": 48
+        }
+      ],
+      "actions": [
+        {
+          "text": "체험몰 2359fa42",
+          "href": "/admin/partners/4879850f-6b43-4636-9c2b-3226d7ea546e",
+          "left": 243.53125,
+          "right": 349.5625,
+          "top": 688,
+          "bottom": 704,
+          "width": 106.03125,
+          "height": 16
+        }
+      ]
+    }
+  ]
+}
