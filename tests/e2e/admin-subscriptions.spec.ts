@@ -72,6 +72,7 @@ test("CS도 구독 현황을 조회한다: 탭별로 맞는 파트너스만 보�
     await tab("전체").click();
     await page.getByRole("checkbox", { name: new RegExp(`^${label}\\s+\\d`) }).check();
     await expect(rows).toHaveCount(1);
+    await expect(page.getByRole("checkbox", { name: new RegExp(`^${label}\\s+\\d`) })).toBeChecked();
     await expect(rows).toContainText(names[key]);
   };
   await expectOnly("체험", "trial");
@@ -205,6 +206,7 @@ test("파트너스·구독 목록: 서버 10개 페이지와 끝·이전·처음
       if (target === "partners") await page.getByRole("button", { name: /^체험 중/ }).click();
       else await page.getByRole("checkbox", { name: /^체험\s+\d/ }).check();
       await check(first.ids, 1);
+      if (target === "subscriptions") await expect(page.getByRole("checkbox", { name: /^체험\s+\d/ })).toBeChecked();
       await nav.getByRole("button", { name: "다음", exact: true }).click(); await check(second.ids, 2);
       await search.fill(`${prefix}-22`); await page.getByRole("button", { name: "검색", exact: true }).click();
       await expect(rows).toHaveCount(1); await expect(nav).toHaveCount(0);

@@ -53,7 +53,21 @@ test("MA023: 겹치는 상태를 중복 합산하지 않고 행 flag·복수 상
   await q.fill("입력 중인 검색어");
   await statuses.getByRole("checkbox", { name: /^유예\s/ }).check();
   await expect.poll(() => result.reads.at(-1)?.searchParams.get("access")).toBe("grace,locked,cancelling");
+  await expect(statuses.getByRole("checkbox", { name: /^유예\s/ })).toBeChecked();
+  expect(new URL(page.url()).searchParams.get("access")).toBe("grace,locked,cancelling");
   await expect(q).toHaveValue("입력 중인 검색어");
+  await expect(list).toHaveCount(10);
+  // 한 이벤트 루프 안의 연속 선택도 이전 URL 대신 최신 선택에서 OR를 계산한다.
+  await statuses.getByRole("checkbox").evaluateAll((inputs) => {
+    (inputs[3] as HTMLInputElement).click();
+    (inputs[1] as HTMLInputElement).click();
+  });
+  await expect.poll(() => result.reads.at(-1)?.searchParams.get("access")).toBe("paid,locked,cancelling");
+  await expect(list).toHaveCount(2);
+  await expect(statuses.getByRole("checkbox", { name: /^유예\s/ })).not.toBeChecked();
+  await expect(statuses.getByRole("checkbox", { name: /^이용 중\s/ })).toBeChecked();
+  await statuses.getByRole("checkbox", { name: /^유예\s/ }).check();
+  await expect.poll(() => result.reads.at(-1)?.searchParams.get("access")).toBe("paid,grace,locked,cancelling");
   await expect(list).toHaveCount(10);
   expect(result.reads.at(-1)?.searchParams.get("q")).toBe("검증");
   expect(result.reads.at(-1)?.searchParams.has("nextFrom")).toBe(false);
@@ -72,6 +86,17 @@ test("MA023: 겹치는 상태를 중복 합산하지 않고 행 flag·복수 상
   await expect(list).toHaveCount(10);
   await expect(q).toHaveValue("입력 중인 검색어");
   await expect(statuses.getByRole("checkbox", { name: /^잠금\s/ })).toBeChecked();
+  await expect(statuses.getByRole("checkbox", { name: /^유예\s/ })).toBeChecked();
+  await expect(statuses.getByRole("checkbox", { name: /^해지 예정\s/ })).toBeChecked();
+  await expect(statuses.getByRole("checkbox", { name: /^이용 중\s/ })).toBeChecked();
+  await page.goto("/admin/billing/subscriptions?access=expired&period=all");
+  await expect(list).toHaveCount(2);
+  await expect(statuses.getByRole("checkbox", { name: /^해지\s/ })).toBeChecked();
+  await expect(statuses.getByRole("checkbox", { name: /^유예\s/ })).not.toBeChecked();
+  await page.goBack();
+  await expect(list).toHaveCount(10);
+  await expect(q).toHaveValue("입력 중인 검색어");
+  for (const name of [/^이용 중\s/, /^유예\s/, /^잠금\s/, /^해지 예정\s/]) await expect(statuses.getByRole("checkbox", { name })).toBeChecked();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
   expect(result.writes).toEqual([]); expect(result.errors).toEqual([]);
 });

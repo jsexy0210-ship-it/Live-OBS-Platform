@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { CursorPagination } from "../../../../../../components/Pagination";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { DateRangePicker, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { MAX_SEARCH_LENGTH } from "../../../../../../components/seller/format";
@@ -63,18 +63,30 @@ function query(f: Filters, cursor?: string) {
 
 function Subscriptions() {
   const [urlApplied, setUrl] = useUrlState<Filters>(EMPTY);
+  const [selectedAccess, setSelectedAccess] = useState(urlApplied.access);
+  const selected = useRef(urlApplied.access);
+  const [pending, startTransition] = useTransition();
   const [draft, setDraft] = useState<Filters>(urlApplied);
   const mine = useRef<string | null>(null);
   const urlKey = JSON.stringify(urlApplied);
   useEffect(() => {
+    // 이동 중인 자기 URL이 최신 선택·입력 초안을 덮지 않도록 완료 뒤에 동기화한다.
+    if (pending) return;
+    selected.current = urlApplied.access;
+    setSelectedAccess(urlApplied.access);
     if (mine.current === urlKey) { mine.current = null; return; }
     setDraft(JSON.parse(urlKey) as Filters);
-  }, [urlKey]);
+  }, [urlKey, pending]);
   const applied = useMemo(() => {
     const filters = JSON.parse(urlKey) as Filters;
     return { ...filters, access: STATUSES.filter((status) => filters.access.split(",").includes(status)).join(",") };
   }, [urlKey]);
-  const setApplied = (next: Filters) => { mine.current = JSON.stringify(next); setUrl(next); };
+  const setApplied = (next: Filters) => {
+    selected.current = next.access;
+    setSelectedAccess(next.access);
+    mine.current = JSON.stringify(next);
+    startTransition(() => setUrl(next));
+  };
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [counts, setCounts] = useState<Record<Status, number> | null>(null);
   const [more, setMore] = useState(false);
@@ -143,16 +155,16 @@ function Subscriptions() {
         </div>
         <SearchBox onSearch={() => {
           if (draft.period !== "all" && draft.nextFrom && draft.nextTo && draft.nextFrom > draft.nextTo) return setToast("시작일을 종료일보다 앞 날짜로 바꿔 주세요.");
-          setApplied({ ...draft, access: applied.access, q: draft.q.trim() });
+          setApplied({ ...draft, access: selected.current, q: draft.q.trim() });
         }} onReset={reset} busy={state.kind === "loading"}>
           <SearchRow label="상태">
             <div className="row" role="group" aria-label="이용 상태" style={{ gap: 16, flexWrap: "wrap" }}>
-            <button type="button" className="btn btn-sm btn-out" aria-pressed={applied.access === ""} onClick={() => setApplied({ ...applied, access: "" })}>
+            <button type="button" className="btn btn-sm btn-out" aria-pressed={selectedAccess === ""} onClick={() => setApplied({ ...applied, access: "" })}>
               전체{counts ? ` ${TABS.reduce((n, a) => n + counts[a], 0).toLocaleString("ko-KR")}` : ""}
             </button>
             {STATUSES.map((a) => (
               <label key={a} className="chk">
-                <input type="checkbox" checked={applied.access.split(",").includes(a)} onChange={(e) => setApplied({ ...applied, access: STATUSES.filter((status) => status === a ? e.target.checked : applied.access.split(",").includes(status)).join(",") })} />
+                <input type="checkbox" checked={selectedAccess.split(",").includes(a)} onChange={(e) => setApplied({ ...applied, access: STATUSES.filter((status) => status === a ? e.target.checked : selected.current.split(",").includes(status)).join(",") })} />
                 {STATUS[a]}
                 {counts ? ` ${counts[a].toLocaleString("ko-KR")}` : ""}
               </label>
