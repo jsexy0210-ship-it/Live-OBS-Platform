@@ -61,12 +61,24 @@ export default function MaintenancePage() {
     setEndsAt(toLocal(m.endsAt));
   };
   const [windows, setWindows] = useState<WindowHistory[] | null>(null);
+  const [windowsState, setWindowsState] = useState<"loading" | "error" | "ok">("loading");
+  const [windowsUnavailable, setWindowsUnavailable] = useState(false);
   const windowsReqId = useRef(0);
   const loadWindows = useCallback(async () => {
     const id = ++windowsReqId.current;
+    setWindowsState("loading");
     const r = await adminApi<{ history: WindowHistory[] }>("/api/admin/settings/maintenance/windows?limit=100");
     if (id !== windowsReqId.current) return;
-    setWindows(r.ok ? r.data.history : null);
+    if (!r.ok) {
+      if (r.status > 0 && r.status < 500) {
+        setWindows(null);
+        setWindowsUnavailable(true);
+      }
+      return setWindowsState("error");
+    }
+    setWindows(r.data.history);
+    setWindowsUnavailable(false);
+    setWindowsState("ok");
   }, []);
   const reqId = useRef(0);
   const load = useCallback(async () => {
@@ -166,9 +178,11 @@ export default function MaintenancePage() {
                 <section aria-labelledby="mt-history" data-testid="maintenance-history">
                   <h2 className={styles.section} id="mt-history">점검 이력</h2>
                   <table className={styles.table}><thead><tr><th className={styles.time}>일시</th><th>내용</th></tr></thead><tbody>
-                    {windows && (windows.length > 0 || m.history.length === 0)
+                    {windowsState === "loading" && <tr><td colSpan={2} role="status">점검 이력을 불러오는 중입니다.</td></tr>}
+                    {windowsState === "error" && <tr><td colSpan={2}><span role="alert">점검 이력을 불러오지 못했습니다.{windows !== null && " 마지막으로 불러온 기록을 표시합니다."} </span><button className="btn btn-sm" type="button" onClick={() => void loadWindows()}>다시 시도</button></td></tr>}
+                    {!windowsUnavailable && (windows && (windows.length > 0 || m.history.length === 0)
                       ? windows.length ? windows.map((w) => <tr key={w.id}><td>{dayTime(w.startsAt)} ~ {w.endedAt ? dayTime(w.endedAt) : "—"}</td><td>{w.reason || w.message || "점검"} ({w.phase === "CANCELED" ? "예약 취소" : w.kind === "IMMEDIATE" ? `즉시 켬${w.createdByName ? ` · ${w.createdByName}` : ""}` : "예약"}){w.affectedBroadcasts !== null && ` · 영향 방송 ${w.affectedBroadcasts}`}</td></tr>) : <tr><td colSpan={2}>변경 기록이 없습니다.</td></tr>
-                      : m.history.length ? m.history.map((h) => <tr key={h.id}><td>{dayTime(h.at)}</td><td>{h.reason || h.message || "점검 설정"} · {h.action}</td></tr>) : <tr><td colSpan={2}>변경 기록이 없습니다.</td></tr>}
+                      : m.history.length ? m.history.map((h) => <tr key={h.id}><td>{dayTime(h.at)}</td><td>{h.reason || h.message || "점검 설정"} · {h.action}</td></tr>) : windowsState === "ok" ? <tr><td colSpan={2}>변경 기록이 없습니다.</td></tr> : null)}
                   </tbody></table>
                 </section>
                 <section aria-labelledby="mt-preview" data-testid="maintenance-preview">

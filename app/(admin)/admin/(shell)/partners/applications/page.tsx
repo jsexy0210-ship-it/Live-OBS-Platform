@@ -85,6 +85,10 @@ const CHECK_CLS = { OK: "b-done", WARN: "b-warn", FAIL: "b-fail", NONE: "b-gray"
 // 확인 필요 건 검토 패널(정본 MA-013-OPS 「검토 사이드 패널」): 점검 결과 표 · 신청 정보 · 내부 메모, 이전/다음으로 넘기며 승인·반려·보완 요청.
 function ReviewPanel({ row, pos, total, busy, canModerate, onNav, onClose, onApprove, onReject, onSupplement, onRecheck, onToast }: { row: Row; pos: number; total: number; busy: boolean; canModerate: boolean; onNav: (d: number) => void; onClose: () => void; onApprove: () => void; onReject: () => void; onSupplement: () => void; onRecheck: () => Promise<void>; onToast: (t: string, neg?: boolean) => void }) {
   const [notes, setNotes] = useState<Note[] | null>(null);
+  const [notesOwner, setNotesOwner] = useState(row.id);
+  const [notesState, setNotesState] = useState<"loading" | "error" | "ok">("loading");
+  const [notesRetry, setNotesRetry] = useState(0);
+  const visibleNotes = notesOwner === row.id ? notes : null;
   const [memo, setMemo] = useState("");
   const [saving, setSaving] = useState(false);
   const [rechecking, setRechecking] = useState(false);
@@ -94,14 +98,26 @@ function ReviewPanel({ row, pos, total, busy, canModerate, onNav, onClose, onApp
     setRechecking(false);
   };
   useEffect(() => {
-    let live = true;
     setNotes(null);
     setMemo("");
-    void adminApi<{ notes: Note[] }>(`/api/admin/sellers/${encodeURIComponent(row.id)}/notes?limit=3`).then((r) => live && setNotes(r.ok ? r.data.notes : []));
+    setNotesOwner(row.id);
+  }, [row.id]);
+  useEffect(() => {
+    let live = true;
+    setNotesState("loading");
+    void adminApi<{ notes: Note[] }>(`/api/admin/sellers/${encodeURIComponent(row.id)}/notes?limit=3`).then((r) => {
+      if (!live) return;
+      if (!r.ok) {
+        if (r.status > 0 && r.status < 500) setNotes(null);
+        return setNotesState("error");
+      }
+      setNotes(r.data.notes);
+      setNotesState("ok");
+    });
     return () => {
       live = false;
     };
-  }, [row.id]);
+  }, [row.id, notesRetry]);
   const saveMemo = async () => {
     const body = memo.trim();
     if (!body || saving) return;
@@ -192,16 +208,14 @@ function ReviewPanel({ row, pos, total, busy, canModerate, onNav, onClose, onApp
           <label className="lbl" htmlFor="review-memo">
             내부 메모
           </label>
-          {notes === null ? (
-            <span className="t-c1 c-alt">메모를 불러오는 중입니다.</span>
-          ) : (
-            notes.map((n) => (
+          {notesOwner === row.id && notesState === "error" && <div className="msg msg-neg" role="alert">메모를 불러오지 못했습니다. <button className="btn btn-sm" type="button" onClick={() => setNotesRetry((n) => n + 1)}>다시 시도</button></div>}
+          {(notesOwner !== row.id || notesState === "loading") && <span className="t-c1 c-alt" role="status">메모를 불러오는 중입니다.</span>}
+          {visibleNotes?.map((n) => (
               <span key={n.id} className="t-l2" data-testid="review-note">
                 {n.body}
                 <span className="c-alt"> · {n.author.name} · {formatDateTime(n.createdAt)}</span>
               </span>
-            ))
-          )}
+            ))}
           {canModerate && (
             <div className="row" style={{ gap: 6 }}>
               <input id="review-memo" className="inp" style={{ flex: 1 }} maxLength={1000} value={memo} onChange={(e) => setMemo(e.target.value)} disabled={saving} />

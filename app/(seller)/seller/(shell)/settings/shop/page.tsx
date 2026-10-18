@@ -151,6 +151,7 @@ export default function ShopInfoPage() {
   const { confirm } = useConfirm();
   const editable = can("SHOP_SETTINGS");
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [profileState, setProfileState] = useState<"loading" | "error" | "ok">("loading");
   const [name, setName] = useState("");
   const [tagline, setTagline] = useState("");
   const [mode, setMode] = useState<OperatingState>("OPEN");
@@ -186,9 +187,14 @@ export default function ShopInfoPage() {
   }, []);
   // 이름·한 줄 소개는 「쇼핑몰 설정」 권한이 있는 계정만 읽고 바꾼다(서버가 조회도 그 권한을 요구)
   const loadProfile = useCallback(async () => {
+    setProfileState("loading");
     const r = await api<{ profile: Profile }>("/api/seller/shop-profile");
-    if (!r.ok) return;
+    if (!r.ok) {
+      if (r.status > 0 && r.status < 500) setProfile(null);
+      return setProfileState("error");
+    }
     setProfile(r.data.profile);
+    setProfileState("ok");
     setName(r.data.profile.shopName);
     setTagline(r.data.profile.shopTagline ?? "");
     setMode(r.data.profile.operatingState);
@@ -440,13 +446,15 @@ export default function ShopInfoPage() {
         )}
         {state.kind === "ok" && (
           <>
+            {editable && profileState === "loading" && <div className="msg msg-info" role="status">쇼핑몰 설정을 불러오는 중입니다.</div>}
+            {editable && profileState === "error" && <div className="msg msg-neg" role="alert">쇼핑몰 설정을 불러오지 못했습니다. <button className="btn btn-sm" type="button" onClick={() => void loadProfile()}>다시 시도</button></div>}
             {!editable && (
               <div className="msg msg-info" role="status">
                 <span>보기만 할 수 있습니다. 로고 변경은 대표자나 쇼핑몰 설정 권한이 있는 직원에게 요청해 주십시오.</span>
               </div>
             )}
             <FormSection title="쇼핑몰 정보">
-              <FormRow label="운영 상태" help="준비 중 · 일시 정지는 구매자에게 안내 화면만 보이고 주문 조회만 열립니다">
+              {(!editable || profile) && <FormRow label="운영 상태" help="준비 중 · 일시 정지는 구매자에게 안내 화면만 보이고 주문 조회만 열립니다">
                 <div className="row" role="radiogroup" aria-label="운영 상태" style={{ gap: 24, flexWrap: "wrap" }}>
                   {(["OPEN", "PREPARING", "PAUSED"] as const).map((m) => (
                     <label key={m} className="chk">
@@ -461,7 +469,7 @@ export default function ShopInfoPage() {
                     </label>
                   ))}
                 </div>
-              </FormRow>
+              </FormRow>}
               {editable && profile ? (
                 <>
                   <FormRow label="쇼핑몰 이름" required htmlFor="shop-name">
@@ -681,7 +689,7 @@ export default function ShopInfoPage() {
                   <div className="si-preview" data-testid="logo-preview">
                     {logo ? <img src={logo.url} alt="" /> : <span className="si-mini-letter">{letter}</span>}
                     <b>{shownName}</b>
-                    {editable && tagline.trim() && <span className="t-l2 c-alt"> · {tagline.trim()}</span>}
+                    {editable && profile && tagline.trim() && <span className="t-l2 c-alt"> · {tagline.trim()}</span>}
                   </div>
                 </FormRow>
               </FormSection>
