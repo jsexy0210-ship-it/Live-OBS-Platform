@@ -103,7 +103,7 @@ describe("회원 목록 GET /api/seller/members", () => {
 
     const plain = await list(noPii, `?q=${encodeURIComponent("방송")}`);
     expect(plain.body.members).toEqual([
-      { id: m.id, broadcastNickname: "방송닉", grade: { id: s.grade.id, displayName: "일반" }, status: "ACTIVE", marketingConsent: false, createdAt: m.createdAt.toISOString(), lastLoginAt: null },
+      { id: m.id, broadcastNickname: "방송닉", grade: { id: s.grade.id, displayName: "일반" }, status: "ACTIVE", marketingConsent: false, createdAt: m.createdAt.toISOString(), lastLoginAt: null, orderCount: 0, totalPaid: 0, rewardBalance: 0 },
     ]);
     expect((await list(noPii, `?q=${encodeURIComponent("김철")}`)).body.members).toEqual([]);
     expect((await list(noPii, "?q=2222")).body.members).toEqual([]);
@@ -160,6 +160,8 @@ describe("회원 상세 GET /api/seller/members/{id}", () => {
     expect(r.status).toBe(200);
     expect(r.body.member).toMatchObject({ id: m.id, name: "이영희", grade: { id: s.grade.id, displayName: "일반" }, orderCount: 3, totalPaid: 33000, rewardBalance: 1500 });
     expect(await piiAudits()).toMatchObject([{ targetType: "BuyerMember", targetId: m.id }]);
+    const fromList = (await list(s.cookie)).body.members.find((row: { id: string }) => row.id === m.id);
+    expect(fromList).toMatchObject({ orderCount: r.body.member.orderCount, totalPaid: r.body.member.totalPaid, rewardBalance: r.body.member.rewardBalance });
   });
 
   it("다른 쇼핑몰 회원·없는 id·형식이 틀린 id는 404", async () => {
