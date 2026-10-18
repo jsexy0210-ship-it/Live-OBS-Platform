@@ -253,7 +253,7 @@ export default function ReviewsPage() {
           {data && (
             <>
               <div className="row between" style={{ padding: "0 12px", flexWrap: "wrap", gap: 8 }}>
-                <div className="tabs" role="tablist">
+                <div className="tabs" role="tablist" style={{ minWidth: 0, maxWidth: "100%", overflowX: "auto" }}>
                   {TABS.map((t) => (
                     <button key={t.key} className={`tab${tab === t.key ? " on" : ""}`} type="button" role="tab" aria-selected={tab === t.key} onClick={() => setTab(t.key)}>
                       {t.label}
