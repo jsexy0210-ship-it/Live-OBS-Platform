@@ -53,7 +53,21 @@ test("MA023: 겹치는 상태를 중복 합산하지 않고 행 flag·복수 상
   await q.fill("입력 중인 검색어");
   await statuses.getByRole("checkbox", { name: /^유예\s/ }).check();
   await expect.poll(() => result.reads.at(-1)?.searchParams.get("access")).toBe("grace,locked,cancelling");
+  await expect(statuses.getByRole("checkbox", { name: /^유예\s/ })).toBeChecked();
+  expect(new URL(page.url()).searchParams.get("access")).toBe("grace,locked,cancelling");
   await expect(q).toHaveValue("입력 중인 검색어");
+  await expect(list).toHaveCount(10);
+  // 한 이벤트 루프 안의 연속 선택도 이전 URL 대신 최신 선택에서 OR를 계산한다.
+  await statuses.getByRole("checkbox").evaluateAll((inputs) => {
+    (inputs[3] as HTMLInputElement).click();
+    (inputs[1] as HTMLInputElement).click();
+  });
+  await expect.poll(() => result.reads.at(-1)?.searchParams.get("access")).toBe("paid,locked,cancelling");
+  await expect(list).toHaveCount(2);
+  await expect(statuses.getByRole("checkbox", { name: /^유예\s/ })).not.toBeChecked();
+  await expect(statuses.getByRole("checkbox", { name: /^이용 중\s/ })).toBeChecked();
+  await statuses.getByRole("checkbox", { name: /^유예\s/ }).check();
+  await expect.poll(() => result.reads.at(-1)?.searchParams.get("access")).toBe("paid,grace,locked,cancelling");
   await expect(list).toHaveCount(10);
   expect(result.reads.at(-1)?.searchParams.get("q")).toBe("검증");
   expect(result.reads.at(-1)?.searchParams.has("nextFrom")).toBe(false);
@@ -72,23 +86,51 @@ test("MA023: 겹치는 상태를 중복 합산하지 않고 행 flag·복수 상
   await expect(list).toHaveCount(10);
   await expect(q).toHaveValue("입력 중인 검색어");
   await expect(statuses.getByRole("checkbox", { name: /^잠금\s/ })).toBeChecked();
+  await expect(statuses.getByRole("checkbox", { name: /^유예\s/ })).toBeChecked();
+  await expect(statuses.getByRole("checkbox", { name: /^해지 예정\s/ })).toBeChecked();
+  await expect(statuses.getByRole("checkbox", { name: /^이용 중\s/ })).toBeChecked();
+  await page.goto("/admin/billing/subscriptions?access=expired&period=all");
+  await expect(list).toHaveCount(2);
+  await expect(statuses.getByRole("checkbox", { name: /^해지\s+\d/ })).toBeChecked();
+  await expect(statuses.getByRole("checkbox", { name: /^유예\s/ })).not.toBeChecked();
+  await page.goBack();
+  await expect(list).toHaveCount(10);
+  await expect(q).toHaveValue("입력 중인 검색어");
+  for (const name of [/^이용 중\s/, /^유예\s/, /^잠금\s/, /^해지 예정\s/]) await expect(statuses.getByRole("checkbox", { name })).toBeChecked();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
   expect(result.writes).toEqual([]); expect(result.errors).toEqual([]);
 });
 
-test("MA023: 기본·초기화는 최근 1개월이고 전체 기간 선택만 날짜 조건을 비운다", async ({ page }) => {
+test("MA023: KST 자정 뒤 재진입·초기화도 최근 1개월이고 전체 기간만 날짜 조건을 비운다", async ({ page }) => {
   const result = await mock(page);
+  const before = new Date(`${recentRange(1).to}T23:59:50+09:00`);
+  const after = new Date(before.getTime() + 20_000);
+  await page.clock.install({ time: before });
   await page.goto("/admin/billing/subscriptions");
   await expect(page.getByTestId("subscription-row")).toHaveCount(10);
   await expect(page.getByTestId("subscription-row").filter({ hasText: "검증 2" }).locator("td").nth(5)).not.toContainText("해지 예정");
-  const range = recentRange(1);
+  const range = recentRange(1, before);
   expect(result.reads.at(-1)?.searchParams.get("nextFrom")).toBe(range.from);
   expect(result.reads.at(-1)?.searchParams.get("nextTo")).toBe(range.to);
+  await page.getByTestId("subscription-row").first().getByRole("link").click();
+  await expect(page).toHaveURL(/\/admin\/partners\/ui-0$/);
+  await page.clock.setSystemTime(after);
+  const previousReads = result.reads.length;
+  await page.goBack();
+  await expect.poll(() => result.reads.length).toBeGreaterThan(previousReads);
+  const mountedRange = recentRange(1, after);
+  await expect.poll(() => result.reads.at(-1)?.searchParams.get("nextTo")).toBe(mountedRange.to);
+  expect(result.reads.at(-1)?.searchParams.get("nextFrom")).toBe(mountedRange.from);
   await page.getByRole("group", { name: "기간 빠른 선택" }).getByRole("button", { name: "전체", exact: true }).click();
   await page.getByRole("search").getByRole("button", { name: "검색", exact: true }).click();
   await expect.poll(() => result.reads.at(-1)?.searchParams.has("nextFrom")).toBe(false);
+  const resetAt = new Date(after.getTime() + 86_400_000);
+  await page.clock.setSystemTime(resetAt);
   await page.getByRole("search").getByRole("button", { name: "초기화", exact: true }).click();
-  await expect.poll(() => result.reads.at(-1)?.searchParams.get("nextFrom")).toBe(range.from);
-  expect(result.reads.at(-1)?.searchParams.get("nextTo")).toBe(range.to);
+  const resetRange = recentRange(1, resetAt);
+  await expect.poll(() => result.reads.at(-1)?.searchParams.get("nextFrom")).toBe(resetRange.from);
+  expect(result.reads.at(-1)?.searchParams.get("nextTo")).toBe(resetRange.to);
+  await expect(page.getByRole("textbox", { name: "다음 결제 시작일", exact: true })).toHaveValue(resetRange.from.replaceAll("-", "."));
+  await expect(page.getByRole("textbox", { name: "다음 결제 종료일", exact: true })).toHaveValue(resetRange.to.replaceAll("-", "."));
   expect(result.writes).toEqual([]); expect(result.errors).toEqual([]);
 });
