@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { CursorPagination } from "../../../../../../components/Pagination";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { ListHead, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
+import { ListTable, ListHead, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { useScrollRestore } from "../../../../../../lib/client/navigation";
 import { adminApi } from "../../../_components/api";
@@ -168,9 +168,9 @@ function Inquiries() {
               </Link>
             </div>
           )}
-          <div className="card">
-            {state.kind === "loading" && <LoadingRows rows={5} />}
-            {state.kind === "error" && <ErrorState title="파트너스 문의를 불러오지 못했습니다." onRetry={() => void load()} />}
+          <section className="au-list-section">
+            {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
+            {state.kind === "error" && <div className="card"><ErrorState title="파트너스 문의를 불러오지 못했습니다." onRetry={() => void load()} /></div>}
             {state.kind === "ok" &&
               (items.length === 0 ? (
                 <div className="st">
@@ -179,7 +179,7 @@ function Inquiries() {
               ) : (
                 <>
                   <ListHead total={items.length} loaded />
-                  <div style={{ overflowX: "auto" }}>
+                  <ListTable>
                     <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                       <thead>
                         <tr>
@@ -218,7 +218,7 @@ function Inquiries() {
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </ListTable>
                   {(state.next || page > 1) && (
                     <div className="row" style={{ justifyContent: "center", padding: "12px 16px" }} aria-busy={more}>
                       <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={(n) => void changePage(n)} onNext={() => void changePage(page + 1)} />
@@ -226,7 +226,7 @@ function Inquiries() {
                   )}
                 </>
               ))}
-          </div>
+          </section>
         </div>
       </main>
       {toast && <Toast text={toast} neg onDone={() => setToast(null)} />}

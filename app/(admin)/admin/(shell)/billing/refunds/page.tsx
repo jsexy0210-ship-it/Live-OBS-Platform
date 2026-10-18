@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { CursorPagination } from "../../../../../../components/Pagination";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ListHead, PageHead } from "../../../../../../components/admin-ui";
+import { ListTable, ListHead, PageHead } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar } from "../../../_components/AdminShell";
@@ -110,9 +110,9 @@ export default function RefundsPage() {
               </button>
             ))}
           </div>
-          <div className="card">
-            {state.kind === "loading" && <LoadingRows rows={5} />}
-            {state.kind === "error" && <ErrorState title="환불 요청을 불러오지 못했습니다." onRetry={() => void load(tab)} />}
+          <section className="au-list-section">
+            {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
+            {state.kind === "error" && <div className="card"><ErrorState title="환불 요청을 불러오지 못했습니다." onRetry={() => void load(tab)} /></div>}
             {state.kind === "ok" &&
               (items.length === 0 ? (
                 <div className="st">
@@ -121,7 +121,7 @@ export default function RefundsPage() {
               ) : (
                 <>
                   <ListHead total={items.length} loaded />
-                  <div style={{ overflowX: "auto" }}>
+                  <ListTable>
                     <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                       <thead>
                         <tr>
@@ -162,7 +162,7 @@ export default function RefundsPage() {
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </ListTable>
                   {(state.next || page > 1) && (
                     <div className="row" style={{ justifyContent: "center", padding: "12px 16px" }} aria-busy={more}>
                       <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={(n) => void changePage(n)} onNext={() => void changePage(page + 1)} />
@@ -170,7 +170,7 @@ export default function RefundsPage() {
                   )}
                 </>
               ))}
-          </div>
+          </section>
         </div>
       </main>
       {toast && <Toast text={toast} neg onDone={() => setToast(null)} />}

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { DateRangePicker, ListHead, PageHead, Pagination, SearchBox, SearchRow } from "../../../../../components/admin-ui";
+import { ListTable, DateRangePicker, ListHead, PageHead, Pagination, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { listDefaults } from "../../../../../lib/client/filterDefaults";
 import { useListFilters } from "../../../../(admin)/admin/_components/useListFilters";
 import { Topbar } from "../../../../../components/seller/SellerShell";
@@ -300,11 +300,11 @@ export default function CouponsPage() {
             </SearchRow>
           </SearchBox>
         )}
-        <section className="card" style={{ overflow: "hidden" }}>
-          {state.kind === "loading" && <StateBox kind="loading" what="쿠폰" />}
-          {state.kind === "error" && <StateBox kind={stateKind(state.status, state.error)} what="쿠폰" onRetry={() => void load()} />}
+        <section className="au-list-section">
+          {state.kind === "loading" && <div className="card"><StateBox kind="loading" what="쿠폰" /></div>}
+          {state.kind === "error" && <div className="card"><StateBox kind={stateKind(state.status, state.error)} what="쿠폰" onRetry={() => void load()} /></div>}
           {data && list.length === 0 && (
-            <div className="st" style={{ boxShadow: "none" }}>
+            <div className="card"><div className="st" style={{ boxShadow: "none" }}>
               <div className="st-ic">+</div>
               <span className="t">만든 쿠폰이 없습니다</span>
               <span className="s">가입 환영 · 방송 코드 · 등급 감사 쿠폰으로 재구매를 늘릴 수 있습니다</span>
@@ -313,7 +313,7 @@ export default function CouponsPage() {
                   쿠폰 만들기
                 </button>
               )}
-            </div>
+            </div></div>
           )}
           {data && list.length > 0 && (
             <>
@@ -334,12 +334,12 @@ export default function CouponsPage() {
                 }
               />
               {shown.length === 0 && (
-                <div className="st" style={{ boxShadow: "none" }}>
+                <div className="card"><div className="st" style={{ boxShadow: "none" }}>
                   <span className="t">조건에 맞는 쿠폰이 없습니다</span>
                   {filtered && <span className="s">조건을 바꾸거나 초기화해 보십시오</span>}
-                </div>
+                </div></div>
               )}
-              <div style={{ overflowX: "auto" }}>
+              <ListTable>
                 <table className="tbl tbl-card cp-tbl">
                   <thead>
                     <tr>
@@ -431,7 +431,7 @@ export default function CouponsPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </ListTable>
               {pageCount > 1 && <Pagination page={currentPage} pageCount={pageCount} onChange={setPage} label="쿠폰 페이지 이동" />}
             </>
           )}
