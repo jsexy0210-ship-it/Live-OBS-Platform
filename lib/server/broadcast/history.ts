@@ -2,7 +2,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import type { AdminSessionContext } from "../auth/session";
 import { forbidden } from "../authz/errors";
 import { adminCan } from "../authz/permissions";
-import { requireSellerRead, type TenantContext } from "../tenant/context";
+import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { ASPECTS } from "../overlay/layout";
 import { writeAudit } from "../audit/log";
 import { formatCsv, guardText } from "../shop-bulk-io/csv";
@@ -119,7 +119,7 @@ const kstText = (d: Date) => {
 
 // 방송 기록 내보내기(SA-054 「내보내기」, CSV): 지금 기간·레이아웃 조건에 맞는 방송 전체(쪽과 상관없이 최신순, 최대 5,000건). BROADCAST_RUN 권한. 진행 중 방송은 종료 시각을 비운다.
 export async function exportBroadcastHistory(db: PrismaClient, ctx: TenantContext, q: HistoryQuery, meta: { ip?: string | null; userAgent?: string | null } = {}) {
-  requireSellerRead(ctx, "BROADCAST_RUN");
+  requireSellerPermission(ctx, "BROADCAST_RUN");
   const where = historyWhere(ctx.sellerId, q);
   if (!where) return { ok: false as const, reason: "invalid_range" as const };
   const rows = await db.broadcastSession.findMany({ where, orderBy: [{ startedAt: "desc" }, { id: "desc" }], take: HISTORY_EXPORT_MAX + 1 });
