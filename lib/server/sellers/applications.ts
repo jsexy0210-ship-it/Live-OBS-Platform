@@ -84,9 +84,9 @@ type Pending = {
   license: { fileName: string; mimeType: string; byteSize: number; uploadedAt: Date } | null;
   owner: string | null; rev: { supplementReason: string | null; supplementRequestedAt: Date | null; supplementDueAt: Date | null; supplementResolvedAt: Date | null; reminderCount: number; lastReminderAt: Date | null } | null;
 };
-async function loadPending(db: PrismaClient): Promise<Pending[]> {
+async function loadPending(db: PrismaClient, sellerId?: string): Promise<Pending[]> {
   const sellers = await db.seller.findMany({
-    where: { status: "PENDING" },
+    where: { status: "PENDING", ...(sellerId ? { id: sellerId } : {}) },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     take: APPLICATION_LIST_MAX,
     select: { id: true, slug: true, shopName: true, createdAt: true, businessInfo: true, reviewReasons: true },
@@ -245,6 +245,18 @@ function viewApplication(p: Pending, now: Date, reviewTargetHours: number, canVi
           }
         : null,
   };
+}
+
+// 상세 진입은 표시용 목록 상한·검색어에 의존하지 않고 정확한 신청만 읽는다.
+export async function getApplicationReview(db: PrismaClient, admin: AdminSessionContext, sellerId: string) {
+  needRead(admin);
+  if (!UUID.test(sellerId)) return null;
+  const seller = await db.seller.findUnique({ where: { id: sellerId }, select: { status: true, approvedAt: true, approvedByAdminId: true } });
+  if (!seller) return null;
+  const now = await dbNow(db);
+  const [pending] = await loadPending(db, sellerId);
+  const application = pending ? viewApplication(pending, now, await policyValue(db, "reviewTargetHours"), adminCan(admin.admin.role, "seller.moderate")) : null;
+  return { application, undoableUntil: seller.status === "ACTIVE" && seller.approvedAt && seller.approvedByAdminId === admin.admin.id ? new Date(seller.approvedAt.getTime() + UNDO_WINDOW_MS) : null };
 }
 
 // 상단 요약(KPI). 평균 처리 시간은 사람이 처리(승인·반려)한 건의 접수→결정 시간, 이번 주(최근 7일)와 지난주(그 앞 7일).

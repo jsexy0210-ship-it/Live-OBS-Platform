@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useImperativeHandle, useState } from "react";
+import { confirmLeave, useUnsavedGuard } from "../../../../lib/client/navigation";
 import { Modal } from "../../../../components/admin-ui/Modal";
 import { adminApi } from "./api";
 import { ASSIGNABLE_ROLES, MIN_PASSWORD, ROLE_LABEL, type AdminAccount, type AdminRoleCode, type AdminStatus } from "./accounts";
@@ -16,7 +17,7 @@ const ERROR: Record<string, string> = {
   not_found: "계정을 찾을 수 없습니다. 목록을 새로 불러와 주십시오.",
 };
 
-export function AccountDialog({ account, onClose, onDone }: { account: AdminAccount | null; onClose: () => void; onDone: (saved: AdminAccount, created: boolean) => void }) {
+export function AccountDialog({ account, onClose, onDone, fullPage = false, leaveRef }: { account: AdminAccount | null; onClose: () => void; onDone: (saved: AdminAccount, created: boolean) => void; fullPage?: boolean; leaveRef?: React.Ref<(next?: () => void) => Promise<void>> }) {
   const editing = account !== null;
   const protectedAccount = account?.role === "SUPER_ADMIN";
   const [email, setEmail] = useState("");
@@ -31,6 +32,8 @@ export function AccountDialog({ account, onClose, onDone }: { account: AdminAcco
     ? name !== account.name || (!protectedAccount && (role !== account.role || status !== account.status))
     : email !== "" || name !== "" || password !== "" || role !== "READ_ONLY";
   const ready = name.trim() !== "" && name.trim().length <= 50 && (editing || (email.trim() !== "" && password.length >= MIN_PASSWORD));
+
+  const release = useUnsavedGuard(fullPage && (dirty));
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,14 +50,12 @@ export function AccountDialog({ account, onClose, onDone }: { account: AdminAcco
           },
         })
       : await adminApi<{ admin: AdminAccount }>("/api/admin/admins", { method: "POST", json: { email: email.trim(), name: name.trim(), role, password } });
+    if (r.ok) { await release(); setBusy(false); return onDone(r.data.admin, !editing); }
     setBusy(false);
-    if (r.ok) return onDone(r.data.admin, !editing);
     setError(ERROR[r.error] ?? (r.status === 403 ? "최고관리자만 할 수 있습니다." : r.status === 0 ? "연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오." : "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오."));
   };
 
-  return (
-    <Modal labelId="account-title" busy={busy} dirty={dirty} onClose={onClose}>
-      {(requestClose) => (
+  const content = (requestClose: () => void) => (
       <form className="col" style={{ gap: 16 }} onSubmit={submit} noValidate>
         <div className="modal-h">
           <h2 className="modal-t" id="account-title">
@@ -128,7 +129,17 @@ export function AccountDialog({ account, onClose, onDone }: { account: AdminAcco
           </button>
         </div>
       </form>
-      )}
+  );
+  const leavePage = async (next = onClose) => {
+    if (busy || !confirmLeave(dirty)) return;
+    await release();
+    next();
+  };
+  const closePage = () => leavePage();
+  useImperativeHandle(leaveRef, () => leavePage);
+  return fullPage ? <section className="card pad-l">{content(closePage)}</section> : (
+    <Modal labelId="account-title" busy={busy} dirty={dirty} onClose={onClose}>
+      {content}
     </Modal>
   );
 }

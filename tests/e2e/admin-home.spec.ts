@@ -25,7 +25,8 @@ test.beforeAll(async () => {
       { email: suEmail, passwordHash, name: "최고관리자", role: "SUPER_ADMIN" },
     ],
   });
-  await db.seller.create({ data: { slug: `hm-p-${run}`, shopName: pendingShop, status: "PENDING" } });
+  // 신청 목록은 오래된 순으로 제한해 보여 줍니다. 다른 시험의 대기 건과 섞여도 이 링크 검증 대상이 첫 쪽에 오도록 접수일만 고정합니다.
+  await db.seller.create({ data: { slug: `hm-p-${run}`, shopName: pendingShop, status: "PENDING", createdAt: new Date("2010-01-01T00:00:00.000Z") } });
   const seller = await db.seller.create({ data: { slug: `hm-t-${run}`, shopName: topShop, status: "ACTIVE", approvedAt: new Date() } });
   const user = await db.sellerUser.create({ data: { sellerId: seller.id, email: `hm-owner-${run}@example.com`, passwordHash, name: "대표", isOwner: true } });
   const inq = await db.platformInquiry.create({ data: { sellerId: seller.id, createdBySellerUserId: user.id, category: "OTHER", title: `홈 문의 ${run}`, lastMessageAt: new Date() } });

@@ -50,12 +50,17 @@ test("CS는 요금제별 월 제공량을 보기만 한다(이름으로, 변경 
   await expect(page.getByRole("button", { name: "체험 한도 변경" })).toHaveCount(0);
   await expect(row(page, "쇼핑몰 통합").getByTestId("plan-sale-price")).toHaveText(/^179,000원/);
   await expect(row(page, "쇼핑몰 통합").getByTestId("plan-trial-limits")).toHaveText("— (체험 없음)");
+  await row(page, "쇼핑몰 통합").getByRole("link", { name: "상세" }).click();
+  await expect(page.getByRole("button", { name: "가격 변경" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "체험 한도 변경" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "월 무료 메일 수량 변경" })).toHaveCount(0);
 });
 
 test("최고관리자: 월 제공량을 바로 바꾸고, 적용 예정으로 걸면 현재 값은 그대로이며, 잘못된 값은 막는다", async ({ page }) => {
   await open(page, superEmail);
-  await row(page, "쇼핑몰 통합").getByRole("button", { name: "월 무료 메일 수량 변경" }).click();
-  const dialog = page.getByRole("dialog");
+  await row(page, "쇼핑몰 통합").getByRole("link", { name: "상세" }).click();
+  await page.getByRole("button", { name: "월 무료 메일 수량 변경", exact: true }).click();
+  const dialog = page.locator("main form");
   await dialog.getByLabel("월 주문·배송 안내 메일 무료 수량").fill("10000001");
   await expect(dialog.getByRole("button", { name: "저장" })).toBeDisabled();
   await dialog.getByLabel("월 주문·배송 안내 메일 무료 수량").fill("250");
@@ -65,7 +70,8 @@ test("최고관리자: 월 제공량을 바로 바꾸고, 적용 예정으로 �
   expect((await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "INTEGRATED" } })).mailMonthlyQuota).toBe(250);
 
   const future = new Date(Date.now() + 3 * 86_400_000 + 9 * 3_600_000).toISOString().slice(0, 16);
-  await row(page, "쇼핑몰 통합").getByRole("button", { name: "월 무료 메일 수량 변경" }).click();
+  await row(page, "쇼핑몰 통합").getByRole("link", { name: "상세" }).click();
+  await page.getByRole("button", { name: "월 무료 메일 수량 변경", exact: true }).click();
   await dialog.getByLabel("월 주문·배송 안내 메일 무료 수량").fill("400");
   await fillDateTime(dialog, "바뀌는 시각", future);
   await dialog.getByRole("button", { name: "저장" }).click();
@@ -82,11 +88,12 @@ test("최고관리자: 가격 변경은 전·후 금액과 30일 안내를 보�
   const before = await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "INTEGRATED" } });
   try {
     await open(page, superEmail);
-    await row(page, "쇼핑몰 통합").getByRole("button", { name: "가격 변경" }).click();
-    await expect(page.getByRole("dialog")).toContainText("메일·알림톡·파트너스 공지 완료 30일 뒤 첫 결제부터 적용되며, 고지 전에는 기존 요금을 유지합니다.");
+    await row(page, "쇼핑몰 통합").getByRole("link", { name: "상세" }).click();
+  await page.getByRole("button", { name: "가격 변경", exact: true }).click();
+    await expect(page.locator("main form")).toContainText("메일·알림톡·파트너스 공지 완료 30일 뒤 첫 결제부터 적용되며, 고지 전에는 기존 요금을 유지합니다.");
     for (const width of [1440, 1024, 390]) {
       await page.setViewportSize({ width, height: 900 });
-      const dialog = page.getByRole("dialog");
+      const dialog = page.locator("main form");
       await expect(dialog).toBeVisible();
       await expect(dialog.getByRole("button", { name: "저장", exact: true })).toBeVisible();
       expect(await dialog.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
@@ -96,7 +103,7 @@ test("최고관리자: 가격 변경은 전·후 금액과 30일 안내를 보�
       await dialog.screenshot({ path: testInfo.outputPath(`MA022-price-notice-${width}.png`) });
     }
     await page.setViewportSize({ width: 1440, height: 900 });
-    const dialog = page.getByRole("dialog");
+    const dialog = page.locator("main form");
     await expect(dialog).toContainText("고지 전에는 기존 요금을 유지합니다.");
     await dialog.getByLabel("판매가").fill(String(before.listPrice + 1));
     await expect(dialog.getByRole("button", { name: "저장" })).toBeDisabled();
@@ -124,8 +131,9 @@ test("운영 담당: 체험 한도만 바꿀 수 있고(가격·제공량 버튼
     await open(page, opsEmail);
     await expect(page.getByRole("button", { name: "가격 변경" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "월 무료 메일 수량 변경" })).toHaveCount(0);
-    await row(page, "오버레이 전용").getByRole("button", { name: "체험 한도 변경" }).click();
-    const dialog = page.getByRole("dialog");
+    await row(page, "오버레이 전용").getByRole("link", { name: "상세" }).click();
+  await page.getByRole("button", { name: "체험 한도 변경", exact: true }).click();
+    const dialog = page.locator("main form");
     await dialog.getByLabel("저장 용량").fill("10000001");
     await expect(dialog.getByRole("button", { name: "저장" })).toBeDisabled();
     await dialog.getByLabel("알림톡·문자").fill("120");

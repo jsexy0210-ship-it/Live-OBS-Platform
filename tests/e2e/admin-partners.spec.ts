@@ -255,17 +255,17 @@ test("선택 메모 일괄: 체크한 파트너스에 같은 메모가 남고, �
   await search(page, slugA);
   const row = page.getByTestId("partner-row");
   await expect(row).toHaveCount(1);
-  const bulk = page.getByRole("button", { name: /^선택 메모 추가/ });
+  const bulk = page.getByRole("link", { name: /^선택 메모 추가/ });
   await expect(bulk).toBeDisabled(); // 고르기 전에는 못 누른다
   await row.getByRole("checkbox", { name: `${nameA} 선택` }).check();
   await expect(bulk).toBeEnabled();
   await bulk.click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.locator("main section").filter({ has: page.getByLabel("메모", { exact: true }) });
   await expect(dialog.getByRole("heading", { name: "선택한 1곳에 메모를 남기시겠습니까?" })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "메모 남기기" })).toBeDisabled(); // 메모를 적어야 켜진다
   await dialog.getByLabel("메모").fill(text);
   await dialog.getByRole("button", { name: "메모 남기기" }).click();
-  await expect(page.getByText("1곳에 메모를 남겼습니다.")).toBeVisible();
+  await expect(page.getByText("1곳에 메모를 남겼습니다 · 0곳은 남기지 못했습니다.")).toBeVisible();
   expect(await db.sellerAdminNote.count({ where: { sellerId: idA, body: text } })).toBe(1);
 
   await page.context().clearCookies();
@@ -273,5 +273,5 @@ test("선택 메모 일괄: 체크한 파트너스에 같은 메모가 남고, �
   await search(page, slugA);
   await expect(page.getByTestId("partner-row")).toHaveCount(1);
   await expect(page.getByRole("checkbox", { name: "이 쪽 전체 선택" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /^선택 메모 추가/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /^선택 메모 추가/ })).toHaveCount(0);
 });

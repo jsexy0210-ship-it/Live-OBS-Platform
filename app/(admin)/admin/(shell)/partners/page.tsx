@@ -9,7 +9,7 @@ import { ErrorState, LoadingRows, Toast } from "../../../../../components/seller
 import { MAX_SEARCH_LENGTH } from "../../../../../components/seller/format";
 import { adminApi } from "../../_components/api";
 import { AdminTopbar, useAdmin } from "../../_components/AdminShell";
-import { BulkNoteDialog, type BulkNoteResult } from "../../_components/BulkNoteDialog";
+import { selectionHref } from "../../_components/selection";
 import { ImpersonateDialog } from "../../_components/ImpersonateDialog";
 import { DISPLAY_STATUS, PLAN_FILTER, ago, day, type DisplayStatus, type SellerListRow, type SellerListSummary } from "../../_components/partners";
 import { useListFilters } from "../../_components/useListFilters";
@@ -91,7 +91,6 @@ function PartnerList() {
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
   const [viewing, setViewing] = useState<SellerListRow | null>(null);
   const [picked, setPicked] = useState<string[]>([]); // 체크한 파트너스(지금 쪽에 보이는 것만 남긴다)
-  const [noting, setNoting] = useState(false);
 
   // 조건을 빨리 바꾸면 이전 응답이 늦게 올 수 있다. 마지막으로 보낸 조건의 응답만 반영한다
   const reqId = useRef(0);
@@ -287,9 +286,9 @@ function PartnerList() {
                         <option value="10">10개씩</option>
                       </select>
                       {canBulk && (
-                        <button className="btn btn-sm btn-out" type="button" disabled={picked.length === 0} onClick={() => setNoting(true)}>
+                        <Link className="btn btn-sm btn-out" aria-disabled={picked.length === 0} onClick={e => { if (!picked.length) e.preventDefault(); }} href={selectionHref("/admin/partners/bulk-note", picked, `/admin/partners?${params(applied, true)}`)}>
                           선택 메모 추가{picked.length > 0 ? ` ${picked.length}` : ""}
-                        </button>
+                        </Link>
                       )}
                     </span>
                   }
@@ -377,18 +376,6 @@ function PartnerList() {
           onDone={(r) => {
             setViewing(null);
             setToast({ text: r.opened ? "대신 보기를 시작했습니다. 새 창에서 파트너스 화면을 읽기 전용으로 봅니다." : "대신 보기를 시작했습니다. 새 창이 막혀 열지 못했습니다. 파트너스 상세에서 다시 열어 주십시오." });
-          }}
-        />
-      )}
-      {noting && (
-        <BulkNoteDialog
-          sellerIds={picked}
-          onClose={() => setNoting(false)}
-          onDone={(r: BulkNoteResult) => {
-            setNoting(false);
-            setPicked([]);
-            setToast(r.failed > 0 ? { text: `${r.created}곳에 메모를 남겼습니다 · ${r.failed}곳은 남기지 못했습니다.`, neg: true } : { text: `${r.created}곳에 메모를 남겼습니다.` });
-            void load(latest.current);
           }}
         />
       )}
