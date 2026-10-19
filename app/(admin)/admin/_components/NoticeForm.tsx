@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { textLength } from "../../../../lib/server/text/clean";
 import { FormFoot, FormRow, FormSection } from "../../../../components/admin-ui";
 import { adminApi, failMessage } from "./api";
-import { NOTICE_AUDIENCE, NOTICE_BODY_MAX, NOTICE_CATEGORY, NOTICE_TITLE_MAX, type Notice, type NoticeAudience, type NoticeCategory } from "./notices";
+import { NOTICE_AUDIENCE, NOTICE_BODY_MAX, NOTICE_CATEGORY, NOTICE_TITLE_MAX, NOTICE_TARGET_MAX, type Notice, type NoticeAudience, type NoticeCategory, type NoticeTarget, type NoticeTargetMode } from "./notices";
 
 // MA-054 공지 작성·수정 폼. 게시(publish: true)와 임시 저장을 나눠 보낸다. 수정은 expectedVersion을 같이 보내고, 다른 곳에서 먼저 고쳤으면(409) 알린다.
 // 서버가 받는 값만 둔다: 분류·제목·본문·대상·중요 고정. 예약·이메일·알림톡·읽음 확인은 서버 지원 뒤에 붙인다.
@@ -14,6 +14,16 @@ export function NoticeForm({ notice, onSaved, onStale }: { notice?: Notice; onSa
   const [title, setTitle] = useState(notice?.title ?? "");
   const [body, setBody] = useState(notice?.body ?? "");
   const [audience, setAudience] = useState<NoticeAudience>(notice?.audience ?? "PARTNERS");
+  const [targetMode, setTargetMode] = useState<NoticeTargetMode>(notice?.targetMode ?? (notice?.targetSellerIds?.length ? "SPECIFIC" : "ALL"));
+  const [selected, setSelected] = useState<NoticeTarget[]>((notice?.targetSellerIds ?? []).map((id) => notice?.targetSellers?.find((seller) => seller.id === id) ?? { id, shopName: id, slug: "" }));
+  const [targetQuery, setTargetQuery] = useState("");
+  const [searchedQuery, setSearchedQuery] = useState("");
+  const [targetResults, setTargetResults] = useState<NoticeTarget[]>([]);
+  const [targetNext, setTargetNext] = useState<string | null>(null);
+  const [targetLoading, setTargetLoading] = useState(false);
+  const [targetSearched, setTargetSearched] = useState(false);
+  const [targetError, setTargetError] = useState<string | null>(null);
+  const targetRequest = useRef(0);
   const [pinned, setPinned] = useState(notice?.isPinned ?? false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,12 +34,35 @@ export function NoticeForm({ notice, onSaved, onStale }: { notice?: Notice; onSa
   const titleErr = tl === 0 ? "제목을 입력해 주십시오." : tl > NOTICE_TITLE_MAX ? `제목은 ${NOTICE_TITLE_MAX}자 이하로 입력해 주십시오.` : null;
   const bodyErr = bl === 0 ? "내용을 입력해 주십시오." : bl > NOTICE_BODY_MAX ? `내용은 ${NOTICE_BODY_MAX.toLocaleString("ko-KR")}자 이하로 입력해 주십시오.` : null;
 
+  const targetInvalid = targetMode === "SPECIFIC" && audience !== "PARTNERS";
+  const targetEmpty = targetMode === "SPECIFIC" && selected.length === 0;
+  const findTargets = async (cursor: string | null = null) => {
+    if (targetLoading || busy) return;
+    const q = cursor ? searchedQuery : targetQuery.trim();
+    const n = ++targetRequest.current;
+    setTargetLoading(true);
+    setTargetError(null);
+    const params = new URLSearchParams({ q, limit: "10" });
+    if (cursor) params.set("cursor", cursor);
+    const r = await adminApi<{ sellers: NoticeTarget[]; nextCursor: string | null }>(`/api/admin/sellers?${params}`);
+    if (n !== targetRequest.current) return;
+    setTargetLoading(false);
+    if (!r.ok) return setTargetError(failMessage(r, "파트너스를 불러오지 못했어요. 다시 검색해 주세요."));
+    const rows = r.data.sellers.map(({ id, shopName, slug }) => ({ id, shopName, slug }));
+    setTargetResults((current) => cursor ? [...new Map([...current, ...rows].map((seller) => [seller.id, seller])).values()] : rows);
+    setSearchedQuery(q);
+    setTargetNext(r.data.nextCursor);
+    setTargetSearched(true);
+  };
+
   const save = async (publish: boolean) => {
     if (busy) return;
     if (titleErr || bodyErr) return setShowErrors(true);
+    if (targetInvalid) return setError("특정 파트너스 공지는 파트너스 관리자만 볼 수 있어요. 대상을 확인해 주세요.");
+    if (publish && targetEmpty) return setError("게시할 파트너스를 한 곳 이상 골라 주세요.");
     setBusy(true);
     setError(null);
-    const values = { title: title.trim(), body, category, audience, isPinned: pinned, publish };
+    const values = { title: title.trim(), body, category, audience, isPinned: pinned, publish, targetMode, targetSellerIds: targetMode === "SPECIFIC" ? selected.map((seller) => seller.id) : [] };
     const r = notice
       ? await adminApi<{ notice: Notice }>(`/api/admin/platform-notices/${notice.id}`, { method: "PUT", json: { ...values, expectedVersion: notice.version } })
       : await adminApi<{ notice: Notice }>("/api/admin/platform-notices", { method: "POST", json: values });
@@ -91,6 +124,45 @@ export function NoticeForm({ notice, onSaved, onStale }: { notice?: Notice; onSa
                 </label>
               ))}
             </FormRow>
+            {(audience === "PARTNERS" || targetMode === "SPECIFIC") && (
+              <FormRow label="파트너스 선택" required>
+                <div className="col" style={{ gap: 8 }}>
+                  <label className="chk">
+                    <input className="rdo" type="radio" name="targetMode" checked={targetMode === "ALL"} onChange={() => setTargetMode("ALL")} disabled={busy} />
+                    전체 파트너스
+                  </label>
+                  <label className="chk">
+                    <input className="rdo" type="radio" name="targetMode" checked={targetMode === "SPECIFIC"} onChange={() => setTargetMode("SPECIFIC")} disabled={busy || audience !== "PARTNERS"} />
+                    특정 파트너스 선택
+                  </label>
+                  {targetInvalid && <span className="err" role="alert">특정 파트너스 공지는 파트너스 관리자만 볼 수 있어요. 대상을 확인해 주세요.</span>}
+                  {targetMode === "SPECIFIC" && (
+                    <>
+                      <label htmlFor="notice-target-query">파트너스 검색</label>
+                      <div className="row" style={{ gap: 8 }}>
+                        <input id="notice-target-query" className="inp" value={targetQuery} maxLength={50} placeholder="검색어 입력" disabled={busy || targetLoading} onChange={(e) => setTargetQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void findTargets(); } }} />
+                        <button className="btn btn-out" type="button" disabled={busy || targetLoading} onClick={() => void findTargets()}>검색</button>
+                      </div>
+                      {targetLoading && <span role="status">파트너스를 불러오고 있어요.</span>}
+                      {targetError && <span className="err" role="alert">{targetError}</span>}
+                      {targetSearched && !targetLoading && !targetError && targetResults.length === 0 && <span>검색 결과가 없어요.</span>}
+                      <ul className="col" aria-label="파트너스 검색 결과" style={{ listStyle: "none", margin: 0, padding: 0, gap: 8 }}>
+                        {targetResults.map((seller) => {
+                          const checked = selected.some((item) => item.id === seller.id);
+                          return <li key={seller.id}><label className="chk"><input className="cbx" type="checkbox" checked={checked} disabled={busy || (!checked && selected.length >= NOTICE_TARGET_MAX)} onChange={(e) => { const checkedNow = e.currentTarget.checked; setSelected((current) => checkedNow ? current.some((item) => item.id === seller.id) || current.length >= NOTICE_TARGET_MAX ? current : [...current, seller] : current.filter((item) => item.id !== seller.id)); }} />{seller.shopName} · {seller.slug}</label></li>;
+                        })}
+                      </ul>
+                      {targetNext && <button className="btn btn-out" type="button" disabled={busy || targetLoading} onClick={() => void findTargets(targetNext)}>더 불러오기</button>}
+                      <span className="t-c1 c-alt">선택 {selected.length}/{NOTICE_TARGET_MAX}</span>
+                      <ul className="col" aria-label="선택한 파트너스" style={{ listStyle: "none", margin: 0, padding: 0, gap: 8 }}>
+                        {selected.map((seller) => <li key={seller.id} className="row" style={{ gap: 8 }}><span>{seller.shopName}{seller.slug ? ` · ${seller.slug}` : ""}</span><button className="btn btn-sm btn-out" type="button" disabled={busy} aria-label={`${seller.shopName} 선택 해제`} onClick={() => setSelected((current) => current.filter((item) => item.id !== seller.id))}>선택 해제</button></li>)}
+                      </ul>
+                      {targetEmpty && <span className="t-c1 c-alt">게시할 파트너스를 한 곳 이상 골라 주세요. 선택 전에는 임시 저장만 할 수 있어요.</span>}
+                    </>
+                  )}
+                </div>
+              </FormRow>
+            )}
           </FormSection>
         </div>
         <div>
@@ -119,7 +191,7 @@ export function NoticeForm({ notice, onSaved, onStale }: { notice?: Notice; onSa
         </p>
       )}
       <FormFoot>
-        <button className="btn btn-lg" type="submit" disabled={busy}>
+        <button className="btn btn-lg" type="submit" disabled={busy || targetInvalid || targetEmpty}>
           {busy ? "저장 중" : "지금 게시하기"}
         </button>
         <button className="btn btn-lg btn-out" type="button" onClick={() => void save(false)} disabled={busy}>

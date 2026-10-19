@@ -3444,6 +3444,11 @@ enum PlatformNoticeAudience {
 
 // 마스터 관리자가 쓰는 플랫폼 공지. publishedAt이 null이면 임시 저장(어디에도 안 보임). 지우면 deletedAt(목록·조회에서 빠짐).
 // 작성·수정 관리자는 id만 남긴다(로그 추적에 전후가 남음). version은 다른 창 덮어쓰기 막기.
+enum PlatformNoticeTargetMode {
+  ALL
+  SPECIFIC
+}
+
 model PlatformNotice {
   id               String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   title            String
@@ -3459,11 +3464,26 @@ model PlatformNotice {
   updatedAt        DateTime               @default(now()) @updatedAt @db.Timestamptz(3)
   deletedAt        DateTime?              @db.Timestamptz(3)
 
-  reads PlatformNoticeRead[]
-  files PlatformNoticeFile[]
+  reads   PlatformNoticeRead[]
+  files   PlatformNoticeFile[]
+  targets PlatformNoticeTarget[]
+  targetMode PlatformNoticeTargetMode @default(ALL)
 
   @@index([publishedAt(sort: Desc), id(sort: Desc)])
   @@index([createdAt(sort: Desc), id(sort: Desc)])
+}
+
+// 공지 대상 파트너스(MA-053·054). targetMode ALL은 전체, SPECIFIC은 이 표에 지정한 파트너스만 본다(빈 SPECIFIC은 아무에게도 보이지 않는다).
+// 공지를 지우면(하드 삭제) 같이 지운다. 파트너스는 소프트 삭제라 따로 정리하지 않는다.
+model PlatformNoticeTarget {
+  noticeId  String   @db.Uuid
+  sellerId  String   @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  notice PlatformNotice @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+
+  @@id([noticeId, sellerId])
+  @@index([sellerId, noticeId])
 }
 
 // 공지 첨부 파일(MA-053·054, 마스터 관리자 중 공지 작성 권한자가 올리고 파트너스는 받기만). .png·.jpg·.pdf, 파일당 5MB·공지당 5개, DB 저장.

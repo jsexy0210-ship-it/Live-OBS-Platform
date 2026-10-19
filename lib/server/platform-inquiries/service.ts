@@ -1,4 +1,5 @@
 import type { PlatformInquiryCategory, PlatformInquiryStatus, Prisma, PrismaClient } from "@prisma/client";
+import { targetedFor } from "../platform-notices/service";
 import { createAdminAlert } from "../admin-alerts/service";
 import { collectInquiryDiagnostics } from "./diagnostics";
 import { ATTACHMENTS_PER_MESSAGE, ATTACHMENTS_TOTAL_MAX_BYTES, checkInquiryFile } from "./files";
@@ -176,9 +177,9 @@ async function names(db: Db, sellerUserIds: (string | null)[], adminIds: (string
   return { user: new Map(users.map((u) => [u.id, u.name])), admin: new Map(admins.map((a) => [a.id, a.name])) };
 }
 
-async function noticeTitle(db: Db, noticeId: string | null) {
+async function noticeTitle(db: Db, noticeId: string | null, sellerId?: string) {
   if (!noticeId) return null;
-  const n = await db.platformNotice.findUnique({ where: { id: noticeId }, select: { id: true, title: true } });
+  const n = await db.platformNotice.findFirst({ where: { id: noticeId, ...(sellerId ? targetedFor(sellerId) : {}) }, select: { id: true, title: true } });
   return n ? { id: n.id, title: n.title } : null;
 }
 
@@ -320,7 +321,7 @@ export async function getMyInquiry(db: PrismaClient, ctx: TenantContext, id: str
   return {
     ...rest,
     authorName: n.user.get(createdBySellerUserId) ?? null,
-    notice: await noticeTitle(db, noticeId),
+    notice: await noticeTitle(db, noticeId, ctx.sellerId),
     related: await relatedOf(db, ctx.sellerId, relatedOrderId, relatedBroadcastId),
     closedBy,
     handlerState: handlerStateOf(row.status, assignedAdminId),
@@ -357,7 +358,7 @@ export async function createInquiry(db: PrismaClient, ctx: TenantContext, raw: u
   let noticeId: string | null = null;
   if (b.noticeId !== undefined && b.noticeId !== null) {
     if (!isUuid(b.noticeId)) return { ok: false as const, reason: "invalid_notice" as const };
-    const n = await db.platformNotice.findFirst({ where: { id: b.noticeId, publishedAt: { not: null }, deletedAt: null, audience: { in: ["PARTNERS", "ALL"] } }, select: { id: true } });
+    const n = await db.platformNotice.findFirst({ where: { id: b.noticeId, publishedAt: { not: null }, deletedAt: null, audience: { in: ["PARTNERS", "ALL"] }, ...targetedFor(ctx.sellerId) }, select: { id: true } });
     if (!n) return { ok: false as const, reason: "invalid_notice" as const };
     noticeId = n.id;
   }
