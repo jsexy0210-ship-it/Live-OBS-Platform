@@ -183,7 +183,7 @@ test("SA054: 이번 달 요약과 목록 적용 조건을 구분하고 금액 �
 
   // 대리조회 응답의 null 금액은 0원으로 바꾸지 않고, 내보내기 링크를 새로 노출하지 않는다.
   let readOnly = true;
-  await page.route("**/api/seller/me", (route) => route.fulfill({ json: { ...me, readOnly } }));
+  await page.route("**/api/seller/me", (route) => route.fulfill({ json: { ...me, isOwner: !readOnly, permissions: readOnly ? ["BROADCAST_RUN"] : [], readOnly } }));
   let mode: "masked" | "missing" | "zero" = "masked";
   await page.route("**/api/seller/broadcast/history?*", (route) => route.fulfill({ json: {
     items: [{ ...row(0), summary: { ...row(0).summary, sales: readOnly ? null : row(0).summary.sales } }], nextCursor: null,
