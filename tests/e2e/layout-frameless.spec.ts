@@ -7,7 +7,7 @@ import { submitSellerLogin } from "./sellerLogin";
 
 // 관리자 화면 바깥 테두리(대표님 지시 2026-10-05: 「외곽 프레임 제거」를 철회하고 검색 영역·카드·상태 상자의 바깥 테두리를 복구).
 // ① 검색 상자(.au-sb)·카드(.card)·상태 상자(.st, 카드 밖)·방송 요약 칸(.bc-sum-g)은 네 변 1px 테두리가 있어야 한다.
-// ③ 바깥 상자 모서리는 모두 12px(검색 영역·카드·목록·상태 상자·요약 칸 묶음, MASTER 2026-10-05).
+// ③ 바깥 상자 모서리는 모두 직각(검색 영역·카드·목록·상태 상자·요약 칸 묶음, 2026-10-19 대표님 지시).
 // ② 이중선 0건: 테두리 상자의 한 변에 안쪽 요소의 선(표 위 선·마지막 행 아래 선·안쪽 상자 테두리 등)이 1px 이내로 맞닿으면 안 된다.
 // 1440·1280·1024에서 잰다. E2E_SCREENSHOTS=1이면 화면을 tests/e2e/screenshots/ui-frames/에 남긴다.
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
@@ -70,9 +70,9 @@ async function inspect(page: Page): Promise<Found> {
         r.missing.push(name(f));
         continue;
       }
-      // 바깥 상자 모서리는 모두 12(카드 토큰). 컨트롤만 8
+      // 관리자 바깥 상자는 직각이며 컨트롤의 기존 모서리는 유지한다
       const rad = getComputedStyle(f).borderTopLeftRadius;
-      if (rad !== "12px") r.radius.push(`${name(f)} ${rad}`);
+      if (rad !== "0px") r.radius.push(`${name(f)} ${rad}`);
       const fb = f.getBoundingClientRect();
       for (const d of f.querySelectorAll<HTMLElement>("*")) {
         if (!visible(d) || d.closest(CONTROLS)) continue;

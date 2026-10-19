@@ -66,7 +66,7 @@ for (const state of [
     const frame = section.locator(".card");
     await expect(frame).toHaveCount(1);
     await expect(frame).not.toHaveCSS("box-shadow", "none");
-    await expect(frame).toHaveCSS("border-radius", "12px");
+    await expect(frame).toHaveCSS("border-radius", "0px");
     await expect(frame.locator(".au-lh, .onq-pagination, .card")).toHaveCount(0);
     await expect(section.getByRole("region", { name: "방송 기록 표" })).toHaveCount(0);
     if (state.status === 200) {

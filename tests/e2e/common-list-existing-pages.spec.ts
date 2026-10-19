@@ -27,7 +27,7 @@ for (const [name, route] of [["inquiries", "/seller/inquiries"], ["notices", "/s
       const list = page.locator(".au-list-section");
       const grid = list.getByRole("region", { name: "상품 목록 표", includeHidden: true });
       await expect(search).toBeVisible();
-      await expect(search).toHaveCSS("border-radius", "12px");
+      await expect(search).toHaveCSS("border-radius", "0px");
       expect(await search.evaluate(el => getComputedStyle(el).boxShadow)).not.toBe("none");
       await expect(list).toHaveCSS("border-top-width", "0px");
       await expect(list).toHaveCSS("border-radius", "0px");
@@ -46,7 +46,7 @@ for (const [name, route] of [["inquiries", "/seller/inquiries"], ["notices", "/s
         expect(await card.evaluate(el => getComputedStyle(el).boxShadow)).not.toBe("none");
       } else {
         await expect(grid).toHaveCSS("border-top-width", "1px");
-        await expect(grid).toHaveCSS("border-radius", "12px");
+        await expect(grid).toHaveCSS("border-radius", "0px");
         await expect(grid).toBeVisible();
         await expect(list.getByTestId("product-card")).toBeHidden();
       }
@@ -67,7 +67,7 @@ for (const [name, route] of [["inquiries", "/seller/inquiries"], ["notices", "/s
         await expect(grid).toHaveCSS("border-radius", "0px");
       } else {
         await expect(grid).toHaveCSS("border-top-width", "1px");
-        await expect(grid).toHaveCSS("border-radius", "12px");
+        await expect(grid).toHaveCSS("border-radius", "0px");
       }
     } else if (name === "broadcast") {
       await expect(grids.first()).toBeVisible();
