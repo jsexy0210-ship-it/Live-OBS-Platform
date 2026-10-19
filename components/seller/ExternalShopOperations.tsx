@@ -85,7 +85,7 @@ export function ExternalShopOperations({ connectionId, returnTo }: { connectionI
   const canManage = !!d?.canManage && !me.readOnly;
   return <><Topbar crumb="방송 › 연동 › 외부 쇼핑몰 연동 › 상세" /><main className="main">
     <PageHead title={connectionId ? "쇼핑몰 연결 상세" : "쇼핑몰 추가 연결"} back={listHref} onBack={cancel} />
-    {state.kind === "loading" ? <div className="card"><LoadingRows rows={3} /></div> : state.kind === "error" ? <div className="card">{state.status === 402 ? <Locked /> : state.status === 403 ? <NoPermission need="쇼핑몰 설정" /> : <ErrorState title="연동 정보를 불러오지 못했습니다" onRetry={() => void load()} />}</div> : !connectionId ? canManage ? <FormSection title="쇼핑몰 주소">
+    {state.kind === "loading" ? <div className="card"><LoadingRows rows={3} /></div> : state.kind === "error" ? <div className="card">{state.status === 402 ? <Locked /> : state.status === 403 ? <NoPermission need="쇼핑몰 설정" /> : <ErrorState title="연동 정보를 불러오지 못했습니다" onRetry={() => void load()} />}</div> : !connectionId ? canManage ? <FormSection title="쇼핑몰 주소"><FormRow label="쇼핑몰 주소">
       {!d?.enabled ? <p role="status">외부 쇼핑몰 연결을 준비하고 있습니다. 열리면 이 화면에서 연결할 수 있습니다</p> : <section className="col" style={{ gap: 8 }} aria-label="쇼핑몰 추가 연결" data-testid="external-add">
         <label htmlFor="ext-url"><b>쇼핑몰 주소</b></label>
         <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
@@ -95,7 +95,7 @@ export function ExternalShopOperations({ connectionId, returnTo }: { connectionI
         </div>
         <span className="t-c1 c-alt">주소로 연결할 수 있는지 자동으로 확인합니다 · 연결할 수 있으면 관리자 로그인과 앱 설치 승인으로 이어집니다</span>
       </section>}
-    </FormSection> : <NoPermission need="쇼핑몰 설정" /> : disconnected ? <section className="card pad" aria-label="연결 해제 결과"><p>연결을 해제했습니다 · 주문 이벤트를 더 받지 않습니다</p><button className="btn btn-out" type="button" onClick={back}>목록으로</button></section> : !c ? <div className="card"><ErrorState title="연결을 찾을 수 없습니다" onRetry={() => void load()} /></div> : <section aria-label="쇼핑몰 연결 상세" data-testid="external-detail">
+    </FormRow></FormSection> : <NoPermission need="쇼핑몰 설정" /> : disconnected ? <section className="card pad" aria-label="연결 해제 결과"><p>연결을 해제했습니다 · 주문 이벤트를 더 받지 않습니다</p><button className="btn btn-out" type="button" onClick={back}>목록으로</button></section> : !c ? <div className="card"><ErrorState title="연결을 찾을 수 없습니다" onRetry={() => void load()} /></div> : <section aria-label="쇼핑몰 연결 상세" data-testid="external-detail">
       <FormSection title={c.shopKey}>
         <FormRow label="상태"><span className={`bdg nodot ${TAG[c.status].cls}`}>{TAG[c.status].label}</span></FormRow>
         <FormRow label="마지막으로 받은 주문 알림"><span>{lastNotice(c, now)}</span></FormRow>

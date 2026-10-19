@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FormSection, ListTable, Modal, PageHead } from "../admin-ui";
+import { FormRow, FormSection, ListTable, Modal, PageHead } from "../admin-ui";
 import { Topbar, useSeller } from "./SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "./States";
 import { api } from "./api";
@@ -213,7 +213,7 @@ export function CategoryOperations({ categoryId, parentId, order = false, return
       <div className="row" style={{ gap: 8, marginTop: 16 }}><button className="btn" type="button" disabled={changed.length === 0 || busy || stale} onClick={() => void saveOrder()}>순서 저장</button><button className="btn btn-out" type="button" disabled={busy} onClick={() => void cancel()}>취소</button></div>
     </section> : !validParent || (categoryId && !item) ? <div className="card"><ErrorState title="카테고리를 찾을 수 없습니다" onRetry={() => void refresh()} /></div> : form && <section aria-label={form.mode === "rename" ? "카테고리 변경" : form.parentId ? "하위 카테고리 추가" : "대분류 추가"}>
       <FormSection title={form.mode === "rename" ? "이름 바꾸기" : form.parentId ? "하위 카테고리 추가" : "대분류 추가"}>
-          <div className="col" style={{ gap: 12, padding: "0 20px 16px" }}>
+          <FormRow label="카테고리 정보"><div className="col" style={{ gap: 12 }}>
             {form.mode === "add" && (
               <label className="col" style={{ gap: 4 }}>
                 <span className="t-l2">상위 대분류</span>
@@ -235,18 +235,18 @@ export function CategoryOperations({ categoryId, parentId, order = false, return
               </span>
             </label>
             {form.mode === "rename" && <span className="t-c1 c-alt">연결된 상품 표기와 쇼핑몰 메뉴 · 칩 이름이 함께 바뀝니다.</span>}
-          </div>
-          <div className="row" style={{ gap: 8 }}>
+          </div></FormRow>
+          <FormRow label="작업"><div className="row" style={{ gap: 8 }}>
             <button className="btn btn-out" type="button" onClick={() => void cancel()} disabled={busy}>
               취소
             </button>
             <button className="btn" type="button" disabled={nameBad || busy || (form.mode === "add" && atLimit)} onClick={() => void submit()}>
               {busy ? "저장 중" : form.mode === "add" ? "추가" : "저장"}
             </button>
-          </div>
+          </div></FormRow>
 
       </FormSection>
-      {item && <FormSection title="노출 · 삭제"><label className="chk"><input className="cbx" type="checkbox" aria-label={`${item.name} 쇼핑몰 노출`} checked={item.visible} onChange={(e) => void toggle(item.id, e.target.checked)} />쇼핑몰 노출</label><button className="btn btn-neg" type="button" onClick={() => setRemove({ id: item.id, name: item.name, count: item.productCount })}>삭제</button></FormSection>}
+      {item && <FormSection title="노출 · 삭제"><FormRow label="쇼핑몰 노출"><label className="chk"><input className="cbx" type="checkbox" aria-label={`${item.name} 쇼핑몰 노출`} checked={item.visible} onChange={(e) => void toggle(item.id, e.target.checked)} />쇼핑몰 노출</label></FormRow><FormRow label="삭제"><button className="btn btn-neg" type="button" onClick={() => setRemove({ id: item.id, name: item.name, count: item.productCount })}>삭제</button></FormRow></FormSection>}
       {atLimit && form.mode === "add" && <p role="status">카테고리는 쇼핑몰당 {MAX_CATEGORIES}개까지 만들 수 있습니다. 쓰지 않는 카테고리를 지운 뒤 추가해 주십시오.</p>}
     </section>}
   </main>
