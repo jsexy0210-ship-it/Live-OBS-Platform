@@ -41,6 +41,8 @@ export type OrderDetail = {
   createdAt: string;
   paidAt: string | null;
   cancelledAt: string | null;
+  queueState: "waiting" | "opening" | "done" | null;
+  shippingPreparedAt: string | null;
   refundedAt: string | null;
   totalAmount: number;
   rewardUsedAmount: number;

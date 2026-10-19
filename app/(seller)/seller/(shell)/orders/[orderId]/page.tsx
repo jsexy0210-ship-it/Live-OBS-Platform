@@ -5,6 +5,7 @@ import "../../../../../../styles/seller-orders.css";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import RefundModal from "../../../../../../components/seller/RefundModal";
+import { OrderMemo, PrepareShipping } from "../../../../../../components/seller/OrderWork";
 import { PageHead } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { SmartBackButton } from "../../../../../../components/seller/SmartBackButton";
@@ -258,6 +259,11 @@ export default function OrderDetailPage() {
             </section>
           </div>
         </div>
+        <section className="card pad col" style={{ gap: 8 }} id="order-preparation" aria-label="배송 준비">
+          <h2 className="t-hl2">배송 준비</h2>
+          {o.shippingPreparedAt ? <p>배송 준비로 변경했습니다.</p> : <PrepareShipping ids={[o.id]} disabled={o.status !== "PAID" || !!(o.shipment && o.shipment.status !== "READY") || o.queueState !== "done"} onDone={() => void load()} />}
+        </section>
+        <OrderMemo key={o.id} orderId={o.id} orderNoLabel={o.orderNoLabel} />
         {/* SA-022 하단 2열: 왼쪽 상태 이력(오른쪽 알림 발송은 서버 계약이 생기면 추가) */}
         <div className="ord-detail ord-history">
           <section className="card pad col" style={{ gap: 12 }} data-testid="order-history">

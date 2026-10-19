@@ -77,7 +77,7 @@ export async function getOrder(db: PrismaClient, ctx: TenantContext, orderId: st
     waitingNumber: q.status === "WAITING" ? (ahead.get(q.id) ?? 0) + 1 : null,
   }]));
   // 품목마다 보낼 수량(수량 − 부분 환불한 수량). 화면은 refundedQuantity로 「부분 환불 n개」를 보여 준다.
-  const rest = { ...orderRest, orderNoLabel: orderNoLabel(order.createdAt, order.orderNo),
+  const rest = { ...orderRest, orderNoLabel: orderNoLabel(order.createdAt, order.orderNo), queueState: queueStateOf(queueItems),
     items: order.items.map((i) => ({ ...i, shipQuantity: i.quantity - i.refundedQuantity,
       imageUrl: images.has(i.productId) ? `/api/seller/orders/${order.id}/items/${i.id}/image` : null, queue: queueByItem.get(i.id) ?? null })),
     hitCards: queueItems.flatMap((q) => q.hitCards.map((hit) => ({ ...hit, queueItemId: q.id }))).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id)),

@@ -414,13 +414,20 @@ test("발송한 주문의 송장은 택배사 코드가 아니라 화면 이름(
   await expect(dd).toHaveText(/^CJ대한통운 \d+$/);
 });
 
-test("행 「···」 → 「메모 남기기」: 저장하면 다시 열었을 때 남아 있고, 비워서 저장하면 지워진다", async ({ page }) => {
+test("행 「···」 → 실제 주문 상세 메모: 저장하면 다시 열었을 때 남아 있고, 비워서 저장하면 지워진다", async ({ page }) => {
   await login(page);
   const row = rows(page).filter({ has: page.getByRole("button", { name: /더보기/ }) }).first();
+  const listUrl = page.url();
+  const detailHref = await row.getByRole("link", { name: "상세", exact: true }).getAttribute("href");
   const open = async () => {
+    if (page.url() !== listUrl) await page.goto(listUrl);
     await row.getByRole("button", { name: /더보기/ }).click();
-    await page.getByRole("menuitem", { name: "메모 남기기" }).click();
-    await expect(page.getByRole("dialog")).toBeVisible();
+    const link = page.getByRole("menuitem", { name: "메모 남기기" });
+    await expect(link).toHaveAttribute("href", `${detailHref}#order-memo`);
+    await link.click();
+    await expect(page).toHaveURL(`${new URL(detailHref!, listUrl).href}#order-memo`);
+    await expect(page.getByRole("region", { name: "메모 남기기" })).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
   };
   await open();
   const box = page.getByLabel("메모", { exact: true });
