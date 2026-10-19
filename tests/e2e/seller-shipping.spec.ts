@@ -38,6 +38,18 @@ test("대표자: 송장 저장 → 배송 중 → 배송 완료로 옮겨 가고
   const [a, b] = ready;
   await shot(page, "SA-027-shipping-ready");
 
+  await expect(rows.locator("select, input:not([type=checkbox])")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "선택 배송 작업 상세", exact: true })).toBeDisabled();
+  await page.getByLabel(`주문 ${a.orderNo} 선택`).check();
+  await page.getByLabel(`주문 ${b.orderNo} 선택`).check();
+  const work = page.getByRole("link", { name: "선택 배송 작업 상세 (2)", exact: true });
+  expect(new URL(await work.getAttribute("href") ?? "", "http://localhost").searchParams.get("ids")?.split(",")).toEqual([a.orderId, b.orderId]);
+  await work.click();
+  await expect(page).toHaveURL(/\/seller\/shipping\/process\?/);
+  await page.reload();
+  await expect(page.getByRole("region", { name: "배송 처리 상세", exact: true })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
   // a는 올바른 송장, b는 너무 짧은 송장 → a만 저장되고 b 줄에 실패 사유가 남는다
   const tracking = `E2E${Date.now()}`;
   // 일괄로 한진택배를 고른 뒤 a 줄만 롯데택배로 바꾼다
@@ -58,9 +70,13 @@ test("대표자: 송장 저장 → 배송 중 → 배송 완료로 옮겨 가고
   expect(results.find((r) => r.orderId === b.orderId)?.ok).toBe(false);
   await expect(page.getByText("1건 송장 저장 · 1건은 처리하지 못했습니다. 빨간 글씨를 확인해 주십시오")).toBeVisible();
   await expect(page.getByLabel(`주문 ${a.orderNo} 송장번호`)).toHaveCount(0);
-  await expect(rows.filter({ has: page.getByLabel(`주문 ${b.orderNo} 송장번호`) })).toContainText("송장번호");
+  await expect(page.locator("section.au-fs").filter({ has: page.getByLabel(`주문 ${b.orderNo} 송장번호`) })).toContainText("송장번호");
   await expect(page.locator(".err[role=alert]")).toHaveCount(1);
 
+  // 실패한 입력을 비운 뒤 원래 목록의 상태·검색 흐름으로 복귀한다.
+  await page.getByLabel(`주문 ${b.orderNo} 송장번호`).fill("");
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL(/\/seller\/shipping$/);
   // 배송 중 탭에서 찾아 배송 완료 처리
   await page.getByRole("button", { name: "배송 중", exact: true }).click();
   await page.getByLabel("배송 검색").fill(tracking);
@@ -69,11 +85,15 @@ test("대표자: 송장 저장 → 배송 중 → 배송 완료로 옮겨 가고
   await expect(row).toContainText("롯데택배");
   await shot(page, "SA-027-shipping-in-transit");
   await row.getByRole("checkbox").check();
+  await page.getByRole("link", { name: "선택 배송 작업 상세 (1)", exact: true }).click();
+  await expect(page.getByRole("region", { name: "배송 처리 상세", exact: true })).toContainText(tracking);
   const delivered = post(page, "/api/seller/shipments/deliver");
   await page.getByRole("button", { name: "배송 완료 처리 (1)" }).click();
   await page.getByRole("button", { name: "배송 완료로 바꾸기", exact: true }).click();
   expect((await delivered).status()).toBe(200);
   await expect(page.getByText("1건 배송 완료")).toBeVisible();
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page.getByLabel("배송 검색")).toHaveValue(tracking);
   await expect(row).toHaveCount(0);
 
   await page.getByRole("button", { name: "배송 완료", exact: true }).click();
