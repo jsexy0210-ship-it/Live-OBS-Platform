@@ -1,15 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 import { PageHead } from "../../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../../components/seller/SellerShell";
 import { LoadingRows, Toast } from "../../../../../../../components/seller/States";
 import { api } from "../../../../../../../components/seller/api";
 import { won } from "../../../../../../../components/seller/format";
 import type { RefundFault, RefundRequestDetail } from "../../../../../../../components/seller/orders";
-import { useSmartBack } from "../../../../../../../lib/client/navigation";
+import { sanitizeNext, useSmartBack } from "../../../../../../../lib/client/navigation";
 import { kstText } from "../../../banners/_shared/ui";
 import "../refund-requests.css";
 
@@ -31,14 +31,17 @@ const PREVIEW_ERROR: Record<string, string> = {
 };
 
 
-export default function RefundRequestPage() {
+function RefundRequestContent() {
+  const query = useSearchParams();
+  const safeReturnTo = sanitizeNext(query.get("returnTo"), ["/seller/orders/refund-requests"]);
+  const listHref = safeReturnTo?.split("?")[0] === "/seller/orders/refund-requests" ? safeReturnTo : "/seller/orders/refund-requests";
   const { id } = useParams<{ id: string }>();
   const { can, me } = useSeller();
-  const back = useSmartBack("/seller/orders/refund-requests");
+  const back = useSmartBack(listHref);
   const [toast, setToast] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
   return <><Topbar crumb="판매 › 주문 › 취소 · 환불 요청" /><main className="main">
-    <PageHead title="환불 요청 상세" back="/seller/orders/refund-requests" />
+    <PageHead title="환불 요청 상세" back={listHref} />
     <RequestDetail key={id + ":" + reload} id={id} canEdit={can("ORDER_SHIPPING") && !me.readOnly} onClose={back} onDone={(text) => { setToast(text); setReload((n) => n + 1); }} />
   </main>{toast && <Toast text={toast} onDone={() => setToast(null)} />}</>;
 }
@@ -334,3 +337,5 @@ function RequestDetail({ id, canEdit, onClose, onDone }: { id: string; canEdit: 
     </section>
   );
 }
+
+export default function RefundRequestPage() { return <Suspense><RefundRequestContent /></Suspense>; }

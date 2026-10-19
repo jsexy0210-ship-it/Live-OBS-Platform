@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { sanitizeNext } from "../../../../../../lib/client/navigation";
 import { ListTable, PageHead } from "../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission } from "../../../../../../components/seller/States";
@@ -10,7 +11,9 @@ import { PrepareShipping } from "../../../../../../components/seller/OrderWork";
 import { api } from "../../../../../../components/seller/api";
 import { type OrderDetail } from "../../../../../../components/seller/orders";
 
-function SelectedOrderWork({ requestKey }: { requestKey: string }) {
+function SelectedOrderWork({ requestKey, returnTo }: { requestKey: string; returnTo?: string | null }) {
+  const safeReturnTo = sanitizeNext(returnTo, ["/seller/orders"]);
+  const listHref = safeReturnTo?.split("?")[0] === "/seller/orders" ? safeReturnTo : "/seller/orders";
   const { can, me } = useSeller();
   const key = requestKey;
   const ids = useMemo(() => [...new Set(key.split(",").map((id) => id.toLowerCase()))], [key]);
@@ -29,7 +32,7 @@ function SelectedOrderWork({ requestKey }: { requestKey: string }) {
   }, [allowed, valid, ids]);
   useEffect(() => { setState({ kind: "loading" }); void load(); return () => { generation.current++; }; }, [load]);
   return <><Topbar crumb="판매 › 주문 › 선택 주문 배송 준비" /><main className="main">
-    <PageHead title="선택 주문 배송 준비" back="/seller/orders" />
+    <PageHead title="선택 주문 배송 준비" back={listHref} />
     {!allowed ? <NoPermission need="주문·배송" /> : !valid ? <div className="card pad">작업할 주문을 목록에서 다시 선택해 주십시오.</div> : state.kind === "loading" ? <div className="card"><LoadingRows rows={4} /></div> : state.kind === "error" ? state.status === 403 ? <NoPermission need="주문·배송" /> : <div className="card"><ErrorState title="선택한 주문을 불러오지 못했습니다" onRetry={() => void load()} /></div> : <>
       <section className="au-list-section" aria-label="선택한 주문">
         {state.missing > 0 && <p role="status">찾을 수 없는 주문 {state.missing}건 · 남은 주문 {state.orders.length}건</p>}
@@ -44,7 +47,7 @@ function SelectedOrderWork({ requestKey }: { requestKey: string }) {
 function SelectedOrders() {
   const query = useSearchParams();
   const ids = query.get("ids") ?? "";
-  return <SelectedOrderWork key={ids} requestKey={ids} />;
+  return <SelectedOrderWork key={ids} requestKey={ids} returnTo={query.get("returnTo")} />;
 }
 
 export default function PrepareOrdersPage() {

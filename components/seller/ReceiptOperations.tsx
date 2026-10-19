@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { sanitizeNext } from "../../lib/client/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ListTable, PageHead, useConfirm } from "../admin-ui";
 import { Topbar, useSeller } from "./SellerShell";
@@ -14,8 +15,10 @@ type Result = { id: string; ok: boolean; reason?: string };
 const COMPLETE_FAIL: Record<string, string> = { invalid_transition: "이미 처리된 신청입니다", not_paid: "입금 확인 전입니다", not_found: "신청을 찾을 수 없습니다" };
 type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; rows: Row[]; missing: number };
 
-export function ReceiptOperations({ ids, single = false }: { ids: string[]; single?: boolean }) {
+export function ReceiptOperations({ ids, single = false, returnTo }: { ids: string[]; single?: boolean; returnTo?: string | null }) {
   const { can, me } = useSeller();
+  const safeReturnTo = sanitizeNext(returnTo, ["/seller/orders/receipts"]);
+  const listHref = safeReturnTo?.split("?")[0] === "/seller/orders/receipts" ? safeReturnTo : "/seller/orders/receipts";
   const canRead = can("RECEIPT_TAX"), canEdit = canRead && !me.readOnly;
   const { confirm } = useConfirm();
   const requestKey = ids.join(",");
@@ -72,11 +75,11 @@ export function ReceiptOperations({ ids, single = false }: { ids: string[]; sing
 
   const rows = state.kind === "ok" ? state.rows : [];
   return <><Topbar crumb="주문 › 영수증 · 세금계산서 › 상세" /><main className="main">
-    <PageHead title={single ? "영수증 · 세금계산서 상세" : "선택 발행 완료 처리"} back="/seller/orders/receipts" />
+    <PageHead title={single ? "영수증 · 세금계산서 상세" : "선택 발행 완료 처리"} back={listHref} />
     {!canRead ? <NoPermission need="영수증 · 세금계산서" /> : !valid ? <div className="card pad">작업할 신청을 목록에서 다시 선택해 주십시오.</div> : state.kind === "loading" ? <div className="card"><LoadingRows rows={3} /></div> : state.kind === "error" ? state.status === 403 ? <NoPermission need="영수증 · 세금계산서" /> : state.status === 402 ? <div className="card"><Locked /></div> : <div className="card"><ErrorState title="신청을 불러오지 못했습니다" onRetry={() => void load()} /></div> : <>
       <section className="au-list-section" aria-label="신청 상세">
         {state.missing > 0 && <p role="status">찾을 수 없는 신청 {state.missing}건 · 남은 신청 {rows.length}건</p>}
-        <ListTable><table className="tbl"><thead><tr><th>주문</th><th>닉네임</th><th>접수 시각</th><th>종류 · 번호 끝</th><th>금액</th><th>상태</th><th>비고</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td>{single ? row.orderNoLabel : <Link href={`/seller/orders/receipts/${row.id}`}>{row.orderNoLabel}</Link>}</td><td>{row.nickname ?? "탈퇴 회원"}</td><td>{formatDateTime(row.createdAt)}</td><td>{KIND[row.kind]} · {row.identityLast4}{row.taxInfo && <div>{row.taxInfo.companyName}</div>}</td><td>{row.issue ? won(row.issue.amount) : "—"}</td><td>{row.issue ? <span className={`bdg ${BADGE[row.issue.status].cls}`}>{BADGE[row.issue.status].label}</span> : "—"}</td><td>{receiptNote(row)}</td></tr>)}</tbody></table></ListTable>
+        <ListTable><table className="tbl"><thead><tr><th>주문</th><th>닉네임</th><th>접수 시각</th><th>종류 · 번호 끝</th><th>금액</th><th>상태</th><th>비고</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td>{single ? row.orderNoLabel : <Link href={`/seller/orders/receipts/${row.id}?${new URLSearchParams({ returnTo: listHref })}`}>{row.orderNoLabel}</Link>}</td><td>{row.nickname ?? "탈퇴 회원"}</td><td>{formatDateTime(row.createdAt)}</td><td>{KIND[row.kind]} · {row.identityLast4}{row.taxInfo && <div>{row.taxInfo.companyName}</div>}</td><td>{row.issue ? won(row.issue.amount) : "—"}</td><td>{row.issue ? <span className={`bdg ${BADGE[row.issue.status].cls}`}>{BADGE[row.issue.status].label}</span> : "—"}</td><td>{receiptNote(row)}</td></tr>)}</tbody></table></ListTable>
       </section>
       {canEdit && <section className="card pad" aria-label="발행 처리">
         <p>홈택스 등에서 이미 발행한 건만 처리해 주십시오. 발행 완료로 바꾸면 구매자에게 알림이 갑니다.</p>

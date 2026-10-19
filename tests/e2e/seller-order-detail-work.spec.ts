@@ -41,12 +41,12 @@ test("주문 목록은 변경 요청 없이 실제 상세로 이동하고, 선�
   const rows = page.getByTestId("order-row");
   await expect(rows).toHaveCount(3);
   await expect(rows.getByRole("button", { name: "배송 준비", exact: true })).toHaveCount(0);
-  await expect(rows.first().getByRole("link", { name: "배송 준비", exact: true })).toHaveAttribute("href", `/seller/orders/${ids[0]}#order-preparation`);
+  await expect(rows.first().getByRole("link", { name: "배송 준비", exact: true })).toHaveAttribute("href", `/seller/orders/${ids[0]}?${new URLSearchParams({ returnTo: "/seller/orders?period=all" })}#order-preparation`);
   await rows.nth(0).getByRole("checkbox").check();
   await rows.nth(1).getByRole("checkbox").check();
   await expect(rows.nth(2).getByRole("checkbox")).toBeDisabled();
   const link = page.getByRole("link", { name: "선택 주문 작업 상세", exact: true });
-  await expect(link).toHaveAttribute("href", `/seller/orders/prepare?ids=${encodeURIComponent(ids.slice(0, 2).join(","))}`);
+  await expect(link).toHaveAttribute("href", `/seller/orders/prepare?${new URLSearchParams({ ids: ids.slice(0, 2).join(","), returnTo: "/seller/orders?period=all" })}`);
   expect(owned.posts).toEqual([]);
   await link.click();
   await page.reload();
@@ -57,6 +57,8 @@ test("주문 목록은 변경 요청 없이 실제 상세로 이동하고, 선�
   await expect(page.getByRole("status").filter({ hasText: "2건을 배송 준비로 바꿨습니다" })).toBeVisible();
   expect(owned.posts).toEqual([{ action: "prepare_shipping", orderIds: ids.slice(0, 2) }]);
   expect(owned.memoWrites).toEqual([]);
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL(new URL("/seller/orders?period=all", page.url()).href);
 });
 
 test("주문 메모는 실제 상세에서만 저장하고 새로고침 후 보존하며 빈 본문으로 삭제한다", async ({ page }) => {
@@ -65,15 +67,19 @@ test("주문 메모는 실제 상세에서만 저장하고 새로고침 후 보�
   await page.goto("/seller/orders?period=all");
   await page.getByTestId("order-row").first().getByRole("button", { name: /더보기/ }).click();
   const link = page.getByRole("menuitem", { name: "메모 남기기", exact: true });
-  await expect(link).toHaveAttribute("href", `/seller/orders/${ids[0]}#order-memo`);
+  await expect(link).toHaveAttribute("href", `/seller/orders/${ids[0]}?${new URLSearchParams({ returnTo: "/seller/orders?period=all" })}#order-memo`);
   await link.click();
-  await expect(page).toHaveURL(new RegExp(`/seller/orders/${ids[0]}#order-memo$`));
+  await expect(page).toHaveURL(new URL(`/seller/orders/${ids[0]}?${new URLSearchParams({ returnTo: "/seller/orders?period=all" })}#order-memo`, page.url()).href);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const memo = page.getByRole("region", { name: "메모 남기기", exact: true });
   await expect(memo.getByRole("textbox", { name: "메모", exact: true })).toBeEnabled();
   await memo.getByRole("textbox", { name: "메모", exact: true }).fill("선물 포장 요청 확인");
   await memo.getByRole("button", { name: "저장", exact: true }).click();
   await expect(memo.getByRole("status")).toHaveText("메모를 저장했습니다");
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL(new URL("/seller/orders?period=all", page.url()).href);
+  await page.getByTestId("order-row").first().getByRole("button", { name: /더보기/ }).click();
+  await link.click();
   await page.reload();
   await expect(memo.getByRole("textbox", { name: "메모", exact: true })).toHaveValue("선물 포장 요청 확인");
   await memo.getByRole("textbox", { name: "메모", exact: true }).fill("");
@@ -81,6 +87,12 @@ test("주문 메모는 실제 상세에서만 저장하고 새로고침 후 보�
   await expect(memo.getByRole("status")).toHaveText("메모를 지웠습니다");
   await page.reload();
   await expect(memo.getByRole("textbox", { name: "메모", exact: true })).toHaveValue("");
+  await memo.getByRole("textbox", { name: "메모", exact: true }).fill("버릴 입력");
+  page.once("dialog", (dialog) => dialog.accept());
+  await memo.getByRole("button", { name: "취소", exact: true }).click();
+  await expect(memo.getByRole("textbox", { name: "메모", exact: true })).toHaveValue("");
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL(new URL("/seller/orders?period=all", page.url()).href);
   expect(owned.memoWrites).toEqual([{ body: "선물 포장 요청 확인" }, { body: "" }]);
   expect(owned.posts).toEqual([]);
 });
@@ -122,12 +134,15 @@ test("선택 입금 확인은404만 제외하고 남은 주문과 상세 버전�
     const body = route.request().postDataJSON(); writes.push(body);
     return route.fulfill({ json: { results: body.orderIds.map((orderId: string) => ({ orderId, result: "paid" })) } });
   });
-  await page.goto(`/seller/orders/deposits/confirm?ids=${ids[0]},${ids[1]}`);
+  await page.goto(`/seller/orders/deposits/confirm?${new URLSearchParams({ ids: ids.slice(0, 2).join(","), returnTo: "/seller/orders/deposits?q=입금" })}`);
+  await page.reload();
   await expect(page.getByRole("table").locator("tbody tr")).toHaveCount(1);
   await expect(page.getByRole("status").filter({ hasText: "찾을 수 없는 주문 1건 · 남은 주문 1건" })).toBeVisible();
   await page.getByRole("region", { name: "입금을 확인하시겠습니까?" }).getByRole("button", { name: "입금 확인", exact: true }).click();
   await expect(page.getByText("1건 입금 확인 · 주문대기(방송에서 개봉할 순서 목록)에 올라갔습니다", { exact: true })).toBeVisible();
   expect(writes).toEqual([{ orderIds: [ids[0]], expectedVersion: 77 }]);
+  await page.getByRole("button", { name: "목록으로", exact: true }).click();
+  await expect(page).toHaveURL(new URL("/seller/orders/deposits?q=%EC%9E%85%EA%B8%88", page.url()).href);
   await page.goto(`/seller/orders/deposits/confirm?ids=${ids[1]}`);
   await expect(page.getByRole("region", { name: "입금을 확인하시겠습니까?" }).getByRole("button", { name: "입금 확인", exact: true })).toBeDisabled();
   expect(writes).toHaveLength(1);

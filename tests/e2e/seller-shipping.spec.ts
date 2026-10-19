@@ -73,8 +73,8 @@ test("대표자: 송장 저장 → 배송 중 → 배송 완료로 옮겨 가고
   await expect(page.locator("section.au-fs").filter({ has: page.getByLabel(`주문 ${b.orderNo} 송장번호`) })).toContainText("송장번호");
   await expect(page.locator(".err[role=alert]")).toHaveCount(1);
 
-  // 실패한 입력을 비운 뒤 원래 목록의 상태·검색 흐름으로 복귀한다.
-  await page.getByLabel(`주문 ${b.orderNo} 송장번호`).fill("");
+  // 부분 실패 입력은 남아 있으므로 확인 후 버리고 원래 목록으로 복귀한다.
+  page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "뒤로", exact: true }).click();
   await expect(page).toHaveURL(/\/seller\/shipping$/);
   // 배송 중 탭에서 찾아 배송 완료 처리

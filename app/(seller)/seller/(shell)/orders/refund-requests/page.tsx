@@ -2,6 +2,7 @@
 
 import "../../../../../../styles/seller-orders.css";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ListTable, CursorPagination, PageHead } from "../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
@@ -34,6 +35,8 @@ const BADGE: Record<Status, { label: string; cls: string }> = {
   CANCELLED: { label: "철회", cls: "b-gray nodot" },
 };
 export default function RefundRequestsPage() {
+  const listQuery = useSearchParams().toString();
+  const returnTo = `/seller/orders/refund-requests${listQuery ? `?${listQuery}` : ""}`;
   const { can } = useSeller();
   const canEdit = can("ORDER_SHIPPING");
   // 탭은 주소(?status=)가 기준이다. 주문 상세에 갔다 Back으로 돌아와도 그대로 복원된다(UX 감사 9.3). 틀린 값은 처리 대기로 본다
@@ -170,7 +173,7 @@ export default function RefundRequestsPage() {
                         </td>
                         <td>
                           <div className="acts2">
-                            <Link className="btn btn-sm" href={`/seller/orders/refund-requests/${r.id}`}>
+                            <Link className="btn btn-sm" href={`/seller/orders/refund-requests/${r.id}?${new URLSearchParams({ returnTo })}`}>
                               {r.status === "REQUESTED" && canEdit ? "처리" : "보기"}
                             </Link>
                           </div>

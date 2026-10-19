@@ -3,6 +3,7 @@
 import { formatDateTimeParts } from "../../../../../lib/client/format";
 import "../../../../../styles/seller-orders.css";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { CursorPagination } from "../../../../../components/Pagination";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
@@ -86,17 +87,19 @@ function elapsedText(o: OrderRow): { text: string; urgent: boolean } {
   return { text: h < 1 ? "방금 접수" : h < 24 ? `${h}시간 전 접수` : `${Math.floor(h / 24)}일 전 접수`, urgent: false };
 }
 // 관리 열 주 버튼은 주문 상태에 따라 다르다(정본: 입금 전 「입금 확인」 · 배송 준비 「송장 입력」 · 취소 요청 「환불 처리」)
-function mainAction(o: OrderRow): { label: string; href: string; neg?: boolean } | null {
+function mainAction(o: OrderRow, returnTo: string): { label: string; href: string; neg?: boolean } | null {
   if (o.refundRequest && o.refundRequest.pendingCount > 0) return { label: "환불 처리", href: "/seller/orders/refund-requests", neg: true };
   if (o.status === "PENDING_PAYMENT" && o.paymentMethod === "BANK_TRANSFER") return { label: "입금 확인", href: "/seller/orders/deposits" };
-  if (canPrepare(o)) return { label: "배송 준비", href: `/seller/orders/${o.id}#order-preparation` };
+  if (canPrepare(o)) return { label: "배송 준비", href: `/seller/orders/${o.id}?${new URLSearchParams({ returnTo })}#order-preparation` };
   if (o.status === "PAID" && !o.shipped && (o.queueState === "waiting" || o.queueState === "opening") && !o.shippingPreparedAt) return { label: "방송 대시보드", href: "/seller/broadcast" };
   if (o.status === "PAID" && !o.shipped) return { label: "송장 입력", href: "/seller/shipping" };
-  if (o.refundable) return { label: "환불 처리", href: `/seller/orders/${o.id}?refund=1`, neg: true };
+  if (o.refundable) return { label: "환불 처리", href: `/seller/orders/${o.id}?${new URLSearchParams({ refund: "1", returnTo })}`, neg: true };
   return null;
 }
 
 export default function OrderListPage() {
+  const listQuery = useSearchParams().toString();
+  const returnTo = `/seller/orders${listQuery ? `?${listQuery}` : ""}`;
   // 검색어·기간·결제 상태는 주소(쿼리)가 기준이다. 상세에 갔다 Back으로 돌아와도 그대로 복원된다(IA Back 규칙 3항)
   const [u, setU] = useUrlState({ q: "", period: "30d", status: "", shipped: "", queue: "", prepared: "", refundRequested: "", trackingMissing: "" });
   const q = u.q;
@@ -360,7 +363,7 @@ export default function OrderListPage() {
               <b>{picked.length}개 선택</b>
               <span className="c-alt t-l2">· 개봉 완료 {picked.length}건 · 다른 상태는 체크할 수 없습니다</span>
               <span className="ord-bulk-act">
-                <Link className="btn btn-sm" href={`/seller/orders/prepare?ids=${encodeURIComponent(picked.join(","))}`}>
+                <Link className="btn btn-sm" href={`/seller/orders/prepare?${new URLSearchParams({ ids: picked.join(","), returnTo })}`}>
                   선택 주문 작업 상세
                 </Link>
                 <Link className="btn btn-sm btn-out" href="/seller/shipping">
@@ -399,7 +402,7 @@ export default function OrderListPage() {
                 <tbody>
                   {items.map((o) => {
                     const stage = stageOf(o);
-                    const act = mainAction(o);
+                    const act = mainAction(o, returnTo);
                     return (
                       <tr key={o.id} className={o.status === "PENDING_PAYMENT" ? "faded" : ""} data-testid="order-row">
                         <td data-card="check">
@@ -413,7 +416,7 @@ export default function OrderListPage() {
                           />
                         </td>
                         <td className="date" data-card="title">
-                          <Link href={`/seller/orders/${o.id}`} className="fw6 num ord-link">
+                          <Link href={`/seller/orders/${o.id}?${new URLSearchParams({ returnTo })}`} className="fw6 num ord-link">
                             {formatDateTimeParts(o.createdAt)?.date} {formatDateTimeParts(o.createdAt)?.time}
                           </Link>
                           <div className="ord-ono num">{o.orderNoLabel}</div>
@@ -442,7 +445,7 @@ export default function OrderListPage() {
                                 {act.label}
                               </Link>
                             )}
-                            <Link className="btn btn-sm btn-out" href={`/seller/orders/${o.id}`}>
+                            <Link className="btn btn-sm btn-out" href={`/seller/orders/${o.id}?${new URLSearchParams({ returnTo })}`}>
                               상세
                             </Link>
                             {!o.shipped && (o.status === "PENDING_PAYMENT" || o.status === "PAID") && (
@@ -452,12 +455,12 @@ export default function OrderListPage() {
                                 </button>
                                 {rowMenu === o.id && (
                                   <div className="menu ord-menu ord-row-menu" role="menu" onMouseLeave={() => setRowMenu(null)}>
-                                    <Link role="menuitem" href={`/seller/orders/${o.id}#order-memo`}>
+                                    <Link role="menuitem" href={`/seller/orders/${o.id}?${new URLSearchParams({ returnTo })}#order-memo`}>
                                       메모 남기기
                                     </Link>
                                     <Link role="menuitem" href="/seller/orders/receipts">영수증 발급</Link>
                                     {o.status === "PAID" && (
-                                      <Link role="menuitem" className="c-neg" href={`/seller/orders/${o.id}?refund=1`}>
+                                      <Link role="menuitem" className="c-neg" href={`/seller/orders/${o.id}?${new URLSearchParams({ refund: "1", returnTo })}`}>
                                         주문 취소
                                       </Link>
                                     )}

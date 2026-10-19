@@ -103,9 +103,9 @@ test("신청 목록: 요약·검색·비고가 보이고, 실패 건은 다시 �
 
   // 다시 발행: 확인 창 → 대기
   const retryLink = rows.filter({ hasText: "발행 업체 응답 오류" }).getByRole("link", { name: "다시 발행" });
-  await expect(retryLink).toHaveAttribute("href", `${URL_PATH}/${ids.failed}`);
+  await expect(retryLink).toHaveAttribute("href", `${URL_PATH}/${ids.failed}?${new URLSearchParams({ returnTo: URL_PATH })}`);
   await retryLink.click();
-  await expect(page).toHaveURL(new RegExp(`${URL_PATH}/${ids.failed}$`));
+  await expect(page).toHaveURL(new URL(`${URL_PATH}/${ids.failed}?${new URLSearchParams({ returnTo: URL_PATH })}`, page.url()).href);
   await page.reload();
   await expect(page.getByRole("heading", { level: 1, name: "영수증 · 세금계산서 상세" })).toBeVisible();
   await expect(page.getByRole("table").getByRole("button")).toHaveCount(0);
@@ -121,7 +121,7 @@ test("신청 목록: 요약·검색·비고가 보이고, 실패 건은 다시 �
   // 발행 완료 처리: 대기로 돌아온 건을 확인 창을 거쳐 발행 완료로 바꾼다(구매자 안내가 간다)
   const waiting = rows.filter({ hasText: "발행 대기" }).filter({ hasText: "132,000" });
   await waiting.getByRole("link", { name: "발행 완료 처리" }).click();
-  await expect(page).toHaveURL(new RegExp(`${URL_PATH}/${ids.failed}$`));
+  await expect(page).toHaveURL(new URL(`${URL_PATH}/${ids.failed}?${new URLSearchParams({ returnTo: URL_PATH })}`, page.url()).href);
   await page.getByRole("button", { name: "발행 완료 처리", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("발행 완료 처리하시겠습니까?");
   await page.getByRole("dialog").getByRole("button", { name: "발행 완료 처리", exact: true }).click();
@@ -168,7 +168,7 @@ test("선택 발행 완료는 실제 상세에서 두 신청만 재조회하고 
   await page.getByRole("checkbox", { name: "발행 선택 1 선택", exact: true }).check();
   await page.getByRole("checkbox", { name: "발행 선택 2 선택", exact: true }).check();
   const link = page.getByRole("link", { name: "선택 발행 완료 처리 (2)", exact: true });
-  await expect(link).toHaveAttribute("href", `${URL_PATH}/complete?ids=${encodeURIComponent(ids.slice(0, 2).join(","))}`);
+  await expect(link).toHaveAttribute("href", `${URL_PATH}/complete?${new URLSearchParams({ ids: ids.slice(0, 2).join(","), returnTo: URL_PATH })}`);
   await link.click();
   await page.reload();
   await expect(page.getByRole("heading", { level: 1, name: "선택 발행 완료 처리", exact: true })).toBeVisible();
@@ -184,4 +184,6 @@ test("선택 발행 완료는 실제 상세에서 두 신청만 재조회하고 
   expect(writes).toEqual([{ ids: ids.slice(0, 2) }]);
   await expect(page.getByRole("table").locator("tbody tr td:nth-child(6)")).toHaveText(["발행 완료", "발행 완료"]);
   expect(issued.has(ids[2])).toBe(false);
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL(new URL(URL_PATH, page.url()).href);
 });

@@ -25,7 +25,7 @@ test("목록을 받은 뒤 다른 곳에서 바뀌었으면 입금 확인이 막
   await login(page, "demo-owner@example.com");
   await expect(row(page, DEPOSIT_NICKNAMES[2])).toHaveCount(1);
   await row(page, DEPOSIT_NICKNAMES[2]).getByRole("link", { name: "입금 확인" }).click();
-  await expect(page).toHaveURL(new RegExp(`/seller/orders/deposits/confirm\\?ids=${made.orderIds[2]}$`));
+  await expect(page).toHaveURL(new URL(`/seller/orders/deposits/confirm?${new URLSearchParams({ ids: made.orderIds[2], returnTo: "/seller/orders/deposits" })}`, page.url()).href);
   await page.reload();
   await expect(page.getByRole("region", { name: "입금을 확인하시겠습니까?" })).toBeVisible();
   await bumpLiveVersionInDb(SLUG);

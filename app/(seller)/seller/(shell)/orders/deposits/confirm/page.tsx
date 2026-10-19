@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { sanitizeNext } from "../../../../../../../lib/client/navigation";
 import { ListTable, PageHead } from "../../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../../../components/seller/States";
@@ -24,7 +25,9 @@ const RESULT_TEXT: Record<Exclude<Result["result"], "paid">, string> = {
 type Deposit = { orderId: string; nickname: string; buyerName?: string; amount: number; status: string };
 type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; rows: Deposit[]; version: number; missing: number };
 
-function Confirmation({ requestKey }: { requestKey: string }) {
+function Confirmation({ requestKey, returnTo }: { requestKey: string; returnTo?: string | null }) {
+  const safeReturnTo = sanitizeNext(returnTo, ["/seller/orders/deposits"]);
+  const listHref = safeReturnTo?.split("?")[0] === "/seller/orders/deposits" ? safeReturnTo : "/seller/orders/deposits";
   const { can, me } = useSeller();
   const allowed = can("ORDER_SHIPPING") && !me.readOnly;
   const ids = useMemo(() => [...new Set(requestKey.split(",").map((id) => id.toLowerCase()))], [requestKey]);
@@ -71,7 +74,7 @@ function Confirmation({ requestKey }: { requestKey: string }) {
 
 
   return <><Topbar crumb="주문 › 입금 확인 › 상세" /><main className="main">
-    <PageHead title="입금 확인 상세" back="/seller/orders/deposits" />
+    <PageHead title="입금 확인 상세" back={listHref} />
     {!allowed ? <NoPermission need="주문 · 배송" /> : !valid ? <div className="card pad">작업할 주문을 목록에서 다시 선택해 주십시오.</div> : state.kind === "loading" ? <div className="card"><LoadingRows rows={3} /></div> : state.kind === "error" ? state.status === 403 ? <NoPermission need="주문 · 배송" /> : <div className="card"><ErrorState title="선택한 주문을 불러오지 못했습니다" onRetry={() => void load()} /></div> : <section className="card pad col" style={{ gap: 16 }} aria-labelledby="dep-title">
       <h2 id="dep-title">입금을 확인하시겠습니까?</h2>
       {state.missing > 0 && <p role="status">찾을 수 없는 주문 {state.missing}건 · 남은 주문 {state.rows.length}건</p>}
@@ -80,8 +83,8 @@ function Confirmation({ requestKey }: { requestKey: string }) {
       <ListTable><table className="tbl"><thead><tr><th>주문</th><th>구매자</th><th>주문자 실명</th><th>금액</th><th>입금 상태</th></tr></thead><tbody>{state.rows.map((row) => <tr key={row.orderId}><td><Link href={`/seller/orders/${row.orderId}`}>주문 상세</Link></td><td>{row.nickname}</td><td>{row.buyerName ?? "—"}</td><td>{won(row.amount)}</td><td>{row.status === "PAID" ? "입금 확인" : row.status === "PENDING_PAYMENT" ? "입금 대기" : "확인할 수 없음"}</td></tr>)}</tbody></table></ListTable>
       <button className="btn" type="button" onClick={() => void send()} disabled={busy || !state.rows.length}>{busy ? "확인 중" : "입금 확인"}</button>
     </section>}
-    <SmartBackButton fallback="/seller/orders/deposits">목록으로</SmartBackButton>
+    <SmartBackButton fallback={listHref}>목록으로</SmartBackButton>
   </main>{toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}</>;
 }
-function SelectedDeposits() { const query = useSearchParams(); const ids = query.get("ids") ?? ""; return <Confirmation key={ids} requestKey={ids} />; }
+function SelectedDeposits() { const query = useSearchParams(); const ids = query.get("ids") ?? ""; return <Confirmation key={ids} requestKey={ids} returnTo={query.get("returnTo")} />; }
 export default function DepositConfirmationPage() { return <Suspense><SelectedDeposits /></Suspense>; }

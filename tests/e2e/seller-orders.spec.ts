@@ -37,7 +37,9 @@ async function openDetail(page: Page) {
 // 목록의 「환불 처리」 버튼은 취소 요청 · 환불 가능 주문에만 상태에 따라 보인다(정본). 발송 전 주문은 「송장 입력」이 주 버튼이라 상세 주소의 ?refund=1로 환불 창을 연다
 async function openRefund(page: Page, row: ReturnType<typeof rows>) {
   const href = await row.getByRole("link", { name: "상세", exact: true }).getAttribute("href");
-  await page.goto(`${href}?refund=1`);
+  const url = new URL(href!, page.url());
+  url.searchParams.set("refund", "1");
+  await page.goto(url.href);
 }
 
 // 실제 환불 시험은 시드의 발송 전 결제 주문(배송 「—」)을 환불해 하나씩 쓴다(실행마다 몇 건). 같은 DB로 여러 번 돌려 다 쓰면
@@ -152,8 +154,10 @@ test("주문 상세: 상품·결제·구매자·배송을 보여 주고, 없는 
   await expect(rows(page).first()).toBeVisible();
   // 구매자 이름과 주소를 한 번에 읽어, 목록이 다시 그려지는 사이 다른 행의 이름이 섞이지 않게 한다
   const { nick, href } = await rows(page).first().evaluate((tr) => ({ nick: tr.querySelectorAll("td")[2].querySelector(".fw6")?.textContent ?? "", href: tr.querySelector("a.ord-link")!.getAttribute("href")! }));
+  const listUrl = new URL(page.url());
   await page.goto(href);
-  await expect(page).toHaveURL(/\/seller\/orders\/[0-9a-f-]{36}$/);
+  await expect(page).toHaveURL(/\/seller\/orders\/[0-9a-f-]{36}\?returnTo=/);
+  expect(new URL(page.url()).searchParams.get("returnTo")).toBe(listUrl.pathname + listUrl.search);
   await expect(page.getByRole("heading", { level: 1 })).toContainText(`${nick} · `);
   await expect(page.locator(".bdg-lg").first()).toHaveText("결제 완료");
   await expect(page.getByRole("heading", { name: "주문 상품" })).toBeVisible();
@@ -408,8 +412,10 @@ test("주문·배송 권한만 있는 직원(방송 진행 권한 없음)도 실
 test("발송한 주문의 송장은 택배사 코드가 아니라 화면 이름(CJ대한통운)으로 보인다", async ({ page }) => {
   await login(page);
   const shipped = rows(page).filter({ has: page.locator("td:nth-child(7)", { hasText: /배송 (중|완료)/ }) }).first();
+  const listUrl = new URL(page.url());
   await shipped.locator("a.ord-link").click();
-  await expect(page).toHaveURL(/\/seller\/orders\/[0-9a-f-]{36}$/);
+  await expect(page).toHaveURL(/\/seller\/orders\/[0-9a-f-]{36}\?returnTo=/);
+  expect(new URL(page.url()).searchParams.get("returnTo")).toBe(listUrl.pathname + listUrl.search);
   const dd = page.locator("dt", { hasText: "송장" }).locator("xpath=following-sibling::dd[1]");
   await expect(dd).toHaveText(/^CJ대한통운 \d+$/);
 });

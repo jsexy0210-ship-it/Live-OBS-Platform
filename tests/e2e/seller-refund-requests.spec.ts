@@ -45,9 +45,9 @@ test("거절: 사유를 적어야 확정할 수 있고, 거절 탭에 사유와 
     await page.screenshot({ path: `tests/e2e/screenshots/SA-023-refund-requests-${w}.png`, fullPage: true });
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await expect(row.getByRole("link", { name: "처리" })).toHaveAttribute("href", `/seller/orders/refund-requests/${req.id}`);
+  await expect(row.getByRole("link", { name: "처리" })).toHaveAttribute("href", `/seller/orders/refund-requests/${req.id}?${new URLSearchParams({ returnTo: "/seller/orders/refund-requests" })}`);
   await row.getByRole("link", { name: "처리" }).click();
-  await expect(page).toHaveURL(new RegExp(`/seller/orders/refund-requests/${req.id}$`));
+  await expect(page).toHaveURL(new URL(`/seller/orders/refund-requests/${req.id}?${new URLSearchParams({ returnTo: "/seller/orders/refund-requests" })}`, page.url()).href);
   await page.reload();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const dialog = page.getByRole("region", { name: /환불 요청 처리/ });

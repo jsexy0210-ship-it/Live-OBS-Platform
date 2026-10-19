@@ -3,6 +3,7 @@
 import { formatDateTime } from "../../../../../../lib/client/format";
 import "../../../../../../styles/seller-orders.css";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ListTable, DatePicker, Pagination, ListHead, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { useScrollRestore } from "../../../../../../lib/client/navigation";
@@ -32,6 +33,8 @@ function remaining(due: string | null, now: number): { text: string; urgent: boo
 }
 
 export default function DepositsPage() {
+  const listQuery = useSearchParams().toString();
+  const returnTo = `/seller/orders/deposits${listQuery ? `?${listQuery}` : ""}`;
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [picked, setPicked] = useState<string[]>([]);
   const [page, setPage] = useState(1);
@@ -133,7 +136,7 @@ export default function DepositsPage() {
               actions={
                 <>
                   {overdue > 0 && <span className="t-l2 c-alt">기한 지남 {overdue}건</span>}
-                  {picked.length ? <Link className="btn btn-dense btn-w-xl" href={`/seller/orders/deposits/confirm?ids=${encodeURIComponent(rows.filter((r) => picked.includes(r.orderId)).map((r) => r.orderId).join(","))}`}>선택 입금 확인 ({picked.length})</Link> : <button className="btn btn-dense btn-w-xl" type="button" disabled>선택 입금 확인</button>}
+                  {picked.length ? <Link className="btn btn-dense btn-w-xl" href={`/seller/orders/deposits/confirm?${new URLSearchParams({ ids: rows.filter((r) => picked.includes(r.orderId)).map((r) => r.orderId).join(","), returnTo })}`}>선택 입금 확인 ({picked.length})</Link> : <button className="btn btn-dense btn-w-xl" type="button" disabled>선택 입금 확인</button>}
                 </>
               }
             />
@@ -187,7 +190,7 @@ export default function DepositsPage() {
                         <td className="num dep-due">{o.paymentDueAt ? formatDateTime(o.paymentDueAt) : "-"}</td>
                         <td>{left.urgent ? <b style={{ color: "var(--neg, #c0262c)" }}>{left.text}</b> : left.text}</td>
                         <td>
-                          {payable.some((r) => r.orderId === o.orderId) ? <Link className="btn btn-sm btn-w-sm" href={`/seller/orders/deposits/confirm?ids=${o.orderId}`}>입금 확인</Link> : <span className="t-c1 c-alt">{stateLabel}</span>}
+                          {payable.some((r) => r.orderId === o.orderId) ? <Link className="btn btn-sm btn-w-sm" href={`/seller/orders/deposits/confirm?${new URLSearchParams({ ids: o.orderId, returnTo })}`}>입금 확인</Link> : <span className="t-c1 c-alt">{stateLabel}</span>}
                         </td>
                       </tr>
                     );

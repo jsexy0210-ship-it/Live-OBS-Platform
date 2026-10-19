@@ -1,9 +1,13 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { Suspense } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 import { ReceiptOperations } from "../../../../../../../components/seller/ReceiptOperations";
 
-export default function ReceiptDetailPage() {
+function ReceiptDetail() {
   const { requestId } = useParams<{ requestId: string }>();
-  return <ReceiptOperations key={requestId} ids={[requestId]} single />;
+  const query = useSearchParams();
+  return <ReceiptOperations key={requestId} ids={[requestId]} single returnTo={query.get("returnTo")} />;
 }
+
+export default function ReceiptDetailPage() { return <Suspense><ReceiptDetail /></Suspense>; }

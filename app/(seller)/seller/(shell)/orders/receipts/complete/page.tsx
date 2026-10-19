@@ -7,7 +7,7 @@ import { ReceiptOperations } from "../../../../../../../components/seller/Receip
 function SelectedReceipts() {
   const query = useSearchParams();
   const ids = query.get("ids") ?? "";
-  return <ReceiptOperations key={ids} ids={ids ? ids.split(",") : []} />;
+  return <ReceiptOperations key={ids} ids={ids ? ids.split(",") : []} returnTo={query.get("returnTo")} />;
 }
 
 export default function CompleteReceiptsPage() {

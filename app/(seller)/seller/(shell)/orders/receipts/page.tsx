@@ -2,6 +2,7 @@
 
 import "../../../../../../styles/seller-orders.css";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CursorPagination, DateRangePicker, FormFoot, FormRow, FormSection, ListHead, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
@@ -42,6 +43,8 @@ const EMPTY: Filter = { from: "", to: "", kind: "", status: "", field: "nickname
 const todayMonth = () => new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 7);
 
 export default function ReceiptsPage() {
+  const listQuery = useSearchParams().toString();
+  const returnTo = `/seller/orders/receipts${listQuery ? `?${listQuery}` : ""}`;
   const { can } = useSeller();
   const canEdit = can("RECEIPT_TAX");
   // 조건은 주소(?from·to·kind·status·field·q)가 기준이다(Back 규칙)
@@ -204,7 +207,7 @@ export default function ReceiptsPage() {
             actions={
               <>
                 {canEdit && (
-                  picked.size > 0 ? <Link className="btn btn-sm btn-out" href={`/seller/orders/receipts/complete?ids=${encodeURIComponent([...picked].join(","))}`}>선택 발행 완료 처리 ({picked.size})</Link> : <button className="btn btn-sm btn-out" type="button" disabled>선택 발행 완료 처리</button>
+                  picked.size > 0 ? <Link className="btn btn-sm btn-out" href={`/seller/orders/receipts/complete?${new URLSearchParams({ ids: [...picked].join(","), returnTo })}`}>선택 발행 완료 처리 ({picked.size})</Link> : <button className="btn btn-sm btn-out" type="button" disabled>선택 발행 완료 처리</button>
                 )}
                 <a className="btn btn-sm btn-out" href={`/api/seller/receipt-requests/export?${exportParams}`} download>
                   이번 달 내려받기
@@ -262,7 +265,7 @@ export default function ReceiptsPage() {
                           </td>
                         )}
                         <td className="col-text">
-                          <Link href={`/seller/orders/receipts/${r.id}`} className="fw6">
+                          <Link href={`/seller/orders/receipts/${r.id}?${new URLSearchParams({ returnTo })}`} className="fw6">
                             {r.nickname ?? "탈퇴 회원"}
                           </Link>
                           <div className="t-c1 c-alt num">{r.orderNoLabel}</div>
@@ -283,15 +286,15 @@ export default function ReceiptsPage() {
                           <td>
                             <div className="acts2">
                               {r.issue?.status === "PENDING" ? (
-                                <Link className="btn btn-sm" href={`/seller/orders/receipts/${r.id}`}>
+                                <Link className="btn btn-sm" href={`/seller/orders/receipts/${r.id}?${new URLSearchParams({ returnTo })}`}>
                                   발행 완료 처리
                                 </Link>
                               ) : r.issue && (r.issue.status === "FAILED" || r.issue.status === "ON_HOLD") ? (
-                                <Link className="btn btn-sm" href={`/seller/orders/receipts/${r.id}`}>
+                                <Link className="btn btn-sm" href={`/seller/orders/receipts/${r.id}?${new URLSearchParams({ returnTo })}`}>
                                   다시 발행
                                 </Link>
                               ) : r.issue?.status === "ISSUED" ? (
-                                <Link className="btn btn-sm btn-out" href={`/seller/orders/receipts/${r.id}`}>
+                                <Link className="btn btn-sm btn-out" href={`/seller/orders/receipts/${r.id}?${new URLSearchParams({ returnTo })}`}>
                                   보기
                                 </Link>
                               ) : (

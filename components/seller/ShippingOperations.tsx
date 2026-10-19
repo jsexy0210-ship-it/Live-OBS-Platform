@@ -38,7 +38,7 @@ export function ShippingOperations({ ids, action, single = false, returnTo }: { 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
-  useUnsavedGuard(Object.values(tracking).some((value) => value.trim() !== ""));
+  const releaseGuard = useUnsavedGuard(Object.values(tracking).some((value) => value.trim() !== ""));
   const load = useCallback(async () => {
     const request = ++generation.current;
     if (!allowed || !valid) return;
@@ -58,7 +58,9 @@ export function ShippingOperations({ ids, action, single = false, returnTo }: { 
     const okIds = results.filter((r) => r.ok).map((r) => r.orderId);
     const failed = results.filter((r) => !r.ok);
     setErrors(Object.fromEntries(failed.map((r) => [r.orderId, r.message ?? FAIL[r.error ?? ""] ?? "처리하지 못했습니다"])));
-    setTracking((t) => Object.fromEntries(Object.entries(t).filter(([id]) => !okIds.includes(id))));
+    const remaining = Object.fromEntries(Object.entries(tracking).filter(([id]) => !okIds.includes(id)));
+    if (!Object.values(remaining).some((value) => value.trim() !== "")) await releaseGuard();
+    setTracking(remaining);
     setState((s) => s.kind === "ok" ? { ...s, items: s.items.filter((order) => !okIds.includes(order.id)) } : s);
     const parts = [okIds.length > 0 ? `${okIds.length}건 ${verb}` : null, failed.length > 0 ? `${failed.length}건은 처리하지 못했습니다. 빨간 글씨를 확인해 주십시오` : null].filter(Boolean).join(" · ");
     setToast({ text: parts, neg: failed.length > 0 && okIds.length === 0 });

@@ -2,8 +2,9 @@
 
 import { formatDateTime, formatTime } from "../../../../../../lib/client/format";
 import "../../../../../../styles/seller-orders.css";
-import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
+import { sanitizeNext } from "../../../../../../lib/client/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import RefundModal from "../../../../../../components/seller/RefundModal";
 import { OrderMemo, PrepareShipping } from "../../../../../../components/seller/OrderWork";
 import { PageHead } from "../../../../../../components/admin-ui";
@@ -24,7 +25,10 @@ const FAULT_LABEL = { BUYER: "구매자 사정", SELLER: "파트너스 사정" }
 // 송장의 택배사는 코드(CJ·HANJIN …)로 저장된다. 화면 이름으로 바꾸고, 모르는 값은 그대로 보인다.
 const courierName = (c: string) => (isCourier(c) ? COURIERS[c] : "택배사 확인 필요");
 
-export default function OrderDetailPage() {
+function OrderDetailContent() {
+  const query = useSearchParams();
+  const safeReturnTo = sanitizeNext(query.get("returnTo"), ["/seller/orders"]);
+  const listHref = safeReturnTo?.split("?")[0] === "/seller/orders" ? safeReturnTo : "/seller/orders";
   const { orderId } = useParams<{ orderId: string }>();
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [refundOpen, setRefundOpen] = useState(false);
@@ -41,7 +45,9 @@ export default function OrderDetailPage() {
       const r = await load();
       // 목록의 「환불 처리」로 들어오면 바로 환불 창을 연다(환불할 수 있는 주문일 때만)
       if (new URLSearchParams(window.location.search).get("refund") === "1") {
-        window.history.replaceState(null, "", `/seller/orders/${orderId}`);
+        const params = new URLSearchParams(window.location.search);
+        params.delete("refund");
+        window.history.replaceState(window.history.state, "", `/seller/orders/${orderId}${params.size ? `?${params}` : ""}`);
         if (r.ok && r.data.status === "PAID") setRefundOpen(true);
       }
     })();
@@ -71,7 +77,7 @@ export default function OrderDetailPage() {
                 <div className="st-ic neg">!</div>
                 <span className="t">주문을 찾을 수 없습니다</span>
                 <span className="s">삭제되었거나 다른 쇼핑몰의 주문입니다.</span>
-                <SmartBackButton fallback="/seller/orders" className="btn btn-sm btn-out">주문 목록으로</SmartBackButton>
+                <SmartBackButton fallback={listHref} className="btn btn-sm btn-out">주문 목록으로</SmartBackButton>
               </div>
             ) : (
               <div className="st" style={{ boxShadow: "none" }}>
@@ -107,6 +113,7 @@ export default function OrderDetailPage() {
       </Topbar>
       <main className="main">
         <PageHead
+          back={listHref}
           title={
             <>
               {nick} · {formatDateTime(o.createdAt)} 주문{" "}
@@ -310,3 +317,5 @@ export default function OrderDetailPage() {
     </>
   );
 }
+
+export default function OrderDetailPage() { return <Suspense><OrderDetailContent /></Suspense>; }
