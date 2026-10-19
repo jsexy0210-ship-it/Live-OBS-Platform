@@ -211,6 +211,8 @@ jobs:
       - name: Build
         id: e2e_build
         if: steps.gate.outputs.skip != 'true'
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
         run: npm run build
 
       - name: Start app
