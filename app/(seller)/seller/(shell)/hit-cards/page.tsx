@@ -1,9 +1,10 @@
 "use client";
 
 import "../../../../../styles/seller-broadcast.css";
+import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ListTable, CursorPagination, ListHead, Modal, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
-import { HitCardModal } from "../../../../../components/seller/broadcast/HitCardModal";
+import { ListTable, CursorPagination, ListHead, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { useScrollRestore } from "../../../../../lib/client/navigation";
 import { effectiveRange, listDefaults, type PeriodFilter } from "../../../../../lib/client/filterDefaults";
@@ -47,7 +48,10 @@ const query = (f: Filter, cursor?: string | null) => {
 };
 
 export default function HitCardsPage() {
-  const { can } = useSeller();
+  const { can, me } = useSeller();
+  const params = useSearchParams(), pathname = usePathname();
+  const listHref = `${pathname}${params.size ? `?${params.toString()}` : ""}`;
+  const detailHref = (id: string) => `/seller/hit-cards/${id}?${new URLSearchParams({ returnTo: listHref })}`;
   const allowed = can("BROADCAST_RUN");
   const [state, setState] = useState<Load>({ kind: "loading" });
   // 조회 조건은 주소(?from=&to=)가 기준이다: 상세 → ← 에서 그대로 돌아온다(docs/IA.md Back 규칙 3항)
@@ -61,24 +65,42 @@ export default function HitCardsPage() {
   const [page, setPage] = useState(1);
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
   const paging = useRef(false);
-  const [modal, setModal] = useState<{ kind: "add" } | { kind: "delete"; card: Card } | null>(null);
-  const [busy, setBusy] = useState(false);
+  const initialPaging = useRef(true);
+  const pagingScope = useRef("");
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
   // 조건이 바뀌면 마지막으로 보낸 조건의 응답만 반영한다
   const seq = useRef(0);
 
-  const load = useCallback(async (f: Filter) => {
+  const load = useCallback(async (f: Filter, restorePaging = false) => {
     const n = ++seq.current;
-    setPage(1); setCursors([undefined]); paging.current = false;
+    paging.current = false;
+    let scope = "";
+    try { scope = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify([me.sellerId, me.userId, query(f)])))), n => n.toString(16).padStart(2, "0")).join(""); } catch {}
+    if (n !== seq.current) return;
+    pagingScope.current = scope;
+    let restore: { page: number; cursors: (string | undefined)[] } | undefined;
+    if (restorePaging && scope) {
+      try {
+        const saved = JSON.parse(sessionStorage.getItem("onq:hit-cards:return") ?? "null");
+        sessionStorage.removeItem("onq:hit-cards:return");
+        if (saved?.scope === scope && Number.isInteger(saved.page) && saved.page >= 1 && Array.isArray(saved.cursors) && saved.page <= saved.cursors.length && saved.cursors[0] === null && saved.cursors.every((c: unknown, i: number) => i === 0 ? c === null : typeof c === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(c))) restore = { page: saved.page, cursors: saved.cursors.map((c: string | null) => c ?? undefined) };
+      } catch {}
+    }
+    setPage(restore?.page ?? 1); setCursors(restore?.cursors ?? [undefined]);
     setState({ kind: "loading" });
-    const r = await api<Page>(query(f));
+    const r = await api<Page>(query(f, restore?.cursors[restore.page - 1]));
     if (n !== seq.current) return;
     setState(r.ok ? { kind: "ok", items: r.data.items, next: r.data.nextCursor } : { kind: "error", status: r.status, error: r.error });
-  }, []);
+  }, [me.sellerId, me.userId]);
 
   useEffect(() => {
-    if (allowed) void load(applied);
+    if (allowed) { const restore = initialPaging.current; initialPaging.current = false; void load(applied, restore); }
+    return () => { seq.current++; };
   }, [allowed, applied, load]);
+  const rememberPage = () => {
+    if (!pagingScope.current) return;
+    try { sessionStorage.setItem("onq:hit-cards:return", JSON.stringify({ scope: pagingScope.current, page, cursors: cursors.map(c => c ?? null) })); } catch {}
+  };
 
   const turnPage = async (target: number) => {
     if (state.kind !== "ok" || paging.current || target === page || target < 1 || target > cursors.length + 1) return;
@@ -104,17 +126,6 @@ export default function HitCardsPage() {
     apply({ ...applied, from: draft.from, to: draft.to, grade: draft.grade.trim(), period: "" });
   };
 
-  const remove = async (card: Card) => {
-    setBusy(true);
-    const r = await api<{ ok: true }>(`/api/seller/hit-cards/${card.id}`, { method: "DELETE" });
-    setBusy(false);
-    // 이미 지워진 카드(404)는 목록만 다시 맞춘다
-    if (!r.ok && r.status !== 404) return setToast({ text: failMessage(r, "admin"), neg: true });
-    setModal(null);
-    setToast({ text: "HIT 카드를 지웠습니다" });
-    void load(applied);
-  };
-
   const items = state.kind === "ok" ? state.items : [];
 
   return (
@@ -125,10 +136,10 @@ export default function HitCardsPage() {
           title="HIT 카드 기록"
           path={["방송", "HIT 카드 기록"]}
           actions={
-            allowed && (
-              <button className="btn" type="button" onClick={() => setModal({ kind: "add" })}>
+            allowed && !me.readOnly && (
+              <Link className="btn" href={detailHref("new")} onClick={rememberPage}>
                 HIT 카드 기록하기
-              </button>
+              </Link>
             )
           }
         />
@@ -207,9 +218,7 @@ export default function HitCardsPage() {
                               <td className="ell col-text">{c.broadcast ? c.broadcast.title || "제목 없는 방송" : "-"}</td>
                               <td>
                                 <span className="acts2">
-                                  <button className="btn btn-sm btn-out" type="button" onClick={() => setModal({ kind: "delete", card: c })}>
-                                    카드 지우기
-                                  </button>
+                                  <Link className="btn btn-sm btn-out" href={detailHref(c.id)} onClick={rememberPage}>상세</Link>
                                 </span>
                               </td>
                             </tr>
@@ -226,38 +235,6 @@ export default function HitCardsPage() {
         )}
       </main>
 
-      {modal?.kind === "add" && (
-        <HitCardModal
-          targets={[]}
-          onClose={() => setModal(null)}
-          onDone={() => {
-            setModal(null);
-            setToast({ text: "HIT 카드를 기록했습니다" });
-            void load(applied);
-          }}
-        />
-      )}
-      {modal?.kind === "delete" && (
-        <Modal labelId="hit-del-title" busy={busy} onClose={() => setModal(null)}>
-          <div className="modal-h">
-            <h2 className="modal-t" id="hit-del-title">
-              이 HIT 카드를 지우시겠습니까?
-            </h2>
-            <span className="t-l2 c-alt">
-              {modal.card.nickname} · {modal.card.cardName}
-            </span>
-          </div>
-          <span className="t-l2">방송 화면에서도 바로 사라집니다. 지운 카드는 되살릴 수 없습니다.</span>
-          <div className="modal-f">
-            <button className="btn btn-out" type="button" disabled={busy} onClick={() => setModal(null)}>
-              취소
-            </button>
-            <button className="btn btn-neg" type="button" disabled={busy} onClick={() => void remove(modal.card)}>
-              카드 지우기
-            </button>
-          </div>
-        </Modal>
-      )}
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
     </>
   );
