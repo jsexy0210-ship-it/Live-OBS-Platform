@@ -11,7 +11,7 @@ const row = (index: number) => ({ id: `ui-${index}`, title: `검증 방송 ${ind
 const monthSummary = { broadcasts: 3, seconds: 7200, orders: 17, avgSales: 1200, avgOpenSeconds: 48 };
 
 async function mock(page: Page, count: number, state?: { wait: Promise<void>; status: number; error?: string }) {
-  const reads: URL[] = [], writes: string[] = [];
+  const reads: URL[] = [], writes: string[] = [], exports: URL[] = [];
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
     if (url.origin !== base.origin) return route.abort();
@@ -22,6 +22,10 @@ async function mock(page: Page, count: number, state?: { wait: Promise<void>; st
     }
     if (url.pathname === "/api/seller/me") return route.fulfill({ json: me });
     if (url.pathname === "/api/maintenance") return route.fulfill({ json: { active: false, scheduled: null } });
+    if (url.pathname === "/api/seller/broadcast/history/export") {
+      exports.push(url);
+      return route.fulfill({ status: 200, headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": 'attachment; filename="broadcast-history.csv"', "x-export-truncated": "1" }, body: "\uFEFF제목,매출\r\n검증 방송,1200\r\n" });
+    }
     if (url.pathname === "/api/seller/broadcast/history") {
       reads.push(url);
       if (state) {
@@ -32,7 +36,7 @@ async function mock(page: Page, count: number, state?: { wait: Promise<void>; st
     }
     return route.fulfill({ json: { items: [], notices: [], unreadCount: 0, total: 0 } });
   });
-  return { reads, writes };
+  return { reads, writes, exports };
 }
 
 for (const state of [
@@ -149,7 +153,7 @@ for (const [count, height] of [[5, 960], [10, 650]]) {
 }
 
 test("SA054: 이번 달 요약과 목록 적용 조건을 구분하고 금액 가림을 유지한다", async ({ page }) => {
-  const { reads, writes } = await mock(page, 10);
+  const { reads, writes, exports } = await mock(page, 10);
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto("/seller/broadcasts?from=2026-09-01&to=2026-09-30&layout=9x16");
   const summary = page.getByTestId("bh-month-summary");
@@ -167,15 +171,11 @@ test("SA054: 이번 달 요약과 목록 적용 조건을 구분하고 금액 �
   expect(href.pathname).toBe("/api/seller/broadcast/history/export");
   expect(Object.fromEntries(href.searchParams)).toEqual({ from: "2026-09-01", to: "2026-09-30", layout: "9x16" });
   await expect(exportLink).toHaveAttribute("title", "목록 검색 조건 · 최대 5,000건");
-  let exported: URL | undefined;
-  await page.route("**/api/seller/broadcast/history/export?*", (route) => {
-    exported = new URL(route.request().url());
-    return route.fulfill({ status: 200, headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": 'attachment; filename="broadcast-history.csv"', "x-export-truncated": "1" }, body: "\uFEFF제목,매출\r\n검증 방송,1200\r\n" });
-  });
   const downloaded = page.waitForEvent("download");
   await exportLink.click();
   expect((await downloaded).suggestedFilename()).toBe("broadcast-history.csv");
-  expect(exported?.search).toBe(href.search);
+  expect(exports).toHaveLength(1);
+  expect(exports[0].search).toBe(href.search);
   await page.getByRole("search").getByRole("button", { name: "검색", exact: true }).click();
   await expect.poll(() => reads.at(-1)?.searchParams.get("layout")).toBe("16x9");
   await expect(values).toHaveText(["3회", "17건", "1,200원", "48초"]);
