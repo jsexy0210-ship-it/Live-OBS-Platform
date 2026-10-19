@@ -299,11 +299,13 @@ export default function ApplicationDetailPage() {
                         "자동으로 확인한 결과",
                         state.kind === "ok" && state.reasons.length > 0 ? (
                           <ul style={{ margin: 0, paddingLeft: 18 }}>
-                            {state.reasons.map((c) => (
-                              <li key={c}>
-                                {state.app?.reasons.find((reason) => reason.code === c)?.text ?? reasonLabel(c)}
-                              </li>
-                            ))}
+                            {state.reasons.map((c) => {
+                              const description = state.app?.reasons.find((reason) => reason.code === c)?.text;
+                              return <li key={c}>
+                                <span className="bdg b-warn">{reasonLabel(c)}</span>
+                                {description && description !== reasonLabel(c) && <> {description}</>}
+                              </li>;
+                            })}
                           </ul>
                         ) : (
                           "문제가 된 항목이 없습니다."

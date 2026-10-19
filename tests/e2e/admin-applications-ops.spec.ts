@@ -91,7 +91,7 @@ test("운영: 이상 없음은 목록에서 한 번에 승인되고(처리한 �
   await expect(panel.getByText(/외부 조회/).last()).toContainText("아직 하지 않았습니다");
   await expect(panel.getByRole("button", { name: "국세청 다시 조회" })).toBeVisible();
   await expect(panel).toContainText("등록증");
-  await panel.getByLabel("내부 메모").fill("재개업 증빙 확인 필요");
+  await panel.getByRole("textbox", { name: "내부 메모", exact: true }).fill("재개업 증빙 확인 필요");
   await panel.getByRole("button", { name: "저장", exact: true }).click();
   await expect(panel.getByTestId("application-note")).toContainText("재개업 증빙 확인 필요");
   await page.screenshot({ path: "tests/e2e/screenshots/admin-applications-panel-1440.png" });
