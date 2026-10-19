@@ -177,9 +177,9 @@ async function names(db: Db, sellerUserIds: (string | null)[], adminIds: (string
   return { user: new Map(users.map((u) => [u.id, u.name])), admin: new Map(admins.map((a) => [a.id, a.name])) };
 }
 
-async function noticeTitle(db: Db, noticeId: string | null) {
+async function noticeTitle(db: Db, noticeId: string | null, sellerId?: string) {
   if (!noticeId) return null;
-  const n = await db.platformNotice.findUnique({ where: { id: noticeId }, select: { id: true, title: true } });
+  const n = await db.platformNotice.findFirst({ where: { id: noticeId, ...(sellerId ? targetedFor(sellerId) : {}) }, select: { id: true, title: true } });
   return n ? { id: n.id, title: n.title } : null;
 }
 
@@ -321,7 +321,7 @@ export async function getMyInquiry(db: PrismaClient, ctx: TenantContext, id: str
   return {
     ...rest,
     authorName: n.user.get(createdBySellerUserId) ?? null,
-    notice: await noticeTitle(db, noticeId),
+    notice: await noticeTitle(db, noticeId, ctx.sellerId),
     related: await relatedOf(db, ctx.sellerId, relatedOrderId, relatedBroadcastId),
     closedBy,
     handlerState: handlerStateOf(row.status, assignedAdminId),
