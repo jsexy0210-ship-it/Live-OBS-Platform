@@ -2,6 +2,7 @@
 
 import { formatDateTime } from "../../../../../lib/client/format";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { CursorPagination } from "../../../../../components/Pagination";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ListTable, PageHead } from "../../../../../components/admin-ui";
@@ -50,6 +51,8 @@ function query(tab: Tab, q: string, cursor?: string) {
 export default function ShippingPage() {
   const { can, me } = useSeller();
   const canEdit = can("ORDER_SHIPPING") && !me.readOnly;
+  const searchParams = useSearchParams().toString();
+  const returnTo = `/seller/shipping${searchParams ? `?${searchParams}` : ""}`;
   // 탭·검색어는 주소(쿼리 ?tab·?q)가 기준이다. 주문 상세에 갔다 Back으로 돌아와도 그대로 복원된다(UX 감사 9.3). 틀린 탭 값은 발송 대기로 본다
   const [u, setU] = useUrlState({ tab: "ready", q: "" });
   const tab: Tab = TABS.some((t) => t.key === u.tab) ? (u.tab as Tab) : "ready";
@@ -109,7 +112,7 @@ export default function ShippingPage() {
 
   const items = state.kind === "ok" ? state.items : [];
   const workIds = items.filter((item) => picked.has(item.orderId)).map((item) => item.orderId);
-  const workHref = `/seller/shipping/process?${new URLSearchParams({ ids: workIds.join(","), action: tab === "in_transit" ? "deliver" : "ship" })}`;
+  const workHref = `/seller/shipping/process?${new URLSearchParams({ ids: workIds.join(","), action: tab === "in_transit" ? "deliver" : "ship", returnTo })}`;
 
   const toggle = (id: string) =>
     setPicked((p) => {
@@ -201,7 +204,7 @@ export default function ShippingPage() {
                           </td>
                           <td>
                             {r.shipment ? <div className="col" style={{ gap: 2 }}><span>{courierName(r.shipment.courier)}</span><span className="t-c1 c-alt num">{r.shipment.trackingNumber}</span></div> : "—"}
-                            <Link className="btn btn-sm btn-out" href={`/seller/shipping/${r.orderId}`}>배송 작업 상세</Link>
+                            <Link className="btn btn-sm btn-out" href={`/seller/shipping/${r.orderId}?${new URLSearchParams({ returnTo })}`}>배송 작업 상세</Link>
                           </td>
                         </tr>
                       ))}

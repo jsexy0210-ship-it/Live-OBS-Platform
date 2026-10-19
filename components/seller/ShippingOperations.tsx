@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FormRow, FormSection, PageHead, useConfirm } from "../admin-ui";
-import { useUnsavedGuard } from "../../lib/client/navigation";
+import { sanitizeNext, useUnsavedGuard } from "../../lib/client/navigation";
 import { COURIERS, type Courier } from "../../lib/server/orders/shipping";
 import { Topbar, useSeller } from "./SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "./States";
@@ -20,7 +20,7 @@ const FAIL: Record<string, string> = {
 };
 
 // 목록은 읽기와 선택만 담당한다. 기존 주문별 부분 처리·택배사/송장 입력은 실제 상세에서 실행한다.
-export function ShippingOperations({ ids, action, single = false }: { ids: string[]; action?: "ship" | "deliver"; single?: boolean }) {
+export function ShippingOperations({ ids, action, single = false, returnTo }: { ids: string[]; action?: "ship" | "deliver"; single?: boolean; returnTo?: string | null }) {
   const { can, me } = useSeller();
   const { confirm } = useConfirm();
   const key = ids.join(",");
@@ -28,6 +28,8 @@ export function ShippingOperations({ ids, action, single = false }: { ids: strin
   const valid = requestIds.length > 0 && requestIds.length <= 100 && requestIds.every((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
   const allowed = can("ORDER_SHIPPING");
   const canEdit = allowed && !me.readOnly;
+  const safeReturnTo = sanitizeNext(returnTo, ["/seller/shipping"]);
+  const listHref = safeReturnTo?.split("?")[0] === "/seller/shipping" ? safeReturnTo : "/seller/shipping";
   const generation = useRef(0);
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; items: OrderDetail[]; missing: number }>({ kind: "loading" });
   const [courier, setCourier] = useState<Courier>("CJ");
@@ -87,7 +89,7 @@ export function ShippingOperations({ ids, action, single = false }: { ids: strin
     await send("/api/seller/shipments/deliver", ids, (chunk) => ({ orderIds: chunk }), (x) => x, "배송 완료", "배송 완료로 바꾸지 못했습니다. 잠시 후 다시 시도해 주십시오");
   };
   return <><Topbar crumb="판매 › 배송 › 배송 처리 상세" /><main className="main">
-    <PageHead title="배송 처리 상세" back="/seller/shipping" />
+    <PageHead title="배송 처리 상세" back={listHref} />
     {!allowed ? <NoPermission need="주문·배송" /> : !valid ? <div className="card pad">작업할 주문을 목록에서 다시 선택해 주십시오.</div> : state.kind === "loading" ? <div className="card"><LoadingRows rows={4} /></div> : state.kind === "error" ? state.status === 403 ? <NoPermission need="주문·배송" /> : <div className="card"><ErrorState title="선택한 주문을 불러오지 못했습니다" onRetry={() => void load()} /></div> : <section className="col" style={{ gap: 16 }} aria-label="배송 처리 상세">
       <p>선택한 {items.length}건만 처리합니다. 이미 처리됐거나 바꿀 수 없는 주문은 제외합니다.</p>
       {state.missing > 0 && <p role="status">찾을 수 없는 주문 {state.missing}건 · 남은 주문 {items.length}건</p>}

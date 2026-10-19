@@ -109,3 +109,50 @@ test("주문·배송 권한이 없는 직원은 메뉴가 안 보이고, 주소�
   await expect(page.getByText("필요한 권한: 주문·배송", { exact: false })).toBeVisible();
   await expect(page.getByRole("link", { name: "배송 · 송장", exact: true })).toHaveCount(0);
 });
+
+test("배송 작업 상세는 삭제된 선택만 제외하며 조회 오류와 읽기 전용에서는 전송하지 않는다", async ({ page }) => {
+  await page.goto("/seller/login");
+  await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
+  await expect(page).toHaveURL(/\/seller$/);
+  const ids = ["00000000-0000-4000-8000-0000000000a1", "00000000-0000-4000-8000-0000000000b2"];
+  const writes: unknown[] = [];
+  let failure = 404;
+  await page.route("**/api/seller/orders/**", async (route) => {
+    expect(route.request().method()).toBe("GET");
+    const id = new URL(route.request().url()).pathname.split("/").at(-1);
+    return id === ids[0] ? route.fulfill({ json: { id, orderNo: 1, orderNoLabel: "합성 주문 1", status: "PAID", shipment: null, shippingAddress: { isRemote: false }, buyer: { broadcastNickname: "배송 합성" } } }) : route.fulfill({ status: failure, json: { error: failure === 404 ? "not_found" : "server_error" } });
+  });
+  await page.route("**/api/seller/shipments**", async (route) => {
+    if (route.request().method() === "GET") return route.fulfill({ json: { shipments: [], nextCursor: null } });
+    expect(route.request().method()).toBe("POST");
+    const body = route.request().postDataJSON(); writes.push(body);
+    return route.fulfill({ json: { results: body.items.map((item: { orderId: string }) => ({ orderId: item.orderId, ok: true })) } });
+  });
+  const work = `/seller/shipping/process?${new URLSearchParams({ ids: [ids[0], ids[0].toUpperCase(), ids[1]].join(","), action: "ship", returnTo: "/seller/shipping?tab=ready&q=배송" })}`;
+  await page.goto(work);
+  await page.reload();
+  const detail = page.getByRole("region", { name: "배송 처리 상세", exact: true });
+  await expect(detail.getByRole("status")).toHaveText("찾을 수 없는 주문 1건 · 남은 주문 1건");
+  await expect(detail.locator("section.au-fs")).toHaveCount(1);
+  await detail.getByRole("textbox", { name: "주문 1 송장번호", exact: true }).fill("OWNED123456");
+  await detail.getByRole("button", { name: "송장 저장 (1)", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "송장 저장", exact: true }).click();
+  await expect(detail.locator("section.au-fs")).toHaveCount(0);
+  expect(writes).toEqual([{ items: [{ orderId: ids[0], courier: "CJ", trackingNumber: "OWNED123456" }] }]);
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL(new URL("/seller/shipping?tab=ready&q=%EB%B0%B0%EC%86%A1", page.url()).href);
+  failure = 500;
+  await page.goto(work);
+  await expect(page.getByText("선택한 주문을 불러오지 못했습니다", { exact: true })).toBeVisible();
+  await expect(detail).toHaveCount(0);
+  expect(writes).toHaveLength(1);
+  await page.route("**/api/seller/me", async (route) => {
+    const response = await route.fetch();
+    const me = await response.json();
+    await route.fulfill({ response, json: { ...me, isOwner: false, permissions: ["ORDER_SHIPPING"], readOnly: true } });
+  });
+  await page.goto(`/seller/shipping/${ids[0]}`);
+  await expect(detail).toBeVisible();
+  await expect(detail.locator("input, select, button")).toHaveCount(0);
+  expect(writes).toHaveLength(1);
+});
