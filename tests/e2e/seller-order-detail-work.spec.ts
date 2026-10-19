@@ -8,10 +8,10 @@ async function login(page: Page) {
   await submitSellerLogin(page, "demo-owner@example.com", process.env.E2E_PASSWORD ?? "");
   await expect(page).toHaveURL(/\/seller$/);
 }
-async function fixture(page: Page) {
+async function fixture(page: Page, missingIds: string[] = [], status = "PAID") {
   const posts: unknown[] = [], memoWrites: unknown[] = [];
   let memo = "", prepared = false;
-  const order = (id: string) => ({ id, orderNo: ids.indexOf(id) + 1, orderNoLabel: `20261019-000${ids.indexOf(id) + 1}`, status: "PAID", createdAt: "2026-10-19T00:00:00Z", paidAt: "2026-10-19T00:00:00Z", cancelledAt: null, refundedAt: null, totalAmount: 1000, rewardUsedAmount: 0, shippingFee: 0, paymentMethod: "CARD", refundAmount: null, refundFault: null, returnFeeDeducted: null, items: [], shipment: null, shippingAddress: null, buyer: { id, broadcastNickname: `선택 주문 ${ids.indexOf(id) + 1}` }, queueState: id === ids[2] ? "waiting" : "done", shippingPreparedAt: prepared && id !== ids[2] ? "2026-10-19T01:00:00Z" : null, queueVersion: 1, refundPreview: null, history: [], couponRedemption: null });
+  const order = (id: string) => ({ id, orderNo: ids.indexOf(id) + 1, orderNoLabel: `20261019-000${ids.indexOf(id) + 1}`, status, broadcastNicknameSnapshot: `선택 주문 ${ids.indexOf(id) + 1}`, createdAt: "2026-10-19T00:00:00Z", paidAt: status === "PAID" ? "2026-10-19T00:00:00Z" : null, cancelledAt: null, refundedAt: null, totalAmount: 1000, rewardUsedAmount: 0, shippingFee: 0, paymentMethod: "CARD", refundAmount: null, refundFault: null, returnFeeDeducted: null, items: [], shipment: null, shippingAddress: null, buyer: { id, broadcastNickname: `선택 주문 ${ids.indexOf(id) + 1}` }, queueState: id === ids[2] ? "waiting" : "done", shippingPreparedAt: prepared && id !== ids[2] ? "2026-10-19T01:00:00Z" : null, queueVersion: 1, refundPreview: null, history: [], couponRedemption: null });
   await page.route("**/api/seller/orders**", async (route) => {
     const request = route.request(), path = new URL(request.url()).pathname;
     if (request.method() === "POST" && path === "/api/seller/orders/bulk") {
@@ -28,7 +28,7 @@ async function fixture(page: Page) {
     if (path === "/api/seller/orders/counts") return route.fulfill({ json: { counts: { total: 3, today: 3, unpaid: 0, trackingMissing: 3, queueWaiting: 1, queueDone: 2, queueDonePending: 2, refundRequested: 0 } } });
     if (path === "/api/seller/orders") return route.fulfill({ json: { orders: ids.map((id) => ({ ...order(id), itemSummary: { firstProductName: "합성 상품", otherCount: 0 }, shipped: false, refundable: true, refundedAmount: 0, refundedQuantity: 0, remainingAmount: 1000 })), nextCursor: null } });
     const id = ids.find((id) => path === `/api/seller/orders/${id}`);
-    if (id) return route.fulfill({ json: order(id) });
+    if (id && !missingIds.includes(id)) return route.fulfill({ json: order(id) });
     return route.fulfill({ status: 404, json: { error: "not_found" } });
   });
   return { posts, memoWrites };
@@ -97,4 +97,38 @@ test("읽기 전용에서는 선택 주문 작업의 조회와 변경을 보내�
   await expect(page.getByTestId("permission-card")).toBeVisible();
   await expect(page.getByRole("button", { name: "배송 준비로 변경", exact: true })).toHaveCount(0);
   expect(requests).toEqual([]);
+});
+
+test("선택 배송 준비는404만 제외해 남은 주문을 처리하고 유효 주문이 없으면 변경하지 않는다", async ({ page }) => {
+  await login(page);
+  const owned = await fixture(page, [ids[1]]);
+  await page.goto(`/seller/orders/prepare?ids=${ids[0]},${ids[1]}`);
+  await expect(page.getByRole("table").locator("tbody tr")).toHaveCount(1);
+  await expect(page.getByRole("status").filter({ hasText: "찾을 수 없는 주문 1건 · 남은 주문 1건" })).toBeVisible();
+  await page.getByRole("button", { name: "배송 준비로 변경", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "1건을 배송 준비로 바꿨습니다" })).toBeVisible();
+  expect(owned.posts).toEqual([{ action: "prepare_shipping", orderIds: [ids[0]] }]);
+  await page.goto(`/seller/orders/prepare?ids=${ids[1]}`);
+  await expect(page.getByRole("button", { name: "배송 준비로 변경", exact: true })).toBeDisabled();
+  expect(owned.posts).toHaveLength(1);
+});
+
+test("선택 입금 확인은404만 제외하고 남은 주문과 상세 버전만 전송한다", async ({ page }) => {
+  await login(page);
+  await fixture(page, [ids[1]], "PENDING_PAYMENT");
+  const writes: unknown[] = [];
+  await page.route("**/api/seller/queue/version", (route) => route.fulfill({ json: { version: 77 } }));
+  await page.route("**/api/seller/payments/deposits/confirm", (route) => {
+    const body = route.request().postDataJSON(); writes.push(body);
+    return route.fulfill({ json: { results: body.orderIds.map((orderId: string) => ({ orderId, result: "paid" })) } });
+  });
+  await page.goto(`/seller/orders/deposits/confirm?ids=${ids[0]},${ids[1]}`);
+  await expect(page.getByRole("table").locator("tbody tr")).toHaveCount(1);
+  await expect(page.getByRole("status").filter({ hasText: "찾을 수 없는 주문 1건 · 남은 주문 1건" })).toBeVisible();
+  await page.getByRole("region", { name: "입금을 확인하시겠습니까?" }).getByRole("button", { name: "입금 확인", exact: true }).click();
+  await expect(page.getByText("1건 입금 확인 · 주문대기(방송에서 개봉할 순서 목록)에 올라갔습니다", { exact: true })).toBeVisible();
+  expect(writes).toEqual([{ orderIds: [ids[0]], expectedVersion: 77 }]);
+  await page.goto(`/seller/orders/deposits/confirm?ids=${ids[1]}`);
+  await expect(page.getByRole("region", { name: "입금을 확인하시겠습니까?" }).getByRole("button", { name: "입금 확인", exact: true })).toBeDisabled();
+  expect(writes).toHaveLength(1);
 });
