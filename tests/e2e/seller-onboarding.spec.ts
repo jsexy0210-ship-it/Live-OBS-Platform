@@ -54,7 +54,7 @@ test("쇼핑몰 통합: 단계가 서버 순서·완료 상태 그대로 보이�
 
   // 닫기 → 단계 목록이 숨고 서버에도 닫힘, 다시 열기 → 돌아옴
   await page.getByRole("button", { name: "안내 숨기기" }).click();
-  await page.getByRole("dialog", { name: "시작하기 안내를 숨길까요?" }).getByRole("button", { name: "숨기기" }).click();
+  await page.getByRole("dialog", { name: "시작하기 안내를 숨기시겠습니까?", exact: true }).getByRole("button", { name: "숨기기" }).click();
   await expect(page.getByText("시작하기를 닫았습니다")).toBeVisible();
   await expect(rows).toHaveCount(0);
   expect((await apiState(page)).dismissed).toBe(true);

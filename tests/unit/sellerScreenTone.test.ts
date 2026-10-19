@@ -50,6 +50,7 @@ const APPROVED_EXTERNAL_COPY: Record<string, readonly string[]> = {
 // 결과 미확인 조정의 복구·새 요청 구분에 승인된 문구만 허용한다.
 const APPROVED_ADJUST_COPY: Record<string, readonly string[]> = {
   "app/(seller)/seller/(shell)/rewards/balances/page.tsx": [
+    "거절된 요청의 보관 정보를 지우지 못했어요. 화면을 다시 불러와 주세요.",
     "요청 정보를 확인하지 못했어요. 화면을 다시 불러와 주세요.",
     "재시도 정보를 보관하지 못했어요. 원장에서 이전 조정 결과를 확인해 주세요.",
     "조정은 완료됐지만 요청 정보를 정리하지 못했어요. 원장에서 결과를 확인해 주세요.",

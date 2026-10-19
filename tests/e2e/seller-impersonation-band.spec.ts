@@ -34,11 +34,11 @@ async function startViewing(page: Page, baseURL: string, scopes: string[]) {
 }
 
 test("띠에 고른 범위가 보이고, 범위 밖 화면은 「볼 수 없는 화면입니다」 안내만 보인다", async ({ page, baseURL }) => {
-  await startViewing(page, baseURL!, ["BROADCAST", "OVERLAY"]);
+  await startViewing(page, baseURL!, ["OVERLAY"]);
   await page.goto("/seller");
   const bar = page.locator(".imp-bar");
   await expect(bar).toContainText("읽기 전용 · 대신 보기");
-  await expect(bar).toContainText("범위: 방송 대시보드 · 오버레이");
+  await expect(bar).toContainText("범위: 오버레이");
   await page.goto("/seller/orders");
   const blocked = page.getByTestId("imp-out-of-scope");
   await expect(blocked).toContainText("볼 수 없는 화면입니다.");

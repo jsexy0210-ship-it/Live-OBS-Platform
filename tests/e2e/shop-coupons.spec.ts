@@ -131,7 +131,8 @@ test.describe.serial("SA-035 쿠폰 관리 · SH-028 내 쿠폰함", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await ownerOpen(page, "/seller/coupons");
     const row = page.getByTestId("coupon-row").filter({ hasText: "10월 스타라이트 오픈 기념" });
-    await expect(row.locator("td").nth(3)).toHaveText("1");
+    await expect(page.getByRole("columnheader", { name: "발급", exact: true })).toHaveCount(1);
+    await expect(row.locator("td").nth(4)).toHaveText("1");
     // 발급한 쿠폰은 삭제 버튼이 없다
     await expect(row.getByRole("button", { name: "삭제" })).toHaveCount(0);
     await row.getByRole("button", { name: "발급 중지" }).click();

@@ -21,11 +21,13 @@ async function open(page: Page) {
 }
 const rowOf = (page: Page, orderNo: number) => page.getByTestId("refund-request-row").filter({ has: page.locator("td:first-child", { hasText: new RegExp(`-0*${orderNo}$`) }) });
 
-test("주문 목록에서 환불 요청 화면으로 들어간다", async ({ page }) => {
+test("주문 메뉴에서 취소 · 환불 요청 화면으로 들어간다", async ({ page }) => {
   await page.goto(`/seller/login?next=${encodeURIComponent("/seller/orders")}`);
   await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
-  // 왼쪽 메뉴에도 같은 이름의 항목이 있어, 주문 목록 화면 안의 링크로 한정한다
-  await page.locator("main").getByRole("link", { name: "환불 요청" }).click();
+  // 주문 목록의 조건부 업무 CTA와 별개로 항상 있는 정본 메뉴 진입을 확인한다.
+  const entry = page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "취소 · 환불", exact: true });
+  await expect(entry).toHaveAttribute("href", "/seller/orders/refund-requests");
+  await entry.click();
   await expect(page).toHaveURL(/\/seller\/orders\/refund-requests$/);
   await expect(page.getByRole("heading", { level: 1, name: "취소 · 환불 요청" })).toBeVisible();
   await expect(page.getByRole("tab", { name: /처리 대기/ })).toHaveAttribute("aria-selected", "true");

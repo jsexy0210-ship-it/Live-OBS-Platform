@@ -133,6 +133,6 @@ test("플랫폼 메일 한도 저장과 충전 스위치: 확인 창을 거치�
 
 test("CS는 메뉴가 없고 주소로 들어와도 권한 안내만 본다", async ({ page }) => {
   await open(page, csEmail);
-  await expect(page.getByTestId("admin-no-access")).toHaveText("이 화면을 볼 권한이 없습니다");
+  await expect(page.getByTestId("admin-no-access").getByRole("heading", { level: 1, name: "이 화면을 볼 권한이 없습니다", exact: true })).toBeVisible();
   await expect(page.getByTestId("price-row")).toHaveCount(0);
 });
