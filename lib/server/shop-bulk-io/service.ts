@@ -54,6 +54,28 @@ export const BULK_MESSAGES = {
 } as const;
 export type BulkFailure = keyof typeof BULK_MESSAGES;
 export const bulkErrorBody = (reason: BulkFailure) => ({ error: reason, message: BULK_MESSAGES[reason] });
+// 양식과 열 이름이 다를 때의 안내(정본 SA-018): 「가격」 열을 「판매가」로 바꿔 주십시오 (2개 열 불일치)
+const ro = (w: string) => {
+  const c = w.charCodeAt(w.length - 1) - 0xac00;
+  return c >= 0 && c < 11172 && (c % 28 === 0 || c % 28 === 8) ? "로" : "으로";
+};
+export function headerMismatchMessage(columns: ColumnMismatch[]): string {
+  const swap = columns.find((c) => c.found && c.expected);
+  const unknown = columns.find((c) => c.found && !c.expected);
+  const missing = columns.find((c) => !c.found && c.expected);
+  const lead = swap
+    ? `「${swap.found}」 열을 「${swap.expected}」${ro(swap.expected!)} 바꿔 주십시오`
+    : unknown
+      ? `「${unknown.found}」 열은 양식에 없습니다. 지우거나 양식의 열 이름으로 바꿔 주십시오`
+      : missing
+        ? `「${missing.expected}」 열이 없습니다. 양식의 열을 추가해 주십시오`
+        : "양식을 다시 내려받아 사용해 주십시오";
+  return `양식과 열 이름이 다릅니다 · ${lead} (${columns.length}개 열 불일치)`;
+}
+export const bulkFailureBody = (r: { reason: BulkFailure; columns?: ColumnMismatch[] }) =>
+  r.reason === "invalid_header" && r.columns && r.columns.length > 0
+    ? { error: r.reason, message: headerMismatchMessage(r.columns), columns: r.columns }
+    : bulkErrorBody(r.reason);
 export const bulkFailureStatus = (reason: BulkFailure) =>
   reason === "job_not_found"
     ? 404
@@ -88,10 +110,14 @@ type ImportProduct = {
   categoryIds: string[];
   categories: string[];
   optionMeta?: { line: number; hasStock: boolean }[];
+  // 옵션 열이 없는 파일(필수 열만 쓴 양식): 상품마다 옵션 하나(기본)이고 재고 칸이 그 옵션의 재고다. 기존 상품 수정은 옵션이 하나뿐인 상품에만 적용한다.
+  defaultOption?: boolean;
   update?: { productId: string; currentPrice: number; stock: StockChange[] };
 };
 type UpdateRecord = { productId: string; name: string; price: { before: number; after: number } | null; stock: { optionId: string; name: string; delta: number }[] };
-type Result<T> = { ok: true; value: T } | { ok: false; reason: BulkFailure };
+// invalid_header일 때 어느 열이 양식과 다른지(columns)도 함께 준다.
+export type ColumnMismatch = { found: string | null; expected: string | null };
+type Result<T> = { ok: true; value: T } | { ok: false; reason: BulkFailure; columns?: ColumnMismatch[] };
 
 const TEMPLATE_ROWS: string[][] = [
   [...COLUMNS],
@@ -99,6 +125,30 @@ const TEMPLATE_ROWS: string[][] = [
   ["슬리브 세트", "3000", "판매중", "", "결제 시", "", "검정", "0", "10", "SL-B"],
   ["", "", "", "", "", "", "흰색", "500", "5", "SL-W"],
 ];
+// 열 이름: 정본은 「옵션」이고 지금 양식은 「옵션명」 — 둘 다 받는다. 자주 틀리는 이름은 바른 이름을 알려 준다.
+const HEADER_ALIASES: Record<string, Column> = { 옵션: "옵션명" };
+const HEADER_SUGGESTIONS: Record<string, string> = {
+  가격: "판매가",
+  "판매 가격": "판매가",
+  판매가격: "판매가",
+  "상품 이름": "상품명",
+  상품이름: "상품명",
+  이름: "상품명",
+  품명: "상품명",
+  수량: "재고",
+  재고수량: "재고",
+  "재고 수량": "재고",
+  분류: "카테고리",
+  "옵션 이름": "옵션명",
+  옵션이름: "옵션명",
+  추가금: "옵션추가금",
+  "옵션 추가금": "옵션추가금",
+  "상품 설명": "설명",
+  상품설명: "설명",
+  "판매 상태": "상태",
+};
+const DEFAULT_OPTION_NAME = "기본";
+const REQUIRED_COLUMNS = ["상품명", "카테고리", "판매가", "재고"] as const;
 export const templateCsv = (): string => formatCsv(TEMPLATE_ROWS);
 export const templateXlsx = (): Buffer => writeXlsx(TEMPLATE_ROWS, "상품 일괄 등록");
 
@@ -135,11 +185,16 @@ export function parseProductRows(rows: string[][], categories: Map<string, strin
   if (!head) return { ok: false, reason: "invalid_header" };
   const names = head.map((h) => h.trim());
   const index = new Map<string, number>();
+  const columns: ColumnMismatch[] = [];
   for (const [i, n] of names.entries()) {
-    if (!(COLUMNS as readonly string[]).includes(n) || index.has(n)) return { ok: false, reason: "invalid_header" };
-    index.set(n, i);
+    const canon = (COLUMNS as readonly string[]).includes(n) ? n : HEADER_ALIASES[n];
+    if (!canon) columns.push({ found: n, expected: HEADER_SUGGESTIONS[n] ?? null });
+    else if (index.has(canon)) columns.push({ found: n, expected: null });
+    else index.set(canon, i);
   }
-  if (!index.has("상품명") || !index.has("판매가")) return { ok: false, reason: "invalid_header" };
+  // 필수 열(정본: 상품명·카테고리·판매가·재고). 다른 이름으로 쓴 열이 이미 짚였으면 따로 세지 않는다.
+  for (const r of REQUIRED_COLUMNS) if (!index.has(r) && !columns.some((c) => c.expected === r)) columns.push({ found: null, expected: r });
+  if (columns.length > 0) return { ok: false, reason: "invalid_header", columns };
   const data = body.map((cells, i) => ({ line: i + 2, cells })).filter((r) => r.cells.some((c) => c.trim() !== ""));
   if (data.length === 0) return { ok: false, reason: "empty_file" };
   if (data.length > MAX_IMPORT_ROWS) return { ok: false, reason: "too_many_rows" };
@@ -148,6 +203,7 @@ export function parseProductRows(rows: string[][], categories: Map<string, strin
     const i = index.get(col);
     return i === undefined ? "" : (cells[i] ?? "").trim();
   };
+  const hasOptionColumn = index.has("옵션명");
   type Group = { line: number; rows: { line: number; cells: string[] }[] };
   const groups: Group[] = [];
   const errors: RowError[] = [];
@@ -171,7 +227,8 @@ export function parseProductRows(rows: string[][], categories: Map<string, strin
     const price = intCell(get(first, "판매가"), true);
     if (price === null) err(g.line, "판매가", "판매가는 숫자로 입력해 주십시오");
     const statusLabel = get(first, "상태");
-    const status = statusLabel === "" ? "DRAFT" : STATUS_BY_LABEL[statusLabel];
+    // 상태 열이 없는 파일(새 양식)의 새 상품은 「숨김」으로 등록한다(이미지를 올린 뒤 공개, 정본). 상태 열이 있는 기존 양식은 비우면 준비중 그대로.
+    const status = statusLabel === "" ? (index.has("상태") ? "DRAFT" : "HIDDEN") : STATUS_BY_LABEL[statusLabel];
     if (!status) err(g.line, "상태", "상태는 판매중·품절·준비중·숨김 중에서 입력해 주십시오");
     const deductLabel = get(first, "차감시점");
     const deduct = deductLabel === "" ? "PAYMENT" : DEDUCT_BY_LABEL[deductLabel];
@@ -199,7 +256,7 @@ export function parseProductRows(rows: string[][], categories: Map<string, strin
           if (get(r.cells, col) !== "" && !same) err(r.line, col, "옵션 줄에는 상품 정보를 비워 두십시오");
         }
       }
-      const optName = unguardText(get(r.cells, "옵션명"));
+      const optName = hasOptionColumn ? unguardText(get(r.cells, "옵션명")) : k === 0 ? DEFAULT_OPTION_NAME : "";
       const delta = get(r.cells, "옵션추가금");
       const stock = get(r.cells, "재고");
       const sku = unguardText(get(r.cells, "SKU"));
@@ -227,7 +284,7 @@ export function parseProductRows(rows: string[][], categories: Map<string, strin
       errors.push(...errs);
       bad.add(g);
       skipped++;
-    } else products.push({ row: g.line, input, categoryIds, categories: categoryNames, optionMeta });
+    } else products.push({ row: g.line, input, categoryIds, categories: categoryNames, optionMeta, defaultOption: !hasOptionColumn });
   }
   errors.sort((a, b) => a.row - b.row);
   return { ok: true, value: { totalRows: data.length, products, errors, skippedProducts: skipped + (bad.has("orphan") ? 1 : 0) } };
@@ -284,8 +341,9 @@ async function classifyProducts(db: PrismaClient, ctx: TenantContext, parsed: Pa
     else {
       seen.add(cur.id);
       const stock: StockChange[] = [];
-      for (const [i, o] of (p.input.options as { name: string; stock: number }[]).entries()) {
-        const matches = cur.options.filter((x) => x.name === o.name);
+      if (p.defaultOption && cur.options.length !== 1) errs.push({ row: p.row, column: "재고", message: `상품 「${name}」는 옵션이 ${cur.options.length}개라 어느 옵션의 재고인지 알 수 없습니다. 옵션 열을 넣어 올려 주십시오` });
+      else for (const [i, o] of (p.input.options as { name: string; stock: number }[]).entries()) {
+        const matches = p.defaultOption ? cur.options : cur.options.filter((x) => x.name === o.name);
         const found = matches[0];
         const meta = p.optionMeta?.[i];
         if (matches.length > 1) errs.push({ row: meta?.line ?? p.row, column: "옵션명", message: `상품 「${name}」에 옵션 「${o.name}」이 여러 개입니다. 옵션 이름을 서로 다르게 바꾼 뒤 올려 주십시오` });
