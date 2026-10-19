@@ -141,12 +141,14 @@ describe("방송·오버레이 범위", () => {
 describe("대리 조회 proxy 허용 목록·화면 권한", () => {
   it("범위 조회 경로만 GET으로 열리고 토큰·내보내기·쓰기·그 밖의 경로는 막힌다", () => {
     const id = "123e4567-e89b-42d3-a456-426614174000";
-    for (const p of ["/api/seller/queue", "/api/seller/external-shops", "/api/seller/overlay/address-info", "/api/seller/overlay/layout", "/api/seller/broadcast/summary", `/api/seller/broadcast/${id}`]) {
+    for (const p of ["/api/seller/queue", "/api/seller/external-shops", "/api/seller/overlay/address-info", "/api/seller/overlay/layout", "/api/seller/broadcast/summary", `/api/seller/broadcast/${id}`, `/api/seller/hit-cards/${id}`, `/api/seller/hit-cards/${id.toUpperCase()}`]) {
       expect(impersonationRequestAllowed("GET", p)).toBe(true);
       expect(impersonationRequestAllowed("POST", p)).toBe(false);
       expect(impersonationRequestAllowed("PUT", p)).toBe(false);
+      expect(impersonationRequestAllowed("DELETE", p)).toBe(false);
+      expect(impersonationRequestAllowed("PATCH", p)).toBe(false);
     }
-    for (const p of ["/api/seller/overlay/token", "/api/seller/external-shops/abc", "/api/seller/queue/reorder", "/api/seller/broadcast/not-uuid", "/api/seller/queue/stream"]) expect(impersonationRequestAllowed("GET", p)).toBe(false);
+    for (const p of ["/api/seller/overlay/token", "/api/seller/external-shops/abc", "/api/seller/queue/reorder", "/api/seller/broadcast/not-uuid", "/api/seller/queue/stream", "/api/seller/hit-cards/not-uuid", "/api/seller/hit-cards/export", `/api/seller/hit-cards/${id}/replay`, `/api/seller/hit-cards/${id}/extra`]) expect(impersonationRequestAllowed("GET", p)).toBe(false);
   });
 
   it("me 화면 권한은 고른 범위에서만 나온다", () => {
