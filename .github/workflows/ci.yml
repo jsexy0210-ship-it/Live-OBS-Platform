@@ -159,7 +159,7 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql://live_obs:live_obs@localhost:5432/live_obs_test
-      SMOKE_SPECS: admin-shell admin-subscriptions layout-admin-login login-tabs partners-auth admin-dashboard admin-home branding public-notices public-info public-landing design-canonical seller-deposits seller-products seller-members seller-reviews-title seller-stats seller-broadcast seller-home seller-overlay-home seller-overlay-editor seller-shop-legal shop-content shop-detail-board shop-products shop-list-pager shop-search shop-filter admin-ops admin-maintenance phase-one-display admin-cursor-lists10 whole-array-lists10 seller-nested-lists10 admin-total-lists10 seller-cursor-lists10 seller-query-lists10 remaining-six-lists10 remaining-seven-lists10 admin-safe-disk-optimization admin-monitor layout-controls product-reviews seller-product-media seller-product-preview seller-orders seller-plan-menu seller-receipts shop-coupons shop-locked
+      SMOKE_SPECS: admin-shell admin-subscriptions layout-admin-login login-tabs partners-auth admin-dashboard admin-home branding public-notices public-info public-landing design-canonical seller-deposits seller-products seller-members seller-reviews-title seller-stats seller-broadcast seller-home seller-overlay-home seller-overlay-editor seller-shop-legal shop-content shop-detail-board shop-products shop-list-pager shop-search shop-filter admin-ops admin-maintenance phase-one-display admin-cursor-lists10 whole-array-lists10 seller-nested-lists10 admin-total-lists10 seller-cursor-lists10 seller-query-lists10 remaining-six-lists10 remaining-seven-lists10 admin-safe-disk-optimization tests/e2e/admin-monitor\.spec\.ts$ tests/e2e/layout-controls\.spec\.ts$ tests/e2e/product-reviews\.spec\.ts$ tests/e2e/seller-product-media\.spec\.ts$ tests/e2e/seller-product-preview\.spec\.ts$ tests/e2e/seller-orders\.spec\.ts$ tests/e2e/seller-plan-menu\.spec\.ts$ tests/e2e/seller-receipts\.spec\.ts$ tests/e2e/shop-coupons\.spec\.ts$ tests/e2e/shop-locked\.spec\.ts$
       # 방송·채팅 스모크는 실제 YouTube 호출 없이 임의 키와 스케줄러 중지로 실행한다.
       YOUTUBE_API_KEY: e2e-dummy
     steps:
@@ -211,6 +211,8 @@ jobs:
       - name: Build
         id: e2e_build
         if: steps.gate.outputs.skip != 'true'
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
         run: npm run build
 
       - name: Start app
