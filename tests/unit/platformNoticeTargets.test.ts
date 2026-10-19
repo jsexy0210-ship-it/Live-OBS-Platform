@@ -1,7 +1,7 @@
 import type { PlatformNotice, PrismaClient } from "@prisma/client";
 import { describe, expect, it, vi } from "vitest";
 import type { AdminSessionContext } from "../../lib/server/auth/session";
-import { createPlatformNotice, targetedFor, updatePlatformNotice } from "../../lib/server/platform-notices/service";
+import { createPlatformNotice, deletePlatformNotice, targetedFor, updatePlatformNotice } from "../../lib/server/platform-notices/service";
 
 const noticeId = "00000000-0000-4000-8000-000000000001";
 const sellerId = "00000000-0000-4000-8000-000000000002";
@@ -25,6 +25,16 @@ function fixture(targets = [sellerId]) {
 }
 
 describe("공지의 명시 대상과 생략된 대상", () => {
+  it("삭제 잠금 안에서 실제 대상 집합을 읽어 전후 감사에 같은 수를 남긴다", async () => {
+    const f = fixture([sellerId, "00000000-0000-4000-8000-000000000003"]);
+    expect(await deletePlatformNotice(f.db, admin, noticeId, 1)).toEqual({ ok: true });
+    expect(f.tx.platformNoticeTarget.findMany).toHaveBeenCalledWith({ where: { noticeId }, select: { sellerId: true } });
+    expect(f.tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(f.tx.platformNoticeTarget.findMany.mock.invocationCallOrder[0]);
+    expect(f.tx.platformNoticeTarget.findMany.mock.invocationCallOrder[0]).toBeLessThan(f.tx.platformNotice.update.mock.invocationCallOrder[0]);
+    expect(f.tx.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "platform.notice.delete", before: expect.objectContaining({ targetMode: "SPECIFIC", targetCount: 2, deleted: false }), after: expect.objectContaining({ targetMode: "SPECIFIC", targetCount: 2, deleted: true }) }) }));
+    expect(f.tx.platformNoticeTarget.deleteMany).not.toHaveBeenCalled();
+  });
+
   it("대상 필드가 없는 기존 생성은 ALL이며 빈 특정 초안과 구분한다", async () => {
     const legacy = fixture();
     const all = await createPlatformNotice(legacy.db, admin, input());

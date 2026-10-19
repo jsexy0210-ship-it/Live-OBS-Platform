@@ -264,8 +264,9 @@ export async function deletePlatformNotice(db: PrismaClient, admin: AdminSession
     const [before] = await tx.$queryRaw<PlatformNotice[]>`SELECT * FROM "PlatformNotice" WHERE "id" = ${id}::uuid AND "deletedAt" IS NULL FOR UPDATE`;
     if (!before) throw notFound();
     if (expectedVersion !== before.version) return { ok: false as const, reason: "version_conflict" as const, currentVersion: before.version };
+    const targets = await tx.platformNoticeTarget.findMany({ where: { noticeId: id }, select: { sellerId: true } });
     const row = await tx.platformNotice.update({ where: { id }, data: { deletedAt: new Date(), version: { increment: 1 }, updatedByAdminId: admin.admin.id } });
-    await audit(tx, admin, meta, "platform.notice.delete", id, auditView(before), auditView(row));
+    await audit(tx, admin, meta, "platform.notice.delete", id, auditView({ ...before, targets }), auditView({ ...row, targets }));
     return { ok: true as const };
   });
 }

@@ -9,7 +9,7 @@ import { listSellerNotifications } from "../../lib/server/notifications/service"
 import { createInquiry, getMyInquiry } from "../../lib/server/platform-inquiries/service";
 import { createAdminSession, resolveAdminSession } from "../../lib/server/auth/session";
 import { prisma } from "../../lib/server/db";
-import { createPlatformNotice, getAdminNotice, listAdminNotices, sellerNoticeFile, TARGETS_MAX, updatePlatformNotice } from "../../lib/server/platform-notices/service";
+import { createPlatformNotice, deletePlatformNotice, getAdminNotice, listAdminNotices, sellerNoticeFile, TARGETS_MAX, updatePlatformNotice } from "../../lib/server/platform-notices/service";
 import { PASSWORD, createAdmin, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
 // 공지 대상 파트너스(MA-053·054): 명시 ALL/SPECIFIC, 빈 특정 초안과 기존 전체 공지의 호환을 구분한다.
@@ -41,6 +41,26 @@ async function shop() {
 const input = (over: Record<string, unknown> = {}) => ({ title: "공지", body: "본문", category: "GENERAL", audience: "PARTNERS", publish: true, ...over });
 
 describe("공지 대상 파트너스", () => {
+  it("특정 공지를 삭제해도 전후 감사 대상 수와 관계는 보존하고 파트너스에게는 노출하지 않는다", async () => {
+    const admin = await adminCtx();
+    const a = await shop();
+    const b = await shop();
+    const made = await createPlatformNotice(db, admin, input({ targetMode: "SPECIFIC", targetSellerIds: [a.seller.id, b.seller.id] }));
+    if (!made.ok) throw new Error("create");
+    const id = made.notice.id;
+    expect((await sellerGetOne(get(`/api/seller/platform-notices/${id}`, a.cookie), idp(id))).status).toBe(200);
+    expect(await deletePlatformNotice(db, admin, id, made.notice.version)).toEqual({ ok: true });
+    const log = await db.auditLog.findFirstOrThrow({ where: { action: "platform.notice.delete", targetId: id } });
+    expect(log.before).toMatchObject({ targetMode: "SPECIFIC", targetCount: 2, deleted: false });
+    expect(log.after).toMatchObject({ targetMode: "SPECIFIC", targetCount: 2, deleted: true });
+    expect((await db.platformNotice.findUniqueOrThrow({ where: { id } })).deletedAt).not.toBeNull();
+    expect((await db.platformNoticeTarget.findMany({ where: { noticeId: id } })).map((t) => t.sellerId).sort()).toEqual([a.seller.id, b.seller.id].sort());
+    const list = await json(await sellerList(get("/api/seller/platform-notices", a.cookie)));
+    expect([list.body.items, list.body.unreadCount]).toEqual([[], 0]);
+    expect((await sellerGetOne(get(`/api/seller/platform-notices/${id}`, b.cookie), idp(id))).status).toBe(404);
+    expect((await sellerRead(post(`/api/seller/platform-notices/${id}/read`, a.cookie), idp(id))).status).toBe(404);
+  });
+
   it("대상을 지정하면 그 파트너스만 목록·상세·읽음·미확인 수·첨부에서 보고, 대상이 없는 공지는 모두 본다", async () => {
     const admin = await adminCtx();
     const a = await shop();
