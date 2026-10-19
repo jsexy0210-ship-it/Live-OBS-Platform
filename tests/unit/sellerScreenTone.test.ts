@@ -47,8 +47,22 @@ const APPROVED_EXTERNAL_COPY: Record<string, readonly string[]> = {
     "대표자와 「쇼핑몰 설정」 권한이 있는 직원만 연결 · 해제할 수 있어요 · 목록 조회도 같은 권한이 필요해요",
   ],
 };
+// 결과 미확인 조정의 복구·새 요청 구분에 승인된 문구만 허용한다.
+const APPROVED_ADJUST_COPY: Record<string, readonly string[]> = {
+  "app/(seller)/seller/(shell)/rewards/balances/page.tsx": [
+    "요청 정보를 확인하지 못했어요. 화면을 다시 불러와 주세요.",
+    "재시도 정보를 보관하지 못했어요. 원장에서 이전 조정 결과를 확인해 주세요.",
+    "조정은 완료됐지만 요청 정보를 정리하지 못했어요. 원장에서 결과를 확인해 주세요.",
+    "결과를 확인하지 못한 요청이 있어요. 원장을 확인한 뒤 이전 요청을 재시도하거나 새 조정을 선택해 주세요.",
+    "입력 내용이 바뀌었어요. 다시 적용해 주세요.",
+    "이전 요청 정보를 찾지 못했어요. 원장에서 결과를 확인해 주세요.",
+    "이전 요청을 다시 보낼까요?",
+    "새 조정을 보낼까요?",
+    "이전 요청이 이미 반영됐다면 같은 금액이 한 번 더 조정될 수 있어요.",
+  ],
+};
 const withoutApprovedCopy = (file: string, text: string) =>
-  [...(APPROVED_READ_COPY[file] ?? []), ...(APPROVED_EXTERNAL_COPY[file] ?? [])].reduce((remaining, copy) => {
+  [...(APPROVED_READ_COPY[file] ?? []), ...(APPROVED_EXTERNAL_COPY[file] ?? []), ...(APPROVED_ADJUST_COPY[file] ?? [])].reduce((remaining, copy) => {
     const escaped = copy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     return remaining.split(JSON.stringify(copy)).join('""').replace(new RegExp(`(?<=>)\\s*${escaped}\\s*(?=<)`, "g"), "");
   }, text);
@@ -115,7 +129,7 @@ describe("파트너스 관리자 화면 말투", () => {
     }
   });
 
-  it.each(Object.entries({ ...APPROVED_READ_COPY, ...APPROVED_EXTERNAL_COPY }))("%s는 승인된 신규 문구만 해요체로 허용한다", (file, copies) => {
+  it.each(Object.entries({ ...APPROVED_READ_COPY, ...APPROVED_EXTERNAL_COPY, ...APPROVED_ADJUST_COPY }))("%s는 승인된 신규 문구만 해요체로 허용한다", (file, copies) => {
     const source = readFileSync(join(ROOT, file), "utf8");
     for (const copy of copies) {
       expect(source).toContain(copy);

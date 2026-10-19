@@ -4,7 +4,7 @@ import Link from "next/link";
 import { CursorPagination } from "../../../../../../components/Pagination";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Modal, PageHead, SearchBox, SearchRow, useConfirm } from "../../../../../../components/admin-ui";
-import { Topbar } from "../../../../../../components/seller/SellerShell";
+import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { won } from "../../../../../../components/seller/format";
@@ -44,6 +44,38 @@ const md = (iso: string) => {
 };
 
 type Cond = { q: string; field: "nickname" | "name"; gradeId: string; condition: string; sort: string };
+type PendingAdjustment = { id: string; intent: string };
+type AdjustmentChoice = { key: string; intent: string; operations: PendingAdjustment[] };
+const ADJUST_COPY = {
+  scope: "요청 정보를 확인하지 못했어요. 화면을 다시 불러와 주세요.",
+  storage: "재시도 정보를 보관하지 못했어요. 원장에서 이전 조정 결과를 확인해 주세요.",
+  cleanup: "조정은 완료됐지만 요청 정보를 정리하지 못했어요. 원장에서 결과를 확인해 주세요.",
+  pending: "결과를 확인하지 못한 요청이 있어요. 원장을 확인한 뒤 이전 요청을 재시도하거나 새 조정을 선택해 주세요.",
+  changed: "입력 내용이 바뀌었어요. 다시 적용해 주세요.",
+  missing: "이전 요청 정보를 찾지 못했어요. 원장에서 결과를 확인해 주세요.",
+  retryTitle: "이전 요청을 다시 보낼까요?",
+  newTitle: "새 조정을 보낼까요?",
+  newWarning: "이전 요청이 이미 반영됐다면 같은 금액이 한 번 더 조정될 수 있어요.",
+};
+const fingerprint = async (value: string) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))), (n) => n.toString(16).padStart(2, "0")).join("");
+// 같은 탭의 현재 파트너스·사용자 범위에 UUID와 내용 지문만 보관한다. 금액·사유·닉네임은 저장하지 않는다.
+function readAdjustments(key: string): PendingAdjustment[] {
+  const value = sessionStorage.getItem(key);
+  if (value === null) return [];
+  const rows: unknown = JSON.parse(value);
+  if (!Array.isArray(rows) || !rows.every((r) => r && typeof r === "object" && Object.keys(r).length === 2 && typeof r.id === "string" && typeof r.intent === "string" && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(r.id) && /^[0-9a-f]{64}$/.test(r.intent)) || new Set(rows.map((r) => r.id)).size !== rows.length) throw new Error("invalid_pending_adjustment");
+  return rows;
+}
+function writeAdjustments(key: string, rows: PendingAdjustment[]) {
+  if (rows.length) {
+    const value = JSON.stringify(rows);
+    sessionStorage.setItem(key, value);
+    if (sessionStorage.getItem(key) !== value) throw new Error("pending_adjustment_not_saved");
+  } else {
+    sessionStorage.removeItem(key);
+    if (sessionStorage.getItem(key) !== null) throw new Error("pending_adjustment_not_removed");
+  }
+}
 
 function params(c: Cond) {
   const p = new URLSearchParams();
@@ -58,6 +90,7 @@ function params(c: Cond) {
 }
 
 export default function RewardBalancesPage() {
+  const { me } = useSeller();
   const defaults = { q: "", field: "nickname", gradeId: "", condition: "", sort: "balance" };
   const [urlState, setUrlState] = useUrlState(defaults);
   const applied = useMemo<Cond>(
@@ -73,7 +106,6 @@ export default function RewardBalancesPage() {
   const [grades, setGrades] = useState<{ id: string; name: string }[]>([]);
   const [live, setLive] = useState<boolean | null>(null);
   const [adjusting, setAdjusting] = useState<Row | null>(null);
-  const adjustmentRequests = useRef(new Map<string, string>());
   // 조건을 빨리 바꾸면 이전 응답이 늦게 올 수 있다. 마지막으로 보낸 조건의 응답만 반영한다
   const reqId = useRef(0);
 
@@ -268,7 +300,7 @@ export default function RewardBalancesPage() {
       </main>
       {adjusting && (
         <AdjustModal
-          requests={adjustmentRequests.current}
+          scope={[me.sellerId, me.userId]}
           row={adjusting}
           live={live}
           onClose={() => setAdjusting(null)}
@@ -284,18 +316,28 @@ export default function RewardBalancesPage() {
   );
 }
 
-// 결과를 확인하지 못한 요청은 창을 다시 열어도 같은 UUID로 재시도한다. 성공한 요청만 페이지의 보관 목록에서 지운다.
-function AdjustModal({ row, live, requests, onClose, onDone }: { row: Row; live: boolean | null; requests: Map<string, string>; onClose: () => void; onDone: (text: string) => void }) {
+// 이전 요청 재시도와 새 조정은 구분한다. 닫기·화면 이동·새로고침은 미확정 UUID를 지우지 않는다.
+function AdjustModal({ row, live, scope, onClose, onDone }: { row: Row; live: boolean | null; scope: readonly [string, string]; onClose: () => void; onDone: (text: string) => void }) {
   const { confirm } = useConfirm();
   const [direction, setDirection] = useState<"GRANT" | "REVOKE">("GRANT");
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState<AdjustmentChoice | null>(null);
+  const [retryId, setRetryId] = useState("");
   const nick = row.member.broadcastNickname ?? "회원";
   const amt = /^\d+$/.test(amount.replace(/,/g, "")) ? Number(amount.replace(/,/g, "")) : 0;
   const after = row.balance + (direction === "GRANT" ? amt : -amt);
   const dirty = amount !== "" || reason !== "";
+  useEffect(() => { setPending(null); setRetryId(""); }, [row.member.id, direction, amount, reason, scope[0], scope[1]]);
+
+  const requestContext = async (): Promise<AdjustmentChoice> => {
+    if (!scope[0] || !scope[1]) throw new Error(ADJUST_COPY.scope);
+    const key = `onq:reward-adjust:${await fingerprint(JSON.stringify(scope))}`;
+    const intent = await fingerprint(JSON.stringify([row.member.id, direction, amt, reason.trim()]));
+    return { key, intent, operations: readAdjustments(key).filter((r) => r.intent === intent) };
+  };
 
   const apply = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -304,22 +346,54 @@ function AdjustModal({ row, live, requests, onClose, onDone }: { row: Row; live:
     if (direction === "REVOKE" && amt > row.balance) return setError("회수할 금액이 회원 잔액보다 많습니다");
     if (!reason.trim()) return setError("사유를 입력해 주십시오");
     setError(null);
-    const intent = JSON.stringify([row.member.id, direction, amt, reason.trim()]);
+    setBusy(true);
+    let context: AdjustmentChoice;
+    try { context = await requestContext(); }
+    catch (e) { setError(e instanceof Error && e.message === ADJUST_COPY.scope ? ADJUST_COPY.scope : ADJUST_COPY.storage); return; }
+    finally { setBusy(false); }
+    if (context.operations.length) {
+      setPending(context);
+      setRetryId(context.operations[0].id);
+      return;
+    }
+    await send(context);
+  };
+
+  const send = async (context: AdjustmentChoice, previousId?: string, explicitNew = false) => {
+    if (busy) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const current = await requestContext();
+      if (current.key !== context.key || current.intent !== context.intent) { setPending(null); setError(ADJUST_COPY.changed); return; }
+    } catch (e) { setError(e instanceof Error && e.message === ADJUST_COPY.scope ? ADJUST_COPY.scope : ADJUST_COPY.storage); return; }
+    finally { setBusy(false); }
     const signedText = `${direction === "GRANT" ? "+" : "−"}${won(amt)}`;
     let result: { balanceAfter: number | null } | undefined;
     const ok = await confirm({
-      title: "적립금 잔액을 조정하시겠습니까?",
-      body: `${nick} · ${signedText} · 사유: ${reason.trim()} — ${live === false ? "실제 지급이 꺼져 있어 「대기」로 기록되고 잔액은 그대로입니다." : "조정하면 바로 회원 잔액에 반영되고 원장에 남습니다."}`,
-      confirmLabel: "조정",
+      title: explicitNew ? ADJUST_COPY.newTitle : previousId ? ADJUST_COPY.retryTitle : "적립금 잔액을 조정하시겠습니까?",
+      body: <>{explicitNew && <p>{ADJUST_COPY.newWarning}</p>}{`${nick} · ${signedText} · 사유: ${reason.trim()} — ${live === false ? "실제 지급이 꺼져 있어 「대기」로 기록되고 잔액은 그대로입니다." : "조정하면 바로 회원 잔액에 반영되고 원장에 남습니다."}`}</>,
+      confirmLabel: explicitNew ? "새 조정" : previousId ? "이전 요청 재시도" : "조정",
       run: async () => {
         setBusy(true);
-        const requestId = requests.get(intent) ?? crypto.randomUUID();
-        requests.set(intent, requestId);
-        const r = await api<{ balanceAfter: number | null }>(`/api/seller/reward-balances/${row.member.id}/adjust`, { method: "POST", body: { direction, amount: amt, reason: reason.trim(), requestId } });
-        setBusy(false);
-        if (!r.ok) return failMessage(r, "admin", "조정하지 못했습니다. 잠시 후 다시 시도해 주십시오");
-        requests.delete(intent);
-        result = r.data;
+        try {
+          let operations: PendingAdjustment[];
+          let requestId: string;
+          try {
+            operations = readAdjustments(context.key);
+            if (previousId && !operations.some((r) => r.id === previousId && r.intent === context.intent)) return ADJUST_COPY.missing;
+            if (!previousId && !explicitNew && operations.some((r) => r.intent === context.intent)) return ADJUST_COPY.pending;
+            requestId = previousId ?? crypto.randomUUID();
+            if (!previousId) operations.push({ id: requestId, intent: context.intent });
+            // 동기 보관과 읽기 확인이 끝나야 금융 POST를 보낸다.
+            writeAdjustments(context.key, operations);
+          } catch { return ADJUST_COPY.storage; }
+          const r = await api<{ balanceAfter: number | null }>(`/api/seller/reward-balances/${row.member.id}/adjust`, { method: "POST", body: { direction, amount: amt, reason: reason.trim(), requestId } });
+          if (!r.ok) return failMessage(r, "admin", "조정하지 못했습니다. 잠시 후 다시 시도해 주십시오");
+          try { writeAdjustments(context.key, readAdjustments(context.key).filter((entry) => entry.id !== requestId)); }
+          catch { return ADJUST_COPY.cleanup; }
+          result = r.data;
+        } finally { setBusy(false); }
       },
     });
     if (!ok || !result) return;
@@ -343,6 +417,15 @@ function AdjustModal({ row, live, requests, onClose, onDone }: { row: Row; live:
             {error && (
               <div className="msg msg-neg" role="alert">
                 <span>{error}</span>
+              </div>
+            )}
+            {pending && (
+              <div className="msg msg-info col" style={{ gap: 8 }} role="status">
+                <span>{ADJUST_COPY.pending}</span>
+                <Link className="lk" href="/seller/rewards/ledger" target="_blank" rel="noreferrer">원장 확인</Link>
+                <label>이전 요청<select className="inp" aria-label="재시도할 이전 요청" value={retryId} onChange={(e) => setRetryId(e.target.value)}>
+                  {pending.operations.map((op, index) => <option key={op.id} value={op.id}>이전 요청 {index + 1}</option>)}
+                </select></label>
               </div>
             )}
             <div className="row between">
@@ -381,9 +464,10 @@ function AdjustModal({ row, live, requests, onClose, onDone }: { row: Row; live:
             <button className="btn btn-out" type="button" onClick={requestClose} disabled={busy}>
               취소
             </button>
-            <button className="btn" type="submit" disabled={busy}>
-              {busy ? "조정 중" : "적용"}
-            </button>
+            {pending ? <>
+              <button className="btn btn-out" type="button" disabled={busy || !retryId} onClick={() => void send(pending, retryId)}>이전 요청 재시도</button>
+              <button className="btn" type="button" disabled={busy} onClick={() => void send(pending, undefined, true)}>새 조정</button>
+            </> : <button className="btn" type="submit" disabled={busy}>{busy ? "조정 중" : "적용"}</button>}
           </div>
         </form>
       )}
