@@ -35,11 +35,58 @@ const statsResponse = (page: Page, kind: string, has?: string) =>
 const kpi = (page: Page, label: string) => page.getByTestId("stats-kpi").filter({ has: page.getByText(label, { exact: true }) }).locator(".v");
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 
+async function statsControlBounds(page: Page) {
+  const viewport = page.viewportSize()!;
+  try {
+    for (const width of [1440, 1024]) {
+      await page.setViewportSize({ width, height: viewport.height });
+      const download = page.getByRole("button", { name: "엑셀 파일로 받기", exact: true });
+      await expect(download).toBeVisible();
+      const button = (await download.boundingBox())!;
+      const header = (await page.locator(".main > .au-ph").boundingBox())!;
+      expect(button.height).toBeGreaterThanOrEqual(44);
+      expect(button.y + button.height).toBeLessThanOrEqual(header.y + header.height - 8);
+      const bounds = await page.locator(".sts-period .au-ft-v").evaluate((container) => {
+        const td = container.closest("td")!.getBoundingClientRect();
+        const rect = (element: Element) => {
+          const r = element.getBoundingClientRect();
+          return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+        };
+        return {
+          parent: { left: td.left, right: td.right, top: td.top, bottom: td.bottom },
+          controls: [...container.children].filter((element) => element.matches("button, .dt-wrap, .chk, .seg")).map(rect),
+          dates: [...container.querySelectorAll(".dt-wrap")].map((element) => ({ wrapper: rect(element), input: rect(element.querySelector("input")!) })),
+        };
+      });
+      for (const control of bounds.controls) {
+        expect(control.left).toBeGreaterThanOrEqual(bounds.parent.left);
+        expect(control.right).toBeLessThanOrEqual(bounds.parent.right);
+        expect(control.top).toBeGreaterThanOrEqual(bounds.parent.top);
+        expect(control.bottom).toBeLessThanOrEqual(bounds.parent.bottom);
+      }
+      for (let i = 0; i < bounds.controls.length; i++) for (let j = i + 1; j < bounds.controls.length; j++) {
+        const a = bounds.controls[i], b = bounds.controls[j];
+        const x = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+        const y = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+        expect(x <= 0 || y <= 0).toBe(true);
+      }
+      for (const date of bounds.dates) {
+        expect(date.input.left).toBeGreaterThanOrEqual(date.wrapper.left);
+        expect(date.input.right).toBeLessThanOrEqual(date.wrapper.right);
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    }
+  } finally {
+    await page.setViewportSize(viewport);
+  }
+}
+
 test("주문 통계: 기간·단위를 바꾸면 다시 집계하고, 화면 숫자가 API와 같고, CSV로 내려받는다", async ({ page }) => {
   const first = statsResponse(page, "orders");
   await login(page, "demo-owner@example.com", "/seller/stats/orders");
   await first;
   await expect(page.getByRole("heading", { name: "통계 · 주문" })).toBeVisible();
+  await statsControlBounds(page);
   await expect(page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "통계", exact: true })).toHaveAttribute("href", "/seller/stats");
 
   await expect(page.getByRole("button", { name: "1개월", exact: true })).toHaveAttribute("aria-pressed", "true");
@@ -188,6 +235,7 @@ test("통계 요약(SA-056): 요약 지표·방송 내역·상품 상위·회원
   await login(page, "demo-owner@example.com", "/seller/stats");
   await first;
   await expect(page.getByRole("heading", { name: "통계 · 요약" })).toBeVisible();
+  await statsControlBounds(page);
   await expect(page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("navigation", { name: "통계" }).getByRole("link", { name: "요약" })).toHaveClass(/on/);
   await expect(page.getByRole("button", { name: "1개월", exact: true })).toHaveAttribute("aria-pressed", "true");
   const body = await (await first).json();

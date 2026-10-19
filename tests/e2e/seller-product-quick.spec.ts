@@ -244,6 +244,7 @@ test("선택한 상품만 작업 상세에서 일괄 변경·되돌리기·삭�
   expect(writes).toEqual([]);
   await link.click();
   await expect(page.getByRole("heading", { name: "선택 상품 작업 상세", exact: true })).toBeVisible();
+  await page.goto(`/seller/products/operations?ids=${encodeURIComponent([a.id, a.id.toUpperCase(), b.id].join(","))}`);
   const table = page.getByRole("region", { name: "선택 상품 표", exact: true });
   await expect(table.locator("tbody tr")).toHaveCount(2);
   await expect(table.locator("input, select, button")).toHaveCount(0);

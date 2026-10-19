@@ -19,7 +19,7 @@ export function ProductOperations({ ids, single = false }: { ids: string[]; sing
   const { confirm } = useConfirm();
   const canManage = can("PRODUCT_MANAGE") && !me.readOnly;
   const requestKey = ids.join(",");
-  const requestIds = useMemo(() => [...new Set(requestKey.split(","))], [requestKey]);
+  const requestIds = useMemo(() => [...new Set(requestKey.split(",").map((id) => id.toLowerCase()))], [requestKey]);
   const validIds = requestIds.length > 0 && requestIds.length <= 200 && requestIds.every((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
   const [items, setItems] = useState<Product[]>([]);
   const [state, setState] = useState<{ kind: "loading" } | { kind: "ok" } | { kind: "error"; status: number }>({ kind: "loading" });

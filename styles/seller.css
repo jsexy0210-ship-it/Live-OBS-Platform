@@ -1608,7 +1608,7 @@ body {
     min-height: var(--ui-h-touch);
     box-sizing: border-box;
     margin: 0 calc(-1 * var(--ui-gutter));
-    padding: 0 var(--ui-gutter);
+    padding: var(--ui-sp-8) var(--ui-gutter);
     border-bottom: 1px solid var(--cs-line);
   }
   .seller-app .main > .au-ph > .au-ph-description,
