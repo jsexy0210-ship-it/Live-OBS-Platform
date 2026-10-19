@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useUnsavedGuard, confirmLeave } from "../../../../lib/client/navigation/useUnsavedGuard";
 import { adminCan } from "../../../../lib/server/authz/permissions";
 import { PageHead, useConfirm } from "../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../components/seller/States";
@@ -27,15 +28,20 @@ export function AssistantDocDetail({ docId }: { docId: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const load = useCallback(async () => {
+  const dirty = !!(canEdit && draft && (draft.title !== (doc?.title ?? EMPTY.title) || draft.body !== (doc?.body ?? EMPTY.body) || draft.published !== (doc?.published ?? EMPTY.published)));
+  const release = useUnsavedGuard(dirty);
+  const close = async () => { if (confirmLeave(dirty)) { await release(); router.push(returnTo); } };
+  const refresh = async () => { if (confirmLeave(dirty)) await load(true); };
+  const load = useCallback(async (replaceDraft = false) => {
     setConflict(false);
-    if (docId === "new") { setDraft(EMPTY); setState("ok"); return; }
+    if (docId === "new") { if (replaceDraft) await release(); setDraft(EMPTY); setState("ok"); return; }
     const r = await adminApi<{ items: Doc[] }>("/api/admin/assistant/docs");
     if (!r.ok) return setState("error");
     const found = r.data.items.find(d => d.id === docId);
     if (!found) return setState("missing");
+    if (replaceDraft) await release();
     setDoc(found); setDraft(found); setState("ok");
-  }, [docId]);
+  }, [docId, release]);
   useEffect(() => { void load(); }, [load]);
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,11 +50,12 @@ export function AssistantDocDetail({ docId }: { docId: string }) {
     setError(null);
     const body = { title: draft.title, body: draft.body, published: draft.published, expectedVersion: draft.version };
     const r = draft.id ? await adminApi(`/api/admin/assistant/docs/${draft.id}`, { method: "PUT", json: body }) : await adminApi("/api/admin/assistant/docs", { method: "POST", json: body });
-    setBusy(false);
     if (!r.ok) {
+      setBusy(false);
       if (r.status === 409) setConflict(true);
       return setError(r.message ?? "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오.");
     }
+    await release();
     router.push(returnTo);
   };
   const hide = async (d: Doc) => {
@@ -66,8 +73,13 @@ export function AssistantDocDetail({ docId }: { docId: string }) {
         return undefined;
       },
     });
-    if (ok) setToast("자료를 숨겼습니다.");
-    void load();
+    if (ok) {
+      setBusy(true);
+      await release();
+      setToast("자료를 숨겼습니다.");
+      await load();
+      setBusy(false);
+    }
   };
   const remove = async (d: Doc) => {
     let message = "";
@@ -86,13 +98,12 @@ export function AssistantDocDetail({ docId }: { docId: string }) {
         return undefined;
       },
     });
-    if (ok) router.push(returnTo);
-    else void load();
+    if (ok) { await release(); router.push(returnTo); }
   };
 
   return <><AdminTopbar crumb="고객지원 › 도우미 답변 자료 › 상세" /><main className="main">
     <PageHead title={docId === "new" ? "문서 등록" : "답변 자료 상세"} actions={<Link className="btn btn-out" href={returnTo}>목록</Link>} />
-    {state === "loading" ? <LoadingRows rows={3} /> : state !== "ok" ? <ErrorState title={state === "missing" ? "자료를 찾을 수 없습니다." : "자료를 불러오지 못했습니다."} onRetry={() => void load()} /> : canEdit && draft ? <>
+    {state === "loading" ? <LoadingRows rows={3} /> : state !== "ok" ? <ErrorState title={state === "missing" ? "자료를 찾을 수 없습니다." : "자료를 불러오지 못했습니다."} onRetry={() => void refresh()} /> : canEdit && draft ? <>
                 <form className="card pad-l col" style={{ gap: 10 }} onSubmit={save}>
                   <input className="inp" aria-label="제목" placeholder="제목" maxLength={100} value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} disabled={busy} />
                   <textarea className="inp" aria-label="내용" placeholder="내용(4,000자까지)" rows={10} maxLength={4000} value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} disabled={busy} />
@@ -103,10 +114,10 @@ export function AssistantDocDetail({ docId }: { docId: string }) {
                   {error && <span className="t-c1" role="alert" style={{ color: "var(--neg-text, #c00)" }}>{error}</span>}
                   <div className="row" style={{ gap: 8 }}>
                     <button className="btn btn-pri" type="submit" disabled={busy}>저장</button>
-                    <button className="btn btn-out" type="button" onClick={() => router.push(returnTo)} disabled={busy}>취소</button>
+                    <button className="btn btn-out" type="button" onClick={() => void close()} disabled={busy}>취소</button>
                   </div>
                 </form>
-    {conflict && <button className="btn btn-out" onClick={() => void load()}>최신 내용을 다시 불러오기</button>}
+    {conflict && <button className="btn btn-out" onClick={() => void refresh()}>최신 내용을 다시 불러오기</button>}
     {doc && <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
       {doc.published ? <button className="btn btn-out" disabled={busy} onClick={() => void hide(doc)}>숨기기</button> : <button className="btn btn-out" disabled={busy} onClick={() => void remove(doc)}>삭제</button>}
     </div>}

@@ -76,6 +76,7 @@ test("도우미 상세의 409는 입력과 기존 version을 보존하고 명시
   await expect(page.getByRole("alert")).toContainText("다른 곳에서 수정됐습니다.");
   await expect(page.getByLabel("제목", { exact: true })).toHaveValue("보관할 입력");
   expect(writes[0].expectedVersion).toBe(1);
+  page.once("dialog", d => void d.accept());
   await page.getByRole("button", { name: "최신 내용을 다시 불러오기" }).click();
   await expect(page.getByLabel("제목", { exact: true })).toHaveValue("다른 곳의 수정");
 });
@@ -231,4 +232,84 @@ test("업체 수정 중 다른 변경을 막고 취소 후에만 사용 업체 �
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByRole("dialog").getByRole("button", { name: "취소", exact: true }).click();
   expect(writes).toEqual([]);
+});
+
+for (const action of ["hide", "delete"] as const) test(`도우미 ${action} 확인 취소·서버 실패는 초안과 읽기 횟수를 보존한다`, async ({ page }) => {
+  let reads = 0;
+  const writes: unknown[] = [];
+  await mockAdmin(page, async (route, path) => {
+    if (path === "/api/admin/assistant/docs") { reads++; await json(route, { items: [{ id: id(1), title: "원본 문서", body: "저장된 내용", published: action === "hide", version: 7, updatedAt: at }] }); return true; }
+    if (path === `/api/admin/assistant/docs/${id(1)}`) { writes.push({ method: route.request().method(), body: route.request().postDataJSON(), version: new URL(route.request().url()).searchParams.get("expectedVersion") }); await json(route, { message: "보존 검증 실패" }, 500); return true; }
+    return false;
+  });
+  await page.goto(`/admin/support/assistant/${id(1)}`);
+  await page.getByLabel("제목", { exact: true }).fill("보관할 제목");
+  await page.getByLabel("내용", { exact: true }).fill("보관할 내용");
+  const trigger = page.locator("main").getByRole("button", { name: action === "hide" ? "숨기기" : "삭제", exact: true });
+  await trigger.click();
+  await page.getByRole("dialog").getByRole("button", { name: "취소", exact: true }).click();
+  await expect(page.getByLabel("제목", { exact: true })).toHaveValue("보관할 제목");
+  await expect(page.getByLabel("내용", { exact: true })).toHaveValue("보관할 내용");
+  expect(reads).toBe(1); expect(writes).toEqual([]);
+  await trigger.click();
+  await page.getByRole("dialog").getByRole("button", { name: action === "hide" ? "숨기기" : "지우기", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText("보존 검증 실패");
+  await expect(page.getByLabel("제목", { exact: true })).toHaveValue("보관할 제목");
+  await expect(page.getByLabel("내용", { exact: true })).toHaveValue("보관할 내용");
+  expect(reads).toBe(1);
+  expect(writes).toEqual([action === "hide" ? { method: "PUT", body: { title: "원본 문서", body: "저장된 내용", published: false, expectedVersion: 7 }, version: null } : { method: "DELETE", body: null, version: "7" }]);
+  await page.getByRole("dialog").getByRole("button", { name: "취소", exact: true }).click();
+  page.once("dialog", d => void d.dismiss());
+  await page.locator("main form").getByRole("button", { name: "취소", exact: true }).click();
+  await expect(page.getByLabel("내용", { exact: true })).toHaveValue("보관할 내용");
+});
+
+test("도우미 상세의 dirty 목록·sidebar·Back·취소를 보존하고 저장 성공은 보호 기록을 소비한다", async ({ page }) => {
+  let title = "원본 문서"; const writes: unknown[] = [];
+  await mockAdmin(page, async (route, path) => {
+    if (path === "/api/admin/assistant/docs") { await json(route, { items: [{ id: id(1), title, body: "저장된 내용", published: false, version: 1, updatedAt: at }] }); return true; }
+    if (path === "/api/admin/assistant/questions") { await json(route, { items: [] }); return true; }
+    if (path === `/api/admin/assistant/docs/${id(1)}`) { const body = route.request().postDataJSON(); writes.push(body); title = body.title; await json(route, { ok: true }); return true; }
+    return false;
+  });
+  const back = "/admin/support/assistant?q=보존";
+  await page.goto(back);
+  await page.goto(`/admin/support/assistant/${id(1)}?returnTo=${encodeURIComponent(back)}`);
+  await page.getByLabel("제목", { exact: true }).fill("저장할 제목");
+  const detail = page.url();
+  page.once("dialog", d => void d.dismiss());
+  await page.locator("main").getByRole("link", { name: "목록", exact: true }).click();
+  await expect(page).toHaveURL(detail);
+  page.once("dialog", d => void d.dismiss());
+  await page.locator('.lnb a[href="/admin/support/assistant"]').first().click();
+  await expect(page).toHaveURL(detail);
+  const backPrompt = page.waitForEvent("dialog");
+  await page.evaluate(() => history.back());
+  await (await backPrompt).dismiss();
+  await expect(page.getByLabel("제목", { exact: true })).toHaveValue("저장할 제목");
+  page.once("dialog", d => void d.dismiss());
+  await page.locator("main form").getByRole("button", { name: "취소", exact: true }).click();
+  await expect(page.getByLabel("제목", { exact: true })).toHaveValue("저장할 제목");
+  expect(writes).toEqual([]);
+  await page.locator("main form").getByRole("button", { name: "저장", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`support/assistant\\?q=${encodeURIComponent("보존")}$`));
+  expect(writes).toEqual([{ title: "저장할 제목", body: "저장된 내용", published: false, expectedVersion: 1 }]);
+  expect(await page.evaluate(() => !!history.state?.unsavedGuard)).toBe(false);
+});
+
+for (const action of ["hide", "delete"] as const) test(`도우미 ${action} 성공만 초안 보호를 해제하고 정상 상태로 이동한다`, async ({ page }) => {
+  let reads = 0, hidden = false;
+  await mockAdmin(page, async (route, path) => {
+    if (path === "/api/admin/assistant/docs") { reads++; await json(route, { items: hidden && action === "delete" ? [] : [{ id: id(1), title: "원본 문서", body: "원본 내용", published: action === "hide" && !hidden, version: 1, updatedAt: at }] }); return true; }
+    if (path === "/api/admin/assistant/questions") { await json(route, { items: [] }); return true; }
+    if (path === `/api/admin/assistant/docs/${id(1)}`) { hidden = true; await json(route, { ok: true }); return true; }
+    return false;
+  });
+  await page.goto(`/admin/support/assistant/${id(1)}`);
+  await page.getByLabel("제목", { exact: true }).fill("작성 중 제목");
+  await page.locator("main").getByRole("button", { name: action === "hide" ? "숨기기" : "삭제", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: action === "hide" ? "숨기기" : "지우기", exact: true }).click();
+  if (action === "hide") { await expect(page.getByText("자료를 숨겼습니다.", { exact: true })).toBeVisible(); expect(reads).toBe(2); }
+  else await expect(page).toHaveURL(/support\/assistant$/);
+  expect(await page.evaluate(() => !!history.state?.unsavedGuard)).toBe(false);
 });
