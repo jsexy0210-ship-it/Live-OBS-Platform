@@ -134,9 +134,12 @@ test("오버레이 전용이 쇼핑몰 기능 주소로 바로 들어오면 안�
   await expect(page.getByText("상품 등록")).toHaveCount(0);
   await shot(page, "plan-feature-required");
 
-  // 열 수 있는 첫 메뉴(홈 = 오버레이 홈)로 보낸다
-  await guide.getByRole("link", { name: "홈 화면으로 이동" }).click();
-  await expect(page).toHaveURL(/\/seller$/);
+  // 홈을 제외한 첫 직접 이동 메뉴는 기존 주문 조회 화면이다.
+  const next = guide.getByRole("link", { name: "전체 주문 화면으로 이동", exact: true });
+  await expect(next).toHaveAttribute("href", "/seller/orders");
+  await next.click();
+  await expect(page).toHaveURL(/\/seller\/orders$/);
+  await expect(page.getByRole("heading", { level: 1, name: "전체 주문", exact: true })).toBeVisible();
   await expect(page.getByTestId("plan-feature-required")).toHaveCount(0);
 });
 
