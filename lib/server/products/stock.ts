@@ -86,6 +86,7 @@ export async function adjustStock(
   productId: string,
   optionId: string,
   raw: unknown,
+  expectedOnlyOptionId?: string,
 ): Promise<{ ok: true; value: { optionId: string; stock: number } } | { ok: false; reason: StockAdjustFailure; currentStock?: number }> {
   requireSellerPermission(ctx, "PRODUCT_MANAGE");
   if (!UUID.test(productId) || !UUID.test(optionId)) throw notFound();
@@ -100,6 +101,13 @@ export async function adjustStock(
     return { ok: false, reason: "invalid_stock_adjust" };
   }
   return db.$transaction(async (tx) => {
+    if (expectedOnlyOptionId !== undefined) {
+      // 옵션 생성·삭제와 같은 상품 행 잠금 아래에서 기본 옵션의 단일성과 ID를 다시 확인한다.
+      const product = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Product" WHERE "id" = ${productId}::uuid AND "sellerId" = ${ctx.sellerId}::uuid AND "deletedAt" IS NULL FOR UPDATE`;
+      if (!product[0]) throw notFound();
+      const active = await tx.productOption.findMany({ where: { sellerId: ctx.sellerId, productId, deletedAt: null }, select: { id: true } });
+      if (active.length !== 1 || active[0].id !== expectedOnlyOptionId || optionId !== expectedOnlyOptionId) return { ok: false as const, reason: "stock_conflict" as const };
+    }
     const option = await tx.productOption.findFirst({
       where: { id: optionId, productId, sellerId: ctx.sellerId, deletedAt: null, product: { deletedAt: null } },
       select: { id: true, stock: true },

@@ -450,7 +450,7 @@ async function applyUpdate(
       }
       const delta = s.target - o.stock;
       if (delta === 0) continue;
-      const r = await adjustStock(db, ctx, u.productId, s.optionId, { delta, reason: STOCK_NOTES.bulkEdit });
+      const r = await adjustStock(db, ctx, u.productId, s.optionId, { delta, reason: STOCK_NOTES.bulkEdit }, p.defaultOption ? s.optionId : undefined);
       if (r.ok) {
         rec.stock.push({ optionId: s.optionId, name: s.name, delta });
         await save(rec);
