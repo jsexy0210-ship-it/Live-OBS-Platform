@@ -76,7 +76,8 @@ for (const [name, route] of [["inquiries", "/seller/inquiries"], ["notices", "/s
         await expect(grid).toHaveCSS("border-radius", "0px");
         const card = grid.locator("xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' card ')][1]");
         await expect(card).toHaveCount(0);
-        await expect(grid.locator("xpath=parent::main")).toHaveCount(1);
+        await expect(grid.locator("xpath=parent::section[@aria-labelledby='bd-order-h']")).toHaveCount(1);
+        await expect(grid.locator("xpath=ancestor::main")).toHaveCount(1);
       }
     }
     expect(await page.evaluate(() => document.body.scrollWidth)).toBeLessThanOrEqual(width);
