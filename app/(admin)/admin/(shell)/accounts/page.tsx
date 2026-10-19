@@ -55,7 +55,7 @@ export default function AccountsPage() {
             </>
           }
         />
-        <div className="t-b2" style={{ padding: "12px 16px", background: "var(--info-bg)", border: "1px solid var(--info-bg)", borderRadius: 8 }}>최고관리자만 볼 수 있는 메뉴입니다 · 최고관리자는 대표 1명이며 바꾸거나 추가할 수 없습니다 · 다른 관리자는 운영 · 고객 지원 · 조회 전용 중에서 정합니다.</div>
+        <div className="t-b2" style={{ padding: "12px 16px", background: "var(--info-bg)", border: "1px solid var(--info-bg)", borderRadius: 0 }}>최고관리자만 볼 수 있는 메뉴입니다 · 최고관리자는 대표 1명이며 바꾸거나 추가할 수 없습니다 · 다른 관리자는 운영 · 고객 지원 · 조회 전용 중에서 정합니다.</div>
         {state.kind === "ok" && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
             {(["SUPER_ADMIN", "OPERATIONS", "CS", "READ_ONLY"] as AdminRoleCode[]).map((r) => (

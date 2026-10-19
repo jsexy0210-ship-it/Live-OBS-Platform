@@ -1608,7 +1608,7 @@ body {
     min-height: var(--ui-h-touch);
     box-sizing: border-box;
     margin: 0 calc(-1 * var(--ui-gutter));
-    padding: 0 var(--ui-gutter);
+    padding: var(--ui-sp-8) var(--ui-gutter);
     border-bottom: 1px solid var(--cs-line);
   }
   .seller-app .main > .au-ph > .au-ph-description,
@@ -2071,4 +2071,14 @@ body {
   .seo-state-grid {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* 관리 본문의 외곽 프레임만 직각으로 맞춘다. 입력·버튼·배지·차트와 공개 화면의 토큰은 유지한다. */
+.seller-app .cs .main :is(.card, .au-sb, .au-list-grid, .st, .stat, .msg, .bal-cards, .sp-card, .il-info, .staff-link, .sts-note, .bc-sum-g, .home-task, .home-empty, .home-onboarding),
+.seller-app .cs .main .sts-sum > div {
+  border-radius: 0;
+}
+.seller-app .cs .main .au-sb .au-ft > tbody > tr:first-child > th {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
 }

@@ -521,7 +521,7 @@ function ReviewDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
               <span className="help">상품 리뷰에 「판매자」 이름으로 공개 · 300자 · 개인정보 · 연락처 기재 금지</span>
             </div>
             {hiding && (
-              <div className="col" style={{ gap: 8, padding: 12, borderRadius: 10, background: "var(--wds-fill-alternative)" }}>
+              <div className="col" style={{ gap: 8, padding: 12, borderRadius: 0, background: "var(--wds-fill-alternative)" }}>
                 <span className="t-l1 fw6">이 리뷰를 숨기시겠습니까?</span>
                 <span className="t-c1 c-alt">
                   상품 리뷰와 별점 평균에서 빠지고 작성자에게만 보입니다.{d.rewardedAmount > 0 ? ` 지급한 리뷰 적립금 ${won(d.rewardedAmount)}은 회수됩니다.` : ""} 사유는 작성자의 내 리뷰에 표시됩니다.
