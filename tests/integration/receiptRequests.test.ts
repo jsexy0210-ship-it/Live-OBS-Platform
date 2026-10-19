@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as retryRoute } from "../../app/api/seller/receipt-requests/[id]/retry/route";
 import { GET as sellerListRoute } from "../../app/api/seller/receipt-requests/route";
+import { GET as sellerDetailRoute } from "../../app/api/seller/receipt-requests/[id]/route";
 import { POST as withdrawRoute } from "../../app/api/shop/[slug]/receipt-requests/[id]/withdraw/route";
 import { GET as buyerGetRoute, POST as buyerPostRoute } from "../../app/api/shop/[slug]/receipt-requests/route";
 import { loginBuyer, loginSeller } from "../../lib/server/auth/login";
@@ -66,6 +67,51 @@ const income = { kind: "CASH_RECEIPT_INCOME", identity: "010-2345-6789" };
 const tax = { kind: "TAX_INVOICE", identity: BIZ, taxInfo: { companyName: "주식회사 테스트", representative: "홍길동", email: "tax@example.com" } };
 
 describe("현금영수증·세금계산서 신청", () => {
+  it("목록 첫 페이지 밖 신청도 영수증 권한만으로 단건 조회하고 타 판매자·법정보관·권한없음은 차단한다", async () => {
+    const s = await setup();
+    const first = await createReceiptRequest(db, s.scope, s.bankOrder, income);
+    if (!first.ok) throw new Error(first.reason);
+    for (let i = 0; i < 11; i++) {
+      const orderId = await newOrder(s.base, "BANK_TRANSFER");
+      expect((await createReceiptRequest(db, s.scope, orderId, income)).ok).toBe(true);
+    }
+    expect((await listSellerReceiptRequests(db, s.ctx)).requests.map((r) => r.id)).not.toContain(first.request.id);
+    const staff = await createSellerUser(s.seller.id, { permissions: ["RECEIPT_TAX"] });
+    const login = await loginSeller(db, { email: staff.email, password: PASSWORD }, {});
+    if (!login.ok) throw new Error(login.reason);
+    const get = (token: string, summary = true) => sellerDetailRoute(new Request(`http://localhost:3000/api/seller/receipt-requests/${first.request.id}${summary ? "?summary=1" : ""}`, { headers: { ...H, cookie: `lo_seller=${token}` } }), { params: Promise.resolve({ id: first.request.id }) });
+    const sealed = await db.orderReceiptRequest.findUniqueOrThrow({ where: { id: first.request.id }, select: { identitySealed: true } });
+    const noticesBefore = await db.orderNotification.count({ where: { orderId: s.bankOrder } });
+    // summary는 복호화할 수 없는 소유 fixture에서도 성공해야 한다.
+    await db.orderReceiptRequest.update({ where: { id: first.request.id }, data: { identitySealed: "owned-summary-without-decryption" } });
+    const response = await get(login.token);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    const body = await response.json();
+    expect(body.request).toMatchObject({ id: first.request.id, identityLast4: "6789", issue: { status: "PENDING" }, orderNoLabel: expect.stringMatching(/^\d{8}-\d{4,}$/) });
+    expect(body.request).not.toHaveProperty("identitySealed");
+    expect(body.request).not.toHaveProperty("identity");
+    expect(JSON.stringify(body)).not.toMatch(/01023456789|010-2345-6789/);
+    expect(await db.auditLog.count({ where: { action: "receipt_request.reveal_identity", targetId: first.request.id } })).toBe(0);
+    expect(await db.orderNotification.count({ where: { orderId: s.bankOrder } })).toBe(noticesBefore);
+    expect((await db.receiptIssue.findFirstOrThrow({ where: { requestId: first.request.id }, select: { status: true } })).status).toBe("PENDING");
+    await db.orderReceiptRequest.update({ where: { id: first.request.id }, data: { identitySealed: sealed.identitySealed } });
+    const revealed = await get(login.token, false);
+    expect(revealed.status).toBe(200);
+    expect((await revealed.json()).request.identity).toBe("01023456789");
+    expect(await db.auditLog.count({ where: { action: "receipt_request.reveal_identity", targetId: first.request.id, actorId: staff.id } })).toBe(1);
+    const denied = await createSellerUser(s.seller.id, { permissions: ["ORDER_SHIPPING"] });
+    const deniedLogin = await loginSeller(db, { email: denied.email, password: PASSWORD }, {});
+    if (!deniedLogin.ok) throw new Error(deniedLogin.reason);
+    expect((await get(deniedLogin.token)).status).toBe(403);
+    const other = await createSeller();
+    const otherOwner = await createSellerUser(other.seller.id, "OWNER");
+    const otherLogin = await loginSeller(db, { email: otherOwner.email, password: PASSWORD }, {});
+    if (!otherLogin.ok) throw new Error(otherLogin.reason);
+    expect((await get(otherLogin.token)).status).toBe(404);
+    await db.order.update({ where: { id: s.bankOrder }, data: { legalHoldAt: new Date() } });
+    expect((await get(login.token)).status).toBe(404);
+  });
   it("소득공제 신청은 번호를 봉인해 저장하고 발행은 대기로 시작하며, 파트너스 목록·건수·로그 추적에 보인다", async () => {
     const s = await setup();
     const r = await createReceiptRequest(db, s.scope, s.bankOrder, { ...income, orderId: s.bankOrder });
