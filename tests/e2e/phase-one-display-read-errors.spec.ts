@@ -106,27 +106,35 @@ test("MA013: 메모 GET 404 재시도와 검토 행 전환에서 다른 행의 �
   let attempts = 0;
   let release!: () => void;
   const wait = new Promise<void>((resolve) => { release = resolve; });
+  const applications = ["a", "b"].map((id) => ({ id, slug: id, shopName: `검증 ${id}`, state: "REVIEW", applicantName: "검증 신청자", applicantEmail: "ui@example.com", businessNumber: null, industry: null, receivedAt: at, elapsedHours: 0, over48h: false, reasons: [{ code: "ui", text: "검증 필요" }], checks: [], checkedAt: null, supplement: null, license: null, businessAddress: null, channelUrl: null }));
   const result = await mock(page, async (url) => {
+    if (url.pathname === "/api/admin/sellers/review") return { json: { sellers: applications.map((app) => ({ id: app.id, reviewReasons: ["ui"] })) } };
+    const detail = applications.find((app) => url.pathname === `/api/admin/sellers/${app.id}`);
+    if (detail) return { json: { seller: { id: detail.id, slug: detail.slug, shopName: detail.shopName, status: "PENDING", businessInfo: null, owner: null, plan: null, createdAt: at } } };
+    const application = applications.find((app) => url.pathname === `/api/admin/sellers/${app.id}/application`);
+    if (application) return { json: { application, undoableUntil: null } };
     if (url.pathname === "/api/admin/sellers/applications") return { json: {
       chips: { all: 2, clear: 0, review: 2, supplement: 0, over48h: 0, today: 0 }, industries: [], total: 2, nextCursor: null,
       kpi: { pending: 2, needsReview: 2, clear: 0, supplement: 0, over48h: 0, receivedToday: 0, approvedToday: 0, autoApprovedToday: 0, rejectedToday: 0, avgHandlingHours: { thisWeek: null, lastWeek: null } },
-      applications: ["a", "b"].map((id) => ({ id, slug: id, shopName: `검증 ${id}`, state: "REVIEW", applicantName: "검증 신청자", applicantEmail: "ui@example.com", businessNumber: null, industry: null, receivedAt: at, elapsedHours: 0, over48h: false, reasons: [{ code: "ui", text: "검증 필요" }], checks: [], checkedAt: null, supplement: null, license: null, businessAddress: null, channelUrl: null })),
+      applications,
     } };
     if (url.pathname === "/api/admin/sellers/a/notes") return ++attempts === 1 ? { status: 404, json: { error: "not_found" } } : { json: { notes: [{ id: "note-a", body: "첫 행 메모", author: { name: "검증 담당자" }, createdAt: at }] } };
     if (url.pathname === "/api/admin/sellers/b/notes") { await wait; return { json: { notes: [] } }; }
   });
   await page.goto("/admin/partners/applications");
-  await page.getByTestId("application-row").first().getByRole("button", { name: "확인할 내용 보기" }).click();
-  const panel = page.getByTestId("review-panel");
+  await page.getByTestId("application-row").first().getByRole("link", { name: "상세", exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/partners\/applications\/a(?:\?|$)/);
+  const panel = page.locator('section[aria-labelledby="application-memo"]');
   await expect(panel).toContainText("메모를 불러오지 못했어요");
   await panel.getByRole("button", { name: "다시 시도" }).click();
-  await expect(panel.getByTestId("review-note")).toHaveText(/첫 행 메모/);
-  await panel.getByRole("button", { name: "다음 ›", exact: true }).click();
-  await expect(panel).toHaveAttribute("aria-label", "검증 b 검토");
-  await expect(panel.getByTestId("review-note")).toHaveCount(0);
+  await expect(panel.getByTestId("application-note")).toHaveText(/첫 행 메모/);
+  await page.getByTestId("application-nav").getByRole("button", { name: "다음", exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/partners\/applications\/b(?:\?|$)/);
+  await expect(page.getByRole("heading", { name: "가입 신청 상세 · 검증 b", exact: true })).toBeVisible();
+  await expect(panel.getByTestId("application-note")).toHaveCount(0);
   await expect(panel).toContainText("메모를 불러오고 있어요");
   release();
   await expect(panel.getByRole("status")).toHaveCount(0);
-  await expect(panel.getByTestId("review-note")).toHaveCount(0);
+  await expect(panel.getByTestId("application-note")).toHaveCount(0);
   expect(result.writes).toEqual([]); expect(result.errors).toEqual([]);
 });

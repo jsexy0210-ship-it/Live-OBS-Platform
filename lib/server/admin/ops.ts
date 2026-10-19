@@ -31,12 +31,12 @@ async function overlaySeen(db: PrismaClient, sellerIds: string[], now: Date) {
 }
 
 // MA-041: 지금 방송 중(LIVE)인 방송. 최근에 시작한 순, 200개까지.
-export async function listLiveBroadcasts(db: PrismaClient, admin: AdminSessionContext) {
+export async function listLiveBroadcasts(db: PrismaClient, admin: AdminSessionContext, broadcastId?: string) {
   requireRead(admin);
   const now = await dbNow(db);
   const rateFrom = new Date(now.getTime() - 60_000);
   const sessions = await db.broadcastSession.findMany({
-    where: { status: "LIVE" },
+    where: { status: "LIVE", ...(broadcastId ? { id: broadcastId } : {}) },
     orderBy: [{ startedAt: "desc" }, { id: "desc" }],
     take: 200,
     select: { id: true, title: true, startedAt: true, sellerId: true, layoutAspect: true, seller: { select: { shopName: true, slug: true, status: true } } },

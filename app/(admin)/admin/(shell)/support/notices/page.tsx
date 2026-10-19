@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
-import { ListTable, CursorPagination, ListHead, Modal, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
+import { ListTable, CursorPagination, ListHead, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { MAX_SEARCH_LENGTH } from "../../../../../../components/seller/format";
 import { useScrollRestore, useUrlState } from "../../../../../../lib/client/navigation";
-import { adminApi, failMessage } from "../../../_components/api";
+import { adminApi } from "../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
 import { NOTICE_AUDIENCE, NOTICE_CATEGORY, NOTICE_STATUS, type Notice, type NoticeCategory, type NoticeStatus } from "../../../_components/notices";
 import { day } from "../../../_components/partners";
@@ -19,50 +19,6 @@ type Filters = { status: NoticeStatus | ""; category: NoticeCategory | ""; q: st
 const EMPTY: Filters = { status: "", category: "", q: "" };
 type Page = { items: Notice[]; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; items: Notice[]; next: string | null };
-
-function DeleteDialog({ notice, onClose, onDone, onStale }: { notice: Notice; onClose: () => void; onDone: () => void; onStale: () => void }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const submit = async () => {
-    if (busy) return;
-    setBusy(true);
-    setError(null);
-    const r = await adminApi(`/api/admin/platform-notices/${notice.id}?expectedVersion=${notice.version}`, { method: "DELETE" });
-    setBusy(false);
-    if (r.ok) return onDone();
-    if (r.status === 409 || r.status === 404) return onStale();
-    setError(failMessage(r, "삭제하지 못했습니다. 잠시 후 다시 시도해 주십시오."));
-  };
-  return (
-    <Modal labelId="notice-del-title" busy={busy} onClose={onClose}>
-      {(requestClose) => (
-        <>
-          <div className="modal-h">
-            <h2 className="modal-t" id="notice-del-title">
-              「{notice.title}」을(를) 삭제하시겠습니까?
-            </h2>
-            <span className="t-l2 c-alt">삭제한 공지는 어디에도 보이지 않으며, 로그 추적에만 남습니다.</span>
-          </div>
-          {error && (
-            <div style={{ padding: "0 24px" }}>
-              <span className="err" role="alert">
-                {error}
-              </span>
-            </div>
-          )}
-          <div className="modal-f">
-            <button className="btn btn-out" type="button" onClick={requestClose} disabled={busy}>
-              취소
-            </button>
-            <button className="btn" type="button" onClick={() => void submit()} disabled={busy}>
-              {busy ? "처리 중" : "삭제"}
-            </button>
-          </div>
-        </>
-      )}
-    </Modal>
-  );
-}
 
 function NoticeList() {
   const { me } = useAdmin();
@@ -86,13 +42,12 @@ function NoticeList() {
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
   const paging = useRef(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
-  const [target, setTarget] = useState<Notice | null>(null);
 
   // 작성·수정 화면에서 돌아오면 주소의 결과(saved·stale)를 알림으로 바꾸고 주소를 비운다(목록이 그대로 떠 있어도 매번 처리)
   useEffect(() => {
     const { saved, stale } = url;
     if (!saved && !stale) return;
-    setToast(saved ? { text: saved === "published" ? "공지를 게시했습니다." : "임시 저장했습니다." } : { text: "다른 곳에서 먼저 수정됐습니다. 최신 내용을 확인해 주십시오.", neg: true });
+    setToast(saved ? { text: saved === "published" ? "공지를 게시했습니다." : saved === "deleted" ? "공지를 삭제했습니다." : "임시 저장했습니다." } : { text: "다른 곳에서 먼저 수정됐습니다. 최신 내용을 확인해 주십시오.", neg: true });
     setUrl({ saved: "", stale: "" });
   }, [url.saved, url.stale, setUrl]);
 
@@ -223,7 +178,7 @@ function NoticeList() {
                           </td>
                           <td className="col-text">
                             {canEdit ? (
-                              <Link className="fw6" href={`/admin/support/notices/${n.id}`}>
+                              <Link className="fw6" href={`/admin/support/notices/${n.id}?returnTo=${encodeURIComponent(`/admin/support/notices?${new URLSearchParams(applied)}`)}`}>
                                 {n.title}
                               </Link>
                             ) : (
@@ -239,12 +194,10 @@ function NoticeList() {
                           {canEdit && (
                             <td>
                               <span className="row" style={{ gap: 6 }}>
-                                <Link className="btn btn-sm btn-out" href={`/admin/support/notices/${n.id}`}>
+                                <Link className="btn btn-sm btn-out" href={`/admin/support/notices/${n.id}?returnTo=${encodeURIComponent(`/admin/support/notices?${new URLSearchParams(applied)}`)}`}>
                                   수정
                                 </Link>
-                                <button className="btn btn-sm btn-out" type="button" onClick={() => setTarget(n)}>
-                                  삭제
-                                </button>
+
                               </span>
                             </td>
                           )}
@@ -258,22 +211,6 @@ function NoticeList() {
             ))}
         </section>
       </main>
-      {target && (
-        <DeleteDialog
-          notice={target}
-          onClose={() => setTarget(null)}
-          onDone={() => {
-            setTarget(null);
-            setToast({ text: "공지를 삭제했습니다." });
-            void load(applied.status);
-          }}
-          onStale={() => {
-            setTarget(null);
-            setToast({ text: "다른 곳에서 먼저 수정됐습니다. 목록을 새로 불러옵니다.", neg: true });
-            void load(applied.status);
-          }}
-        />
-      )}
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
     </>
   );
