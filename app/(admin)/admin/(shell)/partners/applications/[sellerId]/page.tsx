@@ -57,6 +57,10 @@ export default function ApplicationDetailPage() {
   const [reject, setReject] = useState(false);
   const [supplement, setSupplement] = useState(false);
   const [notes, setNotes] = useState<Note[] | null>(null);
+  const [notesOwner, setNotesOwner] = useState(sellerId);
+  const [notesState, setNotesState] = useState<"loading" | "error" | "ok">("loading");
+  const [notesRetry, setNotesRetry] = useState(0);
+  const visibleNotes = notesOwner === sellerId ? notes : null;
   const [memo, setMemo] = useState("");
   const [saving, setSaving] = useState(false);
   const [approving, setApproving] = useState(false);
@@ -93,14 +97,26 @@ export default function ApplicationDetailPage() {
   }, [sellerId]);
 
   useEffect(() => {
-    let live = true;
     setNotes(null);
     setMemo("");
-    void adminApi<{ notes: Note[] }>(`/api/admin/sellers/${encodeURIComponent(sellerId)}/notes?limit=3`).then((r) => live && setNotes(r.ok ? r.data.notes : []));
+    setNotesOwner(sellerId);
+  }, [sellerId]);
+  useEffect(() => {
+    let live = true;
+    setNotesState("loading");
+    void adminApi<{ notes: Note[] }>(`/api/admin/sellers/${encodeURIComponent(sellerId)}/notes?limit=3`).then((r) => {
+      if (!live) return;
+      if (!r.ok) {
+        if (r.status > 0 && r.status < 500) setNotes(null);
+        return setNotesState("error");
+      }
+      setNotes(r.data.notes);
+      setNotesState("ok");
+    });
     return () => {
       live = false;
     };
-  }, [sellerId]);
+  }, [sellerId, notesRetry]);
   const saveMemo = async () => {
     const body = memo.trim();
     if (!body || saving) return;
@@ -282,13 +298,13 @@ export default function ApplicationDetailPage() {
                       [
                         "자동으로 확인한 결과",
                         state.kind === "ok" && state.reasons.length > 0 ? (
-                          <span className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                          <ul style={{ margin: 0, paddingLeft: 18 }}>
                             {state.reasons.map((c) => (
-                              <span key={c} className="bdg b-warn">
-                                {reasonLabel(c)}
-                              </span>
+                              <li key={c}>
+                                {state.app?.reasons.find((reason) => reason.code === c)?.text ?? reasonLabel(c)}
+                              </li>
                             ))}
-                          </span>
+                          </ul>
                         ) : (
                           "문제가 된 항목이 없습니다."
                         ),
@@ -365,16 +381,14 @@ export default function ApplicationDetailPage() {
                   <h2 className="t-hl1" id="application-memo">
                     내부 메모
                   </h2>
-                  {notes === null ? (
-                    <span className="t-c1 c-alt">메모를 불러오는 중입니다.</span>
-                  ) : (
-                    notes.map((n) => (
-                      <span key={n.id} className="t-l2" data-testid="application-note">
-                        {n.body}
-                        <span className="c-alt"> · {n.author.name} · {formatDateTime(n.createdAt)}</span>
-                      </span>
-                    ))
-                  )}
+                  {notesOwner === sellerId && notesState === "error" && <div className="msg msg-neg" role="alert">메모를 불러오지 못했어요. <button className="btn btn-sm" type="button" onClick={() => setNotesRetry((n) => n + 1)}>다시 시도</button></div>}
+                  {(notesOwner !== sellerId || notesState === "loading") && <span className="t-c1 c-alt" role="status">메모를 불러오고 있어요.</span>}
+                  {visibleNotes?.map((n) => (
+                    <span key={n.id} className="t-l2" data-testid="application-note">
+                      {n.body}
+                      <span className="c-alt"> · {n.author.name} · {formatDateTime(n.createdAt)}</span>
+                    </span>
+                  ))}
                   {canModerate && (
                     <div className="row" style={{ gap: 6 }}>
                       <input className="inp" style={{ flex: 1 }} aria-label="내부 메모" maxLength={1000} value={memo} onChange={(e) => setMemo(e.target.value)} disabled={saving} />

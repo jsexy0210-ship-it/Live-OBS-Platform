@@ -73,7 +73,7 @@ test("도우미 상세의 409는 입력과 기존 version을 보존하고 명시
   await page.goto(`/admin/support/assistant/${id(1)}`);
   await page.getByLabel("제목", { exact: true }).fill("보관할 입력");
   await page.locator("main form").getByRole("button", { name: "저장", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("다른 곳에서 수정됐습니다.");
+  await expect(page.locator("main form").getByRole("alert")).toContainText("다른 곳에서 수정됐습니다.");
   await expect(page.getByLabel("제목", { exact: true })).toHaveValue("보관할 입력");
   expect(writes[0].expectedVersion).toBe(1);
   page.once("dialog", d => void d.accept());
