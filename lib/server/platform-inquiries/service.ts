@@ -1,4 +1,5 @@
 import type { PlatformInquiryCategory, PlatformInquiryStatus, Prisma, PrismaClient } from "@prisma/client";
+import { targetedFor } from "../platform-notices/service";
 import { createAdminAlert } from "../admin-alerts/service";
 import { collectInquiryDiagnostics } from "./diagnostics";
 import { ATTACHMENTS_PER_MESSAGE, ATTACHMENTS_TOTAL_MAX_BYTES, checkInquiryFile } from "./files";
@@ -357,7 +358,7 @@ export async function createInquiry(db: PrismaClient, ctx: TenantContext, raw: u
   let noticeId: string | null = null;
   if (b.noticeId !== undefined && b.noticeId !== null) {
     if (!isUuid(b.noticeId)) return { ok: false as const, reason: "invalid_notice" as const };
-    const n = await db.platformNotice.findFirst({ where: { id: b.noticeId, publishedAt: { not: null }, deletedAt: null, audience: { in: ["PARTNERS", "ALL"] } }, select: { id: true } });
+    const n = await db.platformNotice.findFirst({ where: { id: b.noticeId, publishedAt: { not: null }, deletedAt: null, audience: { in: ["PARTNERS", "ALL"] }, ...targetedFor(ctx.sellerId) }, select: { id: true } });
     if (!n) return { ok: false as const, reason: "invalid_notice" as const };
     noticeId = n.id;
   }
