@@ -8,6 +8,7 @@ if (!["localhost", "127.0.0.1"].includes(base.hostname)) throw new Error("이 �
 test.use({ channel: process.platform === "win32" ? "chrome" : undefined });
 const me: Me = { sellerId: "ui-seller", userId: "ui-owner", isOwner: true, permissions: [], access: "paid", features: ["OVERLAY"], shop: { name: "검증 스토어", slug: "ui-store" }, user: { name: "검증 대표", email: "ui@example.com" }, trialEndsAt: null };
 const row = (index: number) => ({ id: `ui-${index}`, title: `검증 방송 ${index}`, status: "ended", startedAt: new Date(Date.now() - index * 86_400_000).toISOString(), endedAt: new Date(Date.now() - index * 86_400_000 + 3_600_000).toISOString(), layout: "9x16", summary: { orders: 5, paidOrders: 5, sales: 240_000, completed: 4, cancelled: 1, hits: 2 } });
+const monthSummary = { broadcasts: 3, seconds: 7200, orders: 17, avgSales: 1200, avgOpenSeconds: 48 };
 
 async function mock(page: Page, count: number, state?: { wait: Promise<void>; status: number; error?: string }) {
   const reads: URL[] = [], writes: string[] = [];
@@ -27,7 +28,7 @@ async function mock(page: Page, count: number, state?: { wait: Promise<void>; st
         await state.wait;
         if (state.status !== 200) return route.fulfill({ status: state.status, json: { error: state.error } });
       }
-      return route.fulfill({ json: { items: Array.from({ length: url.searchParams.has("cursor") ? 1 : count }, (_, index) => row(index)), nextCursor: count === 0 || url.searchParams.has("cursor") ? null : "ui-next" } });
+      return route.fulfill({ json: { items: Array.from({ length: url.searchParams.has("cursor") ? 1 : count }, (_, index) => row(index)), nextCursor: count === 0 || url.searchParams.has("cursor") ? null : "ui-next", monthSummary } });
     }
     return route.fulfill({ json: { items: [], notices: [], unreadCount: 0, total: 0 } });
   });
@@ -146,3 +147,60 @@ for (const [count, height] of [[5, 960], [10, 650]]) {
     expect(errors).toEqual([]);
   });
 }
+
+test("SA054: 이번 달 요약과 목록 적용 조건을 구분하고 금액 가림을 유지한다", async ({ page }) => {
+  const { reads, writes } = await mock(page, 10);
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto("/seller/broadcasts?from=2026-09-01&to=2026-09-30&layout=9x16");
+  const summary = page.getByTestId("bh-month-summary");
+  await expect(summary.getByRole("heading")).toContainText("이번 달 방송 요약 (KST)");
+  await expect(summary).toContainText("목록 검색 조건과 별개");
+  const values = summary.locator(".stat .v");
+  await expect(values).toHaveText(["3회", "17건", "1,200원", "48초"]);
+  await expect(summary).toContainText("2시간 0분");
+  await page.getByRole("navigation", { name: "페이지 이동", exact: true }).getByRole("button", { name: "다음", exact: true }).click();
+  await expect.poll(() => reads.at(-1)?.searchParams.get("cursor")).toBe("ui-next");
+  await expect(values).toHaveText(["3회", "17건", "1,200원", "48초"]);
+  await page.getByRole("search").getByLabel("레이아웃").selectOption("16x9");
+  const exportLink = page.getByRole("link", { name: "내보내기", exact: true });
+  const href = new URL((await exportLink.getAttribute("href"))!, base);
+  expect(href.pathname).toBe("/api/seller/broadcast/history/export");
+  expect(Object.fromEntries(href.searchParams)).toEqual({ from: "2026-09-01", to: "2026-09-30", layout: "9x16" });
+  await expect(exportLink).toHaveAttribute("title", "목록 검색 조건 · 최대 5,000건");
+  let exported: URL | undefined;
+  await page.route("**/api/seller/broadcast/history/export?*", (route) => {
+    exported = new URL(route.request().url());
+    return route.fulfill({ status: 200, headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": 'attachment; filename="broadcast-history.csv"', "x-export-truncated": "1" }, body: "\uFEFF제목,매출\r\n검증 방송,1200\r\n" });
+  });
+  const downloaded = page.waitForEvent("download");
+  await exportLink.click();
+  expect((await downloaded).suggestedFilename()).toBe("broadcast-history.csv");
+  expect(exported?.search).toBe(href.search);
+  await page.getByRole("search").getByRole("button", { name: "검색", exact: true }).click();
+  await expect.poll(() => reads.at(-1)?.searchParams.get("layout")).toBe("16x9");
+  await expect(values).toHaveText(["3회", "17건", "1,200원", "48초"]);
+  await expect(exportLink).toHaveAttribute("href", /layout=16x9/);
+
+  // 대리조회 응답의 null 금액은 0원으로 바꾸지 않고, 내보내기 링크를 새로 노출하지 않는다.
+  let readOnly = true;
+  await page.route("**/api/seller/me", (route) => route.fulfill({ json: { ...me, readOnly } }));
+  let mode: "masked" | "missing" | "zero" = "masked";
+  await page.route("**/api/seller/broadcast/history?*", (route) => route.fulfill({ json: {
+    items: [{ ...row(0), summary: { ...row(0).summary, sales: readOnly ? null : row(0).summary.sales } }], nextCursor: null,
+    ...(mode === "missing" ? {} : { monthSummary: mode === "zero" ? { broadcasts: 0, seconds: 0, orders: 0, avgSales: 0, avgOpenSeconds: 0 } : { ...monthSummary, avgSales: null, avgOpenSeconds: null } }),
+  } }));
+  await page.reload();
+  await expect(values).toHaveText(["3회", "17건", "—", "—"]);
+  await expect(page.getByTestId("bh-list").locator("td").nth(6)).toHaveText("—");
+  await expect(exportLink).toHaveCount(0);
+  mode = "missing";
+  await page.reload();
+  await expect(page.getByTestId("bh-list").locator("tr")).toHaveCount(1);
+  await expect(summary).toHaveCount(0);
+  mode = "zero";
+  readOnly = false;
+  await page.reload();
+  await expect(values).toHaveText(["0회", "0건", "0원", "0초"]);
+  await expect(exportLink).toHaveCount(1);
+  expect(writes).toEqual([]);
+});
