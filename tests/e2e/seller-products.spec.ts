@@ -126,7 +126,7 @@ async function checkFormPreview(page: Page, phase: "new" | "edit", name: string,
   await page.setViewportSize({ width: 1440, height: 900 });
 }
 
-for (const surface of ["수정 화면", "목록 빠른 변경"] as const) {
+for (const surface of ["수정 화면", "상품 작업 상세"] as const) {
   test(`상품 판매가 ${surface}: 오래된 값은 덮어쓰지 않고 재조회 후 다시 저장한다`, async ({ page }) => {
     await login(page);
     const name = track(`가격충돌 ${surface} ${stamp}`);
@@ -137,7 +137,14 @@ for (const surface of ["수정 화면", "목록 빠른 변경"] as const) {
     }, name);
     const isForm = surface === "수정 화면";
     await page.goto(isForm ? `/seller/products/${product.id}` : `/seller/products?q=${encodeURIComponent(name)}`);
-    const row = page.getByTestId("product-row").filter({ hasText: name });
+    if (!isForm) {
+      const link = page.getByTestId("product-row").filter({ hasText: name }).getByRole("link", { name: "수정", exact: true });
+      await expect(link).toHaveAttribute("href", `/seller/products/${product.id}/operations`);
+      await link.click();
+      await expect(page).toHaveURL(new RegExp(`/seller/products/${product.id}/operations$`));
+      await expect(page.getByTestId("product-detail-operations")).toBeVisible();
+    }
+    const row = page.getByTestId("product-detail-operations");
     const input = isForm ? page.getByLabel("판매가") : row.getByRole("textbox", { name: /가격$/ });
     if (!isForm) await row.getByRole("button", { name: /가격 변경/ }).click();
     await expect(input).toHaveValue("1000");
