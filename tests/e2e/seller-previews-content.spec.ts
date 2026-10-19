@@ -114,7 +114,7 @@ test.describe("파트너스 미리보기: 입력 → 즉시 반영", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await ownerOpen(page, "/seller/coupons");
     await page.getByRole("button", { name: "쿠폰 만들기" }).first().click();
-    const dlg = page.getByRole("dialog", { name: "쿠폰 만들기" });
+    const dlg = page.locator("section[aria-labelledby=cp-edit-title]");
     const pv = dlg.getByTestId("coupon-preview");
 
     await dlg.getByLabel("쿠폰 이름").fill("가을 맞이 쿠폰");

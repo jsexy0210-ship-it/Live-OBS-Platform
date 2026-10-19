@@ -30,3 +30,7 @@
   .rv-table td{display:block;padding:0;border:0;min-width:0}
   .rv-select{grid-area:select}.rv-item{grid-area:item}.rv-rating{grid-area:rating}.rv-content{grid-area:content;margin-top:6px}.rv-status{grid-area:status;align-self:start}.rv-actions{grid-area:actions;justify-self:end;margin-top:6px;display:flex;gap:6px}
 }
+
+/* PC 목록 작업은 셀 안에서 줄바꿈합니다. */
+.rv-actions{white-space:normal}
+.rv-actions .btn{max-width:100%;margin:2px}

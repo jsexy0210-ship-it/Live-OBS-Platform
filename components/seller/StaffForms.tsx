@@ -1,4 +1,5 @@
 "use client";
+import { useUnsavedGuard, confirmLeave } from "../../lib/client/navigation/useUnsavedGuard";
 
 import { useEffect, useRef, useState } from "react";
 import { cleanText, textLength } from "../../lib/server/text/clean";
@@ -132,16 +133,17 @@ export function PermissionPicker({ value, onChange, disabled }: { value: StaffPe
 }
 
 // 가운데 창: 처음 칸에 포커스, Esc로 닫기(보내는 중 제외)
-function Dialog({ title, labelId, busy, onClose, children, wide }: { title: string; labelId: string; busy: boolean; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
+function Dialog({ title, labelId, busy, onClose, children, wide, fullPage }: { title: string; labelId: string; busy: boolean; onClose: () => void; children: React.ReactNode; wide?: boolean; fullPage?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     ref.current?.querySelector<HTMLElement>("input:not([disabled]), button:not([disabled])")?.focus();
   }, []);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !busy && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !fullPage && !busy && onClose();
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [busy, onClose]);
+  return () => window.removeEventListener("keydown", onKey);
+  }, [busy, onClose, fullPage]);
+  if (fullPage) return <section className="card pad col" style={{ gap: 14 }} aria-labelledby={labelId}><h2 className="t-hl1" id={labelId}>{title}</h2>{children}</section>;
   return (
     <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby={labelId}>
       <div className={`modal${wide ? " modal-lg" : ""} staff-modal`} ref={ref}>
@@ -204,7 +206,7 @@ type EditSent = { name: string; phone: string | null; perms: StaffPerm[]; profil
 // 직원 정보·권한 수정: 이름·휴대폰은 PATCH, 권한은 permissions로 보낸다(바뀐 것만)
 // 결과가 불분명하면(연결 끊김·5xx) 칸을 잠그고, 목록에서 보낸 값과 같아진 것을 확인하거나 같은 값 재저장이 성공할 때만 저장으로 본다
 // onApply: 서버가 성공으로 돌려준 값(정보·권한)을 목록 행에 바로 반영한다(뒤이은 목록 다시 읽기가 실패해도 화면이 낡지 않게)
-export function EditStaffModal({ staff, onClose, onSaved, onChanged, onApply }: { staff: Staff; onClose: () => void; onSaved: (text: string) => void; onChanged?: () => void; onApply?: (changes: Partial<Staff>) => void }) {
+export function EditStaffModal({ staff, onClose, onSaved: completed, fullPage = false, onChanged, onApply }: { fullPage?: boolean; staff: Staff; onClose: () => void; onSaved: (text: string) => void; onChanged?: () => void; onApply?: (changes: Partial<Staff>) => void }) {
   const [name, setName] = useState(staff.name);
   const [phone, setPhone] = useState(staff.phone ?? "");
   const [perms, setPerms] = useState<StaffPerm[]>(staff.permissions);
@@ -217,6 +219,9 @@ export function EditStaffModal({ staff, onClose, onSaved, onChanged, onApply }: 
   const phoneChanged = nextPhone !== staff.phone;
   const profileChanged = name.trim() !== staff.name || phoneChanged;
   const permsChanged = !sameSet(perms, staff.permissions);
+  const dirty = profileChanged || permsChanged || unclear !== null;
+  const release = useUnsavedGuard(fullPage && dirty);
+  const onSaved = async (text: string) => { if (fullPage) await release(); completed(text); };
   const savedText = (sent: EditSent) =>
     sent.phone !== staff.phone && staff.identityLinked ? `${sent.name} 정보를 저장했습니다 · 다음 로그인 때 본인확인을 다시 안내합니다` : `${sent.name} 정보를 저장했습니다`;
 
@@ -290,10 +295,12 @@ export function EditStaffModal({ staff, onClose, onSaved, onChanged, onApply }: 
   };
 
   // 불분명한 채로 닫으면 저장됐을 수 있음을 알리고 목록을 다시 읽는다
-  const close = () => (unclear ? onSaved("이전 저장 요청이 처리되었을 수 있습니다 · 목록에서 정보와 권한을 확인해 주십시오") : onClose());
+  const originalClose = () => (unclear ? onSaved("이전 저장 요청이 처리되었을 수 있습니다 · 목록에서 정보와 권한을 확인해 주십시오") : onClose());
+
+  const close = async () => { if (!fullPage || confirmLeave(dirty)) { if (fullPage) await release(); originalClose(); } };
 
   return (
-    <Dialog title={`${staff.name} 정보·업무 수정`} labelId="staff-edit-title" busy={busy} onClose={close} wide>
+    <Dialog fullPage={fullPage} title={`${staff.name} 정보·업무 수정`} labelId="staff-edit-title" busy={busy} onClose={close} wide>
       <form className="col" style={{ gap: 14 }} onSubmit={save} noValidate>
         <p className="t-b2 c-neu" style={{ margin: 0 }}>
           {staff.email}
@@ -374,12 +381,15 @@ export function EditStaffModal({ staff, onClose, onSaved, onChanged, onApply }: 
 
 // 비밀번호는 목록으로 확인할 수 없다: 결과가 불분명하면 「변경되었을 수 있음」을 알리고, 칸을 잠근 채 같은 값으로만 재전송하게 한다.
 // 첫 요청이 아직 처리 중일 수 있어 다른 비밀번호로 바꾸는 길은 두지 않는다(늦게 끝난 첫 요청이 새 비밀번호를 덮을 수 있음). 재전송 성공만 확정으로 본다
-export function ResetPasswordModal({ staff, onClose, onDone }: { staff: Staff; onClose: () => void; onDone: (text: string) => void }) {
+export function ResetPasswordModal({ staff, onClose, onDone: completed, fullPage = false }: { fullPage?: boolean; staff: Staff; onClose: () => void; onDone: (text: string) => void }) {
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [unclear, setUnclear] = useState<string | null>(null);
 
+  const dirty = pw !== "" || unclear !== null;
+  const release = useUnsavedGuard(fullPage && dirty);
+  const onDone = async (text: string) => { if (fullPage) await release(); completed(text); };
   const submit = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (busy) return;
@@ -394,10 +404,12 @@ export function ResetPasswordModal({ staff, onClose, onDone }: { staff: Staff; o
     setError(staffFail(r, "변경하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
   };
 
-  const close = () => (unclear ? onDone(`이전 비밀번호 변경 요청이 처리되었을 수 있습니다 · ${staff.name} 로그인이 되지 않으면 입력한 비밀번호를 전달해 주십시오`) : onClose());
+  const originalClose = () => (unclear ? onDone(`이전 비밀번호 변경 요청이 처리되었을 수 있습니다 · ${staff.name} 로그인이 되지 않으면 입력한 비밀번호를 전달해 주십시오`) : onClose());
+
+  const close = async () => { if (!fullPage || confirmLeave(dirty)) { if (fullPage) await release(); originalClose(); } };
 
   return (
-    <Dialog title={`${staff.name} 비밀번호를 바꾸시겠습니까?`} labelId="staff-pw-title" busy={busy} onClose={close}>
+    <Dialog fullPage={fullPage} title={`${staff.name} 비밀번호를 바꾸시겠습니까?`} labelId="staff-pw-title" busy={busy} onClose={close}>
       <form className="col" style={{ gap: 14 }} onSubmit={submit} noValidate>
         {unclear && <UnclearBox testId="sp-unclear" title="비밀번호가 변경되었을 수 있습니다." text={unclear} busy={busy} onResend={() => void submit()} resendLabel="같은 비밀번호로 다시 보내기" />}
         <div className="fld">
@@ -441,10 +453,13 @@ export function ResetPasswordModal({ staff, onClose, onDone }: { staff: Staff; o
 
 // 비활성화: 결과가 불분명하면 목록에서 DISABLED를 확인하거나 재전송이 성공할 때만 완료로 본다(서버의 비활성화는 다시 보내도 같은 결과)
 // onApply: 서버가 비활성화를 확정하면 목록 행에 바로 반영한다(뒤이은 목록 다시 읽기가 실패해도 화면이 낡지 않게)
-export function DisableStaffModal({ staff, onClose, onDone, onChanged, onApply }: { staff: Staff; onClose: () => void; onDone: (text: string) => void; onChanged?: () => void; onApply?: (changes: Partial<Staff>) => void }) {
+export function DisableStaffModal({ staff, onClose, onDone: completed, fullPage = false, onChanged, onApply }: { fullPage?: boolean; staff: Staff; onClose: () => void; onDone: (text: string) => void; onChanged?: () => void; onApply?: (changes: Partial<Staff>) => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [unclear, setUnclear] = useState<string | null>(null);
+  const dirty = unclear !== null;
+  const release = useUnsavedGuard(fullPage && dirty);
+  const onDone = async (text: string) => { if (fullPage) await release(); completed(text); };
   const doneText = `${staff.name} 계정을 사용 중지했습니다`;
 
   const check = async () => {
@@ -473,10 +488,12 @@ export function DisableStaffModal({ staff, onClose, onDone, onChanged, onApply }
     setError(failMessage(r, "admin", "사용 중지하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
   };
 
-  const close = () => (unclear ? onDone("이전 사용 중지 요청이 처리되었을 수 있습니다 · 목록에서 상태를 확인해 주십시오") : onClose());
+  const originalClose = () => (unclear ? onDone("이전 사용 중지 요청이 처리되었을 수 있습니다 · 목록에서 상태를 확인해 주십시오") : onClose());
+
+  const close = async () => { if (!fullPage || confirmLeave(dirty)) { if (fullPage) await release(); originalClose(); } };
 
   return (
-    <Dialog title={`${staff.name} 계정을 사용 중지하시겠습니까?`} labelId="staff-disable-title" busy={busy} onClose={close}>
+    <Dialog fullPage={fullPage} title={`${staff.name} 계정을 사용 중지하시겠습니까?`} labelId="staff-disable-title" busy={busy} onClose={close}>
       <p className="t-b2 c-neu" style={{ margin: 0 }}>
         바로 로그아웃되고 다시 로그인할 수 없습니다. 처리 내용은 로그 추적에 남습니다.
       </p>

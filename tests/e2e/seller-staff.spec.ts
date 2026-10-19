@@ -9,6 +9,8 @@ test.beforeAll(() => {
   if (!PASSWORD) throw new Error("E2E_PASSWORD가 없어요. dev-seed가 출력한 데모 비밀번호를 넣어 주세요");
 });
 
+test.beforeEach(async ({ page }) => { page.on("dialog", async (dialog) => { await dialog.accept(); }); });
+
 async function shot(page: Page, name: string) {
   if (!SHOTS) return;
   for (const width of [1440, 1024, 390]) {
@@ -54,6 +56,7 @@ const uniq = () => `${Date.now().toString(36).slice(-5)}${Math.floor(Math.random
 const row = (page: Page, email: string) => page.getByTestId("staff-row").filter({ hasText: email });
 
 async function addStaff(page: Page, s: { name: string; phone: string; email: string; password: string }) {
+  if (new URL(page.url()).pathname === "/seller/staff") await page.getByRole("button", { name: "직원 추가", exact: true }).click();
   await page.getByLabel("이름", { exact: true }).fill(s.name);
   await page.getByLabel("휴대폰 번호").fill(s.phone);
   await page.getByLabel("이메일 (로그인 아이디)").fill(s.email);
@@ -72,6 +75,7 @@ test("대표자: 메뉴에서 직원 계정으로 들어가 목록을 보고, �
   await expect(page.getByText("대표자 · 모든 업무")).toBeVisible();
   await expect(row(page, "demo-staff@example.com")).toContainText("상품");
   await expect(row(page, "demo-none@example.com")).toContainText("허용한 업무 없음");
+  await page.getByRole("button", { name: "직원 추가", exact: true }).click();
   // 대표자만 하는 일은 고를 수 없다
   for (const label of ["카드 결제 연결", "구독 · 결제", "직원 관리", "적립금 실제 지급"]) await expect(page.getByLabel(`${label} · 대표자만`)).toBeDisabled();
   await shot(page, "SA-100");
@@ -137,6 +141,7 @@ test("대표자: 메뉴에서 직원 계정으로 들어가 목록을 보고, �
   await expect(row(page, s.email)).toContainText("방송 진행");
   await expect(row(page, s.email)).toContainText("010-1234-5678 · 휴대폰 확인 전");
   // 입력 칸은 비워지고 비밀번호 칸은 다시 가려진다
+  await page.getByRole("button", { name: "직원 추가", exact: true }).click();
   await expect(page.getByLabel("이메일 (로그인 아이디)")).toHaveValue("");
   await expect(page.getByLabel("처음 쓸 비밀번호")).toHaveAttribute("type", "password");
   await expect(page.getByRole("button", { name: "보기", exact: true })).toBeVisible();
@@ -158,7 +163,7 @@ test("대표자: 직원 이름·휴대폰·권한을 고치면 바로 목록에 
   await expect(row(page, s.email)).toContainText("허용한 업무 없음");
 
   await page.getByRole("button", { name: `${s.name} 정보·업무 수정` }).click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.locator("section[aria-labelledby^=staff-]");
   await expect(dialog.getByRole("heading", { name: `${s.name} 정보·업무 수정` })).toBeVisible();
   await expect(dialog.getByText("휴대폰 확인 전")).toBeVisible();
   // 바꾼 것이 없으면 저장할 수 없다
@@ -175,7 +180,7 @@ test("대표자: 직원 이름·휴대폰·권한을 고치면 바로 목록에 
   await dialog.getByLabel("휴대폰 번호").fill("01033334444");
   await shot(page, "SA-100-edit");
   await clickSave(page, dialog);
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator("section[aria-labelledby^=staff-]")).toHaveCount(0);
   await expect(page.getByText(`${s.name}팀장 정보를 저장했습니다`)).toBeVisible();
   await expect(row(page, s.email)).toContainText(`${s.name}팀장`);
   await expect(row(page, s.email)).toContainText("010-3333-4444");
@@ -199,7 +204,7 @@ test("대표자: 직원 이름·휴대폰·권한을 고치면 바로 목록에 
   await expect(dialog.getByText("휴대폰 확인 전")).toBeVisible();
   await shot(page, "SA-100-phone-change");
   await dialog.getByRole("button", { name: "취소" }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator("section[aria-labelledby^=staff-]")).toHaveCount(0);
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
@@ -214,7 +219,7 @@ test("대표자: 직원 비밀번호를 재설정하면 새 비밀번호로만 �
   await expect(row(page, s.email)).toBeVisible();
 
   await page.getByRole("button", { name: `${s.name} 비밀번호 바꾸기` }).click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.locator("section[aria-labelledby^=staff-]");
   await expect(dialog.getByLabel("새 비밀번호")).toHaveAttribute("type", "password");
   await dialog.getByLabel("새 비밀번호").fill("short");
   await dialog.getByRole("button", { name: "새 비밀번호로 바꾸기" }).click();
@@ -239,7 +244,7 @@ test("대표자: 직원 비밀번호를 재설정하면 새 비밀번호로만 �
   await page.getByRole("button", { name: `${s.name} 정보·업무 수정` }).click();
   await dialog.getByRole("checkbox", { name: "주문·배송", exact: true }).check();
   await clickSave(page, dialog);
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator("section[aria-labelledby^=staff-]")).toHaveCount(0);
   await staffPage.getByRole("main").getByRole("link", { name: "재고 관리" }).click();
   await expect(staffPage).toHaveURL(/\/seller\/products\/stock$/);
   await expect(staffMenu.getByRole("link", { name: "주문", exact: true })).toBeVisible();
@@ -347,7 +352,7 @@ test("저장 응답을 놓치면 추가는 생성됨으로 단정하지 않고, 
 
   // 권한 수정: 서버는 저장했는데 응답이 끊긴다 → 다시 읽어 보낸 값과 같으므로 저장했다고 알리고 목록에 반영
   await page.getByRole("button", { name: `${s.name} 정보·업무 수정` }).click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.locator("section[aria-labelledby^=staff-]");
   await dialog.getByRole("checkbox", { name: "주문·배송", exact: true }).check();
   await page.route(
     (u) => u.pathname.endsWith("/permissions"),
@@ -388,7 +393,7 @@ test("결과가 불분명한 직원 변경은 실제 상태로 판정한다(이�
   await page.getByRole("checkbox", { name: "상품", exact: true }).check();
   await clickCreate(page);
   await expect(row(page, s.email)).toContainText("상품");
-  const dialog = page.getByRole("dialog");
+  const dialog = page.locator("section[aria-labelledby^=staff-]");
 
   // ② 비밀번호 재설정: 서버는 바꿨는데 응답이 끊긴다 → 「변경되었을 수 있음」, 칸 잠금, 같은 값으로만 다시 보낸다
   await page.getByRole("button", { name: `${s.name} 비밀번호 바꾸기` }).click();
@@ -491,7 +496,7 @@ test("결과가 불분명한 직원 변경은 늦게 반영돼도 실패로 단�
   await expect(page.getByText(`${s.name} 계정을 만들었습니다`, { exact: false })).toHaveCount(0);
   await expect(row(page, s.email)).toBeVisible();
   await addBox.getByRole("button", { name: "처음부터 다시 입력" }).click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.locator("section[aria-labelledby^=staff-]");
 
   // 정보 수정: 끊긴 직후 다시 읽으면 반영 전 → 불분명 유지·칸 잠금(「저장되지 않았습니다」로 되돌리지 않음) → 늦게 저장된 뒤 「확인」으로 성공
   await page.getByRole("button", { name: `${s.name} 정보·업무 수정` }).click();
@@ -574,7 +579,7 @@ test("직원 변경이 503·형식 모를 응답이면 불분명으로 보고 �
   await page.getByTestId("sa-unclear").getByRole("button", { name: "처음부터 다시 입력" }).click();
 
   // 비밀번호 재설정: 503(HTML)이면 「변경되었을 수 있음」으로 잠그고 같은 값으로만 재전송
-  const dialog = page.getByRole("dialog");
+  const dialog = page.locator("section[aria-labelledby^=staff-]");
   await page.getByRole("button", { name: `${s.name} 비밀번호 바꾸기` }).click();
   await dialog.getByLabel("새 비밀번호").fill(`pw-${id}-503`);
   off = await after503((u) => u.pathname.endsWith("/password"), "POST", html);
@@ -621,7 +626,7 @@ test("정보 저장 뒤 권한 저장만 실패하면 저장된 정보는 목록
   await clickCreate(page);
   await expect(row(page, s.email)).toContainText("010-1111-2222");
   await page.getByRole("button", { name: `${s.name} 정보·업무 수정` }).click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.locator("section[aria-labelledby^=staff-]");
   await dialog.getByLabel("휴대폰 번호").fill("01033334444");
   await dialog.getByRole("checkbox", { name: "상품", exact: true }).check();
   await page.route(
@@ -654,10 +659,10 @@ test("권한이 하나도 없는 직원도 창으로 돌아오면 대표자가 �
   await expect(staffMenu.getByRole("link", { name: "주문", exact: true })).toHaveCount(0);
 
   await page.getByRole("button", { name: `${s.name} 정보·업무 수정` }).click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.locator("section[aria-labelledby^=staff-]");
   await dialog.getByRole("checkbox", { name: "주문·배송", exact: true }).check();
   await clickSave(page, dialog);
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator("section[aria-labelledby^=staff-]")).toHaveCount(0);
 
   // 직원 창으로 돌아온다(포커스): 화면을 옮기지 않아도 권한을 다시 읽어 메뉴에 나온다
   const orders = staffMenu.getByRole("link", { name: "주문", exact: true });
@@ -706,10 +711,10 @@ test("권한 다시 읽기가 겹치면 늦게 온 옛 응답이 새 권한을 �
 
   // 대표자가 「주문·배송」을 켠다 → 두 번째 다시 읽기는 새 권한을 받는다
   await page.getByRole("button", { name: `${s.name} 정보·업무 수정` }).click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.locator("section[aria-labelledby^=staff-]");
   await dialog.getByRole("checkbox", { name: "주문·배송", exact: true }).check();
   await clickSave(page, dialog);
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator("section[aria-labelledby^=staff-]")).toHaveCount(0);
   await staffPage.waitForTimeout(1100);
   await staffPage.evaluate(() => window.dispatchEvent(new Event("focus")));
   await expect(orders).toBeVisible();
@@ -842,7 +847,7 @@ test("직원 목록 다시 읽기가 겹쳐 나중 요청이 실패해도 먼저
     if (gets === 2) return route.fulfill({ status: 500, json: { error: "internal" } });
     return route.continue();
   });
-  const dialog = page.getByRole("dialog");
+  const dialog = page.locator("section[aria-labelledby^=staff-]");
   // 첫 수정(이름) → 첫 다시 읽기(응답 붙잡음)
   await page.getByRole("button", { name: `${s.name} 정보·업무 수정` }).click();
   await dialog.getByLabel("이름").fill(`${s.name}가`);
@@ -902,7 +907,7 @@ test("비활성화 성공 뒤 목록 다시 읽기가 실패해도 행은 비활
 
   await page.route("**/api/seller/staff", (route) => (route.request().method() === "GET" ? route.fulfill({ status: 500, json: { error: "internal" } }) : route.continue()));
   await page.getByRole("button", { name: `${s.name} 직원 계정 사용 중지` }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "직원 계정 사용 중지" }).click();
+  await page.locator("section[aria-labelledby=staff-disable-title]").getByRole("button", { name: "직원 계정 사용 중지" }).click();
   await expect(page.getByText(`${s.name} 계정을 사용 중지했습니다`)).toBeVisible();
   await expect(row(page, s.email)).toContainText("사용 중지");
   const stale = page.getByTestId("staff-stale");
@@ -937,7 +942,7 @@ test("확정된 수정보다 먼저 보낸 목록 응답이 늦게 와도 그 �
     }
     return route.fulfill({ status: 500, json: { error: "internal" } });
   });
-  const dialog = page.getByRole("dialog");
+  const dialog = page.locator("section[aria-labelledby^=staff-]");
   // 수정 A(이름) → 목록1(수정 A만 담긴 응답을 붙잡음)
   await page.getByRole("button", { name: `${s.name} 정보·업무 수정` }).click();
   await dialog.getByLabel("이름").fill(`${s.name}가`);
@@ -974,7 +979,7 @@ test("정보만 보낸 수정이 불분명할 때 다른 창이 권한을 바꿔
   }, s.email);
 
   await page.getByRole("button", { name: `${s.name} 정보·업무 수정` }).click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.locator("section[aria-labelledby^=staff-]");
   await dialog.getByLabel("이름").fill(`${s.name}새`);
   // 서버는 이름을 저장하고 응답은 끊긴다. 그사이 다른 창이 권한을 바꾼다
   await page.route(
@@ -1015,7 +1020,7 @@ test("먼저 보낸 목록 요청의 실패가 더 새 성공 뒤에 와도 낡�
     }
     return route.continue();
   });
-  const dialog = page.getByRole("dialog");
+  const dialog = page.locator("section[aria-labelledby^=staff-]");
   // 수정 A → 목록1(붙잡았다가 실패) / 수정 B → 목록2 성공
   await page.getByRole("button", { name: `${s.name} 정보·업무 수정` }).click();
   await dialog.getByLabel("이름").fill(`${s.name}가`);
