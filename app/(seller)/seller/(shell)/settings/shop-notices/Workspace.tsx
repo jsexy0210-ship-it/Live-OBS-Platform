@@ -3,6 +3,7 @@ import { useUrlState } from "../../../../../../lib/client/navigation/useUrlState
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useUnsavedGuard, confirmLeave } from "../../../../../../lib/client/navigation/useUnsavedGuard";
+import { useSmartBack } from "../../../../../../lib/client/navigation";
 import { detailHref, listReturnTo, setDetailResult, takeDetailResult } from "../../banners/_shared/detailNavigation";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -35,6 +36,7 @@ const summary = (list: Item[]) => `총 ${list.length}${list.some((i) => i.isPubl
 export default function Workspace({ view, itemId, kind, returnTo }: { view?: "item" | "order"; itemId?: string; kind?: string; returnTo?: string }) {
   const router = useRouter();
   const back = listReturnTo(returnTo, "/seller/settings/shop-notices");
+  const smartBack = useSmartBack(back);
   const initialized = useRef(false);
   const initialDraft = useRef<Draft | null>(null);
   const [orderBusy, setOrderBusy] = useState(false);
@@ -73,7 +75,8 @@ export default function Workspace({ view, itemId, kind, returnTo }: { view?: "it
   const pinned = noticeList.find((n) => n.isPinned);
   const dirty = !!draft && JSON.stringify(draft) !== JSON.stringify(initialDraft.current);
   const release = useUnsavedGuard(dirty);
-  const close = async () => { if (confirmLeave(dirty)) { await release(); router.push(back); } };
+  const leavePage = async (next: () => void) => { if (orderBusy || !confirmLeave(dirty)) return; await release(); next(); };
+  const close = () => leavePage(() => router.push(back));
   useEffect(() => {
     if (view !== "item" || notices.kind !== "ok" || faqs.kind !== "ok" || initialized.current) return;
     const item = [...notices.items, ...faqs.items].find((it) => it.id === itemId);
@@ -185,7 +188,7 @@ export default function Workspace({ view, itemId, kind, returnTo }: { view?: "it
     s.kind === "loading" ? <StateBox kind="loading" what={what} /> : s.kind === "error" ? <StateBox kind={stateKind(s.status, s.error)} what={what} onRetry={() => void load(kind)} /> : null;
 
   if (view) return <><Topbar crumb="마케팅 › 쇼핑몰 공지 · 자주 묻는 질문 › 상세" /><main className="main">
-    <PageHead title={view === "order" ? "질문 순서 상세" : itemId === "new" ? "글 쓰기" : "글 상세"} description="내용과 공개 조건을 확인한 뒤 저장합니다." back={back} actions={<Link className="btn btn-out" href={back}>목록</Link>} />
+    <PageHead onBack={() => leavePage(smartBack)} title={view === "order" ? "질문 순서 상세" : itemId === "new" ? "글 쓰기" : "글 상세"} description="내용과 공개 조건을 확인한 뒤 저장합니다." back={back} actions={<Link className="btn btn-out" href={back}>목록</Link>} />
     {stateBox(notices, "notice", "공지")}{stateBox(faqs, "faq", "질문")}
     {missing ? <div className="msg msg-neg" role="alert">글을 찾을 수 없습니다.</div> : !editable ? <div className="msg msg-info">쇼핑몰 설정 권한이 필요합니다.</div> : view === "order" ? faqs.kind === "ok" && <section className="card pad col" style={{ gap: 12 }}>
       <span>전체 질문 순서를 바꾸면 바로 반영됩니다. 다른 작업자가 목록을 변경하면 다시 불러옵니다.</span>

@@ -3,9 +3,10 @@ import { useUrlState } from "../../../../../../lib/client/navigation/useUrlState
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useUnsavedGuard, confirmLeave } from "../../../../../../lib/client/navigation/useUnsavedGuard";
+import { useSmartBack } from "../../../../../../lib/client/navigation";
 import { detailHref, listReturnTo, setDetailResult, takeDetailResult } from "../_shared/detailNavigation";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useImperativeHandle, useCallback, useEffect, useRef, useState } from "react";
 import { Pagination, PageHead, useConfirm } from "../../../../../../components/admin-ui";
 import { DateTimePicker } from "../../../../../../components/admin-ui/DatePicker";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
@@ -142,6 +143,8 @@ const reactionCell = (p: Popup) => (p.stats.impressions === 0 ? "—" : p.closeR
 export default function Workspace({ view, itemId, copyId, returnTo }: { view?: "item" | "order"; itemId?: string; copyId?: string; returnTo?: string }) {
   const router = useRouter();
   const back = listReturnTo(returnTo, "/seller/banners/popups");
+  const leaveRef = useRef<((next?: () => void) => Promise<void>) | null>(null);
+  const smartBack = useSmartBack(back);
   const generation = useRef(0);
   const initialized = useRef(false);
   const [orderBusy, setOrderBusy] = useState(false);
@@ -229,12 +232,12 @@ export default function Workspace({ view, itemId, copyId, returnTo }: { view?: "
   const others = list.filter((p) => p.status === "live" && p.id !== draft?.id);
 
   if (view) return <><Topbar crumb="마케팅 › 이벤트 팝업 › 상세" /><main className="main">
-    <PageHead title={view === "order" ? "노출 설정 상세" : itemId === "new" ? "팝업 추가" : "팝업 상세"} description="게시 내용과 조건을 확인한 뒤 저장합니다." back={back} actions={<Link className="btn btn-out" href={back}>목록</Link>} />
+    <PageHead onBack={() => leaveRef.current ? leaveRef.current(smartBack) : smartBack()} title={view === "order" ? "노출 설정 상세" : itemId === "new" ? "팝업 추가" : "팝업 상세"} description="게시 내용과 조건을 확인한 뒤 저장합니다." back={back} actions={<Link className="btn btn-out" href={back}>목록</Link>} />
     {state.kind !== "ok" ? <StateBox kind={state.kind === "error" ? stateKind(state.status, state.error) : "loading"} what="팝업" onRetry={() => void load()} /> : !editable ? <div className="msg msg-info">쇼핑몰 설정 권한이 필요합니다.</div> : view === "order" ? <section className="card pad col" style={{ gap: 12 }}>
       <span>전체 {list.length}개의 순서를 바꾸면 바로 반영됩니다.</span>
       {list.map((it, i) => <div className="row" data-testid="popup-order-row" key={it.id} style={{ gap: 8, flexWrap: "wrap" }}><span>{i + 1}. {it.title}</span><button className="btn btn-sm btn-out" aria-label={`${it.title} 위로`} disabled={orderBusy || i === 0} onClick={() => move(i, i - 1)}>▲</button><button className="btn btn-sm btn-out" aria-label={`${it.title} 아래로`} disabled={orderBusy || i === list.length - 1} onClick={() => move(i, i + 1)}>▼</button></div>)}
       <button className="btn btn-out" disabled={orderBusy} onClick={() => void setPaused(!paused?.on)}>{paused?.on ? "모든 팝업 다시 켜기" : "모든 팝업 잠시 끄기"}</button>
-    </section> : draft ? <><PopupEditor key={draft.id ?? "new"} d={draft} setD={setDraft as (fn: (v: Draft) => Draft) => void} status={current?.status ?? null} overlap={draft.isActive && others.length > 0 ? others[0].title : null} onDelete={async () => current ? !!(await remove(current)) : false} onClose={() => router.push(back)} onSaved={(text) => { setDetailResult("/seller/banners/popups", text); router.push(back); }} />
+    </section> : draft ? <><PopupEditor leaveRef={leaveRef} key={draft.id ?? "new"} d={draft} setD={setDraft as (fn: (v: Draft) => Draft) => void} status={current?.status ?? null} overlap={draft.isActive && others.length > 0 ? others[0].title : null} onDelete={async () => current ? !!(await remove(current)) : false} onClose={() => router.push(back)} onSaved={(text) => { setDetailResult("/seller/banners/popups", text); router.push(back); }} />
       <PreviewFrame className="sc-pv-popup" data-testid="popup-preview" id="popup-preview"><PopupPreview d={draft} slug={me.shop.slug} /></PreviewFrame></> : <StateBox kind="loading" what="상세" />}
     </main>{toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}</>;
 
@@ -444,7 +447,7 @@ function PopupPreview({ d, slug }: { d: Draft; slug: string }) {
   return d.kind === "BAR" ? <EventPopupBar bar={item} onClose={() => undefined} /> : <EventPopupCard popup={item} hide={hide} onHide={setHide} onClose={() => undefined} />;
 }
 
-function PopupEditor({
+function PopupEditor({ leaveRef,
   d,
   setD,
   status,
@@ -452,7 +455,7 @@ function PopupEditor({
   onDelete,
   onClose,
   onSaved,
-}: {
+}: { leaveRef?: React.Ref<(next?: () => void) => Promise<void>>;
   d: Draft;
   setD: (fn: (v: Draft) => Draft) => void;
   status: ContentStatus | null;
@@ -467,7 +470,9 @@ function PopupEditor({
   const initialDraft = useRef(d);
   const dirty = JSON.stringify(d) !== JSON.stringify(initialDraft.current);
   const release = useUnsavedGuard(dirty || uploading);
-  const close = async () => { if (!uploading && confirmLeave(dirty)) { await release(); onClose(); } };
+  const leavePage = async (next = onClose) => { if (uploading || !confirmLeave(dirty)) return; await release(); next(); };
+  const close = () => leavePage();
+  useImperativeHandle(leaveRef, () => leavePage);
   const remove = async () => { if (await onDelete()) { await release(); onClose(); } };
   const set = (patch: Partial<Draft>) => setD((v) => ({ ...v, ...patch }));
   const badRange = !!d.startsAt && !!d.endsAt && d.startsAt >= d.endsAt;

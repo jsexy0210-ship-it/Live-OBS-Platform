@@ -1,7 +1,7 @@
 "use client";
 import { useUnsavedGuard, confirmLeave } from "../../lib/client/navigation/useUnsavedGuard";
 
-import { useEffect, useRef, useState } from "react";
+import { useImperativeHandle, useEffect, useRef, useState } from "react";
 import { cleanText, textLength } from "../../lib/server/text/clean";
 import { useConfirm } from "../admin-ui/ConfirmDialog";
 import { api, failMessage } from "./api";
@@ -206,7 +206,7 @@ type EditSent = { name: string; phone: string | null; perms: StaffPerm[]; profil
 // 직원 정보·권한 수정: 이름·휴대폰은 PATCH, 권한은 permissions로 보낸다(바뀐 것만)
 // 결과가 불분명하면(연결 끊김·5xx) 칸을 잠그고, 목록에서 보낸 값과 같아진 것을 확인하거나 같은 값 재저장이 성공할 때만 저장으로 본다
 // onApply: 서버가 성공으로 돌려준 값(정보·권한)을 목록 행에 바로 반영한다(뒤이은 목록 다시 읽기가 실패해도 화면이 낡지 않게)
-export function EditStaffModal({ staff, onClose, onSaved: completed, fullPage = false, onChanged, onApply }: { fullPage?: boolean; staff: Staff; onClose: () => void; onSaved: (text: string) => void; onChanged?: () => void; onApply?: (changes: Partial<Staff>) => void }) {
+export function EditStaffModal({ leaveRef, staff, onClose, onSaved: completed, fullPage = false, onChanged, onApply }: { leaveRef?: React.Ref<(next?: () => void) => Promise<void>>; fullPage?: boolean; staff: Staff; onClose: () => void; onSaved: (text: string) => void; onChanged?: () => void; onApply?: (changes: Partial<Staff>) => void }) {
   const [name, setName] = useState(staff.name);
   const [phone, setPhone] = useState(staff.phone ?? "");
   const [perms, setPerms] = useState<StaffPerm[]>(staff.permissions);
@@ -297,7 +297,9 @@ export function EditStaffModal({ staff, onClose, onSaved: completed, fullPage = 
   // 불분명한 채로 닫으면 저장됐을 수 있음을 알리고 목록을 다시 읽는다
   const originalClose = () => (unclear ? onSaved("이전 저장 요청이 처리되었을 수 있습니다 · 목록에서 정보와 권한을 확인해 주십시오") : onClose());
 
-  const close = async () => { if (!fullPage || confirmLeave(dirty)) { if (fullPage) await release(); originalClose(); } };
+  const leavePage = async (next = originalClose) => { if (busy || (fullPage && !confirmLeave(dirty))) return; if (fullPage) await release(); if (unclear) originalClose(); else next(); };
+  const close = () => leavePage();
+  useImperativeHandle(leaveRef, () => leavePage);
 
   return (
     <Dialog fullPage={fullPage} title={`${staff.name} 정보·업무 수정`} labelId="staff-edit-title" busy={busy} onClose={close} wide>
@@ -381,7 +383,7 @@ export function EditStaffModal({ staff, onClose, onSaved: completed, fullPage = 
 
 // 비밀번호는 목록으로 확인할 수 없다: 결과가 불분명하면 「변경되었을 수 있음」을 알리고, 칸을 잠근 채 같은 값으로만 재전송하게 한다.
 // 첫 요청이 아직 처리 중일 수 있어 다른 비밀번호로 바꾸는 길은 두지 않는다(늦게 끝난 첫 요청이 새 비밀번호를 덮을 수 있음). 재전송 성공만 확정으로 본다
-export function ResetPasswordModal({ staff, onClose, onDone: completed, fullPage = false }: { fullPage?: boolean; staff: Staff; onClose: () => void; onDone: (text: string) => void }) {
+export function ResetPasswordModal({ leaveRef, staff, onClose, onDone: completed, fullPage = false }: { leaveRef?: React.Ref<(next?: () => void) => Promise<void>>; fullPage?: boolean; staff: Staff; onClose: () => void; onDone: (text: string) => void }) {
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -406,7 +408,9 @@ export function ResetPasswordModal({ staff, onClose, onDone: completed, fullPage
 
   const originalClose = () => (unclear ? onDone(`이전 비밀번호 변경 요청이 처리되었을 수 있습니다 · ${staff.name} 로그인이 되지 않으면 입력한 비밀번호를 전달해 주십시오`) : onClose());
 
-  const close = async () => { if (!fullPage || confirmLeave(dirty)) { if (fullPage) await release(); originalClose(); } };
+  const leavePage = async (next = originalClose) => { if (busy || (fullPage && !confirmLeave(dirty))) return; if (fullPage) await release(); if (unclear) originalClose(); else next(); };
+  const close = () => leavePage();
+  useImperativeHandle(leaveRef, () => leavePage);
 
   return (
     <Dialog fullPage={fullPage} title={`${staff.name} 비밀번호를 바꾸시겠습니까?`} labelId="staff-pw-title" busy={busy} onClose={close}>
@@ -453,7 +457,7 @@ export function ResetPasswordModal({ staff, onClose, onDone: completed, fullPage
 
 // 비활성화: 결과가 불분명하면 목록에서 DISABLED를 확인하거나 재전송이 성공할 때만 완료로 본다(서버의 비활성화는 다시 보내도 같은 결과)
 // onApply: 서버가 비활성화를 확정하면 목록 행에 바로 반영한다(뒤이은 목록 다시 읽기가 실패해도 화면이 낡지 않게)
-export function DisableStaffModal({ staff, onClose, onDone: completed, fullPage = false, onChanged, onApply }: { fullPage?: boolean; staff: Staff; onClose: () => void; onDone: (text: string) => void; onChanged?: () => void; onApply?: (changes: Partial<Staff>) => void }) {
+export function DisableStaffModal({ leaveRef, staff, onClose, onDone: completed, fullPage = false, onChanged, onApply }: { leaveRef?: React.Ref<(next?: () => void) => Promise<void>>; fullPage?: boolean; staff: Staff; onClose: () => void; onDone: (text: string) => void; onChanged?: () => void; onApply?: (changes: Partial<Staff>) => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [unclear, setUnclear] = useState<string | null>(null);
@@ -490,7 +494,9 @@ export function DisableStaffModal({ staff, onClose, onDone: completed, fullPage 
 
   const originalClose = () => (unclear ? onDone("이전 사용 중지 요청이 처리되었을 수 있습니다 · 목록에서 상태를 확인해 주십시오") : onClose());
 
-  const close = async () => { if (!fullPage || confirmLeave(dirty)) { if (fullPage) await release(); originalClose(); } };
+  const leavePage = async (next = originalClose) => { if (busy || (fullPage && !confirmLeave(dirty))) return; if (fullPage) await release(); if (unclear) originalClose(); else next(); };
+  const close = () => leavePage();
+  useImperativeHandle(leaveRef, () => leavePage);
 
   return (
     <Dialog fullPage={fullPage} title={`${staff.name} 계정을 사용 중지하시겠습니까?`} labelId="staff-disable-title" busy={busy} onClose={close}>

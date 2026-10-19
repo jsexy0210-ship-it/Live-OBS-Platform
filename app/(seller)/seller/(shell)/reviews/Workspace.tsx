@@ -3,13 +3,14 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { PageHead } from "../../../../../components/admin-ui";
 import { useUnsavedGuard, confirmLeave } from "../../../../../lib/client/navigation/useUnsavedGuard";
-import { detailHref, listReturnTo, setDetailResult, takeDetailResult } from "../banners/_shared/detailNavigation";
+import { useSmartBack } from "../../../../../lib/client/navigation";
+import { detailHref, listReturnTo, setDetailResult, takeDetailResult, cursorScope, rememberCursorPosition, takeCursorPosition } from "../banners/_shared/detailNavigation";
 
 import { CursorPagination } from "../../../../../components/Pagination";
 import { ListTable, Modal, useConfirm } from "../../../../../components/admin-ui";
 
-import { createContext, useContext, useCallback, useEffect, useState, useRef } from "react";
-import { Topbar } from "../../../../../components/seller/SellerShell";
+import { useImperativeHandle, createContext, useContext, useCallback, useEffect, useState, useRef } from "react";
+import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
@@ -97,16 +98,21 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "HIDDEN", label: "숨김" },
 ];
 
-type PagePosition = { signature: string; page: number; cursors: (string | undefined)[] };
+type PagePosition = { signature: string; owner: string; page: number; cursors: (string | undefined)[] };
 const PagePositionContext = createContext<{ position: PagePosition; setPosition: React.Dispatch<React.SetStateAction<PagePosition>> } | null>(null);
 export function ReviewPageProvider({ children }: { children: React.ReactNode }) {
-  const [position, setPosition] = useState<PagePosition>({ signature: "", page: 1, cursors: [undefined] });
+  const [position, setPosition] = useState<PagePosition>({ signature: "", owner: "", page: 1, cursors: [undefined] });
   return <PagePositionContext.Provider value={{ position, setPosition }}>{children}</PagePositionContext.Provider>;
 }
 
 export default function ReviewsWorkspace({ view, reviewId, ids = "", action, returnTo }: { view?: "detail" | "bulk" | "policy"; reviewId?: string; ids?: string; action?: string; returnTo?: string }) {
   const router = useRouter();
+  const { me } = useSeller();
+  const positionOwner = `${me.sellerId}:${me.userId}`;
+  const pagingScope = useRef("");
   const back = listReturnTo(returnTo, "/seller/reviews");
+  const leaveRef = useRef<((next?: () => void) => Promise<void>) | null>(null);
+  const smartBack = useSmartBack(back);
   const selected = ids.split(",").filter(Boolean).map((id) => id.toLowerCase());
   const validSelection = selected.length > 0 && selected.length <= 10 && new Set(selected).size === selected.length && selected.every((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number; error?: string } | { kind: "ok"; data: Data }>({ kind: "loading" });
@@ -131,7 +137,9 @@ export default function ReviewsWorkspace({ view, reviewId, ids = "", action, ret
   const [bulkNote, setBulkNote] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
   const { confirm } = useConfirm();
-  const bulkRelease = useUnsavedGuard(view === "bulk" && bulkHide && (bulkReason !== null || bulkNote !== ""));
+  const bulkDirty = view === "bulk" && bulkHide && (bulkReason !== null || bulkNote !== "");
+  const bulkRelease = useUnsavedGuard(bulkDirty);
+  const leaveBulk = async () => { if (bulkBusy || !confirmLeave(bulkDirty)) return; await bulkRelease(); smartBack(); };
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
   useEffect(() => { if (!view) { const text = takeDetailResult("/seller/reviews"); if (text) setToast({ text }); } }, [view]);
 
@@ -147,13 +155,22 @@ export default function ReviewsWorkspace({ view, reviewId, ids = "", action, ret
     [tab, rating],
   );
 
+  const openDetail = (path: string, extra: Record<string, string> = {}) => {
+    rememberCursorPosition("reviews", pagingScope.current, positionRef.current);
+    router.push(detailHref(path, extra));
+  };
+
   const load = useCallback(async () => {
     const id = ++reqId.current; paging.current = true;
     const signature = query();
+    const scope = !view ? await cursorScope("reviews", me.sellerId, me.userId, signature) : "";
+    if (id !== reqId.current) return;
+    const saved = !view ? takeCursorPosition("reviews", scope) : null;
+    if (!view) pagingScope.current = scope;
     const previous = positionRef.current;
-    const restore = !view && previous.signature === signature;
-    const startPage = restore ? previous.page : 1;
-    const history = restore ? previous.cursors : [undefined];
+    const restore = !view && previous.signature === signature && previous.owner === positionOwner ? previous : saved;
+    const startPage = restore?.page ?? 1;
+    const history = restore?.cursors ?? [undefined];
     const r = await api<Data>(query(history[startPage - 1]));
     if (id !== reqId.current) return;
     paging.current = false;
@@ -177,8 +194,8 @@ export default function ReviewsWorkspace({ view, reviewId, ids = "", action, ret
       return;
     }
     setCursor(r.data.nextCursor);
-    setState({ kind: "ok", data: r.data }); if (!view) setPosition({ signature, page: startPage, cursors: history }); setPicked([]);
-  }, [query, view, ids, action, validSelection]);
+    setState({ kind: "ok", data: r.data }); if (!view) setPosition({ signature, owner: positionOwner, page: startPage, cursors: history }); setPicked([]);
+  }, [query, view, ids, action, validSelection, me.sellerId, me.userId, positionOwner]);
 
   useEffect(() => {
     void load();
@@ -196,7 +213,7 @@ export default function ReviewsWorkspace({ view, reviewId, ids = "", action, ret
     paging.current = false;
     if (!r.ok) return setToast({ text: "목록을 불러오지 못했습니다. 다시 눌러 주십시오", neg: true });
     setState({ kind: "ok", data: r.data }); setCursor(r.data.nextCursor); setPicked([]);
-    setPosition((prev) => ({ signature: query(), page: target, cursors: [...prev.cursors.slice(0, target - 1), next] }));
+    setPosition((prev) => ({ signature: query(), owner: positionOwner, page: target, cursors: [...prev.cursors.slice(0, target - 1), next] }));
   };
 
   const data = state.kind === "ok" ? state.data : null;
@@ -249,9 +266,9 @@ export default function ReviewsWorkspace({ view, reviewId, ids = "", action, ret
   const distMax = s ? Math.max(1, ...s.distribution.map((d) => d.count)) : 1;
 
   if (view) return <><Topbar crumb="판매 › 리뷰 › 상세" /><main className="main">
-    <PageHead title={view === "policy" ? "리뷰 설정" : view === "bulk" ? "선택 리뷰 작업 상세" : "리뷰 상세"} description="리뷰와 처리 조건을 확인한 뒤 작업합니다." back={back} actions={<Link className="btn btn-out" href={back}>목록</Link>} />
-    {!data ? <StateBox what="리뷰" kind={state.kind === "error" ? stateKind(state.status) : "loading"} onRetry={() => void load()} /> : view === "detail" && reviewId ? <ReviewDetail key={reviewId} id={reviewId} canEdit={data.canEdit} onClose={() => router.push(back)} onChanged={(text) => setToast({ text })} />
-      : view === "policy" ? <PolicyDialog policy={data.policy} canEdit={data.canEdit} onClose={() => router.push(back)} onSaved={() => { setDetailResult("/seller/reviews", "리뷰 설정을 저장했습니다"); router.push(back); }} />
+    <PageHead onBack={() => view === "bulk" ? leaveBulk() : leaveRef.current ? leaveRef.current(smartBack) : smartBack()} title={view === "policy" ? "리뷰 설정" : view === "bulk" ? "선택 리뷰 작업 상세" : "리뷰 상세"} description="리뷰와 처리 조건을 확인한 뒤 작업합니다." back={back} actions={<Link className="btn btn-out" href={back}>목록</Link>} />
+    {!data ? <StateBox what="리뷰" kind={state.kind === "error" ? stateKind(state.status) : "loading"} onRetry={() => void load()} /> : view === "detail" && reviewId ? <ReviewDetail leaveRef={leaveRef} key={reviewId} id={reviewId} canEdit={data.canEdit} onClose={() => router.push(back)} onChanged={(text) => setToast({ text })} />
+      : view === "policy" ? <PolicyDialog leaveRef={leaveRef} policy={data.policy} canEdit={data.canEdit} onClose={() => router.push(back)} onSaved={() => { setDetailResult("/seller/reviews", "리뷰 설정을 저장했습니다"); router.push(back); }} />
       : <section className="card pad col" style={{ gap: 12 }}>
         <span>선택한 리뷰 {rows.length}건</span>
         {rows.map((r) => <label key={r.id}><input type="checkbox" checked={picked.includes(r.id)} disabled={bulkBusy} onChange={() => togglePick(r.id)} /> {r.productName} · {r.author} · {STATUS[r.status].label}</label>)}
@@ -272,7 +289,7 @@ export default function ReviewsWorkspace({ view, reviewId, ids = "", action, ret
             <span className="t-l2 c-alt">구매자 상품 리뷰 확인 · 답글 · 숨김 · 신고 처리 · 리뷰 적립금 · 작성 조건 설정</span>
           </div>
           {data && (
-            <button className="btn btn-out" type="button" onClick={() => router.push(detailHref("/seller/reviews/settings"))}>
+            <button className="btn btn-out" type="button" onClick={() => openDetail("/seller/reviews/settings")}>
               리뷰 설정
             </button>
           )}
@@ -337,10 +354,10 @@ export default function ReviewsWorkspace({ view, reviewId, ids = "", action, ret
                   <div className="row between" role="region" aria-label="선택한 리뷰 처리" style={{ padding: "8px 12px", gap: 8, flexWrap: "wrap" }}>
                     <span className="t-l2">선택 {picked.length}건</span>
                     <span className="row" style={{ gap: 8 }}>
-                      <button className="btn btn-sm btn-out" type="button" disabled={bulkBusy} onClick={() => router.push(detailHref("/seller/reviews/operations", { ids: picked.join(","), action: "publish" }))}>
+                      <button className="btn btn-sm btn-out" type="button" disabled={bulkBusy} onClick={() => openDetail("/seller/reviews/operations", { ids: picked.join(","), action: "publish" })}>
                         선택 공개
                       </button>
-                      <button className="btn btn-sm btn-out" type="button" disabled={bulkBusy} onClick={() => router.push(detailHref("/seller/reviews/operations", { ids: picked.join(","), action: "hide" }))}>
+                      <button className="btn btn-sm btn-out" type="button" disabled={bulkBusy} onClick={() => openDetail("/seller/reviews/operations", { ids: picked.join(","), action: "hide" })}>
                         선택 숨김
                       </button>
                       <button className="btn btn-sm btn-text" type="button" disabled={bulkBusy} onClick={() => setPicked([])}>
@@ -369,9 +386,9 @@ export default function ReviewsWorkspace({ view, reviewId, ids = "", action, ret
                           key={r.id}
                           data-testid="review-row"
                           tabIndex={0}
-                          onClick={() => router.push(detailHref(`/seller/reviews/${r.id}`))}
+                          onClick={() => openDetail(`/seller/reviews/${r.id}`)}
                           onKeyDown={(e) => {
-                            if (e.currentTarget === e.target && e.key === "Enter") router.push(detailHref(`/seller/reviews/${r.id}`));
+                            if (e.currentTarget === e.target && e.key === "Enter") openDetail(`/seller/reviews/${r.id}`);
                           }}
                         >
                           <td className="rv-select" onClick={(e) => e.stopPropagation()}>
@@ -393,10 +410,10 @@ export default function ReviewsWorkspace({ view, reviewId, ids = "", action, ret
                           </td>
                           <td className="rv-status"><span className={`bdg ${STATUS[r.status].cls}`}>{STATUS[r.status].label}</span></td>
                           <td className="rv-actions">
-                            <button className="btn btn-out" type="button" onClick={(e) => { e.stopPropagation(); router.push(detailHref(`/seller/reviews/${r.id}`)); }} aria-label={`${r.productName} 리뷰 답글 관리`}>
+                            <button className="btn btn-out" type="button" onClick={(e) => { e.stopPropagation(); openDetail(`/seller/reviews/${r.id}`); }} aria-label={`${r.productName} 리뷰 답글 관리`}>
                               {r.replied ? "답글 보기" : "답글"}
                             </button>
-                            <button className="btn btn-out" type="button" onClick={(e) => { e.stopPropagation(); router.push(detailHref(`/seller/reviews/${r.id}`)); }} aria-label={`${r.productName} 리뷰 숨기기`}>
+                            <button className="btn btn-out" type="button" onClick={(e) => { e.stopPropagation(); openDetail(`/seller/reviews/${r.id}`); }} aria-label={`${r.productName} 리뷰 숨기기`}>
                               숨기기
                             </button>
                           </td>
@@ -432,7 +449,7 @@ export default function ReviewsWorkspace({ view, reviewId, ids = "", action, ret
   );
 }
 
-function ReviewDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit: boolean; onClose: () => void; onChanged: (text: string) => void }) {
+function ReviewDetail({ leaveRef, id, canEdit, onClose, onChanged }: { leaveRef?: React.Ref<(next?: () => void) => Promise<void>>; id: string; canEdit: boolean; onClose: () => void; onChanged: (text: string) => void }) {
   const [d, setD] = useState<Detail | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const [reply, setReply] = useState("");
@@ -444,7 +461,9 @@ function ReviewDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
   const replyDirty = !!d && reply.trim() !== (d.reply ?? "");
   const dirty = replyDirty || (hiding && (reason !== null || note !== ""));
   const release = useUnsavedGuard(dirty);
-  const close = async () => { if (confirmLeave(dirty)) { await release(); onClose(); } };
+  const leavePage = async (next = onClose) => { if (busy || !confirmLeave(dirty)) return; await release(); next(); };
+  const close = () => leavePage();
+  useImperativeHandle(leaveRef, () => leavePage);
 
   const load = useCallback(async () => {
     const current = ++generation.current;
@@ -584,14 +603,16 @@ function ReviewDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
   );
 }
 
-function PolicyDialog({ policy, canEdit, onClose, onSaved }: { policy: Policy; canEdit: boolean; onClose: () => void; onSaved: () => void }) {
+function PolicyDialog({ leaveRef, policy, canEdit, onClose, onSaved }: { leaveRef?: React.Ref<(next?: () => void) => Promise<void>>; policy: Policy; canEdit: boolean; onClose: () => void; onSaved: () => void }) {
   const [p, setP] = useState(policy);
   const [words, setWords] = useState(policy.bannedWords.join(", "));
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
   const dirty = JSON.stringify(p) !== JSON.stringify(policy) || words !== policy.bannedWords.join(", ");
   const release = useUnsavedGuard(dirty);
-  const close = async () => { if (confirmLeave(dirty)) { await release(); onClose(); } };
+  const leavePage = async (next = onClose) => { if (busy || !confirmLeave(dirty)) return; await release(); next(); };
+  const close = () => leavePage();
+  useImperativeHandle(leaveRef, () => leavePage);
   const num = (v: string) => Number(v.replace(/[^0-9]/g, "") || "0");
 
   const save = async () => {

@@ -143,7 +143,131 @@ for (const menu of ["buyer-inquiries", "reviews"] as const) test(`${menu}의 현
   await expect(rows).toContainText(menu === "reviews" ? "상품 25" : "문의 25");
   await rows.getByRole("button").first().click();
   await expect(page).toHaveURL(new RegExp(`${menu}/${id(25)}`));
+  await page.reload();
+  await expect(page).toHaveURL(new RegExp(`${menu}/${id(25)}`));
   await page.locator("main").getByRole("link", { name: "목록", exact: true }).click();
   await expect(rows).toContainText(menu === "reviews" ? "상품 25" : "문의 25");
   expect(reads.at(-1)).toBe("page-two");
+  expect(await page.evaluate(menu => sessionStorage.getItem(`streamshop:${menu}:return`), menu)).toBeNull();
+  await page.getByRole("button", { name: "이전", exact: true }).click();
+  await expect(rows).toContainText(menu === "reviews" ? "상품 1" : "문의 1");
+  expect(reads.at(-1)).toBe("");
+  await page.goto(`/seller/${menu}`);
+  await expect(rows).toContainText(menu === "reviews" ? "상품 1" : "문의 1");
+  expect(reads.at(-1)).toBe("");
+});
+
+for (const remaining of [1, 0]) test(`선택 뒤 사라진 쿠폰은 명시 제외하고 남은 ${remaining}건만 처리한다`, async ({ page }) => {
+  const writes: { path: string; body: unknown }[] = [];
+  let stopped = false;
+  await mockSeller(page, async (route, path) => {
+    if (path === "/api/seller/coupons") { await json(route, coupons(remaining ? [{ ...coupon(2), isActive: !stopped }] : [])); return true; }
+    if (route.request().method() !== "GET") { writes.push({ path, body: route.request().postDataJSON() }); stopped = true; await json(route, { ok: true }); return true; }
+    return false;
+  });
+  await page.goto(`/seller/coupons/operations?ids=${id(1)},${id(2)}`);
+  await expect(page.locator("main").getByRole("status")).toContainText(`찾을 수 없는 쿠폰 ${2 - remaining}개를 선택에서 제외했습니다`);
+  await expect(page.locator('main input[type="checkbox"]:checked')).toHaveCount(remaining);
+  const run = page.locator("main").getByRole("button", { name: "선택 발급 중지", exact: true });
+  if (!remaining) {
+    await expect(run).toBeDisabled();
+    await expect(page.locator("main")).toContainText("처리할 수 있는 쿠폰이 없습니다");
+  } else {
+    await run.click();
+    await page.getByRole("dialog").getByRole("button", { name: "발급 중지", exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: "1개의 발급을 중지했습니다" })).toBeVisible();
+  }
+  expect(writes).toEqual(remaining ? [{ path: `/api/seller/coupons/${id(2)}`, body: { isActive: false } }] : []);
+});
+
+test("손상된 쿠폰 선택 키와 잘못된 ID는 임의 일부 선택으로 복구하지 않는다", async ({ page }) => {
+  const writes: string[] = [];
+  await mockSeller(page, async (route, path) => {
+    if (path === "/api/seller/coupons") { await json(route, coupons([coupon(2)])); return true; }
+    if (route.request().method() !== "GET") { writes.push(path); await json(route, { ok: true }); return true; }
+    return false;
+  });
+  await page.goto("/seller/coupons/operations?selectionKey=streamshop:coupon-stop:broken");
+  await page.evaluate(() => sessionStorage.setItem("streamshop:coupon-stop:broken", "{"));
+  await page.reload();
+  await expect(page.locator("main").getByRole("button", { name: "선택 발급 중지", exact: true })).toHaveCount(0);
+  await page.goto(`/seller/coupons/operations?ids=malformed,${id(2)}`);
+  await expect(page.locator("main").getByRole("button", { name: "선택 발급 중지", exact: true })).toHaveCount(0);
+  expect(writes).toEqual([]);
+});
+
+const detailBackCases = [
+  { name: "문의 답변", path: `/seller/buyer-inquiries/${id(1)}`, list: "/seller/buyer-inquiries?status=WAITING", selector: "#bi-answer" },
+  { name: "리뷰 답글", path: `/seller/reviews/${id(1)}`, list: "/seller/reviews?rating=5", selector: "#rv-reply" },
+  { name: "리뷰 정책", path: "/seller/reviews/settings", list: "/seller/reviews?rating=5", selector: "#rv-words" },
+  { name: "선택 리뷰 사유", path: `/seller/reviews/operations?ids=${id(1)}&action=hide`, list: "/seller/reviews?rating=5", label: "사유 설명" },
+  { name: "쿠폰 수정", path: `/seller/coupons/${id(1)}`, list: "/seller/coupons?q=kept", selector: "#cp-name" },
+  { name: "쿠폰 지급", path: `/seller/coupons/${id(1)}/grant`, list: "/seller/coupons?q=kept", checkbox: "VIP" },
+  { name: "배너 등록", path: "/seller/banners/new", list: "/seller/banners?q=kept", selector: "#banner-title" },
+  { name: "팝업 등록", path: "/seller/banners/popups/new", list: "/seller/banners/popups?q=kept", selector: "#popup-title" },
+  { name: "상점 공지", path: "/seller/settings/shop-notices/new?kind=notice", list: "/seller/settings/shop-notices?category=kept", selector: "#notice-title" },
+  { name: "직원 등록", path: "/seller/staff/new", list: "/seller/staff?q=kept", selector: "#sa-name" },
+  { name: "직원 수정", path: `/seller/staff/${id(1)}`, list: "/seller/staff?q=kept", selector: "#se-name" },
+  { name: "직원 비밀번호", path: `/seller/staff/${id(1)}?operation=password`, list: "/seller/staff?q=kept", selector: "#sp-new" },
+];
+const mockStaff = { id: id(1), email: "staff@example.com", name: "검증 직원", phone: null, identityLinked: false, permissions: [], status: "ACTIVE", lastLoginAt: null, createdAt: at };
+async function backReads(route: Route, path: string) {
+  if (path === `/api/seller/inquiries/${id(1)}`) { await json(route, { canEdit: true, inquiry: { id: id(1), kind: "GENERAL", product: null, order: null, title: "검증 문의", body: "원 문의", isPrivate: false, status: "WAITING", answer: null, answeredAt: null, createdAt: at, authorNickname: "검증 구매자", images: [] } }); return true; }
+  if (path === "/api/seller/inquiries") { await json(route, { inquiries: [], canEdit: true, waitingCount: 0, nextCursor: null }); return true; }
+  if (path === `/api/seller/reviews/${id(1)}`) { await json(route, { review: review(1) }); return true; }
+  if (path === "/api/seller/reviews") { await json(route, reviewList); return true; }
+  if (path === "/api/seller/coupons") { await json(route, coupons([coupon(1)])); return true; }
+  if (path === "/api/seller/shop-content/banners") { await json(route, { banners: [], intervalSec: 0 }); return true; }
+  if (path === "/api/seller/shop-content/popups") { await json(route, { popups: [], popupsPaused: false, pausedAt: null, pausedByName: null }); return true; }
+  if (path === "/api/seller/notices") { await json(route, { items: [] }); return true; }
+  if (path === "/api/seller/staff") { await json(route, { staff: [mockStaff] }); return true; }
+  return false;
+}
+for (const entry of ["직접 진입", "새로고침"]) for (const scenario of detailBackCases) test(`${scenario.name} ${entry} ← 확인 취소는 입력을 보존하고 확인은 보호 기록을 소비한다`, async ({ page }) => {
+  const writes: string[] = [], errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await mockSeller(page, async (route, path) => {
+    if (route.request().method() !== "GET") { writes.push(path); await json(route, { error: "unexpected_write" }, 409); return true; }
+    return backReads(route, path);
+  });
+  const url = new URL(scenario.path, "http://localhost"); url.searchParams.set("returnTo", scenario.list);
+  await page.goto(url.pathname + url.search);
+  if (entry === "새로고침") await page.reload();
+  const field = scenario.checkbox ? page.getByRole("checkbox", { name: new RegExp(scenario.checkbox) }) : scenario.selector ? page.locator(scenario.selector) : page.getByLabel(scenario.label!, { exact: true });
+  if (scenario.checkbox) await field.check(); else await field.fill("보관할 입력");
+  await expect.poll(() => page.evaluate(() => !!history.state?.unsavedGuard)).toBe(true);
+  const detail = page.url(), messages: string[] = [];
+  page.once("dialog", dialog => { messages.push(dialog.message()); void dialog.dismiss(); });
+  await page.locator("main").getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL(detail);
+  if (scenario.checkbox) await expect(field).toBeChecked(); else await expect(field).toHaveValue("보관할 입력");
+  page.once("dialog", dialog => { messages.push(dialog.message()); void dialog.accept(); });
+  await page.locator("main").getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL(current => current.pathname + current.search === scenario.list);
+  expect(messages).toEqual(Array(2).fill("저장하지 않은 변경이 있습니다. 이 화면을 나가시겠습니까?"));
+  expect(await page.evaluate(() => !!history.state?.unsavedGuard)).toBe(false);
+  expect(writes).toEqual([]); expect(errors).toEqual([]);
+});
+
+for (const entry of ["직접 진입", "새로고침"]) test(`직원 사용 중지의 불분명 결과 ${entry} ←는 확인과 원래 결과 안내를 보존한다`, async ({ page }) => {
+  const writes: string[] = [];
+  await mockSeller(page, async (route, path) => {
+    if (route.request().method() !== "GET") { writes.push(path); await json(route, { error: "unavailable" }, 503); return true; }
+    return backReads(route, path);
+  });
+  await page.goto(`/seller/staff/${id(1)}?operation=disable&returnTo=${encodeURIComponent("/seller/staff?q=kept")}`);
+  if (entry === "새로고침") await page.reload();
+  await page.locator('section[aria-labelledby="staff-disable-title"]').getByRole("button", { name: "직원 계정 사용 중지", exact: true }).click();
+  await expect(page.getByTestId("sd-unclear")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => !!history.state?.unsavedGuard)).toBe(true);
+  const detail = page.url();
+  page.once("dialog", dialog => void dialog.dismiss());
+  await page.locator("main").getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL(detail); await expect(page.getByTestId("sd-unclear")).toBeVisible();
+  page.once("dialog", dialog => void dialog.accept());
+  await page.locator("main").getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL(/\/seller\/staff\?q=kept$/);
+  await expect(page.getByRole("status").filter({ hasText: "이전 사용 중지 요청이 처리되었을 수 있습니다" })).toBeVisible();
+  expect(await page.evaluate(() => !!history.state?.unsavedGuard)).toBe(false);
+  expect(writes).toEqual([`/api/seller/staff/${id(1)}/disable`]);
 });

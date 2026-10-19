@@ -2,14 +2,15 @@
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useUnsavedGuard, confirmLeave } from "../../../../../lib/client/navigation/useUnsavedGuard";
-import { detailHref, listReturnTo, setDetailResult, takeDetailResult } from "../banners/_shared/detailNavigation";
+import { useSmartBack } from "../../../../../lib/client/navigation";
+import { detailHref, listReturnTo, setDetailResult, takeDetailResult, cursorScope, rememberCursorPosition, takeCursorPosition } from "../banners/_shared/detailNavigation";
 
 import { CursorPagination } from "../../../../../components/Pagination";
 
 import { formatDateTime } from "../../../../../lib/client/format";
-import { createContext, useContext, useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { useImperativeHandle, createContext, useContext, useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { ListTable, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
-import { Topbar } from "../../../../../components/seller/SellerShell";
+import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
@@ -57,16 +58,21 @@ const TABS: { key: "" | Status; label: string }[] = [
   { key: "ANSWERED", label: "답변 완료" },
 ];
 
-type PagePosition = { signature: string; page: number; cursors: (string | undefined)[] };
+type PagePosition = { signature: string; owner: string; page: number; cursors: (string | undefined)[] };
 const PagePositionContext = createContext<{ position: PagePosition; setPosition: React.Dispatch<React.SetStateAction<PagePosition>> } | null>(null);
 export function InquiryPageProvider({ children }: { children: React.ReactNode }) {
-  const [position, setPosition] = useState<PagePosition>({ signature: "", page: 1, cursors: [undefined] });
+  const [position, setPosition] = useState<PagePosition>({ signature: "", owner: "", page: 1, cursors: [undefined] });
   return <PagePositionContext.Provider value={{ position, setPosition }}>{children}</PagePositionContext.Provider>;
 }
 
 export default function BuyerInquiriesWorkspace({ inquiryId, returnTo }: { inquiryId?: string; returnTo?: string }) {
   const router = useRouter();
+  const { me } = useSeller();
+  const positionOwner = `${me.sellerId}:${me.userId}`;
+  const pagingScope = useRef("");
   const back = listReturnTo(returnTo, "/seller/buyer-inquiries");
+  const leaveRef = useRef<((next?: () => void) => Promise<void>) | null>(null);
+  const smartBack = useSmartBack(back);
   const [detail, setDetail] = useState<{ inquiry: Inquiry; canEdit: boolean } | null>(null);
   const [state, setState] = useState<Load>({ kind: "loading" });
   // 조건은 URL 쿼리(?status=WAITING&kind=&from=&to=&q=)와 맞춘다: 파트너스 홈 「처리할 일」 링크가 답변 대기로 바로 연다. 틀린 값은 전체로 본다
@@ -107,6 +113,11 @@ export default function BuyerInquiriesWorkspace({ inquiryId, returnTo }: { inqui
     [filter],
   );
 
+  const openDetail = (path: string, extra: Record<string, string> = {}) => {
+    rememberCursorPosition("buyer-inquiries", pagingScope.current, positionRef.current);
+    router.push(detailHref(path, extra));
+  };
+
   const load = useCallback(async () => {
     const id = ++reqId.current; paging.current = true;
     if (inquiryId) {
@@ -118,17 +129,21 @@ export default function BuyerInquiriesWorkspace({ inquiryId, returnTo }: { inqui
       return;
     }
     const signature = query();
+    const scope = await cursorScope("buyer-inquiries", me.sellerId, me.userId, signature);
+    if (id !== reqId.current) return;
+    pagingScope.current = scope;
+    const saved = takeCursorPosition("buyer-inquiries", scope);
     const previous = positionRef.current;
-    const restore = previous.signature === signature;
-    const startPage = restore ? previous.page : 1;
-    const history = restore ? previous.cursors : [undefined];
+    const restore = previous.signature === signature && previous.owner === positionOwner ? previous : saved;
+    const startPage = restore?.page ?? 1;
+    const history = restore?.cursors ?? [undefined];
     const r = await api<Data>(query(history[startPage - 1]));
     if (id !== reqId.current) return;
     paging.current = false;
     if (!r.ok) return setState({ kind: "error", status: r.status });
     setCursor(r.data.nextCursor);
-    setState({ kind: "ok", data: r.data }); setPosition({ signature, page: startPage, cursors: history });
-  }, [query, inquiryId]);
+    setState({ kind: "ok", data: r.data }); setPosition({ signature, owner: positionOwner, page: startPage, cursors: history });
+  }, [query, inquiryId, me.sellerId, me.userId, positionOwner]);
 
   useEffect(() => {
     void load();
@@ -144,7 +159,7 @@ export default function BuyerInquiriesWorkspace({ inquiryId, returnTo }: { inqui
     paging.current = false;
     if (!r.ok) return setToast({ text: "목록을 불러오지 못했습니다. 다시 눌러 주십시오", neg: true });
     setState({ kind: "ok", data: r.data }); setCursor(r.data.nextCursor);
-    setPosition((prev) => ({ signature: query(), page: target, cursors: [...prev.cursors.slice(0, target - 1), next] }));
+    setPosition((prev) => ({ signature: query(), owner: positionOwner, page: target, cursors: [...prev.cursors.slice(0, target - 1), next] }));
   };
 
   useScrollRestore("seller-buyer-inquiries", state.kind === "ok");
@@ -162,8 +177,8 @@ export default function BuyerInquiriesWorkspace({ inquiryId, returnTo }: { inqui
   };
 
   if (inquiryId) return <><Topbar crumb="게시판 › 구매자 문의 › 상세" /><main className="main">
-    <PageHead title="문의 상세 · 답변" description="문의 내용과 답변을 확인하고 저장합니다." back={back} actions={<Link className="btn btn-out" href={back}>목록</Link>} />
-    {detail ? <InquiryDialog key={detail.inquiry.id} item={detail.inquiry} canEdit={detail.canEdit} onClose={() => router.push(back)} onSaved={async (text) => { setToast({ text }); await load(); }} />
+    <PageHead onBack={() => leaveRef.current ? leaveRef.current(smartBack) : smartBack()} title="문의 상세 · 답변" description="문의 내용과 답변을 확인하고 저장합니다." back={back} actions={<Link className="btn btn-out" href={back}>목록</Link>} />
+    {detail ? <InquiryDialog leaveRef={leaveRef} key={detail.inquiry.id} item={detail.inquiry} canEdit={detail.canEdit} onClose={() => router.push(back)} onSaved={async (text) => { setToast({ text }); await load(); }} />
       : state.kind === "error" ? <ErrorState title={state.status === 404 ? "문의를 찾을 수 없습니다" : "문의를 불러오지 못했습니다"} onRetry={() => void load()} /> : <LoadingRows rows={3} />}
   </main>{toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}</>;
 
@@ -239,7 +254,7 @@ export default function BuyerInquiriesWorkspace({ inquiryId, returnTo }: { inqui
                       </td>
                       <td>{KIND_LABEL[r.kind]}</td>
                       <td className="col-text">
-                        <button className="bi-title" type="button" onClick={() => router.push(detailHref(`/seller/buyer-inquiries/${r.id}`))}>
+                        <button className="bi-title" type="button" onClick={() => openDetail(`/seller/buyer-inquiries/${r.id}`)}>
                           {r.isPrivate && <span className="bdg b-gray nodot">비공개</span>} {r.title}
                         </button>
                         {r.product && <div className="t-c1 c-alt">{r.product.name}</div>}
@@ -261,14 +276,16 @@ export default function BuyerInquiriesWorkspace({ inquiryId, returnTo }: { inqui
   );
 }
 
-function InquiryDialog({ item, canEdit, onClose, onSaved }: { item: Inquiry; canEdit: boolean; onClose: () => void; onSaved: (text: string) => Promise<void> }) {
+function InquiryDialog({ leaveRef, item, canEdit, onClose, onSaved }: { leaveRef?: React.Ref<(next?: () => void) => Promise<void>>; item: Inquiry; canEdit: boolean; onClose: () => void; onSaved: (text: string) => Promise<void> }) {
   const [saved, setSaved] = useState(item.answer ?? "");
   const [answer, setAnswer] = useState(item.answer ?? "");
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
   const dirty = canEdit && answer.trim() !== saved;
   const release = useUnsavedGuard(dirty);
-  const requestClose = async () => { if (confirmLeave(dirty)) { await release(); onClose(); } };
+  const leavePage = async (next = onClose) => { if (busy || !confirmLeave(dirty)) return; await release(); next(); };
+  const requestClose = () => leavePage();
+  useImperativeHandle(leaveRef, () => leavePage);
 
   const save = async (next: string | null) => {
     setBusy(true);

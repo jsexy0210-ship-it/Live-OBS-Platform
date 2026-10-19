@@ -2,9 +2,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useUnsavedGuard, confirmLeave } from "../../../../../lib/client/navigation/useUnsavedGuard";
+import { useSmartBack } from "../../../../../lib/client/navigation";
 import { detailHref, listReturnTo, setDetailResult, takeDetailResult } from "./_shared/detailNavigation";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useImperativeHandle, useCallback, useEffect, useRef, useState } from "react";
 import { PageHead, useConfirm } from "../../../../../components/admin-ui";
 import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
@@ -99,6 +100,8 @@ const periodCell = (b: Banner) => {
 export default function Workspace({ view, itemId, copyId, returnTo }: { view?: "item" | "order"; itemId?: string; copyId?: string; returnTo?: string }) {
   const router = useRouter();
   const back = listReturnTo(returnTo, "/seller/banners");
+  const leaveRef = useRef<((next?: () => void) => Promise<void>) | null>(null);
+  const smartBack = useSmartBack(back);
   const generation = useRef(0);
   const initialized = useRef(false);
   const [orderBusy, setOrderBusy] = useState(false);
@@ -192,12 +195,12 @@ export default function Workspace({ view, itemId, copyId, returnTo }: { view?: "
   const n = (s: ContentStatus) => list.filter((b) => b.status === s).length;
 
   if (view) return <><Topbar crumb="마케팅 › 홈 배너 › 상세" /><main className="main">
-    <PageHead title={view === "order" ? "노출 설정 상세" : itemId === "new" ? "배너 추가" : "배너 상세"} description="게시 내용과 조건을 확인한 뒤 저장합니다." back={back} actions={<Link className="btn btn-out" href={back}>목록</Link>} />
+    <PageHead onBack={() => leaveRef.current ? leaveRef.current(smartBack) : smartBack()} title={view === "order" ? "노출 설정 상세" : itemId === "new" ? "배너 추가" : "배너 상세"} description="게시 내용과 조건을 확인한 뒤 저장합니다." back={back} actions={<Link className="btn btn-out" href={back}>목록</Link>} />
     {state.kind !== "ok" ? <StateBox kind={state.kind === "error" ? stateKind(state.status, state.error) : "loading"} what="배너" onRetry={() => void load()} /> : !editable ? <div className="msg msg-info">쇼핑몰 설정 권한이 필요합니다.</div> : view === "order" ? <section className="card pad col" style={{ gap: 12 }}>
       <span>전체 {list.length}개의 순서를 바꾸면 바로 반영됩니다.</span>
       {list.map((it, i) => <div className="row" data-testid="banner-order-row" key={it.id} style={{ gap: 8, flexWrap: "wrap" }}><span>{i + 1}. {it.title}</span><button className="btn btn-sm btn-out" aria-label={`${it.title} 위로`} disabled={orderBusy || i === 0} onClick={() => move(i, i - 1)}>▲</button><button className="btn btn-sm btn-out" aria-label={`${it.title} 아래로`} disabled={orderBusy || i === list.length - 1} onClick={() => move(i, i + 1)}>▼</button></div>)}
       <label>자동 넘김 <select className="inp" aria-label="자동 넘김" value={state.kind === "ok" ? state.intervalSec : 0} disabled={orderBusy} onChange={(e) => void changeInterval(Number(e.target.value))}>{INTERVALS.map((it) => <option key={it.v} value={it.v}>{it.label}</option>)}</select></label>
-    </section> : draft ? <><BannerEditor key={draft.id ?? "new"} draft={draft} status={list.find((it) => it.id === draft.id)?.status ?? null} onDelete={async () => { const target = list.find((it) => it.id === draft.id); return target ? !!(await remove(target)) : false; }} onClose={() => router.push(back)} onSaved={(text) => { setDetailResult("/seller/banners", text); router.push(back); }} /></> : <StateBox kind="loading" what="상세" />}
+    </section> : draft ? <><BannerEditor leaveRef={leaveRef} key={draft.id ?? "new"} draft={draft} status={list.find((it) => it.id === draft.id)?.status ?? null} onDelete={async () => { const target = list.find((it) => it.id === draft.id); return target ? !!(await remove(target)) : false; }} onClose={() => router.push(back)} onSaved={(text) => { setDetailResult("/seller/banners", text); router.push(back); }} /></> : <StateBox kind="loading" what="상세" />}
     </main>{toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}</>;
 
   return (
@@ -372,13 +375,13 @@ export default function Workspace({ view, itemId, copyId, returnTo }: { view?: "
   );
 }
 
-function BannerEditor({
+function BannerEditor({ leaveRef,
   draft: initial,
   status,
   onDelete,
   onClose,
   onSaved,
-}: {
+}: { leaveRef?: React.Ref<(next?: () => void) => Promise<void>>;
   draft: Draft;
   status: ContentStatus | null;
   onDelete: () => Promise<boolean>;
@@ -394,7 +397,9 @@ function BannerEditor({
   const initialDraft = useRef(initial);
   const dirty = JSON.stringify(d) !== JSON.stringify(initialDraft.current);
   const release = useUnsavedGuard(dirty || uploading);
-  const close = async () => { if (!uploading && confirmLeave(dirty)) { await release(); onClose(); } };
+  const leavePage = async (next = onClose) => { if (uploading || !confirmLeave(dirty)) return; await release(); next(); };
+  const close = () => leavePage();
+  useImperativeHandle(leaveRef, () => leavePage);
   const remove = async () => { if (await onDelete()) { await release(); onClose(); } };
   const set = (patch: Partial<Draft>) => setD((v) => ({ ...v, ...patch }));
   const link = d.linkUrl;

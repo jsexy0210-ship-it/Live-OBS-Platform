@@ -1,11 +1,12 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useSmartBack } from "../../../../../lib/client/navigation";
 import { PageHead } from "../../../../../components/admin-ui";
-import { useUnsavedGuard } from "../../../../../lib/client/navigation/useUnsavedGuard";
+import { useUnsavedGuard, confirmLeave } from "../../../../../lib/client/navigation/useUnsavedGuard";
 import { detailHref, listReturnTo, setDetailResult, takeDetailResult } from "../banners/_shared/detailNavigation";
 
-import { createContext, useContext, useCallback, useEffect, useRef, useState } from "react";
+import { useImperativeHandle, createContext, useContext, useCallback, useEffect, useRef, useState } from "react";
 import { useConfirm } from "../../../../../components/admin-ui/ConfirmDialog";
 import { formatDateTime } from "../../../../../lib/client/format";
 import { phoneText } from "../../../../../components/seller/IdentityCheck";
@@ -90,6 +91,8 @@ export function StaffProvider({ children }: { children: React.ReactNode }) {
 export default function Workspace({ staffId, operation = "edit", returnTo }: { staffId?: string; operation?: string; returnTo?: string }) {
   const router = useRouter();
   const back = listReturnTo(returnTo, "/seller/staff");
+  const smartBack = useSmartBack(back);
+  const leaveRef = useRef<((next?: () => void) => Promise<void>) | null>(null);
   const initialized = useRef(false);
   const { me } = useSeller();
   const context = useContext(StaffContext);
@@ -120,11 +123,11 @@ export default function Workspace({ staffId, operation = "edit", returnTo }: { s
     else setMissing(true);
   }, [staffId, operation, state]);
   if (staffId) return <><Topbar crumb="설정 › 직원 계정 › 상세" /><main className="main">
-    <PageHead title={staffId === "new" ? "직원 추가" : "직원 계정 상세"} description="직원 정보와 업무 권한을 확인하고 변경합니다." back={back} actions={<Link className="btn btn-out" href={back}>목록</Link>} />
-    {!me.isOwner ? <div className="msg msg-info">대표자만 볼 수 있습니다.</div> : state.kind === "loading" ? <LoadingRows rows={3} /> : state.kind === "error" ? <ErrorState title="직원 목록을 불러오지 못했습니다" onRetry={() => void load()} /> : staffId === "new" ? <AddStaff onAdded={(name) => done(`${name} 계정을 만들었습니다 · 이메일과 처음 쓸 비밀번호를 직원에게 직접 전달해 주십시오`)} onChanged={() => void load()} /> : modal ? <>
-      {modal.kind === "edit" && <EditStaffModal fullPage staff={modal.staff} onClose={() => router.push(back)} onSaved={done} onChanged={() => void load()} onApply={(c) => applyRow(modal.staff.id, c)} />}
-      {modal.kind === "password" && <ResetPasswordModal fullPage staff={modal.staff} onClose={() => router.push(back)} onDone={done} />}
-      {modal.kind === "disable" && <DisableStaffModal fullPage staff={modal.staff} onClose={() => router.push(back)} onDone={done} onChanged={() => void load()} onApply={(c) => applyRow(modal.staff.id, c)} />}
+    <PageHead onBack={() => leaveRef.current ? leaveRef.current(smartBack) : smartBack()} title={staffId === "new" ? "직원 추가" : "직원 계정 상세"} description="직원 정보와 업무 권한을 확인하고 변경합니다." back={back} actions={<Link className="btn btn-out" href={back}>목록</Link>} />
+    {!me.isOwner ? <div className="msg msg-info">대표자만 볼 수 있습니다.</div> : state.kind === "loading" ? <LoadingRows rows={3} /> : state.kind === "error" ? <ErrorState title="직원 목록을 불러오지 못했습니다" onRetry={() => void load()} /> : staffId === "new" ? <AddStaff leaveRef={leaveRef} onAdded={(name) => done(`${name} 계정을 만들었습니다 · 이메일과 처음 쓸 비밀번호를 직원에게 직접 전달해 주십시오`)} onChanged={() => void load()} /> : modal ? <>
+      {modal.kind === "edit" && <EditStaffModal leaveRef={leaveRef} fullPage staff={modal.staff} onClose={() => router.push(back)} onSaved={done} onChanged={() => void load()} onApply={(c) => applyRow(modal.staff.id, c)} />}
+      {modal.kind === "password" && <ResetPasswordModal leaveRef={leaveRef} fullPage staff={modal.staff} onClose={() => router.push(back)} onDone={done} />}
+      {modal.kind === "disable" && <DisableStaffModal leaveRef={leaveRef} fullPage staff={modal.staff} onClose={() => router.push(back)} onDone={done} onChanged={() => void load()} onApply={(c) => applyRow(modal.staff.id, c)} />}
     </> : missing && <div className="msg msg-neg" role="alert">직원을 찾을 수 없습니다.</div>}
     {me.isOwner && state.kind === "ok" && <section className="card pad col" style={{ gap: 12 }} aria-label="직원 현재 상태 확인">
       <h2 className="t-hl2">직원 현재 상태 확인</h2>
@@ -285,7 +288,7 @@ const TAKEN_TEXT = "이 이메일로 등록된 계정이 이미 있습니다. �
 type Errors = Partial<Record<"name" | "phone" | "email" | "password", string>>;
 
 // 직원 추가: 이름·휴대폰·이메일(로그인 아이디)·초기 비밀번호·권한. 메일 초대 없이 바로 계정이 만들어진다
-function AddStaff({ onAdded, onChanged }: { onAdded: (name: string) => void; onChanged: () => void }) {
+function AddStaff({ onAdded, onChanged, leaveRef }: { onAdded: (name: string) => void; onChanged: () => void; leaveRef?: React.Ref<(next?: () => void) => Promise<void>> }) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -313,7 +316,10 @@ function AddStaff({ onAdded, onChanged }: { onAdded: (name: string) => void; onC
     setFocusTo(null);
   }, [focusTo]);
 
-  const release = useUnsavedGuard(name !== "" || phone !== "" || email !== "" || password !== "" || perms.length > 0 || unclear !== null);
+  const dirty = name !== "" || phone !== "" || email !== "" || password !== "" || perms.length > 0 || unclear !== null;
+  const release = useUnsavedGuard(dirty);
+  const leavePage = async (next?: () => void) => { if (busy || !confirmLeave(dirty)) return; await release(); next?.(); };
+  useImperativeHandle(leaveRef, () => leavePage);
   const succeed = async (added: string) => {
     await release();
     setBusy(false);

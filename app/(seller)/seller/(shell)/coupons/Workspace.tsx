@@ -2,10 +2,11 @@
 import { useUrlState } from "../../../../../lib/client/navigation/useUrlState";
 import { useRouter } from "next/navigation";
 import { useUnsavedGuard, confirmLeave } from "../../../../../lib/client/navigation/useUnsavedGuard";
+import { useSmartBack } from "../../../../../lib/client/navigation";
 import { detailHref, listReturnTo, setDetailResult, takeDetailResult } from "../banners/_shared/detailNavigation";
 
 import Link from "next/link";
-import { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useImperativeHandle, createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ListTable, DateRangePicker, ListHead, PageHead, Pagination, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { listDefaults } from "../../../../../lib/client/filterDefaults";
 import { useListFilters } from "../../../../(admin)/admin/_components/useListFilters";
@@ -162,6 +163,8 @@ export function CouponsSelectionProvider({ children }: { children: React.ReactNo
 export default function Workspace({ view, couponId, copyId, ids = "", selectionKey, returnTo }: { view?: "item" | "grant" | "bulk"; couponId?: string; copyId?: string; ids?: string; selectionKey?: string; returnTo?: string }) {
   const router = useRouter();
   const back = listReturnTo(returnTo, "/seller/coupons");
+  const leaveRef = useRef<((next?: () => void) => Promise<void>) | null>(null);
+  const smartBack = useSmartBack(back);
   const generation = useRef(0);
   const initialized = useRef(false);
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number; error?: string } | { kind: "ok"; data: Data }>({ kind: "loading" });
@@ -177,6 +180,7 @@ export default function Workspace({ view, couponId, copyId, ids = "", selectionK
   const { me } = useSeller();
   const [targetIds, setTargetIds] = useState<string[]>([]);
   const [validated, setValidated] = useState(false);
+  const [missingTargets, setMissingTargets] = useState(0);
   const [pageUrl, setPageUrl] = useUrlState({ page: "1" });
   const page = /^\d+$/.test(pageUrl.page) ? Math.max(1, Number(pageUrl.page)) : 1;
   const setPage = (next: number | ((previous: number) => number)) => setPageUrl({ page: String(typeof next === "function" ? next(page) : next) });
@@ -206,11 +210,13 @@ export default function Workspace({ view, couponId, copyId, ids = "", selectionK
     if (!data || !view || initialized.current) return;
     if (view === "bulk") {
       const selected = selectionKey ? readCouponSelection(selectionKey, me.sellerId) : ids.split(",").filter(Boolean);
-      if (!selected || !selected.length || new Set(selected).size !== selected.length || selected.some((id) => !data.coupons.some((c) => c.id === id))) return setState({ kind: "error", status: 400, error: "invalid_selection" });
+      if (!selected || !selected.length || new Set(selected).size !== selected.length || selected.some((id) => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))) return setState({ kind: "error", status: 400, error: "invalid_selection" });
+      const valid = selected.filter((id) => data.coupons.some((c) => c.id === id));
       initialized.current = true;
       setValidated(true);
-      setTargetIds(selected);
-      setPicked(selected);
+      setMissingTargets(selected.length - valid.length);
+      setTargetIds(valid);
+      setPicked(valid);
       return;
     }
     const target = data.coupons.find((c) => c.id === (copyId || couponId));
@@ -261,6 +267,7 @@ export default function Workspace({ view, couponId, copyId, ids = "", selectionK
   const bulkStop = async () => {
     if (!validated || busy) return;
     const targets = list.filter((c) => picked.includes(c.id) && c.isActive);
+    if (!targets.length) return;
     setBusy(true);
     const results = await Promise.all(targets.map((c) => api(`/api/seller/coupons/${c.id}`, { method: "PATCH", body: { isActive: false } })));
     setBusy(false);
@@ -285,12 +292,14 @@ export default function Workspace({ view, couponId, copyId, ids = "", selectionK
   if (view) {
     const target = data?.coupons.find((c) => c.id === couponId) ?? null;
     return <><Topbar crumb="판매 › 쿠폰 › 상세" /><main className="main">
-      <PageHead title={view === "bulk" ? "선택 쿠폰 발급 중지 상세" : view === "grant" ? "쿠폰 직접 지급" : couponId === "new" ? "쿠폰 만들기" : "쿠폰 상세"} description="혜택과 발급 조건을 확인한 뒤 처리합니다." back={back} actions={<Link className="btn btn-out" href={back}>목록</Link>} />
+      <PageHead onBack={() => leaveRef.current ? leaveRef.current(smartBack) : smartBack()} title={view === "bulk" ? "선택 쿠폰 발급 중지 상세" : view === "grant" ? "쿠폰 직접 지급" : couponId === "new" ? "쿠폰 만들기" : "쿠폰 상세"} description="혜택과 발급 조건을 확인한 뒤 처리합니다." back={back} actions={<Link className="btn btn-out" href={back}>목록</Link>} />
       {!data ? <StateBox kind={state.kind === "error" ? stateKind(state.status, state.error) : "loading"} what="쿠폰" onRetry={() => void load()} /> : !editable ? <div className="msg msg-info">적립금 권한이 필요합니다.</div> : view === "bulk" ? <section className="card pad col" style={{ gap: 12 }}>
+        {missingTargets > 0 && <p role="status">찾을 수 없는 쿠폰 {missingTargets}개를 선택에서 제외했습니다.</p>}
+        {validated && targetIds.length === 0 && <p>처리할 수 있는 쿠폰이 없습니다.</p>}
         {list.filter((c) => targetIds.includes(c.id)).map((c) => <label key={c.id}><input type="checkbox" disabled={busy} checked={picked.includes(c.id)} onChange={() => setPicked((prev) => prev.includes(c.id) ? prev.filter((id) => id !== c.id) : [...prev, c.id])} /> {c.name} · {c.isActive ? "발급 중" : "중지"}</label>)}
         <button className="btn btn-neg" disabled={busy || !validated || !list.some((c) => picked.includes(c.id) && c.isActive)} onClick={() => setBulkStopping(true)}>선택 발급 중지</button>
-      </section> : view === "grant" && target ? <GrantDialog coupon={target} grades={data.grades} onClose={() => router.push(back)} onDone={(text) => { setDetailResult("/seller/coupons", text); router.push(back); }} />
-      : draft ? <CouponEditor key={draft.id ?? "new"} draft={draft} products={data.products} current={target} onStop={setStopping} onResume={(c) => void setActive(c, true)} onDelete={setDeleting} onClose={() => router.push(back)} onSaved={(text) => { setDetailResult("/seller/coupons", text); router.push(back); }} /> : <StateBox kind="loading" what="쿠폰" />}
+      </section> : view === "grant" && target ? <GrantDialog leaveRef={leaveRef} coupon={target} grades={data.grades} onClose={() => router.push(back)} onDone={(text) => { setDetailResult("/seller/coupons", text); router.push(back); }} />
+      : draft ? <CouponEditor leaveRef={leaveRef} key={draft.id ?? "new"} draft={draft} products={data.products} current={target} onStop={setStopping} onResume={(c) => void setActive(c, true)} onDelete={setDeleting} onClose={() => router.push(back)} onSaved={(text) => { setDetailResult("/seller/coupons", text); router.push(back); }} /> : <StateBox kind="loading" what="쿠폰" />}
       </main>      {stopping && (
         <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="cp-stop-title">
           <div className="modal">
@@ -558,7 +567,7 @@ export default function Workspace({ view, couponId, copyId, ids = "", selectionK
   );
 }
 
-function CouponEditor({ draft: initial, products, current, onClose, onSaved, onStop, onResume, onDelete }: { draft: Draft; products: Product[]; current: Coupon | null; onClose: () => void; onSaved: (text: string) => void; onStop: (c: Coupon) => void; onResume: (c: Coupon) => void; onDelete: (c: Coupon) => void }) {
+function CouponEditor({ leaveRef, draft: initial, products, current, onClose, onSaved, onStop, onResume, onDelete }: { leaveRef?: React.Ref<(next?: () => void) => Promise<void>>; draft: Draft; products: Product[]; current: Coupon | null; onClose: () => void; onSaved: (text: string) => void; onStop: (c: Coupon) => void; onResume: (c: Coupon) => void; onDelete: (c: Coupon) => void }) {
   const [d, setD] = useState<Draft>(initial);
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -587,7 +596,9 @@ function CouponEditor({ draft: initial, products, current, onClose, onSaved, onS
   }, [q]);
   const dirty = JSON.stringify(d) !== JSON.stringify(initial) || scoped !== (initial.productIds.length > 0);
   const release = useUnsavedGuard(dirty);
-  const close = async () => { if (confirmLeave(dirty)) { await release(); onClose(); } };
+  const leavePage = async (next = onClose) => { if (saving || !confirmLeave(dirty)) return; await release(); next(); };
+  const close = () => leavePage();
+  useImperativeHandle(leaveRef, () => leavePage);
   const matches = found.filter((p) => !d.productIds.includes(p.id)).slice(0, 8);
 
   const ready =
@@ -856,12 +867,14 @@ function CouponEditor({ draft: initial, products, current, onClose, onSaved, onS
   );
 }
 
-function GrantDialog({ coupon, grades, onClose, onDone }: { coupon: Coupon; grades: Grade[]; onClose: () => void; onDone: (text: string) => void }) {
+function GrantDialog({ leaveRef, coupon, grades, onClose, onDone }: { leaveRef?: React.Ref<(next?: () => void) => Promise<void>>; coupon: Coupon; grades: Grade[]; onClose: () => void; onDone: (text: string) => void }) {
   const [picked, setPicked] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const release = useUnsavedGuard(picked.length > 0);
-  const close = async () => { if (confirmLeave(picked.length > 0)) { await release(); onClose(); } };
+  const leavePage = async (next = onClose) => { if (busy || !confirmLeave(picked.length > 0)) return; await release(); next(); };
+  const close = () => leavePage();
+  useImperativeHandle(leaveRef, () => leavePage);
   const total = grades.filter((g) => picked.includes(g.id)).reduce((s, g) => s + g.members, 0);
 
   const grant = async () => {
