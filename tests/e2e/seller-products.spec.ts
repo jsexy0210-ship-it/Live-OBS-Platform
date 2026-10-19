@@ -268,8 +268,7 @@ test("상품 목록: 데모 상품·상태 배지·필터, 체험 배너가 보�
   await expect(page.locator(".gnb")).toContainText("카드숍 별빛");
   const rows = page.getByTestId("product-row");
   await expect(rows.filter({ hasText: "스타라이트 부스터 박스" })).toBeVisible();
-  await expect(rows.filter({ hasText: "탑로더 25장" }).getByText("재고 부족")).toBeVisible();
-  await expect(rows.filter({ hasText: "드래곤 소울 부스터" }).getByText("품절")).toBeVisible();
+  await expect(rows).toHaveCount(10);
   // 목록 행 높이와 상품명·가격 시작 위치는 상품명 길이(1줄 ~ 100자)와 관계없이 같고, 100자 이름은 3줄에서 말줄임된다
   const layout = await rows.evaluateAll((els) =>
     els.map((e) => {
@@ -293,6 +292,12 @@ test("상품 목록: 데모 상품·상태 배지·필터, 체험 배너가 보�
   expect(layout.some((l) => l.len === 100)).toBe(true);
   expect(layout.some((l) => l.len <= 12)).toBe(true);
   await shot(page, "SA-011-list");
+
+  await searchFor(page, "탑로더 25장");
+  await expect(rows.filter({ hasText: "탑로더 25장" }).getByText("재고 부족")).toBeVisible();
+  await searchFor(page, "드래곤 소울 부스터");
+  await expect(rows.filter({ hasText: "드래곤 소울 부스터" }).getByText("품절")).toBeVisible();
+  await page.goto("/seller/products");
 
   await applyStatus(page, "숨김");
   await expect(rows.filter({ hasText: "문라이트 1탄 박스" })).toBeVisible();

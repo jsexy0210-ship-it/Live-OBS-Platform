@@ -1,12 +1,29 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, request, test, type Page } from "@playwright/test";
 import { submitSellerLogin } from "./sellerLogin";
 
 // SA-013 상품 상세 미리보기: 구매자 화면 틀(모바일 · PC), 점검 항목, 공유 링크. 숨김 상품은 미리보기만 되고 「쇼핑몰에서 열기」는 막힌다.
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
 const NAME = `E2E미리보기 ${Date.now().toString(36)}`;
+const createdIds = new Set<string>();
 
 test.beforeAll(() => {
   if (!PASSWORD) throw new Error("E2E_PASSWORD가 없어요. dev-seed가 출력한 데모 비밀번호를 넣어 주세요");
+});
+
+test.afterEach(async () => {
+  if (!createdIds.size) return;
+  const baseURL = process.env.E2E_BASE_URL ?? "http://localhost:3100";
+  if (!["127.0.0.1", "localhost"].includes(new URL(baseURL).hostname)) throw new Error("미리보기 시험 정리는 loopback에서만 실행합니다");
+  const context = await request.newContext({ baseURL, extraHTTPHeaders: { origin: baseURL } });
+  try {
+    expect((await context.post("/api/seller/auth/login", { data: { email: "demo-owner@example.com", password: PASSWORD } })).status()).toBe(200);
+    for (const id of createdIds) {
+      expect((await context.delete(`/api/seller/products/${id}`)).ok()).toBe(true);
+      createdIds.delete(id);
+    }
+  } finally {
+    await context.dispose();
+  }
 });
 
 async function login(page: Page, next: string, email = "demo-owner@example.com") {
@@ -17,7 +34,7 @@ async function login(page: Page, next: string, email = "demo-owner@example.com")
 }
 
 async function create(page: Page, status: "ON_SALE" | "HIDDEN", stock: number) {
-  return page.evaluate(
+  const created = await page.evaluate(
     async ([name, st, qty]) => {
       const r = await fetch("/api/seller/products", {
         method: "POST",
@@ -25,10 +42,15 @@ async function create(page: Page, status: "ON_SALE" | "HIDDEN", stock: number) {
         body: JSON.stringify({ name, description: "정품 미개봉 박스예요.", price: 99000, status: st, options: [{ name: "기본", stock: qty }] }),
       });
       const j = (await r.json()) as { product?: { id: string }; id?: string };
-      return (j.product?.id ?? j.id) as string;
+      return { status: r.status, id: j.product?.id ?? j.id };
     },
     [`${NAME} ${status}`, status, stock] as const,
   );
+  expect(created.status).toBe(201);
+  expect(created.id).toMatch(/^[0-9a-f-]{36}$/);
+  const id = created.id!;
+  createdIds.add(id);
+  return id;
 }
 
 test("미리보기: 판매 중 상품은 구매자 화면 · 점검 항목 · 공유 링크가 보이고, PC로 바꿀 수 있으며, 쇼핑몰에서 열 수 있다", async ({ page }) => {
