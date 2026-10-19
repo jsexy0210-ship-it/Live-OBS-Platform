@@ -118,7 +118,8 @@ test("SA-006: 전체 연결 배열과 상태·관리 동작을 보존하며 10�
     await login(page); await page.goto("/seller/external-shops");
     await pages(page, "external-row", "td:first-child > b", connections.map(c => c.shopKey));
     await expect(page.getByText("전체 연결 23곳", { exact: true })).toBeVisible();
-    await expect(page.getByTestId("external-row").getByRole("button", { name: "연결 해제", exact: true })).toHaveCount(10);
+    await expect(page.getByTestId("external-row").locator("button")).toHaveCount(0);
+    await expect(page.getByTestId("external-row").getByRole("link", { name: "연결 상세", exact: true })).toHaveCount(10);
     for (const width of [1440, 1024]) { await page.setViewportSize({ width, height: 900 }); await capture(page, "SA-006", "seeded-owner", "page2"); }
     connections = []; await page.reload();
     await expect(page.getByTestId("external-empty")).toBeVisible();
