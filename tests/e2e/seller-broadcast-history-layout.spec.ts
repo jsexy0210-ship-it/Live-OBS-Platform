@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import type { Me } from "../../components/seller/api";
 
 // 격리된 실제 Next 페이지의 PC 레이아웃 회귀. 모든 API는 가로채며 외부·실환경 접근은 거부한다.
@@ -11,7 +11,8 @@ const row = (index: number) => ({ id: `ui-${index}`, title: `검증 방송 ${ind
 const monthSummary = { broadcasts: 3, seconds: 7200, orders: 17, avgSales: 1200, avgOpenSeconds: 48 };
 
 async function mock(page: Page, count: number, state?: { wait: Promise<void>; status: number; error?: string }) {
-  const reads: URL[] = [], writes: string[] = [], exports: URL[] = [];
+  const reads: URL[] = [], writes: string[] = [];
+  const exports: { url: URL; headers: Record<string, string> }[] = [];
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
     if (url.origin !== base.origin) return route.abort();
@@ -23,8 +24,9 @@ async function mock(page: Page, count: number, state?: { wait: Promise<void>; st
     if (url.pathname === "/api/seller/me") return route.fulfill({ json: me });
     if (url.pathname === "/api/maintenance") return route.fulfill({ json: { active: false, scheduled: null } });
     if (url.pathname === "/api/seller/broadcast/history/export") {
-      exports.push(url);
-      return route.fulfill({ status: 200, headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": 'attachment; filename="broadcast-history.csv"', "x-export-truncated": "1" }, body: "\uFEFF제목,매출\r\n검증 방송,1200\r\n" });
+      const headers = { "content-type": "text/csv; charset=utf-8", "content-disposition": 'attachment; filename="broadcast-history.csv"', "x-export-truncated": "1" };
+      exports.push({ url, headers });
+      return route.fulfill({ status: 200, headers, body: "\uFEFF제목,매출\r\n검증 방송,1200\r\n" });
     }
     if (url.pathname === "/api/seller/broadcast/history") {
       reads.push(url);
@@ -171,11 +173,30 @@ test("SA054: 이번 달 요약과 목록 적용 조건을 구분하고 금액 �
   expect(href.pathname).toBe("/api/seller/broadcast/history/export");
   expect(Object.fromEntries(href.searchParams)).toEqual({ from: "2026-09-01", to: "2026-09-30", layout: "9x16" });
   await expect(exportLink).toHaveAttribute("title", "목록 검색 조건 · 최대 5,000건");
-  const downloaded = page.waitForEvent("download");
-  await exportLink.click();
-  expect((await downloaded).suggestedFilename()).toBe("broadcast-history.csv");
-  expect(exports).toHaveLength(1);
-  expect(exports[0].search).toBe(href.search);
+  await expect(exportLink).toHaveAttribute("download", "");
+  const originalDownload = await exportLink.getAttribute("download");
+  try {
+    // Chromium의 [download] 요청은 networkId가 없어 route mock을 건너뛸 수 있다(PW #22650/#27575).
+    // 제품 속성을 먼저 검증하고, 이 격리 하니스에서만 attachment 헤더로 다운로드를 시작한다.
+    await exportLink.evaluate((link) => link.removeAttribute("download"));
+    expect(await exportLink.getAttribute("download")).toBeNull();
+    await expect(exportLink).toHaveAttribute("href", href.pathname + href.search);
+    const downloaded = page.waitForEvent("download");
+    await exportLink.click();
+    const file = await downloaded;
+    expect(file.url()).toBe(href.href);
+    expect(exports).toHaveLength(1);
+    expect(exports[0].url.search).toBe(href.search);
+    expect(exports[0].headers).toEqual({ "content-type": "text/csv; charset=utf-8", "content-disposition": 'attachment; filename="broadcast-history.csv"', "x-export-truncated": "1" });
+    expect(file.suggestedFilename()).toBe("broadcast-history.csv");
+    expect(await file.failure()).toBeNull();
+    const path = await file.path();
+    expect(path).not.toBeNull();
+    expect(readFileSync(path!, "utf8")).toBe("\uFEFF제목,매출\r\n검증 방송,1200\r\n");
+  } finally {
+    await exportLink.evaluate((link, value) => link.setAttribute("download", value), originalDownload!);
+  }
+  await expect(exportLink).toHaveAttribute("download", "");
   await page.getByRole("search").getByRole("button", { name: "검색", exact: true }).click();
   await expect.poll(() => reads.at(-1)?.searchParams.get("layout")).toBe("16x9");
   await expect(values).toHaveText(["3회", "17건", "1,200원", "48초"]);
