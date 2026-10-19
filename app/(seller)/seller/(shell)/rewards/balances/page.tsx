@@ -282,7 +282,9 @@ export default function RewardBalancesPage() {
   );
 }
 
-// 수동 조정 창: 지급/회수·금액·사유(필수) → 「조정」 → 확인 창 → POST. requestId는 확인 창을 열 때 만든다(응답을 잃고 다시 눌러도 한 번만 반영).
+// 수동 조정 창: 지급/회수·금액·사유(필수) → 「조정」 → 확인 창 → POST. requestId는 같은 회원·방향·금액·사유마다 하나를 써서,
+// 응답을 잃고 창을 닫았다 다시 열어 같은 내용으로 조정해도 한 번만 반영된다(성공하면 비운다).
+const adjustKeys = new Map<string, string>();
 function AdjustModal({ row, live, onClose, onDone }: { row: Row; live: boolean | null; onClose: () => void; onDone: (text: string) => void }) {
   const { confirm } = useConfirm();
   const [direction, setDirection] = useState<"GRANT" | "REVOKE">("GRANT");
@@ -302,7 +304,9 @@ function AdjustModal({ row, live, onClose, onDone }: { row: Row; live: boolean |
     if (direction === "REVOKE" && amt > row.balance) return setError("회수할 금액이 회원 잔액보다 많습니다");
     if (!reason.trim()) return setError("사유를 입력해 주십시오");
     setError(null);
-    const requestId = crypto.randomUUID();
+    const keyOf = `${row.member.id}|${direction}|${amt}|${reason.trim()}`;
+    const requestId = adjustKeys.get(keyOf) ?? crypto.randomUUID();
+    adjustKeys.set(keyOf, requestId);
     const signedText = `${direction === "GRANT" ? "+" : "−"}${won(amt)}`;
     let result: { balanceAfter: number | null } | undefined;
     const ok = await confirm({
@@ -314,6 +318,7 @@ function AdjustModal({ row, live, onClose, onDone }: { row: Row; live: boolean |
         const r = await api<{ balanceAfter: number | null }>(`/api/seller/reward-balances/${row.member.id}/adjust`, { method: "POST", body: { direction, amount: amt, reason: reason.trim(), requestId } });
         setBusy(false);
         if (!r.ok) return failMessage(r, "admin", "조정하지 못했습니다. 잠시 후 다시 시도해 주십시오");
+        adjustKeys.delete(keyOf);
         result = r.data;
       },
     });
