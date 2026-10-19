@@ -35,7 +35,7 @@ async function seed() {
   return withDb(async (db) => {
     const seller = await db.seller.findUniqueOrThrow({ where: { slug: "demo-shop" } });
     // 신청은 주문마다 하나만 걸 수 있어 서로 다른 주문 3개를 쓴다
-    const orders = await db.order.findMany({ where: { sellerId: seller.id, receiptRequests: { none: {} } }, orderBy: { createdAt: "desc" }, take: 3 });
+    const orders = await db.order.findMany({ where: { sellerId: seller.id, paidAt: { not: null }, status: "PAID", receiptRequests: { none: {} } }, orderBy: { createdAt: "desc" }, take: 3 });
     expect(orders.length).toBe(3);
     const mk = async (base: (typeof orders)[number], kind: "CASH_RECEIPT_INCOME" | "TAX_INVOICE", status: "FAILED" | "ON_HOLD" | "ISSUED", amount: number, extra: { failureCode?: string; taxInfo?: object } = {}) => {
       const r = await db.orderReceiptRequest.create({

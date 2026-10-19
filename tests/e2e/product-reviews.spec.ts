@@ -109,7 +109,10 @@ test.describe.serial("SH-029 리뷰 쓰기 · SA-048 리뷰 관리", () => {
     await page.goto(`/seller/login?next=${encodeURIComponent("/seller/reviews")}`);
     await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
     await expect(page).toHaveURL(/\/seller\/reviews$/);
-    await expect(page.getByRole("link", { name: "문의 · 리뷰", exact: true })).toHaveClass(/on/);
+    const side = page.getByRole("complementary", { name: "파트너스 메뉴", exact: true });
+    await expect(side.locator("strong.lnb-parent").filter({ hasText: /^문의 · 리뷰$/ })).toHaveCount(1);
+    await expect(side.getByRole("link", { name: "리뷰", exact: true })).toHaveAttribute("href", "/seller/reviews");
+    await expect(side.getByRole("link", { name: "리뷰", exact: true })).toHaveAttribute("aria-current", "page");
     const row = page.getByTestId("review-row").first();
     await expect(row).toContainText("브레이크 때 뽑힌 카드");
     await shots(page, "sa048-list");

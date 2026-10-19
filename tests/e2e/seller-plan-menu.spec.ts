@@ -117,6 +117,7 @@ test("로그인 뒤 기본 화면: 통합은 홈, 오버레이 전용은 오버�
 });
 
 test("오버레이 전용이 쇼핑몰 기능 주소로 바로 들어오면 안내 화면을 보이고, 열 수 있는 화면으로 보낸다", async ({ page }) => {
+  await page.route("**/api/seller/me", overlayMe(true));
   await login(page, OVERLAY, "/seller/orders");
   // 서버도 막는다(화면 숨김만으로 막지 않음)
   const api = await page.request.get("/api/seller/products");

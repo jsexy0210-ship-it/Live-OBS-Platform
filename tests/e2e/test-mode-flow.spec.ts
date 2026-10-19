@@ -17,8 +17,10 @@ async function open(page: Page) {
 }
 
 test("구매자 가입: 테스트 모드 값이 없으면 안내가 없고, 테스트 모드면 본인확인 단계에 인증번호 000000 안내가 보인다", async ({ page }) => {
+  const signupPosts: string[] = [];
+  page.on("request", (request) => { if (new URL(request.url()).pathname === "/api/shop/demo-shop/signup" && request.method() === "POST") signupPosts.push(request.method()); });
   expect((await open(page)).testMode).toBeUndefined();
-  await expect(page.getByLabel("휴대폰번호", { exact: true })).toBeVisible();
+  await expect(page.locator("form").getByRole("textbox", { name: "휴대폰번호", exact: true })).toBeVisible();
   await expect(page.getByTestId("test-mode-notice")).toHaveCount(0);
 
   await page.route("**/api/health", async (route) => {
@@ -35,4 +37,5 @@ test("구매자 가입: 테스트 모드 값이 없으면 안내가 없고, 테�
     }
   }
   await page.unrouteAll({ behavior: "ignoreErrors" });
+  expect(signupPosts).toEqual([]);
 });
