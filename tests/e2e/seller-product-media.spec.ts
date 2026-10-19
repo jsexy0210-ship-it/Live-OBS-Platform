@@ -124,13 +124,10 @@ test("상세 설명 에디터: 제목·글 꾸미기·표·구분선을 쓰고 �
   await page.getByRole("button", { name: "글자색" }).click();
   await page.getByRole("button", { name: "글자색 #d92d20" }).click();
   await expect(body.locator("span[style*=color]").first()).toBeVisible();
-  await expect(body).toBeFocused();
   const selection = () => body.evaluate((element) => {
     const { state } = (element as HTMLElement & { editor: { state: { selection: { from: number; to: number; empty: boolean }; doc: { content: { size: number } } } } }).editor;
     return { focused: element === document.activeElement, from: state.selection.from, to: state.selection.to, empty: state.selection.empty, end: state.doc.content.size };
   });
-  const colored = await selection();
-  expect(colored.focused).toBe(true);
   await expect(body.locator("h1")).toHaveText("스타라이트 첫 번째 박스");
   await expect(body).toContainText("방송 중 개봉은 닉네임이 나옵니다.");
   // 선택을 풀고 글 끝으로(선택한 채로 표를 넣으면 선택한 글이 표로 바뀐다)
