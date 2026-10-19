@@ -61,8 +61,13 @@ const APPROVED_ADJUST_COPY: Record<string, readonly string[]> = {
     "이전 요청이 이미 반영됐다면 같은 금액이 한 번 더 조정될 수 있어요.",
   ],
 };
+const APPROVED_BULK_COPY: Record<string, readonly string[]> = {
+  "app/(seller)/seller/(shell)/products/bulk/page.tsx": [
+    "오류 상품은 건너뛰고 반영해요 · 목록에는 앞부분만 보여요 · 새 상품의 상태가 비면 「숨김」으로 등록해요(이미지를 올린 뒤 공개)",
+  ],
+};
 const withoutApprovedCopy = (file: string, text: string) =>
-  [...(APPROVED_READ_COPY[file] ?? []), ...(APPROVED_EXTERNAL_COPY[file] ?? []), ...(APPROVED_ADJUST_COPY[file] ?? [])].reduce((remaining, copy) => {
+  [...(APPROVED_READ_COPY[file] ?? []), ...(APPROVED_EXTERNAL_COPY[file] ?? []), ...(APPROVED_ADJUST_COPY[file] ?? []), ...(APPROVED_BULK_COPY[file] ?? [])].reduce((remaining, copy) => {
     const escaped = copy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     return remaining.split(JSON.stringify(copy)).join('""').replace(new RegExp(`(?<=>)\\s*${escaped}\\s*(?=<)`, "g"), "");
   }, text);
@@ -129,7 +134,7 @@ describe("파트너스 관리자 화면 말투", () => {
     }
   });
 
-  it.each(Object.entries({ ...APPROVED_READ_COPY, ...APPROVED_EXTERNAL_COPY, ...APPROVED_ADJUST_COPY }))("%s는 승인된 신규 문구만 해요체로 허용한다", (file, copies) => {
+  it.each(Object.entries({ ...APPROVED_READ_COPY, ...APPROVED_EXTERNAL_COPY, ...APPROVED_ADJUST_COPY, ...APPROVED_BULK_COPY }))("%s는 승인된 신규 문구만 해요체로 허용한다", (file, copies) => {
     const source = readFileSync(join(ROOT, file), "utf8");
     for (const copy of copies) {
       expect(source).toContain(copy);

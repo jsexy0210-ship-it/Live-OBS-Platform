@@ -120,6 +120,39 @@ describe("기존 상품 수정", () => {
     expect(await priceOf(s.seller.id, "슬리브")).toBe(3100); // 판매가는 이름이 같아 반영, 이름이 바뀐 옵션 재고만 건너뜀
   });
 
+  it("필수 열만 올리면 새 상품은 숨김·기본 옵션으로 만들고 기존 상태와 모호한 재고는 보존한다", async () => {
+    const s = await shop();
+    await seed(s.ctx);
+    await db.productOption.updateMany({ where: { sellerId: s.seller.id, product: { name: "부스터 팩" } }, data: { name: "기존 옵션" } });
+    const p = await preview(s.ctx, ["상품명,카테고리,판매가,재고", "부스터 팩,,6000,45", "슬리브,,3100,9", "신상,,1200,7"].join("\r\n"));
+    expect([p.createCount, p.updateCount, p.skippedProductCount]).toEqual([1, 1, 1]);
+    expect(p.errors).toMatchObject([{ row: 3, column: "재고" }]);
+    expect(await priceOf(s.seller.id, "부스터 팩")).toBe(5000);
+    expect(await stockOf(s.seller.id, "부스터 팩")).toEqual({ "기존 옵션": 30 });
+    expect(await commit(s.ctx, p.jobId)).toMatchObject({ createdCount: 1, updatedCount: 1, failedCount: 0 });
+    const existing = await db.product.findFirstOrThrow({ where: { sellerId: s.seller.id, name: "부스터 팩" } });
+    expect([existing.price, existing.status]).toEqual([6000, "ON_SALE"]);
+    expect(await stockOf(s.seller.id, "부스터 팩")).toEqual({ "기존 옵션": 45 });
+    expect(await priceOf(s.seller.id, "슬리브")).toBe(3000);
+    expect(await stockOf(s.seller.id, "슬리브")).toEqual({ 검정: 10, 흰색: 5 });
+    const created = await db.product.findFirstOrThrow({ where: { sellerId: s.seller.id, name: "신상" }, include: { options: true } });
+    expect([created.status, created.options.map((o) => [o.name, o.stock])]).toEqual(["HIDDEN", [["기본", 7]]]);
+    expect(await undo(s.ctx, p.jobId)).toMatchObject({ removedCount: 1, restoredCount: 1, keptCount: 0 });
+    expect(await priceOf(s.seller.id, "부스터 팩")).toBe(5000);
+    expect(await stockOf(s.seller.id, "부스터 팩")).toEqual({ "기존 옵션": 30 });
+    expect((await db.product.findFirstOrThrow({ where: { sellerId: s.seller.id, name: "부스터 팩" } })).status).toBe("ON_SALE");
+  });
+
+  it("신규 상품의 빈 상태는 숨김이고 명시 준비중은 유지하며 기존 상태는 바꾸지 않는다", async () => {
+    const s = await shop();
+    await seed(s.ctx);
+    const p = await preview(s.ctx, ["상품명,카테고리,판매가,재고,상태", "부스터 팩,,6000,45,", "빈 상태,,1200,7,", "명시 준비중,,1200,7,준비중"].join("\r\n"));
+    expect([p.createCount, p.updateCount, p.skippedProductCount, p.errors]).toEqual([2, 1, 0, []]);
+    expect(await commit(s.ctx, p.jobId)).toMatchObject({ createdCount: 2, updatedCount: 1, failedCount: 0 });
+    const states = await db.product.findMany({ where: { sellerId: s.seller.id, name: { in: ["부스터 팩", "빈 상태", "명시 준비중"] } }, select: { name: true, status: true } });
+    expect(Object.fromEntries(states.map((product) => [product.name, product.status]))).toEqual({ "부스터 팩": "ON_SALE", "빈 상태": "HIDDEN", "명시 준비중": "DRAFT" });
+  });
+
   it("지운 상품과는 이름이 같아도 새 상품으로 등록한다", async () => {
     const s = await shop();
     await seed(s.ctx);

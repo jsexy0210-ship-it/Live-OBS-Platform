@@ -88,6 +88,7 @@ type ImportProduct = {
   categoryIds: string[];
   categories: string[];
   optionMeta?: { line: number; hasStock: boolean }[];
+  defaultOption?: boolean;
   update?: { productId: string; currentPrice: number; stock: StockChange[] };
 };
 type UpdateRecord = { productId: string; name: string; price: { before: number; after: number } | null; stock: { optionId: string; name: string; delta: number }[] };
@@ -99,6 +100,7 @@ const TEMPLATE_ROWS: string[][] = [
   ["슬리브 세트", "3000", "판매중", "", "결제 시", "", "검정", "0", "10", "SL-B"],
   ["", "", "", "", "", "", "흰색", "500", "5", "SL-W"],
 ];
+const REQUIRED_COLUMNS = ["상품명", "카테고리", "판매가", "재고"] as const;
 export const templateCsv = (): string => formatCsv(TEMPLATE_ROWS);
 export const templateXlsx = (): Buffer => writeXlsx(TEMPLATE_ROWS, "상품 일괄 등록");
 
@@ -136,10 +138,12 @@ export function parseProductRows(rows: string[][], categories: Map<string, strin
   const names = head.map((h) => h.trim());
   const index = new Map<string, number>();
   for (const [i, n] of names.entries()) {
-    if (!(COLUMNS as readonly string[]).includes(n) || index.has(n)) return { ok: false, reason: "invalid_header" };
-    index.set(n, i);
+    const column = n === "옵션" ? "옵션명" : n;
+    if (!(COLUMNS as readonly string[]).includes(column) || index.has(column)) return { ok: false, reason: "invalid_header" };
+    index.set(column, i);
   }
-  if (!index.has("상품명") || !index.has("판매가")) return { ok: false, reason: "invalid_header" };
+  if (REQUIRED_COLUMNS.some((column) => !index.has(column))) return { ok: false, reason: "invalid_header" };
+  const hasOptionColumn = index.has("옵션명");
   const data = body.map((cells, i) => ({ line: i + 2, cells })).filter((r) => r.cells.some((c) => c.trim() !== ""));
   if (data.length === 0) return { ok: false, reason: "empty_file" };
   if (data.length > MAX_IMPORT_ROWS) return { ok: false, reason: "too_many_rows" };
@@ -171,7 +175,8 @@ export function parseProductRows(rows: string[][], categories: Map<string, strin
     const price = intCell(get(first, "판매가"), true);
     if (price === null) err(g.line, "판매가", "판매가는 숫자로 입력해 주십시오");
     const statusLabel = get(first, "상태");
-    const status = statusLabel === "" ? "DRAFT" : STATUS_BY_LABEL[statusLabel];
+    // 신규 상품은 빈 상태를 숨김으로 준비한다. 기존 상품은 분류 뒤 가격·재고만 반영한다.
+    const status = statusLabel === "" ? "HIDDEN" : STATUS_BY_LABEL[statusLabel];
     if (!status) err(g.line, "상태", "상태는 판매중·품절·준비중·숨김 중에서 입력해 주십시오");
     const deductLabel = get(first, "차감시점");
     const deduct = deductLabel === "" ? "PAYMENT" : DEDUCT_BY_LABEL[deductLabel];
@@ -199,7 +204,7 @@ export function parseProductRows(rows: string[][], categories: Map<string, strin
           if (get(r.cells, col) !== "" && !same) err(r.line, col, "옵션 줄에는 상품 정보를 비워 두십시오");
         }
       }
-      const optName = unguardText(get(r.cells, "옵션명"));
+      const optName = hasOptionColumn ? unguardText(get(r.cells, "옵션명")) : k === 0 ? "기본" : "";
       const delta = get(r.cells, "옵션추가금");
       const stock = get(r.cells, "재고");
       const sku = unguardText(get(r.cells, "SKU"));
@@ -227,7 +232,7 @@ export function parseProductRows(rows: string[][], categories: Map<string, strin
       errors.push(...errs);
       bad.add(g);
       skipped++;
-    } else products.push({ row: g.line, input, categoryIds, categories: categoryNames, optionMeta });
+    } else products.push({ row: g.line, input, categoryIds, categories: categoryNames, optionMeta, defaultOption: !hasOptionColumn });
   }
   errors.sort((a, b) => a.row - b.row);
   return { ok: true, value: { totalRows: data.length, products, errors, skippedProducts: skipped + (bad.has("orphan") ? 1 : 0) } };
@@ -284,8 +289,9 @@ async function classifyProducts(db: PrismaClient, ctx: TenantContext, parsed: Pa
     else {
       seen.add(cur.id);
       const stock: StockChange[] = [];
-      for (const [i, o] of (p.input.options as { name: string; stock: number }[]).entries()) {
-        const matches = cur.options.filter((x) => x.name === o.name);
+      if (p.defaultOption && cur.options.length !== 1) errs.push({ row: p.row, column: "재고", message: `상품 「${name}」는 옵션이 ${cur.options.length}개라 어느 옵션의 재고인지 알 수 없어요. 옵션 열을 넣어 올려 주세요` });
+      else for (const [i, o] of (p.input.options as { name: string; stock: number }[]).entries()) {
+        const matches = p.defaultOption ? cur.options : cur.options.filter((x) => x.name === o.name);
         const found = matches[0];
         const meta = p.optionMeta?.[i];
         if (matches.length > 1) errs.push({ row: meta?.line ?? p.row, column: "옵션명", message: `상품 「${name}」에 옵션 「${o.name}」이 여러 개입니다. 옵션 이름을 서로 다르게 바꾼 뒤 올려 주십시오` });
