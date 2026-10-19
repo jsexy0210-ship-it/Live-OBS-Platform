@@ -32,7 +32,7 @@ async function login(page: Page, email: string, next: string) {
 const gnb = (page: Page) => page.getByRole("navigation", { name: "주 메뉴" });
 const lnb = (page: Page) => page.getByRole("complementary", { name: "파트너스 메뉴" });
 // 왼쪽 메뉴의 하위 메뉴(대분류 제목은 제외). 고르지 않은 대분류는 화면에서 접혀 있어 있는지(개수)로 확인한다
-const lnbItem = (page: Page, label: string) => lnb(page).locator(".lnb-i").filter({ hasText: new RegExp(`^${label.replace(/[()]/g, "\\$&")}$`) });
+const lnbItem = (page: Page, label: string) => lnb(page).locator("a.lnb-i, a.lnb-sub-i, strong.lnb-parent").filter({ hasText: new RegExp(`^${label.replace(/[()]/g, "\\$&")}$`) });
 // 스토어 운영(쇼핑몰 기능) 권한이 있어야 보이는 하위 메뉴
 const STORE_MENUS = ["상품 목록", "재고", "쿠폰", "회원 목록", "홈 배너", "알림 설정"];
 // 오버레이 전용에서도 보이는 하위 메뉴(오버레이 권한·기존 주문 처리·계정·구독)
@@ -105,7 +105,10 @@ test("로그인 뒤 기본 화면: 통합은 홈, 오버레이 전용은 오버�
   // 방송 통계는 열려 있고, 통계 탭도 방송만 남는다
   await page.goto("/seller/stats/broadcasts");
   await expect(page.getByRole("heading", { name: "통계 · 방송" })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "통계 종류" }).getByRole("link")).toHaveText(["방송"]);
+  await expect(lnb(page).locator("strong.lnb-parent").filter({ hasText: /^통계$/ })).toHaveCount(1);
+  const stats = lnb(page).getByRole("navigation", { name: "통계", exact: true });
+  await expect(stats.locator("a.lnb-sub-i")).toHaveText(["방송"]);
+  await expect(stats.getByRole("link", { name: "방송", exact: true })).toHaveAttribute("href", "/seller/stats/broadcasts");
 
   // 매출·주문 통계 요약은 주소로 들어와도 안내 화면
   await page.goto("/seller/stats");

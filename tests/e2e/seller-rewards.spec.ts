@@ -47,7 +47,9 @@ test("적립금 지급 시점: 기본은 배송 완료 후, 결제하면 바로�
   await page.reload();
 
   // 메뉴 「적립금」에서 들어온다
-  await expect(page.getByRole("link", { name: "적립금", exact: true })).toHaveAttribute("href", "/seller/rewards");
+  const menu = page.getByRole("complementary", { name: "파트너스 메뉴" });
+  await expect(menu.locator("strong.lnb-parent").filter({ hasText: /^적립금$/ })).toBeVisible();
+  await expect(menu.locator("a.lnb-sub-i").filter({ hasText: /^적립 정책$/ })).toHaveAttribute("href", "/seller/rewards");
   await expect(page.getByRole("radio", { name: "배송 완료 후 지급 (기본)" })).toBeChecked();
   await expect(page.getByText("적립 금액은 결제 때 정해지고 지급 시점만 달라집니다", { exact: false })).toBeVisible();
   await expect(page.getByRole("button", { name: "정책 저장", exact: true })).toBeDisabled();

@@ -114,7 +114,7 @@ test("기간: 기본은 최근 1개월이라 오래된 내역은 안 보이고, 
   const url = new URL((await first).url());
   expect(url.searchParams.get("from")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   expect(url.searchParams.get("to")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-  expect(url.searchParams.get("limit")).toBe("20");
+  expect(url.searchParams.get("limit")).toBe("10");
   const rows = page.getByTestId("ledger-row");
   await expect(rows).toHaveCount(1);
   await expect(rows.first()).toContainText("+111원");
@@ -132,12 +132,12 @@ test("기간: 기본은 최근 1개월이라 오래된 내역은 안 보이고, 
   await expect(rows).toHaveCount(2);
 });
 
-test("내역이 없으면 안내하고, 20건을 넘으면 「더 보기」로 이어서 불러온다", async ({ page }) => {
+test("내역이 없으면 안내하고 10건씩 현재·다음·마지막 쪽을 확인한다", async ({ page }) => {
   await reset();
   await open(page);
   await expect(page.getByText("아직 적립 기록이 없습니다")).toBeVisible();
 
-  // 다음 쪽 커서가 오는 응답으로 「더 보기」 흐름을 확인한다(서버 쪽 커서 시험은 통합 시험이 맡는다)
+  // 같은 22건을 10·10·2건 현재 쪽으로 확인한다(서버 쪽 커서 시험은 통합 시험이 맡는다)
   const entry = (i: number) => ({
     id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
     member: { id: "00000000-0000-4000-8000-000000000999", broadcastNickname: `회원${i}` },
@@ -154,14 +154,28 @@ test("내역이 없으면 안내하고, 20건을 넘으면 「더 보기」로 �
   });
   await page.route("**/api/seller/reward-ledger?*", (route) => {
     const cursor = new URL(route.request().url()).searchParams.get("cursor");
-    const body = cursor ? { entries: [entry(21), entry(22)], nextCursor: null } : { entries: Array.from({ length: 20 }, (_, i) => entry(i + 1)), nextCursor: "next-cursor" };
+    const offset = cursor === "last-cursor" ? 20 : cursor ? 10 : 0;
+    const body = { entries: Array.from({ length: 22 }, (_, i) => entry(i + 1)).slice(offset, offset + 10), nextCursor: offset === 0 ? "next-cursor" : offset === 10 ? "last-cursor" : null };
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
   });
   await page.reload();
   const rows = page.getByTestId("ledger-row");
-  await expect(rows).toHaveCount(20);
-  await page.getByRole("button", { name: "더 보기" }).click();
-  await expect(rows).toHaveCount(22);
+  const nav = page.getByRole("navigation", { name: "페이지 이동", exact: true });
+  await expect(rows).toHaveCount(10);
+  await expect(nav.locator('[aria-current="page"]')).toHaveText("1");
+  await expect(rows.first()).toContainText("회원1");
+  await expect(rows.last()).toContainText("회원10");
+  await nav.getByRole("button", { name: "다음", exact: true }).click();
+  await expect(nav.locator('[aria-current="page"]')).toHaveText("2");
+  await expect(rows).toHaveCount(10);
+  await expect(rows.first()).toContainText("회원11");
+  await expect(rows.last()).toContainText("회원20");
+  await nav.getByRole("button", { name: "다음", exact: true }).click();
+  await expect(nav.locator('[aria-current="page"]')).toHaveText("3");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first()).toContainText("회원21");
+  await expect(rows.last()).toContainText("회원22");
+  await expect(nav.getByRole("button", { name: "다음", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "더 보기" })).toHaveCount(0);
 });
 
