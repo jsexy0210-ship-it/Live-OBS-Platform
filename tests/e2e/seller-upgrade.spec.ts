@@ -73,16 +73,32 @@ test("오버레이 전용: 사업자·정산 정보를 채워 쇼핑몰 통합�
   await withDb((db, sellerId) =>
     db.sellerSubscription.update({ where: { sellerId }, data: { currentPeriodStart: new Date(Date.now() - 23 * DAY), currentPeriodEnd: new Date(Date.now() + 7 * DAY), nextChargeAt: new Date(Date.now() + 7 * DAY) } }),
   );
+  const expectedAmount = await withDb(async (db, sellerId) => {
+    const sub = await db.sellerSubscription.findUniqueOrThrow({ where: { sellerId }, select: { subscribedAt: true, regularPrice: true, legacyPrice: true } });
+    expect(sub.legacyPrice).toBeNull();
+    const plans = await db.subscriptionPlan.findMany({ where: { code: { in: ["OVERLAY_ONLY", "INTEGRATED"] } }, include: { priceChanges: { where: { changedAt: { lte: sub.subscribedAt } }, orderBy: { changedAt: "desc" }, take: 1 } } });
+    const prices = Object.fromEntries(plans.map((plan) => { const price = plan.priceChanges[0] ?? plan; return [plan.code, sub.regularPrice ? price.listPrice : price.salePrice]; }));
+    // 원 단위 절사와 30일 중 남은 7일은 독립 기대값이며 제품 계산 함수를 호출하지 않는다.
+    const amount = Math.floor((prices.INTEGRATED - prices.OVERLAY_ONLY) * 7 / 30);
+    expect(amount).toBeGreaterThan(0);
+    return amount;
+  });
+  const quoteText = `지금 결제할 금액은 ${expectedAmount.toLocaleString("ko-KR")}원입니다 · 남은 기간 7일`;
 
   // 메뉴 「쇼핑몰 통합 전환」에서 들어온다
   await page.goto("/seller/subscription");
+  const previewRequest = page.waitForRequest((r) => new URL(r.url()).pathname === "/api/seller/subscription/plan/preview" && r.method() === "GET");
   await page.getByRole("link", { name: "쇼핑몰 통합 전환", exact: true }).click();
+  const previewResponse = await (await previewRequest).response();
+  expect(previewResponse?.status()).toBe(200);
+  const preview = await previewResponse!.json();
+  expect(preview.plans.find((p: { planCode: string }) => p.planCode === "INTEGRATED").change).toMatchObject({ ok: false, reason: "profile_incomplete", quote: { chargeNow: expectedAmount, remainingDays: 7, periodDays: 30 } });
   await expect(page).toHaveURL(/\/seller\/settings\/upgrade$/);
   await expect(page.getByRole("heading", { name: "쇼핑몰 통합으로 바꾸기" })).toBeVisible();
   const go = page.getByRole("button", { name: "쇼핑몰 통합으로 바꾸기" });
   await expect(go).toBeDisabled();
   await expect(page.getByText("필수 항목을 모두 채우면 버튼이 켜집니다")).toBeVisible();
-  await expect(page.getByText("이번 결제 기간에 남은 7일 차액")).toBeVisible();
+  await expect(page.locator(".up-expl")).toContainText(quoteText);
   await shot(page, "SA-005-empty");
 
   await page.getByLabel("상호").fill("달빛상회");
@@ -103,8 +119,20 @@ test("오버레이 전용: 사업자·정산 정보를 채워 쇼핑몰 통합�
   await shot(page, "SA-005-filled");
 
   // 정보를 채우기 전에도 서버 견적이 와서 차액과 산식이 보이고, 한 번 눌러 결제된다(금액은 서버 chargeNow와 같을 때만 결제)
-  await expect(page.getByText("이번 결제 기간에 남은 7일 차액")).toBeVisible();
+  await expect(page.locator(".up-expl")).toContainText(quoteText);
+  const savedProfile = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/seller/integration-profile" && r.request().method() === "PUT");
+  const freshQuote = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/seller/subscription/plan/preview" && r.request().method() === "GET");
+  const applied = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/seller/subscription/plan" && r.request().method() === "POST");
   await go.click();
+  expect((await savedProfile).status()).toBe(200);
+  const fresh = await freshQuote;
+  expect(fresh.status()).toBe(200);
+  const freshPreview = await fresh.json();
+  expect(freshPreview.plans.find((p: { planCode: string }) => p.planCode === "INTEGRATED").change).toMatchObject({ ok: true, chargeNow: expectedAmount, remainingDays: 7 });
+  const appliedResponse = await applied;
+  expect(appliedResponse.status()).toBe(200);
+  expect(appliedResponse.request().postDataJSON()).toEqual({ planCode: "INTEGRATED", expectedAmount });
+  expect(await appliedResponse.json()).toMatchObject({ ok: true, applied: "now", charged: expectedAmount, planCode: "INTEGRATED" });
   await expect(page.getByRole("status").filter({ hasText: "쇼핑몰 통합으로 바꿨습니다" })).toBeVisible();
   await shot(page, "SA-005-done");
   await withDb(async (db, sellerId) => {

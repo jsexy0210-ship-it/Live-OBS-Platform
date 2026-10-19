@@ -124,8 +124,20 @@ test("상세 설명 에디터: 제목·글 꾸미기·표·구분선을 쓰고 �
   await page.getByRole("button", { name: "글자색" }).click();
   await page.getByRole("button", { name: "글자색 #d92d20" }).click();
   await expect(body.locator("span[style*=color]").first()).toBeVisible();
+  const selection = () => body.evaluate((element) => {
+    const { state } = (element as HTMLElement & { editor: { state: { selection: { from: number; to: number; empty: boolean }; doc: { content: { size: number } } } } }).editor;
+    return { focused: element === document.activeElement, from: state.selection.from, to: state.selection.to, empty: state.selection.empty, end: state.doc.content.size };
+  });
+  await expect(body.locator("h1")).toHaveText("스타라이트 첫 번째 박스");
+  await expect(body).toContainText("방송 중 개봉은 닉네임이 나옵니다.");
   // 선택을 풀고 글 끝으로(선택한 채로 표를 넣으면 선택한 글이 표로 바뀐다)
-  await page.keyboard.press("Control+End");
+  await body.focus();
+  await body.press("Control+End");
+  const ended = await selection();
+  expect(ended.focused).toBe(true);
+  expect(ended.empty).toBe(true);
+  expect(ended.from).toBe(ended.to);
+  expect(ended.to).toBe(ended.end - 1);
   // 표 넣기 창: 줄·칸·제목 줄
   await page.getByRole("button", { name: "표 넣기", exact: true }).click();
   const dlg = page.getByRole("dialog", { name: "표 넣기" });
@@ -134,6 +146,8 @@ test("상세 설명 에디터: 제목·글 꾸미기·표·구분선을 쓰고 �
   await dlg.getByRole("button", { name: "표 넣기" }).click();
   await expect(body.locator("table tr")).toHaveCount(2);
   await expect(body.locator("table th")).toHaveCount(3);
+  await expect(body.locator("h1")).toHaveText("스타라이트 첫 번째 박스");
+  await expect(body).toContainText("방송 중 개봉은 닉네임이 나옵니다.");
   await page.getByRole("button", { name: "구분선" }).click();
   await expect(body.locator("hr")).toHaveCount(1);
   await expect(page.getByText(/글자 \d+ \/ 20,000자/)).toBeVisible();

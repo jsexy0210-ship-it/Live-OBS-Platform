@@ -83,6 +83,7 @@ test("지표를 못 읽으면 「감시 끊김」과 마지막 갱신 시각을 
 
 test("운영 담당: 감시를 조회하고 갱신하되 쓰기 동작과 내부 오류 상세는 보이지 않는다", async ({ page }) => {
   await login(page, emails.ops);
+  await page.getByRole("navigation", { name: "주 메뉴", exact: true }).getByRole("link", { name: "운영", exact: true }).click();
   const writes: string[] = [];
   page.on("request", (request) => {
     if (new URL(request.url()).pathname === "/api/admin/ops/monitor" && !["GET", "HEAD"].includes(request.method())) writes.push(request.method());

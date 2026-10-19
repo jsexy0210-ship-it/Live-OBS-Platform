@@ -35,6 +35,7 @@ test("Select: 공통 화살표가 오른쪽 테두리에서 14px 안쪽·세로 
   await adminLogin(page);
   await page.goto("/admin/logs");
   const selects = page.locator(".main select.inp");
+  await expect(selects.first()).toBeVisible();
   expect(await selects.count()).toBeGreaterThan(0);
   for (const s of await selects.all()) {
     const st = await s.evaluate((e) => {
