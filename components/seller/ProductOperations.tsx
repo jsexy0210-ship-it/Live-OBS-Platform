@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FormRow, FormSection, ListTable, PageHead, useConfirm } from "../admin-ui";
 import { Topbar, useSeller } from "./SellerShell";
 import { QuickPrice, QuickStatus, QuickStock, type QuickDone, type QuickUndo } from "./ProductQuick";
@@ -22,6 +22,8 @@ export function ProductOperations({ ids, single = false }: { ids: string[]; sing
   const requestIds = useMemo(() => [...new Set(requestKey.split(",").map((id) => id.toLowerCase()))], [requestKey]);
   const validIds = requestIds.length > 0 && requestIds.length <= 200 && requestIds.every((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
   const [items, setItems] = useState<Product[]>([]);
+  const [missingCount, setMissingCount] = useState(0);
+  const generation = useRef(0);
   const [state, setState] = useState<{ kind: "loading" } | { kind: "ok" } | { kind: "error"; status: number }>({ kind: "loading" });
   const [toast, setToast] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -29,15 +31,24 @@ export function ProductOperations({ ids, single = false }: { ids: string[]; sing
   const [undo, setUndo] = useState<{ text: string; prev: { id: string; status: ProductStatus }[] } | null>(null);
   const selected = new Set(items.map((item) => item.id));
   const load = useCallback(async () => {
+    const request = ++generation.current;
     if (!canManage || !validIds) return;
     setState({ kind: "loading" });
     const responses = await Promise.all(requestIds.map((id) => api<Product>(`/api/seller/products/${id}`)));
-    const error = responses.find((response) => !response.ok);
-    if (error && !error.ok) return setState({ kind: "error", status: error.status });
+    if (request !== generation.current) return;
+    const error = responses.find((response) => !response.ok && (single || response.status !== 404));
+    if (error && !error.ok) {
+      setItems([]);
+      setMissingCount(0);
+      setUndo(null);
+      setQuickUndo(null);
+      return setState({ kind: "error", status: error.status });
+    }
     setItems(responses.flatMap((response) => response.ok ? [response.data] : []));
+    setMissingCount(responses.filter((response) => !response.ok && response.status === 404).length);
     setState({ kind: "ok" });
-  }, [canManage, validIds, requestIds]);
-  useEffect(() => { void load(); }, [load]);
+  }, [canManage, validIds, requestIds, single]);
+  useEffect(() => { void load(); return () => { generation.current++; }; }, [load]);
   const skippedText = (r: BulkResult) => (r.skipped.length === 0 ? "" : ` ${r.skipped.length}개는 바꾸지 못했습니다(${[...new Set(r.skipped.map((s) => SKIP_REASON[s.reason] ?? "바꿀 수 없는 상품임"))].join(" · ")})`);
 
   // 상세 값은 서버 응답을 받은 뒤에만 바뀌고, 되돌릴 수 있는 변경은 기존 되돌리기를 제공한다.
@@ -109,6 +120,7 @@ export function ProductOperations({ ids, single = false }: { ids: string[]; sing
           </FormSection>
           <Link className="btn btn-out" href={`/seller/products/${product.id}`}>상품 내용 수정</Link>
         </section> : <section className="au-list-section" aria-label="선택한 상품">
+          {missingCount > 0 && <p role="status">찾을 수 없는 상품 {missingCount}개 · 남은 상품 {items.length}개</p>}
           <p>선택한 상품 {items.length}개에만 적용해요.</p>
           <ListTable aria-label="선택 상품 표"><table className="tbl"><thead><tr><th>상품</th><th>판매가</th><th>재고</th><th>판매 상태</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><Link href={`/seller/products/${item.id}`}>{item.name}</Link></td><td>{won(item.price)}</td><td>{totalStock(item).toLocaleString("ko-KR")}</td><td>{statusBadge(item).label}</td></tr>)}</tbody></table></ListTable>
           <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
