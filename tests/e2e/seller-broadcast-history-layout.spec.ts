@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import type { Me } from "../../components/seller/api";
 
 // 격리된 실제 Next 페이지의 PC 레이아웃 회귀. 모든 API는 가로채며 외부·실환경 접근은 거부한다.
@@ -8,9 +8,11 @@ if (!["localhost", "127.0.0.1"].includes(base.hostname)) throw new Error("이 �
 test.use({ channel: process.platform === "win32" ? "chrome" : undefined });
 const me: Me = { sellerId: "ui-seller", userId: "ui-owner", isOwner: true, permissions: [], access: "paid", features: ["OVERLAY"], shop: { name: "검증 스토어", slug: "ui-store" }, user: { name: "검증 대표", email: "ui@example.com" }, trialEndsAt: null };
 const row = (index: number) => ({ id: `ui-${index}`, title: `검증 방송 ${index}`, status: "ended", startedAt: new Date(Date.now() - index * 86_400_000).toISOString(), endedAt: new Date(Date.now() - index * 86_400_000 + 3_600_000).toISOString(), layout: "9x16", summary: { orders: 5, paidOrders: 5, sales: 240_000, completed: 4, cancelled: 1, hits: 2 } });
+const monthSummary = { broadcasts: 3, seconds: 7200, orders: 17, avgSales: 1200, avgOpenSeconds: 48 };
 
 async function mock(page: Page, count: number, state?: { wait: Promise<void>; status: number; error?: string }) {
   const reads: URL[] = [], writes: string[] = [];
+  const exports: { url: URL; headers: Record<string, string> }[] = [];
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
     if (url.origin !== base.origin) return route.abort();
@@ -21,17 +23,22 @@ async function mock(page: Page, count: number, state?: { wait: Promise<void>; st
     }
     if (url.pathname === "/api/seller/me") return route.fulfill({ json: me });
     if (url.pathname === "/api/maintenance") return route.fulfill({ json: { active: false, scheduled: null } });
+    if (url.pathname === "/api/seller/broadcast/history/export") {
+      const headers = { "content-type": "text/csv; charset=utf-8", "content-disposition": 'attachment; filename="broadcast-history.csv"', "x-export-truncated": "1" };
+      exports.push({ url, headers });
+      return route.fulfill({ status: 200, headers, body: "\uFEFF제목,매출\r\n검증 방송,1200\r\n" });
+    }
     if (url.pathname === "/api/seller/broadcast/history") {
       reads.push(url);
       if (state) {
         await state.wait;
         if (state.status !== 200) return route.fulfill({ status: state.status, json: { error: state.error } });
       }
-      return route.fulfill({ json: { items: Array.from({ length: url.searchParams.has("cursor") ? 1 : count }, (_, index) => row(index)), nextCursor: count === 0 || url.searchParams.has("cursor") ? null : "ui-next" } });
+      return route.fulfill({ json: { items: Array.from({ length: url.searchParams.has("cursor") ? 1 : count }, (_, index) => row(index)), nextCursor: count === 0 || url.searchParams.has("cursor") ? null : "ui-next", monthSummary } });
     }
     return route.fulfill({ json: { items: [], notices: [], unreadCount: 0, total: 0 } });
   });
-  return { reads, writes };
+  return { reads, writes, exports };
 }
 
 for (const state of [
@@ -146,3 +153,75 @@ for (const [count, height] of [[5, 960], [10, 650]]) {
     expect(errors).toEqual([]);
   });
 }
+
+test("SA054: 이번 달 요약과 목록 적용 조건을 구분하고 금액 가림을 유지한다", async ({ page }) => {
+  const { reads, writes, exports } = await mock(page, 10);
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto("/seller/broadcasts?from=2026-09-01&to=2026-09-30&layout=9x16");
+  const summary = page.getByTestId("bh-month-summary");
+  await expect(summary.getByRole("heading")).toContainText("이번 달 방송 요약 (KST)");
+  await expect(summary).toContainText("목록 검색 조건과 별개");
+  const values = summary.locator(".stat .v");
+  await expect(values).toHaveText(["3회", "17건", "1,200원", "48초"]);
+  await expect(summary).toContainText("2시간 0분");
+  await page.getByRole("navigation", { name: "페이지 이동", exact: true }).getByRole("button", { name: "다음", exact: true }).click();
+  await expect.poll(() => reads.at(-1)?.searchParams.get("cursor")).toBe("ui-next");
+  await expect(values).toHaveText(["3회", "17건", "1,200원", "48초"]);
+  await page.getByRole("search").getByLabel("레이아웃").selectOption("16x9");
+  const exportLink = page.getByRole("link", { name: "내보내기", exact: true });
+  const href = new URL((await exportLink.getAttribute("href"))!, base);
+  expect(href.pathname).toBe("/api/seller/broadcast/history/export");
+  expect(Object.fromEntries(href.searchParams)).toEqual({ from: "2026-09-01", to: "2026-09-30", layout: "9x16" });
+  await expect(exportLink).toHaveAttribute("title", "목록 검색 조건 · 최대 5,000건");
+  await expect(exportLink).toHaveAttribute("download", "");
+  const originalDownload = await exportLink.getAttribute("download");
+  try {
+    // Chromium의 [download] 요청은 networkId가 없어 route mock을 건너뛸 수 있다(PW #22650/#27575).
+    // 제품 속성을 먼저 검증하고, 이 격리 하니스에서만 attachment 헤더로 다운로드를 시작한다.
+    await exportLink.evaluate((link) => link.removeAttribute("download"));
+    expect(await exportLink.getAttribute("download")).toBeNull();
+    await expect(exportLink).toHaveAttribute("href", href.pathname + href.search);
+    const downloaded = page.waitForEvent("download");
+    await exportLink.click();
+    const file = await downloaded;
+    expect(file.url()).toBe(href.href);
+    expect(exports).toHaveLength(1);
+    expect(exports[0].url.search).toBe(href.search);
+    expect(exports[0].headers).toEqual({ "content-type": "text/csv; charset=utf-8", "content-disposition": 'attachment; filename="broadcast-history.csv"', "x-export-truncated": "1" });
+    expect(file.suggestedFilename()).toBe("broadcast-history.csv");
+    expect(await file.failure()).toBeNull();
+    const path = await file.path();
+    expect(path).not.toBeNull();
+    expect(readFileSync(path!, "utf8")).toBe("\uFEFF제목,매출\r\n검증 방송,1200\r\n");
+  } finally {
+    await exportLink.evaluate((link, value) => link.setAttribute("download", value), originalDownload!);
+  }
+  await expect(exportLink).toHaveAttribute("download", "");
+  await page.getByRole("search").getByRole("button", { name: "검색", exact: true }).click();
+  await expect.poll(() => reads.at(-1)?.searchParams.get("layout")).toBe("16x9");
+  await expect(values).toHaveText(["3회", "17건", "1,200원", "48초"]);
+  await expect(exportLink).toHaveAttribute("href", /layout=16x9/);
+
+  // 대리조회 응답의 null 금액은 0원으로 바꾸지 않고, 내보내기 링크를 새로 노출하지 않는다.
+  let readOnly = true;
+  await page.route("**/api/seller/me", (route) => route.fulfill({ json: { ...me, isOwner: !readOnly, permissions: readOnly ? ["BROADCAST_RUN"] : [], readOnly } }));
+  let mode: "masked" | "missing" | "zero" = "masked";
+  await page.route("**/api/seller/broadcast/history?*", (route) => route.fulfill({ json: {
+    items: [{ ...row(0), summary: { ...row(0).summary, sales: readOnly ? null : row(0).summary.sales } }], nextCursor: null,
+    ...(mode === "missing" ? {} : { monthSummary: mode === "zero" ? { broadcasts: 0, seconds: 0, orders: 0, avgSales: 0, avgOpenSeconds: 0 } : { ...monthSummary, avgSales: null, avgOpenSeconds: null } }),
+  } }));
+  await page.reload();
+  await expect(values).toHaveText(["3회", "17건", "—", "—"]);
+  await expect(page.getByTestId("bh-list").locator("td").nth(6)).toHaveText("—");
+  await expect(exportLink).toHaveCount(0);
+  mode = "missing";
+  await page.reload();
+  await expect(page.getByTestId("bh-list").locator("tr")).toHaveCount(1);
+  await expect(summary).toHaveCount(0);
+  mode = "zero";
+  readOnly = false;
+  await page.reload();
+  await expect(values).toHaveText(["0회", "0건", "0원", "0초"]);
+  await expect(exportLink).toHaveCount(1);
+  expect(writes).toEqual([]);
+});
