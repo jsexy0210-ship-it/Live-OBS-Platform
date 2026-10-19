@@ -47,6 +47,7 @@ type Cond = { q: string; field: "nickname" | "name"; gradeId: string; condition:
 type PendingAdjustment = { id: string; intent: string };
 type AdjustmentChoice = { key: string; intent: string; operations: PendingAdjustment[] };
 const ADJUST_COPY = {
+  rejectedCleanup: "거절된 요청의 보관 정보를 지우지 못했어요. 화면을 다시 불러와 주세요.",
   scope: "요청 정보를 확인하지 못했어요. 화면을 다시 불러와 주세요.",
   storage: "재시도 정보를 보관하지 못했어요. 원장에서 이전 조정 결과를 확인해 주세요.",
   cleanup: "조정은 완료됐지만 요청 정보를 정리하지 못했어요. 원장에서 결과를 확인해 주세요.",
@@ -389,7 +390,15 @@ function AdjustModal({ row, live, scope, onClose, onDone }: { row: Row; live: bo
             writeAdjustments(context.key, operations);
           } catch { return ADJUST_COPY.storage; }
           const r = await api<{ balanceAfter: number | null }>(`/api/seller/reward-balances/${row.member.id}/adjust`, { method: "POST", body: { direction, amount: amt, reason: reason.trim(), requestId } });
-          if (!r.ok) return failMessage(r, "admin", "조정하지 못했습니다. 잠시 후 다시 시도해 주십시오");
+          if (!r.ok) {
+            // 이전 불명 요청과 모든 409는 보존한다. 이번에 새로 만든 ID의 명시적 무반영 거절만 정리한다.
+            const rejectedNew = !previousId && ((r.status === 400 && r.error === "invalid_reward_adjust") || (r.status === 404 && r.error === "reward_adjust_member_not_found"));
+            if (rejectedNew) {
+              try { writeAdjustments(context.key, readAdjustments(context.key).filter((entry) => entry.id !== requestId)); }
+              catch { return ADJUST_COPY.rejectedCleanup; }
+            }
+            return failMessage(r, "admin", "조정하지 못했습니다. 잠시 후 다시 시도해 주십시오");
+          }
           try { writeAdjustments(context.key, readAdjustments(context.key).filter((entry) => entry.id !== requestId)); }
           catch { return ADJUST_COPY.cleanup; }
           result = r.data;
