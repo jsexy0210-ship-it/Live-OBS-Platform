@@ -8,7 +8,7 @@ import { detailHref, listReturnTo, setDetailResult, takeDetailResult } from "../
 import { CursorPagination } from "../../../../../components/Pagination";
 import { ListTable, Modal, useConfirm } from "../../../../../components/admin-ui";
 
-import { useCallback, useEffect, useState, useRef } from "react";
+import { createContext, useContext, useCallback, useEffect, useState, useRef } from "react";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -97,6 +97,13 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "HIDDEN", label: "숨김" },
 ];
 
+type PagePosition = { signature: string; page: number; cursors: (string | undefined)[] };
+const PagePositionContext = createContext<{ position: PagePosition; setPosition: React.Dispatch<React.SetStateAction<PagePosition>> } | null>(null);
+export function ReviewPageProvider({ children }: { children: React.ReactNode }) {
+  const [position, setPosition] = useState<PagePosition>({ signature: "", page: 1, cursors: [undefined] });
+  return <PagePositionContext.Provider value={{ position, setPosition }}>{children}</PagePositionContext.Provider>;
+}
+
 export default function ReviewsWorkspace({ view, reviewId, ids = "", action, returnTo }: { view?: "detail" | "bulk" | "policy"; reviewId?: string; ids?: string; action?: string; returnTo?: string }) {
   const router = useRouter();
   const back = listReturnTo(returnTo, "/seller/reviews");
@@ -110,8 +117,11 @@ export default function ReviewsWorkspace({ view, reviewId, ids = "", action, ret
   const setTab = (t: Tab) => { setPicked([]); setU({ tab: t }); };
   const setRating = (v: string) => { setPicked([]); setU({ rating: v }); };
   const [cursor, setCursor] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
-  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const positionState = useContext(PagePositionContext);
+  if (!positionState) throw new Error("Page position provider is required");
+  const { position, setPosition } = positionState;
+  const { page, cursors } = position;
+  const positionRef = useRef(position); positionRef.current = position;
   const reqId = useRef(0);
   const paging = useRef(false);
   // 현재 쪽에서 고른 리뷰(선택 공개·선택 숨김). 건별 publish·hide API를 차례로 부른다
@@ -139,25 +149,35 @@ export default function ReviewsWorkspace({ view, reviewId, ids = "", action, ret
 
   const load = useCallback(async () => {
     const id = ++reqId.current; paging.current = true;
-    const r = await api<Data>(query());
+    const signature = query();
+    const previous = positionRef.current;
+    const restore = !view && previous.signature === signature;
+    const startPage = restore ? previous.page : 1;
+    const history = restore ? previous.cursors : [undefined];
+    const r = await api<Data>(query(history[startPage - 1]));
     if (id !== reqId.current) return;
     paging.current = false;
     if (!r.ok) return setState({ kind: "error", status: r.status, error: r.error });
     if (view === "bulk") {
       if (!validSelection || (action !== "hide" && action !== "publish")) return setState({ kind: "error", status: 400, error: "invalid_selection" });
       const exact: Row[] = [];
+      let missing = 0;
       for (const target of selected) {
         const d = await api<{ review: Detail }>(`/api/seller/reviews/${target}`);
         if (id !== reqId.current) return;
-        if (!d.ok) return setState({ kind: "error", status: d.status, error: d.error });
+        if (!d.ok) {
+          if (d.status === 404) { missing++; continue; }
+          return setState({ kind: "error", status: d.status, error: d.error });
+        }
         const item = d.data.review;
         exact.push({ ...item, grade: null, photos: item.images.length, replied: !!item.reply });
       }
-      setState({ kind: "ok", data: { ...r.data, reviews: exact } }); setPicked(selected);
+      setState({ kind: "ok", data: { ...r.data, reviews: exact } }); setPicked(exact.map((item) => item.id));
+      if (missing) setToast({ text: `찾을 수 없는 리뷰 ${missing}건을 선택에서 제외했습니다`, neg: true });
       return;
     }
     setCursor(r.data.nextCursor);
-    setState({ kind: "ok", data: r.data }); setPage(1); setCursors([undefined]); setPicked([]);
+    setState({ kind: "ok", data: r.data }); if (!view) setPosition({ signature, page: startPage, cursors: history }); setPicked([]);
   }, [query, view, ids, action, validSelection]);
 
   useEffect(() => {
@@ -176,7 +196,7 @@ export default function ReviewsWorkspace({ view, reviewId, ids = "", action, ret
     paging.current = false;
     if (!r.ok) return setToast({ text: "목록을 불러오지 못했습니다. 다시 눌러 주십시오", neg: true });
     setState({ kind: "ok", data: r.data }); setCursor(r.data.nextCursor); setPicked([]);
-    setCursors((prev) => [...prev.slice(0, target - 1), next]); setPage(target);
+    setPosition((prev) => ({ signature: query(), page: target, cursors: [...prev.cursors.slice(0, target - 1), next] }));
   };
 
   const data = state.kind === "ok" ? state.data : null;
@@ -373,10 +393,10 @@ export default function ReviewsWorkspace({ view, reviewId, ids = "", action, ret
                           </td>
                           <td className="rv-status"><span className={`bdg ${STATUS[r.status].cls}`}>{STATUS[r.status].label}</span></td>
                           <td className="rv-actions">
-                            <button className="btn btn-out" type="button" onClick={() => router.push(detailHref(`/seller/reviews/${r.id}`))} aria-label={`${r.productName} 리뷰 답글 관리`}>
+                            <button className="btn btn-out" type="button" onClick={(e) => { e.stopPropagation(); router.push(detailHref(`/seller/reviews/${r.id}`)); }} aria-label={`${r.productName} 리뷰 답글 관리`}>
                               {r.replied ? "답글 보기" : "답글"}
                             </button>
-                            <button className="btn btn-out" type="button" onClick={() => router.push(detailHref(`/seller/reviews/${r.id}`))} aria-label={`${r.productName} 리뷰 숨기기`}>
+                            <button className="btn btn-out" type="button" onClick={(e) => { e.stopPropagation(); router.push(detailHref(`/seller/reviews/${r.id}`)); }} aria-label={`${r.productName} 리뷰 숨기기`}>
                               숨기기
                             </button>
                           </td>
@@ -509,7 +529,7 @@ function ReviewDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
             )}
             <div className="fld">
               <label htmlFor="rv-reply">답글</label>
-              <textarea id="rv-reply" className="inp" style={{ minHeight: 88, padding: "10px 12px" }} value={reply} maxLength={300} disabled={!canEdit} onChange={(e) => setReply(e.target.value)} />
+              <textarea id="rv-reply" className="inp" style={{ minHeight: 88, padding: "10px 12px" }} value={reply} maxLength={300} disabled={!canEdit || busy || hiding} onChange={(e) => setReply(e.target.value)} />
               <span className="help">상품 리뷰에 「판매자」 이름으로 공개 · 300자 · 개인정보 · 연락처 기재 금지</span>
             </div>
             {hiding && (
@@ -554,7 +574,7 @@ function ReviewDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
                   {d.status === "HIDDEN" ? "다시 공개" : "공개"}
                 </button>
               )}
-              <button className="btn" type="button" disabled={busy || reply.trim() === (d.reply ?? "")} onClick={() => void act("reply", "PUT", { reply: reply.trim() || null }, reply.trim() ? "답글을 저장했습니다" : "답글을 지웠습니다")}>
+              <button className="btn" type="button" disabled={busy || hiding || reply.trim() === (d.reply ?? "")} onClick={() => void act("reply", "PUT", { reply: reply.trim() || null }, reply.trim() ? "답글을 저장했습니다" : "답글을 지웠습니다")}>
                 답글 저장
               </button>
             </>

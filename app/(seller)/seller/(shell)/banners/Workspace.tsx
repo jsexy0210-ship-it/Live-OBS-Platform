@@ -130,9 +130,9 @@ export default function Workspace({ view, itemId, copyId, returnTo }: { view?: "
   const list = state.kind === "ok" ? state.list : [];
   useEffect(() => {
     if (state.kind !== "ok" || view !== "item" || initialized.current) return;
-    initialized.current = true;
     const found = list.find((it) => it.id === (copyId || itemId));
     if (itemId !== "new" && !found || copyId && !found) return setState({ kind: "error", status: 404 });
+    initialized.current = true;
     setDraft(itemId === "new" ? { ...empty } : toDraft(found!));
   }, [state, view, itemId, copyId, list]);
   const { move } = useSortable(list, async (next) => {
@@ -195,7 +195,7 @@ export default function Workspace({ view, itemId, copyId, returnTo }: { view?: "
     <PageHead title={view === "order" ? "노출 설정 상세" : itemId === "new" ? "배너 추가" : "배너 상세"} description="게시 내용과 조건을 확인한 뒤 저장합니다." back={back} actions={<Link className="btn btn-out" href={back}>목록</Link>} />
     {state.kind !== "ok" ? <StateBox kind={state.kind === "error" ? stateKind(state.status, state.error) : "loading"} what="배너" onRetry={() => void load()} /> : !editable ? <div className="msg msg-info">쇼핑몰 설정 권한이 필요합니다.</div> : view === "order" ? <section className="card pad col" style={{ gap: 12 }}>
       <span>전체 {list.length}개의 순서를 바꾸면 바로 반영됩니다.</span>
-      {list.map((it, i) => <div className="row" key={it.id} style={{ gap: 8, flexWrap: "wrap" }}><span>{i + 1}. {it.title}</span><button className="btn btn-sm btn-out" aria-label={`${it.title} 위로`} disabled={orderBusy || i === 0} onClick={() => move(i, i - 1)}>▲</button><button className="btn btn-sm btn-out" aria-label={`${it.title} 아래로`} disabled={orderBusy || i === list.length - 1} onClick={() => move(i, i + 1)}>▼</button></div>)}
+      {list.map((it, i) => <div className="row" data-testid="banner-order-row" key={it.id} style={{ gap: 8, flexWrap: "wrap" }}><span>{i + 1}. {it.title}</span><button className="btn btn-sm btn-out" aria-label={`${it.title} 위로`} disabled={orderBusy || i === 0} onClick={() => move(i, i - 1)}>▲</button><button className="btn btn-sm btn-out" aria-label={`${it.title} 아래로`} disabled={orderBusy || i === list.length - 1} onClick={() => move(i, i + 1)}>▼</button></div>)}
       <label>자동 넘김 <select className="inp" aria-label="자동 넘김" value={state.kind === "ok" ? state.intervalSec : 0} disabled={orderBusy} onChange={(e) => void changeInterval(Number(e.target.value))}>{INTERVALS.map((it) => <option key={it.v} value={it.v}>{it.label}</option>)}</select></label>
     </section> : draft ? <><BannerEditor key={draft.id ?? "new"} draft={draft} status={list.find((it) => it.id === draft.id)?.status ?? null} onDelete={async () => { const target = list.find((it) => it.id === draft.id); return target ? !!(await remove(target)) : false; }} onClose={() => router.push(back)} onSaved={(text) => { setDetailResult("/seller/banners", text); router.push(back); }} /></> : <StateBox kind="loading" what="상세" />}
     </main>{toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}</>;

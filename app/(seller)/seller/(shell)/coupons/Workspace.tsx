@@ -1,14 +1,16 @@
 "use client";
+import { useUrlState } from "../../../../../lib/client/navigation/useUrlState";
 import { useRouter } from "next/navigation";
 import { useUnsavedGuard, confirmLeave } from "../../../../../lib/client/navigation/useUnsavedGuard";
 import { detailHref, listReturnTo, setDetailResult, takeDetailResult } from "../banners/_shared/detailNavigation";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ListTable, DateRangePicker, ListHead, PageHead, Pagination, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { listDefaults } from "../../../../../lib/client/filterDefaults";
 import { useListFilters } from "../../../../(admin)/admin/_components/useListFilters";
-import { Topbar } from "../../../../../components/seller/SellerShell";
+import { storeCouponSelection, readCouponSelection } from "./selection";
+import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
 import { couponAmountText, couponConditions, couponDate, type CouponView } from "../../../../../components/shop/CouponBox";
@@ -151,7 +153,13 @@ const STATES: Status[] = ["live", "scheduled", "ended"];
 const STATE_LABEL: Record<"all" | Status, string> = { all: "전체", live: "발급 중", scheduled: "예약", ended: "종료" };
 const dayKst = (iso: string) => new Date(new Date(iso).getTime() + 9 * 3_600_000).toISOString().slice(0, 10);
 
-export default function Workspace({ view, couponId, copyId, ids = "", returnTo }: { view?: "item" | "grant" | "bulk"; couponId?: string; copyId?: string; ids?: string; returnTo?: string }) {
+const SelectionContext = createContext<{ picked: string[]; setPicked: React.Dispatch<React.SetStateAction<string[]>> } | null>(null);
+export function CouponsSelectionProvider({ children }: { children: React.ReactNode }) {
+  const [picked, setPicked] = useState<string[]>([]);
+  return <SelectionContext.Provider value={{ picked, setPicked }}>{children}</SelectionContext.Provider>;
+}
+
+export default function Workspace({ view, couponId, copyId, ids = "", selectionKey, returnTo }: { view?: "item" | "grant" | "bulk"; couponId?: string; copyId?: string; ids?: string; selectionKey?: string; returnTo?: string }) {
   const router = useRouter();
   const back = listReturnTo(returnTo, "/seller/coupons");
   const generation = useRef(0);
@@ -163,8 +171,15 @@ export default function Workspace({ view, couponId, copyId, ids = "", returnTo }
   const [stopping, setStopping] = useState<Coupon | null>(null);
   const [deleting, setDeleting] = useState<Coupon | null>(null);
   const [busy, setBusy] = useState(false);
-  const [picked, setPicked] = useState<string[]>([]);
-  const [page, setPage] = useState(1);
+  const selection = useContext(SelectionContext);
+  if (!selection) throw new Error("CouponsSelectionProvider is required");
+  const { picked, setPicked } = selection;
+  const { me } = useSeller();
+  const [targetIds, setTargetIds] = useState<string[]>([]);
+  const [validated, setValidated] = useState(false);
+  const [pageUrl, setPageUrl] = useUrlState({ page: "1" });
+  const page = /^\d+$/.test(pageUrl.page) ? Math.max(1, Number(pageUrl.page)) : 1;
+  const setPage = (next: number | ((previous: number) => number)) => setPageUrl({ page: String(typeof next === "function" ? next(page) : next) });
   const [bulkStopping, setBulkStopping] = useState(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
   useEffect(() => { if (!view) { const text = takeDetailResult("/seller/coupons"); if (text) setToast({ text }); } }, [view]);
@@ -182,23 +197,27 @@ export default function Workspace({ view, couponId, copyId, ids = "", returnTo }
     return () => { generation.current += 1; };
   }, [load]);
 
-  useEffect(() => setPage(1), [applied]);
+  const previousFilters = useRef(JSON.stringify(applied));
+  useEffect(() => { const next = JSON.stringify(applied); if (next !== previousFilters.current) { previousFilters.current = next; setPage(1); } }, [applied]);
 
   const data = state.kind === "ok" ? state.data : null;
   const list = data?.coupons ?? [];
   useEffect(() => {
     if (!data || !view || initialized.current) return;
-    initialized.current = true;
     if (view === "bulk") {
-      const selected = ids.split(",").filter(Boolean);
-      if (!selected.length || new Set(selected).size !== selected.length || selected.some((id) => !data.coupons.some((c) => c.id === id))) return setState({ kind: "error", status: 400, error: "invalid_selection" });
+      const selected = selectionKey ? readCouponSelection(selectionKey, me.sellerId) : ids.split(",").filter(Boolean);
+      if (!selected || !selected.length || new Set(selected).size !== selected.length || selected.some((id) => !data.coupons.some((c) => c.id === id))) return setState({ kind: "error", status: 400, error: "invalid_selection" });
+      initialized.current = true;
+      setValidated(true);
+      setTargetIds(selected);
       setPicked(selected);
       return;
     }
     const target = data.coupons.find((c) => c.id === (copyId || couponId));
     if ((couponId !== "new" || copyId) && !target) return setState({ kind: "error", status: 404 });
+    initialized.current = true;
     if (view === "item") setDraft(copyId && target ? { ...toDraft(target), id: null, issued: 0, name: `${target.name} 복사본`.slice(0, 30), code: target.code ? randomCode() : "" } : target ? toDraft(target) : emptyDraft());
-  }, [data, view, couponId, copyId, ids]);
+  }, [data, view, couponId, copyId, ids, selectionKey, me.sellerId, setPicked]);
   const states = applied.state.split(",").filter((x): x is Status => (STATES as string[]).includes(x));
   const q = applied.q.trim().toLowerCase();
   const shown = list.filter(
@@ -221,6 +240,14 @@ export default function Workspace({ view, couponId, copyId, ids = "", returnTo }
     setCond({ ...cond, state: next.join(",") });
   };
 
+  const openBulk = () => {
+    if (!picked.length) return;
+    if (picked.join(",").length <= 1800) return router.push(detailHref("/seller/coupons/operations", { ids: picked.join(",") }));
+    const key = storeCouponSelection(me.sellerId, picked);
+    if (!key) return setToast({ text: "선택 정보를 보관하지 못했습니다. 이 화면에서 다시 시도해 주십시오", neg: true });
+    router.push(detailHref("/seller/coupons/operations", { selectionKey: key }));
+  };
+
   const setActive = async (c: Coupon, isActive: boolean) => {
     setBusy(true);
     const r = await api(`/api/seller/coupons/${c.id}`, { method: "PATCH", body: { isActive } });
@@ -232,6 +259,7 @@ export default function Workspace({ view, couponId, copyId, ids = "", returnTo }
   };
 
   const bulkStop = async () => {
+    if (!validated || busy) return;
     const targets = list.filter((c) => picked.includes(c.id) && c.isActive);
     setBusy(true);
     const results = await Promise.all(targets.map((c) => api(`/api/seller/coupons/${c.id}`, { method: "PATCH", body: { isActive: false } })));
@@ -259,8 +287,8 @@ export default function Workspace({ view, couponId, copyId, ids = "", returnTo }
     return <><Topbar crumb="판매 › 쿠폰 › 상세" /><main className="main">
       <PageHead title={view === "bulk" ? "선택 쿠폰 발급 중지 상세" : view === "grant" ? "쿠폰 직접 지급" : couponId === "new" ? "쿠폰 만들기" : "쿠폰 상세"} description="혜택과 발급 조건을 확인한 뒤 처리합니다." back={back} actions={<Link className="btn btn-out" href={back}>목록</Link>} />
       {!data ? <StateBox kind={state.kind === "error" ? stateKind(state.status, state.error) : "loading"} what="쿠폰" onRetry={() => void load()} /> : !editable ? <div className="msg msg-info">적립금 권한이 필요합니다.</div> : view === "bulk" ? <section className="card pad col" style={{ gap: 12 }}>
-        {list.filter((c) => ids.split(",").includes(c.id)).map((c) => <label key={c.id}><input type="checkbox" disabled={busy} checked={picked.includes(c.id)} onChange={() => setPicked((prev) => prev.includes(c.id) ? prev.filter((id) => id !== c.id) : [...prev, c.id])} /> {c.name} · {c.isActive ? "발급 중" : "중지"}</label>)}
-        <button className="btn btn-neg" disabled={busy || !list.some((c) => picked.includes(c.id) && c.isActive)} onClick={() => setBulkStopping(true)}>선택 발급 중지</button>
+        {list.filter((c) => targetIds.includes(c.id)).map((c) => <label key={c.id}><input type="checkbox" disabled={busy} checked={picked.includes(c.id)} onChange={() => setPicked((prev) => prev.includes(c.id) ? prev.filter((id) => id !== c.id) : [...prev, c.id])} /> {c.name} · {c.isActive ? "발급 중" : "중지"}</label>)}
+        <button className="btn btn-neg" disabled={busy || !validated || !list.some((c) => picked.includes(c.id) && c.isActive)} onClick={() => setBulkStopping(true)}>선택 발급 중지</button>
       </section> : view === "grant" && target ? <GrantDialog coupon={target} grades={data.grades} onClose={() => router.push(back)} onDone={(text) => { setDetailResult("/seller/coupons", text); router.push(back); }} />
       : draft ? <CouponEditor key={draft.id ?? "new"} draft={draft} products={data.products} current={target} onStop={setStopping} onResume={(c) => void setActive(c, true)} onDelete={setDeleting} onClose={() => router.push(back)} onSaved={(text) => { setDetailResult("/seller/coupons", text); router.push(back); }} /> : <StateBox kind="loading" what="쿠폰" />}
       </main>      {stopping && (
@@ -406,7 +434,7 @@ export default function Workspace({ view, couponId, copyId, ids = "", returnTo }
                 actions={
                   editable && (
                     <>
-                      <button className="btn btn-sm btn-out" type="button" disabled={busy || !shown.some((c) => picked.includes(c.id) && c.isActive)} onClick={() => router.push(detailHref("/seller/coupons/operations", { ids: picked.join(",") }))}>
+                      <button className="btn btn-sm btn-out" type="button" disabled={busy || !shown.some((c) => picked.includes(c.id) && c.isActive)} onClick={openBulk}>
                         선택 발급 중지
                       </button>
                       <button className="btn btn-sm" type="button" onClick={() => router.push(detailHref("/seller/coupons/new"))}>

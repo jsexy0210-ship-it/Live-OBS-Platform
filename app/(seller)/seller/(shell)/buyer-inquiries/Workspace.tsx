@@ -7,7 +7,7 @@ import { detailHref, listReturnTo, setDetailResult, takeDetailResult } from "../
 import { CursorPagination } from "../../../../../components/Pagination";
 
 import { formatDateTime } from "../../../../../lib/client/format";
-import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { createContext, useContext, useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { ListTable, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
@@ -57,6 +57,13 @@ const TABS: { key: "" | Status; label: string }[] = [
   { key: "ANSWERED", label: "답변 완료" },
 ];
 
+type PagePosition = { signature: string; page: number; cursors: (string | undefined)[] };
+const PagePositionContext = createContext<{ position: PagePosition; setPosition: React.Dispatch<React.SetStateAction<PagePosition>> } | null>(null);
+export function InquiryPageProvider({ children }: { children: React.ReactNode }) {
+  const [position, setPosition] = useState<PagePosition>({ signature: "", page: 1, cursors: [undefined] });
+  return <PagePositionContext.Provider value={{ position, setPosition }}>{children}</PagePositionContext.Provider>;
+}
+
 export default function BuyerInquiriesWorkspace({ inquiryId, returnTo }: { inquiryId?: string; returnTo?: string }) {
   const router = useRouter();
   const back = listReturnTo(returnTo, "/seller/buyer-inquiries");
@@ -76,8 +83,11 @@ export default function BuyerInquiriesWorkspace({ inquiryId, returnTo }: { inqui
   );
   const [draft, setDraft] = useState<Filter>(filter);
   const [cursor, setCursor] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
-  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const positionState = useContext(PagePositionContext);
+  if (!positionState) throw new Error("Page position provider is required");
+  const { position, setPosition } = positionState;
+  const { page, cursors } = position;
+  const positionRef = useRef(position); positionRef.current = position;
   const reqId = useRef(0);
   const paging = useRef(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
@@ -107,12 +117,17 @@ export default function BuyerInquiriesWorkspace({ inquiryId, returnTo }: { inqui
       setDetail(r.data);
       return;
     }
-    const r = await api<Data>(query());
+    const signature = query();
+    const previous = positionRef.current;
+    const restore = previous.signature === signature;
+    const startPage = restore ? previous.page : 1;
+    const history = restore ? previous.cursors : [undefined];
+    const r = await api<Data>(query(history[startPage - 1]));
     if (id !== reqId.current) return;
     paging.current = false;
     if (!r.ok) return setState({ kind: "error", status: r.status });
     setCursor(r.data.nextCursor);
-    setState({ kind: "ok", data: r.data }); setPage(1); setCursors([undefined]);
+    setState({ kind: "ok", data: r.data }); setPosition({ signature, page: startPage, cursors: history });
   }, [query, inquiryId]);
 
   useEffect(() => {
@@ -129,7 +144,7 @@ export default function BuyerInquiriesWorkspace({ inquiryId, returnTo }: { inqui
     paging.current = false;
     if (!r.ok) return setToast({ text: "목록을 불러오지 못했습니다. 다시 눌러 주십시오", neg: true });
     setState({ kind: "ok", data: r.data }); setCursor(r.data.nextCursor);
-    setCursors((prev) => [...prev.slice(0, target - 1), next]); setPage(target);
+    setPosition((prev) => ({ signature: query(), page: target, cursors: [...prev.cursors.slice(0, target - 1), next] }));
   };
 
   useScrollRestore("seller-buyer-inquiries", state.kind === "ok");
@@ -148,7 +163,7 @@ export default function BuyerInquiriesWorkspace({ inquiryId, returnTo }: { inqui
 
   if (inquiryId) return <><Topbar crumb="게시판 › 구매자 문의 › 상세" /><main className="main">
     <PageHead title="문의 상세 · 답변" description="문의 내용과 답변을 확인하고 저장합니다." back={back} actions={<Link className="btn btn-out" href={back}>목록</Link>} />
-    {detail ? <InquiryDialog key={detail.inquiry.id} item={detail.inquiry} canEdit={detail.canEdit} onClose={() => router.push(back)} onSaved={async (text) => { setToast({ text }); }} />
+    {detail ? <InquiryDialog key={detail.inquiry.id} item={detail.inquiry} canEdit={detail.canEdit} onClose={() => router.push(back)} onSaved={async (text) => { setToast({ text }); await load(); }} />
       : state.kind === "error" ? <ErrorState title={state.status === 404 ? "문의를 찾을 수 없습니다" : "문의를 불러오지 못했습니다"} onRetry={() => void load()} /> : <LoadingRows rows={3} />}
   </main>{toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}</>;
 

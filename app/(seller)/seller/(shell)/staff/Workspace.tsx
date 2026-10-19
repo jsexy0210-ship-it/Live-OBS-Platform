@@ -116,8 +116,7 @@ export default function Workspace({ staffId, operation = "edit", returnTo }: { s
   useEffect(() => {
     if (!staffId || staffId === "new" || state.kind !== "ok" || initialized.current) return;
     const target = state.staff.find((s) => s.id === staffId);
-    initialized.current = true;
-    if (target) setModal({ kind: operation === "password" ? "password" : operation === "disable" ? "disable" : "edit", staff: target });
+    if (target) { initialized.current = true; setModal({ kind: operation === "password" ? "password" : operation === "disable" ? "disable" : "edit", staff: target }); }
     else setMissing(true);
   }, [staffId, operation, state]);
   if (staffId) return <><Topbar crumb="설정 › 직원 계정 › 상세" /><main className="main">

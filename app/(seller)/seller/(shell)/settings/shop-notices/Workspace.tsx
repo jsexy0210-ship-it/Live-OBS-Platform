@@ -1,4 +1,5 @@
 "use client";
+import { useUrlState } from "../../../../../../lib/client/navigation/useUrlState";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useUnsavedGuard, confirmLeave } from "../../../../../../lib/client/navigation/useUnsavedGuard";
@@ -44,7 +45,9 @@ export default function Workspace({ view, itemId, kind, returnTo }: { view?: "it
   const [notices, setNotices] = useState<Load<Item>>({ kind: "loading" });
   const [faqs, setFaqs] = useState<Load<Item>>({ kind: "loading" });
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [category, setCategory] = useState("");
+  const [categoryUrl, setCategoryUrl] = useUrlState({ category: "" });
+  const category = categoryUrl.category;
+  const setCategory = (value: string) => setCategoryUrl({ category: value });
   const [showError, setShowError] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
@@ -73,9 +76,9 @@ export default function Workspace({ view, itemId, kind, returnTo }: { view?: "it
   const close = async () => { if (confirmLeave(dirty)) { await release(); router.push(back); } };
   useEffect(() => {
     if (view !== "item" || notices.kind !== "ok" || faqs.kind !== "ok" || initialized.current) return;
-    initialized.current = true;
     const item = [...notices.items, ...faqs.items].find((it) => it.id === itemId);
     if (itemId !== "new" && !item) return setMissing(true);
+    initialized.current = true;
     const next = item ? toDraft(item) : empty(kind === "faq" ? "faq" : "notice");
     initialDraft.current = next;
     setDraft(next);
@@ -186,7 +189,7 @@ export default function Workspace({ view, itemId, kind, returnTo }: { view?: "it
     {stateBox(notices, "notice", "공지")}{stateBox(faqs, "faq", "질문")}
     {missing ? <div className="msg msg-neg" role="alert">글을 찾을 수 없습니다.</div> : !editable ? <div className="msg msg-info">쇼핑몰 설정 권한이 필요합니다.</div> : view === "order" ? faqs.kind === "ok" && <section className="card pad col" style={{ gap: 12 }}>
       <span>전체 질문 순서를 바꾸면 바로 반영됩니다. 다른 작업자가 목록을 변경하면 다시 불러옵니다.</span>
-      {faqList.map((it, i) => <div className="row" key={it.id} style={{ gap: 8, flexWrap: "wrap" }}><span>{i + 1}. {it.title}</span><button className="btn btn-sm btn-out" aria-label={`${it.title} 위로`} disabled={orderBusy || i === 0} onClick={() => move(i, i - 1)}>▲</button><button className="btn btn-sm btn-out" aria-label={`${it.title} 아래로`} disabled={orderBusy || i === faqList.length - 1} onClick={() => move(i, i + 1)}>▼</button></div>)}
+      {faqList.map((it, i) => <div className="row" data-testid="faq-order-row" key={it.id} style={{ gap: 8, flexWrap: "wrap" }}><span>{i + 1}. {it.title}</span><button className="btn btn-sm btn-out" aria-label={`${it.title} 위로`} disabled={orderBusy || i === 0} onClick={() => move(i, i - 1)}>▲</button><button className="btn btn-sm btn-out" aria-label={`${it.title} 아래로`} disabled={orderBusy || i === faqList.length - 1} onClick={() => move(i, i + 1)}>▼</button></div>)}
     </section> : <>        {draft && (
           <section aria-label={`${noun} ${draft.id ? "수정" : "쓰기"}`} data-testid="notice-editor">
             <div className="sc-sec-t">

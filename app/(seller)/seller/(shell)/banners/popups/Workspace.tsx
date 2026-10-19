@@ -1,4 +1,5 @@
 "use client";
+import { useUrlState } from "../../../../../../lib/client/navigation/useUrlState";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useUnsavedGuard, confirmLeave } from "../../../../../../lib/client/navigation/useUnsavedGuard";
@@ -148,7 +149,9 @@ export default function Workspace({ view, itemId, copyId, returnTo }: { view?: "
   const { confirm } = useConfirm();
   const editable = can("SHOP_SETTINGS");
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number; error?: string } | { kind: "ok"; list: Popup[]; paused: { on: boolean; at: string | null; by: string | null } }>({ kind: "loading" });
-  const [page, setPage] = useState(1);
+  const [pageUrl, setPageUrl] = useUrlState({ page: "1" });
+  const page = /^\d+$/.test(pageUrl.page) ? Math.max(1, Number(pageUrl.page)) : 1;
+  const setPage = (next: number | ((previous: number) => number)) => setPageUrl({ page: String(typeof next === "function" ? next(page) : next) });
   const [draft, setDraft] = useState<Draft | null>(null);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
   useEffect(() => { if (!view) { const text = takeDetailResult("/seller/banners/popups"); if (text) setToast({ text }); } }, [view]);
@@ -173,9 +176,9 @@ export default function Workspace({ view, itemId, copyId, returnTo }: { view?: "
   useEffect(() => { if (state.kind === "ok") setPage(p => Math.min(p, Math.max(1, Math.ceil(state.list.length / 10)))); }, [state]);
   useEffect(() => {
     if (state.kind !== "ok" || view !== "item" || initialized.current) return;
-    initialized.current = true;
     const found = list.find((it) => it.id === (copyId || itemId));
     if (itemId !== "new" && !found || copyId && !found) return setState({ kind: "error", status: 404 });
+    initialized.current = true;
     setDraft(copyId && found ? { ...toDraft(found), id: null, title: `${found.title} 복사본`.slice(0, 40), isActive: false } : itemId === "new" ? { ...empty } : toDraft(found!));
   }, [state, view, itemId, copyId, list]);
   const { move } = useSortable(list, async (next) => {
@@ -229,10 +232,10 @@ export default function Workspace({ view, itemId, copyId, returnTo }: { view?: "
     <PageHead title={view === "order" ? "노출 설정 상세" : itemId === "new" ? "팝업 추가" : "팝업 상세"} description="게시 내용과 조건을 확인한 뒤 저장합니다." back={back} actions={<Link className="btn btn-out" href={back}>목록</Link>} />
     {state.kind !== "ok" ? <StateBox kind={state.kind === "error" ? stateKind(state.status, state.error) : "loading"} what="팝업" onRetry={() => void load()} /> : !editable ? <div className="msg msg-info">쇼핑몰 설정 권한이 필요합니다.</div> : view === "order" ? <section className="card pad col" style={{ gap: 12 }}>
       <span>전체 {list.length}개의 순서를 바꾸면 바로 반영됩니다.</span>
-      {list.map((it, i) => <div className="row" key={it.id} style={{ gap: 8, flexWrap: "wrap" }}><span>{i + 1}. {it.title}</span><button className="btn btn-sm btn-out" aria-label={`${it.title} 위로`} disabled={orderBusy || i === 0} onClick={() => move(i, i - 1)}>▲</button><button className="btn btn-sm btn-out" aria-label={`${it.title} 아래로`} disabled={orderBusy || i === list.length - 1} onClick={() => move(i, i + 1)}>▼</button></div>)}
+      {list.map((it, i) => <div className="row" data-testid="popup-order-row" key={it.id} style={{ gap: 8, flexWrap: "wrap" }}><span>{i + 1}. {it.title}</span><button className="btn btn-sm btn-out" aria-label={`${it.title} 위로`} disabled={orderBusy || i === 0} onClick={() => move(i, i - 1)}>▲</button><button className="btn btn-sm btn-out" aria-label={`${it.title} 아래로`} disabled={orderBusy || i === list.length - 1} onClick={() => move(i, i + 1)}>▼</button></div>)}
       <button className="btn btn-out" disabled={orderBusy} onClick={() => void setPaused(!paused?.on)}>{paused?.on ? "모든 팝업 다시 켜기" : "모든 팝업 잠시 끄기"}</button>
     </section> : draft ? <><PopupEditor key={draft.id ?? "new"} d={draft} setD={setDraft as (fn: (v: Draft) => Draft) => void} status={current?.status ?? null} overlap={draft.isActive && others.length > 0 ? others[0].title : null} onDelete={async () => current ? !!(await remove(current)) : false} onClose={() => router.push(back)} onSaved={(text) => { setDetailResult("/seller/banners/popups", text); router.push(back); }} />
-      <PreviewFrame className="sc-pv-popup" id="popup-preview"><PopupPreview d={draft} slug={me.shop.slug} /></PreviewFrame></> : <StateBox kind="loading" what="상세" />}
+      <PreviewFrame className="sc-pv-popup" data-testid="popup-preview" id="popup-preview"><PopupPreview d={draft} slug={me.shop.slug} /></PreviewFrame></> : <StateBox kind="loading" what="상세" />}
     </main>{toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}</>;
 
   return (
