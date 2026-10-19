@@ -40,9 +40,11 @@ const openOperations = async (page: Page, name: string, id: string) => {
   await expect(listed).toHaveCount(1);
   await expect(listed.locator('select, input:not([type="checkbox"]), button')).toHaveCount(0);
   const link = listed.getByRole("link", { name: "수정", exact: true });
-  await expect(link).toHaveAttribute("href", `/seller/products/${id}/operations`);
+  const list = new URL(page.url());
+  const href = `/seller/products/${id}/operations?${new URLSearchParams({ returnTo: list.pathname + list.search })}`;
+  await expect(link).toHaveAttribute("href", href);
   await link.click();
-  await expect(page).toHaveURL(new RegExp(`/seller/products/${id}/operations$`));
+  await expect(page).toHaveURL(new URL(href, list).href);
   const detail = page.getByTestId("product-detail-operations");
   await expect(detail).toBeVisible();
   return detail;
@@ -293,7 +295,7 @@ test("읽기 전용 대리 조회에서는 상품 작업 상세의 변경 조작
 test("일괄 변경의 늦은 조회가 되돌린 뒤의 최신 상품 상태를 덮어쓰지 않는다", async ({ page }) => {
   await login(page);
   const a = await make(page, `${PREFIX}-조회순서-A`, "ON_SALE", 10);
-  const b = await make(page, `${PREFIX}-조회순서-B`, "ON_SALE", 5);
+  const b = await make(page, `${PREFIX}-조회순서-B`, "ON_SALE", 10);
   const pattern = `**/api/seller/products/${a.id}`;
   let holdNext = false, oldStatus = "";
   let release!: () => void, signalReady!: () => void;

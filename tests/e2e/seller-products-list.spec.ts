@@ -140,9 +140,14 @@ test("선택 일괄 처리: 숨김으로 바꾸고 되돌리고, 선택 삭제�
   const listUrl = page.url();
   const openWork = async (selected: string[]) => {
     const link = page.getByRole("link", { name: "선택 상품 작업 상세", exact: true });
-    await expect(link).toHaveAttribute("href", `/seller/products/operations?ids=${encodeURIComponent(selected.join(","))}`);
+    const list = new URL(listUrl);
+    const href = `/seller/products/operations?${new URLSearchParams({ ids: selected.join(","), returnTo: list.pathname + list.search })}`;
+    await expect(link).toHaveAttribute("href", href);
     await link.click();
-    await expect(page).toHaveURL(`${new URL("/seller/products/operations", listUrl).href}?ids=${encodeURIComponent(selected.join(","))}`);
+    await expect(page).toHaveURL(new URL(href, listUrl).href);
+    await expect(page.getByRole("region", { name: "선택한 상품", exact: true }).locator("tbody tr")).toHaveCount(selected.length);
+    // 새로고침으로 앱 내 이동 기록이 없어져도 명시한 목록 조건으로 복귀한다.
+    await page.reload();
     await expect(page.getByRole("region", { name: "선택한 상품", exact: true }).locator("tbody tr")).toHaveCount(selected.length);
   };
   const returnToList = async () => {

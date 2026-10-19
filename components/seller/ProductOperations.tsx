@@ -8,16 +8,19 @@ import { QuickPrice, QuickStatus, QuickStock, type QuickDone, type QuickUndo } f
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "./States";
 import { api, type Product, type ProductStatus } from "./api";
 import { statusBadge, totalStock, won } from "./format";
+import { sanitizeNext } from "../../lib/client/navigation";
 
 type BulkResult = { updated: string[]; skipped: { productId: string; reason: string }[] };
 const SKIP_REASON: Record<string, string> = { not_found: "찾을 수 없음", no_sellable_option: "판매할 수 있는 선택 항목이 없음(상품 수정에서 추가해 주십시오)" };
 const STATUS_TO: Record<string, string> = { ON_SALE: "판매 중으로", HIDDEN: "숨김으로", SOLD_OUT: "품절로", DRAFT: "임시 저장으로" };
 
 // 목록은 조회·선택·이동만 담당한다. 변경과 되돌리기는 실제 작업 상세에서만 실행한다.
-export function ProductOperations({ ids, single = false }: { ids: string[]; single?: boolean }) {
+export function ProductOperations({ ids, single = false, returnTo }: { ids: string[]; single?: boolean; returnTo?: string | null }) {
   const { can, me } = useSeller();
   const { confirm } = useConfirm();
   const canManage = can("PRODUCT_MANAGE") && !me.readOnly;
+  const safeReturnTo = sanitizeNext(returnTo, ["/seller/products"]);
+  const listHref = safeReturnTo?.split("?")[0] === "/seller/products" ? safeReturnTo : "/seller/products";
   const requestKey = ids.join(",");
   const requestIds = useMemo(() => [...new Set(requestKey.split(",").map((id) => id.toLowerCase()))], [requestKey]);
   const validIds = requestIds.length > 0 && requestIds.length <= 200 && requestIds.every((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
@@ -108,7 +111,7 @@ export function ProductOperations({ ids, single = false }: { ids: string[]; sing
   return <>
     <Topbar crumb="상품 › 작업 상세" />
     <main className="main">
-      <PageHead title={single ? "상품 작업 상세" : "선택 상품 작업 상세"} description="가격·재고·판매 상태를 확인하고 상세에서 바꿔요." back="/seller/products" />
+      <PageHead title={single ? "상품 작업 상세" : "선택 상품 작업 상세"} description="가격·재고·판매 상태를 확인하고 상세에서 바꿔요." back={listHref} />
       {!canManage ? <NoPermission need="상품 관리" /> : !validIds ? <div className="card"><p>작업할 상품을 목록에서 다시 골라 주세요.</p><Link href="/seller/products" className="btn btn-out">상품 목록으로</Link></div> : state.kind === "loading" ? <div className="card"><LoadingRows rows={3} /></div> : state.kind === "error" ? state.status === 403 ? <NoPermission need="상품 관리" /> : state.status === 402 ? <Locked /> : <div className="card"><ErrorState title="상품을 불러오지 못했어요." onRetry={() => void load()} /></div> : <>
         {product ? <section data-testid="product-detail-operations" aria-label="상품 변경">
           <FormSection title={product.name}>
