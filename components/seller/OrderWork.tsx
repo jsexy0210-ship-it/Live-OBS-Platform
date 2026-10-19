@@ -28,11 +28,18 @@ export function PrepareShipping({ ids, disabled = false, onDone }: { ids: string
   </div>;
 }
 
-export function OrderMemo({ orderId, orderNoLabel }: { orderId: string; orderNoLabel: string }) {
+export function OrderMemo({ orderId, orderNoLabel, backHandler }: { orderId: string; orderNoLabel: string; backHandler?: { current: (() => Promise<boolean>) | null } }) {
   const { can, me } = useSeller();
   const allowed = can("ORDER_SHIPPING") && !me.readOnly;
   const [memo, setMemo] = useState({ text: "", saved: "", loaded: false, loading: true, saving: false, error: "", result: "" });
-  const releaseGuard = useUnsavedGuard(memo.loaded && memo.text !== memo.saved);
+  const dirty = memo.loaded && memo.text !== memo.saved;
+  const releaseGuard = useUnsavedGuard(dirty);
+  useEffect(() => {
+    if (!backHandler) return;
+    const leave = async () => { if (memo.saving || !confirmLeave(dirty)) return false; await releaseGuard(); return true; };
+    backHandler.current = leave;
+    return () => { if (backHandler.current === leave) backHandler.current = null; };
+  }, [backHandler, memo.saving, dirty, releaseGuard]);
   const load = useCallback(async () => {
     if (!allowed) return;
     setMemo((m) => ({ ...m, loading: true, error: "" }));

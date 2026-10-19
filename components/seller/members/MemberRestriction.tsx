@@ -15,7 +15,7 @@ import { memberDay } from "./types";
 type Restriction = { id: string; buyerMemberId: string; reason: string; note?: string | null; startsAt: string; endsAt: string };
 const REASON: Record<string, string> = { UNPAID_AUTO_CANCEL: "미입금 자동 취소 반복", PAID_CANCEL: "결제 후 취소 반복", MANUAL: "직접 제한" };
 
-export function MemberRestriction({ memberId, nickname = null, onChanged }: { memberId: string; nickname?: string | null; onChanged: (text: string) => void | Promise<void> }) {
+export function MemberRestriction({ memberId, nickname = null, onChanged, onLiftDirty, releaseLiftExternal }: { onLiftDirty?: (dirty: boolean) => void; releaseLiftExternal?: () => Promise<void>; memberId: string; nickname?: string | null; onChanged: (text: string) => void | Promise<void> }) {
   const { can, me } = useSeller();
   const canEdit = can("MEMBER_POINTS") && !me.readOnly;
   const reads = useLatestResponse();
@@ -151,21 +151,23 @@ export function MemberRestriction({ memberId, nickname = null, onChanged }: { me
           </div>
         </Modal>
       )}
-      {lifting && canEdit && <RestrictionLiftForm memberId={memberId} nickname={nickname} onClose={() => setLifting(false)} onDone={() => void lifted(false)} onGone={() => void lifted(true)} />}
+      {lifting && canEdit && <RestrictionLiftForm onDirty={onLiftDirty} releaseExternal={releaseLiftExternal} memberId={memberId} nickname={nickname} onClose={() => setLifting(false)} onDone={() => void lifted(false)} onGone={() => void lifted(true)} />}
     </section>
   );
 }
 
 const MAX_REASON = 200;
 
-function RestrictionLiftForm({ memberId, nickname, onClose, onDone, onGone }: { memberId: string; nickname: string | null; onClose: () => void; onDone: () => void; onGone: () => void }) {
+function RestrictionLiftForm({ memberId, nickname, onClose, onDone, onGone, onDirty, releaseExternal }: { onDirty?: (dirty: boolean) => void; releaseExternal?: () => Promise<void>; memberId: string; nickname: string | null; onClose: () => void; onDone: () => void; onGone: () => void }) {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // 글자 수는 서버와 같은 기준(NFKC 정규화·앞뒤 공백 제외·코드 포인트)으로 센다
   const count = textLength(reason);
   const tooLong = count > MAX_REASON;
-  const releaseGuard = useUnsavedGuard(reason !== "");
+  const releaseOwnGuard = useUnsavedGuard(!onDirty && reason !== "");
+  const releaseGuard = releaseExternal ?? releaseOwnGuard;
+  useEffect(() => { onDirty?.(reason !== ""); return () => onDirty?.(false); }, [reason, onDirty]);
   const cancel = async () => { if (!confirmLeave(reason !== "")) return; setBusy(true); await releaseGuard(); onClose(); };
 
   const submit = async () => {

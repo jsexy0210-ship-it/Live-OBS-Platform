@@ -74,6 +74,9 @@ test("대표자: 트리를 보고, 추가·이름 바꾸기·노출·순서 저�
   await dialog.getByLabel("이름").fill("a".repeat(31));
   await expect(dialog.getByText("이름은 30자까지 입력할 수 있습니다")).toBeVisible();
   await expect(dialog.getByRole("button", { name: "추가" })).toBeDisabled();
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(dialog.getByLabel("이름")).toHaveValue("a".repeat(31));
   await dialog.getByLabel("이름").fill("스타터 덱");
   await dialog.getByRole("button", { name: "추가" }).click();
   await expect(page.getByRole("status").filter({ hasText: "카테고리 처리를 마쳤습니다" })).toBeVisible();

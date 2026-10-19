@@ -159,3 +159,41 @@ test("주문 권한이 없어 주문 목록 API가 막히면 주문 칸은 안�
   await expect(page.getByRole("heading", { name: "회원 메모" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "적립금 내역" })).toBeVisible();
 });
+
+
+test("직접 연 회원 상세의 두 미저장 폼은 하나의 뒤로 확인으로 보호하고 변경 요청 없이 버린다", async ({ page }) => {
+  await page.route("**/api/seller/purchase-restrictions?buyerMemberId=*", (route) => {
+    expect(route.request().method()).toBe("GET");
+    const buyerMemberId = new URL(route.request().url()).searchParams.get("buyerMemberId");
+    return route.fulfill({ json: { restrictions: [{ id: "owned-guard-restriction", buyerMemberId, reason: "MANUAL", startsAt: new Date(Date.now() - 86400000).toISOString(), endsAt: new Date(Date.now() + 86400000).toISOString() }] } });
+  });
+  const id = await openDetail(page);
+  await page.reload();
+  const writes: string[] = [];
+  const observe = (request: import("@playwright/test").Request) => { const path = new URL(request.url()).pathname; if (request.method() !== "GET" && (path.includes("/member-grades/members/") || path.endsWith("/lift"))) writes.push(path); };
+  page.on("request", observe);
+  const grade = page.getByRole("region", { name: "등급 조정", exact: true });
+  await grade.getByLabel("고정 (자동 재산정에서 제외)").check();
+  await grade.getByLabel("사유", { exact: true }).fill("미저장 등급 사유");
+  await page.getByRole("button", { name: "제한 풀기", exact: true }).click();
+  const lift = page.getByRole("region", { name: "구매 제한을 푸시겠습니까?", exact: true });
+  await lift.getByLabel("사유 (선택)", { exact: true }).fill("미저장 해제 사유");
+  let prompts = 0;
+  page.once("dialog", (dialog) => { prompts++; return dialog.dismiss(); });
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL(`/seller/members/${id}`);
+  await expect(grade.getByLabel("사유", { exact: true })).toHaveValue("미저장 등급 사유");
+  await expect(lift.getByLabel("사유 (선택)", { exact: true })).toHaveValue("미저장 해제 사유");
+  page.once("dialog", (dialog) => { prompts++; return dialog.accept(); });
+  await lift.getByRole("button", { name: "취소", exact: true }).click();
+  await expect(lift).toHaveCount(0);
+  page.once("dialog", (dialog) => { prompts++; return dialog.dismiss(); });
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(grade.getByLabel("사유", { exact: true })).toHaveValue("미저장 등급 사유");
+  page.once("dialog", (dialog) => { prompts++; return dialog.accept(); });
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL("/seller/members");
+  expect(prompts).toBe(4);
+  expect(writes).toEqual([]);
+  page.off("request", observe);
+});

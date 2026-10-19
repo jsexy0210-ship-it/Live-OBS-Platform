@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FormRow, FormSection, PageHead, useConfirm } from "../admin-ui";
-import { sanitizeNext, useUnsavedGuard } from "../../lib/client/navigation";
+import { confirmLeave, sanitizeNext, useSmartBack, useUnsavedGuard } from "../../lib/client/navigation";
 import { COURIERS, type Courier } from "../../lib/server/orders/shipping";
 import { Topbar, useSeller } from "./SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "./States";
@@ -38,7 +38,10 @@ export function ShippingOperations({ ids, action, single = false, returnTo }: { 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
-  const releaseGuard = useUnsavedGuard(Object.values(tracking).some((value) => value.trim() !== ""));
+  const dirty = Object.values(tracking).some((value) => value.trim() !== "");
+  const releaseGuard = useUnsavedGuard(dirty);
+  const back = useSmartBack(listHref);
+  const leave = async () => { if (busy || !confirmLeave(dirty)) return; await releaseGuard(); back(); };
   const load = useCallback(async () => {
     const request = ++generation.current;
     if (!allowed || !valid) return;
@@ -91,7 +94,7 @@ export function ShippingOperations({ ids, action, single = false, returnTo }: { 
     await send("/api/seller/shipments/deliver", ids, (chunk) => ({ orderIds: chunk }), (x) => x, "배송 완료", "배송 완료로 바꾸지 못했습니다. 잠시 후 다시 시도해 주십시오");
   };
   return <><Topbar crumb="판매 › 배송 › 배송 처리 상세" /><main className="main">
-    <PageHead title="배송 처리 상세" back={listHref} />
+    <PageHead title="배송 처리 상세" back={listHref} onBack={leave} />
     {!allowed ? <NoPermission need="주문·배송" /> : !valid ? <div className="card pad">작업할 주문을 목록에서 다시 선택해 주십시오.</div> : state.kind === "loading" ? <div className="card"><LoadingRows rows={4} /></div> : state.kind === "error" ? state.status === 403 ? <NoPermission need="주문·배송" /> : <div className="card"><ErrorState title="선택한 주문을 불러오지 못했습니다" onRetry={() => void load()} /></div> : <section className="col" style={{ gap: 16 }} aria-label="배송 처리 상세">
       <p>선택한 {items.length}건만 처리합니다. 이미 처리됐거나 바꿀 수 없는 주문은 제외합니다.</p>
       {state.missing > 0 && <p role="status">찾을 수 없는 주문 {state.missing}건 · 남은 주문 {items.length}건</p>}

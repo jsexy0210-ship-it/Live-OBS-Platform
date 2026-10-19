@@ -10,7 +10,7 @@ import { DatePicker } from "../../../components/admin-ui/DatePicker";
 // API: GET /api/seller/member-grades(등급 목록), PUT /api/seller/member-grades/members/{id} { gradeId, lock, until?, reason? }. 활동 회원만(409 member_not_active).
 type Grade = { id: string; displayName: string };
 
-export function MemberGradeAdjust({ memberId, currentGradeId, active, onDone }: { memberId: string; currentGradeId: string | null; active: boolean; onDone: (text: string) => void | Promise<void> }) {
+export function MemberGradeAdjust({ memberId, currentGradeId, active, onDone, onDirty, releaseExternal }: { onDirty?: (dirty: boolean) => void; releaseExternal?: () => Promise<void>; memberId: string; currentGradeId: string | null; active: boolean; onDone: (text: string) => void | Promise<void> }) {
   const { can, me } = useSeller();
   const allowed = can("MEMBER_POINTS") && !me.readOnly;
   const [grades, setGrades] = useState<Grade[] | null>(null);
@@ -27,7 +27,10 @@ export function MemberGradeAdjust({ memberId, currentGradeId, active, onDone }: 
   }, []);
   useEffect(() => setGradeId(currentGradeId ?? ""), [currentGradeId]);
 
-  const releaseGuard = useUnsavedGuard(allowed && active && grades !== null && (gradeId !== (currentGradeId ?? "") || lock || until !== "" || reason !== ""));
+  const dirty = allowed && active && grades !== null && (gradeId !== (currentGradeId ?? "") || lock || until !== "" || reason !== "");
+  const releaseOwnGuard = useUnsavedGuard(!onDirty && dirty);
+  const releaseGuard = releaseExternal ?? releaseOwnGuard;
+  useEffect(() => { onDirty?.(dirty); return () => onDirty?.(false); }, [dirty, onDirty]);
   const apply = async () => {
     if (!allowed || busy) return;
     setBusy(true);

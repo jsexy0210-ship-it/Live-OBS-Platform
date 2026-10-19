@@ -135,6 +135,16 @@ test("배송 작업 상세는 삭제된 선택만 제외하며 조회 오류와 
   await expect(detail.getByRole("status")).toHaveText("찾을 수 없는 주문 1건 · 남은 주문 1건");
   await expect(detail.locator("section.au-fs")).toHaveCount(1);
   await detail.getByRole("textbox", { name: "주문 1 송장번호", exact: true }).fill("OWNED123456");
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL(work);
+  await expect(detail.getByRole("textbox", { name: "주문 1 송장번호", exact: true })).toHaveValue("OWNED123456");
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL(new URL("/seller/shipping?tab=ready&q=%EB%B0%B0%EC%86%A1", page.url()).href);
+  expect(writes).toEqual([]);
+  await page.goto(work);
+  await detail.getByRole("textbox", { name: "주문 1 송장번호", exact: true }).fill("OWNED123456");
   await detail.getByRole("button", { name: "송장 저장 (1)", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "송장 저장", exact: true }).click();
   await expect(detail.locator("section.au-fs")).toHaveCount(0);

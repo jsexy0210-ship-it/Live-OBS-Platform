@@ -117,9 +117,9 @@ export function CategoryOperations({ categoryId, parentId, order = false, return
       }
       last = r.data.categories;
     }
-    setBusy(false);
     await releaseGuard();
     if (last) apply(last, false);
+    setBusy(false);
     setToast({ text: "카테고리 순서를 저장했습니다 · 쇼핑몰에 바로 반영" });
   };
 
@@ -136,23 +136,23 @@ export function CategoryOperations({ categoryId, parentId, order = false, return
       form.mode === "add"
         ? await api<{ categories: CategoryNode[] }>("/api/seller/categories", { method: "POST", body: { name, ...(parent === ROOT ? {} : { parentId: parent }) } })
         : await api<{ categories: CategoryNode[] }>(`/api/seller/categories/${form.id}`, { method: "PATCH", body: { name } });
-    setBusy(false);
-    if (!r.ok) return failure(r, "저장하지 못했습니다. 다시 시도해 주십시오");
+    if (!r.ok) { setBusy(false); return failure(r, "저장하지 못했습니다. 다시 시도해 주십시오"); }
     await releaseGuard();
     apply(r.data.categories, true);
     setName(name.trim());
     setForm(form.mode === "rename" ? { ...form, name: name.trim() } : null);
     if (form.mode === "add") setCompleted(true);
+    setBusy(false);
     setToast({ text: form.mode === "add" ? `「${name.trim()}」을 추가했습니다` : "이름을 바꿨습니다" });
   };
   const confirmRemove = async () => {
     if (!remove) return;
     setBusy(true);
     const r = await api<{ categories: CategoryNode[] }>(`/api/seller/categories/${remove.id}`, { method: "DELETE" });
+    if (!r.ok) { setBusy(false); setRemove(null); return failure(r, "삭제하지 못했습니다. 다시 시도해 주십시오"); }
+    await releaseGuard();
     setBusy(false);
     setRemove(null);
-    if (!r.ok) return failure(r, "삭제하지 못했습니다. 다시 시도해 주십시오");
-    await releaseGuard();
     setCompleted(true);
     setForm(null);
     apply(r.data.categories, true);
@@ -163,7 +163,6 @@ export function CategoryOperations({ categoryId, parentId, order = false, return
   const nameBad = nameLen === 0 || nameLen > CATEGORY_NAME_MAX;
   const atLimit = total >= MAX_CATEGORIES;
   const parents = sortBy(tree, ROOT);
-  const childCount = tree.reduce((n, c) => n + c.children.length, 0);
 
   const Moves = ({ gKey, id, i, len }: { gKey: string; id: string; i: number; len: number }) => (
     <span className="row" style={{ gap: 2 }}>
@@ -177,7 +176,7 @@ export function CategoryOperations({ categoryId, parentId, order = false, return
   );
 
   return <><Topbar crumb="상품 › 카테고리 › 상세" /><main className="main">
-    <PageHead title={order ? "카테고리 순서 설정" : categoryId ? "카테고리 상세" : parentId ? "하위 카테고리 추가" : "대분류 추가"} back={listHref} />
+    <PageHead title={order ? "카테고리 순서 설정" : categoryId ? "카테고리 상세" : parentId ? "하위 카테고리 추가" : "대분류 추가"} back={listHref} onBack={cancel} />
     {!allowed ? <NoPermission need="상품" /> : state.kind === "loading" ? <div className="card"><LoadingRows rows={5} /></div> : state.kind === "error" ? state.status === 403 ? <NoPermission need="상품" /> : state.status === 402 ? <div className="card"><Locked /></div> : <div className="card"><ErrorState title="카테고리를 불러오지 못했습니다" onRetry={() => void refresh()} /></div> : completed ? <section className="card pad"><p role="status">카테고리 처리를 마쳤습니다</p><button className="btn btn-out" type="button" onClick={back}>목록으로</button></section> : order ? <section aria-label="카테고리 순서 설정">
       {stale && <div className="msg msg-neg" role="alert"><span><b>순서를 저장하지 못했습니다.</b> 그사이 다른 창에서 카테고리가 추가되거나 삭제되었습니다. 목록을 새로 고친 뒤 다시 바꿔 주십시오.</span><button className="btn btn-sm" type="button" onClick={() => void refresh()}>새로 고침</button></div>}
       <p className="help">순서는 같은 대분류 안에서만 바꿀 수 있고 바꾼 뒤 「순서 저장」을 누릅니다.</p>
@@ -185,6 +184,32 @@ export function CategoryOperations({ categoryId, parentId, order = false, return
         <tr key={node.id} data-testid="category-row" data-level="1"><td><b>{node.name}</b></td><td>{node.productCount}개</td><td>{node.visible ? "보임" : "숨김"}</td><td><Moves gKey={ROOT} id={node.id} i={index} len={parents.length} /></td></tr>,
         ...sortBy(node.children, node.id).map((child, index, all) => <tr key={child.id} data-testid="category-row" data-level="2"><td>└ {child.name}</td><td>{child.productCount}개</td><td>{child.visible ? "보임" : "숨김"}</td><td><Moves gKey={node.id} id={child.id} i={index} len={all.length} /></td></tr>),
       ])}</tbody></table></ListTable>
+        {state.kind === "ok" && tree.some((p) => p.visible) && (
+          <section className="card" style={{ padding: 16 }} aria-label="쇼핑몰 미리보기">
+            <h2 className="t-h2">쇼핑몰에 이렇게 보입니다</h2>
+            <div className="row" style={{ gap: 12, flexWrap: "wrap", margin: "8px 0" }} data-testid="category-preview">
+              {parents
+                .filter((p) => p.visible)
+                .map((p) => (
+                  <div key={p.id} className="col" style={{ gap: 4 }}>
+                    <b>{p.name}</b>
+                    <span className="row" style={{ gap: 4, flexWrap: "wrap" }}>
+                      <span className="chip on">전체</span>
+                      {sortBy(p.children, p.id)
+                        .filter((c) => c.visible)
+                        .map((c) => (
+                          <span key={c.id} className="chip">
+                            {c.name}
+                          </span>
+                        ))}
+                    </span>
+                  </div>
+                ))}
+            </div>
+            <span className="t-c1 c-alt">위는 대분류 메뉴, 아래는 대분류별 하위 칩입니다 · 꺼 둔 항목은 보이지 않습니다.</span>
+          </section>
+        )}
+
       <div className="row" style={{ gap: 8, marginTop: 16 }}><button className="btn" type="button" disabled={changed.length === 0 || busy || stale} onClick={() => void saveOrder()}>순서 저장</button><button className="btn btn-out" type="button" disabled={busy} onClick={() => void cancel()}>취소</button></div>
     </section> : !validParent || (categoryId && !item) ? <div className="card"><ErrorState title="카테고리를 찾을 수 없습니다" onRetry={() => void refresh()} /></div> : form && <section aria-label={form.mode === "rename" ? "카테고리 변경" : form.parentId ? "하위 카테고리 추가" : "대분류 추가"}>
       <FormSection title={form.mode === "rename" ? "이름 바꾸기" : form.parentId ? "하위 카테고리 추가" : "대분류 추가"}>

@@ -56,6 +56,7 @@ export function RewardAdjustment({ memberId, returnTo }: { memberId: string; ret
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [result, setResult] = useState("");
   const generation = useRef(0);
+  const backHandler = useRef<(() => Promise<void>) | null>(null);
   const valid = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(memberId);
   const load = useCallback(async () => {
     const request = ++generation.current;
@@ -72,14 +73,14 @@ export function RewardAdjustment({ memberId, returnTo }: { memberId: string; ret
   }, [canRead, valid, memberId]);
   useEffect(() => { void load(); return () => { generation.current++; }; }, [load]);
   return <><Topbar crumb="고객 › 적립금 › 회원별 잔액 › 조정 상세" /><main className="main">
-    <PageHead title="적립금 조정 상세" back={listHref} />
+    <PageHead title="적립금 조정 상세" back={listHref} onBack={() => backHandler.current ? backHandler.current() : back()} />
     {result && <p className="msg msg-info" role="status">{result}</p>}
-    {!canRead ? <NoPermission need="회원·적립금" /> : !valid ? <div className="card pad">회원을 목록에서 다시 선택해 주십시오.</div> : state.kind === "loading" ? <div className="card"><LoadingRows rows={3} /></div> : state.kind === "error" ? state.status === 403 ? <NoPermission need="회원·적립금" /> : state.status === 402 ? <div className="card"><Locked /></div> : <div className="card"><ErrorState title="회원 정보를 불러오지 못했습니다" onRetry={() => void load()} /></div> : canEdit ? <AdjustmentForm key={memberId} row={state.row} live={state.live} scope={[me.sellerId, me.userId]} onClose={back} onDone={(text) => { setResult(text); void load(); }} /> : <section className="card pad" aria-label="회원 잔액"><h2 className="t-hl2">{state.row.member.broadcastNickname ?? "회원"}</h2><p>현재 잔액 {won(state.row.balance)}</p></section>}
+    {!canRead ? <NoPermission need="회원·적립금" /> : !valid ? <div className="card pad">회원을 목록에서 다시 선택해 주십시오.</div> : state.kind === "loading" ? <div className="card"><LoadingRows rows={3} /></div> : state.kind === "error" ? state.status === 403 ? <NoPermission need="회원·적립금" /> : state.status === 402 ? <div className="card"><Locked /></div> : <div className="card"><ErrorState title="회원 정보를 불러오지 못했습니다" onRetry={() => void load()} /></div> : canEdit ? <AdjustmentForm key={memberId} backHandler={backHandler} row={state.row} live={state.live} scope={[me.sellerId, me.userId]} onClose={back} onDone={(text) => { setResult(text); void load(); }} /> : <section className="card pad" aria-label="회원 잔액"><h2 className="t-hl2">{state.row.member.broadcastNickname ?? "회원"}</h2><p>현재 잔액 {won(state.row.balance)}</p></section>}
   </main></>;
 }
 
 // 이전 요청 재시도와 새 조정은 구분한다. 닫기·화면 이동·새로고침은 미확정 UUID를 지우지 않는다.
-function AdjustmentForm({ row, live, scope, onClose, onDone }: { row: AdjustmentMember; live: boolean | null; scope: readonly [string, string]; onClose: () => void; onDone: (text: string) => void }) {
+function AdjustmentForm({ row, live, scope, onClose, onDone, backHandler }: { backHandler: { current: (() => Promise<void>) | null }; row: AdjustmentMember; live: boolean | null; scope: readonly [string, string]; onClose: () => void; onDone: (text: string) => void }) {
   const { confirm } = useConfirm();
   const [direction, setDirection] = useState<"GRANT" | "REVOKE">("GRANT");
   const [amount, setAmount] = useState("");
@@ -99,6 +100,7 @@ function AdjustmentForm({ row, live, scope, onClose, onDone }: { row: Adjustment
     await releaseGuard();
     onClose();
   };
+  useEffect(() => { backHandler.current = requestClose; return () => { if (backHandler.current === requestClose) backHandler.current = null; }; });
   useEffect(() => { setPending(null); setRetryId(""); }, [row.member.id, direction, amount, reason, scope[0], scope[1]]);
 
   const requestContext = async (): Promise<AdjustmentChoice> => {

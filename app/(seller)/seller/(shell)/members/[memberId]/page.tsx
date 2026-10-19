@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useSearchParams } from "next/navigation";
-import { sanitizeNext } from "../../../../../../lib/client/navigation";
+import { confirmLeave, sanitizeNext, useSmartBack, useUnsavedGuard } from "../../../../../../lib/client/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { PageHead } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
@@ -23,6 +23,13 @@ function MemberDetailContent() {
   const safeReturnTo = sanitizeNext(query.get("returnTo"), allowedLists);
   const listHref = safeReturnTo && allowedLists.includes(safeReturnTo.split("?")[0]) ? safeReturnTo : "/seller/members";
   const generation = useRef(0);
+  const [gradeDirty, setGradeDirty] = useState(false);
+  const [restrictionDirty, setRestrictionDirty] = useState(false);
+  const releaseGuard = useUnsavedGuard(gradeDirty || restrictionDirty);
+  const releaseGrade = useCallback(async () => { if (!restrictionDirty) await releaseGuard(); }, [restrictionDirty, releaseGuard]);
+  const releaseRestriction = useCallback(async () => { if (!gradeDirty) await releaseGuard(); }, [gradeDirty, releaseGuard]);
+  const back = useSmartBack(listHref);
+  const leave = async () => { if (!confirmLeave(gradeDirty || restrictionDirty)) return; await releaseGuard(); back(); };
   const { memberId } = useParams<{ memberId: string }>();
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; member: MemberDetail }>({ kind: "loading" });
   const [toast, setToast] = useState<string | null>(null);
@@ -47,6 +54,7 @@ function MemberDetailContent() {
       <main className="main">
         <PageHead
           back={listHref}
+          onBack={leave}
           title={m ? (m.broadcastNickname ?? "닉네임 없음") : "회원 상세"}
         />
 
@@ -114,6 +122,8 @@ function MemberDetailContent() {
               {m.name === undefined && <span className="t-c1 c-alt">이름 · 휴대폰은 개인정보 열람 권한이 있어야 볼 수 있습니다.</span>}
             </section>
             <MemberGradeAdjust
+              onDirty={setGradeDirty}
+              releaseExternal={releaseGrade}
               memberId={m.id}
               currentGradeId={m.grade?.id ?? null}
               active={m.status === "ACTIVE"}
@@ -122,7 +132,7 @@ function MemberDetailContent() {
                 await load(true);
               }}
             />
-            <MemberRestriction key={m.id} memberId={m.id} nickname={m.broadcastNickname} onChanged={(text) => setToast(text)} />
+            <MemberRestriction key={m.id} onLiftDirty={setRestrictionDirty} releaseLiftExternal={releaseRestriction} memberId={m.id} nickname={m.broadcastNickname} onChanged={(text) => setToast(text)} />
             <MemberMemo memberId={m.id} onSaved={(text) => setToast(text)} />
             <MemberOrders memberId={m.id} />
             <MemberRewards memberId={m.id} />

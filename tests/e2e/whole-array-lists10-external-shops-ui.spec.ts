@@ -98,7 +98,16 @@ test("SA006 PC: 빈 상태·연결 준비·읽기 전용·403·조회 실패를 
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(`/seller/external-shops/new?${new URLSearchParams({ returnTo: "/seller/external-shops" })}`);
   await expect(page.getByLabel("쇼핑몰 주소")).toBeVisible();
+  await page.reload();
+  await page.getByLabel("쇼핑몰 주소").fill("https://draft.example.invalid");
+  page.once("dialog", (dialog) => dialog.dismiss());
   await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL(`/seller/external-shops/new?${new URLSearchParams({ returnTo: "/seller/external-shops" })}`);
+  await expect(page.getByLabel("쇼핑몰 주소")).toHaveValue("https://draft.example.invalid");
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL("/seller/external-shops");
+  expect(writes).toEqual([]);
   scenario.enabled = false;
   await page.reload();
   await expect(page.getByTestId("external-disabled")).toBeVisible();

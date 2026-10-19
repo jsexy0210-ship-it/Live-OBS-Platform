@@ -87,6 +87,17 @@ test("주문 메모는 실제 상세에서만 저장하고 새로고침 후 보�
   await expect(memo.getByRole("status")).toHaveText("메모를 지웠습니다");
   await page.reload();
   await expect(memo.getByRole("textbox", { name: "메모", exact: true })).toHaveValue("");
+  await memo.getByRole("textbox", { name: "메모", exact: true }).fill("머리글에서 버릴 입력");
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(memo.getByRole("textbox", { name: "메모", exact: true })).toHaveValue("머리글에서 버릴 입력");
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL(new URL("/seller/orders?period=all", page.url()).href);
+  await page.getByTestId("order-row").first().getByRole("button", { name: /더보기/ }).click();
+  await link.click();
+  await page.reload();
+  await expect(memo.getByRole("textbox", { name: "메모", exact: true })).toHaveValue("");
   await memo.getByRole("textbox", { name: "메모", exact: true }).fill("버릴 입력");
   page.once("dialog", (dialog) => dialog.accept());
   await memo.getByRole("button", { name: "취소", exact: true }).click();

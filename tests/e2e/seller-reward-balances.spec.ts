@@ -201,6 +201,22 @@ test("수동 조정: 회수는 잔액을 넘을 수 없고, 지급은 확인 창
     const modal = page.getByRole("region", { name: `수동 조정 · ${NICK}` });
     await reload(page);
     await expect(modal.getByTestId("adjust-balance")).toHaveText("700원");
+    const directUrl = page.url();
+    const abandonedPosts: string[] = [];
+    const observe = (request: import("@playwright/test").Request) => { if (request.method() === "POST" && new URL(request.url()).pathname.endsWith("/adjust")) abandonedPosts.push(request.method()); };
+    page.on("request", observe);
+    await modal.getByLabel("조정 금액").fill("100");
+    page.once("dialog", (dialog) => dialog.dismiss());
+    await page.getByRole("button", { name: "뒤로", exact: true }).click();
+    await expect(page).toHaveURL(directUrl);
+    await expect(modal.getByLabel("조정 금액")).toHaveValue("100");
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.getByRole("button", { name: "뒤로", exact: true }).click();
+    await expect(page).toHaveURL("/seller/rewards/balances");
+    expect(abandonedPosts).toEqual([]);
+    page.off("request", observe);
+    await openAdjustment(page);
+    await expect(modal.getByLabel("조정 금액")).toHaveValue("");
 
     // 입력 오류: 금액·잔액 초과 회수·사유
     await modal.getByRole("button", { name: "적용" }).click();
