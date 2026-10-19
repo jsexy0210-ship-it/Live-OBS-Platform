@@ -47,6 +47,28 @@ async function open(page: Page) {
   await expect(page).toHaveURL(/\/seller\/rewards\/balances$/);
 }
 
+// 전체 화면 조정에서만 사용하는 실제 목록 진입·새로고침. 금융 확인 창은 기존대로 별도 검증한다.
+async function openAdjustment(page: Page, listHref = "/seller/rewards/balances") {
+  const memberId = await withDb(async (_db, _sellerId, id) => id);
+  const href = `/seller/rewards/balances/${memberId}?${new URLSearchParams({ returnTo: listHref })}`;
+  const link = page.getByTestId("balance-row").first().getByRole("link", { name: /적립금 조정/ });
+  await expect(page.getByTestId("balance-row").getByRole("button", { name: /적립금 조정/ })).toHaveCount(0);
+  await expect(link).toHaveAttribute("href", href);
+  await link.click();
+  await expect(page).toHaveURL(href);
+  await expect(page.getByRole("region", { name: `수동 조정 · ${NICK}` })).toBeVisible();
+}
+async function reload(page: Page) {
+  const accept = (dialog: import("@playwright/test").Dialog) => dialog.accept();
+  page.on("dialog", accept);
+  try { await page.reload(); } finally { page.off("dialog", accept); }
+}
+async function adjustmentDone(page: Page) {
+  await expect(page.getByRole("region", { name: `수동 조정 · ${NICK}` }).getByLabel("조정 금액")).toHaveValue("");
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL("/seller/rewards/balances");
+}
+
 test.afterAll(reset);
 
 test("잔액: 현재 잔액과 성공 내역 누적(지급·사용)이 보이고, 닉네임으로 찾을 수 있다", async ({ page }) => {
@@ -93,6 +115,16 @@ test("잔액: 현재 잔액과 성공 내역 누적(지급·사용)이 보이고
   await expect(rows).toHaveCount(1);
   await page.getByRole("button", { name: "초기화" }).click();
   await expect(rows).toHaveCount(1);
+  await page.getByLabel("검색어").fill(NICK);
+  await page.getByRole("button", { name: "검색" }).click();
+  const listHref = `/seller/rewards/balances?${new URLSearchParams({ q: NICK })}`;
+  await expect(page).toHaveURL(listHref);
+  await openAdjustment(page, listHref);
+  await reload(page);
+  await expect(page.getByTestId("adjust-balance")).toHaveText("700원");
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL(listHref);
+  await expect(rows).toHaveCount(1);
 });
 
 test("잔액이 없으면 안내하고, 10명을 넘으면 페이지 이동으로 다음 쪽 커서를 이어서 불러온다", async ({ page }) => {
@@ -132,6 +164,21 @@ test("잔액이 없으면 안내하고, 10명을 넘으면 페이지 이동으�
   await expect(rows).toHaveCount(2);
   await expect(nav.getByRole("button", { name: "3페이지", exact: true })).toHaveAttribute("aria-current", "page");
   await expect(nav.getByRole("button", { name: "다음", exact: true })).toBeDisabled();
+  const member = item(21).member;
+  await page.route(`**/api/seller/members/${member.id}`, (route) => route.fulfill({ json: { member: { ...member, rewardBalance: item(21).balance } } }));
+  const href = `/seller/rewards/balances/${member.id}?${new URLSearchParams({ returnTo: "/seller/rewards/balances" })}`;
+  await expect(rows.first().getByRole("link", { name: "회원21 적립금 조정", exact: true })).toHaveAttribute("href", href);
+  await rows.first().getByRole("link", { name: "회원21 적립금 조정", exact: true }).click();
+  await expect(page).toHaveURL(href);
+  await reload(page);
+  await expect(page.getByTestId("adjust-balance")).toHaveText("121원");
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL("/seller/rewards/balances");
+  await expect(rows).toHaveCount(2);
+  await expect(nav.getByRole("button", { name: "3페이지", exact: true })).toHaveAttribute("aria-current", "page");
+  await nav.getByRole("button", { name: "이전", exact: true }).click();
+  await expect(rows).toHaveCount(10);
+  await expect(rows.first()).toContainText("회원11");
 });
 
 test("회원·적립금 권한이 없는 직원은 권한 안내를 본다", async ({ page }) => {
@@ -150,8 +197,9 @@ test("수동 조정: 회수는 잔액을 넘을 수 없고, 지급은 확인 창
   try {
     await open(page);
     const row = page.getByTestId("balance-row").first();
-    await row.getByRole("button", { name: /적립금 조정/ }).click();
-    const modal = page.getByRole("dialog", { name: `수동 조정 · ${NICK}` });
+    await openAdjustment(page);
+    const modal = page.getByRole("region", { name: `수동 조정 · ${NICK}` });
+    await reload(page);
     await expect(modal.getByTestId("adjust-balance")).toHaveText("700원");
 
     // 입력 오류: 금액·잔액 초과 회수·사유
@@ -178,18 +226,20 @@ test("수동 조정: 회수는 잔액을 넘을 수 없고, 지급은 확인 창
     await ask.getByRole("button", { name: "조정" }).click();
     expect((await posted).postDataJSON()).toMatchObject({ direction: "GRANT", amount: 5000, reason: "이벤트 보상" });
     await expect(page.getByText(`${NICK} +5,000원 대기로 기록`, { exact: false })).toBeVisible();
+    await adjustmentDone(page);
     await expect(page.getByTestId("balance-row").first().locator("td").nth(2)).toHaveText("700원");
 
     // 실제 지급 켜짐: 즉시 반영
     await setLive(true);
-    await page.reload();
-    await page.getByTestId("balance-row").first().getByRole("button", { name: /적립금 조정/ }).click();
-    const modal2 = page.getByRole("dialog", { name: `수동 조정 · ${NICK}` });
+    await reload(page);
+    await openAdjustment(page);
+    const modal2 = page.getByRole("region", { name: `수동 조정 · ${NICK}` });
     await modal2.getByLabel("조정 금액").fill("1000");
     await modal2.getByLabel("사유").fill("정정");
     await modal2.getByRole("button", { name: "적용" }).click();
     await page.getByRole("dialog", { name: "적립금 잔액을 조정하시겠습니까?" }).getByRole("button", { name: "조정" }).click();
     await expect(page.getByText(`${NICK} +1,000원 지급 · 잔액 1,700원 · 원장에 기록`)).toBeVisible();
+    await adjustmentDone(page);
     await expect(page.getByTestId("balance-row").first().locator("td").nth(2)).toHaveText("1,700원");
   } finally {
     await setLive(false);
@@ -218,8 +268,8 @@ test("조정 결과를 잃고 창을 다시 열어도 같은 요청은 한 번�
   try {
     await open(page);
     const row = page.getByTestId("balance-row").first();
-    await row.getByRole("button", { name: /적립금 조정/ }).click();
-    const modal = page.getByRole("dialog", { name: `수동 조정 · ${NICK}` });
+    await openAdjustment(page);
+    const modal = page.getByRole("region", { name: `수동 조정 · ${NICK}` });
     const ask = page.getByRole("dialog", { name: "적립금 잔액을 조정하시겠습니까?" });
     await modal.getByLabel("조정 금액").fill("1,000");
     await modal.getByLabel("사유").fill(" 재시도 ");
@@ -227,14 +277,14 @@ test("조정 결과를 잃고 창을 다시 열어도 같은 요청은 한 번�
     await ask.getByRole("button", { name: "조정", exact: true }).click();
     await expect(ask.getByRole("alert")).toBeVisible();
     await ask.getByRole("button", { name: "취소", exact: true }).click();
+    page.once("dialog", (dialog) => dialog.accept());
     await modal.getByRole("button", { name: "취소", exact: true }).click();
-    await modal.locator(".modal-confirm").getByRole("button", { name: "닫기", exact: true }).click();
     await expect(modal).toHaveCount(0);
     await page.goto("/seller/rewards/ledger");
     await page.goto("/seller/rewards/balances");
-    await page.reload();
+    await reload(page);
 
-    await row.getByRole("button", { name: /적립금 조정/ }).click();
+    await openAdjustment(page);
     await modal.getByLabel("조정 금액").fill("1000");
     await modal.getByLabel("사유").fill("다른 사유");
     await modal.getByRole("button", { name: "적용" }).click();
@@ -248,6 +298,7 @@ test("조정 결과를 잃고 창을 다시 열어도 같은 요청은 한 번�
     await expect(modal.getByRole("link", { name: "원장 확인", exact: true })).toHaveAttribute("href", "/seller/rewards/ledger");
     await modal.getByRole("button", { name: "이전 요청 재시도", exact: true }).click();
     await page.getByRole("dialog", { name: "이전 요청을 다시 보낼까요?" }).getByRole("button", { name: "이전 요청 재시도", exact: true }).click();
+    await adjustmentDone(page);
     await expect(modal).toHaveCount(0);
     expect(sent[2]).toEqual(sent[0]);
     expect(sent[0]).toMatchObject({ direction: "GRANT", amount: 1000, reason: "재시도" });
@@ -255,11 +306,12 @@ test("조정 결과를 잃고 창을 다시 열어도 같은 요청은 한 번�
     expect(await withDb((db, sellerId) => db.rewardLedger.count({ where: { sellerId, type: "ADJUST" } }))).toBe(1);
     await expect(row.locator("td").nth(2)).toHaveText("1,700원");
 
-    await row.getByRole("button", { name: /적립금 조정/ }).click();
+    await openAdjustment(page);
     await modal.getByLabel("조정 금액").fill("1000");
     await modal.getByLabel("사유").fill("재시도");
     await modal.getByRole("button", { name: "적용" }).click();
     await ask.getByRole("button", { name: "조정", exact: true }).click();
+    await adjustmentDone(page);
     await expect(modal).toHaveCount(0);
     expect(sent[3].requestId).not.toBe(sent[0].requestId);
     expect(sent[3].requestId).toMatch(/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i);
@@ -288,16 +340,16 @@ test("결과 미확인 요청이 있어도 중복 가능성을 확인한 새 조
   try {
     await open(page);
     const row = page.getByTestId("balance-row").first();
-    const modal = page.getByRole("dialog", { name: `수동 조정 · ${NICK}` });
-    await row.getByRole("button", { name: /적립금 조정/ }).click();
+    const modal = page.getByRole("region", { name: `수동 조정 · ${NICK}` });
+    await openAdjustment(page);
     await modal.getByLabel("조정 금액").fill("1000");
     await modal.getByLabel("사유").fill("결과 미확인");
     await modal.getByRole("button", { name: "적용" }).click();
     const ask = page.getByRole("dialog", { name: "적립금 잔액을 조정하시겠습니까?" });
     await ask.getByRole("button", { name: "조정", exact: true }).click();
     await expect(ask.getByRole("alert")).toBeVisible();
-    await page.reload();
-    await row.getByRole("button", { name: /적립금 조정/ }).click();
+    await reload(page);
+    await expect(modal).toBeVisible();
     await modal.getByLabel("조정 금액").fill("1000");
     await modal.getByLabel("사유").fill("결과 미확인");
     await modal.getByRole("button", { name: "적용" }).click();
@@ -308,6 +360,7 @@ test("결과 미확인 요청이 있어도 중복 가능성을 확인한 새 조
     expect(ids).toHaveLength(1);
     await modal.getByRole("button", { name: "새 조정", exact: true }).click();
     await newAsk.getByRole("button", { name: "새 조정", exact: true }).click();
+    await adjustmentDone(page);
     await expect(modal).toHaveCount(0);
     expect(ids).toHaveLength(2);
     expect(ids[1]).not.toBe(ids[0]);
@@ -346,9 +399,9 @@ test("다른 파트너스·사용자의 미확정 요청은 표시하지 않고 
   });
   for (const other of [{ ...actualMe, sellerId: "different-seller" }, { ...actualMe, userId: "different-user" }]) {
     viewMe = other;
-    await page.reload();
-    await page.getByTestId("balance-row").first().getByRole("button", { name: /적립금 조정/ }).click();
-    const modal = page.getByRole("dialog", { name: `수동 조정 · ${NICK}` });
+    await reload(page);
+    if (new URL(page.url()).pathname === "/seller/rewards/balances") await openAdjustment(page);
+    const modal = page.getByRole("region", { name: `수동 조정 · ${NICK}` });
     await modal.getByLabel("조정 금액").fill("1000");
     await modal.getByLabel("사유").fill("범위 확인");
     await modal.getByRole("button", { name: "적용" }).click();
@@ -356,11 +409,11 @@ test("다른 파트너스·사용자의 미확정 요청은 표시하지 않고 
     await expect(modal.getByLabel("재시도할 이전 요청")).toHaveCount(0);
   }
   viewMe = actualMe;
-  await page.reload();
+  await reload(page);
   await page.evaluate((key) => sessionStorage.setItem(key, "broken"), key);
   const row = page.getByTestId("balance-row").first();
-  await row.getByRole("button", { name: /적립금 조정/ }).click();
-  const modal = page.getByRole("dialog", { name: `수동 조정 · ${NICK}` });
+  if (new URL(page.url()).pathname === "/seller/rewards/balances") await openAdjustment(page);
+  const modal = page.getByRole("region", { name: `수동 조정 · ${NICK}` });
   await modal.getByLabel("조정 금액").fill("1000");
   await modal.getByLabel("사유").fill("범위 확인");
   await modal.getByRole("button", { name: "적용" }).click();
@@ -372,6 +425,11 @@ test("다른 파트너스·사용자의 미확정 요청은 표시하지 않고 
   const ask = page.getByRole("dialog", { name: "적립금 잔액을 조정하시겠습니까?" });
   await ask.getByRole("button", { name: "조정", exact: true }).click();
   await expect(ask.getByRole("alert")).toContainText("재시도 정보를 보관하지 못했어요");
+  expect(posts).toEqual([]);
+  viewMe = { ...actualMe, isOwner: false, permissions: ["MEMBER_POINTS"], readOnly: true };
+  await reload(page);
+  await expect(page.getByRole("region", { name: "회원 잔액", exact: true })).toContainText("현재 잔액 700원");
+  await expect(modal).toHaveCount(0);
   expect(posts).toEqual([]);
 });
 
@@ -399,8 +457,8 @@ test("새 요청의 명시적 400·404만 정리하고 이전 불명 요청과 �
   const pendingIds = () => page.evaluate(() => Object.keys(sessionStorage).filter((key) => key.startsWith("onq:reward-adjust:")).flatMap((key) => JSON.parse(sessionStorage.getItem(key)!)).map((entry: { id: string }) => entry.id));
   await open(page);
   const row = page.getByTestId("balance-row").first();
-  await row.getByRole("button", { name: /적립금 조정/ }).click();
-  const modal = page.getByRole("dialog", { name: `수동 조정 · ${NICK}` });
+  if (new URL(page.url()).pathname === "/seller/rewards/balances") await openAdjustment(page);
+  const modal = page.getByRole("region", { name: `수동 조정 · ${NICK}` });
   const ask = page.getByRole("dialog", { name: "적립금 잔액을 조정하시겠습니까?" });
   await modal.getByLabel("조정 금액").fill("100");
   await modal.getByLabel("사유").fill("확정 거절 경계");
@@ -433,5 +491,8 @@ test("새 요청의 명시적 400·404만 정리하고 이전 불명 요청과 �
     await fresh.getByRole("button", { name: "취소", exact: true }).click();
   }
   expect(await withDb((db, sellerId) => db.rewardLedger.count({ where: { sellerId, type: "ADJUST" } }))).toBe(0);
+  page.once("dialog", (dialog) => dialog.accept());
+  await modal.getByRole("button", { name: "취소", exact: true }).click();
+  await expect(page).toHaveURL("/seller/rewards/balances");
   await expect(row.locator("td").nth(2)).toHaveText("700원");
 });
