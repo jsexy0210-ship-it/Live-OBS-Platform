@@ -329,6 +329,8 @@ const backCases = [
 ];
 for (const entry of ["직접 진입", "새로고침"]) for (const scenario of backCases) test(`${scenario.name} ${entry}의 ←는 취소 시 입력을 보존하고 확인 후 목록으로 돌아간다`, async ({ page }) => {
   const writes: unknown[] = [];
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
   const vendor = { id: id(1), name: "검수 업체", logoUrl: null, active: true, recommended: false, selected: false, referenceFee: null, memo: null, features: [], ratings: { fee: 8 }, score: 80, ratedCount: 1 };
   await mockAdmin(page, async (route, path) => {
     if (route.request().method() !== "GET") { writes.push(route.request().postDataJSON()); await json(route, { error: "unexpected_write" }, 409); return true; }
@@ -339,6 +341,7 @@ for (const entry of ["직접 진입", "새로고침"]) for (const scenario of ba
     if (path === "/api/admin/ops/live-broadcasts") { await json(route, { at, items: [], orderRate: { total: 0 } }); return true; }
     if (path === `/api/admin/sellers/${id(1)}`) { await json(route, { seller: { id: id(1), shopName: "선택 몰" } }); return true; }
     if (path === "/api/admin/assistant/docs") { await json(route, { items: [{ id: id(1), title: "원본 문서", body: "공개 자료", published: false, version: 1, updatedAt: at }] }); return true; }
+    if (path === "/api/admin/sellers") { await json(route, { sellers: [], total: 0, summary: { total: 0, normal: 0, trial: 0, overdue: 0, locked: 0, suspended: 0, closed: 0, pgError: 0, pgNone: 0, payoutEnabled: 0, live: 0, pendingApplications: 0 } }); return true; }
     if (path === "/api/admin/sellers/applications") { await json(route, { applications: [], industries: [], chips: { all: 0, clear: 0, review: 0, supplement: 0, over48h: 0, today: 0 }, total: 0, nextCursor: null, kpi: { pending: 0, needsReview: 0, clear: 0, supplement: 0, over48h: 0, receivedToday: 0, approvedToday: 0, autoApprovedToday: 0, rejectedToday: 0, avgHandlingHours: { thisWeek: null, lastWeek: null } } }); return true; }
     return false;
   });
@@ -363,4 +366,5 @@ for (const entry of ["직접 진입", "새로고침"]) for (const scenario of ba
   expect(confirmations).toEqual(Array(2).fill("저장하지 않은 변경이 있습니다. 이 화면을 나가시겠습니까?"));
   expect(await page.evaluate(() => !!history.state?.unsavedGuard)).toBe(false);
   expect(writes).toEqual([]);
+  expect(errors).toEqual([]);
 });
