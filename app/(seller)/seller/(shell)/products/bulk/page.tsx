@@ -281,7 +281,7 @@ export default function BulkPage() {
                 </table>
               </div>
             )}
-            <span className="t-c1 c-alt">오류가 있는 상품은 건너뛰고 나머지만 반영합니다 · 목록에는 앞부분만 보입니다 · 새 상품은 상태 칸이 비면 「준비중」으로 등록됩니다(이미지를 올린 뒤 공개)</span>
+            <span className="t-c1 c-alt">오류 상품은 건너뛰고 반영해요 · 목록에는 앞부분만 보여요 · 새 상품의 상태가 비면 「숨김」으로 등록해요(이미지를 올린 뒤 공개)</span>
             <div className="row" style={{ gap: 8, margin: "8px 0 4px", flexWrap: "wrap" }}>
               <button className="btn" type="button" disabled={preview.data.productCount === 0} onClick={() => void commit()}>
                 {preview.data.productCount}개 반영
@@ -350,11 +350,11 @@ export default function BulkPage() {
               <tbody>
                 <tr>
                   <th>필수 열</th>
-                  <td>상품명 · 판매가</td>
+                  <td>상품명 · 카테고리 · 판매가 · 재고</td>
                 </tr>
                 <tr>
                   <th>선택 열</th>
-                  <td>상태 · 설명 · 차감시점 · 카테고리 · 옵션명 · 옵션추가금 · 재고 · SKU</td>
+                  <td>상태 · 설명 · 차감시점 · 옵션(옵션명) · 옵션추가금 · SKU</td>
                 </tr>
                 <tr>
                   <th>이미지</th>
