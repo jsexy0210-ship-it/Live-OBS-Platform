@@ -277,14 +277,22 @@ test("선택한 상품만 작업 상세에서 일괄 변경·되돌리기·삭�
 });
 
 test("읽기 전용 대리 조회에서는 상품 작업 상세의 변경 조작과 상품 요청을 실행하지 않는다", async ({ page }) => {
+  // 로그인 도우미의 목록 URL 도달은 목록 effect의 GET 완료를 뜻하지 않는다. 상세 관찰 전에 이 조회를 끝낸다.
+  const listed = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/seller/products" && response.request().method() === "GET");
   await login(page);
+  const initialList = await listed;
+  expect(initialList.status()).toBe(200);
+  expect(await initialList.finished()).toBeNull();
   await page.route("**/api/seller/me", async (route) => {
     const response = await route.fetch();
     const me = await response.json();
     await route.fulfill({ response, json: { ...me, isOwner: false, permissions: ["PRODUCT_MANAGE"], readOnly: true } });
   });
-  const productRequests: string[] = [];
-  page.on("request", (request) => { if (request.url().includes("/api/seller/products")) productRequests.push(request.method()); });
+  const productRequests: { method: string; pathname: string; search: string }[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname.startsWith("/api/seller/products")) productRequests.push({ method: request.method(), pathname: url.pathname, search: url.search });
+  });
   await page.goto("/seller/products/00000000-0000-4000-8000-000000000001/operations");
   await expect(page.getByTestId("permission-card")).toBeVisible();
   await expect(page.getByTestId("product-detail-operations")).toHaveCount(0);
