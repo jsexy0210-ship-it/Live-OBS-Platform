@@ -289,3 +289,78 @@ test("읽기 전용 대리 조회에서는 상품 작업 상세의 변경 조작
   await expect(page.getByRole("button", { name: "선택 삭제", exact: true })).toHaveCount(0);
   expect(productRequests).toEqual([]);
 });
+
+test("일괄 변경의 늦은 조회가 되돌린 뒤의 최신 상품 상태를 덮어쓰지 않는다", async ({ page }) => {
+  await login(page);
+  const a = await make(page, `${PREFIX}-조회순서-A`, "ON_SALE", 10);
+  const b = await make(page, `${PREFIX}-조회순서-B`, "ON_SALE", 5);
+  const pattern = `**/api/seller/products/${a.id}`;
+  let holdNext = false, oldStatus = "";
+  let release!: () => void, signalReady!: () => void;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  const ready = new Promise<void>((resolve) => { signalReady = resolve; });
+  await page.route(pattern, async (route) => {
+    const hold = holdNext;
+    holdNext = false;
+    const response = await route.fetch();
+    if (hold) { oldStatus = (await response.json()).status; signalReady(); await held; }
+    await route.fulfill({ response });
+  });
+  try {
+    await page.goto(`/seller/products/operations?ids=${a.id},${b.id}`);
+    const cells = page.getByRole("region", { name: "선택한 상품", exact: true }).locator("tbody tr td:last-child");
+    await expect(cells).toHaveText(["판매 중", "판매 중"]);
+    holdNext = true;
+    await page.getByRole("button", { name: "선택 숨김", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "바꾸기", exact: true }).click();
+    await ready;
+    expect(oldStatus).toBe("HIDDEN");
+    await page.getByRole("button", { name: "되돌리기", exact: true }).click();
+    await expect(cells).toHaveText(["판매 중", "판매 중"]);
+    const staleFinished = page.waitForEvent("requestfinished", { predicate: (request) => new URL(request.url()).pathname === `/api/seller/products/${a.id}` });
+    release();
+    await staleFinished;
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    await expect(cells).toHaveText(["판매 중", "판매 중"]);
+    expect((await serverProduct(page, a.id)).status).toBe("ON_SALE");
+    expect((await serverProduct(page, b.id)).status).toBe("ON_SALE");
+  } finally {
+    release();
+    await page.unroute(pattern);
+  }
+});
+
+test("삭제된 선택 상품만 제외하고 유효 상품은 처리하며 권한·서버·전송 오류와 단건404는 전체 차단한다", async ({ page }) => {
+  await login(page);
+  const a = await make(page, `${PREFIX}-일부삭제-A`, "ON_SALE", 10);
+  const b = await make(page, `${PREFIX}-일부삭제-B`, "ON_SALE", 5);
+  expect((await page.request.post("/api/seller/products/bulk", { headers: { origin: new URL(page.url()).origin }, data: { action: "delete", productIds: [b.id] } })).status()).toBe(200);
+  const statusWrites: unknown[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/seller/products/bulk" && request.method() === "POST" && request.postDataJSON().action === "status") statusWrites.push(request.postDataJSON());
+  });
+  const url = `/seller/products/operations?ids=${a.id},${b.id}`;
+  await page.goto(url);
+  await expect(page.getByRole("table").locator("tbody tr")).toHaveCount(1);
+  await expect(page.getByRole("status").filter({ hasText: "찾을 수 없는 상품 1개 · 남은 상품 1개" })).toBeVisible();
+  await page.getByRole("button", { name: "선택 숨김", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "바꾸기", exact: true }).click();
+  await expect(page.getByRole("table").locator("tbody tr td:last-child")).toHaveText("숨김");
+  expect(statusWrites).toEqual([{ action: "status", status: "HIDDEN", productIds: [a.id] }]);
+  expect((await serverProduct(page, a.id)).status).toBe("HIDDEN");
+  expect((await page.request.get(`/api/seller/products/${b.id}`)).status()).toBe(404);
+  await page.goto(`/seller/products/${b.id}/operations`);
+  await expect(page.getByText("상품을 불러오지 못했어요.", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("product-detail-operations")).toHaveCount(0);
+  const pattern = `**/api/seller/products/${a.id}`;
+  for (const status of [403, 500, 0]) {
+    await page.route(pattern, (route) => status ? route.fulfill({ status, json: { error: "forbidden" } }) : route.abort("failed"));
+    await page.goto(url);
+    if (status === 403) await expect(page.getByTestId("permission-card")).toBeVisible();
+    else await expect(page.getByText("상품을 불러오지 못했어요.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "선택 숨김", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "되돌리기", exact: true })).toHaveCount(0);
+    await page.unroute(pattern);
+  }
+  expect(statusWrites).toHaveLength(1);
+});
