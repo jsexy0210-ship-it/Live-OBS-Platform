@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "../../lib/server/db";
 import { commitProductImport, getBulkJob, previewProductImport, undoProductImport } from "../../lib/server/shop-bulk-io/service";
+import { createOption, deleteOption } from "../../lib/server/products/manage";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { createSeller, createSellerUser, db, resetDb } from "./helpers";
 
@@ -54,6 +55,31 @@ const stockOf = async (sellerId: string, product: string) =>
 const priceOf = async (sellerId: string, product: string) => (await db.product.findFirstOrThrow({ where: { sellerId, name: product, deletedAt: null } })).price;
 
 describe("기존 상품 수정", () => {
+  it.each([false, true])("미리보기 뒤 기본 옵션이 추가·교체되면 재고는 보존하고 판매가만 반영한다 (교체: %s)", async (replace) => {
+    const s = await shop();
+    await seed(s.ctx);
+    const product = await db.product.findFirstOrThrow({ where: { sellerId: s.seller.id, name: "부스터 팩" }, include: { options: true } });
+    const original = product.options[0];
+    const p = await preview(s.ctx, "상품명,카테고리,판매가,재고\r\n부스터 팩,,6000,45");
+    expect([p.updateCount, p.errors]).toEqual([1, []]);
+    expect(await createOption(db, s.ctx, product.id, { name: "추가 옵션", stock: 9, priceDelta: 0 })).toMatchObject({ ok: true });
+    if (replace) expect(await deleteOption(db, s.ctx, product.id, original.id)).toMatchObject({ ok: true });
+    const before = await db.productOption.findMany({ where: { sellerId: s.seller.id, productId: product.id }, orderBy: { id: "asc" }, select: { id: true, stock: true, deletedAt: true } });
+    expect(before.filter((o) => !o.deletedAt).length).toBe(replace ? 1 : 2);
+    const result = await commit(s.ctx, p.jobId);
+    expect(result).toMatchObject({ updatedCount: 1, failedCount: 1 });
+    expect(result.failures).toHaveLength(1);
+    expect(await priceOf(s.seller.id, "부스터 팩")).toBe(6000);
+    const after = () => db.productOption.findMany({ where: { sellerId: s.seller.id, productId: product.id }, orderBy: { id: "asc" }, select: { id: true, stock: true, deletedAt: true } });
+    expect(await after()).toEqual(before);
+    expect(await db.stockMovement.count({ where: { sellerId: s.seller.id, note: "재고 일괄 수정" } })).toBe(0);
+    expect(await db.auditLog.count({ where: { sellerId: s.seller.id, action: "product_option.stock_adjust" } })).toBe(0);
+    expect(await undo(s.ctx, p.jobId)).toMatchObject({ restoredCount: 1, keptCount: 0 });
+    expect(await priceOf(s.seller.id, "부스터 팩")).toBe(5000);
+    expect(await after()).toEqual(before);
+    expect(await db.stockMovement.count({ where: { sellerId: s.seller.id, note: "재고 일괄 수정" } })).toBe(0);
+  });
+
   it("상품명이 같으면 판매가·재고만 바꾸고, 새 상품은 그대로 등록한다. 재고 변경은 기록이 남고 미리보기는 아무것도 바꾸지 않는다", async () => {
     const s = await shop();
     await seed(s.ctx);
