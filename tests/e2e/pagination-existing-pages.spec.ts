@@ -21,7 +21,7 @@ for (const route of ["/admin/partners?q=보존", "/admin/partners?q=보존&page=
       if (u.pathname === "/api/admin/sellers/applications") data = { total: 50, nextCursor, chips: { all: 50, clear: 50, review: 0, supplement: 0, over48h: 0, today: 0 }, kpi: { pending: 50, needsReview: 0, clear: 50, supplement: 0, over48h: 0, receivedToday: 0, approvedToday: 0, autoApprovedToday: 0, rejectedToday: 0, avgHandlingHours: { thisWeek: null, lastWeek: null } }, industries: [], applications: [{ id: "test", slug: "test", shopName: "검수", state: "CLEAR", applicantName: "검수", applicantEmail: "test@example.com", businessNumber: null, industry: null, receivedAt: at, elapsedHours: 1, over48h: false, reasons: [], checks: [], checkedAt: null, supplement: null, license: null, businessAddress: null, channelUrl: null }] };
       if (u.pathname === "/api/seller/platform-inquiries") data = { items: [{ id: "test", category: "OTHER", title: "검수 문의", status: "OPEN", createdAt: at, lastMessageAt: at, lastReplyAt: null, hasNewReply: false }], counts: { all: 50, open: 50, answered: 0, closed: 0 }, newReplyCount: 0, avgFirstReplyMinutes: null, nextCursor };
       if (u.pathname === "/api/seller/platform-notices") data = { pinned: [], items: [{ id: "test", title: "검수 공지", category: "FEATURE", publishedAt: at, createdAt: at, pinned: false, read: false, hasAttachment: false }], nextCursor, unreadCount: 1 };
-      if (u.pathname === "/api/admin/sellers" && Number(u.searchParams.get("page")) > 13) (data as { sellers: unknown[] }).sellers = [];
+      if (u.pathname === "/api/admin/sellers" && Number(u.searchParams.get("cursor")) >= 250) (data as { sellers: unknown[] }).sellers = [];
       await req.fulfill({ status: 200, json: data });
     });
     await page.goto(route);
@@ -41,14 +41,15 @@ for (const route of ["/admin/partners?q=보존", "/admin/partners?q=보존&page=
       await expect(nav.locator('[aria-current="page"]')).toHaveText(current);
     };
     if (route.includes("page=999")) {
-      await expect(page).toHaveURL(/page=13/);
-      await expect(nav.locator('[aria-current="page"]')).toHaveText("13");
+      await expect(page).toHaveURL(/page=25(?:&|$)/);
+      await expect(nav.locator('[aria-current="page"]')).toHaveText("25");
       await move(() => nav.getByRole("button", { name: "처음", exact: true }).click(), "1");
     }
     await expect(nav.getByRole("button", { name: "처음", exact: true })).toBeDisabled();
     if (route.startsWith("/admin/partners?")) {
-      await move(() => nav.getByRole("button", { name: "마지막", exact: true }).click(), "13");
-      await expect(page).toHaveURL(/page=13/);
+      expect(requests.filter(u => u.pathname === listPath).every(u => u.searchParams.get("limit") === "10")).toBe(true);
+      await move(() => nav.getByRole("button", { name: "마지막", exact: true }).click(), "25");
+      await expect(page).toHaveURL(/page=25(?:&|$)/);
     } else {
       await expect(nav.getByRole("button", { name: "마지막", exact: true })).toHaveCount(0);
       await move(() => nav.getByRole("button", { name: "다음", exact: true }).click(), "2");
