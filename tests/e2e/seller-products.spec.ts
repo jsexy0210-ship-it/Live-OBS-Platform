@@ -657,7 +657,7 @@ for (const [email, allowed] of [[OWNER, true], [VIEWER, false]] as const) {
           expect(await tableWrap.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeGreaterThan(0);
           await tableWrap.evaluate((el) => { el.scrollLeft = el.scrollWidth - el.clientWidth; });
           for (const [suffix, closeLabel] of [[/ 이력$/, "닫기"], [/ 빼기 · 더하기$/, "취소"]] as const) {
-            const button = row.getByRole("button", { name: suffix });
+            const button = closeLabel === "취소" ? row.getByRole("link", { name: suffix }) : row.getByRole("button", { name: suffix });
             await expect(button).toBeVisible();
             await expect(button).toBeEnabled();
             const bounds = await button.evaluate((el) => {
@@ -668,7 +668,7 @@ for (const [email, allowed] of [[OWNER, true], [VIEWER, false]] as const) {
             expect(bounds.left).toBeGreaterThanOrEqual(bounds.wrapLeft);
             expect(bounds.right).toBeLessThanOrEqual(bounds.wrapRight);
             await button.click();
-            const dialog = page.getByRole("dialog");
+            const dialog = closeLabel === "취소" ? page.locator("section[aria-labelledby=adj-title]") : page.getByRole("dialog");
             await expect(dialog).toBeVisible();
             if (closeLabel === "취소") await expect(dialog.getByRole("radiogroup", { name: "빼기 또는 더하기" })).toBeVisible();
             await dialog.getByRole("button", { name: closeLabel, exact: true }).click();

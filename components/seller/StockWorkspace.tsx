@@ -2,7 +2,7 @@
 
 import { formatDateTime } from "../../lib/client/format";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { FormRow, FormSection, ListTable, PageHead } from "../admin-ui";
 import "../../styles/seller-stock.css";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -67,14 +67,24 @@ export function StockWorkspace({ work = false, selectionKey, productId, optionId
   const entryTargets = useRef<Target[] | null>(null);
   const initialWork = useRef(true);
   const backHandler = useRef<(() => Promise<void>) | null>(null);
-  const selectionScope = async () => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify([me.sellerId, me.userId])))), n => n.toString(16).padStart(2,"0")).join("");
+  const selectionScope = async () => { if (!me.sellerId || !me.userId) throw new Error("scope_unavailable"); return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify([me.sellerId, me.userId])))), n => n.toString(16).padStart(2,"0")).join(""); };
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok" }>({ kind: "loading" });
   const [rows, setRows] = useState<Row[]>([]);
   const [next, setNext] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDelta, setBulkDelta] = useState("");
   // 검색어·재고 조건은 주소(쿼리)에도 실어, 상세에 갔다 Back으로 돌아와도 그대로 복원한다(IA Back 규칙 3항)
-  const [u, setU] = useUrlState({ q: work ? initialQuery.get("q") ?? "" : "", stock: work ? initialQuery.get("stock") ?? "" : "" });
+  const urlDefaults = useRef({ q: work ? initialQuery.get("q") ?? "" : "", stock: work ? initialQuery.get("stock") ?? "" : "" });
+  const [u, setU] = useUrlState(urlDefaults.current);
+  const rawSearch = useSearchParams().toString();
+  const currentSearch = useRef(rawSearch); currentSearch.current = rawSearch;
+  const [navigationSync, setNavigationSync] = useState(false);
+  const navigationBusy = useRef(false);
+  const navigationQueue = useRef<Promise<void>>(Promise.resolve());
+  const navigationId = useRef(0);
+  const urlCommit = useRef<{ expected: string; resolve: () => void } | null>(null);
+  useEffect(() => { if (urlCommit.current?.expected === rawSearch) { const pending = urlCommit.current; urlCommit.current = null; pending.resolve(); } }, [rawSearch]);
+  useEffect(() => () => { navigationId.current++; urlCommit.current?.resolve(); urlCommit.current = null; }, []);
   const goList = useSmartBack(work ? listHref : "/seller/products");
   const [query, setQuery] = useState(u.q);
   const [filter, setFilter] = useState<Filter>(u.stock === "low" || u.stock === "out" ? u.stock : "all");
@@ -113,15 +123,18 @@ export function StockWorkspace({ work = false, selectionKey, productId, optionId
     if (work && !canEdit) { setSearching(false); return setState({ kind: "error", status: 403 }); }
     let r: Awaited<ReturnType<typeof fetchOptions>>;
     if (relative) {
+      if (!UUID.test(productId!) || !UUID.test(optionId!)) { setSearching(false); return setState({ kind: "error", status: 404 }); }
       const got = await api<{ id: string; name: string; options: { id: string; name: string; stock: number }[] }>(`/api/seller/products/${productId}`);
       const option = got.ok && got.data.id.toLowerCase() === productId?.toLowerCase() ? got.data.options.find(o => o.id.toLowerCase() === optionId?.toLowerCase()) : undefined;
       r = got.ok ? option ? { ok: true, status: 200, data: { options: [{ productId: got.data.id, productName: got.data.name, optionId: option.id, optionName: option.name, stock: option.stock }], nextCursor: null } } : { ok: false, status: 404, error: "not_found" } : got;
     } else {
       if (work && initialWork.current) {
         try {
+          if (!selectionKey) { entryTargets.current = []; } else {
           const scope = await selectionScope(), saved = JSON.parse(sessionStorage.getItem("onq:stock:selection") ?? "null");
           if (!selectionKey || saved?.key !== selectionKey || saved.scope !== scope || !Array.isArray(saved.ids) || saved.ids.length === 0 || !saved.ids.every((t: Target) => UUID.test(t.productId) && UUID.test(t.optionId))) throw new Error("invalid_selection");
           entryTargets.current = [...new Map<string, Target>(saved.ids.map((t: Target) => [t.optionId.toLowerCase(), { productId: t.productId.toLowerCase(), optionId: t.optionId.toLowerCase() }])).values()];
+          }
         } catch { setSearching(false); return setState({ kind: "error", status: 400 }); }
       }
       r = await fetchOptions(q, f, null);
@@ -145,7 +158,7 @@ export function StockWorkspace({ work = false, selectionKey, productId, optionId
           setSelected(new Set(available.map(t => t.optionId)));
           if (available.length !== entryTargets.current.length) setNotice({ kind: "cau", text: `선택한 옵션 중 ${entryTargets.current.length - available.length}개는 조회 조건에 없거나 삭제되어 제외했습니다` });
         }
-        initialWork.current = false;
+
       }
     }
     if (id !== loadId.current) return;
@@ -166,8 +179,9 @@ export function StockWorkspace({ work = false, selectionKey, productId, optionId
     setPool((p) => ({ ...(reset && !keep ? {} : p), ...Object.fromEntries(got.map((x) => [x.key, x])) }));
     if (reset) {
       setNext((prev) => (keep ? keep(prev) : {}));
-      if (!work || !entryTargets.current) setSelected(new Set());
+      if (!work || !initialWork.current) setSelected(new Set());
     }
+    initialWork.current = false;
     setState({ kind: "ok" });
   }, [work, canEdit, relative, productId, optionId, selectionKey, me.sellerId, me.userId]);
 
@@ -185,6 +199,7 @@ export function StockWorkspace({ work = false, selectionKey, productId, optionId
     setPool((p) => ({ ...p, ...Object.fromEntries(got.map((x) => [x.key, x])) }));
   };
 
+  useEffect(() => { initialWork.current = true; entryTargets.current = null; navigationId.current++; }, [selectionKey, me.sellerId, me.userId]);
   useEffect(() => {
     void load(initial.current.q, initial.current.f, true);
     return () => { loadId.current++; };
@@ -205,8 +220,7 @@ export function StockWorkspace({ work = false, selectionKey, productId, optionId
       return;
     }
     const t = setTimeout(() => {
-      setUrl.current({ q: searchQ });
-      void load(searchQ, filterRef.current, false);
+      void navigateAndLoad({ q: searchQ }, searchQ, filterRef.current);
     }, SEARCH_DELAY_MS);
     return () => clearTimeout(t);
   }, [searchQ, load]);
@@ -217,8 +231,7 @@ export function StockWorkspace({ work = false, selectionKey, productId, optionId
       firstFilter.current = false;
       return;
     }
-    setUrl.current({ stock: filter === "all" ? "" : filter });
-    void load(searchQRef.current, filter, false);
+    void navigateAndLoad({ stock: filter === "all" ? "" : filter }, searchQRef.current, filter);
   }, [filter, load]);
 
   const target = (r: Row) => (next[r.key] === undefined ? r.stock : parseAmount(next[r.key]));
@@ -231,7 +244,7 @@ export function StockWorkspace({ work = false, selectionKey, productId, optionId
   };
 
   // 검색어·재고 조건을 바꾼 뒤 결과가 오기 전에는 지금 보이는 줄이 옛 결과라, 모두 선택·한꺼번에 적기를 막는다
-  const pending = searching || searchQ !== loadedQ || filter !== loadedFilter;
+  const pending = navigationSync || searching || searchQ !== loadedQ || filter !== loadedFilter;
   // 검색·재고 조건은 서버가 걸러 준 결과 그대로다
   const visible = rows;
   // 불러온 줄(200개씩)은 모두 그린다. 더 그릴 줄은 「옵션 더 불러오기」로만 늘어난다
@@ -275,9 +288,35 @@ export function StockWorkspace({ work = false, selectionKey, productId, optionId
   const bulkNoteOk = !!bulkNote && !bulkMemoError;
   const [histKey, setHistKey] = useState(0);
   const dirty = work && !relative && (Object.keys(next).length > 0 || bulkDelta !== "" || bulkMemo !== "");
-  const releaseGuard = useUnsavedGuard(dirty);
+  const guardRelease = useRef<() => Promise<void>>(async () => {});
+  const [guardEpoch, setGuardEpoch] = useState(0);
+  const releaseGuard = useCallback(() => guardRelease.current(), []);
   const nextRef = useRef(next); nextRef.current = next;
-  const leave = async () => { if (backHandler.current) return backHandler.current(); if (applying || !confirmLeave(dirty)) return; await releaseGuard(); goList(); };
+  const bulkDeltaRef = useRef(bulkDelta); bulkDeltaRef.current = bulkDelta;
+  const leave = async () => { if (backHandler.current) return backHandler.current(); if (navigationBusy.current || applying || !confirmLeave(dirty)) return; await releaseGuard(); goList(); };
+  const navigateAndLoad = (patch: Partial<{ q: string; stock: string }>, q: string, f: Filter) => {
+    const job = ++navigationId.current;
+    navigationQueue.current = navigationQueue.current.then(async () => {
+      if (job !== navigationId.current) return;
+      const nextSearch = new URLSearchParams(currentSearch.current);
+      for (const [key, value] of Object.entries(patch)) {
+        if (value === urlDefaults.current[key as "q" | "stock"]) nextSearch.delete(key); else nextSearch.set(key, value!);
+      }
+      const expected = nextSearch.toString();
+      if (expected !== currentSearch.current) {
+        if (work) {
+          navigationBusy.current = true; setNavigationSync(true);
+          await releaseGuard();
+          if (job !== navigationId.current) { navigationBusy.current = false; setNavigationSync(false); return; }
+        }
+        await new Promise<void>(resolve => { urlCommit.current = { expected, resolve }; setUrl.current(patch); });
+        if (work) { setGuardEpoch(epoch => epoch + 1); navigationBusy.current = false; setNavigationSync(false); }
+        if (job !== navigationId.current) return;
+      }
+      await load(q, f, false);
+    });
+    return navigationQueue.current;
+  };
   const openWork = async () => {
     if (!canEdit || pending || selected.size === 0) return;
     const ids = shown.filter(r => selected.has(r.key)).map(r => ({ productId: r.productId, optionId: r.optionId }));
@@ -294,6 +333,7 @@ export function StockWorkspace({ work = false, selectionKey, productId, optionId
     setConfirm(false);
     setApplying(true);
     setNotice(null);
+    const sentBulkDelta = bulkDelta;
     const conflicts: string[] = [];
     const failed: string[] = [];
     let done = 0;
@@ -311,20 +351,30 @@ export function StockWorkspace({ work = false, selectionKey, productId, optionId
       else failed.push(`${r.productName} · ${r.optionName}`);
       setProgress({ done: ++sent, total: valid.length });
     }
-    if (Object.entries(nextRef.current).every(([key, value]) => sentValues[key] === value)) await releaseGuard();
-    setApplying(false);
-    setProgress(null);
-    setBulkReason(null);
-    setBulkMemo("");
-    await load(searchQRef.current, filterRef.current, true, (prev) => Object.fromEntries(Object.entries(prev).filter(([k, v]) => sentValues[k] !== v)));
-    setHistKey((k) => k + 1);
-    if (done) setToast(`재고 ${done}건을 변경했습니다`);
-    if (conflicts.length || failed.length) {
-      const parts = [];
-      if (conflicts.length) parts.push(`그사이 주문 등으로 재고가 바뀌어 ${conflicts.length}건은 변경하지 않았습니다(${conflicts.join(", ")}). 지금 재고를 보고 다시 입력해 주십시오.`);
-      if (failed.length) parts.push(`${failed.length}건은 저장하지 못했습니다(${failed.join(", ")}).`);
-      setNotice({ kind: "cau", text: parts.join(" ") });
-    }
+    const finalize = async () => {
+      if (Object.entries(nextRef.current).every(([key, value]) => sentValues[key] === value) && bulkDeltaRef.current === sentBulkDelta) {
+        await releaseGuard();
+        // 완료와 다음 입력 사이 dirty가 계속 true여도 새 보호를 등록한다.
+        setGuardEpoch(epoch => epoch + 1);
+      }
+      setNext(prev => Object.fromEntries(Object.entries(prev).filter(([key, value]) => sentValues[key] !== value)));
+      if (bulkDeltaRef.current === sentBulkDelta) setBulkDelta("");
+      setApplying(false);
+      setProgress(null);
+      setBulkReason(null);
+      setBulkMemo("");
+      await load(searchQRef.current, filterRef.current, true, (prev) => Object.fromEntries(Object.entries(prev).filter(([k, v]) => sentValues[k] !== v)));
+      setHistKey((k) => k + 1);
+      if (done) setToast(`재고 ${done}건을 변경했습니다`);
+      if (conflicts.length || failed.length) {
+        const parts = [];
+        if (conflicts.length) parts.push(`그사이 주문 등으로 재고가 바뀌어 ${conflicts.length}건은 변경하지 않았습니다(${conflicts.join(", ")}). 지금 재고를 보고 다시 입력해 주십시오.`);
+        if (failed.length) parts.push(`${failed.length}건은 저장하지 못했습니다(${failed.join(", ")}).`);
+        setNotice({ kind: "cau", text: parts.join(" ") });
+      }
+    };
+    navigationQueue.current = navigationQueue.current.then(finalize);
+    await navigationQueue.current;
   };
 
   // 「모두 선택」은 지금 불러온 옵션을 모두 고른다(서버 결과가 더 있으면 「옵션 더 불러오기」 뒤에 고른다)
@@ -358,7 +408,8 @@ export function StockWorkspace({ work = false, selectionKey, productId, optionId
 
   return (
     <>
-      <Topbar crumb="상품 › 재고 › 재고 수정" showCurrent />
+      <Topbar crumb="상품 › 재고 › 재고 수정" showCurrent>{!work && <button className="btn btn-sm btn-out" type="button" onClick={() => void leave()}>상품 목록</button>}</Topbar>
+      <StockDraftGuard key={guardEpoch} dirty={dirty} release={guardRelease} />
       <main className="main">
         <PageHead title={relative ? "재고 빼기 · 더하기" : work ? "선택 재고 작업" : "재고 수정"} back={work ? listHref : "/seller/products"} onBack={leave} actions={!work && canEdit ? <button className="btn" type="button" disabled={pending || selected.size === 0} onClick={() => void openWork()}>선택 재고 작업</button> : undefined} />
         <p className="t-l2 c-alt">{work ? "선택한 옵션의 상세 입력에서 바꿀 재고를 적고, 사유와 변경 요약을 확인한 뒤 적용합니다." : "현재 재고를 조회하고, 옵션을 골라 작업 상세에서 수정합니다."}</p>
@@ -409,7 +460,7 @@ export function StockWorkspace({ work = false, selectionKey, productId, optionId
                 </label>
                 {work && <div className="row stock-bulk">
                   <span className="t-l2 c-alt">선택한 옵션에</span>
-                  <input className="inp inp-sm num stock-delta" type="text" inputMode="numeric" placeholder="+10" value={bulkDelta} onChange={(e) => setBulkDelta(e.target.value)} aria-label="선택한 옵션에 더하거나 뺄 수량" />
+                  <input disabled={navigationSync} className="inp inp-sm num stock-delta" type="text" inputMode="numeric" placeholder="+10" value={bulkDelta} onChange={(e) => setBulkDelta(e.target.value)} aria-label="선택한 옵션에 더하거나 뺄 수량" />
                   <button className="btn btn-dense btn-out btn-w-lg" type="button" onClick={applyBulkDelta} disabled={pending || selected.size === 0 || !parseAmount(bulkDelta)}>
                     한꺼번에 적기
                   </button>
@@ -464,6 +515,8 @@ export function StockWorkspace({ work = false, selectionKey, productId, optionId
                         현재
                       </th>
 
+                      <th className="stock-w-next">변경 후</th>
+                      <th className="stock-w-diff">차이</th>
                       <th className="stock-w-state">상태</th>
                       <th className="stock-w-act" />
                     </tr>
@@ -513,6 +566,8 @@ export function StockWorkspace({ work = false, selectionKey, productId, optionId
                             <span className="m-lbl">현재 </span>
                             {r.stock.toLocaleString("ko-KR")}
                           </td>
+                          <td className="c-next num"><span className="m-lbl">변경 후 </span>{t === null ? "—" : t.toLocaleString("ko-KR")}</td>
+                          <td className="c-diff num"><span className="m-lbl">차이 </span>{signed(diff)}</td>
                           <td className="c-state">
                             <span className={`bdg ${badge.c}`}>{badge.l}</span>
                           </td>
@@ -520,7 +575,7 @@ export function StockWorkspace({ work = false, selectionKey, productId, optionId
                             <button className="btn btn-sm btn-out btn-w-md" type="button" onClick={() => setHistRow(r)} aria-label={`${r.productName} ${r.optionName} 이력`}>
                               이력
                             </button>
-                            {canEdit && <Link className="btn btn-sm btn-out btn-w-md" href={`/seller/products/${r.productId}/options/${r.optionId}/stock?${new URLSearchParams({ returnTo: work ? listHref : `/seller/products/stock${u.q || u.stock ? `?${new URLSearchParams({ ...(u.q ? { q: u.q } : {}), ...(u.stock ? { stock: u.stock } : {}) })}` : ""}` })}`} aria-label={`${r.productName} ${r.optionName} 빼기 · 더하기`}>빼기 · 더하기</Link>}
+                            {canEdit && <Link className="btn btn-sm btn-out btn-w-md" href={`/seller/products/${r.productId}/options/${r.optionId}/stock?${new URLSearchParams({ returnTo: `/seller/products/stock${u.q || u.stock ? `?${new URLSearchParams({ ...(u.q ? { q: u.q } : {}), ...(u.stock ? { stock: u.stock } : {}) })}` : ""}` })}`} aria-label={`${r.productName} ${r.optionName} 빼기 · 더하기`}>빼기 · 더하기</Link>}
                           </td>
                         </tr>
                       );
@@ -548,13 +603,14 @@ export function StockWorkspace({ work = false, selectionKey, productId, optionId
               </div>
             </section>
 
-            {work && shown.filter(r => selected.has(r.key)).map(r => {
+            {work && !searchError && shown.filter(r => selected.has(r.key)).map(r => {
               const t = target(r), err = rowError(r), diff = t === null ? 0 : t - r.stock;
               return <section key={r.key} aria-label={`${r.productName} ${r.optionName} 재고 상세`} data-testid="stock-edit">
                 <FormSection title={`${r.productName} · ${r.optionName}`}><FormRow label="현재 재고">{r.stock.toLocaleString("ko-KR")}</FormRow><FormRow label="변경 후 재고"><input
                               className={`inp inp-sm num${err ? " is-error" : diff !== 0 ? " is-focus" : ""}`}
                               type="text"
                               inputMode="numeric"
+                              disabled={navigationSync}
                               value={next[r.key] ?? String(r.stock)}
                               onChange={(e) => setNext((m) => ({ ...m, [r.key]: e.target.value }))}
                               aria-label={`${r.productName} ${r.optionName} 변경 후 재고`}
@@ -590,7 +646,7 @@ export function StockWorkspace({ work = false, selectionKey, productId, optionId
                 </div>
               </dl>
               <div className="row" style={{ justifyContent: "flex-end" }}>
-                <button className="btn" type="button" disabled={valid.length === 0 || applying} onClick={() => setConfirm(true)}>
+                <button className="btn" type="button" disabled={valid.length === 0 || applying || navigationSync} onClick={() => setConfirm(true)}>
                   {applyLabel}
                 </button>
               </div>
@@ -617,7 +673,7 @@ export function StockWorkspace({ work = false, selectionKey, productId, optionId
             바꿀 옵션 <b className="num">{valid.length}개</b>
             {invalid.length > 0 && <span className="c-neg"> · 고칠 칸 {invalid.length}개</span>}
           </span>
-          <button className="btn" type="button" disabled={valid.length === 0 || applying} onClick={() => setConfirm(true)}>
+          <button className="btn" type="button" disabled={valid.length === 0 || applying || navigationSync} onClick={() => setConfirm(true)}>
             {applyLabel}
           </button>
         </div>
@@ -661,7 +717,7 @@ export function StockWorkspace({ work = false, selectionKey, productId, optionId
               <button className="btn btn-out" type="button" onClick={() => setConfirm(false)}>
                 취소
               </button>
-              <button className="btn" type="button" onClick={() => void applyChanges()} disabled={!bulkNoteOk}>
+              <button className="btn" type="button" onClick={() => void applyChanges()} disabled={!bulkNoteOk || navigationSync}>
                 적용
               </button>
             </div>
@@ -691,6 +747,13 @@ export function StockWorkspace({ work = false, selectionKey, productId, optionId
       {toast && <Toast text={toast} onDone={() => setToast(null)} />}
     </>
   );
+}
+
+// 로컬 완료 경계만 새로 시작한다. 공유 hook의 동작이나 다른 폼의 보호 수명은 바꾸지 않는다.
+function StockDraftGuard({ dirty, release }: { dirty: boolean; release: { current: () => Promise<void> } }) {
+  const releaseGuard = useUnsavedGuard(dirty);
+  useEffect(() => { release.current = releaseGuard; return () => { if (release.current === releaseGuard) release.current = async () => {}; }; }, [release, releaseGuard]);
+  return null;
 }
 
 // 재고 빼기·더하기 시트: 수량과 사유(필수)를 받아 재고 증감 API로 보낸다
