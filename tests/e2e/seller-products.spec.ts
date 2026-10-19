@@ -139,9 +139,11 @@ for (const surface of ["수정 화면", "상품 작업 상세"] as const) {
     await page.goto(isForm ? `/seller/products/${product.id}` : `/seller/products?q=${encodeURIComponent(name)}`);
     if (!isForm) {
       const link = page.getByTestId("product-row").filter({ hasText: name }).getByRole("link", { name: "수정", exact: true });
-      await expect(link).toHaveAttribute("href", `/seller/products/${product.id}/operations`);
+      const list = new URL(page.url());
+      const href = `/seller/products/${product.id}/operations?${new URLSearchParams({ returnTo: list.pathname + list.search })}`;
+      await expect(link).toHaveAttribute("href", href);
       await link.click();
-      await expect(page).toHaveURL(new RegExp(`/seller/products/${product.id}/operations$`));
+      await expect(page).toHaveURL(new URL(href, list).href);
       await expect(page.getByTestId("product-detail-operations")).toBeVisible();
     }
     const row = page.getByTestId("product-detail-operations");

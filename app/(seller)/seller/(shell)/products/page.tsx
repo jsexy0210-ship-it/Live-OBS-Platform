@@ -2,6 +2,7 @@
 
 import { formatDateTimeParts } from "../../../../../lib/client/format";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
 import { CursorPagination, ListHead, ListTable, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
@@ -113,6 +114,8 @@ export default function ProductListPage() {
   const { can } = useSeller();
   // 적용한 조건·정렬·개수는 주소(쿼리)가 기준이다. 상세에 갔다 Back으로 돌아와도 그대로 복원된다(IA Back 규칙 3항)
   const [u, setU] = useUrlState(urlDefaults());
+  const searchParams = useSearchParams().toString();
+  const returnTo = `/seller/products${searchParams ? `?${searchParams}` : ""}`;
   const applied: Filters = {
     status: oneOf(u.status, FILTERS.map((f) => f.key), "ALL"),
     stock: u.stock === "out" || u.stock === "low" ? u.stock : null,
@@ -354,7 +357,7 @@ export default function ProductListPage() {
                     </option>
                   ))}
                 </select>
-                {canManage && (selected.size > 0 ? <Link className="btn btn-dense btn-out btn-level-bulk" href={`/seller/products/operations?ids=${encodeURIComponent([...selected].join(","))}`}>선택 상품 작업 상세</Link> : <button className="btn btn-dense btn-out btn-level-bulk" type="button" disabled>선택 상품 작업 상세</button> )}
+                {canManage && (selected.size > 0 ? <Link className="btn btn-dense btn-out btn-level-bulk" href={`/seller/products/operations?${new URLSearchParams({ ids: [...selected].join(","), returnTo })}`}>선택 상품 작업 상세</Link> : <button className="btn btn-dense btn-out btn-level-bulk" type="button" disabled>선택 상품 작업 상세</button> )}
               </>
             }
           />
@@ -488,7 +491,7 @@ export default function ProductListPage() {
                             {formatDateTimeParts(p.createdAt)?.time}</td>
                           {canManage && (
                             <td>
-                              <Link className="btn btn-sm btn-out btn-level-table" href={`/seller/products/${p.id}/operations`}>
+                              <Link className="btn btn-sm btn-out btn-level-table" href={`/seller/products/${p.id}/operations?${new URLSearchParams({ returnTo })}`}>
                                 수정
                               </Link>
                             </td>
