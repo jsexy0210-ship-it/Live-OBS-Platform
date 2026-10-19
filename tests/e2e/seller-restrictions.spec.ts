@@ -146,7 +146,7 @@ test("요금제에 없는 기능(403 plan_feature_required)이면 권한 안내�
   await expect(page.getByText("이 계정은 이 일을 할 수 없습니다")).toHaveCount(0);
 });
 
-test("목록이 200건에 닿으면 최근 200건까지만 표시한다고 안내한다", async ({ page }) => {
+test("목록이 200건이면 10건씩 20쪽 모두 접근하고 최근 200건 안내를 유지한다", async ({ page }) => {
   const rows = Array.from({ length: 200 }, (_, i) => ({
     id: `r${i}`,
     buyerMemberId: `b${i}`,
@@ -161,7 +161,20 @@ test("목록이 200건에 닿으면 최근 200건까지만 표시한다고 안�
   await page.goto("/seller/login?next=%2Fseller%2Fpurchase-restrictions");
   await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
   await expect(page.getByText("최근 200건까지만 표시합니다", { exact: false })).toBeVisible();
-  await expect(page.getByTestId("restriction-row")).toHaveCount(200);
+  const list = page.getByTestId("restriction-row");
+  const nav = page.getByRole("navigation", { name: "구매 제한 페이지 이동", exact: true });
+  const seen = new Set<string>();
+  for (let current = 1; current <= 20; current++) {
+    await expect(nav.locator('[aria-current="page"]')).toHaveText(String(current));
+    await expect(list).toHaveCount(10);
+    for (const name of await list.locator(".fw6").allTextContents()) seen.add(name);
+    if (current < 20) await nav.getByRole("button", { name: "다음", exact: true }).click();
+  }
+  expect(seen).toEqual(new Set(rows.map(r => r.buyerMember.broadcastNickname)));
+  await expect(nav.getByRole("button", { name: "다음", exact: true })).toBeDisabled();
+  await nav.getByRole("button", { name: "처음", exact: true }).click();
+  await expect(nav.locator('[aria-current="page"]')).toHaveText("1");
+  await expect(list).toHaveCount(10);
 });
 
 test("회원·적립금 권한이 없는 직원은 메뉴가 안 보이고, 주소로 들어와도 권한 안내를 본다", async ({ page }) => {
