@@ -174,6 +174,7 @@ function AdjustmentForm({ row, live, scope, onClose, onDone }: { row: Adjustment
       },
     });
     if (!ok || !result) return;
+    setBusy(true);
     await releaseGuard();
     onDone(
       result.balanceAfter === null

@@ -70,16 +70,10 @@ export default function RewardBalancesPage() {
   );
   const [filter, setFilter] = useState<Cond>(applied);
   const [state, setState] = useState<Load>({ kind: "loading" });
-  // 같은 목록 기록으로 돌아올 때만 방문한 커서를 복원한다. 다른 사용자·조건·직접 진입은 첫 쪽이다.
-  const [restored] = useState<{ page: number; cursors: (string | undefined)[] } | undefined>(() => {
-    if (typeof window === "undefined") return;
-    const saved = history.state?.rewardBalances;
-    if (!saved || saved.scope !== JSON.stringify([me.sellerId, me.userId]) || saved.filters !== params(applied).toString() || !Number.isInteger(saved.page) || saved.page < 1 || !Array.isArray(saved.cursors) || saved.cursors.length !== saved.page || saved.cursors[0] !== null || !saved.cursors.slice(1).every((cursor: unknown) => typeof cursor === "string" && cursor.length > 0)) return;
-    return { page: saved.page, cursors: saved.cursors.map((cursor: string | null) => cursor ?? undefined) };
-  });
-  const initialPaging = useRef(restored);
-  const [page, setPage] = useState(restored?.page ?? 1);
-  const [cursors, setCursors] = useState<(string | undefined)[]>(restored?.cursors ?? [undefined]);
+  const initialPaging = useRef(true);
+  const pagingScope = useRef("");
+  const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
   const paging = useRef(false);
   const [toast, setToast] = useState<string | null>(null);
   const [grades, setGrades] = useState<{ id: string; name: string }[]>([]);
@@ -94,20 +88,35 @@ export default function RewardBalancesPage() {
     return `/api/seller/reward-balances?${p.toString()}`;
   };
   type Res = { balances: Row[]; summary: Summary; pending: { count: number; amount: number }; nextCursor: string | null };
-  const load = useCallback(async (c: Cond, restore?: { page: number; cursors: (string | undefined)[] }) => {
+  const load = useCallback(async (c: Cond, restorePaging = false) => {
     const id = ++reqId.current;
-    paging.current = false; setPage(restore?.page ?? 1); setCursors(restore?.cursors ?? [undefined]);
-
+    paging.current = false;
     setState({ kind: "loading" });
+    // 검색 문자·회원·금액은 보관하지 않는다. 상세 이동 때 남긴 같은 사용자·조건의 커서만 한 번 소비한다.
+    let scope = "";
+    try { scope = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify([me.sellerId, me.userId, params(c).toString()])))), (n) => n.toString(16).padStart(2, "0")).join(""); } catch {}
+    if (id !== reqId.current) return;
+    pagingScope.current = scope;
+    let restore: { page: number; cursors: (string | undefined)[] } | undefined;
+    if (restorePaging && scope) {
+      try {
+        const saved = JSON.parse(sessionStorage.getItem("onq:reward-balances:return") ?? "null");
+        if (saved?.scope === scope && Number.isInteger(saved.page) && saved.page >= 1 && Array.isArray(saved.cursors) && saved.cursors.length === saved.page && saved.cursors[0] === null && saved.cursors.slice(1).every((cursor: unknown) => typeof cursor === "string" && cursor.length > 0)) {
+          restore = { page: saved.page, cursors: saved.cursors.map((cursor: string | null) => cursor ?? undefined) };
+          sessionStorage.removeItem("onq:reward-balances:return");
+        }
+      } catch {} // 목록 위치는 보조 정보다. 금융 요청의 필수 UUID 보관과는 별개다.
+    }
+    setPage(restore?.page ?? 1); setCursors(restore?.cursors ?? [undefined]);
     const r = await api<Res>(url(c, restore?.cursors[restore.page - 1]));
     if (id !== reqId.current) return;
     setState(r.ok ? { kind: "ok", rows: r.data.balances, next: r.data.nextCursor, summary: r.data.summary, pending: r.data.pending } : { kind: "error", status: r.status });
-  }, []);
-  useEffect(() => { const restore = initialPaging.current; initialPaging.current = undefined; void load(applied, restore); }, [applied, load]);
-  useEffect(() => {
-    if (state.kind !== "ok") return;
-    history.replaceState({ ...history.state, rewardBalances: { scope: JSON.stringify([me.sellerId, me.userId]), filters: params(applied).toString(), page, cursors: cursors.map((cursor) => cursor ?? null) } }, "", location.href);
-  }, [state.kind, me.sellerId, me.userId, applied, page, cursors]);
+  }, [me.sellerId, me.userId]);
+  useEffect(() => { const restore = initialPaging.current; initialPaging.current = false; void load(applied, restore); }, [applied, load]);
+  const rememberPage = () => {
+    if (!pagingScope.current) return;
+    try { sessionStorage.setItem("onq:reward-balances:return", JSON.stringify({ scope: pagingScope.current, page, cursors: cursors.map((cursor) => cursor ?? null) })); } catch {}
+  };
   useEffect(() => setFilter(applied), [applied]);
   useScrollRestore("seller-reward-balances", state.kind === "ok");
   useEffect(() => {
@@ -262,7 +271,7 @@ export default function RewardBalancesPage() {
                           <td>{r.expiry?.soon ? `${won(r.expiry.amount)} · ${md(r.expiry.expiresAt)}` : "—"}</td>
                           <td className="num" data-label-set data-label="변동">{r.updatedAt ? formatDateTime(r.updatedAt) : "—"}</td>
                           <td data-card="actions">
-                            <Link className="btn btn-sm btn-out" href={`/seller/rewards/balances/${r.member.id}?${new URLSearchParams({ returnTo: listHref })}`} aria-label={`${r.member.broadcastNickname ?? "회원"} 적립금 조정`}>
+                            <Link className="btn btn-sm btn-out" href={`/seller/rewards/balances/${r.member.id}?${new URLSearchParams({ returnTo: listHref })}`} onClick={rememberPage} aria-label={`${r.member.broadcastNickname ?? "회원"} 적립금 조정`}>
                               조정 상세
                             </Link>
                           </td>
