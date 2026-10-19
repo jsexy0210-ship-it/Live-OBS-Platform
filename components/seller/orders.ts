@@ -187,3 +187,29 @@ export const phoneText = (p: string) => {
   if (d.length === 10) return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
   return p;
 };
+
+type RefundRequestStatus = "REQUESTED" | "APPROVED" | "REJECTED" | "CANCELLED";
+type Sel = { orderItemId: string; quantity: number }[];
+export type RefundRequestRow = {
+  id: string;
+  orderId: string;
+  orderNo: number;
+  orderNoLabel: string;
+  nickname: string | null;
+  totalAmount: number;
+  status: RefundRequestStatus;
+  reason: string;
+  reasonLabel: string;
+  reasonText: string;
+  items: Sel | null;
+  rejectReason: string | null;
+  decidedAt: string | null;
+  cancelledAt: string | null;
+  createdAt: string;
+};
+export type RefundRequestDetail = RefundRequestRow & {
+  order: { status: string; totalAmount: number };
+  refundPreview: RefundPreview | null;
+  previewError: string | null;
+  queueVersion: number | null;
+};
