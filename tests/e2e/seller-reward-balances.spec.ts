@@ -195,3 +195,73 @@ test("수동 조정: 회수는 잔액을 넘을 수 없고, 지급은 확인 창
     await setLive(false);
   }
 });
+
+test("조정 결과를 잃고 창을 다시 열어도 같은 요청은 한 번만 반영하고, 성공 후에는 새 요청으로 보낸다", async ({ page }) => {
+  await reset();
+  await withDb(async (db, sellerId, buyerMemberId) => {
+    await db.rewardBalance.create({ data: { sellerId, buyerMemberId, balance: 700 } });
+    await db.rewardPolicy.upsert({ where: { sellerId }, create: { sellerId, livePayoutEnabled: true }, update: { livePayoutEnabled: true } });
+  });
+  const sent: { requestId: string; direction: string; amount: number; reason: string }[] = [];
+  const replies: { replayed: boolean; balanceAfter: number }[] = [];
+  await page.route("**/api/seller/reward-balances/*/adjust", async (route) => {
+    sent.push(route.request().postDataJSON());
+    // 다른 내용의 실패도 원래 요청의 재시도 키를 지우지 않아야 한다.
+    if (sent.length === 2) return route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "internal" }) });
+    const response = await route.fetch();
+    expect(response.ok()).toBe(true);
+    replies.push(await response.json());
+    // 서버는 반영했지만 브라우저는 결과를 받지 못한 상황.
+    if (sent.length === 1) return route.abort("failed");
+    return route.fulfill({ response });
+  });
+  try {
+    await open(page);
+    const row = page.getByTestId("balance-row").first();
+    await row.getByRole("button", { name: /적립금 조정/ }).click();
+    const modal = page.getByRole("dialog", { name: `수동 조정 · ${NICK}` });
+    const ask = page.getByRole("dialog", { name: "적립금 잔액을 조정하시겠습니까?" });
+    await modal.getByLabel("조정 금액").fill("1,000");
+    await modal.getByLabel("사유").fill(" 재시도 ");
+    await modal.getByRole("button", { name: "적용" }).click();
+    await ask.getByRole("button", { name: "조정", exact: true }).click();
+    await expect(ask.getByRole("alert")).toBeVisible();
+    await ask.getByRole("button", { name: "취소", exact: true }).click();
+    await modal.getByRole("button", { name: "취소", exact: true }).click();
+    await modal.locator(".modal-confirm").getByRole("button", { name: "닫기", exact: true }).click();
+    await expect(modal).toHaveCount(0);
+
+    await row.getByRole("button", { name: /적립금 조정/ }).click();
+    await modal.getByLabel("조정 금액").fill("1000");
+    await modal.getByLabel("사유").fill("다른 사유");
+    await modal.getByRole("button", { name: "적용" }).click();
+    await ask.getByRole("button", { name: "조정", exact: true }).click();
+    await expect(ask.getByRole("alert")).toBeVisible();
+    await ask.getByRole("button", { name: "취소", exact: true }).click();
+    expect(sent[1].requestId).not.toBe(sent[0].requestId);
+
+    await modal.getByLabel("사유").fill("재시도");
+    await modal.getByRole("button", { name: "적용" }).click();
+    await ask.getByRole("button", { name: "조정", exact: true }).click();
+    await expect(modal).toHaveCount(0);
+    expect(sent[2]).toEqual(sent[0]);
+    expect(sent[0]).toMatchObject({ direction: "GRANT", amount: 1000, reason: "재시도" });
+    expect(replies[1]).toMatchObject({ replayed: true, balanceAfter: 1700 });
+    expect(await withDb((db, sellerId) => db.rewardLedger.count({ where: { sellerId, type: "ADJUST" } }))).toBe(1);
+    await expect(row.locator("td").nth(2)).toHaveText("1,700원");
+
+    await row.getByRole("button", { name: /적립금 조정/ }).click();
+    await modal.getByLabel("조정 금액").fill("1000");
+    await modal.getByLabel("사유").fill("재시도");
+    await modal.getByRole("button", { name: "적용" }).click();
+    await ask.getByRole("button", { name: "조정", exact: true }).click();
+    await expect(modal).toHaveCount(0);
+    expect(sent[3].requestId).not.toBe(sent[0].requestId);
+    expect(sent[3].requestId).toMatch(/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i);
+    expect(replies[2]).toMatchObject({ replayed: false, balanceAfter: 2700 });
+    expect(await withDb((db, sellerId) => db.rewardLedger.count({ where: { sellerId, type: "ADJUST" } }))).toBe(2);
+    await expect(row.locator("td").nth(2)).toHaveText("2,700원");
+  } finally {
+    await withDb((db, sellerId) => db.rewardPolicy.update({ where: { sellerId }, data: { livePayoutEnabled: false } }));
+  }
+});

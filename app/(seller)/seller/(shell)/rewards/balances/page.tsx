@@ -73,6 +73,7 @@ export default function RewardBalancesPage() {
   const [grades, setGrades] = useState<{ id: string; name: string }[]>([]);
   const [live, setLive] = useState<boolean | null>(null);
   const [adjusting, setAdjusting] = useState<Row | null>(null);
+  const adjustmentRequests = useRef(new Map<string, string>());
   // 조건을 빨리 바꾸면 이전 응답이 늦게 올 수 있다. 마지막으로 보낸 조건의 응답만 반영한다
   const reqId = useRef(0);
 
@@ -267,6 +268,7 @@ export default function RewardBalancesPage() {
       </main>
       {adjusting && (
         <AdjustModal
+          requests={adjustmentRequests.current}
           row={adjusting}
           live={live}
           onClose={() => setAdjusting(null)}
@@ -282,8 +284,8 @@ export default function RewardBalancesPage() {
   );
 }
 
-// 수동 조정 창: 지급/회수·금액·사유(필수) → 「조정」 → 확인 창 → POST. requestId는 확인 창을 열 때 만든다(응답을 잃고 다시 눌러도 한 번만 반영).
-function AdjustModal({ row, live, onClose, onDone }: { row: Row; live: boolean | null; onClose: () => void; onDone: (text: string) => void }) {
+// 결과를 확인하지 못한 요청은 창을 다시 열어도 같은 UUID로 재시도한다. 성공한 요청만 페이지의 보관 목록에서 지운다.
+function AdjustModal({ row, live, requests, onClose, onDone }: { row: Row; live: boolean | null; requests: Map<string, string>; onClose: () => void; onDone: (text: string) => void }) {
   const { confirm } = useConfirm();
   const [direction, setDirection] = useState<"GRANT" | "REVOKE">("GRANT");
   const [amount, setAmount] = useState("");
@@ -302,7 +304,7 @@ function AdjustModal({ row, live, onClose, onDone }: { row: Row; live: boolean |
     if (direction === "REVOKE" && amt > row.balance) return setError("회수할 금액이 회원 잔액보다 많습니다");
     if (!reason.trim()) return setError("사유를 입력해 주십시오");
     setError(null);
-    const requestId = crypto.randomUUID();
+    const intent = JSON.stringify([row.member.id, direction, amt, reason.trim()]);
     const signedText = `${direction === "GRANT" ? "+" : "−"}${won(amt)}`;
     let result: { balanceAfter: number | null } | undefined;
     const ok = await confirm({
@@ -311,9 +313,12 @@ function AdjustModal({ row, live, onClose, onDone }: { row: Row; live: boolean |
       confirmLabel: "조정",
       run: async () => {
         setBusy(true);
+        const requestId = requests.get(intent) ?? crypto.randomUUID();
+        requests.set(intent, requestId);
         const r = await api<{ balanceAfter: number | null }>(`/api/seller/reward-balances/${row.member.id}/adjust`, { method: "POST", body: { direction, amount: amt, reason: reason.trim(), requestId } });
         setBusy(false);
         if (!r.ok) return failMessage(r, "admin", "조정하지 못했습니다. 잠시 후 다시 시도해 주십시오");
+        requests.delete(intent);
         result = r.data;
       },
     });
