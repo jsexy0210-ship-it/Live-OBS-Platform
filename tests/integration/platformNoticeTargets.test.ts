@@ -10,7 +10,7 @@ import { prisma } from "../../lib/server/db";
 import { createPlatformNotice, getAdminNotice, listAdminNotices, sellerNoticeFile, TARGETS_MAX, updatePlatformNotice } from "../../lib/server/platform-notices/service";
 import { PASSWORD, createAdmin, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
-// 공지 대상 파트너스(MA-053·054): targetSellerIds가 비면 모든 파트너스, 있으면 그 파트너스에게만 보인다(보는 곳 PARTNERS일 때만).
+// 공지 대상 파트너스(MA-053·054): 명시 ALL/SPECIFIC, 빈 특정 초안과 기존 전체 공지의 호환을 구분한다.
 beforeEach(resetDb);
 afterAll(async () => {
   await db.$disconnect();
@@ -44,10 +44,12 @@ describe("공지 대상 파트너스", () => {
     const a = await shop();
     const b = await shop();
     const all = await createPlatformNotice(db, admin, input({ title: "전체 공지" }));
-    const only = await createPlatformNotice(db, admin, input({ title: "A 전용", targetSellerIds: [a.seller.id.toUpperCase(), a.seller.id] }));
+    const only = await createPlatformNotice(db, admin, input({ title: "A 전용", targetMode: "SPECIFIC", targetSellerIds: [a.seller.id.toUpperCase(), a.seller.id] }));
     if (!all.ok || !only.ok) throw new Error("create");
     expect(only.notice.targetSellerIds).toEqual([a.seller.id]);
+    expect(only.notice.targetMode).toBe("SPECIFIC");
     expect(all.notice.targetSellerIds).toEqual([]);
+    expect(all.notice.targetMode).toBe("ALL");
     const file = await db.platformNoticeFile.create({ data: { noticeId: only.notice.id, name: "a.pdf", data: Buffer.from("x"), contentType: "application/pdf", byteSize: 1, createdByAdminId: admin.admin.id } });
 
     const la = await json(await sellerList(get("/api/seller/platform-notices", a.cookie)));
@@ -72,7 +74,7 @@ describe("공지 대상 파트너스", () => {
     const admin = await adminCtx();
     const a = await shop();
     const b = await shop();
-    const only = await createPlatformNotice(db, admin, input({ title: "A 전용 알림", targetSellerIds: [a.seller.id] }));
+    const only = await createPlatformNotice(db, admin, input({ title: "A 전용 알림", targetMode: "SPECIFIC", targetSellerIds: [a.seller.id] }));
     if (!only.ok) throw new Error("create");
     const titles = async (cookie: string) => {
       const ctx = await requireSeller(db, cookie.replace("lo_seller=", ""));
@@ -83,30 +85,31 @@ describe("공지 대상 파트너스", () => {
     expect(await titles(b.cookie)).not.toContain("A 전용 알림");
   });
 
-  it("고칠 때 대상을 통째로 바꾸고(빈 배열이면 모든 파트너스로), 마스터 관리자 목록·상세에 대상이 나오며 로그 추적에 개수가 남는다", async () => {
+  it("명시 대상을 바꾸고 ALL 선택으로만 전체로 전환하며, 마스터 관리자 목록·상세에 대상이 나오며 로그 추적에 개수가 남는다", async () => {
     const admin = await adminCtx();
     const a = await shop();
     const b = await shop();
-    const made = await createPlatformNotice(db, admin, input({ targetSellerIds: [a.seller.id] }));
+    const made = await createPlatformNotice(db, admin, input({ targetMode: "SPECIFIC", targetSellerIds: [a.seller.id] }));
     if (!made.ok) throw new Error("create");
-    const upd = await updatePlatformNotice(db, admin, made.notice.id, input({ targetSellerIds: [b.seller.id], expectedVersion: made.notice.version }));
+    const upd = await updatePlatformNotice(db, admin, made.notice.id, input({ targetMode: "SPECIFIC", targetSellerIds: [b.seller.id], expectedVersion: made.notice.version }));
     expect(upd.ok && upd.notice.targetSellerIds).toEqual([b.seller.id]);
     expect((await json(await sellerGetOne(get(`/api/seller/platform-notices/${made.notice.id}`, a.cookie), idp(made.notice.id)))).status).toBe(404);
     expect((await json(await sellerGetOne(get(`/api/seller/platform-notices/${made.notice.id}`, b.cookie), idp(made.notice.id)))).status).toBe(200);
     const detail = await getAdminNotice(db, admin, made.notice.id);
     expect(detail.targetSellerIds).toEqual([b.seller.id]);
+    expect(detail.targetSellers).toEqual([{ id: b.seller.id, shopName: b.seller.shopName, slug: b.seller.slug }]);
     const list = await listAdminNotices(db, admin, {});
     expect(list.ok && list.items[0].targetSellerIds).toEqual([b.seller.id]);
     const log = await db.auditLog.findFirst({ where: { action: "platform.notice.update", targetId: made.notice.id } });
     expect(log?.before).toMatchObject({ targetCount: 1 });
     expect(log?.after).toMatchObject({ targetCount: 1 });
 
-    const cleared = await updatePlatformNotice(db, admin, made.notice.id, input({ targetSellerIds: [], expectedVersion: upd.ok ? upd.notice.version : -1 }));
+    const cleared = await updatePlatformNotice(db, admin, made.notice.id, input({ targetMode: "ALL", targetSellerIds: [], expectedVersion: upd.ok ? upd.notice.version : -1 }));
     expect(cleared.ok && cleared.notice.targetSellerIds).toEqual([]);
     expect(await db.platformNoticeTarget.count({ where: { noticeId: made.notice.id } })).toBe(0);
     expect((await json(await sellerGetOne(get(`/api/seller/platform-notices/${made.notice.id}`, a.cookie), idp(made.notice.id)))).status).toBe(200);
     // 옛 version으로 고치면 대상도 바뀌지 않는다
-    const stale = await updatePlatformNotice(db, admin, made.notice.id, input({ targetSellerIds: [a.seller.id], expectedVersion: made.notice.version }));
+    const stale = await updatePlatformNotice(db, admin, made.notice.id, input({ targetMode: "SPECIFIC", targetSellerIds: [a.seller.id], expectedVersion: made.notice.version }));
     expect(stale).toMatchObject({ ok: false, reason: "version_conflict" });
     expect(await db.platformNoticeTarget.count({ where: { noticeId: made.notice.id } })).toBe(0);
   });
@@ -119,15 +122,15 @@ describe("공지 대상 파트너스", () => {
       const r = await createPlatformNotice(db, admin, input(over));
       return r.ok ? "ok" : r.reason;
     };
-    expect(await bad({ audience: "PUBLIC", targetSellerIds: [a.seller.id] })).toBe("invalid_targets");
-    expect(await bad({ audience: "ALL", targetSellerIds: [a.seller.id] })).toBe("invalid_targets");
-    expect(await bad({ targetSellerIds: [ghost] })).toBe("invalid_targets");
-    expect(await bad({ targetSellerIds: [a.seller.id, "not-uuid"] })).toBe("invalid_targets");
-    expect(await bad({ targetSellerIds: a.seller.id })).toBe("invalid_targets");
-    expect(await bad({ targetSellerIds: Array.from({ length: TARGETS_MAX + 1 }, () => ghost) })).toBe("invalid_targets");
+    expect(await bad({ audience: "PUBLIC", targetMode: "SPECIFIC", targetSellerIds: [a.seller.id] })).toBe("invalid_targets");
+    expect(await bad({ audience: "ALL", targetMode: "SPECIFIC", targetSellerIds: [a.seller.id] })).toBe("invalid_targets");
+    expect(await bad({ targetMode: "SPECIFIC", targetSellerIds: [ghost] })).toBe("invalid_targets");
+    expect(await bad({ targetMode: "SPECIFIC", targetSellerIds: [a.seller.id, "not-uuid"] })).toBe("invalid_targets");
+    expect(await bad({ targetMode: "SPECIFIC", targetSellerIds: a.seller.id })).toBe("invalid_targets");
+    expect(await bad({ targetMode: "SPECIFIC", targetSellerIds: Array.from({ length: TARGETS_MAX + 1 }, () => ghost) })).toBe("invalid_targets");
     expect(await db.platformNotice.count()).toBe(0);
     // 공개·전체 공지는 빈 배열이면 문제없다
-    expect(await bad({ audience: "PUBLIC", targetSellerIds: [] })).toBe("ok");
+    expect(await bad({ audience: "PUBLIC", targetMode: "ALL", targetSellerIds: [] })).toBe("ok");
     expect(await bad({ audience: "ALL" })).toBe("ok");
   });
 });

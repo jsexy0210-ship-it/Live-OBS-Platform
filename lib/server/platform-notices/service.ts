@@ -244,7 +244,7 @@ export async function updatePlatformNotice(db: PrismaClient, admin: AdminSession
     if (expected !== before.version) return { ok: false as const, reason: "version_conflict" as const, currentVersion: before.version };
     const nextMode = targetMode ?? before.targetMode;
     const nextTargets = targetSellerIds ?? (targetMode === "ALL" ? [] : (before.targets ?? []).map((target) => target.sellerId));
-    if ((publish && nextMode === "SPECIFIC" && nextTargets.length === 0) || !(await targetsExist(tx, nextTargets))) return { ok: false as const, reason: "invalid_targets" as const };
+    if ((nextMode === "SPECIFIC" && data.audience !== "PARTNERS") || (publish && nextMode === "SPECIFIC" && nextTargets.length === 0) || !(await targetsExist(tx, nextTargets))) return { ok: false as const, reason: "invalid_targets" as const };
     const replaceTargets = targetMode !== undefined || targetSellerIds !== undefined;
     if (replaceTargets) await tx.platformNoticeTarget.deleteMany({ where: { noticeId: id } });
     const row = await tx.platformNotice.update({
