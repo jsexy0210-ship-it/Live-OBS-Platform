@@ -67,8 +67,17 @@ const APPROVED_BULK_COPY: Record<string, readonly string[]> = {
     "오류 상품은 건너뛰고 반영해요 · 목록에는 앞부분만 보여요 · 새 상품의 상태가 비면 「숨김」으로 등록해요(이미지를 올린 뒤 공개)",
   ],
 };
+// 목록에서 옮긴 실제 상품 작업 상세의 신규 안내만 정확히 허용한다.
+const APPROVED_PRODUCT_OPERATIONS_COPY: Record<string, readonly string[]> = {
+  "components/seller/ProductOperations.tsx": [
+    "가격·재고·판매 상태를 확인하고 상세에서 바꿔요.",
+    "작업할 상품을 목록에서 다시 골라 주세요.",
+    "상품을 불러오지 못했어요.",
+    "선택한 상품 {items.length}개에만 적용해요.",
+  ],
+};
 const withoutApprovedCopy = (file: string, text: string) =>
-  [...(APPROVED_READ_COPY[file] ?? []), ...(APPROVED_EXTERNAL_COPY[file] ?? []), ...(APPROVED_ADJUST_COPY[file] ?? []), ...(APPROVED_BULK_COPY[file] ?? [])].reduce((remaining, copy) => {
+  [...(APPROVED_READ_COPY[file] ?? []), ...(APPROVED_EXTERNAL_COPY[file] ?? []), ...(APPROVED_ADJUST_COPY[file] ?? []), ...(APPROVED_BULK_COPY[file] ?? []), ...(APPROVED_PRODUCT_OPERATIONS_COPY[file] ?? [])].reduce((remaining, copy) => {
     const escaped = copy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     return remaining.split(JSON.stringify(copy)).join('""').replace(new RegExp(`(?<=>)\\s*${escaped}\\s*(?=<)`, "g"), "");
   }, text);
@@ -135,7 +144,7 @@ describe("파트너스 관리자 화면 말투", () => {
     }
   });
 
-  it.each(Object.entries({ ...APPROVED_READ_COPY, ...APPROVED_EXTERNAL_COPY, ...APPROVED_ADJUST_COPY, ...APPROVED_BULK_COPY }))("%s는 승인된 신규 문구만 해요체로 허용한다", (file, copies) => {
+  it.each(Object.entries({ ...APPROVED_READ_COPY, ...APPROVED_EXTERNAL_COPY, ...APPROVED_ADJUST_COPY, ...APPROVED_BULK_COPY, ...APPROVED_PRODUCT_OPERATIONS_COPY }))("%s는 승인된 신규 문구만 해요체로 허용한다", (file, copies) => {
     const source = readFileSync(join(ROOT, file), "utf8");
     for (const copy of copies) {
       expect(source).toContain(copy);
