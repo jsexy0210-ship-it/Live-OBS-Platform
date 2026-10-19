@@ -72,8 +72,8 @@ test("구매 제한: 막혀 있으면 사유·기간이 보이고, 풀면 제한
   const info = page.getByTestId("restriction-info");
   await expect(info).toContainText("미입금 자동 취소 반복");
   await page.getByRole("button", { name: "제한 풀기" }).click();
-  const dialog = page.getByRole("dialog", { name: /구매 제한을 푸시겠습니까/ });
-  await dialog.getByLabel("사유").fill("입금 확인 후 해제");
+  const dialog = page.getByRole("region", { name: "구매 제한을 푸시겠습니까?", exact: true });
+  await dialog.getByLabel("사유 (선택)", { exact: true }).fill("입금 확인 후 해제");
   await dialog.getByRole("button", { name: "제한 풀기" }).click();
   await expect(page.getByText("구매 제한을 풀었습니다")).toBeVisible();
   await expect(page.getByTestId("restriction-none")).toBeVisible();
@@ -125,7 +125,7 @@ test("직접 제한: 기간·사유로 걸면 직접 제한으로 보이고 주�
   expect(row.reason).toBe("MANUAL");
   // 풀기
   await page.getByRole("button", { name: "제한 풀기" }).click();
-  await page.getByRole("dialog", { name: /구매 제한을 푸시겠습니까/ }).getByRole("button", { name: "제한 풀기" }).click();
+  await page.getByRole("region", { name: "구매 제한을 푸시겠습니까?", exact: true }).getByRole("button", { name: "제한 풀기" }).click();
   await expect(page.getByTestId("restriction-none")).toBeVisible();
 });
 

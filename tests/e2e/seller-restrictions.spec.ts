@@ -1,5 +1,5 @@
 import { PrismaClient } from "@prisma/client";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Locator } from "@playwright/test";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 import { submitSellerLogin } from "./sellerLogin";
 
@@ -49,6 +49,22 @@ async function shot(page: Page, name: string) {
   await page.setViewportSize({ width: 1440, height: 900 });
 }
 
+async function openRestriction(page: Page, row: Locator) {
+  const origin = new URL(page.url());
+  await expect(row.locator("button, input, select")).toHaveCount(0);
+  const link = row.getByRole("link", { name: "회원 상세", exact: true });
+  const href = await link.getAttribute("href");
+  expect(new URL(href!, origin).pathname).toMatch(/^\/seller\/members\/[0-9a-f-]{36}$/);
+  expect(new URL(href!, origin).searchParams.get("returnTo")).toBe(origin.pathname + origin.search);
+  await link.click();
+  await expect(page).toHaveURL(new URL(href!, origin).href);
+  await page.reload();
+  await expect(page.getByTestId("restriction-info")).toBeVisible();
+  await page.getByRole("region", { name: "구매 제한", exact: true }).getByRole("button", { name: "제한 풀기", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "구매 제한을 푸시겠습니까?", exact: true })).toBeVisible();
+}
+
 test("대표자: 막힌 구매자가 사유와 함께 한 줄로 보이고, 사유를 적어 풀면 목록에서 빠지고 다시 열어도 없다", async ({ page }) => {
   await restrictDemoBuyer();
   await page.goto("/seller/login?next=%2Fseller%2Fpurchase-restrictions");
@@ -62,8 +78,8 @@ test("대표자: 막힌 구매자가 사유와 함께 한 줄로 보이고, 사�
   await expect(row).toContainText("결제 후 취소 반복");
   await shot(page, "SA-043-restrictions");
 
-  await row.getByRole("button", { name: "제한 풀기" }).click();
-  const dialog = page.getByRole("dialog");
+  await openRestriction(page, row);
+  const dialog = page.getByRole("region", { name: "구매 제한을 푸시겠습니까?", exact: true });
   await expect(dialog).toContainText("구매 제한을 푸시겠습니까?");
   await dialog.getByLabel("사유 (선택)").fill("입금 확인 후 해제");
   const lift = page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/lift"));
@@ -72,6 +88,9 @@ test("대표자: 막힌 구매자가 사유와 함께 한 줄로 보이고, 사�
   expect(res.status()).toBe(200);
   expect(res.request().postDataJSON()).toEqual({ reason: "입금 확인 후 해제" });
   await expect(page.getByText(`${NICK}의 구매 제한을 풀었습니다`)).toBeVisible();
+  await expect(page.getByTestId("restriction-none")).toBeVisible();
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL(new URL("/seller/purchase-restrictions", page.url()).href);
   await expect(row).toHaveCount(0);
 
   await page.reload();
@@ -88,16 +107,17 @@ test("이미 풀린 제한을 풀려고 하면 목록을 다시 맞춘다", asyn
   const row = page.getByTestId("restriction-row").filter({ hasText: NICK });
   await expect(row).toHaveCount(1);
   // 화면을 연 뒤 다른 곳에서 풀렸다
+  await openRestriction(page, row);
   await withDb((db, sellerId, buyerMemberId) => db.buyerPurchaseRestriction.updateMany({ where: { sellerId, buyerMemberId, liftedAt: null }, data: { liftedAt: new Date() } }));
-  await row.getByRole("button", { name: "제한 풀기" }).click();
   const lift = page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/lift"));
-  await page.getByRole("dialog").getByRole("button", { name: "제한 풀기" }).click();
+  await page.getByRole("region", { name: "구매 제한을 푸시겠습니까?", exact: true }).getByRole("button", { name: "제한 풀기" }).click();
   expect((await lift).status()).toBe(404);
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page.getByText("주문이 막힌 구매자가 없습니다")).toBeVisible();
+  await expect(page.getByRole("region", { name: "구매 제한을 푸시겠습니까?", exact: true })).toHaveCount(0);
   // 다시 읽기에 성공해도 성공으로 보이지 않고 「이미 풀렸다」고 알린다
   await expect(page.getByText("이미 풀렸거나 기간이 끝난 제한입니다")).toBeVisible();
   await expect(page.getByText("목록이 최신이 아닐 수 있습니다.")).toHaveCount(0);
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page.getByText("주문이 막힌 구매자가 없습니다")).toBeVisible();
 });
 
 test("이미 풀린 제한이고 다시 읽기도 실패하면 목록이 최신이 아니라고 알린다", async ({ page }) => {
@@ -106,15 +126,15 @@ test("이미 풀린 제한이고 다시 읽기도 실패하면 목록이 최신�
   await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
   const row = page.getByTestId("restriction-row").filter({ hasText: NICK });
   await expect(row).toHaveCount(1);
+  await openRestriction(page, row);
   await withDb((db, sellerId, buyerMemberId) => db.buyerPurchaseRestriction.updateMany({ where: { sellerId, buyerMemberId, liftedAt: null }, data: { liftedAt: new Date() } }));
   // 다시 읽기만 실패시킨다
-  await page.route("**/api/seller/purchase-restrictions", (route) => (route.request().method() === "GET" ? route.fulfill({ status: 500, body: "{}" }) : route.continue()));
-  await row.getByRole("button", { name: "제한 풀기" }).click();
+  await page.route("**/api/seller/purchase-restrictions?buyerMemberId=*", (route) => (route.request().method() === "GET" ? route.fulfill({ status: 500, body: "{}" }) : route.continue()));
   // 서버 글자 수 기준(앞뒤 공백 제외)으로 센다
-  await page.getByRole("dialog").getByLabel("사유 (선택)").fill("  확인  ");
-  await expect(page.getByRole("dialog").getByText("2/200")).toBeVisible();
-  await page.getByRole("dialog").getByRole("button", { name: "제한 풀기" }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.getByRole("region", { name: "구매 제한을 푸시겠습니까?", exact: true }).getByLabel("사유 (선택)").fill("  확인  ");
+  await expect(page.getByRole("region", { name: "구매 제한을 푸시겠습니까?", exact: true }).getByText("2/200")).toBeVisible();
+  await page.getByRole("region", { name: "구매 제한을 푸시겠습니까?", exact: true }).getByRole("button", { name: "제한 풀기" }).click();
+  await expect(page.getByRole("region", { name: "구매 제한을 푸시겠습니까?", exact: true })).toHaveCount(0);
   await expect(page.getByText("목록이 최신이 아닐 수 있습니다.")).toBeVisible();
   await expect(page.getByText("이미 풀렸거나 기간이 끝난 제한입니다", { exact: false })).toBeVisible();
 });
@@ -124,12 +144,12 @@ test("이모지 150자 사유는 150자로 세어 풀 수 있다(UTF-16 길이�
   await page.goto("/seller/login?next=%2Fseller%2Fpurchase-restrictions");
   await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
   const row = page.getByTestId("restriction-row").filter({ hasText: NICK });
-  await row.getByRole("button", { name: "제한 풀기" }).click();
+  await openRestriction(page, row);
   const reason = "😀".repeat(150);
-  await page.getByRole("dialog").getByLabel("사유 (선택)").fill(reason);
-  await expect(page.getByRole("dialog").getByText("150/200")).toBeVisible();
+  await page.getByRole("region", { name: "구매 제한을 푸시겠습니까?", exact: true }).getByLabel("사유 (선택)").fill(reason);
+  await expect(page.getByRole("region", { name: "구매 제한을 푸시겠습니까?", exact: true }).getByText("150/200")).toBeVisible();
   const lift = page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/lift"));
-  await page.getByRole("dialog").getByRole("button", { name: "제한 풀기" }).click();
+  await page.getByRole("region", { name: "구매 제한을 푸시겠습니까?", exact: true }).getByRole("button", { name: "제한 풀기" }).click();
   const res = await lift;
   expect(res.status()).toBe(200);
   expect(res.request().postDataJSON()).toEqual({ reason });
@@ -172,6 +192,7 @@ test("목록이 200건이면 10건씩 20쪽 모두 접근하고 최근 200건 �
   }
   expect(seen).toEqual(new Set(rows.map(r => r.buyerMember.broadcastNickname)));
   await expect(nav.getByRole("button", { name: "다음", exact: true })).toBeDisabled();
+  expect(new URL(await list.first().getByRole("link", { name: "회원 상세", exact: true }).getAttribute("href") ?? "", page.url()).searchParams.get("returnTo")).toBe("/seller/purchase-restrictions?page=20");
   await nav.getByRole("button", { name: "처음", exact: true }).click();
   await expect(nav.locator('[aria-current="page"]')).toHaveText("1");
   await expect(list).toHaveCount(10);
