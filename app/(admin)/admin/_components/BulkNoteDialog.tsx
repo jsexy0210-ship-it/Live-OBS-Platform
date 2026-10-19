@@ -10,7 +10,7 @@ import { adminApi, failMessage } from "./api";
 const MAX_BODY = 1000;
 export type BulkNoteResult = { created: number; failed: number };
 
-export function BulkNoteDialog({ sellerIds, onClose, onDone }: { sellerIds: string[]; onClose: () => void; onDone: (r: BulkNoteResult) => void }) {
+export function BulkNoteDialog({ sellerIds, onClose, onDone, fullPage = false }: { sellerIds: string[]; onClose: () => void; onDone: (r: BulkNoteResult) => void; fullPage?: boolean }) {
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,9 +27,7 @@ export function BulkNoteDialog({ sellerIds, onClose, onDone }: { sellerIds: stri
     onDone({ created: r.data.created, failed: r.data.results.filter((x) => !x.ok).length });
   };
 
-  return (
-    <Modal labelId="bulk-note-title" busy={busy} dirty={body !== ""} onClose={onClose}>
-      {(requestClose) => (
+  const content = (requestClose: () => void) => (
         <>
           <div className="modal-h">
             <h2 className="modal-t" id="bulk-note-title">
@@ -60,7 +58,11 @@ export function BulkNoteDialog({ sellerIds, onClose, onDone }: { sellerIds: stri
             </button>
           </div>
         </>
-      )}
+  );
+  const closePage = () => { if (!busy && (!(body !== "") || window.confirm("저장하지 않은 변경을 버리고 나갈까요?"))) onClose(); };
+  return fullPage ? <section className="card pad-l col" style={{ gap: 16 }}>{content(closePage)}</section> : (
+    <Modal labelId="bulk-note-title" busy={busy} dirty={body !== ""} onClose={onClose}>
+      {content}
     </Modal>
   );
 }

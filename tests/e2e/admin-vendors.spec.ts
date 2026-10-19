@@ -38,29 +38,31 @@ test("최고관리자: 카드 보기 → 선택 확인 → 가중치 합계 검�
   await expect(cards.filter({ hasText: "NICEPAY" })).toContainText("평가 중 0/7");
 
   // 선택: 아직 선택되지 않은 업체 하나를 확인 창을 거쳐 고른다(같은 DB로 다시 돌려도 되게 이름을 읽어 쓴다)
-  const target = cards.filter({ has: page.getByRole("button", { name: "사용 업체로 선택", exact: true }) }).first();
+  const target = cards.filter({ hasNotText: "사용 중" }).first();
   const targetName = (await target.locator("b").first().innerText()).trim();
-  await target.getByRole("button", { name: "사용 업체로 선택", exact: true }).click();
+  await target.getByRole("link", { name: "상세", exact: true }).click();
+  await page.getByRole("button", { name: "사용 업체로 선택", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("대표님 승인 뒤");
   await page.getByRole("dialog").getByRole("button", { name: "사용 업체로 선택", exact: true }).click();
   await expect(cards.filter({ hasText: targetName })).toContainText("사용 중");
   await expect(cards.filter({ hasText: targetName }).getByRole("button", { name: "사용 중" })).toBeDisabled();
 
   // 가중치: 합계가 100이 아니면 저장 못 함
-  await page.getByRole("button", { name: "점수 비중 바꾸기" }).click();
+  await page.getByRole("link", { name: "목록", exact: true }).click();
+  await page.getByRole("link", { name: "점수 비중 바꾸기" }).click();
   await expect(page.getByTestId("weights-total")).toContainText("100 / 100");
   await page.getByLabel("수수료").fill("29");
   await expect(page.getByTestId("weights-total")).toContainText("99 / 100");
-  await expect(page.getByRole("dialog").getByRole("button", { name: "저장" })).toBeDisabled();
+  await expect(page.locator("main section").getByRole("button", { name: "저장", exact: true })).toBeDisabled();
   await page.getByLabel("수수료").fill("30");
-  await page.getByRole("dialog").getByRole("button", { name: "취소" }).click();
+  await page.locator("main section").getByRole("button", { name: "취소", exact: true }).click();
 
   // 등록: 평가를 모두 채우면 점수(만점 100)
-  await page.getByRole("button", { name: "업체 등록" }).first().click();
+  await page.getByRole("link", { name: "업체 등록" }).first().click();
   const name = `시험업체 ${run}`;
   await page.getByLabel("업체 이름").fill(name);
   for (const key of ["fee", "setupFee", "recurring", "methods", "api", "stability", "settlement"]) await page.locator(`#vr-${key}`).selectOption("10");
-  await page.getByRole("dialog").getByRole("button", { name: "저장" }).click();
+  await page.locator("main section").getByRole("button", { name: "저장", exact: true }).click();
   await expect(cards.filter({ hasText: name })).toContainText("100점");
 
   // 분야 탭은 주소에 남는다

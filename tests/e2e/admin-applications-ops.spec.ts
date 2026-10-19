@@ -60,7 +60,7 @@ test("운영: 이상 없음은 목록에서 한 번에 승인되고(처리한 �
   await login(page, emails.ops);
   await page.goto(`/admin/partners/applications?field=shop&q=${run}`); // 20건씩 보이므로 이 시험이 만든 신청만 검색한다
   await expect(row(page, "A")).toContainText("확인할 것 없음");
-  await expect(row(page, "A").getByRole("button", { name: "승인" })).toBeVisible();
+  await expect(row(page, "A").getByRole("link", { name: "상세" })).toBeVisible();
   await expect(row(page, "B")).toContainText("확인 필요 1");
   await expect(row(page, "B")).toContainText("사업자 상태가 휴업 또는 폐업입니다");
   await expect(row(page, "B").getByRole("button", { name: "승인", exact: true })).toHaveCount(0);
@@ -74,28 +74,30 @@ test("운영: 이상 없음은 목록에서 한 번에 승인되고(처리한 �
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.reload();
 
-  await row(page, "A").getByRole("button", { name: "승인", exact: true }).click();
-  await expect(page.getByText(`${name("A")} 가입을 승인했습니다.`)).toBeVisible();
-  await expect(row(page, "A")).toContainText("승인됨");
+  await row(page, "A").getByRole("link", { name: "상세" }).click();
+  await page.getByRole("button", { name: "승인", exact: true }).first().click();
+  await expect(page.getByText("가입을 승인했습니다. 10초 안에 되돌릴 수 있습니다.")).toBeVisible();
+  await expect(page.getByTestId("application-processed")).toContainText("운영 중");
+  await page.goto(`/admin/partners/applications?field=shop&q=${run}`);
   await expect(row(page, "B")).toBeVisible(); // 다른 행은 그대로
   expect((await db.seller.findUniqueOrThrow({ where: { id: ids.A } })).status).toBe("ACTIVE");
 
-  await row(page, "B").getByRole("button", { name: "확인할 내용 보기" }).click();
-  const panel = page.getByTestId("review-panel");
-  await expect(panel.getByTestId("review-reasons")).toContainText("사업자 상태가 휴업 또는 폐업입니다");
+  await row(page, "B").getByRole("link", { name: "상세" }).click();
+  const panel = page.locator("main");
+  await expect(panel.locator("#application-reasons").locator("..")).toContainText("사업자 상태가 휴업 또는 폐업입니다");
   await expect(panel.getByRole("row", { name: /국세청 사업자 상태.*휴업 · 폐업/ })).toBeVisible();
   // 시험 신청은 외부 조회를 한 번도 하지 않았으므로 사유가 없는 통신판매업 행은 통과가 아니라 「미조회」
   await expect(panel.getByRole("row", { name: /통신판매업 신고번호.*미조회/ })).toBeVisible();
-  await expect(panel.getByTestId("review-checked-at")).toContainText("아직 하지 않았습니다");
+  await expect(panel.getByText(/외부 조회/).last()).toContainText("아직 하지 않았습니다");
   await expect(panel.getByRole("button", { name: "국세청 다시 조회" })).toBeVisible();
   await expect(panel).toContainText("등록증");
   await panel.getByLabel("내부 메모").fill("재개업 증빙 확인 필요");
-  await panel.getByRole("button", { name: "메모 저장" }).click();
-  await expect(panel.getByTestId("review-note")).toContainText("재개업 증빙 확인 필요");
+  await panel.getByRole("button", { name: "저장", exact: true }).click();
+  await expect(panel.getByTestId("application-note")).toContainText("재개업 증빙 확인 필요");
   await page.screenshot({ path: "tests/e2e/screenshots/admin-applications-panel-1440.png" });
   expect((await db.seller.findUniqueOrThrow({ where: { id: ids.B } })).status).toBe("PENDING");
-  await panel.getByRole("button", { name: "확인했습니다. 승인" }).click();
-  await expect(row(page, "B")).toContainText("승인됨");
+  await panel.getByRole("button", { name: "승인", exact: true }).first().click();
+  await expect(page.getByTestId("application-processed")).toContainText("운영 중");
   expect((await db.seller.findUniqueOrThrow({ where: { id: ids.B } })).status).toBe("ACTIVE");
 });
 
@@ -108,15 +110,17 @@ test("반려는 사유를 고르는 작은 창에서 한 번에 끝나고, 칩 �
   await expect(page.getByRole("button", { name: /^확인 필요/ })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: /^전체/ }).click();
 
-  await row(page, "C").getByRole("button", { name: "반려", exact: true }).click();
+  await row(page, "C").getByRole("link", { name: "상세" }).click();
+  await page.getByRole("button", { name: "반려", exact: true }).first().click();
   const dialog = page.getByRole("dialog");
   const reject = dialog.getByRole("button", { name: "반려", exact: true });
   await expect(reject).toBeDisabled();
   await dialog.getByLabel("반려 사유").selectOption("서류와 신청 정보가 다릅니다");
   await dialog.getByLabel("추가 안내").fill("사업자등록증을 다시 올려 주십시오.");
   await reject.click();
-  await expect(page.getByText(`${name("C")} 가입을 반려했습니다.`)).toBeVisible();
-  await expect(row(page, "C")).toContainText("반려됨");
+  await expect(page.getByText("가입을 반려했습니다.")).toBeVisible();
+  await page.goto(`/admin/partners/applications/${ids.C}`);
+  await expect(page.getByTestId("application-processed")).toContainText("반려");
   const after = await db.seller.findUniqueOrThrow({ where: { id: ids.C } });
   expect(after.status).toBe("REJECTED");
   expect(after.rejectedReason).toBe("서류와 신청 정보가 다릅니다 · 사업자등록증을 다시 올려 주십시오.");
@@ -138,9 +142,9 @@ test("상세: 이전 N/M 다음으로 넘기고, 승인하면 목록으로 돌�
   await expect(nav).toContainText("/");
   await expect(nav.getByRole("button", { name: "이전" })).toBeVisible();
   const before = page.url();
-  await page.getByRole("button", { name: "승인", exact: true }).click();
+  await page.getByRole("button", { name: "승인", exact: true }).first().click();
   await expect(page.getByText("가입을 승인했습니다.")).toBeVisible();
   expect((await db.seller.findUniqueOrThrow({ where: { id: ids.D } })).status).toBe("ACTIVE");
-  await expect(page).not.toHaveURL(before);
-  await expect(page).toHaveURL(/\/admin\/partners\/applications(\/|$)/);
+  await expect(page).not.toHaveURL(before, { timeout: 15_000 });
+  await expect(page).toHaveURL(/\/admin\/partners\/applications(\/|\?|$)/);
 });

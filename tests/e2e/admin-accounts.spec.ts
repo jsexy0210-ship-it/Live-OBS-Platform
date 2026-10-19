@@ -40,8 +40,8 @@ const rowOf = (page: Page, email: string) => page.getByTestId("account-row").fil
 
 test("최고관리자 행: 수정 창에 이름만 있고 역할·상태 칸이 없으며, 이름은 바꿀 수 있다", async ({ page }) => {
   await open(page);
-  await rowOf(page, superEmail).getByRole("button", { name: "수정" }).click();
-  const dialog = page.getByRole("dialog");
+  await rowOf(page, superEmail).getByRole("link", { name: "상세" }).click();
+  const dialog = page.locator("main form");
   await expect(dialog.getByLabel("이름")).toBeVisible();
   await expect(dialog.getByLabel("역할")).toHaveCount(0);
   await expect(dialog.getByLabel("상태")).toHaveCount(0);
@@ -58,8 +58,8 @@ test("최고관리자 행: 수정 창에 이름만 있고 역할·상태 칸이 
 
 test("계정 추가: 역할 선택지에 최고관리자가 없고 기본은 조회 전용이며, 중복 이메일은 안내한다", async ({ page }) => {
   await open(page);
-  await page.getByRole("button", { name: "계정 추가" }).click();
-  const dialog = page.getByRole("dialog");
+  await page.getByRole("link", { name: "계정 추가" }).click();
+  const dialog = page.locator("main form");
   const role = dialog.getByLabel("역할");
   await expect(role.locator("option")).toHaveText(["운영", "고객 지원", "조회 전용"]);
   await expect(role).toHaveValue("READ_ONLY");
@@ -73,7 +73,7 @@ test("계정 추가: 역할 선택지에 최고관리자가 없고 기본은 조
   await expect(rowOf(page, newEmail)).toContainText("조회 전용");
   expect((await db.platformAdmin.findUniqueOrThrow({ where: { email: newEmail } })).role).toBe("READ_ONLY");
 
-  await page.getByRole("button", { name: "계정 추가" }).click();
+  await page.getByRole("link", { name: "계정 추가" }).click();
   await dialog.getByLabel("이메일").fill(newEmail);
   await dialog.getByLabel("이름").fill("중복");
   await dialog.getByLabel("처음 비밀번호").fill("long-enough-password");
@@ -83,8 +83,8 @@ test("계정 추가: 역할 선택지에 최고관리자가 없고 기본은 조
 
 test("일반 계정 수정: 역할·상태를 바꾸면 목록과 DB에 반영되고, 처리 중에는 취소할 수 없으며, 서버 거절은 안내한다", async ({ page }) => {
   await open(page);
-  await rowOf(page, staffEmail).getByRole("button", { name: "수정" }).click();
-  const dialog = page.getByRole("dialog");
+  await rowOf(page, staffEmail).getByRole("link", { name: "상세" }).click();
+  const dialog = page.locator("main form");
   await expect(dialog.getByLabel("역할").locator("option")).toHaveText(["운영", "고객 지원", "조회 전용"]);
   await dialog.getByLabel("역할").selectOption("OPERATIONS");
   await dialog.getByLabel("상태").selectOption("SUSPENDED");

@@ -12,11 +12,13 @@ export function ForceEndDialog({
   onClose,
   onDone,
   onStale,
+  fullPage = false,
 }: {
   broadcast: { broadcastId: string; shopName: string; title: string | null };
   onClose: () => void;
   onDone: () => void;
   onStale: () => void;
+  fullPage?: boolean;
 }) {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -45,9 +47,7 @@ export function ForceEndDialog({
     );
   };
 
-  return (
-    <Modal labelId="force-end-title" busy={busy} dirty={reason !== ""} onClose={onClose}>
-      {(requestClose) => (
+  const content = (requestClose: () => void) => (
         <>
           <div className="modal-h">
             <h2 className="modal-t" id="force-end-title">
@@ -78,7 +78,11 @@ export function ForceEndDialog({
             </button>
           </div>
         </>
-      )}
+  );
+  const closePage = () => { if (!busy && (!(reason !== "") || window.confirm("저장하지 않은 변경을 버리고 나갈까요?"))) onClose(); };
+  return fullPage ? <section className="card pad-l col" style={{ gap: 16 }}>{content(closePage)}</section> : (
+    <Modal labelId="force-end-title" busy={busy} dirty={reason !== ""} onClose={onClose}>
+      {content}
     </Modal>
   );
 }

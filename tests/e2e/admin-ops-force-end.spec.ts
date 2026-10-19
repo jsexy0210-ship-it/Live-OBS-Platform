@@ -45,15 +45,16 @@ test("CS(조회 계열)는 강제 종료 버튼이 보이지 않는다", async (
   await page.goto("/admin/ops/live");
   const row = page.getByTestId("live-row").filter({ hasText: shop });
   await expect(row).toBeVisible();
-  await expect(row.getByRole("button", { name: "강제 종료" })).toHaveCount(0);
+  await row.getByRole("link", { name: "방송 상세" }).click();
+  await expect(page.locator("main").getByRole("button", { name: "강제 종료" })).toHaveCount(0);
 });
 
 test("운영: 사유 없이는 종료할 수 없고, 사유를 쓰면 종료·토스트·목록에서 빠지며, 이미 끝난 방송은 409로 안내한다", async ({ page }) => {
   await login(page, ops);
   await page.goto("/admin/ops/live");
   const row = page.getByTestId("live-row").filter({ hasText: shop });
-  await row.getByRole("button", { name: "강제 종료" }).click();
-  const dialog = page.getByRole("dialog");
+  await row.getByRole("link", { name: "방송 상세" }).click();
+  const dialog = page.locator("main section").filter({ has: page.getByLabel("사유 (필수)") });
   await expect(dialog).toContainText("방송을 강제 종료하시겠습니까?");
   const confirm = dialog.getByRole("button", { name: "강제 종료" });
   await expect(confirm).toBeDisabled();
@@ -74,8 +75,8 @@ test("운영: 사유를 쓰고 강제 종료하면 방송이 종료되고 목록
   await login(page, ops);
   await page.goto("/admin/ops/live");
   const row = page.getByTestId("live-row").filter({ hasText: `종료몰2 ${run}` });
-  await row.getByRole("button", { name: "강제 종료" }).click();
-  const dialog = page.getByRole("dialog");
+  await row.getByRole("link", { name: "방송 상세" }).click();
+  const dialog = page.locator("main section").filter({ has: page.getByLabel("사유 (필수)") });
   await dialog.getByLabel("사유 (필수)").fill("송출 중단 요청");
   await dialog.getByRole("button", { name: "강제 종료" }).click();
   await expect(page.getByText("방송을 종료했습니다")).toBeVisible();

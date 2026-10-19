@@ -13,7 +13,7 @@ const FIELDS = [
 ] as const;
 type Key = (typeof FIELDS)[number]["key"];
 
-export function PlanTrialDialog({ plan, onClose, onDone }: { plan: AdminPlan; onClose: () => void; onDone: () => void }) {
+export function PlanTrialDialog({ plan, onClose, onDone, fullPage = false }: { plan: AdminPlan; onClose: () => void; onDone: () => void; fullPage?: boolean }) {
   const before: Record<Key, number> = { message: plan.trialMessageLimit, identity: plan.trialIdentityLimit, storageMb: plan.trialStorageMb };
   const [v, setV] = useState<Record<Key, string>>({ message: String(before.message), identity: String(before.identity), storageMb: String(before.storageMb) });
   const [busy, setBusy] = useState(false);
@@ -34,9 +34,7 @@ export function PlanTrialDialog({ plan, onClose, onDone }: { plan: AdminPlan; on
     setError(r.status === 403 ? "이 작업은 최고관리자와 운영 담당만 할 수 있습니다." : r.status === 404 ? "요금제를 찾을 수 없습니다. 목록을 새로 불러와 주십시오." : r.status === 0 ? "연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오." : "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오.");
   };
 
-  return (
-    <Modal labelId="plan-trial-title" busy={busy} dirty={changed} onClose={onClose}>
-      {(requestClose) => (
+  const content = (requestClose: () => void) => (
         <form className="col" style={{ gap: 16 }} onSubmit={submit} noValidate>
           <div className="modal-h">
             <h2 className="modal-t" id="plan-trial-title">
@@ -70,7 +68,14 @@ export function PlanTrialDialog({ plan, onClose, onDone }: { plan: AdminPlan; on
             </button>
           </div>
         </form>
-      )}
+  );
+  const closePage = () => {
+    if (busy || ((changed) && !window.confirm("저장하지 않은 변경을 버리고 나갈까요?"))) return;
+    onClose();
+  };
+  return fullPage ? <section className="card pad-l">{content(closePage)}</section> : (
+    <Modal labelId="plan-trial-title" busy={busy} dirty={changed} onClose={onClose}>
+      {content}
     </Modal>
   );
 }

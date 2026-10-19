@@ -13,7 +13,7 @@ const join = (preset: string, extra: string) => [preset, extra.trim()].filter(Bo
 
 type BulkResult = { id: string; ok: boolean; message?: string }[];
 // bulkIds를 주면 선택 반려(POST /api/admin/sellers/applications/bulk-reject)로 보내고 건별 결과를 onDone에 넘긴다.
-export function RejectApplicationDialog({ id, bulkIds, shopName, onClose, onDone, onStale }: { id?: string; bulkIds?: string[]; shopName: string; onClose: () => void; onDone: (results?: BulkResult) => void; onStale: () => void }) {
+export function RejectApplicationDialog({ id, bulkIds, shopName, onClose, onDone, onStale, fullPage = false }: { id?: string; bulkIds?: string[]; shopName: string; onClose: () => void; onDone: (results?: BulkResult) => void; onStale: () => void; fullPage?: boolean }) {
   const [preset, setPreset] = useState("");
   const [extra, setExtra] = useState("");
   const [busy, setBusy] = useState(false);
@@ -33,9 +33,7 @@ export function RejectApplicationDialog({ id, bulkIds, shopName, onClose, onDone
     if (!bulkIds && (r.status === 404 || r.status === 409)) return onStale();
     setError(r.error === "reason_required" ? "사유를 1자 이상 200자 이하로 입력해 주십시오." : failMessage(r, "가입 반려를 하지 못했습니다. 잠시 후 다시 시도해 주십시오."));
   };
-  return (
-    <Modal labelId="reject-title" busy={busy} dirty={preset !== "" || extra !== ""} onClose={onClose}>
-      {(requestClose) => (
+  const content = (requestClose: () => void) => (
         <>
           <div className="modal-h">
             <h2 className="modal-t" id="reject-title">
@@ -74,7 +72,11 @@ export function RejectApplicationDialog({ id, bulkIds, shopName, onClose, onDone
             </button>
           </div>
         </>
-      )}
+  );
+  const closePage = () => { if (!busy && (!(preset !== "" || extra !== "") || window.confirm("저장하지 않은변경을 버리고 나갈까요?"))) onClose(); };
+  return fullPage ? <section className="card pad-l col" style={{ gap: 16 }}>{content(closePage)}</section> : (
+    <Modal labelId="reject-title" busy={busy} dirty={preset !== "" || extra !== ""} onClose={onClose}>
+      {content}
     </Modal>
   );
 }

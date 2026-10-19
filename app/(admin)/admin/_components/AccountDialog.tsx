@@ -16,7 +16,7 @@ const ERROR: Record<string, string> = {
   not_found: "계정을 찾을 수 없습니다. 목록을 새로 불러와 주십시오.",
 };
 
-export function AccountDialog({ account, onClose, onDone }: { account: AdminAccount | null; onClose: () => void; onDone: (saved: AdminAccount, created: boolean) => void }) {
+export function AccountDialog({ account, onClose, onDone, fullPage = false }: { account: AdminAccount | null; onClose: () => void; onDone: (saved: AdminAccount, created: boolean) => void; fullPage?: boolean }) {
   const editing = account !== null;
   const protectedAccount = account?.role === "SUPER_ADMIN";
   const [email, setEmail] = useState("");
@@ -52,9 +52,7 @@ export function AccountDialog({ account, onClose, onDone }: { account: AdminAcco
     setError(ERROR[r.error] ?? (r.status === 403 ? "최고관리자만 할 수 있습니다." : r.status === 0 ? "연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오." : "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오."));
   };
 
-  return (
-    <Modal labelId="account-title" busy={busy} dirty={dirty} onClose={onClose}>
-      {(requestClose) => (
+  const content = (requestClose: () => void) => (
       <form className="col" style={{ gap: 16 }} onSubmit={submit} noValidate>
         <div className="modal-h">
           <h2 className="modal-t" id="account-title">
@@ -128,7 +126,14 @@ export function AccountDialog({ account, onClose, onDone }: { account: AdminAcco
           </button>
         </div>
       </form>
-      )}
+  );
+  const closePage = () => {
+    if (busy || ((dirty) && !window.confirm("저장하지 않은 변경을 버리고 나갈까요?"))) return;
+    onClose();
+  };
+  return fullPage ? <section className="card pad-l">{content(closePage)}</section> : (
+    <Modal labelId="account-title" busy={busy} dirty={dirty} onClose={onClose}>
+      {content}
     </Modal>
   );
 }
