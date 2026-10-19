@@ -156,3 +156,79 @@ test("청구 재시도 상세는 현재 단건 상태를 다시 읽고 가능한
   expect(writes).toEqual([{ paymentIds: [id(1)] }]);
   await expect(page.locator("main").getByRole("button", { name: "다시 결제", exact: true })).toBeDisabled();
 });
+
+
+test("계정 상세의 목록·sidebar·Back·취소를 dismiss하면 입력이 남는다", async ({ page }) => {
+  const writes: unknown[] = [];
+  await mockAdmin(page, async (route, path) => {
+    if (path === "/api/admin/admins") { await json(route, { admins: [account(1)] }); return true; }
+    if (route.request().method() !== "GET") { writes.push(route.request().postDataJSON()); await json(route, { ok: true }); return true; }
+    return false;
+  });
+  await page.goto("/admin/accounts");
+  await page.getByTestId("account-row").getByRole("link", { name: "상세" }).click();
+  await page.getByLabel("이름", { exact: true }).fill("보관할 계정 이름");
+  const detail = page.url();
+  page.once("dialog", d => void d.dismiss());
+  await page.locator("main").getByRole("link", { name: "목록", exact: true }).click();
+  await expect(page).toHaveURL(detail);
+  await expect(page.getByLabel("이름", { exact: true })).toHaveValue("보관할 계정 이름");
+  page.once("dialog", d => void d.dismiss());
+  await page.locator('.lnb a[href="/admin/accounts"]').first().click();
+  await expect(page).toHaveURL(detail);
+  const pop = page.waitForEvent("dialog");
+  await page.evaluate(() => history.back());
+  await (await pop).dismiss();
+  await expect(page).toHaveURL(detail);
+  await expect(page.getByLabel("이름", { exact: true })).toHaveValue("보관할 계정 이름");
+  page.once("dialog", d => void d.dismiss());
+  await page.locator("main form").getByRole("button", { name: "취소", exact: true }).click();
+  await expect(page.getByLabel("이름", { exact: true })).toHaveValue("보관할 계정 이름");
+  page.once("dialog", d => void d.accept());
+  await page.locator("main form").getByRole("button", { name: "취소", exact: true }).click();
+  await expect(page).toHaveURL(/accounts(?:\?|$)/);
+  expect(writes).toEqual([]);
+});
+
+test("요금제 편집 중 다른 작업은 막고 취소를 dismiss하면 금액을 보존한다", async ({ page }) => {
+  await mockAdmin(page, async (route, path) => { if (path === "/api/admin/plans") { await json(route, { plans: [plan] }); return true; } return false; });
+  await page.goto("/admin/billing/plans/INTEGRATED");
+  await page.getByRole("button", { name: "가격 변경", exact: true }).click();
+  await page.getByLabel("판매가", { exact: true }).fill("180000");
+  await expect(page.getByRole("button", { name: "체험 한도 변경", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "월 무료 메일 수량 변경", exact: true })).toBeDisabled();
+  page.once("dialog", d => void d.dismiss());
+  await page.locator("main form").getByRole("button", { name: "취소", exact: true }).click();
+  await expect(page.getByLabel("판매가", { exact: true })).toHaveValue("180000");
+  page.once("dialog", d => void d.accept());
+  await page.locator("main form").getByRole("button", { name: "취소", exact: true }).click();
+  await expect(page.getByRole("button", { name: "체험 한도 변경", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "체험 한도 변경", exact: true }).click();
+  await expect(page.getByLabel("저장 용량", { exact: true })).toBeVisible();
+});
+
+test("업체 수정 중 다른 변경을 막고 취소 후에만 사용 업체 선택을 연다", async ({ page }) => {
+  const vendor = { id: id(1), name: "검수 업체", logoUrl: null, active: true, recommended: false, selected: false, referenceFee: null, memo: null, features: [], ratings: { fee: 8 }, score: 80, ratedCount: 1 };
+  const writes: unknown[] = [];
+  await mockAdmin(page, async (route, path) => {
+    if (path === "/api/admin/service-vendors") { await json(route, { categories: [{ category: "PG", featureKeys: [], criteria: [{ key: "fee", weight: 100 }], vendors: [vendor] }] }); return true; }
+    if (route.request().method() !== "GET") { writes.push(route.request().postDataJSON()); await json(route, { ok: true }); return true; }
+    return false;
+  });
+  await page.goto(`/admin/settings/vendors/${id(1)}`);
+  await page.getByLabel("업체 이름", { exact: true }).fill("보관할 업체 이름");
+  await expect(page.getByRole("button", { name: "사용 업체로 선택", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "추천으로 지정", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "로고 올리기", exact: true })).toBeDisabled();
+  page.once("dialog", d => void d.dismiss());
+  await page.locator("main").getByRole("link", { name: "목록", exact: true }).click();
+  await expect(page.getByLabel("업체 이름", { exact: true })).toHaveValue("보관할 업체 이름");
+  page.once("dialog", d => void d.accept());
+  await page.locator("main form").getByRole("button", { name: "취소", exact: true }).click();
+  await expect(page.locator("main form")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "사용 업체로 선택", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "사용 업체로 선택", exact: true }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.getByRole("dialog").getByRole("button", { name: "취소", exact: true }).click();
+  expect(writes).toEqual([]);
+});

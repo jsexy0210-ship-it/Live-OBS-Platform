@@ -35,9 +35,9 @@ export default function PlanDetailPage() {
     {typeof state === "string" ? state === "loading" ? <LoadingRows rows={3} /> : <ErrorState title={state === "missing" ? "요금제를 찾을 수 없습니다." : "요금제를 불러오지 못했습니다."} onRetry={() => void load()} /> : <>
       <section className="card pad-l col" style={{ gap: 16 }}><h2>{state.name}</h2><p>정가 {state.listPrice.toLocaleString("ko-KR")}원 · 판매가 {state.salePrice.toLocaleString("ko-KR")}원</p>
       <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-        {canPrice && <button className="btn btn-out" onClick={() => setAction("price")}>가격 변경</button>}
-        {canTrial && <button className="btn btn-out" onClick={() => setAction("trial")}>체험 한도 변경</button>}
-        {canPrice && <button className="btn btn-out" onClick={() => setAction("quota")}>월 무료 메일 수량 변경</button>}
+        {canPrice && <button className="btn btn-out" disabled={action !== null} onClick={() => setAction("price")}>가격 변경</button>}
+        {canTrial && <button className="btn btn-out" disabled={action !== null} onClick={() => setAction("trial")}>체험 한도 변경</button>}
+        {canPrice && <button className="btn btn-out" disabled={action !== null} onClick={() => setAction("quota")}>월 무료 메일 수량 변경</button>}
       </div></section>
       {action === "price" && canPrice && <PlanPriceDialog key={`price-${state.listPrice}-${state.salePrice}`} plan={state} fullPage onClose={() => setAction(null)} onDone={done} />}
       {action === "trial" && canTrial && <PlanTrialDialog plan={state} fullPage onClose={() => setAction(null)} onDone={done} />}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { confirmLeave, useUnsavedGuard } from "../../../../lib/client/navigation";
 import { textLength } from "../../../../lib/server/text/clean";
 import { Modal } from "../../../../components/admin-ui/Modal";
 import { adminApi, failMessage } from "./api";
@@ -17,13 +18,16 @@ export function BulkNoteDialog({ sellerIds, onClose, onDone, fullPage = false }:
   const count = textLength(body);
   const invalid = count === 0 || count > MAX_BODY;
 
+  const release = useUnsavedGuard(fullPage && (body !== ""));
+
   const submit = async () => {
     if (busy || invalid) return;
     setBusy(true);
     setError(null);
     const r = await adminApi<{ created: number; results: { sellerId: string; ok: boolean; error?: string }[] }>("/api/admin/sellers/notes/bulk", { method: "POST", json: { sellerIds, body: body.trim() } });
+    if (!r.ok) { setBusy(false); return setError(r.message ?? failMessage(r, "메모를 남기지 못했습니다. 잠시 후 다시 시도해 주십시오.")); }
+    await release();
     setBusy(false);
-    if (!r.ok) return setError(r.message ?? failMessage(r, "메모를 남기지 못했습니다. 잠시 후 다시 시도해 주십시오."));
     onDone({ created: r.data.created, failed: r.data.results.filter((x) => !x.ok).length });
   };
 
@@ -59,7 +63,11 @@ export function BulkNoteDialog({ sellerIds, onClose, onDone, fullPage = false }:
           </div>
         </>
   );
-  const closePage = () => { if (!busy && (!(body !== "") || window.confirm("저장하지 않은 변경을 버리고 나갈까요?"))) onClose(); };
+  const closePage = async () => {
+    if (busy || !confirmLeave(body !== "")) return;
+    await release();
+    onClose();
+  };
   return fullPage ? <section className="card pad-l col" style={{ gap: 16 }}>{content(closePage)}</section> : (
     <Modal labelId="bulk-note-title" busy={busy} dirty={body !== ""} onClose={onClose}>
       {content}

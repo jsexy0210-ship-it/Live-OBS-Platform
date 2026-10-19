@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { confirmLeave, useUnsavedGuard } from "../../../../lib/client/navigation";
 import { Modal } from "../../../../components/admin-ui/Modal";
 import { adminApi } from "./api";
 import { PRICE_MAX, type AdminPlan } from "./messageFees";
@@ -27,6 +28,8 @@ export function PlanPriceDialog({ plan, onClose, onDone, fullPage = false }: { p
   const valid = inRange(l) && inRange(s) && l >= s;
   const changed = l !== plan.listPrice || s !== plan.salePrice;
 
+  const release = useUnsavedGuard(fullPage && (changed));
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!valid || !changed || busy) return;
@@ -34,8 +37,8 @@ export function PlanPriceDialog({ plan, onClose, onDone, fullPage = false }: { p
     setBusy(true);
     setError(null);
     const r = await adminApi(`/api/admin/plans/${plan.code}/price`, { method: "POST", json: { listPrice: l, salePrice: s } });
+    if (r.ok) { await release(); setBusy(false); return onDone(); }
     setBusy(false);
-    if (r.ok) return onDone();
     setConfirming(false);
     setError(ERROR[r.error] ?? (r.status === 403 ? "최고관리자만 바꿀 수 있습니다." : r.status === 0 ? "연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오." : "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오."));
   };
@@ -98,8 +101,9 @@ export function PlanPriceDialog({ plan, onClose, onDone, fullPage = false }: { p
           </div>
         </form>
   );
-  const closePage = () => {
-    if (busy || ((changed) && !window.confirm("저장하지 않은 변경을 버리고 나갈까요?"))) return;
+  const closePage = async () => {
+    if (busy || !confirmLeave(changed)) return;
+    await release();
     onClose();
   };
   return fullPage ? <section className="card pad-l">{content(closePage)}</section> : (

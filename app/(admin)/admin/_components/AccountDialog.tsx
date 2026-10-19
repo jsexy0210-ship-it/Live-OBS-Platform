@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { confirmLeave, useUnsavedGuard } from "../../../../lib/client/navigation";
 import { Modal } from "../../../../components/admin-ui/Modal";
 import { adminApi } from "./api";
 import { ASSIGNABLE_ROLES, MIN_PASSWORD, ROLE_LABEL, type AdminAccount, type AdminRoleCode, type AdminStatus } from "./accounts";
@@ -32,6 +33,8 @@ export function AccountDialog({ account, onClose, onDone, fullPage = false }: { 
     : email !== "" || name !== "" || password !== "" || role !== "READ_ONLY";
   const ready = name.trim() !== "" && name.trim().length <= 50 && (editing || (email.trim() !== "" && password.length >= MIN_PASSWORD));
 
+  const release = useUnsavedGuard(fullPage && (dirty));
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!ready || busy) return;
@@ -47,8 +50,8 @@ export function AccountDialog({ account, onClose, onDone, fullPage = false }: { 
           },
         })
       : await adminApi<{ admin: AdminAccount }>("/api/admin/admins", { method: "POST", json: { email: email.trim(), name: name.trim(), role, password } });
+    if (r.ok) { await release(); setBusy(false); return onDone(r.data.admin, !editing); }
     setBusy(false);
-    if (r.ok) return onDone(r.data.admin, !editing);
     setError(ERROR[r.error] ?? (r.status === 403 ? "최고관리자만 할 수 있습니다." : r.status === 0 ? "연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오." : "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오."));
   };
 
@@ -127,8 +130,9 @@ export function AccountDialog({ account, onClose, onDone, fullPage = false }: { 
         </div>
       </form>
   );
-  const closePage = () => {
-    if (busy || ((dirty) && !window.confirm("저장하지 않은 변경을 버리고 나갈까요?"))) return;
+  const closePage = async () => {
+    if (busy || !confirmLeave(dirty)) return;
+    await release();
     onClose();
   };
   return fullPage ? <section className="card pad-l">{content(closePage)}</section> : (

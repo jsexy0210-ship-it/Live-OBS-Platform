@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { confirmLeave, useUnsavedGuard } from "../../../../lib/client/navigation";
 import { textLength } from "../../../../lib/server/text/clean";
 import { Modal } from "../../../../components/admin-ui/Modal";
 import { adminApi, failMessage } from "./api";
@@ -21,6 +22,8 @@ export function RejectApplicationDialog({ id, bulkIds, shopName, onClose, onDone
   const reason = join(preset, extra);
   const count = textLength(reason);
   const invalid = count === 0 || count > MAX_REASON;
+  const release = useUnsavedGuard(fullPage && (preset !== "" || extra !== ""));
+
   const submit = async () => {
     if (busy || invalid) return;
     setBusy(true);
@@ -28,8 +31,8 @@ export function RejectApplicationDialog({ id, bulkIds, shopName, onClose, onDone
     const r = bulkIds
       ? await adminApi<{ results: BulkResult }>("/api/admin/sellers/applications/bulk-reject", { method: "POST", json: { ids: bulkIds, reason } })
       : await adminApi<unknown>(`/api/admin/sellers/${id}/reject`, { method: "POST", json: { reason } });
+    if (r.ok) { await release(); setBusy(false); return onDone(bulkIds ? (r.data as { results: BulkResult }).results : undefined); }
     setBusy(false);
-    if (r.ok) return onDone(bulkIds ? (r.data as { results: BulkResult }).results : undefined);
     if (!bulkIds && (r.status === 404 || r.status === 409)) return onStale();
     setError(r.error === "reason_required" ? "사유를 1자 이상 200자 이하로 입력해 주십시오." : failMessage(r, "가입 반려를 하지 못했습니다. 잠시 후 다시 시도해 주십시오."));
   };
@@ -73,7 +76,11 @@ export function RejectApplicationDialog({ id, bulkIds, shopName, onClose, onDone
           </div>
         </>
   );
-  const closePage = () => { if (!busy && (!(preset !== "" || extra !== "") || window.confirm("저장하지 않은변경을 버리고 나갈까요?"))) onClose(); };
+  const closePage = async () => {
+    if (busy || !confirmLeave(preset !== "" || extra !== "")) return;
+    await release();
+    onClose();
+  };
   return fullPage ? <section className="card pad-l col" style={{ gap: 16 }}>{content(closePage)}</section> : (
     <Modal labelId="reject-title" busy={busy} dirty={preset !== "" || extra !== ""} onClose={onClose}>
       {content}

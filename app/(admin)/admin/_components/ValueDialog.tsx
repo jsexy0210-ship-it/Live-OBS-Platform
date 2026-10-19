@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { confirmLeave, useUnsavedGuard } from "../../../../lib/client/navigation";
 import { Modal } from "../../../../components/admin-ui";
 import { adminApi } from "./api";
 import { effectiveAtIso } from "./messageFees";
@@ -39,14 +40,16 @@ export function ValueDialog({
   const n = value.trim() === "" ? NaN : Number(value);
   const valid = Number.isInteger(n) && n >= 0 && n <= max;
 
+  const release = useUnsavedGuard(fullPage && (value !== String(current) || at !== ""));
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!valid || busy) return;
     setBusy(true);
     setError(null);
     const r = await adminApi(path, { method: "POST", json: { [field]: n, ...(effectiveAtIso(at) ? { effectiveAt: effectiveAtIso(at) } : {}) } });
+    if (r.ok) { await release(); setBusy(false); return onDone(); }
     setBusy(false);
-    if (r.ok) return onDone();
     setError(r.message ?? (r.status === 403 ? "최고관리자만 바꿀 수 있습니다." : r.status === 0 ? "연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오." : "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오."));
   };
 
@@ -87,8 +90,9 @@ export function ValueDialog({
           </div>
         </form>
   );
-  const closePage = () => {
-    if (busy || ((value !== String(current) || at !== "") && !window.confirm("저장하지 않은 변경을 버리고 나갈까요?"))) return;
+  const closePage = async () => {
+    if (busy || !confirmLeave(value !== String(current) || at !== "")) return;
+    await release();
     onClose();
   };
   return fullPage ? <section className="card pad-l">{content(closePage)}</section> : (

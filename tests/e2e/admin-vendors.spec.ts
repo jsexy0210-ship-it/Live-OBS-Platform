@@ -41,6 +41,7 @@ test("최고관리자: 카드 보기 → 선택 확인 → 가중치 합계 검�
   const target = cards.filter({ hasNotText: "사용 중" }).first();
   const targetName = (await target.locator("b").first().innerText()).trim();
   await target.getByRole("link", { name: "상세", exact: true }).click();
+  await page.locator("main form").getByRole("button", { name: "취소", exact: true }).click();
   await page.getByRole("button", { name: "사용 업체로 선택", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("대표님 승인 뒤");
   await page.getByRole("dialog").getByRole("button", { name: "사용 업체로 선택", exact: true }).click();

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { confirmLeave, useUnsavedGuard } from "../../../../lib/client/navigation";
 import { Modal } from "../../../../components/admin-ui/Modal";
 import { adminApi } from "./api";
 import { MAX_REASON } from "./SuspendDialog";
@@ -28,13 +29,15 @@ export function ForceEndDialog({
   const tooLong = count > MAX_REASON;
   const missing = count === 0;
 
+  const release = useUnsavedGuard(fullPage && (reason !== ""));
+
   const submit = async () => {
     if (busy || tooLong || missing) return;
     setBusy(true);
     setError(null);
     const r = await adminApi(`/api/admin/ops/live-broadcasts/${broadcast.broadcastId}/end`, { method: "POST", json: { reason: reason.trim() } });
+    if (r.ok) { await release(); setBusy(false); return onDone(); }
     setBusy(false);
-    if (r.ok) return onDone();
     if (r.status === 404 || r.status === 409) return onStale();
     setError(
       r.error === "reason_required"
@@ -79,7 +82,11 @@ export function ForceEndDialog({
           </div>
         </>
   );
-  const closePage = () => { if (!busy && (!(reason !== "") || window.confirm("저장하지 않은 변경을 버리고 나갈까요?"))) onClose(); };
+  const closePage = async () => {
+    if (busy || !confirmLeave(reason !== "")) return;
+    await release();
+    onClose();
+  };
   return fullPage ? <section className="card pad-l col" style={{ gap: 16 }}>{content(closePage)}</section> : (
     <Modal labelId="force-end-title" busy={busy} dirty={reason !== ""} onClose={onClose}>
       {content}

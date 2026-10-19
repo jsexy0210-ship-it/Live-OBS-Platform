@@ -10,7 +10,7 @@ import { adminCan } from "../../../../lib/server/authz/permissions";
 import { adminApi, failMessage } from "./api";
 import { AdminTopbar, useAdmin } from "./AdminShell";
 import { criterionLabel, FEATURE_LABEL, VENDOR_CATEGORIES, VENDOR_CATEGORY_LABEL, type Vendor, type VendorBoard, type VendorCategory } from "./vendors";
-import { useUrlState } from "../../../../lib/client/navigation";
+import { confirmLeave, useUnsavedGuard, useUrlState } from "../../../../lib/client/navigation";
 
 // MA-087 외부 서비스 연동(GET /api/admin/service-vendors: 모든 마스터 역할 조회, 변경은 최고관리자·운영 vendor.manage).
 // 분야 탭 → 업체 카드(로고·추천·사용 중·기능·참고 요금·ONQ 점수) → 상세 비교표. 선택·추천 변경·가중치 편집·업체 등록·수정·로고는 변경 권한자에게만 보인다.
@@ -61,11 +61,15 @@ export function VendorsWorkspace({ vendorId, weights = false }: { vendorId?: str
   }, []);
   useEffect(() => void load(false), [load]);
 
+  const initialized = useRef<string | null>(null);
   const board = state.kind === "ok" ? (vendorId && vendorId !== "new" ? Object.values(state.boards).find(b => b.vendors.some(v => v.id === vendorId)) ?? null : state.boards[urlCat]) : null;
   const cat = board?.category ?? urlCat;
-  const back = () => router.push(`/admin/settings/vendors?cat=${cat}`);
+  const back = () => { setBusy(false); router.push(`/admin/settings/vendors?cat=${cat}`); };
   useEffect(() => {
     if (!board || !detail || !canEdit) return;
+    const key = weights ? "weights" : vendorId ?? "";
+    if (initialized.current === key) return;
+    initialized.current = key;
     if (weights) setDialog({ kind: "weights" });
     else setDialog({ kind: "form", vendor: vendorId === "new" ? null : board.vendors.find(v => v.id === vendorId) ?? null });
   }, [board, detail, canEdit, weights, vendorId]);
@@ -77,15 +81,14 @@ export function VendorsWorkspace({ vendorId, weights = false }: { vendorId?: str
     setBusy(true);
     setError(null);
     const r = await adminApi(path, init);
-    setBusy(false);
     if (!r.ok) {
+      setBusy(false);
       setError(failMessage(r));
       return false;
     }
-    if (close) setDialog(null);
+    if (close) { setBusy(false); setDialog(null); }
     setToast({ text: done });
-    if (vendorId === "new" && dialog?.kind === "form") router.push(`/admin/settings/vendors?cat=${cat}`);
-    else await load(true);
+    if (close) await load(true);
     return true;
   };
   const putCategory = (json: unknown, done: string) => run(`/api/admin/service-vendor-categories/${cat}`, { method: "PUT", json }, done);
@@ -198,21 +201,21 @@ export function VendorsWorkspace({ vendorId, weights = false }: { vendorId?: str
                     {!detail && <Link className="btn btn-sm btn-out" href={`/admin/settings/vendors/${v.id}?cat=${cat}`}>상세</Link>}
                     {canEdit && detail && (
                       <>
-                        <button className="btn btn-sm" type="button" disabled={v.selected || !v.active || busy} onClick={() => open({ kind: "select", vendor: v })}>
+                        <button className="btn btn-sm" type="button" disabled={v.selected || !v.active || busy || dialog !== null} onClick={() => open({ kind: "select", vendor: v })}>
                           {v.selected ? "사용 중" : "사용 업체로 선택"}
                         </button>
                         {!v.recommended && v.active && (
-                          <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => open({ kind: "recommend", vendor: v })}>
+                          <button className="btn btn-sm btn-out" type="button" disabled={busy || dialog !== null} onClick={() => open({ kind: "recommend", vendor: v })}>
                             추천으로 지정
                           </button>
                         )}
-                        <button className="btn btn-sm btn-out" type="button" onClick={() => open({ kind: "form", vendor: v })}>
+                        <button className="btn btn-sm btn-out" type="button" disabled={busy || dialog !== null} onClick={() => open({ kind: "form", vendor: v })}>
                           수정
                         </button>
                         <button
                           className="btn btn-sm btn-out"
                           type="button"
-                          disabled={busy}
+                          disabled={busy || dialog !== null}
                           onClick={() => {
                             logoFor.current = v.id;
                             fileRef.current?.click();
@@ -221,7 +224,7 @@ export function VendorsWorkspace({ vendorId, weights = false }: { vendorId?: str
                           {v.logoUrl ? "로고 바꾸기" : "로고 올리기"}
                         </button>
                         {v.logoUrl && (
-                          <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => void removeLogo(v)}>
+                          <button className="btn btn-sm btn-out" type="button" disabled={busy || dialog !== null} onClick={() => void removeLogo(v)}>
                             로고 삭제
                           </button>
                         )}
@@ -303,7 +306,7 @@ export function VendorsWorkspace({ vendorId, weights = false }: { vendorId?: str
           error={error}
           fullPage
           onClose={back}
-          onSave={(weights) => void putCategory({ weights }, "가중치를 저장했습니다. 점수를 다시 계산했습니다.")}
+          onSave={(weights) => run(`/api/admin/service-vendor-categories/${cat}`, { method: "PUT", json: { weights } }, "가중치를 저장했습니다. 점수를 다시 계산했습니다.", false)}
         />
       )}
       {dialog?.kind === "form" && board && (
@@ -314,11 +317,11 @@ export function VendorsWorkspace({ vendorId, weights = false }: { vendorId?: str
           busy={busy}
           error={error}
           fullPage
-          onClose={back}
+          onClose={() => { if (vendorId === "new") back(); else { setBusy(false); setDialog(null); void load(true); } }}
           onSave={(body) =>
-            void (dialog.vendor
-              ? run(`/api/admin/service-vendors/${dialog.vendor.id}`, { method: "PATCH", json: body }, "업체를 수정했습니다.")
-              : run("/api/admin/service-vendors", { method: "POST", json: { category: cat, ...body } }, "업체를 등록했습니다."))
+            (dialog.vendor
+              ? run(`/api/admin/service-vendors/${dialog.vendor.id}`, { method: "PATCH", json: body }, "업체를 수정했습니다.", false)
+              : run("/api/admin/service-vendors", { method: "POST", json: { category: cat, ...body } }, "업체를 등록했습니다.", false))
           }
         />
       )}
@@ -358,13 +361,15 @@ function ConfirmDialog(p: { id: string; title: string; body: string; action: str
   );
 }
 
-function WeightsDialog(p: { board: VendorBoard; busy: boolean; error: string | null; onClose: () => void; fullPage?: boolean; onSave: (w: Record<string, number>) => void }) {
+function WeightsDialog(p: { board: VendorBoard; busy: boolean; error: string | null; onClose: () => void; fullPage?: boolean; onSave: (w: Record<string, number>) => Promise<boolean> }) {
   const cat = p.board.category;
   const [w, setW] = useState<Record<string, string>>(() => Object.fromEntries(p.board.criteria.map((c) => [c.key, String(c.weight)])));
   const nums = Object.fromEntries(Object.entries(w).map(([k, v]) => [k, v === "" ? NaN : Number(v)]));
   const valid = Object.values(nums).every((n) => Number.isInteger(n) && n >= 0 && n <= 100);
   const total = valid ? sum(nums) : null;
   const dirty = p.board.criteria.some((c) => w[c.key] !== String(c.weight));
+  const release = useUnsavedGuard(!!p.fullPage && dirty);
+  const save = async () => { if (await p.onSave(nums)) { await release(); p.onClose(); } };
   const content = (requestClose: () => void) => (
         <div className="col" style={{ gap: 16 }}>
           <div className="modal-h">
@@ -395,14 +400,14 @@ function WeightsDialog(p: { board: VendorBoard; busy: boolean; error: string | n
             <button className="btn btn-out" type="button" onClick={requestClose} disabled={p.busy}>
               취소
             </button>
-            <button className="btn" type="button" disabled={p.busy || total !== 100} onClick={() => p.onSave(nums)}>
+            <button className="btn" type="button" disabled={p.busy || total !== 100} onClick={() => void save()}>
               {p.busy ? "저장 중" : "저장"}
             </button>
           </div>
           <span className="c-alt t-l2">합계가 100일 때만 저장할 수 있습니다. 저장하면 모든 업체 점수를 다시 계산합니다.</span>
         </div>
   );
-  const closePage = () => { if (!p.busy && (!dirty || window.confirm("저장하지 않은 변경을 버리고 나갈까요?"))) p.onClose(); };
+  const closePage = async () => { if (p.busy || !confirmLeave(dirty)) return; await release(); p.onClose(); };
   return p.fullPage ? <section className="card pad-l">{content(closePage)}</section> : (
     <Modal labelId="vendor-weights" busy={p.busy} dirty={dirty} onClose={p.onClose}>
       {content}
@@ -410,7 +415,7 @@ function WeightsDialog(p: { board: VendorBoard; busy: boolean; error: string | n
   );
 }
 
-function VendorFormDialog(p: { board: VendorBoard; vendor: Vendor | null; busy: boolean; error: string | null; onClose: () => void; fullPage?: boolean; onSave: (body: Record<string, unknown>) => void }) {
+function VendorFormDialog(p: { board: VendorBoard; vendor: Vendor | null; busy: boolean; error: string | null; onClose: () => void; fullPage?: boolean; onSave: (body: Record<string, unknown>) => Promise<boolean> }) {
   const cat = p.board.category;
   const v = p.vendor;
   const [name, setName] = useState(v?.name ?? "");
@@ -422,7 +427,8 @@ function VendorFormDialog(p: { board: VendorBoard; vendor: Vendor | null; busy: 
   const snap = (n: string, f: string, m: string, ft: string[], r: Record<string, string>, a: boolean) => JSON.stringify([n, f, m, [...ft].sort(), r, a]);
   const [first] = useState(() => snap(name, fee, memo, features, ratings, active));
   const dirty = snap(name, fee, memo, features, ratings, active) !== first;
-  const submit = (e: React.FormEvent) => {
+  const release = useUnsavedGuard(!!p.fullPage && dirty);
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const r: Record<string, number | null> = {};
     for (const c of p.board.criteria) {
@@ -432,7 +438,7 @@ function VendorFormDialog(p: { board: VendorBoard; vendor: Vendor | null; busy: 
     }
     const body: Record<string, unknown> = { name, features, referenceFee: fee.trim() === "" ? null : fee, memo: memo.trim() === "" ? null : memo, ratings: r };
     if (v) body.active = active;
-    p.onSave(body);
+    if (await p.onSave(body)) { await release(); p.onClose(); }
   };
   const content = (requestClose: () => void) => (
         <form className="col" style={{ gap: 14 }} onSubmit={submit} noValidate>
@@ -499,7 +505,7 @@ function VendorFormDialog(p: { board: VendorBoard; vendor: Vendor | null; busy: 
           </div>
         </form>
   );
-  const closePage = () => { if (!p.busy && (!dirty || window.confirm("저장하지 않은 변경을 버리고 나갈까요?"))) p.onClose(); };
+  const closePage = async () => { if (p.busy || !confirmLeave(dirty)) return; await release(); p.onClose(); };
   return p.fullPage ? <section className="card pad-l">{content(closePage)}</section> : (
     <Modal labelId="vendor-form" busy={p.busy} dirty={dirty} onClose={p.onClose}>
       {content}
