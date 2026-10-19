@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useImperativeHandle, useState } from "react";
 import { confirmLeave, useUnsavedGuard } from "../../../../lib/client/navigation";
 import { Modal } from "../../../../components/admin-ui/Modal";
 import { adminApi } from "./api";
@@ -14,7 +14,7 @@ const FIELDS = [
 ] as const;
 type Key = (typeof FIELDS)[number]["key"];
 
-export function PlanTrialDialog({ plan, onClose, onDone, fullPage = false }: { plan: AdminPlan; onClose: () => void; onDone: () => void; fullPage?: boolean }) {
+export function PlanTrialDialog({ plan, onClose, onDone, fullPage = false, leaveRef }: { plan: AdminPlan; onClose: () => void; onDone: () => void; fullPage?: boolean; leaveRef?: React.Ref<(next?: () => void) => Promise<void>> }) {
   const before: Record<Key, number> = { message: plan.trialMessageLimit, identity: plan.trialIdentityLimit, storageMb: plan.trialStorageMb };
   const [v, setV] = useState<Record<Key, string>>({ message: String(before.message), identity: String(before.identity), storageMb: String(before.storageMb) });
   const [busy, setBusy] = useState(false);
@@ -72,11 +72,13 @@ export function PlanTrialDialog({ plan, onClose, onDone, fullPage = false }: { p
           </div>
         </form>
   );
-  const closePage = async () => {
+  const leavePage = async (next = onClose) => {
     if (busy || !confirmLeave(changed)) return;
     await release();
-    onClose();
+    next();
   };
+  const closePage = () => leavePage();
+  useImperativeHandle(leaveRef, () => leavePage);
   return fullPage ? <section className="card pad-l">{content(closePage)}</section> : (
     <Modal labelId="plan-trial-title" busy={busy} dirty={changed} onClose={onClose}>
       {content}

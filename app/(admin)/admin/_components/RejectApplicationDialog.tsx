@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useImperativeHandle, useState } from "react";
 import { confirmLeave, useUnsavedGuard } from "../../../../lib/client/navigation";
 import { textLength } from "../../../../lib/server/text/clean";
 import { Modal } from "../../../../components/admin-ui/Modal";
@@ -14,7 +14,7 @@ const join = (preset: string, extra: string) => [preset, extra.trim()].filter(Bo
 
 type BulkResult = { id: string; ok: boolean; message?: string }[];
 // bulkIds를 주면 선택 반려(POST /api/admin/sellers/applications/bulk-reject)로 보내고 건별 결과를 onDone에 넘긴다.
-export function RejectApplicationDialog({ id, bulkIds, shopName, onClose, onDone, onStale, fullPage = false }: { id?: string; bulkIds?: string[]; shopName: string; onClose: () => void; onDone: (results?: BulkResult) => void; onStale: () => void; fullPage?: boolean }) {
+export function RejectApplicationDialog({ id, bulkIds, shopName, onClose, onDone, onStale, fullPage = false, leaveRef }: { id?: string; bulkIds?: string[]; shopName: string; onClose: () => void; onDone: (results?: BulkResult) => void; onStale: () => void; fullPage?: boolean; leaveRef?: React.Ref<(next?: () => void) => Promise<void>> }) {
   const [preset, setPreset] = useState("");
   const [extra, setExtra] = useState("");
   const [busy, setBusy] = useState(false);
@@ -76,11 +76,13 @@ export function RejectApplicationDialog({ id, bulkIds, shopName, onClose, onDone
           </div>
         </>
   );
-  const closePage = async () => {
+  const leavePage = async (next = onClose) => {
     if (busy || !confirmLeave(preset !== "" || extra !== "")) return;
     await release();
-    onClose();
+    next();
   };
+  const closePage = () => leavePage();
+  useImperativeHandle(leaveRef, () => leavePage);
   return fullPage ? <section className="card pad-l col" style={{ gap: 16 }}>{content(closePage)}</section> : (
     <Modal labelId="reject-title" busy={busy} dirty={preset !== "" || extra !== ""} onClose={onClose}>
       {content}

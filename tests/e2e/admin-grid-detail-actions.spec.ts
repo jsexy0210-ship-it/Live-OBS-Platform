@@ -313,3 +313,54 @@ for (const action of ["hide", "delete"] as const) test(`도우미 ${action} 성�
   else await expect(page).toHaveURL(/support\/assistant$/);
   expect(await page.evaluate(() => !!history.state?.unsavedGuard)).toBe(false);
 });
+
+// Direct entry and reload have no in-app previous route: ← must confirm and consume the guard before fallback.
+const backCases = [
+  { name: "계정", path: `/admin/accounts/${id(1)}`, list: "/admin/accounts?q=kept", label: "이름", value: "보관할 이름" },
+  { name: "가격", path: "/admin/billing/plans/INTEGRATED", list: "/admin/billing/plans", action: "가격 변경", label: "판매가", value: "180000" },
+  { name: "체험", path: "/admin/billing/plans/INTEGRATED", list: "/admin/billing/plans", action: "체험 한도 변경", label: "알림톡·문자", value: "1" },
+  { name: "메일 수량", path: "/admin/billing/plans/INTEGRATED", list: "/admin/billing/plans", action: "월 무료 메일 수량 변경", label: "월 주문·배송 안내 메일 무료 수량", value: "101" },
+  { name: "방송 종료", path: `/admin/ops/live/${id(1)}`, list: "/admin/ops/live", label: "사유 (필수)", value: "보관할 종료 사유" },
+  { name: "선택 메모", path: `/admin/partners/bulk-note?ids=${id(1)}`, list: "/admin/partners?q=kept", label: "메모", value: "보관할 내부 메모" },
+  { name: "선택 반려", path: `/admin/partners/applications/bulk?ids=${id(1)}&mode=reject`, list: "/admin/partners/applications?q=kept", label: "추가 안내", value: "보관할 반려 사유" },
+  { name: "업체", path: `/admin/settings/vendors/${id(1)}?cat=PG`, list: "/admin/settings/vendors?cat=PG", label: "업체 이름", value: "보관할 업체 이름" },
+  { name: "업체 비중", path: "/admin/settings/vendors/weights?cat=PG", list: "/admin/settings/vendors?cat=PG", selector: "#w-fee", value: "99" },
+  { name: "도우미 문서", path: `/admin/support/assistant/${id(1)}`, list: "/admin/support/assistant?q=kept", label: "제목", value: "보관할 문서 제목" },
+];
+for (const entry of ["직접 진입", "새로고침"]) for (const scenario of backCases) test(`${scenario.name} ${entry}의 ←는 취소 시 입력을 보존하고 확인 후 목록으로 돌아간다`, async ({ page }) => {
+  const writes: unknown[] = [];
+  const vendor = { id: id(1), name: "검수 업체", logoUrl: null, active: true, recommended: false, selected: false, referenceFee: null, memo: null, features: [], ratings: { fee: 8 }, score: 80, ratedCount: 1 };
+  await mockAdmin(page, async (route, path) => {
+    if (route.request().method() !== "GET") { writes.push(route.request().postDataJSON()); await json(route, { error: "unexpected_write" }, 409); return true; }
+    if (path === "/api/admin/admins") { await json(route, { admins: [account(1)] }); return true; }
+    if (path === "/api/admin/plans") { await json(route, { plans: [plan] }); return true; }
+    if (path === "/api/admin/service-vendors") { await json(route, { categories: [{ category: "PG", featureKeys: [], criteria: [{ key: "fee", weight: 100 }], vendors: [vendor] }] }); return true; }
+    if (path === `/api/admin/ops/live-broadcasts/${id(1)}`) { await json(route, { broadcast: { broadcastId: id(1), sellerId: id(2), shopName: "방송 몰", title: "확인 방송" } }); return true; }
+    if (path === "/api/admin/ops/live-broadcasts") { await json(route, { at, items: [], orderRate: { total: 0 } }); return true; }
+    if (path === `/api/admin/sellers/${id(1)}`) { await json(route, { seller: { id: id(1), shopName: "선택 몰" } }); return true; }
+    if (path === "/api/admin/assistant/docs") { await json(route, { items: [{ id: id(1), title: "원본 문서", body: "공개 자료", published: false, version: 1, updatedAt: at }] }); return true; }
+    if (path === "/api/admin/sellers/applications") { await json(route, { applications: [], industries: [], chips: { all: 0, clear: 0, review: 0, supplement: 0, over48h: 0, today: 0 }, total: 0, nextCursor: null, kpi: { pending: 0, needsReview: 0, clear: 0, supplement: 0, over48h: 0, receivedToday: 0, approvedToday: 0, autoApprovedToday: 0, rejectedToday: 0, avgHandlingHours: { thisWeek: null, lastWeek: null } } }); return true; }
+    return false;
+  });
+  const target = new URL(scenario.path, "http://localhost");
+  target.searchParams.set("returnTo", scenario.list);
+  await page.goto(target.pathname + target.search);
+  if (entry === "새로고침") await page.reload();
+  if (scenario.action) await page.getByRole("button", { name: scenario.action, exact: true }).click();
+  const field = scenario.selector ? page.locator(scenario.selector) : page.getByLabel(scenario.label!, { exact: true });
+  await field.fill(scenario.value);
+  await expect.poll(() => page.evaluate(() => !!history.state?.unsavedGuard)).toBe(true);
+  const detail = page.url();
+  const confirmations: string[] = [];
+  page.once("dialog", dialog => { confirmations.push(dialog.message()); void dialog.dismiss(); });
+  await page.locator("main").getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL(detail);
+  await expect(field).toHaveValue(scenario.value);
+  await expect.poll(() => page.evaluate(() => !!history.state?.unsavedGuard)).toBe(true);
+  page.once("dialog", dialog => { confirmations.push(dialog.message()); void dialog.accept(); });
+  await page.locator("main").getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL(url => url.pathname + url.search === scenario.list);
+  expect(confirmations).toEqual(Array(2).fill("저장하지 않은 변경이 있습니다. 이 화면을 나가시겠습니까?"));
+  expect(await page.evaluate(() => !!history.state?.unsavedGuard)).toBe(false);
+  expect(writes).toEqual([]);
+});

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useImperativeHandle, useState } from "react";
 import { confirmLeave, useUnsavedGuard } from "../../../../lib/client/navigation";
 import { Modal } from "../../../../components/admin-ui/Modal";
 import { adminApi } from "./api";
@@ -14,12 +14,14 @@ export function ForceEndDialog({
   onDone,
   onStale,
   fullPage = false,
+  leaveRef,
 }: {
   broadcast: { broadcastId: string; shopName: string; title: string | null };
   onClose: () => void;
   onDone: () => void;
   onStale: () => void;
   fullPage?: boolean;
+  leaveRef?: React.Ref<(next?: () => void) => Promise<void>>;
 }) {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -82,11 +84,13 @@ export function ForceEndDialog({
           </div>
         </>
   );
-  const closePage = async () => {
+  const leavePage = async (next = onClose) => {
     if (busy || !confirmLeave(reason !== "")) return;
     await release();
-    onClose();
+    next();
   };
+  const closePage = () => leavePage();
+  useImperativeHandle(leaveRef, () => leavePage);
   return fullPage ? <section className="card pad-l col" style={{ gap: 16 }}>{content(closePage)}</section> : (
     <Modal labelId="force-end-title" busy={busy} dirty={reason !== ""} onClose={onClose}>
       {content}

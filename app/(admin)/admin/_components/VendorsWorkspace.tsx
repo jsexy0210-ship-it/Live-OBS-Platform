@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { PageHead } from "../../../../components/admin-ui";
 import { Modal } from "../../../../components/admin-ui/Modal";
 import { ErrorState, LoadingRows, Toast } from "../../../../components/seller/States";
@@ -10,7 +10,7 @@ import { adminCan } from "../../../../lib/server/authz/permissions";
 import { adminApi, failMessage } from "./api";
 import { AdminTopbar, useAdmin } from "./AdminShell";
 import { criterionLabel, FEATURE_LABEL, VENDOR_CATEGORIES, VENDOR_CATEGORY_LABEL, type Vendor, type VendorBoard, type VendorCategory } from "./vendors";
-import { confirmLeave, useUnsavedGuard, useUrlState } from "../../../../lib/client/navigation";
+import { confirmLeave, useSmartBack, useUnsavedGuard, useUrlState } from "../../../../lib/client/navigation";
 
 // MA-087 외부 서비스 연동(GET /api/admin/service-vendors: 모든 마스터 역할 조회, 변경은 최고관리자·운영 vendor.manage).
 // 분야 탭 → 업체 카드(로고·추천·사용 중·기능·참고 요금·ONQ 점수) → 상세 비교표. 선택·추천 변경·가중치 편집·업체 등록·수정·로고는 변경 권한자에게만 보인다.
@@ -47,6 +47,7 @@ export function VendorsWorkspace({ vendorId, weights = false }: { vendorId?: str
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
+  const leaveRef = useRef<((next?: () => void) => Promise<void>) | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const logoFor = useRef<string | null>(null);
 
@@ -64,6 +65,7 @@ export function VendorsWorkspace({ vendorId, weights = false }: { vendorId?: str
   const initialized = useRef<string | null>(null);
   const board = state.kind === "ok" ? (vendorId && vendorId !== "new" ? Object.values(state.boards).find(b => b.vendors.some(v => v.id === vendorId)) ?? null : state.boards[urlCat]) : null;
   const cat = board?.category ?? urlCat;
+  const smartBack = useSmartBack(`/admin/settings/vendors?cat=${cat}`);
   const back = () => { setBusy(false); router.push(`/admin/settings/vendors?cat=${cat}`); };
   useEffect(() => {
     if (!board || !detail || !canEdit) return;
@@ -123,6 +125,7 @@ export function VendorsWorkspace({ vendorId, weights = false }: { vendorId?: str
       <AdminTopbar crumb="설정 › 외부 서비스 연동" />
       <main className="main">
         <PageHead
+          onBack={detail ? () => leaveRef.current ? leaveRef.current(smartBack) : smartBack() : undefined}
           title={detail ? "외부 서비스 업체 상세" : "외부 서비스 연동"}
           actions={
             canEdit && board && !detail ? (
@@ -305,6 +308,7 @@ export function VendorsWorkspace({ vendorId, weights = false }: { vendorId?: str
           busy={busy}
           error={error}
           fullPage
+          leaveRef={leaveRef}
           onClose={back}
           onSave={(weights) => run(`/api/admin/service-vendor-categories/${cat}`, { method: "PUT", json: { weights } }, "가중치를 저장했습니다. 점수를 다시 계산했습니다.", false)}
         />
@@ -317,6 +321,7 @@ export function VendorsWorkspace({ vendorId, weights = false }: { vendorId?: str
           busy={busy}
           error={error}
           fullPage
+          leaveRef={leaveRef}
           onClose={() => { if (vendorId === "new") back(); else { setBusy(false); setDialog(null); void load(true); } }}
           onSave={(body) =>
             (dialog.vendor
@@ -361,7 +366,7 @@ function ConfirmDialog(p: { id: string; title: string; body: string; action: str
   );
 }
 
-function WeightsDialog(p: { board: VendorBoard; busy: boolean; error: string | null; onClose: () => void; fullPage?: boolean; onSave: (w: Record<string, number>) => Promise<boolean> }) {
+function WeightsDialog(p: { board: VendorBoard; busy: boolean; error: string | null; onClose: () => void; fullPage?: boolean; leaveRef?: React.Ref<(next?: () => void) => Promise<void>>; onSave: (w: Record<string, number>) => Promise<boolean> }) {
   const cat = p.board.category;
   const [w, setW] = useState<Record<string, string>>(() => Object.fromEntries(p.board.criteria.map((c) => [c.key, String(c.weight)])));
   const nums = Object.fromEntries(Object.entries(w).map(([k, v]) => [k, v === "" ? NaN : Number(v)]));
@@ -407,7 +412,9 @@ function WeightsDialog(p: { board: VendorBoard; busy: boolean; error: string | n
           <span className="c-alt t-l2">합계가 100일 때만 저장할 수 있습니다. 저장하면 모든 업체 점수를 다시 계산합니다.</span>
         </div>
   );
-  const closePage = async () => { if (p.busy || !confirmLeave(dirty)) return; await release(); p.onClose(); };
+  const leavePage = async (next = p.onClose) => { if (p.busy || !confirmLeave(dirty)) return; await release(); next(); };
+  const closePage = () => leavePage();
+  useImperativeHandle(p.leaveRef, () => leavePage);
   return p.fullPage ? <section className="card pad-l">{content(closePage)}</section> : (
     <Modal labelId="vendor-weights" busy={p.busy} dirty={dirty} onClose={p.onClose}>
       {content}
@@ -415,7 +422,7 @@ function WeightsDialog(p: { board: VendorBoard; busy: boolean; error: string | n
   );
 }
 
-function VendorFormDialog(p: { board: VendorBoard; vendor: Vendor | null; busy: boolean; error: string | null; onClose: () => void; fullPage?: boolean; onSave: (body: Record<string, unknown>) => Promise<boolean> }) {
+function VendorFormDialog(p: { board: VendorBoard; vendor: Vendor | null; busy: boolean; error: string | null; onClose: () => void; fullPage?: boolean; leaveRef?: React.Ref<(next?: () => void) => Promise<void>>; onSave: (body: Record<string, unknown>) => Promise<boolean> }) {
   const cat = p.board.category;
   const v = p.vendor;
   const [name, setName] = useState(v?.name ?? "");
@@ -505,7 +512,9 @@ function VendorFormDialog(p: { board: VendorBoard; vendor: Vendor | null; busy: 
           </div>
         </form>
   );
-  const closePage = async () => { if (p.busy || !confirmLeave(dirty)) return; await release(); p.onClose(); };
+  const leavePage = async (next = p.onClose) => { if (p.busy || !confirmLeave(dirty)) return; await release(); next(); };
+  const closePage = () => leavePage();
+  useImperativeHandle(p.leaveRef, () => leavePage);
   return p.fullPage ? <section className="card pad-l">{content(closePage)}</section> : (
     <Modal labelId="vendor-form" busy={p.busy} dirty={dirty} onClose={p.onClose}>
       {content}

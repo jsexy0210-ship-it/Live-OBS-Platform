@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useImperativeHandle, useState } from "react";
 import { confirmLeave, useUnsavedGuard } from "../../../../lib/client/navigation";
 import { Modal } from "../../../../components/admin-ui/Modal";
 import { adminApi } from "./api";
@@ -17,7 +17,7 @@ const ERROR: Record<string, string> = {
   not_found: "계정을 찾을 수 없습니다. 목록을 새로 불러와 주십시오.",
 };
 
-export function AccountDialog({ account, onClose, onDone, fullPage = false }: { account: AdminAccount | null; onClose: () => void; onDone: (saved: AdminAccount, created: boolean) => void; fullPage?: boolean }) {
+export function AccountDialog({ account, onClose, onDone, fullPage = false, leaveRef }: { account: AdminAccount | null; onClose: () => void; onDone: (saved: AdminAccount, created: boolean) => void; fullPage?: boolean; leaveRef?: React.Ref<(next?: () => void) => Promise<void>> }) {
   const editing = account !== null;
   const protectedAccount = account?.role === "SUPER_ADMIN";
   const [email, setEmail] = useState("");
@@ -130,11 +130,13 @@ export function AccountDialog({ account, onClose, onDone, fullPage = false }: { 
         </div>
       </form>
   );
-  const closePage = async () => {
+  const leavePage = async (next = onClose) => {
     if (busy || !confirmLeave(dirty)) return;
     await release();
-    onClose();
+    next();
   };
+  const closePage = () => leavePage();
+  useImperativeHandle(leaveRef, () => leavePage);
   return fullPage ? <section className="card pad-l">{content(closePage)}</section> : (
     <Modal labelId="account-title" busy={busy} dirty={dirty} onClose={onClose}>
       {content}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useImperativeHandle, useState } from "react";
 import { confirmLeave, useUnsavedGuard } from "../../../../lib/client/navigation";
 import { Modal } from "../../../../components/admin-ui";
 import { adminApi } from "./api";
@@ -21,6 +21,7 @@ export function ValueDialog({
   onClose,
   onDone,
   fullPage = false,
+  leaveRef,
 }: {
   title: string;
   label: string;
@@ -32,6 +33,7 @@ export function ValueDialog({
   onClose: () => void;
   onDone: () => void;
   fullPage?: boolean;
+  leaveRef?: React.Ref<(next?: () => void) => Promise<void>>;
 }) {
   const [value, setValue] = useState(String(current));
   const [at, setAt] = useState("");
@@ -90,11 +92,13 @@ export function ValueDialog({
           </div>
         </form>
   );
-  const closePage = async () => {
+  const leavePage = async (next = onClose) => {
     if (busy || !confirmLeave(value !== String(current) || at !== "")) return;
     await release();
-    onClose();
+    next();
   };
+  const closePage = () => leavePage();
+  useImperativeHandle(leaveRef, () => leavePage);
   return fullPage ? <section className="card pad-l">{content(closePage)}</section> : (
     <Modal labelId="value-title" busy={busy} dirty={value !== String(current) || at !== ""} onClose={onClose}>
       {content}

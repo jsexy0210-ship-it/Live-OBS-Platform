@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useUnsavedGuard, confirmLeave } from "../../../../lib/client/navigation/useUnsavedGuard";
+import { useUnsavedGuard, confirmLeave, useSmartBack } from "../../../../lib/client/navigation";
 import { adminCan } from "../../../../lib/server/authz/permissions";
 import { PageHead, useConfirm } from "../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../components/seller/States";
@@ -19,6 +19,7 @@ export function AssistantDocDetail({ docId }: { docId: string }) {
   const { confirm } = useConfirm();
   const router = useRouter();
   const [returnTo, setReturnTo] = useState("/admin/support/assistant");
+  const smartBack = useSmartBack(returnTo);
   useEffect(() => setReturnTo(listReturnTo(new URLSearchParams(window.location.search).get("returnTo"), "/admin/support/assistant")), []);
   const canEdit = adminCan(me.role, "support.manage");
   const [doc, setDoc] = useState<Doc | null>(null);
@@ -30,7 +31,8 @@ export function AssistantDocDetail({ docId }: { docId: string }) {
   const [toast, setToast] = useState<string | null>(null);
   const dirty = !!(canEdit && draft && (draft.title !== (doc?.title ?? EMPTY.title) || draft.body !== (doc?.body ?? EMPTY.body) || draft.published !== (doc?.published ?? EMPTY.published)));
   const release = useUnsavedGuard(dirty);
-  const close = async () => { if (confirmLeave(dirty)) { await release(); router.push(returnTo); } };
+  const leave = async (next: () => void) => { if (busy || !confirmLeave(dirty)) return; await release(); next(); };
+  const close = () => leave(() => router.push(returnTo));
   const refresh = async () => { if (confirmLeave(dirty)) await load(true); };
   const load = useCallback(async (replaceDraft = false) => {
     setConflict(false);
@@ -102,7 +104,7 @@ export function AssistantDocDetail({ docId }: { docId: string }) {
   };
 
   return <><AdminTopbar crumb="고객지원 › 도우미 답변 자료 › 상세" /><main className="main">
-    <PageHead title={docId === "new" ? "문서 등록" : "답변 자료 상세"} actions={<Link className="btn btn-out" href={returnTo}>목록</Link>} />
+    <PageHead onBack={() => leave(smartBack)} title={docId === "new" ? "문서 등록" : "답변 자료 상세"} actions={<Link className="btn btn-out" href={returnTo}>목록</Link>} />
     {state === "loading" ? <LoadingRows rows={3} /> : state !== "ok" ? <ErrorState title={state === "missing" ? "자료를 찾을 수 없습니다." : "자료를 불러오지 못했습니다."} onRetry={() => void refresh()} /> : canEdit && draft ? <>
                 <form className="card pad-l col" style={{ gap: 10 }} onSubmit={save}>
                   <input className="inp" aria-label="제목" placeholder="제목" maxLength={100} value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} disabled={busy} />

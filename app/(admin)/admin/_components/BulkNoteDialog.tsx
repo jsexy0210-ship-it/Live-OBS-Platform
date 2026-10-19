@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useImperativeHandle, useState } from "react";
 import { confirmLeave, useUnsavedGuard } from "../../../../lib/client/navigation";
 import { textLength } from "../../../../lib/server/text/clean";
 import { Modal } from "../../../../components/admin-ui/Modal";
@@ -11,7 +11,7 @@ import { adminApi, failMessage } from "./api";
 const MAX_BODY = 1000;
 export type BulkNoteResult = { created: number; failed: number };
 
-export function BulkNoteDialog({ sellerIds, onClose, onDone, fullPage = false }: { sellerIds: string[]; onClose: () => void; onDone: (r: BulkNoteResult) => void; fullPage?: boolean }) {
+export function BulkNoteDialog({ sellerIds, onClose, onDone, fullPage = false, leaveRef }: { sellerIds: string[]; onClose: () => void; onDone: (r: BulkNoteResult) => void; fullPage?: boolean; leaveRef?: React.Ref<(next?: () => void) => Promise<void>> }) {
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,11 +63,13 @@ export function BulkNoteDialog({ sellerIds, onClose, onDone, fullPage = false }:
           </div>
         </>
   );
-  const closePage = async () => {
+  const leavePage = async (next = onClose) => {
     if (busy || !confirmLeave(body !== "")) return;
     await release();
-    onClose();
+    next();
   };
+  const closePage = () => leavePage();
+  useImperativeHandle(leaveRef, () => leavePage);
   return fullPage ? <section className="card pad-l col" style={{ gap: 16 }}>{content(closePage)}</section> : (
     <Modal labelId="bulk-note-title" busy={busy} dirty={body !== ""} onClose={onClose}>
       {content}

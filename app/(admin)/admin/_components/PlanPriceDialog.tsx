@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useImperativeHandle, useState } from "react";
 import { confirmLeave, useUnsavedGuard } from "../../../../lib/client/navigation";
 import { Modal } from "../../../../components/admin-ui/Modal";
 import { adminApi } from "./api";
@@ -16,7 +16,7 @@ const ERROR: Record<string, string> = {
 
 const toNum = (v: string) => (v.trim() === "" ? NaN : Number(v));
 
-export function PlanPriceDialog({ plan, onClose, onDone, fullPage = false }: { plan: AdminPlan; onClose: () => void; onDone: () => void; fullPage?: boolean }) {
+export function PlanPriceDialog({ plan, onClose, onDone, fullPage = false, leaveRef }: { plan: AdminPlan; onClose: () => void; onDone: () => void; fullPage?: boolean; leaveRef?: React.Ref<(next?: () => void) => Promise<void>> }) {
   const [list, setList] = useState(String(plan.listPrice));
   const [sale, setSale] = useState(String(plan.salePrice));
   const [confirming, setConfirming] = useState(false);
@@ -101,11 +101,13 @@ export function PlanPriceDialog({ plan, onClose, onDone, fullPage = false }: { p
           </div>
         </form>
   );
-  const closePage = async () => {
+  const leavePage = async (next = onClose) => {
     if (busy || !confirmLeave(changed)) return;
     await release();
-    onClose();
+    next();
   };
+  const closePage = () => leavePage();
+  useImperativeHandle(leaveRef, () => leavePage);
   return fullPage ? <section className="card pad-l">{content(closePage)}</section> : (
     <Modal labelId="plan-price-title" busy={busy} dirty={changed} onClose={onClose}>
       {content}
