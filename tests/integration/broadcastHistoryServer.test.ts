@@ -86,14 +86,11 @@ describe("방송 기록 내보내기", () => {
   it("방송 열람 범위가 있는 대리조회도 금전 CSV는 자료를 읽기 전에 403으로 막는다", async () => {
     const s = await shop();
     const admin = await createAdmin("SUPER_ADMIN");
-    const findMany = vi.spyOn(db.broadcastSession, "findMany");
-    try {
-      await expect(exportBroadcastHistory(db, { sellerId: s.seller.id, actorType: "PLATFORM_ADMIN", actorId: admin.id, isOwner: false, permissions: [], readOnly: true, impersonationScopes: ["BROADCAST"] }, {})).rejects.toMatchObject({ status: 403, code: "forbidden" });
-      expect(findMany).not.toHaveBeenCalled();
-      expect(await db.auditLog.count({ where: { sellerId: s.seller.id, action: "broadcast.history.export" } })).toBe(0);
-    } finally {
-      findMany.mockRestore();
-    }
+    const findMany = vi.fn(async () => { throw new Error("unexpected_broadcast_query"); });
+    const guardedDb = { broadcastSession: { findMany } } as unknown as Parameters<typeof exportBroadcastHistory>[0];
+    await expect(exportBroadcastHistory(guardedDb, { sellerId: s.seller.id, actorType: "PLATFORM_ADMIN", actorId: admin.id, isOwner: false, permissions: [], readOnly: true, impersonationScopes: ["BROADCAST"] }, {})).rejects.toMatchObject({ status: 403, code: "forbidden" });
+    expect(findMany).not.toHaveBeenCalled();
+    expect(await db.auditLog.count({ where: { sellerId: s.seller.id, action: "broadcast.history.export" } })).toBe(0);
   });
 
   it("조건에 맞는 방송 전체를 최신순 CSV로 내려주고 권한·격리·잘못된 기간을 막는다", async () => {
