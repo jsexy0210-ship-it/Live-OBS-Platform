@@ -64,7 +64,7 @@ test("상품 목록: 검색어·판매 상태·정렬이 주소에 실리고, �
   // 잘못된 값은 기본값으로 읽는다
   await page.goto("/seller/products?status=BOGUS&sort=nope&limit=7");
   await expect(page.getByLabel("정렬")).toHaveValue("newest");
-  await expect(page.getByLabel("목록 개수")).toHaveValue("50");
+  await expect(page.getByLabel("목록 개수")).toHaveValue("10");
   await expect(page.getByRole("radio", { name: "전체" }).first()).toBeChecked();
   // 초기화하면 쿼리가 비워진다
   await page.getByRole("button", { name: "초기화", exact: true }).click();

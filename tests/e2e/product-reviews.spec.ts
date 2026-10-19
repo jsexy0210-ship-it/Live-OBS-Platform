@@ -93,7 +93,7 @@ test.describe.serial("SH-029 리뷰 쓰기 · SA-048 리뷰 관리", () => {
     await expect(page.locator(".rv-photo img")).toHaveCount(1);
 
     await page.getByRole("textbox", { name: /내용/ }).fill("짧아요");
-    await expect(page.getByText("10자 이상 써야 올릴 수 있어요")).toBeVisible();
+    await expect(page.getByText("10자 이상 적어 주세요", { exact: true })).toBeVisible();
     await page.getByRole("textbox", { name: /내용/ }).fill("브레이크 때 뽑힌 카드 상태가 정말 좋았어요. 포장도 꼼꼼했어요.");
     await shots(page, "sh029-write");
     await page.getByRole("button", { name: "리뷰 등록" }).click();

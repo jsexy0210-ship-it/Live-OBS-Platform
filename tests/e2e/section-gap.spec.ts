@@ -5,9 +5,6 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { hashPassword } from "../../lib/server/auth/password";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 import { submitSellerLogin } from "./sellerLogin";
-import { renderToStaticMarkup } from "react-dom/server";
-import { transpileModule, ModuleKind, JsxEmit } from "typescript";
-import { createRequire } from "node:module";
 
 // 실제 앱 로그인 뒤 FINAL 공통 본문 16px 간격과 휴대폰 안전성을 확인한다.
 const password = randomBytes(16).toString("base64url");
@@ -67,27 +64,18 @@ test("FINAL SA-002·SA-011·MA-013 본문 간격의 브라우저 계산 규격",
   }
 });
 
-test("모바일 별도 정본 홈 React·상품 HTML의 본문 간격", async ({ page }) => {
-  // Playwright의 JSX 변환과 분리해 실제 React 정본을 그대로 렌더한다. 링크만 로컬 정본 참조로 고정한다.
-  const localRequire = createRequire(`${process.cwd()}/package.json`);
-  const canonical = { exports: {} as { default: () => React.ReactNode } };
-  const compiled = transpileModule(readFileSync("design/project/SA-002-M.dc.tsx", "utf8"), { compilerOptions: { module: ModuleKind.CommonJS, jsx: JsxEmit.ReactJSX } }).outputText;
-  new Function("require", "exports", compiled)((name: string) => name === "./sa-mobile-links" ? { mobileDesignHref: () => "#" } : localRequire(name), canonical.exports);
+test("모바일 홈은 단일 구현으로 위임하고 상품 HTML은 기존 간격을 유지한다", async ({ page }) => {
+  // 위임된 홈은 아래 실제 Next/소유 로그인 시험에서 390px까지 측정한다. 제품 DOM이나 문맥을 복제하지 않는다.
+  expect(readFileSync("design/project/SA-002-M.dc.tsx", "utf8")).toMatch(/^export \{ default \} from "\.\/SA-002\.dc";$/m);
+  const homeSource = readFileSync("design/project/SA-002.dc.tsx", "utf8");
+  expect(homeSource).toMatch(/^import \{ UnifiedHome \} from "\.\.\/\.\.\/components\/seller\/home\/UnifiedHome";$/m);
+  expect(homeSource).toMatch(/^export default UnifiedHome;$/m);
   await page.setViewportSize({ width: 390, height: 900 });
-  for (const [id, source] of [["SA-002-M", renderToStaticMarkup(canonical.exports.default())], ["SA-011-M", readFileSync("design/project/SA-011-M.dc.html", "utf8")]]) {
+  for (const [id, source] of [["SA-011-M", readFileSync("design/project/SA-011-M.dc.html", "utf8")]]) {
     await page.setContent(source.replace(/<link[^>]+>/g, "").replace(/<script[\s\S]*?<\/script>/g, ""));
     await page.addStyleTag({ content: readFileSync("design/project/ds/wds/tokens.css", "utf8") });
     await page.addStyleTag({ content: readFileSync("design/project/lop.css", "utf8") });
     expect(await page.locator(".c24.mob .body").first().evaluate(el => getComputedStyle(el).gap)).toBe("16px");
-    if (id === "SA-002-M") {
-      const sections = await page.locator(".body > .sec-h").first().evaluate(el => ({
-        before: el.getBoundingClientRect().top - el.closest(".body")!.previousElementSibling!.getBoundingClientRect().bottom,
-        after: el.nextElementSibling!.getBoundingClientRect().top - el.getBoundingClientRect().bottom,
-        next: el.nextElementSibling!.nextElementSibling!.getBoundingClientRect().top - el.nextElementSibling!.getBoundingClientRect().bottom,
-      }));
-      expect(sections).toEqual({ before: 16, after: 16, next: 16 });
-      writeFileSync("tests/e2e/screenshots/section-gap/source-SA-002-M-390.json", JSON.stringify(sections, null, 2));
-    }
     await page.locator(".m-ph").first().screenshot({ path: `tests/e2e/screenshots/section-gap/source-${id}-390.png` });
   }
 });
@@ -103,6 +91,9 @@ for (const surface of ["home", "seller", "admin"] as const) {
       await page.getByRole("button", { name: "로그인", exact: true }).click();
     }
     await expect(page).toHaveURL(new RegExp(`/${loginSurface}$`));
+    if (surface === "home") {
+      await page.route(/\/api\/seller\/broadcast\/history(?:\?.*)?$/, (route) => route.fulfill({ json: { items: [], nextCursor: null, monthSummary: { broadcasts: 0, seconds: 0, orders: 0, avgSales: 0, avgOpenSeconds: null } } }));
+    }
     for (const width of [1440, 1024, 390]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(surface === "home" ? "/seller" : surface === "seller" ? "/seller/products" : "/admin/partners/applications");
@@ -120,15 +111,22 @@ for (const surface of ["home", "seller", "admin"] as const) {
       });
       expect(geometry.overflow).toBe(false);
       const body = page.locator(surface === "home" ? ".main > .home" : ".main");
-      const gaps = await body.evaluate(el => {
+      const gaps = await body.evaluate((el, home) => {
         const children = Array.from(el.children).filter(child => getComputedStyle(child).position !== "absolute" && child.getBoundingClientRect().height > 0);
+        if (home) {
+          const mainChildren = Array.from(el.parentElement!.children).filter(child => getComputedStyle(child).position !== "absolute" && child.getBoundingClientRect().height > 0);
+          const head = mainChildren.findIndex(child => child.classList.contains("au-ph"));
+          if (head < 0 || !mainChildren[head + 1]) throw new Error("홈 main의 PageHead와 첫 본문이 필요합니다");
+          return { gap: getComputedStyle(el).gap, titleToBody: mainChildren[head + 1].getBoundingClientRect().top - mainChildren[head].getBoundingClientRect().bottom,
+            sections: children.slice(1).map((child, index) => child.getBoundingClientRect().top - children[index].getBoundingClientRect().bottom) };
+        }
         const head = children.findIndex(child => child.classList.contains("au-ph"));
         const first = children[head + 1];
         return { gap: getComputedStyle(el).gap, titleToBody: first.getBoundingClientRect().top - children[head].getBoundingClientRect().bottom,
           sections: children.slice(head + 2).map((child, index) => child.getBoundingClientRect().top - children[head + index + 1].getBoundingClientRect().bottom) };
-      });
+      }, surface === "home");
       const expectedGap = surface === "home" && width >= 768 ? 24 : 16;
-      expect(gaps).toMatchObject({ gap: `${expectedGap}px`, titleToBody: expectedGap });
+      expect(gaps).toMatchObject({ gap: `${expectedGap}px`, titleToBody: 16 });
       for (const gap of gaps.sections) expect(gap).toBe(expectedGap);
       const internalGaps = surface === "home"
         ? await page.locator(".home-sec").evaluateAll(sections => sections.map(el => el.children[1].getBoundingClientRect().top - el.children[0].getBoundingClientRect().bottom))

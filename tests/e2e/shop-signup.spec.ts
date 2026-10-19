@@ -28,7 +28,8 @@ test("본인확인 키가 없으면 가입 대신 준비 중 상태 화면을 �
 
   const res = await page.goto(`/shop/${SLUG}/signup`);
   expect(res?.status()).toBe(200);
-  await expect(page.getByRole("heading", { name: "본인확인 서비스 준비 중이에요" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "회원가입", exact: true })).toBeVisible();
+  await expect(page.getByText("지금은 가입할 수 없어요", { exact: true })).toBeVisible();
   await expect(page.locator(".shop-name")).toHaveText("카드숍 별빛");
   // 입력해 봐야 소용없는 칸·버튼은 보이지 않는다
   await expect(page.getByLabel("이름")).toHaveCount(0);
