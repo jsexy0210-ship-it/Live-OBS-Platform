@@ -496,6 +496,8 @@ test("결과가 불분명한 직원 변경은 늦게 반영돼도 실패로 단�
   await expect(page.getByText(`${s.name} 계정을 만들었습니다`, { exact: false })).toHaveCount(0);
   await expect(row(page, s.email)).toBeVisible();
   await addBox.getByRole("button", { name: "처음부터 다시 입력" }).click();
+  await page.getByRole("link", { name: "목록", exact: true }).click();
+  await expect(page).toHaveURL(/\/seller\/staff$/);
   const dialog = page.locator("section[aria-labelledby^=staff-]");
 
   // 정보 수정: 끊긴 직후 다시 읽으면 반영 전 → 불분명 유지·칸 잠금(「저장되지 않았습니다」로 되돌리지 않음) → 늦게 저장된 뒤 「확인」으로 성공
@@ -577,6 +579,8 @@ test("직원 변경이 503·형식 모를 응답이면 불분명으로 보고 �
   await expect(page.getByText(`${s.name} 계정을 만들었습니다`, { exact: false })).toHaveCount(0);
   await off();
   await page.getByTestId("sa-unclear").getByRole("button", { name: "처음부터 다시 입력" }).click();
+  await page.getByRole("link", { name: "목록", exact: true }).click();
+  await expect(page).toHaveURL(/\/seller\/staff$/);
 
   // 비밀번호 재설정: 503(HTML)이면 「변경되었을 수 있음」으로 잠그고 같은 값으로만 재전송
   const dialog = page.locator("section[aria-labelledby^=staff-]");

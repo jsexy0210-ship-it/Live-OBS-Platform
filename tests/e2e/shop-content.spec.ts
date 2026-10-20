@@ -328,6 +328,7 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
     await page.unroute("**/api/seller/shop-content/images");
     page.once("dialog", d => void d.accept());
     await edit.getByRole("button", { name: "닫기" }).click();
+    await expect(page).toHaveURL(/\/seller\/banners(?:\?|$)/);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.reload();
     await expect(page.getByTestId("banner-row")).toHaveCount(3);

@@ -130,7 +130,13 @@ test.describe.serial("SA-035 쿠폰 관리 · SH-028 내 쿠폰함", () => {
 
   test("대표자: 발급 수가 집계에 보이고, 발급 중지하면 구매자는 더 받을 수 없다", async ({ page, baseURL }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
+    const listRead = page.waitForResponse(r => new URL(r.url()).pathname === "/api/seller/coupons" && r.request().method() === "GET");
     await ownerOpen(page, "/seller/coupons");
+    const response = await listRead;
+    expect(response.status()).toBe(200);
+    const data = await response.json() as { coupons: { name: string }[] };
+    expect(data.coupons.some(c => c.name === "10월 스타라이트 오픈 기념")).toBe(true);
+    await expect(page).toHaveURL(/\/seller\/coupons(?:\?|$)/);
     const row = page.getByTestId("coupon-row").filter({ hasText: "10월 스타라이트 오픈 기념" });
     await expect(page.getByRole("columnheader", { name: "발급", exact: true })).toHaveCount(1);
     await expect(row.locator("td").nth(4)).toHaveText("1");
