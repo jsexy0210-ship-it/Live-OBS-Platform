@@ -156,6 +156,7 @@ test("CS는 작성·삭제할 수 있고, 운영 담당은 목록만 보며 작�
   await login(page, emails.cs);
   await page.goto("/admin/support/notices");
   await expect(page.getByRole("link", { name: "공지 작성" }).first()).toBeVisible();
+  await page.goto("about:blank");
   await page.context().clearCookies();
   await login(page, emails.ops);
   await page.goto("/admin/support/notices");
