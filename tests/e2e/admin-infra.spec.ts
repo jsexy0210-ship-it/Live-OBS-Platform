@@ -50,12 +50,17 @@ test("최고관리자: 구역이 보이고 만료일·단가를 저장한다(단
 
   // 만료일 저장(확인 창 없음, 로그 추적 기록은 서버)
   const conn = page.getByTestId("infra-conn-row").first();
-  const date = conn.locator("input[type=date]");
+  await expect(conn.locator("input")).toHaveCount(0);
+  await conn.getByRole("link", { name: "만료일 상세" }).click();
+  await expect(page).toHaveURL(/\/admin\/ops\/infra\/connections\/[^/?]+(?:\?|$)/);
+  const date = page.locator("main form input[type=date]");
   await date.fill("2030-01-31");
   await page.getByRole("button", { name: "만료일 저장" }).click();
   await expect(page.getByText("만료일을 저장했습니다")).toBeVisible();
   await page.reload();
-  await expect(page.getByTestId("infra-conn-row").first().locator("input[type=date]")).toHaveValue("2030-01-31");
+  await expect(page.locator("main form input[type=date]")).toHaveValue("2030-01-31");
+  await page.locator("main").getByRole("link", { name: "목록", exact: true }).click();
+  await expect(page.getByTestId("infra-conn-row").first()).toContainText("2030-01-31");
   await expect(page.getByTestId("infra-conn-row").first()).toContainText(/연결 전|정상|만료 임박|인증 오류/); // 시험 환경에는 외부 키가 없어 대개 「연결 전」
 
   // 단가 저장: 확인 창 → 저장 → 서버 행 단가 반영
