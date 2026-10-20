@@ -145,9 +145,12 @@ test("SA035: 필터 후 전 접근·1쪽 복귀와 전체 선택 23개의 일괄
   await page.getByRole("navigation", { name: "쿠폰 페이지 이동" }).getByRole("button", { name: "마지막", exact: true }).click();
   await expect(rows.getByRole("checkbox").first()).toBeChecked();
   await page.getByRole("button", { name: "선택 발급 중지", exact: true }).click();
+  await expect(page).toHaveURL(/coupons\/operations/);
+  await page.locator("main").getByRole("button", { name: "선택 발급 중지", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("23개가 더 이상 내려받아지지 않습니다");
   await page.getByRole("dialog").getByRole("button", { name: "발급 중지", exact: true }).click();
   await expect.poll(() => changed.length).toBe(23); expect(new Set(changed).size).toBe(23);
+  await page.getByRole("link", { name: "목록", exact: true }).click();
   await page.getByPlaceholder("쿠폰 이름 · 코드").fill("합성 쿠폰 2");
   await page.getByRole("button", { name: "검색", exact: true }).click();
   await expect(rows).toHaveCount(3); await expect(rows.locator("td:nth-child(2) .fw6")).toHaveText(labels.slice(20));

@@ -114,7 +114,7 @@ test.describe.serial("SH-029 리뷰 쓰기 · SA-048 리뷰 관리", () => {
     await expect(row).toContainText("브레이크 때 뽑힌 카드");
     await shots(page, "sa048-list");
     await row.click();
-    const dlg = page.getByRole("dialog");
+    const dlg = page.locator("section[aria-labelledby=rv-detail-title]");
     await expect(dlg.locator(".rv-imgs img")).toHaveCount(1);
     await dlg.getByRole("textbox", { name: "답글" }).fill("소중한 리뷰 감사합니다. 다음 방송에서도 좋은 카드로 찾아뵙겠습니다.");
     await dlg.getByRole("button", { name: "답글 저장" }).click();

@@ -44,7 +44,7 @@ test.describe.serial("SA-035 쿠폰 관리 · SH-028 내 쿠폰함", () => {
     await shots(page, "sa035-empty");
 
     await page.getByRole("button", { name: "쿠폰 만들기" }).first().click();
-    const dlg = page.getByRole("dialog", { name: "쿠폰 만들기" });
+    const dlg = page.locator("section[aria-labelledby=cp-edit-title]");
     await expect(dlg.getByRole("button", { name: "저장" })).toBeDisabled();
     await dlg.getByLabel("쿠폰 이름").fill("10월 스타라이트 오픈 기념");
     await dlg.getByLabel("할인 금액 (원)").fill("5000");
@@ -57,7 +57,7 @@ test.describe.serial("SA-035 쿠폰 관리 · SH-028 내 쿠폰함", () => {
     await expect(page.getByTestId("coupon-row")).toHaveCount(1);
 
     await page.getByRole("button", { name: "쿠폰 만들기" }).first().click();
-    const dlg2 = page.getByRole("dialog", { name: "쿠폰 만들기" });
+    const dlg2 = page.locator("section[aria-labelledby=cp-edit-title]");
     await dlg2.getByLabel("쿠폰 이름").fill("방송 채팅 코드");
     await dlg2.getByRole("radio", { name: "코드 입력" }).click();
     await dlg2.getByLabel("쿠폰 코드").fill("starnight");
@@ -73,13 +73,14 @@ test.describe.serial("SA-035 쿠폰 관리 · SH-028 내 쿠폰함", () => {
 
     // 같은 코드는 다시 쓸 수 없다(대소문자 무시)
     await page.getByRole("button", { name: "쿠폰 만들기" }).first().click();
-    const dup = page.getByRole("dialog", { name: "쿠폰 만들기" });
+    const dup = page.locator("section[aria-labelledby=cp-edit-title]");
     await dup.getByLabel("쿠폰 이름").fill("중복 코드");
     await dup.getByRole("radio", { name: "코드 입력" }).click();
     await dup.getByLabel("쿠폰 코드").fill("StarNight");
     await dup.getByLabel("할인 금액 (원)").fill("1000");
     await dup.getByRole("button", { name: "저장" }).click();
     await expect(dup.getByRole("alert")).toContainText("이미 쓰는 코드입니다");
+    page.once("dialog", d => void d.accept());
     await dup.getByRole("button", { name: "취소" }).click();
     await shots(page, "sa035-list");
   });
@@ -135,12 +136,14 @@ test.describe.serial("SA-035 쿠폰 관리 · SH-028 내 쿠폰함", () => {
     await expect(row.locator("td").nth(4)).toHaveText("1");
     // 발급한 쿠폰은 삭제 버튼이 없다
     await expect(row.getByRole("button", { name: "삭제" })).toHaveCount(0);
-    await row.getByRole("button", { name: "발급 중지" }).click();
+    await row.getByRole("button", { name: "수정", exact: true }).click();
+    await page.locator("section[aria-labelledby=cp-edit-title]").getByRole("button", { name: "발급 중지", exact: true }).click();
     const confirm = page.getByRole("dialog", { name: "발급을 중지하시겠습니까?" });
     await expect(confirm).toContainText("이미 받은 1장은 기간 안에 그대로 쓸 수 있습니다");
     await confirm.getByRole("button", { name: "발급 중지" }).click();
     await expect(row.getByText("종료")).toBeVisible();
-    await expect(row.getByRole("button", { name: "다시 발급" })).toBeVisible();
+    await row.getByRole("button", { name: "수정", exact: true }).click();
+    await expect(page.locator("section[aria-labelledby=cp-edit-title]").getByRole("button", { name: "다시 발급" })).toBeVisible();
 
     await buyerLogin(page, baseURL!);
     const box = (await (await page.request.get(`/api/shop/${SLUG}/coupons`)).json()) as { usable: { name: string }[]; claimable: unknown[] };

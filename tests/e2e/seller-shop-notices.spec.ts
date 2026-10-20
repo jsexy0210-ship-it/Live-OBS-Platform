@@ -85,10 +85,14 @@ test("공지: 추가·수정·홈 고정(새로 고정하면 이전 고정이 �
 
   // 숨기기·공개: 확인 창을 거친다
   await rows.filter({ hasText: "배송 지연 안내" }).getByRole("button", { name: "숨기기" }).click();
-  await confirmBtn("숨기기").click();
+  await page.getByLabel("쇼핑몰에 공개").uncheck();
+  await page.getByTestId("notice-save").click();
+  await confirmBtn("저장").click();
   await expect(rows.filter({ hasText: "배송 지연 안내" })).toContainText("비공개");
   await rows.filter({ hasText: "배송 지연 안내" }).getByRole("button", { name: "공개", exact: true }).click();
-  await confirmBtn("공개").click();
+  await page.getByLabel("쇼핑몰에 공개").check();
+  await page.getByTestId("notice-save").click();
+  await confirmBtn("저장").click();
   await expect(rows.filter({ hasText: "배송 지연 안내" }).getByText("공개", { exact: true })).toBeVisible();
   await withDb(async (db, sellerId) => {
     const saved = await db.shopNotice.findFirstOrThrow({ where: { sellerId, title: "배송 지연 안내" }, select: { category: true } });
@@ -133,6 +137,8 @@ test("자주 묻는 질문: 분류와 함께 추가하고, 위·아래로 순서
   await expect(rows.nth(2)).toContainText("환불");
 
   // 첫 질문을 아래로
+  await page.getByRole("button", { name: "질문 순서 상세", exact: true }).click();
+  const orderRows = page.getByTestId("faq-order-row");
   const order = page.waitForResponse((r) => r.request().method() === "PUT" && r.url().endsWith("/api/seller/notices/faq-order"));
   const down = page.getByRole("button", { name: "배송은 얼마나 걸리나요 아래로" });
   await down.focus(); // 순서 버튼은 키보드 초점이 있을 때 펼쳐진다
@@ -140,10 +146,11 @@ test("자주 묻는 질문: 분류와 함께 추가하고, 위·아래로 순서
   const res = await order;
   expect(res.status()).toBe(200);
   expect((res.request().postDataJSON() as { ids: string[] }).ids).toHaveLength(3);
-  await expect(rows.nth(0)).toContainText("교환은 어떻게 하나요");
-  await expect(rows.nth(1)).toContainText("배송은 얼마나 걸리나요");
+  await expect(orderRows.nth(0)).toContainText("교환은 어떻게 하나요");
+  await expect(orderRows.nth(1)).toContainText("배송은 얼마나 걸리나요");
   await expect(page.getByRole("button", { name: "교환은 어떻게 하나요 위로", includeHidden: true })).toBeDisabled();
 
+  await page.getByRole("link", { name: "목록", exact: true }).click();
   await page.reload();
   await page.getByTestId("add-faq").click();
   await page.getByTestId("notice-editor").getByLabel("질문", { exact: true }).fill("환불은 언제 되나요");
@@ -153,6 +160,8 @@ test("자주 묻는 질문: 분류와 함께 추가하고, 위·아래로 순서
     await page.screenshot({ path: `tests/e2e/screenshots/SA-066-notices-${w}.png`, fullPage: true });
   }
   await page.setViewportSize({ width: 1440, height: 900 });
+  page.once("dialog", d => void d.accept());
+  await page.getByRole("link", { name: "목록", exact: true }).click();
   await page.reload();
   await expect(rows.nth(0)).toContainText("교환은 어떻게 하나요");
   await expect(rows.nth(1)).toContainText("배송은 얼마나 걸리나요");
