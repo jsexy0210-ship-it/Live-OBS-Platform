@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useImperativeHandle, useState } from "react";
+import { confirmLeave, useUnsavedGuard } from "../../../../lib/client/navigation";
 import { textLength } from "../../../../lib/server/text/clean";
 import { Modal } from "../../../../components/admin-ui/Modal";
 import { adminApi, failMessage } from "./api";
@@ -13,7 +14,7 @@ const join = (preset: string, extra: string) => [preset, extra.trim()].filter(Bo
 
 type BulkResult = { id: string; ok: boolean; message?: string }[];
 // bulkIds를 주면 선택 반려(POST /api/admin/sellers/applications/bulk-reject)로 보내고 건별 결과를 onDone에 넘긴다.
-export function RejectApplicationDialog({ id, bulkIds, shopName, onClose, onDone, onStale }: { id?: string; bulkIds?: string[]; shopName: string; onClose: () => void; onDone: (results?: BulkResult) => void; onStale: () => void }) {
+export function RejectApplicationDialog({ id, bulkIds, shopName, onClose, onDone, onStale, fullPage = false, leaveRef }: { id?: string; bulkIds?: string[]; shopName: string; onClose: () => void; onDone: (results?: BulkResult) => void; onStale: () => void; fullPage?: boolean; leaveRef?: React.Ref<(next?: () => void) => Promise<void>> }) {
   const [preset, setPreset] = useState("");
   const [extra, setExtra] = useState("");
   const [busy, setBusy] = useState(false);
@@ -21,6 +22,8 @@ export function RejectApplicationDialog({ id, bulkIds, shopName, onClose, onDone
   const reason = join(preset, extra);
   const count = textLength(reason);
   const invalid = count === 0 || count > MAX_REASON;
+  const release = useUnsavedGuard(fullPage && (preset !== "" || extra !== ""));
+
   const submit = async () => {
     if (busy || invalid) return;
     setBusy(true);
@@ -28,14 +31,12 @@ export function RejectApplicationDialog({ id, bulkIds, shopName, onClose, onDone
     const r = bulkIds
       ? await adminApi<{ results: BulkResult }>("/api/admin/sellers/applications/bulk-reject", { method: "POST", json: { ids: bulkIds, reason } })
       : await adminApi<unknown>(`/api/admin/sellers/${id}/reject`, { method: "POST", json: { reason } });
+    if (r.ok) { await release(); setBusy(false); return onDone(bulkIds ? (r.data as { results: BulkResult }).results : undefined); }
     setBusy(false);
-    if (r.ok) return onDone(bulkIds ? (r.data as { results: BulkResult }).results : undefined);
     if (!bulkIds && (r.status === 404 || r.status === 409)) return onStale();
     setError(r.error === "reason_required" ? "사유를 1자 이상 200자 이하로 입력해 주십시오." : failMessage(r, "가입 반려를 하지 못했습니다. 잠시 후 다시 시도해 주십시오."));
   };
-  return (
-    <Modal labelId="reject-title" busy={busy} dirty={preset !== "" || extra !== ""} onClose={onClose}>
-      {(requestClose) => (
+  const content = (requestClose: () => void) => (
         <>
           <div className="modal-h">
             <h2 className="modal-t" id="reject-title">
@@ -74,7 +75,17 @@ export function RejectApplicationDialog({ id, bulkIds, shopName, onClose, onDone
             </button>
           </div>
         </>
-      )}
+  );
+  const leavePage = async (next = onClose) => {
+    if (busy || !confirmLeave(preset !== "" || extra !== "")) return;
+    await release();
+    next();
+  };
+  const closePage = () => leavePage();
+  useImperativeHandle(leaveRef, () => leavePage);
+  return fullPage ? <section className="card pad-l col" style={{ gap: 16 }}>{content(closePage)}</section> : (
+    <Modal labelId="reject-title" busy={busy} dirty={preset !== "" || extra !== ""} onClose={onClose}>
+      {content}
     </Modal>
   );
 }

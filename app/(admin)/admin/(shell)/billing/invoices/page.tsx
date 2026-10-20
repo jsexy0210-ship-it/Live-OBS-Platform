@@ -3,17 +3,18 @@
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
-import { CursorPagination, PageHead, SearchBox, SearchRow, useConfirm } from "../../../../../../components/admin-ui";
+import { CursorPagination, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { DatePicker } from "../../../../../../components/admin-ui/DatePicker";
 import { MAX_SEARCH_LENGTH } from "../../../../../../components/seller/format";
 import { listDefaults } from "../../../../../../lib/client/filterDefaults";
 import { formatDate, formatDateTime } from "../../../../../../lib/client/format";
 import { useScrollRestore } from "../../../../../../lib/client/navigation";
-import { adminApi, failMessage } from "../../../_components/api";
+import { adminApi } from "../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
 import { PLAN_FILTER, won } from "../../../_components/partners";
 import { safeUrl } from "../../../_components/payments";
+import { selectionHref } from "../../../_components/selection";
 import { useListFilters } from "../../../_components/useListFilters";
 
 // MA-024 청구·결제 내역(구독료, GET /api/admin/billing/invoices, 모든 마스터 역할 조회). 정본: design/project/MA-024.dc.html(FINAL v317).
@@ -64,17 +65,6 @@ const STATE: Record<State, { label: string; cls: string }> = {
 // 정본의 상태 선택지(진행 중은 목록에만 나오고, 종료된 실패는 「실패 · 재시도」에 포함한다)
 const STATE_OPTIONS: State[] = ["PAID", "RETRYING", "SCHEDULED", "REFUNDED", "OVERDUE"];
 const RECEIPT = { ISSUED: "발행", NOT_ISSUED: "미발행", CANCELED: "취소", SCHEDULED: "예정" } as const;
-const RETRY_REASON: Record<string, string> = {
-  not_found: "청구를 찾을 수 없습니다",
-  not_failed: "실패한 청구가 아닙니다",
-  not_latest: "최신 청구가 아닙니다",
-  not_retryable: "다시 결제할 수 없는 구독입니다",
-  too_soon: "5분 안에 다시 시도했습니다",
-  not_charged: "결제가 되지 않았습니다",
-  charge_failed: "카드가 다시 거절됐습니다",
-  charge_pending: "결제 결과를 기다리는 중입니다",
-};
-
 const kstMonth = (offset = 0) => {
   const k = new Date(Date.now() + 9 * 3_600_000);
   const d = new Date(Date.UTC(k.getUTCFullYear(), k.getUTCMonth() + offset, 1));
@@ -95,7 +85,6 @@ function params(f: Filters, extra: Record<string, string> = {}) {
 function Invoices() {
   const { me } = useAdmin();
   const canRetry = adminCan(me.role, "billing.manage");
-  const { confirm } = useConfirm();
   const { applied, draft, setDraft, apply } = useListFilters<Filters>(EMPTY);
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const [cursorPage, setCursorPage] = useState(1);
@@ -160,28 +149,6 @@ function Invoices() {
   const s = data?.summary;
   const label = data ? (data.range.from.slice(0, 7) === data.range.to.slice(0, 7) ? monthNo(data.range.from.slice(0, 7)) : "기간") : "";
 
-  const retry = async () => {
-    const ids = retryable.map((i) => i.paymentId!);
-    let message = "";
-    const ok = await confirm({
-      title: `실패한 청구 ${ids.length}건을 다시 결제하시겠습니까?`,
-      body: "등록된 카드로 지금 바로 결제가 시도됩니다 · 결과는 건별로 안내되고 로그 추적에 남습니다 · 이 화면에 보이는 재시도 가능 건만 대상입니다",
-      confirmLabel: "다시 결제",
-      danger: true,
-      run: async () => {
-        const r = await adminApi<{ results: { paymentId: string; ok: boolean; reason?: string }[]; succeeded: number; failed: number }>("/api/admin/billing/invoices/retry", { method: "POST", json: { paymentIds: ids } });
-        if (!r.ok) return failMessage(r, "다시 결제하지 못했습니다. 목록은 바뀌지 않았습니다.");
-        const bad = r.data.results.find((x) => !x.ok);
-        const shop = bad ? items.find((i) => i.paymentId === bad.paymentId)?.seller.shopName : "";
-        message = `성공 ${r.data.succeeded}건 · 실패 ${r.data.failed}건${bad ? ` — ${shop}: ${RETRY_REASON[bad.reason ?? ""] ?? "처리하지 못했습니다"}` : ""}`;
-        return undefined;
-      },
-    });
-    if (!ok) return;
-    setToast({ text: message, neg: message.includes("실패") && !message.includes("실패 0건") });
-    void load(true);
-  };
-
   const kpi = (title: string, value: string, sub?: string, hot?: boolean) => (
     <div className="card" style={{ padding: 16 }}>
       <div className="t-c1 c-alt">{title}</div>
@@ -200,9 +167,9 @@ function Invoices() {
           actions={
             <>
               {canRetry && (
-                <button className="btn btn-out" type="button" disabled={retryable.length === 0} title={retryable.length === 0 ? "다시 결제할 수 있는 실패 건이 없습니다" : undefined} onClick={() => void retry()}>
-                  실패 건 재시도{retryable.length > 0 ? ` ${retryable.length}` : ""}
-                </button>
+                <Link className="btn btn-out" aria-disabled={retryable.length === 0} onClick={e => { if (!retryable.length) e.preventDefault(); }} href={selectionHref("/admin/billing/invoices/retry", retryable.map(i => i.paymentId!), `/admin/billing/invoices?${params(applied)}`)}>
+                  실패 건 재시도 상세{retryable.length > 0 ? ` ${retryable.length}` : ""}
+                </Link>
               )}
               <a className="btn btn-out" href={`/api/admin/billing/invoices/export?${params(applied)}`} download>
                 내보내기

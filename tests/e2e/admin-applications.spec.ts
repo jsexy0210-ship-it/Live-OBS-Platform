@@ -57,12 +57,12 @@ test("최고관리자: 목록에 확인 필요 항목이 보이고, 상세에서
   const row = page.getByTestId("application-row").filter({ hasText: shops.approve });
   await expect(row).toContainText("국세청 조회가 잠시 안 됐습니다");
   await row.getByRole("link", { name: "상세" }).click();
-  await expect(page).toHaveURL(new RegExp(`/admin/partners/applications/${ids.approve}$`));
+  await expect(page).toHaveURL(new RegExp(`/admin/partners/applications/${ids.approve}(?:\\?|$)`));
   await expect(page.getByRole("heading", { name: "확인할 것" })).toBeVisible();
-  await page.getByRole("button", { name: "승인", exact: true }).click();
+  await page.getByRole("button", { name: "승인", exact: true }).first().click();
   await expect(page.getByText("가입을 승인했습니다.")).toBeVisible();
   // 처리 뒤에는 목록으로 강제 복귀하지 않고 다음 신청(없으면 목록)으로 넘어간다
-  await expect(page).not.toHaveURL(new RegExp(`/admin/partners/applications/${ids.approve}$`));
+  await expect(page).not.toHaveURL(new RegExp(`/admin/partners/applications/${ids.approve}(?:\\?|$)`), { timeout: 15_000 });
   const after = await db.seller.findUnique({ where: { id: ids.approve } });
   expect(after?.status).toBe("ACTIVE");
   await page.goto("/admin/partners/applications");
@@ -83,7 +83,7 @@ test("상세 검색 조건은 URL 복원 때 펼치고, 사용자가 접어도 �
   await expect(page.getByRole("button", { name: /상세 검색/ })).toHaveAttribute("aria-expanded", "true");
   const row = page.getByTestId("application-row").filter({ hasText: shops.doc });
   await row.getByRole("link", { name: "상세" }).click();
-  await expect(page).toHaveURL(new RegExp(`/admin/partners/applications/${ids.doc}$`));
+  await expect(page).toHaveURL(new RegExp(`/admin/partners/applications/${ids.doc}(?:\\?|$)`));
   await page.goBack();
   await expect(page).toHaveURL(new RegExp(`/admin/partners/applications\\?field=shop&q=${encodeURIComponent(shops.doc)}`));
   const restoredToggle = page.getByRole("button", { name: /상세 검색/ });
@@ -106,7 +106,7 @@ test("상세 검색 조건은 URL 복원 때 펼치고, 사용자가 접어도 �
 test("최고관리자: 반려는 사유가 있어야 하고, 반려 사유가 DB에 남는다", async ({ page }) => {
   await login(page, emails.super);
   await page.goto(`/admin/partners/applications/${ids.reject}`);
-  await page.getByRole("button", { name: "반려", exact: true }).click();
+  await page.getByRole("button", { name: "반려", exact: true }).first().click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("button", { name: "반려", exact: true })).toBeDisabled();
   await dialog.getByLabel("추가 안내").fill("사업자 정보가 확인되지 않습니다.");

@@ -129,7 +129,7 @@ test("최고관리자: 수정하면 반영되고, 다른 곳에서 먼저 고쳤
   await login(page, emails.super);
   await page.goto("/admin/support/notices");
   await page.getByTestId("notice-row").filter({ hasText: t.a }).getByRole("link", { name: "수정" }).click();
-  await expect(page).toHaveURL(/\/notices\/[0-9a-f-]{36}$/);
+  await expect(page).toHaveURL(/\/notices\/[0-9a-f-]{36}(?:\?|$)/);
   await page.getByLabel("제목").fill(`${t.a} 수정`);
   // 다른 관리자가 먼저 고친 상황: 버전을 올려 둔다
   await db.platformNotice.updateMany({ where: { title: t.a }, data: { version: { increment: 1 } } });
@@ -138,12 +138,13 @@ test("최고관리자: 수정하면 반영되고, 다른 곳에서 먼저 고쳤
   expect((await db.platformNotice.findFirst({ where: { title: t.a } }))?.title).toBe(t.a);
 
   await page.getByTestId("notice-row").filter({ hasText: t.a }).getByRole("link", { name: "수정" }).click();
-  await expect(page).toHaveURL(/\/notices\/[0-9a-f-]{36}$/);
+  await expect(page).toHaveURL(/\/notices\/[0-9a-f-]{36}(?:\?|$)/);
   await page.getByLabel("제목").fill(`${t.a} 수정`);
   await page.getByRole("button", { name: "지금 게시하기", exact: true }).click();
   await expect(page.getByTestId("notice-row").filter({ hasText: `${t.a} 수정` })).toHaveCount(1);
 
-  await page.getByTestId("notice-row").filter({ hasText: t.draft }).getByRole("button", { name: "삭제" }).click();
+  await page.getByTestId("notice-row").filter({ hasText: t.draft }).getByRole("link", { name: "수정" }).click();
+  await page.getByRole("button", { name: "삭제", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "삭제" }).click();
   await expect(page.getByText("공지를 삭제했습니다.")).toBeVisible();
   await expect(page.getByTestId("notice-row").filter({ hasText: t.draft })).toHaveCount(0);

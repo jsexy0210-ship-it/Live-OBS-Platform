@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useImperativeHandle, useState } from "react";
+import { confirmLeave, useUnsavedGuard } from "../../../../lib/client/navigation";
 import { Modal } from "../../../../components/admin-ui/Modal";
 import { adminApi } from "./api";
 import { TRIAL_LIMIT_MAX, type AdminPlan } from "./messageFees";
@@ -13,7 +14,7 @@ const FIELDS = [
 ] as const;
 type Key = (typeof FIELDS)[number]["key"];
 
-export function PlanTrialDialog({ plan, onClose, onDone }: { plan: AdminPlan; onClose: () => void; onDone: () => void }) {
+export function PlanTrialDialog({ plan, onClose, onDone, fullPage = false, leaveRef }: { plan: AdminPlan; onClose: () => void; onDone: () => void; fullPage?: boolean; leaveRef?: React.Ref<(next?: () => void) => Promise<void>> }) {
   const before: Record<Key, number> = { message: plan.trialMessageLimit, identity: plan.trialIdentityLimit, storageMb: plan.trialStorageMb };
   const [v, setV] = useState<Record<Key, string>>({ message: String(before.message), identity: String(before.identity), storageMb: String(before.storageMb) });
   const [busy, setBusy] = useState(false);
@@ -23,20 +24,20 @@ export function PlanTrialDialog({ plan, onClose, onDone }: { plan: AdminPlan; on
   const valid = FIELDS.every((f) => ok(f.key));
   const changed = FIELDS.some((f) => n(f.key) !== before[f.key]);
 
+  const release = useUnsavedGuard(fullPage && (changed));
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!valid || !changed || busy) return;
     setBusy(true);
     setError(null);
     const r = await adminApi(`/api/admin/plans/${plan.code}/trial-limits`, { method: "POST", json: { message: n("message"), identity: n("identity"), storageMb: n("storageMb") } });
+    if (r.ok) { await release(); setBusy(false); return onDone(); }
     setBusy(false);
-    if (r.ok) return onDone();
     setError(r.status === 403 ? "이 작업은 최고관리자와 운영 담당만 할 수 있습니다." : r.status === 404 ? "요금제를 찾을 수 없습니다. 목록을 새로 불러와 주십시오." : r.status === 0 ? "연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오." : "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오.");
   };
 
-  return (
-    <Modal labelId="plan-trial-title" busy={busy} dirty={changed} onClose={onClose}>
-      {(requestClose) => (
+  const content = (requestClose: () => void) => (
         <form className="col" style={{ gap: 16 }} onSubmit={submit} noValidate>
           <div className="modal-h">
             <h2 className="modal-t" id="plan-trial-title">
@@ -70,7 +71,17 @@ export function PlanTrialDialog({ plan, onClose, onDone }: { plan: AdminPlan; on
             </button>
           </div>
         </form>
-      )}
+  );
+  const leavePage = async (next = onClose) => {
+    if (busy || !confirmLeave(changed)) return;
+    await release();
+    next();
+  };
+  const closePage = () => leavePage();
+  useImperativeHandle(leaveRef, () => leavePage);
+  return fullPage ? <section className="card pad-l">{content(closePage)}</section> : (
+    <Modal labelId="plan-trial-title" busy={busy} dirty={changed} onClose={onClose}>
+      {content}
     </Modal>
   );
 }
