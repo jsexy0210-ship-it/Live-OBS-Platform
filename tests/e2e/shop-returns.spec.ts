@@ -88,7 +88,8 @@ test.describe.serial("SH-022-R 교환·반품 신청 · SA-029 교환·반품 �
     const row = page.getByTestId("return-row").filter({ hasText: `주문 ${orderNo}` }).first();
     await expect(row).toContainText("접수");
     await row.click();
-    const dlg = page.getByRole("dialog", { name: new RegExp(`반품 신청 · 주문 ${orderNo}`) });
+    const dlg = page.getByRole("region", { name: new RegExp(`반품 신청 · 주문 ${orderNo}`) });
+    await expect(page).toHaveURL(/\/seller\/returns\/[0-9a-f-]{36}\?/);
     await expect(dlg).toContainText("박스가 찢어져 왔어요");
     await expect(dlg.getByLabel("사유 주체")).toHaveValue("SELLER");
     await page.screenshot({ path: `${SHOT}/sa029-detail-1440.png` });
@@ -143,4 +144,58 @@ test.describe.serial("SH-022-R 교환·반품 신청 · SA-029 교환·반품 �
     await expect(page.getByTestId("refund-history")).toContainText("환불 내역");
     await expect(page.getByTestId("refund-history")).toContainText("환불");
   });
+});
+
+
+test("교환·반품 목록은 읽기만 하고 상세 재진입·초안 이탈·페이지 복귀·읽기 전용을 보호한다", async ({ page }) => {
+  const id = "22222222-2222-4222-8222-222222222242";
+  let status = "REQUESTED";
+  const listHref = "/seller/returns?status=REQUESTED";
+  const entry = () => ({ id, orderNo: 6202, nickname: "소유 요청", kind: "RETURN", status, reason: "DEFECTIVE", reasonText: "소유 상세", items: [{ orderItemId: id, productName: "소유 상품", optionName: "기본", quantity: 1, orderQuantity: 1 }], createdAt: "2026-10-19T01:00:00Z", fault: null, rejectReason: null, returnCourierName: null, returnTrackingNumber: null, exchangeCourierName: null, exchangeTrackingNumber: null, restocked: false, refundAmount: null, pickupMethod: "BUYER_SHIP", inspectionResult: null, inspectionNote: null, exchangeHeldAt: null, convertedFromExchange: false, partialQuantity: false, refunds: [], paymentMethod: "CARD", refundAccount: null, images: [], order: { status: "DELIVERED", totalAmount: 1000, shippingFee: 0 }, refundPreview: null, queueVersion: 4 });
+  const pages: (string | null)[] = [], posts: { path: string; body: unknown }[] = [];
+  let denied = false;
+  await page.route(url => url.pathname === "/api/seller/returns", route => {
+    const cursor = new URL(route.request().url()).searchParams.get("cursor"); pages.push(cursor);
+    const rows = Array.from({ length: 10 }, (_, i) => ({ ...entry(), id: cursor && i === 0 ? id : `22222222-2222-4222-8222-${String((cursor ? 100 : 200) + i).padStart(12, "0")}`, orderNo: cursor ? 6202 + i : 6100 + i }));
+    if (cursor && status !== "REQUESTED") rows.shift();
+    return route.fulfill({ json: { returns: rows, nextCursor: cursor ? null : "owned-next", counts: { REQUESTED: 20 }, summary: { requested: 20, inProgress: 0, doneReturn: 0, doneExchange: 0, returnRate30: null } } });
+  });
+  await page.route(url => url.pathname === `/api/seller/returns/${id}`, route => denied ? route.fulfill({ status: 403, json: { error: "forbidden" } }) : route.fulfill({ json: entry() }));
+  await page.route(url => url.pathname === `/api/seller/returns/${id}/accept`, route => { posts.push({ path: new URL(route.request().url()).pathname, body: route.request().postDataJSON() }); status = "ACCEPTED"; return route.fulfill({ json: { ok: true } }); });
+  await page.goto(`/seller/login?next=${encodeURIComponent(listHref)}`);
+  await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
+  await expect(page.getByTestId("return-row")).toHaveCount(10);
+  expect(posts).toEqual([]);
+  await page.getByRole("button", { name: "다음", exact: true }).click();
+  const selected = page.getByTestId("return-row").filter({ hasText: "주문 6202" });
+  await selected.click();
+  const detailHref = `/seller/returns/${id}?${new URLSearchParams({ returnTo: listHref })}`;
+  await expect(page).toHaveURL(detailHref);
+  await page.reload();
+  const detail = page.getByRole("region", { name: "반품 신청 · 주문 6202" });
+  await expect(detail.getByLabel("사유 주체")).toHaveValue("SELLER");
+  await detail.getByLabel("사유 주체").selectOption("BUYER");
+  page.once("dialog", dialog => dialog.dismiss());
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL(detailHref);
+  await expect(detail.getByLabel("사유 주체")).toHaveValue("BUYER");
+  expect(posts).toEqual([]);
+  await detail.getByRole("button", { name: "접수", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "신청 접수", exact: true }).click();
+  await expect(detail).toContainText("수거 중");
+  expect(posts).toEqual([{ path: `/api/seller/returns/${id}/accept`, body: { fault: "BUYER", pickup: "BUYER_SHIP" } }]);
+  await detail.getByRole("button", { name: "닫기", exact: true }).click();
+  await expect(page).toHaveURL(listHref);
+  await expect(page.getByTestId("return-row")).toHaveCount(9);
+  expect(pages.at(-1)).toBe("owned-next");
+  const me = await (await page.request.get("/api/seller/me")).json();
+  await page.route("**/api/seller/me", route => route.fulfill({ json: { ...me, isOwner: false, permissions: ["ORDER_SHIPPING"], readOnly: true } }));
+  await page.goto(detailHref);
+  await expect(page.getByRole("region", { name: "반품 신청 · 주문 6202" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "입고 확인", exact: true })).toHaveCount(0);
+  denied = true;
+  await page.reload();
+  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(page.getByText("소유 상세", { exact: true })).toHaveCount(0);
+  expect(posts).toHaveLength(1);
 });

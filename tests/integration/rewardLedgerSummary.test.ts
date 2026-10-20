@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { listRewardLedger, rewardLedgerSummary } from "../../lib/server/seller-settings/rewardLedger";
+import { getRewardLedgerEntry, listRewardLedger, rewardLedgerSummary } from "../../lib/server/seller-settings/rewardLedger";
 import { orderNoLabel } from "../../lib/server/orders/orderNoLabel";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { createBuyer, createPaidOrderItem, createSeller, createSellerUser, db, resetDb } from "./helpers";
@@ -156,4 +156,26 @@ describe("원장 확장 (SA-032)", () => {
     await expect(rewardLedgerSummary(db, staff)).rejects.toMatchObject({ status: 403 });
     await expect(listRewardLedger(db, staff, {})).rejects.toMatchObject({ status: 403 });
   });
+});
+
+
+it("과거 원장 단건도 목록과 같은 DTO·누적잔액으로 조회하고 다른 쇼핑몰·무권한을 차단한다", async () => {
+  const s = await setup();
+  const old = await row(s, { type: "ADJUST", amount: 700, at: "2026-10-01T01:00:00Z", reason: "소유 단건" });
+  for (let i = 0; i < 11; i++) await row(s, { amount: 1, status: "PENDING", at: `2026-10-02T${String(i).padStart(2, "0")}:00:00Z` });
+  const first = await listRewardLedger(db, s.ctx, {});
+  if (!first.ok) throw new Error("list");
+  expect(first.entries).toHaveLength(10);
+  expect(first.entries.some(entry => entry.id === old.id)).toBe(false);
+  const all = await listRewardLedger(db, s.ctx, { limit: "200" });
+  if (!all.ok) throw new Error("all");
+  const detail = await getRewardLedgerEntry(db, s.ctx, old.id);
+  expect(detail).toEqual(all.entries.find(entry => entry.id === old.id));
+  expect(detail).toMatchObject({ amount: 700, balanceAfter: 700, reason: "소유 단건" });
+  expect(detail).not.toHaveProperty("idempotencyKey");
+  const other = await setup();
+  expect(await getRewardLedgerEntry(db, other.ctx, old.id)).toBeNull();
+  expect(await getRewardLedgerEntry(db, s.ctx, "bad-id")).toBeNull();
+  await expect(getRewardLedgerEntry(db, { ...s.ctx, isOwner: false, permissions: [] }, old.id)).rejects.toMatchObject({ status: 403 });
+  expect(await getRewardLedgerEntry(db, { ...s.ctx, isOwner: false, permissions: ["MEMBER_POINTS"], readOnly: true }, old.id)).toEqual(detail);
 });
