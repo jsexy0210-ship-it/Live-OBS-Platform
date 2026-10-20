@@ -42,7 +42,7 @@ function ReturnsPage() {
     pagingScope.current = scope;
     let restore: { page: number; cursors: (string | undefined)[] } | undefined;
     if (initialPaging.current && scope) {
-      try { const saved = JSON.parse(sessionStorage.getItem("onq:returns:return") ?? "null"); if (saved?.scope === scope && Number.isInteger(saved.page) && saved.page >= 1 && Array.isArray(saved.cursors) && saved.cursors.length === saved.page && saved.cursors[0] === null && saved.cursors.slice(1).every((c: unknown) => typeof c === "string" && c.length > 0)) { restore = { page: saved.page, cursors: saved.cursors.map((c: string | null) => c ?? undefined) }; sessionStorage.removeItem("onq:returns:return"); } } catch {}
+      try { const stored = sessionStorage.getItem("onq:returns:return"); sessionStorage.removeItem("onq:returns:return"); const saved = JSON.parse(stored ?? "null"); if (saved?.scope === scope && Number.isInteger(saved.page) && saved.page >= 1 && Array.isArray(saved.cursors) && saved.cursors.length === saved.page && saved.cursors[0] === null && saved.cursors.slice(1).every((c: unknown) => typeof c === "string" && c.length > 0)) { restore = { page: saved.page, cursors: saved.cursors.map((c: string | null) => c ?? undefined) }; } } catch {}
     }
     initialPaging.current = false;
     const r = await api<Data>(query(restore?.cursors[restore.page - 1]));

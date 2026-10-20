@@ -154,6 +154,8 @@ test("교환·반품 목록은 읽기만 하고 상세 재진입·초안 이탈�
   const entry = () => ({ id, orderNo: 6202, nickname: "소유 요청", kind: "RETURN", status, reason: "DEFECTIVE", reasonText: "소유 상세", items: [{ orderItemId: id, productName: "소유 상품", optionName: "기본", quantity: 1, orderQuantity: 1 }], createdAt: "2026-10-19T01:00:00Z", fault: null, rejectReason: null, returnCourierName: null, returnTrackingNumber: null, exchangeCourierName: null, exchangeTrackingNumber: null, restocked: false, refundAmount: null, pickupMethod: "BUYER_SHIP", inspectionResult: null, inspectionNote: null, exchangeHeldAt: null, convertedFromExchange: false, partialQuantity: false, refunds: [], paymentMethod: "CARD", refundAccount: null, images: [], order: { status: "DELIVERED", totalAmount: 1000, shippingFee: 0 }, refundPreview: null, queueVersion: 4 });
   const pages: (string | null)[] = [], posts: { path: string; body: unknown }[] = [];
   let denied = false;
+  let finishAccept!: () => void;
+  const pendingAccept = new Promise<void>(resolve => { finishAccept = resolve; });
   await page.route(url => url.pathname === "/api/seller/returns", route => {
     const cursor = new URL(route.request().url()).searchParams.get("cursor"); pages.push(cursor);
     const rows = Array.from({ length: 10 }, (_, i) => ({ ...entry(), id: cursor && i === 0 ? id : `22222222-2222-4222-8222-${String((cursor ? 100 : 200) + i).padStart(12, "0")}`, orderNo: cursor ? 6202 + i : 6100 + i }));
@@ -161,7 +163,7 @@ test("교환·반품 목록은 읽기만 하고 상세 재진입·초안 이탈�
     return route.fulfill({ json: { returns: rows, nextCursor: cursor ? null : "owned-next", counts: { REQUESTED: 20 }, summary: { requested: 20, inProgress: 0, doneReturn: 0, doneExchange: 0, returnRate30: null } } });
   });
   await page.route(url => url.pathname === `/api/seller/returns/${id}`, route => denied ? route.fulfill({ status: 403, json: { error: "forbidden" } }) : route.fulfill({ json: entry() }));
-  await page.route(url => url.pathname === `/api/seller/returns/${id}/accept`, route => { posts.push({ path: new URL(route.request().url()).pathname, body: route.request().postDataJSON() }); status = "ACCEPTED"; return route.fulfill({ json: { ok: true } }); });
+  await page.route(url => url.pathname === `/api/seller/returns/${id}/accept`, async route => { posts.push({ path: new URL(route.request().url()).pathname, body: route.request().postDataJSON() }); await pendingAccept; status = "ACCEPTED"; return route.fulfill({ json: { ok: true } }); });
   await page.goto(`/seller/login?next=${encodeURIComponent(listHref)}`);
   await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
   await expect(page.getByTestId("return-row")).toHaveCount(10);
@@ -182,6 +184,11 @@ test("교환·반품 목록은 읽기만 하고 상세 재진입·초안 이탈�
   expect(posts).toEqual([]);
   await detail.getByRole("button", { name: "접수", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "신청 접수", exact: true }).click();
+  await expect(detail.getByLabel("사유 주체")).toBeDisabled();
+  await expect(detail.getByLabel("수거 방법")).toBeDisabled();
+  await expect(detail.getByRole("button", { name: "거절", exact: true })).toBeDisabled();
+  await expect(detail.getByLabel("사유 주체")).toHaveValue("BUYER");
+  finishAccept();
   await expect(detail).toContainText("수거 중");
   expect(posts).toEqual([{ path: `/api/seller/returns/${id}/accept`, body: { fault: "BUYER", pickup: "BUYER_SHIP" } }]);
   await detail.getByRole("button", { name: "닫기", exact: true }).click();
@@ -198,4 +205,10 @@ test("교환·반품 목록은 읽기만 하고 상세 재진입·초안 이탈�
   await expect(page.getByRole("alert")).toBeVisible();
   await expect(page.getByText("소유 상세", { exact: true })).toHaveCount(0);
   expect(posts).toHaveLength(1);
+  for (const stored of [JSON.stringify({ scope: "different", page: 2, cursors: [null, "owned-next"] }), "invalid-json"]) {
+    await page.evaluate(value => sessionStorage.setItem("onq:returns:return", value), stored);
+    await page.goto(listHref);
+    await expect(page.getByTestId("return-row")).toHaveCount(10);
+    expect(await page.evaluate(() => sessionStorage.getItem("onq:returns:return"))).toBeNull();
+  }
 });

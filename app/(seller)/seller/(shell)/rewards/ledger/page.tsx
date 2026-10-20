@@ -96,7 +96,7 @@ export default function RewardLedgerPage() {
     pagingScope.current = scope;
     let restore: { page: number; cursors: (string | undefined)[] } | undefined;
     if (initialPaging.current && scope) {
-      try { const saved = JSON.parse(sessionStorage.getItem("onq:reward-ledger:return") ?? "null"); if (saved?.scope === scope && Number.isInteger(saved.page) && saved.page >= 1 && Array.isArray(saved.cursors) && saved.cursors.length === saved.page && saved.cursors[0] === null && saved.cursors.slice(1).every((c: unknown) => typeof c === "string" && c.length > 0)) { restore = { page: saved.page, cursors: saved.cursors.map((c: string | null) => c ?? undefined) }; sessionStorage.removeItem("onq:reward-ledger:return"); } } catch {}
+      try { const stored = sessionStorage.getItem("onq:reward-ledger:return"); sessionStorage.removeItem("onq:reward-ledger:return"); const saved = JSON.parse(stored ?? "null"); if (saved?.scope === scope && Number.isInteger(saved.page) && saved.page >= 1 && Array.isArray(saved.cursors) && saved.cursors.length === saved.page && saved.cursors[0] === null && saved.cursors.slice(1).every((c: unknown) => typeof c === "string" && c.length > 0)) { restore = { page: saved.page, cursors: saved.cursors.map((c: string | null) => c ?? undefined) }; } } catch {}
     }
     initialPaging.current = false;
     setPage(restore?.page ?? 1); setCursors(restore?.cursors ?? [undefined]);

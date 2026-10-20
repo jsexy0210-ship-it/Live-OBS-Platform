@@ -303,4 +303,10 @@ test("재시도는 전체 실패 업무와 과거 단건 상세에서만 실행�
   await page.goto("/seller/rewards/ledger/retry");
   await expect(page.getByRole("button", { name: "재시도할 실패 없음", exact: true })).toBeDisabled();
   expect(posts).toHaveLength(2);
+  for (const stored of [JSON.stringify({ scope: "different", page: 2, cursors: [null, "owned-page2"] }), "invalid-json"]) {
+    await page.evaluate(value => sessionStorage.setItem("onq:reward-ledger:return", value), stored);
+    await page.goto("/seller/rewards/ledger?period=all&q=owned");
+    await expect(page.getByTestId("ledger-row")).toHaveCount(10);
+    expect(await page.evaluate(() => sessionStorage.getItem("onq:reward-ledger:return"))).toBeNull();
+  }
 });
