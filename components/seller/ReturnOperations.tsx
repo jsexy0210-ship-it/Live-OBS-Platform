@@ -131,8 +131,8 @@ export function ReturnOperations({ id, returnTo }: { id: string; returnTo: strin
     setBusy(true);
     setFailed(null);
     const r = await api(`/api/seller/returns/${id}/${path}`, { method: "POST", body });
-    setBusy(false);
     if (!r.ok) {
+      setBusy(false);
       if (r.error === "opened_items_present") setConfirmOpened(true);
       return setFailed(errorText(r, "처리하지 못했습니다. 잠시 뒤 다시 시도해 주십시오"));
     }
@@ -141,6 +141,7 @@ export function ReturnOperations({ id, returnTo }: { id: string; returnTo: strin
     if (sentEdits === edits.current) { await release(); setDirty(false); }
     setToast(done);
     await load();
+    setBusy(false);
   };
 
   const ask = async (path: string, body: unknown, done: string, c: Parameters<typeof confirm>[0]) => {
@@ -154,6 +155,7 @@ export function ReturnOperations({ id, returnTo }: { id: string; returnTo: strin
     <><Topbar crumb="주문 › 교환 · 반품 › 상세" /><main className="main">
       <PageHead title="교환 · 반품 상세" back={listHref} onBack={onClose} />
       <section className="card pad" aria-labelledby="rt-detail-title" onChangeCapture={() => { edits.current++; setDirty(true); }}>
+        <fieldset disabled={busy} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
         <div className="col" style={{ gap: 8, marginBottom: 16 }}>
           <h2 className="t-h2" id="rt-detail-title">
             {d ? `${KIND[d.kind]} 신청 · 주문 ${d.orderNo}` : "교환 · 반품"}
@@ -484,6 +486,7 @@ export function ReturnOperations({ id, returnTo }: { id: string; returnTo: strin
             </button>
           )}
         </div>
+        </fieldset>
       </section>
     </main>{toast && <Toast text={toast} onDone={() => setToast(null)} />}</>
   );
