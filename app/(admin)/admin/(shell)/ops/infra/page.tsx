@@ -330,6 +330,7 @@ export default function InfraPage() {
                 </table>
               </div>
               <div className="row" style={{ gap: 8, padding: "12px 16px" }}>
+                <Link className="btn btn-out" href={`/admin/ops/infra/connections?returnTo=${encodeURIComponent(listHref)}`}>전체 만료일 설정</Link>
                 <span className="t-c1 c-alt">만료일을 바꾸면 로그 추적에 남습니다 · 남은 일수는 매일 00:00 다시 계산</span>
               </div>
             </section>

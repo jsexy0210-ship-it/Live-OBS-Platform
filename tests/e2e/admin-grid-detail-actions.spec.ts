@@ -466,7 +466,7 @@ test("발송 요금 목록은 상세 링크만 제공하며 상세는 원 상한
 });
 
 for (const reload of [false, true]) {
-  for (const kind of ["expiry", "price"] as const) {
+  for (const kind of ["expiry", "expiry-all", "price"] as const) {
     test(`${kind} 상세 ${reload ? "새로고침" : "직접 진입"} 뒤 헤더 취소는 입력을 보존하고 확인은 정확 목록으로 복귀한다`, async ({ page }) => {
       const errors: string[] = [];
       const writes: string[] = [];
@@ -477,12 +477,12 @@ for (const reload of [false, true]) {
         if (path === "/api/admin/message-settings") { await json(route, messageSettings); return true; }
         return false;
       });
-      const list = kind === "expiry" ? "/admin/ops/infra?view=connections" : "/admin/settings/messages?view=prices";
-      const detail = kind === "expiry" ? "/admin/ops/infra/connections/mail" : "/admin/settings/messages/SMS";
+      const list = kind !== "price" ? "/admin/ops/infra?view=connections" : "/admin/settings/messages?view=prices";
+      const detail = kind === "expiry-all" ? "/admin/ops/infra/connections" : kind === "expiry" ? "/admin/ops/infra/connections/mail" : "/admin/settings/messages/SMS";
       await page.goto(`${detail}?returnTo=${encodeURIComponent(list)}`);
       if (reload) await page.reload();
-      const field = page.locator("main form").getByLabel(kind === "expiry" ? "메일 연결 만료일" : "단가", { exact: true });
-      const draft = kind === "expiry" ? "2031-02-03" : "21";
+      const field = page.locator("main form").getByLabel(kind !== "price" ? "메일 연결 만료일" : "단가", { exact: true });
+      const draft = kind !== "price" ? "2031-02-03" : "21";
       await field.fill(draft);
       page.once("dialog", d => d.dismiss());
       await page.getByRole("button", { name: "뒤로", exact: true }).click();
@@ -496,7 +496,7 @@ for (const reload of [false, true]) {
   }
 }
 
-for (const path of ["/admin/ops/infra/connections/mail", "/admin/settings/messages/SMS"]) {
+for (const path of ["/admin/ops/infra/connections/mail", "/admin/ops/infra/connections", "/admin/settings/messages/SMS"]) {
   test(`${path} 직접 진입에서도 기존 읽기 전용 권한이 저장을 열지 않는다`, async ({ page }) => {
     const writes: string[] = [];
     await mockAdmin(page, async (route, api) => {
@@ -511,3 +511,33 @@ for (const path of ["/admin/ops/infra/connections/mail", "/admin/settings/messag
     expect(writes).toEqual([]);
   });
 }
+
+
+test("전체 만료일 상세는 원 순서·버전·첫 실패 중단과 부분 저장 후 최신 조회를 보존한다", async ({ page }) => {
+  const writes: { key: string; body: unknown }[] = [];
+  const connections = [{ ...infraConnection, key: "a", name: "연결 가", version: 3 }, { ...infraConnection, key: "b", name: "연결 나", version: 5 }, { ...infraConnection, key: "c", name: "연결 다", version: 8 }];
+  await mockAdmin(page, async (route, path) => {
+    if (path === "/api/admin/infra/connections") { await json(route, { connections }); return true; }
+    const match = path.match(/^\/api\/admin\/infra\/connections\/([^/]+)\/expiry$/);
+    if (match) {
+      expect(route.request().method()).toBe("PUT");
+      const key = match[1]; const body = route.request().postDataJSON(); writes.push({ key, body });
+      if (key === "a") { connections[0] = { ...connections[0], expiresOn: body.expiresOn, version: 4 }; await json(route, { expiresOn: body.expiresOn, version: 4 }); }
+      else { await json(route, { error: "version_conflict" }, 409); }
+      return true;
+    }
+    return false;
+  });
+  await page.goto("/admin/ops/infra/connections?returnTo=%2Fadmin%2Fops%2Finfra%3Fview%3Dconnections");
+  const form = page.locator("main form");
+  await form.getByLabel("연결 가 만료일").fill("2032-01-01");
+  await form.getByLabel("연결 나 만료일").fill("2032-02-01");
+  await form.getByLabel("연결 다 만료일").fill("2032-03-01");
+  await form.getByRole("button", { name: "만료일 저장" }).click();
+  await expect(page.getByText("연결 나: 다른 곳에서 먼저 바뀌었습니다. 새로 불러옵니다.", { exact: true })).toBeVisible();
+  await expect(form.getByLabel("연결 가 만료일")).toHaveValue("2032-01-01");
+  await expect(form.getByLabel("연결 나 만료일")).toHaveValue("2030-01-01");
+  await expect(form.getByLabel("연결 다 만료일")).toHaveValue("2030-01-01");
+  await expect(form.getByRole("button", { name: "만료일 저장" })).toBeDisabled();
+  expect(writes).toEqual([{ key: "a", body: { expiresOn: "2032-01-01", expectedVersion: 3 } }, { key: "b", body: { expiresOn: "2032-02-01", expectedVersion: 5 } }]);
+});
