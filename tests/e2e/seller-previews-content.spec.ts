@@ -54,6 +54,7 @@ test.describe("파트너스 미리보기: 입력 → 즉시 반영", () => {
     await expect(pv.locator("a")).toHaveAttribute("href", "https://example.com/event");
     await expect(pv.locator("a")).toHaveAttribute("target", "_blank");
     // 미리보기 링크는 눌러도 이동하지 않는다
+    await expect(page).toHaveURL(/\/seller\/banners\/new(?:\?|$)/);
     const detailUrl = page.url();
     await pv.locator("a").click();
     await expect(page).toHaveURL(detailUrl);
@@ -94,6 +95,7 @@ test.describe("파트너스 미리보기: 입력 → 즉시 반영", () => {
     await expect(pv).toContainText("7일 동안 보지 않기");
     await dialog.getByRole("radio", { name: "닫기만 (매번 표시)" }).click();
     await expect(pv).not.toContainText("보지 않기");
+    await expect(page).toHaveURL(/\/seller\/banners\/popups\/new(?:\?|$)/);
     const detailUrl = page.url();
     await pv.locator("a.btn").click();
     await expect(page).toHaveURL(detailUrl);
