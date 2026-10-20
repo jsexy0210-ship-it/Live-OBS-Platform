@@ -746,6 +746,7 @@ test("재고 검색은 옵션 목록 API의 이름 검색(q)으로 찾고, 처�
 
 test("다른 검색에서 바꿔 둔 재고도 함께 적용하고, 확인 창에 안 보이는 옵션 수를 알린다", async ({ page }) => {
   await openAs(page);
+  const initialWorkUrl = page.url();
   const cur = async (name: string) => Number((await row(page, name).locator(".c-cur").innerText()).replace(/\D/g, ""));
   const top = await cur("탑로더 25장");
   const moon = await cur("문라이트 컬렉션 박스");
@@ -757,7 +758,8 @@ test("다른 검색에서 바꿔 둔 재고도 함께 적용하고, 확인 창�
   await (await nextInput(page, "문라이트 컬렉션 박스 1박스")).fill(String(moon + 1));
   await expect(page.getByTestId("sum-count")).toHaveText("2개");
   const searchedWork = page.url();
-  expect(new URL(searchedWork).searchParams.get("q")).toBe("문라이트 컬렉션");
+  expect(searchedWork).toBe(initialWorkUrl);
+  await expect(page.getByLabel("재고 검색")).toHaveValue("문라이트 컬렉션");
   page.once("dialog", dialog => dialog.dismiss());
   await page.getByRole("button", { name: "뒤로", exact: true }).click();
   await expect(page).toHaveURL(searchedWork);
@@ -1006,17 +1008,46 @@ test("목록은 읽기·선택만 남기고 첫 쪽 밖 대상을 상세에서 �
   expect(writes).toEqual([a, b].map(p => ({ path: `/api/seller/products/${p.id}/options/${p.options[0].id}/stock-adjust`, body: { delta: 1, reason: "재고 조사", expectedStock: 10 } })));
   await expect(page.getByLabel("선택한 옵션에 더하거나 뺄 수량")).toHaveValue("");
   await (await nextInput(page, `${a.name} 기본`)).fill("12");
+  let resumeSearch!: () => void;
+  const heldSearch = new Promise<void>(resolve => { resumeSearch = resolve; });
+  let markStarted!: () => void;
+  const searchStarted = new Promise<void>(resolve => { markStarted = resolve; });
+  let delayed = true;
+  await page.route("**/api/seller/products/options?**", async route => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("q") === b.name && !url.searchParams.has("stock") && delayed) {
+      delayed = false; markStarted(); await heldSearch;
+    }
+    return route.fallback();
+  });
   await page.getByLabel("재고 검색").fill(b.name);
-  await expect(page.getByTestId("stock-row")).toHaveCount(1);
-  await expect(page.getByTestId("stock-row").first()).toContainText(b.name);
-  const searchedWork = page.url();
-  expect(new URL(searchedWork).searchParams.get("q")).toBe(b.name);
+  await searchStarted;
   let prompts = 0;
   page.once("dialog", dialog => { prompts++; return dialog.dismiss(); });
   await page.goBack();
-  await expect(page).toHaveURL(searchedWork);
+  await expect(page).toHaveURL(work);
   await expect(page.getByTestId("sum-count")).toHaveText("1개");
   expect(prompts).toBe(1);
+  const filtered = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname === "/api/seller/products/options" && url.searchParams.get("q") === b.name && url.searchParams.get("stock") === "out";
+  });
+  await page.getByRole("button", { name: "품절", exact: true }).click();
+  expect((await filtered).ok()).toBe(true);
+  await expect(page.getByTestId("stock-row")).toHaveCount(0);
+  const stale = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname === "/api/seller/products/options" && url.searchParams.get("q") === b.name && !url.searchParams.has("stock");
+  });
+  resumeSearch();
+  expect(await (await stale).finished()).toBeNull();
+  await expect(page.getByTestId("stock-row")).toHaveCount(0);
+  await expect(page).toHaveURL(work);
+  await expect(page.getByLabel("재고 검색")).toHaveValue(b.name);
+  await expect(page.getByRole("button", { name: "품절", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "품절", exact: true }).click();
+  await expect(page.getByTestId("stock-row")).toHaveCount(1);
+  await expect(page.getByTestId("stock-row").first()).toContainText(b.name);
   await page.getByLabel("재고 검색").fill(a.name);
   await expect(page.getByTestId("stock-row").first()).toContainText(a.name);
   await expect((await nextInput(page, `${a.name} 기본`))).toHaveValue("12");
