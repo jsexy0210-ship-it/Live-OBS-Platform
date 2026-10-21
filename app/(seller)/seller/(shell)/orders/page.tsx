@@ -455,9 +455,9 @@ export default function OrderListPage() {
                                 </button>
                                 {rowMenu === o.id && (
                                   <div className="menu ord-menu ord-row-menu" role="menu" onMouseLeave={() => setRowMenu(null)}>
-                                    <Link role="menuitem" href={`/seller/orders/${o.id}?${new URLSearchParams({ returnTo })}#order-memo`}>
+                                    <a role="menuitem" href={`/seller/orders/${o.id}?${new URLSearchParams({ returnTo })}#order-memo`}>
                                       메모 남기기
-                                    </Link>
+                                    </a>
                                     <Link role="menuitem" href="/seller/orders/receipts">영수증 발급</Link>
                                     {o.status === "PAID" && (
                                       <Link role="menuitem" className="c-neg" href={`/seller/orders/${o.id}?${new URLSearchParams({ refund: "1", returnTo })}`}>
