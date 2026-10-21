@@ -372,12 +372,13 @@ for (const entry of ["직접 진입", "새로고침"]) for (const scenario of ba
 const infraConnection = { key: "mail", name: "메일 연결", purpose: "발송", expiresOn: "2030-01-01", daysLeft: 20, lastOkAt: null, lastAuthErrorAt: null, lastAuthErrorCode: null, status: "ok", version: 7 };
 const messageSettings = { chargingEnabled: false, platformDailyLimit: 100, platformMonthlyLimit: 1000, prices: [{ channel: "SMS", unitPrice: 12, next: null }], plans: [], usage: { today: { used: 0, limit: 100 }, thisMonth: { used: 0, limit: 1000 }, skippedPlatformLimit: 0 } };
 
+const infraSample = { takenAt: at, instance: "fixture", disk: { totalBytes: 100, usedBytes: 10, usedPct: 10 }, memory: { totalBytes: 100, usedBytes: 10, usedPct: 10 }, cpu: { count: 2, load1: 0.1, usedPct: 5 }, db: { sizeBytes: 10, connections: 1, maxConnections: 10, connectionsPct: 10 }, backup: { lastAt: at, count: 1, totalBytes: 10 } };
+
 test("연결 목록은 쓰기 없이 상세로 이동하고 원 모니터·단가 설정을 유지한다", async ({ page }) => {
   const writes: string[] = [];
-  const sample = { takenAt: at, instance: "fixture", disk: { totalBytes: 100, usedBytes: 10, usedPct: 10 }, memory: { totalBytes: 100, usedBytes: 10, usedPct: 10 }, cpu: { count: 2, load1: 0.1, usedPct: 5 }, db: { sizeBytes: 10, connections: 1, maxConnections: 10, connectionsPct: 10 }, backup: { lastAt: at, count: 1, totalBytes: 10 } };
   await mockAdmin(page, async (route, path) => {
     if (route.request().method() !== "GET") writes.push(path);
-    if (path === "/api/admin/infra/status") { await json(route, { checkedAt: at, thresholds: { warnPct: 80, criticalPct: 90, backupMaxAgeHours: 24 }, current: sample, signals: [], snapshots: [] }); return true; }
+    if (path === "/api/admin/infra/status") { await json(route, { checkedAt: at, thresholds: { warnPct: 80, criticalPct: 90, backupMaxAgeHours: 24 }, current: infraSample, signals: [], snapshots: [] }); return true; }
     if (path === "/api/admin/infra/cost") { await json(route, { checkedAt: at, month: "2026-10", prices: {}, priceVersion: 3, items: [], limited: [], totals: { accruedWon: 0, projectedWon: 0 } }); return true; }
     if (path === "/api/admin/infra/connections") { await json(route, { connections: [infraConnection] }); return true; }
     return false;
@@ -473,6 +474,8 @@ for (const reload of [false, true]) {
       page.on("pageerror", e => errors.push(e.message));
       await mockAdmin(page, async (route, path) => {
         if (route.request().method() !== "GET") writes.push(path);
+        if (path === "/api/admin/infra/status") { await json(route, { checkedAt: at, thresholds: { warnPct: 80, criticalPct: 90, backupMaxAgeHours: 24 }, current: infraSample, signals: [], snapshots: [] }); return true; }
+        if (path === "/api/admin/infra/cost") { await json(route, { checkedAt: at, month: "2026-10", prices: {}, priceVersion: 3, items: [], limited: [], totals: { accruedWon: 0, projectedWon: 0 } }); return true; }
         if (path === "/api/admin/infra/connections") { await json(route, { connections: [infraConnection] }); return true; }
         if (path === "/api/admin/message-settings") { await json(route, messageSettings); return true; }
         return false;
