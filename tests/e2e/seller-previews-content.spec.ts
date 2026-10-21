@@ -54,8 +54,10 @@ test.describe("파트너스 미리보기: 입력 → 즉시 반영", () => {
     await expect(pv.locator("a")).toHaveAttribute("href", "https://example.com/event");
     await expect(pv.locator("a")).toHaveAttribute("target", "_blank");
     // 미리보기 링크는 눌러도 이동하지 않는다
+    await expect(page).toHaveURL(/\/seller\/banners\/new(?:\?|$)/);
+    const detailUrl = page.url();
     await pv.locator("a").click();
-    await expect(page).toHaveURL(/\/seller\/banners$/);
+    await expect(page).toHaveURL(detailUrl);
     await expect(ed).toBeVisible();
 
     // 모바일: 모바일 이미지를 올리면 그 이미지, 없으면 PC 이미지
@@ -93,8 +95,10 @@ test.describe("파트너스 미리보기: 입력 → 즉시 반영", () => {
     await expect(pv).toContainText("7일 동안 보지 않기");
     await dialog.getByRole("radio", { name: "닫기만 (매번 표시)" }).click();
     await expect(pv).not.toContainText("보지 않기");
+    await expect(page).toHaveURL(/\/seller\/banners\/popups\/new(?:\?|$)/);
+    const detailUrl = page.url();
     await pv.locator("a.btn").click();
-    await expect(page).toHaveURL(/\/seller\/banners\/popups$/);
+    await expect(page).toHaveURL(detailUrl);
 
     // 이미지 팝업: 이미지·제목(대체 글)
     await dialog.getByRole("radio", { name: "이미지 팝업" }).click();

@@ -151,6 +151,7 @@ test("자주 묻는 질문: 분류와 함께 추가하고, 위·아래로 순서
   await expect(page.getByRole("button", { name: "교환은 어떻게 하나요 위로", includeHidden: true })).toBeDisabled();
 
   await page.getByRole("link", { name: "목록", exact: true }).click();
+  await expect(page).toHaveURL(/\/seller\/settings\/shop-notices(?:\?|$)/);
   await page.reload();
   await page.getByTestId("add-faq").click();
   await page.getByTestId("notice-editor").getByLabel("질문", { exact: true }).fill("환불은 언제 되나요");
@@ -162,6 +163,7 @@ test("자주 묻는 질문: 분류와 함께 추가하고, 위·아래로 순서
   await page.setViewportSize({ width: 1440, height: 900 });
   page.once("dialog", d => void d.accept());
   await page.getByRole("link", { name: "목록", exact: true }).click();
+  await expect(page).toHaveURL(/\/seller\/settings\/shop-notices(?:\?|$)/);
   await page.reload();
   await expect(rows.nth(0)).toContainText("교환은 어떻게 하나요");
   await expect(rows.nth(1)).toContainText("배송은 얼마나 걸리나요");
