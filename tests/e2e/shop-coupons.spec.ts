@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { writeFileSync } from "node:fs";
 import { clearCouponsInDb } from "./couponDb";
 import { submitSellerLogin } from "./sellerLogin";
 
@@ -138,7 +139,37 @@ test.describe.serial("SA-035 쿠폰 관리 · SH-028 내 쿠폰함", () => {
     expect(data.coupons.some(c => c.name === "10월 스타라이트 오픈 기념")).toBe(true);
     await expect(page).toHaveURL(/\/seller\/coupons(?:\?|$)/);
     const row = page.getByTestId("coupon-row").filter({ hasText: "10월 스타라이트 오픈 기념" });
-    await expect(page.getByRole("columnheader", { name: "발급", exact: true })).toHaveCount(1);
+    try {
+      await expect(page.getByRole("columnheader", { name: "발급", exact: true })).toHaveCount(1);
+    } catch (failure) {
+      try {
+        const dom = await page.evaluate(() => {
+          const head = document.querySelector(".cp-tbl thead");
+          const style = (element: Element) => {
+            const css = getComputedStyle(element);
+            return { display: css.display, visibility: css.visibility, opacity: css.opacity, clipPath: css.clipPath };
+          };
+          const attributes = (element: Element) => ({ tag: element.tagName, class: element.className.toString().slice(0, 96), role: element.getAttribute("role"), ariaHidden: element.getAttribute("aria-hidden"), hidden: element.hasAttribute("hidden") });
+          const ancestors = [];
+          for (let parent = head?.parentElement, depth = 0; parent && depth < 8; parent = parent.parentElement, depth++) ancestors.push({ ...attributes(parent), style: style(parent) });
+          return {
+            pathname: location.pathname,
+            viewport: { width: innerWidth, height: innerHeight, documentWidth: document.documentElement.clientWidth, mobileMedia: matchMedia("(max-width: 767px)").matches },
+            tableCount: document.querySelectorAll(".cp-tbl").length,
+            theadCount: document.querySelectorAll(".cp-tbl thead").length,
+            thead: head ? { ...attributes(head), style: style(head), html: head.outerHTML.slice(0, 1024) } : null,
+            headers: [...document.querySelectorAll(".cp-tbl thead th")].slice(0, 12).map(th => ({ ...attributes(th), text: th.textContent?.slice(0, 64), ariaLabel: th.getAttribute("aria-label")?.slice(0, 64), labelledBy: th.getAttribute("aria-labelledby")?.slice(0, 64), style: style(th) })),
+            ancestors,
+          };
+        });
+        const head = page.locator(".cp-tbl thead");
+        const aria = await head.count() === 1 ? (await head.ariaSnapshot()).slice(0, 1024) : "thead_absent_or_ambiguous";
+        let payload = JSON.stringify({ dom, aria }, null, 2);
+        if (Buffer.byteLength(payload, "utf8") > 12 * 1024) payload = JSON.stringify({ dom: { ...dom, thead: dom.thead ? { ...dom.thead, html: "omitted_for_size" } : null }, aria: "omitted_for_size" });
+        if (Buffer.byteLength(payload, "utf8") <= 12 * 1024) writeFileSync(test.info().outputPath("coupon-header-context.json"), payload, "utf8");
+      } catch { /* Observation must not replace the original assertion failure. */ }
+      throw failure;
+    }
     await expect(row.locator("td").nth(4)).toHaveText("1");
     // 발급한 쿠폰은 삭제 버튼이 없다
     await expect(row.getByRole("button", { name: "삭제" })).toHaveCount(0);
