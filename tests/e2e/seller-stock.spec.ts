@@ -142,7 +142,6 @@ test("빼기·더하기: 사유와 함께 바꾸고, 남은 재고보다 많이 
   await expect(sheet.getByRole("button", { name: "3개 더하기" })).toBeDisabled();
   await sheet.getByLabel("사유 메모").fill("추가 입고");
   await sheet.getByRole("button", { name: "3개 더하기" }).click();
-  await expect(page.getByText("드래곤 소울 부스터 재고 3개를 더했습니다 · 남은 재고 3", { exact: true })).toBeVisible();
   await expect(page.getByText(`스타라이트 부스터 박스 재고 3개를 더했습니다 · 남은 재고 ${before}`)).toBeVisible();
   await page.reload();
   await expect((await nextInput(page, label))).toHaveValue(String(before));
@@ -941,6 +940,7 @@ test("품절 칩을 켠 채 빼기·더하기로 재고를 더하면 조건에 �
   await sheet.getByRole("radio", { name: "서비스" }).click();
   await sheet.getByRole("button", { name: "3개 더하기" }).click();
   // 실제 상세에서 목록으로 돌아와 조건에서 빠졌는지 본다.
+  await expect(page.getByText("드래곤 소울 부스터 재고 3개를 더했습니다 · 남은 재고 3", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "뒤로", exact: true }).click();
   await expect(page.getByRole("button", { name: "품절", exact: true })).toHaveAttribute("aria-pressed", "true");
   // 재고 3이 되어 품절 조건에 안 맞으니 목록에서 빠진다
@@ -976,9 +976,11 @@ test("목록은 읽기·선택만 남기고 첫 쪽 밖 대상을 상세에서 �
   let attempts = 0;
   await page.route(`**/api/seller/products/${b.id}`, route => ++attempts === 1 ? route.fulfill({ status: 503, json: { error: "unavailable" } }) : route.fallback());
   await page.getByRole("button", { name: "선택 재고 작업", exact: true }).click();
+  await expect(page).toHaveURL(/\/seller\/products\/stock\/work\?/);
   const work = page.url();
   expect(new URL(work).pathname).toBe("/seller/products/stock/work");
   expect(new URL(work).searchParams.get("returnTo")).toBe(list);
+  expect(new URL(work).searchParams.get("selection")).toMatch(/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i);
   await expect(page.getByText("재고를 불러오지 못했습니다", { exact: true })).toBeVisible();
   await expect(page.getByTestId("stock-edit")).toHaveCount(0);
   await page.getByRole("button", { name: "다시 시도", exact: true }).click();
