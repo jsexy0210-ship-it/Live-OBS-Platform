@@ -6,6 +6,23 @@ import { canViewCustomerPii, requireSellerRead, type TenantContext } from "../te
 import { thumbnailUrls } from "../products/images";
 import { getImage } from "../storage";
 
+// 선택 배송 준비의 검토 표에 필요한 값만 한 번 읽는다. 상세·개인정보 열람 경로를 호출하지 않는다.
+export async function getPrepareOrderSummaries(db: PrismaClient, ctx: TenantContext, rawIds: string | null) {
+  requireSellerRead(ctx, "ORDER_SHIPPING");
+  const ids = [...new Set((rawIds ?? "").split(",").map((id) => id.toLowerCase()))];
+  if (!ids.length || ids.length > 100 || ids.some((id) => !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id))) return { ok: false as const };
+  const rows = await db.order.findMany({
+    where: { sellerId: ctx.sellerId, legalHoldAt: null, id: { in: ids } },
+    select: { id: true, orderNo: true, createdAt: true, shippingPreparedAt: true, buyerMember: { select: { broadcastNickname: true } } },
+  });
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const orders = ids.flatMap((id) => {
+    const row = byId.get(id);
+    return row ? [{ id: row.id, orderNoLabel: orderNoLabel(row.createdAt, row.orderNo), buyer: { broadcastNickname: row.buyerMember.broadcastNickname }, shippingPreparedAt: row.shippingPreparedAt }] : [];
+  });
+  return { ok: true as const, orders, missing: ids.length - orders.length };
+}
+
 // 판매자 범위 조회의 기준 예시. where에는 항상 ctx.sellerId가 들어가고, 다른 판매자 주문은 없음(404)으로 처리한다.
 // 구매자 이름·연락처(·주소)는 CUSTOMER_PII_VIEW가 있을 때만 응답에 넣고, 넣었으면 열람 기록을 남긴다
 // (화면에서 가리는 것으로는 부족하다, 대표님 결정 2026-10-02).

@@ -165,7 +165,7 @@ test("잔액이 없으면 안내하고, 10명을 넘으면 페이지 이동으�
   await expect(nav.getByRole("button", { name: "3페이지", exact: true })).toHaveAttribute("aria-current", "page");
   await expect(nav.getByRole("button", { name: "다음", exact: true })).toBeDisabled();
   const member = item(21).member;
-  await page.route(`**/api/seller/members/${member.id}`, (route) => route.fulfill({ json: { member: { ...member, rewardBalance: item(21).balance } } }));
+  await page.route(`**/api/seller/members/${member.id}?summary=1`, (route) => route.fulfill({ json: { member: { ...member, rewardBalance: item(21).balance } } }));
   const href = `/seller/rewards/balances/${member.id}?${new URLSearchParams({ returnTo: "/seller/rewards/balances" })}`;
   await expect(rows.first().getByRole("link", { name: "회원21 적립금 조정", exact: true })).toHaveAttribute("href", href);
   await rows.first().getByRole("link", { name: "회원21 적립금 조정", exact: true }).click();

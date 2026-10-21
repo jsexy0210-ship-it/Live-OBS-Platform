@@ -11,6 +11,8 @@ import { PrepareShipping } from "../../../../../../components/seller/OrderWork";
 import { api } from "../../../../../../components/seller/api";
 import { type OrderDetail } from "../../../../../../components/seller/orders";
 
+type PrepareOrder = Pick<OrderDetail, "id" | "orderNoLabel" | "shippingPreparedAt"> & { buyer: Pick<OrderDetail["buyer"], "broadcastNickname"> };
+
 function SelectedOrderWork({ requestKey, returnTo }: { requestKey: string; returnTo?: string | null }) {
   const safeReturnTo = sanitizeNext(returnTo, ["/seller/orders"]);
   const listHref = safeReturnTo?.split("?")[0] === "/seller/orders" ? safeReturnTo : "/seller/orders";
@@ -20,15 +22,14 @@ function SelectedOrderWork({ requestKey, returnTo }: { requestKey: string; retur
   const valid = ids.length > 0 && ids.length <= 100 && ids.every((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
   const allowed = can("ORDER_SHIPPING") && !me.readOnly;
   const generation = useRef(0);
-  const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; orders: OrderDetail[]; missing: number }>({ kind: "loading" });
+  const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; orders: PrepareOrder[]; missing: number }>({ kind: "loading" });
   const load = useCallback(async () => {
     const request = ++generation.current;
     if (!allowed || !valid) return;
-    const responses = await Promise.all(ids.map((id) => api<OrderDetail>(`/api/seller/orders/${id}`)));
+    const response = await api<{ orders: PrepareOrder[]; missing: number }>(`/api/seller/orders?${new URLSearchParams({ summary: "prepare", ids: ids.join(",") })}`);
     if (request !== generation.current) return;
-    const failed = responses.find((r) => !r.ok && r.status !== 404);
-    if (failed && !failed.ok) return setState({ kind: "error", status: failed.status });
-    setState({ kind: "ok", orders: responses.flatMap((r) => r.ok ? [r.data] : []), missing: responses.filter((r) => !r.ok && r.status === 404).length });
+    if (!response.ok) return setState({ kind: "error", status: response.status });
+    setState({ kind: "ok", orders: response.data.orders, missing: response.data.missing });
   }, [allowed, valid, ids]);
   useEffect(() => { setState({ kind: "loading" }); void load(); return () => { generation.current++; }; }, [load]);
   return <><Topbar crumb="판매 › 주문 › 선택 주문 배송 준비" /><main className="main">

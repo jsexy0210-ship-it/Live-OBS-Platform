@@ -63,7 +63,7 @@ export function RewardAdjustment({ memberId, returnTo }: { memberId: string; ret
     if (!canRead || !valid) return;
     setState({ kind: "loading" });
     const [member, live] = await Promise.all([
-      api<{ member: { id: string; broadcastNickname: string | null; rewardBalance: number } }>(`/api/seller/members/${memberId}`),
+      api<{ member: { id: string; broadcastNickname: string | null; rewardBalance: number } }>(`/api/seller/members/${memberId}?summary=1`),
       api<{ livePayout: { enabled: boolean } }>("/api/seller/reward-live-payout"),
     ]);
     if (request !== generation.current) return;

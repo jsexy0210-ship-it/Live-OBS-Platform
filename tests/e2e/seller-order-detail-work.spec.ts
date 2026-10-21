@@ -9,7 +9,7 @@ async function login(page: Page) {
   await expect(page).toHaveURL(/\/seller$/);
 }
 async function fixture(page: Page, missingIds: string[] = [], status = "PAID") {
-  const posts: unknown[] = [], memoWrites: unknown[] = [];
+  const posts: unknown[] = [], memoWrites: unknown[] = [], summaryReads: string[][] = [], fullReads: string[] = [];
   let memo = "", prepared = false;
   const order = (id: string) => ({ id, orderNo: ids.indexOf(id) + 1, orderNoLabel: `20261019-000${ids.indexOf(id) + 1}`, status, broadcastNicknameSnapshot: `선택 주문 ${ids.indexOf(id) + 1}`, createdAt: "2026-10-19T00:00:00Z", paidAt: status === "PAID" ? "2026-10-19T00:00:00Z" : null, cancelledAt: null, refundedAt: null, totalAmount: 1000, rewardUsedAmount: 0, shippingFee: 0, paymentMethod: "CARD", refundAmount: null, refundFault: null, returnFeeDeducted: null, items: [], shipment: null, shippingAddress: null, buyer: { id, broadcastNickname: `선택 주문 ${ids.indexOf(id) + 1}` }, queueState: id === ids[2] ? "waiting" : "done", shippingPreparedAt: prepared && id !== ids[2] ? "2026-10-19T01:00:00Z" : null, queueVersion: 1, refundPreview: null, history: [], couponRedemption: null });
   await page.route("**/api/seller/orders**", async (route) => {
@@ -25,13 +25,20 @@ async function fixture(page: Page, missingIds: string[] = [], status = "PAID") {
       return route.fulfill({ json: { memo: memo ? { body: memo } : null } });
     }
     expect(request.method()).toBe("GET");
+    const query = new URL(request.url()).searchParams;
+    if (path === "/api/seller/orders" && query.get("summary") === "prepare") {
+      const requested = query.get("ids")!.split(","); summaryReads.push(requested);
+      const found = requested.filter((id) => ids.includes(id) && !missingIds.includes(id));
+      return route.fulfill({ json: { orders: found.map((id) => { const row = order(id); return { id, orderNoLabel: row.orderNoLabel, buyer: { broadcastNickname: row.buyer.broadcastNickname }, shippingPreparedAt: row.shippingPreparedAt }; }), missing: requested.length - found.length } });
+    }
     if (path === "/api/seller/orders/counts") return route.fulfill({ json: { counts: { total: 3, today: 3, unpaid: 0, trackingMissing: 3, queueWaiting: 1, queueDone: 2, queueDonePending: 2, refundRequested: 0 } } });
     if (path === "/api/seller/orders") return route.fulfill({ json: { orders: ids.map((id) => ({ ...order(id), itemSummary: { firstProductName: "합성 상품", otherCount: 0 }, shipped: false, refundable: true, refundedAmount: 0, refundedQuantity: 0, remainingAmount: 1000 })), nextCursor: null } });
     const id = ids.find((id) => path === `/api/seller/orders/${id}`);
+    if (id) fullReads.push(id);
     if (id && !missingIds.includes(id)) return route.fulfill({ json: order(id) });
     return route.fulfill({ status: 404, json: { error: "not_found" } });
   });
-  return { posts, memoWrites };
+  return { posts, memoWrites, summaryReads, fullReads };
 }
 
 test("주문 목록은 변경 요청 없이 실제 상세로 이동하고, 선택 배송 준비는 정확한 두 주문만 변경한다", async ({ page }) => {
@@ -53,6 +60,9 @@ test("주문 목록은 변경 요청 없이 실제 상세로 이동하고, 선�
   await expect(page.getByRole("heading", { name: "선택 주문 배송 준비", exact: true })).toBeVisible();
   await expect(page.getByRole("table").locator("tbody tr")).toHaveCount(2);
   await expect(page.getByRole("link", { name: "20261019-0003", exact: true })).toHaveCount(0);
+  expect(owned.summaryReads.length).toBeGreaterThan(0);
+  expect(owned.summaryReads.every((requested) => JSON.stringify(requested) === JSON.stringify(ids.slice(0, 2)))).toBe(true);
+  expect(owned.fullReads).toEqual([]);
   await page.getByRole("button", { name: "배송 준비로 변경", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "2건을 배송 준비로 바꿨습니다" })).toBeVisible();
   expect(owned.posts).toEqual([{ action: "prepare_shipping", orderIds: ids.slice(0, 2) }]);
@@ -134,6 +144,38 @@ test("선택 배송 준비는404만 제외해 남은 주문을 처리하고 유�
   await page.goto(`/seller/orders/prepare?ids=${ids[1]}`);
   await expect(page.getByRole("button", { name: "배송 준비로 변경", exact: true })).toBeDisabled();
   expect(owned.posts).toHaveLength(1);
+});
+
+test("선택 배송 준비는100개를 한 요약 요청으로 읽고 조회 오류를 빈 성공으로 바꾸지 않는다", async ({ page }) => {
+  await login(page);
+  const selected = Array.from({ length: 100 }, (_, n) => `a2222222-2222-4222-8222-${String(n).padStart(12, "0")}`);
+  const reads: string[][] = [], otherRequests: string[] = [];
+  let failure = 503;
+  await page.route("**/api/seller/orders**", (route) => {
+    const url = new URL(route.request().url());
+    if (route.request().method() !== "GET" || url.pathname !== "/api/seller/orders" || url.searchParams.get("summary") !== "prepare") {
+      otherRequests.push(`${route.request().method()} ${url.pathname}`);
+      return route.fulfill({ status: 500, json: { error: "unexpected_request" } });
+    }
+    const requested = url.searchParams.get("ids")!.split(","); reads.push(requested);
+    if (failure) return route.fulfill({ status: failure, json: { error: "owned_failure" } });
+    return route.fulfill({ json: { orders: requested.map((id, n) => ({ id, orderNoLabel: `20261021-${String(n + 1).padStart(4, "0")}`, buyer: { broadcastNickname: `검토 ${n + 1}` }, shippingPreparedAt: null })), missing: 0 } });
+  });
+  await page.goto(`/seller/orders/prepare?${new URLSearchParams({ ids: [...selected, selected[0].toUpperCase()].join(",") })}`);
+  await expect(page.getByText("선택한 주문을 불러오지 못했습니다", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "배송 준비로 변경", exact: true })).toHaveCount(0);
+  expect(reads).toEqual([selected]);
+  failure = 0;
+  await page.getByRole("button", { name: "다시 시도", exact: true }).click();
+  await expect(page.getByRole("table").locator("tbody tr")).toHaveCount(100);
+  expect(reads).toEqual([selected, selected]);
+  expect(otherRequests).toEqual([]);
+  failure = 403;
+  await page.reload();
+  await expect(page.getByTestId("permission-card")).toBeVisible();
+  await expect(page.getByRole("table")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "배송 준비로 변경", exact: true })).toHaveCount(0);
+  expect(otherRequests).toEqual([]);
 });
 
 test("선택 입금 확인은404만 제외하고 남은 주문과 상세 버전만 전송한다", async ({ page }) => {

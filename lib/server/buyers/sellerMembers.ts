@@ -116,6 +116,16 @@ export async function listSellerMembers(db: PrismaClient, ctx: TenantContext, qu
   };
 }
 
+// 잔액 조정 대상만 확인한다. 개인정보·주문 집계와 개인정보 열람 감사를 만들지 않는다.
+export async function getSellerMemberSummary(db: PrismaClient, ctx: TenantContext, memberId: string) {
+  requireSellerRead(ctx, "MEMBER_POINTS");
+  if (!UUID_RE.test(memberId)) throw notFound();
+  const member = await db.buyerMember.findFirst({ where: { id: memberId, sellerId: ctx.sellerId, deletedAt: null }, select: { id: true, broadcastNickname: true } });
+  if (!member) throw notFound();
+  const balance = await db.rewardBalance.findUnique({ where: { sellerId_buyerMemberId: { sellerId: ctx.sellerId, buyerMemberId: member.id } }, select: { balance: true } });
+  return { ...member, rewardBalance: balance?.balance ?? 0 };
+}
+
 // 회원 상세: 목록 항목 + 주문 수·누적 결제(결제된 주문 금액 − 환불액)·적립금 잔액. 탈퇴·다른 쇼핑몰 회원은 404.
 export async function getSellerMember(db: PrismaClient, ctx: TenantContext, memberId: string) {
   requireSellerRead(ctx, "MEMBER_POINTS");

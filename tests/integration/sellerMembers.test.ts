@@ -36,8 +36,8 @@ async function list(cookie: string, qs = "") {
   const r = await listRoute(new Request(`http://localhost:3000/api/seller/members${qs}`, { headers: { ...H, cookie } }));
   return { status: r.status, body: await r.json() };
 }
-async function detail(cookie: string, id: string) {
-  const r = await detailRoute(new Request(`http://localhost:3000/api/seller/members/${id}`, { headers: { ...H, cookie } }), { params: Promise.resolve({ memberId: id }) });
+async function detail(cookie: string, id: string, qs = "") {
+  const r = await detailRoute(new Request(`http://localhost:3000/api/seller/members/${id}${qs}`, { headers: { ...H, cookie } }), { params: Promise.resolve({ memberId: id }) });
   return { status: r.status, body: await r.json() };
 }
 const ids = (b: { members: { id: string }[] }) => b.members.map((m) => m.id);
@@ -171,5 +171,26 @@ describe("회원 상세 GET /api/seller/members/{id}", () => {
     expect((await detail(a.cookie, other.id)).status).toBe(404);
     expect((await detail(a.cookie, crypto.randomUUID())).status).toBe(404);
     expect((await detail(a.cookie, "nope")).status).toBe(404);
+  });
+
+  it("잔액 조정 요약은 개인정보 권한이 있어도 세 필드만 주고 열람 감사를 만들지 않는다", async () => {
+    const a = await shop();
+    const b = await shop();
+    const m = await member(a, { nickname: "조정 대상", name: "상세 전용" });
+    const other = await member(b);
+    await db.rewardBalance.create({ data: { sellerId: a.seller.id, buyerMemberId: m.id, balance: 1500 } });
+    const summary = await detail(a.cookie, m.id, "?summary=1");
+    expect(summary.status).toBe(200);
+    expect(summary.body).toEqual({ member: { id: m.id, broadcastNickname: "조정 대상", rewardBalance: 1500 } });
+    expect(await piiAudits()).toEqual([]);
+    expect((await detail(a.cookie, other.id, "?summary=1")).status).toBe(404);
+    expect((await detail(a.cookie, "nope", "?summary=1")).status).toBe(404);
+    const denied = await cookieOf((await createSellerUser(a.seller.id, { permissions: [] })).email);
+    expect((await detail(denied, m.id, "?summary=1")).status).toBe(403);
+    expect(await piiAudits()).toEqual([]);
+    expect((await detail(a.cookie, m.id)).body.member).toMatchObject({ name: "상세 전용", rewardBalance: 1500 });
+    expect(await piiAudits()).toMatchObject([{ action: "customer.pii.view", targetId: m.id }]);
+    await db.buyerMember.update({ where: { id: m.id }, data: { deletedAt: new Date(), status: "WITHDRAWN" } });
+    expect((await detail(a.cookie, m.id, "?summary=1")).status).toBe(404);
   });
 });
