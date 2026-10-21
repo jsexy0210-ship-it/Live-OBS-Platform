@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { getRewardLedgerEntry, listRewardLedger, rewardLedgerSummary } from "../../lib/server/seller-settings/rewardLedger";
 import { orderNoLabel } from "../../lib/server/orders/orderNoLabel";
 import type { TenantContext } from "../../lib/server/tenant/context";
-import { createBuyer, createPaidOrderItem, createSeller, createSellerUser, db, resetDb } from "./helpers";
+import { createAdmin, createBuyer, createPaidOrderItem, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
 // SA-032 확장: 유형(kind) 필터, 닉네임·주문번호 검색, 「잔액(후)」, 주문 요약, 사유, 요약 카드. 판매자 격리·권한.
 beforeEach(resetDb);
@@ -177,5 +177,9 @@ it("과거 원장 단건도 목록과 같은 DTO·누적잔액으로 조회하�
   expect(await getRewardLedgerEntry(db, other.ctx, old.id)).toBeNull();
   expect(await getRewardLedgerEntry(db, s.ctx, "bad-id")).toBeNull();
   await expect(getRewardLedgerEntry(db, { ...s.ctx, isOwner: false, permissions: [] }, old.id)).rejects.toMatchObject({ status: 403 });
-  expect(await getRewardLedgerEntry(db, { ...s.ctx, isOwner: false, permissions: ["MEMBER_POINTS"], readOnly: true }, old.id)).toEqual(detail);
+  const admin = await createAdmin("OPERATIONS");
+  const readOnly: TenantContext = { ...s.ctx, actorType: "PLATFORM_ADMIN", actorId: admin.id, isOwner: false, permissions: [], readOnly: true, impersonationScopes: ["MEMBERS"] };
+  expect(await getRewardLedgerEntry(db, readOnly, old.id)).toEqual(detail);
+  await expect(getRewardLedgerEntry(db, { ...readOnly, impersonationScopes: [] }, old.id)).rejects.toMatchObject({ status: 403, message: "out_of_scope" });
+  await expect(getRewardLedgerEntry(db, { ...readOnly, impersonationScopes: ["ORDERS"] }, old.id)).rejects.toMatchObject({ status: 403, message: "out_of_scope" });
 });

@@ -72,8 +72,9 @@ describe("현금영수증·세금계산서 신청", () => {
     const first = await createReceiptRequest(db, s.scope, s.bankOrder, income);
     if (!first.ok) throw new Error(first.reason);
     for (let i = 0; i < 11; i++) {
-      const orderId = await newOrder(s.base, "BANK_TRANSFER");
-      expect((await createReceiptRequest(db, s.scope, orderId, income)).ok).toBe(true);
+      const buyerId = i < 6 ? s.buyer.id : s.other.id;
+      const orderId = await newOrder({ ...s.base, buyerId }, "BANK_TRANSFER");
+      expect((await createReceiptRequest(db, { ...s.scope, buyerMemberId: buyerId }, orderId, income)).ok).toBe(true);
     }
     expect((await listSellerReceiptRequests(db, s.ctx)).requests.map((r) => r.id)).not.toContain(first.request.id);
     const staff = await createSellerUser(s.seller.id, { permissions: ["RECEIPT_TAX"] });
