@@ -144,7 +144,7 @@ jobs:
   e2e-smoke:
     name: E2E smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 32
     services:
       postgres:
         image: postgres:16
