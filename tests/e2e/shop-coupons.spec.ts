@@ -139,8 +139,10 @@ test.describe.serial("SA-035 쿠폰 관리 · SH-028 내 쿠폰함", () => {
     expect(data.coupons.some(c => c.name === "10월 스타라이트 오픈 기념")).toBe(true);
     await expect(page).toHaveURL(/\/seller\/coupons(?:\?|$)/);
     const row = page.getByTestId("coupon-row").filter({ hasText: "10월 스타라이트 오픈 기념" });
+    const issuedHeader = page.locator(".cp-tbl thead th").filter({ hasText: /^발급$/ });
     try {
-      await expect(page.getByRole("columnheader", { name: "발급", exact: true })).toHaveCount(1);
+      await expect(issuedHeader).toHaveCount(1);
+      await expect(issuedHeader).toHaveText("발급");
     } catch (failure) {
       try {
         const dom = await page.evaluate(() => {
