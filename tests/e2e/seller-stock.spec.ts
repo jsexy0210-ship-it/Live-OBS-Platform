@@ -142,6 +142,7 @@ test("빼기·더하기: 사유와 함께 바꾸고, 남은 재고보다 많이 
   await expect(sheet.getByRole("button", { name: "3개 더하기" })).toBeDisabled();
   await sheet.getByLabel("사유 메모").fill("추가 입고");
   await sheet.getByRole("button", { name: "3개 더하기" }).click();
+  await expect(page.getByText("드래곤 소울 부스터 재고 3개를 더했습니다 · 남은 재고 3", { exact: true })).toBeVisible();
   await expect(page.getByText(`스타라이트 부스터 박스 재고 3개를 더했습니다 · 남은 재고 ${before}`)).toBeVisible();
   await page.reload();
   await expect((await nextInput(page, label))).toHaveValue(String(before));
@@ -962,6 +963,7 @@ test("목록은 읽기·선택만 남기고 첫 쪽 밖 대상을 상세에서 �
   const q = "소유 재고", list = `/seller/products/stock?${new URLSearchParams({ q })}`;
   await page.goto(`/seller/login?next=${encodeURIComponent(list)}`);
   await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
+  await expect(page).toHaveURL(list);
   await expect(page.getByTestId("stock-row")).toHaveCount(200);
   await expect(page.getByRole("button", { name: "선택 재고 작업", exact: true })).toBeDisabled();
   await expect(page.getByTestId("stock-row").locator('input:not([type="checkbox"]),select')).toHaveCount(0);
@@ -1063,6 +1065,7 @@ test("재고 작업 대상 보관 실패·잘못된 키·다른 사용자·읽�
   await routeFakeProducts(page, products);
   await page.goto("/seller/login?next=%2Fseller%2Fproducts%2Fstock");
   await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
+  await expect(page).toHaveURL("/seller/products/stock");
   await expect(page.getByTestId("stock-row")).toHaveCount(2);
   const me = await (await page.request.get("/api/seller/me")).json();
   const writes: string[] = [];
@@ -1078,6 +1081,10 @@ test("재고 작업 대상 보관 실패·잘못된 키·다른 사용자·읽�
   await expect(page).toHaveURL("/seller/products/stock");
   await page.evaluate(() => { const owned = window as unknown as { restoreStockStorage?: () => void }; owned.restoreStockStorage?.(); delete owned.restoreStockStorage; });
   await page.getByRole("button", { name: "선택 재고 작업", exact: true }).click();
+  await expect(page).toHaveURL(/\/seller\/products\/stock\/work\?/);
+  const workUrl = new URL(page.url());
+  expect(workUrl.searchParams.get("returnTo")).toBe("/seller/products/stock");
+  expect(workUrl.searchParams.get("selection")).toMatch(/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i);
   const work = page.url();
   await expect(page.getByTestId("stock-edit")).toHaveCount(2);
   await page.evaluate(() => { const key = "onq:stock:selection", saved = JSON.parse(sessionStorage.getItem(key)!); saved.ids.push({ productId: saved.ids[0].productId.toUpperCase(), optionId: saved.ids[0].optionId.toUpperCase() }); sessionStorage.setItem(key, JSON.stringify(saved)); });

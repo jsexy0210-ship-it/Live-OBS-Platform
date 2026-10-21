@@ -56,6 +56,7 @@ test("주문 목록은 변경 요청 없이 실제 상세로 이동하고, 선�
   await expect(link).toHaveAttribute("href", `/seller/orders/prepare?${new URLSearchParams({ ids: ids.slice(0, 2).join(","), returnTo: "/seller/orders?period=all" })}`);
   expect(owned.posts).toEqual([]);
   await link.click();
+  await expect(page).toHaveURL(`/seller/orders/prepare?${new URLSearchParams({ ids: ids.slice(0, 2).join(","), returnTo: "/seller/orders?period=all" })}`);
   await page.reload();
   await expect(page.getByRole("heading", { name: "선택 주문 배송 준비", exact: true })).toBeVisible();
   await expect(page.getByRole("table").locator("tbody tr")).toHaveCount(2);
@@ -90,6 +91,7 @@ test("주문 메모는 실제 상세에서만 저장하고 새로고침 후 보�
   await expect(page).toHaveURL(new URL("/seller/orders?period=all", page.url()).href);
   await page.getByTestId("order-row").first().getByRole("button", { name: /더보기/ }).click();
   await link.click();
+  await expect(page).toHaveURL(`/seller/orders/${ids[0]}?${new URLSearchParams({ returnTo: "/seller/orders?period=all" })}#order-memo`);
   await page.reload();
   await expect(memo.getByRole("textbox", { name: "메모", exact: true })).toHaveValue("선물 포장 요청 확인");
   await memo.getByRole("textbox", { name: "메모", exact: true }).fill("");
@@ -106,6 +108,7 @@ test("주문 메모는 실제 상세에서만 저장하고 새로고침 후 보�
   await expect(page).toHaveURL(new URL("/seller/orders?period=all", page.url()).href);
   await page.getByTestId("order-row").first().getByRole("button", { name: /더보기/ }).click();
   await link.click();
+  await expect(page).toHaveURL(`/seller/orders/${ids[0]}?${new URLSearchParams({ returnTo: "/seller/orders?period=all" })}#order-memo`);
   await page.reload();
   await expect(memo.getByRole("textbox", { name: "메모", exact: true })).toHaveValue("");
   await memo.getByRole("textbox", { name: "메모", exact: true }).fill("버릴 입력");

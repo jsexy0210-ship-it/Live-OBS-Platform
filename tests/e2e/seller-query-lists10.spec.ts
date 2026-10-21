@@ -221,14 +221,23 @@ test("SA-023: 처리한 행만 거두고 현재 쪽·스크롤을 보존하며 �
   const current = (n: number) => expect(nav.getByRole("button", { name: `${n}페이지`, exact: true })).toHaveAttribute("aria-current", "page");
   const scrollMetrics = () => page.evaluate(() => ({ scrollY, scrollHeight: document.documentElement.scrollHeight, innerHeight, maxScroll: Math.max(0, document.documentElement.scrollHeight - innerHeight) }));
   const rejectFirst = async (keepMiddle = false) => {
-    await rows.first().getByRole("button", { name: "처리", exact: true }).click();
-    const dialog = page.getByRole("dialog");
+    if (keepMiddle) await page.evaluate(() => window.scrollTo(0, Math.floor(Math.max(0, document.documentElement.scrollHeight - innerHeight) / 2)));
+    const scroll = await scrollMetrics();
+    const link = rows.first().getByRole("link", { name: "처리", exact: true });
+    const href = new URL(await link.getAttribute("href") ?? "", page.url());
+    expect(href.pathname).toMatch(/^\/seller\/orders\/refund-requests\/[0-9a-f-]{36}$/);
+    expect(owned.refunds).toContain(href.pathname.split("/").at(-1));
+    expect(href.searchParams.get("returnTo")).toBe("/seller/orders/refund-requests");
+    await link.click();
+    await expect(page).toHaveURL(href.href);
+    const dialog = page.getByRole("region", { name: /환불 요청 처리/ });
     await dialog.getByRole("button", { name: "거절", exact: true }).click();
     await dialog.getByLabel("거절 사유", { exact: true }).fill("합성 쪽 보존");
     // 한 행 제거 뒤에도 가능한 중간 위치를 고른다. 끝 위치의 브라우저 자동 clamp를 보존 실패와 섞지 않는다.
-    if (keepMiddle) await page.evaluate(() => window.scrollTo(0, Math.floor(Math.max(0, document.documentElement.scrollHeight - innerHeight) / 2)));
-    const scroll = await scrollMetrics();
     await dialog.getByRole("button", { name: "거절 처리", exact: true }).click();
+    await expect(page.getByText("환불 요청을 거절했습니다", { exact: true })).toBeVisible();
+    await dialog.getByRole("button", { name: "목록으로", exact: true }).click();
+    await expect(page).toHaveURL(/\/seller\/orders\/refund-requests$/);
     await expect(dialog).toHaveCount(0);
     return scroll;
   };

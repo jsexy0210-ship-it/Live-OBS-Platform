@@ -147,6 +147,7 @@ test("SA006 PC: 원배열 11개와 현재 쪽 10개·마지막 쪽 이동을 유
   const link = page.getByTestId("external-row").getByRole("link", { name: "연결 상세", exact: true });
   await expect(link).toHaveAttribute("href", `/seller/external-shops/connection-10?${new URLSearchParams({ returnTo: listHref })}`);
   await link.click();
+  await expect(page).toHaveURL(`/seller/external-shops/connection-10?${new URLSearchParams({ returnTo: listHref })}`);
   await page.reload();
   await expect(page.getByTestId("external-detail")).toContainText("검증 연결 11");
   await page.getByRole("button", { name: "뒤로", exact: true }).click();

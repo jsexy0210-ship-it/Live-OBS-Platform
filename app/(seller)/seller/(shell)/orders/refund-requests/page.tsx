@@ -37,7 +37,7 @@ const BADGE: Record<Status, { label: string; cls: string }> = {
 export default function RefundRequestsPage() {
   const listQuery = useSearchParams().toString();
   const returnTo = `/seller/orders/refund-requests${listQuery ? `?${listQuery}` : ""}`;
-  const { can } = useSeller();
+  const { can, me } = useSeller();
   const canEdit = can("ORDER_SHIPPING");
   // 탭은 주소(?status=)가 기준이다. 주문 상세에 갔다 Back으로 돌아와도 그대로 복원된다(UX 감사 9.3). 틀린 값은 처리 대기로 본다
   const [u, setU] = useUrlState({ status: "REQUESTED" });
@@ -48,22 +48,57 @@ export default function RefundRequestsPage() {
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
   const paging = useRef(false);
   const reqId = useRef(0);
+  const initialPaging = useRef(true);
+  const pagingScope = useRef("");
+  const pendingRestore = useRef<{ scope: string; page: number; cursors: (string | undefined)[]; ids: string[]; next: string | null } | null>(null);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
 
   const load = useCallback(async (status: Status) => {
-    const id = ++reqId.current; setPage(1); setCursors([undefined]); paging.current = false;
+    const id = ++reqId.current; paging.current = false;
+    let scope = "";
+    try { if (me.sellerId && me.userId) scope = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify([me.sellerId, me.userId, status])))), n => n.toString(16).padStart(2, "0")).join(""); } catch {}
+    if (id !== reqId.current) return;
+    pagingScope.current = scope;
+    let restore = pendingRestore.current?.scope === scope ? pendingRestore.current : undefined;
+    if (initialPaging.current && scope) {
+      try {
+        const raw = sessionStorage.getItem("onq:refund-requests:return"); sessionStorage.removeItem("onq:refund-requests:return");
+        const saved = JSON.parse(raw ?? "null");
+        if (saved?.scope === scope && Number.isInteger(saved.page) && saved.page >= 1 && Array.isArray(saved.cursors) && saved.cursors.length === saved.page && saved.cursors[0] === null && saved.cursors.slice(1).every((c: unknown) => typeof c === "string" && c.length > 0) && Array.isArray(saved.ids) && saved.ids.length <= 10 && saved.ids.every((value: unknown) => typeof value === "string" && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value)) && new Set(saved.ids).size === saved.ids.length && (saved.next === null || typeof saved.next === "string" && saved.next.length > 0)) restore = { scope, page: saved.page, cursors: saved.cursors.map((c: string | null) => c ?? undefined), ids: saved.ids, next: saved.next };
+      } catch {}
+    }
+    pendingRestore.current = restore ?? null;
+    setPage(restore?.page ?? 1); setCursors(restore?.cursors ?? [undefined]);
     setState({ kind: "loading" });
-    const r = await api<List>(`/api/seller/refund-requests?status=${status}`);
+    const cursor = restore?.cursors[restore.page - 1];
+    const r = await api<List>(`/api/seller/refund-requests?status=${status}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
     if (id !== reqId.current) return;
     if (!r.ok) return setState({ kind: "error", status: r.status });
-    setState({ kind: "ok", rows: r.data.requests, next: r.data.nextCursor, counts: r.data.counts });
-  }, []);
+    initialPaging.current = false; pendingRestore.current = null;
+    const visible = restore ? restore.ids.flatMap((rowId) => r.data.requests.filter((row) => row.id === rowId)) : r.data.requests;
+    if (restore && visible.length === 0 && restore.page > 1) {
+      const previous = restore.page - 1, before = restore.cursors[previous - 1];
+      const result = await api<List>(`/api/seller/refund-requests?status=${status}${before ? `&cursor=${encodeURIComponent(before)}` : ""}`);
+      if (id !== reqId.current) return;
+      if (result.ok) {
+        setPage(previous); setCursors(restore.cursors.slice(0, previous));
+        return setState({ kind: "ok", rows: result.data.requests, next: result.data.nextCursor, counts: result.data.counts });
+      }
+      setToast({ text: "불러오지 못했습니다. 다시 눌러 주십시오", neg: true });
+    }
+    setState({ kind: "ok", rows: visible, next: restore ? restore.next : r.data.nextCursor, counts: r.data.counts });
+  }, [me.sellerId, me.userId]);
   useEffect(() => {
     setState({ kind: "loading" });
     void load(tab);
+    return () => { reqId.current++; };
   }, [tab, load]);
 
   useScrollRestore("seller-refund-requests", state.kind === "ok");
+  const rememberPage = () => {
+    if (state.kind !== "ok" || !pagingScope.current) return;
+    try { sessionStorage.setItem("onq:refund-requests:return", JSON.stringify({ scope: pagingScope.current, page, cursors: cursors.slice(0, page), ids: state.rows.map((row) => row.id), next: state.next })); } catch {}
+  };
 
   const turnPage = async (target: number) => {
     if (state.kind !== "ok" || paging.current || target === page || target < 1 || target > cursors.length + 1) return;
@@ -173,7 +208,7 @@ export default function RefundRequestsPage() {
                         </td>
                         <td>
                           <div className="acts2">
-                            <Link className="btn btn-sm" href={`/seller/orders/refund-requests/${r.id}?${new URLSearchParams({ returnTo })}`}>
+                            <Link className="btn btn-sm" href={`/seller/orders/refund-requests/${r.id}?${new URLSearchParams({ returnTo })}`} onClick={rememberPage}>
                               {r.status === "REQUESTED" && canEdit ? "처리" : "보기"}
                             </Link>
                           </div>

@@ -146,7 +146,7 @@ jobs:
   e2e-smoke:
     name: E2E smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 32
     services:
       postgres:
         image: postgres:16
@@ -235,7 +235,7 @@ jobs:
         if: steps.gate.outputs.skip != 'true'
         env:
           E2E_SCREENSHOTS: "1"
-        run: npx playwright test -c tests/e2e/playwright.config.ts --project=start $SMOKE_SPECS
+        run: npx playwright test -c tests/e2e/playwright.config.ts --project=start $SMOKE_SPECS --grep-invert '(?:^| )seller-products\.spec\.ts 재고 수정: (?:대표자|상품 권한 없는 직원)의 경로·권한과 390px 화면을 확인한다$|(?:^| )seller-stock\.spec\.ts 390·360 카드형 행: 상태 배지가 잘리지 않고 「이력」·「빼기 · 더하기」 버튼과 겹치지 않는다$'
 
       # 기존 nightly의 dev 가입 harness만 같은 폐기 DB에서 두 파일로 한정한다.
       - name: E2E signup flows

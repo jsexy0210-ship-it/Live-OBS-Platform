@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { PageHead } from "../../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../../components/seller/SellerShell";
 import { LoadingRows, Toast } from "../../../../../../../components/seller/States";
@@ -37,7 +37,9 @@ function RefundRequestContent() {
   const listHref = safeReturnTo?.split("?")[0] === "/seller/orders/refund-requests" ? safeReturnTo : "/seller/orders/refund-requests";
   const { id } = useParams<{ id: string }>();
   const { can, me } = useSeller();
-  const back = useSmartBack(listHref);
+  const smartBack = useSmartBack(listHref);
+  const router = useRouter();
+  const back = useCallback(() => safeReturnTo?.split("?")[0] === "/seller/orders/refund-requests" ? router.replace(listHref) : smartBack(), [safeReturnTo, listHref, router, smartBack]);
   const [toast, setToast] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
   return <><Topbar crumb="판매 › 주문 › 취소 · 환불 요청" /><main className="main">

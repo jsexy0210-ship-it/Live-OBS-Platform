@@ -140,6 +140,7 @@ test("HIT 카드 상세는 둘째 쪽 직접·새로고침 후 위치를 복원�
   const href = `/seller/hit-cards/${cards[10].id}?${new URLSearchParams({ returnTo: "/seller/hit-cards?period=all" })}`;
   await expect(row.getByRole("link", { name: "상세", exact: true })).toHaveAttribute("href", href);
   await row.getByRole("link", { name: "상세", exact: true }).click();
+  await expect(page).toHaveURL(href);
   await page.reload();
   await expect(page.getByRole("region", { name: "HIT 카드 상세", exact: true })).toContainText(cards[10].cardName);
   await page.getByRole("button", { name: "뒤로", exact: true }).click();

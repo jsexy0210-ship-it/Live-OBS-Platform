@@ -50,6 +50,7 @@ async function shot(page: Page, name: string) {
 }
 
 async function openRestriction(page: Page, row: Locator) {
+  await expect(page).toHaveURL(/\/seller\/purchase-restrictions(?:\?.*)?$/);
   const origin = new URL(page.url());
   await expect(row.locator("button, input, select")).toHaveCount(0);
   const link = row.getByRole("link", { name: "회원 상세", exact: true });

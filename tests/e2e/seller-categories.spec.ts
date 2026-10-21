@@ -68,7 +68,12 @@ test("대표자: 트리를 보고, 추가·이름 바꾸기·노출·순서 저�
   await expect(row(page, "부스터 박스")).toHaveCount(1);
 
   // 하위 추가 · 이름 30자 검사
-  await row(page, "팩").getByRole("link", { name: "하위 추가" }).click();
+  const parent = (await tree(page)).find((node) => node.name === "팩")!;
+  const childHref = `/seller/products/categories/new?${new URLSearchParams({ returnTo: listHref, parentId: parent.id })}`;
+  const childLink = row(page, "팩").getByRole("link", { name: "하위 추가" });
+  await expect(childLink).toHaveAttribute("href", childHref);
+  await childLink.click();
+  await expect(page).toHaveURL(childHref);
   await page.reload();
   const dialog = page.getByRole("region", { name: "하위 카테고리 추가", exact: true });
   await dialog.getByLabel("이름").fill("a".repeat(31));

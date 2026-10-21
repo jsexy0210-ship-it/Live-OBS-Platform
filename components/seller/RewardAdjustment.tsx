@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHead, useConfirm } from "../admin-ui";
 import { confirmLeave, sanitizeNext, useSmartBack, useUnsavedGuard } from "../../lib/client/navigation";
@@ -52,7 +53,9 @@ export function RewardAdjustment({ memberId, returnTo }: { memberId: string; ret
   const canEdit = canRead && !me.readOnly;
   const safeReturnTo = sanitizeNext(returnTo, ["/seller/rewards/balances"]);
   const listHref = safeReturnTo?.split("?")[0] === "/seller/rewards/balances" ? safeReturnTo : "/seller/rewards/balances";
-  const back = useSmartBack(listHref);
+  const smartBack = useSmartBack(listHref);
+  const router = useRouter();
+  const back = useCallback(() => safeReturnTo?.split("?")[0] === "/seller/rewards/balances" ? router.replace(listHref) : smartBack(), [safeReturnTo, listHref, router, smartBack]);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [result, setResult] = useState("");
   const generation = useRef(0);

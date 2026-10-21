@@ -96,7 +96,10 @@ test("대표자: 기준 금액 저장 → 자동 재산정 켜기 검사 → 등
   await expect(adjust.locator("input, select, button")).toHaveCount(0);
   const link = adjust.getByRole("link", { name: "회원 상세", exact: true });
   expect(new URL(await link.getAttribute("href") ?? "", listUrl).searchParams.get("returnTo")).toBe(listUrl.pathname + listUrl.search);
+  const memberHref = new URL(await link.getAttribute("href") ?? "", listUrl);
+  expect(memberHref.pathname).toMatch(/^\/seller\/members\/[0-9a-f-]{36}$/);
   await link.click();
+  await expect(page).toHaveURL(memberHref.href);
   await page.reload();
   const detail = page.getByRole("region", { name: "등급 조정", exact: true });
   // 지금과 다른 등급을 고른다

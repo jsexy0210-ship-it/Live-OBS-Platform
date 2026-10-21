@@ -170,6 +170,7 @@ test("선택 발행 완료는 실제 상세에서 두 신청만 재조회하고 
   const link = page.getByRole("link", { name: "선택 발행 완료 처리 (2)", exact: true });
   await expect(link).toHaveAttribute("href", `${URL_PATH}/complete?${new URLSearchParams({ ids: ids.slice(0, 2).join(","), returnTo: URL_PATH })}`);
   await link.click();
+  await expect(page).toHaveURL(`${URL_PATH}/complete?${new URLSearchParams({ ids: ids.slice(0, 2).join(","), returnTo: URL_PATH })}`);
   await page.reload();
   await expect(page.getByRole("heading", { level: 1, name: "선택 발행 완료 처리", exact: true })).toBeVisible();
   await expect(page.getByRole("table").locator("tbody tr")).toHaveCount(2);
