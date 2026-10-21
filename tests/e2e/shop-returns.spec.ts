@@ -164,8 +164,10 @@ test("교환·반품 목록은 읽기만 하고 상세 재진입·초안 이탈�
   });
   await page.route(url => url.pathname === `/api/seller/returns/${id}`, route => denied ? route.fulfill({ status: 403, json: { error: "forbidden" } }) : route.fulfill({ json: entry() }));
   await page.route(url => url.pathname === `/api/seller/returns/${id}/accept`, async route => { posts.push({ path: new URL(route.request().url()).pathname, body: route.request().postDataJSON() }); await pendingAccept; status = "ACCEPTED"; return route.fulfill({ json: { ok: true } }); });
-  await page.goto(`/seller/login?next=${encodeURIComponent(listHref)}`);
+  await page.goto("/seller/login?next=%2Fseller%2Freturns");
   await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
+  await expect(page).toHaveURL("/seller/returns");
+  await page.goto(listHref);
   await expect(page).toHaveURL(listHref);
   await expect(page.getByTestId("return-row")).toHaveCount(10);
   expect(posts).toEqual([]);

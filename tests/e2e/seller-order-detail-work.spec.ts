@@ -90,6 +90,7 @@ test("주문 메모는 실제 상세에서만 저장하고 새로고침 후 보�
   await page.getByRole("button", { name: "뒤로", exact: true }).click();
   await expect(page).toHaveURL(new URL("/seller/orders?period=all", page.url()).href);
   await page.getByTestId("order-row").first().getByRole("button", { name: /더보기/ }).click();
+  await expect(link).toHaveAttribute("href", `/seller/orders/${ids[0]}?${new URLSearchParams({ returnTo: "/seller/orders?period=all" })}#order-memo`);
   await link.click();
   await expect(page).toHaveURL(`/seller/orders/${ids[0]}?${new URLSearchParams({ returnTo: "/seller/orders?period=all" })}#order-memo`);
   await page.reload();
@@ -107,6 +108,7 @@ test("주문 메모는 실제 상세에서만 저장하고 새로고침 후 보�
   await page.getByRole("button", { name: "뒤로", exact: true }).click();
   await expect(page).toHaveURL(new URL("/seller/orders?period=all", page.url()).href);
   await page.getByTestId("order-row").first().getByRole("button", { name: /더보기/ }).click();
+  await expect(link).toHaveAttribute("href", `/seller/orders/${ids[0]}?${new URLSearchParams({ returnTo: "/seller/orders?period=all" })}#order-memo`);
   await link.click();
   await expect(page).toHaveURL(`/seller/orders/${ids[0]}?${new URLSearchParams({ returnTo: "/seller/orders?period=all" })}#order-memo`);
   await page.reload();

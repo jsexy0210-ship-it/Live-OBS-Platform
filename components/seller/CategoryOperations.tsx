@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { FormRow, FormSection, ListTable, Modal, PageHead } from "../admin-ui";
 import { Topbar, useSeller } from "./SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "./States";
@@ -28,7 +29,9 @@ export function CategoryOperations({ categoryId, parentId, order = false, return
   const [completed, setCompleted] = useState(false);
   const safeReturnTo = sanitizeNext(returnTo, ["/seller/products/categories"]);
   const listHref = safeReturnTo?.split("?")[0] === "/seller/products/categories" ? safeReturnTo : "/seller/products/categories";
-  const back = useSmartBack(listHref);
+  const smartBack = useSmartBack(listHref);
+  const router = useRouter();
+  const back = useCallback(() => safeReturnTo?.split("?")[0] === "/seller/products/categories" ? router.replace(listHref) : smartBack(), [safeReturnTo, listHref, router, smartBack]);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [tree, setTree] = useState<CategoryNode[]>([]);
   const [draft, setDraft] = useState<Record<string, string[]>>({});

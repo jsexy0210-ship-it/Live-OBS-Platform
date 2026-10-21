@@ -2,7 +2,7 @@
 
 import { formatDateTime, formatTime } from "../../../../../../lib/client/format";
 import "../../../../../../styles/seller-orders.css";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { sanitizeNext, useSmartBack } from "../../../../../../lib/client/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import RefundModal from "../../../../../../components/seller/RefundModal";
@@ -29,7 +29,9 @@ function OrderDetailContent() {
   const query = useSearchParams();
   const safeReturnTo = sanitizeNext(query.get("returnTo"), ["/seller/orders"]);
   const listHref = safeReturnTo?.split("?")[0] === "/seller/orders" ? safeReturnTo : "/seller/orders";
-  const back = useSmartBack(listHref);
+  const smartBack = useSmartBack(listHref);
+  const router = useRouter();
+  const back = useCallback(() => safeReturnTo?.split("?")[0] === "/seller/orders" ? router.replace(listHref) : smartBack(), [safeReturnTo, listHref, router, smartBack]);
   const backHandler = useRef<(() => Promise<boolean>) | null>(null);
   const { orderId } = useParams<{ orderId: string }>();
   const [state, setState] = useState<Load>({ kind: "loading" });

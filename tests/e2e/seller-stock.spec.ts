@@ -931,6 +931,7 @@ test("재고 칩(품절·5 이하)은 서버에서 옵션 단위로 걸러, 아�
 test("품절 칩을 켠 채 빼기·더하기로 재고를 더하면 조건에 안 맞게 된 줄은 목록에서 빠진다", async ({ page }) => {
   await openAs(page);
   await page.getByRole("button", { name: "품절", exact: true }).click();
+  await expect(page).toHaveURL("/seller/products/stock?stock=out");
   await expect(row(page, "드래곤 소울 부스터")).toBeVisible();
   const label = "드래곤 소울 부스터 1팩";
   await page.getByRole("link", { name: `${label} 빼기 · 더하기` }).click();
@@ -961,8 +962,10 @@ test("목록은 읽기·선택만 남기고 첫 쪽 밖 대상을 상세에서 �
   const products = fakeProducts("소유 재고", 250, 4000);
   await routeFakeProducts(page, products);
   const q = "소유 재고", list = `/seller/products/stock?${new URLSearchParams({ q })}`;
-  await page.goto(`/seller/login?next=${encodeURIComponent(list)}`);
+  await page.goto("/seller/login?next=%2Fseller%2Fproducts%2Fstock");
   await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
+  await expect(page).toHaveURL("/seller/products/stock");
+  await page.goto(list);
   await expect(page).toHaveURL(list);
   await expect(page.getByTestId("stock-row")).toHaveCount(200);
   await expect(page.getByRole("button", { name: "선택 재고 작업", exact: true })).toBeDisabled();

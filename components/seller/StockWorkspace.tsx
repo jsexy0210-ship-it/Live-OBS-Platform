@@ -76,7 +76,8 @@ export function StockWorkspace({ work = false, selectionKey, productId, optionId
   // 목록 조건은 URL로 복원하고, 선택 작업 상세의 내부 검색은 로컬로 유지해 이탈 보호 주소를 바꾸지 않는다.
   const urlDefaults = useRef({ q: work ? initialQuery.get("q") ?? "" : "", stock: work ? initialQuery.get("stock") ?? "" : "" });
   const [u, setU] = useUrlState(urlDefaults.current);
-  const goList = useSmartBack(work ? listHref : "/seller/products");
+  const smartBack = useSmartBack(work ? listHref : "/seller/products");
+  const goList = useCallback(() => safeReturnTo?.split("?")[0] === "/seller/products/stock" ? router.replace(listHref) : smartBack(), [safeReturnTo, listHref, router, smartBack]);
   const [query, setQuery] = useState(u.q);
   const [filter, setFilter] = useState<Filter>(u.stock === "low" || u.stock === "out" ? u.stock : "all");
   const setUrl = useRef(setU);

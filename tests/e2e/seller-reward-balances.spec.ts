@@ -113,7 +113,12 @@ test("잔액: 현재 잔액과 성공 내역 누적(지급·사용)이 보이고
   await page.getByLabel("검색어").fill("별빛");
   await page.getByRole("button", { name: "검색" }).click();
   await expect(rows).toHaveCount(1);
+  const resetResponse = page.waitForResponse((response) => { const url = new URL(response.url()); return url.pathname === "/api/seller/reward-balances" && !url.searchParams.get("q"); });
   await page.getByRole("button", { name: "초기화" }).click();
+  const resetResult = await resetResponse;
+  expect(resetResult.status()).toBe(200);
+  expect(await resetResult.finished()).toBeNull();
+  await expect(page).toHaveURL("/seller/rewards/balances");
   await expect(rows).toHaveCount(1);
   await page.getByLabel("검색어").fill(NICK);
   await page.getByRole("button", { name: "검색" }).click();

@@ -50,7 +50,7 @@ export default function RefundRequestsPage() {
   const reqId = useRef(0);
   const initialPaging = useRef(true);
   const pagingScope = useRef("");
-  const pendingRestore = useRef<{ scope: string; page: number; cursors: (string | undefined)[]; ids: string[]; next: string | null } | null>(null);
+  const pendingRestore = useRef<{ scope: string; page: number; cursors: (string | undefined)[]; ids: string[]; next: string | null; scrollY: number } | null>(null);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
 
   const load = useCallback(async (status: Status) => {
@@ -64,7 +64,7 @@ export default function RefundRequestsPage() {
       try {
         const raw = sessionStorage.getItem("onq:refund-requests:return"); sessionStorage.removeItem("onq:refund-requests:return");
         const saved = JSON.parse(raw ?? "null");
-        if (saved?.scope === scope && Number.isInteger(saved.page) && saved.page >= 1 && Array.isArray(saved.cursors) && saved.cursors.length === saved.page && saved.cursors[0] === null && saved.cursors.slice(1).every((c: unknown) => typeof c === "string" && c.length > 0) && Array.isArray(saved.ids) && saved.ids.length <= 10 && saved.ids.every((value: unknown) => typeof value === "string" && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value)) && new Set(saved.ids).size === saved.ids.length && (saved.next === null || typeof saved.next === "string" && saved.next.length > 0)) restore = { scope, page: saved.page, cursors: saved.cursors.map((c: string | null) => c ?? undefined), ids: saved.ids, next: saved.next };
+        if (saved?.scope === scope && Number.isInteger(saved.page) && saved.page >= 1 && Array.isArray(saved.cursors) && saved.cursors.length === saved.page && saved.cursors[0] === null && saved.cursors.slice(1).every((c: unknown) => typeof c === "string" && c.length > 0) && Array.isArray(saved.ids) && saved.ids.length <= 10 && saved.ids.every((value: unknown) => typeof value === "string" && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value)) && new Set(saved.ids).size === saved.ids.length && (saved.next === null || typeof saved.next === "string" && saved.next.length > 0) && Number.isFinite(saved.scrollY) && saved.scrollY >= 0) restore = { scope, page: saved.page, cursors: saved.cursors.map((c: string | null) => c ?? undefined), ids: saved.ids, next: saved.next, scrollY: saved.scrollY };
       } catch {}
     }
     pendingRestore.current = restore ?? null;
@@ -76,6 +76,7 @@ export default function RefundRequestsPage() {
     if (!r.ok) return setState({ kind: "error", status: r.status });
     initialPaging.current = false; pendingRestore.current = null;
     const visible = restore ? restore.ids.flatMap((rowId) => r.data.requests.filter((row) => row.id === rowId)) : r.data.requests;
+    if (restore) { try { sessionStorage.setItem("scroll:seller-refund-requests", String(restore.scrollY)); } catch {} }
     if (restore && visible.length === 0 && restore.page > 1) {
       const previous = restore.page - 1, before = restore.cursors[previous - 1];
       const result = await api<List>(`/api/seller/refund-requests?status=${status}${before ? `&cursor=${encodeURIComponent(before)}` : ""}`);
@@ -97,7 +98,7 @@ export default function RefundRequestsPage() {
   useScrollRestore("seller-refund-requests", state.kind === "ok");
   const rememberPage = () => {
     if (state.kind !== "ok" || !pagingScope.current) return;
-    try { sessionStorage.setItem("onq:refund-requests:return", JSON.stringify({ scope: pagingScope.current, page, cursors: cursors.slice(0, page), ids: state.rows.map((row) => row.id), next: state.next })); } catch {}
+    try { sessionStorage.setItem("onq:refund-requests:return", JSON.stringify({ scope: pagingScope.current, page, cursors: cursors.slice(0, page), ids: state.rows.map((row) => row.id), next: state.next, scrollY: window.scrollY })); } catch {}
   };
 
   const turnPage = async (target: number) => {

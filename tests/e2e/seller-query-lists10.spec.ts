@@ -230,6 +230,7 @@ test("SA-023: 처리한 행만 거두고 현재 쪽·스크롤을 보존하며 �
     expect(href.searchParams.get("returnTo")).toBe("/seller/orders/refund-requests");
     await link.click();
     await expect(page).toHaveURL(href.href);
+    expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem("onq:refund-requests:return") ?? "null")?.scrollY)).toBe(scroll.scrollY);
     const dialog = page.getByRole("region", { name: /환불 요청 처리/ });
     await dialog.getByRole("button", { name: "거절", exact: true }).click();
     await dialog.getByLabel("거절 사유", { exact: true }).fill("합성 쪽 보존");
@@ -249,6 +250,7 @@ test("SA-023: 처리한 행만 거두고 현재 쪽·스크롤을 보존하며 �
     const scroll = await rejectFirst(true);
     await current(2); await expect(rows).toHaveCount(9);
     await expect(rows).toHaveText(before.slice(1));
+    await expect.poll(async () => (await scrollMetrics()).scrollY).toBe(scroll.scrollY);
     const afterScroll = await scrollMetrics();
     writeFileSync(`${evidence}/SA-023-scroll-${previousFails ? "previous-error" : "previous-ok"}.json`, JSON.stringify({ actualGitSha: sha, route: "/seller/orders/refund-requests", state: "page2-row-removed", before: scroll, after: afterScroll }, null, 2));
     expect(scroll.scrollY).toBeGreaterThan(0);
