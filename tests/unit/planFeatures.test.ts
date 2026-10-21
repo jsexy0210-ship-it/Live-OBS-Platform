@@ -92,6 +92,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/members/[memberId]": "ORDER_FOLLOWUP",
   "seller/reward-balances": "ORDER_FOLLOWUP",
   "seller/reward-ledger": "ORDER_FOLLOWUP",
+  "seller/reward-ledger/[id]": "ORDER_FOLLOWUP",
   "seller/reward-ledger/export": "ORDER_FOLLOWUP",
   "seller/reward-balances/export": "ORDER_FOLLOWUP",
   "seller/reward-ledger/summary": "ORDER_FOLLOWUP",
