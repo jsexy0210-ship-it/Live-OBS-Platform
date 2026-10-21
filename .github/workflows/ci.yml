@@ -235,6 +235,15 @@ jobs:
           E2E_SCREENSHOTS: "1"
         run: npx playwright test -c tests/e2e/playwright.config.ts --project=start $SMOKE_SPECS
 
+      - name: Upload coupon header context on failure
+        if: failure() && steps.gate.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coupon-header-context
+          path: test-results/**/coupon-header-context.json
+          if-no-files-found: warn
+          retention-days: 3
+
       # 기존 nightly의 dev 가입 harness만 같은 폐기 DB에서 두 파일로 한정한다.
       - name: E2E signup flows
         if: ${{ !cancelled() && steps.gate.outputs.skip != 'true' && steps.e2e_seed.conclusion == 'success' && steps.e2e_build.conclusion == 'success' && steps.e2e_start.conclusion == 'success' }}
@@ -306,15 +315,6 @@ jobs:
             tests/e2e/screenshots/current-shell-*/*
           if-no-files-found: ignore
           retention-days: 1
-
-      - name: Upload coupon header context on failure
-        if: failure() && steps.gate.outputs.skip != 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: coupon-header-context
-          path: test-results/**/coupon-header-context.json
-          if-no-files-found: warn
-          retention-days: 3
 
       - name: App log on failure
         if: failure() && steps.gate.outputs.skip != 'true'
