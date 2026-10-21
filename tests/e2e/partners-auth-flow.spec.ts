@@ -795,7 +795,8 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   // 본인확인 연결 상태는 목록 줄에 「휴대폰 확인 완료」로 보인다(수정 창의 「연결됨」 표시는 SA-100에서 없어졌다)
   await expect(page.getByTestId("staff-row").filter({ hasText: s.email })).toContainText("휴대폰 확인 완료");
   await page.getByRole("button", { name: `${s.name} 정보·업무 수정` }).click();
-  const dialog = page.getByRole("dialog");
+  await expect(page).toHaveURL(/\/seller\/staff\/[^/?]+\?operation=edit(?:&|$)/);
+  const dialog = page.locator("section[aria-labelledby=staff-edit-title]");
   await dialog.getByLabel("휴대폰 번호").fill(nextPhone);
   await expect(dialog.getByText("번호를 바꾸면 직원이 본인확인을 다시 해야 합니다.")).toBeVisible();
   await dialog.getByRole("button", { name: "저장" }).click();
