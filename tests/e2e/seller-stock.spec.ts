@@ -1102,7 +1102,7 @@ test("재고 작업 대상 보관 실패·잘못된 키·다른 사용자·읽�
   await page.unroute("**/api/seller/me");
   await page.route("**/api/seller/me", route => route.fulfill({ json: { ...me, isOwner: false, permissions: ["PRODUCT_MANAGE"], readOnly: true } }));
   await page.goto(work);
-  await expect(page.getByText("필요한 권한: 상품", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("permission-card").getByText("대표자에게 허용해 달라고 요청해 주십시오 · 필요한 권한: 상품", { exact: true })).toBeVisible();
   await expect(page.getByTestId("stock-edit")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^변경 \d+건 적용$/ })).toHaveCount(0);
   expect(writes).toEqual([]);

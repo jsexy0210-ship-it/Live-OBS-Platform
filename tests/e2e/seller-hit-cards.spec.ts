@@ -158,7 +158,7 @@ test("HIT 카드 상세는 둘째 쪽 직접·새로고침 후 위치를 복원�
   await expect(page.getByRole("region", { name: "HIT 카드 상세", exact: true })).toContainText(cards[10].cardName);
   await expect(page.getByRole("button", { name: "카드 지우기", exact: true })).toHaveCount(0);
   await page.goto("/seller/hit-cards/new");
-  await expect(page.getByText("필요한 권한: 방송 진행", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("permission-card").getByText("대표자에게 허용해 달라고 요청해 주십시오 · 필요한 권한: 방송 진행", { exact: true })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "카드명", exact: true })).toHaveCount(0);
   expect(writes).toEqual([]);
 });

@@ -265,10 +265,10 @@ test("주문 목록: 고유 조회 fixture를 10개씩 바꾸고 검색·끝·�
     expect(first.orders).toHaveLength(10); expect(second.orders).toHaveLength(10); expect(last.orders).toHaveLength(3); expect(last.nextCursor).toBeNull();
     expect(new Set([...first.orders, ...second.orders, ...last.orders].map((r) => r.id))).toEqual(new Set(ids));
     await expect(nav.getByRole("button", { name: "마지막", exact: true })).toHaveCount(0);
-    const check = async (expected: OrderRow[], n: number) => {
+    const check = async (expected: OrderRow[], n: number, expectedReturnTo = `/seller/orders?period=all&q=${prefix}`) => {
       await expect(rows).toHaveCount(expected.length);
       await expect(nav.getByRole("button", { name: `${n}페이지`, exact: true })).toHaveAttribute("aria-current", "page");
-      await expect.poll(() => rows.locator("a.ord-link").evaluateAll((links) => links.map((a) => { const url = new URL((a as HTMLAnchorElement).href); return { path: url.pathname, returnTo: url.searchParams.get("returnTo") }; }))).toEqual(expected.map((r) => ({ path: `/seller/orders/${r.id}`, returnTo: `/seller/orders?period=all&q=${prefix}` })));
+      await expect.poll(() => rows.locator("a.ord-link").evaluateAll((links) => links.map((a) => { const url = new URL((a as HTMLAnchorElement).href); return { path: url.pathname, returnTo: url.searchParams.get("returnTo") }; }))).toEqual(expected.map((r) => ({ path: `/seller/orders/${r.id}`, returnTo: expectedReturnTo })));
     };
     await check(first.orders, 1);
     const requests: string[] = [];
@@ -305,12 +305,13 @@ test("주문 목록: 고유 조회 fixture를 10개씩 바꾸고 검색·끝·�
     await page.getByRole("button", { name: /^상태: 전체/ }).click();
     await page.getByRole("group", { name: "결제 상태" }).getByLabel("완료", { exact: true }).check();
     await page.getByRole("group", { name: "결제 상태" }).getByRole("button", { name: "이 상태로 보기", exact: true }).click();
-    await check(first.orders, 1);
+    const paidReturnTo = `/seller/orders?period=all&q=${prefix}&status=PAID`;
+    await check(first.orders, 1, paidReturnTo);
     await expect(page).toHaveURL(/status=PAID/);
-    await nav.getByRole("button", { name: "다음", exact: true }).click(); await check(second.orders, 2);
+    await nav.getByRole("button", { name: "다음", exact: true }).click(); await check(second.orders, 2, paidReturnTo);
     const input = page.getByRole("searchbox", { name: "주문 검색", exact: true }); await input.fill(`${prefix}-22`);
     await expect(rows).toHaveCount(1); await expect(nav).toHaveCount(0);
-    await input.fill(prefix); await check(first.orders, 1);
+    await input.fill(prefix); await check(first.orders, 1, paidReturnTo);
     await expect(page).toHaveURL(/period=all/);
     await expect(page.getByRole("button", { name: /최근 30일/ })).toHaveAttribute("aria-pressed", "false");
   } catch (error) {
