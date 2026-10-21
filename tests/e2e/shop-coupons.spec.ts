@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { writeFileSync } from "node:fs";
 import { clearCouponsInDb } from "./couponDb";
 import { submitSellerLogin } from "./sellerLogin";
 
@@ -44,7 +45,7 @@ test.describe.serial("SA-035 쿠폰 관리 · SH-028 내 쿠폰함", () => {
     await shots(page, "sa035-empty");
 
     await page.getByRole("button", { name: "쿠폰 만들기" }).first().click();
-    const dlg = page.getByRole("dialog", { name: "쿠폰 만들기" });
+    const dlg = page.locator("section[aria-labelledby=cp-edit-title]");
     await expect(dlg.getByRole("button", { name: "저장" })).toBeDisabled();
     await dlg.getByLabel("쿠폰 이름").fill("10월 스타라이트 오픈 기념");
     await dlg.getByLabel("할인 금액 (원)").fill("5000");
@@ -57,7 +58,7 @@ test.describe.serial("SA-035 쿠폰 관리 · SH-028 내 쿠폰함", () => {
     await expect(page.getByTestId("coupon-row")).toHaveCount(1);
 
     await page.getByRole("button", { name: "쿠폰 만들기" }).first().click();
-    const dlg2 = page.getByRole("dialog", { name: "쿠폰 만들기" });
+    const dlg2 = page.locator("section[aria-labelledby=cp-edit-title]");
     await dlg2.getByLabel("쿠폰 이름").fill("방송 채팅 코드");
     await dlg2.getByRole("radio", { name: "코드 입력" }).click();
     await dlg2.getByLabel("쿠폰 코드").fill("starnight");
@@ -73,13 +74,14 @@ test.describe.serial("SA-035 쿠폰 관리 · SH-028 내 쿠폰함", () => {
 
     // 같은 코드는 다시 쓸 수 없다(대소문자 무시)
     await page.getByRole("button", { name: "쿠폰 만들기" }).first().click();
-    const dup = page.getByRole("dialog", { name: "쿠폰 만들기" });
+    const dup = page.locator("section[aria-labelledby=cp-edit-title]");
     await dup.getByLabel("쿠폰 이름").fill("중복 코드");
     await dup.getByRole("radio", { name: "코드 입력" }).click();
     await dup.getByLabel("쿠폰 코드").fill("StarNight");
     await dup.getByLabel("할인 금액 (원)").fill("1000");
     await dup.getByRole("button", { name: "저장" }).click();
     await expect(dup.getByRole("alert")).toContainText("이미 쓰는 코드입니다");
+    page.once("dialog", d => void d.accept());
     await dup.getByRole("button", { name: "취소" }).click();
     await shots(page, "sa035-list");
   });
@@ -129,18 +131,58 @@ test.describe.serial("SA-035 쿠폰 관리 · SH-028 내 쿠폰함", () => {
 
   test("대표자: 발급 수가 집계에 보이고, 발급 중지하면 구매자는 더 받을 수 없다", async ({ page, baseURL }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
+    const listRead = page.waitForResponse(r => new URL(r.url()).pathname === "/api/seller/coupons" && r.request().method() === "GET");
     await ownerOpen(page, "/seller/coupons");
+    const response = await listRead;
+    expect(response.status()).toBe(200);
+    const data = await response.json() as { coupons: { name: string }[] };
+    expect(data.coupons.some(c => c.name === "10월 스타라이트 오픈 기념")).toBe(true);
+    await expect(page).toHaveURL(/\/seller\/coupons(?:\?|$)/);
     const row = page.getByTestId("coupon-row").filter({ hasText: "10월 스타라이트 오픈 기념" });
-    await expect(page.getByRole("columnheader", { name: "발급", exact: true })).toHaveCount(1);
+    const issuedHeader = page.locator(".cp-tbl thead th").filter({ hasText: /^발급$/ });
+    try {
+      await expect(issuedHeader).toHaveCount(1);
+      await expect(issuedHeader).toHaveText("발급");
+    } catch (failure) {
+      try {
+        const dom = await page.evaluate(() => {
+          const head = document.querySelector(".cp-tbl thead");
+          const style = (element: Element) => {
+            const css = getComputedStyle(element);
+            return { display: css.display, visibility: css.visibility, opacity: css.opacity, clipPath: css.clipPath };
+          };
+          const attributes = (element: Element) => ({ tag: element.tagName, class: element.className.toString().slice(0, 96), role: element.getAttribute("role"), ariaHidden: element.getAttribute("aria-hidden"), hidden: element.hasAttribute("hidden") });
+          const ancestors = [];
+          for (let parent = head?.parentElement, depth = 0; parent && depth < 8; parent = parent.parentElement, depth++) ancestors.push({ ...attributes(parent), style: style(parent) });
+          return {
+            pathname: location.pathname,
+            viewport: { width: innerWidth, height: innerHeight, documentWidth: document.documentElement.clientWidth, mobileMedia: matchMedia("(max-width: 767px)").matches },
+            tableCount: document.querySelectorAll(".cp-tbl").length,
+            theadCount: document.querySelectorAll(".cp-tbl thead").length,
+            thead: head ? { ...attributes(head), style: style(head), html: head.outerHTML.slice(0, 1024) } : null,
+            headers: [...document.querySelectorAll(".cp-tbl thead th")].slice(0, 12).map(th => ({ ...attributes(th), text: th.textContent?.slice(0, 64), ariaLabel: th.getAttribute("aria-label")?.slice(0, 64), labelledBy: th.getAttribute("aria-labelledby")?.slice(0, 64), style: style(th) })),
+            ancestors,
+          };
+        });
+        const head = page.locator(".cp-tbl thead");
+        const aria = await head.count() === 1 ? (await head.ariaSnapshot()).slice(0, 1024) : "thead_absent_or_ambiguous";
+        let payload = JSON.stringify({ dom, aria }, null, 2);
+        if (Buffer.byteLength(payload, "utf8") > 12 * 1024) payload = JSON.stringify({ dom: { ...dom, thead: dom.thead ? { ...dom.thead, html: "omitted_for_size" } : null }, aria: "omitted_for_size" });
+        if (Buffer.byteLength(payload, "utf8") <= 12 * 1024) writeFileSync(test.info().outputPath("coupon-header-context.json"), payload, "utf8");
+      } catch { /* Observation must not replace the original assertion failure. */ }
+      throw failure;
+    }
     await expect(row.locator("td").nth(4)).toHaveText("1");
     // 발급한 쿠폰은 삭제 버튼이 없다
     await expect(row.getByRole("button", { name: "삭제" })).toHaveCount(0);
-    await row.getByRole("button", { name: "발급 중지" }).click();
+    await row.getByRole("button", { name: "수정", exact: true }).click();
+    await page.locator("section[aria-labelledby=cp-edit-title]").getByRole("button", { name: "발급 중지", exact: true }).click();
     const confirm = page.getByRole("dialog", { name: "발급을 중지하시겠습니까?" });
     await expect(confirm).toContainText("이미 받은 1장은 기간 안에 그대로 쓸 수 있습니다");
     await confirm.getByRole("button", { name: "발급 중지" }).click();
     await expect(row.getByText("종료")).toBeVisible();
-    await expect(row.getByRole("button", { name: "다시 발급" })).toBeVisible();
+    await row.getByRole("button", { name: "수정", exact: true }).click();
+    await expect(page.locator("section[aria-labelledby=cp-edit-title]").getByRole("button", { name: "다시 발급" })).toBeVisible();
 
     await buyerLogin(page, baseURL!);
     const box = (await (await page.request.get(`/api/shop/${SLUG}/coupons`)).json()) as { usable: { name: string }[]; claimable: unknown[] };

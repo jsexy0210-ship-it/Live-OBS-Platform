@@ -110,10 +110,19 @@ test.describe.serial("SA-060 쇼핑몰 로고", () => {
     await page.goto("/seller/login?next=%2Fseller%2Fbanners");
     await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
     await expect(page).toHaveURL(/\/seller\/banners$/);
+    const initialRead = page.waitForResponse(r => new URL(r.url()).pathname === "/api/seller/shop-content/banners" && r.request().method() === "GET");
     await page.getByRole("button", { name: "배너 추가" }).first().click();
+    await expect(page).toHaveURL(/\/seller\/banners\/new(?:\?|$)/);
+    const response = await initialRead;
+    expect(response.status()).toBe(200);
+    await response.finished();
+    const image = page.getByTestId("banner-editor").getByLabel("PC 이미지", { exact: true });
+    await expect(image).toBeEnabled();
     await context.clearCookies();
-    await page.getByTestId("banner-editor").getByLabel("PC 이미지", { exact: true }).setInputFiles(file("pc.png", png(1200, 400)));
-    await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fbanners$/);
+    const upload = page.waitForResponse(r => new URL(r.url()).pathname === "/api/seller/shop-content/images" && r.request().method() === "POST");
+    await image.setInputFiles(file("pc.png", png(1200, 400)));
+    expect((await upload).status()).toBe(401);
+    await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fbanners%2Fnew$/);
     // 로고는 그대로(아무것도 저장되지 않음)
     await clearLogo();
   });

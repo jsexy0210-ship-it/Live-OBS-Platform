@@ -109,12 +109,12 @@ test.describe.serial("SH-029 리뷰 쓰기 · SA-048 리뷰 관리", () => {
     await page.goto(`/seller/login?next=${encodeURIComponent("/seller/reviews")}`);
     await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
     await expect(page).toHaveURL(/\/seller\/reviews$/);
-    await expect(page.getByRole("link", { name: "문의 · 리뷰", exact: true })).toHaveClass(/on/);
+    await expect(page.getByRole("navigation", { name: "문의 · 리뷰", exact: true }).getByRole("link", { name: "리뷰", exact: true })).toHaveClass(/on/);
     const row = page.getByTestId("review-row").first();
     await expect(row).toContainText("브레이크 때 뽑힌 카드");
     await shots(page, "sa048-list");
     await row.click();
-    const dlg = page.getByRole("dialog");
+    const dlg = page.locator("section[aria-labelledby=rv-detail-title]");
     await expect(dlg.locator(".rv-imgs img")).toHaveCount(1);
     await dlg.getByRole("textbox", { name: "답글" }).fill("소중한 리뷰 감사합니다. 다음 방송에서도 좋은 카드로 찾아뵙겠습니다.");
     await dlg.getByRole("button", { name: "답글 저장" }).click();
