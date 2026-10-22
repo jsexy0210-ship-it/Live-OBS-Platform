@@ -252,7 +252,8 @@ test("체크한 옵션에 「+10」처럼 적으면 한꺼번에 더해 적어 �
   await openAs(page);
   await page.getByLabel("재고 검색").fill("카드 슬리브");
   await expect(page.getByTestId("stock-row")).toHaveCount(2);
-  const before = await Promise.all(["카드 슬리브 100매 투명", "카드 슬리브 100매 블랙"].map(async (l) => (await nextInput(page, l)).inputValue()));
+  const before: string[] = [];
+  for (const label of ["카드 슬리브 100매 투명", "카드 슬리브 100매 블랙"]) before.push(await (await nextInput(page, label)).inputValue());
   await page.getByLabel("보이는 옵션 모두 선택").check();
   await page.getByLabel("선택한 옵션에 더하거나 뺄 수량").fill("+10");
   await page.getByRole("button", { name: "한꺼번에 적기" }).click();

@@ -238,7 +238,7 @@ jobs:
         env:
           E2E_SCREENSHOTS: "1"
         run: |
-          npx playwright test -c tests/e2e/playwright.config.ts --project=start --max-failures=1 $SMOKE_SPECS --grep-invert '(?:^| )seller-products\.spec\.ts 재고 수정: (?:대표자|상품 권한 없는 직원)의 경로·권한과 390px 화면을 확인한다$|(?:^| )seller-stock\.spec\.ts 390·360 카드형 행: 상태 배지가 잘리지 않고 「이력」·「빼기 · 더하기」 버튼과 겹치지 않는다$'
+          npx playwright test -c tests/e2e/playwright.config.ts --project=start $SMOKE_SPECS --grep-invert '(?:^| )seller-products\.spec\.ts 재고 수정: (?:대표자|상품 권한 없는 직원)의 경로·권한과 390px 화면을 확인한다$|(?:^| )seller-stock\.spec\.ts 390·360 카드형 행: 상태 배지가 잘리지 않고 「이력」·「빼기 · 더하기」 버튼과 겹치지 않는다$'
 
       - name: Upload coupon header context on failure
         if: failure() && steps.gate.outputs.skip != 'true'
