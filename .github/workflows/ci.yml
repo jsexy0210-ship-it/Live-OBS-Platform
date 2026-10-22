@@ -199,7 +199,9 @@ jobs:
 
       - name: Install browser
         if: steps.gate.outputs.skip != 'true'
-        run: npx playwright install --with-deps chromium
+        run: |
+          sudo sed -i 's|http://azure\.archive\.ubuntu\.com/ubuntu/|https://archive.ubuntu.com/ubuntu/|g' /etc/apt/apt-mirrors.txt /etc/apt/sources.list.d/ubuntu.sources
+          npx playwright install --with-deps chromium
 
       - name: Migrate and seed test DB
         id: e2e_seed
