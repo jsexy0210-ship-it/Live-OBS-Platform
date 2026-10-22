@@ -75,6 +75,7 @@ async function routeFakeProducts(page: Page, products: ReturnType<typeof fakePro
 const nextInput = async (page: Page, label: string) => {
   if (/\/products\/[^/]+\/options\/[^/]+\/stock$/.test(new URL(page.url()).pathname)) {
     await page.getByRole("button", { name: "뒤로", exact: true }).click();
+    await expect(page).toHaveURL(url => url.pathname === "/seller/products/stock");
   }
   const selected = page.getByRole("checkbox", { name: `${label} 선택`, exact: true });
   if (!(await selected.isChecked())) await selected.check();
@@ -502,6 +503,7 @@ test("직접 쓴 사유는 서버와 같은 기준(코드포인트 100자)으로
   await expect(sheet.getByRole("button", { name: "1개 빼기" })).toBeDisabled();
   page.once("dialog", dialog => dialog.accept());
   await sheet.getByRole("button", { name: "취소" }).click();
+  await expect(page).toHaveURL(new URL("/seller/products/stock", page.url()).href);
   // 한 번에 적용 확인 창도 같은 기준
   await (await nextInput(page, "탑로더 25장 1팩")).fill("99");
   await page.getByRole("button", { name: /^변경 \d+건 적용$/ }).last().click();
