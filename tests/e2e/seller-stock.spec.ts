@@ -997,7 +997,7 @@ test("목록은 읽기·선택만 남기고 첫 쪽 밖 대상을 상세에서 �
   await page.getByRole("button", { name: "다시 시도", exact: true }).click();
   await expect(page.getByTestId("stock-edit")).toHaveCount(2);
   expect(attempts).toBe(2);
-  await expect(page.getByRole("alert")).toContainText("1개는 조회 조건에 없거나 삭제되어 제외했습니다");
+  await expect(page.locator(".main .msg-cau[role='alert']")).toContainText("1개는 조회 조건에 없거나 삭제되어 제외했습니다");
   await expect(page.getByTestId("stock-row").locator('input:not([type="checkbox"]),select')).toHaveCount(0);
   await page.reload();
   await expect(page.getByTestId("stock-edit")).toHaveCount(2);
