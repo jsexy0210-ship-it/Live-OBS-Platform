@@ -1,10 +1,53 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { PrismaClient, type QueueItem } from "@prisma/client";
+import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 import { refundableOrderIdInDb } from "./rewardDb";
 import { submitSellerLogin } from "./sellerLogin";
 
 // SA-021 주문 목록 · SA-022 주문 상세 · SA-023 환불 모달. dev-seed의 데모 주문 27건(결제 대기·완료·발송·환불됨·취소, 개봉한 상품이 있는 발송 주문 2건)으로 확인한다.
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
 const SHOTS = process.env.E2E_SCREENSHOTS === "1";
+let openingSnapshot: Pick<QueueItem, "id" | "status" | "openingStartedAt" | "doneAt">[] = [];
+
+async function openingDb<T>(fn: (db: PrismaClient) => Promise<T>) {
+  const url = assertTestDatabaseUrl(process.env.DATABASE_URL);
+  if (process.env.CI !== "true" || process.env.NODE_ENV === "production" || !["localhost", "127.0.0.1", "[::1]"].includes(new URL(url).hostname)) throw new Error("환불 개봉 전제는 로컬 폐기 CI DB에서만 준비합니다");
+  const db = new PrismaClient({ datasources: { db: { url } } });
+  try { return await fn(db); } finally { await db.$disconnect(); }
+}
+
+test.beforeEach(async ({}, info) => {
+  if (!info.title.startsWith("환불 모달: 개봉한 상품이 있으면") && !info.title.startsWith("환불 모달: 확인한 금액을 함께 보내고")) return;
+  await openingDb(async (db) => {
+    const seller = await db.seller.findUniqueOrThrow({ where: { slug: "demo-shop" }, select: { id: true } });
+    const mixed = await db.order.findFirstOrThrow({ where: { sellerId: seller.id, orderNo: 2 }, include: { items: true } });
+    const fully = await db.order.findFirstOrThrow({ where: { sellerId: seller.id, orderNo: 1 }, include: { items: true } });
+    expect([mixed.totalAmount, mixed.shippingFee, fully.totalAmount]).toEqual([324000, 3000, 15000]);
+    expect(mixed.items.map((i) => [i.unitPrice, i.quantity]).sort((a, b) => a[0] - b[0])).toEqual([[132000, 1], [189000, 1]]);
+    expect(fully.items.map((i) => [i.unitPrice, i.quantity])).toEqual([[6000, 2]]);
+    const items = [...mixed.items, ...fully.items];
+    const openedIds = new Set([...mixed.items.filter((i) => i.unitPrice === 189000), ...fully.items].map((i) => i.id));
+    const queue = await db.queueItem.findMany({ where: { sellerId: seller.id, orderItemId: { in: items.map((i) => i.id) } }, select: { id: true, orderItemId: true, status: true, openingStartedAt: true, doneAt: true } });
+    for (const id of openedIds) expect(queue.some((q) => q.orderItemId === id)).toBe(true);
+    openingSnapshot = queue.map(({ id, status, openingStartedAt, doneAt }) => ({ id, status, openingStartedAt, doneAt }));
+    for (const q of queue) {
+      const opened = openedIds.has(q.orderItemId ?? "");
+      await db.queueItem.update({ where: { id: q.id }, data: { status: opened ? "DONE" : "WAITING", openingStartedAt: opened ? q.openingStartedAt ?? new Date() : null, doneAt: opened ? q.doneAt ?? new Date() : null } });
+    }
+    const prepared = await db.queueItem.findMany({ where: { sellerId: seller.id, orderItemId: { in: items.map((i) => i.id) } }, select: { orderItemId: true, status: true, openingStartedAt: true } });
+    for (const item of items) expect(prepared.some((q) => q.orderItemId === item.id && (q.openingStartedAt !== null || q.status === "OPENING" || q.status === "DONE"))).toBe(openedIds.has(item.id));
+  });
+});
+
+test.afterEach(async () => {
+  if (!openingSnapshot.length) return;
+  await openingDb(async (db) => {
+    await db.$transaction(openingSnapshot.map(({ id, ...data }) => db.queueItem.update({ where: { id }, data })));
+    const restored = await db.queueItem.findMany({ where: { id: { in: openingSnapshot.map((q) => q.id) } }, select: { id: true, status: true, openingStartedAt: true, doneAt: true } });
+    expect(restored.sort((a, b) => a.id.localeCompare(b.id))).toEqual([...openingSnapshot].sort((a, b) => a.id.localeCompare(b.id)));
+  });
+  openingSnapshot = [];
+});
 
 test.beforeAll(() => {
   if (!PASSWORD) throw new Error("E2E_PASSWORD가 없어요. dev-seed가 출력한 데모 비밀번호를 넣어 주세요");
