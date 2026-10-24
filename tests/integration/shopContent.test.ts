@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import * as requestHeaders from "next/headers";
 import type React from "react";
 import ShopHomePage from "../../app/(shop)/shop/[slug]/page";
 import { DELETE as bannerDelete, PUT as bannerPut } from "../../app/api/seller/shop-content/banners/[bannerId]/route";
@@ -274,15 +275,20 @@ describe("기간(DB 시계)·대상·노출", () => {
   });
 
   it("홈 화면은 보이는 배너와 팝업을 그린다", async () => {
-    const s = await shop();
-    await banner(s.owner, { linkUrl: "/products/abc" });
-    await popup(s.owner, { title: "추석 연휴 배송 안내" });
-    const html = renderToStaticMarkup((await ShopHomePage({ params: Promise.resolve({ slug: s.seller.slug }) })) as React.ReactElement);
-    expect(html).toContain("hb-track");
-    expect(html).toContain("hb-pc");
-    expect(html).toContain("hb-m");
-    expect(html).toContain(`href="/shop/${s.seller.slug}/products/abc"`);
-    expect(html).toContain(`/api/shop/${s.seller.slug}/shop-content/images/`);
+    const requestCookies = vi.spyOn(requestHeaders, "cookies").mockResolvedValue({ get: () => undefined } as Awaited<ReturnType<typeof requestHeaders.cookies>>);
+    try {
+      const s = await shop();
+      await banner(s.owner, { linkUrl: "/products/abc" });
+      await popup(s.owner, { title: "추석 연휴 배송 안내" });
+      const html = renderToStaticMarkup((await ShopHomePage({ params: Promise.resolve({ slug: s.seller.slug }) })) as React.ReactElement);
+      expect(html).toContain("hb-track");
+      expect(html).toContain("hb-pc");
+      expect(html).toContain("hb-m");
+      expect(html).toContain(`href="/shop/${s.seller.slug}/products/abc"`);
+      expect(html).toContain(`/api/shop/${s.seller.slug}/shop-content/images/`);
+    } finally {
+      requestCookies.mockRestore();
+    }
   });
 });
 
