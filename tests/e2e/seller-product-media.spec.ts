@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { cleanupProducts, RUN, track } from "./cleanup";
 import { submitSellerLogin } from "./sellerLogin";
 
@@ -16,6 +16,26 @@ async function openNew(page: Page) {
   await page.waitForURL((u) => !u.pathname.startsWith("/seller/login"));
   await page.goto("/seller/products/new");
   await expect(page.getByLabel("상품명")).toBeVisible();
+}
+
+async function expectCaretAtEditorEnd(body: Locator) {
+  await expect.poll(async () => {
+    const state = await body.evaluate((element) => {
+      const { state } = (element as HTMLElement & {
+        editor: { state: { selection: { from: number; to: number; empty: boolean }; doc: { content: { size: number } } } };
+      }).editor;
+      return {
+        focused: element === document.activeElement,
+        from: state.selection.from,
+        to: state.selection.to,
+        empty: state.selection.empty,
+        collapsed: state.selection.from === state.selection.to,
+        atEnd: state.selection.to === state.doc.content.size - 1,
+        end: state.doc.content.size,
+      };
+    });
+    return state;
+  }).toMatchObject({ focused: true, empty: true, collapsed: true, atEnd: true });
 }
 
 test("이미지 칸: 첫 이미지가 썸네일, 여러 장 올리고 순서를 바꾸고 지울 수 있다", async ({ page }) => {
@@ -118,14 +138,20 @@ test("상세 설명 에디터: 제목·글 꾸미기·표·구분선을 쓰고 �
   await page.keyboard.type("은 닉네임이 나옵니다.");
   await expect(body.locator("h1")).toHaveText("스타라이트 첫 번째 박스");
   await expect(body.locator("strong")).toHaveText("방송 중 개봉");
+  await expect(body).toContainText("방송 중 개봉은 닉네임이 나옵니다.");
   // 글자색: 고른 색이 span 스타일로 들어간다
   await body.locator("p").last().click();
   await page.keyboard.press("Control+A");
   await page.getByRole("button", { name: "글자색" }).click();
   await page.getByRole("button", { name: "글자색 #d92d20" }).click();
   await expect(body.locator("span[style*=color]").first()).toBeVisible();
+  await expect(body.locator("h1")).toHaveText("스타라이트 첫 번째 박스");
+  await expect(body).toContainText("방송 중 개봉은 닉네임이 나옵니다.");
   // 선택을 풀고 글 끝으로(선택한 채로 표를 넣으면 선택한 글이 표로 바뀐다)
-  await page.keyboard.press("Control+End");
+  await body.focus();
+  await body.press("Control+End");
+  // Tiptap 문서 selection이 편집기 끝에 정착할 때까지 기존 문서 경계 계약을 확인한다.
+  await expectCaretAtEditorEnd(body);
   // 표 넣기 창: 줄·칸·제목 줄
   await page.getByRole("button", { name: "표 넣기", exact: true }).click();
   const dlg = page.getByRole("dialog", { name: "표 넣기" });
@@ -134,6 +160,8 @@ test("상세 설명 에디터: 제목·글 꾸미기·표·구분선을 쓰고 �
   await dlg.getByRole("button", { name: "표 넣기" }).click();
   await expect(body.locator("table tr")).toHaveCount(2);
   await expect(body.locator("table th")).toHaveCount(3);
+  await expect(body.locator("h1")).toHaveText("스타라이트 첫 번째 박스");
+  await expect(body).toContainText("방송 중 개봉은 닉네임이 나옵니다.");
   await page.getByRole("button", { name: "구분선" }).click();
   await expect(body.locator("hr")).toHaveCount(1);
   await expect(page.getByText(/글자 \d+ \/ 20,000자/)).toBeVisible();
@@ -141,6 +169,7 @@ test("상세 설명 에디터: 제목·글 꾸미기·표·구분선을 쓰고 �
   await page.locator('button:not([data-testid="product-form-preview"])', { hasText: /^미리보기$/ }).click();
   const pv = page.getByTestId("detail-preview");
   await expect(pv.locator("h1")).toHaveText("스타라이트 첫 번째 박스");
+  await expect(pv).toContainText("방송 중 개봉은 닉네임이 나옵니다.");
   await expect(pv.locator("table")).toHaveCount(1);
   await page.getByRole("dialog", { name: "상세 페이지 · 미리보기" }).getByRole("button", { name: "닫기", exact: true }).first().click();
   // 링크: http(s)만

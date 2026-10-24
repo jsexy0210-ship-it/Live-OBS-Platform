@@ -117,6 +117,7 @@ test("로그인 뒤 기본 화면: 통합은 홈, 오버레이 전용은 오버�
 });
 
 test("오버레이 전용이 쇼핑몰 기능 주소로 바로 들어오면 안내 화면을 보이고, 열 수 있는 화면으로 보낸다", async ({ page }) => {
+  await page.route("**/api/seller/me", overlayMe(true));
   await login(page, OVERLAY, "/seller/orders");
   // 서버도 막는다(화면 숨김만으로 막지 않음)
   const api = await page.request.get("/api/seller/products");
@@ -134,12 +135,12 @@ test("오버레이 전용이 쇼핑몰 기능 주소로 바로 들어오면 안�
   await expect(page.getByText("상품 등록")).toHaveCount(0);
   await shot(page, "plan-feature-required");
 
-  // 홈을 제외한 첫 직접 이동 메뉴는 기존 주문 조회 화면이다.
-  const next = guide.getByRole("link", { name: "전체 주문 화면으로 이동", exact: true });
-  await expect(next).toHaveAttribute("href", "/seller/orders");
+  // 현재 메뉴 순서에서 요금제 안내가 보내는 첫 허용 화면은 오버레이 편집기다.
+  const next = guide.getByRole("link", { name: "방송 화면 꾸미기 화면으로 이동", exact: true });
+  await expect(next).toHaveAttribute("href", "/seller/overlay");
   await next.click();
-  await expect(page).toHaveURL(/\/seller\/orders$/);
-  await expect(page.getByRole("heading", { level: 1, name: "전체 주문", exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/seller\/overlay$/);
+  await expect(page.getByRole("heading", { level: 1, name: "방송 화면 꾸미기", exact: true })).toBeVisible();
   await expect(page.getByTestId("plan-feature-required")).toHaveCount(0);
 });
 
