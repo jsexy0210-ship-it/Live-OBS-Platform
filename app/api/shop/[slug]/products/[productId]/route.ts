@@ -14,6 +14,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ slug: string; p
   const session = shop ? await resolveBuyerSession(prisma, sessionToken(req, "buyer"), shop.id) : null;
   const product = await shopProductDetail(prisma, slug, productId, session?.member.gradeId);
   if (!product) return NextResponse.json({ error: "not_found" }, { status: 404, headers: { "cache-control": "no-store" } });
+  if (new URL(req.url).searchParams.get("view") === "options") return NextResponse.json({ product: { id: product.id, options: product.options } }, { headers: { "cache-control": "private, no-store" } });
   if (shop && session) await recordProductView(prisma, { sellerId: shop.id, buyerMemberId: session.member.id }, productId); // 전환 단계 통계(로그인 회원만, 실패해도 던지지 않음)
   return NextResponse.json({ product }, { headers: { "cache-control": "private, no-store" } });
 }

@@ -24,7 +24,10 @@ async function fixture(page: Page) {
     if (request.method() === "GET") {
       if (path === `${API}/wishlist`) return route.fulfill({ json: { productIds: wished } });
       if (path === `${API}/cart/count`) return route.fulfill({ json: { count: 0 } });
-      if (path.startsWith(`${API}/products/`) && /^[0-9a-f-]{36}$/i.test(path.slice(`${API}/products/`.length))) return route.fulfill({ json: { product: { id: path.split("/").pop(), options } } });
+      if (path.startsWith(`${API}/products/`) && /^[0-9a-f-]{36}$/i.test(path.slice(`${API}/products/`.length))) {
+        expect(new URL(request.url()).search).toBe("?view=options");
+        return route.fulfill({ json: { product: { id: path.split("/").pop(), options } } });
+      }
       return route.continue();
     }
     // 인증은 준비 단계에서만 실제로 한다. 카드의 쓰기는 전부 이 소유 응답으로 끝낸다.

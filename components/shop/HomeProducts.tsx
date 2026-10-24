@@ -56,7 +56,7 @@ export default function HomeProducts({ slug, loggedIn, sections, live }: { slug:
     if (busy || product.soldOut) return;
     if (!loggedIn) return setNeedLogin(true);
     setBusy(true); setMessage(null);
-    const r = await call<{ product: ShopProduct }>(`${api}/products/${product.id}`);
+    const r = await call<{ product: Pick<ShopProduct, "id" | "options"> }>(`${api}/products/${product.id}?view=options`);
     const options = r.ok && r.data.product.id === product.id ? r.data.product.options.filter(o => !o.soldOut) : [];
     setBusy(false);
     if (!r.ok || !options.length) return setMessage({ text: r.ok ? "담을 수 있는 옵션이 없어요" : r.message ?? "상품을 불러오지 못했어요" });
