@@ -60,15 +60,26 @@ async function login(page: Page, email: string) {
   await expect(page).toHaveURL(/\/admin$/);
 }
 
-async function search(page: Page, q: string) {
+async function search(page: Page, q: string, field = "all") {
   await page.goto("/admin/partners");
+  await expect(page.getByRole("button", { name: "검색", exact: true })).toBeEnabled();
+  await page.getByLabel("검색 칸", { exact: true }).selectOption(field);
   await page.getByLabel("검색어", { exact: true }).fill(q);
+  const loaded = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return response.request().method() === "GET" && url.pathname === "/api/admin/sellers" && url.searchParams.get("q") === q && (url.searchParams.get("field") ?? "all") === field;
+  });
   await page.getByRole("button", { name: "검색", exact: true }).click();
+  const response = await loaded;
+  expect(response.status()).toBe(200);
+  expect(await response.finished()).toBeNull();
+  const query = new URLSearchParams({ q, ...(field === "all" ? {} : { field }) });
+  await expect(page).toHaveURL(`/admin/partners?${query}`);
 }
 
 test("최고관리자: 검색·상태 필터로 찾고, 이용 정지는 사유가 있어야 하며, 정지·해제가 목록과 DB에 반영된다", async ({ page }) => {
   await login(page, emails.super);
-  await search(page, run);
+  await search(page, slugA, "slug");
   // 가입 신청 중·반려는 기본 목록에 없다(가입 신청 화면에서 본다, MA-011). 승인된 시험몰만 나온다
   await expect(page.getByTestId("partner-row")).toHaveCount(1);
   await expect(page.getByTestId("partner-row")).toContainText(slugA);
@@ -78,7 +89,7 @@ test("최고관리자: 검색·상태 필터로 찾고, 이용 정지는 사유�
   await expect(page.getByTestId("partner-row")).toHaveCount(1);
   await expect(page.getByTestId("partner-row")).toContainText(slugA);
   await page.getByRole("button", { name: "초기화" }).click();
-  await search(page, slugA);
+  await search(page, slugA, "slug");
   const row = page.getByTestId("partner-row");
   await expect(row).toHaveCount(1);
   await expect(row).toContainText("정상");

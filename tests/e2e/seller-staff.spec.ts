@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Request as BrowserRequest } from "@playwright/test";
 
 // SA-100 직원 계정(대표자 전용): 목록 · 직원 추가(이름·휴대폰·이메일·초기 비밀번호·권한) · 정보·권한 수정 · 비밀번호 재설정 · 비활성화,
 // 직원이 주소로 들어오면 「대표자만 볼 수 있습니다」. 실행마다 새 이메일로 직원을 만든다(폐기용 DB).
@@ -353,18 +353,51 @@ test("저장 응답을 놓치면 추가는 생성됨으로 단정하지 않고, 
   // 권한 수정: 서버는 저장했는데 응답이 끊긴다 → 다시 읽어 보낸 값과 같으므로 저장했다고 알리고 목록에 반영
   await page.getByRole("button", { name: `${s.name} 정보·업무 수정` }).click();
   const dialog = page.locator("section[aria-labelledby^=staff-]");
+  await expect(page).toHaveURL(url => /^\/seller\/staff\/[0-9a-f-]{36}$/i.test(url.pathname));
+  const staffId = new URL(page.url()).pathname.split("/").pop()!;
   await dialog.getByRole("checkbox", { name: "주문·배송", exact: true }).check();
+  const phase = { forwarded: false, forwardStatus: 0, injected: false, recoveryStatus: 0, recovered: false, listReached: false };
+  let sentPermissions: string[] = [];
+  const recoveryRequests = new WeakSet<BrowserRequest>();
+  const observeRecovery = (request: BrowserRequest) => {
+    if (phase.injected && request.method() === "GET" && isList(new URL(request.url()))) recoveryRequests.add(request);
+  };
+  page.on("request", observeRecovery);
+  const recovered = page.waitForResponse(response => recoveryRequests.has(response.request()));
+  const isPermissions = (url: URL) => url.pathname === `/api/seller/staff/${staffId}/permissions`;
   await page.route(
-    (u) => u.pathname.endsWith("/permissions"),
+    isPermissions,
     async (route) => {
-      await route.fetch();
+      sentPermissions = route.request().postDataJSON().permissions;
+      const response = await route.fetch();
+      phase.forwarded = true;
+      phase.forwardStatus = response.status();
+      phase.injected = true;
       return route.abort("connectionreset");
     },
     { times: 1 },
   );
-  await clickSave(page, dialog);
-  await expect(page.getByText(`${s.name} 정보를 저장했습니다`)).toBeVisible();
-  await expect(row(page, s.email)).toContainText("주문·배송");
+  try {
+    await clickSave(page, dialog);
+    const response = await recovered;
+    phase.recoveryStatus = response.status();
+    expect(phase.forwardStatus).toBe(200);
+    expect([...sentPermissions].sort()).toEqual(["ORDER_SHIPPING", "PRODUCT_MANAGE"]);
+    expect(response.status()).toBe(200);
+    const body = await response.json() as { staff: { id: string; permissions: string[] }[] };
+    const current = body.staff.find(staff => staff.id === staffId);
+    phase.recovered = !!current && JSON.stringify([...current.permissions].sort()) === JSON.stringify([...sentPermissions].sort());
+    expect(phase.recovered).toBe(true);
+    await expect(page).toHaveURL(/\/seller\/staff$/);
+    phase.listReached = true;
+    await expect(page.getByText(`${s.name} 정보를 저장했습니다`)).toBeVisible();
+    await expect(row(page, s.email)).toContainText("주문·배송");
+  } catch (error) {
+    throw new Error(`직원 응답 복구 단계: ${JSON.stringify(phase)}`, { cause: error });
+  } finally {
+    page.off("request", observeRecovery);
+    await page.unroute(isPermissions);
+  }
 
   // 이름 수정: 서버 오류(5xx)로 결과가 불분명하고 다시 읽어도 반영 전이다 → 실패로 단정하지 않고 칸을 잠근 채 불분명 상태로 둔다.
   // 같은 값 재저장이 성공하면 저장으로 처리
