@@ -215,6 +215,54 @@ jobs:
             echo "키를 .env에 반영했어요: ${put[*]:-없음}(이름만 표시)."
           fi
 
+      # OAuth 키는 두 값이 모두 유효할 때만 갱신하고, 웹훅 키는 독립으로 판단한다.
+      # 리디렉션 주소는 현재 서버의 등록값을 보존한다. 이 단계는 주소를 추측하거나 바꾸지 않는다.
+      - name: Sync external shop env
+        continue-on-error: true
+        env:
+          EXTERNAL_SHOP_CLIENT_ID: ${{ secrets.EXTERNAL_SHOP_CLIENT_ID }}
+          EXTERNAL_SHOP_CLIENT_SECRET: ${{ secrets.EXTERNAL_SHOP_CLIENT_SECRET }}
+          EXTERNAL_WEBHOOK_API_KEY: ${{ secrets.EXTERNAL_WEBHOOK_API_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          if [ ! -f "$ENV_FILE" ]; then
+            echo "::warning::환경 파일이 없어 외부 쇼핑몰 설정을 건너뜁니다."; exit 0
+          fi
+          safe='^[A-Za-z0-9._/+=-]+$'
+          put=()
+          if [ -n "${EXTERNAL_SHOP_CLIENT_ID:-}" ] && [ -n "${EXTERNAL_SHOP_CLIENT_SECRET:-}" ] &&
+             [[ "$EXTERNAL_SHOP_CLIENT_ID" =~ $safe ]] && [[ "$EXTERNAL_SHOP_CLIENT_SECRET" =~ $safe ]]; then
+            put+=(EXTERNAL_SHOP_CLIENT_ID EXTERNAL_SHOP_CLIENT_SECRET)
+          else
+            echo "::notice::외부 쇼핑몰 OAuth 키가 없거나 형식이 맞지 않아 기존 설정을 보존합니다."
+          fi
+          if [ -n "${EXTERNAL_WEBHOOK_API_KEY:-}" ] && [[ "$EXTERNAL_WEBHOOK_API_KEY" =~ $safe ]]; then
+            put+=(EXTERNAL_WEBHOOK_API_KEY)
+          else
+            echo "::notice::외부 쇼핑몰 웹훅 키가 없거나 형식이 맞지 않아 기존 설정을 보존합니다."
+          fi
+          if [ "${#put[@]}" -eq 0 ]; then exit 0; fi
+          for n in "${put[@]}"; do
+            echo "::add-mask::${!n}"
+          done
+          tmp="$(mktemp "$(dirname "$ENV_FILE")/.env.XXXXXX")"
+          trap 'rm -f "$tmp" "$tmp.n"' EXIT
+          cat "$ENV_FILE" > "$tmp"
+          if [ -s "$tmp" ] && [ -n "$(tail -c1 "$tmp")" ]; then echo >> "$tmp"; fi
+          for n in "${put[@]}"; do
+            grep -Ev "^[[:space:]]*(export[[:space:]]+)?${n}[[:space:]]*=" "$tmp" > "$tmp.n" || true
+            mv -f "$tmp.n" "$tmp"
+            printf '%s=%s\n' "$n" "${!n}" >> "$tmp"
+          done
+          chmod 600 "$tmp"
+          if cmp -s "$tmp" "$ENV_FILE"; then
+            echo "외부 쇼핑몰 설정: 바뀐 것 없음"
+          else
+            mv -f "$tmp" "$ENV_FILE"
+            echo "외부 쇼핑몰 설정을 반영했습니다: ${put[*]}(이름만 표시)."
+          fi
+
       # 전용 App 키는 단일 base64 입력이다. 값/길이/본문 출력과 기존 비밀 변경은 없다.
       # 전용 입력 전체가 없으면 원환경 보존, 일부/귀속 검증 실패는 다음 앱 기동 전에 중단한다.
       - name: Sync MA120 preview-only env
