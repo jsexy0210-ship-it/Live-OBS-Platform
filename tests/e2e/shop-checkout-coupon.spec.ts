@@ -32,7 +32,7 @@ test("쿠폰을 고르면 쿠폰 할인이 요약에 보이고 최종 결제 금
   const total = sum.locator(".cart-row", { hasText: "최종 결제 금액" }).locator("b");
   await expect(total).toContainText("원");
   const before = Number((await total.innerText()).replace(/[^0-9]/g, ""));
-  await expect(sum.getByText("쿠폰 할인")).toHaveCount(0);
+  await expect(sum.locator(".cart-row", { hasText: "쿠폰 할인" })).toContainText("0원"); // 보드: 줄은 늘 있고 쓰지 않으면 0원
 
   const opt = page.locator("#co-coupon-sel option", { hasText: "주문서 시험 쿠폰" });
   await page.locator("#co-coupon-sel").selectOption(await opt.getAttribute("value"));
@@ -40,6 +40,6 @@ test("쿠폰을 고르면 쿠폰 할인이 요약에 보이고 최종 결제 금
   await expect(total).toHaveText(`${(before - 3000).toLocaleString("ko-KR")}원`);
 
   await page.locator("#co-coupon-sel").selectOption("");
-  await expect(sum.getByText("쿠폰 할인")).toHaveCount(0);
+  await expect(sum.locator(".cart-row", { hasText: "쿠폰 할인" })).toContainText("0원");
   await expect(total).toHaveText(`${before.toLocaleString("ko-KR")}원`);
 });
