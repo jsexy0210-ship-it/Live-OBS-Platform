@@ -25,6 +25,11 @@ import { visibleShopContent } from "../../lib/server/shop-content/service";
 import { jpeg, png, svg, svgInPng } from "../unit/shopContentFixtures";
 import { PASSWORD, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
+vi.mock("next/headers", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next/headers")>();
+  return { ...actual, cookies: vi.fn(actual.cookies) };
+});
+
 // SA-064 홈 배너·SA-065 이벤트 팝업(2026-10-04 대표님 지시): 권한·테넌트 격리·플랜 권한·기간(DB 시계)·링크·이미지(PNG만)·형태·감사 로그.
 beforeEach(async () => {
   resetPopupEventLimiter();
@@ -275,7 +280,7 @@ describe("기간(DB 시계)·대상·노출", () => {
   });
 
   it("홈 화면은 보이는 배너와 팝업을 그린다", async () => {
-    const requestCookies = vi.spyOn(requestHeaders, "cookies").mockResolvedValue({ get: () => undefined } as Awaited<ReturnType<typeof requestHeaders.cookies>>);
+    const requestCookies = vi.mocked(requestHeaders.cookies).mockResolvedValueOnce({ get: () => undefined } as Awaited<ReturnType<typeof requestHeaders.cookies>>);
     try {
       const s = await shop();
       await banner(s.owner, { linkUrl: "/products/abc" });
@@ -287,7 +292,7 @@ describe("기간(DB 시계)·대상·노출", () => {
       expect(html).toContain(`href="/shop/${s.seller.slug}/products/abc"`);
       expect(html).toContain(`/api/shop/${s.seller.slug}/shop-content/images/`);
     } finally {
-      requestCookies.mockRestore();
+      requestCookies.mockReset();
     }
   });
 });
