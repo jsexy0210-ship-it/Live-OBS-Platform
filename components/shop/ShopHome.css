@@ -11,6 +11,9 @@
 .shop-home-notices td { padding:12px; border-bottom:1px solid var(--wds-line-solid-neutral); overflow-wrap:anywhere; }
 .shop-home-notices td:last-child:not(:first-child) { width:96px; text-align:right; color:var(--wds-label-alternative); }
 .shop-home-notices a { color:inherit; text-decoration:none; }
+.shop-home .home-card-actions { display:flex; gap:4px; margin-top:6px; }
+.shop-home .home-card-wish { flex:none; width:36px; }
+.shop-home .home-card-cart { flex:1; }
 @media(max-width:767px) {
   .shop-home { gap:24px; }
   .shop-home .shop-sec-head { padding-bottom:8px; margin-bottom:12px; }

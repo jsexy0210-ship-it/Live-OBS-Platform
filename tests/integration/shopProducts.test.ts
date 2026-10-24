@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as detailRoute } from "../../app/api/shop/[slug]/products/[productId]/route";
 import { GET as listRoute } from "../../app/api/shop/[slug]/products/route";
 import { loginBuyer } from "../../lib/server/auth/login";
@@ -44,6 +44,37 @@ const detail = async (slug: string, productId: string, cookie?: string) => {
   const res = await detailRoute(new Request("http://localhost:3000/x", { headers: cookie ? { cookie } : {} }), { params: Promise.resolve({ slug, productId }) });
   return { status: res.status, body: await res.json(), cache: res.headers.get("cache-control") };
 };
+
+it("빠른 담기 옵션 조회는 상세 조회를 기록하지 않고 기본 상세 조회의 추적은 유지한다", async () => {
+  vi.stubEnv("IDENTITY_HASH_KEY", "owned-option-view-test-key-0123456789abcdef");
+  try {
+    const s = await seller(), p = await made(s.ctx, { name: "옵션 조회 소유 상품" });
+    const buyer = await createLoginBuyer(s.seller.id, s.grade.id);
+    const login = await loginBuyer(db, { sellerId: s.seller.id, loginId: buyer.loginId!, password: PASSWORD }, {});
+    if (!login.ok) throw new Error(login.reason);
+    const cookie = `lo_buyer=${login.token}`;
+    const options = async (slug = s.seller.slug) => detailRoute(new Request("http://localhost:3000/x?view=options", { headers: { cookie } }), { params: Promise.resolve({ slug, productId: p.id }) });
+    const response = await options(), quick = await response.json();
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(Object.keys(quick.product).sort()).toEqual(["id", "options"]);
+    expect(quick.product.id).toBe(p.id);
+    await options(); // 옵션 선택을 취소하거나 이후 담기가 실패해도 조회 자체는 추적하지 않는다.
+    expect(await db.productFunnelDaily.count({ where: { sellerId: s.seller.id, productId: p.id } })).toBe(0);
+    expect(await db.productFunnelSeen.count({ where: { sellerId: s.seller.id, productId: p.id } })).toBe(0);
+    const full = await detail(s.seller.slug, p.id, cookie);
+    expect(full.status).toBe(200);
+    expect(full.body.product.options).toEqual(quick.product.options);
+    expect(full.body.product).toHaveProperty("detail");
+    expect((await db.productFunnelDaily.findMany({ where: { sellerId: s.seller.id, productId: p.id } })).map(x => x.views)).toEqual([1]);
+    const other = await seller();
+    expect((await options(other.seller.slug)).status).toBe(404);
+    await db.product.update({ where: { id: p.id }, data: { status: "HIDDEN" } });
+    expect((await options()).status).toBe(404);
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
 
 describe("구매자 상품 목록", () => {
   it("기본 10개씩 전체·검색·정렬 결과의 total과 hasMore를 보존한다", async () => {
