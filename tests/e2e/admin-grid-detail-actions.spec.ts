@@ -368,3 +368,179 @@ for (const entry of ["직접 진입", "새로고침"]) for (const scenario of ba
   expect(writes).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+const infraConnection = { key: "mail", name: "메일 연결", purpose: "발송", expiresOn: "2030-01-01", daysLeft: 20, lastOkAt: null, lastAuthErrorAt: null, lastAuthErrorCode: null, status: "ok", version: 7 };
+const messageSettings = { chargingEnabled: false, platformDailyLimit: 100, platformMonthlyLimit: 1000, prices: [{ channel: "SMS", unitPrice: 12, next: null }], plans: [], usage: { today: { used: 0, limit: 100 }, thisMonth: { used: 0, limit: 1000 }, skippedPlatformLimit: 0 } };
+
+const infraSample = { takenAt: at, instance: "fixture", disk: { totalBytes: 100, usedBytes: 10, usedPct: 10 }, memory: { totalBytes: 100, usedBytes: 10, usedPct: 10 }, cpu: { count: 2, load1: 0.1, usedPct: 5 }, db: { sizeBytes: 10, connections: 1, maxConnections: 10, connectionsPct: 10 }, backup: { lastAt: at, count: 1, totalBytes: 10 } };
+
+test("연결 목록은 쓰기 없이 상세로 이동하고 원 모니터·단가 설정을 유지한다", async ({ page }) => {
+  const writes: string[] = [];
+  await mockAdmin(page, async (route, path) => {
+    if (route.request().method() !== "GET") writes.push(path);
+    if (path === "/api/admin/infra/status") { await json(route, { checkedAt: at, thresholds: { warnPct: 80, criticalPct: 90, backupMaxAgeHours: 24 }, current: infraSample, signals: [], snapshots: [] }); return true; }
+    if (path === "/api/admin/infra/cost") { await json(route, { checkedAt: at, month: "2026-10", prices: {}, priceVersion: 3, items: [], limited: [], totals: { accruedWon: 0, projectedWon: 0 } }); return true; }
+    if (path === "/api/admin/infra/connections") { await json(route, { connections: [infraConnection] }); return true; }
+    return false;
+  });
+  await page.goto("/admin/ops/infra?view=connections");
+  const row = page.getByTestId("infra-conn-row");
+  await expect(row).toContainText("2030-01-01");
+  await expect(row.locator("input,button")).toHaveCount(0);
+  await expect(row.getByRole("link", { name: "만료일 상세" })).toHaveAttribute("href", /returnTo=%2Fadmin%2Fops%2Finfra%3Fview%3Dconnections/);
+  await expect(page.getByLabel("서버 (월 1대) 단가")).toBeVisible();
+  await row.getByRole("link", { name: "만료일 상세" }).click();
+  await expect(page.getByLabel("메일 연결 만료일")).toHaveValue("2030-01-01");
+  expect(writes).toEqual([]);
+});
+
+test("만료일 상세는 409 초안을 보존하고 명시 새로고침 뒤 기존 버전·null PUT을 보낸다", async ({ page }) => {
+  const writes: unknown[] = [];
+  let version = 7;
+  let expiry: string | null = "2030-01-01";
+  await mockAdmin(page, async (route, path) => {
+    if (path === "/api/admin/infra/connections") { await json(route, { connections: [{ ...infraConnection, version, expiresOn: expiry }] }); return true; }
+    if (path === "/api/admin/infra/connections/mail/expiry") {
+      expect(route.request().method()).toBe("PUT");
+      writes.push(route.request().postDataJSON());
+      if (writes.length === 1) { version = 8; await json(route, { error: "version_conflict" }, 409); }
+      else { expiry = null; version = 9; await json(route, { expiresOn: expiry, version }); }
+      return true;
+    }
+    return false;
+  });
+  await page.goto("/admin/ops/infra/connections/mail?returnTo=%2Fadmin%2Fops%2Finfra%3Fview%3Dconnections");
+  const form = page.locator("main form");
+  await form.getByLabel("메일 연결 만료일").fill("2031-02-03");
+  await form.getByRole("button", { name: "만료일 저장" }).click();
+  await expect(form.getByRole("alert")).toContainText("다른 곳에서 먼저 바뀌었습니다");
+  await expect(form.getByLabel("메일 연결 만료일")).toHaveValue("2031-02-03");
+  page.once("dialog", d => d.dismiss());
+  await form.getByRole("button", { name: "새로 불러오기" }).click();
+  await expect(form.getByLabel("메일 연결 만료일")).toHaveValue("2031-02-03");
+  page.once("dialog", d => d.accept());
+  await form.getByRole("button", { name: "새로 불러오기" }).click();
+  await expect(form.getByLabel("메일 연결 만료일")).toHaveValue("2030-01-01");
+  await form.getByLabel("메일 연결 만료일").fill("");
+  await form.getByRole("button", { name: "만료일 저장" }).click();
+  await expect(page.getByText("만료일을 저장했습니다 · 로그 추적에 남겼습니다")).toBeVisible();
+  await expect(form.getByLabel("메일 연결 만료일")).toHaveValue("");
+  await expect(form.getByRole("button", { name: "만료일 저장" })).toBeDisabled();
+  expect(writes).toEqual([{ expiresOn: "2031-02-03", expectedVersion: 7 }, { expiresOn: null, expectedVersion: 8 }]);
+});
+
+test("연결 상세는 읽기 실패를 누락으로 숨기지 않고 재시도하며 잘못된 복귀 경로를 제한한다", async ({ page }) => {
+  let reads = 0;
+  await mockAdmin(page, async (route, path) => {
+    if (path === "/api/admin/infra/connections") { ++reads; await json(route, reads === 1 ? { error: "unavailable" } : { connections: [] }, reads === 1 ? 503 : 200); return true; }
+    return false;
+  });
+  await page.goto("/admin/ops/infra/connections/missing?returnTo=%2Fadmin%2Faccounts%3Fpage%3D2");
+  await expect(page.getByText("연결을 불러오지 못했습니다.", { exact: true })).toBeVisible();
+  await expect(page.locator("main").getByRole("link", { name: "목록", exact: true })).toHaveAttribute("href", "/admin/ops/infra");
+  await page.locator("main").getByRole("button", { name: /다시/ }).click();
+  await expect(page.getByText("연결을 찾을 수 없습니다.", { exact: true })).toBeVisible();
+  await expect(page.locator("main form")).toHaveCount(0);
+});
+
+test("발송 요금 목록은 상세 링크만 제공하며 상세는 원 상한·POST·실패 초안을 보존한다", async ({ page }) => {
+  const writes: unknown[] = [];
+  await mockAdmin(page, async (route, path) => {
+    if (path === "/api/admin/message-settings") { await json(route, messageSettings); return true; }
+    if (path === "/api/admin/message-prices/SMS") { expect(route.request().method()).toBe("POST"); writes.push(route.request().postDataJSON()); await json(route, writes.length === 1 ? { message: "다른 곳에서 먼저 수정됐습니다." } : {}, writes.length === 1 ? 409 : 200); return true; }
+    return false;
+  });
+  await page.goto("/admin/settings/messages?view=prices");
+  await expect(page.getByTestId("price-row").getByRole("button")).toHaveCount(0);
+  await page.getByTestId("price-row").getByRole("link", { name: "요금 상세" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const form = page.locator("main form");
+  await form.getByLabel("단가", { exact: true }).fill("100001");
+  await expect(form.getByRole("button", { name: "저장", exact: true })).toBeDisabled();
+  await form.getByLabel("단가", { exact: true }).fill("20");
+  await form.getByRole("button", { name: "저장", exact: true }).click();
+  await expect(form.getByRole("alert")).toHaveText("다른 곳에서 먼저 수정됐습니다.");
+  await expect(form.getByLabel("단가", { exact: true })).toHaveValue("20");
+  await form.getByRole("button", { name: "저장", exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/settings\/messages\?view=prices$/);
+  expect(writes).toEqual([{ unitPrice: 20 }, { unitPrice: 20 }]);
+});
+
+for (const reload of [false, true]) {
+  for (const kind of ["expiry", "expiry-all", "price"] as const) {
+    test(`${kind} 상세 ${reload ? "새로고침" : "직접 진입"} 뒤 헤더 취소는 입력을 보존하고 확인은 정확 목록으로 복귀한다`, async ({ page }) => {
+      const errors: string[] = [];
+      const writes: string[] = [];
+      page.on("pageerror", e => errors.push(e.message));
+      await mockAdmin(page, async (route, path) => {
+        if (route.request().method() !== "GET") writes.push(path);
+        if (path === "/api/admin/infra/status") { await json(route, { checkedAt: at, thresholds: { warnPct: 80, criticalPct: 90, backupMaxAgeHours: 24 }, current: infraSample, signals: [], snapshots: [] }); return true; }
+        if (path === "/api/admin/infra/cost") { await json(route, { checkedAt: at, month: "2026-10", prices: {}, priceVersion: 3, items: [], limited: [], totals: { accruedWon: 0, projectedWon: 0 } }); return true; }
+        if (path === "/api/admin/infra/connections") { await json(route, { connections: [infraConnection] }); return true; }
+        if (path === "/api/admin/message-settings") { await json(route, messageSettings); return true; }
+        return false;
+      });
+      const list = kind !== "price" ? "/admin/ops/infra?view=connections" : "/admin/settings/messages?view=prices";
+      const detail = kind === "expiry-all" ? "/admin/ops/infra/connections" : kind === "expiry" ? "/admin/ops/infra/connections/mail" : "/admin/settings/messages/SMS";
+      await page.goto(`${detail}?returnTo=${encodeURIComponent(list)}`);
+      if (reload) await page.reload();
+      const field = page.locator("main form").getByLabel(kind !== "price" ? "메일 연결 만료일" : "단가", { exact: true });
+      const draft = kind !== "price" ? "2031-02-03" : "21";
+      await field.fill(draft);
+      page.once("dialog", d => d.dismiss());
+      await page.getByRole("button", { name: "뒤로", exact: true }).click();
+      await expect(field).toHaveValue(draft);
+      page.once("dialog", d => d.accept());
+      await page.getByRole("button", { name: "뒤로", exact: true }).click();
+      await expect(page).toHaveURL(new RegExp(list.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$"));
+      expect(writes).toEqual([]);
+      expect(errors).toEqual([]);
+    });
+  }
+}
+
+for (const path of ["/admin/ops/infra/connections/mail", "/admin/ops/infra/connections", "/admin/settings/messages/SMS"]) {
+  test(`${path} 직접 진입에서도 기존 읽기 전용 권한이 저장을 열지 않는다`, async ({ page }) => {
+    const writes: string[] = [];
+    await mockAdmin(page, async (route, api) => {
+      if (route.request().method() !== "GET") writes.push(api);
+      if (api === "/api/admin/infra/connections") { await json(route, { connections: [infraConnection] }); return true; }
+      if (api === "/api/admin/message-settings") { await json(route, messageSettings); return true; }
+      return false;
+    }, "READ_ONLY");
+    await page.goto(path);
+    await expect(page.getByText("이 화면을 볼 권한이 없습니다", { exact: false })).toBeVisible();
+    await expect(page.locator("main form")).toHaveCount(0);
+    expect(writes).toEqual([]);
+  });
+}
+
+
+test("전체 만료일 상세는 원 순서·버전·첫 실패 중단과 부분 저장 후 최신 조회를 보존한다", async ({ page }) => {
+  const writes: { key: string; body: unknown }[] = [];
+  const connections = [{ ...infraConnection, key: "a", name: "연결 가", version: 3 }, { ...infraConnection, key: "b", name: "연결 나", version: 5 }, { ...infraConnection, key: "c", name: "연결 다", version: 8 }];
+  await mockAdmin(page, async (route, path) => {
+    if (path === "/api/admin/infra/connections") { await json(route, { connections }); return true; }
+    const match = path.match(/^\/api\/admin\/infra\/connections\/([^/]+)\/expiry$/);
+    if (match) {
+      expect(route.request().method()).toBe("PUT");
+      const key = match[1]; const body = route.request().postDataJSON(); writes.push({ key, body });
+      if (key === "a") { connections[0] = { ...connections[0], expiresOn: body.expiresOn, version: 4 }; await json(route, { expiresOn: body.expiresOn, version: 4 }); }
+      else { await json(route, { error: "version_conflict" }, 409); }
+      return true;
+    }
+    return false;
+  });
+  await page.goto("/admin/ops/infra/connections?returnTo=%2Fadmin%2Fops%2Finfra%3Fview%3Dconnections");
+  const form = page.locator("main form");
+  await form.getByLabel("연결 가 만료일").fill("2032-01-01");
+  await form.getByLabel("연결 나 만료일").fill("2032-02-01");
+  await form.getByLabel("연결 다 만료일").fill("2032-03-01");
+  await form.getByRole("button", { name: "만료일 저장" }).click();
+  await expect(page.getByText("연결 나: 다른 곳에서 먼저 바뀌었습니다. 새로 불러옵니다.", { exact: true })).toBeVisible();
+  await expect(form.getByLabel("연결 가 만료일")).toHaveValue("2032-01-01");
+  await expect(form.getByLabel("연결 나 만료일")).toHaveValue("2030-01-01");
+  await expect(form.getByLabel("연결 다 만료일")).toHaveValue("2030-01-01");
+  await expect(form.getByRole("button", { name: "만료일 저장" })).toBeDisabled();
+  expect(writes).toEqual([{ key: "a", body: { expiresOn: "2032-01-01", expectedVersion: 3 } }, { key: "b", body: { expiresOn: "2032-02-01", expectedVersion: 5 } }]);
+});

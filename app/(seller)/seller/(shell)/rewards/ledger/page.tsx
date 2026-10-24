@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useSearchParams, useRouter } from "next/navigation";
+import { type Entry, type Status, type Kind, type Summary, KIND, STATUS } from "../../../../../../components/seller/RewardRetryOperations";
 import { CursorPagination } from "../../../../../../components/Pagination";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DateRangePicker, ListHead, PageHead, SearchBox, SearchRow, useConfirm } from "../../../../../../components/admin-ui";
-import { Topbar } from "../../../../../../components/seller/SellerShell";
+import { DateRangePicker, ListHead, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
+import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { useScrollRestore, useUrlState } from "../../../../../../lib/client/navigation";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
@@ -14,43 +16,9 @@ import { formatDate, formatDateTime } from "../../../../../../lib/client/format"
 
 // SA-032 적립금 지급·회수 원장(정본 SA-032 FINAL). 회원·적립금 권한. API: GET /api/seller/reward-ledger(+summary·export·retry), GET /api/seller/reward-live-payout.
 // 기간(기본 최근 1개월)·상태·유형·검색어는 주소가 기준이고, 10건씩 현재 쪽을 조회합니다. 요약 카드는 쇼핑몰 전체 기준(기간과 무관).
-type Status = "PENDING" | "SUCCEEDED" | "FAILED";
-type Kind = "EARN_DELIVERY" | "EARN_PAYMENT" | "REVIEW" | "REVOKE" | "ADJUST_GRANT" | "ADJUST_REVOKE" | "BONUS" | "USE" | "EXPIRE";
-type Entry = {
-  id: string;
-  member: { id: string; broadcastNickname: string | null };
-  kind: Kind;
-  amount: number;
-  status: Status;
-  failureReason: string | null;
-  reason: string | null;
-  balanceAfter: number | null;
-  order: { id: string; orderNo: number; orderNoLabel: string; createdAt: string; firstProductName: string | null; itemCount: number } | null;
-  testMode: boolean;
-  createdAt: string;
-};
-type Sum = { count: number; amount: number };
-type Summary = { pending: Sum; todaySucceeded: Sum; failed: Sum; todayRevoked: Sum; issuedBalance: number };
 type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; entries: Entry[]; next: string | null };
-
 const PAGE = 10;
-const KIND: Record<Kind, string> = {
-  EARN_DELIVERY: "배송 완료 적립",
-  EARN_PAYMENT: "결제 적립",
-  REVIEW: "리뷰 적립",
-  REVOKE: "회수",
-  ADJUST_GRANT: "수동 지급",
-  ADJUST_REVOKE: "수동 회수",
-  BONUS: "인기 카드 보너스",
-  USE: "사용",
-  EXPIRE: "소멸",
-};
 const KIND_FILTER: Kind[] = ["EARN_DELIVERY", "EARN_PAYMENT", "REVOKE", "ADJUST_GRANT", "ADJUST_REVOKE", "REVIEW", "BONUS"];
-const STATUS: Record<Status, { label: string; cls: string }> = {
-  PENDING: { label: "대기", cls: "b-warn" },
-  SUCCEEDED: { label: "성공", cls: "b-done" },
-  FAILED: { label: "실패", cls: "b-fail" },
-};
 // 상태 칩 「회수」는 서버에서는 유형 REVOKE로 보낸다
 type StatusChoice = Status | "REVOKE" | "";
 const signed = (n: number) => (n > 0 ? `+${won(n)}` : n < 0 ? `−${won(Math.abs(n))}` : won(0));
@@ -86,6 +54,11 @@ function reasonText(e: Entry): string {
 }
 
 export default function RewardLedgerPage() {
+  const { can, me } = useSeller();
+  const canEdit = can("MEMBER_POINTS") && !me.readOnly;
+  const queryState = useSearchParams(), pathname = usePathname(), router = useRouter();
+  const listHref = `${pathname}${queryState.size ? `?${queryState.toString()}` : ""}`;
+  const detailHref = (entryId?: string) => `/seller/rewards/ledger/${entryId ?? "retry"}?${new URLSearchParams({ returnTo: listHref })}`;
   // 조건은 주소(?from=&to=&status=&kind=&q=)가 기준이다(Back 규칙). 기본은 최근 1개월, period=all은 기간 제한 없이
   const defaults = listDefaults({ status: "", kind: "", q: "" });
   const [urlState, setUrlState] = useUrlState({ from: defaults.from, to: defaults.to, period: "", status: "", kind: "", q: "" });
@@ -102,11 +75,11 @@ export default function RewardLedgerPage() {
   const [page, setPage] = useState(1);
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
   const paging = useRef(false);
-  const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const { confirm } = useConfirm();
   // 조건을 빨리 바꾸면 이전 응답이 늦게 올 수 있다. 마지막으로 보낸 조건의 응답만 반영한다
   const reqId = useRef(0);
+  const initialPaging = useRef(true);
+  const pagingScope = useRef("");
 
   const url = (cond: Cond, cursor?: string) => {
     const p = params(cond);
@@ -116,19 +89,29 @@ export default function RewardLedgerPage() {
   };
   const load = useCallback(async (cond: Cond) => {
     const id = ++reqId.current;
-    paging.current = false; setPage(1); setCursors([undefined]);
+    paging.current = false;
+    let scope = "";
+    try { if (me.sellerId && me.userId) scope = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify([me.sellerId, me.userId, params(cond).toString()])))), n => n.toString(16).padStart(2, "0")).join(""); } catch {}
+    if (id !== reqId.current) return;
+    pagingScope.current = scope;
+    let restore: { page: number; cursors: (string | undefined)[] } | undefined;
+    if (initialPaging.current && scope) {
+      try { const stored = sessionStorage.getItem("onq:reward-ledger:return"); sessionStorage.removeItem("onq:reward-ledger:return"); const saved = JSON.parse(stored ?? "null"); if (saved?.scope === scope && Number.isInteger(saved.page) && saved.page >= 1 && Array.isArray(saved.cursors) && saved.cursors.length === saved.page && saved.cursors[0] === null && saved.cursors.slice(1).every((c: unknown) => typeof c === "string" && c.length > 0)) { restore = { page: saved.page, cursors: saved.cursors.map((c: string | null) => c ?? undefined) }; } } catch {}
+    }
+    initialPaging.current = false;
+    setPage(restore?.page ?? 1); setCursors(restore?.cursors ?? [undefined]);
 
     setState({ kind: "loading" });
-    const r = await api<{ entries: Entry[]; nextCursor: string | null }>(url(cond));
+    const r = await api<{ entries: Entry[]; nextCursor: string | null }>(url(cond, restore?.cursors[restore.page - 1]));
     if (id !== reqId.current) return;
     setState(r.ok ? { kind: "ok", entries: r.data.entries, next: r.data.nextCursor } : { kind: "error", status: r.status });
-  }, []);
+  }, [me.sellerId, me.userId]);
   const loadSummary = useCallback(async () => {
     const [s, l] = await Promise.all([api<{ summary: Summary }>("/api/seller/reward-ledger/summary"), api<{ livePayout: { enabled: boolean } }>("/api/seller/reward-live-payout")]);
     if (s.ok) setSummary(s.data.summary);
     if (l.ok) setLive(l.data.livePayout.enabled);
   }, []);
-  useEffect(() => void load(applied), [applied, load]);
+  useEffect(() => { void load(applied); return () => { reqId.current++; }; }, [applied, load]);
   useEffect(() => void loadSummary(), [loadSummary]);
   // 주소가 바뀌면(뒤로 가기 등) 입력 칸도 같은 값으로
   useEffect(() => setFilter(applied), [applied]);
@@ -148,30 +131,13 @@ export default function RewardLedgerPage() {
     } else setToast("목록을 불러오지 못했습니다. 다시 눌러 주십시오");
   };
 
-  // 실패 재시도: 한 줄이면 ids, 전체면 본문 없이. 결과는 성공·다시 실패 건수로 알린다
-  const retry = async (ids?: string[]) => {
-    if (busy) return;
-    const count = ids ? ids.length : (summary?.failed.count ?? 0);
-    let message = "";
-    const ok = await confirm({
-      title: ids ? "실패한 지급을 다시 시도하시겠습니까?" : `실패 ${n(count)}건을 다시 시도하시겠습니까?`,
-      body: "잔액이 모자라 실패한 회수는 다시 실패로 남을 수 있습니다. 성공한 줄은 바뀌지 않습니다.",
-      confirmLabel: "다시 시도",
-      run: async () => {
-        setBusy(true);
-        const r = await api<{ requested: number; result: { settled: number; failed: number; skipped: "not_live" | null } }>("/api/seller/reward-ledger/retry", { method: "POST", body: ids ? { ids } : {} });
-        setBusy(false);
-        if (!r.ok) return failMessage(r, "admin", "다시 시도하지 못했습니다. 잠시 후 다시 시도해 주십시오");
-        const { settled, failed, skipped } = r.data.result;
-        message = skipped === "not_live" ? "실제 지급이 꺼져 있어 바뀐 것이 없습니다" : `실패 ${n(settled + failed)}건 중 ${n(settled)}건 성공${failed > 0 ? ` · ${n(failed)}건 다시 실패` : ""}`;
-      },
-    });
-    if (!ok) return;
-    setToast(message);
-    void load(applied);
-    void loadSummary();
-  };
 
+  const rememberPage = async (event: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    try { if (pagingScope.current) sessionStorage.setItem("onq:reward-ledger:return", JSON.stringify({ scope: pagingScope.current, page, cursors })); } catch {}
+    router.push(href);
+  };
   const entries = state.kind === "ok" ? state.entries : [];
   const exportHref = `/api/seller/reward-ledger/export?${params(applied).toString()}`;
   const failedCount = summary?.failed.count ?? 0;
@@ -250,9 +216,7 @@ export default function RewardLedgerPage() {
         <div className="row between" style={{ marginTop: 16, gap: 8, flexWrap: "wrap" }}>
           <span className="t-c1 c-alt">엑셀은 지금 조건으로 최대 5,000건까지 받습니다</span>
           <div className="row" style={{ gap: 8 }}>
-            <button className="btn btn-sm btn-out" type="button" disabled={busy || failedCount === 0 || live === false} onClick={() => void retry()}>
-              {failedCount > 0 ? `실패 ${n(failedCount)}건 재시도` : "재시도할 실패 없음"}
-            </button>
+            {canEdit && (failedCount === 0 || live !== true ? <button className="btn btn-sm btn-out" type="button" disabled>{failedCount > 0 ? `실패 ${n(failedCount)}건 재시도` : "재시도할 실패 없음"}</button> : <Link className="btn btn-sm btn-out" href={detailHref()} onClick={e => void rememberPage(e, detailHref())}>실패 {n(failedCount)}건 재시도</Link>)}
             <a className="btn btn-sm btn-out" href={exportHref} download>
               엑셀 내려받기
             </a>
@@ -308,9 +272,7 @@ export default function RewardLedgerPage() {
                           </td>
                           <td data-card="actions">
                             {e.status === "FAILED" && (
-                              <button className="btn btn-sm btn-out" type="button" disabled={busy || live === false} onClick={() => void retry([e.id])} aria-label={`${e.member.broadcastNickname ?? "회원"} 지급 재시도`}>
-                                재시도
-                              </button>
+                              canEdit && (live !== true ? <button className="btn btn-sm btn-out" type="button" disabled aria-label={`${e.member.broadcastNickname ?? "회원"} 지급 재시도`}>재시도</button> : <Link className="btn btn-sm btn-out" href={detailHref(e.id)} onClick={event => void rememberPage(event, detailHref(e.id))} aria-label={`${e.member.broadcastNickname ?? "회원"} 지급 재시도`}>상세</Link>)
                             )}
                           </td>
                         </tr>

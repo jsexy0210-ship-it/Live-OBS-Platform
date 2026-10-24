@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { HIT_GRADES } from "./hit";
 import { Modal } from "../../admin-ui";
 import { api, failMessage } from "../api";
+import { confirmLeave, useUnsavedGuard } from "../../../lib/client/navigation";
 
 // HIT 카드 등록 창(SA-001 방송 대시보드 · SA-053 HIT 카드 기록 공용). 공통 Modal 위에 만든다.
 // API: POST /api/seller/hit-cards { cardName(60자), note?(200자), queueItemId | nickname(30자) } → 201 { card }. 등록하면 오버레이에 바로 나온다.
@@ -14,7 +15,7 @@ export type HitTarget = { queueItemId: string; label: string };
 
 const MANUAL = "";
 
-export function HitCardModal({ targets, onClose, onDone }: { targets: HitTarget[]; onClose: () => void; onDone: () => void }) {
+export function HitCardModal({ targets, onClose, onDone, fullPage = false, backHandler }: { targets: HitTarget[]; onClose: () => void; onDone: () => void; fullPage?: boolean; backHandler?: { current: (() => Promise<void>) | null } }) {
   const [target, setTarget] = useState(targets[0]?.queueItemId ?? MANUAL);
   const [cardName, setCardName] = useState("");
   const [nickname, setNickname] = useState("");
@@ -27,6 +28,10 @@ export function HitCardModal({ targets, onClose, onDone }: { targets: HitTarget[
   const ok = cardName.trim() !== "" && (!manual || nickname.trim() !== "");
   const dirty = cardName !== "" || nickname !== "" || note !== "" || grade !== "";
 
+  const releaseGuard = useUnsavedGuard(fullPage && dirty);
+  const close = async () => { if (busy || !confirmLeave(dirty)) return; await releaseGuard(); onClose(); };
+  useEffect(() => { if (!fullPage || !backHandler) return; backHandler.current = close; return () => { if (backHandler.current === close) backHandler.current = null; }; }, [fullPage, backHandler, busy, dirty, releaseGuard, onClose]);
+
   const submit = async () => {
     if (!ok || busy) return;
     setBusy(true);
@@ -35,14 +40,13 @@ export function HitCardModal({ targets, onClose, onDone }: { targets: HitTarget[
       method: "POST",
       body: { cardName: cardName.trim(), ...(note.trim() ? { note: note.trim() } : {}), ...(grade.trim() ? { grade: grade.trim() } : {}), ...(manual ? { nickname: nickname.trim() } : { queueItemId: target }) },
     });
+    if (!r.ok) { setBusy(false); return setError(failMessage(r, "admin")); }
+    if (fullPage) await releaseGuard();
     setBusy(false);
-    if (!r.ok) return setError(failMessage(r, "admin"));
     onDone();
   };
 
-  return (
-    <Modal labelId="hit-add-title" busy={busy} dirty={dirty} onClose={onClose}>
-      {(requestClose) => (
+  const content = (requestClose: () => void) => (
         <form
           className="col"
           style={{ gap: 16 }}
@@ -111,7 +115,6 @@ export function HitCardModal({ targets, onClose, onDone }: { targets: HitTarget[
             </button>
           </div>
         </form>
-      )}
-    </Modal>
   );
+  return fullPage ? <section aria-labelledby="hit-add-title">{content(() => void close())}</section> : <Modal labelId="hit-add-title" busy={busy} dirty={dirty} onClose={onClose}>{content}</Modal>;
 }

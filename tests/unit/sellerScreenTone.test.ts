@@ -40,16 +40,18 @@ const APPROVED_EXTERNAL_COPY: Record<string, readonly string[]> = {
     "연결한 쇼핑몰의 주문이 들어오고 있어요",
     "허용이 풀려 주문 알림이 멈췄어요 · 다시 연결해 주세요",
     "연결을 끊고 있어요 · 쇼핑몰 응답을 기다리는 중에는 주문을 받지 않아요 · 끝나면 「끊어짐」",
-    "허용이 풀려 주문 알림이 멈췄어요",
-    "아직 받은 주문 알림이 없어요",
     "연결한 쇼핑몰의 주문 알림이 주문대기와 방송 화면으로 들어와요 · 플랫폼 이름은 표시하지 않아요",
     "쇼핑몰 앱 권한이 바뀌거나 만료되면 다시 연결해야 해요 · 끊는 중에는 쇼핑몰 응답을 기다려요. 그동안 주문은 받지 않아요",
     "대표자와 「쇼핑몰 설정」 권한이 있는 직원만 연결 · 해제할 수 있어요 · 목록 조회도 같은 권한이 필요해요",
   ],
+  "components/seller/ExternalShopOperations.tsx": [
+    "허용이 풀려 주문 알림이 멈췄어요",
+    "아직 받은 주문 알림이 없어요",
+  ],
 };
 // 결과 미확인 조정의 복구·새 요청 구분에 승인된 문구만 허용한다.
 const APPROVED_ADJUST_COPY: Record<string, readonly string[]> = {
-  "app/(seller)/seller/(shell)/rewards/balances/page.tsx": [
+  "components/seller/RewardAdjustment.tsx": [
     "거절된 요청의 보관 정보를 지우지 못했어요. 화면을 다시 불러와 주세요.",
     "요청 정보를 확인하지 못했어요. 화면을 다시 불러와 주세요.",
     "재시도 정보를 보관하지 못했어요. 원장에서 이전 조정 결과를 확인해 주세요.",

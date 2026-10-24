@@ -1,10 +1,53 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { PrismaClient, type QueueItem } from "@prisma/client";
+import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 import { refundableOrderIdInDb } from "./rewardDb";
 import { submitSellerLogin } from "./sellerLogin";
 
 // SA-021 주문 목록 · SA-022 주문 상세 · SA-023 환불 모달. dev-seed의 데모 주문 27건(결제 대기·완료·발송·환불됨·취소, 개봉한 상품이 있는 발송 주문 2건)으로 확인한다.
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
 const SHOTS = process.env.E2E_SCREENSHOTS === "1";
+let openingSnapshot: Pick<QueueItem, "id" | "status" | "openingStartedAt" | "doneAt">[] = [];
+
+async function openingDb<T>(fn: (db: PrismaClient) => Promise<T>) {
+  const url = assertTestDatabaseUrl(process.env.DATABASE_URL);
+  if (process.env.CI !== "true" || process.env.NODE_ENV === "production" || !["localhost", "127.0.0.1", "[::1]"].includes(new URL(url).hostname)) throw new Error("환불 개봉 전제는 로컬 폐기 CI DB에서만 준비합니다");
+  const db = new PrismaClient({ datasources: { db: { url } } });
+  try { return await fn(db); } finally { await db.$disconnect(); }
+}
+
+test.beforeEach(async ({}, info) => {
+  if (!info.title.startsWith("환불 모달: 개봉한 상품이 있으면") && !info.title.startsWith("환불 모달: 확인한 금액을 함께 보내고")) return;
+  await openingDb(async (db) => {
+    const seller = await db.seller.findUniqueOrThrow({ where: { slug: "demo-shop" }, select: { id: true } });
+    const mixed = await db.order.findFirstOrThrow({ where: { sellerId: seller.id, orderNo: 2 }, include: { items: true } });
+    const fully = await db.order.findFirstOrThrow({ where: { sellerId: seller.id, orderNo: 1 }, include: { items: true } });
+    expect([mixed.totalAmount, mixed.shippingFee, fully.totalAmount]).toEqual([324000, 3000, 15000]);
+    expect(mixed.items.map((i) => [i.unitPrice, i.quantity]).sort((a, b) => a[0] - b[0])).toEqual([[132000, 1], [189000, 1]]);
+    expect(fully.items.map((i) => [i.unitPrice, i.quantity])).toEqual([[6000, 2]]);
+    const items = [...mixed.items, ...fully.items];
+    const openedIds = new Set([...mixed.items.filter((i) => i.unitPrice === 189000), ...fully.items].map((i) => i.id));
+    const queue = await db.queueItem.findMany({ where: { sellerId: seller.id, orderItemId: { in: items.map((i) => i.id) } }, select: { id: true, orderItemId: true, status: true, openingStartedAt: true, doneAt: true } });
+    for (const id of openedIds) expect(queue.some((q) => q.orderItemId === id)).toBe(true);
+    openingSnapshot = queue.map(({ id, status, openingStartedAt, doneAt }) => ({ id, status, openingStartedAt, doneAt }));
+    for (const q of queue) {
+      const opened = openedIds.has(q.orderItemId ?? "");
+      await db.queueItem.update({ where: { id: q.id }, data: { status: opened ? "DONE" : "WAITING", openingStartedAt: opened ? q.openingStartedAt ?? new Date() : null, doneAt: opened ? q.doneAt ?? new Date() : null } });
+    }
+    const prepared = await db.queueItem.findMany({ where: { sellerId: seller.id, orderItemId: { in: items.map((i) => i.id) } }, select: { orderItemId: true, status: true, openingStartedAt: true } });
+    for (const item of items) expect(prepared.some((q) => q.orderItemId === item.id && (q.openingStartedAt !== null || q.status === "OPENING" || q.status === "DONE"))).toBe(openedIds.has(item.id));
+  });
+});
+
+test.afterEach(async () => {
+  if (!openingSnapshot.length) return;
+  await openingDb(async (db) => {
+    await db.$transaction(openingSnapshot.map(({ id, ...data }) => db.queueItem.update({ where: { id }, data })));
+    const restored = await db.queueItem.findMany({ where: { id: { in: openingSnapshot.map((q) => q.id) } }, select: { id: true, status: true, openingStartedAt: true, doneAt: true } });
+    expect(restored.sort((a, b) => a.id.localeCompare(b.id))).toEqual([...openingSnapshot].sort((a, b) => a.id.localeCompare(b.id)));
+  });
+  openingSnapshot = [];
+});
 
 test.beforeAll(() => {
   if (!PASSWORD) throw new Error("E2E_PASSWORD가 없어요. dev-seed가 출력한 데모 비밀번호를 넣어 주세요");
@@ -37,7 +80,9 @@ async function openDetail(page: Page) {
 // 목록의 「환불 처리」 버튼은 취소 요청 · 환불 가능 주문에만 상태에 따라 보인다(정본). 발송 전 주문은 「송장 입력」이 주 버튼이라 상세 주소의 ?refund=1로 환불 창을 연다
 async function openRefund(page: Page, row: ReturnType<typeof rows>) {
   const href = await row.getByRole("link", { name: "상세", exact: true }).getAttribute("href");
-  await page.goto(`${href}?refund=1`);
+  const url = new URL(href!, page.url());
+  url.searchParams.set("refund", "1");
+  await page.goto(url.href);
 }
 
 // 실제 환불 시험은 시드의 발송 전 결제 주문(배송 「—」)을 환불해 하나씩 쓴다(실행마다 몇 건). 같은 DB로 여러 번 돌려 다 쓰면
@@ -152,8 +197,10 @@ test("주문 상세: 상품·결제·구매자·배송을 보여 주고, 없는 
   await expect(rows(page).first()).toBeVisible();
   // 구매자 이름과 주소를 한 번에 읽어, 목록이 다시 그려지는 사이 다른 행의 이름이 섞이지 않게 한다
   const { nick, href } = await rows(page).first().evaluate((tr) => ({ nick: tr.querySelectorAll("td")[2].querySelector(".fw6")?.textContent ?? "", href: tr.querySelector("a.ord-link")!.getAttribute("href")! }));
+  const listUrl = new URL(page.url());
   await page.goto(href);
-  await expect(page).toHaveURL(/\/seller\/orders\/[0-9a-f-]{36}$/);
+  await expect(page).toHaveURL(/\/seller\/orders\/[0-9a-f-]{36}\?returnTo=/);
+  expect(new URL(page.url()).searchParams.get("returnTo")).toBe(listUrl.pathname + listUrl.search);
   await expect(page.getByRole("heading", { level: 1 })).toContainText(`${nick} · `);
   await expect(page.locator(".bdg-lg").first()).toHaveText("결제 완료");
   await expect(page.getByRole("heading", { name: "주문 상품" })).toBeVisible();
@@ -408,19 +455,28 @@ test("주문·배송 권한만 있는 직원(방송 진행 권한 없음)도 실
 test("발송한 주문의 송장은 택배사 코드가 아니라 화면 이름(CJ대한통운)으로 보인다", async ({ page }) => {
   await login(page);
   const shipped = rows(page).filter({ has: page.locator("td:nth-child(7)", { hasText: /배송 (중|완료)/ }) }).first();
+  const listUrl = new URL(page.url());
   await shipped.locator("a.ord-link").click();
-  await expect(page).toHaveURL(/\/seller\/orders\/[0-9a-f-]{36}$/);
+  await expect(page).toHaveURL(/\/seller\/orders\/[0-9a-f-]{36}\?returnTo=/);
+  expect(new URL(page.url()).searchParams.get("returnTo")).toBe(listUrl.pathname + listUrl.search);
   const dd = page.locator("dt", { hasText: "송장" }).locator("xpath=following-sibling::dd[1]");
   await expect(dd).toHaveText(/^CJ대한통운 \d+$/);
 });
 
-test("행 「···」 → 「메모 남기기」: 저장하면 다시 열었을 때 남아 있고, 비워서 저장하면 지워진다", async ({ page }) => {
+test("행 「···」 → 실제 주문 상세 메모: 저장하면 다시 열었을 때 남아 있고, 비워서 저장하면 지워진다", async ({ page }) => {
   await login(page);
   const row = rows(page).filter({ has: page.getByRole("button", { name: /더보기/ }) }).first();
+  const listUrl = page.url();
+  const detailHref = await row.getByRole("link", { name: "상세", exact: true }).getAttribute("href");
   const open = async () => {
+    if (page.url() !== listUrl) await page.goto(listUrl);
     await row.getByRole("button", { name: /더보기/ }).click();
-    await page.getByRole("menuitem", { name: "메모 남기기" }).click();
-    await expect(page.getByRole("dialog")).toBeVisible();
+    const link = page.getByRole("menuitem", { name: "메모 남기기" });
+    await expect(link).toHaveAttribute("href", `${detailHref}#order-memo`);
+    await link.click();
+    await expect(page).toHaveURL(`${new URL(detailHref!, listUrl).href}#order-memo`);
+    await expect(page.getByRole("region", { name: "메모 남기기" })).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
   };
   await open();
   const box = page.getByLabel("메모", { exact: true });
