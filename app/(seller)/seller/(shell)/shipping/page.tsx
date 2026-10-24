@@ -2,17 +2,17 @@
 
 import { formatDateTime } from "../../../../../lib/client/format";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { CursorPagination } from "../../../../../components/Pagination";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ListTable, PageHead, useConfirm } from "../../../../../components/admin-ui";
-import { Topbar } from "../../../../../components/seller/SellerShell";
+import { ListTable, PageHead } from "../../../../../components/admin-ui";
+import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
-import { api, failMessage } from "../../../../../components/seller/api";
+import { api } from "../../../../../components/seller/api";
 import { MAX_SEARCH_LENGTH } from "../../../../../components/seller/format";
 import { itemSummaryText, phoneText } from "../../../../../components/seller/orders";
-import { sendInBatches } from "../../../../../components/seller/shipping/sendInBatches";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
-import { COURIERS, isCourier, type Courier } from "../../../../../lib/server/orders/shipping";
+import { COURIERS, isCourier } from "../../../../../lib/server/orders/shipping";
 import "../../../../../styles/seller-shipping.css";
 
 // SA-025 배송 처리(GET·POST /api/seller/shipments, POST …/deliver, 주문·배송 권한).
@@ -39,15 +39,7 @@ type Row = {
 };
 type Page = { shipments: Row[]; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; items: Row[]; next: string | null };
-type Result = { orderId: string; ok: boolean; error?: string; message?: string };
-
 const courierName = (c: string) => (isCourier(c) ? COURIERS[c] : c);
-const FAIL: Record<string, string> = {
-  not_shippable: "지금은 발송할 수 없는 주문입니다",
-  invalid_shipment: "송장번호를 확인해 주십시오",
-  not_deliverable: "배송 완료로 바꿀 수 없는 주문입니다",
-  not_found: "주문을 찾을 수 없습니다",
-};
 
 function query(tab: Tab, q: string, cursor?: string) {
   const p = new URLSearchParams({ tab, limit: String(PAGE) });
@@ -57,7 +49,10 @@ function query(tab: Tab, q: string, cursor?: string) {
 }
 
 export default function ShippingPage() {
-  const { confirm } = useConfirm();
+  const { can, me } = useSeller();
+  const canEdit = can("ORDER_SHIPPING") && !me.readOnly;
+  const searchParams = useSearchParams().toString();
+  const returnTo = `/seller/shipping${searchParams ? `?${searchParams}` : ""}`;
   // 탭·검색어는 주소(쿼리 ?tab·?q)가 기준이다. 주문 상세에 갔다 Back으로 돌아와도 그대로 복원된다(UX 감사 9.3). 틀린 탭 값은 발송 대기로 본다
   const [u, setU] = useUrlState({ tab: "ready", q: "" });
   const tab: Tab = TABS.some((t) => t.key === u.tab) ? (u.tab as Tab) : "ready";
@@ -78,13 +73,7 @@ export default function ShippingPage() {
   const [page, setPage] = useState(1);
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
   const paging = useRef(false);
-  const [courier, setCourier] = useState<Courier>("CJ");
-  // 줄마다 택배사를 바꿀 수 있다(없으면 위에서 고른 택배사)
-  const [courierOf, setCourierOf] = useState<Record<string, Courier>>({});
-  const [tracking, setTracking] = useState<Record<string, string>>({});
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
 
   // 탭·검색을 빨리 바꾸면 이전 응답이 늦게 올 수 있다. 마지막으로 보낸 조건의 응답만 반영한다
@@ -102,7 +91,6 @@ export default function ShippingPage() {
   }, []);
   useEffect(() => {
     setPicked(new Set());
-    setErrors({});
     void load(tab, q);
   }, [tab, q, load]);
 
@@ -118,63 +106,13 @@ export default function ShippingPage() {
     if (r.ok) {
       setState({ kind: "ok", items: r.data.shipments, next: r.data.nextCursor });
       setCursors((prev) => [...prev.slice(0, target - 1), cursor]); setPage(target);
-      setPicked(new Set()); setErrors({});
+      setPicked(new Set());
     } else setToast({ text: "목록을 불러오지 못했습니다. 다시 눌러 주십시오", neg: true });
   };
 
-  // 주문별 결과를 화면에 그대로 반영한다: 실패한 주문은 그 줄에 사유를 남기고, 성공 건수만 성공으로 알린다.
-  const applyResults = async (results: Result[], verb: string) => {
-    const okIds = results.filter((r) => r.ok).map((r) => r.orderId);
-    const failed = results.filter((r) => !r.ok);
-    setErrors(Object.fromEntries(failed.map((r) => [r.orderId, r.message ?? FAIL[r.error ?? ""] ?? "처리하지 못했습니다"])));
-    setPicked(new Set(failed.map((r) => r.orderId)));
-    setTracking((t) => Object.fromEntries(Object.entries(t).filter(([id]) => !okIds.includes(id))));
-    // 처리한 행만 갱신한다: 성공한 주문은 다른 탭으로 옮겨 가므로 이 목록에서만 빼고, 불러온 쪽수·스크롤·검색 조건은 그대로 둔다
-    setState((s) => (s.kind === "ok" ? { ...s, items: s.items.filter((r) => !okIds.includes(r.orderId)) } : s));
-    const parts = [okIds.length > 0 ? `${okIds.length}건 ${verb}` : null, failed.length > 0 ? `${failed.length}건은 처리하지 못했습니다. 빨간 글씨를 확인해 주십시오` : null].filter(Boolean).join(" · ");
-    setToast({ text: parts, neg: failed.length > 0 && okIds.length === 0 });
-  };
-
   const items = state.kind === "ok" ? state.items : [];
-  const readyTargets = items.filter((r) => picked.has(r.orderId) && (tracking[r.orderId] ?? "").trim() !== "");
-  const missing = items.filter((r) => picked.has(r.orderId) && (tracking[r.orderId] ?? "").trim() === "").length;
-
-  // 묶음 나누기·부분 실패 처리는 sendInBatches(단위 시험 있음).
-  // 처리 중에는 탭·검색을 잠가, 끝난 뒤 다시 읽기가 지금 보고 있는 조건과 같게 한다.
-  const send = async <T,>(path: string, list: T[], body: (chunk: T[]) => unknown, idOf: (x: T) => string, verb: string, failText: string) => {
-    setBusy(true);
-    // 서버 한도(SHIPMENT_BATCH_MAX)만큼씩 나눠 보낸다
-    const { results, lastFail } = await sendInBatches(list, idOf, async (chunk) => {
-      const r = await api<{ results: Result[] }>(path, { method: "POST", body: body(chunk) });
-      return r.ok ? { results: r.data.results } : { failMessage: failMessage(r, "admin", failText) };
-    });
-    if (results.every((r) => !r.ok) && lastFail) {
-      setBusy(false);
-      return setToast({ text: lastFail, neg: true });
-    }
-    await applyResults(results, verb);
-    setBusy(false);
-  };
-
-  const ship = async () => {
-    if (readyTargets.length === 0) return;
-    if (!(await confirm({ title: `송장 ${readyTargets.length}건을 저장하시겠습니까?`, body: "택배사·송장번호를 저장하고 해당 주문을 「배송 중」으로 바꿉니다. 구매자에게 알림이 갑니다.", confirmLabel: "송장 저장" }))) return;
-    await send(
-      "/api/seller/shipments",
-      readyTargets,
-      (chunk) => ({ items: chunk.map((x) => ({ orderId: x.orderId, courier: courierOf[x.orderId] ?? courier, trackingNumber: tracking[x.orderId].trim() })) }),
-      (x) => x.orderId,
-      "송장 저장",
-      "송장을 저장하지 못했습니다. 잠시 후 다시 시도해 주십시오",
-    );
-  };
-
-  const deliver = async () => {
-    const ids = items.filter((x) => picked.has(x.orderId)).map((x) => x.orderId);
-    if (ids.length === 0) return;
-    if (!(await confirm({ title: `${ids.length}건을 배송 완료로 바꾸시겠습니까?`, body: "선택한 주문을 배송 완료로 바꿉니다. 구매자에게 알림이 가고 리뷰 작성이 열립니다.", confirmLabel: "배송 완료로 바꾸기" }))) return;
-    await send("/api/seller/shipments/deliver", ids, (chunk) => ({ orderIds: chunk }), (x) => x, "배송 완료", "배송 완료로 바꾸지 못했습니다. 잠시 후 다시 시도해 주십시오");
-  };
+  const workIds = items.filter((item) => picked.has(item.orderId)).map((item) => item.orderId);
+  const workHref = `/seller/shipping/process?${new URLSearchParams({ ids: workIds.join(","), action: tab === "in_transit" ? "deliver" : "ship", returnTo })}`;
 
   const toggle = (id: string) =>
     setPicked((p) => {
@@ -184,7 +122,7 @@ export default function ShippingPage() {
       return n;
     });
   const allPicked = items.length > 0 && items.every((r) => picked.has(r.orderId));
-  const selectable = tab !== "delivered";
+  const selectable = canEdit && tab !== "delivered";
 
   return (
     <>
@@ -195,7 +133,7 @@ export default function ShippingPage() {
         <section className="au-list-section">
           <nav className="tabs" aria-label="배송 상태" style={{ padding: "0 16px" }}>
             {TABS.map((t) => (
-              <button key={t.key} type="button" className={`tab${tab === t.key ? " on" : ""}`} aria-pressed={tab === t.key} disabled={busy} onClick={() => setTab(t.key)}>
+              <button key={t.key} type="button" className={`tab${tab === t.key ? " on" : ""}`} aria-pressed={tab === t.key} onClick={() => setTab(t.key)}>
                 {t.label}
               </button>
             ))}
@@ -209,35 +147,12 @@ export default function ShippingPage() {
                 aria-label="배송 검색"
                 value={search}
                 maxLength={MAX_SEARCH_LENGTH}
-                disabled={busy}
+
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            {tab === "ready" && (
-              <>
-                <select className="inp inp-sm" style={{ width: "auto" }} aria-label="택배사 일괄 선택" value={courier} onChange={(e) => {
-                    // 일괄 선택을 바꾸면 줄마다 바꾼 택배사도 모두 이 값으로 맞춘다
-                    setCourier(e.target.value as Courier);
-                    setCourierOf({});
-                  }}>
-                  {(Object.keys(COURIERS) as Courier[]).map((c) => (
-                    <option key={c} value={c}>
-                      {COURIERS[c]}
-                    </option>
-                  ))}
-                </select>
-                <button className="btn btn-sm" type="button" onClick={() => void ship()} disabled={busy || readyTargets.length === 0}>
-                  {busy ? "저장 중" : `송장 저장${readyTargets.length > 0 ? ` (${readyTargets.length})` : ""}`}
-                </button>
-              </>
-            )}
-            {tab === "in_transit" && (
-              <button className="btn btn-sm" type="button" onClick={() => void deliver()} disabled={busy || picked.size === 0}>
-                {busy ? "처리 중" : `배송 완료 처리${picked.size > 0 ? ` (${picked.size})` : ""}`}
-              </button>
-            )}
+            {selectable && (workIds.length > 0 ? <Link className="btn btn-sm" href={workHref}>선택 배송 작업 상세 ({workIds.length})</Link> : <button className="btn btn-sm" type="button" disabled>선택 배송 작업 상세</button>)}
           </div>
-          {tab === "ready" && missing > 0 && <span className="t-c1 c-alt" style={{ padding: "0 16px 12px", display: "block" }}>송장번호를 적지 않은 {missing}건은 저장하지 않습니다.</span>}
 
           {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
           {state.kind === "error" &&
@@ -288,48 +203,8 @@ export default function ShippingPage() {
                             <Recipient a={r.shippingAddress} />
                           </td>
                           <td>
-                            {tab === "ready" ? (
-                              <div className="row ship-input" style={{ gap: 6 }}>
-                              <select
-                                className="inp inp-sm"
-                                style={{ width: "auto" }}
-                                aria-label={`주문 ${r.orderNo} 택배사`}
-                                value={courierOf[r.orderId] ?? courier}
-                                onChange={(e) => setCourierOf((c) => ({ ...c, [r.orderId]: e.target.value as Courier }))}
-                              >
-                                {(Object.keys(COURIERS) as Courier[]).map((c) => (
-                                  <option key={c} value={c}>
-                                    {COURIERS[c]}
-                                  </option>
-                                ))}
-                              </select>
-                              <input
-                                className="inp inp-sm"
-                                autoCapitalize="characters"
-                                aria-label={`주문 ${r.orderNo} 송장번호`}
-                                placeholder="송장번호"
-                                value={tracking[r.orderId] ?? ""}
-                                onChange={(e) => {
-                                  const v = e.target.value;
-                                  setTracking((t) => ({ ...t, [r.orderId]: v }));
-                                  // 송장번호를 적으면 그 주문을 고른 것으로 본다
-                                  if (v.trim() && !picked.has(r.orderId)) toggle(r.orderId);
-                                }}
-                              />
-                              </div>
-                            ) : r.shipment ? (
-                              <div className="col" style={{ gap: 2 }}>
-                                <span>{courierName(r.shipment.courier)}</span>
-                                <span className="t-c1 c-alt num">{r.shipment.trackingNumber}</span>
-                              </div>
-                            ) : (
-                              "-"
-                            )}
-                            {errors[r.orderId] && (
-                              <span className="err t-c1" role="alert" style={{ display: "block", marginTop: 4 }}>
-                                {errors[r.orderId]}
-                              </span>
-                            )}
+                            {r.shipment ? <div className="col" style={{ gap: 2 }}><span>{courierName(r.shipment.courier)}</span><span className="t-c1 c-alt num">{r.shipment.trackingNumber}</span></div> : "—"}
+                            <Link className="btn btn-sm btn-out" href={`/seller/shipping/${r.orderId}?${new URLSearchParams({ returnTo })}`}>배송 작업 상세</Link>
                           </td>
                         </tr>
                       ))}

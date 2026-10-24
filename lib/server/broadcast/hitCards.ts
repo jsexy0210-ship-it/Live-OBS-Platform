@@ -129,6 +129,15 @@ export async function listHitCards(db: PrismaClient, ctx: TenantContext, f: HitF
   return { ok: true as const, value: { items, total, grades: [...HIT_GRADES], nextCursor: rows.length > HIT_PAGE_SIZE ? items[items.length - 1].id : null } };
 }
 
+// 상세는 목록의 첫 10건과 무관하게 같은 판매자의 카드 한 건만 읽는다.
+export async function getHitCard(db: PrismaClient, ctx: TenantContext, id: string) {
+  requireSellerRead(ctx, "BROADCAST_RUN");
+  if (!isUuid(id)) throw notFound();
+  const row = await db.hitCard.findFirst({ where: { id, sellerId: ctx.sellerId }, select: cardSelect });
+  if (!row) throw notFound();
+  return { card: view(row) };
+}
+
 // 판매자 행을 잠그고 liveVersion을 올린다(오버레이가 새 카드를 다시 읽게)
 async function bump(tx: Tx, sellerId: string) {
   return (await tx.seller.update({ where: { id: sellerId }, data: { liveVersion: { increment: 1 } }, select: { liveVersion: true } })).liveVersion;

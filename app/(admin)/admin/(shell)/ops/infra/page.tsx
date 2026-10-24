@@ -80,12 +80,12 @@ function Bar({ pct, level }: { pct: number | null; level: keyof typeof LEVEL }) 
 
 export default function InfraPage() {
   const { confirm } = useConfirm();
+  const [listHref, setListHref] = useState("/admin/ops/infra");
+  useEffect(() => setListHref(window.location.pathname + window.location.search), []);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [refreshing, setRefreshing] = useState(false);
-  const [expiry, setExpiry] = useState<Record<string, string>>({});
   const [prices, setPrices] = useState<Record<string, string>>({});
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
-  const [savingExpiry, setSavingExpiry] = useState(false);
   const reqId = useRef(0);
   const dirty = useRef(false);
 
@@ -106,7 +106,6 @@ export default function InfraPage() {
     }
     // 입력 중인 값은 자동 새로고침이 덮어쓰지 않는다
     if (!dirty.current) {
-      setExpiry(Object.fromEntries(cn.data.connections.map((c) => [c.key, c.expiresOn ?? ""])));
       setPrices(Object.fromEntries(PRICE_FIELDS.map((f) => [f.key, co.data.prices[f.key] === undefined ? "" : String(co.data.prices[f.key])])));
     }
     setState({ kind: "ok", data: { status: st.data, cost: co.data, conns: cn.data.connections }, at: new Date() });
@@ -118,25 +117,6 @@ export default function InfraPage() {
   }, [load]);
 
   const data = state.kind === "ok" ? state.data : null;
-
-  const saveExpiry = async () => {
-    if (!data) return;
-    const changed = data.conns.filter((c) => (expiry[c.key] ?? "") !== (c.expiresOn ?? ""));
-    if (changed.length === 0) return;
-    setSavingExpiry(true);
-    let failed = "";
-    for (const c of changed) {
-      const r = await adminApi(`/api/admin/infra/connections/${encodeURIComponent(c.key)}/expiry`, { method: "PUT", json: { expiresOn: expiry[c.key] || null, expectedVersion: c.version } });
-      if (!r.ok) {
-        failed = r.status === 409 ? `${c.name}: 다른 곳에서 먼저 바뀌었습니다. 새로 불러옵니다.` : `${c.name}: ${failMessage(r, "저장하지 못했습니다.")}`;
-        break;
-      }
-    }
-    setSavingExpiry(false);
-    dirty.current = false;
-    setToast(failed ? { text: failed, neg: true } : { text: "만료일을 저장했습니다 · 로그 추적에 남겼습니다" });
-    void load(true);
-  };
 
   const savePrices = async () => {
     if (!data) return;
@@ -328,6 +308,7 @@ export default function InfraPage() {
                       <th>마지막 정상 호출</th>
                       <th>상태</th>
                       <th>비고</th>
+                      <th>작업</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -336,21 +317,20 @@ export default function InfraPage() {
                         <td className="col-text"><b>{c.name}</b></td>
                         <td className="col-text">{c.purpose}</td>
                         <td>
-                          <input className="inp" type="date" aria-label={`${c.name} 만료일`} value={expiry[c.key] ?? ""} onChange={(e) => { dirty.current = true; setExpiry({ ...expiry, [c.key]: e.target.value }); }} />
+                          {c.expiresOn ?? "—"}
                         </td>
                         <td className="num">{c.daysLeft === null ? "—" : `${c.daysLeft}일`}</td>
                         <td className="num">{c.lastOkAt ? formatDateTime(c.lastOkAt) : "—"}</td>
                         <td><span className={`bdg ${CONN_STATUS[c.status].cls}`}>{CONN_STATUS[c.status].label}</span></td>
                         <td className="col-text">{c.status === "auth_error" && c.lastAuthErrorAt ? `${formatDateTime(c.lastAuthErrorAt)}부터 인증 실패${c.lastAuthErrorCode ? ` (${c.lastAuthErrorCode})` : ""}` : c.status === "not_connected" ? "연결 전" : "-"}</td>
+                        <td><Link className="btn btn-sm btn-out" href={`/admin/ops/infra/connections/${encodeURIComponent(c.key)}?returnTo=${encodeURIComponent(listHref)}`}>만료일 상세</Link></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
               <div className="row" style={{ gap: 8, padding: "12px 16px" }}>
-                <button className="btn" type="button" onClick={() => void saveExpiry()} disabled={savingExpiry || data.conns.every((c) => (expiry[c.key] ?? "") === (c.expiresOn ?? ""))}>
-                  {savingExpiry ? "저장 중" : "만료일 저장"}
-                </button>
+                <Link className="btn btn-out" href={`/admin/ops/infra/connections?returnTo=${encodeURIComponent(listHref)}`}>전체 만료일 설정</Link>
                 <span className="t-c1 c-alt">만료일을 바꾸면 로그 추적에 남습니다 · 남은 일수는 매일 00:00 다시 계산</span>
               </div>
             </section>

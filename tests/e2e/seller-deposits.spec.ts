@@ -24,15 +24,19 @@ const statusOf = (page: Page, id: string) => page.evaluate(async (id) => (await 
 test("목록을 받은 뒤 다른 곳에서 바뀌었으면 입금 확인이 막히고, 다시 불러오면 확인된다", async ({ page }) => {
   await login(page, "demo-owner@example.com");
   await expect(row(page, DEPOSIT_NICKNAMES[2])).toHaveCount(1);
+  await row(page, DEPOSIT_NICKNAMES[2]).getByRole("link", { name: "입금 확인" }).click();
+  await expect(page).toHaveURL(new URL(`/seller/orders/deposits/confirm?${new URLSearchParams({ ids: made.orderIds[2], returnTo: "/seller/orders/deposits" })}`, page.url()).href);
+  await page.reload();
+  await expect(page.getByRole("region", { name: "입금을 확인하시겠습니까?" })).toBeVisible();
   await bumpLiveVersionInDb(SLUG);
-  await row(page, DEPOSIT_NICKNAMES[2]).getByRole("button", { name: "입금 확인" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "입금 확인" }).click();
+  await page.getByRole("region", { name: "입금을 확인하시겠습니까?" }).getByRole("button", { name: "입금 확인" }).click();
   await expect(page.getByText("목록이 바뀌었습니다. 다시 불러온 뒤 확인해 주십시오")).toBeVisible();
   expect(await statusOf(page, made.orderIds[2])).toBe("PENDING_PAYMENT");
-  // 새로 불러온 목록의 버전으로 다시 보내면 확인된다
-  await expect(row(page, DEPOSIT_NICKNAMES[2])).toHaveCount(1);
-  await row(page, DEPOSIT_NICKNAMES[2]).getByRole("button", { name: "입금 확인" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "입금 확인" }).click();
+  // 새로 불러온 상세의 버전으로 다시 보내면 확인된다
+  await expect(page.getByRole("region", { name: "입금을 확인하시겠습니까?" })).toContainText(DEPOSIT_NICKNAMES[2]);
+  await page.getByRole("region", { name: "입금을 확인하시겠습니까?" }).getByRole("button", { name: "입금 확인" }).click();
+  await expect(page.getByText("1건 입금 확인 · 주문대기(방송에서 개봉할 순서 목록)에 올라갔습니다")).toBeVisible();
+  await page.getByRole("button", { name: "목록으로", exact: true }).click();
   await expect(row(page, DEPOSIT_NICKNAMES[2])).toHaveCount(0);
   expect(await statusOf(page, made.orderIds[2])).toBe("PAID");
 });
@@ -69,19 +73,22 @@ test("대표자: 메뉴에서 입금 확인을 열고, 단건 확인 뒤 일괄 
   await expect(page.locator(".au-lh-total")).toContainText(`총 ${total}건`);
 
   // 단건: 확인 창 → 입금 확인 → 목록에서 빠지고 주문 상태가 결제 완료
-  await row(page, DEPOSIT_NICKNAMES[0]).getByRole("button", { name: "입금 확인" }).click();
-  const dialog = page.getByRole("dialog", { name: "입금을 확인하시겠습니까?" });
+  await row(page, DEPOSIT_NICKNAMES[0]).getByRole("link", { name: "입금 확인" }).click();
+  const dialog = page.getByRole("region", { name: "입금을 확인하시겠습니까?" });
   await expect(dialog).toContainText(DEPOSIT_NICKNAMES[0]);
   await dialog.getByRole("button", { name: "입금 확인" }).click();
   await expect(page.getByText("1건 입금 확인 · 주문대기(방송에서 개봉할 순서 목록)에 올라갔습니다")).toBeVisible();
+  await page.getByRole("button", { name: "목록으로", exact: true }).click();
   await expect(row(page, DEPOSIT_NICKNAMES[0])).toHaveCount(0);
   expect(await statusOf(page, made.orderIds[0])).toBe("PAID");
 
   // 일괄: 선택 → 선택 입금 확인
   await expect(page.getByRole("button", { name: /^선택 입금 확인/ })).toBeDisabled();
   await page.getByRole("checkbox", { name: `${DEPOSIT_NICKNAMES[1]} 선택` }).check();
-  await page.getByRole("button", { name: "선택 입금 확인 (1)" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "입금 확인" }).click();
+  await page.getByRole("link", { name: "선택 입금 확인 (1)" }).click();
+  await page.getByRole("region", { name: "입금을 확인하시겠습니까?" }).getByRole("button", { name: "입금 확인" }).click();
+  await expect(page.getByText("1건 입금 확인 · 주문대기(방송에서 개봉할 순서 목록)에 올라갔습니다")).toBeVisible();
+  await page.getByRole("button", { name: "목록으로", exact: true }).click();
   await expect(row(page, DEPOSIT_NICKNAMES[1])).toHaveCount(0);
   expect(await statusOf(page, made.orderIds[1])).toBe("PAID");
 });

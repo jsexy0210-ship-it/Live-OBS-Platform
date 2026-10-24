@@ -38,6 +38,18 @@ test("대표자: 송장 저장 → 배송 중 → 배송 완료로 옮겨 가고
   const [a, b] = ready;
   await shot(page, "SA-027-shipping-ready");
 
+  await expect(rows.locator("select, input:not([type=checkbox])")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "선택 배송 작업 상세", exact: true })).toBeDisabled();
+  await page.getByLabel(`주문 ${a.orderNo} 선택`).check();
+  await page.getByLabel(`주문 ${b.orderNo} 선택`).check();
+  const work = page.getByRole("link", { name: "선택 배송 작업 상세 (2)", exact: true });
+  expect(new URL(await work.getAttribute("href") ?? "", "http://localhost").searchParams.get("ids")?.split(",")).toEqual([a.orderId, b.orderId]);
+  await work.click();
+  await expect(page).toHaveURL(/\/seller\/shipping\/process\?/);
+  await page.reload();
+  await expect(page.getByRole("region", { name: "배송 처리 상세", exact: true })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
   // a는 올바른 송장, b는 너무 짧은 송장 → a만 저장되고 b 줄에 실패 사유가 남는다
   const tracking = `E2E${Date.now()}`;
   // 일괄로 한진택배를 고른 뒤 a 줄만 롯데택배로 바꾼다
@@ -58,9 +70,13 @@ test("대표자: 송장 저장 → 배송 중 → 배송 완료로 옮겨 가고
   expect(results.find((r) => r.orderId === b.orderId)?.ok).toBe(false);
   await expect(page.getByText("1건 송장 저장 · 1건은 처리하지 못했습니다. 빨간 글씨를 확인해 주십시오")).toBeVisible();
   await expect(page.getByLabel(`주문 ${a.orderNo} 송장번호`)).toHaveCount(0);
-  await expect(rows.filter({ has: page.getByLabel(`주문 ${b.orderNo} 송장번호`) })).toContainText("송장번호");
+  await expect(page.locator("section.au-fs").filter({ has: page.getByLabel(`주문 ${b.orderNo} 송장번호`) })).toContainText("송장번호");
   await expect(page.locator(".err[role=alert]")).toHaveCount(1);
 
+  // 부분 실패 입력은 남아 있으므로 확인 후 버리고 원래 목록으로 복귀한다.
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL(/\/seller\/shipping$/);
   // 배송 중 탭에서 찾아 배송 완료 처리
   await page.getByRole("button", { name: "배송 중", exact: true }).click();
   await page.getByLabel("배송 검색").fill(tracking);
@@ -69,11 +85,15 @@ test("대표자: 송장 저장 → 배송 중 → 배송 완료로 옮겨 가고
   await expect(row).toContainText("롯데택배");
   await shot(page, "SA-027-shipping-in-transit");
   await row.getByRole("checkbox").check();
+  await page.getByRole("link", { name: "선택 배송 작업 상세 (1)", exact: true }).click();
+  await expect(page.getByRole("region", { name: "배송 처리 상세", exact: true })).toContainText(tracking);
   const delivered = post(page, "/api/seller/shipments/deliver");
   await page.getByRole("button", { name: "배송 완료 처리 (1)" }).click();
   await page.getByRole("button", { name: "배송 완료로 바꾸기", exact: true }).click();
   expect((await delivered).status()).toBe(200);
   await expect(page.getByText("1건 배송 완료")).toBeVisible();
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page.getByLabel("배송 검색")).toHaveValue(tracking);
   await expect(row).toHaveCount(0);
 
   await page.getByRole("button", { name: "배송 완료", exact: true }).click();
@@ -88,4 +108,61 @@ test("주문·배송 권한이 없는 직원은 메뉴가 안 보이고, 주소�
   await expect(page).toHaveURL(/\/seller\/shipping$/);
   await expect(page.getByText("필요한 권한: 주문·배송", { exact: false })).toBeVisible();
   await expect(page.getByRole("link", { name: "배송 · 송장", exact: true })).toHaveCount(0);
+});
+
+test("배송 작업 상세는 삭제된 선택만 제외하며 조회 오류와 읽기 전용에서는 전송하지 않는다", async ({ page }) => {
+  await page.goto("/seller/login");
+  await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
+  await expect(page).toHaveURL(/\/seller$/);
+  const ids = ["00000000-0000-4000-8000-0000000000a1", "00000000-0000-4000-8000-0000000000b2"];
+  const writes: unknown[] = [];
+  let failure = 404;
+  await page.route("**/api/seller/orders/**", async (route) => {
+    expect(route.request().method()).toBe("GET");
+    const id = new URL(route.request().url()).pathname.split("/").at(-1);
+    return id === ids[0] ? route.fulfill({ json: { id, orderNo: 1, orderNoLabel: "합성 주문 1", status: "PAID", shipment: null, shippingAddress: { isRemote: false }, buyer: { broadcastNickname: "배송 합성" } } }) : route.fulfill({ status: failure, json: { error: failure === 404 ? "not_found" : "server_error" } });
+  });
+  await page.route("**/api/seller/shipments**", async (route) => {
+    if (route.request().method() === "GET") return route.fulfill({ json: { shipments: [], nextCursor: null } });
+    expect(route.request().method()).toBe("POST");
+    const body = route.request().postDataJSON(); writes.push(body);
+    return route.fulfill({ json: { results: body.items.map((item: { orderId: string }) => ({ orderId: item.orderId, ok: true })) } });
+  });
+  const work = `/seller/shipping/process?${new URLSearchParams({ ids: [ids[0], ids[0].toUpperCase(), ids[1]].join(","), action: "ship", returnTo: "/seller/shipping?tab=ready&q=배송" })}`;
+  await page.goto(work);
+  await page.reload();
+  const detail = page.getByRole("region", { name: "배송 처리 상세", exact: true });
+  await expect(detail.getByRole("status")).toHaveText("찾을 수 없는 주문 1건 · 남은 주문 1건");
+  await expect(detail.locator("section.au-fs")).toHaveCount(1);
+  await detail.getByRole("textbox", { name: "주문 1 송장번호", exact: true }).fill("OWNED123456");
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL(work);
+  await expect(detail.getByRole("textbox", { name: "주문 1 송장번호", exact: true })).toHaveValue("OWNED123456");
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL(new URL("/seller/shipping?tab=ready&q=%EB%B0%B0%EC%86%A1", page.url()).href);
+  expect(writes).toEqual([]);
+  await page.goto(work);
+  await detail.getByRole("textbox", { name: "주문 1 송장번호", exact: true }).fill("OWNED123456");
+  await detail.getByRole("button", { name: "송장 저장 (1)", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "송장 저장", exact: true }).click();
+  await expect(detail.locator("section.au-fs")).toHaveCount(0);
+  expect(writes).toEqual([{ items: [{ orderId: ids[0], courier: "CJ", trackingNumber: "OWNED123456" }] }]);
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL(new URL("/seller/shipping?tab=ready&q=%EB%B0%B0%EC%86%A1", page.url()).href);
+  failure = 500;
+  await page.goto(work);
+  await expect(page.getByText("선택한 주문을 불러오지 못했습니다", { exact: true })).toBeVisible();
+  await expect(detail).toHaveCount(0);
+  expect(writes).toHaveLength(1);
+  await page.route("**/api/seller/me", async (route) => {
+    const response = await route.fetch();
+    const me = await response.json();
+    await route.fulfill({ response, json: { ...me, isOwner: false, permissions: ["ORDER_SHIPPING"], readOnly: true } });
+  });
+  await page.goto(`/seller/shipping/${ids[0]}`);
+  await expect(detail).toBeVisible();
+  await expect(detail.locator("input, select, button")).toHaveCount(0);
+  expect(writes).toHaveLength(1);
 });

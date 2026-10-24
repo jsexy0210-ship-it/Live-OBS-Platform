@@ -45,8 +45,12 @@ test("거절: 사유를 적어야 확정할 수 있고, 거절 탭에 사유와 
     await page.screenshot({ path: `tests/e2e/screenshots/SA-023-refund-requests-${w}.png`, fullPage: true });
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await row.getByRole("button", { name: "처리" }).click();
-  const dialog = page.getByRole("dialog", { name: /환불 요청 처리/ });
+  await expect(row.getByRole("link", { name: "처리" })).toHaveAttribute("href", `/seller/orders/refund-requests/${req.id}?${new URLSearchParams({ returnTo: "/seller/orders/refund-requests" })}`);
+  await row.getByRole("link", { name: "처리" }).click();
+  await expect(page).toHaveURL(new URL(`/seller/orders/refund-requests/${req.id}?${new URLSearchParams({ returnTo: "/seller/orders/refund-requests" })}`, page.url()).href);
+  await page.reload();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const dialog = page.getByRole("region", { name: /환불 요청 처리/ });
   await expect(dialog).toContainText("마음이 바뀌었어요");
   await dialog.getByRole("button", { name: "거절", exact: true }).click();
   const confirm = dialog.getByRole("button", { name: "거절 처리" });
@@ -54,10 +58,11 @@ test("거절: 사유를 적어야 확정할 수 있고, 거절 탭에 사유와 
   await dialog.getByLabel("거절 사유").fill("이미 포장을 시작했습니다");
   await confirm.click();
   await expect(page.getByText("환불 요청을 거절했습니다")).toBeVisible();
+  await page.getByRole("button", { name: "목록으로", exact: true }).click();
   await expect(rowOf(page, req.orderNo)).toHaveCount(0);
   await page.getByRole("tab", { name: /거절/ }).click();
-  await rowOf(page, req.orderNo).getByRole("button", { name: "처리" }).or(rowOf(page, req.orderNo).getByRole("button", { name: "보기" })).click();
-  await expect(page.getByRole("dialog", { name: /환불 요청 처리/ })).toContainText("이미 포장을 시작했습니다");
+  await rowOf(page, req.orderNo).getByRole("link", { name: "처리" }).or(rowOf(page, req.orderNo).getByRole("link", { name: "보기" })).click();
+  await expect(page.getByRole("region", { name: /환불 요청 처리/ })).toContainText("이미 포장을 시작했습니다");
   expect(await refundRequestInDb(req.id)).toMatchObject({ status: "REJECTED", rejectReason: "이미 포장을 시작했습니다", orderStatus: "PAID" });
 });
 
@@ -66,8 +71,8 @@ test("승인: 사유 주체를 확인하고 금액에 동의해야 실행되며,
   const req = await createRefundRequestInDb(order, "CHANGE_OF_MIND");
   created.push(req.id);
   await open(page);
-  await rowOf(page, req.orderNo).getByRole("button", { name: "처리" }).click();
-  const dialog = page.getByRole("dialog", { name: /환불 요청 처리/ });
+  await rowOf(page, req.orderNo).getByRole("link", { name: "처리" }).click();
+  const dialog = page.getByRole("region", { name: /환불 요청 처리/ });
   // 단순 변심이면 구매자 사정이 미리 골라져 있다
   await expect(dialog.getByRole("radio", { name: /구매자 사정/ })).toBeChecked();
   await expect(dialog.getByTestId("rr-cash")).toContainText(/현금 환불 [\d,]+원/);
@@ -78,6 +83,7 @@ test("승인: 사유 주체를 확인하고 금액에 동의해야 실행되며,
   await expect(run).toBeEnabled();
   await run.click();
   await expect(page.getByText(/환불을 승인했습니다 · [\d,]+원 환불을 요청했습니다/)).toBeVisible();
+  await page.getByRole("button", { name: "목록으로", exact: true }).click();
   await expect(rowOf(page, req.orderNo)).toHaveCount(0);
   await page.getByRole("tab", { name: /승인/ }).click();
   await expect(rowOf(page, req.orderNo)).toBeVisible();

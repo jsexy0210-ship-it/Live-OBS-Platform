@@ -69,7 +69,7 @@ test("대표자: 목록·상태, 새 연결 시작(지원 밖 주소 거절 포�
   await page.screenshot({ path: "tests/e2e/screenshots/external-shops-sa006-1440.png", fullPage: true });
 
   // 지원 밖 주소는 인증으로 넘어가기 전에 거절
-  await page.getByRole("button", { name: "쇼핑몰 추가 연결" }).click();
+  await page.getByRole("link", { name: "쇼핑몰 추가 연결" }).click();
   await page.getByLabel("쇼핑몰 주소").fill("https://evil.example.com");
   await page.getByRole("button", { name: "이 주소로 연결 시작하기" }).click();
   const startDialog = page.getByRole("dialog", { name: "이 쇼핑몰을 연결하시겠습니까?" });
@@ -89,21 +89,26 @@ test("대표자: 목록·상태, 새 연결 시작(지원 밖 주소 거절 포�
 
   // 다시 연결: 그 연결의 쇼핑몰로 인증 시작
   await page.goto("/seller/external-shops");
-  await page.getByTestId("external-row").filter({ hasText: "e2e-reauth" }).getByRole("button", { name: "다시 연결" }).click();
+  await page.getByTestId("external-row").filter({ hasText: "e2e-reauth" }).getByRole("link", { name: "연결 상세", exact: true }).click();
+  await page.getByTestId("external-detail").getByRole("button", { name: "다시 연결" }).click();
   await Promise.all([page.waitForURL(/e2e-reauth\.cafe24api\.com\/api\/v2\/oauth\/authorize\?/), page.getByRole("dialog", { name: /e2e-reauth 연결을 다시 하시겠습니까/ }).getByRole("button", { name: "다시 연결하기" }).click()]);
 
   // 해제: 확인 창 → 유지는 아무 일도 없고, 해제하면 쇼핑몰 응답이 없어 끊는 중이 된다
   await page.goto("/seller/external-shops");
   const row = page.getByTestId("external-row").filter({ hasText: "e2e-connected" });
-  await row.getByRole("button", { name: "연결 해제" }).click();
+  await row.getByRole("link", { name: "연결 상세", exact: true }).click();
+  const detail = page.getByTestId("external-detail");
+  await detail.getByRole("button", { name: "연결 해제" }).click();
   const offDialog = page.getByRole("dialog", { name: "e2e-connected 연결을 해제하시겠습니까?" });
   await expect(offDialog).toBeVisible();
   await page.screenshot({ path: "tests/e2e/screenshots/external-shops-sa006-confirm-1440.png", fullPage: true });
   await offDialog.getByRole("button", { name: "취소" }).click();
   await expect(offDialog).toHaveCount(0);
   expect((await db.externalShopConnection.findUniqueOrThrow({ where: { id: ids["e2e-connected"] } })).status).toBe("CONNECTED");
-  await row.getByRole("button", { name: "연결 해제" }).click();
+  await detail.getByRole("button", { name: "연결 해제" }).click();
   await offDialog.getByRole("button", { name: "연결 해제" }).click();
+  await expect(detail).toContainText("끊는 중");
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
   await expect(page.getByTestId("external-row").filter({ hasText: "e2e-connected" })).toContainText("끊는 중");
   expect((await db.externalShopConnection.findUniqueOrThrow({ where: { id: ids["e2e-connected"] } })).status).toBe("DISCONNECT_PENDING");
 });
@@ -126,7 +131,7 @@ test("쇼핑몰 설정 권한이 없는 직원은 목록을 받지 못하고 연
   await expect(page.getByTestId("external-forbidden")).toContainText("쇼핑몰 설정 권한이 있는 직원만 볼 수 있습니다");
   await expect(page.getByText("연동 정보를 불러오지 못했습니다")).toHaveCount(0);
   await expect(page.getByTestId("external-row")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "쇼핑몰 추가 연결" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "쇼핑몰 추가 연결" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "연결 해제" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "다시 연결" })).toHaveCount(0);
 });

@@ -234,6 +234,8 @@ test("실패 재시도: 확인 창을 거치고 결과를 건수로 알린다(�
     await page.route("**/api/seller/reward-ledger/retry", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ requested: 1, result: { settled: 0, failed: 1, skipped: null } }) }));
     await page.reload();
     await expect(page.getByTestId("ledger-live-off")).toHaveCount(0);
+    await page.getByRole("link", { name: "실패 1건 재시도" }).click();
+    await expect(page).toHaveURL(/\/seller\/rewards\/ledger\/retry\?/);
     await page.getByRole("button", { name: "실패 1건 재시도" }).click();
     const dialog = page.getByRole("dialog", { name: "실패 1건을 다시 시도하시겠습니까?" });
     await expect(dialog).toContainText("잔액이 모자라 실패한 회수는 다시 실패로 남을 수 있습니다");
@@ -243,5 +245,68 @@ test("실패 재시도: 확인 창을 거치고 결과를 건수로 알린다(�
     await expect(page.getByText("실패 1건 중 0건 성공 · 1건 다시 실패")).toBeVisible();
   } finally {
     await withDb((db, sellerId) => db.rewardPolicy.updateMany({ where: { sellerId }, data: { livePayoutEnabled: false } }));
+  }
+});
+
+
+test("재시도는 전체 실패 업무와 과거 단건 상세에서만 실행하고 부분 결과·권한·복귀를 보존한다", async ({ page }) => {
+  const id = "33333333-3333-4333-8333-333333333333", memberId = "44444444-4444-4444-8444-444444444444";
+  let live = true, failed = 201, detailStatus = 200;
+  const entry = { id, member: { id: memberId, broadcastNickname: "소유 원장" }, kind: "REVOKE", amount: -1350, status: "FAILED", failureReason: "잔액 부족", reason: null, balanceAfter: null, order: null, testMode: false, createdAt: "2026-10-19T01:00:00Z" };
+  const posts: unknown[] = [], pages: (string | null)[] = [];
+  const summary = () => ({ pending: { count: 0, amount: 0 }, todaySucceeded: { count: 0, amount: 0 }, failed: { count: failed, amount: failed * 1350 }, todayRevoked: { count: 0, amount: 0 }, issuedBalance: 700 });
+  await page.route(url => url.pathname === "/api/seller/reward-ledger", route => { const cursor = new URL(route.request().url()).searchParams.get("cursor"); pages.push(cursor); return route.fulfill({ json: { entries: cursor ? [entry] : Array.from({ length: 10 }, (_, i) => ({ ...entry, id: `33333333-3333-4333-8333-${String(i).padStart(12, "0")}`, status: "SUCCEEDED" })), nextCursor: cursor ? null : "owned-page2" } }); });
+  await page.route("**/api/seller/reward-ledger/summary", route => route.fulfill({ json: { summary: summary() } }));
+  await page.route("**/api/seller/reward-live-payout", route => route.fulfill({ json: { livePayout: { enabled: live } } }));
+  await page.route(url => url.pathname === `/api/seller/reward-ledger/${id}`, route => detailStatus === 200 ? route.fulfill({ json: { entry } }) : route.fulfill({ status: detailStatus, json: { error: detailStatus === 404 ? "not_found" : "unavailable" } }));
+  await page.route("**/api/seller/reward-ledger/retry", route => { const body = route.request().postDataJSON(); posts.push(body); failed = 2; return route.fulfill({ json: { requested: body.ids ? 1 : 200, result: { settled: body.ids ? 0 : 199, failed: 1, skipped: null } } }); });
+  await open(page);
+  await expect(page.getByRole("link", { name: "실패 201건 재시도", exact: true })).toBeVisible();
+  expect(posts).toEqual([]);
+  await page.getByRole("link", { name: "실패 201건 재시도", exact: true }).click();
+  await page.getByRole("button", { name: "실패 201건 재시도", exact: true }).click();
+  const confirm = page.getByRole("dialog");
+  await expect(confirm).toContainText("성공한 줄은 바뀌지 않습니다");
+  await confirm.getByRole("button", { name: "다시 시도", exact: true }).click();
+  await expect(page.getByText("실패 200건 중 199건 성공 · 1건 다시 실패", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "실패 2건 재시도", exact: true })).toBeVisible();
+  expect(posts).toEqual([{}]);
+  await page.getByRole("button", { name: "목록으로", exact: true }).click();
+  await page.getByRole("button", { name: "다음", exact: true }).click();
+  const single = page.getByRole("link", { name: "소유 원장 지급 재시도", exact: true });
+  const href = await single.getAttribute("href");
+  await single.click();
+  await expect(page).toHaveURL(href!);
+  await page.reload();
+  const detail = page.getByRole("region", { name: "지급 재시도 대상" });
+  await expect(detail).toContainText("−1,350원");
+  await expect(detail).toContainText("잔액 부족");
+  await detail.getByRole("button", { name: "실패한 지급 재시도", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "다시 시도", exact: true }).click();
+  await expect(page.getByText("실패 1건 중 0건 성공 · 1건 다시 실패", { exact: true })).toBeVisible();
+  expect(posts).toEqual([{}, { ids: [id] }]);
+  await page.getByRole("button", { name: "목록으로", exact: true }).click();
+  await expect(page.getByTestId("ledger-row")).toHaveCount(1);
+  expect(pages.at(-1)).toBe("owned-page2");
+  live = false;
+  await page.goto(href!);
+  await expect(page.getByRole("button", { name: "실패한 지급 재시도", exact: true })).toBeDisabled();
+  const me = await (await page.request.get("/api/seller/me")).json();
+  await page.route("**/api/seller/me", route => route.fulfill({ json: { ...me, isOwner: false, permissions: ["MEMBER_POINTS"], readOnly: true } }));
+  live = true;
+  await page.reload();
+  await expect(detail).toBeVisible();
+  await expect(page.getByRole("button", { name: "실패한 지급 재시도", exact: true })).toHaveCount(0);
+  await page.unroute("**/api/seller/me");
+  for (const status of [404, 503]) { detailStatus = status; await page.reload(); await expect(page.getByRole("button", { name: "실패한 지급 재시도", exact: true })).toHaveCount(0); await expect(page.getByRole("button", { name: "다시 시도", exact: true })).toBeVisible(); }
+  detailStatus = 200; failed = 0;
+  await page.goto("/seller/rewards/ledger/retry");
+  await expect(page.getByRole("button", { name: "재시도할 실패 없음", exact: true })).toBeDisabled();
+  expect(posts).toHaveLength(2);
+  for (const stored of [JSON.stringify({ scope: "different", page: 2, cursors: [null, "owned-page2"] }), "invalid-json"]) {
+    await page.evaluate(value => sessionStorage.setItem("onq:reward-ledger:return", value), stored);
+    await page.goto("/seller/rewards/ledger?period=all&q=owned");
+    await expect(page.getByTestId("ledger-row")).toHaveCount(10);
+    expect(await page.evaluate(() => sessionStorage.getItem("onq:reward-ledger:return"))).toBeNull();
   }
 });
