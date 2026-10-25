@@ -55,6 +55,8 @@ readonly_exact_active_ref() {
     [ -d "$proc" ] || continue
     if [ ! -r "$proc/fd" ]; then incomplete=1; continue; fi
     for entry in "$proc"/cwd "$proc"/root "$proc"/exe "$proc"/fd/*; do
+      # An empty readable fd directory leaves this literal glob, not a lost entry.
+      if [ "$entry" = "$proc/fd/*" ] && [ ! -e "$entry" ] && [ ! -L "$entry" ]; then continue; fi
       if [ ! -e "$entry" ] && [ ! -L "$entry" ]; then incomplete=1; continue; fi
       if ! path="$(readlink -- "$entry" 2>/dev/null)"; then incomplete=1; continue; fi
       if readonly_path_within "${path% (deleted)}" "$target"; then found=1; break 2; fi
