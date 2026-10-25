@@ -2,7 +2,8 @@
 set -euo pipefail
 
 script="$(dirname "$0")/disk-cleanup.sh"
-source <(sed -n '/^readonly_path_within()/,/^}/p; /^readonly_exact_active_ref()/,/^}/p; /^readonly_space_details()/,/^}/p' "$script")
+. "$(dirname "$0")/checkout-readonly-guards.sh"
+source <(sed -n '/^readonly_space_details()/,/^}/p' "$script")
 
 readonly_path_within / /opt/obs/src/.next && exit 1
 readonly_path_within /opt/obs/src /opt/obs/src/.next && exit 1

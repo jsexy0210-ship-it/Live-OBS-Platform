@@ -1,0 +1,71 @@
+name: Cache-only cleanup obs-test
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "preview = 고정 .next/cache의 오래된 파일만 확인, apply = 동일 preview만 정리"
+        type: choice
+        required: true
+        default: preview
+        options: [preview, apply]
+      expected_preview:
+        description: "apply 시 직전 preview_sha256 (변경된 후보는 보존)"
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-obs-test
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    if: github.ref == 'refs/heads/main' && github.repository == 'jsexy0210-ship-it/Live-OBS-Platform'
+    runs-on: [self-hosted, obs-kakao]
+    environment: obs-test
+    timeout-minutes: 5
+    steps:
+      - name: Reserve isolated checkout
+        id: isolated
+        shell: bash
+        run: |
+          set -euo pipefail
+          workspace="$(realpath -e -- "${GITHUB_WORKSPACE:?}")"
+          [[ -d "$workspace" && "$workspace" != / ]] || exit 1
+          name="cache-only-${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}"
+          [[ "$name" =~ ^cache-only-[0-9]+-[0-9]+$ ]] || exit 1
+          target="$workspace/$name"
+          [[ ! -e "$target" && ! -L "$target" ]] || exit 1
+          mkdir -- "$target"
+          [[ "$(realpath -e -- "$target")" == "$target" ]] || exit 1
+          printf 'path=%s\n' "$name" >> "$GITHUB_OUTPUT"
+      - name: Checkout ops source
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          path: ${{ steps.isolated.outputs.path }}
+          clean: false
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ops/cache-only-cleanup.py
+            scripts/ops/checkout-readonly-guards.sh
+          sparse-checkout-cone-mode: false
+      - name: Preview or clean checkout cache files
+        working-directory: ${{ github.workspace }}/${{ steps.isolated.outputs.path }}
+        env:
+          CACHE_MODE: ${{ inputs.mode }}
+          EXPECTED_PREVIEW: ${{ inputs.expected_preview }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          # No deploy, broad cleanup, BuildKit prune, image, backup, DB or log command.
+          code=0
+          out="$(python3 scripts/ops/cache-only-cleanup.py --mode "$CACHE_MODE" --expected-preview "$EXPECTED_PREVIEW")" || code=$?
+          printf '%s\n' "$out"
+          msg="${out//'%'/'%25'}"; msg="${msg//$'\r'/'%0D'}"; msg="${msg//$'\n'/'%0A'}"
+          echo "::notice title=cache-only ${CACHE_MODE} (exit ${code})::${msg}"
+          exit "$code"
