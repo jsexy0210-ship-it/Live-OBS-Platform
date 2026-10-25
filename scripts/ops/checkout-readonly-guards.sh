@@ -97,4 +97,3 @@ readonly_live_app_ref_for_target() {
   done <<<"$sources"
   [ "$unresolved" = 0 ] && printf 'no' || printf 'UNKNOWN'
 }
-
