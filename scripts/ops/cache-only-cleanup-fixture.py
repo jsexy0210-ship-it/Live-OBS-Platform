@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import tempfile
 import time
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -102,7 +103,7 @@ class CacheOnlyFixture(unittest.TestCase):
 
     def test_container_reference_is_preserved(self):
         responses = ['a' * 12, json.dumps([{'Source': str(self.root), 'Destination': '/app'}])]
-        with patch.object(cache, 'guard', side_effect=['no', 'same']), patch.object(cache, 'run', side_effect=responses), self.assertRaises(cache.Preserve):
+        with patch.object(cache, 'mapped_reference', return_value='no'), patch.object(cache, 'guard', side_effect=['no', 'same']), patch.object(cache, 'run', side_effect=responses), self.assertRaises(cache.Preserve):
             cache.references(self.root)
 
     def test_no_buildkit_or_broad_cleanup_subprocess(self):
@@ -112,7 +113,7 @@ class CacheOnlyFixture(unittest.TestCase):
             if argv[:3] == ['docker', 'ps', '-aq']:
                 return ''
             raise AssertionError('Unexpected daemon command')
-        with patch.object(cache, 'guard', side_effect=['no', 'same']), patch.object(cache, 'run', side_effect=fake_run), self.assertRaises(cache.Preserve):
+        with patch.object(cache, 'mapped_reference', return_value='no'), patch.object(cache, 'guard', side_effect=['no', 'same']), patch.object(cache, 'run', side_effect=fake_run), self.assertRaises(cache.Preserve):
             cache.references(self.root)
         self.assertTrue(commands)
         self.assertTrue(all(c[:3] == ['docker', 'ps', '-aq'] for c in commands))
@@ -132,19 +133,38 @@ class CacheOnlyFixture(unittest.TestCase):
         self.assertEqual(report['deleted_files'], 1 if os.name == 'posix' else 0)
         self.assertTrue((self.root.parent / 'backups/keep.dump').exists())
 
+    def maps_fixture(self, content):
+        proc = self.root.parent / 'proc'
+        (proc / '123').mkdir(parents=True)
+        if content is not None:
+            (proc / '123/maps').write_text(content)
+        return proc
+
+    def test_closed_fd_mapped_cache_is_preserved(self):
+        proc = self.maps_fixture('0100-0200 r--p 00000000 01:01 1 ' + str(self.old) + '\n')
+        self.assertEqual(cache.mapped_reference(self.root, proc), 'yes')
+
+    def test_unreadable_maps_are_unknown(self):
+        self.assertEqual(cache.mapped_reference(self.root, self.maps_fixture(None)), 'UNKNOWN')
+
+    def test_unrelated_maps_do_not_claim_checkout_reference(self):
+        proc = self.maps_fixture('0100-0200 r--p 00000000 01:01 1 /unrelated/library.so\n')
+        self.assertEqual(cache.mapped_reference(self.root, proc), 'no')
+
     def git_read(self, argv):
         self.assertEqual(argv[0], 'git')
         if 'rev-parse' in argv:
             return self.head
         return ''
 
-    def invoke(self, mode, expected='', guard_value='ONQ clean', fresh_change=False):
+    def invoke(self, mode, expected='', guard_value='ONQ clean', fresh_change=False, protected_side_effect=None):
         env = {'GITHUB_ACTIONS': 'true', 'GITHUB_EVENT_NAME': 'workflow_dispatch',
                'GITHUB_REF': 'refs/heads/main', 'GITHUB_REPOSITORY': cache.REPOSITORY,
                'GITHUB_WORKFLOW': 'Cache-only cleanup obs-test'}
         output = io.StringIO()
         with patch.object(cache, 'ROOT', self.root), patch.dict(os.environ, env, clear=True), \
              patch.object(cache, 'guard', return_value=guard_value), patch.object(cache, 'run', side_effect=self.git_read), \
+             patch.object(cache, 'protected_state', return_value={'backups': 'backup-hash', 'images': 'image-hash', 'health': [200, 'ok', 'ok', self.head]}, side_effect=protected_side_effect), \
              patch.object(cache, 'references'), patch.object(cache.time, 'time', return_value=self.now), \
              patch('sys.argv', ['cache-only', '--mode', mode, '--expected-preview', expected]), \
              contextlib.redirect_stdout(output):
@@ -198,6 +218,46 @@ class CacheOnlyFixture(unittest.TestCase):
         _, result = self.invoke('preview', guard_value='ONQ dirty')
         self.assertEqual(result['reason'], 'CHECKOUT_IDENTITY_OR_DIRTY')
         self.assertTrue(self.old.exists())
+
+    def test_protection_read_failure_prevents_cleanup(self):
+        _, result = self.invoke('apply', '0' * 64, protected_side_effect=cache.Preserve('IMAGE_METADATA_UNKNOWN'))
+        self.assertFalse(result['preservation_before_verified'])
+        self.assertEqual(result['deleted_files'], 0)
+        self.assertTrue(self.old.exists())
+
+    def test_after_protection_read_failure_is_reported(self):
+        baseline = {'backups': 'backup-hash', 'images': 'image-hash', 'health': [200, 'ok', 'ok', self.head]}
+        code, result = self.invoke('preview', protected_side_effect=[baseline, cache.Preserve('READ_COMMAND_FAILED')])
+        self.assertEqual(code, 1)
+        self.assertTrue(result['preservation_before_verified'])
+        self.assertFalse(result['preservation_after_verified'])
+        self.assertEqual(result['deleted_files'], 0)
+
+    def test_changed_health_is_reported_without_values(self):
+        baseline = {'backups': 'backup-hash', 'images': 'image-hash', 'health': [200, 'ok', 'ok', self.head]}
+        changed = {**baseline, 'health': [200, 'ok', 'ok', '2' * 40]}
+        code, result = self.invoke('preview', protected_side_effect=[baseline, changed])
+        self.assertEqual(code, 1)
+        self.assertFalse(result['health_unchanged'])
+        self.assertTrue(result['db_health_unchanged'])
+        self.assertNotIn('2' * 40, json.dumps(result))
+
+    def test_readonly_preservation_fingerprints(self):
+        def daemon(argv):
+            if argv[1:3] == ['context', 'inspect']:
+                return json.dumps('unix:///var/run/docker.sock')
+            self.assertEqual(argv[1:3], ['image', 'ls'])
+            return json.dumps({'ID': 'sha256:' + 'a' * 64, 'Repository': 'fixture', 'Tag': 'keep', 'Digest': '<none>'})
+        response = SimpleNamespace(status=200, read=lambda limit: json.dumps({'status': 'ok', 'db': 'ok', 'version': self.head}).encode())
+        connection = SimpleNamespace(request=lambda method, route: self.assertEqual((method, route), ('GET', '/api/health')),
+                                     getresponse=lambda: response, close=lambda: None)
+        with patch.object(cache, 'run', side_effect=daemon), patch.object(cache.http.client, 'HTTPConnection', return_value=connection):
+            before = cache.protected_state(self.root)
+            (self.root.parent / 'backups/keep.dump').write_text('external backup changed')
+            after = cache.protected_state(self.root)
+        self.assertNotEqual(before['backups'], after['backups'])
+        self.assertEqual(before['images'], after['images'])
+        self.assertEqual(before['health'], after['health'])
 
 
 if __name__ == '__main__':

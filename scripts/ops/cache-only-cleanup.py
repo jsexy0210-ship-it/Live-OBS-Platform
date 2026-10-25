@@ -8,6 +8,7 @@ are deliberately outside this program. No broad cleanup script is imported.
 """
 import argparse
 import hashlib
+import http.client
 import json
 import os
 from pathlib import Path
@@ -59,6 +60,68 @@ def canonical(path):
             raise Preserve('PATH_ALIAS_OR_SYMLINK')
 
 
+def mapped_reference(root, proc_root=Path('/proc')):
+    seen = False
+    try:
+        for proc in proc_root.iterdir():
+            if not proc.name.isdecimal():
+                continue
+            seen = True
+            for line in (proc / 'maps').read_text().splitlines():
+                parts = line.split(maxsplit=5)
+                if len(parts) < 5:
+                    return 'UNKNOWN'
+                if len(parts) == 6 and parts[5].startswith('/'):
+                    mapped = Path(parts[5].removesuffix(' (deleted)'))
+                    if mapped == root or root in mapped.parents:
+                        return 'yes'
+        return 'no' if seen else 'UNKNOWN'
+    except OSError:
+        return 'UNKNOWN'
+
+
+def protected_state(root):
+    # Metadata only. Neither backup contents nor image/health values are logged.
+    if os.environ.get('DOCKER_HOST') or os.environ.get('DOCKER_CONTEXT'):
+        raise Preserve('DOCKER_CONTEXT_OVERRIDE_UNKNOWN')
+    endpoint = json.loads(run(['docker', 'context', 'inspect', '--format', '{{json .Endpoints.docker.Host}}']))
+    if endpoint != 'unix:///var/run/docker.sock':
+        raise Preserve('LOCAL_DOCKER_CONTEXT_UNVERIFIED')
+    backups = root.parent / 'backups'
+    canonical(backups)
+    backup_records = []
+    for item in backups.iterdir():
+        info = item.lstat()
+        if not stat.S_ISREG(info.st_mode):
+            raise Preserve('BACKUP_METADATA_SCOPE_UNKNOWN')
+        backup_records.append([item.name, signature(info)])
+    images = []
+    raw = run(['docker', 'image', 'ls', '--no-trunc', '--digests', '--format', '{{json .}}'])
+    for line in raw.splitlines():
+        record = json.loads(line)
+        images.append([record[key] for key in ('ID', 'Repository', 'Tag', 'Digest')])
+    if not images or not all(all(isinstance(value, str) for value in row) for row in images):
+        raise Preserve('IMAGE_METADATA_UNKNOWN')
+    connection = http.client.HTTPConnection('127.0.0.1', timeout=10)
+    try:
+        connection.request('GET', '/api/health')
+        response = connection.getresponse()
+        body = response.read(65537)
+        if len(body) > 65536:
+            raise Preserve('HEALTH_SCHEMA')
+        health = json.loads(body)
+        stable = [response.status, health['status'], health['db'], health['version']]
+        if stable[:3] != [200, 'ok', 'ok'] or not isinstance(stable[3], str) or not re.fullmatch(r'[0-9a-f]{40}', stable[3]):
+            raise Preserve('APP_OR_DB_NOT_HEALTHY')
+    except http.client.HTTPException:
+        raise Preserve('HEALTH_QUERY_FAILED') from None
+    finally:
+        connection.close()
+    def fingerprint(records):
+        return hashlib.sha256(json.dumps(sorted(records), sort_keys=True).encode()).hexdigest()
+    return {'backups': fingerprint(backup_records), 'images': fingerprint(images), 'health': stable}
+
+
 def snapshot(root, now):
     target = root / REL
     canonical(root)
@@ -98,6 +161,8 @@ def references(root):
         raise Preserve('CHECKOUT_ACTIVE_REFERENCE_OR_UNKNOWN')
     if guard('readonly_target_mount_state', root, root / REL) != 'same':
         raise Preserve('CACHE_MOUNT_OR_UNKNOWN')
+    if mapped_reference(root) != 'no':
+        raise Preserve('CHECKOUT_MAPPED_REFERENCE_OR_UNKNOWN')
     ids = run(['docker', 'ps', '-aq']).splitlines()
     for container in ids:
         if not re.fullmatch(r'[0-9a-f]{12,64}', container):
@@ -161,6 +226,7 @@ def plan(root=None):
     if state['nodes']:
         references(root)
     state['head'] = head
+    state['preservation'] = protected_state(root)
     digest = hashlib.sha256(json.dumps(state, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     return state, digest
 
@@ -232,9 +298,13 @@ def main():
     parser.add_argument('--expected-preview', default='')
     args = parser.parse_args()
     report = {'mode': args.mode, 'scope': '.next/cache files only', 'deleted_files': 0,
-              'verified_removed_file_bytes': 0, 'buildkit_deleted_records': 0}
+              'verified_removed_file_bytes': 0, 'buildkit_deleted_records': 0,
+              'preservation_before_verified': False, 'preservation_after_verified': False,
+              'backup_inventory_unchanged': None, 'image_inventory_unchanged': None,
+              'health_unchanged': None, 'db_health_unchanged': None}
     before = free_bytes()
     code = 0
+    baseline = None
     try:
         if any(os.environ.get(k) != v for k, v in {
             'GITHUB_ACTIONS': 'true', 'GITHUB_EVENT_NAME': 'workflow_dispatch',
@@ -244,6 +314,8 @@ def main():
         if os.environ.get('OBS_DEPLOY_MARK') or os.environ.get('OBS_HISTORY_FILE'):
             raise Preserve('DEPLOY_PATH_OVERRIDE_UNKNOWN')
         state, digest = plan()
+        baseline = state['preservation']
+        report['preservation_before_verified'] = True
         report.update(preview_sha256=digest, candidate_files=len(state['selected']),
                       candidate_file_bytes=sum(state['nodes'][p][5] for p in state['selected']))
         if args.mode == 'apply':
@@ -255,9 +327,24 @@ def main():
             remove_selected(ROOT, fresh, report)
         report['outcome'] = 'complete' if args.mode == 'apply' else 'preview'
     except (Preserve, OSError, ValueError, KeyError, TypeError) as error:
-        report['outcome'] = 'preserved'
+        report['outcome'] = 'partial' if report['deleted_files'] else 'preserved'
         report['reason'] = str(error) if isinstance(error, Preserve) else 'READ_OR_SCHEMA_FAILURE'
         code = 1
+    if baseline is not None:
+        try:
+            final = protected_state(ROOT)
+            report.update(backup_inventory_unchanged=baseline['backups'] == final['backups'],
+                          image_inventory_unchanged=baseline['images'] == final['images'],
+                          health_unchanged=baseline['health'] == final['health'],
+                          db_health_unchanged=baseline['health'][2] == final['health'][2])
+            report['preservation_after_verified'] = all(report[key] for key in (
+                'backup_inventory_unchanged', 'image_inventory_unchanged', 'health_unchanged', 'db_health_unchanged'))
+            if not report['preservation_after_verified']:
+                raise Preserve('PRESERVATION_CHANGED')
+        except (Preserve, OSError, ValueError, KeyError, TypeError):
+            report['preservation_after_reason'] = 'PRESERVATION_CHANGED_OR_UNVERIFIED'
+            report['outcome'] = 'verification_failed' if report['deleted_files'] else 'preserved'
+            code = 1
     after = free_bytes()
     report.update(free_before_bytes=before, free_after_bytes=after,
                   free_delta_bytes=after-before if before is not None and after is not None else None)
