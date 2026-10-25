@@ -6,6 +6,7 @@ import io
 import json
 import os
 from pathlib import Path
+import subprocess
 import tempfile
 import time
 from types import SimpleNamespace
@@ -280,17 +281,21 @@ class CacheOnlyFixture(unittest.TestCase):
                      self.assertRaisesRegex(cache.Preserve, 'TEST_SERVER_MODE_REQUIRED'):
                     cache.protected_state(self.root)
 
-    def test_only_current_helper_untracked_is_separated(self):
-        helper = self.root / 'current-helper'
+    def test_unrelated_original_untracked_is_preserved_and_fingerprinted(self):
+        evidence = self.root / 'original-evidence'
+        evidence.write_text('preserve original')
         metadata = {}
-        with patch.object(cache, 'HELPER_ROOT', helper), patch.object(cache, 'guard', return_value='ONQ dirty'), \
-             patch.object(cache, 'run', return_value='?? current-helper/\0'):
-            cache.checkout_state(self.root, metadata)
-        self.assertTrue(metadata['current_helper_untracked'])
-        self.assertFalse(metadata['foreign_untracked'])
+        with patch.object(cache, 'guard', return_value='ONQ dirty'), \
+             patch.object(cache, 'run', return_value='?? original-evidence\0'):
+            before = cache.checkout_state(self.root, metadata)
+            evidence.write_text('changed original evidence')
+            after = cache.checkout_state(self.root, {})
+        self.assertEqual(metadata['untracked_files'], 1)
+        self.assertNotEqual(before, after)
+        self.assertTrue(evidence.exists())
 
-    def test_other_untracked_or_tracked_dirty_are_preserved(self):
-        for status in ('?? current-helper/\0?? original-evidence\0', ' M app.txt\0'):
+    def test_target_untracked_or_tracked_dirty_are_preserved(self):
+        for status in ('?? .next/cache/original-evidence\0', ' M app.txt\0'):
             with self.subTest(status=status), patch.object(cache, 'HELPER_ROOT', self.root / 'current-helper'), \
                  patch.object(cache, 'guard', return_value='ONQ dirty'), patch.object(cache, 'run', return_value=status), \
                  self.assertRaises(cache.Preserve):
@@ -300,6 +305,20 @@ class CacheOnlyFixture(unittest.TestCase):
     def test_missing_runner_context_has_no_fallback(self):
         with patch.dict(os.environ, {}, clear=True), self.assertRaisesRegex(cache.Preserve, 'RUNNER_CONTEXT_MISSING'):
             cache.deployment_context({})
+
+    def test_missing_context_reports_null_space_without_fallback(self):
+        env = {'GITHUB_ACTIONS': 'true', 'GITHUB_EVENT_NAME': 'workflow_dispatch',
+               'GITHUB_REF': 'refs/heads/main', 'GITHUB_REPOSITORY': cache.REPOSITORY,
+               'GITHUB_WORKFLOW': 'Cache-only cleanup obs-test'}
+        output = io.StringIO()
+        with patch.dict(os.environ, env, clear=True), patch('sys.argv', ['cache-only']), \
+             contextlib.redirect_stdout(output):
+            self.assertEqual(cache.main(), 1)
+        result = json.loads(output.getvalue())
+        self.assertEqual(result['reason'], 'RUNNER_CONTEXT_MISSING')
+        self.assertIsNone(result['free_before_bytes'])
+        self.assertIsNone(result['free_after_bytes'])
+        self.assertEqual(result['deleted_files'], 0)
 
     def test_missing_cache_is_classified_in_one_packet(self):
         self.old.unlink()
@@ -313,29 +332,74 @@ class CacheOnlyFixture(unittest.TestCase):
         with patch.object(Path, 'lstat', side_effect=PermissionError):
             self.assertEqual(cache.node_metadata(self.root), {'known': False, 'error': 'PERMISSION_DENIED'})
 
+    def test_pinned_contents_bootstrap_schema_and_private_scope(self):
+        workflow = Path(__file__).resolve().parents[2] / '.github/workflows/cache-only-cleanup-obs-test.yml'
+        block = workflow.read_text(encoding='utf-8').split('          script: |\n', 1)[1].split('      - name:', 1)[0]
+        script = '\n'.join(line[12:] for line in block.splitlines())
+        harness = r"""
+const assert = require('node:assert/strict'), crypto = require('node:crypto'), path = require('node:path').posix;
+const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+const execute = new AsyncFunction('require', 'process', 'context', 'github', 'core', SOURCE);
+async function check(change, existing=false) {
+  const writes=[], reads=[], dirs=[], outputs=[];
+  const env={RUNNER_TEMP:'/fixture/_temp',GITHUB_RUN_ID:'123',GITHUB_RUN_ATTEMPT:'1'};
+  const fs={realpath:async p=>p,lstat:async()=>({isDirectory:()=>true,uid:1000,mode:0o700}),
+    mkdir:async(p,o)=>{if(existing)throw Error('EEXIST');dirs.push([p,o]);},
+    writeFile:async(p,b,o)=>writes.push([p,b,o])};
+  const github={rest:{repos:{getContent:async input=>{
+    reads.push(input); const body=Buffer.from('fixture source\n');
+    const data={type:'file',path:input.path,name:path.basename(input.path),encoding:'base64',size:body.length,
+      sha:crypto.createHash('sha1').update('blob '+body.length+'\0').update(body).digest('hex'),
+      content:body.toString('base64')};
+    if(change)change(data);return {data};
+  }}}};
+  const pending=execute(name=>name==='node:fs/promises'?fs:name==='node:path'?path:require(name),
+    {env,getuid:()=>1000},{sha:'a'.repeat(40),repo:{owner:'fixture',repo:'fixture'}},github,
+    {setOutput:(...args)=>outputs.push(args)});
+  if(change||existing){await assert.rejects(pending);assert.equal(writes.length,0);return;}
+  await pending;assert.equal(reads.length,2);assert.equal(writes.length,2);
+  assert(reads.every(r=>r.ref==='a'.repeat(40)));
+  assert(dirs.every(([p,o])=>p.startsWith('/fixture/_temp/cache-only-123-1')&&o.mode===0o700));
+  assert(writes.every(([p,b,o])=>p.startsWith('/fixture/_temp/cache-only-123-1/scripts/ops/')&&o.flag==='wx'&&o.mode===0o600));
+  assert.deepEqual(outputs,[['path','cache-only-123-1']]);
+}
+(async()=>{
+ await check();await check(null,true);
+ for(const change of [d=>d.path='../original',d=>d.name='other',d=>d.size++,d=>d.sha='0'.repeat(40),
+   d=>d.encoding='utf8',d=>d.content='invalid!',d=>d.type='symlink']) await check(change);
+})().catch(()=>process.exitCode=1);
+"""
+        result = subprocess.run(['node', '-e', harness.replace('SOURCE', json.dumps(script))], capture_output=True, timeout=30)
+        self.assertEqual(result.returncode, 0, 'Pinned contents bootstrap fixture failed')
+
     def test_real_checkout_helper_and_observer_flow(self):
         # Native Git + /proc fixture on the Linux CI runner; no real server or daemon.
         workspace = self.root.parent / '_work' / cache.REPOSITORY.split('/')[1] / cache.REPOSITORY.split('/')[1]
         temporary = workspace.parent.parent / '_temp'
-        helper = workspace / 'cache-only-123-1'
+        temporary.mkdir(parents=True)
+        workspace.mkdir(parents=True)
+        helper = temporary / 'cache-only-123-1'
         (helper / 'scripts/ops').mkdir(parents=True)
-        temporary.mkdir()
+        helper.chmod(0o700)
         (workspace / '.next/cache').mkdir(parents=True)
         source = helper / 'scripts/ops/cache-only-cleanup.py'
         source.write_text(Path(cache.__file__).read_text(encoding='utf-8'), encoding='utf-8')
         (helper / 'scripts/ops/checkout-readonly-guards.sh').write_text(cache.GUARDS.read_text(encoding='utf-8'), encoding='utf-8')
+        source.chmod(0o600)
+        (helper / 'scripts/ops/checkout-readonly-guards.sh').chmod(0o600)
         (workspace / '.gitignore').write_text('.next\n')
         def git(path, *args):
             return cache.run(['git', '-C', str(path), '-c', 'core.hooksPath=/dev/null',
                               '-c', 'user.name=fixture', '-c', 'user.email=fixture@example.invalid', *args])
-        for path, files in ((workspace, ['.gitignore']), (helper, ['scripts/ops'])):
+        for path, files in ((workspace, ['.gitignore']),):
             git(path, 'init', '-q')
             git(path, 'remote', 'add', 'origin', 'https://github.com/' + cache.REPOSITORY + '.git')
             git(path, 'add', '--', *files)
             git(path, 'commit', '-q', '-m', 'fixture')
-        ops_head, app_head = git(helper, 'rev-parse', 'HEAD'), git(workspace, 'rev-parse', 'HEAD')
+        ops_head, app_head = '2' * 40, git(workspace, 'rev-parse', 'HEAD')
         env = {'GITHUB_WORKSPACE': str(workspace), 'RUNNER_TEMP': str(temporary),
-               'GITHUB_RUN_ID': '123', 'GITHUB_RUN_ATTEMPT': '1', 'GITHUB_SHA': ops_head}
+               'GITHUB_RUN_ID': '123', 'GITHUB_RUN_ATTEMPT': '1', 'GITHUB_SHA': ops_head,
+               'PINNED_OPS_SHA': ops_head}
         observer_spec = importlib.util.spec_from_file_location('cache_observer_fixture', source)
         observer = importlib.util.module_from_spec(observer_spec)
         observer_spec.loader.exec_module(observer)
@@ -346,8 +410,10 @@ class CacheOnlyFixture(unittest.TestCase):
                 metadata = {}
                 observer.ROOT, observer.HELPER_ROOT = observer.deployment_context(metadata)
                 observer.checkout_state(workspace, metadata)
-                self.assertTrue(metadata['current_helper_untracked'])
+                self.assertEqual(metadata['untracked_files'], 0)
                 self.assertNotEqual(ops_head, app_head)
+                self.assertFalse((helper / '.git').exists())
+                self.assertFalse((workspace / helper.name).exists())
                 self.assertEqual(observer.BACKUPS, Path('/opt/obs/backups'))
                 self.assertEqual(observer.HISTORY, Path('/opt/obs/deploy-history.log'))
                 # The observer imports helper source and reads metadata, then closes it.

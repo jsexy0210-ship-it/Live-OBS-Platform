@@ -93,18 +93,25 @@ def deployment_context(metadata):
         raise Preserve('RUNNER_TEMP_OWNER_UNKNOWN')
     if Path.cwd() != temporary or workspace == temporary or workspace in temporary.parents:
         raise Preserve('OBSERVER_CWD_NOT_RUNNER_TEMP')
-    helper = workspace / f'cache-only-{run_id}-{attempt}'
+    helper = temporary / f'cache-only-{run_id}-{attempt}'
     source = Path(__file__).absolute()
     if source != helper / 'scripts/ops/cache-only-cleanup.py':
         raise Preserve('PINNED_HELPER_SOURCE_MISMATCH')
     canonical(helper)
     metadata['helper'] = node_metadata(helper)
-    if not metadata['helper'].get('directory') or not metadata['helper'].get('owner_matches') or metadata['helper'].get('other_writable'):
+    if (not metadata['helper'].get('directory') or not metadata['helper'].get('owner_matches')
+            or stat.S_IMODE(helper.stat().st_mode) != 0o700):
         raise Preserve('PINNED_HELPER_OWNER_UNKNOWN')
     metadata['stage'] = 'helper_identity'
-    identity = guard('readonly_checkout_git_state', helper).split()
-    helper_head = run(['git', '-C', str(helper), 'rev-parse', 'HEAD'])
-    if identity != ['ONQ', 'clean'] or helper_head != os.environ.get('GITHUB_SHA') or not re.fullmatch(r'[0-9a-f]{40}', helper_head):
+    for file in (source, GUARDS):
+        canonical(file)
+        info = file.stat()
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_nlink != 1 or stat.S_IMODE(info.st_mode) != 0o600:
+            raise Preserve('PINNED_HELPER_FILE_UNKNOWN')
+    # The official workflow fetches these two blobs at its exact SHA and verifies
+    # their Git blob hashes before execution. This is not cache-owner evidence.
+    pinned = os.environ.get('PINNED_OPS_SHA', '')
+    if pinned != os.environ.get('GITHUB_SHA') or not re.fullmatch(r'[0-9a-f]{40}', pinned):
         raise Preserve('PINNED_HELPER_IDENTITY_UNKNOWN')
     metadata.update(workspace_context_verified=True, helper_source_matches_workflow=True,
                     observer_cwd_outside_target=True)
@@ -115,22 +122,25 @@ def checkout_state(root, metadata):
     metadata['stage'] = 'workspace_git'
     identity, original_state = guard('readonly_checkout_git_state', root).split()
     metadata['repository_matches'] = identity == 'ONQ'
-    if identity != 'ONQ':
+    if identity != 'ONQ' or original_state not in ('clean', 'dirty'):
         raise Preserve('CHECKOUT_IDENTITY_OR_DIRTY')
     status = run(['git', '-C', str(root), 'status', '--porcelain=v1', '-z', '--untracked-files=all'])
-    owned = HELPER_ROOT.relative_to(root).as_posix() + '/' if HELPER_ROOT else None
-    metadata.update(tracked_dirty=False, foreign_untracked=False, current_helper_untracked=False)
+    metadata.update(tracked_dirty=False, untracked_files=0)
+    untracked = []
     for record in status.split('\0'):
         if not record:
             continue
         if not record.startswith('?? '):
             metadata['tracked_dirty'] = True
-        elif owned is not None and (record[3:] == owned or record[3:].startswith(owned)):
-            metadata['current_helper_untracked'] = True
         else:
-            metadata['foreign_untracked'] = True
-    if metadata['tracked_dirty'] or metadata['foreign_untracked'] or (original_state != 'clean' and not metadata['current_helper_untracked']):
+            rel = Path(record[3:])
+            if rel.is_absolute() or '..' in rel.parts or rel == Path('.next') or rel == REL or REL in rel.parents:
+                raise Preserve('UNTRACKED_CACHE_BOUNDARY_UNKNOWN')
+            untracked.append([rel.as_posix(), signature((root / rel).lstat())])
+    metadata['untracked_files'] = len(untracked)
+    if metadata['tracked_dirty'] or (original_state == 'dirty' and not untracked):
         raise Preserve('CHECKOUT_IDENTITY_OR_DIRTY')
+    return hashlib.sha256(json.dumps(sorted(untracked)).encode()).hexdigest()
 
 
 def mapped_reference(root, proc_root=Path('/proc')):
@@ -300,7 +310,7 @@ def plan(root=None, metadata=None):
     metadata['cache'] = node_metadata(root / REL) if parent.exists() else {'known': True, 'exists': False}
     if not metadata['cache']['known']:
         raise Preserve('CACHE_PERMISSION_UNKNOWN')
-    checkout_state(root, metadata)
+    untracked = checkout_state(root, metadata)
     head = run(['git', '-C', str(root), 'rev-parse', 'HEAD'])
     if not re.fullmatch(r'[0-9a-f]{40}', head):
         raise Preserve('CHECKOUT_HEAD_SCHEMA')
@@ -324,6 +334,7 @@ def plan(root=None, metadata=None):
         metadata['stage'] = 'current_references'
         references(root)
     state['head'] = head
+    state['untracked'] = untracked
     metadata['stage'] = 'protected_inventory'
     state['preservation'] = protected_state(root)
     metadata['stage'] = 'verified'
@@ -385,6 +396,8 @@ def remove_selected(root, state, report=None):
 
 
 def free_bytes():
+    if ROOT is None:
+        return None
     try:
         info = os.statvfs(ROOT)
         return info.f_bavail * info.f_frsize
@@ -403,7 +416,8 @@ def main():
               'verified_removed_file_bytes': 0, 'buildkit_deleted_records': 0,
               'preservation_before_verified': False, 'preservation_after_verified': False,
               'backup_inventory_unchanged': None, 'image_inventory_unchanged': None,
-              'health_unchanged': None, 'db_health_unchanged': None, 'metadata': {}}
+              'health_unchanged': None, 'db_health_unchanged': None,
+              'untracked_metadata_unchanged': None, 'metadata': {}}
     before = None
     code = 0
     baseline = None
@@ -440,12 +454,14 @@ def main():
     if baseline is not None:
         try:
             final = protected_state(ROOT)
+            report['untracked_metadata_unchanged'] = state['untracked'] == checkout_state(ROOT, {})
             report.update(backup_inventory_unchanged=baseline['backups'] == final['backups'],
                           image_inventory_unchanged=baseline['images'] == final['images'],
                           health_unchanged=baseline['health'] == final['health'],
                           db_health_unchanged=baseline['health'][2] == final['health'][2])
             report['preservation_after_verified'] = all(report[key] for key in (
-                'backup_inventory_unchanged', 'image_inventory_unchanged', 'health_unchanged', 'db_health_unchanged'))
+                'backup_inventory_unchanged', 'image_inventory_unchanged', 'health_unchanged', 'db_health_unchanged',
+                'untracked_metadata_unchanged'))
             if not report['preservation_after_verified']:
                 raise Preserve('PRESERVATION_CHANGED')
         except (Preserve, OSError, ValueError, KeyError, TypeError):

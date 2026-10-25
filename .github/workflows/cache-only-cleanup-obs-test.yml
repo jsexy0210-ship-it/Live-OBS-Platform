@@ -29,43 +29,60 @@ jobs:
     environment: obs-test
     timeout-minutes: 5
     steps:
-      - name: Reserve isolated checkout
+      - name: Read pinned ops source into private runner temp
         id: isolated
-        shell: bash
-        run: |
-          set -euo pipefail
-          workspace="$(realpath -e -- "${GITHUB_WORKSPACE:?}")"
-          [[ -d "$workspace" && "$workspace" != / ]] || exit 1
-          name="cache-only-${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}"
-          [[ "$name" =~ ^cache-only-[0-9]+-[0-9]+$ ]] || exit 1
-          target="$workspace/$name"
-          [[ ! -e "$target" && ! -L "$target" ]] || exit 1
-          mkdir -- "$target"
-          [[ "$(realpath -e -- "$target")" == "$target" ]] || exit 1
-          printf 'path=%s\n' "$name" >> "$GITHUB_OUTPUT"
-      - name: Checkout ops source
-        uses: actions/checkout@v5
+        uses: actions/github-script@v8
         with:
-          ref: ${{ github.sha }}
-          path: ${{ steps.isolated.outputs.path }}
-          clean: false
-          persist-credentials: false
-          sparse-checkout: |
-            scripts/ops/cache-only-cleanup.py
-            scripts/ops/checkout-readonly-guards.sh
-          sparse-checkout-cone-mode: false
+          script: |
+            const fs = require('node:fs/promises');
+            const path = require('node:path');
+            const crypto = require('node:crypto');
+            const temporary = process.env.RUNNER_TEMP;
+            const sha = context.sha;
+            const name = `cache-only-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}`;
+            if (!temporary || !path.isAbsolute(temporary) || temporary === '/' ||
+                await fs.realpath(temporary) !== temporary || !/^[0-9a-f]{40}$/.test(sha) ||
+                !/^cache-only-[0-9]+-[0-9]+$/.test(name)) throw new Error('Runner source context invalid');
+            const info = await fs.lstat(temporary);
+            if (!info.isDirectory() || info.uid !== process.getuid() || (info.mode & 0o022))
+              throw new Error('Runner temp ownership unknown');
+            const helper = path.join(temporary, name);
+            await fs.mkdir(helper, {mode: 0o700}); // EEXIST preserves earlier work.
+            await fs.mkdir(path.join(helper, 'scripts'), {mode: 0o700});
+            await fs.mkdir(path.join(helper, 'scripts', 'ops'), {mode: 0o700});
+            for (const file of ['scripts/ops/cache-only-cleanup.py', 'scripts/ops/checkout-readonly-guards.sh']) {
+              let data;
+              try {
+                ({data} = await github.rest.repos.getContent({...context.repo, path: file, ref: sha}));
+              } catch {
+                throw new Error('Pinned source read failed');
+              }
+              if (Array.isArray(data) || data.type !== 'file' || data.path !== file ||
+                  data.name !== path.basename(file) || data.encoding !== 'base64' ||
+                  !Number.isSafeInteger(data.size) || data.size < 1 || data.size > 1048576 ||
+                  !/^[0-9a-f]{40}$/.test(data.sha) || typeof data.content !== 'string')
+                throw new Error('Pinned source schema invalid');
+              const encoded = data.content.replace(/\n/g, '');
+              const body = Buffer.from(encoded, 'base64');
+              const blob = crypto.createHash('sha1').update(`blob ${body.length}\0`).update(body).digest('hex');
+              if (body.length !== data.size || body.toString('base64') !== encoded || blob !== data.sha)
+                throw new Error('Pinned source integrity invalid');
+              await fs.writeFile(path.join(helper, file), body, {flag: 'wx', mode: 0o600});
+            }
+            core.setOutput('path', name);
       - name: Preview or clean checkout cache files
         working-directory: ${{ runner.temp }}
         env:
           CACHE_MODE: ${{ inputs.mode }}
           EXPECTED_PREVIEW: ${{ inputs.expected_preview }}
-          PINNED_SOURCE: ${{ github.workspace }}/${{ steps.isolated.outputs.path }}/scripts/ops/cache-only-cleanup.py
+          HELPER_NAME: ${{ steps.isolated.outputs.path }}
+          PINNED_OPS_SHA: ${{ github.sha }}
         shell: bash
         run: |
           set -uo pipefail
           # No deploy, broad cleanup, BuildKit prune, image, backup, DB or log command.
           code=0
-          out="$(python3 -B "$PINNED_SOURCE" --mode "$CACHE_MODE" --expected-preview "$EXPECTED_PREVIEW")" || code=$?
+          out="$(python3 -B "${RUNNER_TEMP:?}/${HELPER_NAME:?}/scripts/ops/cache-only-cleanup.py" --mode "$CACHE_MODE" --expected-preview "$EXPECTED_PREVIEW")" || code=$?
           printf '%s\n' "$out"
           msg="${out//'%'/'%25'}"; msg="${msg//$'\r'/'%0D'}"; msg="${msg//$'\n'/'%0A'}"
           echo "::notice title=cache-only ${CACHE_MODE} (exit ${code})::${msg}"
