@@ -30,7 +30,7 @@ jobs:
           # MA120 승인 두 범주 전용 원천(preview/approved)만 추가 허용한다.
           # 그 밖의 워크플로가 self-hosted를 쓰면 실패한다.
           # `! cmd`는 set -e에서 실패로 잡히지 않으므로 if로 멈춘다
-          if grep -RIl 'self-hosted' .github/workflows/ --exclude=ci.yml --exclude=deploy-obs-test.yml --exclude=seed-obs-test.yml --exclude=deploy-obs-prod.yml --exclude=disk-cleanup-obs-test.yml --exclude=disk-optimization-preview-obs-test.yml --exclude=disk-optimization-approved-obs-test.yml; then exit 1; fi
+          if grep -RIl 'self-hosted' .github/workflows/ --exclude=ci.yml --exclude=deploy-obs-test.yml --exclude=seed-obs-test.yml --exclude=deploy-obs-prod.yml --exclude=disk-cleanup-obs-test.yml --exclude=cache-only-cleanup-obs-test.yml --exclude=disk-optimization-preview-obs-test.yml --exclude=disk-optimization-approved-obs-test.yml; then exit 1; fi
           for f in .github/workflows/deploy-obs-test.yml .github/workflows/seed-obs-test.yml .github/workflows/disk-cleanup-obs-test.yml .github/workflows/disk-optimization-preview-obs-test.yml .github/workflows/disk-optimization-approved-obs-test.yml; do
             [ -f "$f" ] || continue
             # 수동 실행 전용: workflow_dispatch 말고 다른 트리거가 있으면 실패
@@ -67,8 +67,21 @@ jobs:
             grep -q '^    runs-on: \[self-hosted, obs-prod\]$' "$f"
           fi
 
+          # Cache-only cleanup has its own manual path; it never invokes broad cleanup.
+          f=.github/workflows/cache-only-cleanup-obs-test.yml
+          grep -q '^    runs-on: \[self-hosted, obs-kakao\]$' "$f"
+          grep -q '^  group: deploy-obs-test$' "$f"
+          grep -q '^  cancel-in-progress: false$' "$f"
+          grep -q '^    environment: obs-test$' "$f"
+          grep -q '^  workflow_dispatch:$' "$f"
+          grep -Fq "if: github.ref == 'refs/heads/main' && github.repository == 'jsexy0210-ship-it/Live-OBS-Platform'" "$f"
+          if grep -Eq '^[[:space:]]*(push|pull_request|pull_request_target|schedule|workflow_run|workflow_call|repository_dispatch|issue_comment|issues|release|merge_group)[[:space:]]*:' "$f"; then exit 1; fi
+          if grep -Eq -- 'disk-cleanup\.sh|docker[[:space:]].*(prune|rmi)|(^|[[:space:]])rm[[:space:]]' "$f"; then exit 1; fi
+
       - name: Disk cleanup workflow safety fixtures
-        run: bash scripts/ops/disk-cleanup-active-ref-fixture.sh
+        run: |
+          bash scripts/ops/disk-cleanup-active-ref-fixture.sh
+          python3 -B scripts/ops/cache-only-cleanup-fixture.py
       - name: Approved disk preview safety fixture
         run: |
           bash scripts/ops/disk-optimization-plan-fixture.sh
