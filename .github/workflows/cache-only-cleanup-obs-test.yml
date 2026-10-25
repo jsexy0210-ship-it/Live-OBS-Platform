@@ -55,16 +55,17 @@ jobs:
             scripts/ops/checkout-readonly-guards.sh
           sparse-checkout-cone-mode: false
       - name: Preview or clean checkout cache files
-        working-directory: ${{ github.workspace }}/${{ steps.isolated.outputs.path }}
+        working-directory: ${{ runner.temp }}
         env:
           CACHE_MODE: ${{ inputs.mode }}
           EXPECTED_PREVIEW: ${{ inputs.expected_preview }}
+          PINNED_SOURCE: ${{ github.workspace }}/${{ steps.isolated.outputs.path }}/scripts/ops/cache-only-cleanup.py
         shell: bash
         run: |
           set -uo pipefail
           # No deploy, broad cleanup, BuildKit prune, image, backup, DB or log command.
           code=0
-          out="$(python3 scripts/ops/cache-only-cleanup.py --mode "$CACHE_MODE" --expected-preview "$EXPECTED_PREVIEW")" || code=$?
+          out="$(python3 -B "$PINNED_SOURCE" --mode "$CACHE_MODE" --expected-preview "$EXPECTED_PREVIEW")" || code=$?
           printf '%s\n' "$out"
           msg="${out//'%'/'%25'}"; msg="${msg//$'\r'/'%0D'}"; msg="${msg//$'\n'/'%0A'}"
           echo "::notice title=cache-only ${CACHE_MODE} (exit ${code})::${msg}"

@@ -17,7 +17,10 @@ import stat
 import subprocess
 import time
 
-ROOT = Path('/opt/obs/src')
+ROOT = None
+HELPER_ROOT = None
+HISTORY = Path('/opt/obs/deploy-history.log')
+BACKUPS = Path('/opt/obs/backups')
 REL = Path('.next/cache')
 REPOSITORY = 'jsexy0210-ship-it/Live-OBS-Platform'
 GUARDS = Path(__file__).with_name('checkout-readonly-guards.sh')
@@ -60,6 +63,76 @@ def canonical(path):
             raise Preserve('PATH_ALIAS_OR_SYMLINK')
 
 
+def node_metadata(path):
+    try:
+        info = path.lstat()
+        return {'known': True, 'exists': True, 'directory': stat.S_ISDIR(info.st_mode),
+                'symlink': stat.S_ISLNK(info.st_mode), 'owner_matches': info.st_uid == os.getuid(),
+                'other_writable': bool(info.st_mode & 0o022), 'accessible': os.access(path, os.R_OK | os.X_OK)}
+    except FileNotFoundError:
+        return {'known': True, 'exists': False}
+    except PermissionError:
+        return {'known': False, 'error': 'PERMISSION_DENIED'}
+
+
+def deployment_context(metadata):
+    workspace = Path(os.environ.get('GITHUB_WORKSPACE', ''))
+    temporary = Path(os.environ.get('RUNNER_TEMP', ''))
+    run_id, attempt = os.environ.get('GITHUB_RUN_ID', ''), os.environ.get('GITHUB_RUN_ATTEMPT', '')
+    if not workspace.is_absolute() or not temporary.is_absolute() or not re.fullmatch(r'[0-9]+', run_id) or not re.fullmatch(r'[0-9]+', attempt):
+        raise Preserve('RUNNER_CONTEXT_MISSING')
+    repo_name = REPOSITORY.split('/')[1]
+    if workspace != temporary.parent / repo_name / repo_name:
+        raise Preserve('RUNNER_WORKSPACE_RELATION_UNKNOWN')
+    metadata['stage'] = 'workspace'
+    metadata['workspace'] = node_metadata(workspace)
+    canonical(workspace)
+    canonical(temporary)
+    temporary_info = node_metadata(temporary)
+    if not temporary_info.get('directory') or not temporary_info.get('owner_matches') or temporary_info.get('other_writable'):
+        raise Preserve('RUNNER_TEMP_OWNER_UNKNOWN')
+    if Path.cwd() != temporary or workspace == temporary or workspace in temporary.parents:
+        raise Preserve('OBSERVER_CWD_NOT_RUNNER_TEMP')
+    helper = workspace / f'cache-only-{run_id}-{attempt}'
+    source = Path(__file__).absolute()
+    if source != helper / 'scripts/ops/cache-only-cleanup.py':
+        raise Preserve('PINNED_HELPER_SOURCE_MISMATCH')
+    canonical(helper)
+    metadata['helper'] = node_metadata(helper)
+    if not metadata['helper'].get('directory') or not metadata['helper'].get('owner_matches') or metadata['helper'].get('other_writable'):
+        raise Preserve('PINNED_HELPER_OWNER_UNKNOWN')
+    metadata['stage'] = 'helper_identity'
+    identity = guard('readonly_checkout_git_state', helper).split()
+    helper_head = run(['git', '-C', str(helper), 'rev-parse', 'HEAD'])
+    if identity != ['ONQ', 'clean'] or helper_head != os.environ.get('GITHUB_SHA') or not re.fullmatch(r'[0-9a-f]{40}', helper_head):
+        raise Preserve('PINNED_HELPER_IDENTITY_UNKNOWN')
+    metadata.update(workspace_context_verified=True, helper_source_matches_workflow=True,
+                    observer_cwd_outside_target=True)
+    return workspace, helper
+
+
+def checkout_state(root, metadata):
+    metadata['stage'] = 'workspace_git'
+    identity, original_state = guard('readonly_checkout_git_state', root).split()
+    metadata['repository_matches'] = identity == 'ONQ'
+    if identity != 'ONQ':
+        raise Preserve('CHECKOUT_IDENTITY_OR_DIRTY')
+    status = run(['git', '-C', str(root), 'status', '--porcelain=v1', '-z', '--untracked-files=all'])
+    owned = HELPER_ROOT.relative_to(root).as_posix() + '/' if HELPER_ROOT else None
+    metadata.update(tracked_dirty=False, foreign_untracked=False, current_helper_untracked=False)
+    for record in status.split('\0'):
+        if not record:
+            continue
+        if not record.startswith('?? '):
+            metadata['tracked_dirty'] = True
+        elif owned is not None and (record[3:] == owned or record[3:].startswith(owned)):
+            metadata['current_helper_untracked'] = True
+        else:
+            metadata['foreign_untracked'] = True
+    if metadata['tracked_dirty'] or metadata['foreign_untracked'] or (original_state != 'clean' and not metadata['current_helper_untracked']):
+        raise Preserve('CHECKOUT_IDENTITY_OR_DIRTY')
+
+
 def mapped_reference(root, proc_root=Path('/proc')):
     seen = False
     try:
@@ -87,7 +160,7 @@ def protected_state(root):
     endpoint = json.loads(run(['docker', 'context', 'inspect', '--format', '{{json .Endpoints.docker.Host}}']))
     if endpoint != 'unix:///var/run/docker.sock':
         raise Preserve('LOCAL_DOCKER_CONTEXT_UNVERIFIED')
-    backups = root.parent / 'backups'
+    backups = BACKUPS
     canonical(backups)
     backup_records = []
     for item in backups.iterdir():
@@ -204,21 +277,40 @@ def references(root):
         raise Preserve('DEPLOY_MARK_PRESENT_OR_UNKNOWN')
 
 
-def plan(root=None):
+def plan(root=None, metadata=None):
     root = ROOT if root is None else root
+    metadata = {} if metadata is None else metadata
+    metadata['stage'] = 'workspace'
+    metadata['workspace'] = node_metadata(root)
     canonical(root)
     if root.stat().st_uid != os.getuid() or root.stat().st_mode & 0o022:
         raise Preserve('CHECKOUT_OWNER_OR_WRITE_ACCESS')
-    identity, clean = guard('readonly_checkout_git_state', root).split()
-    if (identity, clean) != ('ONQ', 'clean'):
-        raise Preserve('CHECKOUT_IDENTITY_OR_DIRTY')
+    # Inspect only this fixed child; never follow an aliased .next to another root.
+    metadata['stage'] = 'cache_metadata'
+    parent = root / '.next'
+    metadata['cache_parent'] = node_metadata(parent)
+    if not metadata['cache_parent']['known']:
+        raise Preserve('CACHE_PARENT_PERMISSION_UNKNOWN')
+    if metadata['cache_parent'].get('symlink'):
+        raise Preserve('CACHE_PARENT_ALIAS')
+    if metadata['cache_parent'].get('exists') and not metadata['cache_parent'].get('directory'):
+        raise Preserve('CACHE_PARENT_NOT_A_DIRECTORY')
+    if parent.exists():
+        canonical(parent)
+    metadata['cache'] = node_metadata(root / REL) if parent.exists() else {'known': True, 'exists': False}
+    if not metadata['cache']['known']:
+        raise Preserve('CACHE_PERMISSION_UNKNOWN')
+    checkout_state(root, metadata)
     head = run(['git', '-C', str(root), 'rev-parse', 'HEAD'])
     if not re.fullmatch(r'[0-9a-f]{40}', head):
         raise Preserve('CHECKOUT_HEAD_SCHEMA')
+    metadata['checkout_head_matches_workflow'] = head == os.environ.get('GITHUB_SHA')
     # The server checkout need not equal this ops workflow's newer commit.
-    history = (root.parent / 'deploy-history.log').read_text()
+    metadata['stage'] = 'deploy_history'
+    history = HISTORY.read_text()
     recent = list(dict.fromkeys(reversed(re.findall(r'\bsha=([0-9a-f]{40})\b', history))))[:5]
-    if head not in recent:
+    metadata['checkout_head_in_recent_history'] = head in recent
+    if not metadata['checkout_head_in_recent_history']:
         raise Preserve('CHECKOUT_NOT_IN_RECENT_DEPLOY_HISTORY')
     if run(['git', '-C', str(root), 'ls-files', '--', REL.as_posix()]):
         raise Preserve('TRACKED_CACHE_FILE')
@@ -226,11 +318,15 @@ def plan(root=None):
     dockerignore = (root / '.dockerignore').read_text().splitlines()
     if '.next' not in dockerignore or any(line.lstrip().startswith('!') for line in dockerignore):
         raise Preserve('DOCKER_CONTEXT_EXCLUSION_UNKNOWN')
+    metadata['stage'] = 'cache_snapshot'
     state = snapshot(root, time.time())
     if state['nodes']:
+        metadata['stage'] = 'current_references'
         references(root)
     state['head'] = head
+    metadata['stage'] = 'protected_inventory'
     state['preservation'] = protected_state(root)
+    metadata['stage'] = 'verified'
     digest = hashlib.sha256(json.dumps(state, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     return state, digest
 
@@ -297,16 +393,18 @@ def free_bytes():
 
 
 def main():
+    global ROOT, HELPER_ROOT
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--mode', choices=['preview', 'apply'], default='preview')
     parser.add_argument('--expected-preview', default='')
     args = parser.parse_args()
+    ROOT, HELPER_ROOT = None, None
     report = {'mode': args.mode, 'scope': '.next/cache files only', 'deleted_files': 0,
               'verified_removed_file_bytes': 0, 'buildkit_deleted_records': 0,
               'preservation_before_verified': False, 'preservation_after_verified': False,
               'backup_inventory_unchanged': None, 'image_inventory_unchanged': None,
-              'health_unchanged': None, 'db_health_unchanged': None}
-    before = free_bytes()
+              'health_unchanged': None, 'db_health_unchanged': None, 'metadata': {}}
+    before = None
     code = 0
     baseline = None
     try:
@@ -317,7 +415,9 @@ def main():
             raise Preserve('OFFICIAL_WORKFLOW_REQUIRED')
         if os.environ.get('OBS_DEPLOY_MARK') or os.environ.get('OBS_HISTORY_FILE'):
             raise Preserve('DEPLOY_PATH_OVERRIDE_UNKNOWN')
-        state, digest = plan()
+        ROOT, HELPER_ROOT = deployment_context(report['metadata'])
+        before = free_bytes()
+        state, digest = plan(metadata=report['metadata'])
         baseline = state['preservation']
         report['preservation_before_verified'] = True
         report.update(preview_sha256=digest, candidate_files=len(state['selected']),
@@ -325,14 +425,17 @@ def main():
         if args.mode == 'apply':
             if not re.fullmatch(r'[0-9a-f]{64}', args.expected_preview) or args.expected_preview != digest:
                 raise Preserve('PREVIEW_MISMATCH')
-            fresh, fresh_digest = plan()
+            fresh, fresh_digest = plan(metadata=report['metadata'])
             if fresh_digest != digest:
                 raise Preserve('FRESH_SELECTION_CHANGED')
             remove_selected(ROOT, fresh, report)
         report['outcome'] = 'complete' if args.mode == 'apply' else 'preview'
     except (Preserve, OSError, ValueError, KeyError, TypeError) as error:
         report['outcome'] = 'partial' if report['deleted_files'] else 'preserved'
-        report['reason'] = str(error) if isinstance(error, Preserve) else 'READ_OR_SCHEMA_FAILURE'
+        report['reason'] = (str(error) if isinstance(error, Preserve) else
+                            'PATH_MISSING' if isinstance(error, FileNotFoundError) else
+                            'PERMISSION_DENIED' if isinstance(error, PermissionError) else
+                            'NOT_A_DIRECTORY' if isinstance(error, NotADirectoryError) else 'READ_OR_SCHEMA_FAILURE')
         code = 1
     if baseline is not None:
         try:
