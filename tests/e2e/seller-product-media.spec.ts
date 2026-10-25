@@ -148,6 +148,7 @@ test("상세 설명 에디터: 제목·글 꾸미기·표·구분선을 쓰고 �
   await expect(body.locator("h1")).toHaveText("스타라이트 첫 번째 박스");
   await expect(body).toContainText("방송 중 개봉은 닉네임이 나옵니다.");
   // 선택을 풀고 글 끝으로(선택한 채로 표를 넣으면 선택한 글이 표로 바뀐다)
+  await expect(body).toBeFocused();
   await body.focus();
   await body.press("Control+End");
   // Tiptap 문서 selection이 편집기 끝에 정착할 때까지 기존 문서 경계 계약을 확인한다.
