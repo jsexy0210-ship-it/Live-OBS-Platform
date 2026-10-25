@@ -110,7 +110,11 @@ def protected_state(root):
         if len(body) > 65536:
             raise Preserve('HEALTH_SCHEMA')
         health = json.loads(body)
-        stable = [response.status, health['status'], health['db'], health['version']]
+        if not isinstance(health, dict):
+            raise Preserve('HEALTH_SCHEMA')
+        if health.get('testMode') is not True:
+            raise Preserve('TEST_SERVER_MODE_REQUIRED')
+        stable = [response.status, health['status'], health['db'], health['version'], True]
         if stable[:3] != [200, 'ok', 'ok'] or not isinstance(stable[3], str) or not re.fullmatch(r'[0-9a-f]{40}', stable[3]):
             raise Preserve('APP_OR_DB_NOT_HEALTHY')
     except http.client.HTTPException:

@@ -164,7 +164,7 @@ class CacheOnlyFixture(unittest.TestCase):
         output = io.StringIO()
         with patch.object(cache, 'ROOT', self.root), patch.dict(os.environ, env, clear=True), \
              patch.object(cache, 'guard', return_value=guard_value), patch.object(cache, 'run', side_effect=self.git_read), \
-             patch.object(cache, 'protected_state', return_value={'backups': 'backup-hash', 'images': 'image-hash', 'health': [200, 'ok', 'ok', self.head]}, side_effect=protected_side_effect), \
+             patch.object(cache, 'protected_state', return_value={'backups': 'backup-hash', 'images': 'image-hash', 'health': [200, 'ok', 'ok', self.head, True]}, side_effect=protected_side_effect), \
              patch.object(cache, 'references'), patch.object(cache.time, 'time', return_value=self.now), \
              patch('sys.argv', ['cache-only', '--mode', mode, '--expected-preview', expected]), \
              contextlib.redirect_stdout(output):
@@ -226,7 +226,7 @@ class CacheOnlyFixture(unittest.TestCase):
         self.assertTrue(self.old.exists())
 
     def test_after_protection_read_failure_is_reported(self):
-        baseline = {'backups': 'backup-hash', 'images': 'image-hash', 'health': [200, 'ok', 'ok', self.head]}
+        baseline = {'backups': 'backup-hash', 'images': 'image-hash', 'health': [200, 'ok', 'ok', self.head, True]}
         code, result = self.invoke('preview', protected_side_effect=[baseline, cache.Preserve('READ_COMMAND_FAILED')])
         self.assertEqual(code, 1)
         self.assertTrue(result['preservation_before_verified'])
@@ -234,8 +234,8 @@ class CacheOnlyFixture(unittest.TestCase):
         self.assertEqual(result['deleted_files'], 0)
 
     def test_changed_health_is_reported_without_values(self):
-        baseline = {'backups': 'backup-hash', 'images': 'image-hash', 'health': [200, 'ok', 'ok', self.head]}
-        changed = {**baseline, 'health': [200, 'ok', 'ok', '2' * 40]}
+        baseline = {'backups': 'backup-hash', 'images': 'image-hash', 'health': [200, 'ok', 'ok', self.head, True]}
+        changed = {**baseline, 'health': [200, 'ok', 'ok', '2' * 40, True]}
         code, result = self.invoke('preview', protected_side_effect=[baseline, changed])
         self.assertEqual(code, 1)
         self.assertFalse(result['health_unchanged'])
@@ -248,7 +248,7 @@ class CacheOnlyFixture(unittest.TestCase):
                 return json.dumps('unix:///var/run/docker.sock')
             self.assertEqual(argv[1:3], ['image', 'ls'])
             return json.dumps({'ID': 'sha256:' + 'a' * 64, 'Repository': 'fixture', 'Tag': 'keep', 'Digest': '<none>'})
-        response = SimpleNamespace(status=200, read=lambda limit: json.dumps({'status': 'ok', 'db': 'ok', 'version': self.head}).encode())
+        response = SimpleNamespace(status=200, read=lambda limit: json.dumps({'status': 'ok', 'db': 'ok', 'version': self.head, 'testMode': True}).encode())
         connection = SimpleNamespace(request=lambda method, route: self.assertEqual((method, route), ('GET', '/api/health')),
                                      getresponse=lambda: response, close=lambda: None)
         with patch.object(cache, 'run', side_effect=daemon), patch.object(cache.http.client, 'HTTPConnection', return_value=connection):
@@ -258,6 +258,20 @@ class CacheOnlyFixture(unittest.TestCase):
         self.assertNotEqual(before['backups'], after['backups'])
         self.assertEqual(before['images'], after['images'])
         self.assertEqual(before['health'], after['health'])
+
+    def test_false_or_missing_test_mode_is_preserved(self):
+        for mode in (False, None):
+            with self.subTest(test_mode=mode):
+                health = {'status': 'ok', 'db': 'ok', 'version': self.head}
+                if mode is not None:
+                    health['testMode'] = mode
+                response = SimpleNamespace(status=200, read=lambda limit: json.dumps(health).encode())
+                connection = SimpleNamespace(request=lambda *args: None, getresponse=lambda: response, close=lambda: None)
+                image = json.dumps({'ID': 'sha256:' + 'a' * 64, 'Repository': 'fixture', 'Tag': 'keep', 'Digest': '<none>'})
+                with patch.object(cache, 'run', side_effect=[json.dumps('unix:///var/run/docker.sock'), image]), \
+                     patch.object(cache.http.client, 'HTTPConnection', return_value=connection), \
+                     self.assertRaisesRegex(cache.Preserve, 'TEST_SERVER_MODE_REQUIRED'):
+                    cache.protected_state(self.root)
 
 
 if __name__ == '__main__':
