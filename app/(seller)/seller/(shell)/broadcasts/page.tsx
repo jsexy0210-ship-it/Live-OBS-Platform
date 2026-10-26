@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import "../../../../../styles/seller-broadcast.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ListHead, ListTable, PageHead, CursorPagination, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
@@ -13,7 +14,7 @@ import { won } from "../../../../../components/seller/format";
 import { kstDuration, type BroadcastSummary } from "../../../../../components/seller/broadcast/history";
 import { LAYOUT_LABEL } from "../../../../../components/seller/broadcast/hit";
 import { formatDateTime } from "../../../../../lib/client/format";
-import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
+import { DateRangePicker } from "../../../../../components/admin-ui/DatePicker";
 
 // SA-054 방송 기록(방송별). 방송 시작일(KST) 기간으로 검색하고, 한 줄을 누르면 방송 상세(SA-055)로 간다.
 // API: GET /api/seller/broadcast/history?from=&to=&cursor=(시작 최신순 10개)
@@ -121,17 +122,18 @@ export default function BroadcastHistoryPage() {
               </section>
             )}
             <SearchBox onSearch={search} onReset={reset} busy={state.kind === "loading"}>
-              <SearchRow label="기간">
-                <DatePicker aria-label="시작일" value={draft.from} onChange={(v) => setDraft({ ...draft, from: v })} />
-                <span aria-hidden="true"> ~ </span>
-                <DatePicker aria-label="종료일" value={draft.to} onChange={(v) => setDraft({ ...draft, to: v })} />
-              </SearchRow>
-              <SearchRow label="레이아웃">
-                <select className="inp" aria-label="레이아웃" value={draft.layout} onChange={(e) => setDraft({ ...draft, layout: e.target.value })}>
-                  <option value="">전체</option>
-                  <option value="9x16">{LAYOUT_LABEL["9x16"]}</option>
-                  <option value="16x9">{LAYOUT_LABEL["16x9"]}</option>
-                </select>
+              <SearchRow
+                label="기간"
+                label2="레이아웃"
+                children2={
+                  <select className="inp" aria-label="레이아웃" value={draft.layout} onChange={(e) => setDraft({ ...draft, layout: e.target.value })}>
+                    <option value="">전체</option>
+                    <option value="9x16">{LAYOUT_LABEL["9x16"]}</option>
+                    <option value="16x9">{LAYOUT_LABEL["16x9"]}</option>
+                  </select>
+                }
+              >
+                <DateRangePicker fromLabel="시작일" toLabel="종료일" from={draft.from} to={draft.to} onChange={(r) => setDraft({ ...draft, from: r.from, to: r.to })} quick />
               </SearchRow>
             </SearchBox>
 
@@ -183,7 +185,7 @@ export default function BroadcastHistoryPage() {
                                   {b.title || "제목 없는 방송"}
                                 </Link>
                               </td>
-                              <td className="num">{formatDateTime(b.startedAt)}</td>
+                              <td className="num">{formatDateTime(b.startedAt)}{b.status === "live" ? "~" : ""}</td>
                               <td className="num">{kstDuration(b.startedAt, b.endedAt)}</td>
                               <td className="num">{b.summary.orders.toLocaleString("ko-KR")}</td>
                               <td className="num">
@@ -192,7 +194,7 @@ export default function BroadcastHistoryPage() {
                               <td className="num">{b.summary.hits}</td>
                               <td className="num">{b.summary.sales == null ? "—" : won(b.summary.sales)}</td>
                               <td data-testid="bh-layout">{b.layout ? LAYOUT_LABEL[b.layout] : "—"}</td>
-                              <td>{b.status === "live" ? <span className="bdg b-live">진행 중</span> : <span className="bdg b-done">종료</span>}</td>
+                              <td>{b.status === "live" ? <span className="bdg b-live">진행 중</span> : b.summary.orders === 0 ? <span className="bdg b-wait">종료 · 주문 없음</span> : <span className="bdg b-done">종료</span>}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -200,6 +202,7 @@ export default function BroadcastHistoryPage() {
                     </ListTable>
                   )}
                   {(cursors.length > 1 || state.next) && <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={n => void go(n, cursors[n - 1])} onNext={() => { if (state.next) void go(page + 1, state.next); }} />}
+                  <span className="t-c1 c-alt">방송 시작부터 종료까지를 한 건으로 기록합니다 · 진행 중인 방송은 맨 위에 보입니다</span>
                 </>
               )}
             </section>
