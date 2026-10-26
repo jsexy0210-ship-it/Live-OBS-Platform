@@ -590,3 +590,18 @@
 
 11개 모바일 변형의 React TSX 정본 전환은 별도 후속 PR에서 검수합니다. #1079의 HTML 검수와 구분하며 기존 HTML·생성기·원 Artifact는 이행/읽기 참조입니다. TSX와 보존 HTML의 22상태 문구·링크·요소 치수·폰트·입력값·넘침을 실제 preview에서 비교했습니다. 정본은 390px 휴대폰 상태 2개만 정의하고 1440·1024px 보드 컨테이너 확인은 제품 화면 정본 일치 판정이 아닙니다. production 기능·웹앱 3폭·배포 완료는 미판정이며 원 Artifact 새 소스 동기화는 미완료입니다.
 선택 흐름 상태: 상품 판매가 변경의 동시수정 보호 — **검증 완료**(PR #1083 로컬 보정 후보, 2026-10-07). 기준 main `8d968910`과 PR 후보를 구분합니다. 이전 `fff61404` 실제 화면에서 가격+활성 이벤트 변경/해제 2건을 재현하니 가격 409 후 event=null로 소실됐습니다(`%TEMP%/onq-price-event-before-e2e.log`). 보정은 ProductForm 사전 DELETE 제거, 가격 PATCH의 선택 event payload를 기존 rowlock 트랜잭션에 포함해 기대값→최종 할인/단가 검증→가격·이벤트·audit 원자 저장 순으로 처리합니다. event-only는 기존 PUT 덮어쓰기/DELETE를 재사용합니다. 표적 실제 PostgreSQL 통합 29건: 가격/새 원자 반례 18건(`onq-price-event-optimistic-final.log`), 기존 이벤트 10건(`onq-price-event-integration.log`), 혼합 변경의 주문 unitPrice/totalAmount·환불 수량·재고/stockMovement 불변 1건(`onq-price-event-order-snapshot.log`). 실제 화면 E2E 7건(`onq-price-event-final-e2e.log`)은 혼합 충돌/재시도 2건·event-only 서버 거절 후 보존 1건·두 가격 화면 2건·기존 가격/옵션 순서 2건이며 build가 통과했습니다(`onq-price-event-build.log`). 단위 8건은 변경 없는 입력 parser의 기존 증거(`onq-price-unit.log`)를 재사용합니다. 보정 후보 CI·독립 재검수·main 반영은 아직 완료되지 않았습니다. 기존 데모 상품 회귀는 격리 DB의 seed 조건이며 새 혼합 시험은 RUN별 상품 생성/정리로 독립입니다. 전체 폼 원자성·운영 DB·결제/환불 실행은 범위가 아닙니다.
+
+## 오픈 필수 화면 실제 동작 증거 (2026-10-26 KST, 화면 대조 PF·AU · MASTER (5) 지시)
+
+기준 main `08f34178`. 폐기용 DB(`live_obs_test`, 마이그레이션 요금제·`scripts/dev-seed.mjs` 데모 판매자)에 프로덕션 빌드를 띄워 브라우저(Playwright)로 직접 눌러 확인했습니다. 본인확인 대행사는 미계약이라 실제 인증번호는 확인하지 않았고, 가입 차단 문구 동작만 확인했습니다. 증거 이미지: `tests/e2e/screenshots/open-evidence/`.
+
+| 화면 | 실제로 한 일 | 결과 |
+| --- | --- | --- |
+| 파트너스 로그인 `/seller/login` | 틀린 비밀번호 입력 | 「이메일이나 비밀번호가 맞지 않습니다」 안내, 이동 없음 |
+| 파트너스 로그인 | 맞는 계정으로 「로그인 유지」 끄고 로그인 | `/seller`로 이동, 세션 쿠키(`lo_seller`) 만료일 없음(브라우저 종료 시 만료) |
+| 파트너스 로그인 | 「이 기기에서 로그인 유지」 켜고 로그인 | `/seller`로 이동, `lo_seller` 쿠키 만료 약 30일 |
+| 파트너스 가입 신청 `/seller/signup` → `/verify` | 약관 「모두 동의해요」 → 다음 → 본인 정보 입력 → 인증번호 문자 받기 → 확인 창 「문자 받기」 | 「본인확인 서비스 준비 중이에요」 차단 화면(`seller-signup-verify-blocked-1440.png`), 가입 진행 안 됨 |
+| 구매자 로그인 `/shop/demo-shop/login` | 화면 열기 · 틀린 비밀번호 입력 | 이메일·비밀번호·「로그인 유지」 칸(`shop-login-1440.png`), 「아이디나 비밀번호가 맞지 않아요」 안내 |
+| 구매자 회원가입 `/shop/demo-shop/signup` → `/verify` | 약관 「모두 동의」 → 다음 | 2/4 본인확인 단계가 열리고 「지금은 가입할 수 없어요. 휴대폰 본인확인 서비스를 준비하고 있어요」 안내, 입력 칸 비활성(`shop-signup-verify-blocked-1440.png`) |
+
+못 한 것: 구매자 로그인 성공(구매자 계정 생성이 본인확인에 막혀 로컬에 계정 없음) · 가입 완료 이후 단계(본인확인 계약 뒤) · 390 휴대폰 폭 확인 · CI의 E2E는 별도로 같은 흐름을 가짜 공급자로 확인.
