@@ -88,7 +88,10 @@ test("운영 담당: 감시를 조회하고 갱신하되 쓰기 동작과 내부
   page.on("request", (request) => {
     if (new URL(request.url()).pathname === "/api/admin/ops/monitor" && !["GET", "HEAD"].includes(request.method())) writes.push(request.method());
   });
-  const menu = page.getByRole("link", { name: "실시간 감시", exact: true });
+  // 홈 「운영 상태」 카드에도 같은 이름의 링크가 있어 사이드 메뉴 안에서만 찾는다
+  // 사이드 메뉴는 위쪽 「운영」 묶음을 눌러야 나온다
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "운영", exact: true }).click();
+  const menu = page.getByRole("complementary", { name: "마스터 관리자 메뉴" }).getByRole("link", { name: "실시간 감시", exact: true });
   await expect(menu).toHaveAttribute("href", "/admin/ops/monitor");
   const response = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/admin/ops/monitor" && r.request().method() === "GET");
   await menu.click();
