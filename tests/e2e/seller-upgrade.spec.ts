@@ -51,6 +51,18 @@ test.afterAll(async () => {
   });
 });
 
+// 결제할 금액은 요금 기록(런칭가·고지 시점)에 따라 달라지므로 값을 박지 않고 서버 견적을 읽는다. 화면은 그 금액을 그대로 보여야 하고, 남은 기간은 7일이다.
+async function dueNow(page: Page): Promise<number> {
+  const res = await page.request.get("/api/seller/subscription/plan/preview");
+  expect(res.status()).toBe(200);
+  const row = ((await res.json()) as { plans: { planCode: string; change: { ok: boolean; chargeNow?: number; remainingDays?: number | null; quote?: { chargeNow: number; remainingDays: number | null } } }[] }).plans.find((p) => p.planCode === "INTEGRATED");
+  const quote = row?.change.ok ? row.change : row?.change.quote;
+  expect(quote, "통합 요금제 서버 견적").toBeTruthy();
+  expect(quote!.remainingDays).toBe(7);
+  expect(quote!.chargeNow).toBeGreaterThan(0);
+  return quote!.chargeNow!;
+}
+
 async function shot(page: Page, name: string) {
   if (!SHOTS) return;
   for (const width of [1440, 1024]) {
@@ -82,7 +94,7 @@ test("오버레이 전용: 사업자·정산 정보를 채워 쇼핑몰 통합�
   const go = page.getByRole("button", { name: "쇼핑몰 통합으로 바꾸기" });
   await expect(go).toBeDisabled();
   await expect(page.getByText("필수 항목을 모두 채우면 버튼이 켜집니다")).toBeVisible();
-  await expect(page.getByText("지금 결제할 금액은 35,000원입니다 · 남은 기간 7일")).toBeVisible();
+  await expect(page.getByText(`지금 결제할 금액은 ${(await dueNow(page)).toLocaleString("ko-KR")}원입니다 · 남은 기간 7일`)).toBeVisible();
   await shot(page, "SA-005-empty");
 
   await page.getByLabel("상호").fill("달빛상회");
@@ -103,7 +115,7 @@ test("오버레이 전용: 사업자·정산 정보를 채워 쇼핑몰 통합�
   await shot(page, "SA-005-filled");
 
   // 정보를 채우기 전에도 서버 견적이 와서 결제할 금액이 보이고, 한 번 눌러 결제된다(금액은 서버 chargeNow와 같을 때만 결제)
-  await expect(page.getByText("지금 결제할 금액은 35,000원입니다 · 남은 기간 7일")).toBeVisible();
+  await expect(page.getByText(`지금 결제할 금액은 ${(await dueNow(page)).toLocaleString("ko-KR")}원입니다 · 남은 기간 7일`)).toBeVisible();
   await go.click();
   await expect(page.getByRole("status").filter({ hasText: "쇼핑몰 통합으로 바꿨습니다" })).toBeVisible();
   await expect(page.getByText("지금 바로 상품을 등록할 수 있습니다")).toBeVisible();
