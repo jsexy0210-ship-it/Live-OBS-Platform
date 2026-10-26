@@ -16,7 +16,7 @@ type Order = {
   totalAmount: number;
   createdAt: string;
   queue: { status: "WAITING" | "OPENING" | "DONE"; aheadCount: number } | null;
-  items: { productNameSnapshot: string; optionNameSnapshot: string; quantity: number; optionId?: string | null }[];
+  items: { productNameSnapshot: string; optionNameSnapshot: string; quantity: number; optionId?: string | null; orderItemId?: string | null }[];
   shipment: { status: "READY" | "IN_TRANSIT" | "DELIVERED"; courier: string; trackingNumber: string } | null;
 };
 // 보드 SH-020-PC-IA 「관리」 열: 상태별 버튼. 취소 요청은 주문 상세의 신청 칸으로 보낸다.
@@ -25,7 +25,7 @@ function actionsOf(o: Order, watchUrl: string | null, base: string): Act[] {
   const detail = `${base}/orders/${o.id}`;
   if (o.status === "PENDING_PAYMENT") return [{ kind: "link", label: "결제하기", href: detail }];
   if (o.status === "CANCELLED" || o.status === "REFUNDED") return o.items.some((i) => i.optionId) ? [{ kind: "readd", label: "다시 담기" }] : [{ kind: "link", label: "주문 상세", href: detail }];
-  if (o.shipment?.status === "DELIVERED") return [{ kind: "link", label: "리뷰 쓰기", href: `${base}/reviews` }];
+  if (o.shipment?.status === "DELIVERED") return [{ kind: "link", label: "리뷰 쓰기", href: o.items[0]?.orderItemId ? `${base}/reviews?item=${encodeURIComponent(o.items[0].orderItemId)}` : `${base}/reviews` }];
   const track = o.shipment ? trackingUrl(o.shipment.courier, o.shipment.trackingNumber) : null;
   if (o.shipment) return track ? [{ kind: "link", label: "배송 조회", href: track, external: true }] : [{ kind: "link", label: "주문 상세", href: detail }];
   const list: Act[] = [{ kind: "link", label: "취소 요청", href: detail }];
