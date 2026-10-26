@@ -159,8 +159,8 @@ test("SA054: 이번 달 요약과 목록 적용 조건을 구분하고 금액 �
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto("/seller/broadcasts?from=2026-09-01&to=2026-09-30&layout=9x16");
   const summary = page.getByTestId("bh-month-summary");
-  await expect(summary.getByRole("heading")).toContainText("이번 달 방송 요약 (KST)");
-  await expect(summary).toContainText("목록 검색 조건과 별개");
+  // 정본에는 요약 제목이 없다: 칸 이름이 「이번 달」을 말하고, 값은 아래에서 목록 조건·쪽 이동과 무관함을 확인한다
+  await expect(summary.locator(".stat .t-l2").first()).toHaveText("이번 달 방송");
   const values = summary.locator(".stat .v");
   await expect(values).toHaveText(["3회", "17건", "1,200원", "48초"]);
   await expect(summary).toContainText("2시간 0분");

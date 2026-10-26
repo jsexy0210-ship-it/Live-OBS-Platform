@@ -50,7 +50,7 @@ function forBuyer<T extends { status: string; stockShortageAt: Date | null; ship
 // 품목별 추가 값(상세·목록 공통): 다시 담기용 상품·옵션 id, 대표 사진 주소, 대기열(상태·내 순번·시각).
 // 주문 안의 품목 순서는 orderItem.id 오름차순(summarySelect의 items와 같다). 대기열은 내 품목의 상태와 「내 앞 대기 수」 숫자만 주고 다른 구매자 정보는 주지 않는다.
 type QueueView = { status: "WAITING" | "OPENING" | "DONE" | "CANCELLED"; waitingNumber: number | null; receivedAt: Date; openingStartedAt: Date | null; doneAt: Date | null; cancelledAt: Date | null };
-type ItemExtra = { productId: string; optionId: string; imageUrl: string | null; queue: QueueView | null };
+type ItemExtra = { orderItemId: string; productId: string; optionId: string; imageUrl: string | null; queue: QueueView | null };
 
 async function loadItemExtras(db: PrismaClient, sellerId: string, slug: string | undefined, orderIds: string[]): Promise<Map<string, ItemExtra[]>> {
   const out = new Map<string, ItemExtra[]>();
@@ -77,6 +77,7 @@ async function loadItemExtras(db: PrismaClient, sellerId: string, slug: string |
     const q = queueOf.get(row.id);
     const list = out.get(row.orderId) ?? [];
     list.push({
+      orderItemId: row.id,
       productId: row.productId,
       optionId: row.optionId,
       imageUrl: images.get(row.productId) ?? null,
@@ -104,7 +105,7 @@ function withExtras<T extends { id: string; items: object[] }>(view: T, extras: 
   const list = extras ?? [];
   return {
     ...view,
-    items: view.items.map((it, idx) => ({ ...it, productId: list[idx]?.productId ?? null, optionId: list[idx]?.optionId ?? null, imageUrl: list[idx]?.imageUrl ?? null, queue: list[idx]?.queue ?? null })),
+    items: view.items.map((it, idx) => ({ ...it, orderItemId: list[idx]?.orderItemId ?? null, productId: list[idx]?.productId ?? null, optionId: list[idx]?.optionId ?? null, imageUrl: list[idx]?.imageUrl ?? null, queue: list[idx]?.queue ?? null })),
     queue: queueSummary(list),
   };
 }
