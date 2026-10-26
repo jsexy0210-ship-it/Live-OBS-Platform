@@ -304,3 +304,47 @@ test("마감 알림: 기본 켜짐, 끄면 저장되고 다시 열어도 꺼져 
   await page.getByRole("checkbox", { name: "마감 1시간 전 알림" }).check();
   await saveOk(page);
 });
+
+test("무통장 입금 계좌: 틀리면 안내하고, 저장하면 다시 열어도 그대로이며, 입금 확인 화면 요약에 보인다", async ({ page }) => {
+  await openAs(page, "demo-owner@example.com");
+  const before = await page.evaluate(async () => (await (await fetch("/api/seller/payments/bank-account")).json()).account);
+  try {
+    const section = page.locator("section.au-fs").filter({ has: page.getByRole("heading", { name: "무통장 입금 계좌" }) });
+    await expect(section).toBeVisible();
+    // 틀린 계좌번호는 서버에 보내지 않고 안내한다
+    await section.getByLabel("은행").fill("시험은행");
+    await section.getByLabel("계좌번호").fill("계좌-없음");
+    await section.getByLabel("예금주").fill("별빛상사");
+    await section.getByRole("button", { name: "계좌 저장" }).click();
+    await expect(section.getByRole("alert")).toContainText("계좌번호는 숫자와 -만");
+    // 계좌 칸에서 Enter는 주문 설정 저장이 아니라 계좌 저장이다
+    const policyPut = page.waitForRequest((r) => r.method() === "PUT" && r.url().endsWith("/api/seller/order-policy"), { timeout: 1500 }).then(() => true, () => false);
+    await section.getByLabel("계좌번호").fill("110-123-456789");
+    await section.getByLabel("계좌번호").press("Enter");
+    await expect(section.getByRole("status")).toHaveText("저장 완료");
+    expect(await policyPut).toBe(false);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByLabel("계좌번호")).toHaveValue("110-123-456789");
+    await expect(page.getByLabel("예금주")).toHaveValue("별빛상사");
+    if (SHOTS) await page.screenshot({ path: "tests/e2e/screenshots/SA-063-bank-account-1440.png", fullPage: true });
+
+    // 입금 확인 화면 하단은 보기만(바꾸기는 주문 설정으로)
+    await page.goto("/seller/orders/deposits");
+    const summary = page.getByTestId("deposit-settings");
+    await expect(summary).toContainText("주문 후 24시간");
+    await expect(summary).toContainText("기한 1시간 전");
+    await expect(summary).toContainText("시험은행 110-123-456789 예금주 별빛상사");
+    await expect(summary).toContainText("준비 중");
+    await expect(summary.getByRole("textbox")).toHaveCount(0);
+    if (SHOTS) await page.screenshot({ path: "tests/e2e/screenshots/SA-026-settings-summary-1440.png", fullPage: true });
+    await page.getByRole("link", { name: "주문 설정에서 바꾸기" }).click();
+    await expect(page).toHaveURL(/\/seller\/settings\/order$/);
+  } finally {
+    if (before) {
+      await page.evaluate(async (a) => {
+        await fetch("/api/seller/payments/bank-account", { method: "PUT", headers: { "content-type": "application/json", origin: location.origin }, body: JSON.stringify(a) });
+      }, before);
+    }
+  }
+});

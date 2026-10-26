@@ -32,6 +32,82 @@ function remaining(due: string | null, now: number): { text: string; urgent: boo
   return { text: h >= 24 ? `${Math.floor(h / 24)}일 ${h % 24}시간 남음` : `${h}시간 남음`, urgent: false };
 }
 
+// 입금 기한 · 자동 취소 · 입금 계좌 요약(SA-026 정본 2026-10-26): 주문 설정(SA-063)의 값을 보기만 한다. 바꾸기는 주문 설정에서만.
+type DepositSettings = { policy: { autoCancelEnabled: boolean; paymentDueHours: number; dueReminderEnabled: boolean } | null; account: { bankName: string; accountNumber: string; accountHolder: string } | null | undefined };
+const dueLabel = (h: number) => (h % 24 === 0 && h >= 48 ? `${h / 24}일` : `${h}시간`);
+function DepositSettingsSummary() {
+  const [v, setV] = useState<DepositSettings | "loading" | "error">("loading");
+  useEffect(() => {
+    void Promise.all([api<{ policy: NonNullable<DepositSettings["policy"]> }>("/api/seller/order-policy"), api<{ account: DepositSettings["account"] }>("/api/seller/payments/bank-account")]).then(([p, a]) => {
+      setV(p.ok && a.ok ? { policy: p.data.policy, account: a.data.account } : "error");
+    });
+  }, []);
+  return (
+    <>
+      <div className="sc-sec-t">
+        입금 기한 · 자동 취소 · 입금 계좌<span className="nt"> 주문 설정의 값 · 여기서는 보기만</span>
+      </div>
+      {v === "loading" ? (
+        <LoadingRows />
+      ) : v === "error" ? (
+        <div className="msg msg-neg" role="alert">
+          <span>설정을 불러오지 못했습니다. 주문 설정에서 확인해 주십시오.</span>
+        </div>
+      ) : (
+        <table className="au-ft" data-testid="deposit-settings">
+          <tbody>
+            <tr>
+              <th>입금 기한</th>
+              <td>
+                {v.policy?.autoCancelEnabled ? (
+                  <>
+                    주문 후 {dueLabel(v.policy.paymentDueHours)} <span className="c-alt">· 기한이 지나면 자동 취소 (재고 복구 · 구매자 알림)</span>
+                  </>
+                ) : (
+                  <>
+                    자동 취소 꺼짐 <span className="c-alt">· 기한이 지나도 직접 취소하기 전까지 주문이 남습니다</span>
+                  </>
+                )}
+              </td>
+            </tr>
+            <tr>
+              <th>입금 기한 알림</th>
+              <td>
+                {v.policy?.dueReminderEnabled && v.policy.autoCancelEnabled ? "켜짐" : "꺼짐"}
+                {v.policy?.dueReminderEnabled && v.policy.autoCancelEnabled && <span className="c-alt"> · {v.policy.paymentDueHours > 24 ? "기한 하루 전" : "기한 1시간 전"} · 알림톡 · 안 되면 문자</span>}
+              </td>
+            </tr>
+            <tr>
+              <th>입금 계좌</th>
+              <td>
+                {v.account ? (
+                  `${v.account.bankName} ${v.account.accountNumber} 예금주 ${v.account.accountHolder}`
+                ) : (
+                  <>
+                    입력되지 않았습니다 <span className="c-alt">· 입력하기 전에는 무통장 입금을 받을 수 없습니다</span>
+                  </>
+                )}
+              </td>
+            </tr>
+            <tr>
+              <th>가상계좌 자동 확인</th>
+              <td>
+                <span className="bdg b-wait">준비 중</span> <span className="c-alt">주문마다 전용 계좌가 생기고 입금되면 자동 확인 · 결제 연결 뒤 제공</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      )}
+      <div className="row" style={{ gap: 8, marginTop: 8, alignItems: "center" }}>
+        <Link className="btn btn-out" href="/seller/settings/order">
+          주문 설정에서 바꾸기
+        </Link>
+        <span className="t-c1 c-alt">입금 기한 · 자동 취소 · 알림 · 입금 계좌는 주문 설정에서만 바꿉니다</span>
+      </div>
+    </>
+  );
+}
+
 export default function DepositsPage() {
   const listQuery = useSearchParams().toString();
   const returnTo = `/seller/orders/deposits${listQuery ? `?${listQuery}` : ""}`;
@@ -201,6 +277,7 @@ export default function DepositsPage() {
           )}
           {state.kind === "ok" && state.total > PAGE && <Pagination page={page} pageCount={Math.ceil(state.total / PAGE)} onChange={turnPage} />}
         </section>
+        <DepositSettingsSummary />
       </main>
 
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
