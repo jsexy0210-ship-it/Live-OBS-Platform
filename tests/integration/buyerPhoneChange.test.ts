@@ -93,6 +93,16 @@ describe("구매자 휴대폰 번호 변경 재인증", () => {
     expect(await db.auditLog.count({ where: { action: "buyer.profile.phone_change", targetId: s.buyer.id } })).toBe(1);
   });
 
+  it("쇼핑몰이 일시 정지·준비 중이어도 기존 회원은 번호를 바꿀 수 있다(닉네임·비밀번호 변경과 같은 기준)", async () => {
+    const s = await shop();
+    await db.seller.update({ where: { id: s.seller.id }, data: { operatingState: "PAUSED" } });
+    const st = await s.start();
+    expect(st.status).toBe(200);
+    expect((await s.confirm(st)).status).toBe(200);
+    expect((await s.apply(st)).status).toBe(200);
+    expect((await s.member()).phone).toBe(PERSON.phone);
+  });
+
   it("지금과 같은 번호는 시작하지 않고, 본인확인한 분과 CI가 다르면 바꾸지 못한다", async () => {
     const s = await shop();
     const same = await s.start({ ...PERSON, phone: "01012345678" });

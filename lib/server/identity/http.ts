@@ -42,7 +42,8 @@ export function identityStepRoute(step: "resend" | "confirm", purpose: IdentityV
     if (slug !== undefined) {
       const shop = await prisma.seller.findUnique({ where: { slug }, select: { id: true } });
       if (!shop || shop.id !== v.sellerId) return identityFailure("not_found", tone);
-      if (!(await shopOpen(prisma, shop.id))) {
+      // 구매자 번호 변경은 기존 회원 계정 관리라 운영 상태와 상관없이 쓴다(buyers/phoneChange.ts)
+      if (purpose !== "BUYER_PHONE_CHANGE" && !(await shopOpen(prisma, shop.id))) {
         return NextResponse.json({ error: "shop_unavailable", message: BUYER_SIGNUP_MESSAGES.shop_unavailable }, { status: 402, headers: { "cache-control": "no-store" } });
       }
     }

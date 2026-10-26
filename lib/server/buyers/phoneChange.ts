@@ -5,13 +5,13 @@ import { dbNow } from "../billing/subscription";
 import { releaseBuyerIdentityFee, reserveBuyerIdentityFee } from "../identity/fee";
 import { type IdentityProvider } from "../identity/provider";
 import { completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
-import { shopOpen } from "./signup";
 
 // 구매자 휴대폰 번호 변경 재인증(SH-024, 대표님 확정 2026-10-26, docs/COST_POLICY.md).
 // 로그인한 회원이 새 번호로 휴대폰 본인확인(BUYER_PHONE_CHANGE)을 마치면 번호와 생년월일을 바꾼다.
 // - 새 번호 본인확인 결과의 CI 해시가 회원의 ciHash와 같을 때만 바꾼다(다른 사람 명의 번호로는 못 바꾼다).
 // - 비용은 가입 본인확인과 같다: 체험 중 무료, 아니면 파트너스 발송·이용 충전금에서 시작 때 잡고(성공하면 확정), 잔액이 없으면 번호 변경만 멈춘다.
 // - 회원당 하루(KST) 3번까지 시작할 수 있다(실패 포함). 쇼핑몰 전체 한도는 없다.
+// - 기존 회원 계정 관리라 쇼핑몰이 일시 정지·구독 만료·준비 중이어도 할 수 있다(닉네임·비밀번호 변경과 같은 기준, ARCHITECTURE 4.8.0). 비용만 충전금 규칙을 따른다.
 // - 바꿔도 다른 기기 로그인 세션은 그대로 둔다. 본인확인 기록의 식별 항목은 바꾼 직후 비운다(행과 subjectId는 하루 횟수 계산에 남긴다).
 export const PHONE_CHANGE_DAILY_LIMIT = 3;
 export const BUYER_PHONE_CHANGE_IDV_COOKIE = "lo_bpc";
@@ -23,7 +23,6 @@ export const PHONE_CHANGE_MESSAGES = {
   phone_taken: "이미 다른 회원이 쓰는 번호예요",
   daily_limit_exceeded: "오늘은 번호 변경 인증을 더 할 수 없어요. 내일 다시 해 주세요",
   phone_change_unavailable: "지금은 번호를 바꿀 수 없어요. 쇼핑몰에 문의해 주세요",
-  shop_unavailable: "지금은 번호를 바꿀 수 없어요",
   identity_mismatch: "가입할 때 본인확인한 분 명의의 번호로만 바꿀 수 있어요",
   verification_pending: "인증번호 확인을 마친 뒤에 바꿀 수 있어요",
   verification_invalid: "본인확인을 처음부터 다시 해 주세요",
@@ -35,7 +34,6 @@ export const PHONE_CHANGE_STATUS: Record<PhoneChangeFailure, number> = {
   phone_taken: 409,
   daily_limit_exceeded: 429,
   phone_change_unavailable: 503,
-  shop_unavailable: 402,
   identity_mismatch: 403,
   verification_pending: 409,
   verification_invalid: 400,
@@ -47,7 +45,6 @@ type Meta = { ip?: string | null; userAgent?: string | null; now?: Date };
 
 // 본인확인 시작: 요청 기록을 만들고 새 번호로 첫 인증번호를 보낸다. 본문은 가입 본인확인과 같은 인적사항 { name, phone, birth7, carrier, device? }.
 export async function startBuyerPhoneChange(db: PrismaClient, provider: IdentityProvider, scope: Scope, rawPerson: unknown, meta: Meta = {}) {
-  if (!(await shopOpen(db, scope.sellerId))) return { ok: false as const, reason: "shop_unavailable" as const };
   const person = parseIdentityPerson(rawPerson);
   if (!person) return { ok: false as const, reason: "invalid_identity_input" as const };
   type Started = { kind: "failed"; reason: PhoneChangeFailure } | { kind: "send"; verificationId: string; ownerToken: string; now: Date };
@@ -80,7 +77,6 @@ export async function startBuyerPhoneChange(db: PrismaClient, provider: Identity
 
 // 인증번호 확인을 마친 본인확인으로 번호를 바꾼다. 본인확인은 한 번만 쓴다.
 export async function applyBuyerPhoneChange(db: PrismaClient, provider: IdentityProvider, scope: Scope, input: { verificationId: unknown; ownerToken: string | undefined }, meta: Meta = {}) {
-  if (!(await shopOpen(db, scope.sellerId))) return { ok: false as const, reason: "shop_unavailable" as const };
   const id = typeof input.verificationId === "string" ? input.verificationId : "";
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return { ok: false as const, reason: "verification_invalid" as const };
   const done = await completeIdentityVerification(db, provider, id, { sellerId: scope.sellerId, purpose: "BUYER_PHONE_CHANGE", ownerToken: input.ownerToken }, meta.now);
