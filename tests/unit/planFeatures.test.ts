@@ -91,6 +91,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/invoices/plan": "ORDER_FOLLOWUP",
   "seller/invoices/print": "ORDER_FOLLOWUP",
   "seller/members": "ORDER_FOLLOWUP",
+  "seller/members/summary": "ORDER_FOLLOWUP",
   "seller/members/[memberId]": "ORDER_FOLLOWUP",
   "seller/reward-balances": "ORDER_FOLLOWUP",
   "seller/reward-ledger": "ORDER_FOLLOWUP",
@@ -339,6 +340,7 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/reviews/public-images/[imageId]": "STORE_OPERATIONS",
   "shop/[slug]/profile": "OPEN", // 쇼핑몰 공개 정보(SA-060: 이름·소개·상단 공지·이용안내·운영 상태). 승인된 쇼핑몰만, 안내 화면에도 필요해 잠긴 쇼핑몰에서도 열림
   "shop/[slug]/home": "STORE_OPERATIONS", // 홈 진열(SA-016)
+  "shop/[slug]/home/highlights": "STORE_OPERATIONS", // 홈 이번 주 인기 카드·히어로 옆 카드
   "shop/[slug]/products": "STORE_OPERATIONS", // 구매자 상품 목록(운영 중 쇼핑몰만)
   "shop/[slug]/products/[productId]": "STORE_OPERATIONS", // 구매자 상품 상세
   "shop/[slug]/products/[productId]/reviews": "STORE_OPERATIONS",
