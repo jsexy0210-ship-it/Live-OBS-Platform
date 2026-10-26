@@ -344,7 +344,7 @@
 | SA-113-M | design/project/SA-113-M.dc.tsx | SA-113-M.dc.tsx | FINAL (모바일 변형) | React 전환 · HTML d8873227 기준 | `/mobile/SA-113-M` | design/project/SA-113-M.dc.html |
 | SA-114-M | design/project/SA-114-M.dc.tsx | SA-114-M.dc.tsx | FINAL (모바일 변형) | React 전환 · HTML d8873227 기준 | `/mobile/SA-114-M` | design/project/SA-114-M.dc.html |
 | SA-120-M | design/project/SA-120-M.dc.tsx | SA-120-M.dc.tsx | FINAL (모바일 변형) | React 전환 · HTML d8873227 기준 | `/mobile/SA-120-M` | design/project/SA-120-M.dc.html |
-| PF-003-M | design/project/PF-003-M.dc.tsx | PF-003-M.dc.tsx | 후보(모바일 변형) · FINAL 미등록 (390 두 상태: ① 정상 요금 카드 ② 요금 불러오기 실패) | PF-003.dc.tsx `PF003Mobile390` 재사용 · 2026-10-16 MASTER (5) 지시 | `/mobile/PF-003-M` | 없음(TSX 신규 · HTML 이행 없음) |
+| PF-003-M | design/project/PF-003-M.dc.tsx | PF-003-M.dc.tsx | FINAL (모바일 변형 · 390 두 상태: ① 정상 요금 카드 ② 요금 불러오기 실패 · 대표님 일괄 승인 2026-10-26) | PF-003.dc.tsx `PF003Mobile390` 재사용 · 2026-10-16 MASTER (5) 지시 | `/mobile/PF-003-M` | 없음(TSX 신규 · HTML 이행 없음) |
 
 원 Artifact 표시 시각 2026-10-06 17:56:43 KST와 현재 Git 소스의 동일 버전은 확인되지 않았다. 원 Artifact는 기존 버전 읽기 참조이며 React 전환 내용을 동기화 완료로 표기하지 않는다.
 
