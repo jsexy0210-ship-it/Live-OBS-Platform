@@ -260,7 +260,7 @@ test("상세 탭: 구독(상태 이력·청구 상세·누적), 쇼핑몰(설정
   await expect(row).toHaveCount(1);
 });
 
-test("선택 메모 일괄: 체크한 파트너스에 같은 메모가 남고, 고객 지원(CS)에게는 체크 열과 버튼이 없다", async ({ page }) => {
+test("선택 메모 일괄: 체크한 파트너스에 같은 메모가 남고, 고객 지원(CS)에게는 메모 버튼이 없다", async ({ page }) => {
   const text = `일괄 메모 ${run}`;
   await login(page, emails.super);
   await search(page, slugA);
@@ -283,6 +283,20 @@ test("선택 메모 일괄: 체크한 파트너스에 같은 메모가 남고, �
   await login(page, emails.cs);
   await search(page, slugA);
   await expect(page.getByTestId("partner-row")).toHaveCount(1);
-  await expect(page.getByRole("checkbox", { name: "이 쪽 전체 선택" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: /^선택 메모 추가/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /^선택 메모 추가/ })).toHaveCount(0); // 메모는 최고관리자·운영만
+  await expect(page.getByRole("link", { name: /^선택 공지 대상 지정/ })).toHaveCount(1); // 공지는 CS도 쓴다(체크 열은 이 버튼용)
+});
+
+test("선택 공지 대상 지정: 체크한 파트너스가 공지 작성의 특정 파트너스 대상으로 미리 들어간다", async ({ page }) => {
+  await login(page, emails.super);
+  await search(page, slugA);
+  const row = page.getByTestId("partner-row");
+  await expect(row).toHaveCount(1);
+  const target = page.getByRole("link", { name: /^선택 공지 대상 지정/ });
+  await expect(target).toBeDisabled();
+  await row.getByRole("checkbox", { name: `${nameA} 선택` }).check();
+  await target.click();
+  await expect(page).toHaveURL(/\/admin\/support\/notices\/new\?/);
+  await expect(page.getByRole("radio", { name: /특정 파트너스/ })).toBeChecked();
+  await expect(page.getByText(nameA).first()).toBeVisible();
 });
