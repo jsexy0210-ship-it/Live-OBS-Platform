@@ -261,11 +261,13 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
   };
 
   return (
-    <form className="col pa-sec" aria-label={label} onSubmit={sendCode} noValidate>
-      <div className="col" style={{ gap: 2 }}>
-        <span className="lbl req">{label}</span>
-        <span className="help">{T.help}</span>
-      </div>
+    <form className={`col pa-sec${tone === "admin" ? " pa-admin" : ""}`} aria-label={label} onSubmit={sendCode} noValidate>
+      {tone !== "admin" && (
+        <div className="col" style={{ gap: 2 }}>
+          <span className="lbl req">{label}</span>
+          <span className="help">{T.help}</span>
+        </div>
+      )}
       <TestModeNotice kind="identity" formal />
       {notice && (
         <div id="idv-notice" tabIndex={-1} className={`msg msg-${notice.kind}`} role={notice.kind === "neg" ? "alert" : "status"}>
@@ -273,8 +275,14 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
         </div>
       )}
       <div className="col pa-idv">
+        {tone === "admin" && (
+          <div className="col" style={{ gap: 2 }}>
+            <b className="pa-idv-title">{label}</b>
+            <span className="help">{T.help}</span>
+          </div>
+        )}
         <div className="pa-two">
-          <div className="fld">
+          <div className="fld pa-f-wide">
             <label htmlFor="idv-name">이름</label>
             <input id="idv-name" className="inp" autoComplete="name" value={name} disabled={locked} onChange={(e) => setName(e.target.value)} />
           </div>
@@ -314,7 +322,7 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
               ))}
             </div>
           </div>
-          <div className="fld">
+          <div className="fld pa-f-wide">
             <span className="lbl" id="idv-nation">
               내·외국인
             </span>
@@ -328,7 +336,7 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
           </div>
         </div>
         <div className="pa-two pa-carrier">
-          <div className="fld">
+          <div className="fld pa-f-wide">
             <label htmlFor="idv-carrier">통신사</label>
             <select id="idv-carrier" className="inp" value={carrier} disabled={locked} onChange={(e) => setCarrier(e.target.value as Carrier)}>
               <option value="" disabled>
@@ -341,7 +349,7 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
               ))}
             </select>
           </div>
-          <div className="fld">
+          <div className="fld pa-f-wide">
             <label htmlFor="idv-phone">휴대폰번호</label>
             <input
               id="idv-phone"
@@ -361,7 +369,7 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
               <input type="checkbox" className="cbx" checked={agreed} disabled={busy} onChange={(e) => setAgreed(e.target.checked)} />
               {T.agree}
             </label>
-            <button className={`btn btn-block${busy ? " is-loading" : ""}`} type="submit" disabled={!ready || busy}>
+            <button className={`btn${tone === "admin" ? " btn-lg" : ""} btn-block${busy ? " is-loading" : ""}`} type="submit" disabled={!ready || busy}>
               {busy ? T.sending : "인증번호 문자 받기"}
             </button>
           </>

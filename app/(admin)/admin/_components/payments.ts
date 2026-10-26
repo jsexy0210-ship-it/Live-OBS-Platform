@@ -19,6 +19,9 @@ export type PaymentRow = {
   targetPlanCode: string | null;
 };
 export type PaymentDetail = PaymentRow & {
+  canRetry: boolean;
+  retryUnavailableReason: string | null;
+  canRetryAt: string | null;
   providerPaymentId: string | null;
   receiptUrl: string | null;
   subscription: { status: string; cardLabel: string | null; plan: { code: string; name: string } };

@@ -182,7 +182,7 @@ export function UnifiedHome() {
     const r = await api<{ chatEnabled: boolean }>("/api/seller/youtube/live/chat", { method: "PUT", body: { enabled } });
     setChatBusy(false);
     setModal(null);
-    setToast(r.ok ? { text: enabled ? "채팅 가져오기를 켰습니다" : "채팅 가져오기를 껐습니다" } : { text: failMessage(r, "admin"), neg: true });
+    setToast(r.ok ? { text: enabled ? "채팅 가져오기를 켰어요" : "채팅 가져오기를 껐어요" } : { text: failMessage(r, "admin"), neg: true });
     await loadYoutube();
   };
 
@@ -190,8 +190,8 @@ export function UnifiedHome() {
   const askChatOff = async () => {
     setConfirming(true);
     const ok = await confirm({
-      title: "유튜브 채팅 가져오기를 끄시겠습니까?",
-      body: "끄면 주문대기 표의 채팅 표시가 사라집니다. 주문에는 영향이 없습니다.",
+      title: "유튜브 채팅 가져오기를 끌까요?",
+      body: "끄면 주문대기 표의 채팅 표시가 사라져요. 주문에는 영향이 없어요.",
       confirmLabel: "채팅 가져오기 끄기",
     });
     setConfirming(false);
@@ -217,7 +217,7 @@ export function UnifiedHome() {
         setToast({ text: okText });
       } else if (isUnclearFailure(r.status)) {
         setModal(null);
-        setToast({ text: "처리 결과를 확인하지 못했습니다. 최신 상태를 다시 불러왔습니다. 화면에서 반영 여부를 확인해 주십시오", neg: true });
+        setToast({ text: "처리 결과를 확인하지 못했어요. 최신 상태를 다시 불러와 반영 여부를 확인해 주세요.", neg: true });
       } else {
         setToast({ text: rejectText(r.error) ?? failMessage(r, "admin"), neg: true });
         if (r.error !== "reason_required" && r.error !== "invalid_timer") setModal(null);
@@ -234,8 +234,8 @@ export function UnifiedHome() {
   const endBroadcast = async (sessionId: string, waitingCount: number) => {
     setConfirming(true);
     await confirm({
-      title: "방송을 끝내시겠습니까?",
-      body: waitingCount > 0 ? `남은 대기 ${waitingCount}건은 다음 방송으로 넘어갑니다.` : undefined,
+      title: "방송을 끝낼까요?",
+      body: waitingCount > 0 ? `남은 대기 ${waitingCount}건은 다음 방송으로 넘어가요.` : undefined,
       confirmLabel: "방송 끝내기",
       danger: true,
       run: async () => {
@@ -244,12 +244,12 @@ export function UnifiedHome() {
         if (!r.ok || r.data.broadcast?.id !== sessionId) {
           if (r.ok && reads.accept(t) === "apply") applySnap(r.data);
           else void load();
-          return r.ok ? "다른 화면에서 방송이 바뀌었습니다. 최신 내용을 확인한 뒤 다시 종료해 주십시오" : failMessage(r, "admin");
+          return r.ok ? "다른 화면에서 방송이 바뀌었어요. 최신 내용을 확인한 뒤 다시 종료해 주세요." : failMessage(r, "admin");
         }
         // broadcastSessionId: 서버가 지금 방송과 맞춰 볼 수 있게 미리 넘긴다(서버 확인은 기반 세션에 배정, 생기기 전에는 무시됨)
-        const e = await mutate("/api/seller/broadcast/end", { broadcastSessionId: sessionId }, "방송을 종료했습니다");
+        const e = await mutate("/api/seller/broadcast/end", { broadcastSessionId: sessionId }, "방송을 종료했어요");
         if (e.ok) return undefined;
-        return isUnclearFailure(e.status) ? "처리 결과를 확인하지 못했습니다. 최신 상태를 다시 불러왔습니다" : (rejectText(e.error) ?? failMessage(e, "admin"));
+        return isUnclearFailure(e.status) ? "처리 결과를 확인하지 못했어요. 최신 상태를 다시 불러와 확인해 주세요." : (rejectText(e.error) ?? failMessage(e, "admin"));
       },
     });
     setConfirming(false);
@@ -276,7 +276,7 @@ export function UnifiedHome() {
     return r;
   };
   const setTimer = (item: QueueItem, seconds: number) =>
-    mutate(`/api/seller/queue/${item.id}/timer`, { expectedVersion: item.version, timerSeconds: seconds }, seconds ? `타이머를 ${clock(seconds)}로 정했습니다` : "타이머를 껐습니다");
+    mutate(`/api/seller/queue/${item.id}/timer`, { expectedVersion: item.version, timerSeconds: seconds }, seconds ? `타이머를 ${clock(seconds)}로 설정했어요` : "타이머를 껐어요");
   const cancel = (item: QueueItem, reason: string) =>
     mutate(`/api/seller/queue/${item.id}/cancel`, { expectedVersion: item.version, reason }, "주문대기에서 취소했습니다");
   const move = (index: number, dir: -1 | 1) => {
@@ -285,7 +285,7 @@ export function UnifiedHome() {
     const j = index + dir;
     if (j < 0 || j >= ids.length) return;
     [ids[index], ids[j]] = [ids[j], ids[index]];
-    void mutate("/api/seller/queue/reorder", { broadcastSessionId: live?.id ?? null, orderedIds: ids, expectedVersion: snap.version }, "순서를 바꿨습니다");
+    void mutate("/api/seller/queue/reorder", { broadcastSessionId: live?.id ?? null, orderedIds: ids, expectedVersion: snap.version }, "순서를 바꿨어요");
   };
 
   // 단축키(모두 Ctrl 조합): 개봉 시작·완료 Ctrl+Enter, 타이머 +30초 Ctrl+↑, 취소 Ctrl+Backspace(확인 창)
@@ -295,8 +295,8 @@ export function UnifiedHome() {
     if (e.repeat || !e.ctrlKey || e.altKey || e.metaKey || modal || confirming || locked || !snap || typing(e.target)) return;
     if (e.key === "Enter") {
       e.preventDefault();
-      if (opening) void act(opening, "complete", "개봉을 완료했습니다");
-      else if (live && next) void act(next, "start", "개봉을 시작했습니다");
+      if (opening) void act(opening, "complete", "개봉을 완료했어요");
+      else if (live && next) void act(next, "start", "개봉을 시작했어요");
     } else if ((e.key === "h" || e.key === "H") && live) {
       e.preventDefault();
       setModal({ kind: "hit" });
@@ -329,11 +329,11 @@ export function UnifiedHome() {
       <main className="main col" style={{ gap: 16 }}>
         <PageHead
           title="홈"
-          description={`${me.shop.name}의 운영 현황과 방송을 한 곳에서 확인합니다`}
+          description={`${me.shop.name}의 운영 현황과 방송을 한곳에서 확인해요.`}
           actions={
             <>
               {allowed && (
-                <button className="btn" type="button" data-testid="bc-hit-open" disabled={!live || locked} title={live ? undefined : "방송 중에만 등록할 수 있습니다"} onClick={() => setModal({ kind: "hit" })}>
+                <button className="btn" type="button" data-testid="bc-hit-open" disabled={!live || locked} title={live ? undefined : "방송 중에만 기록할 수 있어요"} onClick={() => setModal({ kind: "hit" })}>
                   HIT 카드 기록하기 <span className="kbd">Ctrl+H</span>
                 </button>
               )}
@@ -345,8 +345,7 @@ export function UnifiedHome() {
           }
         />
 
-        <p className="seller-home-mobile-notice t-c1 c-alt" data-testid="seller-home-mobile-notice">모바일에서는 홈 화면을 제공합니다 상세 관리 업무는 PC에서 이용해 주십시오</p>
-        {me.features.includes("STORE_OPERATIONS") ? <StoreHomeSections refresh={homeRefresh} /> : me.features.includes("OVERLAY") ? <OverlayHomeSections refresh={homeRefresh} /> : null}
+        <p className="seller-home-mobile-notice t-c1 c-alt" data-testid="seller-home-mobile-notice">모바일에서는 홈을 볼 수 있어요. 상세 관리는 PC에서 이용해 주세요.</p>
         {!allowed ? (
           null
         ) : !snap ? (
@@ -357,12 +356,12 @@ export function UnifiedHome() {
                 <Locked />
               ) : state.status === 403 && state.error === "plan_feature_required" ? (
                 <div className="st" style={{ boxShadow: "none" }}>
-                  <span className="t">지금 이용 중인 이용권에는 이 기능이 없습니다. 구독 화면에서 이용권을 바꾸면 사용할 수 있습니다</span>
+                  <span className="t">지금 이용 중인 이용권에는 이 기능이 없어요. 구독 화면에서 이용권을 바꾸면 사용할 수 있어요.</span>
                 </div>
               ) : state.status === 403 ? (
                 <NoPermission need="방송 진행" />
               ) : (
-                <ErrorState title="주문대기를 불러오지 못했습니다" onRetry={() => void load()} />
+                <ErrorState title="주문대기를 불러오지 못했어요" onRetry={() => void load()} />
               ))}
           </div>
         ) : (
@@ -370,22 +369,13 @@ export function UnifiedHome() {
             <div className="col" style={{ gap: 16, minWidth: 0 }}>
               {stale && (
                 <div className="msg msg-cau row between" role="status" data-testid="bc-stale" style={{ gap: 8, flexWrap: "wrap" }}>
-                  <span>최신 주문대기를 불러오지 못했습니다. 다시 불러오기 전까지 변경할 수 없습니다.</span>
+                  <span>최신 주문대기를 불러오지 못했어요. 다시 불러오기 전까지 주문을 변경할 수 없어요.</span>
                   <button className="btn btn-sm btn-out" type="button" onClick={() => void load()}>
                     다시 불러오기
                   </button>
                 </div>
               )}
 
-              <section className="bc-sum" aria-label="방송 요약" data-testid="bc-summary">
-                <div className="bc-sum-t t-c1 c-alt">{sum?.broadcast ? (sum.broadcast.status === "live" ? "지금 방송" : "오늘 마지막 방송") : "오늘 방송 없음"}</div>
-                <div className="bc-sum-g">
-                  <SumTile label="주문" value={sum ? `${sum.summary.orders.toLocaleString("ko-KR")}건` : "-"} />
-                  <SumTile label="매출" value={sum ? won(sum.summary.sales) : "-"} />
-                  <SumTile label="완료 / 뺀 주문" value={sum ? `${sum.summary.completed} / ${sum.summary.cancelled}` : "-"} />
-                  <SumTile label="HIT" value={sum ? `${sum.summary.hits}장` : "-"} />
-                </div>
-              </section>
 
               {/* 방송 시작·종료 */}
               <section className="card pad bc-live" aria-label="방송 상태">
@@ -409,7 +399,7 @@ export function UnifiedHome() {
                     className="row bc-start"
                     onSubmit={(e) => {
                       e.preventDefault();
-                      void mutate("/api/seller/broadcast/start", { title: title.trim() || undefined }, "방송을 시작했습니다").then((r) => r.ok && setTitle(""));
+                      void mutate("/api/seller/broadcast/start", { title: title.trim() || undefined }, "방송을 시작했어요").then((r) => r.ok && setTitle(""));
                     }}
                   >
                     <label className="sr" htmlFor="bc-title-input">
@@ -435,13 +425,13 @@ export function UnifiedHome() {
                           />
                           유튜브 채팅 가져오기
                         </label>
-                        <span className="t-c1 c-alt">{yt.live.chatEnabled ? "켜짐 · 주문한 사람이 채팅했는지 주문대기 표에 표시합니다. 주문에는 영향이 없습니다" : "꺼짐 · 채팅을 가져오지 않습니다"}</span>
+                        <span className="t-c1 c-alt">{yt.live.chatEnabled ? "켜짐 · 주문한 사람이 채팅했는지 주문대기 표에 표시해요. 주문에는 영향이 없어요." : "꺼짐 · 채팅을 가져오지 않아요"}</span>
                       </>
                     ) : (
                       <>
-                        <span className="t-c1 c-alt">유튜브 방송을 이어 두면 채팅을 가져올 수 있습니다</span>
+                        <span className="t-c1 c-alt">유튜브 방송을 연결하면 채팅을 가져올 수 있어요</span>
                         <Link className="btn btn-sm btn-out" href="/seller/youtube">
-                          유튜브 이어 두기
+                          유튜브 연결
                         </Link>
                       </>
                     )}
@@ -462,7 +452,7 @@ export function UnifiedHome() {
                     item={opening}
                     now={now}
                     busy={locked}
-                    onComplete={() => void act(opening, "complete", "개봉을 완료했습니다")}
+                    onComplete={() => void act(opening, "complete", "개봉을 완료했어요")}
                     onTimer={() => setModal({ kind: "timer", item: opening })}
                     onCancel={() => setModal({ kind: "cancel", item: opening })}
                   />
@@ -471,13 +461,13 @@ export function UnifiedHome() {
                     <span className="t-l2 c-alt">
                       다음 순서: <b className="c-pri">{next.nicknameSnapshot}</b> · {next.productLabel} ×{next.quantity}
                     </span>
-                    <button className="btn btn-xl btn-block bc-big" type="button" disabled={locked} onClick={() => void act(next, "start", "개봉을 시작했습니다")}>
+                    <button className="btn btn-xl btn-block bc-big" type="button" disabled={locked} onClick={() => void act(next, "start", "개봉을 시작했어요")}>
                       개봉 시작 <span className="kbd">Ctrl+Enter</span>
                     </button>
                   </div>
                 ) : (
                   <span className="t-l2 c-alt" data-testid="bc-opening-empty">
-                    {live ? "대기 중인 주문이 없습니다" : "방송을 시작하면 개봉할 수 있습니다"}
+                    {live ? "대기 중인 주문이 없어요" : "방송을 시작하면 개봉할 수 있어요"}
                   </span>
                 )}
               </section>
@@ -487,10 +477,10 @@ export function UnifiedHome() {
                 <h2 className="t-hl1" id="bc-waiting-h">
                   {live ? "대기" : "방송 전 대기"} <span className="c-alt fw5">{waiting.length}건</span>
                 </h2>
-                <span className="t-c1 c-alt">주문대기는 방송에서 개봉할 차례를 기다리는 주문입니다</span>
-                {!live && waiting.length > 0 && <span className="t-c1 c-alt">방송을 시작하면 이 순서대로 방송에 들어갑니다</span>}
+                <span className="t-c1 c-alt">방송에서 개봉할 차례를 기다리는 주문이에요.</span>
+                {!live && waiting.length > 0 && <span className="t-c1 c-alt">방송을 시작하면 이 순서대로 개봉을 기다려요.</span>}
                 {waiting.length === 0 ? (
-                  <span className="t-l2 c-alt">대기 중인 주문이 없습니다</span>
+                  <span className="t-l2 c-alt">대기 중인 주문이 없어요</span>
                 ) : (
                   <div className="au-lt-wrap">
                     <table className="tbl bc-tbl bc-cards">
@@ -562,7 +552,7 @@ export function UnifiedHome() {
                   최근 완료
                 </h2>
                 {snap.recentDone.length === 0 ? (
-                  <span className="t-l2 c-alt">완료한 주문이 없습니다</span>
+                  <span className="t-l2 c-alt">완료한 주문이 없어요</span>
                 ) : (
                   <div className="au-lt-wrap">
                     <table className="tbl bc-tbl">
@@ -589,7 +579,7 @@ export function UnifiedHome() {
                               </td>
                               <td>
                                 {canRevert && (
-                                  <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => void act(d, "revert", "완료를 되돌렸습니다")}>
+                                  <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => void act(d, "revert", "완료를 되돌렸어요")}>
                                     되돌리기
                                   </button>
                                 )}
@@ -602,6 +592,16 @@ export function UnifiedHome() {
                   </div>
                 )}
               </section>
+              <section className="bc-sum" aria-label="방송 요약" data-testid="bc-summary">
+                <div className="bc-sum-t t-c1 c-alt">{sum?.broadcast ? (sum.broadcast.status === "live" ? "지금 방송" : "오늘 마지막 방송") : sum ? "오늘 방송 없음" : "방송 요약"}</div>
+                <div className="bc-sum-g">
+                  <SumTile label="주문" value={sum ? `${sum.summary.orders.toLocaleString("ko-KR")}건` : "-"} />
+                  <SumTile label="매출" value={sum ? won(sum.summary.sales) : "-"} />
+                  <SumTile label="완료 / 뺀 주문" value={sum ? `${sum.summary.completed} / ${sum.summary.cancelled}` : "-"} />
+                  <SumTile label="HIT" value={sum ? `${sum.summary.hits}장` : "-"} />
+                </div>
+              </section>
+
             </div>
 
             <aside className="col bc-side" style={{ gap: 16 }}>
@@ -610,7 +610,7 @@ export function UnifiedHome() {
               <h2 className="t-hl2" id="bc-ov-h">
                 방송 화면
               </h2>
-              <span className="t-c1 c-alt">방송 화면 주소는 만들 때 한 번만 보여 드립니다. 잃어버리면 새로 만들어 주십시오. 새로 만들면 예전 주소는 쓸 수 없습니다.</span>
+              <span className="t-c1 c-alt">방송 화면 주소는 만들 때 한 번만 보여드려요. 잃어버리면 새로 만들어 주세요. 새로 만들면 이전 주소는 쓸 수 없어요.</span>
               <Link className="btn btn-sm btn-out" href="/seller/overlay/address">
                 방송 화면 주소 만들기
               </Link>
@@ -637,11 +637,12 @@ export function UnifiedHome() {
                   <span className="kbd">Ctrl+Backspace</span>
                 </dd>
               </dl>
-              <span className="t-c1 c-alt">입력칸에 글자를 입력하는 중에는 단축키가 동작하지 않습니다</span>
+              <span className="t-c1 c-alt">입력칸에 글자를 적는 동안에는 단축키가 동작하지 않아요.</span>
             </section>
             </aside>
           </div>
         )}
+        {me.features.includes("STORE_OPERATIONS") ? <StoreHomeSections refresh={homeRefresh} /> : me.features.includes("OVERLAY") ? <OverlayHomeSections refresh={homeRefresh} /> : null}
       </main>
 
       {modal?.kind === "cancel" && <CancelItemModal item={modal.item} busy={busy} blocked={stale} onClose={() => setModal(null)} onConfirm={(reason) => void cancel(modal.item, reason)} />}
@@ -651,7 +652,7 @@ export function UnifiedHome() {
           onClose={() => setModal(null)}
           onDone={() => {
             setModal(null);
-            setToast({ text: "HIT 카드를 기록했습니다. 방송 화면에 바로 나옵니다" });
+            setToast({ text: "HIT 카드를 기록했어요. 방송 화면에 바로 나와요." });
             void load();
           }}
         />
@@ -661,7 +662,7 @@ export function UnifiedHome() {
           <div className="modal">
             <div className="modal-h">
               <h2 className="t-h2" id="bc-chat-title">
-                유튜브 채팅 가져오기를 켜시겠습니까?
+                유튜브 채팅 가져오기를 켤까요?
               </h2>
               <span className="t-l2 c-alt" data-testid="bc-chat-notice">
                 {yt.chatNotice}

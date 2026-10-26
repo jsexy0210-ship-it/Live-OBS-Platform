@@ -2,13 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { useSeller } from "../SellerShell";
+import { useUnsavedGuard } from "../../../lib/client/navigation";
 import { DatePicker } from "../../../components/admin-ui/DatePicker";
 
 // SA-042 회원 상세의 등급 직접 조정(SA-044 수동 조정과 같은 API). 등급을 고르고, 「고정」이면 종료일(없으면 직접 풀 때까지)까지 자동 재산정에서 뺀다.
 // API: GET /api/seller/member-grades(등급 목록), PUT /api/seller/member-grades/members/{id} { gradeId, lock, until?, reason? }. 활동 회원만(409 member_not_active).
 type Grade = { id: string; displayName: string };
 
-export function MemberGradeAdjust({ memberId, currentGradeId, active, onDone }: { memberId: string; currentGradeId: string | null; active: boolean; onDone: (text: string) => void | Promise<void> }) {
+export function MemberGradeAdjust({ memberId, currentGradeId, active, onDone, onDirty, releaseExternal }: { onDirty?: (dirty: boolean) => void; releaseExternal?: () => Promise<void>; memberId: string; currentGradeId: string | null; active: boolean; onDone: (text: string) => void | Promise<void> }) {
+  const { can, me } = useSeller();
+  const allowed = can("MEMBER_POINTS") && !me.readOnly;
   const [grades, setGrades] = useState<Grade[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [gradeId, setGradeId] = useState(currentGradeId ?? "");
@@ -23,15 +27,21 @@ export function MemberGradeAdjust({ memberId, currentGradeId, active, onDone }: 
   }, []);
   useEffect(() => setGradeId(currentGradeId ?? ""), [currentGradeId]);
 
+  const dirty = allowed && active && grades !== null && (gradeId !== (currentGradeId ?? "") || lock || until !== "" || reason !== "");
+  const releaseOwnGuard = useUnsavedGuard(!onDirty && dirty);
+  const releaseGuard = releaseExternal ?? releaseOwnGuard;
+  useEffect(() => { onDirty?.(dirty); return () => onDirty?.(false); }, [dirty, onDirty]);
   const apply = async () => {
+    if (!allowed || busy) return;
     setBusy(true);
     setError(null);
     const r = await api(`/api/seller/member-grades/members/${memberId}`, {
       method: "PUT",
       body: { gradeId, lock, ...(lock && until ? { until } : {}), ...(lock && reason.trim() ? { reason: reason.trim() } : {}) },
     });
+    if (!r.ok) { setBusy(false); return setError(r.message ?? "등급을 조정하지 못했습니다. 잠시 후 다시 시도해 주십시오"); }
+    await releaseGuard();
     setBusy(false);
-    if (!r.ok) return setError(r.message ?? "등급을 조정하지 못했습니다. 잠시 후 다시 시도해 주십시오");
     setLock(false);
     setUntil("");
     setReason("");
@@ -45,7 +55,7 @@ export function MemberGradeAdjust({ memberId, currentGradeId, active, onDone }: 
       </h2>
       {failed && <span className="t-l2 c-alt">등급 목록을 불러오지 못했습니다. 이 화면을 다시 열어 주십시오.</span>}
       {!active && <span className="t-l2 c-alt">휴면 회원은 등급을 조정할 수 없습니다.</span>}
-      {grades && active && (
+      {grades && active && allowed && (
         <form
           className="col"
           style={{ gap: 12, maxWidth: 480 }}

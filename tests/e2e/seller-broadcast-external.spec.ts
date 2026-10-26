@@ -43,7 +43,7 @@ test("외부 주문은 대기 줄·방송 상세·HIT 카드 기록에 「외부
   await expect(page.getByTestId("bc-live-badge")).toBeVisible();
   await putExternalInLiveBroadcast(card);
   await page.getByRole("button", { name: "방송 끝내기" }).click();
-  await page.getByRole("dialog", { name: "방송을 끝내시겠습니까?" }).getByRole("button", { name: "방송 끝내기" }).click();
+  await page.getByRole("dialog", { name: "방송을 끝낼까요?" }).getByRole("button", { name: "방송 끝내기" }).click();
   await expect(page.getByTestId("bc-live-badge")).toHaveCount(0);
 
   // 방송 상세: 외부 주문 목록(금액 없음)과 HIT 표의 주문 칸

@@ -1,7 +1,8 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, type Prisma } from "@prisma/client";
 import { expect, test, type Page } from "@playwright/test";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 import { submitSellerLogin } from "./sellerLogin";
+import { completeIntegrationProfile, db as profileDb } from "../integration/helpers";
 
 // SA-090 구독 · 결제: 테스트 서버(OBS_TEST_MODE=1, 가짜 결제 공급자·돈 이동 없음)에서
 // 카드 등록·결제 → 하위 플랜 변경 예약·취소 → 해지를 실제 API로 눌러 확인한다.
@@ -9,8 +10,15 @@ import { submitSellerLogin } from "./sellerLogin";
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
 const SHOTS = process.env.E2E_SCREENSHOTS === "1";
 
-test.beforeAll(() => {
+const PROFILE_FIELDS = { companyName: true, representativeName: true, businessNumber: true, businessAddress: true, bankName: true, accountCipher: true, accountLast4: true, accountHolder: true, checkBusinessNumber: true, checkRepresentativeName: true, checkStatus: true, checkValid: true, checkedAt: true } as const;
+let originalProfile: Prisma.SellerIntegrationProfileGetPayload<{ select: typeof PROFILE_FIELDS }> | null | undefined;
+
+test.beforeAll(async () => {
   if (!PASSWORD) throw new Error("E2E_PASSWORD가 없어요. dev-seed가 출력한 데모 비밀번호를 넣어 주세요");
+  await withDb(async (db, sellerId) => {
+    originalProfile = await db.sellerIntegrationProfile.findUnique({ where: { sellerId }, select: PROFILE_FIELDS });
+    await completeIntegrationProfile(sellerId);
+  });
 });
 
 // 폐기용 테스트 DB에서 데모 대표자의 구독·결제 기록을 지우고 체험도 끝난 상태(첫 결제 전 잠김)로 맞춘다.
@@ -40,11 +48,19 @@ async function resetSubscription() {
   });
 }
 test.afterAll(async () => {
-  if (originalTrialEndsAt === undefined) return;
-  await withDb(async (db, sellerId) => {
-    await clearSubscription(db, sellerId);
-    await db.seller.update({ where: { id: sellerId }, data: { trialEndsAt: originalTrialEndsAt, planId: originalPlanId ?? null } });
-  });
+  try {
+    await withDb(async (db, sellerId) => {
+      try {
+        if (originalTrialEndsAt !== undefined) {
+          await clearSubscription(db, sellerId);
+          await db.seller.update({ where: { id: sellerId }, data: { trialEndsAt: originalTrialEndsAt, planId: originalPlanId ?? null } });
+        }
+      } finally {
+        if (originalProfile === null) await db.sellerIntegrationProfile.deleteMany({ where: { sellerId } });
+        else if (originalProfile !== undefined) await db.sellerIntegrationProfile.update({ where: { sellerId }, data: originalProfile });
+      }
+    });
+  } finally { await profileDb.$disconnect(); }
 });
 
 async function shot(page: Page, name: string) {

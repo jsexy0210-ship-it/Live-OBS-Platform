@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "../../lib/server/db";
 import { commitProductImport, getBulkJob, previewProductImport, undoProductImport } from "../../lib/server/shop-bulk-io/service";
+import { createOption, deleteOption } from "../../lib/server/products/manage";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { createSeller, createSellerUser, db, resetDb } from "./helpers";
 
@@ -54,6 +55,31 @@ const stockOf = async (sellerId: string, product: string) =>
 const priceOf = async (sellerId: string, product: string) => (await db.product.findFirstOrThrow({ where: { sellerId, name: product, deletedAt: null } })).price;
 
 describe("기존 상품 수정", () => {
+  it.each([false, true])("미리보기 뒤 기본 옵션이 추가·교체되면 재고는 보존하고 판매가만 반영한다 (교체: %s)", async (replace) => {
+    const s = await shop();
+    await seed(s.ctx);
+    const product = await db.product.findFirstOrThrow({ where: { sellerId: s.seller.id, name: "부스터 팩" }, include: { options: true } });
+    const original = product.options[0];
+    const p = await preview(s.ctx, "상품명,카테고리,판매가,재고\r\n부스터 팩,,6000,45");
+    expect([p.updateCount, p.errors]).toEqual([1, []]);
+    expect(await createOption(db, s.ctx, product.id, { name: "추가 옵션", stock: 9, priceDelta: 0 })).toMatchObject({ ok: true });
+    if (replace) expect(await deleteOption(db, s.ctx, product.id, original.id)).toMatchObject({ ok: true });
+    const before = await db.productOption.findMany({ where: { sellerId: s.seller.id, productId: product.id }, orderBy: { id: "asc" }, select: { id: true, stock: true, deletedAt: true } });
+    expect(before.filter((o) => !o.deletedAt).length).toBe(replace ? 1 : 2);
+    const result = await commit(s.ctx, p.jobId);
+    expect(result).toMatchObject({ updatedCount: 1, failedCount: 1 });
+    expect(result.failures).toHaveLength(1);
+    expect(await priceOf(s.seller.id, "부스터 팩")).toBe(6000);
+    const after = () => db.productOption.findMany({ where: { sellerId: s.seller.id, productId: product.id }, orderBy: { id: "asc" }, select: { id: true, stock: true, deletedAt: true } });
+    expect(await after()).toEqual(before);
+    expect(await db.stockMovement.count({ where: { sellerId: s.seller.id, note: "재고 일괄 수정" } })).toBe(0);
+    expect(await db.auditLog.count({ where: { sellerId: s.seller.id, action: "product_option.stock_adjust" } })).toBe(0);
+    expect(await undo(s.ctx, p.jobId)).toMatchObject({ restoredCount: 1, keptCount: 0 });
+    expect(await priceOf(s.seller.id, "부스터 팩")).toBe(5000);
+    expect(await after()).toEqual(before);
+    expect(await db.stockMovement.count({ where: { sellerId: s.seller.id, note: "재고 일괄 수정" } })).toBe(0);
+  });
+
   it("상품명이 같으면 판매가·재고만 바꾸고, 새 상품은 그대로 등록한다. 재고 변경은 기록이 남고 미리보기는 아무것도 바꾸지 않는다", async () => {
     const s = await shop();
     await seed(s.ctx);
@@ -120,18 +146,37 @@ describe("기존 상품 수정", () => {
     expect(await priceOf(s.seller.id, "슬리브")).toBe(3100); // 판매가는 이름이 같아 반영, 이름이 바뀐 옵션 재고만 건너뜀
   });
 
-  it("필수 열만 쓴 파일: 새 상품은 옵션 하나(기본)·숨김으로 등록하고, 기존 상품은 옵션이 하나일 때만 그 재고를 수정한다", async () => {
+  it("필수 열만 올리면 새 상품은 숨김·기본 옵션으로 만들고 기존 상태와 모호한 재고는 보존한다", async () => {
     const s = await shop();
     await seed(s.ctx);
-    const min = (...rows: string[]) => ["상품명,카테고리,판매가,재고", ...rows].join("\r\n");
-    const p = await preview(s.ctx, min("부스터 팩,,6000,45", "슬리브,,3100,9", "신상,,1200,7"));
+    await db.productOption.updateMany({ where: { sellerId: s.seller.id, product: { name: "부스터 팩" } }, data: { name: "기존 옵션" } });
+    const p = await preview(s.ctx, ["상품명,카테고리,판매가,재고", "부스터 팩,,6000,45", "슬리브,,3100,9", "신상,,1200,7"].join("\r\n"));
     expect([p.createCount, p.updateCount, p.skippedProductCount]).toEqual([1, 1, 1]);
-    expect(p.errors).toMatchObject([{ row: 3, column: "재고" }]); // 슬리브는 옵션 둘이라 어느 옵션인지 알 수 없음
-    await commit(s.ctx, p.jobId);
-    expect(await priceOf(s.seller.id, "부스터 팩")).toBe(6000);
-    expect(await stockOf(s.seller.id, "부스터 팩")).toEqual({ 기본: 45 });
+    expect(p.errors).toMatchObject([{ row: 3, column: "재고" }]);
+    expect(await priceOf(s.seller.id, "부스터 팩")).toBe(5000);
+    expect(await stockOf(s.seller.id, "부스터 팩")).toEqual({ "기존 옵션": 30 });
+    expect(await commit(s.ctx, p.jobId)).toMatchObject({ createdCount: 1, updatedCount: 1, failedCount: 0 });
+    const existing = await db.product.findFirstOrThrow({ where: { sellerId: s.seller.id, name: "부스터 팩" } });
+    expect([existing.price, existing.status]).toEqual([6000, "ON_SALE"]);
+    expect(await stockOf(s.seller.id, "부스터 팩")).toEqual({ "기존 옵션": 45 });
+    expect(await priceOf(s.seller.id, "슬리브")).toBe(3000);
+    expect(await stockOf(s.seller.id, "슬리브")).toEqual({ 검정: 10, 흰색: 5 });
     const created = await db.product.findFirstOrThrow({ where: { sellerId: s.seller.id, name: "신상" }, include: { options: true } });
     expect([created.status, created.options.map((o) => [o.name, o.stock])]).toEqual(["HIDDEN", [["기본", 7]]]);
+    expect(await undo(s.ctx, p.jobId)).toMatchObject({ removedCount: 1, restoredCount: 1, keptCount: 0 });
+    expect(await priceOf(s.seller.id, "부스터 팩")).toBe(5000);
+    expect(await stockOf(s.seller.id, "부스터 팩")).toEqual({ "기존 옵션": 30 });
+    expect((await db.product.findFirstOrThrow({ where: { sellerId: s.seller.id, name: "부스터 팩" } })).status).toBe("ON_SALE");
+  });
+
+  it("신규 상품의 빈 상태는 숨김이고 명시 준비중은 유지하며 기존 상태는 바꾸지 않는다", async () => {
+    const s = await shop();
+    await seed(s.ctx);
+    const p = await preview(s.ctx, ["상품명,카테고리,판매가,재고,상태", "부스터 팩,,6000,45,", "빈 상태,,1200,7,", "명시 준비중,,1200,7,준비중"].join("\r\n"));
+    expect([p.createCount, p.updateCount, p.skippedProductCount, p.errors]).toEqual([2, 1, 0, []]);
+    expect(await commit(s.ctx, p.jobId)).toMatchObject({ createdCount: 2, updatedCount: 1, failedCount: 0 });
+    const states = await db.product.findMany({ where: { sellerId: s.seller.id, name: { in: ["부스터 팩", "빈 상태", "명시 준비중"] } }, select: { name: true, status: true } });
+    expect(Object.fromEntries(states.map((product) => [product.name, product.status]))).toEqual({ "부스터 팩": "ON_SALE", "빈 상태": "HIDDEN", "명시 준비중": "DRAFT" });
   });
 
   it("지운 상품과는 이름이 같아도 새 상품으로 등록한다", async () => {

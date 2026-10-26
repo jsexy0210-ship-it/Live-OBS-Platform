@@ -74,6 +74,8 @@ type SubscriptionRow = {
   createdAt: Date;
   trialEndsAt: Date | null;
   access: SellerAccess;
+  locked: boolean | null;
+  cancelling: boolean | null;
   planCode: string | null;
   planName: string | null;
   subStatus: string | null;
@@ -127,7 +129,7 @@ export async function listAdminSubscriptions(db: PrismaClient, admin: AdminSessi
   const extra = conds.length ? Prisma.sql` AND ${Prisma.join(conds, " AND ")}` : Prisma.empty;
   const rows = await db.$queryRaw<SubscriptionRow[]>`
     SELECT se."id" AS "sellerId", se."slug", se."shopName", se."status"::text AS "sellerStatus", se."createdAt", se."trialEndsAt",
-      ${access} AS "access", p."code" AS "planCode", p."name" AS "planName",
+      ${access} AS "access", ${lockedSql(now)} AS "locked", ${cancellingSql(now)} AS "cancelling", p."code" AS "planCode", p."name" AS "planName",
       sub."status"::text AS "subStatus", sub."cardLabel", sub."currentPeriodEnd", sub."nextChargeAt", sub."cancelAtPeriodEnd", sub."graceUntil", sub."retryCount",
       p."listPrice" AS "planListPrice", p."salePrice" AS "planSalePrice",
       lp."amount" AS "payAmount", lp."status"::text AS "payStatus", lp."paidAt" AS "payPaidAt", lp."createdAt" AS "payCreatedAt"
@@ -142,6 +144,8 @@ export async function listAdminSubscriptions(db: PrismaClient, admin: AdminSessi
     subscriptions: page.map((r) => ({
       seller: { id: r.sellerId, slug: r.slug, shopName: r.shopName, status: r.sellerStatus },
       access: r.access,
+      locked: r.locked === true,
+      cancelling: r.cancelling === true,
       plan: r.planCode ? { code: r.planCode, name: r.planName, listPrice: r.planListPrice, salePrice: r.planSalePrice } : null,
       trialEndsAt: r.trialEndsAt,
       lastPayment: r.payCreatedAt ? { amount: r.payAmount, status: r.payStatus, paidAt: r.payPaidAt, createdAt: r.payCreatedAt } : null,

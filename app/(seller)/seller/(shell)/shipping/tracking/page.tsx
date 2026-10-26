@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { PageHead } from "../../../../../../components/admin-ui";
+import { ListTable, PageHead } from "../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
 import { InvoiceSteps } from "../../../../../../components/seller/shipping/InvoiceSteps";
-import { openPrintWindow, printLabels, type Label } from "../../../../../../components/seller/shipping/printLabels";
+import { INVOICE_EVENT as EVENT, INVOICE_SOURCE as SOURCE, INVOICE_TAG as TAG, type InvoiceRow as Inv, type InvoiceDetail } from "../../../../../../components/seller/InvoiceOperations";
 import { formatDateTime } from "../../../../../../lib/client/format";
 import { useUrlState } from "../../../../../../lib/client/navigation";
 import "../../../../../../styles/seller-orders.css";
@@ -15,23 +16,9 @@ import "../../../../../../styles/seller-invoices.css";
 
 // SA-028 송장 출력 · 추적(통합 「배송 · 송장」 탭). 발급 · 출력 · 집하 · 배송 완료를 따로 보여 준다. 배송 접수 업체가 정해지기 전이라 서버는 모의 추적이다.
 
-type Status = "FAILED" | "ISSUED" | "PRINTED" | "PICKED_UP" | "DELIVERED";
-type Inv = {
-  id: string;
-  courierName: string;
-  trackingNumber: string | null;
-  status: Status;
-  issuing: boolean;
-  failureCode: string | null;
-  pickupDelayed: boolean;
-  lastEvent: { kind: string; at: string; note: string | null } | null;
-  issuedAt: string | null;
-  printedAt: string | null;
-  orderCount: number;
-  nickname: string | null;
-};
+type Status = Inv["status"];
 type Page = { invoices: Inv[]; nextCursor: string | null; counts: Partial<Record<Status, number>>; total: number; mock: boolean; unprinted: number };
-type Detail = { events: { kind: string; at: string; source: string; note: string | null }[] };
+type Detail = Pick<InvoiceDetail, "events">;
 type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; page: Page };
 
 const TABS: { key: string; label: string; status?: Status }[] = [
@@ -41,26 +28,18 @@ const TABS: { key: string; label: string; status?: Status }[] = [
   { key: "picked", label: "집하됨", status: "PICKED_UP" },
   { key: "delivered", label: "배송 완료", status: "DELIVERED" },
 ];
-const TAG: Record<Status, { label: string; cls: string }> = {
-  FAILED: { label: "발급 실패", cls: "r" },
-  ISSUED: { label: "발급됨", cls: "y" },
-  PRINTED: { label: "출력됨", cls: "" },
-  PICKED_UP: { label: "집하됨", cls: "bl" },
-  DELIVERED: { label: "배송 완료", cls: "g" },
-};
-const EVENT: Record<string, string> = { ISSUED: "발급", PRINTED: "출력", PICKUP_REQUESTED: "집하 요청", PICKED_UP: "집하", IN_TRANSIT: "간선 이동", OUT_FOR_DELIVERY: "배송 출발", DELIVERED: "배송 완료" };
-const SOURCE: Record<string, string> = { SELLER: "파트너스", CARRIER: "택배사", SYSTEM: "시스템" };
 const num = (n: string) => n.replace(/\D/g, "").replace(/(\d{4})(?=\d)/g, "$1 ").trim();
 
 export default function InvoiceTrackingPage() {
-  const { can } = useSeller();
-  const canEdit = can("ORDER_SHIPPING");
+  const { can, me } = useSeller();
+  const canEdit = can("ORDER_SHIPPING") && !me.readOnly;
+  const searchParams = useSearchParams().toString();
+  const returnTo = `/seller/shipping/tracking${searchParams ? `?${searchParams}` : ""}`;
   const [u, setU] = useUrlState({ tab: "all" });
   const tab = TABS.find((t) => t.key === u.tab) ?? TABS[0];
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [format, setFormat] = useState<"LABEL_100X150" | "A4_2UP">("LABEL_100X150");
-  const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
@@ -80,23 +59,6 @@ export default function InvoiceTrackingPage() {
     setOpen(null);
     void load(tab.status);
   }, [tab.status, load]);
-
-  const print = async (invoiceIds?: string[]) => {
-    // 인쇄 창을 먼저 연다(요청 뒤에 열면 브라우저가 막아 출력됨으로만 바뀐다)
-    const win = openPrintWindow();
-    if (!win) return setToast({ text: "인쇄 창을 열지 못했습니다. 팝업 차단을 풀어 주십시오", neg: true });
-    setBusy(true);
-    const r = await api<{ labels: Label[]; printed: number }>("/api/seller/invoices/print", { method: "POST", body: { format, ...(invoiceIds ? { invoiceIds } : {}) } });
-    setBusy(false);
-    if (!r.ok || r.data.labels.length === 0) {
-      win.close();
-      return setToast({ text: !r.ok ? (r.message ?? "출력하지 못했습니다. 잠시 후 다시 시도해 주십시오") : "출력할 송장이 없습니다", neg: true });
-    }
-    printLabels(win, r.data.labels, format);
-    setToast({ text: `송장 ${r.data.labels.length}개를 출력했습니다` });
-    setPicked(new Set());
-    void load(tab.status, true);
-  };
 
   const loadMore = async () => {
     if (state.kind !== "ok" || !state.page.nextCursor) return;
@@ -121,26 +83,11 @@ export default function InvoiceTrackingPage() {
     else setToast({ text: "추적 내용을 불러오지 못했습니다", neg: true });
   };
 
-  const retry = async (id: string) => {
-    setBusy(true);
-    const r = await api<{ result: { ok: boolean } }>(`/api/seller/invoices/${id}/retry`, { method: "POST" });
-    setBusy(false);
-    const ok = r.ok && r.data.result.ok;
-    setToast(ok ? { text: "송장을 다시 발급했습니다" } : { text: (!r.ok && r.message) || "다시 발급하지 못했습니다. 잠시 후 다시 시도해 주십시오", neg: true });
-    void load(tab.status, true);
-  };
-
-  const pickup = async (id: string) => {
-    setBusy(true);
-    const r = await api<{ ok?: boolean }>(`/api/seller/invoices/${id}/pickup-request`, { method: "POST" });
-    setBusy(false);
-    setToast(r.ok ? { text: "집하 요청을 다시 보냈습니다" } : { text: r.message ?? "집하 요청을 보내지 못했습니다", neg: true });
-    if (r.ok) void load(tab.status, true);
-  };
-
   const page = state.kind === "ok" ? state.page : null;
   const items = page?.invoices ?? [];
   const delayed = items.filter((i) => i.pickupDelayed);
+  const printHref = `/seller/shipping/tracking/print?${new URLSearchParams({ ...(picked.size > 0 ? { ids: [...picked].join(",") } : { scope: "unprinted" }), format, returnTo })}`;
+  const detailHref = (id: string) => `/seller/shipping/tracking/${id}?${new URLSearchParams({ returnTo })}`;
   const allPicked = items.length > 0 && items.every((i) => picked.has(i.id));
   const count = (t: (typeof TABS)[number]) => (page ? (t.status ? (page.counts[t.status] ?? 0) : page.total) : null);
 
@@ -189,14 +136,12 @@ export default function InvoiceTrackingPage() {
               <b>{d.nickname ?? "주문"} · 출력 뒤 24시간이 지났는데 집하되지 않았습니다.</b> 택배사 집하 요청을 확인해 주십시오.
             </span>
             {canEdit && (
-              <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => void pickup(d.id)}>
-                집하 요청 다시 보내기
-              </button>
+              <Link className="btn btn-sm btn-out" href={detailHref(d.id)}>집하 요청 상세</Link>
             )}
           </div>
         ))}
 
-        <div className="card">
+        <section className="au-list-section">
           <div className="toolbar" style={{ padding: 16 }}>
             <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
               {canEdit && (
@@ -205,14 +150,7 @@ export default function InvoiceTrackingPage() {
                     <option value="LABEL_100X150">라벨 프린터</option>
                     <option value="A4_2UP">A4 2매</option>
                   </select>
-                  <button
-                    className="btn btn-sm"
-                    type="button"
-                    disabled={busy || (picked.size === 0 && (page?.unprinted ?? 0) === 0)}
-                    onClick={() => void print(picked.size > 0 ? [...picked] : undefined)}
-                  >
-                    {busy ? "출력 중…" : picked.size > 0 ? `고른 송장 ${picked.size}개 출력` : `출력 안 한 송장 ${page?.unprinted ?? 0}개 출력`}
-                  </button>
+                  {picked.size > 0 || (page?.unprinted ?? 0) > 0 ? <Link className="btn btn-sm" href={printHref}>{picked.size > 0 ? `고른 송장 ${picked.size}개 출력` : `출력 안 한 송장 ${page?.unprinted ?? 0}개 출력`}</Link> : <button className="btn btn-sm" type="button" disabled>출력 안 한 송장 0개 출력</button>}
                 </>
               )}
               <a className="btn btn-sm btn-out" href={`/api/seller/invoices/export${tab.status ? `?status=${tab.status}` : ""}`} download>
@@ -221,15 +159,15 @@ export default function InvoiceTrackingPage() {
             </span>
           </div>
 
-          {state.kind === "loading" && <LoadingRows rows={5} />}
-          {state.kind === "error" && (state.status === 403 ? <NoPermission need="주문·배송" /> : <ErrorState title="송장 목록을 불러오지 못했습니다" onRetry={() => void load(tab.status)} />)}
+          {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
+          {state.kind === "error" && (state.status === 403 ? <NoPermission need="주문·배송" /> : <div className="card"><ErrorState title="송장 목록을 불러오지 못했습니다" onRetry={() => void load(tab.status)} /></div>)}
           {state.kind === "ok" &&
             (items.length === 0 ? (
               <div className="st">
                 <span className="t">{tab.status ? "이 상태의 송장이 없습니다" : "발급한 송장이 없습니다"}</span>
               </div>
             ) : (
-              <div style={{ overflowX: "auto" }}>
+              <ListTable>
                 <table className="tbl">
                   <thead>
                     <tr>
@@ -272,19 +210,8 @@ export default function InvoiceTrackingPage() {
                               {i.status === "ISSUED" ? " · 아직 출력 안 함" : i.status === "PRINTED" ? " · 집하 전" : ""}
                             </td>
                             <td>
-                              {i.status === "FAILED" && canEdit ? (
-                                <button className="btn btn-sm" type="button" disabled={busy} onClick={() => void retry(i.id)}>
-                                  다시 발급
-                                </button>
-                              ) : i.status === "ISSUED" && canEdit ? (
-                                <button className="btn btn-sm" type="button" disabled={busy} onClick={() => void print([i.id])}>
-                                  출력
-                                </button>
-                              ) : i.trackingNumber ? (
-                                <button className="btn btn-sm btn-out" type="button" aria-expanded={open === i.id} onClick={() => void track(i.id)}>
-                                  추적
-                                </button>
-                              ) : null}
+                              <Link className="btn btn-sm btn-out" href={detailHref(i.id)}>송장 업무 상세</Link>
+                              {i.trackingNumber && <button className="btn btn-sm btn-out" type="button" aria-expanded={open === i.id} onClick={() => void track(i.id)}>추적</button>}
                             </td>
                           </tr>
                           {open === i.id && (
@@ -322,9 +249,9 @@ export default function InvoiceTrackingPage() {
                     })}
                   </tbody>
                 </table>
-              </div>
+              </ListTable>
             ))}
-        </div>
+        </section>
         {page?.nextCursor && (
           <div style={{ textAlign: "center", marginTop: 12 }}>
             <button className="btn btn-out" type="button" onClick={() => void loadMore()}>

@@ -6,7 +6,9 @@ import { useCallback, useEffect, useState } from "react";
 import { PageHead } from "../../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows } from "../../../../../../../components/seller/States";
 import { adminApi } from "../../../../_components/api";
-import { AdminTopbar } from "../../../../_components/AdminShell";
+import { InvoiceRetry } from "../../../../_components/InvoiceRetry";
+import { adminCan } from "../../../../../../../lib/server/authz/permissions";
+import { AdminTopbar, useAdmin } from "../../../../_components/AdminShell";
 import { SUBSCRIPTION_STATUS, day, dayTime, won, type SubscriptionStatus } from "../../../../_components/partners";
 import { PAYMENT_KIND, PAYMENT_STATUS, planLabel, safeUrl, type PaymentDetail } from "../../../../_components/payments";
 import { useSmartBack } from "../../../../../../../lib/client/navigation";
@@ -33,11 +35,12 @@ function Info({ title, id, rows }: { title: string; id: string; rows: [string, R
 }
 
 export default function InvoiceDetailPage() {
+  const { me } = useAdmin();
   const back = useSmartBack("/admin/billing/invoices");
   const { paymentId } = useParams<{ paymentId: string }>();
   const [state, setState] = useState<Load>({ kind: "loading" });
-  const load = useCallback(async () => {
-    setState({ kind: "loading" });
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setState({ kind: "loading" });
     const r = await adminApi<{ payment: PaymentDetail }>(`/api/admin/payments/${encodeURIComponent(paymentId)}`);
     setState(r.ok ? { kind: "ok", payment: r.data.payment } : { kind: "error", status: r.status });
   }, [paymentId]);
@@ -70,6 +73,7 @@ export default function InvoiceDetailPage() {
           </div>
         ) : (
           <div className="col" style={{ gap: 20 }}>
+            {adminCan(me.role, "billing.manage") && <InvoiceRetry payments={[p]} onDone={() => void load(true)} />}
             <Info
               title="청구 정보"
               id="invoice-basic"

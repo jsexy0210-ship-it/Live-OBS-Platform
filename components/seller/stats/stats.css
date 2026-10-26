@@ -43,6 +43,12 @@
 .sts-period .inp,.sts-period .btn{height:40px}
 .sts-period .inp{border-radius:6px;width:150px}
 .sts-period .btn,.sts-period .chip{border-radius:6px}
+/* 날짜 칸의 실제 너비를 감싸는 칸과 맞춰 옆 비교/실행 조작을 침범하지 않게 한다. */
+@media (min-width:768px){
+  .sts-period .dt-wrap{width:150px;min-width:150px;flex:none}
+  .sts-period .dt-wrap>.inp{width:100%;min-width:0}
+  .sts-period .au-ft-v>.chk,.sts-period .au-ft-v>.btn,.sts-period .au-ft-v>.seg{flex:none;white-space:nowrap}
+}
 .sts-sub-note{margin:0}
 .sts-sum{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
 .sts-sum>div{display:flex;flex-direction:column;gap:4px;padding:12px;border:1px solid var(--cs-line);border-radius:6px;background:var(--cs-surface)}

@@ -32,7 +32,7 @@ async function login(page: Page, email: string, next: string) {
 const gnb = (page: Page) => page.getByRole("navigation", { name: "주 메뉴" });
 const lnb = (page: Page) => page.getByRole("complementary", { name: "파트너스 메뉴" });
 // 왼쪽 메뉴의 하위 메뉴(대분류 제목은 제외). 고르지 않은 대분류는 화면에서 접혀 있어 있는지(개수)로 확인한다
-const lnbItem = (page: Page, label: string) => lnb(page).locator(".lnb-i").filter({ hasText: new RegExp(`^${label.replace(/[()]/g, "\\$&")}$`) });
+const lnbItem = (page: Page, label: string) => lnb(page).locator("a.lnb-i, a.lnb-sub-i, strong.lnb-parent").filter({ hasText: new RegExp(`^${label.replace(/[()]/g, "\\$&")}$`) });
 // 스토어 운영(쇼핑몰 기능) 권한이 있어야 보이는 하위 메뉴
 const STORE_MENUS = ["상품 목록", "재고", "쿠폰", "회원 목록", "홈 배너", "알림 설정"];
 // 오버레이 전용에서도 보이는 하위 메뉴(오버레이 권한·기존 주문 처리·계정·구독)
@@ -55,6 +55,7 @@ test("상단 메뉴 묶음이 하나도 안 남는 파트너스(기능·권한 �
   await expect(gnb(page).locator(".gnb-i")).toHaveCount(0);
   await expect(lnb(page)).toBeVisible();
   await expect(page.locator(".util-desk").getByRole("link", { name: "공지 · 문의" })).toBeVisible();
+  await expect(page.locator(".util-desk").getByRole("link", { name: "공지 · 문의", exact: true })).toHaveAttribute("href", "/seller/notices");
 });
 
 test("쇼핑몰 통합은 쇼핑몰 기능 메뉴가 모두 보인다", async ({ page }) => {
@@ -74,7 +75,7 @@ test("오버레이 전용은 쇼핑몰 기능 메뉴를 숨기고, 오버레이�
   await login(page, OVERLAY, "/seller/orders");
   const me = await (await page.request.get("/api/seller/me")).json();
   expect(me.features).toEqual(["OVERLAY", "EXTERNAL_INTEGRATION"]);
-  await expect(page.getByRole("heading", { name: "주문" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "전체 주문", exact: true })).toBeVisible();
   for (const label of COMMON_MENUS) await expect(lnbItem(page, label)).toHaveCount(1);
   for (const label of STORE_MENUS) await expect(lnbItem(page, label)).toHaveCount(0);
   // 상품·프로모션·디자인 대분류는 하위 메뉴가 모두 숨어 GNB에서도 사라진다
@@ -105,7 +106,10 @@ test("로그인 뒤 기본 화면: 통합은 홈, 오버레이 전용은 오버�
   // 방송 통계는 열려 있고, 통계 탭도 방송만 남는다
   await page.goto("/seller/stats/broadcasts");
   await expect(page.getByRole("heading", { name: "통계 · 방송" })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "통계 종류" }).getByRole("link")).toHaveText(["방송"]);
+  await expect(lnb(page).locator("strong.lnb-parent").filter({ hasText: /^통계$/ })).toHaveCount(1);
+  const stats = lnb(page).getByRole("navigation", { name: "통계", exact: true });
+  await expect(stats.locator("a.lnb-sub-i")).toHaveText(["방송"]);
+  await expect(stats.getByRole("link", { name: "방송", exact: true })).toHaveAttribute("href", "/seller/stats/broadcasts");
 
   // 매출·주문 통계 요약은 주소로 들어와도 안내 화면
   await page.goto("/seller/stats");
@@ -113,6 +117,7 @@ test("로그인 뒤 기본 화면: 통합은 홈, 오버레이 전용은 오버�
 });
 
 test("오버레이 전용이 쇼핑몰 기능 주소로 바로 들어오면 안내 화면을 보이고, 열 수 있는 화면으로 보낸다", async ({ page }) => {
+  await page.route("**/api/seller/me", overlayMe(true));
   await login(page, OVERLAY, "/seller/orders");
   // 서버도 막는다(화면 숨김만으로 막지 않음)
   const api = await page.request.get("/api/seller/products");
@@ -130,9 +135,12 @@ test("오버레이 전용이 쇼핑몰 기능 주소로 바로 들어오면 안�
   await expect(page.getByText("상품 등록")).toHaveCount(0);
   await shot(page, "plan-feature-required");
 
-  // 열 수 있는 첫 메뉴(홈 = 오버레이 홈)로 보낸다
-  await guide.getByRole("link", { name: "홈 화면으로 이동" }).click();
-  await expect(page).toHaveURL(/\/seller$/);
+  // 현재 메뉴 순서에서 요금제 안내가 보내는 첫 허용 화면은 오버레이 편집기다.
+  const next = guide.getByRole("link", { name: "방송 화면 꾸미기 화면으로 이동", exact: true });
+  await expect(next).toHaveAttribute("href", "/seller/overlay");
+  await next.click();
+  await expect(page).toHaveURL(/\/seller\/overlay$/);
+  await expect(page.getByRole("heading", { level: 1, name: "방송 화면 꾸미기", exact: true })).toBeVisible();
   await expect(page.getByTestId("plan-feature-required")).toHaveCount(0);
 });
 
@@ -205,7 +213,7 @@ test("화면을 옮긴 뒤 늦게 온 403 plan_feature_required는 지금 화면
   await late;
   await page.waitForTimeout(300);
   await expect(page.getByTestId("plan-feature-required")).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "주문", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "전체 주문", exact: true })).toBeVisible();
 });
 
 test("같은 화면으로 돌아온 뒤 첫 방문에서 보낸 요청의 늦은 403이 와도 지금 방문을 막지 않는다", async ({ page }) => {

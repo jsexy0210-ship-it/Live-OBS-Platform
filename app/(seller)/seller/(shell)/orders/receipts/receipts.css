@@ -1,5 +1,5 @@
 /* SA-024 영수증 · 세금계산서 */
-.rc-sum{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));margin:12px 0;border:1px solid var(--wds-line-normal-alternative);border-radius:8px;background:var(--wds-background-normal)}
+.rc-sum{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));margin:12px 0;border:1px solid var(--wds-line-normal-alternative);border-radius:0;background:var(--wds-background-normal)}
 .rc-sum>div{padding:14px 20px;border-right:1px solid var(--wds-line-normal-alternative)}
 .rc-sum>div:last-child{border-right:0}
 .rc-sum .k{font-size:12px;color:var(--wds-label-alternative)}

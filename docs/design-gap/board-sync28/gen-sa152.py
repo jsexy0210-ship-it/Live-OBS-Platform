@@ -4,7 +4,7 @@
 continueJob: 멈춘 단계부터; getJobTimeline 작업 기록) · components/seller/automation/common.ts(STEP_LABEL · ACTION_TEXT · ERROR_TEXT · 상태 이름)
 · app/(seller)/seller/(shell)/automation/[jobId]/page.tsx(상태별 버튼: 자동 설정 그만두기 · 이어서 진행하기 · N원 환불 요청하기 · 자동 설정 다시 하기 · 직접 설정하러 가기).
 정본에만 있고 구현에서 못 찾은 것(쇼핑몰 이름 · 주소 · 「관리자 창 열기」 · 「도구 내려받기」 · 되돌린 항목 목록 · 「대기 중 · N분」 경과 분 · 무료 재시도 · 완료 시각)은 지우지 않고 「구현 미확인」으로 표기한다.
-작업 기록 표 · 잠시 멈추기 · 이어 하기 · 할 일 표(customerChecklist 5줄 · 줄별 완료 버튼, page.tsx:144-163)는 #1007로 구현됨 — 정본은 그 구조를 그대로 둔다.
+작업 기록 표 · 잠시 멈추기 · 이어 하기 · 할 일 표(customerChecklist 5줄 · 줄별 완료 버튼, page.tsx:144-163)는 #1007 소스 반영 · 실화면 동작 미검증 — 정본은 그 구조를 그대로 둔다.
 재현성: 이 스크립트 한 번으로 보드가 완성된다(사후 수동 편집 없음, Codex 리뷰 2026-10-17 #1235).
 사용: gen-sa152.py <design/project 디렉터리> (제자리 수정 · PC 1440 정본만)"""
 import sys, pathlib
@@ -36,8 +36,8 @@ t = rep(t, '<div class="rtabs"><a class="" href="#" style="color: #1b7f3b">✓ �
 # 지금 해 주실 일: 구현(page.tsx:144-163) 그대로 할 일 표 5줄(customerChecklist · CHECK_TEXT · 줄별 완료 버튼) + 안내 + 「이어서 진행하기」. 관리자 창 열기는 구현 미확인
 t = rep(t, '<div class="box" style="padding: 12px 12px"><b>쇼핑몰 관리자에 로그인하고 2단계 인증을 완료해 주십시오</b><div class="nt" style="margin-top: 4px">아래 창이 열립니다 · 아이디 · 비밀번호는 저장하지 않고, 인증이 끝나면 자동으로 이어 갑니다</div><div style="margin-top: 8px"><button class="b pri" type="button">관리자 창 열기</button><button class="b " type="button">인증 완료</button></div></div>',
         '<div class="note cau" style="width: 100%"><b>직접 해 주실 일이 있습니다</b> · 고객 확인 필요 · 24시간 안 · 마치면 자동으로 이어 갑니다 · 24시간이 지나면 실패로 처리하고 환불 안내를 보내 드립니다</div>' + CHECKLIST + '<div style="margin-top: 8px"><button class="b pri" type="button">이어서 진행하기</button><button class="b " type="button">관리자 창 열기</button> ' + UNV + '</div>')
-# 작업 기록: 서버 getJobTimeline 종류에 맞춘 행 · 화면 표시는 #1007로 구현됨
-t = rep(t, '<div class="sec-t">작업 기록</div>', '<div class="sec-t">작업 기록<span class="nt">서버 작업 기록(결제 확인 · 시작 · N단계 완료 · 고객 확인 대기 · 이어 감 · 테스트 확인 · 잠시 멈춤 · 이어 하기 · 완료 · 실패 · 취소) · 화면 표시 구현됨(#1007 작업 기록 표 · 비밀번호 · 인증번호는 기록에 남기지 않습니다)</span></div>')
+# 작업 기록: 서버 getJobTimeline 종류에 맞춘 행 · 화면 표시는 #1007 소스 반영 · 실화면 동작 미검증
+t = rep(t, '<div class="sec-t">작업 기록</div>', '<div class="sec-t">작업 기록<span class="nt">서버 작업 기록(결제 확인 · 시작 · N단계 완료 · 고객 확인 대기 · 이어 감 · 테스트 확인 · 잠시 멈춤 · 이어 하기 · 완료 · 실패 · 취소) · #1007 소스 반영 · 실화면 동작 미검증(작업 기록 표 · 비밀번호 · 인증번호는 기록에 남기지 않습니다)</span></div>')
 t = rep(t, '<tr><td class="c">21:06</td><td class="l">쇼핑몰 앱 설치 요청</td></tr><tr><td class="c">21:07</td><td class="l">관리자 로그인 · 2단계 인증이 필요합니다 · 고객 확인 대기</td></tr>',
         '<tr><td class="c">21:06</td><td class="l">실행 시작 · 2단계 다른 쇼핑몰 이어 주기</td></tr><tr><td class="c">21:07</td><td class="l">고객 확인 대기 · 문자 인증</td></tr>')
 
@@ -58,7 +58,7 @@ t = rep(t, '<div class="toast2">자동 연결을 취소하고 설정을 되돌�
         '<div class="note cau" style="width: 100%"><b>바꾼 설정을 원래대로 되돌리고 있습니다.</b> 끝나면 알려 드립니다</div><div class="box" style="width: 100%; padding: 12px"><b>자동 연결을 취소했습니다</b><div class="nt" style="margin-top: 4px">시작 뒤 취소: 설정을 시작한 뒤라 환불되지 않습니다 · 결제 전에 동의하신 내용입니다 / 시작 전 취소: ' + REFUND + '</div><div style="margin-top: 8px">' + END_BTNS + '</div></div><span class="hint">되돌린 항목 목록(웹훅 · 방송 화면 소스 · 앱 설치) 표시 ' + UNV + '</span>')
 # 대기 중: 구현 상태 이름 · 문구 · 멈추기 가능
 t = rep(t, '<div class="note inf" style="width: 100%"><b>순서를 기다리고 있습니다</b> · 앞에 3개 · 약 10분 뒤 시작합니다 · 창을 닫아도 알림으로 알려 드립니다</div>',
-        '<span class="tag n">순서 기다리는 중</span><div class="note inf" style="width: 100%"><b>순서를 기다리고 있습니다</b> · 앞에 3개 · 약 10분 뒤 시작합니다 · 창을 닫아도 진행됩니다 · 결제가 확인되기 전에는 작업이 시작되지 않습니다</div><div class="row" style="gap: 8px"><button class="b sm" type="button">잠시 멈추기</button><button class="b sm" type="button">자동 설정 그만두기</button></div><span class="hint">잠시 멈추기는 순서 기다리는 중 · 설정하는 중 · 확인하는 중에만(서버) · 버튼 화면 표시 <span class="nt">(구현 #1007)</span>' + '</span>')
+        '<span class="tag n">순서 기다리는 중</span><div class="note inf" style="width: 100%"><b>순서를 기다리고 있습니다</b> · 앞에 3개 · 약 10분 뒤 시작합니다 · 창을 닫아도 진행됩니다 · 결제가 확인되기 전에는 작업이 시작되지 않습니다</div><div class="row" style="gap: 8px"><button class="b sm" type="button">잠시 멈추기</button><button class="b sm" type="button">자동 설정 그만두기</button></div><span class="hint">잠시 멈추기는 순서 기다리는 중 · 설정하는 중 · 확인하는 중에만(서버) · 버튼 화면 표시 <span class="nt">(#1007 소스 반영 · 실화면 동작 미검증)</span>' + '</span>')
 t = rep(t, '<span class="tag bl">실행 중</span><table class="lt">', '<span class="tag live">설정하는 중</span><table class="lt">')
 t = rep(t, '<span class="tag bl">검증 중</span><div class="note inf" style="width: 100%"><b>테스트 주문 이벤트를 보냈습니다</b> · 방송 화면에 「테스트 주문」이 보이는지 확인하고 있습니다 · 최대 2분</div>',
         '<span class="tag live">확인하는 중</span><div class="note inf" style="width: 100%"><b>테스트 주문 이벤트를 보냈습니다</b> · OBS 오버레이에 「테스트 주문」이 보이는지 확인하고 있습니다</div>')
@@ -77,5 +77,5 @@ t = rep(t, '<div class="note inf" style="width: 100%"><b>잠시 멈춰 두었습
 t = rep(t, '<div class="st"><span class="st-tag">대기 중</span>',
         '<div class="st"><span class="st-tag">결제 확인 중 · 결제창에서 돌아옴</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><span class="tag n">결제 확인 중</span><div class="note pos" style="width: 100%"><b>결제됐습니다</b> · 자동 연결을 시작합니다</div><div class="note inf" style="width: 100%"><b>결제를 확인하고 있습니다</b> · 카드사 승인 뒤 서버가 한 번 더 확인합니다 · 창을 닫아도 진행됩니다 · 결제가 확인되기 전에는 작업이 시작되지 않습니다</div></div></div><div class="st"><span class="st-tag">대기 중</span>')
 t = rep(t, '대기 중 · 14분', '대기 중 · 14분 <span class="nt">(경과 분은 서버에 없음 · 구현 미확인 2026-10-16)</span>')
-t = rep(t, '"height":1250', '"height":1500')
+t = rep(t, '"height":1250', '"height":3800')
 p.write_text(t, encoding='utf-8'); print('wrote SA-152.dc.html', len(t))

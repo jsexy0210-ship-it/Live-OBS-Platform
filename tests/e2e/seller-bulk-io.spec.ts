@@ -22,7 +22,11 @@ test("올리기 → 확인 → 반영 → 되돌리기", async ({ page }) => {
   const csv = `상품명,판매가,상태,설명,차감시점,카테고리,옵션명,옵션추가금,재고,SKU\r\n${name},5000,판매중,시험,결제 시,,기본,0,3,BK-1\r\n오류 상품,가격아님,판매중,,,,기본,0,1,BK-2\r\n`;
   await open(page);
   await expect(page.getByRole("heading", { level: 1, name: "엑셀 일괄 등록 · 내보내기" })).toBeVisible();
-  await expect(page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "엑셀로 올리기 · 내려받기" })).toHaveAttribute("aria-current", "page");
+  const menu = page.getByRole("complementary", { name: "파트너스 메뉴" });
+  await expect(menu.locator("strong.lnb-parent").filter({ hasText: /^엑셀로 올리기 · 내려받기$/ })).toBeVisible();
+  const leaf = menu.locator("a.lnb-sub-i").filter({ hasText: /^상품 일괄 등록 · 수정$/ });
+  await expect(leaf).toHaveAttribute("href", `${URL_PATH}?section=register`);
+  await expect(leaf).toHaveAttribute("aria-current", "page");
 
   await page.getByLabel("CSV 파일 선택").setInputFiles({ name: "상품_시험.csv", mimeType: "text/csv", buffer: Buffer.from(csv, "utf8") });
   const pv = page.getByTestId("bulk-preview");

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { CursorPagination } from "../../../../../../components/Pagination";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { ListHead, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
+import { ListTable, ListHead, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { useScrollRestore } from "../../../../../../lib/client/navigation";
 import { adminApi } from "../../../_components/api";
@@ -15,7 +15,7 @@ import { useListFilters } from "../../../_components/useListFilters";
 // MA-051 파트너스 문의 목록(GET /api/admin/platform-inquiries, 모든 마스터 역할 조회). 정본: design/project/MA-051.dc.html(FINAL v329).
 // 검색 패널(상태·분류·담당·긴급) → 목록. 상태 옆 숫자는 서버의 상태별 전체 수. 조건은 「검색」을 눌러 적용하고 주소에 남는다.
 // 답변·종료는 상세(MA-052)에서 한다(최고관리자·CS). 마지막 글 최신 순 10건씩 현재 페이지를 불러오고, 파트너스 지정(?sellerId=)을 받는다.
-type Summary = { waiting: number; urgent: number; overdue: number; mine: number; todayReceived: number; answeredToday: number; avgFirstReplyHours: number | null };
+type Summary = { waiting: number; urgent: number; overdue: number; mine: number; todayReceived: number; answeredToday: number; avgFirstReplyHours: number | null; helpful7d: { answered: number; helpful: number; rate: number | null } };
 type Page = { items: InquiryRow[]; counts: InquiryCounts; summary: Summary; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; items: InquiryRow[]; counts: InquiryCounts; summary: Summary; next: string | null };
 const CATEGORIES = ["BROADCAST", "PAYMENT_LINK", "ORDER_REFUND", "REWARD", "SUBSCRIPTION_FEE", "SHOP", "ACCOUNT", "OTHER"] as const satisfies readonly InquiryCategory[];
@@ -24,7 +24,8 @@ const ASSIGNEES = [
   ["me", "나"],
   ["none", "미배정"],
 ] as const;
-const EMPTY = { status: "OPEN", category: "", assignee: "", urgent: "first", sellerId: "" };
+const EMPTY = { status: "OPEN", category: "", assignee: "", urgent: "first", sellerId: "", seller: "" };
+const SELLER_MAX = 50; // 서버 파트너스 이름·주소 검색 길이 한도
 // 접수 뒤 지난 시간(답변을 기다리는 문의만): 「42분」「5시간 50분」「1일 2시간」
 function elapsed(from: string, now: number): string {
   const min = Math.max(0, Math.floor((now - new Date(from).getTime()) / 60_000));
@@ -42,6 +43,7 @@ function Inquiries() {
   const category = (CATEGORIES as readonly string[]).includes(applied.category) ? applied.category : "";
   const assignee = ["me", "none"].includes(applied.assignee) ? applied.assignee : "";
   const urgent = ["first", "only"].includes(applied.urgent) ? applied.urgent : "";
+  const seller = applied.seller.trim().slice(0, SELLER_MAX);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [more, setMore] = useState(false);
   const [page, setPage] = useState(1);
@@ -58,10 +60,11 @@ function Inquiries() {
       if (assignee) p.set("assignee", assignee);
       if (urgent) p.set("urgent", urgent);
       if (sellerId) p.set("sellerId", sellerId);
+      if (seller) p.set("seller", seller);
       if (cursor) p.set("cursor", cursor);
       return p.toString();
     },
-    [tab, category, assignee, urgent, sellerId],
+    [tab, category, assignee, urgent, sellerId, seller],
   );
   const load = useCallback(async () => {
     const id = ++reqId.current;
@@ -100,7 +103,7 @@ function Inquiries() {
   const summary = state.kind === "ok" ? state.summary : null;
   const total = counts ? counts.OPEN + counts.ANSWERED + counts.CLOSED : null;
   const items = state.kind === "ok" ? state.items : [];
-  const filtered = category !== "" || assignee !== "" || urgent === "only";
+  const filtered = category !== "" || assignee !== "" || urgent === "only" || seller !== "";
   const search = () => apply({ ...draft, status: draft.status || "", sellerId });
   const reset = () => apply({ ...EMPTY, sellerId });
   const radio = (name: string, key: "status" | "category" | "assignee", value: string, label: React.ReactNode) => (
@@ -124,8 +127,8 @@ function Inquiries() {
                 ["오늘 접수", `${summary.todayReceived}건`, ""],
                 ["답변 완료 (오늘)", `${summary.answeredToday}건`, ""],
                 ["평균 첫 답변", summary.avgFirstReplyHours === null ? "—" : `${summary.avgFirstReplyHours.toFixed(1)}시간`, "최근 7일 접수"],
-                // 도움됨(예·아니요) 비율은 별점 만족도가 아니다. 확정 산식 전까지 값을 만들지 않는다.
-                ["만족도 (7일)", "집계 준비 중", ""],
+                // 별점 만족도는 없다. 「답변이 도움이 됐습니까?」에 답한 문의의 「예」 비율(서버 helpful7d.rate, 0~100)만 보인다. 답한 문의가 없으면 「—」.
+                ["도움됨 (7일)", summary.helpful7d.rate === null ? "—" : `${summary.helpful7d.rate}%`, "「도움이 됐습니까?」 예 비율"],
               ].map(([label, value, hint]) => (
                 <div key={label} className="card pad col" style={{ gap: 4, minWidth: 0 }}>
                   <span className="t-l2 c-alt">{label}</span>
@@ -142,6 +145,7 @@ function Inquiries() {
             <SearchRow label="분류">
               {radio("f-category", "category", "", "전체")}
               {CATEGORIES.map((c) => radio("f-category", "category", c, INQUIRY_CATEGORY[c]))}
+              <span className="t-c1 c-alt">문의 작성 화면과 같은 8종 · 「긴급」은 분류가 아니라 따로 거릅니다</span>
             </SearchRow>
             <SearchRow label="담당">{ASSIGNEES.map(([v, l]) => radio("f-assignee", "assignee", v, l))}</SearchRow>
             <SearchRow label="긴급">
@@ -152,6 +156,9 @@ function Inquiries() {
                 </label>
               ))}
             </SearchRow>
+            <SearchRow label="파트너스">
+              <input className="inp" type="search" aria-label="파트너스 검색" placeholder="이름 입력" maxLength={SELLER_MAX} value={draft.seller} onChange={(e) => setDraft({ ...draft, seller: e.target.value })} style={{ width: 240 }} />
+            </SearchRow>
           </SearchBox>
           {sellerId && (
             <div className="row" style={{ gap: 8 }}>
@@ -161,9 +168,9 @@ function Inquiries() {
               </Link>
             </div>
           )}
-          <div className="card">
-            {state.kind === "loading" && <LoadingRows rows={5} />}
-            {state.kind === "error" && <ErrorState title="파트너스 문의를 불러오지 못했습니다." onRetry={() => void load()} />}
+          <section className="au-list-section">
+            {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
+            {state.kind === "error" && <div className="card"><ErrorState title="파트너스 문의를 불러오지 못했습니다." onRetry={() => void load()} /></div>}
             {state.kind === "ok" &&
               (items.length === 0 ? (
                 <div className="st">
@@ -172,7 +179,7 @@ function Inquiries() {
               ) : (
                 <>
                   <ListHead total={items.length} loaded />
-                  <div style={{ overflowX: "auto" }}>
+                  <ListTable>
                     <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                       <thead>
                         <tr>
@@ -211,7 +218,7 @@ function Inquiries() {
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </ListTable>
                   {(state.next || page > 1) && (
                     <div className="row" style={{ justifyContent: "center", padding: "12px 16px" }} aria-busy={more}>
                       <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={(n) => void changePage(n)} onNext={() => void changePage(page + 1)} />
@@ -219,7 +226,7 @@ function Inquiries() {
                   )}
                 </>
               ))}
-          </div>
+          </section>
         </div>
       </main>
       {toast && <Toast text={toast} neg onDone={() => setToast(null)} />}

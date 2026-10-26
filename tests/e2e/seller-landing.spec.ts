@@ -36,7 +36,7 @@ test("권한이 하나도 없는 직원: 홈으로 가고, 읽을 수 있는 항
   await loginAs(page, "demo-none@example.com");
   await expect(page).toHaveURL(/\/seller$/);
   await expect(page.getByText("이 계정은 이 일을 할 수 없습니다")).toHaveCount(0);
-  await expect(page.getByText("오늘 처리할 일이 없습니다")).toBeVisible();
+  await expect(page.getByText("오늘 처리할 일이 없어요")).toBeVisible();
 });
 
 test("가려는 주소(next)가 있으면 그대로 간다", async ({ page }) => {

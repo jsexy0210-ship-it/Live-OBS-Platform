@@ -65,7 +65,8 @@ for (const [width, inputH, inputFs, btnMin] of [
     await expect(page).toHaveURL(/\/seller\/orders$/);
     for (const path of ["/seller/orders", "/seller", "/seller/hit-cards", "/seller/products", "/seller/overlay"]) {
       await page.goto(path);
-      await expect(page.locator(".loc-bar")).toBeVisible();
+      await expect(page.locator(".loc-bar")).toHaveCount(path === "/seller" ? 0 : 1);
+      if (path !== "/seller") await expect(page.locator(".loc-bar")).toBeVisible();
       await noSideScroll(page);
       // 버튼·입력 모서리는 8px 하나. 높이는 compact(32) 이상, 휴대폰은 조작 영역 44 이상
       for (const b of await boxes(page, ".main .btn")) {
@@ -85,7 +86,7 @@ test("경로는 상단 경로 줄 한 곳에만 보인다", async ({ page }) => 
   await page.goto(`/seller/login?next=${encodeURIComponent("/seller")}`);
   await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
   await expect(page).toHaveURL(/\/seller$/);
-  await expect(page.locator(".loc-bar")).toContainText("홈");
+  await expect(page.locator(".loc-bar")).toHaveCount(0);
   await expect(page.locator(".main .au-ph")).toBeVisible();
   await expect(page.locator(".main .au-ph")).not.toContainText("›");
   // 화면 제목 20px/28px

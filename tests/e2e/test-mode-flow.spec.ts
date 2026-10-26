@@ -6,8 +6,13 @@ const SHOTS = process.env.E2E_SCREENSHOTS === "1";
 const NOTICE = "테스트 모드예요. 인증번호 000000을 입력해 주세요";
 
 async function open(page: Page) {
-  const health = page.waitForResponse((r) => r.url().endsWith("/api/health"));
   await page.goto("/shop/demo-shop/signup");
+  await page.getByLabel("이용약관 동의 (필수)").check();
+  await page.getByLabel("개인정보 수집 · 이용 동의 (필수)").check();
+  await page.getByLabel("만 14세 이상이에요 (필수)").check();
+  const health = page.waitForResponse((r) => r.url().endsWith("/api/health"));
+  await page.getByRole("button", { name: "다음", exact: true }).click();
+  await expect(page).toHaveURL(/\/signup\/verify$/);
   return (await health).json() as Promise<{ testMode?: boolean }>;
 }
 

@@ -57,6 +57,29 @@ describe("판매자 주문 목록 GET /api/seller/orders", () => {
     expect((await list(a.cookie, `?q=${other.orderNo}`)).body.orders.map((o: { id: string }) => o.id)).toEqual([a1.id]);
   });
 
+  it("선택 배송 준비 요약은 정확 ID만 원 순서로 읽고 개인정보·상세 이력과 열람 감사가 없다", async () => {
+    const a = await shop();
+    const b = await shop();
+    const first = await a.order({ status: "PAID" });
+    const second = await a.order({ status: "PENDING_PAYMENT" });
+    const held = await a.order();
+    const other = await b.order();
+    await db.order.update({ where: { id: held.id }, data: { legalHoldAt: new Date() } });
+    await db.buyerMember.update({ where: { id: a.buyer.id }, data: { name: "상세 전용", phone: "01011112222" } });
+    const requested = [second.id, first.id, first.id.toUpperCase(), held.id, other.id, randomUUID()];
+    const query = new URLSearchParams({ summary: "prepare", ids: requested.join(",") });
+    const result = await list(a.cookie, `?${query}`);
+    expect(result.status).toBe(200);
+    expect(result.body).toEqual({ orders: [second, first].map((order) => ({ id: order.id, orderNoLabel: expect.stringMatching(/^\d{8}-\d{4}$/), buyer: { broadcastNickname: a.buyer.broadcastNickname }, shippingPreparedAt: null })), missing: 3 });
+    expect(await db.auditLog.count({ where: { action: "customer.pii.view" } })).toBe(0);
+    expect((await list(a.cookie, `?${new URLSearchParams({ summary: "prepare", ids: other.id })}`)).body).toEqual({ orders: [], missing: 1 });
+    expect((await list(a.cookie, "?summary=prepare&ids=invalid")).status).toBe(400);
+    const denied = await sellerCookie((await createSellerUser(a.seller.id, { permissions: [] })).email);
+    expect((await list(denied, `?${query}`)).status).toBe(403);
+    expect(await db.auditLog.count({ where: { action: "customer.pii.view" } })).toBe(0);
+    expect((await list(a.cookie)).body.orders.find((order: { id: string }) => order.id === first.id)).toMatchObject({ status: "PAID", totalAmount: 10000, itemSummary: expect.any(Object) });
+  });
+
   it("응답 행에 구매자·합계·상품 요약(첫 상품명 + 외 N건)·발송 여부·환불 가능 여부를 담는다", async () => {
     const s = await shop();
     const { order, product, option } = await createPaidOrderItem(s.seller.id, s.buyer.id);

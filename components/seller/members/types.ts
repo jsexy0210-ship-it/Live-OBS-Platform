@@ -10,6 +10,9 @@ export type MemberRow = {
   marketingConsent: boolean;
   createdAt: string;
   lastLoginAt: string | null;
+  orderCount: number;
+  totalPaid: number;
+  rewardBalance: number;
 };
 export type MemberDetail = MemberRow & { orderCount: number; totalPaid: number; rewardBalance: number };
 

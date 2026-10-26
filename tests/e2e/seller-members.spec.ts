@@ -33,6 +33,15 @@ test("대표자: 회원 목록에서 닉네임으로 찾고, 상세에서 주문
   // 개인정보 열람 권한이 있으면 이름 · 휴대폰 끝자리로도 찾는다고 안내한다
   await expect(page.getByLabel("회원 검색")).toHaveAttribute("placeholder", "닉네임 · 이름 · 휴대폰 끝자리");
   await expect(rows.filter({ hasText: "카드왕" })).toContainText("데모구매자2");
+  const listed: { id: string; orderCount: number; totalPaid: number; rewardBalance: number }[] = await page.evaluate(async () => (await (await fetch("/api/seller/members?limit=10")).json()).members);
+  const headers = await page.locator("thead th").allTextContents();
+  for (const m of listed) {
+    const cells = rows.filter({ has: page.locator(`a[href="/seller/members/${m.id}"]`) }).getByRole("cell");
+    for (const [label, value] of [["주문", `${m.orderCount.toLocaleString("ko-KR")}건`], ["누적 구매", `${m.totalPaid.toLocaleString("ko-KR")}원`], ["적립금", `${m.rewardBalance.toLocaleString("ko-KR")}원`]]) {
+      expect(headers.indexOf(label)).toBeGreaterThanOrEqual(0);
+      await expect(cells.nth(headers.indexOf(label))).toHaveText(value);
+    }
+  }
   await shot(page, "SA-041-members");
 
   // 검색: 마지막 조건의 응답만 반영된다
@@ -71,4 +80,29 @@ test("회원·적립금 권한이 없는 직원은 메뉴가 안 보이고, 주�
   await expect(page).toHaveURL(/\/seller\/members$/);
   await expect(page.getByText("필요한 권한: 회원·적립금", { exact: false })).toBeVisible();
   await expect(page.locator("a[href=\"/seller/members\"]")).toHaveCount(0);
+});
+
+test("대표자: 「엑셀 내려받기」는 사유를 고른 뒤에만 열리고, 내려받은 파일에 회원이 담긴다", async ({ page }) => {
+  await page.goto("/seller/login?next=%2Fseller%2Fmembers");
+  await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
+  await expect(page).toHaveURL(/\/seller\/members$/);
+  await page.getByRole("button", { name: "엑셀 내려받기 (대표자)" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("button", { name: "내려받기", exact: true })).toBeDisabled();
+  await expect(dialog).toContainText("개인정보가 담긴 파일입니다");
+  // 직접 입력은 사유를 적어야 열린다
+  await dialog.getByLabel("내보내는 사유").selectOption("직접 입력");
+  await expect(dialog.getByRole("button", { name: "내려받기", exact: true })).toBeDisabled();
+  await dialog.getByLabel("사유 직접 입력").fill("분기 정산 확인");
+  await expect(dialog.getByRole("button", { name: "내려받기", exact: true })).toBeEnabled();
+  await dialog.getByLabel("내보내는 사유").selectOption("세무 · 회계 자료");
+  await shot(page, "SA-041-export-dialog");
+  const [download] = await Promise.all([page.waitForEvent("download"), dialog.getByRole("button", { name: "내려받기", exact: true }).click()]);
+  expect(download.suggestedFilename()).toMatch(/\.csv$/);
+  const stream = await download.createReadStream();
+  const chunks: Buffer[] = [];
+  for await (const c of stream) chunks.push(c as Buffer);
+  const text = Buffer.concat(chunks).toString("utf-8");
+  expect(text).toContain("별빛사냥꾼");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });

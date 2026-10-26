@@ -1,9 +1,9 @@
 "use client";
 
 import "../../../../../../styles/seller-overlay.css";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
-import { Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
+import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { PageHead } from "../../../../../../components/admin-ui";
 import Link from "next/link";
@@ -48,11 +48,26 @@ export default function OverlayPage() {
   const [busy, setBusy] = useState(false);
   const [fail, setFail] = useState<Fail | null>(null);
   const [info, setInfo] = useState<Info | null>(null);
+  const [infoState, setInfoState] = useState<"loading" | "error" | "ok">("loading");
+  const [infoBlocked, setInfoBlocked] = useState<402 | 403 | null>(null);
+  const infoRequest = useRef(0);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
 
   const loadInfo = useCallback(async () => {
+    const request = ++infoRequest.current;
+    setInfoState("loading");
     const r = await api<Info>("/api/seller/overlay/address-info");
-    if (r.ok) setInfo(r.data);
+    if (request !== infoRequest.current) return;
+    if (!r.ok) {
+      if (r.status > 0 && r.status < 500) {
+        setInfo(null);
+        setInfoBlocked(r.status === 402 || r.status === 403 ? r.status : null);
+      }
+      return setInfoState("error");
+    }
+    setInfo(r.data);
+    setInfoBlocked(null);
+    setInfoState("ok");
   }, []);
   useEffect(() => {
     if (allowed) void loadInfo();
@@ -125,8 +140,16 @@ export default function OverlayPage() {
           <div className="card">
             <NoPermission need="오버레이 편집" />
           </div>
+        ) : !info ? infoBlocked === 403 ? (
+          <NoPermission need="오버레이 편집" />
+        ) : (
+          <div className="card">
+            {infoBlocked === 402 ? <Locked /> : infoState === "error" ? <ErrorState title="주소 정보를 불러오지 못했어요" onRetry={() => void loadInfo()} /> : <LoadingRows rows={4} />}
+          </div>
         ) : (
           <div className="col" style={{ gap: 20 }}>
+            {infoState === "loading" && <span role="status">주소 정보를 불러오고 있어요.</span>}
+            {infoState === "error" && <div className="msg msg-neg" role="alert">주소 정보를 불러오지 못했어요. 이전 정보를 보여드려요. <button className="btn btn-sm" type="button" onClick={() => void loadInfo()}>다시 시도</button></div>}
             <div className="msg msg-cau" role="note">
               파트너스 전용 비공개 주소입니다 · 이 주소를 아는 사람은 누구나 주문대기를 볼 수 있으니 방송 화면에 노출하지 마십시오
             </div>

@@ -283,19 +283,20 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
     await expect(page.getByTestId("banner-row").nth(1).getByText("예약")).toBeVisible();
     await expect(page.getByTestId("banner-row").nth(2)).toContainText("PC만");
 
+    await page.getByRole("button", { name: "노출 설정 상세", exact: true }).click();
     // ▲▼로 순서 바꾸기 → 맨 위 ▲와 맨 아래 ▼는 꺼져 있고, 새로고침해도 유지
-    await expect(page.getByTestId("banner-row").nth(0).getByRole("button", { name: /위로$/ })).toBeDisabled();
-    await expect(page.getByTestId("banner-row").nth(2).getByRole("button", { name: /아래로$/ })).toBeDisabled();
+    await expect(page.getByTestId("banner-order-row").nth(0).getByRole("button", { name: /위로$/ })).toBeDisabled();
+    await expect(page.getByTestId("banner-order-row").nth(2).getByRole("button", { name: /아래로$/ })).toBeDisabled();
     await page.getByRole("button", { name: "회원 등급 혜택 위로" }).click();
     await expect(page.getByText("순서를 저장했습니다")).toBeVisible();
     await page.getByRole("button", { name: "회원 등급 혜택 위로" }).click();
     await expect(page.getByText("순서를 저장했습니다")).toBeVisible();
     await page.reload();
-    await expect(page.getByTestId("banner-row").nth(0)).toContainText("회원 등급 혜택");
+    await expect(page.getByTestId("banner-order-row").nth(0)).toContainText("회원 등급 혜택");
     await page.getByRole("button", { name: "10월 스타라이트 박스 오픈 위로" }).click();
     await expect(page.getByText("순서를 저장했습니다")).toBeVisible();
     await page.reload();
-    await expect(page.getByTestId("banner-row").nth(0)).toContainText("10월 스타라이트 박스 오픈");
+    await expect(page.getByTestId("banner-order-row").nth(0)).toContainText("10월 스타라이트 박스 오픈");
 
     // 자동 넘김: 기본 끔 → 5초(확인 창) → 구매자 홈 데이터에 반영
     await expect(page.getByLabel("자동 넘김")).toHaveValue("0");
@@ -307,6 +308,8 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
     const home = await page.evaluate(async () => (await (await fetch("/api/shop/demo-shop/shop-content?page=home")).json()) as { bannerIntervalSec?: number });
     expect(home.bannerIntervalSec).toBe(5);
     await page.screenshot({ path: `${SHOT}/SA-064-banners-1440.png`, fullPage: true });
+
+    await page.getByRole("link", { name: "목록", exact: true }).click();
 
     // 이미지를 올리는 동안은 저장할 수 없다(옛 이미지로 저장되지 않게)
     let release!: () => void;
@@ -323,7 +326,9 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
     release();
     await expect(edit.getByRole("button", { name: "저장" })).toBeEnabled();
     await page.unroute("**/api/seller/shop-content/images");
+    page.once("dialog", d => void d.accept());
     await edit.getByRole("button", { name: "닫기" }).click();
+    await expect(page).toHaveURL(/\/seller\/banners(?:\?|$)/);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.reload();
     await expect(page.getByTestId("banner-row")).toHaveCount(3);

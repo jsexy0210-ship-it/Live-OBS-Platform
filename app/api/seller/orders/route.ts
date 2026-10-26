@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireSeller } from "../../../../lib/server/authz/guards";
 import { prisma } from "../../../../lib/server/db";
 import { errorResponse, sessionToken } from "../../../../lib/server/http/route";
-import { listSellerOrders } from "../../../../lib/server/orders/read";
+import { getPrepareOrderSummaries, listSellerOrders } from "../../../../lib/server/orders/read";
 
 // 판매자 주문 목록. 행: { id, orderNo, orderNoLabel(「20261002-0409」), status, createdAt, paidAt, buyer(방송 닉네임·등급 grade), queueState(waiting 개봉 대기·opening 개봉 중·done 개봉 완료, 큐 항목이 없으면 null), shippingPreparedAt(배송 준비로 변경한 시각), totalAmount, refundedAmount(현금 환불 합계, 없으면 0), rewardReturned(환불 때 함께 돌려준 적립금 합계, 없으면 0), refundedQuantity(환불한 품목 수량 합계), remainingAmount(totalAmount − refundedAmount − rewardReturned, 0 미만이면 0), paymentMethod, paymentDueAt, itemSummary, shipped, shipment: { state(none·in_transit·delivered), courier, trackingNumber, deliveredAt }, refundRequest: { pendingCount }, refundable }. 쿼리: status(여러 개), q(주문번호 전체 일치·「20261005-0004」·방송 닉네임·받는 분 이름), memberId(회원 한 명의 주문만, UUID), shipped(true|false, 발송 여부: 발송 전 준비 READY는 false), queue(waiting·opening·done), prepared(true|false: 배송 준비로 변경한 주문 여부, 칩 「배송 준비 전」 = queue=done&prepared=false), refundRequested(true: 처리 대기 환불 요청이 있는 주문), trackingMissing(true: 결제 완료·발송 전 = 송장 미입력), from·to(KST 날짜 YYYY-MM-DD), cursor, limit(기본 10, 최대 200). ORDER_SHIPPING 권한.
 export async function GET(req: Request) {
@@ -10,6 +10,11 @@ export async function GET(req: Request) {
     // 잠금 중에도 이미 받은 주문은 처리할 수 있다(대표님 결정 2026-10-02, PRODUCT_SCOPE 「잠금 중 허용 범위」).
     const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { allowUnpaid: true, feature: "ORDER_FOLLOWUP" });
     const p = new URL(req.url).searchParams;
+    if (p.get("summary") === "prepare") {
+      const summary = await getPrepareOrderSummaries(prisma, ctx, p.get("ids"));
+      if (!summary.ok) return NextResponse.json({ error: "bad_request" }, { status: 400, headers: { "cache-control": "no-store" } });
+      return NextResponse.json({ orders: summary.orders, missing: summary.missing }, { headers: { "cache-control": "no-store" } });
+    }
     const r = await listSellerOrders(prisma, ctx, {
       status: p.getAll("status").flatMap((s) => s.split(",")).filter(Boolean),
       q: p.get("q"),

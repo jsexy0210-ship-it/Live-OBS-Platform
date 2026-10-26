@@ -9,6 +9,8 @@ const password = randomBytes(12).toString("base64url");
 const run = randomBytes(4).toString("hex");
 const emails = { super: `mon-super-${run}@example.com`, ops: `mon-ops-${run}@example.com` };
 const source = `e2e-${run}`;
+const job = `e2e.job.${run}`;
+const privateError = `시험 내부 오류 ${run}`;
 let db: PrismaClient;
 
 test.beforeAll(async () => {
@@ -21,6 +23,8 @@ test.beforeAll(async () => {
     ],
   });
   const now = new Date();
+  await db.opsInstance.create({ data: { name: source, generation: run, registeredAt: now } });
+  await db.opsHeartbeat.create({ data: { instance: source, generation: run, job, lastRunAt: now, lastStatus: "failed", lastError: privateError } });
   await db.opsEvent.createMany({
     data: [
       { source, eventId: `${run}-1`, kind: "incident_open", key: `down-${run}`, severity: "critical", message: `시험 장애 ${run}`, occurredAt: now },
@@ -33,6 +37,8 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await db.opsEvent.deleteMany({ where: { source } });
   await db.auditLog.deleteMany({ where: { action: `e2e.auto.${run}` } });
+  await db.opsHeartbeat.deleteMany({ where: { instance: source, generation: run } });
+  await db.opsInstance.deleteMany({ where: { name: source, generation: run } });
   await db.$disconnect();
 });
 
@@ -55,6 +61,7 @@ test("최고관리자: 열린 장애는 심각도와 함께 보이고 해소된 
   await expect(page.getByTestId("monitor-action").filter({ hasText: `e2e.auto.${run}` })).toBeVisible();
   await expect(page.getByTestId("monitor-webhook")).toContainText("확인하지 않음");
   await expect(page.getByTestId("monitor-paycheck")).toHaveCount(4);
+  await expect(page.getByTestId("monitor-job").filter({ hasText: job })).toContainText(privateError);
   // 심각도 거르기: 주의로 바꾸면 긴급 장애는 빠진다
   await page.getByRole("button", { name: "주의", exact: true }).click();
   await expect(incident).toHaveCount(0);
@@ -74,9 +81,36 @@ test("지표를 못 읽으면 「감시 끊김」과 마지막 갱신 시각을 
   await expect(page.getByTestId("monitor-incident").first()).toBeVisible();
 });
 
-test("운영 담당: 메뉴에 없고 주소로 들어가도 권한 없음 화면만 보인다", async ({ page }) => {
+test("운영 담당: 감시를 조회하고 갱신하되 쓰기 동작과 내부 오류 상세는 보이지 않는다", async ({ page }) => {
   await login(page, emails.ops);
-  await expect(page.getByRole("link", { name: "실시간 감시" })).toHaveCount(0);
-  await page.goto("/admin/ops/monitor");
-  await expect(page.getByText("이 화면을 볼 권한이 없습니다")).toBeVisible();
+  const writes: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/admin/ops/monitor" && !["GET", "HEAD"].includes(request.method())) writes.push(request.method());
+  });
+  const menu = page.getByRole("link", { name: "실시간 감시", exact: true });
+  await expect(menu).toHaveAttribute("href", "/admin/ops/monitor");
+  const response = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/admin/ops/monitor" && r.request().method() === "GET");
+  await menu.click();
+  await expect(page).toHaveURL(/\/admin\/ops\/monitor$/);
+  const loaded = await response;
+  expect(loaded.ok()).toBe(true);
+  const data = await loaded.json();
+  const ownJob = data.jobs.find((entry: { job: string }) => entry.job === job);
+  expect(ownJob).toMatchObject({ job, lastStatus: "failed", healthy: false });
+  expect(ownJob).not.toHaveProperty("lastError");
+  await expect(page.getByRole("heading", { name: "실시간 감시", exact: true })).toBeVisible();
+  await expect(page.getByTestId("monitor-status")).toContainText("감시 중");
+  await expect(page.getByTestId("monitor-incident").filter({ hasText: `시험 장애 ${run}` })).toContainText("긴급");
+  const jobRow = page.getByTestId("monitor-job").filter({ hasText: job });
+  await expect(jobRow).toContainText("실패");
+  await expect(jobRow.locator("td").last()).toHaveText("-");
+  await expect(page.getByText(privateError, { exact: true })).toHaveCount(0);
+  const main = page.locator("main.main");
+  await expect(main.locator("form, input, textarea, select")).toHaveCount(0);
+  await expect(main.locator("button:not(.bk)")).toHaveText(["지금 갱신", "전체", "긴급", "주의"]);
+  const refreshed = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/admin/ops/monitor" && r.request().method() === "GET");
+  await page.getByRole("button", { name: "지금 갱신", exact: true }).click();
+  expect((await refreshed).ok()).toBe(true);
+  await expect(jobRow.locator("td").last()).toHaveText("-");
+  expect(writes).toEqual([]);
 });

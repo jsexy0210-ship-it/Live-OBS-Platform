@@ -131,36 +131,61 @@ test("카테고리로 걸러 본다(대분류는 하위 포함)", async ({ page 
 test("선택 일괄 처리: 숨김으로 바꾸고 되돌리고, 선택 삭제는 확인을 거친다", async ({ page }) => {
   await open(page);
   const names = ["가", "나", "다"].map((s) => `일괄${s} ${RUN}`);
-  for (const n of names) await make(page, n);
+  const ids: string[] = [];
+  for (const n of names) ids.push(await make(page, n));
   await page.reload();
   await nameQuery(page, `일괄`);
   const mine = rows(page).filter({ hasText: `${RUN}` });
   await expect(mine).toHaveCount(3);
+  const listUrl = page.url();
+  const openWork = async (selected: string[]) => {
+    const link = page.getByRole("link", { name: "선택 상품 작업 상세", exact: true });
+    const list = new URL(listUrl);
+    const href = `/seller/products/operations?${new URLSearchParams({ ids: selected.join(","), returnTo: list.pathname + list.search })}`;
+    await expect(link).toHaveAttribute("href", href);
+    await link.click();
+    await expect(page).toHaveURL(new URL(href, listUrl).href);
+    await expect(page.getByRole("region", { name: "선택한 상품", exact: true }).locator("tbody tr")).toHaveCount(selected.length);
+    // 새로고침으로 앱 내 이동 기록이 없어져도 명시한 목록 조건으로 복귀한다.
+    await page.reload();
+    await expect(page.getByRole("region", { name: "선택한 상품", exact: true }).locator("tbody tr")).toHaveCount(selected.length);
+  };
+  const returnToList = async () => {
+    await page.getByRole("button", { name: "뒤로", exact: true }).click();
+    await expect(page).toHaveURL(listUrl);
+  };
+  const workRows = page.getByRole("region", { name: "선택한 상품", exact: true }).locator("tbody tr");
   // 선택이 없으면 일괄 버튼은 눌 수 없다
-  await expect(page.getByRole("button", { name: "선택 숨김" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "선택 상품 작업 상세", exact: true })).toBeDisabled();
   for (const n of names) await page.getByLabel(`${n} 선택`).check();
+  await openWork(ids);
   await page.getByRole("button", { name: "선택 숨김" }).click();
   await page.getByRole("button", { name: "바꾸기", exact: true }).click();
   await expect(page.getByText("선택한 3개 상품을 숨김으로 바꿨습니다")).toBeVisible();
-  await expect(mine.locator("td:nth-child(8)").first()).toHaveText("숨김");
-  await expect(mine.filter({ hasText: "숨김" })).toHaveCount(3);
+  await expect(workRows.locator("td:nth-child(4)").first()).toHaveText("숨김");
+  await expect(workRows.filter({ hasText: "숨김" })).toHaveCount(3);
   // 되돌리기: 처음 상태(판매 중)로
   await page.getByRole("button", { name: "되돌리기" }).click();
   await expect(page.getByText("되돌렸습니다")).toBeVisible();
-  await expect(mine.filter({ hasText: "판매 중" })).toHaveCount(3);
+  await expect(workRows.filter({ hasText: "판매 중" })).toHaveCount(3);
+  await returnToList();
   // 선택 삭제: 취소하면 그대로, 삭제하면 사라진다
   await page.getByLabel(`${names[0]} 선택`).check();
   await page.getByLabel(`${names[1]} 선택`).check();
+  await openWork(ids.slice(0, 2));
   await page.getByRole("button", { name: "선택 삭제" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("선택한 상품 2개를 삭제하시겠습니까?");
   await dialog.getByRole("button", { name: "취소" }).click();
+  await returnToList();
   await expect(mine).toHaveCount(3);
   await page.getByLabel(`${names[0]} 선택`).check();
   await page.getByLabel(`${names[1]} 선택`).check();
+  await openWork(ids.slice(0, 2));
   await page.getByRole("button", { name: "선택 삭제" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "삭제", exact: true }).click();
   await expect(page.getByText("상품 2개를 삭제했습니다")).toBeVisible();
+  await returnToList();
   await expect(mine).toHaveCount(1);
   await expect(mine.first()).toContainText(names[2]!);
 });

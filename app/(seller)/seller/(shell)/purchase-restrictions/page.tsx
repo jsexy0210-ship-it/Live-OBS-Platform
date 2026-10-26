@@ -1,16 +1,17 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { useUrlState } from "../../../../../lib/client/navigation";
 import { Pagination } from "../../../../../components/admin-ui";
 import { useCallback, useEffect, useState } from "react";
 import { Topbar } from "../../../../../components/seller/SellerShell";
-import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
-import { api, failMessage } from "../../../../../components/seller/api";
-import { textLength } from "../../../../../components/seller/format";
+import { ErrorState, LoadingRows, NoPermission } from "../../../../../components/seller/States";
+import { api } from "../../../../../components/seller/api";
 import { useLatestResponse } from "../../../../../components/seller/latestResponse";
 
-// SA-043 구매 제한 중 「지금 주문이 막힌 구매자」 목록과 풀기(API: GET /api/seller/purchase-restrictions,
-// POST …/{buyerMemberId}/lift, 회원·적립금 권한). 자동 제한 규칙은 주문 설정 화면에 있다. 직접 막기는 API가 생기면 붙인다.
+// SA-043 현재 구매 제한 목록. 해제는 기존 회원 상세의 업무 영역에서만 실행한다.
+// GET /api/seller/purchase-restrictions, 회원·적립금 권한. 자동 제한 규칙은 주문 설정에서 정한다.
 
 type Restriction = { id: string; buyerMemberId: string; reason: string; startsAt: string; endsAt: string; buyerMember: { broadcastNickname: string | null } };
 
@@ -20,7 +21,6 @@ const REASON: Record<string, string> = {
 };
 
 const DAY = (iso: string) => new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));
-const MAX_REASON = 200;
 // 서버(lib/server/orders/overdue.ts)가 목록을 최근 200건에서 자른다
 const LIST_LIMIT = 200;
 
@@ -39,14 +39,14 @@ function byBuyer(rows: Restriction[]) {
   }
   return [...map.values()];
 }
-type Group = ReturnType<typeof byBuyer>[number];
 
 export default function PurchaseRestrictionsPage() {
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number; error?: string } | { kind: "ok"; rows: Restriction[] }>({ kind: "loading" });
-  const [page, setPage] = useState(1);
-  const [lifting, setLifting] = useState<Group | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-  const [stale, setStale] = useState(false);
+  const [u, setU] = useUrlState({ page: "1" });
+  const page = /^\d+$/.test(u.page) && Number(u.page) >= 1 ? Number(u.page) : 1;
+  const setPage = (value: number) => setU({ page: String(value) });
+  const params = useSearchParams().toString();
+  const returnTo = `/seller/purchase-restrictions${params ? `?${params}` : ""}`;
   const reads = useLatestResponse();
 
   const load = useCallback(
@@ -61,7 +61,6 @@ export default function PurchaseRestrictionsPage() {
       }
       if (reads.accept(t) === "apply") {
         setState({ kind: "ok", rows: r.data.restrictions });
-        setStale(false);
       }
       return true;
     },
@@ -72,34 +71,11 @@ export default function PurchaseRestrictionsPage() {
     void load();
   }, [load]);
 
-  const lifted = async (g: Group) => {
-    setLifting(null);
-    // 서버가 푼 구매자는 바로 목록에서 뺀다. 그 전에 보낸 다시 읽기 응답이 되살리지 않게 변경을 확정한다.
-    reads.confirmChange();
-    setState((s) => (s.kind === "ok" ? { kind: "ok", rows: s.rows.filter((r) => r.buyerMemberId !== g.buyerMemberId) } : s));
-    const name = g.nickname ?? "구매자";
-    if (await load(true)) setToast(`${name}의 구매 제한을 풀었습니다`);
-    else {
-      setStale(true);
-      setToast(`${name}의 구매 제한을 풀었습니다 · 목록을 새로 불러오지 못했습니다`);
-    }
-  };
-
-  // 풀려던 제한이 그사이 없어졌다(404): 목록을 다시 읽어 맞춘다. 다시 읽기가 실패하면 목록이 최신이 아니라고 알린다.
-  const goneRefresh = async () => {
-    setLifting(null);
-    if (await load(true)) setToast("이미 풀렸거나 기간이 끝난 제한입니다");
-    else {
-      setStale(true);
-      setToast("이미 풀렸거나 기간이 끝난 제한입니다 · 목록을 새로 불러오지 못했습니다");
-    }
-  };
-
   const groups = state.kind === "ok" ? byBuyer(state.rows) : [];
   const pageCount = Math.ceil(groups.length / 10);
   const currentPage = Math.min(page, pageCount || 1);
   const pageGroups = groups.slice((currentPage - 1) * 10, currentPage * 10);
-  useEffect(() => { if (state.kind === "ok") setPage(p => Math.min(p, pageCount || 1)); }, [state.kind, pageCount]);
+  useEffect(() => { if (state.kind === "ok" && page !== currentPage) setPage(currentPage); }, [state.kind, page, currentPage]);
 
   return (
     <>
@@ -117,15 +93,6 @@ export default function PurchaseRestrictionsPage() {
             </span>
           </div>
         </div>
-
-        {stale && (
-          <div className="msg msg-cau" role="status" style={{ marginBottom: 16 }}>
-            <span>목록이 최신이 아닐 수 있습니다.</span>
-            <button className="btn btn-sm btn-out" type="button" onClick={() => void load(true)}>
-              다시 불러오기
-            </button>
-          </div>
-        )}
 
         {state.kind === "ok" && state.rows.length >= LIST_LIMIT && (
           <div className="msg msg-cau" role="status" style={{ marginBottom: 16 }}>
@@ -174,9 +141,7 @@ export default function PurchaseRestrictionsPage() {
                           </div>
                         </td>
                         <td style={{ whiteSpace: "nowrap" }}>
-                          <button className="btn btn-sm btn-out" type="button" onClick={() => setLifting(g)}>
-                            제한 풀기
-                          </button>
+                          <Link className="btn btn-sm btn-out" href={`/seller/members/${g.buyerMemberId}?${new URLSearchParams({ returnTo })}#member-restriction`}>회원 상세</Link>
                         </td>
                       </tr>
                     ))}
@@ -187,70 +152,6 @@ export default function PurchaseRestrictionsPage() {
         </section>
         {pageCount > 1 && <Pagination page={currentPage} pageCount={pageCount} onChange={setPage} label="구매 제한 페이지 이동" />}
       </main>
-      {lifting && <LiftModal group={lifting} onClose={() => setLifting(null)} onDone={() => void lifted(lifting)} onGone={() => void goneRefresh()} />}
-      {toast && <Toast text={toast} onDone={() => setToast(null)} />}
     </>
-  );
-}
-
-function LiftModal({ group, onClose, onDone, onGone }: { group: Group; onClose: () => void; onDone: () => void; onGone: () => void }) {
-  const [reason, setReason] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // 글자 수는 서버와 같은 기준(NFKC 정규화·앞뒤 공백 제외·코드 포인트)으로 센다
-  const count = textLength(reason);
-  const tooLong = count > MAX_REASON;
-
-  const submit = async () => {
-    if (tooLong) return;
-    setBusy(true);
-    setError(null);
-    const r = await api(`/api/seller/purchase-restrictions/${group.buyerMemberId}/lift`, { method: "POST", body: { reason: reason.trim() || undefined } });
-    setBusy(false);
-    if (r.ok) return onDone();
-    // 404: 그사이 기간이 끝났거나 다른 사람이 이미 풀었다. 목록을 다시 읽어 맞춘다.
-    if (r.status === 404) return onGone();
-    setError(
-      r.error === "invalid_reason"
-        ? "사유에 쓸 수 없는 글자가 있습니다"
-        : r.status === 403 && r.error === "plan_feature_required"
-          ? "지금 요금제에서 사용할 수 없는 기능입니다"
-          : failMessage(r, "admin"),
-    );
-  };
-
-  return (
-    <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="pr-lift-title">
-      <div className="modal">
-        <div className="modal-h">
-          <h2 className="t-h2" id="pr-lift-title">
-            구매 제한을 푸시겠습니까?
-          </h2>
-          <span className="t-l2 c-alt">{group.nickname ?? "이 구매자"}님이 바로 다시 주문할 수 있습니다. 자동 제한 횟수는 지금부터 새로 셉니다.</span>
-        </div>
-        <div className="col" style={{ gap: 6, padding: "0 24px" }}>
-          <label className="lbl" htmlFor="pr-lift-reason">
-            사유 (선택)
-          </label>
-          <textarea id="pr-lift-reason" className="inp" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="예: 입금 확인 후 해제" />
-          <span className={`t-c1 ${tooLong ? "c-neg" : "c-alt"}`}>
-            {count}/{MAX_REASON}
-          </span>
-          {error && (
-            <span className="err" role="alert">
-              {error}
-            </span>
-          )}
-        </div>
-        <div className="modal-f">
-          <button className="btn btn-out" type="button" onClick={onClose} disabled={busy}>
-            취소
-          </button>
-          <button className="btn" type="button" onClick={() => void submit()} disabled={busy || tooLong}>
-            {busy ? "푸는 중" : "제한 풀기"}
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }

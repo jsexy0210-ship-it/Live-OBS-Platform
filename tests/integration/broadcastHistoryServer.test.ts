@@ -1,10 +1,10 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as historyRoute } from "../../app/api/seller/broadcast/history/route";
 import { GET as exportRoute } from "../../app/api/seller/broadcast/history/export/route";
 import { loginSeller } from "../../lib/server/auth/login";
 import { prisma } from "../../lib/server/db";
-import { monthBroadcastSummary } from "../../lib/server/broadcast/history";
-import { PASSWORD, createBuyer, createPaidOrderItem, createSeller, createSellerUser, db, resetDb } from "./helpers";
+import { exportBroadcastHistory, monthBroadcastSummary } from "../../lib/server/broadcast/history";
+import { PASSWORD, createAdmin, createBuyer, createPaidOrderItem, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
 // SA-054 방송 기록: 이번 달(KST) 요약 4칸, 내보내기(조건 전체·최신순·권한·격리·감사).
 beforeEach(resetDb);
@@ -83,6 +83,16 @@ describe("방송 기록 이번 달 요약", () => {
 });
 
 describe("방송 기록 내보내기", () => {
+  it("방송 열람 범위가 있는 대리조회도 금전 CSV는 자료를 읽기 전에 403으로 막는다", async () => {
+    const s = await shop();
+    const admin = await createAdmin("SUPER_ADMIN");
+    const findMany = vi.fn(async () => { throw new Error("unexpected_broadcast_query"); });
+    const guardedDb = { broadcastSession: { findMany } } as unknown as Parameters<typeof exportBroadcastHistory>[0];
+    await expect(exportBroadcastHistory(guardedDb, { sellerId: s.seller.id, actorType: "PLATFORM_ADMIN", actorId: admin.id, isOwner: false, permissions: [], readOnly: true, impersonationScopes: ["BROADCAST"] }, {})).rejects.toMatchObject({ status: 403, code: "forbidden" });
+    expect(findMany).not.toHaveBeenCalled();
+    expect(await db.auditLog.count({ where: { sellerId: s.seller.id, action: "broadcast.history.export" } })).toBe(0);
+  });
+
   it("조건에 맞는 방송 전체를 최신순 CSV로 내려주고 권한·격리·잘못된 기간을 막는다", async () => {
     const s = await shop();
     const mk = (title: string, hoursAgo: number, layoutAspect: string | null, live = false) => {

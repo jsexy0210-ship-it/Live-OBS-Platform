@@ -51,7 +51,7 @@ describe("상품 CSV 검증", () => {
     expect(a.input).toMatchObject({ name: "A", price: 12000, status: "ON_SALE", stockDeductMode: "ORDER" });
     expect(a.input.options).toEqual([{ name: "빨강", priceDelta: 500, stock: 3, sku: "R" }, { name: "파랑", priceDelta: 0, stock: 0, sku: null }]);
     expect(a.categoryIds).toEqual(["c1", "c2"]);
-    expect(b.input).toMatchObject({ name: "B", status: "DRAFT", stockDeductMode: "PAYMENT", options: [] });
+    expect(b.input).toMatchObject({ name: "B", status: "HIDDEN", stockDeductMode: "PAYMENT", options: [] });
   });
   it("오류가 있는 상품은 모든 줄을 건너뛰고 줄 번호(머리글=1)와 열을 알려 준다", () => {
     const v = parse("OK,1000,판매중,,,,기본,0,1,\r\nBAD,abc,판매중,,,,기본,0,1,\r\n,,,,,,옵션2,0,1,\r\nBAD2,1000,이상함,,,,기본,0,1,\r\nBAD3,1000,판매중,,,,,,,\r\nBAD4,1000,판매중,,,없는카테고리,기본,0,1,");
@@ -88,14 +88,11 @@ describe("상품 CSV 검증", () => {
     expect(fail(`${HEAD}\r\n${"A,1\r\n".repeat(MAX_IMPORT_ROWS + 1)}`)).toBe("too_many_rows");
     expect(fail("x".repeat(1_000_001))).toBe("file_too_large");
   });
-  it("열 순서가 달라도, 필수 열(상품명·카테고리·판매가·재고)만 있으면 읽는다. 「옵션」은 「옵션명」과 같은 열", () => {
+  it("필수 네 열만 순서와 관계없이 읽고 기본 옵션과 숨김 상품을 준비한다", () => {
     const v = parse("1000,A,,3\r\n", "판매가,상품명,카테고리,재고");
-    // 옵션 열이 없으면 상품마다 옵션 하나(기본)이고 재고 칸이 그 재고, 상태 열이 없으면 새 상품은 숨김
+    expect(v.errors).toEqual([]);
     expect(v.products[0].input).toMatchObject({ name: "A", price: 1000, status: "HIDDEN", options: [{ name: "기본", priceDelta: 0, stock: 3, sku: null }] });
     expect(v.products[0].defaultOption).toBe(true);
-    const w = parse("A,1000,카드,빨강,4\r\n", "상품명,판매가,카테고리,옵션,재고");
-    expect(w.errors).toEqual([]);
-    expect(w.products[0].input.options).toEqual([{ name: "빨강", priceDelta: 0, stock: 4, sku: null }]);
   });
   it("양식과 다른 열은 어느 열이 어떻게 다른지 알려 준다(필수 열 누락·모르는 열·같은 열 두 번)", () => {
     const head = (t: string) => {
@@ -114,5 +111,21 @@ describe("상품 CSV 검증", () => {
     expect(headerMismatchMessage([{ found: "이름", expected: "상품명" }])).toBe("양식과 열 이름이 다릅니다 · 「이름」 열을 「상품명」으로 바꿔 주십시오 (1개 열 불일치)");
     expect(headerMismatchMessage([{ found: "메모", expected: null }])).toContain("「메모」 열은 양식에 없습니다");
     expect(headerMismatchMessage([{ found: null, expected: "재고" }])).toContain("「재고」 열이 없습니다");
+  });
+  it("필수 열이 빠지거나 별칭과 원래 옵션 열이 중복되면 파일 오류다", () => {
+    const required = ["상품명", "카테고리", "판매가", "재고"];
+    for (const missing of required) {
+      expect(parseProductCsv(required.filter((column) => column !== missing).join(",") + "\r\nA,,1000,3", cats)).toMatchObject({ ok: false, reason: "invalid_header" });
+    }
+    expect(parseProductCsv("상품명,카테고리,판매가,재고,옵션,옵션명\r\nA,,1000,3,빨강,빨강", cats)).toMatchObject({ ok: false, reason: "invalid_header" });
+  });
+  it("옵션 별칭은 기존 옵션명과 같고 빈 상태 기본값과 명시 상태를 구분한다", () => {
+    const header = "상품명,카테고리,판매가,재고,옵션,상태";
+    for (const [label, expected] of [["", "HIDDEN"], ["판매중", "ON_SALE"], ["품절", "SOLD_OUT"], ["준비중", "DRAFT"], ["숨김", "HIDDEN"]]) {
+      const v = parse(`A,카드,1000,4,빨강,${label}`, header);
+      expect(v.errors).toEqual([]);
+      expect(v.products[0].input).toMatchObject({ status: expected, options: [{ name: "빨강", priceDelta: 0, stock: 4, sku: null }] });
+      expect(v.products[0].defaultOption).toBe(false);
+    }
   });
 });

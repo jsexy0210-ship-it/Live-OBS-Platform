@@ -36,8 +36,8 @@ async function list(cookie: string, qs = "") {
   const r = await listRoute(new Request(`http://localhost:3000/api/seller/members${qs}`, { headers: { ...H, cookie } }));
   return { status: r.status, body: await r.json() };
 }
-async function detail(cookie: string, id: string) {
-  const r = await detailRoute(new Request(`http://localhost:3000/api/seller/members/${id}`, { headers: { ...H, cookie } }), { params: Promise.resolve({ memberId: id }) });
+async function detail(cookie: string, id: string, qs = "") {
+  const r = await detailRoute(new Request(`http://localhost:3000/api/seller/members/${id}${qs}`, { headers: { ...H, cookie } }), { params: Promise.resolve({ memberId: id }) });
   return { status: r.status, body: await r.json() };
 }
 const ids = (b: { members: { id: string }[] }) => b.members.map((m) => m.id);
@@ -103,7 +103,7 @@ describe("회원 목록 GET /api/seller/members", () => {
 
     const plain = await list(noPii, `?q=${encodeURIComponent("방송")}`);
     expect(plain.body.members).toEqual([
-      { id: m.id, broadcastNickname: "방송닉", grade: { id: s.grade.id, displayName: "일반" }, status: "ACTIVE", marketingConsent: false, createdAt: m.createdAt.toISOString(), lastLoginAt: null },
+      { id: m.id, broadcastNickname: "방송닉", grade: { id: s.grade.id, displayName: "일반" }, status: "ACTIVE", marketingConsent: false, createdAt: m.createdAt.toISOString(), lastLoginAt: null, orderCount: 0, totalPaid: 0, rewardBalance: 0 },
     ]);
     expect((await list(noPii, `?q=${encodeURIComponent("김철")}`)).body.members).toEqual([]);
     expect((await list(noPii, "?q=2222")).body.members).toEqual([]);
@@ -160,6 +160,8 @@ describe("회원 상세 GET /api/seller/members/{id}", () => {
     expect(r.status).toBe(200);
     expect(r.body.member).toMatchObject({ id: m.id, name: "이영희", grade: { id: s.grade.id, displayName: "일반" }, orderCount: 3, totalPaid: 33000, rewardBalance: 1500 });
     expect(await piiAudits()).toMatchObject([{ targetType: "BuyerMember", targetId: m.id }]);
+    const fromList = (await list(s.cookie)).body.members.find((row: { id: string }) => row.id === m.id);
+    expect(fromList).toMatchObject({ orderCount: r.body.member.orderCount, totalPaid: r.body.member.totalPaid, rewardBalance: r.body.member.rewardBalance });
   });
 
   it("다른 쇼핑몰 회원·없는 id·형식이 틀린 id는 404", async () => {
@@ -169,5 +171,26 @@ describe("회원 상세 GET /api/seller/members/{id}", () => {
     expect((await detail(a.cookie, other.id)).status).toBe(404);
     expect((await detail(a.cookie, crypto.randomUUID())).status).toBe(404);
     expect((await detail(a.cookie, "nope")).status).toBe(404);
+  });
+
+  it("잔액 조정 요약은 개인정보 권한이 있어도 세 필드만 주고 열람 감사를 만들지 않는다", async () => {
+    const a = await shop();
+    const b = await shop();
+    const m = await member(a, { nickname: "조정 대상", name: "상세 전용" });
+    const other = await member(b);
+    await db.rewardBalance.create({ data: { sellerId: a.seller.id, buyerMemberId: m.id, balance: 1500 } });
+    const summary = await detail(a.cookie, m.id, "?summary=1");
+    expect(summary.status).toBe(200);
+    expect(summary.body).toEqual({ member: { id: m.id, broadcastNickname: "조정 대상", rewardBalance: 1500 } });
+    expect(await piiAudits()).toEqual([]);
+    expect((await detail(a.cookie, other.id, "?summary=1")).status).toBe(404);
+    expect((await detail(a.cookie, "nope", "?summary=1")).status).toBe(404);
+    const denied = await cookieOf((await createSellerUser(a.seller.id, { permissions: [] })).email);
+    expect((await detail(denied, m.id, "?summary=1")).status).toBe(403);
+    expect(await piiAudits()).toEqual([]);
+    expect((await detail(a.cookie, m.id)).body.member).toMatchObject({ name: "상세 전용", rewardBalance: 1500 });
+    expect(await piiAudits()).toMatchObject([{ action: "customer.pii.view", targetId: m.id }]);
+    await db.buyerMember.update({ where: { id: m.id }, data: { deletedAt: new Date(), status: "WITHDRAWN" } });
+    expect((await detail(a.cookie, m.id, "?summary=1")).status).toBe(404);
   });
 });

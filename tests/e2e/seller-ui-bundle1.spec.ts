@@ -64,7 +64,7 @@ test("상품 목록: 검색어·판매 상태·정렬이 주소에 실리고, �
   // 잘못된 값은 기본값으로 읽는다
   await page.goto("/seller/products?status=BOGUS&sort=nope&limit=7");
   await expect(page.getByLabel("정렬")).toHaveValue("newest");
-  await expect(page.getByLabel("목록 개수")).toHaveValue("50");
+  await expect(page.getByLabel("목록 개수")).toHaveValue("10");
   await expect(page.getByRole("radio", { name: "전체" }).first()).toBeChecked();
   // 초기화하면 쿼리가 비워진다
   await page.getByRole("button", { name: "초기화", exact: true }).click();
@@ -90,13 +90,13 @@ test("주문 목록: 기간 칩이 주소에 실리고 새로고침·Back에도 
   await expect(page.getByRole("link", { name: "배송", exact: true }).first()).toBeVisible();
 });
 
-test("입금 확인: 일괄 버튼 40×144, 표 안 버튼은 폭 80", async ({ page }) => {
+test("입금 확인: 일괄 버튼 40×144, 표 안 상세 이동은 폭 80", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await login(page, "/seller/orders/deposits");
   const bulk = page.getByRole("button", { name: /^선택 입금 확인/ });
   await expect(bulk).toBeVisible();
   expect(await size(bulk)).toEqual({ w: 144, h: 40 });
-  const one = page.getByTestId("deposit-row").first().getByRole("button", { name: "입금 확인" });
+  const one = page.getByTestId("deposit-row").first().getByRole("link", { name: "입금 확인" });
   if (await one.count()) expect(await size(one)).toEqual({ w: 80, h: 32 });
 });
 
