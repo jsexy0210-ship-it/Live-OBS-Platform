@@ -91,7 +91,7 @@
 
 운영 빌드는 구매자 가입이 막히므로, 실측은 **운영 빌드 + 테스트 모드(`NODE_ENV=production`, `OBS_TEST_MODE=1`, `NICEPAY_*` 비움)**에서 합니다(테스트 모드에서는 본인확인이 가짜 공급자: 인증번호 000000). 인프라(테스트 서버 환경변수)를 바꾸지 않고 로컬 빌드로 합니다.
 
-1. 조건: 파트너스 쇼핑몰 `ACTIVE`, 판매자 입금 계좌 등록(설정 → 주문), 판매 중 상품 1개 이상, 카드 키 없음.
+1. 조건: 파트너스 쇼핑몰 `ACTIVE`, 판매자 입금 계좌 등록(`/api/seller/payments/bank-account`, 화면 위치는 확인하지 못함), 판매 중 상품 1개 이상, 카드 키 없음.
 2. 구매자: `/shop/{slug}/signup`(본인확인 가입) → `/shop/{slug}/products/{productId}` → `/shop/{slug}/cart` → `/shop/{slug}/checkout`.
 3. 확인할 것: 카드 선택 시 「결제 준비 중」 거절(`POST /api/shop/{slug}/orders`), 무통장 선택 시 `POST /api/shop/{slug}/payments/bank-transfer`로 입금 안내가 나오고 `/shop/{slug}/orders/{orderId}`에서 입금 기한·계좌가 보이는지.
 4. 판매자: `/seller/orders/deposits`(입금 대기 목록) → `/seller/orders/deposits/confirm`(입금 확인) 뒤 주문이 결제 완료가 되는지.
