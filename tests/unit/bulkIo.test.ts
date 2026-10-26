@@ -105,6 +105,12 @@ describe("상품 CSV 검증", () => {
     expect(head("상품명,판매가,카테고리,재고,메모").columns).toEqual([{ found: "메모", expected: null }]);
     expect(head("상품명,판매가,카테고리,재고,재고").columns).toEqual([{ found: "재고", expected: null }]);
     expect(head("판매가").columns?.map((c) => c.expected)).toEqual(["상품명", "카테고리", "재고"]);
+    // 객체 기본 속성 이름(constructor·__proto__ 등)도 그냥 모르는 열이다(안내 문구를 만들다 죽지 않는다)
+    for (const odd of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+      const r = head(`상품명,판매가,카테고리,재고,${odd}`);
+      expect(r.columns).toEqual([{ found: odd, expected: null }]);
+      expect(headerMismatchMessage(r.columns!)).toContain(`「${odd}」 열은 양식에 없습니다`);
+    }
   });
   it("열 이름 안내 문구: 바꿀 열·개수를 알려 주고 조사를 맞춘다", () => {
     expect(headerMismatchMessage([{ found: "가격", expected: "판매가" }, { found: null, expected: "재고" }])).toBe("양식과 열 이름이 다릅니다 · 「가격」 열을 「판매가」로 바꿔 주십시오 (2개 열 불일치)");

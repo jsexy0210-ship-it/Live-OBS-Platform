@@ -125,7 +125,7 @@ const TEMPLATE_ROWS: string[][] = [
   ["", "", "", "", "", "", "흰색", "500", "5", "SL-W"],
 ];
 const REQUIRED_COLUMNS = ["상품명", "카테고리", "판매가", "재고"] as const;
-// 자주 틀리는 열 이름 → 바른 이름(안내용)
+// 자주 틀리는 열 이름 → 바른 이름(안내용). 올린 파일의 열 이름으로 찾으므로 자기 속성만 본다(constructor 같은 이름이 상속 값을 돌려주지 않게).
 const HEADER_SUGGESTIONS: Record<string, string> = {
   가격: "판매가",
   "판매 가격": "판매가",
@@ -185,7 +185,7 @@ export function parseProductRows(rows: string[][], categories: Map<string, strin
   const columns: ColumnMismatch[] = [];
   for (const [i, n] of names.entries()) {
     const column = n === "옵션" ? "옵션명" : n;
-    if (!(COLUMNS as readonly string[]).includes(column)) columns.push({ found: n, expected: HEADER_SUGGESTIONS[n] ?? null });
+    if (!(COLUMNS as readonly string[]).includes(column)) columns.push({ found: n, expected: Object.hasOwn(HEADER_SUGGESTIONS, n) ? HEADER_SUGGESTIONS[n] : null });;
     else if (index.has(column)) columns.push({ found: n, expected: null });
     else index.set(column, i);
   }
