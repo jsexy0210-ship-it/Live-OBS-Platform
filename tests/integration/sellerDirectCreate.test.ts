@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as createRoute } from "../../app/api/admin/sellers/direct-create/route";
 import { POST as reissueRoute } from "../../app/api/admin/sellers/[sellerId]/invite/route";
 import { PATCH as trialRoute } from "../../app/api/admin/sellers/[sellerId]/trial/route";
@@ -287,5 +287,18 @@ describe("초대 링크 주소", () => {
     expect(inviteLink("T", null)).toEqual({ path: "/seller/invite#T", url: null });
     process.env.OBS_SITE_ADDRESS = "bad host!";
     expect(inviteLink("T", null).url).toBeNull();
+  });
+
+  it("운영에서 설정이 없거나 호스트 이름이 아니면 요청 헤더(Host)를 믿지 않고 경로만 준다", () => {
+    const h = (host: string) => ({ get: (n: string) => (n.toLowerCase() === "host" ? host : n.toLowerCase() === "x-forwarded-host" ? host : null) });
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      delete process.env.OBS_SITE_ADDRESS;
+      expect(inviteLink("T", h("evil.example"))).toEqual({ path: "/seller/invite#T", url: null });
+      process.env.OBS_SITE_ADDRESS = ":80";
+      expect(inviteLink("T", h("evil.example")).url).toBeNull();
+      process.env.OBS_SITE_ADDRESS = "shop.example.com";
+      expect(inviteLink("T", h("evil.example")).url).toBe("https://shop.example.com/seller/invite#T");
+    } finally { vi.unstubAllEnvs(); }
   });
 });
