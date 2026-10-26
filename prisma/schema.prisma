@@ -3641,6 +3641,11 @@ model MemberGradePolicy {
   windowMonths Int                 @default(6)
   cadence      MemberGradeCadence  @default(MONTHLY)
   demotion     MemberGradeDemotion @default(STEP)
+  // 승급·강등 때 구매자 알림을 원하는지(SA-044 「알림」). 발송 채널이 붙기 전에는 로그 추적 member_grade.notice의 notify로만 남는다.
+  notifyPromotion Boolean @default(false)
+  notifyDemotion  Boolean @default(false)
+  // 마이페이지에 「다음 등급까지 남은 금액」을 보일지(SA-044 「마이페이지 표시」). 자동 재산정이 켜져 있을 때만 보인다.
+  showNextGrade   Boolean @default(true)
   updatedAt    DateTime            @default(now()) @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])

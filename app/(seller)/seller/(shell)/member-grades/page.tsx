@@ -45,6 +45,9 @@ type Data = {
   windowMonths: number;
   cadence: Cadence;
   demotion: Demotion;
+  notifyPromotion: boolean;
+  notifyDemotion: boolean;
+  showNextGrade: boolean;
   lockedCount: number;
   lastRun: { key: string; promoted: number; demoted: number; ranAt: string } | null;
   nextRunAt: string;
@@ -84,7 +87,7 @@ const windowText = (m: number) => (m === 0 ? "누적" : `최근 ${m}개월`);
 const kstDay = (iso: string) => kstText(iso).slice(5, 10).replace(".", "/");
 
 export default function MemberGradesPage() {
-  const { can } = useSeller();
+  const { can, me } = useSeller();
   const canEdit = can("MEMBER_POINTS");
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number; error?: string } | { kind: "ok"; data: Data }>({ kind: "loading" });
   const [edit, setEdit] = useState<{ id: string; displayName: string; minAmount: string }[]>([]);
@@ -96,6 +99,9 @@ export default function MemberGradesPage() {
   const [windowMonths, setWindowMonths] = useState(6);
   const [cadence, setCadence] = useState<Cadence>("MONTHLY");
   const [demotion, setDemotion] = useState<Demotion>("STEP");
+  const [notifyPromotion, setNotifyPromotion] = useState(false);
+  const [notifyDemotion, setNotifyDemotion] = useState(false);
+  const [showNextGrade, setShowNextGrade] = useState(true);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -118,6 +124,9 @@ export default function MemberGradesPage() {
     setWindowMonths(r.data.windowMonths);
     setCadence(r.data.cadence);
     setDemotion(r.data.demotion);
+    setNotifyPromotion(r.data.notifyPromotion);
+    setNotifyDemotion(r.data.notifyDemotion);
+    setShowNextGrade(r.data.showNextGrade);
   }, []);
   useEffect(() => {
     void load();
@@ -141,7 +150,7 @@ export default function MemberGradesPage() {
   };
 
   const save = () =>
-    void run("/api/seller/member-grades", "PUT", { autoEnabled: auto, windowMonths, cadence, demotion, grades: edit.map((e, i) => ({ id: e.id, displayName: e.displayName, minAmount: Number(e.minAmount || 0), ...benefitBody(benefit[i]) })) }, () => "등급 설정을 저장했습니다");
+    void run("/api/seller/member-grades", "PUT", { autoEnabled: auto, windowMonths, cadence, demotion, notifyPromotion, notifyDemotion, showNextGrade, grades: edit.map((e, i) => ({ id: e.id, displayName: e.displayName, minAmount: Number(e.minAmount || 0), ...benefitBody(benefit[i]) })) }, () => "등급 설정을 저장했습니다");
   const showChanges = async (kind: "up" | "down") => {
     if (paging.current) return;
     paging.current = true;
@@ -381,6 +390,16 @@ export default function MemberGradesPage() {
                   </select>
                 </label>
               </div>
+              <div className="col" style={{ gap: 8 }} role="group" aria-label="알림">
+                <span className="t-l2">알림</span>
+                <label className="row"><input type="checkbox" disabled={!canEdit || me.readOnly || busy} checked={notifyPromotion} onChange={(e) => setNotifyPromotion(e.target.checked)} />등급이 오르면 알림</label>
+                <label className="row"><input type="checkbox" disabled={!canEdit || me.readOnly || busy} checked={notifyDemotion} onChange={(e) => setNotifyDemotion(e.target.checked)} />내려가도 알림</label>
+                <span className="t-c1 c-alt">알림 설정만 기록합니다. 실제 알림 발송은 아직 지원하지 않습니다.</span>
+              </div>
+              <div className="col" style={{ gap: 8 }} role="group" aria-label="마이페이지 표시">
+                <span className="t-l2">마이페이지 표시</span>
+                <label className="row"><input type="checkbox" disabled={!canEdit || me.readOnly || busy} checked={showNextGrade} onChange={(e) => setShowNextGrade(e.target.checked)} />다음 등급까지 남은 금액 표시</label>
+              </div>
               <span className="t-c1 c-alt">승급은 목표 등급까지 바로 올립니다 · 켜거나 주기를 바꾼 날은 이미 재산정한 것으로 보고 다음 주기부터 돕니다</span>
             </section>
 
@@ -477,7 +496,7 @@ export default function MemberGradesPage() {
           </div>
           <div className="modal-b">
             <p className="t-l2">
-              회원 {data.memberTotal.toLocaleString("ko-KR")}명의 등급을 지금 기준({windowText(data.windowMonths)} 구매 금액)으로 다시 계산합니다. 고정한 회원은 제외됩니다. 저장하지 않은 기준 금액은 반영되지 않으니 먼저 저장해 주십시오.
+              회원 {data.memberTotal.toLocaleString("ko-KR")}명의 등급을 지금 기준({windowText(data.windowMonths)} 구매 금액)으로 다시 계산합니다. 고정한 회원은 제외됩니다. 저장하지 않은 설정은 반영되지 않으니 먼저 저장해 주십시오. 알림 설정만 기록하며 실제 알림은 발송하지 않습니다.
             </p>
           </div>
           <div className="modal-f">

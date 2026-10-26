@@ -37,7 +37,7 @@ export async function buyerGradeStatus(db: PrismaClient, scope: { sellerId: stri
   if (!member) return null;
   const [grades, policy] = await Promise.all([
     db.memberGrade.findMany({ where: { sellerId: scope.sellerId }, orderBy: { sortOrder: "asc" }, select: { id: true, displayName: true, minAmount: true, shippingBenefit: true, shippingDiscount: true, promotionCouponId: true } }),
-    db.memberGradePolicy.findUnique({ where: { sellerId: scope.sellerId }, select: { autoEnabled: true, windowMonths: true } }),
+    db.memberGradePolicy.findUnique({ where: { sellerId: scope.sellerId }, select: { autoEnabled: true, windowMonths: true, showNextGrade: true } }),
   ]);
   const idx = grades.findIndex((g) => g.id === member.gradeId);
   if (idx < 0) return null;
@@ -55,8 +55,8 @@ export async function buyerGradeStatus(db: PrismaClient, scope: { sellerId: stri
   return {
     gradeName: current.displayName,
     benefits,
-    // 자동 등급이 꺼져 있으면 금액으로 올라가지 않으므로 남은 금액을 보여 주지 않는다
-    nextGrade: policy?.autoEnabled && next ? { name: next.displayName, remaining: Math.max(0, next.minAmount - amount), minAmount: next.minAmount } : null,
+    // 자동 등급이 꺼져 있으면 금액으로 올라가지 않으므로, 파트너스가 표시를 끄면 남은 금액을 보여 주지 않는다
+    nextGrade: policy?.autoEnabled && (policy.showNextGrade ?? true) && next ? { name: next.displayName, remaining: Math.max(0, next.minAmount - amount), minAmount: next.minAmount } : null,
     windowMonths,
     amount,
   };
