@@ -57,6 +57,8 @@ test("CS: 사유 없이는 시작할 수 없고, 시작하면 새 창이 열리�
   await expect.poll(() => opened.url()).toContain("/seller");
   await opened.close();
 
+  const first = await db.adminImpersonationSession.findFirstOrThrow({ where: { sellerId: ids.active }, orderBy: { createdAt: "desc" } });
+  expect(Math.round((first.expiresAt.getTime() - first.createdAt.getTime()) / 60_000)).toBe(30); // 시간을 안 고르면 정책 기본(30분)
   const strip = page.getByTestId("impersonation-active");
   await expect(strip).toContainText("이 파트너스 화면을 대신 보는 중입니다.");
   await expect(strip).toContainText("결제 문의 확인");
@@ -89,6 +91,8 @@ test("확인 창: 분류·관련 건·범위·시간을 서버에 보내고(문�
   const dialog = page.getByRole("dialog");
   const start = dialog.getByRole("button", { name: "대신 보기 시작", exact: true });
   await expect(dialog.getByRole("button", { name: "60분", exact: true })).toBeDisabled(); // CS는 60분을 못 고른다
+  await expect(dialog.getByLabel("관련 건")).toBeDisabled(); // 분류 없이는 관련 건을 못 고른다(서버가 분류 없는 관련 건을 저장하지 않는다)
+  await expect(dialog.locator(".seg button.on")).toHaveCount(0); // 시간을 고르지 않으면 서버 정책 기본값을 쓴다
   await dialog.getByLabel("사유").fill("문의 확인");
   await dialog.getByLabel("분류").selectOption("INQUIRY");
   await expect(start).toBeDisabled(); // 문의 대응은 관련 건이 있어야 한다

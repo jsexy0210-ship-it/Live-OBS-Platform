@@ -35,7 +35,7 @@ export function ImpersonateDialog({ seller, onClose, onDone }: { seller: { id: s
   const [related, setRelated] = useState<Related[] | null>(null);
   const [relatedKey, setRelatedKey] = useState("");
   const [scopes, setScopes] = useState<Scope[]>(["ORDERS", "MEMBERS"]);
-  const [minutes, setMinutes] = useState<number>(30);
+  const [minutes, setMinutes] = useState<number | null>(null); // null이면 보내지 않아 서버가 플랫폼 정책(MA-081) 기본 시간을 쓴다
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const count = textLength(reason);
@@ -74,7 +74,7 @@ export function ImpersonateDialog({ seller, onClose, onDone }: { seller: { id: s
     const win = window.open("", "_blank");
     const r = await adminApi<{ expiresAt: string }>(`/api/admin/sellers/${seller.id}/impersonate`, {
       method: "POST",
-      json: { reason: reason.trim(), ...(category ? { category } : {}), ...(pick ? { relatedKind: pick.kind, relatedId: pick.id } : {}), scopes, durationMinutes: minutes },
+      json: { reason: reason.trim(), ...(category ? { category } : {}), ...(pick ? { relatedKind: pick.kind, relatedId: pick.id } : {}), scopes, ...(minutes !== null ? { durationMinutes: minutes } : {}) },
     });
     setBusy(false);
     if (r.ok) {
@@ -118,7 +118,7 @@ export function ImpersonateDialog({ seller, onClose, onDone }: { seller: { id: s
                   <textarea id="impersonate-reason" className="inp" style={{ width: "100%" }} rows={3} placeholder="사유 입력" value={reason} onChange={(e) => setReason(e.target.value)} disabled={busy} />
                 </FormRow>
                 <FormRow label="분류" htmlFor="impersonate-category" help="문의 대응 · 장애 확인을 고르면 관련 건이 필수입니다">
-                  <select id="impersonate-category" className="inp" style={{ width: "100%" }} value={category} onChange={(e) => setCategory(e.target.value as Category | "")} disabled={busy}>
+                  <select id="impersonate-category" className="inp" style={{ width: "100%" }} value={category} onChange={(e) => { setCategory(e.target.value as Category | ""); if (e.target.value === "") setRelatedKey(""); }} disabled={busy}>
                     {CATEGORIES.map(([v, l]) => (
                       <option key={v} value={v}>
                         {l}
@@ -126,8 +126,8 @@ export function ImpersonateDialog({ seller, onClose, onDone }: { seller: { id: s
                     ))}
                   </select>
                 </FormRow>
-                <FormRow label="관련 건" required={needsRelated} htmlFor="impersonate-related" help={related && related.length === 0 ? "이 쇼핑몰에 고를 수 있는 문의 · 알림이 없습니다" : "이 쇼핑몰의 문의 · 알림 중 하나"}>
-                  <select id="impersonate-related" className="inp" style={{ width: "100%" }} value={relatedKey} onChange={(e) => setRelatedKey(e.target.value)} disabled={busy || related === null}>
+                <FormRow label="관련 건" required={needsRelated} htmlFor="impersonate-related" help={category === "" ? "분류를 고르면 관련 건을 고를 수 있습니다" : related && related.length === 0 ? "이 쇼핑몰에 고를 수 있는 문의 · 알림이 없습니다" : "이 쇼핑몰의 문의 · 알림 중 하나"}>
+                  <select id="impersonate-related" className="inp" style={{ width: "100%" }} value={relatedKey} onChange={(e) => setRelatedKey(e.target.value)} disabled={busy || related === null || category === ""}>
                     <option value="">{related === null ? "불러오는 중" : "관련 건 선택"}</option>
                     {(related ?? []).map((x) => (
                       <option key={`${x.kind}:${x.id}`} value={`${x.kind}:${x.id}`}>
@@ -147,10 +147,10 @@ export function ImpersonateDialog({ seller, onClose, onDone }: { seller: { id: s
                   </div>
                   {scopesMissing && <span className="err">범위를 1개 이상 골라 주십시오.</span>}
                 </FormRow>
-                <FormRow label="시간" help="60분은 최고관리자만 고를 수 있습니다 · 기본값은 플랫폼 정책(MA-081)의 대신 보기 시간">
+                <FormRow label="시간" help="60분은 최고관리자만 고를 수 있습니다 · 고르지 않으면 플랫폼 정책(MA-081)의 대신 보기 시간으로 엽니다 · 고른 값을 다시 누르면 해제됩니다">
                   <div className="seg" role="group" aria-label="시간">
                     {DURATIONS.map((m) => (
-                      <button key={m} className={minutes === m ? "on" : ""} type="button" aria-pressed={minutes === m} disabled={busy || (m === 60 && !isSuper)} onClick={() => setMinutes(m)}>
+                      <button key={m} className={minutes === m ? "on" : ""} type="button" aria-pressed={minutes === m} disabled={busy || (m === 60 && !isSuper)} onClick={() => setMinutes(minutes === m ? null : m)}>
                         {m}분
                       </button>
                     ))}
