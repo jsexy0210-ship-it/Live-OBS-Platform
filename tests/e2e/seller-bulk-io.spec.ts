@@ -83,7 +83,7 @@ test("주문 · 회원 내보내기는 처리 이력에 언제 · 누가 · 사�
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("회원 내보내기 · 사유");
   await dialog.getByRole("radio", { name: "직접 입력" }).check();
-  await page.screenshot({ path: "tests/e2e/screenshots/SA-018-member-reason-1440.png" });
+  if (process.env.E2E_SCREENSHOTS === "1") await page.screenshot({ path: "tests/e2e/screenshots/SA-018-member-reason-1440.png" });
   await dialog.getByRole("button", { name: "내려받기" }).click();
   await expect(dialog).toContainText("내보내는 사유를 적어 주십시오");
   const reason = `시험 사유 ${Date.now()}`;
