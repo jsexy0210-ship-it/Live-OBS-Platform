@@ -281,9 +281,6 @@ export default function OrdersView({ slug }: { slug: string }) {
                     <td className="ol-date" data-label="주문일 · 번호">
                       <b>{formatDateTime(o.createdAt)}</b>
                       <Link href={`${base}/orders/${o.id}`}>{o.orderNoLabel}</Link>
-                      <Link className="ol-detail" href={`${base}/orders/${o.id}`} aria-label={`${o.orderNoLabel} 상세`}>
-                        상세 ›
-                      </Link>
                     </td>
                     <td className="ol-items" data-label="상품 정보">
                       <ul>
@@ -311,6 +308,9 @@ export default function OrdersView({ slug }: { slug: string }) {
                           {o.shipment.courierName} · {o.shipment.trackingNumber}
                         </span>
                       )}
+                      <Link className="ol-detail" href={`${base}/orders/${o.id}`} aria-label={`${o.orderNoLabel} 상세`}>
+                        상세 ›
+                      </Link>
                     </td>
                     <td className="ol-act" data-label="관리">
                       {o.status === "PENDING_PAYMENT" && (

@@ -209,7 +209,7 @@
 .ol-range {
   display: contents;
 }
-.ol-date .ol-detail {
+.ol-state .ol-detail {
   display: none;
 }
 @media (max-width: 767px) {
@@ -250,11 +250,11 @@
     order: 1;
     font-size: 12px;
   }
-  .ol-date a:not(.ol-detail) {
+  .ol-date a {
     order: 2;
     margin-top: 0;
   }
-  .ol-date a:not(.ol-detail)::before {
+  .ol-date a::before {
     content: "·";
     margin-right: 4px;
   }
@@ -262,7 +262,7 @@
     order: 3;
     margin-bottom: 0;
   }
-  .ol-date .ol-detail {
+  .ol-state .ol-detail {
     display: block;
     order: 4;
     margin: 0 0 0 auto;
