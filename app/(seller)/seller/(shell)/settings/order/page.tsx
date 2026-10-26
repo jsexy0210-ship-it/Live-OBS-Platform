@@ -89,7 +89,8 @@ function BankAccountSection({ onSaved }: { onSaved: () => void }) {
   };
   // 계좌 칸에서 Enter는 주문 설정 전체 저장이 아니라 계좌 저장이다
   const enter = (e: React.KeyboardEvent) => {
-    if (e.key !== "Enter") return;
+    // 한글 입력 중 Enter는 글자를 확정하는 키라 저장으로 보지 않는다
+    if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
     e.preventDefault();
     void save();
   };

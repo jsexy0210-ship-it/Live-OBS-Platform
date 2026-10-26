@@ -333,6 +333,7 @@ test("무통장 입금 계좌: 틀리면 안내하고, 저장하면 다시 열�
     await page.goto("/seller/orders/deposits");
     const summary = page.getByTestId("deposit-settings");
     await expect(summary).toContainText("주문 후 24시간");
+    await expect(summary).toContainText("기한 1시간 전");
     await expect(summary).toContainText("시험은행 110-123-456789 예금주 별빛상사");
     await expect(summary).toContainText("준비 중");
     await expect(summary.getByRole("textbox")).toHaveCount(0);

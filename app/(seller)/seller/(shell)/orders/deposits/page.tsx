@@ -74,7 +74,7 @@ function DepositSettingsSummary() {
               <th>입금 기한 알림</th>
               <td>
                 {v.policy?.dueReminderEnabled && v.policy.autoCancelEnabled ? "켜짐" : "꺼짐"}
-                {v.policy?.dueReminderEnabled && v.policy.autoCancelEnabled && <span className="c-alt"> · 기한 1시간 전 · 알림톡 · 안 되면 문자</span>}
+                {v.policy?.dueReminderEnabled && v.policy.autoCancelEnabled && <span className="c-alt"> · {v.policy.paymentDueHours > 24 ? "기한 하루 전" : "기한 1시간 전"} · 알림톡 · 안 되면 문자</span>}
               </td>
             </tr>
             <tr>
