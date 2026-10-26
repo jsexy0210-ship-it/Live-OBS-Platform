@@ -111,22 +111,25 @@ function NoticeList() {
           }
         />
         <SearchBox onSearch={() => apply({ ...draft, q: draft.q.trim() })} onReset={reset} busy={state.kind === "loading"}>
-          <SearchRow label="상태">
+          <SearchRow
+            label="상태"
+            label2="분류"
+            children2={
+              <select className="inp" aria-label="분류" value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value as Filters["category"] })}>
+                <option value="">전체</option>
+                {(Object.keys(NOTICE_CATEGORY) as NoticeCategory[]).map((c) => (
+                  <option key={c} value={c}>
+                    {NOTICE_CATEGORY[c].label}
+                  </option>
+                ))}
+              </select>
+            }
+          >
             <select className="inp" aria-label="상태" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value as Filters["status"] })}>
               <option value="">전체</option>
               {(Object.keys(NOTICE_STATUS) as NoticeStatus[]).map((s) => (
                 <option key={s} value={s}>
                   {NOTICE_STATUS[s].label}
-                </option>
-              ))}
-            </select>
-          </SearchRow>
-          <SearchRow label="분류">
-            <select className="inp" aria-label="분류" value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value as Filters["category"] })}>
-              <option value="">전체</option>
-              {(Object.keys(NOTICE_CATEGORY) as NoticeCategory[]).map((c) => (
-                <option key={c} value={c}>
-                  {NOTICE_CATEGORY[c].label}
                 </option>
               ))}
             </select>
