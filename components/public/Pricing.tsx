@@ -38,7 +38,7 @@ export function Pricing({ plans, billingPolicy, companyInfo }: { plans: LandingP
   const trialPlan = shown.find((p) => p.trialDays > 0);
   const noTrialPlan = shown.find((p) => p.trialDays === 0);
   return (
-    <PublicFrame active="/pricing" companyInfo={companyInfo}>
+    <PublicFrame active="/pricing" mobileHeader="compact" companyInfo={companyInfo}>
       <section className="pf-sec pf-pricing">
         <h1 className="t-d2">요금</h1>
         <p className="t-b1 c-neu">두 가지 이용권 · 판매 수수료는 없어요 · 모두 부가세 포함</p>

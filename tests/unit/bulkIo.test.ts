@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatCsv, guardText, parseCsv, unguardText } from "../../lib/server/shop-bulk-io/csv";
-import { COLUMNS, MAX_IMPORT_ROWS, parseProductCsv, templateCsv } from "../../lib/server/shop-bulk-io/service";
+import { COLUMNS, MAX_IMPORT_ROWS, headerMismatchMessage, parseProductCsv, resolveProductEvents, templateCsv } from "../../lib/server/shop-bulk-io/service";
 
 // 엑셀(CSV) 일괄 등록(SA-018): CSV 읽기·쓰기와 행 검증(DB 없음)
 const cats = new Map([["카드", ["c1"]], ["카드>부스터", ["c2"]], ["중복", ["c3", "c4"]]]);
@@ -94,12 +94,67 @@ describe("상품 CSV 검증", () => {
     expect(v.products[0].input).toMatchObject({ name: "A", price: 1000, status: "HIDDEN", options: [{ name: "기본", priceDelta: 0, stock: 3, sku: null }] });
     expect(v.products[0].defaultOption).toBe(true);
   });
+  it("할인가·할인 기간은 함께 입력하고 정액 할인(판매가 − 할인가)으로 읽는다. 기간은 시작일 0시부터 종료일 끝까지(KST)", () => {
+    const start = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
+    const end = new Date(Date.now() + 9 * 86_400_000).toISOString().slice(0, 10);
+    const head = "상품명,카테고리,판매가,재고,할인가,할인 기간,숨김";
+    const v = resolveProductEvents(parse(`A,,10000,3,"8,000원",${start} ~ ${end},예\r\nB,,5000,1,,,`, head));
+    expect(v.errors).toEqual([]);
+    const a = v.products[0].event!;
+    expect([a.type, a.value]).toEqual(["AMOUNT", 2000]);
+    expect(a.startsAt).toBe(`${start}T00:00:00+09:00`);
+    expect(a.endsAt.endsWith("T00:00:00+09:00")).toBe(true);
+    expect(Date.parse(a.endsAt) - Date.parse(a.startsAt)).toBe(8 * 86_400_000); // 종료일 포함
+    expect(v.products[1].event).toBeUndefined();
+    // 점·빗금 구분도 받는다
+    expect(resolveProductEvents(parse(`A,,10000,3,9000,${start.replaceAll("-", ".")} ~ ${end.replaceAll("-", "/")},`, head)).errors).toEqual([]);
+  });
+  it("할인가·할인 기간 오류: 한쪽만, 숫자 아님, 판매가 이상, 90% 넘는 할인, 지난 기간, 형식·역순·없는 날짜", () => {
+    const start = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+    const end = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+    const ok = `${start} ~ ${end}`;
+    const head = "상품명,카테고리,판매가,재고,할인가,할인 기간";
+    const err = (row: string) => resolveProductEvents(parse(row, head)).errors.map((e) => [e.column, e.message]);
+    expect(err(`A,,10000,1,8000,`)).toEqual([["할인 기간", "할인가와 할인 기간은 함께 입력해 주십시오"]]);
+    expect(err(`A,,10000,1,,${ok}`)).toEqual([["할인가", "할인가와 할인 기간은 함께 입력해 주십시오"]]);
+    expect(err(`A,,10000,1,abc,${ok}`)[0][0]).toBe("할인가");
+    expect(err(`A,,10000,1,10000,${ok}`)).toEqual([["할인가", "할인가는 판매가보다 낮아야 합니다"]]);
+    expect(err(`A,,10000,1,500,${ok}`)[0][0]).toBe("할인가"); // 판매가의 10% 미만 = 90% 넘는 할인
+    expect(err(`A,,10000,1,8000,2020-01-01 ~ 2020-01-31`)[0][0]).toBe("할인 기간"); // 이미 끝남
+    expect(err(`A,,10000,1,8000,${end} ~ ${start}`)[0][0]).toBe("할인 기간"); // 역순
+    expect(err(`A,,10000,1,8000,2026-02-30 ~ 2026-03-05`)[0][0]).toBe("할인 기간"); // 없는 날짜
+    expect(err(`A,,10000,1,8000,내일부터`)[0][0]).toBe("할인 기간");
+  });
+  it("양식과 다른 열은 어느 열이 어떻게 다른지 알려 준다(필수 열 누락·모르는 열·같은 열 두 번)", () => {
+    const head = (t: string) => {
+      const r = parseProductCsv(`${t}\r\nA,1,카드,1`, cats);
+      if (r.ok) throw new Error("ok");
+      return r;
+    };
+    expect(head("상품명,가격,카테고리,재고").columns).toEqual([{ found: "가격", expected: "판매가" }]);
+    expect(head("상품명,가격,카테고리").columns).toEqual([{ found: "가격", expected: "판매가" }, { found: null, expected: "재고" }]);
+    expect(head("상품명,판매가,카테고리,재고,메모").columns).toEqual([{ found: "메모", expected: null }]);
+    expect(head("상품명,판매가,카테고리,재고,재고").columns).toEqual([{ found: "재고", expected: null }]);
+    expect(head("판매가").columns?.map((c) => c.expected)).toEqual(["상품명", "카테고리", "재고"]);
+    // 객체 기본 속성 이름(constructor·__proto__ 등)도 그냥 모르는 열이다(안내 문구를 만들다 죽지 않는다)
+    for (const odd of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+      const r = head(`상품명,판매가,카테고리,재고,${odd}`);
+      expect(r.columns).toEqual([{ found: odd, expected: null }]);
+      expect(headerMismatchMessage(r.columns!)).toContain(`「${odd}」 열은 양식에 없습니다`);
+    }
+  });
+  it("열 이름 안내 문구: 바꿀 열·개수를 알려 주고 조사를 맞춘다", () => {
+    expect(headerMismatchMessage([{ found: "가격", expected: "판매가" }, { found: null, expected: "재고" }])).toBe("양식과 열 이름이 다릅니다 · 「가격」 열을 「판매가」로 바꿔 주십시오 (2개 열 불일치)");
+    expect(headerMismatchMessage([{ found: "이름", expected: "상품명" }])).toBe("양식과 열 이름이 다릅니다 · 「이름」 열을 「상품명」으로 바꿔 주십시오 (1개 열 불일치)");
+    expect(headerMismatchMessage([{ found: "메모", expected: null }])).toContain("「메모」 열은 양식에 없습니다");
+    expect(headerMismatchMessage([{ found: null, expected: "재고" }])).toContain("「재고」 열이 없습니다");
+  });
   it("필수 열이 빠지거나 별칭과 원래 옵션 열이 중복되면 파일 오류다", () => {
     const required = ["상품명", "카테고리", "판매가", "재고"];
     for (const missing of required) {
-      expect(parseProductCsv(required.filter((column) => column !== missing).join(",") + "\r\nA,,1000,3", cats)).toEqual({ ok: false, reason: "invalid_header" });
+      expect(parseProductCsv(required.filter((column) => column !== missing).join(",") + "\r\nA,,1000,3", cats)).toMatchObject({ ok: false, reason: "invalid_header" });
     }
-    expect(parseProductCsv("상품명,카테고리,판매가,재고,옵션,옵션명\r\nA,,1000,3,빨강,빨강", cats)).toEqual({ ok: false, reason: "invalid_header" });
+    expect(parseProductCsv("상품명,카테고리,판매가,재고,옵션,옵션명\r\nA,,1000,3,빨강,빨강", cats)).toMatchObject({ ok: false, reason: "invalid_header" });
   });
   it("옵션 별칭은 기존 옵션명과 같고 빈 상태 기본값과 명시 상태를 구분한다", () => {
     const header = "상품명,카테고리,판매가,재고,옵션,상태";

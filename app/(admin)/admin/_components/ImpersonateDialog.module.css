@@ -1,0 +1,10 @@
+/* MA-016 확인 창: 정본(MA-011 상태 변형)의 라벨 열 88px. 공유 .au-ft 규칙은 건드리지 않고 이 창 안에서만 덮어쓴다. */
+.form > tbody > tr > th {
+  width: 88px;
+  padding-left: var(--ui-sp-12);
+  padding-right: var(--ui-sp-12);
+}
+.form > tbody > tr > td {
+  padding-left: var(--ui-sp-12);
+  padding-right: var(--ui-sp-12);
+}

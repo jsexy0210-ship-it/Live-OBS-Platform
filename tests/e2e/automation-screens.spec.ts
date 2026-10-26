@@ -95,8 +95,15 @@ test("파트너스: 주소 확인 → 결제 동의 5개 → 결제 → 진행 �
   await payGo.click();
   await expect(page).toHaveURL(/\/seller\/automation\/[0-9a-f-]{36}$/);
   await expect(page.getByTestId("job-status")).toContainText("결제 확인됨");
+  // 플랫폼 이름이 들어간 주소는 서버가 null로 내려 주므로 주소 줄을 그리지 않는다
+  await expect(page.getByTestId("job-shop-host")).toHaveCount(0);
   const job = await db.automationJob.findFirstOrThrow({ where: { sellerId } });
   expect(job.status).toBe("QUEUED");
+  // 플랫폼 이름이 없는 주소(서버가 그대로 내려 줌)는 안내 띠에 보인다
+  await db.automationJob.update({ where: { id: job.id }, data: { shopHost: "shop.example-store.kr" } });
+  await page.reload();
+  await expect(page.getByTestId("job-shop-host")).toHaveText("shop.example-store.kr");
+  await db.automationJob.update({ where: { id: job.id }, data: { shopHost: job.shopHost } });
   expect(await db.automationPayment.count({ where: { sellerId, status: "PAID", amount: 110000 } })).toBe(1);
   // 안내 화면은 진행 중인 작업을 알려 준다
   await page.goto("/seller/automation");

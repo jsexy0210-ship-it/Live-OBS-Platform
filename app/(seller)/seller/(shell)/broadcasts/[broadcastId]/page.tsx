@@ -15,6 +15,9 @@ import { SourceBadge } from "../../../../../../components/seller/broadcast/Sourc
 import { kstDuration, type BroadcastSummary } from "../../../../../../components/seller/broadcast/history";
 import { formatDateTime, formatTime } from "../../../../../../lib/client/format";
 
+// 대신 보기에서는 바꾸는 버튼을 막고 이유를 알려 준다
+const RO_TITLE = "대신 보기에서는 볼 수만 있습니다";
+
 // SA-055 방송 상세(방송 이력의 한 건). 요약 · HIT 카드 · 방송 중 들어온 주문(50개씩).
 // API: GET /api/seller/broadcast/{id}?cursor=(다른 판매자 방송은 404) · PATCH {memo}(최대 1,000자) · GET .../report(CSV, 방송 중 409).
 
@@ -81,8 +84,9 @@ function Tile({ label, value }: { label: string; value: string }) {
 }
 
 export default function BroadcastDetailPage() {
-  const { can } = useSeller();
+  const { can, me } = useSeller();
   const allowed = can("BROADCAST_RUN");
+  const ro = !!me.readOnly;
   const { broadcastId } = useParams<{ broadcastId: string }>();
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [more, setMore] = useState(false);
@@ -464,8 +468,8 @@ export default function BroadcastDetailPage() {
                       <th scope="row">메모</th>
                       <td>
                         <div className="au-ft-v" style={{ alignItems: "flex-start" }}>
-                          <textarea className="inp" style={{ flex: "1 1 360px", minHeight: 48 }} maxLength={1000} value={memo} placeholder="방송 메모 (파트너스만 봅니다)" onChange={(e) => setMemo(e.target.value)} aria-label="메모" data-testid="bd-memo" />
-                          <button className="btn btn-sm btn-out" type="button" disabled={saving || memo === (b.memo ?? "")} onClick={() => void saveMemo()} data-testid="bd-memo-save">
+                          <textarea className="inp" style={{ flex: "1 1 360px", minHeight: 48 }} maxLength={1000} value={memo} placeholder="방송 메모 (파트너스만 봅니다)" onChange={(e) => setMemo(e.target.value)} readOnly={ro} aria-label="메모" data-testid="bd-memo" />
+                          <button className="btn btn-sm btn-out" type="button" disabled={saving || ro || memo === (b.memo ?? "")} title={ro ? RO_TITLE : undefined} onClick={() => void saveMemo()} data-testid="bd-memo-save">
                             저장
                           </button>
                         </div>

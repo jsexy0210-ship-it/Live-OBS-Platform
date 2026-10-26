@@ -119,6 +119,10 @@ model Seller {
   // 대표자 PASS 본인인증 CI의 HMAC-SHA256 값(원문 CI는 저장하지 않음). 대표자 1명당 쇼핑몰 1개는 마이그레이션 SQL 부분 유니크.
   representativeCiHash     String?
   representativeVerifiedAt DateTime?    @db.Timestamptz(3)
+  // 마스터 최고관리자가 직접 추가한 쇼핑몰(본인확인 계약 전 임시 경로). 이 값이 있고 representativeVerifiedAt이 비어 있으면 「본인확인 대기」:
+  // 직원 추가·적립금 실지급·충전금 결제·셀프 아이디/비밀번호 찾기가 막힌다(lib/server/sellers/identityGate.ts).
+  directCreatedByAdminId   String?      @db.Uuid
+  directCreatedAt          DateTime?    @db.Timestamptz(3)
   liveVersion              Int          @default(0)
   createdAt                DateTime     @default(now()) @db.Timestamptz(3)
 
@@ -128,6 +132,7 @@ model Seller {
   domains                  SellerDomain[]
   adminNotes               SellerAdminNote[]
   users                    SellerUser[]
+  invites                  SellerInvite[]
   sellerSessions           SellerSession[]
   passwordResetGrants      PasswordResetGrant[]
   grades                   MemberGrade[]
@@ -298,10 +303,30 @@ model SellerUser {
   seller      Seller               @relation(fields: [sellerId], references: [id])
   sessions    SellerSession[]
   resetGrants PasswordResetGrant[]
+  invites     SellerInvite[]
 
   @@unique([sellerId, id])
   @@unique([sellerId, email])
   @@index([identityCiHash])
+}
+
+// 직접 추가한 쇼핑몰 대표자의 첫 비밀번호 설정 초대(일회용·72시간). 토큰 원문은 저장하지 않고 SHA-256 해시만 둔다.
+// 새로 발급하면 이전 미사용 초대는 revokedAt으로 무효. 사용(usedAt)하면 대표자 비밀번호가 정해지고 기존 세션은 끊긴다.
+model SellerInvite {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId         String    @db.Uuid
+  sellerUserId     String    @db.Uuid
+  tokenHash        String    @unique
+  expiresAt        DateTime  @db.Timestamptz(3)
+  usedAt           DateTime? @db.Timestamptz(3)
+  revokedAt        DateTime? @db.Timestamptz(3)
+  createdByAdminId String    @db.Uuid
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+
+  seller     Seller     @relation(fields: [sellerId], references: [id])
+  sellerUser SellerUser @relation(fields: [sellerUserId], references: [id])
+
+  @@index([sellerUserId, createdAt])
 }
 
 // 판매자 대표 비밀번호 재설정 권한(일회용·10분). 토큰은 해시만 저장한다.
@@ -3144,7 +3169,7 @@ enum MessageChannel {
   SMS
   LMS
   ALIMTALK
-  // 구매자 휴대폰 본인인증(쇼핑몰에서 켠 경우)
+  // 구매자 휴대폰 본인인증(가입은 필수라 끌 수 없음. 건당 파트너스 충전금 차감 확정, 구매자 가입 흐름에 연결됨 identity/fee.ts, docs/COST_POLICY.md)
   IDENTITY_VERIFICATION
   // 배송 자동 조회(배송 완료 자동 처리를 켠 경우)
   DELIVERY_TRACKING
@@ -3641,6 +3666,11 @@ model MemberGradePolicy {
   windowMonths Int                 @default(6)
   cadence      MemberGradeCadence  @default(MONTHLY)
   demotion     MemberGradeDemotion @default(STEP)
+  // 승급·강등 때 구매자 알림을 원하는지(SA-044 「알림」). 발송 채널이 붙기 전에는 로그 추적 member_grade.notice의 notify로만 남는다.
+  notifyPromotion Boolean @default(false)
+  notifyDemotion  Boolean @default(false)
+  // 마이페이지에 「다음 등급까지 남은 금액」을 보일지(SA-044 「마이페이지 표시」). 자동 재산정이 켜져 있을 때만 보인다.
+  showNextGrade   Boolean @default(true)
   updatedAt    DateTime            @default(now()) @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])

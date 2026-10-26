@@ -7,7 +7,7 @@ import { loginSeller } from "../../lib/server/auth/login";
 import { prisma } from "../../lib/server/db";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
-import { BULK_MESSAGES, commitProductImport, exportProductsCsv, getBulkJob, listBulkJobs, previewProductImport, undoProductImport } from "../../lib/server/shop-bulk-io/service";
+import { TEMPLATE_COLUMNS, commitProductImport, exportProductsCsv, getBulkJob, listBulkJobs, previewProductImport, undoProductImport } from "../../lib/server/shop-bulk-io/service";
 import { parseCsv } from "../../lib/server/shop-bulk-io/csv";
 import { createCategory } from "../../lib/server/shop-category/service";
 import type { TenantContext } from "../../lib/server/tenant/context";
@@ -96,8 +96,10 @@ describe("일괄 등록", () => {
   it("파일 오류는 작업을 만들지 않는다", async () => {
     const s = await shop();
     for (const [text, reason] of [["상품명,가격\r\nA,1", "invalid_header"], [HEAD + "\r\n", "empty_file"], [123, "invalid_csv"]] as const) {
-      expect(await previewProductImport(db, s.ctx, { csv: text })).toEqual({ ok: false, reason });
+      expect(await previewProductImport(db, s.ctx, { csv: text })).toMatchObject({ ok: false, reason });
     }
+    // 열 이름이 다르면 어느 열인지 알려 준다
+    expect(await previewProductImport(db, s.ctx, { csv: "상품명,가격,카테고리,재고\r\nA,1,,1" })).toEqual({ ok: false, reason: "invalid_header", columns: [{ found: "가격", expected: "판매가" }] });
     expect(await db.bulkJob.count()).toBe(0);
   });
 
@@ -162,10 +164,11 @@ describe("상품 내보내기", () => {
     if (!r.ok) throw new Error(r.reason);
     expect(r.value.count).toBe(1);
     const rows = (parseCsv(r.value.csv) as { rows: string[][] }).rows;
-    expect(rows[0]).toEqual(HEAD.split(","));
+    expect(rows[0]).toEqual([...TEMPLATE_COLUMNS]); // 정본 양식 열(필수 4 + 옵션·할인가·할인 기간·설명·숨김)
     expect(rows[1][0]).toBe("'=위험, \"이름\"");
-    expect(rows.slice(1).map((x) => [x[6], x[7], x[8], x[9]])).toEqual([["옵션A", "100", "3", "SKU-1"], ["옵션B", "0", "4", ""]]);
-    expect(rows[2].slice(0, 6)).toEqual(["", "", "", "", "", ""]);
+    expect(rows.slice(1).map((x) => [x[4], x[3]])).toEqual([["옵션A", "3"], ["옵션B", "4"]]);
+    expect(rows[2].slice(0, 3)).toEqual(["", "", ""]);
+    expect(rows[1].slice(5)).toEqual(["", "", "줄1\n줄2", "아니오"]); // 할인 없음 · 설명 · 숨김 아님
     const again = await preview(s.ctx, r.value.csv);
     expect([again.productCount, again.errorTotal]).toEqual([1, 0]);
     // 내보낸 파일을 그대로 다시 올리면 이름이 같은 기존 상품의 수정으로 읽는다(새 상품이 생기지 않는다). 값이 같아 바뀌는 것은 없다.
@@ -207,7 +210,7 @@ describe("API 경로", () => {
     expect([t.status, t.headers.get("content-type")]).toEqual([200, "text/csv; charset=utf-8"]);
     const bytes = new Uint8Array(await t.arrayBuffer());
     expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]); // 엑셀이 한글을 깨뜨리지 않게 BOM
-    expect(new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes).slice(1).startsWith("상품명,판매가")).toBe(true);
+    expect(new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes).slice(1).startsWith("상품명,카테고리,판매가,재고")).toBe(true);
     const pv = await previewRoute(new Request("http://localhost:3000/x", { method: "POST", headers: { ...H, cookie: c, "content-type": "text/csv" }, body: csv("A,1000,판매중,,,,기본,0,1,") }));
     expect(pv.status).toBe(201);
     const body = await pv.json();
@@ -215,7 +218,12 @@ describe("API 경로", () => {
     const d = await jobRoute(new Request("http://localhost:3000/x", { headers: { cookie: c } }), { params: Promise.resolve({ jobId: body.jobId }) });
     expect(d.status).toBe(200);
     const bad = await previewRoute(new Request("http://localhost:3000/x", { method: "POST", headers: { ...H, cookie: c, "content-type": "application/json" }, body: JSON.stringify({ csv: "a,b\r\n1,2" }) }));
-    expect([bad.status, (await bad.json()).message]).toEqual([400, BULK_MESSAGES.invalid_header]);
+    const badBody = await bad.json();
+    expect([bad.status, badBody.error]).toEqual([400, "invalid_header"]);
+    expect(badBody.message).toBe("양식과 열 이름이 다릅니다 · 「a」 열은 양식에 없습니다. 지우거나 양식의 열 이름으로 바꿔 주십시오 (6개 열 불일치)");
+    expect(badBody.columns).toHaveLength(6);
+    const wrong = await previewRoute(new Request("http://localhost:3000/x", { method: "POST", headers: { ...H, cookie: c, "content-type": "application/json" }, body: JSON.stringify({ csv: "상품명,가격,카테고리,수량\r\n1,2,,3" }) }));
+    expect((await wrong.json()).message).toBe("양식과 열 이름이 다릅니다 · 「가격」 열을 「판매가」로 바꿔 주십시오 (2개 열 불일치)");
     const nf = await jobRoute(new Request("http://localhost:3000/x", { headers: { cookie: c } }), { params: Promise.resolve({ jobId: "nope" }) });
     expect(nf.status).toBe(404);
   });
