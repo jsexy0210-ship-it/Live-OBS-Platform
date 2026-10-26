@@ -23,6 +23,12 @@ test("대표자: 기준 금액 저장 → 자동 재산정 켜기 검사 → 등
   const rows = page.getByTestId("grade-row");
   await expect(rows.first().getByLabel(/기준 금액/)).toHaveValue("0");
   await expect(rows.first().getByLabel(/기준 금액/)).toBeDisabled();
+  const promotion = page.getByRole("checkbox", { name: "등급이 오르면 알림", exact: true });
+  const demotion = page.getByRole("checkbox", { name: "내려가도 알림", exact: true });
+  const nextGrade = page.getByRole("checkbox", { name: "다음 등급까지 남은 금액 표시", exact: true });
+  await expect(promotion).not.toBeChecked();
+  await expect(demotion).not.toBeChecked();
+  await expect(nextGrade).toBeChecked();
 
   // 자동 재산정을 켜면 기준 금액이 순서대로 커야 한다(모두 0원이면 저장 거부)
   await page.getByRole("switch", { name: "자동 재산정" }).click();
@@ -32,11 +38,19 @@ test("대표자: 기준 금액 저장 → 자동 재산정 켜기 검사 → 등
   // 기준 금액을 넣고 저장
   const count = await rows.count();
   for (let i = 1; i < count; i++) await rows.nth(i).getByLabel(/기준 금액/).fill(String(i * 100000));
+  await promotion.check();
+  await demotion.check();
+  await nextGrade.uncheck();
+  const saved = page.waitForRequest((r) => r.url().endsWith("/api/seller/member-grades") && r.method() === "PUT");
   await page.getByRole("button", { name: "저장" }).click();
+  expect((await saved).postDataJSON()).toMatchObject({ notifyPromotion: true, notifyDemotion: true, showNextGrade: false });
   await expect(page.getByText("등급 설정을 저장했습니다")).toBeVisible();
   await page.reload();
   await expect(page.getByRole("switch", { name: "자동 재산정" })).toHaveAttribute("aria-checked", "true");
   await expect(rows.nth(1).getByLabel(/기준 금액/)).toHaveValue("100000");
+  await expect(promotion).toBeChecked();
+  await expect(demotion).toBeChecked();
+  await expect(nextGrade).not.toBeChecked();
   await page.screenshot({ path: `${SHOT}/sa044-grades-1440.png`, fullPage: true });
 
   // 등급 혜택: 배송비 정액 할인을 넣고 저장하면 다시 불러와도 남고, 정액 할인이 아니면 금액 칸이 막힌다
@@ -53,9 +67,18 @@ test("대표자: 기준 금액 저장 → 자동 재산정 켜기 검사 → 등
   await page.screenshot({ path: `${SHOT}/sa044-benefits-1440.png`, fullPage: true });
   // 정액 할인 금액 0원은 저장할 수 없다
   await ben.nth(1).getByLabel(/배송비 할인 금액/).fill("");
+  await promotion.uncheck();
+  await demotion.uncheck();
+  await nextGrade.check();
   await page.getByRole("button", { name: "저장" }).click();
   await expect(page.locator(".msg-neg")).toContainText("배송비 혜택을 확인해 주십시오");
+  await expect(promotion).not.toBeChecked();
+  await expect(demotion).not.toBeChecked();
+  await expect(nextGrade).toBeChecked();
   await page.reload();
+  await expect(promotion).toBeChecked();
+  await expect(demotion).toBeChecked();
+  await expect(nextGrade).not.toBeChecked();
 
   // 등급 추가 → 목록에 나오고, 회원이 없으니 삭제할 수 있다
   await page.getByLabel("새 등급 이름").fill("다이아");
@@ -75,13 +98,20 @@ test("대표자: 기준 금액 저장 → 자동 재산정 켜기 검사 → 등
   await opts.nth(0).selectOption("12");
   await opts.nth(1).selectOption("WEEKLY");
   await opts.nth(2).selectOption("NONE");
+  await promotion.uncheck();
+  await demotion.uncheck();
+  await nextGrade.check();
   await page.getByRole("button", { name: "저장" }).click();
   await expect(page.getByText("등급 설정을 저장했습니다")).toBeVisible();
   await page.reload();
   await expect(page.getByRole("region", { name: "산정 기준" }).getByRole("combobox").nth(1)).toHaveValue("WEEKLY");
+  await expect(promotion).not.toBeChecked();
+  await expect(demotion).not.toBeChecked();
+  await expect(nextGrade).toBeChecked();
   await page.getByRole("button", { name: "지금 재산정" }).click();
   const recalc = page.getByRole("dialog", { name: "지금 재산정하시겠습니까?" });
   await expect(recalc).toContainText("최근 12개월 구매 금액");
+  await expect(recalc).toContainText("실제 알림은 발송하지 않습니다");
   await recalc.getByRole("button", { name: "재산정" }).click();
   await expect(page.getByText(/재산정 완료 · 승급 \d+명 · 강등 \d+명/)).toBeVisible();
 
