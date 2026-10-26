@@ -89,6 +89,9 @@ jobs:
           DEV_SEED_PASSWORD="$pw" node scripts/dev-seed.mjs > /dev/null
 
       - name: Build
+        env:
+          # 타입 검사 단계가 기본 힙(약 4GB)을 넘겨 빌드가 죽었다(10/6~). ci.yml 빌드와 같은 한도를 쓴다.
+          NODE_OPTIONS: --max-old-space-size=6144
         run: npm run build
 
       # start(3100): 운영 빌드 · dev(3101): 가짜 본인확인·결제·사업자·통신판매업 조회(BILLING_PROVIDER=fake는 운영 빌드에서 거부되므로 dev 서버에서만) · testmode(3102): OBS_TEST_MODE=1 운영 빌드
