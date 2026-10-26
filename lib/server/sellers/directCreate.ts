@@ -186,10 +186,17 @@ export async function setTrialEnd(db: PrismaClient, admin: AdminSessionContext, 
     if (!s || !["ACTIVE", "SUSPENDED"].includes(s.status)) return { ok: false as const, reason: "invalid_target" as const };
     if (s.serviceEndedAt) return { ok: false as const, reason: "service_ended" as const };
     await tx.seller.update({ where: { id: sellerId }, data: { trialEndsAt: t } });
+    // 체험 중 카드를 등록했다면 첫 결제 시각(nextChargeAt)이 옛 체험 종료일로 저장돼 있다(registerCardAndPay). 같이 옮기지 않으면 연장해도 옛 날짜에 결제된다.
+    // 옛 체험 종료일과 정확히 같은 ACTIVE 구독의 nextChargeAt만 옮긴다: 결제한 기간의 갱신 일정(기간 끝 − 여유)은 건드리지 않는다.
+    let chargeMoved = 0;
+    if (s.trialEndsAt) {
+      const moved = await tx.sellerSubscription.updateMany({ where: { sellerId, status: "ACTIVE", cancelAtPeriodEnd: false, nextChargeAt: s.trialEndsAt }, data: { nextChargeAt: t } });
+      chargeMoved = moved.count;
+    }
     await writeAudit(tx, {
       actorType: "PLATFORM_ADMIN", actorId: admin.admin.id, sellerId, action: "admin.seller.trial_set", targetType: "Seller", targetId: sellerId,
-      before: { trialEndsAt: s.trialEndsAt }, after: { trialEndsAt: t, reason }, ip: meta.ip, userAgent: meta.userAgent,
+      before: { trialEndsAt: s.trialEndsAt }, after: { trialEndsAt: t, reason, firstChargeMoved: chargeMoved > 0 }, ip: meta.ip, userAgent: meta.userAgent,
     });
-    return { ok: true as const, trialEndsAt: t, previous: s.trialEndsAt };
+    return { ok: true as const, trialEndsAt: t, previous: s.trialEndsAt, firstChargeMoved: chargeMoved > 0 };
   });
 }

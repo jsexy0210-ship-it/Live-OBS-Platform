@@ -238,6 +238,43 @@ describe("체험 종료일 바꾸기", () => {
   });
 });
 
+describe("체험 종료일과 첫 결제 일정", () => {
+  it("체험 중 카드를 등록해 첫 결제가 옛 체험 종료일로 잡혀 있으면 같이 옮기고, 결제한 기간의 갱신 일정이나 해지 예약·다른 시각은 건드리지 않는다", async () => {
+    await db.subscriptionPlan.upsert({ where: { code: "INTEGRATED" }, create: { code: "INTEGRATED", name: "쇼핑몰 통합", listPrice: 249000, salePrice: 179000, trialDays: 0 }, update: {} });
+    const plan = await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "INTEGRATED" } });
+    const su = await admin("SUPER_ADMIN");
+    const a = await create(su.cookie);
+    const trial = (await db.seller.findUniqueOrThrow({ where: { id: a.body.sellerId } })).trialEndsAt!;
+    const sub = await db.sellerSubscription.create({ data: { sellerId: a.body.sellerId, planId: plan.id, status: "ACTIVE", nextChargeAt: trial, subscribedAt: new Date() } });
+    const patch = (id: string, trialEndsAt: string) => trialRoute(post(`/api/admin/sellers/${id}/trial`, su.cookie, { trialEndsAt, reason: "연장" }, "PATCH"), sid(id));
+    const far = "2099-12-31T00:00:00.000Z";
+    expect((await patch(a.body.sellerId, far)).status).toBe(200);
+    expect((await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub.id } })).nextChargeAt?.toISOString()).toBe(far); // 첫 결제 일정이 함께 옮겨짐
+    const log = await db.auditLog.findFirstOrThrow({ where: { action: "admin.seller.trial_set", sellerId: a.body.sellerId } });
+    expect(log.after).toMatchObject({ firstChargeMoved: true });
+    // 단축도 같이 옮긴다(지금보다 뒤 날짜)
+    const sooner = new Date(Date.now() + 3 * 86_400_000).toISOString();
+    expect((await patch(a.body.sellerId, sooner)).status).toBe(200);
+    expect((await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub.id } })).nextChargeAt?.toISOString()).toBe(sooner);
+
+    // 결제한 기간의 갱신 일정(nextChargeAt이 체험 종료일과 다름)은 그대로
+    const b = await create(su.cookie, { slug: "secondshop", ownerEmail: "second@example.com" });
+    const renew = new Date(Date.now() + 20 * 86_400_000);
+    const sub2 = await db.sellerSubscription.create({ data: { sellerId: b.body.sellerId, planId: plan.id, status: "ACTIVE", currentPeriodEnd: new Date(Date.now() + 25 * 86_400_000), nextChargeAt: renew, subscribedAt: new Date() } });
+    expect((await patch(b.body.sellerId, far)).status).toBe(200);
+    expect((await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub2.id } })).nextChargeAt?.getTime()).toBe(renew.getTime());
+    const log2 = await db.auditLog.findFirstOrThrow({ where: { action: "admin.seller.trial_set", sellerId: b.body.sellerId } });
+    expect(log2.after).toMatchObject({ firstChargeMoved: false });
+
+    // 해지 예약된 구독은 건드리지 않는다
+    const c = await create(su.cookie, { slug: "thirdshop", ownerEmail: "third@example.com" });
+    const trialC = (await db.seller.findUniqueOrThrow({ where: { id: c.body.sellerId } })).trialEndsAt!;
+    const sub3 = await db.sellerSubscription.create({ data: { sellerId: c.body.sellerId, planId: plan.id, status: "ACTIVE", cancelAtPeriodEnd: true, nextChargeAt: trialC, subscribedAt: new Date() } });
+    expect((await patch(c.body.sellerId, far)).status).toBe(200);
+    expect((await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub3.id } })).nextChargeAt?.getTime()).toBe(trialC.getTime());
+  });
+});
+
 describe("초대 링크 주소", () => {
   it("설정(OBS_SITE_ADDRESS)이 호스트 이름이면 그것으로, 아니면 요청 주소로, 둘 다 없으면 경로만 준다(하드코딩 없음)", () => {
     const h = (host: string | null) => ({ get: (n: string) => (n.toLowerCase() === "host" ? host : null) });
