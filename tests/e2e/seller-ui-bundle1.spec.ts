@@ -112,9 +112,12 @@ test("재고 관리: 검색어·재고 조건이 주소에 실리고, 「상품 
   // 표 안 버튼 96×32, 한꺼번에 적기 40×120
   const btns = page.getByTestId("stock-row").first().locator(".c-act .btn");
   for (const b of await btns.all()) expect(await size(b)).toEqual({ w: 96, h: 32 });
+  expect(await page.locator(".stock-table th[style*='width']").count()).toBe(0);
+  // 한꺼번에 적기와 수량 칸은 목록이 아니라 재고 작업 화면에 있다
+  await page.goto("/seller/products/stock/work");
+  await expect(page.getByTestId("stock-row").first()).toBeVisible();
   expect(await size(page.getByRole("button", { name: "한꺼번에 적기" }))).toEqual({ w: 120, h: 40 });
   expect(await size(page.getByLabel("선택한 옵션에 더하거나 뺄 수량"))).toEqual({ w: 80, h: 40 });
-  expect(await page.locator(".stock-table th[style*='width']").count()).toBe(0);
 });
 
 test("재고 관리: 상품 목록에서 들어왔다가 「상품 목록」을 누르면 목록 조건이 그대로 돌아온다", async ({ page }) => {
