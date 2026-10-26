@@ -17,6 +17,8 @@
 
 배포 전 검사가 요구하는 이름: `POSTGRES_USER` · `POSTGRES_PASSWORD` · `POSTGRES_DB` · `IDENTITY_HASH_KEY` · `BILLING_KEY_SECRET` · `OBS_SITE_ADDRESS` · `OBS_ENVIRONMENT=prod`. `OBS_TEST_MODE`는 넣지 않습니다.
 
+**대표님 확인 항목:** 운영 서버 `.env`의 `OBS_SITE_ADDRESS`가 실제 운영 호스트 이름(예: 지정 주소)으로 들어 있는지 서버에서 확인해 주십시오. 비어 있거나 `:80`이면 HTTPS가 열리지 않고, 파트너스 초대 링크도 주소 없이 경로만 나옵니다(마스터 관리자 화면이 보고 있는 주소를 붙임). 값은 문서·대화에 적지 않고 서버에서만 확인합니다.
+
 기능이 켜지려면 추가로 필요한 이름(코드가 읽는 것, 없으면 해당 기능이 막힘): `PORTONE_API_SECRET` · `PORTONE_STORE_ID` · `PORTONE_IDENTITY_CHANNEL_KEY`(휴대폰 본인확인), `NICEPAY_CLIENT_KEY` · `NICEPAY_SECRET_KEY`(주문 카드 결제), `BILLING_PROVIDER`(구독 결제), `NTS_BUSINESS_STATUS_API_KEY` · `FTC_MAIL_ORDER_API_KEY`(가입 사업자·통신판매업 점검), `TRUSTED_PROXY_HOPS`(프록시 뒤 IP 판단), `IMAGE_STORAGE`와 `BACKUP_S3_*`(이미지·백업 저장소). 나머지 선택 이름은 `docs/DEPLOY.md` 「서버 `.env`」 표를 따릅니다.
 
 ## 3. 외부 업체 미연동 때의 동작(코드 기준) — 오픈 차단 후보

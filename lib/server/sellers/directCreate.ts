@@ -42,8 +42,9 @@ function requireSuper(admin: AdminSessionContext) {
   if (!adminCan(admin.admin.role, "system.manage")) throw forbidden();
 }
 
-// 초대 링크는 토큰을 URL 조각(#)에 둬서 서버 로그·Referer에 남지 않게 한다. 주소는 설정(OBS_SITE_ADDRESS, 호스트 이름일 때)을 우선하고,
-// 없으면 요청 주소로 만들며, 둘 다 없으면 경로만 준다(화면이 현재 주소로 붙인다). 하드코딩 주소는 없다.
+// 초대 링크는 토큰을 URL 조각(#)에 둬서 서버 로그·Referer에 남지 않게 한다. 주소는 설정(OBS_SITE_ADDRESS, 호스트 이름일 때)을 우선한다.
+// 설정이 없으면 운영은 요청 헤더(Host)를 믿지 않고 경로만 준다(화면이 마스터 관리자가 지금 보는 주소로 붙인다).
+// 요청 주소로 만드는 것은 운영이 아닐 때(개발·시험)뿐이다. 하드코딩 주소는 없다.
 export function inviteLink(token: string, headers: { get(name: string): string | null } | null): { path: string; url: string | null } {
   const path = `/seller/invite#${token}`;
   const configured = process.env.OBS_SITE_ADDRESS?.trim();
@@ -51,7 +52,7 @@ export function inviteLink(token: string, headers: { get(name: string): string |
     const local = /^(localhost|127\.0\.0\.1)(:\d+)?$/i.test(configured);
     return { path, url: `${local ? "http" : "https"}://${configured.toLowerCase()}${path}` };
   }
-  const origin = headers ? requestOrigin(headers) : null;
+  const origin = headers && process.env.NODE_ENV !== "production" ? requestOrigin(headers) : null;
   return { path, url: origin ? `${origin.origin}${path}` : null };
 }
 
