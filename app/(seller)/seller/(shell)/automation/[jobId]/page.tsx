@@ -121,6 +121,7 @@ export default function AutomationProgressPage() {
           <div className={`msg ${j.status === "NEEDS_CUSTOMER" ? "msg-cau" : terminal ? "msg-neg" : "msg-info"}`} role="status" data-testid="job-status">
             <span>
               <b>{tag.label}</b> · {stamp(j.createdAt)} 시작 · 결제 {j.paymentStatus === "PAID" ? "확인됨" : j.paymentStatus === "REFUND_PENDING" ? "환불 처리 중" : j.paymentStatus === "REFUNDED" ? "환불 완료" : j.paymentStatus === "PENDING" ? "확인 중" : "없음"}
+              {j.shopHost && <> · <span data-testid="job-shop-host">{j.shopHost}</span></>}
               {j.lastError && terminal && <> · {errorText(j.lastError)}</>}
             </span>
           </div>

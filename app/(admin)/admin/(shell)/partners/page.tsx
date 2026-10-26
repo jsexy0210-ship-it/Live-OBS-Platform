@@ -85,7 +85,9 @@ function params(f: Filters, withPaging: boolean) {
 function PartnerList() {
   const { me } = useAdmin();
   const canImpersonate = adminCan(me.role, "seller.impersonate");
+  const canNotice = adminCan(me.role, "support.manage"); // 공지 작성은 최고관리자·CS만
   const canBulk = adminCan(me.role, "seller.moderate"); // 선택 메모 일괄은 최고관리자·운영만(CS·조회 전용은 서버가 403)
+  const canPick = canBulk || canNotice; // 체크 열은 선택 작업이 하나라도 있을 때만
   const { applied, draft, setDraft, apply } = useListFilters<Filters>(EMPTY);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
@@ -285,6 +287,11 @@ function PartnerList() {
                       <select className="inp" aria-label="쪽 크기" value="10" onChange={() => set({ limit: "10" })}>
                         <option value="10">10개씩</option>
                       </select>
+                      {canNotice && (
+                        <Link className="btn btn-sm btn-out" aria-disabled={picked.length === 0} onClick={e => { if (!picked.length) e.preventDefault(); }} href={selectionHref("/admin/support/notices/new", picked, `/admin/partners?${params(applied, true)}`)}>
+                          선택 공지 대상 지정{picked.length > 0 ? ` ${picked.length}` : ""}
+                        </Link>
+                      )}
                       {canBulk && (
                         <Link className="btn btn-sm btn-out" aria-disabled={picked.length === 0} onClick={e => { if (!picked.length) e.preventDefault(); }} href={selectionHref("/admin/partners/bulk-note", picked, `/admin/partners?${params(applied, true)}`)}>
                           선택 메모 추가{picked.length > 0 ? ` ${picked.length}` : ""}
@@ -297,7 +304,7 @@ function PartnerList() {
                   <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                     <thead>
                       <tr>
-                        {canBulk && (
+                        {canPick && (
                           <th style={{ width: 24, padding: "0 4px" }}>
                             <input className="chkbox" type="checkbox" aria-label="이 쪽 전체 선택" checked={allPicked} onChange={(e) => setPicked(e.target.checked ? rowIds : [])} />
                           </th>
@@ -320,7 +327,7 @@ function PartnerList() {
                         const overlayOnly = s.plan?.code === "OVERLAY_ONLY";
                         return (
                           <tr key={s.id} data-testid="partner-row">
-                            {canBulk && (
+                            {canPick && (
                               <td style={{ padding: "0 4px" }}>
                                 <input className="chkbox" type="checkbox" aria-label={`${s.shopName} 선택`} checked={picked.includes(s.id)} onChange={() => toggle(s.id)} />
                               </td>
