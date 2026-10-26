@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { call } from "./reviewShared";
+import { trackingUrl } from "./trackingLink";
 import { formatDate, formatDateTimeParts } from "../../lib/client/format";
 import "./MyHub.css";
 
@@ -15,9 +16,22 @@ type Order = {
   totalAmount: number;
   createdAt: string;
   queue: { status: "WAITING" | "OPENING" | "DONE"; aheadCount: number } | null;
-  items: { productNameSnapshot: string; optionNameSnapshot: string; quantity: number }[];
-  shipment: { status: "READY" | "IN_TRANSIT" | "DELIVERED" } | null;
+  items: { productNameSnapshot: string; optionNameSnapshot: string; quantity: number; optionId?: string | null; orderItemId?: string | null }[];
+  shipment: { status: "READY" | "IN_TRANSIT" | "DELIVERED"; courier: string; trackingNumber: string } | null;
 };
+// 보드 SH-020-PC-IA 「관리」 열: 상태별 버튼. 취소 요청은 주문 상세의 신청 칸으로 보낸다.
+type Act = { kind: "link"; label: string; href: string; external?: boolean } | { kind: "readd"; label: string };
+function actionsOf(o: Order, watchUrl: string | null, base: string): Act[] {
+  const detail = `${base}/orders/${o.id}`;
+  if (o.status === "PENDING_PAYMENT") return [{ kind: "link", label: "결제하기", href: detail }];
+  if (o.status === "CANCELLED" || o.status === "REFUNDED") return o.items.some((i) => i.optionId) ? [{ kind: "readd", label: "다시 담기" }] : [{ kind: "link", label: "주문 상세", href: detail }];
+  if (o.shipment?.status === "DELIVERED") return [{ kind: "link", label: "리뷰 쓰기", href: o.items[0]?.orderItemId ? `${base}/reviews?item=${encodeURIComponent(o.items[0].orderItemId)}` : `${base}/reviews` }];
+  const track = o.shipment ? trackingUrl(o.shipment.courier, o.shipment.trackingNumber) : null;
+  if (o.shipment) return track ? [{ kind: "link", label: "배송 조회", href: track, external: true }] : [{ kind: "link", label: "주문 상세", href: detail }];
+  const list: Act[] = [{ kind: "link", label: "취소 요청", href: detail }];
+  if (o.queue && o.queue.status !== "DONE" && watchUrl) list.push({ kind: "link", label: "방송 보기", href: watchUrl, external: true });
+  return list;
+}
 type Orders = { orders: Order[]; nextCursor?: string | null; counts: { inProgress: number } };
 type Rewards = { balance: number; expiringSoon: { amount: number; expiresAt: string } | null };
 type Coupons = { usable: { state: string; expiresAt: string }[] };
@@ -45,6 +59,8 @@ export default function MyHub({ slug, grade }: { slug: string; grade: { name: st
   const [rewards, setRewards] = useState<Rewards | null>(null);
   const [coupons, setCoupons] = useState<Coupons | null>(null);
   const [failed, setFailed] = useState(false);
+  const [watchUrl, setWatchUrl] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -58,6 +74,10 @@ export default function MyHub({ slug, grade }: { slug: string; grade: { name: st
       if (c.ok) setCoupons(c.data);
       setFailed(!o.ok || !a.ok || !r.ok || !c.ok);
     });
+    // 「방송 보기」는 방송 연결 주소가 있을 때만 쓴다(LiveBar와 같은 기준)
+    void call<{ live: boolean; watchUrl?: string | null }>(`${api}/live`).then((l) => {
+      if (live && l.ok && l.data.live && l.data.watchUrl) setWatchUrl(l.data.watchUrl);
+    });
     return () => {
       live = false;
     };
@@ -70,6 +90,16 @@ export default function MyHub({ slug, grade }: { slug: string; grade: { name: st
   const soonestN = soonest ? usable.filter((c) => c.expiresAt.slice(0, 10) === soonest.slice(0, 10)).length : 0;
   const recent = orders?.orders ?? [];
   const dash = "–";
+  async function reAdd(o: Order) {
+    setMsg(null);
+    let added = 0;
+    for (const it of o.items) {
+      if (!it.optionId) continue;
+      const r = await call(`${api}/cart`, { method: "POST", body: { optionId: it.optionId, quantity: it.quantity } });
+      if (r.ok) added += 1;
+    }
+    setMsg(added > 0 ? { ok: true, text: `${added}개 상품을 장바구니에 담았어요` } : { ok: false, text: "장바구니에 담지 못했어요. 품절됐거나 판매가 끝난 상품일 수 있어요" });
+  }
 
   return (
     <div className="hub">
@@ -152,16 +182,33 @@ export default function MyHub({ slug, grade }: { slug: string; grade: { name: st
                       <span className={`hub-st hub-st-${st.tone}`}>{st.label}</span>
                       {st.sub && <span className="hub-opt">{st.sub}</span>}
                     </td>
-                    <td>
-                      <Link className="btn btn-out btn-sm" href={`${base}/orders/${o.id}`}>
-                        주문 상세
-                      </Link>
+                    <td className="hub-act">
+                      {actionsOf(o, watchUrl, base).map((a) =>
+                        a.kind === "readd" ? (
+                          <button key={a.label} className="btn btn-out btn-sm" type="button" onClick={() => void reAdd(o)}>
+                            {a.label}
+                          </button>
+                        ) : a.external ? (
+                          <a key={a.label} className="btn btn-out btn-sm" href={a.href} target="_blank" rel="noopener noreferrer">
+                            {a.label}
+                          </a>
+                        ) : (
+                          <Link key={a.label} className="btn btn-out btn-sm" href={a.href}>
+                            {a.label}
+                          </Link>
+                        ),
+                      )}
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+        )}
+        {msg && (
+          <p className={`msg ${msg.ok ? "msg-pos" : "msg-neg"} t-l2`} role="status">
+            {msg.text}
+          </p>
         )}
       </section>
     </div>
