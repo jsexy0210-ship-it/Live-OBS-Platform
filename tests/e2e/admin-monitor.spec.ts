@@ -59,6 +59,7 @@ test("최고관리자: 열린 장애는 심각도와 함께 보이고 해소된 
   await expect(incident).toContainText("긴급");
   await expect(page.getByTestId("monitor-incident").filter({ hasText: `시험 지연 ${run}` })).toHaveCount(0);
   await expect(page.getByTestId("monitor-action").filter({ hasText: `e2e.auto.${run}` })).toBeVisible();
+  await expect(page.getByTestId("monitor-safety")).toContainText("서버 재시작 · 동시성 조정은 자동으로 하지 않습니다");
   await expect(page.getByTestId("monitor-webhook")).toContainText("확인하지 않음");
   await expect(page.getByTestId("monitor-paycheck")).toHaveCount(4);
   await expect(page.getByTestId("monitor-job").filter({ hasText: job })).toContainText(privateError);
