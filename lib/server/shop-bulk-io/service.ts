@@ -54,6 +54,28 @@ export const BULK_MESSAGES = {
 } as const;
 export type BulkFailure = keyof typeof BULK_MESSAGES;
 export const bulkErrorBody = (reason: BulkFailure) => ({ error: reason, message: BULK_MESSAGES[reason] });
+// 양식과 열 이름이 다를 때의 안내(정본 SA-018): 「가격」 열을 「판매가」로 바꿔 주십시오 (2개 열 불일치)
+const ro = (w: string) => {
+  const c = w.charCodeAt(w.length - 1) - 0xac00;
+  return c >= 0 && c < 11172 && (c % 28 === 0 || c % 28 === 8) ? "로" : "으로";
+};
+export function headerMismatchMessage(columns: ColumnMismatch[]): string {
+  const swap = columns.find((c) => c.found && c.expected);
+  const unknown = columns.find((c) => c.found && !c.expected);
+  const missing = columns.find((c) => !c.found && c.expected);
+  const lead = swap
+    ? `「${swap.found}」 열을 「${swap.expected}」${ro(swap.expected!)} 바꿔 주십시오`
+    : unknown
+      ? `「${unknown.found}」 열은 양식에 없습니다. 지우거나 양식의 열 이름으로 바꿔 주십시오`
+      : missing
+        ? `「${missing.expected}」 열이 없습니다. 양식의 열을 추가해 주십시오`
+        : "양식을 다시 내려받아 사용해 주십시오";
+  return `양식과 열 이름이 다릅니다 · ${lead} (${columns.length}개 열 불일치)`;
+}
+export const bulkFailureBody = (r: { reason: BulkFailure; columns?: ColumnMismatch[] }) =>
+  r.reason === "invalid_header" && r.columns && r.columns.length > 0
+    ? { error: r.reason, message: headerMismatchMessage(r.columns), columns: r.columns }
+    : bulkErrorBody(r.reason);
 export const bulkFailureStatus = (reason: BulkFailure) =>
   reason === "job_not_found"
     ? 404
@@ -92,7 +114,9 @@ type ImportProduct = {
   update?: { productId: string; currentPrice: number; stock: StockChange[] };
 };
 type UpdateRecord = { productId: string; name: string; price: { before: number; after: number } | null; stock: { optionId: string; name: string; delta: number }[] };
-type Result<T> = { ok: true; value: T } | { ok: false; reason: BulkFailure };
+// invalid_header일 때 어느 열이 양식과 다른지(columns)도 함께 준다.
+export type ColumnMismatch = { found: string | null; expected: string | null };
+type Result<T> = { ok: true; value: T } | { ok: false; reason: BulkFailure; columns?: ColumnMismatch[] };
 
 const TEMPLATE_ROWS: string[][] = [
   [...COLUMNS],
@@ -101,6 +125,27 @@ const TEMPLATE_ROWS: string[][] = [
   ["", "", "", "", "", "", "흰색", "500", "5", "SL-W"],
 ];
 const REQUIRED_COLUMNS = ["상품명", "카테고리", "판매가", "재고"] as const;
+// 자주 틀리는 열 이름 → 바른 이름(안내용). 올린 파일의 열 이름으로 찾으므로 자기 속성만 본다(constructor 같은 이름이 상속 값을 돌려주지 않게).
+const HEADER_SUGGESTIONS: Record<string, string> = {
+  가격: "판매가",
+  "판매 가격": "판매가",
+  판매가격: "판매가",
+  "상품 이름": "상품명",
+  상품이름: "상품명",
+  이름: "상품명",
+  품명: "상품명",
+  수량: "재고",
+  재고수량: "재고",
+  "재고 수량": "재고",
+  분류: "카테고리",
+  "옵션 이름": "옵션명",
+  옵션이름: "옵션명",
+  추가금: "옵션추가금",
+  "옵션 추가금": "옵션추가금",
+  "상품 설명": "설명",
+  상품설명: "설명",
+  "판매 상태": "상태",
+};
 export const templateCsv = (): string => formatCsv(TEMPLATE_ROWS);
 export const templateXlsx = (): Buffer => writeXlsx(TEMPLATE_ROWS, "상품 일괄 등록");
 
@@ -137,12 +182,16 @@ export function parseProductRows(rows: string[][], categories: Map<string, strin
   if (!head) return { ok: false, reason: "invalid_header" };
   const names = head.map((h) => h.trim());
   const index = new Map<string, number>();
+  const columns: ColumnMismatch[] = [];
   for (const [i, n] of names.entries()) {
     const column = n === "옵션" ? "옵션명" : n;
-    if (!(COLUMNS as readonly string[]).includes(column) || index.has(column)) return { ok: false, reason: "invalid_header" };
-    index.set(column, i);
+    if (!(COLUMNS as readonly string[]).includes(column)) columns.push({ found: n, expected: Object.hasOwn(HEADER_SUGGESTIONS, n) ? HEADER_SUGGESTIONS[n] : null });
+    else if (index.has(column)) columns.push({ found: n, expected: null });
+    else index.set(column, i);
   }
-  if (REQUIRED_COLUMNS.some((column) => !index.has(column))) return { ok: false, reason: "invalid_header" };
+  // 다른 이름으로 쓴 열(예: 가격)이 이미 짚였으면 빠진 필수 열(판매가)을 따로 세지 않는다.
+  for (const r of REQUIRED_COLUMNS) if (!index.has(r) && !columns.some((c) => c.expected === r)) columns.push({ found: null, expected: r });
+  if (columns.length > 0) return { ok: false, reason: "invalid_header", columns };
   const hasOptionColumn = index.has("옵션명");
   const data = body.map((cells, i) => ({ line: i + 2, cells })).filter((r) => r.cells.some((c) => c.trim() !== ""));
   if (data.length === 0) return { ok: false, reason: "empty_file" };
