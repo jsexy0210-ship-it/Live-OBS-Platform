@@ -42,6 +42,91 @@ function daysError(v: string): string | null {
 const unitFor = (h: number): Unit => (h % 24 === 0 && h >= 48 ? "day" : "hour");
 const dueText = (h: number) => (unitFor(h) === "day" ? `${h / 24}일` : `${h}시간`);
 
+// 무통장 입금 계좌(SA-063 정본 2026-10-26): 주문 설정 저장과 따로 저장한다. 서버 GET · PUT /api/seller/payments/bank-account(쇼핑몰 설정 권한).
+type BankAccount = { bankName: string; accountNumber: string; accountHolder: string };
+function bankError(a: BankAccount): string | null {
+  const name = a.bankName.trim();
+  const holder = a.accountHolder.trim();
+  const number = a.accountNumber.replace(/\s/g, "");
+  if (name.length < 1 || name.length > 20) return "은행 이름을 1~20자로 입력해 주십시오";
+  if (!/^[0-9-]{6,30}$/.test(number) || !/^\d{6,20}$/.test(number.replace(/-/g, ""))) return "계좌번호는 숫자와 -만 써서 입력해 주십시오";
+  if (holder.length < 1 || holder.length > 30) return "예금주를 1~30자로 입력해 주십시오";
+  return null;
+}
+function BankAccountSection({ onSaved }: { onSaved: () => void }) {
+  const [saved, setSaved] = useState<BankAccount | null | undefined>(undefined);
+  const [form, setForm] = useState<BankAccount>({ bankName: "", accountNumber: "", accountHolder: "" });
+  const [shown, setShown] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    void api<{ account: BankAccount | null }>("/api/seller/payments/bank-account").then((r) => {
+      if (!r.ok) return setSaved(null);
+      setSaved(r.data.account);
+      if (r.data.account) setForm(r.data.account);
+    });
+  }, []);
+
+  const error = shown ? bankError(form) : null;
+  const edit = (patch: Partial<BankAccount>) => {
+    setForm((f) => ({ ...f, ...patch }));
+    setDone(false);
+    setFailure(null);
+  };
+  const save = async () => {
+    setShown(true);
+    if (bankError(form)) return;
+    setSaving(true);
+    const r = await api<{ account: BankAccount }>("/api/seller/payments/bank-account", { method: "PUT", body: { bankName: form.bankName.trim(), accountNumber: form.accountNumber.replace(/\s/g, ""), accountHolder: form.accountHolder.trim() } });
+    setSaving(false);
+    if (!r.ok) return setFailure(failMessage(r, "admin", "계좌를 저장하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
+    setSaved(r.data.account);
+    setForm(r.data.account);
+    setDone(true);
+    onSaved();
+  };
+  // 계좌 칸에서 Enter는 주문 설정 전체 저장이 아니라 계좌 저장이다
+  const enter = (e: React.KeyboardEvent) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    void save();
+  };
+  const unchanged = !!saved && saved.bankName === form.bankName.trim() && saved.accountNumber === form.accountNumber.replace(/\s/g, "") && saved.accountHolder === form.accountHolder.trim();
+
+  return (
+    <FormSection title="무통장 입금 계좌">
+      <FormRow label="은행" required htmlFor="bank-name" help="1~20자">
+        <input id="bank-name" className="inp" onKeyDown={enter} style={{ width: 240 }} placeholder="은행 이름 입력" maxLength={20} value={form.bankName} onChange={(e) => edit({ bankName: e.target.value })} disabled={saved === undefined} />
+      </FormRow>
+      <FormRow label="계좌번호" required htmlFor="bank-number" help="숫자와 -만 · 구매자 주문서 · 주문 완료 · 입금 안내에 그대로 보입니다">
+        <input id="bank-number" className="inp" onKeyDown={enter} style={{ width: 360 }} inputMode="numeric" placeholder="숫자 · - 입력" maxLength={30} value={form.accountNumber} onChange={(e) => edit({ accountNumber: e.target.value })} disabled={saved === undefined} />
+      </FormRow>
+      <FormRow label="예금주" required htmlFor="bank-holder" help="1~30자 · 사업자 상호 또는 대표자 이름과 같아야 구매자가 안심합니다">
+        <input id="bank-holder" className="inp" onKeyDown={enter} style={{ width: 240 }} placeholder="예금주 입력" maxLength={30} value={form.accountHolder} onChange={(e) => edit({ accountHolder: e.target.value })} disabled={saved === undefined} />
+      </FormRow>
+      <FormRow label="" help="주문 설정 저장과 따로 저장됩니다 · 로그 추적에는 계좌번호 끝 4자리만 남습니다 · 입금 확인의 계좌 요약이 이 값을 보여 줍니다">
+        <div className="row" style={{ gap: 12, alignItems: "center" }}>
+          <button className="btn btn-out" type="button" disabled={saving || saved === undefined || unchanged} onClick={() => void save()}>
+            {saving ? "저장 중" : "계좌 저장"}
+          </button>
+          {(error || failure) && (
+            <span className="t-l2" role="alert" style={{ color: "var(--wds-label-negative, #c0262c)" }}>
+              {error ?? failure}
+            </span>
+          )}
+          {done && !error && !failure && (
+            <span className="t-l2 c-alt" role="status">
+              저장 완료
+            </span>
+          )}
+        </div>
+      </FormRow>
+    </FormSection>
+  );
+}
+
 export default function OrderSettingsPage() {
   const { confirm } = useConfirm();
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; saved: Policy }>({ kind: "loading" });
@@ -282,6 +367,8 @@ export default function OrderSettingsPage() {
                   </FormRow>
                 )}
               </FormSection>
+
+              <BankAccountSection onSaved={() => setToast("입금 계좌를 저장했습니다")} />
 
               <FormSection title="주문 막기" actions={<span className="t-l2 c-alt">회원별 해제는 「구매 제한」 화면</span>}>
                 <FormRow
