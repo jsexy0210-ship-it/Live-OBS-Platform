@@ -672,7 +672,7 @@ export default function OverlayEditor() {
 
         <div className="ove-cols">
           <div className="ove-left col" style={{ gap: 20 }}>
-          <div className="ove-list col" style={{ gap: 6 }} inert={ro}>
+          <div className="ove-list col" style={{ gap: 6 }}>
             <span className="t-l1 fw6">꾸미는 칸(글상자·카드)</span>
             <span className="t-c1 c-alt">위가 앞에 보입니다</span>
             <ul className="ove-slots" data-testid="ove-slots">
@@ -681,17 +681,17 @@ export default function OverlayEditor() {
                 return (
                   <li key={s.key} className={`ove-slot${w && w.id === sel ? " is-sel" : ""}`}>
                     <label className="chk">
-                      <input type="checkbox" aria-label={`${s.label} 보이기`} checked={!!w?.visible} onChange={(e) => toggle(s, e.target.checked)} />
+                      <input type="checkbox" aria-label={`${s.label} 보이기`} checked={!!w?.visible} disabled={ro} onChange={(e) => toggle(s, e.target.checked)} />
                     </label>
                     <button className="ove-name" type="button" disabled={!w} onClick={() => w && setSel(w.id)}>
                       {s.label}
                     </button>
                     {w && (
                       <span className="row" style={{ gap: 2 }}>
-                        <button className="btn btn-sm btn-out ove-z" type="button" aria-label={`${s.label} 앞으로`} onClick={() => moveZ(w.id, 1)}>
+                        <button className="btn btn-sm btn-out ove-z" type="button" aria-label={`${s.label} 앞으로`} disabled={ro} title={RO_TITLE} onClick={() => moveZ(w.id, 1)}>
                           ▲
                         </button>
-                        <button className="btn btn-sm btn-out ove-z" type="button" aria-label={`${s.label} 뒤로`} onClick={() => moveZ(w.id, -1)}>
+                        <button className="btn btn-sm btn-out ove-z" type="button" aria-label={`${s.label} 뒤로`} disabled={ro} title={RO_TITLE} onClick={() => moveZ(w.id, -1)}>
                           ▼
                         </button>
                       </span>
@@ -840,7 +840,8 @@ export default function OverlayEditor() {
             </span>
           </div>
 
-          <div className="ove-props col" style={{ gap: 10 }} data-testid="ove-props" inert={ro}>
+          <div className="ove-props col" style={{ gap: 10 }} data-testid="ove-props">
+            <fieldset disabled={ro} style={{ display: "contents", border: 0, margin: 0, padding: 0, minWidth: 0 }}>
             {!selected ? (
               <span className="t-l2 c-alt">미리보기 화면이나 왼쪽 목록에서 칸을 선택해 주십시오.</span>
             ) : (
@@ -884,6 +885,7 @@ export default function OverlayEditor() {
                 )}
               </>
             )}
+            </fieldset>
           </div>
         </div>
       </section>

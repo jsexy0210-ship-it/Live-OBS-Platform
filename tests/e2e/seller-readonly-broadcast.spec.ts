@@ -32,6 +32,11 @@ test("대신 보기: 방송 화면 편집기는 저장·템플릿 버튼이 막�
   const save = page.getByRole("button", { name: "방송 화면에 저장하기", exact: true });
   await expect(save).toBeDisabled();
   await expect(save).toHaveAttribute("title", REASON);
+  // 보기만 가능한 동안에도 가로·세로 비율을 바꿔 저장된 배치를 볼 수 있다(비율 전환은 저장이 아니다)
+  const radios = page.getByRole("radio");
+  await expect(radios.first()).toBeEnabled();
+  await radios.nth(1).click();
+  await expect(radios.nth(1)).toHaveAttribute("aria-checked", "true");
   expect(writes).toEqual([]);
 });
 
@@ -53,8 +58,11 @@ test("대신 보기: 가로·세로 배치는 조회할 수 있고 편집과 쓰
     await expect(canvas.locator(".ove-stage")).toHaveCSS("width", width);
     await expect(canvas.locator(".ove-stage")).toHaveCSS("height", height);
     await expect(canvas).toBeVisible();
-    await expect(page.locator(".ove-list")).toHaveAttribute("inert", "");
-    await expect(page.getByTestId("ove-props")).toHaveAttribute("inert", "");
+    await expect(page.locator('.ove-slots input[type="checkbox"]').first()).toBeDisabled();
+    await expect(page.locator(".ove-z").first()).toBeDisabled();
+    await page.locator(".ove-name:enabled").first().click();
+    await expect(page.getByTestId("ove-props").getByLabel("가로 위치")).toBeVisible();
+    await expect(page.getByTestId("ove-props").getByLabel("가로 위치")).toBeDisabled();
     await expect(page.getByRole("button", { name: "방송 화면에 저장하기", exact: true })).toBeDisabled();
     await expect(page.getByRole("button", { name: "스포트라이트형", exact: true })).toBeDisabled();
   }
