@@ -1,0 +1,11 @@
+.page { min-width: 0; }
+.fields { padding: 0; margin: 0; border: 0; min-width: 0; display: flex; flex-direction: column; gap: 24px; }
+.page :global(.au-ft) { table-layout: fixed; }
+.page :global(.au-ft > tbody > tr > th) { width: 180px; }
+.page :global(.au-ft-v > .inp-w-md) { width: 184px; flex: 0 1 184px; }
+.page :global(.au-ft-v > .inp-w-lg) { width: 320px; flex: 0 1 320px; }
+.page :global(.au-ft-v > textarea.inp) { width: 100%; flex: 1; min-height: 64px; }
+.result { display: flex; flex-direction: column; gap: 16px; }
+.invite { padding: 12px; border: 1px solid var(--cs-line); }
+.invite p { font-size: 12px; color: var(--wds-label-alternative); margin: 0 0 8px; }
+.link { overflow-wrap: anywhere; min-width: 0; flex: 1; user-select: all; }

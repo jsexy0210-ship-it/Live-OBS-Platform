@@ -165,6 +165,7 @@ function PartnerList() {
           description="검색 조건을 표 밖에 두고, 건수와 일괄 작업을 확인한 뒤 목록을 처리합니다."
           actions={
             <>
+              {adminCan(me.role, "system.manage") && <Link className="btn" href="/admin/partners/new">파트너스 직접 추가</Link>}
               <Link className="btn btn-out" href="/admin/partners/applications">
                 가입 신청{sum && sum.pendingApplications > 0 ? ` ${sum.pendingApplications}` : ""}
               </Link>

@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { assertIdentityVerified } from "../sellers/identityGate";
 import { writeAudit } from "../audit/log";
 import { settlePendingRewards } from "../rewards/settle";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
@@ -38,6 +39,7 @@ export async function updateLivePayout(db: PrismaClient, ctx: TenantContext, raw
   if (typeof b.enabled !== "boolean" || (b.confirm !== undefined && typeof b.confirm !== "boolean")) return { ok: false as const, reason: "invalid_live_payout" as const };
   const enabled = b.enabled;
   if (enabled && b.confirm !== true) return { ok: false as const, reason: "live_payout_confirm_required" as const };
+  if (enabled) await assertIdentityVerified(db, ctx.sellerId); // 본인확인 대기 쇼핑몰은 실지급을 켤 수 없다(끄는 것은 항상 가능)
   const done = await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`reward_live_payout:${ctx.sellerId}`}))`;
     const cur = await tx.rewardPolicy.findUnique({ where: { sellerId: ctx.sellerId }, select: { livePayoutEnabled: true } });

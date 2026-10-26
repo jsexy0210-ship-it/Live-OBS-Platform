@@ -622,8 +622,14 @@ for (const [email, allowed] of [[OWNER, true], [VIEWER, false]] as const) {
       await expect(crumb.getByRole("link", { name: "재고 수정", exact: true })).toHaveCount(0);
       if (allowed) {
         await expect(page.getByRole("heading", { level: 1, name: "재고 수정", exact: true })).toBeVisible();
-        await expect(crumb.getByRole("link", { name: "상품", exact: true })).toHaveAttribute("href", "/seller/products");
-        await expect(crumb.getByRole("link", { name: "재고", exact: true })).toHaveAttribute("href", "/seller/products/stock");
+        if (width >= 768) {
+          await expect(crumb.getByRole("link", { name: "상품", exact: true })).toHaveAttribute("href", "/seller/products");
+          await expect(crumb.getByRole("link", { name: "재고", exact: true })).toHaveAttribute("href", "/seller/products/stock");
+        } else {
+          // 모바일(767px 이하)은 ← 버튼이 있는 화면의 경로 줄을 숨긴다(DS-NAV 확정). 경로 문구는 위에서 확인했고 이동은 ←가 맡는다
+          await expect(crumb).toBeHidden();
+          await expect(page.getByRole("button", { name: "뒤로", exact: true })).toBeVisible();
+        }
         const tableWrap = page.locator(".stock-table-wrap");
         const row = page.getByTestId("stock-row").first();
         await tableWrap.evaluate((el) => { el.scrollLeft = 0; });
