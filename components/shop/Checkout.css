@@ -187,3 +187,82 @@
 .od-steps li.is-now span {
   color: var(--wds-primary-normal);
 }
+/* 보드 SH-005(-PC)-IA: 주문서 칸 = 제목 줄(아래 선) + 「라벨 열 · 값」 표 입력 줄, 합계 파란 「최종 결제 금액」. 주문 상세(OrderView)는 .co-order가 아니라 영향 없음 */
+.co-order .co-box {
+  padding: 0;
+}
+.co-order .co-box > h2 {
+  margin: 0;
+  padding: 16px;
+  border-bottom: 1px solid var(--wds-line-solid-neutral);
+}
+.co-order .co-box > :not(h2) {
+  margin-inline: 16px;
+}
+.co-order .co-box > h2 + * {
+  margin-top: 16px;
+}
+.co-order .co-box > :last-child {
+  margin-bottom: 16px;
+}
+.co-order .co-field {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  align-items: center;
+  gap: 0 16px;
+  padding: 8px 0;
+  border-top: 1px solid var(--wds-line-solid-neutral);
+}
+.co-order .co-field > label,
+.co-order .co-field > span:first-child {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  margin: -8px 0;
+  padding: 8px 12px;
+  background: var(--wds-background-normal-alternative);
+}
+.co-order .co-field > .co-err,
+.co-order .co-field > .co-reward-row {
+  grid-column: 2;
+}
+.co-order .co-form {
+  gap: 0;
+  border-bottom: 1px solid var(--wds-line-solid-neutral);
+}
+.co-order .co-form .co-check {
+  padding: 12px 0;
+}
+.cart-sum .co-final {
+  align-items: baseline;
+  padding-top: 12px;
+  border-top: 1px solid var(--wds-line-solid-neutral);
+}
+.cart-sum .co-final b {
+  font-size: 22px;
+  color: var(--wds-primary-normal);
+}
+@media (max-width: 767px) {
+  .co-order .co-field {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    border-top: 0;
+    padding: 6px 0;
+  }
+  .co-order .co-field > label,
+  .co-order .co-field > span:first-child {
+    margin: 0;
+    padding: 0;
+    background: none;
+  }
+  .co-order .co-field > .co-err,
+  .co-order .co-field > .co-reward-row {
+    grid-column: 1;
+  }
+}
+.co-order .co-box > .cart-hint {
+  display: block;
+}
+.co-order .co-field .inp {
+  max-width: 360px;
+}
