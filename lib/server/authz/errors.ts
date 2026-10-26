@@ -1,7 +1,7 @@
 // 라우트에서 HTTP 상태로 바꾸는 권한 오류.
 export class AuthError extends Error {
   constructor(
-    readonly status: 401 | 402 | 403 | 404,
+    readonly status: 401 | 402 | 403 | 404 | 503,
     readonly code: string,
   ) {
     super(code);
