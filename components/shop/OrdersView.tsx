@@ -183,12 +183,14 @@ export default function OrdersView({ slug }: { slug: string }) {
             {p.label}
           </button>
         ))}
-        <DatePicker tone="shop" aria-label="조회 시작일" value={draft.from} max={draft.to || undefined} onChange={(v) => setDraft((d) => ({ ...d, from: v }))} />
-        <span aria-hidden>~</span>
-        <DatePicker tone="shop" aria-label="조회 종료일" value={draft.to} min={draft.from || undefined} onChange={(v) => setDraft((d) => ({ ...d, to: v }))} />
-        <button type="button" onClick={applyRange}>
-          조회
-        </button>
+        <span className="ol-range">
+          <DatePicker tone="shop" aria-label="조회 시작일" value={draft.from} max={draft.to || undefined} onChange={(v) => setDraft((d) => ({ ...d, from: v }))} />
+          <span aria-hidden>~</span>
+          <DatePicker tone="shop" aria-label="조회 종료일" value={draft.to} min={draft.from || undefined} onChange={(v) => setDraft((d) => ({ ...d, to: v }))} />
+          <button type="button" onClick={applyRange}>
+            조회
+          </button>
+        </span>
       </div>
       {rangeErr && (
         <p className="cart-msg is-err" role="alert">
@@ -279,13 +281,16 @@ export default function OrdersView({ slug }: { slug: string }) {
                     <td className="ol-date" data-label="주문일 · 번호">
                       <b>{formatDateTime(o.createdAt)}</b>
                       <Link href={`${base}/orders/${o.id}`}>{o.orderNoLabel}</Link>
+                      <Link className="ol-detail" href={`${base}/orders/${o.id}`} aria-label={`${o.orderNoLabel} 상세`}>
+                        상세 ›
+                      </Link>
                     </td>
                     <td className="ol-items" data-label="상품 정보">
                       <ul>
                         {o.items.map((i, n) => (
                           <li key={n}>
                             <span className="ol-thumb" aria-hidden="true">
-                              {i.imageUrl && <Image src={i.imageUrl} alt="" width={48} height={48} unoptimized />}
+                              {i.imageUrl && <Image src={i.imageUrl} alt="" width={72} height={72} unoptimized />}
                             </span>
                             <div>
                               <b>{i.productNameSnapshot}</b>
@@ -323,7 +328,7 @@ export default function OrdersView({ slug }: { slug: string }) {
                           다시 담기
                         </button>
                       )}
-                      <Link className="btn btn-sm btn-out" href={`${base}/orders/${o.id}`}>
+                      <Link className="btn btn-sm btn-out ol-more" href={`${base}/orders/${o.id}`}>
                         상세 보기
                       </Link>
                     </td>
