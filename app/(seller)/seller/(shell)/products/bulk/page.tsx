@@ -3,7 +3,7 @@
 import "../../../../../../styles/seller-orders.css";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { DateRangePicker, Modal, PageHead, useConfirm } from "../../../../../../components/admin-ui";
+import { DateRangePicker, FormRow, Modal, PageHead, useConfirm } from "../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
@@ -552,21 +552,30 @@ export default function BulkPage() {
             </h2>
           </div>
           <div className="modal-b col" style={{ gap: 12 }}>
-            <fieldset className="col" style={{ gap: 8, border: 0, padding: 0, margin: 0 }}>
-              <legend className="t-l2">내보내는 사유 *</legend>
-              {[...REASONS, "직접 입력"].map((r) => (
-                <label key={r} className="chk">
-                  <input className="rdo" type="radio" name="member-reason" checked={reasonPick === r} onChange={() => setReasonPick(r)} />
-                  {r}
-                </label>
-              ))}
-              {reasonPick === "직접 입력" && <input className="inp" aria-label="직접 입력한 사유" maxLength={100} placeholder="사유 입력" value={reasonText} onChange={(e) => setReasonText(e.target.value)} />}
-            </fieldset>
-            <label className="chk">
-              <input className="cbx" type="checkbox" checked={includePii} onChange={(e) => setIncludePii(e.target.checked)} />
-              이름 · 연락처 포함
-            </label>
-            <span className="t-c1 c-alt">개인정보가 담긴 파일입니다 · 사용 뒤 삭제하고 외부에 전달하지 않습니다 · 내려받은 사실과 사유는 로그 추적에 남습니다</span>
+            <table className="au-ft">
+              <tbody>
+                <FormRow label="내보내는 사유" required>
+                  <div className="col" style={{ gap: 4, alignItems: "flex-start" }}>
+                    {[...REASONS, "직접 입력"].map((r) => (
+                      <label key={r} className="chk">
+                        <input className="rdo" type="radio" name="member-reason" checked={reasonPick === r} onChange={() => setReasonPick(r)} />
+                        {r}
+                      </label>
+                    ))}
+                    {reasonPick === "직접 입력" && <input className="inp" aria-label="직접 입력한 사유" maxLength={100} placeholder="사유 입력" value={reasonText} onChange={(e) => setReasonText(e.target.value)} />}
+                  </div>
+                </FormRow>
+                <FormRow label="포함 항목">
+                  <label className="chk">
+                    <input className="cbx" type="checkbox" checked={includePii} onChange={(e) => setIncludePii(e.target.checked)} />
+                    이름 · 연락처 포함
+                  </label>
+                </FormRow>
+              </tbody>
+            </table>
+            <div className="msg msg-cau">
+              <span>개인정보가 담긴 파일입니다 · 사용 뒤 삭제하고 외부에 전달하지 않습니다 · 내려받은 사실과 사유는 로그 추적에 남습니다</span>
+            </div>
             {memberError && (
               <div className="msg msg-neg" role="alert">
                 <span>{memberError}</span>
