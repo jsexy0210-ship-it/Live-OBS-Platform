@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { writeXlsx } from "../../lib/server/shop-bulk-io/xlsx";
 import { submitSellerLogin } from "./sellerLogin";
 
 // SA-018 엑셀 일괄 등록 · 내보내기: CSV 올리기 → 올린 파일 확인(오류 행 건너뜀) → 반영 → 처리 이력에서 되돌리기. 주문 · 회원 내보내기와 처리 이력의 「누가」 · 내보내기 이력.
@@ -28,7 +29,7 @@ test("올리기 → 확인 → 반영 → 되돌리기", async ({ page }) => {
   await expect(leaf).toHaveAttribute("href", `${URL_PATH}?section=register`);
   await expect(leaf).toHaveAttribute("aria-current", "page");
 
-  await page.getByLabel("CSV 파일 선택").setInputFiles({ name: "상품_시험.csv", mimeType: "text/csv", buffer: Buffer.from(csv, "utf8") });
+  await page.getByLabel("파일 선택").setInputFiles({ name: "상품_시험.csv", mimeType: "text/csv", buffer: Buffer.from(csv, "utf8") });
   const pv = page.getByTestId("bulk-preview");
   await expect(pv).toContainText("올린 파일 확인 · 상품_시험.csv");
   await expect(pv.getByTestId("bulk-products")).toContainText(name);
@@ -42,14 +43,14 @@ test("올리기 → 확인 → 반영 → 되돌리기", async ({ page }) => {
 
   // 반영: 확인 창 → 등록 → 처리 이력에 반영 완료 + 되돌리기
   await pv.getByRole("button", { name: "1개 반영" }).click();
-  await expect(page.getByRole("dialog")).toContainText("1개 상품을 등록하시겠습니까?");
-  await confirmBtn(page, "등록").click();
-  await expect(page.getByText("1개 등록했습니다")).toBeVisible();
+  await expect(page.getByRole("dialog")).toContainText("1개 상품을 반영하시겠습니까?");
+  await confirmBtn(page, "반영").click();
+  await expect(page.getByText("1개 등록 · 0개 수정했습니다")).toBeVisible();
   await expect(page.getByTestId("bulk-preview")).toHaveCount(0);
   const row = page.getByTestId("bulk-job-row").filter({ hasText: "상품_시험.csv" }).first();
   await expect(row).toContainText("반영 완료");
   await row.getByRole("button", { name: "되돌리기" }).click();
-  await expect(page.getByRole("dialog")).toContainText("이 등록을 되돌리시겠습니까?");
+  await expect(page.getByRole("dialog")).toContainText("이 반영을 되돌리시겠습니까?");
   await confirmBtn(page, "되돌리기").click();
   await expect(page.getByText(/1개를 되돌렸습니다/)).toBeVisible();
   await expect(page.getByTestId("bulk-job-row").filter({ hasText: "상품_시험.csv" }).first()).toContainText("되돌림");
@@ -57,7 +58,7 @@ test("올리기 → 확인 → 반영 → 되돌리기", async ({ page }) => {
 
 test("양식과 상품 내보내기는 내려받기 링크로 열린다", async ({ page }) => {
   await open(page);
-  await expect(page.getByRole("link", { name: "양식 내려받기" })).toHaveAttribute("href", "/api/seller/bulk-io/products/template");
+  await expect(page.getByRole("link", { name: "양식 내려받기" })).toHaveAttribute("href", "/api/seller/bulk-io/products/template?format=xlsx");
   const res = await page.request.get("/api/seller/bulk-io/products/export");
   expect(res.status()).toBe(200);
   expect(res.headers()["content-type"]).toContain("text/csv");
@@ -113,4 +114,53 @@ test("상품 권한이 없는 직원은 안내만 본다", async ({ page }) => {
   await page.goto(URL_PATH);
   await expect(page.getByText(/이 계정은 이 일을 할 수 없습니다|보기만 할 수 있습니다|처리 이력만 볼 수 있습니다/).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "파일 올리기" })).toHaveCount(0);
+});
+
+test("엑셀(xlsx)로 새 상품을 올리고, 같은 상품명으로 다시 올리면 기존 상품 판매가 · 재고만 수정한다", async ({ page }) => {
+  const name = `엑셀 시험 상품 ${Date.now()}`;
+  const book = (price: string, stock: string, file: string) => ({
+    name: file,
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    buffer: writeXlsx([["상품명", "카테고리", "판매가", "재고"], [name, "", price, stock]]),
+  });
+  await open(page);
+  const pv = page.getByTestId("bulk-preview");
+
+  await page.getByLabel("파일 선택").setInputFiles(book("5000", "3", "엑셀_새상품.xlsx"));
+  await expect(pv).toContainText("올린 파일 확인 · 엑셀_새상품.xlsx");
+  await expect(pv).toContainText("새로 등록");
+  await expect(pv.getByTestId("bulk-products")).toContainText("등록 가능");
+  await pv.getByRole("button", { name: "1개 반영" }).click();
+  await expect(page.getByRole("dialog")).toContainText("새 상품 1개는 숨김으로 등록합니다");
+  await confirmBtn(page, "반영").click();
+  await expect(page.getByText("1개 등록 · 0개 수정했습니다")).toBeVisible();
+
+  await page.getByLabel("파일 선택").setInputFiles(book("7000", "5", "엑셀_수정.xlsx"));
+  await expect(pv).toContainText("올린 파일 확인 · 엑셀_수정.xlsx");
+  await expect(pv.getByTestId("bulk-products")).toContainText("기존 상품 · 판매가 · 재고만 수정");
+  if (process.env.E2E_SCREENSHOTS === "1") await page.screenshot({ path: "tests/e2e/screenshots/SA-018-bulk-update-1440.png", fullPage: true });
+  await pv.getByRole("button", { name: "1개 반영" }).click();
+  await expect(page.getByRole("dialog")).toContainText("기존 상품 1개는 판매가 · 재고만 수정합니다");
+  await confirmBtn(page, "반영").click();
+  await expect(page.getByText("0개 등록 · 1개 수정했습니다")).toBeVisible();
+  const history = page.getByTestId("bulk-job-row");
+  await expect(history.filter({ hasText: "엑셀_수정.xlsx" }).first()).toContainText("1개 수정");
+
+  // 되돌리기: 수정은 반영 전 값으로, 등록은 삭제(시험 상품이 남지 않게 둘 다)
+  for (const f of ["엑셀_수정.xlsx", "엑셀_새상품.xlsx"]) {
+    await history.filter({ hasText: f }).first().getByRole("button", { name: "되돌리기" }).click();
+    await confirmBtn(page, "되돌리기").click();
+    await expect(history.filter({ hasText: f }).first()).toContainText("되돌림");
+  }
+});
+
+test("엑셀 열 이름이 양식과 다르면 어느 열이 다른지 안내한다", async ({ page }) => {
+  await open(page);
+  await page.getByLabel("파일 선택").setInputFiles({
+    name: "열이름.xlsx",
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    buffer: writeXlsx([["상품명", "카테고리", "가격", "재고"], ["시험", "", "1000", "1"]]),
+  });
+  await expect(page.getByRole("alert").filter({ hasText: "양식과 열 이름이 다릅니다" })).toContainText("판매가");
+  await expect(page.getByTestId("bulk-preview")).toHaveCount(0);
 });
