@@ -23,9 +23,9 @@ async function viewOnly(page: Page) {
 }
 
 test("대신 보기: 방송 화면 편집기는 저장·템플릿 버튼이 막히고 이유가 붙는다", async ({ page }) => {
+  await login(page, "/seller/overlay");
   const writes: string[] = [];
   page.on("request", (r) => { if (r.url().includes("/api/seller/") && r.method() !== "GET") writes.push(`${r.method()} ${r.url()}`); });
-  await login(page, "/seller/overlay");
   await viewOnly(page);
   await page.reload();
   await expect(page.getByTestId("ove")).toBeVisible();
