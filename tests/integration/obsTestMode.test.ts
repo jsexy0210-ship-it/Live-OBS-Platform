@@ -292,7 +292,9 @@ describe("테스트 서버 모드: 운영 빌드에서 구독 결제 우회", ()
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("BILLING_KEY_SECRET", "test-billing-key-secret-0123456789abcdef");
     vi.stubEnv("BILLING_PROVIDER", "");
-    expect((await card()).status).toBe(500);
+    const notReady = await card();
+    expect(notReady.status).toBe(503);
+    expect(await notReady.json()).toEqual({ error: "payment_not_ready" });
     expect(await db.subscriptionPayment.count()).toBe(0);
 
     vi.stubEnv("OBS_TEST_MODE", "1");
