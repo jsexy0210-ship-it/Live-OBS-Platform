@@ -47,7 +47,10 @@ test("방송이 없으면 띠·배지가 없고, 방송 중이면 띠와 방송 
 
   await page.goto(`/shop/${SLUG}/products`);
   const bar = page.locator(".live-bar");
-  await expect(bar).toContainText("지금 라이브 방송 중이에요 · e2e 라이브 방송");
+  await expect(bar).toContainText("지금 라이브 방송 중이에요");
+  await expect(bar).toContainText("e2e 라이브 방송");
+  await expect(bar.locator(".live-chip")).toHaveText("LIVE");
+  await expect(page.locator(".shop-cats-live")).toContainText("방송 중"); // 카테고리 줄 오른쪽 끝에도 방송 중 표시
   await expect(bar.getByRole("link", { name: "방송 보기" })).toHaveCount(0); // 유튜브 연결이 없으면 숨김
   const card = page.locator("li.pc", { has: page.getByRole("link", { name: "탑로더 25장", exact: true }) });
   await expect(card.locator(".pc-live")).toHaveText("LIVE");

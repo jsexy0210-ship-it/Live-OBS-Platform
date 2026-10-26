@@ -89,6 +89,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/invoices/plan": "ORDER_FOLLOWUP",
   "seller/invoices/print": "ORDER_FOLLOWUP",
   "seller/members": "ORDER_FOLLOWUP",
+  "seller/members/summary": "ORDER_FOLLOWUP",
   "seller/members/[memberId]": "ORDER_FOLLOWUP",
   "seller/reward-balances": "ORDER_FOLLOWUP",
   "seller/reward-ledger": "ORDER_FOLLOWUP",
@@ -137,6 +138,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/reviews/[reviewId]/hide": "STORE_OPERATIONS",
   "seller/reviews/[reviewId]/publish": "STORE_OPERATIONS",
   "seller/reviews/policy": "STORE_OPERATIONS",
+  "seller/reviews/export": "STORE_OPERATIONS",
   "seller/reviews/images/[imageId]": "STORE_OPERATIONS",
   "seller/inquiries": "STORE_OPERATIONS", // 구매자 문의(SA-046·047)
   "seller/inquiries/[inquiryId]": "STORE_OPERATIONS",
