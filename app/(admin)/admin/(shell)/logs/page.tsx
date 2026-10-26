@@ -87,6 +87,29 @@ function Logs() {
       <main className="main">
         <PageHead title="로그 추적" />
         <SearchBox onSearch={search} onReset={reset} busy={state.kind === "loading"}>
+          <SearchRow
+            label="기록 기간"
+            label2="행위자"
+            children2={
+              <select className="inp" aria-label="행위자" value={draft.actorType} onChange={(e) => setDraft({ ...draft, actorType: e.target.value })}>
+                <option value="">전체</option>
+                {(Object.keys(ACTOR_LABEL) as ActorType[]).map((a) => (
+                  <option key={a} value={a}>
+                    {ACTOR_LABEL[a]}
+                  </option>
+                ))}
+              </select>
+            }
+          >
+            <DatePicker aria-label="기록 시작일" value={draft.from} onChange={(v) => setDraft({ ...draft, from: v })} />
+            <span aria-hidden="true">~</span>
+            <DatePicker aria-label="기록 종료일" value={draft.to} onChange={(v) => setDraft({ ...draft, to: v })} />
+            {rangeError && (
+              <span className="err" role="alert">
+                시작일이 종료일보다 늦습니다.
+              </span>
+            )}
+          </SearchRow>
           <SearchRow label="종류">
             <select className="inp" aria-label="종류" value={draft.action} onChange={(e) => setDraft({ ...draft, action: e.target.value })}>
               <option value="">전체</option>
@@ -96,26 +119,6 @@ function Logs() {
                 </option>
               ))}
             </select>
-          </SearchRow>
-          <SearchRow label="행위자">
-            <select className="inp" aria-label="행위자" value={draft.actorType} onChange={(e) => setDraft({ ...draft, actorType: e.target.value })}>
-              <option value="">전체</option>
-              {(Object.keys(ACTOR_LABEL) as ActorType[]).map((a) => (
-                <option key={a} value={a}>
-                  {ACTOR_LABEL[a]}
-                </option>
-              ))}
-            </select>
-          </SearchRow>
-          <SearchRow label="기록 기간">
-            <DatePicker aria-label="기록 시작일" value={draft.from} onChange={(v) => setDraft({ ...draft, from: v })} />
-            <span aria-hidden="true">~</span>
-            <DatePicker aria-label="기록 종료일" value={draft.to} onChange={(v) => setDraft({ ...draft, to: v })} />
-            {rangeError && (
-              <span className="err" role="alert">
-                시작일이 종료일보다 늦습니다.
-              </span>
-            )}
           </SearchRow>
         </SearchBox>
         {applied.sellerId && (

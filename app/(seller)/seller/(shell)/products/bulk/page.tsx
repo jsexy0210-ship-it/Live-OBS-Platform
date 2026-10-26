@@ -3,7 +3,7 @@
 import "../../../../../../styles/seller-orders.css";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PageHead, useConfirm } from "../../../../../../components/admin-ui";
+import { DateRangePicker, Modal, PageHead, useConfirm } from "../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
@@ -23,9 +23,15 @@ type Preview = {
   errors: { row: number; column: string | null; message: string }[];
   products: { row: number; name: string; price: number; status: string; optionCount: number; categories: string[] }[];
 };
+type JobKind = "PRODUCT_IMPORT" | "PRODUCT_EXPORT" | "ORDER_EXPORT" | "MEMBER_EXPORT";
 type Job = {
   id: string;
+  kind: JobKind;
   status: "PREVIEW" | "COMMITTING" | "COMMITTED" | "UNDONE";
+  reason: string | null;
+  meta: { from?: string; to?: string; includePii?: boolean } | null;
+  actorName: string | null;
+  actorIsOwner: boolean;
   fileName: string | null;
   totalRows: number;
   productCount: number;
@@ -55,8 +61,32 @@ function errorsCsv(errors: Preview["errors"]): string {
   return "﻿" + [["행", "열", "오류"], ...errors.map((e) => [e.row, e.column ?? "", e.message])].map((r) => r.map(q).join(",")).join("\r\n");
 }
 
+const REASONS = ["적립금 소멸 안내 발송", "세무 · 회계 자료"] as const;
+const dayText = (d: string) => d.replace(/-/g, ".");
+// 처리 이력 「내용」: 일괄 등록은 파일 이름, 내보내기는 항목과 기간 · 사유
+function jobTitle(j: Job): string {
+  if (j.kind === "PRODUCT_EXPORT") return "상품 · 재고 내보내기";
+  if (j.kind === "ORDER_EXPORT") return `주문 내보내기${j.meta?.from && j.meta?.to ? ` · ${dayText(j.meta.from)} ~ ${dayText(j.meta.to)}` : ""}`;
+  if (j.kind === "MEMBER_EXPORT") return `회원 내보내기${j.reason ? ` · ${j.reason}` : ""}`;
+  return `상품 일괄 등록 · ${j.fileName ?? "파일 이름 없음"}`;
+}
+// 「누가」: 대표자 · 직원 이름. 마스터 대리 조회처럼 직원이 아닌 처리는 이름을 적지 않는다
+const jobActor = (j: Job) => (j.actorIsOwner ? "대표자" : j.actorName ? `직원 ${j.actorName}` : "—");
+
+// 내보내기 파일 받기: 실패하면 서버가 준 안내를 그대로 보여 주려고 fetch로 받아 저장한다
+async function saveFile(res: Response, fallback: string): Promise<void> {
+  const blob = await res.blob();
+  const named = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1];
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = named ?? fallback;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function BulkPage() {
-  const { can } = useSeller();
+  const { can, me } = useSeller();
   const { confirm } = useConfirm();
   const canEdit = can("PRODUCT_MANAGE");
   const input = useRef<HTMLInputElement>(null);
@@ -65,6 +95,15 @@ export default function BulkPage() {
   const [uploading, setUploading] = useState(false);
   const [over, setOver] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const [range, setRange] = useState({ from: "", to: "" });
+  const [exporting, setExporting] = useState(false);
+  const [memberOpen, setMemberOpen] = useState(false);
+  const [reasonPick, setReasonPick] = useState<string>(REASONS[0]);
+  const [reasonText, setReasonText] = useState("");
+  const [includePii, setIncludePii] = useState(false);
+  const [memberError, setMemberError] = useState<string | null>(null);
+  const canOrders = can("ORDER_SHIPPING");
+  const isOwner = me.isOwner;
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
   const [query] = useUrlState({ section: "register" });
   const section = ["register", "export", "history"].includes(query.section) ? query.section : "register";
@@ -73,7 +112,7 @@ export default function BulkPage() {
   }, [section]);
 
   const loadJobs = useCallback(async () => {
-    const r = await api<{ jobs: Job[] }>("/api/seller/bulk-io/jobs");
+    const r = await api<{ jobs: Job[] }>("/api/seller/bulk-io/jobs?all=true");
     setJobs(r.ok ? { kind: "ok", jobs: r.data.jobs } : { kind: "error", status: r.status });
   }, []);
   useEffect(() => {
@@ -124,6 +163,41 @@ export default function BulkPage() {
         await loadJobs();
       },
     });
+  };
+
+  const exportOrders = async () => {
+    if (!range.from || !range.to) return setToast({ text: "기간을 먼저 골라 주십시오", neg: true });
+    setExporting(true);
+    const res = await fetch(`/api/seller/bulk-io/orders/export?from=${range.from}&to=${range.to}`, { credentials: "same-origin" }).catch(() => null);
+    setExporting(false);
+    if (!res) return setToast({ text: "내려받지 못했습니다. 네트워크를 확인한 뒤 다시 시도해 주십시오", neg: true });
+    if (!res.ok) return setToast({ text: ((await res.json().catch(() => null)) as { message?: string } | null)?.message ?? "내려받지 못했습니다. 잠시 뒤 다시 시도해 주십시오", neg: true });
+    await saveFile(res, `orders-${range.from}_${range.to}.csv`);
+    setToast({ text: `주문 ${res.headers.get("X-Row-Count") ?? ""}건을 내려받았습니다` });
+    await loadJobs();
+  };
+
+  const exportMembers = async () => {
+    const reason = (reasonPick === "직접 입력" ? reasonText : reasonPick).trim();
+    if (!reason) return setMemberError("내보내는 사유를 적어 주십시오");
+    if (reason.length > 100) return setMemberError("사유는 100자까지 적을 수 있습니다");
+    setMemberError(null);
+    setExporting(true);
+    const res = await fetch("/api/seller/bulk-io/members/export", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason, includePii }),
+    }).catch(() => null);
+    setExporting(false);
+    if (!res) return setMemberError("내려받지 못했습니다. 네트워크를 확인한 뒤 다시 시도해 주십시오");
+    if (!res.ok) return setMemberError(((await res.json().catch(() => null)) as { message?: string } | null)?.message ?? "내려받지 못했습니다. 잠시 뒤 다시 시도해 주십시오");
+    await saveFile(res, "회원-목록.csv");
+    setMemberOpen(false);
+    setReasonText("");
+    setIncludePii(false);
+    setToast({ text: `회원 ${res.headers.get("X-Row-Count") ?? ""}명을 내려받았습니다` });
+    await loadJobs();
   };
 
   const downloadErrors = () => {
@@ -309,7 +383,7 @@ export default function BulkPage() {
                 <th className="col-text" style={{ textAlign: "left" }}>
                   포함 내용
                 </th>
-                <th style={{ width: 200 }}>관리</th>
+                <th style={{ width: 440 }}>관리</th>
               </tr>
             </thead>
             <tbody>
@@ -325,6 +399,39 @@ export default function BulkPage() {
                     </a>
                   ) : (
                     "—"
+                  )}
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <b>주문</b>
+                </td>
+                <td className="col-text">기간 선택 · 주문 · 결제 · 배송 상태 · 송장 · 금액 (받는 분 정보는 넣지 않습니다)</td>
+                <td>
+                  {canOrders ? (
+                    <div className="row" style={{ gap: 8, flexWrap: "nowrap", justifyContent: "center" }}>
+                      <DateRangePicker fromLabel="시작일" toLabel="종료일" from={range.from} to={range.to} onChange={setRange} />
+                      <button className="btn" type="button" disabled={exporting || !range.from || !range.to} onClick={() => void exportOrders()}>
+                        내려받기
+                      </button>
+                    </div>
+                  ) : (
+                    "—"
+                  )}
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <b>회원 개인정보</b>
+                </td>
+                <td className="col-text">이름 · 연락처 포함 시 사유 입력 · 대표자만 · 로그 추적에 남습니다</td>
+                <td>
+                  {isOwner ? (
+                    <button className="btn" type="button" onClick={() => { setMemberError(null); setMemberOpen(true); }}>
+                      사유 입력 뒤 내려받기
+                    </button>
+                  ) : (
+                    "대표자만"
                   )}
                 </td>
               </tr>
@@ -378,7 +485,7 @@ export default function BulkPage() {
             {jobs.kind === "loading" && <LoadingRows rows={3} />}
             {jobs.kind === "error" &&
               (jobs.status === 403 ? <NoPermission need="상품 관리" /> : jobs.status === 402 ? <Locked /> : <ErrorState title="처리 이력을 불러오지 못했습니다" onRetry={() => void loadJobs()} />)}
-            {jobs.kind === "ok" && jobs.jobs.length === 0 && <span className="t-c1 c-alt">아직 처리한 일괄 등록이 없습니다</span>}
+            {jobs.kind === "ok" && jobs.jobs.length === 0 && <span className="t-c1 c-alt">아직 처리한 일괄 등록이나 내보내기가 없습니다</span>}
             {jobs.kind === "ok" && jobs.jobs.length > 0 && (
               <div className="au-lt-wrap">
                 <table className="tbl" data-testid="bulk-jobs">
@@ -387,7 +494,7 @@ export default function BulkPage() {
                       <th className="col-text" style={{ textAlign: "left" }}>
                         내용
                       </th>
-                      <th style={{ width: 150 }}>언제</th>
+                      <th style={{ width: 150 }}>언제 · 누가</th>
                       <th style={{ width: 170 }}>상태</th>
                     </tr>
                   </thead>
@@ -395,12 +502,17 @@ export default function BulkPage() {
                     {jobs.jobs.map((j) => (
                       <tr key={j.id} data-testid="bulk-job-row">
                         <td className="col-text">
-                          상품 일괄 등록 · {j.fileName ?? "파일 이름 없음"}
-                          <div className="t-c1 c-alt">{j.status === "COMMITTED" || j.status === "UNDONE" ? `${j.createdCount}개 등록${j.failedCount + j.errorTotal > 0 ? ` · 오류 ${j.errorTotal}건` : ""}` : `${j.productCount}개 확인`}</div>
+                          {jobTitle(j)}
+                          {j.kind === "PRODUCT_IMPORT" && (
+                            <div className="t-c1 c-alt">{j.status === "COMMITTED" || j.status === "UNDONE" ? `${j.createdCount}개 등록${j.failedCount + j.errorTotal > 0 ? ` · 오류 ${j.errorTotal}건` : ""}` : `${j.productCount}개 확인`}</div>
+                          )}
                         </td>
-                        <td className="num">{kstText(j.committedAt ?? j.createdAt)}</td>
+                        <td className="num">
+                          {kstText(j.committedAt ?? j.createdAt)}
+                          <div className="t-c1 c-alt">{jobActor(j)}{j.kind === "MEMBER_EXPORT" && j.reason ? " · 사유 기록" : ""}</div>
+                        </td>
                         <td>
-                          <span className={`bdg ${JOB_BADGE[j.status].cls}`}>{JOB_BADGE[j.status].label}</span>
+                          {j.kind === "PRODUCT_IMPORT" ? <span className={`bdg ${JOB_BADGE[j.status].cls}`}>{JOB_BADGE[j.status].label}</span> : <span className="bdg b-done">내려받음</span>}
                           {canEdit && j.undoable && (
                             <button className="btn btn-sm btn-out" type="button" style={{ marginLeft: 8 }} onClick={() => void undo(j)}>
                               되돌리기
@@ -421,7 +533,7 @@ export default function BulkPage() {
                 </tr>
                 <tr>
                   <th>권한</th>
-                  <td>상품 관리 권한</td>
+                  <td>등록 · 수정은 상품 권한 · 회원 내보내기는 대표자</td>
                 </tr>
                 <tr>
                   <th>기록</th>
@@ -432,6 +544,45 @@ export default function BulkPage() {
           </div>
         </div>
       </main>
+      {memberOpen && (
+        <Modal labelId="bulk-member-title" busy={exporting} onClose={() => setMemberOpen(false)}>
+          <div className="modal-h">
+            <h2 className="modal-t" id="bulk-member-title">
+              회원 내보내기 · 사유
+            </h2>
+          </div>
+          <div className="modal-b col" style={{ gap: 12 }}>
+            <fieldset className="col" style={{ gap: 8, border: 0, padding: 0, margin: 0 }}>
+              <legend className="t-l2">내보내는 사유 *</legend>
+              {[...REASONS, "직접 입력"].map((r) => (
+                <label key={r} className="chk">
+                  <input className="rdo" type="radio" name="member-reason" checked={reasonPick === r} onChange={() => setReasonPick(r)} />
+                  {r}
+                </label>
+              ))}
+              {reasonPick === "직접 입력" && <input className="inp" aria-label="직접 입력한 사유" maxLength={100} placeholder="사유 입력" value={reasonText} onChange={(e) => setReasonText(e.target.value)} />}
+            </fieldset>
+            <label className="chk">
+              <input className="cbx" type="checkbox" checked={includePii} onChange={(e) => setIncludePii(e.target.checked)} />
+              이름 · 연락처 포함
+            </label>
+            <span className="t-c1 c-alt">개인정보가 담긴 파일입니다 · 사용 뒤 삭제하고 외부에 전달하지 않습니다 · 내려받은 사실과 사유는 로그 추적에 남습니다</span>
+            {memberError && (
+              <div className="msg msg-neg" role="alert">
+                <span>{memberError}</span>
+              </div>
+            )}
+          </div>
+          <div className="modal-f">
+            <button className="btn btn-out" type="button" disabled={exporting} onClick={() => setMemberOpen(false)}>
+              취소
+            </button>
+            <button className="btn" type="button" disabled={exporting} onClick={() => void exportMembers()}>
+              {exporting ? "내려받는 중" : "내려받기"}
+            </button>
+          </div>
+        </Modal>
+      )}
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
     </>
   );

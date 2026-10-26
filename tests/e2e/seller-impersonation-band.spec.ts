@@ -16,6 +16,11 @@ test.beforeAll(async () => {
   db = new PrismaClient({ datasources: { db: { url: assertTestDatabaseUrl(process.env.DATABASE_URL) } } });
   await db.platformAdmin.create({ data: { email, passwordHash: await hashPassword(password), name: "상담", role: "CS" } });
   sellerId = (await db.seller.create({ data: { slug: `imb-${run}`, shopName: shop, status: "ACTIVE", approvedAt: new Date() } })).id;
+  // 요금제가 없으면 메뉴가 요금제 때문에 비므로, 범위에 따른 사이드바 차이만 보이게 통합 요금제를 준다
+  const plan = await db.subscriptionPlan.findFirstOrThrow({ where: { code: "INTEGRATED" }, select: { id: true } });
+  const sub = await db.sellerSubscription.create({ data: { sellerId, planId: plan.id, currentPeriodEnd: new Date(Date.now() + 20 * 86_400_000) } });
+  const now = new Date();
+  await db.subscriptionPayment.create({ data: { sellerId, subscriptionId: sub.id, amount: 179_000, status: "PAID", periodStart: now, periodEnd: new Date(now.getTime() + 30 * 86_400_000), createdAt: now, paidAt: now } });
 });
 test.afterAll(async () => {
   await db.$disconnect();
@@ -51,6 +56,11 @@ test("띠에 고른 범위가 보이고, 범위 밖 화면은 「볼 수 없는 
   await page.goto("/seller/overlay");
   await expect(page.locator(".imp-bar")).toBeVisible();
   await expect(page.getByTestId("imp-out-of-scope")).toHaveCount(0);
+  // 사이드바도 같은 기준: 고른 범위 화면만 남고 범위 밖·열리지 않는 화면(주문·유튜브)은 빠진다
+  const side = page.locator("aside, nav").locator("a[href^='/seller/overlay'], a[href^='/seller/orders'], a[href^='/seller/youtube']");
+  await expect(side.first()).toBeVisible();
+  await expect(page.locator("a[href^='/seller/orders']")).toHaveCount(0);
+  await expect(page.locator("a[href^='/seller/youtube']")).toHaveCount(0);
   // 표에 없는 화면(연동)과 복수형 방송 이력도 고르지 않은 범위면 막는다
   for (const path of ["/seller/external-shops", "/seller/broadcasts"]) {
     await page.goto(path);

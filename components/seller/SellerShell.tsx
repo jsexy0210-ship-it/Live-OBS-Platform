@@ -252,6 +252,11 @@ function routeScope(pathname: string): string | undefined {
   return SCOPE_NEUTRAL.some((p) => pathname === p || (p !== "/seller" && pathname.startsWith(`${p}/`))) ? undefined : NO_SCOPE;
 }
 
+function impersonationOpens(scopes: string[], href: string): boolean {
+  const need = routeScope(href);
+  return !need || scopes.includes(need);
+}
+
 // 주소로 바로 들어와도 요금제에 없는 화면은 안내 화면을 보인다. 메뉴 묶음과 다른 하위 화면만 따로 적는다(긴 주소가 먼저)
 const ROUTE_PLAN: [string, PlanNeed][] = [["/seller/stats/broadcasts", "OVERLAY"]];
 // 쇼핑몰 설정 하위 화면(/seller/settings/…)은 메뉴마다 따로 주소가 있어 접두어가 길게 맞는 메뉴를 고른다
@@ -308,6 +313,8 @@ function visibleMenu(me: Me): ShownGroup[] {
     items: g.items.flatMap((n): ShownItem[] => {
       const leaves = leavesOf(n).flatMap((l): Leaf[] => {
         if (l.perm && !canFor(me, l.perm)) return [];
+        // 대신 보기: 고른 범위 밖이거나 대신 보기로 열리지 않는 화면(표에 없음)은 메뉴에서 뺀다(본문 안내와 같은 기준 routeScope)
+        if (me.impersonation && l.href && !impersonationOpens(me.impersonation.scopes, l.href)) return [];
         if (menuAllows(me, l.plan)) return [l];
         return l.alt && menuAllows(me, l.alt.plan) ? [{ ...l, href: l.alt.href }] : [];
       });
@@ -544,8 +551,7 @@ function SellerShellContent({ children }: { children: React.ReactNode }) {
     tabs: [],
   };
   // 대신 보기: 고른 범위 밖 화면은 「볼 수 없는 화면입니다」 안내만 보인다
-  const need = routeScope(pathname);
-  const outOfScope = !!me.impersonation && !!need && !me.impersonation.scopes.includes(need);
+  const outOfScope = !!me.impersonation && !impersonationOpens(me.impersonation.scopes, pathname);
   const blocked = (planBlocked?.path === pathname && planBlocked.visit === currentNavGeneration()) || !menuAllows(me, routePlan(pathname));
   // 안내 화면에서 갈 수 있는 첫 화면(만든 메뉴 중 지금 열리는 것)
   const nextNav = gnbMenu.flatMap((g) => g.items).find((n) => !!n.href && n.href !== "/seller" && !pathname.startsWith(n.href));
