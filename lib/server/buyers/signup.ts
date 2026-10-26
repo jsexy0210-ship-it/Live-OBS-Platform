@@ -9,6 +9,7 @@ import { birthDateOf, type IdentityProvider } from "../identity/provider";
 import { randomUUID } from "node:crypto";
 import { START_IN_PROGRESS_MESSAGE, keyedOwnerToken as keyedToken, reuseKeyedAttempt } from "../identity/attempt";
 import { hashToken } from "../auth/token";
+import { releaseBuyerIdentityFee, reserveBuyerIdentityFee } from "../identity/fee";
 import { buyerSignupIdentityLimitReached, completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
 import { EMAIL } from "../sellers/application";
 import { type ConsentFailure, currentConsentDocs, parseSignupConsent, readSignupConsent } from "./consent";
@@ -130,6 +131,9 @@ export async function startBuyerSignupVerification(
         AND "createdAt" >= (date_trunc('day', now() AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'Asia/Seoul')`;
     if (Number(count) >= BUYER_SIGNUP_VERIFY_DAILY_LIMIT_PER_IP) return { kind: "limited" };
     const id = randomUUID();
+    // 체험이 아닌 쇼핑몰은 건당 본인확인 비용을 파트너스 발송·이용 충전금에서 잡는다(잔액이 없으면 이 본인확인만 시작하지 않는다).
+    // 화면에는 체험 한도와 같은 「가입할 수 없음」 안내(trial_limit_exceeded)를 쓴다.
+    if (!(await reserveBuyerIdentityFee(tx, sellerId, id, now)).ok) return { kind: "refused", reason: "trial_limit_exceeded" };
     const created = await startIdentityVerification(tx, provider, {
       purpose: "BUYER_SIGNUP",
       sellerId,
@@ -152,7 +156,10 @@ export async function startBuyerSignupVerification(
     return { ok: false as const, reason: "daily_limit_exceeded" as const };
   }
   const sent = await sendFirstIdentityCode(db, provider, started.verification, person, meta.now);
-  if (!sent.ok) return { ok: false as const, reason: sent.reason };
+  if (!sent.ok) {
+    await releaseBuyerIdentityFee(db, sellerId, started.verification.id);
+    return { ok: false as const, reason: sent.reason };
+  }
   return { ok: true as const, verificationId: started.verification.id, ownerToken: started.ownerToken };
 }
 
