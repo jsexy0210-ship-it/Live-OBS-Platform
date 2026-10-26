@@ -383,7 +383,7 @@ export default function BulkPage() {
                 <th className="col-text" style={{ textAlign: "left" }}>
                   포함 내용
                 </th>
-                <th style={{ width: 360 }}>관리</th>
+                <th style={{ width: 440 }}>관리</th>
               </tr>
             </thead>
             <tbody>
@@ -409,7 +409,7 @@ export default function BulkPage() {
                 <td className="col-text">기간 선택 · 주문 · 결제 · 배송 상태 · 송장 · 금액 (받는 분 정보는 넣지 않습니다)</td>
                 <td>
                   {canOrders ? (
-                    <div className="row" style={{ gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+                    <div className="row" style={{ gap: 8, flexWrap: "nowrap", justifyContent: "center" }}>
                       <DateRangePicker fromLabel="시작일" toLabel="종료일" from={range.from} to={range.to} onChange={setRange} />
                       <button className="btn" type="button" disabled={exporting || !range.from || !range.to} onClick={() => void exportOrders()}>
                         내려받기
