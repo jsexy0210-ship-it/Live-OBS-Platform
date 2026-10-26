@@ -12,7 +12,7 @@ import type { EventCardData, LiveData, OrderEvent, RankingRow, Widget } from "./
 // 신규 주문 알림: state.orderEvents(최근 30초 주문)에서 처음 보는 id만, 주문 종류(첫 주문·재주문·VIP)에 맞는 variant 위젯을 durationSec 동안 띄운다(그 variant 위젯이 없으면 첫 주문 위젯으로). 처음 읽을 때 이미 있던 주문은 띄우지 않는다.
 
 type Item = { id: string; nickname: string; gradeSnapshot: string | null; productLabel: string; quantity: number; timerSeconds?: number | null; openingStartedAt?: string | null };
-type Hit = { id: string; cardName: string; nickname: string; grade?: string | null; createdAt?: string };
+type Hit = { id: string; cardName: string; nickname: string; grade?: string | null; createdAt?: string; shownAt?: string | null };
 type State = {
   version: number;
   live: boolean;
@@ -49,6 +49,8 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
   const [shownAlerts, setShownAlerts] = useState<Record<string, Shown>>({});
   const seenEvents = useRef<Set<string> | null>(null);
   const seenHits = useRef<Set<string> | null>(null);
+  // 카드별 마지막 shownAt: 값 → 다른 값으로 바뀐 카드는 「다시 연출」이라 다시 보여 준다(null → 값은 처음 읽어 감이라 무시)
+  const shownAtByHit = useRef<Map<string, string | null>>(new Map());
   const [freshHits, setFreshHits] = useState<Record<string, number>>({});
   const [activeHit, setActiveHit] = useState<{ hit: Hit; until: number } | null>(null);
   const layoutRef = useRef<Layout | null>(null);
@@ -144,6 +146,18 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
         setFreshHits((cur) => ({ ...cur, ...Object.fromEntries(added.map((hit) => [hit.id, Date.now() + HIT_FRESH_MS])) }));
         setActiveHit({ hit: added[0]!, until: Date.now() + HIT_CARD_MS });
       }
+    }
+    // 다시 연출: 이미 값이 있던 카드의 shownAt이 다른 값으로 바뀌면 같은 카드를 다시 보여 준다
+    const replayed: Hit[] = [];
+    for (const hit of state.hits ?? []) {
+      const before = shownAtByHit.current.get(hit.id);
+      const after = hit.shownAt ?? null;
+      if (before && after && before !== after) replayed.push(hit);
+      shownAtByHit.current.set(hit.id, after);
+    }
+    if (replayed.length > 0) {
+      setFreshHits((cur) => ({ ...cur, ...Object.fromEntries(replayed.map((hit) => [hit.id, Date.now() + HIT_FRESH_MS])) }));
+      setActiveHit({ hit: replayed[0]!, until: Date.now() + HIT_CARD_MS });
     }
     // 신규 주문 알림
     const events = state.orderEvents ?? [];
