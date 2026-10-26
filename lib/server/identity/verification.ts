@@ -5,6 +5,7 @@ import { checkTrialLimit } from "../billing/trialLimits";
 import { cleanText } from "../text/clean";
 import { STAFF_NAME_MAX } from "../sellers/staffName";
 import { hashCi } from "./ciHash";
+import { captureBuyerIdentityFee } from "./fee";
 import { CARRIERS, DEVICES, birthDateOf, type Carrier, type Device, type IdentityPerson, type IdentityProvider, type IdentityResult, type ProviderFailure } from "./provider";
 import { isTestMode } from "../testMode";
 
@@ -312,6 +313,8 @@ async function finalizeIdentity(db: PrismaClient, v: IdentityVerification, r: Id
         expiresAt: new Date(now.getTime() + VERIFIED_USE_TTL_MS),
       },
     });
+    // 성공으로 확정한 요청의 건당 비용을 확정한다(잡아 둔 차감이 없으면 체험·무료라 아무 일도 없다)
+    if (moved.count === 1 && v.purpose === "BUYER_SIGNUP" && v.sellerId) await captureBuyerIdentityFee(tx, v.sellerId, v.id);
     const after = await tx.identityVerification.findUniqueOrThrow({ where: { id: v.id } });
     if (after.anonymizedAt) return { ok: false as const, reason: "expired" as const };
     // 같이 눌린 다른 요청이 먼저 확정했으면 그 결과를 그대로 돌려준다(두 번 세지 않는다)

@@ -127,6 +127,7 @@ export default function OpsMonitorPage() {
                 )}
               </section>
 
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 16, alignItems: "start" }}>
               <section className="au-list-section" aria-labelledby="mon-actions">
                 <h2 className="t-hl1 pad-l" id="mon-actions">
                   자동 조치 기록
@@ -160,8 +161,17 @@ export default function OpsMonitorPage() {
                     </ListTable>
                   </>
                 )}
+              <span className="t-c1 c-alt pad-l">로그 추적의 시스템 행 최근 20건</span>
               </section>
-
+              <section className="card pad col" style={{ gap: 8 }} aria-labelledby="mon-safety" data-testid="monitor-safety">
+                <h2 className="t-hl1" id="mon-safety">
+                  안전 규칙
+                </h2>
+                <span className="t-l2">
+                  자동 조치는 시스템이 스스로 한 처리(환불 요청 생성 · 기한 지난 보완 요청 자동 반려 · 결정 · 주문 메일 발송 등)를 로그 추적에 남기는 것입니다 · 서버 재시작 · 동시성 조정은 자동으로 하지 않습니다 · 결제 · 환불 실행은 사람이 승인합니다(시스템은 환불 요청만 만듭니다)
+                </span>
+              </section>
+              </div>
               <section className="card" aria-labelledby="mon-pay">
                 <h2 className="t-hl1 pad-l" id="mon-pay">
                   결제 결과 확인 대기

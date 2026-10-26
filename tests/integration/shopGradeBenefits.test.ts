@@ -6,7 +6,7 @@ import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
 import { quoteOrder } from "../../lib/server/orders/quote";
 import { applyGradeShipping, buyerGradeStatus } from "../../lib/server/shop-member-grades/benefits";
-import { addMemberGrade, listGradeChanges, recalcNow, recalcSellerGrades, saveMemberGrades, setMemberGrade } from "../../lib/server/shop-member-grades/service";
+import { addMemberGrade, getMemberGrades, listGradeChanges, recalcNow, recalcSellerGrades, saveMemberGrades, setMemberGrade } from "../../lib/server/shop-member-grades/service";
 import { deleteCoupon } from "../../lib/server/shop-coupons/service";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createLoginBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
@@ -275,5 +275,39 @@ describe("다음 등급까지 남은 금액 · 변동 회원", () => {
     const res = await changesGet(new Request("http://localhost:3000/api/seller/member-grades/changes?kind=up", { headers: { host: "localhost:3000", cookie: `lo_seller=${login.token}` } }));
     expect(res.status).toBe(200);
     expect(((await res.json()) as { changes: unknown[] }).changes).toHaveLength(1);
+  });
+});
+
+describe("알림 설정 · 마이페이지 표시 (SA-044)", () => {
+  it("기본은 알림 꺼짐 · 표시 켜짐이고, 저장한 값이 조회·로그 추적에 남으며 boolean이 아니면 거절한다", async () => {
+    const s = await shop();
+    expect(await getMemberGrades(db, s.ctx, NOW)).toMatchObject({ notifyPromotion: false, notifyDemotion: false, showNextGrade: true });
+    expect(await saveMemberGrades(db, s.ctx, { notifyPromotion: "yes" })).toMatchObject({ ok: false, reason: "invalid_body" });
+    expect(await saveMemberGrades(db, s.ctx, { showNextGrade: 1 })).toMatchObject({ ok: false, reason: "invalid_body" });
+    expect(await saveMemberGrades(db, s.ctx, { notifyPromotion: true, showNextGrade: false })).toEqual({ ok: true });
+    // 보낸 값만 바꾼다
+    expect(await getMemberGrades(db, s.ctx, NOW)).toMatchObject({ notifyPromotion: true, notifyDemotion: false, showNextGrade: false });
+    const log = await db.auditLog.findFirstOrThrow({ where: { sellerId: s.seller.id, action: "member_grade.update" }, orderBy: { createdAt: "desc" } });
+    expect(log.before).toMatchObject({ notifyPromotion: false, showNextGrade: true });
+    expect(log.after).toMatchObject({ notifyPromotion: true, showNextGrade: false });
+    // 직원은 권한이 있어야 바꾼다
+    const sctx: TenantContext = { ...s.ctx, actorId: s.staff.id, isOwner: false, permissions: ["PRODUCT_MANAGE"] };
+    await expect(saveMemberGrades(db, sctx, { notifyDemotion: true })).rejects.toThrow();
+  });
+
+  it("승급 알림만 켜면 승급 기록만 notify=true이고, 표시를 끄면 마이페이지에 다음 등급까지 남은 금액이 없다", async () => {
+    const s = await shop();
+    const up = await s.member(0);
+    const down = await s.member(2);
+    await s.paid(up.id, 150_000);
+    await saveMemberGrades(db, s.ctx, { notifyPromotion: true });
+    await recalcSellerGrades(db, s.seller.id, NOW, { manual: true });
+    const notices = await db.auditLog.findMany({ where: { sellerId: s.seller.id, action: "member_grade.notice" } });
+    expect(notices.find((n) => n.targetId === up.id)?.after).toMatchObject({ kind: "UP", notify: true, delivered: false });
+    expect(notices.find((n) => n.targetId === down.id)?.after).toMatchObject({ kind: "DOWN", notify: false, delivered: false });
+    const m = await s.member(0);
+    expect((await buyerGradeStatus(db, { sellerId: s.seller.id, buyerMemberId: m.id }, NOW))?.nextGrade).toMatchObject({ name: "새싹" });
+    await saveMemberGrades(db, s.ctx, { showNextGrade: false });
+    expect((await buyerGradeStatus(db, { sellerId: s.seller.id, buyerMemberId: m.id }, NOW))?.nextGrade).toBeNull();
   });
 });

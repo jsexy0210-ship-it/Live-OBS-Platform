@@ -6,22 +6,24 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { DateRangePicker, FormRow, Modal, PageHead, useConfirm } from "../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
-import { api } from "../../../../../../components/seller/api";
+import { api, apiUpload } from "../../../../../../components/seller/api";
 import { won } from "../../../../../../components/seller/format";
 import { useUrlState } from "../../../../../../lib/client/navigation";
 import { kstText } from "../../banners/_shared/ui";
 
 // SA-018 엑셀 일괄 등록 · 내보내기(파트너스 관리자, 상품 › 엑셀로 올리기 · 내려받기). 정본 design/project/SA-018.dc.html: 파일 올리기 → 올린 파일 확인(미리보기) → 반영, 내보내기, 양식 안내, 처리 이력(되돌리기).
-// API: GET /api/seller/bulk-io/products/template(양식 CSV), POST /api/seller/bulk-io/products/preview({ csv, fileName }), POST /api/seller/bulk-io/jobs/[id]/commit, POST .../undo(24시간 안), GET /api/seller/bulk-io/jobs(최근 30개), GET /api/seller/bulk-io/products/export(CSV). 모두 상품 관리(PRODUCT_MANAGE) 권한.
-// 서버는 CSV 한 가지 형식(1,000행 · 1MB)이다. 서버 모듈은 prisma를 끌어오므로 한도 값은 같게 적는다.
+// API: GET /api/seller/bulk-io/products/template?format=xlsx(양식), POST /api/seller/bulk-io/products/preview(엑셀 파일 본문 + X-File-Name, 또는 CSV { csv, fileName }), POST /api/seller/bulk-io/jobs/[id]/commit, POST .../undo(24시간 안), GET /api/seller/bulk-io/jobs(최근 30개), GET /api/seller/bulk-io/products/export(CSV). 모두 상품 관리(PRODUCT_MANAGE) 권한.
+// 엑셀(.xlsx 5MB) 또는 CSV(1MB), 1,000행까지. 서버 모듈은 prisma를 끌어오므로 한도 값은 같게 적는다. 새 상품은 항상 「숨김」, 상품명이 같은 기존 상품은 판매가 · 재고만 수정한다.
 type Preview = {
   jobId: string;
   totalRows: number;
   productCount: number;
+  createCount: number;
+  updateCount: number;
   skippedProductCount: number;
   errorTotal: number;
   errors: { row: number; column: string | null; message: string }[];
-  products: { row: number; name: string; price: number; status: string; optionCount: number; categories: string[] }[];
+  products: { row: number; name: string; price: number; status: string; optionCount: number; categories: string[]; mode: "create" | "update"; currentPrice: number | null; stockChangeCount: number }[];
 };
 type JobKind = "PRODUCT_IMPORT" | "PRODUCT_EXPORT" | "ORDER_EXPORT" | "MEMBER_EXPORT";
 type Job = {
@@ -36,6 +38,7 @@ type Job = {
   totalRows: number;
   productCount: number;
   createdCount: number;
+  updatedCount: number;
   failedCount: number;
   errorTotal: number;
   keptCount: number;
@@ -47,6 +50,8 @@ type Job = {
 type Jobs = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; jobs: Job[] };
 
 const MAX_BYTES = 1_000_000;
+const XLSX_MAX_BYTES = 5 * 1024 * 1024;
+const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const STATUS: Record<string, string> = { ON_SALE: "판매중", SOLD_OUT: "품절", DRAFT: "준비중", HIDDEN: "숨김" };
 const JOB_BADGE: Record<Job["status"], { label: string; cls: string }> = {
   PREVIEW: { label: "미리보기만", cls: "b-gray nodot" },
@@ -123,12 +128,16 @@ export default function BulkPage() {
     if (!file || uploading) return;
     if (input.current) input.current.value = "";
     setFailure(null);
-    if (file.size > MAX_BYTES) return setFailure(`1MB를 넘었습니다 · 지금 파일: ${(file.size / 1024 / 1024).toFixed(1)}MB. 나누어 올려 주십시오`);
+    const xlsx = /\.xlsx$/i.test(file.name);
+    if (!xlsx && !/\.csv$/i.test(file.name)) return setFailure("엑셀(.xlsx) 또는 CSV 파일만 올릴 수 있습니다. 양식 그대로 저장해 올려 주십시오");
+    const limit = xlsx ? XLSX_MAX_BYTES : MAX_BYTES;
+    if (file.size > limit) return setFailure(`${xlsx ? "5MB" : "1MB"}를 넘었습니다 · 지금 파일: ${(file.size / 1024 / 1024).toFixed(1)}MB. 나누어 올려 주십시오`);
     setUploading(true);
-    const csv = await file.text();
-    const r = await api<Preview>("/api/seller/bulk-io/products/preview", { method: "POST", body: { csv, fileName: file.name } });
+    const r = xlsx
+      ? await apiUpload<Preview>("/api/seller/bulk-io/products/preview", new Blob([file], { type: XLSX_TYPE }), { headers: { "x-file-name": encodeURIComponent(file.name) } })
+      : await api<Preview>("/api/seller/bulk-io/products/preview", { method: "POST", body: { csv: await file.text(), fileName: file.name } });
     setUploading(false);
-    if (!r.ok) return setFailure(r.message ?? "파일을 확인하지 못했습니다. 양식 그대로 CSV로 저장해 올려 주십시오");
+    if (!r.ok) return setFailure(r.message ?? "파일을 확인하지 못했습니다. 양식 그대로 저장해 올려 주십시오");
     setPreview({ fileName: file.name, data: r.data });
     void loadJobs();
   };
@@ -137,14 +146,14 @@ export default function BulkPage() {
     if (!preview) return;
     const { data } = preview;
     await confirm({
-      title: `${data.productCount}개 상품을 등록하시겠습니까?`,
-      body: `새 상품으로 등록합니다.${data.errorTotal > 0 ? ` 오류 ${data.errorTotal}건은 건너뜁니다.` : ""} 등록한 상품은 24시간 안에 처리 이력에서 되돌릴 수 있습니다.`,
-      confirmLabel: "등록",
+      title: `${data.productCount}개 상품을 반영하시겠습니까?`,
+      body: `${data.createCount > 0 ? `새 상품 ${data.createCount}개는 숨김으로 등록합니다.` : ""}${data.updateCount > 0 ? ` 기존 상품 ${data.updateCount}개는 판매가 · 재고만 수정합니다.` : ""}${data.errorTotal > 0 ? ` 오류 ${data.errorTotal}건은 건너뜁니다.` : ""} 반영한 내용은 24시간 안에 처리 이력에서 되돌릴 수 있습니다.`.trim(),
+      confirmLabel: "반영",
       run: async () => {
-        const r = await api<{ createdCount: number; failedCount: number }>(`/api/seller/bulk-io/jobs/${data.jobId}/commit`, { method: "POST" });
-        if (!r.ok) return r.message ?? "등록하지 못했습니다. 잠시 뒤 다시 시도해 주십시오";
+        const r = await api<{ createdCount: number; updatedCount: number; failedCount: number }>(`/api/seller/bulk-io/jobs/${data.jobId}/commit`, { method: "POST" });
+        if (!r.ok) return r.message ?? "반영하지 못했습니다. 잠시 뒤 다시 시도해 주십시오";
         setPreview(null);
-        setToast({ text: `${r.data.createdCount}개 등록했습니다${r.data.failedCount > 0 ? ` · ${r.data.failedCount}개는 등록하지 못했습니다` : ""}` });
+        setToast({ text: `${r.data.createdCount}개 등록 · ${r.data.updatedCount}개 수정했습니다${r.data.failedCount > 0 ? ` · ${r.data.failedCount}개는 반영하지 못했습니다` : ""}` });
         await loadJobs();
       },
     });
@@ -152,14 +161,14 @@ export default function BulkPage() {
 
   const undo = async (j: Job) => {
     await confirm({
-      title: "이 등록을 되돌리시겠습니까?",
-      body: `${kstText(j.committedAt ?? j.createdAt)} 「${j.fileName ?? "일괄 등록"} · 상품 ${j.createdCount}개」로 등록한 상품을 삭제합니다. 이미 주문이 있는 상품은 그대로 둡니다.`,
+      title: "이 반영을 되돌리시겠습니까?",
+      body: `${kstText(j.committedAt ?? j.createdAt)} 「${j.fileName ?? "일괄 등록"} · 등록 ${j.createdCount}개 · 수정 ${j.updatedCount}개」로 등록한 상품은 삭제하고 수정한 상품은 반영 전 값으로 되돌립니다. 이미 주문이 있는 상품은 그대로 둡니다.`,
       confirmLabel: "되돌리기",
       danger: true,
       run: async () => {
-        const r = await api<{ removedCount: number; keptCount: number }>(`/api/seller/bulk-io/jobs/${j.id}/undo`, { method: "POST" });
+        const r = await api<{ removedCount: number; restoredCount: number; keptCount: number }>(`/api/seller/bulk-io/jobs/${j.id}/undo`, { method: "POST" });
         if (!r.ok) return r.message ?? "되돌리지 못했습니다. 잠시 뒤 다시 시도해 주십시오";
-        setToast({ text: `${r.data.removedCount}개를 되돌렸습니다${r.data.keptCount > 0 ? ` · 주문이 있는 ${r.data.keptCount}개는 남겼습니다` : ""}` });
+        setToast({ text: `${r.data.removedCount + r.data.restoredCount}개를 되돌렸습니다${r.data.keptCount > 0 ? ` · 주문이 있는 ${r.data.keptCount}개는 남겼습니다` : ""}` });
         await loadJobs();
       },
     });
@@ -219,7 +228,7 @@ export default function BulkPage() {
           actions={
             canEdit ? (
               <>
-                <a className="btn btn-out" href="/api/seller/bulk-io/products/template" download>
+                <a className="btn btn-out" href="/api/seller/bulk-io/products/template?format=xlsx" download>
                   양식 내려받기
                 </a>
                 <button className="btn" type="button" disabled={uploading} onClick={() => input.current?.click()}>
@@ -229,7 +238,7 @@ export default function BulkPage() {
             ) : undefined
           }
         />
-        <input ref={input} type="file" accept=".csv,text/csv" hidden aria-label="CSV 파일 선택" onChange={(e) => void upload(e.target.files?.[0])} />
+        <input ref={input} type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden aria-label="파일 선택" onChange={(e) => void upload(e.target.files?.[0])} />
         {!canEdit && (
           <div className="msg msg-info" role="status">
             <span>처리 이력만 볼 수 있습니다. 일괄 등록과 내려받기는 「상품 관리」 권한이 있는 계정만 할 수 있습니다.</span>
@@ -238,7 +247,7 @@ export default function BulkPage() {
         {failure && (
           <div className="msg msg-neg" role="alert">
             <span>{failure}</span>
-            <a className="btn btn-sm" href="/api/seller/bulk-io/products/template" download>
+            <a className="btn btn-sm" href="/api/seller/bulk-io/products/template?format=xlsx" download>
               양식 내려받기
             </a>
           </div>
@@ -262,8 +271,8 @@ export default function BulkPage() {
             }}
           >
             <div className="st-ic">+</div>
-            <div className="t-l1 fw6">CSV 파일을 끌어다 놓거나 선택해 주십시오</div>
-            <div className="t-c1 c-alt">양식 그대로 · 1,000행 · 1MB 이하 · 엑셀에서는 「CSV UTF-8」로 저장합니다</div>
+            <div className="t-l1 fw6">엑셀 파일을 끌어다 놓거나 선택해 주십시오</div>
+            <div className="t-c1 c-alt">양식 그대로 · 1,000행 · 엑셀 5MB 이하 (CSV는 1MB 이하)</div>
             <div style={{ marginTop: 12 }}>
               <button className="btn btn-out" type="button" disabled={uploading} onClick={() => input.current?.click()}>
                 {uploading ? "확인 중" : "파일 선택"}
@@ -281,9 +290,9 @@ export default function BulkPage() {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 12, margin: "8px 0 12px" }}>
               {(
                 [
-                  ["새로 등록", `${preview.data.productCount}개`],
-                  ["건너뜀 (오류 상품)", `${preview.data.skippedProductCount}개`],
-                  ["오류", `${preview.data.errorTotal}건`],
+                  ["새로 등록", `${preview.data.createCount}개`],
+                  ["기존 상품 수정", `${preview.data.updateCount}개`],
+                  ["오류 (건너뜀)", `${preview.data.errorTotal}건`],
                   ["전체 행", `${preview.data.totalRows}행`],
                 ] as const
               ).map(([k, v]) => (
@@ -306,7 +315,7 @@ export default function BulkPage() {
                       <th style={{ width: 110, textAlign: "right" }}>판매가</th>
                       <th style={{ width: 80 }}>상태</th>
                       <th style={{ width: 70 }}>옵션</th>
-                      <th style={{ width: 110 }}>결과</th>
+                      <th style={{ width: 200 }}>결과</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -321,7 +330,7 @@ export default function BulkPage() {
                         <td>{STATUS[p.status] ?? p.status}</td>
                         <td className="num">{p.optionCount}</td>
                         <td>
-                          <span className="bdg b-done">등록 가능</span>
+                          {p.mode === "update" ? <span className="bdg b-wait">기존 상품 · 판매가 · 재고만 수정</span> : <span className="bdg b-done">등록 가능</span>}
                         </td>
                       </tr>
                     ))}
@@ -355,7 +364,7 @@ export default function BulkPage() {
                 </table>
               </div>
             )}
-            <span className="t-c1 c-alt">오류 상품은 건너뛰고 반영해요 · 목록에는 앞부분만 보여요 · 새 상품의 상태가 비면 「숨김」으로 등록해요(이미지를 올린 뒤 공개)</span>
+            <span className="t-c1 c-alt">오류 행은 건너뛰고 나머지만 반영합니다 · 기존 상품은 상품명 기준으로 판매가 · 재고만 수정합니다 · 새 상품은 「숨김」 상태로 등록합니다(이미지를 올린 뒤 공개) · 목록에는 앞부분만 보여 드립니다</span>
             <div className="row" style={{ gap: 8, margin: "8px 0 4px", flexWrap: "wrap" }}>
               <button className="btn" type="button" disabled={preview.data.productCount === 0} onClick={() => void commit()}>
                 {preview.data.productCount}개 반영
@@ -461,7 +470,7 @@ export default function BulkPage() {
                 </tr>
                 <tr>
                   <th>선택 열</th>
-                  <td>상태 · 설명 · 차감시점 · 옵션(옵션명) · 옵션추가금 · SKU</td>
+                  <td>옵션 · 할인가 · 할인 기간 · 설명 · 숨김 · 상태 · 차감시점 · 옵션추가금 · SKU</td>
                 </tr>
                 <tr>
                   <th>이미지</th>
@@ -469,11 +478,19 @@ export default function BulkPage() {
                 </tr>
                 <tr>
                   <th>한도</th>
-                  <td>한 번에 1,000행 · 1MB</td>
+                  <td>한 번에 1,000행 · 엑셀 5MB (CSV 1MB)</td>
                 </tr>
                 <tr>
                   <th>옵션</th>
                   <td>같은 상품은 이어지는 줄에 옵션명만 적어 늘립니다</td>
+                </tr>
+                <tr>
+                  <th>기존 상품</th>
+                  <td>상품명이 같으면 판매가 · 재고만 수정으로 처리합니다</td>
+                </tr>
+                <tr>
+                  <th>새 상품</th>
+                  <td>항상 숨김으로 등록합니다 · 할인가는 판매가와의 차액으로 기간 동안 적용합니다</td>
                 </tr>
               </tbody>
             </table>
@@ -504,7 +521,7 @@ export default function BulkPage() {
                         <td className="col-text">
                           {jobTitle(j)}
                           {j.kind === "PRODUCT_IMPORT" && (
-                            <div className="t-c1 c-alt">{j.status === "COMMITTED" || j.status === "UNDONE" ? `${j.createdCount}개 등록${j.failedCount + j.errorTotal > 0 ? ` · 오류 ${j.errorTotal}건` : ""}` : `${j.productCount}개 확인`}</div>
+                            <div className="t-c1 c-alt">{j.status === "COMMITTED" || j.status === "UNDONE" ? `${j.createdCount}개 등록 · ${j.updatedCount}개 수정${j.failedCount + j.errorTotal > 0 ? ` · 오류 ${j.errorTotal}건` : ""}` : `${j.productCount}개 확인`}</div>
                           )}
                         </td>
                         <td className="num">

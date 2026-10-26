@@ -63,7 +63,7 @@ test("두 기존 홈 주소는 단일 홈으로 이동하고 유튜브 패널은
   }
   await expect(page.getByRole("link", { name: "방송 대시보드", exact: true })).toHaveCount(0);
   await expect(page.getByTestId("home-tasks")).toBeVisible();
-  const snapshotResponse = await page.request.get("/api/seller/queue");
+  const snapshotResponse = await page.request.get("/api/seller/queue", { maxRetries: 3 });
   expect(snapshotResponse.status()).toBe(200);
   const snapshot = await snapshotResponse.json();
   await page.route("**/api/seller/queue", async (route) => route.fulfill({ json: { ...snapshot, broadcast: { id: "synthetic-current", title: "합성 방송", startedAt: "2026-10-09T00:00:00Z" } } }));
@@ -109,7 +109,7 @@ test("두 기존 홈 주소는 단일 홈으로 이동하고 유튜브 패널은
 
 test("채팅이 꺼지고 큐 버전이 같아도 유튜브 연결과 해제가 새로 고침 없이 반영된다", async ({ page }) => {
   await login(page, "demo-owner@example.com", "/seller");
-  const snapshotResponse = await page.request.get("/api/seller/queue");
+  const snapshotResponse = await page.request.get("/api/seller/queue", { maxRetries: 3 });
   expect(snapshotResponse.status()).toBe(200);
   const snapshot = await snapshotResponse.json();
   let connected = false;
