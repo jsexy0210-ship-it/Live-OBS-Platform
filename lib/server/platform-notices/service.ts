@@ -136,13 +136,15 @@ const cursorOf = (at: Date, id: string) => `${at.toISOString()}_${id}`;
 
 // ───────── 마스터 관리자 ─────────
 
-export async function listAdminNotices(db: PrismaClient, admin: AdminSessionContext, q: { status?: string | null; cursor?: string | null; category?: string | null; q?: string | null }) {
+export async function listAdminNotices(db: PrismaClient, admin: AdminSessionContext, q: { status?: string | null; cursor?: string | null; category?: string | null; q?: string | null; audience?: string | null }) {
   const c = parseCursor(q.cursor);
   if (c === "invalid") return { ok: false as const, reason: "invalid_cursor" as const };
   if (q.category && !CATEGORIES.includes(q.category as PlatformNoticeCategory)) return { ok: false as const, reason: "invalid_category" as const };
+  if (q.audience && !AUDIENCES.includes(q.audience as PlatformNoticeAudience)) return { ok: false as const, reason: "invalid_audience" as const };
   const where: Prisma.PlatformNoticeWhereInput = {
     deletedAt: null,
     ...(q.category ? { category: q.category as PlatformNoticeCategory } : {}),
+    ...(q.audience ? { audience: q.audience as PlatformNoticeAudience } : {}),
     ...(q.q ? { title: { contains: q.q } } : {}),
     ...(q.status === "draft" ? { publishedAt: null } : q.status === "published" ? { publishedAt: { not: null } } : {}),
     ...(c ? { OR: [{ createdAt: { lt: c.at } }, { createdAt: c.at, id: { lt: c.id } }] } : {}),
@@ -150,7 +152,15 @@ export async function listAdminNotices(db: PrismaClient, admin: AdminSessionCont
   const rows = await db.platformNotice.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: ADMIN_NOTICE_PAGE_SIZE + 1, include: withTargets });
   const page = rows.slice(0, ADMIN_NOTICE_PAGE_SIZE);
   const last = page[page.length - 1];
-  return { ok: true as const, items: page.map(adminView), nextCursor: rows.length > ADMIN_NOTICE_PAGE_SIZE && last ? cursorOf(last.createdAt, last.id) : null };
+  // 목록 열: 읽음(공지를 읽은 파트너스 계정 수)과 작성자 이름. 상세·수정 응답은 바꾸지 않는다.
+  const [reads, authors] = await Promise.all([
+    page.length ? db.platformNoticeRead.groupBy({ by: ["noticeId"], where: { noticeId: { in: page.map((r) => r.id) } }, _count: { _all: true } }) : [],
+    page.length ? db.platformAdmin.findMany({ where: { id: { in: [...new Set(page.map((r) => r.createdByAdminId))] } }, select: { id: true, name: true } }) : [],
+  ]);
+  const readCount = new Map(reads.map((r) => [r.noticeId, r._count._all]));
+  const authorName = new Map(authors.map((a) => [a.id, a.name]));
+  const items = page.map((r) => ({ ...adminView(r), readCount: readCount.get(r.id) ?? 0, authorName: authorName.get(r.createdByAdminId) ?? null }));
+  return { ok: true as const, items, nextCursor: rows.length > ADMIN_NOTICE_PAGE_SIZE && last ? cursorOf(last.createdAt, last.id) : null };
 }
 
 const FILE_SELECT = { id: true, name: true, byteSize: true } as const;
