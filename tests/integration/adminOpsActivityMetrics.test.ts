@@ -82,7 +82,7 @@ describe("MA-042 지표·정렬·내려받기", () => {
     await event(shops[0], "DISCONNECTED", ago(5));
     await db.overlayToken.create({ data: { sellerId: shops[0].seller.id, tokenHash: "h0", lastSeenAt: ago(1) } }).catch(() => null);
     const ids = async (sort: string, cursor?: string) => {
-      const r = await listSellerActivity(db, v.ctx, { period: "today", sort, cursor });
+      const r = await listSellerActivity(db, v.ctx, { period: "30d", sort, cursor });
       if (!r.ok) throw new Error(r.reason);
       return r.items.map((x) => x.sellerId);
     };
