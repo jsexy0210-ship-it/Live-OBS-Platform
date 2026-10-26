@@ -87,7 +87,12 @@ it("MA042 전체 합계는 50건 밖과 정지 판매자를 포함하고 승인 
   if (!first.ok) throw new Error("first");
   expect(first.items).toHaveLength(10);
   expect(first.items.every((r) => r.ordersPeriod.created === 0)).toBe(true);
-  expect(first.summary).toEqual({ scope: "CURRENT_ACTIVE_AND_SUSPENDED_SELLERS", created: 2, paid: 2, paidAmount: 17500 });
+  expect(first.summary).toEqual({
+    scope: "CURRENT_ACTIVE_AND_SUSPENDED_SELLERS", created: 2, paid: 2, paidAmount: 17500,
+    // 주문대기·방송 화면 지표(MA-042 확장)는 이 시나리오에 기록이 없어 0·null
+    queue: { registered: 0, externalRegistered: 0, done: 0, cancelled: 0, cancelRatePercent: null, avgOpenSeconds: null },
+    screen: { disconnected: 0, recovered: 0, avgDownSeconds: null },
+  });
   const items = [...first.items];
   const cursors = new Set<string>();
   let cursor = first.nextCursor;
