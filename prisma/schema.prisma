@@ -3144,7 +3144,7 @@ enum MessageChannel {
   SMS
   LMS
   ALIMTALK
-  // 구매자 휴대폰 본인인증(쇼핑몰에서 켠 경우)
+  // 구매자 휴대폰 본인인증(가입은 필수라 끌 수 없음. 건당 차감 연결은 대표님 확인 대기, docs/COST_POLICY.md)
   IDENTITY_VERIFICATION
   // 배송 자동 조회(배송 완료 자동 처리를 켠 경우)
   DELIVERY_TRACKING
