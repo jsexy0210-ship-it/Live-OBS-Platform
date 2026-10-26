@@ -157,6 +157,30 @@ describe("초대로 비밀번호 정하기", () => {
   });
 });
 
+describe("본인확인이 끝난 쇼핑몰", () => {
+  it("초대 재발급은 거절(identity_verified)하고 아무것도 바꾸지 않으며, 본인확인 전에 받은 남은 초대로도 비밀번호를 바꿀 수 없다", async () => {
+    await db.subscriptionPlan.upsert({ where: { code: "INTEGRATED" }, create: { code: "INTEGRATED", name: "쇼핑몰 통합", listPrice: 249000, salePrice: 179000, trialDays: 0 }, update: {} });
+    const su = await admin("SUPER_ADMIN");
+    const r = await create(su.cookie);
+    const pending = tokenOf(r.body.invite); // 아직 안 쓴 초대
+    // 본인확인이 끝났다고 표시(DB 제약: 확인 시각과 CI 해시는 함께)
+    await db.seller.update({ where: { id: r.body.sellerId }, data: { representativeVerifiedAt: new Date(), representativeCiHash: "ci-hash-verified" } });
+    const owner = await db.sellerUser.findFirstOrThrow({ where: { sellerId: r.body.sellerId, isOwner: true } });
+    const before = { hash: owner.passwordHash, cv: owner.credentialVersion, invites: await db.sellerInvite.count({ where: { sellerId: r.body.sellerId } }) };
+    const re = await reissueRoute(post(`/api/admin/sellers/${r.body.sellerId}/invite`, su.cookie, {}), sid(r.body.sellerId));
+    expect(re.status).toBe(400);
+    expect(((await re.json()) as Record<string, any>).error).toBe("identity_verified");
+    expect(await db.sellerInvite.count({ where: { sellerId: r.body.sellerId } })).toBe(before.invites); // 새 초대 없음
+    expect(await db.sellerInvite.count({ where: { sellerId: r.body.sellerId, revokedAt: { not: null } } })).toBe(0);
+    // 남은 초대로도 수락할 수 없고, 비밀번호·세션 버전이 그대로다
+    expect((await accept(pending, "long-enough-password-1")).body.error).toBe("invalid_invite");
+    const after = await db.sellerUser.findUniqueOrThrow({ where: { id: owner.id } });
+    expect(after.passwordHash).toBe(before.hash);
+    expect(after.credentialVersion).toBe(before.cv);
+    expect(await db.auditLog.count({ where: { action: { in: ["admin.seller.invite_reissue", "auth.seller.invite_accept"] } } })).toBe(0);
+  });
+});
+
 describe("본인확인 대기 제한", () => {
   it("직원 추가·적립금 실지급 켜기·충전금 결제는 막히고(identity_pending), 끄기와 로그인·읽기는 된다. 본인확인이 끝나면 풀린다", async () => {
     await db.subscriptionPlan.upsert({ where: { code: "INTEGRATED" }, create: { code: "INTEGRATED", name: "쇼핑몰 통합", listPrice: 249000, salePrice: 179000, trialDays: 0 }, update: {} });

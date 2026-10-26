@@ -24,7 +24,8 @@ type Meta = { ip?: string | null; userAgent?: string | null };
 
 export type DirectCreateInput = { shopName: unknown; slug: unknown; planCode?: unknown; ownerName: unknown; ownerEmail: unknown; reason: unknown; trialEndsAt?: unknown };
 export type DirectCreateFailure = "invalid_input" | "invalid_slug" | "slug_taken" | "invalid_trial" | "invalid_reason";
-export const DIRECT_CREATE_MESSAGES: Record<DirectCreateFailure | "invalid_invite" | "weak_password" | "invalid_target" | "service_ended", string> = {
+export type ReissueFailure = "invalid_target" | "identity_verified";
+export const DIRECT_CREATE_MESSAGES: Record<DirectCreateFailure | ReissueFailure | "invalid_invite" | "weak_password" | "service_ended", string> = {
   invalid_input: "쇼핑몰 이름·대표자 이름·이메일을 확인해 주십시오",
   invalid_slug: "쇼핑몰 주소는 영문 소문자·숫자·하이픈 3~30자로 입력해 주십시오",
   slug_taken: "이미 쓰는 쇼핑몰 주소입니다",
@@ -33,6 +34,7 @@ export const DIRECT_CREATE_MESSAGES: Record<DirectCreateFailure | "invalid_invit
   invalid_invite: "초대 링크가 올바르지 않거나 만료되었습니다. 최고관리자에게 새 링크를 요청해 주십시오",
   weak_password: `비밀번호는 ${MIN_PASSWORD_LENGTH}자 이상으로 입력해 주십시오`,
   invalid_target: "대상 쇼핑몰을 확인해 주십시오",
+  identity_verified: "대표자 본인확인이 끝난 쇼핑몰은 초대 링크를 다시 만들 수 없습니다. 대표자 본인이 아이디·비밀번호 찾기를 쓰게 안내해 주십시오",
   service_ended: "이용이 종료된 쇼핑몰은 체험 기간을 늘릴 수 없습니다",
 };
 
@@ -124,6 +126,8 @@ export async function reissueInvite(db: PrismaClient, admin: AdminSessionContext
   return db.$transaction(async (tx) => {
     const seller = await tx.seller.findUnique({ where: { id: sellerId }, select: { id: true, status: true, directCreatedByAdminId: true, representativeVerifiedAt: true } });
     if (!seller || !seller.directCreatedByAdminId || seller.status === "CLOSED") return { ok: false as const, reason: "invalid_target" as const };
+    // 본인확인이 끝난 계정은 대표자 본인의 인증으로만 복구한다: 관리자가 초대로 비밀번호를 바꾸고 세션을 끊는 경로를 열어 두지 않는다
+    if (seller.representativeVerifiedAt) return { ok: false as const, reason: "identity_verified" as const };
     const owner = await tx.sellerUser.findFirst({ where: { sellerId, isOwner: true, status: "ACTIVE" }, select: { id: true } });
     if (!owner) return { ok: false as const, reason: "invalid_target" as const };
     const revoked = await tx.sellerInvite.updateMany({ where: { sellerUserId: owner.id, usedAt: null, revokedAt: null }, data: { revokedAt: now } });
@@ -143,8 +147,10 @@ export async function acceptInvite(db: PrismaClient, input: { token: unknown; ne
   if (input.newPassword.length < MIN_PASSWORD_LENGTH) return { ok: false as const, reason: "weak_password" as const };
   const tokenHash = hashToken(input.token);
   const now = await dbNow(db);
-  const inv = await db.sellerInvite.findUnique({ where: { tokenHash }, include: { sellerUser: { select: { id: true, status: true, passwordHash: true } }, seller: { select: { slug: true, status: true } } } });
+  const inv = await db.sellerInvite.findUnique({ where: { tokenHash }, include: { sellerUser: { select: { id: true, status: true, passwordHash: true } }, seller: { select: { slug: true, status: true, representativeVerifiedAt: true } } } });
   if (!inv || inv.revokedAt || inv.sellerUser.status !== "ACTIVE" || ["CLOSED", "REJECTED"].includes(inv.seller.status)) return { ok: false as const, reason: "invalid_invite" as const };
+  // 초대를 받은 뒤 본인확인이 끝났다면 남은 초대로는 비밀번호를 바꿀 수 없다(재발급 거절과 같은 이유)
+  if (inv.seller.representativeVerifiedAt && !inv.usedAt) return { ok: false as const, reason: "invalid_invite" as const };
   if (inv.usedAt) {
     const retry = now.getTime() - inv.usedAt.getTime() <= 10 * 60_000 && (await verifyPassword(inv.sellerUser.passwordHash, input.newPassword));
     return retry ? { ok: true as const, shopSlug: inv.seller.slug } : { ok: false as const, reason: "invalid_invite" as const };
