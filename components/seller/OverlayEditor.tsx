@@ -671,8 +671,8 @@ export default function OverlayEditor() {
         )}
 
         <div className="ove-cols">
-          <div className="ove-left col" style={{ gap: 20 }} inert={ro}>
-          <div className="ove-list col" style={{ gap: 6 }}>
+          <div className="ove-left col" style={{ gap: 20 }}>
+          <div className="ove-list col" style={{ gap: 6 }} inert={ro}>
             <span className="t-l1 fw6">꾸미는 칸(글상자·카드)</span>
             <span className="t-c1 c-alt">위가 앞에 보입니다</span>
             <ul className="ove-slots" data-testid="ove-slots">

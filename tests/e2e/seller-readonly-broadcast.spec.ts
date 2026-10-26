@@ -35,6 +35,45 @@ test("대신 보기: 방송 화면 편집기는 저장·템플릿 버튼이 막�
   expect(writes).toEqual([]);
 });
 
+test("대신 보기: 가로·세로 배치는 조회할 수 있고 편집과 쓰기는 막힌다", async ({ page }) => {
+  await login(page, "/seller/overlay");
+  const writes: string[] = [];
+  page.on("request", (r) => { if (r.url().includes("/api/seller/") && r.method() !== "GET") writes.push(`${r.method()} ${r.url()}`); });
+  await viewOnly(page);
+  await page.reload();
+  const canvas = page.getByTestId("ove-canvas");
+  await expect(canvas).toBeVisible();
+
+  for (const [name, aspect, width, height] of [["가로 16:9", "16x9", "1920px", "1080px"], ["세로 9:16", "9x16", "1080px", "1920px"]]) {
+    const loaded = page.waitForResponse((r) => r.url().endsWith(`/api/seller/overlay/layout?aspect=${aspect}`) && r.request().method() === "GET");
+    const option = page.getByRole("radio", { name, exact: true });
+    await option.click();
+    expect((await loaded).ok()).toBe(true);
+    await expect(option).toHaveAttribute("aria-checked", "true");
+    await expect(canvas.locator(".ove-stage")).toHaveCSS("width", width);
+    await expect(canvas.locator(".ove-stage")).toHaveCSS("height", height);
+    await expect(canvas).toBeVisible();
+    await expect(page.locator(".ove-list")).toHaveAttribute("inert", "");
+    await expect(page.getByTestId("ove-props")).toHaveAttribute("inert", "");
+    await expect(page.getByRole("button", { name: "방송 화면에 저장하기", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "스포트라이트형", exact: true })).toBeDisabled();
+  }
+
+  const box = page.locator('[data-testid^="ove-box-"]').first();
+  await expect(box).toBeVisible();
+  const before = await box.getAttribute("style");
+  const bounds = (await box.boundingBox())!;
+  await box.hover();
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + bounds.width / 2 + 20, bounds.y + bounds.height / 2 + 40, { steps: 5 });
+  await page.mouse.up();
+  await canvas.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(box).toHaveAttribute("style", before!);
+  await expect(page.getByTestId("ove-dirty")).toHaveCount(0);
+  expect(writes).toEqual([]);
+});
+
 test("대신 보기: 방송 프로그램에 넣기의 주소 만들기·재발급이 막히고 이유가 붙는다", async ({ page }) => {
   await login(page, "/seller/overlay/address");
   await viewOnly(page);
