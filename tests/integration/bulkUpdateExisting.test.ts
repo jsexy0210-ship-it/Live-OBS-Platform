@@ -200,6 +200,18 @@ describe("기존 상품 수정", () => {
     expect([row[2], row[5], row[6], row[8]]).toEqual(["10000", "7000", `${day(-1)} ~ ${day(5)}`, "예"]);
   });
 
+  it("기존 상품 줄의 할인가·할인 기간은 값이 틀려도(끝난 기간·한도 밖) 무시하고 판매가·재고를 수정한다. 새 상품이면 오류로 건너뛴다", async () => {
+    const s = await shop();
+    await seed(s.ctx);
+    const head = "상품명,카테고리,판매가,재고,옵션,할인가,할인 기간";
+    const p = await preview(s.ctx, [head, "부스터 팩,,6000,45,기본,10,2020-01-01 ~ 2020-01-31", "신상,,10000,5,기본,10,2020-01-01 ~ 2020-01-31"].join("\r\n"));
+    expect([p.createCount, p.updateCount, p.skippedProductCount]).toEqual([0, 1, 1]);
+    expect(p.errors).toMatchObject([{ row: 3, column: "할인 기간" }]);
+    await commit(s.ctx, p.jobId);
+    expect(await priceOf(s.seller.id, "부스터 팩")).toBe(6000);
+    expect(await stockOf(s.seller.id, "부스터 팩")).toEqual({ 기본: 45 });
+  });
+
   it("지운 상품과는 이름이 같아도 새 상품으로 등록한다", async () => {
     const s = await shop();
     await seed(s.ctx);

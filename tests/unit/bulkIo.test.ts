@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatCsv, guardText, parseCsv, unguardText } from "../../lib/server/shop-bulk-io/csv";
-import { COLUMNS, MAX_IMPORT_ROWS, headerMismatchMessage, parseProductCsv, templateCsv } from "../../lib/server/shop-bulk-io/service";
+import { COLUMNS, MAX_IMPORT_ROWS, headerMismatchMessage, parseProductCsv, resolveProductEvents, templateCsv } from "../../lib/server/shop-bulk-io/service";
 
 // 엑셀(CSV) 일괄 등록(SA-018): CSV 읽기·쓰기와 행 검증(DB 없음)
 const cats = new Map([["카드", ["c1"]], ["카드>부스터", ["c2"]], ["중복", ["c3", "c4"]]]);
@@ -98,7 +98,7 @@ describe("상품 CSV 검증", () => {
     const start = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
     const end = new Date(Date.now() + 9 * 86_400_000).toISOString().slice(0, 10);
     const head = "상품명,카테고리,판매가,재고,할인가,할인 기간,숨김";
-    const v = parse(`A,,10000,3,"8,000원",${start} ~ ${end},예\r\nB,,5000,1,,,`, head);
+    const v = resolveProductEvents(parse(`A,,10000,3,"8,000원",${start} ~ ${end},예\r\nB,,5000,1,,,`, head));
     expect(v.errors).toEqual([]);
     const a = v.products[0].event!;
     expect([a.type, a.value]).toEqual(["AMOUNT", 2000]);
@@ -107,14 +107,14 @@ describe("상품 CSV 검증", () => {
     expect(Date.parse(a.endsAt) - Date.parse(a.startsAt)).toBe(8 * 86_400_000); // 종료일 포함
     expect(v.products[1].event).toBeUndefined();
     // 점·빗금 구분도 받는다
-    expect(parse(`A,,10000,3,9000,${start.replaceAll("-", ".")} ~ ${end.replaceAll("-", "/")},`, head).errors).toEqual([]);
+    expect(resolveProductEvents(parse(`A,,10000,3,9000,${start.replaceAll("-", ".")} ~ ${end.replaceAll("-", "/")},`, head)).errors).toEqual([]);
   });
   it("할인가·할인 기간 오류: 한쪽만, 숫자 아님, 판매가 이상, 90% 넘는 할인, 지난 기간, 형식·역순·없는 날짜", () => {
     const start = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
     const end = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
     const ok = `${start} ~ ${end}`;
     const head = "상품명,카테고리,판매가,재고,할인가,할인 기간";
-    const err = (row: string) => parse(row, head).errors.map((e) => [e.column, e.message]);
+    const err = (row: string) => resolveProductEvents(parse(row, head)).errors.map((e) => [e.column, e.message]);
     expect(err(`A,,10000,1,8000,`)).toEqual([["할인 기간", "할인가와 할인 기간은 함께 입력해 주십시오"]]);
     expect(err(`A,,10000,1,,${ok}`)).toEqual([["할인가", "할인가와 할인 기간은 함께 입력해 주십시오"]]);
     expect(err(`A,,10000,1,abc,${ok}`)[0][0]).toBe("할인가");

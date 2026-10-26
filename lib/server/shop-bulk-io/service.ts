@@ -112,6 +112,8 @@ type ImportProduct = {
   categoryIds: string[];
   categories: string[];
   optionMeta?: { line: number; hasStock: boolean }[];
+  // 파일에 적힌 할인가·할인 기간(검사 전). 새 상품으로 확인된 줄만 resolveProductEvents가 검사해 event로 바꾼다.
+  eventRaw?: { discount: string; period: string; line: number };
   // 새 상품의 할인(할인가 − 판매가를 정액 할인으로, 기간은 KST 날짜 기준). 기존 상품 수정에는 쓰지 않는다.
   event?: { type: "AMOUNT"; value: number; startsAt: string; endsAt: string };
   defaultOption?: boolean;
@@ -192,7 +194,7 @@ function parsePeriod(raw: string): { startsAt: string; endsAt: string } | null {
   return { startsAt: `${y1}-${pad2(m1)}-${pad2(d1)}T00:00:00+09:00`, endsAt: `${next.getUTCFullYear()}-${pad2(next.getUTCMonth() + 1)}-${pad2(next.getUTCDate())}T00:00:00+09:00` };
 }
 
-type Parsed = { totalRows: number; products: ImportProduct[]; errors: RowError[]; skippedProducts: number };
+export type Parsed = { totalRows: number; products: ImportProduct[]; errors: RowError[]; skippedProducts: number };
 
 export function parseProductCsv(text: string, categories: Map<string, string[]>): Result<Parsed> {
   if (text.length > MAX_IMPORT_CHARS) return { ok: false, reason: "file_too_large" };
@@ -297,29 +299,11 @@ export function parseProductRows(rows: string[][], categories: Map<string, strin
       }
     }
 
-    // 할인가·할인 기간(둘 다 있어야 함): 할인가를 정액 할인(판매가 − 할인가)으로 바꿔 상품의 이벤트 할인 규칙(기간·90% 한도·옵션 단가)으로 확인한다.
-    let event: ImportProduct["event"];
+    // 할인가·할인 기간은 새 상품일 때만 쓰므로 여기서는 입력만 담아 두고, 기존 상품과 맞춰 본 뒤(classifyProducts) 새 상품에만 검사한다
+    // (기존 상품은 이 열이 어떤 값이어도 무시한다 — 내보낸 파일을 다시 올려도 판매가·재고 수정이 막히지 않게).
     const discountRaw = get(first, "할인가");
     const periodRaw = get(first, "할인 기간");
-    if (discountRaw !== "" || periodRaw !== "") {
-      const dp = discountRaw === "" ? null : intCell(discountRaw, true);
-      const period = periodRaw === "" ? null : parsePeriod(periodRaw);
-      if (discountRaw === "" || periodRaw === "") err(g.line, discountRaw === "" ? "할인가" : "할인 기간", "할인가와 할인 기간은 함께 입력해 주십시오");
-      else if (dp === null || dp < 1) err(g.line, "할인가", "할인가는 1원 이상의 숫자로 입력해 주십시오");
-      else if (!period) err(g.line, "할인 기간", "할인 기간은 「2026-10-20 ~ 2026-10-27」처럼 시작일 ~ 종료일로 입력해 주십시오");
-      else if (price !== null && price >= 1) {
-        if (dp >= price) err(g.line, "할인가", "할인가는 판매가보다 낮아야 합니다");
-        else {
-          const candidate = { type: "AMOUNT" as const, value: price - dp, startsAt: period.startsAt, endsAt: period.endsAt };
-          const now = new Date();
-          const parsedEvent = parseEvent(candidate, now);
-          if (typeof parsedEvent === "string") err(g.line, "할인 기간", parsedEvent === "invalid_event_period" ? "할인 기간을 확인해 주십시오. 종료일은 오늘 이후여야 하고 기간은 365일까지입니다" : "할인가를 확인해 주십시오");
-          else if (candidate.value * 100 > price * MAX_EVENT_RATE) err(g.line, "할인가", `할인가는 판매가의 ${100 - MAX_EVENT_RATE}% 이상이어야 합니다`);
-          else if (!eventFits(parsedEvent, price, [0, ...options.map((o) => o.priceDelta)], now)) err(g.line, "할인가", "할인 뒤 가격이 옵션 가격에서 1원 미만이 됩니다. 할인가를 확인해 주십시오");
-          else event = candidate;
-        }
-      }
-    }
+    const eventRaw = discountRaw !== "" || periodRaw !== "" ? { discount: discountRaw, period: periodRaw, line: g.line } : undefined;
 
     const input = { name: unit("상품명"), description: unit("설명"), price, status, stockDeductMode: deduct, options };
     if (errs.length === 0) {
@@ -330,7 +314,7 @@ export function parseProductRows(rows: string[][], categories: Map<string, strin
       errors.push(...errs);
       bad.add(g);
       skipped++;
-    } else products.push({ row: g.line, input, categoryIds, categories: categoryNames, optionMeta, defaultOption: !hasOptionColumn, ...(event ? { event } : {}) });
+    } else products.push({ row: g.line, input, categoryIds, categories: categoryNames, optionMeta, defaultOption: !hasOptionColumn, ...(eventRaw ? { eventRaw } : {}) });
   }
   errors.sort((a, b) => a.row - b.row);
   return { ok: true, value: { totalRows: data.length, products, errors, skippedProducts: skipped + (bad.has("orphan") ? 1 : 0) } };
@@ -407,9 +391,53 @@ async function classifyProducts(db: PrismaClient, ctx: TenantContext, parsed: Pa
   return { ...parsed, products, errors, skippedProducts: skipped };
 }
 
+// 새 상품(기존 상품과 맞지 않은 줄)의 할인가·할인 기간 검사: 할인가를 정액 할인(판매가 − 할인가)으로 바꿔 상품 이벤트 할인 규칙(기간·90% 한도·옵션 단가)으로 확인한다.
+// 오류가 있는 상품은 건너뛴다. 기존 상품 수정 줄(update)은 이 열을 쓰지 않으므로 검사하지 않는다.
+export function resolveProductEvents(parsed: Parsed, now = new Date()): Parsed {
+  const errors = [...parsed.errors];
+  const products: ImportProduct[] = [];
+  let skipped = parsed.skippedProducts;
+  for (const p of parsed.products) {
+    const raw = p.eventRaw;
+    if (!raw || p.update) {
+      const { eventRaw: _drop, ...rest } = p;
+      products.push(rest);
+      continue;
+    }
+    const errs: RowError[] = [];
+    const err = (column: Column, message: string) => errs.push({ row: raw.line, column, message });
+    const price = Number(p.input.price);
+    const dp = raw.discount === "" ? null : intCell(raw.discount, true);
+    const period = raw.period === "" ? null : parsePeriod(raw.period);
+    let event: ImportProduct["event"];
+    if (raw.discount === "" || raw.period === "") err(raw.discount === "" ? "할인가" : "할인 기간", "할인가와 할인 기간은 함께 입력해 주십시오");
+    else if (dp === null || dp < 1) err("할인가", "할인가는 1원 이상의 숫자로 입력해 주십시오");
+    else if (!period) err("할인 기간", "할인 기간은 「2026-10-20 ~ 2026-10-27」처럼 시작일 ~ 종료일로 입력해 주십시오");
+    else if (dp >= price) err("할인가", "할인가는 판매가보다 낮아야 합니다");
+    else {
+      const candidate = { type: "AMOUNT" as const, value: price - dp, startsAt: period.startsAt, endsAt: period.endsAt };
+      const parsedEvent = parseEvent(candidate, now);
+      const deltas = (p.input.options as { priceDelta: number }[]).map((o) => o.priceDelta);
+      if (typeof parsedEvent === "string") err("할인 기간", parsedEvent === "invalid_event_period" ? "할인 기간을 확인해 주십시오. 종료일은 오늘 이후여야 하고 기간은 365일까지입니다" : "할인가를 확인해 주십시오");
+      else if (candidate.value * 100 > price * MAX_EVENT_RATE) err("할인가", `할인가는 판매가의 ${100 - MAX_EVENT_RATE}% 이상이어야 합니다`);
+      else if (!eventFits(parsedEvent, price, [0, ...deltas], now)) err("할인가", "할인 뒤 가격이 옵션 가격에서 1원 미만이 됩니다. 할인가를 확인해 주십시오");
+      else event = candidate;
+    }
+    if (errs.length > 0) {
+      errors.push(...errs);
+      skipped++;
+      continue;
+    }
+    const { eventRaw: _drop, ...rest } = p;
+    products.push({ ...rest, ...(event ? { event } : {}) });
+  }
+  errors.sort((a, b) => a.row - b.row);
+  return { ...parsed, products, errors, skippedProducts: skipped };
+}
+
 async function createPreview(db: PrismaClient, ctx: TenantContext, parsedIn: Result<Parsed>, rawName: unknown): Promise<Result<unknown>> {
   if (!parsedIn.ok) return parsedIn;
-  const { totalRows, products, errors, skippedProducts } = await classifyProducts(db, ctx, parsedIn.value);
+  const { totalRows, products, errors, skippedProducts } = resolveProductEvents(await classifyProducts(db, ctx, parsedIn.value));
   const fileName = typeof rawName === "string" && rawName.trim() ? rawName.trim().slice(0, 100) : null;
   const job = await db.bulkJob.create({
     data: {
