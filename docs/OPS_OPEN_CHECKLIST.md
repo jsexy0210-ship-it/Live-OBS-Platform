@@ -1,6 +1,6 @@
 # 운영 오픈 점검표
 
-> 2026-10-26 KST 작성(검수 전담 (12), 읽기 전용 점검). 근거는 저장소 코드·문서뿐이며 운영 서버·콘솔·계정은 확인하지 못했습니다. 서버 실측이 필요한 항목은 「미확인」으로 적었습니다. 절차 정본은 `docs/DEPLOY.md` 「운영 배포」입니다. 이 문서는 그 절차를 오픈 직전 점검 순서로 다시 모은 것이라 값은 적지 않습니다.
+> 2026-10-26 KST 작성(읽기 전용 점검). 근거는 저장소 코드·문서뿐이며 운영 서버·콘솔·계정은 확인하지 못했습니다. 서버 실측이 필요한 항목은 「미확인」으로 적었습니다. 절차 정본은 `docs/DEPLOY.md` 「운영 배포」입니다. 이 문서는 그 절차를 오픈 직전 점검 순서로 다시 모은 것이라 값은 적지 않습니다.
 
 ## 1. 코드에서 확인한 것
 
@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | 운영 배포 워크플로 | 수동 실행만, main만, 환경 `production` 승인(대표님만), 러너 라벨 `obs-prod`. 순서: 확인 문구·40자 SHA → `.env` 운영 표시 → CI 두 작업 성공 → 디스크 10GB → 검증된 DB 백업 → 빌드·마이그레이션·앱 교체 → 헬스 체크 → 기록 | `.github/workflows/deploy-obs-prod.yml` |
 | `/api/health` | DB `SELECT 1` 성공이면 `{status, db, version}`, 실패하면 503. 배포 워크플로는 `version`이 배포 SHA와 같고 `db`가 ok이며 `testMode`가 없을 때만 통과 | `app/api/health/route.ts` |
-| 마이그레이션 순서 | 앱 기동 전 `obs-web-migrate`가 `prisma migrate deploy`를 한 번 실행하고, 앱은 그 뒤에 뜹니다. 실패하면 앱은 바뀌지 않습니다. 폴더 이름순으로 적용(현재 182개), 추가형만 | `deploy/docker-compose.yml`, `prisma/migrations` |
+| 마이그레이션 순서 | 앱 기동 전 `obs-web-migrate`가 `prisma migrate deploy`를 한 번 실행하고, 앱은 그 뒤에 뜹니다. 실패하면 앱은 바뀌지 않습니다. 폴더 이름순으로 적용(현재 181개), 추가형만 | `deploy/docker-compose.yml`, `prisma/migrations` |
 | 백업 | 배포 때마다 `pg_dump -Fc` 후 `pg_restore --list`로 읽기 검증, 실패하면 배포 중단. 매일 오프사이트 백업 `scripts/ops/db-offsite.sh`(버킷 30일 수명 주기는 콘솔에서 설정) | 워크플로, `docs/DEPLOY.md` 「운영 DB 일일 오프사이트 백업」 |
 | 롤백 | 앱 기동·헬스 실패 시 이번에 배포한 버전일 때만 앱을 직전 버전으로 자동 되돌립니다. DB는 되돌리지 않으며 사람이 배포 전 백업으로 `db-restore.sh`. 마이그레이션 실패면 되돌리지 않습니다 | 워크플로, `scripts/ops/rollback-app.sh`, `docs/DEPLOY.md` 「롤백」 |
 | 테스트 값 차단 | `.env`에 `OBS_TEST_MODE=1` 또는 `OBS_ENVIRONMENT=test`가 있으면 배포 중단. 시드·장애 주입은 운영에서 실행되지 않음 | 워크플로 |
