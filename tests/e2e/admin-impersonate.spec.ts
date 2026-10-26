@@ -8,7 +8,7 @@ import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 // 계정·파트너스는 폐기용 테스트 DB(이름이 _test로 끝남)에 실행마다 새로 만든다.
 const password = randomBytes(12).toString("base64url");
 const run = randomBytes(4).toString("hex");
-const emails = { cs: `im-cs-${run}@example.com`, ro: `im-ro-${run}@example.com` };
+const emails = { cs: `im-cs-${run}@example.com`, ro: `im-ro-${run}@example.com`, su: `im-su-${run}@example.com` };
 const shop = `대리몰 ${run}`;
 const ids: Record<string, string> = {};
 let db: PrismaClient;
@@ -20,9 +20,12 @@ test.beforeAll(async () => {
     data: [
       { email: emails.cs, passwordHash, name: "상담", role: "CS" },
       { email: emails.ro, passwordHash, name: "조회", role: "READ_ONLY" },
+      { email: emails.su, passwordHash, name: "대표", role: "SUPER_ADMIN" },
     ],
   });
   ids.active = (await db.seller.create({ data: { slug: `im-a-${run}`, shopName: shop, status: "ACTIVE", approvedAt: new Date() } })).id;
+  const owner = await db.sellerUser.create({ data: { sellerId: ids.active, email: `im-owner-${run}@example.com`, passwordHash, name: "대표", isOwner: true } });
+  ids.inquiry = (await db.platformInquiry.create({ data: { sellerId: ids.active, createdBySellerUserId: owner.id, category: "OTHER", title: `대리 문의 ${run}`, lastMessageAt: new Date() } })).id;
   ids.pending = (await db.seller.create({ data: { slug: `im-p-${run}`, shopName: `대기 ${shop}`, status: "PENDING" } })).id;
 });
 test.afterAll(async () => {
@@ -77,4 +80,36 @@ test("조회 전용 역할과 운영·정지 상태가 아닌 쇼핑몰에는 �
   await page.goto(`/admin/partners/${ids.pending}`);
   await expect(page.getByTestId("partner-badges")).toContainText(`대기 ${shop}`);
   await expect(page.getByRole("button", { name: "대신 보기", exact: true })).toHaveCount(0);
+});
+
+test("확인 창: 분류·관련 건·범위·시간을 서버에 보내고(문의 대응은 관련 건 필수, 60분은 최고관리자만), 로그 세션에 남는다", async ({ page, context }) => {
+  await login(page, emails.cs);
+  await page.goto(`/admin/partners/${ids.active}`);
+  await page.getByRole("button", { name: "대신 보기", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  const start = dialog.getByRole("button", { name: "대신 보기 시작", exact: true });
+  await expect(dialog.getByRole("button", { name: "60분", exact: true })).toBeDisabled(); // CS는 60분을 못 고른다
+  await dialog.getByLabel("사유").fill("문의 확인");
+  await dialog.getByLabel("분류").selectOption("INQUIRY");
+  await expect(start).toBeDisabled(); // 문의 대응은 관련 건이 있어야 한다
+  await dialog.getByLabel("관련 건").selectOption(`INQUIRY:${ids.inquiry}`);
+  await dialog.getByRole("button", { name: "방송 대시보드", exact: true }).click();
+  await dialog.getByRole("button", { name: "회원", exact: true }).click(); // 기본 범위(주문 · 회원)에서 회원은 끈다
+  await dialog.getByRole("button", { name: "15분", exact: true }).click();
+  await expect(start).toBeEnabled();
+  const popup = context.waitForEvent("page");
+  await start.click();
+  await (await popup).close();
+  await expect(page.getByText("대신 보기를 시작했습니다.")).toBeVisible();
+  const row = await db.adminImpersonationSession.findFirstOrThrow({ where: { sellerId: ids.active, category: "INQUIRY" }, orderBy: { createdAt: "desc" } });
+  expect(row.relatedKind).toBe("INQUIRY");
+  expect(row.relatedId).toBe(ids.inquiry);
+  expect([...row.scopes].sort()).toEqual(["BROADCAST", "ORDERS"]);
+  expect(Math.round((row.expiresAt.getTime() - row.createdAt.getTime()) / 60_000)).toBe(15);
+
+  await page.context().clearCookies();
+  await login(page, emails.su);
+  await page.goto(`/admin/partners/${ids.active}`);
+  await page.getByRole("button", { name: "대신 보기", exact: true }).click();
+  await expect(page.getByRole("dialog").getByRole("button", { name: "60분", exact: true })).toBeEnabled();
 });
