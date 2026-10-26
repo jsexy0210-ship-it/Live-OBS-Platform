@@ -220,6 +220,8 @@ test.describe("첫 계정 실제 API·폐기용 DB", () => {
     try {
       for (const kind of ["expired", "used"] as const) {
         const invite = await fixture(db, kind);
+        // 해시만 바뀐 이동은 화면을 다시 읽지 않으므로 앞 반복의 무효 상태가 남는다. 빈 문서를 거쳐 새로 연다.
+        await page.goto("about:blank");
         await page.goto(`/seller/invite#${invite.token}`);
         await fill(page);
         const response = page.waitForResponse((r) => r.url().endsWith(acceptPath));
