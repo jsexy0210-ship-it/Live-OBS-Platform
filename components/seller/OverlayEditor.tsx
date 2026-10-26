@@ -8,6 +8,7 @@ import { MAX_TEMPLATES, SAMPLE_DATA, SAMPLE_NOW, SLOTS, STAGE, newWidget, slotOf
 import { PageHead, useConfirm } from "../admin-ui";
 import { api, failMessage } from "./api";
 import { Toast } from "./States";
+import { useSeller } from "./SellerShell";
 
 // 오버레이 편집기(SA-051): 비율(9:16·16:9)마다 위젯 7종의 위치·크기(화면 대비 %)와 속성을 정해 저장한다.
 // 저장은 expectedVersion으로: 다른 창에서 먼저 저장했으면 409 → 「다른 창에서 먼저 저장했습니다 · 다시 불러오기」.
@@ -198,6 +199,9 @@ function ConfirmDialog({ text, detail, ok, onOk, onClose }: { text: string; deta
 }
 
 export default function OverlayEditor() {
+  const { me } = useSeller();
+  const ro = !!me.readOnly; // 대신 보기: 보기만 가능, 바꾸기·저장은 막는다
+  const RO_TITLE = ro ? "대신 보기에서는 볼 수만 있습니다" : undefined;
   const [aspect, setAspect] = useState<Aspect>("9x16");
   const [server, setServer] = useState<Layout | null>(null);
   const [widgets, setWidgets] = useState<Widget[]>([]);
@@ -294,10 +298,12 @@ export default function OverlayEditor() {
   useUnsavedGuard(changes > 0, `저장하지 않은 변경 ${changes}개가 있습니다. 나가면 바뀐 내용이 사라집니다. 나가시겠습니까?`);
 
   const patch = (id: string, p: Partial<Widget>) => {
+    if (ro) return;
     mark(`patch:${id}:${Object.keys(p).join()}:${Date.now()}`);
     setWidgets((cur) => cur.map((w) => (w.id === id ? { ...w, ...p } : w)));
   };
   const setProp = (id: string, key: string, v: PropValue | null) => {
+    if (ro) return;
     mark(`prop:${id}:${key}`);
     setWidgets((cur) =>
       cur.map((w) => {
@@ -310,6 +316,7 @@ export default function OverlayEditor() {
     );
   };
   const setBox = (id: string, b: Partial<Pick<Widget, "x" | "y" | "w" | "h">>) =>
+    !ro &&
     setWidgets((cur) =>
       cur.map((w) => {
         if (w.id !== id) return w;
@@ -472,6 +479,7 @@ export default function OverlayEditor() {
   }, [onMove]);
   useEffect(() => stop, [stop]);
   const start = (e: React.PointerEvent, w: Widget, mode: string) => {
+    if (ro) return;
     e.preventDefault();
     e.stopPropagation();
     mark(`drag:${Date.now()}`);
@@ -482,7 +490,7 @@ export default function OverlayEditor() {
   };
   const onKey = (e: React.KeyboardEvent) => {
     const t = e.target as HTMLElement;
-    if (!sel || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+    if (ro || !sel || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
     const k = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
     if (!k) return;
     e.preventDefault();
@@ -631,10 +639,10 @@ export default function OverlayEditor() {
       <button className="btn btn-out" type="button" disabled={widgets.length === 0} onClick={() => setFullPreview(true)}>
         실제 크기로 보기
       </button>
-      <button className="btn btn-out" type="button" disabled={busy || widgets.length === 0 || total >= MAX_TEMPLATES} onClick={() => setTplName("")}>
+      <button className="btn btn-out" type="button" disabled={ro || busy || widgets.length === 0 || total >= MAX_TEMPLATES} title={RO_TITLE} onClick={() => setTplName("")}>
         지금 배치를 내 템플릿으로 저장
       </button>
-      <button className="btn" type="button" disabled={busy || changes === 0} onClick={() => void askSave()}>
+      <button className="btn" type="button" disabled={ro || busy || changes === 0} title={RO_TITLE} onClick={() => void askSave()}>
         방송 화면에 저장하기
       </button>
     </>
@@ -652,7 +660,7 @@ export default function OverlayEditor() {
               <span>「최신 내용 불러오기」를 누른 뒤 다시 바꿔 주십시오. 지금 바꾼 내용은 「내 템플릿으로 저장」으로 남겨 둘 수 있습니다.</span>
             </span>
             <span className="row" style={{ gap: 6 }}>
-              <button className="btn btn-sm btn-out" type="button" disabled={total >= MAX_TEMPLATES} onClick={() => setTplName("")}>
+              <button className="btn btn-sm btn-out" type="button" disabled={ro || total >= MAX_TEMPLATES} title={RO_TITLE} onClick={() => setTplName("")}>
                 내 템플릿으로 저장
               </button>
               <button className="btn btn-sm" type="button" onClick={() => void load(aspect)}>
@@ -663,7 +671,7 @@ export default function OverlayEditor() {
         )}
 
         <div className="ove-cols">
-          <div className="ove-left col" style={{ gap: 20 }}>
+          <div className="ove-left col" style={{ gap: 20 }} inert={ro}>
           <div className="ove-list col" style={{ gap: 6 }}>
             <span className="t-l1 fw6">꾸미는 칸(글상자·카드)</span>
             <span className="t-c1 c-alt">위가 앞에 보입니다</span>
@@ -699,7 +707,7 @@ export default function OverlayEditor() {
         </h2>
         <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
           {templates?.builtin.map((t) => (
-            <button key={t.key} className="btn btn-out" type="button" disabled={busy} onClick={() => askReset(t.widgets, t.name)}>
+            <button key={t.key} className="btn btn-out" type="button" disabled={ro || busy} title={RO_TITLE} onClick={() => askReset(t.widgets, t.name)}>
               {t.name}
             </button>
           ))}
@@ -732,13 +740,15 @@ export default function OverlayEditor() {
                 <td className="col-text">{m.name}</td>
                 <td>
                   <span className="row" style={{ gap: 6, justifyContent: "center" }}>
-                    <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => askReset(m.widgets, m.name)}>
+                    <button className="btn btn-sm btn-out" type="button" disabled={ro || busy} title={RO_TITLE} onClick={() => askReset(m.widgets, m.name)}>
                       이 템플릿으로 바꾸기
                     </button>
                     <button
                       className="btn btn-sm btn-out"
                       type="button"
                       aria-label={`${m.name} 지우기`}
+                      disabled={ro}
+                      title={RO_TITLE}
                       onClick={() => setConfirm({ text: `「${m.name}」 템플릿을 지우시겠습니까?`, ok: "템플릿 지우기", run: () => void removeTemplate(m) })}
                     >
                       템플릿 지우기
@@ -830,7 +840,7 @@ export default function OverlayEditor() {
             </span>
           </div>
 
-          <div className="ove-props col" style={{ gap: 10 }} data-testid="ove-props">
+          <div className="ove-props col" style={{ gap: 10 }} data-testid="ove-props" inert={ro}>
             {!selected ? (
               <span className="t-l2 c-alt">미리보기 화면이나 왼쪽 목록에서 칸을 선택해 주십시오.</span>
             ) : (
