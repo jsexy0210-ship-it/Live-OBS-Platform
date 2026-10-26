@@ -150,6 +150,19 @@ export default function MemberSettingsPage() {
                 </FormSection>
               </div>
 
+              {/* 정본 SA-068(2026-10-26 대표님 확정): 구매자 가입은 항상 휴대폰 본인확인을 거친다. 설정 필드 없이 안내만 둔다(서버 #1308·#1322) */}
+              <div style={{ marginTop: 32 }}>
+                <FormSection title="가입 조건">
+                  <FormRow
+                    label="구매자 휴대폰 본인확인"
+                    help="건당 비용은 파트너스 발송·이용 충전금에서 차감합니다(체험 50건 무료 · 단가는 마스터 관리자 설정) · 확인에 실패한 건은 차감하지 않습니다 · 잔액이 없으면 가입이 멈추므로 충전 잔액을 확인해 주십시오 · 성인 확인은 미성년자 구매 정책(법정 고지 · 약관)에 따릅니다"
+                  >
+                    <span className="bdg b-gray nodot" data-testid="identity-fixed">필수(고정)</span>
+                    <span className="t-l2">구매자 가입은 항상 휴대폰 본인확인을 거칩니다 · 끌 수 없습니다</span>
+                  </FormRow>
+                </FormSection>
+              </div>
+
               <div style={{ marginTop: 32 }}>
                 <FormSection title="구매자에게 보이는 안내">
                   <tr>
