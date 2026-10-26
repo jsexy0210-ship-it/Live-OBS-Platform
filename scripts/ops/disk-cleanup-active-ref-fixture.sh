@@ -2,7 +2,8 @@
 set -euo pipefail
 
 script="$(dirname "$0")/disk-cleanup.sh"
-source <(sed -n '/^readonly_path_within()/,/^}/p; /^readonly_exact_active_ref()/,/^}/p; /^readonly_space_details()/,/^}/p' "$script")
+. "$(dirname "$0")/checkout-readonly-guards.sh"
+source <(sed -n '/^readonly_space_details()/,/^}/p' "$script")
 
 readonly_path_within / /opt/obs/src/.next && exit 1
 readonly_path_within /opt/obs/src /opt/obs/src/.next && exit 1
@@ -37,6 +38,51 @@ preflight="$(awk '
 
 tmp="$(mktemp -d)"
 trap 'rm -rf -- "$tmp"' EXIT
+(
+  proc_root="$tmp/proc-empty-fd"
+  target="$tmp/cache-target"
+  mkdir -p "$proc_root/123/fd" "$target"
+  for entry in cwd root exe; do : > "$proc_root/123/$entry"; done
+  fd_target="$tmp/unrelated"
+  deny_fd=0; fail_link=0; vanish_fd=0
+  # Synthetic permission failure is portable even when fixtures run as root.
+  function [ {
+    if [[ "$deny_fd" = 1 && "$#" = 4 && "$1" = ! && "$2" = -r && "$3" = "$proc_root/123/fd" ]]; then return 0; fi
+    builtin [ "$@"
+  }
+  readlink() {
+    [ "$1" = -- ] && shift
+    case "$1" in
+      "$proc_root/123/cwd")
+        if [ "$vanish_fd" = 1 ]; then command rm -- "$proc_root/123/fd/7"; fi
+        printf '%s\n' "$tmp/unrelated" ;;
+      "$proc_root/123/root"|"$proc_root/123/exe") printf '%s\n' "$tmp/unrelated" ;;
+      "$proc_root/123/fd/7")
+        [ "$fail_link" = 0 ] || return 1
+        printf '%s\n' "$fd_target" ;;
+      *) return 1 ;;
+    esac
+  }
+  [ "$(readonly_exact_active_ref "$target" "$proc_root")" = no ]
+  : > "$proc_root/123/fd/7"
+  [ "$(readonly_exact_active_ref "$target" "$proc_root")" = no ]
+  fd_target="$target/nested.cache (deleted)"
+  [ "$(readonly_exact_active_ref "$target" "$proc_root")" = yes ]
+  fd_target="$target-other/nested.cache"
+  [ "$(readonly_exact_active_ref "$target" "$proc_root")" = no ]
+  printf 'active-ref fd fixture PASS (empty/unrelated=no, descendant=yes, sibling=no)\n'
+  deny_fd=1
+  [ "$(readonly_exact_active_ref "$target" "$proc_root")" = UNKNOWN ]
+  deny_fd=0; fail_link=1
+  [ "$(readonly_exact_active_ref "$target" "$proc_root")" = UNKNOWN ]
+  fail_link=0
+  command rm -- "$proc_root/123/exe"
+  [ "$(readonly_exact_active_ref "$target" "$proc_root")" = UNKNOWN ]
+  : > "$proc_root/123/exe"
+  vanish_fd=1
+  [ "$(readonly_exact_active_ref "$target" "$proc_root")" = UNKNOWN ]
+  printf 'active-ref fd fixture PASS (permission/link failure/missing/disappearing entry=UNKNOWN)\n'
+)
 workspace="$tmp/workspace"
 mkdir "$workspace"
 git -C "$workspace" init --quiet

@@ -3,6 +3,7 @@
 import CouponRow from "./CouponRow";
 import DetailTabs from "./DetailTabs";
 import LiveNotice from "./LiveNotice";
+import { minorModeOf, useMinorToast } from "./MinorPurchase";
 import ProductInquiries from "./ProductInquiries";
 import ProductReviews from "./ProductReviews";
 import RecentProducts from "./RecentProducts";
@@ -54,6 +55,7 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
   const firstOpen = p.options.find((o) => !o.soldOut) ?? p.options[0];
   const [optionId, setOptionId] = useState(firstOpen?.id ?? "");
   const [qty, setQty] = useState(1);
+  const minor = useMinorToast();
   const [photo, setPhoto] = useState(0);
   const [reviewSummary, setReviewSummary] = useState<ReviewSummary | null>(null);
   const [wished, setWished] = useState(false);
@@ -125,6 +127,11 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
     setBusy(true);
     setMsg(null);
     const r = await addToCart();
+    const mm = minorModeOf(r);
+    if (mm) {
+      minor.show(mm);
+      return setBusy(false);
+    }
     setMsg(r.ok ? { ok: true, text: "장바구니에 담았어요", cart: true, undo: undoCart(r.data.item.id, r.data.item.quantity - qty) } : { ok: false, text: r.message ?? "담지 못했어요. 잠시 뒤 다시 해 주세요" });
     setBusy(false);
   }
@@ -146,6 +153,11 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
     setMsg(null);
     const r = await addToCart();
     if (r.ok) return router.push(`${base}/checkout?ids=${r.data.item.id}`);
+    const mm = minorModeOf(r);
+    if (mm) {
+      minor.show(mm);
+      return setBusy(false);
+    }
     setMsg({ ok: false, text: r.message ?? "주문서로 가지 못했어요. 잠시 뒤 다시 해 주세요" });
     setBusy(false);
   }
@@ -446,6 +458,7 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
           <p>회원만 주문할 수 있어요. 가입은 1분이면 돼요.</p>
         </ShopModal>
       )}
+      {minor.node}
     </article>
   );
 }

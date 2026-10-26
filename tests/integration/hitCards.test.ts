@@ -1,11 +1,12 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { DELETE as deleteRoute } from "../../app/api/seller/hit-cards/[hitCardId]/route";
+import { GET as detailRoute, DELETE as deleteRoute } from "../../app/api/seller/hit-cards/[hitCardId]/route";
+import { POST as bulkDeleteRoute } from "../../app/api/seller/hit-cards/bulk-delete/route";
 import { GET as overlayStateRoute } from "../../app/api/overlay/[token]/state/route";
 import { POST as replayRoute } from "../../app/api/seller/hit-cards/[hitCardId]/replay/route";
 import { GET as exportRoute } from "../../app/api/seller/hit-cards/export/route";
 import { GET as listRoute, POST as createRoute } from "../../app/api/seller/hit-cards/route";
 import { loginSeller } from "../../lib/server/auth/login";
-import { HIT_MESSAGES, HIT_PAGE_SIZE } from "../../lib/server/broadcast/hitCards";
+import { BULK_DELETE_MAX, getHitCard, HIT_MESSAGES, HIT_PAGE_SIZE } from "../../lib/server/broadcast/hitCards";
 import { prisma } from "../../lib/server/db";
 import { getOverlayState } from "../../lib/server/overlay/state";
 import { issueOverlayToken } from "../../lib/server/overlay/token";
@@ -54,6 +55,29 @@ const list = async (cookie: string, q = "") => {
 const remove = (cookie: string, id: string) => deleteRoute(json(`/api/seller/hit-cards/${id}`, "DELETE", cookie), { params: Promise.resolve({ hitCardId: id }) });
 
 describe("HIT 카드", () => {
+  it("직접 상세는 첫 쪽 밖 카드도 읽고 판매자·권한을 검사하며 감사나 liveVersion을 바꾸지 않는다", async () => {
+    const s = await shop(), t = await shop();
+    const old = await db.hitCard.create({ data: { sellerId: s.seller.id, nicknameSnapshot: "상세 손님", cardName: "첫 쪽 밖 카드", createdAt: new Date("2020-01-01T00:00:00Z") } });
+    for (let i = 0; i < HIT_PAGE_SIZE; i++) await db.hitCard.create({ data: { sellerId: s.seller.id, nicknameSnapshot: "a", cardName: `새 카드${i}` } });
+    expect((await list(s.owner)).body.items.map((c: { id: string }) => c.id)).not.toContain(old.id);
+    const before = await db.seller.findUniqueOrThrow({ where: { id: s.seller.id } });
+    const auditBefore = await db.auditLog.count({ where: { sellerId: s.seller.id } });
+    const get = (cookie: string, id = old.id) => detailRoute(new Request(`${BASE}/api/seller/hit-cards/${id}`, { headers: { ...H, cookie } }), { params: Promise.resolve({ hitCardId: id }) });
+    for (const cookie of [s.owner, s.runner]) {
+      const r = await get(cookie); expect(r.status).toBe(200);
+      expect((await r.json()).card).toMatchObject({ id: old.id, cardName: "첫 쪽 밖 카드", nickname: "상세 손님", order: null });
+    }
+    expect((await get(t.owner)).status).toBe(404);
+    expect((await get(s.noPerm)).status).toBe(403);
+    expect((await get(s.owner, "invalid")).status).toBe(404);
+    const readOnly: TenantContext = { sellerId: s.seller.id, actorType: "PLATFORM_ADMIN", actorId: "owned-reader", isOwner: false, permissions: [], readOnly: true, impersonationScopes: ["BROADCAST"] };
+    expect((await getHitCard(db, readOnly, old.id)).card.id).toBe(old.id);
+    await expect(getHitCard(db, { ...readOnly, impersonationScopes: ["ORDERS"] }, old.id)).rejects.toMatchObject({ status: 403 });
+    expect((await db.seller.findUniqueOrThrow({ where: { id: s.seller.id } })).liveVersion).toBe(before.liveVersion);
+    expect(await db.auditLog.count({ where: { sellerId: s.seller.id } })).toBe(auditBefore);
+    expect(await db.hitCard.count({ where: { sellerId: s.seller.id } })).toBe(HIT_PAGE_SIZE + 1);
+  });
+
   it("주문대기 항목으로 등록하면 그 닉네임·구매자·지금 방송으로 남고, 오버레이에 바로 보인다", async () => {
     const s = await shop();
     const live = await db.broadcastSession.create({ data: { sellerId: s.seller.id, status: "LIVE", title: "오늘 방송" } });
@@ -257,5 +281,60 @@ describe("HIT 카드 방송 화면 노출·다시 연출(SA-053)", () => {
     expect((await call(a.id, t.owner)).status).toBe(404);
     expect((await call(a.id, s.noPerm)).status).toBe(403);
     expect(live.id).toBeTruthy();
+  });
+});
+
+describe("HIT 카드 선택 삭제(SA-053)", () => {
+  const bulk = (cookie: string, body: unknown) => bulkDeleteRoute(json("/api/seller/hit-cards/bulk-delete", "POST", cookie, body));
+  const version = async (sellerId: string) => (await db.seller.findUniqueOrThrow({ where: { id: sellerId } })).liveVersion;
+
+  it("고른 카드를 영구 삭제하고 오버레이에서 빠진다. 방송 화면에 나가 있던 카드도 지울 수 있고 감사 기록 하나에 모은다", async () => {
+    const s = await shop();
+    await db.broadcastSession.create({ data: { sellerId: s.seller.id, status: "LIVE" } });
+    const cards = [] as { id: string }[];
+    for (const name of ["가", "나", "다"]) cards.push((await create(s.runner, { cardName: name, nickname: "닉" })).body.card);
+    await db.hitCard.update({ where: { id: cards[0].id }, data: { overlayShownAt: new Date() } }); // 이미 방송 화면에 나간 카드
+    const v0 = await version(s.seller.id);
+    const r = await bulk(s.runner, { ids: [cards[0].id, cards[1].id] });
+    expect([r.status, await r.json()]).toEqual([200, { deleted: 2, missing: 0 }]);
+    expect(await version(s.seller.id)).toBe(v0 + 1);
+    expect((await list(s.owner)).body.items.map((c: { cardName: string }) => c.cardName)).toEqual(["다"]);
+    expect((await getOverlayState(db, s.seller.id)).hits.map((h) => h.cardName)).toEqual(["다"]);
+    const audit = await db.auditLog.findMany({ where: { sellerId: s.seller.id, action: "hit_card.bulk_delete" } });
+    expect(audit).toHaveLength(1);
+    expect(audit[0].after).toEqual({ requested: 2, deleted: 2 });
+    expect((audit[0].before as { cards: { cardName: string }[] }).cards.map((c) => c.cardName).sort()).toEqual(["가", "나"]);
+  });
+
+  it("내 몰에 없는 id(다른 몰 카드 포함)는 지우지 않고 missing으로만 센다. 하나도 못 지우면 버전·감사 기록이 없다", async () => {
+    const s = await shop();
+    const t = await shop();
+    const mine = (await create(s.owner, { cardName: "내 카드", nickname: "닉" })).body.card as { id: string };
+    const theirs = (await create(t.owner, { cardName: "남의 카드", nickname: "닉" })).body.card as { id: string };
+    const ghost = "00000000-0000-4000-8000-000000000000";
+    const r = await bulk(s.owner, { ids: [mine.id, theirs.id, ghost] });
+    expect(await r.json()).toEqual({ deleted: 1, missing: 2 });
+    expect(await db.hitCard.count({ where: { id: theirs.id } })).toBe(1); // 남의 카드는 그대로
+    const v1 = await version(s.seller.id);
+    const none = await bulk(s.owner, { ids: [theirs.id, ghost] });
+    expect([none.status, await none.json()]).toEqual([200, { deleted: 0, missing: 2 }]);
+    expect(await version(s.seller.id)).toBe(v1);
+    expect(await db.hitCard.count({ where: { id: theirs.id } })).toBe(1);
+    expect(await db.auditLog.count({ where: { sellerId: s.seller.id, action: "hit_card.bulk_delete" } })).toBe(1);
+  });
+
+  it("형식 오류(배열 아님·0장·101장·uuid 아님·중복)는 400, 권한 없는 직원은 403이고 아무것도 지워지지 않는다", async () => {
+    const s = await shop();
+    const card = (await create(s.owner, { cardName: "카드", nickname: "닉" })).body.card as { id: string };
+    const many = Array.from({ length: BULK_DELETE_MAX + 1 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`);
+    for (const body of [{}, { ids: "x" }, { ids: [] }, { ids: many }, { ids: [card.id, "not-a-uuid"] }, { ids: [card.id, card.id] }]) {
+      const r = await bulk(s.owner, body);
+      expect([r.status, (await r.json()).error]).toEqual([400, "invalid_ids"]);
+    }
+    expect((await bulk(s.noPerm, { ids: [card.id] })).status).toBe(403);
+    expect(await db.hitCard.count({ where: { id: card.id } })).toBe(1);
+    // 한도 정확히 100장은 받는다(없는 id라 missing 100)
+    const ok = await bulk(s.owner, { ids: many.slice(0, BULK_DELETE_MAX) });
+    expect(await ok.json()).toEqual({ deleted: 0, missing: BULK_DELETE_MAX });
   });
 });

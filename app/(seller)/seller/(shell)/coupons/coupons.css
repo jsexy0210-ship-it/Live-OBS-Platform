@@ -95,3 +95,7 @@
     align-items: stretch;
   }
 }
+
+.cp-detail{min-width:0}
+.cp-detail .cp-period{flex-wrap:wrap}
+.cp-detail .cp-period>*{min-width:0;max-width:100%}

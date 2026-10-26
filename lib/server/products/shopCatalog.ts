@@ -339,6 +339,17 @@ export async function shopCardsInOrder(db: PrismaClient, shop: { id: string; slu
   });
 }
 
+// 구매자에게 보이는 카테고리(숨긴 카테고리·부모가 숨겨진 카테고리는 뺀다), 부모 순서 → 자기 순서. 상품 상세와 파트너스 상품 미리보기(SA-013)가 같은 규칙을 쓴다.
+export type CategoryLink = { category: { id: string; name: string; visible: boolean; sortOrder: number; parent: { visible: boolean; sortOrder: number } | null } };
+export const CATEGORY_LINK_SELECT = { id: true, name: true, visible: true, sortOrder: true, parent: { select: { visible: true, sortOrder: true } } } as const;
+export function buyerVisibleCategories(links: CategoryLink[]) {
+  return links
+    .map((c) => c.category)
+    .filter((c) => c.visible && (!c.parent || c.parent.visible))
+    .sort((a, b) => (a.parent?.sortOrder ?? a.sortOrder) - (b.parent?.sortOrder ?? b.sortOrder) || a.sortOrder - b.sortOrder)
+    .map(({ id, name }) => ({ id, name }));
+}
+
 // 상세. buyerGradeId가 있으면(로그인 회원) 그 등급, 없으면 가입 때 받는 기본 등급(가장 앞 등급)의 적립률로 적립 예정액을 보인다.
 // 적립 예정액은 표시 가격 기준 원 단위 내림 미리보기다(쿠폰·옵션 추가금·결제 수단에 따라 실제 적립액은 결제 때 정해진다).
 export async function shopProductDetail(db: PrismaClient, slug: string, productId: string, buyerGradeId?: string | null) {
@@ -350,7 +361,7 @@ export async function shopProductDetail(db: PrismaClient, slug: string, productI
     include: {
       options: { where: { deletedAt: null }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }] },
       images: { where: { kind: "GALLERY" }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }] },
-      categories: { include: { category: { select: { id: true, name: true, visible: true, sortOrder: true, parent: { select: { visible: true, sortOrder: true } } } } } },
+      categories: { include: { category: { select: CATEGORY_LINK_SELECT } } },
     },
   });
   if (!p) return null;
@@ -388,11 +399,7 @@ export async function shopProductDetail(db: PrismaClient, slug: string, productI
     }),
     detail: await publicDetailBlocks(db, shop.id, shop.slug, p.id),
     detailHtml: await publicDetailHtml(db, shop.id, shop.slug, p.id),
-    categories: p.categories
-      .map((c) => c.category)
-      .filter((c) => c.visible && (!c.parent || c.parent.visible))
-      .sort((a, b) => (a.parent?.sortOrder ?? a.sortOrder) - (b.parent?.sortOrder ?? b.sortOrder) || a.sortOrder - b.sortOrder)
-      .map(({ id, name }) => ({ id, name })),
+    categories: buyerVisibleCategories(p.categories),
     shipping: {
       freeShipping: shipping.freeShipping, baseFee: shipping.baseFee, freeOverAmount: shipping.freeOverAmount, remoteSurcharge: shipping.remoteSurcharge,
       receiveMethods: shipping.receiveMethods, dispatchDeadlineDays: shipping.dispatchDeadlineDays, returnFee: shipping.returnFee, exchangeFee: shipping.exchangeFee,
@@ -419,7 +426,7 @@ async function rewardPreviewer(db: PrismaClient, sellerId: string, buyerGradeId:
   return (base) => ({ card: one(r?.card, base), bankTransfer: one(r?.bankTransfer, base) });
 }
 
-async function rewardPreview(db: PrismaClient, sellerId: string, buyerGradeId: string | null, base: number, now: Date) {
+export async function rewardPreview(db: PrismaClient, sellerId: string, buyerGradeId: string | null, base: number, now: Date) {
   return (await rewardPreviewer(db, sellerId, buyerGradeId, now))?.(base) ?? null;
 }
 

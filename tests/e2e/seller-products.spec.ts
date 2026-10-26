@@ -126,7 +126,7 @@ async function checkFormPreview(page: Page, phase: "new" | "edit", name: string,
   await page.setViewportSize({ width: 1440, height: 900 });
 }
 
-for (const surface of ["수정 화면", "목록 빠른 변경"] as const) {
+for (const surface of ["수정 화면", "상품 작업 상세"] as const) {
   test(`상품 판매가 ${surface}: 오래된 값은 덮어쓰지 않고 재조회 후 다시 저장한다`, async ({ page }) => {
     await login(page);
     const name = track(`가격충돌 ${surface} ${stamp}`);
@@ -137,7 +137,17 @@ for (const surface of ["수정 화면", "목록 빠른 변경"] as const) {
     }, name);
     const isForm = surface === "수정 화면";
     await page.goto(isForm ? `/seller/products/${product.id}` : `/seller/products?q=${encodeURIComponent(name)}`);
-    const row = page.getByTestId("product-row").filter({ hasText: name });
+    if (!isForm) {
+      const link = page.getByTestId("product-row").filter({ hasText: name }).getByRole("link", { name: "수정", exact: true });
+      const list = new URL(page.url());
+      const expectedReturnTo = `/seller/products?${new URLSearchParams({ q: name })}`;
+      const href = `/seller/products/${product.id}/operations?${new URLSearchParams({ returnTo: expectedReturnTo })}`;
+      await expect(link).toHaveAttribute("href", href);
+      await link.click();
+      await expect(page).toHaveURL(new URL(href, list).href);
+      await expect(page.getByTestId("product-detail-operations")).toBeVisible();
+    }
+    const row = page.getByTestId("product-detail-operations");
     const input = isForm ? page.getByLabel("판매가") : row.getByRole("textbox", { name: /가격$/ });
     if (!isForm) await row.getByRole("button", { name: /가격 변경/ }).click();
     await expect(input).toHaveValue("1000");
@@ -594,14 +604,14 @@ test("권한이 하나도 없는 직원에게는 권한이 필요한 메뉴가 �
 });
 
 for (const [email, allowed] of [[OWNER, true], [VIEWER, false]] as const) {
-  test(`재고 수정: ${allowed ? "대표자" : "상품 권한 없는 직원"}의 경로·권한과 세 폭 화면을 확인한다`, async ({ page }) => {
+  for (const width of [1440, 1024, 390]) {
+  test(`재고 수정: ${allowed ? "대표자" : "상품 권한 없는 직원"}의 경로·권한과 ${width}px 화면을 확인한다`, async ({ page }) => {
     await login(page, email);
     await page.goto("/seller/products/stock");
     await expect(page).toHaveURL(/\/seller\/products\/stock$/);
     const options = await page.request.get("/api/seller/products/options?limit=200");
     expect(options.status()).toBe(allowed ? 200 : 403);
     if (allowed) await expect(page.getByTestId("stock-row").first()).toBeVisible();
-    for (const width of [1440, 1024, 390]) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
       const crumb = page.locator(".loc-bar .crumb");
       await expect(crumb).toHaveText("상품›재고›재고 수정");
@@ -647,7 +657,7 @@ for (const [email, allowed] of [[OWNER, true], [VIEWER, false]] as const) {
           expect(await tableWrap.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeGreaterThan(0);
           await tableWrap.evaluate((el) => { el.scrollLeft = el.scrollWidth - el.clientWidth; });
           for (const [suffix, closeLabel] of [[/ 이력$/, "닫기"], [/ 빼기 · 더하기$/, "취소"]] as const) {
-            const button = row.getByRole("button", { name: suffix });
+            const button = closeLabel === "취소" ? row.getByRole("link", { name: suffix }) : row.getByRole("button", { name: suffix });
             await expect(button).toBeVisible();
             await expect(button).toBeEnabled();
             const bounds = await button.evaluate((el) => {
@@ -658,7 +668,7 @@ for (const [email, allowed] of [[OWNER, true], [VIEWER, false]] as const) {
             expect(bounds.left).toBeGreaterThanOrEqual(bounds.wrapLeft);
             expect(bounds.right).toBeLessThanOrEqual(bounds.wrapRight);
             await button.click();
-            const dialog = page.getByRole("dialog");
+            const dialog = closeLabel === "취소" ? page.locator("section[aria-labelledby=adj-title]") : page.getByRole("dialog");
             await expect(dialog).toBeVisible();
             if (closeLabel === "취소") await expect(dialog.getByRole("radiogroup", { name: "빼기 또는 더하기" })).toBeVisible();
             await dialog.getByRole("button", { name: closeLabel, exact: true }).click();
@@ -674,9 +684,9 @@ for (const [email, allowed] of [[OWNER, true], [VIEWER, false]] as const) {
         await expect(crumb.getByRole("link")).toHaveCount(0);
       }
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
-    }
     await shot(page, allowed ? "SA-014-title-owner" : "SA-014-title-no-permission", true);
   });
+  }
 }
 
 test("상품 권한이 없는 직원은 권한 안내를 본다", async ({ page }) => {

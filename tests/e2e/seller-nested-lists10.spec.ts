@@ -16,7 +16,7 @@ const evidence = "tests/e2e/screenshots/current-shell-" + sha;
 let db: PrismaClient, sellerId: string | undefined, ownerId: string | undefined;
 const slug = "nested-" + run, names = Array.from({length:23},(_,i)=>"합성 등급 회원 " + run + "-" + i);
 test.beforeAll(async ({}, info) => {
-  expect(process.env.CI).toBe("true"); expect(process.env.GITHUB_JOB).toBe("e2e-smoke");
+  expect(process.env.CI).toBe("true"); expect(["e2e-smoke", "e2e-full"]).toContain(process.env.GITHUB_JOB);
   expect(process.env.NODE_ENV).not.toBe("production"); expect(info.config.workers).toBe(1);
   const url=assertTestDatabaseUrl(process.env.DATABASE_URL), base=new URL(String(info.project.use.baseURL));
   expect(new URL(url).hostname).toMatch(/^(localhost|127\.0\.0\.1)$/); expect(new URL(url).pathname).toBe("/live_obs_test");

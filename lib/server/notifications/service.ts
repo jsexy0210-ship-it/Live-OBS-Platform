@@ -3,6 +3,7 @@ import type { AdminSessionContext } from "../auth/session";
 import { forbidden } from "../authz/errors";
 import { adminCan, IMPERSONATION_READ_ACTIONS, sellerCan, type SellerAction } from "../authz/permissions";
 import { shortageTitle } from "../messaging/shortage";
+import { targetedFor } from "../platform-notices/service";
 import type { TenantContext } from "../tenant/context";
 
 // 알림 센터(파트너스 SA-130 · 마스터 MA-002). 알림은 공지·문의에서 바로 만들어 주고 따로 쌓지 않는다(메일·알림톡 발송 없음).
@@ -39,7 +40,7 @@ export async function listSellerNotifications(db: PrismaClient, ctx: TenantConte
   const seeOrders = canSee(ctx, "ORDER_SHIPPING");
   const [notices, inquiries, deposits, paid, stock, returns, shortages] = await Promise.all([
     db.platformNotice.findMany({
-      where: { deletedAt: null, publishedAt: { gte: new Date(now.getTime() - NOTICE_DAYS * DAY), not: null }, audience: { in: ["PARTNERS", "ALL"] } },
+      where: { deletedAt: null, publishedAt: { gte: new Date(now.getTime() - NOTICE_DAYS * DAY), not: null }, audience: { in: ["PARTNERS", "ALL"] }, ...targetedFor(ctx.sellerId) },
       orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
       take: LIMIT,
       select: { id: true, title: true, publishedAt: true },

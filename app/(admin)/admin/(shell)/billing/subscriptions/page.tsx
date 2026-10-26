@@ -2,16 +2,18 @@
 
 import Link from "next/link";
 import { CursorPagination } from "../../../../../../components/Pagination";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { DateRangePicker, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { MAX_SEARCH_LENGTH } from "../../../../../../components/seller/format";
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar } from "../../../_components/AdminShell";
 import { PLAN_FILTER, SUBSCRIPTION_STATUS, day, dayTime, type PlanRef, type SubscriptionStatus } from "../../../_components/partners";
+import { useUrlState } from "../../../../../../lib/client/navigation";
+import { recentRange } from "../../../../../../lib/client/dateInput";
 
-// MA-023 구독 현황(GET /api/admin/subscriptions, 모든 마스터 역할, 조회만). 이용 상태별 탭과 쇼핑몰 이름·주소 검색, 요금제 필터.
-// 탭은 서버의 이용 상태 5가지와 1:1이다(체험·이용 중·결제 처리 중·연체·해지). 숫자는 검색·요금제 필터 전 전체 수.
+// MA-023 구독 현황(GET /api/admin/subscriptions, 모든 마스터 역할, 조회만). 복수 상태·다음 결제일·쇼핑몰 이름·주소·요금제 필터.
+// 상태 체크는 서버의 7가지 필터를 OR로 조회한다. 잠금·해지 예정은 이용 상태와 겹치므로 전체 수에는 기본 5상태만 더한다.
 type Access = "trial" | "paid" | "charging" | "grace" | "expired";
 const ACCESS: Record<Access, { label: string; cls: string }> = {
   trial: { label: "체험", cls: "b-info" },
@@ -21,9 +23,14 @@ const ACCESS: Record<Access, { label: string; cls: string }> = {
   expired: { label: "해지", cls: "b-gray" },
 };
 const TABS: Access[] = ["trial", "paid", "charging", "grace", "expired"];
+type Status = Access | "locked" | "cancelling";
+const STATUS: Record<Status, string> = { trial: "체험", paid: "이용 중", charging: "결제 진행 중", grace: "유예", locked: "잠금", cancelling: "해지 예정", expired: "해지" };
+const STATUSES: Status[] = ["trial", "paid", "charging", "grace", "locked", "cancelling", "expired"];
 type Row = {
   seller: { id: string; slug: string; shopName: string; status: string };
   access: Access;
+  locked: boolean;
+  cancelling: boolean;
   plan: PlanRef | null;
   trialEndsAt: string | null;
   subscription: {
@@ -36,26 +43,55 @@ type Row = {
     retryCount: number;
   } | null;
 };
-type Page = { counts: Record<Access, number>; subscriptions: Row[]; nextCursor: string | null };
+type Page = { counts: Record<Status, number>; subscriptions: Row[]; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; items: Row[]; next: string | null };
-type Filters = { access: Access | ""; q: string; plan: string };
+type Filters = { access: string; q: string; plan: string; nextFrom: string; nextTo: string; period: string };
 const PAGE = 10;
-const EMPTY: Filters = { access: "", q: "", plan: "" };
+function defaultFilters(): Filters {
+  const range = recentRange(1);
+  return { access: "", q: "", plan: "", nextFrom: range.from, nextTo: range.to, period: "" };
+}
 
 function query(f: Filters, cursor?: string) {
   const p = new URLSearchParams({ limit: String(PAGE) });
   if (f.access) p.set("access", f.access);
   if (f.q) p.set("q", f.q);
   if (f.plan) p.set("plan", f.plan);
+  if (f.period !== "all" && f.nextFrom) p.set("nextFrom", f.nextFrom);
+  if (f.period !== "all" && f.nextTo) p.set("nextTo", f.nextTo);
   if (cursor) p.set("cursor", cursor);
   return p.toString();
 }
 
-export default function SubscriptionsPage() {
-  const [draft, setDraft] = useState({ q: "", plan: "" });
-  const [applied, setApplied] = useState<Filters>(EMPTY);
+function Subscriptions() {
+  const [defaults] = useState(defaultFilters);
+  const [urlApplied, setUrl] = useUrlState<Filters>(defaults);
+  const [selectedAccess, setSelectedAccess] = useState(urlApplied.access);
+  const selected = useRef(urlApplied.access);
+  const [pending, startTransition] = useTransition();
+  const [draft, setDraft] = useState<Filters>(urlApplied);
+  const mine = useRef<string | null>(null);
+  const urlKey = JSON.stringify(urlApplied);
+  useEffect(() => {
+    // 이동 중인 자기 URL이 최신 선택·입력 초안을 덮지 않도록 완료 뒤에 동기화한다.
+    if (pending) return;
+    selected.current = urlApplied.access;
+    setSelectedAccess(urlApplied.access);
+    if (mine.current === urlKey) { mine.current = null; return; }
+    setDraft(JSON.parse(urlKey) as Filters);
+  }, [urlKey, pending]);
+  const applied = useMemo(() => {
+    const filters = JSON.parse(urlKey) as Filters;
+    return { ...filters, access: STATUSES.filter((status) => filters.access.split(",").includes(status)).join(",") };
+  }, [urlKey]);
+  const setApplied = (next: Filters) => {
+    selected.current = next.access;
+    setSelectedAccess(next.access);
+    mine.current = JSON.stringify(next);
+    startTransition(() => setUrl(next));
+  };
   const [state, setState] = useState<Load>({ kind: "loading" });
-  const [counts, setCounts] = useState<Record<Access, number> | null>(null);
+  const [counts, setCounts] = useState<Record<Status, number> | null>(null);
   const [more, setMore] = useState(false);
   const [page, setPage] = useState(1);
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
@@ -99,10 +135,11 @@ export default function SubscriptionsPage() {
   };
 
   const items = state.kind === "ok" ? state.items : [];
-  const filtered = applied.access !== "" || applied.q !== "" || applied.plan !== "";
+  const filtered = applied.access !== "" || applied.q !== "" || applied.plan !== "" || applied.period !== "all";
   const reset = () => {
-    setDraft({ q: "", plan: "" });
-    setApplied(EMPTY);
+    const next = defaultFilters();
+    setDraft(next);
+    setApplied(next);
   };
 
   return (
@@ -120,20 +157,27 @@ export default function SubscriptionsPage() {
             </div>
           ))}
         </div>
-        <div style={{ maxWidth: "100%", overflowX: "auto" }}>
-          <nav className="tabs" aria-label="이용 상태" style={{ minWidth: "max-content" }}>
-            <button type="button" className={`tab${applied.access === "" ? " on" : ""}`} aria-pressed={applied.access === ""} onClick={() => setApplied({ ...applied, access: "" })}>
+        <SearchBox onSearch={() => {
+          if (draft.period !== "all" && draft.nextFrom && draft.nextTo && draft.nextFrom > draft.nextTo) return setToast("시작일을 종료일보다 앞 날짜로 바꿔 주세요.");
+          setApplied({ ...draft, access: selected.current, q: draft.q.trim() });
+        }} onReset={reset} busy={state.kind === "loading"}>
+          <SearchRow label="상태">
+            <div className="row" role="group" aria-label="이용 상태" style={{ gap: 16, flexWrap: "wrap" }}>
+            <button type="button" className="btn btn-sm btn-out" aria-pressed={selectedAccess === ""} onClick={() => setApplied({ ...applied, access: "" })}>
               전체{counts ? ` ${TABS.reduce((n, a) => n + counts[a], 0).toLocaleString("ko-KR")}` : ""}
             </button>
-            {TABS.map((a) => (
-              <button key={a} type="button" className={`tab${applied.access === a ? " on" : ""}`} aria-pressed={applied.access === a} onClick={() => setApplied({ ...applied, access: a })}>
-                {ACCESS[a].label}
+            {STATUSES.map((a) => (
+              <label key={a} className="chk">
+                <input type="checkbox" checked={selectedAccess.split(",").includes(a)} onChange={(e) => setApplied({ ...applied, access: STATUSES.filter((status) => status === a ? e.target.checked : selected.current.split(",").includes(status)).join(",") })} />
+                {STATUS[a]}
                 {counts ? ` ${counts[a].toLocaleString("ko-KR")}` : ""}
-              </button>
+              </label>
             ))}
-          </nav>
-        </div>
-        <SearchBox onSearch={() => setApplied({ ...applied, q: draft.q.trim(), plan: draft.plan })} onReset={reset} busy={state.kind === "loading"}>
+            </div>
+          </SearchRow>
+          <SearchRow label="다음 결제일">
+            <DateRangePicker fromLabel="다음 결제 시작일" toLabel="다음 결제 종료일" from={draft.period === "all" ? "" : draft.nextFrom} to={draft.period === "all" ? "" : draft.nextTo} quick onChange={({ from, to }) => setDraft({ ...draft, nextFrom: from, nextTo: to, period: !from && !to ? "all" : "" })} />
+          </SearchRow>
           <SearchRow label="검색어" label2="요금제" children2={
             <select className="inp" aria-label="요금제" value={draft.plan} onChange={(e) => setDraft({ ...draft, plan: e.target.value })}>
               <option value="">전체</option>
@@ -188,12 +232,13 @@ export default function SubscriptionsPage() {
                             <span className="c-alt"> · 쇼핑몰 주소 {r.seller.slug}</span>
                           </td>
                           <td>
-                            <span className={`bdg ${ACCESS[r.access].cls}`}>{ACCESS[r.access].label}</span>
+                            <span className={`bdg ${r.locked ? "b-fail" : ACCESS[r.access].cls}`}>{r.locked ? "잠금" : ACCESS[r.access].label}</span>
+                            {r.cancelling && <span className="bdg b-warn" style={{ marginLeft: 6 }}>해지 예정</span>}
                           </td>
                           <td>{r.plan?.name ?? "-"}</td>
                           <td className="num">{day(r.trialEndsAt)}</td>
                           <td className="num">{day(r.subscription?.currentPeriodEnd ?? null)}</td>
-                          <td className="num">{r.subscription?.cancelAtPeriodEnd ? "해지 예정" : dayTime(r.subscription?.nextChargeAt ?? null)}</td>
+                          <td className="num">{r.cancelling ? "해지 예정" : dayTime(r.subscription?.nextChargeAt ?? null)}</td>
                           <td>{r.subscription?.cardLabel ?? "-"}</td>
                           <td>{r.subscription ? <span className={`bdg ${SUBSCRIPTION_STATUS[r.subscription.status].cls}`}>{SUBSCRIPTION_STATUS[r.subscription.status].label}</span> : "구독 없음"}</td>
                           <td className="num">
@@ -217,4 +262,8 @@ export default function SubscriptionsPage() {
       {toast && <Toast text={toast} neg onDone={() => setToast(null)} />}
     </>
   );
+}
+
+export default function SubscriptionsPage() {
+  return <Suspense fallback={null}><Subscriptions /></Suspense>;
 }

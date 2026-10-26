@@ -60,15 +60,26 @@ async function login(page: Page, email: string) {
   await expect(page).toHaveURL(/\/admin$/);
 }
 
-async function search(page: Page, q: string) {
+async function search(page: Page, q: string, field = "all") {
   await page.goto("/admin/partners");
+  await expect(page.getByRole("button", { name: "검색", exact: true })).toBeEnabled();
+  await page.getByLabel("검색 칸", { exact: true }).selectOption(field);
   await page.getByLabel("검색어", { exact: true }).fill(q);
+  const loaded = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return response.request().method() === "GET" && url.pathname === "/api/admin/sellers" && url.searchParams.get("q") === q && (url.searchParams.get("field") ?? "all") === field;
+  });
   await page.getByRole("button", { name: "검색", exact: true }).click();
+  const response = await loaded;
+  expect(response.status()).toBe(200);
+  expect(await response.finished()).toBeNull();
+  const query = new URLSearchParams({ q, ...(field === "all" ? {} : { field }) });
+  await expect(page).toHaveURL(`/admin/partners?${query}`);
 }
 
 test("최고관리자: 검색·상태 필터로 찾고, 이용 정지는 사유가 있어야 하며, 정지·해제가 목록과 DB에 반영된다", async ({ page }) => {
   await login(page, emails.super);
-  await search(page, run);
+  await search(page, slugA, "slug");
   // 가입 신청 중·반려는 기본 목록에 없다(가입 신청 화면에서 본다, MA-011). 승인된 시험몰만 나온다
   await expect(page.getByTestId("partner-row")).toHaveCount(1);
   await expect(page.getByTestId("partner-row")).toContainText(slugA);
@@ -78,7 +89,7 @@ test("최고관리자: 검색·상태 필터로 찾고, 이용 정지는 사유�
   await expect(page.getByTestId("partner-row")).toHaveCount(1);
   await expect(page.getByTestId("partner-row")).toContainText(slugA);
   await page.getByRole("button", { name: "초기화" }).click();
-  await search(page, slugA);
+  await search(page, slugA, "slug");
   const row = page.getByTestId("partner-row");
   await expect(row).toHaveCount(1);
   await expect(row).toContainText("정상");
@@ -177,7 +188,8 @@ test("목록: 요약 칩 건수가 서버 값과 같고, 칩·정렬·쪽 크기
   await page.getByRole("button", { name: /^정상 \d+$/ }).click();
   await expect(page).toHaveURL(/state=NORMAL/);
   await expect(page.getByRole("button", { name: /^정상 \d+$/ })).toHaveAttribute("aria-pressed", "true");
-  for (const text of await page.getByTestId("partner-row").locator("td:nth-child(3)").allInnerTexts()) expect(text).toBe("정상");
+  // 최고관리자는 첫 칸이 선택 체크 열이라 상태는 네 번째 칸이다(선택 메모 일괄, 체크 열은 최고관리자·운영만)
+  for (const text of await page.getByTestId("partner-row").locator("td:nth-child(4)").allInnerTexts()) expect(text).toBe("정상");
 
   await page.getByLabel("정렬").selectOption("orders");
   await page.getByLabel("쪽 크기").selectOption("10");
@@ -246,4 +258,31 @@ test("상세 탭: 구독(상태 이력·청구 상세·누적), 쇼핑몰(설정
   await expect(ord.getByText("조건에 맞는 주문이 없습니다.")).toBeVisible();
   await ord.getByRole("button", { name: "초기화" }).click();
   await expect(row).toHaveCount(1);
+});
+
+test("선택 메모 일괄: 체크한 파트너스에 같은 메모가 남고, 고객 지원(CS)에게는 체크 열과 버튼이 없다", async ({ page }) => {
+  const text = `일괄 메모 ${run}`;
+  await login(page, emails.super);
+  await search(page, slugA);
+  const row = page.getByTestId("partner-row");
+  await expect(row).toHaveCount(1);
+  const bulk = page.getByRole("link", { name: /^선택 메모 추가/ });
+  await expect(bulk).toBeDisabled(); // 고르기 전에는 못 누른다
+  await row.getByRole("checkbox", { name: `${nameA} 선택` }).check();
+  await expect(bulk).toBeEnabled();
+  await bulk.click();
+  const dialog = page.locator("main section").filter({ has: page.getByLabel("메모", { exact: true }) });
+  await expect(dialog.getByRole("heading", { name: "선택한 1곳에 메모를 남기시겠습니까?" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "메모 남기기" })).toBeDisabled(); // 메모를 적어야 켜진다
+  await dialog.getByLabel("메모").fill(text);
+  await dialog.getByRole("button", { name: "메모 남기기" }).click();
+  await expect(page.getByText("1곳에 메모를 남겼습니다 · 0곳은 남기지 못했습니다.")).toBeVisible();
+  expect(await db.sellerAdminNote.count({ where: { sellerId: idA, body: text } })).toBe(1);
+
+  await page.context().clearCookies();
+  await login(page, emails.cs);
+  await search(page, slugA);
+  await expect(page.getByTestId("partner-row")).toHaveCount(1);
+  await expect(page.getByRole("checkbox", { name: "이 쪽 전체 선택" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /^선택 메모 추가/ })).toHaveCount(0);
 });

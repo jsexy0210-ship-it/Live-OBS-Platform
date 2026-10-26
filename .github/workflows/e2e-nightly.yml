@@ -11,12 +11,13 @@ on:
   workflow_dispatch:
     inputs:
       suite:
-        description: "시험 묶음 (list-pagination은 start 프로젝트 21건)"
+        description: "시험 묶음 (목록·페이지 이동 또는 잔액 조정 선택 가능)"
         type: choice
         default: full
         options:
           - full
           - list-pagination
+          - reward-adjust
 
 permissions:
   contents: read
@@ -54,7 +55,7 @@ jobs:
       - name: Validate suite
         run: |
           case "$E2E_SUITE" in
-            full|list-pagination) ;;
+            full|list-pagination|reward-adjust) ;;
             *) echo "지원하지 않는 시험 묶음입니다."; exit 1 ;;
           esac
 
@@ -123,6 +124,21 @@ jobs:
         run: |
           set -o pipefail
           npx playwright test -c tests/e2e/playwright.config.ts --project=start common-list-existing-pages pagination-existing-pages --grep 'existing products|/admin/partners|/admin/billing/invoices|/seller/inquiries|/seller/notices' 2>&1 | tee "$RUNNER_TEMP/e2e.log"
+
+      - name: E2E reward-adjust (7 tests)
+        if: env.E2E_SUITE == 'reward-adjust'
+        run: |
+          set -o pipefail
+          npx playwright test -c tests/e2e/playwright.config.ts --project=start seller-reward-balances.spec.ts 2>&1 | tee "$RUNNER_TEMP/e2e.log"
+
+      - name: Upload full or reward-adjust failure DOM
+        if: failure() && (env.E2E_SUITE == 'full' || env.E2E_SUITE == 'reward-adjust')
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure-dom-${{ github.sha }}
+          path: test-results/
+          retention-days: 3
+          if-no-files-found: warn
 
       - name: Upload list-pagination evidence
         if: always() && env.E2E_SUITE == 'list-pagination'

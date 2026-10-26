@@ -1,7 +1,8 @@
 "use client";
 
-import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
+import { confirmLeave, sanitizeNext, useSmartBack, useUnsavedGuard } from "../../../../../../lib/client/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { PageHead } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../../components/seller/States";
@@ -16,20 +17,34 @@ import { MEMBER_STATUS, memberDay, phoneText, type MemberDetail } from "../../..
 
 // SA-042 회원 상세: 등급·상태·주문 수·누적 결제·적립금 잔액 + 등급 직접 조정 + 구매 제한(현황·직접 걸기·풀기) + 회원 메모 + 주문 목록 + 적립금 내역.
 // GET /api/seller/members/{id}, 회원·적립금 권한. 주문 목록은 주문·배송 권한이 없으면 안내만 보인다.
-export default function MemberDetailPage() {
+function MemberDetailContent() {
+  const query = useSearchParams();
+  const allowedLists = ["/seller/members", "/seller/purchase-restrictions", "/seller/member-grades"];
+  const safeReturnTo = sanitizeNext(query.get("returnTo"), allowedLists);
+  const listHref = safeReturnTo && allowedLists.includes(safeReturnTo.split("?")[0]) ? safeReturnTo : "/seller/members";
+  const generation = useRef(0);
+  const [gradeDirty, setGradeDirty] = useState(false);
+  const [restrictionDirty, setRestrictionDirty] = useState(false);
+  const releaseGuard = useUnsavedGuard(gradeDirty || restrictionDirty);
+  const releaseGrade = useCallback(async () => { if (!restrictionDirty) await releaseGuard(); }, [restrictionDirty, releaseGuard]);
+  const releaseRestriction = useCallback(async () => { if (!gradeDirty) await releaseGuard(); }, [gradeDirty, releaseGuard]);
+  const back = useSmartBack(listHref);
+  const leave = async () => { if (!confirmLeave(gradeDirty || restrictionDirty)) return; await releaseGuard(); back(); };
   const { memberId } = useParams<{ memberId: string }>();
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; member: MemberDetail }>({ kind: "loading" });
   const [toast, setToast] = useState<string | null>(null);
 
   const load = useCallback(
     async (quiet = false) => {
+      const request = ++generation.current;
       if (!quiet) setState({ kind: "loading" });
       const r = await api<{ member: MemberDetail }>(`/api/seller/members/${encodeURIComponent(memberId)}`);
+      if (request !== generation.current) return;
       setState(r.ok ? { kind: "ok", member: r.data.member } : { kind: "error", status: r.status });
     },
     [memberId],
   );
-  useEffect(() => void load(), [load]);
+  useEffect(() => { void load(); return () => { generation.current++; }; }, [load]);
 
   const m = state.kind === "ok" ? state.member : null;
 
@@ -38,6 +53,8 @@ export default function MemberDetailPage() {
       <Topbar crumb="판매 › 회원 › 회원 상세" />
       <main className="main">
         <PageHead
+          back={listHref}
+          onBack={leave}
           title={m ? (m.broadcastNickname ?? "닉네임 없음") : "회원 상세"}
         />
 
@@ -105,6 +122,8 @@ export default function MemberDetailPage() {
               {m.name === undefined && <span className="t-c1 c-alt">이름 · 휴대폰은 개인정보 열람 권한이 있어야 볼 수 있습니다.</span>}
             </section>
             <MemberGradeAdjust
+              onDirty={setGradeDirty}
+              releaseExternal={releaseGrade}
               memberId={m.id}
               currentGradeId={m.grade?.id ?? null}
               active={m.status === "ACTIVE"}
@@ -113,7 +132,7 @@ export default function MemberDetailPage() {
                 await load(true);
               }}
             />
-            <MemberRestriction memberId={m.id} onChanged={(text) => setToast(text)} />
+            <MemberRestriction key={m.id} onLiftDirty={setRestrictionDirty} releaseLiftExternal={releaseRestriction} memberId={m.id} nickname={m.broadcastNickname} onChanged={(text) => setToast(text)} />
             <MemberMemo memberId={m.id} onSaved={(text) => setToast(text)} />
             <MemberOrders memberId={m.id} />
             <MemberRewards memberId={m.id} />
@@ -124,3 +143,5 @@ export default function MemberDetailPage() {
     </>
   );
 }
+
+export default function MemberDetailPage() { return <Suspense><MemberDetailContent /></Suspense>; }

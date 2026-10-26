@@ -47,7 +47,6 @@ test("파트너스 로그인·주문 화면, 쇼핑몰 화면, 루트(/)가 원�
 
   await page.goto("/seller/login");
   await expectWantedSans(page);
-  await page.waitForLoadState("networkidle");
   // 첫 화면(로그인)에서 받은 서체 파일 용량 합계
   const first = (await Promise.all(font.map((f) => f.size))).reduce((a, b) => a + b, 0);
   console.log(`첫 화면 서체: 파일 ${font.length}개, ${Math.round(first / 1024)}KB`);

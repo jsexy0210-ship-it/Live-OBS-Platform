@@ -52,6 +52,32 @@ export async function apiUpload<T>(path: string, file: Blob, init: { method?: "P
   return { ok: false, status: res.status, error: body.error ?? "unknown", message: body.message ?? readOnlyMessage(res.status, body.error), body };
 }
 
+// 파일(CSV 등)을 받는 요청. 성공이면 본문 바이트(blob)를 돌려주고, 실패 응답(JSON)의 처리(로그인 만료 이동 · 이용 정지 안내 · 요금제 안내)는 api()와 같다.
+export async function apiDownload(path: string, init: { method?: string; body?: unknown } = {}): Promise<{ ok: true; status: number; blob: Blob } | { ok: false; status: number; error: string; message?: string }> {
+  const visit = navGeneration;
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      method: init.method ?? "GET",
+      headers: init.body === undefined ? undefined : { "content-type": "application/json" },
+      body: init.body === undefined ? undefined : JSON.stringify(init.body),
+      cache: "no-store",
+    });
+  } catch {
+    return { ok: false, status: 0, error: "network" };
+  }
+  if (res.ok) return { ok: true, status: res.status, blob: await res.blob() };
+  const body = ((await res.json().catch(() => ({}))) as { error?: string; message?: string } & Record<string, unknown>) ?? {};
+  if (res.status === 401 && path.startsWith("/api/seller/") && !path.startsWith("/api/seller/auth/")) {
+    window.location.assign(`/seller/login?next=${encodeURIComponent(window.location.pathname)}&reason=expired`);
+  }
+  if (res.status === 403 && body.error === "seller_suspended" && path.startsWith("/api/seller/") && window.location.pathname !== "/seller/suspended") {
+    window.location.assign("/seller/suspended");
+  }
+  notifyPlanFeature(path, visit, res.status, body.error);
+  return { ok: false, status: res.status, error: body.error ?? "unknown", message: body.message ?? readOnlyMessage(res.status, body.error) };
+}
+
 // 마스터 대리 조회 중 허용 밖 요청(403 impersonation_read_only): 오류 화면 대신 이 안내를 보인다
 function readOnlyMessage(status: number, error: string | undefined): string | undefined {
   return status === 403 && error === "impersonation_read_only" ? "대신 보기 중에는 볼 수 없습니다" : undefined;

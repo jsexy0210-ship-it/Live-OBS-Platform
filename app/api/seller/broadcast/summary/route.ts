@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSeller } from "../../../../../lib/server/authz/guards";
 import { broadcastSummary } from "../../../../../lib/server/broadcast/summary";
+import { maskBroadcastSummary } from "../../../../../lib/server/broadcast/maskReadOnly";
 import { prisma } from "../../../../../lib/server/db";
 import { errorResponse, noStore, sessionToken } from "../../../../../lib/server/http/route";
 
@@ -10,7 +11,7 @@ import { errorResponse, noStore, sessionToken } from "../../../../../lib/server/
 export async function GET(req: Request) {
   try {
     const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "OVERLAY" });
-    return noStore(NextResponse.json(await broadcastSummary(prisma, ctx)));
+    return noStore(NextResponse.json((ctx.readOnly ? maskBroadcastSummary : (v: unknown) => v)(await broadcastSummary(prisma, ctx))));
   } catch (e) {
     return errorResponse(e);
   }

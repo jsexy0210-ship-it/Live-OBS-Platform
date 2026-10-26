@@ -182,6 +182,7 @@ model Seller {
   shopBanners              ShopBanner[]
   shopPopups               ShopPopup[]
   integrationProfile       SellerIntegrationProfile?
+  shippingAutomation       SellerShippingAutomation?
   // 「모든 팝업 잠시 끄기」(SA-065): 끈 시각과 끈 직원. null이면 켜짐.
   popupsPausedAt           DateTime?    @db.Timestamptz(3)
   popupsPausedById         String?      @db.Uuid
@@ -1279,6 +1280,7 @@ model Order {
   refundRequests   RefundRequest[]
   receiptRequests  OrderReceiptRequest[]
   buyerInquiries   BuyerInquiry[]
+  memo             OrderMemo?
 
   @@unique([sellerId, id])
   @@unique([sellerId, orderNo])
@@ -2068,6 +2070,22 @@ model MemberMemo {
   @@unique([sellerId, buyerMemberId])
 }
 
+// 파트너스 주문 메모(SA-021 「메모 남기기」, ORDER_SHIPPING). 주문마다 1건을 덮어쓰고 작성자·수정 시각을 남긴다.
+// 자유 입력이라 개인정보가 섞일 수 있어 회원 탈퇴 때 그 회원의 주문 메모를 지운다(buyers/withdraw.ts).
+model OrderMemo {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId    String   @db.Uuid
+  orderId     String   @db.Uuid
+  body        String
+  updatedById String?  @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  order Order @relation(fields: [sellerId, orderId], references: [sellerId, id], onDelete: Cascade)
+
+  @@unique([sellerId, orderId])
+}
+
 // 주문 알림 발송 기록(중복 발송 방지). 주문·종류마다 1행. 보내기 전에 PENDING으로 먼저 잡고(claim), 보낸 뒤 SENT·FAILED로 바꾼다.
 // 실패했거나 PENDING으로 오래 멈춘 기록은 시도 횟수 안에서 다시 잡을 수 있다(lib/server/orders/notifications.ts).
 enum OrderNotificationKind {
@@ -2757,6 +2775,8 @@ model BulkJob {
   errors            Json          @default("{}")
   payload           Json          @default("[]")
   createdProductIds Json          @default("[]")
+  // 확정으로 기존 상품의 판매가·재고를 바꾼 기록 [{ productId, name, price: { before, after } | null, stock: [{ optionId, name, delta }] }]. 되돌릴 때 쓴다.
+  updatedProducts   Json          @default("[]")
   failures          Json          @default("[]")
   keptCount         Int           @default(0)
   // 내보내기: 내보내는 사유(회원 내보내기), 기간·개인정보 포함 여부 등 조건(meta)
@@ -3424,6 +3444,11 @@ enum PlatformNoticeAudience {
 
 // 마스터 관리자가 쓰는 플랫폼 공지. publishedAt이 null이면 임시 저장(어디에도 안 보임). 지우면 deletedAt(목록·조회에서 빠짐).
 // 작성·수정 관리자는 id만 남긴다(로그 추적에 전후가 남음). version은 다른 창 덮어쓰기 막기.
+enum PlatformNoticeTargetMode {
+  ALL
+  SPECIFIC
+}
+
 model PlatformNotice {
   id               String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   title            String
@@ -3439,11 +3464,26 @@ model PlatformNotice {
   updatedAt        DateTime               @default(now()) @updatedAt @db.Timestamptz(3)
   deletedAt        DateTime?              @db.Timestamptz(3)
 
-  reads PlatformNoticeRead[]
-  files PlatformNoticeFile[]
+  reads   PlatformNoticeRead[]
+  files   PlatformNoticeFile[]
+  targets PlatformNoticeTarget[]
+  targetMode PlatformNoticeTargetMode @default(ALL)
 
   @@index([publishedAt(sort: Desc), id(sort: Desc)])
   @@index([createdAt(sort: Desc), id(sort: Desc)])
+}
+
+// 공지 대상 파트너스(MA-053·054). targetMode ALL은 전체, SPECIFIC은 이 표에 지정한 파트너스만 본다(빈 SPECIFIC은 아무에게도 보이지 않는다).
+// 공지를 지우면(하드 삭제) 같이 지운다. 파트너스는 소프트 삭제라 따로 정리하지 않는다.
+model PlatformNoticeTarget {
+  noticeId  String   @db.Uuid
+  sellerId  String   @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  notice PlatformNotice @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+
+  @@id([noticeId, sellerId])
+  @@index([sellerId, noticeId])
 }
 
 // 공지 첨부 파일(MA-053·054, 마스터 관리자 중 공지 작성 권한자가 올리고 파트너스는 받기만). .png·.jpg·.pdf, 파일당 5MB·공지당 5개, DB 저장.
@@ -4462,6 +4502,24 @@ enum ShopEscrowKind {
 // 입점 신청 때 받은 검증 값(Seller.businessInfo)을 그대로 읽어 보여 주고 여기서 바꾸지 않는다. 입력한 항목만 구매자 화면에 보인다.
 // escrowKind: 구매안전서비스 가입 종류(없음·에스크로·소비자피해보상보험). 가입 정보는 파트너스가 쓴 그대로 표시한다(법률 문구를 앱이 짓지 않음).
 // minorNotice: 미성년자 구매 안내 글(파트너스 입력). version은 저장할 때마다 올라가고 다른 창 덮어쓰기를 막는다(shop-legal/notice.ts).
+// 배송 자동화 기능별 켜기/끄기(SA-082). 배송 자동 조회는 주문 정책(SellerOrderPolicy.autoTrackingEnabled)이 정본이라 여기에 두지 않는다.
+// 켜면 건당 단가가 발송·이용 충전금에서 차감된다(messaging/balance.ts 채널 단가). 실제 송장 발급·출력·반품 송장 연동 실행은 외부 업체 연결 뒤 이 스위치를 본다.
+model SellerShippingAutomation {
+  sellerId             String   @id @db.Uuid
+  invoiceIssueEnabled  Boolean  @default(false)
+  invoiceLabelEnabled  Boolean  @default(false)
+  returnInvoiceEnabled Boolean  @default(false)
+  updatedAt            DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+}
+
+// 미성년자(만 19세 미만) 구매 정책(SH-009): NOTICE = 고지 후 허용(기본), BLOCK = 구매 막기
+enum MinorPurchasePolicy {
+  NOTICE
+  BLOCK
+}
+
 model ShopLegalNotice {
   id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   sellerId       String         @unique @db.Uuid
@@ -4473,6 +4531,7 @@ model ShopLegalNotice {
   escrowProvider String         @default("")
   escrowUrl      String         @default("")
   minorNotice    String         @default("")
+  minorPolicy    MinorPurchasePolicy @default(NOTICE)
   // 쇼핑몰 하단 「카카오톡 문의」 버튼·유튜브 채널 링크(SA-060, https만). 비어 있으면 버튼을 보이지 않는다.
   kakaoChannelUrl  String       @default("")
   youtubeChannelUrl String      @default("")

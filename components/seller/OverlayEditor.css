@@ -26,7 +26,7 @@
   align-items: center;
   gap: 6px;
   padding: 4px 6px;
-  border-radius: 6px;
+  border-radius: 0;
   box-shadow: inset 0 0 0 1px var(--wds-line-normal-alternative, #e1e2e4);
 }
 .ove-slot.is-sel {
@@ -128,7 +128,7 @@
   margin: 0;
   padding: 8px 10px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 0;
   box-shadow: inset 0 0 0 1px var(--wds-line-normal-alternative, #e1e2e4);
   display: flex;
   flex-direction: column;

@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
-import { ListHead, PageHead } from "../../../../../../components/admin-ui";
+import { ListTable, ListHead, PageHead } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
-import { ForceEndDialog } from "../../../_components/ForceEndDialog";
+import { takeFlash } from "../../../_components/flash";
 import { ImpersonateDialog } from "../../../_components/ImpersonateDialog";
 import { clock, elapsed, usePoll, type LiveBroadcast, type LiveOrderRate } from "../../../_components/ops";
 
@@ -19,19 +19,21 @@ const problem = (b: LiveBroadcast) => unstable(b) || b.paymentError;
 export default function LiveBroadcastsPage() {
   const { me } = useAdmin();
   const canImpersonate = adminCan(me.role, "seller.impersonate");
-  const canEnd = adminCan(me.role, "seller.moderate");
   const { data, failed, first, lastOk, reload } = usePoll<{ items: LiveBroadcast[]; orderRate: LiveOrderRate }>("/api/admin/ops/live-broadcasts", 10_000);
   const [problemOnly, setProblemOnly] = useState(false);
   const [view, setView] = useState<"table" | "card">("table");
   const [viewing, setViewing] = useState<LiveBroadcast | null>(null);
-  const [ending, setEnding] = useState<LiveBroadcast | null>(null);
   // 방금 끝낸 방송은 진행 중이던 10초 갱신이 옛 값을 돌려줘도 다시 보이지 않게 거른다
   const [endedIds, setEndedIds] = useState<string[]>([]);
   // 휴대폰에서는 표 대신 카드로 시작한다(표 가로 스크롤을 피함)
   useEffect(() => {
-    if (window.matchMedia("(max-width: 639px)").matches) setView("card");
+    const q = new URLSearchParams(window.location.search);
+    if (q.get("problemOnly") === "1") setProblemOnly(true);
+    if (q.get("view") === "table" || q.get("view") === "card") setView(q.get("view") as "table" | "card");
+    else if (window.matchMedia("(max-width: 639px)").matches) setView("card");
   }, []);
   const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => { const message = takeFlash(); if (message) setToast(message); }, []);
   const all = (data?.items ?? []).filter((b) => !endedIds.includes(b.broadcastId));
   const now = Date.now();
   const items = (problemOnly ? all.filter(problem) : all).slice().sort((a, b) => Number(problem(b)) - Number(problem(a)));
@@ -50,11 +52,7 @@ export default function LiveBroadcastsPage() {
       <Link className="btn btn-sm btn-out" href={`/admin/partners/${b.sellerId}`}>
         상세
       </Link>
-      {canEnd && (
-        <button className="btn btn-sm btn-out" type="button" onClick={() => setEnding(b)}>
-          강제 종료
-        </button>
-      )}
+      <Link className="btn btn-sm btn-out" href={`/admin/ops/live/${b.broadcastId}?returnTo=${encodeURIComponent(`/admin/ops/live?problemOnly=${problemOnly ? "1" : "0"}&view=${view}`)}`}>방송 상세</Link>
     </span>
   );
 
@@ -110,9 +108,9 @@ export default function LiveBroadcastsPage() {
             최근 60초 내부 주문 생성 수입니다. 전체는 모든 LIVE 방송, 각 행은 파트너스와 방송 시간 기준입니다. 주문 상태와 관계없이 세며 외부 주문은 측정하지 않습니다.
           </p>
 
-          <div className="card">
-            {first && <LoadingRows rows={4} />}
-            {!first && !data && <ErrorState title="실시간 방송을 불러오지 못했습니다." onRetry={() => void reload()} />}
+          <section className="au-list-section">
+            {first && <div className="card"><LoadingRows rows={4} /></div>}
+            {!first && !data && <div className="card"><ErrorState title="실시간 방송을 불러오지 못했습니다." onRetry={() => void reload()} /></div>}
             {data &&
               (items.length === 0 ? (
                 <div className="st">
@@ -139,7 +137,7 @@ export default function LiveBroadcastsPage() {
               ) : (
                 <>
                   <ListHead total={items.length} unit="곳" />
-                  <div style={{ overflowX: "auto" }}>
+                  <ListTable>
                     <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                       <thead>
                         <tr>
@@ -174,10 +172,10 @@ export default function LiveBroadcastsPage() {
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </ListTable>
                 </>
               ))}
-          </div>
+          </section>
         </div>
       </main>
       {viewing && (
@@ -187,24 +185,6 @@ export default function LiveBroadcastsPage() {
           onDone={(r) => {
             setViewing(null);
             setToast(r.opened ? "대신 보기를 시작했습니다. 새 창에서 파트너스 화면을 읽기 전용으로 봅니다." : "대신 보기를 시작했습니다. 새 창이 막혀 열지 못했습니다. 파트너스 상세에서 다시 열어 주십시오.");
-          }}
-        />
-      )}
-      {ending && (
-        <ForceEndDialog
-          broadcast={ending}
-          onClose={() => setEnding(null)}
-          onDone={() => {
-            setEndedIds((ids) => [...ids, ending.broadcastId]);
-            setEnding(null);
-            setToast("방송을 종료했습니다");
-            void reload();
-          }}
-          onStale={() => {
-            setEndedIds((ids) => [...ids, ending.broadcastId]);
-            setEnding(null);
-            setToast("이미 끝난 방송입니다. 목록을 다시 불러옵니다.");
-            void reload();
           }}
         />
       )}

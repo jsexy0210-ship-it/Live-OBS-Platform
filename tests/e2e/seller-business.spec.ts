@@ -57,7 +57,9 @@ test("사업자·고객센터: 잘못된 전화는 막고, 저장하면 법정 �
   await expect(page.getByTestId("business-section").getByLabel("카카오톡 채널 주소")).toHaveValue(kakao);
 
   await page.goto("/seller/settings/legal");
-  await page.getByRole("tab", { name: "사업자 정보·고지" }).click();
+  const notice = page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "사업자정보 고지", exact: true });
+  await expect(notice).toHaveAttribute("href", "/seller/settings/legal?section=notice");
+  await notice.click();
   await expect(page.getByLabel("고객센터 전화")).toHaveValue(PHONE);
 });
 

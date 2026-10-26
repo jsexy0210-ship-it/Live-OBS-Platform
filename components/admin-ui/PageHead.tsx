@@ -10,11 +10,12 @@ import { useShellNav } from "./shellNav";
 // path는 예전 호출과 맞추려고 받기만 하고 화면에 그리지 않는다.
 // ← 버튼(DS-NAV 「화면 ← 버튼」): 셸이 알려 주는 부모 화면(메뉴 항목에서 한 단계 아래 화면)이 있으면 자동으로 붙는다.
 //   앱 안 이전 기록이 있으면 뒤로, 없으면 부모로 replace(docs/IA.md Back 1항). back="/주소"로 부모를 바꾸고, back={false}로 뺀다.
+//   미저장 폼은 onBack에 확인·보호 기록 해제·복귀를 연결해 직접 진입의 replace 경로도 같은 확인을 거친다.
 // 화면 이동 링크는 왼쪽 메뉴에만 둡니다. tabs는 기존 호출 호환용입니다.
 // 사용법:
 //   <PageHead title="상품 목록" actions={<Link className="btn" href="/seller/products/new">상품 등록</Link>} />
 // 스타일: styles/seller.css 「관리자 공통 컴포넌트」(.au-ph · .bk · .rtabs)
-export function PageHead({ title, description, actions, back, tabs }: { title: React.ReactNode; description?: React.ReactNode; path?: string[]; actions?: React.ReactNode; back?: string | false; tabs?: false }) {
+export function PageHead({ title, description, actions, back, onBack, tabs }: { title: React.ReactNode; description?: React.ReactNode; path?: string[]; actions?: React.ReactNode; back?: string | false; onBack?: () => void | Promise<void>; tabs?: false }) {
   const descriptionId = useId();
   const hasDescription = description !== undefined && description !== null && description !== false;
   const nav = useShellNav();
@@ -24,7 +25,7 @@ export function PageHead({ title, description, actions, back, tabs }: { title: R
     <div className={`au-ph${backHref ? " has-bk" : ""}`}>
       <div className="au-ph-l">
         {backHref && (
-          <button className="bk" type="button" aria-label="뒤로" title="뒤로" onClick={goBack}>
+          <button className="bk" type="button" aria-label="뒤로" title="뒤로" onClick={onBack ?? goBack}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M15 5l-7 7 7 7" />
             </svg>

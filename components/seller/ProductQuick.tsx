@@ -6,7 +6,7 @@ import { api, failMessage, type Product, type ProductStatus } from "./api";
 import { INT4_MAX, parseAmount, won } from "./format";
 import "./ProductQuick.css";
 
-// 상품 목록 빠른 처리(IA 결정): 판매 상태와 재고만 목록에서 바로 바꾼다. 다른 칸은 상품 수정에서 고친다.
+// 상품 작업 상세의 변경 조작. 관리 목록에서는 읽기 값과 상세 이동만 제공한다(2026-10-19 대표님 지시).
 // - 판매 상태: PATCH /api/seller/products/{id} { status }. 서버가 옵션 없는 상품의 판매 중 전환 등을 막으면 원래 값으로 되돌리고 이유를 알려 준다.
 // - 재고: 옵션이 하나인 상품만. PATCH /api/seller/products/{id}/options/{optionId} { stock, expectedStock } — 상품 수정과 같은 규칙으로 보내
 //   그사이 재고가 바뀌었으면(stock_conflict) 저장하지 않고 지금 재고로 갱신한 뒤 다시 확인하게 한다.

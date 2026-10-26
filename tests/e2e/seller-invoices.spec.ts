@@ -55,7 +55,7 @@ test("대표자: 송장 발급 → 출력 안 한 송장 확인 → 추적 상�
   await page.goto("/seller/shipping/tracking");
   await expect(page.getByRole("heading", { level: 1, name: "송장 출력 · 추적" })).toBeVisible();
   await expect(page.getByText("모의 데이터입니다")).toBeVisible();
-  await expect(page.getByRole("button", { name: /출력 안 한 송장 [1-9]\d*개 출력/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /출력 안 한 송장 [1-9]\d*개 출력/ })).toBeVisible();
   await page.getByRole("link", { name: /^발급됨 \d+$/ }).click();
   await expect(page.getByText("아직 출력 안 함").first()).toBeVisible();
   await shot(page, "SA-028-tracking");
@@ -73,4 +73,68 @@ test("대표자: 송장 발급 → 출력 안 한 송장 확인 → 추적 상�
   await expect(page.getByRole("cell", { name: "업체 연동 전 · 모의", exact: true })).toBeVisible();
   await expect(page.getByRole("cell", { name: "발급", exact: true }).first()).toBeVisible();
   await shot(page, "SA-028-tracking-detail");
+});
+
+test("송장 목록은 변경하지 않고 실제 상세에서만 재발급·집하·선택 출력을 실행한다", async ({ page }) => {
+  await page.goto("/seller/login");
+  await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
+  await expect(page).toHaveURL(/\/seller$/);
+  const id = "00000000-0000-4000-8000-0000000000a1";
+  let status = "FAILED", pickupDelayed = false, readOnly = false, unprinted = 0;
+  const writes: { path: string; body: unknown }[] = [];
+  const invoice = () => ({ id, status, courierName: "한진택배", trackingNumber: status === "FAILED" ? null : "OWNED123456", issuing: false, failureCode: status === "FAILED" ? "provider_error" : null, pickupDelayed, lastEvent: null, issuedAt: null, printedAt: null, orderCount: 1, nickname: "송장 합성", events: [], recipient: null });
+  await page.route("**/api/seller/me", async (route) => {
+    const response = await route.fetch(), me = await response.json();
+    await route.fulfill({ response, json: readOnly ? { ...me, isOwner: false, permissions: ["ORDER_SHIPPING"], readOnly: true } : me });
+  });
+  await page.route("**/api/seller/invoices**", async (route) => {
+    const request = route.request(), path = new URL(request.url()).pathname;
+    if (request.method() === "POST") {
+      writes.push({ path, body: request.postData() ? request.postDataJSON() : null });
+      if (path === `/api/seller/invoices/${id}/retry`) { status = "PRINTED"; pickupDelayed = true; return route.fulfill({ json: { result: { ok: true } } }); }
+      if (path === `/api/seller/invoices/${id}/pickup-request`) { pickupDelayed = false; return route.fulfill({ json: { ok: true } }); }
+      expect(path).toBe("/api/seller/invoices/print");
+      return route.fulfill({ json: { printed: 1, labels: [{ invoiceId: id, courierName: "한진택배", trackingNumber: "OWNED123456", mock: true, orders: [{ orderNoLabel: "합성 주문", nickname: "송장 합성", itemSummary: { firstProductName: "합성 상품", otherCount: 0 } }], recipient: null }] } });
+    }
+    expect(request.method()).toBe("GET");
+    if (path === `/api/seller/invoices/${id}`) return route.fulfill({ json: { invoice: invoice() } });
+    expect(path).toBe("/api/seller/invoices");
+    return route.fulfill({ json: { invoices: [invoice()], nextCursor: null, counts: { [status]: 1 }, total: 1, mock: true, unprinted } });
+  });
+  await page.goto("/seller/shipping/tracking?tab=all");
+  const list = page.locator(".au-list-grid");
+  await expect(list.getByRole("link", { name: "송장 업무 상세", exact: true })).toBeVisible();
+  await expect(list.getByRole("button", { name: /다시 발급|집하 요청|출력/ })).toHaveCount(0);
+  expect(writes).toEqual([]);
+  await list.getByRole("link", { name: "송장 업무 상세", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/seller/shipping/tracking/${id}\\?`));
+  await page.reload();
+  const detail = page.getByRole("region", { name: "송장 업무 상세", exact: true });
+  await detail.getByRole("button", { name: "다시 발급", exact: true }).click();
+  await expect(detail.getByRole("button", { name: "집하 요청 다시 보내기", exact: true })).toBeVisible();
+  await detail.getByRole("button", { name: "집하 요청 다시 보내기", exact: true }).click();
+  await expect(detail.getByRole("button", { name: "집하 요청 다시 보내기", exact: true })).toHaveCount(0);
+  await detail.getByRole("combobox", { name: "출력 방식", exact: true }).selectOption("A4_2UP");
+  const popupPromise = page.waitForEvent("popup");
+  await detail.getByRole("button", { name: "송장 출력", exact: true }).click();
+  const popup = await popupPromise;
+  await expect(popup.locator("body")).toContainText("한진택배 OWNED123456");
+  await expect(popup.locator("body")).toContainText("합성 상품");
+  await popup.close();
+  expect(writes).toEqual([{ path: `/api/seller/invoices/${id}/retry`, body: null }, { path: `/api/seller/invoices/${id}/pickup-request`, body: null }, { path: "/api/seller/invoices/print", body: { format: "A4_2UP", invoiceIds: [id] } }]);
+  unprinted = 123;
+  await page.goto("/seller/shipping/tracking/print?scope=unprinted&format=A4_2UP");
+  await expect(detail).toContainText("출력 안 한 송장 123개 · 현재 미출력 송장을 한 번에 최대 100개 출력합니다.");
+  const unprintedPopupPromise = page.waitForEvent("popup");
+  await detail.getByRole("button", { name: "송장 출력", exact: true }).click();
+  const unprintedPopup = await unprintedPopupPromise;
+  await expect(unprintedPopup.locator("body")).toContainText("한진택배 OWNED123456");
+  await unprintedPopup.close();
+  expect(writes.at(-1)).toEqual({ path: "/api/seller/invoices/print", body: { format: "A4_2UP" } });
+  readOnly = true;
+  await page.reload();
+  await expect(detail).toBeVisible();
+  await expect(detail.getByRole("button")).toHaveCount(0);
+  await expect(detail.getByRole("combobox")).toHaveCount(0);
+  expect(writes).toHaveLength(4);
 });

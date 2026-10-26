@@ -188,7 +188,7 @@ export default function InquiryDetailPage() {
                   </div>
                   <div className="col" style={{ gap: 12 }} role="list" aria-label="대화">
                     {inq.messages.map((m) => (
-                      <div key={m.id} role="listitem" data-testid="inquiry-message" className="col" style={{ gap: 6, padding: 16, borderRadius: 12, background: m.author === "PLATFORM" ? "var(--wds-fill-alternative)" : "transparent", border: "1px solid var(--wds-line-normal-alternative)" }}>
+                      <div key={m.id} role="listitem" data-testid="inquiry-message" className="col" style={{ gap: 6, padding: 16, borderRadius: 0, background: m.author === "PLATFORM" ? "var(--wds-fill-alternative)" : "transparent", border: "1px solid var(--wds-line-normal-alternative)" }}>
                         <span className="t-l2">
                           <b>{m.author === "PLATFORM" ? "ONQ 운영팀" : (m.authorName ?? me.shop.name)}</b>
                           {m.author === "PLATFORM" && assigned && <span className="bdg b-gray nodot"> 담당자 배정됨</span>} <span className="c-alt num">· {formatDateTime(m.createdAt)}</span>

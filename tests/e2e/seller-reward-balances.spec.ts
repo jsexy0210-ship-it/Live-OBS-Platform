@@ -47,6 +47,28 @@ async function open(page: Page) {
   await expect(page).toHaveURL(/\/seller\/rewards\/balances$/);
 }
 
+// 전체 화면 조정에서만 사용하는 실제 목록 진입·새로고침. 금융 확인 창은 기존대로 별도 검증한다.
+async function openAdjustment(page: Page, listHref = "/seller/rewards/balances") {
+  const memberId = await withDb(async (_db, _sellerId, id) => id);
+  const href = `/seller/rewards/balances/${memberId}?${new URLSearchParams({ returnTo: listHref })}`;
+  const link = page.getByTestId("balance-row").first().getByRole("link", { name: /적립금 조정/ });
+  await expect(page.getByTestId("balance-row").getByRole("button", { name: /적립금 조정/ })).toHaveCount(0);
+  await expect(link).toHaveAttribute("href", href);
+  await link.click();
+  await expect(page).toHaveURL(href);
+  await expect(page.getByRole("region", { name: `수동 조정 · ${NICK}` })).toBeVisible();
+}
+async function reload(page: Page) {
+  const accept = (dialog: import("@playwright/test").Dialog) => dialog.accept();
+  page.on("dialog", accept);
+  try { await page.reload(); } finally { page.off("dialog", accept); }
+}
+async function adjustmentDone(page: Page) {
+  await expect(page.getByRole("region", { name: `수동 조정 · ${NICK}` }).getByLabel("조정 금액")).toHaveValue("");
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL("/seller/rewards/balances");
+}
+
 test.afterAll(reset);
 
 test("잔액: 현재 잔액과 성공 내역 누적(지급·사용)이 보이고, 닉네임으로 찾을 수 있다", async ({ page }) => {
@@ -91,35 +113,77 @@ test("잔액: 현재 잔액과 성공 내역 누적(지급·사용)이 보이고
   await page.getByLabel("검색어").fill("별빛");
   await page.getByRole("button", { name: "검색" }).click();
   await expect(rows).toHaveCount(1);
+  const resetResponse = page.waitForResponse((response) => { const url = new URL(response.url()); return url.pathname === "/api/seller/reward-balances" && !url.searchParams.get("q"); });
   await page.getByRole("button", { name: "초기화" }).click();
+  const resetResult = await resetResponse;
+  expect(resetResult.status()).toBe(200);
+  expect(await resetResult.finished()).toBeNull();
+  await expect(page).toHaveURL("/seller/rewards/balances");
+  await expect(rows).toHaveCount(1);
+  await page.getByLabel("검색어").fill(NICK);
+  await page.getByRole("button", { name: "검색" }).click();
+  const listHref = `/seller/rewards/balances?${new URLSearchParams({ q: NICK })}`;
+  await expect(page).toHaveURL(listHref);
+  await openAdjustment(page, listHref);
+  await reload(page);
+  await expect(page.getByTestId("adjust-balance")).toHaveText("700원");
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL(listHref);
   await expect(rows).toHaveCount(1);
 });
 
-test("잔액이 없으면 안내하고, 20명을 넘으면 「더 보기」로 이어서 불러온다", async ({ page }) => {
+test("잔액이 없으면 안내하고, 10명을 넘으면 페이지 이동으로 다음 쪽 커서를 이어서 불러온다", async ({ page }) => {
   await reset();
   await open(page);
   await expect(page.getByText("잔액이 있는 회원이 없습니다")).toBeVisible();
 
-  // 다음 쪽 커서가 오는 응답으로 「더 보기」 흐름을 확인한다(서버 쪽 커서 시험은 통합 시험이 맡는다)
+  // 쪽마다 10명과 다음 쪽 커서가 오는 응답으로 페이지 이동 흐름을 확인한다(서버 쪽 커서 시험은 통합 시험이 맡는다)
   const item = (i: number) => ({
     member: { id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`, broadcastNickname: `회원${i}` },
     grade: { id: "00000000-0000-4000-8000-0000000000aa", name: "일반" },
     balance: 100 + i, totalEarned: 200 + i, totalUsed: 0, expiry: null, pendingCount: 0,
     updatedAt: new Date(Date.now() - i * 60_000).toISOString(),
   });
+  const pages: Record<string, { from: number; to: number; next: string | null }> = {
+    first: { from: 1, to: 10, next: "cursor-2" },
+    "cursor-2": { from: 11, to: 20, next: "cursor-3" },
+    "cursor-3": { from: 21, to: 22, next: null },
+  };
   await page.route("**/api/seller/reward-balances?*", (route) => {
     const cursor = new URL(route.request().url()).searchParams.get("cursor");
+    const spec = pages[cursor ?? "first"];
     const summary = { count: 22, totalBalance: 5000 };
     const pending = { count: 0, amount: 0 };
-    const body = cursor ? { balances: [item(21), item(22)], summary, pending, nextCursor: null } : { balances: Array.from({ length: 20 }, (_, i) => item(i + 1)), summary, pending, nextCursor: "next-cursor" };
-    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+    const balances = Array.from({ length: spec.to - spec.from + 1 }, (_, i) => item(spec.from + i));
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ balances, summary, pending, nextCursor: spec.next }) });
   });
   await page.reload();
   const rows = page.getByTestId("balance-row");
-  await expect(rows).toHaveCount(20);
-  await page.getByRole("button", { name: "더 보기" }).click();
-  await expect(rows).toHaveCount(22);
-  await expect(page.getByRole("button", { name: "더 보기" })).toHaveCount(0);
+  const nav = page.getByRole("navigation", { name: "페이지 이동", exact: true });
+  await expect(rows).toHaveCount(10);
+  await expect(nav.getByRole("button", { name: "1페이지", exact: true })).toHaveAttribute("aria-current", "page");
+  await nav.getByRole("button", { name: "다음", exact: true }).click();
+  await expect(rows).toHaveCount(10);
+  await expect(nav.getByRole("button", { name: "2페이지", exact: true })).toHaveAttribute("aria-current", "page");
+  await nav.getByRole("button", { name: "다음", exact: true }).click();
+  await expect(rows).toHaveCount(2);
+  await expect(nav.getByRole("button", { name: "3페이지", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(nav.getByRole("button", { name: "다음", exact: true })).toBeDisabled();
+  const member = item(21).member;
+  await page.route(`**/api/seller/members/${member.id}?summary=1`, (route) => route.fulfill({ json: { member: { ...member, rewardBalance: item(21).balance } } }));
+  const href = `/seller/rewards/balances/${member.id}?${new URLSearchParams({ returnTo: "/seller/rewards/balances" })}`;
+  await expect(rows.first().getByRole("link", { name: "회원21 적립금 조정", exact: true })).toHaveAttribute("href", href);
+  await rows.first().getByRole("link", { name: "회원21 적립금 조정", exact: true }).click();
+  await expect(page).toHaveURL(href);
+  await reload(page);
+  await expect(page.getByTestId("adjust-balance")).toHaveText("121원");
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL("/seller/rewards/balances");
+  await expect(rows).toHaveCount(2);
+  await expect(nav.getByRole("button", { name: "3페이지", exact: true })).toHaveAttribute("aria-current", "page");
+  await nav.getByRole("button", { name: "이전", exact: true }).click();
+  await expect(rows).toHaveCount(10);
+  await expect(rows.first()).toContainText("회원11");
 });
 
 test("회원·적립금 권한이 없는 직원은 권한 안내를 본다", async ({ page }) => {
@@ -138,9 +202,26 @@ test("수동 조정: 회수는 잔액을 넘을 수 없고, 지급은 확인 창
   try {
     await open(page);
     const row = page.getByTestId("balance-row").first();
-    await row.getByRole("button", { name: /적립금 조정/ }).click();
-    const modal = page.getByRole("dialog", { name: `수동 조정 · ${NICK}` });
+    await openAdjustment(page);
+    const modal = page.getByRole("region", { name: `수동 조정 · ${NICK}` });
+    await reload(page);
     await expect(modal.getByTestId("adjust-balance")).toHaveText("700원");
+    const directUrl = page.url();
+    const abandonedPosts: string[] = [];
+    const observe = (request: import("@playwright/test").Request) => { if (request.method() === "POST" && new URL(request.url()).pathname.endsWith("/adjust")) abandonedPosts.push(request.method()); };
+    page.on("request", observe);
+    await modal.getByLabel("조정 금액").fill("100");
+    page.once("dialog", (dialog) => dialog.dismiss());
+    await page.getByRole("button", { name: "뒤로", exact: true }).click();
+    await expect(page).toHaveURL(directUrl);
+    await expect(modal.getByLabel("조정 금액")).toHaveValue("100");
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.getByRole("button", { name: "뒤로", exact: true }).click();
+    await expect(page).toHaveURL("/seller/rewards/balances");
+    expect(abandonedPosts).toEqual([]);
+    page.off("request", observe);
+    await openAdjustment(page);
+    await expect(modal.getByLabel("조정 금액")).toHaveValue("");
 
     // 입력 오류: 금액·잔액 초과 회수·사유
     await modal.getByRole("button", { name: "적용" }).click();
@@ -166,20 +247,273 @@ test("수동 조정: 회수는 잔액을 넘을 수 없고, 지급은 확인 창
     await ask.getByRole("button", { name: "조정" }).click();
     expect((await posted).postDataJSON()).toMatchObject({ direction: "GRANT", amount: 5000, reason: "이벤트 보상" });
     await expect(page.getByText(`${NICK} +5,000원 대기로 기록`, { exact: false })).toBeVisible();
+    await adjustmentDone(page);
     await expect(page.getByTestId("balance-row").first().locator("td").nth(2)).toHaveText("700원");
 
     // 실제 지급 켜짐: 즉시 반영
     await setLive(true);
-    await page.reload();
-    await page.getByTestId("balance-row").first().getByRole("button", { name: /적립금 조정/ }).click();
-    const modal2 = page.getByRole("dialog", { name: `수동 조정 · ${NICK}` });
+    await reload(page);
+    await openAdjustment(page);
+    const modal2 = page.getByRole("region", { name: `수동 조정 · ${NICK}` });
     await modal2.getByLabel("조정 금액").fill("1000");
     await modal2.getByLabel("사유").fill("정정");
     await modal2.getByRole("button", { name: "적용" }).click();
     await page.getByRole("dialog", { name: "적립금 잔액을 조정하시겠습니까?" }).getByRole("button", { name: "조정" }).click();
     await expect(page.getByText(`${NICK} +1,000원 지급 · 잔액 1,700원 · 원장에 기록`)).toBeVisible();
+    await adjustmentDone(page);
     await expect(page.getByTestId("balance-row").first().locator("td").nth(2)).toHaveText("1,700원");
   } finally {
     await setLive(false);
   }
+});
+
+test("조정 결과를 잃고 창을 다시 열어도 같은 요청은 한 번만 반영하고, 성공 후에는 새 요청으로 보낸다", async ({ page }) => {
+  await reset();
+  await withDb(async (db, sellerId, buyerMemberId) => {
+    await db.rewardBalance.create({ data: { sellerId, buyerMemberId, balance: 700 } });
+    await db.rewardPolicy.upsert({ where: { sellerId }, create: { sellerId, livePayoutEnabled: true }, update: { livePayoutEnabled: true } });
+  });
+  const sent: { requestId: string; direction: string; amount: number; reason: string }[] = [];
+  const replies: { replayed: boolean; balanceAfter: number }[] = [];
+  await page.route("**/api/seller/reward-balances/*/adjust", async (route) => {
+    sent.push(route.request().postDataJSON());
+    // 다른 내용의 실패도 원래 요청의 재시도 키를 지우지 않아야 한다.
+    if (sent.length === 2) return route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "internal" }) });
+    const response = await route.fetch();
+    expect(response.ok()).toBe(true);
+    replies.push(await response.json());
+    // 서버는 반영했지만 브라우저는 결과를 받지 못한 상황.
+    if (sent.length === 1) return route.abort("failed");
+    return route.fulfill({ response });
+  });
+  try {
+    await open(page);
+    const row = page.getByTestId("balance-row").first();
+    await openAdjustment(page);
+    const modal = page.getByRole("region", { name: `수동 조정 · ${NICK}` });
+    const ask = page.getByRole("dialog", { name: "적립금 잔액을 조정하시겠습니까?" });
+    await modal.getByLabel("조정 금액").fill("1,000");
+    await modal.getByLabel("사유").fill(" 재시도 ");
+    await modal.getByRole("button", { name: "적용" }).click();
+    await ask.getByRole("button", { name: "조정", exact: true }).click();
+    await expect(ask.getByRole("alert")).toBeVisible();
+    await ask.getByRole("button", { name: "취소", exact: true }).click();
+    page.once("dialog", (dialog) => dialog.accept());
+    await modal.getByRole("button", { name: "취소", exact: true }).click();
+    await expect(modal).toHaveCount(0);
+    await page.goto("/seller/rewards/ledger");
+    await page.goto("/seller/rewards/balances");
+    await reload(page);
+
+    await openAdjustment(page);
+    await modal.getByLabel("조정 금액").fill("1000");
+    await modal.getByLabel("사유").fill("다른 사유");
+    await modal.getByRole("button", { name: "적용" }).click();
+    await ask.getByRole("button", { name: "조정", exact: true }).click();
+    await expect(ask.getByRole("alert")).toBeVisible();
+    await ask.getByRole("button", { name: "취소", exact: true }).click();
+    expect(sent[1].requestId).not.toBe(sent[0].requestId);
+
+    await modal.getByLabel("사유").fill("재시도");
+    await modal.getByRole("button", { name: "적용" }).click();
+    await expect(modal.getByRole("link", { name: "원장 확인", exact: true })).toHaveAttribute("href", "/seller/rewards/ledger");
+    await modal.getByRole("button", { name: "이전 요청 재시도", exact: true }).click();
+    await page.getByRole("dialog", { name: "이전 요청을 다시 보낼까요?" }).getByRole("button", { name: "이전 요청 재시도", exact: true }).click();
+    await adjustmentDone(page);
+    await expect(modal).toHaveCount(0);
+    expect(sent[2]).toEqual(sent[0]);
+    expect(sent[0]).toMatchObject({ direction: "GRANT", amount: 1000, reason: "재시도" });
+    expect(replies[1]).toMatchObject({ replayed: true, balanceAfter: 1700 });
+    expect(await withDb((db, sellerId) => db.rewardLedger.count({ where: { sellerId, type: "ADJUST" } }))).toBe(1);
+    await expect(row.locator("td").nth(2)).toHaveText("1,700원");
+
+    await openAdjustment(page);
+    await modal.getByLabel("조정 금액").fill("1000");
+    await modal.getByLabel("사유").fill("재시도");
+    await modal.getByRole("button", { name: "적용" }).click();
+    await ask.getByRole("button", { name: "조정", exact: true }).click();
+    await adjustmentDone(page);
+    await expect(modal).toHaveCount(0);
+    expect(sent[3].requestId).not.toBe(sent[0].requestId);
+    expect(sent[3].requestId).toMatch(/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i);
+    expect(replies[2]).toMatchObject({ replayed: false, balanceAfter: 2700 });
+    expect(await withDb((db, sellerId) => db.rewardLedger.count({ where: { sellerId, type: "ADJUST" } }))).toBe(2);
+    await expect(row.locator("td").nth(2)).toHaveText("2,700원");
+  } finally {
+    await withDb((db, sellerId) => db.rewardPolicy.update({ where: { sellerId }, data: { livePayoutEnabled: false } }));
+  }
+});
+
+test("결과 미확인 요청이 있어도 중복 가능성을 확인한 새 조정은 별도 UUID로 보내고 원래 요청을 보존한다", async ({ page }) => {
+  await reset();
+  await withDb(async (db, sellerId, buyerMemberId) => {
+    await db.rewardBalance.create({ data: { sellerId, buyerMemberId, balance: 700 } });
+    await db.rewardPolicy.upsert({ where: { sellerId }, create: { sellerId, livePayoutEnabled: true }, update: { livePayoutEnabled: true } });
+  });
+  const ids: string[] = [];
+  await page.route("**/api/seller/reward-balances/*/adjust", async (route) => {
+    ids.push(route.request().postDataJSON().requestId);
+    const response = await route.fetch();
+    expect(response.ok()).toBe(true);
+    if (ids.length === 1) return route.abort("failed");
+    return route.fulfill({ response });
+  });
+  try {
+    await open(page);
+    const row = page.getByTestId("balance-row").first();
+    const modal = page.getByRole("region", { name: `수동 조정 · ${NICK}` });
+    await openAdjustment(page);
+    await modal.getByLabel("조정 금액").fill("1000");
+    await modal.getByLabel("사유").fill("결과 미확인");
+    await modal.getByRole("button", { name: "적용" }).click();
+    const ask = page.getByRole("dialog", { name: "적립금 잔액을 조정하시겠습니까?" });
+    await ask.getByRole("button", { name: "조정", exact: true }).click();
+    await expect(ask.getByRole("alert")).toBeVisible();
+    await reload(page);
+    await expect(modal).toBeVisible();
+    await modal.getByLabel("조정 금액").fill("1000");
+    await modal.getByLabel("사유").fill("결과 미확인");
+    await modal.getByRole("button", { name: "적용" }).click();
+    await modal.getByRole("button", { name: "새 조정", exact: true }).click();
+    const newAsk = page.getByRole("dialog", { name: "새 조정을 보낼까요?" });
+    await expect(newAsk).toContainText("이전 요청이 이미 반영됐다면 같은 금액이 한 번 더 조정될 수 있어요.");
+    await newAsk.getByRole("button", { name: "취소", exact: true }).click();
+    expect(ids).toHaveLength(1);
+    await modal.getByRole("button", { name: "새 조정", exact: true }).click();
+    await newAsk.getByRole("button", { name: "새 조정", exact: true }).click();
+    await adjustmentDone(page);
+    await expect(modal).toHaveCount(0);
+    expect(ids).toHaveLength(2);
+    expect(ids[1]).not.toBe(ids[0]);
+    expect(await withDb((db, sellerId) => db.rewardLedger.count({ where: { sellerId, type: "ADJUST" } }))).toBe(2);
+    await expect(row.locator("td").nth(2)).toHaveText("2,700원");
+    const pending = await page.evaluate(() => Object.keys(sessionStorage).filter((key) => key.startsWith("onq:reward-adjust:")).flatMap((key) => JSON.parse(sessionStorage.getItem(key)!)));
+    expect(pending).toHaveLength(1);
+    expect(pending[0].id).toBe(ids[0]);
+    expect(Object.keys(pending[0]).sort()).toEqual(["id", "intent"]);
+    expect(pending[0].intent).toMatch(/^[0-9a-f]{64}$/);
+  } finally {
+    await withDb((db, sellerId) => db.rewardPolicy.update({ where: { sellerId }, data: { livePayoutEnabled: false } }));
+  }
+});
+
+test("다른 파트너스·사용자의 미확정 요청은 표시하지 않고 보관 실패는 POST 전에 막는다", async ({ page }) => {
+  await reset();
+  const memberId = await withDb(async (db, sellerId, buyerMemberId) => {
+    await db.rewardBalance.create({ data: { sellerId, buyerMemberId, balance: 700 } });
+    return buyerMemberId;
+  });
+  await open(page);
+  const actualMe = await (await page.request.get("/api/seller/me")).json();
+  const key = await page.evaluate(async ({ sellerId, userId, memberId }) => {
+    const hash = async (value: string) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))), (n) => n.toString(16).padStart(2, "0")).join("");
+    const key = `onq:reward-adjust:${await hash(JSON.stringify([sellerId, userId]))}`;
+    sessionStorage.setItem(key, JSON.stringify([{ id: crypto.randomUUID(), intent: await hash(JSON.stringify([memberId, "GRANT", 1000, "범위 확인"])) }]));
+    return key;
+  }, { sellerId: actualMe.sellerId, userId: actualMe.userId, memberId });
+  let viewMe = actualMe;
+  await page.route("**/api/seller/me", (route) => route.fulfill({ json: viewMe }));
+  const posts: string[] = [];
+  await page.route("**/api/seller/reward-balances/*/adjust", (route) => {
+    posts.push(route.request().method());
+    return route.fulfill({ status: 500, json: { error: "unexpected_post" } });
+  });
+  for (const other of [{ ...actualMe, sellerId: "different-seller" }, { ...actualMe, userId: "different-user" }]) {
+    viewMe = other;
+    await reload(page);
+    if (new URL(page.url()).pathname === "/seller/rewards/balances") await openAdjustment(page);
+    const modal = page.getByRole("region", { name: `수동 조정 · ${NICK}` });
+    await modal.getByLabel("조정 금액").fill("1000");
+    await modal.getByLabel("사유").fill("범위 확인");
+    await modal.getByRole("button", { name: "적용" }).click();
+    await expect(page.getByRole("dialog", { name: "적립금 잔액을 조정하시겠습니까?" })).toBeVisible();
+    await expect(modal.getByLabel("재시도할 이전 요청")).toHaveCount(0);
+  }
+  viewMe = actualMe;
+  await reload(page);
+  await page.evaluate((key) => sessionStorage.setItem(key, "broken"), key);
+  const row = page.getByTestId("balance-row").first();
+  if (new URL(page.url()).pathname === "/seller/rewards/balances") await openAdjustment(page);
+  const modal = page.getByRole("region", { name: `수동 조정 · ${NICK}` });
+  await modal.getByLabel("조정 금액").fill("1000");
+  await modal.getByLabel("사유").fill("범위 확인");
+  await modal.getByRole("button", { name: "적용" }).click();
+  await expect(modal.getByRole("alert")).toContainText("재시도 정보를 보관하지 못했어요");
+  expect(posts).toEqual([]);
+  await page.evaluate((key) => sessionStorage.removeItem(key), key);
+  await modal.getByRole("button", { name: "적용" }).click();
+  await page.evaluate(() => { Storage.prototype.setItem = () => { throw new DOMException("storage blocked", "SecurityError"); }; });
+  const ask = page.getByRole("dialog", { name: "적립금 잔액을 조정하시겠습니까?" });
+  await ask.getByRole("button", { name: "조정", exact: true }).click();
+  await expect(ask.getByRole("alert")).toContainText("재시도 정보를 보관하지 못했어요");
+  expect(posts).toEqual([]);
+  viewMe = { ...actualMe, isOwner: false, permissions: ["MEMBER_POINTS"], readOnly: true };
+  await reload(page);
+  await expect(page.getByRole("region", { name: "회원 잔액", exact: true })).toContainText("현재 잔액 700원");
+  await expect(modal).toHaveCount(0);
+  expect(posts).toEqual([]);
+});
+
+
+test("새 요청의 명시적 400·404만 정리하고 이전 불명 요청과 모든 409는 보존한다", async ({ page }) => {
+  await reset();
+  await withDb(async (db, sellerId, buyerMemberId) => {
+    await db.rewardBalance.create({ data: { sellerId, buyerMemberId, balance: 700 } });
+  });
+  const responses = [
+    { status: 400, error: "invalid_reward_adjust" },
+    { status: 404, error: "reward_adjust_member_not_found" },
+    { status: 500, error: "internal" },
+    { status: 404, error: "reward_adjust_member_not_found" },
+    { status: 409, error: "reward_adjust_conflict" },
+    { status: 409, error: "reward_adjust_insufficient" },
+  ];
+  const ids: string[] = [];
+  await page.route("**/api/seller/reward-balances/*/adjust", async (route) => {
+    ids.push(route.request().postDataJSON().requestId);
+    const response = responses[ids.length - 1];
+    expect(response).toBeDefined();
+    return route.fulfill({ status: response.status, json: { error: response.error, message: "합성 조정 거절" } });
+  });
+  const pendingIds = () => page.evaluate(() => Object.keys(sessionStorage).filter((key) => key.startsWith("onq:reward-adjust:")).flatMap((key) => JSON.parse(sessionStorage.getItem(key)!)).map((entry: { id: string }) => entry.id));
+  await open(page);
+  const row = page.getByTestId("balance-row").first();
+  if (new URL(page.url()).pathname === "/seller/rewards/balances") await openAdjustment(page);
+  const modal = page.getByRole("region", { name: `수동 조정 · ${NICK}` });
+  const ask = page.getByRole("dialog", { name: "적립금 잔액을 조정하시겠습니까?" });
+  await modal.getByLabel("조정 금액").fill("100");
+  await modal.getByLabel("사유").fill("확정 거절 경계");
+  for (let i = 0; i < 3; i++) {
+    await modal.getByRole("button", { name: "적용", exact: true }).click();
+    await ask.getByRole("button", { name: "조정", exact: true }).click();
+    await expect(ask.getByRole("alert")).toBeVisible();
+    expect(ids).toHaveLength(i + 1);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(await pendingIds()).toEqual(i < 2 ? [] : [ids[2]]);
+    await ask.getByRole("button", { name: "취소", exact: true }).click();
+  }
+  await modal.getByRole("button", { name: "적용", exact: true }).click();
+  await modal.getByRole("button", { name: "이전 요청 재시도", exact: true }).click();
+  const retry = page.getByRole("dialog", { name: "이전 요청을 다시 보낼까요?" });
+  await retry.getByRole("button", { name: "이전 요청 재시도", exact: true }).click();
+  await expect(retry.getByRole("alert")).toBeVisible();
+  expect(ids[3]).toBe(ids[2]);
+  expect(await pendingIds()).toEqual([ids[2]]);
+  await retry.getByRole("button", { name: "취소", exact: true }).click();
+  for (const i of [4, 5]) {
+    await modal.getByRole("button", { name: "새 조정", exact: true }).click();
+    const fresh = page.getByRole("dialog", { name: "새 조정을 보낼까요?" });
+    await expect(fresh).toContainText("이전 요청이 이미 반영됐다면 같은 금액이 한 번 더 조정될 수 있어요.");
+    await fresh.getByRole("button", { name: "새 조정", exact: true }).click();
+    await expect(fresh.getByRole("alert")).toBeVisible();
+    expect(ids).toHaveLength(i + 1);
+    expect(ids.slice(0, i)).not.toContain(ids[i]);
+    expect(await pendingIds()).toEqual(i === 4 ? [ids[2], ids[4]] : [ids[2], ids[4], ids[5]]);
+    await fresh.getByRole("button", { name: "취소", exact: true }).click();
+  }
+  expect(await withDb((db, sellerId) => db.rewardLedger.count({ where: { sellerId, type: "ADJUST" } }))).toBe(0);
+  page.once("dialog", (dialog) => dialog.accept());
+  await modal.getByRole("button", { name: "취소", exact: true }).click();
+  await expect(page).toHaveURL("/seller/rewards/balances");
+  await expect(row.locator("td").nth(2)).toHaveText("700원");
 });

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSeller } from "../../../../../lib/server/authz/guards";
 import { broadcastHistory } from "../../../../../lib/server/broadcast/history";
+import { maskBroadcastHistory } from "../../../../../lib/server/broadcast/maskReadOnly";
 import { prisma } from "../../../../../lib/server/db";
 import { errorResponse, noStore, sessionToken } from "../../../../../lib/server/http/route";
 
@@ -13,7 +14,7 @@ export async function GET(req: Request) {
     const q = new URL(req.url).searchParams;
     const r = await broadcastHistory(prisma, ctx, { from: q.get("from"), to: q.get("to"), cursor: q.get("cursor"), layout: q.get("layout") });
     if (!r.ok) return NextResponse.json({ error: r.reason, message: "조회 기간을 다시 확인해 주십시오" }, { status: 400 });
-    return noStore(NextResponse.json(r.value));
+    return noStore(NextResponse.json(ctx.readOnly ? maskBroadcastHistory(r.value) : r.value));
   } catch (e) {
     return errorResponse(e);
   }
