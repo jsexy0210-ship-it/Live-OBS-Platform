@@ -165,3 +165,28 @@ test("구매자: 내 정보에 지금 등급과 다음 등급까지 남은 금�
   await page.screenshot({ path: `${SHOT}/sh020-grade-card-390.png`, fullPage: true });
   await expect(card).toBeVisible();
 });
+
+test("대표자: 저장하지 않은 등급 변경이 있으면 다른 화면으로 갈 때 확인을 묻고, 취소하면 머문다", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/seller/login?next=${encodeURIComponent("/seller/member-grades")}`);
+  await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
+  await expect(page).toHaveURL(/\/seller\/member-grades$/);
+  const first = page.getByTestId("grade-row").first().getByLabel(/등급 이름/);
+  await expect(first).toBeVisible();
+  const seen: string[] = [];
+  let answer = false;
+  page.on("dialog", (d) => {
+    seen.push(d.message());
+    void (answer ? d.accept() : d.dismiss());
+  });
+  // 이름을 바꾸고 다른 메뉴로 가면 확인을 묻는다(취소하면 입력이 그대로 남는다)
+  await first.fill("임시 이름");
+  await page.locator('a[href^="/seller/coupons"]').first().click();
+  await expect.poll(() => seen.length).toBe(1);
+  expect(seen[0]).toContain("저장하지 않은 변경");
+  await expect(page).toHaveURL(/\/seller\/member-grades$/);
+  await expect(first).toHaveValue("임시 이름");
+  answer = true;
+  await page.locator('a[href^="/seller/coupons"]').first().click();
+  await expect(page).not.toHaveURL(/\/seller\/member-grades$/);
+});

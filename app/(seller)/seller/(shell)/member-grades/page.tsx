@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useUrlState } from "../../../../../lib/client/navigation";
+import { useUnsavedGuard, useUrlState } from "../../../../../lib/client/navigation";
 import { CursorPagination, Modal, PageHead } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../components/seller/States";
@@ -133,6 +133,20 @@ export default function MemberGradesPage() {
   }, [load]);
 
   const data = state.kind === "ok" ? state.data : null;
+  // 저장된 값과 다르거나 새 등급 입력이 남아 있으면 나갈 때 확인한다(링크·브라우저 Back·새로고침 — docs/IA.md Back 규칙 7항)
+  const dirty =
+    !!data &&
+    (!!newName.trim() ||
+      !!newAmount.trim() ||
+      auto !== data.autoEnabled ||
+      windowMonths !== data.windowMonths ||
+      cadence !== data.cadence ||
+      demotion !== data.demotion ||
+      data.grades.some((g, i) => {
+        const e = edit[i], b = benefit[i];
+        return !!e && !!b && (e.displayName !== g.displayName || e.minAmount !== String(g.minAmount) || b.shippingBenefit !== g.shippingBenefit || b.shippingDiscount !== (g.shippingDiscount ? String(g.shippingDiscount) : "") || b.promotionCouponId !== (g.promotionCouponId ?? ""));
+      }));
+  useUnsavedGuard(dirty);
   const run = async <T,>(path: string, method: string, body: unknown, done: (d: T) => string) => {
     setBusy(true);
     setFailure(null);
