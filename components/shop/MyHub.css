@@ -175,3 +175,8 @@
     margin-top: 16px;
   }
 }
+.hub-act {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}

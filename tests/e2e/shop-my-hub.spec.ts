@@ -54,3 +54,26 @@ test("휴대폰 390: 프로필 줄 · 요약 3칸 · 메뉴 목록(›)·로그�
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: `${SHOTS}/sh020-hub-390.png`, fullPage: true });
 });
+
+test("PC 1440: 최근 주문 「관리」 열은 상태별 버튼(취소 요청·방송 보기 · 배송 조회 · 리뷰 쓰기 · 다시 담기)", async ({ page, baseURL }) => {
+  await login(page, baseURL!);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const item = { productNameSnapshot: "테스트 상품", optionNameSnapshot: "1박스", quantity: 1, optionId: "opt1" };
+  const base = { totalAmount: 10000, createdAt: new Date().toISOString(), items: [item], counts: undefined };
+  const mk = (n: number, status: string, queue: unknown, shipment: unknown) => ({ id: `o${n}`, orderNoLabel: `T-${n}`, status, queue, shipment, ...base });
+  const orders = [
+    mk(1, "PAID", { status: "WAITING", aheadCount: 3 }, null),
+    mk(2, "PAID", { status: "DONE", aheadCount: 0 }, { status: "IN_TRANSIT", courier: "CJ", trackingNumber: "123456789012" }),
+    mk(3, "PAID", { status: "DONE", aheadCount: 0 }, { status: "DELIVERED", courier: "CJ", trackingNumber: "123456789012" }),
+    mk(4, "CANCELLED", null, null),
+  ];
+  await page.route(`**/api/shop/${SLUG}/orders?limit=*`, (r) => r.fulfill({ json: { orders, nextCursor: null, counts: { inProgress: 1 } } }));
+  await page.route(`**/api/shop/${SLUG}/live`, (r) => r.fulfill({ json: { live: true, title: "방송", watchUrl: "https://example.com/watch" } }));
+  await page.goto(`/shop/${SLUG}/me`);
+  const row = (n: number) => page.locator("tr", { hasText: `T-${n}` });
+  await expect(row(1).getByRole("link", { name: "취소 요청" })).toHaveAttribute("href", `/shop/${SLUG}/orders/o1`);
+  await expect(row(1).getByRole("link", { name: "방송 보기" })).toHaveAttribute("href", "https://example.com/watch");
+  await expect(row(2).getByRole("link", { name: "배송 조회" })).toHaveAttribute("href", /cjlogistics/);
+  await expect(row(3).getByRole("link", { name: "리뷰 쓰기" })).toHaveAttribute("href", `/shop/${SLUG}/reviews`);
+  await expect(row(4).getByRole("button", { name: "다시 담기" })).toBeVisible();
+});
