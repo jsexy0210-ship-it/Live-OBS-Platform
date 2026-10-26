@@ -41,6 +41,7 @@ test("대신 보기: 방송 화면 편집기는 저장·템플릿 버튼이 막�
 });
 
 test("대신 보기: 가로·세로 배치는 조회할 수 있고 편집과 쓰기는 막힌다", async ({ page }) => {
+  test.setTimeout(90_000); // 로그인 + 가로·세로 배치 두 번 불러오기 + 끌기 확인이라 기본 30초를 넘는다
   await login(page, "/seller/overlay");
   const writes: string[] = [];
   page.on("request", (r) => { if (r.url().includes("/api/seller/") && r.method() !== "GET") writes.push(`${r.method()} ${r.url()}`); });
