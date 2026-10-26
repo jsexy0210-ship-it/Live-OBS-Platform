@@ -84,24 +84,24 @@ export default async function ShopFrame({ slug, shopName, operatingState = "OPEN
           {hasCs && (
             <div className="shop-foot-cs" data-testid="shop-foot-cs">
               {(notice?.csPhone || notice?.csHours) && (
-                <div>
-                  <span>고객센터</span>
-                  {notice?.csPhone && <span className="shop-foot-cs-v">{notice.csPhone}</span>}
-                  {notice?.csHours && <span>{notice.csHours}</span>}
-                </div>
+                <dl>
+                  <dt>고객센터</dt>
+                  {notice?.csPhone && <dd className="shop-foot-cs-v">{notice.csPhone}</dd>}
+                  {notice?.csHours && <dd>{notice.csHours}</dd>}
+                </dl>
               )}
               {bank && (
-                <div>
-                  <span>무통장 입금 계좌</span>
-                  <span className="shop-foot-cs-v">{bank.bankName} {bank.accountNumber}</span>
-                  <span>예금주 {bank.accountHolder}</span>
-                </div>
+                <dl>
+                  <dt>무통장 입금 계좌</dt>
+                  <dd className="shop-foot-cs-v">{bank.bankName} {bank.accountNumber}</dd>
+                  <dd>예금주 {bank.accountHolder}</dd>
+                </dl>
               )}
               {notice?.csEmail && (
-                <div>
-                  <span>이메일</span>
-                  <span className="shop-foot-cs-v">{notice.csEmail}</span>
-                </div>
+                <dl>
+                  <dt>이메일</dt>
+                  <dd className="shop-foot-cs-v">{notice.csEmail}</dd>
+                </dl>
               )}
               {(notice?.kakaoChannelUrl || notice?.youtubeChannelUrl) && (
                 <div className="shop-foot-sns">

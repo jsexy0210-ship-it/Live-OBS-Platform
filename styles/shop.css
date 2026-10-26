@@ -348,9 +348,15 @@ body {
   border-top: 1px solid var(--wds-line-solid-neutral);
   border-bottom: 1px solid var(--wds-line-solid-neutral);
 }
-.shop-foot-cs > div {
+.shop-foot-cs > div,
+.shop-foot-cs > dl {
   display: flex;
   flex-direction: column;
+  margin: 0;
+}
+.shop-foot-cs dt,
+.shop-foot-cs dd {
+  margin: 0;
 }
 .shop-foot-cs-v {
   font-size: 16px;
