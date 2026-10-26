@@ -2,9 +2,11 @@
 
 import { formatDateTime, formatTime } from "../../../../../../lib/client/format";
 import "../../../../../../styles/seller-orders.css";
-import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { sanitizeNext, useSmartBack } from "../../../../../../lib/client/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import RefundModal from "../../../../../../components/seller/RefundModal";
+import { OrderMemo, PrepareShipping } from "../../../../../../components/seller/OrderWork";
 import { PageHead } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { SmartBackButton } from "../../../../../../components/seller/SmartBackButton";
@@ -23,7 +25,14 @@ const FAULT_LABEL = { BUYER: "구매자 사정", SELLER: "파트너스 사정" }
 // 송장의 택배사는 코드(CJ·HANJIN …)로 저장된다. 화면 이름으로 바꾸고, 모르는 값은 그대로 보인다.
 const courierName = (c: string) => (isCourier(c) ? COURIERS[c] : "택배사 확인 필요");
 
-export default function OrderDetailPage() {
+function OrderDetailContent() {
+  const query = useSearchParams();
+  const safeReturnTo = sanitizeNext(query.get("returnTo"), ["/seller/orders"]);
+  const listHref = safeReturnTo?.split("?")[0] === "/seller/orders" ? safeReturnTo : "/seller/orders";
+  const smartBack = useSmartBack(listHref);
+  const router = useRouter();
+  const back = useCallback(() => safeReturnTo?.split("?")[0] === "/seller/orders" ? router.replace(listHref) : smartBack(), [safeReturnTo, listHref, router, smartBack]);
+  const backHandler = useRef<(() => Promise<boolean>) | null>(null);
   const { orderId } = useParams<{ orderId: string }>();
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [refundOpen, setRefundOpen] = useState(false);
@@ -40,7 +49,9 @@ export default function OrderDetailPage() {
       const r = await load();
       // 목록의 「환불 처리」로 들어오면 바로 환불 창을 연다(환불할 수 있는 주문일 때만)
       if (new URLSearchParams(window.location.search).get("refund") === "1") {
-        window.history.replaceState(null, "", `/seller/orders/${orderId}`);
+        const params = new URLSearchParams(window.location.search);
+        params.delete("refund");
+        window.history.replaceState(window.history.state, "", `/seller/orders/${orderId}${params.size ? `?${params}` : ""}`);
         if (r.ok && r.data.status === "PAID") setRefundOpen(true);
       }
     })();
@@ -70,7 +81,7 @@ export default function OrderDetailPage() {
                 <div className="st-ic neg">!</div>
                 <span className="t">주문을 찾을 수 없습니다</span>
                 <span className="s">삭제되었거나 다른 쇼핑몰의 주문입니다.</span>
-                <SmartBackButton fallback="/seller/orders" className="btn btn-sm btn-out">주문 목록으로</SmartBackButton>
+                <SmartBackButton fallback={listHref} className="btn btn-sm btn-out">주문 목록으로</SmartBackButton>
               </div>
             ) : (
               <div className="st" style={{ boxShadow: "none" }}>
@@ -106,6 +117,8 @@ export default function OrderDetailPage() {
       </Topbar>
       <main className="main">
         <PageHead
+          onBack={async () => { if (backHandler.current && !(await backHandler.current())) return; back(); }}
+          back={listHref}
           title={
             <>
               {nick} · {formatDateTime(o.createdAt)} 주문{" "}
@@ -258,6 +271,11 @@ export default function OrderDetailPage() {
             </section>
           </div>
         </div>
+        <section className="card pad col" style={{ gap: 8 }} id="order-preparation" aria-label="배송 준비">
+          <h2 className="t-hl2">배송 준비</h2>
+          {o.shippingPreparedAt ? <p>배송 준비로 변경했습니다.</p> : <PrepareShipping ids={[o.id]} disabled={o.status !== "PAID" || !!(o.shipment && o.shipment.status !== "READY") || o.queueState !== "done"} onDone={() => void load()} />}
+        </section>
+        <OrderMemo key={o.id} backHandler={backHandler} orderId={o.id} orderNoLabel={o.orderNoLabel} />
         {/* SA-022 하단 2열: 왼쪽 상태 이력(오른쪽 알림 발송은 서버 계약이 생기면 추가) */}
         <div className="ord-detail ord-history">
           <section className="card pad col" style={{ gap: 12 }} data-testid="order-history">
@@ -304,3 +322,5 @@ export default function OrderDetailPage() {
     </>
   );
 }
+
+export default function OrderDetailPage() { return <Suspense><OrderDetailContent /></Suspense>; }

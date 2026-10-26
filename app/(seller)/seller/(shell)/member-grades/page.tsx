@@ -1,6 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { useUrlState } from "../../../../../lib/client/navigation";
 import { CursorPagination, Modal, PageHead } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../components/seller/States";
@@ -381,7 +384,7 @@ export default function MemberGradesPage() {
               <span className="t-c1 c-alt">승급은 목표 등급까지 바로 올립니다 · 켜거나 주기를 바꾼 날은 이미 재산정한 것으로 보고 다음 주기부터 돕니다</span>
             </section>
 
-            {canEdit && <MemberAdjust grades={data.grades} onDone={(t) => { setToast(t); void load(); }} />}
+            {canEdit && <MemberAdjust />}
 
             <section className="card" aria-label="고정한 회원">
               <div className="row between" style={{ padding: "12px 16px" }}>
@@ -516,87 +519,52 @@ export default function MemberGradesPage() {
   );
 }
 
-// 회원 직접 조정: 닉네임으로 찾아 등급을 고르고, 고정하면 종료일(없으면 직접 풀 때까지)까지 자동 재산정에서 제외
-function MemberAdjust({ grades, onDone }: { grades: Grade[]; onDone: (text: string) => void }) {
-  const [q, setQ] = useState("");
-  const [found, setFound] = useState<Found[] | null>(null);
-  const [pick, setPick] = useState<Record<string, { gradeId: string; lock: boolean; until: string; reason: string }>>({});
+// 회원 검색은 읽기와 기존 회원 상세 진입만 제공한다. 실제 등급 변경은 상세에서 실행한다.
+function MemberAdjust() {
+  const [u, setU] = useUrlState({ memberQ: "", memberSearch: "" });
+  const params = useSearchParams().toString();
+  const writeUrl = useRef(setU);
+  writeUrl.current = setU;
+  const [q, setQ] = useState(u.memberQ);
+  const [found, setFound] = useState<{ rows: Found[]; query: string } | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const search = async () => {
+  const generation = useRef(0);
+  const lastRequested = useRef<string | null>(null);
+  const search = useCallback(async (value: string) => {
+    const request = ++generation.current;
+    const query = value.trim();
+    lastRequested.current = query;
     setErr(null);
-    const r = await api<{ members: Found[] }>(`/api/seller/members?status=ACTIVE&limit=10&q=${encodeURIComponent(q.trim())}`);
+    const r = await api<{ members: Found[] }>(`/api/seller/members?status=ACTIVE&limit=10&q=${encodeURIComponent(query)}`);
+    if (request !== generation.current) return;
     if (!r.ok) return setErr(errorText(r, "회원을 찾지 못했습니다"));
-    setFound(r.data.members);
-    setPick(Object.fromEntries(r.data.members.map((m) => [m.id, { gradeId: m.grade.id, lock: false, until: "", reason: "" }])));
-  };
-  const apply = async (m: Found) => {
-    setBusy(true);
-    setErr(null);
-    const p = pick[m.id];
-    const r = await api(`/api/seller/member-grades/members/${m.id}`, { method: "PUT", body: { gradeId: p.gradeId, lock: p.lock, ...(p.lock && p.until ? { until: p.until } : {}), ...(p.lock && p.reason.trim() ? { reason: p.reason } : {}) } });
-    setBusy(false);
-    if (!r.ok) return setErr(errorText(r, "조정하지 못했습니다"));
-    onDone(`${m.broadcastNickname} 등급을 조정했습니다${p.lock ? " · 자동 재산정에서 제외" : ""}`);
-    await search();
-  };
-  const set = (id: string, patch: Partial<{ gradeId: string; lock: boolean; until: string; reason: string }>) => setPick((x) => ({ ...x, [id]: { ...x[id], ...patch } }));
-
-  return (
-    <section className="card" aria-label="회원 등급 조정">
-      <div className="row between" style={{ padding: "12px 16px", gap: 8, flexWrap: "wrap" }}>
-        <span className="t-hl2">수동 조정</span>
-        <form
-          className="row"
-          style={{ gap: 6 }}
-          onSubmit={(e) => {
-            e.preventDefault();
-            void search();
-          }}
-        >
-          <input className="inp inp-sm" aria-label="회원 닉네임 검색" placeholder="방송 닉네임" maxLength={30} value={q} onChange={(e) => setQ(e.target.value)} />
-          <button className="btn btn-sm btn-out" type="submit">
-            검색
-          </button>
-        </form>
-      </div>
-      {err && (
-        <div className="msg msg-neg" role="alert">
-          <span>{err}</span>
-        </div>
-      )}
-      {found !== null && found.length === 0 && (
-        <div className="st" style={{ boxShadow: "none" }}>
-          <span className="t">찾는 회원이 없습니다</span>
-        </div>
-      )}
-      {found?.map((m) => (
-        <div key={m.id} className="mg-adj" data-testid="adjust-row">
-          <span>{m.broadcastNickname}</span>
-          <select className="inp inp-sm" aria-label={`${m.broadcastNickname} 등급`} value={pick[m.id]?.gradeId} onChange={(e) => set(m.id, { gradeId: e.target.value })}>
-            {grades.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.displayName}
-              </option>
-            ))}
-          </select>
-          <label className="row t-l2" style={{ gap: 6 }}>
-            <input className="cbx" type="checkbox" checked={pick[m.id]?.lock ?? false} onChange={(e) => set(m.id, { lock: e.target.checked })} />
-            고정
-          </label>
-          <button className="btn btn-sm" type="button" disabled={busy} onClick={() => void apply(m)}>
-            적용
-          </button>
-          {pick[m.id]?.lock && (
-            <div className="mg-adj-more">
-              <DatePicker className="dt-sm" aria-label={`${m.broadcastNickname} 고정 종료일`} value={pick[m.id].until} onChange={(v) => set(m.id, { until: v })} />
-              <input className="inp inp-sm" aria-label={`${m.broadcastNickname} 고정 사유`} placeholder="사유 (예: 방송 단골)" maxLength={100} value={pick[m.id].reason} onChange={(e) => set(m.id, { reason: e.target.value })} />
-              <span className="t-c1 c-alt">종료일을 비우면 직접 풀 때까지 고정됩니다</span>
-            </div>
-          )}
-        </div>
-      ))}
-    </section>
-  );
+    setFound({ rows: r.data.members, query });
+    writeUrl.current({ memberQ: query, memberSearch: "1" });
+  }, []);
+  useEffect(() => {
+    setQ(u.memberQ);
+    if (u.memberSearch === "1" && lastRequested.current !== u.memberQ) void search(u.memberQ);
+  }, [u.memberQ, u.memberSearch, search]);
+  useEffect(() => () => { generation.current++; }, []);
+  const returnParams = new URLSearchParams(params);
+  if (found) {
+    returnParams.set("memberSearch", "1");
+    if (found.query) returnParams.set("memberQ", found.query); else returnParams.delete("memberQ");
+  }
+  const returnTo = `/seller/member-grades${returnParams.size ? `?${returnParams}` : ""}`;
+  return <section className="card" aria-label="회원 등급 조정">
+    <div className="row between" style={{ padding: "12px 16px", gap: 8, flexWrap: "wrap" }}>
+      <span className="t-hl2">수동 조정</span>
+      <form className="row" style={{ gap: 6 }} onSubmit={(e) => { e.preventDefault(); void search(q); }}>
+        <input className="inp inp-sm" aria-label="회원 닉네임 검색" placeholder="방송 닉네임" maxLength={30} value={q} onChange={(e) => setQ(e.target.value)} />
+        <button className="btn btn-sm btn-out" type="submit">검색</button>
+      </form>
+    </div>
+    {err && <div className="msg msg-neg" role="alert"><span>{err}</span></div>}
+    {found && found.rows.length === 0 && <div className="st" style={{ boxShadow: "none" }}><span className="t">찾는 회원이 없습니다</span></div>}
+    {found?.rows.map((member) => <div key={member.id} className="mg-adj" data-testid="adjust-row">
+      <span>{member.broadcastNickname}</span><span>{member.grade.displayName}</span>
+      <Link className="btn btn-sm btn-out" href={`/seller/members/${member.id}?${new URLSearchParams({ returnTo })}#member-grade-adjust`}>회원 상세</Link>
+    </div>)}
+  </section>;
 }

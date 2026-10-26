@@ -43,7 +43,7 @@ test("방송을 끝낸 뒤 이력 목록에서 찾아 상세로 들어가 요약
 
   // 방송 종료
   await page.getByRole("button", { name: "방송 끝내기" }).click();
-  await page.getByRole("dialog", { name: "방송을 끝내시겠습니까?" }).getByRole("button", { name: "방송 끝내기" }).click();
+  await page.getByRole("dialog", { name: "방송을 끝낼까요?" }).getByRole("button", { name: "방송 끝내기" }).click();
   await expect(page.getByTestId("bc-live-badge")).toHaveCount(0);
 
   // 메뉴로 이력 목록 → 방송 찾기

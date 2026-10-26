@@ -23,7 +23,7 @@ import { markConnectionRevoked } from "../../lib/server/automation/connection";
 import { POST as pauseRoute } from "../../app/api/automation/jobs/[jobId]/pause/route";
 import { POST as continueRoute } from "../../app/api/automation/jobs/[jobId]/continue/route";
 import { GET as timelineRoute } from "../../app/api/automation/jobs/[jobId]/timeline/route";
-import { cancelJob, continueJob, getJob, pauseJob, requestRefund, resumeJob } from "../../lib/server/automation/jobs";
+import { PLATFORM_NAME_PATTERN, cancelJob, continueJob, getJob, pauseJob, requestRefund, resumeJob } from "../../lib/server/automation/jobs";
 import { purchaseAutomation, reconcileAutomationPayments, reconnectAutomation } from "../../lib/server/automation/purchase";
 import { EngineAborted, actionKeyOf, callPort, insidePortCall, runSteps, trackedWindow } from "../../lib/server/automation/engine";
 import { FencingError, RunTimeExceeded, advanceStep, claimNext, extendLease, finishJob, lockJob, markActionEnded, markActionStarted, markBrowserStateHeld, markChanged, markReleaseStarted, parkForCustomer, reapExpired, toVerifying, touch, unmarkChanged } from "../../lib/server/automation/queue";
@@ -145,6 +145,17 @@ describe("자동 연결 결제와 실행 권한", () => {
     const stepRows = (await db.automationJobEvent.findMany({ where: { jobId }, orderBy: { createdAt: "asc" } })).filter((e) => (e.detail as { reason?: unknown } | null)?.reason === "step_done");
     expect(stepRows.map((e) => (e.detail as { stepIndex: number }).stepIndex)).toEqual([0, 1, 2, 3]);
     expect((await db.automationPayment.findFirstOrThrow()).status).toBe("PAID");
+  });
+
+  it("작업 조회의 shopHost: 파트너스 자기 도메인은 그대로, 플랫폼 이름이 든 주소와 값 없음은 null이다", async () => {
+    const { jobId, ctx } = await bought();
+    // bought()는 플랫폼 기본 주소(myshop.cafe24.com)로 결제한다 → 이름 노출 금지라 null
+    expect((await job(jobId)).shopHost).toBe("myshop.cafe24.com");
+    expect((await getJob(db, ctx, jobId)).shopHost).toBeNull();
+    await db.automationJob.update({ where: { id: jobId }, data: { shopHost: "shop.example.kr" } });
+    expect((await getJob(db, ctx, jobId)).shopHost).toBe("shop.example.kr");
+    await db.automationJob.update({ where: { id: jobId }, data: { shopHost: null } });
+    expect((await getJob(db, ctx, jobId)).shopHost).toBeNull();
   });
 
   it("결제 응답이 끊기면 바로 PG에 조회해 확정하고, 조회도 안 되면 결제 대기로 남아 실행되지 않는다(대사에서 확인 뒤 대기열)", async () => {
@@ -667,7 +678,11 @@ describe("재연결·재설치(확정 ②)", () => {
 });
 
 describe("외부 쇼핑몰 플랫폼 이름 비노출(2026-10-04 대표님 결정)", () => {
-  const PLATFORM = /cafe24|카페24|imweb|아임웹|smartstore|스마트스토어|godo|고도몰|makeshop|메이크샵/i;
+  const PLATFORM = PLATFORM_NAME_PATTERN;
+
+  it("플랫폼 이름 목록이 줄지 않았다(상수가 아래 이름을 모두 잡는다)", () => {
+    for (const name of ["cafe24", "카페24", "imweb", "아임웹", "smartstore", "스마트스토어", "godo", "고도몰", "makeshop", "메이크샵"]) expect(PLATFORM_NAME_PATTERN.test(`my-${name}.com`)).toBe(true);
+  });
 
   it("구매·재연결 안내·작업 조회 응답과 결제 전 동의 문구에 플랫폼 이름이 0건이다(실행기 오류 원문도 싣지 않음)", async () => {
     const rt = runtime();
@@ -4271,6 +4286,15 @@ describe("잠시 멈추기·이어 하기·작업 기록 시각표(SA-152)", () 
     expect(await db.auditLog.count({ where: { action: { in: ["automation.pause", "automation.continue"] }, sellerId: c.seller.id } })).toBe(2);
   });
 
+  it("운영 상세의 workerAssigned는 유효한 실행 자리가 있을 때만 true다(만료된 자리는 false)", async () => {
+    const a = await bought();
+    expect((await adminJobDetail(db, a.jobId))!.workerAssigned).toBe(false);
+    await db.automationJob.update({ where: { id: a.jobId }, data: { status: "RUNNING", leaseOwner: "w-test", leaseExpiresAt: new Date(Date.now() + 60_000) } });
+    expect((await adminJobDetail(db, a.jobId))!.workerAssigned).toBe(true);
+    await db.automationJob.update({ where: { id: a.jobId }, data: { leaseExpiresAt: new Date(Date.now() - 60_000) } });
+    expect((await adminJobDetail(db, a.jobId))!.workerAssigned).toBe(false);
+  });
+
   it("작업 기록 시각표: 상태 변화를 오래된 순 코드로 주고(단계 번호 포함), 비밀·내부 값은 내보내지 않으며, 다른 판매자는 404", async () => {
     const a = await bought();
     await pauseJob(db, a.ctx, a.jobId);
@@ -4292,6 +4316,10 @@ describe("잠시 멈추기·이어 하기·작업 기록 시각표(SA-152)", () 
     expect(done).toEqual([...done].sort((x: number, y: number) => x - y));
     expect(new Set(done).size).toBe(done.length);
     expect((await adminJobDetail(db, a.jobId))!.events).toHaveLength((await db.automationJobEvent.count({ where: { jobId: a.jobId } })) - done.length);
+    const det = (await adminJobDetail(db, a.jobId))!;
+    expect(det.steps).toHaveLength(det.stepCount);
+    expect(det.attemptsLeft).toBe(Math.max(0, det.maxAttempts - det.attempts));
+    expect(typeof det.workerAssigned).toBe("boolean");
     for (const t of body.timeline) expect(Object.keys(t).sort()).toEqual(["at", "kind", "reason", "stepNumber"]);
     expect(JSON.stringify(body.timeline)).not.toMatch(/workerId|w1|by"/);
     const b = await bought();

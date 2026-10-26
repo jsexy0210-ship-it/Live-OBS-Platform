@@ -37,7 +37,7 @@ for (const width of [1440, 1024, 390]) {
     await expect(page.getByRole('heading',{name:'홈',exact:true})).toBeVisible();
     await expect(page.getByRole('heading',{name:'홈',exact:true})).toHaveAttribute('aria-describedby', /.+/);
     await expect(page.locator('.loc-bar')).toHaveCount(0);
-    await expect(page.getByText('검수 쇼핑몰의 오늘 상황입니다',{exact:true})).toBeVisible();
+    await expect(page.getByText('검수 쇼핑몰의 운영 현황과 방송을 한곳에서 확인해요.',{exact:true})).toBeVisible();
     await page.screenshot({path:`tests/e2e/screenshots/root-header/seller-home-${width}.png`});
     await page.goto('/seller/settings/legal');
     await expect(page.getByRole('heading',{name:'법정 고지 · 약관',exact:true})).toBeVisible();

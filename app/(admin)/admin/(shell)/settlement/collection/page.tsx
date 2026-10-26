@@ -210,8 +210,8 @@ function CollectionPageInner() {
                   </span>
                 </div>
                 <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                  {["연체 목록", "유예 목록", "잠금 목록"].map((l) => (
-                    <Link key={l} className="btn btn-sm btn-out" href="/admin/billing/subscriptions">
+                    {[["연체 목록", ""], ["유예 목록", "grace"], ["잠금 목록", "locked"]].map(([l, access]) => (
+                      <Link key={l} className="btn btn-sm btn-out" href={access ? `/admin/billing/subscriptions?access=${access}&period=all` : "/admin/billing/subscriptions"}>
                       {l}
                     </Link>
                   ))}

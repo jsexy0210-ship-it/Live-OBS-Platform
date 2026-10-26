@@ -27,7 +27,7 @@ test("오버레이 전용 대표자: /seller가 오버레이 홈으로 열리고
   await expect(page.getByRole("link", { name: "방송 대시보드" })).toHaveCount(0);
   const waiting = page.getByRole("region", { name: "방송 전 대기 0건", exact: true });
   await expect(waiting).toBeVisible();
-  await expect(waiting).toContainText("대기 중인 주문이 없습니다");
+  await expect(waiting).toContainText("대기 중인 주문이 없어요");
   await expect(page.getByTestId("bc-waiting")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "방송 화면 꾸미기" }).first()).toBeVisible();
   const tiles = page.getByTestId("oh-tiles");

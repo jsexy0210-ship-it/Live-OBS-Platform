@@ -52,7 +52,7 @@ test("주문 상세: 머리글(주문일·상태·주문번호 복사) → 상�
   await expect(head.getByRole("status")).toHaveText("주문번호를 복사했어요");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(label);
 
-  const names = await page.locator(".co-main > section h2").allInnerTexts();
+  const names = await page.locator(".co-main section h2").allInnerTexts();
   const order = ["주문 상품", "결제 정보", "배송 정보"];
   const idx = order.map((n) => names.findIndex((t) => t.startsWith(n)));
   expect(idx.every((i) => i >= 0)).toBe(true);
@@ -107,4 +107,27 @@ test("주문 상세: 진행 단계(개봉 대기 앞에 N명) · 결제 수단 �
   await expect(pay).toContainText("신청 안 함");
   await expect(pay).toContainText("카드 결제는 카드 매출전표로 대신해요");
   await expect(page.getByRole("region", { name: "배송 정보" })).toContainText("택배 (");
+});
+
+test("주문 상세: 왼쪽 내 정보 메뉴 · 4칸 진행 단계 · 결제/배송 2열", async ({ page, baseURL }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await login(page, baseURL!);
+  const { orderId } = await makeOrder(page, baseURL!);
+  await page.route(`**/api/shop/${SLUG}/orders/${orderId}`, async (route) => {
+    const res = await route.fetch();
+    const body = (await res.json()) as Record<string, unknown>;
+    await route.fulfill({ response: res, json: { ...body, status: "PAID", queue: { status: "WAITING", aheadCount: 11 } } });
+  });
+  await page.goto(`/shop/${SLUG}/orders/${orderId}`);
+  const menu = page.getByRole("navigation", { name: "내 정보 메뉴" });
+  await expect(menu).toBeVisible();
+  await expect(menu.locator('a[aria-current="page"]')).toContainText("주문 내역");
+  await expect(page.locator(".od-steps li")).toHaveCount(4);
+  const [pay, ship] = await Promise.all([page.getByRole("region", { name: "결제 정보" }).boundingBox(), page.getByRole("region", { name: "배송 정보" }).boundingBox()]);
+  expect(Math.abs(pay!.y - ship!.y)).toBeLessThan(2);
+  expect(ship!.x).toBeGreaterThan(pay!.x);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(".my-back")).toContainText("주문 상세");
+  await expect(menu).toBeHidden();
 });

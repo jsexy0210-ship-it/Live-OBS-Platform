@@ -28,7 +28,7 @@ type Summary = {
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; data: Summary };
 const n = (v: number, unit: string) => `${v.toLocaleString("ko-KR")}${unit}`;
 
-type Fetch<T> = { kind: "loading" } | { kind: "error" } | { kind: "ok"; data: T };
+type Fetch<T> = { kind: "loading" } | { kind: "error"; status?: number } | { kind: "ok"; data: T };
 function useApi<T>(path: string, tick: number) {
   const [state, setState] = useState<Fetch<T>>({ kind: "loading" });
   const reqId = useRef(0);
@@ -42,7 +42,7 @@ function useApi<T>(path: string, tick: number) {
     const r = await adminApi<T>(path);
     if (id !== reqId.current) return;
     pending.current = null;
-    setState(r.ok ? { kind: "ok", data: r.data } : { kind: "error" });
+    setState(r.ok ? { kind: "ok", data: r.data } : { kind: "error", status: r.status });
   }, [path]);
   useEffect(() => () => {
     // 기간 변경·화면 이탈 뒤 도착한 이전 조회는 현재 상태를 덮지 않는다.
@@ -68,7 +68,13 @@ function Panel<T>({ title, state, retry, children, id, href }: { title: string; 
       )}
       {state.kind === "error" && (
         <div className="card">
-          <ErrorState title={`${title}을(를) 불러오지 못했습니다.`} onRetry={retry} />
+          {state.status === 403 ? (
+            <div className="st" role="status" style={{ boxShadow: "none" }}>
+              <span className="t">조회 권한이 필요해요</span>
+              <p className="t-c1 c-alt">담당 관리자에게 조회 권한을 요청해 주세요.</p>
+              <button className="btn btn-sm" type="button" onClick={retry}>다시 불러오기</button>
+            </div>
+          ) : <ErrorState title={`${title} 정보를 불러오지 못했어요.`} onRetry={retry} />}
         </div>
       )}
       {state.kind === "ok" && children(state.data)}
@@ -88,7 +94,7 @@ const TASK_LABEL: Record<TaskKey, string> = {
   inquiryOpen: "파트너스 문의",
   pgError: "카드 결제 연결 오류",
   automationFailed: "자동 연결 실패",
-  incidentCritical: "바로 확인할 문제",
+  incidentCritical: "확인이 필요한 항목",
   platformInfoMissing: "플랫폼 정보 미입력",
 };
 
@@ -124,47 +130,56 @@ function TodayTasks({ tick }: { tick: number }) {
   const [state, load] = useApi<Tasks>("/api/admin/today-tasks", tick);
   const { me } = useAdmin();
   const canEditInfo = adminCan(me.role, "system.manage");
+  const [idleOpen, setIdleOpen] = useState(false);
   return (
     <Panel title="오늘 처리할 일" state={state} retry={() => void load()} id="today-tasks">
-      {(d) => (
+      {(d) => {
+        // 서버가 반환한 항목·순서를 유지하고, 처리할 일이 있는 항목부터 보여 준다.
+        const items = d.items.filter((t) => t.key !== "platformInfoMissing" || t.count > 0);
+        const pending = items.filter((t) => t.count > 0);
+        const idle = items.filter((t) => t.count === 0);
+        const tile = (t: Tasks["items"][number]) => {
+          const isInfo = t.key === "platformInfoMissing";
+          const unit = isInfo ? "항목" : "건";
+          const body = (
+            <>
+              <span className="t-l2 c-alt">{TASK_LABEL[t.key]}</span>
+              <span className={`t-h2 ${t.count > 0 && !isInfo ? "c-neg" : ""}`}>{n(t.count, unit)}</span>
+              {isInfo && <span className="t-c1 c-alt">{(t.fields ?? []).map((f) => INFO_FIELD[f] ?? f).join(" · ")} 비어 있음</span>}
+              {isInfo && !canEditInfo && <span className="t-c1 c-alt">최고관리자에게 요청해 주세요</span>}
+            </>
+          );
+          // 플랫폼 정보는 기존 권한 그대로, 열 수 없는 관리자에게 안내로 표시한다.
+          return isInfo && !canEditInfo ? (
+            <div key={t.key} className="card pad col" style={{ gap: 4 }} data-testid={`today-task-${t.key}`} aria-label={`${TASK_LABEL[t.key]} ${t.count}${unit}`}>
+              {body}
+            </div>
+          ) : (
+            <Link key={t.key} href={taskHref(t.key, t.href)} className="card pad col" style={{ gap: 4, textDecoration: "none", color: "inherit" }} data-testid={`today-task-${t.key}`} aria-label={`${TASK_LABEL[t.key]} ${t.count}${unit}`}>
+              {body}
+            </Link>
+          );
+        };
+        return (
         <>
           <span className="t-c1 c-alt" data-testid="today-tasks-at">
-            숫자를 누르면 해당 조건이 걸린 목록으로 이동합니다 · {shortAt(d.at)} 집계
+            {shortAt(d.at)} 집계
           </span>
           {d.total === 0 && (
             <div className="card pad t-l2 c-alt" role="status" data-testid="today-tasks-empty">
-              지금 처리할 일이 없습니다.
+              지금 처리할 일이 없어요.
             </div>
           )}
-          <div className="stat-row" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
-            {d.items
-              // 플랫폼 정보 미입력은 한 항목이라도 비어 있을 때만 보이고 모두 채우면 사라진다(MA-088 정본)
-              .filter((t) => t.key !== "platformInfoMissing" || t.count > 0)
-              .map((t) => {
-                const isInfo = t.key === "platformInfoMissing";
-                const unit = isInfo ? "항목" : "건";
-                const body = (
-                  <>
-                    <span className="t-l2 c-alt">{TASK_LABEL[t.key]}</span>
-                    <span className={`t-h2 ${t.count > 0 && !isInfo ? "c-neg" : ""}`}>{n(t.count, unit)}</span>
-                    {isInfo && <span className="t-c1 c-alt">{(t.fields ?? []).map((f) => INFO_FIELD[f] ?? f).join(" · ")} 비어 있음</span>}
-                    {isInfo && !canEditInfo && <span className="t-c1 c-alt">최고관리자에게 요청</span>}
-                  </>
-                );
-                // 플랫폼 정보 화면은 최고관리자만 열 수 있어 다른 관리자에게는 누르는 타일이 아니라 안내로 보인다
-                return isInfo && !canEditInfo ? (
-                  <div key={t.key} className="card pad col" style={{ gap: 4 }} data-testid={`today-task-${t.key}`} aria-label={`${TASK_LABEL[t.key]} ${t.count}${unit}`}>
-                    {body}
-                  </div>
-                ) : (
-                  <Link key={t.key} href={taskHref(t.key, t.href)} className="card pad col" style={{ gap: 4, textDecoration: "none", color: "inherit" }} data-testid={`today-task-${t.key}`} aria-label={`${TASK_LABEL[t.key]} ${t.count}${unit}`}>
-                    {body}
-                  </Link>
-                );
-              })}
-          </div>
+          {pending.length > 0 && <div className="stat-row" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>{pending.map(tile)}</div>}
+          {idle.length > 0 && (
+            <details className="ma-home-task-idle" open={idleOpen} onToggle={(e) => setIdleOpen(e.currentTarget.open)}>
+              <summary>처리할 일 없는 항목 {idle.length}개</summary>
+              <div className="stat-row" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>{idle.map(tile)}</div>
+            </details>
+          )}
         </>
-      )}
+        );
+      }}
     </Panel>
   );
 }
@@ -551,7 +566,7 @@ export default function HomeDashboard({ detail = false }: { detail?: boolean }) 
       <main className={`main ma-home ${detail ? "ma-home-detail" : "ma-home-compact"}`}>
         <PageHead
           title={detail ? "상세 현황" : "통합 대시보드"}
-          description={detail ? "기간별 통계와 파트너스·구독·운영 상세 정보를 확인합니다." : "매출과 오늘 처리할 일을 확인합니다. 전체 정보는 홈의 상세 현황에서 확인합니다."}
+          description={detail ? "기간별 통계와 파트너스·구독·운영 상세 정보를 확인합니다." : "매출과 처리할 일을 확인해요."}
           actions={
             <>
               <Link className="btn btn-out" href={detail ? "/admin" : "/admin/home/status"}>{detail ? "홈 요약" : "상세 현황"}</Link>
@@ -563,7 +578,7 @@ export default function HomeDashboard({ detail = false }: { detail?: boolean }) 
             </>
           }
         />
-        {!detail && <p className="ma-home-mobile-notice t-c1 c-alt" data-testid="admin-home-mobile-notice">모바일에서는 홈 화면을 제공합니다 상세 관리 업무는 PC에서 이용해 주십시오</p>}
+        {!detail && <p className="ma-home-mobile-notice t-c1 c-alt" data-testid="admin-home-mobile-notice">모바일에서는 홈을 볼 수 있어요. 상세 관리는 PC에서 이용해 주세요.</p>}
         <div className="col ma-home-content">
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
             <h2 className="t-hl1">{detail ? "기간별 현황" : "매출 요약"}</h2>

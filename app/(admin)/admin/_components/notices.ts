@@ -1,6 +1,8 @@
 // 플랫폼 공지 응답과 표시 문구(GET·POST·PUT·DELETE /api/admin/platform-notices, MA-053·054)
 export type NoticeCategory = "MAINTENANCE" | "POLICY" | "FEATURE" | "GENERAL";
 export type NoticeAudience = "PARTNERS" | "PUBLIC" | "ALL";
+export type NoticeTarget = { id: string; shopName: string; slug: string };
+export type NoticeTargetMode = "ALL" | "SPECIFIC";
 export type NoticeStatus = "draft" | "published";
 export type Notice = {
   id: string;
@@ -8,6 +10,9 @@ export type Notice = {
   body: string;
   category: NoticeCategory;
   audience: NoticeAudience;
+  targetMode?: NoticeTargetMode;
+  targetSellerIds?: string[];
+  targetSellers?: NoticeTarget[];
   isPinned: boolean;
   status: NoticeStatus;
   publishedAt: string | null;
@@ -15,6 +20,7 @@ export type Notice = {
   createdAt: string;
   updatedAt: string;
 };
+export const NOTICE_TARGET_MAX = 200;
 export const NOTICE_TITLE_MAX = 100;
 export const NOTICE_BODY_MAX = 10_000;
 export const NOTICE_CATEGORY: Record<NoticeCategory, { label: string; cls: string }> = {

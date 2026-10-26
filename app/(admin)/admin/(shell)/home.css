@@ -42,6 +42,9 @@
 .ma-home-compact-values { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 16px; }
 .ma-home-compact [data-testid="today-tasks"] .stat-row { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; gap: 8px !important; }
 .ma-home-compact [data-testid="today-tasks"] .stat { padding: 10px; }
+.ma-home-compact .ma-home-task-idle { border-top: 1px solid var(--wds-line-normal-alternative); padding-top: 8px; }
+.ma-home-compact .ma-home-task-idle > summary { padding: 8px 0; }
+.ma-home-compact .ma-home-task-idle[open] > summary { margin-bottom: 8px; }
 .ma-home-detail .ma-home-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .ma-home-detail .ma-home-panel .sts-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .ma-home-detail .ma-home-kpis .sts-kpis { grid-template-columns: minmax(0, 1fr); }

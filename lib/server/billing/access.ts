@@ -6,9 +6,11 @@ export type SellerAccess = "trial" | "paid" | "charging" | "grace" | "expired";
 
 // 남은 기간 차액(MASTER 결정 2026-10-04): KST 달력 일 단위, 기간 끝 당일 0일·원 단위 절사.
 // 플랜 변경 준비와 미확정 청구 재시도가 같은 계산을 사용한다.
+const kstDay = (d: Date) => Math.floor((d.getTime() + 9 * 3_600_000) / 86_400_000);
+// 차액 산식의 분모(전체 일수). 화면이 「남은 N일 / 전체 M일」을 보일 때 쓴다.
+export const periodDays = (start: Date, end: Date) => Math.max(1, kstDay(end) - kstDay(start));
 export function proration(diff: number, start: Date, end: Date, now: Date): { amount: number; remainingDays: number } {
-  const kstDay = (d: Date) => Math.floor((d.getTime() + 9 * 3_600_000) / 86_400_000);
-  const total = Math.max(1, kstDay(end) - kstDay(start));
+  const total = periodDays(start, end);
   const remainingDays = Math.min(total, Math.max(0, kstDay(end) - kstDay(now)));
   return { amount: Math.floor((Math.max(0, diff) * remainingDays) / total), remainingDays };
 }

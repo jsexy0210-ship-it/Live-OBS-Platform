@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSeller } from "../../../../../lib/server/authz/guards";
-import { getSellerMember } from "../../../../../lib/server/buyers/sellerMembers";
+import { getSellerMember, getSellerMemberSummary } from "../../../../../lib/server/buyers/sellerMembers";
 import { prisma } from "../../../../../lib/server/db";
 import { errorResponse, sessionToken } from "../../../../../lib/server/http/route";
 
@@ -8,6 +8,10 @@ import { errorResponse, sessionToken } from "../../../../../lib/server/http/rout
 export async function GET(req: Request, { params }: { params: Promise<{ memberId: string }> }) {
   try {
     const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { allowUnpaid: true, feature: "ORDER_FOLLOWUP" });
+    if (new URL(req.url).searchParams.get("summary") === "1") {
+      const member = await getSellerMemberSummary(prisma, ctx, (await params).memberId);
+      return NextResponse.json({ member }, { headers: { "cache-control": "no-store" } });
+    }
     const member = await getSellerMember(prisma, ctx, (await params).memberId);
     return NextResponse.json({ member }, { headers: { "cache-control": "no-store" } });
   } catch (e) {

@@ -548,10 +548,12 @@ test("파트너스 문의: 실제 요약·긴급 조건을 조회하고 합성 �
   async function summaryValues(summary: Summary) {
     const cards = page.getByTestId("inquiry-summary").locator(":scope > .card");
     await expect(cards).toHaveCount(6);
-    await expect(cards.locator(":scope > span:first-child")).toHaveText(["답변 대기", "내 담당", "오늘 접수", "답변 완료 (오늘)", "평균 첫 답변", "만족도 (7일)"]);
-    await expect(cards.locator(":scope > .t-h2")).toHaveText([`${summary.waiting}건`, `${summary.mine}건`, `${summary.todayReceived}건`, `${summary.answeredToday}건`, summary.avgFirstReplyHours === null ? "—" : `${summary.avgFirstReplyHours.toFixed(1)}시간`, "집계 준비 중"]);
+    await expect(cards.locator(":scope > span:first-child")).toHaveText(["답변 대기", "내 담당", "오늘 접수", "답변 완료 (오늘)", "평균 첫 답변", "도움됨 (7일)"]);
+    await expect(cards.locator(":scope > .t-h2")).toHaveText([`${summary.waiting}건`, `${summary.mine}건`, `${summary.todayReceived}건`, `${summary.answeredToday}건`, summary.avgFirstReplyHours === null ? "—" : `${summary.avgFirstReplyHours.toFixed(1)}시간`, summary.helpful7d.rate === null ? "—" : `${summary.helpful7d.rate}%`]);
     await expect(cards.first()).toContainText(`긴급 ${summary.urgent} · 4시간 초과 ${summary.overdue}`);
-    await expect(cards.last()).not.toContainText(/%|4\.6|평가/);
+    // 별점 만족도는 없다: 「도움이 됐습니까?」 예 비율만 보이고(답한 문의가 없으면 「—」), 별점·「평가」 문구는 만들지 않는다
+    await expect(cards.last()).toContainText("「도움이 됐습니까?」 예 비율");
+    await expect(cards.last()).not.toContainText(/4\.6|평가|준비 중/);
     await expect(page.getByLabel("긴급 우선", { exact: true })).toBeVisible();
     await expect(page.getByLabel("긴급만", { exact: true })).toBeVisible();
   }
@@ -626,13 +628,13 @@ test("파트너스 목록: 실제 로그인 후 공통 틀 3폭 geometry와 이�
     let failure: { error: unknown } | undefined;
     let data: { sellers: SellerListRow[] } | undefined;
     try {
-      const responseBody = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/admin/sellers" && r.request().method() === "GET")
-        .then(async response => {
-          expect(response.status()).toBe(200);
-          expect(await response.finished()).toBeNull();
-          return response.json();
-        });
-      [data] = await Promise.all([responseBody, page.goto("/admin/partners")]);
+      const listed = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/admin/sellers" && r.request().method() === "GET");
+      const [response] = await Promise.all([listed, page.goto("/admin/partners")]);
+      expect(response.status()).toBe(200);
+      // 화면이 가져간 응답 본문은 이동 중 해제될 수 있어, 같은 조회를 다시 받아 대상 행을 정한다
+      const again = await page.request.get("/api/admin/sellers");
+      expect(again.status()).toBe(200);
+      data = await again.json();
       await expect(page.getByRole("heading", { name: "파트너스 목록", exact: true })).toBeVisible();
       await expect(page.getByTestId("partner-row").first()).toBeVisible();
       await page.evaluate(() => document.fonts.ready);
@@ -660,14 +662,17 @@ test("파트너스 목록: 실제 로그인 후 공통 틀 3폭 geometry와 이�
       if (failure) throw failure.error;
       expect(geometry).toEqual({ mainX: width < 768 ? 0 : 196, headY: 112, overflow: false });
       if (width >= 1024) {
-        expect(metrics.table?.columns[0].align).toBe("left");
-        for (const row of metrics.rows) expect(row.cells[0].align).toBe("left");
+        // 최고관리자 목록은 첫 칸이 선택 체크 열이므로 이름 칸은 머리글 「파트너스 · 쇼핑몰」로 찾는다(위치 가정 금지)
+        const nameCol = metrics.table?.columns.findIndex((c) => c.text === "파트너스 · 쇼핑몰") ?? -1;
+        expect(nameCol).toBeGreaterThanOrEqual(0);
+        expect(metrics.table?.columns[nameCol].align).toBe("left");
+        for (const row of metrics.rows) expect(row.cells[nameCol].align).toBe("left");
         expect(metrics.scroll?.overflowX).toBe("auto");
         if (!data?.sellers.length) throw new Error("파트너스 조회 응답에 대상 행이 없습니다");
         const target = data.sellers.reduce((a, b) => a.shopName.length >= b.shopName.length ? a : b);
         const row = page.getByTestId("partner-row").filter({ has: page.locator(`a[href="/admin/partners/${target.id}"]`) });
-        await expect(row.locator("td").first().getByRole("link", { name: target.shopName, exact: true })).toBeVisible();
-        await expect(row.locator("td").first()).toContainText(`쇼핑몰 주소 ${target.slug}`);
+        await expect(row.locator("td").nth(nameCol).getByRole("link", { name: target.shopName, exact: true })).toBeVisible();
+        await expect(row.locator("td").nth(nameCol)).toContainText(`쇼핑몰 주소 ${target.slug}`);
         await page.locator("main .tbl").evaluate((el) => { if (el.parentElement) el.parentElement.scrollLeft = el.parentElement.scrollWidth; });
         const action = row.getByRole("link", { name: "상세", exact: true });
         await action.focus();

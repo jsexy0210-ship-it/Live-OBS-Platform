@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { adminCan } from "../../../../../lib/server/authz/permissions";
-import { DateRangePicker, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
+import { ListTable, DateRangePicker, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { ListHead, Pagination } from "../../../../../components/admin-ui/ListTable";
 import { ErrorState, LoadingRows, Toast } from "../../../../../components/seller/States";
 import { MAX_SEARCH_LENGTH } from "../../../../../components/seller/format";
 import { adminApi } from "../../_components/api";
 import { AdminTopbar, useAdmin } from "../../_components/AdminShell";
+import { selectionHref } from "../../_components/selection";
 import { ImpersonateDialog } from "../../_components/ImpersonateDialog";
 import { DISPLAY_STATUS, PLAN_FILTER, ago, day, type DisplayStatus, type SellerListRow, type SellerListSummary } from "../../_components/partners";
 import { useListFilters } from "../../_components/useListFilters";
@@ -84,10 +85,12 @@ function params(f: Filters, withPaging: boolean) {
 function PartnerList() {
   const { me } = useAdmin();
   const canImpersonate = adminCan(me.role, "seller.impersonate");
+  const canBulk = adminCan(me.role, "seller.moderate"); // 선택 메모 일괄은 최고관리자·운영만(CS·조회 전용은 서버가 403)
   const { applied, draft, setDraft, apply } = useListFilters<Filters>(EMPTY);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
   const [viewing, setViewing] = useState<SellerListRow | null>(null);
+  const [picked, setPicked] = useState<string[]>([]); // 체크한 파트너스(지금 쪽에 보이는 것만 남긴다)
 
   // 조건을 빨리 바꾸면 이전 응답이 늦게 올 수 있다. 마지막으로 보낸 조건의 응답만 반영한다
   const reqId = useRef(0);
@@ -130,6 +133,11 @@ function PartnerList() {
     }
   }, [data?.total, limit, applied.page, apply]);
   const sum = data?.summary ?? null;
+  const rowIds = data?.sellers.map((x) => x.id) ?? [];
+  const rowKey = rowIds.join(",");
+  useEffect(() => setPicked((p) => p.filter((id) => rowKey.split(",").includes(id))), [rowKey]);
+  const allPicked = rowIds.length > 0 && rowIds.every((id) => picked.includes(id));
+  const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   const filtered = SEARCH_KEYS.some((k) => k !== "field" && applied[k] !== "");
 
   const search = () => go({ ...draft, q: draft.q.trim(), sort: latest.current.sort, limit: latest.current.limit, page: "1" });
@@ -248,9 +256,9 @@ function PartnerList() {
           </SearchRow>
         </SearchBox>
 
-        <div className="card">
-          {state.kind === "loading" && <LoadingRows rows={5} />}
-          {state.kind === "error" && <ErrorState title="파트너스 목록을 불러오지 못했습니다." onRetry={() => void load(applied)} />}
+        <section className="au-list-section">
+          {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
+          {state.kind === "error" && <div className="card"><ErrorState title="파트너스 목록을 불러오지 못했습니다." onRetry={() => void load(applied)} /></div>}
           {data &&
             (data.sellers.length === 0 ? (
               <div className="st">
@@ -277,13 +285,23 @@ function PartnerList() {
                       <select className="inp" aria-label="쪽 크기" value="10" onChange={() => set({ limit: "10" })}>
                         <option value="10">10개씩</option>
                       </select>
+                      {canBulk && (
+                        <Link className="btn btn-sm btn-out" aria-disabled={picked.length === 0} onClick={e => { if (!picked.length) e.preventDefault(); }} href={selectionHref("/admin/partners/bulk-note", picked, `/admin/partners?${params(applied, true)}`)}>
+                          선택 메모 추가{picked.length > 0 ? ` ${picked.length}` : ""}
+                        </Link>
+                      )}
                     </span>
                   }
                 />
-                <div style={{ overflowX: "auto" }}>
+                <ListTable>
                   <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                     <thead>
                       <tr>
+                        {canBulk && (
+                          <th style={{ width: 24, padding: "0 4px" }}>
+                            <input className="chkbox" type="checkbox" aria-label="이 쪽 전체 선택" checked={allPicked} onChange={(e) => setPicked(e.target.checked ? rowIds : [])} />
+                          </th>
+                        )}
                         <th className="col-text">파트너스 · 쇼핑몰</th>
                         <th>번호</th>
                         <th>상태</th>
@@ -302,6 +320,11 @@ function PartnerList() {
                         const overlayOnly = s.plan?.code === "OVERLAY_ONLY";
                         return (
                           <tr key={s.id} data-testid="partner-row">
+                            {canBulk && (
+                              <td style={{ padding: "0 4px" }}>
+                                <input className="chkbox" type="checkbox" aria-label={`${s.shopName} 선택`} checked={picked.includes(s.id)} onChange={() => toggle(s.id)} />
+                              </td>
+                            )}
                             <td className="col-text">
                               <Link className="fw6" href={`/admin/partners/${s.id}`}>
                                 {s.shopName}
@@ -322,7 +345,7 @@ function PartnerList() {
                             <td className="num">{day(s.createdAt)}</td>
                             <td>{ago(s.lastActivityAt)}</td>
                             <td>
-                              <span className="row" style={{ gap: 6, justifyContent: "center" }}>
+                              <span className="row" style={{ gap: 4, justifyContent: "center" }}>
                                 <Link className="btn btn-sm btn-out" href={`/admin/partners/${s.id}`}>
                                   상세
                                 </Link>
@@ -338,13 +361,13 @@ function PartnerList() {
                       })}
                     </tbody>
                   </table>
-                </div>
+                </ListTable>
                 {data.total > limit && <div style={{ maxWidth: "100%", overflowX: "auto" }}>
                   <Pagination page={page} pageCount={Math.ceil(data.total / limit)} onChange={(n) => go({ page: String(n) })} />
                 </div>}
               </>
             ))}
-        </div>
+        </section>
       </main>
       {viewing && (
         <ImpersonateDialog

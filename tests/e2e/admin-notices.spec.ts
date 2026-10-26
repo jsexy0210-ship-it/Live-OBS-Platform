@@ -21,9 +21,11 @@ test.beforeAll(async () => {
       { email: emails.ops, passwordHash, name: "운영", role: "OPERATIONS" },
     ],
   });
+  await db.seller.createMany({ data: Array.from({ length: 11 }, (_, i) => ({ slug: `nt-target-${run}-${i}`, shopName: `대상 ${run} ${i}`, status: "ACTIVE" as const })) });
 });
 test.afterAll(async () => {
   await db.platformNotice.deleteMany({ where: { title: { contains: run } } });
+  await db.seller.deleteMany({ where: { slug: { startsWith: `nt-target-${run}-` } } });
   await db.$disconnect();
 });
 
@@ -35,6 +37,60 @@ async function login(page: Page, email: string) {
   await page.getByRole("button", { name: "로그인" }).click();
   await expect(page).toHaveURL(/\/admin$/);
 }
+
+test("특정 파트너스: 빈 초안·검색 10개와 다음 쪽·선택 보존·게시 대상을 구분한다", async ({ page }) => {
+  await login(page, emails.cs);
+  await page.goto("/admin/support/notices/new");
+  const title = `특정 대상 ${run}`;
+  await page.getByLabel("제목", { exact: true }).fill(title);
+  await page.getByLabel("본문", { exact: true }).fill("특정 파트너스 안내");
+  await page.getByLabel("특정 파트너스 선택", { exact: true }).check();
+  await expect(page.getByRole("button", { name: "지금 게시하기", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "임시 저장하기", exact: true }).click();
+  await expect(page.getByText("임시 저장했습니다.", { exact: true })).toBeVisible();
+  const draft = await db.platformNotice.findFirstOrThrow({ where: { title }, include: { targets: true } });
+  expect([draft.targetMode, draft.publishedAt, draft.targets]).toEqual(["SPECIFIC", null, []]);
+
+  await page.goto(`/admin/support/notices/${draft.id}`);
+  await expect(page.getByLabel("특정 파트너스 선택", { exact: true })).toBeChecked();
+  await expect(page.getByRole("button", { name: "지금 게시하기", exact: true })).toBeDisabled();
+  const q = `대상 ${run}`;
+  await page.getByLabel("파트너스 검색", { exact: true }).fill(q);
+  const search = page.waitForResponse((r) => { const u = new URL(r.url()); return u.pathname === "/api/admin/sellers" && u.searchParams.get("q") === q && u.searchParams.get("limit") === "10" && !u.searchParams.has("cursor"); });
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  const firstResponse = await search;
+  expect(firstResponse.status()).toBe(200);
+  const first = await firstResponse.json() as { sellers: { id: string; shopName: string; slug: string }[]; nextCursor: string };
+  expect(first.sellers).toHaveLength(10);
+  expect(first.nextCursor).toBeTruthy();
+  const results = page.getByRole("list", { name: "파트너스 검색 결과", exact: true });
+  await expect(results.getByRole("checkbox")).toHaveCount(10);
+  const chosen = first.sellers[0];
+  await results.getByRole("checkbox", { name: `${chosen.shopName} · ${chosen.slug}`, exact: true }).check();
+  // 입력 초안을 바꿔도 다음 쪽은 이미 적용한 검색 조건을 이어간다.
+  await page.getByLabel("파트너스 검색", { exact: true }).fill("아직 검색하지 않은 입력");
+  const next = page.waitForResponse((r) => { const u = new URL(r.url()); return u.pathname === "/api/admin/sellers" && u.searchParams.get("q") === q && u.searchParams.get("cursor") === first.nextCursor && u.searchParams.get("limit") === "10"; });
+  await page.getByRole("button", { name: "더 불러오기", exact: true }).click();
+  const nextResponse = await next;
+  expect(nextResponse.status()).toBe(200);
+  const last = await nextResponse.json() as { sellers: { id: string; shopName: string; slug: string }[]; nextCursor: string | null };
+  expect(last.sellers).toHaveLength(1);
+  expect(last.nextCursor).toBeNull();
+  await expect(results.getByRole("checkbox")).toHaveCount(11);
+  await expect(results.getByRole("checkbox", { name: `${chosen.shopName} · ${chosen.slug}`, exact: true })).toBeChecked();
+  const another = last.sellers[0];
+  await results.getByRole("checkbox", { name: `${another.shopName} · ${another.slug}`, exact: true }).check();
+  await expect(page.getByRole("list", { name: "선택한 파트너스", exact: true }).getByRole("button", { name: /선택 해제$/ })).toHaveCount(2);
+  await page.getByRole("button", { name: "지금 게시하기", exact: true }).click();
+  await expect(page.getByText("공지를 게시했습니다.", { exact: true })).toBeVisible();
+  const published = await db.platformNotice.findUniqueOrThrow({ where: { id: draft.id }, include: { targets: true } });
+  expect(published.targetMode).toBe("SPECIFIC");
+  expect(published.publishedAt).not.toBeNull();
+  expect(published.targets.map((t) => t.sellerId).sort()).toEqual([chosen.id, another.id].sort());
+  await page.goto(`/admin/support/notices/${draft.id}`);
+  await expect(page.getByRole("list", { name: "선택한 파트너스", exact: true })).toContainText(chosen.shopName);
+  await expect(page.getByRole("list", { name: "선택한 파트너스", exact: true })).toContainText(another.shopName);
+});
 
 test("최고관리자: 제목·본문 없이는 저장되지 않고, 게시·임시 저장이 목록과 DB에 반영된다", async ({ page }) => {
   await login(page, emails.super);
@@ -73,7 +129,7 @@ test("최고관리자: 수정하면 반영되고, 다른 곳에서 먼저 고쳤
   await login(page, emails.super);
   await page.goto("/admin/support/notices");
   await page.getByTestId("notice-row").filter({ hasText: t.a }).getByRole("link", { name: "수정" }).click();
-  await expect(page).toHaveURL(/\/notices\/[0-9a-f-]{36}$/);
+  await expect(page).toHaveURL(/\/notices\/[0-9a-f-]{36}(?:\?|$)/);
   await page.getByLabel("제목").fill(`${t.a} 수정`);
   // 다른 관리자가 먼저 고친 상황: 버전을 올려 둔다
   await db.platformNotice.updateMany({ where: { title: t.a }, data: { version: { increment: 1 } } });
@@ -82,12 +138,13 @@ test("최고관리자: 수정하면 반영되고, 다른 곳에서 먼저 고쳤
   expect((await db.platformNotice.findFirst({ where: { title: t.a } }))?.title).toBe(t.a);
 
   await page.getByTestId("notice-row").filter({ hasText: t.a }).getByRole("link", { name: "수정" }).click();
-  await expect(page).toHaveURL(/\/notices\/[0-9a-f-]{36}$/);
+  await expect(page).toHaveURL(/\/notices\/[0-9a-f-]{36}(?:\?|$)/);
   await page.getByLabel("제목").fill(`${t.a} 수정`);
   await page.getByRole("button", { name: "지금 게시하기", exact: true }).click();
   await expect(page.getByTestId("notice-row").filter({ hasText: `${t.a} 수정` })).toHaveCount(1);
 
-  await page.getByTestId("notice-row").filter({ hasText: t.draft }).getByRole("button", { name: "삭제" }).click();
+  await page.getByTestId("notice-row").filter({ hasText: t.draft }).getByRole("link", { name: "수정" }).click();
+  await page.getByRole("button", { name: "삭제", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "삭제" }).click();
   await expect(page.getByText("공지를 삭제했습니다.")).toBeVisible();
   await expect(page.getByTestId("notice-row").filter({ hasText: t.draft })).toHaveCount(0);
@@ -99,6 +156,7 @@ test("CS는 작성·삭제할 수 있고, 운영 담당은 목록만 보며 작�
   await login(page, emails.cs);
   await page.goto("/admin/support/notices");
   await expect(page.getByRole("link", { name: "공지 작성" }).first()).toBeVisible();
+  await page.goto("about:blank");
   await page.context().clearCookies();
   await login(page, emails.ops);
   await page.goto("/admin/support/notices");

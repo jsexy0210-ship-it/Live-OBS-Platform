@@ -1,10 +1,14 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { GET as activeRoute } from "../../app/api/admin/impersonation/route";
 import { POST as startRoute } from "../../app/api/admin/sellers/[sellerId]/impersonate/route";
+import { GET as externalShopsRoute } from "../../app/api/seller/external-shops/route";
 import { GET as membersRoute } from "../../app/api/seller/members/route";
 import { GET as orderOne } from "../../app/api/seller/orders/[orderId]/route";
 import { GET as ordersRoute } from "../../app/api/seller/orders/route";
+import { GET as overlayLayoutRoute } from "../../app/api/seller/overlay/layout/route";
 import { GET as productsRoute } from "../../app/api/seller/products/route";
+import { GET as queueRoute } from "../../app/api/seller/queue/route";
+import { impersonationRequestAllowed, impersonationViewPermissions } from "../../lib/server/auth/impersonation";
 import { createAdminSession } from "../../lib/server/auth/session";
 import { prisma } from "../../lib/server/db";
 import { createAdmin, createBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
@@ -109,5 +113,47 @@ describe("열람 범위 강제", () => {
     const text = await res.text();
     expect(text).not.toContain(a.buyer.phone);
     expect(text).not.toContain(a.buyer.name);
+  });
+});
+
+describe("방송·오버레이 범위", () => {
+  it("BROADCAST 범위는 연결 목록·대기열을, OVERLAY 범위는 오버레이 설정을 읽는다. 범위 밖은 403 out_of_scope", async () => {
+    const a = await shop();
+    const cs = await admin("CS");
+    const cs2 = await admin("CS");
+    const bc = `lo_imp=${(await start(cs.cookie, a.seller.id, { category: "AUDIT", scopes: ["BROADCAST"] })).imp}`;
+    const ov = `lo_imp=${(await start(cs2.cookie, a.seller.id, { category: "AUDIT", scopes: ["OVERLAY"] })).imp}`;
+    expect((await externalShopsRoute(req("/api/seller/external-shops", bc))).status).toBe(200);
+    expect((await queueRoute(req("/api/seller/queue", bc))).status).toBe(200);
+    expect((await overlayLayoutRoute(req("/api/seller/overlay/layout?aspect=16x9", ov))).status).toBe(200);
+    for (const [route, path, cookie] of [
+      [externalShopsRoute, "/api/seller/external-shops", ov],
+      [queueRoute, "/api/seller/queue", ov],
+      [overlayLayoutRoute, "/api/seller/overlay/layout?aspect=16x9", bc],
+    ] as const) {
+      const res = await route(req(path, cookie));
+      expect(res.status).toBe(403);
+      expect(((await res.json()) as { error: string }).error).toBe("out_of_scope");
+    }
+  });
+});
+
+describe("대리 조회 proxy 허용 목록·화면 권한", () => {
+  it("범위 조회 경로만 GET으로 열리고 토큰·내보내기·쓰기·그 밖의 경로는 막힌다", () => {
+    const id = "123e4567-e89b-42d3-a456-426614174000";
+    for (const p of ["/api/seller/queue", "/api/seller/external-shops", "/api/seller/overlay/address-info", "/api/seller/overlay/layout", "/api/seller/broadcast/summary", `/api/seller/broadcast/${id}`, `/api/seller/hit-cards/${id}`, `/api/seller/hit-cards/${id.toUpperCase()}`]) {
+      expect(impersonationRequestAllowed("GET", p)).toBe(true);
+      expect(impersonationRequestAllowed("POST", p)).toBe(false);
+      expect(impersonationRequestAllowed("PUT", p)).toBe(false);
+      expect(impersonationRequestAllowed("DELETE", p)).toBe(false);
+      expect(impersonationRequestAllowed("PATCH", p)).toBe(false);
+    }
+    for (const p of ["/api/seller/overlay/token", "/api/seller/external-shops/abc", "/api/seller/queue/reorder", "/api/seller/broadcast/not-uuid", "/api/seller/queue/stream", "/api/seller/hit-cards/not-uuid", "/api/seller/hit-cards/export", `/api/seller/hit-cards/${id}/replay`, `/api/seller/hit-cards/${id}/extra`]) expect(impersonationRequestAllowed("GET", p)).toBe(false);
+  });
+
+  it("me 화면 권한은 고른 범위에서만 나온다", () => {
+    expect(impersonationViewPermissions(["BROADCAST"])).toEqual(["BROADCAST_RUN"]);
+    expect([...impersonationViewPermissions(["OVERLAY", "MEMBERS"])].sort()).toEqual(["MEMBER_POINTS", "OVERLAY_EDIT"]);
+    expect(impersonationViewPermissions(["SETTINGS_PG"])).toEqual([]);
   });
 });

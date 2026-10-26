@@ -6,6 +6,23 @@ import { canViewCustomerPii, requireSellerRead, type TenantContext } from "../te
 import { thumbnailUrls } from "../products/images";
 import { getImage } from "../storage";
 
+// 선택 배송 준비의 검토 표에 필요한 값만 한 번 읽는다. 상세·개인정보 열람 경로를 호출하지 않는다.
+export async function getPrepareOrderSummaries(db: PrismaClient, ctx: TenantContext, rawIds: string | null) {
+  requireSellerRead(ctx, "ORDER_SHIPPING");
+  const ids = [...new Set((rawIds ?? "").split(",").map((id) => id.toLowerCase()))];
+  if (!ids.length || ids.length > 100 || ids.some((id) => !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id))) return { ok: false as const };
+  const rows = await db.order.findMany({
+    where: { sellerId: ctx.sellerId, legalHoldAt: null, id: { in: ids } },
+    select: { id: true, orderNo: true, createdAt: true, shippingPreparedAt: true, buyerMember: { select: { broadcastNickname: true } } },
+  });
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const orders = ids.flatMap((id) => {
+    const row = byId.get(id);
+    return row ? [{ id: row.id, orderNoLabel: orderNoLabel(row.createdAt, row.orderNo), buyer: { broadcastNickname: row.buyerMember.broadcastNickname }, shippingPreparedAt: row.shippingPreparedAt }] : [];
+  });
+  return { ok: true as const, orders, missing: ids.length - orders.length };
+}
+
 // 판매자 범위 조회의 기준 예시. where에는 항상 ctx.sellerId가 들어가고, 다른 판매자 주문은 없음(404)으로 처리한다.
 // 구매자 이름·연락처(·주소)는 CUSTOMER_PII_VIEW가 있을 때만 응답에 넣고, 넣었으면 열람 기록을 남긴다
 // (화면에서 가리는 것으로는 부족하다, 대표님 결정 2026-10-02).
@@ -77,7 +94,7 @@ export async function getOrder(db: PrismaClient, ctx: TenantContext, orderId: st
     waitingNumber: q.status === "WAITING" ? (ahead.get(q.id) ?? 0) + 1 : null,
   }]));
   // 품목마다 보낼 수량(수량 − 부분 환불한 수량). 화면은 refundedQuantity로 「부분 환불 n개」를 보여 준다.
-  const rest = { ...orderRest, orderNoLabel: orderNoLabel(order.createdAt, order.orderNo),
+  const rest = { ...orderRest, orderNoLabel: orderNoLabel(order.createdAt, order.orderNo), queueState: queueStateOf(queueItems),
     items: order.items.map((i) => ({ ...i, shipQuantity: i.quantity - i.refundedQuantity,
       imageUrl: images.has(i.productId) ? `/api/seller/orders/${order.id}/items/${i.id}/image` : null, queue: queueByItem.get(i.id) ?? null })),
     hitCards: queueItems.flatMap((q) => q.hitCards.map((hit) => ({ ...hit, queueItemId: q.id }))).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id)),
@@ -172,6 +189,7 @@ export type SellerOrderListQuery = {
   refundRequested?: string | null;
   // true면 결제 완료·아직 발송 전 주문만(「송장 미입력」 칩)
   trackingMissing?: string | null;
+  prepared?: string | null;
   from?: string | null;
   to?: string | null;
   cursor?: string | null;
@@ -243,6 +261,8 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
   // 발송 여부(배송 정보가 있고 발송 전 준비 상태 READY가 아님). 「배송 준비」 = status=PAID&shipped=false. 비어 있으면 거르지 않는다.
   if (query.shipped && query.shipped !== "true" && query.shipped !== "false") return { ok: false as const };
   if (query.queue && !(QUEUE_STATES as readonly string[]).includes(query.queue)) return { ok: false as const };
+  // 배송 준비 표식(shippingPreparedAt) 여부. false는 결제 완료 주문만(칩 건수 queueDonePending과 같은 기준). 칩 「배송 준비 전」 = queue=done&prepared=false. 비어 있으면 거르지 않는다.
+  if (query.prepared && query.prepared !== "true" && query.prepared !== "false") return { ok: false as const };
   for (const flag of [query.refundRequested, query.trackingMissing]) if (flag && flag !== "true") return { ok: false as const };
 
   const searchesPii = q !== "" && canViewCustomerPii(ctx);
@@ -251,6 +271,7 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
   if (query.shipped) and.push(query.shipped === "true" ? { shipment: { is: { status: { not: "READY" } } } } : { OR: [{ shipment: { is: null } }, { shipment: { is: { status: "READY" } } }] });
   if (statuses.length) and.push({ status: { in: statuses as OrderStatus[] } });
   if (query.queue) and.push(queueStateWhere(query.queue as QueueState));
+  if (query.prepared) and.push(query.prepared === "true" ? { shippingPreparedAt: { not: null } } : { status: "PAID", shippingPreparedAt: null });
   if (query.refundRequested) and.push(refundRequestedWhere);
   if (query.trackingMissing) and.push(trackingMissingWhere);
   if (from) and.push({ createdAt: { gte: from } });

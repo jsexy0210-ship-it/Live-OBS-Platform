@@ -11,7 +11,7 @@ export type OrderRow = {
   status: OrderStatus;
   createdAt: string;
   paidAt: string | null;
-  buyer: { id: string; broadcastNickname: string };
+  buyer: { id: string; broadcastNickname: string; grade?: { id: string; displayName: string } | null };
   totalAmount: number;
   // 현금 환불 합계(없으면 0)·환불한 품목 수량·남은 금액(totalAmount − refundedAmount)
   refundedAmount: number;
@@ -25,6 +25,9 @@ export type OrderRow = {
   paymentDueAt?: string | null;
   shipment?: { state: "none" | "in_transit" | "delivered"; courier: string | null; trackingNumber: string | null; deliveredAt: string | null };
   refundRequest?: { pendingCount: number };
+  // 서버가 주문 목록에 함께 주는 값(SA-021): 개봉 상태(waiting 개봉 대기 · opening 개봉 중 · done 개봉 완료 · null 큐 없음) · 배송 준비로 바꾼 시각
+  queueState?: "waiting" | "opening" | "done" | null;
+  shippingPreparedAt?: string | null;
 };
 
 export type OrderItem = { id: string; productNameSnapshot: string; optionNameSnapshot: string; unitPrice: number; quantity: number };
@@ -38,6 +41,8 @@ export type OrderDetail = {
   createdAt: string;
   paidAt: string | null;
   cancelledAt: string | null;
+  queueState: "waiting" | "opening" | "done" | null;
+  shippingPreparedAt: string | null;
   refundedAt: string | null;
   totalAmount: number;
   rewardUsedAmount: number;
@@ -182,3 +187,67 @@ export const phoneText = (p: string) => {
   if (d.length === 10) return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
   return p;
 };
+
+type RefundRequestStatus = "REQUESTED" | "APPROVED" | "REJECTED" | "CANCELLED";
+type Sel = { orderItemId: string; quantity: number }[];
+export type RefundRequestRow = {
+  id: string;
+  orderId: string;
+  orderNo: number;
+  orderNoLabel: string;
+  nickname: string | null;
+  totalAmount: number;
+  status: RefundRequestStatus;
+  reason: string;
+  reasonLabel: string;
+  reasonText: string;
+  items: Sel | null;
+  rejectReason: string | null;
+  decidedAt: string | null;
+  cancelledAt: string | null;
+  createdAt: string;
+};
+export type RefundRequestDetail = RefundRequestRow & {
+  order: { status: string; totalAmount: number };
+  refundPreview: RefundPreview | null;
+  previewError: string | null;
+  queueVersion: number | null;
+};
+
+export type ReceiptStatus = "PENDING" | "ON_HOLD" | "ISSUED" | "FAILED" | "CANCELLED";
+export type ReceiptKind = "CASH_RECEIPT_INCOME" | "CASH_RECEIPT_EXPENSE" | "TAX_INVOICE";
+export type ReceiptRow = {
+  id: string;
+  orderId: string;
+  orderNoLabel: string;
+  nickname: string | null;
+  kind: ReceiptKind;
+  identityLast4: string;
+  taxInfo: { companyName: string; representative: string; email: string } | null;
+  withdrawnAt: string | null;
+  createdAt: string;
+  issue: { status: ReceiptStatus; amount: number; failureCode: string | null; issuedAt: string | null; cancelledAt: string | null } | null;
+};
+
+export const RECEIPT_BADGE: Record<ReceiptStatus, { label: string; cls: string }> = {
+  PENDING: { label: "발행 대기", cls: "b-wait" },
+  ON_HOLD: { label: "보류", cls: "b-warn" },
+  ISSUED: { label: "발행 완료", cls: "b-done" },
+  FAILED: { label: "실패", cls: "b-fail" },
+  CANCELLED: { label: "발행 취소", cls: "b-gray nodot" },
+};
+export const RECEIPT_KIND: Record<ReceiptKind, string> = { CASH_RECEIPT_INCOME: "현금영수증 · 소득공제", CASH_RECEIPT_EXPENSE: "현금영수증 · 지출증빙", TAX_INVOICE: "세금계산서" };
+const RECEIPT_FAILURE: Record<string, string> = {
+  provider_error: "발행 업체 응답 오류",
+  provider_cancel_needed: "발행 업체에서 직접 취소가 필요합니다",
+};
+
+// 비고: 실패 사유 · 보류 이유 · 철회
+export function receiptNote(r: ReceiptRow): string {
+  const i = r.issue;
+  if (!i) return "";
+  if (i.status === "FAILED") return i.failureCode ? (RECEIPT_FAILURE[i.failureCode] ?? "발행하지 못했습니다") : "발행하지 못했습니다";
+  if (i.status === "ON_HOLD") return "충전금 잔액이 부족해 발행을 미뤘습니다";
+  if (i.status === "CANCELLED") return i.failureCode === "provider_cancel_needed" ? RECEIPT_FAILURE.provider_cancel_needed : r.withdrawnAt ? "구매자가 신청을 철회했습니다" : "";
+  return "";
+}

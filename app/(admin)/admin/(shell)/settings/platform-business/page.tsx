@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
 import { formatDateTime } from "../../../../../../lib/client/format";
 import { FormFoot, FormRow, FormSection, PageHead, useConfirm } from "../../../../../../components/admin-ui";
@@ -46,19 +46,38 @@ export default function PlatformBusinessPage() {
   const [errors, setErrors] = useState<Partial<Record<Key, string>>>({});
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
   const [history, setHistory] = useState<History[] | null>(null);
+  const [historyState, setHistoryState] = useState<"loading" | "error" | "ok">("loading");
+  const historyRequest = useRef(0);
 
   const loadHistory = useCallback(async () => {
     if (!canAudit) return;
+    const request = ++historyRequest.current;
+    setHistoryState("loading");
     const r = await adminApi<{ logs: { id: string; createdAt: string }[] }>("/api/admin/audit-logs?action=platform.business_info.update&limit=5");
-    if (!r.ok) return setHistory([]);
+    if (request !== historyRequest.current) return;
+    if (!r.ok) {
+      if (r.status > 0 && r.status < 500) setHistory(null);
+      return setHistoryState("error");
+    }
+    let unavailable = false;
     const rows = await Promise.all(
       r.data.logs.map(async (l) => {
         const d = await adminApi<{ log: { after: { fields?: string[] } | null; actorAdmin: { name: string } | null } }>(`/api/admin/audit-logs/${l.id}`);
-        const log = d.ok ? d.data.log : null;
+        if (!d.ok) {
+          if (d.status > 0 && d.status < 500) unavailable = true;
+          return null;
+        }
+        const log = d.data.log;
         return { id: l.id, at: l.createdAt, fields: log?.after?.fields ?? [], actor: log?.actorAdmin?.name ?? "—" };
       }),
     );
-    setHistory(rows);
+    if (request !== historyRequest.current) return;
+    if (rows.some((row) => row === null)) {
+      if (unavailable) setHistory(null);
+      return setHistoryState("error");
+    }
+    setHistory(rows.filter((row) => row !== null));
+    setHistoryState("ok");
   }, [canAudit]);
 
   const load = useCallback(async () => {
@@ -195,10 +214,14 @@ export default function PlatformBusinessPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {history === null || history.length === 0 ? (
+                          {historyState === "error" && <tr><td colSpan={3}><span role="alert">변경 이력을 불러오지 못했어요.{history !== null && " 이전 기록을 보여드려요."} </span><button className="btn btn-sm" type="button" onClick={() => void loadHistory()}>다시 시도</button></td></tr>}
+                          {historyState === "loading" && history !== null && <tr><td colSpan={3} role="status">변경 이력을 불러오고 있어요.</td></tr>}
+                          {history === null ? (
+                            historyState !== "error" && <tr><td colSpan={3} className="c-alt">불러오는 중</td></tr>
+                          ) : history.length === 0 ? (
                             <tr>
                               <td colSpan={3} className="c-alt">
-                                {history === null ? "불러오는 중" : "아직 변경 기록이 없습니다"}
+                                아직 변경 기록이 없습니다
                               </td>
                             </tr>
                           ) : (

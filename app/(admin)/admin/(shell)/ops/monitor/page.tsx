@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ListHead, PageHead } from "../../../../../../components/admin-ui";
+import { ListTable, ListHead, PageHead } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows } from "../../../../../../components/seller/States";
 import { AdminTopbar } from "../../../_components/AdminShell";
 import { PAYMENT_CHECK, clock, usePoll, type Monitor } from "../../../_components/ops";
@@ -127,7 +127,7 @@ export default function OpsMonitorPage() {
                 )}
               </section>
 
-              <section className="card" aria-labelledby="mon-actions">
+              <section className="au-list-section" aria-labelledby="mon-actions">
                 <h2 className="t-hl1 pad-l" id="mon-actions">
                   자동 조치 기록
                 </h2>
@@ -138,7 +138,7 @@ export default function OpsMonitorPage() {
                 ) : (
                   <>
                     <ListHead total={data.autoActions.length} />
-                    <div style={{ overflowX: "auto" }}>
+                    <ListTable>
                       <table className="tbl">
                         <thead>
                           <tr>
@@ -157,7 +157,7 @@ export default function OpsMonitorPage() {
                           ))}
                         </tbody>
                       </table>
-                    </div>
+                    </ListTable>
                   </>
                 )}
               </section>

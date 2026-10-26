@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CursorPagination, ListHead, PageHead } from "../../../../../../components/admin-ui";
+import { ListTable, CursorPagination, ListHead, PageHead } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar } from "../../../_components/AdminShell";
 import { OVERLAY_STATE, type SellerActivity } from "../../../_components/ops";
 import { day, dayTime, won } from "../../../_components/partners";
 
-// MA-042 주문·오버레이 접속. 전체 이용 중·정지 파트너스 요약과 10곳 단위 목록을 조회한다.
+// MA-042 주문·방송 화면 접속. 전체 이용 중·정지 파트너스 요약과 10곳 단위 목록을 조회한다.
 type PeriodKey = "today" | "7d" | "30d";
 type Page = { at: string; observedAt: string; todayStart: string; period: { key: PeriodKey; from: string; to: string; timezone: string }; summary: { created: number; paid: number; paidAmount: number }; items: SellerActivity[]; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; at: string; observedAt: string; period: Page["period"]; summary: Page["summary"]; items: SellerActivity[]; next: string | null };
@@ -103,9 +103,9 @@ export default function SellerActivityPage() {
             </label>
           </div>
 
-          <div className="card">
-            {state.kind === "loading" && <LoadingRows rows={5} />}
-            {state.kind === "error" && <ErrorState title="주문·오버레이 접속 현황을 불러오지 못했습니다." onRetry={() => void load()} />}
+          <section className="au-list-section">
+            {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
+            {state.kind === "error" && <div className="card"><ErrorState title="주문·방송 화면 접속 현황을 불러오지 못했습니다." onRetry={() => void load()} /></div>}
             {state.kind === "ok" &&
               (items.length === 0 ? (
                 <div className="st">
@@ -114,7 +114,7 @@ export default function SellerActivityPage() {
               ) : (
                 <>
                   <ListHead total={items.length} unit="곳" loaded />
-                  <div style={{ overflowX: "auto" }}>
+                  <ListTable>
                     <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                       <thead>
                         <tr>
@@ -123,7 +123,7 @@ export default function SellerActivityPage() {
                           <th>주문</th>
                           <th>결제</th>
                           <th>결제 금액</th>
-                          <th>오버레이</th>
+                          <th>방송 화면 접속</th>
                           <th>마지막 접속</th>
                           <th>관리</th>
                         </tr>
@@ -155,11 +155,11 @@ export default function SellerActivityPage() {
                         })}
                       </tbody>
                     </table>
-                  </div>
+                  </ListTable>
                   <div aria-busy={more}>{(cursors.length > 1 || state.next) && <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={(n) => void changePage(n)} onNext={() => void changePage(page + 1)} />}</div>
                 </>
               ))}
-          </div>
+          </section>
         </div>
       </main>
       {toast && <Toast text={toast} neg onDone={() => setToast(null)} />}

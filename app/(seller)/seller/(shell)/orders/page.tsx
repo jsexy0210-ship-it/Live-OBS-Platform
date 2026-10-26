@@ -3,10 +3,11 @@
 import { formatDateTimeParts } from "../../../../../lib/client/format";
 import "../../../../../styles/seller-orders.css";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { CursorPagination } from "../../../../../components/Pagination";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
-import { PageHead } from "../../../../../components/admin-ui";
+import { ListTable, PageHead } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -25,16 +26,19 @@ const PERIODS: { key: Period; label: string; days: number }[] = [
   { key: "30d", label: "최근 30일", days: 29 },
 ];
 type Shipped = "true" | "false";
-// 상태 칩(정본 SA-021-OPS): 지금 서버 필터로 만들 수 있는 칩만 둔다. 「송장 미입력」 「취소 · 환불 요청」 「개봉 대기」와 칩 건수는 서버 필요(UI_STATUS)
+// 상태 칩(정본 SA-021-OPS): 서버 필터·건수(GET /api/seller/orders/counts)와 같은 기준. warn은 정본에서 건수를 빨간색으로 보이는 칩
+type Counts = { total: number; today: number; unpaid: number; trackingMissing: number; queueWaiting: number; queueDone: number; queueDonePending: number; refundRequested: number };
+const NO: Record<string, string> = { status: "", shipped: "", queue: "", prepared: "", refundRequested: "", trackingMissing: "" };
 const CHIPS = [
-  { key: "today", label: "오늘", set: { period: "today", status: "", shipped: "" } },
-  { key: "unpaid", label: "입금 전", set: { period: "all", status: "PENDING_PAYMENT", shipped: "" } },
-  { key: "ready", label: "배송 준비 전", set: { period: "all", status: "PAID", shipped: "false" } },
-  { key: "cancelled", label: "취소", set: { period: "all", status: "CANCELLED", shipped: "" } },
-  { key: "refunded", label: "환불", set: { period: "all", status: "REFUNDED", shipped: "" } },
-  { key: "all", label: "전체", set: { period: "all", status: "", shipped: "" } },
+  { key: "today", label: "오늘", count: "today", warn: false, set: { ...NO, period: "today" } },
+  { key: "unpaid", label: "입금 전", count: "unpaid", warn: true, set: { ...NO, period: "all", status: "PENDING_PAYMENT" } },
+  { key: "done", label: "배송 준비 전", count: "queueDonePending", warn: false, set: { ...NO, period: "all", queue: "done", prepared: "false" } },
+  { key: "tracking", label: "송장 미입력", count: "trackingMissing", warn: true, set: { ...NO, period: "all", trackingMissing: "true" } },
+  { key: "refund", label: "취소 · 환불 요청", count: "refundRequested", warn: true, set: { ...NO, period: "all", refundRequested: "true" } },
+  { key: "waiting", label: "개봉 대기", count: "queueWaiting", warn: false, set: { ...NO, period: "all", queue: "waiting" } },
+  { key: "all", label: "전체", count: "total", warn: false, set: { ...NO, period: "all" } },
 ] as const;
-type Filters = { statuses: OrderStatus[]; period: Period | null; q: string; shipped: Shipped | null };
+type Filters = { statuses: OrderStatus[]; period: Period | null; q: string; shipped: Shipped | null; queue: string; prepared: boolean; refundRequested: boolean; trackingMissing: boolean };
 type Page = { orders: OrderRow[]; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; items: OrderRow[]; next: string | null };
 
@@ -44,11 +48,15 @@ function query(f: Filters, cursor?: string) {
   if (f.period) p.set("from", kstDaysAgo(PERIODS.find((x) => x.key === f.period)!.days));
   if (f.q) p.set("q", f.q);
   if (f.shipped) p.set("shipped", f.shipped);
+  if (f.queue) p.set("queue", f.queue);
+  if (f.prepared) p.set("prepared", "false");
+  if (f.refundRequested) p.set("refundRequested", "true");
+  if (f.trackingMissing) p.set("trackingMissing", "true");
   if (cursor) p.set("cursor", cursor);
   return p.toString();
 }
 
-// 주문 상태 열: 결제 · 발송 · 환불 요청을 한 칸으로 합친다(정본 SA-021-OPS). 「개봉 대기 · 개봉 완료」는 주문 목록 응답에 개봉 상태가 없어 서버 필요(UI_STATUS)
+// 주문 상태 열: 결제 · 개봉 · 발송 · 환불 요청을 한 칸으로 합친다(정본 SA-021-OPS)
 function stageOf(o: OrderRow): { label: string; cls: string } {
   if (o.refundRequest && o.refundRequest.pendingCount > 0) return { label: "취소 요청", cls: "b-cancel" };
   if (o.status === "PENDING_PAYMENT") return { label: "입금 전", cls: "b-wait" };
@@ -56,8 +64,13 @@ function stageOf(o: OrderRow): { label: string; cls: string } {
   if (o.status === "REFUNDED") return { label: "환불됨", cls: "b-cancel" };
   if (o.shipment?.state === "delivered") return { label: "배송 완료", cls: "b-gray nodot" };
   if (o.shipped) return { label: "배송 중", cls: "b-info" };
+  if (o.shippingPreparedAt) return { label: "배송 준비", cls: "b-gray nodot" };
+  if (o.queueState === "done") return { label: "개봉 완료", cls: "b-done" };
+  if (o.queueState === "waiting" || o.queueState === "opening") return { label: "개봉 대기", cls: "b-info" };
   return { label: "배송 준비", cls: "b-gray nodot" };
 }
+// 일괄로 바꿀 수 있는 주문: 개봉 완료이고 아직 배송 준비로 바꾸지 않은 것(서버도 같은 기준)
+const canPrepare = (o: OrderRow) => o.status === "PAID" && !o.shipped && !o.shippingPreparedAt && o.queueState === "done";
 function elapsedText(o: OrderRow): { text: string; urgent: boolean } {
   const now = Date.now();
   if (o.status === "PENDING_PAYMENT" && o.paymentDueAt) {
@@ -74,17 +87,21 @@ function elapsedText(o: OrderRow): { text: string; urgent: boolean } {
   return { text: h < 1 ? "방금 접수" : h < 24 ? `${h}시간 전 접수` : `${Math.floor(h / 24)}일 전 접수`, urgent: false };
 }
 // 관리 열 주 버튼은 주문 상태에 따라 다르다(정본: 입금 전 「입금 확인」 · 배송 준비 「송장 입력」 · 취소 요청 「환불 처리」)
-function mainAction(o: OrderRow): { label: string; href: string; neg?: boolean } | null {
+function mainAction(o: OrderRow, returnTo: string): { label: string; href: string; neg?: boolean } | null {
   if (o.refundRequest && o.refundRequest.pendingCount > 0) return { label: "환불 처리", href: "/seller/orders/refund-requests", neg: true };
   if (o.status === "PENDING_PAYMENT" && o.paymentMethod === "BANK_TRANSFER") return { label: "입금 확인", href: "/seller/orders/deposits" };
+  if (canPrepare(o)) return { label: "배송 준비", href: `/seller/orders/${o.id}?${new URLSearchParams({ returnTo })}#order-preparation` };
+  if (o.status === "PAID" && !o.shipped && (o.queueState === "waiting" || o.queueState === "opening") && !o.shippingPreparedAt) return { label: "방송 대시보드", href: "/seller/broadcast" };
   if (o.status === "PAID" && !o.shipped) return { label: "송장 입력", href: "/seller/shipping" };
-  if (o.refundable) return { label: "환불 처리", href: `/seller/orders/${o.id}?refund=1`, neg: true };
+  if (o.refundable) return { label: "환불 처리", href: `/seller/orders/${o.id}?${new URLSearchParams({ refund: "1", returnTo })}`, neg: true };
   return null;
 }
 
 export default function OrderListPage() {
+  const listQuery = useSearchParams().toString();
+  const returnTo = `/seller/orders${listQuery ? `?${listQuery}` : ""}`;
   // 검색어·기간·결제 상태는 주소(쿼리)가 기준이다. 상세에 갔다 Back으로 돌아와도 그대로 복원된다(IA Back 규칙 3항)
-  const [u, setU] = useUrlState({ q: "", period: "30d", status: "", shipped: "" });
+  const [u, setU] = useUrlState({ q: "", period: "30d", status: "", shipped: "", queue: "", prepared: "", refundRequested: "", trackingMissing: "" });
   const q = u.q;
   // 기본 최근 30일(≈1개월). 홈 「처리할 일」 같은 업무 큐 링크는 ?period=all(기간 전체)로 들어온다. 칩을 눌러 해제해도 전체 기간(정본 lib/client/filterDefaults.ts)
   const period = u.period === "all" ? null : (PERIODS.find((p) => p.key === u.period)?.key ?? "30d");
@@ -120,11 +137,27 @@ export default function OrderListPage() {
   const [page, setPage] = useState(1);
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
   const paging = useRef(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toastState, setToastState] = useState<{ text: string; neg: boolean } | null>(null);
+  const setToast = (text: string, neg = false) => setToastState({ text, neg });
+  const [counts, setCounts] = useState<Counts | null>(null);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [rowMenu, setRowMenu] = useState<string | null>(null);
+  const loadCounts = useCallback(async () => {
+    const r = await api<{ counts: Counts }>("/api/seller/orders/counts");
+    if (r.ok) setCounts(r.data.counts);
+  }, []);
+  useEffect(() => void loadCounts(), [loadCounts]);
 
   // 필터를 빨리 바꾸면 이전 응답이 늦게 올 수 있다. 마지막으로 보낸 요청의 응답만 반영한다
   const reqId = useRef(0);
-  const filters: Filters = { statuses, period, q, shipped };
+  const queue = u.queue === "waiting" || u.queue === "opening" || u.queue === "done" ? u.queue : "";
+  const prepared = u.prepared === "false";
+  const refundRequested = u.refundRequested === "true";
+  const trackingMissing = u.trackingMissing === "true";
+  const filters: Filters = { statuses, period, q, shipped, queue, prepared, refundRequested, trackingMissing };
+  // 일괄 처리 응답이 늦게 와도 그 사이 바뀐 조건으로 다시 불러오도록 최신 조건을 따로 들고 있는다
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
   const load = useCallback(async (f: Filters) => {
     const id = ++reqId.current;
     paging.current = false;
@@ -136,7 +169,7 @@ export default function OrderListPage() {
     if (id !== reqId.current) return;
     setState(r.ok ? { kind: "ok", items: r.data.orders, next: r.data.nextCursor } : { kind: "error", status: r.status });
   }, []);
-  useEffect(() => void load({ statuses: statusKey ? (statusKey.split(",") as OrderStatus[]) : [], period, q, shipped }), [statusKey, period, q, shipped, load]);
+  useEffect(() => void load({ statuses: statusKey ? (statusKey.split(",") as OrderStatus[]) : [], period, q, shipped, queue, prepared, refundRequested, trackingMissing }), [statusKey, period, q, shipped, queue, prepared, refundRequested, trackingMissing, load]);
   useScrollRestore("seller-orders", state.kind === "ok");
 
   const changePage = async (target: number) => {
@@ -155,7 +188,7 @@ export default function OrderListPage() {
       setPage(target);
       if (target > cursors.length) setCursors([...cursors, cursor ?? undefined]);
     }
-    else setToast("더 불러오지 못했습니다. 다시 눌러 주십시오");
+    else setToast("더 불러오지 못했습니다. 다시 눌러 주십시오", true);
   };
 
   const openMenu = () => {
@@ -173,17 +206,18 @@ export default function OrderListPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [menuOpen]);
 
-  const filtered = statuses.length > 0 || period !== "30d" || q !== "" || shipped !== null;
+  const filtered = statuses.length > 0 || period !== "30d" || q !== "" || shipped !== null || queue !== "" || prepared || refundRequested || trackingMissing;
   const reset = () => {
     setSearch("");
     sent.current = "";
-    setU({ q: "", period: "30d", status: "", shipped: "" });
+    setU({ q: "", period: "30d", status: "", shipped: "", queue: "", prepared: "", refundRequested: "", trackingMissing: "" });
   };
   const statusText = statuses.length === 0 ? "전체" : statuses.length === 1 ? STATUS_BADGE[statuses[0]].label : `${STATUS_BADGE[statuses[0]].label} 외 ${statuses.length - 1}개`;
   const chipOn = (k: (typeof CHIPS)[number]["key"]) => {
-    const c = CHIPS.find((x) => x.key === k)!.set;
-    if (k === "all") return statuses.length === 0 && !shipped && period !== "today";
-    return u.status === c.status && u.shipped === c.shipped && (k === "today" ? period === "today" : true);
+    const c = CHIPS.find((x) => x.key === k)!.set as Record<string, string>;
+    if (k === "all") return statuses.length === 0 && !shipped && !queue && !prepared && !refundRequested && !trackingMissing && period !== "today";
+    if (k === "today") return period === "today" && !statuses.length && !shipped && !queue && !prepared && !refundRequested && !trackingMissing;
+    return u.status === c.status && u.shipped === c.shipped && u.queue === c.queue && u.prepared === c.prepared && u.refundRequested === c.refundRequested && u.trackingMissing === c.trackingMissing;
   };
   const items = state.kind === "ok" ? state.items : [];
   const countText = state.kind === "ok" ? `${page}페이지 · ${items.length}건${state.next ? " · 다음 페이지 있음" : ""}` : "";
@@ -209,11 +243,14 @@ export default function OrderListPage() {
           }
         />
 
-        <div className="card" style={{ overflow: "visible" }}>
+        <section className="au-list-section" style={{ overflow: "visible" }}>
           <div className="toolbar ord-toolbar ord-chips" role="group" aria-label="주문 상태">
             {CHIPS.map((c) => (
               <button key={c.key} type="button" className={`chip${chipOn(c.key) ? " on" : ""}`} aria-pressed={chipOn(c.key)} onClick={() => setU(c.set)}>
                 {c.label}
+                {counts && (
+                  <b className={`num ord-chip-n${c.warn && counts[c.count] > 0 ? " c-neg" : ""}`}> {counts[c.count].toLocaleString("ko-KR")}</b>
+                )}
               </button>
             ))}
             <span className="ord-count-note c-alt t-l2" aria-live="polite">
@@ -290,11 +327,11 @@ export default function OrderListPage() {
           </div>
           )}
 
-          {state.kind === "loading" && <LoadingRows rows={5} />}
+          {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
           {state.kind === "error" &&
-            (state.status === 403 ? <NoPermission need="주문·배송" /> : <ErrorState title="주문을 불러오지 못했습니다" onRetry={() => void load(filters)} />)}
+            (state.status === 403 ? <NoPermission need="주문·배송" /> : <div className="card"><ErrorState title="주문을 불러오지 못했습니다" onRetry={() => void load(filters)} /></div>)}
           {state.kind === "ok" && items.length === 0 && (
-            <div className="st" style={{ boxShadow: "none" }}>
+            <div className="card"><div className="st" style={{ boxShadow: "none" }}>
               {!filtered ? (
                 <>
                   <div className="st-ic">0</div>
@@ -319,13 +356,40 @@ export default function OrderListPage() {
                   </button>
                 </>
               )}
+            </div></div>
+          )}
+          {picked.length > 0 && (
+            <div className="ord-bulk" role="region" aria-label="선택한 주문">
+              <b>{picked.length}개 선택</b>
+              <span className="c-alt t-l2">· 개봉 완료 {picked.length}건 · 다른 상태는 체크할 수 없습니다</span>
+              <span className="ord-bulk-act">
+                <Link className="btn btn-sm" href={`/seller/orders/prepare?${new URLSearchParams({ ids: picked.join(","), returnTo })}`}>
+                  선택 주문 작업 상세
+                </Link>
+                <Link className="btn btn-sm btn-out" href="/seller/shipping">
+                  송장 일괄 입력
+                </Link>
+                <button className="btn btn-sm btn-out" type="button" onClick={() => setPicked([])}>
+                  선택 해제
+                </button>
+              </span>
             </div>
           )}
           {state.kind === "ok" && items.length > 0 && (
-            <div className="ord-scroll">
+            <ListTable className="ord-scroll">
               <table className="tbl tbl-card ord-tbl2" data-testid="orders-table">
                 <thead>
                   <tr>
+                    <th data-card="check">
+                      <input
+                        className="chkbox"
+                        type="checkbox"
+                        aria-label="선택할 수 있는 주문 모두 선택"
+                        checked={items.filter(canPrepare).length > 0 && items.filter(canPrepare).every((o) => picked.includes(o.id))}
+                        disabled={items.filter(canPrepare).length === 0}
+                        onChange={(e) => setPicked(e.target.checked ? items.filter(canPrepare).map((o) => o.id) : [])}
+                      />
+                    </th>
                     <th>접수 · 경과</th>
                     <th>구매자</th>
                     <th>상품</th>
@@ -338,17 +402,30 @@ export default function OrderListPage() {
                 <tbody>
                   {items.map((o) => {
                     const stage = stageOf(o);
-                    const act = mainAction(o);
+                    const act = mainAction(o, returnTo);
                     return (
                       <tr key={o.id} className={o.status === "PENDING_PAYMENT" ? "faded" : ""} data-testid="order-row">
+                        <td data-card="check">
+                          <input
+                            className="chkbox"
+                            type="checkbox"
+                            aria-label={`${o.orderNoLabel} 선택`}
+                            disabled={!canPrepare(o)}
+                            checked={picked.includes(o.id)}
+                            onChange={(e) => setPicked(e.target.checked ? [...picked, o.id] : picked.filter((x) => x !== o.id))}
+                          />
+                        </td>
                         <td className="date" data-card="title">
-                          <Link href={`/seller/orders/${o.id}`} className="fw6 num ord-link">
+                          <Link href={`/seller/orders/${o.id}?${new URLSearchParams({ returnTo })}`} className="fw6 num ord-link">
                             {formatDateTimeParts(o.createdAt)?.date} {formatDateTimeParts(o.createdAt)?.time}
                           </Link>
                           <div className="ord-ono num">{o.orderNoLabel}</div>
                           <div className={`t-c1 ${elapsedText(o).urgent ? "c-neg" : "c-alt"}`}>{elapsedText(o).text}</div>
                         </td>
-                        <td className="fw6" data-card="field">{o.buyer.broadcastNickname}</td>
+                        <td data-card="field">
+                          <div className="fw6">{o.buyer.broadcastNickname}</div>
+                          {o.buyer.grade && <div className="t-c1 c-alt">{o.buyer.grade.displayName}</div>}
+                        </td>
                         <td className="ell ord-product col-text" data-card="wide">{itemSummaryText(o.itemSummary)}</td>
                         <td className="num" data-card="field">
                           {won(o.totalAmount)}
@@ -368,9 +445,29 @@ export default function OrderListPage() {
                                 {act.label}
                               </Link>
                             )}
-                            <Link className="btn btn-sm btn-out" href={`/seller/orders/${o.id}`}>
+                            <Link className="btn btn-sm btn-out" href={`/seller/orders/${o.id}?${new URLSearchParams({ returnTo })}`}>
                               상세
                             </Link>
+                            {!o.shipped && (o.status === "PENDING_PAYMENT" || o.status === "PAID") && (
+                              <span className="ord-menu-wrap">
+                                <button className="btn btn-sm btn-out" type="button" aria-label={`${o.orderNoLabel} 더보기`} aria-haspopup="true" aria-expanded={rowMenu === o.id} onClick={() => setRowMenu(rowMenu === o.id ? null : o.id)}>
+                                  ···
+                                </button>
+                                {rowMenu === o.id && (
+                                  <div className="menu ord-menu ord-row-menu" role="menu" onMouseLeave={() => setRowMenu(null)}>
+                                    <a role="menuitem" href={`/seller/orders/${o.id}?${new URLSearchParams({ returnTo })}#order-memo`}>
+                                      메모 남기기
+                                    </a>
+                                    <Link role="menuitem" href="/seller/orders/receipts">영수증 발급</Link>
+                                    {o.status === "PAID" && (
+                                      <Link role="menuitem" className="c-neg" href={`/seller/orders/${o.id}?${new URLSearchParams({ refund: "1", returnTo })}`}>
+                                        주문 취소
+                                      </Link>
+                                    )}
+                                  </div>
+                                )}
+                              </span>
+                            )}
                           </span>
                         </td>
                       </tr>
@@ -378,16 +475,16 @@ export default function OrderListPage() {
                   })}
                 </tbody>
               </table>
-            </div>
+            </ListTable>
           )}
           {state.kind === "ok" && (state.next || page > 1) && (
             <div className="row ord-more" aria-busy={more}>
               <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={(n) => void changePage(n)} onNext={() => void changePage(page + 1)} />
             </div>
           )}
-        </div>
+        </section>
       </main>
-      {toast && <Toast text={toast} neg onDone={() => setToast(null)} />}
+      {toastState && <Toast text={toastState.text} neg={toastState.neg} onDone={() => setToastState(null)} />}
     </>
   );
 }

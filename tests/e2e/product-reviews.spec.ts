@@ -93,7 +93,7 @@ test.describe.serial("SH-029 리뷰 쓰기 · SA-048 리뷰 관리", () => {
     await expect(page.locator(".rv-photo img")).toHaveCount(1);
 
     await page.getByRole("textbox", { name: /내용/ }).fill("짧아요");
-    await expect(page.getByText("10자 이상 써야 올릴 수 있어요")).toBeVisible();
+    await expect(page.getByText("10자 이상 적어 주세요", { exact: true })).toBeVisible();
     await page.getByRole("textbox", { name: /내용/ }).fill("브레이크 때 뽑힌 카드 상태가 정말 좋았어요. 포장도 꼼꼼했어요.");
     await shots(page, "sh029-write");
     await page.getByRole("button", { name: "리뷰 등록" }).click();
@@ -109,12 +109,12 @@ test.describe.serial("SH-029 리뷰 쓰기 · SA-048 리뷰 관리", () => {
     await page.goto(`/seller/login?next=${encodeURIComponent("/seller/reviews")}`);
     await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
     await expect(page).toHaveURL(/\/seller\/reviews$/);
-    await expect(page.getByRole("link", { name: "문의 · 리뷰", exact: true })).toHaveClass(/on/);
+    await expect(page.getByRole("navigation", { name: "문의 · 리뷰", exact: true }).getByRole("link", { name: "리뷰", exact: true })).toHaveClass(/on/);
     const row = page.getByTestId("review-row").first();
     await expect(row).toContainText("브레이크 때 뽑힌 카드");
     await shots(page, "sa048-list");
     await row.click();
-    const dlg = page.getByRole("dialog");
+    const dlg = page.locator("section[aria-labelledby=rv-detail-title]");
     await expect(dlg.locator(".rv-imgs img")).toHaveCount(1);
     await dlg.getByRole("textbox", { name: "답글" }).fill("소중한 리뷰 감사합니다. 다음 방송에서도 좋은 카드로 찾아뵙겠습니다.");
     await dlg.getByRole("button", { name: "답글 저장" }).click();

@@ -20,7 +20,7 @@ let baselinePlans: Awaited<ReturnType<PrismaClient["subscriptionPlan"]["findMany
 const ownedPlanIds: string[] = [];
 test.beforeAll(async ({}, info) => {
   expect(process.env.CI).toBe("true");
-  expect(process.env.GITHUB_JOB).toBe("e2e-smoke");
+  expect(["e2e-smoke", "e2e-full"]).toContain(process.env.GITHUB_JOB);
   expect(process.env.NODE_ENV).not.toBe("production");
   expect(info.config.workers).toBe(1);
   const url = assertTestDatabaseUrl(process.env.DATABASE_URL);
@@ -118,7 +118,8 @@ test("SA-006: 전체 연결 배열과 상태·관리 동작을 보존하며 10�
     await login(page); await page.goto("/seller/external-shops");
     await pages(page, "external-row", "td:first-child > b", connections.map(c => c.shopKey));
     await expect(page.getByText("전체 연결 23곳", { exact: true })).toBeVisible();
-    await expect(page.getByTestId("external-row").getByRole("button", { name: "연결 해제", exact: true })).toHaveCount(10);
+    await expect(page.getByTestId("external-row").locator("button")).toHaveCount(0);
+    await expect(page.getByTestId("external-row").getByRole("link", { name: "연결 상세", exact: true })).toHaveCount(10);
     for (const width of [1440, 1024]) { await page.setViewportSize({ width, height: 900 }); await capture(page, "SA-006", "seeded-owner", "page2"); }
     connections = []; await page.reload();
     await expect(page.getByTestId("external-empty")).toBeVisible();
@@ -147,8 +148,10 @@ test("SA-065: 페이지 경계 순서 변경은 전체 ID를 저장하고 삭제
     const rows = page.getByTestId("popup-row"), nav = page.getByRole("navigation", { name: "페이지 이동", exact: true });
     await expect(rows).toHaveCount(10); await nav.getByRole("button", { name: "다음", exact: true }).click();
     await expect(rows).toHaveCount(1); await expect(rows.locator("td:first-child > b")).toHaveText("합성 팝업 10");
-    await rows.getByRole("button", { name: "합성 팝업 10 위로", exact: true }).click();
+    await page.getByRole("button", { name: "노출 설정 상세", exact: true }).click();
+    await page.getByRole("button", { name: "합성 팝업 10 위로", exact: true }).click();
     await expect.poll(() => reorders).toEqual([[...originalIds.slice(0, 9), originalIds[10], originalIds[9]]]);
+    await page.getByRole("link", { name: "목록", exact: true }).click();
     await expect(rows.locator("td:first-child > b")).toHaveText("합성 팝업 9");
     await expect(page.getByText("팝업 11개 · 게시 중 11", { exact: true })).toBeVisible();
     for (const width of [1440, 1024]) { await page.setViewportSize({ width, height: 900 }); await capture(page, "SA-065", "seeded-owner", "reordered-page2"); }

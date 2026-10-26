@@ -23,7 +23,7 @@ const owned = { alerts: [] as string[], refunds: [] as string[], inquiries: [] a
 
 test.beforeAll(async ({}, info) => {
   expect(process.env.CI).toBe("true");
-  expect(process.env.GITHUB_JOB).toBe("e2e-smoke");
+  expect(["e2e-smoke", "e2e-full"]).toContain(process.env.GITHUB_JOB);
   expect(process.env.NODE_ENV).not.toBe("production");
   expect(info.config.workers).toBe(1);
   const url = assertTestDatabaseUrl(process.env.DATABASE_URL);

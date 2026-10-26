@@ -20,7 +20,7 @@ const owned = { products: [] as string[], members: [] as string[], hits: [] as s
 
 test.beforeAll(async ({}, info) => {
   expect(process.env.CI).toBe("true");
-  expect(process.env.GITHUB_JOB).toBe("e2e-smoke");
+  expect(["e2e-smoke", "e2e-full"]).toContain(process.env.GITHUB_JOB);
   expect(process.env.NODE_ENV).not.toBe("production");
   expect(info.config.workers).toBe(1);
   const url = assertTestDatabaseUrl(process.env.DATABASE_URL);
@@ -169,6 +169,10 @@ for (const t of targets) test(`${t.id}: 실제 목록 10개·끝·앞뒤·필터
     else if (t.key === "hits") {
       await page.getByRole("combobox", { name: "등급", exact: true }).fill("UR");
       await page.getByRole("button", { name: "검색", exact: true }).click();
+    } else if (t.key === "receipts") {
+      // SA-024는 상태를 검색 패널의 라디오로 고르고 「검색」을 눌러 건다
+      await page.getByRole("radio", { name: "실패", exact: true }).check();
+      await page.getByRole("button", { name: "검색", exact: true }).click();
     } else await page.getByRole("tab", { name: t.key === "refunds" ? /^거절/ : /^실패/ }).click();
     await expect(rows).toHaveCount(1); await expect(rows.first()).toContainText(t.label(t.filteredIndex));
     await expect(nav).toHaveCount(0);
@@ -217,14 +221,24 @@ test("SA-023: 처리한 행만 거두고 현재 쪽·스크롤을 보존하며 �
   const current = (n: number) => expect(nav.getByRole("button", { name: `${n}페이지`, exact: true })).toHaveAttribute("aria-current", "page");
   const scrollMetrics = () => page.evaluate(() => ({ scrollY, scrollHeight: document.documentElement.scrollHeight, innerHeight, maxScroll: Math.max(0, document.documentElement.scrollHeight - innerHeight) }));
   const rejectFirst = async (keepMiddle = false) => {
-    await rows.first().getByRole("button", { name: "처리", exact: true }).click();
-    const dialog = page.getByRole("dialog");
+    if (keepMiddle) await page.evaluate(() => window.scrollTo(0, Math.floor(Math.max(0, document.documentElement.scrollHeight - innerHeight) / 2)));
+    const scroll = await scrollMetrics();
+    const link = rows.first().getByRole("link", { name: "처리", exact: true });
+    const href = new URL(await link.getAttribute("href") ?? "", page.url());
+    expect(href.pathname).toMatch(/^\/seller\/orders\/refund-requests\/[0-9a-f-]{36}$/);
+    expect(owned.refunds).toContain(href.pathname.split("/").at(-1));
+    expect(href.searchParams.get("returnTo")).toBe("/seller/orders/refund-requests");
+    await link.click();
+    await expect(page).toHaveURL(href.href);
+    expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem("onq:refund-requests:return") ?? "null")?.scrollY)).toBe(scroll.scrollY);
+    const dialog = page.getByRole("region", { name: /환불 요청 처리/ });
     await dialog.getByRole("button", { name: "거절", exact: true }).click();
     await dialog.getByLabel("거절 사유", { exact: true }).fill("합성 쪽 보존");
     // 한 행 제거 뒤에도 가능한 중간 위치를 고른다. 끝 위치의 브라우저 자동 clamp를 보존 실패와 섞지 않는다.
-    if (keepMiddle) await page.evaluate(() => window.scrollTo(0, Math.floor(Math.max(0, document.documentElement.scrollHeight - innerHeight) / 2)));
-    const scroll = await scrollMetrics();
     await dialog.getByRole("button", { name: "거절 처리", exact: true }).click();
+    await expect(page.getByText("환불 요청을 거절했습니다", { exact: true })).toBeVisible();
+    await dialog.getByRole("button", { name: "목록으로", exact: true }).click();
+    await expect(page).toHaveURL(/\/seller\/orders\/refund-requests$/);
     await expect(dialog).toHaveCount(0);
     return scroll;
   };
@@ -236,6 +250,7 @@ test("SA-023: 처리한 행만 거두고 현재 쪽·스크롤을 보존하며 �
     const scroll = await rejectFirst(true);
     await current(2); await expect(rows).toHaveCount(9);
     await expect(rows).toHaveText(before.slice(1));
+    await expect.poll(async () => (await scrollMetrics()).scrollY).toBe(scroll.scrollY);
     const afterScroll = await scrollMetrics();
     writeFileSync(`${evidence}/SA-023-scroll-${previousFails ? "previous-error" : "previous-ok"}.json`, JSON.stringify({ actualGitSha: sha, route: "/seller/orders/refund-requests", state: "page2-row-removed", before: scroll, after: afterScroll }, null, 2));
     expect(scroll.scrollY).toBeGreaterThan(0);

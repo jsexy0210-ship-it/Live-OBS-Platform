@@ -46,23 +46,24 @@ test("채널 11종 단가가 이름으로 보이고, 단가 변경(바로·예�
   const align = await page.locator(".tbl td").first().evaluate((el) => getComputedStyle(el).textAlign);
   expect(align).toBe("center"); // 표 정렬 새 규칙(2026-10-05): 글 열(.col-text)이 아니면 데이터는 가운데
 
-  await row(page, "단문 문자").getByRole("button", { name: "변경" }).click();
-  const dialog = page.getByRole("dialog");
-  await dialog.getByLabel("단가").fill("100001");
-  await expect(dialog.getByRole("button", { name: "저장" })).toBeDisabled();
-  await dialog.getByLabel("단가").fill("12");
-  await dialog.getByRole("button", { name: "저장" }).click();
-  await expect(dialog).toHaveCount(0);
+  await row(page, "단문 문자").getByRole("link", { name: "요금 상세" }).click();
+  const form = page.locator("main form");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await form.getByLabel("단가").fill("100001");
+  await expect(form.getByRole("button", { name: "저장" })).toBeDisabled();
+  await form.getByLabel("단가").fill("12");
+  await form.getByRole("button", { name: "저장" }).click();
+  await expect(page).toHaveURL(/\/admin\/settings\/messages(?:\?|$)/);
   await expect(row(page, "단문 문자")).toContainText("12원");
   expect((await db.messageChannelPrice.findUniqueOrThrow({ where: { channel: "SMS" } })).unitPrice).toBe(12);
 
   // 적용 예정: 현재 단가는 그대로, 변경 후 단가와 적용 예정일이 보인다
   const future = new Date(Date.now() + 3 * 86_400_000 + 9 * 3_600_000).toISOString().slice(0, 16);
-  await row(page, "단문 문자").getByRole("button", { name: "변경" }).click();
-  await dialog.getByLabel("단가").fill("20");
-  await fillDateTime(dialog, "바뀌는 시각", future);
-  await dialog.getByRole("button", { name: "저장" }).click();
-  await expect(dialog).toHaveCount(0);
+  await row(page, "단문 문자").getByRole("link", { name: "요금 상세" }).click();
+  await form.getByLabel("단가").fill("20");
+  await fillDateTime(form, "바뀌는 시각", future);
+  await form.getByRole("button", { name: "저장" }).click();
+  await expect(page).toHaveURL(/\/admin\/settings\/messages(?:\?|$)/);
   const sms = row(page, "단문 문자");
   await expect(sms.locator("td").nth(1)).toHaveText("12원");
   await expect(sms.locator("td").nth(2)).toHaveText("20원");
@@ -133,6 +134,6 @@ test("플랫폼 메일 한도 저장과 충전 스위치: 확인 창을 거치�
 
 test("CS는 메뉴가 없고 주소로 들어와도 권한 안내만 본다", async ({ page }) => {
   await open(page, csEmail);
-  await expect(page.getByTestId("admin-no-access")).toHaveText("이 화면을 볼 권한이 없습니다");
+  await expect(page.getByTestId("admin-no-access").getByRole("heading", { level: 1, name: "이 화면을 볼 권한이 없습니다", exact: true })).toBeVisible();
   await expect(page.getByTestId("price-row")).toHaveCount(0);
 });

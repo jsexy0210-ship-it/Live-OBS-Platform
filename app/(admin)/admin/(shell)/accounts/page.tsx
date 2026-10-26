@@ -3,9 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { PageHead, Pagination } from "../../../../../components/admin-ui";
-import { ErrorState, LoadingRows, Toast } from "../../../../../components/seller/States";
+import { ErrorState, LoadingRows } from "../../../../../components/seller/States";
 import { adminApi } from "../../_components/api";
-import { AccountDialog } from "../../_components/AccountDialog";
 import { AdminTopbar } from "../../_components/AdminShell";
 import { ROLE_LABEL, STATUS_LABEL, type AdminAccount, type AdminRoleCode } from "../../_components/accounts";
 import { dayTime } from "../../_components/partners";
@@ -17,8 +16,7 @@ type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; items: Admin
 export default function AccountsPage() {
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [page, setPage] = useState(1);
-  const [dialog, setDialog] = useState<{ account: AdminAccount | null } | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => { const n = Number(new URLSearchParams(window.location.search).get("page")); if (Number.isInteger(n) && n > 0) setPage(n); }, []);
 
   const load = useCallback(async () => {
     setState({ kind: "loading" });
@@ -26,12 +24,6 @@ export default function AccountsPage() {
     setState(r.ok ? { kind: "ok", items: r.data.admins } : { kind: "error" });
   }, []);
   useEffect(() => void load(), [load]);
-
-  const saved = (a: AdminAccount, created: boolean) => {
-    setDialog(null);
-    setToast(created ? "계정을 추가했습니다." : "저장했습니다.");
-    setState((s) => (s.kind === "ok" ? { kind: "ok", items: created ? [...s.items, a] : s.items.map((x) => (x.id === a.id ? a : x)) } : s));
-  };
 
   const items = state.kind === "ok" ? state.items : [];
   const pageCount = Math.ceil(items.length / 10);
@@ -49,13 +41,13 @@ export default function AccountsPage() {
               <Link className="btn btn-out" href="/admin/accounts/roles">
                 권한
               </Link>
-              <button className="btn" type="button" onClick={() => setDialog({ account: null })}>
+              <Link className="btn" href={`/admin/accounts/new?returnTo=${encodeURIComponent(`/admin/accounts?page=${currentPage}`)}`}>
                 계정 추가
-              </button>
+              </Link>
             </>
           }
         />
-        <div className="t-b2" style={{ padding: "12px 16px", background: "var(--info-bg)", border: "1px solid var(--info-bg)", borderRadius: 8 }}>최고관리자만 볼 수 있는 메뉴입니다 · 최고관리자는 대표 1명이며 바꾸거나 추가할 수 없습니다 · 다른 관리자는 운영 · 고객 지원 · 조회 전용 중에서 정합니다.</div>
+        <div className="t-b2" style={{ padding: "12px 16px", background: "var(--info-bg)", border: "1px solid var(--info-bg)", borderRadius: 0 }}>최고관리자만 볼 수 있는 메뉴입니다 · 최고관리자는 대표 1명이며 바꾸거나 추가할 수 없습니다 · 다른 관리자는 운영 · 고객 지원 · 조회 전용 중에서 정합니다.</div>
         {state.kind === "ok" && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
             {(["SUPER_ADMIN", "OPERATIONS", "CS", "READ_ONLY"] as AdminRoleCode[]).map((r) => (
@@ -98,9 +90,7 @@ export default function AccountsPage() {
                         <td className="num">{dayTime(a.lastLoginAt)}</td>
                         <td className="num">{dayTime(a.createdAt)}</td>
                         <td>
-                          <button className="btn btn-sm btn-out" type="button" onClick={() => setDialog({ account: a })}>
-                            수정
-                          </button>
+                          <Link className="btn btn-sm btn-out" href={`/admin/accounts/${a.id}?returnTo=${encodeURIComponent(`/admin/accounts?page=${currentPage}`)}`}>상세</Link>
                         </td>
                       </tr>
                     ))}
@@ -115,8 +105,6 @@ export default function AccountsPage() {
           )}
         </div>
       </main>
-      {dialog && <AccountDialog account={dialog.account} onClose={() => setDialog(null)} onDone={saved} />}
-      {toast && <Toast text={toast} onDone={() => setToast(null)} />}
     </>
   );
 }

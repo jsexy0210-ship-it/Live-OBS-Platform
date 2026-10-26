@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
 import { PageHead } from "../../../../../../components/admin-ui";
@@ -7,9 +8,8 @@ import { Modal } from "../../../../../../components/admin-ui/Modal";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
-import { CHANNEL_LABEL, UNIT_PRICE_MAX, won, type ChannelPrice, type MessageSettings } from "../../../_components/messageFees";
+import { CHANNEL_LABEL, won, type MessageSettings } from "../../../_components/messageFees";
 import { dayTime } from "../../../_components/partners";
-import { ValueDialog } from "../../../_components/ValueDialog";
 
 // MA-086 발송 단가(GET·PUT /api/admin/message-settings, POST /api/admin/message-prices/{channel}). 설정은 최고관리자만 열린다.
 // 충전 스위치는 파트너스의 선불 충전·차감을 켜고 끄는 큰 스위치라 바꿀 때 확인 창을 거친다(켜기는 서버가 정기 작업이 도는지도 확인한다).
@@ -18,9 +18,10 @@ type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; data: Messag
 export default function MessagePricesPage() {
   const { me } = useAdmin();
   const canEdit = adminCan(me.role, "billing.price");
+  const [listHref, setListHref] = useState("/admin/settings/messages");
+  useEffect(() => setListHref(window.location.pathname + window.location.search), []);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
-  const [priceDialog, setPriceDialog] = useState<ChannelPrice | null>(null);
   const [confirmSwitch, setConfirmSwitch] = useState(false);
   const [limits, setLimits] = useState({ day: "", month: "" });
   const [busy, setBusy] = useState(false);
@@ -124,9 +125,9 @@ export default function MessagePricesPage() {
                         <td className="num">{p.next ? dayTime(p.next.effectiveAt) : "-"}</td>
                         {canEdit && (
                           <td>
-                            <button className="btn btn-sm btn-out" type="button" onClick={() => setPriceDialog(p)}>
-                              요금 변경
-                            </button>
+                            <Link className="btn btn-sm btn-out" href={`/admin/settings/messages/${p.channel}?returnTo=${encodeURIComponent(listHref)}`}>
+                              요금 상세
+                            </Link>
                           </td>
                         )}
                       </tr>
@@ -181,23 +182,6 @@ export default function MessagePricesPage() {
         )}
       </main>
 
-      {priceDialog && (
-        <ValueDialog
-          title={`${CHANNEL_LABEL[priceDialog.channel]} 단가 변경`}
-          label="단가"
-          unit="원"
-          current={priceDialog.unitPrice}
-          max={UNIT_PRICE_MAX}
-          path={`/api/admin/message-prices/${priceDialog.channel}`}
-          field="unitPrice"
-          onClose={() => setPriceDialog(null)}
-          onDone={() => {
-            setPriceDialog(null);
-            setToast({ text: "단가를 저장했습니다." });
-            void load();
-          }}
-        />
-      )}
       {confirmSwitch && d && (
         <Modal labelId="charging-title" busy={busy} onClose={() => setConfirmSwitch(false)}>
           {(requestClose) => (

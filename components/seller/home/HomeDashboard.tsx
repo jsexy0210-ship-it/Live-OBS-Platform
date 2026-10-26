@@ -84,12 +84,12 @@ function OnboardingStrip() {
   if (part.kind !== "ok" || part.data.completed || part.data.dismissed || closed) return null;
   const close = async () => {
     const ok = await confirm({
-      title: "시작하기 안내를 숨기시겠습니까?",
-      body: "홈에서 시작하기 안내가 사라집니다. 시작하기 화면에서 다시 열 수 있습니다.",
+      title: "시작하기 안내를 숨길까요?",
+      body: "홈에서 시작하기 안내가 사라져요. 시작하기 화면에서 다시 열 수 있어요.",
       confirmLabel: "숨기기",
       run: async () => {
         const r = await api("/api/seller/onboarding", { method: "POST", body: { action: "dismiss" } });
-        return r.ok ? undefined : "안내를 숨기지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주십시오";
+        return r.ok ? undefined : "안내를 숨기지 못했어요. 다시 눌러 주세요.";
       },
     });
     if (ok) setClosed(true);
@@ -118,10 +118,10 @@ function TodayTasks({ refresh }: { refresh: number }) {
   return (
     <Section title="오늘 처리할 일" sub={part.kind === "ok" && part.data.total > 0 ? `${count(part.data.total)}` : undefined}>
       {part.kind === "loading" && <LoadingRows rows={2} />}
-      {part.kind === "error" && <ErrorState title="처리할 일을 불러오지 못했습니다" onRetry={retry} />}
+      {part.kind === "error" && <ErrorState title="처리할 일을 불러오지 못했어요" onRetry={retry} />}
       {part.kind === "ok" &&
         (part.data.items.length === 0 ? (
-          <div className="home-empty">오늘 처리할 일이 없습니다</div>
+          <div className="home-empty">오늘 처리할 일이 없어요</div>
         ) : (
           <>
             <div className="home-tasks" data-testid="home-tasks">
@@ -132,7 +132,7 @@ function TodayTasks({ refresh }: { refresh: number }) {
                 </Link>
               ))}
             </div>
-            {part.data.total === 0 && <div className="home-empty">지금 처리할 일이 없습니다</div>}
+            {part.data.total === 0 && <div className="home-empty">지금 처리할 일이 없어요</div>}
           </>
         ))}
     </Section>
@@ -146,7 +146,7 @@ function Performance({ refresh }: { refresh: number }) {
   return (
     <Section title="오늘 성과" actions={<Link className="btn btn-out" href="/seller/stats">통계 보기</Link>}>
       {part.kind === "loading" && <LoadingRows rows={2} />}
-      {part.kind === "error" && <ErrorState title="오늘 성과를 불러오지 못했습니다" onRetry={retry} />}
+      {part.kind === "error" && <ErrorState title="오늘 성과를 불러오지 못했어요" onRetry={retry} />}
       {part.kind === "ok" && (
         <div data-testid="home-performance">
           <Kpis
@@ -177,10 +177,10 @@ function Broadcasts({ refresh }: { refresh: number }) {
   return (
     <Section title="방송" actions={<Link className="btn btn-out" href="/seller/broadcasts">방송 기록</Link>}>
       {part.kind === "loading" && <LoadingRows rows={2} />}
-      {part.kind === "error" && <ErrorState title="방송을 불러오지 못했습니다" onRetry={retry} />}
+      {part.kind === "error" && <ErrorState title="방송 기록을 불러오지 못했어요" onRetry={retry} />}
       {part.kind === "ok" &&
         (part.data.length === 0 ? (
-          <div className="home-empty">아직 진행한 방송이 없습니다</div>
+          <div className="home-empty">아직 진행한 방송이 없어요</div>
         ) : (
           <table className="tbl" data-testid="home-broadcasts">
             <thead>
