@@ -227,10 +227,13 @@ export default function UpgradePage() {
 
     if (done) {
       return (
-        <div className="up-done" role="status">
-          <span>{done}{target ? ` · 이후 월 ${won(target.price)}` : ""}</span>
-          {shopHref && <Link className="up-done-a" href={shopHref} target="_blank" rel="noreferrer">스토어 열기</Link>}
-        </div>
+        <>
+          <div className="up-done" role="status">
+            <span>{done}{target ? ` · 이후 월 ${won(target.price)}` : ""}</span>
+            {shopHref && <Link className="up-done-a" href={shopHref} target="_blank" rel="noreferrer">스토어 열기</Link>}
+          </div>
+          <p className="help">지금 바로 상품을 등록할 수 있습니다</p>
+        </>
       );
     }
 
