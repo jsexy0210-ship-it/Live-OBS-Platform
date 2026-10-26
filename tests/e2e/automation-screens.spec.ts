@@ -99,6 +99,11 @@ test("파트너스: 주소 확인 → 결제 동의 5개 → 결제 → 진행 �
   await expect(page.getByTestId("job-shop-host")).toHaveCount(0);
   const job = await db.automationJob.findFirstOrThrow({ where: { sellerId } });
   expect(job.status).toBe("QUEUED");
+  // 플랫폼 이름이 없는 주소(서버가 그대로 내려 줌)는 안내 띠에 보인다
+  await db.automationJob.update({ where: { id: job.id }, data: { shopHost: "shop.example-store.kr" } });
+  await page.reload();
+  await expect(page.getByTestId("job-shop-host")).toHaveText("shop.example-store.kr");
+  await db.automationJob.update({ where: { id: job.id }, data: { shopHost: job.shopHost } });
   expect(await db.automationPayment.count({ where: { sellerId, status: "PAID", amount: 110000 } })).toBe(1);
   // 안내 화면은 진행 중인 작업을 알려 준다
   await page.goto("/seller/automation");
