@@ -185,7 +185,7 @@ export function parseProductRows(rows: string[][], categories: Map<string, strin
   const columns: ColumnMismatch[] = [];
   for (const [i, n] of names.entries()) {
     const column = n === "옵션" ? "옵션명" : n;
-    if (!(COLUMNS as readonly string[]).includes(column)) columns.push({ found: n, expected: Object.hasOwn(HEADER_SUGGESTIONS, n) ? HEADER_SUGGESTIONS[n] : null });;
+    if (!(COLUMNS as readonly string[]).includes(column)) columns.push({ found: n, expected: Object.hasOwn(HEADER_SUGGESTIONS, n) ? HEADER_SUGGESTIONS[n] : null });
     else if (index.has(column)) columns.push({ found: n, expected: null });
     else index.set(column, i);
   }
