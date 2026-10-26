@@ -4,13 +4,13 @@ import { prisma } from "../../../../lib/server/db";
 import { errorResponse, mutation, readJson, requestMeta, sessionToken } from "../../../../lib/server/http/route";
 import { createPlatformNotice, listAdminNotices, PLATFORM_NOTICE_MESSAGES } from "../../../../lib/server/platform-notices/service";
 
-// 플랫폼 공지 목록(MA-053). 보기는 모든 역할(platform.read). ?status=draft|published(없으면 둘 다)&cursor=
-// → { items: [{ id, title, body, category, audience, isPinned, status, publishedAt, channels, version, createdAt, updatedAt }], nextCursor }
+// 플랫폼 공지 목록(MA-053). 보기는 모든 역할(platform.read). ?status=draft|published(없으면 둘 다)&audience=PARTNERS|PUBLIC|ALL&cursor=
+// → { items: [{ id, title, body, category, audience, isPinned, status, publishedAt, channels, version, createdAt, updatedAt, readCount, authorName }], nextCursor }
 export async function GET(req: Request) {
   try {
     const admin = await requireAdmin(prisma, sessionToken(req, "admin"), "platform.read");
     const url = new URL(req.url);
-    const r = await listAdminNotices(prisma, admin, { status: url.searchParams.get("status"), cursor: url.searchParams.get("cursor"), category: url.searchParams.get("category"), q: url.searchParams.get("q") });
+    const r = await listAdminNotices(prisma, admin, { status: url.searchParams.get("status"), cursor: url.searchParams.get("cursor"), category: url.searchParams.get("category"), q: url.searchParams.get("q"), audience: url.searchParams.get("audience") });
     if (!r.ok) return NextResponse.json({ error: r.reason, message: PLATFORM_NOTICE_MESSAGES[r.reason] }, { status: 400 });
     return NextResponse.json({ items: r.items, nextCursor: r.nextCursor }, { headers: { "cache-control": "no-store" } });
   } catch (e) {
