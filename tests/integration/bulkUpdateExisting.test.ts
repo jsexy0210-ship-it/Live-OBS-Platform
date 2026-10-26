@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "../../lib/server/db";
-import { commitProductImport, getBulkJob, previewProductImport, undoProductImport } from "../../lib/server/shop-bulk-io/service";
+import { parseCsv } from "../../lib/server/shop-bulk-io/csv";
+import { commitProductImport, exportProductsCsv, getBulkJob, previewProductImport, undoProductImport } from "../../lib/server/shop-bulk-io/service";
 import { createOption, deleteOption } from "../../lib/server/products/manage";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { createSeller, createSellerUser, db, resetDb } from "./helpers";
@@ -177,6 +178,26 @@ describe("기존 상품 수정", () => {
     expect(await commit(s.ctx, p.jobId)).toMatchObject({ createdCount: 2, updatedCount: 1, failedCount: 0 });
     const states = await db.product.findMany({ where: { sellerId: s.seller.id, name: { in: ["부스터 팩", "빈 상태", "명시 준비중"] } }, select: { name: true, status: true } });
     expect(Object.fromEntries(states.map((product) => [product.name, product.status]))).toEqual({ "부스터 팩": "ON_SALE", "빈 상태": "HIDDEN", "명시 준비중": "DRAFT" });
+  });
+
+  it("새 상품의 할인가·할인 기간은 정액 이벤트 할인으로 걸리고, 기존 상품 수정에는 쓰지 않는다. 내보내기에도 나온다", async () => {
+    const s = await shop();
+    await seed(s.ctx);
+    const day = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+    const head = "상품명,카테고리,판매가,재고,옵션,할인가,할인 기간,설명,숨김";
+    const p = await preview(s.ctx, [head, `신상,,10000,5,기본,7000,${day(-1)} ~ ${day(5)},설명,예`, `부스터 팩,,6000,45,기본,3000,${day(-1)} ~ ${day(5)},,`].join("\r\n"));
+    expect([p.createCount, p.updateCount, p.errors]).toEqual([1, 1, []]);
+    const c = await commit(s.ctx, p.jobId);
+    expect(c).toMatchObject({ createdCount: 1, updatedCount: 1, failedCount: 0 });
+    const made = await db.product.findFirstOrThrow({ where: { sellerId: s.seller.id, name: "신상" } });
+    expect([made.status, made.eventDiscountType, made.eventDiscountValue]).toEqual(["HIDDEN", "AMOUNT", 3000]);
+    expect(made.eventStartsAt?.toISOString()).toBe(new Date(`${day(-1)}T00:00:00+09:00`).toISOString());
+    const old = await db.product.findFirstOrThrow({ where: { sellerId: s.seller.id, name: "부스터 팩" } });
+    expect([old.price, old.eventDiscountType]).toEqual([6000, null]); // 기존 상품은 판매가·재고만
+    const ex = await exportProductsCsv(db, s.ctx);
+    if (!ex.ok) throw new Error(ex.reason);
+    const row = (parseCsv(ex.value.csv) as { rows: string[][] }).rows.find((r) => r[0] === "신상")!;
+    expect([row[2], row[5], row[6], row[8]]).toEqual(["10000", "7000", `${day(-1)} ~ ${day(5)}`, "예"]);
   });
 
   it("지운 상품과는 이름이 같아도 새 상품으로 등록한다", async () => {

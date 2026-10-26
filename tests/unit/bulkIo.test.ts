@@ -94,6 +94,37 @@ describe("상품 CSV 검증", () => {
     expect(v.products[0].input).toMatchObject({ name: "A", price: 1000, status: "HIDDEN", options: [{ name: "기본", priceDelta: 0, stock: 3, sku: null }] });
     expect(v.products[0].defaultOption).toBe(true);
   });
+  it("할인가·할인 기간은 함께 입력하고 정액 할인(판매가 − 할인가)으로 읽는다. 기간은 시작일 0시부터 종료일 끝까지(KST)", () => {
+    const start = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
+    const end = new Date(Date.now() + 9 * 86_400_000).toISOString().slice(0, 10);
+    const head = "상품명,카테고리,판매가,재고,할인가,할인 기간,숨김";
+    const v = parse(`A,,10000,3,"8,000원",${start} ~ ${end},예\r\nB,,5000,1,,,`, head);
+    expect(v.errors).toEqual([]);
+    const a = v.products[0].event!;
+    expect([a.type, a.value]).toEqual(["AMOUNT", 2000]);
+    expect(a.startsAt).toBe(`${start}T00:00:00+09:00`);
+    expect(a.endsAt.endsWith("T00:00:00+09:00")).toBe(true);
+    expect(Date.parse(a.endsAt) - Date.parse(a.startsAt)).toBe(8 * 86_400_000); // 종료일 포함
+    expect(v.products[1].event).toBeUndefined();
+    // 점·빗금 구분도 받는다
+    expect(parse(`A,,10000,3,9000,${start.replaceAll("-", ".")} ~ ${end.replaceAll("-", "/")},`, head).errors).toEqual([]);
+  });
+  it("할인가·할인 기간 오류: 한쪽만, 숫자 아님, 판매가 이상, 90% 넘는 할인, 지난 기간, 형식·역순·없는 날짜", () => {
+    const start = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+    const end = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+    const ok = `${start} ~ ${end}`;
+    const head = "상품명,카테고리,판매가,재고,할인가,할인 기간";
+    const err = (row: string) => parse(row, head).errors.map((e) => [e.column, e.message]);
+    expect(err(`A,,10000,1,8000,`)).toEqual([["할인 기간", "할인가와 할인 기간은 함께 입력해 주십시오"]]);
+    expect(err(`A,,10000,1,,${ok}`)).toEqual([["할인가", "할인가와 할인 기간은 함께 입력해 주십시오"]]);
+    expect(err(`A,,10000,1,abc,${ok}`)[0][0]).toBe("할인가");
+    expect(err(`A,,10000,1,10000,${ok}`)).toEqual([["할인가", "할인가는 판매가보다 낮아야 합니다"]]);
+    expect(err(`A,,10000,1,500,${ok}`)[0][0]).toBe("할인가"); // 판매가의 10% 미만 = 90% 넘는 할인
+    expect(err(`A,,10000,1,8000,2020-01-01 ~ 2020-01-31`)[0][0]).toBe("할인 기간"); // 이미 끝남
+    expect(err(`A,,10000,1,8000,${end} ~ ${start}`)[0][0]).toBe("할인 기간"); // 역순
+    expect(err(`A,,10000,1,8000,2026-02-30 ~ 2026-03-05`)[0][0]).toBe("할인 기간"); // 없는 날짜
+    expect(err(`A,,10000,1,8000,내일부터`)[0][0]).toBe("할인 기간");
+  });
   it("양식과 다른 열은 어느 열이 어떻게 다른지 알려 준다(필수 열 누락·모르는 열·같은 열 두 번)", () => {
     const head = (t: string) => {
       const r = parseProductCsv(`${t}\r\nA,1,카드,1`, cats);

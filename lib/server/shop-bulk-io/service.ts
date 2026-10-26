@@ -4,6 +4,7 @@ import { AuthError, notFound } from "../authz/errors";
 import { dbNow } from "../billing/subscription";
 import { ORDER_ERROR_MESSAGES_FORMAL } from "../orders/messages";
 import { MAX_OPTIONS_PER_PRODUCT, PRODUCT_NAME_MAX, STOCK_NOTES, createProduct, deleteProduct, parseNewProduct, updateProduct, type ProductFailure } from "../products/manage";
+import { MAX_EVENT_RATE, discountedUnit, eventFits, eventOf, parseEvent, setProductEvent } from "../products/event";
 import { adjustStock } from "../products/stock";
 import { MAX_CATEGORIES_PER_PRODUCT, listCategories, setProductCategories } from "../shop-category/service";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
@@ -26,13 +27,14 @@ const MAX_STORED_ERRORS = 500;
 const SHOWN_ERRORS = 100;
 const SHOWN_PRODUCTS = 20;
 
-export const COLUMNS = ["상품명", "판매가", "상태", "설명", "차감시점", "카테고리", "옵션명", "옵션추가금", "재고", "SKU"] as const;
+// 올릴 때 받는 열: 기존 10열 + 정본의 할인가·할인 기간·숨김. 「구매 제한」은 상품 필드가 없어 받지 않는다(별도 항목).
+export const COLUMNS = ["상품명", "판매가", "상태", "설명", "차감시점", "카테고리", "옵션명", "옵션추가금", "재고", "SKU", "할인가", "할인 기간", "숨김"] as const;
+// 내려받는 양식·내보내기 열(정본 SA-018 「양식 안내」): 필수 4열 + 선택 열. 올릴 때는 이 열도, 기존 10열도 읽는다.
+export const TEMPLATE_COLUMNS = ["상품명", "카테고리", "판매가", "재고", "옵션", "할인가", "할인 기간", "설명", "숨김"] as const;
 type Column = (typeof COLUMNS)[number];
 
 const STATUS_BY_LABEL: Record<string, ProductStatus> = { 판매중: "ON_SALE", 품절: "SOLD_OUT", 준비중: "DRAFT", 숨김: "HIDDEN" };
-const LABEL_BY_STATUS: Record<ProductStatus, string> = { ON_SALE: "판매중", SOLD_OUT: "품절", DRAFT: "준비중", HIDDEN: "숨김" };
 const DEDUCT_BY_LABEL: Record<string, StockDeductMode> = { "결제 시": "PAYMENT", "주문 시": "ORDER" };
-const LABEL_BY_DEDUCT: Record<StockDeductMode, string> = { PAYMENT: "결제 시", ORDER: "주문 시" };
 
 // 화면 문구(파트너스 관리자: 합니다체)
 export const BULK_MESSAGES = {
@@ -110,6 +112,8 @@ type ImportProduct = {
   categoryIds: string[];
   categories: string[];
   optionMeta?: { line: number; hasStock: boolean }[];
+  // 새 상품의 할인(할인가 − 판매가를 정액 할인으로, 기간은 KST 날짜 기준). 기존 상품 수정에는 쓰지 않는다.
+  event?: { type: "AMOUNT"; value: number; startsAt: string; endsAt: string };
   defaultOption?: boolean;
   update?: { productId: string; currentPrice: number; stock: StockChange[] };
 };
@@ -118,11 +122,15 @@ type UpdateRecord = { productId: string; name: string; price: { before: number; 
 export type ColumnMismatch = { found: string | null; expected: string | null };
 type Result<T> = { ok: true; value: T } | { ok: false; reason: BulkFailure; columns?: ColumnMismatch[] };
 
-const TEMPLATE_ROWS: string[][] = [
-  [...COLUMNS],
-  ["부스터 팩", "5000", "판매중", "신상 부스터 팩입니다", "결제 시", "카드>부스터", "기본", "0", "30", "BP-001"],
-  ["슬리브 세트", "3000", "판매중", "", "결제 시", "", "검정", "0", "10", "SL-B"],
-  ["", "", "", "", "", "", "흰색", "500", "5", "SL-W"],
+const KST_MS = 9 * 3600_000;
+const pad2 = (n: number) => String(n).padStart(2, "0");
+const kstDay = (d: Date) => new Date(d.getTime() + KST_MS).toISOString().slice(0, 10);
+// 양식의 예시 줄(할인 기간은 오늘부터 일주일). 「숨김」은 새 상품이 항상 숨김으로 등록된다는 뜻의 예시다.
+const templateRows = (now = new Date()): string[][] => [
+  [...TEMPLATE_COLUMNS],
+  ["부스터 팩", "카드>부스터", "5000", "30", "기본", "4500", `${kstDay(now)} ~ ${kstDay(new Date(now.getTime() + 6 * 86_400_000))}`, "신상 부스터 팩입니다", "예"],
+  ["슬리브 세트", "", "3000", "10", "검정", "", "", "", "예"],
+  ["", "", "", "5", "흰색", "", "", "", ""],
 ];
 const REQUIRED_COLUMNS = ["상품명", "카테고리", "판매가", "재고"] as const;
 // 자주 틀리는 열 이름 → 바른 이름(안내용). 올린 파일의 열 이름으로 찾으므로 자기 속성만 본다(constructor 같은 이름이 상속 값을 돌려주지 않게).
@@ -146,8 +154,8 @@ const HEADER_SUGGESTIONS: Record<string, string> = {
   상품설명: "설명",
   "판매 상태": "상태",
 };
-export const templateCsv = (): string => formatCsv(TEMPLATE_ROWS);
-export const templateXlsx = (): Buffer => writeXlsx(TEMPLATE_ROWS, "상품 일괄 등록");
+export const templateCsv = (): string => formatCsv(templateRows());
+export const templateXlsx = (): Buffer => writeXlsx(templateRows(), "상품 일괄 등록");
 
 // 카테고리 이름 → id. 「상위>하위」 또는 「상위」, 여러 개는 「|」로 잇는다. 같은 이름이 여럿이면 어느 것인지 알 수 없어 오류.
 function categoryIndex(tree: Awaited<ReturnType<typeof listCategories>>) {
@@ -166,6 +174,23 @@ const intCell = (raw: string, money: boolean): number | null => {
   const n = Number(s);
   return Number.isSafeInteger(n) ? n : null;
 };
+
+// 「2026-10-20 ~ 2026-10-27」(구분은 - . /). 시작일 0시부터 종료일 끝(다음 날 0시, KST)까지.
+function parsePeriod(raw: string): { startsAt: string; endsAt: string } | null {
+  const m = /^(\d{4})[-./]\s*(\d{1,2})[-./]\s*(\d{1,2})\s*~\s*(\d{4})[-./]\s*(\d{1,2})[-./]\s*(\d{1,2})$/.exec(raw.trim());
+  if (!m) return null;
+  const [y1, m1, d1, y2, m2, d2] = m.slice(1).map(Number);
+  const real = (y: number, mo: number, d: number) => {
+    const t = new Date(Date.UTC(y, mo - 1, d));
+    return t.getUTCFullYear() === y && t.getUTCMonth() === mo - 1 && t.getUTCDate() === d;
+  };
+  if (!real(y1, m1, d1) || !real(y2, m2, d2)) return null;
+  const start = Date.UTC(y1, m1 - 1, d1);
+  const endDay = Date.UTC(y2, m2 - 1, d2);
+  if (endDay < start) return null;
+  const next = new Date(endDay + 86_400_000);
+  return { startsAt: `${y1}-${pad2(m1)}-${pad2(d1)}T00:00:00+09:00`, endsAt: `${next.getUTCFullYear()}-${pad2(next.getUTCMonth() + 1)}-${pad2(next.getUTCDate())}T00:00:00+09:00` };
+}
 
 type Parsed = { totalRows: number; products: ImportProduct[]; errors: RowError[]; skippedProducts: number };
 
@@ -248,7 +273,7 @@ export function parseProductRows(rows: string[][], categories: Map<string, strin
     const optionMeta: { line: number; hasStock: boolean }[] = [];
     for (const [k, r] of g.rows.entries()) {
       if (k > 0) {
-        for (const col of ["판매가", "상태", "설명", "차감시점", "카테고리"] as const) {
+        for (const col of ["판매가", "상태", "설명", "차감시점", "카테고리", "할인가", "할인 기간", "숨김"] as const) {
           const same = get(r.cells, col) === get(first, col);
           if (get(r.cells, col) !== "" && !same) err(r.line, col, "옵션 줄에는 상품 정보를 비워 두십시오");
         }
@@ -272,6 +297,30 @@ export function parseProductRows(rows: string[][], categories: Map<string, strin
       }
     }
 
+    // 할인가·할인 기간(둘 다 있어야 함): 할인가를 정액 할인(판매가 − 할인가)으로 바꿔 상품의 이벤트 할인 규칙(기간·90% 한도·옵션 단가)으로 확인한다.
+    let event: ImportProduct["event"];
+    const discountRaw = get(first, "할인가");
+    const periodRaw = get(first, "할인 기간");
+    if (discountRaw !== "" || periodRaw !== "") {
+      const dp = discountRaw === "" ? null : intCell(discountRaw, true);
+      const period = periodRaw === "" ? null : parsePeriod(periodRaw);
+      if (discountRaw === "" || periodRaw === "") err(g.line, discountRaw === "" ? "할인가" : "할인 기간", "할인가와 할인 기간은 함께 입력해 주십시오");
+      else if (dp === null || dp < 1) err(g.line, "할인가", "할인가는 1원 이상의 숫자로 입력해 주십시오");
+      else if (!period) err(g.line, "할인 기간", "할인 기간은 「2026-10-20 ~ 2026-10-27」처럼 시작일 ~ 종료일로 입력해 주십시오");
+      else if (price !== null && price >= 1) {
+        if (dp >= price) err(g.line, "할인가", "할인가는 판매가보다 낮아야 합니다");
+        else {
+          const candidate = { type: "AMOUNT" as const, value: price - dp, startsAt: period.startsAt, endsAt: period.endsAt };
+          const now = new Date();
+          const parsedEvent = parseEvent(candidate, now);
+          if (typeof parsedEvent === "string") err(g.line, "할인 기간", parsedEvent === "invalid_event_period" ? "할인 기간을 확인해 주십시오. 종료일은 오늘 이후여야 하고 기간은 365일까지입니다" : "할인가를 확인해 주십시오");
+          else if (candidate.value * 100 > price * MAX_EVENT_RATE) err(g.line, "할인가", `할인가는 판매가의 ${100 - MAX_EVENT_RATE}% 이상이어야 합니다`);
+          else if (!eventFits(parsedEvent, price, [0, ...options.map((o) => o.priceDelta)], now)) err(g.line, "할인가", "할인 뒤 가격이 옵션 가격에서 1원 미만이 됩니다. 할인가를 확인해 주십시오");
+          else event = candidate;
+        }
+      }
+    }
+
     const input = { name: unit("상품명"), description: unit("설명"), price, status, stockDeductMode: deduct, options };
     if (errs.length === 0) {
       const parsed = parseNewProduct(input);
@@ -281,7 +330,7 @@ export function parseProductRows(rows: string[][], categories: Map<string, strin
       errors.push(...errs);
       bad.add(g);
       skipped++;
-    } else products.push({ row: g.line, input, categoryIds, categories: categoryNames, optionMeta, defaultOption: !hasOptionColumn });
+    } else products.push({ row: g.line, input, categoryIds, categories: categoryNames, optionMeta, defaultOption: !hasOptionColumn, ...(event ? { event } : {}) });
   }
   errors.sort((a, b) => a.row - b.row);
   return { ok: true, value: { totalRows: data.length, products, errors, skippedProducts: skipped + (bad.has("orphan") ? 1 : 0) } };
@@ -441,6 +490,10 @@ export async function commitProductImport(db: PrismaClient, ctx: TenantContext, 
     if (p.categoryIds.length > 0) {
       const c = await setProductCategories(db, ctx, r.value.id, { categoryIds: p.categoryIds });
       if (!c.ok) failures.push({ row: p.row, name, message: "상품은 등록했지만 카테고리를 지정하지 못했습니다. 상품에서 직접 지정해 주십시오" });
+    }
+    if (p.event) {
+      const e = await setProductEvent(db, ctx, r.value.id, p.event);
+      if (!e.ok) failures.push({ row: p.row, name, message: "상품은 등록했지만 할인을 설정하지 못했습니다. 상품에서 직접 설정해 주십시오" });
     }
   }
   const doneAt = await dbNow(db);
@@ -673,17 +726,32 @@ async function exportProductRows(db: PrismaClient, ctx: TenantContext, guard: bo
       price: true,
       status: true,
       stockDeductMode: true,
+      eventDiscountType: true,
+      eventDiscountValue: true,
+      eventStartsAt: true,
+      eventEndsAt: true,
       categories: { select: { categoryId: true } },
       options: { where: { deletedAt: null }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }], select: { name: true, priceDelta: true, stock: true, sku: true } },
     },
   });
-  const rows: string[][] = [[...COLUMNS]];
+  const now = await dbNow(db);
+  const rows: string[][] = [[...TEMPLATE_COLUMNS]];
   for (const p of products) {
     const cats = p.categories.map((c) => path.get(c.categoryId)).filter((v): v is string => !!v).join("|");
     const optRows = p.options.length > 0 ? p.options : [null];
     optRows.forEach((o, i) => {
-      const head = i === 0 ? [guardText(p.name), String(p.price), LABEL_BY_STATUS[p.status], guardText(p.description ?? ""), LABEL_BY_DEDUCT[p.stockDeductMode], guardText(cats)] : ["", "", "", "", "", ""];
-      rows.push([...head, o ? guardText(o.name) : "", o ? String(o.priceDelta) : "", o ? String(o.stock) : "", o?.sku ? guardText(o.sku) : ""]);
+      // 끝나지 않은 할인만 내보낸다: 할인가 = 판매가에서 할인한 값, 기간 = 시작일 ~ 종료일(KST)
+      const ev = eventOf(p);
+      const live = ev && ev.endsAt > now ? ev : null;
+      const head =
+        i === 0
+          ? [guardText(p.name), guardText(cats), String(p.price)]
+          : ["", "", ""];
+      const tail =
+        i === 0
+          ? [live ? String(discountedUnit(p.price, live)) : "", live ? `${kstDay(live.startsAt)} ~ ${kstDay(new Date(live.endsAt.getTime() - 1))}` : "", guardText(p.description ?? ""), p.status === "HIDDEN" ? "예" : "아니오"]
+          : ["", "", "", ""];
+      rows.push([...head, o ? String(o.stock) : "", o ? guardText(o.name) : "", ...tail]);
     });
   }
   await recordExport(db, ctx, { kind: "PRODUCT_EXPORT", rows: products.length, action: "bulk_io.product_export", targetType: "BulkJob" });
