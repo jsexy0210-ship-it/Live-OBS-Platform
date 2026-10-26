@@ -300,3 +300,12 @@ test("선택 공지 대상 지정: 체크한 파트너스가 공지 작성의 �
   await expect(page.getByRole("radio", { name: /특정 파트너스/ })).toBeChecked();
   await expect(page.getByText(nameA).first()).toBeVisible();
 });
+
+test("선택 공지 대상: 선택한 파트너스를 하나라도 못 불러오면 공지 폼을 열지 않는다", async ({ page }) => {
+  await login(page, emails.super);
+  const missing = "00000000-0000-4000-8000-000000000001";
+  await page.goto(`/admin/support/notices/new?ids=${idA},${missing}&returnTo=${encodeURIComponent("/admin/partners")}`);
+  await expect(page.locator(".msg-neg")).toContainText("선택한 파트너스를 모두 불러오지 못했습니다");
+  await expect(page.getByRole("radio", { name: /전체 파트너스/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "목록", exact: true })).toHaveAttribute("href", "/admin/partners");
+});
