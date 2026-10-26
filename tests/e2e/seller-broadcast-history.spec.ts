@@ -55,6 +55,15 @@ test("방송을 끝낸 뒤 이력 목록에서 찾아 상세로 들어가 요약
   await expect(row.locator("td").nth(3)).toHaveText("2");
   // 레이아웃 열: 방송 중 방송 화면이 레이아웃을 요청한 적이 없으면 「—」
   await expect(row.getByTestId("bh-layout")).toHaveText("—");
+  // 검수 증거: E2E_SCREENSHOTS=1일 때만 SA-054를 1440·1024로 저장한다
+  if (process.env.E2E_SCREENSHOTS === "1") {
+    for (const width of [1440, 1024]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({ path: `tests/e2e/screenshots/SA-054-${width}.png`, fullPage: true });
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+  }
   // 제목이 첫 열, 일시는 「2026.10.05 22:25」 형식
   await expect(page.locator("table.tbl thead th").first()).toHaveText("제목");
   await expect(row.locator("td").first().getByTestId("bh-link")).toHaveText(title);
@@ -114,7 +123,8 @@ test("기간으로 걸러 보고, 잘못된 기간은 조회하지 않으며, �
   await expect(page.getByTestId("bh-empty")).toContainText("조건에 맞는 방송이 없습니다");
   await page.getByLabel("시작일").fill("2020-02-01");
   await page.getByRole("button", { name: "검색" }).click();
-  await expect(page.getByText("시작일을 끝일보다 앞 날짜로 바꿔 주십시오")).toBeVisible();
+  // 기간 선택 부품이 잘못된 기간을 스스로 막고 안내한다(검색 요청은 나가지 않는다)
+  await expect(page.getByText("종료일은 시작일 이후로 선택하십시오.")).toBeVisible();
 
   await page.goto("/seller/broadcasts/00000000-0000-4000-8000-000000000000");
   await expect(page.getByTestId("bd-notfound")).toContainText("방송을 찾을 수 없습니다");

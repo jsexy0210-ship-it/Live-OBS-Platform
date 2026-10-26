@@ -13,7 +13,7 @@ import { dayTime } from "../../../../_components/partners";
 import { useSmartBack } from "../../../../../../../lib/client/navigation";
 
 // MA-111 자동 연결 작업 상세. API: GET /api/automation/admin/jobs/{id}(조회만), POST …/cleanup(정리 필요 닫기, 운영 역할 이상).
-// 보드에 있고 서버에 없는 것(재시도·담당 작업 서버 바꾸기·취소 버튼, 격리·안전 표, 작업 로그 문구)은 넣지 않았다. 흐름은 진행 기록으로 보인다.
+// 흐름 표는 서버 steps(#1232)를 보인다. 보드에 있고 서버에 없는 것(재시도·담당 작업 서버 바꾸기·취소 버튼, 격리·안전 표, 작업 로그 문구)은 넣지 않았다. 흐름은 진행 기록으로 보인다.
 type Detail = {
   id: string;
   shopName: string;
@@ -37,7 +37,20 @@ type Detail = {
   createdAt: string;
   payment: { status: string; amount: number; refundReason: string | null; refundRequestedAt: string | null; refundedAt: string | null } | null;
   events: { id: string; from: string | null; to: string; at: string }[];
+  // 서버가 주는 흐름 표(#1232): 단계마다 완료·진행 중·멈춤·대기. 작업 서버 이름은 내부 값이라 배정 여부만 온다
+  steps: { key: string; kind: string; state: "done" | "current" | "stopped" | "pending" }[];
+  attemptsLeft: number;
+  workerAssigned: boolean;
+  cancelRequestedAt: string | null;
+  changedAt: string | null;
 };
+const STEP_STATE: Record<string, { label: string; cls: string }> = {
+  done: { label: "완료", cls: "b-done" },
+  current: { label: "진행 중", cls: "b-live" },
+  stopped: { label: "멈춤", cls: "b-fail" },
+  pending: { label: "대기", cls: "b-wait" },
+};
+const STEP_KIND: Record<string, string> = { browser: "쇼핑몰 화면 작업", obs: "방송 프로그램 작업", verify: "테스트 주문 확인" };
 const KIND: Record<string, string> = { INITIAL: "처음 연결", REINSTALL: "재설치(유료)", RECONNECT_FREE: "무료 재연결" };
 const label = (s: string | null) => (s ? (JOB_STATUS[s]?.label ?? s) : "접수");
 
@@ -97,7 +110,9 @@ export default function AutomationJobDetailPage() {
         <div className="col" style={{ gap: 16 }}>
           <div className="card pad col" style={{ gap: 4 }}>
             <span><b>{d.shopName}</b> · {KIND[d.kind] ?? d.kind} <span className={`bdg ${s.cls}`} data-testid="detail-status">{s.label}</span></span>
-            <span className="t-c1 c-alt">{d.shopHost ?? "쇼핑몰 주소 없음"} · {dayTime(d.createdAt)} 접수 · {d.attempts}번째 시도(최대 {d.maxAttempts})</span>
+            <span className="t-c1 c-alt">{d.shopHost ?? "쇼핑몰 주소 없음"} · {dayTime(d.createdAt)} 접수{d.startedAt ? ` · ${dayTime(d.startedAt)} 시작` : ""} · {d.attempts}번째 시도(최대 {d.maxAttempts}, 남은 시도 {d.attemptsLeft}번) · 작업 서버 {d.workerAssigned ? "배정됨" : "배정 없음"}</span>
+            {d.cancelRequestedAt && <span className="t-c1 c-alt" data-testid="cancel-requested">취소 요청 {dayTime(d.cancelRequestedAt)}</span>}
+            {d.changedAt && <span className="t-c1 c-alt">변경 시작 {dayTime(d.changedAt)}</span>}
             {d.lastError && <span className="t-c1 c-alt">문제 이유: {d.lastError}</span>}
           </div>
           {d.status === "CLEANUP_NEEDED" && (
@@ -108,7 +123,31 @@ export default function AutomationJobDetailPage() {
               <div><button className="btn" type="button" disabled={!note.trim()} onClick={() => void closeCleanup()}>정리 완료로 닫기</button></div>
             </section>
           )}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 16, alignItems: "start" }}>
+            <div className="col" style={{ gap: 16 }}>
+              <section className="card" data-testid="job-flow">
+                <h2 className="t-hl1 pad-l">자동 연결 작업 흐름</h2>
+                <table className="tbl">
+                  <thead><tr><th>단계</th><th>내용</th><th>상태</th></tr></thead>
+                  <tbody>
+                    {d.steps.map((st) => {
+                      const m = STEP_STATE[st.state];
+                      return (
+                        <tr key={st.key} data-testid="flow-row"><td>{STEP_LABEL[st.key] ?? st.key}</td><td>{STEP_KIND[st.kind] ?? st.kind}</td><td><span className={`bdg ${m.cls}`}>{m.label}</span></td></tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </section>
+              <section className="card pad col" style={{ gap: 6 }}>
+                <h2 className="t-hl1">지금 단계 · 결제 · 비용</h2>
+                <span>단계 {d.stepNumber}/{d.stepCount}{d.step ? ` · ${STEP_LABEL[d.step] ?? d.step}` : ""}{d.customerAction ? ` · 고객이 할 일: ${d.customerAction}` : ""}</span>
+                <span>결제 {pay ? <span className={`bdg ${pay.cls}`}>{pay.label}</span> : "없음"}{d.payment ? ` · ${d.payment.amount.toLocaleString("ko-KR")}원` : ""}</span>
+                {d.payment?.refundReason && <span className="t-c1 c-alt">환불 이유: {d.payment.refundReason}{d.payment.refundRequestedAt ? ` · 요청 ${dayTime(d.payment.refundRequestedAt)}` : ""}{d.payment.refundedAt ? ` · 완료 ${dayTime(d.payment.refundedAt)}` : ""}</span>}
+                <span>AI 호출 {d.plannerCalls}회 · 비용 {d.costUsed.toLocaleString("ko-KR")}원 (한 작업 최대 {d.costLimit.toLocaleString("ko-KR")}원)</span>
+                <span className="t-c1 c-alt">{d.verifiedAt ? `테스트 주문 확인 ${dayTime(d.verifiedAt)}` : "테스트 주문 확인 전"}{d.finishedAt ? ` · 종료 ${dayTime(d.finishedAt)}` : ""}</span>
+              </section>
+            </div>
             <section className="card">
               <h2 className="t-hl1 pad-l">진행 기록</h2>
               <table className="tbl">
@@ -119,14 +158,6 @@ export default function AutomationJobDetailPage() {
                   ))}
                 </tbody>
               </table>
-            </section>
-            <section className="card pad col" style={{ gap: 6 }}>
-              <h2 className="t-hl1">지금 단계 · 결제 · 비용</h2>
-              <span>단계 {d.stepNumber}/{d.stepCount}{d.step ? ` · ${STEP_LABEL[d.step] ?? d.step}` : ""}{d.customerAction ? ` · 고객이 할 일: ${d.customerAction}` : ""}</span>
-              <span>결제 {pay ? <span className={`bdg ${pay.cls}`}>{pay.label}</span> : "없음"}{d.payment ? ` · ${d.payment.amount.toLocaleString("ko-KR")}원` : ""}</span>
-              {d.payment?.refundReason && <span className="t-c1 c-alt">환불 이유: {d.payment.refundReason}{d.payment.refundRequestedAt ? ` · 요청 ${dayTime(d.payment.refundRequestedAt)}` : ""}{d.payment.refundedAt ? ` · 완료 ${dayTime(d.payment.refundedAt)}` : ""}</span>}
-              <span>AI 호출 {d.plannerCalls}회 · 비용 {d.costUsed.toLocaleString("ko-KR")}원 (한 작업 최대 {d.costLimit.toLocaleString("ko-KR")}원)</span>
-              <span className="t-c1 c-alt">{d.verifiedAt ? `테스트 주문 확인 ${dayTime(d.verifiedAt)}` : "테스트 주문 확인 전"}{d.finishedAt ? ` · 종료 ${dayTime(d.finishedAt)}` : ""}</span>
             </section>
           </div>
         </div>
