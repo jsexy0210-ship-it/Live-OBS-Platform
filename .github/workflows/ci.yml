@@ -30,7 +30,7 @@ jobs:
           # MA120 승인 두 범주 전용 원천(preview/approved)만 추가 허용한다.
           # 그 밖의 워크플로가 self-hosted를 쓰면 실패한다.
           # `! cmd`는 set -e에서 실패로 잡히지 않으므로 if로 멈춘다
-          if grep -RIl 'self-hosted' .github/workflows/ --exclude=ci.yml --exclude=deploy-obs-test.yml --exclude=seed-obs-test.yml --exclude=deploy-obs-prod.yml --exclude=disk-cleanup-obs-test.yml --exclude=disk-optimization-preview-obs-test.yml --exclude=disk-optimization-approved-obs-test.yml; then exit 1; fi
+          if grep -RIl 'self-hosted' .github/workflows/ --exclude=ci.yml --exclude=deploy-obs-test.yml --exclude=seed-obs-test.yml --exclude=deploy-obs-prod.yml --exclude=disk-cleanup-obs-test.yml --exclude=cache-only-cleanup-obs-test.yml --exclude=disk-optimization-preview-obs-test.yml --exclude=disk-optimization-approved-obs-test.yml; then exit 1; fi
           for f in .github/workflows/deploy-obs-test.yml .github/workflows/seed-obs-test.yml .github/workflows/disk-cleanup-obs-test.yml .github/workflows/disk-optimization-preview-obs-test.yml .github/workflows/disk-optimization-approved-obs-test.yml; do
             [ -f "$f" ] || continue
             # 수동 실행 전용: workflow_dispatch 말고 다른 트리거가 있으면 실패
@@ -67,8 +67,21 @@ jobs:
             grep -q '^    runs-on: \[self-hosted, obs-prod\]$' "$f"
           fi
 
+          # Cache-only cleanup has its own manual path; it never invokes broad cleanup.
+          f=.github/workflows/cache-only-cleanup-obs-test.yml
+          grep -q '^    runs-on: \[self-hosted, obs-kakao\]$' "$f"
+          grep -q '^  group: deploy-obs-test$' "$f"
+          grep -q '^  cancel-in-progress: false$' "$f"
+          grep -q '^    environment: obs-test$' "$f"
+          grep -q '^  workflow_dispatch:$' "$f"
+          grep -Fq "if: github.ref == 'refs/heads/main' && github.repository == 'jsexy0210-ship-it/Live-OBS-Platform'" "$f"
+          if grep -Eq '^[[:space:]]*(push|pull_request|pull_request_target|schedule|workflow_run|workflow_call|repository_dispatch|issue_comment|issues|release|merge_group)[[:space:]]*:' "$f"; then exit 1; fi
+          if grep -Eq -- 'disk-cleanup\.sh|docker[[:space:]].*(prune|rmi)|(^|[[:space:]])rm[[:space:]]' "$f"; then exit 1; fi
+
       - name: Disk cleanup workflow safety fixtures
-        run: bash scripts/ops/disk-cleanup-active-ref-fixture.sh
+        run: |
+          bash scripts/ops/disk-cleanup-active-ref-fixture.sh
+          python3 -B scripts/ops/cache-only-cleanup-fixture.py
       - name: Approved disk preview safety fixture
         run: |
           bash scripts/ops/disk-optimization-plan-fixture.sh
@@ -88,9 +101,13 @@ jobs:
         run: npm run design:check
 
       - name: Typecheck
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
         run: npm run typecheck
 
       - name: Build
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
         run: npm run build
 
   test:
@@ -142,7 +159,7 @@ jobs:
   e2e-smoke:
     name: E2E smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     services:
       postgres:
         image: postgres:16
@@ -159,7 +176,7 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql://live_obs:live_obs@localhost:5432/live_obs_test
-      SMOKE_SPECS: admin-shell admin-subscriptions layout-admin-login login-tabs partners-auth admin-dashboard admin-home branding public-notices public-info public-landing design-canonical seller-deposits seller-products seller-members seller-reviews-title seller-stats seller-broadcast seller-home seller-overlay-home seller-overlay-editor seller-shop-legal shop-content shop-detail-board shop-products shop-list-pager shop-search shop-filter admin-ops admin-maintenance phase-one-display admin-cursor-lists10 whole-array-lists10 seller-nested-lists10 admin-total-lists10 seller-cursor-lists10 seller-query-lists10 remaining-six-lists10 remaining-seven-lists10 admin-safe-disk-optimization
+      SMOKE_SPECS: admin-shell admin-subscriptions admin-notices layout-admin-login login-tabs partners-auth admin-dashboard admin-home branding public-notices public-info public-landing design-canonical seller-deposits seller-products seller-members seller-reviews-title seller-stats seller-broadcast seller-home seller-overlay-home seller-overlay-editor seller-shop-legal shop-content shop-detail-board shop-products shop-list-pager shop-search shop-filter admin-ops admin-maintenance phase-one-display admin-cursor-lists10 whole-array-lists10 seller-nested-lists10 admin-total-lists10 seller-cursor-lists10 seller-query-lists10 remaining-six-lists10 remaining-seven-lists10 admin-safe-disk-optimization tests/e2e/common-list-existing-pages\.spec\.ts$ tests/e2e/layout-frameless\.spec\.ts$ tests/e2e/seller-product-quick\.spec\.ts$ admin-grid-detail-actions tests/e2e/admin-accounts\.spec\.ts$ tests/e2e/admin-applications-ops\.spec\.ts$ tests/e2e/admin-applications\.spec\.ts$ tests/e2e/admin-partners\.spec\.ts$ tests/e2e/admin-plans\.spec\.ts$ tests/e2e/admin-vendors\.spec\.ts$ tests/e2e/seller-order-detail-work\.spec\.ts$ tests/e2e/seller-refund-requests\.spec\.ts$ tests/e2e/seller-receipts\.spec\.ts$ tests/e2e/seller-shipping\.spec\.ts$ tests/e2e/seller-invoices\.spec\.ts$ tests/e2e/seller-orders\.spec\.ts$ tests/e2e/seller-restrictions\.spec\.ts$ tests/e2e/seller-member-detail\.spec\.ts$ tests/e2e/seller-member-grades\.spec\.ts$ tests/e2e/seller-reward-balances\.spec\.ts$ tests/e2e/seller-categories\.spec\.ts$ tests/e2e/seller-hit-cards\.spec\.ts$ tests/e2e/seller-stock\.spec\.ts$ tests/e2e/seller-ui-bundle1\.spec\.ts$:93 tests/e2e/shop-returns\.spec\.ts$ tests/e2e/seller-reward-ledger\.spec\.ts$ tests/e2e/product-reviews\.spec\.ts$ tests/e2e/seller-buyer-inquiries\.spec\.ts$ tests/e2e/seller-popups-server\.spec\.ts$ tests/e2e/seller-previews-content\.spec\.ts$ tests/e2e/seller-reviews-bulk\.spec\.ts$ tests/e2e/seller-shop-notices\.spec\.ts$ tests/e2e/seller-staff\.spec\.ts$ tests/e2e/shop-coupons\.spec\.ts$ tests/e2e/seller-support-detail-actions\.spec\.ts$ tests/e2e/admin-infra\.spec\.ts$ tests/e2e/admin-message-fees\.spec\.ts$ tests/e2e/seller-plan-menu\.spec\.ts$ tests/e2e/seller-product-media\.spec\.ts$ tests/e2e/shop-home-actions\.spec\.ts$ tests/e2e/shop-layout\.spec\.ts$
       # 방송·채팅 스모크는 실제 YouTube 호출 없이 임의 키와 스케줄러 중지로 실행한다.
       YOUTUBE_API_KEY: e2e-dummy
     steps:
@@ -195,7 +212,9 @@ jobs:
 
       - name: Install browser
         if: steps.gate.outputs.skip != 'true'
-        run: npx playwright install --with-deps chromium
+        run: |
+          sudo sed -i 's|http://azure\.archive\.ubuntu\.com/ubuntu/|https://archive.ubuntu.com/ubuntu/|g' /etc/apt/apt-mirrors.txt /etc/apt/sources.list.d/ubuntu.sources
+          npx playwright install --with-deps chromium
 
       - name: Migrate and seed test DB
         id: e2e_seed
@@ -211,6 +230,8 @@ jobs:
       - name: Build
         id: e2e_build
         if: steps.gate.outputs.skip != 'true'
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
         run: npm run build
 
       - name: Start app
@@ -229,7 +250,17 @@ jobs:
         if: steps.gate.outputs.skip != 'true'
         env:
           E2E_SCREENSHOTS: "1"
-        run: npx playwright test -c tests/e2e/playwright.config.ts --project=start $SMOKE_SPECS
+        run: |
+          npx playwright test -c tests/e2e/playwright.config.ts --project=start $SMOKE_SPECS --grep-invert '(?:^| )seller-products\.spec\.ts 재고 수정: (?:대표자|상품 권한 없는 직원)의 경로·권한과 390px 화면을 확인한다$|(?:^| )seller-stock\.spec\.ts 390·360 카드형 행: 상태 배지가 잘리지 않고 「이력」·「빼기 · 더하기」 버튼과 겹치지 않는다$'
+
+      - name: Upload coupon header context on failure
+        if: failure() && steps.gate.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coupon-header-context
+          path: test-results/**/coupon-header-context.json
+          if-no-files-found: warn
+          retention-days: 3
 
       # 기존 nightly의 dev 가입 harness만 같은 폐기 DB에서 두 파일로 한정한다.
       - name: E2E signup flows

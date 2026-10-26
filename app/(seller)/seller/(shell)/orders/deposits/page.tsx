@@ -3,8 +3,9 @@
 import { formatDateTime } from "../../../../../../lib/client/format";
 import "../../../../../../styles/seller-orders.css";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { DatePicker, Pagination, ListHead, Modal, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
+import { ListTable, DatePicker, Pagination, ListHead, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { useScrollRestore } from "../../../../../../lib/client/navigation";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
@@ -20,16 +21,6 @@ type DepositStatus = "PENDING_PAYMENT" | "OVERDUE" | "PAID" | "AUTO_CANCELLED";
 type Row = { orderId: string; orderNo: number; amount: number; nickname: string; buyerName?: string; depositorName?: string; depositorNameSource?: "BUYER_MEMBER_NAME_LEGACY"; depositorNameStatus?: "NOT_COLLECTED"; status?: string; depositStatus?: DepositStatus; paidAt?: string | null; autoCancelledAt?: string | null; paymentMethod: "CARD" | "BANK_TRANSFER" | null; paymentDueAt: string | null; createdAt: string };
 type Summary = { pendingCount: number; pendingAmount: number; dueWithinHourCount: number; confirmedTodayCount: number; overdueCount: number; autoCancelledTodayCount: number };
 type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; rows: Row[]; total: number; version: number; summary?: Summary; depositorSearch: boolean };
-type Result = { orderId: string; result: "paid" | "stock_shortage" | "already_paid" | "card_in_progress" | "not_payable" | "not_found" };
-
-const RESULT_TEXT: Record<Exclude<Result["result"], "paid">, string> = {
-  stock_shortage: "재고가 부족해 입금 확인을 하지 못했습니다. 재고를 늘린 뒤 다시 눌러 주십시오.",
-  already_paid: "이미 입금 확인된 주문입니다",
-  card_in_progress: "카드 결제가 진행 중입니다. 잠시 뒤 다시 확인해 주십시오.",
-  not_payable: "입금 확인을 할 수 없는 주문입니다. 주문 상세에서 상태를 확인해 주십시오.",
-  not_found: "주문을 찾지 못했습니다",
-};
-
 // 입금 기한까지 남은 시간. 지났으면 「기한 지남」
 function remaining(due: string | null, now: number): { text: string; urgent: boolean } {
   if (!due) return { text: "기한 없음", urgent: false };
@@ -42,10 +33,10 @@ function remaining(due: string | null, now: number): { text: string; urgent: boo
 }
 
 export default function DepositsPage() {
+  const listQuery = useSearchParams().toString();
+  const returnTo = `/seller/orders/deposits${listQuery ? `?${listQuery}` : ""}`;
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [picked, setPicked] = useState<string[]>([]);
-  const [confirm, setConfirm] = useState<Row[] | null>(null);
-  const [busy, setBusy] = useState(false);
   const [page, setPage] = useState(1);
   const reqId = useRef(0), paging = useRef(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
@@ -95,28 +86,6 @@ export default function DepositsPage() {
     void load(applied, target);
   };
 
-  const send = async () => {
-    if (!confirm || state.kind !== "ok") return;
-    setBusy(true);
-    const r = await api<{ results: Result[] }>("/api/seller/payments/deposits/confirm", { method: "POST", body: { orderIds: confirm.map((x) => x.orderId), expectedVersion: state.version } });
-    setBusy(false);
-    setConfirm(null);
-    if (!r.ok) {
-      if (r.error === "conflict") {
-        void load(applied);
-        return setToast({ text: "목록이 바뀌었습니다. 다시 불러온 뒤 확인해 주십시오", neg: true });
-      }
-      return setToast({ text: r.message ?? "입금 확인을 하지 못했습니다. 다시 시도해 주십시오", neg: true });
-    }
-    const ok = r.data.results.filter((x) => x.result === "paid").length;
-    const failed = r.data.results.find((x) => x.result !== "paid");
-    const detail = failed && failed.result !== "paid" ? RESULT_TEXT[failed.result] : "";
-    if (ok > 0 && !failed) setToast({ text: `${ok}건 입금 확인 · 주문대기(방송에서 개봉할 순서 목록)에 올라갔습니다` });
-    else if (ok > 0) setToast({ text: `${ok}건 입금 확인 · ${r.data.results.length - ok}건은 확인하지 못했습니다 · ${detail}`, neg: true });
-    else setToast({ text: detail, neg: true });
-    void load(applied);
-  };
-
   const rows = state.kind === "ok" ? state.rows : [];
   const payable = rows.filter((r) => ["PENDING_PAYMENT", "OVERDUE"].includes(r.depositStatus ?? (r.paymentDueAt && new Date(r.paymentDueAt).getTime() <= now ? "OVERDUE" : "PENDING_PAYMENT")));
   const allPicked = payable.length > 0 && picked.length === payable.length;
@@ -160,33 +129,31 @@ export default function DepositsPage() {
           <SearchRow label="검색"><div className="row" style={{ gap: 8, flexWrap: "wrap" }}><select className="inp" aria-label="검색 기준" value={searchBy} onChange={(e) => setSearchBy(e.target.value as typeof searchBy)}><option value="buyer">구매자</option><option value="amount">금액</option><option value="depositor" disabled={!canSearchDepositor}>입금자명</option></select><input className="inp" aria-label="검색어" value={term} onChange={(e) => setTerm(e.target.value)} placeholder={searchBy === "depositor" && !canSearchDepositor ? "실제 입금자명 미수집 · 검색할 수 없음" : searchBy === "amount" ? "정확한 금액" : "검색어"} disabled={searchBy === "depositor" && !canSearchDepositor} />{!canSearchDepositor && <span className="t-c1 c-alt">실제 입금자명을 수집하지 않아 검색할 수 없습니다</span>}</div></SearchRow>
         </SearchBox>
 
-        <div className="card" style={{ overflow: "visible" }}>
+        <section className="au-list-section" style={{ overflow: "visible" }}>
           {state.kind === "ok" && (
             <ListHead
               total={state.total}
               actions={
                 <>
                   {overdue > 0 && <span className="t-l2 c-alt">기한 지남 {overdue}건</span>}
-                  <button className="btn btn-dense btn-w-xl" type="button" disabled={picked.length === 0} onClick={() => setConfirm(rows.filter((r) => picked.includes(r.orderId)))}>
-                    선택 입금 확인{picked.length > 0 ? ` (${picked.length})` : ""}
-                  </button>
+                  {picked.length ? <Link className="btn btn-dense btn-w-xl" href={`/seller/orders/deposits/confirm?${new URLSearchParams({ ids: rows.filter((r) => picked.includes(r.orderId)).map((r) => r.orderId).join(","), returnTo })}`}>선택 입금 확인 ({picked.length})</Link> : <button className="btn btn-dense btn-w-xl" type="button" disabled>선택 입금 확인</button>}
                 </>
               }
             />
           )}
 
-          {state.kind === "loading" && <LoadingRows rows={5} />}
+          {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
           {state.kind === "error" &&
-            (state.status === 403 ? <NoPermission need="주문 · 배송" /> : state.status === 402 ? <Locked /> : <ErrorState title="입금 대기 주문을 불러오지 못했습니다" onRetry={() => void load(applied)} />)}
+            (state.status === 403 ? <NoPermission need="주문 · 배송" /> : state.status === 402 ? <div className="card"><Locked /></div> : <div className="card"><ErrorState title="입금 대기 주문을 불러오지 못했습니다" onRetry={() => void load(applied)} /></div>)}
           {state.kind === "ok" && rows.length === 0 && (
-            <div className="st" style={{ boxShadow: "none" }}>
+            <div className="card"><div className="st" style={{ boxShadow: "none" }}>
               <div className="st-ic">0</div>
               <span className="t">입금 전 주문이 없습니다</span>
               <span className="s">무통장 주문이 들어오면 여기에 표시됩니다.</span>
-            </div>
+            </div></div>
           )}
           {state.kind === "ok" && rows.length > 0 && (
-            <div className="au-lt-wrap">
+            <ListTable>
               <table className="tbl">
                 <thead>
                   <tr>
@@ -223,42 +190,19 @@ export default function DepositsPage() {
                         <td className="num dep-due">{o.paymentDueAt ? formatDateTime(o.paymentDueAt) : "-"}</td>
                         <td>{left.urgent ? <b style={{ color: "var(--neg, #c0262c)" }}>{left.text}</b> : left.text}</td>
                         <td>
-                          {payable.some((r) => r.orderId === o.orderId) ? <button className="btn btn-sm btn-w-sm" type="button" onClick={() => setConfirm([o])}>입금 확인</button> : <span className="t-c1 c-alt">{stateLabel}</span>}
+                          {payable.some((r) => r.orderId === o.orderId) ? <Link className="btn btn-sm btn-w-sm" href={`/seller/orders/deposits/confirm?${new URLSearchParams({ ids: o.orderId, returnTo })}`}>입금 확인</Link> : <span className="t-c1 c-alt">{stateLabel}</span>}
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
-            </div>
+            </ListTable>
           )}
           {state.kind === "ok" && state.total > PAGE && <Pagination page={page} pageCount={Math.ceil(state.total / PAGE)} onChange={turnPage} />}
-        </div>
+        </section>
       </main>
 
-      {confirm && (
-        <Modal labelId="dep-title" busy={busy} onClose={() => setConfirm(null)}>
-          <div className="modal-h">
-            <h2 className="modal-t" id="dep-title">
-              입금을 확인하시겠습니까?
-            </h2>
-            <span className="t-l2 c-alt">
-              {confirm.length === 1
-                ? `${confirm[0].nickname}${confirm[0].buyerName ? ` · 주문자 실명 ${confirm[0].buyerName}` : ""} · ${won(confirm[0].amount)}. `
-                : `${confirm.length}건 · 합계 ${won(confirm.reduce((s, x) => s + x.amount, 0))}. `}
-              확인하면 주문대기에 올라가고 구매자에게 알림이 갑니다.
-            </span>
-          </div>
-          <div className="modal-f">
-            <button className="btn btn-out" type="button" onClick={() => setConfirm(null)} disabled={busy}>
-              취소
-            </button>
-            <button className="btn" type="button" onClick={() => void send()} disabled={busy}>
-              {busy ? "확인 중" : "입금 확인"}
-            </button>
-          </div>
-        </Modal>
-      )}
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
     </>
   );

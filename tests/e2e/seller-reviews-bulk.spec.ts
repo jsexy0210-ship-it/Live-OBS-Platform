@@ -40,12 +40,13 @@ test("선택 숨김은 사유를 고른 뒤 선택한 리뷰만 숨기고, 선�
   await expect(bar).toContainText("선택 2건");
   await shot(page, "SA-048-bulk-bar");
   await bar.getByRole("button", { name: "선택 숨김" }).click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.locator("main section").filter({ has: page.getByRole("button", { name: "개인정보 · 연락처 포함", exact: true }) });
   await expect(dialog.getByRole("button", { name: "숨기기", exact: true })).toBeDisabled();
   await dialog.getByRole("button", { name: "욕설 · 비방" }).click();
   await shot(page, "SA-048-bulk-hide");
   await dialog.getByRole("button", { name: "숨기기", exact: true }).click();
   await expect(page.getByText("선택한 2건을 숨김 처리했습니다")).toBeVisible();
+  await page.getByRole("link", { name: "목록", exact: true }).click();
   await expect(rows.filter({ hasText: "숨김" })).toHaveCount(2);
   await expect(page.getByRole("region", { name: "선택한 리뷰 처리" })).toHaveCount(0);
 
@@ -53,12 +54,14 @@ test("선택 숨김은 사유를 고른 뒤 선택한 리뷰만 숨기고, 선�
   await page.getByRole("checkbox", { name: "이 쪽 리뷰 모두 선택" }).check();
   await expect(page.getByRole("region", { name: "선택한 리뷰 처리" })).toContainText("선택 3건");
   await page.getByRole("button", { name: "선택 공개" }).click();
+  await page.locator("main").getByRole("button", { name: "공개", exact: true }).click();
   const confirmBox = page.getByRole("dialog");
   await expect(confirmBox).toContainText("선택한 3건을 공개하시겠습니까?");
   await expect(confirmBox).toContainText("적립금이 지급될 수 있습니다");
   await shot(page, "SA-048-bulk-publish-confirm");
   await confirmBox.getByRole("button", { name: "공개", exact: true }).click();
   await expect(page.getByText("선택한 3건을 공개했습니다")).toBeVisible();
+  await page.getByRole("link", { name: "목록", exact: true }).click();
   await expect(rows.filter({ hasText: "숨김" })).toHaveCount(0);
 });
 

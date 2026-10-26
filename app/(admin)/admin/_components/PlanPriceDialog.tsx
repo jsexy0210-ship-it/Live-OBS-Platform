@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useImperativeHandle, useState } from "react";
+import { confirmLeave, useUnsavedGuard } from "../../../../lib/client/navigation";
 import { Modal } from "../../../../components/admin-ui/Modal";
 import { adminApi } from "./api";
 import { PRICE_MAX, type AdminPlan } from "./messageFees";
@@ -15,7 +16,7 @@ const ERROR: Record<string, string> = {
 
 const toNum = (v: string) => (v.trim() === "" ? NaN : Number(v));
 
-export function PlanPriceDialog({ plan, onClose, onDone }: { plan: AdminPlan; onClose: () => void; onDone: () => void }) {
+export function PlanPriceDialog({ plan, onClose, onDone, fullPage = false, leaveRef }: { plan: AdminPlan; onClose: () => void; onDone: () => void; fullPage?: boolean; leaveRef?: React.Ref<(next?: () => void) => Promise<void>> }) {
   const [list, setList] = useState(String(plan.listPrice));
   const [sale, setSale] = useState(String(plan.salePrice));
   const [confirming, setConfirming] = useState(false);
@@ -27,6 +28,8 @@ export function PlanPriceDialog({ plan, onClose, onDone }: { plan: AdminPlan; on
   const valid = inRange(l) && inRange(s) && l >= s;
   const changed = l !== plan.listPrice || s !== plan.salePrice;
 
+  const release = useUnsavedGuard(fullPage && (changed));
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!valid || !changed || busy) return;
@@ -34,15 +37,13 @@ export function PlanPriceDialog({ plan, onClose, onDone }: { plan: AdminPlan; on
     setBusy(true);
     setError(null);
     const r = await adminApi(`/api/admin/plans/${plan.code}/price`, { method: "POST", json: { listPrice: l, salePrice: s } });
+    if (r.ok) { await release(); setBusy(false); return onDone(); }
     setBusy(false);
-    if (r.ok) return onDone();
     setConfirming(false);
     setError(ERROR[r.error] ?? (r.status === 403 ? "최고관리자만 바꿀 수 있습니다." : r.status === 0 ? "연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오." : "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오."));
   };
 
-  return (
-    <Modal labelId="plan-price-title" busy={busy} dirty={changed} onClose={onClose}>
-      {(requestClose) => (
+  const content = (requestClose: () => void) => (
         <form className="col" style={{ gap: 16 }} onSubmit={submit} noValidate>
           <div className="modal-h">
             <h2 className="modal-t" id="plan-price-title">
@@ -99,7 +100,17 @@ export function PlanPriceDialog({ plan, onClose, onDone }: { plan: AdminPlan; on
             </button>
           </div>
         </form>
-      )}
+  );
+  const leavePage = async (next = onClose) => {
+    if (busy || !confirmLeave(changed)) return;
+    await release();
+    next();
+  };
+  const closePage = () => leavePage();
+  useImperativeHandle(leaveRef, () => leavePage);
+  return fullPage ? <section className="card pad-l">{content(closePage)}</section> : (
+    <Modal labelId="plan-price-title" busy={busy} dirty={changed} onClose={onClose}>
+      {content}
     </Modal>
   );
 }

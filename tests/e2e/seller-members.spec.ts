@@ -33,6 +33,15 @@ test("대표자: 회원 목록에서 닉네임으로 찾고, 상세에서 주문
   // 개인정보 열람 권한이 있으면 이름 · 휴대폰 끝자리로도 찾는다고 안내한다
   await expect(page.getByLabel("회원 검색")).toHaveAttribute("placeholder", "닉네임 · 이름 · 휴대폰 끝자리");
   await expect(rows.filter({ hasText: "카드왕" })).toContainText("데모구매자2");
+  const listed: { id: string; orderCount: number; totalPaid: number; rewardBalance: number }[] = await page.evaluate(async () => (await (await fetch("/api/seller/members?limit=10")).json()).members);
+  const headers = await page.locator("thead th").allTextContents();
+  for (const m of listed) {
+    const cells = rows.filter({ has: page.locator(`a[href="/seller/members/${m.id}"]`) }).getByRole("cell");
+    for (const [label, value] of [["주문", `${m.orderCount.toLocaleString("ko-KR")}건`], ["누적 구매", `${m.totalPaid.toLocaleString("ko-KR")}원`], ["적립금", `${m.rewardBalance.toLocaleString("ko-KR")}원`]]) {
+      expect(headers.indexOf(label)).toBeGreaterThanOrEqual(0);
+      await expect(cells.nth(headers.indexOf(label))).toHaveText(value);
+    }
+  }
   await shot(page, "SA-041-members");
 
   // 검색: 마지막 조건의 응답만 반영된다

@@ -7,6 +7,8 @@ import { PageHead } from "../../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows } from "../../../../../../../components/seller/States";
 import { adminApi } from "../../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../../_components/AdminShell";
+import { listReturnTo } from "../../../../_components/selection";
+import { NoticeDeleteDialog } from "../../../../_components/NoticeDeleteDialog";
 import { NoticeForm } from "../../../../_components/NoticeForm";
 import type { Notice } from "../../../../_components/notices";
 
@@ -16,8 +18,12 @@ type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "o
 export default function NoticeEditPage() {
   const { noticeId } = useParams<{ noticeId: string }>();
   const router = useRouter();
+  const [returnTo, setReturnTo] = useState("/admin/support/notices");
+  useEffect(() => setReturnTo(listReturnTo(new URLSearchParams(window.location.search).get("returnTo"), "/admin/support/notices")), []);
+  const resultPath = (key: string, value: string) => { const u = new URL(returnTo, "https://admin.invalid"); u.searchParams.set(key, value); return `${u.pathname}${u.search}`; };
   const { me } = useAdmin();
   const canEdit = adminCan(me.role, "support.manage");
+  const [deleting, setDeleting] = useState(false);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const load = useCallback(async () => {
     setState({ kind: "loading" });
@@ -52,13 +58,17 @@ export default function NoticeEditPage() {
             )}
           </div>
         ) : (
+          <>
           <NoticeForm
             notice={state.notice}
-            onSaved={(_, published) => router.push(`/admin/support/notices?saved=${published ? "published" : "draft"}`)}
-            onStale={() => router.push("/admin/support/notices?stale=1")}
+            onSaved={(_, published) => router.push(resultPath("saved", published ? "published" : "draft"))}
+            onStale={() => router.push(resultPath("stale", "1"))}
           />
+          <button className="btn btn-out" style={{ alignSelf: "flex-start" }} onClick={() => setDeleting(true)}>삭제</button>
+          </>
         )}
       </main>
+      {deleting && canEdit && state.kind === "ok" && <NoticeDeleteDialog notice={state.notice} onClose={() => setDeleting(false)} onDone={() => router.push(resultPath("saved", "deleted"))} onStale={() => router.push(resultPath("stale", "1"))} />}
     </>
   );
 }

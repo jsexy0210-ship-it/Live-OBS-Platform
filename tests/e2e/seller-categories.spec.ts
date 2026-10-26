@@ -19,7 +19,33 @@ const login = async (page: Page, email: string) => {
 };
 const rows = (page: Page) => page.getByTestId("category-row");
 const row = (page: Page, name: string) => rows(page).filter({ hasText: name });
-const tree = (page: Page) => page.evaluate(async () => (await (await fetch("/api/seller/categories")).json()).categories as { name: string; visible: boolean; children: { name: string }[] }[]);
+const tree = (page: Page) => page.evaluate(async () => (await (await fetch("/api/seller/categories")).json()).categories as { id: string; name: string; visible: boolean; children: { id: string; name: string }[] }[]);
+
+const listHref = "/seller/products/categories";
+async function openDetail(page: Page, name: string) {
+  const categories = await tree(page);
+  const item = categories.flatMap((node) => [node, ...node.children]).find((node) => node.name === name);
+  expect(item).toBeDefined();
+  const href = `/seller/products/categories/${item!.id}?${new URLSearchParams({ returnTo: listHref })}`;
+  await expect(row(page, name).locator('button,input,select')).toHaveCount(0);
+  const link = row(page, name).getByRole("link", { name: "상세", exact: true });
+  await expect(link).toHaveAttribute("href", href);
+  await link.click();
+  await expect(page).toHaveURL(href);
+  await expect(page.getByRole("region", { name: "카테고리 변경", exact: true })).toBeVisible();
+}
+async function backToList(page: Page) {
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(page).toHaveURL(listHref);
+}
+async function openOrder(page: Page) {
+  const href = `/seller/products/categories/order?${new URLSearchParams({ returnTo: listHref })}`;
+  const link = page.getByRole("link", { name: "순서 설정", exact: true });
+  await expect(link).toHaveAttribute("href", href);
+  await link.click();
+  await expect(page).toHaveURL(href);
+  await expect(page.getByRole("region", { name: "카테고리 순서 설정", exact: true })).toBeVisible();
+}
 
 test("대표자: 트리를 보고, 추가·이름 바꾸기·노출·순서 저장·삭제를 서버에 반영한다", async ({ page }) => {
   await login(page, "demo-owner@example.com");
@@ -34,34 +60,52 @@ test("대표자: 트리를 보고, 추가·이름 바꾸기·노출·순서 저�
   if (SHOTS) await page.screenshot({ path: "tests/e2e/screenshots/SA-015-categories-1440.png", fullPage: true });
 
   // 하위가 있는 대분류는 서버가 삭제를 막고, 서버 문구가 그대로 보인다
-  await row(page, "부스터 박스").getByRole("button", { name: "삭제" }).click();
+  await openDetail(page, "부스터 박스");
+  await page.getByRole("button", { name: "삭제", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "삭제" }).click();
   await expect(page.getByText("하위 카테고리를 먼저 삭제해 주십시오")).toBeVisible();
+  await backToList(page);
   await expect(row(page, "부스터 박스")).toHaveCount(1);
 
   // 하위 추가 · 이름 30자 검사
-  await row(page, "팩").getByRole("button", { name: "하위 추가" }).click();
-  const dialog = page.getByRole("dialog", { name: "하위 카테고리 추가" });
+  const parent = (await tree(page)).find((node) => node.name === "팩")!;
+  const childHref = `/seller/products/categories/new?${new URLSearchParams({ returnTo: listHref, parentId: parent.id })}`;
+  const childLink = row(page, "팩").getByRole("link", { name: "하위 추가" });
+  await expect(childLink).toHaveAttribute("href", childHref);
+  await childLink.click();
+  await expect(page).toHaveURL(childHref);
+  await page.reload();
+  const dialog = page.getByRole("region", { name: "하위 카테고리 추가", exact: true });
   await dialog.getByLabel("이름").fill("a".repeat(31));
   await expect(dialog.getByText("이름은 30자까지 입력할 수 있습니다")).toBeVisible();
   await expect(dialog.getByRole("button", { name: "추가" })).toBeDisabled();
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.getByRole("button", { name: "뒤로", exact: true }).click();
+  await expect(dialog.getByLabel("이름")).toHaveValue("a".repeat(31));
   await dialog.getByLabel("이름").fill("스타터 덱");
   await dialog.getByRole("button", { name: "추가" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "카테고리 처리를 마쳤습니다" })).toBeVisible();
+  await backToList(page);
   await expect(row(page, "스타터 덱")).toHaveAttribute("data-level", "2");
   expect((await tree(page)).find((c) => c.name === "팩")!.children.map((c) => c.name)).toEqual(["스타터 덱"]);
 
   // 이름 바꾸기
-  await row(page, "스타터 덱").getByRole("button", { name: "이름 바꾸기" }).click();
-  await page.getByRole("dialog").getByLabel("이름").fill("입문 덱");
-  await page.getByRole("dialog").getByRole("button", { name: "저장" }).click();
+  await openDetail(page, "스타터 덱");
+  await page.getByRole("region", { name: "카테고리 변경", exact: true }).getByLabel("이름").fill("입문 덱");
+  await page.getByRole("region", { name: "카테고리 변경", exact: true }).getByRole("button", { name: "저장" }).click();
+  await expect(page.getByText("이름을 바꿨습니다", { exact: true })).toBeVisible();
+  await backToList(page);
   await expect(row(page, "입문 덱")).toHaveCount(1);
 
   // 노출 끄기: 서버 값이 바뀌고 미리보기에서 빠진다
+  await openDetail(page, "팩");
   await page.getByRole("checkbox", { name: "팩 쇼핑몰 노출" }).click();
   await expect.poll(async () => (await tree(page)).find((c) => c.name === "팩")!.visible).toBe(false);
+  await backToList(page);
   await expect(page.getByTestId("category-preview")).not.toContainText("팩");
 
   // 순서: 옮기기만으로는 서버가 안 바뀌고, 「순서 저장」을 눌러야 바뀐다
+  await openOrder(page);
   await expect(page.getByRole("button", { name: "순서 저장" })).toBeDisabled();
   await row(page, "팩").getByRole("button", { name: "위로" }).click();
   await expect(rows(page).first()).toContainText("팩");
@@ -72,9 +116,13 @@ test("대표자: 트리를 보고, 추가·이름 바꾸기·노출·순서 저�
   await expect(page.getByRole("button", { name: "순서 저장" })).toBeDisabled();
 
   // 삭제: 하위부터 지우면 대분류도 지울 수 있다
-  await row(page, "입문 덱").getByRole("button", { name: "삭제" }).click();
+  await backToList(page);
+  await openDetail(page, "입문 덱");
+  await page.getByRole("button", { name: "삭제", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("「입문 덱」을 삭제하시겠습니까?");
   await page.getByRole("dialog").getByRole("button", { name: "삭제" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "카테고리 처리를 마쳤습니다" })).toBeVisible();
+  await backToList(page);
   await expect(row(page, "입문 덱")).toHaveCount(0);
   expect((await tree(page)).find((c) => c.name === "팩")!.children).toHaveLength(0);
 });
@@ -82,6 +130,8 @@ test("대표자: 트리를 보고, 추가·이름 바꾸기·노출·순서 저�
 test("순서를 바꾸는 사이 다른 곳에서 목록이 바뀌면 저장이 막히고 새로 고침을 안내한다", async ({ page }) => {
   await login(page, "demo-owner@example.com");
   await expect(rows(page).first()).toBeVisible();
+  await openOrder(page);
+  await page.reload();
   const first = await rows(page).first().locator("b").innerText();
   await rows(page).nth(0).getByRole("button", { name: "아래로" }).click();
   // 다른 창에서 대분류가 추가된 것처럼 서버 쪽을 바꾼다(요청에 쿠키가 붙는 같은 브라우저 문맥)
@@ -91,6 +141,7 @@ test("순서를 바꾸는 사이 다른 곳에서 목록이 바뀌면 저장이 
   });
   await page.getByRole("button", { name: "순서 저장" }).click();
   await expect(page.getByText("순서를 저장하지 못했습니다.")).toBeVisible();
+  page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "새로 고침" }).click();
   await expect(row(page, "다른 창에서 추가")).toHaveCount(1);
   await expect(page.getByRole("button", { name: "순서 저장" })).toBeDisabled();

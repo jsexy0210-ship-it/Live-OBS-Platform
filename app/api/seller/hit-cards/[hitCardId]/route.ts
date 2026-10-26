@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireSeller } from "../../../../../lib/server/authz/guards";
-import { deleteHitCard } from "../../../../../lib/server/broadcast/hitCards";
+import { deleteHitCard, getHitCard } from "../../../../../lib/server/broadcast/hitCards";
 import { prisma } from "../../../../../lib/server/db";
-import { mutation, requestMeta, sessionToken } from "../../../../../lib/server/http/route";
+import { errorResponse, mutation, noStore, requestMeta, sessionToken } from "../../../../../lib/server/http/route";
 
 // HIT 카드 해제(잘못 등록한 카드 지우기). 다른 판매자 카드는 404. 권한은 목록과 같다.
 export const DELETE = mutation(async (req: Request, { params }: { params: Promise<{ hitCardId: string }> }) => {
@@ -10,3 +10,10 @@ export const DELETE = mutation(async (req: Request, { params }: { params: Promis
   await deleteHitCard(prisma, ctx, (await params).hitCardId, requestMeta(req));
   return NextResponse.json({ ok: true });
 });
+
+export async function GET(req: Request, { params }: { params: Promise<{ hitCardId: string }> }) {
+  try {
+    const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "OVERLAY" });
+    return noStore(NextResponse.json(await getHitCard(prisma, ctx, (await params).hitCardId)));
+  } catch (e) { return errorResponse(e); }
+}

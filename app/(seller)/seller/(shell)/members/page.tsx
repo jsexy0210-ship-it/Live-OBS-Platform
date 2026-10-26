@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CursorPagination, Modal, PageHead } from "../../../../../components/admin-ui";
+import { ListTable, CursorPagination, Modal, PageHead } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, apiDownload } from "../../../../../components/seller/api";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
-import { MAX_SEARCH_LENGTH } from "../../../../../components/seller/format";
+import { MAX_SEARCH_LENGTH, won } from "../../../../../components/seller/format";
 import { MEMBER_STATUS, memberDay, phoneText, type MemberRow, type MemberStatus } from "../../../../../components/seller/members/types";
 
 // SA-041 회원 목록·검색(GET /api/seller/members, 회원·적립금 권한). 현재 10명씩 커서로 조회한다.
@@ -144,7 +144,7 @@ export default function MemberListPage() {
       <main className="main">
         <PageHead title="회원" />
 
-        <div className="card">
+        <section className="au-list-section">
           <div className="toolbar" style={{ padding: 16 }}>
             <div className="search" style={{ flex: "1 1 220px" }}>
               <input
@@ -170,9 +170,9 @@ export default function MemberListPage() {
             )}
           </div>
 
-          {state.kind === "loading" && <LoadingRows rows={5} />}
+          {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
           {state.kind === "error" &&
-            (state.status === 403 ? <NoPermission need="회원·적립금" /> : <ErrorState title="회원 목록을 불러오지 못했습니다" onRetry={() => void load({ q, status })} />)}
+            (state.status === 403 ? <NoPermission need="회원·적립금" /> : <div className="card"><ErrorState title="회원 목록을 불러오지 못했습니다" onRetry={() => void load({ q, status })} /></div>)}
           {state.kind === "ok" &&
             (items.length === 0 ? (
               <div className="st">
@@ -196,7 +196,7 @@ export default function MemberListPage() {
               </div>
             ) : (
               <>
-                <div style={{ overflowX: "auto" }}>
+                <ListTable>
                   <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                     <thead>
                       <tr>
@@ -205,6 +205,9 @@ export default function MemberListPage() {
                         <th>등급</th>
                         <th>상태</th>
                         <th>가입일</th>
+                        <th>주문</th>
+                        <th>누적 구매</th>
+                        <th>적립금</th>
                         <th>최근 로그인</th>
                       </tr>
                     </thead>
@@ -227,17 +230,20 @@ export default function MemberListPage() {
                             <span className={`bdg ${MEMBER_STATUS[m.status].cls}`}>{MEMBER_STATUS[m.status].label}</span>
                           </td>
                           <td className="num">{memberDay(m.createdAt)}</td>
+                          <td className="num">{m.orderCount.toLocaleString("ko-KR")}건</td>
+                          <td className="num">{won(m.totalPaid)}</td>
+                          <td className="num">{won(m.rewardBalance)}</td>
                           <td className="num">{memberDay(m.lastLoginAt)}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </ListTable>
                 <span className="t-c1 c-alt">현재 {items.length}명</span>
                 {(page > 1 || state.next) && <CursorPagination page={page} visited={cursors.length} hasNext={!!state.next} onChange={n => void turnPage(n)} onNext={() => void turnPage(page + 1)} />}
               </>
             ))}
-        </div>
+        </section>
       </main>
       {exporting && (
         <Modal labelId="member-export-title" busy={exporting.busy} dirty={exporting.reason !== "" || exporting.custom !== ""} onClose={() => setExporting(null)}>

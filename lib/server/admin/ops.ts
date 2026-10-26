@@ -6,6 +6,8 @@ import { dbNow } from "../billing/subscription";
 import { OVERLAY_ONLINE_MS } from "../overlay/token";
 import { kstDate, parseStatsRange } from "../stats/range";
 import { RATE_MAX } from "../rewards/policyAdmin";
+import { writeAudit } from "../audit/log";
+import { formatCsv, guardText } from "../shop-bulk-io/csv";
 
 // 마스터 관리자 운영 현황(조회만, platform.read): 방송 중 파트너스 MA-041 · 파트너스별 주문·오버레이 접속 MA-042 ·
 // 적립금 실지급 켜진 파트너스 MA-043. 쇼핑몰 이름·주소(slug)·숫자만 주고 구매자·직원 개인정보는 넣지 않는다.
@@ -31,12 +33,12 @@ async function overlaySeen(db: PrismaClient, sellerIds: string[], now: Date) {
 }
 
 // MA-041: 지금 방송 중(LIVE)인 방송. 최근에 시작한 순, 200개까지.
-export async function listLiveBroadcasts(db: PrismaClient, admin: AdminSessionContext) {
+export async function listLiveBroadcasts(db: PrismaClient, admin: AdminSessionContext, broadcastId?: string) {
   requireRead(admin);
   const now = await dbNow(db);
   const rateFrom = new Date(now.getTime() - 60_000);
   const sessions = await db.broadcastSession.findMany({
-    where: { status: "LIVE" },
+    where: { status: "LIVE", ...(broadcastId ? { id: broadcastId } : {}) },
     orderBy: [{ startedAt: "desc" }, { id: "desc" }],
     take: 200,
     select: { id: true, title: true, startedAt: true, sellerId: true, layoutAspect: true, seller: { select: { shopName: true, slug: true, status: true } } },
@@ -94,10 +96,55 @@ export async function listLiveBroadcasts(db: PrismaClient, admin: AdminSessionCo
 }
 
 // MA-042: 승인된 파트너스(이용 중·정지)별 오늘 주문·결제와 방송·오버레이 접속. 가입 순 최신 10곳씩 커서.
-export async function listSellerActivity(db: PrismaClient, admin: AdminSessionContext, q: { cursor?: string | null; period?: string | null; asOf?: string | null; liveOnly?: boolean; offOnly?: boolean }) {
+// 정렬: recent(가입 최신, 기본) · orders(기간 주문 많은 순) · disconnects(기간 끊김 많은 순) · seen(최근 방송 화면 접속 순). recent가 아니면 커서는 `o:순번`(시간 경계 asOf 고정, 접속 시각은 현재 상태).
+export const ACTIVITY_SORTS = ["recent", "orders", "disconnects", "seen"] as const;
+type ActivitySort = (typeof ACTIVITY_SORTS)[number];
+export const ACTIVITY_EXPORT_MAX = 5000;
+type ActivityQuery = { pageSize?: number; cursor?: string | null; period?: string | null; asOf?: string | null; liveOnly?: boolean; offOnly?: boolean; sort?: string | null };
+
+// 기간 안 주문대기·방송 화면 지표(파트너스별 + 전체). 등록=receivedAt, 완료=doneAt, 취소=cancelledAt, 평균 오픈=완료−개봉 시작(초), 끊김·복구=BroadcastEvent.at, 평균 끊김=복구 downSeconds 평균.
+type OpsMetricRow = { sellerId: string | null; registered: number; externalRegistered: number; done: number; cancelled: number; avgOpenSeconds: number | null; disconnected: number; recovered: number; avgDownSeconds: number | null };
+async function periodOpsMetrics(db: PrismaClient, start: Date, end: Date, ids: string[] | null) {
+  const rows = await db.$queryRaw<OpsMetricRow[]>`
+    WITH q AS (
+      SELECT q."sellerId", count(*) FILTER (WHERE q."receivedAt" >= ${start} AND q."receivedAt" < ${end} AND q."externalOrderId" IS NULL)::int AS registered,
+        count(*) FILTER (WHERE q."receivedAt" >= ${start} AND q."receivedAt" < ${end} AND q."externalOrderId" IS NOT NULL)::int AS "externalRegistered",
+        count(*) FILTER (WHERE q."doneAt" >= ${start} AND q."doneAt" < ${end})::int AS done,
+        count(*) FILTER (WHERE q."cancelledAt" >= ${start} AND q."cancelledAt" < ${end})::int AS cancelled,
+        avg(extract(epoch FROM (q."doneAt" - q."openingStartedAt"))) FILTER (WHERE q."doneAt" >= ${start} AND q."doneAt" < ${end} AND q."openingStartedAt" IS NOT NULL)::float AS "avgOpenSeconds"
+      FROM "QueueItem" q JOIN "Seller" s ON s.id = q."sellerId"
+      WHERE s.status IN ('ACTIVE', 'SUSPENDED') AND ((q."receivedAt" >= ${start} AND q."receivedAt" < ${end}) OR (q."doneAt" >= ${start} AND q."doneAt" < ${end}) OR (q."cancelledAt" >= ${start} AND q."cancelledAt" < ${end}))
+      GROUP BY GROUPING SETS ((q."sellerId"), ())
+      HAVING GROUPING(q."sellerId") = 1 OR q."sellerId" = ANY(${ids ?? []}::uuid[]) OR ${ids === null}::boolean
+    ), e AS (
+      SELECT e."sellerId", count(*) FILTER (WHERE e.kind = 'DISCONNECTED')::int AS disconnected, count(*) FILTER (WHERE e.kind = 'RECOVERED')::int AS recovered,
+        avg(e."downSeconds") FILTER (WHERE e.kind = 'RECOVERED' AND e."downSeconds" IS NOT NULL)::float AS "avgDownSeconds"
+      FROM "BroadcastEvent" e JOIN "Seller" s ON s.id = e."sellerId"
+      WHERE s.status IN ('ACTIVE', 'SUSPENDED') AND e.at >= ${start} AND e.at < ${end} AND e.kind IN ('DISCONNECTED', 'RECOVERED')
+      GROUP BY GROUPING SETS ((e."sellerId"), ())
+      HAVING GROUPING(e."sellerId") = 1 OR e."sellerId" = ANY(${ids ?? []}::uuid[]) OR ${ids === null}::boolean
+    )
+    SELECT coalesce(q."sellerId", e."sellerId") AS "sellerId", coalesce(q.registered, 0)::int AS registered, coalesce(q."externalRegistered", 0)::int AS "externalRegistered",
+      coalesce(q.done, 0)::int AS done, coalesce(q.cancelled, 0)::int AS cancelled, q."avgOpenSeconds",
+      coalesce(e.disconnected, 0)::int AS disconnected, coalesce(e.recovered, 0)::int AS recovered, e."avgDownSeconds"
+    FROM q FULL OUTER JOIN e ON coalesce(q."sellerId"::text, '') = coalesce(e."sellerId"::text, '')`;
+  const shape = (r: OpsMetricRow | undefined) => {
+    const registered = r?.registered ?? 0, done = r?.done ?? 0, cancelled = r?.cancelled ?? 0;
+    return {
+      queue: { registered, externalRegistered: r?.externalRegistered ?? 0, done, cancelled, cancelRatePercent: registered > 0 ? Math.round((cancelled / registered) * 1000) / 10 : null, avgOpenSeconds: r?.avgOpenSeconds == null ? null : Math.round(r.avgOpenSeconds) },
+      screen: { disconnected: r?.disconnected ?? 0, recovered: r?.recovered ?? 0, avgDownSeconds: r?.avgDownSeconds == null ? null : Math.round(r.avgDownSeconds) },
+    };
+  };
+  return { shape, byId: (id: string) => rows.find((r) => r.sellerId === id), total: rows.find((r) => r.sellerId === null) };
+}
+
+export async function listSellerActivity(db: PrismaClient, admin: AdminSessionContext, q: ActivityQuery) {
   requireRead(admin);
+  const size = Math.max(1, Math.min(q.pageSize ?? ACTIVITY_PAGE_SIZE, ACTIVITY_EXPORT_MAX));
   const period = q.period ?? "today";
   if (!["today", "7d", "30d"].includes(period)) return { ok: false as const, reason: "invalid_period" as const };
+  const sort = (q.sort ?? "recent") as ActivitySort;
+  if (!ACTIVITY_SORTS.includes(sort)) return { ok: false as const, reason: "invalid_sort" as const };
   const observedAt = await dbNow(db);
   const now = q.asOf == null ? observedAt : new Date(q.asOf);
   if (Number.isNaN(now.getTime()) || (q.asOf != null && (q.asOf.length !== 24 || now.toISOString() !== q.asOf)) || now > observedAt) return { ok: false as const, reason: "invalid_as_of" as const };
@@ -106,7 +153,7 @@ export async function listSellerActivity(db: PrismaClient, admin: AdminSessionCo
   const range = parseStatsRange({ from: kstDate(new Date(todayStart.getTime() - (days - 1) * DAY_MS)), to: kstDate(now) });
   if (!range) return { ok: false as const, reason: "invalid_as_of" as const };
   let after: Prisma.SellerWhereInput = {};
-  if (q.cursor) {
+  if (q.cursor && sort === "recent") {
     const i = q.cursor.lastIndexOf("_");
     const at = new Date(q.cursor.slice(0, i));
     const id = q.cursor.slice(i + 1);
@@ -114,26 +161,54 @@ export async function listSellerActivity(db: PrismaClient, admin: AdminSessionCo
     after = { OR: [{ createdAt: { lt: at } }, { createdAt: at, id: { lt: id } }] };
   }
   const select = { id: true, shopName: true, slug: true, status: true, createdAt: true } as const;
-  const rows: Awaited<ReturnType<typeof readBatch>> = [];
+  let rows: Awaited<ReturnType<typeof readBatch>> = [];
   async function readBatch(after: Prisma.SellerWhereInput) {
     return db.seller.findMany({
       where: { status: { in: ["ACTIVE", "SUSPENDED"] }, ...(q.liveOnly ? { broadcastSessions: { some: { status: "LIVE" } } } : {}), ...after },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: ACTIVITY_PAGE_SIZE + 1, select,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: size + 1, select,
     });
   }
   // 연결 끊김 조건은 기존 overlaySeen 판정 그대로 적용하며, 일치하는 다음 행까지 서버에서 이어서 찾는다.
-  while (rows.length <= ACTIVITY_PAGE_SIZE) {
+  while (rows.length <= size) {
     const batch = await readBatch(after);
     if (!batch.length) break;
     const connected = q.offOnly ? await overlaySeen(db, batch.map(s => s.id), observedAt) : null;
     rows.push(...batch.filter(s => !connected || (connected(s.id).hasUrl && !connected(s.id).connected)));
-    if (!q.offOnly || batch.length <= ACTIVITY_PAGE_SIZE) break;
+    if (!q.offOnly || batch.length <= size) break;
     const last = batch[batch.length - 1];
     after = { OR: [{ createdAt: { lt: last.createdAt } }, { createdAt: last.createdAt, id: { lt: last.id } }] };
   }
-  const page = rows.slice(0, ACTIVITY_PAGE_SIZE);
+  let page = rows.slice(0, size);
+  let nextCursor: string | null = null;
+  if (sort !== "recent") {
+    // 정렬 기준값을 전 파트너스에 대해 구한 뒤 정렬하고 순번 커서로 자른다(기준값이 지표라 가입 순 커서를 쓸 수 없다).
+    const offset = q.cursor == null ? 0 : /^o:\d{1,7}$/.test(q.cursor) ? Number(q.cursor.slice(2)) : -1;
+    if (offset < 0) return { ok: false as const, reason: "invalid_cursor" as const };
+    const all = await db.seller.findMany({
+      where: { status: { in: ["ACTIVE", "SUSPENDED"] }, ...(q.liveOnly ? { broadcastSessions: { some: { status: "LIVE" } } } : {}) },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }], select,
+    });
+    const allIds = all.map((x) => x.id);
+    const seenAll = await overlaySeen(db, allIds, observedAt);
+    const candidates = q.offOnly ? all.filter((x) => seenAll(x.id).hasUrl && !seenAll(x.id).connected) : all;
+    const key = new Map<string, number>();
+    if (sort === "orders") {
+      for (const r of await db.$queryRaw<{ sellerId: string; n: number }[]>`SELECT o."sellerId", count(*)::int AS n FROM "Order" o WHERE o."createdAt" >= ${range.start} AND o."createdAt" < ${now} GROUP BY o."sellerId"`) key.set(r.sellerId, r.n);
+    } else if (sort === "disconnects") {
+      for (const r of await db.$queryRaw<{ sellerId: string; n: number }[]>`SELECT e."sellerId", count(*)::int AS n FROM "BroadcastEvent" e WHERE e.kind = 'DISCONNECTED' AND e.at >= ${range.start} AND e.at < ${now} GROUP BY e."sellerId"`) key.set(r.sellerId, r.n);
+    } else {
+      for (const x of candidates) key.set(x.id, seenAll(x.id).lastSeenAt?.getTime() ?? 0);
+    }
+    // 같은 값은 가입 최신 순(candidates가 이미 그 순서라 안정 정렬)
+    const ordered = [...candidates].sort((a, b) => (key.get(b.id) ?? 0) - (key.get(a.id) ?? 0));
+    page = ordered.slice(offset, offset + size);
+    nextCursor = ordered.length > offset + size ? `o:${offset + size}` : null;
+  } else {
+    const lastRow = page[page.length - 1];
+    nextCursor = rows.length > size && lastRow ? `${lastRow.createdAt.toISOString()}_${lastRow.id}` : null;
+  }
   const ids = page.map((s) => s.id);
-  const [activity, live] = await Promise.all([
+  const [activity, live, opsMetrics] = await Promise.all([
     db.$queryRaw<{ sellerId: string | null; created: number; paid: number; paidAmount: bigint; todayCreated: number; todayPaid: number; todayPaidAmount: bigint }[]>`
       SELECT o."sellerId", count(*) FILTER (WHERE o."createdAt" >= ${range.start} AND o."createdAt" < ${now})::int AS created,
         count(*) FILTER (WHERE o."paidAt" >= ${range.start} AND o."paidAt" < ${now})::int AS paid,
@@ -147,6 +222,7 @@ export async function listSellerActivity(db: PrismaClient, admin: AdminSessionCo
       GROUP BY GROUPING SETS ((o."sellerId"), ())
       HAVING GROUPING(o."sellerId") = 1 OR o."sellerId" = ANY(${ids}::uuid[])`,
     db.broadcastSession.findMany({ where: { sellerId: { in: ids }, status: "LIVE" }, select: { sellerId: true, startedAt: true } }),
+    periodOpsMetrics(db, range.start, now, ids),
   ]);
   const seen = await overlaySeen(db, ids, observedAt);
   const metrics = (r: (typeof activity)[number] | undefined) => ({ created: r?.created ?? 0, paid: r?.paid ?? 0, paidAmount: Number(r?.paidAmount ?? 0) });
@@ -164,16 +240,34 @@ export async function listSellerActivity(db: PrismaClient, admin: AdminSessionCo
         paidAmount: Number(p?.todayPaidAmount ?? 0),
       },
       ordersPeriod: metrics(p),
+      ...opsMetrics.shape(opsMetrics.byId(s.id)),
       live: l ? { startedAt: l.startedAt } : null,
       overlay: seen(s.id),
     };
   });
-  const last = page[page.length - 1];
-  return { ok: true as const, at: now, observedAt, todayStart, items,
+  return { ok: true as const, at: now, observedAt, todayStart, items, sort,
     period: { key: period, days, from: range.from, to: range.to, start: range.start, end: now, timezone: "Asia/Seoul" as const, snapshot: "TIME_BOUNDARY_ONLY_CURRENT_STATE" as const },
     sources: { created: "INTERNAL_ORDER_CREATED_AT", paid: "INTERNAL_ORDER_PAID_AT_CURRENT_REFUND_NET", externalOrders: "NOT_MEASURED" } as const,
-    summary: { scope: "CURRENT_ACTIVE_AND_SUSPENDED_SELLERS" as const, ...metrics(activity.find((r) => r.sellerId === null)) },
-    nextCursor: rows.length > ACTIVITY_PAGE_SIZE && last ? `${last.createdAt.toISOString()}_${last.id}` : null };
+    summary: { scope: "CURRENT_ACTIVE_AND_SUSPENDED_SELLERS" as const, ...metrics(activity.find((r) => r.sellerId === null)), ...opsMetrics.shape(opsMetrics.total) },
+    nextCursor };
+}
+
+// MA-042 내려받기: 목록과 같은 조건(period·liveOnly·offOnly·sort)으로 최대 ACTIVITY_EXPORT_MAX곳을 한 번에. 열은 화면 표와 같다(쇼핑몰 이름·주소·상태는 숫자와 함께, 구매자·직원 정보 없음).
+// 로그 추적 admin.ops.activity.export에 조건과 건수만 남긴다.
+const CSV_HEAD = ["쇼핑몰 이름", "쇼핑몰 주소", "상태", "주문", "결제", "결제 금액", "주문대기 등록", "개봉 완료", "취소", "취소율(%)", "평균 오픈(초)", "방송 중", "방송 화면 접속", "끊김", "복구", "평균 끊김(초)", "마지막 접속"];
+export async function exportSellerActivity(db: PrismaClient, admin: AdminSessionContext, q: Omit<ActivityQuery, "cursor" | "pageSize" | "asOf">, meta: { ip?: string | null; userAgent?: string | null } = {}) {
+  const r = await listSellerActivity(db, admin, { ...q, pageSize: ACTIVITY_EXPORT_MAX });
+  if (!r.ok) return r;
+  const kst = (d: Date | null) => (d ? new Date(d.getTime() + KST_MS).toISOString().slice(0, 16).replace("T", " ") : "");
+  const rows = [CSV_HEAD, ...r.items.map((i) => [
+    guardText(i.shopName), guardText(i.slug), i.status === "ACTIVE" ? "운영 중" : "정지",
+    String(i.ordersPeriod.created), String(i.ordersPeriod.paid), String(i.ordersPeriod.paidAmount),
+    String(i.queue.registered), String(i.queue.done), String(i.queue.cancelled), i.queue.cancelRatePercent === null ? "" : String(i.queue.cancelRatePercent), i.queue.avgOpenSeconds === null ? "" : String(i.queue.avgOpenSeconds),
+    i.live ? "예" : "아니오", !i.overlay.hasUrl ? "주소 없음" : i.overlay.connected ? "연결" : "끊김",
+    String(i.screen.disconnected), String(i.screen.recovered), i.screen.avgDownSeconds === null ? "" : String(i.screen.avgDownSeconds), kst(i.overlay.lastSeenAt),
+  ])];
+  await writeAudit(db, { actorType: "PLATFORM_ADMIN", actorId: admin.admin.id, action: "admin.ops.activity.export", targetType: "Seller", after: { period: r.period.key, sort: r.sort, liveOnly: !!q.liveOnly, offOnly: !!q.offOnly, count: r.items.length }, ip: meta.ip, userAgent: meta.userAgent });
+  return { ok: true as const, csv: formatCsv(rows), count: r.items.length, truncated: r.nextCursor !== null };
 }
 
 // MA-043: 적립금 실지급을 켠 파트너스. 켠 시각 최근 순. 남은 적립금 합계·적립금이 남은 회원 수(개인 단위는 주지 않음).

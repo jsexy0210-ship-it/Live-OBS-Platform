@@ -13,7 +13,7 @@ const responses: Record<string, unknown> = {
 };
 test.use({ channel: "chrome" });
 for (const [name, route] of [["inquiries", "/seller/inquiries"], ["notices", "/seller/notices"], ["broadcast", "/seller/broadcasts/test"], ["products", "/seller/products"]]) {
-  for (const width of [1440, 1024, 390]) test(`existing ${name} ${width}`, async ({ page }) => {
+  for (const width of [1440, 1024, 390]) test(`existing ${name}${name === "inquiries" || name === "notices" ? ` ${route}` : ""} ${width}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.route("**/api/seller/**", async request => {
       expect(request.request().method()).toBe("GET");
@@ -27,7 +27,7 @@ for (const [name, route] of [["inquiries", "/seller/inquiries"], ["notices", "/s
       const list = page.locator(".au-list-section");
       const grid = list.getByRole("region", { name: "상품 목록 표", includeHidden: true });
       await expect(search).toBeVisible();
-      await expect(search).toHaveCSS("border-radius", "12px");
+      await expect(search).toHaveCSS("border-radius", "0px");
       expect(await search.evaluate(el => getComputedStyle(el).boxShadow)).not.toBe("none");
       await expect(list).toHaveCSS("border-top-width", "0px");
       await expect(list).toHaveCSS("border-radius", "0px");
@@ -46,18 +46,38 @@ for (const [name, route] of [["inquiries", "/seller/inquiries"], ["notices", "/s
         expect(await card.evaluate(el => getComputedStyle(el).boxShadow)).not.toBe("none");
       } else {
         await expect(grid).toHaveCSS("border-top-width", "1px");
-        await expect(grid).toHaveCSS("border-radius", "12px");
+        await expect(grid).toHaveCSS("border-radius", "0px");
         await expect(grid).toBeVisible();
         await expect(list.getByTestId("product-card")).toBeHidden();
       }
-    } else {
+    } else if (name === "inquiries" || name === "notices") {
+      const list = page.locator(".au-list-section");
+      const grid = list.locator(":scope > .au-list-grid");
+      await expect(list).toHaveCSS("border-top-width", "0px");
+      await expect(list).toHaveCSS("border-radius", "0px");
+      await expect(list).toHaveCSS("box-shadow", "none");
+      await expect(list.locator(":scope > .au-lh")).toHaveCount(2);
+      await expect(list.locator(":scope > .au-lh .au-lh-act")).toBeVisible();
+      await expect(list.locator(":scope > .au-lh").last()).toContainText("10개씩");
+      await expect(grid).toBeVisible();
+      await expect(grid.locator(".au-sb, .au-lh, .au-lh-act, .onq-pagination")).toHaveCount(0);
+      if (width === 390) {
+        await expect(grid.locator(":scope > .tbl")).toHaveAttribute("data-card-table", "1");
+        await expect(grid).toHaveCSS("border-top-width", "0px");
+        await expect(grid).toHaveCSS("border-radius", "0px");
+      } else {
+        await expect(grid).toHaveCSS("border-top-width", "1px");
+        await expect(grid).toHaveCSS("border-radius", "0px");
+      }
+    } else if (name === "broadcast") {
       await expect(grids.first()).toBeVisible();
       for (const grid of await grids.all()) {
         await expect(grid).toHaveCSS("border-top-width", "0px");
         await expect(grid).toHaveCSS("border-radius", "0px");
         const card = grid.locator("xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' card ')][1]");
-        await expect(card).toHaveCount(1);
-        expect(await card.evaluate(el => getComputedStyle(el).boxShadow)).not.toBe("none");
+        await expect(card).toHaveCount(0);
+        await expect(grid.locator("xpath=parent::section[@aria-labelledby='bd-order-h']")).toHaveCount(1);
+        await expect(grid.locator("xpath=ancestor::main")).toHaveCount(1);
       }
     }
     expect(await page.evaluate(() => document.body.scrollWidth)).toBeLessThanOrEqual(width);

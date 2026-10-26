@@ -25,13 +25,19 @@ test("대표자: 정보성 발송 기록 → 상세, 광고성 시간 밖 예약
   await page.goto(`/seller/login?next=${encodeURIComponent("/seller/member-messages")}`);
   await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
   await expect(page).toHaveURL(/\/seller\/member-messages$/);
-  await expect(page.getByRole("link", { name: "회원에게 알림 보내기" })).toHaveClass(/on/);
+  const menu = page.getByRole("complementary", { name: "파트너스 메뉴" });
+  await expect(menu.locator("strong.lnb-parent").filter({ hasText: /^회원에게 알림 보내기$/ })).toBeVisible();
+  const list = menu.getByRole("navigation", { name: "회원에게 알림 보내기", exact: true }).getByRole("link", { name: "발송 기록", exact: true });
+  await expect(list).toHaveAttribute("href", "/seller/member-messages?section=list");
+  await expect(list).toHaveAttribute("aria-current", "page");
   await expect(page.getByTestId("mm-summary")).toContainText("혜택 · 소식 동의");
   await expect(page.getByText("실제 발송 채널(알림톡 · 문자 · 메일)이 아직 연결되지 않아 발송 기록만 남습니다")).toBeVisible();
   await expect(page.getByText("발송 내역이 없습니다")).toBeVisible();
 
   // 정보성: 전체 회원에게 지금 기록
-  await page.getByRole("tab", { name: "새 발송" }).click();
+  const newSend = menu.getByRole("navigation", { name: "회원에게 알림 보내기", exact: true }).getByRole("link", { name: "새 발송", exact: true });
+  await expect(newSend).toHaveAttribute("href", "/seller/member-messages?section=new");
+  await newSend.click();
   const form = page.getByTestId("mm-new");
   await form.getByLabel("제목").fill("추석 배송 안내");
   await form.getByRole("radio", { name: /정보성/ }).check();
@@ -53,7 +59,7 @@ test("대표자: 정보성 발송 기록 → 상세, 광고성 시간 밖 예약
   await detail.getByRole("button", { name: "닫기", exact: true }).first().click();
 
   // 광고성: 내일 22:30(KST) 예약은 거절되고 안내된 시각으로 바꾸면 예약된다
-  await page.getByRole("tab", { name: "새 발송" }).click();
+  await newSend.click();
   const f2 = page.getByTestId("mm-new");
   await f2.getByLabel("제목").fill("브레이크 예고");
   await f2.getByRole("radio", { name: "광고성" }).check();
@@ -80,5 +86,8 @@ test("대표자: 정보성 발송 기록 → 상세, 광고성 시간 밖 예약
 test("직원: 회원 · 적립금 권한이 없으면 메뉴가 보이지 않는다", async ({ page }) => {
   await page.goto(`/seller/login?next=${encodeURIComponent("/seller/member-messages")}`);
   await submitSellerLogin(page, "demo-none@example.com", PASSWORD);
-  await expect(page.getByRole("link", { name: "회원에게 알림 보내기" })).toHaveCount(0);
+  const menu = page.getByRole("complementary", { name: "파트너스 메뉴" });
+  await expect(menu.locator("strong.lnb-parent").filter({ hasText: /^회원에게 알림 보내기$/ })).toHaveCount(0);
+  await expect(menu.getByRole("link", { name: "발송 기록", exact: true })).toHaveCount(0);
+  await expect(menu.getByRole("link", { name: "새 발송", exact: true })).toHaveCount(0);
 });

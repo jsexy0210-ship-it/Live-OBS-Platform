@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 import { CursorPagination } from "../../../../../../components/Pagination";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Modal, PageHead, SearchBox, SearchRow, useConfirm } from "../../../../../../components/admin-ui";
-import { Topbar } from "../../../../../../components/seller/SellerShell";
+import { PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
+import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
-import { api, failMessage } from "../../../../../../components/seller/api";
+import { api } from "../../../../../../components/seller/api";
 import { won } from "../../../../../../components/seller/format";
 import { useScrollRestore, useUrlState } from "../../../../../../lib/client/navigation";
 import { formatDate, formatDateTime } from "../../../../../../lib/client/format";
@@ -44,7 +45,6 @@ const md = (iso: string) => {
 };
 
 type Cond = { q: string; field: "nickname" | "name"; gradeId: string; condition: string; sort: string };
-
 function params(c: Cond) {
   const p = new URLSearchParams();
   if (c.q) {
@@ -58,6 +58,10 @@ function params(c: Cond) {
 }
 
 export default function RewardBalancesPage() {
+  const { me } = useSeller();
+  const query = useSearchParams();
+  const pathname = usePathname();
+  const listHref = `${pathname}${query.size ? `?${query.toString()}` : ""}`;
   const defaults = { q: "", field: "nickname", gradeId: "", condition: "", sort: "balance" };
   const [urlState, setUrlState] = useUrlState(defaults);
   const applied = useMemo<Cond>(
@@ -66,13 +70,14 @@ export default function RewardBalancesPage() {
   );
   const [filter, setFilter] = useState<Cond>(applied);
   const [state, setState] = useState<Load>({ kind: "loading" });
+  const initialPaging = useRef(true);
+  const pagingScope = useRef("");
   const [page, setPage] = useState(1);
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
   const paging = useRef(false);
   const [toast, setToast] = useState<string | null>(null);
   const [grades, setGrades] = useState<{ id: string; name: string }[]>([]);
   const [live, setLive] = useState<boolean | null>(null);
-  const [adjusting, setAdjusting] = useState<Row | null>(null);
   // 조건을 빨리 바꾸면 이전 응답이 늦게 올 수 있다. 마지막으로 보낸 조건의 응답만 반영한다
   const reqId = useRef(0);
 
@@ -83,16 +88,35 @@ export default function RewardBalancesPage() {
     return `/api/seller/reward-balances?${p.toString()}`;
   };
   type Res = { balances: Row[]; summary: Summary; pending: { count: number; amount: number }; nextCursor: string | null };
-  const load = useCallback(async (c: Cond) => {
+  const load = useCallback(async (c: Cond, restorePaging = false) => {
     const id = ++reqId.current;
-    paging.current = false; setPage(1); setCursors([undefined]);
-
+    paging.current = false;
     setState({ kind: "loading" });
-    const r = await api<Res>(url(c));
+    // 검색 문자·회원·금액은 보관하지 않는다. 상세 이동 때 남긴 같은 사용자·조건의 커서만 한 번 소비한다.
+    let scope = "";
+    try { scope = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify([me.sellerId, me.userId, params(c).toString()])))), (n) => n.toString(16).padStart(2, "0")).join(""); } catch {}
+    if (id !== reqId.current) return;
+    pagingScope.current = scope;
+    let restore: { page: number; cursors: (string | undefined)[] } | undefined;
+    if (restorePaging && scope) {
+      try {
+        const saved = JSON.parse(sessionStorage.getItem("onq:reward-balances:return") ?? "null");
+        if (saved?.scope === scope && Number.isInteger(saved.page) && saved.page >= 1 && Array.isArray(saved.cursors) && saved.cursors.length === saved.page && saved.cursors[0] === null && saved.cursors.slice(1).every((cursor: unknown) => typeof cursor === "string" && cursor.length > 0)) {
+          restore = { page: saved.page, cursors: saved.cursors.map((cursor: string | null) => cursor ?? undefined) };
+          sessionStorage.removeItem("onq:reward-balances:return");
+        }
+      } catch {} // 목록 위치는 보조 정보다. 금융 요청의 필수 UUID 보관과는 별개다.
+    }
+    setPage(restore?.page ?? 1); setCursors(restore?.cursors ?? [undefined]);
+    const r = await api<Res>(url(c, restore?.cursors[restore.page - 1]));
     if (id !== reqId.current) return;
     setState(r.ok ? { kind: "ok", rows: r.data.balances, next: r.data.nextCursor, summary: r.data.summary, pending: r.data.pending } : { kind: "error", status: r.status });
-  }, []);
-  useEffect(() => void load(applied), [applied, load]);
+  }, [me.sellerId, me.userId]);
+  useEffect(() => { const restore = initialPaging.current; initialPaging.current = false; void load(applied, restore); }, [applied, load]);
+  const rememberPage = () => {
+    if (!pagingScope.current) return;
+    try { sessionStorage.setItem("onq:reward-balances:return", JSON.stringify({ scope: pagingScope.current, page, cursors: cursors.map((cursor) => cursor ?? null) })); } catch {}
+  };
   useEffect(() => setFilter(applied), [applied]);
   useScrollRestore("seller-reward-balances", state.kind === "ok");
   useEffect(() => {
@@ -247,9 +271,9 @@ export default function RewardBalancesPage() {
                           <td>{r.expiry?.soon ? `${won(r.expiry.amount)} · ${md(r.expiry.expiresAt)}` : "—"}</td>
                           <td className="num" data-label-set data-label="변동">{r.updatedAt ? formatDateTime(r.updatedAt) : "—"}</td>
                           <td data-card="actions">
-                            <button className="btn btn-sm btn-out" type="button" onClick={() => setAdjusting(r)} aria-label={`${r.member.broadcastNickname ?? "회원"} 적립금 조정`}>
-                              조정
-                            </button>
+                            <Link className="btn btn-sm btn-out" href={`/seller/rewards/balances/${r.member.id}?${new URLSearchParams({ returnTo: listHref })}`} onClick={rememberPage} aria-label={`${r.member.broadcastNickname ?? "회원"} 적립금 조정`}>
+                              조정 상세
+                            </Link>
                           </td>
                         </tr>
                       ))}
@@ -265,123 +289,7 @@ export default function RewardBalancesPage() {
           누적 값은 처리에 성공한 내역만 더한 것입니다. 탈퇴한 회원은 나오지 않습니다. 소멸 예정은 30일 안에 사라질 적립금입니다.
         </p>
       </main>
-      {adjusting && (
-        <AdjustModal
-          row={adjusting}
-          live={live}
-          onClose={() => setAdjusting(null)}
-          onDone={(text) => {
-            setAdjusting(null);
-            setToast(text);
-            void load(applied);
-          }}
-        />
-      )}
       {toast && <Toast text={toast} onDone={() => setToast(null)} />}
     </>
-  );
-}
-
-// 수동 조정 창: 지급/회수·금액·사유(필수) → 「조정」 → 확인 창 → POST. requestId는 확인 창을 열 때 만든다(응답을 잃고 다시 눌러도 한 번만 반영).
-function AdjustModal({ row, live, onClose, onDone }: { row: Row; live: boolean | null; onClose: () => void; onDone: (text: string) => void }) {
-  const { confirm } = useConfirm();
-  const [direction, setDirection] = useState<"GRANT" | "REVOKE">("GRANT");
-  const [amount, setAmount] = useState("");
-  const [reason, setReason] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const nick = row.member.broadcastNickname ?? "회원";
-  const amt = /^\d+$/.test(amount.replace(/,/g, "")) ? Number(amount.replace(/,/g, "")) : 0;
-  const after = row.balance + (direction === "GRANT" ? amt : -amt);
-  const dirty = amount !== "" || reason !== "";
-
-  const apply = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (busy) return;
-    if (amt < 1) return setError("금액은 1원 이상 입력해 주십시오");
-    if (direction === "REVOKE" && amt > row.balance) return setError("회수할 금액이 회원 잔액보다 많습니다");
-    if (!reason.trim()) return setError("사유를 입력해 주십시오");
-    setError(null);
-    const requestId = crypto.randomUUID();
-    const signedText = `${direction === "GRANT" ? "+" : "−"}${won(amt)}`;
-    let result: { balanceAfter: number | null } | undefined;
-    const ok = await confirm({
-      title: "적립금 잔액을 조정하시겠습니까?",
-      body: `${nick} · ${signedText} · 사유: ${reason.trim()} — ${live === false ? "실제 지급이 꺼져 있어 「대기」로 기록되고 잔액은 그대로입니다." : "조정하면 바로 회원 잔액에 반영되고 원장에 남습니다."}`,
-      confirmLabel: "조정",
-      run: async () => {
-        setBusy(true);
-        const r = await api<{ balanceAfter: number | null }>(`/api/seller/reward-balances/${row.member.id}/adjust`, { method: "POST", body: { direction, amount: amt, reason: reason.trim(), requestId } });
-        setBusy(false);
-        if (!r.ok) return failMessage(r, "admin", "조정하지 못했습니다. 잠시 후 다시 시도해 주십시오");
-        result = r.data;
-      },
-    });
-    if (!ok || !result) return;
-    onDone(
-      result.balanceAfter === null
-        ? `${nick} ${signedText} 대기로 기록 · 실제 지급을 켜면 반영됩니다`
-        : `${nick} ${signedText} ${direction === "GRANT" ? "지급" : "회수"} · 잔액 ${won(result.balanceAfter)} · 원장에 기록`,
-    );
-  };
-
-  return (
-    <Modal labelId="adjust-title" busy={busy} dirty={dirty} onClose={onClose}>
-      {(requestClose) => (
-        <form onSubmit={apply} noValidate>
-          <div className="modal-h">
-            <h2 className="modal-t" id="adjust-title">
-              수동 조정 · {nick}
-            </h2>
-          </div>
-          <div className="col" style={{ gap: 14, padding: "0 4px" }}>
-            {error && (
-              <div className="msg msg-neg" role="alert">
-                <span>{error}</span>
-              </div>
-            )}
-            <div className="row between">
-              <span className="t-l1">현재 잔액</span>
-              <b data-testid="adjust-balance">{won(row.balance)}</b>
-            </div>
-            <div className="fld">
-              <span className="lbl req">조정</span>
-              <div className="row" style={{ gap: 16, flexWrap: "wrap", alignItems: "center" }}>
-                <label className="chk">
-                  <input className="rdo" type="radio" name="adjust-dir" checked={direction === "GRANT"} onChange={() => setDirection("GRANT")} aria-label="지급" />
-                  지급
-                </label>
-                <label className="chk">
-                  <input className="rdo" type="radio" name="adjust-dir" checked={direction === "REVOKE"} onChange={() => setDirection("REVOKE")} aria-label="회수" />
-                  회수
-                </label>
-                <input className="inp num" style={{ width: 140, textAlign: "right" }} inputMode="numeric" aria-label="조정 금액" value={amount} onChange={(e) => setAmount(e.target.value)} />
-                <span>원</span>
-              </div>
-            </div>
-            <div className="fld">
-              <label htmlFor="adjust-reason" className="req">
-                사유
-              </label>
-              <input id="adjust-reason" className="inp" maxLength={200} placeholder="이벤트 보상" value={reason} onChange={(e) => setReason(e.target.value)} />
-            </div>
-            <div className="row between">
-              <span className="t-l1">조정 후 잔액</span>
-              <span data-testid="adjust-after">
-                <b>{won(Math.max(after, 0))}</b> · {live === false ? "실제 지급 꺼져 있어 대기로 기록" : "실제 지급 켜져 있어 즉시 반영 (꺼져 있으면 대기)"}
-              </span>
-            </div>
-          </div>
-          <div className="modal-f">
-            <button className="btn btn-out" type="button" onClick={requestClose} disabled={busy}>
-              취소
-            </button>
-            <button className="btn" type="submit" disabled={busy}>
-              {busy ? "조정 중" : "적용"}
-            </button>
-          </div>
-        </form>
-      )}
-    </Modal>
   );
 }

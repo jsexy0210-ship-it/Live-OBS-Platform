@@ -8,7 +8,7 @@ import { ErrorState, LoadingRows, Toast } from "../../../../../../components/sel
 import { MAX_SEARCH_LENGTH } from "../../../../../../components/seller/format";
 import { useScrollRestore } from "../../../../../../lib/client/navigation";
 import { formatDateTime } from "../../../../../../lib/client/format";
-import { adminApi, failMessage } from "../../../_components/api";
+import { adminApi } from "../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
 import { text } from "../../../_components/partners";
 import { RejectApplicationDialog } from "../../../_components/RejectApplicationDialog";
@@ -16,11 +16,12 @@ import { SupplementDialog } from "../../../_components/SupplementDialog";
 import { LicenseValue, type License } from "../../../_components/LicenseValue";
 import { takeFlash } from "../../../_components/flash";
 import { listDefaults } from "../../../../../../lib/client/filterDefaults";
+import { selectionHref } from "../../../_components/selection";
 import { useListFilters } from "../../../_components/useListFilters";
 
 // MA-013 가입 신청 목록(GET /api/admin/sellers/applications, 모든 마스터 역할 조회). 정본: design/project/MA-013-OPS.dc.html(FINAL).
-// 요약 → 칩(주소 ?tab=) → 상세 검색(접수일·업종·검색어) → 목록. 승인은 확인 창 없이 바로 처리하고 10초 안에 되돌릴 수 있다. 확인 필요 건은 사유를 보고 명시적으로 승인한다.
-// 보완 요청 건은 재촉 메일(하루 한 번, 최대 3번). 이상 없는 건만 체크해 선택 승인·선택 반려한다. 처리한 행만 바뀌고(목록 전체를 다시 읽지 않는다) 처리는 최고관리자·운영만 보인다(seller.moderate).
+// 요약 → 칩(주소 ?tab=) → 상세 검색 → 읽기·선택 목록. 승인·반려·보완·되돌리기는 실제 상세에서 처리한다.
+// 이상 없는 건만 선택해 선택 처리 상세로 이동한다. 처리 권한·재촉 제한·10초 되돌리기는 기존 서버가 검증한다.
 type State = "CLEAR" | "REVIEW" | "SUPPLEMENT";
 type Supplement = { reason: string; requestedAt: string; dueAt: string; dueExpired: boolean; daysLeft: number; reminderCount: number; lastReminderAt: string | null; canRemindAt: string | null };
 type App = {
@@ -79,159 +80,6 @@ function waited(r: App): { label: string; hot: boolean } {
 }
 const hours = (v: number | null) => (v === null ? "-" : `${Math.round(v * 10) / 10}시간`);
 
-type Note = { id: string; body: string; author: { name: string }; createdAt: string };
-const CHECK_CLS = { OK: "b-done", WARN: "b-warn", FAIL: "b-fail", NONE: "b-gray" } as const;
-
-// 확인 필요 건 검토 패널(정본 MA-013-OPS 「검토 사이드 패널」): 점검 결과 표 · 신청 정보 · 내부 메모, 이전/다음으로 넘기며 승인·반려·보완 요청.
-function ReviewPanel({ row, pos, total, busy, canModerate, onNav, onClose, onApprove, onReject, onSupplement, onRecheck, onToast }: { row: Row; pos: number; total: number; busy: boolean; canModerate: boolean; onNav: (d: number) => void; onClose: () => void; onApprove: () => void; onReject: () => void; onSupplement: () => void; onRecheck: () => Promise<void>; onToast: (t: string, neg?: boolean) => void }) {
-  const [notes, setNotes] = useState<Note[] | null>(null);
-  const [memo, setMemo] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [rechecking, setRechecking] = useState(false);
-  const doRecheck = async () => {
-    setRechecking(true);
-    await onRecheck();
-    setRechecking(false);
-  };
-  useEffect(() => {
-    let live = true;
-    setNotes(null);
-    setMemo("");
-    void adminApi<{ notes: Note[] }>(`/api/admin/sellers/${encodeURIComponent(row.id)}/notes?limit=3`).then((r) => live && setNotes(r.ok ? r.data.notes : []));
-    return () => {
-      live = false;
-    };
-  }, [row.id]);
-  const saveMemo = async () => {
-    const body = memo.trim();
-    if (!body || saving) return;
-    setSaving(true);
-    const r = await adminApi<{ note: Note }>(`/api/admin/sellers/${encodeURIComponent(row.id)}/notes`, { method: "POST", json: { body } });
-    setSaving(false);
-    if (!r.ok) return onToast(failMessage(r, "메모를 저장하지 못했습니다."), true);
-    setNotes((n) => [r.data.note, ...(n ?? [])].slice(0, 3));
-    setMemo("");
-    onToast("메모를 저장했습니다.");
-  };
-  return (
-    <aside className="card" style={{ flex: "0 1 480px", minWidth: 320, position: "sticky", top: 16 }} aria-label={`${row.shopName} 검토`} data-testid="review-panel">
-      <div className="row" style={{ gap: 8, padding: "12px 16px", borderBottom: "1px solid var(--wds-line-normal, #e5e5e5)", flexWrap: "wrap" }}>
-        <b>{row.shopName}</b>
-        <span className="bdg b-warn">확인 필요 {row.reasons.length}</span>
-        <span className="row" style={{ marginLeft: "auto", gap: 4 }}>
-          <button className="btn btn-sm btn-out" type="button" onClick={() => onNav(-1)} disabled={pos <= 0}>
-            ‹ 이전
-          </button>
-          <span className="t-c1 c-alt">
-            {pos + 1} / {total}
-          </span>
-          <button className="btn btn-sm btn-out" type="button" onClick={() => onNav(1)} disabled={pos >= total - 1}>
-            다음 ›
-          </button>
-          <button className="btn btn-sm btn-out" type="button" aria-label="닫기" onClick={onClose}>
-            ×
-          </button>
-        </span>
-      </div>
-      <div className="col" style={{ gap: 12, padding: 16 }}>
-        <div>
-          <ul style={{ margin: 0, paddingLeft: 18 }} data-testid="review-reasons">
-            {row.reasons.map((c) => (
-              <li key={c.code}>
-                <b>{c.text}</b>
-              </li>
-            ))}
-          </ul>
-          <span className="t-l2 c-alt">보완 요청하거나, 확인됐으면 승인해 주십시오.</span>
-        </div>
-        <table className="tbl" aria-label="자동으로 확인한 결과">
-          <thead>
-            <tr>
-              <th>자동으로 확인한 결과</th>
-              <th>결과</th>
-            </tr>
-          </thead>
-          <tbody>
-            {row.checks.map((c) => (
-              <tr key={c.key}>
-                <td className="col-text">{c.label}</td>
-                <td>
-                  <span className={`bdg ${CHECK_CLS[c.result]}`}>{c.text}</span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <span className="t-c1 c-alt" data-testid="review-checked-at">
-          {row.checkedAt ? `외부 조회 ${formatDateTime(row.checkedAt)}` : "외부 조회를 아직 하지 않았습니다 · 「국세청 다시 조회」로 확인해 주십시오"}
-        </span>
-        <dl className="col" style={{ gap: 6, margin: 0 }}>
-          <div className="row" style={{ gap: 8 }}>
-            <dt className="c-alt" style={{ width: 70 }}>사업자</dt>
-            <dd className="row" style={{ margin: 0, gap: 8 }}>
-              {text(row.businessNumber)}
-              {canModerate && (
-                <button className="btn btn-sm btn-out" type="button" onClick={() => void doRecheck()} disabled={rechecking || busy}>
-                  {rechecking ? "조회 중" : "국세청 다시 조회"}
-                </button>
-              )}
-            </dd>
-          </div>
-          <div className="row" style={{ gap: 8 }}>
-            <dt className="c-alt" style={{ width: 70 }}>등록증</dt>
-            <dd style={{ margin: 0 }}>
-              <LicenseValue license={row.license} />
-            </dd>
-          </div>
-          <div className="row" style={{ gap: 8 }}>
-            <dt className="c-alt" style={{ width: 70 }}>신청자</dt>
-            <dd style={{ margin: 0 }}>{[row.applicantName, row.applicantEmail].filter(Boolean).join(" · ") || "-"} · {formatDateTime(row.receivedAt)} 접수</dd>
-          </div>
-        </dl>
-        <div className="col" style={{ gap: 6 }}>
-          <label className="lbl" htmlFor="review-memo">
-            내부 메모
-          </label>
-          {notes === null ? (
-            <span className="t-c1 c-alt">메모를 불러오는 중입니다.</span>
-          ) : (
-            notes.map((n) => (
-              <span key={n.id} className="t-l2" data-testid="review-note">
-                {n.body}
-                <span className="c-alt"> · {n.author.name} · {formatDateTime(n.createdAt)}</span>
-              </span>
-            ))
-          )}
-          {canModerate && (
-            <div className="row" style={{ gap: 6 }}>
-              <input id="review-memo" className="inp" style={{ flex: 1 }} maxLength={1000} value={memo} onChange={(e) => setMemo(e.target.value)} disabled={saving} />
-              <button className="btn btn-sm btn-out" type="button" onClick={() => void saveMemo()} disabled={saving || memo.trim() === ""}>
-                {saving ? "저장 중" : "메모 저장"}
-              </button>
-            </div>
-          )}
-        </div>
-        <Link className="t-c1" href={`/admin/partners/applications/${row.id}`}>
-          전체 상세 열기 (서류 · 처리 이력)
-        </Link>
-      </div>
-      {canModerate && (
-        <div className="row" style={{ gap: 8, padding: "12px 16px", borderTop: "1px solid var(--wds-line-normal, #e5e5e5)" }}>
-          <button className="btn" type="button" onClick={onApprove} disabled={busy}>
-            확인했습니다. 승인
-          </button>
-          <button className="btn btn-out" type="button" onClick={onReject} disabled={busy}>
-            반려
-          </button>
-          <button className="btn btn-out" type="button" onClick={onSupplement} disabled={busy}>
-            보완 요청
-          </button>
-        </div>
-      )}
-    </aside>
-  );
-}
-
 function Applications() {
   const { me } = useAdmin();
   const canModerate = adminCan(me.role, "seller.moderate");
@@ -244,15 +92,8 @@ function Applications() {
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const [cursorPage, setCursorPage] = useState(1);
   const paging = useRef(false);
-  const [busy, setBusy] = useState<Set<string>>(new Set());
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [rejecting, setRejecting] = useState<Row | null>(null);
-  const [bulkRejecting, setBulkRejecting] = useState(false);
-  const [reviewId, setReviewId] = useState<string | null>(null);
-  const lastIdx = useRef(0);
-  const [supplementing, setSupplementing] = useState<Row | null>(null);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
-  const [now, setNow] = useState(() => Date.now());
   const reqId = useRef(0);
   const cursor = cursors[cursorPage - 1];
   const key = JSON.stringify({ ...applied, tab, cursor });
@@ -286,104 +127,7 @@ function Applications() {
     if (m) setToast({ text: m });
   }, []);
   useScrollRestore("admin-applications", state.kind === "ok");
-  // 되돌릴 수 있는 승인이 있는 동안만 1초마다 갱신한다
-  const hasUndo = state.kind === "ok" && state.rows.some((r) => r.undoUntil && r.undoUntil > now);
-  useEffect(() => {
-    if (!hasUndo) return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [hasUndo]);
-
   const rows = state.kind === "ok" ? state.rows : [];
-  const patchRows = (fn: (rows: Row[]) => Row[]) => setState((s) => (s.kind === "ok" ? { ...s, rows: fn(s.rows) } : s));
-  const mark = (id: string, patch: Partial<Row> | "gone") => patchRows((rs) => (patch === "gone" ? rs.filter((r) => r.id !== id) : rs.map((r) => (r.id === id ? { ...r, ...patch } : r))));
-  const unpick = (id: string) => setPicked((s) => (s.has(id) ? new Set([...s].filter((x) => x !== id)) : s));
-  const setBusyId = (id: string, on: boolean) =>
-    setBusy((b) => {
-      const n = new Set(b);
-      if (on) n.add(id);
-      else n.delete(id);
-      return n;
-    });
-  const stale = (r: Row) => {
-    mark(r.id, "gone");
-    unpick(r.id);
-    setToast({ text: `${r.shopName}은(는) 다른 곳에서 이미 처리됐습니다.`, neg: true });
-  };
-  const approve = async (r: Row) => {
-    if (busy.has(r.id)) return;
-    setBusyId(r.id, true);
-    const res = await adminApi<{ undoableUntil?: string }>(`/api/admin/sellers/${encodeURIComponent(r.id)}/approve`, { method: "POST", json: {} });
-    setBusyId(r.id, false);
-    if (res.ok) {
-      unpick(r.id);
-      mark(r.id, { done: "approved", undoUntil: res.data.undoableUntil ? new Date(res.data.undoableUntil).getTime() : undefined });
-      setNow(Date.now());
-      return setToast({ text: `${r.shopName} 가입을 승인했습니다. 10초 안에 되돌릴 수 있습니다.` });
-    }
-    if (res.status === 404 || res.status === 409) return stale(r);
-    setToast({ text: failMessage(res, `${r.shopName} 승인을 하지 못했습니다. 목록은 바뀌지 않았습니다. 잠시 후 다시 시도해 주십시오.`), neg: true });
-  };
-  const undo = async (r: Row) => {
-    if (busy.has(r.id)) return;
-    setBusyId(r.id, true);
-    const res = await adminApi(`/api/admin/sellers/${encodeURIComponent(r.id)}/approve/undo`, { method: "POST", json: {} });
-    setBusyId(r.id, false);
-    if (res.ok) {
-      setToast({ text: `${r.shopName} 승인을 되돌렸습니다.` });
-      return void load(true);
-    }
-    mark(r.id, { undoUntil: undefined });
-    setToast({ text: failMessage(res, `${r.shopName} 승인을 되돌리지 못했습니다.`), neg: true });
-  };
-  const remind = async (r: Row) => {
-    if (busy.has(r.id)) return;
-    setBusyId(r.id, true);
-    const res = await adminApi<{ reminderCount: number }>(`/api/admin/sellers/${encodeURIComponent(r.id)}/remind`, { method: "POST", json: {} });
-    setBusyId(r.id, false);
-    if (res.ok) {
-      patchRows((rs) => rs.map((x) => (x.id === r.id && x.supplement ? { ...x, supplement: { ...x.supplement, reminderCount: res.data.reminderCount, lastReminderAt: new Date().toISOString() } } : x)));
-      return setToast({ text: `${r.shopName} 신청자에게 재촉 메일을 보냈습니다.` });
-    }
-    setToast({ text: failMessage(res, `${r.shopName} 재촉 메일을 보내지 못했습니다.`), neg: true });
-  };
-  const applyBulk = (results: Bulk[], okMark: (b: Bulk) => Partial<Row>, noun: string, done: string) => {
-    const failed = results.filter((b) => !b.ok);
-    patchRows((rs) => rs.map((r) => (results.find((b) => b.id === r.id && b.ok) ? { ...r, ...okMark(results.find((b) => b.id === r.id)!) } : r)));
-    setPicked(new Set(failed.map((b) => b.id)));
-    setNow(Date.now());
-    const first = failed[0];
-    const name = first && rows.find((r) => r.id === first.id)?.shopName;
-    setToast({ text: `${noun} ${results.length - failed.length}건${failed.length ? ` · 실패 ${failed.length}건 — ${name ?? ""}: ${first.message ?? "처리하지 못했습니다"}` : done}`, neg: failed.length > 0 });
-  };
-  const bulkApprove = async () => {
-    const ids = [...picked];
-    if (!ids.length) return;
-    setBusy((b) => new Set([...b, ...ids]));
-    const res = await adminApi<{ results: Bulk[] }>("/api/admin/sellers/applications/bulk-approve", { method: "POST", json: { ids } });
-    setBusy((b) => new Set([...b].filter((x) => !ids.includes(x))));
-    if (!res.ok) return setToast({ text: failMessage(res, "선택 승인을 하지 못했습니다. 목록은 바뀌지 않았습니다."), neg: true });
-    applyBulk(res.data.results, (b) => ({ done: "approved", undoUntil: b.undoableUntil ? new Date(b.undoableUntil).getTime() : undefined }), "승인", "을 승인했습니다");
-  };
-
-  const recheck = async (r: Row) => {
-    const res = await adminApi<{ lookupOk: boolean; reasons: App["reasons"]; checks: App["checks"]; checkedAt: string }>(`/api/admin/sellers/${encodeURIComponent(r.id)}/recheck`, { method: "POST", json: {} });
-    if (!res.ok) {
-      if (res.status === 404 || (res.status === 409 && res.error === "not_pending")) return stale(r);
-      return setToast({ text: failMessage(res, "국세청 조회를 다시 하지 못했습니다."), neg: true });
-    }
-    const d = res.data;
-    patchRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, reasons: d.reasons, checks: d.checks, checkedAt: d.checkedAt, state: d.reasons.length === 0 ? "CLEAR" : "REVIEW" } : x)));
-    setToast({ text: !d.lookupOk ? "국세청 조회가 아직 안 됩니다. 잠시 뒤 다시 시도해 주십시오." : d.reasons.length === 0 ? `${r.shopName}의 확인할 것이 모두 풀려 이상 없음으로 바뀌었습니다.` : "국세청 조회 결과를 갱신했습니다.", neg: !d.lookupOk });
-  };
-  const queue = rows.filter((r) => !r.done && r.state === "REVIEW");
-  const reviewing = queue.find((r) => r.id === reviewId) ?? null;
-  const reviewPos = reviewing ? queue.indexOf(reviewing) : -1;
-  if (reviewPos >= 0) lastIdx.current = reviewPos;
-  // 처리한 건이 대기열에서 빠지면 패널이 다음 건으로 넘어가고, 더 없으면 닫힌다
-  useEffect(() => {
-    if (reviewId && state.kind === "ok" && !reviewing) setReviewId(queue[Math.min(lastIdx.current, queue.length - 1)]?.id ?? null);
-  });
   const open = rows.filter((r) => !r.done);
   const checkable = open.filter((r) => r.state === "CLEAR");
   const allPicked = checkable.length > 0 && checkable.every((r) => picked.has(r.id));
@@ -485,12 +229,12 @@ function Applications() {
                 <b>{picked.size}개 선택</b>
                 <span className="t-c1 c-alt">이상 없는 신청만 일괄 승인 대상입니다. 확인 필요 · 보완 요청 건은 체크할 수 없습니다.</span>
                 <span className="row" style={{ marginLeft: "auto", gap: 8 }}>
-                  <button className="btn btn-sm" type="button" onClick={() => void bulkApprove()}>
-                    선택 승인
-                  </button>
-                  <button className="btn btn-sm btn-out" type="button" onClick={() => setBulkRejecting(true)}>
-                    선택 반려
-                  </button>
+                  <Link className="btn btn-sm" href={selectionHref("/admin/partners/applications/bulk", [...picked], `/admin/partners/applications?${new URLSearchParams(applied)}`) + "&mode=approve"}>
+                    선택 승인 상세
+                  </Link>
+                  <Link className="btn btn-sm btn-out" href={selectionHref("/admin/partners/applications/bulk", [...picked], `/admin/partners/applications?${new URLSearchParams(applied)}`) + "&mode=reject"}>
+                    선택 반려 상세
+                  </Link>
                   <button className="btn btn-sm btn-out" type="button" onClick={() => setPicked(new Set())}>
                     선택 해제
                   </button>
@@ -536,8 +280,7 @@ function Applications() {
                     <tbody>
                       {rows.map((r) => {
                         const w = waited(r);
-                        const working = busy.has(r.id);
-                        const canUndo = r.done === "approved" && !!r.undoUntil && r.undoUntil > now;
+                        const working = false;
                         return (
                           <tr key={r.id} data-testid="application-row" data-done={r.done ?? ""} style={r.done ? { opacity: 0.5 } : undefined}>
                             {canModerate && (
@@ -546,7 +289,7 @@ function Applications() {
                               </td>
                             )}
                             <td className="col-text">
-                              <Link className="fw6" href={`/admin/partners/applications/${r.id}`}>
+                              <Link className="fw6" href={`/admin/partners/applications/${r.id}?returnTo=${encodeURIComponent(`/admin/partners/applications?${new URLSearchParams(applied)}`)}`}>
                                 {r.shopName}
                               </Link>
                               {(r.applicantName || r.applicantEmail) && (
@@ -565,7 +308,7 @@ function Applications() {
                             </td>
                             <td className="col-text" data-testid={r.state === "REVIEW" ? "review-summary" : undefined}>
                               {r.done ? (
-                                <span className="c-alt">{r.done === "approved" ? (canUndo ? "승인했습니다. 10초 안에 되돌릴 수 있습니다." : "승인했습니다.") : "반려했습니다."}</span>
+                                <span className="c-alt">{r.done === "approved" ? "승인했습니다." : "반려했습니다."}</span>
                               ) : r.state === "CLEAR" ? (
                                 "자동으로 확인한 결과 이상 없음"
                               ) : r.state === "REVIEW" ? (
@@ -593,46 +336,7 @@ function Applications() {
                             </td>
                             <td>
                               <div className="acts2">
-                                {r.done ? (
-                                  <>
-                                    {canUndo && canModerate && (
-                                      <button className="btn btn-sm btn-out" type="button" onClick={() => void undo(r)} disabled={working}>
-                                        되돌리기 ({Math.max(0, Math.ceil((r.undoUntil! - now) / 1000))}초)
-                                      </button>
-                                    )}
-                                    {r.done === "approved" && (
-                                      <Link className="btn btn-sm btn-out" href={`/admin/partners/${r.id}`}>
-                                        파트너스
-                                      </Link>
-                                    )}
-                                  </>
-                                ) : (
-                                  <>
-                                    {canModerate && r.state === "CLEAR" && (
-                                      <>
-                                        <button className="btn btn-sm" type="button" onClick={() => void approve(r)} disabled={working}>
-                                          {working ? "처리 중" : "승인"}
-                                        </button>
-                                        <button className="btn btn-sm btn-out" type="button" onClick={() => setRejecting(r)} disabled={working}>
-                                          반려
-                                        </button>
-                                      </>
-                                    )}
-                                    {canModerate && r.state === "REVIEW" && (
-                                      <button className="btn btn-sm" type="button" onClick={() => setReviewId(r.id)} disabled={working}>
-                                        확인할 내용 보기
-                                      </button>
-                                    )}
-                                    {canModerate && r.state === "SUPPLEMENT" && (
-                                      <button className="btn btn-sm btn-out" type="button" onClick={() => void remind(r)} disabled={working || (r.supplement?.reminderCount ?? 0) >= 3}>
-                                        재촉 메일
-                                      </button>
-                                    )}
-                                    <Link className="btn btn-sm btn-out" href={`/admin/partners/applications/${r.id}`}>
-                                      상세
-                                    </Link>
-                                  </>
-                                )}
+                                <Link className="btn btn-sm btn-out" href={`/admin/partners/applications/${r.id}?returnTo=${encodeURIComponent(`/admin/partners/applications?${new URLSearchParams(applied)}`)}`}>상세</Link>
                               </div>
                             </td>
                           </tr>
@@ -646,75 +350,10 @@ function Applications() {
               <CursorPagination page={cursorPage} visited={cursors.length} hasNext={!!data?.nextCursor} onChange={(page) => { if (state.kind !== "ok" || paging.current || page === cursorPage) return; paging.current = true; setCursorPage(page); }} onNext={() => { if (state.kind === "ok" && !paging.current && data?.nextCursor) { paging.current = true; setCursors(c => c.length === cursorPage ? [...c, data.nextCursor] : c); setCursorPage(cursorPage + 1); } }} />
             )}
           </div>
-          {reviewing && (
-            <ReviewPanel
-              row={reviewing}
-              pos={reviewPos}
-              total={queue.length}
-              busy={busy.has(reviewing.id)}
-              canModerate={canModerate}
-              onNav={(d) => setReviewId(queue[reviewPos + d]?.id ?? reviewing.id)}
-              onClose={() => setReviewId(null)}
-              onApprove={() => void approve(reviewing)}
-              onReject={() => setRejecting(reviewing)}
-              onSupplement={() => setSupplementing(reviewing)}
-              onRecheck={() => recheck(reviewing)}
-              onToast={(t, neg) => setToast({ text: t, neg })}
-            />
-          )}
           </div>
         </div>
       </main>
 
-      {rejecting && (
-        <RejectApplicationDialog
-          id={rejecting.id}
-          shopName={rejecting.shopName}
-          onClose={() => setRejecting(null)}
-          onDone={() => {
-            const r = rejecting;
-            setRejecting(null);
-            unpick(r.id);
-            mark(r.id, { done: "rejected" });
-            setToast({ text: `${r.shopName} 가입을 반려했습니다.` });
-          }}
-          onStale={() => {
-            const r = rejecting;
-            setRejecting(null);
-            stale(r);
-          }}
-        />
-      )}
-      {bulkRejecting && (
-        <RejectApplicationDialog
-          bulkIds={[...picked]}
-          shopName={`선택한 ${picked.size}건`}
-          onClose={() => setBulkRejecting(false)}
-          onDone={(res) => {
-            setBulkRejecting(false);
-            if (res) applyBulk(res, () => ({ done: "rejected" }), "반려", "을 반려했습니다");
-          }}
-          onStale={() => setBulkRejecting(false)}
-        />
-      )}
-      {supplementing && (
-        <SupplementDialog
-          row={supplementing}
-          onClose={() => setSupplementing(null)}
-          onDone={() => {
-            const r = supplementing;
-            setSupplementing(null);
-            unpick(r.id);
-            setToast({ text: `${r.shopName} 신청자에게 보완을 요청했습니다.` });
-            void load(true);
-          }}
-          onStale={() => {
-            const r = supplementing;
-            setSupplementing(null);
-            stale(r);
-          }}
-        />
-      )}
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
     </>
   );

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useImperativeHandle, useState } from "react";
+import { confirmLeave, useUnsavedGuard } from "../../../../lib/client/navigation";
 import { Modal } from "../../../../components/admin-ui/Modal";
 import { adminApi } from "./api";
 import { MAX_REASON } from "./SuspendDialog";
@@ -12,11 +13,15 @@ export function ForceEndDialog({
   onClose,
   onDone,
   onStale,
+  fullPage = false,
+  leaveRef,
 }: {
   broadcast: { broadcastId: string; shopName: string; title: string | null };
   onClose: () => void;
   onDone: () => void;
   onStale: () => void;
+  fullPage?: boolean;
+  leaveRef?: React.Ref<(next?: () => void) => Promise<void>>;
 }) {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -26,13 +31,15 @@ export function ForceEndDialog({
   const tooLong = count > MAX_REASON;
   const missing = count === 0;
 
+  const release = useUnsavedGuard(fullPage && (reason !== ""));
+
   const submit = async () => {
     if (busy || tooLong || missing) return;
     setBusy(true);
     setError(null);
     const r = await adminApi(`/api/admin/ops/live-broadcasts/${broadcast.broadcastId}/end`, { method: "POST", json: { reason: reason.trim() } });
+    if (r.ok) { await release(); setBusy(false); return onDone(); }
     setBusy(false);
-    if (r.ok) return onDone();
     if (r.status === 404 || r.status === 409) return onStale();
     setError(
       r.error === "reason_required"
@@ -45,9 +52,7 @@ export function ForceEndDialog({
     );
   };
 
-  return (
-    <Modal labelId="force-end-title" busy={busy} dirty={reason !== ""} onClose={onClose}>
-      {(requestClose) => (
+  const content = (requestClose: () => void) => (
         <>
           <div className="modal-h">
             <h2 className="modal-t" id="force-end-title">
@@ -78,7 +83,17 @@ export function ForceEndDialog({
             </button>
           </div>
         </>
-      )}
+  );
+  const leavePage = async (next = onClose) => {
+    if (busy || !confirmLeave(reason !== "")) return;
+    await release();
+    next();
+  };
+  const closePage = () => leavePage();
+  useImperativeHandle(leaveRef, () => leavePage);
+  return fullPage ? <section className="card pad-l col" style={{ gap: 16 }}>{content(closePage)}</section> : (
+    <Modal labelId="force-end-title" busy={busy} dirty={reason !== ""} onClose={onClose}>
+      {content}
     </Modal>
   );
 }

@@ -49,7 +49,7 @@ test("대표자: 목록·필터를 보고 답변을 저장·수정·지운다(�
 
   // 답변 쓰기: 쓰는 중에는 서버가 그대로, 저장하면 답변 완료
   await row(page, INQUIRY_TITLES.waiting).getByRole("button").click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.locator("section[aria-labelledby=bi-title]");
   await expect(dialog).toContainText("사이즈가 어떻게 되나요?");
   await expect(dialog.getByRole("button", { name: "답변 저장" })).toBeDisabled();
   await dialog.getByLabel("답변").fill("M 사이즈입니다");
@@ -60,9 +60,10 @@ test("대표자: 목록·필터를 보고 답변을 저장·수정·지운다(�
 
   // 쓰다 만 답변은 닫을 때 확인을 묻고, 계속 작성하면 입력이 남는다
   await dialog.getByLabel("답변").fill("L 사이즈도 있습니다");
+  let leaveMessage = "";
+  page.once("dialog", async (d) => { leaveMessage = d.message(); await d.dismiss(); });
   await dialog.getByRole("button", { name: "취소" }).click();
-  await expect(page.getByText("저장하지 않은 변경이 있습니다")).toBeVisible();
-  await page.getByRole("button", { name: "계속 작성" }).click();
+  expect(leaveMessage).toContain("저장하지 않은 변경이 있습니다");
   await expect(dialog.getByLabel("답변")).toHaveValue("L 사이즈도 있습니다");
 
   // 답변 지우기: 답변 대기로 돌아간다
@@ -76,7 +77,7 @@ test("구매자 문의 권한이 없는 직원: 목록은 보이고 답변 입�
   await expect(page).toHaveURL(/\/seller\/buyer-inquiries$/);
   await expect(page.getByText("문의 목록만 볼 수 있습니다")).toBeVisible();
   await row(page, INQUIRY_TITLES.waiting).getByRole("button").click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.locator("section[aria-labelledby=bi-title]");
   await expect(dialog.getByLabel("답변")).toBeDisabled();
   await expect(dialog.getByRole("button", { name: "답변 저장" })).toHaveCount(0);
 });

@@ -62,14 +62,19 @@ test("위치·노출 페이지·방송 연동 옵션이 저장되고 다시 열�
 
   // 모든 팝업 잠시 끄기: 확인 창 → 꺼짐 띠(다시 켜기) → 켜기
   await page.getByRole("button", { name: "모든 팝업 잠시 끄기" }).click();
+  await expect(page).toHaveURL(/banners\/popups\/order/);
+  await page.getByRole("button", { name: "모든 팝업 잠시 끄기", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("설정은 그대로 남습니다");
   await confirmBtn(page, "잠시 끄기").click();
+  await page.getByRole("link", { name: "목록", exact: true }).click();
   const note = page.getByTestId("popups-paused");
   await expect(note).toContainText("모든 팝업이 꺼져 있습니다");
   await expect(page.getByRole("button", { name: "모든 팝업 잠시 끄기" })).toHaveCount(0);
   await page.screenshot({ path: "tests/e2e/screenshots/SA-065-popups-paused-1440.png", fullPage: true });
   await note.getByRole("button", { name: "다시 켜기" }).click();
+  await page.getByRole("button", { name: "모든 팝업 다시 켜기", exact: true }).click();
   await confirmBtn(page, "다시 켜기").click();
+  await page.getByRole("link", { name: "목록", exact: true }).click();
   await expect(note).toHaveCount(0);
   await expect(page.getByRole("button", { name: "모든 팝업 잠시 끄기" })).toBeVisible();
 
@@ -80,8 +85,9 @@ test("위치·노출 페이지·방송 연동 옵션이 저장되고 다시 열�
   await ed.getByRole("button", { name: "저장" }).click();
   await confirmBtn(page, "추가").click();
   await expect(page.getByTestId("popup-row")).toHaveCount(2);
+  await page.getByRole("button", { name: "노출 설정 상세", exact: true }).click();
   const order = page.waitForResponse((r) => r.request().method() === "PUT" && r.url().endsWith("/popups/reorder"));
   await page.getByRole("button", { name: "배송 지연 안내 위로" }).click();
   expect((await order).status()).toBe(200);
-  await expect(page.getByTestId("popup-row").nth(0)).toContainText("배송 지연 안내");
+  await expect(page.getByTestId("popup-order-row").nth(0)).toContainText("배송 지연 안내");
 });

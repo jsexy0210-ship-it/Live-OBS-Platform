@@ -29,29 +29,42 @@ async function open(page: Page, path: string) {
   await expect(page).toHaveURL(new RegExp(`${path.replace(/\//g, "\\/")}$`));
 }
 
-test("상품 등록 미리보기: 상품명·판매가·설명·옵션·판매 상태를 입력하는 즉시 반영한다", async ({ page }) => {
+test("상품 등록 미리보기: 저장 전 상품명·판매가·설명·옵션·판매 상태를 다시 열어 확인한다", async ({ page }) => {
   await open(page, "/seller/products/new");
   const pv = page.getByTestId("product-preview");
+  const preview = page.getByRole("dialog", { name: "쇼핑몰 미리보기", exact: true });
+  await page.getByTestId("product-form-preview").click();
   await expect(pv.getByTestId("preview-description")).toHaveText("상품 설명을 입력하면 여기에 표시됩니다");
+  await preview.getByRole("button", { name: "닫기", exact: true }).click();
 
   await page.getByLabel("상품명").fill("미리보기 부스터 팩");
+  await page.getByTestId("product-form-preview").click();
   await expect(pv.getByTestId("preview-name")).toHaveText("미리보기 부스터 팩");
+  await preview.getByRole("button", { name: "닫기", exact: true }).click();
   await page.getByLabel("판매가").fill("15,000");
+  await page.getByTestId("product-form-preview").click();
   await expect(pv.getByTestId("preview-price")).toHaveText("15,000원");
   // 새 상품의 옵션 하나(「기본」, 재고 0): 목록은 숨겨도 품절과 추가 금액은 대표 가격·배지에 반영한다
   await expect(pv.locator(".pbadge")).toHaveText("품절");
+  await preview.getByRole("button", { name: "닫기", exact: true }).click();
   await page.getByLabel("옵션 1 추가 금액").fill("2000");
+  await page.getByTestId("product-form-preview").click();
   await expect(pv.getByTestId("preview-price")).toHaveText("17,000원");
+  await preview.getByRole("button", { name: "닫기", exact: true }).click();
   await page.getByLabel("옵션 1 추가 금액").fill("0");
   await page.getByLabel("옵션 1 재고").fill("3");
+  await page.getByTestId("product-form-preview").click();
   await expect(pv.locator(".pbadge")).toHaveCount(0);
   await expect(pv.getByTestId("preview-price")).toHaveText("15,000원");
+  await preview.getByRole("button", { name: "닫기", exact: true }).click();
 
   // 짧은 설명(한 줄, 80자까지): 입력하는 즉시 반영한다
   await page.getByLabel("짧은 설명").fill("1박스 36팩 구성 · 미개봉 정품 · 주문 다음 날 발송");
+  await page.getByTestId("product-form-preview").click();
   const desc = pv.getByTestId("preview-description");
   await expect(desc).toHaveText("1박스 36팩 구성 · 미개봉 정품 · 주문 다음 날 발송");
   await expect(pv.getByRole("button", { name: "더보기" })).toHaveCount(0);
+  await preview.getByRole("button", { name: "닫기", exact: true }).click();
 
   // 옵션: 이름·옵션별 가격(판매가 + 추가 금액)·재고 0이면 품절
   await page.getByLabel("옵션 1 이름").fill("1팩");
@@ -60,20 +73,27 @@ test("상품 등록 미리보기: 상품명·판매가·설명·옵션·판매 �
   await page.getByLabel("옵션 2 이름").fill("3팩 묶음");
   await page.getByLabel("옵션 2 추가 금액").fill("28000");
   await page.getByLabel("옵션 2 재고").fill("5");
+  await page.getByTestId("product-form-preview").click();
   const opts = pv.getByTestId("preview-options").locator("li");
   await expect(opts).toHaveCount(2);
   await expect(opts.nth(0)).toHaveText(/1팩\s*15,000원/);
   await expect(opts.nth(1)).toHaveText(/3팩 묶음\s*43,000원/);
+  await preview.getByRole("button", { name: "닫기", exact: true }).click();
   await page.getByLabel("옵션 2 재고").fill("0");
+  await page.getByTestId("product-form-preview").click();
   await expect(opts.nth(1)).toHaveText(/3팩 묶음\s*품절/);
   await shot(page, "SA-012-preview");
+  await preview.getByRole("button", { name: "닫기", exact: true }).click();
 
   // 판매 상태
   const status = page.getByRole("radiogroup", { name: "판매 상태" });
   await status.getByRole("radio", { name: "품절" }).click();
+  await page.getByTestId("product-form-preview").click();
   await expect(pv.getByText("품절", { exact: true }).first()).toBeVisible();
   await expect(opts.nth(0)).toHaveText(/1팩\s*품절/);
+  await preview.getByRole("button", { name: "닫기", exact: true }).click();
   await status.getByRole("radio", { name: "숨김" }).click();
+  await page.getByTestId("product-form-preview").click();
   await expect(pv.getByTestId("preview-status-note")).toHaveText("숨김 상태라 쇼핑몰에 표시되지 않습니다");
 });
 
@@ -82,10 +102,16 @@ test("상품 수정 미리보기: 저장된 값이 아니라 고치는 중인 �
   await page.getByTestId("product-row").filter({ hasText: "문라이트 컬렉션 박스" }).getByRole("link").first().click();
   await expect(page.getByLabel("상품명")).toHaveValue("문라이트 컬렉션 박스");
   const pv = page.getByTestId("product-preview");
+  const preview = page.getByRole("dialog", { name: "쇼핑몰 미리보기", exact: true });
+  await page.getByTestId("product-form-preview").click();
   await expect(pv.getByTestId("preview-name")).toHaveText("문라이트 컬렉션 박스");
+  await preview.getByRole("button", { name: "닫기", exact: true }).click();
   await page.getByLabel("짧은 설명").fill("수정 중인 설명");
+  await page.getByTestId("product-form-preview").click();
   await expect(pv.getByTestId("preview-description")).toHaveText("수정 중인 설명");
+  await preview.getByRole("button", { name: "닫기", exact: true }).click();
   await page.getByLabel("판매가").fill("99000");
+  await page.getByTestId("product-form-preview").click();
   await expect(pv.getByTestId("preview-price")).toHaveText("99,000원");
   await shot(page, "SA-012-E-preview");
 });
@@ -138,6 +164,7 @@ test("이미 저장된 여러 줄 설명은 여러 줄 칸으로 보이고, 미�
   const box = page.getByLabel("짧은 설명");
   expect(await box.evaluate((el) => el.tagName)).toBe("TEXTAREA");
   await expect(box).toHaveValue(description);
+  await page.getByTestId("product-form-preview").click();
   const pv = page.getByTestId("product-preview");
   const desc = pv.getByTestId("preview-description");
   expect(await desc.evaluate((el) => getComputedStyle(el).whiteSpace)).toBe("pre-wrap");

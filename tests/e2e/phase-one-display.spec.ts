@@ -33,7 +33,7 @@ const sellerIds: string[] = [];
 
 test.beforeAll(async ({}, info) => {
   expect(process.env.CI).toBe("true");
-  expect(process.env.GITHUB_JOB).toBe("e2e-smoke");
+  expect(["e2e-smoke", "e2e-full"]).toContain(process.env.GITHUB_JOB);
   expect(process.env.GITHUB_RUN_ID).toMatch(/^\d+$/);
   expect(process.env.NODE_ENV).not.toBe("production");
   expect(info.config.workers).toBe(1); // id=1 사업자 설정의 독점 lease: 현재 job, 단일 worker, 이 spec의 finally만 복원한다.

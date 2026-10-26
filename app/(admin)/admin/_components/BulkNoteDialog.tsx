@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useImperativeHandle, useState } from "react";
+import { confirmLeave, useUnsavedGuard } from "../../../../lib/client/navigation";
 import { textLength } from "../../../../lib/server/text/clean";
 import { Modal } from "../../../../components/admin-ui/Modal";
 import { adminApi, failMessage } from "./api";
@@ -10,26 +11,27 @@ import { adminApi, failMessage } from "./api";
 const MAX_BODY = 1000;
 export type BulkNoteResult = { created: number; failed: number };
 
-export function BulkNoteDialog({ sellerIds, onClose, onDone }: { sellerIds: string[]; onClose: () => void; onDone: (r: BulkNoteResult) => void }) {
+export function BulkNoteDialog({ sellerIds, onClose, onDone, fullPage = false, leaveRef }: { sellerIds: string[]; onClose: () => void; onDone: (r: BulkNoteResult) => void; fullPage?: boolean; leaveRef?: React.Ref<(next?: () => void) => Promise<void>> }) {
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const count = textLength(body);
   const invalid = count === 0 || count > MAX_BODY;
 
+  const release = useUnsavedGuard(fullPage && (body !== ""));
+
   const submit = async () => {
     if (busy || invalid) return;
     setBusy(true);
     setError(null);
     const r = await adminApi<{ created: number; results: { sellerId: string; ok: boolean; error?: string }[] }>("/api/admin/sellers/notes/bulk", { method: "POST", json: { sellerIds, body: body.trim() } });
+    if (!r.ok) { setBusy(false); return setError(r.message ?? failMessage(r, "메모를 남기지 못했습니다. 잠시 후 다시 시도해 주십시오.")); }
+    await release();
     setBusy(false);
-    if (!r.ok) return setError(r.message ?? failMessage(r, "메모를 남기지 못했습니다. 잠시 후 다시 시도해 주십시오."));
     onDone({ created: r.data.created, failed: r.data.results.filter((x) => !x.ok).length });
   };
 
-  return (
-    <Modal labelId="bulk-note-title" busy={busy} dirty={body !== ""} onClose={onClose}>
-      {(requestClose) => (
+  const content = (requestClose: () => void) => (
         <>
           <div className="modal-h">
             <h2 className="modal-t" id="bulk-note-title">
@@ -60,7 +62,17 @@ export function BulkNoteDialog({ sellerIds, onClose, onDone }: { sellerIds: stri
             </button>
           </div>
         </>
-      )}
+  );
+  const leavePage = async (next = onClose) => {
+    if (busy || !confirmLeave(body !== "")) return;
+    await release();
+    next();
+  };
+  const closePage = () => leavePage();
+  useImperativeHandle(leaveRef, () => leavePage);
+  return fullPage ? <section className="card pad-l col" style={{ gap: 16 }}>{content(closePage)}</section> : (
+    <Modal labelId="bulk-note-title" busy={busy} dirty={body !== ""} onClose={onClose}>
+      {content}
     </Modal>
   );
 }

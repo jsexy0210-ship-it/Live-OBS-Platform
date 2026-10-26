@@ -39,6 +39,7 @@ export const IMPERSONATION_API_SCOPED_GET: readonly RegExp[] = [
   /^\/api\/seller\/broadcast\/(summary|history)$/, // BROADCAST
   new RegExp(`^/api/seller/broadcast/${UUID_PATH}$`, "i"), // BROADCAST (방송 상세)
   /^\/api\/seller\/hit-cards$/, // BROADCAST
+  new RegExp(`^/api/seller/hit-cards/${UUID_PATH}$`, "i"), // BROADCAST (동일 카드 상세)
   /^\/api\/seller\/queue$/, // BROADCAST (방송 대시보드 대기열, 금액은 가림)
   /^\/api\/seller\/external-shops$/, // BROADCAST (연결 목록만, 토큰·웹훅 값 없음)
   /^\/api\/seller\/overlay\/(address-info|layout|templates)$/, // OVERLAY (주소 토큰은 돌려주지 않는다)

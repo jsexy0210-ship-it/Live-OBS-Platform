@@ -115,6 +115,15 @@ export async function listRewardLedger(db: PrismaClient, ctx: TenantContext, que
   const rows = await db.rewardLedger.findMany({ where: { AND: and }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: take + 1, select: SELECT });
   const page = rows.slice(0, take);
   const last = page[page.length - 1];
+  return {
+    ok: true as const,
+    entries: await projectRewardLedger(db, ctx, page),
+    nextCursor: rows.length > take && last ? encodeCursor(last.createdAt, last.id) : null,
+  };
+}
+
+type LedgerRow = Prisma.RewardLedgerGetPayload<{ select: typeof SELECT }>;
+async function projectRewardLedger(db: PrismaClient, ctx: TenantContext, page: LedgerRow[]) {
   const ok = page.filter((r) => r.status === "SUCCEEDED").map((r) => r.id);
   const after = ok.length
     ? await db.$queryRaw<{ id: string; after: number }[]>`
@@ -134,9 +143,7 @@ export async function listRewardLedger(db: PrismaClient, ctx: TenantContext, que
     if (cur) cur.itemCount += 1;
     else summary.set(i.orderId, { firstProductName: i.productNameSnapshot, itemCount: 1 });
   }
-  return {
-    ok: true as const,
-    entries: page.map((r) => ({
+  return page.map((r) => ({
       id: r.id,
       member: { id: r.buyerMember.id, broadcastNickname: r.buyerMember.broadcastNickname },
       type: r.type,
@@ -150,9 +157,15 @@ export async function listRewardLedger(db: PrismaClient, ctx: TenantContext, que
       testMode: r.testMode,
       createdAt: r.createdAt,
       processedAt: r.processedAt,
-    })),
-    nextCursor: rows.length > take && last ? encodeCursor(last.createdAt, last.id) : null,
-  };
+    }));
+}
+
+// 상세 직접 진입도 목록과 같은 권한·tenant·SELECT 및 표시 DTO만 조회한다.
+export async function getRewardLedgerEntry(db: PrismaClient, ctx: TenantContext, id: string) {
+  requireSellerRead(ctx, "MEMBER_POINTS");
+  if (!UUID_RE.test(id)) return null;
+  const row = await db.rewardLedger.findFirst({ where: { sellerId: ctx.sellerId, id }, select: SELECT });
+  return row ? (await projectRewardLedger(db, ctx, [row]))[0] : null;
 }
 
 // 원장 요약 카드(SA-032). 쇼핑몰 전체 기준(기간 필터와 상관없음), 「오늘」은 한국 시간 0시부터.

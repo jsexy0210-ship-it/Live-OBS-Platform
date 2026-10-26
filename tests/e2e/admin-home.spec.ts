@@ -25,7 +25,8 @@ test.beforeAll(async () => {
       { email: suEmail, passwordHash, name: "최고관리자", role: "SUPER_ADMIN" },
     ],
   });
-  await db.seller.create({ data: { slug: `hm-p-${run}`, shopName: pendingShop, status: "PENDING" } });
+  // 신청 목록은 오래된 순으로 제한해 보여 줍니다. 다른 시험의 대기 건과 섞여도 이 링크 검증 대상이 첫 쪽에 오도록 접수일만 고정합니다.
+  await db.seller.create({ data: { slug: `hm-p-${run}`, shopName: pendingShop, status: "PENDING", createdAt: new Date("2010-01-01T00:00:00.000Z") } });
   const seller = await db.seller.create({ data: { slug: `hm-t-${run}`, shopName: topShop, status: "ACTIVE", approvedAt: new Date() } });
   const user = await db.sellerUser.create({ data: { sellerId: seller.id, email: `hm-owner-${run}@example.com`, passwordHash, name: "대표", isOwner: true } });
   const inq = await db.platformInquiry.create({ data: { sellerId: seller.id, createdBySellerUserId: user.id, category: "OTHER", title: `홈 문의 ${run}`, lastMessageAt: new Date() } });
@@ -144,7 +145,7 @@ for (const [role, who] of [["CS", email], ["SUPER_ADMIN", suEmail]] as const) {
     await expect(notice).toBeHidden();
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(notice).toBeVisible();
-    await expect(notice).toHaveText("모바일에서는 홈 화면을 제공합니다 상세 관리 업무는 PC에서 이용해 주십시오");
+    await expect(notice).toHaveText("모바일에서는 홈을 볼 수 있어요. 상세 관리는 PC에서 이용해 주세요.");
     await expect(page.locator(".ma-home-revenue .stat .v")).toHaveCount(5);
     await expect(page.locator('.ma-home [aria-busy="true"]')).toHaveCount(0);
     await captureHome(page, `admin-home-mobile-${role}-390`, role);
@@ -504,10 +505,10 @@ test("한 통계가 실패해도 오늘 처리할 일과 나머지 통계는 그
   let fail = true;
   await page.route("**/api/admin/stats/orders**", (route) => (fail ? route.fulfill({ status: 500, contentType: "application/json", body: '{"error":"x"}' }) : route.continue()));
   await login(page);
-  await expect(page.getByTestId("home-revenue-orders")).toContainText("불러오지 못했습니다");
+  await expect(page.getByTestId("home-revenue-orders")).toContainText("불러오지 못했어요");
   await expect(page.getByTestId("today-task-signupPending")).toBeVisible();
   await openStatus(page);
-  await expect(page.getByTestId("stats-orders")).toContainText("불러오지 못했습니다");
+  await expect(page.getByTestId("stats-orders")).toContainText("불러오지 못했어요");
   await expect(page.getByTestId("stats-top")).toContainText(topShop);
   fail = false;
   await page.getByTestId("stats-orders").getByRole("button", { name: "다시 시도" }).click();
@@ -528,7 +529,7 @@ test("빈 파트너스 안내와 요약 오류는 데모 수치 없이 독립적
   await expect(page.getByTestId("stats-top")).toContainText(topShop);
   fail = true;
   await page.getByRole("button", { name: "새로 고침", exact: true }).click();
-  await expect(page.getByTestId("home-kpi-sellers")).toContainText("불러오지 못했습니다");
+  await expect(page.getByTestId("home-kpi-sellers")).toContainText("불러오지 못했어요");
   await expect(page.getByTestId("stats-top")).toContainText(topShop);
   await expect(page.getByTestId("home-kpi-sellers")).not.toContainText("184");
 });

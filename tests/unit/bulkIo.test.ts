@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatCsv, guardText, parseCsv, unguardText } from "../../lib/server/shop-bulk-io/csv";
-import { COLUMNS, MAX_IMPORT_ROWS, parseProductCsv, templateCsv } from "../../lib/server/shop-bulk-io/service";
+import { COLUMNS, MAX_IMPORT_ROWS, headerMismatchMessage, parseProductCsv, templateCsv } from "../../lib/server/shop-bulk-io/service";
 
 // 엑셀(CSV) 일괄 등록(SA-018): CSV 읽기·쓰기와 행 검증(DB 없음)
 const cats = new Map([["카드", ["c1"]], ["카드>부스터", ["c2"]], ["중복", ["c3", "c4"]]]);
@@ -51,7 +51,7 @@ describe("상품 CSV 검증", () => {
     expect(a.input).toMatchObject({ name: "A", price: 12000, status: "ON_SALE", stockDeductMode: "ORDER" });
     expect(a.input.options).toEqual([{ name: "빨강", priceDelta: 500, stock: 3, sku: "R" }, { name: "파랑", priceDelta: 0, stock: 0, sku: null }]);
     expect(a.categoryIds).toEqual(["c1", "c2"]);
-    expect(b.input).toMatchObject({ name: "B", status: "DRAFT", stockDeductMode: "PAYMENT", options: [] });
+    expect(b.input).toMatchObject({ name: "B", status: "HIDDEN", stockDeductMode: "PAYMENT", options: [] });
   });
   it("오류가 있는 상품은 모든 줄을 건너뛰고 줄 번호(머리글=1)와 열을 알려 준다", () => {
     const v = parse("OK,1000,판매중,,,,기본,0,1,\r\nBAD,abc,판매중,,,,기본,0,1,\r\n,,,,,,옵션2,0,1,\r\nBAD2,1000,이상함,,,,기본,0,1,\r\nBAD3,1000,판매중,,,,,,,\r\nBAD4,1000,판매중,,,없는카테고리,기본,0,1,");
@@ -88,8 +88,50 @@ describe("상품 CSV 검증", () => {
     expect(fail(`${HEAD}\r\n${"A,1\r\n".repeat(MAX_IMPORT_ROWS + 1)}`)).toBe("too_many_rows");
     expect(fail("x".repeat(1_000_001))).toBe("file_too_large");
   });
-  it("열 순서가 달라도, 선택 열이 없어도 읽는다", () => {
-    const v = parse("1000,A\r\n", "판매가,상품명");
-    expect(v.products[0].input).toMatchObject({ name: "A", price: 1000, status: "DRAFT" });
+  it("필수 네 열만 순서와 관계없이 읽고 기본 옵션과 숨김 상품을 준비한다", () => {
+    const v = parse("1000,A,,3\r\n", "판매가,상품명,카테고리,재고");
+    expect(v.errors).toEqual([]);
+    expect(v.products[0].input).toMatchObject({ name: "A", price: 1000, status: "HIDDEN", options: [{ name: "기본", priceDelta: 0, stock: 3, sku: null }] });
+    expect(v.products[0].defaultOption).toBe(true);
+  });
+  it("양식과 다른 열은 어느 열이 어떻게 다른지 알려 준다(필수 열 누락·모르는 열·같은 열 두 번)", () => {
+    const head = (t: string) => {
+      const r = parseProductCsv(`${t}\r\nA,1,카드,1`, cats);
+      if (r.ok) throw new Error("ok");
+      return r;
+    };
+    expect(head("상품명,가격,카테고리,재고").columns).toEqual([{ found: "가격", expected: "판매가" }]);
+    expect(head("상품명,가격,카테고리").columns).toEqual([{ found: "가격", expected: "판매가" }, { found: null, expected: "재고" }]);
+    expect(head("상품명,판매가,카테고리,재고,메모").columns).toEqual([{ found: "메모", expected: null }]);
+    expect(head("상품명,판매가,카테고리,재고,재고").columns).toEqual([{ found: "재고", expected: null }]);
+    expect(head("판매가").columns?.map((c) => c.expected)).toEqual(["상품명", "카테고리", "재고"]);
+    // 객체 기본 속성 이름(constructor·__proto__ 등)도 그냥 모르는 열이다(안내 문구를 만들다 죽지 않는다)
+    for (const odd of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+      const r = head(`상품명,판매가,카테고리,재고,${odd}`);
+      expect(r.columns).toEqual([{ found: odd, expected: null }]);
+      expect(headerMismatchMessage(r.columns!)).toContain(`「${odd}」 열은 양식에 없습니다`);
+    }
+  });
+  it("열 이름 안내 문구: 바꿀 열·개수를 알려 주고 조사를 맞춘다", () => {
+    expect(headerMismatchMessage([{ found: "가격", expected: "판매가" }, { found: null, expected: "재고" }])).toBe("양식과 열 이름이 다릅니다 · 「가격」 열을 「판매가」로 바꿔 주십시오 (2개 열 불일치)");
+    expect(headerMismatchMessage([{ found: "이름", expected: "상품명" }])).toBe("양식과 열 이름이 다릅니다 · 「이름」 열을 「상품명」으로 바꿔 주십시오 (1개 열 불일치)");
+    expect(headerMismatchMessage([{ found: "메모", expected: null }])).toContain("「메모」 열은 양식에 없습니다");
+    expect(headerMismatchMessage([{ found: null, expected: "재고" }])).toContain("「재고」 열이 없습니다");
+  });
+  it("필수 열이 빠지거나 별칭과 원래 옵션 열이 중복되면 파일 오류다", () => {
+    const required = ["상품명", "카테고리", "판매가", "재고"];
+    for (const missing of required) {
+      expect(parseProductCsv(required.filter((column) => column !== missing).join(",") + "\r\nA,,1000,3", cats)).toMatchObject({ ok: false, reason: "invalid_header" });
+    }
+    expect(parseProductCsv("상품명,카테고리,판매가,재고,옵션,옵션명\r\nA,,1000,3,빨강,빨강", cats)).toMatchObject({ ok: false, reason: "invalid_header" });
+  });
+  it("옵션 별칭은 기존 옵션명과 같고 빈 상태 기본값과 명시 상태를 구분한다", () => {
+    const header = "상품명,카테고리,판매가,재고,옵션,상태";
+    for (const [label, expected] of [["", "HIDDEN"], ["판매중", "ON_SALE"], ["품절", "SOLD_OUT"], ["준비중", "DRAFT"], ["숨김", "HIDDEN"]]) {
+      const v = parse(`A,카드,1000,4,빨강,${label}`, header);
+      expect(v.errors).toEqual([]);
+      expect(v.products[0].input).toMatchObject({ status: expected, options: [{ name: "빨강", priceDelta: 0, stock: 4, sku: null }] });
+      expect(v.products[0].defaultOption).toBe(false);
+    }
   });
 });

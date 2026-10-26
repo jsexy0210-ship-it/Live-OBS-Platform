@@ -2,11 +2,11 @@
 
 import { formatDateTimeParts } from "../../../../../lib/client/format";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
-import { CursorPagination, ListHead, ListTable, PageHead, SearchBox, SearchRow, useConfirm } from "../../../../../components/admin-ui";
+import { CursorPagination, ListHead, ListTable, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
-import { QuickPrice, QuickStatus, QuickStock, type QuickDone, type QuickUndo } from "../../../../../components/seller/ProductQuick";
 import { categoryLabel, categoryOptions, type CategoryNode } from "../../../../../components/seller/ProductCategoryPicker";
 import { ErrorState, LoadingRows, Locked, NoImage, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, type Product, type ProductStatus } from "../../../../../components/seller/api";
@@ -17,7 +17,7 @@ import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
 import styles from "./products.module.css";
 
 // SA-011 상품 목록(업무용 관리 화면). 위쪽 표형 검색 상자에서 조건을 정해 「검색」을 누르면 걸러 보고, 이어서 불러온다(현재 10개씩).
-// 정렬·페이지 크기는 바꾸는 즉시 적용한다. 체크한 상품은 판매 상태 변경·삭제를 한 번에 처리한다(POST /api/seller/products/bulk).
+// 정렬·페이지 크기는 바꾸는 즉시 적용한다. 체크한 상품의 변경은 선택 상품 작업 상세로 이동해 확정한다.
 const FILTERS: { key: ProductStatus | "ALL"; label: string }[] = [
   { key: "ALL", label: "전체" },
   { key: "ON_SALE", label: "판매 중" },
@@ -100,10 +100,6 @@ const TOASTS: Record<string, string> = {
 
 type Page = { products: Product[]; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error"; status: number; message?: string } | { kind: "ok"; items: Product[]; next: string | null };
-type BulkResult = { updated: string[]; skipped: { productId: string; reason: string }[] };
-const SKIP_REASON: Record<string, string> = { not_found: "찾을 수 없음", no_sellable_option: "판매할 수 있는 선택 항목이 없음(상품 수정에서 추가해 주십시오)" };
-const STATUS_TO: Record<string, string> = { ON_SALE: "판매 중으로", HIDDEN: "숨김으로", SOLD_OUT: "품절로", DRAFT: "임시 저장으로" };
-
 // 등록일은 한국 시간 기준 월/일
 // 한국 날짜(YYYY-MM-DD). days만큼 앞뒤로 옮긴다
 const kstDate = (offsetDays = 0, offsetMonths = 0) => {
@@ -115,10 +111,11 @@ const optionSummary = (p: Product) => (p.options.length === 0 ? "선택 항목 �
 const isShown = (p: Product) => p.status === "ON_SALE" || p.status === "SOLD_OUT";
 
 export default function ProductListPage() {
-  const { confirm } = useConfirm();
   const { can } = useSeller();
   // 적용한 조건·정렬·개수는 주소(쿼리)가 기준이다. 상세에 갔다 Back으로 돌아와도 그대로 복원된다(IA Back 규칙 3항)
   const [u, setU] = useUrlState(urlDefaults());
+  const searchParams = useSearchParams().toString();
+  const returnTo = `/seller/products${searchParams ? `?${searchParams}` : ""}`;
   const applied: Filters = {
     status: oneOf(u.status, FILTERS.map((f) => f.key), "ALL"),
     stock: u.stock === "out" || u.stock === "low" ? u.stock : null,
@@ -149,10 +146,6 @@ export default function ProductListPage() {
   const paging = useRef(false);
   const [toast, setToast] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [bulkBusy, setBulkBusy] = useState(false);
-  // 판매 상태를 일괄로 바꾼 직후 「되돌리기」(바꾸기 전 상태별로 다시 보낸다)
-  const [undo, setUndo] = useState<{ text: string; prev: { id: string; status: ProductStatus }[] } | null>(null);
 
   const toUrl = (f: Filters) => ({ q: f.text, mode: f.mode, status: f.status, stock: f.stock ?? "", categoryId: f.categoryId, display: f.display, deduct: f.deduct, from: f.from, to: f.to, period: "" });
   const apply = () => {
@@ -244,60 +237,6 @@ export default function ProductListPage() {
       else next.add(id);
       return next;
     });
-
-  const skippedText = (r: BulkResult) => (r.skipped.length === 0 ? "" : ` ${r.skipped.length}개는 바꾸지 못했습니다(${[...new Set(r.skipped.map((s) => SKIP_REASON[s.reason] ?? "바꿀 수 없는 상품임"))].join(" · ")})`);
-
-  // 빠른 처리(판매 상태·재고·판매가) 결과를 목록 한 줄에 반영한다. 서버 응답을 받은 뒤에만 바뀌고, 되돌릴 수 있는 변경은 토스트에 「되돌리기」가 붙는다
-  const [quickUndo, setQuickUndo] = useState<{ text: string; run: QuickUndo } | null>(null);
-  const quickDone: QuickDone = (p, text, undo) => {
-    setState((s) => (s.kind === "ok" ? { ...s, items: s.items.map((x) => (x.id === p.id ? { ...x, status: p.status, options: p.options, price: p.price ?? x.price } : x)) } : s));
-    if (!text) return;
-    if (undo) {
-      setToast(null);
-      setQuickUndo({ text, run: undo });
-    } else setToast(text);
-  };
-  const quickFail = (text: string) => setToast(text);
-  const bulkStatus = async (status: ProductStatus) => {
-    const ids = [...selected];
-    if (!(await confirm({ title: `선택한 상품 ${ids.length}개를 ${STATUS_TO[status] ?? "선택한 상태로"} 바꾸시겠습니까?`, body: "쇼핑몰에 바로 반영됩니다.", confirmLabel: "바꾸기" }))) return;
-    const prev = items.filter((p) => selected.has(p.id)).map((p) => ({ id: p.id, status: p.status }));
-    setBulkBusy(true);
-    const r = await api<BulkResult>("/api/seller/products/bulk", { method: "POST", body: { action: "status", status, productIds: ids } });
-    setBulkBusy(false);
-    if (!r.ok) return setToast(r.message ?? "상태를 바꾸지 못했습니다. 다시 시도해 주십시오");
-    const done = new Set(r.data.updated);
-    void load(key);
-    setUndo({ text: `선택한 ${r.data.updated.length}개 상품을 ${STATUS_TO[status] ?? "선택한 상태로"} 바꿨습니다.${skippedText(r.data)}`, prev: prev.filter((p) => done.has(p.id) && p.status !== status) });
-  };
-
-  const undoBulk = async () => {
-    if (!undo) return;
-    const groups = new Map<ProductStatus, string[]>();
-    for (const p of undo.prev) groups.set(p.status, [...(groups.get(p.status) ?? []), p.id]);
-    setUndo(null);
-    setBulkBusy(true);
-    let failed = 0;
-    for (const [status, ids] of groups) {
-      const r = await api<BulkResult>("/api/seller/products/bulk", { method: "POST", body: { action: "status", status, productIds: ids } });
-      if (!r.ok) failed += ids.length;
-      else failed += r.data.skipped.length;
-    }
-    setBulkBusy(false);
-    void load(key);
-    setToast(failed ? `되돌리지 못한 상품이 ${failed}개 있습니다` : "되돌렸습니다");
-  };
-
-  const bulkDelete = async () => {
-    const ids = [...selected];
-    setBulkBusy(true);
-    const r = await api<BulkResult>("/api/seller/products/bulk", { method: "POST", body: { action: "delete", productIds: ids } });
-    setBulkBusy(false);
-    setConfirmDelete(false);
-    if (!r.ok) return setToast(r.message ?? "삭제하지 못했습니다. 다시 시도해 주십시오");
-    void load(key);
-    setToast(`상품 ${r.data.updated.length}개를 삭제했습니다.${skippedText(r.data)}`);
-  };
 
   if (state.kind === "error" && state.status === 403) {
     return (
@@ -418,19 +357,7 @@ export default function ProductListPage() {
                     </option>
                   ))}
                 </select>
-                {canManage && (
-                  <>
-                    <button className="btn btn-dense btn-out btn-level-bulk" type="button" disabled={selected.size === 0 || bulkBusy} onClick={() => void bulkStatus("ON_SALE")}>
-                      선택 판매 중
-                    </button>
-                    <button className="btn btn-dense btn-out btn-level-bulk" type="button" disabled={selected.size === 0 || bulkBusy} onClick={() => void bulkStatus("HIDDEN")}>
-                      선택 숨김
-                    </button>
-                    <button className="btn btn-dense btn-out btn-level-bulk" type="button" style={{ color: selected.size > 0 ? "var(--neg-text)" : undefined }} disabled={selected.size === 0 || bulkBusy} onClick={() => setConfirmDelete(true)}>
-                      선택 삭제
-                    </button>
-                  </>
-                )}
+                {canManage && (selected.size > 0 ? <Link className="btn btn-dense btn-out btn-level-bulk" href={`/seller/products/operations?${new URLSearchParams({ ids: [...selected].join(","), returnTo })}`}>선택 상품 작업 상세</Link> : <button className="btn btn-dense btn-out btn-level-bulk" type="button" disabled>선택 상품 작업 상세</button> )}
               </>
             }
           />
@@ -550,22 +477,21 @@ export default function ProductListPage() {
                             </Link>
                             <div className="t-c1 c-alt ell">{[p.code, optionSummary(p)].filter(Boolean).join(" · ")}</div>
                           </td>
-                          <td className="num">{canManage ? <QuickPrice product={p} onDone={quickDone} onFail={quickFail} /> : won(p.price)}</td>
+                          <td className="num">{won(p.price)}</td>
                           <td className={`num${stock === 0 ? " c-neg fw6" : stock <= LOW_STOCK ? " c-cau fw6" : ""}`}>
-                            {canManage && p.options.length === 1 ? <QuickStock product={p} onDone={quickDone} onFail={quickFail} /> : stock.toLocaleString("ko-KR")}
+                            {stock.toLocaleString("ko-KR")}
                           </td>
                           <td className="num">{(p.soldQuantity ?? 0).toLocaleString("ko-KR")}</td>
                           <td>{isShown(p) ? "보임" : "안 보임"}</td>
                           <td>
                             <span className={`bdg ${b.cls}`}>{b.label}</span>
-                            {canManage && <QuickStatus product={p} onDone={quickDone} onFail={quickFail} />}
                           </td>
                           <td className="num">{formatDateTimeParts(p.createdAt)?.date}
                             <br />
                             {formatDateTimeParts(p.createdAt)?.time}</td>
                           {canManage && (
                             <td>
-                              <Link className="btn btn-sm btn-out btn-level-table" href={`/seller/products/${p.id}`}>
+                              <Link className="btn btn-sm btn-out btn-level-table" href={`/seller/products/${p.id}/operations?${new URLSearchParams({ returnTo })}`}>
                                 수정
                               </Link>
                             </td>
@@ -607,61 +533,7 @@ export default function ProductListPage() {
           )}
         </div>
       </main>
-      {confirmDelete && (
-        <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="bulk-del-title">
-          <div className="modal">
-            <div className="modal-h">
-              <h3 id="bulk-del-title" className="t-hl1 c-neg">
-                선택한 상품 {selected.size}개를 삭제하시겠습니까?
-              </h3>
-              <p className="t-b2 c-neu">삭제한 상품은 쇼핑몰과 주문대기에서 바로 빠집니다. 이미 들어온 주문은 그대로 처리됩니다. 삭제한 상품은 되살릴 수 없습니다.</p>
-            </div>
-            <div className="modal-f">
-              <button className="btn btn-out" type="button" onClick={() => setConfirmDelete(false)} disabled={bulkBusy}>
-                취소
-              </button>
-              <button className="btn btn-neg" type="button" onClick={() => void bulkDelete()} disabled={bulkBusy}>
-                삭제
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {quickUndo && (
-        <UndoToast
-          text={quickUndo.text}
-          canUndo
-          onUndo={() => {
-            const run = quickUndo.run;
-            setQuickUndo(null);
-            void run();
-          }}
-          onDone={() => setQuickUndo(null)}
-        />
-      )}
-      {undo && <UndoToast text={undo.text} canUndo={undo.prev.length > 0} onUndo={() => void undoBulk()} onDone={() => setUndo(null)} />}
       {toast && <Toast text={toast} onDone={() => setToast(null)} />}
     </>
-  );
-}
-
-// 일괄 처리 결과 알림: 몇 초 동안 「되돌리기」를 누를 수 있다
-function UndoToast({ text, canUndo, onUndo, onDone }: { text: string; canUndo: boolean; onUndo: () => void; onDone: () => void }) {
-  useEffect(() => {
-    const t = setTimeout(onDone, 8000);
-    return () => clearTimeout(t);
-  }, [text]);
-  return (
-    <div className="toast-wrap" role="status">
-      <div className="toast">
-        <span className="tdot" />
-        {text}
-        {canUndo && (
-          <button className="btn btn-sm btn-text" type="button" onClick={onUndo} style={{ marginLeft: 8 }}>
-            되돌리기
-          </button>
-        )}
-      </div>
-    </div>
   );
 }

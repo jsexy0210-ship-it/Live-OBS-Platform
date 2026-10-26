@@ -60,7 +60,7 @@ export async function completeReceiptIssues(db: PrismaClient, ctx: TenantContext
 }
 
 // 상세(처리 창·보기): 직접 발행에 필요한 번호 전체와 사업자 정보. 번호를 연 사실은 로그 추적에 남긴다.
-export async function getSellerReceiptRequest(db: PrismaClient, ctx: TenantContext, id: string) {
+export async function getSellerReceiptRequest(db: PrismaClient, ctx: TenantContext, id: string, summary = false) {
   requireSellerRead(ctx, "RECEIPT_TAX");
   if (!isUuid(id)) return null;
   const r = await db.orderReceiptRequest.findFirst({
@@ -69,11 +69,11 @@ export async function getSellerReceiptRequest(db: PrismaClient, ctx: TenantConte
   });
   if (!r) return null;
   const { order, identitySealed, ...rest } = r;
-  const identity = openBillingKey(identitySealed, ctx.sellerId);
-  await writeAudit(db, { ...actorOf(ctx), action: "receipt_request.reveal_identity", targetType: "OrderReceiptRequest", targetId: id, after: { kind: r.kind } });
+  const identity = summary ? undefined : openBillingKey(identitySealed, ctx.sellerId);
+  if (!summary) await writeAudit(db, { ...actorOf(ctx), action: "receipt_request.reveal_identity", targetType: "OrderReceiptRequest", targetId: id, after: { kind: r.kind } });
   return {
     ...view(rest),
-    identity,
+    ...(!summary ? { identity } : {}),
     orderNo: order.orderNo,
     orderNoLabel: orderNoLabel(order.createdAt, order.orderNo),
     nickname: order.broadcastNicknameSnapshot,
