@@ -325,6 +325,85 @@ body {
 .shop-foot-by {
   margin: 0;
 }
+/* 바닥글 링크 줄 · 고객센터 칸(정본 .ft .lk · .ft .cs) */
+.shop-foot-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0 0 8px;
+  font-weight: 600;
+}
+.shop-app .shop-foot-links a {
+  color: var(--wds-label-normal);
+}
+.shop-app .shop-foot-links a.shop-foot-strong {
+  font-weight: 800;
+}
+.shop-foot-cs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 32px;
+  margin: 0 0 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--wds-line-solid-neutral);
+  border-bottom: 1px solid var(--wds-line-solid-neutral);
+}
+.shop-foot-cs > div,
+.shop-foot-cs > dl {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+.shop-foot-cs dt,
+.shop-foot-cs dd {
+  margin: 0;
+}
+.shop-foot-cs-v {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--wds-label-normal);
+}
+.shop-foot-sns {
+  margin-left: auto;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 8px;
+}
+.shop-app .shop-foot-sns a {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+.shop-app .shop-foot-kakao {
+  height: 32px;
+  padding: 0 14px;
+  background: #fee500;
+  border-radius: 4px;
+  color: #191919;
+  font-size: 13px;
+  font-weight: 700;
+}
+.shop-app .shop-foot-yt {
+  gap: 6px;
+  color: var(--wds-label-normal);
+  font-weight: 600;
+}
+.shop-foot-yt i {
+  width: 16px;
+  height: 12px;
+  border-radius: 3px;
+  background: #f00;
+  position: relative;
+}
+.shop-foot-yt i::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 3px;
+  border-left: 5px solid #fff;
+  border-top: 3px solid transparent;
+  border-bottom: 3px solid transparent;
+}
 /* 휴대폰 카테고리 서랍 */
 .shop-drawer-bg {
   position: fixed;
@@ -1276,19 +1355,40 @@ body {
   cursor: pointer;
 }
 
-/* IA ① LIVE 전면: 맨 위 띠 · 카드 배지 · 상세 안내 */
+/* IA ① LIVE 전면: 맨 위 띠(정본 SH-001-PC-IA: 연한 붉은 바탕 48px · LIVE 칩 · 굵은 제목 · 보조 글 · 오른쪽 끝 「방송 보기」) · 카드 배지 · 상세 안내 */
 .live-bar {
-  border-bottom: 1px solid var(--wds-line-solid-neutral);
+  background: #fff0f0;
+  border-bottom: 1px solid #f3c7c7;
 }
 .live-bar-in {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 40px;
+  gap: 12px;
+  min-height: 48px;
   font-size: 14px;
 }
-.live-bar-in b {
-  color: var(--wds-status-negative);
+.live-chip {
+  flex: none;
+  padding: 0 8px;
+  background: #d6232a;
+  color: #fff;
+  border-radius: 2px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 20px;
+}
+.live-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--wds-label-normal);
+}
+@media (max-width: 480px) {
+  .live-bar-in {
+    gap: 8px;
+  }
 }
 .live-text {
   flex: 1;
@@ -1296,19 +1396,40 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--wds-label-alternative);
 }
 .shop-app a.live-go {
   flex: none;
-  color: var(--wds-status-negative);
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 14px;
+  background: #111;
+  color: #fff;
+  border-radius: 4px;
+  font-size: 13px;
   font-weight: 700;
   text-decoration: none;
 }
-.live-dot {
-  flex: none;
-  width: 8px;
-  height: 8px;
+/* PC 카테고리 줄 오른쪽 끝 「방송 중」(정본 .cat .live) */
+.shop-app .shop-cats a.shop-cats-live {
+  margin-left: auto;
+  gap: 8px;
+  height: 24px;
+  padding: 0 8px;
+  background: #d6232a;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  border-radius: 2px;
+  text-decoration: none;
+}
+.shop-cats-live i {
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: var(--wds-status-negative);
+  background: #fff;
 }
 .pc-live {
   position: absolute;

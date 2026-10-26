@@ -1,13 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 
 // IA ① LIVE 전면: 방송 중이면 쇼핑몰 맨 위에 「지금 라이브 방송 중이에요 [방송 보기]」 띠를 둔다.
 // GET /api/shop/{slug}/live → { live, title, startedAt, watchUrl }. watchUrl이 없으면(유튜브 연결이 진행 중이 아님) 「방송 보기」는 숨긴다.
 // 레이아웃이 화면을 옮겨도 다시 그려지지 않으므로 30초마다 다시 확인한다(탭이 보일 때만).
 type Live = { live: boolean; title: string | null; watchUrl: string | null };
 
-export default function LiveBar({ slug }: { slug: string }) {
+// 띠와 카테고리 줄의 「방송 중」 표시가 한 번만 확인한 같은 값을 쓴다(ShopFrame이 LiveProvider로 감싼다)
+const LiveContext = createContext<Live | null>(null);
+export const useShopLive = () => useContext(LiveContext);
+
+export function LiveProvider({ slug, children }: { slug: string; children: React.ReactNode }) {
   const [s, setS] = useState<Live | null>(null);
   useEffect(() => {
     let alive = true;
@@ -30,13 +34,18 @@ export default function LiveBar({ slug }: { slug: string }) {
       document.removeEventListener("visibilitychange", load);
     };
   }, [slug]);
+  return <LiveContext.Provider value={s}>{children}</LiveContext.Provider>;
+}
+
+export default function LiveBar() {
+  const s = useShopLive();
   if (!s) return null;
   return (
     <div className="live-bar" role="status">
       <div className="shop-wrap live-bar-in">
-        <span className="live-dot" aria-hidden="true" />
-        <b>LIVE</b>
-        <span className="live-text">지금 라이브 방송 중이에요{s.title ? ` · ${s.title}` : ""}</span>
+        <span className="live-chip">LIVE</span>
+        <b className="live-title">지금 라이브 방송 중이에요</b>
+        {s.title && <span className="live-text">{s.title}</span>}
         {s.watchUrl && (
           <a className="live-go" href={s.watchUrl} target="_blank" rel="noopener noreferrer">
             방송 보기
