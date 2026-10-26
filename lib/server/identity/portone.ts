@@ -20,7 +20,7 @@ export function portOneConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Port
 }
 
 const FAILURE: ProviderFailure = { ok: false, reason: "provider_error" };
-const PURPOSES: readonly IdentityPurposeTag[] = ["BUYER_SIGNUP", "SELLER_REPRESENTATIVE", "PASSWORD_RESET", "STAFF_LINK", "ACCOUNT_RECOVERY"];
+const PURPOSES: readonly IdentityPurposeTag[] = ["BUYER_SIGNUP", "SELLER_REPRESENTATIVE", "PASSWORD_RESET", "STAFF_LINK", "ACCOUNT_RECOVERY", "BUYER_PHONE_CHANGE"];
 
 export class PortOneIdentityProvider implements IdentityProvider {
   readonly name = "portone";

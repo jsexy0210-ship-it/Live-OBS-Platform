@@ -524,6 +524,7 @@ enum IdentityVerificationPurpose {
   PASSWORD_RESET
   STAFF_LINK // 직원 본인확인 연결(로그인한 직원, subjectId = 직원 계정)
   ACCOUNT_RECOVERY // 쇼핑몰을 모르는 아이디 찾기·계정 고르기 비밀번호 찾기
+  BUYER_PHONE_CHANGE // 구매자 휴대폰 번호 변경 재인증(로그인한 회원, subjectId = 회원)
 }
 
 enum IdentityVerificationMethod {
