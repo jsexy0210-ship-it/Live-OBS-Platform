@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useUrlState } from "../../../../../lib/client/navigation";
-import { CursorPagination, Modal, PageHead } from "../../../../../components/admin-ui";
+import { CursorPagination, FormRow, ListTable, Modal, PageHead } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -79,7 +79,9 @@ const SHIPPING: { v: ShippingBenefit; label: string }[] = [
 // 혜택 저장 본문: 정액 할인이 아니면 금액은 보내지 않는다(서버가 0으로 둔다). 쿠폰을 비우면 연결을 푼다.
 const benefitBody = (b: Benefit | undefined) =>
   b ? { shippingBenefit: b.shippingBenefit, ...(b.shippingBenefit === "DISCOUNT" ? { shippingDiscount: Number(b.shippingDiscount || 0) } : {}), promotionCouponId: b.promotionCouponId || null } : {};
+const toBenefit = (g: Grade): Benefit => ({ id: g.id, shippingBenefit: g.shippingBenefit, shippingDiscount: g.shippingDiscount ? String(g.shippingDiscount) : "", promotionCouponId: g.promotionCouponId ?? "" });
 const digits = (v: string) => v.replace(/[^0-9]/g, "");
+const rate = (v: number) => (Number.isInteger(v) ? v.toFixed(1) : String(v));
 const windowText = (m: number) => (m === 0 ? "누적" : `최근 ${m}개월`);
 const kstDay = (iso: string) => kstText(iso).slice(5, 10).replace(".", "/");
 
@@ -87,8 +89,9 @@ export default function MemberGradesPage() {
   const { can } = useSeller();
   const canEdit = can("MEMBER_POINTS");
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number; error?: string } | { kind: "ok"; data: Data }>({ kind: "loading" });
-  const [edit, setEdit] = useState<{ id: string; displayName: string; minAmount: string }[]>([]);
-  const [benefit, setBenefit] = useState<Benefit[]>([]);
+  const [editing, setEditing] = useState<{ grade: Grade; displayName: string; minAmount: string; benefit: Benefit } | null>(null);
+  const [adding, setAdding] = useState<{ displayName: string; minAmount: string } | null>(null);
+  const [modalError, setModalError] = useState<string | null>(null);
   const [changes, setChanges] = useState<{ kind: "up" | "down"; rows: Change[]; nextCursor: string | null } | null>(null);
   const [history, setHistory] = useState<Record<ListKey, History>>({ recent: firstPage(), locked: firstPage(), changes: firstPage() });
   const readId = useRef(0), paging = useRef(false);
@@ -99,8 +102,6 @@ export default function MemberGradesPage() {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [newName, setNewName] = useState("");
-  const [newAmount, setNewAmount] = useState("");
   const [confirm, setConfirm] = useState<"recalc" | { grade: Grade } | null>(null);
 
   const load = useCallback(async () => {
@@ -112,8 +113,6 @@ export default function MemberGradesPage() {
     if (id !== readId.current) return;
     if (!r.ok) return setState({ kind: "error", status: r.status, error: r.error });
     setState({ kind: "ok", data: r.data });
-    setEdit(r.data.grades.map((g) => ({ id: g.id, displayName: g.displayName, minAmount: String(g.minAmount) })));
-    setBenefit(r.data.grades.map((g) => ({ id: g.id, shippingBenefit: g.shippingBenefit, shippingDiscount: g.shippingDiscount ? String(g.shippingDiscount) : "", promotionCouponId: g.promotionCouponId ?? "" })));
     setAuto(r.data.autoEnabled);
     setWindowMonths(r.data.windowMonths);
     setCadence(r.data.cadence);
@@ -131,17 +130,33 @@ export default function MemberGradesPage() {
     setBusy(false);
     if (!r.ok) {
       setConfirm(null);
-      setFailure(errorText(r, "저장하지 못했습니다. 잠시 뒤 다시 시도해 주십시오"));
+      const text = errorText(r, "저장하지 못했습니다. 잠시 뒤 다시 시도해 주십시오");
+      if (editing || adding) setModalError(text);
+      else setFailure(text);
       return false;
     }
     setConfirm(null);
+    setEditing(null);
+    setAdding(null);
+    setModalError(null);
     setToast(done(r.data));
     await load();
     return true;
   };
 
-  const save = () =>
-    void run("/api/seller/member-grades", "PUT", { autoEnabled: auto, windowMonths, cadence, demotion, grades: edit.map((e, i) => ({ id: e.id, displayName: e.displayName, minAmount: Number(e.minAmount || 0), ...benefitBody(benefit[i]) })) }, () => "등급 설정을 저장했습니다");
+  // 저장 본문: 산정 기준은 화면의 값, 등급은 저장된 값(수정 창에서 바꾼 등급만 덮어씀)
+  const gradesBody = (g: Grade[], override?: { id: string; displayName: string; minAmount: number; benefit: Benefit }) =>
+    g.map((x) => (override && override.id === x.id ? { id: x.id, displayName: override.displayName, minAmount: override.minAmount, ...benefitBody(override.benefit) } : { id: x.id, displayName: x.displayName, minAmount: x.minAmount, ...benefitBody(toBenefit(x)) }));
+  const saveCriteria = () => data && void run("/api/seller/member-grades", "PUT", { autoEnabled: auto, windowMonths, cadence, demotion, grades: gradesBody(data.grades) }, () => "등급 설정을 저장했습니다");
+  const resetCriteria = () => {
+    if (!data) return;
+    setAuto(data.autoEnabled);
+    setWindowMonths(data.windowMonths);
+    setCadence(data.cadence);
+    setDemotion(data.demotion);
+  };
+  const saveGrade = () =>
+    data && editing && void run("/api/seller/member-grades", "PUT", { autoEnabled: data.autoEnabled, windowMonths: data.windowMonths, cadence: data.cadence, demotion: data.demotion, grades: gradesBody(data.grades, { id: editing.grade.id, displayName: editing.displayName, minAmount: Number(editing.minAmount || 0), benefit: editing.benefit }) }, () => "등급 설정을 저장했습니다");
   const showChanges = async (kind: "up" | "down") => {
     if (paging.current) return;
     paging.current = true;
@@ -178,12 +193,7 @@ export default function MemberGradesPage() {
     setHistory(all => ({ ...all, [key]: { page: target, cursors: target > h.cursors.length ? [...h.cursors, cursor ?? undefined] : h.cursors } }));
   };
   const listPager = (key: ListKey, next: string | null | undefined) => history[key].page > 1 || next ? <CursorPagination page={history[key].page} visited={history[key].cursors.length} hasNext={!!next} onChange={n => void turnList(key, n)} onNext={() => void turnList(key, history[key].page + 1)} /> : null;
-  const add = async () => {
-    if (await run("/api/seller/member-grades", "POST", { displayName: newName, minAmount: Number(newAmount || 0) }, () => "등급을 추가했습니다")) {
-      setNewName("");
-      setNewAmount("");
-    }
-  };
+  const add = () => adding && void run("/api/seller/member-grades", "POST", { displayName: adding.displayName, minAmount: Number(adding.minAmount || 0) }, () => "등급을 추가했습니다");
 
   return (
     <>
@@ -192,16 +202,14 @@ export default function MemberGradesPage() {
         <PageHead
           title="회원 등급"
           actions={
-            data && canEdit ? (
-              <>
-                <button className="btn btn-out" type="button" disabled={busy} onClick={() => setConfirm("recalc")}>
-                  지금 재산정
-                </button>
-                <button className="btn" type="button" disabled={busy} onClick={save}>
-                  {busy ? "저장 중" : "저장"}
-                </button>
-              </>
-            ) : undefined
+            <>
+              <Link className="btn btn-out" href="/seller/rewards">
+                적립 정책
+              </Link>
+              <Link className="btn btn-out" href="/seller/coupons">
+                쿠폰
+              </Link>
+            </>
           }
         />
         {state.kind === "loading" && <StateBox kind="loading" what="회원 등급" />}
@@ -231,15 +239,18 @@ export default function MemberGradesPage() {
               </div>
               <div>
                 <span className="t-l2 c-alt">지난 재산정{data.lastRun ? ` (${data.lastRun.key})` : ""}</span>
-                <b className="num">{data.lastRun ? `승급 ${data.lastRun.promoted} · 강등 ${data.lastRun.demoted}` : "없음"}</b>
-                <span className="row" style={{ gap: 8 }}>
-                  <button className="btn btn-sm btn-text" type="button" onClick={() => void showChanges("up")}>
-                    승급 회원 보기
-                  </button>
-                  <button className="btn btn-sm btn-text" type="button" onClick={() => void showChanges("down")}>
-                    강등 회원 보기
-                  </button>
-                </span>
+                {data.lastRun ? (
+                  <>
+                    <button className="mg-link num" type="button" onClick={() => void showChanges("up")}>
+                      승급 {data.lastRun.promoted}
+                    </button>
+                    <button className="mg-link mg-link-sub t-c1 num" type="button" onClick={() => void showChanges("down")}>
+                      강등 {data.lastRun.demoted}
+                    </button>
+                  </>
+                ) : (
+                  <b className="num">없음</b>
+                )}
               </div>
               <div>
                 <span className="t-l2 c-alt">수동 고정</span>
@@ -247,171 +258,144 @@ export default function MemberGradesPage() {
               </div>
             </section>
 
-            <section className="card" style={{ overflow: "hidden" }} aria-label="등급 목록">
-              <div className="mg-grid mg-head">
-                <span>등급 이름</span>
-                <span>기준 금액 ({windowText(windowMonths)})</span>
-                <span className="mg-hide-m">회원 수</span>
-                <span className="mg-hide-m">적립률 (카드 · 무통장)</span>
-                <span className="mg-hide-m" />
-              </div>
-              {data.grades.map((g, i) => (
-                <div key={g.id} className="mg-grid" data-testid="grade-row">
-                  <input className="inp" aria-label={`${i + 1}번째 등급 이름`} maxLength={12} disabled={!canEdit} value={edit[i]?.displayName ?? ""} onChange={(e) => setEdit((x) => x.map((y, j) => (j === i ? { ...y, displayName: e.target.value } : y)))} />
-                  <input
-                    className="inp num"
-                    inputMode="numeric"
-                    aria-label={`${edit[i]?.displayName ?? ""} 기준 금액`}
-                    disabled={!canEdit || g.isBase}
-                    value={g.isBase ? "0" : (edit[i]?.minAmount ?? "")}
-                    onChange={(e) => setEdit((x) => x.map((y, j) => (j === i ? { ...y, minAmount: digits(e.target.value) } : y)))}
-                  />
-                  <span className="mg-hide-m num">{g.members.toLocaleString("ko-KR")}명</span>
-                  <span className="mg-hide-m t-c1 c-alt num">{g.rewardCard === null && g.rewardBankTransfer === null ? "적립 정책에서 설정" : `${g.rewardCard ?? 0}% · ${g.rewardBankTransfer ?? 0}%`}</span>
-                  <span className="mg-hide-m">
-                    {canEdit && !g.isBase && (
-                      <button className="btn btn-sm btn-text" type="button" style={{ color: "var(--neg-text)" }} disabled={busy} onClick={() => setConfirm({ grade: g })}>
-                        삭제
-                      </button>
-                    )}
+            <section className="mg-sec" aria-label="등급표">
+              <div className="mg-sec-h">
+                <h2 className="t-hl1">
+                  등급표 <span className="t-l2 c-alt fw5">높은 등급부터 판정 · 하나만</span>
+                </h2>
+                {canEdit && (
+                  <span className="row" style={{ gap: 8 }}>
+                    <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => { setModalError(null); setAdding({ displayName: "", minAmount: "" }); }}>
+                      등급 추가
+                    </button>
+                    <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => setConfirm("recalc")}>
+                      지금 재산정
+                    </button>
                   </span>
-                </div>
-              ))}
+                )}
+              </div>
+              <ListTable aria-label="등급표">
+                <table className="tbl">
+                  <thead>
+                    <tr>
+                      <th>등급</th>
+                      <th>기준</th>
+                      <th>적립률</th>
+                      <th>등급 쿠폰</th>
+                      <th>배송비</th>
+                      <th>회원 수</th>
+                      {canEdit && <th>관리</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...data.grades].reverse().map((g, i) => (
+                      <tr key={g.id} data-testid="grade-row">
+                        <td>
+                          <span className={`bdg nodot ${g.isBase || i >= 2 ? "b-gray" : i === 0 ? "b-info" : "b-warn"}`}>{g.displayName}</span>
+                        </td>
+                        <td className="col-text">{g.isBase ? "가입 즉시" : `${windowText(data.windowMonths)} ${won(g.minAmount)} 이상`}</td>
+                        <td className="num">{g.rewardCard === null && g.rewardBankTransfer === null ? "—" : `카드 ${rate(g.rewardCard ?? 0)}% · 무통장 ${rate(g.rewardBankTransfer ?? 0)}%`}</td>
+                        <td>{g.promotionCouponId ? (data.couponOptions.find((c) => c.id === g.promotionCouponId)?.name ?? "—") : "—"}</td>
+                        <td>{g.shippingBenefit === "FREE" ? "항상 무료" : g.shippingBenefit === "DISCOUNT" ? `${won(g.shippingDiscount)} 할인` : "기본"}</td>
+                        <td className="num">
+                          {g.members.toLocaleString("ko-KR")} ({data.memberTotal > 0 ? ((g.members / data.memberTotal) * 100).toFixed(1) : "0.0"}%)
+                        </td>
+                        {canEdit && (
+                          <td>
+                            <button className="btn btn-sm btn-out" type="button" aria-label={`${g.displayName} 수정`} disabled={busy} onClick={() => { setModalError(null); setEditing({ grade: g, displayName: g.displayName, minAmount: String(g.minAmount), benefit: toBenefit(g) }); }}>
+                              수정
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </ListTable>
+              <span className="t-c1 c-alt">적립률 수정은 적립 정책에서 · 등급 쿠폰은 쿠폰 관리의 「등급 달성 시 자동 지급」과 연결 · 등급은 10개까지</span>
+            </section>
+
+            <section className="mg-sec" aria-label="산정 기준">
+              <div className="mg-sec-h">
+                <h2 className="t-hl1">산정 기준</h2>
+              </div>
+              <table className="au-ft">
+                <tbody>
+                  <tr>
+                    <th scope="row">
+                      <label htmlFor="mg-window" className="req">
+                        기준 금액
+                      </label>
+                    </th>
+                    <td>
+                      <div className="au-ft-v">
+                        <select id="mg-window" className="inp" disabled={!canEdit} value={windowMonths} onChange={(e) => setWindowMonths(Number(e.target.value))}>
+                          {WINDOWS.map((w) => (
+                            <option key={w.v} value={w.v}>
+                              {w.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <p className="help au-ft-help">취소 · 환불 · 반품 제외 · 적립금 사용분 제외</p>
+                    </td>
+                    <th scope="row">
+                      <label htmlFor="mg-cadence" className="req">
+                        재산정 주기
+                      </label>
+                    </th>
+                    <td>
+                      <div className="au-ft-v">
+                        <select id="mg-cadence" className="inp" disabled={!canEdit} value={cadence} onChange={(e) => setCadence(e.target.value as Cadence)}>
+                          {CADENCES.map((c) => (
+                            <option key={c.v} value={c.v}>
+                              {c.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">
+                      <label htmlFor="mg-demotion">강등</label>
+                    </th>
+                    <td>
+                      <div className="au-ft-v">
+                        <select id="mg-demotion" className="inp" disabled={!canEdit} value={demotion} onChange={(e) => setDemotion(e.target.value as Demotion)}>
+                          {DEMOTIONS.map((d) => (
+                            <option key={d.v} value={d.v}>
+                              {d.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </td>
+                    <th scope="row">
+                      <span id="mg-auto-label">자동 재산정</span>
+                    </th>
+                    <td>
+                      <div className="au-ft-v">
+                        <button className={`sw${auto ? " on" : ""}`} type="button" role="switch" aria-checked={auto} aria-labelledby="mg-auto-label" disabled={!canEdit} onClick={() => setAuto(!auto)} />
+                      </div>
+                      <p className="help au-ft-help">끄면 주기가 와도 재산정하지 않습니다 · 고정한 회원은 제외</p>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
               {canEdit && (
-                <div className="mg-grid">
-                  <input className="inp" aria-label="새 등급 이름" placeholder="새 등급 이름" maxLength={12} value={newName} onChange={(e) => setNewName(e.target.value)} />
-                  <input className="inp num" inputMode="numeric" aria-label="새 등급 기준 금액" placeholder="기준 금액" value={newAmount} onChange={(e) => setNewAmount(digits(e.target.value))} />
-                  <span className="mg-hide-m" />
-                  <span className="mg-hide-m" />
-                  <button className="btn btn-sm btn-out" type="button" disabled={busy || !newName.trim()} onClick={() => void add()}>
-                    추가
+                <div className="au-ff">
+                  <button className="btn btn-lg" type="button" disabled={busy} onClick={saveCriteria}>
+                    {busy ? "저장 중" : "저장"}
+                  </button>
+                  <button className="btn btn-lg btn-out" type="button" disabled={busy} onClick={resetCriteria}>
+                    취소
                   </button>
                 </div>
               )}
             </section>
-            <span className="t-c1 c-alt">기준 금액은 높은 등급일수록 커야 합니다 · 첫 등급은 0원 · 등급은 10개까지 · 높은 등급부터 판정해 하나만 적용 · 적립률은 적립 정책에서 수정</span>
 
-            <section className="card" aria-label="등급 혜택" data-testid="grade-benefits">
-              <div className="col" style={{ gap: 2, padding: "12px 16px" }}>
-                <span className="t-hl2">등급 혜택</span>
-                <span className="t-c1 c-alt">배송비 혜택은 주문서 금액과 결제 금액에 똑같이 적용됩니다 · 승급 쿠폰은 승급할 때 한 번만 지급하고 같은 쿠폰은 다시 지급하지 않습니다 · 저장 버튼으로 함께 저장</span>
-              </div>
-              <div className="mg-ben mg-head">
-                <span>등급</span>
-                <span>배송비 혜택</span>
-                <span>할인 금액</span>
-                <span>승급 쿠폰</span>
-              </div>
-              {data.grades.map((g, i) => {
-                const b = benefit[i];
-                if (!b) return null;
-                const set = (patch: Partial<Benefit>) => setBenefit((x) => x.map((y, j) => (j === i ? { ...y, ...patch } : y)));
-                return (
-                  <div key={g.id} className="mg-ben" data-testid="benefit-row">
-                    <span className="t-l2 fw6">{edit[i]?.displayName ?? g.displayName}</span>
-                    <select className="inp" aria-label={`${g.displayName} 배송비 혜택`} disabled={!canEdit} value={b.shippingBenefit} onChange={(e) => set({ shippingBenefit: e.target.value as ShippingBenefit })}>
-                      {SHIPPING.map((o) => (
-                        <option key={o.v} value={o.v}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      className="inp num"
-                      inputMode="numeric"
-                      aria-label={`${g.displayName} 배송비 할인 금액`}
-                      placeholder="원"
-                      disabled={!canEdit || b.shippingBenefit !== "DISCOUNT"}
-                      value={b.shippingBenefit === "DISCOUNT" ? b.shippingDiscount : ""}
-                      onChange={(e) => set({ shippingDiscount: digits(e.target.value) })}
-                    />
-                    <select className="inp" aria-label={`${g.displayName} 승급 쿠폰`} disabled={!canEdit || g.isBase} value={b.promotionCouponId} onChange={(e) => set({ promotionCouponId: e.target.value })}>
-                      <option value="">없음</option>
-                      {data.couponOptions.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                          {c.usable ? "" : " (종료·중지)"}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                );
-              })}
-            </section>
-
-            <section className="card pad col" style={{ gap: 12 }} aria-label="산정 기준">
-              <div className="row between">
-                <span className="col" style={{ gap: 2 }}>
-                  <span className="t-hl2" id="mg-auto-label">
-                    자동 재산정
-                  </span>
-                  <span className="t-c1 c-alt">켜면 아래 기준으로 등급을 다시 정합니다 · 취소 · 환불 · 반품 제외 · 적립금 사용분 제외 · 고정한 회원은 제외</span>
-                </span>
-                <button className={`sw${auto ? " on" : ""}`} type="button" role="switch" aria-checked={auto} aria-labelledby="mg-auto-label" disabled={!canEdit} onClick={() => setAuto(!auto)} />
-              </div>
-              <div className="mg-opts">
-                <label className="fld">
-                  <span>기준 금액</span>
-                  <select className="inp" disabled={!canEdit} value={windowMonths} onChange={(e) => setWindowMonths(Number(e.target.value))}>
-                    {WINDOWS.map((w) => (
-                      <option key={w.v} value={w.v}>
-                        {w.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="fld">
-                  <span>재산정 주기</span>
-                  <select className="inp" disabled={!canEdit} value={cadence} onChange={(e) => setCadence(e.target.value as Cadence)}>
-                    {CADENCES.map((c) => (
-                      <option key={c.v} value={c.v}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="fld">
-                  <span>강등</span>
-                  <select className="inp" disabled={!canEdit} value={demotion} onChange={(e) => setDemotion(e.target.value as Demotion)}>
-                    {DEMOTIONS.map((d) => (
-                      <option key={d.v} value={d.v}>
-                        {d.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <span className="t-c1 c-alt">승급은 목표 등급까지 바로 올립니다 · 켜거나 주기를 바꾼 날은 이미 재산정한 것으로 보고 다음 주기부터 돕니다</span>
-            </section>
-
-            {canEdit && <MemberAdjust />}
-
-            <section className="card" aria-label="고정한 회원">
-              <div className="row between" style={{ padding: "12px 16px" }}>
-                <span className="t-hl2">고정한 회원 {data.lockedCount}명</span>
-                <span className="t-c1 c-alt">종료일까지 자동 재산정에서 제외</span>
-              </div>
-              {data.locked.length === 0 ? (
-                <div className="st" style={{ boxShadow: "none" }}>
-                  <span className="t">고정한 회원이 없습니다</span>
-                </div>
-              ) : (
-                data.locked.map((l) => (
-                  <div key={l.memberId} className="mg-log" data-testid="grade-locked-row">
-                    <span className="col" style={{ gap: 2 }}>
-                      <span>
-                        {l.nickname} · <span className="c-alt">{data.grades.find((g) => g.id === l.gradeId)?.displayName}</span>
-                      </span>
-                      <span className="t-c1 c-alt">
-                        {l.until ? `${kstDay(new Date(new Date(l.until).getTime() - 1).toISOString())}까지 고정` : "직접 풀 때까지 고정"}
-                        {l.reason ? ` · ${l.reason}` : ""}
-                      </span>
-                    </span>
-                  </div>
-                ))
-              )}
-              {listPager("locked", data.lockedNextCursor)}
-            </section>
+            {canEdit && <MemberAdjust data={data} pager={listPager("locked", data.lockedNextCursor)} />}
 
             {changes && (
               <section className="card" aria-label={changes.kind === "up" ? "승급 회원" : "강등 회원"} data-testid="grade-changes">
@@ -468,6 +452,116 @@ export default function MemberGradesPage() {
           </>
         )}
       </main>
+      {editing && data && (
+        <Modal labelId="mg-edit-title" busy={busy} onClose={() => setEditing(null)}>
+          <div className="modal-h">
+            <h2 className="modal-t" id="mg-edit-title">
+              등급 수정
+            </h2>
+          </div>
+          <div className="modal-b col" style={{ gap: 12 }}>
+            <table className="au-ft">
+              <tbody>
+                <FormRow label="등급 이름" required htmlFor="mg-edit-name">
+                  <input id="mg-edit-name" className="inp" maxLength={12} value={editing.displayName} onChange={(e) => setEditing({ ...editing, displayName: e.target.value })} />
+                </FormRow>
+                <FormRow label="기준 금액" required htmlFor="mg-edit-amount">
+                  <input id="mg-edit-amount" className="inp num" inputMode="numeric" disabled={editing.grade.isBase} value={editing.grade.isBase ? "0" : editing.minAmount} onChange={(e) => setEditing({ ...editing, minAmount: digits(e.target.value) })} />
+                  <span className="t-l2">원 이상</span>
+                </FormRow>
+                <FormRow label="배송비 혜택" htmlFor="mg-edit-ship">
+                  <select id="mg-edit-ship" className="inp" value={editing.benefit.shippingBenefit} onChange={(e) => setEditing({ ...editing, benefit: { ...editing.benefit, shippingBenefit: e.target.value as ShippingBenefit } })}>
+                    {SHIPPING.map((o) => (
+                      <option key={o.v} value={o.v}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </FormRow>
+                <FormRow label="할인 금액" htmlFor="mg-edit-discount">
+                  <input
+                    id="mg-edit-discount"
+                    className="inp num"
+                    inputMode="numeric"
+                    placeholder="0"
+                    disabled={editing.benefit.shippingBenefit !== "DISCOUNT"}
+                    value={editing.benefit.shippingBenefit === "DISCOUNT" ? editing.benefit.shippingDiscount : ""}
+                    onChange={(e) => setEditing({ ...editing, benefit: { ...editing.benefit, shippingDiscount: digits(e.target.value) } })}
+                  />
+                  <span className="t-l2">원</span>
+                </FormRow>
+                <FormRow label="등급 쿠폰" htmlFor="mg-edit-coupon" help="승급할 때 한 번만 지급하고 같은 쿠폰은 다시 지급하지 않습니다">
+                  <select id="mg-edit-coupon" className="inp" disabled={editing.grade.isBase} value={editing.benefit.promotionCouponId} onChange={(e) => setEditing({ ...editing, benefit: { ...editing.benefit, promotionCouponId: e.target.value } })}>
+                    <option value="">없음</option>
+                    {data.couponOptions.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                        {c.usable ? "" : " (종료·중지)"}
+                      </option>
+                    ))}
+                  </select>
+                </FormRow>
+              </tbody>
+            </table>
+            <div className="msg msg-info" role="note">
+              <span>적립률은 적립 정책에서 등급별로 수정합니다. 여기서는 기준 · 쿠폰 · 배송비 혜택만 바꿉니다.</span>
+            </div>
+            {modalError && (
+              <div className="msg msg-neg" role="alert">
+                <span>{modalError}</span>
+              </div>
+            )}
+          </div>
+          <div className="modal-f">
+            {!editing.grade.isBase && (
+              <button className="btn btn-out" type="button" style={{ marginRight: "auto", color: "var(--neg-text)" }} disabled={busy} onClick={() => setConfirm({ grade: editing.grade })}>
+                삭제
+              </button>
+            )}
+            <button className="btn btn-out" type="button" disabled={busy} onClick={() => setEditing(null)}>
+              취소
+            </button>
+            <button className="btn" type="button" disabled={busy || !editing.displayName.trim()} onClick={saveGrade}>
+              {busy ? "저장 중" : "저장"}
+            </button>
+          </div>
+        </Modal>
+      )}
+      {adding && data && (
+        <Modal labelId="mg-add-title" busy={busy} onClose={() => setAdding(null)}>
+          <div className="modal-h">
+            <h2 className="modal-t" id="mg-add-title">
+              등급 추가
+            </h2>
+          </div>
+          <div className="modal-b col" style={{ gap: 12 }}>
+            <table className="au-ft">
+              <tbody>
+                <FormRow label="등급 이름" required htmlFor="mg-add-name">
+                  <input id="mg-add-name" className="inp" placeholder="플래티넘" maxLength={12} value={adding.displayName} onChange={(e) => setAdding({ ...adding, displayName: e.target.value })} />
+                </FormRow>
+                <FormRow label="기준 금액" required htmlFor="mg-add-amount">
+                  <input id="mg-add-amount" className="inp num" inputMode="numeric" placeholder="3,000,000" value={adding.minAmount} onChange={(e) => setAdding({ ...adding, minAmount: digits(e.target.value) })} />
+                  <span className="t-l2">원 이상</span>
+                </FormRow>
+              </tbody>
+            </table>
+            {modalError && (
+              <div className="msg msg-neg" role="alert">
+                <span>{modalError}</span>
+              </div>
+            )}
+          </div>
+          <div className="modal-f">
+            <button className="btn btn-out" type="button" disabled={busy} onClick={() => setAdding(null)}>
+              취소
+            </button>
+            <button className="btn" type="button" disabled={busy || !adding.displayName.trim()} onClick={add}>
+              {busy ? "추가 중" : "추가"}
+            </button>
+          </div>
+        </Modal>
+      )}
       {confirm === "recalc" && data && (
         <Modal labelId="mg-recalc-title" busy={busy} onClose={() => setConfirm(null)}>
           <div className="modal-h">
@@ -519,8 +613,9 @@ export default function MemberGradesPage() {
   );
 }
 
-// 회원 검색은 읽기와 기존 회원 상세 진입만 제공한다. 실제 등급 변경은 상세에서 실행한다.
-function MemberAdjust() {
+// 수동 조정: 고정한 회원(또는 검색한 회원)을 표로 보고, 등급 조정은 기존 회원 상세의 조정 영역에서 한다.
+// 최근 N개월 구매 금액은 서버가 회원별로 주지 않아 「—」로 둔다(서버 필요).
+function MemberAdjust({ data, pager }: { data: Data; pager: React.ReactNode }) {
   const [u, setU] = useUrlState({ memberQ: "", memberSearch: "" });
   const params = useSearchParams().toString();
   const writeUrl = useRef(setU);
@@ -552,19 +647,45 @@ function MemberAdjust() {
     if (found.query) returnParams.set("memberQ", found.query); else returnParams.delete("memberQ");
   }
   const returnTo = `/seller/member-grades${returnParams.size ? `?${returnParams}` : ""}`;
-  return <section className="card" aria-label="회원 등급 조정">
-    <div className="row between" style={{ padding: "12px 16px", gap: 8, flexWrap: "wrap" }}>
-      <span className="t-hl2">수동 조정</span>
-      <form className="row" style={{ gap: 6 }} onSubmit={(e) => { e.preventDefault(); void search(q); }}>
-        <input className="inp inp-sm" aria-label="회원 닉네임 검색" placeholder="방송 닉네임" maxLength={30} value={q} onChange={(e) => setQ(e.target.value)} />
-        <button className="btn btn-sm btn-out" type="submit">검색</button>
+  const gradeName = (id: string) => data.grades.find((g) => g.id === id)?.displayName ?? "—";
+  const lockText = (l: Data["locked"][number] | undefined) => (l ? `${l.until ? `${kstDay(new Date(new Date(l.until).getTime() - 1).toISOString())}까지 고정` : "직접 풀 때까지 고정"}${l.reason ? ` · ${l.reason}` : ""}` : "—");
+  const rows = found
+    ? found.rows.map((m) => ({ id: m.id, nickname: m.broadcastNickname, gradeId: m.grade.id, lock: data.locked.find((l) => l.memberId === m.id) }))
+    : data.locked.map((l) => ({ id: l.memberId, nickname: l.nickname, gradeId: l.gradeId, lock: l }));
+  return (
+    <section className="mg-sec" aria-label="회원 등급 조정">
+      <div className="mg-sec-h">
+        <h2 className="t-hl1">수동 조정</h2>
+      </div>
+      <form className="mg-search" role="search" onSubmit={(e) => { e.preventDefault(); void search(q); }}>
+        <input className="inp" aria-label="회원 닉네임 검색" placeholder="회원 이름 · 닉네임" maxLength={30} value={q} onChange={(e) => setQ(e.target.value)} />
+        <button className="btn btn-out" type="submit">검색</button>
       </form>
-    </div>
-    {err && <div className="msg msg-neg" role="alert"><span>{err}</span></div>}
-    {found && found.rows.length === 0 && <div className="st" style={{ boxShadow: "none" }}><span className="t">찾는 회원이 없습니다</span></div>}
-    {found?.rows.map((member) => <div key={member.id} className="mg-adj" data-testid="adjust-row">
-      <span>{member.broadcastNickname}</span><span>{member.grade.displayName}</span>
-      <Link className="btn btn-sm btn-out" href={`/seller/members/${member.id}?${new URLSearchParams({ returnTo })}#member-grade-adjust`}>회원 상세</Link>
-    </div>)}
-  </section>;
+      {err && <div className="msg msg-neg" role="alert"><span>{err}</span></div>}
+      {rows.length === 0 ? (
+        <div className="st" style={{ boxShadow: "none" }}><span className="t">{found ? "찾는 회원이 없습니다" : "고정한 회원이 없습니다"}</span></div>
+      ) : (
+        <ListTable aria-label="수동 조정 회원 표">
+          <table className="tbl">
+            <thead>
+              <tr><th>회원</th><th>지금 등급</th><th>{windowText(data.windowMonths)}</th><th>조정</th><th>기간 · 사유</th></tr>
+            </thead>
+            <tbody>
+              {rows.map((m) => (
+                <tr key={m.id} data-testid={m.lock ? "grade-locked-row" : "adjust-row"}>
+                  <td>{m.nickname}</td>
+                  <td>{gradeName(m.gradeId)}</td>
+                  <td className="num">—</td>
+                  <td><Link className="btn btn-sm btn-out" href={`/seller/members/${m.id}?${new URLSearchParams({ returnTo })}#member-grade-adjust`}>회원 상세</Link></td>
+                  <td className="col-text">{lockText(m.lock)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </ListTable>
+      )}
+      {!found && pager}
+      <span className="t-c1 c-alt">수동 등급은 기간 동안 재산정에서 제외 · 끝나면 다음 재산정부터 기준 적용 · 로그 추적에 남음</span>
+    </section>
+  );
 }
