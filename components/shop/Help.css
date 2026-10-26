@@ -1,24 +1,39 @@
 /* 고객센터(HelpView.tsx)·공지 상세(NoticeView.tsx). 표는 열 제목 가운데·값 왼쪽 */
+/* 보드 SH-030(-PC): 탭 3개 균등 폭. PC는 상자 탭(선택은 검정 테두리·아래 두꺼운 선), 휴대폰은 밑줄 탭 */
 .help-tabs {
   display: flex;
-  gap: 4px;
   margin-bottom: 16px;
-  border-bottom: 1px solid var(--wds-line-solid-neutral);
 }
 .help-tabs button {
+  flex: 1;
   height: var(--shop-h);
   padding: 0 16px;
-  border: 0;
-  border-bottom: 2px solid transparent;
+  border: 1px solid var(--wds-line-solid-neutral);
   background: none;
+  box-shadow: inset 0 -2px 0 transparent;
   font: inherit;
-  font-weight: 600;
   color: var(--wds-label-alternative);
   cursor: pointer;
 }
 .help-tabs button[aria-selected="true"] {
-  color: var(--brand);
-  border-bottom-color: var(--brand);
+  border-color: var(--wds-label-normal);
+  box-shadow: inset 0 -2px 0 var(--wds-label-normal);
+  font-weight: 700;
+  color: var(--wds-label-normal);
+}
+@media (max-width: 767px) {
+  .help-tabs {
+    border-bottom: 1px solid var(--wds-line-solid-neutral);
+  }
+  .help-tabs button {
+    border: 0;
+    padding: 0 8px;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+  .help-tabs button[aria-selected="true"] {
+    border: 0;
+  }
 }
 .help-tbl .c-date {
   width: 96px;
@@ -29,17 +44,41 @@
 }
 .help-tbl th.c-date,
 .help-tbl td.c-date {
-  text-align: left;
+  text-align: right;
+}
+.help-tbl td.c-date {
+  font-size: 13px;
+  color: var(--wds-label-alternative);
 }
 .help-tag {
   display: inline-block;
+  flex: none;
   margin-right: 8px;
   padding: 1px 6px;
-  border-radius: 2px;
+  border-radius: 4px;
   background: var(--wds-fill-normal);
   font-size: 12px;
   font-weight: 600;
+  text-align: center;
   color: var(--wds-label-neutral);
+}
+@media (min-width: 768px) {
+  /* PC는 분류 배지를 같은 폭으로 둬 제목이 열처럼 정렬된다 */
+  .help-tag {
+    min-width: 48px;
+  }
+}
+.help-faq summary .help-tag {
+  min-width: 0;
+  white-space: nowrap;
+}
+.help-tag.is-bl {
+  background: #e8f0ff;
+  color: #1d4ed8;
+}
+.help-tag.is-y {
+  background: #fff4d6;
+  color: #8a5a00;
 }
 .help-search {
   display: flex;
@@ -91,16 +130,41 @@
   background: var(--wds-label-normal);
   color: #fff;
 }
+/* 보드 SH-030: 질문은 테두리 카드, 오른쪽 화살표(펼치면 뒤집힘) */
 .help-faqs {
-  border-top: 1px solid var(--wds-label-normal);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 .help-faq {
-  border-bottom: 1px solid var(--wds-line-solid-neutral);
+  overflow: hidden;
+  border: 1px solid var(--wds-line-solid-normal);
+  border-radius: var(--shop-r);
 }
 .help-faq summary {
-  padding: 14px 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
   font-weight: 600;
+  list-style: none;
   cursor: pointer;
+}
+.help-faq summary::-webkit-details-marker {
+  display: none;
+}
+.help-faq summary::after {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin: 0 4px 0 auto;
+  border-right: 2px solid var(--wds-label-alternative);
+  border-bottom: 2px solid var(--wds-label-alternative);
+  transform: rotate(45deg);
+}
+.help-faq[open] summary::after {
+  transform: rotate(-135deg);
 }
 .help-faq p {
   margin: 0;
@@ -132,6 +196,12 @@
   text-decoration: underline;
 }
 @media (max-width: 767px) {
+  .shop-app .help-tbl {
+    border-top: 0;
+  }
+  .shop-app .help-tbl thead {
+    display: none;
+  }
   /* cart-tbl의 작은 화면 카드형 배치가 제목·날짜 표를 좁히지 않게 한다 */
   .shop-app .help-tbl {
     display: table;
