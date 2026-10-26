@@ -408,7 +408,7 @@ export const BUYER_SIGNUP_STATUS: Record<BuyerSignupFailure, number> = {
 };
 
 // 가입을 끝내지 않은 본인확인 기록 비식별(PRODUCT_SCOPE 「동의 순서」·PRIVACY_CONSENT_TEMPLATE: 확인 시간이 끝나면 바로 지움).
-// 대상: 구매자 가입용이고 가입에 쓰지 않았으며(consumedAt 없음) 유효 시간(expiresAt)이 지났고 아직 비식별하지 않은 기록.
+// 대상: 구매자 가입용·번호 변경용이고 쓰지 않았으며(consumedAt 없음) 유효 시간(expiresAt)이 지났고 아직 비식별하지 않은 기록.
 // 이름·휴대폰·요청 휴대폰·생년월일·CI 해시·subjectId·동의·시작 브라우저 값(ownerTokenHash)을 비우고, 대행사에서 결과를 다시 조회하는
 // 열쇠인 requestId는 겹치지 않는 무작위 값으로 바꾼다. 행은 지우지 않는다(MASTER 결정 2026-10-03, Codex P1): 쇼핑몰·상태·요청 시각·요청 IP로
 // 같은 IP 하루 시작 횟수와 체험 한도(VERIFIED 건수)를 세므로, 지우거나 상태를 바꾸면 만료를 기다려 유료 문자를 다시 받는 남용이 된다.
@@ -417,9 +417,10 @@ export async function purgeUnfinishedSignupVerifications(db: Db, now?: Date, sel
   const at = now ?? (await dbNow(db));
   return db.$executeRaw`
     UPDATE "IdentityVerification"
-    SET "name" = NULL, "phone" = NULL, "requestedPhone" = NULL, "birthDate" = NULL, "ciHash" = NULL, "subjectId" = NULL,
+    SET "name" = NULL, "phone" = NULL, "requestedPhone" = NULL, "birthDate" = NULL, "ciHash" = NULL,
+        "subjectId" = CASE WHEN "purpose" = 'BUYER_PHONE_CHANGE' THEN "subjectId" ELSE NULL END,
         "signupConsent" = NULL, "ownerTokenHash" = NULL, "requestId" = 'anonymized:' || gen_random_uuid()::text, "anonymizedAt" = ${at}
-    WHERE "purpose" = 'BUYER_SIGNUP' AND "consumedAt" IS NULL AND "anonymizedAt" IS NULL AND "expiresAt" <= ${at}
+    WHERE "purpose" IN ('BUYER_SIGNUP', 'BUYER_PHONE_CHANGE') AND "consumedAt" IS NULL AND "anonymizedAt" IS NULL AND "expiresAt" <= ${at}
       AND (${sellerId ?? null}::uuid IS NULL OR "sellerId" = ${sellerId ?? null}::uuid)`;
 }
 
