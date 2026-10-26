@@ -138,6 +138,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/reviews/[reviewId]/hide": "STORE_OPERATIONS",
   "seller/reviews/[reviewId]/publish": "STORE_OPERATIONS",
   "seller/reviews/policy": "STORE_OPERATIONS",
+  "seller/reviews/export": "STORE_OPERATIONS",
   "seller/reviews/images/[imageId]": "STORE_OPERATIONS",
   "seller/inquiries": "STORE_OPERATIONS", // 구매자 문의(SA-046·047)
   "seller/inquiries/[inquiryId]": "STORE_OPERATIONS",
