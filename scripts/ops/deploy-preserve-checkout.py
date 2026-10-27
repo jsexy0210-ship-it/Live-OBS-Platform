@@ -5,6 +5,7 @@ No reset, clean, source relocation, rollback, or deletion. A failed post-check i
 an operator stop: automatically restoring HEAD could overwrite concurrent work.
 """
 import hashlib
+import json
 from contextlib import contextmanager
 import os
 from pathlib import Path
@@ -18,9 +19,9 @@ class Preserve(RuntimeError):
     pass
 
 
-def command(argv, allowed=(0,)):
+def command(argv, allowed=(0,), input=None):
     result = subprocess.run([str(arg) for arg in argv], capture_output=True,
-                            env={**os.environ, 'GIT_OPTIONAL_LOCKS': '0', 'GIT_NO_REPLACE_OBJECTS': '1'}, timeout=120)
+                            input=input, env={**os.environ, 'GIT_OPTIONAL_LOCKS': '0', 'GIT_NO_REPLACE_OBJECTS': '1'}, timeout=120)
     if result.returncode not in allowed:
         # Git diagnostics can contain original file names; do not print them.
         raise Preserve('COMMAND_REFUSED')
@@ -80,38 +81,113 @@ def originals(root):
     return records
 
 
-def active_work(root):
-    guards = Path(__file__).with_name('checkout-readonly-guards.sh')
-    state = command(['bash', '-euo', 'pipefail', '-c',
-                     'source "$1"; readonly_exact_active_ref "$2"',
-                     'deploy-preserve', guards, root]).strip()
+PROC_OBSERVER = rb'''
+set -eu
+target=$1
+export CHECKOUT_TARGET="$target"
+unknown() { printf UNKNOWN; exit 0; }
+within() { case "${1% (deleted)}" in "$target"|"$target"/*) printf yes; exit 0;; esac; }
+for proc in /host-proc/[0-9]*; do
+  [ -d "$proc" ] || continue
+  if ! maps=$(cat "$proc/maps" 2>/dev/null); then
+    [ ! -d "$proc" ] && continue
+    unknown
+  fi
+  if printf '%s\n' "$maps" | awk '
+    BEGIN { target=ENVIRON["CHECKOUT_TARGET"] }
+    NF >= 6 { for (i=0; i<5; i++) sub(/^[^[:space:]]+[[:space:]]+/, "");
+      sub(/ \(deleted\)$/, ""); if ($0 == target || index($0, target "/") == 1) found=1 }
+    END { exit(found ? 0 : 1) }'; then printf yes; exit 0; fi
+  if ! ls "$proc/fd" >/dev/null 2>&1; then
+    [ ! -d "$proc" ] && continue
+    unknown
+  fi
+  for entry in "$proc"/cwd "$proc"/root "$proc"/exe "$proc"/fd/*; do
+    # Kernel threads have no userspace links; empty fd globs are also absent.
+    if [ ! -L "$entry" ]; then [ ! -e "$entry" ] && continue; unknown; fi
+    if ! path=$(readlink "$entry" 2>/dev/null); then
+      [ ! -d "$proc" ] && break
+      [ ! -L "$entry" ] && continue
+      unknown
+    fi
+    within "$path"
+  done
+done
+printf no
+'''
+
+
+def observe_processes(root, image):
+    if not re.fullmatch(r'sha256:[0-9a-f]{64}', image):
+        raise Preserve('OBSERVER_IMAGE_UNKNOWN')
+    # The runner has Docker access, not sudo. Only this fixed read-only program
+    # gets ptrace-read and DAC-read access; no checkout/socket mount or app entrypoint.
+    container = os.fsdecode(command([
+        'docker', 'create', '--interactive', '--pull=never', '--network=none',
+        '--read-only', '--user=0:0', '--cap-drop=ALL', '--cap-add=SYS_PTRACE',
+        '--cap-add=DAC_READ_SEARCH', '--security-opt=no-new-privileges', '--pid=host',
+        '--pids-limit=32', '--memory=64m', '--mount=type=bind,source=/proc,target=/host-proc,readonly',
+        '--entrypoint=/bin/sh', image, '-s', '--', root,
+    ])).strip()
+    if not re.fullmatch(r'[0-9a-f]{64}', container):
+        raise Preserve('OBSERVER_CONTAINER_UNKNOWN')
+    try:
+        state = command(['docker', 'start', '--attach', '--interactive', container], input=PROC_OBSERVER).strip()
+    finally:
+        # Only the exact container just created above is removed, even on timeout.
+        command(['docker', 'rm', '--force', container])
+    if state == b'yes':
+        raise Preserve('ACTIVE_CHECKOUT_REFERENCE')
     if state != b'no':
         raise Preserve('ACTIVE_CHECKOUT_REFERENCE_OR_UNKNOWN')
-    # cwd/fd checks alone miss memory mapped files.
-    for proc in Path('/proc').iterdir():
-        if not proc.name.isdecimal():
-            continue
-        for line in (proc / 'maps').read_text().splitlines():
-            parts = line.split(maxsplit=5)
-            if len(parts) == 6 and parts[5].startswith('/'):
-                mapped = Path(parts[5].removesuffix(' (deleted)'))
-                if mapped == root or root in mapped.parents:
-                    raise Preserve('ACTIVE_CHECKOUT_MAPPING')
-    ids = command(['docker', 'ps', '-aq', '--filter', 'label=com.docker.compose.project=obs-web',
-                   '--filter', 'label=com.docker.compose.service=obs-web-monitor']).splitlines()
-    if len(ids) != 1 or not re.fullmatch(rb'[0-9a-f]{12,64}', ids[0]):
-        raise Preserve('DEPLOY_LEASE_LOCATION_UNKNOWN')
-    import json
-    mounts = json.loads(command(['docker', 'inspect', '--format', '{{json .Mounts}}', os.fsdecode(ids[0])]))
-    sources = [Path(m['Source']) for m in mounts if m.get('Destination') == '/data']
-    if len(sources) != 1 or sources[0].resolve(strict=True) != sources[0]:
+
+
+def observer_image():
+    for service in ('obs-web-app', 'obs-web-db'):
+        ids = command(['docker', 'ps', '-aq', '--filter', 'label=com.docker.compose.project=obs-web',
+                       '--filter', f'label=com.docker.compose.service={service}']).splitlines()
+        if len(ids) == 1 and re.fullmatch(rb'[0-9a-f]{12,64}', ids[0]):
+            return os.fsdecode(command(['docker', 'inspect', '--format', '{{.Image}}', os.fsdecode(ids[0])])).strip()
+        if ids:
+            raise Preserve('OBSERVER_IMAGE_UNKNOWN')
+    raise Preserve('OBSERVER_IMAGE_UNKNOWN')
+
+
+def deploy_lease(root):
+    compose = ['docker', 'compose', '-p', 'obs-web', '-f', root / 'deploy/docker-compose.yml']
+    if Path(os.environ.get('OBS_AVAIL_MARK', '/opt/obs/availability.on')).exists():
+        compose += ['-f', root / 'deploy/compose.availability.yml']
+    compose += ['--env-file', os.environ.get('ENV_FILE', '/opt/obs/.env'), '--profile', 'monitor']
+    config = json.loads(command([*compose, 'config', '--format', 'json', 'obs-web-monitor']))
+    volumes = config['services']['obs-web-monitor']['volumes']
+    sources = [Path(m['source']) for m in volumes if m.get('target') == '/data' and m.get('type') == 'bind']
+    if len(sources) != 1 or not sources[0].is_absolute() or sources[0].resolve() != sources[0]:
         raise Preserve('DEPLOY_LEASE_LOCATION_UNKNOWN')
     data = sources[0]
+    ids = command(['docker', 'ps', '-aq', '--filter', 'label=com.docker.compose.project=obs-web',
+                   '--filter', 'label=com.docker.compose.service=obs-web-monitor']).splitlines()
+    if len(ids) > 1 or (ids and not re.fullmatch(rb'[0-9a-f]{12,64}', ids[0])):
+        raise Preserve('DEPLOY_LEASE_LOCATION_UNKNOWN')
+    if ids:
+        mounts = json.loads(command(['docker', 'inspect', '--format', '{{json .Mounts}}', os.fsdecode(ids[0])]))
+        if [m['Source'] for m in mounts if m.get('Destination') == '/data'] != [str(data)]:
+            raise Preserve('DEPLOY_LEASE_LOCATION_UNKNOWN')
+    try:
+        data_mode = data.lstat().st_mode
+    except FileNotFoundError:
+        return  # Optional monitor has never created its canonical data directory.
+    if not stat.S_ISDIR(data_mode):
+        raise Preserve('DEPLOY_LEASE_LOCATION_UNKNOWN')
     marker, directory = data / 'deploy-in-progress', data / 'deploy-in-progress.d'
     if marker.exists() or marker.is_symlink() or directory.is_symlink():
         raise Preserve('DEPLOY_LEASE_PRESENT_OR_UNKNOWN')
     if directory.exists() and any(not p.name.startswith('.ended-') for p in directory.iterdir()):
         raise Preserve('DEPLOY_LEASE_PRESENT_OR_UNKNOWN')
+
+
+def active_work(root):
+    observe_processes(root, observer_image())
+    deploy_lease(root)
 
 
 @contextmanager
