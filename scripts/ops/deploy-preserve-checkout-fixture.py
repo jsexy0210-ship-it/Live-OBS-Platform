@@ -153,6 +153,16 @@ class PreserveCheckoutFixture(unittest.TestCase):
                     self.assertNotIn(str(self.root), ' '.join(arg for arg in create if arg.startswith('--mount')))
                     self.assertEqual(run.call_args_list[-1].args[0], ['docker', 'rm', '--force', container])
 
+    def test_observer_diagnostic_is_bounded_and_never_prints_raw_process_details(self):
+        image, container = 'sha256:' + 'a' * 64, 'b' * 64
+        safe = b'UNKNOWN|C/P1/D1/A1|EXE_LINK/ENOENT/P1/Z1/K0/S1|MAPS/EACCES/P1/Z0/K0/S1'
+        for state in (safe, b'UNKNOWN|private-host-path-and-process-details', safe + b'\nraw stderr'):
+            with self.subTest(valid=state == safe):
+                with patch.object(guard, 'command', side_effect=[container.encode(), state, b'']):
+                    with self.assertRaises(guard.Preserve) as result:
+                        guard.observe_processes(self.root, image)
+                    self.assertEqual(str(result.exception), 'ACTIVE_CHECKOUT_OBSERVATION_' + safe.decode() if state == safe else 'ACTIVE_CHECKOUT_REFERENCE_OR_UNKNOWN')
+
     def test_optional_monitor_uses_compose_data_without_container(self):
         data = self.root / 'optional-monitor'
         config = {'services': {'obs-web-monitor': {'volumes': [{'type': 'bind', 'source': str(data), 'target': '/data'}]}}}
