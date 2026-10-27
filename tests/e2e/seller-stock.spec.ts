@@ -647,7 +647,9 @@ test("1440·1024 PC 행: 상태 배지가 잘리지 않고 「이력」·「빼�
   for (const width of [1440, 1024]) {
     await page.setViewportSize({ width, height: 844 });
     const rows = page.getByTestId("stock-row");
+    await expect(rows.first()).toBeVisible();
     const n = Math.min(await rows.count(), 8);
+    expect(n).toBeGreaterThan(0);
     for (let i = 0; i < n; i++) {
       const r = rows.nth(i);
       const badge = (await r.locator(".c-state .bdg").boundingBox())!;
