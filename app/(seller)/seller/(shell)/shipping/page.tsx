@@ -52,13 +52,18 @@ export default function ShippingPage() {
   const { can, me } = useSeller();
   const canEdit = can("ORDER_SHIPPING") && !me.readOnly;
   const searchParams = useSearchParams().toString();
-  const returnTo = `/seller/shipping${searchParams ? `?${searchParams}` : ""}`;
   // 탭·검색어는 주소(쿼리 ?tab·?q)가 기준이다. 주문 상세에 갔다 Back으로 돌아와도 그대로 복원된다(UX 감사 9.3). 틀린 탭 값은 발송 대기로 본다
   const [u, setU] = useUrlState({ tab: "ready", q: "" });
   const tab: Tab = TABS.some((t) => t.key === u.tab) ? (u.tab as Tab) : "ready";
   const q = u.q;
   const setTab = (t: Tab) => setU({ tab: t });
   const [search, setSearch] = useState(q);
+  // debounce 전에 상세로 떠나도 현재 입력과 나머지 목록 조건을 복원한다.
+  const returnParams = new URLSearchParams(searchParams);
+  if (search.trim()) returnParams.set("q", search.trim());
+  else returnParams.delete("q");
+  const returnTo = `/seller/shipping${returnParams.size ? `?${returnParams}` : ""}`;
+  const saveListUrl = () => window.history.replaceState(window.history.state, "", returnTo);
   const setUrl = useRef(setU);
   setUrl.current = setU;
   useEffect(() => {
@@ -151,7 +156,7 @@ export default function ShippingPage() {
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            {selectable && (workIds.length > 0 ? <Link className="btn btn-sm" href={workHref}>선택 배송 작업 상세 ({workIds.length})</Link> : <button className="btn btn-sm" type="button" disabled>선택 배송 작업 상세</button>)}
+            {selectable && (workIds.length > 0 ? <Link className="btn btn-sm" href={workHref} onNavigate={saveListUrl}>선택 배송 작업 상세 ({workIds.length})</Link> : <button className="btn btn-sm" type="button" disabled>선택 배송 작업 상세</button>)}
           </div>
 
           {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
@@ -204,7 +209,7 @@ export default function ShippingPage() {
                           </td>
                           <td>
                             {r.shipment ? <div className="col" style={{ gap: 2 }}><span>{courierName(r.shipment.courier)}</span><span className="t-c1 c-alt num">{r.shipment.trackingNumber}</span></div> : "—"}
-                            <Link className="btn btn-sm btn-out" href={`/seller/shipping/${r.orderId}?${new URLSearchParams({ returnTo })}`}>배송 작업 상세</Link>
+                            <Link className="btn btn-sm btn-out" href={`/seller/shipping/${r.orderId}?${new URLSearchParams({ returnTo })}`} onNavigate={saveListUrl}>배송 작업 상세</Link>
                           </td>
                         </tr>
                       ))}
