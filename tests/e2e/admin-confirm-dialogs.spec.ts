@@ -28,26 +28,33 @@ test("도우미 답변 자료 삭제: 공통 확인 창, 취소하면 남고 지
   await page.getByRole("button", { name: "로그인" }).click();
   await expect(page).toHaveURL(/\/admin$/);
   await page.goto("/admin/support/assistant");
-  await page.getByRole("button", { name: "문서 등록" }).click();
+  await page.getByRole("link", { name: "문서 등록" }).click();
+  await expect(page).toHaveURL(/\/admin\/support\/assistant\/new(?:\?|$)/);
   await page.getByLabel("제목").fill(title);
   await page.getByLabel("내용").fill("시험용 내용입니다.");
   await page.getByRole("button", { name: "저장", exact: true }).click();
   const row = page.getByTestId("doc-row").filter({ hasText: title });
   await expect(row).toBeVisible();
+  await row.getByRole("link", { name: "상세", exact: true }).click();
+  await expect(page.getByLabel("제목")).toHaveValue(title);
 
   let nativeDialog = false;
   page.on("dialog", (d) => {
     nativeDialog = true;
     void d.dismiss();
   });
-  await row.getByRole("button", { name: "삭제" }).click();
+  await page.getByRole("button", { name: "삭제", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText(`「${title}」을(를) 지우시겠습니까?`);
   await dialog.getByRole("button", { name: "취소" }).click();
-  await expect(row).toBeVisible();
-  await row.getByRole("button", { name: "삭제" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByLabel("제목")).toHaveValue(title);
+  expect(await db.assistantDoc.count({ where: { title } })).toBe(1);
+  await page.getByRole("button", { name: "삭제", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "지우기" }).click();
-  await expect(page.getByText("자료를 지웠습니다.")).toBeVisible();
+  await expect(page).toHaveURL(/\/admin\/support\/assistant(?:\?|$)/);
+  await expect(page.getByRole("link", { name: "문서 등록" })).toBeVisible();
   await expect(row).toHaveCount(0);
+  expect(await db.assistantDoc.count({ where: { title } })).toBe(0);
   expect(nativeDialog).toBe(false);
 });

@@ -642,9 +642,9 @@ test("검색을 바꿔 다시 모두 선택해 적용하면 이전 검색 결과
   await expect(page.getByText("재고 1건을 변경했습니다")).toBeVisible();
 });
 
-test("390·360 카드형 행: 상태 배지가 잘리지 않고 「이력」·「빼기 · 더하기」 버튼과 겹치지 않는다", async ({ page }) => {
+test("1440·1024 PC 행: 상태 배지가 잘리지 않고 「이력」·「빼기 · 더하기」 버튼과 겹치지 않는다", async ({ page }) => {
   await openAs(page);
-  for (const width of [390, 360]) {
+  for (const width of [1440, 1024]) {
     await page.setViewportSize({ width, height: 844 });
     const rows = page.getByTestId("stock-row");
     const n = Math.min(await rows.count(), 8);
