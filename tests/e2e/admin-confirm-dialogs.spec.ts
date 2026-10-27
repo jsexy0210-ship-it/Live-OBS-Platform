@@ -35,6 +35,7 @@ test("도우미 답변 자료 삭제: 공통 확인 창, 취소하면 남고 지
   await page.getByRole("button", { name: "저장", exact: true }).click();
   const row = page.getByTestId("doc-row").filter({ hasText: title });
   await expect(row).toBeVisible();
+  const created = await db.assistantDoc.findFirstOrThrow({ where: { title, deletedAt: null } });
   await row.getByRole("link", { name: "상세", exact: true }).click();
   await expect(page.getByLabel("제목")).toHaveValue(title);
 
@@ -49,12 +50,16 @@ test("도우미 답변 자료 삭제: 공통 확인 창, 취소하면 남고 지
   await dialog.getByRole("button", { name: "취소" }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByLabel("제목")).toHaveValue(title);
-  expect(await db.assistantDoc.count({ where: { title } })).toBe(1);
+  expect(await db.assistantDoc.findUniqueOrThrow({ where: { id: created.id } })).toEqual(created);
   await page.getByRole("button", { name: "삭제", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "지우기" }).click();
   await expect(page).toHaveURL(/\/admin\/support\/assistant(?:\?|$)/);
   await expect(page.getByRole("link", { name: "문서 등록" })).toBeVisible();
   await expect(row).toHaveCount(0);
-  expect(await db.assistantDoc.count({ where: { title } })).toBe(0);
+  expect(await db.assistantDoc.count({ where: { id: created.id, deletedAt: null } })).toBe(0);
+  const removed = await db.assistantDoc.findUniqueOrThrow({ where: { id: created.id } });
+  expect(removed.deletedAt).not.toBeNull();
+  expect(removed.published).toBe(false);
+  expect(removed.version).toBe(created.version + 1);
   expect(nativeDialog).toBe(false);
 });
