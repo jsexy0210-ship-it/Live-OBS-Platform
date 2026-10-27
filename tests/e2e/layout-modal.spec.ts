@@ -12,21 +12,34 @@ const password = randomBytes(12).toString("base64url");
 const run = randomBytes(4).toString("hex");
 const email = `modal-super-${run}@example.com`;
 let db: PrismaClient;
+let sellerId: string;
+let subscriptionId: string;
+let paymentId: string;
 let refundId: string;
 
 test.beforeAll(async () => {
   db = new PrismaClient({ datasources: { db: { url: assertTestDatabaseUrl(process.env.DATABASE_URL) } } });
   await db.platformAdmin.create({ data: { email, passwordHash: await hashPassword(password), name: "대표", role: "SUPER_ADMIN" } });
   const seller = await db.seller.create({ data: { slug: `modal-${run}`, shopName: `모달 시험 ${run}`, status: "ACTIVE", approvedAt: new Date() } });
+  sellerId = seller.id;
   const plan = await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "STANDARD" } });
   const subscription = await db.sellerSubscription.create({ data: { sellerId: seller.id, planId: plan.id } });
+  subscriptionId = subscription.id;
   const start = new Date();
   const payment = await db.subscriptionPayment.create({ data: { sellerId: seller.id, subscriptionId: subscription.id, amount: 199_000, status: "PAID", periodStart: start, periodEnd: new Date(start.getTime() + 30 * 86_400_000), providerPaymentId: `fake-modal-${run}`, paidAt: start } });
+  paymentId = payment.id;
   const refund = await db.subscriptionRefund.create({ data: { sellerId: seller.id, paymentId: payment.id, amount: 199_000, source: "ADMIN", reason: "공통 모달 취소 시험" } });
   refundId = refund.id;
 });
 test.afterAll(async () => {
-  await db.$disconnect();
+  try {
+    if (refundId) await db.subscriptionRefund.delete({ where: { id: refundId } });
+    if (paymentId) await db.subscriptionPayment.delete({ where: { id: paymentId } });
+    if (subscriptionId) await db.sellerSubscription.delete({ where: { id: subscriptionId } });
+    if (sellerId) await db.seller.delete({ where: { id: sellerId } });
+  } finally {
+    await db?.$disconnect();
+  }
 });
 
 async function open(page: Page, width: number) {
