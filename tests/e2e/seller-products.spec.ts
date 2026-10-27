@@ -41,7 +41,7 @@ const searchBox = (page: Page) => page.getByRole("search", { name: "목록 조�
 async function searchFor(page: Page, text: string) {
   await page.getByLabel("상품 검색").fill(text);
   await Promise.all([
-    page.waitForResponse((r) => r.url().includes("/api/seller/products?") && new URL(r.url()).searchParams.get("q") === text.trim()),
+    page.waitForResponse((r) => r.url().includes("/api/seller/products?") && new URL(r.url()).searchParams.get("q") === (text.trim() || null)),
     searchBox(page).getByRole("button", { name: "검색", exact: true }).click(),
   ]);
 }
