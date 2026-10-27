@@ -50,6 +50,7 @@ jobs:
       DATABASE_URL: postgresql://live_obs:live_obs@localhost:5432/live_obs_test
       # seller-youtube·broadcast-chat 시험은 서버와 시험 프로세스 양쪽에 같은 YOUTUBE_API_KEY(아무 값)를 요구한다. 실제 호출은 없다.
       YOUTUBE_API_KEY: e2e-dummy
+      SCHEDULER_DISABLED: "1"
       E2E_SUITE: ${{ inputs.suite || 'full' }}
     steps:
       - name: Validate suite
