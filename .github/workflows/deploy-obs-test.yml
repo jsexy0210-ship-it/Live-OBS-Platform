@@ -49,11 +49,54 @@ jobs:
           esac
           test -f "$ENV_FILE" || { echo "$ENV_FILE 이 없어요(docs/DEPLOY.md 「서버 .env」)."; exit 1; }
 
-      - name: Checkout
-        uses: actions/checkout@v5
+      # Persistent checkout contains operator-owned originals. Never let the
+      # checkout action clean/reset it, including its fallback removal path.
+      - name: Read pinned checkout guard
+        id: isolated
+        uses: actions/github-script@v8
         with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
+          script: |
+            const fs = require('node:fs/promises');
+            const path = require('node:path');
+            const crypto = require('node:crypto');
+            const temporary = process.env.RUNNER_TEMP;
+            const sha = context.sha;
+            const name = `deploy-preserve-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}`;
+            if (!temporary || !path.isAbsolute(temporary) || temporary === '/' ||
+                await fs.realpath(temporary) !== temporary || !/^[0-9a-f]{40}$/.test(sha) ||
+                !/^deploy-preserve-[0-9]+-[0-9]+$/.test(name)) throw new Error('Runner source context invalid');
+            const info = await fs.lstat(temporary);
+            if (!info.isDirectory() || info.uid !== process.getuid() || (info.mode & 0o022))
+              throw new Error('Runner temp ownership unknown');
+            const helper = path.join(temporary, name);
+            await fs.mkdir(helper, {mode: 0o700});
+            for (const file of ['scripts/ops/deploy-preserve-checkout.py', 'scripts/ops/checkout-readonly-guards.sh']) {
+              let data;
+              try {
+                ({data} = await github.rest.repos.getContent({...context.repo, path: file, ref: sha}));
+              } catch {
+                throw new Error('Pinned source read failed');
+              }
+              if (Array.isArray(data) || data.type !== 'file' || data.path !== file ||
+                  data.name !== path.basename(file) || data.encoding !== 'base64' ||
+                  !Number.isSafeInteger(data.size) || data.size < 1 || data.size > 1048576 ||
+                  !/^[0-9a-f]{40}$/.test(data.sha) || typeof data.content !== 'string')
+                throw new Error('Pinned source schema invalid');
+              const encoded = data.content.replace(/\n/g, '');
+              const body = Buffer.from(encoded, 'base64');
+              const blob = crypto.createHash('sha1').update(`blob ${body.length}\0`).update(body).digest('hex');
+              if (body.length !== data.size || body.toString('base64') !== encoded || blob !== data.sha)
+                throw new Error('Pinned source integrity invalid');
+              await fs.writeFile(path.join(helper, path.basename(file)), body, {flag: 'wx', mode: 0o600});
+            }
+            core.setOutput('path', name);
+
+      - name: Preserve originals and update checkout
+        id: preserved
+        working-directory: ${{ runner.temp }}
+        env:
+          HELPER_NAME: ${{ steps.isolated.outputs.path }}
+        run: python3 -B "${RUNNER_TEMP:?}/${HELPER_NAME:?}/deploy-preserve-checkout.py"
 
       # 디스크가 모자라면 빌드 도중 죽지 않게 여기서 먼저 멈춘다(docs/DEPLOY.md 「디스크 정리」).
       - name: Check disk space
@@ -341,14 +384,14 @@ jobs:
         run: scripts/ops/disk-cleanup.sh --check-after-deploy
 
       - name: Show status on failure
-        if: failure()
+        if: failure() && steps.preserved.outcome == 'success'
         run: |
           docker compose -p obs-web -f deploy/docker-compose.yml --env-file "$ENV_FILE" ps || true
           docker compose -p obs-web -f deploy/docker-compose.yml --env-file "$ENV_FILE" logs --tail 80 obs-web-migrate obs-web-app || true
 
       # 성공·실패·취소 어느 쪽이든 같은 키의 표시를 끈다. 이 단계가 실패해도 배포 결과는 바꾸지 않는다.
       - name: Unmark deploying (monitor)
-        if: always()
+        if: always() && steps.preserved.outcome == 'success'
         env:
           MARK_KEY: workflow-${{ github.run_id }}-${{ github.run_attempt }}
         run: |

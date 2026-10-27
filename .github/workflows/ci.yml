@@ -82,6 +82,8 @@ jobs:
         run: |
           bash scripts/ops/disk-cleanup-active-ref-fixture.sh
           python3 -B scripts/ops/cache-only-cleanup-fixture.py
+      - name: Persistent deploy checkout safety fixtures
+        run: python3 -B scripts/ops/deploy-preserve-checkout-fixture.py
       - name: Approved disk preview safety fixture
         run: |
           bash scripts/ops/disk-optimization-plan-fixture.sh
