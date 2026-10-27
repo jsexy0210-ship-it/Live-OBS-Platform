@@ -50,6 +50,65 @@ test.describe("AU-013 응답 대역 UI", () => {
     await expect(page.locator('input[type="password"]')).toHaveCount(0);
   });
 
+  for (const previous of ["invalid", "done"] as const) {
+    test(`같은 탭에서 ${previous} 뒤 새 초대 링크를 열면 빈 입력으로 돌아온다`, async ({ page }) => {
+      await page.route(`**${acceptPath}`, (route) => route.fulfill(previous === "invalid"
+        ? { status: 400, json: { error: "invalid_invite" } }
+        : { json: { ok: true, shopSlug: "previous-invite" } }));
+      await page.goto(`/seller/invite#${fixtureToken}`);
+      await fill(page);
+      await submit(page);
+      await expect(page.locator(".login-card").getByRole(previous === "invalid" ? "alert" : "status"))
+        .toContainText(previous === "invalid" ? "이 초대 링크는 쓸 수 없습니다" : "비밀번호를 정했습니다");
+      await page.goto(`/seller/invite#${fixtureToken}-new`);
+      await expect(page.getByLabel("새 비밀번호", { exact: true })).toHaveValue("");
+      await expect(page.getByLabel("새 비밀번호 확인", { exact: true })).toHaveValue("");
+      await expect(page.locator(".login-card").getByRole("alert")).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "비밀번호 정하기", exact: true })).toBeEnabled();
+    });
+  }
+
+  for (const previous of ["invalid", "done"] as const) {
+    test(`새 초대 요청 중 이전 ${previous} 응답은 입력·처리 상태·URL을 바꾸지 않는다`, async ({ page }) => {
+      const nextToken = `${fixtureToken}-new`;
+      let finishPrevious: (() => void) | undefined;
+      let finishNext: (() => void) | undefined;
+      let calls = 0;
+      await page.route(`**${acceptPath}`, async (route) => {
+        calls++;
+        const body = route.request().postDataJSON();
+        const isPrevious = body.token === fixtureToken;
+        expect(isPrevious || body.token === nextToken).toBe(true);
+        await new Promise<void>((resolve) => { if (isPrevious) finishPrevious = resolve; else finishNext = resolve; });
+        await route.fulfill(isPrevious && previous === "invalid"
+          ? { status: 400, json: { error: "invalid_invite" } }
+          : { json: { ok: true, shopSlug: isPrevious ? "previous-invite" : "next-invite" } });
+      });
+      await page.goto(`/seller/invite#${fixtureToken}`);
+      await fill(page);
+      await submit(page);
+      await expect.poll(() => !!finishPrevious).toBe(true);
+      await page.goto(`/seller/invite#${nextToken}`);
+      await expect(page.getByLabel("새 비밀번호", { exact: true })).toBeEnabled();
+      await expect(page.getByLabel("새 비밀번호", { exact: true })).toHaveValue("");
+      await fill(page, `${password}-new`);
+      await submit(page);
+      await expect.poll(() => !!finishNext).toBe(true);
+      const oldResponse = page.waitForResponse((response) => response.url().endsWith(acceptPath));
+      finishPrevious!();
+      await oldResponse;
+      await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      await expect(page.getByLabel("새 비밀번호", { exact: true })).toHaveValue(`${password}-new`);
+      await expect(page.getByRole("button", { name: "비밀번호를 정하고 있습니다" })).toBeDisabled();
+      expect(new URL(page.url()).hash).toBe(`#${nextToken}`);
+      finishNext!();
+      await expect(page.locator(".login-card").getByRole("status")).toContainText("비밀번호를 정했습니다");
+      await expect(page.getByRole("link", { name: "로그인", exact: true })).toHaveAttribute("href", "/seller/login?shopSlug=next-invite");
+      expect(calls).toBe(2);
+      expect(new URL(page.url()).hash).toBe("");
+    });
+  }
+
   test("응답 유실 뒤 같은 요청 재전송·처리 중 중복 차단·정상 로그인 연결", async ({ page }) => {
     let calls = 0;
     let finish: (() => void) | undefined;
