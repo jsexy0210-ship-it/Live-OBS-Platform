@@ -5,19 +5,123 @@ Windows cannot exercise Linux flock/proc. Only those host observations are
 substituted there; Git checkout, source contents and failure preservation are real.
 """
 import contextlib
+from datetime import datetime, timezone
+from functools import wraps
 import importlib.util
 import os
 import json
+import re
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('preserve', Path(__file__).with_name('deploy-preserve-checkout.py'))
 guard = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(guard)
+
+
+def owned_audit_denial(records, observations):
+    for record in records[:16]:
+        message = record.get('MESSAGE', '')
+        if not isinstance(message, str) or not all(term in message for term in ('apparmor="DENIED"', 'operation="ptrace"')):
+            continue
+        if not all(re.search(field + r'="[^"\n]*\bread\b[^"\n]*"', message) for field in ('requested_mask', 'denied_mask')):
+            continue
+        pid = re.search(r'\bpid=([0-9]+)\b', message)
+        try:
+            stamp = int(record['__REALTIME_TIMESTAMP']) / 1_000_000
+        except (KeyError, ValueError, TypeError):
+            continue
+        if pid and any(start <= stamp <= end and int(pid[1]) in owned for start, end, owned in observations):
+            return True
+    return False
+
+
+def audit_summary(start, end, observations, run=subprocess.run):
+    # CI fixture only: the TEST runner has no sudo. GitHub's disposable hosted
+    # Linux runner may already permit this exact readonly administrative command.
+    since = datetime.fromtimestamp(max(start - 1, end - 59), timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+    until = datetime.fromtimestamp(end + 1, timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+    args = ['/usr/bin/journalctl', '-k', '--since', since, '--until', until,
+            '--grep', 'apparmor="DENIED".*operation="ptrace"', '-n', '16', '--output=json', '--no-pager']
+    admin = False
+    try:
+        if os.environ.get('GITHUB_ACTIONS') == 'true' and os.environ.get('RUNNER_ENVIRONMENT') == 'github-hosted':
+            permission = run(['/usr/bin/sudo', '-n', '-l', '--', *args], capture_output=True, timeout=5)
+            admin = permission.returncode == 0
+        result = run((['/usr/bin/sudo', '-n', '--'] if admin else []) + args, capture_output=True, timeout=10)
+        if result.returncode != 0:
+            return 'UNAVAILABLE', False, admin, 'AUDIT_UNAVAILABLE'
+        lines = result.stdout.splitlines()
+        records = []
+        for line in lines[:16]:
+            try:
+                record = json.loads(line)
+                if isinstance(record, dict):
+                    records.append(record)
+            except (ValueError, TypeError):
+                pass
+        # No readable matching records cannot establish that auditing was available.
+        if not records:
+            return 'UNCONFIRMED', False, admin, 'AUDIT_UNCONFIRMED'
+        matched = owned_audit_denial(records, observations)
+        return 'AVAILABLE', matched, admin, 'OWNED_APPARMOR_PTRACE_READ_DENIED' if matched else 'AUDIT_UNCONFIRMED'
+    except (OSError, subprocess.SubprocessError):
+        return 'UNAVAILABLE', False, admin, 'AUDIT_UNAVAILABLE'
+
+
+def audit_existing_observers(test):
+    @wraps(test)
+    def wrapped(*args, **kwargs):
+        original = guard.command
+        observations = []
+        start = time.time()
+
+        def command(argv, allowed=(0,), input=None):
+            if [str(arg) for arg in argv[:4]] != ['docker', 'start', '--attach', '--interactive']:
+                return original(argv, allowed=allowed, input=input)
+            container = str(argv[-1])
+            if not re.fullmatch(r'[0-9a-f]{64}', container):
+                return original(argv, allowed=allowed, input=input)
+            owned = set()
+            stop = threading.Event()
+            began = time.time()
+
+            def sample():
+                for _ in range(4):
+                    if stop.is_set():
+                        return
+                    try:
+                        result = subprocess.run(['docker', 'top', container, '-eo', 'pid'], capture_output=True, timeout=5)
+                        if result.returncode == 0:
+                            for row in result.stdout.splitlines()[1:33]:
+                                if re.fullmatch(rb'\s*[1-9][0-9]*\s*', row):
+                                    owned.add(int(row))
+                    except (OSError, subprocess.SubprocessError):
+                        pass
+                    stop.wait(0.05)
+
+            sampler = threading.Thread(target=sample, daemon=True)
+            sampler.start()
+            try:
+                return original(argv, allowed=allowed, input=input)
+            finally:
+                stop.set()
+                sampler.join(timeout=6)
+                observations.append((began, time.time() + 1, owned.copy()))
+        try:
+            with patch.object(guard, 'command', command):
+                return test(*args, **kwargs)
+        finally:
+            access, matched, admin, reason = audit_summary(start, time.time(), observations)
+            # These are the only outputs; never print raw records or sampled PIDs.
+            print(f'CI_AUDIT access={access} owned_ptrace_read_denied={int(matched)} existing_admin_read={int(admin)} reason={reason} negative_is_not_absence=1', flush=True)
+    return wrapped
 
 
 class PreserveCheckoutFixture(unittest.TestCase):
@@ -163,6 +267,35 @@ class PreserveCheckoutFixture(unittest.TestCase):
                         guard.observe_processes(self.root, image)
                     self.assertEqual(str(result.exception), 'ACTIVE_CHECKOUT_OBSERVATION_' + safe.decode() if state == safe else 'ACTIVE_CHECKOUT_REFERENCE_OR_UNKNOWN')
 
+    def test_audit_requires_exact_owned_pid_time_and_ptrace_read(self):
+        record = {'MESSAGE': 'apparmor="DENIED" operation="ptrace" pid=123 comm="synthetic" requested_mask="read" denied_mask="read"', '__REALTIME_TIMESTAMP': '2000000'}
+        self.assertTrue(owned_audit_denial([record], [(1, 3, {123})]))
+        self.assertFalse(owned_audit_denial([record], [(1, 3, {456})]))
+        self.assertFalse(owned_audit_denial([record], [(3, 4, {123})]))
+        self.assertFalse(owned_audit_denial([{**record, 'MESSAGE': record['MESSAGE'].replace('"read"', '"trace"')}], [(1, 3, {123})]))
+        self.assertFalse(owned_audit_denial([{**record, 'MESSAGE': record['MESSAGE'].replace('denied_mask="read"', 'denied_mask="trace"')}], [(1, 3, {123})]))
+
+    def test_audit_access_failure_or_missing_records_is_not_absence_evidence(self):
+        with patch.dict(os.environ, {'GITHUB_ACTIONS': 'false'}):
+            for result, expected in ((subprocess.CompletedProcess([], 1, b'', b'private details'), 'AUDIT_UNAVAILABLE'),
+                                     (subprocess.CompletedProcess([], 0, b'', b''), 'AUDIT_UNCONFIRMED')):
+                summary = audit_summary(1, 2, [], run=lambda *args, **kwargs: result)
+                self.assertEqual(summary[-1], expected)
+                self.assertFalse(summary[1])
+
+    def test_audit_checks_existing_hosted_privilege_for_only_the_fixed_read(self):
+        calls = []
+        def run(argv, **kwargs):
+            calls.append(argv)
+            return subprocess.CompletedProcess(argv, 0, b'', b'')
+        with patch.dict(os.environ, {'GITHUB_ACTIONS': 'true', 'RUNNER_ENVIRONMENT': 'github-hosted'}):
+            self.assertEqual(audit_summary(1, 2, [], run=run), ('UNCONFIRMED', False, True, 'AUDIT_UNCONFIRMED'))
+        self.assertEqual(calls[0][:5], ['/usr/bin/sudo', '-n', '-l', '--', '/usr/bin/journalctl'])
+        self.assertEqual(calls[1][:4], ['/usr/bin/sudo', '-n', '--', '/usr/bin/journalctl'])
+        self.assertEqual(calls[0][4:], calls[1][3:])
+        self.assertEqual(calls[1][calls[1].index('-n') + 1], '--')
+        self.assertIn('16', calls[1])
+
     def test_optional_monitor_uses_compose_data_without_container(self):
         data = self.root / 'optional-monitor'
         config = {'services': {'obs-web-monitor': {'volumes': [{'type': 'bind', 'source': str(data), 'target': '/data'}]}}}
@@ -188,6 +321,7 @@ class PreserveCheckoutFixture(unittest.TestCase):
                     guard.deploy_lease(self.root)
 
     @unittest.skipUnless(sys.platform == 'linux', 'Actual host proc/Docker permissions require Linux')
+    @audit_existing_observers
     def test_real_unprivileged_runner_observes_root_cwd_fd_and_mapping(self):
         self.assertNotEqual(os.geteuid(), 0, 'This fixture must exercise a non-root runner')
         # Already pulled by this CI job's existing PostgreSQL service. Never pull.
