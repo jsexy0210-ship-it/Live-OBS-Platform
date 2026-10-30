@@ -3,6 +3,7 @@
 
 No reset, clean, source relocation, rollback, or deletion. A failed post-check is
 an operator stop: automatically restoring HEAD could overwrite concurrent work.
+The lease coordinates cooperating deploys; it cannot exclude arbitrary host writers.
 """
 import hashlib
 import json
@@ -19,9 +20,9 @@ class Preserve(RuntimeError):
     pass
 
 
-def command(argv, allowed=(0,), input=None):
+def command(argv, allowed=(0,)):
     result = subprocess.run([str(arg) for arg in argv], capture_output=True,
-                            input=input, env={**os.environ, 'GIT_OPTIONAL_LOCKS': '0', 'GIT_NO_REPLACE_OBJECTS': '1'}, timeout=120)
+                            env={**os.environ, 'GIT_OPTIONAL_LOCKS': '0', 'GIT_NO_REPLACE_OBJECTS': '1'}, timeout=120)
     if result.returncode not in allowed:
         # Git diagnostics can contain original file names; do not print them.
         raise Preserve('COMMAND_REFUSED')
@@ -81,123 +82,6 @@ def originals(root):
     return records
 
 
-PROC_OBSERVER = rb'''
-set -eu
-target=$1
-export CHECKOUT_TARGET="$target" LC_ALL=C
-found=0
-reasons=
-reason_count=0
-unknown() {
-  phase=$1
-  case "$2" in
-    *'Permission denied'*) errno=EACCES;;
-    *'Operation not permitted'*) errno=EPERM;;
-    *'No such file or directory'*) errno=ENOENT;;
-    *'No such process'*) errno=ESRCH;;
-    *) errno=OTHER;;
-  esac
-  present=0; [ ! -d "$proc" ] || present=1
-  status=$(cat "$proc/status" 2>/dev/null) || status=
-  status_read=0; [ -z "$status" ] || status_read=1
-  zombie=$(printf '%s\n' "$status" | awk '$1=="State:" { s=($2=="Z" ? 1 : 0) } END { print(s=="" ? "X" : s) }')
-  kernel=$(printf '%s\n' "$status" | awk '$1=="Kthread:" && ($2==0 || $2==1) { k=$2 } END { print(k=="" ? "X" : k) }')
-  reason="$phase/$errno/P$present/Z$zombie/K$kernel/S$status_read"
-  case "|$reasons|" in *"|$reason|"*) return;; esac
-  if [ "$reason_count" -lt 8 ]; then
-    reasons="${reasons:+$reasons|}$reason"
-    reason_count=$((reason_count + 1))
-  fi
-}
-within() { case "${1% (deleted)}" in "$target"|"$target"/*) found=1;; esac; }
-for proc in /host-proc/[0-9]*; do
-  [ -d "$proc" ] || continue
-  if maps=$(cat "$proc/maps" 2>&1); then
-    if printf '%s\n' "$maps" | awk '
-      BEGIN { target=ENVIRON["CHECKOUT_TARGET"] }
-      NF >= 6 { for (i=0; i<5; i++) sub(/^[^[:space:]]+[[:space:]]+/, "");
-        sub(/ \(deleted\)$/, ""); if ($0 == target || index($0, target "/") == 1) found=1 }
-      END { exit(found ? 0 : 1) }'; then found=1; fi
-  else
-    [ ! -d "$proc" ] && continue
-    unknown MAPS "$maps"
-  fi
-  if ! descriptors=$(ls "$proc/fd" 2>&1); then
-    [ ! -d "$proc" ] && continue
-    unknown FD_LIST "$descriptors"
-  fi
-  for entry in "$proc"/cwd "$proc"/root "$proc"/exe "$proc"/fd/*; do
-    case "$entry" in
-      "$proc/cwd") link_phase=CWD_LINK;;
-      "$proc/root") link_phase=ROOT_LINK;;
-      "$proc/exe") link_phase=EXE_LINK;;
-      *) link_phase=FD_LINK;;
-    esac
-    # Kernel threads have no userspace links; empty fd globs are also absent.
-    if [ ! -L "$entry" ]; then [ ! -e "$entry" ] && continue; unknown "$link_phase" ''; continue; fi
-    if ! path=$(readlink -v "$entry" 2>&1); then
-      [ ! -d "$proc" ] && break
-      [ ! -L "$entry" ] && continue
-      unknown "$link_phase" "$path"
-      continue
-    fi
-    within "$path"
-  done
-done
-if [ -n "$reasons" ]; then
-  capabilities=$(awk '$1=="CapEff:" { print $2 }' /proc/self/status)
-  ptrace=0; dac=0
-  [ "$((0x$capabilities & 524288))" -eq 0 ] || ptrace=1
-  [ "$((0x$capabilities & 4))" -eq 0 ] || dac=1
-  apparmor=0
-  profile=$(cat /proc/self/attr/current 2>/dev/null) || profile=
-  case "$profile" in ''|unconfined) ;; *) apparmor=1;; esac
-  printf 'UNKNOWN|C/P%s/D%s/A%s|%s' "$ptrace" "$dac" "$apparmor" "$reasons"
-elif [ "$found" -eq 1 ]; then printf yes
-else printf no; fi
-'''
-
-
-def observe_processes(root, image):
-    if not re.fullmatch(r'sha256:[0-9a-f]{64}', image):
-        raise Preserve('OBSERVER_IMAGE_UNKNOWN')
-    # The runner has Docker access, not sudo. Only this fixed read-only program
-    # gets ptrace-read and DAC-read access; no checkout/socket mount or app entrypoint.
-    container = os.fsdecode(command([
-        'docker', 'create', '--interactive', '--pull=never', '--network=none',
-        '--read-only', '--user=0:0', '--cap-drop=ALL', '--cap-add=SYS_PTRACE',
-        '--cap-add=DAC_READ_SEARCH', '--security-opt=no-new-privileges', '--pid=host',
-        '--pids-limit=32', '--memory=64m', '--mount=type=bind,source=/proc,target=/host-proc,readonly',
-        '--entrypoint=/bin/sh', image, '-s', '--', root,
-    ])).strip()
-    if not re.fullmatch(r'[0-9a-f]{64}', container):
-        raise Preserve('OBSERVER_CONTAINER_UNKNOWN')
-    try:
-        state = command(['docker', 'start', '--attach', '--interactive', container], input=PROC_OBSERVER).strip()
-    finally:
-        # Only the exact container just created above is removed, even on timeout.
-        command(['docker', 'rm', '--force', container])
-    if state == b'yes':
-        raise Preserve('ACTIVE_CHECKOUT_REFERENCE')
-    if state != b'no':
-        # Only fixed enums/booleans are reportable. Never expose raw stderr,
-        # actual process IDs, host paths, profile names, or process contents.
-        if re.fullmatch(rb'UNKNOWN\|C/P[01]/D[01]/A[01](?:\|(?:MAPS|FD_LIST|CWD_LINK|ROOT_LINK|EXE_LINK|FD_LINK)/(?:EACCES|EPERM|ENOENT|ESRCH|OTHER)/P[01]/Z[01X]/K[01X]/S[01]){1,8}', state):
-            raise Preserve('ACTIVE_CHECKOUT_OBSERVATION_' + state.decode('ascii'))
-        raise Preserve('ACTIVE_CHECKOUT_REFERENCE_OR_UNKNOWN')
-
-
-def observer_image():
-    for service in ('obs-web-app', 'obs-web-db'):
-        ids = command(['docker', 'ps', '-aq', '--filter', 'label=com.docker.compose.project=obs-web',
-                       '--filter', f'label=com.docker.compose.service={service}']).splitlines()
-        if len(ids) == 1 and re.fullmatch(rb'[0-9a-f]{12,64}', ids[0]):
-            return os.fsdecode(command(['docker', 'inspect', '--format', '{{.Image}}', os.fsdecode(ids[0])])).strip()
-        if ids:
-            raise Preserve('OBSERVER_IMAGE_UNKNOWN')
-    raise Preserve('OBSERVER_IMAGE_UNKNOWN')
-
-
 def deploy_lease(root):
     compose = ['docker', 'compose', '-p', 'obs-web', '-f', root / 'deploy/docker-compose.yml']
     if Path(os.environ.get('OBS_AVAIL_MARK', '/opt/obs/availability.on')).exists():
@@ -230,11 +114,6 @@ def deploy_lease(root):
         raise Preserve('DEPLOY_LEASE_PRESENT_OR_UNKNOWN')
 
 
-def active_work(root):
-    observe_processes(root, observer_image())
-    deploy_lease(root)
-
-
 @contextmanager
 def checkout_lease(gitdir):
     # flock on the existing directory creates/deletes no lease file. This only
@@ -248,7 +127,7 @@ def checkout_lease(gitdir):
         os.close(lease)
 
 
-def update(root, target, activity=active_work):
+def update(root, target, activity=deploy_lease):
     """Candidate must already be fetched; tests use only a disposable local repo."""
     if not re.fullmatch(r'[0-9a-f]{40}', target):
         raise Preserve('TARGET_SHA_INVALID')
@@ -302,7 +181,7 @@ def main():
         if resolved_url.lower() not in {url.lower() for url in accepted}:
             raise Preserve('REMOTE_REWRITE_UNKNOWN')
         clean_tracked(root)
-        active_work(root)
+        deploy_lease(root)
         # A URL rewrite to another repository was rejected above.
         # A public repository needs no persisted credential or new secret.
         git(root, 'fetch', '--no-tags', '--no-recurse-submodules', 'origin', target)
