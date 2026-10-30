@@ -39,7 +39,7 @@ services:
     # 이미지에 커밋 SHA를 붙여 남긴다(롤백 때 이전 이미지를 그대로 다시 띄움, docs/DEPLOY.md 「롤백」).
     image: obs-web-migrate:${APP_VERSION:-local}
     build:
-      context: ..
+      context: ${OBS_BUILD_CONTEXT:-..}
       dockerfile: Dockerfile
       target: migrator
     environment: *app-env
@@ -52,7 +52,7 @@ services:
     logging: *logging
     image: obs-web-app:${APP_VERSION:-local}
     build:
-      context: ..
+      context: ${OBS_BUILD_CONTEXT:-..}
       dockerfile: Dockerfile
       target: runner
       args:

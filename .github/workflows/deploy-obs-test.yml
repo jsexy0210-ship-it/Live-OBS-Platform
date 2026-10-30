@@ -70,7 +70,7 @@ jobs:
               throw new Error('Runner temp ownership unknown');
             const helper = path.join(temporary, name);
             await fs.mkdir(helper, {mode: 0o700});
-            for (const file of ['scripts/ops/deploy-preserve-checkout.py', 'scripts/ops/checkout-readonly-guards.sh']) {
+            for (const file of ['scripts/ops/deploy-preserve-checkout.py', 'scripts/ops/checkout-readonly-guards.sh', 'scripts/ops/build-source-snapshot.py']) {
               let data;
               try {
                 ({data} = await github.rest.repos.getContent({...context.repo, path: file, ref: sha}));
@@ -316,12 +316,21 @@ jobs:
           ONQ_DISK_CALLBACK_TOKEN: ${{ secrets.ONQ_DISK_CALLBACK_TOKEN }}
         run: python3 scripts/ops/disk-optimization-env-sync.py
 
+      - name: Create verified build source
+        id: build_source
+        working-directory: ${{ runner.temp }}
+        env:
+          HELPER_NAME: ${{ steps.isolated.outputs.path }}
+        run: python3 -B "${RUNNER_TEMP:?}/${HELPER_NAME:?}/build-source-snapshot.py"
+
       - name: Build and start
         env:
           APP_VERSION: ${{ github.sha }}
           OBS_ENV_FILE: /opt/obs/.env
+          OBS_BUILD_CONTEXT: ${{ steps.build_source.outputs.path }}
         run: |
           set -euo pipefail
+          test -d "${OBS_BUILD_CONTEXT:?Verified build source missing}"
           docker compose -p obs-web -f deploy/docker-compose.yml --env-file "$ENV_FILE" up -d --build --wait --wait-timeout 600
 
       - name: Health check
@@ -398,3 +407,11 @@ jobs:
           if command -v flock >/dev/null 2>&1 && [ -x scripts/ops/deploy-mark.sh ]; then
             scripts/ops/deploy-mark.sh off "$MARK_KEY" || echo "::warning::배포 진행 표시를 끄지 못했어요. 표시는 만료 시각(기본 1시간)에 저절로 풀려요."
           fi
+
+      - name: Remove owned build source
+        if: always() && steps.build_source.outputs.path != ''
+        working-directory: ${{ runner.temp }}
+        env:
+          HELPER_NAME: ${{ steps.isolated.outputs.path }}
+          BUILD_SOURCE_PATH: ${{ steps.build_source.outputs.path }}
+        run: python3 -B "${RUNNER_TEMP:?}/${HELPER_NAME:?}/build-source-snapshot.py" --cleanup
