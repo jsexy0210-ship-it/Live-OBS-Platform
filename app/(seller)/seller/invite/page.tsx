@@ -11,6 +11,7 @@ import styles from "./page.module.css";
 export default function SellerInvitePage() {
   const token = useRef("");
   const sending = useRef(false);
+  const generation = useRef(0);
   const [state, setState] = useState<"loading" | "form" | "invalid" | "done">("loading");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -21,8 +22,25 @@ export default function SellerInvitePage() {
   const [loginHref, setLoginHref] = useState("/seller/login");
 
   useEffect(() => {
-    token.current = window.location.hash.slice(1);
-    setState(token.current.length >= 20 && token.current.length <= 200 ? "form" : "invalid");
+    const readInvite = () => {
+      generation.current++;
+      token.current = window.location.hash.slice(1);
+      sending.current = false;
+      setBusy(false);
+      setPassword("");
+      setConfirmation("");
+      setPasswordError(null);
+      setConfirmationError(null);
+      setNotice(null);
+      setLoginHref("/seller/login");
+      setState(token.current.length >= 20 && token.current.length <= 200 ? "form" : "invalid");
+    };
+    readInvite();
+    window.addEventListener("hashchange", readInvite);
+    return () => {
+      window.removeEventListener("hashchange", readInvite);
+      generation.current++;
+    };
   }, []);
 
   const submit = async (event: React.FormEvent) => {
@@ -39,9 +57,13 @@ export default function SellerInvitePage() {
     sending.current = true;
     setBusy(true);
     setNotice(null);
+    const requestGeneration = generation.current;
+    const requestToken = token.current;
     const result = await api<{ ok: true; shopSlug: string }>("/api/seller/invite/accept", {
-      method: "POST", body: { token: token.current, newPassword: password }, authRedirect: false,
+      method: "POST", body: { token: requestToken, newPassword: password }, authRedirect: false,
     });
+    // 다른 초대·화면으로 이동한 뒤 도착한 응답은 새 입력과 처리 상태를 바꾸지 않는다.
+    if (requestGeneration !== generation.current || window.location.hash.slice(1) !== requestToken) return;
     sending.current = false;
     setBusy(false);
     if (result.ok && typeof result.data.shopSlug === "string" && result.data.shopSlug) {
