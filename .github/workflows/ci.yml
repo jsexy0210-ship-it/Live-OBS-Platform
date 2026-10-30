@@ -149,6 +149,9 @@ jobs:
       - name: Persistent deploy checkout safety fixtures
         run: python3 -B scripts/ops/deploy-preserve-checkout-fixture.py
 
+      - name: Verified build source fixtures
+        run: python3 -B scripts/ops/build-source-snapshot-fixture.py
+
       - name: Migrate test DB
         run: npm run db:migrate
 
