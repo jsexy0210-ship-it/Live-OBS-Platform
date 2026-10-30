@@ -186,7 +186,7 @@ class PreserveCheckoutFixture(unittest.TestCase):
                 for target in (b'a/owned-special', b'a/owned-special/child', b'a'):
                     with patch.object(guard, 'git', return_value=target + b'\0'):
                         with self.assertRaisesRegex(guard.Preserve, '^ORIGINAL_OPAQUE_TARGET_CONFLICT_PRE_CHECKOUT$'):
-                            guard.protect_opaque_originals(self.root, self.target, records)
+                            guard.protect_target_paths(self.root, self.target, records)
 
     def test_unknown_type_and_opaque_metadata_replacement_are_refused(self):
         base = dict(st_mode=stat.S_IFCHR, st_dev=1, st_ino=2, st_rdev=3,
@@ -207,6 +207,42 @@ class PreserveCheckoutFixture(unittest.TestCase):
                      patch.object(guard.os, 'open', side_effect=AssertionError('Special object opened')):
                     with self.assertRaisesRegex(guard.Preserve, '^ORIGINAL_CHANGED_DURING_READ_' + phase + '$'):
                         guard.originals(self.root, phase)
+
+    def test_target_preflight_stops_before_alias_or_special_descendants(self):
+        cases = [(stat.S_IFLNK, b'owned/child', 'TARGET_PARENT_ALIAS'),
+                 (stat.S_IFDIR, b'owned', 'TARGET_DIRECTORY_CONFLICT'),
+                 (0, b'owned/child', 'TARGET_PATH_TYPE_UNKNOWN')]
+        cases += [(mode, b'owned/child', 'TARGET_SPECIAL_CONFLICT')
+                  for mode in (stat.S_IFIFO, stat.S_IFSOCK, stat.S_IFCHR, stat.S_IFBLK)]
+        for mode, target, reason in cases:
+            observed = []
+            def inspect(path):
+                observed.append(path)
+                self.assertEqual(path, self.root / 'owned', 'Descended beyond blocked boundary')
+                return SimpleNamespace(st_mode=mode)
+            with self.subTest(mode=mode, target=target), patch.object(guard, 'git', return_value=target + b'\0'), \
+                 patch.object(Path, 'lstat', inspect), patch.object(guard.os, 'open', side_effect=AssertionError('Object opened')):
+                with self.assertRaisesRegex(guard.Preserve, '^' + reason + '_PRE_CHECKOUT$'):
+                    guard.protect_target_paths(self.root, self.target, {})
+                self.assertEqual(observed, [self.root / 'owned'])
+
+    def test_target_preflight_normal_root_down_and_unknown_state(self):
+        for states, inspected in (([stat.S_IFDIR, stat.S_IFREG], ['owned', 'owned/child']),
+                                  ([stat.S_IFREG], ['owned']), ([FileNotFoundError()], ['owned'])):
+            observed = []
+            def inspect(path):
+                observed.append(path.relative_to(self.root).as_posix())
+                state = states[len(observed) - 1]
+                if isinstance(state, Exception):
+                    raise state
+                return SimpleNamespace(st_mode=state)
+            with patch.object(guard, 'git', return_value=b'owned/child\0'), patch.object(Path, 'lstat', inspect):
+                guard.protect_target_paths(self.root, self.target, {})
+            self.assertEqual(observed, inspected)
+        with patch.object(guard, 'git', return_value=b'owned/child\0'), \
+             patch.object(Path, 'lstat', side_effect=PermissionError()):
+            with self.assertRaisesRegex(guard.Preserve, '^TARGET_PATH_STATE_UNKNOWN_PRE_CHECKOUT$'):
+                guard.protect_target_paths(self.root, self.target, {})
 
     @unittest.skipUnless(os.name == 'posix', 'Actual FIFO/socket/symlink fixtures require POSIX')
     def test_live_fifo_socket_and_external_link_are_not_read(self):
@@ -239,7 +275,7 @@ class PreserveCheckoutFixture(unittest.TestCase):
         self.assertEqual(external.read_bytes(), b'synthetic external original')
 
     @unittest.skipUnless(os.name == 'posix', 'Actual special-object checkout collisions require POSIX')
-    def test_native_git_refuses_live_special_exact_and_ancestor_collisions(self):
+    def test_guard_refuses_live_special_exact_and_ancestor_collisions(self):
         import socket
         for kind in ('fifo', 'socket'):
             for ancestor in (False, True):
@@ -269,7 +305,7 @@ class PreserveCheckoutFixture(unittest.TestCase):
                             self.assertNotEqual(Path(opened), path, 'Live object opened')
                             return original_open(opened, *args, **kwargs)
                         with patch.object(guard.os, 'open', only_regular_open):
-                            with self.assertRaises(guard.Preserve):
+                            with self.assertRaisesRegex(guard.Preserve, '^(ORIGINAL_OPAQUE_TARGET_CONFLICT|TARGET_DIRECTORY_CONFLICT|TARGET_SPECIAL_CONFLICT)_PRE_CHECKOUT$'):
                                 self.update()
                         self.assertEqual(path.lstat(), before)
                         self.assertEqual(self.state(), originals)

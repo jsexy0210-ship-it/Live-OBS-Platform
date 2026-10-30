@@ -99,14 +99,40 @@ def originals(root, phase='SCAN'):
     return records
 
 
-def protect_opaque_originals(root, target, records):
+def protect_target_paths(root, target, records):
     opaque = [raw.rstrip(b'/') for raw, (_, digest) in records.items() if digest is None]
-    if not opaque:
-        return
     paths = git(root, 'ls-tree', '-rz', '--name-only', '--full-tree', target).split(b'\0')
     if any(path and (path == original or path.startswith(original + b'/') or original.startswith(path + b'/'))
            for path in paths for original in opaque):
         raise Preserve('ORIGINAL_OPAQUE_TARGET_CONFLICT_PRE_CHECKOUT')
+    # Git can omit FIFO/socket entries and replace their apparently empty
+    # parent directory. Inspect only target paths, never directory contents.
+    for raw in filter(None, paths):
+        rel = Path(os.fsdecode(raw))
+        if rel.is_absolute() or '..' in rel.parts:
+            raise Preserve('TARGET_PATH_UNKNOWN_PRE_CHECKOUT')
+        path = root
+        for index, part in enumerate(rel.parts):
+            path /= part
+            try:
+                mode = path.lstat().st_mode
+            except FileNotFoundError:
+                break
+            except OSError:
+                raise Preserve('TARGET_PATH_STATE_UNKNOWN_PRE_CHECKOUT') from None
+            prefix = index < len(rel.parts) - 1
+            if stat.S_ISDIR(mode):
+                if not prefix:
+                    raise Preserve('TARGET_DIRECTORY_CONFLICT_PRE_CHECKOUT')
+            elif stat.S_ISLNK(mode):
+                if prefix:
+                    raise Preserve('TARGET_PARENT_ALIAS_PRE_CHECKOUT')
+            elif stat.S_ISREG(mode):
+                break  # Normal Git handles a regular file, without descending.
+            elif any(check(mode) for check in (stat.S_ISFIFO, stat.S_ISSOCK, stat.S_ISCHR, stat.S_ISBLK)):
+                raise Preserve('TARGET_SPECIAL_CONFLICT_PRE_CHECKOUT')
+            else:
+                raise Preserve('TARGET_PATH_TYPE_UNKNOWN_PRE_CHECKOUT')
 
 
 def marker_state(path, now, stale_s, grace_s, legacy=False):
@@ -272,7 +298,7 @@ def update(root, target, activity=deploy_lease):
         if originals(root, 'RECHECK') != before or git(root, 'rev-parse', 'HEAD') != old_head:
             raise Preserve('CHECKOUT_CHANGED_BEFORE_UPDATE')
         clean_tracked(root)
-        protect_opaque_originals(root, target, before)
+        protect_target_paths(root, target, before)
         # --no-overwrite-ignore is essential: ordinary checkout overwrites
         # ignored files by default. No force, reset or clean option is used.
         try:
