@@ -8,11 +8,13 @@ import contextlib
 import importlib.util
 import os
 import json
+import stat
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('preserve', Path(__file__).with_name('deploy-preserve-checkout.py'))
@@ -74,6 +76,247 @@ class PreserveCheckoutFixture(unittest.TestCase):
             self.update(activity)
         self.assertEqual(self.state(), before)
         self.assertEqual(self.git('rev-parse', 'HEAD'), old_head)
+
+    def nested_repo(self, relative):
+        path = self.root / relative
+        path.mkdir(parents=True, exist_ok=True)
+        for args in (('init', '-q'), ('config', 'user.name', 'Fixture'),
+                     ('config', 'user.email', 'fixture@example.invalid')):
+            subprocess.run(['git', '-C', str(path), *args], check=True, capture_output=True)
+        (path / 'owned.txt').write_bytes(b'inner committed source')
+        subprocess.run(['git', '-C', str(path), 'add', 'owned.txt'], check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(path), 'commit', '-qm', 'owned inner'], check=True, capture_output=True)
+        (path / 'owned.txt').write_bytes(b'inner uncommitted source')
+        (path / 'original.dump').write_bytes(b'synthetic inner backup')
+        return path
+
+    def nested_bytes(self, path):
+        return {p.relative_to(path).as_posix(): p.read_bytes() for p in path.rglob('*') if p.is_file()}
+
+    def directory_conflict(self, target_path, original_path):
+        self.git('checkout', '-q', '--detach', self.target)
+        path = self.root / target_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b'target tracked source')
+        self.git('add', target_path)
+        self.git('commit', '-qm', 'owned target path')
+        self.target = self.git('rev-parse', 'HEAD').decode().strip()
+        self.git('checkout', '-q', '--detach', self.old)
+        nested = self.nested_repo(original_path)
+        before = self.nested_bytes(nested)
+        original = guard.git
+        writes = []
+        def observe(root, *args):
+            self.assertEqual(root, self.root)
+            if args[0] == 'checkout':
+                writes.append(True)
+            return original(root, *args)
+        with patch.object(guard, 'git', observe):
+            with self.assertRaisesRegex(guard.Preserve, '^ORIGINAL_OPAQUE_TARGET_CONFLICT_PRE_CHECKOUT$'):
+                self.update()
+        self.assertEqual(writes, [])
+        self.assertEqual(self.git('rev-parse', 'HEAD').decode().strip(), self.old)
+        self.assertTrue(self.nested_bytes(nested) == before, 'Opaque inner original changed')
+
+    def test_opaque_nested_repository_preserves_inode_and_inner_work(self):
+        nested = self.nested_repo('owned-inner')
+        self.assertIn(b'owned-inner/', self.git('ls-files', '--others', '-z').split(b'\0'))
+        before = guard.originals(self.root)
+        self.assertIsNone(before[b'owned-inner/'][1])
+        self.assertTrue(stat.S_ISDIR(before[b'owned-inner/'][0][2]))
+        content = self.nested_bytes(nested)
+        original_open, original_git = os.open, guard.git
+        def only_outer_open(path, *args, **kwargs):
+            self.assertFalse(Path(path) == nested or nested in Path(path).parents, 'Opaque content opened')
+            return original_open(path, *args, **kwargs)
+        def only_outer_git(root, *args):
+            self.assertEqual(root, self.root)
+            return original_git(root, *args)
+        with patch.object(guard.os, 'open', only_outer_open), patch.object(guard, 'git', only_outer_git):
+            self.assertEqual(self.update(), 5)
+        self.assertEqual(guard.originals(self.root), before)
+        self.assertTrue(self.nested_bytes(nested) == content, 'Opaque inner Git or working originals changed')
+
+    def test_target_file_equal_to_opaque_directory_is_refused(self):
+        self.directory_conflict('owned-inner', 'owned-inner')
+
+    def test_target_file_inside_opaque_directory_is_refused(self):
+        self.directory_conflict('owned-inner/new.txt', 'owned-inner')
+
+    def test_target_ancestor_file_of_opaque_directory_is_refused(self):
+        self.directory_conflict('a', 'a/b')
+
+    def test_existing_tracked_subtree_keeps_git_reported_file_scope(self):
+        path = self.root / 'part'
+        path.mkdir()
+        (path / 'outer.txt').write_bytes(b'outer tracked file')
+        self.git('add', 'part/outer.txt')
+        self.git('commit', '-qm', 'owned tracked subtree')
+        self.nested_repo('part')
+        entries = self.git('ls-files', '--others', '-z').split(b'\0')
+        self.assertNotIn(b'part/', entries)
+        self.assertFalse(any(entry.startswith(b'part/.git/') for entry in entries))
+        records = guard.originals(self.root)
+        self.assertIsNotNone(records[b'part/owned.txt'][1])
+
+    def test_opaque_directory_metadata_change_between_checks_is_refused(self):
+        nested = self.nested_repo('owned-inner')
+        content = self.nested_bytes(nested)
+        calls = []
+        def writer(_):
+            calls.append(True)
+            if len(calls) == 2:
+                before = nested.lstat()
+                os.utime(nested, ns=(before.st_atime_ns, before.st_mtime_ns + 2_000_000_000))
+        with self.assertRaisesRegex(guard.Preserve, '^CHECKOUT_CHANGED_BEFORE_UPDATE$'):
+            self.update(writer)
+        self.assertEqual(self.git('rev-parse', 'HEAD').decode().strip(), self.old)
+        self.assertTrue(self.nested_bytes(nested) == content, 'Opaque inner original changed')
+
+    def test_known_special_metadata_and_target_conflicts_without_open(self):
+        for mode in (stat.S_IFIFO, stat.S_IFSOCK, stat.S_IFCHR, stat.S_IFBLK):
+            info = SimpleNamespace(st_mode=mode, st_dev=1, st_ino=2, st_rdev=3,
+                                   st_size=0, st_mtime_ns=4, st_ctime_ns=5)
+            for phase in ('PRE_CHECKOUT', 'RECHECK', 'FAILED_CHECKOUT', 'POST_CHECKOUT'):
+                with self.subTest(mode=mode, phase=phase), patch.object(guard, 'git', return_value=b'a/owned-special\0'), \
+                     patch.object(Path, 'lstat', return_value=info), \
+                     patch.object(guard.os, 'open', side_effect=AssertionError('Special object opened')):
+                    records = guard.originals(self.root, phase)
+                    self.assertEqual(records[b'a/owned-special'], ((1, 2, mode, 0, 4, 5, 3), None))
+                for target in (b'a/owned-special', b'a/owned-special/child', b'a'):
+                    with patch.object(guard, 'git', return_value=target + b'\0'):
+                        with self.assertRaisesRegex(guard.Preserve, '^ORIGINAL_OPAQUE_TARGET_CONFLICT_PRE_CHECKOUT$'):
+                            guard.protect_target_paths(self.root, self.target, records)
+
+    def test_unknown_type_and_opaque_metadata_replacement_are_refused(self):
+        base = dict(st_mode=stat.S_IFCHR, st_dev=1, st_ino=2, st_rdev=3,
+                    st_size=0, st_mtime_ns=4, st_ctime_ns=5)
+        for phase in ('PRE_CHECKOUT', 'RECHECK', 'FAILED_CHECKOUT', 'POST_CHECKOUT'):
+            with patch.object(guard, 'git', return_value=b'owned-special\0'), \
+                 patch.object(Path, 'lstat', return_value=SimpleNamespace(st_mode=0)):
+                with self.assertRaisesRegex(guard.Preserve, '^ORIGINAL_TYPE_UNKNOWN_' + phase + '$'):
+                    guard.originals(self.root, phase)
+            with patch.object(guard, 'git', return_value=b'owned-special\0'), \
+                 patch.object(Path, 'lstat', return_value=SimpleNamespace(st_mode=stat.S_IFCHR)):
+                with self.assertRaisesRegex(guard.Preserve, '^ORIGINAL_DEVICE_METADATA_UNKNOWN_' + phase + '$'):
+                    guard.originals(self.root, phase)
+            for field in base:
+                changed = {**base, field: base[field] + 1}
+                with self.subTest(phase=phase, field=field), patch.object(guard, 'git', return_value=b'owned-special\0'), \
+                     patch.object(Path, 'lstat', side_effect=[SimpleNamespace(**base), SimpleNamespace(**changed)]), \
+                     patch.object(guard.os, 'open', side_effect=AssertionError('Special object opened')):
+                    with self.assertRaisesRegex(guard.Preserve, '^ORIGINAL_CHANGED_DURING_READ_' + phase + '$'):
+                        guard.originals(self.root, phase)
+
+    def test_target_preflight_stops_before_alias_or_special_descendants(self):
+        cases = [(stat.S_IFLNK, b'owned/child', 'TARGET_PARENT_ALIAS'),
+                 (stat.S_IFDIR, b'owned', 'TARGET_DIRECTORY_CONFLICT'),
+                 (0, b'owned/child', 'TARGET_PATH_TYPE_UNKNOWN')]
+        cases += [(mode, b'owned/child', 'TARGET_SPECIAL_CONFLICT')
+                  for mode in (stat.S_IFIFO, stat.S_IFSOCK, stat.S_IFCHR, stat.S_IFBLK)]
+        for mode, target, reason in cases:
+            observed = []
+            def inspect(path):
+                observed.append(path)
+                self.assertEqual(path, self.root / 'owned', 'Descended beyond blocked boundary')
+                return SimpleNamespace(st_mode=mode)
+            with self.subTest(mode=mode, target=target), patch.object(guard, 'git', return_value=target + b'\0'), \
+                 patch.object(Path, 'lstat', inspect), patch.object(guard.os, 'open', side_effect=AssertionError('Object opened')):
+                with self.assertRaisesRegex(guard.Preserve, '^' + reason + '_PRE_CHECKOUT$'):
+                    guard.protect_target_paths(self.root, self.target, {})
+                self.assertEqual(observed, [self.root / 'owned'])
+
+    def test_target_preflight_normal_root_down_and_unknown_state(self):
+        for states, inspected in (([stat.S_IFDIR, stat.S_IFREG], ['owned', 'owned/child']),
+                                  ([stat.S_IFREG], ['owned']), ([FileNotFoundError()], ['owned'])):
+            observed = []
+            def inspect(path):
+                observed.append(path.relative_to(self.root).as_posix())
+                state = states[len(observed) - 1]
+                if isinstance(state, Exception):
+                    raise state
+                return SimpleNamespace(st_mode=state)
+            with patch.object(guard, 'git', return_value=b'owned/child\0'), patch.object(Path, 'lstat', inspect):
+                guard.protect_target_paths(self.root, self.target, {})
+            self.assertEqual(observed, inspected)
+        with patch.object(guard, 'git', return_value=b'owned/child\0'), \
+             patch.object(Path, 'lstat', side_effect=PermissionError()):
+            with self.assertRaisesRegex(guard.Preserve, '^TARGET_PATH_STATE_UNKNOWN_PRE_CHECKOUT$'):
+                guard.protect_target_paths(self.root, self.target, {})
+
+    @unittest.skipUnless(os.name == 'posix', 'Actual FIFO/socket/symlink fixtures require POSIX')
+    def test_live_fifo_socket_and_external_link_are_not_read(self):
+        import socket
+        fifo = self.root / 'owned-pipe'
+        os.mkfifo(fifo)
+        endpoint = self.root / 'owned-socket'
+        with socket.socket(socket.AF_UNIX) as active:
+            active.bind(str(endpoint))
+            before = {path: path.lstat() for path in (fifo, endpoint)}
+            for path in (fifo, endpoint):
+                with patch.object(guard, 'git', return_value=os.fsencode(path.name) + b'\0'), \
+                     patch.object(guard.os, 'open', side_effect=AssertionError('Live object opened')):
+                    self.assertIsNone(guard.originals(self.root, 'PRE_CHECKOUT')[os.fsencode(path.name)][1])
+            # Exercise real Git too, whether its enumeration includes special entries or not.
+            original_open = os.open
+            def only_regular_open(path, *args, **kwargs):
+                self.assertNotIn(Path(path), before, 'Live object opened')
+                return original_open(path, *args, **kwargs)
+            with patch.object(guard.os, 'open', only_regular_open):
+                self.update()
+            self.assertEqual({path: path.lstat() for path in before}, before)
+        external = self.root.parent / 'owned-external-original'
+        external.write_bytes(b'synthetic external original')
+        link = self.root / 'owned-link'
+        link.symlink_to(external)
+        with patch.object(guard, 'git', return_value=b'owned-link\0'), \
+             patch.object(guard.os, 'open', side_effect=AssertionError('Link target opened')):
+            self.assertIsNotNone(guard.originals(self.root)[b'owned-link'][1])
+        self.assertEqual(external.read_bytes(), b'synthetic external original')
+
+    @unittest.skipUnless(os.name == 'posix', 'Actual special-object checkout collisions require POSIX')
+    def test_guard_refuses_live_special_exact_and_ancestor_collisions(self):
+        import socket
+        for kind in ('fifo', 'socket'):
+            for ancestor in (False, True):
+                with self.subTest(kind=kind, ancestor=ancestor):
+                    name = 'owned-' + kind + ('-parent' if ancestor else '-exact')
+                    self.git('checkout', '-q', '--detach', self.target)
+                    (self.root / name).write_bytes(b'candidate tracked file')
+                    self.git('add', name)
+                    self.git('commit', '-qm', 'owned special collision')
+                    self.target = self.git('rev-parse', 'HEAD').decode().strip()
+                    self.git('checkout', '-q', '--detach', self.old)
+                    parent = self.root / name
+                    if ancestor:
+                        parent.mkdir()
+                    path = parent / 'child' if ancestor else parent
+                    active = None
+                    try:
+                        if kind == 'fifo':
+                            os.mkfifo(path)
+                        else:
+                            active = socket.socket(socket.AF_UNIX)
+                            active.bind(str(path))
+                        before = path.lstat()
+                        originals = self.state()
+                        original_open = os.open
+                        def only_regular_open(opened, *args, **kwargs):
+                            self.assertNotEqual(Path(opened), path, 'Live object opened')
+                            return original_open(opened, *args, **kwargs)
+                        with patch.object(guard.os, 'open', only_regular_open):
+                            with self.assertRaisesRegex(guard.Preserve, '^(ORIGINAL_OPAQUE_TARGET_CONFLICT|TARGET_DIRECTORY_CONFLICT|TARGET_SPECIAL_CONFLICT)_PRE_CHECKOUT$'):
+                                self.update()
+                        self.assertEqual(path.lstat(), before)
+                        self.assertEqual(self.state(), originals)
+                        self.assertEqual(self.git('rev-parse', 'HEAD').decode().strip(), self.old)
+                        self.assertEqual(self.git('status', '--porcelain', '--untracked-files=no'), b'')
+                    finally:
+                        if active:
+                            active.close()
+                        path.unlink()
+                        if ancestor:
+                            parent.rmdir()
 
     def test_normal_update_preserves_four_originals_and_exact_head(self):
         before = guard.originals(self.root)

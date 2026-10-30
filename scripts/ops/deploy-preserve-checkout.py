@@ -50,9 +50,12 @@ def clean_tracked(root):
     return gitdir
 
 
-def originals(root):
+def originals(root, phase='SCAN'):
+    if phase not in ('SCAN', 'PRE_CHECKOUT', 'RECHECK', 'FAILED_CHECKOUT', 'POST_CHECKOUT'):
+        raise Preserve('ORIGINAL_PHASE_UNKNOWN')
     paths = git(root, 'ls-files', '--others', '-z').split(b'\0')
     records = {}
+    signature = lambda s: (s.st_dev, s.st_ino, s.st_mode, s.st_size, s.st_mtime_ns, s.st_ctime_ns, getattr(s, 'st_rdev', None))
     for raw in paths:
         if not raw:
             continue
@@ -60,28 +63,76 @@ def originals(root):
         if rel.is_absolute() or '..' in rel.parts:
             raise Preserve('ORIGINAL_PATH_UNKNOWN')
         path = root / rel
-        for parent in path.parents:
-            if parent == root:
-                break
+        parent = root
+        for part in rel.parts[:-1]:
+            parent /= part
             if parent.is_symlink():
-                raise Preserve('ORIGINAL_PARENT_ALIAS')
-        before = path.lstat()
-        if stat.S_ISLNK(before.st_mode):
-            body = os.fsencode(os.readlink(path))
-        elif stat.S_ISREG(before.st_mode):
-            digest = hashlib.sha256()
-            with path.open('rb') as stream:
-                for block in iter(lambda: stream.read(1048576), b''):
-                    digest.update(block)
-            body = digest.digest()
-        else:
-            raise Preserve('ORIGINAL_SPECIAL_OR_NESTED_REPOSITORY')
-        after = path.lstat()
-        signature = lambda s: (s.st_dev, s.st_ino, s.st_mode, s.st_size, s.st_mtime_ns, s.st_ctime_ns)
+                raise Preserve('ORIGINAL_PARENT_ALIAS_' + phase)
+        try:
+            before = path.lstat()
+            if (stat.S_ISCHR(before.st_mode) or stat.S_ISBLK(before.st_mode)) and getattr(before, 'st_rdev', None) is None:
+                raise Preserve('ORIGINAL_DEVICE_METADATA_UNKNOWN_' + phase)
+            if any(check(before.st_mode) for check in (stat.S_ISDIR, stat.S_ISFIFO, stat.S_ISSOCK, stat.S_ISCHR, stat.S_ISBLK)):
+                body = None  # Opaque metadata only: no traversal, inner Git, or object I/O.
+            elif stat.S_ISLNK(before.st_mode):
+                body = os.fsencode(os.readlink(path))
+            elif stat.S_ISREG(before.st_mode):
+                digest = hashlib.sha256()
+                flags = os.O_RDONLY | getattr(os, 'O_NONBLOCK', 0) | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_BINARY', 0)
+                with os.fdopen(os.open(path, flags), 'rb') as stream:
+                    opened = os.fstat(stream.fileno())
+                    # fstat identifies the opened object. The full path signature
+                    # (including ctime) is still compared after reading below.
+                    if not stat.S_ISREG(opened.st_mode) or signature(before)[:5] != signature(opened)[:5]:
+                        raise Preserve('ORIGINAL_TYPE_OR_STATE_CHANGED_' + phase)
+                    for block in iter(lambda: stream.read(1048576), b''):
+                        digest.update(block)
+                body = digest.digest()
+            else:
+                raise Preserve('ORIGINAL_TYPE_UNKNOWN_' + phase)
+            after = path.lstat()
+        except OSError:
+            raise Preserve('ORIGINAL_READ_UNKNOWN_' + phase) from None
         if signature(before) != signature(after):
-            raise Preserve('ORIGINAL_CHANGED_DURING_READ')
-        records[raw] = (signature(after), hashlib.sha256(body).digest())
+            raise Preserve('ORIGINAL_CHANGED_DURING_READ_' + phase)
+        records[raw] = (signature(after), None if body is None else hashlib.sha256(body).digest())
     return records
+
+
+def protect_target_paths(root, target, records):
+    opaque = [raw.rstrip(b'/') for raw, (_, digest) in records.items() if digest is None]
+    paths = git(root, 'ls-tree', '-rz', '--name-only', '--full-tree', target).split(b'\0')
+    if any(path and (path == original or path.startswith(original + b'/') or original.startswith(path + b'/'))
+           for path in paths for original in opaque):
+        raise Preserve('ORIGINAL_OPAQUE_TARGET_CONFLICT_PRE_CHECKOUT')
+    # Git can omit FIFO/socket entries and replace their apparently empty
+    # parent directory. Inspect only target paths, never directory contents.
+    for raw in filter(None, paths):
+        rel = Path(os.fsdecode(raw))
+        if rel.is_absolute() or '..' in rel.parts:
+            raise Preserve('TARGET_PATH_UNKNOWN_PRE_CHECKOUT')
+        path = root
+        for index, part in enumerate(rel.parts):
+            path /= part
+            try:
+                mode = path.lstat().st_mode
+            except FileNotFoundError:
+                break
+            except OSError:
+                raise Preserve('TARGET_PATH_STATE_UNKNOWN_PRE_CHECKOUT') from None
+            prefix = index < len(rel.parts) - 1
+            if stat.S_ISDIR(mode):
+                if not prefix:
+                    raise Preserve('TARGET_DIRECTORY_CONFLICT_PRE_CHECKOUT')
+            elif stat.S_ISLNK(mode):
+                if prefix:
+                    raise Preserve('TARGET_PARENT_ALIAS_PRE_CHECKOUT')
+            elif stat.S_ISREG(mode):
+                break  # Normal Git handles a regular file, without descending.
+            elif any(check(mode) for check in (stat.S_ISFIFO, stat.S_ISSOCK, stat.S_ISCHR, stat.S_ISBLK)):
+                raise Preserve('TARGET_SPECIAL_CONFLICT_PRE_CHECKOUT')
+            else:
+                raise Preserve('TARGET_PATH_TYPE_UNKNOWN_PRE_CHECKOUT')
 
 
 def marker_state(path, now, stale_s, grace_s, legacy=False):
@@ -241,21 +292,22 @@ def update(root, target, activity=deploy_lease):
     with checkout_lease(gitdir):
         clean_tracked(root)
         activity(root)
-        before = originals(root)
+        before = originals(root, 'PRE_CHECKOUT')
         old_head = git(root, 'rev-parse', 'HEAD')
         activity(root)
-        if originals(root) != before or git(root, 'rev-parse', 'HEAD') != old_head:
+        if originals(root, 'RECHECK') != before or git(root, 'rev-parse', 'HEAD') != old_head:
             raise Preserve('CHECKOUT_CHANGED_BEFORE_UPDATE')
         clean_tracked(root)
+        protect_target_paths(root, target, before)
         # --no-overwrite-ignore is essential: ordinary checkout overwrites
         # ignored files by default. No force, reset or clean option is used.
         try:
             git(root, 'checkout', '--detach', '--no-overwrite-ignore', '--no-recurse-submodules', target)
         except Preserve:
-            if originals(root) != before or git(root, 'rev-parse', 'HEAD') != old_head:
+            if originals(root, 'FAILED_CHECKOUT') != before or git(root, 'rev-parse', 'HEAD') != old_head:
                 raise Preserve('FAILED_CHECKOUT_STATE_CHANGED') from None
             raise
-        if originals(root) != before:
+        if originals(root, 'POST_CHECKOUT') != before:
             raise Preserve('ORIGINAL_STATE_CHANGED_STOP')
         clean_tracked(root)
         if os.fsdecode(git(root, 'rev-parse', 'HEAD')).strip() != target:
@@ -292,7 +344,7 @@ def main():
         if os.fsdecode(git(root, 'rev-parse', '--verify', target + '^{commit}')).strip() != target:
             raise Preserve('FETCHED_COMMIT_MISMATCH')
         count = update(root, target)
-        print(f'Persistent checkout verified; preserved original files: {count}; HEAD: {target}')
+        print(f'Persistent checkout verified; preserved original entries: {count}; HEAD: {target}')
     except (Preserve, OSError, ValueError, KeyError, TypeError, ImportError, subprocess.SubprocessError) as error:
         reason = str(error) if isinstance(error, Preserve) else 'GUARD_STATE_UNKNOWN'
         print(f'::error::Deployment stopped, original work requires preservation: {reason}')
