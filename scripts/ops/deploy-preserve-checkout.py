@@ -7,6 +7,7 @@ The lease coordinates cooperating deploys; it cannot exclude arbitrary host writ
 """
 import hashlib
 import json
+import math
 from contextlib import contextmanager
 import os
 from pathlib import Path
@@ -14,6 +15,7 @@ import re
 import stat
 import subprocess
 import sys
+import time
 
 
 class Preserve(RuntimeError):
@@ -82,13 +84,93 @@ def originals(root):
     return records
 
 
+def marker_state(path, now, stale_s, grace_s, legacy=False):
+    before = None
+    try:
+        before = path.lstat()
+        if stat.S_ISLNK(before.st_mode):
+            raise Preserve('DEPLOY_LEASE_SYMLINK')
+        if not stat.S_ISREG(before.st_mode):
+            raise Preserve('DEPLOY_LEASE_TYPE_UNKNOWN')
+        # Legacy content is opaque; monitor.mjs uses only its modification time.
+        body = '' if legacy or (path.name.startswith('.') and not path.name.startswith('.ended-')) else path.read_text(encoding='utf-8')
+        after = path.lstat()
+    except FileNotFoundError:
+        if legacy and before is None:
+            return 'ABSENT'
+        raise Preserve('DEPLOY_LEASE_READ_UNKNOWN') from None
+    except UnicodeError:
+        raise Preserve('DEPLOY_LEASE_INVALID_RECORD') from None
+    except OSError:
+        raise Preserve('DEPLOY_LEASE_READ_UNKNOWN') from None
+    signature = lambda s: (s.st_dev, s.st_ino, s.st_mode, s.st_size, s.st_mtime_ns, s.st_ctime_ns)
+    if signature(before) != signature(after):
+        raise Preserve('DEPLOY_LEASE_CHANGED_DURING_READ')
+    age_s = now - after.st_mtime
+    if legacy:
+        return 'EXPIRED' if age_s > stale_s else 'ACTIVE_LEGACY'
+    if path.name.startswith('.') and not path.name.startswith('.ended-'):
+        return 'TEMPORARY_IGNORED'
+    key = path.name.removeprefix('.ended-')
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}', key):
+        raise Preserve('DEPLOY_LEASE_INVALID_RECORD')
+
+    def field(name):
+        prefix = name + '='
+        values = [line[len(prefix):] for line in body.splitlines() if line.startswith(prefix)]
+        if len(values) > 1:
+            raise Preserve('DEPLOY_LEASE_INVALID_RECORD')
+        return values[0] if values else None
+
+    def epoch(name):
+        value = field(name)
+        if value is None:
+            return 0
+        if not re.fullmatch(r'[0-9]+', value):
+            raise Preserve('DEPLOY_LEASE_INVALID_RECORD')
+        return int(value)
+
+    if path.name.startswith('.ended-'):
+        ended = epoch('endedEpoch') or after.st_mtime
+        return 'ACTIVE_ENDED_GRACE' if now - ended <= grace_s else 'EXPIRED'
+    kind, expires = field('kind'), epoch('expiresEpoch')
+    if kind not in (None, 'kept', 'detached') or (kind == 'detached' and expires <= 0):
+        raise Preserve('DEPLOY_LEASE_INVALID_RECORD')
+    expired = expires > 0 and now >= expires
+    fresh = expires > 0 if kind == 'detached' else age_s <= stale_s
+    if fresh and not expired:
+        return 'ACTIVE_DETACHED' if kind == 'detached' else 'ACTIVE_KEPT'
+    return 'EXPIRED'
+
+
 def deploy_lease(root):
     compose = ['docker', 'compose', '-p', 'obs-web', '-f', root / 'deploy/docker-compose.yml']
     if Path(os.environ.get('OBS_AVAIL_MARK', '/opt/obs/availability.on')).exists():
         compose += ['-f', root / 'deploy/compose.availability.yml']
     compose += ['--env-file', os.environ.get('ENV_FILE', '/opt/obs/.env'), '--profile', 'monitor']
     config = json.loads(command([*compose, 'config', '--format', 'json', 'obs-web-monitor']))
-    volumes = config['services']['obs-web-monitor']['volumes']
+    monitor = config['services']['obs-web-monitor']
+    volumes = monitor['volumes']
+    environment = monitor.get('environment', {})
+    for key, expected in (('MONITOR_DEPLOY_MARK', '/data/deploy-in-progress'),
+                          ('MONITOR_DEPLOY_MARK_DIR', '/data/deploy-in-progress.d')):
+        if environment.get(key, expected) != expected:
+            raise Preserve('DEPLOY_LEASE_LOCATION_UNKNOWN')
+    # Exact defaults/ranges from monitor.mjs cfg; compose resolves overrides.
+    settings = []
+    for key, default, minimum, maximum in (
+        ('MONITOR_DEPLOY_MARK_STALE_MIN', 15, 1, math.inf),
+        ('MONITOR_TIMEOUT_MS', 5000, 100, 30000),
+        ('MONITOR_INTERVAL_S', 15, 1, 60),
+    ):
+        raw = environment.get(key)
+        try:
+            value = default if raw is None or str(raw).strip() == '' else float(raw)
+        except (TypeError, ValueError):
+            raise Preserve('DEPLOY_LEASE_LOCATION_UNKNOWN') from None
+        if not math.isfinite(value) or not minimum <= value <= maximum:
+            raise Preserve('DEPLOY_LEASE_LOCATION_UNKNOWN')
+        settings.append(value)
     sources = [Path(m['source']) for m in volumes if m.get('target') == '/data' and m.get('type') == 'bind']
     if len(sources) != 1 or not sources[0].is_absolute() or sources[0].resolve() != sources[0]:
         raise Preserve('DEPLOY_LEASE_LOCATION_UNKNOWN')
@@ -104,14 +186,36 @@ def deploy_lease(root):
     try:
         data_mode = data.lstat().st_mode
     except FileNotFoundError:
-        return  # Optional monitor has never created its canonical data directory.
+        return 'CLEAR'  # Optional monitor has never created its canonical data directory.
     if not stat.S_ISDIR(data_mode):
         raise Preserve('DEPLOY_LEASE_LOCATION_UNKNOWN')
     marker, directory = data / 'deploy-in-progress', data / 'deploy-in-progress.d'
-    if marker.exists() or marker.is_symlink() or directory.is_symlink():
-        raise Preserve('DEPLOY_LEASE_PRESENT_OR_UNKNOWN')
-    if directory.exists() and any(not p.name.startswith('.ended-') for p in directory.iterdir()):
-        raise Preserve('DEPLOY_LEASE_PRESENT_OR_UNKNOWN')
+    now = math.floor(time.time() * 1000) / 1000  # Date.now() precision in monitor.mjs.
+    stale_s, grace_s = settings[0] * 60, settings[1] / 1000 + settings[2]
+    states = [marker_state(marker, now, stale_s, grace_s, legacy=True)]
+    directory_seen = False
+    try:
+        before = directory.lstat()
+        directory_seen = True
+        if stat.S_ISLNK(before.st_mode):
+            raise Preserve('DEPLOY_LEASE_SYMLINK')
+        if not stat.S_ISDIR(before.st_mode):
+            raise Preserve('DEPLOY_LEASE_TYPE_UNKNOWN')
+        for path in directory.iterdir():
+            states.append(marker_state(path, now, stale_s, grace_s))
+        after = directory.lstat()
+        if (before.st_ino, before.st_mtime_ns, before.st_ctime_ns) != (after.st_ino, after.st_mtime_ns, after.st_ctime_ns):
+            raise Preserve('DEPLOY_LEASE_CHANGED_DURING_READ')
+    except FileNotFoundError:
+        if directory_seen:
+            raise Preserve('DEPLOY_LEASE_READ_UNKNOWN') from None
+        # No per-operation marker directory has been created.
+    except OSError:
+        raise Preserve('DEPLOY_LEASE_READ_UNKNOWN') from None
+    for state in states:
+        if state.startswith('ACTIVE_'):
+            raise Preserve('DEPLOY_LEASE_' + state)
+    return 'EXPIRED_PRESERVED' if 'EXPIRED' in states else 'CLEAR'
 
 
 @contextmanager
@@ -181,7 +285,7 @@ def main():
         if resolved_url.lower() not in {url.lower() for url in accepted}:
             raise Preserve('REMOTE_REWRITE_UNKNOWN')
         clean_tracked(root)
-        deploy_lease(root)
+        print('Deploy lease check: ' + deploy_lease(root))
         # A URL rewrite to another repository was rejected above.
         # A public repository needs no persisted credential or new secret.
         git(root, 'fetch', '--no-tags', '--no-recurse-submodules', 'origin', target)
