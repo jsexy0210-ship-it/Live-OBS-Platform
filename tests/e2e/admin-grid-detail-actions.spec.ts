@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import type { QueueItem, Snapshot } from "../../components/seller/broadcast/queue";
 
 // Every API is fulfilled in the browser. These cases never call DB, billing, mail or live services.
 const id = (n: number) => `00000000-0000-0000-0000-${String(n).padStart(12, "0")}`;
@@ -543,4 +544,183 @@ test("전체 만료일 상세는 원 순서·버전·첫 실패 중단과 부분
   await expect(form.getByLabel("연결 다 만료일")).toHaveValue("2030-01-01");
   await expect(form.getByRole("button", { name: "만료일 저장" })).toBeDisabled();
   expect(writes).toEqual([{ key: "a", body: { expiresOn: "2032-01-01", expectedVersion: 3 } }, { key: "b", body: { expiresOn: "2032-02-01", expectedVersion: 5 } }]);
+});
+
+// 현재 seller 경로를 loopback에서만 열고 모든 API를 소유 합성 응답으로 격리한다.
+async function mockGridSeller(page: Page, handler: (route: Route, path: string) => Promise<boolean>, readOnly = false) {
+  const base = new URL(test.info().project.use.baseURL as string);
+  expect(base.hostname).toMatch(/^(127\.0\.0\.1|localhost|\[::1\])$/); expect(base.port).not.toBe("");
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.route("**/*", async route => {
+    const url = new URL(route.request().url());
+    if (url.origin !== base.origin) return route.abort();
+    if (!url.pathname.startsWith("/api/")) return route.continue();
+    if (url.pathname === "/api/seller/me") return json(route, { sellerId: id(900), userId: id(901), isOwner: true, readOnly, permissions: [], access: "paid", features: ["OVERLAY", "STORE_OPERATIONS"], shop: { name: "합성 쇼핑몰", slug: "owned-grid" }, user: { name: "합성 대표", email: "fixture@example.invalid" }, trialEndsAt: null });
+    if (url.pathname === "/api/maintenance") return json(route, { active: false, scheduled: null });
+    if (await handler(route, url.pathname)) return;
+    expect(route.request().method(), `unexpected synthetic write ${url.pathname}`).toBe("GET");
+    return json(route, { error: "owned_read_not_configured" }, 500);
+  });
+  return errors;
+}
+const queueItem = (n: number, status: QueueItem["status"] = "WAITING"): QueueItem => ({ id: id(n), status, position: n, receivedAt: at, nicknameSnapshot: `합성 주문${n}`, gradeSnapshot: null, productLabel: "합성 상품", quantity: 1, timerSeconds: 0, openingStartedAt: status === "OPENING" ? at : null, doneAt: null, version: 1, broadcastSessionId: id(700), amount: 1000 });
+
+for (const width of [1440, 1024]) test(`그리드 상세: 홈 목록은 쓰지 않고 현재 순서·버전으로 상세에서만 이동한다 ${width}`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 });
+  await page.clock.install();
+  let snapshot: Snapshot = { version: 7, broadcast: { id: id(700), title: "합성 방송", startedAt: at }, opening: null, waiting: [queueItem(1), queueItem(2), queueItem(3)], beforeBroadcast: [], recentDone: [] };
+  const writes: unknown[] = [];
+  const errors = await mockGridSeller(page, async (route, path) => {
+    if (path === "/api/seller/queue") { await json(route, snapshot); return true; }
+    if (path === "/api/seller/queue/version") { await json(route, { version: snapshot.version }); return true; }
+    if (path === "/api/seller/queue/reorder") {
+      expect(route.request().method()).toBe("POST");
+      const body = route.request().postDataJSON(); writes.push(body);
+      snapshot = { ...snapshot, version: snapshot.version + 1, waiting: body.orderedIds.map((key: string) => snapshot.waiting.find(item => item.id === key)!) };
+      await json(route, { ok: true }); return true;
+    }
+    return false;
+  });
+  await page.goto("/seller?from=owned-grid");
+  const rows = page.getByTestId("bc-waiting");
+  await expect(rows.locator("tr")).toHaveCount(3);
+  await expect(rows.locator("button,input,select")).toHaveCount(0);
+  const second = rows.locator("tr", { hasText: "합성 주문2" }).getByRole("link", { name: "상세" });
+  await second.click();
+  const detail = page.getByTestId("queue-detail");
+  await expect(detail).toContainText("대기 2번째");
+  await page.keyboard.press("Control+Enter");
+  expect(writes).toEqual([]);
+  snapshot = { ...snapshot, version: 8, waiting: [snapshot.waiting[2], snapshot.waiting[0], snapshot.waiting[1]] };
+  await page.clock.fastForward(15_000);
+  await expect(detail).toContainText("대기 3번째");
+  await detail.getByRole("button", { name: "합성 주문2 위로" }).evaluate(el => { (el as HTMLButtonElement).click(); (el as HTMLButtonElement).click(); });
+  await expect.poll(() => writes.length).toBe(1);
+  expect(writes).toEqual([{ broadcastSessionId: id(700), orderedIds: [id(3), id(2), id(1)], expectedVersion: 8 }]);
+  await expect(detail.getByRole("button", { name: "합성 주문2 위로" })).toBeEnabled();
+  if (width === 1440) await detail.getByRole("button", { name: "대기 목록" }).click(); else await page.goBack();
+  await expect(second).toBeFocused();
+  await expect(page).toHaveURL(/\/seller\?from=owned-grid$/);
+  await rows.locator("tr", { hasText: "합성 주문1" }).getByRole("link", { name: "상세" }).click();
+  snapshot = { ...snapshot, version: snapshot.version + 1, waiting: snapshot.waiting.filter(item => item.id !== id(1)) };
+  await page.clock.fastForward(15_000);
+  await expect(detail).toContainText("이 주문을 찾을 수 없어요");
+  await expect(detail.getByRole("button")).toHaveCount(1);
+  await page.keyboard.press("Control+Enter"); expect(writes).toHaveLength(1);
+  await detail.getByRole("button", { name: "대기 목록" }).click();
+  await expect(page.locator("#bc-waiting-h")).toBeFocused();
+  expect(errors).toEqual([]);
+});
+
+test("그리드 상세: 완료 되돌리기는 상세에서 기존 version과 단조 시계 제한을 유지한다", async ({ page }) => {
+  await page.clock.install();
+  await page.clock.setSystemTime(new Date(Date.now() + 3_600_000));
+  let snapshot: Snapshot = { version: 1, broadcast: { id: id(700), title: "합성 방송", startedAt: at }, opening: queueItem(1, "OPENING"), waiting: [], beforeBroadcast: [], recentDone: [] };
+  const writes: { path: string; body: unknown }[] = [];
+  const errors = await mockGridSeller(page, async (route, path) => {
+    if (path === "/api/seller/queue") { await json(route, snapshot); return true; }
+    if (path === "/api/seller/queue/version") { await json(route, { version: snapshot.version }); return true; }
+    if (path === `/api/seller/queue/${id(1)}/complete` || path === `/api/seller/queue/${id(1)}/revert`) {
+      expect(route.request().method()).toBe("POST");
+      writes.push({ path, body: route.request().postDataJSON() });
+      const item = path.endsWith("complete") ? snapshot.opening! : snapshot.recentDone[0];
+      const next = { ...item, version: item.version + 1, status: path.endsWith("complete") ? "DONE" as const : "OPENING" as const, doneAt: new Date().toISOString() };
+      snapshot = { ...snapshot, version: snapshot.version + 1, opening: next.status === "OPENING" ? next : null, recentDone: next.status === "DONE" ? [next] : [] };
+      await json(route, { ok: true }); return true;
+    }
+    return false;
+  });
+  await page.goto("/seller");
+  await page.getByTestId("bc-opening").getByRole("button", { name: /개봉 완료/ }).click();
+  const done = page.getByTestId("bc-done");
+  await expect(done.getByRole("button")).toHaveCount(0);
+  await done.getByRole("link", { name: "상세" }).click();
+  const detail = page.getByTestId("queue-detail");
+  await detail.getByRole("button", { name: "되돌리기" }).click();
+  expect(writes).toEqual([{ path: `/api/seller/queue/${id(1)}/complete`, body: { expectedVersion: 1 } }, { path: `/api/seller/queue/${id(1)}/revert`, body: { expectedVersion: 2 } }]);
+  await detail.getByRole("button", { name: "대기 목록" }).click();
+  await page.getByTestId("bc-opening").getByRole("button", { name: /개봉 완료/ }).click();
+  await done.getByRole("link", { name: "상세" }).click();
+  await expect(detail.getByRole("button", { name: "되돌리기" })).toBeVisible();
+  await page.clock.fastForward(10_000);
+  await expect(detail.getByRole("button", { name: "되돌리기" })).toHaveCount(0);
+  expect(writes).toHaveLength(3); expect(errors).toEqual([]);
+});
+
+test("그리드 상세: 진열 편집은 목록에서 쓰지 않고 전체 저장·실패 초안·마지막 삭제를 보존한다", async ({ page }) => {
+  let display = { listSort: "new", options: { soldOutLast: false, hideSoldOut: false, liveFirst: false }, recommended: [], sections: [{ id: id(801), kind: "NEW", categoryId: null, title: "신상품", visible: true, itemCount: 8 }, { id: id(802), kind: "BEST", categoryId: null, title: "베스트", visible: true, itemCount: 8 }] };
+  const writes: { sections: Record<string, unknown>[] }[] = [];
+  let refuse = true;
+  const errors = await mockGridSeller(page, async (route, path) => {
+    if (path === "/api/seller/categories") { await json(route, { categories: [] }); return true; }
+    if (path === "/api/seller/display") { await json(route, display); return true; }
+    if (path === "/api/seller/display/sections") {
+      expect(route.request().method()).toBe("PUT");
+      const body = route.request().postDataJSON(); writes.push(body);
+      if (refuse) { refuse = false; await json(route, { error: "conflict", message: "저장하지 못했어요" }, 409); return true; }
+      display = { ...display, sections: body.sections.map((s: typeof display.sections[number]) => ({ ...s, id: display.sections.find(old => old.kind === s.kind)!.id })) };
+      await json(route, display); return true;
+    }
+    return false;
+  });
+  await page.goto("/seller/products/display?from=owned-grid");
+  const area = page.getByRole("region", { name: "홈 진열 영역", exact: true });
+  const rows = page.getByTestId("section-row");
+  await expect(rows).toHaveCount(2); await expect(rows.locator("input,select,button")).toHaveCount(0);
+  await expect(area.getByRole("button", { name: "영역 저장" })).toHaveCount(0);
+  await rows.filter({ hasText: "신상품" }).getByRole("link", { name: "상세" }).click();
+  await page.getByLabel("신상품 영역 이름").fill("새 진열");
+  await page.getByLabel("새 진열 보일 상품 수").fill("25");
+  await expect(page.getByLabel("새 진열 보일 상품 수")).toHaveValue("20");
+  await page.getByRole("checkbox", { name: "새 진열 홈에 표시" }).uncheck();
+  await page.getByRole("button", { name: "새 진열 아래로" }).click();
+  await page.getByRole("button", { name: "영역 목록", exact: true }).click();
+  await expect(rows.filter({ hasText: "새 진열" }).getByRole("link", { name: "상세" })).toBeFocused(); expect(writes).toEqual([]);
+  await rows.filter({ hasText: "베스트" }).getByRole("link", { name: "상세" }).click();
+  await page.getByLabel("베스트 영역 이름").fill("인기 진열");
+  await area.getByRole("button", { name: "영역 저장" }).evaluate(el => { (el as HTMLButtonElement).click(); (el as HTMLButtonElement).click(); });
+  await expect(page.getByText("저장하지 못했어요", { exact: true })).toBeVisible(); expect(writes).toHaveLength(1);
+  await expect(page.getByLabel("베스트 영역 이름")).toHaveValue("인기 진열");
+  const expected = { sections: [{ kind: "BEST", categoryId: null, title: "인기 진열", visible: true, itemCount: 8 }, { kind: "NEW", categoryId: null, title: "새 진열", visible: false, itemCount: 20 }] };
+  expect(writes[0]).toEqual(expected);
+  await area.getByRole("button", { name: "영역 저장" }).click();
+  await expect(rows).toHaveCount(2); expect(writes[1]).toEqual(expected);
+  for (let remaining = 1; remaining >= 0; remaining--) {
+    await rows.first().getByRole("link", { name: "상세" }).click();
+    await area.getByRole("button", { name: "영역 빼기" }).click();
+    await expect(area).toContainText(`홈에 표시할 영역은 ${remaining}개예요`); expect(writes).toHaveLength(3 - remaining);
+    await area.getByRole("button", { name: "영역 저장" }).click();
+    await expect(page).not.toHaveURL(/section=/); await expect(rows).toHaveCount(remaining);
+  }
+  expect(writes.at(-1)).toEqual({ sections: [] });
+  await page.goto(`/seller/products/display?section=id:${id(999)}`);
+  await expect(area).toContainText("이 영역을 찾을 수 없어요");
+  await expect(area.getByRole("button", { name: "영역 저장" })).toHaveCount(0); expect(errors).toEqual([]);
+});
+
+test("그리드 상세: 대신 보기와 조회 권한 거부는 상세에서도 쓰기를 열지 않는다", async ({ page }) => {
+  let denied = false;
+  const snapshot: Snapshot = { version: 1, broadcast: null, opening: null, waiting: [], beforeBroadcast: [queueItem(1), queueItem(2)], recentDone: [] };
+  const errors = await mockGridSeller(page, async (route, path) => {
+    if (path === "/api/seller/queue") { await json(route, snapshot); return true; }
+    if (path === "/api/seller/queue/version") { await json(route, { version: snapshot.version }); return true; }
+    if (path === "/api/seller/categories") { await json(route, { categories: [] }); return true; }
+    if (path === "/api/seller/display") { await json(route, denied ? { error: "permission_denied" } : { listSort: "new", options: { soldOutLast: false, hideSoldOut: false, liveFirst: false }, recommended: [], sections: [{ id: id(801), kind: "NEW", categoryId: null, title: "신상품", visible: true, itemCount: 8 }] }, denied ? 403 : 200); return true; }
+    return false;
+  }, true);
+  await page.goto(`/seller?queueItem=${id(2)}`);
+  const queue = page.getByTestId("queue-detail");
+  await expect(queue).toContainText("합성 주문2");
+  for (const button of await queue.getByRole("button").all()) {
+    if (await button.textContent() !== "대기 목록") await expect(button).toBeDisabled();
+  }
+  await page.keyboard.press("Control+Enter");
+  await page.goto(`/seller/products/display?section=id:${id(801)}`);
+  await expect(page.getByLabel("신상품 영역 이름")).toBeDisabled();
+  await expect(page.getByRole("button", { name: "영역 저장" })).toBeDisabled();
+  denied = true; await page.reload();
+  await expect(page.getByTestId("section-detail")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "영역 저장" })).toHaveCount(0);
+  expect(errors).toEqual([]);
 });

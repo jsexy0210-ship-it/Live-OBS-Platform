@@ -24,25 +24,33 @@ const login = async (page: Page, email: string) => {
 };
 const display = (page: Page) =>
   page.evaluate(async () => (await (await fetch("/api/seller/display")).json()) as { listSort: string; options: Record<string, boolean>; sections: { kind: string; title: string; visible: boolean; itemCount: number }[]; recommended: { name: string }[] });
-const sectionRow = (page: Page, title: string) => page.getByTestId("section-row").filter({ has: page.getByRole("textbox", { name: `${title}`, exact: false }) });
+const sectionRow = (page: Page, title: string) => page.getByTestId("section-row").filter({ hasText: title });
 
 test("대표자: 홈 영역을 추가·이름·순서·표시 설정하고 저장하면 서버에 반영된다", async ({ page }) => {
   await login(page, "demo-owner@example.com");
   await expect(page).toHaveURL(/\/seller\/products\/display$/);
   // 저장한 적이 없으면 서버 기본(추천 → 신상품)
   await expect(page.getByTestId("section-row")).toHaveCount(2);
+  await expect(page.getByTestId("section-row").locator("input,button,select")).toHaveCount(0);
+  await sectionRow(page, "추천 상품").getByRole("link", { name: "상세" }).click();
   await expect(page.getByRole("button", { name: "영역 저장" })).toBeDisabled();
+  await page.getByRole("button", { name: "영역 목록", exact: true }).click();
   if (SHOTS) await page.screenshot({ path: "tests/e2e/screenshots/SA-016-display-1440.png", fullPage: true });
 
   // 베스트 영역 추가 → 이름 바꾸기 → 맨 위로 → 신상품 끄기 → 저장
+  await page.getByRole("link", { name: "영역 추가", exact: true }).click();
   await page.getByLabel("영역 추가").selectOption("BEST");
   await page.getByRole("button", { name: "추가", exact: true }).click();
-  await expect(page.getByTestId("section-row")).toHaveCount(3);
-  // 같은 종류는 한 번만: 목록에서 사라진다
-  await expect(page.getByLabel("영역 추가").locator("option", { hasText: "베스트" })).toHaveCount(0);
   await page.getByRole("textbox", { name: "베스트 영역 이름" }).fill("인기 상품");
   await page.getByRole("button", { name: "인기 상품 위로" }).click();
   await page.getByRole("button", { name: "인기 상품 위로" }).click();
+  await page.getByRole("button", { name: "영역 목록", exact: true }).click();
+  await expect(page.getByTestId("section-row")).toHaveCount(3);
+  // 같은 종류는 한 번만: 추가 상세의 선택 목록에서 사라진다.
+  await page.getByRole("link", { name: "영역 추가", exact: true }).click();
+  await expect(page.getByLabel("영역 추가").locator("option", { hasText: "베스트" })).toHaveCount(0);
+  await page.getByRole("button", { name: "영역 목록", exact: true }).click();
+  await sectionRow(page, "신상품").getByRole("link", { name: "상세" }).click();
   await page.getByRole("checkbox", { name: "신상품 홈에 표시" }).uncheck();
   expect((await display(page)).sections).toHaveLength(2); // 저장 전에는 서버가 그대로다
   await page.getByRole("button", { name: "영역 저장" }).click();
@@ -53,6 +61,7 @@ test("대표자: 홈 영역을 추가·이름·순서·표시 설정하고 저�
     ["RECOMMENDED", "추천 상품", true],
     ["NEW", "신상품", false],
   ]);
+  await sectionRow(page, "인기 상품").getByRole("link", { name: "상세" }).click();
   await expect(page.getByRole("button", { name: "영역 저장" })).toBeDisabled();
 
   // 이름은 30자까지

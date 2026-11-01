@@ -2,6 +2,7 @@
 
 import "../../../styles/seller-broadcast.css";
 import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 import { StoreHomeSections } from "./HomeDashboard";
 import { OverlayHomeSections } from "./OverlayHome";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -28,6 +29,7 @@ import { won } from "../../seller/format";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../seller/States";
 import { api, failMessage, type ApiResult } from "../../seller/api";
 import { useLatestResponse } from "../../seller/latestResponse";
+import { useSmartBack } from "../../../lib/client/navigation";
 
 // SA-002 단일 홈. 기존 방송 조작은 이 구현으로 이동해 동일 서버·권한 계약을 재사용한다.
 // 방송 시작·종료, 주문대기 개봉 시작·완료·되돌리기(완료 후 10초)·취소(사유 필수)·타이머·순서 변경.
@@ -57,13 +59,22 @@ const typing = (t: EventTarget | null) => t instanceof HTMLElement && (t.isConte
 
 export function UnifiedHome() {
   const { can, me } = useSeller();
+  const pathname = usePathname(), params = useSearchParams();
+  const queueItemId = params.get("queueItem");
+  const listQuery = new URLSearchParams(params.toString());
+  listQuery.delete("queueItem");
+  const listHref = `${pathname}${listQuery.size ? `?${listQuery}` : ""}`;
+  const detailHref = (id: string) => { const q = new URLSearchParams(listQuery); q.set("queueItem", id); return `${pathname}?${q}`; };
+  const back = useSmartBack(listHref);
+  const focusItem = useRef<string | null>(null);
   const allowed = me.features.includes("OVERLAY") && can("BROADCAST_RUN");
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [modal, setModal] = useState<Modal>(null);
-  const { confirm } = useConfirm();
+  const { confirm, readOnly } = useConfirm();
   // 공용 확인 창(방송 종료·채팅 끄기)이 떠 있는 동안에도 단축키(개봉 완료 등)를 막는다
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
+  const mutationInFlight = useRef(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
   const [stale, setStale] = useState(false);
   const [title, setTitle] = useState("");
@@ -208,8 +219,11 @@ export function UnifiedHome() {
   // 끝나면 다시 읽어 서버 상태로 맞춘다. 다시 읽기가 끝날 때까지 조작을 막는다(옛 version으로 다음 요청을 보내 409가 나지 않게).
   // 결과가 불분명하면 성공을 추정하지 않는다.
   const mutate = useCallback(
-    async <T,>(path: string, body: unknown, okText: string): Promise<ApiResult<T>> => {
+    async <T,>(path: string, body: unknown, okText: string): Promise<ApiResult<T> | undefined> => {
+      if (mutationInFlight.current || readOnly) return;
+      mutationInFlight.current = true;
       setBusy(true);
+      try {
       reads.confirmChange();
       const r = await api<T>(path, { method: "POST", body });
       if (r.ok) {
@@ -223,10 +237,13 @@ export function UnifiedHome() {
         if (r.error !== "reason_required" && r.error !== "invalid_timer") setModal(null);
       }
       await load();
-      setBusy(false);
       return r;
+      } finally {
+        mutationInFlight.current = false;
+        setBusy(false);
+      }
     },
-    [load, reads],
+    [load, reads, readOnly],
   );
 
   // 방송 종료는 확인 창을 연 그 방송에만 한다. 종료 API는 방송을 지정받지 않아(지금 방송을 끝냄),
@@ -248,6 +265,7 @@ export function UnifiedHome() {
         }
         // broadcastSessionId: 서버가 지금 방송과 맞춰 볼 수 있게 미리 넘긴다(서버 확인은 기반 세션에 배정, 생기기 전에는 무시됨)
         const e = await mutate("/api/seller/broadcast/end", { broadcastSessionId: sessionId }, "방송을 종료했어요");
+        if (!e) return "처리 중이에요. 잠시 뒤 다시 확인해 주세요.";
         if (e.ok) return undefined;
         return isUnclearFailure(e.status) ? "처리 결과를 확인하지 못했어요. 최신 상태를 다시 불러와 확인해 주세요." : (rejectText(e.error) ?? failMessage(e, "admin"));
       },
@@ -257,12 +275,22 @@ export function UnifiedHome() {
 
   // 변경 조작은 요청 처리 중(busy)이거나 보이는 내용이 서버에서 확인된 최신이 아닐 때(stale) 모두 막는다.
   // 옛 version으로 보내 409가 나는 것을 원인에서 막는다. 「다시 불러오기」만 열어 둔다
-  const locked = busy || stale;
+  const locked = busy || stale || readOnly;
   const snap = state.kind === "ok" ? state.snap : null;
   const live = snap?.broadcast ?? null;
   const opening = snap?.opening ?? null;
   const waiting = snap ? (live ? snap.waiting : snap.beforeBroadcast) : [];
   const next = waiting[0] ?? null;
+  const selectedWaitingIndex = waiting.findIndex((item) => item.id === queueItemId);
+  const selectedDone = snap?.recentDone.find((item) => item.id === queueItemId);
+  const selectedItem = selectedWaitingIndex >= 0 ? waiting[selectedWaitingIndex] : selectedDone ?? (opening?.id === queueItemId ? opening : undefined);
+  const selectedSeenAt = selectedDone ? doneSeenAt.current.get(selectedDone.id) : undefined;
+  const selectedCanRevert = !!(selectedDone && live && selectedDone.broadcastSessionId === live.id && !opening && selectedSeenAt !== undefined && performance.now() - selectedSeenAt < REVERT_WINDOW_MS);
+  useEffect(() => {
+    if (queueItemId || !focusItem.current) return;
+    (document.getElementById(`queue-open-${focusItem.current}`) ?? document.getElementById("bc-waiting-h"))?.focus();
+    focusItem.current = null;
+  }, [queueItemId]);
 
   // HIT 카드 등록 대상: 지금 개봉 중(기본) → 방금 완료한 주문들
   const hitTargets: HitTarget[] = [
@@ -272,7 +300,7 @@ export function UnifiedHome() {
 
   const act = async (item: QueueItem, action: "start" | "complete" | "revert", okText: string) => {
     const r = await mutate(`/api/seller/queue/${item.id}/${action}`, { expectedVersion: item.version }, okText);
-    if (r.ok && action === "complete") doneSeenAt.current.set(item.id, performance.now());
+    if (r?.ok && action === "complete") doneSeenAt.current.set(item.id, performance.now());
     return r;
   };
   const setTimer = (item: QueueItem, seconds: number) =>
@@ -292,7 +320,7 @@ export function UnifiedHome() {
   const keys = useRef<(e: KeyboardEvent) => void>(() => undefined);
   keys.current = (e: KeyboardEvent) => {
     // 길게 눌러 생기는 자동 반복(e.repeat)은 무시한다(완료 뒤 다음 주문이 개봉되거나 타이머가 계속 오르지 않게)
-    if (e.repeat || !e.ctrlKey || e.altKey || e.metaKey || modal || confirming || locked || !snap || typing(e.target)) return;
+    if (e.repeat || !e.ctrlKey || e.altKey || e.metaKey || modal || confirming || queueItemId || locked || !snap || typing(e.target)) return;
     if (e.key === "Enter") {
       e.preventDefault();
       if (opening) void act(opening, "complete", "개봉을 완료했어요");
@@ -399,7 +427,7 @@ export function UnifiedHome() {
                     className="row bc-start"
                     onSubmit={(e) => {
                       e.preventDefault();
-                      void mutate("/api/seller/broadcast/start", { title: title.trim() || undefined }, "방송을 시작했어요").then((r) => r.ok && setTitle(""));
+                      void mutate("/api/seller/broadcast/start", { title: title.trim() || undefined }, "방송을 시작했어요").then((r) => r?.ok && setTitle(""));
                     }}
                   >
                     <label className="sr" htmlFor="bc-title-input">
@@ -472,9 +500,23 @@ export function UnifiedHome() {
                 )}
               </section>
 
+              {queueItemId ? <section className="card pad col" style={{ gap: 12 }} aria-label="주문대기 상세" data-testid="queue-detail">
+                <div className="row between" style={{ gap: 8 }}><h2 className="t-hl1">주문대기 상세</h2><button className="btn btn-out" type="button" onClick={back}>대기 목록</button></div>
+                {selectedItem ? <>
+                  <ItemText item={selectedItem} />
+                  <span className="t-l2 c-alt">{selectedWaitingIndex >= 0 ? `대기 ${selectedWaitingIndex + 1}번째` : selectedDone ? "완료한 주문이에요" : "개봉 중인 주문이에요"} · 타이머 {selectedItem.timerSeconds > 0 ? clock(selectedItem.timerSeconds) : "없음"}</span>
+                  {selectedWaitingIndex >= 0 && <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                    <button className="btn btn-sm btn-ghost" type="button" aria-label={`${selectedItem.nicknameSnapshot} 위로`} disabled={locked || selectedWaitingIndex === 0} onClick={() => move(selectedWaitingIndex, -1)}>↑</button>
+                    <button className="btn btn-sm btn-ghost" type="button" aria-label={`${selectedItem.nicknameSnapshot} 아래로`} disabled={locked || selectedWaitingIndex === waiting.length - 1} onClick={() => move(selectedWaitingIndex, 1)}>↓</button>
+                    <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => setModal({ kind: "timer", item: selectedItem })}>타이머 정하기</button>
+                    <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => setModal({ kind: "cancel", item: selectedItem })}>주문대기에서 빼기</button>
+                  </div>}
+                  {selectedCanRevert && selectedDone && <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => void act(selectedDone, "revert", "완료를 되돌렸어요")}>되돌리기</button>}
+                </> : <p role="status">이 주문을 찾을 수 없어요. 대기 목록에서 다시 선택해 주세요.</p>}
+              </section> : <>
               {/* 대기 */}
               <section className="card pad col" style={{ gap: 12 }} aria-labelledby="bc-waiting-h">
-                <h2 className="t-hl1" id="bc-waiting-h">
+                <h2 className="t-hl1" id="bc-waiting-h" tabIndex={-1}>
                   {live ? "대기" : "방송 전 대기"} <span className="c-alt fw5">{waiting.length}건</span>
                 </h2>
                 <span className="t-c1 c-alt">방송에서 개봉할 차례를 기다리는 주문이에요.</span>
@@ -524,18 +566,7 @@ export function UnifiedHome() {
                             </td>
                             <td className="bc-c-acts">
                               <span className="row bc-acts">
-                                <button className="btn btn-sm btn-ghost" type="button" aria-label={`${w.nicknameSnapshot} 위로`} disabled={locked || i === 0} onClick={() => move(i, -1)}>
-                                  ↑
-                                </button>
-                                <button className="btn btn-sm btn-ghost" type="button" aria-label={`${w.nicknameSnapshot} 아래로`} disabled={locked || i === waiting.length - 1} onClick={() => move(i, 1)}>
-                                  ↓
-                                </button>
-                                <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => setModal({ kind: "timer", item: w })}>
-                                  타이머 정하기
-                                </button>
-                                <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => setModal({ kind: "cancel", item: w })}>
-                                  주문대기에서 빼기
-                                </button>
+                                <Link id={`queue-open-${w.id}`} className="btn btn-sm btn-out" href={detailHref(w.id)} scroll={false} onClick={() => { focusItem.current = w.id; }}>상세</Link>
                               </span>
                             </td>
                           </tr>
@@ -566,8 +597,6 @@ export function UnifiedHome() {
                       </thead>
                       <tbody data-testid="bc-done">
                         {snap.recentDone.map((d) => {
-                          const seenAt = doneSeenAt.current.get(d.id);
-                          const canRevert = live && d.broadcastSessionId === live.id && !opening && seenAt !== undefined && performance.now() - seenAt < REVERT_WINDOW_MS;
                           return (
                             <tr key={d.id}>
                               <td className="num">{d.doneAt ? kstTime(d.doneAt) : "-"}</td>
@@ -578,11 +607,7 @@ export function UnifiedHome() {
                                 <span className="bdg b-done">완료</span>
                               </td>
                               <td>
-                                {canRevert && (
-                                  <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => void act(d, "revert", "완료를 되돌렸어요")}>
-                                    되돌리기
-                                  </button>
-                                )}
+                                <Link id={`queue-open-${d.id}`} className="btn btn-sm btn-out" href={detailHref(d.id)} scroll={false} onClick={() => { focusItem.current = d.id; }}>상세</Link>
                               </td>
                             </tr>
                           );
@@ -592,6 +617,7 @@ export function UnifiedHome() {
                   </div>
                 )}
               </section>
+              </>}
               <section className="bc-sum" aria-label="방송 요약" data-testid="bc-summary">
                 <div className="bc-sum-t t-c1 c-alt">{sum?.broadcast ? (sum.broadcast.status === "live" ? "지금 방송" : "오늘 마지막 방송") : sum ? "오늘 방송 없음" : "방송 요약"}</div>
                 <div className="bc-sum-g">
