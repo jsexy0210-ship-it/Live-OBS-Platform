@@ -556,6 +556,7 @@ async function mockGridSeller(page: Page, handler: (route: Route, path: string) 
     const url = new URL(route.request().url());
     if (url.origin !== base.origin) return route.abort();
     if (!url.pathname.startsWith("/api/")) return route.continue();
+    if (route.request().method() !== "GET") expect(["/api/seller/queue/reorder", `/api/seller/queue/${id(1)}/complete`, `/api/seller/queue/${id(1)}/revert`, "/api/seller/display/sections"]).toContain(url.pathname);
     if (url.pathname === "/api/seller/me") return json(route, { sellerId: id(900), userId: id(901), isOwner: true, readOnly, permissions: [], access: "paid", features: ["OVERLAY", "STORE_OPERATIONS"], shop: { name: "합성 쇼핑몰", slug: "owned-grid" }, user: { name: "합성 대표", email: "fixture@example.invalid" }, trialEndsAt: null });
     if (url.pathname === "/api/maintenance") return json(route, { active: false, scheduled: null });
     if (await handler(route, url.pathname)) return;
