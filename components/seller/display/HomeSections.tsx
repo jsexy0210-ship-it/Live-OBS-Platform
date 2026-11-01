@@ -132,8 +132,8 @@ export function HomeSections({ sections, cats, onSaved, notify }: { sections: Se
         </FormSection>
         <button className="btn btn-out" type="button" disabled={busy || readOnly} onClick={() => { setDraft((d) => d.filter((s) => sectionKey(s) !== selectedKey)); setView({ section: "changes" }); }}>영역 빼기</button>
       </div>}
-      {review && <p>홈에 표시할 영역은 {draft.length}개예요. 영역 저장을 누르면 지금까지 바꾼 내용이 함께 반영돼요.</p>}
-      {selectedKey && !selected && !review && selectedKey !== "new" && <p role="status">이 영역을 찾을 수 없어요. 영역 목록에서 다시 선택해 주세요.</p>}
+      {review && <p>홈에 표시할 영역은 {draft.length}개입니다. 영역 저장을 누르면 지금까지 바꾼 내용이 함께 반영됩니다.</p>}
+      {selectedKey && !selected && !review && selectedKey !== "new" && <p role="status">이 영역을 찾을 수 없습니다. 영역 목록에서 다시 선택해 주십시오.</p>}
       {badTitle && <span className="t-c1 c-neg">영역 이름은 1~{TITLE_MAX}자로 입력해 주십시오</span>}
       {selectedKey === "new" && <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 8 }}>
         <label className="row" style={{ gap: 6 }}>

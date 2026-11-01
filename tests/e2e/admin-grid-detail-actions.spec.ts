@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 import type { QueueItem, Snapshot } from "../../components/seller/broadcast/queue";
 
 // Every API is fulfilled in the browser. These cases never call DB, billing, mail or live services.
@@ -566,6 +566,14 @@ async function mockGridSeller(page: Page, handler: (route: Route, path: string) 
   return errors;
 }
 const queueItem = (n: number, status: QueueItem["status"] = "WAITING"): QueueItem => ({ id: id(n), status, position: n, receivedAt: at, nicknameSnapshot: `합성 주문${n}`, gradeSnapshot: null, productLabel: "합성 상품", quantity: 1, timerSeconds: 0, openingStartedAt: status === "OPENING" ? at : null, doneAt: null, version: 1, broadcastSessionId: id(700), amount: 1000 });
+async function attachGridEvidence(page: Page, component: Locator, phase: string) {
+  for (const full of [false, true]) {
+    const name = `grid-detail-${phase}-${page.viewportSize()!.width}-${full ? "full" : "component"}.png`;
+    const path = test.info().outputPath(name);
+    if (full) await page.screenshot({ path, fullPage: true }); else await component.screenshot({ path });
+    await test.info().attach(name, { path, contentType: "image/png" });
+  }
+}
 
 for (const width of [1440, 1024]) test(`그리드 상세: 홈 목록은 쓰지 않고 현재 순서·버전으로 상세에서만 이동한다 ${width}`, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 });
@@ -587,6 +595,8 @@ for (const width of [1440, 1024]) test(`그리드 상세: 홈 목록은 쓰지 �
   const rows = page.getByTestId("bc-waiting");
   await expect(rows.locator("tr")).toHaveCount(3);
   await expect(rows.locator("button,input,select")).toHaveCount(0);
+  await expect(rows.locator("tr .t-l1")).toHaveText(["합성 주문1", "합성 주문2", "합성 주문3"]);
+  await attachGridEvidence(page, page.locator('section[aria-labelledby="bc-waiting-h"]'), "home-list");
   const second = rows.locator("tr", { hasText: "합성 주문2" }).getByRole("link", { name: "상세" });
   await second.click();
   const detail = page.getByTestId("queue-detail");
@@ -596,6 +606,8 @@ for (const width of [1440, 1024]) test(`그리드 상세: 홈 목록은 쓰지 �
   snapshot = { ...snapshot, version: 8, waiting: [snapshot.waiting[2], snapshot.waiting[0], snapshot.waiting[1]] };
   await page.clock.fastForward(15_000);
   await expect(detail).toContainText("대기 3번째");
+  await expect(detail).toContainText("합성 주문2");
+  await attachGridEvidence(page, detail, "home-detail");
   await detail.getByRole("button", { name: "합성 주문2 위로" }).evaluate(el => { (el as HTMLButtonElement).click(); (el as HTMLButtonElement).click(); });
   await expect.poll(() => writes.length).toBe(1);
   expect(writes).toEqual([{ broadcastSessionId: id(700), orderedIds: [id(3), id(2), id(1)], expectedVersion: 8 }]);
@@ -670,12 +682,18 @@ test("그리드 상세: 진열 편집은 목록에서 쓰지 않고 전체 저�
   const rows = page.getByTestId("section-row");
   await expect(rows).toHaveCount(2); await expect(rows.locator("input,select,button")).toHaveCount(0);
   await expect(area.getByRole("button", { name: "영역 저장" })).toHaveCount(0);
+  await expect(rows.nth(0)).toContainText("신상품"); await expect(rows.nth(1)).toContainText("베스트");
+  for (const width of [1440, 1024]) { await page.setViewportSize({ width, height: 1000 }); await attachGridEvidence(page, area, "display-list"); }
   await rows.filter({ hasText: "신상품" }).getByRole("link", { name: "상세" }).click();
   await page.getByLabel("신상품 영역 이름").fill("새 진열");
   await page.getByLabel("새 진열 보일 상품 수").fill("25");
   await expect(page.getByLabel("새 진열 보일 상품 수")).toHaveValue("20");
   await page.getByRole("checkbox", { name: "새 진열 홈에 표시" }).uncheck();
   await page.getByRole("button", { name: "새 진열 아래로" }).click();
+  await expect(page.getByTestId("section-detail").getByRole("textbox")).toHaveValue("새 진열");
+  await expect(page.getByRole("checkbox", { name: "새 진열 홈에 표시" })).not.toBeChecked();
+  await expect(area.getByRole("button", { name: "영역 저장" })).toBeEnabled();
+  for (const width of [1440, 1024]) { await page.setViewportSize({ width, height: 1000 }); await attachGridEvidence(page, area, "display-detail"); }
   await page.getByRole("button", { name: "영역 목록", exact: true }).click();
   await expect(rows.filter({ hasText: "새 진열" }).getByRole("link", { name: "상세" })).toBeFocused(); expect(writes).toEqual([]);
   await rows.filter({ hasText: "베스트" }).getByRole("link", { name: "상세" }).click();
@@ -690,13 +708,13 @@ test("그리드 상세: 진열 편집은 목록에서 쓰지 않고 전체 저�
   for (let remaining = 1; remaining >= 0; remaining--) {
     await rows.first().getByRole("link", { name: "상세" }).click();
     await area.getByRole("button", { name: "영역 빼기" }).click();
-    await expect(area).toContainText(`홈에 표시할 영역은 ${remaining}개예요`); expect(writes).toHaveLength(3 - remaining);
+    await expect(area).toContainText(`홈에 표시할 영역은 ${remaining}개입니다`); expect(writes).toHaveLength(3 - remaining);
     await area.getByRole("button", { name: "영역 저장" }).click();
     await expect(page).not.toHaveURL(/section=/); await expect(rows).toHaveCount(remaining);
   }
   expect(writes.at(-1)).toEqual({ sections: [] });
   await page.goto(`/seller/products/display?section=id:${id(999)}`);
-  await expect(area).toContainText("이 영역을 찾을 수 없어요");
+  await expect(area).toContainText("이 영역을 찾을 수 없습니다");
   await expect(area.getByRole("button", { name: "영역 저장" })).toHaveCount(0); expect(errors).toEqual([]);
 });
 

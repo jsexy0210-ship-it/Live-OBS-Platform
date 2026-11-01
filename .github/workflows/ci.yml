@@ -337,6 +337,7 @@ jobs:
             tests/e2e/screenshots/*.png
             !tests/e2e/screenshots/admin-partners-list-*.png
             tests/e2e/screenshots/current-shell-*/*
+            test-results/**/grid-detail-*.png
           if-no-files-found: ignore
           retention-days: 1
 
