@@ -10,7 +10,8 @@ import { KIND_INFO, MAX_SECTIONS, TITLE_MAX, failText, moved, useDraft, type Cat
 
 // 홈 진열 영역: 켠 영역만 구매자 홈에 순서대로 보인다. 위·아래로 옮기고 이름·보일 상품 수를 정한 뒤 「영역 저장」으로 통째로 저장한다(PUT /api/seller/display/sections).
 const strip = (s: Section): Section => ({ kind: s.kind, categoryId: s.categoryId, title: s.title, visible: s.visible, itemCount: s.itemCount });
-const sectionKey = (s: Section) => s.id ? `id:${s.id}` : `draft:${s.kind}:${s.categoryId ?? ""}`;
+type DraftSection = Section & { localKey?: number };
+const sectionKey = (s: DraftSection) => s.localKey !== undefined ? `draft:${s.localKey}` : s.id ? `id:${s.id}` : `draft:${s.kind}:${s.categoryId ?? ""}`;
 const catName = (cats: CategoryNode[], id: string | null) => {
   for (const p of cats) {
     if (p.id === id) return p.name;
@@ -32,7 +33,8 @@ export function HomeSections({ sections, cats, onSaved, notify }: { sections: Se
   const focusKey = useRef<string | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const server = sections.map((s) => ({ ...strip(s), id: s.id }));
-  const [draft, setDraft, dirty] = useDraft<Section[]>(server);
+  const [draft, setDraft, dirty] = useDraft<DraftSection[]>(server);
+  const nextLocalKey = useRef(0);
   const [busy, setBusy] = useState(false);
   const saveInFlight = useRef(false);
   const [addKind, setAddKind] = useState<Kind | "">("");
@@ -57,7 +59,7 @@ export function HomeSections({ sections, cats, onSaved, notify }: { sections: Se
   const add = () => {
     if (addKind === "") return;
     const title = addKind === "CATEGORY" ? (allCats.find((c) => c.id === addCat)?.name.split(" › ").pop() ?? "카테고리") : KIND_INFO[addKind].label;
-    const section: Section = { kind: addKind, categoryId: addKind === "CATEGORY" ? addCat : null, title, visible: true, itemCount: 8 };
+    const section: DraftSection = { kind: addKind, categoryId: addKind === "CATEGORY" ? addCat : null, title, visible: true, itemCount: 8, localKey: ++nextLocalKey.current };
     setDraft((d) => [...d, section]);
     setAddKind("");
     setAddCat("");
@@ -107,7 +109,7 @@ export function HomeSections({ sections, cats, onSaved, notify }: { sections: Se
           </thead>
           <tbody>
             {draft.map((s, i) => (
-              <tr key={`${s.kind}-${s.categoryId ?? ""}-${i}`} data-testid="section-row">
+              <tr key={sectionKey(s)} data-testid="section-row">
                 <td>{s.title}</td>
                 <td>{s.kind === "CATEGORY" ? `카테고리 · ${catName(cats, s.categoryId)}` : KIND_INFO[s.kind].basis}</td>
                 <td>{s.itemCount}</td>

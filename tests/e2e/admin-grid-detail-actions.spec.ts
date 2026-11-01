@@ -725,3 +725,57 @@ test("그리드 상세: 대신 보기와 조회 권한 거부는 상세에서도
   await expect(page.getByRole("button", { name: "영역 저장" })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test("그리드 상세: 같은 카테고리 초안 두 개를 각각 편집·이동·삭제하고 전체를 한 번 저장한다", async ({ page }) => {
+  const writes: unknown[] = [];
+  let display = { listSort: "new", options: { soldOutLast: false, hideSoldOut: false, liveFirst: false }, recommended: [], sections: [] as Record<string, unknown>[] };
+  const errors = await mockGridSeller(page, async (route, path) => {
+    if (path === "/api/seller/categories") { await json(route, { categories: [{ id: id(810), name: "같은 카테고리", visible: true, children: [] }] }); return true; }
+    if (path === "/api/seller/display") { await json(route, display); return true; }
+    if (path === "/api/seller/display/sections") {
+      expect(route.request().method()).toBe("PUT");
+      const body = route.request().postDataJSON(); writes.push(body);
+      display = { ...display, sections: body.sections.map((section: Record<string, unknown>, i: number) => ({ ...section, id: id(820 + i) })) };
+      await json(route, display); return true;
+    }
+    return false;
+  });
+  await page.goto("/seller/products/display");
+  const area = page.getByRole("region", { name: "홈 진열 영역", exact: true });
+  const rows = page.getByTestId("section-row");
+  const addCategory = async () => {
+    await area.getByRole("link", { name: "영역 추가", exact: true }).click();
+    await area.getByLabel("영역 추가").selectOption("CATEGORY");
+    await area.getByLabel("카테고리", { exact: true }).selectOption(id(810));
+    await area.getByRole("button", { name: "추가", exact: true }).click();
+    await expect(page.getByTestId("section-detail")).toBeVisible();
+  };
+  await addCategory();
+  const firstUrl = page.url();
+  await area.getByLabel("카테고리 영역 이름").fill("첫 영역");
+  await area.getByLabel("첫 영역 보일 상품 수").fill("3");
+  await area.getByRole("checkbox", { name: "첫 영역 홈에 표시" }).uncheck();
+  await area.getByRole("button", { name: "영역 목록", exact: true }).click();
+  await addCategory();
+  expect(page.url()).not.toBe(firstUrl);
+  await area.getByLabel("카테고리 영역 이름").fill("둘 영역");
+  await area.getByLabel("둘 영역 보일 상품 수").fill("5");
+  await area.getByRole("checkbox", { name: "둘 영역 홈에 표시" }).uncheck();
+  await area.getByRole("button", { name: "둘 영역 위로" }).click();
+  await area.getByRole("button", { name: "영역 목록", exact: true }).click();
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText("둘 영역");
+  await expect(rows.nth(1)).toContainText("첫 영역");
+  await rows.filter({ hasText: "첫 영역" }).getByRole("link", { name: "상세" }).click();
+  await expect(area.getByLabel("첫 영역 보일 상품 수")).toHaveValue("3");
+  await expect(area.getByRole("checkbox", { name: "첫 영역 홈에 표시" })).not.toBeChecked();
+  await area.getByLabel("첫 영역 보일 상품 수").fill("4");
+  await area.getByRole("checkbox", { name: "첫 영역 홈에 표시" }).check();
+  await area.getByRole("button", { name: "영역 빼기" }).click();
+  expect(writes).toEqual([]);
+  await area.getByRole("button", { name: "영역 저장" }).click();
+  await expect(page).not.toHaveURL(/section=/);
+  await expect(rows).toHaveCount(1);
+  expect(writes).toEqual([{ sections: [{ kind: "CATEGORY", categoryId: id(810), title: "둘 영역", visible: false, itemCount: 5 }] }]);
+  expect(errors).toEqual([]);
+});
