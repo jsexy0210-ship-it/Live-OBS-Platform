@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 import type { QueueItem, Snapshot } from "../../components/seller/broadcast/queue";
+import { mkdirSync } from "node:fs";
 
 // Every API is fulfilled in the browser. These cases never call DB, billing, mail or live services.
 const id = (n: number) => `00000000-0000-0000-0000-${String(n).padStart(12, "0")}`;
@@ -567,9 +568,11 @@ async function mockGridSeller(page: Page, handler: (route: Route, path: string) 
 }
 const queueItem = (n: number, status: QueueItem["status"] = "WAITING"): QueueItem => ({ id: id(n), status, position: n, receivedAt: at, nicknameSnapshot: `합성 주문${n}`, gradeSnapshot: null, productLabel: "합성 상품", quantity: 1, timerSeconds: 0, openingStartedAt: status === "OPENING" ? at : null, doneAt: null, version: 1, broadcastSessionId: id(700), amount: 1000 });
 async function attachGridEvidence(page: Page, component: Locator, phase: string) {
+  const directory = `tests/e2e/screenshots/current-shell-${process.env.GITHUB_SHA ?? "local-grid-detail"}`;
+  mkdirSync(directory, { recursive: true });
   for (const full of [false, true]) {
     const name = `grid-detail-${phase}-${page.viewportSize()!.width}-${full ? "full" : "component"}.png`;
-    const path = test.info().outputPath(name);
+    const path = `${directory}/${name}`;
     if (full) await page.screenshot({ path, fullPage: true }); else await component.screenshot({ path });
     await test.info().attach(name, { path, contentType: "image/png" });
   }
