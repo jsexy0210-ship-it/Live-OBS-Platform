@@ -481,6 +481,36 @@ async function closeOverdue(tx: Tx, cur: AutomationJob, now: Date, reason: "cust
   else await alertCleanupNeeded(tx, job, reason);
 }
 
+// 마스터 관리자 작업 상세(MA-111)의 두 동작. 호출하는 쪽이 판매자 잠금 → 작업 행 잠금을 잡은 상태에서 부른다(잠금 순서).
+// 결제·종료 상태는 건드리지 않고, 실행 중인 정상 임대에는 손대지 않는다.
+// 재시도: 백오프로 미래에 잡힌 대기(QUEUED) 작업의 실행 시각을 지금으로 당긴다. 시도 횟수는 그대로.
+export async function pullRetryForward(tx: Tx, cur: AutomationJob, now: Date) {
+  const job = await tx.automationJob.update({ where: { id: cur.id }, data: { runAfter: now } });
+  await writeJobEvent(tx, job, "QUEUED", "QUEUED", job.fencingToken, { reason: "admin_retry_now" });
+}
+
+// 담당 작업 서버 바꾸기: 임대가 이미 끝난 실행 중 작업을 회수해 대기열로 돌린다(reapExpired의 한 건 버전, 바로 실행 가능).
+// 이 회수로 시도를 다 쓰게 되면(reapExpired라면 실패로 닫을 경우) 아무것도 바꾸지 않고 false를 돌려준다: 종료·환불은 이 동작의 범위가 아니다.
+export async function reclaimExpiredLease(tx: Tx, cur: AutomationJob, now: Date): Promise<boolean> {
+  const attempts = cur.attempts + 1;
+  if (attempts >= cur.maxAttempts) return false;
+  const job = await tx.automationJob.update({
+    where: { id: cur.id },
+    data: {
+      ...RELEASE,
+      status: "QUEUED",
+      attempts,
+      lastError: "lease_expired",
+      runAfter: now,
+      fencingToken: { increment: 1 },
+      activeMsUsed: cur.activeMsUsed + (cur.leaseExpiresAt ? runningMs(cur, cur.leaseExpiresAt) : 0),
+      runStartedAt: null,
+    },
+  });
+  await writeJobEvent(tx, job, cur.status, "QUEUED", job.fencingToken, { reason: "admin_reassign" });
+  return true;
+}
+
 // lease가 끝난 실행 중 작업을 회수한다(작업자 중단·멈춤). 토큰을 올려 이전 작업자의 늦은 쓰기를 막는다.
 // 고객 행동 마감이 지난 작업은 실패로 닫는다.
 export async function reapExpired(db: PrismaClient, random: () => number = Math.random): Promise<{ requeued: number; failed: number }> {
