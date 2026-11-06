@@ -272,21 +272,21 @@ export default function MemberGradesPage() {
                   <>
                     <b className="num">승급 {data.lastRun.promoted}</b>
                     <span className="t-c1 c-alt num">강등 {data.lastRun.demoted}</span>
-                    <span className="row" style={{ gap: 4 }}>
-                      <button className="mg-link t-c1" type="button" onClick={() => void showChanges("up")}>
-                        승급 회원 보기
-                      </button>
-                      <span className="t-c1 c-alt" aria-hidden="true">
-                        ·
-                      </span>
-                      <button className="mg-link t-c1" type="button" onClick={() => void showChanges("down")}>
-                        강등 회원 보기
-                      </button>
-                    </span>
                   </>
                 ) : (
                   <b className="num">없음</b>
                 )}
+                <span className="row" style={{ gap: 4 }}>
+                  <button className="mg-link t-c1" type="button" onClick={() => void showChanges("up")}>
+                    승급 회원 보기
+                  </button>
+                  <span className="t-c1 c-alt" aria-hidden="true">
+                    ·
+                  </span>
+                  <button className="mg-link t-c1" type="button" onClick={() => void showChanges("down")}>
+                    강등 회원 보기
+                  </button>
+                </span>
               </div>
               <div>
                 <span className="t-l2 c-alt">수동 고정</span>
