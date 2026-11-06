@@ -10,6 +10,8 @@ import { POST as checkRoute } from "../../app/api/automation/check/route";
 import { GET as adminJobsRoute } from "../../app/api/automation/admin/jobs/route";
 import { GET as adminJobRoute } from "../../app/api/automation/admin/jobs/[jobId]/route";
 import { POST as cleanupCloseRoute } from "../../app/api/automation/admin/jobs/[jobId]/cleanup/route";
+import { POST as retryNowRoute } from "../../app/api/automation/admin/jobs/[jobId]/retry/route";
+import { POST as reassignRoute } from "../../app/api/automation/admin/jobs/[jobId]/reassign/route";
 import { adminJobDetail } from "../../lib/server/automation/admin";
 import { loginAdmin, loginSeller } from "../../lib/server/auth/login";
 import { budgetOpen, recordExternalCost } from "../../lib/server/automation/budget";
@@ -4328,3 +4330,108 @@ describe("잠시 멈추기·이어 하기·작업 기록 시각표(SA-152)", () 
   });
 });
 
+
+describe("MA-111 마스터 관리자 동작: 재시도 · 담당 작업 서버 바꾸기(MASTER 승인 11/6)", () => {
+  const BASE = "http://localhost:3000";
+  const cookieOf = async (role: "SUPER_ADMIN" | "OPERATIONS" | "CS" | "READ_ONLY") => {
+    const r = await loginAdmin(db, adminCredentials(await createAdmin(role)), {});
+    if (!r.ok) throw new Error(r.reason);
+    return `lo_admin=${r.token}`;
+  };
+  const call = (route: typeof retryNowRoute, action: "retry" | "reassign", jobId: string, cookie: string, body: unknown = { reason: "작업자 점검 뒤 다시 시도" }, origin: string | null = BASE) =>
+    route(
+      new Request(`${BASE}/api/automation/admin/jobs/${jobId}/${action}`, {
+        method: "POST",
+        headers: { host: "localhost:3000", ...(origin ? { origin } : {}), cookie, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+      { params: Promise.resolve({ jobId }) },
+    );
+  const retry = (jobId: string, cookie: string, body?: unknown, origin?: string | null) => call(retryNowRoute, "retry", jobId, cookie, body, origin);
+  const reassign = (jobId: string, cookie: string, body?: unknown, origin?: string | null) => call(reassignRoute, "reassign", jobId, cookie, body, origin);
+  const payments = (sellerId: string) => db.automationPayment.findMany({ where: { sellerId }, orderBy: { id: "asc" } });
+  const leased = (jobId: string, leaseExpiresAt: Date, extra: Record<string, unknown> = {}) =>
+    db.automationJob.update({ where: { id: jobId }, data: { status: "RUNNING", leaseOwner: "worker-old", leaseExpiresAt, runStartedAt: new Date(Date.now() - 120_000), startedAt: new Date(Date.now() - 120_000), ...extra } });
+
+  it("재시도: 백오프로 미래에 잡힌 대기 작업의 실행 시각만 지금으로 당긴다(시도 횟수·결제·상태 그대로, 로그 추적·상태 기록 1건)", async () => {
+    const a = await bought();
+    const future = new Date(Date.now() + 600_000);
+    await db.automationJob.update({ where: { id: a.jobId }, data: { runAfter: future, attempts: 2 } });
+    const paymentsBefore = await payments(a.seller.id);
+    const res = await retry(a.jobId, await cookieOf("OPERATIONS"));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, status: "QUEUED" });
+    const after = await job(a.jobId);
+    expect(after.status).toBe("QUEUED");
+    expect(after.attempts).toBe(2);
+    expect(after.runAfter.getTime()).toBeLessThanOrEqual(Date.now());
+    expect(await payments(a.seller.id)).toEqual(paymentsBefore);
+    expect(await db.auditLog.count({ where: { action: "automation.job_retry", targetId: a.jobId } })).toBe(1);
+    expect(await db.automationJobEvent.count({ where: { jobId: a.jobId, fromStatus: "QUEUED", toStatus: "QUEUED" } })).toBe(1);
+    // 이미 실행 시각이 지났으면 할 일이 없다
+    expect((await retry(a.jobId, await cookieOf("SUPER_ADMIN"))).status).toBe(409);
+  });
+
+  it("재시도: 권한(조회 전용·CS 403)·다른 출처 403·사유 없음 400, 일시 정지·실행 중·종료 작업은 409 — 모두 상태 변화 없음", async () => {
+    const a = await bought();
+    await db.automationJob.update({ where: { id: a.jobId }, data: { runAfter: new Date(Date.now() + 600_000) } });
+    const ops = await cookieOf("OPERATIONS");
+    expect((await retry(a.jobId, await cookieOf("READ_ONLY"))).status).toBe(403);
+    expect((await retry(a.jobId, await cookieOf("CS"))).status).toBe(403);
+    expect((await retry(a.jobId, ops, undefined, "https://evil.test")).status).toBe(403);
+    expect((await retry(a.jobId, ops, { reason: "  " })).status).toBe(400);
+    expect((await retry(a.jobId, ops, { reason: "가".repeat(201) })).status).toBe(400);
+    expect((await retry("not-a-job", ops)).status).toBe(404);
+    expect((await retry("00000000-0000-4000-8000-000000000000", ops)).status).toBe(404);
+    const before = await job(a.jobId);
+    await db.automationJob.update({ where: { id: a.jobId }, data: { pausedAt: new Date() } });
+    expect(await (await retry(a.jobId, ops)).json()).toEqual({ error: "paused" });
+    await db.automationJob.update({ where: { id: a.jobId }, data: { pausedAt: null } });
+    await leased(a.jobId, new Date(Date.now() + 60_000));
+    expect((await retry(a.jobId, ops)).status).toBe(409);
+    await db.automationJob.update({ where: { id: a.jobId }, data: { status: "FAILED", finishedAt: new Date(), leaseOwner: null, leaseExpiresAt: null } });
+    expect((await retry(a.jobId, ops)).status).toBe(409);
+    expect((await job(a.jobId)).runAfter.getTime()).toBe(before.runAfter.getTime());
+    expect(await db.auditLog.count({ where: { action: "automation.job_retry" } })).toBe(0);
+  });
+
+  it("서버 바꾸기: 임대가 끝난 실행 중 작업만 회수해 바로 실행 가능한 대기로 돌린다(시도 +1·토큰 +1·결제 그대로·로그 추적 1건)", async () => {
+    const a = await bought();
+    await leased(a.jobId, new Date(Date.now() - 5_000), { attempts: 1 });
+    const before = await job(a.jobId);
+    const paymentsBefore = await payments(a.seller.id);
+    const res = await reassign(a.jobId, await cookieOf("OPERATIONS"));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, status: "QUEUED" });
+    const after = await job(a.jobId);
+    expect(after).toMatchObject({ status: "QUEUED", leaseOwner: null, leaseExpiresAt: null, attempts: 2, lastError: "lease_expired" });
+    expect(after.fencingToken).toBe(before.fencingToken + 1);
+    expect(after.runAfter.getTime()).toBeLessThanOrEqual(Date.now());
+    expect(await payments(a.seller.id)).toEqual(paymentsBefore);
+    expect(await db.auditLog.count({ where: { action: "automation.job_reassign", targetId: a.jobId } })).toBe(1);
+    expect(await db.automationJobEvent.count({ where: { jobId: a.jobId, fromStatus: "RUNNING", toStatus: "QUEUED" } })).toBe(1);
+    // 되돌아온 작업은 다른 작업자가 다시 잡을 수 있다
+    const claimed = await claimNext(db, "worker-new");
+    expect(claimed?.job.id).toBe(a.jobId);
+  });
+
+  it("서버 바꾸기: 정상 임대 중이면 거부(lease_active), 시도를 다 쓰게 되면 거부(attempts_exhausted)하고 아무것도 바꾸지 않는다. 대기·종료 작업은 409", async () => {
+    const a = await bought();
+    const ops = await cookieOf("OPERATIONS");
+    expect((await reassign(a.jobId, ops)).status).toBe(409); // 대기 중
+    await leased(a.jobId, new Date(Date.now() + 60_000));
+    expect(await (await reassign(a.jobId, ops)).json()).toEqual({ error: "lease_active" });
+    const active = await job(a.jobId);
+    expect(active).toMatchObject({ status: "RUNNING", leaseOwner: "worker-old" });
+    await db.automationJob.update({ where: { id: a.jobId }, data: { leaseExpiresAt: new Date(Date.now() - 5_000), attempts: active.maxAttempts - 1 } });
+    expect(await (await reassign(a.jobId, ops)).json()).toEqual({ error: "attempts_exhausted" });
+    expect(await job(a.jobId)).toMatchObject({ status: "RUNNING", attempts: active.maxAttempts - 1, leaseOwner: "worker-old" });
+    expect((await reassign(a.jobId, await cookieOf("READ_ONLY"))).status).toBe(403);
+    expect((await reassign(a.jobId, await cookieOf("CS"))).status).toBe(403);
+    expect((await reassign(a.jobId, ops, { reason: "" })).status).toBe(400);
+    expect((await reassign(a.jobId, ops, undefined, "https://evil.test")).status).toBe(403);
+    await db.automationJob.update({ where: { id: a.jobId }, data: { status: "FAILED", finishedAt: new Date(), leaseOwner: null, leaseExpiresAt: null } });
+    expect((await reassign(a.jobId, ops)).status).toBe(409);
+    expect(await db.auditLog.count({ where: { action: "automation.job_reassign" } })).toBe(0);
+  });
+});

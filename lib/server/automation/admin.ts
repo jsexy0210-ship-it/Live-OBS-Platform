@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import type { AutomationJob, Prisma, PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import type { AdminSessionContext } from "../auth/session";
 import { decodeCursor, encodeCursor } from "../orders/read";
@@ -6,7 +6,7 @@ import { monthlyLimitWon } from "./budget";
 import { publicError } from "./jobs";
 import { STEPS } from "./steps";
 import { STEP_DONE_REASON } from "./queue";
-import { dbNow, lockJob, lockSellerAutomation, markRefundPending, quiescent, writeJobEvent } from "./queue";
+import { dbNow, lockJob, lockSellerAutomation, markRefundPending, pullRetryForward, quiescent, reclaimExpiredLease, writeJobEvent } from "./queue";
 
 // 마스터 관리자(운영 역할 이상)가 사람이 정리를 마친 「정리 필요」 작업을 닫는다: CLEANUP_NEEDED → FAILED.
 // 결제는 다른 실패와 같은 환불 처리 대기(REFUND_PENDING)로 넘긴다(실제 PG 환불 실행은 하지 않음 — 대표님 승인 사항).
@@ -54,6 +54,68 @@ export async function closeCleanupNeeded(
     return { ok: true, refundPending } as const;
   });
 }
+
+// ───── 마스터 관리자 작업 상세 동작(MA-111): 재시도 · 담당 작업 서버 바꾸기. 결제·종료 상태는 바꾸지 않는다 ─────
+export type JobActionResult =
+  | { ok: true; status: string }
+  | { ok: false; reason: "not_found" | "invalid_state" | "bad_reason" | "paused" | "already_due" | "lease_active" | "attempts_exhausted" };
+
+type Meta = { ip: string | null; userAgent: string | null };
+
+async function withJob(
+  db: PrismaClient,
+  admin: AdminSessionContext,
+  jobId: string,
+  reason: unknown,
+  action: "automation.job_retry" | "automation.job_reassign",
+  meta: Meta,
+  run: (tx: Prisma.TransactionClient, cur: AutomationJob, now: Date) => Promise<JobActionResult>,
+): Promise<JobActionResult> {
+  if (typeof reason !== "string" || !reason.trim() || reason.length > 200) return { ok: false, reason: "bad_reason" };
+  return db.$transaction(async (tx) => {
+    const head = await tx.automationJob.findUnique({ where: { id: jobId }, select: { sellerId: true } });
+    if (!head) return { ok: false, reason: "not_found" } as const;
+    await lockSellerAutomation(tx, head.sellerId);
+    await lockJob(tx, jobId);
+    const cur = await tx.automationJob.findUniqueOrThrow({ where: { id: jobId } });
+    const now = await dbNow(tx);
+    const r = await run(tx, cur, now);
+    if (!r.ok) return r;
+    await writeAudit(tx, {
+      actorType: "PLATFORM_ADMIN",
+      actorId: admin.admin.id,
+      sellerId: cur.sellerId,
+      action,
+      targetType: "AutomationJob",
+      targetId: jobId,
+      before: { status: cur.status, attempts: cur.attempts },
+      after: { status: r.status },
+      reason: reason.trim(),
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
+    return r;
+  });
+}
+
+// 재시도: 백오프로 미래에 잡힌 대기(QUEUED) 작업의 실행 시각을 지금으로 당긴다. 종료·실행 중·고객 대기 작업은 대상이 아니다.
+export const retryJobNow = (db: PrismaClient, admin: AdminSessionContext, jobId: string, reason: unknown, meta: Meta) =>
+  withJob(db, admin, jobId, reason, "automation.job_retry", meta, async (tx, cur, now) => {
+    if (cur.status !== "QUEUED") return { ok: false, reason: "invalid_state" } as const;
+    if (cur.pausedAt) return { ok: false, reason: "paused" } as const;
+    if (cur.runAfter <= now) return { ok: false, reason: "already_due" } as const;
+    await pullRetryForward(tx, cur, now);
+    return { ok: true, status: "QUEUED" } as const;
+  });
+
+// 담당 작업 서버 바꾸기: 임대가 이미 끝난 실행 중(RUNNING·VERIFYING) 작업만 회수해 대기열로 돌린다. 정상 임대 중이면 거부한다.
+export const reassignJobServer = (db: PrismaClient, admin: AdminSessionContext, jobId: string, reason: unknown, meta: Meta) =>
+  withJob(db, admin, jobId, reason, "automation.job_reassign", meta, async (tx, cur, now) => {
+    if (cur.status !== "RUNNING" && cur.status !== "VERIFYING") return { ok: false, reason: "invalid_state" } as const;
+    if (!cur.leaseExpiresAt || cur.leaseExpiresAt > now) return { ok: false, reason: "lease_active" } as const;
+    if (!(await reclaimExpiredLease(tx, cur, now))) return { ok: false, reason: "attempts_exhausted" } as const;
+    return { ok: true, status: "QUEUED" } as const;
+  });
 
 // ───── 마스터 관리자 조회(MA-110 목록 · MA-111 상세). 읽기 전용, 비밀값·브라우저 상태·원문 오류는 내보내지 않는다 ─────
 
