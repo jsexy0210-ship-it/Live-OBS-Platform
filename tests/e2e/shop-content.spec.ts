@@ -94,7 +94,8 @@ test("SH-001 홈: 소유 폐기 fixture의 방송·추천·7일 신상품·종�
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
         // 모바일 공지 영역은 바로 위에서 숨김 계약을 검증했다. 상품·진열 제목은 계속 측정한다.
         const measured = page.locator(width === 390 ? ".shop-home .pc-name,.shop-home .shop-sec:not(.shop-home-notices) .shop-sec-head h2" : ".shop-home .pc-name,.shop-home .shop-sec-head h2");
-        await expect(measured).toHaveCount((state === "empty" ? 1 : 12) + (width === 390 ? 0 : 1));
+        // +1: 「이번 주 인기 카드」 구역 제목(항상 그려진다). 공지 제목은 PC에서만 잰다.
+        await expect(measured).toHaveCount((state === "empty" ? 1 : 12) + 1 + (width === 390 ? 0 : 1));
         const rects = await measured.evaluateAll(nodes => nodes.map(node => { const r = node.getBoundingClientRect(); return { width: r.width, left: r.left, right: r.right }; }));
         for (const rect of rects) { expect(rect.width).toBeGreaterThan(0); expect(rect.left).toBeGreaterThanOrEqual(0); expect(rect.right).toBeLessThanOrEqual(width); }
         await page.screenshot({ path: `${SHOT}/SH-001-home-${state}-${width}.png`, fullPage: true });
