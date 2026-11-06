@@ -201,16 +201,19 @@ test("주문 상세: 상품·결제·구매자·배송을 보여 주고, 없는 
   await page.goto(href);
   await expect(page).toHaveURL(/\/seller\/orders\/[0-9a-f-]{36}\?returnTo=/);
   expect(new URL(page.url()).searchParams.get("returnTo")).toBe(listUrl.pathname + listUrl.search);
-  await expect(page.getByRole("heading", { level: 1 })).toContainText(`${nick} · `);
-  await expect(page.locator(".bdg-lg").first()).toHaveText("결제 완료");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("주문 상세");
+  const summary = page.getByTestId("order-summary");
+  await expect(summary).toContainText(nick);
+  await expect(summary).toContainText("완료");
   await expect(page.getByRole("heading", { name: "주문 상품" })).toBeVisible();
   await expect(page.getByText("결제 금액")).toBeVisible();
   // 구매자 카드는 실명 없이 회원 닉네임만, 받는 분 실명·연락처는 배송 카드에만(고객 정보 보기 권한이 있는 대표자)
-  const buyerCard = page.locator("section", { has: page.getByRole("heading", { name: "구매자" }) });
-  await expect(buyerCard.getByText("회원")).toBeVisible();
-  await expect(buyerCard.getByText(/데모구매자/)).toHaveCount(0);
-  await expect(buyerCard.getByText(/010-/)).toHaveCount(0);
-  await expect(page.getByText("받는 분")).toBeVisible();
+  // 구매자 · 배송 표: 회원 칸은 실명 없이 회원 닉네임만, 받는 분 실명·연락처는 받는 분 칸에만(고객 정보 보기 권한이 있는 대표자)
+  const cell = (label: string) => page.locator("th", { hasText: new RegExp(`^${label}$`) }).locator("xpath=following-sibling::td[1]");
+  await expect(cell("회원")).toContainText(nick);
+  await expect(cell("회원")).not.toContainText(/데모구매자/);
+  await expect(cell("회원")).not.toContainText(/010-/);
+  await expect(cell("받는 분")).toContainText(/010-/);
   await expect(page.getByRole("button", { name: "취소 · 환불" })).toBeVisible();
   await shot(page, "SA-022");
 
@@ -387,7 +390,7 @@ test("실제 환불: 판매자 사정으로 환불하면 완료 알림이 뜨고
   expect(response.status()).toBe(200);
   expect(response.request().postDataJSON()).toMatchObject({ confirmOpened: openedConfirmed });
   await expect(page.getByText(/원 환불을 완료했습니다/)).toBeVisible();
-  await expect(page.locator(".bdg-lg").first()).toHaveText("환불됨");
+  await expect(page.getByTestId("order-summary")).toContainText("환불됨");
   await expect(page.getByText("파트너스 사정")).toBeVisible();
   await expect(page.getByRole("button", { name: "취소 · 환불" })).toHaveCount(0);
   await shot(page, "SA-022-refunded");
@@ -449,7 +452,7 @@ test("주문·배송 권한만 있는 직원(방송 진행 권한 없음)도 실
   expect(response.status()).toBe(200);
   expect(response.request().postDataJSON()).toMatchObject({ confirmOpened: openedConfirmed });
   await expect(page.getByText(/원 환불을 완료했습니다/)).toBeVisible();
-  await expect(page.locator(".bdg-lg").first()).toHaveText("환불됨");
+  await expect(page.getByTestId("order-summary")).toContainText("환불됨");
 });
 
 test("발송한 주문의 송장은 택배사 코드가 아니라 화면 이름(CJ대한통운)으로 보인다", async ({ page }) => {
@@ -459,8 +462,8 @@ test("발송한 주문의 송장은 택배사 코드가 아니라 화면 이름(
   await shipped.locator("a.ord-link").click();
   await expect(page).toHaveURL(/\/seller\/orders\/[0-9a-f-]{36}\?returnTo=/);
   expect(new URL(page.url()).searchParams.get("returnTo")).toBe(listUrl.pathname + listUrl.search);
-  const dd = page.locator("dt", { hasText: "송장" }).locator("xpath=following-sibling::dd[1]");
-  await expect(dd).toHaveText(/^CJ대한통운 \d+$/);
+  const dd = page.locator("th", { hasText: /^송장$/ }).locator("xpath=following-sibling::td[1]");
+  await expect(dd).toHaveText(/^CJ대한통운 \d+ · 발송 /);
 });
 
 test("행 「···」 → 실제 주문 상세 메모: 저장하면 다시 열었을 때 남아 있고, 비워서 저장하면 지워진다", async ({ page }) => {

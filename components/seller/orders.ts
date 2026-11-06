@@ -30,7 +30,9 @@ export type OrderRow = {
   shippingPreparedAt?: string | null;
 };
 
-export type OrderItem = { id: string; productNameSnapshot: string; optionNameSnapshot: string; unitPrice: number; quantity: number };
+// 주문 상세 응답에 오는 품목(SA-022). 큐 항목(queue)이 없으면 방송 주문대기에 올라간 적이 없는 품목이다(결제 전 등).
+export type OrderItemQueue = { status: "WAITING" | "OPENING" | "DONE" | "CANCELLED"; waitingNumber: number | null; aheadCount: number | null; broadcastSession: { id: string; title: string | null; status: string; startedAt: string | null } | null };
+export type OrderItem = { id: string; productNameSnapshot: string; optionNameSnapshot: string; unitPrice: number; quantity: number; productId?: string; refundedQuantity?: number; imageUrl?: string | null; queue?: OrderItemQueue | null };
 
 // GET /api/seller/orders/{id}. 고객 정보 보기 권한이 없으면 buyer는 닉네임만, shippingAddress는 도서산간 여부만 온다.
 export type OrderDetail = {
@@ -65,6 +67,16 @@ export type OrderDetail = {
   history: OrderHistoryEvent[];
   // 쓴 쿠폰과 할인 금액(전체 취소로 되돌렸으면 restoredAt). 쿠폰을 쓰지 않았으면 null
   couponRedemption: { benefit: "AMOUNT" | "RATE" | "FREE_SHIPPING"; discountAmount: number; restoredAt: string | null; coupon: { id: string; name: string } } | null;
+  // 서버가 주문과 함께 주는 값(SA-022 정본 구역). 예전 응답에는 없을 수 있다.
+  pgProvider?: string | null;
+  pgTxId?: string | null;
+  rewardEarnAmount?: number | null;
+  rewardRate?: number | null;
+  rewardEarnTiming?: "ON_PAYMENT" | "ON_DELIVERY" | null;
+  payments?: { id: string; provider: string; method: "CARD" | "BANK_TRANSFER"; status: string; amount: number; cancelledAmount: number; pgTid: string | null; cardName: string | null; cardLast4: string | null; cardInstallment: number | null; approvedAt: string | null }[];
+  consents?: { kind: string; noticeVersion: string; agreedAt: string }[];
+  notifications?: { id: string; kind: string; status: "PENDING" | "SENT" | "FAILED"; source: "ORDER_NOTIFICATION" | "MAIL_DELIVERY"; channel: string | null; createdAt: string; sentAt: string | null }[];
+  hitCards?: { id: string; cardName: string; grade: string | null; createdAt: string; note?: string | null }[];
 };
 
 export type RefundFault = "BUYER" | "SELLER";

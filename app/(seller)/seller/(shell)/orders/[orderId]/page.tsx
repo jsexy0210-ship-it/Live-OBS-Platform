@@ -2,6 +2,7 @@
 
 import { formatDateTime, formatTime } from "../../../../../../lib/client/format";
 import "../../../../../../styles/seller-orders.css";
+import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { sanitizeNext, useSmartBack } from "../../../../../../lib/client/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
@@ -20,10 +21,26 @@ import { PAYMENT_METHOD, STATUS_BADGE, detailStatusLabel, historyActor, historyL
 // 받는 분 이름·연락처·주소는 고객 정보 보기 권한이 있을 때만 서버가 준다(열람 기록은 서버가 남긴다).
 type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; order: OrderDetail };
 
-const SHIPMENT_STATUS: Record<string, string> = { IN_TRANSIT: "배송 중", DELIVERED: "배송 완료" };
 const FAULT_LABEL = { BUYER: "구매자 사정", SELLER: "파트너스 사정" } as const;
 // 송장의 택배사는 코드(CJ·HANJIN …)로 저장된다. 화면 이름으로 바꾸고, 모르는 값은 그대로 보인다.
 const courierName = (c: string) => (isCourier(c) ? COURIERS[c] : "택배사 확인 필요");
+
+// 주문 상품 표 · 알림 발송 표 이름(서버 값 → 화면 이름)
+const QUEUE_LABEL = { WAITING: "대기", OPENING: "개봉 중", DONE: "개봉 완료", CANCELLED: "취소" } as const;
+const QUEUE_CLS = { WAITING: "b-wait", OPENING: "b-info", DONE: "b-done", CANCELLED: "b-cancel" } as const;
+const PROVIDER: Record<string, string> = { nicepay: "나이스페이" };
+const PAYMENT_STATUS: Record<string, string> = { READY: "결제 대기", APPROVING: "승인 중", PAID: "결제 완료", FAILED: "결제 실패", CANCELLED: "결제 취소", PARTIAL_CANCELLED: "일부 취소" };
+const NOTI_KIND: Record<string, string> = {
+  PAYMENT_DUE_SOON: "입금 기한 알림",
+  RECEIPT_ISSUED: "영수증 발급 알림",
+  SHIPPING_PREPARED: "배송 준비 알림",
+  "order.pending_bank": "입금 안내 메일",
+  "order.paid": "결제 완료 메일",
+  "order.shipped": "발송 안내 메일",
+  "order.delivered": "배송 완료 메일",
+  "order.refund": "환불 안내 메일",
+};
+const NOTI_STATUS = { PENDING: "대기", SENT: "발송 완료", FAILED: "발송 실패" } as const;
 
 function OrderDetailContent() {
   const query = useSearchParams();
@@ -106,205 +123,315 @@ function OrderDetailContent() {
   const addr = o.shippingAddress;
   const hhmm = formatTime(o.createdAt);
 
+  const queued = o.items.map((i) => i.queue).filter((q): q is NonNullable<typeof q> => !!q);
+  const session = queued.find((q) => q.broadcastSession)?.broadcastSession ?? null;
+  const ahead = queued.find((q) => q.status === "WAITING")?.aheadCount ?? null;
+  const payment = o.payments?.find((x) => x.approvedAt) ?? o.payments?.[0];
+  const stateText = o.status === "CANCELLED" || o.status === "REFUNDED" ? STATUS_BADGE[o.status].label : o.queueState === "waiting" ? "개봉 대기" : o.queueState === "opening" ? "개봉 중" : o.queueState === "done" ? "개봉 완료" : detailStatusLabel(o.status);
+  const paidText = o.status === "PAID" ? "완료" : o.status === "PENDING_PAYMENT" ? "대기" : STATUS_BADGE[o.status].label;
+  const method = o.paymentMethod ? PAYMENT_METHOD[o.paymentMethod] : "—";
+  const consent = o.consents?.find((c) => c.kind === "OPENED_NO_REFUND");
+  const canInvoice = o.status === "PAID" && (!o.shipment || o.shipment.status === "READY");
+  const pg = o.pgTxId ?? payment?.pgTid ?? null;
+  const provider = o.pgProvider ?? payment?.provider ?? null;
+
   return (
     <>
-      <Topbar crumb={`판매 › 주문 › ${hhmm} ${nick}`}>
-        {canRefund && (
-          <button className="btn btn-sm btn-out" type="button" style={{ color: "var(--neg-text)" }} onClick={() => setRefundOpen(true)}>
-            취소 · 환불
-          </button>
-        )}
-      </Topbar>
+      <Topbar crumb={`판매 › 주문 › ${hhmm} ${nick}`} />
       <main className="main">
         <PageHead
           onBack={async () => { if (backHandler.current && !(await backHandler.current())) return; back(); }}
           back={listHref}
-          title={
+          title="주문 상세"
+          actions={
             <>
-              {nick} · {formatDateTime(o.createdAt)} 주문{" "}
-              <span className={`bdg bdg-lg ${STATUS_BADGE[o.status].cls}`}>{detailStatusLabel(o.status)}</span>
-              {o.shipment && <span className="bdg bdg-lg b-info nodot">{SHIPMENT_STATUS[o.shipment.status] ?? "발송함"}</span>}
+              <Link className="btn btn-out" href={listHref}>
+                목록
+              </Link>
+              {canRefund && (
+                <button className="btn btn-out" type="button" style={{ color: "var(--neg-text)" }} onClick={() => setRefundOpen(true)}>
+                  취소 · 환불
+                </button>
+              )}
+              {canInvoice && (
+                <Link className="btn" href="/seller/shipping">
+                  송장 입력
+                </Link>
+              )}
             </>
           }
         />
-        <div className="col" style={{ gap: 4, marginBottom: 16 }}>
-          <span className="t-l2 c-alt">{formatDateTime(o.createdAt)} 접수</span>
-          <div className="ord-ono-bar t-l2">
-            <span>주문번호</span>
-            <b className="num" data-testid="order-no-label">
-              {o.orderNoLabel}
-            </b>
-            <button className="btn btn-dense btn-out btn-w-xs" type="button" onClick={() => void copyOrderNo(o.orderNoLabel)}>
-              복사
-            </button>
-            <span className="t-c1 c-alt">구매자 문의에 답하거나 주문을 찾을 때만 씁니다</span>
+        <div className="ord-ono-bar t-l2">
+          <span>주문번호</span>
+          <b className="num" data-testid="order-no-label">
+            {o.orderNoLabel}
+          </b>
+          <button className="btn btn-dense btn-out btn-w-xs" type="button" onClick={() => void copyOrderNo(o.orderNoLabel)}>
+            복사
+          </button>
+          <span className="t-c1 c-alt">전화 응대 · 검색 대조용 · 목록에서도 접수 시각 아래 보조 표시</span>
+        </div>
+
+        <div className="ord-sum" data-testid="order-summary">
+          <div>
+            <div className="k">구매자</div>
+            <div className="v">{nick}</div>
+          </div>
+          <div>
+            <div className="k">접수</div>
+            <div className="v num">{formatDateTime(o.createdAt)}</div>
+          </div>
+          <div>
+            <div className="k">결제</div>
+            <div className="v num">{won(o.totalAmount)}<small>{method} · {paidText}</small></div>
+          </div>
+          <div>
+            <div className="k">주문 상태</div>
+            <div className="v">{stateText}{ahead !== null && <small>앞에 {ahead}건 대기</small>}</div>
+          </div>
+          <div>
+            <div className="k">방송</div>
+            <div className="v ord-sum-s">{session ? session.title || "제목 없는 방송" : "—"}{session?.startedAt && <small>{new Date(session.startedAt).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric", timeZone: "Asia/Seoul" })}</small>}</div>
           </div>
         </div>
 
-        <div className="ord-detail">
-          <div className="col" style={{ gap: 20 }}>
-            <section className="card pad col" style={{ gap: 12 }}>
-              <h2 className="t-hl2">주문 상품</h2>
+        <h2 className="ord-sec-t">주문 상품</h2>
+        <div className="au-lt-wrap">
+          <table className="tbl" data-testid="order-items">
+            <thead>
+              <tr>
+                <th style={{ width: 88 }}>이미지</th>
+                <th className="col-text" style={{ textAlign: "left" }}>상품</th>
+                <th style={{ width: 120 }}>옵션</th>
+                <th style={{ width: 60 }}>수량</th>
+                <th style={{ width: 110 }}>판매가</th>
+                <th style={{ width: 80 }}>주문대기</th>
+                <th style={{ width: 90 }}>상태</th>
+              </tr>
+            </thead>
+            <tbody>
               {o.items.map((i) => (
-                <div key={i.id} className="row" style={{ gap: 12 }}>
-                  <div className="col grow">
-                    <span className="t-l1 fw6">{i.productNameSnapshot}</span>
-                    <span className="t-c1 c-alt">
-                      선택 항목 {i.optionNameSnapshot} · 수량 {i.quantity}개
-                    </span>
-                  </div>
-                  <span className="t-l1 num fw6">{won(i.unitPrice * i.quantity)}</span>
-                </div>
+                <tr key={i.id}>
+                  <td>{i.imageUrl ? <img className="ord-thumb" src={i.imageUrl} alt="" /> : <span className="ord-thumb ord-thumb-none" />}</td>
+                  <td className="col-text">{i.productId ? <Link className="ord-link" href={`/seller/products/${i.productId}`}>{i.productNameSnapshot}</Link> : i.productNameSnapshot}</td>
+                  <td>{i.optionNameSnapshot}</td>
+                  <td className="num">{i.quantity}</td>
+                  <td className="num" style={{ textAlign: "right" }}>{won(i.unitPrice)}</td>
+                  <td>{i.queue ? <span className="bdg b-info nodot">대상</span> : "—"}</td>
+                  <td>{i.queue ? <span className={`bdg ${QUEUE_CLS[i.queue.status]}`}>{QUEUE_LABEL[i.queue.status]}</span> : "—"}</td>
+                </tr>
               ))}
-              <hr className="divider" />
-              <dl className="kv">
-                <dt>상품 금액</dt>
-                <dd className="num">{won(itemsAmount)}</dd>
-                {o.shippingFee > 0 && (
-                  <>
-                    <dt>배송비</dt>
-                    <dd className="num">{won(o.shippingFee)}</dd>
-                  </>
-                )}
-                {o.couponRedemption && (
-                  <>
-                    <dt>쿠폰 할인 · {o.couponRedemption.coupon.name}</dt>
-                    <dd className="num c-neg">−{won(o.couponRedemption.discountAmount)}</dd>
-                  </>
-                )}
-                {o.rewardUsedAmount > 0 && (
-                  <>
-                    <dt>적립금 사용</dt>
-                    <dd className="num c-neg">−{won(o.rewardUsedAmount)}</dd>
-                  </>
-                )}
-                <dt>결제 금액</dt>
-                <dd className="num fw7">{won(o.totalAmount)}</dd>
-              </dl>
-            </section>
-            <section className="card pad col" style={{ gap: 12 }}>
-              <h2 className="t-hl2">결제 정보</h2>
-              <dl className="kv">
-                <dt>결제 수단</dt>
-                <dd>{o.paymentMethod ? PAYMENT_METHOD[o.paymentMethod] : "—"}</dd>
-                <dt>결제 시각</dt>
-                <dd className="num">{o.paidAt ? formatDateTime(o.paidAt) : "아직 결제하지 않았습니다"}</dd>
-                {o.status === "REFUNDED" && (
-                  <>
-                    <dt>환불</dt>
-                    <dd className="num">
-                      {won(o.refundAmount ?? o.totalAmount)}
-                      {o.refundedAt && ` · ${formatDateTime(o.refundedAt)}`}
-                    </dd>
-                    {o.refundFault && (
-                      <>
-                        <dt>누구 사정인지</dt>
-                        <dd>{FAULT_LABEL[o.refundFault]}</dd>
-                      </>
-                    )}
-                    {!!o.returnFeeDeducted && (
-                      <>
-                        <dt>뺀 반품 배송비</dt>
-                        <dd className="num">{won(o.returnFeeDeducted)}</dd>
-                      </>
-                    )}
-                  </>
-                )}
-                {o.status === "CANCELLED" && o.cancelledAt && (
-                  <>
-                    <dt>취소</dt>
-                    <dd className="num">{formatDateTime(o.cancelledAt)}</dd>
-                  </>
-                )}
-              </dl>
-            </section>
-          </div>
-
-          <div className="col" style={{ gap: 20 }}>
-            <section className="card pad col" style={{ gap: 12 }}>
-              <h2 className="t-hl2">구매자</h2>
-              <dl className="kv">
-                <dt>방송 닉네임</dt>
-                <dd className="fw6">{nick}</dd>
-                <dt>회원</dt>
-                <dd>{nick}</dd>
-              </dl>
-              {!pii && <span className="t-c1 c-alt">개인정보를 볼 수 있는 사람이 아니어서 닉네임과 주문 내용만 보입니다. 필요하면 대표자에게 허용을 요청해 주십시오.</span>}
-            </section>
-            <section className="card pad col" style={{ gap: 12 }}>
-              <h2 className="t-hl2">배송</h2>
-              <dl className="kv">
-                {addr?.recipientName !== undefined && (
-                  <>
-                    <dt>받는 분</dt>
-                    <dd>
-                      {addr.recipientName} · <span className="num">{addr.phone && phoneText(addr.phone)}</span>
-                    </dd>
-                    <dt>배송지</dt>
-                    <dd>
-                      ({addr.zipCode}) {addr.address1} {addr.address2 ?? ""}
-                    </dd>
-                    {addr.memo && (
-                      <>
-                        <dt>배송 메모</dt>
-                        <dd>{addr.memo}</dd>
-                      </>
-                    )}
-                  </>
-                )}
-                {addr?.isRemote && (
-                  <>
-                    <dt>섬·산간 지역</dt>
-                    <dd>섬·산간 지역이라 추가 배송비가 붙습니다.</dd>
-                  </>
-                )}
-                <dt>송장</dt>
-                <dd>{o.shipment ? `${courierName(o.shipment.courier)} ${o.shipment.trackingNumber}` : "아직 보내지 않았습니다"}</dd>
-                {o.shipment && (
-                  <>
-                    <dt>발송 시각</dt>
-                    <dd className="num">{formatDateTime(o.shipment.shippedAt)}</dd>
-                  </>
-                )}
-              </dl>
-              {pii && <span className="t-c1 c-alt">연락처와 주소를 보면 누가 언제 봤는지 기록됩니다.</span>}
-            </section>
-          </div>
+            </tbody>
+          </table>
         </div>
-        <section className="card pad col" style={{ gap: 8 }} id="order-preparation" aria-label="배송 준비">
+        <table className="au-ft ord-ft4">
+          <tbody>
+            <tr>
+              <th>상품 금액</th>
+              <td className="num">{won(itemsAmount)}</td>
+              <th>적립금 사용</th>
+              <td className="num">{o.rewardUsedAmount > 0 ? `−${won(o.rewardUsedAmount)}` : "0원"}</td>
+            </tr>
+            <tr>
+              <th>배송비</th>
+              <td className="num">{won(o.shippingFee)}</td>
+              <th>결제 금액</th>
+              <td className="num fw7">{won(o.totalAmount)}</td>
+            </tr>
+            <tr>
+              <th>적립 예정</th>
+              <td>
+                {o.rewardEarnAmount ? (
+                  <>
+                    <span className="num">+{won(o.rewardEarnAmount)}</span>
+                    {o.rewardRate ? ` (${Number(o.rewardRate.toFixed(2))}%)` : ""} · {o.rewardEarnTiming === "ON_PAYMENT" ? "결제하면 바로 지급" : "배송 완료 후 지급"}
+                  </>
+                ) : (
+                  "없음"
+                )}
+              </td>
+              <th>쿠폰</th>
+              <td>{o.couponRedemption ? <>{o.couponRedemption.coupon.name} · <span className="num c-neg">−{won(o.couponRedemption.discountAmount)}</span></> : "사용 안 함"}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h2 className="ord-sec-t">결제 정보</h2>
+        <table className="au-ft ord-ft4">
+          <tbody>
+            <tr>
+              <th>결제 수단</th>
+              <td>
+                {method}
+                {payment?.method === "CARD" && payment.cardName && ` (${payment.cardName}${payment.cardLast4 ? ` ****-${payment.cardLast4}` : ""}) · ${payment.cardInstallment && payment.cardInstallment > 1 ? `${payment.cardInstallment}개월 할부` : "일시불"}`}
+              </td>
+              <th>결제 시각</th>
+              <td className="num">{o.paidAt ? formatDateTime(o.paidAt) : "아직 결제하지 않았습니다"}</td>
+            </tr>
+            <tr>
+              <th>PG 거래 ID</th>
+              <td className="num">{pg ?? "—"}</td>
+              <th>결제대행사</th>
+              <td>{provider ? `${PROVIDER[provider] ?? provider}${payment ? ` · ${PAYMENT_STATUS[payment.status] ?? payment.status}` : ""}` : "—"}</td>
+            </tr>
+            <tr>
+              <th>개봉 상품 고지 동의</th>
+              <td>{consent ? <>동의함 · <span className="num">{formatDateTime(consent.agreedAt)}</span> · 결제 전 확인</> : "기록 없음"}</td>
+              <th>환불</th>
+              <td>
+                {o.status === "REFUNDED" ? (
+                  <>
+                    <span className="num">{won(o.refundAmount ?? o.totalAmount)}</span>
+                    {o.refundedAt && <> · <span className="num">{formatDateTime(o.refundedAt)}</span></>}
+                    {o.refundFault && ` · ${FAULT_LABEL[o.refundFault]}`}
+                    {!!o.returnFeeDeducted && <> · 뺀 반품 배송비 <span className="num">{won(o.returnFeeDeducted)}</span></>}
+                  </>
+                ) : o.status === "CANCELLED" && o.cancelledAt ? (
+                  <>취소 · <span className="num">{formatDateTime(o.cancelledAt)}</span></>
+                ) : (
+                  "환불 없음"
+                )}
+              </td>
+            </tr>
+            <tr>
+              <th>현금영수증 · 세금계산서</th>
+              <td>
+                <Link className="btn btn-sm btn-out" href="/seller/orders/receipts">
+                  발행 관리
+                </Link>
+              </td>
+              <th>주문번호</th>
+              <td className="c-alt num">{o.orderNoLabel} · 상단과 같음</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h2 className="ord-sec-t">구매자 · 배송</h2>
+        <table className="au-ft ord-ft4">
+          <tbody>
+            <tr>
+              <th>방송 닉네임</th>
+              <td className="fw6">{nick}</td>
+              <th>회원</th>
+              <td>
+                <Link className="ord-link" href={`/seller/members/${o.buyer.id}`}>
+                  {nick}
+                </Link>
+              </td>
+            </tr>
+            <tr>
+              <th>받는 분</th>
+              <td>{addr?.recipientName !== undefined ? <>{addr.recipientName} · <span className="num">{addr.phone && phoneText(addr.phone)}</span></> : "개인정보 열람 권한 필요"}</td>
+              <th>배송지</th>
+              <td>{addr?.recipientName !== undefined ? `(${addr.zipCode}) ${addr.address1} ${addr.address2 ?? ""}` : "개인정보 열람 권한 필요"}{addr?.isRemote && <span className="c-alt"> · 섬·산간 지역이라 추가 배송비가 붙습니다</span>}</td>
+            </tr>
+            <tr>
+              <th>배송 메모</th>
+              <td>{addr?.memo || "—"}</td>
+              <th>송장</th>
+              <td>
+                {o.shipment ? <>{courierName(o.shipment.courier)} <span className="num">{o.shipment.trackingNumber}</span> · 발송 <span className="num">{formatDateTime(o.shipment.shippedAt)}</span></> : "아직 보내지 않았습니다"}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        {pii ? (
+          <span className="hint">연락처 · 주소 열람은 로그 추적에 남습니다</span>
+        ) : (
+          <span className="hint">개인정보를 볼 수 있는 사람이 아니어서 닉네임과 주문 내용만 보입니다. 필요하면 대표자에게 허용을 요청해 주십시오.</span>
+        )}
+
+        <section className="card pad col" style={{ gap: 8, marginTop: 16 }} id="order-preparation" aria-label="배송 준비">
           <h2 className="t-hl2">배송 준비</h2>
           {o.shippingPreparedAt ? <p>배송 준비로 변경했습니다.</p> : <PrepareShipping ids={[o.id]} disabled={o.status !== "PAID" || !!(o.shipment && o.shipment.status !== "READY") || o.queueState !== "done"} onDone={() => void load()} />}
         </section>
-        <OrderMemo key={o.id} backHandler={backHandler} orderId={o.id} orderNoLabel={o.orderNoLabel} />
-        {/* SA-022 하단 2열: 왼쪽 상태 이력(오른쪽 알림 발송은 서버 계약이 생기면 추가) */}
-        <div className="ord-detail ord-history">
-          <section className="card pad col" style={{ gap: 12 }} data-testid="order-history">
-            <h2 className="t-hl2">상태 이력</h2>
-            {o.history.length === 0 ? (
-              <span className="t-c1 c-alt">아직 이력이 없습니다</span>
+
+        <h2 className="ord-sec-t">HIT 기록</h2>
+        <table className="au-ft" data-testid="order-hit">
+          <tbody>
+            {(o.hitCards ?? []).length === 0 ? (
+              <tr>
+                <th>HIT 카드</th>
+                <td className="c-alt">기록이 없습니다</td>
+              </tr>
             ) : (
-              <div className="ord-hist-scroll"><table className="tbl ord-hist-tbl">
+              (o.hitCards ?? []).map((h) => (
+                <tr key={h.id}>
+                  <th>HIT 카드</th>
+                  <td>
+                    {h.cardName} · <span className="num">{formatTime(h.createdAt)}</span> 등록 {h.grade && <>· {h.grade} </>}
+                    <span className="bdg b-wait nodot">HIT</span>
+                    {h.note && <span className="c-alt"> · {h.note}</span>}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+
+        <OrderMemo key={o.id} backHandler={backHandler} orderId={o.id} orderNoLabel={o.orderNoLabel} />
+
+        <div className="ord-two">
+          <div data-testid="order-history">
+            <h2 className="ord-sec-t">상태 이력<span className="nt"> 시각 순 · 상태 변경 · 결제 승인 · 일부 환불 · 결제 취소 · 처리는 역할·이름만</span></h2>
+            <div>
+              {o.history.length === 0 ? (
+                <span className="t-c1 c-alt">아직 이력이 없습니다</span>
+              ) : (
+                <div className="ord-hist-scroll"><table className="tbl ord-hist-tbl">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 150 }}>시각</th>
+                      <th>상태</th>
+                      <th style={{ width: 110 }}>처리</th>
+                      <th className="l">비고</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...o.history].reverse().map((e, i) => (
+                      <tr key={i} data-testid="history-row">
+                        <td className="num">{formatDateTime(e.at)}</td>
+                        <td>{historyLabel(e)}</td>
+                        <td>{historyActor(e.actor)}</td>
+                        <td>{historyNote(e)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table></div>
+              )}
+            </div>
+          </div>
+          <div>
+            <h2 className="ord-sec-t">알림 발송</h2>
+            <div className="ord-hist-scroll" data-testid="order-notifications">
+              <table className="tbl ord-hist-tbl">
                 <thead>
                   <tr>
                     <th style={{ width: 150 }}>시각</th>
-                    <th>상태</th>
-                    <th style={{ width: 110 }}>처리</th>
-                    <th className="l">비고</th>
+                    <th>알림</th>
+                    <th style={{ width: 90 }}>방식</th>
+                    <th className="l">결과</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {[...o.history].reverse().map((e, i) => (
-                    <tr key={i} data-testid="history-row">
-                      <td className="num">{formatDateTime(e.at)}</td>
-                      <td>{historyLabel(e)}</td>
-                      <td>{historyActor(e.actor)}</td>
-                      <td>{historyNote(e)}</td>
+                  {(o.notifications ?? []).length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="c-alt">보낸 알림이 없습니다</td>
                     </tr>
-                  ))}
+                  ) : (
+                    (o.notifications ?? []).map((n) => (
+                      <tr key={n.id}>
+                        <td className="num">{formatDateTime(n.sentAt ?? n.createdAt)}</td>
+                        <td>{NOTI_KIND[n.kind] ?? n.kind}</td>
+                        <td>{n.source === "MAIL_DELIVERY" ? "메일" : "알림"}</td>
+                        <td>{NOTI_STATUS[n.status]}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
-              </table></div>
-            )}
-          </section>
+              </table>
+            </div>
+          </div>
         </div>
       </main>
       {refundOpen && (
