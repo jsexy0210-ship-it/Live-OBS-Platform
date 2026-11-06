@@ -204,7 +204,7 @@ test("주문 상세: 상품·결제·구매자·배송을 보여 주고, 없는 
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("주문 상세");
   const summary = page.getByTestId("order-summary");
   await expect(summary).toContainText(nick);
-  await expect(summary).toContainText("완료");
+  await expect(page.getByTestId("order-summary-pay")).toContainText(/ · 완료$/); // 결제 완료(개봉 완료 등 다른 칸의 「완료」와 섞이지 않게 결제 칸만)
   await expect(page.getByRole("heading", { name: "주문 상품" })).toBeVisible();
   await expect(page.getByText("결제 금액")).toBeVisible();
   // 구매자 카드는 실명 없이 회원 닉네임만, 받는 분 실명·연락처는 배송 카드에만(고객 정보 보기 권한이 있는 대표자)
@@ -390,7 +390,7 @@ test("실제 환불: 판매자 사정으로 환불하면 완료 알림이 뜨고
   expect(response.status()).toBe(200);
   expect(response.request().postDataJSON()).toMatchObject({ confirmOpened: openedConfirmed });
   await expect(page.getByText(/원 환불을 완료했습니다/)).toBeVisible();
-  await expect(page.getByTestId("order-summary")).toContainText("환불됨");
+  await expect(page.getByTestId("order-summary-state")).toContainText(/^주문 상태환불됨$/);
   await expect(page.getByText("파트너스 사정")).toBeVisible();
   await expect(page.getByRole("button", { name: "취소 · 환불" })).toHaveCount(0);
   await shot(page, "SA-022-refunded");
@@ -452,7 +452,7 @@ test("주문·배송 권한만 있는 직원(방송 진행 권한 없음)도 실
   expect(response.status()).toBe(200);
   expect(response.request().postDataJSON()).toMatchObject({ confirmOpened: openedConfirmed });
   await expect(page.getByText(/원 환불을 완료했습니다/)).toBeVisible();
-  await expect(page.getByTestId("order-summary")).toContainText("환불됨");
+  await expect(page.getByTestId("order-summary-state")).toContainText(/^주문 상태환불됨$/);
 });
 
 test("발송한 주문의 송장은 택배사 코드가 아니라 화면 이름(CJ대한통운)으로 보인다", async ({ page }) => {

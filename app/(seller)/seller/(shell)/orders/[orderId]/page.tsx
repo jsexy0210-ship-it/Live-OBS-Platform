@@ -181,11 +181,11 @@ function OrderDetailContent() {
             <div className="k">접수</div>
             <div className="v num">{formatDateTime(o.createdAt)}</div>
           </div>
-          <div>
+          <div data-testid="order-summary-pay">
             <div className="k">결제</div>
             <div className="v num">{won(o.totalAmount)}<small>{method} · {paidText}</small></div>
           </div>
-          <div>
+          <div data-testid="order-summary-state">
             <div className="k">주문 상태</div>
             <div className="v">{stateText}{ahead !== null && <small>앞에 {ahead}건 대기</small>}</div>
           </div>
