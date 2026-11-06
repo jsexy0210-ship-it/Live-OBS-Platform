@@ -129,11 +129,15 @@ test("대표자: 기준 금액 저장 → 자동 재산정 켜기 검사 → 등
   await recalc.getByRole("button", { name: "재산정" }).click();
   await expect(page.getByText(/재산정 완료 · 승급 \d+명 · 강등 \d+명/)).toBeVisible();
   // 요약 칸의 「승급 회원 보기」는 변동 회원 표(회원 · 이전 → 지금 등급 · 시각 · 사유)를 열고 닫는다
-  await page.getByRole("button", { name: "승급 회원 보기" }).click();
-  const changed = page.getByRole("region", { name: "승급 회원" });
-  await expect(changed).toContainText(/승급 회원\s*현재 \d+명/);
+  // (재산정 직후에는 목록을 다시 불러오는 중에 열린 표가 닫힐 수 있어, 열릴 때까지 다시 누른다)
+  const changed = page.getByRole("region", { name: "승급 회원", exact: true });
+  await page.waitForLoadState("networkidle");
+  await expect(async () => {
+    if ((await changed.count()) === 0) await page.getByRole("button", { name: "승급 회원 보기" }).click();
+    await expect(changed).toContainText(/승급 회원\s*현재 \d+명/, { timeout: 1500 });
+  }).toPass({ timeout: 15000 });
   // 변동 회원이 있으면 표(회원 · 이전 → 지금 등급 · 시각 · 사유), 없으면 안내만 보인다
-  await expect(changed.getByRole("columnheader", { name: "이전 → 지금 등급" }).or(changed.getByText("해당하는 회원이 없습니다"))).toBeVisible();
+  await expect(changed.getByText("이전 → 지금 등급", { exact: true }).or(changed.getByText("해당하는 회원이 없습니다"))).toBeVisible();
   await changed.getByRole("button", { name: "닫기" }).click();
   await expect(changed).toHaveCount(0);
 
@@ -166,10 +170,14 @@ test("대표자: 기준 금액 저장 → 자동 재산정 켜기 검사 → 등
   await expect(page.getByText(/등급을 조정했습니다 · 자동 재산정에서 제외/)).toBeVisible();
   await page.getByRole("button", { name: "뒤로", exact: true }).click();
   await expect(page).toHaveURL(listUrl.href);
-  const manual = page.getByRole("region", { name: "회원 등급 조정" });
+  const manual = page.getByRole("region", { name: "회원 등급 조정", exact: true });
   await expect(manual).toContainText(nick);
   await expect(manual).toContainText("까지 고정 · 방송 단골");
-  await expect(manual.getByTestId("grade-locked-row").filter({ hasText: nick }).first()).toContainText("(수동)");
+  await expect(manual.getByTestId("adjust-row").filter({ hasText: nick }).first()).toContainText("(수동)");
+  // 읽기 전용 목록 2개: 고정한 회원(기간 · 사유)과 최근 변경(이전 → 지금 등급 · 사유)
+  await expect(page.getByRole("region", { name: "고정한 회원", exact: true })).toContainText(nick);
+  await expect(page.getByRole("region", { name: "고정한 회원", exact: true })).toContainText("방송 단골");
+  await expect(page.getByRole("region", { name: "최근 변경", exact: true }).getByTestId("grade-log").filter({ hasText: nick }).first()).toContainText("직접 조정");
 });
 
 test("직원: 회원 · 적립금 권한이 없으면 등급 메뉴가 보이지 않는다", async ({ page }) => {

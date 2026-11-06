@@ -52,7 +52,7 @@ type Data = {
   lastRun: { key: string; promoted: number; demoted: number; ranAt: string } | null;
   nextRunAt: string;
   recent: { id: string; memberId: string; nickname: string; fromName: string; toName: string; reason: "AUTO_UP" | "AUTO_DOWN" | "MANUAL" | "GRADE_REMOVED"; amount: number | null; createdAt: string }[];
-  locked: { memberId: string; nickname: string; gradeId: string; until: string | null; reason: string | null }[];
+  locked: { memberId: string; nickname: string; gradeId: string; until: string | null; reason: string | null; createdAt: string }[];
 };
 type Found = { id: string; broadcastNickname: string; grade: { id: string; displayName: string } };
 
@@ -467,7 +467,51 @@ export default function MemberGradesPage() {
               )}
             </section>
 
-            {canEdit && <MemberAdjust data={data} pager={listPager("recent", data.recentNextCursor)} page1={history.recent.page === 1} />}
+            {canEdit && <MemberAdjust data={data} />}
+
+            <section className="mg-sec" aria-label="고정한 회원">
+              <div className="mg-sec-h">
+                <h2 className="t-hl1">
+                  고정한 회원 <span className="t-l2 c-alt fw5">수동 등급으로 고정한 회원 · 읽기 전용 · 현재 {data.locked.length}개</span>
+                </h2>
+              </div>
+              {data.locked.length === 0 ? (
+                <div className="st" style={{ boxShadow: "none" }}>
+                  <span className="t">고정한 회원이 없습니다</span>
+                </div>
+              ) : (
+                <ListTable aria-label="고정한 회원 표">
+                  <table className="tbl">
+                    <thead>
+                      <tr>
+                        <th>회원</th>
+                        <th>고정 등급</th>
+                        <th>기간</th>
+                        <th>사유</th>
+                        <th>고정한 때</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.locked.map((l) => (
+                        <tr key={l.memberId} data-testid="grade-locked-row">
+                          <td>
+                            <Link href={`/seller/members/${l.memberId}`}>{l.nickname}</Link>
+                          </td>
+                          <td>{data.grades.find((g) => g.id === l.gradeId)?.displayName ?? "—"}</td>
+                          <td className="num">
+                            {kstText(l.createdAt).slice(0, 10)} ~ {l.until ? kstText(new Date(new Date(l.until).getTime() - 1).toISOString()).slice(0, 10) : "직접 풀 때까지"}
+                          </td>
+                          <td className="col-text">{l.reason || "—"}</td>
+                          <td className="num">{kstText(l.createdAt)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </ListTable>
+              )}
+              {listPager("locked", data.lockedNextCursor)}
+              <span className="t-c1 c-alt">고정 해제 · 변경은 위 수동 조정 표에서</span>
+            </section>
 
             {changes && (
               <section className="mg-sec" aria-label={changes.kind === "up" ? "승급 회원" : "강등 회원"} data-testid="grade-changes">
@@ -513,6 +557,51 @@ export default function MemberGradesPage() {
               </section>
             )}
 
+
+            <section className="mg-sec" aria-label="최근 변경">
+              <div className="mg-sec-h">
+                <h2 className="t-hl1">
+                  최근 변경 <span className="t-l2 c-alt fw5">자동 · 수동 등급 변경 기록 · 읽기 전용 · 현재 {data.recent.length}개</span>
+                </h2>
+              </div>
+              {data.recent.length === 0 ? (
+                <div className="st" style={{ boxShadow: "none" }}>
+                  <span className="t">등급 변경 기록이 없습니다</span>
+                </div>
+              ) : (
+                <ListTable aria-label="최근 변경 표">
+                  <table className="tbl">
+                    <thead>
+                      <tr>
+                        <th>회원</th>
+                        <th>이전 → 지금 등급</th>
+                        <th>사유</th>
+                        <th>시각</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.recent.map((h) => (
+                        <tr key={h.id} data-testid="grade-log">
+                          <td>
+                            <Link href={`/seller/members/${h.memberId}`}>{h.nickname}</Link>
+                          </td>
+                          <td>
+                            {h.fromName} → {h.toName}
+                          </td>
+                          <td className="col-text">
+                            {REASON[h.reason]}
+                            {h.amount !== null ? ` · ${windowText(data.windowMonths)} ${won(h.amount)}` : ""}
+                          </td>
+                          <td className="num">{kstText(h.createdAt)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </ListTable>
+              )}
+              {listPager("recent", data.recentNextCursor)}
+              <span className="t-c1 c-alt">사유: 자동 승급 · 자동 강등 · 직접 조정 · 등급 삭제로 이동</span>
+            </section>
           </>
         )}
       </main>
@@ -679,7 +768,7 @@ export default function MemberGradesPage() {
 
 // 수동 조정: 고정한 회원(또는 검색한 회원)을 표로 보고, 등급 조정은 기존 회원 상세의 조정 영역에서 한다.
 // 최근 N개월 구매 금액은 서버가 회원별로 주지 않아 「—」로 둔다(서버 필요).
-function MemberAdjust({ data, pager, page1 }: { data: Data; pager: React.ReactNode; page1: boolean }) {
+function MemberAdjust({ data }: { data: Data }) {
   const [u, setU] = useUrlState({ memberQ: "", memberSearch: "" });
   const params = useSearchParams().toString();
   const writeUrl = useRef(setU);
@@ -713,21 +802,12 @@ function MemberAdjust({ data, pager, page1 }: { data: Data; pager: React.ReactNo
   const returnTo = `/seller/member-grades${returnParams.size ? `?${returnParams}` : ""}`;
   const gradeName = (id: string) => data.grades.find((g) => g.id === id)?.displayName ?? "—";
   const lockText = (l: Data["locked"][number] | undefined) => (l ? `${l.until ? `${kstDay(new Date(new Date(l.until).getTime() - 1).toISOString())}까지 고정` : "직접 풀 때까지 고정"}${l.reason ? ` · ${l.reason}` : ""}` : "");
-  type Row = { key: string; memberId: string; nickname: string; grade: string; amount: number | null; adjust: string; sub?: string; period: string };
-  // 기본 행은 최근 변경(생성 시각 최신순 10개, 쪽 이동)이고 첫 쪽에는 그 밖에 고정한 회원이 이어진다. 검색하면 그 회원만 보인다.
-  const rows: Row[] = found
-    ? found.rows.map((m) => {
-        // 고정 정보는 첫 쪽 10명만 알고 있어, 그 밖의 회원은 고정 여부를 단정하지 않고 회원 상세로 안내한다
-        const lock = data.locked.find((l) => l.memberId === m.id);
-        return { key: m.id, memberId: m.id, nickname: m.broadcastNickname, grade: m.grade.displayName, amount: null, adjust: lock ? `${m.grade.displayName} (수동)` : m.grade.displayName, period: lockText(lock) || "회원 상세에서 확인" };
-      })
-    : [
-        ...data.recent.map((h) => {
-          const lock = data.locked.find((l) => l.memberId === h.memberId);
-          return { key: h.id, memberId: h.memberId, nickname: h.nickname, grade: h.toName, amount: h.amount, adjust: `${h.toName} (${lock || h.reason === "MANUAL" ? "수동" : "자동"})`, sub: `${h.fromName} → ${h.toName} · ${REASON[h.reason]}`, period: lockText(lock) || kstText(h.createdAt) };
-        }),
-        ...(page1 ? data.locked.filter((l) => !data.recent.some((h) => h.memberId === l.memberId)).map((l) => ({ key: `lock-${l.memberId}`, memberId: l.memberId, nickname: l.nickname, grade: gradeName(l.gradeId), amount: null as number | null, adjust: `${gradeName(l.gradeId)} (수동)`, period: lockText(l) })) : []),
-      ];
+  type Row = { key: string; memberId: string; nickname: string; grade: string; adjust: string; period: string };
+  // 조정할 회원은 검색으로 찾는다. 고정 정보는 첫 쪽 10명만 알고 있어, 그 밖의 회원은 단정하지 않고 회원 상세로 안내한다
+  const rows: Row[] = (found?.rows ?? []).map((m) => {
+    const lock = data.locked.find((l) => l.memberId === m.id);
+    return { key: m.id, memberId: m.id, nickname: m.broadcastNickname, grade: m.grade.displayName, adjust: lock ? `${m.grade.displayName} (수동)` : m.grade.displayName, period: lockText(lock) || "회원 상세에서 확인" };
+  });
   return (
     <section className="mg-sec" aria-label="회원 등급 조정">
       <div className="mg-sec-h">
@@ -738,9 +818,8 @@ function MemberAdjust({ data, pager, page1 }: { data: Data; pager: React.ReactNo
         <button className="btn btn-out" type="submit">검색</button>
       </form>
       {err && <div className="msg msg-neg" role="alert"><span>{err}</span></div>}
-      {rows.length === 0 ? (
-        <div className="st" style={{ boxShadow: "none" }}><span className="t">{found ? "찾는 회원이 없습니다" : "등급 변경 기록이 없습니다"}</span></div>
-      ) : (
+      {found && rows.length === 0 && <div className="st" style={{ boxShadow: "none" }}><span className="t">찾는 회원이 없습니다</span></div>}
+      {rows.length > 0 && (
         <ListTable aria-label="수동 조정 회원 표">
           <table className="tbl">
             <thead>
@@ -748,14 +827,13 @@ function MemberAdjust({ data, pager, page1 }: { data: Data; pager: React.ReactNo
             </thead>
             <tbody>
               {rows.map((m) => (
-                <tr key={m.key} data-testid={data.locked.some((l) => l.memberId === m.memberId) ? "grade-locked-row" : "adjust-row"}>
+                <tr key={m.key} data-testid="adjust-row">
                   <td>{m.nickname}</td>
                   <td>{m.grade}</td>
-                  <td className="num">{m.amount === null ? "—" : won(m.amount)}</td>
+                  <td className="num">—</td>
                   <td>
                     <span className="col" style={{ gap: 2 }}>
                       <span>{m.adjust}</span>
-                      {m.sub && <span className="t-c1 c-alt">{m.sub}</span>}
                       <Link className="btn btn-sm btn-out" href={`/seller/members/${m.memberId}?${new URLSearchParams({ returnTo })}#member-grade-adjust`}>회원 상세</Link>
                     </span>
                   </td>
@@ -766,7 +844,6 @@ function MemberAdjust({ data, pager, page1 }: { data: Data; pager: React.ReactNo
           </table>
         </ListTable>
       )}
-      {!found && pager}
       <span className="t-c1 c-alt">수동 등급은 기간 동안 재산정에서 제외 · 끝나면 다음 재산정부터 기준 적용 · 로그 추적에 남음</span>
     </section>
   );
