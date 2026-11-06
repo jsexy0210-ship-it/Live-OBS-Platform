@@ -364,7 +364,7 @@ body {
 }
 @media (min-width: 768px) {
   .p-table {
-    min-width: 940px;
+    min-width: 1130px; /* 고정 열 합계 908 + 상품명 · 코드 칸 최소 220 */
   }
 }
 .p-table td {
@@ -378,6 +378,9 @@ body {
 .p-w-chk {
   width: 36px;
 }
+.p-w-no {
+  width: 56px;
+}
 .p-w-img {
   width: 96px;
 }
@@ -389,7 +392,7 @@ body {
   width: 104px;
 }
 .p-w-act {
-  width: 96px; /* 표 안 버튼 64 + 좌우 안쪽 여백 */
+  width: 176px; /* 표 안 버튼 2개(수정 · 미리보기) + 사이 8 + 좌우 안쪽 여백 */
 }
 .p-w-price {
   width: 120px;
