@@ -25,7 +25,7 @@ import { markConnectionRevoked } from "../../lib/server/automation/connection";
 import { POST as pauseRoute } from "../../app/api/automation/jobs/[jobId]/pause/route";
 import { POST as continueRoute } from "../../app/api/automation/jobs/[jobId]/continue/route";
 import { GET as timelineRoute } from "../../app/api/automation/jobs/[jobId]/timeline/route";
-import { PLATFORM_NAME_PATTERN, cancelJob, continueJob, getJob, pauseJob, requestRefund, resumeJob } from "../../lib/server/automation/jobs";
+import { PLATFORM_NAME_PATTERN, cancelJob, continueJob, getJob, getJobTimeline, pauseJob, requestRefund, resumeJob } from "../../lib/server/automation/jobs";
 import { purchaseAutomation, reconcileAutomationPayments, reconnectAutomation } from "../../lib/server/automation/purchase";
 import { EngineAborted, actionKeyOf, callPort, insidePortCall, runSteps, trackedWindow } from "../../lib/server/automation/engine";
 import { FencingError, RunTimeExceeded, advanceStep, claimNext, extendLease, finishJob, lockJob, markActionEnded, markActionStarted, markBrowserStateHeld, markChanged, markReleaseStarted, parkForCustomer, reapExpired, toVerifying, touch, unmarkChanged } from "../../lib/server/automation/queue";
@@ -4368,6 +4368,9 @@ describe("MA-111 마스터 관리자 동작: 재시도 · 담당 작업 서버 �
     expect(await payments(a.seller.id)).toEqual(paymentsBefore);
     expect(await db.auditLog.count({ where: { action: "automation.job_retry", targetId: a.jobId } })).toBe(1);
     expect(await db.automationJobEvent.count({ where: { jobId: a.jobId, fromStatus: "QUEUED", toStatus: "QUEUED" } })).toBe(1);
+    // 판매자 시각표에는 실패 사유가 아니라 사유 없는 「다시 시도」로 보인다(step_failed 아님)
+    const seen = (await getJobTimeline(db, a.ctx, a.jobId)).timeline.filter((t) => t.kind === "retry");
+    expect(seen).toEqual([expect.objectContaining({ reason: null })]);
     // 이미 실행 시각이 지났으면 할 일이 없다
     expect((await retry(a.jobId, await cookieOf("SUPER_ADMIN"))).status).toBe(409);
   });
@@ -4410,6 +4413,8 @@ describe("MA-111 마스터 관리자 동작: 재시도 · 담당 작업 서버 �
     expect(await payments(a.seller.id)).toEqual(paymentsBefore);
     expect(await db.auditLog.count({ where: { action: "automation.job_reassign", targetId: a.jobId } })).toBe(1);
     expect(await db.automationJobEvent.count({ where: { jobId: a.jobId, fromStatus: "RUNNING", toStatus: "QUEUED" } })).toBe(1);
+    const seenReassign = (await getJobTimeline(db, a.ctx, a.jobId)).timeline.filter((t) => t.kind === "retry");
+    expect(seenReassign).toEqual([expect.objectContaining({ reason: "lease_expired" })]);
     // 되돌아온 작업은 다른 작업자가 다시 잡을 수 있다
     const claimed = await claimNext(db, "worker-new");
     expect(claimed?.job.id).toBe(a.jobId);

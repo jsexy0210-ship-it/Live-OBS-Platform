@@ -321,6 +321,8 @@ export async function continueJob(db: PrismaClient, ctx: TenantContext, jobId: s
 export type TimelineKind = "payment_confirmed" | "started" | "needs_customer" | "resumed" | "verifying" | "step_done" | "retry" | "paused" | "continued" | "succeeded" | "failed" | "canceled" | "cleanup_needed" | "other";
 export type TimelineEntry = { at: Date; kind: TimelineKind; stepNumber: number | null; reason: string | null };
 
+const ADMIN_EVENT_REASON: Record<string, string | null> = { admin_retry_now: null, admin_reassign: "lease_expired" };
+
 export function timelineKind(from: string | null, to: string, reason: unknown): TimelineKind {
   if (reason === "step_done") return "step_done";
   if (reason === "paused") return "paused";
@@ -339,7 +341,9 @@ export async function getJobTimeline(db: PrismaClient, ctx: TenantContext, jobId
     const kind = timelineKind(e.fromStatus, e.toStatus, d.reason);
     const stepNumber = typeof d.stepIndex === "number" && d.stepIndex >= 0 ? Math.min(d.stepIndex + 1, STEPS.length) : null;
     // 사유는 끝나거나 다시 시도한 기록에만, 정해 둔 코드(publicError)로만 내보낸다
-    const reason = (kind === "failed" || kind === "retry" || kind === "cleanup_needed" || kind === "canceled") && typeof d.reason === "string" ? publicError(d.reason) : null;
+    // 마스터 관리자 동작(MA-111)의 기록 사유는 실패 코드가 아니다: 재시도는 사유 없음, 서버 바꾸기는 실제 원인인 임대 만료로 보인다
+    const raw = typeof d.reason === "string" ? (d.reason in ADMIN_EVENT_REASON ? ADMIN_EVENT_REASON[d.reason] : d.reason) : null;
+    const reason = (kind === "failed" || kind === "retry" || kind === "cleanup_needed" || kind === "canceled") && raw !== null ? publicError(raw) : null;
     return { at: e.createdAt, kind, stepNumber, reason };
   });
   return { job, timeline };
