@@ -6,7 +6,24 @@
 .shop-home-sub { font-size:12px; color:var(--wds-label-alternative); }
 .shop-home .shop-more { margin-left:auto; font-size:12px; }
 .shop-home .pc-grid { gap:32px 24px; }
-.shop-home-notices { width:calc(50% - 12px); align-self:flex-end; }
+.shop-home-two { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; align-items:start; }
+.shop-home-two > .shop-home-notices:only-child { grid-column:2; }
+.shop-hero { display:grid; grid-template-columns:2fr 1fr; gap:16px; align-items:stretch; }
+.shop-hero.is-solo { grid-template-columns:1fr; }
+.shop-hero-side { display:flex; flex-direction:column; gap:16px; min-width:0; }
+.shop-hero-side.is-solo { flex-direction:row; }
+.shop-hero-side > * { flex:1; min-width:0; display:flex; flex-direction:column; gap:4px; padding:16px; border:1px solid var(--wds-line-solid-normal); background:var(--wds-background-normal-normal, #fff); color:inherit; text-decoration:none; }
+.shop-hero-side .k { font-size:12px; font-weight:700; color:var(--shop-primary, var(--wds-primary-normal)); }
+.shop-hero-side b { font-size:15px; overflow-wrap:anywhere; }
+.shop-hero-side .sub { font-size:12px; color:var(--wds-label-alternative); }
+.shop-home-hits table { width:100%; border-collapse:collapse; table-layout:fixed; font-size:13px; }
+.shop-home-hits th { padding:8px 12px; text-align:center; font-weight:600; color:var(--wds-label-alternative); border-bottom:1px solid var(--wds-line-solid-normal); }
+.shop-home-hits th:first-child, .shop-home-hits td:first-child { width:48px; text-align:center; }
+.shop-home-hits th:last-child, .shop-home-hits td:last-child { width:72px; }
+.shop-home-hits td { padding:12px; border-bottom:1px solid var(--wds-line-solid-neutral); overflow-wrap:anywhere; }
+.shop-home-hits td.l { text-align:left; }
+.shop-home-hits td.r { text-align:right; }
+.shop-home-hits tr.is-top { background:#fff8e1; }
 .shop-home-notices table { width:100%; border-collapse:collapse; table-layout:fixed; font-size:13px; }
 .shop-home-notices td { padding:12px; border-bottom:1px solid var(--wds-line-solid-neutral); overflow-wrap:anywhere; }
 .shop-home-notices td:last-child:not(:first-child) { width:96px; text-align:right; color:var(--wds-label-alternative); }
@@ -21,4 +38,8 @@
   .shop-home-sub { display:none; }
   .shop-home .pc-grid { gap:24px 12px; }
   .shop-home-notices { display:none; }
+  .shop-hero { display:block; }
+  .shop-hero-side { display:none; }
+  .shop-home-two { display:block; }
+  .shop-home-hits tr:nth-child(n+4) { display:none; }
 }
