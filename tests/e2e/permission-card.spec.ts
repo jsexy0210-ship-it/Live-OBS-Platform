@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { appReady } from './appReady';
 test.use({ channel:'chrome' });
 async function fixture(page:Page, role='READ_ONLY', productsOk=false) {
   await page.route('**/api/**',async route=>{
@@ -44,7 +45,7 @@ for(const path of ['/seller/products','/seller/subscription','/admin/settings/pl
     await page.setViewportSize({width:390,height:568});await fixture(page);
     const master=path.startsWith('/admin');const previous=master?'/admin/partners':'/seller';
     await page.goto(previous);
-    if(master) await page.evaluate(path=>history.pushState(null,'',path),path);
+    if(master){await appReady(page);await page.evaluate(path=>history.pushState(null,'',path),path);}
     else await page.goto(path);
     const card=page.getByTestId('permission-card');const heading=card.getByRole('heading');await expect(heading).toBeVisible();
     const box=await heading.boundingBox();expect(box!.y).toBeGreaterThanOrEqual(0);expect(box!.y+box!.height).toBeLessThan(568);
