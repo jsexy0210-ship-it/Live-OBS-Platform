@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { MARKETING_DOC_VERSION } from "../../components/shop/MarketingConsentDoc";
 import { ensureShopInDb } from "./shopDb";
+import { appReady } from "./appReady";
 import { okConfirm } from "./shopConfirm";
 
 // SH-025 알림 설정(알림 종류 × 알림톡·문자/이메일 표): 필수 알림 고정, 배송 채널별, 혜택·이벤트 = 마케팅 수신 동의(서식 확인 후 동의·철회, 처리 결과 바로 안내).
@@ -128,15 +129,17 @@ test("구매자: 동의 응답을 놓쳐도 지금 상태를 다시 읽어 처�
   await buyerLogin(page, baseURL!);
   expect((await page.request.put(API, { data: { agreed: false }, headers: { origin: baseURL! } })).status()).toBe(200);
   await page.goto(PAGE);
+  await appReady(page); // 앱 라우터가 마운트되기 전 클릭은 화면 상태에 반영되지 않는다
   await box(page, "혜택 · 이벤트 (선택) 이메일").click();
+  let lost = false; // 첫 PUT만 끊는다. times:1로 가로채기를 해제하면 그 순간 도착한 다시 읽기 요청이 멈출 수 있어 끝까지 걸어 둔다
   await page.route(
     (u) => u.pathname === PREFS,
     async (route) => {
-      if (route.request().method() !== "PUT") return route.continue();
+      if (route.request().method() !== "PUT" || lost) return route.continue();
+      lost = true;
       await route.fetch();
       return route.abort("connectionreset");
     },
-    { times: 1 },
   );
   await page.getByTestId("mc-terms").getByRole("button", { name: "동의하고 받기" }).click();
   await expect(page.getByTestId("mc-result")).toHaveText(`카드숍 별빛에서 보내는 혜택·이벤트 알림 받기에 동의했어요 · 동의한 날 ${today()}`);
