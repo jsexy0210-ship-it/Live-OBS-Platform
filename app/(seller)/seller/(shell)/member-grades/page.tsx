@@ -717,8 +717,9 @@ function MemberAdjust({ data, pager, page1 }: { data: Data; pager: React.ReactNo
   // 기본 행은 최근 변경(생성 시각 최신순 10개, 쪽 이동)이고 첫 쪽에는 그 밖에 고정한 회원이 이어진다. 검색하면 그 회원만 보인다.
   const rows: Row[] = found
     ? found.rows.map((m) => {
+        // 고정 정보는 첫 쪽 10명만 알고 있어, 그 밖의 회원은 고정 여부를 단정하지 않고 회원 상세로 안내한다
         const lock = data.locked.find((l) => l.memberId === m.id);
-        return { key: m.id, memberId: m.id, nickname: m.broadcastNickname, grade: m.grade.displayName, amount: null, adjust: `${m.grade.displayName} (${lock ? "수동" : "자동"})`, period: lockText(lock) || "—" };
+        return { key: m.id, memberId: m.id, nickname: m.broadcastNickname, grade: m.grade.displayName, amount: null, adjust: lock ? `${m.grade.displayName} (수동)` : m.grade.displayName, period: lockText(lock) || "회원 상세에서 확인" };
       })
     : [
         ...data.recent.map((h) => {
