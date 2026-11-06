@@ -49,7 +49,7 @@ test.describe.serial("적립금 사용", () => {
     const input = box.getByLabel("사용할 적립금");
     await expect(input).toHaveValue("0"); // 기본은 쓰지 않음(0)
     const sum = page.getByRole("complementary", { name: "주문 금액" });
-    await expect(sum.locator(".cart-row", { hasText: "적립금 사용" })).toHaveCount(0);
+    await expect(sum.locator(".cart-row", { hasText: "적립금 사용" })).toContainText("0원"); // 보드: 줄은 늘 있고 쓰지 않으면 0원
     // 입력 오류: 단위·한도(상품 금액)·잔액
     await input.fill("500");
     await expect(box.getByRole("alert")).toHaveText("적립금은 1,000원부터 10원 단위로 쓸 수 있어요");

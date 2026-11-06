@@ -92,6 +92,9 @@ export async function getMemberGrades(db: PrismaClient, ctx: TenantContext, now 
     windowMonths: policy?.windowMonths ?? 6,
     cadence,
     demotion: (policy?.demotion ?? "STEP") as Demotion,
+    notifyPromotion: policy?.notifyPromotion ?? false,
+    notifyDemotion: policy?.notifyDemotion ?? false,
+    showNextGrade: policy?.showNextGrade ?? true,
     lockedCount,
     lastRun: lastRun ? { key: lastRun.monthKey, promoted: lastRun.promoted, demoted: lastRun.demoted, ranAt: lastRun.ranAt } : null,
     nextRunAt: nextRunAt(cadence, now),
@@ -102,7 +105,7 @@ export async function getMemberGrades(db: PrismaClient, ctx: TenantContext, now 
   };
 }
 
-type SaveBody = { autoEnabled?: unknown; windowMonths?: unknown; cadence?: unknown; demotion?: unknown; grades?: unknown };
+type SaveBody = { autoEnabled?: unknown; windowMonths?: unknown; cadence?: unknown; demotion?: unknown; notifyPromotion?: unknown; notifyDemotion?: unknown; showNextGrade?: unknown; grades?: unknown };
 
 // 이름·기준액·산정 기준·자동 재산정 켜기를 한 번에 저장. 보낸 값만 바꾼다. 자동 재산정을 켜 두면 기준액이 순서대로 커야 한다.
 // 자동 재산정을 새로 켜거나 주기를 바꾸면 그 주기를 이미 돈 것으로 기록해, 저장하자마자 도는 일을 막는다.
@@ -110,6 +113,7 @@ export async function saveMemberGrades(db: PrismaClient, ctx: TenantContext, bod
   requireSellerPermission(ctx, "MEMBER_POINTS");
   if (body.autoEnabled !== undefined && typeof body.autoEnabled !== "boolean") return fail("invalid_body");
   if (body.grades !== undefined && !Array.isArray(body.grades)) return fail("invalid_body");
+  for (const v of [body.notifyPromotion, body.notifyDemotion, body.showNextGrade]) if (v !== undefined && typeof v !== "boolean") return fail("invalid_body");
   const windowMonths = body.windowMonths === undefined ? undefined : parseWindowMonths(body.windowMonths);
   const cadence = body.cadence === undefined ? undefined : parseCadence(body.cadence);
   const demotion = body.demotion === undefined ? undefined : parseDemotion(body.demotion);
@@ -179,6 +183,9 @@ export async function saveMemberGrades(db: PrismaClient, ctx: TenantContext, bod
         windowMonths: windowMonths ?? before.windowMonths,
         cadence: (cadence ?? before.cadence) as Cadence,
         demotion: (demotion ?? before.demotion) as Demotion,
+        notifyPromotion: (body.notifyPromotion as boolean | undefined) ?? before.notifyPromotion,
+        notifyDemotion: (body.notifyDemotion as boolean | undefined) ?? before.notifyDemotion,
+        showNextGrade: (body.showNextGrade as boolean | undefined) ?? before.showNextGrade,
       };
       await tx.memberGradePolicy.update({ where: { sellerId: ctx.sellerId }, data: { ...after, updatedAt: now } });
       if (auto && (!before.autoEnabled || after.cadence !== before.cadence)) {
@@ -200,7 +207,7 @@ export async function saveMemberGrades(db: PrismaClient, ctx: TenantContext, bod
     throw e;
   }
 }
-const pick = (p: { autoEnabled: boolean; windowMonths: number; cadence: string; demotion: string }) => ({ autoEnabled: p.autoEnabled, windowMonths: p.windowMonths, cadence: p.cadence, demotion: p.demotion });
+const pick = (p: { autoEnabled: boolean; windowMonths: number; cadence: string; demotion: string; notifyPromotion: boolean; notifyDemotion: boolean; showNextGrade: boolean }) => ({ autoEnabled: p.autoEnabled, windowMonths: p.windowMonths, cadence: p.cadence, demotion: p.demotion, notifyPromotion: p.notifyPromotion, notifyDemotion: p.notifyDemotion, showNextGrade: p.showNextGrade });
 
 // 등급 추가: 가장 높은 등급 위에 붙는다. 자동 재산정이 켜져 있으면 기준액이 맨 위 등급보다 커야 한다.
 export async function addMemberGrade(db: PrismaClient, ctx: TenantContext, body: { displayName?: unknown; minAmount?: unknown }) {
@@ -325,8 +332,8 @@ export async function recalcSellerGrades(db: PrismaClient, sellerId: string, now
   try {
     return await db.$transaction(async (tx) => {
       await tx.memberGradePolicy.upsert({ where: { sellerId }, create: { sellerId }, update: {} });
-      const [policy] = await tx.$queryRaw<{ autoEnabled: boolean; windowMonths: number; cadence: Cadence; demotion: Demotion }[]>`
-        SELECT "autoEnabled", "windowMonths", "cadence"::text AS "cadence", "demotion"::text AS "demotion" FROM "MemberGradePolicy" WHERE "sellerId" = ${sellerId}::uuid FOR UPDATE`;
+      const [policy] = await tx.$queryRaw<{ autoEnabled: boolean; windowMonths: number; cadence: Cadence; demotion: Demotion; notifyPromotion: boolean; notifyDemotion: boolean }[]>`
+        SELECT "autoEnabled", "windowMonths", "cadence"::text AS "cadence", "demotion"::text AS "demotion", "notifyPromotion", "notifyDemotion" FROM "MemberGradePolicy" WHERE "sellerId" = ${sellerId}::uuid FOR UPDATE`;
       const key = runKey(policy.cadence, now);
       if (!opts.manual) {
         if (!policy.autoEnabled) return NOT_RAN;
@@ -380,7 +387,7 @@ export async function recalcSellerGrades(db: PrismaClient, sellerId: string, now
           await tx.memberGradeHistory.create({
             data: { sellerId, buyerMemberId: m.id, fromName: grades[cur].displayName, toName: grades[nxt].displayName, reason: nxt > cur ? "AUTO_UP" : "AUTO_DOWN", amount: amt, createdAt: now, staffId: opts.actor?.actorId ?? null },
           });
-          // 승급이면 그 등급의 승급 쿠폰을 한 장 준다(같은 쿠폰은 다시 주지 않음). 승급·강등 알림은 발송 채널이 정해질 때까지 발송 기록만 남긴다.
+          // 승급이면 그 등급의 승급 쿠폰을 한 장 준다(같은 쿠폰은 다시 주지 않음). 승급·강등 알림은 발송 채널이 붙을 때까지 원함 여부(notify)와 발송 기록만 남긴다.
           const coupon = nxt > cur ? await grantPromotionCoupon(tx, { sellerId, buyerMemberId: m.id, gradeId: grades[nxt].id }) : "none";
           await writeAudit(tx, {
             actorType: "SYSTEM",
@@ -389,7 +396,7 @@ export async function recalcSellerGrades(db: PrismaClient, sellerId: string, now
             action: "member_grade.notice",
             targetType: "BuyerMember",
             targetId: m.id,
-            after: { kind: nxt > cur ? "UP" : "DOWN", to: grades[nxt].displayName, coupon, delivered: false },
+            after: { kind: nxt > cur ? "UP" : "DOWN", to: grades[nxt].displayName, coupon, notify: nxt > cur ? policy.notifyPromotion : policy.notifyDemotion, delivered: false },
           });
         }
         if (page.length < PAGE) break;

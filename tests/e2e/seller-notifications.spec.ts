@@ -77,3 +77,29 @@ test("입금 확인·결제 완료·재고 없음·반품 요청 알림은 서�
   await row("주문 14 반품 요청").getByRole("link").click();
   await expect(page).toHaveURL(/\/seller\/returns$/);
 });
+
+test("쪽 번호는 주소에 남아 새로고침·상세 → Back에서도 같은 쪽이고, 새로 고침 단추는 첫 쪽으로 돌아간다", async ({ page }) => {
+  const items = Array.from({ length: 30 }, (_, i) => ({ id: `page-${i}`, kind: "NOTICE", title: `쪽 확인 알림 ${i}`, href: "/seller/notices", createdAt: "2026-10-01T00:00:00Z", unread: false }));
+  await page.route("**/api/seller/notifications", (route) => route.fulfill({ json: { items, unreadCount: 0 } }));
+  await page.route("**/api/seller/notifications/read", (route) => route.fulfill({ json: { ok: true } }));
+  await login(page, "/seller/notifications");
+  const firstTitle = page.getByTestId("notif-row").first().locator("td > a");
+  await expect(firstTitle).toHaveText("쪽 확인 알림 0");
+  await page.getByRole("navigation", { name: "페이지 이동", exact: true }).getByRole("button", { name: "2페이지", exact: true }).click();
+  await expect(page).toHaveURL(/\/seller\/notifications\?page=2$/);
+  await expect(firstTitle).toHaveText("쪽 확인 알림 10");
+  await page.reload();
+  await expect(firstTitle).toHaveText("쪽 확인 알림 10");
+  // 상세(공지) → Back: 같은 쪽
+  await firstTitle.click();
+  await expect(page).toHaveURL(/\/seller\/notices/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/seller\/notifications\?page=2$/);
+  await expect(firstTitle).toHaveText("쪽 확인 알림 10");
+  // 쪽 수를 넘는 주소는 마지막 쪽으로, 새로 고침 단추는 첫 쪽으로
+  await page.goto("/seller/notifications?page=99");
+  await expect(firstTitle).toHaveText("쪽 확인 알림 20");
+  await page.getByRole("button", { name: "새로 고침", exact: true }).click();
+  await expect(firstTitle).toHaveText("쪽 확인 알림 0");
+  await expect(page).toHaveURL(/\/seller\/notifications$/);
+});

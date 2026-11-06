@@ -45,6 +45,11 @@ test("쇼핑몰 통합: 단계가 서버 순서·완료 상태 그대로 보이�
     await expect(rows.nth(i)).toHaveAttribute("data-done", step.done ? "true" : "false");
   }
   await expect(page.getByTestId("ob-count")).toHaveText(`${s.doneCount} / ${s.total} 완료`);
+  await expect(page.getByTestId("ob-note")).toContainText("가입 때 정해진 갈래의 단계를 순서대로 끝내면");
+  // 「지금 할 차례」 단계 버튼만 강조(채움), 나머지 단계 버튼과 「이어서 하기」는 테두리형
+  await expect(page.locator('[data-testid="ob-step"][data-current="true"] a.btn')).not.toHaveClass(/btn-out/);
+  await expect(page.locator('[data-testid="ob-step"][data-current="false"] a.btn.btn-out')).toHaveCount(s.steps.length - 1);
+  await expect(page.getByTestId("ob-continue")).toHaveClass(/btn-out/);
   // 첫 미완료 단계만 「진행 차례」이고 「이어서 하기」가 그 단계 주소로 간다
   expect(s.currentStep).not.toBeNull();
   await expect(page.locator('[data-testid="ob-step"][data-current="true"]')).toHaveCount(1);

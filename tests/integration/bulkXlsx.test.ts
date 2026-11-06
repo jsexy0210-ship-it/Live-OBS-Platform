@@ -4,7 +4,7 @@ import { POST as previewRoute } from "../../app/api/seller/bulk-io/products/prev
 import { GET as templateRoute } from "../../app/api/seller/bulk-io/products/template/route";
 import { loginSeller } from "../../lib/server/auth/login";
 import { prisma } from "../../lib/server/db";
-import { COLUMNS, commitProductImport, exportProductsCsv, exportProductsXlsx, previewProductImportXlsx } from "../../lib/server/shop-bulk-io/service";
+import { COLUMNS, TEMPLATE_COLUMNS, commitProductImport, exportProductsCsv, exportProductsXlsx, previewProductImportXlsx } from "../../lib/server/shop-bulk-io/service";
 import { XLSX_MAX_BYTES, readXlsx, writeXlsx } from "../../lib/server/shop-bulk-io/xlsx";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { createCategory } from "../../lib/server/shop-category/service";
@@ -107,7 +107,7 @@ describe("엑셀 양식·내보내기", () => {
     expect(t.headers.get("content-disposition")).toContain(".xlsx");
     const bytes = Buffer.from(await t.arrayBuffer());
     const read = readXlsx(bytes);
-    expect(read.ok && read.rows[0]).toEqual(head);
+    expect(read.ok && read.rows[0]).toEqual([...TEMPLATE_COLUMNS]);
     const res = await post(c, new Uint8Array(bytes), { "content-type": XLSX });
     expect(await res.json()).toMatchObject({ totalRows: 3, productCount: 2, errorTotal: 0 });
   });
@@ -117,7 +117,7 @@ describe("엑셀 양식·내보내기", () => {
     const c = await s.cookie();
     const seed = await post(
       c,
-      new Uint8Array(writeXlsx([head, ["=위험 수식", "5000", "판매중", "설명, \"따옴표\"\n줄바꿈", "주문 시", "", "기본", "0", "30", "00123"], ["슬리브", "3000", "품절", "", "결제 시", "", "검정", "0", "0", ""], ["", "", "", "", "", "", "흰색", "500", "5", ""]])),
+      new Uint8Array(writeXlsx([head, ["=위험 수식", "5000", "판매중", "설명, \"따옴표\"\n줄바꿈", "주문 시", "", "00123", "0", "30", ""], ["슬리브", "3000", "품절", "", "결제 시", "", "검정", "0", "0", ""], ["", "", "", "", "", "", "흰색", "500", "5", ""]])),
       { "content-type": XLSX },
     );
     const seeded = await seed.json();
@@ -129,17 +129,19 @@ describe("엑셀 양식·내보내기", () => {
     const bytes = Buffer.from(await ex.arrayBuffer());
     const sheet = readXlsx(bytes);
     if (!sheet.ok) throw new Error(sheet.reason);
-    expect(sheet.rows[0]).toEqual(head);
+    expect(sheet.rows[0]).toEqual([...TEMPLATE_COLUMNS]);
     // 엑셀 칸은 글자 형식이라 보호용 작은따옴표 없이 그대로
     const danger = sheet.rows.find((r) => r[0] === "=위험 수식");
-    expect(danger?.[9]).toBe("00123");
+    expect(danger?.[4]).toBe("00123"); // 앞자리 0이 글자 그대로(옵션 열)
     expect(sheet.rows.some((r) => r[0].startsWith("'"))).toBe(false);
     const csvExport = await exportProductsCsv(db, s.ctx);
     expect(csvExport.ok && csvExport.value.csv).toContain("'=위험 수식");
     // 그대로 다시 올리면 같은 상품 2개로 통과(작은따옴표 보호는 읽을 때 벗겨진다)
     const again = await post(c, new Uint8Array(bytes), { "content-type": XLSX });
     const body = await again.json();
-    expect(body).toMatchObject({ productCount: 2, errorTotal: 0, products: expect.arrayContaining([expect.objectContaining({ name: "=위험 수식", price: 5000 }), expect.objectContaining({ name: "슬리브", price: 3000, status: "SOLD_OUT" })]) });
+    expect(body).toMatchObject({ productCount: 2, errorTotal: 0, products: expect.arrayContaining([expect.objectContaining({ name: "=위험 수식", price: 5000, mode: "update" }), expect.objectContaining({ name: "슬리브", price: 3000, mode: "update" })]) });
+    // 상태·차감시점·SKU 같은 열은 양식에 없어 내보내기에도 없다(기존 상품 수정은 판매가·재고만)
+    expect(body).toMatchObject({ createCount: 0, updateCount: 2 });
   });
 
   it("엑셀 내보내기도 로그 추적과 처리 이력에 남고 권한이 없으면 막힌다", async () => {

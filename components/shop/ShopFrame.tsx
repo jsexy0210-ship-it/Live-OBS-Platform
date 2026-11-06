@@ -7,7 +7,7 @@ import { publicCategories } from "../../lib/server/shop-category/service";
 import { footerNotice } from "../../lib/server/shop-legal/notice";
 import { ConfirmProvider } from "../admin-ui/ConfirmDialog";
 import { EventPopupForPage } from "./EventPopup";
-import LiveBar from "./LiveBar";
+import LiveBar, { LiveProvider } from "./LiveBar";
 import ShopChrome from "./ShopChrome";
 import ShopClosedGate from "./ShopClosedGate";
 import { ShopSessionProvider } from "./ShopSession";
@@ -39,14 +39,18 @@ function footRows(info: unknown): [string, string][] {
 // [slug]/layout.tsx가 한 번만 그린다(화면마다 다시 그리지 않아 이동할 때 머리가 깜빡이지 않는다).
 // 로그인 상태는 이 쇼핑몰의 구매자 세션으로 판단한다(다른 쇼핑몰 세션은 로그인 안 함으로 본다).
 export default async function ShopFrame({ slug, shopName, operatingState = "OPEN", children }: { slug: string; shopName: string; operatingState?: "OPEN" | "PREPARING" | "PAUSED"; children: React.ReactNode }) {
-  const seller = await prisma.seller.findUnique({ where: { slug: slug.slice(0, 60) }, select: { id: true, businessInfo: true, shopTopNotice: true } });
+  const seller = await prisma.seller.findUnique({ where: { slug: slug.slice(0, 60) }, select: { id: true, businessInfo: true, shopTopNotice: true, bankAccount: { select: { bankName: true, accountNumber: true, accountHolder: true } } } });
   const token = (await cookies()).get(COOKIE_NAMES.buyer)?.value;
   const session = seller ? await resolveBuyerSession(prisma, token, seller.id) : null;
   const categories = (await publicCategories(prisma, slug.slice(0, 60))) ?? [];
   // 입점 신청 때 받은 검증 값 + 파트너스가 입력한 법정 표시(주소·고객센터·구매안전서비스 등, SA-062)
   const notice = seller ? await footerNotice(prisma, seller.id) : null;
   const bizNumber = text((seller?.businessInfo as BusinessInfo | null)?.businessNumber);
-  const rows: FootRow[] = [...footRows(seller?.businessInfo).map(([label, value]) => ({ label, value })), ...(notice ? noticeRows(bizNumber, notice) : [])];
+  // 고객센터·이메일은 아래 「고객센터」 칸에 따로 보여 주므로 사업자 정보 줄에서는 뺀다(정본 SH-001-PC-IA `.ft .cs`)
+  const rows: FootRow[] = [...footRows(seller?.businessInfo).map(([label, value]) => ({ label, value })), ...(notice ? noticeRows(bizNumber, notice) : [])].filter((r) => r.label !== "고객센터" && r.label !== "이메일");
+  const bank = seller?.bankAccount ?? null;
+  const base = `/shop/${encodeURIComponent(slug)}`;
+  const hasCs = !!(notice?.csPhone || notice?.csHours || notice?.csEmail || bank || notice?.kakaoChannelUrl || notice?.youtubeChannelUrl);
   return (
     <ConfirmProvider defaultTone="shop">
     <div className="shop-page">
@@ -55,8 +59,10 @@ export default async function ShopFrame({ slug, shopName, operatingState = "OPEN
           <div className="shop-wrap">{text(seller?.shopTopNotice)}</div>
         </div>
       )}
-      <ShopChrome slug={slug} shopName={shopName} loggedIn={!!session} nickname={session?.member.broadcastNickname ?? null} categories={categories} signupOpen={operatingState === "OPEN"} />
-      <LiveBar slug={slug} />
+      <LiveProvider slug={slug}>
+        <LiveBar />
+        <ShopChrome slug={slug} shopName={shopName} loggedIn={!!session} nickname={session?.member.broadcastNickname ?? null} categories={categories} signupOpen={operatingState === "OPEN"} />
+      </LiveProvider>
       <EventPopupForPage />
       <main className="shop-main">
         <ShopSessionProvider loggedIn={!!session}>
@@ -68,6 +74,52 @@ export default async function ShopFrame({ slug, shopName, operatingState = "OPEN
       <footer className="shop-foot">
         <div className="shop-wrap">
           <p className="shop-foot-name">{shopName}</p>
+          <p className="shop-foot-links">
+            <Link href={`${base}/terms`}>이용약관</Link>
+            <Link href={`${base}/privacy`} className="shop-foot-strong">개인정보처리방침</Link>
+            <Link href={`${base}/help`}>이용안내</Link>
+            <Link href={`${base}/help`}>교환 · 환불 안내</Link>
+            <Link href={`${base}/me/inquiries`}>문의하기</Link>
+          </p>
+          {hasCs && (
+            <div className="shop-foot-cs" data-testid="shop-foot-cs">
+              {(notice?.csPhone || notice?.csHours) && (
+                <dl>
+                  <dt>고객센터</dt>
+                  {notice?.csPhone && <dd className="shop-foot-cs-v">{notice.csPhone}</dd>}
+                  {notice?.csHours && <dd>{notice.csHours}</dd>}
+                </dl>
+              )}
+              {bank && (
+                <dl>
+                  <dt>무통장 입금 계좌</dt>
+                  <dd className="shop-foot-cs-v">{bank.bankName} {bank.accountNumber}</dd>
+                  <dd>예금주 {bank.accountHolder}</dd>
+                </dl>
+              )}
+              {notice?.csEmail && (
+                <dl>
+                  <dt>이메일</dt>
+                  <dd className="shop-foot-cs-v">{notice.csEmail}</dd>
+                </dl>
+              )}
+              {(notice?.kakaoChannelUrl || notice?.youtubeChannelUrl) && (
+                <div className="shop-foot-sns">
+                  {notice?.kakaoChannelUrl && (
+                    <a className="shop-foot-kakao" href={notice.kakaoChannelUrl} target="_blank" rel="noopener noreferrer">
+                      카카오톡 문의
+                    </a>
+                  )}
+                  {notice?.youtubeChannelUrl && (
+                    <a className="shop-foot-yt" href={notice.youtubeChannelUrl} target="_blank" rel="noopener noreferrer">
+                      <i aria-hidden="true" />
+                      유튜브 채널
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           {rows.length > 0 && (
             <dl className="shop-foot-info">
               {rows.map((r) => (
@@ -83,10 +135,6 @@ export default async function ShopFrame({ slug, shopName, operatingState = "OPEN
               {notice.minorNotice}
             </p>
           )}
-          <p className="shop-foot-links">
-            <Link href={`/shop/${encodeURIComponent(slug)}/terms`}>이용약관</Link>
-            <Link href={`/shop/${encodeURIComponent(slug)}/privacy`}>개인정보처리방침</Link>
-          </p>
           <p className="shop-foot-by">
             {HOSTING_DESCRIPTION}
           </p>

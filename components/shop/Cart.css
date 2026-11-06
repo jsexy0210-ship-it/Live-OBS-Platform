@@ -165,6 +165,10 @@
 .cart-tools .cart-more {
   margin-left: auto;
 }
+/* 보드 SH-034-IA: 찜 하단 도구(품절 상품 빼기 · 모두 비우기)는 오른쪽 정렬 */
+.wishlist-view .cart-tools {
+  justify-content: flex-end;
+}
 .cart-sum {
   display: flex;
   flex-direction: column;

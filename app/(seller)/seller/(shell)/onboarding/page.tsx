@@ -69,6 +69,7 @@ export default function OnboardingPage() {
       <Topbar crumb="홈 › 시작하기" />
       <main className="main">
         <PageHead title="시작하기" />
+        <div className="msg msg-info" role="note" data-testid="ob-note" style={{ marginBottom: 16 }}><span>가입 때 정해진 갈래의 단계를 순서대로 끝내면 첫 방송을 할 수 있습니다 · 완료 여부는 서버가 저장된 내용으로 계산합니다 · 안내를 숨기면 홈에서 사라지고 이 화면에서 다시 보일 수 있습니다</span></div>
         {state.kind === "loading" && (
           <div className="card">
             <LoadingRows rows={4} />
@@ -108,7 +109,7 @@ export default function OnboardingPage() {
                 current && (
                   <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     <span className="t-l1">다음 단계: <b>{STEP[current.key]?.title ?? current.key}</b></span>
-                    <Link className="btn btn-sm" href={current.href} data-testid="ob-continue">
+                    <Link className="btn btn-sm btn-out" href={current.href} data-testid="ob-continue">
                       이어서 하기
                     </Link>
                   </div>
@@ -133,14 +134,14 @@ export default function OnboardingPage() {
                     const isCurrent = s.key === d.currentStep;
                     return (
                       <li key={s.key} data-testid="ob-step" data-key={s.key} data-done={s.done ? "true" : "false"} data-current={isCurrent ? "true" : "false"} className="row" style={{ gap: 14, padding: "16px 20px", alignItems: "center", borderTop: i === 0 ? "none" : "1px solid var(--wds-line-normal-alternative)", background: isCurrent ? "var(--wds-fill-alternative)" : undefined }}>
-                        <span className={`bdg ${s.done ? "b-done" : isCurrent ? "b-info" : "b-gray nodot"}`} style={{ minWidth: 64, justifyContent: "center" }}>
+                        <span className={`bdg ${s.done ? "b-done nodot" : isCurrent ? "b-info nodot" : "b-gray nodot"}`} style={{ minWidth: 64, justifyContent: "center" }}>
                           {s.done ? "완료" : isCurrent ? "지금 할 차례" : "기다리는 중"}
                         </span>
                         <div className="col" style={{ gap: 2, flex: 1, minWidth: 0 }}>
                           <span className="t-l1 fw6">{i + 1}. {info.title}</span>
                           <span className="t-c1 c-alt">{info.desc}</span>
                         </div>
-                        <Link className={`btn btn-sm${s.done ? " btn-out" : ""}`} href={s.href}>
+                        <Link className={`btn btn-sm${isCurrent ? "" : " btn-out"}`} href={s.href}>
                           {s.done ? "다시 보기" : info.go}
                         </Link>
                       </li>
@@ -152,7 +153,7 @@ export default function OnboardingPage() {
 
             {!d.dismissed && canClose && (
               <div className="row">
-                <button className="btn btn-sm btn-text" type="button" onClick={() => void act("dismiss")}>
+                <button className="btn btn-sm btn-out" type="button" onClick={() => void act("dismiss")}>
                   안내 숨기기
                 </button>
               </div>

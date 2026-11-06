@@ -7,6 +7,7 @@ import { LogoutButton } from "../admin-ui/LogoutButton";
 import ShopLogo from "./ShopLogo";
 import ShopBack from "./ShopBack";
 import "./ShopProductHeader.css";
+import { useShopLive } from "./LiveBar";
 
 export const CART_COUNT_EVENT = "shop-cart-count";
 const badge = (n: number) => (n > 0 ? <b className="shop-badge" aria-hidden="true">{n > 99 ? "99+" : n}</b> : null);
@@ -135,6 +136,10 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname, categor
     ...categories.map((c) => ({ href: `${base}/products?category=${c.id}`, label: c.name, current: inCat(c), sub: c.children })),
   ];
 
+  // PC 카테고리 줄 맨 끝(정본 SH-001-PC-IA `.cat .live`): 방송 중일 때만 「방송 중」 표시. 공지 · 이용안내는 줄의 고정 항목(「인기 카드」는 홈에 인기 카드 영역이 생기면 더한다)
+  const live = useShopLive();
+  const catExtra = [{ href: `${base}/help`, label: "공지 · 이용안내" }];
+
   return (
     <>
       <header className={`shop-head${productDetail ? " shop-product-head" : ""}`}>
@@ -219,6 +224,17 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname, categor
                 {c.label}
               </Link>
             ))}
+            {catExtra.map((c) => (
+              <Link key={c.href} href={c.href} aria-current={path === c.href ? "page" : undefined}>
+                {c.label}
+              </Link>
+            ))}
+            {live && (
+              <Link href={base} className="shop-cats-live">
+                <i aria-hidden="true" />
+                방송 중
+              </Link>
+            )}
           </div>
           {panel && categories.length > 0 && (
             <div id="shop-catpanel" className="shop-catpanel">

@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient, type SellerStaffPermission } from "@prisma/client";
+import { assertIdentityVerified } from "./identityGate";
 import { writeAudit } from "../audit/log";
 import { forbidden, notFound } from "../authz/errors";
 import { isStaffPermission } from "../authz/permissions";
@@ -55,6 +56,7 @@ export async function createStaff(
   meta: Meta = {},
 ): Promise<StaffResult<{ id: string }>> {
   requireSellerPermission(ctx, "STAFF_MANAGE");
+  await assertIdentityVerified(db, ctx.sellerId); // 본인확인 대기 쇼핑몰은 직원을 추가할 수 없다(직원 본인확인 연결이 대표자 CI에 기대)
   const permissions = cleanPermissions(input.permissions);
   if (!permissions) return { ok: false, reason: "invalid_permissions" };
   if (input.password.length < MIN_PASSWORD_LENGTH) return { ok: false, reason: "weak_password" };

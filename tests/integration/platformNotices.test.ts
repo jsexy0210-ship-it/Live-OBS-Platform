@@ -128,6 +128,32 @@ describe("파트너스·공개 공지", () => {
     expect((await sellerList(req("/api/seller/platform-notices", ""))).status).toBe(401);
   });
 
+  it("마스터 목록: 보는 곳(audience) 필터, 읽은 계정 수, 작성자 이름. 잘못된 보는 곳은 400", async () => {
+    const cs = await adminCookie("CS");
+    const viewer = await adminCookie("READ_ONLY");
+    const mk = async (title: string, audience: string) => (await create(cs.cookie, { ...draft, title, audience, publish: true })).body.notice.id as string;
+    const forPartners = await mk("파트너스 공지", "PARTNERS");
+    await mk("공개 공지", "PUBLIC");
+    await mk("전체 공지", "ALL");
+    const { seller } = await createSeller();
+    const a = await createSellerUser(seller.id, { permissions: [] });
+    const b = await createSellerUser(seller.id, { permissions: [] });
+    await db.platformNoticeRead.createMany({ data: [{ sellerUserId: a.id, noticeId: forPartners }, { sellerUserId: b.id, noticeId: forPartners }] });
+    const all = await json(await adminList(req("/api/admin/platform-notices", viewer.cookie)));
+    expect(all.status).toBe(200);
+    expect(all.body.items).toHaveLength(3);
+    const row = all.body.items.find((n: { id: string }) => n.id === forPartners);
+    expect(row.readCount).toBe(2);
+    expect(row.authorName).toBeTruthy();
+    expect(all.body.items.filter((n: { id: string }) => n.id !== forPartners).every((n: { readCount: number }) => n.readCount === 0)).toBe(true);
+    const only = await json(await adminList(req("/api/admin/platform-notices?audience=PUBLIC", viewer.cookie)));
+    expect(only.body.items.map((n: { title: string }) => n.title)).toEqual(["공개 공지"]);
+    const bad = await json(await adminList(req("/api/admin/platform-notices?audience=NOPE", viewer.cookie)));
+    expect(bad.status).toBe(400);
+    expect(bad.body.error).toBe("invalid_audience");
+    expect(JSON.stringify(all.body)).not.toContain("@example.com"); // 작성자 이메일은 내보내지 않는다
+  });
+
   it("이용 정지·구독 잠김 중인 파트너스도 공지를 본다", async () => {
     const cs = await adminCookie("CS");
     await create(cs.cookie, { ...draft, publish: true });

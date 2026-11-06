@@ -5,6 +5,7 @@ import { adminCan } from "../authz/permissions";
 import type { SellerAccess } from "../billing/access";
 import { dbNow } from "../billing/subscription";
 import { decodeCursor, encodeCursor, kstDayStart } from "../orders/read";
+import { kstDate } from "../stats/range";
 import { effectiveMailQuota } from "../mail/quota";
 import { invoiceRetryReason, RETRY_MIN_GAP_MS } from "./billingInvoices";
 
@@ -136,11 +137,17 @@ export async function listAdminSubscriptions(db: PrismaClient, admin: AdminSessi
     ${base}${extra}
     ORDER BY se."createdAt" DESC, se."id" DESC LIMIT ${take + 1}`;
   const counts: SubscriptionCounts = { ...(await subscriptionAccessCounts(db, now)), ...(await subscriptionExtraCounts(db, now)) };
+  // 월 구독 매출(MA-023 요약 타일): 이번 달(KST 1일 0시 ~ 지금) 안에 결제가 확정된(PAID, paidAt) 구독 청구 합계. 환불은 따로 빼지 않는다(구독 환불은 MA-026).
+  const monthKey = kstDate(now).slice(0, 7);
+  const monthStart = kstDayStart(`${monthKey}-01`)!;
+  const [paidMonth] = await db.$queryRaw<{ amount: bigint; n: number }[]>`SELECT coalesce(sum(sp."amount"::bigint), 0)::bigint AS amount, count(*)::int AS n FROM "SubscriptionPayment" sp WHERE sp."status" = 'PAID' AND sp."paidAt" >= ${monthStart} AND sp."paidAt" < ${now}`;
+  const monthRevenue = { month: monthKey, start: monthStart, end: now, paidAmount: Number(paidMonth?.amount ?? 0), paidCount: paidMonth?.n ?? 0 };
   const page = rows.slice(0, take);
   const last = page[page.length - 1];
   return {
     ok: true as const,
     counts,
+    monthRevenue,
     subscriptions: page.map((r) => ({
       seller: { id: r.sellerId, slug: r.slug, shopName: r.shopName, status: r.sellerStatus },
       access: r.access,

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useUrlState } from "../../../../../lib/client/navigation";
+import { useUnsavedGuard, useUrlState } from "../../../../../lib/client/navigation";
 import { CursorPagination, FormRow, ListTable, Modal, PageHead } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../components/seller/States";
@@ -45,6 +45,9 @@ type Data = {
   windowMonths: number;
   cadence: Cadence;
   demotion: Demotion;
+  notifyPromotion: boolean;
+  notifyDemotion: boolean;
+  showNextGrade: boolean;
   lockedCount: number;
   lastRun: { key: string; promoted: number; demoted: number; ranAt: string } | null;
   nextRunAt: string;
@@ -86,8 +89,9 @@ const windowText = (m: number) => (m === 0 ? "누적" : `최근 ${m}개월`);
 const kstDay = (iso: string) => kstText(iso).slice(5, 10).replace(".", "/");
 
 export default function MemberGradesPage() {
-  const { can } = useSeller();
+  const { can, me } = useSeller();
   const canEdit = can("MEMBER_POINTS");
+  const editable = canEdit && !me.readOnly;
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number; error?: string } | { kind: "ok"; data: Data }>({ kind: "loading" });
   const [editing, setEditing] = useState<{ grade: Grade; displayName: string; minAmount: string; benefit: Benefit } | null>(null);
   const [adding, setAdding] = useState<{ displayName: string; minAmount: string } | null>(null);
@@ -99,6 +103,9 @@ export default function MemberGradesPage() {
   const [windowMonths, setWindowMonths] = useState(6);
   const [cadence, setCadence] = useState<Cadence>("MONTHLY");
   const [demotion, setDemotion] = useState<Demotion>("STEP");
+  const [notifyPromotion, setNotifyPromotion] = useState(false);
+  const [notifyDemotion, setNotifyDemotion] = useState(false);
+  const [showNextGrade, setShowNextGrade] = useState(true);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -117,12 +124,31 @@ export default function MemberGradesPage() {
     setWindowMonths(r.data.windowMonths);
     setCadence(r.data.cadence);
     setDemotion(r.data.demotion);
+    setNotifyPromotion(r.data.notifyPromotion);
+    setNotifyDemotion(r.data.notifyDemotion);
+    setShowNextGrade(r.data.showNextGrade);
   }, []);
   useEffect(() => {
     void load();
   }, [load]);
 
   const data = state.kind === "ok" ? state.data : null;
+  // 저장하지 않은 산정 기준이나 열려 있는 수정·추가 창 입력이 있으면 나갈 때 확인한다(링크·브라우저 Back·새로고침 — docs/IA.md Back 규칙 7항)
+  const dirty =
+    !!data &&
+    (auto !== data.autoEnabled ||
+      windowMonths !== data.windowMonths ||
+      cadence !== data.cadence ||
+      demotion !== data.demotion ||
+      notifyPromotion !== data.notifyPromotion ||
+      notifyDemotion !== data.notifyDemotion ||
+      showNextGrade !== data.showNextGrade ||
+      (!!adding && (!!adding.displayName.trim() || !!adding.minAmount.trim())) ||
+      (!!editing &&
+        (editing.displayName !== editing.grade.displayName ||
+          editing.minAmount !== String(editing.grade.minAmount) ||
+          JSON.stringify(editing.benefit) !== JSON.stringify(toBenefit(editing.grade)))));
+  useUnsavedGuard(dirty);
   const run = async <T,>(path: string, method: string, body: unknown, done: (d: T) => string) => {
     setBusy(true);
     setFailure(null);
@@ -147,16 +173,19 @@ export default function MemberGradesPage() {
   // 저장 본문: 산정 기준은 화면의 값, 등급은 저장된 값(수정 창에서 바꾼 등급만 덮어씀)
   const gradesBody = (g: Grade[], override?: { id: string; displayName: string; minAmount: number; benefit: Benefit }) =>
     g.map((x) => (override && override.id === x.id ? { id: x.id, displayName: override.displayName, minAmount: override.minAmount, ...benefitBody(override.benefit) } : { id: x.id, displayName: x.displayName, minAmount: x.minAmount, ...benefitBody(toBenefit(x)) }));
-  const saveCriteria = () => data && void run("/api/seller/member-grades", "PUT", { autoEnabled: auto, windowMonths, cadence, demotion, grades: gradesBody(data.grades) }, () => "등급 설정을 저장했습니다");
+  const saveCriteria = () => data && void run("/api/seller/member-grades", "PUT", { autoEnabled: auto, windowMonths, cadence, demotion, notifyPromotion, notifyDemotion, showNextGrade, grades: gradesBody(data.grades) }, () => "등급 설정을 저장했습니다");
   const resetCriteria = () => {
     if (!data) return;
     setAuto(data.autoEnabled);
     setWindowMonths(data.windowMonths);
     setCadence(data.cadence);
     setDemotion(data.demotion);
+    setNotifyPromotion(data.notifyPromotion);
+    setNotifyDemotion(data.notifyDemotion);
+    setShowNextGrade(data.showNextGrade);
   };
   const saveGrade = () =>
-    data && editing && void run("/api/seller/member-grades", "PUT", { autoEnabled: data.autoEnabled, windowMonths: data.windowMonths, cadence: data.cadence, demotion: data.demotion, grades: gradesBody(data.grades, { id: editing.grade.id, displayName: editing.displayName, minAmount: Number(editing.minAmount || 0), benefit: editing.benefit }) }, () => "등급 설정을 저장했습니다");
+    data && editing && void run("/api/seller/member-grades", "PUT", { autoEnabled: data.autoEnabled, windowMonths: data.windowMonths, cadence: data.cadence, demotion: data.demotion, notifyPromotion: data.notifyPromotion, notifyDemotion: data.notifyDemotion, showNextGrade: data.showNextGrade, grades: gradesBody(data.grades, { id: editing.grade.id, displayName: editing.displayName, minAmount: Number(editing.minAmount || 0), benefit: editing.benefit }) }, () => "등급 설정을 저장했습니다");
   const showChanges = async (kind: "up" | "down") => {
     if (paging.current) return;
     paging.current = true;
@@ -381,6 +410,31 @@ export default function MemberGradesPage() {
                       <p className="help au-ft-help">끄면 주기가 와도 재산정하지 않습니다 · 고정한 회원은 제외</p>
                     </td>
                   </tr>
+                  <tr>
+                    <th scope="row">알림</th>
+                    <td>
+                      <div className="au-ft-v" role="group" aria-label="알림">
+                        <label className="row">
+                          <input className="cbx" type="checkbox" disabled={!editable || busy} checked={notifyPromotion} onChange={(e) => setNotifyPromotion(e.target.checked)} />
+                          등급이 오르면 알림
+                        </label>
+                        <label className="row">
+                          <input className="cbx" type="checkbox" disabled={!editable || busy} checked={notifyDemotion} onChange={(e) => setNotifyDemotion(e.target.checked)} />
+                          내려가도 알림
+                        </label>
+                      </div>
+                      <p className="help au-ft-help">알림 설정만 기록합니다. 실제 알림 발송은 아직 지원하지 않습니다.</p>
+                    </td>
+                    <th scope="row">마이페이지 표시</th>
+                    <td>
+                      <div className="au-ft-v" role="group" aria-label="마이페이지 표시">
+                        <label className="row">
+                          <input className="cbx" type="checkbox" disabled={!editable || busy} checked={showNextGrade} onChange={(e) => setShowNextGrade(e.target.checked)} />
+                          다음 등급까지 남은 금액 표시
+                        </label>
+                      </div>
+                    </td>
+                  </tr>
                 </tbody>
               </table>
               {canEdit && (
@@ -571,7 +625,7 @@ export default function MemberGradesPage() {
           </div>
           <div className="modal-b">
             <p className="t-l2">
-              회원 {data.memberTotal.toLocaleString("ko-KR")}명의 등급을 지금 기준({windowText(data.windowMonths)} 구매 금액)으로 다시 계산합니다. 고정한 회원은 제외됩니다. 저장하지 않은 기준 금액은 반영되지 않으니 먼저 저장해 주십시오.
+              회원 {data.memberTotal.toLocaleString("ko-KR")}명의 등급을 지금 기준({windowText(data.windowMonths)} 구매 금액)으로 다시 계산합니다. 고정한 회원은 제외됩니다. 저장하지 않은 설정은 반영되지 않으니 먼저 저장해 주십시오. 알림 설정만 기록하며 실제 알림은 발송하지 않습니다.
             </p>
           </div>
           <div className="modal-f">

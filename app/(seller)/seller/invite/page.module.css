@@ -1,0 +1,15 @@
+/* AU-013 정본의 AU-004 카드 규격. 기존 인증 틀을 재사용하고 이 화면만 정본 위치에 둔다. */
+.page { --brand: #1e2b4d; --brand-ink: #fff; color: #222; }
+.page :global(.login-page) { justify-content: flex-start; padding: 56px 0 40px; }
+.page :global(.login-card) { gap: 0; padding: 32px 24px; border: 1px solid #d3d7de; border-radius: 12px; box-shadow: none; }
+.page :global(.login-logo.logo) { --brand: #1e2b4d; margin-bottom: 16px; color: #222; }
+.page .title { font-size: 20px; line-height: 28px; font-weight: 800; margin: 0 0 8px; }
+.page .subtitle { color: #6b7280; font-size: 13px; line-height: 19px; margin: 0 0 16px; }
+.label { display: block; font-size: 12px; line-height: 20px; color: #555; margin: 16px 0 4px; font-weight: 600; }
+.label:first-of-type { margin-top: 0; }
+.page :global(.inp) { min-height: 40px; border: 1px solid #858a94; border-radius: 6px; box-shadow: none; }
+.page :global(.inp.is-error) { border-color: #d33; background: #fff8f8; }
+.page :global(.inp:focus-visible) { outline: 2px solid var(--ui-focus); outline-offset: -1px; }
+.hint { display: block; margin-top: 4px; font-size: 12px; line-height: 18px; color: #6b7280; }
+.page :global(.btn-lg) { margin-top: 16px; min-height: 48px; border-radius: 6px; background: #2a62d9; font-weight: 700; }
+.done { display: flex; flex-direction: column; gap: 8px; }

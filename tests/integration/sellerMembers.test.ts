@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { GET as detailRoute } from "../../app/api/seller/members/[memberId]/route";
 import { GET as listRoute } from "../../app/api/seller/members/route";
+import { GET as summaryRoute } from "../../app/api/seller/members/summary/route";
 import { loginSeller } from "../../lib/server/auth/login";
 import { PASSWORD, createBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
@@ -103,7 +104,7 @@ describe("회원 목록 GET /api/seller/members", () => {
 
     const plain = await list(noPii, `?q=${encodeURIComponent("방송")}`);
     expect(plain.body.members).toEqual([
-      { id: m.id, broadcastNickname: "방송닉", grade: { id: s.grade.id, displayName: "일반" }, status: "ACTIVE", marketingConsent: false, createdAt: m.createdAt.toISOString(), lastLoginAt: null, orderCount: 0, totalPaid: 0, rewardBalance: 0 },
+      { id: m.id, broadcastNickname: "방송닉", grade: { id: s.grade.id, displayName: "일반" }, status: "ACTIVE", marketingConsent: false, createdAt: m.createdAt.toISOString(), lastLoginAt: null, number: 1, orderCount: 0, totalPaid: 0, rewardBalance: 0, lastOrderAt: null, restricted: false },
     ]);
     expect((await list(noPii, `?q=${encodeURIComponent("김철")}`)).body.members).toEqual([]);
     expect((await list(noPii, "?q=2222")).body.members).toEqual([]);
@@ -192,5 +193,122 @@ describe("회원 상세 GET /api/seller/members/{id}", () => {
     expect(await piiAudits()).toMatchObject([{ action: "customer.pii.view", targetId: m.id }]);
     await db.buyerMember.update({ where: { id: m.id }, data: { deletedAt: new Date(), status: "WITHDRAWN" } });
     expect((await detail(a.cookie, m.id, "?summary=1")).status).toBe(404);
+  });
+});
+
+describe("회원 목록 조건·정렬·요약 (SA-041)", () => {
+  let seq = 0;
+  const DAY = 24 * 3600_000;
+  const order = (sellerId: string, buyerMemberId: string, createdAt: Date, totalAmount = 10000, paid = true) =>
+    db.order.create({ data: { sellerId, buyerMemberId, orderNo: 9000 + ++seq, broadcastNicknameSnapshot: "x", totalAmount, createdAt, paidAt: paid ? createdAt : null, status: paid ? "PAID" : "PENDING_PAYMENT" } });
+  const summary = async (cookie: string) => {
+    const r = await summaryRoute(new Request("http://localhost:3000/api/seller/members/summary", { headers: { ...H, cookie } }));
+    return { status: r.status, body: await r.json() };
+  };
+
+  it("행에 번호·최근 주문·구매 제한 표시를 주고, 상태·등급 여러 개·가입일·최근 주문·기타 조건으로 거른다", async () => {
+    const a = await shop();
+    const gold = await db.memberGrade.create({ data: { sellerId: a.seller.id, displayName: "골드", sortOrder: 2, systemKey: "GOLD" } });
+    const vip = await db.memberGrade.create({ data: { sellerId: a.seller.id, displayName: "VIP", sortOrder: 3, systemKey: "VIP" } });
+    const now = Date.now();
+    const m1 = await member(a, { createdAt: new Date("2026-01-10T00:00:00Z"), nickname: "가" });
+    const m2 = await member(a, { createdAt: new Date("2026-02-10T00:00:00Z"), nickname: "나" });
+    const m3 = await member(a, { createdAt: new Date("2026-03-10T00:00:00Z"), nickname: "다" });
+    await db.buyerMember.update({ where: { id: m2.id }, data: { gradeId: gold.id, marketingConsentAt: new Date() } });
+    await db.buyerMember.update({ where: { id: m3.id }, data: { gradeId: vip.id, status: "DORMANT" } });
+    await order(a.seller.id, m1.id, new Date(now - 10 * DAY));
+    await order(a.seller.id, m2.id, new Date(now - 60 * DAY));
+    await db.buyerPurchaseRestriction.create({ data: { sellerId: a.seller.id, buyerMemberId: m1.id, reason: "MANUAL", startsAt: new Date(now - DAY), endsAt: new Date(now + DAY) } });
+    await db.buyerPurchaseRestriction.create({ data: { sellerId: a.seller.id, buyerMemberId: m2.id, reason: "MANUAL", startsAt: new Date(now - 9 * DAY), endsAt: new Date(now - 8 * DAY) } });
+    await db.rewardBalance.create({ data: { sellerId: a.seller.id, buyerMemberId: m2.id, balance: 500 } });
+    await db.memberMemo.create({ data: { sellerId: a.seller.id, buyerMemberId: m3.id, body: "메모" } });
+
+    const all = (await list(a.cookie)).body.members;
+    expect(all.map((m: { number: number }) => m.number)).toEqual([3, 2, 1]);
+    const byId = Object.fromEntries(all.map((m: { id: string }) => [m.id, m]));
+    expect(byId[m1.id]).toMatchObject({ restricted: true, orderCount: 1 });
+    expect(byId[m1.id].lastOrderAt).toBeTruthy();
+    expect(byId[m2.id].restricted).toBe(false); // 끝난 제한
+    expect(byId[m3.id].lastOrderAt).toBeNull();
+
+    const f = async (qs: string) => ids((await list(a.cookie, `?${qs}`)).body);
+    expect(await f("status=RESTRICTED")).toEqual([m1.id]);
+    expect(await f("status=NORMAL")).toEqual([m2.id]); // 활동 중이고 제한 없음(m3은 휴면)
+    expect(await f("status=DORMANT")).toEqual([m3.id]);
+    expect(await f(`gradeIds=${gold.id},${vip.id}`)).toEqual([m3.id, m2.id]);
+    expect(await f("joinedFrom=2026-02-01&joinedTo=2026-02-10")).toEqual([m2.id]); // 끝 날짜 포함
+    expect(await f("lastOrder=30d")).toEqual([m1.id]);
+    expect(await f("lastOrder=90d")).toEqual([m2.id, m1.id]);
+    expect(await f("lastOrder=over90d")).toEqual([m3.id]); // 주문한 적 없음 포함
+    expect(await f("marketing=true")).toEqual([m2.id]);
+    expect(await f("hasBalance=true")).toEqual([m2.id]);
+    expect(await f("hasMemo=true")).toEqual([m3.id]);
+    for (const bad of ["status=WITHDRAWN", "gradeIds=nope", "joinedFrom=2026-13-01", "joinedFrom=2026-03-01&joinedTo=2026-02-01", "lastOrder=1d", "marketing=1", "sort=name", "qType=email", "cursor=abc&sort=spent"]) {
+      expect((await list(a.cookie, `?${bad}`)).status, bad).toBe(400);
+    }
+  });
+
+  it("최근 주문·누적 구매·적립금 순으로 정렬하고 위치 커서로 이어 읽는다. 다른 쇼핑몰 집계는 섞이지 않는다", async () => {
+    const a = await shop();
+    const b = await shop();
+    const now = Date.now();
+    const m1 = await member(a, { createdAt: new Date("2026-01-01T00:00:00Z") });
+    const m2 = await member(a, { createdAt: new Date("2026-01-02T00:00:00Z") });
+    const m3 = await member(a, { createdAt: new Date("2026-01-03T00:00:00Z") });
+    await order(a.seller.id, m1.id, new Date(now - 5 * DAY), 3000);
+    await order(a.seller.id, m2.id, new Date(now - 9 * DAY), 90000);
+    await order(a.seller.id, m3.id, new Date(now - 1 * DAY), 500, false); // 미결제: 최근 주문엔 들어가고 누적 구매엔 안 들어감
+    await db.rewardBalance.createMany({ data: [{ sellerId: a.seller.id, buyerMemberId: m1.id, balance: 700 }, { sellerId: a.seller.id, buyerMemberId: m3.id, balance: 100 }] });
+    const other = await member(b);
+    await order(b.seller.id, other.id, new Date(now), 99999999);
+    expect(ids((await list(a.cookie, "?sort=lastOrder")).body)).toEqual([m3.id, m1.id, m2.id]);
+    expect(ids((await list(a.cookie, "?sort=spent")).body)).toEqual([m2.id, m1.id, m3.id]);
+    expect(ids((await list(a.cookie, "?sort=reward")).body)).toEqual([m1.id, m3.id, m2.id]);
+    const p1 = (await list(a.cookie, "?sort=spent&limit=2")).body;
+    expect(ids(p1)).toEqual([m2.id, m1.id]);
+    expect(p1.nextCursor).toBe("2");
+    const p2 = (await list(a.cookie, `?sort=spent&limit=2&cursor=${p1.nextCursor}`)).body;
+    expect(ids(p2)).toEqual([m3.id]);
+    expect(p2.nextCursor).toBeNull();
+  });
+
+  it("검색어 종류: 닉네임은 누구나, 이름·휴대폰 뒷자리는 개인정보 권한이 있을 때만(없으면 400)", async () => {
+    const a = await shop();
+    const m = await member(a, { nickname: "별빛", name: "홍길동", phone: "01011112345" });
+    await member(a, { nickname: "홍길동" });
+    expect(ids((await list(a.cookie, `?q=${encodeURIComponent("홍길동")}&qType=name`)).body)).toEqual([m.id]);
+    expect(ids((await list(a.cookie, "?q=2345&qType=phoneLast4")).body)).toEqual([m.id]);
+    expect((await list(a.cookie, "?q=23&qType=phoneLast4")).status).toBe(400);
+    expect(ids((await list(a.cookie, `?q=${encodeURIComponent("별")}&qType=nickname`)).body)).toEqual([m.id]);
+    const staff = await cookieOf((await createSellerUser(a.seller.id, { permissions: ["MEMBER_POINTS"] })).email);
+    expect((await list(staff, `?q=${encodeURIComponent("홍길동")}&qType=name`)).status).toBe(400);
+    expect((await list(staff, `?q=${encodeURIComponent("별")}&qType=nickname`)).status).toBe(200);
+  });
+
+  it("요약 6칸: 전체·이번 달 신규·이번 달 결제 회원·골드/VIP·구매 제한·혜택 동의. 탈퇴·다른 쇼핑몰은 제외하고 권한이 없으면 403", async () => {
+    const a = await shop();
+    const b = await shop();
+    const gold = await db.memberGrade.create({ data: { sellerId: a.seller.id, displayName: "골드", sortOrder: 2, systemKey: "GOLD" } });
+    const vip = await db.memberGrade.create({ data: { sellerId: a.seller.id, displayName: "VIP", sortOrder: 3, systemKey: "VIP" } });
+    const now = new Date();
+    const old = new Date(now.getTime() - 90 * DAY);
+    const m1 = await member(a, { createdAt: old });
+    const m2 = await member(a, {});
+    const m3 = await member(a, {});
+    const gone = await member(a, {});
+    await db.buyerMember.update({ where: { id: m1.id }, data: { gradeId: gold.id, marketingConsentAt: now } });
+    await db.buyerMember.update({ where: { id: m2.id }, data: { gradeId: vip.id } });
+    await db.buyerMember.update({ where: { id: gone.id }, data: { status: "WITHDRAWN", deletedAt: now, gradeId: vip.id } });
+    await order(a.seller.id, m1.id, now);
+    await order(a.seller.id, m1.id, now); // 같은 회원의 두 번째 결제는 한 명으로 센다
+    await order(a.seller.id, m3.id, old);
+    await db.buyerPurchaseRestriction.create({ data: { sellerId: a.seller.id, buyerMemberId: m3.id, reason: "MANUAL", startsAt: old, endsAt: new Date(now.getTime() + DAY) } });
+    const outsider = await member(b, {});
+    await order(b.seller.id, outsider.id, now);
+    const r = await summary(a.cookie);
+    expect(r.status).toBe(200);
+    expect(r.body.summary).toEqual({ total: 3, newThisMonth: 2, purchasedThisMonth: 1, gold: 1, vip: 1, restricted: 1, marketingConsent: 1 });
+    const denied = await cookieOf((await createSellerUser(a.seller.id, { permissions: [] })).email);
+    expect((await summary(denied)).status).toBe(403);
   });
 });

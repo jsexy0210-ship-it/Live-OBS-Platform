@@ -32,6 +32,9 @@ export async function getAdminSeller(db: PrismaClient, admin: AdminSessionContex
       approvedAt: true,
       trialEndsAt: true,
       serviceEndedAt: true,
+      directCreatedAt: true,
+      directCreatedByAdminId: true,
+      representativeVerifiedAt: true,
       createdAt: true,
       approvedBy: { select: { id: true, name: true } },
       plan: { select: { code: true, name: true } },
@@ -99,9 +102,12 @@ export async function getAdminSeller(db: PrismaClient, admin: AdminSessionContex
   const assignedCs = assignedInquiry?.assignedAdminId
     ? await db.platformAdmin.findUnique({ where: { id: assignedInquiry.assignedAdminId }, select: { id: true, name: true } })
     : null;
-  const { users, subscription, approvedBy, ...rest } = s;
+  const { users, subscription, approvedBy, directCreatedByAdminId, representativeVerifiedAt, ...rest } = s;
   return {
     ...rest,
+    // 직접 추가한 쇼핑몰 표시(MA-012): identityPending = 직접 추가했고 대표자 본인확인이 아직 안 됨(직원 추가·실지급·충전금 결제가 막힘)
+    directCreated: directCreatedByAdminId !== null,
+    identityPending: directCreatedByAdminId !== null && representativeVerifiedAt === null,
     owner: users[0] ?? null,
     approvedBy,
     assignedCs,

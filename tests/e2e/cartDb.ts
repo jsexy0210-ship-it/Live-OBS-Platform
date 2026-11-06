@@ -191,6 +191,27 @@ export async function setOperatingState(slug: string, state: "OPEN" | "PREPARING
 }
 
 // 쇼핑몰 이용안내 글(SA-060 shopUsageGuide) 바꾸기. 바꾸기 전 값을 돌려준다.
+// 이용 기간이 끝나 잠긴 쇼핑몰(SH-041)을 만든다. 체험 종료일을 어제로 당기고 이전 값을 돌려준다(되돌릴 때 restoreTrialEnd에 넘긴다).
+export async function expireTrialInDb(slug: string): Promise<Date | null> {
+  const db = open();
+  try {
+    const { trialEndsAt } = await db.seller.findUniqueOrThrow({ where: { slug }, select: { trialEndsAt: true } });
+    await db.seller.update({ where: { slug }, data: { trialEndsAt: new Date(Date.now() - 24 * 60 * 60_000) } });
+    return trialEndsAt;
+  } finally {
+    await db.$disconnect();
+  }
+}
+
+export async function restoreTrialEnd(slug: string, trialEndsAt: Date | null) {
+  const db = open();
+  try {
+    await db.seller.update({ where: { slug }, data: { trialEndsAt } });
+  } finally {
+    await db.$disconnect();
+  }
+}
+
 export async function setUsageGuide(slug: string, text: string | null) {
   const db = open();
   try {

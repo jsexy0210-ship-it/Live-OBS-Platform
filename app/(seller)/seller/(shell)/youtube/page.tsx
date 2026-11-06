@@ -9,6 +9,9 @@ import { chatNotice, type ChatStatus } from "../../../../../components/seller/br
 import "../../../../../styles/seller-broadcast.css";
 import { formatDateTime } from "../../../../../lib/client/format";
 
+// 대신 보기에서는 바꾸는 버튼을 막고 이유를 알려 준다
+const RO_TITLE = "대신 보기에서는 볼 수만 있습니다";
+
 // SA-057 유튜브 연결(방송 › 연동). 채널 주소·방송 주소 연결/해제, 연결 상태, 연결한 방송의 채팅 수집 켜기·끄기.
 // API: GET /api/seller/youtube · PUT·DELETE …/channel { url } · PUT·DELETE …/live { url } · POST …/live/find · PUT …/live/chat { enabled }
 // 채팅 수집은 연결된 방송(예정·진행 중)마다 켠다(기본 꺼짐). 켜기 전에 서버가 주는 보관 고지(chatNotice)를 그대로 보여 준다.
@@ -108,7 +111,8 @@ export default function YoutubePage() {
   };
 
   const data = state.kind === "ok" ? state.data : null;
-  const off = busy || !data?.configured;
+  const ro = !!me.readOnly;
+  const off = busy || !data?.configured || ro;
 
   return (
     <>
@@ -119,7 +123,7 @@ export default function YoutubePage() {
           actions={
             allowed &&
             data?.channel && (
-              <button className="btn btn-out" type="button" disabled={busy} onClick={() => setConfirm("channel")}>
+              <button className="btn btn-out" type="button" disabled={busy || ro} title={ro ? RO_TITLE : undefined} onClick={() => setConfirm("channel")}>
                 유튜브 이어 둔 것 풀기
               </button>
             )
@@ -193,7 +197,7 @@ export default function YoutubePage() {
                                   {data.channel.title}
                                 </a>
                               </span>
-                              <button className="btn btn-sm btn-out" type="button" data-testid="yt-channel-change" disabled={off} onClick={() => setChanging(true)}>
+                              <button className="btn btn-sm btn-out" type="button" data-testid="yt-channel-change" disabled={off} title={ro ? RO_TITLE : undefined} onClick={() => setChanging(true)}>
                                 다른 채널로 바꾸기
                               </button>
                             </div>
@@ -243,7 +247,7 @@ export default function YoutubePage() {
                                 </a>{" "}
                                 <span className="bdg">{STATUS_TEXT[data.live.status]}</span>
                               </span>
-                              <button className="btn btn-sm btn-out" type="button" disabled={off} onClick={() => setConfirm("live")}>
+                              <button className="btn btn-sm btn-out" type="button" disabled={off} title={ro ? RO_TITLE : undefined} onClick={() => setConfirm("live")}>
                                 방송 이어 둔 것 풀기
                               </button>
                             </div>
@@ -367,7 +371,7 @@ export default function YoutubePage() {
                     <div className="row" style={{ justifyContent: "space-between" }}>
                       <h2 className="t-hl1">채팅 가져오기 현황 ({usage.month.replace(/^(\d{4})-0?(\d{1,2})$/, "$1년 $2월")})</h2>
                       {me.isOwner && (
-                        <button className="btn btn-sm btn-out" type="button" data-testid="yt-purge-open" disabled={busy || usage.storedMessages === 0} onClick={() => setConfirm("purge")}>
+                        <button className="btn btn-sm btn-out" type="button" data-testid="yt-purge-open" disabled={busy || ro || usage.storedMessages === 0} title={ro ? RO_TITLE : undefined} onClick={() => setConfirm("purge")}>
                           저장해 둔 채팅 지금 지우기
                         </button>
                       )}

@@ -23,6 +23,8 @@ export type Job = {
   customerChecklist: { action: CustomerAction; done: boolean; current: boolean }[];
   // 대기열에서 순서를 기다리는 작업만(앞에 몇 개 · 예상 시작 분), 그 밖에는 null
   queue: { ahead: number; etaMinutes: number } | null;
+  // 연결 대상 쇼핑몰 주소(값이 있을 때만 표시)
+  shopHost: string | null;
   createdAt: string;
   finishedAt: string | null;
 };

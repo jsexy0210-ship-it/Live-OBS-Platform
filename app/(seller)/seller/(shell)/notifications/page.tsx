@@ -6,6 +6,7 @@ import { ListTable, ListHead, PageHead, Pagination } from "../../../../../compon
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
+import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
 import { kstText } from "../banners/_shared/ui";
 
 // SA-130 알림 센터(파트너스 관리자). 새 공지, 내 문의에 달린 플랫폼 답변, 입금 확인·결제 완료·재고 없음·반품 요청을 한 줄씩 보이고, 눌러 처리 화면으로 간다. 계정 누구나(직원 포함), 구독이 잠기거나 이용 정지 중에도 본다.
@@ -28,11 +29,12 @@ const KIND: Record<Item["kind"], { label: string; cls: string }> = {
 export default function NotificationsPage() {
   const [state, setState] = useState<Load>({ kind: "loading" });
 
-  const [page, setPage] = useState(1);
+  // 쪽 번호는 주소에 남겨 상세 → Back·새로고침에서도 같은 쪽으로 돌아온다
+  const [urlState, setUrlState] = useUrlState({ page: "1" });
+  const requested = Math.max(1, Number(urlState.page) || 1);
   const requestId = useRef(0);
   const load = useCallback(async () => {
     const id = ++requestId.current;
-    setPage(1);
     setState({ kind: "loading" });
     const r = await api<{ items: Item[]; unreadCount: number }>("/api/seller/notifications");
     if (id !== requestId.current) return;
@@ -47,6 +49,9 @@ export default function NotificationsPage() {
 
   const items = state.kind === "ok" ? state.items : [];
   const pageCount = Math.ceil(items.length / 10);
+  const page = Math.min(requested, Math.max(1, pageCount));
+  const setPage = (n: number) => setUrlState({ page: String(n) });
+  useScrollRestore("seller-notifications", state.kind === "ok");
 
   return (
     <>
@@ -56,7 +61,7 @@ export default function NotificationsPage() {
           title="알림"
           actions={
             <>
-            <button className="btn btn-out" type="button" onClick={() => void load()}>새로 고침</button>
+            <button className="btn btn-out" type="button" onClick={() => { setPage(1); void load(); }}>새로 고침</button>
             <Link className="btn btn-out" href="/seller/notices">
               공지 · 문의
             </Link>

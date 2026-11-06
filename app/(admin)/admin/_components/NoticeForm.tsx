@@ -9,13 +9,13 @@ import { NOTICE_AUDIENCE, NOTICE_BODY_MAX, NOTICE_CATEGORY, NOTICE_TITLE_MAX, NO
 
 // MA-054 공지 작성·수정 폼. 게시(publish: true)와 임시 저장을 나눠 보낸다. 수정은 expectedVersion을 같이 보내고, 다른 곳에서 먼저 고쳤으면(409) 알린다.
 // 서버가 받는 값만 둔다: 분류·제목·본문·대상·중요 고정. 예약·이메일·알림톡·읽음 확인은 서버 지원 뒤에 붙인다.
-export function NoticeForm({ notice, onSaved, onStale }: { notice?: Notice; onSaved: (n: Notice, published: boolean) => void; onStale: () => void }) {
+export function NoticeForm({ notice, initialTargets, onSaved, onStale }: { notice?: Notice; initialTargets?: NoticeTarget[]; onSaved: (n: Notice, published: boolean) => void; onStale: () => void }) {
   const [category, setCategory] = useState<NoticeCategory>(notice?.category ?? "GENERAL");
   const [title, setTitle] = useState(notice?.title ?? "");
   const [body, setBody] = useState(notice?.body ?? "");
   const [audience, setAudience] = useState<NoticeAudience>(notice?.audience ?? "PARTNERS");
-  const [targetMode, setTargetMode] = useState<NoticeTargetMode>(notice?.targetMode ?? (notice?.targetSellerIds?.length ? "SPECIFIC" : "ALL"));
-  const [selected, setSelected] = useState<NoticeTarget[]>((notice?.targetSellerIds ?? []).map((id) => notice?.targetSellers?.find((seller) => seller.id === id) ?? { id, shopName: id, slug: "" }));
+  const [targetMode, setTargetMode] = useState<NoticeTargetMode>(notice?.targetMode ?? (notice?.targetSellerIds?.length || initialTargets?.length ? "SPECIFIC" : "ALL"));
+  const [selected, setSelected] = useState<NoticeTarget[]>(initialTargets ?? (notice?.targetSellerIds ?? []).map((id) => notice?.targetSellers?.find((seller) => seller.id === id) ?? { id, shopName: id, slug: "" }));
   const [targetQuery, setTargetQuery] = useState("");
   const [searchedQuery, setSearchedQuery] = useState("");
   const [targetResults, setTargetResults] = useState<NoticeTarget[]>([]);

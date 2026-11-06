@@ -13,6 +13,8 @@ type Notice = { id: string; title: string; category: string | null; isPinned: bo
 type Faq = { id: string; category: string; title: string; body: string };
 type Tab = "notice" | "guide" | "faq";
 const TAB_LABEL: Record<Tab, string> = { notice: "공지", guide: "이용안내", faq: "자주 묻는 질문" };
+// 보드 SH-030: 공지 분류 배지 색(방송 파랑 · 안내 회색 · 이벤트 노랑). 그 밖의 분류는 기본 회색
+const CATEGORY_TONE: Record<string, string> = { 방송: "is-bl", 이벤트: "is-y" };
 
 function Notices({ slug }: { slug: string }) {
   const base = `/shop/${encodeURIComponent(slug)}`;
@@ -78,7 +80,7 @@ function Notices({ slug }: { slug: string }) {
           {items.map((n) => (
             <tr key={n.id}>
               <td>
-                {n.category && <span className="help-tag">{n.category}</span>}
+                {n.category && <span className={`help-tag ${CATEGORY_TONE[n.category] ?? ""}`}>{n.category}</span>}
                 {n.isPinned && <span className="help-tag">고정</span>}
                 <Link href={`${base}/help/notices/${n.id}`}>{n.title}</Link>
               </td>

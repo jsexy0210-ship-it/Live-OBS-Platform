@@ -7,7 +7,7 @@ import { loginSeller } from "../../lib/server/auth/login";
 import { prisma } from "../../lib/server/db";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
-import { commitProductImport, exportProductsCsv, getBulkJob, listBulkJobs, previewProductImport, undoProductImport } from "../../lib/server/shop-bulk-io/service";
+import { TEMPLATE_COLUMNS, commitProductImport, exportProductsCsv, getBulkJob, listBulkJobs, previewProductImport, undoProductImport } from "../../lib/server/shop-bulk-io/service";
 import { parseCsv } from "../../lib/server/shop-bulk-io/csv";
 import { createCategory } from "../../lib/server/shop-category/service";
 import type { TenantContext } from "../../lib/server/tenant/context";
@@ -164,10 +164,11 @@ describe("상품 내보내기", () => {
     if (!r.ok) throw new Error(r.reason);
     expect(r.value.count).toBe(1);
     const rows = (parseCsv(r.value.csv) as { rows: string[][] }).rows;
-    expect(rows[0]).toEqual(HEAD.split(","));
+    expect(rows[0]).toEqual([...TEMPLATE_COLUMNS]); // 정본 양식 열(필수 4 + 옵션·할인가·할인 기간·설명·숨김)
     expect(rows[1][0]).toBe("'=위험, \"이름\"");
-    expect(rows.slice(1).map((x) => [x[6], x[7], x[8], x[9]])).toEqual([["옵션A", "100", "3", "SKU-1"], ["옵션B", "0", "4", ""]]);
-    expect(rows[2].slice(0, 6)).toEqual(["", "", "", "", "", ""]);
+    expect(rows.slice(1).map((x) => [x[4], x[3]])).toEqual([["옵션A", "3"], ["옵션B", "4"]]);
+    expect(rows[2].slice(0, 3)).toEqual(["", "", ""]);
+    expect(rows[1].slice(5)).toEqual(["", "", "줄1\n줄2", "아니오"]); // 할인 없음 · 설명 · 숨김 아님
     const again = await preview(s.ctx, r.value.csv);
     expect([again.productCount, again.errorTotal]).toEqual([1, 0]);
     // 내보낸 파일을 그대로 다시 올리면 이름이 같은 기존 상품의 수정으로 읽는다(새 상품이 생기지 않는다). 값이 같아 바뀌는 것은 없다.
@@ -209,7 +210,7 @@ describe("API 경로", () => {
     expect([t.status, t.headers.get("content-type")]).toEqual([200, "text/csv; charset=utf-8"]);
     const bytes = new Uint8Array(await t.arrayBuffer());
     expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]); // 엑셀이 한글을 깨뜨리지 않게 BOM
-    expect(new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes).slice(1).startsWith("상품명,판매가")).toBe(true);
+    expect(new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes).slice(1).startsWith("상품명,카테고리,판매가,재고")).toBe(true);
     const pv = await previewRoute(new Request("http://localhost:3000/x", { method: "POST", headers: { ...H, cookie: c, "content-type": "text/csv" }, body: csv("A,1000,판매중,,,,기본,0,1,") }));
     expect(pv.status).toBe(201);
     const body = await pv.json();

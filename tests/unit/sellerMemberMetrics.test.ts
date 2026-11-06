@@ -22,7 +22,7 @@ function fixture(size = 3) {
   const order = {
     groupBy: vi.fn(async ({ where, _count }: { where: Scope; _count?: unknown }) => {
       const selected = matching(where);
-      return [...new Set(selected.map((o) => o.buyerMemberId))].map((id) => ({ buyerMemberId: id, ...(_count ? { _count: { _all: selected.filter((o) => o.buyerMemberId === id).length } } : aggregate(selected.filter((o) => o.buyerMemberId === id))) }));
+      return [...new Set(selected.map((o) => o.buyerMemberId))].map((id) => ({ buyerMemberId: id, ...(_count ? { _count: { _all: selected.filter((o) => o.buyerMemberId === id).length }, _max: { createdAt: new Date("2026-10-02T00:00:00Z") } } : aggregate(selected.filter((o) => o.buyerMemberId === id))) }));
     }),
     count: vi.fn(async ({ where }: { where: Scope }) => matching(where).length),
     aggregate: vi.fn(async ({ where }: { where: Scope }) => aggregate(matching(where))),
@@ -32,7 +32,10 @@ function fixture(size = 3) {
     findUnique: vi.fn(async () => ({ balance: 1500 })),
   };
   const buyerMember = { findMany: vi.fn(async () => rows), findFirst: vi.fn(async () => rows[0]) };
-  return { db: { buyerMember, order, rewardBalance } as unknown as PrismaClient, buyerMember, order, rewardBalance };
+  // 가입 순번·구매 제한 표시는 페이지 전체를 한 번에 읽는다(회원별 조회 없음)
+  const buyerPurchaseRestriction = { findMany: vi.fn(async () => []) };
+  const $queryRaw = vi.fn(async () => rows.map((r, i) => ({ id: r.id, n: BigInt(i + 1) })));
+  return { db: { buyerMember, order, rewardBalance, buyerPurchaseRestriction, $queryRaw } as unknown as PrismaClient, buyerMember, order, rewardBalance, buyerPurchaseRestriction, $queryRaw };
 }
 
 describe("SA041 현재 페이지의 상세와 같은 읽기 집계", () => {
@@ -47,14 +50,17 @@ describe("SA041 현재 페이지의 상세와 같은 읽기 집계", () => {
     expect(r.members[1]).toMatchObject({ orderCount: 0, totalPaid: 0, rewardBalance: 0 });
     expect(r.members[0]).not.toHaveProperty("name");
     expect(r.members[0]).not.toHaveProperty("phone");
-    expect(f.order.groupBy).toHaveBeenNthCalledWith(1, { by: ["buyerMemberId"], where: { sellerId: ctx.sellerId, buyerMemberId: { in: [memberId(1), memberId(2)] }, legalHoldAt: null }, _count: { _all: true } });
+    expect(f.order.groupBy).toHaveBeenNthCalledWith(1, { by: ["buyerMemberId"], where: { sellerId: ctx.sellerId, buyerMemberId: { in: [memberId(1), memberId(2)] }, legalHoldAt: null }, _count: { _all: true }, _max: { createdAt: true } });
     expect(f.order.groupBy.mock.calls[1][0]).toMatchObject({ where: { paidAt: { not: null } }, _sum: { totalAmount: true, refundAmount: true } });
     expect(f.rewardBalance.findMany).toHaveBeenCalledWith({ where: { sellerId: ctx.sellerId, buyerMemberId: { in: [memberId(1), memberId(2)] } }, select: { buyerMemberId: true, balance: true } });
     expect(f.order.count).not.toHaveBeenCalled();
     expect(f.order.aggregate).not.toHaveBeenCalled();
     expect(f.rewardBalance.findUnique).not.toHaveBeenCalled();
+    // 목록 전용 칸(번호·최근 주문·구매 제한)을 빼면 상세와 같다
+    const { number, lastOrderAt, restricted, ...shared } = r.members[0];
+    expect({ number, lastOrderAt, restricted }).toEqual({ number: 1, lastOrderAt: new Date("2026-10-02T00:00:00Z"), restricted: false });
     const detail = await getSellerMember(f.db, ctx, memberId(1));
-    expect(r.members[0]).toEqual(detail);
+    expect(shared).toEqual(detail);
   });
 
   it.each([1, 10])("%i명도 집계 조회는 세 번으로 일정하다", async (size) => {
@@ -62,6 +68,8 @@ describe("SA041 현재 페이지의 상세와 같은 읽기 집계", () => {
     await listSellerMembers(f.db, ctx, {});
     expect(f.order.groupBy).toHaveBeenCalledTimes(2);
     expect(f.rewardBalance.findMany).toHaveBeenCalledTimes(1);
+    expect(f.buyerPurchaseRestriction.findMany).toHaveBeenCalledTimes(1);
+    expect(f.$queryRaw).toHaveBeenCalledTimes(1);
     expect(f.order.count).not.toHaveBeenCalled();
     expect(f.rewardBalance.findUnique).not.toHaveBeenCalled();
   });

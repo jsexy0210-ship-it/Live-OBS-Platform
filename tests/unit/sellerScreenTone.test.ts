@@ -64,11 +64,7 @@ const APPROVED_ADJUST_COPY: Record<string, readonly string[]> = {
     "이전 요청이 이미 반영됐다면 같은 금액이 한 번 더 조정될 수 있어요.",
   ],
 };
-const APPROVED_BULK_COPY: Record<string, readonly string[]> = {
-  "app/(seller)/seller/(shell)/products/bulk/page.tsx": [
-    "오류 상품은 건너뛰고 반영해요 · 목록에는 앞부분만 보여요 · 새 상품의 상태가 비면 「숨김」으로 등록해요(이미지를 올린 뒤 공개)",
-  ],
-};
+const APPROVED_BULK_COPY: Record<string, readonly string[]> = {};
 // 목록에서 옮긴 실제 상품 작업 상세의 신규 안내만 정확히 허용한다.
 const APPROVED_PRODUCT_OPERATIONS_COPY: Record<string, readonly string[]> = {
   "components/seller/ProductOperations.tsx": [

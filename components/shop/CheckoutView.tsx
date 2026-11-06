@@ -263,7 +263,7 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
 
   return wrap(
     <div className="cart-two">
-      <div className="co-main">
+      <div className="co-main co-order">
         <section className="co-box" aria-labelledby="co-nick">
           <h2 id="co-nick">방송 닉네임</h2>
           <div className="co-field">
@@ -353,24 +353,24 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
 
         <section className="co-box" aria-labelledby="co-coupon">
           <h2 id="co-coupon">쿠폰</h2>
-          <label className="co-field" htmlFor="co-coupon-sel">
-            <span>사용할 쿠폰</span>
-          </label>
-          <select id="co-coupon-sel" className="inp" value={couponId} onChange={(e) => {
-              setCouponNotice(null);
-              setCouponId(e.target.value);
-            }} disabled={coupons.length === 0}>
-            <option value="">{coupons.length === 0 ? "쓸 수 있는 쿠폰이 없어요" : "쿠폰을 쓰지 않아요"}</option>
-            {coupons.map((c) => {
-              const short = c.minOrderAmount !== null && checkout.subtotal < c.minOrderAmount;
-              return (
-                <option key={c.couponId} value={c.couponId} disabled={short}>
-                  {c.name} · {c.benefitText}
-                  {short ? ` (${won(c.minOrderAmount!)} 이상)` : ""}
-                </option>
-              );
-            })}
-          </select>
+          <div className="co-field">
+            <label htmlFor="co-coupon-sel">사용할 쿠폰</label>
+            <select id="co-coupon-sel" className="inp" value={couponId} onChange={(e) => {
+                setCouponNotice(null);
+                setCouponId(e.target.value);
+              }} disabled={coupons.length === 0}>
+              <option value="">{coupons.length === 0 ? "쓸 수 있는 쿠폰이 없어요" : "쿠폰을 쓰지 않아요"}</option>
+              {coupons.map((c) => {
+                const short = c.minOrderAmount !== null && checkout.subtotal < c.minOrderAmount;
+                return (
+                  <option key={c.couponId} value={c.couponId} disabled={short}>
+                    {c.name} · {c.benefitText}
+                    {short ? ` (${won(c.minOrderAmount!)} 이상)` : ""}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
           {couponNotice && (
             <span className="co-err" role="alert">
               {couponNotice}
@@ -456,20 +456,18 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
                   : "계산하고 있어요"}
           </span>
         </div>
-        {couponOff > 0 && (
-          <div className="cart-row">
-            <span>쿠폰 할인</span>
-            <span>−{won(couponOff)}</span>
-          </div>
-        )}
-        {rewardOn && rewardUse > 0 && (
+        <div className="cart-row">
+          <span>쿠폰 할인</span>
+          <span>{couponOff > 0 ? `−${won(couponOff)}` : won(0)}</span>
+        </div>
+        {rewardOn && (
           <div className="cart-row">
             <span>적립금 사용</span>
-            <span>−{won(rewardUse)}</span>
+            <span>{rewardUse > 0 ? `−${won(rewardUse)}` : won(0)}</span>
           </div>
         )}
         {preview.kind === "ok" && preview.withAddress && (
-          <div className="cart-row">
+          <div className="cart-row cart-total co-final">
             <span>최종 결제 금액</span>
             <b>{won(preview.total - (rewardOn ? rewardUse : 0))}</b>
           </div>

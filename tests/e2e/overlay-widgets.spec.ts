@@ -73,6 +73,35 @@ test("새로 들어온 HIT 카드만 잠깐 강조된다", async ({ page }) => {
   await expect(page.locator(".ow-hit-new")).toHaveCount(0, { timeout: 12_000 });
 });
 
+// OV-003 다시 연출: 이미 shownAt이 있던 카드의 shownAt이 다른 값으로 바뀌면 같은 카드를 다시 강조하고, null → 값(처음 읽어 감)은 무시한다.
+test("다시 연출하면 같은 HIT 카드를 다시 강조하고, 처음 읽어 간 기록은 무시한다", async ({ page }) => {
+  test.setTimeout(60_000);
+  let phase = 0;
+  const hof = [{ id: "hof", type: "HALL_OF_FAME", ...box, h: 30, props: { rows: 5 } }];
+  const shownAt = ["2026-10-26T00:00:00.000Z", null, null, "2026-10-26T00:02:00.000Z"];
+  const states = [
+    [{ id: "a", cardName: "옛 카드", nickname: "별빛하늘", shownAt: null }],
+    [{ id: "a", cardName: "옛 카드", nickname: "별빛하늘", shownAt: shownAt[0] }],
+    [{ id: "a", cardName: "옛 카드", nickname: "별빛하늘", shownAt: shownAt[3] }],
+  ];
+  await page.route("**/api/overlay/*/layout*", (r) => r.fulfill({ json: { aspect: "9x16", version: 1, widgets: hof } }));
+  await page.route("**/api/overlay/*/stream", (r) => r.abort());
+  await page.route("**/api/overlay/*/version", (r) => r.fulfill({ json: { version: phase + 1 } }));
+  await page.route("**/api/overlay/*/state", (r) => r.fulfill({ json: { version: phase + 1, live: true, opening: null, waiting: [], hits: states[phase], orderEvents: [] } }));
+  await page.setViewportSize({ width: 1080, height: 1920 });
+  await page.goto("/overlay/mock-token");
+  await expect(page.locator('[data-widget="HALL_OF_FAME"]')).toContainText("옛 카드");
+  await expect(page.locator(".ow-hit-new")).toHaveCount(0);
+
+  phase = 1; // null → 값: 처음 읽어 감이라 강조하지 않는다
+  await page.waitForTimeout(8_000);
+  await expect(page.locator(".ow-hit-new")).toHaveCount(0);
+
+  phase = 2; // 값 → 다른 값: 다시 연출
+  await expect(page.locator(".ow-hit-new")).toHaveCount(1, { timeout: 25_000 });
+  await expect(page.locator(".ow-hit-new")).toContainText("옛 카드");
+});
+
 // OV-007 이벤트 할인 카드 · OV-004 구매 랭킹: 공개 state의 eventCard·purchaseRanking(기반 계약, #609)을 모의 응답으로 흘려 확인한다.
 // 값이 있으면 카드(상품·할인가·정가·남은 시간)와 랭킹(rows만큼 위에서, 같은 수량은 같은 순위)이 보이고, 없으면(null·빈 배열) 위젯을 그리지 않는다.
 test("이벤트 할인 카드와 구매 랭킹이 보이고, 값이 없으면 사라진다", async ({ page }) => {

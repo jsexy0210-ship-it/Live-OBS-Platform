@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>파트너스 초대 수락</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app c24" data-theme="light" style="width: 1440px; display: flex; flex-direction: column">
+<div class="authwrap" style="min-height: 400px"><div class="auth" style="width: 420px"><div class="brand"><span class="logo-sym" style="--brand: var(--c24-gnb); --brand-ink: #fff"></span>ONQ <small>파트너스 관리자</small></div><h1>비밀번호를 정합니다</h1><p class="sub">대표자 초대</p><label class="fl">새 비밀번호</label><input class="i w-f" type="password" value="" placeholder=""><span class="hint">8자 이상 200자 이하</span><label class="fl">새 비밀번호 확인</label><input class="i w-f" type="password" value="" placeholder=""><span class="hint">이 링크는 72시간 안에 한 번만 쓸 수 있습니다 · 비밀번호를 정하면 로그인 화면으로 갑니다(자동 로그인 없음)</span><button class="b pri lg w" type="button">비밀번호 정하기</button></div></div>
+<div class="states">
+<span class="states-h">상태 변형</span>
+<div class="st"><span class="st-tag">규칙 미충족</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><label class="fl">새 비밀번호</label><input class="i w-f err" type="text" value="" placeholder=""><span class="errt">8자 이상 써 주십시오</span></div></div><div class="st"><span class="st-tag">불일치</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><label class="fl">새 비밀번호 확인</label><input class="i w-f err" type="text" value="" placeholder=""><span class="errt">위에 적은 비밀번호와 다릅니다</span></div></div><div class="st"><span class="st-tag">링크 무효 · 만료 · 이미 사용 (같은 안내)</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><div class="note neg" style="width: 100%"><b>이 초대 링크는 쓸 수 없습니다.</b> 만료됐거나 이미 썼거나 잘못된 링크입니다 · 마스터 관리자에게 초대 링크 재발급을 요청해 주십시오</div><span class="hint">어느 경우든 같은 문구 · 입력 칸은 보이지 않습니다</span><a class="b sm" href="AU-002.dc.html">로그인으로</a></div></div><div class="st"><span class="st-tag">처리 중</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><button class="b pri lg w" type="button" disabled>비밀번호를 정하고 있습니다</button></div></div><div class="st"><span class="st-tag">초대 정보 미제공 (기본 모습)</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><p class="sub" style="margin: 0">대표자 초대</p><span class="hint">수락 API는 사전 조회를 제공하지 않습니다 · 쇼핑몰 이름 · 이메일을 추측하지 않고 같은 자리에 중립 안내 「대표자 초대」만 둡니다 · 링크 유효성은 비밀번호 제출 응답으로 확인합니다(기반-마스터 #1311 구현 사실, 2026-10-26 채택)</span></div></div><div class="st"><span class="st-tag">완료</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><div class="toast2">비밀번호를 정했습니다 · 로그인 화면으로 갑니다<a href="AU-002.dc.html">로그인</a></div><span class="hint">쇼핑몰 이름은 제출 응답(shopSlug) 뒤에야 알 수 있어 완료 문구에도 넣지 않습니다</span><span class="hint">자동 로그인 없음 · 로그인 화면(AU-002)의 쇼핑몰 주소 칸은 응답 shopSlug로 채워 둡니다 · 로그인 뒤 본인확인 전까지는 아래 안내가 파트너스 화면에 보입니다</span></div></div><div class="st"><span class="st-tag">본인확인 대기 중 안내 (파트너스 화면 공통 문구 · 직원 추가 · 적립금 실제 지급 · 충전금 결제)</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><div class="note cau" style="width: 100%"><b>대표자 본인확인이 아직 끝나지 않았습니다.</b> 직원 추가 · 적립금 실제 지급 · 충전금 결제는 본인확인을 마치면 쓸 수 있습니다 · 아이디 · 비밀번호 찾기는 쓸 수 없고 마스터 관리자가 초대 링크를 다시 발급해 드립니다</div><span class="hint">막힌 기능의 버튼을 누르면 이 문구를 그 자리에 보입니다 · 화면별 배치는 후속(MASTER)</span></div></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1300}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

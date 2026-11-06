@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
+import { assertIdentityVerified } from "../sellers/identityGate";
 import { writeAudit } from "../audit/log";
 import { forbidden } from "../authz/errors";
 import type { BillingProvider, ChargeResult } from "../billing/provider";
@@ -32,6 +33,7 @@ export async function chargeMessageBalance(
 ): Promise<{ ok: true; charge: ChargeView } | { ok: false; reason: ChargeFailure }> {
   requireSellerPermission(ctx, "SUBSCRIPTION_MANAGE");
   if (ctx.actorType !== "SELLER_USER" || !ctx.actorId) throw forbidden();
+  await assertIdentityVerified(db, ctx.sellerId); // 본인확인 대기 쇼핑몰은 충전금을 결제할 수 없다
   const amount = input.amount;
   const key = typeof input.idempotencyKey === "string" ? input.idempotencyKey.trim() : "";
   if (typeof amount !== "number" || !Number.isInteger(amount) || amount < CHARGE_MIN || amount > CHARGE_MAX || amount % CHARGE_UNIT !== 0 || !key || key.length > 100) {

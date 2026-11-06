@@ -27,6 +27,7 @@ import {
 } from "./rules";
 import { cleanText } from "../text/clean";
 import { orderNoLabel } from "../orders/orderNoLabel";
+import { kstDayStart } from "../orders/read";
 
 // 상품 리뷰(SA-048 리뷰 관리 · SH-029 리뷰 쓰기, 2026-10-04 대표님 지시, MASTER 결정 A~F).
 // - 구매자: 배송 완료된 주문 상품마다 1번(쇼핑몰 설정 기간 안, 기본 30일). 7일 안에 고치고, 언제든 지울 수 있다(숨긴 리뷰는 고치지 못함). 쓰기 경로(올리기·고치기·지우기·사진·신고)는 모두 쇼핑몰 이용 가능 검사(shopOpen)를 거친다.
@@ -179,27 +180,61 @@ const sellerImageUrl = (id: string) => `/api/seller/reviews/images/${id}`;
 const STATUSES: readonly ProductReviewStatus[] = ["VISIBLE", "PENDING", "HELD", "HIDDEN"];
 export const SELLER_PAGE = 10;
 
-export type SellerReviewQuery = { status?: string | null; rating?: string | null; waiting?: string | null; cursor?: string | null };
+// from·to: 작성일 기간(KST 날짜 YYYY-MM-DD, 둘 중 하나만도 됨). q: 검색어(50자까지), field: product(상품)·author(작성자)·body(내용), 없으면 셋 모두에서 찾는다. photo=1: 사진 리뷰만.
+export type SellerReviewQuery = {
+  status?: string | null;
+  rating?: string | null;
+  waiting?: string | null;
+  cursor?: string | null;
+  from?: string | null;
+  to?: string | null;
+  q?: string | null;
+  field?: string | null;
+  photo?: string | null;
+};
+
+export const SELLER_REVIEW_SEARCH_MAX = 50;
+
+// 목록·내보내기가 같이 쓰는 조건(커서 제외). 항상 ctx.sellerId 범위만 본다. 잘못된 값(상태·별점·날짜 형식)은 거르지 않고 무시한다.
+export function sellerReviewWhere(ctx: TenantContext, q: SellerReviewQuery): Prisma.ProductReviewWhereInput {
+  const status = STATUSES.find((s) => s === q.status);
+  const rating = q.rating === "low" ? { lte: 3 } : q.rating && /^[1-5]$/.test(q.rating) ? Number(q.rating) : undefined;
+  const and: Prisma.ProductReviewWhereInput[] = [];
+  const from = q.from ? kstDayStart(q.from) : null;
+  const to = q.to ? kstDayStart(q.to) : null;
+  if (from) and.push({ createdAt: { gte: from } });
+  if (to) and.push({ createdAt: { lt: new Date(to.getTime() + DAY) } });
+  const text = (q.q ?? "").trim().slice(0, SELLER_REVIEW_SEARCH_MAX);
+  if (text) {
+    // Prisma contains는 %·_를 와일드카드로 해석하므로 글자 그대로 찾도록 이스케이프한다(PostgreSQL 기본 이스케이프 문자 \)
+    const like = { contains: text.replace(/[\\%_]/g, "\\$&"), mode: "insensitive" as const };
+    const byProduct: Prisma.ProductReviewWhereInput = { product: { name: like } };
+    const byAuthor: Prisma.ProductReviewWhereInput = { authorNickname: like };
+    const byBody: Prisma.ProductReviewWhereInput = { body: like };
+    and.push({ OR: q.field === "product" ? [byProduct] : q.field === "author" ? [byAuthor] : q.field === "body" ? [byBody] : [byProduct, byAuthor, byBody] });
+  }
+  if (q.photo === "1") and.push({ images: { some: {} } });
+  return {
+    sellerId: ctx.sellerId, deletedAt: null,
+    ...(status ? { status } : {}),
+    ...(rating !== undefined ? { rating } : {}),
+    ...(q.waiting === "1" ? { reply: null, status: { not: "HIDDEN" as const } } : {}),
+    ...(and.length > 0 ? { AND: and } : {}),
+  };
+}
 
 export async function listSellerReviews(db: PrismaClient, ctx: TenantContext, q: SellerReviewQuery) {
   const now = await lockedNow(db);
-  const status = STATUSES.find((s) => s === q.status);
-  const rating = q.rating === "low" ? { lte: 3 } : q.rating && /^[1-5]$/.test(q.rating) ? Number(q.rating) : undefined;
   let after = {};
   if (q.cursor && isUuid(q.cursor)) {
     const c = await db.productReview.findFirst({ where: { id: q.cursor, sellerId: ctx.sellerId }, select: { id: true, createdAt: true } });
     if (c) after = { OR: [{ createdAt: { lt: c.createdAt } }, { createdAt: c.createdAt, id: { lt: c.id } }] };
   }
-  const where: Prisma.ProductReviewWhereInput = {
-    sellerId: ctx.sellerId, deletedAt: null,
-    ...(status ? { status } : {}),
-    ...(rating !== undefined ? { rating } : {}),
-    ...(q.waiting === "1" ? { reply: null, status: { not: "HIDDEN" as const } } : {}),
-    ...after,
-  };
+  const filter = sellerReviewWhere(ctx, q);
+  const where: Prisma.ProductReviewWhereInput = { ...filter, ...after };
   const weekAgo = new Date(now.getTime() - 7 * DAY);
   const threeDaysAgo = new Date(now.getTime() - 3 * DAY);
-  const [rows, visibleAgg, dist, weekNew, photo, waiting, waitingOld, review, held, policy] = await Promise.all([
+  const [rows, matched, visibleAgg, dist, weekNew, photo, waiting, waitingOld, review, held, policy] = await Promise.all([
     db.productReview.findMany({
       where,
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -211,6 +246,7 @@ export async function listSellerReviews(db: PrismaClient, ctx: TenantContext, q:
         _count: { select: { images: true, reports: { where: { resolvedAt: null, withdrawnAt: null } } } },
       },
     }),
+    db.productReview.count({ where: filter }),
     db.productReview.aggregate({ where: { sellerId: ctx.sellerId, deletedAt: null, status: "VISIBLE" }, _avg: { rating: true }, _count: { _all: true } }),
     db.productReview.groupBy({ by: ["rating"], where: { sellerId: ctx.sellerId, deletedAt: null, status: "VISIBLE" }, _count: { _all: true } }),
     db.productReview.count({ where: { sellerId: ctx.sellerId, deletedAt: null, createdAt: { gte: weekAgo } } }),
@@ -246,6 +282,8 @@ export async function listSellerReviews(db: PrismaClient, ctx: TenantContext, q:
       createdAt: r.createdAt,
     })),
     nextCursor: rows.length > SELLER_PAGE ? page[page.length - 1].id : null,
+    // 지금 조건(기간·검색어·사진 등)에 맞는 리뷰 전체 개수(커서와 상관없음)
+    matched,
     summary: {
       average: total > 0 ? Math.round((visibleAgg._avg.rating ?? 0) * 10) / 10 : null,
       total,

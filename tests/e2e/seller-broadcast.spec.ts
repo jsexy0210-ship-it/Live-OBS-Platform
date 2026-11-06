@@ -63,7 +63,7 @@ test("두 기존 홈 주소는 단일 홈으로 이동하고 유튜브 패널은
   }
   await expect(page.getByRole("link", { name: "방송 대시보드", exact: true })).toHaveCount(0);
   await expect(page.getByTestId("home-tasks")).toBeVisible();
-  const snapshotResponse = await page.request.get("/api/seller/queue");
+  const snapshotResponse = await page.request.get("/api/seller/queue", { maxRetries: 3 });
   expect(snapshotResponse.status()).toBe(200);
   const snapshot = await snapshotResponse.json();
   await page.route("**/api/seller/queue", async (route) => route.fulfill({ json: { ...snapshot, broadcast: { id: "synthetic-current", title: "합성 방송", startedAt: "2026-10-09T00:00:00Z" } } }));
@@ -109,7 +109,7 @@ test("두 기존 홈 주소는 단일 홈으로 이동하고 유튜브 패널은
 
 test("채팅이 꺼지고 큐 버전이 같아도 유튜브 연결과 해제가 새로 고침 없이 반영된다", async ({ page }) => {
   await login(page, "demo-owner@example.com", "/seller");
-  const snapshotResponse = await page.request.get("/api/seller/queue");
+  const snapshotResponse = await page.request.get("/api/seller/queue", { maxRetries: 3 });
   expect(snapshotResponse.status()).toBe(200);
   const snapshot = await snapshotResponse.json();
   let connected = false;
@@ -154,8 +154,10 @@ test("대표자: 방송 시작부터 개봉·타이머·완료·되돌리기·�
   await shot(page, "SA-001-before");
 
   // 순서 변경: C를 위로 → A, C, B
+  await page.getByTestId("bc-waiting").locator("tr", { hasText: C }).getByRole("link", { name: "상세" }).click();
   await page.getByRole("button", { name: `${C} 위로` }).click();
   await expect(toast(page)).toContainText("순서를 바꿨어요");
+  await page.getByRole("button", { name: "대기 목록", exact: true }).click();
   await expect(waitingNames(page)).toHaveText([A, C, B]);
 
   // 방송 시작
@@ -188,8 +190,10 @@ test("대표자: 방송 시작부터 개봉·타이머·완료·되돌리기·�
   await expect(toast(page)).toContainText("개봉을 완료했어요");
   const done = page.getByTestId("bc-done").locator("tr", { hasText: A });
   await expect(done).toBeVisible();
-  await done.getByRole("button", { name: "되돌리기" }).click();
+  await done.getByRole("link", { name: "상세" }).click();
+  await page.getByTestId("queue-detail").getByRole("button", { name: "되돌리기" }).click();
   await expect(opening).toContainText(A);
+  await page.getByRole("button", { name: "대기 목록", exact: true }).click();
 
   // 다시 완료(버튼)
   await page.getByRole("button", { name: /개봉 완료/ }).click();
@@ -197,20 +201,22 @@ test("대표자: 방송 시작부터 개봉·타이머·완료·되돌리기·�
 
   // 대기 타이머 설정(창): C에 3분
   const rowC = page.getByTestId("bc-waiting").locator("tr", { hasText: C });
-  await rowC.getByRole("button", { name: "타이머" }).click();
+  await rowC.getByRole("link", { name: "상세" }).click();
+  await page.getByTestId("queue-detail").getByRole("button", { name: "타이머" }).click();
   const timer = page.getByRole("dialog", { name: "개봉 시간 알림을 정하시겠습니까?" });
   await timer.getByRole("button", { name: "3분" }).click();
   await timer.getByRole("button", { name: "이 시간으로 정하기" }).click();
   await expect(timer).toHaveCount(0);
-  await expect(rowC).toContainText("3:00");
+  await expect(page.getByTestId("queue-detail")).toContainText("3:00");
 
   // 대기 취소: 사유가 있어야 한다
-  await rowC.getByRole("button", { name: "주문대기에서 빼기" }).click();
+  await page.getByTestId("queue-detail").getByRole("button", { name: "주문대기에서 빼기" }).click();
   const cancel = page.getByRole("dialog", { name: "이 주문을 주문대기에서 빼시겠습니까?" });
   await expect(cancel.getByRole("button", { name: "주문대기에서 빼기" })).toBeDisabled();
   await cancel.getByLabel("빼는 이유").fill("구매자 요청");
   await cancel.getByRole("button", { name: "주문대기에서 빼기" }).click();
   await expect(cancel).toHaveCount(0);
+  await page.getByRole("button", { name: "대기 목록", exact: true }).click();
   await expect(waitingNames(page)).toHaveText([B]);
 
   // 방송 종료 → 남은 B는 방송 전 대기로
@@ -334,14 +340,17 @@ test("되돌리기는 지금 방송에서 완료한 주문에만 보인다(방�
   await openFirst(page);
   await page.keyboard.press("Control+Enter");
   const done = page.getByTestId("bc-done").locator("tr", { hasText: A });
-  await expect(done.getByRole("button", { name: "되돌리기" })).toBeVisible();
+  await done.getByRole("link", { name: "상세" }).click();
+  await expect(page.getByTestId("queue-detail").getByRole("button", { name: "되돌리기" })).toBeVisible();
+  await page.getByRole("button", { name: "대기 목록", exact: true }).click();
   await page.getByRole("button", { name: "방송 끝내기" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "방송 끝내기" }).click();
   await expect(page.getByTestId("bc-live-badge")).toHaveCount(0);
   await page.getByRole("button", { name: "방송 시작" }).click();
   await expect(page.getByTestId("bc-live-badge")).toBeVisible();
   await expect(done).toBeVisible();
-  await expect(done.getByRole("button", { name: "되돌리기" })).toHaveCount(0);
+  await done.getByRole("link", { name: "상세" }).click();
+  await expect(page.getByTestId("queue-detail").getByRole("button", { name: "되돌리기" })).toHaveCount(0);
 });
 
 test("변경 뒤 다시 읽기가 실패하면 변경 조작을 모두 끄고, 다시 불러오기가 성공해야 다시 켠다", async ({ page }) => {
@@ -459,7 +468,8 @@ test("PC 시계가 틀려도(1시간 빠름) 방금 완료한 주문의 되돌�
   await openFirst(page);
   await page.keyboard.press("Control+Enter");
   const done = page.getByTestId("bc-done").locator("tr", { hasText: A });
-  await done.getByRole("button", { name: "되돌리기" }).click();
+  await done.getByRole("link", { name: "상세" }).click();
+  await page.getByTestId("queue-detail").getByRole("button", { name: "되돌리기" }).click();
   await expect(page.getByTestId("bc-opening")).toContainText(A);
   expect((await queueStatuses())[A].status).toBe("OPENING");
 });
@@ -484,9 +494,10 @@ test("390폭: 대기 표가 모바일 카드로 바뀌고 가로 스크롤 없�
     const before = await firstCard.locator(`td[data-label="${label}"]`).evaluate((el) => getComputedStyle(el, "::before").content);
     expect(before).toContain(label);
   }
-  // 관리 버튼 4개 모두 화면 안, 높이 44px 이상
-  for (const name of [`${A} 위로`, `${A} 아래로`, "타이머 정하기", "주문대기에서 빼기"]) {
-    const btn = firstCard.getByRole("button", { name: name.includes(A) ? name : new RegExp(`^${name}$`) });
+  // 목록의 상세 진입은 화면 안, 높이 44px 이상이며 직접 변경 버튼은 없다.
+  await expect(firstCard.getByRole("button")).toHaveCount(0);
+  for (const name of ["상세"]) {
+    const btn = firstCard.getByRole("link", { name, exact: true });
     const box = await btn.boundingBox();
     expect(box, name).not.toBeNull();
     expect(box!.height, name).toBeGreaterThanOrEqual(43.5);
@@ -537,7 +548,7 @@ test("방송 대시보드 대기 표: 1440·1024·390폭에서 조작 버튼이 
     expect(head!.width).toBeGreaterThanOrEqual(120);
     await wrap.evaluate((el) => (el.scrollLeft = el.scrollWidth));
     const box = await wrap.boundingBox();
-    const btn = await page.getByRole("button", { name: `${A} 아래로` }).boundingBox();
+    const btn = await page.getByTestId("bc-waiting").locator("tr", { hasText: A }).getByRole("link", { name: "상세" }).boundingBox();
     expect(btn!.x).toBeGreaterThanOrEqual(box!.x);
     expect(btn!.x + btn!.width).toBeLessThanOrEqual(box!.x + box!.width + 1);
     await wrap.evaluate((el) => (el.scrollLeft = 0));

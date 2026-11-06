@@ -49,9 +49,9 @@ const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 export const couponDate = (iso: string) => new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric" }).format(new Date(iso)).replace(/\.\s?/g, "/").replace(/\/$/, "");
 export const couponAmountText = (c: CouponView) => (c.benefit === "FREE_SHIPPING" ? "배송비 무료" : c.benefit === "AMOUNT" ? won(c.value ?? 0) : `${c.value}%`);
 
-export function couponConditions(c: CouponView): string {
+export function couponConditions(c: CouponView, maxInHead = false): string {
   const parts: string[] = [];
-  if (c.benefit === "RATE" && c.maxDiscount) parts.push(`최대 ${won(c.maxDiscount)} 할인`);
+  if (!maxInHead && c.benefit === "RATE" && c.maxDiscount) parts.push(`최대 ${won(c.maxDiscount)} 할인`);
   parts.push(c.minOrderAmount > 0 ? `${won(c.minOrderAmount)} 이상 주문` : "금액 조건 없음");
   if (c.productScoped) parts.push("일부 상품만");
   if (c.excludeDiscounted) parts.push("할인 중 상품 제외");
@@ -61,14 +61,16 @@ export function couponConditions(c: CouponView): string {
 function MineItem({ c, now, slug }: { c: Mine; now: number; slug: string }) {
   const left = Math.ceil((new Date(c.expiresAt).getTime() - now) / DAY);
   const past = c.state === "used" || c.state === "expired";
+  // 보드 SH-028-IA 카드 머리: 「5,000원 할인」 · 「10% 할인 (최대 20,000원)」. 받는 쿠폰의 최대 할인은 머리로 올린다
+  const head = c.benefit === "FREE_SHIPPING" ? couponAmountText(c) : `${couponAmountText(c)} 할인${c.benefit === "RATE" && c.maxDiscount ? ` (최대 ${won(c.maxDiscount)})` : ""}`;
   return (
     <li className={`cb-item${past ? " is-past" : ""}`}>
       <div className="cb-amt">
-        <span className="t-h2 fw7">{couponAmountText(c)}</span>
+        <span className="t-h2 fw7">{head}</span>
       </div>
       <div className="cb-body">
         <span className="t-b2 fw6">{c.name}</span>
-        <span className="t-l2 c-alt">{couponConditions(c)}</span>
+        <span className="t-l2 c-alt">{couponConditions(c, true)}</span>
         <span className="t-c1 c-alt">
           {c.state === "used" && c.usedAt
             ? `${couponDate(c.usedAt)} 사용`

@@ -1,6 +1,20 @@
 # HANDOFF
 
-> 기준일: 2026-10-02 (KST)
+> 기준일: 2026-10-26 (KST). 상단 「2026-10-26 갱신」이 최신이고, 그 아래 일부 절은 2026-10-02~10-07 기록입니다. 남기는 정보는 확정 결정·미완료·블로커 셋입니다.
+
+## 2026-10-26 갱신 (대표님 「권고안대로 일괄 승인」·전체 재가동)
+
+**현재 지시 체계**: 대표님 → Codex ONQ MASTER `01a10187-33d2-70d0-951f-e2d69fdd2dc1`(CLAUDE.md 기준) / 전담 중계 MASTER (5) `session_01DVZasVut4sjfohfpjDzKo9`. 병합은 검수 전담 (11) `session_01CsbbusRMeNLAR9C8WCAoPg`(화면·디자인), 서버·마이그레이션·문서·시험 전용 PR은 검수 전담 (12) `session_01Tx7ixb3oPFQaxJCu3LzJWF`가 독립 검수합니다(병합은 CI 통과·충돌 없음일 때, 병합 뒤 올린 세션에 알림). 아래 「세션」 표의 다수 세션은 보관·교체되어 과거 기록입니다.
+
+**확정 결정**
+- 운영 오픈은 단계별: 1단계 파트너스 쪽(이번 주) → 2단계 본인확인 계약·키 뒤 구매자 가입 → 3단계 결제 계약·어댑터 뒤 카드·구독 결제. 구매자 가입·주문(무통장 포함)은 1단계 제외, 구매자 본인확인은 「필수 유지」.
+- 첫 파트너스 계정은 마스터 관리자 「파트너스 직접 추가」(최고관리자 전용)로 만든다.
+- 관리자 화면 반응형은 후속(2026-10-13). 서비스명 스트림샵(2026-10-07, 아래 절).
+- 업체명이 정해지기 전에는 결제·본인확인·국세청·공정위 연동 코드를 서버 세션에 배정하지 않는다.
+
+**미완료·블로커**: 정본은 `PROJECT_STATUS.md` 「블로커」 6건(직접 추가 경로 없음, 체험 종료 후 잠김, 구독·주문 결제 어댑터, 본인확인 계약, 국세청·공정위 어댑터, 사람만 할 수 있는 운영 조치)입니다. 오픈 점검 절차·필수 `.env` 이름·사람만 할 수 있는 조치는 `docs/OPS_OPEN_CHECKLIST.md`입니다.
+
+**대표님 조치 대기에 추가**: 결제대행사(주문·구독)·포트원 본인확인·국세청·공정위 계약과 키, 운영 자원·도메인·서버 `.env`·러너·백업 버킷, 첫 운영 배포 실행·승인(`docs/OPS_OPEN_CHECKLIST.md` §4). 아래 「대표님 조치 대기」의 오래된 항목은 처리 여부를 확인한 뒤 정리합니다.
 
 ## 최신 제품 방향 추가 (2026-10-07 KST)
 
@@ -149,11 +163,11 @@
 
 ## 현재 구성
 
-- Next.js 최소 앱 (`app/layout.tsx`, `app/page.tsx`)
+- (2026-10-02 기록, 현재는 관리자·파트너스·쇼핑몰·오버레이 화면과 서버 구현이 main에 있음. `PROJECT_STATUS.md` 참조)
 - CI: typecheck + build, self-hosted 배포 워크플로 재유입 검사
 - 배포 워크플로: `.github/workflows/deploy-obs-test.yml`(테스트 서버 obs-test, 수동 실행만, main만, Environment `obs-test`(main만, 승인자 대표님), 상시 self-hosted runner `obs-web-test`(라벨 `obs-kakao`, 서버의 `/home/obs`에 설치·서비스 등록). 2026-10-03 첫 배포 성공: `https://test.on-aircue.com/api/health` → status ok, db ok, version c37492f. 대표님 결정 2026-10-03: 공개 저장소 + 상시 runner, 「Require approval for all external contributors」 필수). 테스트 도메인 `test.on-aircue.com`(Cloudflare DNS 전용). 절차: `docs/DEPLOY.md`
 - GitHub Secrets(대표님 등록, 값은 기록하지 않음): `NICEPAY_CLIENT_KEY`, `NICEPAY_SECRET_KEY`, `SWEETTRACKER_API_KEY`(스마트택배 배송 조회, 연동은 출시 후), `RESEND_MAIL_API`(Resend 메일 발송. 개발·테스트용, 운영 발송은 AWS SES 예정. 하루·월 무료 한도에 가까워지면 미리 알리고 넘으면 MASTER에 보고), `BAROBILL_API_KEY`(바로빌 세금계산서·현금영수증 발행. 연동 전, 요금·판매자 명의 발행 조건 확인 필요), `YOUTUBE_API_KEY`(YouTube Data API v3, 방송·실시간 채팅 조회. 하루 무료 할당량에 가까워지면 미리 알리고, 넘으면 MASTER에 보고)
-- 테스트: 없음
+- 테스트: 단위·통합·e2e 시험이 CI(Typecheck and build, Unit and integration tests, E2E smoke)에서 돈다
 
 ## 미확인·미변경 (권한/범위 밖)
 
@@ -270,6 +284,4 @@ main의 마지막 번호(20261004320000) 뒤로 세션별 범위를 나눈다. �
 
 ## 다음 작업
 
-1. 테스트 서버 첫 배포 완료(2026-10-03). 다음: 이전(Leftlife) 자원 삭제 여부 결정(PROJECT_STATUS), 서버 22번 포트 출발지는 대표님 IP가 바뀌면 보안 그룹에서 고침
-2. 디자인 수정 중 (깨짐 수정 → 쇼핑몰 PC판). 화면 구현은 디자인 확정 후 시작한다. 클로드디자인 프롬프트: `docs/DESIGN_PROMPT.md`
-3. 개발 1단계(화면과 무관한 기반)는 디자인과 병행한다 (대표님 결정 2026-10-02 21:15 KST): 설계(`docs/ARCHITECTURE.md`) → 데이터 모델·DB·권한·주문대기 도메인(`docs/REFERENCE_MANGOTCG.md` 7절)·로그인·테스트. 담당: 개발 전담 (기반).
+현재 순서는 위 「2026-10-26 갱신」과 `PROJECT_STATUS.md` 「블로커」를 따릅니다. 2026-10-03 기록이던 이 절의 이전 항목(첫 배포·디자인 진행·기반 개발 시작)은 모두 지나간 일이라 지웠습니다. 열린 PR은 GitHub에서 확인합니다.

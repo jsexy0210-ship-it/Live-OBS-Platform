@@ -187,7 +187,7 @@ sudo -u obs nano /opt/obs/.env
 | `BILLING_KEY_SECRET` | 필수 | 빌링키 암호화 키(32자 이상) |
 | `BILLING_PROVIDER` | 선택 | obs-test는 비워도 돼요(아래 `OBS_TEST_MODE=1`이면 가짜 결제 공급자를 써요). 운영 빌드에서 `fake`만 넣으면 가짜 결제 공급자 생성이 막혀 카드 등록·구독 결제가 오류로 멈춰요 |
 | `OBS_TEST_MODE` | **obs-test만** | `1`이면 테스트 서버 모드예요(대표님 지시 2026-10-03). 휴대폰 본인확인은 가짜 공급자(인증번호 `000000`, 문자·과금 없음, 포트원 설정이 있어도 테스트 모드가 우선), 구독 결제는 가짜 결제 공급자(실제 돈 이동 없음, 결제 번호 `fake-pay-…`)로 처리하고, 「시험 데이터 넣기」 명령을 쓸 수 있어요. 켜지면 서버 로그에 경고 한 줄이 남고 `GET /api/health`에 `"testMode": true`가 붙어요. **운영 서버에는 절대 넣지 않아요** |
-| `OBS_SITE_ADDRESS` | 필수(HTTPS) | 새 TEST는 `dev.on-aircue.com`, 운영은 `on-aircue.com`(실서버 반영 전). 기존 시험 주소는 `test.on-aircue.com`. 비우면 `:80`(HTTP만, 로그인 유지 안 됨). 아래 「HTTPS」 |
+| `OBS_SITE_ADDRESS` | 필수(HTTPS) | 새 TEST는 `dev.on-aircue.com`, 운영은 `on-aircue.com`(실서버 반영 전). 기존 시험 주소는 `test.on-aircue.com`. 비우면 `:80`(HTTP만, 로그인 유지 안 됨). 파트너스 초대 링크의 주소도 이 값(호스트 이름일 때)으로 만들며, 운영에서 비어 있으면 링크는 경로만 주고 마스터 관리자 화면이 보고 있는 주소를 붙인다. 아래 「HTTPS」 |
 | `BUSINESS_STATUS_PROVIDER`, `NTS_BUSINESS_STATUS_API_KEY` | 선택 | 판매자 가입 사업자 상태 점검 |
 | `MAIL_ORDER_PROVIDER`, `FTC_MAIL_ORDER_API_KEY` | 선택 | 통신판매업 점검 |
 | `PORTONE_API_SECRET`, `PORTONE_STORE_ID`, `PORTONE_IDENTITY_CHANNEL_KEY` | 선택 | 휴대폰 본인확인. 없으면 가입 본인확인은 503 「준비 중」 |

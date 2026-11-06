@@ -34,6 +34,7 @@ async function adminLogin(page: Page, width = 1440) {
 test("Select: 공통 화살표가 오른쪽 테두리에서 14px 안쪽·세로 가운데, 글자 자리와 겹치지 않고 높이 40·모서리 8", async ({ page }) => {
   await adminLogin(page);
   await page.goto("/admin/logs");
+  await expect(page.getByRole("combobox", { name: "행위자", exact: true })).toBeVisible();
   const selects = page.locator(".main select.inp");
   expect(await selects.count()).toBeGreaterThan(0);
   for (const s of await selects.all()) {
@@ -80,12 +81,12 @@ test("날짜 칸(공통 DatePicker): 글자·빈 곳·아이콘 어디를 눌러
   await expect(date).toHaveValue("");
 });
 
-test("검색 영역: 바깥 테두리·모서리 12는 그대로, CTA 앞 마지막 가로선·CTA 줄 선은 없고 「검색」「초기화」는 40×80", async ({ page }) => {
+test("검색 영역: 바깥 테두리·직각 모서리, CTA 앞 마지막 가로선·CTA 줄 선은 없고 「검색」「초기화」는 40×80", async ({ page }) => {
   await adminLogin(page);
   await page.goto("/admin/partners");
   const sb = page.locator(".main .au-sb").first();
   const outer = await sb.evaluate((e) => ({ ring: /0px 0px 0px 1px/.test(getComputedStyle(e).boxShadow) && /inset/.test(getComputedStyle(e).boxShadow), r: getComputedStyle(e).borderTopLeftRadius }));
-  expect(outer).toEqual({ ring: true, r: "12px" });
+  expect(outer).toEqual({ ring: true, r: "0px" });
   const lastRow = await sb.locator(".au-ft > tbody > tr:last-child > td").evaluate((e) => getComputedStyle(e).borderBottomWidth);
   expect(lastRow).toBe("0px");
   const foot = await sb.locator(".au-sb-f").evaluate((e) => ({ top: getComputedStyle(e).borderTopWidth, shadow: getComputedStyle(e).boxShadow }));

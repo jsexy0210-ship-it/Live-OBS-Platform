@@ -41,7 +41,7 @@ const searchBox = (page: Page) => page.getByRole("search", { name: "목록 조�
 async function searchFor(page: Page, text: string) {
   await page.getByLabel("상품 검색").fill(text);
   await Promise.all([
-    page.waitForResponse((r) => r.url().includes("/api/seller/products?") && new URL(r.url()).searchParams.get("q") === text.trim()),
+    page.waitForResponse((r) => r.url().includes("/api/seller/products?") && new URL(r.url()).searchParams.get("q") === (text.trim() || null)),
     searchBox(page).getByRole("button", { name: "검색", exact: true }).click(),
   ]);
 }
@@ -278,8 +278,6 @@ test("상품 목록: 데모 상품·상태 배지·필터, 체험 배너가 보�
   await expect(page.locator(".gnb")).toContainText("카드숍 별빛");
   const rows = page.getByTestId("product-row");
   await expect(rows.filter({ hasText: "스타라이트 부스터 박스" })).toBeVisible();
-  await expect(rows.filter({ hasText: "탑로더 25장" }).getByText("재고 부족")).toBeVisible();
-  await expect(rows.filter({ hasText: "드래곤 소울 부스터" }).getByText("품절")).toBeVisible();
   // 목록 행 높이와 상품명·가격 시작 위치는 상품명 길이(1줄 ~ 100자)와 관계없이 같고, 100자 이름은 3줄에서 말줄임된다
   const layout = await rows.evaluateAll((els) =>
     els.map((e) => {
@@ -304,6 +302,12 @@ test("상품 목록: 데모 상품·상태 배지·필터, 체험 배너가 보�
   expect(layout.some((l) => l.len <= 12)).toBe(true);
   await shot(page, "SA-011-list");
 
+  // 데모 상품도 페이지 크기 10을 넘을 수 있으므로 배지는 해당 상품을 검색해서 확인한다.
+  await searchFor(page, "탑로더 25장");
+  await expect(rows.filter({ hasText: "탑로더 25장" }).getByText("재고 부족")).toBeVisible();
+  await searchFor(page, "드래곤 소울 부스터");
+  await expect(rows.filter({ hasText: "드래곤 소울 부스터" }).getByText("품절")).toBeVisible();
+  await searchFor(page, "");
   await applyStatus(page, "숨김");
   await expect(rows.filter({ hasText: "문라이트 1탄 박스" })).toBeVisible();
   await expect(rows.filter({ hasText: "스타라이트 부스터 박스" })).toHaveCount(0);
@@ -622,8 +626,14 @@ for (const [email, allowed] of [[OWNER, true], [VIEWER, false]] as const) {
       await expect(crumb.getByRole("link", { name: "재고 수정", exact: true })).toHaveCount(0);
       if (allowed) {
         await expect(page.getByRole("heading", { level: 1, name: "재고 수정", exact: true })).toBeVisible();
-        await expect(crumb.getByRole("link", { name: "상품", exact: true })).toHaveAttribute("href", "/seller/products");
-        await expect(crumb.getByRole("link", { name: "재고", exact: true })).toHaveAttribute("href", "/seller/products/stock");
+        if (width >= 768) {
+          await expect(crumb.getByRole("link", { name: "상품", exact: true })).toHaveAttribute("href", "/seller/products");
+          await expect(crumb.getByRole("link", { name: "재고", exact: true })).toHaveAttribute("href", "/seller/products/stock");
+        } else {
+          // 모바일(767px 이하)은 ← 버튼이 있는 화면의 경로 줄을 숨긴다(DS-NAV 확정). 경로 문구는 위에서 확인했고 이동은 ←가 맡는다
+          await expect(crumb).toBeHidden();
+          await expect(page.getByRole("button", { name: "뒤로", exact: true })).toBeVisible();
+        }
         const tableWrap = page.locator(".stock-table-wrap");
         const row = page.getByTestId("stock-row").first();
         await tableWrap.evaluate((el) => { el.scrollLeft = 0; });

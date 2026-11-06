@@ -18,7 +18,7 @@ async function open(page: Page) {
 
 test("구매자 가입: 테스트 모드 값이 없으면 안내가 없고, 테스트 모드면 본인확인 단계에 인증번호 000000 안내가 보인다", async ({ page }) => {
   expect((await open(page)).testMode).toBeUndefined();
-  await expect(page.getByLabel("휴대폰번호", { exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "휴대폰번호", exact: true })).toBeVisible();
   await expect(page.getByTestId("test-mode-notice")).toHaveCount(0);
 
   await page.route("**/api/health", async (route) => {

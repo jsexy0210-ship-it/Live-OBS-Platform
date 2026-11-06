@@ -100,7 +100,7 @@ function AdminShellContent({ children }: { children: React.ReactNode }) {
   const loc = route ? { group: route.group.label, item: route.item.label, groupHref: shownGroup?.items[0]?.href, itemHref: route.item.href } : null;
   // 화면 ←(PageHead가 읽는다): 메뉴로 바로 여는 화면에는 없고, 상세·등록 같은 하위 화면에는 그 메뉴 화면이 부모
   const partnerMatch = /^\/admin\/partners\/([^/]+)$/.exec(pathname);
-  const partnerId = partnerMatch?.[1];
+  const partnerId = partnerMatch?.[1] === "new" ? undefined : partnerMatch?.[1];
   const partnerTabValue = searchParams.get("tab");
   const partnerTab = PARTNER_NAV_ITEMS.some(([key]) => key === partnerTabValue) ? partnerTabValue : "info";
   const shellNav: ShellNav = { backHref: route && pathname !== route.item.href ? route.item.href : null, tabs: [], setPartnerIndicators };

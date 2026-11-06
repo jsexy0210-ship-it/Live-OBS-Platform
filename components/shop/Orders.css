@@ -21,11 +21,20 @@
   box-shadow: inset 0 -2px 0 var(--wds-label-normal);
 }
 @media (max-width: 767px) {
+  /* 보드 SH-021-IA 휴대폰: 상태 탭은 한 줄 밑줄 탭 */
   .ol-tabs {
-    flex-wrap: wrap;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--wds-line-solid-neutral);
   }
   .ol-tabs button {
-    flex: 1 1 33%;
+    flex: 1 0 auto;
+    padding: 12px 8px;
+    border: 0;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .ol-tabs button[aria-selected="true"] {
+    border: 0;
   }
 }
 .ol-tabs span {
@@ -180,8 +189,8 @@
 }
 .ol-thumb {
   flex: none;
-  width: 48px;
-  height: 48px;
+  width: 72px;
+  height: 72px;
   overflow: hidden;
   border-radius: var(--shop-r);
   background: var(--wds-background-normal-alternative);
@@ -194,4 +203,97 @@
 }
 .ol-items li > div {
   flex: 1;
+}
+
+/* 보드 SH-021-IA: 기간 줄(칩 + 시작~종료 + 조회). PC는 한 줄로 이어지고 휴대폰은 칩 아래 한 줄 */
+.ol-range {
+  display: contents;
+}
+.ol-state .ol-detail {
+  display: none;
+}
+@media (max-width: 767px) {
+  .ol-range {
+    display: flex;
+    flex: 0 0 100%;
+    align-items: center;
+    gap: 6px;
+  }
+  .ol-range > :nth-child(1),
+  .ol-range > :nth-child(3) {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  /* 휴대폰: 주문 한 건은 카드. 머리(날짜 · 번호 · 상태 칩 · 상세) → 선 → 상품 → 안내 → 버튼 */
+  .ol-tbl tr {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 6px;
+    margin-bottom: 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--wds-line-solid-neutral);
+    border-radius: var(--shop-r);
+  }
+  .ol-tbl tr::after {
+    content: "";
+    order: 5;
+    flex: 0 0 100%;
+    height: 1px;
+    background: var(--wds-line-solid-alternative);
+  }
+  .ol-tbl .ol-date,
+  .ol-tbl .ol-state {
+    display: contents;
+  }
+  .ol-date b {
+    order: 1;
+    font-size: 12px;
+  }
+  .ol-date a {
+    order: 2;
+    margin-top: 0;
+  }
+  .ol-date a::before {
+    content: "·";
+    margin-right: 4px;
+  }
+  .ol-state > .ol-tag {
+    order: 3;
+    margin-bottom: 0;
+  }
+  .ol-state .ol-detail {
+    display: block;
+    order: 4;
+    margin: 0 0 0 auto;
+    font-size: 12px;
+    color: var(--wds-label-alternative);
+  }
+  .ol-tbl .ol-items {
+    order: 6;
+    flex: 0 0 100%;
+  }
+  .ol-state > .cart-opt {
+    order: 7;
+    flex: 0 0 100%;
+  }
+  .ol-tbl .ol-act {
+    order: 8;
+    flex: 0 0 100%;
+    gap: 8px;
+  }
+  .ol-act > .btn {
+    display: flex;
+    flex: 1 1 calc(50% - 4px);
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+  }
+  .ol-thumb {
+    width: 48px;
+    height: 48px;
+  }
+  .ol-act > .ol-more {
+    display: none;
+  }
 }

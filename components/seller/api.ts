@@ -34,11 +34,11 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
 }
 
 // 파일 바이트를 본문 그대로 올리는 요청(이미지 업로드 등). 응답 처리와 401 로그인 이동은 api()와 같다.
-export async function apiUpload<T>(path: string, file: Blob, init: { method?: "POST" | "PUT" } = {}): Promise<ApiResult<T>> {
+export async function apiUpload<T>(path: string, file: Blob, init: { method?: "POST" | "PUT"; headers?: Record<string, string> } = {}): Promise<ApiResult<T>> {
   const visit = navGeneration;
   let res: Response;
   try {
-    res = await fetch(path, { method: init.method ?? "POST", body: file, cache: "no-store" });
+    res = await fetch(path, { method: init.method ?? "POST", headers: init.headers, body: file, cache: "no-store" });
   } catch {
     return { ok: false, status: 0, error: "network" };
   }

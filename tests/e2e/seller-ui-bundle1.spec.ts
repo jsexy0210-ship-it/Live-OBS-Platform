@@ -20,16 +20,20 @@ const size = async (loc: ReturnType<Page["locator"]>) => {
   return { w: Math.round(b.width), h: Math.round(b.height) };
 };
 
-test("상품 목록: 날짜 빠른 버튼 40×64, 일괄 버튼 40×96, 표 안 수정 32×64, 썸네일 64", async ({ page }) => {
+test("상품 목록: 날짜 빠른 버튼 40×64, 선택 작업 상세 40×96, 표 안 수정 32×64, 썸네일 64", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await login(page, "/seller/products");
   await expect(page.getByTestId("product-row").first()).toBeVisible();
   for (const name of ["오늘", "7일", "1개월", "3개월", "전체"]) {
     expect(await size(page.getByRole("button", { name, exact: true }).first()), name).toEqual({ w: 64, h: 40 });
   }
-  for (const name of ["선택 판매 중", "선택 숨김", "선택 삭제"]) {
-    expect(await size(page.getByRole("button", { name })), name).toEqual({ w: 96, h: 40 });
-  }
+  const bulk = page.getByRole("button", { name: "선택 상품 작업 상세", exact: true });
+  await expect(bulk).toBeDisabled();
+  expect(await size(bulk)).toEqual({ w: 96, h: 40 });
+  await page.getByTestId("product-row").first().getByRole("checkbox").check();
+  const operations = page.getByRole("link", { name: "선택 상품 작업 상세", exact: true });
+  expect(await size(operations)).toEqual({ w: 96, h: 40 });
+  await expect(operations).toHaveAttribute("href", /^\/seller\/products\/operations\?ids=/);
   // 도구 줄 Select는 inline 폭 없이 클래스 폭(정렬 150·개수 100)이고 한 줄에 나란히 있다
   expect(await size(page.getByLabel("정렬"))).toEqual({ w: 150, h: 40 });
   expect(await size(page.getByLabel("목록 개수"))).toEqual({ w: 100, h: 40 });
@@ -39,6 +43,12 @@ test("상품 목록: 날짜 빠른 버튼 40×64, 일괄 버튼 40×96, 표 안 
   expect(thumb).toEqual({ w: 64, h: 64 });
   // inline 크기를 쓰지 않는다
   expect(await page.locator(".p-table th[style*='width']").count()).toBe(0);
+  await operations.click();
+  await expect(page).toHaveURL(/\/seller\/products\/operations\?ids=/);
+  await expect(page.getByRole("region", { name: "선택 상품 표" }).getByRole("table")).toBeVisible();
+  for (const name of ["선택 판매 중", "선택 숨김", "선택 삭제"]) {
+    await expect(page.getByRole("button", { name, exact: true })).toBeEnabled();
+  }
 });
 
 test("상품 목록: 검색어·판매 상태·정렬이 주소에 실리고, 상세에 갔다 Back으로 돌아오면 그대로다", async ({ page }) => {
@@ -112,9 +122,12 @@ test("재고 관리: 검색어·재고 조건이 주소에 실리고, 「상품 
   // 표 안 버튼 96×32, 한꺼번에 적기 40×120
   const btns = page.getByTestId("stock-row").first().locator(".c-act .btn");
   for (const b of await btns.all()) expect(await size(b)).toEqual({ w: 96, h: 32 });
+  expect(await page.locator(".stock-table th[style*='width']").count()).toBe(0);
+  // 한꺼번에 적기와 수량 칸은 목록이 아니라 재고 작업 화면에 있다
+  await page.goto("/seller/products/stock/work");
+  await expect(page.getByTestId("stock-row").first()).toBeVisible();
   expect(await size(page.getByRole("button", { name: "한꺼번에 적기" }))).toEqual({ w: 120, h: 40 });
   expect(await size(page.getByLabel("선택한 옵션에 더하거나 뺄 수량"))).toEqual({ w: 80, h: 40 });
-  expect(await page.locator(".stock-table th[style*='width']").count()).toBe(0);
 });
 
 test("재고 관리: 상품 목록에서 들어왔다가 「상품 목록」을 누르면 목록 조건이 그대로 돌아온다", async ({ page }) => {

@@ -26,6 +26,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/find-id/reset": null,
   "seller/find-id/start": null,
   // 승인 대기·반려 신청자의 안내·보완 재제출(AU-005 후속): 로그인 시도로 받은 15분 신청 확인 쿠키(lo_spend)로만 쓴다(파트너스 세션 아님)
+  // 직접 추가한 쇼핑몰 대표자의 첫 비밀번호 설정(초대 링크 토큰으로만 쓴다, 파트너스 세션 아님)
+  "seller/invite/accept": null,
   "seller/pending-application": null,
   "seller/pending-application/license": null,
   "seller/password-reset/complete": null,
@@ -89,6 +91,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/invoices/plan": "ORDER_FOLLOWUP",
   "seller/invoices/print": "ORDER_FOLLOWUP",
   "seller/members": "ORDER_FOLLOWUP",
+  "seller/members/summary": "ORDER_FOLLOWUP",
   "seller/members/[memberId]": "ORDER_FOLLOWUP",
   "seller/reward-balances": "ORDER_FOLLOWUP",
   "seller/reward-ledger": "ORDER_FOLLOWUP",
@@ -137,6 +140,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/reviews/[reviewId]/hide": "STORE_OPERATIONS",
   "seller/reviews/[reviewId]/publish": "STORE_OPERATIONS",
   "seller/reviews/policy": "STORE_OPERATIONS",
+  "seller/reviews/export": "STORE_OPERATIONS",
   "seller/reviews/images/[imageId]": "STORE_OPERATIONS",
   "seller/inquiries": "STORE_OPERATIONS", // 구매자 문의(SA-046·047)
   "seller/inquiries/[inquiryId]": "STORE_OPERATIONS",
@@ -297,6 +301,10 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/me/profile": "OPEN", // 내 정보 조회(로그인한 회원, 회원정보 수정 SH-024)
   "shop/[slug]/me/nickname": "OPEN", // 방송 닉네임 변경(30일에 1번)
   "shop/[slug]/me/password": "OPEN", // 비밀번호 변경(현재 비밀번호 확인)
+  "shop/[slug]/me/phone": "OPEN", // 휴대폰 번호 변경 재인증 마지막 단계(SH-024)
+  "shop/[slug]/me/phone/verification": "OPEN",
+  "shop/[slug]/me/phone/verification/resend": "OPEN",
+  "shop/[slug]/me/phone/verification/confirm": "OPEN",
   "shop/[slug]/orders": "STORE_OPERATIONS", // POST만 막음, GET(내 주문)은 열림
   "shop/[slug]/orders/quote": "STORE_OPERATIONS", // 주문서 견적(읽기 전용)은 shopOpen으로 막음
   "shop/[slug]/order-consent": "STORE_OPERATIONS",
@@ -337,6 +345,7 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/reviews/public-images/[imageId]": "STORE_OPERATIONS",
   "shop/[slug]/profile": "OPEN", // 쇼핑몰 공개 정보(SA-060: 이름·소개·상단 공지·이용안내·운영 상태). 승인된 쇼핑몰만, 안내 화면에도 필요해 잠긴 쇼핑몰에서도 열림
   "shop/[slug]/home": "STORE_OPERATIONS", // 홈 진열(SA-016)
+  "shop/[slug]/home/highlights": "STORE_OPERATIONS", // 홈 이번 주 인기 카드·히어로 옆 카드
   "shop/[slug]/products": "STORE_OPERATIONS", // 구매자 상품 목록(운영 중 쇼핑몰만)
   "shop/[slug]/products/[productId]": "STORE_OPERATIONS", // 구매자 상품 상세
   "shop/[slug]/products/[productId]/reviews": "STORE_OPERATIONS",

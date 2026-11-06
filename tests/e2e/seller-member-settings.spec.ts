@@ -39,6 +39,11 @@ test("쇼핑몰 설정 탭에서 회원 정책으로 들어가면, 동의 철회
   await expect(on).toBeDisabled();
   await expect(page.getByText("회원이 보관 동의를 취소할 수 있는 화면이 준비되면 켤 수 있습니다")).toBeVisible();
   await expect(saveButton(page)).toBeDisabled();
+  // 가입 조건: 구매자 휴대폰 본인확인은 켜고 끌 수 없는 고정 안내(설정 칸 없음)
+  await expect(page.getByText("구매자 휴대폰 본인확인", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("identity-fixed")).toHaveText("필수(고정)");
+  await expect(page.getByText("구매자 가입은 항상 휴대폰 본인확인을 거칩니다 · 끌 수 없습니다")).toBeVisible();
+  await expect(page.getByRole("radiogroup", { name: /본인확인/ })).toHaveCount(0);
   const status = await page.evaluate(async () => {
     const res = await fetch("/api/seller/member-policy", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ rejoinRestrictionEnabled: true, rejoinRestrictionDays: 90 }) });
     return { status: res.status, body: await res.json() };

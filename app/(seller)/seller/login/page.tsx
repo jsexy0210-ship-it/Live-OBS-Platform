@@ -37,6 +37,12 @@ export default function SellerLoginPage() {
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     if (p.get("type") === "staff") setTab("staff");
+    // AU-013 초대 수락 뒤 반환된 쇼핑몰 주소로 대표자 로그인(비밀번호는 직접 입력).
+    const invitedShop = p.get("shopSlug");
+    if (p.get("type") !== "staff" && invitedShop && /^[a-z0-9-]{3,30}$/.test(invitedShop)) {
+      setShopSlug(invitedShop);
+      setNeedShop(true);
+    }
     // 로그인이 풀려 이리로 온 경우(AU-007): 이유를 알려 준다
     if (p.get("reason") === "expired") setNotice({ kind: "info", text: "로그인 시간이 지나 로그아웃되었습니다. 다시 로그인해 주십시오." });
     // 이미 로그인한 채 이 화면을 열면 로그인 화면을 보이지 않고 착지 화면으로 보낸다(MASTER 승인 2026-10-06).

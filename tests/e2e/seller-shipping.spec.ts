@@ -23,6 +23,60 @@ async function shot(page: Page, name: string) {
 
 const post = (page: Page, path: string) => page.waitForResponse((r) => r.request().method() === "POST" && r.url().endsWith(path));
 
+for (const entry of ["선택", "개별"] as const) for (const clear of [false, true]) {
+  test(`배송 검색 ${clear ? "지우기" : "입력"} 직후 ${entry} 상세에 가도 뒤로와 직접 복귀에 조건이 남는다`, async ({ page }) => {
+    const id = "00000000-0000-4000-8000-0000000000a1";
+    const tracking = "OWNED123456";
+    const shipment = { courier: "LOTTE", trackingNumber: tracking, status: "IN_TRANSIT", shippedAt: new Date().toISOString(), deliveredAt: null };
+    const item = { orderId: id, orderNo: 1, createdAt: new Date().toISOString(), buyer: { id: "owned", broadcastNickname: "합성 배송" }, itemSummary: { firstProductName: "합성 상품", otherCount: 0 }, shipment, shippingAddress: { isRemote: false } };
+    const other = { ...item, orderId: "00000000-0000-4000-8000-0000000000b2", orderNo: 2, shipment: { ...shipment, trackingNumber: "OTHER123456" } };
+    const reads: string[] = [];
+    await page.route("**/api/**", async (route) => {
+      expect(route.request().method()).toBe("GET");
+      const url = new URL(route.request().url());
+      if (url.pathname === "/api/seller/me") return route.fulfill({ json: { sellerId: "owned", userId: "owned", isOwner: true, permissions: ["ORDER_SHIPPING"], access: "paid", features: ["STORE_OPERATIONS"], shop: { slug: "owned", name: "합성 상점" }, user: { name: "합성", email: "fixture@example.test" }, trialEndsAt: null } });
+      if (url.pathname === "/api/seller/shipments") {
+        reads.push(url.searchParams.get("q") ?? "");
+        return route.fulfill({ json: { shipments: [item, other].filter((row) => row.shipment.trackingNumber.includes(url.searchParams.get("q") ?? "")), nextCursor: null } });
+      }
+      if (url.pathname === `/api/seller/orders/${id}`) return route.fulfill({ json: { ...item, id, orderNoLabel: "합성 주문 1", status: "PAID" } });
+      return route.fulfill({ json: { items: [], unreadCount: 0 } });
+    });
+    await page.clock.install();
+    await page.goto(`/seller/shipping?tab=in_transit&marker=owned${clear ? `&q=${tracking}` : ""}`);
+    const row = page.getByTestId("shipment-row").filter({ hasText: tracking });
+    await expect(row).toBeVisible();
+    // 검색 debounce를 진행시키지 않고 실제 링크로 이동한다. 고정 대기 없이 유실 반례를 재현한다.
+    await page.clock.pauseAt(new Date(Date.now() + 1000));
+    if (entry === "선택") await row.getByRole("checkbox").check();
+    const q = clear ? "" : tracking;
+    await page.getByLabel("배송 검색").fill(q);
+    const link = entry === "선택" ? page.getByRole("link", { name: "선택 배송 작업 상세 (1)", exact: true }) : row.getByRole("link", { name: "배송 작업 상세", exact: true });
+    const href = await link.getAttribute("href");
+    const returnTo = new URL(href!, page.url()).searchParams.get("returnTo")!;
+    expect(new URL(returnTo, page.url()).searchParams.get("q") ?? "").toBe(q);
+    const detailUrl = new URL(href!, page.url()).href;
+    await link.click();
+    await expect(page.getByRole("region", { name: "배송 처리 상세", exact: true })).toContainText(tracking);
+    await page.getByRole("button", { name: "뒤로", exact: true }).click();
+    const checkReturned = async () => {
+      await expect(page).toHaveURL(new URL(returnTo, page.url()).href);
+      await expect(page.getByLabel("배송 검색")).toHaveValue(q);
+      await expect(page.getByRole("button", { name: "배송 중", exact: true })).toHaveAttribute("aria-pressed", "true");
+      await expect(page.getByTestId("shipment-row")).toHaveCount(clear ? 2 : 1);
+      expect(new URL(page.url()).searchParams.get("marker")).toBe("owned");
+      expect(reads.at(-1)).toBe(q);
+    };
+    await checkReturned();
+    // 새로고침 뒤에는 앱 내 이전 기록이 없으므로 검증된 returnTo로 복귀한다.
+    await page.goto(detailUrl);
+    await page.reload();
+    await expect(page.getByRole("region", { name: "배송 처리 상세", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "뒤로", exact: true }).click();
+    await checkReturned();
+  });
+}
+
 test("대표자: 송장 저장 → 배송 중 → 배송 완료로 옮겨 가고, 잘못된 송장은 그 줄에만 실패를 알린다", async ({ page }) => {
   await page.goto("/seller/login?next=%2Fseller%2Fshipping");
   await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);

@@ -9,6 +9,9 @@ import { PageHead } from "../../../../../../components/admin-ui";
 import Link from "next/link";
 import { ago, formatDate, formatDateTime } from "../../../../../../lib/client/format";
 
+// 대신 보기에서는 바꾸는 버튼을 막고 이유를 알려 준다
+const RO_TITLE = "대신 보기에서는 볼 수만 있습니다";
+
 // SA-052 방송 프로그램에 넣기(방송 화면 꾸미기의 둘째 탭): 방송 화면 주소 발급·재발급과 OBS에 넣는 방법.
 // 주소의 토큰은 서버에 해시로만 남아 지금 쓰는 주소를 다시 보여 줄 수 없다: 발급할 때 이 화면에서 한 번만 보이고,
 // 다시 발급하면 이전 주소는 바로 끊긴다(OBS에 넣은 주소도 바꿔야 한다).
@@ -41,8 +44,9 @@ const urls = (token: string | null) => {
 };
 
 export default function OverlayPage() {
-  const { can } = useSeller();
+  const { can, me } = useSeller();
   const allowed = can("OVERLAY_EDIT");
+  const ro = !!me.readOnly;
   const [issued, setIssued] = useState<Issued | null>(null);
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -266,7 +270,7 @@ export default function OverlayPage() {
                     )}
                   </div>
                   <div className="row">
-                    <button className="btn btn-sm btn-out" type="button" disabled={busy || (info?.live === true && info.issuedAt !== null)} onClick={() => setConfirm(true)}>
+                    <button className="btn btn-sm btn-out" type="button" disabled={busy || ro || (info?.live === true && info.issuedAt !== null)} title={ro ? RO_TITLE : undefined} onClick={() => setConfirm(true)}>
                       {issued || info?.issuedAt ? "재발급" : "주소 만들기"}
                     </button>
                   </div>

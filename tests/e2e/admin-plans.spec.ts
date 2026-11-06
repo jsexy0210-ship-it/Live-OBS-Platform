@@ -90,7 +90,7 @@ test("최고관리자: 가격 변경은 전·후 금액과 30일 안내를 보�
     await open(page, superEmail);
     await row(page, "쇼핑몰 통합").getByRole("link", { name: "상세" }).click();
   await page.getByRole("button", { name: "가격 변경", exact: true }).click();
-    await expect(page.locator("main form")).toContainText("메일·알림톡·파트너스 공지 완료 30일 뒤 첫 결제부터 적용되며, 고지 전에는 기존 요금을 유지합니다.");
+    await expect(page.locator("main form")).toContainText("메일·파트너스 공지(필수) 완료 30일 뒤 첫 결제부터 적용되며, 고지 전에는 기존 요금을 유지합니다.");
     for (const width of [1440, 1024, 390]) {
       await page.setViewportSize({ width, height: 900 });
       const dialog = page.locator("main form");

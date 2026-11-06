@@ -18,7 +18,7 @@ export const identityFailure = (reason: IdentityErrorCode, tone: MessageTone = "
 
 // 용도별 말투: 구매자 가입·파트너스 가입 신청은 해요체, 파트너스 아이디·비밀번호 찾기·직원 본인확인 연결은 합니다체
 export const purposeTone = (purpose: IdentityVerificationPurpose): MessageTone =>
-  purpose === "BUYER_SIGNUP" || purpose === "SELLER_REPRESENTATIVE" ? "friendly" : "formal";
+  purpose === "BUYER_SIGNUP" || purpose === "BUYER_PHONE_CHANGE" || purpose === "SELLER_REPRESENTATIVE" ? "friendly" : "formal";
 
 // 인증번호 다시 보내기·확인 라우트. 본문 { verificationId, code? }. 시작한 브라우저의 쿠키(cookieName)가 있어야 한다.
 // 쇼핑몰(sellerId)은 요청 기록에서 읽고, ownerToken·용도가 맞아야만 쓴다(다른 세션의 요청 id는 없는 것으로 본다).
@@ -42,7 +42,8 @@ export function identityStepRoute(step: "resend" | "confirm", purpose: IdentityV
     if (slug !== undefined) {
       const shop = await prisma.seller.findUnique({ where: { slug }, select: { id: true } });
       if (!shop || shop.id !== v.sellerId) return identityFailure("not_found", tone);
-      if (!(await shopOpen(prisma, shop.id))) {
+      // 구매자 번호 변경은 기존 회원 계정 관리라 운영 상태와 상관없이 쓴다(buyers/phoneChange.ts)
+      if (purpose !== "BUYER_PHONE_CHANGE" && !(await shopOpen(prisma, shop.id))) {
         return NextResponse.json({ error: "shop_unavailable", message: BUYER_SIGNUP_MESSAGES.shop_unavailable }, { status: 402, headers: { "cache-control": "no-store" } });
       }
     }

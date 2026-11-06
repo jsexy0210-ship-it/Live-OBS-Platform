@@ -142,6 +142,8 @@ test("오버레이 전용이 쇼핑몰 기능 주소로 바로 들어오면 안�
   await expect(page).toHaveURL(/\/seller\/overlay$/);
   await expect(page.getByRole("heading", { level: 1, name: "방송 화면 꾸미기", exact: true })).toBeVisible();
   await expect(page.getByTestId("plan-feature-required")).toHaveCount(0);
+  // 끝난 뒤 늦게 도착한 /me 요청이 닫히는 페이지에서 route.fetch를 부르지 않게 가로채기를 걷는다
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
 test("메뉴 정보가 지난 값이어도 서버가 403 plan_feature_required를 주면 안내 화면으로 바꾸고 메뉴를 다시 읽는다", async ({ page }) => {

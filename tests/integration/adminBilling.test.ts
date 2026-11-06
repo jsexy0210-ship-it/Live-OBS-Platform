@@ -87,6 +87,26 @@ describe("구독 현황 GET /api/admin/subscriptions", () => {
     expect(await listAdminSubscriptions(db, ctx, { nextFrom: "2026-13-40" }, { now: NOW })).toEqual({ ok: false });
   });
 
+  it("월 구독 매출: 이번 달(KST) 안에 결제가 확정된(PAID) 청구 합계만, 지난달·대기·실패는 빠진다", async () => {
+    const plans = await seedPlans();
+    const { ctx } = await admin();
+    const a = (await createSeller()).seller;
+    await db.seller.update({ where: { id: a.id }, data: { approvedAt: at(-40), planId: plans.INTEGRATED.id } });
+    const sub = await db.sellerSubscription.create({ data: { sellerId: a.id, planId: plans.INTEGRATED.id, status: "ACTIVE", currentPeriodEnd: at(10), nextChargeAt: at(9), subscribedAt: at(-40) } });
+    let n = 0; // 같은 기간 청구는 하나만 가능하므로 청구마다 기간을 달리한다
+    const pay = (amount: number, status: "PAID" | "FAILED" | "PENDING", paidAt: Date | null) =>
+      db.subscriptionPayment.create({ data: { sellerId: a.id, subscriptionId: sub.id, amount, status, periodStart: at(-100 + ++n * 10), periodEnd: at(-95 + n * 10), createdAt: paidAt ?? at(-1), paidAt } });
+    // NOW = 2026-11-01 00:00Z = 09:00 KST. 이번 달 1일 0시 KST = 2026-10-31T15:00Z
+    await pay(11000, "PAID", new Date("2026-10-31T15:00:00Z")); // 이번 달 시작 정각: 포함
+    await pay(5000, "PAID", new Date("2026-10-31T14:59:59Z")); // 지난달 마지막 순간: 제외
+    await pay(7000, "PAID", at(-0.01)); // 이번 달, 지금 직전: 포함
+    await pay(9000, "FAILED", null);
+    await pay(3000, "PENDING", null);
+    const r = await listAdminSubscriptions(db, ctx, {}, { now: NOW });
+    if (!r.ok) throw new Error("bad");
+    expect(r.monthRevenue).toMatchObject({ month: "2026-11", paidAmount: 18000, paidCount: 2 });
+  });
+
   it("행에 요금제 가격과 최근 결제(가장 최근 청구, 상태 무관)가 나오고, 청구가 없으면 lastPayment는 null", async () => {
     const plans = await seedPlans();
     const { ctx } = await admin();

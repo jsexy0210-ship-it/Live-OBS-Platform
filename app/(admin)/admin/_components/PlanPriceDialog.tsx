@@ -79,7 +79,7 @@ export function PlanPriceDialog({ plan, onClose, onDone, fullPage = false, leave
                 </dd>
               </dl>
             )}
-            <span className="t-c1 c-alt">새 가입자는 바로 적용됩니다. 기존 구독자는 메일·알림톡·파트너스 공지 완료 30일 뒤 첫 결제부터 적용되며, 고지 전에는 기존 요금을 유지합니다.</span>
+            <span className="t-c1 c-alt">새 가입자는 바로 적용됩니다. 기존 구독자는 메일·파트너스 공지(필수) 완료 30일 뒤 첫 결제부터 적용되며, 고지 전에는 기존 요금을 유지합니다.</span>
             {confirming && (
               <span className="err" role="alert">
                 {plan.name}의 가격을 위 금액으로 바꾸시겠습니까?
