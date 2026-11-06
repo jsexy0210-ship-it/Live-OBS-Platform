@@ -378,6 +378,9 @@ body {
 .p-w-chk {
   width: 36px;
 }
+.p-w-no {
+  width: 64px;
+}
 .p-w-img {
   width: 96px;
 }
@@ -389,7 +392,7 @@ body {
   width: 104px;
 }
 .p-w-act {
-  width: 96px; /* 표 안 버튼 64 + 좌우 안쪽 여백 */
+  width: 190px; /* 표 안 버튼 2개(수정 · 미리보기) + 사이 8 + 좌우 안쪽 여백(정본 SA-011 관리 열 190) */
 }
 .p-w-price {
   width: 120px;
