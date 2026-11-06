@@ -110,6 +110,12 @@ const kstDate = (offsetDays = 0, offsetMonths = 0) => {
 const optionSummary = (p: Product) => (p.options.length === 0 ? "선택 항목 없음" : p.options.map((o) => o.name).join(" · "));
 const isShown = (p: Product) => p.status === "ON_SALE" || p.status === "SOLD_OUT";
 
+// 번호: 상품 코드(P + 7자리 순번)의 순번. 등록 순서대로 늘어나 목록 정렬과 관계없이 같은 상품은 같은 번호다.
+const productNo = (code: string | null | undefined) => {
+  const n = Number((code ?? "").replace(/\D/g, ""));
+  return code && Number.isFinite(n) ? n : "-";
+};
+
 export default function ProductListPage() {
   const { can } = useSeller();
   // 적용한 조건·정렬·개수는 주소(쿼리)가 기준이다. 상세에 갔다 Back으로 돌아와도 그대로 복원된다(IA Back 규칙 3항)
@@ -444,6 +450,7 @@ export default function ProductListPage() {
                           <input type="checkbox" aria-label="전체 선택" checked={allChecked} onChange={() => setSelected(allChecked ? new Set() : new Set(items.map((p) => p.id)))} />
                         </th>
                       )}
+                      <th className="p-w-no">번호</th>
                       <th className="p-w-img">이미지</th>
                       <th>상품명 · 코드</th>
                       <th className="p-w-price">판매가</th>
@@ -466,6 +473,7 @@ export default function ProductListPage() {
                               <input type="checkbox" aria-label={`${p.name} 선택`} checked={selected.has(p.id)} onChange={() => toggle(p.id)} />
                             </td>
                           )}
+                          <td className="num" data-testid="product-no">{productNo(p.code)}</td>
                           <td>
                             <div className="thumb" title={p.thumbnailUrl ? "대표 이미지" : "이미지 없음"}>
                               {p.thumbnailUrl ? <img src={p.thumbnailUrl} alt="" data-testid="product-thumb" /> : <NoImage />}
@@ -491,9 +499,14 @@ export default function ProductListPage() {
                             {formatDateTimeParts(p.createdAt)?.time}</td>
                           {canManage && (
                             <td>
-                              <Link className="btn btn-sm btn-out btn-level-table" href={`/seller/products/${p.id}/operations?${new URLSearchParams({ returnTo })}`}>
-                                수정
-                              </Link>
+                              <div className="row" style={{ gap: 8, justifyContent: "center", flexWrap: "nowrap" }}>
+                                <Link className="btn btn-sm btn-out btn-level-table" href={`/seller/products/${p.id}/operations?${new URLSearchParams({ returnTo })}`}>
+                                  수정
+                                </Link>
+                                <Link className="btn btn-sm btn-out btn-level-table" href={`/seller/products/${p.id}/preview`}>
+                                  미리보기
+                                </Link>
+                              </div>
                             </td>
                           )}
                         </tr>

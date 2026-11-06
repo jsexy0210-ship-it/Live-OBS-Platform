@@ -36,7 +36,7 @@ const nameQuery = async (page: Page, text: string) => {
 
 test("정렬: 판매가 낮은순·높은순으로 바로 바뀌고, 판매량 열이 보인다", async ({ page }) => {
   await open(page);
-  const prices = async () => (await rows(page).locator("td:nth-child(4)").allInnerTexts()).map((t) => Number(t.replace(/[^0-9]/g, "")));
+  const prices = async () => (await rows(page).locator("td:nth-child(5)").allInnerTexts()).map((t) => Number(t.replace(/[^0-9]/g, "")));
   await Promise.all([page.waitForResponse((r) => r.url().includes("sort=price_asc")), page.getByLabel("정렬").selectOption({ label: "판매가 낮은순" })]);
   await expect.poll(async () => {
     const p = await prices();
@@ -71,13 +71,13 @@ test("검색 조건: 상품 코드·노출 상태·재고 차감·등록일로 �
   await search(page);
   await expect(rows(page).filter({ hasText: b })).toHaveCount(1);
   await expect(rows(page).filter({ hasText: a })).toHaveCount(0);
-  await expect(rows(page).locator("td:nth-child(7)").first()).toHaveText("안 보임");
+  await expect(rows(page).locator("td:nth-child(8)").first()).toHaveText("안 보임");
   await box(page).getByRole("radiogroup", { name: "쇼핑몰 노출" }).getByRole("radio", { name: "쇼핑몰에 보임", exact: true }).check();
   await search(page);
   await expect(rows(page).filter({ hasText: a })).toHaveCount(1);
   await expect(rows(page).filter({ hasText: b })).toHaveCount(0);
   // 상품 코드로 찾기: a의 코드(P0000012 꼴)
-  const code = (await rows(page).filter({ hasText: a }).locator("td:nth-child(3) .t-c1").innerText()).split(" · ")[0]!;
+  const code = (await rows(page).filter({ hasText: a }).locator("td:nth-child(4) .t-c1").innerText()).split(" · ")[0]!;
   expect(code).toMatch(/^P\d{7}$/);
   await box(page).getByRole("button", { name: "초기화" }).click();
   await box(page).getByLabel("검색 기준").selectOption("code");
@@ -188,4 +188,17 @@ test("선택 일괄 처리: 숨김으로 바꾸고 되돌리고, 선택 삭제�
   await returnToList();
   await expect(mine).toHaveCount(1);
   await expect(mine.first()).toContainText(names[2]!);
+});
+
+test("번호 열은 상품 코드의 순번이고, 관리 열의 미리보기는 상품 미리보기로 간다", async ({ page }) => {
+  await open(page);
+  await expect(page.locator("th", { hasText: /^번호$/ })).toBeVisible();
+  const first = rows(page).first();
+  const code = (await first.locator(".c-alt").first().innerText()).split(" · ")[0]!;
+  expect(code).toMatch(/^P\d{7}$/);
+  await expect(first.getByTestId("product-no")).toHaveText(String(Number(code.slice(1))));
+  const preview = first.getByRole("link", { name: "미리보기", exact: true });
+  await expect(preview).toHaveAttribute("href", /^\/seller\/products\/[0-9a-f-]{36}\/preview$/);
+  await preview.click();
+  await expect(page).toHaveURL(/\/seller\/products\/[0-9a-f-]{36}\/preview$/);
 });
