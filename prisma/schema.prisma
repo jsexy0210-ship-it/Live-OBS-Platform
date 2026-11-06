@@ -658,6 +658,10 @@ model Product {
   eventStartsAt      DateTime?          @db.Timestamptz(3)
   eventEndsAt        DateTime?          @db.Timestamptz(3)
   sortOrder          Int                @default(0)
+  // 방송 주문대기 대상(SA-012 「노출 · 방송」, 2026-11-06 MASTER): false면 결제 때 방송 큐에 올리지 않고 일반 배송 주문으로 처리한다(용품 등). 기존 상품은 모두 true.
+  queueEligible      Boolean            @default(true)
+  // 오픈 타이머(초): null이면 마스터 관리자 기본값(플랫폼 정책 openTimerSeconds, 기본 60초), 아니면 90 또는 120(DB CHECK). 결제 때 큐 항목의 타이머로 복사한다.
+  openTimerSeconds   Int?
   // 검색 태그(상품 이름 밖 키워드, 최대 10개·각 20자). 쇼핑몰 검색과 자동완성이 이름과 함께 본다.
   searchTags         String[]           @default([])
   // 상품 코드 번호(카페24식 자동 상품 코드, MASTER 결정 2026-10-04). 판매자별 1부터 순번, 화면·API는 「P」 + 7자리(P0000001).

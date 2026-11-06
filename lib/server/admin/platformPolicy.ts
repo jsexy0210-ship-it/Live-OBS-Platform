@@ -20,7 +20,7 @@ export const POLICY_DEFS = [
   D({ key: "lockToCloseDays", group: "billing", kind: "int", default: 30, min: 1, max: 365, unit: "days", applied: true }),
   D({ key: "dataRetentionDays", group: "billing", kind: "enum", default: 90, options: [90, 180], unit: "days", applied: false }),
   D({ key: "priceNoticeDays", group: "billing", kind: "int", default: 30, min: 30, max: 365, unit: "days", applied: false }), // 30일 미만으로 줄일 수 없음
-  D({ key: "openTimerSeconds", group: "broadcast", kind: "int", default: 60, min: 5, max: 3600, unit: "seconds", applied: false }),
+  D({ key: "openTimerSeconds", group: "broadcast", kind: "int", default: 60, min: 5, max: 3600, unit: "seconds", applied: true }), // 결제 때 큐 항목의 오픈 타이머 기본값(상품에 90·120초가 없을 때, queue/service)
   D({ key: "overlayReconnectMax", group: "broadcast", kind: "int", default: 10, min: 1, max: 100, unit: "times", applied: false }),
   D({ key: "hitSeconds", group: "broadcast", kind: "int", default: 6, min: 1, max: 60, unit: "seconds", applied: false }),
   D({ key: "carryOverAlways", group: "broadcast", kind: "bool", default: 0, unit: "", applied: false }), // 0 파트너스 선택(기본 이월) · 1 항상 이월
