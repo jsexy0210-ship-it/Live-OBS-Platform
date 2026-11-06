@@ -843,16 +843,14 @@ test("다른 창이 만든 같은 계정이 있을 때 응답을 놓쳐도 「�
   await expect(row(page, s.email)).toHaveCount(0);
 
   await addStaff(page, s);
-  await page.route(
-    "**/api/seller/staff",
-    async (route) => {
-      if (route.request().method() !== "POST") return route.continue();
-      // 서버는 email_taken으로 답하지만 응답을 놓친다
-      await route.fetch();
-      return route.abort("connectionreset");
-    },
-    { times: 1 },
-  );
+  let lost = false; // 첫 POST만 끊는다. times:1로 가로채기를 해제하면 그 순간 도착한 목록 다시 읽기가 멈출 수 있어 끝까지 걸어 둔다
+  await page.route("**/api/seller/staff", async (route) => {
+    if (route.request().method() !== "POST" || lost) return route.continue();
+    lost = true;
+    // 서버는 email_taken으로 답하지만 응답을 놓친다
+    await route.fetch();
+    return route.abort("connectionreset");
+  });
   await clickCreate(page);
   await expect(page.getByTestId("sa-unclear")).toContainText("계정이 만들어졌는지 확인하지 못했습니다. 목록에서 확인하고, 있으면 비밀번호를 바꿔 주십시오");
   await expect(row(page, s.email)).toBeVisible();
