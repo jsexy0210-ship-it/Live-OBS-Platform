@@ -105,6 +105,12 @@
   min-width: 0;
   padding-inline: 4px;
 }
+/* 카드 부품 규칙(디자인 (8) 판정 · lop.css .sh24 .btn.k): 카드의 작은 「바로 구매」는 검정, 「담기」는 흰 테두리. 상품 상세·주문서 버튼은 브랜드 색 그대로 */
+.wl-actions .btn:not(.btn-out):not(:disabled) {
+  background: var(--wds-label-normal);
+  color: #fff;
+  box-shadow: none;
+}
 /* 보드 SH-034-IA: 품절 카드는 회색 「품절」 버튼 1개 */
 .wl-actions.is-out {
   grid-template-columns: minmax(0, 1fr);
