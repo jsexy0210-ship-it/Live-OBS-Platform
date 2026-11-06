@@ -11,6 +11,7 @@ import { adminApi } from "../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
 import { DISPLAY_STATUS, SELLER_STATUS, SUBSCRIPTION_STATUS, day, dayTime, text, type SellerDetail, type SellerListRow, type SellerStatus } from "../../../_components/partners";
 import { PartnerInfoTab, PartnerOrdersTab, PartnerShopTab, PartnerSubscriptionTab } from "../../../_components/PartnerDetailTabs";
+import { DirectCreatedPanel } from "../../../_components/DirectCreatedPanel";
 import { PartnerRewards } from "../../../_components/PartnerRewards";
 import { MessageBalanceSection } from "../../../_components/MessageBalanceSection";
 import { PARTNER_TABS, PartnerActivity, PartnerBroadcasts, PartnerNotes, PartnerPg, type PartnerTab } from "../../../_components/PartnerTabs";
@@ -196,6 +197,7 @@ function PartnerDetail() {
                 )}
               </div>
             </section>
+            {s.identityPending && <DirectCreatedPanel seller={s} canManage={adminCan(me.role, "system.manage")} onChanged={() => void load()} />}
             {tab === "broadcasts" && <PartnerBroadcasts sellerId={s.id} />}
             {tab === "notes" && <PartnerNotes sellerId={s.id} />}
             {tab === "pg" && <PartnerPg sellerId={s.id} slug={s.slug} />}
