@@ -100,7 +100,7 @@ export async function getMemberGrades(db: PrismaClient, ctx: TenantContext, now 
     nextRunAt: nextRunAt(cadence, now),
     recentNextCursor: nextGradeCursor(history),
     lockedNextCursor: nextGradeCursor(locked),
-    recent: history.slice(0, 10).map((h) => ({ id: h.id, nickname: h.buyerMember.broadcastNickname, fromName: h.fromName, toName: h.toName, reason: h.reason, amount: h.amount, createdAt: h.createdAt })),
+    recent: history.slice(0, 10).map((h) => ({ id: h.id, memberId: h.buyerMemberId, nickname: h.buyerMember.broadcastNickname, fromName: h.fromName, toName: h.toName, reason: h.reason, amount: h.amount, createdAt: h.createdAt })),
     locked: locked.slice(0, 10).map((l) => ({ memberId: l.buyerMember.id, nickname: l.buyerMember.broadcastNickname, gradeId: l.buyerMember.gradeId, until: l.until, reason: l.reason })),
   };
 }

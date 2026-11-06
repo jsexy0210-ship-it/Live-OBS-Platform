@@ -31,7 +31,7 @@ type Grade = {
   promotionCouponId: string | null;
 };
 type Benefit = { id: string; shippingBenefit: ShippingBenefit; shippingDiscount: string; promotionCouponId: string };
-type Change = { id: string; memberId: string; nickname: string; fromName: string; toName: string; reason: string; amount: number | null; createdAt: string };
+type Change = { id: string; memberId: string; nickname: string; fromName: string; toName: string; reason: "AUTO_UP" | "AUTO_DOWN" | "MANUAL" | "GRADE_REMOVED"; amount: number | null; createdAt: string };
 type ListKey = "recent" | "locked" | "changes";
 type History = { page: number; cursors: (string | undefined)[] };
 const firstPage = (): History => ({ page: 1, cursors: [undefined] });
@@ -51,7 +51,7 @@ type Data = {
   lockedCount: number;
   lastRun: { key: string; promoted: number; demoted: number; ranAt: string } | null;
   nextRunAt: string;
-  recent: { id: string; nickname: string; fromName: string; toName: string; reason: "AUTO_UP" | "AUTO_DOWN" | "MANUAL" | "GRADE_REMOVED"; amount: number | null; createdAt: string }[];
+  recent: { id: string; memberId: string; nickname: string; fromName: string; toName: string; reason: "AUTO_UP" | "AUTO_DOWN" | "MANUAL" | "GRADE_REMOVED"; amount: number | null; createdAt: string }[];
   locked: { memberId: string; nickname: string; gradeId: string; until: string | null; reason: string | null }[];
 };
 type Found = { id: string; broadcastNickname: string; grade: { id: string; displayName: string } };
@@ -270,12 +270,19 @@ export default function MemberGradesPage() {
                 <span className="t-l2 c-alt">지난 재산정{data.lastRun ? ` (${data.lastRun.key})` : ""}</span>
                 {data.lastRun ? (
                   <>
-                    <button className="mg-link num" type="button" onClick={() => void showChanges("up")}>
-                      승급 {data.lastRun.promoted}
-                    </button>
-                    <button className="mg-link mg-link-sub t-c1 num" type="button" onClick={() => void showChanges("down")}>
-                      강등 {data.lastRun.demoted}
-                    </button>
+                    <b className="num">승급 {data.lastRun.promoted}</b>
+                    <span className="t-c1 c-alt num">강등 {data.lastRun.demoted}</span>
+                    <span className="row" style={{ gap: 4 }}>
+                      <button className="mg-link t-c1" type="button" onClick={() => void showChanges("up")}>
+                        승급 회원 보기
+                      </button>
+                      <span className="t-c1 c-alt" aria-hidden="true">
+                        ·
+                      </span>
+                      <button className="mg-link t-c1" type="button" onClick={() => void showChanges("down")}>
+                        강등 회원 보기
+                      </button>
+                    </span>
                   </>
                 ) : (
                   <b className="num">없음</b>
@@ -352,6 +359,24 @@ export default function MemberGradesPage() {
                 <tbody>
                   <tr>
                     <th scope="row">
+                      <span id="mg-auto-label">자동 재산정</span>
+                    </th>
+                    <td colSpan={3}>
+                      <div className="au-ft-v">
+                        <div className="seg" role="radiogroup" aria-labelledby="mg-auto-label">
+                          <button type="button" role="radio" aria-checked={auto} className={auto ? "on" : ""} disabled={!canEdit} onClick={() => setAuto(true)}>
+                            켬
+                          </button>
+                          <button type="button" role="radio" aria-checked={!auto} className={!auto ? "on" : ""} disabled={!canEdit} onClick={() => setAuto(false)}>
+                            끔
+                          </button>
+                        </div>
+                        <span className="help">끄면 요약의 「다음 재산정」이 「꺼짐」으로 보이고 「지금 재산정」만 할 수 있습니다 · 켜거나 주기를 바꾼 날은 이미 재산정한 것으로 보고 다음 주기부터</span>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">
                       <label htmlFor="mg-window" className="req">
                         기준 금액
                       </label>
@@ -400,15 +425,8 @@ export default function MemberGradesPage() {
                         </select>
                       </div>
                     </td>
-                    <th scope="row">
-                      <span id="mg-auto-label">자동 재산정</span>
-                    </th>
-                    <td>
-                      <div className="au-ft-v">
-                        <button className={`sw${auto ? " on" : ""}`} type="button" role="switch" aria-checked={auto} aria-labelledby="mg-auto-label" disabled={!canEdit} onClick={() => setAuto(!auto)} />
-                      </div>
-                      <p className="help au-ft-help">끄면 주기가 와도 재산정하지 않습니다 · 고정한 회원은 제외</p>
-                    </td>
+                    <td />
+                    <td />
                   </tr>
                   <tr>
                     <th scope="row">알림</th>
@@ -449,13 +467,15 @@ export default function MemberGradesPage() {
               )}
             </section>
 
-            {canEdit && <MemberAdjust data={data} pager={listPager("locked", data.lockedNextCursor)} />}
+            {canEdit && <MemberAdjust data={data} pager={listPager("recent", data.recentNextCursor)} page1={history.recent.page === 1} />}
 
             {changes && (
-              <section className="card" aria-label={changes.kind === "up" ? "승급 회원" : "강등 회원"} data-testid="grade-changes">
-                <div className="row between" style={{ padding: "12px 16px" }}>
-                  <span className="t-hl2">{changes.kind === "up" ? "승급 회원" : "강등 회원"} 현재 {changes.rows.length}명</span>
-                  <button className="btn btn-sm btn-text" type="button" onClick={() => setChanges(null)}>
+              <section className="mg-sec" aria-label={changes.kind === "up" ? "승급 회원" : "강등 회원"} data-testid="grade-changes">
+                <div className="mg-sec-h">
+                  <h2 className="t-hl1">
+                    {changes.kind === "up" ? "승급 회원" : "강등 회원"} <span className="t-l2 c-alt fw5">현재 {changes.rows.length}명</span>
+                  </h2>
+                  <button className="btn btn-sm btn-out" type="button" onClick={() => setChanges(null)}>
                     닫기
                   </button>
                 </div>
@@ -464,45 +484,35 @@ export default function MemberGradesPage() {
                     <span className="t">해당하는 회원이 없습니다</span>
                   </div>
                 ) : (
-                  changes.rows.map((h) => (
-                    <div key={h.id} className="mg-log" data-testid="grade-change-row">
-                      <span>
-                        {h.nickname} · {h.fromName} → {h.toName}
-                      </span>
-                      <span className="t-c1 c-alt num">{kstText(h.createdAt)}</span>
-                    </div>
-                  ))
+                  <ListTable aria-label="변동 회원 표">
+                    <table className="tbl">
+                      <thead>
+                        <tr>
+                          <th>회원</th>
+                          <th>이전 → 지금 등급</th>
+                          <th>시각</th>
+                          <th>사유</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {changes.rows.map((h) => (
+                          <tr key={h.id} data-testid="grade-change-row">
+                            <td>{h.nickname}</td>
+                            <td>
+                              {h.fromName} → {h.toName}
+                            </td>
+                            <td className="num">{kstText(h.createdAt)}</td>
+                            <td>{REASON[h.reason]}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </ListTable>
                 )}
                 {listPager("changes", changes.nextCursor)}
               </section>
             )}
 
-            <section className="card" aria-label="최근 변경">
-              <div style={{ padding: "12px 16px" }}>
-                <span className="t-hl2">최근 변경</span>
-              </div>
-              {data.recent.length === 0 ? (
-                <div className="st" style={{ boxShadow: "none" }}>
-                  <span className="t">등급 변경 기록이 없습니다</span>
-                </div>
-              ) : (
-                data.recent.map((h) => (
-                  <div key={h.id} className="mg-log" data-testid="grade-log">
-                    <span className="col" style={{ gap: 2 }}>
-                      <span>
-                        {h.nickname} · {h.fromName} → {h.toName}
-                      </span>
-                      <span className="t-c1 c-alt">
-                        {REASON[h.reason]}
-                        {h.amount !== null ? ` · ${windowText(data.windowMonths)} ${won(h.amount)}` : ""}
-                      </span>
-                    </span>
-                    <span className="t-c1 c-alt num">{kstText(h.createdAt)}</span>
-                  </div>
-                ))
-              )}
-              {listPager("recent", data.recentNextCursor)}
-            </section>
           </>
         )}
       </main>
@@ -669,7 +679,7 @@ export default function MemberGradesPage() {
 
 // 수동 조정: 고정한 회원(또는 검색한 회원)을 표로 보고, 등급 조정은 기존 회원 상세의 조정 영역에서 한다.
 // 최근 N개월 구매 금액은 서버가 회원별로 주지 않아 「—」로 둔다(서버 필요).
-function MemberAdjust({ data, pager }: { data: Data; pager: React.ReactNode }) {
+function MemberAdjust({ data, pager, page1 }: { data: Data; pager: React.ReactNode; page1: boolean }) {
   const [u, setU] = useUrlState({ memberQ: "", memberSearch: "" });
   const params = useSearchParams().toString();
   const writeUrl = useRef(setU);
@@ -702,10 +712,21 @@ function MemberAdjust({ data, pager }: { data: Data; pager: React.ReactNode }) {
   }
   const returnTo = `/seller/member-grades${returnParams.size ? `?${returnParams}` : ""}`;
   const gradeName = (id: string) => data.grades.find((g) => g.id === id)?.displayName ?? "—";
-  const lockText = (l: Data["locked"][number] | undefined) => (l ? `${l.until ? `${kstDay(new Date(new Date(l.until).getTime() - 1).toISOString())}까지 고정` : "직접 풀 때까지 고정"}${l.reason ? ` · ${l.reason}` : ""}` : "—");
-  const rows = found
-    ? found.rows.map((m) => ({ id: m.id, nickname: m.broadcastNickname, gradeId: m.grade.id, lock: data.locked.find((l) => l.memberId === m.id) }))
-    : data.locked.map((l) => ({ id: l.memberId, nickname: l.nickname, gradeId: l.gradeId, lock: l }));
+  const lockText = (l: Data["locked"][number] | undefined) => (l ? `${l.until ? `${kstDay(new Date(new Date(l.until).getTime() - 1).toISOString())}까지 고정` : "직접 풀 때까지 고정"}${l.reason ? ` · ${l.reason}` : ""}` : "");
+  type Row = { key: string; memberId: string; nickname: string; grade: string; amount: number | null; adjust: string; sub?: string; period: string };
+  // 기본 행은 최근 변경(생성 시각 최신순 10개, 쪽 이동)이고 첫 쪽에는 그 밖에 고정한 회원이 이어진다. 검색하면 그 회원만 보인다.
+  const rows: Row[] = found
+    ? found.rows.map((m) => {
+        const lock = data.locked.find((l) => l.memberId === m.id);
+        return { key: m.id, memberId: m.id, nickname: m.broadcastNickname, grade: m.grade.displayName, amount: null, adjust: `${m.grade.displayName} (${lock ? "수동" : "자동"})`, period: lockText(lock) || "—" };
+      })
+    : [
+        ...data.recent.map((h) => {
+          const lock = data.locked.find((l) => l.memberId === h.memberId);
+          return { key: h.id, memberId: h.memberId, nickname: h.nickname, grade: h.toName, amount: h.amount, adjust: `${h.toName} (${lock || h.reason === "MANUAL" ? "수동" : "자동"})`, sub: `${h.fromName} → ${h.toName} · ${REASON[h.reason]}`, period: lockText(lock) || kstText(h.createdAt) };
+        }),
+        ...(page1 ? data.locked.filter((l) => !data.recent.some((h) => h.memberId === l.memberId)).map((l) => ({ key: `lock-${l.memberId}`, memberId: l.memberId, nickname: l.nickname, grade: gradeName(l.gradeId), amount: null as number | null, adjust: `${gradeName(l.gradeId)} (수동)`, period: lockText(l) })) : []),
+      ];
   return (
     <section className="mg-sec" aria-label="회원 등급 조정">
       <div className="mg-sec-h">
@@ -717,7 +738,7 @@ function MemberAdjust({ data, pager }: { data: Data; pager: React.ReactNode }) {
       </form>
       {err && <div className="msg msg-neg" role="alert"><span>{err}</span></div>}
       {rows.length === 0 ? (
-        <div className="st" style={{ boxShadow: "none" }}><span className="t">{found ? "찾는 회원이 없습니다" : "고정한 회원이 없습니다"}</span></div>
+        <div className="st" style={{ boxShadow: "none" }}><span className="t">{found ? "찾는 회원이 없습니다" : "등급 변경 기록이 없습니다"}</span></div>
       ) : (
         <ListTable aria-label="수동 조정 회원 표">
           <table className="tbl">
@@ -726,12 +747,18 @@ function MemberAdjust({ data, pager }: { data: Data; pager: React.ReactNode }) {
             </thead>
             <tbody>
               {rows.map((m) => (
-                <tr key={m.id} data-testid={m.lock ? "grade-locked-row" : "adjust-row"}>
+                <tr key={m.key} data-testid={data.locked.some((l) => l.memberId === m.memberId) ? "grade-locked-row" : "adjust-row"}>
                   <td>{m.nickname}</td>
-                  <td>{gradeName(m.gradeId)}</td>
-                  <td className="num">—</td>
-                  <td><Link className="btn btn-sm btn-out" href={`/seller/members/${m.id}?${new URLSearchParams({ returnTo })}#member-grade-adjust`}>회원 상세</Link></td>
-                  <td className="col-text">{lockText(m.lock)}</td>
+                  <td>{m.grade}</td>
+                  <td className="num">{m.amount === null ? "—" : won(m.amount)}</td>
+                  <td>
+                    <span className="col" style={{ gap: 2 }}>
+                      <span>{m.adjust}</span>
+                      {m.sub && <span className="t-c1 c-alt">{m.sub}</span>}
+                      <Link className="btn btn-sm btn-out" href={`/seller/members/${m.memberId}?${new URLSearchParams({ returnTo })}#member-grade-adjust`}>회원 상세</Link>
+                    </span>
+                  </td>
+                  <td className="col-text">{m.period}</td>
                 </tr>
               ))}
             </tbody>

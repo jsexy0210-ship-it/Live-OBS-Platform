@@ -39,7 +39,7 @@ test("대표자: 기준 금액 저장 → 자동 재산정 켜기 검사 → 등
   await expect(nextGrade).toBeChecked();
 
   // 자동 재산정을 켜면 기준 금액이 순서대로 커야 한다(모두 0원이면 저장 거부)
-  await page.getByRole("switch", { name: "자동 재산정" }).click();
+  await page.getByRole("radiogroup", { name: "자동 재산정" }).getByRole("radio", { name: "켬", exact: true }).click();
   await save.click();
   await expect(page.locator(".msg-neg")).toContainText("높은 등급일수록 커야 합니다");
 
@@ -55,7 +55,7 @@ test("대표자: 기준 금액 저장 → 자동 재산정 켜기 검사 → 등
     await expect(page.getByText("등급 설정을 저장했습니다")).toBeVisible();
     await expect(dialog).toHaveCount(0);
   }
-  await page.getByRole("switch", { name: "자동 재산정" }).click();
+  await page.getByRole("radiogroup", { name: "자동 재산정" }).getByRole("radio", { name: "켬", exact: true }).click();
   await promotion.check();
   await demotion.check();
   await nextGrade.uncheck();
@@ -64,7 +64,7 @@ test("대표자: 기준 금액 저장 → 자동 재산정 켜기 검사 → 등
   expect((await saved).postDataJSON()).toMatchObject({ notifyPromotion: true, notifyDemotion: true, showNextGrade: false });
   await expect(page.getByText("등급 설정을 저장했습니다")).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("switch", { name: "자동 재산정" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("radiogroup", { name: "자동 재산정" }).getByRole("radio", { name: "켬", exact: true })).toHaveAttribute("aria-checked", "true");
   await expect(promotion).toBeChecked();
   await expect(demotion).toBeChecked();
   await expect(nextGrade).not.toBeChecked();
@@ -128,6 +128,14 @@ test("대표자: 기준 금액 저장 → 자동 재산정 켜기 검사 → 등
   await expect(recalc).toContainText("실제 알림은 발송하지 않습니다");
   await recalc.getByRole("button", { name: "재산정" }).click();
   await expect(page.getByText(/재산정 완료 · 승급 \d+명 · 강등 \d+명/)).toBeVisible();
+  // 요약 칸의 「승급 회원 보기」는 변동 회원 표(회원 · 이전 → 지금 등급 · 시각 · 사유)를 열고 닫는다
+  await page.getByRole("button", { name: "승급 회원 보기" }).click();
+  const changed = page.getByRole("region", { name: "승급 회원" });
+  await expect(changed).toContainText(/승급 회원\s*현재 \d+명/);
+  // 변동 회원이 있으면 표(회원 · 이전 → 지금 등급 · 시각 · 사유), 없으면 안내만 보인다
+  await expect(changed.getByRole("columnheader", { name: "이전 → 지금 등급" }).or(changed.getByText("해당하는 회원이 없습니다"))).toBeVisible();
+  await changed.getByRole("button", { name: "닫기" }).click();
+  await expect(changed).toHaveCount(0);
 
   // 회원 직접 조정: 검색 결과 표에서 회원 상세로 가 고정하면 수동 조정 표에 기간 · 사유와 함께 나온다
   await page.getByLabel("회원 닉네임 검색").fill("");
@@ -161,7 +169,7 @@ test("대표자: 기준 금액 저장 → 자동 재산정 켜기 검사 → 등
   const manual = page.getByRole("region", { name: "회원 등급 조정" });
   await expect(manual).toContainText(nick);
   await expect(manual).toContainText("까지 고정 · 방송 단골");
-  await expect(page.getByTestId("grade-log").filter({ hasText: `${nick} · ` }).first()).toContainText("직접 조정");
+  await expect(manual.getByTestId("grade-locked-row").filter({ hasText: nick }).first()).toContainText("(수동)");
 });
 
 test("직원: 회원 · 적립금 권한이 없으면 등급 메뉴가 보이지 않는다", async ({ page }) => {
