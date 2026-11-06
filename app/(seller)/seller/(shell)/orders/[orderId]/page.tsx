@@ -9,7 +9,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import RefundModal from "../../../../../../components/seller/RefundModal";
 import { OrderMemo, PrepareShipping } from "../../../../../../components/seller/OrderWork";
 import { PageHead } from "../../../../../../components/admin-ui";
-import { Topbar } from "../../../../../../components/seller/SellerShell";
+import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { SmartBackButton } from "../../../../../../components/seller/SmartBackButton";
 import { LoadingRows, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
@@ -40,7 +40,7 @@ const NOTI_KIND: Record<string, string> = {
   "order.delivered": "배송 완료 메일",
   "order.refund": "환불 안내 메일",
 };
-const NOTI_STATUS = { PENDING: "대기", SENT: "발송 완료", FAILED: "발송 실패" } as const;
+const NOTI_STATUS: Record<string, string> = { PENDING: "대기", SENT: "발송 완료", FAILED: "발송 실패", SKIPPED_BALANCE: "보내지 않음 · 충전금 부족", SKIPPED_PLATFORM_LIMIT: "보내지 않음 · 월 제공량 초과" };
 
 function OrderDetailContent() {
   const query = useSearchParams();
@@ -48,6 +48,7 @@ function OrderDetailContent() {
   const listHref = safeReturnTo?.split("?")[0] === "/seller/orders" ? safeReturnTo : "/seller/orders";
   const smartBack = useSmartBack(listHref);
   const router = useRouter();
+  const { can } = useSeller();
   const back = useCallback(() => safeReturnTo?.split("?")[0] === "/seller/orders" ? router.replace(listHref) : smartBack(), [safeReturnTo, listHref, router, smartBack]);
   const backHandler = useRef<(() => Promise<boolean>) | null>(null);
   const { orderId } = useParams<{ orderId: string }>();
@@ -213,7 +214,7 @@ function OrderDetailContent() {
               {o.items.map((i) => (
                 <tr key={i.id}>
                   <td>{i.imageUrl ? <img className="ord-thumb" src={i.imageUrl} alt="" /> : <span className="ord-thumb ord-thumb-none" />}</td>
-                  <td className="col-text">{i.productId ? <Link className="ord-link" href={`/seller/products/${i.productId}`}>{i.productNameSnapshot}</Link> : i.productNameSnapshot}</td>
+                  <td className="col-text">{i.productId && can("PRODUCT_MANAGE") ? <Link className="ord-link" href={`/seller/products/${i.productId}`}>{i.productNameSnapshot}</Link> : i.productNameSnapshot}</td>
                   <td>{i.optionNameSnapshot}</td>
                   <td className="num">{i.quantity}</td>
                   <td className="num" style={{ textAlign: "right" }}>{won(i.unitPrice)}</td>
@@ -296,9 +297,13 @@ function OrderDetailContent() {
             <tr>
               <th>현금영수증 · 세금계산서</th>
               <td>
-                <Link className="btn btn-sm btn-out" href="/seller/orders/receipts">
-                  발행 관리
-                </Link>
+                {can("RECEIPT_TAX") ? (
+                  <Link className="btn btn-sm btn-out" href="/seller/orders/receipts">
+                    발행 관리
+                  </Link>
+                ) : (
+                  "—"
+                )}
               </td>
               <th>주문번호</th>
               <td className="c-alt num">{o.orderNoLabel} · 상단과 같음</td>
@@ -314,9 +319,13 @@ function OrderDetailContent() {
               <td className="fw6">{nick}</td>
               <th>회원</th>
               <td>
-                <Link className="ord-link" href={`/seller/members/${o.buyer.id}`}>
-                  {nick}
-                </Link>
+                {can("MEMBER_POINTS") ? (
+                  <Link className="ord-link" href={`/seller/members/${o.buyer.id}`}>
+                    {nick}
+                  </Link>
+                ) : (
+                  nick
+                )}
               </td>
             </tr>
             <tr>
@@ -424,7 +433,7 @@ function OrderDetailContent() {
                         <td className="num">{formatDateTime(n.sentAt ?? n.createdAt)}</td>
                         <td>{NOTI_KIND[n.kind] ?? n.kind}</td>
                         <td>{n.source === "MAIL_DELIVERY" ? "메일" : "알림"}</td>
-                        <td>{NOTI_STATUS[n.status]}</td>
+                        <td>{NOTI_STATUS[n.status] ?? "확인 필요"}</td>
                       </tr>
                     ))
                   )}
