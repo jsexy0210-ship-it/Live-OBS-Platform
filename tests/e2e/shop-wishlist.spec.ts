@@ -58,8 +58,9 @@ test.describe.serial("로그인 구매자", () => {
     await page.goto(`/shop/${SLUG}/wishlist`);
     const cards = page.getByRole("list", { name: "찜한 상품" }).locator(".pc");
     const sold = cards.filter({ hasText: "드래곤 소울 부스터" });
-    await expect(sold.getByRole("button", { name: "담기" })).toBeDisabled();
-    await expect(sold.getByRole("button", { name: "바로 구매" })).toBeDisabled();
+    await expect(sold.getByRole("button", { name: "품절" })).toBeDisabled();
+    await expect(sold.getByRole("button", { name: "담기" })).toHaveCount(0);
+    await expect(sold.getByRole("button", { name: "바로 구매" })).toHaveCount(0);
     await cards.filter({ hasText: "스타라이트 부스터 박스" }).getByRole("button", { name: "담기" }).click();
     const choice = page.getByRole("dialog", { name: /옵션 선택/ });
     await expect(choice.getByRole("combobox", { name: "상품 옵션" }).locator("option")).toHaveCount(2);
