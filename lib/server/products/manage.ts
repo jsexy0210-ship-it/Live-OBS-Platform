@@ -61,6 +61,10 @@ function multiline(v: unknown, max: number): string | null | undefined {
   if (v === null || v === undefined || (typeof v === "string" && v.trim() === "")) return null;
   return cleanText(v, max, "multiline") ?? undefined;
 }
+// 상품별 오픈 타이머 선택지(초). 비우면(null) 마스터 관리자 기본값(기본 60초)을 쓴다(SA-012 「오픈 타이머」).
+export const OPEN_TIMER_CHOICES = [90, 120] as const;
+// null → null(기본값), 90·120 → 그 값, 그 밖은 undefined(잘못된 값)
+const parseOpenTimer = (v: unknown): number | null | undefined => (v === null ? null : (OPEN_TIMER_CHOICES as readonly unknown[]).includes(v) ? (v as number) : undefined);
 const isInt = (v: unknown, min: number, max: number): v is number => typeof v === "number" && Number.isInteger(v) && v >= min && v <= max;
 const unitOk = (price: number, delta: number) => price + delta >= 1 && price + delta <= INT4_MAX;
 
@@ -361,6 +365,9 @@ export type NewProductInput = {
   status: ProductStatus;
   sortOrder: number;
   stockDeductMode: StockDeductMode;
+  // 방송 주문대기 대상 여부(false면 일반 배송 주문)와 오픈 타이머(null=기본값)
+  queueEligible: boolean;
+  openTimerSeconds: number | null;
   options: (OptionInput & { sortOrder: number })[];
 };
 
@@ -375,13 +382,17 @@ export function parseNewProduct(raw: unknown): ProductResult<NewProductInput> {
   const status = b.status ?? "DRAFT";
   const sortOrder = b.sortOrder ?? 0;
   const stockDeductMode = b.stockDeductMode ?? "PAYMENT";
+  const queueEligible = b.queueEligible === undefined ? true : b.queueEligible;
+  const openTimerSeconds = b.openTimerSeconds === undefined ? null : parseOpenTimer(b.openTimerSeconds);
   const searchTags = parseSearchTags(b.searchTags);
   if (
     searchTags === null ||
     description === undefined ||
     !PRODUCT_STATUSES.includes(status as ProductStatus) ||
     !isInt(sortOrder, -100000, 100000) ||
-    !STOCK_DEDUCT_MODES.includes(stockDeductMode as StockDeductMode)
+    !STOCK_DEDUCT_MODES.includes(stockDeductMode as StockDeductMode) ||
+    typeof queueEligible !== "boolean" ||
+    openTimerSeconds === undefined
   ) {
     return fail("invalid_product");
   }
@@ -398,19 +409,19 @@ export function parseNewProduct(raw: unknown): ProductResult<NewProductInput> {
     options.push({ ...o, sortOrder: o.sortOrder ?? index });
   }
   if (status === "ON_SALE" && options.length === 0) return fail("no_sellable_option");
-  return { ok: true, value: { name, description, searchTags, price, status: status as ProductStatus, sortOrder, stockDeductMode: stockDeductMode as StockDeductMode, options } };
+  return { ok: true, value: { name, description, searchTags, price, status: status as ProductStatus, sortOrder, stockDeductMode: stockDeductMode as StockDeductMode, queueEligible, openTimerSeconds, options } };
 }
 
 export async function createProduct(db: PrismaClient, ctx: TenantContext, raw: unknown): Promise<ProductResult<Awaited<ReturnType<typeof productView>>>> {
   requireSellerPermission(ctx, "PRODUCT_MANAGE");
   const parsed = parseNewProduct(raw);
   if (!parsed.ok) return parsed;
-  const { name, description, searchTags, price, status, sortOrder, stockDeductMode, options } = parsed.value;
+  const { name, description, searchTags, price, status, sortOrder, stockDeductMode, queueEligible, openTimerSeconds, options } = parsed.value;
 
   return db.$transaction(async (tx) => {
     const now = await dbNow(tx);
     const product = await tx.product.create({
-      data: { sellerId: ctx.sellerId, name, description, searchTags, price, status, sortOrder, stockDeductMode, createdAt: now },
+      data: { sellerId: ctx.sellerId, name, description, searchTags, price, status, sortOrder, stockDeductMode, queueEligible, openTimerSeconds, createdAt: now },
     });
     for (const o of options) {
       const created = await tx.productOption.create({ data: { sellerId: ctx.sellerId, productId: product.id, ...o, createdAt: now } });
@@ -470,6 +481,16 @@ export async function updateProduct(
   if (b.price !== undefined) {
     if (!isInt(b.price, 1, INT4_MAX)) return fail("invalid_price");
     data.price = b.price;
+  }
+  // 방송 설정(SA-012): 큐에 올릴지·오픈 타이머. 바꾸면 다음 결제부터 적용된다(이미 큐에 오른 항목은 그대로).
+  if (b.queueEligible !== undefined) {
+    if (typeof b.queueEligible !== "boolean") return fail("invalid_product");
+    data.queueEligible = b.queueEligible;
+  }
+  if (b.openTimerSeconds !== undefined) {
+    const t = parseOpenTimer(b.openTimerSeconds);
+    if (t === undefined) return fail("invalid_product");
+    data.openTimerSeconds = t;
   }
   if (Object.keys(data).length === 0) return fail("invalid_product");
   // 낙관적 잠금(선택): 화면이 본 판매가·판매 상태. 지금 값과 다르면(그사이 다른 화면·직원이 바꿈) 바꾸지 않고 409로 지금 값을 돌려준다.

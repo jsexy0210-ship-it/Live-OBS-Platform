@@ -65,6 +65,9 @@ export type SellerDetail = {
   trialEndsAt: string | null;
   serviceEndedAt: string | null;
   createdAt: string;
+  directCreated?: boolean;
+  identityPending?: boolean;
+  directCreatedAt?: string | null;
   plan: PlanRef | null;
   owner: { name: string; email: string; status: string; lastLoginAt: string | null } | null;
   subscription: {
