@@ -191,6 +191,33 @@ jobs:
         with:
           fetch-depth: 0
 
+      # 관찰용(실패하지 않음): phase-one-display의 트리 검사를 「병합 커밋 신원」 검사로 바꾸기 전에, CI가 체크아웃한 병합 커밋의 부모 구성과
+      # git merge-tree 재계산 트리가 설계 가정과 맞는지 실제 값으로 확인한다. 어떤 단언도 바꾸지 않는다.
+      - name: PR candidate identity (diagnostic only)
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          set -u
+          H="$(jq -r .pull_request.head.sha "$GITHUB_EVENT_PATH")"
+          B="$(jq -r .pull_request.base.sha "$GITHUB_EVENT_PATH")"
+          M="$(git rev-parse HEAD)"
+          read -r P1 P2 P3 <<< "$(git log -1 --format=%P "$M")"
+          TM="$(git rev-parse "$M^{tree}")"
+          TH="$(git rev-parse "$H^{tree}" 2>&1 || true)"
+          WT="$(git merge-tree --write-tree "$B" "$H" 2>&1 | head -1 || true)"
+          yn() { [ "$1" = "$2" ] && echo 같음 || echo 다름; }
+          {
+            echo "### PR 후보 신원 진단(관찰용)"
+            echo "- git: $(git --version)"
+            echo "- HEAD(M): \`$M\` · GITHUB_SHA 같음? $(yn "$M" "$GITHUB_SHA")"
+            echo "- 이벤트 head(H): \`$H\` · base(B): \`$B\`"
+            echo "- M의 부모: \`${P1:-없음}\` \`${P2:-없음}\` \`${P3:-없음}\` (개수: $(echo "$P1 $P2 $P3" | wc -w))"
+            echo "- 부모1==base? $(yn "$P1" "$B") · 부모2==head? $(yn "$P2" "$H") · 부모 집합=={H,B}? $( [ "$(printf '%s\n' "$P1" "$P2" | sort)" = "$(printf '%s\n' "$H" "$B" | sort)" ] && echo 같음 || echo 다름)"
+            echo "- tree(M): \`$TM\`"
+            echo "- tree(H): \`$TH\` · tree(M)==tree(H)? $(yn "$TM" "$TH")  ← 현재 phase-one-display 검사가 보는 값"
+            echo "- merge-tree --write-tree B H: \`$WT\` · tree(M)==재계산? $(yn "$TM" "$WT")"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Docs-only check
         id: gate
         env:
