@@ -104,13 +104,14 @@ test("본인확인 대기 상세: 초대 링크를 다시 발급하면 새 링�
 });
 
 test("체험 연장: 이미 끝난 체험을 오늘로 연장해도 지난 시각이면 막고 더 뒤 날짜를 안내한다", async ({ page }) => {
-  await db.seller.update({ where: { id: sellerId }, data: { trialEndsAt: new Date(Date.now() - 30 * 3_600_000) } });
+  // 어제 KST 0시에 끝난 체험: 오늘로 연장하면 새 종료일은 오늘 KST 0시라서 어느 시각에 돌려도 항상 지난 시각이다(시각 의존 없음)
+  const todayIso = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
+  await db.seller.update({ where: { id: sellerId }, data: { trialEndsAt: new Date(new Date(`${todayIso}T00:00:00+09:00`).getTime() - 86_400_000) } });
   await login(page);
   await page.goto(`/admin/partners/${sellerId}`);
   await page.getByTestId("identity-pending").getByRole("button", { name: "연장" }).click();
   const dialog = page.getByRole("dialog");
-  const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }).replace(/-/g, ".");
-  await dialog.getByLabel("새 종료일").fill(today);
+  await dialog.getByLabel("새 종료일").fill(todayIso.replace(/-/g, "."));
   await dialog.getByLabel("새 종료일").blur();
   await dialog.getByLabel("사유").fill("지난 시각 시험");
   await expect(dialog).toContainText("선택한 날짜의 종료 시각이 이미 지났습니다");
