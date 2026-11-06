@@ -102,3 +102,17 @@ test("본인확인 대기 상세: 초대 링크를 다시 발급하면 새 링�
   expect(after.getTime()).toBeGreaterThan(before.getTime());
   expect(after.toISOString().startsWith("2099-01-0")).toBe(true);
 });
+
+test("체험 연장: 이미 끝난 체험을 오늘로 연장해도 지난 시각이면 막고 더 뒤 날짜를 안내한다", async ({ page }) => {
+  await db.seller.update({ where: { id: sellerId }, data: { trialEndsAt: new Date(Date.now() - 30 * 3_600_000) } });
+  await login(page);
+  await page.goto(`/admin/partners/${sellerId}`);
+  await page.getByTestId("identity-pending").getByRole("button", { name: "연장" }).click();
+  const dialog = page.getByRole("dialog");
+  const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }).replace(/-/g, ".");
+  await dialog.getByLabel("새 종료일").fill(today);
+  await dialog.getByLabel("새 종료일").blur();
+  await dialog.getByLabel("사유").fill("지난 시각 시험");
+  await expect(dialog).toContainText("선택한 날짜의 종료 시각이 이미 지났습니다");
+  await expect(dialog.getByRole("button", { name: "연장", exact: true })).toBeDisabled();
+});

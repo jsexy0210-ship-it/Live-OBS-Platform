@@ -120,16 +120,16 @@ function ExtendTrialDialog({ sellerId, current, onClose, onDone }: { sellerId: s
   const [error, setError] = useState<string | null>(null);
   const count = textLength(reason);
   const currentDate = kstDate(current);
-  const after = !!date && date > currentDate;
-  const invalid = !after || count === 0 || count > MAX_REASON;
+  // 새 날짜의 시각은 지금 종료일과 같게 둔다(한국 표준시는 일광 절약이 없어 일수만큼 더하면 된다). 이미 지난 종료일을 오늘로 연장하면 그 시각이 지났을 수 있어 만든 시각으로 검사한다.
+  const next = date && date > currentDate ? new Date(new Date(current).getTime() + daysBetween(currentDate, date) * 86_400_000) : null;
+  const past = !!next && next.getTime() <= Date.now();
+  const invalid = !next || past || count === 0 || count > MAX_REASON;
 
   const submit = async () => {
     if (busy || invalid) return;
     setBusy(true);
     setError(null);
-    // 새 날짜의 시각은 지금 종료일과 같게 둔다(한국 표준시는 일광 절약이 없어 일수만큼 더하면 된다)
-    const next = new Date(new Date(current).getTime() + daysBetween(currentDate, date) * 86_400_000).toISOString();
-    const r = await adminApi<{ trialEndsAt: string }>(`/api/admin/sellers/${sellerId}/trial`, { method: "PATCH", json: { trialEndsAt: next, reason: reason.trim() } });
+    const r = await adminApi<{ trialEndsAt: string }>(`/api/admin/sellers/${sellerId}/trial`, { method: "PATCH", json: { trialEndsAt: next!.toISOString(), reason: reason.trim() } });
     setBusy(false);
     if (r.ok) return onDone();
     setError(r.message ?? failMessage(r, "연장하지 못했습니다. 잠시 후 다시 시도해 주십시오."));
@@ -152,6 +152,7 @@ function ExtendTrialDialog({ sellerId, current, onClose, onDone }: { sellerId: s
                 </FormRow>
                 <FormRow label="새 종료일" required help="지금 종료일 이후 · 상한 없음">
                   <DatePicker aria-label="새 종료일" value={date} onChange={setDate} />
+                  {past && <span className="err">선택한 날짜의 종료 시각이 이미 지났습니다 · 더 뒤 날짜를 골라 주십시오</span>}
                 </FormRow>
                 <FormRow label="사유" required htmlFor="trial-reason" help={`1~${MAX_REASON}자 · 로그 추적에 남습니다`}>
                   <textarea id="trial-reason" className="inp" style={{ width: "100%" }} rows={2} placeholder="사유 입력" value={reason} onChange={(e) => setReason(e.target.value)} disabled={busy} />
