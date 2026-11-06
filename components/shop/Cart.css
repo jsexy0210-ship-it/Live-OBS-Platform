@@ -105,6 +105,16 @@
   min-width: 0;
   padding-inline: 4px;
 }
+/* 보드 SH-034-IA: 품절 카드는 회색 「품절」 버튼 1개 */
+.wl-actions.is-out {
+  grid-template-columns: minmax(0, 1fr);
+}
+.wl-actions.is-out .btn {
+  background: var(--wds-background-normal-alternative);
+  color: var(--wds-label-alternative);
+  box-shadow: none;
+  border-color: transparent;
+}
 
 @media (min-width: 1200px) {
   .wishlist-view .wl-tabs,
