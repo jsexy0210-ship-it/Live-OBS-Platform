@@ -93,3 +93,24 @@ test("본인확인 서비스 준비 중(503 identity_unavailable): 안내 뒤 �
   await expect(page.getByRole("button", { name: "번호 바꾸기 (본인확인)" })).toBeDisabled();
   await expect(page.getByText("번호 바꾸기는 곧 열려요")).toBeVisible();
 });
+
+test("「바꾸기」 응답을 못 받아도(끊김) 저장된 번호를 다시 읽어 바뀌었으면 완료로 처리한다", async ({ page, baseURL }) => {
+  await page.route(`${API}/verification`, (r) => r.fulfill(json(200, { verificationId: "v3" })));
+  await page.route(`${API}/verification/confirm`, (r) => r.fulfill(json(200, { identity: { name: "김별빛", phone: "01055556666" } })));
+  let applied = false;
+  await page.route(API, (r) => ((applied = true), r.abort("failed")));
+  await page.route(`**/api/shop/${SLUG}/me/profile`, async (r) => {
+    const res = await r.fetch();
+    const body = (await res.json()) as Record<string, unknown>;
+    await r.fulfill({ response: res, json: applied ? { ...body, phoneMasked: "010-****-6666" } : body });
+  });
+  const dlg = await open(page, baseURL!);
+  await fill(dlg);
+  await dlg.getByRole("button", { name: "인증번호 문자 받기" }).click();
+  await dlg.getByLabel(/^인증번호/).fill("123456");
+  await dlg.getByRole("button", { name: "인증번호 확인하기" }).click();
+  await dlg.getByRole("button", { name: "이 번호로 바꾸기" }).click();
+  await expect(dlg).toBeHidden();
+  await expect(page.getByText("번호를 바꿨어요")).toBeVisible();
+  await page.waitForLoadState("networkidle"); // 완료 뒤 프로필 다시 읽기가 끝나기 전에 시험이 닫히지 않게
+});

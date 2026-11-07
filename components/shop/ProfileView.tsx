@@ -202,6 +202,11 @@ export default function ProfileView({ slug, shopName }: { slug: string; shopName
       {modal === "phone" && (
         <PhoneChangeModal
           api={api}
+          current={view.kind === "ok" ? view.p.phoneMasked : ""}
+          readPhone={async () => {
+            const r = await call<Profile>(`${api}/profile`);
+            return r.ok ? r.data.phoneMasked : null;
+          }}
           onClose={() => setModal(null)}
           onUnavailable={() => setPhoneLocked(true)}
           onDone={() => {

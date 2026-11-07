@@ -14,7 +14,8 @@ import "./Profile.css";
 type Stage = "input" | "code" | "verified";
 type Failure = { text: string; restart: boolean };
 
-export default function PhoneChangeModal({ api, onClose, onDone, onUnavailable }: { api: string; onClose: () => void; onDone: () => void; onUnavailable: () => void }) {
+// readPhone: 지금 저장된 가린 번호를 다시 읽는다(「바꾸기」 응답을 못 받았거나 이미 쓴 본인확인이라는 응답이면 실제로 바뀌었는지 확인하는 데 쓴다)
+export default function PhoneChangeModal({ api, current, readPhone, onClose, onDone, onUnavailable }: { api: string; current: string; readPhone: () => Promise<string | null>; onClose: () => void; onDone: () => void; onUnavailable: () => void }) {
   const [stage, setStage] = useState<Stage>("input");
   const [name, setName] = useState("");
   const [birth, setBirth] = useState("");
@@ -104,6 +105,13 @@ export default function PhoneChangeModal({ api, onClose, onDone, onUnavailable }
     const r = await call(`${api}/phone`, { method: "POST", body: { verificationId: vid } });
     setBusy(false);
     if (r.ok) return onDone();
+    // 응답을 못 받았거나(끊김 · 5xx) 이미 쓴 본인확인(400)이면 서버에서는 바뀌었을 수 있다 → 저장된 번호를 다시 읽어 확인한다
+    if (r.status === 0 || r.status >= 500 || r.error === "verification_invalid") {
+      setBusy(true);
+      const now = await readPhone();
+      setBusy(false);
+      if (now !== null && now !== current) return onDone();
+    }
     const text = r.message ?? "번호를 바꾸지 못했어요. 잠시 뒤 다시 해 주세요";
     // 확인 전(409 verification_pending)은 창을 유지하고, 그 밖의 거절은 처음부터 다시 한다
     setFail({ text, restart: r.error !== "verification_pending" && r.status !== 0 && r.status < 500 });
