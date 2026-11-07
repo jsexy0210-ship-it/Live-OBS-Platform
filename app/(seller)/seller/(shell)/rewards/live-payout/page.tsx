@@ -93,7 +93,7 @@ export default function LivePayoutPage() {
       setProgress({ done: cur.settled + cur.failed, total: total(cur) });
       const r = await api<{ settlement: Settlement }>("/api/seller/reward-live-payout/settle", { method: "POST" });
       if (!r.ok) {
-        setFailure("남은 대기분을 지급하지 못했습니다. 잠시 후 이 화면을 다시 열면 이어서 지급됩니다.");
+        setFailure("남은 대기분은 잠시 뒤 자동으로 이어서 지급됩니다. 이 화면을 다시 열어 확인해 주십시오.");
         break;
       }
       cur = { ...r.data.settlement, settled: cur.settled + r.data.settlement.settled, failed: cur.failed + r.data.settlement.failed };
