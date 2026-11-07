@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { FormRow, FormSection, useConfirm } from "../../admin-ui";
 import { useSmartBack, useUrlState } from "../../../lib/client/navigation";
 import { api } from "../api";
-import { KIND_INFO, failText, moved, useDraft, type CategoryNode, type Display, type Kind, type Section } from "./types";
+import { KIND_INFO, MAX_SECTIONS, failText, moved, useDraft, type CategoryNode, type Display, type Kind, type Section } from "./types";
 
 // 홈 진열 영역: 켠 영역만 구매자 홈에 순서대로 보인다. 위·아래로 옮기고 이름·보일 상품 수를 정한 뒤 「영역 저장」으로 통째로 저장한다(PUT /api/seller/display/sections).
 const strip = (s: Section): Section => ({ kind: s.kind, categoryId: s.categoryId, title: s.title, visible: s.visible, itemCount: s.itemCount });
@@ -88,6 +88,7 @@ export function HomeSections({ sections, cats, onSaved, notify }: { sections: Se
   const categorySections = draft.filter((s) => s.kind === "CATEGORY");
   const openRow = (kind: Kind, present: DraftSection | undefined) => {
     if (present) return setView({ section: sectionKey(present) });
+    if (draft.length >= MAX_SECTIONS) return notify(`영역은 ${MAX_SECTIONS}개까지 넣을 수 있습니다 · 저장된 카테고리 영역이 많아 더 켤 수 없습니다`, true);
     const created: DraftSection = { kind, categoryId: null, title: KIND_INFO[kind].label, visible: false, itemCount: 8, localKey: ++nextLocalKey.current };
     setDraft((d) => [...d, created]);
     setView({ section: sectionKey(created) });

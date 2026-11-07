@@ -157,3 +157,25 @@ test("대표자: 저장된 카테고리 영역은 읽기 전용으로 보이고,
     ["CATEGORY", "우리 카테고리", true, 6],
   ]);
 });
+
+// 저장된 영역이 10개(서버 한도)면 아직 없는 영역을 더 켤 수 없다 — 저장이 거절되어 막히는 일이 없게
+test("대표자: 영역이 서버 한도(10개)에 차 있으면 새 영역을 켜지 못하고 안내가 보인다", async ({ page }) => {
+  await login(page, "demo-owner@example.com");
+  await expect(page.getByRole("heading", { name: "홈 진열", exact: true })).toBeVisible();
+  const catId = await page.evaluate(async () => (await (await fetch("/api/seller/categories")).json()).categories[0].id as string);
+  const put = await page.evaluate(
+    async (id) =>
+      (await fetch("/api/seller/display/sections", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ sections: [
+        { kind: "RECOMMENDED", categoryId: null, title: "추천 상품", visible: true, itemCount: 8 },
+        { kind: "NEW", categoryId: null, title: "신상품", visible: true, itemCount: 8 },
+        ...Array.from({ length: 8 }, (_, i) => ({ kind: "CATEGORY", categoryId: id, title: `분류 ${i + 1}`, visible: true, itemCount: 4 })),
+      ] }) })).status,
+    catId,
+  );
+  expect(put).toBe(200);
+  await page.reload();
+  await expect(page.getByTestId("category-section-row")).toHaveCount(8);
+  await sectionRow(page, "베스트").getByRole("link", { name: "상세" }).click();
+  await expect(page.getByText("영역은 10개까지 넣을 수 있습니다")).toBeVisible();
+  await expect(page.getByTestId("section-detail")).toHaveCount(0);
+});
