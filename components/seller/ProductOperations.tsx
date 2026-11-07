@@ -151,7 +151,7 @@ export function ProductOperations({ ids, single = false, returnTo }: { ids: stri
             </div>
           </div>
           <ListTable className="p-tbl-wrap" aria-label="선택 상품 표">
-            <table className="tbl p-table po-table">
+            <table className="tbl po-table">
               <thead><tr><th className="p-w-no">번호</th><th className="p-w-img">이미지</th><th>상품명 · 코드</th><th className="p-w-price">판매가</th><th className="p-w-stock">재고</th><th className="p-w-state">판매 상태</th><th className="po-w-act">관리</th></tr></thead>
               <tbody>
                 {items.map((item) => {

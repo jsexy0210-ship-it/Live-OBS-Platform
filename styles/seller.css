@@ -401,6 +401,12 @@ body {
 .po-w-act {
   width: 100px;
 }
+.po-table {
+  table-layout: fixed; /* p-table은 휴대폰에서 숨겨지므로(.tbl.p-table) 쓰지 않고 같은 규격을 따로 둔다 */
+}
+.po-table td {
+  overflow: hidden;
+}
 @media (min-width: 768px) {
   .po-table {
     min-width: 770px; /* 고정 열 합계 552 + 상품명 · 코드 칸 최소 220 */
