@@ -90,7 +90,14 @@ export default function ShippingAutomationPage() {
         )}
         {d && (
           <>
-            {d.shortage.length > 0 && (
+            {d.shortage.length > 0 && !d.chargingEnabled && (
+              <div className="msg msg-cau" role="status" style={{ marginBottom: 16 }}>
+                <span>
+                  <b>지금은 충전을 받지 않습니다.</b> 자동화가 멈춰 있고 주문 처리는 계속됩니다 · 충전이 열리면 다시 켜집니다
+                </span>
+              </div>
+            )}
+            {d.shortage.length > 0 && d.chargingEnabled && (
               <div className="msg msg-neg" role="alert" style={{ marginBottom: 16 }}>
                 <span>
                   <b>발송 · 이용 충전금이 부족합니다.</b> 자동화가 멈춰 있고 주문 처리는 계속됩니다 · 충전하면 바로 다시 켜집니다
@@ -152,7 +159,7 @@ export default function ShippingAutomationPage() {
                             </button>
                           </div>
                         </td>
-                        <td className="num">{won(row.unitPrice)}</td>
+                        <td className="num">{!d.chargingEnabled && row.unitPrice === 0 ? "[확정 전]" : won(row.unitPrice)}</td>
                         <td className="num">{row.monthCount.toLocaleString("ko-KR")}건</td>
                         <td className="num">{won(row.monthAmount)}</td>
                       </tr>
