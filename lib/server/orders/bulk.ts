@@ -63,7 +63,7 @@ export type PrepareFailure = "not_found" | "not_paid" | "not_ready" | "already_s
 export type PrepareResult = { orderId: string; ok: true } | { orderId: string; ok: false; reason: PrepareFailure };
 
 // 선택 주문을 배송 준비로 변경(1~100건, 같은 주문 중복 없음). 잘못된 본문이면 { ok: false }.
-// 건너뜀 이유: not_found · not_paid(결제 완료 아님) · not_ready(즉시 발송이 아니거나 재고 부족) · already_shipped(이미 발송) · already_prepared(이미 변경함) · not_opened(개봉 완료 아님).
+// 건너뜀 이유: not_found · not_paid(결제 완료 아님) · not_ready(즉시 발송이 아니거나 재고 부족) · already_shipped(이미 발송) · already_prepared(이미 변경함) · not_opened(개봉 완료 아님, 대기 제외 상품만 있는 주문은 개봉 없이 통과).
 export async function prepareShipping(db: PrismaClient, ctx: TenantContext, orderIds: unknown) {
   requireSellerPermission(ctx, "ORDER_SHIPPING");
   if (!Array.isArray(orderIds) || orderIds.length < 1 || orderIds.length > SHIPMENT_BATCH_MAX || orderIds.some((i) => typeof i !== "string" || !UUID_RE.test(i))) return { ok: false as const };
@@ -78,13 +78,15 @@ export async function prepareShipping(db: PrismaClient, ctx: TenantContext, orde
         if (!locked) return { orderId, ok: false, reason: "not_found" };
         const o = await tx.order.findUniqueOrThrow({
           where: { id: orderId },
-          select: { status: true, fulfillmentType: true, stockShortageAt: true, shippingPreparedAt: true, shipment: { select: { status: true } }, queueItems: { select: { status: true } } },
+          select: { status: true, fulfillmentType: true, stockShortageAt: true, shippingPreparedAt: true, shipment: { select: { status: true } }, queueItems: { select: { status: true } }, items: { select: { queueSkipped: true } } },
         });
         if (o.status !== "PAID") return { orderId, ok: false, reason: "not_paid" };
         if (o.fulfillmentType !== "IMMEDIATE" || o.stockShortageAt) return { orderId, ok: false, reason: "not_ready" };
         if (o.shipment && o.shipment.status !== "READY") return { orderId, ok: false, reason: "already_shipped" };
         if (o.shippingPreparedAt) return { orderId, ok: false, reason: "already_prepared" };
-        if (queueStateOf(o.queueItems) !== "done") return { orderId, ok: false, reason: "not_opened" };
+        // 대기 제외 상품만 있는 주문은 큐 항목이 처음부터 없으므로 개봉 없이 바로 배송 준비로 바꾼다(취소된 큐 항목만 있는 주문은 제외).
+        const queueFree = o.queueItems.length === 0 && o.items.length > 0 && o.items.every((i) => i.queueSkipped);
+        if (!queueFree && queueStateOf(o.queueItems) !== "done") return { orderId, ok: false, reason: "not_opened" };
         const now = await dbNow(tx);
         await tx.order.update({ where: { id: orderId }, data: { shippingPreparedAt: now } });
         await tx.orderNotification.createMany({ data: [{ sellerId: ctx.sellerId, orderId, kind: "SHIPPING_PREPARED", claimedAt: now }], skipDuplicates: true });

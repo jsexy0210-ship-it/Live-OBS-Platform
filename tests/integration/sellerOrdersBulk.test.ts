@@ -187,6 +187,25 @@ describe("선택 일괄: 배송 준비로 변경", () => {
   });
 });
 
+describe("대기 제외 상품 주문: 배송 준비로 변경", () => {
+  it("대기 제외 상품만 있는 주문(큐 항목 없음)은 개봉 없이 바뀌고, 취소된 큐 항목만 있거나 대기 상품이 섞인 주문은 그대로 막힌다", async () => {
+    const s = await shop();
+    const free = await s.order([]);
+    const cancelledOnly = await s.order(["CANCELLED"]);
+    const eligible = await s.order([]);
+    await db.orderItem.updateMany({ where: { orderId: { in: [free.id, cancelledOnly.id] } }, data: { queueSkipped: true } });
+    const r = await prepareShipping(db, s.ctx, [free.id, cancelledOnly.id, eligible.id]);
+    if (!r.ok) throw new Error("bulk");
+    expect(r.results).toEqual([
+      { orderId: free.id, ok: true },
+      { orderId: cancelledOnly.id, ok: false, reason: "not_opened" },
+      { orderId: eligible.id, ok: false, reason: "not_opened" },
+    ]);
+    expect((await db.order.findUniqueOrThrow({ where: { id: free.id } })).shippingPreparedAt).toBeInstanceOf(Date);
+    expect(await db.orderNotification.count({ where: { orderId: free.id, kind: "SHIPPING_PREPARED" } })).toBe(1);
+  });
+});
+
 describe("경로", () => {
   it("목록 쿼리(queue·refundRequested·trackingMissing)·칩 건수·일괄(배송 준비·송장 일괄 입력)", async () => {
     const s = await shop();

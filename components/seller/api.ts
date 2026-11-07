@@ -139,6 +139,8 @@ export type Me = { sellerId: string; userId: string; isOwner: boolean; permissio
   orderFollowup?: boolean;
   // 마스터가 이용 정지했는지. true면 정지 안내(AU-006)를 보이고, 서버가 막는 화면은 403 seller_suspended
   suspended?: boolean;
+  // 대표자 본인확인 대기 쇼핑몰(마스터 직접 추가 · 본인확인 전)이면 true: 직원 추가 · 적립금 실제 지급 켜기 · 충전금 결제를 서버가 막는다(403 identity_pending)
+  identityPending?: boolean;
   shop: { name: string; slug: string };
   user: { name: string; email: string };
   trialEndsAt: string | null;

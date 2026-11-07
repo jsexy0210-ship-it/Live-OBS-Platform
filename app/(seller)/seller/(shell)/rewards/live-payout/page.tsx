@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FormFoot, FormRow, FormSection, PageHead, useConfirm } from "../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
+import { IDENTITY_PENDING_TITLE, IdentityPendingNotice, identityPendingText, isIdentityPendingFail } from "../../../../../../components/seller/IdentityPending";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { won } from "../../../../../../components/seller/format";
@@ -64,6 +65,9 @@ export default function LivePayoutPage() {
   useEffect(() => void load(), [load]);
 
   const data = state.kind === "ok" ? state.data : null;
+  // 대표자 본인확인 대기: 세션이 미리 알면 처음부터 잠그고, 모르면 켜기를 눌렀을 때 서버 403 identity_pending으로 알게 된다
+  const [pendingByServer, setPendingByServer] = useState(false);
+  const identityPending = !!me.identityPending || pendingByServer;
 
   const change = async (enabled: boolean) => {
     if (!data) return;
@@ -79,7 +83,13 @@ export default function LivePayoutPage() {
       danger: enabled,
       run: async () => {
         const r = await api<{ settlement: Settlement | null }>("/api/seller/reward-live-payout", { method: "PUT", body: enabled ? { enabled: true, confirm: true } : { enabled: false } });
-        if (!r.ok) return failMessage(r, "admin", "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오");
+        if (!r.ok) {
+          if (isIdentityPendingFail(r)) {
+            setPendingByServer(true);
+            return `${IDENTITY_PENDING_TITLE} ${identityPendingText("적립금 실제 지급 켜기")}`;
+          }
+          return failMessage(r, "admin", "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오");
+        }
         settlement = r.data.settlement;
         saved = true;
       },
@@ -143,6 +153,8 @@ export default function LivePayoutPage() {
                   {data.livePayout.changedAt ? ` · ${formatDateTime(data.livePayout.changedAt)}부터` : ""}. 끄면 그때부터 다시 「대기」로 기록합니다.
                 </span>
               </div>
+            ) : identityPending ? (
+              <IdentityPendingNotice feature="적립금 실제 지급 켜기" style={{ marginBottom: 16 }} />
             ) : (
               <div className="msg msg-info" role="note" data-testid="live-status" style={{ marginBottom: 16 }}>
                 <span>
@@ -273,7 +285,7 @@ export default function LivePayoutPage() {
                   </button>
                 ) : (
                   <>
-                    <button className="btn btn-lg" type="button" disabled={!data.canEnable || !!progress} onClick={() => void change(true)} data-testid="live-on-button">
+                    <button className="btn btn-lg" type="button" disabled={!data.canEnable || !!progress || identityPending} onClick={() => void change(true)} data-testid="live-on-button">
                       실제 지급 켜기
                     </button>
                     {blockedLabel && (

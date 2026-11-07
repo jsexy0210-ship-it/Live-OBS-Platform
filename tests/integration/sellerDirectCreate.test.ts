@@ -4,6 +4,7 @@ import { POST as reissueRoute } from "../../app/api/admin/sellers/[sellerId]/inv
 import { PATCH as trialRoute } from "../../app/api/admin/sellers/[sellerId]/trial/route";
 import { POST as acceptRoute } from "../../app/api/seller/invite/accept/route";
 import { getAdminSeller } from "../../lib/server/admin/sellers";
+import { listAdminSellers } from "../../lib/server/admin/sellerList";
 import { loginSeller } from "../../lib/server/auth/login";
 import { createAdminSession, resolveAdminSession } from "../../lib/server/auth/session";
 import { requireSeller } from "../../lib/server/authz/guards";
@@ -79,6 +80,47 @@ describe("직접 추가", () => {
     // 마스터 상세에 표시
     const detail = await getAdminSeller(db, su.ctx, seller.id);
     expect(detail).toMatchObject({ directCreated: true, identityPending: true });
+  });
+
+  it("마스터 목록·상세(MA-011·MA-012-1): 목록은 identityPending, 상세는 추가한 관리자 이름·사유(모든 역할)와 초대 발급·만료·상태(최고관리자만). 토큰·해시·링크는 나오지 않는다", async () => {
+    await db.subscriptionPlan.upsert({ where: { code: "INTEGRATED" }, create: { code: "INTEGRATED", name: "쇼핑몰 통합", listPrice: 249000, salePrice: 179000, trialDays: 0 }, update: {} });
+    const su = await admin("SUPER_ADMIN");
+    const cs = await admin("CS");
+    const r = await create(su.cookie);
+    expect(r.status).toBe(201);
+    const token = tokenOf(r.body.invite);
+    const sellerId = r.body.sellerId as string;
+    // 직접 추가가 아닌 일반 쇼핑몰은 identityPending=false
+    const { seller: plain } = await (await import("./helpers")).createSeller();
+    const listed = await listAdminSellers(db, cs.ctx, {});
+    if (!listed.ok) throw new Error("list");
+    const bySlug = new Map(listed.sellers.map((x: { slug: string; identityPending: boolean }) => [x.slug, x.identityPending]));
+    expect(bySlug.get("starlight")).toBe(true);
+    expect(bySlug.get(plain.slug)).toBe(false);
+
+    const asSuper = (await getAdminSeller(db, su.ctx, sellerId))!;
+    expect(asSuper.directCreation).toMatchObject({ byAdminName: expect.any(String), reason: "첫 파트너스 직접 추가" });
+    expect(asSuper.directCreation!.invite).toMatchObject({ state: "active" });
+    const inv = await db.sellerInvite.findFirstOrThrow({ where: { sellerId } });
+    expect(asSuper.directCreation!.invite!.issuedAt).toEqual(inv.createdAt);
+    expect(asSuper.directCreation!.invite!.expiresAt).toEqual(inv.expiresAt);
+    // CS: 이름·사유는 보이지만 초대 상태는 없다
+    const asCs = (await getAdminSeller(db, cs.ctx, sellerId))!;
+    expect(asCs.directCreation).toMatchObject({ byAdminName: asSuper.directCreation!.byAdminName, reason: "첫 파트너스 직접 추가", invite: null });
+    // 비밀값은 어떤 응답에도 없다
+    for (const body of [JSON.stringify(asSuper), JSON.stringify(asCs), JSON.stringify(listed)]) {
+      expect(body).not.toContain(token);
+      expect(body).not.toContain(inv.tokenHash);
+      expect(body).not.toContain("tokenHash");
+    }
+    // 상태: 사용됨 → used, 만료 → expired, 재발급 → 이전 것 revoked 뒤 새 것 active
+    await db.sellerInvite.update({ where: { id: inv.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
+    expect((await getAdminSeller(db, su.ctx, sellerId))!.directCreation!.invite!.state).toBe("expired");
+    await accept(token, "invite-pass-12345").catch(() => null);
+    expect((await reissueRoute(post(`/api/admin/sellers/${sellerId}/invite`, su.cookie, {}), sid(sellerId))).status).toBe(200);
+    expect((await getAdminSeller(db, su.ctx, sellerId))!.directCreation!.invite!.state).toBe("active");
+    // 직접 추가가 아닌 쇼핑몰의 상세는 directCreation=null
+    expect((await getAdminSeller(db, su.ctx, plain.id))!.directCreation).toBeNull();
   });
 
   it("최고관리자 외 역할은 403, 로그인 없음은 401, 입력 검사(주소·예약어·중복·사유·과거 체험일)", async () => {

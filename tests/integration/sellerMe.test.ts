@@ -115,12 +115,28 @@ describe("GET /api/seller/me", () => {
     expect(bodyA).toMatchObject({ isOwner: false, access: "trial", trialEndsAt: endsA.toISOString() });
     expect(JSON.stringify(bodyA)).not.toContain(endsB.toISOString());
     // 금액·결제 정보는 주지 않는다
-    expect(Object.keys(bodyA).sort()).toEqual(["access", "features", "impersonation", "isOwner", "orderFollowup", "permissions", "readOnly", "sellerId", "shop", "suspended", "trialEndsAt", "user", "userId"]);
+    expect(Object.keys(bodyA).sort()).toEqual(["access", "features", "identityPending", "impersonation", "isOwner", "orderFollowup", "permissions", "readOnly", "sellerId", "shop", "suspended", "trialEndsAt", "user", "userId"]);
     expect(bodyA).toMatchObject({ readOnly: false, impersonation: null });
+    // 본인확인 대기(마스터 직접 추가 · 대표자 본인확인 전)가 아니면 false
+    expect(bodyA.identityPending).toBe(false);
     expect(await (await me(cb)).json()).toMatchObject({ isOwner: true, trialEndsAt: endsB.toISOString() });
     // 결제한 기간이 남아 체험이 아닌 상태면 null
     const plan = await db.subscriptionPlan.upsert({ where: { code: "STANDARD" }, update: {}, create: { code: "STANDARD", name: "스탠다드", listPrice: 30000, salePrice: 30000 } });
     await db.sellerSubscription.create({ data: { sellerId: a.seller.id, planId: plan.id, status: "ACTIVE", currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) } });
     expect(await (await me(ca)).json()).toMatchObject({ access: "paid", trialEndsAt: null });
+  });
+
+  it("본인확인 대기 쇼핑몰(마스터 직접 추가 · 대표자 본인확인 전)이면 identityPending이 true이고, 본인확인이 끝나면 false다. 다른 쇼핑몰은 섞이지 않는다", async () => {
+    const a = await createSeller();
+    const b = await createSeller();
+    await createSellerUser(a.seller.id, "OWNER", "pending-a@example.com");
+    await createSellerUser(b.seller.id, "OWNER", "pending-b@example.com");
+    await db.seller.update({ where: { id: a.seller.id }, data: { directCreatedByAdminId: crypto.randomUUID(), directCreatedAt: new Date(), representativeVerifiedAt: null } });
+    const ca = cookieOf(await login({ email: "pending-a@example.com", password: PASSWORD, shopSlug: a.seller.slug }));
+    const cb = cookieOf(await login({ email: "pending-b@example.com", password: PASSWORD, shopSlug: b.seller.slug }));
+    expect((await (await me(ca)).json()).identityPending).toBe(true);
+    expect((await (await me(cb)).json()).identityPending).toBe(false);
+    await db.seller.update({ where: { id: a.seller.id }, data: { representativeCiHash: `ci-${a.seller.id}`, representativeVerifiedAt: new Date() } });
+    expect((await (await me(ca)).json()).identityPending).toBe(false);
   });
 });
