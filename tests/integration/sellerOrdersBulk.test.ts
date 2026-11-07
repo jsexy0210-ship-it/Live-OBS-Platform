@@ -212,6 +212,42 @@ describe("대기 제외 상품 주문: 배송 준비로 변경", () => {
   });
 });
 
+describe("대기 제외 전용 주문: 목록 필터·칩 건수", () => {
+  it("queue=free는 대기 제외 전용 주문만, queue=done(칩 「배송 준비 전」)은 개봉 완료와 대기 제외 전용을 함께 잡고, 기존 값은 그대로다", async () => {
+    const s = await shop();
+    const done = await s.order(["DONE"]);
+    const waiting = await s.order(["WAITING"]);
+    const opening = await s.order(["OPENING"]);
+    const noQueue = await s.order([]); // 대기 가능 상품인데 큐 항목이 없는 주문: 대기 제외가 아니다
+    const cancelledOnly = await s.order(["CANCELLED"]);
+    const free = await s.order([]);
+    const freePrepared = await s.order([]);
+    const mixed = await s.order([]); // 품목 2개 중 1개만 건너뜀
+    const freeIds = [free.id, freePrepared.id];
+    await db.orderItem.updateMany({ where: { orderId: { in: freeIds } }, data: { queueSkipped: true } });
+    await db.orderItem.updateMany({ where: { orderId: mixed.id }, data: { queueSkipped: true } });
+    await db.orderItem.create({
+      data: { sellerId: s.seller.id, orderId: mixed.id, productId: (await db.orderItem.findFirstOrThrow({ where: { orderId: mixed.id } })).productId, optionId: (await db.orderItem.findFirstOrThrow({ where: { orderId: mixed.id } })).optionId, productNameSnapshot: "부스터 팩", optionNameSnapshot: "1팩", unitPrice: 5000, quantity: 1 },
+    });
+    await db.order.update({ where: { id: freePrepared.id }, data: { shippingPreparedAt: new Date() } });
+
+    const ids = async (q: Parameters<typeof listSellerOrders>[2]) => (await list(s, q)).orders.map((o) => o.id).sort();
+    expect(await ids({ queue: "free" })).toEqual([...freeIds].sort());
+    expect(await ids({ queue: "done" })).toEqual([done.id, ...freeIds].sort());
+    expect(await ids({ queue: "done", prepared: "false" })).toEqual([done.id, free.id].sort()); // 칩 「배송 준비 전」
+    expect(await ids({ queue: "waiting" })).toEqual([waiting.id]);
+    expect(await ids({ queue: "opening" })).toEqual([opening.id]);
+    expect(await listSellerOrders(db, s.ctx, { queue: "nope" })).toEqual({ ok: false });
+    for (const id of [noQueue.id, cancelledOnly.id, mixed.id]) expect(await ids({ queue: "free" })).not.toContain(id);
+
+    const c = await countSellerOrders(db, s.ctx);
+    expect(c).toMatchObject({ queueWaiting: 1, queueOpening: 1, queueDone: 3, queueDonePending: 2, queueFree: 2 });
+    expect((await list(s, { queue: "free" })).orders).toHaveLength(c.queueFree);
+    expect((await list(s, { queue: "done" })).orders).toHaveLength(c.queueDone);
+    expect((await list(s, { queue: "done", prepared: "false" })).orders).toHaveLength(c.queueDonePending);
+  });
+});
+
 describe("경로", () => {
   it("목록 쿼리(queue·refundRequested·trackingMissing)·칩 건수·일괄(배송 준비·송장 일괄 입력)", async () => {
     const s = await shop();
