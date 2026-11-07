@@ -65,12 +65,13 @@ function stageOf(o: OrderRow): { label: string; cls: string } {
   if (o.shipment?.state === "delivered") return { label: "배송 완료", cls: "b-gray nodot" };
   if (o.shipped) return { label: "배송 중", cls: "b-info" };
   if (o.shippingPreparedAt) return { label: "배송 준비", cls: "b-gray nodot" };
+  if (o.queueFree) return { label: "대기 제외", cls: "b-gray nodot" };
   if (o.queueState === "done") return { label: "개봉 완료", cls: "b-done" };
   if (o.queueState === "waiting" || o.queueState === "opening") return { label: "개봉 대기", cls: "b-info" };
   return { label: "배송 준비", cls: "b-gray nodot" };
 }
-// 일괄로 바꿀 수 있는 주문: 개봉 완료이고 아직 배송 준비로 바꾸지 않은 것(서버도 같은 기준)
-const canPrepare = (o: OrderRow) => o.status === "PAID" && !o.shipped && !o.shippingPreparedAt && o.queueState === "done";
+// 일괄로 바꿀 수 있는 주문: 개봉 완료(또는 방송 주문대기 대상이 아닌 주문)이고 아직 배송 준비로 바꾸지 않은 것(서버도 같은 기준)
+const canPrepare = (o: OrderRow) => o.status === "PAID" && !o.shipped && !o.shippingPreparedAt && (o.queueState === "done" || !!o.queueFree);
 function elapsedText(o: OrderRow): { text: string; urgent: boolean } {
   const now = Date.now();
   if (o.status === "PENDING_PAYMENT" && o.paymentDueAt) {
