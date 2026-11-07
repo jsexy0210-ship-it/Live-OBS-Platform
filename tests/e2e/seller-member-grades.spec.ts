@@ -59,9 +59,11 @@ test("대표자: 기준 금액 저장 → 자동 재산정 켜기 검사 → 등
   await promotion.check();
   await demotion.check();
   await nextGrade.uncheck();
-  const saved = page.waitForRequest((r) => r.url().endsWith("/api/seller/member-grades") && r.method() === "PUT");
+  const saved = page.waitForResponse((r) => r.url().endsWith("/api/seller/member-grades") && r.request().method() === "PUT");
   await save.click();
-  expect((await saved).postDataJSON()).toMatchObject({ notifyPromotion: true, notifyDemotion: true, showNextGrade: false });
+  const savedRes = await saved;
+  expect(savedRes.request().postDataJSON()).toMatchObject({ notifyPromotion: true, notifyDemotion: true, showNextGrade: false });
+  expect(savedRes.ok()).toBe(true);
   await expect(page.getByText("등급 설정을 저장했습니다")).toBeVisible();
   await page.reload();
   await expect(page.getByRole("radiogroup", { name: "자동 재산정" }).getByRole("radio", { name: "켬", exact: true })).toHaveAttribute("aria-checked", "true");
