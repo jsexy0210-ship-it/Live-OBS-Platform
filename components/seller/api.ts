@@ -173,6 +173,9 @@ export type Product = {
   event?: { type: "RATE" | "AMOUNT"; value: number; startsAt: string; endsAt: string } | null;
   status: ProductStatus;
   stockDeductMode: StockDeductMode;
+  // 방송 주문대기 대상(false면 일반 배송 주문으로 처리) · 오픈 타이머(null이면 기본 60초, 90 · 120)
+  queueEligible?: boolean;
+  openTimerSeconds?: number | null;
   sortOrder: number;
   createdAt: string;
   options: ProductOption[];

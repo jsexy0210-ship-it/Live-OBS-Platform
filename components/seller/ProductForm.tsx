@@ -203,6 +203,9 @@ export function ProductForm({ initial }: { initial?: Product }) {
   });
   const [status, setStatus] = useState<ProductStatus>(initial?.status ?? "ON_SALE");
   const [deduct, setDeduct] = useState<StockDeductMode>(initial?.stockDeductMode ?? "PAYMENT");
+  // 방송 주문대기 대상(제외하면 일반 배송 주문) · 오픈 타이머(null = 기본 60초)
+  const [queueEligible, setQueueEligible] = useState<boolean>(initial?.queueEligible ?? true);
+  const [openTimer, setOpenTimer] = useState<number | null>(initial?.openTimerSeconds ?? null);
   // 취소·반품 때 재고를 되돌릴지는 주문 설정(restockOnCancel)을 따른다. 쇼핑몰 설정 권한이 없으면 읽지 못하므로 설정 이름만 안내한다
   const [restock, setRestock] = useState<boolean | null>(null);
   useEffect(() => {
@@ -408,6 +411,8 @@ export function ProductForm({ initial }: { initial?: Product }) {
       (eventEnabled && (eventType !== base.event?.type || parseAmount(eventValue) !== base.event?.value || Date.parse(kstIso(eventStartsAt)) !== Date.parse(base.event?.startsAt ?? "") || Date.parse(kstIso(eventEndsAt)) !== Date.parse(base.event?.endsAt ?? ""))) ||
       status !== base.status ||
       deduct !== base.stockDeductMode ||
+      queueEligible !== (base.queueEligible ?? true) ||
+      openTimer !== (base.openTimerSeconds ?? null) ||
       optionsChanged ||
       removed.length > 0 ||
       JSON.stringify(categoryIds) !== JSON.stringify(catBase) ||
@@ -420,6 +425,8 @@ export function ProductForm({ initial }: { initial?: Product }) {
       eventEnabled ||
       status !== "ON_SALE" ||
       deduct !== "PAYMENT" ||
+      !queueEligible ||
+      openTimer !== null ||
       rows.length !== 1 ||
       rows[0].name.trim() !== "기본" ||
       rows[0].priceDelta !== "0" ||
@@ -442,6 +449,8 @@ export function ProductForm({ initial }: { initial?: Product }) {
         price: priceNum,
         status: st,
         stockDeductMode: deduct,
+        queueEligible,
+        openTimerSeconds: openTimer,
         options: rows.map((o, i) => ({ name: o.name.trim(), priceDelta: parseAmount(o.priceDelta), stock: parseAmount(o.stock), sortOrder: i })),
       },
     });
@@ -501,6 +510,8 @@ export function ProductForm({ initial }: { initial?: Product }) {
     }
     if (status !== current.status) (status === "ON_SALE" ? late : early).status = status;
     if (deduct !== current.stockDeductMode) early.stockDeductMode = deduct;
+    if (queueEligible !== (current.queueEligible ?? true)) early.queueEligible = queueEligible;
+    if (openTimer !== (current.openTimerSeconds ?? null)) early.openTimerSeconds = openTimer;
 
     const patchProduct = async (patch: Record<string, unknown>) => {
       if (Object.keys(patch).length === 0) return true;
@@ -947,7 +958,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
             </FormRow>
           </FormSection>
 
-          <FormSection title="노출 · 판매">
+          <FormSection title="노출 · 방송">
             <FormRow label="판매 상태" help={STATUS_HELP[status]}>
               <div className="seg" role="radiogroup" aria-label="판매 상태">
                 {statusChoices.map((s) => (
@@ -956,6 +967,23 @@ export function ProductForm({ initial }: { initial?: Product }) {
                   </button>
                 ))}
               </div>
+            </FormRow>
+            <FormRow label="방송 주문대기 대상" help="제외하면 방송 주문대기에 올라가지 않고 일반 배송 주문으로 처리합니다 (용품 등)">
+              <div className="row" role="radiogroup" aria-label="방송 주문대기 대상" style={{ gap: 16 }}>
+                {([true, false] as const).map((v) => (
+                  <label key={String(v)} className="chk">
+                    <input className="rdo" type="radio" name="queue-eligible" checked={queueEligible === v} onChange={() => setQueueEligible(v)} />
+                    {v ? "대상" : "제외"}
+                  </label>
+                ))}
+              </div>
+            </FormRow>
+            <FormRow label="오픈 타이머" htmlFor="open-timer">
+              <select id="open-timer" className="inp" style={{ width: 200 }} value={openTimer === null ? "" : String(openTimer)} onChange={(e) => setOpenTimer(e.target.value === "" ? null : Number(e.target.value))}>
+                <option value="">기본값 사용 (60초)</option>
+                <option value="90">90초</option>
+                <option value="120">120초</option>
+              </select>
             </FormRow>
           </FormSection>
 
