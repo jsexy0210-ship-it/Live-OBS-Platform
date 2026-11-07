@@ -229,6 +229,57 @@ function Guide({ slug }: { slug: string }) {
   return <p className="help-guide">{guide}</p>;
 }
 
+// 보드 SH-030 · IA 262행: 공지 탭 아래에 이용안내(「더 보기」→ 이용안내 탭)·자주 묻는 질문(「더 보기」→ 내 문의) 미리보기를 쌓는다. 글이 없는 구역은 보이지 않는다
+function GuidePreview({ slug, onMore }: { slug: string; onMore: () => void }) {
+  const [guide, setGuide] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void call<{ usageGuide: string | null }>(`/api/shop/${encodeURIComponent(slug)}/profile`).then((r) => { if (live && r.ok) setGuide(r.data.usageGuide); });
+    return () => { live = false; };
+  }, [slug]);
+  if (!guide) return null;
+  return (
+    <section className="help-stack" aria-label="이용안내 미리보기">
+      <div className="help-stack-head">
+        <h2>이용안내</h2>
+        <button type="button" className="help-more" onClick={onMore}>더 보기 ›</button>
+      </div>
+      <p className="help-guide is-clamp">{guide}</p>
+    </section>
+  );
+}
+
+function FaqPreview({ slug }: { slug: string }) {
+  const base = `/shop/${encodeURIComponent(slug)}`;
+  const [faqs, setFaqs] = useState<Faq[]>([]);
+  useEffect(() => {
+    let live = true;
+    void call<{ faqs: Faq[] }>(`/api/shop/${encodeURIComponent(slug)}/faqs`).then((r) => { if (live && r.ok) setFaqs(r.data.faqs.slice(0, 4)); });
+    return () => { live = false; };
+  }, [slug]);
+  if (faqs.length === 0) return null;
+  return (
+    <section className="help-stack" aria-label="자주 묻는 질문 미리보기">
+      <div className="help-stack-head">
+        <h2>자주 묻는 질문</h2>
+        <span className="help-stack-sub">원하는 답이 없으면 문의하기</span>
+        <Link className="help-more" href={`${base}/me/inquiries`}>더 보기 ›</Link>
+      </div>
+      <div className="help-faqs">
+        {faqs.map((f) => (
+          <details key={f.id} className="help-faq">
+            <summary>
+              <span className="help-tag">{f.category}</span>
+              {f.title}
+            </summary>
+            <p>{f.body}</p>
+          </details>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function HelpView({ slug }: { slug: string }) {
   const [tab, setTab] = useState<Tab>("notice");
   return (
@@ -243,7 +294,19 @@ export default function HelpView({ slug }: { slug: string }) {
           </button>
         ))}
       </div>
-      <div role="tabpanel">{tab === "notice" ? <Notices slug={slug} /> : tab === "guide" ? <Guide slug={slug} /> : <Faqs slug={slug} />}</div>
+      <div role="tabpanel">
+        {tab === "notice" ? (
+          <>
+            <Notices slug={slug} />
+            <GuidePreview slug={slug} onMore={() => setTab("guide")} />
+            <FaqPreview slug={slug} />
+          </>
+        ) : tab === "guide" ? (
+          <Guide slug={slug} />
+        ) : (
+          <Faqs slug={slug} />
+        )}
+      </div>
     </div>
   );
 }
