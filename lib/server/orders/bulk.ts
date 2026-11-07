@@ -2,7 +2,7 @@ import type { ActorType, PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { dbNow } from "../billing/subscription";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
-import { queueStateOf, queueStateWhere, refundRequestedWhere, trackingMissingWhere } from "./read";
+import { queueFreeOf, queueStateOf, queueStateWhere, refundRequestedWhere, trackingMissingWhere } from "./read";
 import { SHIPMENT_BATCH_MAX } from "./shipping";
 
 // 주문 목록(SA-021)의 칩 건수와 선택 일괄(ORDER_SHIPPING). 항상 ctx.sellerId 범위이고 법정 보관 주문(legalHoldAt)은 없는 주문이다.
@@ -85,7 +85,7 @@ export async function prepareShipping(db: PrismaClient, ctx: TenantContext, orde
         if (o.shipment && o.shipment.status !== "READY") return { orderId, ok: false, reason: "already_shipped" };
         if (o.shippingPreparedAt) return { orderId, ok: false, reason: "already_prepared" };
         // 대기 제외 상품만 있는 주문은 큐 항목이 처음부터 없으므로 개봉 없이 바로 배송 준비로 바꾼다(취소된 큐 항목만 있는 주문은 제외).
-        const queueFree = o.queueItems.length === 0 && o.items.length > 0 && o.items.every((i) => i.queueSkipped);
+        const queueFree = queueFreeOf(o.queueItems, o.items);
         if (!queueFree && queueStateOf(o.queueItems) !== "done") return { orderId, ok: false, reason: "not_opened" };
         const now = await dbNow(tx);
         await tx.order.update({ where: { id: orderId }, data: { shippingPreparedAt: now } });

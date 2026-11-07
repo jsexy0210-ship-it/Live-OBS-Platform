@@ -343,7 +343,9 @@ function PartnerList() {
                             </td>
                             <td className="num">{s.seq}</td>
                             <td>
-                              <span className={`bdg ${DISPLAY_STATUS[s.displayStatus].cls}`}>{DISPLAY_STATUS[s.displayStatus].label}</span>
+                              {/* 본인확인 대기는 정상 · 체험 중 상태를 대신 보이고, 정지 · 연체 같은 운영 상태는 가리지 않고 함께 보인다 */}
+                              {s.identityPending && <span className="bdg b-warn">본인확인 대기</span>}
+                              {(!s.identityPending || (s.displayStatus !== "NORMAL" && s.displayStatus !== "TRIAL")) && <span className={`bdg ${DISPLAY_STATUS[s.displayStatus].cls}`}>{DISPLAY_STATUS[s.displayStatus].label}</span>}
                             </td>
                             <td>{s.plan?.name ?? "-"}</td>
                             <td>{overlayOnly ? "—" : s.pg.status === "ERROR" ? <span className="bdg b-fail">오류</span> : s.pg.status === "OK" ? <span className="bdg b-done">정상</span> : <span className="bdg b-gray">미연결</span>}</td>

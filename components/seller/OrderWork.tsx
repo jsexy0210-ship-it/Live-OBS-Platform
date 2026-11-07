@@ -59,17 +59,19 @@ export function OrderMemo({ orderId, orderNoLabel, backHandler }: { orderId: str
     await releaseGuard();
     setMemo((m) => ({ ...m, saved: memo.text, saving: false, result: memo.text.trim() ? "메모를 저장했습니다" : "메모를 지웠습니다" }));
   };
-  return <section className="card pad col" style={{ gap: 8 }} id="order-memo" aria-label="메모 남기기">
-    <h2 className="t-hl2">메모 남기기</h2>
-    <p className="help">{orderNoLabel} · 구매자에게는 보이지 않는 내부 메모입니다.</p>
-    <textarea className="inp" rows={5} aria-label="메모" placeholder="메모 입력" disabled={!memo.loaded || memo.saving} value={memo.text} onChange={(e) => textLength(e.target.value) <= 1000 && setMemo({ ...memo, text: e.target.value, result: "" })} />
+  // SA-022 정본: 구역 제목 「메모 · 파트너스만 보임」 + 표 한 행(메모 | 입력 · 저장)
+  return <section id="order-memo" aria-label="메모 남기기">
+    <h2 className="ord-sec-t">메모<span className="nt"> 파트너스만 보임 · {orderNoLabel} · 구매자에게는 보이지 않는 내부 메모입니다</span></h2>
+    <table className="au-ft"><tbody><tr><th>메모</th><td>
+    <textarea className="inp" rows={3} style={{ width: "100%" }} aria-label="메모" placeholder="주문 처리 메모 (파트너스 · 직원만 봅니다)" disabled={!memo.loaded || memo.saving} value={memo.text} onChange={(e) => textLength(e.target.value) <= 1000 && setMemo({ ...memo, text: e.target.value, result: "" })} />
     <span className="help">{textLength(memo.text)}/1,000자</span>
     {memo.error && <p className="c-neg" role="alert">{memo.error}</p>}
     {!memo.loaded && !memo.loading && <button className="btn btn-out" type="button" onClick={() => void load()}>다시 시도</button>}
     {memo.result && <p role="status">{memo.result}</p>}
-    <div className="row" style={{ gap: 8 }}>
+    <div className="row" style={{ gap: 8, marginTop: 8 }}>
       <button className="btn btn-out" type="button" disabled={memo.saving || !memo.loaded || memo.text === memo.saved} onClick={async () => { if (!confirmLeave(memo.text !== memo.saved)) return; setMemo((m) => ({ ...m, saving: true })); await releaseGuard(); setMemo((m) => ({ ...m, text: m.saved, saving: false, error: "", result: "" })); }}>취소</button>
       <button className="btn btn-pri" type="button" disabled={!memo.loaded || memo.saving || memo.text === memo.saved} onClick={() => void save()}>저장</button>
     </div>
+    </td></tr></tbody></table>
   </section>;
 }

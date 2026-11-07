@@ -18,6 +18,7 @@ export type SellerRow = {
 export type DisplayStatus = "NORMAL" | "TRIAL" | "OVERDUE" | "LOCKED" | "SUSPENDED" | "CLOSED" | "PENDING" | "REJECTED";
 export type SellerListRow = SellerRow & {
   seq: number;
+  identityPending: boolean; // 직접 추가했고 대표자 본인확인이 아직 안 됨(MA-017)
   displayStatus: DisplayStatus;
   representativeName: string | null;
   pg: { status: "OK" | "ERROR" | "NONE"; lastSuccessAt: string | null; lastFailureAt: string | null };
@@ -68,6 +69,8 @@ export type SellerDetail = {
   directCreated?: boolean;
   identityPending?: boolean;
   directCreatedAt?: string | null;
+  // 직접 추가 정보(MA-012-1): 추가한 관리자 · 사유는 모든 역할, 초대 상태(invite)는 최고관리자만(비최고관리자는 null)
+  directCreation?: { at: string | null; byAdminName: string | null; reason: string | null; invite: { issuedAt: string; expiresAt: string; state: "active" | "used" | "revoked" | "expired" } | null } | null;
   plan: PlanRef | null;
   owner: { name: string; email: string; status: string; lastLoginAt: string | null } | null;
   subscription: {
