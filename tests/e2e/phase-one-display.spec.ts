@@ -7,6 +7,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { hashPassword } from "../../lib/server/auth/password";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
+import { identityProblems, readIdentity } from "./candidateIdentity";
 import { submitSellerLogin } from "./sellerLogin";
 
 // PHASE1 표시 검수만: 실제 TEST/공유 DB 실행을 거부한다. GET 응답은 합성 상태이며 실제 서버 측정값이 아니다.
@@ -16,14 +17,12 @@ const password = randomBytes(16).toString("base64url");
 const widths = [1126, 390] as const;
 const sha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
 const event: unknown = process.env.GITHUB_EVENT_PATH ? JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")) : null;
-let candidateSha = sha;
+let prShas: { head: string; base: string } | null = null;
 if (event && typeof event === "object" && "pull_request" in event) {
-  const pr = event.pull_request;
-  if (pr && typeof pr === "object" && "head" in pr) {
-    const head = pr.head;
-    if (head && typeof head === "object" && "sha" in head && typeof head.sha === "string") candidateSha = head.sha;
-  }
+  const pr = event.pull_request as { head?: { sha?: unknown }; base?: { sha?: unknown } } | null;
+  if (typeof pr?.head?.sha === "string" && typeof pr?.base?.sha === "string") prShas = { head: pr.head.sha, base: pr.base.sha };
 }
+const candidateSha = prShas?.head ?? sha;
 const tree = execFileSync("git", ["rev-parse", "HEAD^{tree}"], { encoding: "utf8" }).trim();
 const shots = path.join(process.cwd(), "tests/e2e/screenshots");
 const diagnostics = path.join(shots, `current-shell-${sha}`);
@@ -37,7 +36,7 @@ test.beforeAll(async ({}, info) => {
   expect(process.env.GITHUB_RUN_ID).toMatch(/^\d+$/);
   expect(process.env.NODE_ENV).not.toBe("production");
   expect(info.config.workers).toBe(1); // id=1 사업자 설정의 독점 lease: 현재 job, 단일 worker, 이 spec의 finally만 복원한다.
-  expect(execFileSync("git", ["rev-parse", `${candidateSha}^{tree}`], { encoding: "utf8" }).trim()).toBe(tree);
+  expect(identityProblems(readIdentity(prShas))).toEqual([]);
   const url = assertTestDatabaseUrl(process.env.DATABASE_URL);
   expect(new URL(url).hostname).toMatch(/^(localhost|127\.0\.0\.1)$/);
   expect(new URL(url).pathname).toBe("/live_obs_test");
