@@ -99,14 +99,36 @@ export async function getAdminSeller(db: PrismaClient, admin: AdminSessionContex
   ]);
   const adminActors = new Map(processingAdmins.map((a) => [a.id, a]));
   const staffActors = new Map(processingStaff.map((a) => [a.id, a]));
+  const { users, subscription, approvedBy, directCreatedByAdminId, representativeVerifiedAt, ...rest } = s;
+  // 직접 추가한 쇼핑몰(MA-012-1): 추가한 관리자 이름·사유는 모든 역할이, 초대 링크의 발급·만료 시각과 상태는 최고관리자만 본다.
+  // 초대 토큰·해시·링크는 어떤 경우에도 내보내지 않는다(생성·재발급 응답에서 한 번만 보인다).
+  const directCreation = directCreatedByAdminId
+    ? await (async () => {
+        const [creator, created, invite] = await Promise.all([
+          db.platformAdmin.findUnique({ where: { id: directCreatedByAdminId }, select: { name: true } }),
+          db.auditLog.findFirst({ where: { action: "admin.seller.direct_create", targetType: "Seller", targetId: sellerId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { after: true } }),
+          adminCan(admin.admin.role, "system.manage")
+            ? db.sellerInvite.findFirst({ where: { sellerId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { createdAt: true, expiresAt: true, usedAt: true, revokedAt: true } })
+            : null,
+        ]);
+        return {
+          at: s.directCreatedAt,
+          byAdminName: creator?.name ?? null,
+          reason: typeof (created?.after as { reason?: unknown } | null)?.reason === "string" ? (created!.after as { reason: string }).reason : null,
+          invite: invite
+            ? { issuedAt: invite.createdAt, expiresAt: invite.expiresAt, state: invite.usedAt ? ("used" as const) : invite.revokedAt ? ("revoked" as const) : invite.expiresAt <= now ? ("expired" as const) : ("active" as const) }
+            : null,
+        };
+      })()
+    : null;
   const assignedCs = assignedInquiry?.assignedAdminId
     ? await db.platformAdmin.findUnique({ where: { id: assignedInquiry.assignedAdminId }, select: { id: true, name: true } })
     : null;
-  const { users, subscription, approvedBy, directCreatedByAdminId, representativeVerifiedAt, ...rest } = s;
   return {
     ...rest,
     // 직접 추가한 쇼핑몰 표시(MA-012): identityPending = 직접 추가했고 대표자 본인확인이 아직 안 됨(직원 추가·실지급·충전금 결제가 막힘)
     directCreated: directCreatedByAdminId !== null,
+    directCreation,
     identityPending: directCreatedByAdminId !== null && representativeVerifiedAt === null,
     owner: users[0] ?? null,
     approvedBy,
