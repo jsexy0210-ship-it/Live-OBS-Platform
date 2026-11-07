@@ -123,7 +123,8 @@ export function ProductOperations({ ids, single = false, returnTo }: { ids: stri
     return [...counts].map(([label, n]) => `${label} ${n}`).join(" · ");
   }, [items]);
   return <>
-    <Topbar crumb="상품 › 작업 상세" />
+    {/* 경로 줄 정본(SA-011-OPS): 상품 › 상품 목록 › 선택 상품 작업 상세. 상품 1개로 들어오는 변형은 정본에 경로가 따로 없어 기존 그대로 둔다 */}
+    <Topbar crumb={single ? "상품 › 작업 상세" : "상품 › 상품 목록 › 선택 상품 작업 상세"} />
     <main className="main">
       {single
         ? <PageHead title="상품 작업 상세" description="가격·재고·판매 상태를 확인하고 상세에서 바꿔요." back={listHref} />

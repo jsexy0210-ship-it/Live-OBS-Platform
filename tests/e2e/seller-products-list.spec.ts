@@ -146,6 +146,17 @@ test("선택 일괄 처리: 숨김으로 바꾸고 되돌리고, 선택 삭제�
     await link.click();
     await expect(page).toHaveURL(new URL(href, listUrl).href);
     await expect(page.getByRole("region", { name: "선택한 상품", exact: true }).locator("tbody tr")).toHaveCount(selected.length);
+    // 셸 경로 줄(정본 SA-011-OPS): 상품 › 상품 목록 › 선택 상품 작업 상세(앞 두 칸은 링크)
+    await expect(page.locator(".loc-bar .crumb")).toHaveText("상품›상품 목록›선택 상품 작업 상세");
+    await expect(page.locator(".loc-bar .crumb-link")).toHaveCount(2);
+    if (selected.length === 3) {
+      const size = page.viewportSize();
+      for (const width of [1440, 1024]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.screenshot({ path: `tests/e2e/screenshots/SA-011-OPS-path-${width}.png` });
+      }
+      if (size) await page.setViewportSize(size);
+    }
     // 새로고침으로 앱 내 이동 기록이 없어져도 명시한 목록 조건으로 복귀한다.
     await page.reload();
     await expect(page.getByRole("region", { name: "선택한 상품", exact: true }).locator("tbody tr")).toHaveCount(selected.length);
