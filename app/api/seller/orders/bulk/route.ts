@@ -6,7 +6,7 @@ import { INVOICE_MESSAGES, invoiceStatus, issueInvoices } from "../../../../../l
 import { prepareShipping } from "../../../../../lib/server/orders/bulk";
 
 // 주문 목록 선택 일괄(SA-021, ORDER_SHIPPING). 본문 { action, orderIds: string[](1~100), ... }.
-// - action "prepare_shipping"(배송 준비로 변경): 개봉 완료 주문만 바뀌고 나머지는 건너뜀. 응답 { results: [{ orderId, ok, reason? }], prepared }. reason: not_found·not_paid·not_ready·already_shipped·already_prepared·not_opened.
+// - action "prepare_shipping"(배송 준비로 변경): 개봉 완료 주문(대기 제외 상품만 있는 주문은 개봉 없이)만 바뀌고 나머지는 건너뜀. 응답 { results: [{ orderId, ok, reason? }], prepared }. reason: not_found·not_paid·not_ready·already_shipped·already_prepared·not_opened.
 // - action "issue_invoices"(송장 일괄 입력): 모의 송장 발급(POST /api/seller/invoices와 같음). 추가 본문 { bundle?: boolean, courier?: 택배사 코드 }. 응답은 그 API와 같다.
 // 잘못된 본문·모르는 action은 400 bad_request.
 export const POST = mutation(async (req: Request) => {
