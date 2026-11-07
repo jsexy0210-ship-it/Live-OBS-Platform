@@ -501,6 +501,8 @@ select.inp{cursor:pointer}
 .sh24 .ban .dots i{width:8px;height:8px;border-radius:50%;background:#ffffff66}
 .sh24 .ban .dots i.on{background:#fff}
 .sh24 .ban .side{display:flex;flex-direction:column;gap:16px}
+.sh24 .ban.solo{grid-template-columns:1fr}
+.sh24 .ban.solo .side{flex-direction:row}
 .sh24 .ban .side>div{flex:1;border:1px solid var(--ln);padding:16px;display:flex;flex-direction:column;gap:4px;background:#fff}
 .sh24 .ban .side .k{font-size:12px;color:var(--shop);font-weight:700}
 .sh24 .ban .side b{font-size:15px}
