@@ -1342,6 +1342,8 @@ model OrderItem {
   stockRestoredAt     DateTime? @db.Timestamptz(3)
   // 환불한 수량(부분 환불, queue/service.ts refundOrder). 0 이상 quantity 이하(DB CHECK).
   refundedQuantity    Int       @default(0)
+  // 결제 때 대기 제외 상품(queueEligible=false)이라 방송 대기에 올리지 않은 품목. 상품 설정이 나중에 바뀌어도 그 주문은 일반 배송 주문으로 남는다.
+  queueSkipped        Boolean   @default(false)
 
   seller      Seller              @relation(fields: [sellerId], references: [id])
   order       Order               @relation(fields: [sellerId, orderId], references: [sellerId, id])

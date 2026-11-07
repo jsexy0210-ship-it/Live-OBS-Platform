@@ -332,7 +332,10 @@ export async function markOrderPaid(
       const defaultTimer = await policyValue(tx, "openTimerSeconds");
       for (const item of order.items) {
         const product = productById.get(item.productId);
-        if (product && !product.queueEligible) continue;
+        if (product && !product.queueEligible) {
+          await tx.orderItem.update({ where: { id: item.id }, data: { queueSkipped: true } });
+          continue;
+        }
         const q = await tx.queueItem.create({
           data: {
             ...scope,
