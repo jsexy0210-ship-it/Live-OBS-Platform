@@ -1,0 +1,1 @@
+ALTER TABLE "OrderItem" ADD COLUMN "queueSkipped" BOOLEAN NOT NULL DEFAULT false;

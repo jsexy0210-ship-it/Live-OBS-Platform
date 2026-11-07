@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { createProduct, getProduct, listProducts, updateProduct } from "../../lib/server/products/manage";
+import { prepareShipping } from "../../lib/server/orders/bulk";
 import { markOrderPaid } from "../../lib/server/queue/service";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { createBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
@@ -93,5 +94,26 @@ describe("결제 완료 시 대기 등록 분기", () => {
     await markOrderPaid(db, { sellerId: s.seller.id, orderId: o.id });
     const timers = (await db.queueItem.findMany()).map((q) => q.timerSeconds).sort((a, b) => a - b);
     expect(timers).toEqual([75, 90]);
+  });
+
+  it("대기 제외로 결제된 주문은 이후 상품을 대기 대상으로 되돌려도 배송 준비로 바꿀 수 있다", async () => {
+    const s = await shop();
+    const o = await s.order([{ queueEligible: false }, {}]);
+    const items = await db.orderItem.findMany({ where: { orderId: o.id }, include: { product: true } });
+    const freeItem = items.find((i) => !i.product.queueEligible)!;
+    // 대기 가능 상품도 섞여 있으면 아직 개봉 전이라 막힌다
+    await markOrderPaid(db, { sellerId: s.seller.id, orderId: o.id });
+    expect((await db.orderItem.findUniqueOrThrow({ where: { id: freeItem.id } })).queueSkipped).toBe(true);
+    expect(await db.orderItem.count({ where: { orderId: o.id, queueSkipped: true } })).toBe(1);
+
+    const only = await s.order([{ queueEligible: false }]);
+    await markOrderPaid(db, { sellerId: s.seller.id, orderId: only.id });
+    await db.product.updateMany({ where: { sellerId: s.seller.id }, data: { queueEligible: true } });
+    const r = await prepareShipping(db, s.ctx, [only.id, o.id]);
+    if (!r.ok) throw new Error("bulk");
+    expect(r.results).toEqual([
+      { orderId: only.id, ok: true },
+      { orderId: o.id, ok: false, reason: "not_opened" },
+    ]);
   });
 });
