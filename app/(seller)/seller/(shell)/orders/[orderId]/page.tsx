@@ -196,6 +196,7 @@ function OrderDetailContent() {
           </div>
         </div>
 
+        <section aria-label="주문 상품">
         <h2 className="ord-sec-t">주문 상품</h2>
         <div className="au-lt-wrap">
           <table className="tbl" data-testid="order-items">
@@ -256,6 +257,8 @@ function OrderDetailContent() {
             </tr>
           </tbody>
         </table>
+
+        </section>
 
         <h2 className="ord-sec-t">결제 정보</h2>
         <table className="au-ft ord-ft4">
