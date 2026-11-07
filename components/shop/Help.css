@@ -226,3 +226,43 @@
   overflow-wrap: anywhere;
   line-height: 1.7;
 }
+
+/* 보드 SH-030: 공지 탭 아래 쌓는 이용안내·자주 묻는 질문 미리보기(제목 줄 아래 검정 선, 오른쪽 「더 보기 ›」) */
+.help-stack {
+  margin-top: 32px;
+}
+.help-stack-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--wds-label-normal);
+  margin-bottom: 12px;
+}
+.help-stack-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.help-stack-links {
+  display: flex;
+  gap: 12px;
+}
+.help-more,
+.help-stack-links a {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--wds-label-alternative);
+  cursor: pointer;
+}
+.help-guide.is-clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 8;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  padding: 0;
+}
