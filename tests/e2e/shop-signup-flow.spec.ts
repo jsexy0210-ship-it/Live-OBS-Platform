@@ -460,12 +460,18 @@ test("가입 실패는 서버 문구를 해당 칸 아래나 위 안내에 보�
     [fail(409, "already_member", BUYER_SIGNUP_MESSAGES.already_member), "notice"],
   ];
   const field = { nickname: F.nick, loginId: F.id, password: F.pw } as const;
+  // 앞 반복의 가입 기록(세션 저장소)이 남지 않게 문서가 열릴 때마다 앱이 읽기 전에 비운다. 열린 화면에서 비우면, 가입 화면이 프로필 조회를 마친 뒤
+  // 메모리에 있던 앞 반복 상태를 저장소에 다시 써서 기록이 되살아날 수 있다.
+  await page.addInitScript(() => {
+    try {
+      sessionStorage.clear();
+    } catch {
+      // 저장소를 못 쓰는 환경이면 건너뛴다
+    }
+  });
   for (const [reply, where] of cases) {
     await page.unrouteAll();
     await mockApi(page, { signup: reply });
-    // 앞 반복의 가입 기록(세션 저장소)을 비우고 처음부터 시작한다
-    await page.goto(`/shop/${SLUG}/signup`);
-    await page.evaluate(() => sessionStorage.clear());
     await toAccount(page);
     await fillAccount(page, "x1", "별빛");
     await submitSignup(page);

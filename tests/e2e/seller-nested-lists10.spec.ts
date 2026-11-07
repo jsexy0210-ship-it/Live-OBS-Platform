@@ -94,15 +94,16 @@ test("SA-044: 하위 세 목록은 동일 GET 조건으로 10·10·3과 끝/앞/
       const rows=target.section.getByTestId(target.row), nav=target.section.getByRole("navigation",{name:"페이지 이동",exact:true});
       for(let n=1;n<=3;n++) {
         await expect(rows).toHaveCount(n===3?3:10);
-        const displayed=rows.locator(target.key==="changes"?":scope > span:first-child":":scope > .col > span:first-child");
-        await expect(displayed).toHaveText(names.slice((n-1)*10,n*10).map(name=>name+(target.key==="locked"?" · 일반":" · 일반 → 합성 상위")));
+        // 읽기 전용 표: 한 행의 첫 칸은 회원, 둘째 칸은 고정 등급(고정한 회원) 또는 이전 → 지금 등급(최근 변경)
+        const displayed=rows.locator("td:nth-child(1), td:nth-child(2)");
+        await expect(displayed).toHaveText(names.slice((n-1)*10,n*10).flatMap(name=>[name,target.key==="locked"?"일반":"일반 → 합성 상위"]));
         await expect(nav.getByRole("button",{name:n+"페이지",exact:true})).toHaveAttribute("aria-current","page");
         if(n<3) await nav.getByRole("button",{name:"다음",exact:true}).click();
       }
       await expect(nav.getByRole("button",{name:"다음",exact:true})).toBeDisabled();
       await nav.getByRole("button",{name:"이전",exact:true}).click(); await expect(rows).toHaveCount(10);
       await nav.getByRole("button",{name:"처음",exact:true}).click(); await expect(rows).toHaveCount(10);
-      await expect(rows.locator(target.key==="changes"?":scope > span:first-child":":scope > .col > span:first-child")).toHaveText(names.slice(0,10).map(name=>name+(target.key==="locked"?" · 일반":" · 일반 → 합성 상위")));
+      await expect(rows.locator("td:nth-child(1), td:nth-child(2)")).toHaveText(names.slice(0,10).flatMap(name=>[name,target.key==="locked"?"일반":"일반 → 합성 상위"]));
     }
     const changesResponse=await page.request.get(root+"/changes?kind=up"); expect(changesResponse.status()).toBe(200);
     let changes:Awaited<ReturnType<typeof listGradeChanges>>=await changesResponse.json(), changeNames:string[]=[];

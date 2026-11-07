@@ -11,3 +11,14 @@
 .mg-adj-more>span{grid-column:1 / -1}
 .mg-log{display:flex;justify-content:space-between;gap:12px;padding:10px 16px;box-shadow:inset 0 -1px 0 var(--wds-line-normal-alternative)}
 @media (max-width:767px){.mg-sum,.mg-opts{grid-template-columns:repeat(2,minmax(0,1fr))}.mg-grid{grid-template-columns:minmax(0,1fr) 120px}.mg-ben{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.mg-ben.mg-head{display:none}.mg-grid>.mg-hide-m{display:none}.mg-adj{grid-template-columns:minmax(0,1fr) auto}.mg-adj-more{grid-template-columns:minmax(0,1fr)}}
+
+/* 정본 v336 구조: 구역 제목 줄 · 요약 칸의 승급/강등 버튼 · 수동 조정 검색 */
+.mg-sec{display:flex;flex-direction:column;gap:8px}
+.mg-sec-h{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.mg-sec-h h2{margin:0}
+.mg-link{padding:0;border:0;background:none;text-align:left;font:inherit;font-weight:700;color:inherit;cursor:pointer}
+.mg-link:hover{text-decoration:underline}
+.mg-link-sub{font-weight:400;color:var(--wds-label-alternative)}
+.mg-search{display:flex;gap:8px;justify-content:space-between}
+.mg-search .inp{flex:0 1 360px}
+.mg-sec .au-ft > tbody > tr > th:nth-child(3){border-left:1px solid var(--cs-line)}
