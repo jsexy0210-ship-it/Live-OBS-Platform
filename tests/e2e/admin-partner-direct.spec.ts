@@ -132,6 +132,14 @@ test("본인확인 대기 표시: 목록 상태 칸에 「본인확인 대기」
   await page.getByRole("button", { name: "검색", exact: true }).click();
   await expect(page.getByTestId("partner-row")).toHaveCount(1);
   await expect(page.getByTestId("partner-row")).toContainText("본인확인 대기");
+  // 정지된 본인확인 대기 파트너스는 두 표시가 함께 보인다(운영 상태를 가리지 않는다)
+  await db.seller.update({ where: { id: sellerId }, data: { status: "SUSPENDED" } });
+  await page.reload();
+  await page.getByLabel("검색어", { exact: true }).fill(slug);
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page.getByTestId("partner-row")).toContainText("이용 정지");
+  await expect(page.getByTestId("partner-row")).toContainText("본인확인 대기");
+  await db.seller.update({ where: { id: sellerId }, data: { status: "ACTIVE" } });
 
   await page.context().clearCookies();
   await login(page, csEmail);
