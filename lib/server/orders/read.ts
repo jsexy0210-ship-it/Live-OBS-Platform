@@ -232,6 +232,13 @@ export function queueStateOf(items: { status: string }[]): QueueState | null {
 // 대기 제외 전용 주문: 큐 항목이 하나도 없고(취소 포함) 품목이 있으며 모든 품목이 결제 때 대기 제외로 건너뛴 것(OrderItem.queueSkipped).
 // 이런 주문은 개봉 없이 바로 「배송 준비로 변경」할 수 있다(orders/bulk.ts prepareShipping과 같은 기준).
 export const queueFreeOf = (queueItems: unknown[], items: { queueSkipped: boolean }[]) => queueItems.length === 0 && items.length > 0 && items.every((i) => i.queueSkipped);
+// 대기 제외 전용 주문의 DB 조건(queueFreeOf와 같은 기준).
+export const queueFreeWhere: Prisma.OrderWhereInput = { queueItems: { none: {} }, items: { some: {}, every: { queueSkipped: true } } };
+// 목록 queue 필터 값: waiting·opening·done(기존) + free(대기 제외 전용 주문만).
+// done은 「개봉 완료 또는 대기 제외 전용」이다(대기 제외 주문은 개봉할 것이 없어 바로 배송 준비로 바꿀 수 있으므로 칩 「배송 준비 전」에도 잡힌다).
+export const QUEUE_FILTERS = [...QUEUE_STATES, "free"] as const;
+export const queueFilterWhere = (q: (typeof QUEUE_FILTERS)[number]): Prisma.OrderWhereInput =>
+  q === "free" ? queueFreeWhere : q === "done" ? { OR: [queueStateWhere("done"), queueFreeWhere] } : queueStateWhere(q);
 // queueStateOf와 같은 기준의 DB 조건
 export const queueStateWhere = (q: QueueState): Prisma.OrderWhereInput =>
   q === "opening"
@@ -263,7 +270,7 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
   if (query.memberId && !UUID_RE.test(query.memberId)) return { ok: false as const };
   // 발송 여부(배송 정보가 있고 발송 전 준비 상태 READY가 아님). 「배송 준비」 = status=PAID&shipped=false. 비어 있으면 거르지 않는다.
   if (query.shipped && query.shipped !== "true" && query.shipped !== "false") return { ok: false as const };
-  if (query.queue && !(QUEUE_STATES as readonly string[]).includes(query.queue)) return { ok: false as const };
+  if (query.queue && !(QUEUE_FILTERS as readonly string[]).includes(query.queue)) return { ok: false as const };
   // 배송 준비 표식(shippingPreparedAt) 여부. false는 결제 완료 주문만(칩 건수 queueDonePending과 같은 기준). 칩 「배송 준비 전」 = queue=done&prepared=false. 비어 있으면 거르지 않는다.
   if (query.prepared && query.prepared !== "true" && query.prepared !== "false") return { ok: false as const };
   for (const flag of [query.refundRequested, query.trackingMissing]) if (flag && flag !== "true") return { ok: false as const };
@@ -273,7 +280,7 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
   if (query.memberId) and.push({ buyerMemberId: query.memberId });
   if (query.shipped) and.push(query.shipped === "true" ? { shipment: { is: { status: { not: "READY" } } } } : { OR: [{ shipment: { is: null } }, { shipment: { is: { status: "READY" } } }] });
   if (statuses.length) and.push({ status: { in: statuses as OrderStatus[] } });
-  if (query.queue) and.push(queueStateWhere(query.queue as QueueState));
+  if (query.queue) and.push(queueFilterWhere(query.queue as (typeof QUEUE_FILTERS)[number]));
   if (query.prepared) and.push(query.prepared === "true" ? { shippingPreparedAt: { not: null } } : { status: "PAID", shippingPreparedAt: null });
   if (query.refundRequested) and.push(refundRequestedWhere);
   if (query.trackingMissing) and.push(trackingMissingWhere);

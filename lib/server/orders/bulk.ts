@@ -2,7 +2,7 @@ import type { ActorType, PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { dbNow } from "../billing/subscription";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
-import { queueFreeOf, queueStateOf, queueStateWhere, refundRequestedWhere, trackingMissingWhere } from "./read";
+import { queueFilterWhere, queueFreeOf, queueStateOf, queueStateWhere, refundRequestedWhere, trackingMissingWhere } from "./read";
 import { SHIPMENT_BATCH_MAX } from "./shipping";
 
 // 주문 목록(SA-021)의 칩 건수와 선택 일괄(ORDER_SHIPPING). 항상 ctx.sellerId 범위이고 법정 보관 주문(legalHoldAt)은 없는 주문이다.
@@ -22,14 +22,14 @@ export function kstTodayRange(now: Date): { from: Date; to: Date } {
 }
 
 // 칩 건수: total(전체)·today(오늘 접수)·todaySales(오늘 결제된 주문의 금액 합계 − 환불 금액)·unpaid(입금 전)·trackingMissing(송장 미입력: 결제 완료·발송 전)·
-// queueWaiting·queueOpening·queueDone(결제 완료 주문의 방송 큐 상태별)·refundRequested(처리 대기 환불 요청이 있는 주문)·cancelled·refunded.
+// queueWaiting·queueOpening·queueDone(결제 완료 주문의 방송 큐 상태별, 대기 제외 전용 주문은 queueDone·queueDonePending에 포함)·queueFree(대기 제외 전용 주문만)·refundRequested(처리 대기 환불 요청이 있는 주문)·cancelled·refunded.
 export async function countSellerOrders(db: PrismaClient, ctx: TenantContext) {
   requireSellerRead(ctx, "ORDER_SHIPPING");
   const now = await dbNow(db);
   const today = kstTodayRange(now);
   const base = { sellerId: ctx.sellerId, legalHoldAt: null } as const;
   const paid = { ...base, status: "PAID" as const };
-  const [total, todayCount, sales, unpaid, trackingMissing, queueWaiting, queueOpening, queueDone, queueDonePending, refundRequested, cancelled, refunded] = await Promise.all([
+  const [total, todayCount, sales, unpaid, trackingMissing, queueWaiting, queueOpening, queueDone, queueDonePending, queueFree, refundRequested, cancelled, refunded] = await Promise.all([
     db.order.count({ where: base }),
     db.order.count({ where: { ...base, createdAt: { gte: today.from, lt: today.to } } }),
     db.order.aggregate({ where: { ...base, paidAt: { gte: today.from, lt: today.to } }, _sum: { totalAmount: true, refundAmount: true } }),
@@ -37,8 +37,9 @@ export async function countSellerOrders(db: PrismaClient, ctx: TenantContext) {
     db.order.count({ where: { AND: [base, trackingMissingWhere] } }),
     db.order.count({ where: { AND: [paid, queueStateWhere("waiting")] } }),
     db.order.count({ where: { AND: [paid, queueStateWhere("opening")] } }),
-    db.order.count({ where: { AND: [paid, queueStateWhere("done")] } }),
-    db.order.count({ where: { AND: [paid, queueStateWhere("done"), { shippingPreparedAt: null }] } }),
+    db.order.count({ where: { AND: [paid, queueFilterWhere("done")] } }),
+    db.order.count({ where: { AND: [paid, queueFilterWhere("done"), { shippingPreparedAt: null }] } }),
+    db.order.count({ where: { AND: [paid, queueFilterWhere("free")] } }),
     db.order.count({ where: { AND: [base, refundRequestedWhere] } }),
     db.order.count({ where: { ...base, status: "CANCELLED" } }),
     db.order.count({ where: { ...base, status: "REFUNDED" } }),
@@ -53,6 +54,7 @@ export async function countSellerOrders(db: PrismaClient, ctx: TenantContext) {
     queueOpening,
     queueDone,
     queueDonePending,
+    queueFree,
     refundRequested,
     cancelled,
     refunded,
