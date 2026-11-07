@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FormRow, FormSection, ListTable, PageHead, useConfirm } from "../admin-ui";
 import { Topbar, useSeller } from "./SellerShell";
 import { QuickPrice, QuickStatus, QuickStock, type QuickDone, type QuickUndo } from "./ProductQuick";
-import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "./States";
+import { ErrorState, LoadingRows, Locked, NoImage, NoPermission, Toast } from "./States";
 import { api, type Product, type ProductStatus } from "./api";
 import { statusBadge, totalStock, won } from "./format";
 import { sanitizeNext } from "../../lib/client/navigation";
@@ -13,6 +13,13 @@ import { sanitizeNext } from "../../lib/client/navigation";
 type BulkResult = { updated: string[]; skipped: { productId: string; reason: string }[] };
 const SKIP_REASON: Record<string, string> = { not_found: "찾을 수 없음", no_sellable_option: "판매할 수 있는 선택 항목이 없음(상품 수정에서 추가해 주십시오)" };
 const STATUS_TO: Record<string, string> = { ON_SALE: "판매 중으로", HIDDEN: "숨김으로", SOLD_OUT: "품절로", DRAFT: "임시 저장으로" };
+
+const optionSummary = (p: Product) => (p.options.length === 0 ? "선택 항목 없음" : p.options.map((o) => o.name).join(" · "));
+// 번호: 상품 코드(P + 7자리 순번)의 순번. 상품 목록과 같은 기준이다.
+const productNo = (code: string | null | undefined) => {
+  const n = Number((code ?? "").replace(/\D/g, ""));
+  return code && Number.isFinite(n) ? n : "-";
+};
 
 // 목록은 조회·선택·이동만 담당한다. 변경과 되돌리기는 실제 작업 상세에서만 실행한다.
 export function ProductOperations({ ids, single = false, returnTo }: { ids: string[]; single?: boolean; returnTo?: string | null }) {
@@ -108,10 +115,17 @@ export function ProductOperations({ ids, single = false, returnTo }: { ids: stri
 
 
   const product = single ? items[0] : null;
+  const statusSummary = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of items) counts.set(statusBadge(item).label, (counts.get(statusBadge(item).label) ?? 0) + 1);
+    return [...counts].map(([label, n]) => `${label} ${n}`).join(" · ");
+  }, [items]);
   return <>
     <Topbar crumb="상품 › 작업 상세" />
     <main className="main">
-      <PageHead title={single ? "상품 작업 상세" : "선택 상품 작업 상세"} description="가격·재고·판매 상태를 확인하고 상세에서 바꿔요." back={listHref} />
+      {single
+        ? <PageHead title="상품 작업 상세" description="가격·재고·판매 상태를 확인하고 상세에서 바꿔요." back={listHref} />
+        : <PageHead title="선택 상품 작업 상세" back={false} actions={<Link className="btn btn-out" href={listHref}>목록으로</Link>} />}
       {!canManage ? <NoPermission need="상품 관리" /> : !validIds ? <div className="card"><p>작업할 상품을 목록에서 다시 골라 주세요.</p><Link href="/seller/products" className="btn btn-out">상품 목록으로</Link></div> : state.kind === "loading" ? <div className="card"><LoadingRows rows={3} /></div> : state.kind === "error" ? state.status === 403 ? <NoPermission need="상품 관리" /> : state.status === 402 ? <Locked /> : <div className="card"><ErrorState title="상품을 불러오지 못했어요." onRetry={() => void load()} /></div> : <>
         {product ? <section data-testid="product-detail-operations" aria-label="상품 변경">
           <FormSection title={product.name}>
@@ -123,14 +137,43 @@ export function ProductOperations({ ids, single = false, returnTo }: { ids: stri
           </FormSection>
           <Link className="btn btn-out" href={`/seller/products/${product.id}`}>상품 내용 수정</Link>
         </section> : <section className="au-list-section" aria-label="선택한 상품">
+          <div className="msg msg-info" role="note">상품 목록에서 고른 상품에만 적용합니다 · 판매 상태 변경과 삭제는 이 화면에서만 실행하고 목록은 조회 · 선택 · 이동만 합니다 · 바꾼 뒤 몇 초 동안 「되돌리기」를 누를 수 있습니다</div>
           {missingCount > 0 && <p role="status">찾을 수 없는 상품 {missingCount}개 · 남은 상품 {items.length}개</p>}
-          <p>선택한 상품 {items.length}개에만 적용해요.</p>
-          <ListTable aria-label="선택 상품 표"><table className="tbl"><thead><tr><th>상품</th><th>판매가</th><th>재고</th><th>판매 상태</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><Link href={`/seller/products/${item.id}`}>{item.name}</Link></td><td>{won(item.price)}</td><td>{totalStock(item).toLocaleString("ko-KR")}</td><td>{statusBadge(item).label}</td></tr>)}</tbody></table></ListTable>
-          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-            <button className="btn btn-dense btn-out btn-level-bulk" type="button" disabled={!items.length || bulkBusy} onClick={() => void bulkStatus("ON_SALE")}>선택 판매 중</button>
-            <button className="btn btn-dense btn-out btn-level-bulk" type="button" disabled={!items.length || bulkBusy} onClick={() => void bulkStatus("HIDDEN")}>선택 숨김</button>
-            <button className="btn btn-dense btn-neg btn-level-bulk" type="button" disabled={!items.length || bulkBusy} onClick={() => setConfirmDelete(true)}>선택 삭제</button>
+          <div className="au-lh">
+            <span className="au-lh-total" aria-live="polite">
+              선택 <b className="num">{items.length.toLocaleString("ko-KR")}</b>건
+              {statusSummary && <span className="t-c1 c-alt"> ({statusSummary})</span>}
+            </span>
+            <div className="au-lh-act">
+              <button className="btn btn-dense btn-out btn-level-bulk" type="button" disabled={!items.length || bulkBusy} onClick={() => void bulkStatus("ON_SALE")}>선택 판매 중</button>
+              <button className="btn btn-dense btn-out btn-level-bulk" type="button" disabled={!items.length || bulkBusy} onClick={() => void bulkStatus("HIDDEN")}>선택 숨김</button>
+              <button className="btn btn-dense btn-neg btn-level-bulk" type="button" disabled={!items.length || bulkBusy} onClick={() => setConfirmDelete(true)}>선택 삭제</button>
+            </div>
           </div>
+          <ListTable className="p-tbl-wrap" aria-label="선택 상품 표">
+            <table className="tbl po-table">
+              <thead><tr><th className="p-w-no">번호</th><th className="p-w-img">이미지</th><th>상품명 · 코드</th><th className="p-w-price">판매가</th><th className="p-w-stock">재고</th><th className="p-w-state">판매 상태</th><th className="po-w-act">관리</th></tr></thead>
+              <tbody>
+                {items.map((item) => {
+                  const b = statusBadge(item);
+                  return (
+                    <tr key={item.id} className="p-row">
+                      <td className="num">{productNo(item.code)}</td>
+                      <td><div className="thumb" title={item.thumbnailUrl ? "대표 이미지" : "이미지 없음"}>{item.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" /> : <NoImage />}</div></td>
+                      <td className="col-text">
+                        <Link href={`/seller/products/${item.id}`} className="fw6 p-name" style={{ color: "inherit", textDecoration: "none" }}>{item.name}</Link>
+                        <div className="t-c1 c-alt ell">{[item.code, optionSummary(item)].filter(Boolean).join(" · ")}</div>
+                      </td>
+                      <td className="num">{won(item.price)}</td>
+                      <td className="num">{totalStock(item).toLocaleString("ko-KR")}</td>
+                      <td><span className={`bdg ${b.cls}`}>{b.label}</span></td>
+                      <td><div className="row" style={{ justifyContent: "center" }}><Link className="btn btn-sm btn-out btn-level-table" href={`/seller/products/${item.id}`}>수정</Link></div></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </ListTable>
         </section>}
       </>}
     </main>

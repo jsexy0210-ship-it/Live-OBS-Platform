@@ -71,7 +71,6 @@ const APPROVED_PRODUCT_OPERATIONS_COPY: Record<string, readonly string[]> = {
     "가격·재고·판매 상태를 확인하고 상세에서 바꿔요.",
     "작업할 상품을 목록에서 다시 골라 주세요.",
     "상품을 불러오지 못했어요.",
-    "선택한 상품 {items.length}개에만 적용해요.",
   ],
 };
 const withoutApprovedCopy = (file: string, text: string) =>
