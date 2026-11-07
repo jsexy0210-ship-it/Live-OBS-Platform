@@ -78,14 +78,14 @@ export async function prepareShipping(db: PrismaClient, ctx: TenantContext, orde
         if (!locked) return { orderId, ok: false, reason: "not_found" };
         const o = await tx.order.findUniqueOrThrow({
           where: { id: orderId },
-          select: { status: true, fulfillmentType: true, stockShortageAt: true, shippingPreparedAt: true, shipment: { select: { status: true } }, queueItems: { select: { status: true } }, items: { select: { product: { select: { queueEligible: true } } } } },
+          select: { status: true, fulfillmentType: true, stockShortageAt: true, shippingPreparedAt: true, shipment: { select: { status: true } }, queueItems: { select: { status: true } }, items: { select: { queueSkipped: true } } },
         });
         if (o.status !== "PAID") return { orderId, ok: false, reason: "not_paid" };
         if (o.fulfillmentType !== "IMMEDIATE" || o.stockShortageAt) return { orderId, ok: false, reason: "not_ready" };
         if (o.shipment && o.shipment.status !== "READY") return { orderId, ok: false, reason: "already_shipped" };
         if (o.shippingPreparedAt) return { orderId, ok: false, reason: "already_prepared" };
         // 대기 제외 상품만 있는 주문은 큐 항목이 처음부터 없으므로 개봉 없이 바로 배송 준비로 바꾼다(취소된 큐 항목만 있는 주문은 제외).
-        const queueFree = o.queueItems.length === 0 && o.items.length > 0 && o.items.every((i) => !i.product.queueEligible);
+        const queueFree = o.queueItems.length === 0 && o.items.length > 0 && o.items.every((i) => i.queueSkipped);
         if (!queueFree && queueStateOf(o.queueItems) !== "done") return { orderId, ok: false, reason: "not_opened" };
         const now = await dbNow(tx);
         await tx.order.update({ where: { id: orderId }, data: { shippingPreparedAt: now } });

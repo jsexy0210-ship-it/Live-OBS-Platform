@@ -193,8 +193,7 @@ describe("대기 제외 상품 주문: 배송 준비로 변경", () => {
     const free = await s.order([]);
     const cancelledOnly = await s.order(["CANCELLED"]);
     const eligible = await s.order([]);
-    const productIds = (await db.orderItem.findMany({ where: { orderId: { in: [free.id, cancelledOnly.id] } }, select: { productId: true } })).map((i) => i.productId);
-    await db.product.updateMany({ where: { id: { in: productIds } }, data: { queueEligible: false } });
+    await db.orderItem.updateMany({ where: { orderId: { in: [free.id, cancelledOnly.id] } }, data: { queueSkipped: true } });
     const r = await prepareShipping(db, s.ctx, [free.id, cancelledOnly.id, eligible.id]);
     if (!r.ok) throw new Error("bulk");
     expect(r.results).toEqual([
