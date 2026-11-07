@@ -5,6 +5,7 @@ import { requireSeller } from "../../../../lib/server/authz/guards";
 import { sellerFeatures } from "../../../../lib/server/billing/features";
 import { sellerAccessFor } from "../../../../lib/server/billing/subscription";
 import { prisma } from "../../../../lib/server/db";
+import { isIdentityPending } from "../../../../lib/server/sellers/identityGate";
 import { hasOrderFollowup } from "../../../../lib/server/orders/followup";
 import { errorResponse, noStore, readCookie, sessionToken } from "../../../../lib/server/http/route";
 
@@ -12,7 +13,7 @@ export async function GET(req: Request) {
   try {
     // 체험하기가 끝나도 열린다(화면이 구독·결제로 안내하려면 이용 상태가 필요).
     const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { allowUnpaid: true, feature: "BILLING", allowSuspended: true });
-    const [access, features] = await Promise.all([sellerAccessFor(prisma, ctx.sellerId), sellerFeatures(prisma, ctx.sellerId)]);
+    const [access, features, identityPending] = await Promise.all([sellerAccessFor(prisma, ctx.sellerId), sellerFeatures(prisma, ctx.sellerId), isIdentityPending(prisma, ctx.sellerId)]);
     // 후속 처리(이미 받은 주문·구매 제한) 대상이 남았는지. 기능 권한이 하나도 없으면 후속 처리 경로도 막혀 있어 false다(ORDER_FOLLOWUP 가드와 같은 기준).
     const orderFollowup = features.length > 0 && (await hasOrderFollowup(prisma, ctx.sellerId));
     // 상단바용 쇼핑몰·직원 정보. 세션의 sellerId·actorId로만 찾는다(요청 값 사용 안 함).
@@ -41,6 +42,8 @@ export async function GET(req: Request) {
         trialEndsAt: access === "trial" ? seller.trialEndsAt : null,
         // 마스터가 이용 정지했는지(신규만 막기). true면 화면은 정지 안내를 보이고 이미 받은 주문 처리 메뉴만 연다(나머지는 서버가 403 seller_suspended).
         suspended: seller.status === "SUSPENDED",
+        // 대표자 본인확인 대기(마스터 직접 추가 쇼핑몰): 화면이 직원 추가 · 적립금 실제 지급 · 충전금 결제를 처음부터 잠그는 데 쓴다(막는 것은 서버)
+        identityPending,
         shop: { name: seller.shopName, slug: seller.slug },
         user: { name: user.name, email: user.email },
       }),

@@ -11,6 +11,7 @@ import { useConfirm } from "../../../../../components/admin-ui/ConfirmDialog";
 import { formatDateTime } from "../../../../../lib/client/format";
 import { phoneText } from "../../../../../components/seller/IdentityCheck";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
+import { IdentityPendingNotice, isIdentityPendingFail } from "../../../../../components/seller/IdentityPending";
 import {
   DisableStaffModal,
   EditStaffModal,
@@ -156,12 +157,15 @@ export default function Workspace({ staffId, operation = "edit", returnTo }: { s
             <button
               className="btn"
               type="button"
+              disabled={!!me.identityPending}
               onClick={() => router.push(detailHref("/seller/staff/new"))}
             >
               직원 추가
             </button>
           )}
         </div>
+
+        {me.isOwner && me.identityPending && <IdentityPendingNotice feature="직원 추가" style={{ marginBottom: 16 }} />}
 
         {!me.isOwner ? (
           <div className="card">
@@ -263,7 +267,7 @@ export default function Workspace({ staffId, operation = "edit", returnTo }: { s
                 {staff.length === 0 && (
                   <div className="st" style={{ boxShadow: "none" }}>
                     <span className="t">등록된 직원이 없습니다</span>
-                    <span className="s">방송을 도와줄 직원이 필요하면 직원 추가를 눌러 주십시오</span>
+                    {!me.identityPending && <span className="s">방송을 도와줄 직원이 필요하면 직원 추가를 눌러 주십시오</span>}
                   </div>
                 )}
               </div>
@@ -297,6 +301,10 @@ function AddStaff({ onAdded, onChanged, leaveRef }: { onAdded: (name: string) =>
   const [errors, setErrors] = useState<Errors>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // 대표자 본인확인 대기: 세션이 미리 알면 처음부터 잠그고, 모르면 만들기를 눌렀을 때 서버 403 identity_pending으로 알게 된다
+  const { me: seller } = useSeller();
+  const [pendingByServer, setPendingByServer] = useState(false);
+  const identityPending = !!seller.identityPending || pendingByServer;
   const { confirm } = useConfirm();
   // 결과가 불분명했던 시도(보낸 값 그대로, 비밀번호 포함). 있는 동안 칸을 잠그고 「같은 값으로 재전송」과 「새로 입력」만 누를 수 있다.
   // 목록으로 「생성됨」을 추정하지 않는다: 목록의 계정이 이 요청으로 생긴 것인지(다른 창이 만든 것인지), 입력한 비밀번호가 적용됐는지 알 수 없기 때문.
@@ -307,7 +315,7 @@ function AddStaff({ onAdded, onChanged, leaveRef }: { onAdded: (name: string) =>
   const [notice, setNotice] = useState<string | null>(null);
   // 불분명했던 시도를 두고 새로 시작했는지. 그 뒤 email_taken은 만든 것으로 보지 않고 안내한다
   const [restarted, setRestarted] = useState(false);
-  const locked = busy || unclear !== null;
+  const locked = busy || unclear !== null || identityPending;
   // 보내는 동안 칸이 잠겨 있으므로 다시 그린 뒤에 포커스를 옮긴다
   const [focusTo, setFocusTo] = useState<{ id: string } | null>(null);
   useEffect(() => {
@@ -391,6 +399,7 @@ function AddStaff({ onAdded, onChanged, leaveRef }: { onAdded: (name: string) =>
     // 결과가 불분명하면(연결 끊김·5xx·코드 없는 응답) 성공도 실패도 단정하지 않는다
     if (isUnclear(r)) return keepUnclear(sent, UNCLEAR_CREATE);
     setBusy(false);
+    if (isIdentityPendingFail(r)) return setPendingByServer(true);
     if (r.error === "email_taken" && restarted) {
       onChanged();
       setErrors({ email: TAKEN_TEXT });
@@ -435,6 +444,7 @@ function AddStaff({ onAdded, onChanged, leaveRef }: { onAdded: (name: string) =>
         </h2>
         <span className="t-c1 c-alt">계정이 바로 만들어집니다. 메일 초대는 보내지 않습니다</span>
       </div>
+      {identityPending && <IdentityPendingNotice feature="직원 추가" />}
       {unclear ? (
         <UnclearBox
           testId="sa-unclear"

@@ -69,6 +69,7 @@ const metricsCte = (now: Date) => {
       pok.last_ok, pfl.last_fail,
       CASE WHEN coalesce(f24.fail24, 0) > 0 AND (pok.last_ok IS NULL OR pfl.last_fail > pok.last_ok) THEN 'ERROR' WHEN pok.last_ok IS NOT NULL THEN 'OK' ELSE 'NONE' END AS pg,
       coalesce(rp."livePayoutEnabled", false) AS payout, coalesce(nt.notes, 0) AS notes,
+      (se."directCreatedByAdminId" IS NOT NULL AND se."representativeVerifiedAt" IS NULL) AS identity_pending,
       CASE se."status"::text
         WHEN 'CLOSED' THEN 'CLOSED' WHEN 'SUSPENDED' THEN 'SUSPENDED' WHEN 'PENDING' THEN 'PENDING' WHEN 'REJECTED' THEN 'REJECTED'
         ELSE CASE WHEN ss."status"::text = 'PAST_DUE' THEN 'OVERDUE'
@@ -165,7 +166,7 @@ type Row = {
   id: string; slug: string; shopName: string; status: string; createdAt: Date; approvedAt: Date | null; trialEndsAt: Date | null; rep_name: string | null;
   plan_code: string | null; plan_name: string | null; sub_status: string | null; sub_cancel: boolean | null; sub_end: Date | null;
   seq: number; month_orders: number; live: boolean; last_activity: Date | null; last_ok: Date | null; last_fail: Date | null;
-  pg: "OK" | "ERROR" | "NONE"; payout: boolean; notes: number; state: string; total: number;
+  pg: "OK" | "ERROR" | "NONE"; payout: boolean; notes: number; identity_pending: boolean; state: string; total: number;
 };
 
 const view = (r: Row, members: number) => ({
@@ -191,6 +192,8 @@ const view = (r: Row, members: number) => ({
   lastActivityAt: r.last_activity,
   payoutEnabled: r.payout,
   noteCount: r.notes,
+  // 직접 추가했고 대표자 본인확인이 아직 안 됨(직원 추가·실지급·충전금 결제가 막힘, MA-011 표시)
+  identityPending: r.identity_pending,
 });
 
 export async function listAdminSellers(db: PrismaClient, admin: AdminSessionContext, query: AdminSellerListQuery) {
