@@ -267,3 +267,9 @@
   overflow: hidden;
   padding: 0;
 }
+/* docs/IA.md 262행: 휴대폰은 탭만 두고 미리보기는 쌓지 않는다 */
+@media (max-width: 767px) {
+  .help-stack {
+    display: none;
+  }
+}
