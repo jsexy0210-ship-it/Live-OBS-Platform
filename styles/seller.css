@@ -397,6 +397,15 @@ body {
 .p-w-price {
   width: 120px;
 }
+/* 선택 상품 작업 상세 표(SA-011-OPS): 관리 칸은 「수정」 버튼 1개 */
+.po-w-act {
+  width: 100px;
+}
+@media (min-width: 768px) {
+  .po-table {
+    min-width: 770px; /* 고정 열 합계 552 + 상품명 · 코드 칸 최소 220 */
+  }
+}
 .p-w-flag {
   width: 70px;
 }

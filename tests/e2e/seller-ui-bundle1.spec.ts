@@ -167,4 +167,8 @@ test("선택 상품 작업 상세: 선택 판매 중·숨김·삭제 버튼 40×
     await expect(b, name).toBeVisible();
     expect(await size(b), name).toEqual({ w: 96, h: 40 });
   }
+  // 정본 구조: 「목록으로」 · 선택 N건 · 표 머리(번호 · 이미지 · 상품명 · 코드 · 판매가 · 재고 · 판매 상태 · 관리)
+  await expect(page.getByRole("link", { name: "목록으로", exact: true })).toBeVisible();
+  await expect(page.getByText(/^선택 1건/)).toBeVisible();
+  await expect(page.getByRole("region", { name: "선택 상품 표" }).locator("thead th")).toHaveText(["번호", "이미지", "상품명 · 코드", "판매가", "재고", "판매 상태", "관리"]);
 });

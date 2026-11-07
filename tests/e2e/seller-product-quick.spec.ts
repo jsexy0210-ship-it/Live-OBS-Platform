@@ -318,7 +318,7 @@ test("일괄 변경의 늦은 조회가 되돌린 뒤의 최신 상품 상태를
   });
   try {
     await page.goto(`/seller/products/operations?ids=${a.id},${b.id}`);
-    const cells = page.getByRole("region", { name: "선택한 상품", exact: true }).locator("tbody tr td:last-child");
+    const cells = page.getByRole("region", { name: "선택한 상품", exact: true }).locator("tbody tr td:nth-child(6)");
     await expect(cells).toHaveText(["판매 중", "판매 중"]);
     holdNext = true;
     await page.getByRole("button", { name: "선택 숨김", exact: true }).click();
@@ -355,7 +355,7 @@ test("삭제된 선택 상품만 제외하고 유효 상품은 처리하며 권�
   await expect(page.getByRole("status").filter({ hasText: "찾을 수 없는 상품 1개 · 남은 상품 1개" })).toBeVisible();
   await page.getByRole("button", { name: "선택 숨김", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "바꾸기", exact: true }).click();
-  await expect(page.getByRole("table").locator("tbody tr td:last-child")).toHaveText("숨김");
+  await expect(page.getByRole("table").locator("tbody tr td:nth-child(6)")).toHaveText("숨김");
   expect(statusWrites).toEqual([{ action: "status", status: "HIDDEN", productIds: [a.id] }]);
   expect((await serverProduct(page, a.id)).status).toBe("HIDDEN");
   expect((await page.request.get(`/api/seller/products/${b.id}`)).status()).toBe(404);
