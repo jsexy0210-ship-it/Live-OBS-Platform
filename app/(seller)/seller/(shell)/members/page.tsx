@@ -276,7 +276,16 @@ export default function MemberListPage() {
     void load(applied);
   };
   const searchHint = "검색어 입력";
-  const emptyText = filtered ? (applied.q && applied.qType === "phoneLast4" ? `「${applied.q}」 뒷자리와 일치하는 회원이 없습니다` : "조건에 맞는 회원이 없습니다") : "아직 가입한 회원이 없습니다. 쇼핑몰 주소를 방송에서 공유해 주십시오";
+  // 가입일이 기본(최근 1개월)이고 다른 조건이 없으면, 빈 목록은 「회원 없음」이 아니라 「기간 안에 없음」이다. 「전체」(period=all)에 다른 조건도 없으면 정말 회원이 없는 쇼핑몰이다
+  const otherFilters = applied.q !== "" || applied.gradeIds !== "" || applied.status !== "" || applied.lastOrder !== "" || applied.marketing !== "" || applied.hasBalance !== "" || applied.hasMemo !== "";
+  const emptyText =
+    otherFilters || (filtered && !allPeriod)
+      ? applied.q && applied.qType === "phoneLast4"
+        ? `「${applied.q}」 뒷자리와 일치하는 회원이 없습니다`
+        : "조건에 맞는 회원이 없습니다"
+      : allPeriod
+        ? "아직 가입한 회원이 없습니다. 쇼핑몰 주소를 방송에서 공유해 주십시오"
+        : "최근 1개월 안에 가입한 회원이 없습니다. 기간을 「전체」로 바꿔 보십시오";
 
   return (
     <>
