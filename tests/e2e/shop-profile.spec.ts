@@ -36,7 +36,7 @@ test("PC: 읽기 전용 줄 · 닉네임 바꾸기 → 30일 제한 안내, 메�
   await expect(rows).toContainText(LOGIN);
   await expect(rows).toContainText("바꿀 수 없어요");
   await expect(rows).toContainText("010-");
-  await expect(rows.getByRole("button", { name: "번호 바꾸기 (본인확인)" })).toBeDisabled();
+  await expect(rows.getByRole("button", { name: "번호 바꾸기 (본인확인)" })).toBeEnabled();
   await expect(page.getByLabel(/^방송 닉네임/)).toHaveValue(original);
   await page.screenshot({ path: "tests/e2e/screenshots/SH-024-profile-1440.png", fullPage: true });
   await page.getByLabel(/^방송 닉네임/).fill("e2e별빛이");
