@@ -7,62 +7,61 @@ import { FormRow, PageHead } from "../../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../../components/seller/SellerShell";
 import { SmartBackButton } from "../../../../../../../components/seller/SmartBackButton";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../../components/seller/States";
-import { api, type Product } from "../../../../../../../components/seller/api";
+import { api } from "../../../../../../../components/seller/api";
 import { won } from "../../../../../../../components/seller/format";
 import "./preview.css";
 
-// SA-013 상품 상세 미리보기(파트너스 관리자, 상품 › 상품 목록 › 미리보기, 정본 v320). 구매자에게 보이는 상품 화면(모바일 · PC)과 점검 항목, 공유 링크. 숨김 상품도 미리볼 수 있고 「쇼핑몰에서 열기」만 막는다.
-// 값은 기존 API를 모아 쓴다: GET /api/seller/products/{id}(상품 · 옵션 재고 · 이미지 · 이벤트 할인), …/categories + /api/seller/categories(이름), /api/seller/shop-content/logo(로고), /api/seller/reward-policy(적립 안내).
-type EventView = { active?: boolean; discountedPrice?: number; type?: string; value?: number } | null;
-type ProductView = Product & { event?: EventView };
-type Cat = { id: string; name: string; children?: Cat[] };
-type Grade = { name: string; systemKey: string | null; card: number | null; bankTransfer: number | null };
-const LOW_STOCK = 5; // 목록의 「재고 적음」 기준과 같다
+// SA-013 상품 상세 미리보기(파트너스 관리자, 상품 › 상품 목록 › 미리보기, 정본 v336). 구매자에게 보이는 상품 화면(모바일 · PC)과 점검 항목, 공유 링크.
+// 값은 GET /api/seller/products/{id}/preview 한 번으로 받는다(구매자 상품 상세와 같은 규칙: 보이는 카테고리 · 적립 예정 · 방송 중 여부 · 점검 항목 · 열기 주소). 로고만 /api/seller/shop-content/logo.
+// 상품별 구매 제한은 서버에 모델이 없어(purchaseLimits null) 정본의 「구매 제한」 점검 행은 두지 않는다(서버 필요).
+type Preview = {
+  shop: { slug: string; name: string };
+  product: {
+    id: string;
+    name: string;
+    description: string;
+    isLive: boolean;
+    status: string;
+    price: number;
+    event: { active: boolean; discountedPrice: number; discountRate: number | null } | null;
+    stock: number;
+    soldOut: boolean;
+    visibleToBuyers: boolean;
+    images: { id: string; url: string; width: number; height: number; isThumbnail: boolean }[];
+    categories: string[];
+  };
+  reward: { card: { rate: number; amount: number } | null; bankTransfer: { rate: number; amount: number } | null } | null;
+  checks: { key: "images" | "description" | "price" | "stock" | "categories"; status: "ok" | "warn"; detail: string }[];
+  open: { canOpen: boolean; path: string };
+  share: { path: string; card: { title: string; price: number; imageUrl: string | null } };
+};
+const CHECK_LABEL: Record<Preview["checks"][number]["key"], string> = { images: "이미지", description: "설명 · 가격 · 할인", price: "설명 · 가격 · 할인", stock: "재고", categories: "카테고리" };
 
 export default function ProductPreviewPage() {
   const { productId } = useParams<{ productId: string }>();
   const { me, can } = useSeller();
   const allowed = can("PRODUCT_MANAGE");
-  const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; product: ProductView }>({ kind: "loading" });
-  const [cats, setCats] = useState<string[]>([]);
+  const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; data: Preview }>({ kind: "loading" });
   const [logo, setLogo] = useState<string | null>(null);
-  const [reward, setReward] = useState<string | null>(null);
   const [view, setView] = useState<"mobile" | "pc">("mobile");
   const [host, setHost] = useState("");
   const [toast, setToast] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setState({ kind: "loading" });
-    const r = await api<ProductView>(`/api/seller/products/${productId}`);
+    const r = await api<Preview>(`/api/seller/products/${productId}/preview`);
     if (!r.ok) return setState({ kind: "error", status: r.status });
-    setState({ kind: "ok", product: r.data });
-    const [mine, all, lg, rp] = await Promise.all([
-      api<{ categoryIds: string[] }>(`/api/seller/products/${productId}/categories`),
-      api<{ categories: Cat[] }>("/api/seller/categories"),
-      api<{ logo: { url: string } | null }>("/api/seller/shop-content/logo"),
-      api<{ policy: { configured: boolean; grades: Grade[] } }>("/api/seller/reward-policy"),
-    ]);
-    if (mine.ok && all.ok) {
-      // 카테고리 트리를 「대분류 · 소분류」 이름 표로 편다
-      const names = new Map<string, string>();
-      for (const top of all.data.categories) {
-        names.set(top.id, top.name);
-        for (const c of top.children ?? []) names.set(c.id, `${top.name} · ${c.name}`);
-      }
-      setCats(mine.data.categoryIds.map((id) => names.get(id)).filter((n): n is string => !!n));
-    }
+    setState({ kind: "ok", data: r.data });
+    const lg = await api<{ logo: { url: string } | null }>("/api/seller/shop-content/logo");
     if (lg.ok) setLogo(lg.data.logo?.url ?? null);
-    if (rp.ok && rp.data.policy.configured) {
-      const g = rp.data.policy.grades.find((x) => x.systemKey === "DEFAULT" || x.systemKey === "GENERAL") ?? rp.data.policy.grades[0];
-      if (g && (g.card || g.bankTransfer)) setReward(`${g.card ? `카드 결제 시 ${g.card}%` : ""}${g.card && g.bankTransfer ? " · " : ""}${g.bankTransfer ? `무통장 ${g.bankTransfer}%` : ""} 적립 (${g.name} 등급)`);
-    }
   }, [productId]);
   useEffect(() => {
     setHost(window.location.host);
     if (allowed) void load();
   }, [allowed, load]);
 
-  const shopUrl = `${typeof window === "undefined" ? "" : window.location.protocol}//${host}/shop/${me.shop.slug}/products/${productId}`;
+  const data = state.kind === "ok" ? state.data : null;
+  const shopUrl = `${typeof window === "undefined" ? "" : window.location.protocol}//${host}${data?.share.path ?? `/shop/${me.shop.slug}/products/${productId}`}`;
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(shopUrl);
@@ -72,14 +71,26 @@ export default function ProductPreviewPage() {
     }
   };
 
-  const p = state.kind === "ok" ? state.product : null;
+  const p = data?.product ?? null;
   const images = p?.images ?? [];
-  const stock = p ? p.options.reduce((n, o) => n + o.stock, 0) : 0;
-  const soldOut = !!p && (p.status === "SOLD_OUT" || (p.options.length > 0 && stock === 0));
-  const hidden = p?.status === "HIDDEN" || p?.status === "DRAFT";
-  const ev = p?.event?.active && typeof p.event.discountedPrice === "number" ? p.event : null;
-  const rate = ev && p && p.price > 0 ? Math.round((1 - ev.discountedPrice! / p.price) * 100) : null;
-  const shownPrice = ev ? ev.discountedPrice! : (p?.price ?? 0);
+  const soldOut = !!p?.soldOut;
+  const hidden = !!p && !p.visibleToBuyers;
+  const ev = p?.event?.active ? p.event : null;
+  const rate = ev?.discountRate ?? null;
+  const shownPrice = ev ? ev.discountedPrice : (p?.price ?? 0);
+  const reward = data?.reward
+    ? `${data.reward.card ? `카드 결제 시 ${data.reward.card.rate}%` : ""}${data.reward.card && data.reward.bankTransfer ? " · " : ""}${data.reward.bankTransfer ? `무통장 ${data.reward.bankTransfer.rate}%` : ""} 적립`
+    : null;
+  // 서버 점검 항목: 설명 · 가격은 정본에서 한 행이라 합치고(하나라도 주의면 주의), 나머지는 한 줄씩
+  const rows: { label: string; status: "ok" | "warn"; detail: string }[] = [];
+  for (const c of data?.checks ?? []) {
+    const label = CHECK_LABEL[c.key];
+    const last = rows[rows.length - 1];
+    if (c.key === "price" && last?.label === label) {
+      last.detail = `${last.detail} · ${c.detail}`;
+      if (c.status === "warn") last.status = "warn";
+    } else rows.push({ label, status: c.status, detail: c.detail });
+  }
 
   return (
     <>
@@ -94,12 +105,12 @@ export default function ProductPreviewPage() {
                 <Link className="btn btn-out" href={`/seller/products/${productId}`}>
                   상품 수정
                 </Link>
-                {hidden ? (
+                {hidden || !data?.open.canOpen ? (
                   <button className="btn" type="button" disabled>
                     쇼핑몰에서 열기
                   </button>
                 ) : (
-                  <a className="btn" href={`/shop/${me.shop.slug}/products/${productId}`} target="_blank" rel="noreferrer">
+                  <a className="btn" href={data?.open.path ?? `/shop/${me.shop.slug}/products/${productId}`} target="_blank" rel="noreferrer">
                     쇼핑몰에서 열기
                   </a>
                 )}
@@ -161,7 +172,7 @@ export default function ProductPreviewPage() {
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={logo} alt="" width={20} height={20} style={{ borderRadius: 4 }} />
                     )}
-                    <span>{me.shop.name}</span>
+                    <span>{data?.shop.name ?? me.shop.name}</span>
                   </div>
                   <div className="pv-img">
                     {images[0] ? (
@@ -174,7 +185,8 @@ export default function ProductPreviewPage() {
                   {images.length > 0 && <div className="t-c1 c-alt" style={{ padding: "8px 16px 0" }}>대표 이미지 1 / {images.length}</div>}
                   <div className="pv-body">
                     <span className="row" style={{ gap: 6 }}>
-                      {soldOut ? <span className="bdg b-fail nodot">품절</span> : <span className="bdg b-gray nodot">재고 {stock.toLocaleString("ko-KR")}</span>}
+                      {p.isLive && <span className="bdg b-info nodot">방송 주문대기 상품</span>}
+                      {soldOut ? <span className="bdg b-fail nodot">품절</span> : <span className="bdg b-gray nodot">재고 {p.stock.toLocaleString("ko-KR")}</span>}
                     </span>
                     <div className="pv-name" data-testid="preview-name">
                       {p.name}
@@ -224,40 +236,11 @@ export default function ProductPreviewPage() {
                   </div>
                   <table className="au-ft" data-testid="preview-checks">
                     <tbody>
-                      <FormRow label="이미지">
-                        {images.length === 0 ? (
-                          <>
-                            <span className="bdg b-warn nodot">주의</span> 이미지가 없습니다 · 구매자 화면에 빈 자리로 보입니다
-                          </>
-                        ) : (
-                          <>
-                            <span className="bdg b-done nodot">확인</span> {images.length}장{images[0].width === images[0].height ? " · 1:1" : ` · ${images[0].width}×${images[0].height}`}
-                          </>
-                        )}
-                      </FormRow>
-                      <FormRow label="설명 · 가격 · 할인">
-                        {p.description || p.price > 0 ? (
-                          <>
-                            <span className="bdg b-done nodot">확인</span> 표시 정상
-                          </>
-                        ) : (
-                          <>
-                            <span className="bdg b-warn nodot">주의</span> 설명이 없습니다
-                          </>
-                        )}
-                      </FormRow>
-                      <FormRow label="재고">
-                        {stock > LOW_STOCK ? (
-                          <>
-                            <span className="bdg b-done nodot">확인</span> 재고 {stock.toLocaleString("ko-KR")}
-                          </>
-                        ) : (
-                          <>
-                            <span className="bdg b-warn nodot">주의</span> 재고 {stock.toLocaleString("ko-KR")} · {stock === 0 ? "품절로 보입니다" : "방송 중에 품절될 수 있습니다"}
-                          </>
-                        )}
-                      </FormRow>
-                      <FormRow label="카테고리">{cats.length > 0 ? cats.join(" / ") : "지정한 카테고리가 없습니다"}</FormRow>
+                      {rows.map((c) => (
+                        <FormRow key={c.label} label={c.label}>
+                          <span className={`bdg ${c.status === "ok" ? "b-done" : "b-warn"} nodot`}>{c.status === "ok" ? "확인" : "주의"}</span> {c.detail}
+                        </FormRow>
+                      ))}
                     </tbody>
                   </table>
                 </section>
