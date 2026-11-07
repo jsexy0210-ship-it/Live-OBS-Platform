@@ -139,6 +139,14 @@ test("요약 6칸은 서버 집계 그대로이고, 검색 조건 · 정렬은 �
   expect(url.searchParams.get("lastOrder")).toBe("90d");
   expect(url.searchParams.get("hasBalance")).toBe("true");
   expect(url.searchParams.get("sort")).toBe("lastOrder");
+  // 가입일 기본은 최근 1개월(정본 SA-041): 조회에 시작일 · 종료일이 나가고, 「전체」를 고르고 검색하면 주소에 period=all이 남고 가입일 조건이 빠진다
+  expect(url.searchParams.get("joinedFrom")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  expect(url.searchParams.get("joinedTo")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  await page.getByRole("group", { name: "기간 빠른 선택" }).getByRole("button", { name: "전체", exact: true }).click();
+  const all = page.waitForRequest((r) => r.url().includes("/api/seller/members?") && !r.url().includes("joinedFrom"));
+  await page.getByRole("search").getByRole("button", { name: "검색", exact: true }).click();
+  await all;
+  await expect(page).toHaveURL(/period=all/);
   // 정렬은 고르는 즉시 적용된다
   const sorted = page.waitForRequest((r) => r.url().includes("/api/seller/members?") && r.url().includes("sort=spent"));
   await page.getByLabel("정렬").selectOption("spent");
