@@ -425,6 +425,8 @@ export function ProductForm({ initial }: { initial?: Product }) {
       eventEnabled ||
       status !== "ON_SALE" ||
       deduct !== "PAYMENT" ||
+      !queueEligible ||
+      openTimer !== null ||
       rows.length !== 1 ||
       rows[0].name.trim() !== "기본" ||
       rows[0].priceDelta !== "0" ||

@@ -108,3 +108,16 @@ test("수정 화면: 저장하면 변경이 없는 것으로 돌아가 묻지 �
     await expect(page.getByText("저장했습니다")).toBeVisible();
   }
 });
+
+test("등록 화면: 방송 주문대기 대상·오픈 타이머만 바꿔도 취소 링크에서 묻는다", async ({ page }) => {
+  await login(page, "/seller/products/new");
+  const seen = watchDialogs(page, false);
+  await page.getByRole("radiogroup", { name: "방송 주문대기 대상" }).getByRole("radio", { name: "제외" }).check();
+  await page.getByRole("button", { name: "취소" }).click();
+  await expect.poll(() => seen).toEqual([WARN]);
+  await expect(page).toHaveURL(/\/seller\/products\/new$/);
+  await page.getByRole("radiogroup", { name: "방송 주문대기 대상" }).getByRole("radio", { name: "대상" }).check();
+  await page.getByLabel("오픈 타이머", { exact: true }).selectOption("90");
+  await page.getByRole("button", { name: "취소" }).click();
+  await expect.poll(() => seen).toEqual([WARN, WARN]);
+});
