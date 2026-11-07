@@ -156,3 +156,15 @@ test("주문 목록: 홈 「배송 준비」 링크(status=PAID&shipped=false)�
   await page.getByRole("button", { name: /^발송 전/ }).click();
   await expect(page).not.toHaveURL(/shipped=/);
 });
+
+test("선택 상품 작업 상세: 선택 판매 중·숨김·삭제 버튼 40×96(SA-011-OPS)", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await login(page, "/seller/products");
+  await page.getByTestId("product-row").first().getByRole("checkbox").check();
+  await page.getByRole("link", { name: "선택 상품 작업 상세", exact: true }).click();
+  for (const name of ["선택 판매 중", "선택 숨김", "선택 삭제"]) {
+    const b = page.getByRole("button", { name, exact: true });
+    await expect(b, name).toBeVisible();
+    expect(await size(b), name).toEqual({ w: 96, h: 40 });
+  }
+});

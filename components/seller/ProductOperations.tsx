@@ -127,9 +127,9 @@ export function ProductOperations({ ids, single = false, returnTo }: { ids: stri
           <p>선택한 상품 {items.length}개에만 적용해요.</p>
           <ListTable aria-label="선택 상품 표"><table className="tbl"><thead><tr><th>상품</th><th>판매가</th><th>재고</th><th>판매 상태</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><Link href={`/seller/products/${item.id}`}>{item.name}</Link></td><td>{won(item.price)}</td><td>{totalStock(item).toLocaleString("ko-KR")}</td><td>{statusBadge(item).label}</td></tr>)}</tbody></table></ListTable>
           <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-            <button className="btn btn-out" type="button" disabled={!items.length || bulkBusy} onClick={() => void bulkStatus("ON_SALE")}>선택 판매 중</button>
-            <button className="btn btn-out" type="button" disabled={!items.length || bulkBusy} onClick={() => void bulkStatus("HIDDEN")}>선택 숨김</button>
-            <button className="btn btn-neg" type="button" disabled={!items.length || bulkBusy} onClick={() => setConfirmDelete(true)}>선택 삭제</button>
+            <button className="btn btn-dense btn-out btn-level-bulk" type="button" disabled={!items.length || bulkBusy} onClick={() => void bulkStatus("ON_SALE")}>선택 판매 중</button>
+            <button className="btn btn-dense btn-out btn-level-bulk" type="button" disabled={!items.length || bulkBusy} onClick={() => void bulkStatus("HIDDEN")}>선택 숨김</button>
+            <button className="btn btn-dense btn-neg btn-level-bulk" type="button" disabled={!items.length || bulkBusy} onClick={() => setConfirmDelete(true)}>선택 삭제</button>
           </div>
         </section>}
       </>}
