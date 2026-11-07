@@ -13,6 +13,9 @@ export type MemberRow = {
   orderCount: number;
   totalPaid: number;
   rewardBalance: number;
+  number?: number;
+  lastOrderAt?: string | null;
+  restricted?: boolean;
 };
 export type MemberDetail = MemberRow & { orderCount: number; totalPaid: number; rewardBalance: number };
 

@@ -1,0 +1,6 @@
+/* SA-041 회원 목록: 요약 6칸 · 정렬/선택 작업 줄 */
+.mb-sum{display:grid;grid-template-columns:repeat(6,minmax(0,1fr))}
+.mb-sum>div{display:flex;flex-direction:column;gap:4px;padding:14px 16px}
+.mb-sum>div+div{border-left:1px solid var(--wds-line-normal-alternative)}
+.mb-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+@media (max-width:1100px){.mb-sum{grid-template-columns:repeat(3,minmax(0,1fr))}.mb-sum>div:nth-child(4){border-left:0}.mb-sum>div:nth-child(n+4){border-top:1px solid var(--wds-line-normal-alternative)}}

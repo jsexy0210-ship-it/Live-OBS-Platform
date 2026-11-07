@@ -382,13 +382,25 @@ function NewMessage({ onDone }: { onDone: (text: string) => void | Promise<void>
   const [title, setTitle] = useState("");
   const [kind, setKind] = useState<Kind>("AD");
   const [channel, setChannel] = useState<Channel>("ALIMTALK_SMS");
-  const [type, setType] = useState<TargetType>("ALL");
+  // SA-041 「선택 알림 발송」에서 넘어온 회원(sessionStorage, 한 번 읽고 지움)이 있으면 대상을 「직접 선택」으로 채워 연다
+  const [handedOver] = useState<Found[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = new URLSearchParams(window.location.search).get("picked") === "1" ? sessionStorage.getItem("member-messages-picked") : null;
+      if (raw) sessionStorage.removeItem("member-messages-picked");
+      const list: unknown = raw ? JSON.parse(raw) : [];
+      return Array.isArray(list) ? list.filter((x): x is Found => !!x && typeof (x as Found).id === "string" && typeof (x as Found).broadcastNickname === "string") : [];
+    } catch {
+      return [];
+    }
+  });
+  const [type, setType] = useState<TargetType>(handedOver.length > 0 ? "PICKED" : "ALL");
   const [grades, setGrades] = useState<Grade[]>([]);
   const [gradeIds, setGradeIds] = useState<string[]>([]);
   const [product, setProduct] = useState<Product | null>(null);
   const [term, setTerm] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
-  const [picked, setPicked] = useState<Found[]>([]);
+  const [picked, setPicked] = useState<Found[]>(handedOver);
   const [q, setQ] = useState("");
   const [found, setFound] = useState<Found[]>([]);
   const [mode, setMode] = useState<"NOW" | "SCHEDULE">("NOW");
