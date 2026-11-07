@@ -129,3 +129,27 @@ test("휴대폰 390: 이용안내 탭 가로 스크롤 없음", async ({ page })
     await setUsageGuide(SLUG, prev);
   }
 });
+
+// 보드 SH-030: 공지 탭 아래에 이용안내·자주 묻는 질문 미리보기가 쌓이고 「더 보기 ›」로 각 탭으로 간다.
+test("고객센터 공지 탭: 이용안내·자주 묻는 질문 미리보기와 더 보기 이동", async ({ page }) => {
+  const prev = await setUsageGuide(SLUG, "주문 · 방송\n결제가 끝난 순서대로 방송에서 열어요.");
+  try {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`/shop/${SLUG}/help`);
+    const guide = page.getByRole("region", { name: "이용안내 미리보기" });
+    await expect(guide).toContainText("결제가 끝난 순서대로 방송에서 열어요.");
+    await guide.getByRole("button", { name: "더 보기 ›" }).click();
+    await expect(page.getByRole("tab", { name: "이용안내" })).toHaveAttribute("aria-selected", "true");
+    await page.getByRole("tab", { name: "공지" }).click();
+    const faq = page.getByRole("region", { name: "자주 묻는 질문 미리보기" });
+    await expect(faq.locator(".help-faq")).not.toHaveCount(0);
+    await faq.getByRole("button", { name: "더 보기 ›" }).click();
+    await expect(page.getByRole("tab", { name: "자주 묻는 질문" })).toHaveAttribute("aria-selected", "true");
+    await page.getByRole("tab", { name: "공지" }).click();
+    await setUsageGuide(SLUG, null);
+    await page.goto(`/shop/${SLUG}/help`);
+    await expect(page.getByRole("region", { name: "이용안내 미리보기" })).toHaveCount(0); // 글이 없으면 구역을 숨긴다
+  } finally {
+    await setUsageGuide(SLUG, prev);
+  }
+});
