@@ -257,6 +257,7 @@
   font: inherit;
   font-size: 13px;
   color: var(--wds-label-alternative);
+  text-decoration: none;
   cursor: pointer;
 }
 .help-guide.is-clamp {
