@@ -106,3 +106,16 @@
   font-size: 13px;
   color: var(--wds-label-alternative);
 }
+/* 번호 바꾸기 창(PhoneChangeModal): 가입 본인확인 항목은 .fld 라벨 틀을 쓰므로 .pf-modal의 입력 감싼 라벨 규칙을 걷는다 */
+.pc-modal .fld > label {
+  display: block;
+  gap: 0;
+  font-weight: 600;
+}
+.pc-modal label.chk {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-weight: 400;
+}

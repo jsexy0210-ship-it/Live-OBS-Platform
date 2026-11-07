@@ -49,7 +49,7 @@ const unclear = (status: number) => status === 0 || (status >= 500 && status !==
 export const digits = (v: string, max: number) => v.replace(/\D/g, "").slice(0, max);
 
 // 생년월일 8자리 + 성별 + 내·외국인 → 서버가 받는 birth7(YYMMDD + 성별 자리). 1900년대 1·2, 2000년대 3·4, 외국인은 5~8.
-function toBirth7(birth: string, gender: "M" | "F", foreigner: boolean): string | null {
+export function toBirth7(birth: string, gender: "M" | "F", foreigner: boolean): string | null {
   const m = /^(\d{4})(\d{2})(\d{2})$/.exec(birth);
   if (!m) return null;
   const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];

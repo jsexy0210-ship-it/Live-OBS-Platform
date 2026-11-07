@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import MarketingConsentDoc, { MARKETING_DOC_VERSION } from "./MarketingConsentDoc";
 import MyMenu from "./MyMenu";
+import PhoneChangeModal from "./PhoneChangeModal";
 import ShopBack from "./ShopBack";
 import ShopModal from "./ShopModal";
 import { call } from "./reviewShared";
@@ -14,7 +15,7 @@ import "./Profile.css";
 
 // SH-024 회원정보 수정(보드 SH-024-IA FINAL): 아이디·이름(읽기 전용) · 휴대폰 번호 · 방송 닉네임* · 비밀번호 · 알림 수신 → 저장 · 취소 · 회원 탈퇴.
 // API: GET /me/profile · PUT /me/nickname(30일에 1번) · POST /me/password · GET·PUT /me/marketing-consent · POST /me/withdraw { password }.
-// 휴대폰 번호 바꾸기(본인확인 다시)는 서버가 아직 없어 누를 수 없게 둔다.
+// 휴대폰 번호 바꾸기(본인확인 다시)는 PhoneChangeModal 창 4단계. 본인확인 서비스 준비 중(503 identity_unavailable)이면 버튼을 잠그고 「곧 열려요」 안내.
 type Profile = { loginId: string; name: string; phoneMasked: string; broadcastNickname: string; nextNicknameChangeAt: string | null };
 type Consent = { agreed: boolean; currentVersion: string };
 type View = { kind: "loading" } | { kind: "login" } | { kind: "error" } | { kind: "ok"; p: Profile; c: Consent | null };
@@ -28,7 +29,8 @@ export default function ProfileView({ slug, shopName }: { slug: string; shopName
   const [mkt, setMkt] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [modal, setModal] = useState<null | "password" | "withdraw" | "consent">(null);
+  const [modal, setModal] = useState<null | "password" | "withdraw" | "consent" | "phone">(null);
+  const [phoneLocked, setPhoneLocked] = useState(false);
 
   const load = useCallback(async () => {
     const [p, c] = await Promise.all([call<Profile>(`${api}/profile`), call<Consent>(`${api}/marketing-consent`)]);
@@ -127,10 +129,10 @@ export default function ProfileView({ slug, shopName }: { slug: string; shopName
             <span className="pf-th">휴대폰 번호</span>
             <div className="pf-td">
               {p.phoneMasked}{" "}
-              <button className="btn btn-sm btn-out" type="button" disabled title="준비 중이에요">
+              <button className="btn btn-sm btn-out" type="button" disabled={phoneLocked} onClick={() => setModal("phone")}>
                 번호 바꾸기 (본인확인)
               </button>
-              <span className="pf-hint">번호 바꾸기는 곧 열려요</span>
+              {phoneLocked && <span className="pf-hint">번호 바꾸기는 곧 열려요</span>}
             </div>
           </div>
           <div className="pf-row">
@@ -197,6 +199,23 @@ export default function ProfileView({ slug, shopName }: { slug: string; shopName
         <div className="pf-main">{content}</div>
       </div>
       {modal === "password" && <PasswordModal api={api} onClose={() => setModal(null)} onDone={() => { setModal(null); setMsg({ ok: true, text: "비밀번호를 바꿨어요 · 다른 기기에서는 로그아웃돼요" }); }} />}
+      {modal === "phone" && (
+        <PhoneChangeModal
+          api={api}
+          current={view.kind === "ok" ? view.p.phoneMasked : ""}
+          readPhone={async () => {
+            const r = await call<Profile>(`${api}/profile`);
+            return r.ok ? r.data.phoneMasked : null;
+          }}
+          onClose={() => setModal(null)}
+          onUnavailable={() => setPhoneLocked(true)}
+          onDone={() => {
+            setModal(null);
+            setMsg({ ok: true, text: "번호를 바꿨어요 · 생년월일도 본인확인 값으로 바뀌었어요" });
+            void load();
+          }}
+        />
+      )}
       {modal === "withdraw" && <WithdrawModal api={api} base={base} onClose={() => setModal(null)} />}
       {modal === "consent" && (
         <ConsentModal
