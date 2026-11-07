@@ -21,6 +21,7 @@ let prShas: { head: string; base: string } | null = null;
 if (event && typeof event === "object" && "pull_request" in event) {
   const pr = event.pull_request as { head?: { sha?: unknown }; base?: { sha?: unknown } } | null;
   if (typeof pr?.head?.sha === "string" && typeof pr?.base?.sha === "string") prShas = { head: pr.head.sha, base: pr.base.sha };
+  else throw new Error("PR 이벤트에 head/base SHA가 없어 후보 신원을 확인할 수 없습니다.");
 }
 const candidateSha = prShas?.head ?? sha;
 const tree = execFileSync("git", ["rev-parse", "HEAD^{tree}"], { encoding: "utf8" }).trim();
