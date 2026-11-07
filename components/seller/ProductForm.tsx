@@ -956,7 +956,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
             </FormRow>
           </FormSection>
 
-          <FormSection title="노출 · 판매">
+          <FormSection title="노출 · 방송">
             <FormRow label="판매 상태" help={STATUS_HELP[status]}>
               <div className="seg" role="radiogroup" aria-label="판매 상태">
                 {statusChoices.map((s) => (
