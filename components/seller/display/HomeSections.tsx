@@ -74,7 +74,7 @@ export function HomeSections({ sections, cats, onSaved, notify }: { sections: Se
     return order.map((s) => (MOVABLE.includes(s.kind) ? next[k++] : s));
   });
 
-  // 표 행: 6종 고정. 아직 저장된 적 없는 종류는 「안 보임」으로 보이고, 상세를 열면 그때 초안에 들어갑니다.
+  // 표 행: 6종 고정. 아직 저장된 적 없는 종류는 「안 보임」으로 보이고, 상세를 열면 그때 초안에 들어가며(꺼진 채), 「홈에 보이기」를 눌러야 켜집니다.
   const rows = FIXED_KINDS.flatMap((kind) => {
     const found = draft.filter((s) => s.kind === kind);
     return found.length > 0 ? normalize(found).concat() : [{ kind, categoryId: null, title: KIND_INFO[kind].label, visible: false, itemCount: 8, absent: true } as DraftSection & { absent: true }];
@@ -88,7 +88,7 @@ export function HomeSections({ sections, cats, onSaved, notify }: { sections: Se
   const categorySections = draft.filter((s) => s.kind === "CATEGORY");
   const openRow = (kind: Kind, present: DraftSection | undefined) => {
     if (present) return setView({ section: sectionKey(present) });
-    const created: DraftSection = { kind, categoryId: null, title: KIND_INFO[kind].label, visible: true, itemCount: 8, localKey: ++nextLocalKey.current };
+    const created: DraftSection = { kind, categoryId: null, title: KIND_INFO[kind].label, visible: false, itemCount: 8, localKey: ++nextLocalKey.current };
     setDraft((d) => [...d, created]);
     setView({ section: sectionKey(created) });
   };

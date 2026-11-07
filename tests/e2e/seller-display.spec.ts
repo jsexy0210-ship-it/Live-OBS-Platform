@@ -49,6 +49,9 @@ test("대표자: 홈 영역 6종 고정 표에서 순서·표시를 상세로 �
 
   // 베스트 켜기(상세를 열면 초안에 들어간다) → 맨 위로 → 신상품 끄기 → 저장
   await sectionRow(page, "베스트").getByRole("link", { name: "상세" }).click();
+  // 상세를 열기만 해서는 켜지지 않는다(꺼진 채 초안에 들어감) — 「홈에 보이기」를 눌러야 켜진다
+  await expect(page.getByRole("checkbox", { name: "베스트 홈에 표시" })).not.toBeChecked();
+  await page.getByRole("checkbox", { name: "베스트 홈에 표시" }).check();
   await page.getByRole("button", { name: "베스트 위로" }).click();
   await page.getByRole("button", { name: "베스트 위로" }).click();
   await page.getByRole("button", { name: "영역 목록", exact: true }).click();
