@@ -14,6 +14,8 @@ type BulkResult = { updated: string[]; skipped: { productId: string; reason: str
 const SKIP_REASON: Record<string, string> = { not_found: "찾을 수 없음", no_sellable_option: "판매할 수 있는 선택 항목이 없음(상품 수정에서 추가해 주십시오)" };
 const STATUS_TO: Record<string, string> = { ON_SALE: "판매 중으로", HIDDEN: "숨김으로", SOLD_OUT: "품절로", DRAFT: "임시 저장으로" };
 
+// 정본 SA-011-OPS의 상태 칩은 판매 상태(판매 중 · 품절 · 숨김)만 보인다. 재고 수량 표기(재고 부족 · 재고 없음)는 재고 열이 맡는다.
+const opsBadge = (p: Product) => (p.status === "ON_SALE" ? { label: "판매 중", cls: "b-done" } : statusBadge(p));
 const optionSummary = (p: Product) => (p.options.length === 0 ? "선택 항목 없음" : p.options.map((o) => o.name).join(" · "));
 // 번호: 상품 코드(P + 7자리 순번)의 순번. 상품 목록과 같은 기준이다.
 const productNo = (code: string | null | undefined) => {
@@ -117,7 +119,7 @@ export function ProductOperations({ ids, single = false, returnTo }: { ids: stri
   const product = single ? items[0] : null;
   const statusSummary = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const item of items) counts.set(statusBadge(item).label, (counts.get(statusBadge(item).label) ?? 0) + 1);
+    for (const item of items) counts.set(opsBadge(item).label, (counts.get(opsBadge(item).label) ?? 0) + 1);
     return [...counts].map(([label, n]) => `${label} ${n}`).join(" · ");
   }, [items]);
   return <>
@@ -152,10 +154,10 @@ export function ProductOperations({ ids, single = false, returnTo }: { ids: stri
           </div>
           <ListTable className="p-tbl-wrap" aria-label="선택 상품 표">
             <table className="tbl po-table">
-              <thead><tr><th className="p-w-no">번호</th><th className="p-w-img">이미지</th><th>상품명 · 코드</th><th className="p-w-price">판매가</th><th className="p-w-stock">재고</th><th className="p-w-state">판매 상태</th><th className="po-w-act">관리</th></tr></thead>
+              <thead><tr><th className="p-w-no">번호</th><th className="po-w-img">이미지</th><th>상품명 · 코드</th><th className="p-w-price">판매가</th><th className="p-w-stock">재고</th><th className="p-w-state">판매 상태</th><th className="po-w-act">관리</th></tr></thead>
               <tbody>
                 {items.map((item) => {
-                  const b = statusBadge(item);
+                  const b = opsBadge(item);
                   return (
                     <tr key={item.id} className="p-row">
                       <td className="num">{productNo(item.code)}</td>

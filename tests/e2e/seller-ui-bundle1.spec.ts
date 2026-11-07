@@ -171,4 +171,7 @@ test("선택 상품 작업 상세: 선택 판매 중·숨김·삭제 버튼 40×
   await expect(page.getByRole("link", { name: "목록으로", exact: true })).toBeVisible();
   await expect(page.getByText(/^선택 1건/)).toBeVisible();
   await expect(page.getByRole("region", { name: "선택 상품 표" }).locator("thead th")).toHaveText(["번호", "이미지", "상품명 · 코드", "판매가", "재고", "판매 상태", "관리"]);
+  // 정본: 이미지 열 80, 상태 칩은 판매 상태만(재고 부족·재고 없음 표기 없음)
+  expect(await size(page.getByRole("region", { name: "선택 상품 표" }).locator("thead th", { hasText: "이미지" }))).toMatchObject({ w: 80 });
+  await expect(page.getByRole("region", { name: "선택 상품 표" }).getByText(/재고 부족|재고 없음/)).toHaveCount(0);
 });
