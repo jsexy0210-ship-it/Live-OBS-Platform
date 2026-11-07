@@ -199,3 +199,27 @@ test("회원 · 적립금 쓰기 권한이 없으면 선택 열과 선택 작업
   await expect(page.getByRole("checkbox", { name: "이 쪽 전체 선택" })).toHaveCount(0);
   await expect(page.getByTestId("member-row").first().getByRole("checkbox")).toHaveCount(0);
 });
+
+test("휴대폰 뒷자리는 숫자 4자리일 때만 적용되고, 정렬을 바꿔도 아직 누르지 않은 검색 조건은 남는다", async ({ page }) => {
+  await openMembers(page);
+  const requests: string[] = [];
+  page.on("request", (r) => {
+    if (r.url().includes("/api/seller/members?")) requests.push(r.url());
+  });
+  await page.getByLabel("검색 대상").selectOption("phoneLast4");
+  await page.getByLabel("회원 검색").fill("12");
+  await page.getByRole("search").getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "숫자 4자리" })).toBeVisible();
+  expect(requests.filter((u) => u.includes("qType=phoneLast4"))).toHaveLength(0);
+  await page.getByLabel("회원 검색").fill("9001");
+  const sent = page.waitForRequest((r) => r.url().includes("qType=phoneLast4") && r.url().includes("q=9001"));
+  await page.getByRole("search").getByRole("button", { name: "검색", exact: true }).click();
+  await sent;
+  await expect(page.getByRole("alert").filter({ hasText: "숫자 4자리" })).toHaveCount(0);
+
+  // 아직 「검색」을 누르지 않은 조건은 정렬을 바꿔도 지워지지 않는다
+  await page.getByRole("checkbox", { name: "메모 있음" }).check();
+  await page.getByLabel("정렬").selectOption("joined");
+  await expect(page.getByRole("checkbox", { name: "메모 있음" })).toBeChecked();
+  await expect(page.getByLabel("회원 검색")).toHaveValue("9001");
+});

@@ -108,7 +108,10 @@ export default function MemberListPage() {
   // 검색 상자의 입력(「검색」을 누르면 적용). Back·초기화로 적용 조건이 바뀌면 입력도 맞춘다
   const [draft, setDraft] = useState<Applied>(applied);
   const appliedKey = JSON.stringify(applied);
-  useEffect(() => setDraft(JSON.parse(appliedKey) as Applied), [appliedKey]);
+  // 정렬은 고르는 즉시 적용되므로 입력 칸을 맞추는 기준에서 뺀다(정렬만 바꿔도 아직 누르지 않은 입력이 지워지지 않게)
+  const filterKey = JSON.stringify({ ...applied, sort: "" });
+  useEffect(() => setDraft({ ...(JSON.parse(filterKey) as Applied), sort: "" }), [filterKey]);
+  const [searchError, setSearchError] = useState("");
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [page, setPage] = useState(1);
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
@@ -164,6 +167,12 @@ export default function MemberListPage() {
 
   const applyDraft = () => {
     const next = { ...draft, q: draft.q.trim() };
+    // 휴대폰 뒷자리는 숫자 4자리여야 서버가 찾는다(아니면 요청이 거절됨)
+    if (piiSearch && next.qType === "phoneLast4" && next.q !== "" && !/^\d{4}$/.test(next.q)) {
+      setSearchError("휴대폰 뒷자리는 숫자 4자리로 입력해 주십시오");
+      return;
+    }
+    setSearchError("");
     if (piiSearch) {
       writeState(next.q);
       setStateQ(next.q);
@@ -171,6 +180,7 @@ export default function MemberListPage() {
     } else setU({ q: next.q, qType: "nickname", gradeIds: next.gradeIds, status: next.status, joinedFrom: next.joinedFrom, joinedTo: next.joinedTo, lastOrder: next.lastOrder, marketing: next.marketing, hasBalance: next.hasBalance, hasMemo: next.hasMemo });
   };
   const resetFilters = () => {
+    setSearchError("");
     if (piiSearch) {
       writeState("");
       setStateQ("");
@@ -319,8 +329,17 @@ export default function MemberListPage() {
               aria-label="회원 검색"
               value={draft.q}
               maxLength={MAX_SEARCH_LENGTH}
-              onChange={(e) => setDraft({ ...draft, q: e.target.value })}
+              aria-invalid={searchError !== ""}
+              onChange={(e) => {
+                setSearchError("");
+                setDraft({ ...draft, q: e.target.value });
+              }}
             />
+            {searchError && (
+              <span className="t-c1" role="alert" style={{ color: "var(--neg-text)" }}>
+                {searchError}
+              </span>
+            )}
           </SearchRow>
           <SearchRow
             label="등급"
