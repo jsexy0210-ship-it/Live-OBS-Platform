@@ -55,7 +55,20 @@ test("미리보기: 판매 중 상품은 구매자 화면 · 점검 항목 · �
   const checks = page.getByTestId("preview-checks");
   await expect(checks).toContainText("재고 12");
   await expect(checks.getByText("주의").first()).toBeVisible(); // 이미지 없음
+  // 점검 항목은 서버(미리보기 API)가 정한 값 그대로: 이미지 · 카테고리 없음은 주의, 설명 · 가격은 한 행
+  await expect(checks).toContainText("상품 이미지가 없습니다");
+  await expect(checks).toContainText("카테고리가 지정되지 않았습니다");
+  await expect(checks.getByText("설명 · 가격 · 할인")).toHaveCount(1);
+  await expect(page.getByText("방송 주문대기 상품")).toHaveCount(0); // 방송에 올리지 않은 상품
   await expect(page.getByLabel("상품 주소")).toHaveValue(new RegExp(`/shop/[^/]+/products/${id}$`));
+  // 검수 증거: E2E_SCREENSHOTS=1일 때만 SA-013을 1440 · 1024로 저장한다
+  if (process.env.E2E_SCREENSHOTS === "1") {
+    for (const width of [1440, 1024]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.screenshot({ path: `tests/e2e/screenshots/SA-013-preview-${width}.png`, fullPage: true });
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+  }
   await page.getByRole("button", { name: "PC", exact: true }).click();
   await expect(page.getByTestId("preview-frame")).toHaveClass(/is-pc/);
   await expect(page.getByRole("link", { name: "쇼핑몰에서 열기" })).toHaveAttribute("href", new RegExp(`/shop/[^/]+/products/${id}$`));
