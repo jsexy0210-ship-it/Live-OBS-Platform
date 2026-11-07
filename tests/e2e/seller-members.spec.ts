@@ -185,3 +185,17 @@ test("선택 등급 조정: 등급을 고르면 선택한 회원의 등급이 �
   const restored = await page.evaluate(async ({ id, gradeId }) => (await fetch(`/api/seller/member-grades/members/${id}`, { method: "PUT", headers: { "content-type": "application/json", origin: location.origin }, body: JSON.stringify({ gradeId, lock: false }) })).status, { id: member.id, gradeId: member.grade.id });
   expect(restored).toBe(200);
 });
+
+test("회원 · 적립금 쓰기 권한이 없으면 선택 열과 선택 작업 버튼이 보이지 않는다(읽기만)", async ({ page }) => {
+  // 화면의 권한 판단만 본다: /me 응답에서 회원 · 적립금 권한을 뺀다(서버 거절은 서버 시험 소관)
+  await page.route("**/api/seller/me", async (route) => {
+    const res = await route.fetch();
+    const body = await res.json();
+    await route.fulfill({ response: res, json: { ...body, isOwner: false, permissions: ["CUSTOMER_PII_VIEW"] } });
+  });
+  await openMembers(page);
+  await expect(page.getByRole("button", { name: "선택 알림 발송", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "선택 등급 조정", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("checkbox", { name: "이 쪽 전체 선택" })).toHaveCount(0);
+  await expect(page.getByTestId("member-row").first().getByRole("checkbox")).toHaveCount(0);
+});

@@ -86,6 +86,8 @@ export default function MemberListPage() {
   const router = useRouter();
   const { can, me } = useSeller();
   const piiSearch = can("CUSTOMER_PII_VIEW");
+  // 선택 작업(알림 발송 · 등급 조정)은 쓰기라 회원 · 적립금 권한이 있고 대리 조회가 아닐 때만 보인다(회원 등급 · 알림 발송 화면과 같은 기준)
+  const editable = can("MEMBER_POINTS") && !me.readOnly;
   const [u, setU] = useUrlState(QUERY_DEFAULTS);
   // 검색어: 개인정보 열람 권한이 있으면 history state(주소에 남기지 않음), 없으면 주소 쿼리
   const [stateQ, setStateQ] = useState("");
@@ -390,12 +392,16 @@ export default function MemberListPage() {
               </select>
             </span>
             <span className="row" style={{ gap: 8 }}>
-              <button className="btn btn-sm btn-out" type="button" disabled={picked.size === 0} onClick={sendToPicked}>
-                선택 알림 발송
-              </button>
-              <button className="btn btn-sm btn-out" type="button" disabled={picked.size === 0} onClick={() => setAdjust({ gradeId: "", lock: false, until: "", reason: "", busy: false, error: "" })}>
-                선택 등급 조정
-              </button>
+              {editable && (
+                <>
+                  <button className="btn btn-sm btn-out" type="button" disabled={picked.size === 0} onClick={sendToPicked}>
+                    선택 알림 발송
+                  </button>
+                  <button className="btn btn-sm btn-out" type="button" disabled={picked.size === 0} onClick={() => setAdjust({ gradeId: "", lock: false, until: "", reason: "", busy: false, error: "" })}>
+                    선택 등급 조정
+                  </button>
+                </>
+              )}
               {me.isOwner && (
                 <button className="btn btn-sm btn-out" type="button" onClick={() => setExporting({ reason: "", custom: "", busy: false, error: "" })}>
                   엑셀 내려받기 (대표자)
@@ -423,9 +429,11 @@ export default function MemberListPage() {
                   <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                     <thead>
                       <tr>
-                        <th style={{ width: 40 }}>
-                          <input className="cbx" type="checkbox" aria-label="이 쪽 전체 선택" checked={allPicked} onChange={togglePage} />
-                        </th>
+                        {editable && (
+                          <th style={{ width: 40 }}>
+                            <input className="cbx" type="checkbox" aria-label="이 쪽 전체 선택" checked={allPicked} onChange={togglePage} />
+                          </th>
+                        )}
                         <th>회원</th>
                         <th>번호</th>
                         <th>등급</th>
@@ -441,9 +449,11 @@ export default function MemberListPage() {
                     <tbody>
                       {items.map((m) => (
                         <tr key={m.id} data-testid="member-row">
-                          <td>
-                            <input className="cbx" type="checkbox" aria-label={`${m.broadcastNickname ?? "닉네임 없음"} 선택`} checked={picked.has(m.id)} onChange={() => togglePick(m)} />
-                          </td>
+                          {editable && (
+                            <td>
+                              <input className="cbx" type="checkbox" aria-label={`${m.broadcastNickname ?? "닉네임 없음"} 선택`} checked={picked.has(m.id)} onChange={() => togglePick(m)} />
+                            </td>
+                          )}
                           <td>
                             <span className="col" style={{ gap: 2 }}>
                               <Link className="fw6" href={`/seller/members/${m.id}`}>
