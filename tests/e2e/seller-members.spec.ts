@@ -28,16 +28,15 @@ test("대표자: 회원 목록에서 닉네임으로 찾고, 상세에서 주문
 
   const rows = page.getByTestId("member-row");
   for (const nick of ["별빛사냥꾼", "카드왕", "민트컨디션"]) await expect(rows.filter({ hasText: nick })).toHaveCount(1);
-  // 대표자는 개인정보 열람이 되므로 이름 열이 있다
-  await expect(page.locator("thead").getByText("이름 · 휴대폰", { exact: true })).toBeVisible();
-  // 개인정보 열람 권한이 있으면 이름 · 휴대폰 끝자리로도 찾는다고 안내한다
-  await expect(page.getByLabel("회원 검색")).toHaveAttribute("placeholder", "닉네임 · 이름 · 휴대폰 끝자리");
+  // 대표자는 개인정보 열람이 되므로 회원 칸에 이름 · 휴대폰이 보이고, 검색 대상(닉네임 · 이름 · 휴대폰 뒷자리)을 고를 수 있다
+  await expect(page.getByLabel("검색 대상")).toBeVisible();
+  await expect(page.getByLabel("회원 검색")).toHaveAttribute("placeholder", "검색어 입력");
   await expect(rows.filter({ hasText: "카드왕" })).toContainText("데모구매자2");
   const listed: { id: string; orderCount: number; totalPaid: number; rewardBalance: number }[] = await page.evaluate(async () => (await (await fetch("/api/seller/members?limit=10")).json()).members);
   const headers = await page.locator("thead th").allTextContents();
   for (const m of listed) {
     const cells = rows.filter({ has: page.locator(`a[href="/seller/members/${m.id}"]`) }).getByRole("cell");
-    for (const [label, value] of [["주문", `${m.orderCount.toLocaleString("ko-KR")}건`], ["누적 구매", `${m.totalPaid.toLocaleString("ko-KR")}원`], ["적립금", `${m.rewardBalance.toLocaleString("ko-KR")}원`]]) {
+    for (const [label, value] of [["주문", `${m.orderCount.toLocaleString("ko-KR")}`], ["누적 구매", `${m.totalPaid.toLocaleString("ko-KR")}원`], ["적립금", `${m.rewardBalance.toLocaleString("ko-KR")}원`]]) {
       expect(headers.indexOf(label)).toBeGreaterThanOrEqual(0);
       await expect(cells.nth(headers.indexOf(label))).toHaveText(value);
     }
@@ -47,14 +46,16 @@ test("대표자: 회원 목록에서 닉네임으로 찾고, 상세에서 주문
   // 검색: 마지막 조건의 응답만 반영된다
   const searched = page.waitForResponse((r) => r.url().includes("/api/seller/members?") && r.url().includes("q=") && r.ok());
   await page.getByLabel("회원 검색").fill("카드왕");
+  await page.getByRole("search").getByRole("button", { name: "검색", exact: true }).click();
   await searched;
   await expect(rows).toHaveCount(1);
   await expect(rows.first()).toContainText("카드왕");
 
-  // 휴면 필터: 데모 회원은 모두 활동이라 결과가 없고, 조건 초기화로 돌아온다
-  await page.getByRole("button", { name: "휴면" }).click();
+  // 구매 제한 필터: 데모 회원은 구매 제한이 없어 결과가 없고, 초기화로 돌아온다
+  await page.getByRole("radio", { name: "구매 제한", exact: true }).check();
+  await page.getByRole("search").getByRole("button", { name: "검색", exact: true }).click();
   await expect(page.getByText("조건에 맞는 회원이 없습니다")).toBeVisible();
-  await page.getByRole("button", { name: "조건 초기화" }).click();
+  await page.locator(".st").getByRole("button", { name: "초기화", exact: true }).click();
   await expect(rows.filter({ hasText: "민트컨디션" })).toHaveCount(1);
 
   // 상세: 화면 숫자가 API 응답과 같다
@@ -105,4 +106,120 @@ test("대표자: 「엑셀 내려받기」는 사유를 고른 뒤에만 열리�
   const text = Buffer.concat(chunks).toString("utf-8");
   expect(text).toContain("별빛사냥꾼");
   await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+// SA-041 정본 v286: 요약 6칸 · 검색 조건 · 정렬 · 선택 열과 선택 작업
+async function openMembers(page: Page) {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/seller/login?next=%2Fseller%2Fmembers");
+  await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
+  await expect(page).toHaveURL(/\/seller\/members$/);
+  await expect(page.getByTestId("member-row").first()).toBeVisible();
+}
+
+test("요약 6칸은 서버 집계 그대로이고, 검색 조건 · 정렬은 목록 조회 조건으로 나간다", async ({ page }) => {
+  await openMembers(page);
+  const s: { total: number; newThisMonth: number; purchasedThisMonth: number; gold: number; vip: number; restricted: number; marketingConsent: number } = await page.evaluate(async () => (await (await fetch("/api/seller/members/summary")).json()).summary);
+  const sum = page.getByRole("region", { name: "요약", exact: true });
+  const n = (v: number) => v.toLocaleString("ko-KR");
+  await expect(sum).toContainText(`전체 회원${n(s.total)}명`);
+  await expect(sum).toContainText(`이번 달 신규${n(s.newThisMonth)}명`);
+  await expect(sum).toContainText(`이번 달 구매 회원${n(s.purchasedThisMonth)}명`);
+  await expect(sum).toContainText(`골드 · VIP${n(s.gold)} / ${n(s.vip)}`);
+  await expect(sum).toContainText(`구매 제한${n(s.restricted)}명`);
+  await expect(sum).toContainText(`혜택 · 소식 동의${n(s.marketingConsent)}명`);
+  await shot(page, "SA-041-summary-search");
+
+  // 「검색」을 누르기 전에는 조건이 나가지 않고, 누르면 선택한 조건이 한 번에 나간다
+  await page.getByLabel("최근 주문").selectOption("90d");
+  await page.getByRole("checkbox", { name: "적립금 잔액 있음" }).check();
+  const request = page.waitForRequest((r) => r.url().includes("/api/seller/members?") && r.url().includes("hasBalance=true"));
+  await page.getByRole("search").getByRole("button", { name: "검색", exact: true }).click();
+  const url = new URL((await request).url());
+  expect(url.searchParams.get("lastOrder")).toBe("90d");
+  expect(url.searchParams.get("hasBalance")).toBe("true");
+  expect(url.searchParams.get("sort")).toBe("lastOrder");
+  // 정렬은 고르는 즉시 적용된다
+  const sorted = page.waitForRequest((r) => r.url().includes("/api/seller/members?") && r.url().includes("sort=spent"));
+  await page.getByLabel("정렬").selectOption("spent");
+  await sorted;
+  await page.getByRole("search").getByRole("button", { name: "초기화", exact: true }).click();
+  await expect(page.getByLabel("최근 주문")).toHaveValue("");
+  await expect(page.getByRole("checkbox", { name: "적립금 잔액 있음" })).not.toBeChecked();
+});
+
+test("선택한 회원: 선택 작업은 선택 전에는 막히고, 선택 알림 발송은 회원 알림 발송의 「직접 선택」으로 넘어간다", async ({ page }) => {
+  await openMembers(page);
+  const send = page.getByRole("button", { name: "선택 알림 발송", exact: true });
+  const adjust = page.getByRole("button", { name: "선택 등급 조정", exact: true });
+  await expect(send).toBeDisabled();
+  await expect(adjust).toBeDisabled();
+  await page.getByRole("checkbox", { name: "별빛사냥꾼 선택" }).check();
+  await page.getByRole("checkbox", { name: "카드왕 선택" }).check();
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect(page).toHaveURL(/\/seller\/member-messages\?section=new&picked=1$/);
+  await expect(page.getByRole("button", { name: "직접 선택", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText(/선택 2명:/)).toContainText("별빛사냥꾼");
+  await expect(page.getByText(/선택 2명:/)).toContainText("카드왕");
+});
+
+test("선택 등급 조정: 등급을 고르면 선택한 회원의 등급이 바뀌고 목록에 반영된다(끝에 원래 등급으로 돌린다)", async ({ page }) => {
+  await openMembers(page);
+  const row = page.getByTestId("member-row").filter({ hasText: "별빛사냥꾼" });
+  const before: { grades: { id: string; displayName: string }[] } = await page.evaluate(async () => (await fetch("/api/seller/member-grades")).json());
+  const member: { id: string; grade: { id: string; displayName: string } } = await page.evaluate(async () => (await (await fetch("/api/seller/members?q=%EB%B3%84%EB%B9%9B")).json()).members[0]);
+  const target = before.grades.find((g) => g.id !== member.grade.id)!;
+  await row.getByRole("checkbox").check();
+  await page.getByRole("button", { name: "선택 등급 조정", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: /선택한 회원 1명의 등급을 조정하시겠습니까/ });
+  await expect(dialog.getByRole("button", { name: "등급 조정", exact: true })).toBeDisabled();
+  // 고정을 켜기 전에는 종료일 · 사유를 쓸 수 없다
+  await expect(dialog.getByLabel("고정 종료일")).toBeDisabled();
+  await expect(dialog.getByLabel("사유")).toBeDisabled();
+  await dialog.getByLabel("등급", { exact: true }).selectOption(target.id);
+  await dialog.getByRole("button", { name: "등급 조정", exact: true }).click();
+  await expect(page.getByText("1명의 등급을 조정했습니다")).toBeVisible();
+  await expect(row).toContainText(target.displayName);
+  // 원래 등급으로 되돌린다
+  const restored = await page.evaluate(async ({ id, gradeId }) => (await fetch(`/api/seller/member-grades/members/${id}`, { method: "PUT", headers: { "content-type": "application/json", origin: location.origin }, body: JSON.stringify({ gradeId, lock: false }) })).status, { id: member.id, gradeId: member.grade.id });
+  expect(restored).toBe(200);
+});
+
+test("회원 · 적립금 쓰기 권한이 없으면 선택 열과 선택 작업 버튼이 보이지 않는다(읽기만)", async ({ page }) => {
+  // 화면의 권한 판단만 본다: /me 응답에서 회원 · 적립금 권한을 뺀다(서버 거절은 서버 시험 소관)
+  await page.route("**/api/seller/me", async (route) => {
+    const res = await route.fetch();
+    const body = await res.json();
+    await route.fulfill({ response: res, json: { ...body, isOwner: false, permissions: ["CUSTOMER_PII_VIEW"] } });
+  });
+  await openMembers(page);
+  await expect(page.getByRole("button", { name: "선택 알림 발송", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "선택 등급 조정", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("checkbox", { name: "이 쪽 전체 선택" })).toHaveCount(0);
+  await expect(page.getByTestId("member-row").first().getByRole("checkbox")).toHaveCount(0);
+});
+
+test("휴대폰 뒷자리는 숫자 4자리일 때만 적용되고, 정렬을 바꿔도 아직 누르지 않은 검색 조건은 남는다", async ({ page }) => {
+  await openMembers(page);
+  const requests: string[] = [];
+  page.on("request", (r) => {
+    if (r.url().includes("/api/seller/members?")) requests.push(r.url());
+  });
+  await page.getByLabel("검색 대상").selectOption("phoneLast4");
+  await page.getByLabel("회원 검색").fill("12");
+  await page.getByRole("search").getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "숫자 4자리" })).toBeVisible();
+  expect(requests.filter((u) => u.includes("qType=phoneLast4"))).toHaveLength(0);
+  await page.getByLabel("회원 검색").fill("9001");
+  const sent = page.waitForRequest((r) => r.url().includes("qType=phoneLast4") && r.url().includes("q=9001"));
+  await page.getByRole("search").getByRole("button", { name: "검색", exact: true }).click();
+  await sent;
+  await expect(page.getByRole("alert").filter({ hasText: "숫자 4자리" })).toHaveCount(0);
+
+  // 아직 「검색」을 누르지 않은 조건은 정렬을 바꿔도 지워지지 않는다
+  await page.getByRole("checkbox", { name: "메모 있음" }).check();
+  await page.getByLabel("정렬").selectOption("joined");
+  await expect(page.getByRole("checkbox", { name: "메모 있음" })).toBeChecked();
+  await expect(page.getByLabel("회원 검색")).toHaveValue("9001");
 });

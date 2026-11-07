@@ -18,18 +18,19 @@ const login = async (page: Page, next: string) => {
 test("회원 상세: 직접 진입 → 「회원 목록」은 부모로 replace(기록이 쌓이지 않음), 목록 → 상세 → ←는 목록 조건으로 돌아온다", async ({ page }) => {
   await login(page, "/seller/members");
   await expect(page.getByTestId("member-row").first()).toBeVisible();
-  await page.getByRole("button", { name: /^활동/ }).click();
-  await expect(page).toHaveURL(/\/seller\/members\?status=ACTIVE$/);
-  const memberLink = page.getByTestId("member-row").first().getByRole("link");
+  await page.getByRole("radio", { name: "정상", exact: true }).check();
+  await page.getByRole("search").getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page).toHaveURL(/\/seller\/members\?status=NORMAL$/);
+  const memberLink = page.getByTestId("member-row").first().getByRole("link").first();
   await expect(memberLink).toHaveAttribute("href", /\/seller\/members\/[0-9a-f-]{36}$/);
   const detail = await memberLink.getAttribute("href");
 
   // 목록 → 상세 → ←
-  await page.getByTestId("member-row").first().getByRole("link").click();
+  await page.getByTestId("member-row").first().getByRole("link").first().click();
   await expect(page).toHaveURL(/\/seller\/members\/[0-9a-f-]{36}$/);
   await page.getByRole("button", { name: "뒤로" }).click();
-  await expect(page).toHaveURL(/\/seller\/members\?status=ACTIVE$/);
-  await expect(page.getByRole("button", { name: /^활동/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(page).toHaveURL(/\/seller\/members\?status=NORMAL$/);
+  await expect(page.getByRole("radio", { name: "정상", exact: true })).toBeChecked();
 
   // 직접 URL → ←: 부모로 replace, 이어서 브라우저 Back은 직접 진입 전 화면으로
   await page.goto("about:blank");

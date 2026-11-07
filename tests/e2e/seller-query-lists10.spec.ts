@@ -79,7 +79,7 @@ test.afterAll(async () => {
 
 const targets = [
   { key: "products", id: "SA-011", route: "/seller/products", api: "/api/seller/products", row: "product-row", field: "products", selector: "td:nth-child(4) a", label: (i: number) => `합성 상품 ${i}`, filter: "?status=HIDDEN", filteredIndex: 22 },
-  { key: "members", id: "SA-041", route: "/seller/members", api: "/api/seller/members", row: "member-row", field: "members", selector: "td:first-child a", label: (i: number) => `합성 회원 ${i}`, filter: "?status=DORMANT", filteredIndex: 22 },
+  { key: "members", id: "SA-041", route: "/seller/members", api: "/api/seller/members", row: "member-row", field: "members", selector: "td:nth-child(2) a", label: (i: number) => `합성 회원 ${i}`, filter: "?q=합성 회원 22", filteredIndex: 22 },
   { key: "hits", id: "SA-053", route: "/seller/hit-cards", api: "/api/seller/hit-cards", row: "hit-list", field: "items", selector: "td:first-child", label: (i: number) => `합성 카드 ${i}`, filter: "?grade=UR", filteredIndex: 22 },
   { key: "deposits", id: "SA-026", route: "/seller/orders/deposits", api: "/api/seller/payments/deposits", row: "deposit-row", field: "deposits", selector: "td:nth-child(3)", label: (i: number) => `합성 입금 ${i}`, filter: "", filteredIndex: 22 },
   { key: "refunds", id: "SA-023", route: "/seller/orders/refund-requests", api: "/api/seller/refund-requests", row: "refund-request-row", field: "requests", selector: "td:nth-child(3)", label: (i: number) => `합성 주문 ${i}`, filter: "?status=REJECTED", filteredIndex: 22 },
@@ -165,7 +165,11 @@ for (const t of targets) test(`${t.id}: 실제 목록 10개·끝·앞뒤·필터
     } else if (t.key === "products") {
       await page.getByRole("radiogroup", { name: "판매 상태", exact: true }).getByRole("radio", { name: "숨김", exact: true }).check();
       await page.getByRole("button", { name: "검색", exact: true }).click();
-    } else if (t.key === "members") await page.getByRole("button", { name: "휴면", exact: true }).click();
+    } else if (t.key === "members") {
+      // SA-041은 검색 조건 표의 검색어를 넣고 「검색」을 눌러 건다(닉네임으로 22번째 회원 하나만 남긴다)
+      await page.getByLabel("회원 검색").fill(t.label(22));
+      await page.getByRole("search").getByRole("button", { name: "검색", exact: true }).click();
+    }
     else if (t.key === "hits") {
       await page.getByRole("combobox", { name: "등급", exact: true }).fill("UR");
       await page.getByRole("button", { name: "검색", exact: true }).click();
@@ -180,7 +184,9 @@ for (const t of targets) test(`${t.id}: 실제 목록 10개·끝·앞뒤·필터
     release(); await stale;
     await expect(rows).toHaveCount(1); await expect(rows.first()).toContainText(t.label(t.filteredIndex)); await expect(nav).toHaveCount(0);
     await page.unroute(`**${t.api}?*`);
-    await page.goto(t.route); await check(1);
+    // SA-041의 검색어는 개인정보일 수 있어 주소가 아닌 history state에 남으므로(같은 주소 이동에도 유지), 「초기화」로 첫 쪽으로 돌아온다
+    if (t.key === "members") await page.getByRole("search").getByRole("button", { name: "초기화", exact: true }).click(); else await page.goto(t.route);
+    await check(1);
   } catch (error) { release(); try { await capture(page, t.id, "failed"); } catch {} throw error; }
 });
 

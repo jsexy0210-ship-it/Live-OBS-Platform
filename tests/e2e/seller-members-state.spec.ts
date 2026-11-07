@@ -22,19 +22,19 @@ test("개인정보 열람 권한이 있으면 검색어는 주소에 남지 않�
   const rows = page.getByTestId("member-row");
   const search = page.getByLabel("회원 검색");
   await search.fill("카드왕");
-  await expect(rows).toHaveCount(1);
-  await page.getByRole("button", { name: /^활동/ }).click();
-  await expect(page).toHaveURL(/\/seller\/members\?status=ACTIVE$/);
+  await page.getByRole("radio", { name: "정상", exact: true }).check();
+  await page.getByRole("search").getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page).toHaveURL(/\/seller\/members\?status=NORMAL$/);
   // 검색어는 개인정보일 수 있어 주소에 없다
   expect(page.url()).not.toContain("q=");
   await expect(rows).toHaveCount(1);
 
-  await rows.first().getByRole("link").click();
+  await rows.first().getByRole("link").first().click();
   await expect(page).toHaveURL(/\/seller\/members\/[0-9a-f-]{36}$/);
   await page.goBack();
-  await expect(page).toHaveURL(/\/seller\/members\?status=ACTIVE$/);
+  await expect(page).toHaveURL(/\/seller\/members\?status=NORMAL$/);
   await expect(search).toHaveValue("카드왕");
-  await expect(page.getByRole("button", { name: /^활동/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("radio", { name: "정상", exact: true })).toBeChecked();
   await expect(rows).toHaveCount(1);
   await expect(rows.first()).toContainText("카드왕");
 
@@ -44,9 +44,9 @@ test("개인정보 열람 권한이 있으면 검색어는 주소에 남지 않�
   await expect(rows).toHaveCount(1);
 
   // 조건 초기화 → 전체 목록, 주소도 깨끗
-  await page.getByLabel("회원 검색").fill("");
-  await page.getByRole("button", { name: /^활동/ }).click();
+  await page.getByRole("search").getByRole("button", { name: "초기화", exact: true }).click();
   await expect(page).toHaveURL(/\/seller\/members$/);
+  await expect(search).toHaveValue("");
   await expect(rows).toHaveCount(3);
 });
 
@@ -58,12 +58,13 @@ test("개인정보 열람 권한이 없으면(닉네임 검색뿐) 검색어도 
     await route.fulfill({ response: res, json: { ...body, isOwner: false, permissions: ["MEMBER_POINTS"] } });
   });
   await open(page);
-  await expect(page.getByLabel("회원 검색")).toHaveAttribute("placeholder", "방송 닉네임");
+  await expect(page.getByLabel("회원 검색")).toHaveAttribute("placeholder", "검색어 입력");
   const rows = page.getByTestId("member-row");
   await page.getByLabel("회원 검색").fill("카드왕");
+  await page.getByRole("search").getByRole("button", { name: "검색", exact: true }).click();
   await expect(page).toHaveURL(/\/seller\/members\?q=%EC%B9%B4%EB%93%9C%EC%99%95$/);
   await expect(rows).toHaveCount(1);
-  await rows.first().getByRole("link").click();
+  await rows.first().getByRole("link").first().click();
   await expect(page).toHaveURL(/\/seller\/members\/[0-9a-f-]{36}$/);
   await page.goBack();
   await expect(page).toHaveURL(/\/seller\/members\?q=/);
