@@ -202,6 +202,12 @@ describe("대기 제외 상품 주문: 배송 준비로 변경", () => {
       { orderId: eligible.id, ok: false, reason: "not_opened" },
     ]);
     expect((await db.order.findUniqueOrThrow({ where: { id: free.id } })).shippingPreparedAt).toBeInstanceOf(Date);
+    // 목록 행: 대기 제외 전용 주문만 queueFree=true (queueState는 null)
+    const rows = await list(s, {});
+    const byId = new Map(rows.orders.map((o) => [o.id, o]));
+    expect(byId.get(free.id)).toMatchObject({ queueFree: true, queueState: null });
+    expect(byId.get(cancelledOnly.id)).toMatchObject({ queueFree: false, queueState: null });
+    expect(byId.get(eligible.id)).toMatchObject({ queueFree: false, queueState: null });
     expect(await db.orderNotification.count({ where: { orderId: free.id, kind: "SHIPPING_PREPARED" } })).toBe(1);
   });
 });
