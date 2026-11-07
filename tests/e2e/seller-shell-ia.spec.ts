@@ -230,3 +230,15 @@ test("화면이 생긴 설정·고객 메뉴가 연결된다: 검색 노출·적
   await expect(page).toHaveURL(/\/seller\/rewards\/live-payout$/);
   await expect(tabs.getByRole("link", { name: "실제 지급 켜기" })).toHaveAttribute("aria-current", "page");
 });
+
+test("설정 「주문 · 배송 설정」 하위에 「배송 자동화」가 세 번째 하위 화면으로 있고 그 주소에서 선택 표시된다", async ({ page }) => {
+  for (const width of [1440, 1024]) {
+    await page.setViewportSize({ width, height: 900 });
+    await login(page, "/seller/settings/shipping-automation");
+    const tabs = sub(page, "주문 · 배송 설정");
+    await expect(tabs.locator(".lnb-sub-i")).toHaveText(["주문 설정", "배송 설정", "배송 자동화"]);
+    await expect(tabs.getByRole("link", { name: "배송 자동화" })).toHaveAttribute("href", "/seller/settings/shipping-automation");
+    await expect(tabs.getByRole("link", { name: "배송 자동화" })).toHaveAttribute("aria-current", "page");
+    await page.screenshot({ path: `tests/e2e/screenshots/SA-082-lnb-tab-${width}.png` });
+  }
+});
