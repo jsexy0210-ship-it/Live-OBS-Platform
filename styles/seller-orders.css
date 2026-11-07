@@ -328,3 +328,10 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* SA-026 입금 확인 요약 5칸(정본 .sum 5칸) */
+.dep-sum{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));margin-bottom:16px}
+.dep-sum>div{display:flex;flex-direction:column;gap:4px;padding:14px 16px}
+.dep-sum>div+div{border-left:1px solid var(--wds-line-normal-alternative)}
+.dep-sum b{font-size:18px;line-height:26px;font-weight:700}
+@media (max-width:1100px){.dep-sum{grid-template-columns:repeat(3,minmax(0,1fr))}.dep-sum>div:nth-child(4){border-left:0}.dep-sum>div:nth-child(n+4){border-top:1px solid var(--wds-line-normal-alternative)}}
