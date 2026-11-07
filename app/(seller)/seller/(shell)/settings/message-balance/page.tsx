@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FormRow, FormSection, Modal, PageHead } from "../../../../../../components/admin-ui";
-import { Topbar } from "../../../../../../components/seller/SellerShell";
+import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
+import { IDENTITY_PENDING_TITLE, IdentityPendingNotice, identityPendingText, isIdentityPendingFail } from "../../../../../../components/seller/IdentityPending";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { parseAmount, won } from "../../../../../../components/seller/format";
@@ -78,6 +79,10 @@ export default function MessageBalancePage() {
   const [amountError, setAmountError] = useState<string | null>(null);
   const [confirmAmount, setConfirmAmount] = useState<number | null>(null);
   const [pending, setPending] = useState(false);
+  // 대표자 본인확인 대기: 세션이 미리 알면 충전 결제를 처음부터 잠그고, 모르면 충전하기를 눌렀을 때 서버 403 identity_pending으로 알게 된다
+  const { me } = useSeller();
+  const [pendingByServer, setPendingByServer] = useState(false);
+  const identityPending = !!me.identityPending || pendingByServer;
   // 같은 금액의 확인 중(202) 결제는 같은 키로 다시 보내 결과를 확인한다. 결과가 정해지면 키를 버린다.
   const attempt = useRef<{ amount: number; key: string } | null>(null);
 
@@ -225,6 +230,10 @@ export default function MessageBalancePage() {
       return;
     }
     setConfirmAmount(null);
+    if (isIdentityPendingFail(r)) {
+      setPendingByServer(true);
+      return setFailure(`${IDENTITY_PENDING_TITLE} ${identityPendingText("충전금 결제")}`);
+    }
     if (r.status === 402) {
       attempt.current = null;
       setPending(false);
@@ -242,7 +251,7 @@ export default function MessageBalancePage() {
         <PageHead
           title="충전금"
           actions={
-            <button className="btn" type="button" disabled={!b.chargingEnabled || !consented || busy} onClick={openCharge}>
+            <button className="btn" type="button" disabled={!b.chargingEnabled || !consented || busy || identityPending} onClick={openCharge}>
               충전하기
             </button>
           }
@@ -255,6 +264,7 @@ export default function MessageBalancePage() {
             </span>
           </div>
         )}
+        {b.chargingEnabled && identityPending && <IdentityPendingNotice feature="충전금 결제" style={{ marginBottom: 16 }} />}
         {upcoming.map((p) => (
           <div key={p.channel} className="msg msg-info" role="note" style={{ marginBottom: 16 }}>
             <span>
@@ -353,7 +363,7 @@ export default function MessageBalancePage() {
                 inputMode="numeric"
                 placeholder="0"
                 value={amount}
-                disabled={!b.chargingEnabled || !consented || busy}
+                disabled={!b.chargingEnabled || !consented || busy || identityPending}
                 readOnly={pending}
                 onChange={(e) => {
                   setAmount(e.target.value);
@@ -411,7 +421,7 @@ export default function MessageBalancePage() {
             </FormRow>
           </FormSection>
           <div className="row" style={{ justifyContent: "center", marginTop: 16 }}>
-            <button className="btn btn-lg" type="button" disabled={!b.chargingEnabled || !consented || busy} onClick={openCharge} data-testid="charge-button">
+            <button className="btn btn-lg" type="button" disabled={!b.chargingEnabled || !consented || busy || identityPending} onClick={openCharge} data-testid="charge-button">
               충전하기
             </button>
           </div>
@@ -419,7 +429,7 @@ export default function MessageBalancePage() {
             차감 대상: 제공량을 넘은 거래 메일 · 대량 메일 · 문자 · 알림톡 · 구매자 본인확인 · 배송 자동조회 · 송장 발급·라벨 API · 현금영수증 API · 전자세금계산서 API. 잔액이 없으면 해당 기능만 멈추고 주문 처리는 계속됩니다. 후불 청구는 없습니다.
           </p>
           <p className="help" style={{ textAlign: "center" }}>
-            {!b.chargingEnabled ? "충전 기능 준비 중" : consented ? "구독 결제 카드로 충전합니다 · 누르면 확인 창이 열립니다" : "동의에 체크하면 충전할 수 있습니다"}
+            {!b.chargingEnabled ? "충전 기능 준비 중" : identityPending ? "대표자 본인확인을 마치면 충전할 수 있습니다" : consented ? "구독 결제 카드로 충전합니다 · 누르면 확인 창이 열립니다" : "동의에 체크하면 충전할 수 있습니다"}
           </p>
         </div>
 
