@@ -58,6 +58,12 @@ test("대표자: 메뉴에서 입금 확인을 열고, 단건 확인 뒤 일괄 
   if (legacyBuyerName) await expect(row(page, DEPOSIT_NICKNAMES[0])).not.toContainText(legacyBuyerName);
   await expect(page.getByRole("option", { name: "입금자명" })).toBeDisabled();
   await expect(page.getByText("실제 입금자명을 수집하지 않아 검색할 수 없습니다")).toBeVisible();
+  // 정본 SA-026: 요약 5칸(입금 전 · 1시간 안 기한 · 오늘 입금 확인 · 기한 지남 · 자동 취소) + 기간 빠른 선택 5개
+  const sum = page.getByRole("region", { name: "입금 현황" });
+  for (const label of ["입금 전", "1시간 안 기한", "오늘 입금 확인", "기한 지남", "자동 취소 (오늘)"]) await expect(sum).toContainText(label);
+  const quick = page.getByRole("group", { name: "기간 빠른 선택" });
+  for (const label of ["오늘", "7일", "1개월", "3개월", "전체"]) await expect(quick.getByRole("button", { name: label, exact: true })).toBeVisible();
+  await expect(quick.getByRole("button", { name: "전체", exact: true })).toHaveAttribute("aria-pressed", "true");
   if (SHOTS) {
     for (const width of [1440, 1024, 390]) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });

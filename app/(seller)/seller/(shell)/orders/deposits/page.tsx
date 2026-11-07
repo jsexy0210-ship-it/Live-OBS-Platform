@@ -5,7 +5,7 @@ import "../../../../../../styles/seller-orders.css";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ListTable, DatePicker, Pagination, ListHead, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
+import { ListTable, DateRangePicker, Pagination, ListHead, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { useScrollRestore } from "../../../../../../lib/client/navigation";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
@@ -183,13 +183,30 @@ export default function DepositsPage() {
         />
         <span className="t-c1 c-alt">실제 입금자명은 수집하지 않습니다. 통장 내역에서 직접 확인한 뒤에만 「입금 확인」을 눌러 주십시오.</span>
 
-        {state.kind === "ok" && state.summary && <div className="card row" style={{ gap: 20, flexWrap: "wrap" }} aria-label="입금 현황">
-          <span>입금 대기 <b>{state.summary.pendingCount}건 · {won(state.summary.pendingAmount)}</b></span>
-          <span>1시간 안에 기한 <b>{state.summary.dueWithinHourCount}건</b></span>
-          <span>오늘 확인 <b>{state.summary.confirmedTodayCount}건</b></span>
-          <span>기한 지남 <b>{state.summary.overdueCount}건</b></span>
-          <span>오늘 자동 취소 <b>{state.summary.autoCancelledTodayCount}건</b></span>
-        </div>}
+        {state.kind === "ok" && state.summary && (
+          <section className="card dep-sum" aria-label="입금 현황">
+            <div>
+              <span className="t-l2 c-alt">입금 전</span>
+              <b className="num">{state.summary.pendingCount}건 · {won(state.summary.pendingAmount)}</b>
+            </div>
+            <div>
+              <span className="t-l2 c-alt">1시간 안 기한</span>
+              <b className="num">{state.summary.dueWithinHourCount}건</b>
+            </div>
+            <div>
+              <span className="t-l2 c-alt">오늘 입금 확인</span>
+              <b className="num">{state.summary.confirmedTodayCount}건</b>
+            </div>
+            <div>
+              <span className="t-l2 c-alt">기한 지남</span>
+              <b className="num">{state.summary.overdueCount}건</b>
+            </div>
+            <div>
+              <span className="t-l2 c-alt">자동 취소 (오늘)</span>
+              <b className="num">{state.summary.autoCancelledTodayCount}건</b>
+            </div>
+          </section>
+        )}
 
         <SearchBox onSearch={() => {
           if (from && to && from > to) return setToast({ text: "시작일은 종료일보다 앞이어야 합니다", neg: true });
@@ -200,7 +217,7 @@ export default function DepositsPage() {
           const fresh = { from: "", to: "", statuses: ["PENDING_PAYMENT"] as DepositStatus[], searchBy: "buyer" as const, term: "" };
           setApplied(fresh); void load(fresh);
         }} busy={state.kind === "loading"}>
-          <SearchRow label="기간"><DatePicker aria-label="시작일" value={from} onChange={setFrom} /><span aria-hidden="true"> ~ </span><DatePicker aria-label="종료일" value={to} onChange={setTo} /></SearchRow>
+          <SearchRow label="기간"><DateRangePicker fromLabel="시작일" toLabel="종료일" from={from} to={to} onChange={(r) => { setFrom(r.from); setTo(r.to); }} quick /></SearchRow>
           <SearchRow label="상태"><div className="row" style={{ gap: 12, flexWrap: "wrap" }}>{([["PENDING_PAYMENT", "입금 대기"], ["OVERDUE", "기한 지남"], ["PAID", "입금 확인"], ["AUTO_CANCELLED", "자동 취소"]] as const).map(([value, label]) => <label className="ck" key={value}><input type="checkbox" checked={statuses.includes(value)} onChange={(e) => setStatuses(e.target.checked ? [...statuses, value] : statuses.filter((s) => s !== value))} />{label}</label>)}</div></SearchRow>
           <SearchRow label="검색"><div className="row" style={{ gap: 8, flexWrap: "wrap" }}><select className="inp" aria-label="검색 기준" value={searchBy} onChange={(e) => setSearchBy(e.target.value as typeof searchBy)}><option value="buyer">구매자</option><option value="amount">금액</option><option value="depositor" disabled={!canSearchDepositor}>입금자명</option></select><input className="inp" aria-label="검색어" value={term} onChange={(e) => setTerm(e.target.value)} placeholder={searchBy === "depositor" && !canSearchDepositor ? "실제 입금자명 미수집 · 검색할 수 없음" : searchBy === "amount" ? "정확한 금액" : "검색어"} disabled={searchBy === "depositor" && !canSearchDepositor} />{!canSearchDepositor && <span className="t-c1 c-alt">실제 입금자명을 수집하지 않아 검색할 수 없습니다</span>}</div></SearchRow>
         </SearchBox>
