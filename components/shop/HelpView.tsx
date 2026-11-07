@@ -229,7 +229,7 @@ function Guide({ slug }: { slug: string }) {
   return <p className="help-guide">{guide}</p>;
 }
 
-// 보드 SH-030: 공지 탭 아래에 이용안내·자주 묻는 질문을 미리보기로 쌓고, 「더 보기」로 각 탭으로 간다. 글이 없는 구역은 보이지 않는다
+// 보드 SH-030 · IA 262행: 공지 탭 아래에 이용안내(「더 보기」→ 이용안내 탭)·자주 묻는 질문(「더 보기」→ 내 문의) 미리보기를 쌓는다. 글이 없는 구역은 보이지 않는다
 function GuidePreview({ slug, onMore }: { slug: string; onMore: () => void }) {
   const [guide, setGuide] = useState<string | null>(null);
   useEffect(() => {
@@ -249,7 +249,7 @@ function GuidePreview({ slug, onMore }: { slug: string; onMore: () => void }) {
   );
 }
 
-function FaqPreview({ slug, onMore }: { slug: string; onMore: () => void }) {
+function FaqPreview({ slug }: { slug: string }) {
   const base = `/shop/${encodeURIComponent(slug)}`;
   const [faqs, setFaqs] = useState<Faq[]>([]);
   useEffect(() => {
@@ -262,10 +262,8 @@ function FaqPreview({ slug, onMore }: { slug: string; onMore: () => void }) {
     <section className="help-stack" aria-label="자주 묻는 질문 미리보기">
       <div className="help-stack-head">
         <h2>자주 묻는 질문</h2>
-        <span className="help-stack-links">
-          <button type="button" className="help-more" onClick={onMore}>더 보기 ›</button>
-          <Link href={`${base}/me/inquiries`}>문의하기 ›</Link>
-        </span>
+        <span className="help-stack-sub">원하는 답이 없으면 문의하기</span>
+        <Link className="help-more" href={`${base}/me/inquiries`}>더 보기 ›</Link>
       </div>
       <div className="help-faqs">
         {faqs.map((f) => (
@@ -301,7 +299,7 @@ export default function HelpView({ slug }: { slug: string }) {
           <>
             <Notices slug={slug} />
             <GuidePreview slug={slug} onMore={() => setTab("guide")} />
-            <FaqPreview slug={slug} onMore={() => setTab("faq")} />
+            <FaqPreview slug={slug} />
           </>
         ) : tab === "guide" ? (
           <Guide slug={slug} />

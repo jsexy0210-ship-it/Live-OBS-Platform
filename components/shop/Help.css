@@ -244,12 +244,12 @@
   margin: 0;
   font-size: 18px;
 }
-.help-stack-links {
-  display: flex;
-  gap: 12px;
+.help-stack-sub {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--wds-label-alternative);
 }
-.help-more,
-.help-stack-links a {
+.help-more {
   flex: none;
   padding: 0;
   border: 0;

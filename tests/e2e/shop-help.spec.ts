@@ -143,9 +143,8 @@ test("고객센터 공지 탭: 이용안내·자주 묻는 질문 미리보기�
     await page.getByRole("tab", { name: "공지" }).click();
     const faq = page.getByRole("region", { name: "자주 묻는 질문 미리보기" });
     await expect(faq.locator(".help-faq")).not.toHaveCount(0);
-    await faq.getByRole("button", { name: "더 보기 ›" }).click();
-    await expect(page.getByRole("tab", { name: "자주 묻는 질문" })).toHaveAttribute("aria-selected", "true");
-    await page.getByRole("tab", { name: "공지" }).click();
+    await expect(faq).toContainText("원하는 답이 없으면 문의하기");
+    await expect(faq.getByRole("link", { name: "더 보기 ›" })).toHaveAttribute("href", `/shop/${SLUG}/me/inquiries`); // IA 262행: FAQ 미리보기의 더 보기는 내 문의로 간다
     await setUsageGuide(SLUG, null);
     await page.goto(`/shop/${SLUG}/help`);
     await expect(page.getByRole("region", { name: "이용안내 미리보기" })).toHaveCount(0); // 글이 없으면 구역을 숨긴다
