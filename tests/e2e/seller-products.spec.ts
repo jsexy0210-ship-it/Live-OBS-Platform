@@ -304,7 +304,10 @@ test("상품 목록: 데모 상품·상태 배지·필터, 체험 배너가 보�
 
   // 데모 상품도 페이지 크기 10을 넘을 수 있으므로 배지는 해당 상품을 검색해서 확인한다.
   await searchFor(page, "탑로더 25장");
-  await expect(rows.filter({ hasText: "탑로더 25장" }).getByText("재고 부족")).toBeVisible();
+  // 재고 경고는 상태 칩이 아니라 재고 열(1~5 = 주의 색 숫자)로 보인다(정본 SA-011)
+  const lowRow = rows.filter({ hasText: "탑로더 25장" });
+  await expect(lowRow.locator("td.num.c-cau")).toHaveCount(1);
+  await expect(lowRow.getByText("재고 부족")).toHaveCount(0);
   await searchFor(page, "드래곤 소울 부스터");
   await expect(rows.filter({ hasText: "드래곤 소울 부스터" }).getByText("품절")).toBeVisible();
   await searchFor(page, "");
@@ -821,10 +824,13 @@ test("「재고 없음」·「재고 부족」으로 걸러 보면 서버 기준
   await applyStatus(page, "전체", "재고 없음");
   await expect(page.getByTestId("product-row").filter({ hasText: "드래곤 소울 부스터" })).toBeVisible();
   await expect(page.getByTestId("product-row").filter({ hasText: "스타라이트 부스터 박스" })).toHaveCount(0);
+  // 재고 0은 재고 열의 빨간 칩 「0」(정본 SA-011)
+  await expect(page.getByTestId("product-row").filter({ hasText: "드래곤 소울 부스터" }).locator("td.num .bdg", { hasText: /^0$/ })).toHaveCount(1);
   await applyStatus(page, "전체", "재고 부족");
   const low = page.getByTestId("product-row").filter({ hasText: "탑로더 25장" });
   await expect(low).toBeVisible();
-  await expect(low.locator(".bdg")).toHaveText("재고 부족");
+  await expect(low.locator("td.num.c-cau")).toHaveCount(1);
+  await expect(low.locator(".bdg")).toHaveText("판매 중");
   await expect(page.getByTestId("product-row").filter({ hasText: "드래곤 소울 부스터" })).toHaveCount(0);
   // 판매 상태 탭과 함께 쓴다: 「숨김」 + 「재고 부족」은 해당 없음
   await applyStatus(page, "숨김", "재고 부족");
@@ -836,7 +842,7 @@ test("「품절로 설정」 탭은 판매 상태가 품절인 상품만, 배지
   await applyStatus(page, "품절로 설정");
   const row = page.getByTestId("product-row").filter({ hasText: "드래곤 소울 부스터" });
   await expect(row).toBeVisible();
-  await expect(row.locator(".bdg")).toHaveText("품절");
+  await expect(row.locator("td:not(.num) .bdg")).toHaveText("품절");
   await expect(page.getByTestId("product-row").filter({ hasText: "스타라이트 부스터 박스" })).toHaveCount(0);
 });
 

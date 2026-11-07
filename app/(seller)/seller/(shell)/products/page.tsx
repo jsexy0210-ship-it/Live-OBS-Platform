@@ -108,6 +108,8 @@ const kstDate = (offsetDays = 0, offsetMonths = 0) => {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul" }).format(d);
 };
 const optionSummary = (p: Product) => (p.options.length === 0 ? "선택 항목 없음" : p.options.map((o) => o.name).join(" · "));
+// 정본 SA-011: 상태 칩은 판매 상태(판매 중 · 품절 · 숨김)만 보인다. 재고 경고는 재고 열이 맡는다(0 = 빨간 칩, 1~5 = 주의 색 숫자).
+const listBadge = (p: Product) => (p.status === "ON_SALE" ? { label: "판매 중", cls: "b-done" } : statusBadge(p));
 const isShown = (p: Product) => p.status === "ON_SALE" || p.status === "SOLD_OUT";
 
 // 번호: 상품 코드(P + 7자리 순번)의 순번. 등록 순서대로 늘어나 목록 정렬과 관계없이 같은 상품은 같은 번호다.
@@ -464,7 +466,7 @@ export default function ProductListPage() {
                   </thead>
                   <tbody>
                     {items.map((p) => {
-                      const b = statusBadge(p);
+                      const b = listBadge(p);
                       const stock = totalStock(p);
                       return (
                         <tr key={p.id} className="p-row" data-testid="product-row">
@@ -486,8 +488,8 @@ export default function ProductListPage() {
                             <div className="t-c1 c-alt ell">{[p.code, optionSummary(p)].filter(Boolean).join(" · ")}</div>
                           </td>
                           <td className="num">{won(p.price)}</td>
-                          <td className={`num${stock === 0 ? " c-neg fw6" : stock <= LOW_STOCK ? " c-cau fw6" : ""}`}>
-                            {stock.toLocaleString("ko-KR")}
+                          <td className={`num${stock > 0 && stock <= LOW_STOCK ? " c-cau fw6" : ""}`}>
+                            {stock === 0 ? <span className="bdg b-fail nodot">0</span> : stock.toLocaleString("ko-KR")}
                           </td>
                           <td className="num">{(p.soldQuantity ?? 0).toLocaleString("ko-KR")}</td>
                           <td>{isShown(p) ? "보임" : "안 보임"}</td>
@@ -517,7 +519,7 @@ export default function ProductListPage() {
               </ListTable>
               <ul className="p-cards">
                 {items.map((p) => {
-                  const b = statusBadge(p);
+                  const b = listBadge(p);
                   const stock = totalStock(p);
                   return (
                     <li key={p.id}>
