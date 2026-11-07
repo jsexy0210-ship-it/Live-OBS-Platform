@@ -6,6 +6,7 @@ import { daysBetween } from "../../../../lib/client/dateInput";
 import { formatDateTime } from "../../../../lib/client/format";
 import { textLength } from "../../../../lib/server/text/clean";
 import { adminApi, failMessage } from "./api";
+import type { SellerDetail } from "./partners";
 
 // MA-012-1 상태 변형 「본인확인 대기 파트너스」(MA-017 직접 추가로 만든 쇼핑몰, 상세 응답 identityPending). 최고관리자만 변경.
 // 초대 링크 재발급(POST /api/admin/sellers/{id}/invite): 이전 링크는 무효, 새 링크는 응답에서 한 번만 보인다. 체험 종료일 연장(PATCH …/trial): 새 날짜 + 사유, 시각은 지금 종료일과 같다.
@@ -15,7 +16,9 @@ type Invite = { path: string; url: string | null; expiresAt: string };
 const kstDate = (iso: string) => new Date(iso).toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
 const dot = (iso: string) => kstDate(iso).replace(/-/g, ".");
 
-export function DirectCreatedPanel({ seller, canManage, onChanged }: { seller: { id: string; trialEndsAt: string | null; serviceEndedAt: string | null; businessInfo: Record<string, unknown> | null; directCreatedAt?: string | null }; canManage: boolean; onChanged: () => void }) {
+const INVITE_STATE: Record<"active" | "used" | "revoked" | "expired", string> = { active: "아직 쓰지 않음", used: "사용함", revoked: "새 링크로 바뀌어 무효", expired: "만료됨" };
+
+export function DirectCreatedPanel({ seller, canManage, onChanged }: { seller: { id: string; trialEndsAt: string | null; serviceEndedAt: string | null; businessInfo: Record<string, unknown> | null; directCreatedAt?: string | null; directCreation?: SellerDetail["directCreation"] }; canManage: boolean; onChanged: () => void }) {
   const { confirm } = useConfirm();
   const [invite, setInvite] = useState<(Invite & { revoked: number }) | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
@@ -50,7 +53,8 @@ export function DirectCreatedPanel({ seller, canManage, onChanged }: { seller: {
     <section className="col" style={{ gap: 12 }} aria-label="본인확인 대기" data-testid="identity-pending">
       <div className="msg msg-info" style={{ display: "block" }}>
         <b>본인확인 대기</b>
-        {seller.directCreatedAt ? ` · ${dot(seller.directCreatedAt)} 최고관리자가 직접 추가` : ""} · 대표자가 초대 링크에서 비밀번호를 정하고 본인확인을 마칠 때까지 직원 추가 · 적립금 실제 지급 · 충전금 결제 · 아이디 · 비밀번호 찾기가 막힙니다
+        {seller.directCreatedAt ? ` · ${dot(seller.directCreatedAt)} 최고관리자${seller.directCreation?.byAdminName ? ` ${seller.directCreation.byAdminName}` : ""}이 직접 추가` : ""}
+        {seller.directCreation?.reason ? ` · 사유: ${seller.directCreation.reason}` : ""} · 대표자가 초대 링크에서 비밀번호를 정하고 본인확인을 마칠 때까지 직원 추가 · 적립금 실제 지급 · 충전금 결제 · 아이디 · 비밀번호 찾기가 막힙니다
       </div>
       <table className="au-ft">
         <tbody>
@@ -58,6 +62,11 @@ export function DirectCreatedPanel({ seller, canManage, onChanged }: { seller: {
             <span className="bdg b-warn">본인확인 대기</span>
           </FormRow>
           <FormRow label="초대 링크" help={canManage ? "재발급하면 이전 링크는 쓸 수 없고 새 링크를 한 번만 보여 드립니다 · 만료 · 분실 계정을 되살리는 방법입니다" : "최고관리자만 재발급할 수 있습니다"}>
+            {seller.directCreation?.invite && (
+              <span>
+                {formatDateTime(seller.directCreation.invite.issuedAt)} 발급 · {formatDateTime(seller.directCreation.invite.expiresAt)} 만료 · {INVITE_STATE[seller.directCreation.invite.state]}
+              </span>
+            )}
             {canManage && (
               <button className="btn btn-sm btn-out" type="button" onClick={() => void reissue()}>
                 초대 링크 재발급
