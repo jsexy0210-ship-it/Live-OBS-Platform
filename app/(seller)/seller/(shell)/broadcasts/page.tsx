@@ -112,6 +112,7 @@ export default function BroadcastHistoryPage() {
           <>
             {month && (
               <section aria-label="이번 달 방송 요약" data-testid="bh-month-summary">
+                <p className="t-c1 c-alt" style={{ margin: "0 0 6px" }}>이번 달 방송 요약(KST) · 아래 목록의 기간 조건과 별개</p>
                 <div className="bc-sum-g">
                   <div className="stat"><span className="t-l2 c-alt">이번 달 방송</span><span className="v">{month.broadcasts.toLocaleString("ko-KR")}회</span><span className="t-l2 c-alt">{Math.floor(month.seconds / 3600).toLocaleString("ko-KR")}시간 {Math.floor(month.seconds % 3600 / 60)}분</span></div>
                   <div className="stat"><span className="t-l2 c-alt">이번 달 주문</span><span className="v">{month.orders.toLocaleString("ko-KR")}건</span></div>
