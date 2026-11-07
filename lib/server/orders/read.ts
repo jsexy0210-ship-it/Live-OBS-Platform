@@ -229,6 +229,9 @@ export function queueStateOf(items: { status: string }[]): QueueState | null {
   if (live.some((i) => i.status === "WAITING")) return "waiting";
   return "done";
 }
+// 대기 제외 전용 주문: 큐 항목이 하나도 없고(취소 포함) 품목이 있으며 모든 품목이 결제 때 대기 제외로 건너뛴 것(OrderItem.queueSkipped).
+// 이런 주문은 개봉 없이 바로 「배송 준비로 변경」할 수 있다(orders/bulk.ts prepareShipping과 같은 기준).
+export const queueFreeOf = (queueItems: unknown[], items: { queueSkipped: boolean }[]) => queueItems.length === 0 && items.length > 0 && items.every((i) => i.queueSkipped);
 // queueStateOf와 같은 기준의 DB 조건
 export const queueStateWhere = (q: QueueState): Prisma.OrderWhereInput =>
   q === "opening"
@@ -306,7 +309,7 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
       paymentDueAt: true,
       shippingPreparedAt: true,
       buyerMember: { select: { id: true, broadcastNickname: true, grade: { select: { id: true, displayName: true } } } },
-      items: itemSummarySelect,
+      items: { ...itemSummarySelect, select: { ...itemSummarySelect.select, queueSkipped: true } },
       queueItems: { select: { status: true } },
       shipment: { select: { id: true, status: true, courier: true, trackingNumber: true, deliveredAt: true } },
       refunds: { select: { rewardReturn: true } },
@@ -341,6 +344,8 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
       buyer: { id: o.buyerMember.id, broadcastNickname: o.buyerMember.broadcastNickname, grade: o.buyerMember.grade },
       // 방송 큐 상태(waiting 개봉 대기 · opening 개봉 중 · done 개봉 완료, 큐 항목이 없으면 null)와 「배송 준비로 변경」한 시각
       queueState: queueStateOf(o.queueItems),
+      // 대기 제외 전용 주문이면 true(queueState는 null). 화면은 이때도 「배송 준비」를 켠다.
+      queueFree: queueFreeOf(o.queueItems, o.items),
       shippingPreparedAt: o.shippingPreparedAt,
       totalAmount: o.totalAmount,
       // 환불 현황(주문 합계, 현금 환불은 반품 배송비·적립금 반환을 뺀 돌려준 금액). 환불이 없으면 0.

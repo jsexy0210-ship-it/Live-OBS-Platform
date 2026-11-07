@@ -96,6 +96,7 @@ describe("판매자 주문 목록 GET /api/seller/orders", () => {
       paidAt: order.paidAt!.toISOString(),
       buyer: { id: s.buyer.id, broadcastNickname: s.buyer.broadcastNickname, grade: { id: s.grade.id, displayName: s.grade.displayName } },
       queueState: null,
+      queueFree: false,
       shippingPreparedAt: null,
       totalAmount: 5000,
       refundedAmount: 0,
