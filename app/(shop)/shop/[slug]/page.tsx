@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import EventPopup from "../../../../components/shop/EventPopup";
 import HomeBanner from "../../../../components/shop/HomeBanner";
+import { HeroSide, WeeklyHits } from "../../../../components/shop/HomeHighlights";
 import HomeProducts from "../../../../components/shop/HomeProducts";
 import { COOKIE_NAMES } from "../../../../lib/server/auth/policy";
 import { resolveBuyerSession } from "../../../../lib/server/auth/session";
@@ -12,6 +13,7 @@ import ShopLocked from "../../../../components/shop/ShopLocked";
 import { shopOpen } from "../../../../lib/server/buyers/signup";
 import { prisma } from "../../../../lib/server/db";
 import { publicHome } from "../../../../lib/server/shop-display/service";
+import { shopHomeHighlights } from "../../../../lib/server/shop/highlights";
 import { shopLiveStatus } from "../../../../lib/server/shop/live";
 import { visibleShopContent } from "../../../../lib/server/shop-content/service";
 import { publicNotices } from "../../../../lib/server/shop-notice/service";
@@ -39,9 +41,9 @@ export default async function ShopHomePage({ params }: Params) {
   const shop = await findShop(slug);
   if (!shop) notFound();
   const content = (await shopOpen(prisma, shop.id)) ? await visibleShopContent(prisma, slug, "home") : null;
-  const [home, live, notices] = content ? await Promise.all([
-    publicHome(prisma, slug, { recentBroadcastProducts: true }), shopLiveStatus(prisma, slug), publicNotices(prisma, slug, null),
-  ]) : [null, null, null];
+  const [home, live, notices, highlights] = content ? await Promise.all([
+    publicHome(prisma, slug, { recentBroadcastProducts: true }), shopLiveStatus(prisma, slug), publicNotices(prisma, slug, null), shopHomeHighlights(prisma, slug),
+  ]) : [null, null, null, null];
   const session = content ? await resolveBuyerSession(prisma, (await cookies()).get(COOKIE_NAMES.buyer)?.value, shop.id) : null;
   const base = `/shop/${encodeURIComponent(slug)}`;
   const pinned = notices?.pinned ?? null;
@@ -59,13 +61,23 @@ export default async function ShopHomePage({ params }: Params) {
             </div>
           )}
           <EventPopup popups={content.popups} />
-          <HomeBanner banners={content.banners} intervalSec={content.bannerIntervalSec} />
+          {highlights ? (
+            <div className={`shop-hero${content.banners.length ? "" : " is-solo"}`}>
+              <HomeBanner banners={content.banners} intervalSec={content.bannerIntervalSec} />
+              <HeroSide base={base} hero={highlights.hero} withBanner={content.banners.length > 0} />
+            </div>
+          ) : (
+            <HomeBanner banners={content.banners} intervalSec={content.bannerIntervalSec} />
+          )}
           {home && <HomeProducts slug={slug} loggedIn={!!session} sections={home.sections} live={!!live?.live} />}
           {!home?.sections.length && <section className="shop-sec"><div className="shop-sec-head"><h2>전체 상품</h2></div><p className="shop-empty">아직 올라온 상품이 없어요.</p></section>}
+          <div className="shop-home-two">
+          {highlights && <WeeklyHits hits={highlights.weeklyHits} />}
           <section className="shop-sec shop-home-notices" aria-labelledby="home-notices-title">
             <div className="shop-sec-head"><h2 id="home-notices-title">공지</h2><Link className="shop-more" href={`${base}/help`}>더 보기 ›</Link></div>
             <table><tbody>{notices?.notices.length ? notices.notices.slice(0, 3).map(n => <tr key={n.id}><td><Link href={`${base}/help/notices/${n.id}`}>{n.title}</Link></td><td>{kstDate(n.createdAt)}</td></tr>) : <tr><td colSpan={2}>아직 공지가 없어요.</td></tr>}</tbody></table>
           </section>
+          </div>
         </div>
       )}
     </>
