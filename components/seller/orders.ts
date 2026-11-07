@@ -27,12 +27,14 @@ export type OrderRow = {
   refundRequest?: { pendingCount: number };
   // 서버가 주문 목록에 함께 주는 값(SA-021): 개봉 상태(waiting 개봉 대기 · opening 개봉 중 · done 개봉 완료 · null 큐 없음) · 배송 준비로 바꾼 시각
   queueState?: "waiting" | "opening" | "done" | null;
+  // 방송 주문대기 대상이 아닌(제외) 상품만 산 주문: 큐 항목이 없고 모든 품목이 queueSkipped. 개봉을 기다리지 않고 바로 배송 준비로 바꾼다
+  queueFree?: boolean;
   shippingPreparedAt?: string | null;
 };
 
 // 주문 상세 응답에 오는 품목(SA-022). 큐 항목(queue)이 없으면 방송 주문대기에 올라간 적이 없는 품목이다(결제 전 등).
 export type OrderItemQueue = { status: "WAITING" | "OPENING" | "DONE" | "CANCELLED"; waitingNumber: number | null; aheadCount: number | null; broadcastSession: { id: string; title: string | null; status: string; startedAt: string | null } | null };
-export type OrderItem = { id: string; productNameSnapshot: string; optionNameSnapshot: string; unitPrice: number; quantity: number; productId?: string; refundedQuantity?: number; imageUrl?: string | null; queue?: OrderItemQueue | null };
+export type OrderItem = { id: string; productNameSnapshot: string; optionNameSnapshot: string; unitPrice: number; quantity: number; productId?: string; queueSkipped?: boolean; refundedQuantity?: number; imageUrl?: string | null; queue?: OrderItemQueue | null };
 
 // GET /api/seller/orders/{id}. 고객 정보 보기 권한이 없으면 buyer는 닉네임만, shippingAddress는 도서산간 여부만 온다.
 export type OrderDetail = {

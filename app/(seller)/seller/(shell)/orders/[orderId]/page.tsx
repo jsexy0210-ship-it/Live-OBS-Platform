@@ -128,7 +128,9 @@ function OrderDetailContent() {
   const session = queued.find((q) => q.broadcastSession)?.broadcastSession ?? null;
   const ahead = queued.find((q) => q.status === "WAITING")?.aheadCount ?? null;
   const payment = o.payments?.find((x) => x.approvedAt) ?? o.payments?.[0];
-  const stateText = o.status === "CANCELLED" || o.status === "REFUNDED" ? STATUS_BADGE[o.status].label : o.queueState === "waiting" ? "개봉 대기" : o.queueState === "opening" ? "개봉 중" : o.queueState === "done" ? "개봉 완료" : detailStatusLabel(o.status);
+  // 방송 주문대기 대상이 아닌 상품만 산 주문(큐 항목 없음 · 모든 품목 제외): 개봉을 기다리지 않는다
+  const queueFree = o.items.length > 0 && queued.length === 0 && o.items.every((i) => i.queueSkipped);
+  const stateText = o.status === "CANCELLED" || o.status === "REFUNDED" ? STATUS_BADGE[o.status].label : queueFree ? "대기 제외" : o.queueState === "waiting" ? "개봉 대기" : o.queueState === "opening" ? "개봉 중" : o.queueState === "done" ? "개봉 완료" : detailStatusLabel(o.status);
   const paidText = o.status === "PAID" ? "완료" : o.status === "PENDING_PAYMENT" ? "대기" : STATUS_BADGE[o.status].label;
   const method = o.paymentMethod ? PAYMENT_METHOD[o.paymentMethod] : "—";
   const consent = o.consents?.find((c) => c.kind === "OPENED_NO_REFUND");
@@ -219,7 +221,7 @@ function OrderDetailContent() {
                   <td>{i.optionNameSnapshot}</td>
                   <td className="num">{i.quantity}</td>
                   <td className="num" style={{ textAlign: "right" }}>{won(i.unitPrice)}</td>
-                  <td>{i.queue ? <span className="bdg b-info nodot">대상</span> : "—"}</td>
+                  <td>{i.queue ? <span className="bdg b-info nodot">대상</span> : i.queueSkipped ? <span className="bdg b-gray nodot">제외</span> : "—"}</td>
                   <td>{i.queue ? <span className={`bdg ${QUEUE_CLS[i.queue.status]}`}>{QUEUE_LABEL[i.queue.status]}</span> : "—"}</td>
                 </tr>
               ))}
@@ -355,7 +357,7 @@ function OrderDetailContent() {
 
         <section className="card pad col" style={{ gap: 8, marginTop: 16 }} id="order-preparation" aria-label="배송 준비">
           <h2 className="t-hl2">배송 준비</h2>
-          {o.shippingPreparedAt ? <p>배송 준비로 변경했습니다.</p> : <PrepareShipping ids={[o.id]} disabled={o.status !== "PAID" || !!(o.shipment && o.shipment.status !== "READY") || o.queueState !== "done"} onDone={() => void load()} />}
+          {o.shippingPreparedAt ? <p>배송 준비로 변경했습니다.</p> : <PrepareShipping ids={[o.id]} disabled={o.status !== "PAID" || !!(o.shipment && o.shipment.status !== "READY") || !(o.queueState === "done" || queueFree)} onDone={() => void load()} />}
         </section>
 
         <h2 className="ord-sec-t">HIT 기록</h2>
