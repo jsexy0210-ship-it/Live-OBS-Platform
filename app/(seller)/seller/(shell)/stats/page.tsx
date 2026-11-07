@@ -105,12 +105,12 @@ function Overview({ data, compare }: { data: Data; compare: boolean }) {
   const best = data.series.reduce<(typeof data.series)[number] | null>((b, s) => (b === null || s.revenue > b.revenue ? s : b), null);
   const live = data.broadcasts.rows.reduce((a, r) => ({ orders: a.orders + r.orders, net: a.net + r.net }), { orders: 0, net: 0 });
   const bcast = [
-    { label: "방송 중 들어온 주문", ...live },
-    { label: "방송이 끝난 뒤 2시간 안에 들어온 주문", ...data.broadcasts.general },
-    { label: "그 밖의 주문", ...data.broadcasts.outside },
+    { label: "방송 매출 (방송 시작 ~ 종료)", ...live },
+    { label: "방송 시간 일반 주문 (종료 뒤 2시간 안)", ...data.broadcasts.general },
+    { label: "방송 외 주문", ...data.broadcasts.outside },
   ];
   const bTotal = bcast.reduce((a, r) => ({ orders: a.orders + r.orders, net: a.net + r.net }), { orders: 0, net: 0 });
-  const share = (n: number) => (bTotal.net > 0 ? ` (${Math.round((n / bTotal.net) * 100)}%)` : "");
+  const share = (n: number) => (bTotal.net > 0 ? `${Math.round((n / bTotal.net) * 100)}%` : "—");
   const top = data.products.top.slice(0, PRODUCT_ROWS);
 
   return (
@@ -155,6 +155,7 @@ function Overview({ data, compare }: { data: Data; compare: boolean }) {
       <section className="sts-sec">
         <div className="sts-sec-h">
           <h2>방송 내역</h2>
+          <span className="t-c1 c-alt">기간 안 결제 주문만 · 세 줄 합계 = 요약 매출</span>
           <Link className="btn btn-out" href="/seller/stats/broadcasts">
             방송 통계
           </Link>
@@ -165,6 +166,7 @@ function Overview({ data, compare }: { data: Data; compare: boolean }) {
               <th>구분</th>
               <th>주문</th>
               <th>매출</th>
+              <th>비율</th>
             </tr>
           </thead>
           <tbody>
@@ -172,20 +174,19 @@ function Overview({ data, compare }: { data: Data; compare: boolean }) {
               <tr key={r.label}>
                 <td className="sts-wrap">{r.label}</td>
                 <td>{count(r.orders)}</td>
-                <td>
-                  {won(r.net)}
-                  {share(r.net)}
-                </td>
+                <td>{won(r.net)}</td>
+                <td>{share(r.net)}</td>
               </tr>
             ))}
             <tr className="fw6">
               <td>합계</td>
               <td>{count(bTotal.orders)}</td>
               <td>{won(bTotal.net)}</td>
+              <td>{bTotal.net > 0 ? "100%" : "—"}</td>
             </tr>
           </tbody>
         </table>
-        <span className="t-c1 c-alt">방송 중에 들어온 주문, 방송이 끝나고 2시간 안에 들어온 주문, 그 밖의 주문으로 나눈 금액입니다. 세 가지를 더하면 위 매출과 같습니다. 시청자 수는 아직 볼 수 없습니다.</span>
+        <span className="t-c1 c-alt">방송별 상세는 「방송」 탭 · 방송 탭은 기간 중 시작한 방송에 귀속된 주문을 기간 밖까지 모두 세므로 합계가 다를 수 있음</span>
       </section>
 
       </div>

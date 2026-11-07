@@ -10,6 +10,8 @@ import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../com
 import { api, apiDownload } from "../../../../../components/seller/api";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
 import { MAX_SEARCH_LENGTH, won } from "../../../../../components/seller/format";
+import { recentRange } from "../../../../../lib/client/dateInput";
+import { PERIOD_ALL } from "../../../../../lib/client/filterDefaults";
 import { formatDate, formatDateTime } from "../../../../../lib/client/format";
 import { phoneText, type MemberRow } from "../../../../../components/seller/members/types";
 import "./members.css";
@@ -27,9 +29,13 @@ type Row = Page["members"][number];
 type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; items: Row[]; next: string | null };
 type Summary = { total: number; newThisMonth: number; purchasedThisMonth: number; gold: number; vip: number; restricted: number; marketingConsent: number };
 type Grade = { id: string; displayName: string };
-type Applied = { q: string; qType: string; gradeIds: string; status: string; joinedFrom: string; joinedTo: string; lastOrder: string; marketing: string; hasBalance: string; hasMemo: string; sort: string };
+type Applied = { q: string; qType: string; gradeIds: string; status: string; joinedFrom: string; joinedTo: string; period: string; lastOrder: string; marketing: string; hasBalance: string; hasMemo: string; sort: string };
 
-const QUERY_DEFAULTS = { qType: "nickname", gradeIds: "", status: "", joinedFrom: "", joinedTo: "", lastOrder: "", marketing: "", hasBalance: "", hasMemo: "", sort: "lastOrder", q: "" };
+// 가입일 기본은 최근 1개월(정본 SA-041), 「전체」는 주소 period=all(공통 규칙 lib/client/filterDefaults.ts)
+const queryDefaults = () => {
+  const r = recentRange(1);
+  return { qType: "nickname", gradeIds: "", status: "", joinedFrom: r.from, joinedTo: r.to, period: "", lastOrder: "", marketing: "", hasBalance: "", hasMemo: "", sort: "lastOrder", q: "" };
+};
 const Q_TYPES = [
   { v: "nickname", label: "닉네임" },
   { v: "name", label: "이름" },
@@ -88,7 +94,13 @@ export default function MemberListPage() {
   const piiSearch = can("CUSTOMER_PII_VIEW");
   // 선택 작업(알림 발송 · 등급 조정)은 쓰기라 회원 · 적립금 권한이 있고 대리 조회가 아닐 때만 보인다(회원 등급 · 알림 발송 화면과 같은 기준)
   const editable = can("MEMBER_POINTS") && !me.readOnly;
-  const [u, setU] = useUrlState(QUERY_DEFAULTS);
+  const defaults = queryDefaults();
+  const [u, setU] = useUrlState(defaults);
+  // 「전체」(period=all)는 기간 제한 없음 → 조회·화면에는 빈 기간으로 쓴다
+  const allPeriod = u.period === PERIOD_ALL;
+  const joinedFrom = allPeriod ? "" : u.joinedFrom;
+  const joinedTo = allPeriod ? "" : u.joinedTo;
+  const periodUrl = (from: string, to: string) => (from === "" && to === "" ? { period: PERIOD_ALL, joinedFrom: defaults.joinedFrom, joinedTo: defaults.joinedTo } : { period: "", joinedFrom: from, joinedTo: to });
   // 검색어: 개인정보 열람 권한이 있으면 history state(주소에 남기지 않음), 없으면 주소 쿼리
   const [stateQ, setStateQ] = useState("");
   // 처음 그릴 때(서버 렌더 뒤) history state의 검색어를 읽은 다음에 조회한다(조건 없이 한 번 받았다 다시 받지 않게)
@@ -99,11 +111,11 @@ export default function MemberListPage() {
   }, [piiSearch]);
   const q = piiSearch ? stateQ : u.q;
   // 필터를 바꾸면 Next가 history 항목을 새 값으로 바꿔 검색어 칸이 지워지므로, 주소가 바뀔 때마다 다시 적어 둔다
-  const urlKey = [u.qType, u.gradeIds, u.status, u.joinedFrom, u.joinedTo, u.lastOrder, u.marketing, u.hasBalance, u.hasMemo, u.sort].join("|");
+  const urlKey = [u.qType, u.gradeIds, u.status, u.joinedFrom, u.joinedTo, u.period, u.lastOrder, u.marketing, u.hasBalance, u.hasMemo, u.sort].join("|");
   useEffect(() => {
     if (piiSearch && restored && readState() !== stateQ) writeState(stateQ);
   }, [piiSearch, restored, stateQ, urlKey]);
-  const applied: Applied = { q, qType: u.qType, gradeIds: u.gradeIds, status: u.status, joinedFrom: u.joinedFrom, joinedTo: u.joinedTo, lastOrder: u.lastOrder, marketing: u.marketing, hasBalance: u.hasBalance, hasMemo: u.hasMemo, sort: u.sort };
+  const applied: Applied = { q, qType: u.qType, gradeIds: u.gradeIds, status: u.status, joinedFrom, joinedTo, period: u.period, lastOrder: u.lastOrder, marketing: u.marketing, hasBalance: u.hasBalance, hasMemo: u.hasMemo, sort: u.sort };
 
   // 검색 상자의 입력(「검색」을 누르면 적용). Back·초기화로 적용 조건이 바뀌면 입력도 맞춘다
   const [draft, setDraft] = useState<Applied>(applied);
@@ -176,16 +188,16 @@ export default function MemberListPage() {
     if (piiSearch) {
       writeState(next.q);
       setStateQ(next.q);
-      setU({ qType: next.qType, gradeIds: next.gradeIds, status: next.status, joinedFrom: next.joinedFrom, joinedTo: next.joinedTo, lastOrder: next.lastOrder, marketing: next.marketing, hasBalance: next.hasBalance, hasMemo: next.hasMemo });
-    } else setU({ q: next.q, qType: "nickname", gradeIds: next.gradeIds, status: next.status, joinedFrom: next.joinedFrom, joinedTo: next.joinedTo, lastOrder: next.lastOrder, marketing: next.marketing, hasBalance: next.hasBalance, hasMemo: next.hasMemo });
+      setU({ qType: next.qType, gradeIds: next.gradeIds, status: next.status, ...periodUrl(next.joinedFrom, next.joinedTo), lastOrder: next.lastOrder, marketing: next.marketing, hasBalance: next.hasBalance, hasMemo: next.hasMemo });
+    } else setU({ q: next.q, qType: "nickname", gradeIds: next.gradeIds, status: next.status, ...periodUrl(next.joinedFrom, next.joinedTo), lastOrder: next.lastOrder, marketing: next.marketing, hasBalance: next.hasBalance, hasMemo: next.hasMemo });
   };
   const resetFilters = () => {
     setSearchError("");
     if (piiSearch) {
       writeState("");
       setStateQ("");
-      setU({ ...QUERY_DEFAULTS, q: "", sort: u.sort });
-    } else setU({ ...QUERY_DEFAULTS, sort: u.sort });
+      setU({ ...defaults, q: "", sort: u.sort });
+    } else setU({ ...defaults, sort: u.sort });
   };
 
   const exportReason = exporting ? (exporting.reason === "직접 입력" ? exporting.custom.trim() : exporting.reason) : "";
@@ -207,7 +219,7 @@ export default function MemberListPage() {
   };
 
   const items = state.kind === "ok" ? state.items : [];
-  const filtered = applied.q !== "" || applied.gradeIds !== "" || applied.status !== "" || applied.joinedFrom !== "" || applied.joinedTo !== "" || applied.lastOrder !== "" || applied.marketing !== "" || applied.hasBalance !== "" || applied.hasMemo !== "";
+  const filtered = applied.q !== "" || applied.gradeIds !== "" || applied.status !== "" || applied.joinedFrom !== defaults.joinedFrom || applied.joinedTo !== defaults.joinedTo || applied.lastOrder !== "" || applied.marketing !== "" || applied.hasBalance !== "" || applied.hasMemo !== "";
   const showPii = items.some((m) => m.name !== undefined || m.phone !== undefined);
   const allPicked = items.length > 0 && items.every((m) => picked.has(m.id));
   const togglePick = (m: Row) =>

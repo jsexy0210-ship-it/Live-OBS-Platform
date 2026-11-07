@@ -245,6 +245,10 @@ test("통계 요약(SA-056): 요약 지표·방송 내역·상품 상위·회원
   // 방송 매출 · 방송 시간 일반 주문 · 방송 외 주문 · 합계(= 요약 매출)
   const bt = page.getByTestId("overview-broadcasts");
   await expect(bt.locator("tbody tr")).toHaveCount(4);
+  await expect(bt.locator("thead th")).toHaveText(["구분", "주문", "매출", "비율"]);
+  await expect(bt).toContainText("방송 매출 (방송 시작 ~ 종료)");
+  await expect(bt).toContainText("방송 시간 일반 주문 (종료 뒤 2시간 안)");
+  await expect(bt).toContainText("방송 외 주문");
   await expect(bt.locator("tbody tr").last()).toContainText(won(body.summary.current.revenue));
   await expect(page.getByTestId("overview-rewards")).toContainText(won(body.rewards.earned));
   await expect(page.getByTestId("overview-rewards")).toContainText("쿠폰 사용");
