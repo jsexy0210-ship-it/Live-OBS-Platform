@@ -187,6 +187,7 @@ const MENU: Group[] = [
         tabs: [
           { label: "주문 설정", href: "/seller/settings/order", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
           { label: "배송 설정", href: "/seller/settings/shipping", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
+          { label: "배송 자동화", href: "/seller/settings/shipping-automation", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
         ],
       },
       {
