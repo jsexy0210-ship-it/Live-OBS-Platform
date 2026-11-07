@@ -78,7 +78,7 @@ test.afterAll(async () => {
 
 
 const targets = [
-  { key: "products", id: "SA-011", route: "/seller/products", api: "/api/seller/products", row: "product-row", field: "products", selector: "td:nth-child(3) a", label: (i: number) => `합성 상품 ${i}`, filter: "?status=HIDDEN", filteredIndex: 22 },
+  { key: "products", id: "SA-011", route: "/seller/products", api: "/api/seller/products", row: "product-row", field: "products", selector: "td:nth-child(4) a", label: (i: number) => `합성 상품 ${i}`, filter: "?status=HIDDEN", filteredIndex: 22 },
   { key: "members", id: "SA-041", route: "/seller/members", api: "/api/seller/members", row: "member-row", field: "members", selector: "td:first-child a", label: (i: number) => `합성 회원 ${i}`, filter: "?status=DORMANT", filteredIndex: 22 },
   { key: "hits", id: "SA-053", route: "/seller/hit-cards", api: "/api/seller/hit-cards", row: "hit-list", field: "items", selector: "td:first-child", label: (i: number) => `합성 카드 ${i}`, filter: "?grade=UR", filteredIndex: 22 },
   { key: "deposits", id: "SA-026", route: "/seller/orders/deposits", api: "/api/seller/payments/deposits", row: "deposit-row", field: "deposits", selector: "td:nth-child(3)", label: (i: number) => `합성 입금 ${i}`, filter: "", filteredIndex: 22 },

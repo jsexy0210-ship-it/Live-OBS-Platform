@@ -152,10 +152,16 @@ export default function WishlistView({ slug }: { slug: string }) {
             <ProductCard key={i.productId} p={card(i)} href={i.status === "unavailable" ? undefined : `${base}/products/${i.productId}`}>
               {(i.isLive || i.eventBadge) && <p className="wl-badges">{i.isLive && <span className="wl-badge wl-live">방송 중</span>}{i.eventBadge && <span className="wl-badge wl-deadline">{i.eventBadge}</span>}</p>}
               {i.status === "unavailable" && <p className="cart-tag">지금은 판매하지 않아요</p>}
-              <div className="wl-actions">
-                <button className="btn btn-sm btn-out" type="button" disabled={busy || i.status !== "on_sale"} onClick={() => void prepareAction(i, false)}>담기</button>
-                <button className="btn btn-sm" type="button" disabled={busy || i.status !== "on_sale"} onClick={() => void prepareAction(i, true)}>바로 구매</button>
-              </div>
+              {i.status === "sold_out" ? (
+                <div className="wl-actions is-out">
+                  <button className="btn btn-sm btn-out" type="button" disabled>품절</button>
+                </div>
+              ) : (
+                <div className="wl-actions">
+                  <button className="btn btn-sm btn-out" type="button" disabled={busy || i.status !== "on_sale"} onClick={() => void prepareAction(i, false)}>담기</button>
+                  <button className="btn btn-sm" type="button" disabled={busy || i.status !== "on_sale"} onClick={() => void prepareAction(i, true)}>바로 구매</button>
+                </div>
+              )}
               <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => void remove([i], "찜에서 뺐어요")}>
                 찜 빼기
               </button>

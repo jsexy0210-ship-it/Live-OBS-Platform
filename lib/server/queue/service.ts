@@ -1,4 +1,5 @@
 import { Prisma, type ActorType, type PaymentMethod, type PrismaClient, type QueueItem, type RefundFault } from "@prisma/client";
+import { policyValue } from "../admin/platformPolicy";
 import { writeAudit } from "../audit/log";
 import { recordBroadcastBoundary } from "../broadcast/events";
 import { notifySellerChanged } from "../realtime/notify";
@@ -321,10 +322,21 @@ export async function markOrderPaid(
       const max = await tx.queueItem.aggregate({ where: scope, _max: { position: true } });
       let position = max._max.position ?? 0;
       const queueItemIds: string[] = [];
+      // 방송 주문대기 대상이 아닌 상품(용품 등, queueEligible=false)은 큐에 올리지 않고 일반 배송 주문으로 처리한다.
+      // 큐 항목의 오픈 타이머: 상품에 90·120초가 있으면 그 값, 없으면 마스터 관리자 기본값(플랫폼 정책 openTimerSeconds, 기본 60초).
+      const queueProducts = await tx.product.findMany({
+        where: { sellerId, id: { in: [...new Set(order.items.map((i) => i.productId))] } },
+        select: { id: true, queueEligible: true, openTimerSeconds: true },
+      });
+      const productById = new Map(queueProducts.map((p) => [p.id, p]));
+      const defaultTimer = await policyValue(tx, "openTimerSeconds");
       for (const item of order.items) {
+        const product = productById.get(item.productId);
+        if (product && !product.queueEligible) continue;
         const q = await tx.queueItem.create({
           data: {
             ...scope,
+            timerSeconds: product?.openTimerSeconds ?? defaultTimer,
             orderId,
             orderItemId: item.id,
             position: ++position,
