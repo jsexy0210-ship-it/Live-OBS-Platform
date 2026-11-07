@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { PageHead } from "../../../../../../components/admin-ui";
-import { Topbar } from "../../../../../../components/seller/SellerShell";
+import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
 import { CategoryOrder } from "../../../../../../components/seller/display/CategoryOrder";
@@ -17,6 +17,7 @@ import type { CategoryNode, Display } from "../../../../../../components/seller/
 type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; display: Display; cats: CategoryNode[] };
 
 export default function DisplayPage() {
+  const { me } = useSeller();
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
   const notify = useCallback((text: string, neg?: boolean) => setToast({ text, neg }), []);
@@ -35,10 +36,10 @@ export default function DisplayPage() {
 
   return (
     <>
-      <Topbar crumb="상품 › 상품 진열" />
+      <Topbar crumb="상품 › 분류 · 진열 › 홈 진열" />
       <main className="main">
         <PageHead
-          title="상품 진열"
+          title="홈 진열"
           actions={
             <>
               <Link className="btn btn-out" href="/seller/products/categories">
@@ -47,6 +48,9 @@ export default function DisplayPage() {
               <Link className="btn btn-out" href="/seller/products">
                 상품 목록
               </Link>
+              <a className="btn btn-out" href={`/shop/${me.shop.slug}`} target="_blank" rel="noreferrer">
+                쇼핑몰 홈 보기
+              </a>
             </>
           }
         />

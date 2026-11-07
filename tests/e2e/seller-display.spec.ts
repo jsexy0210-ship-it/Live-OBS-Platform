@@ -26,29 +26,31 @@ const display = (page: Page) =>
   page.evaluate(async () => (await (await fetch("/api/seller/display")).json()) as { listSort: string; options: Record<string, boolean>; sections: { kind: string; title: string; visible: boolean; itemCount: number }[]; recommended: { name: string }[] });
 const sectionRow = (page: Page, title: string) => page.getByTestId("section-row").filter({ hasText: title });
 
-test("대표자: 홈 영역을 추가·이름·순서·표시 설정하고 저장하면 서버에 반영된다", async ({ page }) => {
+test("대표자: 홈 영역 6종 고정 표에서 순서·표시를 상세로 바꿔 저장하면 서버에 반영된다", async ({ page }) => {
   await login(page, "demo-owner@example.com");
   await expect(page).toHaveURL(/\/seller\/products\/display$/);
-  // 저장한 적이 없으면 서버 기본(추천 → 신상품)
-  await expect(page.getByTestId("section-row")).toHaveCount(2);
-  await expect(page.getByTestId("section-row").locator("input,button,select")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "홈 진열", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "쇼핑몰 홈 보기" })).toHaveAttribute("href", `/shop/${SLUG}`);
+  // 영역은 6종 고정(방송 상품 · 추천 · 신상품 · 베스트 · 할인 중 · 명예의 전당). 새로 만들기 · 이름 편집은 없다
+  const rows = page.getByTestId("section-row");
+  await expect(rows).toHaveCount(6);
+  await expect(rows.nth(0)).toContainText("방송 상품 (자동)");
+  await expect(rows.nth(5)).toContainText("명예의 전당");
+  await expect(page.getByRole("link", { name: "영역 추가", exact: true })).toHaveCount(0);
+  await expect(rows.locator("input,button,select")).toHaveCount(0);
+  // 저장한 적이 없으면 서버 기본(추천 → 신상품)만 보임
+  await expect(sectionRow(page, "추천 상품")).toContainText("보임");
+  await expect(sectionRow(page, "베스트")).toContainText("안 보임");
   await sectionRow(page, "추천 상품").getByRole("link", { name: "상세" }).click();
   await expect(page.getByRole("button", { name: "영역 저장" })).toBeDisabled();
+  await expect(page.getByRole("textbox", { name: /영역 이름/ })).toHaveCount(0);
   await page.getByRole("button", { name: "영역 목록", exact: true }).click();
   if (SHOTS) await page.screenshot({ path: "tests/e2e/screenshots/SA-016-display-1440.png", fullPage: true });
 
-  // 베스트 영역 추가 → 이름 바꾸기 → 맨 위로 → 신상품 끄기 → 저장
-  await page.getByRole("link", { name: "영역 추가", exact: true }).click();
-  await page.getByLabel("영역 추가").selectOption("BEST");
-  await page.getByRole("button", { name: "추가", exact: true }).click();
-  await page.getByRole("textbox", { name: "베스트 영역 이름" }).fill("인기 상품");
-  await page.getByRole("button", { name: "인기 상품 위로" }).click();
-  await page.getByRole("button", { name: "인기 상품 위로" }).click();
-  await page.getByRole("button", { name: "영역 목록", exact: true }).click();
-  await expect(page.getByTestId("section-row")).toHaveCount(3);
-  // 같은 종류는 한 번만: 추가 상세의 선택 목록에서 사라진다.
-  await page.getByRole("link", { name: "영역 추가", exact: true }).click();
-  await expect(page.getByLabel("영역 추가").locator("option", { hasText: "베스트" })).toHaveCount(0);
+  // 베스트 켜기(상세를 열면 초안에 들어간다) → 맨 위로 → 신상품 끄기 → 저장
+  await sectionRow(page, "베스트").getByRole("link", { name: "상세" }).click();
+  await page.getByRole("button", { name: "베스트 위로" }).click();
+  await page.getByRole("button", { name: "베스트 위로" }).click();
   await page.getByRole("button", { name: "영역 목록", exact: true }).click();
   await sectionRow(page, "신상품").getByRole("link", { name: "상세" }).click();
   await page.getByRole("checkbox", { name: "신상품 홈에 표시" }).uncheck();
@@ -57,17 +59,10 @@ test("대표자: 홈 영역을 추가·이름·순서·표시 설정하고 저�
   await expect(page.getByText("홈 진열 영역을 저장했습니다 · 쇼핑몰에 바로 반영")).toBeVisible();
   const saved = (await display(page)).sections;
   expect(saved.map((s) => [s.kind, s.title, s.visible])).toEqual([
-    ["BEST", "인기 상품", true],
+    ["BEST", "베스트", true],
     ["RECOMMENDED", "추천 상품", true],
     ["NEW", "신상품", false],
   ]);
-  await sectionRow(page, "인기 상품").getByRole("link", { name: "상세" }).click();
-  await expect(page.getByRole("button", { name: "영역 저장" })).toBeDisabled();
-
-  // 이름은 30자까지
-  await page.getByRole("textbox", { name: "베스트 영역 이름" }).fill("가".repeat(31));
-  await expect(page.getByText("영역 이름은 1~30자로 입력해 주십시오")).toBeVisible();
-  await expect(page.getByRole("button", { name: "영역 저장" })).toBeDisabled();
 });
 
 test("대표자: 목록 기본 정렬과 진열 옵션을 저장한다", async ({ page }) => {
@@ -128,4 +123,34 @@ test("상품 권한이 없는 직원은 서버가 막아 권한 안내가 보인
   await login(page, "demo-none@example.com");
   await expect(page.getByText("이 계정은 이 일을 할 수 없습니다")).toBeVisible();
   await expect(page.getByText("필요한 권한: 상품")).toBeVisible();
+});
+
+// 이미 저장된 카테고리 영역(과도기 · 읽기 전용)은 새로 만들거나 이름을 바꿀 수 없고, 다른 영역을 저장해도 지워지지 않는다
+test("대표자: 저장된 카테고리 영역은 읽기 전용으로 보이고, 저장해도 그대로 남는다", async ({ page }) => {
+  await login(page, "demo-owner@example.com");
+  await expect(page.getByRole("heading", { name: "홈 진열", exact: true })).toBeVisible();
+  const catId = await page.evaluate(async () => (await (await fetch("/api/seller/categories")).json()).categories[0].id as string);
+  const put = await page.evaluate(
+    async (id) =>
+      (await fetch("/api/seller/display/sections", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ sections: [
+        { kind: "RECOMMENDED", categoryId: null, title: "우리 추천", visible: true, itemCount: 8 },
+        { kind: "CATEGORY", categoryId: id, title: "우리 카테고리", visible: true, itemCount: 6 },
+      ] }) })).status,
+    catId,
+  );
+  expect(put).toBe(200);
+  await page.reload();
+  await expect(page.getByTestId("category-section-row")).toHaveCount(1);
+  await expect(page.getByTestId("category-section-row")).toContainText("우리 카테고리");
+  await expect(sectionRow(page, "추천 상품")).toContainText("홈에서 쓰는 이름: 우리 추천");
+  // 다른 영역(추천)을 바꿔 저장해도 카테고리 영역 · 바꾼 이름이 그대로 되돌아간다
+  await sectionRow(page, "추천 상품").getByRole("link", { name: "상세" }).click();
+  await page.getByRole("checkbox", { name: "우리 추천 홈에 표시" }).uncheck();
+  await page.getByRole("button", { name: "영역 저장" }).click();
+  await expect(page.getByText("홈 진열 영역을 저장했습니다 · 쇼핑몰에 바로 반영")).toBeVisible();
+  const after = (await display(page)).sections as { kind: string; title: string; visible: boolean; itemCount: number; categoryId?: string | null }[];
+  expect(after.map((s) => [s.kind, s.title, s.visible, s.itemCount])).toEqual([
+    ["RECOMMENDED", "우리 추천", false, 8],
+    ["CATEGORY", "우리 카테고리", true, 6],
+  ]);
 });
