@@ -9,6 +9,7 @@ import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 const password = randomBytes(12).toString("base64url");
 const run = randomBytes(4).toString("hex");
 const email = `dc-su-${run}@example.com`;
+const csEmail = `dc-cs-${run}@example.com`;
 const slug = `dc-${run}`;
 const shop = `직접몰 ${run}`;
 let db: PrismaClient;
@@ -16,16 +17,17 @@ let sellerId = "";
 
 test.beforeAll(async () => {
   db = new PrismaClient({ datasources: { db: { url: assertTestDatabaseUrl(process.env.DATABASE_URL) } } });
-  await db.platformAdmin.create({ data: { email, passwordHash: await hashPassword(password), name: "대표", role: "SUPER_ADMIN" } });
+  const passwordHash = await hashPassword(password);
+  await db.platformAdmin.createMany({ data: [{ email, passwordHash, name: "대표", role: "SUPER_ADMIN" }, { email: csEmail, passwordHash, name: "상담", role: "CS" }] });
 });
 test.afterAll(async () => {
   await db.$disconnect();
 });
 
-async function login(page: Page) {
+async function login(page: Page, who = email) {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/admin/login");
-  await page.getByLabel("이메일").fill(email);
+  await page.getByLabel("이메일").fill(who);
   await page.getByLabel("비밀번호").fill(password);
   await page.getByRole("button", { name: "로그인" }).click();
   await expect(page).toHaveURL(/\/admin$/);
@@ -81,6 +83,11 @@ test("본인확인 대기 상세: 초대 링크를 다시 발급하면 새 링�
   const panel = page.getByTestId("identity-pending");
   await expect(panel).toContainText("본인확인 대기");
   await expect(panel.getByText("자동 점검 건너뜀")).toBeVisible();
+  // 서버가 주는 추가한 관리자 · 사유 · 초대 상태(최고관리자만)
+  await expect(panel).toContainText("최고관리자 대표이 직접 추가");
+  await expect(panel).toContainText("사유: 시험 직접 추가");
+  await expect(panel).toContainText("발급");
+  await expect(panel).toContainText("아직 쓰지 않음");
 
   await panel.getByRole("button", { name: "초대 링크 재발급" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "재발급", exact: true }).click();
@@ -116,4 +123,21 @@ test("체험 연장: 이미 끝난 체험을 오늘로 연장해도 지난 시�
   await dialog.getByLabel("사유").fill("지난 시각 시험");
   await expect(dialog).toContainText("선택한 날짜의 종료 시각이 이미 지났습니다");
   await expect(dialog.getByRole("button", { name: "연장", exact: true })).toBeDisabled();
+});
+
+test("본인확인 대기 표시: 목록 상태 칸에 「본인확인 대기」, CS는 사유는 보지만 초대 상태는 보지 않는다", async ({ page }) => {
+  await login(page);
+  await page.goto("/admin/partners");
+  await page.getByLabel("검색어", { exact: true }).fill(slug);
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page.getByTestId("partner-row")).toHaveCount(1);
+  await expect(page.getByTestId("partner-row")).toContainText("본인확인 대기");
+
+  await page.context().clearCookies();
+  await login(page, csEmail);
+  await page.goto(`/admin/partners/${sellerId}`);
+  const panel = page.getByTestId("identity-pending");
+  await expect(panel).toContainText("사유: 시험 직접 추가");
+  await expect(panel).not.toContainText("아직 쓰지 않음");
+  await expect(panel.getByRole("button", { name: "초대 링크 재발급" })).toHaveCount(0);
 });

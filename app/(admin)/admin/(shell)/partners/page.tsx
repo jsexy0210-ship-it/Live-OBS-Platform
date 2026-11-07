@@ -343,7 +343,7 @@ function PartnerList() {
                             </td>
                             <td className="num">{s.seq}</td>
                             <td>
-                              <span className={`bdg ${DISPLAY_STATUS[s.displayStatus].cls}`}>{DISPLAY_STATUS[s.displayStatus].label}</span>
+                              {s.identityPending ? <span className="bdg b-warn">본인확인 대기</span> : <span className={`bdg ${DISPLAY_STATUS[s.displayStatus].cls}`}>{DISPLAY_STATUS[s.displayStatus].label}</span>}
                             </td>
                             <td>{s.plan?.name ?? "-"}</td>
                             <td>{overlayOnly ? "—" : s.pg.status === "ERROR" ? <span className="bdg b-fail">오류</span> : s.pg.status === "OK" ? <span className="bdg b-done">정상</span> : <span className="bdg b-gray">미연결</span>}</td>
