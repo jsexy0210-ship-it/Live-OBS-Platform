@@ -139,6 +139,7 @@ function Overview({ data, compare }: { data: Data; compare: boolean }) {
         </Tile>
       </div>
 
+      <div className="sts-grid">
       <section className="sts-sec">
         <div className="sts-sec-h">
           <h2>일별 매출</h2>
@@ -187,6 +188,9 @@ function Overview({ data, compare }: { data: Data; compare: boolean }) {
         <span className="t-c1 c-alt">방송 중에 들어온 주문, 방송이 끝나고 2시간 안에 들어온 주문, 그 밖의 주문으로 나눈 금액입니다. 세 가지를 더하면 위 매출과 같습니다. 시청자 수는 아직 볼 수 없습니다.</span>
       </section>
 
+      </div>
+
+      <div className="sts-grid">
       <section className="sts-sec">
         <div className="sts-sec-h">
           <h2>상품 상위 {PRODUCT_ROWS}</h2>
@@ -211,8 +215,8 @@ function Overview({ data, compare }: { data: Data; compare: boolean }) {
                 <tr key={r.productId}>
                   <td>{i + 1}</td>
                   <td className="col-text">{r.deleted ? `${r.name} (삭제됨)` : r.name}</td>
-                  <td>{r.quantity.toLocaleString("ko-KR")}개</td>
-                  <td>{won(r.revenue)}</td>
+                  <td className="num">{r.quantity.toLocaleString("ko-KR")}개</td>
+                  <td className="num">{won(r.revenue)}</td>
                 </tr>
               ))}
             </tbody>
@@ -269,6 +273,7 @@ function Overview({ data, compare }: { data: Data; compare: boolean }) {
         </table>
         <span className="t-c1 c-alt">처음 산 회원 = 이 기간에 처음 결제한 회원 · 적립금은 처리가 끝난 시각 기준</span>
       </section>
+      </div>
     </>
   );
 }
