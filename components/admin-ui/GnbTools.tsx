@@ -141,6 +141,35 @@ export function GlobalSearch({ scope }: { scope: "seller" | "admin" }) {
   );
 }
 
+// 파트너스 알림 패널(정본 SA-130 「알림 센터 (드롭다운)」): 종류 태그 · 분류 칩 · 오늘/이전 묶음. 서버에 있는 종류만 보인다.
+const SELLER_TAG: Record<string, [string, "g" | "bl" | "y" | "r"]> = {
+  NOTICE: ["공지", "bl"],
+  INQUIRY_REPLY: ["답변", "bl"],
+  INQUIRY_WAITING: ["대기", "y"],
+  DEPOSIT_PENDING: ["입금", "y"],
+  ORDER_PAID: ["결제", "g"],
+  OUT_OF_STOCK: ["재고", "y"],
+  RETURN_REQUESTED: ["반품", "y"],
+  CHARGE_SHORTAGE: ["잔액", "r"],
+};
+const SELLER_CHIPS: { key: string; label: string; kinds: string[] | null }[] = [
+  { key: "all", label: "전체", kinds: null },
+  { key: "pay", label: "결제 · 환불", kinds: ["DEPOSIT_PENDING", "ORDER_PAID", "RETURN_REQUESTED"] },
+  { key: "balance", label: "발송 · 잔액", kinds: ["CHARGE_SHORTAGE"] },
+  { key: "stock", label: "재고", kinds: ["OUT_OF_STOCK"] },
+  { key: "notice", label: "공지", kinds: ["NOTICE", "INQUIRY_REPLY", "INQUIRY_WAITING"] },
+];
+const kstDay = (d: Date) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul" }).format(d);
+const kstClock = (d: Date) => new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
+// 오늘은 「14:10」, 어제는 「어제 15:20」, 그보다 앞은 「10/11 14:10」
+function sellerTime(iso: string, now: Date) {
+  const d = new Date(iso);
+  const day = kstDay(d);
+  if (day === kstDay(now)) return kstClock(d);
+  if (day === kstDay(new Date(now.getTime() - 86_400_000))) return `어제 ${kstClock(d)}`;
+  return kst(iso);
+}
+
 export function NotificationBell({ scope, allHref }: { scope: "seller" | "admin"; allHref?: string }) {
   const kindLabel: Record<string, string> = {
     NOTICE: "공지",
@@ -153,6 +182,7 @@ export function NotificationBell({ scope, allHref }: { scope: "seller" | "admin"
     CHARGE_SHORTAGE: "충전금",
   };
   const [open, setOpen] = useState(false);
+  const [chip, setChip] = useState("all");
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error" } | { kind: "ok"; items: Notice[]; unreadCount: number }>({ kind: "loading" });
   const wrap = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
@@ -201,7 +231,72 @@ export function NotificationBell({ scope, allHref }: { scope: "seller" | "admin"
           </span>
         )}
       </button>
-      {open && (
+      {open && scope === "seller" && (
+        <div className="gnb-pop gnb-pop-np" role="dialog" aria-label="알림" ref={box}>
+          <div className="np-h">
+            <b>알림</b>
+            <span className="np-nt">읽지 않은 알림 {count}건</span>
+            <Link className="btn btn-sm btn-out np-set" href="/seller/account" onClick={close}>
+              설정
+            </Link>
+          </div>
+          <p className="np-nt np-guide">새 공지(최근 14일), 문의 답변, 입금 확인 요청, 결제 완료, 품절, 반품 · 교환 요청, 충전금 부족이 보입니다. 누르면 해당 화면으로 갑니다.</p>
+          <div className="np-chips">
+            <div className="seg" role="group" aria-label="분류">
+              {SELLER_CHIPS.map((c) => (
+                <button key={c.key} type="button" className={chip === c.key ? "on" : ""} aria-pressed={chip === c.key} onClick={() => setChip(c.key)}>
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="gnb-pop-b np-b">
+            {state.kind === "loading" && <p className="gnb-pop-m">불러오는 중입니다.</p>}
+            {state.kind === "error" && (
+              <p className="gnb-pop-m">
+                알림을 불러오지 못했습니다.{" "}
+                <button className="btn btn-sm btn-text" type="button" onClick={() => void load()}>
+                  다시 시도
+                </button>
+              </p>
+            )}
+            {state.kind === "ok" && state.items.length === 0 && <p className="gnb-pop-m">새 알림이 없습니다.</p>}
+            {state.kind === "ok" && state.items.length > 0 && (() => {
+              const kinds = SELLER_CHIPS.find((c) => c.key === chip)?.kinds ?? null;
+              const shown = state.items.filter((n) => !kinds || kinds.includes(n.kind));
+              if (shown.length === 0) return <p className="gnb-pop-m">이 분류의 알림이 없습니다.</p>;
+              const now = new Date();
+              const today = kstDay(now);
+              const groups = [
+                { label: "오늘", rows: shown.filter((n) => kstDay(new Date(n.createdAt)) === today) },
+                { label: "이전", rows: shown.filter((n) => kstDay(new Date(n.createdAt)) !== today) },
+              ].filter((g) => g.rows.length > 0);
+              return groups.map((g) => (
+                <div key={g.label} role="group" aria-label={g.label}>
+                  <div className="np-gh">{g.label}</div>
+                  {g.rows.map((n) => {
+                    const [tag, tone] = SELLER_TAG[n.kind] ?? ["알림", "g"];
+                    return (
+                      <Link key={n.id} className={`np-i${n.unread ? " unread" : ""}`} href={n.href} onClick={close}>
+                        <span className="np-t">
+                          <span className={`np-tag ${tone}`}>{tag}</span> <b>{n.title}</b>
+                        </span>
+                        <span className="np-nt num">{sellerTime(n.createdAt, now)}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              ));
+            })()}
+          </div>
+          {allHref && (
+            <Link className="np-all" href={allHref} onClick={close}>
+              지난 알림 모두 보기
+            </Link>
+          )}
+        </div>
+      )}
+      {open && scope !== "seller" && (
         <div className="gnb-pop" role="dialog" aria-label="알림" ref={box}>
           <div className="gnb-pop-b">
             {state.kind === "loading" && <p className="gnb-pop-m">불러오는 중입니다.</p>}

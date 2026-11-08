@@ -171,7 +171,7 @@ test("상단 알림: 종 버튼이 열리고(목록 또는 빈 안내), 바깥�
   const dialog = page.getByRole("dialog", { name: "알림" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText(/새 알림이 없습니다|공지|문의 답변|입금 확인|결제 완료|재고 없음|교환·반품/).first()).toBeVisible();
-  await expect(dialog.getByRole("link", { name: "모두 보기" })).toHaveAttribute("href", "/seller/notifications");
+  await expect(dialog.getByRole("link", { name: "지난 알림 모두 보기" })).toHaveAttribute("href", "/seller/notifications");
   await page.mouse.click(300, 600);
   await expect(dialog).toHaveCount(0);
 });
@@ -240,5 +240,42 @@ test("설정 「주문 · 배송 설정」 하위에 「배송 자동화」가 �
     await expect(tabs.getByRole("link", { name: "배송 자동화" })).toHaveAttribute("href", "/seller/settings/shipping-automation");
     await expect(tabs.getByRole("link", { name: "배송 자동화" })).toHaveAttribute("aria-current", "page");
     await page.screenshot({ path: `tests/e2e/screenshots/SA-082-lnb-tab-${width}.png` });
+  }
+});
+
+test("상단 알림 패널은 정본(SA-130) 구조: 머리·안내·분류 칩·오늘/이전 묶음·종류 태그·지난 알림 모두 보기", async ({ page }) => {
+  const now = new Date();
+  // 「오늘」 항목은 몇 초 전(자정 근처에 돌려도 오늘), 「이전」 항목은 KST 어제 정오(어느 시각에 돌려도 어제)
+  const todayKst = new Date(now.getTime() + 9 * 3_600_000).toISOString().slice(0, 10);
+  const todayStart = Date.parse(`${todayKst}T00:00:00+09:00`);
+  const secondsAgo = (n: number) => new Date(Math.max(now.getTime() - n * 1000, todayStart + 1000)).toISOString();
+  const yesterdayNoon = new Date(Date.parse(`${todayKst}T12:00:00+09:00`) - 86_400_000).toISOString();
+  const items = [
+    { id: "a", kind: "CHARGE_SHORTAGE", title: "알림톡 충전금이 부족합니다", href: "/seller/settings/message-balance", createdAt: secondsAgo(10), unread: true },
+    { id: "b", kind: "DEPOSIT_PENDING", title: "밤하늘 님 주문 입금 확인 필요", href: "/seller/orders/1", createdAt: secondsAgo(30), unread: true },
+    { id: "c", kind: "ORDER_PAID", title: "레인보우 님 주문 결제 완료", href: "/seller/orders/2", createdAt: secondsAgo(50), unread: false },
+    { id: "d", kind: "OUT_OF_STOCK", title: "스타라이트 케이스 재고 없음", href: "/seller/products/3", createdAt: secondsAgo(70), unread: true },
+    { id: "e", kind: "NOTICE", title: "서비스 점검 안내", href: "/seller/notices", createdAt: yesterdayNoon, unread: false },
+  ];
+  await page.route("**/api/seller/notifications", (route) => route.fulfill({ json: { items, unreadCount: 3 } }));
+  for (const width of [1440, 1024]) {
+    await page.setViewportSize({ width, height: 900 });
+    await login(page, "/seller/members");
+    await page.getByRole("button", { name: /^알림/ }).click();
+    const dialog = page.getByRole("dialog", { name: "알림" });
+    await expect(dialog.locator(".np-h")).toContainText("읽지 않은 알림 3건");
+    await expect(dialog.getByRole("link", { name: "설정", exact: true })).toHaveAttribute("href", "/seller/account");
+    await expect(dialog.locator(".np-guide")).toContainText("누르면 해당 화면으로 갑니다");
+    await expect(dialog.getByRole("group", { name: "분류" }).getByRole("button")).toHaveText(["전체", "결제 · 환불", "발송 · 잔액", "재고", "공지"]);
+    await expect(dialog.locator(".np-gh")).toHaveText(["오늘", "이전"]);
+    await expect(dialog.locator(".np-tag")).toHaveText(["잔액", "입금", "결제", "재고", "공지"]);
+    expect(Math.round((await dialog.boundingBox())!.width)).toBe(420);
+    await dialog.getByRole("button", { name: "결제 · 환불" }).click();
+    await expect(dialog.locator(".np-i")).toHaveCount(2);
+    await dialog.getByRole("button", { name: "재고" }).click();
+    await expect(dialog.locator(".np-i")).toHaveCount(1);
+    await dialog.getByRole("button", { name: "전체" }).click();
+    await expect(dialog.getByRole("link", { name: "지난 알림 모두 보기" })).toHaveAttribute("href", "/seller/notifications");
+    await page.screenshot({ path: `tests/e2e/screenshots/SA-130-dropdown-${width}.png` });
   }
 });
