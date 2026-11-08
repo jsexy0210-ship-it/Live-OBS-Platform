@@ -31,6 +31,14 @@ test("새 공지와 문의 답변이 안 읽음으로 보이고, 열면 공지�
 
   await page.goto("/seller/notifications");
   await expect(page.getByRole("heading", { level: 1, name: "지난 알림", exact: true })).toBeVisible();
+  // 셸 경로 줄(정본 SA-130-H): 공지 · 문의 › 알림 › 지난 알림(앞 두 칸은 링크)
+  await expect(page.locator(".loc-bar .crumb")).toHaveText("공지 · 문의›알림›지난 알림");
+  await expect(page.locator(".loc-bar .crumb-link")).toHaveCount(2);
+  for (const width of [1440, 1024]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.screenshot({ path: `tests/e2e/screenshots/SA-130-H-crumb-${width}.png` });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
   const notice = page.getByTestId("notif-row").filter({ hasText: `${E2E_PREFIX}알림 공지` });
   const reply = page.getByTestId("notif-row").filter({ hasText: `${E2E_PREFIX}알림 문의` });
   await expect(notice).toHaveAttribute("data-unread", "true");
