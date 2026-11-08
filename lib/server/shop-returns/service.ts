@@ -86,10 +86,10 @@ export const SELLER_RETURN_MESSAGES: Record<string, string> = {
   insufficient_stock: "교환 상품의 재고가 부족합니다",
   wrong_kind: "이 신청에서는 할 수 없는 처리입니다",
   invalid_pickup: "수거 방법을 골라 주십시오",
-  invalid_inspection: "검수 결과를 골라 주십시오",
-  inspection_required: "검수 결과를 먼저 입력해 주십시오",
-  inspection_not_ok: "검수에서 문제가 확인된 건은 반송·거절로 처리해 주십시오",
-  inspection_locked: "재고를 이미 되돌려 검수 결과를 바꿀 수 없습니다",
+  invalid_inspection: "상품 확인 결과를 골라 주십시오",
+  inspection_required: "상품 확인 결과를 먼저 입력해 주십시오",
+  inspection_not_ok: "상품 확인에서 문제가 확인된 건은 반송·거절로 처리해 주십시오",
+  inspection_locked: "재고를 이미 되돌려 상품 확인 결과를 바꿀 수 없습니다",
 };
 
 async function clockNow(db: Db): Promise<Date> {
