@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ListTable, ListHead, PageHead, Pagination } from "../../../../../components/admin-ui";
+import { ListTable, PageHead, Pagination } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -55,10 +55,11 @@ export default function NotificationsPage() {
 
   return (
     <>
-      <Topbar crumb="알림" />
+      <Topbar crumb="공지 · 문의 › 알림 › 지난 알림" />
       <main className="main">
         <PageHead
-          title="알림"
+          title="지난 알림"
+          description="최근 30건 알림을 10개씩 봅니다. 누르면 해당 화면으로 갑니다."
           actions={
             <>
             <button className="btn btn-out" type="button" onClick={() => { setPage(1); void load(); }}>새로 고침</button>
@@ -68,9 +69,22 @@ export default function NotificationsPage() {
             </>
           }
         />
-        <span className="t-c1 c-alt">새 공지(최근 14일), 문의 답변, 입금 확인 요청, 결제 완료, 품절, 반품·교환 요청이 보입니다. 누르면 해당 화면으로 갑니다.</span>
+        <div className="msg msg-info" role="note" style={{ marginBottom: 16 }}>
+          <span>새 공지(최근 14일), 문의 답변, 입금 확인 요청, 결제 완료, 품절, 반품 · 교환 요청, 충전금 부족이 보입니다 · 목록을 받은 뒤 공지는 읽음으로 남기고, 문의 답변은 그 문의를 열어야 읽음입니다</span>
+        </div>
         <section className="au-list-section" style={{ overflow: "visible" }}>
-          {state.kind === "ok" && <ListHead total={items.length} unit="건" actions={state.unreadCount > 0 ? <span className="t-l2" data-testid="notif-unread">읽지 않은 알림 {state.unreadCount}건</span> : undefined} />}
+          {state.kind === "ok" && (
+            <div className="au-lh">
+              <span className="au-lh-total" aria-live="polite">
+                <b className="num">{items.length.toLocaleString("ko-KR")}</b>건
+                {state.unreadCount > 0 && (
+                  <span className="c-alt">
+                    {" "}(<span className="t-l2" data-testid="notif-unread">읽지 않은 알림 {state.unreadCount}건</span>)
+                  </span>
+                )}
+              </span>
+            </div>
+          )}
           {state.kind === "loading" && <div className="card"><LoadingRows rows={4} /></div>}
           {state.kind === "error" && <div className="card"><ErrorState title="알림을 불러오지 못했습니다" onRetry={() => void load()} /></div>}
           {state.kind === "ok" && items.length === 0 && (

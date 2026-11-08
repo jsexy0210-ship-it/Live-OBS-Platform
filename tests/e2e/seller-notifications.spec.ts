@@ -30,7 +30,7 @@ test("새 공지와 문의 답변이 안 읽음으로 보이고, 열면 공지�
   await adminReplyInDb(inquiryId, "확인했습니다.");
 
   await page.goto("/seller/notifications");
-  await expect(page.getByRole("heading", { level: 1, name: "알림" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "지난 알림", exact: true })).toBeVisible();
   const notice = page.getByTestId("notif-row").filter({ hasText: `${E2E_PREFIX}알림 공지` });
   const reply = page.getByTestId("notif-row").filter({ hasText: `${E2E_PREFIX}알림 문의` });
   await expect(notice).toHaveAttribute("data-unread", "true");
@@ -38,6 +38,10 @@ test("새 공지와 문의 답변이 안 읽음으로 보이고, 열면 공지�
   await expect(notice).toContainText("공지");
   await expect(reply).toContainText("문의 답변");
   await expect(page.getByTestId("notif-unread")).toBeVisible();
+  // 정본 SA-130-H: 제목 아래 안내 · 안내 띠(종류 7 + 읽음 규칙) · 건수 줄 「N건 (읽지 않은 알림 N건)」
+  await expect(page.getByText("최근 30건 알림을 10개씩 봅니다. 누르면 해당 화면으로 갑니다.")).toBeVisible();
+  await expect(page.getByRole("note").filter({ hasText: "충전금 부족이 보입니다" })).toContainText("문의 답변은 그 문의를 열어야 읽음입니다");
+  await expect(page.locator(".au-lh-total")).toContainText(/\d+건 \(읽지 않은 알림 \d+건\)/);
 
   // 연 것으로 남겼으니 새로 고치면 공지는 읽음, 문의 답변은 아직 안 읽음
   await page.reload();
