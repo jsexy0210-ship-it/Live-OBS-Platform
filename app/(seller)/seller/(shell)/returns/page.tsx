@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState, useRef } from "react";
 import { CursorPagination } from "../../../../../components/Pagination";
+import { PageHead } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -75,12 +76,22 @@ function ReturnsPage() {
     <>
       <Topbar crumb="주문 › 교환 · 반품" />
       <main className="main">
-        <div className="ph">
-          <div className="col" style={{ gap: 6 }}>
-            <h1 className="t-t3">교환 · 반품</h1>
-            <span className="t-l2 c-alt">구매자가 신청한 교환·반품을 처리하는 화면입니다. 접수 → 수거 → 상품 확인 → 환불 또는 교환 상품 발송 순서로 진행합니다.</span>
-          </div>
-        </div>
+        <PageHead
+          title="교환 · 반품"
+          description="구매자가 신청한 교환·반품을 처리하는 화면입니다. 접수 → 수거 → 상품 확인 → 환불 또는 교환 상품 발송 순서로 진행합니다."
+          actions={
+            <>
+              {can("SHOP_SETTINGS") && (
+                <Link className="btn btn-out" href="/seller/settings/shipping">
+                  배송 설정 · 반품 배송비
+                </Link>
+              )}
+              <Link className="btn btn-out" href="/seller/orders/refund-requests">
+                취소 · 환불
+              </Link>
+            </>
+          }
+        />
         <section className="card" style={{ overflow: "hidden" }}>
           {state.kind === "loading" && <StateBox kind="loading" what="교환 · 반품" />}
           {state.kind === "error" && <StateBox kind={stateKind(state.status, state.error)} what="교환 · 반품" onRetry={() => void load()} />}
@@ -93,7 +104,7 @@ function ReturnsPage() {
                   <span className="t-c1 c-alt">24시간 안 승인 · 거절 권장</span>
                 </div>
                 <div className="rt-sum-c">
-                  <span className="t-c1 c-alt">수거 · 확인 중</span>
+                  <span className="t-c1 c-alt">수거 · 검수 중</span>
                   <b className="t-t3 num">{data.summary.inProgress}건</b>
                 </div>
                 <div className="rt-sum-c">

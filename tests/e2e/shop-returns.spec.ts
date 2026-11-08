@@ -84,6 +84,10 @@ test.describe.serial("SH-022-R 교환·반품 신청 · SA-029 교환·반품 �
     const sum = page.getByTestId("rt-summary");
     await expect(sum).toContainText("접수 (처리 필요)");
     await expect(sum).toContainText("반품률 (30일)");
+    await expect(sum).toContainText("수거 · 검수 중");
+    // 정본 SA-029 머리 버튼: 배송 설정 · 반품 배송비 / 취소 · 환불
+    await expect(page.getByRole("link", { name: "배송 설정 · 반품 배송비", exact: true })).toHaveAttribute("href", "/seller/settings/shipping");
+    await expect(page.getByRole("link", { name: "취소 · 환불", exact: true }).first()).toHaveAttribute("href", /\/seller\/orders\/refund-requests$/);
     await page.screenshot({ path: `${SHOT}/sa029-summary-1440.png` });
     const row = page.getByTestId("return-row").filter({ hasText: `주문 ${orderNo}` }).first();
     await expect(row).toContainText("접수");
