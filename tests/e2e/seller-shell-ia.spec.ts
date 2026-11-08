@@ -245,17 +245,17 @@ test("설정 「주문 · 배송 설정」 하위에 「배송 자동화」가 �
 
 test("상단 알림 패널은 정본(SA-130) 구조: 머리·안내·분류 칩·오늘/이전 묶음·종류 태그·지난 알림 모두 보기", async ({ page }) => {
   const now = new Date();
-  const at = (h: number, dayOffset: number) => {
-    const d = new Date(now.getTime() - dayOffset * 86_400_000);
-    d.setUTCHours(h, 10, 0, 0);
-    return dayOffset === 0 ? new Date(now.getTime() - h * 60_000).toISOString() : d.toISOString();
-  };
+  // 「오늘」 항목은 몇 초 전(자정 근처에 돌려도 오늘), 「이전」 항목은 KST 어제 정오(어느 시각에 돌려도 어제)
+  const todayKst = new Date(now.getTime() + 9 * 3_600_000).toISOString().slice(0, 10);
+  const todayStart = Date.parse(`${todayKst}T00:00:00+09:00`);
+  const secondsAgo = (n: number) => new Date(Math.max(now.getTime() - n * 1000, todayStart + 1000)).toISOString();
+  const yesterdayNoon = new Date(Date.parse(`${todayKst}T12:00:00+09:00`) - 86_400_000).toISOString();
   const items = [
-    { id: "a", kind: "CHARGE_SHORTAGE", title: "알림톡 충전금이 부족합니다", href: "/seller/settings/message-balance", createdAt: at(10, 0), unread: true },
-    { id: "b", kind: "DEPOSIT_PENDING", title: "밤하늘 님 주문 입금 확인 필요", href: "/seller/orders/1", createdAt: at(30, 0), unread: true },
-    { id: "c", kind: "ORDER_PAID", title: "레인보우 님 주문 결제 완료", href: "/seller/orders/2", createdAt: at(50, 0), unread: false },
-    { id: "d", kind: "OUT_OF_STOCK", title: "스타라이트 케이스 재고 없음", href: "/seller/products/3", createdAt: at(70, 0), unread: true },
-    { id: "e", kind: "NOTICE", title: "서비스 점검 안내", href: "/seller/notices", createdAt: at(1, 1), unread: false },
+    { id: "a", kind: "CHARGE_SHORTAGE", title: "알림톡 충전금이 부족합니다", href: "/seller/settings/message-balance", createdAt: secondsAgo(10), unread: true },
+    { id: "b", kind: "DEPOSIT_PENDING", title: "밤하늘 님 주문 입금 확인 필요", href: "/seller/orders/1", createdAt: secondsAgo(30), unread: true },
+    { id: "c", kind: "ORDER_PAID", title: "레인보우 님 주문 결제 완료", href: "/seller/orders/2", createdAt: secondsAgo(50), unread: false },
+    { id: "d", kind: "OUT_OF_STOCK", title: "스타라이트 케이스 재고 없음", href: "/seller/products/3", createdAt: secondsAgo(70), unread: true },
+    { id: "e", kind: "NOTICE", title: "서비스 점검 안내", href: "/seller/notices", createdAt: yesterdayNoon, unread: false },
   ];
   await page.route("**/api/seller/notifications", (route) => route.fulfill({ json: { items, unreadCount: 3 } }));
   for (const width of [1440, 1024]) {
