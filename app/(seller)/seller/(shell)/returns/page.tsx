@@ -104,7 +104,7 @@ function ReturnsPage() {
                   <span className="t-c1 c-alt">24시간 안 승인 · 거절 권장</span>
                 </div>
                 <div className="rt-sum-c">
-                  <span className="t-c1 c-alt">수거 · 검수 중</span>
+                  <span className="t-c1 c-alt">수거 · 확인 중</span>
                   <b className="t-t3 num">{data.summary.inProgress}건</b>
                 </div>
                 <div className="rt-sum-c">
