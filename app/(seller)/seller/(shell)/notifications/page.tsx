@@ -55,7 +55,7 @@ export default function NotificationsPage() {
 
   return (
     <>
-      <Topbar crumb="공지 · 문의 › 알림 › 지난 알림" />
+      <Topbar crumb="공지 · 문의 › 알림 › 지난 알림" showCurrent />
       <main className="main">
         <PageHead
           title="지난 알림"
