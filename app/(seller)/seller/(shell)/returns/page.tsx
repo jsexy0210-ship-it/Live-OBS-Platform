@@ -81,9 +81,11 @@ function ReturnsPage() {
           description="구매자가 신청한 교환·반품을 처리하는 화면입니다. 접수 → 수거 → 상품 확인 → 환불 또는 교환 상품 발송 순서로 진행합니다."
           actions={
             <>
-              <Link className="btn btn-out" href="/seller/settings/shipping">
-                배송 설정 · 반품 배송비
-              </Link>
+              {can("SHOP_SETTINGS") && (
+                <Link className="btn btn-out" href="/seller/settings/shipping">
+                  배송 설정 · 반품 배송비
+                </Link>
+              )}
               <Link className="btn btn-out" href="/seller/orders/refund-requests">
                 취소 · 환불
               </Link>
