@@ -1201,6 +1201,99 @@ body {
 .gnb-pop-k {
   color: var(--cs-accent);
 }
+/* 알림 패널(정본 SA-130 「알림 센터 (드롭다운)」): 420 · 머리 · 안내 · 분류 칩 · 오늘/이전 묶음 · 지난 알림 */
+.gnb-pop.gnb-pop-np {
+  width: 420px;
+}
+.np-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  box-shadow: inset 0 -1px 0 var(--cs-line);
+}
+.np-nt {
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--wds-label-alternative);
+}
+.np-set {
+  margin-left: auto;
+}
+.np-guide {
+  margin: 0;
+  padding: 6px 12px;
+  box-shadow: inset 0 -1px 0 var(--cs-line);
+}
+.np-chips {
+  padding: 8px 12px;
+  overflow-x: auto;
+}
+.np-b {
+  padding: 0;
+}
+.np-gh {
+  padding: 4px 12px;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--wds-label-alternative);
+  background: var(--cs-th);
+}
+.app .np-i {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 12px;
+  color: inherit;
+  text-decoration: none;
+  box-shadow: inset 0 -1px 0 var(--cs-line);
+}
+.app .np-i:hover,
+.app .np-i:focus-visible {
+  background: var(--cs-hover);
+}
+.np-i:not(.unread) b {
+  font-weight: 500;
+}
+.np-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.np-tag.g {
+  background: #e6f4ea;
+  color: #1b7f3b;
+}
+.np-tag.bl {
+  background: #e8f0fe;
+  color: #1a56db;
+}
+.np-tag.y {
+  background: #fff4dc;
+  color: #8a5a00;
+}
+.np-tag.r {
+  background: #fde8e8;
+  color: #b42318;
+}
+.app .np-all {
+  display: block;
+  padding: 8px 12px;
+  font-size: 14px;
+  color: var(--cs-accent);
+  text-decoration: none;
+  box-shadow: inset 0 1px 0 var(--cs-line);
+}
+.app .np-all:hover {
+  background: var(--cs-hover);
+}
 /* LNB 제목 줄과 본문 첫 줄(경로 줄)이 같은 높이 토큰을 써서 두 아래 선이 한 수평선이 된다 */
 .cs {
   --cs-bar-h: 48px;
