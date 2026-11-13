@@ -1,6 +1,6 @@
 "use client";
 
-import { EmptyStats, StatsFrame, StatsState, usePeriod, useStats, type Unit } from "../../../../../../components/seller/stats/StatsFrame";
+import { EmptyStats, StatsFrame, StatsState, UnitRow, usePeriod, useStats, type Unit } from "../../../../../../components/seller/stats/StatsFrame";
 import { BarChart, Kpis, bucketLabel, count, downloadCsv, pct, won } from "../../../../../../components/seller/stats/parts";
 
 // SA-056 통계 · 주문(GET /api/seller/stats/orders). 주문 시각(KST) 기준, 비교는 바로 앞 같은 기간.
@@ -34,7 +34,7 @@ export default function OrderStatsPage() {
   };
 
   return (
-    <StatsFrame title="주문" sub="주문한 시각(한국 시간) 기준입니다. 비교는 바로 앞 같은 일수의 기간과 합니다." period={period} setPeriod={setPeriod} onDownload={data ? download : undefined}>
+    <StatsFrame title="주문" sub="주문한 시각(한국 시간) 기준입니다. 비교는 바로 앞 같은 일수의 기간과 합니다." period={period} setPeriod={setPeriod} units={false} onDownload={data ? download : undefined}>
       <StatsState state={state} onRetry={() => void reload()} />
       {data && data.current.orders === 0 && <EmptyStats text="선택한 기간에 주문이 없습니다" />}
       {data && data.current.orders > 0 && (
@@ -49,6 +49,7 @@ export default function OrderStatsPage() {
               { label: "결제 후 환불", now: data.current.refunded, prev: data.previous.refunded, fmt: count, lowerIsBetter: true, text: `${count(data.current.refunded)} · ${pct(data.current.refundRate)}` },
             ]}
           />
+          <UnitRow period={period} setPeriod={setPeriod} />
           <BarChart title="주문 수" fmt={count} points={data.series.map((p) => ({ label: bucketLabel(p.bucket, data.range.unit), value: p.orders }))} />
           <div className="card sts-scroll">
             <table className="tbl" data-testid="stats-table">

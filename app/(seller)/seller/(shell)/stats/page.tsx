@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { EmptyStats, StatsFrame, StatsState, usePeriod, useStats, type Unit } from "../../../../../components/seller/stats/StatsFrame";
+import { EmptyStats, StatsFrame, StatsState, UnitRow, usePeriod, useStats, type Unit } from "../../../../../components/seller/stats/StatsFrame";
 import { overviewHasData } from "../../../../../components/seller/stats/overview";
 import { BarChart, bucketLabel, count, downloadCsv, pct, won } from "../../../../../components/seller/stats/parts";
 
@@ -90,15 +90,15 @@ export default function StatsOverviewPage() {
   const empty = data && !overviewHasData(data);
 
   return (
-    <StatsFrame title="요약" heading="통계 · 요약" sub="매출 · 주문 · 방송 · 상품 · 회원 지표를 한 번에 봅니다" period={period} setPeriod={setPeriod} onDownload={data && !empty ? download : undefined} comparable>
+    <StatsFrame title="요약" heading="통계 · 요약" sub="매출 · 주문 · 방송 · 상품 · 회원 지표를 한 번에 봅니다" period={period} setPeriod={setPeriod} units={false} onDownload={data && !empty ? download : undefined} comparable>
       <StatsState state={state} onRetry={() => void reload()} />
       {data && empty && <EmptyStats text="아직 집계할 주문이 없습니다" sub="첫 주문이 들어오면 통계가 표시됩니다" />}
-      {data && !empty && <Overview data={data} compare={period.compare} />}
+      {data && !empty && <Overview data={data} compare={period.compare} unitRow={<UnitRow period={period} setPeriod={setPeriod} />} />}
     </StatsFrame>
   );
 }
 
-function Overview({ data, compare }: { data: Data; compare: boolean }) {
+function Overview({ data, compare, unitRow }: { data: Data; compare: boolean; unitRow: React.ReactNode }) {
   const c = data.summary.current;
   const p = data.summary.previous;
   const points = data.series.map((s) => ({ label: bucketLabel(s.bucket, data.range.unit), value: Math.max(0, s.revenue) }));
@@ -149,6 +149,7 @@ function Overview({ data, compare }: { data: Data; compare: boolean }) {
             </span>
           )}
         </div>
+        {unitRow}
         <BarChart bare title="일별 매출" fmt={won} points={points} />
       </section>
 
