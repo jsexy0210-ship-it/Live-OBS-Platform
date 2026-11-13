@@ -102,6 +102,15 @@ export default function ExternalShopsPage() {
                   </div>
                 </div>
               ) : (
+                <>
+                <div className="au-lh">
+                  <span className="au-lh-total" aria-live="polite" data-testid="external-count">
+                    연결 <b className="num">{d.connections.length.toLocaleString("ko-KR")}</b>곳
+                    <span className="t-c1 c-alt" style={{ marginLeft: 8 }}>
+                      ({(["CONNECTED", "REAUTH_REQUIRED", "DISCONNECT_PENDING"] as const).map((k) => `${TAG[k].label} ${d.connections.filter((c) => c.status === k).length}`).join(" · ")})
+                    </span>
+                  </span>
+                </div>
                 <section className="card">
                   <div className="au-lt-wrap">
                     <table className="tbl">
@@ -124,8 +133,8 @@ export default function ExternalShopsPage() {
                     </table>
                   </div>
                 </section>
+                </>
               )}
-              <span className="t-c1 c-alt">전체 연결 {d.connections.length}곳</span>
               {pageCount > 1 && <Pagination page={currentPage} pageCount={pageCount} onChange={setPage} />}
               <span className="t-c1 c-alt">쇼핑몰 앱 권한이 바뀌거나 만료되면 다시 연결해야 해요 · 끊는 중에는 쇼핑몰 응답을 기다려요. 그동안 주문은 받지 않아요</span>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>

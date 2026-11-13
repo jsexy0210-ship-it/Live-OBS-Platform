@@ -138,7 +138,7 @@ test("SA006 PC: 원배열 11개와 현재 쪽 10개·마지막 쪽 이동을 유
   await mock(page, { connections: items, enabled: true, canManage: true });
   await page.goto("/seller/external-shops");
   await expect(page.getByTestId("external-row")).toHaveCount(10);
-  await expect(page.getByText("전체 연결 11곳")).toBeVisible();
+  await expect(page.getByTestId("external-count")).toContainText("연결 11곳");
   await page.getByRole("button", { name: "마지막", exact: true }).click();
   await expect(page.getByTestId("external-row")).toHaveCount(1);
   await expect(page.getByTestId("external-row")).toContainText("검증 연결 11");
