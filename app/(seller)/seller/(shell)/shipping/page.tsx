@@ -170,7 +170,7 @@ export default function ShippingPage() {
               <>
                 <div className="au-lh">
                   <span className="au-lh-total" aria-live="polite">
-                    <b className="num">{items.length.toLocaleString("ko-KR")}</b>건{selectable ? ` (선택 ${workIds.length})` : ""}
+                    {page > 1 || state.next ? "이 쪽 " : ""}<b className="num">{items.length.toLocaleString("ko-KR")}</b>건{selectable ? ` (선택 ${workIds.length})` : ""}
                   </span>
                   {selectable && <div className="au-lh-act">{workIds.length > 0 ? <Link className="btn btn-sm" href={workHref} onNavigate={saveListUrl}>선택 배송 작업 상세 ({workIds.length})</Link> : <button className="btn btn-sm" type="button" disabled>선택 배송 작업 상세 (0)</button>}</div>}
                 </div>
