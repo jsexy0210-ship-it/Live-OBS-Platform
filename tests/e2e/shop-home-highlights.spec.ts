@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { clearHomeHighlights, seedHomeHighlights } from "./homeHighlightsDb";
 
-// 보드 SH-001-PC-IA · SH-001: 홈 「이번 주 인기 카드」 표(PC 5행 · 휴대폰 3행)와 히어로 옆 카드 셋(PC만). 값은 GET /api/shop/[slug]/home/highlights와 같다.
+// 보드 SH-001-PC-IA · SH-001: 홈 「이번 주 인기 카드」 표(PC · 휴대폰 모두 5행, 정본 SH-001-IA 대표님 승인 2026-11-13)와 히어로 옆 카드 셋(PC만). 값은 GET /api/shop/[slug]/home/highlights와 같다.
 const SLUG = "demo-shop";
 const SHOTS = "tests/e2e/screenshots";
 let noticeId = "";
@@ -35,11 +35,12 @@ test("PC 1440: 히어로 옆 카드 셋 · 인기 카드 표(최신 5장) 왼쪽
   if (process.env.E2E_SCREENSHOTS === "1") await page.screenshot({ path: `${SHOTS}/SH-001-highlights-1440.png`, fullPage: true });
 });
 
-test("휴대폰 390: 인기 카드 표 3행, 히어로 옆 카드 · 가로 스크롤 없음", async ({ page }) => {
+test("휴대폰 390: 인기 카드 표 5행 모두(「더 보기」 없음), 히어로 옆 카드 없음 · 가로 스크롤 없음", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/shop/${SLUG}`);
   const hits = page.getByRole("region", { name: "이번 주 인기 카드" });
-  await expect(hits.locator("tbody tr:visible")).toHaveCount(3);
+  await expect(hits.locator("tbody tr:visible")).toHaveCount(5);
+  await expect(hits.getByRole("link", { name: /더 보기/ })).toHaveCount(0);
   await expect(page.locator(".shop-hero-side")).toBeHidden();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   if (process.env.E2E_SCREENSHOTS === "1") await page.screenshot({ path: `${SHOTS}/SH-001-highlights-390.png`, fullPage: true });
