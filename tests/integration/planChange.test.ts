@@ -64,6 +64,9 @@ async function shop(plan: PlanKey, trialEndsAt: Date | null, sub?: Record<string
 }
 // 결제한 30일 기간 중 20일이 지남(10일 남음)
 const paying = { status: "ACTIVE", currentPeriodStart: at(-20), currentPeriodEnd: at(10), billingAnchorAt: at(-20), nextChargeAt: at(9) };
+// HTTP 경로는 now를 주입할 수 없어 DB 시계(실제 시각)로 판단한다. 기간 중 상태를 가정하는 HTTP 시험은 T0가 아니라 실제 시각 기준으로 만든다.
+const liveDay = (days: number) => new Date(Date.now() + days * DAY);
+const livePaying = () => ({ status: "ACTIVE", currentPeriodStart: liveDay(-20), currentPeriodEnd: liveDay(10), billingAnchorAt: liveDay(-20), nextChargeAt: liveDay(9) });
 const payments = (sellerId: string) =>
   db.subscriptionPayment.findMany({ where: { sellerId }, orderBy: { createdAt: "asc" }, select: { amount: true, status: true, kind: true } });
 const subOf = (sellerId: string) => db.sellerSubscription.findUniqueOrThrow({ where: { sellerId }, include: { plan: true, pendingPlan: true } });
@@ -511,7 +514,7 @@ describe("하위 변경(통합 → 오버레이 전용)", () => {
   });
 
   it("HTTP STANDARD 예약 취소는 명시 action만 받고 가격 확인 불일치·해지 예약·권한도 보존한다", async () => {
-    const s = await shop("STANDARD", at(-30), { ...paying, legacyPrice: 59000, pendingPlanId: plans.OVERLAY_ONLY.id }, { profile: false });
+    const s = await shop("STANDARD", at(-30), { ...livePaying(), legacyPrice: 59000, pendingPlanId: plans.OVERLAY_ONLY.id }, { profile: false });
     const login = await loginSeller(db, { email: s.owner.email, password: PASSWORD }, {});
     if (!login.ok) throw new Error(login.reason);
     const post = (body: unknown) => planRoute(new Request("http://localhost:3000/api/seller/subscription/plan", {
@@ -817,7 +820,7 @@ describe("플랜별 금액·변경 미리보기(GET /api/seller/subscription/pla
   });
 
   it("HTTP: expectedAmount 형식이 틀리면 400, 다르면 409 amount_changed(결제 0건)", async () => {
-    const s = await shop("OVERLAY_ONLY", at(-30), paying);
+    const s = await shop("OVERLAY_ONLY", at(-30), livePaying());
     const login = await loginSeller(db, { email: s.owner.email, password: PASSWORD }, {});
     if (!login.ok) throw new Error(login.reason);
     const post = (body: unknown) =>
@@ -835,7 +838,7 @@ describe("플랜별 금액·변경 미리보기(GET /api/seller/subscription/pla
     expect(await missing.json()).toEqual({ error: "amount_required" });
     expect(await planOf(s.seller.id)).toBe("OVERLAY_ONLY");
     // 예약한 하위 변경의 취소는 결제가 없어 금액 없이도 200(화면의 「변경 취소」), 금액을 보내면 0이어야 한다
-    const up = await shop("INTEGRATED", at(-30), paying);
+    const up = await shop("INTEGRATED", at(-30), livePaying());
     const upLogin = await loginSeller(db, { email: up.owner.email, password: PASSWORD }, {});
     if (!upLogin.ok) throw new Error(upLogin.reason);
     const postUp = (body: unknown) =>
