@@ -133,7 +133,7 @@ export default function ShippingPage() {
     <>
       <Topbar crumb="판매 › 배송" />
       <main className="main">
-        <PageHead title="배송" />
+        <PageHead title="배송" description="발송할 주문을 고르고 배송 작업 상세에서 택배사 · 송장을 입력해 발송 처리합니다. 목록은 조회 · 선택 · 이동만 합니다." />
 
         <section className="au-list-section">
           <nav className="tabs" aria-label="배송 상태" style={{ padding: "0 16px" }}>
@@ -156,7 +156,6 @@ export default function ShippingPage() {
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            {selectable && (workIds.length > 0 ? <Link className="btn btn-sm" href={workHref} onNavigate={saveListUrl}>선택 배송 작업 상세 ({workIds.length})</Link> : <button className="btn btn-sm" type="button" disabled>선택 배송 작업 상세</button>)}
           </div>
 
           {state.kind === "loading" && <div className="card"><LoadingRows rows={5} /></div>}
@@ -169,6 +168,12 @@ export default function ShippingPage() {
               </div>
             ) : (
               <>
+                <div className="au-lh">
+                  <span className="au-lh-total" aria-live="polite">
+                    <b className="num">{items.length.toLocaleString("ko-KR")}</b>건{selectable ? ` (선택 ${workIds.length})` : ""}
+                  </span>
+                  {selectable && <div className="au-lh-act">{workIds.length > 0 ? <Link className="btn btn-sm" href={workHref} onNavigate={saveListUrl}>선택 배송 작업 상세 ({workIds.length})</Link> : <button className="btn btn-sm" type="button" disabled>선택 배송 작업 상세 (0)</button>}</div>}
+                </div>
                 <ListTable>
                   <table className={`tbl ship-tbl${selectable ? " ship-sel" : ""}`}>
                     <thead>

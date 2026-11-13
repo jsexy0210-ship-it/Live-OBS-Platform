@@ -57,7 +57,7 @@ for (const entry of ["선택", "개별"] as const) for (const clear of [false, t
     expect(new URL(returnTo, page.url()).searchParams.get("q") ?? "").toBe(q);
     const detailUrl = new URL(href!, page.url()).href;
     await link.click();
-    await expect(page.getByRole("region", { name: "배송 처리 상세", exact: true })).toContainText(tracking);
+    await expect(page.getByRole("region", { name: "배송 작업 상세", exact: true })).toContainText(tracking);
     await page.getByRole("button", { name: "뒤로", exact: true }).click();
     const checkReturned = async () => {
       await expect(page).toHaveURL(new URL(returnTo, page.url()).href);
@@ -71,7 +71,7 @@ for (const entry of ["선택", "개별"] as const) for (const clear of [false, t
     // 새로고침 뒤에는 앱 내 이전 기록이 없으므로 검증된 returnTo로 복귀한다.
     await page.goto(detailUrl);
     await page.reload();
-    await expect(page.getByRole("region", { name: "배송 처리 상세", exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "배송 작업 상세", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "뒤로", exact: true }).click();
     await checkReturned();
   });
@@ -93,7 +93,7 @@ test("대표자: 송장 저장 → 배송 중 → 배송 완료로 옮겨 가고
   await shot(page, "SA-027-shipping-ready");
 
   await expect(rows.locator("select, input:not([type=checkbox])")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "선택 배송 작업 상세", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "선택 배송 작업 상세 (0)", exact: true })).toBeDisabled();
   await page.getByLabel(`주문 ${a.orderNo} 선택`).check();
   await page.getByLabel(`주문 ${b.orderNo} 선택`).check();
   const work = page.getByRole("link", { name: "선택 배송 작업 상세 (2)", exact: true });
@@ -101,7 +101,7 @@ test("대표자: 송장 저장 → 배송 중 → 배송 완료로 옮겨 가고
   await work.click();
   await expect(page).toHaveURL(/\/seller\/shipping\/process\?/);
   await page.reload();
-  await expect(page.getByRole("region", { name: "배송 처리 상세", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "배송 작업 상세", exact: true })).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
 
   // a는 올바른 송장, b는 너무 짧은 송장 → a만 저장되고 b 줄에 실패 사유가 남는다
@@ -140,7 +140,7 @@ test("대표자: 송장 저장 → 배송 중 → 배송 완료로 옮겨 가고
   await shot(page, "SA-027-shipping-in-transit");
   await row.getByRole("checkbox").check();
   await page.getByRole("link", { name: "선택 배송 작업 상세 (1)", exact: true }).click();
-  await expect(page.getByRole("region", { name: "배송 처리 상세", exact: true })).toContainText(tracking);
+  await expect(page.getByRole("region", { name: "배송 작업 상세", exact: true })).toContainText(tracking);
   const delivered = post(page, "/api/seller/shipments/deliver");
   await page.getByRole("button", { name: "배송 완료 처리 (1)" }).click();
   await page.getByRole("button", { name: "배송 완료로 바꾸기", exact: true }).click();
@@ -185,7 +185,7 @@ test("배송 작업 상세는 삭제된 선택만 제외하며 조회 오류와 
   const work = `/seller/shipping/process?${new URLSearchParams({ ids: [ids[0], ids[0].toUpperCase(), ids[1]].join(","), action: "ship", returnTo: "/seller/shipping?tab=ready&q=배송" })}`;
   await page.goto(work);
   await page.reload();
-  const detail = page.getByRole("region", { name: "배송 처리 상세", exact: true });
+  const detail = page.getByRole("region", { name: "배송 작업 상세", exact: true });
   await expect(detail.getByRole("status")).toHaveText("찾을 수 없는 주문 1건 · 남은 주문 1건");
   await expect(detail.locator("section.au-fs")).toHaveCount(1);
   await detail.getByRole("textbox", { name: "주문 1 송장번호", exact: true }).fill("OWNED123456");
