@@ -93,9 +93,9 @@ export function ShippingOperations({ ids, action, single = false, returnTo }: { 
     if (!(await confirm({ title: `${ids.length}건을 배송 완료로 바꾸시겠습니까?`, body: "선택한 주문을 배송 완료로 바꿉니다. 구매자에게 알림이 가고 리뷰 작성이 열립니다.", confirmLabel: "배송 완료로 바꾸기" }))) return;
     await send("/api/seller/shipments/deliver", ids, (chunk) => ({ orderIds: chunk }), (x) => x, "배송 완료", "배송 완료로 바꾸지 못했습니다. 잠시 후 다시 시도해 주십시오");
   };
-  return <><Topbar crumb="판매 › 배송 › 배송 처리 상세" /><main className="main">
-    <PageHead title="배송 처리 상세" back={listHref} onBack={leave} />
-    {!allowed ? <NoPermission need="주문·배송" /> : !valid ? <div className="card pad">작업할 주문을 목록에서 다시 선택해 주십시오.</div> : state.kind === "loading" ? <div className="card"><LoadingRows rows={4} /></div> : state.kind === "error" ? state.status === 403 ? <NoPermission need="주문·배송" /> : <div className="card"><ErrorState title="선택한 주문을 불러오지 못했습니다" onRetry={() => void load()} /></div> : <section className="col" style={{ gap: 16 }} aria-label="배송 처리 상세">
+  return <><Topbar crumb="판매 › 배송 › 배송 작업 상세" /><main className="main">
+    <PageHead title="배송 작업 상세" back={listHref} onBack={leave} />
+    {!allowed ? <NoPermission need="주문·배송" /> : !valid ? <div className="card pad">작업할 주문을 목록에서 다시 선택해 주십시오.</div> : state.kind === "loading" ? <div className="card"><LoadingRows rows={4} /></div> : state.kind === "error" ? state.status === 403 ? <NoPermission need="주문·배송" /> : <div className="card"><ErrorState title="선택한 주문을 불러오지 못했습니다" onRetry={() => void load()} /></div> : <section className="col" style={{ gap: 16 }} aria-label="배송 작업 상세">
       <p>선택한 {items.length}건만 처리합니다. 이미 처리됐거나 바꿀 수 없는 주문은 제외합니다.</p>
       {state.missing > 0 && <p role="status">찾을 수 없는 주문 {state.missing}건 · 남은 주문 {items.length}건</p>}
       {canEdit && mode === "ship" && <label className="row" style={{ gap: 8 }}>택배사 일괄 선택<select className="inp" style={{ width: "auto" }} aria-label="택배사 일괄 선택" disabled={busy} value={courier} onChange={(e) => { setCourier(e.target.value as Courier); setCourierOf({}); }}>{(Object.keys(COURIERS) as Courier[]).map((code) => <option key={code} value={code}>{COURIERS[code]}</option>)}</select></label>}

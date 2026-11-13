@@ -1,6 +1,6 @@
 "use client";
 
-import { EmptyStats, StatsFrame, StatsState, usePeriod, useStats, type Unit } from "../../../../../../components/seller/stats/StatsFrame";
+import { EmptyStats, StatsFrame, StatsState, UnitRow, usePeriod, useStats, type Unit } from "../../../../../../components/seller/stats/StatsFrame";
 import { BarChart, Kpis, bucketLabel, count, downloadCsv, won } from "../../../../../../components/seller/stats/parts";
 
 // SA-056 통계 · 매출(GET /api/seller/stats/sales). 주문 시각(KST) 기준, 결제된 주문만.
@@ -36,7 +36,7 @@ export default function SalesStatsPage() {
   };
 
   return (
-    <StatsFrame title="매출" sub="주문한 시각(한국 시간) 기준, 결제된 주문의 금액입니다. 결제 대기·취소 주문은 넣지 않습니다." period={period} setPeriod={setPeriod} onDownload={data ? download : undefined}>
+    <StatsFrame title="매출" sub="주문한 시각(한국 시간) 기준, 결제된 주문의 금액입니다. 결제 대기·취소 주문은 넣지 않습니다." period={period} setPeriod={setPeriod} units={false} onDownload={data ? download : undefined}>
       <StatsState state={state} onRetry={() => void reload()} />
       {data && data.current.paidOrders === 0 && <EmptyStats text="선택한 기간에 결제된 주문이 없습니다" />}
       {data && data.current.paidOrders > 0 && (
@@ -49,6 +49,7 @@ export default function SalesStatsPage() {
               { label: "실제 매출(환불 뺀 금액)", now: data.current.net, prev: data.previous.net, fmt: won },
             ]}
           />
+          <UnitRow period={period} setPeriod={setPeriod} />
           <BarChart title="실제 매출" fmt={won} points={data.series.map((p) => ({ label: bucketLabel(p.bucket, data.range.unit), value: Math.max(0, p.net) }))} />
           <div className="card sts-scroll">
             <div className="sts-h">

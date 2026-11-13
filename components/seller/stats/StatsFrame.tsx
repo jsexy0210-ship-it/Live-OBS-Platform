@@ -82,6 +82,36 @@ export function usePeriod(): readonly [Period, (p: Period) => void] {
   return [period, setPeriod] as const;
 }
 
+const UNIT_OPTIONS: { key: Unit; label: string }[] = [
+  { key: "day", label: "일" },
+  { key: "week", label: "주" },
+  { key: "month", label: "월" },
+];
+
+// 합계를 나누는 단위(일·주·월). 요약·주문·매출 탭은 그래프 상자 바로 위에 「단위」 줄로 두고(정본 SA-056 · SA-056-O · SA-056-S), 그 밖의 화면은 기간 줄 안에 둔다.
+export function UnitSeg({ period, setPeriod }: { period: Period; setPeriod: (p: Period) => void }) {
+  return (
+    <div className="seg" role="group" aria-label="합계를 나누는 단위">
+      {UNIT_OPTIONS.map((u) => (
+        <button key={u.key} type="button" className={period.unit === u.key ? "on" : ""} aria-pressed={period.unit === u.key} onClick={() => setPeriod({ ...period, unit: u.key })}>
+          {u.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function UnitRow({ period, setPeriod }: { period: Period; setPeriod: (p: Period) => void }) {
+  return (
+    <div className="au-lh">
+      <span className="au-lh-total">단위</span>
+      <div className="au-lh-act">
+        <UnitSeg period={period} setPeriod={setPeriod} />
+      </div>
+    </div>
+  );
+}
+
 export function StatsFrame({ title, heading, sub, period, setPeriod, onDownload, download, units = true, comparable, children }: {
   title: string;
   // 제목을 따로 줄 때(요약은 「통계」). 없으면 「{title} 통계」
@@ -114,12 +144,6 @@ export function StatsFrame({ title, heading, sub, period, setPeriod, onDownload,
     { key: "30d", label: "1개월" },
     { key: "month", label: "이번 달" },
   ] as const;
-  const unitOptions: { key: Unit; label: string }[] = [
-    { key: "day", label: "일" },
-    { key: "week", label: "주" },
-    { key: "month", label: "월" },
-  ];
-
   return (
     <>
       <Topbar crumb={`통계 › ${title}`} />
@@ -166,15 +190,7 @@ export function StatsFrame({ title, heading, sub, period, setPeriod, onDownload,
                     <button className="btn" type="submit">
                       기간 보기
                     </button>
-                    {units && (
-                      <div className="seg" role="group" aria-label="합계를 나누는 단위">
-                        {unitOptions.map((u) => (
-                          <button key={u.key} type="button" className={period.unit === u.key ? "on" : ""} aria-pressed={period.unit === u.key} onClick={() => setPeriod({ ...period, unit: u.key })}>
-                            {u.label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                    {units && <UnitSeg period={period} setPeriod={setPeriod} />}
                   </div>
                   {rangeError && (
                     <p className="err au-ft-help" role="alert">
