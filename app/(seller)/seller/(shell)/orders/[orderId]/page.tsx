@@ -355,10 +355,25 @@ function OrderDetailContent() {
           <span className="hint">개인정보를 볼 수 있는 사람이 아니어서 닉네임과 주문 내용만 보입니다. 필요하면 대표자에게 허용을 요청해 주십시오.</span>
         )}
 
-        <section className="card pad col" style={{ gap: 8, marginTop: 16 }} id="order-preparation" aria-label="배송 준비">
-          <h2 className="t-hl2">배송 준비</h2>
-          {o.shippingPreparedAt ? <p>배송 준비로 변경했습니다.</p> : <PrepareShipping ids={[o.id]} disabled={o.status !== "PAID" || !!(o.shipment && o.shipment.status !== "READY") || !(o.queueState === "done" || queueFree)} onDone={() => void load()} />}
-        </section>
+        <h2 className="ord-sec-t" id="order-preparation">배송 준비</h2>
+        <table className="au-ft" data-testid="order-preparation">
+          <tbody>
+            <tr>
+              <th>배송 준비</th>
+              <td>
+                {o.shippingPreparedAt ? (
+                  <span>배송 준비로 변경했습니다. {formatDateTime(o.shippingPreparedAt)}</span>
+                ) : (
+                  <>
+                    <span>아직 배송 준비 전입니다{o.queueState === "waiting" || o.queueState === "opening" ? ` · ${stateText}${ahead !== null ? `(앞에 ${ahead}건)` : ""}` : ""}</span>{" "}
+                    <PrepareShipping ids={[o.id]} inline disabled={o.status !== "PAID" || !!(o.shipment && o.shipment.status !== "READY") || !(o.queueState === "done" || queueFree)} onDone={() => void load()} />
+                    <span className="hint">결제 완료 · 개봉 완료(또는 방송 주문대기 대상이 아닌 주문) · 아직 발송 전인 주문만 바꿀 수 있습니다 · 개봉 중이면 버튼을 잠급니다(개봉이 끝나면 활성) · 바꾸면 주문에 배송 준비 표식이 남고 구매자에게 배송 준비 알림이 갑니다 · 「배송」 화면 발송 대기 목록은 이 표식과 상관없이 결제 완료 · 주소 있음 · 발송 전 주문을 보여줍니다 · 송장 입력은 머리 「송장 입력」 또는 배송 화면에서 합니다</span>
+                  </>
+                )}
+              </td>
+            </tr>
+          </tbody>
+        </table>
 
         <h2 className="ord-sec-t">HIT 기록</h2>
         <table className="au-ft" data-testid="order-hit">
