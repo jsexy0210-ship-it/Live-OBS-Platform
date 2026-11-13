@@ -38,8 +38,8 @@
   .shop-home-sub { display:none; }
   .shop-home .pc-grid { gap:24px 12px; }
   .shop-home-notices { display:none; }
+  .shop-home-hits .shop-home-sub { display:inline; }
   .shop-hero { display:block; }
   .shop-hero-side { display:none; }
   .shop-home-two { display:block; }
-  .shop-home-hits tr:nth-child(n+4) { display:none; }
 }
