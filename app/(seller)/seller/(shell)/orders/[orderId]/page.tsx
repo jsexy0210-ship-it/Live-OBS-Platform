@@ -362,7 +362,7 @@ function OrderDetailContent() {
               <th>배송 준비</th>
               <td>
                 {o.shippingPreparedAt ? (
-                  <span>배송 준비로 변경했습니다. {new Date(o.shippingPreparedAt).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Seoul" })}</span>
+                  <span>배송 준비로 변경했습니다. {formatDateTime(o.shippingPreparedAt)}</span>
                 ) : (
                   <>
                     <span>아직 배송 준비 전입니다{o.queueState === "waiting" || o.queueState === "opening" ? ` · ${stateText}${ahead !== null ? `(앞에 ${ahead}건)` : ""}` : ""}</span>{" "}
