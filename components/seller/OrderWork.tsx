@@ -7,7 +7,7 @@ import { api } from "./api";
 import { textLength } from "./format";
 
 // 주문 목록에서 이동한 실제 상세 업무. 서버의 주문별 처리·메모 검증은 그대로 사용한다.
-export function PrepareShipping({ ids, disabled = false, onDone }: { ids: string[]; disabled?: boolean; onDone: () => void }) {
+export function PrepareShipping({ ids, disabled = false, inline = false, onDone }: { ids: string[]; disabled?: boolean; inline?: boolean; onDone: () => void }) {
   const { can, me } = useSeller();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ text: string; failed: boolean } | null>(null);
@@ -22,7 +22,7 @@ export function PrepareShipping({ ids, disabled = false, onDone }: { ids: string
     setResult({ text: failed === 0 ? `${r.data.prepared}건을 배송 준비로 바꿨습니다` : `${r.data.prepared}건을 바꿨고 ${failed}건은 바꾸지 못했습니다`, failed: failed > 0 });
     onDone();
   };
-  return <div className="col" style={{ gap: 8 }}>
+  return <div className="col" style={{ gap: 8, ...(inline ? { alignItems: "flex-start" } : null) }}>
     <button className="btn" type="button" disabled={disabled || busy || !ids.length} onClick={() => void prepare()}>배송 준비로 변경</button>
     {result && <p role={result.failed ? "alert" : "status"} className={result.failed ? "c-neg" : undefined}>{result.text}</p>}
   </div>;
