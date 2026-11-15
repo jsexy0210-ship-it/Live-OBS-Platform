@@ -93,7 +93,7 @@ test("본인확인 대기 쇼핑몰: 직원 추가 · 적립금 실제 지급 �
   await page.goto("/seller/staff/new");
   await expect(page.getByTestId("identity-pending")).toContainText(notice("직원 추가"));
   await expect(page.locator("#sa-name")).toBeDisabled();
-  await expect(page.getByRole("button", { name: "직원 계정 만들기" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "계정 만들기" })).toBeDisabled();
 
   // 적립금 실제 지급 켜기: 「현재 꺼짐」 띠 자리에 안내, 켜기만 잠기고 켜기 전 확인은 그대로
   await page.goto("/seller/rewards/live-payout");
@@ -135,8 +135,8 @@ test("세션이 대기 여부를 모르면 눌렀을 때 서버 403 identity_pen
   await page.locator("#sa-phone").fill("010-1234-5678");
   await page.locator("#sa-email").fill(email);
   await page.locator("#sa-password").fill("Passw0rd1234");
-  await page.getByRole("button", { name: "직원 계정 만들기" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "직원 계정 만들기" }).click();
+  await page.getByRole("button", { name: "계정 만들기" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "계정 만들기" }).click();
   await expect(page.getByTestId("identity-pending")).toContainText(notice("직원 추가"));
   await expect(page.locator("#sa-name")).toBeDisabled();
   expect(await withDb((db, sellerId) => db.sellerUser.count({ where: { sellerId, email } }))).toBe(0);
@@ -147,5 +147,5 @@ test("본인확인이 끝난 쇼핑몰에는 안내가 없고 직원 추가가 �
   await loginTo(page, "/seller/staff");
   await expect(page.getByTestId("staff-row").first()).toBeVisible();
   await expect(page.getByTestId("identity-pending")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "직원 추가", exact: true })).toBeEnabled();
+  await expect(page.getByRole("link", { name: "직원 추가", exact: true })).toBeEnabled();
 });

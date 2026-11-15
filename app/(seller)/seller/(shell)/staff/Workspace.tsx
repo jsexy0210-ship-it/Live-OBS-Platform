@@ -13,12 +13,10 @@ import { phoneText } from "../../../../../components/seller/IdentityCheck";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { IdentityPendingNotice, isIdentityPendingFail } from "../../../../../components/seller/IdentityPending";
 import {
-  DisableStaffModal,
   EditStaffModal,
   MIN_PASSWORD_LENGTH,
   PERMS,
   PermissionPicker,
-  ResetPasswordModal,
   SecretInput,
   STAFF_ERRORS,
   UnclearBox,
@@ -40,7 +38,7 @@ import { useLatestResponse } from "../../../../../components/seller/latestRespon
 // 번호를 바꾸면 직원 본인확인 연결이 풀려 직원이 다시 연결해야 한다.
 // API: GET·POST /api/seller/staff, PATCH /api/seller/staff/{id}, POST …/{id}/permissions·password·disable.
 // 다시 활성화·완전 삭제는 서버 기능이 아직 없어 두지 않는다.
-type Modal = { kind: "edit" | "password" | "disable"; staff: Staff } | null;
+type Modal = { staff: Staff } | null;
 
 const LABEL = Object.fromEntries(PERMS.map((p) => [p.key, p.label])) as Record<StaffPerm, string>;
 
@@ -120,21 +118,14 @@ export default function Workspace({ staffId, operation = "edit", returnTo }: { s
   useEffect(() => {
     if (!staffId || staffId === "new" || state.kind !== "ok" || initialized.current) return;
     const target = state.staff.find((s) => s.id === staffId);
-    if (target) { initialized.current = true; setModal({ kind: operation === "password" ? "password" : operation === "disable" ? "disable" : "edit", staff: target }); }
+    if (target) { initialized.current = true; setModal({ staff: target }); }
     else setMissing(true);
   }, [staffId, operation, state]);
-  if (staffId) return <><Topbar crumb="설정 › 직원 계정 › 상세" /><main className="main">
-    <PageHead onBack={() => leaveRef.current ? leaveRef.current(smartBack) : smartBack()} title={staffId === "new" ? "직원 추가" : "직원 계정 상세"} description="직원 정보와 업무 권한을 확인하고 변경합니다." back={back} actions={<Link className="btn btn-out" href={back}>목록</Link>} />
-    {!me.isOwner ? <div className="msg msg-info">대표자만 볼 수 있습니다.</div> : state.kind === "loading" ? <LoadingRows rows={3} /> : state.kind === "error" ? <ErrorState title="직원 목록을 불러오지 못했습니다" onRetry={() => void load()} /> : staffId === "new" ? <AddStaff leaveRef={leaveRef} onAdded={(name) => done(`${name} 계정을 만들었습니다 · 이메일과 처음 쓸 비밀번호를 직원에게 직접 전달해 주십시오`)} onChanged={() => void load()} /> : modal ? <>
-      {modal.kind === "edit" && <EditStaffModal leaveRef={leaveRef} fullPage staff={modal.staff} onClose={() => router.push(back)} onSaved={done} onChanged={() => void load()} onApply={(c) => applyRow(modal.staff.id, c)} />}
-      {modal.kind === "password" && <ResetPasswordModal leaveRef={leaveRef} fullPage staff={modal.staff} onClose={() => router.push(back)} onDone={done} />}
-      {modal.kind === "disable" && <DisableStaffModal leaveRef={leaveRef} fullPage staff={modal.staff} onClose={() => router.push(back)} onDone={done} onChanged={() => void load()} onApply={(c) => applyRow(modal.staff.id, c)} />}
-    </> : missing && <div className="msg msg-neg" role="alert">직원을 찾을 수 없습니다.</div>}
-    {me.isOwner && state.kind === "ok" && <section className="card pad col" style={{ gap: 12 }} aria-label="직원 현재 상태 확인">
-      <h2 className="t-hl2">직원 현재 상태 확인</h2>
-      {stale && <div className="msg msg-cau row" data-testid="staff-stale" role="status"><span>최신 목록을 불러오지 못했습니다. 보이는 목록이 최신이 아닐 수 있습니다.</span><button className="btn btn-sm btn-out" onClick={() => void load()}>다시 불러오기</button></div>}
-      <table className="tbl"><thead><tr><th>이름 · 이메일</th><th>켜진 권한</th><th>상태</th></tr></thead><tbody>{state.staff.map((it) => <tr key={it.id} data-testid="staff-row"><td>{it.name}<div>{it.email}</div><div>{it.phone ? phoneText(it.phone) : "휴대폰 번호 없음"} · {it.identityLinked ? "휴대폰 확인 완료" : "휴대폰 확인 전"}</div></td><td>{it.permissions.length ? it.permissions.map((key) => LABEL[key]).join(" · ") : "허용한 업무 없음"}</td><td>{it.status === "ACTIVE" ? "사용 중" : "사용 중지"}</td></tr>)}</tbody></table>
-    </section>}
+  if (staffId) return <><Topbar crumb={`설정 › 직원 계정 › ${staffId === "new" ? "새 직원" : "직원 상세"}`} /><main className="main">
+    <PageHead onBack={() => leaveRef.current ? leaveRef.current(smartBack) : smartBack()} title={staffId === "new" ? "새 직원" : "직원 상세"} description="직원의 이름 · 휴대폰 번호 · 권한을 고치고, 비밀번호 재설정 · 비활성화를 처리합니다. 새 직원도 이 화면에서 만듭니다." back={back} actions={<Link className="btn btn-out" href={back}>목록으로</Link>} />
+    {!me.isOwner ? <div className="msg msg-info">대표자만 볼 수 있습니다.</div> : state.kind === "loading" ? <LoadingRows rows={3} /> : state.kind === "error" ? <ErrorState title="직원 목록을 불러오지 못했습니다" onRetry={() => void load()} /> : staffId === "new" ? <AddStaff leaveRef={leaveRef} onAdded={(name) => done(`${name} 계정을 만들었습니다`)} onChanged={() => void load()} onCancel={() => (leaveRef.current ? leaveRef.current(smartBack) : smartBack())} /> : modal ? <>
+      <EditStaffModal leaveRef={leaveRef} fullPage initialSub={operation === "password" ? "password" : operation === "disable" ? "disable" : null} staff={modal.staff} onClose={() => router.push(back)} onSaved={done} onChanged={() => void load()} onApply={(c) => applyRow(modal.staff.id, c)} />
+    </> : missing && <div className="msg msg-info" role="alert">직원을 찾을 수 없습니다. 목록에서 다시 골라 주십시오.<div style={{ marginTop: 8 }}><Link className="btn btn-sm btn-out" href={back}>목록으로</Link></div></div>}
     </main></>;
 
   return (
@@ -143,26 +134,19 @@ export default function Workspace({ staffId, operation = "edit", returnTo }: { s
       <main className="main">
         <div className="ph">
           <div className="col" style={{ gap: 4 }}>
-            <h1 className="t-t3">
-              직원 계정{" "}
-              {state.kind === "ok" && (
-                <span className="c-alt fw5" data-testid="staff-count">
-                  {active}명
-                </span>
-              )}
-            </h1>
-            <span className="t-l2 c-alt">직원 계정을 직접 만들고, 직원이 할 수 있는 업무를 정합니다. 직원은 파트너스 로그인으로 들어와 허용된 메뉴만 씁니다.</span>
+            <h1 className="t-t3">직원 계정</h1>
+            <span className="t-l2 c-alt">직원 계정과 권한 · 상태를 한눈에 보고, 고칠 직원을 골라 상세로 이동합니다. 추가 · 수정은 직원 상세에서 합니다.</span>
           </div>
-          {me.isOwner && state.kind === "ok" && (
-            <button
-              className="btn"
-              type="button"
-              disabled={!!me.identityPending}
-              onClick={() => router.push(detailHref("/seller/staff/new"))}
-            >
-              직원 추가
-            </button>
-          )}
+          {me.isOwner && state.kind === "ok" &&
+            (me.identityPending ? (
+              <button className="btn" type="button" disabled>
+                직원 추가
+              </button>
+            ) : (
+              <Link className="btn" href={detailHref("/seller/staff/new")}>
+                직원 추가
+              </Link>
+            ))}
         </div>
 
         {me.isOwner && me.identityPending && <IdentityPendingNotice feature="직원 추가" style={{ marginBottom: 16 }} />}
@@ -190,6 +174,7 @@ export default function Workspace({ staffId, operation = "edit", returnTo }: { s
                   </button>
                 </div>
               )}
+              <span className="t-l2 c-alt" data-testid="staff-count">전체 {staff.length + 1}명</span>
               <div className="card staff-table-wrap">
                 <table className="tbl tbl-card staff-table">
                   <thead>
@@ -198,7 +183,7 @@ export default function Workspace({ staffId, operation = "edit", returnTo }: { s
                       <th>켜진 권한</th>
                       <th>상태</th>
                       <th>마지막 로그인</th>
-                      <th aria-label="관리" />
+                      <th>관리</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -211,10 +196,10 @@ export default function Workspace({ staffId, operation = "edit", returnTo }: { s
                         <span className="bdg b-open nodot">대표자 · 모든 업무</span>
                       </td>
                       <td>
-                        <span className="bdg b-done">사용 중</span>
+                        <span className="bdg b-done">활성</span>
                       </td>
                       <td className="num t-l2" data-label-set data-label="로그인">지금</td>
-                      <td />
+                      <td className="c-alt">—</td>
                     </tr>
                     {staff.map((s) => {
                       const off = s.status !== "ACTIVE";
@@ -223,9 +208,6 @@ export default function Workspace({ staffId, operation = "edit", returnTo }: { s
                           <td className="col-text">
                             <span className="fw6">{s.name}</span>
                             <div className="t-c1 c-alt">{s.email}</div>
-                            <div className="t-c1 c-alt">
-                              {s.phone ? phoneText(s.phone) : "휴대폰 번호 없음"} · {s.identityLinked ? "휴대폰 확인 완료" : "휴대폰 확인 전"}
-                            </div>
                           </td>
                           <td className="col-text" data-card="wide" data-label-set data-label="업무">
                             <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
@@ -241,23 +223,13 @@ export default function Workspace({ staffId, operation = "edit", returnTo }: { s
                             </div>
                           </td>
                           <td>
-                            <span className={`bdg ${off ? "b-cancel" : "b-done"}`}>{off ? "사용 중지" : "사용 중"}</span>
+                            <span className={`bdg ${off ? "b-cancel" : "b-done"}`}>{off ? "비활성" : "활성"}</span>
                           </td>
                           <td className="num t-l2" data-label-set data-label="로그인">{s.lastLoginAt ? formatDateTime(s.lastLoginAt) : "없음"}</td>
                           <td>
-                            {!off && (
-                              <>
-                              <button className="btn btn-sm btn-out" type="button" onClick={() => router.push(detailHref(`/seller/staff/${s.id}`, { operation: "edit" }))} aria-label={`${s.name} 정보·업무 수정`}>
-                                권한
-                              </button>
-                              <button className="btn btn-sm btn-out" type="button" onClick={() => router.push(detailHref(`/seller/staff/${s.id}`, { operation: "password" }))} aria-label={`${s.name} 비밀번호 바꾸기`}>
-                                비밀번호 재설정
-                              </button>
-                              <button className="btn btn-sm btn-out" type="button" onClick={() => router.push(detailHref(`/seller/staff/${s.id}`, { operation: "disable" }))} aria-label={`${s.name} 직원 계정 사용 중지`}>
-                                비활성화
-                              </button>
-                              </>
-                            )}
+                            <Link className="btn btn-sm btn-out" href={detailHref(`/seller/staff/${s.id}`)} aria-label={`${s.name} 상세`}>
+                              상세
+                            </Link>
                           </td>
                         </tr>
                       );
@@ -272,9 +244,10 @@ export default function Workspace({ staffId, operation = "edit", returnTo }: { s
                 )}
               </div>
               <div className="card pad col" style={{ gap: 6 }}>
-                <span className="t-hl2">안내</span>
-                <span className="t-l2 c-neu">카드 결제 연결, 구독, 직원 관리, 적립금 실제 지급은 대표자만 할 수 있습니다. 직원에게는 이 메뉴가 보이지 않습니다.</span>
-                <span className="t-l2 c-neu">업무 변경은 바로 적용됩니다. 직원이 로그인 중이면 다음 화면부터 바뀝니다. 바뀐 내용은 로그 추적에 남습니다.</span>
+                <span className="t-hl2">알아 두십시오</span>
+                <span className="t-l2 c-neu">구독 · 직원 관리 · 적립금 실지급은 대표자만 할 수 있습니다 · 직원에게는 메뉴가 보이지 않습니다</span>
+                <span className="t-l2 c-neu">「고객 정보 보기」가 꺼진 직원 화면에는 이름 · 연락처 · 주소 항목이 아예 없습니다 · 주문은 닉네임으로만 보입니다</span>
+                <span className="t-l2 c-neu">권한 · 상태 변경은 직원 상세에서 저장하면 바로 적용됩니다 · 직원이 로그인 중이면 다음 화면부터 바뀝니다 · 변경 기록은 로그 추적에 남습니다</span>
               </div>
             </div>
 
@@ -292,7 +265,7 @@ const TAKEN_TEXT = "이 이메일로 등록된 계정이 이미 있습니다. �
 type Errors = Partial<Record<"name" | "phone" | "email" | "password", string>>;
 
 // 직원 추가: 이름·휴대폰·이메일(로그인 아이디)·초기 비밀번호·권한. 메일 초대 없이 바로 계정이 만들어진다
-function AddStaff({ onAdded, onChanged, leaveRef }: { onAdded: (name: string) => void; onChanged: () => void; leaveRef?: React.Ref<(next?: () => void) => Promise<void>> }) {
+function AddStaff({ onAdded, onChanged, onCancel, leaveRef }: { onCancel: () => void; onAdded: (name: string) => void; onChanged: () => void; leaveRef?: React.Ref<(next?: () => void) => Promise<void>> }) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -387,7 +360,7 @@ function AddStaff({ onAdded, onChanged, leaveRef }: { onAdded: (name: string) =>
     const ok = await confirm({
       title: "직원 계정을 만드시겠습니까?",
       body: `${name.trim()} 계정이 바로 만들어지고 ${perm.length > 0 ? `${perm.join(", ")} 업무를 할 수 있게 됩니다` : "허용한 업무 없이 만들어집니다"}. 이메일과 처음 쓸 비밀번호를 직접 전달해 주십시오`,
-      confirmLabel: "직원 계정 만들기",
+      confirmLabel: "계정 만들기",
     });
     if (!ok) return;
     setBusy(true);
@@ -437,13 +410,8 @@ function AddStaff({ onAdded, onChanged, leaveRef }: { onAdded: (name: string) =>
   });
 
   return (
-    <form className="card pad-l col staff-add" style={{ gap: 14 }} onSubmit={submit} noValidate aria-labelledby="sa-title">
-      <div className="col" style={{ gap: 2 }}>
-        <h2 className="t-hl1" id="sa-title">
-          직원 추가
-        </h2>
-        <span className="t-c1 c-alt">계정이 바로 만들어집니다. 메일 초대는 보내지 않습니다</span>
-      </div>
+    <form className="col staff-add" style={{ gap: 24 }} onSubmit={submit} noValidate aria-labelledby="sa-title">
+      <h2 className="t-hl1" id="sa-title">기본 정보</h2>
       {identityPending && <IdentityPendingNotice feature="직원 추가" />}
       {unclear ? (
         <UnclearBox
@@ -470,13 +438,13 @@ function AddStaff({ onAdded, onChanged, leaveRef }: { onAdded: (name: string) =>
           </div>
         )
       )}
-      <div className="staff-add-grid">
+      <div className="staff-add-grid" style={{ gridTemplateColumns: "minmax(0, 1fr)" }}>
       {field("name", "이름", <input {...inputProps("name")} placeholder="이름" value={name} onChange={(e) => setName(e.target.value)} />)}
       {field(
         "phone",
         "휴대폰 번호",
         <input {...inputProps("phone")} className={`${inputProps("phone").className} num`} inputMode="numeric" placeholder="010-0000-0000" value={phone} onChange={(e) => setPhone(e.target.value)} />,
-        "직원이 아이디나 비밀번호를 찾을 때 본인 확인에 씁니다",
+        "직원이 아이디 · 비밀번호를 찾을 때 본인확인에 씁니다",
       )}
       {field(
         "email",
@@ -485,15 +453,22 @@ function AddStaff({ onAdded, onChanged, leaveRef }: { onAdded: (name: string) =>
       )}
       {field(
         "password",
-        "처음 쓸 비밀번호",
+        "초기 비밀번호",
         <SecretInput {...inputProps("password")} placeholder="8자 이상 · 영문과 숫자" maxLength={200} value={password} onChange={(e) => setPassword(e.target.value)} />,
-        `${MIN_PASSWORD_LENGTH}자 이상으로 정해 직원에게 직접 전달해 주십시오`,
+        `${MIN_PASSWORD_LENGTH}자 이상 · 직원에게 직접 전달하면 첫 로그인 때 바꾸게 합니다`,
       )}
       </div>
+      <h2 className="t-hl1">권한</h2>
       <PermissionPicker value={perms} onChange={setPerms} disabled={locked} />
-      <button className={`btn${busy ? " is-loading" : ""}`} type="submit" disabled={locked} style={{ alignSelf: "flex-start" }}>
-        {busy ? "만드는 중" : "직원 계정 만들기"}
-      </button>
+      <div className="row" style={{ gap: 8, justifyContent: "center" }}>
+        <button className={`btn${busy ? " is-loading" : ""}`} type="submit" disabled={locked}>
+          {busy ? "만드는 중" : "계정 만들기"}
+        </button>
+        <button className="btn btn-out" type="button" disabled={busy} onClick={onCancel}>
+          취소
+        </button>
+      </div>
+      <span className="t-c1 c-alt">바로 계정이 만들어집니다 · 메일 초대는 없습니다</span>
     </form>
   );
 }

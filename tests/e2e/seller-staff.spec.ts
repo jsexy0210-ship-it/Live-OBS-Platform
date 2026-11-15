@@ -28,12 +28,17 @@ async function confirmIfAsked(page: Page, title: RegExp, label: string) {
   if (await d.waitFor({ state: "visible", timeout: 2500 }).then(() => true, () => false)) await d.getByRole("button", { name: label, exact: true }).click();
 }
 async function clickCreate(page: Page) {
-  await page.getByRole("button", { name: "직원 계정 만들기" }).click();
-  await confirmIfAsked(page, /직원 계정을 만드시겠습니까/, "직원 계정 만들기");
+  await page.getByRole("button", { name: "계정 만들기" }).click();
+  await confirmIfAsked(page, /직원 계정을 만드시겠습니까/, "계정 만들기");
+}
+// 목록에서 직원 「상세」로 들어가 계정 관리 버튼(비밀번호 재설정 · 비활성화)을 눌러 확인 창을 연다
+async function openAction(page: Page, name: string, action: "비밀번호 재설정" | "비활성화") {
+  await page.getByRole("link", { name: `${name} 상세` }).click();
+  await page.getByRole("button", { name: action, exact: true }).click();
 }
 async function clickSave(page: Page, dialog: ReturnType<Page["getByRole"]>) {
-  await dialog.getByRole("button", { name: "변경 내용 저장" }).click();
-  await confirmIfAsked(page, /직원 정보를 바꾸시겠습니까/, "변경 내용 저장");
+  await dialog.getByRole("button", { name: "저장", exact: true }).click();
+  await confirmIfAsked(page, /권한을 바꾸시겠습니까/, "저장");
 }
 
 // 로그인 화면에 대표자·직원 탭이 있으면(#161) 계정 종류에 맞는 탭을 고른다
@@ -56,11 +61,11 @@ const uniq = () => `${Date.now().toString(36).slice(-5)}${Math.floor(Math.random
 const row = (page: Page, email: string) => page.getByTestId("staff-row").filter({ hasText: email });
 
 async function addStaff(page: Page, s: { name: string; phone: string; email: string; password: string }) {
-  if (new URL(page.url()).pathname === "/seller/staff") await page.getByRole("button", { name: "직원 추가", exact: true }).click();
+  if (new URL(page.url()).pathname === "/seller/staff") await page.getByRole("link", { name: "직원 추가", exact: true }).click();
   await page.getByLabel("이름", { exact: true }).fill(s.name);
   await page.getByLabel("휴대폰 번호").fill(s.phone);
   await page.getByLabel("이메일 (로그인 아이디)").fill(s.email);
-  await page.getByLabel("처음 쓸 비밀번호").fill(s.password);
+  await page.getByLabel("초기 비밀번호").fill(s.password);
 }
 
 test("대표자: 메뉴에서 직원 계정으로 들어가 목록을 보고, 직원을 추가하면 목록에 권한과 함께 나온다", async ({ page }) => {
@@ -75,9 +80,9 @@ test("대표자: 메뉴에서 직원 계정으로 들어가 목록을 보고, �
   await expect(page.getByText("대표자 · 모든 업무")).toBeVisible();
   await expect(row(page, "demo-staff@example.com")).toContainText("상품");
   await expect(row(page, "demo-none@example.com")).toContainText("허용한 업무 없음");
-  await page.getByRole("button", { name: "직원 추가", exact: true }).click();
+  await page.getByRole("link", { name: "직원 추가", exact: true }).click();
   // 대표자만 하는 일은 고를 수 없다
-  for (const label of ["카드 결제 연결", "구독 · 결제", "직원 관리", "적립금 실제 지급"]) await expect(page.getByLabel(`${label} · 대표자만`)).toBeDisabled();
+  for (const label of ["구독 · 결제", "직원 관리", "적립금 실지급"]) await expect(page.getByLabel(`${label} · 대표자만`)).toBeDisabled();
   await shot(page, "SA-100");
 
   // 빈 칸으로 만들기 → 칸마다 안내, 첫 칸으로 포커스
@@ -101,35 +106,35 @@ test("대표자: 메뉴에서 직원 계정으로 들어가 목록을 보고, �
   expect(posts).toHaveLength(0);
 
   // 초기 비밀번호는 가려 두고 「보기」로만 잠깐 보여 준다
-  await expect(page.getByLabel("처음 쓸 비밀번호")).toHaveAttribute("type", "password");
-  await page.getByLabel("처음 쓸 비밀번호").fill("pw-visible-check");
+  await expect(page.getByLabel("초기 비밀번호")).toHaveAttribute("type", "password");
+  await page.getByLabel("초기 비밀번호").fill("pw-visible-check");
   await page.getByRole("button", { name: "보기", exact: true }).click();
-  await expect(page.getByLabel("처음 쓸 비밀번호")).toHaveAttribute("type", "text");
+  await expect(page.getByLabel("초기 비밀번호")).toHaveAttribute("type", "text");
   await page.getByRole("button", { name: "숨기기" }).click();
-  await expect(page.getByLabel("처음 쓸 비밀번호")).toHaveAttribute("type", "password");
+  await expect(page.getByLabel("초기 비밀번호")).toHaveAttribute("type", "password");
 
   const id = uniq();
   const s = { name: `방송보조${id}`, phone: "010-1234-5678", email: `staff-${id}@example.com`, password: `pw-${id}-init` };
   await addStaff(page, s);
   // 묶음 「방송만」은 방송 진행·오버레이 편집만 켠다
-  await page.getByRole("button", { name: "방송 업무만" }).click();
+  await page.getByRole("button", { name: "방송만" }).click();
   await expect(page.getByRole("checkbox", { name: "방송 진행", exact: true })).toBeChecked();
-  await expect(page.getByRole("checkbox", { name: "방송 화면 꾸미기", exact: true })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "방송 화면 편집", exact: true })).toBeChecked();
   await expect(page.getByRole("checkbox", { name: "상품", exact: true })).not.toBeChecked();
   // 「운영 전체」는 고객 정보 보기를 켜지 않는다(개인정보는 대표자가 따로 켬)
-  await page.getByRole("button", { name: "모든 운영 업무" }).click();
+  await page.getByRole("button", { name: "운영 전체" }).click();
   await expect(page.getByRole("checkbox", { name: "상품", exact: true })).toBeChecked();
   await expect(page.getByRole("checkbox", { name: "쇼핑몰 설정", exact: true })).toBeChecked();
-  await expect(page.getByRole("checkbox", { name: "고객 개인정보 보기", exact: true })).not.toBeChecked();
-  await expect(page.getByText("고객 이름·연락처·주소를 볼 수 있습니다").first()).toBeVisible();
-  await page.getByRole("button", { name: "방송 업무만" }).click();
+  await expect(page.getByRole("checkbox", { name: "고객 정보 보기", exact: true })).not.toBeChecked();
+  await expect(page.getByText("이름 · 연락처 · 주소").first()).toBeVisible();
+  await page.getByRole("button", { name: "방송만" }).click();
   // 「보기」로 본 채 만들어도, 비워진 칸은 다시 가린다(다음 직원 비밀번호가 바로 보이지 않게)
   await page.getByRole("button", { name: "보기", exact: true }).click();
-  await expect(page.getByLabel("처음 쓸 비밀번호")).toHaveAttribute("type", "text");
+  await expect(page.getByLabel("초기 비밀번호")).toHaveAttribute("type", "text");
   // 만들기 전에 확인 창: 이름·허용 업무를 보여 주고, 취소하면 아무것도 만들지 않는다
-  await page.getByRole("button", { name: "직원 계정 만들기" }).click();
+  await page.getByRole("button", { name: "계정 만들기" }).click();
   const ask = page.getByRole("dialog", { name: "직원 계정을 만드시겠습니까?" });
-  await expect(ask).toContainText(`${s.name} 계정이 바로 만들어지고 방송 진행, 방송 화면 꾸미기 업무를 할 수 있게 됩니다`);
+  await expect(ask).toContainText(`${s.name} 계정이 바로 만들어지고 방송 진행, 방송 화면 편집 업무를 할 수 있게 됩니다`);
   await ask.getByRole("button", { name: "취소" }).click();
   await expect(ask).toHaveCount(0);
   await expect(row(page, s.email)).toHaveCount(0);
@@ -139,11 +144,16 @@ test("대표자: 메뉴에서 직원 계정으로 들어가 목록을 보고, �
   expect((await sent).postDataJSON()).toMatchObject({ name: s.name, phone: "01012345678", email: s.email, permissions: ["BROADCAST_RUN", "OVERLAY_EDIT"] });
   await expect(page.getByText(`${s.name} 계정을 만들었습니다`, { exact: false })).toBeVisible();
   await expect(row(page, s.email)).toContainText("방송 진행");
-  await expect(row(page, s.email)).toContainText("010-1234-5678 · 휴대폰 확인 전");
+  // 휴대폰 번호·본인확인 상태는 목록이 아니라 직원 상세에 있다(SA-100-OPS)
+  await page.getByRole("link", { name: `${s.name} 상세` }).click();
+  await expect(page.getByLabel("휴대폰 번호")).toHaveValue("01012345678");
+  await expect(page.getByText("본인확인 전", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "목록으로" }).click();
+  await expect(row(page, s.email)).toBeVisible();
   // 입력 칸은 비워지고 비밀번호 칸은 다시 가려진다
-  await page.getByRole("button", { name: "직원 추가", exact: true }).click();
+  await page.getByRole("link", { name: "직원 추가", exact: true }).click();
   await expect(page.getByLabel("이메일 (로그인 아이디)")).toHaveValue("");
-  await expect(page.getByLabel("처음 쓸 비밀번호")).toHaveAttribute("type", "password");
+  await expect(page.getByLabel("초기 비밀번호")).toHaveAttribute("type", "password");
   await expect(page.getByRole("button", { name: "보기", exact: true })).toBeVisible();
 
   // 같은 이메일은 다시 만들 수 없다
@@ -162,19 +172,19 @@ test("대표자: 직원 이름·휴대폰·권한을 고치면 바로 목록에 
   await clickCreate(page);
   await expect(row(page, s.email)).toContainText("허용한 업무 없음");
 
-  await page.getByRole("button", { name: `${s.name} 정보·업무 수정` }).click();
+  await page.getByRole("link", { name: `${s.name} 상세` }).click();
   const dialog = page.locator("section[aria-labelledby^=staff-]");
-  await expect(dialog.getByRole("heading", { name: `${s.name} 정보·업무 수정` })).toBeVisible();
-  await expect(dialog.getByText("휴대폰 확인 전")).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "기본 정보" })).toBeVisible();
+  await expect(dialog.getByText("본인확인 전")).toBeVisible();
   // 바꾼 것이 없으면 저장할 수 없다
-  await expect(dialog.getByRole("button", { name: "변경 내용 저장" })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "저장", exact: true })).toBeDisabled();
   await dialog.getByLabel("이름").fill(`${s.name}\u200b`);
   await clickSave(page, dialog);
   await expect(dialog.getByText("이름에 사용할 수 없는 문자가 있습니다")).toBeVisible();
   await dialog.getByLabel("이름").fill(`${s.name}팀장`);
   await dialog.getByLabel("휴대폰 번호").fill("0101");
   await dialog.getByRole("checkbox", { name: "상품", exact: true }).check();
-  await dialog.getByRole("checkbox", { name: "주문·배송", exact: true }).check();
+  await dialog.getByRole("checkbox", { name: "주문 · 배송", exact: true }).check();
   await clickSave(page, dialog);
   await expect(dialog.getByText("01로 시작하는 휴대폰 번호를 숫자로 입력해 주십시오")).toBeVisible();
   await dialog.getByLabel("휴대폰 번호").fill("01033334444");
@@ -183,9 +193,8 @@ test("대표자: 직원 이름·휴대폰·권한을 고치면 바로 목록에 
   await expect(page.locator("section[aria-labelledby^=staff-]")).toHaveCount(0);
   await expect(page.getByText(`${s.name}팀장 정보를 저장했습니다`)).toBeVisible();
   await expect(row(page, s.email)).toContainText(`${s.name}팀장`);
-  await expect(row(page, s.email)).toContainText("010-3333-4444");
   await expect(row(page, s.email)).toContainText("상품");
-  await expect(row(page, s.email)).toContainText("주문·배송");
+  await expect(row(page, s.email)).toContainText("주문 · 배송");
 
   // 본인확인을 연결한 직원(목록 응답의 연결 여부만 바꿔 화면 상태를 본다): 번호를 바꾸면 다시 본인확인해야 한다고 알려 준다
   await page.route("**/api/seller/staff", async (route) => {
@@ -195,13 +204,13 @@ test("대표자: 직원 이름·휴대폰·권한을 고치면 바로 목록에 
     await route.fulfill({ response: res, json: { staff: body.staff.map((x) => (x.email === s.email ? { ...x, identityLinked: true } : x)) } });
   });
   await page.reload();
-  await expect(row(page, s.email)).toContainText("휴대폰 확인 완료");
-  await page.getByRole("button", { name: `${s.name}팀장 정보·업무 수정` }).click();
-  await expect(dialog.getByText("휴대폰 확인 완료", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: `${s.name}팀장 상세` }).click();
+  await expect(dialog.getByLabel("휴대폰 번호")).toHaveValue("01033334444");
+  await expect(dialog.getByText("연결됨", { exact: true })).toBeVisible();
   await expect(dialog.getByText("번호를 바꾸면 직원이 본인확인을 다시 해야 합니다.")).toHaveCount(0);
   await dialog.getByLabel("휴대폰 번호").fill("01055556666");
   await expect(dialog.getByText("번호를 바꾸면 직원이 본인확인을 다시 해야 합니다.")).toBeVisible();
-  await expect(dialog.getByText("휴대폰 확인 전")).toBeVisible();
+  await expect(dialog.getByText("본인확인 전")).toBeVisible();
   await shot(page, "SA-100-phone-change");
   await dialog.getByRole("button", { name: "취소" }).click();
   await expect(page.locator("section[aria-labelledby^=staff-]")).toHaveCount(0);
@@ -218,16 +227,16 @@ test("대표자: 직원 비밀번호를 재설정하면 새 비밀번호로만 �
   await clickCreate(page);
   await expect(row(page, s.email)).toBeVisible();
 
-  await page.getByRole("button", { name: `${s.name} 비밀번호 바꾸기` }).click();
+  await openAction(page, `${s.name}`, "비밀번호 재설정");
   const dialog = page.locator("section[aria-labelledby^=staff-]");
   await expect(dialog.getByLabel("새 비밀번호")).toHaveAttribute("type", "password");
   await dialog.getByLabel("새 비밀번호").fill("short");
-  await dialog.getByRole("button", { name: "새 비밀번호로 바꾸기" }).click();
+  await dialog.getByRole("button", { name: "재설정", exact: true }).click();
   await expect(dialog.getByText("8자 이상으로 정해 주십시오")).toBeVisible();
   const next = `pw-${id}-reset`;
   await dialog.getByLabel("새 비밀번호").fill(next);
   await shot(page, "SA-100-password");
-  await dialog.getByRole("button", { name: "새 비밀번호로 바꾸기" }).click();
+  await dialog.getByRole("button", { name: "재설정", exact: true }).click();
   await expect(page.getByText(`${s.name} 비밀번호를 변경했습니다`, { exact: false })).toBeVisible();
 
   // 예전 비밀번호는 안 되고 새 비밀번호로 직원 로그인
@@ -241,8 +250,8 @@ test("대표자: 직원 비밀번호를 재설정하면 새 비밀번호로만 �
   // 직원이 로그인해 있는 동안 대표자가 권한을 켜면, 직원이 다음 화면으로 옮길 때 메뉴에 바로 나온다(새로고침 없이)
   const staffMenu = staffPage.getByRole("navigation", { name: "주 메뉴" });
   await expect(staffMenu.getByRole("link", { name: "주문", exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: `${s.name} 정보·업무 수정` }).click();
-  await dialog.getByRole("checkbox", { name: "주문·배송", exact: true }).check();
+  await page.getByRole("link", { name: `${s.name} 상세` }).click();
+  await dialog.getByRole("checkbox", { name: "주문 · 배송", exact: true }).check();
   await clickSave(page, dialog);
   await expect(page.locator("section[aria-labelledby^=staff-]")).toHaveCount(0);
   await staffPage.getByRole("main").getByRole("link", { name: "재고 관리" }).click();
@@ -250,12 +259,12 @@ test("대표자: 직원 비밀번호를 재설정하면 새 비밀번호로만 �
   await expect(staffMenu.getByRole("link", { name: "주문", exact: true })).toBeVisible();
 
   // 비활성화: 목록에서 비활성으로 바뀌고 관리 버튼이 없어지며, 그 직원은 다시 로그인할 수 없다
-  await page.getByRole("button", { name: `${s.name} 직원 계정 사용 중지` }).click();
-  await expect(dialog.getByRole("heading", { name: `${s.name} 계정을 사용 중지하시겠습니까?` })).toBeVisible();
+  await openAction(page, `${s.name}`, "비활성화");
+  await expect(dialog.getByRole("heading", { name: `${s.name} 계정을 비활성화하시겠습니까?` })).toBeVisible();
   await shot(page, "SA-100-disable");
-  await dialog.getByRole("button", { name: "직원 계정 사용 중지" }).click();
-  await expect(page.getByText(`${s.name} 계정을 사용 중지했습니다`)).toBeVisible();
-  await expect(row(page, s.email)).toContainText("사용 중지");
+  await page.getByRole("dialog").getByRole("button", { name: "비활성화", exact: true }).click();
+  await expect(page.getByText(`${s.name} 계정을 비활성화했습니다`)).toBeVisible();
+  await expect(row(page, s.email)).toContainText("비활성");
   await expect(page.getByRole("button", { name: `${s.name} 비밀번호 바꾸기` })).toHaveCount(0);
   await staffPage.context().clearCookies();
   await login(staffPage, s.email, next, "/seller/products");
@@ -300,11 +309,9 @@ test("저장 응답을 놓치면 추가는 생성됨으로 단정하지 않고, 
   await expect(unclear).toContainText("계정이 만들어졌을 수 있습니다.");
   await expect(unclear).toContainText("계정이 만들어졌는지 확인하지 못했습니다. 목록에서 확인하고, 있으면 비밀번호를 바꿔 주십시오");
   await expect(unclear.getByRole("button", { name: "결과 확인하기" })).toHaveCount(0);
-  await expect(page.getByLabel("처음 쓸 비밀번호")).toBeDisabled();
+  await expect(page.getByLabel("초기 비밀번호")).toBeDisabled();
   await expect(page.getByLabel("이름", { exact: true })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "직원 계정 만들기" })).toBeDisabled();
-  // 목록은 보여 주기용으로 다시 읽는다
-  await expect(row(page, s.email)).toContainText("상품");
+  await expect(page.getByRole("button", { name: "계정 만들기" })).toBeDisabled();
   await shot(page, "SA-100-unclear");
   const resent = page.waitForResponse((r) => r.url().endsWith("/api/seller/staff") && r.request().method() === "POST");
   await unclear.getByRole("button", { name: "같은 내용으로 다시 만들기" }).click();
@@ -312,7 +319,7 @@ test("저장 응답을 놓치면 추가는 생성됨으로 단정하지 않고, 
   await expect(unclear).toContainText("같은 이메일의 계정이 이미 있습니다. 이전 요청으로 만들어진 계정인지는 확인할 수 없습니다");
   await expect(page.getByText(`${s.name} 계정을 만들었습니다`, { exact: false })).toHaveCount(0);
   await unclear.getByRole("button", { name: "처음부터 다시 입력" }).click();
-  await expect(page.getByLabel("처음 쓸 비밀번호")).toBeEnabled();
+  await expect(page.getByLabel("초기 비밀번호")).toBeEnabled();
   await page.getByLabel("이메일 (로그인 아이디)").fill("");
 
   // ② 불분명한 상태에서 「새로 입력」으로 풀면 이전 요청이 처리되었을 수 있다고 안내한다. 비밀번호를 바꿔 비밀번호를 바꿔 다시 보내면 email_taken: 만든 것으로 보지 않고 안내만 한다
@@ -324,15 +331,14 @@ test("저장 응답을 놓치면 추가는 생성됨으로 단정하지 않고, 
   await expect(unclear).toBeVisible();
   await unclear.getByRole("button", { name: "처음부터 다시 입력" }).click();
   await expect(page.getByTestId("sa-notice")).toHaveText("이전 계정 만들기 요청이 처리되었을 수 있습니다. 목록에서 확인한 뒤 입력해 주십시오");
-  await expect(page.getByLabel("처음 쓸 비밀번호")).toBeEnabled();
-  await page.getByLabel("처음 쓸 비밀번호").fill(`pw-${id2}-second`);
+  await expect(page.getByLabel("초기 비밀번호")).toBeEnabled();
+  await page.getByLabel("초기 비밀번호").fill(`pw-${id2}-second`);
   const retried = page.waitForResponse((r) => r.url().endsWith("/api/seller/staff") && r.request().method() === "POST");
   await clickCreate(page);
   expect((await retried).status()).toBe(409);
   await expect(page.getByText("이 이메일로 등록된 계정이 이미 있습니다. 목록에서 확인하고 필요하면 비밀번호를 바꿔 주십시오")).toBeVisible();
   await expect(page.getByText(`${s2.name} 계정을 만들었습니다`, { exact: false })).toHaveCount(0);
   await expect(page.getByLabel("이메일 (로그인 아이디)")).toHaveValue(s2.email);
-  await expect(row(page, s2.email)).toBeVisible();
 
   // ③ 서버에 닿기 전 503(처리 안 됨)이면 불분명 → 같은 값으로 재전송해 성공 응답을 받으면 생성 확정. 전각 이름은 서버가 저장하는 모양(NFKC)으로 알린다
   const id3 = uniq();
@@ -351,11 +357,11 @@ test("저장 응답을 놓치면 추가는 생성됨으로 단정하지 않고, 
   await page.unroute(isList);
 
   // 권한 수정: 서버는 저장했는데 응답이 끊긴다 → 다시 읽어 보낸 값과 같으므로 저장했다고 알리고 목록에 반영
-  await page.getByRole("button", { name: `${s.name} 정보·업무 수정` }).click();
+  await page.getByRole("link", { name: `${s.name} 상세` }).click();
   const dialog = page.locator("section[aria-labelledby^=staff-]");
   await expect(page).toHaveURL(url => /^\/seller\/staff\/[0-9a-f-]{36}$/i.test(url.pathname));
   const staffId = new URL(page.url()).pathname.split("/").pop()!;
-  await dialog.getByRole("checkbox", { name: "주문·배송", exact: true }).check();
+  await dialog.getByRole("checkbox", { name: "주문 · 배송", exact: true }).check();
   const phase = { forwarded: false, forwardStatus: 0, injected: false, recoveryStatus: 0, recovered: false, listReached: false };
   let sentPermissions: string[] = [];
   const recoveryRequests = new WeakSet<BrowserRequest>();
@@ -391,7 +397,7 @@ test("저장 응답을 놓치면 추가는 생성됨으로 단정하지 않고, 
     await expect(page).toHaveURL(/\/seller\/staff$/);
     phase.listReached = true;
     await expect(page.getByText(`${s.name} 정보를 저장했습니다`)).toBeVisible();
-    await expect(row(page, s.email)).toContainText("주문·배송");
+    await expect(row(page, s.email)).toContainText("주문 · 배송");
   } catch (error) {
     throw new Error(`직원 응답 복구 단계: ${JSON.stringify(phase)}`, { cause: error });
   } finally {
@@ -401,7 +407,7 @@ test("저장 응답을 놓치면 추가는 생성됨으로 단정하지 않고, 
 
   // 이름 수정: 서버 오류(5xx)로 결과가 불분명하고 다시 읽어도 반영 전이다 → 실패로 단정하지 않고 칸을 잠근 채 불분명 상태로 둔다.
   // 같은 값 재저장이 성공하면 저장으로 처리
-  await page.getByRole("button", { name: `${s.name} 정보·업무 수정` }).click();
+  await page.getByRole("link", { name: `${s.name} 상세` }).click();
   await dialog.getByLabel("이름").fill(`${s.name}바꿈`);
   await page.route((u) => /\/api\/seller\/staff\/[^/]+$/.test(u.pathname), (route) => route.fulfill({ status: 500, json: { error: "internal" } }), { times: 1 });
   await clickSave(page, dialog);
@@ -429,7 +435,7 @@ test("결과가 불분명한 직원 변경은 실제 상태로 판정한다(이�
   const dialog = page.locator("section[aria-labelledby^=staff-]");
 
   // ② 비밀번호 재설정: 서버는 바꿨는데 응답이 끊긴다 → 「변경되었을 수 있음」, 칸 잠금, 같은 값으로만 다시 보낸다
-  await page.getByRole("button", { name: `${s.name} 비밀번호 바꾸기` }).click();
+  await openAction(page, `${s.name}`, "비밀번호 재설정");
   const next = `pw-${id}-reset`;
   await dialog.getByLabel("새 비밀번호").fill(next);
   await page.route(
@@ -440,10 +446,10 @@ test("결과가 불분명한 직원 변경은 실제 상태로 판정한다(이�
     },
     { times: 1 },
   );
-  await dialog.getByRole("button", { name: "새 비밀번호로 바꾸기" }).click();
+  await dialog.getByRole("button", { name: "재설정", exact: true }).click();
   await expect(dialog.getByTestId("sp-unclear")).toContainText("비밀번호가 변경되었을 수 있습니다.");
   await expect(dialog.getByLabel("새 비밀번호")).toBeDisabled();
-  await expect(dialog.getByRole("button", { name: "새 비밀번호로 바꾸기" })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "재설정", exact: true })).toBeDisabled();
   const resent = page.waitForRequest((r) => r.url().endsWith("/password") && r.method() === "POST");
   await expect(dialog.getByRole("button", { name: "새로 정하기" })).toHaveCount(0);
   await dialog.getByRole("button", { name: "같은 비밀번호로 다시 보내기" }).click();
@@ -451,7 +457,7 @@ test("결과가 불분명한 직원 변경은 실제 상태로 판정한다(이�
   await expect(page.getByText(`${s.name} 비밀번호를 변경했습니다`, { exact: false })).toBeVisible();
 
   // ③ 비활성화: 서버는 처리했는데 응답이 끊긴다 → 목록을 다시 읽어 비활성으로 판정
-  await page.getByRole("button", { name: `${s.name} 직원 계정 사용 중지` }).click();
+  await openAction(page, `${s.name}`, "비활성화");
   await page.route(
     (u) => u.pathname.endsWith("/disable"),
     async (route) => {
@@ -460,9 +466,9 @@ test("결과가 불분명한 직원 변경은 실제 상태로 판정한다(이�
     },
     { times: 1 },
   );
-  await dialog.getByRole("button", { name: "직원 계정 사용 중지" }).click();
-  await expect(page.getByText(`${s.name} 계정을 사용 중지했습니다`)).toBeVisible();
-  await expect(row(page, s.email)).toContainText("사용 중지");
+  await page.getByRole("dialog").getByRole("button", { name: "비활성화", exact: true }).click();
+  await expect(page.getByText(`${s.name} 계정을 비활성화했습니다`)).toBeVisible();
+  await expect(row(page, s.email)).toContainText("비활성");
 
   // ① 같은 이메일·이름·휴대폰·권한으로 다시 만들기: 요청이 서버에 닿기 전에 끊긴다 → 목록에 같은 값의 (비활성) 계정이 있어도
   // 보내기 전에 있던 계정이라 만든 것으로 보지 않는다. 목록에 없다고 실패로 확정하지도 않고 불분명 상태로 둔다.
@@ -480,7 +486,7 @@ test("결과가 불분명한 직원 변경은 실제 상태로 판정한다(이�
   );
   await clickCreate(page);
   await expect(page.getByTestId("sa-unclear")).toContainText("계정이 만들어졌는지 확인하지 못했습니다. 목록에서 확인하고, 있으면 비밀번호를 바꿔 주십시오");
-  await expect(page.getByLabel("처음 쓸 비밀번호")).toBeDisabled();
+  await expect(page.getByLabel("초기 비밀번호")).toBeDisabled();
   await page.getByTestId("sa-unclear").getByRole("button", { name: "같은 내용으로 다시 만들기" }).click();
   await expect(page.getByTestId("sa-unclear")).toContainText("같은 이메일의 계정이 이미 있습니다. 이전 요청으로 만들어진 계정인지는 확인할 수 없습니다");
   await page.unroute((u) => u.pathname === "/api/seller/staff");
@@ -521,20 +527,20 @@ test("결과가 불분명한 직원 변경은 늦게 반영돼도 실패로 단�
   await clickCreate(page);
   const addBox = page.getByTestId("sa-unclear");
   await expect(addBox).toContainText("계정이 만들어졌는지 확인하지 못했습니다. 목록에서 확인하고, 있으면 비밀번호를 바꿔 주십시오");
-  await expect(page.getByLabel("처음 쓸 비밀번호")).toBeDisabled();
-  await expect(page.getByRole("button", { name: "직원 계정 만들기" })).toBeDisabled();
+  await expect(page.getByLabel("초기 비밀번호")).toBeDisabled();
+  await expect(page.getByRole("button", { name: "계정 만들기" })).toBeDisabled();
   await replay();
   await addBox.getByRole("button", { name: "같은 내용으로 다시 만들기" }).click();
   await expect(addBox).toContainText("같은 이메일의 계정이 이미 있습니다. 이전 요청으로 만들어진 계정인지는 확인할 수 없습니다");
   await expect(page.getByText(`${s.name} 계정을 만들었습니다`, { exact: false })).toHaveCount(0);
-  await expect(row(page, s.email)).toBeVisible();
   await addBox.getByRole("button", { name: "처음부터 다시 입력" }).click();
-  await page.getByRole("link", { name: "목록", exact: true }).click();
+  await page.getByRole("link", { name: "목록으로", exact: true }).click();
   await expect(page).toHaveURL(/\/seller\/staff$/);
+  await expect(row(page, s.email)).toBeVisible();
   const dialog = page.locator("section[aria-labelledby^=staff-]");
 
   // 정보 수정: 끊긴 직후 다시 읽으면 반영 전 → 불분명 유지·칸 잠금(「저장되지 않았습니다」로 되돌리지 않음) → 늦게 저장된 뒤 「확인」으로 성공
-  await page.getByRole("button", { name: `${s.name} 정보·업무 수정` }).click();
+  await page.getByRole("link", { name: `${s.name} 상세` }).click();
   await dialog.getByLabel("이름").fill(`${s.name}새`);
   replay = await holdOnce((u, m) => m === "PATCH");
   await clickSave(page, dialog);
@@ -548,7 +554,7 @@ test("결과가 불분명한 직원 변경은 늦게 반영돼도 실패로 단�
   const name2 = `${s.name}새`;
 
   // 정보 수정을 불분명한 채로 닫으면 이전 요청이 처리되었을 수 있다고 안내한다
-  await page.getByRole("button", { name: `${name2} 정보·업무 수정` }).click();
+  await page.getByRole("link", { name: `${name2} 상세` }).click();
   await dialog.getByRole("checkbox", { name: "상품", exact: true }).check();
   replay = await holdOnce((u, m) => u.pathname.endsWith("/permissions") && m === "POST");
   await clickSave(page, dialog);
@@ -558,10 +564,10 @@ test("결과가 불분명한 직원 변경은 늦게 반영돼도 실패로 단�
   await replay();
 
   // 비밀번호 재설정: 다른 비밀번호로 바꾸는 길이 없다(늦게 끝난 첫 요청이 덮을 수 있음). 닫으면 처리되었을 수 있다고 안내한다
-  await page.getByRole("button", { name: `${name2} 비밀번호 바꾸기` }).click();
+  await openAction(page, `${name2}`, "비밀번호 재설정");
   await dialog.getByLabel("새 비밀번호").fill(`pw-${id}-late`);
   replay = await holdOnce((u, m) => u.pathname.endsWith("/password") && m === "POST");
-  await dialog.getByRole("button", { name: "새 비밀번호로 바꾸기" }).click();
+  await dialog.getByRole("button", { name: "재설정", exact: true }).click();
   await expect(dialog.getByTestId("sp-unclear")).toContainText("비밀번호가 변경되었을 수 있습니다.");
   await expect(dialog.getByRole("button", { name: "새로 정하기" })).toHaveCount(0);
   await expect(dialog.getByLabel("새 비밀번호")).toBeDisabled();
@@ -570,16 +576,16 @@ test("결과가 불분명한 직원 변경은 늦게 반영돼도 실패로 단�
   await replay();
 
   // 비활성화: 끊긴 직후 다시 읽으면 아직 활성 → 불분명 유지(「비활성화되지 않았습니다」 금지) → 늦게 처리된 뒤 「확인」으로 성공
-  await page.getByRole("button", { name: `${name2} 직원 계정 사용 중지` }).click();
+  await openAction(page, `${name2}`, "비활성화");
   replay = await holdOnce((u, m) => u.pathname.endsWith("/disable") && m === "POST");
-  await dialog.getByRole("button", { name: "직원 계정 사용 중지" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "비활성화", exact: true }).click();
   const offBox = dialog.getByTestId("sd-unclear");
   await expect(offBox).toContainText("아직 반영이 확인되지 않았습니다");
-  await expect(dialog.getByRole("button", { name: "직원 계정 사용 중지", exact: true })).toBeDisabled();
+  await expect(page.getByRole("dialog").getByRole("button", { name: "비활성화", exact: true })).toBeDisabled();
   await replay();
   await offBox.getByRole("button", { name: "결과 확인하기" }).click();
-  await expect(page.getByText(`${name2} 계정을 사용 중지했습니다`)).toBeVisible();
-  await expect(row(page, s.email)).toContainText("사용 중지");
+  await expect(page.getByText(`${name2} 계정을 비활성화했습니다`)).toBeVisible();
+  await expect(row(page, s.email)).toContainText("비활성");
 });
 
 // 프록시·서버가 낸 503(본인확인 준비 중이 아님)이나 오류 코드 없는 응답도 처리됐는지 알 수 없다: 실패로 단정하지 않고 불분명으로 다룬다
@@ -608,19 +614,19 @@ test("직원 변경이 503·형식 모를 응답이면 불분명으로 보고 �
   let off = await after503((u) => u.pathname === "/api/seller/staff", "POST", json503);
   await clickCreate(page);
   await expect(page.getByTestId("sa-unclear")).toContainText("계정이 만들어졌는지 확인하지 못했습니다. 목록에서 확인하고, 있으면 비밀번호를 바꿔 주십시오");
-  await expect(row(page, s.email)).toBeVisible();
   await expect(page.getByText(`${s.name} 계정을 만들었습니다`, { exact: false })).toHaveCount(0);
   await off();
   await page.getByTestId("sa-unclear").getByRole("button", { name: "처음부터 다시 입력" }).click();
-  await page.getByRole("link", { name: "목록", exact: true }).click();
+  await page.getByRole("link", { name: "목록으로", exact: true }).click();
   await expect(page).toHaveURL(/\/seller\/staff$/);
+  await expect(row(page, s.email)).toBeVisible();
 
   // 비밀번호 재설정: 503(HTML)이면 「변경되었을 수 있음」으로 잠그고 같은 값으로만 재전송
   const dialog = page.locator("section[aria-labelledby^=staff-]");
-  await page.getByRole("button", { name: `${s.name} 비밀번호 바꾸기` }).click();
+  await openAction(page, `${s.name}`, "비밀번호 재설정");
   await dialog.getByLabel("새 비밀번호").fill(`pw-${id}-503`);
   off = await after503((u) => u.pathname.endsWith("/password"), "POST", html);
-  await dialog.getByRole("button", { name: "새 비밀번호로 바꾸기" }).click();
+  await dialog.getByRole("button", { name: "재설정", exact: true }).click();
   await expect(dialog.getByTestId("sp-unclear")).toContainText("비밀번호가 변경되었을 수 있습니다.");
   await expect(dialog.getByLabel("새 비밀번호")).toBeDisabled();
   await off();
@@ -628,7 +634,7 @@ test("직원 변경이 503·형식 모를 응답이면 불분명으로 보고 �
   await expect(page.getByText(`${s.name} 비밀번호를 변경했습니다`, { exact: false })).toBeVisible();
 
   // 권한 수정: 형식을 알 수 없는 4xx(오류 코드 없음)도 불분명 → 다시 읽어 저장으로 판정
-  await page.getByRole("button", { name: `${s.name} 정보·업무 수정` }).click();
+  await page.getByRole("link", { name: `${s.name} 상세` }).click();
   await dialog.getByRole("checkbox", { name: "상품", exact: true }).check();
   let once = false;
   await page.route(
@@ -645,11 +651,11 @@ test("직원 변경이 503·형식 모를 응답이면 불분명으로 보고 �
   await expect(row(page, s.email)).toContainText("상품");
 
   // 비활성화: 503이어도 다시 읽어 비활성으로 판정
-  await page.getByRole("button", { name: `${s.name} 직원 계정 사용 중지` }).click();
+  await openAction(page, `${s.name}`, "비활성화");
   off = await after503((u) => u.pathname.endsWith("/disable"), "POST", json503);
-  await dialog.getByRole("button", { name: "직원 계정 사용 중지" }).click();
-  await expect(page.getByText(`${s.name} 계정을 사용 중지했습니다`)).toBeVisible();
-  await expect(row(page, s.email)).toContainText("사용 중지");
+  await page.getByRole("dialog").getByRole("button", { name: "비활성화", exact: true }).click();
+  await expect(page.getByText(`${s.name} 계정을 비활성화했습니다`)).toBeVisible();
+  await expect(row(page, s.email)).toContainText("비활성");
   await off();
 });
 
@@ -661,9 +667,9 @@ test("정보 저장 뒤 권한 저장만 실패하면 저장된 정보는 목록
   const s = { name: `부분${id}`, phone: "01011112222", email: `part-${id}@example.com`, password: `pw-${id}-init` };
   await addStaff(page, s);
   await clickCreate(page);
-  await expect(row(page, s.email)).toContainText("010-1111-2222");
-  await page.getByRole("button", { name: `${s.name} 정보·업무 수정` }).click();
+  await page.getByRole("link", { name: `${s.name} 상세` }).click();
   const dialog = page.locator("section[aria-labelledby^=staff-]");
+  await expect(dialog.getByLabel("휴대폰 번호")).toHaveValue("01011112222");
   await dialog.getByLabel("휴대폰 번호").fill("01033334444");
   await dialog.getByRole("checkbox", { name: "상품", exact: true }).check();
   await page.route(
@@ -673,11 +679,11 @@ test("정보 저장 뒤 권한 저장만 실패하면 저장된 정보는 목록
   );
   await clickSave(page, dialog);
   await expect(dialog.getByText("이름·휴대폰은 저장했지만 권한은 변경하지 못했습니다", { exact: false })).toBeVisible();
-  // 창을 닫지 않아도 뒤 목록은 이미 새 연락처다
-  await expect(row(page, s.email)).toContainText("010-3333-4444");
   await dialog.getByRole("button", { name: "취소" }).click();
-  await expect(row(page, s.email)).toContainText("010-3333-4444");
   await expect(row(page, s.email)).not.toContainText("상품");
+  // 다시 열면 저장된 새 연락처가 보인다
+  await page.getByRole("link", { name: `${s.name} 상세` }).click();
+  await expect(page.getByLabel("휴대폰 번호")).toHaveValue("01033334444");
 });
 
 test("권한이 하나도 없는 직원도 창으로 돌아오면 대표자가 켠 권한이 메뉴에 나온다(새로고침 없이)", async ({ page }) => {
@@ -695,9 +701,9 @@ test("권한이 하나도 없는 직원도 창으로 돌아오면 대표자가 �
   const staffMenu = staffPage.getByRole("navigation", { name: "주 메뉴" });
   await expect(staffMenu.getByRole("link", { name: "주문", exact: true })).toHaveCount(0);
 
-  await page.getByRole("button", { name: `${s.name} 정보·업무 수정` }).click();
+  await page.getByRole("link", { name: `${s.name} 상세` }).click();
   const dialog = page.locator("section[aria-labelledby^=staff-]");
-  await dialog.getByRole("checkbox", { name: "주문·배송", exact: true }).check();
+  await dialog.getByRole("checkbox", { name: "주문 · 배송", exact: true }).check();
   await clickSave(page, dialog);
   await expect(page.locator("section[aria-labelledby^=staff-]")).toHaveCount(0);
 
@@ -746,10 +752,10 @@ test("권한 다시 읽기가 겹치면 늦게 온 옛 응답이 새 권한을 �
   await staffPage.evaluate(() => window.dispatchEvent(new Event("focus")));
   await fetched;
 
-  // 대표자가 「주문·배송」을 켠다 → 두 번째 다시 읽기는 새 권한을 받는다
-  await page.getByRole("button", { name: `${s.name} 정보·업무 수정` }).click();
+  // 대표자가 「주문 · 배송」을 켠다 → 두 번째 다시 읽기는 새 권한을 받는다
+  await page.getByRole("link", { name: `${s.name} 상세` }).click();
   const dialog = page.locator("section[aria-labelledby^=staff-]");
-  await dialog.getByRole("checkbox", { name: "주문·배송", exact: true }).check();
+  await dialog.getByRole("checkbox", { name: "주문 · 배송", exact: true }).check();
   await clickSave(page, dialog);
   await expect(page.locator("section[aria-labelledby^=staff-]")).toHaveCount(0);
   await staffPage.waitForTimeout(1100);
@@ -853,9 +859,8 @@ test("다른 창이 만든 같은 계정이 있을 때 응답을 놓쳐도 「�
   });
   await clickCreate(page);
   await expect(page.getByTestId("sa-unclear")).toContainText("계정이 만들어졌는지 확인하지 못했습니다. 목록에서 확인하고, 있으면 비밀번호를 바꿔 주십시오");
-  await expect(row(page, s.email)).toBeVisible();
   await expect(page.getByText(`${s.name} 계정을 만들었습니다`, { exact: false })).toHaveCount(0);
-  await expect(page.getByLabel("처음 쓸 비밀번호")).toBeDisabled();
+  await expect(page.getByLabel("초기 비밀번호")).toBeDisabled();
 });
 
 // 목록 다시 읽기: 두 번 연속 수정한 뒤 두 번째 다시 읽기는 실패하고 첫 번째가 늦게 성공하면, 첫 번째(수정 반영된) 목록을 보여 준다
@@ -884,12 +889,12 @@ test("직원 목록 다시 읽기가 겹쳐 나중 요청이 실패해도 먼저
   });
   const dialog = page.locator("section[aria-labelledby^=staff-]");
   // 첫 수정(이름) → 첫 다시 읽기(응답 붙잡음)
-  await page.getByRole("button", { name: `${s.name} 정보·업무 수정` }).click();
+  await page.getByRole("link", { name: `${s.name} 상세` }).click();
   await dialog.getByLabel("이름").fill(`${s.name}가`);
   await clickSave(page, dialog);
   await expect(page.getByText(`${s.name}가 정보를 저장했습니다`)).toBeVisible();
   // 두 번째 수정(권한) → 두 번째 다시 읽기는 실패: 낡은 목록일 수 있다고 알린다(서버가 확정한 값은 행에 이미 반영)
-  await page.getByRole("button", { name: `${s.name}가 정보·업무 수정` }).click();
+  await page.getByRole("link", { name: `${s.name}가 상세` }).click();
   await dialog.getByRole("checkbox", { name: "상품", exact: true }).check();
   const failed = page.waitForResponse((r) => r.url().endsWith("/api/seller/staff") && r.request().method() === "GET" && r.status() === 500);
   await clickSave(page, dialog);
@@ -938,20 +943,20 @@ test("비활성화 성공 뒤 목록 다시 읽기가 실패해도 행은 비활
   const s = { name: `낡음${id}`, phone: "01034343434", email: `stale-${id}@example.com`, password: `pw-${id}-init` };
   await addStaff(page, s);
   await clickCreate(page);
-  await expect(row(page, s.email)).toContainText("사용 중");
+  await expect(row(page, s.email)).toContainText("활성");
 
   await page.route("**/api/seller/staff", (route) => (route.request().method() === "GET" ? route.fulfill({ status: 500, json: { error: "internal" } }) : route.continue()));
-  await page.getByRole("button", { name: `${s.name} 직원 계정 사용 중지` }).click();
-  await page.locator("section[aria-labelledby=staff-disable-title]").getByRole("button", { name: "직원 계정 사용 중지" }).click();
-  await expect(page.getByText(`${s.name} 계정을 사용 중지했습니다`)).toBeVisible();
-  await expect(row(page, s.email)).toContainText("사용 중지");
+  await openAction(page, `${s.name}`, "비활성화");
+  await page.getByRole("dialog").getByRole("button", { name: "비활성화" }).click();
+  await expect(page.getByText(`${s.name} 계정을 비활성화했습니다`)).toBeVisible();
+  await expect(row(page, s.email)).toContainText("비활성");
   const stale = page.getByTestId("staff-stale");
   await expect(stale).toContainText("최신 목록을 불러오지 못했습니다");
   // 다시 불러오기가 성공하면 안내가 사라진다
   await page.unrouteAll();
   await stale.getByRole("button", { name: "다시 불러오기" }).click();
   await expect(stale).toHaveCount(0);
-  await expect(row(page, s.email)).toContainText("사용 중지");
+  await expect(row(page, s.email)).toContainText("비활성");
 });
 
 // 확정 변경 뒤에 늦게 온 옛 목록은 전체를 덮지 않는다: 수정 A → 목록1 보류 → 수정 B 확정 → 목록2 실패 → 목록1 늦게 성공 → B가 그대로, 낡음 안내 유지
@@ -979,12 +984,12 @@ test("확정된 수정보다 먼저 보낸 목록 응답이 늦게 와도 그 �
   });
   const dialog = page.locator("section[aria-labelledby^=staff-]");
   // 수정 A(이름) → 목록1(수정 A만 담긴 응답을 붙잡음)
-  await page.getByRole("button", { name: `${s.name} 정보·업무 수정` }).click();
+  await page.getByRole("link", { name: `${s.name} 상세` }).click();
   await dialog.getByLabel("이름").fill(`${s.name}가`);
   await clickSave(page, dialog);
   await expect(page.getByText(`${s.name}가 정보를 저장했습니다`)).toBeVisible();
   // 수정 B(권한) 확정 → 행에 바로 반영 → 목록2 실패
-  await page.getByRole("button", { name: `${s.name}가 정보·업무 수정` }).click();
+  await page.getByRole("link", { name: `${s.name}가 상세` }).click();
   await dialog.getByRole("checkbox", { name: "상품", exact: true }).check();
   await clickSave(page, dialog);
   await expect(row(page, s.email)).toContainText("상품");
@@ -1013,7 +1018,7 @@ test("정보만 보낸 수정이 불분명할 때 다른 창이 권한을 바꿔
     return ((await r.json()) as { staff: { id: string; email: string }[] }).staff.find((x) => x.email === email)!.id;
   }, s.email);
 
-  await page.getByRole("button", { name: `${s.name} 정보·업무 수정` }).click();
+  await page.getByRole("link", { name: `${s.name} 상세` }).click();
   const dialog = page.locator("section[aria-labelledby^=staff-]");
   await dialog.getByLabel("이름").fill(`${s.name}새`);
   // 서버는 이름을 저장하고 응답은 끊긴다. 그사이 다른 창이 권한을 바꾼다
@@ -1030,7 +1035,7 @@ test("정보만 보낸 수정이 불분명할 때 다른 창이 권한을 바꿔
   await clickSave(page, dialog);
   await expect(page.getByText(`${s.name}새 정보를 저장했습니다`)).toBeVisible();
   await expect(row(page, s.email)).toContainText(`${s.name}새`);
-  await expect(row(page, s.email)).toContainText("주문·배송");
+  await expect(row(page, s.email)).toContainText("주문 · 배송");
 });
 
 // 실패도 세대 규칙을 따른다: 먼저 보낸 목록 요청이 더 새 성공 뒤에 실패로 도착해도 낡음 안내를 띄우지 않는다
@@ -1057,11 +1062,11 @@ test("먼저 보낸 목록 요청의 실패가 더 새 성공 뒤에 와도 낡�
   });
   const dialog = page.locator("section[aria-labelledby^=staff-]");
   // 수정 A → 목록1(붙잡았다가 실패) / 수정 B → 목록2 성공
-  await page.getByRole("button", { name: `${s.name} 정보·업무 수정` }).click();
+  await page.getByRole("link", { name: `${s.name} 상세` }).click();
   await dialog.getByLabel("이름").fill(`${s.name}가`);
   await clickSave(page, dialog);
   await expect(page.getByText(`${s.name}가 정보를 저장했습니다`)).toBeVisible();
-  await page.getByRole("button", { name: `${s.name}가 정보·업무 수정` }).click();
+  await page.getByRole("link", { name: `${s.name}가 상세` }).click();
   await dialog.getByRole("checkbox", { name: "상품", exact: true }).check();
   const second = page.waitForResponse((r) => r.url().endsWith("/api/seller/staff") && r.request().method() === "GET" && r.status() === 200);
   await clickSave(page, dialog);
@@ -1087,7 +1092,7 @@ test("직원: 메뉴에 직원 계정이 없고, 주소로 들어오면 대표�
   await expect(page).toHaveURL(/\/seller\/staff$/);
   await expect(page.getByText("대표자만 볼 수 있습니다")).toBeVisible();
   await expect(page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "직원 계정" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "직원 계정 만들기" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "계정 만들기" })).toHaveCount(0);
   // 직원 화면은 직원 목록을 부르지 않는다
   expect(await listed).toBe(false);
   await shot(page, "SA-100-staff");
