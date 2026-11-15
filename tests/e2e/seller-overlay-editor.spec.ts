@@ -238,28 +238,28 @@ test("끌 때 정렬 가이드선이 보이고, 실제 크기 미리보기가 �
   const menu = page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "방송별", exact: true });
   await expect(menu).toHaveCount(1);
   await expect(menu).toHaveAttribute("href", "/seller/broadcasts");
-  const asked: string[] = [];
-  const answer = (accept: boolean) => page.once("dialog", async (d) => {
-    asked.push(d.message());
-    if (accept) await d.accept();
-    else await d.dismiss();
-  });
-  answer(false);
+  const leave = page.getByRole("dialog", { name: "저장하지 않고 나가시겠습니까?" });
   await menu.click();
+  await expect(leave).toContainText("옮긴 위젯 1개의 변경이 저장되지 않습니다. 계속 편집하시겠습니까?");
+  for (const width of [1440, 1024]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.screenshot({ path: `tests/e2e/screenshots/SA-051-leave-confirm-${width}.png` });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await leave.getByRole("button", { name: "계속 편집" }).click();
+  await expect(leave).toHaveCount(0);
   await expect(page).toHaveURL(/\/seller\/overlay$/);
-  expect(asked[0]).toContain("저장하지 않은 변경 1개가 있습니다");
 
-  // 브라우저 Back도 같은 확인: 취소하면 이 화면에 남고 변경도 그대로
-  answer(false);
+  // 브라우저 Back도 같은 확인: 계속 편집하면 이 화면에 남고 변경도 그대로
   await page.goBack();
+  await expect(leave).toBeVisible();
+  await leave.getByRole("button", { name: "계속 편집" }).click();
   await expect(page).toHaveURL(/\/seller\/overlay$/);
   await expect(page.getByTestId("ove-dirty")).toBeVisible();
-  expect(asked).toHaveLength(2);
-  expect(asked[1]).toBe(asked[0]);
 
-  // 확인하고 나가면 이동하고 저장되지 않는다
-  answer(true);
+  // 나가기를 누르면 이동하고 저장되지 않는다
   await menu.click();
+  await leave.getByRole("button", { name: "나가기" }).click();
   await expect(page).not.toHaveURL(/\/seller\/overlay$/);
   expect((await layout(page)).widgets.find((x) => x.id === "current")!.x).toBe(4.4);
 
@@ -271,10 +271,8 @@ test("끌 때 정렬 가이드선이 보이고, 실제 크기 미리보기가 �
   await page.getByRole("button", { name: "저장하기" }).click();
   await page.getByRole("dialog", { name: "변경 사항을 저장하시겠습니까?" }).getByRole("button", { name: "저장", exact: true }).click();
   await expect(page.getByTestId("ove-dirty")).toHaveCount(0);
-  page.once("dialog", () => {
-    throw new Error("저장한 뒤에는 나가기 확인이 뜨면 안 됩니다");
-  });
   await menu.click();
+  await expect(leave).toHaveCount(0);
   await expect(page).not.toHaveURL(/\/seller\/overlay$/);
   expect((await layout(page)).widgets.find((x) => x.id === "current")!.y).toBe(41);
   await reset(page);

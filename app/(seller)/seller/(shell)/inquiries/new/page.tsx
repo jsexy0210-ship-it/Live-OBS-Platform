@@ -71,7 +71,15 @@ function Form() {
   const key = useMemo(() => JSON.stringify([category, title, body, related, diag]), [category, title, body, related, diag]);
   const empty = category === "" && title === "" && body === "" && related === "" && images.length === 0 && files.length === 0;
   const dirty = !empty && (key !== savedKey || images.length > 0 || files.length > 0);
-  useUnsavedGuard(dirty && !sent, "작성 중인 내용이 사라집니다. 나가시겠습니까?");
+  useUnsavedGuard(dirty && !sent, "작성 중인 내용이 사라집니다. 나가시겠습니까?", {
+    // 정본 SA-114 「나가기 확인」 .cfm
+    dialog: {
+      title: "작성 중인 내용이 사라집니다. 나가시겠습니까?",
+      body: "임시 저장을 누르면 내용을 남겨 두고 나갈 수 있습니다.",
+      stayLabel: "취소",
+      leaveLabel: "나가기",
+    },
+  });
 
   const errors = {
     category: category === "" ? "문의 종류를 선택해 주십시오" : null,

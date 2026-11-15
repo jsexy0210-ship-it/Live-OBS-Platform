@@ -210,6 +210,29 @@ test("내 문의 목록: 상태 칸 숫자와 문의 종류 선택으로 걸러 
   await expect(row).toBeVisible();
 });
 
+test("문의하기: 작성 중에 나가면 공통 확인 창이 [취소][나가기]로 묻는다(링크·브라우저 Back)", async ({ page }) => {
+  await login(page, "/seller/inquiries/new");
+  await page.getByLabel("제목").fill(`${E2E_PREFIX}나가기 확인`);
+  const leave = page.getByRole("dialog", { name: "작성 중인 내용이 사라집니다. 나가시겠습니까?" });
+  const menu = page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "공지사항", exact: true });
+  await menu.click();
+  await expect(leave).toContainText("임시 저장을 누르면 내용을 남겨 두고 나갈 수 있습니다.");
+  for (const width of [1440, 1024]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.screenshot({ path: `tests/e2e/screenshots/SA-114-leave-confirm-${width}.png` });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await leave.getByRole("button", { name: "취소" }).click();
+  await expect(page).toHaveURL(/\/seller\/inquiries\/new$/);
+  await page.goBack();
+  await expect(leave).toBeVisible();
+  await leave.getByRole("button", { name: "취소" }).click();
+  await expect(page.getByLabel("제목")).toHaveValue(`${E2E_PREFIX}나가기 확인`);
+  await menu.click();
+  await leave.getByRole("button", { name: "나가기" }).click();
+  await expect(page).not.toHaveURL(/\/seller\/inquiries\/new$/);
+});
+
 test("문의하기: 관련 방송 · 파일 첨부 · 진단 정보 · 임시 저장 · [긴급] 표시를 보내고, 임시 저장은 다시 오면 이어진다", async ({ page }) => {
   await login(page, "/seller/inquiries/new");
   await page.getByRole("radio", { name: "방송 화면" }).click();
