@@ -299,7 +299,7 @@ export default function OverlayEditor() {
     // 정본 SA-051 「저장하지 않은 변경 확인」 .cfm
     dialog: {
       title: "저장하지 않고 나가시겠습니까?",
-      body: `지금 나가면 방송 화면 편집에서 옮긴 위젯 ${changes}개의 변경이 저장되지 않습니다. 계속 편집하시겠습니까?`,
+      body: `지금 나가면 방송 화면 편집에서 바꾼 위젯 ${changes}개의 변경이 저장되지 않습니다. 계속 편집하시겠습니까?`,
       stayLabel: "계속 편집",
       leaveLabel: "나가기",
     },
