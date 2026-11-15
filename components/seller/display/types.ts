@@ -55,3 +55,17 @@ export function moved<T>(list: T[], from: number, to: number): T[] {
 
 // 서버가 준 문구가 있으면 그대로, 없으면(연결 끊김 등) 안내 문구
 export const failText = (r: { status: number; message?: string }, fallback: string) => r.message ?? (r.status === 0 ? "연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오" : fallback);
+
+// 순서 3곳(홈 진열 영역 · 추천 상품 · 카테고리 안)은 화면 아래 「저장」 1회로 함께 저장한다(정본 SA-016, 대표님 승인 2026-11-15).
+// 각 영역은 바뀐 내용 여부와 저장 함수를 페이지에 알리고, 저장 함수는 성공하면 true를 돌려주며 실패 문구는 스스로 알린다.
+export type Track = (name: string, dirty: boolean, save: () => Promise<boolean>) => void;
+export const SAVE_ORDER_DONE = "진열 순서를 저장했습니다 · 홈에 바로 반영";
+export const LEAVE_ORDER_MESSAGE = "바꾼 순서를 저장하지 않고 나가시겠습니까?";
+export function useTrackSave(track: Track, name: string, dirty: boolean, save: () => Promise<boolean>) {
+  const ref = useRef(save);
+  ref.current = save;
+  useEffect(() => {
+    track(name, dirty, () => ref.current());
+  }, [track, name, dirty]);
+  useEffect(() => () => track(name, false, async () => true), [track, name]);
+}
