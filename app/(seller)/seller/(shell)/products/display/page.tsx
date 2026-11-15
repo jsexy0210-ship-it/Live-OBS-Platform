@@ -10,7 +10,7 @@ import { CategoryOrder } from "../../../../../../components/seller/display/Categ
 import { HomeSections } from "../../../../../../components/seller/display/HomeSections";
 import { ListOptions } from "../../../../../../components/seller/display/ListOptions";
 import { Recommended } from "../../../../../../components/seller/display/Recommended";
-import { LEAVE_ORDER_MESSAGE, SAVE_ORDER_DONE, type CategoryNode, type Display, type Track } from "../../../../../../components/seller/display/types";
+import { LEAVE_ORDER_DIALOG, LEAVE_ORDER_MESSAGE, SAVE_ORDER_DONE, type CategoryNode, type Display, type Track } from "../../../../../../components/seller/display/types";
 import { useUnsavedGuard } from "../../../../../../lib/client/navigation";
 
 // SA-016 상품 진열(파트너스 관리자, 상품 › 상품 진열). 홈 진열 영역·목록 기본 정렬과 진열 옵션·추천 상품·카테고리 안 순서를 정한다.
@@ -42,7 +42,7 @@ export default function DisplayPage() {
     regs.current.set(name, { dirty, save });
     setDirtyCount([...regs.current.values()].filter((r) => r.dirty).length);
   }, []);
-  useUnsavedGuard(dirtyCount > 0 && !saving, LEAVE_ORDER_MESSAGE);
+  useUnsavedGuard(dirtyCount > 0 && !saving, LEAVE_ORDER_MESSAGE, { dialog: LEAVE_ORDER_DIALOG });
   const saveAll = async () => {
     if (savingRef.current || me.readOnly) return;
     savingRef.current = true;

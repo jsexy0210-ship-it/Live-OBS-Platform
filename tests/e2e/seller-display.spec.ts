@@ -75,6 +75,41 @@ test("대표자: 홈 영역 6종 고정 표에서 번호 + ▲▼ · 홈에 표�
   await expect(SAVE_ALL(page)).toBeDisabled();
 });
 
+test("대표자: 바꾼 순서가 있으면 나갈 때 공통 확인 창이 [계속 편집][저장 안 함]으로 묻는다(링크·브라우저 Back)", async ({ page }) => {
+  await login(page, "demo-owner@example.com");
+  await expect(page).toHaveURL(/\/seller\/products\/display$/);
+  const leave = page.getByRole("dialog", { name: "바꾼 순서를 저장하지 않고 나가시겠습니까?" });
+  const before = JSON.stringify((await display(page)).sections);
+  page.on("dialog", (d) => void d.dismiss()); // 브라우저 확인 창이 뜨면 이동이 막혀 아래 단언이 실패한다
+  // 순서를 바꾸면 사이드 메뉴 링크를 눌러도 이동하지 않고 창이 뜬다
+  await sectionRow(page, "할인 중").getByRole("checkbox", { name: "할인 중 홈에 표시" }).click(); // 앞 시험이 남긴 상태와 무관하게 무엇이든 바꾸면 변경이 생긴다
+  await expect(SAVE_ALL(page)).toBeEnabled();
+  await page.locator("aside a", { hasText: "카테고리" }).first().click();
+  await expect(leave).toBeVisible();
+  await expect(leave).toContainText("저장하지 않은 순서 변경이 사라집니다.");
+  await expect(leave.locator(".modal-f button")).toHaveText(["계속 편집", "저장 안 함"]);
+  for (const width of [1440, 1024]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.screenshot({ path: `tests/e2e/screenshots/SA-016-leave-confirm-${width}.png` });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  // 계속 편집: 그대로 남고 바꾼 순서도 남는다
+  await leave.getByRole("button", { name: "계속 편집" }).click();
+  await expect(leave).toHaveCount(0);
+  await expect(page).toHaveURL(/\/seller\/products\/display$/);
+  await expect(SAVE_ALL(page)).toBeEnabled();
+  // 브라우저 Back도 같은 창
+  await page.goBack();
+  await expect(leave).toBeVisible();
+  await leave.getByRole("button", { name: "계속 편집" }).click();
+  await expect(page).toHaveURL(/\/seller\/products\/display$/);
+  // 저장 안 함: 이동하고 서버에는 아무것도 저장되지 않는다
+  await page.locator("aside a", { hasText: "카테고리" }).first().click();
+  await leave.getByRole("button", { name: "저장 안 함" }).click();
+  await expect(page).toHaveURL(/\/seller\/products\/categories/);
+  expect(JSON.stringify((await display(page)).sections)).toBe(before);
+});
+
 test("대표자: 목록 기본 정렬과 진열 옵션을 저장한다", async ({ page }) => {
   await login(page, "demo-owner@example.com");
   await page.getByRole("combobox", { name: /^정렬/ }).selectOption("low");
