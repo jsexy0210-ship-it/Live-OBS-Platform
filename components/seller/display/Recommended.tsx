@@ -4,28 +4,29 @@ import { useEffect, useState } from "react";
 import { Modal } from "../../admin-ui";
 import { api, type Product } from "../api";
 import { won } from "../format";
-import { MAX_RECOMMENDED, STATUS_BADGE, failText, moved, useDraft, type Display, type RecItem } from "./types";
+import { MAX_RECOMMENDED, STATUS_BADGE, failText, moved, useDraft, useTrackSave, type Display, type RecItem, type Track } from "./types";
 
-// 추천 상품: 홈 「추천 상품」 영역에 직접 고른 순서로 최대 20개. 추가·빼기·순서는 화면에서 먼저 바꾸고 「추천 상품 저장」으로 통째로 저장한다(PUT /api/seller/display/recommended).
+// 추천 상품: 홈 「추천 상품」 영역에 직접 고른 순서로 최대 20개. 추가·빼기·순서는 화면에서 먼저 바꾸고 화면 아래 「저장」으로 통째로 저장한다(PUT /api/seller/display/recommended).
 // 상품 검색은 GET /api/seller/products?q=. 삭제된 상품은 서버가 목록에서 자동으로 뺀다.
 type Found = Pick<Product, "id" | "code" | "name" | "price" | "status" | "options">;
 const stockOf = (p: Found) => p.options.reduce((s, o) => s + o.stock, 0);
 
-export function Recommended({ items, onSaved, notify }: { items: RecItem[]; onSaved: (d: Display) => void; notify: (text: string, neg?: boolean) => void }) {
+export function Recommended({ items, onSaved, notify, track }: { items: RecItem[]; onSaved: (d: Display) => void; notify: (text: string, neg?: boolean) => void; track: Track }) {
   const server = items.filter((i) => !i.deleted);
   const [draft, setDraft, dirty] = useDraft(server);
-  const [busy, setBusy] = useState(false);
   const [picker, setPicker] = useState(false);
   const [removing, setRemoving] = useState<RecItem | null>(null);
 
   const save = async () => {
-    setBusy(true);
     const r = await api<Display>("/api/seller/display/recommended", { method: "PUT", body: { productIds: draft.map((i) => i.productId) } });
-    setBusy(false);
-    if (!r.ok) return notify(failText(r, "추천 상품을 저장하지 못했습니다. 다시 시도해 주십시오"), true);
+    if (!r.ok) {
+      notify(failText(r, "추천 상품을 저장하지 못했습니다. 다시 시도해 주십시오"), true);
+      return false;
+    }
     onSaved(r.data);
-    notify("추천 상품을 저장했습니다 · 쇼핑몰에 바로 반영");
+    return true;
   };
+  useTrackSave(track, "recommended", dirty, save);
   const full = draft.length >= MAX_RECOMMENDED;
 
   return (
@@ -37,9 +38,6 @@ export function Recommended({ items, onSaved, notify }: { items: RecItem[]; onSa
         <div className="row" style={{ gap: 8 }}>
           <button className="btn btn-out" type="button" disabled={full} onClick={() => setPicker(true)}>
             상품 추가
-          </button>
-          <button className="btn" type="button" disabled={!dirty || busy} onClick={() => void save()}>
-            {busy ? "저장 중" : "추천 상품 저장"}
           </button>
         </div>
       </div>
@@ -64,14 +62,23 @@ export function Recommended({ items, onSaved, notify }: { items: RecItem[]; onSa
                 <th>순서</th>
                 <th>상품</th>
                 <th>상태</th>
-                <th>순서 바꾸기</th>
-                <th aria-label="관리" />
+                <th>관리</th>
               </tr>
             </thead>
             <tbody>
               {draft.map((p, i) => (
                 <tr key={p.productId} data-testid="recommended-row">
-                  <td className="num">{i + 1}</td>
+                  <td>
+                    <span className="row" style={{ gap: 4, alignItems: "center" }}>
+                      <span className="num">{i + 1}</span>
+                      <button className="btn btn-sm btn-out" type="button" aria-label={`${p.name} 위로`} disabled={i === 0} onClick={() => setDraft((d) => moved(d, i, i - 1))}>
+                        ▲
+                      </button>
+                      <button className="btn btn-sm btn-out" type="button" aria-label={`${p.name} 아래로`} disabled={i === draft.length - 1} onClick={() => setDraft((d) => moved(d, i, i + 1))}>
+                        ▼
+                      </button>
+                    </span>
+                  </td>
                   <td>
                     <b>{p.name}</b>
                     <div className="t-c1 c-alt">{p.code}</div>
@@ -80,22 +87,14 @@ export function Recommended({ items, onSaved, notify }: { items: RecItem[]; onSa
                     <span className={`bdg ${STATUS_BADGE[p.status].cls}`}>{STATUS_BADGE[p.status].label}</span>
                   </td>
                   <td>
-                    <span className="row" style={{ gap: 2 }}>
-                      <button className="btn btn-sm btn-out" type="button" aria-label={`${p.name} 위로`} disabled={i === 0} onClick={() => setDraft((d) => moved(d, i, i - 1))}>
-                        ▲
-                      </button>
-                      <button className="btn btn-sm btn-out" type="button" aria-label={`${p.name} 아래로`} disabled={i === draft.length - 1} onClick={() => setDraft((d) => moved(d, i, i + 1))}>
-                        ▼
-                      </button>
+                    <span className="row" style={{ gap: 4 }}>
                       <button className="btn btn-sm btn-out" type="button" disabled={i === 0} onClick={() => setDraft((d) => moved(d, i, 0))}>
                         맨 위로
                       </button>
+                      <button className="btn btn-sm btn-out" type="button" onClick={() => setRemoving(p)}>
+                        빼기
+                      </button>
                     </span>
-                  </td>
-                  <td>
-                    <button className="btn btn-sm btn-out" type="button" onClick={() => setRemoving(p)}>
-                      빼기
-                    </button>
                   </td>
                 </tr>
               ))}
@@ -103,7 +102,7 @@ export function Recommended({ items, onSaved, notify }: { items: RecItem[]; onSa
           </table>
         </div>
       )}
-      <span className="t-c1 c-alt">바꾼 뒤 「추천 상품 저장」을 눌러야 쇼핑몰에 반영됩니다 · 삭제된 상품은 자동으로 빠집니다.</span>
+      <span className="t-c1 c-alt">▲▼ · 「맨 위로」는 화면 순서만 바꾸고 아래 「저장」을 눌러야 반영됩니다 · 삭제된 상품은 자동으로 빠집니다.</span>
 
       {picker && <Picker taken={new Set(draft.map((i) => i.productId))} room={MAX_RECOMMENDED - draft.length} onAdd={(p) => setDraft((d) => [...d, { productId: p.id, code: p.code ?? "", name: p.name, status: p.status, deleted: false, thumbnailUrl: null }])} onClose={() => setPicker(false)} />}
       {removing && (
