@@ -295,7 +295,15 @@ export default function OverlayEditor() {
     return n;
   })();
   // 저장 안 한 변경이 있으면 새로고침·탭 닫기·메뉴(앱 안 링크) 이동·브라우저 Back에 같은 확인(공통 미저장 가드, docs/IA.md 「Back · 상태 보존 규칙」 7항)
-  useUnsavedGuard(changes > 0, `저장하지 않은 변경 ${changes}개가 있습니다. 나가면 바뀐 내용이 사라집니다. 나가시겠습니까?`);
+  useUnsavedGuard(changes > 0, `저장하지 않은 변경 ${changes}개가 있습니다. 나가면 바뀐 내용이 사라집니다. 나가시겠습니까?`, {
+    // 정본 SA-051 「저장하지 않은 변경 확인」 .cfm
+    dialog: {
+      title: "저장하지 않고 나가시겠습니까?",
+      body: `지금 나가면 방송 화면 편집에서 옮긴 위젯 ${changes}개의 변경이 저장되지 않습니다. 계속 편집하시겠습니까?`,
+      stayLabel: "계속 편집",
+      leaveLabel: "나가기",
+    },
+  });
 
   const patch = (id: string, p: Partial<Widget>) => {
     if (ro) return;
