@@ -664,7 +664,7 @@ test("그리드 상세: 완료 되돌리기는 상세에서 기존 version과 �
   expect(writes).toHaveLength(3); expect(errors).toEqual([]);
 });
 
-test("그리드 상세: 진열 편집은 목록에서 쓰지 않고 전체 저장·실패 초안·새 영역 켜기를 보존한다", async ({ page }) => {
+test("그리드 상세: 진열 순서는 표 안 번호 + ▲▼로 바꾸고 아래 저장 1회로 전체 저장하며 실패 초안·새 영역 켜기를 보존한다", async ({ page }) => {
   let display = { listSort: "new", options: { soldOutLast: false, hideSoldOut: false, liveFirst: false }, recommended: [], sections: [{ id: id(801), kind: "NEW", categoryId: null, title: "신상품", visible: true, itemCount: 8 }, { id: id(802), kind: "BEST", categoryId: null, title: "베스트", visible: true, itemCount: 8 }] }
   const writes: { sections: Record<string, unknown>[] }[] = [];
   let refuse = true;
@@ -683,38 +683,41 @@ test("그리드 상세: 진열 편집은 목록에서 쓰지 않고 전체 저�
   await page.goto("/seller/products/display?from=owned-grid");
   const area = page.getByRole("region", { name: "홈 진열 영역", exact: true });
   const rows = page.getByTestId("section-row");
-  // 영역 6종 고정: 방송 상품(맨 앞) · 저장된 영역(신상품 · 베스트) · 아직 없는 영역(추천 · 할인 중) · 명예의 전당(맨 뒤). 표 행 안에는 조작이 없다
-  await expect(rows).toHaveCount(6); await expect(rows.locator("input,select,button")).toHaveCount(0);
-  await expect(area.getByRole("button", { name: "영역 저장" })).toHaveCount(0);
+  // 영역 6종 고정: 방송 상품(맨 앞) · 저장된 영역(신상품 · 베스트) · 아직 없는 영역(추천 · 할인 중) · 명예의 전당(맨 뒤). 표 안에는 번호 + ▲▼와 「홈에 표시」만 있고 이름 입력은 없다
+  const saveAll = page.getByRole("button", { name: "저장", exact: true });
+  await expect(rows).toHaveCount(6); await expect(rows.getByRole("textbox")).toHaveCount(0);
+  await expect(area.getByRole("button", { name: "영역 저장" })).toHaveCount(0); await expect(saveAll).toBeDisabled();
   await expect(area.getByRole("link", { name: "영역 추가", exact: true })).toHaveCount(0);
   await expect(rows.nth(0)).toContainText("방송 상품"); await expect(rows.nth(1)).toContainText("신상품"); await expect(rows.nth(2)).toContainText("베스트"); await expect(rows.nth(5)).toContainText("명예의 전당");
   for (const width of [1440, 1024]) { await page.setViewportSize({ width, height: 1000 }); await attachGridEvidence(page, area, "display-list"); }
-  await rows.filter({ hasText: "신상품" }).getByRole("link", { name: "상세" }).click();
+  await rows.filter({ hasText: "신상품" }).getByRole("button", { name: "신상품 상품 수 바꾸기" }).click();
   await expect(page.getByLabel("신상품 영역 이름")).toHaveCount(0); // 영역 이름은 고치지 않는다
   await page.getByLabel("신상품 보일 상품 수").fill("25");
   await expect(page.getByLabel("신상품 보일 상품 수")).toHaveValue("20");
-  await page.getByRole("checkbox", { name: "신상품 홈에 표시" }).uncheck();
-  await page.getByRole("button", { name: "신상품 아래로" }).click();
-  await expect(page.getByRole("checkbox", { name: "신상품 홈에 표시" })).not.toBeChecked();
-  await expect(area.getByRole("button", { name: "영역 저장" })).toBeEnabled();
   for (const width of [1440, 1024]) { await page.setViewportSize({ width, height: 1000 }); await attachGridEvidence(page, area, "display-detail"); }
   await page.getByRole("button", { name: "영역 목록", exact: true }).click();
-  await expect(rows.filter({ hasText: "신상품" }).getByRole("link", { name: "상세" })).toBeFocused(); expect(writes).toEqual([]);
-  await rows.filter({ hasText: "베스트" }).getByRole("link", { name: "상세" }).click();
+  await expect(rows.filter({ hasText: "신상품" }).getByRole("button", { name: "신상품 상품 수 바꾸기" })).toBeFocused(); expect(writes).toEqual([]);
+  await rows.filter({ hasText: "신상품" }).getByRole("checkbox", { name: "신상품 홈에 표시" }).uncheck();
+  await page.getByRole("button", { name: "신상품 아래로" }).click();
+  await expect(rows.filter({ hasText: "신상품" }).getByRole("checkbox", { name: "신상품 홈에 표시" })).not.toBeChecked();
+  await expect(saveAll).toBeEnabled(); expect(writes).toEqual([]);
+  await rows.filter({ hasText: "베스트" }).getByRole("button", { name: "베스트 상품 수 바꾸기" }).click();
   await page.getByLabel("베스트 보일 상품 수").fill("12");
-  await area.getByRole("button", { name: "영역 저장" }).evaluate(el => { (el as HTMLButtonElement).click(); (el as HTMLButtonElement).click(); });
+  await page.getByRole("button", { name: "영역 목록", exact: true }).click();
+  await saveAll.evaluate(el => { (el as HTMLButtonElement).click(); (el as HTMLButtonElement).click(); });
   await expect(page.getByText("저장하지 못했어요", { exact: true })).toBeVisible(); expect(writes).toHaveLength(1);
+  await rows.filter({ hasText: "베스트" }).getByRole("button", { name: "베스트 상품 수 바꾸기" }).click();
   await expect(page.getByLabel("베스트 보일 상품 수")).toHaveValue("12");
+  await page.getByRole("button", { name: "영역 목록", exact: true }).click();
   const expected = { sections: [{ kind: "BEST", categoryId: null, title: "베스트", visible: true, itemCount: 12 }, { kind: "NEW", categoryId: null, title: "신상품", visible: false, itemCount: 20 }] };
   expect(writes[0]).toEqual(expected);
-  await area.getByRole("button", { name: "영역 저장" }).click();
-  await expect(rows).toHaveCount(6); expect(writes[1]).toEqual(expected);
-  // 아직 없는 영역은 상세를 열어도 꺼진 채이고, 「홈에 보이기」를 눌러야 켜진다
-  await rows.filter({ hasText: "추천 상품" }).getByRole("link", { name: "상세" }).click();
-  await expect(page.getByRole("checkbox", { name: "추천 상품 홈에 표시" })).not.toBeChecked();
-  await page.getByRole("checkbox", { name: "추천 상품 홈에 표시" }).check();
-  await area.getByRole("button", { name: "영역 저장" }).click();
-  await expect(page).not.toHaveURL(/section=/); await expect(rows).toHaveCount(6);
+  await saveAll.click();
+  await expect(page.getByText("진열 순서를 저장했습니다 · 홈에 바로 반영")).toBeVisible(); await expect(rows).toHaveCount(6); expect(writes[1]).toEqual(expected);
+  // 아직 없는 영역은 꺼진 채이고, 「홈에 표시」를 켜야 초안에 들어간다
+  await expect(rows.filter({ hasText: "추천 상품" }).getByRole("checkbox", { name: "추천 상품 홈에 표시" })).not.toBeChecked();
+  await rows.filter({ hasText: "추천 상품" }).getByRole("checkbox", { name: "추천 상품 홈에 표시" }).check();
+  await saveAll.click();
+  await expect.poll(() => writes.length).toBe(3); await expect(page).not.toHaveURL(/section=/); await expect(rows).toHaveCount(6);
   expect(writes[2]).toEqual({ sections: [...expected.sections, { kind: "RECOMMENDED", categoryId: null, title: "추천 상품", visible: true, itemCount: 8 }] });
   await page.goto(`/seller/products/display?section=id:${id(999)}`);
   await expect(area).toContainText("이 영역을 찾을 수 없습니다");
@@ -740,10 +743,10 @@ test("그리드 상세: 대신 보기와 조회 권한 거부는 상세에서도
   await page.keyboard.press("Control+Enter");
   await page.goto(`/seller/products/display?section=id:${id(801)}`);
   await expect(page.getByLabel("신상품 보일 상품 수")).toBeDisabled();
-  await expect(page.getByRole("button", { name: "영역 저장" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "저장", exact: true })).toBeDisabled();
   denied = true; await page.reload();
   await expect(page.getByTestId("section-detail")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "영역 저장" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "저장", exact: true })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
@@ -768,10 +771,9 @@ test("그리드 상세: 저장된 카테고리 영역은 읽기 전용으로 보
   await expect(categories.nth(0)).toContainText("첫 영역"); await expect(categories.nth(1)).toContainText("둘 영역");
   await expect(area.getByRole("link", { name: "영역 추가", exact: true })).toHaveCount(0);
   // 다른 영역(추천)을 켜서 저장해도 카테고리 영역은 이름 · 표시 · 개수 그대로 뒤따라 간다
-  await page.getByTestId("section-row").filter({ hasText: "추천 상품" }).getByRole("link", { name: "상세" }).click();
-  await area.getByRole("checkbox", { name: "추천 상품 홈에 표시" }).check();
-  await area.getByRole("button", { name: "영역 저장" }).click();
-  await expect(page).not.toHaveURL(/section=/);
+  await page.getByTestId("section-row").filter({ hasText: "추천 상품" }).getByRole("checkbox", { name: "추천 상품 홈에 표시" }).check();
+  await page.getByRole("button", { name: "저장", exact: true }).click();
+  await expect.poll(() => writes.length).toBe(1);
   expect(writes).toEqual([{ sections: [
     { kind: "RECOMMENDED", categoryId: null, title: "추천 상품", visible: true, itemCount: 8 },
     { kind: "CATEGORY", categoryId: id(810), title: "첫 영역", visible: false, itemCount: 3 },

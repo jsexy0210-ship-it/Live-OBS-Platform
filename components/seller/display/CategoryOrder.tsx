@@ -2,15 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
-import { STATUS_BADGE, failText, moved, useDraft, type CatItem, type CategoryNode } from "./types";
+import { LEAVE_ORDER_MESSAGE, STATUS_BADGE, failText, moved, useDraft, useTrackSave, type CatItem, type CategoryNode, type Track } from "./types";
 
-// 카테고리별 진열: 카테고리 안 상품 순서(직접 지정한 상품). 위·아래로 옮기고 「순서 저장」을 누른다(PUT /api/seller/categories/[id]/products, 그사이 목록이 바뀌면 409).
-export function CategoryOrder({ cats, notify }: { cats: CategoryNode[]; notify: (text: string, neg?: boolean) => void }) {
+// 카테고리별 진열: 카테고리 안 상품 순서(직접 지정한 상품). ▲▼로 옮기고 화면 아래 「저장」을 누른다(PUT /api/seller/categories/[id]/products, 그사이 목록이 바뀌면 409).
+export function CategoryOrder({ cats, notify, track }: { cats: CategoryNode[]; notify: (text: string, neg?: boolean) => void; track: Track }) {
   const all = cats.flatMap((p) => [{ id: p.id, name: p.name }, ...p.children.map((c) => ({ id: c.id, name: `${p.name} › ${c.name}` }))]);
   const [sel, setSel] = useState(all[0]?.id ?? "");
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error" } | { kind: "ok"; items: CatItem[] }>({ kind: "loading" });
   const [stale, setStale] = useState(false);
-  const [busy, setBusy] = useState(false);
   const items = state.kind === "ok" ? state.items : [];
   const [draft, setDraft, dirty] = useDraft(items);
 
@@ -25,24 +24,21 @@ export function CategoryOrder({ cats, notify }: { cats: CategoryNode[]; notify: 
   }, [sel, load]);
 
   const save = async () => {
-    setBusy(true);
     const r = await api<{ products: CatItem[] }>(`/api/seller/categories/${sel}/products`, { method: "PUT", body: { productIds: draft.map((i) => i.productId) } });
-    setBusy(false);
     if (!r.ok) {
-      if (r.error === "invalid_category_order") return setStale(true);
-      return notify(failText(r, "순서를 저장하지 못했습니다. 다시 시도해 주십시오"), true);
+      if (r.error === "invalid_category_order") setStale(true);
+      else notify(failText(r, "순서를 저장하지 못했습니다. 다시 시도해 주십시오"), true);
+      return false;
     }
     setState({ kind: "ok", items: r.data.products });
-    notify("카테고리 안 순서를 저장했습니다 · 쇼핑몰에 바로 반영");
+    return true;
   };
+  useTrackSave(track, "category", dirty && !stale, save);
 
   return (
     <section className="card" style={{ padding: 16 }} aria-label="카테고리별 진열">
       <div className="row between" style={{ gap: 8, flexWrap: "wrap" }}>
         <h2 className="t-h2">카테고리별 진열</h2>
-        <button className="btn" type="button" disabled={!dirty || busy || stale} onClick={() => void save()}>
-          {busy ? "저장 중" : "순서 저장"}
-        </button>
       </div>
       {all.length === 0 ? (
         <span className="t-l2 c-alt">카테고리가 없습니다. 카테고리를 먼저 만들어 주십시오.</span>
@@ -50,7 +46,7 @@ export function CategoryOrder({ cats, notify }: { cats: CategoryNode[]; notify: 
         <>
           <label className="col" style={{ gap: 4, maxWidth: 360, marginTop: 8 }}>
             <span className="t-l2">카테고리</span>
-            <select className="inp" value={sel} onChange={(e) => setSel(e.target.value)} disabled={busy}>
+            <select className="inp" value={sel} onChange={(e) => { if (dirty && !window.confirm(LEAVE_ORDER_MESSAGE)) return; setSel(e.target.value); }}>
               {all.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -86,19 +82,14 @@ export function CategoryOrder({ cats, notify }: { cats: CategoryNode[]; notify: 
                     <th>순서</th>
                     <th>상품</th>
                     <th>상태</th>
-                    <th>순서 바꾸기</th>
                   </tr>
                 </thead>
                 <tbody>
                   {draft.map((p, i) => (
                     <tr key={p.productId} data-testid="category-product-row">
-                      <td className="num">{i + 1}</td>
-                      <td>{p.name}</td>
                       <td>
-                        <span className={`bdg ${STATUS_BADGE[p.status].cls}`}>{STATUS_BADGE[p.status].label}</span>
-                      </td>
-                      <td>
-                        <span className="row" style={{ gap: 2 }}>
+                        <span className="row" style={{ gap: 4, alignItems: "center" }}>
+                          <span className="num">{i + 1}</span>
                           <button className="btn btn-sm btn-out" type="button" aria-label={`${p.name} 위로`} disabled={i === 0} onClick={() => setDraft((d) => moved(d, i, i - 1))}>
                             ▲
                           </button>
@@ -107,13 +98,17 @@ export function CategoryOrder({ cats, notify }: { cats: CategoryNode[]; notify: 
                           </button>
                         </span>
                       </td>
+                      <td>{p.name}</td>
+                      <td>
+                        <span className={`bdg ${STATUS_BADGE[p.status].cls}`}>{STATUS_BADGE[p.status].label}</span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
-          <span className="t-c1 c-alt">카테고리 안 순서입니다 · 기본은 진열 순서이고, 카테고리 영역은 이 순서로 홈에 보입니다.</span>
+          <span className="t-c1 c-alt">카테고리 안 순서입니다 · 기본은 진열 순서이고, ▲▼로 바꾼 뒤 아래 「저장」을 누르면 카테고리 영역이 이 순서로 홈에 보입니다.</span>
         </>
       )}
     </section>
