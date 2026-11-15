@@ -94,7 +94,7 @@ export default function DisplayPage() {
         )}
         {state.kind === "ok" && (
           <>
-            <HomeSections sections={state.display.sections} cats={state.cats} onSaved={saved} notify={notify} track={track} />
+            <HomeSections sections={state.display.sections} cats={state.cats} onSaved={saved} notify={notify} track={track} recommendedCount={state.display.recommended.filter((i) => !i.deleted).length} />
             <ListOptions listSort={state.display.listSort} options={state.display.options} onSaved={saved} notify={notify} />
             <Recommended items={state.display.recommended} onSaved={saved} notify={notify} track={track} />
             <CategoryOrder cats={state.cats} notify={notify} track={track} />

@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { FormRow, FormSection, useConfirm } from "../../admin-ui";
-import { useUrlState } from "../../../lib/client/navigation";
+import { useRef } from "react";
+import { useConfirm } from "../../admin-ui";
 import { api } from "../api";
 import { KIND_INFO, MAX_SECTIONS, failText, moved, useDraft, useTrackSave, type CategoryNode, type Display, type Kind, type Section, type Track } from "./types";
 
-// 홈 진열 영역: 켠 영역만 구매자 홈에 순서대로 보인다. 표 안 ▲▼로 순서를 바꾸고 「홈에 표시」를 정한 뒤 화면 아래 「저장」으로 통째로 저장한다(PUT /api/seller/display/sections). 보일 상품 수는 상품 칸의 「N개」에서 연다.
+// 홈 진열 영역: 켠 영역만 구매자 홈에 순서대로 보인다. 표 안 ▲▼로 순서를 바꾸고 「보일 상품 수」 · 「홈에 표시」를 정한 뒤 화면 아래 「저장」으로 통째로 저장한다(PUT /api/seller/display/sections).
 const strip = (s: Section): Section => ({ kind: s.kind, categoryId: s.categoryId, title: s.title, visible: s.visible, itemCount: s.itemCount });
 type DraftSection = Section & { localKey?: number };
 const sectionKey = (s: DraftSection) => s.localKey !== undefined ? `draft:${s.localKey}` : s.id ? `id:${s.id}` : `draft:${s.kind}:${s.categoryId ?? ""}`;
@@ -33,26 +32,13 @@ const normalize = (list: DraftSection[]): DraftSection[] => [
   ...list.filter((s) => s.kind === "HALL_OF_FAME"),
 ];
 
-export function HomeSections({ sections, cats, onSaved, notify, track }: { sections: Section[]; cats: CategoryNode[]; onSaved: (d: Display) => void; notify: (text: string, neg?: boolean) => void; track: Track }) {
+export function HomeSections({ sections, cats, onSaved, notify, track, recommendedCount }: { sections: Section[]; cats: CategoryNode[]; onSaved: (d: Display) => void; notify: (text: string, neg?: boolean) => void; track: Track; recommendedCount: number }) {
   const { readOnly } = useConfirm();
-  // 영역 목록 ↔ 보일 상품 수 상세는 같은 화면 안 이동이라 주소만 바꾼다(바꾼 순서가 있어도 나가기 확인을 띄우지 않는다)
-  const [{ section: selectedKey }, setView] = useUrlState({ section: "" });
-  const back = () => setView({ section: "" });
-  const focusKey = useRef<string | null>(null);
-  const heading = useRef<HTMLHeadingElement>(null);
   const server = sections.map((s) => ({ ...strip(s), id: s.id }));
   const [draft, setDraft, dirty] = useDraft<DraftSection[]>(server);
   const nextLocalKey = useRef(0);
   const saveInFlight = useRef(false);
-  const matches = draft.filter((s) => sectionKey(s) === selectedKey);
-  const selected = matches.length === 1 ? matches[0] : undefined;
-  useEffect(() => {
-    if (selectedKey || !focusKey.current) return;
-    (document.getElementById(`section-open-${focusKey.current}`) ?? heading.current)?.focus();
-    focusKey.current = null;
-  }, [selectedKey]);
-
-  const edit = (patch: Partial<Section>) => setDraft((d) => d.map((s) => sectionKey(s) === selectedKey ? { ...s, ...patch } : s));
+  const setCount = (key: string, n: number) => setDraft((d) => d.map((s) => sectionKey(s) === key ? { ...s, itemCount: Math.min(20, Math.max(1, n || 1)) } : s));
   // 순서는 가운데 넷끼리만 바꾼다(화면 순서 = 저장 순서)
   const move = (key: string, dir: -1 | 1) => setDraft((d) => {
     const order = normalize(d);
@@ -103,19 +89,16 @@ export function HomeSections({ sections, cats, onSaved, notify, track }: { secti
 
   return (
     <section className="card" style={{ padding: 16 }} aria-label="홈 진열 영역">
-      <div className="row between" style={{ gap: 8, flexWrap: "wrap" }}>
-        <h2 className="t-h2" ref={heading} tabIndex={-1}>{selectedKey ? "홈 진열 영역 상세" : "홈 진열 영역"}</h2>
-        {selectedKey && <button className="btn btn-out" type="button" onClick={back}>영역 목록</button>}
-      </div>
-      <span className="t-c1 c-alt">켠 영역만 홈에 순서대로 표시 · ▲▼로 순서 변경 · 「저장」 1회로 반영 · 상품이 하나도 없는 영역은 홈에서 빠집니다</span>
-      {!selectedKey && <div className="au-lt-wrap">
+      <h2 className="t-h2">홈 진열 영역</h2>
+      <span className="t-c1 c-alt">켠 영역만 홈에 순서대로 표시 · ▲▼로 순서 변경 · 「저장」 1회로 반영 · 「보일 상품 수」는 영역마다 1~20 · 상품이 하나도 없는 영역은 홈에서 빠집니다</span>
+      <div className="au-lt-wrap">
         <table className="tbl">
           <thead>
             <tr>
               <th>순서</th>
               <th>영역</th>
               <th>기준</th>
-              <th>상품</th>
+              <th>보일 상품 수</th>
               <th>홈에 표시</th>
             </tr>
           </thead>
@@ -145,8 +128,8 @@ export function HomeSections({ sections, cats, onSaved, notify, track }: { secti
                   </td>
                   <td>{DEFAULT_BASIS[s.kind] ?? KIND_INFO[s.kind].basis}</td>
                   <td>
-                    {s.kind === "HALL_OF_FAME" || absent ? "—" : (
-                      <button id={`section-open-${key}`} className="btn btn-sm btn-text" type="button" aria-label={`${label} 상품 수 바꾸기`} onClick={() => { focusKey.current = key; setView({ section: key }); }}>{s.itemCount}개</button>
+                    {s.kind === "HALL_OF_FAME" ? "—" : s.kind === "RECOMMENDED" ? `${recommendedCount}개 · 최대 20개` : (
+                      <input className="inp inp-sm" style={{ width: 80 }} type="number" min={1} max={20} aria-label={`${label} 보일 상품 수`} value={s.itemCount} disabled={readOnly || absent} onChange={(e) => setCount(key, Number(e.target.value))} />
                     )}
                   </td>
                   <td>
@@ -158,8 +141,8 @@ export function HomeSections({ sections, cats, onSaved, notify, track }: { secti
             })}
           </tbody>
         </table>
-      </div>}
-      {!selectedKey && categorySections.length > 0 && <div data-testid="category-sections">
+      </div>
+      {categorySections.length > 0 && <div data-testid="category-sections">
         <span className="t-c1 c-alt">저장된 카테고리 영역 {categorySections.length}개 · 새로 만들거나 이름을 바꿀 수 없고, 저장해도 그대로 유지됩니다</span>
         <ul>
           {categorySections.map((s) => (
@@ -167,14 +150,6 @@ export function HomeSections({ sections, cats, onSaved, notify, track }: { secti
           ))}
         </ul>
       </div>}
-      {selected && <div data-testid="section-detail">
-        <FormSection title={KIND_INFO[selected.kind].label}>
-          <FormRow label="영역"><span>{KIND_INFO[selected.kind].label}{selected.title !== KIND_INFO[selected.kind].label ? ` · 홈에서 쓰는 이름: ${selected.title}` : ""}</span></FormRow>
-          <FormRow label="보일 상품 수"><input className="inp" type="number" min={1} max={20} aria-label={`${selected.title} 보일 상품 수`} value={selected.itemCount} disabled={readOnly || selected.kind === "HALL_OF_FAME"} onChange={(e) => edit({ itemCount: Math.min(20, Math.max(1, Number(e.target.value) || 1)) })} /></FormRow>
-        </FormSection>
-        <span className="t-c1 c-alt">바꾼 뒤 「영역 목록」으로 돌아가 화면 아래 「저장」을 눌러야 반영됩니다.</span>
-      </div>}
-      {selectedKey && !selected && <p role="status">이 영역을 찾을 수 없습니다. 영역 목록에서 다시 선택해 주십시오.</p>}
     </section>
   );
 }

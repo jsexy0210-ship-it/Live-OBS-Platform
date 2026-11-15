@@ -51,10 +51,13 @@ test("대표자: 홈 영역 6종 고정 표에서 번호 + ▲▼ · 홈에 표�
   await expect(sectionRow(page, "추천 상품").getByRole("checkbox", { name: "추천 상품 홈에 표시" })).toBeChecked();
   await expect(sectionRow(page, "베스트").getByRole("checkbox", { name: "베스트 홈에 표시" })).not.toBeChecked();
   await expect(SAVE_ALL(page)).toBeDisabled();
-  // 보일 상품 수는 상품 칸의 「N개」에서 연다(이름은 고칠 수 없다)
-  await sectionRow(page, "추천 상품").getByRole("button", { name: "추천 상품 상품 수 바꾸기" }).click();
+  // 보일 상품 수는 영역 표 안 입력(1~20): 추천 상품은 직접 고른 수라 읽기 전용, 명예의 전당은 「—」, 이름은 고칠 수 없다
+  await expect(sectionRow(page, "추천 상품")).toContainText("0개 · 최대 20개");
+  await expect(sectionRow(page, "추천 상품").getByRole("spinbutton")).toHaveCount(0);
+  await expect(sectionRow(page, "명예의 전당")).toContainText("—");
+  await expect(sectionRow(page, "신상품").getByRole("spinbutton", { name: "신상품 보일 상품 수" })).toHaveValue("8");
+  await expect(sectionRow(page, "베스트").getByRole("spinbutton", { name: "베스트 보일 상품 수" })).toBeDisabled();
   await expect(page.getByRole("textbox", { name: /영역 이름/ })).toHaveCount(0);
-  await page.getByRole("button", { name: "영역 목록", exact: true }).click();
   if (SHOTS) await page.screenshot({ path: "tests/e2e/screenshots/SA-016-display-1440.png", fullPage: true });
 
   // 베스트 켜기(꺼진 채 없던 영역은 켜는 순간 초안에 들어간다) → ▲ 두 번 → 신상품 끄기 → 저장
@@ -62,6 +65,7 @@ test("대표자: 홈 영역 6종 고정 표에서 번호 + ▲▼ · 홈에 표�
   await page.getByRole("button", { name: "베스트 위로" }).click();
   await page.getByRole("button", { name: "베스트 위로" }).click();
   await sectionRow(page, "신상품").getByRole("checkbox", { name: "신상품 홈에 표시" }).uncheck();
+  await sectionRow(page, "신상품").getByRole("spinbutton", { name: "신상품 보일 상품 수" }).fill("12");
   expect((await display(page)).sections).toHaveLength(2); // 저장 전에는 서버가 그대로다
   await expect(SAVE_ALL(page)).toBeEnabled();
   await SAVE_ALL(page).click();
