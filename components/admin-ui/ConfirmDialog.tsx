@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
+import { registerLeaveDialogHost } from "../../lib/client/navigation/leaveDialog";
 import { Modal } from "./Modal";
 import { confirmButtonWidth, retypeMatches, type RetypeMode } from "./confirmUtil";
 
@@ -141,6 +142,10 @@ export function ConfirmProvider({ readOnly = false, defaultTone = "admin", child
     [readOnly, defaultTone],
   );
   const api = useMemo(() => ({ confirm, readOnly }), [confirm, readOnly]);
+  // 저장하지 않은 변경을 두고 나갈 때의 확인(useUnsavedGuard·confirmLeaveDialog)도 이 창으로 묻는다. 대리 조회 중에도 나갈 수 있어야 해서 allowReadOnly
+  useEffect(() => {
+    return registerLeaveDialogHost((d) => confirm({ title: d.title, body: d.body, cancelLabel: d.stayLabel ?? "계속 편집", confirmLabel: d.leaveLabel ?? "저장 안 함", allowReadOnly: true }));
+  }, [confirm]);
   const finish = (ok: boolean) => {
     pending?.resolve(ok);
     setPending(null);
