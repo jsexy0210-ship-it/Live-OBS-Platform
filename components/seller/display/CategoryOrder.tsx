@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { confirmLeaveDialog } from "../../../lib/client/navigation";
 import { api } from "../api";
-import { LEAVE_ORDER_MESSAGE, STATUS_BADGE, failText, moved, useDraft, useTrackSave, type CatItem, type CategoryNode, type Track } from "./types";
+import { LEAVE_ORDER_DIALOG, STATUS_BADGE, failText, moved, useDraft, useTrackSave, type CatItem, type CategoryNode, type Track } from "./types";
 
 // 카테고리별 진열: 카테고리 안 상품 순서(직접 지정한 상품). ▲▼로 옮기고 화면 아래 「저장」을 누른다(PUT /api/seller/categories/[id]/products, 그사이 목록이 바뀌면 409).
 export function CategoryOrder({ cats, notify, track }: { cats: CategoryNode[]; notify: (text: string, neg?: boolean) => void; track: Track }) {
@@ -46,7 +47,7 @@ export function CategoryOrder({ cats, notify, track }: { cats: CategoryNode[]; n
         <>
           <label className="col" style={{ gap: 4, maxWidth: 360, marginTop: 8 }}>
             <span className="t-l2">카테고리</span>
-            <select className="inp" value={sel} onChange={(e) => { if (dirty && !window.confirm(LEAVE_ORDER_MESSAGE)) return; setSel(e.target.value); }}>
+            <select className="inp" value={sel} onChange={(e) => { const next = e.target.value; void confirmLeaveDialog(dirty, LEAVE_ORDER_DIALOG).then((ok) => { if (ok) setSel(next); }); }}>
               {all.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}

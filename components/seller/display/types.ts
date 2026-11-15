@@ -61,6 +61,8 @@ export const failText = (r: { status: number; message?: string }, fallback: stri
 export type Track = (name: string, dirty: boolean, save: () => Promise<boolean>) => void;
 export const SAVE_ORDER_DONE = "진열 순서를 저장했습니다 · 홈에 바로 반영";
 export const LEAVE_ORDER_MESSAGE = "바꾼 순서를 저장하지 않고 나가시겠습니까?";
+// 저장 전 나가기 확인(정본 SA-016 .cfm): [계속 편집][저장 안 함]
+export const LEAVE_ORDER_DIALOG = { title: LEAVE_ORDER_MESSAGE, body: "저장하지 않은 순서 변경이 사라집니다." };
 export function useTrackSave(track: Track, name: string, dirty: boolean, save: () => Promise<boolean>) {
   const ref = useRef(save);
   ref.current = save;
