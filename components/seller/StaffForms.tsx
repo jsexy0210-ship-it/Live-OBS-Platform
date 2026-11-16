@@ -206,8 +206,8 @@ type EditSent = { name: string; phone: string | null; perms: StaffPerm[]; profil
 // 직원 정보·권한 수정: 이름·휴대폰은 PATCH, 권한은 permissions로 보낸다(바뀐 것만)
 // 결과가 불분명하면(연결 끊김·5xx) 칸을 잠그고, 목록에서 보낸 값과 같아진 것을 확인하거나 같은 값 재저장이 성공할 때만 저장으로 본다
 // onApply: 서버가 성공으로 돌려준 값(정보·권한)을 목록 행에 바로 반영한다(뒤이은 목록 다시 읽기가 실패해도 화면이 낡지 않게)
-export function EditStaffModal({ leaveRef, staff, onClose, onSaved: completed, fullPage = false, onChanged, onApply, initialSub = null }: { initialSub?: "password" | "disable" | null; leaveRef?: React.Ref<(next?: () => void) => Promise<void>>; fullPage?: boolean; staff: Staff; onClose: () => void; onSaved: (text: string) => void; onChanged?: () => void; onApply?: (changes: Partial<Staff>) => void }) {
-  const [sub, setSub] = useState<"password" | "disable" | null>(initialSub);
+export function EditStaffModal({ leaveRef, staff, onClose, onSaved: completed, fullPage = false, onChanged, onApply }: { leaveRef?: React.Ref<(next?: () => void) => Promise<void>>; fullPage?: boolean; staff: Staff; onClose: () => void; onSaved: (text: string) => void; onChanged?: () => void; onApply?: (changes: Partial<Staff>) => void }) {
+  const [sub, setSub] = useState<"password" | "disable" | null>(null);
   const [name, setName] = useState(staff.name);
   const [phone, setPhone] = useState(staff.phone ?? "");
   const [perms, setPerms] = useState<StaffPerm[]>(staff.permissions);

@@ -13,7 +13,9 @@ import { phoneText } from "../../../../../components/seller/IdentityCheck";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { IdentityPendingNotice, isIdentityPendingFail } from "../../../../../components/seller/IdentityPending";
 import {
+  DisableStaffModal,
   EditStaffModal,
+  ResetPasswordModal,
   MIN_PASSWORD_LENGTH,
   PERMS,
   PermissionPicker,
@@ -124,7 +126,9 @@ export default function Workspace({ staffId, operation = "edit", returnTo }: { s
   if (staffId) return <><Topbar crumb={`설정 › 직원 계정 › ${staffId === "new" ? "새 직원" : "직원 상세"}`} /><main className="main">
     <PageHead onBack={() => leaveRef.current ? leaveRef.current(smartBack) : smartBack()} title={staffId === "new" ? "새 직원" : "직원 상세"} description="직원의 이름 · 휴대폰 번호 · 권한을 고치고, 비밀번호 재설정 · 비활성화를 처리합니다. 새 직원도 이 화면에서 만듭니다." back={back} actions={<Link className="btn btn-out" href={back}>목록으로</Link>} />
     {!me.isOwner ? <div className="msg msg-info">대표자만 볼 수 있습니다.</div> : state.kind === "loading" ? <LoadingRows rows={3} /> : state.kind === "error" ? <ErrorState title="직원 목록을 불러오지 못했습니다" onRetry={() => void load()} /> : staffId === "new" ? <AddStaff leaveRef={leaveRef} onAdded={(name) => done(`${name} 계정을 만들었습니다`)} onChanged={() => void load()} onCancel={() => (leaveRef.current ? leaveRef.current(smartBack) : smartBack())} /> : modal ? <>
-      <EditStaffModal leaveRef={leaveRef} fullPage initialSub={operation === "password" ? "password" : operation === "disable" ? "disable" : null} staff={modal.staff} onClose={() => router.push(back)} onSaved={done} onChanged={() => void load()} onApply={(c) => applyRow(modal.staff.id, c)} />
+      {operation === "password" ? <ResetPasswordModal leaveRef={leaveRef} fullPage staff={modal.staff} onClose={() => router.push(back)} onDone={done} />
+        : operation === "disable" ? <DisableStaffModal leaveRef={leaveRef} fullPage staff={modal.staff} onClose={() => router.push(back)} onDone={done} onChanged={() => void load()} onApply={(c) => applyRow(modal.staff.id, c)} />
+        : <EditStaffModal leaveRef={leaveRef} fullPage staff={modal.staff} onClose={() => router.push(back)} onSaved={done} onChanged={() => void load()} onApply={(c) => applyRow(modal.staff.id, c)} />}
     </> : missing && <div className="msg msg-info" role="alert">직원을 찾을 수 없습니다. 목록에서 다시 골라 주십시오.<div style={{ marginTop: 8 }}><Link className="btn btn-sm btn-out" href={back}>목록으로</Link></div></div>}
     </main></>;
 

@@ -257,7 +257,7 @@ for (const entry of ["직접 진입", "새로고침"]) test(`직원 사용 중�
   });
   await page.goto(`/seller/staff/${id(1)}?operation=disable&returnTo=${encodeURIComponent("/seller/staff?q=kept")}`);
   if (entry === "새로고침") await page.reload();
-  await page.locator('section[aria-labelledby="staff-disable-title"]').getByRole("button", { name: "직원 계정 사용 중지", exact: true }).click();
+  await page.locator('section[aria-labelledby="staff-disable-title"]').getByRole("button", { name: "비활성화", exact: true }).click();
   await expect(page.getByTestId("sd-unclear")).toBeVisible();
   await expect.poll(() => page.evaluate(() => !!history.state?.unsavedGuard)).toBe(true);
   const detail = page.url();
@@ -267,7 +267,7 @@ for (const entry of ["직접 진입", "새로고침"]) test(`직원 사용 중�
   page.once("dialog", dialog => void dialog.accept());
   await page.locator("main").getByRole("button", { name: "뒤로", exact: true }).click();
   await expect(page).toHaveURL(/\/seller\/staff\?q=kept$/);
-  await expect(page.getByRole("status").filter({ hasText: "이전 사용 중지 요청이 처리되었을 수 있습니다" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "이전 비활성화 요청이 처리되었을 수 있습니다" })).toBeVisible();
   expect(await page.evaluate(() => !!history.state?.unsavedGuard)).toBe(false);
   expect(writes).toEqual([`/api/seller/staff/${id(1)}/disable`]);
 });
