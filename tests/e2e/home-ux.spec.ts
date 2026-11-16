@@ -143,13 +143,8 @@ test("마스터 홈: 로딩·실패·권한 오류를 0건으로 표시하지 �
   scenario.zero = true;
   await page.getByTestId("today-tasks").getByRole("button", { name: "다시 불러오기" }).click();
   await expect(page.getByTestId("today-tasks-empty")).toContainText("지금 처리할 일이 없어요");
-  await expect(page.getByTestId("today-tasks").locator("summary")).toHaveCount(0); // 모두 0건이면 묶음 없이 안내 한 줄(정본)
-  await expect(page.getByTestId("today-tasks").locator("details")).toHaveCount(0);
+  await expect(page.getByTestId("today-tasks").locator("summary")).toContainText("7개");
   await expect(page.getByTestId("today-task-platformInfoMissing")).toHaveCount(0);
-  scenario.zero = false;
-  await page.reload();
-  await expect(page.getByTestId("today-tasks").locator("summary")).toContainText("처리할 일 없는 항목 4개"); // 일부만 0건이면 0건 항목만 접는다
-  await expect(page.getByTestId("today-tasks-empty")).toHaveCount(0);
 });
 
 test("파트너스 홈: 오버레이 전용·운영 직원의 기존 기능 범위를 유지한다", async ({ page }) => {

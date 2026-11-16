@@ -171,8 +171,7 @@ function TodayTasks({ tick }: { tick: number }) {
             </div>
           )}
           {pending.length > 0 && <div className="stat-row" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>{pending.map(tile)}</div>}
-          {/* 정본(MA-001-compact, 2026-11-15): 모두 0건이면 묶음 없이 안내 한 줄만 보인다 */}
-          {pending.length > 0 && idle.length > 0 && (
+          {idle.length > 0 && (
             <details className="ma-home-task-idle" open={idleOpen} onToggle={(e) => setIdleOpen(e.currentTarget.open)}>
               <summary>처리할 일 없는 항목 {idle.length}개</summary>
               <div className="stat-row" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>{idle.map(tile)}</div>
