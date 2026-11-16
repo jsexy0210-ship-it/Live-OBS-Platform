@@ -681,10 +681,18 @@ body {
   margin: 4px 12px 10px;
   border: 0;
 }
-.staff-add .staff-perms > .col {
+.staff-add-grid > .fld > .staff-ro {
+  grid-column: 2;
+  margin: 12px 12px 4px;
+  min-width: 0;
+}
+.staff-perm-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0 24px;
+}
+.staff-sec {
+  gap: 12px;
 }
 .staff-table-wrap {
   overflow-x: auto;
@@ -709,9 +717,15 @@ body {
   border: 0;
 }
 .staff-perm {
+  display: flex;
+  align-items: flex-start;
   gap: 10px;
-  padding: 6px 0;
+  padding: 8px 0;
   box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative);
+}
+.staff-perm > .cbx {
+  flex: none;
+  margin-top: 2px;
 }
 .staff-perm.is-owner-only {
   opacity: 0.55;
