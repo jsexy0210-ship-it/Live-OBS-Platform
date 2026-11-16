@@ -240,7 +240,7 @@ test("끌 때 정렬 가이드선이 보이고, 실제 크기 미리보기가 �
   await expect(menu).toHaveAttribute("href", "/seller/broadcasts");
   const leave = page.getByRole("dialog", { name: "저장하지 않고 나가시겠습니까?" });
   await menu.click();
-  await expect(leave).toContainText("옮긴 위젯 1개의 변경이 저장되지 않습니다. 계속 편집하시겠습니까?");
+  await expect(leave).toContainText("바꾼 위젯 1개의 변경이 저장되지 않습니다. 계속 편집하시겠습니까?");
   for (const width of [1440, 1024]) {
     await page.setViewportSize({ width, height: 800 });
     await page.screenshot({ path: `tests/e2e/screenshots/SA-051-leave-confirm-${width}.png` });
